@@ -184,6 +184,98 @@ def fake_embed(texts, query=False):
                   else [0.0, 1.0]) for t in texts]
 
 
+class Extra(unittest.TestCase):
+    """Markdown outside the tracked tree is read only when AUTANA_DOCS_EXTRA names it."""
+
+    def setUp(self):
+        self.root = make_repo({
+            ".gitignore": "notes/\nvault/\nExtra.md\nNotes.txt\n",
+            "docs/Flashing.md": GUIDE,
+            "notes/Private.md": "# Private\n\n## Bench notes\n\nThe spare board's USB port is loose.\n",
+            "notes/eval_questions.tsv": "loose usb port\tnotes/Private.md\tBench notes\n",
+            "Extra.md": "# Extra\n\n## Loose ends\n\nOne more note.\n",
+            "Notes.txt": "# A plain text file whose leading comment is long enough to pass for a script\n"
+                         "# header, so only its suffix keeps it out of the index.\n",
+        })
+        self.saved = os.environ.pop(docs_search.EXTRA_ENV, None)
+
+    def own_repository(self, name, files):
+        folder = self.root / name
+        for file, text in files.items():
+            (folder / file).parent.mkdir(parents=True, exist_ok=True)
+            (folder / file).write_text(text, encoding="utf-8")
+        subprocess.run(["git", "init", "-q", str(folder)], check=True)
+        subprocess.run(["git", "-C", str(folder), "add", "."], check=True)
+        return folder
+
+    def outside(self, files):
+        folder = Path(tempfile.mkdtemp())
+        for file, text in files.items():
+            (folder / file).write_text(text, encoding="utf-8")
+        return folder
+
+    def tearDown(self):
+        os.environ.pop(docs_search.EXTRA_ENV, None)
+        if self.saved is not None:
+            os.environ[docs_search.EXTRA_ENV] = self.saved
+
+    def paths(self):
+        return {s.path for s in docs_search.Index(self.root, semantic=False).sections}
+
+    def test_nothing_outside_the_tracked_tree_is_read_by_default(self):
+        self.assertEqual(self.paths(), {"docs/Flashing.md"})
+
+    def test_a_named_folder_and_file_are_read_under_their_checkout_paths(self):
+        os.environ[docs_search.EXTRA_ENV] = os.pathsep.join([" notes ", "Extra.md "])
+        self.assertEqual(self.paths(), {"docs/Flashing.md", "notes/Private.md", "Extra.md"})
+
+    def test_an_extra_document_ranks_below_a_document_of_record(self):
+        os.environ[docs_search.EXTRA_ENV] = "notes"
+        index = docs_search.Index(self.root, semantic=False)
+        extra = next(s for s in index.sections if s.path == "notes/Private.md")
+        tracked = next(s for s in index.sections if s.path == "docs/Flashing.md")
+        self.assertEqual(docs_search.prior(extra, index.extra), docs_search.EXTRA_PRIOR)
+        self.assertEqual(docs_search.prior(tracked, index.extra), 1.0)
+
+    def test_a_named_folder_brings_its_own_evaluation_rows(self):
+        row = ("loose usb port", "notes/Private.md", "bench notes")
+        self.assertNotIn(row, docs_search.load_eval(self.root))
+        os.environ[docs_search.EXTRA_ENV] = "notes"
+        self.assertIn(row, docs_search.load_eval(self.root))
+
+    def test_a_folder_that_is_its_own_repository_reads_only_what_it_would_track(self):
+        self.own_repository("vault", {".gitignore": "Scratch.md\n",
+                                      "Bench Notes.md": "# Bench\n\n## Spare board\n\nLoose port.\n",
+                                      "Scratch.md": "# Scratch\n\n## Draft\n\nNot for the index.\n"})
+        os.environ[docs_search.EXTRA_ENV] = "vault"
+        self.assertEqual(self.paths(), {"docs/Flashing.md", "vault/Bench Notes.md"})
+
+    def test_an_absolute_folder_is_read_under_its_full_path(self):
+        first = self.outside({"README.md": "# First\n\n## Alpha notes\n\nOne.\n"})
+        second = self.outside({"README.md": "# Second\n\n## Beta notes\n\nTwo.\n"})
+        os.environ[docs_search.EXTRA_ENV] = os.pathsep.join([str(first), str(second)])
+        index = docs_search.Index(self.root, semantic=False)
+        labels = {(first / "README.md").as_posix(), (second / "README.md").as_posix()}
+        self.assertEqual({s.path for s in index.sections} - {"docs/Flashing.md"}, labels)
+        self.assertEqual(index.extra, labels)
+
+    def test_a_named_file_that_is_not_markdown_is_not_read(self):
+        os.environ[docs_search.EXTRA_ENV] = "Notes.txt"
+        self.assertEqual(self.paths(), {"docs/Flashing.md"})
+
+    def test_an_edit_to_an_extra_file_mid_session_is_searchable_at_once(self):
+        os.environ[docs_search.EXTRA_ENV] = "notes"
+        server = docs_mcp.Server(self.root)
+        ask = {"question": "zeppelin mooring"}
+        with mock.patch.object(docs_llama, "installed", return_value=False):
+            before, _ = server.call("docs_search", ask)
+            with open(self.root / "notes" / "Private.md", "a", encoding="utf-8") as doc:
+                doc.write("\n## Zeppelin mooring\n\nA zeppelin moors to the mast.\n")
+            after, _ = server.call("docs_search", ask)
+        self.assertIn("no document uses", before)
+        self.assertIn("Zeppelin mooring", after)
+
+
 class Semantic(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.mkdtemp()
@@ -337,17 +429,20 @@ class Stop(unittest.TestCase):
 
 
 class RealDocuments(unittest.TestCase):
-    """Exact-word retrieval must meet FLOOR on the evaluation set, whose every row names a real section."""
+    """Exact-word retrieval must meet FLOOR on the evaluation set, whose every row names a real section.
+    The engine's own documents only: a machine's AUTANA_DOCS_EXTRA must not move this gate."""
     FLOOR = 0.5
+
+    def setUp(self):
+        patch = mock.patch.dict(os.environ, {docs_search.EXTRA_ENV: ""})
+        patch.start()
+        self.addCleanup(patch.stop)
 
     def test_every_question_names_a_section_that_exists(self):
         with mock.patch.object(docs_llama, "installed", return_value=False):
             index = docs_search.Index(REPO, semantic=False)
-        dev = (REPO / ".dev").is_dir()
         missing = []
-        for question, path, heading in docs_search.load_eval():
-            if path.startswith(".dev/") and not dev:
-                continue
+        for question, path, heading in docs_search.load_eval(REPO):
             if not any(s.path == path and any(heading in name.lower()
                                               for name in s.headings + (s.title,))
                        for s in index.sections):
