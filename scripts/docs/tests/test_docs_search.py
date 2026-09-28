@@ -184,6 +184,49 @@ def fake_embed(texts, query=False):
                   else [0.0, 1.0]) for t in texts]
 
 
+class Extra(unittest.TestCase):
+    """Markdown outside the tracked tree is read only when AUTANA_DOCS_EXTRA names it."""
+
+    def setUp(self):
+        self.root = make_repo({
+            ".gitignore": "notes/\nExtra.md\n",
+            "docs/Flashing.md": GUIDE,
+            "notes/Private.md": "# Private\n\n## Bench notes\n\nThe spare board's USB port is loose.\n",
+            "notes/eval_questions.tsv": "loose usb port\tnotes/Private.md\tBench notes\n",
+            "Extra.md": "# Extra\n\n## Loose ends\n\nOne more note.\n",
+        })
+        self.saved = os.environ.pop(docs_search.EXTRA_ENV, None)
+
+    def tearDown(self):
+        os.environ.pop(docs_search.EXTRA_ENV, None)
+        if self.saved is not None:
+            os.environ[docs_search.EXTRA_ENV] = self.saved
+
+    def paths(self):
+        return {s.path for s in docs_search.Index(self.root, semantic=False).sections}
+
+    def test_nothing_outside_the_tracked_tree_is_read_by_default(self):
+        self.assertEqual(self.paths(), {"docs/Flashing.md"})
+
+    def test_a_named_folder_and_file_are_read_under_their_checkout_paths(self):
+        os.environ[docs_search.EXTRA_ENV] = os.pathsep.join(["notes", "Extra.md"])
+        self.assertEqual(self.paths(), {"docs/Flashing.md", "notes/Private.md", "Extra.md"})
+
+    def test_an_extra_document_ranks_below_a_document_of_record(self):
+        os.environ[docs_search.EXTRA_ENV] = "notes"
+        index = docs_search.Index(self.root, semantic=False)
+        extra = next(s for s in index.sections if s.path == "notes/Private.md")
+        tracked = next(s for s in index.sections if s.path == "docs/Flashing.md")
+        self.assertEqual(docs_search.prior(extra, index.extra), docs_search.EXTRA_PRIOR)
+        self.assertEqual(docs_search.prior(tracked, index.extra), 1.0)
+
+    def test_a_named_folder_brings_its_own_evaluation_rows(self):
+        row = ("loose usb port", "notes/Private.md", "bench notes")
+        self.assertNotIn(row, docs_search.load_eval(self.root))
+        os.environ[docs_search.EXTRA_ENV] = "notes"
+        self.assertIn(row, docs_search.load_eval(self.root))
+
+
 class Semantic(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.mkdtemp()
@@ -343,11 +386,8 @@ class RealDocuments(unittest.TestCase):
     def test_every_question_names_a_section_that_exists(self):
         with mock.patch.object(docs_llama, "installed", return_value=False):
             index = docs_search.Index(REPO, semantic=False)
-        dev = (REPO / ".dev").is_dir()
         missing = []
-        for question, path, heading in docs_search.load_eval():
-            if path.startswith(".dev/") and not dev:
-                continue
+        for question, path, heading in docs_search.load_eval(REPO):
             if not any(s.path == path and any(heading in name.lower()
                                               for name in s.headings + (s.title,))
                        for s in index.sections):
