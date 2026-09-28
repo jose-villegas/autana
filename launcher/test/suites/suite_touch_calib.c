@@ -77,12 +77,11 @@ test_a_controller_point_is_corrected_once_before_the_fsm(void) {
     const touch_calib_t calib = touch_calib_from_fit(STRETCH);
     int x, y;
     reported(STRETCH, 100, 300, &x, &y);
-    touch_point_for_fsm(TOUCH_POINT_CONTROLLER, true, &calib, 368, 448, &x, &y);
 
     touch_fsm_t fsm;
     input_t in;
     touch_fsm_init(&fsm);
-    touch_fsm_update(&fsm, true, x, y, 0);
+    touch_point_update_fsm(&fsm, false, true, &x, &y, 0, true, &calib, 368, 448);
     touch_fsm_take(&fsm, &in);
     TEST_ASSERT_INT_WITHIN(1, 100, in.x);
     TEST_ASSERT_INT_WITHIN(1, 300, in.y);
@@ -94,12 +93,11 @@ test_a_controller_point_is_unchanged_when_calibration_is_off(void) {
     int x, y;
     reported(STRETCH, 100, 300, &x, &y);
     const int reported_x = x, reported_y = y;
-    touch_point_for_fsm(TOUCH_POINT_CONTROLLER, false, &calib, 368, 448, &x, &y);
 
     touch_fsm_t fsm;
     input_t in;
     touch_fsm_init(&fsm);
-    touch_fsm_update(&fsm, true, x, y, 0);
+    touch_point_update_fsm(&fsm, false, true, &x, &y, 0, false, &calib, 368, 448);
     touch_fsm_take(&fsm, &in);
     TEST_ASSERT_EQUAL_INT(reported_x, in.x);
     TEST_ASSERT_EQUAL_INT(reported_y, in.y);
@@ -109,15 +107,70 @@ static void
 test_an_injected_point_is_not_corrected_before_the_fsm(void) {
     const touch_calib_t calib = touch_calib_from_fit(STRETCH);
     int x = 100, y = 300;
-    touch_point_for_fsm(TOUCH_POINT_INJECTED, true, &calib, 368, 448, &x, &y);
 
     touch_fsm_t fsm;
     input_t in;
     touch_fsm_init(&fsm);
-    touch_fsm_update(&fsm, true, x, y, 0);
+    touch_point_update_fsm(&fsm, true, true, &x, &y, 0, true, &calib, 368, 448);
     touch_fsm_take(&fsm, &in);
     TEST_ASSERT_EQUAL_INT(100, in.x);
     TEST_ASSERT_EQUAL_INT(300, in.y);
+}
+
+static void
+test_an_injected_lift_reaches_the_fsm_without_touching_the_point(void) {
+    const touch_calib_t calib = touch_calib_from_fit(STRETCH);
+    touch_fsm_t fsm;
+    input_t in;
+    int x = 100, y = 300;
+    touch_fsm_init(&fsm);
+
+    touch_point_update_fsm(&fsm, true, true, &x, &y, 0, true, &calib, 368, 448);
+    touch_fsm_take(&fsm, &in);
+    x = 71;
+    y = 83;
+    touch_point_update_fsm(&fsm, true, false, &x, &y, TOUCH_RELEASE_QUIET_US + 1, true, &calib, 368, 448);
+    touch_fsm_take(&fsm, &in);
+
+    TEST_ASSERT_TRUE(in.released);
+    TEST_ASSERT_FALSE(in.down);
+    TEST_ASSERT_EQUAL_INT(71, x);
+    TEST_ASSERT_EQUAL_INT(83, y);
+}
+
+static void
+test_controller_press_and_move_are_corrected_once_each_before_release(void) {
+    const touch_calib_t calib = touch_calib_from_fit(STRETCH);
+    touch_fsm_t fsm;
+    input_t in;
+    int x, y;
+    touch_fsm_init(&fsm);
+
+    reported(STRETCH, 100, 300, &x, &y);
+    touch_point_update_fsm(&fsm, false, true, &x, &y, 0, true, &calib, 368, 448);
+    touch_fsm_take(&fsm, &in);
+    TEST_ASSERT_TRUE(in.pressed);
+    TEST_ASSERT_INT_WITHIN(1, 100, in.press_x);
+    TEST_ASSERT_INT_WITHIN(1, 300, in.press_y);
+
+    reported(STRETCH, 250, 60, &x, &y);
+    touch_point_update_fsm(&fsm, false, true, &x, &y, 1000, true, &calib, 368, 448);
+    touch_fsm_take(&fsm, &in);
+    TEST_ASSERT_FALSE(in.pressed);
+    TEST_ASSERT_INT_WITHIN(1, 250, in.x);
+    TEST_ASSERT_INT_WITHIN(1, 60, in.y);
+
+    x = 71;
+    y = 83;
+    touch_point_update_fsm(&fsm, false, false, &x, &y, TOUCH_RELEASE_QUIET_US + 1001, true, &calib, 368, 448);
+    touch_fsm_take(&fsm, &in);
+    TEST_ASSERT_TRUE(in.released);
+    TEST_ASSERT_INT_WITHIN(1, 100, in.press_x);
+    TEST_ASSERT_INT_WITHIN(1, 300, in.press_y);
+    TEST_ASSERT_INT_WITHIN(1, 250, in.x);
+    TEST_ASSERT_INT_WITHIN(1, 60, in.y);
+    TEST_ASSERT_EQUAL_INT(71, x);
+    TEST_ASSERT_EQUAL_INT(83, y);
 }
 
 void
@@ -129,6 +182,8 @@ run_touch_calib_suite(void) {
     RUN_TEST(test_a_controller_point_is_corrected_once_before_the_fsm);
     RUN_TEST(test_a_controller_point_is_unchanged_when_calibration_is_off);
     RUN_TEST(test_an_injected_point_is_not_corrected_before_the_fsm);
+    RUN_TEST(test_an_injected_lift_reaches_the_fsm_without_touching_the_point);
+    RUN_TEST(test_controller_press_and_move_are_corrected_once_each_before_release);
 }
 
 SUITE_REGISTER(run_touch_calib_suite);

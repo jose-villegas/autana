@@ -181,18 +181,14 @@ poll_once(void) {
 #else
     poll_controller(&have_point, &x, &y);
 #endif
-    if (have_point) {
+    portENTER_CRITICAL(&lock);
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        const touch_point_source_t source = injected ? TOUCH_POINT_INJECTED : TOUCH_POINT_CONTROLLER;
+    touch_point_update_fsm(&fsm, injected, have_point, &x, &y, now_us, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
 #else
-        const touch_point_source_t source = TOUCH_POINT_CONTROLLER;
+    touch_point_update_fsm(&fsm, false, have_point, &x, &y, now_us, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
 #endif
-        touch_point_for_fsm(source, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES, &x, &y);
-    }
     was_touching = have_point;
 
-    portENTER_CRITICAL(&lock);
-    touch_fsm_update(&fsm, have_point, x, y, now_us);
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (have_point) {
         point_samples++;
