@@ -396,9 +396,9 @@ impulse_spent(uint8_t speed) {
     return speed == 0;
 }
 
-/* Decides whether gravity drift may enter a cell. Spent entries only enter
- * empty or liquid cells, so they cannot swap through packed material after
- * flight energy is gone. */
+/* A spent entry only enters empty or liquid cells, so a chunk out of flight
+ * energy cannot swap down through packed material. The settled check uses
+ * this same predicate. */
 static inline bool
 can_impulse_enter_gravity_ward(cell_t target, cell_t mover, uint8_t speed) {
     if (impulse_spent(speed)) {
@@ -691,12 +691,8 @@ static_chunk_gravity_drift(sand_t* s, impulse_t* entry, int dx, int dy, impulse_
             continue;
         }
         const cell_t gtarget = sand_at(s, cx, cy);
-        /* can_impulse_enter_gravity_ward() is the same predicate the
-         * settled check uses. No separate "but not liquid" exclusion: this
-         * move is a SWAP, not an overwrite, so a lava cell a thrown chunk
-         * enters just relocates - conservation and "never smothered" both
-         * hold. An ENERGETIC chunk sinks into a liquid like a dense powder
-         * already does; a spent entry gets none of this. */
+        /* A swap relocates rather than overwrites. Any chunk sinks into a
+         * liquid; only an energetic one also swaps down through powder. */
         if (!can_impulse_enter_gravity_ward(gtarget, entry->cell, entry->speed)) {
             continue;
         }
@@ -794,8 +790,7 @@ impulse_meet_blocker(const sand_t* s, impulse_t* entry, uint8_t mat_id, int x, i
 /* One cell of the push. False means blocked: the entry stays where it is
  * and the push ends this step. */
 static bool
-impulse_hop(sand_t* s, impulse_t* entry, uint8_t mat_id, int hop, int kept, int self_i, impulse_t* deferred,
-            int* deferred_transfer_count) {
+impulse_hop(sand_t* s, impulse_t* entry, uint8_t mat_id, int hop, impulse_t* deferred, int* deferred_transfer_count) {
     const int w = s->w;
     const int x = (int)((unsigned)entry->index % (unsigned)w);
     const int y = (int)((unsigned)entry->index / (unsigned)w);
@@ -813,11 +808,6 @@ impulse_hop(sand_t* s, impulse_t* entry, uint8_t mat_id, int hop, int kept, int 
         return false;
     }
 
-    const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
-    if (impulse_index_still_tracked(s, kept, self_i, (uint16_t)nat)) {
-        return false;
-    }
-
     /* A SWAP, not an overwrite - move_to()'s trick, so conservation needs
      * nothing extra. Drag and transfer are charged by
      * impulse_charge_displacement(), the same body gravity-drift uses, at
@@ -832,6 +822,7 @@ impulse_hop(sand_t* s, impulse_t* entry, uint8_t mat_id, int hop, int kept, int 
         impulse_decay(entry, mat_id, 1);
     }
 
+    const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
     impulse_charge_displacement(s, entry, nat, entry->dir, deferred, deferred_transfer_count);
     return true;
 }
@@ -846,13 +837,12 @@ impulse_hop(sand_t* s, impulse_t* entry, uint8_t mat_id, int hop, int kept, int 
  * loop also has ENERGY exit. This is hard upper bound, preventing mover
  * from exceeding divisor. */
 static int
-impulse_push(sand_t* s, impulse_t* entry, uint8_t mat_id, int kept, int self_i, impulse_t* deferred,
-             int* deferred_transfer_count) {
+impulse_push(sand_t* s, impulse_t* entry, uint8_t mat_id, impulse_t* deferred, int* deferred_transfer_count) {
     const int push_count = 1 + (int)entry->speed / SAND_IMPULSE_CELLS_PER_STEP_DIVISOR;
     int moved = 0;
 
     for (int hop = 0; hop < push_count; hop++) {
-        if (!impulse_hop(s, entry, mat_id, hop, kept, self_i, deferred, deferred_transfer_count)) {
+        if (!impulse_hop(s, entry, mat_id, hop, deferred, deferred_transfer_count)) {
             break;
         }
         moved++;
@@ -1005,7 +995,7 @@ step_impulses(sand_t* s, int dx, int dy) {
         const int y0 = (int)((unsigned)entry.index / (unsigned)w);
         const int* d0 = ring_dir(entry.dir);
 
-        const int moved = impulse_push(s, &entry, mat_id, kept, i, deferred, &deferred_transfer_count);
+        const int moved = impulse_push(s, &entry, mat_id, deferred, &deferred_transfer_count);
         queue_cascade_relay(s, &entry, mat_id, moved, x0 - d0[0], y0 - d0[1], deferred, deferred_transfer_count,
                             &deferred_cascade_count);
 

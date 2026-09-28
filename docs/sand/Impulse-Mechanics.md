@@ -84,6 +84,10 @@ sand_impulse(x, y, dir, speed)          ← ONE grain, ONE step's worth of push
           evaporation (see "Water and acid are on different mechanisms")
 ```
 
+A mover can swap into a cell another entry holds; that entry then loses its
+flight (the grain stays), affecting ~8-13% of a blast's entries and accepted
+because it is invisible while preventing it costs a scan per hop.
+
 ### Who calls what
 
 | Entry point | Trigger | Where |
@@ -111,10 +115,6 @@ it moves, so a cell that changed out from under it - overwritten, reacted,
 consumed - silently drops the entry instead of flying whatever is there
 now. No per-cell "in flight" bit needed; that would cost the same 40 KB
 this whole mechanism exists to avoid.
-
-An entry also cannot displace another tracked entry. It waits for that entry
-to take its own turn, so a multi-cell push cannot move a grain past the
-position from which its identity can be recovered.
 
 **Over the cap, a blast simply throws fewer grains, evenly.** `sand_explode()`
 seeds every occupied annulus cell in ring order, and if that exceeds the

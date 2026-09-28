@@ -600,23 +600,13 @@ test_a_flying_grain_keeps_its_outward_push_while_falling(void) {
                                      "step, not lose its push the instant gravity also touches it");
 }
 
-/*
- * KIND_STATIC support agreeing with the drift, not merely CELL_IS_EMPTY
- * on the one cell straight below (bd - "a thrown static chunk settles too
- * eagerly")
- */
-
-/* can_impulse_enter() only refuses KIND_STATIC, so gravity-drift always
- * swaps into powder beneath a falling chunk; the old settled check
- * disagreed, declaring it settled after one row. Split into two tests:
- * ENERGETIC must still sink deep; a zero-speed SPENT entry must rest
- * instead. */
+/* can_impulse_enter() only refuses KIND_STATIC, so gravity-drift swaps into
+ * powder beneath a falling chunk and the settled check must agree. An
+ * ENERGETIC chunk sinks deep; a zero-speed SPENT one rests. */
 enum { SETTLE_COL = 3, SETTLE_TOP_ROW = 0 };
 
-/* The drift used to charge no drag, so an energetic chunk tunnelled an
- * entire powder bank for free regardless of how far it had travelled. Now
- * charges the same drag the push site does (SAND_IMPULSE_DRAG_POWDER_SHIFT,
- * sand_impulse.h), stopping within the first few layers instead. */
+/* The gravity-drift swap charges SAND_IMPULSE_DRAG_POWDER_SHIFT drag, so an
+ * energetic chunk stops within the first few powder layers. */
 static void
 test_an_energetic_static_chunk_over_a_powder_bank_now_stops_within_the_first_few_layers(void) {
     fixture();
@@ -800,9 +790,8 @@ test_a_static_chunk_thrown_far_still_stops_shallow_in_the_bed_it_hits(void) {
 }
 
 /* THE SAME SPLIT, OVER A LIQUID: an energetic chunk sinks into water rather
- * than resting on its surface the way a never-thrown one would, while a
- * SPENT one rests there instead: a zero-speed chunk does not displace a
- * liquid, just as it does not displace powder. */
+ * than resting on its surface the way a never-thrown one would. A spent one
+ * sinks too, since a spent entry may still enter a liquid cell. */
 static void
 test_an_energetic_static_chunk_still_sinks_into_water_instead_of_resting_on_its_surface(void) {
     fixture();
@@ -830,10 +819,7 @@ test_an_energetic_static_chunk_still_sinks_into_water_instead_of_resting_on_its_
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(H - 1, first_row_holding(MAT_STONE),
                                   "an ENERGETIC thrown KIND_STATIC chunk over a water column must "
-                                  "still sink all the way to the bottom rather than stopping at the "
-                                  "surface - the old drift's own liquid exclusion stays deleted, "
-                                  "and rung 4's new SPENT narrowing must not apply to anything that "
-                                  "still has push left");
+                                  "still sink all the way to the bottom rather than stopping at the surface");
 }
 
 static void
@@ -859,20 +845,13 @@ test_a_spent_static_chunk_still_sinks_through_water_to_the_bottom(void) {
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(H - 1, first_row_holding(MAT_STONE),
                                   "a SPENT thrown KIND_STATIC chunk over a water column must still "
-                                  "sink all the way down - the settle rule IS kind-aware now, and "
-                                  "only packed grain holds an exhausted chunk up. A fluid parts "
-                                  "around a solid whether or not the solid has energy left, and on "
-                                  "device a chunk stalled mid-pool read as wrong where sinking to "
-                                  "the floor had always looked right");
+                                  "sink all the way down because a spent entry may still enter a liquid cell");
 }
 
-/* Deleting the drift's liquid exclusion is safe: the move is a SWAP
- * (move_to()), not an overwrite, so lava swapped into changes which cell it
- * occupies, not whether it exists. MASS is the exact invariant (mass_of());
- * cell count is only checked as "did not go down", since spread can split
- * one cell and an exposed surface can flare. SPEED 255: a spent chunk needs
- * an empty cell to continue, and this pool has none, so it would settle
- * without exercising the sink. */
+/* The drift swaps rather than overwrites, so lava changes cells without
+ * changing mass. Cell count is only checked as "did not go down", since
+ * spread can split a cell and an exposed surface can flare. SPEED 255
+ * exercises the energetic path through can_impulse_enter(). */
 static void
 test_a_thrown_static_chunk_conserves_lava_mass_on_sink(void) {
     fixture();
@@ -1548,37 +1527,6 @@ test_a_full_speed_static_chunk_moves_several_cells_in_one_push(void) {
                                   "a full-speed KIND_STATIC push through open air must cover several "
                                   "cells in one step, not one - this is the whole point of "
                                   "SAND_IMPULSE_CELLS_PER_STEP_DIVISOR (sand.h)");
-}
-
-static void
-test_a_mover_does_not_displace_another_tracked_entry(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
-
-    enum { ROW = 3, DIR_RIGHT = 2 };
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, ROW + 1, STONE);
-    }
-    sand_set(&s, 0, ROW - 1, STONE);
-    sand_set(&s, 0, ROW, STONE);
-    sand_set(&s, 1, ROW, SAND);
-    sand_set(&s, 2, ROW, CELL_MAKE(MAT_SAND, 1));
-    sand_impulse(&s, 1, ROW, DIR_RIGHT, 255);
-    sand_impulse(&s, 2, ROW, DIR_RIGHT, 255);
-
-    sand_step(&s, 0, 1000, 0);
-
-    int rightward = 0;
-    for (int i = 0; i < s.impulse_count; i++) {
-        if (s.impulse_buf[i].dir == DIR_RIGHT) {
-            rightward++;
-        }
-    }
-    TEST_ASSERT_EQUAL_INT_MESSAGE(2, rightward,
-                                  "a mover must not overwrite another queued entry: the displaced "
-                                  "entry cannot re-acquire from behind the mover and must remain "
-                                  "tracked instead");
 }
 
 /*
@@ -3271,7 +3219,6 @@ run_sand_impulse_suite(void) {
     RUN_TEST(test_a_thrown_chunk_displacing_nothing_loses_only_the_plain_ramp);
     RUN_TEST(test_a_sub_divisor_speed_impulse_never_moves_more_than_one_cell_a_step);
     RUN_TEST(test_a_full_speed_static_chunk_moves_several_cells_in_one_push);
-    RUN_TEST(test_a_mover_does_not_displace_another_tracked_entry);
     RUN_TEST(test_blocker_normal_and_reflect_off_normal_match_the_exhaustive_arc_table);
     RUN_TEST(test_a_thrown_chunk_reverses_direction_bouncing_off_a_flat_floor);
     RUN_TEST(test_a_thrown_chunk_deflects_off_a_flat_floor_instead_of_reversing);
