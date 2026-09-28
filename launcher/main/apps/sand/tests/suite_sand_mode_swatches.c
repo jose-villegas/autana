@@ -200,13 +200,6 @@ release_fixture(void) {
     none_lut = NULL;
 }
 
-#undef RUN_TEST
-#define RUN_TEST(func)                                                                                                 \
-    do {                                                                                                               \
-        suite_run_test_timed(func, #func, __LINE__);                                                                   \
-        release_fixture();                                                                                             \
-    } while (0)
-
 void
 run_sand_mode_swatches_suite(void) {
     RUN_TEST(test_sixteen_shows_each_of_its_sixteen_colours_once);
@@ -217,7 +210,5 @@ run_sand_mode_swatches_suite(void) {
     RUN_TEST(test_256_sample_spans_the_whole_sand_range);
     RUN_TEST(test_full_sweeps_hue_in_one_row);
 }
-
-#undef RUN_TEST
 
 SUITE_REGISTER(run_sand_mode_swatches_suite);

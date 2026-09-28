@@ -278,13 +278,6 @@ release_fixture(void) {
     tap = NULL;
 }
 
-#undef RUN_TEST
-#define RUN_TEST(func)                                                                                                 \
-    do {                                                                                                               \
-        suite_run_test_timed(func, #func, __LINE__);                                                                   \
-        release_fixture();                                                                                             \
-    } while (0)
-
 void
 run_touch_probe_suite(void) {
     RUN_TEST(test_every_target_fits_inside_the_margin);
@@ -306,7 +299,5 @@ run_touch_probe_suite(void) {
     RUN_TEST(test_a_release_without_its_press_is_no_tap);
     RUN_TEST(test_a_long_hold_keeps_to_the_sample_buffer);
 }
-
-#undef RUN_TEST
 
 SUITE_REGISTER(run_touch_probe_suite);

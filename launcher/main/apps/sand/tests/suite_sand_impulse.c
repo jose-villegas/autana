@@ -3204,13 +3204,6 @@ release_fixture(void) {
     impulse_buf = NULL;
 }
 
-#undef RUN_TEST
-#define RUN_TEST(func)                                                                                                 \
-    do {                                                                                                               \
-        suite_run_test_timed(func, #func, __LINE__);                                                                   \
-        release_fixture();                                                                                             \
-    } while (0)
-
 void
 run_sand_impulse_suite(void) {
     RUN_TEST(test_the_disc_count_table_matches_a_direct_lattice_count);
@@ -3271,7 +3264,5 @@ run_sand_impulse_suite(void) {
     RUN_TEST(test_nothing_moves_in_free_fall);
     RUN_TEST(test_shaking_spreads_a_pile_sideways);
 }
-
-#undef RUN_TEST
 
 SUITE_REGISTER(run_sand_impulse_suite);
