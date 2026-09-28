@@ -1372,6 +1372,10 @@ def batch(args, store, board):
     with build_image(flash_args, board, extra_flags) as built, \
             HeldLock(store, board, args.owner, args.purpose, args.wait, kind="batch") as held:
         build_id = write_image(built, store, board, held_lock=held)
+        if args.expect_build_id and build_id != args.expect_build_id:
+            raise RuntimeError(
+                f"build id mismatch: expected {args.expect_build_id}, flashed {build_id} - "
+                "refusing to run any suite")
         commit = git_commit(worktree)
         for run in range(1, args.runs + 1):
             for suite_name in args.suite:
@@ -1572,6 +1576,9 @@ def main(argv=None):
     batch_parser.add_argument("--out",
                               help="write the one capture here instead of the default path - "
                                    "only with exactly one --suite and --runs 1")
+    batch_parser.add_argument("--expect-build-id",
+                              help="refuse to run any suite unless the image just flashed "
+                                   "carries this BUILD_ID")
     report_parser = subparsers.add_parser("report")
     report_parser.add_argument("capture", help="an existing capture file (.log or .log.gz)")
     report_parser.add_argument("--index", help="override index.jsonl (default: records/device)")

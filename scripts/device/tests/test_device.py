@@ -959,7 +959,8 @@ class BatchTests(unittest.TestCase):
     the same image. No serial port, lock file or build is touched here."""
 
     def run_batch(self, suites=("run_sand_perf_suite",), runs=3, fail_run=None,
-                  perf_scope=False, script_text="--diag --dev --perf-scope", out=False):
+                  perf_scope=False, script_text="--diag --dev --perf-scope", out=False,
+                  expect_build_id=None, flashed_build_id="abc123-diag"):
         calls = {"locks": 0, "build": [], "flash": [], "run_suite": [], "events": []}
 
         class FakeLock:
@@ -984,7 +985,7 @@ class BatchTests(unittest.TestCase):
         def fake_write_image(built, store, port, held_lock=None):
             calls["events"].append("flash")
             calls["flash"].append((held_lock, built))
-            return "abc123-diag"
+            return flashed_build_id
 
         def fake_run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
             calls["events"].append("capture")
@@ -1003,7 +1004,8 @@ class BatchTests(unittest.TestCase):
             out_path = str(Path(directory) / "raw.txt") if out else None
             args = Namespace(owner="agent", purpose="p", wait=0, worktree=str(worktree),
                              variant="diag", suite=list(suites), runs=runs, perf_scope=perf_scope,
-                             max_seconds=1, idle_seconds=None, out=out_path)
+                             max_seconds=1, idle_seconds=None, out=out_path,
+                             expect_build_id=expect_build_id)
             with mock.patch.object(device, "HeldLock", FakeLock), \
                  mock.patch.object(device, "build_image", fake_build_image), \
                  mock.patch.object(device, "write_image", fake_write_image), \
@@ -1071,6 +1073,15 @@ class BatchTests(unittest.TestCase):
     def test_out_with_more_than_one_suite_is_refused(self):
         with self.assertRaisesRegex(RuntimeError, "--out only makes sense"):
             self.run_batch(suites=("run_sand_perf_suite", "run_gfx_suite"), runs=1, out=True)
+
+    def test_expect_build_id_matching_the_flash_runs_normally(self):
+        code, calls, _ = self.run_batch(runs=1, expect_build_id="abc123-diag")
+        self.assertEqual(code, 0)
+        self.assertEqual(len(calls["run_suite"]), 1)
+
+    def test_expect_build_id_mismatch_refuses_to_run_any_suite(self):
+        with self.assertRaisesRegex(RuntimeError, "build id mismatch"):
+            self.run_batch(runs=3, expect_build_id="other-build", flashed_build_id="abc123-diag")
 
 
 class ToolchainAddr2LineTests(unittest.TestCase):

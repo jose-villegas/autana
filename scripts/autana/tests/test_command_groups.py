@@ -70,6 +70,36 @@ class CommandGroupTests(unittest.TestCase):
     def test_help_topics_complete(self):
         self.assertEqual(autana.completion_candidates("help te", "te"), ["tests"])
 
+    def test_no_usage_synopsis_repeats_a_shared_board_flag(self):
+        """The board flags are documented once (`autana help flags`), not on
+        every command's own usage line - that repetition is what made three
+        newcomers give up on the help."""
+        flag_names = [flag.split()[0] for flag, _, _ in autana.BOARD_FLAGS]
+        for _, _, commands in autana.COMMAND_GROUPS:
+            for command in commands:
+                if command.name == "hand":
+                    continue  # its own --wait means something else - see hand()'s docstring
+                for synopsis, _ in command.usages:
+                    words = re.split(r"[\s\[\]]+", synopsis)
+                    for flag_name in flag_names:
+                        self.assertNotIn(flag_name, words, f"{command.name}: {synopsis}")
+
+    def test_help_flags_lists_every_shared_flag_and_its_commands(self):
+        text = autana.help_text(["flags"])
+        for flag, _, commands in autana.BOARD_FLAGS:
+            self.assertIn(flag, text)
+            self.assertIn(commands, text)
+
+    def test_top_level_help_points_at_help_flags(self):
+        self.assertIn("autana help flags", autana.help_text([]))
+
+    def test_the_doc_has_a_board_flags_section_listing_every_flag(self):
+        sections, _ = doc_sections()
+        board = sections["Board flags"]
+        for flag, _, commands in autana.BOARD_FLAGS:
+            self.assertIn(flag, board)
+            self.assertIn(commands, board)
+
 
 if __name__ == "__main__":
     unittest.main()

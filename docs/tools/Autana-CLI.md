@@ -20,6 +20,20 @@ Only a development build answers (release has no console). Coordinates are
 panel pixels. Tab completes command names, `build` and `flash` variants and help topics
 where Python has `readline` (Windows: `pip install pyreadline3`).
 
+## Board flags
+
+`autana help flags` - left off each command's own usage line below to keep
+it readable; a flag works the same wherever the table below says it applies.
+
+| Flag | What it does | Commands |
+|---|---|---|
+| `--owner NAME` | Name the lock holder for `autana status`, instead of `autana-cli@<pid>`; `AUTANA_DEVICE_OWNER` sets it for every command. | flash, suite, selftest, batch, monitor, reset, screenshot |
+| `--wait SECONDS` | How long to wait for the board's lock before giving up (device.py's own default: 600 s). | flash, suite, selftest, batch, monitor, reset, screenshot |
+| `--purpose TEXT` | Replace the default note the lock and the capture record carry. | suite, batch, monitor |
+| `--out PATH` | Write the one capture here instead of the default path; on `batch` it only makes sense with exactly one suite and `--runs 1`. | suite, batch, monitor |
+| `--expect-build-id ID` | Refuse to run a suite unless the board (`suite`) or the image just flashed (`batch`) carries this `BUILD_ID`. `autana flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it - pass that value here to refuse measuring a board that has since been reflashed by someone else. | suite, batch |
+| `--worktree PATH\|BRANCH` | Act on another worktree, `PATH`; or on `BRANCH`, finding the worktree already checked out for it, or creating one (local, else `origin/BRANCH`) under the primary checkout's `.claude/worktrees/` when none exists yet. Omitted, these act on the worktree you are standing in, as always. | build, flash, selftest, batch |
+
 ## Build and flash
 
 `autana help build`
@@ -27,6 +41,7 @@ where Python has `readline` (Windows: `pip install pyreadline3`).
 | Command | What it does |
 |---|---|
 | `autana build [rel\|dev\|diag] [--perf-scope]` | Build this worktree, no board and no lock; `dev` when omitted. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. |
+| `autana build diag --check` | The diagnostics build plus the complexity ratchet - `launcher/tools/build/build_diag_check.sh`, unchanged; no board. |
 | `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope]` | Build and flash this worktree; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
 
@@ -129,6 +144,14 @@ lost`. A separate `flash` and `suite` leave a gap where another session can
 flash; `batch` and `selftest` hold one lock across flash and capture. Lock
 loss, estimates and flash success are defined in
 [Device-Lock.md](Device-Lock.md).
+
+`flash`, `suite`, `selftest`, `batch`, `monitor`, `reset` and `screenshot`
+take `--owner NAME`, so `autana status` shows which of several sessions
+holds the board rather than every one reading `autana-cli@<pid>`;
+`AUTANA_DEVICE_OWNER` sets the same name for every command in a shell
+without repeating the flag, and an explicit `--owner` wins over it. The same
+commands take `--wait SECONDS`, how long to wait for the board's lock before
+giving up - device.py's own default (600 s) applies when it is omitted.
 
 `autana hand --wait 30 put the board in download mode` pauses a flash script
 until someone puts the board in download mode and runs `autana take-back`.
