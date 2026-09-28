@@ -246,8 +246,9 @@ static void yours_exit(void) {
 ```
 
 The arena is PSRAM: right for large buffers, wrong for a small hot table
-that wants internal RAM - that still comes from the heap, and `exit()` frees
-it.
+that wants internal RAM. An app takes internal memory in `enter()` and frees
+it in `exit()`, including partial allocation on an enter failure. Development
+builds warn when an app returns with internal memory still held.
 
 ### What the shell resets for you
 

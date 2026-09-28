@@ -20,10 +20,7 @@
  *
  * Every allocation below is sized for the finest quality (2 px) regardless of
  * which one is active, so switching quality on the menu never reallocates
- * anything - it just changes how much of the same buffer is in use. That
- * matters for the same reason sand_exit() keeps the grid between visits: an
- * allocation that only ever happens once cannot fail because the heap
- * fragmented while something else was running.
+ * anything - it just changes how much of the same buffer is in use.
  *
  * `cell` need not divide 368 or 448 evenly - grid_w/grid_h floor, so a
  * remainder just leaves an unredrawn margin at most cell-1 px wide along the
@@ -597,6 +594,33 @@ alloc_grid_bookkeeping(void) {
 }
 
 static void
+free_sim_buffers(void) {
+    free(dirty_x1);
+    dirty_x1 = NULL;
+    free(dirty_x0);
+    dirty_x0 = NULL;
+    free(row_run_n);
+    row_run_n = NULL;
+    free(row_run_x1);
+    row_run_x1 = NULL;
+    free(row_run_x0);
+    row_run_x0 = NULL;
+    free(lane_scratch);
+    lane_scratch = NULL;
+    free(step_stamps);
+    step_stamps = NULL;
+    free(impulse_buf);
+    impulse_buf = NULL;
+    free(grid);
+    grid = NULL;
+    free(sleep_blocks);
+    sleep_blocks = NULL;
+    free(dirty_rows);
+    dirty_rows = NULL;
+    memset(&sim, 0, sizeof(sim));
+}
+
+static void
 start_sim(void) {
     cell = qualities[quality].cell;
     grid_w = GFX_WIDTH / cell;
@@ -656,6 +680,7 @@ start_sim(void) {
                  "largest free block is %u",
                  GRID_W_MAX, GRID_H_MAX, GRID_W_MAX * GRID_H_MAX,
                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+        free_sim_buffers();
         failed = true;
         ui.screen = SAND_UI_RUNNING;
         return;
@@ -754,9 +779,7 @@ sand_exit(void) {
     /* Other apps assume GFX_LAYOUT_FULL_FB/RGB565. */
     apply_gfx_action(sand_colour_on_exit_app(&colour_state));
 
-    /* Grid is kept between visits (the app's largest allocation) so
-     * re-entry cannot fail to heap fragmentation from whatever ran while
-     * this app was closed. */
+    free_sim_buffers();
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (frames > 0) {
         ESP_LOGI(TAG,
