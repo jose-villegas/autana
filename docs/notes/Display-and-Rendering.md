@@ -566,6 +566,43 @@ un-pipelined price; a present timed inside an app's real frames measures
 the pipelined one. Both are right, and multiplying one by the band
 count does not produce the other.
 
+### Tearing: the TE line is live, and nothing reads it
+
+Both init tables in `gfx.c` send `0x35 0x00`: tearing-effect output on, mode
+1, high only through the vertical porch. The panel drives it on FPC pin 2,
+which reaches GPIO13. Firmware never configures that pin, and every present
+starts whenever the frame loop gets to it.
+
+Measured on the CO5300 board (dev build, 80 MHz, a probe counting GPIO13
+edges and timing each present against them):
+
+| | |
+|---|---|
+| TE rate | 59.26 Hz, period 16.86-16.89 ms |
+| TE high (porch) | 581 us, so the scan of 448 rows takes ~16.3 ms |
+| Present start phase | uniform over the period; nothing is locked to the scan |
+| Band-mode 3D frame, TE to last band | 16.2-22.8 ms, avg ~18.5 ms, one frame per ~19.8 ms |
+| Retained partial sends | 1.4-7.4 ms, avg ~2.9 ms |
+
+A write tears when it and the scan pass each other. Starting a present on TE
+avoids that only when the write stays on one side of the scan for the whole
+frame:
+
+| Send | Against a 16.3 ms scan | TE-aligned start |
+|---|---|---|
+| Full frame, full-fb, 80 MHz (~10.5 ms) | always ahead | tear-free |
+| Full frame, full-fb, 40 MHz (~18.5 ms) | falls behind | still tears |
+| Band ring, 3D | pace set by render cost per band; cheap bands catch the scan | still tears |
+| Partial, a few ms | crosses only if the scan is inside its rows | rarely matters |
+
+What waiting costs: up to one period of latency (8.4 ms on average) and a
+frame rate locked to 59.3 / 29.6 / 19.8 fps. A band frame at ~50 fps drops
+to ~30. So a TE wait pays only for a full-fb full-frame sender at 80 MHz
+whose frame already fits one period, and nothing here is that today. Reading
+TE again takes an any-edge GPIO13 interrupt; the touch driver
+(`esp_lcd_touch`) also installs the GPIO interrupt service and logs an error
+if gfx got there first, so it has to be installed once, before touch.
+
 ---
 
 ## There is no graphics acceleration
