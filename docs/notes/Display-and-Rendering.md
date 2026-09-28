@@ -581,7 +581,7 @@ edges and timing each present against them):
 | TE rate | 59.26 Hz, period 16.86-16.89 ms |
 | TE high (porch) | 581 us, so the scan of 448 rows takes ~16.3 ms |
 | Present start phase | uniform over the period; nothing is locked to the scan |
-| Band-mode 3D frame, TE to last band | 16.2-22.8 ms, avg ~18.5 ms, one frame per ~19.8 ms |
+| Band-mode 3D frame, TE to last band | longer than one period (about 50 fps) |
 | Retained partial sends | 1.4-7.4 ms, avg ~2.9 ms |
 
 A write tears when it and the scan pass each other. Starting a present on TE
@@ -590,18 +590,21 @@ frame:
 
 | Send | Against a 16.3 ms scan | TE-aligned start |
 |---|---|---|
-| Full frame, full-fb, 80 MHz (~10.5 ms) | always ahead | tear-free |
-| Full frame, full-fb, 40 MHz (~18.5 ms) | falls behind | still tears |
+| Full frame, full-framebuffer layout, 80 MHz | ahead of the scan (bus time: CONFIG_LAUNCHER_GFX_QSPI_80MHZ help) | tear-free |
+| Full frame, full-framebuffer layout, 40 MHz | a full present outlasts the scan | still tears |
 | Band ring, 3D | pace set by render cost per band; cheap bands catch the scan | still tears |
 | Partial, a few ms | crosses only if the scan is inside its rows | rarely matters |
 
 What waiting costs: up to one period of latency (8.4 ms on average) and a
-frame rate locked to 59.3 / 29.6 / 19.8 fps. A band frame at ~50 fps drops
-to ~30. So a TE wait pays only for a full-fb full-frame sender at 80 MHz
-whose frame already fits one period, and nothing here is that today. Reading
-TE again takes an any-edge GPIO13 interrupt; the touch driver
-(`esp_lcd_touch`) also installs the GPIO interrupt service and logs an error
-if gfx got there first, so it has to be installed once, before touch.
+frame rate locked to 59.3 / 29.6 / 19.8 fps. A band frame runs longer than
+one period, so a TE wait would halve its rate. So a TE wait pays only for a
+full-frame sender in the full-framebuffer layout at 80 MHz whose frame fits
+one period.
+
+Reading TE takes an any-edge GPIO13 interrupt. `touch_start()` runs after
+`gfx_init()` and installs the GPIO interrupt service through
+`esp_lcd_touch`, so gfx should add its handler with `gpio_isr_handler_add()`
+after touch starts, rather than install the service a second time.
 
 ---
 
