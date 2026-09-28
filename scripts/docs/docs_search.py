@@ -156,17 +156,6 @@ def corpus_files(root, extra=None):
     return list(dict.fromkeys(files))
 
 
-def corpus_signature(root):
-    signature = []
-    for label, file in corpus_files(root):
-        try:
-            stat = file.stat()
-        except OSError:
-            continue
-        signature.append((label, stat.st_mtime_ns, stat.st_size))
-    return tuple(signature)
-
-
 def cites(text):
     found = []
     for quoted in CITATION.findall(text):
