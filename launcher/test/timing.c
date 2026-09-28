@@ -18,6 +18,13 @@
 #include <stdint.h>
 #include <stdio.h>
 
+static void (*test_cleanup)(void);
+
+void
+suite_set_test_cleanup(void (*cleanup)(void)) {
+    test_cleanup = cleanup;
+}
+
 #ifdef DEVICE_BUILD
 #include "esp_timer.h"
 #else
@@ -64,6 +71,7 @@ run_watched(void) {
 
 void
 suite_run_test_timed(void (*func)(void), const char* name, int line) {
+    test_cleanup = NULL;
 #ifdef HOST_HEAP_ARENA
     /* Outside the timed window on both ends, same as the timer itself -
      * this must never be what widens it. */
@@ -86,6 +94,11 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
 #else
     UnityDefaultTestRun(func, name, line);
 #endif
+
+    if (test_cleanup != NULL) {
+        test_cleanup();
+        test_cleanup = NULL;
+    }
 
 #ifdef DEVICE_BUILD
     const int64_t elapsed_ms = (esp_timer_get_time() - started) / 1000;

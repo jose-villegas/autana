@@ -23,5 +23,6 @@
  * line, byte for byte - see timing.c), then logs a separate line with how
  * long it took. */
 void suite_run_test_timed(void (*func)(void), const char* name, int line);
+void suite_set_test_cleanup(void (*cleanup)(void));
 
 int suite_leaks(void);

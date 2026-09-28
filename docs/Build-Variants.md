@@ -91,6 +91,12 @@ file, so a performance capture does not pay for every other suite too.
 `CONFIG_LAUNCHER_SELFTEST_SCOPE_*` says **which**. Excluding a suite removes
 its `.text` *and* its `.bss`, which is what buys the run time back.
 
+The full diagnostics gate rejects a suite object whose writable static data
+exceeds `SUITE_STATIC_DATA_LIMIT` in
+`launcher/tools/quality/suite_static_data_gate.py`. Suite tables are `static
+const`; mutable test buffers allocate for a test and release before the suite
+returns, so the image does not reserve their storage at boot.
+
 | scope | fragment | carries | for |
 |---|---|---|---|
 | Full — the default | none | every suite, shell-owned and app-owned | every gate: `autana selftest`, `report_test_results.sh` |

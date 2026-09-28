@@ -69,6 +69,12 @@ complexity_gate() {
         --changed "$GATE_BASE")
 }
 
+suite_static_data_gate() {
+    IDF_PYTHON=$("$PYTHON" -c "import sys; sys.path.insert(0, '$DIR'); from espressif import idf_python; print(idf_python())")
+    "$IDF_PYTHON" "$IDF_PATH/tools/idf_size.py" --files --format csv "$DIR/../../build.diag/launcher.map" |
+        "$PYTHON" "$DIR/../quality/suite_static_data_gate.py"
+}
+
 build_diag() {
     "$REPO_ROOT/tools/autana" build diag
 }
@@ -76,9 +82,11 @@ build_diag() {
 if [ -f "$COMPILE_DB" ]; then
     complexity_gate
     build_diag
+    suite_static_data_gate
     exit 0
 fi
 
 echo "=== No build.diag compile database yet - ratchet runs after the build ==="
 build_diag
 complexity_gate
+suite_static_data_gate

@@ -1519,7 +1519,7 @@ test_band_mode_readback_is_the_frame_its_bands_drew(void) {
     draw_readback_band_frame(-1);
     TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
 
-    static gfx_color_t row[GFX_WIDTH];
+    gfx_color_t row[GFX_WIDTH];
     int wrong_rows = 0;
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, row);
@@ -1572,7 +1572,7 @@ test_band_mode_readback_keeps_the_band_a_later_frame_skipped(void) {
     draw_readback_band_frame_n(stale_row0, 1);
     const gfx_readback_t next = gfx_readback_begin();
 
-    static gfx_color_t row[GFX_WIDTH];
+    gfx_color_t row[GFX_WIDTH];
     int wrong_rows = 0;
     if (next == GFX_READBACK_READY) {
         for (int y = 0; y < GFX_HEIGHT; y++) {

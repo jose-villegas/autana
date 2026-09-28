@@ -723,20 +723,11 @@ by a substring of the name, so treat it as a lookup, not an area map.
    instead of on a second core.
 5. **Keep big fixtures off `.bss`.** A suite's file-scope objects are
    firmware static data in a diagnostics build, charged against the same
-   internal-heap budget as everything else in that build. A microui context
-   added to a suite this way once cost 10,744 bytes of `.bss` on its own.
-   Neither the host runner (a laptop's memory behind it) nor a release build
-   (which links no suites) can see it. Allocate anything large in
-   `fixture()` or in the suite's own run function instead, as
-   `suite_ui_pointer_microui.c` does with its context, and run
-   `tools/build/build_diag_check.sh` before pushing rather than finding out from a
-   pull request — nothing gates this automatically
-   ([`Build-Variants.md`](Build-Variants.md#a-diagnostics-build-can-be-scoped)),
-   so the check is `idf.py -B build.diag size` read by eye, not a pass/fail
-   script. The `.bss` reading
-   is the eyeball half of that script; the pass/fail half is the complexity
-   ratchet it runs first, in seconds, before the build
-   (`docs/tools/Complexity-Gate.md`).
+   internal-heap budget as everything else in that build. Constant tables are
+   `static const`; mutable buffers allocate in a test or its fixture and are
+   released before the suite returns. `tools/build/build_diag_check.sh`
+   enforces `SUITE_STATIC_DATA_LIMIT` per suite object after a diagnostics
+   build, in addition to the complexity ratchet.
 
    One trap makes a local measurement lie: **a local `build.diag` keeps
    whatever scope it was last configured with**. A leftover

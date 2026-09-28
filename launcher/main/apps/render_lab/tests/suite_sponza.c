@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "suites.h"
@@ -56,13 +57,15 @@ cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lit_view_t* view) {
 static void
 check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* mesh) {
     const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
-    static uint16_t walked[SPONZA_CLUSTER_COUNT];
-    static uint8_t kept[SPONZA_CLUSTER_COUNT];
+    uint16_t* walked = malloc(sizeof(*walked) * SPONZA_CLUSTER_COUNT);
+    uint8_t* kept = malloc(SPONZA_CLUSTER_COUNT);
+    TEST_ASSERT_NOT_NULL(walked);
+    TEST_ASSERT_NOT_NULL(kept);
     for (uint32_t t = 0; t < period; t += 2500) {
         r3d_lit_view_t view;
         sponza_view_at(&view, t, mesh->position_scale, (int)(t / 2500) & 3);
 
-        memset(kept, 0, sizeof kept);
+        memset(kept, 0, SPONZA_CLUSTER_COUNT);
         const int count = r3d_lit_cull_clusters(mesh, &view, walked);
         for (int i = 0; i < count; i++) {
             TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, kept[walked[i]], "a cluster was listed twice");
@@ -76,6 +79,8 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
         }
         TEST_ASSERT_EQUAL_INT(flat, count);
     }
+    free(kept);
+    free(walked);
 }
 
 typedef struct {

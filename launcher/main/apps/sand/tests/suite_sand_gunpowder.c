@@ -1483,7 +1483,7 @@ test_a_lit_fuse_is_not_re_placed_by_heat(void) {
     sand_set(&s, 3, H - 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
     sand_set(&s, 4, H - 2, GUNPOWDER_LIT_CELL);
     const cell_t before = sand_at(&s, 4, H - 2);
-    memset(dirty, 0, sizeof dirty);
+    memset(dirty, 0, H);
 
     for (int i = 0; i < 50; i++) {
         sand_step(&s, 0, 1000, 0);

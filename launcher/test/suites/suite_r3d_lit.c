@@ -22,13 +22,24 @@
 #define W 64
 #define H 48
 
-static gfx_color_t color[W * H];
-static uint16_t depth[W * H];
+static gfx_color_t* color;
+static uint16_t* depth;
+
+static void release_fixture(void);
 
 static r3d_span_target_t
 fixture(void) {
-    memset(color, 0, sizeof color);
-    memset(depth, 0, sizeof depth);
+    if (color == NULL) {
+        color = malloc(sizeof(*color) * W * H);
+    }
+    if (depth == NULL) {
+        depth = malloc(sizeof(*depth) * W * H);
+    }
+    TEST_ASSERT_NOT_NULL(color);
+    TEST_ASSERT_NOT_NULL(depth);
+    suite_set_test_cleanup(release_fixture);
+    memset(color, 0, sizeof(*color) * W * H);
+    memset(depth, 0, sizeof(*depth) * W * H);
     return (r3d_span_target_t){color, depth, W, 0, H};
 }
 
@@ -52,8 +63,9 @@ static void
 test_two_triangles_sharing_an_edge_cover_a_square_exactly_once(void) {
     const r3d_span_vertex_t a = sv(10.3f, 7.6f, 0.5f, 255, 0, 0), b = sv(40.7f, 9.2f, 0.5f, 255, 0, 0);
     const r3d_span_vertex_t c = sv(37.1f, 41.4f, 0.5f, 255, 0, 0), d = sv(8.9f, 38.8f, 0.5f, 255, 0, 0);
-    static uint8_t hits[W * H];
-    memset(hits, 0, sizeof hits);
+    uint8_t* hits = malloc(W * H);
+    TEST_ASSERT_NOT_NULL(hits);
+    memset(hits, 0, W * H);
 
     r3d_span_target_t t = fixture();
     r3d_span_triangle(&t, &a, &b, &c);
@@ -76,14 +88,16 @@ test_two_triangles_sharing_an_edge_cover_a_square_exactly_once(void) {
     const float area = 0.5f * fabsf((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y))
                        + 0.5f * fabsf((c.x - a.x) * (d.y - a.y) - (d.x - a.x) * (c.y - a.y));
     TEST_ASSERT_INT_WITHIN((int)(area * 0.03f), (int)area, filled);
+    free(hits);
 }
 
 /* A fan of triangles small enough for the flat path, meeting a large one
  * along a shared edge: every pixel inside is filled once, none twice. */
 static void
 test_tiny_and_large_triangles_tile_without_gaps_or_overlap(void) {
-    static uint8_t hits[W * H];
-    memset(hits, 0, sizeof hits);
+    uint8_t* hits = malloc(W * H);
+    TEST_ASSERT_NOT_NULL(hits);
+    memset(hits, 0, W * H);
     const float x0 = 5.3f, y0 = 4.7f, cell = 1.37f;
     int drawn = 0;
     for (int j = 0; j < 12; j++) {
@@ -117,6 +131,7 @@ test_tiny_and_large_triangles_tile_without_gaps_or_overlap(void) {
         }
     }
     TEST_ASSERT_EQUAL_INT(240, drawn);
+    free(hits);
 }
 
 static void
@@ -144,16 +159,22 @@ test_a_window_of_rows_matches_the_same_rows_of_a_full_draw(void) {
 
     r3d_span_target_t full = fixture();
     r3d_span_triangle(&full, &a, &b, &c);
-    static gfx_color_t whole[W * H];
-    memcpy(whole, color, sizeof whole);
+    gfx_color_t* whole = malloc(sizeof(*whole) * W * H);
+    TEST_ASSERT_NOT_NULL(whole);
+    memcpy(whole, color, sizeof(*whole) * W * H);
 
-    static gfx_color_t band_color[W * 16];
-    static uint16_t band_depth[W * 16];
-    memset(band_color, 0, sizeof band_color);
-    memset(band_depth, 0, sizeof band_depth);
+    gfx_color_t* band_color = malloc(sizeof(*band_color) * W * 16);
+    uint16_t* band_depth = malloc(sizeof(*band_depth) * W * 16);
+    TEST_ASSERT_NOT_NULL(band_color);
+    TEST_ASSERT_NOT_NULL(band_depth);
+    memset(band_color, 0, sizeof(*band_color) * W * 16);
+    memset(band_depth, 0, sizeof(*band_depth) * W * 16);
     const r3d_span_target_t band = {band_color, band_depth, W, 16, 32};
     r3d_span_triangle(&band, &a, &b, &c);
-    TEST_ASSERT_EQUAL_MEMORY(whole + 16 * W, band_color, sizeof band_color);
+    TEST_ASSERT_EQUAL_MEMORY(whole + 16 * W, band_color, sizeof(*band_color) * W * 16);
+    free(band_depth);
+    free(band_color);
+    free(whole);
 }
 
 static void
@@ -383,8 +404,17 @@ typedef struct {
     r3d_lit_mesh_t mesh;
 } parts_t;
 
-/* One at a time, so a self-test image carries a single copy. */
-static parts_t shared_parts;
+static parts_t* shared_parts;
+
+static parts_t*
+parts_buffer(void) {
+    if (shared_parts == NULL) {
+        shared_parts = malloc(sizeof(*shared_parts));
+    }
+    TEST_ASSERT_NOT_NULL(shared_parts);
+    suite_set_test_cleanup(release_fixture);
+    return shared_parts;
+}
 
 static void
 parts_begin(parts_t* p) {
@@ -459,12 +489,18 @@ look_down_minus_z(float eye_y, float eye_z, float near_z) {
  * draw skips clusters by their rows. */
 static void
 draw_parts(const parts_t* p, const r3d_lit_view_t* view, const r3d_span_target_t* t, bool use_rows) {
-    static uint16_t visible[PARTS_MAX];
-    static r3d_lit_vertex_t cs[PARTS_MAX * 4];
-    static r3d_lit_rows_t rows[PARTS_MAX];
+    uint16_t* visible = malloc(sizeof(*visible) * PARTS_MAX);
+    r3d_lit_vertex_t* cs = malloc(sizeof(*cs) * PARTS_MAX * 4);
+    r3d_lit_rows_t* rows = malloc(sizeof(*rows) * PARTS_MAX);
+    TEST_ASSERT_NOT_NULL(visible);
+    TEST_ASSERT_NOT_NULL(cs);
+    TEST_ASSERT_NOT_NULL(rows);
     const int count = r3d_lit_cull_clusters(&p->mesh, view, visible);
     r3d_lit_transform(&p->mesh, view, visible, count, cs, use_rows ? rows : NULL);
     r3d_lit_draw(&p->mesh, view, visible, count, cs, use_rows ? rows : NULL, t);
+    free(rows);
+    free(cs);
+    free(visible);
 }
 
 /* One corner 50 away, in front of the camera but behind a near plane at
@@ -476,7 +512,7 @@ static const uint8_t cut_colors[3][3] = {{0, 128, 128}, {255, 128, 128}, {255, 1
 
 static int
 draw_cut(const int16_t corners[3][3], bool double_sided) {
-    parts_t* const p = &shared_parts;
+    parts_t* const p = parts_buffer();
     parts_begin(p);
     parts_add(p, corners, 3, cut_colors, double_sided);
     const r3d_lit_view_t view = look_down_minus_z(0, 0, 100.0f);
@@ -534,7 +570,7 @@ build_floor_and_rects(parts_t* p) {
 
 static void
 test_drawing_a_window_with_cluster_rows_matches_a_full_draw(void) {
-    parts_t* const p = &shared_parts;
+    parts_t* const p = parts_buffer();
     build_floor_and_rects(p);
     const r3d_lit_view_t view = look_down_minus_z(50, 0, 1.0f);
     const r3d_span_target_t full = fixture();
@@ -570,7 +606,7 @@ test_a_triangle_over_any_side_of_the_screen_is_drawn(void) {
     };
     static const int16_t beyond_right[3][3] = {{80, 0, -100}, {120, -20, -100}, {120, 20, -100}};
     static const uint8_t white[3][3] = {{255, 255, 255}, {255, 255, 255}, {255, 255, 255}};
-    parts_t* const p = &shared_parts;
+    parts_t* const p = parts_buffer();
     const r3d_lit_view_t view = look_down_minus_z(0, 0, 1.0f);
     for (int side = 0; side < 4; side++) {
         parts_begin(p);
@@ -628,7 +664,7 @@ typedef struct {
 
 static void
 test_the_frame_carves_its_scratch_without_overlap(void) {
-    parts_t* const p = &shared_parts;
+    parts_t* const p = parts_buffer();
     build_wall_and_stack(p);
     r3d_lit_frame_t frame = {.mesh = &p->mesh, .width = W, .height = H};
     const size_t bytes = r3d_lit_frame_scratch_bytes(&p->mesh, W, H);
@@ -662,7 +698,7 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
  * stale pixels. */
 static void
 test_the_two_core_frame_matches_one_full_draw(void) {
-    parts_t* const p = &shared_parts;
+    parts_t* const p = parts_buffer();
     build_wall_and_stack(p);
     gfx_color_t* doubled = malloc(sizeof(gfx_color_t) * 4 * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
@@ -761,6 +797,23 @@ test_forward_is_the_target_minus_the_eye_between_waypoints(void) {
 }
 
 static void
+release_fixture(void) {
+    free(shared_parts);
+    shared_parts = NULL;
+    free(depth);
+    depth = NULL;
+    free(color);
+    color = NULL;
+}
+
+#undef RUN_TEST
+#define RUN_TEST(func)                                                                                                 \
+    do {                                                                                                               \
+        suite_run_test_timed(func, #func, __LINE__);                                                                   \
+        release_fixture();                                                                                             \
+    } while (0)
+
+static void
 run_r3d_lit_suite(void) {
     RUN_TEST(test_two_triangles_sharing_an_edge_cover_a_square_exactly_once);
     RUN_TEST(test_tiny_and_large_triangles_tile_without_gaps_or_overlap);
@@ -791,5 +844,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_leg_that_barely_moves_still_takes_the_minimum_time);
     RUN_TEST(test_forward_is_the_target_minus_the_eye_between_waypoints);
 }
+
+#undef RUN_TEST
 
 SUITE_REGISTER(run_r3d_lit_suite);
