@@ -1,4 +1,4 @@
-"""Tests for scripts/docs: sectioning, ranking, the vector cache and the MCP server.
+"""Tests for scripts/docs: sectioning, ranking, and the vector cache.
 
 Every fixture is a throwaway git repository, and the models are replaced by a
 fake embedder, so nothing here downloads or starts a server. The last class
@@ -7,7 +7,6 @@ scores the real documentation lexically against eval_questions.tsv.
     python -m unittest discover -s scripts/docs/tests
 """
 import io
-import json
 import os
 import subprocess
 import sys
@@ -19,7 +18,6 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import docs_llama  # noqa: E402
-import docs_mcp  # noqa: E402
 import docs_search  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[3]
@@ -263,19 +261,6 @@ class Extra(unittest.TestCase):
         os.environ[docs_search.EXTRA_ENV] = "Notes.txt"
         self.assertEqual(self.paths(), {"docs/Flashing.md"})
 
-    def test_an_edit_to_an_extra_file_mid_session_is_searchable_at_once(self):
-        os.environ[docs_search.EXTRA_ENV] = "notes"
-        server = docs_mcp.Server(self.root)
-        ask = {"question": "zeppelin mooring"}
-        with mock.patch.object(docs_llama, "installed", return_value=False):
-            before, _ = server.call("docs_search", ask)
-            with open(self.root / "notes" / "Private.md", "a", encoding="utf-8") as doc:
-                doc.write("\n## Zeppelin mooring\n\nA zeppelin moors to the mast.\n")
-            after, _ = server.call("docs_search", ask)
-        self.assertIn("no document uses", before)
-        self.assertIn("Zeppelin mooring", after)
-
-
 class Semantic(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.mkdtemp()
@@ -329,53 +314,6 @@ class Semantic(unittest.TestCase):
             reply = docs_search.answer(index, "framebuffer")
         self.assertFalse(reply["semantic"])
         self.assertIn("exact words only", docs_search.format_answer(reply))
-
-
-class Mcp(unittest.TestCase):
-    def converse(self, *messages):
-        stdin = io.StringIO("".join(json.dumps(m) + "\n" for m in messages))
-        stdout = io.StringIO()
-        with mock.patch.object(docs_llama, "installed", return_value=False):
-            docs_mcp.serve(fixture(), stdin, stdout)
-        return [json.loads(line) for line in stdout.getvalue().splitlines()]
-
-    def test_a_session_initializes_lists_and_calls(self):
-        replies = self.converse(
-            {"jsonrpc": "2.0", "id": 1, "method": "initialize",
-             "params": {"protocolVersion": "2025-06-18"}},
-            {"jsonrpc": "2.0", "method": "notifications/initialized"},
-            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
-            {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
-             "params": {"name": "docs_search", "arguments": {"question": "warm reset baud"}}},
-            {"jsonrpc": "2.0", "id": 4, "method": "tools/call",
-             "params": {"name": "docs_section", "arguments": {"ref": "docs/Nope.md:1"}}})
-        self.assertEqual([r["id"] for r in replies], [1, 2, 3, 4])
-        self.assertEqual(replies[0]["result"]["protocolVersion"], "2025-06-18")
-        self.assertEqual({t["name"] for t in replies[1]["result"]["tools"]},
-                         {"docs_search", "docs_section", "docs_outline"})
-        self.assertIn("Warm reset", replies[2]["result"]["content"][0]["text"])
-        self.assertTrue(replies[3]["result"]["isError"])
-
-    def test_an_unknown_method_is_an_error(self):
-        [reply] = self.converse({"jsonrpc": "2.0", "id": 9, "method": "resources/list"})
-        self.assertEqual(reply["error"]["code"], -32601)
-
-    def test_an_unknown_protocol_version_is_answered_with_the_supported_one(self):
-        [reply] = self.converse({"jsonrpc": "2.0", "id": 1, "method": "initialize",
-                                 "params": {"protocolVersion": "bogus"}})
-        self.assertEqual(reply["result"]["protocolVersion"], docs_mcp.PROTOCOL)
-
-    def test_an_edit_mid_session_is_searchable_at_once(self):
-        root = fixture()
-        server = docs_mcp.Server(root)
-        ask = {"question": "zeppelin mooring"}
-        with mock.patch.object(docs_llama, "installed", return_value=False):
-            before, _ = server.call("docs_search", ask)
-            with open(root / "docs" / "Memory.md", "a", encoding="utf-8") as doc:
-                doc.write("\n## Zeppelin mooring\n\nA zeppelin moors to the mast.\n")
-            after, _ = server.call("docs_search", ask)
-        self.assertIn("no document uses", before)
-        self.assertIn("Zeppelin mooring", after)
 
 
 class Downloads(unittest.TestCase):
