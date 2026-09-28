@@ -600,23 +600,13 @@ test_a_flying_grain_keeps_its_outward_push_while_falling(void) {
                                      "step, not lose its push the instant gravity also touches it");
 }
 
-/*
- * KIND_STATIC support agreeing with the drift, not merely CELL_IS_EMPTY
- * on the one cell straight below (bd - "a thrown static chunk settles too
- * eagerly")
- */
-
-/* can_impulse_enter() only refuses KIND_STATIC, so gravity-drift always
- * swaps into powder beneath a falling chunk; the old settled check
- * disagreed, declaring it settled after one row. Split into two tests:
- * ENERGETIC must still sink deep, SPENT (below SAND_IMPULSE_SINK_MIN_SPEED,
- * sand_impulse.h) must rest instead. */
+/* can_impulse_enter() only refuses KIND_STATIC, so gravity-drift swaps into
+ * powder beneath a falling chunk and the settled check must agree. An
+ * ENERGETIC chunk sinks deep; a zero-speed SPENT one rests. */
 enum { SETTLE_COL = 3, SETTLE_TOP_ROW = 0 };
 
-/* The drift used to charge no drag, so an energetic chunk tunnelled an
- * entire powder bank for free regardless of how far it had travelled. Now
- * charges the same drag the push site does (SAND_IMPULSE_DRAG_POWDER_SHIFT,
- * sand_impulse.h), stopping within the first few layers instead. */
+/* The gravity-drift swap charges SAND_IMPULSE_DRAG_POWDER_SHIFT drag, so an
+ * energetic chunk stops within the first few powder layers. */
 static void
 test_an_energetic_static_chunk_over_a_powder_bank_now_stops_within_the_first_few_layers(void) {
     fixture();
@@ -678,8 +668,7 @@ test_a_spent_static_chunk_rests_on_a_powder_bank_instead_of_sinking_forever(void
     }
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(SETTLE_TOP_ROW, first_row_holding(MAT_STONE),
-                                  "a SPENT thrown KIND_STATIC chunk - speed 0, below SAND_IMPULSE_"
-                                  "SINK_MIN_SPEED from its very first step, forcing every push-roll "
+                                  "a SPENT thrown KIND_STATIC chunk at speed 0, forcing every push-roll "
                                   "to fail so the scene is driven entirely by gravity-drift plus the "
                                   "settled check - must rest right where it landed once every "
                                   "gravity-ward candidate is genuinely occupied, rather than "
@@ -801,10 +790,8 @@ test_a_static_chunk_thrown_far_still_stops_shallow_in_the_bed_it_hits(void) {
 }
 
 /* THE SAME SPLIT, OVER A LIQUID: an energetic chunk sinks into water rather
- * than resting on its surface the way a never-thrown one would, while a
- * SPENT one rests there instead - the chosen trade named in
- * SAND_IMPULSE_SINK_MIN_SPEED's own comment, whose floor is not kind-aware,
- * so a spent chunk stalls on a liquid exactly as on a powder. */
+ * than resting on its surface the way a never-thrown one would. A spent one
+ * sinks too, since a spent entry may still enter a liquid cell. */
 static void
 test_an_energetic_static_chunk_still_sinks_into_water_instead_of_resting_on_its_surface(void) {
     fixture();
@@ -832,10 +819,7 @@ test_an_energetic_static_chunk_still_sinks_into_water_instead_of_resting_on_its_
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(H - 1, first_row_holding(MAT_STONE),
                                   "an ENERGETIC thrown KIND_STATIC chunk over a water column must "
-                                  "still sink all the way to the bottom rather than stopping at the "
-                                  "surface - the old drift's own liquid exclusion stays deleted, "
-                                  "and rung 4's new SPENT narrowing must not apply to anything that "
-                                  "still has push left");
+                                  "still sink all the way to the bottom rather than stopping at the surface");
 }
 
 static void
@@ -861,20 +845,13 @@ test_a_spent_static_chunk_still_sinks_through_water_to_the_bottom(void) {
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(H - 1, first_row_holding(MAT_STONE),
                                   "a SPENT thrown KIND_STATIC chunk over a water column must still "
-                                  "sink all the way down - the settle rule IS kind-aware now, and "
-                                  "only packed grain holds an exhausted chunk up. A fluid parts "
-                                  "around a solid whether or not the solid has energy left, and on "
-                                  "device a chunk stalled mid-pool read as wrong where sinking to "
-                                  "the floor had always looked right");
+                                  "sink all the way down because a spent entry may still enter a liquid cell");
 }
 
-/* Deleting the drift's liquid exclusion is safe: the move is a SWAP
- * (move_to()), not an overwrite, so lava swapped into changes which cell it
- * occupies, not whether it exists. MASS is the exact invariant (mass_of());
- * cell count is only checked as "did not go down", since spread can split
- * one cell and an exposed surface can flare. SPEED 255: a spent chunk needs
- * an empty cell to continue (below SAND_IMPULSE_SINK_MIN_SPEED), and this
- * pool has none, so it would settle without exercising the sink. */
+/* The drift swaps rather than overwrites, so lava changes cells without
+ * changing mass. Cell count is only checked as "did not go down", since
+ * spread can split a cell and an exposed surface can flare. SPEED 255
+ * exercises the energetic path through can_impulse_enter(). */
 static void
 test_a_thrown_static_chunk_conserves_lava_mass_on_sink(void) {
     fixture();

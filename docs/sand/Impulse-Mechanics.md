@@ -84,6 +84,10 @@ sand_impulse(x, y, dir, speed)          ← ONE grain, ONE step's worth of push
           evaporation (see "Water and acid are on different mechanisms")
 ```
 
+A mover can swap into a cell another entry holds; that entry then loses its
+flight (the grain stays), affecting ~8-13% of a blast's entries and accepted
+because it is invisible while preventing it costs a scan per hop.
+
 ### Who calls what
 
 | Entry point | Trigger | Where |
