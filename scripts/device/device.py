@@ -169,11 +169,10 @@ def now():
 def records_root():
     """Where a session's log and manifest are written.
 
-    AUTANA_RECORDS names it. Unset, records land in the engine worktree's
-    own gitignored .records/device - self-contained, and nothing a commit
-    can pick up by accident. The maintainer's shell points it at the .dev
-    checkout instead (scripts/add-tools-to-path.sh), which is where this
-    project's device history is kept and tracked."""
+    AUTANA_RECORDS names it, for anyone who keeps their device history
+    elsewhere. Unset, records land in this checkout's own gitignored
+    .records/device - self-contained, and nothing a commit can pick up by
+    accident."""
     named = os.environ.get("AUTANA_RECORDS")
     if named:
         return Path(named)
