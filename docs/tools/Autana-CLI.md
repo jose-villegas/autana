@@ -20,15 +20,29 @@ Only a development build answers (release has no console). Coordinates are
 panel pixels. Tab completes command names, `build` and `flash` variants and help topics
 where Python has `readline` (Windows: `pip install pyreadline3`).
 
+## Board flags
+
+`autana help flags` - left off each command's own usage line below to keep
+it readable; a flag works the same wherever the table below says it applies.
+
+| Flag | What it does | Commands |
+|---|---|---|
+| `--owner NAME` | Name the lock holder for `autana status`, instead of `autana-cli@<pid>`; `AUTANA_DEVICE_OWNER` sets it for every command. | flash, suite, selftest, batch, monitor, reset, screenshot |
+| `--wait SECONDS` | How long to wait for the board's lock before giving up (device.py's own default: 600 s). | flash, suite, selftest, batch, monitor, reset, screenshot |
+| `--purpose TEXT` | Replace the default note the lock and the capture record carry. | suite, batch, monitor |
+| `--out PATH` | Write the one capture here instead of the default path; on `batch` it only makes sense with exactly one suite and `--runs 1`. | suite, batch, monitor |
+| `--expect-build-id ID` | Refuse to run a suite unless the board (`suite`) or the image just flashed (`batch`) carries this `BUILD_ID`. `autana flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it - pass that value here to refuse measuring a board that has since been reflashed by someone else. | suite, batch |
+| `--worktree PATH\|BRANCH` | Act on another worktree, `PATH`; or on `BRANCH`, finding the worktree already checked out for it, or creating one (local, else `origin/BRANCH`) under the primary checkout's `.claude/worktrees/` when none exists yet. Omitted, these act on the worktree you are standing in, as always. | build, flash, selftest, batch |
+
 ## Build and flash
 
 `autana help build`
 
 | Command | What it does |
 |---|---|
-| `autana build [rel\|dev\|diag] [--perf-scope] [--worktree PATH\|BRANCH]` | Build this worktree, no board and no lock; `dev` when omitted. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. `--worktree` acts on another worktree or branch instead - see below. |
+| `autana build [rel\|dev\|diag] [--perf-scope]` | Build this worktree, no board and no lock; `dev` when omitted. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. |
 | `autana build diag --check` | The diagnostics build plus the complexity ratchet - `launcher/tools/build/build_diag_check.sh`, unchanged; no board. |
-| `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope] [--owner NAME] [--wait SECONDS] [--worktree PATH\|BRANCH]` | Build and flash this worktree; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
+| `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope]` | Build and flash this worktree; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
 
 `autana build` is the way to build: it runs `launcher/tools/build/build.sh`,
@@ -40,32 +54,20 @@ opens the port.
 It proves the write, not the boot:
 [what a flash proves](Device-Lock.md#what-a-flash-proves).
 
-`--worktree PATH` acts against that path directly; `--worktree BRANCH` finds
-the worktree already checked out for that branch, or creates one for it
-(local, else `origin/BRANCH`) under the primary checkout's
-`.claude/worktrees/` when none exists yet. Omitted, these commands act on
-the worktree you are standing in, as always.
-
 ## Tests
 
 `autana help tests`
 
 | Command | What it does |
 |---|---|
-| `autana suite <name> [seconds] [--verbose] [--owner NAME] [--wait SECONDS] [--purpose TEXT] [--out PATH] [--expect-build-id ID]` | Run one registered suite on a diagnostics build already on the board. `--expect-build-id` refuses to run it if the board is not running that `BUILD_ID`. |
+| `autana suite <name> [seconds] [--verbose]` | Run one registered suite on a diagnostics build already on the board. |
 | `autana suite list [text] [--json]` | The suites this worktree registers; `[on request]` ones run only by name. |
-| `autana selftest [seconds] [--verbose] [--owner NAME] [--wait SECONDS] [--worktree PATH\|BRANCH]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
-| `autana batch <suite>... [--runs N] [--perf-scope] [--verbose] [--owner NAME] [--wait SECONDS] [--purpose TEXT] [--out PATH] [--worktree PATH\|BRANCH] [--expect-build-id ID]` | Flash once, capture the suites `N` times (3) under one lock; one summary. `--expect-build-id` refuses to run any suite if the image it just flashed does not carry that `BUILD_ID`. |
+| `autana selftest [seconds] [--verbose]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
+| `autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` | Flash once, capture the suites `N` times (3) under one lock; one summary. |
 
 Each prints the report and capture paths, PASS/FAIL counts, up to ten failure
 messages (then a FAIL count per suite) and the end reason. `--verbose`
 prints the whole capture; to find something in it, grep the capture instead.
-`--out` writes the one capture to that path instead of the default; on
-`batch` it only makes sense with exactly one suite and `--runs 1`. `--purpose`
-replaces the default note the lock and the capture record carry. `autana
-flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it -
-pass that value to a later `suite`/`batch`'s `--expect-build-id` to refuse
-measuring a board that has since been reflashed by someone else.
 
 ## Watch the board
 
@@ -73,10 +75,10 @@ measuring a board that has since been reflashed by someone else.
 
 | Command | What it does |
 |---|---|
-| `autana monitor [seconds] [--follow] [--stream] [--elf PATH] [--owner NAME] [--wait SECONDS] [--purpose TEXT] [--out PATH]` | In a terminal: the console live, until Ctrl+C or for `seconds`. Piped or scripted: needs `seconds` or `--follow`, and prints only error lines and `FRAME_WATCH` warnings; `--stream` prints everything. Always ends with its capture path. Crash addresses and `FRAME_WATCH` sites decode against `PATH`, or the build whose `build_id.txt` matches. |
+| `autana monitor [seconds] [--follow] [--stream] [--elf PATH]` | In a terminal: the console live, until Ctrl+C or for `seconds`. Piped or scripted: needs `seconds` or `--follow`, and prints only error lines and `FRAME_WATCH` warnings; `--stream` prints everything. Always ends with its capture path. Crash addresses and `FRAME_WATCH` sites decode against `PATH`, or the build whose `build_id.txt` matches. |
 | `autana framewatch` | A development build's frame watch as JSON: the last frame's allocations, frees and log lines, and every site repeating frame after frame ([the frame watch](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state)). |
-| `autana reset [--capture [seconds]] [--verbose] [--owner NAME] [--wait SECONDS]` | Reboot and wait for USB serial. `--capture` records the boot (20 s) and prints its path and any error lines. |
-| `autana screenshot [--as-shown\|--framebuffer] [-o PATH] [--owner NAME] [--wait SECONDS]` | `PATH.png` plus a `PATH.json` state snapshot. Landscape by default; `--as-shown` uses the board's orientation, `--framebuffer` the raw bytes. |
+| `autana reset [--capture [seconds]] [--verbose]` | Reboot and wait for USB serial. `--capture` records the boot (20 s) and prints its path and any error lines. |
+| `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | `PATH.png` plus a `PATH.json` state snapshot. Landscape by default; `--as-shown` uses the board's orientation, `--framebuffer` the raw bytes. |
 | `autana screenshot --frames N -o PATH` | `N` consecutive frames as `PATH-00` to `PATH-<N-1>`: one capture while running, then the loop frozen and stepped one frame between captures, then resumed. A band-mode capture shows the panel as it is, a band no frame resent included. |
 
 ## Drive input

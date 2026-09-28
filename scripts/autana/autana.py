@@ -1134,40 +1134,35 @@ Command = namedtuple("Command", "name handler usages")
 COMMAND_GROUPS = (
     ("build", "Build and flash", (
         Command("build", build, (
-            ("build [rel|dev|diag] [--perf-scope] [--worktree PATH|BRANCH]",
-             "build this worktree, no board; dev when omitted"),
+            ("build [rel|dev|diag] [--perf-scope]", "build this worktree, no board; dev when omitted"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
         Command("flash", flash, (
-            ("flash [rel|dev|diag] [--quiet] [--perf-scope] [--owner NAME] [--wait SECONDS] "
-             "[--worktree PATH|BRANCH]", "build and flash this worktree; dev when omitted"),)),
+            ("flash [rel|dev|diag] [--quiet] [--perf-scope]",
+             "build and flash this worktree; dev when omitted"),)),
         Command("buildid", buildid, (
             ("buildid [--json]", "the BUILD_ID the board is running"),)),
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
-            ("suite <name> [seconds] [--verbose] [--owner NAME] [--wait SECONDS] [--purpose TEXT] "
-             "[--out PATH] [--expect-build-id ID]", "run one registered suite on the board"),
+            ("suite <name> [seconds] [--verbose]", "run one registered suite on the board"),
             ("suite list [text] [--json]", "the suites this worktree registers"))),
         Command("selftest", selftest, (
-            ("selftest [seconds] [--verbose] [--owner NAME] [--wait SECONDS] [--worktree PATH|BRANCH]",
+            ("selftest [seconds] [--verbose]",
              "build diagnostics+autorun, run every suite on the board"),)),
         Command("batch", batch, (
-            ("batch <suite>... [--runs N] [--perf-scope] [--verbose] [--owner NAME] [--wait SECONDS] "
-             "[--purpose TEXT] [--out PATH] [--worktree PATH|BRANCH] [--expect-build-id ID]",
+            ("batch <suite>... [--runs N] [--perf-scope] [--verbose]",
              "flash once, capture the suites N times under one lock"),)),
     )),
     ("watch", "Watch the board", (
         Command("monitor", monitor, (
-            ("monitor [seconds] [--follow] [--stream] [--elf PATH] [--owner NAME] [--wait SECONDS] "
-             "[--purpose TEXT] [--out PATH]", "the console live until Ctrl+C, or for N s"),)),
+            ("monitor [seconds] [--follow] [--stream] [--elf PATH]",
+             "the console live until Ctrl+C, or for N s"),)),
         Command("framewatch", framewatch, (
             ("framewatch", "allocations and log lines repeating frame after frame, as JSON"),)),
         Command("reset", reset, (
-            ("reset [--capture [seconds]] [--verbose] [--owner NAME] [--wait SECONDS]",
-             "reboot the board; --capture records the boot"),)),
+            ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
         Command("screenshot", screenshot, (
-            ("screenshot [--as-shown|--framebuffer] [-o PATH] [--owner NAME] [--wait SECONDS]",
-             "the panel as PATH.png plus PATH.json"),
+            ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),
             ("screenshot --frames N -o PATH", "N consecutive frames, PATH-00 on, stepped while frozen"),)),
     )),
     ("input", "Drive input", (
@@ -1218,13 +1213,49 @@ COMMANDS = {command.name: command.handler
             for _, _, commands in COMMAND_GROUPS for command in commands}
 COMMANDS["console"] = console
 HELP_TOPICS = [key for key, _, _ in COMMAND_GROUPS] + [
-    command.name for _, _, commands in COMMAND_GROUPS for command in commands]
+    command.name for _, _, commands in COMMAND_GROUPS for command in commands] + ["flags"]
 USAGE_WIDTH = 34
+
+# (flag, what it does, the commands that take it) - left out of every command's
+# own usage line (`autana help flags` instead) since most commands take most
+# of these and repeating them on every line was unreadable.
+BOARD_FLAGS = (
+    ("--owner NAME", "name the lock holder for `autana status`, instead of "
+                     "autana-cli@<pid>; AUTANA_DEVICE_OWNER sets it for every command",
+     "flash, suite, selftest, batch, monitor, reset, screenshot"),
+    ("--wait SECONDS", "how long to wait for the board's lock before giving up "
+                       "(device.py's own default: 600 s)",
+     "flash, suite, selftest, batch, monitor, reset, screenshot"),
+    ("--purpose TEXT", "replace the default note the lock and the capture record carry",
+     "suite, batch, monitor"),
+    ("--out PATH", "write the one capture here instead of the default path",
+     "suite, batch, monitor"),
+    ("--expect-build-id ID", "refuse to run a suite unless the board (suite) or the image "
+                             "just flashed (batch) carries this BUILD_ID",
+     "suite, batch"),
+    ("--worktree PATH|BRANCH", "act on another worktree, or a branch - creating a worktree "
+                               "for it if none exists yet - instead of this one",
+     "build, flash, selftest, batch"),
+)
+
+
+def board_flags_text(prefix=""):
+    width = max(len(flag) for flag, _, _ in BOARD_FLAGS)
+    lines = ["Board flags (on top of each command's own usage above)"]
+    for flag, summary, commands in BOARD_FLAGS:
+        lines.append(f"  {flag:<{width}}  {summary}")
+        lines.append(f"  {'':<{width}}  on: {commands}")
+    if not prefix:
+        lines.append("")
+    return "\n".join(lines)
 
 
 def help_text(args, prefix="autana "):
-    """Every group, or the one group or command `args` names."""
+    """Every group, or the one group or command `args` names, or the shared
+    board flags for `args == ["flags"]`."""
     topic = args[0] if args else None
+    if topic == "flags":
+        return board_flags_text(prefix).rstrip()
     lines = []
     for key, title, commands in COMMAND_GROUPS:
         if topic not in (None, key):
@@ -1244,6 +1275,8 @@ def help_text(args, prefix="autana "):
         return f"no command or group '{topic}'; groups: " + ", ".join(
             key for key, _, _ in COMMAND_GROUPS)
     if topic is None:
+        lines.append(f"{prefix}help flags    --owner/--wait/--purpose/--out/--expect-build-id/"
+                     "--worktree, and which commands take them")
         lines.append(f"{prefix}help [topic]  one group or command"
                      + ("" if prefix else "; quit leaves the session"))
     return "\n".join(lines).rstrip()
