@@ -192,10 +192,6 @@ void ui_draw_icon(mu_Context* ctx, mu_Rect r, const icon_t* icon, const uint8_t*
  * changed this frame. */
 bool ui_slider_int(mu_Context* ctx, int* value, int lo, int hi, int step);
 
-/* As ui_slider_int(), with identity supplied by the caller. `id_data` must
- * have the same contents every frame the control may retain focus. */
-bool ui_slider_int_with_id(mu_Context* ctx, const void* id_data, int id_size, int* value, int lo, int hi, int step);
-
 /* Close the frame and paint it, but only if it would look any different
  * from what is already on screen. Returns whether it drew. It repaints
  * when any of these is true: the UI itself changed (a hover, a new

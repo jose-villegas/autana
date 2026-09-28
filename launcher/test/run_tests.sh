@@ -388,4 +388,9 @@ fi
 # MinGW appends .exe; elsewhere the plain name is produced.
 [ -x "$OUT" ] || OUT="$OUT.exe"
 
-"$OUT"
+if [ "${HOST_SANITIZE:-}" = undefined ] && [ "$(uname -s)" = Linux ]; then
+    # Control ids are value addresses and must stay stable across frames, as on the device.
+    ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0" "$OUT"
+else
+    "$OUT"
+fi

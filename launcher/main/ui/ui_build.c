@@ -404,11 +404,12 @@ ui_draw_icon(mu_Context* c, mu_Rect r, const icon_t* icon, const uint8_t* rows, 
     icon_walk_blocks(rows + icon->offset, icon->w, icon->h, icon->stride, r.w, r.h, ui_draw_icon_emit, &dc);
 }
 
-/* See ui.h. The identity must outlive a frame: sanitizer fake stacks can
- * move a local value pointer between frames. */
+/* See ui.h. `value`'s own address (not what it points to, same idiom
+ * mu_slider_ex() uses) gives each call site a stable id with no string
+ * needed. MU_OPT_HOLDFOCUS keeps a drag updating once it leaves the knob. */
 bool
-ui_slider_int_with_id(mu_Context* c, const void* id_data, int id_size, int* value, int lo, int hi, int step) {
-    const mu_Id id = mu_get_id(c, id_data, id_size);
+ui_slider_int(mu_Context* c, int* value, int lo, int hi, int step) {
+    const mu_Id id = mu_get_id(c, &value, sizeof(value));
     const mu_Rect track = mu_layout_next(c);
     mu_update_control(c, id, track, MU_OPT_HOLDFOCUS);
 
@@ -443,11 +444,6 @@ ui_slider_int_with_id(mu_Context* c, const void* id_data, int id_size, int* valu
     }
 
     return changed;
-}
-
-bool
-ui_slider_int(mu_Context* c, int* value, int lo, int hi, int step) {
-    return ui_slider_int_with_id(c, &value, sizeof(value), value, lo, hi, step);
 }
 
 /* See ui.h for the full argument. Short version: mu_begin_window_ex()
