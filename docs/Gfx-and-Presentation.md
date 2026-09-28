@@ -198,8 +198,9 @@ sequenceDiagram
 - The first frame after `gfx_mode_enter()`, and any frame after
   `gfx_invalidate()`, forces every band.
 - A UI over a band renderer is built once and replayed per dirty band:
-  `ui_end_for_bands()` bins the command list by rows, `ui_replay_band()`
-  draws a band's share. The shell queues its home hint with
+  `ui_end_for_bands()` bins the command list by rows. The shell passes
+  `ui_replay_band()` to `gfx_band_run()` as its overlay, which draws a
+  band's share after the app's content. The shell queues its home hint with
   `ui_queue_band_overlay_rect()` before `frame()`, since nothing can draw
   after the loop.
 - `gfx_band_dirty()` answers for the band `gfx_band_next()` just handed
