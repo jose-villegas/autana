@@ -10,7 +10,8 @@ Everything lives outside the repository, in AUTANA_LLAMA_HOME (default
 worktree. One llama-server runs in router mode on 127.0.0.1:AUTANA_LLAMA_PORT
 (8765), loads a model on its first request and unloads it after ten idle
 minutes, so nothing holds memory between questions. Every download is pinned to
-a SHA-256 and checked before use.
+a SHA-256 and checked before use. With several GPUs it runs on a discrete one
+(AUTANA_LLAMA_DEVICE, a name from `llama-server --list-devices`, overrides).
 
 Without a setup, search is lexical and nothing here runs: a missing model is a
 weaker answer, never an error.
@@ -20,6 +21,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import signal
 import subprocess
@@ -64,6 +66,10 @@ MODELS = {
     },
 }
 IDLE_SECONDS = 600
+
+# Integrated GPUs, by the names Vulkan gives them. Left to itself the server splits a model
+# across every GPU, and a share on one of these reads prompts tens of times slower.
+INTEGRATED = re.compile(r"Radeon\(TM\) (\d+M|Graphics)|Intel\(R\) (UHD|HD|Iris|Arc\(TM\) Graphics)")
 
 
 def home():
@@ -149,8 +155,30 @@ def setup(chat=False):
     print(f"{len(index.vectors)} passages embedded")
 
 
+def pick_device(listing):
+    """The device to run on from a `--list-devices` listing: the first that isn't integrated,
+    when there is more than one GPU; None leaves the choice to the server."""
+    devices = re.findall(r"^\s+(\w+): (.+)$", listing, re.MULTILINE)
+    discrete = [name for name, description in devices if not INTEGRATED.search(description)]
+    return discrete[0] if len(devices) > 1 and discrete else None
+
+
+def device():
+    if os.environ.get("AUTANA_LLAMA_DEVICE"):
+        return os.environ["AUTANA_LLAMA_DEVICE"]
+    binary = server_binary()
+    if binary is None:
+        return None
+    try:
+        listed = subprocess.run([str(binary), "--list-devices"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return pick_device(listed.stdout)
+
+
 def write_preset():
-    lines = ["version = 1", "", "[*]", "ngl = 99", ""]
+    chosen = device()
+    lines = ["version = 1", "", "[*]", "ngl = 99"] + ([f"device = {chosen}"] if chosen else []) + [""]
     for kind, model in MODELS.items():
         if model_path(kind).is_file():
             lines.append(f"[{kind}]")

@@ -404,6 +404,25 @@ class Downloads(unittest.TestCase):
         fetch.assert_not_called()
 
 
+class Device(unittest.TestCase):
+    LAPTOP = ("Available devices:\n"
+              "  Vulkan0: AMD Radeon(TM) 610M (16268 MiB, 15455 MiB free)\n"
+              "  Vulkan1: NVIDIA GeForce RTX 5080 Laptop GPU (15915 MiB, 15147 MiB free)\n")
+
+    def test_an_integrated_gpu_beside_a_discrete_one_is_passed_over(self):
+        self.assertEqual(docs_llama.pick_device(self.LAPTOP), "Vulkan1")
+
+    def test_one_gpu_or_only_integrated_ones_leave_the_choice_to_the_server(self):
+        self.assertIsNone(docs_llama.pick_device("Available devices:\n  Vulkan0: NVIDIA GeForce RTX 4070 (12282 MiB)\n"))
+        self.assertIsNone(docs_llama.pick_device("Available devices:\n"
+                                                 "  Vulkan0: Intel(R) UHD Graphics (8000 MiB)\n"
+                                                 "  Vulkan1: AMD Radeon(TM) Graphics (8000 MiB)\n"))
+
+    def test_the_setting_overrides_the_listing(self):
+        with mock.patch.dict(os.environ, {"AUTANA_LLAMA_DEVICE": "Vulkan0"}):
+            self.assertEqual(docs_llama.device(), "Vulkan0")
+
+
 class Stop(unittest.TestCase):
     def setUp(self):
         home = tempfile.mkdtemp()
