@@ -96,7 +96,7 @@ exceeds `SUITE_STATIC_DATA_LIMIT` in
 `launcher/tools/quality/suite_static_data_gate.py`. Suite tables are `static
 const`; mutable test buffers allocate for a test and release before the suite
 returns, so the image does not reserve their storage at boot.
-The diagnostics CI job runs the gate against its fresh full-scope
+CI's self-test build job runs the gate against its fresh full-scope
 `build.diag`. A local gate measures whatever scope `build.diag` was last
 configured with.
 
