@@ -527,7 +527,7 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
                 text = line.strip()
                 if suite_name:
                     if b"ignoring line: 'RUNSUITE" in text:
-                        raise RuntimeError("this build has no test suites - flash --variant diag")
+                        raise RuntimeError("this build has no test suites - autana flash diag")
                     if (b"no suite named '" + suite_name.encode("ascii") + b"'") in text:
                         raise RuntimeError("no suite named " + suite_name + " on this build")
                     if b"SUITE_DONE" in text or text.startswith(suite_complete):
@@ -1354,37 +1354,55 @@ def screenshot(args, store, board):
 
 
 def batch(args, store, board):
-    """Build once, then flash and capture every suite `runs` times under ONE
-    lock, then write one summary across all runs. Holding the board from the
-    flash to the last capture is the point: nobody else can flash between two
-    captures of this image. A capture that errors is recorded and the batch
-    continues; only a failed build or flash stops it."""
+    """Capture every suite `runs` times under ONE lock, then write one
+    summary across all runs. `args.flash` builds and flashes first, as the
+    point of one lock is nobody else flashing between two captures of that
+    image; without it, every suite runs against whatever is already on the
+    board. A capture that errors is recorded and the batch continues; only a
+    failed build or flash stops it. One suite run once collapses to exactly
+    what a standalone `run-suite` leaves behind - one capture under its own
+    name, no `batch` summary or manifest row - since there is nothing across
+    runs for either to tell apart."""
     extra_flags = ["--perf-scope"] if args.perf_scope else []
     if args.out and (len(args.suite) != 1 or args.runs != 1):
         raise RuntimeError("--out only makes sense with exactly one --suite and --runs 1 - "
                            "several captures cannot all land on one path")
+    if args.perf_scope and not args.flash:
+        raise RuntimeError("--perf-scope selects the image built - it needs --flash")
+    single = len(args.suite) == 1 and args.runs == 1
     worktree = str(Path(args.worktree).resolve())
     started_at = now()
     entries = []
-    flash_args = argparse.Namespace(owner=args.owner, purpose=args.purpose + " (flash)",
-                                    wait=args.wait, worktree=args.worktree,
-                                    variant=args.variant, out=None)
-    with build_image(flash_args, board, extra_flags) as built, \
+    if args.flash:
+        flash_args = argparse.Namespace(owner=args.owner, purpose=args.purpose + " (flash)",
+                                        wait=args.wait, worktree=args.worktree,
+                                        variant=args.variant, out=None)
+        build_cm = build_image(flash_args, board, extra_flags)
+    else:
+        build_cm = contextlib.nullcontext(None)
+    with build_cm as built, \
             HeldLock(store, board, args.owner, args.purpose, args.wait, kind="batch") as held:
-        build_id = write_image(built, store, board, held_lock=held)
-        if args.expect_build_id and build_id != args.expect_build_id:
-            raise RuntimeError(
-                f"build id mismatch: expected {args.expect_build_id}, flashed {build_id} - "
-                "refusing to run any suite")
+        if args.flash:
+            build_id = write_image(built, store, board, held_lock=held)
+            if args.expect_build_id and build_id != args.expect_build_id:
+                raise RuntimeError(
+                    f"build id mismatch: expected {args.expect_build_id}, flashed {build_id} - "
+                    "refusing to run any suite")
+        else:
+            build_id = args.expect_build_id
         commit = git_commit(worktree)
         for run in range(1, args.runs + 1):
             for suite_name in args.suite:
                 capture_at = now()
-                out, _ = resolve_capture_path(
-                    args.out, "runsuite-" + suite_name + "-run" + str(run), args.owner, capture_at)
+                if single:
+                    out, purpose = args.out, args.purpose
+                else:
+                    resolved, _ = resolve_capture_path(
+                        args.out, "runsuite-" + suite_name + "-run" + str(run), args.owner,
+                        capture_at)
+                    out, purpose = str(resolved), f"{args.purpose} ({suite_name} run {run}/{args.runs})"
                 suite_args = argparse.Namespace(
-                    owner=args.owner, wait=args.wait, suite=suite_name, out=str(out),
-                    purpose=f"{args.purpose} ({suite_name} run {run}/{args.runs})",
+                    owner=args.owner, wait=args.wait, suite=suite_name, out=out, purpose=purpose,
                     max_seconds=args.max_seconds, idle_seconds=args.idle_seconds,
                     expect_build_id=build_id, verbose=getattr(args, "verbose", False))
                 print(f"batch: {suite_name} run {run}/{args.runs}", flush=True)
@@ -1398,10 +1416,13 @@ def batch(args, store, board):
                 except RuntimeError as caught:
                     error = str(caught)
                     print("batch: capture error, continuing: " + error, file=sys.stderr)
-                entries.append({"suite": suite_name, "run": run, "capture": str(out),
+                entries.append({"suite": suite_name, "run": run, "capture": out,
                                 "error": error, "failed": failed})
         if any(entry["error"] for entry in entries):
             held.error = "a batch capture failed"
+    if single:
+        entry = entries[0]
+        return 1 if (entry["error"] or entry["failed"]) else 0
     meta = {"build_id": build_id, "owner": args.owner, "purpose": args.purpose,
             "runs": args.runs, "worktree": worktree, "commit": commit}
     summary_path, _ = resolve_capture_path(None, "batch", args.owner, started_at)
@@ -1561,15 +1582,17 @@ def main(argv=None):
     screenshot_view.add_argument("--as-shown", action="store_true")
     screenshot_view.add_argument("--framebuffer", action="store_true")
     batch_parser = subparsers.add_parser(
-        "batch", help="flash once, capture suites N times under one lock, write one summary")
+        "batch", help="capture suites N times under one lock, write one summary")
     batch_parser.add_argument("--worktree", required=True)
     batch_parser.add_argument("--variant", choices=("dev", "diag", "release"), default="diag")
     batch_parser.add_argument("--suite", action="append", required=True,
                               help="a suite to capture; repeat for several")
     batch_parser.add_argument("--runs", type=int, default=3)
     batch_parser.add_argument("--verbose", action="store_true")
+    batch_parser.add_argument("--no-flash", dest="flash", action="store_false", default=True,
+                              help="capture against the image already on the board")
     batch_parser.add_argument("--perf-scope", action="store_true",
-                              help="build the perf-scoped image")
+                              help="build the perf-scoped image (needs --flash, the default)")
     batch_parser.add_argument("--max-seconds", type=float, default=1800)
     batch_parser.add_argument("--idle-seconds", type=float, default=300)
     batch_parser.add_argument("--purpose", default="batch capture")

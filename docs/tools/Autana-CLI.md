@@ -20,6 +20,20 @@ Only a development build answers (release has no console). Coordinates are
 panel pixels. Tab completes command names, `build` and `flash` variants and help topics
 where Python has `readline` (Windows: `pip install pyreadline3`).
 
+## Most used
+
+The five commands almost every session starts with, each a real example
+rather than a placeholder - `autana help`'s own first block, ahead of every
+group below.
+
+| Command | What it does |
+|---|---|
+| `autana flash dev` | Build and flash; the everyday form. |
+| `autana monitor 30` | The console for 30 s. |
+| `autana suite list` | What this worktree can run, then `autana suite <name>` to run one. |
+| `autana tune ridge_trail` | A live value, read or set. |
+| `autana screenshot -o shot` | The panel as `shot.png` plus `shot.json`. |
+
 ## Board flags
 
 `autana help flags` - left off each command's own usage line below to keep
@@ -27,12 +41,16 @@ it readable; a flag works the same wherever the table below says it applies.
 
 | Flag | What it does | Commands |
 |---|---|---|
-| `--owner NAME` | Name the lock holder for `autana status`, instead of `autana-cli@<pid>`; `AUTANA_DEVICE_OWNER` sets it for every command. | flash, suite, selftest, batch, monitor, reset, screenshot |
-| `--wait SECONDS` | How long to wait for the board's lock before giving up (device.py's own default: 600 s). | flash, suite, selftest, batch, monitor, reset, screenshot |
-| `--purpose TEXT` | Replace the default note the lock and the capture record carry. | suite, batch, monitor |
-| `--out PATH` | Write the one capture here instead of the default path; on `batch` it only makes sense with exactly one suite and `--runs 1`. | suite, batch, monitor |
-| `--expect-build-id ID` | Refuse to run a suite unless the board (`suite`) or the image just flashed (`batch`) carries this `BUILD_ID`. `autana flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it - pass that value here to refuse measuring a board that has since been reflashed by someone else. | suite, batch |
-| `--worktree PATH\|BRANCH` | Act on another worktree, `PATH`; or on `BRANCH`, finding the worktree already checked out for it, or creating one (local, else `origin/BRANCH`) under the primary checkout's `.claude/worktrees/` when none exists yet. Omitted, these act on the worktree you are standing in, as always. | build, flash, selftest, batch |
+| `--owner NAME` | Name the lock holder for `autana status`, instead of `autana-cli@<pid>`; `AUTANA_DEVICE_OWNER` sets it for every command. | flash, suite, selftest, monitor, reset, screenshot |
+| `--wait SECONDS` | How long to wait for the board's lock before giving up (device.py's own default: 600 s). | flash, suite, selftest, monitor, reset, screenshot |
+| `--purpose TEXT` | Replace the default note the lock and the capture record carry. | suite, monitor |
+| `--out PATH` | Write the one capture here instead of the default path; with several suites or `--runs` above 1, only makes sense on `suite` when exactly one suite runs once. | suite, monitor |
+| `--expect-build-id ID` | Refuse to run a suite unless the board, or the image `--flash` just wrote, carries this `BUILD_ID`. `autana flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it - pass that value here to refuse measuring a board that has since been reflashed by someone else. | suite |
+| `--worktree PATH\|BRANCH` | Act on another worktree, `PATH`; or on `BRANCH`, finding the worktree already checked out for it, or creating one (local, else `origin/BRANCH`) under the primary checkout's `.claude/worktrees/` when none exists yet. Omitted, these act on the worktree you are standing in, as always. | build, flash, selftest, suite (with --flash) |
+
+`--owner` names *who* holds the lock, for `autana status`; `--purpose` says
+*why*, for the same status line and the capture record. `autana status`
+shows both, so both stay - they read alike but answer different questions.
 
 ## Build and flash
 
@@ -56,18 +74,26 @@ It proves the write, not the boot:
 
 ## Tests
 
-`autana help tests`
+`autana help tests` · `suite` is the everyday path - `selftest` is every
+suite this worktree registers, for a full pre-merge pass.
 
 | Command | What it does |
 |---|---|
-| `autana suite <name> [seconds] [--verbose]` | Run one registered suite on a diagnostics build already on the board. |
+| `autana suite <name>... [seconds] [--runs N] [--flash] [--verbose]` | Run one or more registered suites under one lock, `N` times each (1 when omitted), `seconds` capping the whole run (600 s when omitted). Without `--flash`: against the image already on the board - `autana suite <name>` against a non-diagnostics image says so plainly and names the fix (`autana flash diag`). With `--flash`: build and flash the diagnostics image first, so nobody else can flash between two captures. |
 | `autana suite list [text] [--json]` | The suites this worktree registers; `[on request]` ones run only by name. |
 | `autana selftest [seconds] [--verbose]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
-| `autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` | Flash once, capture the suites `N` times (3) under one lock; one summary. |
 
 Each prints the report and capture paths, PASS/FAIL counts, up to ten failure
 messages (then a FAIL count per suite) and the end reason. `--verbose`
 prints the whole capture; to find something in it, grep the capture instead.
+One suite run once - `autana suite <name>` with no `--runs` or `--flash` -
+still produces exactly one capture and one report, the same as before this
+command absorbed `batch`.
+
+`autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` still works -
+the old spelling of `autana suite <suite>... --runs N --perf-scope --verbose
+--flash` (`--runs` defaults to 3 here, `suite`'s own default is 1). It prints
+one line naming the new form, then runs it.
 
 ## Watch the board
 
@@ -75,8 +101,7 @@ prints the whole capture; to find something in it, grep the capture instead.
 
 | Command | What it does |
 |---|---|
-| `autana monitor [seconds] [--follow] [--stream] [--elf PATH]` | In a terminal: the console live, until Ctrl+C or for `seconds`. Piped or scripted: needs `seconds` or `--follow`, and prints only error lines and `FRAME_WATCH` warnings; `--stream` prints everything. Always ends with its capture path. Crash addresses and `FRAME_WATCH` sites decode against `PATH`, or the build whose `build_id.txt` matches. |
-| `autana framewatch` | A development build's frame watch as JSON: the last frame's allocations, frees and log lines, and every site repeating frame after frame ([the frame watch](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state)). |
+| `autana monitor [seconds] [--follow] [--stream] [--elf PATH]` | In a terminal: the console live, until Ctrl+C or for `seconds`. Piped or scripted: needs `seconds` or `--follow`, and prints only error lines and `FRAME_WATCH` warnings; `--stream` prints everything. Without a terminal and neither `seconds` nor `--follow`, this is a plain usage error rather than a hang. Always ends with its capture path. Crash addresses and `FRAME_WATCH` sites decode against `PATH`, or the build whose `build_id.txt` matches. |
 | `autana reset [--capture [seconds]] [--verbose]` | Reboot and wait for USB serial. `--capture` records the boot (20 s) and prints its path and any error lines. |
 | `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | `PATH.png` plus a `PATH.json` state snapshot. Landscape by default; `--as-shown` uses the board's orientation, `--framebuffer` the raw bytes. |
 | `autana screenshot --frames N -o PATH` | `N` consecutive frames as `PATH-00` to `PATH-<N-1>`: one capture while running, then the loop frozen and stepped one frame between captures, then resumed. A band-mode capture shows the panel as it is, a band no frame resent included. |
@@ -90,9 +115,10 @@ prints the whole capture; to find something in it, grep the capture instead.
 | `autana tap <x> <y>` | Tap, 50 ms. |
 | `autana press <x> <y> [ms]` | Hold; 1000 ms when omitted. |
 | `autana drag <x0> <y0> <x1> <y1> <ms>` | Drag between two points over `ms`. |
-| `autana touch <down\|up> <x> <y>` | One raw touch-controller level; `up` hands back to the controller. |
-| `autana imu <ax> <ay> <az>` | Raw accelerometer counts; `autana imu release` hands back to the sensor. |
 | `autana button <boot\|power> [short\|long]` | A BOOT or PWR press; `short` when omitted. |
+
+The two raw levels below gesture, `touch` and `imu`, live under
+[`autana debug`](#debug).
 
 ## Apps
 
@@ -103,16 +129,6 @@ prints the whole capture; to find something in it, grep the capture instead.
 | `autana apps [--json]` | The registered apps, and which is running. |
 | `autana open <name>` | Enter an app, even while frozen; case-insensitive, unambiguous prefix. |
 | `autana home` | Back to the launcher. |
-
-## Frame loop
-
-`autana help frames`
-
-| Command | What it does |
-|---|---|
-| `autana freeze` | Stop the frame loop where it is. |
-| `autana resume` | Run it again. |
-| `autana step [N]` | Advance `N` frames while frozen; 1 when omitted. |
 
 ## Tunables
 
@@ -132,35 +148,57 @@ prints the whole capture; to find something in it, grep the capture instead.
 | Command | What it does |
 |---|---|
 | `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
-| `autana id [--json]` | The name this session holds the lock under: `autana-cli@<pid in base36>`. |
-| `autana release <token>` | Release a lock this session holds; the token is what its command printed. |
-| `autana hand [--wait <seconds>] <note...>` | Reserve the board and emit `human-reserved`; with `--wait`, wait until `take-back` emits `human-cleared`. |
-| `autana take-back` | Clear that reservation. |
+| `autana lock id [--json]` | The name this session holds the lock under: `autana-cli@<pid in base36>`. |
+| `autana lock release <token>` | Release a lock this session holds; the token is what its command printed. |
+| `autana lock hand [--wait <seconds>] <note...>` | Reserve the board and emit `human-reserved`; with `--wait`, wait until `take-back` emits `human-cleared`. |
+| `autana lock take-back` | Clear that reservation. |
 
 A board is named by its USB serial number, so the lock follows it across
 COM number changes; with several boards plugged in, `AUTANA_BOARD=<serial>`
 picks one. If a command loses the lock it stops with `device lock was
 lost`. A separate `flash` and `suite` leave a gap where another session can
-flash; `batch` and `selftest` hold one lock across flash and capture. Lock
-loss, estimates and flash success are defined in
+flash; `suite --flash` and `selftest` hold one lock across flash and capture.
+Lock loss, estimates and flash success are defined in
 [Device-Lock.md](Device-Lock.md).
 
-`flash`, `suite`, `selftest`, `batch`, `monitor`, `reset` and `screenshot`
-take `--owner NAME`, so `autana status` shows which of several sessions
-holds the board rather than every one reading `autana-cli@<pid>`;
-`AUTANA_DEVICE_OWNER` sets the same name for every command in a shell
-without repeating the flag, and an explicit `--owner` wins over it. The same
-commands take `--wait SECONDS`, how long to wait for the board's lock before
-giving up - device.py's own default (600 s) applies when it is omitted.
+`flash`, `suite`, `selftest`, `monitor`, `reset` and `screenshot` take
+`--owner NAME`, so `autana status` shows which of several sessions holds the
+board rather than every one reading `autana-cli@<pid>`; `AUTANA_DEVICE_OWNER`
+sets the same name for every command in a shell without repeating the flag,
+and an explicit `--owner` wins over it. The same commands take `--wait
+SECONDS`, how long to wait for the board's lock before giving up - device.py's
+own default (600 s) applies when it is omitted.
 
-`autana hand --wait 30 put the board in download mode` pauses a flash script
-until someone puts the board in download mode and runs `autana take-back`.
-With `--wait`, exit 0 means that reservation was released. Exit 3 means the
-wait timed out or was interrupted with Ctrl+C; the reservation stays. Exit 4
-means another hand replaced the reservation; that reservation stays. The
-caller decides how to proceed after either nonzero result.
+`autana lock hand --wait 30 put the board in download mode` pauses a flash
+script until someone puts the board in download mode and runs `autana lock
+take-back`. With `--wait`, exit 0 means that reservation was released. Exit 3
+means the wait timed out or was interrupted with Ctrl+C; the reservation
+stays. Exit 4 means another hand replaced the reservation; that reservation
+stays. The caller decides how to proceed after either nonzero result.
 
-## Documentation
+`autana id`, `autana release <token>`, `autana hand ...` and `autana
+take-back` still work, each printing the new spelling once before running it.
+
+## Debug
+
+`autana help debug` - left out of the bare `autana help` listing; a session
+rarely needs the frame loop paused or a raw sensor level, so these stay one
+`autana help debug` away rather than crowding the everyday groups above.
+
+| Command | What it does |
+|---|---|
+| `autana debug freeze` | Stop the frame loop where it is. |
+| `autana debug resume` | Run it again. |
+| `autana debug step [N]` | Advance `N` frames while frozen; 1 when omitted. |
+| `autana debug touch <down\|up> <x> <y>` | One raw touch-controller level; `up` hands back to the controller. |
+| `autana debug imu <ax> <ay> <az>` | Raw accelerometer counts; `autana debug imu release` hands back to the sensor. |
+| `autana debug framewatch` | A development build's frame watch as JSON: the last frame's allocations, frees and log lines, and every site repeating frame after frame ([the frame watch](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state)). |
+
+`autana freeze`, `autana resume`, `autana step`, `autana touch`, `autana imu`
+and `autana framewatch` still work, each printing the new spelling once
+before running it.
+
+## No board needed
 
 `autana help docs` · how it ranks and what it needs: [Docs-Search.md](Docs-Search.md)
 
@@ -177,7 +215,7 @@ caller decides how to proceed after either nonzero result.
 |---|---|
 | `status` | `boards`: `board`, `port`, `state` (`unlocked`, `held`, `human`), `holder` (`owner`, `purpose`), `since`, `elapsed_seconds`, `estimated_free`, `stale` (`owner`, `purpose`, `reason`), `waiting` (`owner`, `purpose`, `estimated_start`). Times are epoch seconds; unknown ones are `null`. See [Device-Lock.md](Device-Lock.md#status). |
 | `buildid` | `build_id` |
-| `id` | `owner`, `pid` |
+| `lock id` | `owner`, `pid` |
 | `apps` | `apps`: `name`, `running` |
 | `suite list` | `suites`: `name`, `source`, `on_request`, `device_only` |
 | `tune` | `tunables`: `name`, `value`, `min`, `max`, `default` |
@@ -192,9 +230,9 @@ so an app's own command works too. A tunable is only ever reached through
 
 ```
 autana> tune theme_rgb 0x1199C8
-autana> freeze
-autana> step 3
-autana> resume
+autana> debug freeze
+autana> debug step 3
+autana> debug resume
 autana> quit
 ```
 

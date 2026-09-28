@@ -1139,5 +1139,175 @@ class OneShotForwardingTests(unittest.TestCase):
         sent.assert_not_called()
 
 
+class SuiteFlashAndRunsTests(unittest.TestCase):
+    """`suite` merged what `batch` used to do on its own: several suites,
+    N runs, one lock, an optional flash first - all through device.py's
+    own `batch` subcommand, never `run-suite` directly any more."""
+
+    def test_default_is_one_run_with_no_flash(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite"])
+        command = called.call_args[0][0]
+        self.assertIn("batch", command)
+        self.assertEqual(command[command.index("--runs") + 1], "1")
+        self.assertIn("--no-flash", command)
+
+    def test_flash_drops_no_flash_and_needs_no_worktree_error(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite", "--flash"])
+        command = called.call_args[0][0]
+        self.assertNotIn("--no-flash", command)
+
+    def test_several_suite_names_each_get_their_own_flag(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite", "run_sand_perf_suite", "--runs", "5"])
+        command = called.call_args[0][0]
+        self.assertEqual(command.count("--suite"), 2)
+        self.assertEqual(command[command.index("--runs") + 1], "5")
+
+    def test_worktree_without_flash_is_rejected(self):
+        with self.assertRaises(SystemExit):
+            autana.suite(["run_gfx_suite", "--worktree", "feature/x"])
+
+    def test_worktree_with_flash_is_resolved_and_used(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/other") as resolved, \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite", "--flash", "--worktree", "feature/x"])
+        resolved.assert_called_once_with("feature/x")
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--worktree") + 1], "C:/other")
+
+    def test_perf_scope_is_forwarded(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite", "--flash", "--perf-scope"])
+        self.assertIn("--perf-scope", called.call_args[0][0])
+
+    def test_no_suite_name_is_rejected(self):
+        with self.assertRaises(SystemExit):
+            autana.suite(["--runs", "3"])
+
+    def test_an_unknown_flag_is_rejected(self):
+        with self.assertRaises(SystemExit):
+            autana.suite(["run_gfx_suite", "--bogus"])
+
+
+class SuiteSecondsTests(unittest.TestCase):
+    """`suite`'s own per-call timeout, restored - the old `suite <name>
+    [seconds]` (600 s default), forwarded as device.py batch's --max-seconds
+    bound, the same idea as `selftest [seconds]`."""
+
+    def test_default_max_seconds_is_600(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--max-seconds") + 1], "600.0")
+
+    def test_a_trailing_seconds_argument_is_forwarded(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite", "120"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--max-seconds") + 1], "120.0")
+        self.assertEqual(command.count("--suite"), 1)
+
+    def test_seconds_after_several_suite_names(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite", "run_sand_perf_suite", "45"])
+        command = called.call_args[0][0]
+        self.assertEqual(command.count("--suite"), 2)
+        self.assertEqual(command[command.index("--max-seconds") + 1], "45.0")
+
+    def test_seconds_survives_alongside_flash_and_runs(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite", "90", "--flash", "--runs", "2"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--max-seconds") + 1], "90.0")
+        self.assertEqual(command[command.index("--runs") + 1], "2")
+
+
+class BatchAliasTests(unittest.TestCase):
+    """`autana batch` is the old spelling of `suite ... --flash`; it must
+    keep working and say so once, to stderr, before running the new form."""
+
+    def test_prints_the_new_spelling_once_to_stderr(self):
+        stream = io.StringIO()
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0), \
+             contextlib.redirect_stderr(stream):
+            autana.batch(["run_gfx_suite"])
+        self.assertIn("autana batch: use `autana suite", stream.getvalue())
+
+    def test_defaults_to_three_runs_and_flashes(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called, \
+             mock.patch("builtins.print"):
+            autana.batch(["run_gfx_suite"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--runs") + 1], "3")
+        self.assertNotIn("--no-flash", command)
+
+
+class LockAndDebugDispatchTests(unittest.TestCase):
+    """`lock` and `debug` are thin verb routers; each verb's own behaviour is
+    covered where it is defined (LockCommandTests, DeviceVerbCommandTests)."""
+
+    def test_lock_routes_to_its_verb(self):
+        fake = mock.Mock(return_value=0)
+        with mock.patch.dict(autana.LOCK_VERBS, {"id": fake}):
+            code = autana.lock(["id", "--json"])
+        fake.assert_called_once_with(["--json"])
+        self.assertEqual(code, 0)
+
+    def test_lock_with_no_or_unknown_verb_is_a_usage_error(self):
+        with self.assertRaises(SystemExit):
+            autana.lock([])
+        with self.assertRaises(SystemExit):
+            autana.lock(["nope"])
+
+    def test_debug_routes_to_its_verb(self):
+        fake = mock.Mock(return_value=0)
+        with mock.patch.dict(autana.DEBUG_VERBS, {"freeze": fake}):
+            code = autana.debug(["freeze"])
+        fake.assert_called_once_with([])
+        self.assertEqual(code, 0)
+
+    def test_debug_with_no_or_unknown_verb_is_a_usage_error(self):
+        with self.assertRaises(SystemExit):
+            autana.debug([])
+        with self.assertRaises(SystemExit):
+            autana.debug(["nope"])
+
+
+class RenamedVerbAliasTests(unittest.TestCase):
+    """Every bare old spelling in RENAMED_VERBS still works, printing the new
+    one to stderr before calling straight through to the same handler."""
+
+    def test_every_alias_forwards_and_announces_the_new_spelling(self):
+        for old, (new, handler) in autana.RENAMED_VERBS.items():
+            fake = mock.Mock(return_value=0)
+            stream = io.StringIO()
+            with mock.patch.dict(autana.COMMANDS, {old: autana.alias(old, new, fake)}), \
+                    contextlib.redirect_stderr(stream):
+                code = autana.COMMANDS[old](["x"])
+            fake.assert_called_once_with(["x"])
+            self.assertEqual(code, 0)
+            self.assertIn(f"autana {old}: use `autana {new}`", stream.getvalue())
+
+    def test_the_real_handlers_are_wired_up(self):
+        expected = {"id": autana.identify, "release": autana.release, "hand": autana.hand,
+                   "take-back": autana.take_back, "freeze": autana.freeze,
+                   "resume": autana.resume, "step": autana.step, "touch": autana.touch,
+                   "imu": autana.imu, "framewatch": autana.framewatch}
+        self.assertEqual({old: handler for old, (_, handler) in autana.RENAMED_VERBS.items()},
+                         expected)
+
+
 if __name__ == "__main__":
     unittest.main()

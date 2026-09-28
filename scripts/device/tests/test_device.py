@@ -344,7 +344,7 @@ class DeviceTests(unittest.TestCase):
     def test_capture_rejects_run_suite_when_build_has_no_suites(self):
         connection = FakeConnection([b"shell: ignoring line: 'RUNSUITE sand'\n"])
         with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaisesRegex(RuntimeError, "no test suites.*flash --variant diag"):
+            with self.assertRaisesRegex(RuntimeError, "no test suites.*autana flash diag"):
                 device.capture(connection, Path(directory) / "capture.log", 1, None,
                                suite_name="sand")
 
@@ -960,7 +960,7 @@ class BatchTests(unittest.TestCase):
 
     def run_batch(self, suites=("run_sand_perf_suite",), runs=3, fail_run=None,
                   perf_scope=False, script_text="--diag --dev --perf-scope", out=False,
-                  expect_build_id=None, flashed_build_id="abc123-diag"):
+                  expect_build_id=None, flashed_build_id="abc123-diag", flash=True):
         calls = {"locks": 0, "build": [], "flash": [], "run_suite": [], "events": []}
 
         class FakeLock:
@@ -989,9 +989,10 @@ class BatchTests(unittest.TestCase):
 
         def fake_run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
             calls["events"].append("capture")
-            calls["run_suite"].append((args.suite, args.out, held_lock, args.expect_build_id,
-                                       worktree, commit))
-            Path(args.out).write_text(":1:test_one:PASS\n", encoding="utf-8")
+            calls["run_suite"].append((args.suite, args.out, args.purpose, held_lock,
+                                       args.expect_build_id, worktree, commit))
+            if args.out:
+                Path(args.out).write_text(":1:test_one:PASS\n", encoding="utf-8")
             if fail_run is not None and len(calls["run_suite"]) == fail_run:
                 raise RuntimeError("capture timed out")
             return 0
@@ -1005,7 +1006,7 @@ class BatchTests(unittest.TestCase):
             args = Namespace(owner="agent", purpose="p", wait=0, worktree=str(worktree),
                              variant="diag", suite=list(suites), runs=runs, perf_scope=perf_scope,
                              max_seconds=1, idle_seconds=None, out=out_path,
-                             expect_build_id=expect_build_id)
+                             expect_build_id=expect_build_id, flash=flash)
             with mock.patch.object(device, "HeldLock", FakeLock), \
                  mock.patch.object(device, "build_image", fake_build_image), \
                  mock.patch.object(device, "write_image", fake_write_image), \
@@ -1016,25 +1017,28 @@ class BatchTests(unittest.TestCase):
                 code = device.batch(args, mock.Mock(), BOARD)
                 summaries = list((Path(directory) / "rec").rglob("*_batch_*.md"))
                 summary = summaries[0].read_text(encoding="utf-8") if summaries else ""
-        return code, calls, summary
+                index = Path(directory) / "rec" / "index.jsonl"
+                manifest = [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines()] \
+                    if index.exists() else []
+        return code, calls, summary, manifest
 
     def test_one_lock_one_flash_for_every_capture(self):
-        code, calls, _ = self.run_batch(suites=("run_sand_perf_suite", "run_gfx_suite"), runs=3)
+        code, calls, _, _ = self.run_batch(suites=("run_sand_perf_suite", "run_gfx_suite"), runs=3)
         self.assertEqual(code, 0)
         self.assertEqual(calls["locks"], 1)
         self.assertEqual(len(calls["flash"]), 1)
         self.assertEqual(len(calls["run_suite"]), 6)
 
     def test_builds_before_the_lock_then_flashes_and_captures_under_it(self):
-        _, calls, _ = self.run_batch(runs=2)
+        _, calls, _, _ = self.run_batch(runs=2)
         self.assertEqual(calls["events"], ["build", "lock", "flash", "capture", "capture", "unlock"])
         self.assertEqual(calls["flash"][0][1], "built")
 
     def test_every_capture_runs_inside_the_batch_lock_on_the_flashed_build(self):
-        _, calls, _ = self.run_batch(runs=2)
+        _, calls, _, _ = self.run_batch(runs=2)
         batch_lock = calls["flash"][0][0]
         self.assertIsNotNone(batch_lock)
-        for suite, out, held_lock, expected, unused_worktree, unused_commit in calls["run_suite"]:
+        for suite, out, purpose, held_lock, expected, unused_worktree, unused_commit in calls["run_suite"]:
             self.assertIs(held_lock, batch_lock)
             self.assertEqual(expected, "abc123-diag")
 
@@ -1042,28 +1046,89 @@ class BatchTests(unittest.TestCase):
         """Each run-suite call must be told the batch's own --worktree and
         that worktree's HEAD, not the ambient cwd - see device.py's
         run_suite() docstring and the manifest bug this replaced."""
-        _, calls, _ = self.run_batch(runs=1)
-        for suite, out, unused_held_lock, unused_expected, worktree, commit in calls["run_suite"]:
+        _, calls, _, _ = self.run_batch(runs=1)
+        for suite, out, purpose, unused_held_lock, unused_expected, worktree, commit in calls["run_suite"]:
             self.assertEqual(worktree, calls["worktree"])
             self.assertEqual(commit, "c0ffee")
 
     def test_a_capture_error_is_recorded_and_the_batch_continues(self):
-        code, calls, summary = self.run_batch(runs=3, fail_run=2)
+        code, calls, summary, _ = self.run_batch(runs=3, fail_run=2)
         self.assertEqual(code, 1)
         self.assertEqual(len(calls["run_suite"]), 3)
         self.assertIn("- run 2: capture timed out", summary)
 
+    def test_no_flash_skips_the_build_and_flash_but_still_locks_and_captures(self):
+        code, calls, _, _ = self.run_batch(
+            suites=("run_sand_perf_suite", "run_gfx_suite"), runs=2, flash=False)
+        self.assertEqual(code, 0)
+        self.assertEqual(calls["locks"], 1)
+        self.assertEqual(calls["build"], [])
+        self.assertEqual(calls["flash"], [])
+        self.assertEqual(calls["events"], ["lock", "capture", "capture", "capture", "capture",
+                                           "unlock"])
+
+    def test_no_flash_passes_expect_build_id_straight_to_every_capture(self):
+        _, calls, _, _ = self.run_batch(runs=2, flash=False, expect_build_id="abc123-diag")
+        for suite, out, purpose, held_lock, expected, unused_worktree, unused_commit in calls["run_suite"]:
+            self.assertEqual(expected, "abc123-diag")
+
+    def test_no_flash_with_no_expect_build_id_checks_nothing(self):
+        _, calls, _, _ = self.run_batch(runs=1, flash=False)
+        self.assertIsNone(calls["run_suite"][0][4])
+
+    def test_perf_scope_without_flash_is_rejected(self):
+        with self.assertRaisesRegex(RuntimeError, "--perf-scope.*--flash"):
+            self.run_batch(flash=False, perf_scope=True)
+
+    def test_a_single_entry_skips_the_summary_file_and_its_manifest_row(self):
+        """One suite, one run: exactly what a bare `run-suite` would leave
+        behind - the summary and its own "batch" manifest row are for
+        telling several captures apart, and a lone capture has nothing to
+        tell apart."""
+        code, calls, summary, manifest = self.run_batch(
+            suites=("run_sand_perf_suite",), runs=1, flash=False)
+        self.assertEqual(code, 0)
+        self.assertEqual(summary, "")
+        self.assertNotIn("batch", [entry["command"] for entry in manifest])
+
+    def test_a_single_entry_names_its_capture_like_run_suite_would(self):
+        _, calls, _, _ = self.run_batch(suites=("run_sand_perf_suite",), runs=1, flash=False)
+        self.assertIsNone(calls["run_suite"][0][1])
+
+    def test_a_single_entry_with_out_still_uses_it_directly(self):
+        _, calls, _, _ = self.run_batch(
+            suites=("run_sand_perf_suite",), runs=1, flash=False, out=True)
+        self.assertTrue(calls["run_suite"][0][1].endswith("raw.txt"))
+
+    def test_a_single_entry_purpose_carries_no_run_suffix(self):
+        _, calls, _, _ = self.run_batch(suites=("run_sand_perf_suite",), runs=1, flash=False)
+        self.assertEqual(calls["run_suite"][0][2], "p")
+
+    def test_a_single_entry_skips_the_summary_even_with_flash(self):
+        code, calls, summary, manifest = self.run_batch(
+            suites=("run_sand_perf_suite",), runs=1, flash=True)
+        self.assertEqual(code, 0)
+        self.assertEqual(summary, "")
+        self.assertNotIn("batch", [entry["command"] for entry in manifest])
+
+    def test_several_entries_still_get_the_summary_and_manifest_row(self):
+        code, calls, summary, manifest = self.run_batch(
+            suites=("run_sand_perf_suite",), runs=2, flash=False)
+        self.assertEqual(code, 0)
+        self.assertNotEqual(summary, "")
+        self.assertIn("batch", [entry["command"] for entry in manifest])
+
     def test_writes_one_summary_for_the_batch(self):
-        _, _, summary = self.run_batch(runs=2)
+        _, _, summary, _ = self.run_batch(runs=2)
         self.assertIn("# Device Batch Report", summary)
         self.assertIn("- Build Id: `abc123-diag`", summary)
 
     def test_perf_scope_is_passed_to_the_build(self):
-        _, calls, _ = self.run_batch(perf_scope=True)
+        _, calls, _, _ = self.run_batch(perf_scope=True)
         self.assertEqual(calls["build"], [["--perf-scope"]])
 
     def test_out_is_used_for_one_suite_one_run(self):
-        _, calls, _ = self.run_batch(suites=("run_sand_perf_suite",), runs=1, out=True)
+        _, calls, _, _ = self.run_batch(suites=("run_sand_perf_suite",), runs=1, out=True)
         self.assertTrue(calls["run_suite"][0][1].endswith("raw.txt"))
 
     def test_out_with_more_than_one_run_is_refused(self):
@@ -1075,7 +1140,7 @@ class BatchTests(unittest.TestCase):
             self.run_batch(suites=("run_sand_perf_suite", "run_gfx_suite"), runs=1, out=True)
 
     def test_expect_build_id_matching_the_flash_runs_normally(self):
-        code, calls, _ = self.run_batch(runs=1, expect_build_id="abc123-diag")
+        code, calls, _, _ = self.run_batch(runs=1, expect_build_id="abc123-diag")
         self.assertEqual(code, 0)
         self.assertEqual(len(calls["run_suite"]), 1)
 
