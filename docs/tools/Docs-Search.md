@@ -85,7 +85,9 @@ One `llama-server` in router mode serves both models on `127.0.0.1:8765`
 (`AUTANA_LLAMA_PORT`). The first query starts it, it loads a model on first
 use and unloads it after ten idle minutes. `docs_llama.py status` shows what
 is installed and running; `docs_llama.py stop` ends the server it started and
-no other.
+no other. A GPU recognised as integrated is left out when another is present;
+llama.cpp's own `LLAMA_ARG_DEVICE`, set to names from `llama-server
+--list-devices`, chooses instead, from the next time the server starts.
 
 `--ask` passes the four best sections to the chat model with an instruction
 to answer from them alone and cite each claim. The source list names the

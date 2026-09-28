@@ -342,6 +342,43 @@ class Downloads(unittest.TestCase):
         fetch.assert_not_called()
 
 
+class Device(unittest.TestCase):
+    LAPTOP = ("Available devices:\n"
+              "  Vulkan0: AMD Radeon(TM) 610M (16268 MiB, 15455 MiB free)\n"
+              "  Vulkan1: NVIDIA GeForce RTX 5080 Laptop GPU (15915 MiB, 15147 MiB free)\n")
+
+    def listing(self, *names):
+        return "Available devices:\n" + "".join(f"  Vulkan{i}: {n} (8000 MiB)\n" for i, n in enumerate(names))
+
+    def test_a_recognised_integrated_gpu_is_left_out(self):
+        self.assertEqual(docs_llama.pick_devices(self.LAPTOP), "Vulkan1")
+        self.assertEqual(docs_llama.pick_devices(self.listing("NVIDIA GeForce RTX 4070", "Intel(R) UHD Graphics")), "Vulkan0")
+
+    def test_every_other_gpu_is_kept(self):
+        listing = self.listing("Intel(R) Iris(R) Xe Graphics", "NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 3090")
+        self.assertEqual(docs_llama.pick_devices(listing), "Vulkan1,Vulkan2")
+
+    def test_nothing_recognised_leaves_the_choice_to_the_server(self):
+        for listing in (self.listing("NVIDIA GeForce RTX 4070"),
+                        self.listing("Intel(R) Arc(TM) 140V GPU", "NVIDIA GeForce RTX 4070"),
+                        self.listing("Intel(R) UHD Graphics", "AMD Radeon(TM) Graphics")):
+            self.assertIsNone(docs_llama.pick_devices(listing), listing)
+
+    def test_llama_cpps_own_setting_wins(self):
+        with mock.patch.dict(os.environ, {"LLAMA_ARG_DEVICE": "Vulkan0"}), \
+                mock.patch("subprocess.run") as run:
+            self.assertIsNone(docs_llama.devices())
+        run.assert_not_called()
+
+    def test_the_preset_names_the_devices_only_when_there_is_a_choice(self):
+        home = tempfile.mkdtemp()
+        with mock.patch.dict(os.environ, {"AUTANA_LLAMA_HOME": home}):
+            with mock.patch.object(docs_llama, "devices", return_value="Vulkan1"):
+                self.assertIn("device = Vulkan1", docs_llama.write_preset().read_text(encoding="utf-8"))
+            with mock.patch.object(docs_llama, "devices", return_value=None):
+                self.assertNotIn("device", docs_llama.write_preset().read_text(encoding="utf-8"))
+
+
 class Stop(unittest.TestCase):
     def setUp(self):
         home = tempfile.mkdtemp()
