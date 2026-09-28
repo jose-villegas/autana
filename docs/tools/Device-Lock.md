@@ -239,11 +239,12 @@ way. The wire protocol and the BMP-to-PNG decoder live in
 `launcher/tools/device/screenshot.py`, imported as a library - it opens no
 port itself.
 
-### Measuring: use `batch`, not a sequence of commands
+### Measuring: use `suite --flash`, not a sequence of commands
 
-A measurement is `batch`: it builds once, then takes the lock once, flashes
-once, captures every suite `--runs` times, and writes one summary across all runs.
-`autana batch` calls it the same way ([Autana-CLI.md](Autana-CLI.md)):
+A measurement holds one lock across a flash and every capture: builds once, then
+takes the lock once, flashes once, captures every suite `--runs` times, and writes
+one summary across all runs. `autana suite <suite>... --runs N --flash` calls it
+the same way ([Autana-CLI.md](Autana-CLI.md)); `autana batch` is its old spelling.
 
 ```powershell
 python scripts/device/device.py --owner sam batch --worktree C:\path\to\engine --suite run_boot_anim_perf_suite --suite run_gfx_suite --runs 3
@@ -318,7 +319,7 @@ waiter's is discarded); `<serial>.human.json` is a person's reservation.
 
 `device.py --owner <owner> release --token <token>` releases a lock this
 owner holds without touching the board - for a run that finished early and
-wants to hand the board to the next waiter now. `autana release <token>`
+wants to hand the board to the next waiter now. `autana lock release <token>`
 calls it the same way. For inspection or emergency recovery, the lower-level
 command takes the board's serial number:
 
@@ -333,7 +334,7 @@ The acquire result prints the token as JSON. Releasing requires that token, so
 one owner cannot release another owner's active lock.
 
 To reserve the board for a person, record the reservation before using it -
-`autana hand <note>`, or `hand-to-human` directly with an active lock's own
+`autana lock hand <note>`, or `hand-to-human` directly with an active lock's own
 token:
 
 ```powershell
@@ -342,8 +343,8 @@ python scripts/device/device.py --owner maintainer hand-to-human --token <token>
 
 When a session holds the board, its token releases that lock before the
 reservation is recorded; without an active lock, omit `--token` (what
-`autana hand` always does). The reservation appears in `status` and blocks
-every acquisition until it is cleared - `autana take-back`, or
+`autana lock hand` always does). The reservation appears in `status` and blocks
+every acquisition until it is cleared - `autana lock take-back`, or
 `device.py --owner maintainer take-back`, which prints the board's status
 after. `device_lock.py --board <serial> clear-human` does the same for
 recovery.
@@ -371,7 +372,7 @@ timed out hook is quiet and never changes the lock operation's outcome.
 | `human-cleared` | A human reservation is cleared. |
 | `lost` | A stale lock is reclaimed; owner and purpose identify its former holder, and note gives the reclaim reason. |
 
-`autana hand --wait <seconds> <note...>` waits without holding the device
+`autana lock hand --wait <seconds> <note...>` waits without holding the device
 lock; `human-reserved` fires when the reservation is recorded and
 `human-cleared` when it is released. Release returns 0, timeout or Ctrl+C
 returns 3, and a replacement reservation returns 4 without clearing it.

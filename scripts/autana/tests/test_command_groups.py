@@ -56,16 +56,33 @@ class CommandGroupTests(unittest.TestCase):
         self.assertIn("no command or group", autana.help_text(["nope"]))
 
     def test_session_help_drops_the_prefix(self):
-        self.assertIn("\n  freeze ", autana.help_text(["frames"], prefix=""))
+        self.assertIn("\n  debug freeze", autana.help_text(["debug"], prefix=""))
 
-    def test_autana_help_prints_the_groups(self):
+    def test_autana_help_prints_the_groups_but_not_a_hidden_one(self):
         stream = io.StringIO()
         with contextlib.redirect_stdout(stream), \
                 mock.patch.object(sys, "argv", ["autana", "help"]), \
                 self.assertRaises(SystemExit):
             autana.main()
-        for _, title, _ in autana.COMMAND_GROUPS:
-            self.assertIn(title, stream.getvalue())
+        text = stream.getvalue()
+        for key, title, _ in autana.COMMAND_GROUPS:
+            if key in autana.HIDDEN_GROUPS:
+                self.assertNotIn(title, text)
+            else:
+                self.assertIn(title, text)
+
+    def test_a_hidden_group_still_shows_in_full_when_asked_by_name(self):
+        for key in autana.HIDDEN_GROUPS:
+            title = next(title for k, title, _ in autana.COMMAND_GROUPS if k == key)
+            self.assertNotIn(title, autana.help_text([]))
+            self.assertIn(title, autana.help_text([key]))
+
+    def test_the_quickstart_leads_the_bare_help(self):
+        text = autana.help_text([])
+        self.assertTrue(text.startswith("Most used"))
+        for synopsis, _ in autana.QUICKSTART:
+            self.assertIn(f"autana {synopsis}", text)
+        self.assertLess(text.index("Most used"), text.index("Build and flash"))
 
     def test_help_topics_complete(self):
         self.assertEqual(autana.completion_candidates("help te", "te"), ["tests"])
@@ -77,9 +94,9 @@ class CommandGroupTests(unittest.TestCase):
         flag_names = [flag.split()[0] for flag, _, _ in autana.BOARD_FLAGS]
         for _, _, commands in autana.COMMAND_GROUPS:
             for command in commands:
-                if command.name == "hand":
-                    continue  # its own --wait means something else - see hand()'s docstring
                 for synopsis, _ in command.usages:
+                    if synopsis.startswith("lock hand"):
+                        continue  # its own --wait means something else - see hand()'s docstring
                     words = re.split(r"[\s\[\]]+", synopsis)
                     for flag_name in flag_names:
                         self.assertNotIn(flag_name, words, f"{command.name}: {synopsis}")
