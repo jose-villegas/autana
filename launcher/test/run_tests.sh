@@ -118,6 +118,7 @@ $MAIN_DIR/ui/ui_build.c
 $MAIN_DIR/ui/ui_canvas_marks.c
 $MAIN_DIR/ui/ui_launcher_draw.c
 $MAIN_DIR/ui/ui_pointer.c
+$MAIN_DIR/ui/ui_snap.c
 $MAIN_DIR/ui/ui_scroll.c
 $MAIN_DIR/ui/ui_widgets.c
 $MAIN_DIR/gfx/gfx_palette_standard.c

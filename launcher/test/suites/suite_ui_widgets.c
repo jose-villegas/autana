@@ -96,6 +96,31 @@ test_a_disabled_button_takes_no_tap(void) {
 }
 
 static void
+test_a_reachable_touch_outside_a_button_submits_it(void) {
+    const widget_t w = {.enabled = true};
+    for (int turn = 0; turn <= 1; turn++) {
+        fixture();
+        const ui_transform_t transform = ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT);
+        ui_set_transform(transform);
+        int x, y;
+        ui_transform_point(transform, BUTTON.x - 20, BUTTON.y + BUTTON.h / 2, &x, &y);
+        const input_t idle = {0};
+        const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
+        const input_t hold = {.down = true, .x = x, .y = y};
+        const input_t release = {.released = true, .x = x, .y = y};
+
+        widget_frame(&w, &idle);
+        widget_frame(&w, &idle);
+        bool hit = widget_frame(&w, &press);
+        for (int i = 0; i < 4; i++) {
+            hit |= widget_frame(&w, &hold);
+        }
+        hit |= widget_frame(&w, &release);
+        TEST_ASSERT_TRUE_MESSAGE(hit, turn == 0 ? "portrait reachable touch" : "landscape reachable touch");
+    }
+}
+
+static void
 test_an_icon_leaves_less_room_for_the_label(void) {
     const int bare = ui_icon_button_label_width(200, false, &THEME);
     const int with_icon = ui_icon_button_label_width(200, true, &THEME);
@@ -688,7 +713,7 @@ test_a_press_that_slides_onto_a_button_from_off_it_is_not_a_click(void) {
 
     const int bx = BUTTON.x + BUTTON.w / 2;
     const int by = BUTTON.y + BUTTON.h / 2;
-    const int off_x = BUTTON.x - 40;
+    const int off_x = BUTTON.x - 60;
 
     const input_t press_off = {.down = true, .pressed = true, .x = off_x, .y = by};
     const input_t hold_off = {.down = true, .x = off_x, .y = by};
@@ -798,6 +823,7 @@ void
 run_ui_widgets_suite(void) {
     RUN_TEST(test_an_enabled_button_reports_a_tap);
     RUN_TEST(test_a_disabled_button_takes_no_tap);
+    RUN_TEST(test_a_reachable_touch_outside_a_button_submits_it);
     RUN_TEST(test_an_icon_leaves_less_room_for_the_label);
     RUN_TEST(test_text_aligns_to_either_edge_or_the_centre);
     RUN_TEST(test_a_list_goes_below_its_dropdown_when_it_fits);

@@ -82,6 +82,10 @@ mu_Context* ui_context(void);
  * bezel would leave the running app's own overlay buttons bezelled too. */
 void ui_begin(const input_t* input);
 
+/* Records a control drawn this frame. At most UI_SNAP_RECTS_MAX
+ * controls are retained; later controls still draw but are not snap targets. */
+void ui_record_control_rect(mu_Rect rect);
+
 /* Choose how button frames are drawn for the rest of this frame.
  *
  * Call it after ui_begin() and before the buttons it should apply to; it can

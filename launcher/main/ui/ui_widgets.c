@@ -63,6 +63,7 @@ typedef struct {
 static control_t
 begin_control(mu_Context* ctx, const char* id, mu_Rect r, bool enabled, bool selected, const ui_theme_t* theme) {
     control_t c = {0};
+    ui_record_control_rect(r);
     if (enabled) {
         const mu_Id mid = mu_get_id(ctx, id, (int)strlen(id));
         mu_update_control(ctx, mid, r, 0);
@@ -123,6 +124,7 @@ ui_theme_slider_int(mu_Context* ctx, mu_Rect r, int* value, int lo, int hi, int 
     colors[MU_COLOR_BUTTONFOCUS] = theme->accent_face;
 
     mu_layout_set_next(ctx, r, 0);
+    ui_record_control_rect(r);
     const bool changed = ui_slider_int(ctx, value, lo, hi, step);
 
     colors[MU_COLOR_BASE] = base;

@@ -31,7 +31,9 @@ static const char* TAG = "ui";
 #include "ui/ui_internal.h"
 #include "ui/ui_pointer.h"
 #include "ui/ui_slider.h"
+#include "ui/ui_snap.h"
 #include "ui/ui_widgets.h"
+#include "util/tune.h"
 
 /* Definitions for the externs ui_internal.h declares - see that header for
  * what each one is shared for. */
@@ -43,6 +45,13 @@ uint64_t ui_canvas_hash[MU_CONTAINERPOOL_SIZE];
 ui_canvas_marks_t ui_canvas_marks;
 
 static ui_button_style_t button_style;
+TUNE_OWNER(snap);
+TUNE(snap, reach, 40, 0, 120);
+
+static mu_Rect snap_rects[UI_SNAP_RECTS_MAX];
+static int snap_rect_count;
+static mu_Vec2 snapped_down;
+static bool snapped_down_active;
 /* The style in force for the rest of this frame, and microui's own frame
  * painter, kept so UI_BUTTON_FLAT and every non-button frame stay exactly
  * what upstream draws. Captured from the context rather than
@@ -263,6 +272,8 @@ ui_init(void) {
     ui_text_style = UI_TEXT_PLAIN;
     transform = ui_transform_identity();
     transform_valid = true;
+    snap_rect_count = 0;
+    snapped_down_active = false;
     /* Explicit, not left to a zeroed static's implicit value - see
      * ui_layout_generation()'s comment in ui.h. 0 is simply the first value
      * a monotonic counter can have; nothing reads meaning into it beyond
@@ -334,10 +345,44 @@ static void
 feed_input(const input_t* input) {
     input_t logical = *input;
     ui_to_logical(input->x, input->y, &logical.x, &logical.y);
+    if (logical.pressed) {
+        snapped_down = ui_snap_point(snap_rects, snap_rect_count, mu_vec2(logical.x, logical.y), reach);
+        snapped_down_active = true;
+    }
     ui_pointer_event_t events[UI_POINTER_MAX_EVENTS];
     const int n = ui_pointer_step(&ui_pointer_state, &logical, events, UI_POINTER_MAX_EVENTS);
     for (int i = 0; i < n; i++) {
+        if (events[i].kind == UI_POINTER_MOVE && snapped_down_active) {
+            events[i].x = snapped_down.x;
+            events[i].y = snapped_down.y;
+        } else if (events[i].kind == UI_POINTER_DOWN) {
+            if (!snapped_down_active) {
+                snapped_down = ui_snap_point(snap_rects, snap_rect_count, mu_vec2(events[i].x, events[i].y), reach);
+                snapped_down_active = true;
+            }
+            if (i > 0 && events[i - 1].kind == UI_POINTER_MOVE) {
+                events[i - 1].x = snapped_down.x;
+                events[i - 1].y = snapped_down.y;
+            }
+            events[i].x = snapped_down.x;
+            events[i].y = snapped_down.y;
+        } else if (events[i].kind == UI_POINTER_UP && snapped_down_active) {
+            events[i].x = snapped_down.x;
+            events[i].y = snapped_down.y;
+            snapped_down_active = false;
+        } else if (events[i].kind == UI_POINTER_SCROLL) {
+            snapped_down_active = false;
+        }
+    }
+    for (int i = 0; i < n; i++) {
         replay_pointer_event(&events[i]);
+    }
+}
+
+void
+ui_record_control_rect(mu_Rect rect) {
+    if (snap_rect_count < UI_SNAP_RECTS_MAX) {
+        snap_rects[snap_rect_count++] = rect;
     }
 }
 
@@ -347,6 +392,7 @@ ui_begin(const input_t* input) {
      * not persist across frames. */
     button_style = UI_BUTTON_FLAT;
     feed_input(input);
+    snap_rect_count = 0;
     mu_begin(&ui_ctx);
 }
 
