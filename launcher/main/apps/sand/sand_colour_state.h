@@ -25,7 +25,7 @@ typedef enum {
 
 typedef enum {
     SAND_GFX_NONE,          /* no gfx_mode_enter()/exit() call needed */
-    SAND_GFX_ENTER_INDEXED, /* call gfx_mode_enter() with GFX_PIXFMT_INDEXED8 */
+    SAND_GFX_ENTER_INDEXED, /* call gfx_mode_enter() with GFX_LAYOUT_INDEXED */
     SAND_GFX_EXIT_TO_FULL,  /* call gfx_mode_exit() */
 } sand_gfx_action_t;
 
@@ -73,7 +73,7 @@ sand_colour_on_enter_menu(sand_colour_state_t* st) {
 }
 
 /* Leaving the app entirely (home swipe) - the same requirement as reaching
- * the menu: whatever ran next assumes GFX_LAYOUT_FULL_FB/RGB565. */
+ * the menu: whatever runs next assumes GFX_LAYOUT_FULL_FB. */
 static inline sand_gfx_action_t
 sand_colour_on_exit_app(sand_colour_state_t* st) {
     return sand_colour_on_enter_menu(st);

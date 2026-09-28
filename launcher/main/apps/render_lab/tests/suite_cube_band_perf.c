@@ -224,7 +224,7 @@ band_frame(uint32_t dt_ms) {
 
         if (run_fps_on) {
             const int64_t replay_start = esp_timer_get_time();
-            ui_replay_band(row0, row0 + height);
+            ui_replay_band(row0, row0 + height, buf);
             replay_us_accum += esp_timer_get_time() - replay_start;
             replay_band_count++;
         }

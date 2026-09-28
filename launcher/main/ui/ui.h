@@ -32,6 +32,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "gfx/gfx_color.h"
 #include "gfx/gfx_font.h"
 #include "gfx/icon.h"
 #include "input/input.h"
@@ -232,7 +233,7 @@ void ui_end_for_bands(uint32_t background_rgb);
  * call once per band, into gfx's current band draw target, after the
  * app's own band content. Commands replay in the same back-to-front,
  * within-canvas order ui_end() itself would paint them in. */
-void ui_replay_band(int row0, int row1);
+void ui_replay_band(int row0, int row1, gfx_color_t* target);
 
 /* Queues a plain opaque rect for the NEXT ui_end_for_bands() call to bin
  * alongside its own microui commands - for pixels to show in band mode

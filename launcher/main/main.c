@@ -350,76 +350,10 @@ shell_request_exit(void) {
 
 static void present_unless_deferred(const app_t* current);
 
-static void
-band_frame_begin(void* context) {
-    (void)context;
-    gfx_band_frame_begin();
-}
-
-static bool
-band_next(void* context) {
-    (void)context;
-    return gfx_band_next();
-}
-
-static bool
-band_dirty(void* context) {
-    (void)context;
-    return gfx_band_dirty();
-}
-
-static int
-band_row0(void* context) {
-    (void)context;
-    return gfx_band_row0();
-}
-
-static int
-band_height(void* context) {
-    (void)context;
-    return gfx_band_height();
-}
-
-static gfx_color_t*
-band_buffer(void* context) {
-    (void)context;
-    return gfx_band_buffer();
-}
-
-static void
-band_replay(void* context, int row0, int row1) {
-    (void)context;
-    ui_replay_band(row0, row1);
-}
-
-static void
-band_submit(void* context) {
-    (void)context;
-    gfx_band_submit();
-}
-
-static void
-band_skip(void* context) {
-    (void)context;
-    gfx_band_skip();
-}
-
-static const gfx_band_run_t band_run = {
-    .frame_begin = band_frame_begin,
-    .next = band_next,
-    .dirty = band_dirty,
-    .row0 = band_row0,
-    .height = band_height,
-    .buffer = band_buffer,
-    .replay = band_replay,
-    .submit = band_submit,
-    .skip = band_skip,
-};
-
 static bool
 app_band_active(const app_t* app) {
     const gfx_mode_t* mode = gfx_mode_current();
-    return app->draw_band != NULL && mode->layout == GFX_LAYOUT_BANDS && mode->pixfmt == GFX_PIXFMT_RGB565;
+    return app->draw_band != NULL && mode->layout == GFX_LAYOUT_BANDS;
 }
 
 /* The app half of gfx_request_full_redraw() (gfx.h): an app's own cache
@@ -571,7 +505,7 @@ step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
             current->update(dt_ms, input);
         }
         current->frame(dt_ms, input);
-        gfx_band_run(&band_run, NULL, current->draw_band);
+        gfx_band_run(current->draw_band, ui_replay_band);
         frame_ready = true;
         return;
     }
@@ -624,7 +558,7 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
     /* The band loop follows frame(), so queue the hint before the app builds
      * the UI commands it will replay. The trailing draw_home_hint() covers
      * every full-frame app unchanged. */
-    if ((*current)->home_gesture && gfx_mode_current()->layout == GFX_LAYOUT_BANDS) {
+    if ((*current)->home_gesture && app_band_active(*current)) {
         queue_home_hint(exit_edge);
     }
 

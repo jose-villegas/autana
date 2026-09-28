@@ -3,7 +3,7 @@
  * as a standalone, ESP-IDF-free module so a host suite can drive it
  * without a framebuffer or a panel.
  *
- * GFX_PIXFMT_INDEXED8 (gfx_mode.h) keeps an index image in internal RAM
+ * GFX_LAYOUT_INDEXED (gfx_mode.h) keeps an index image in internal RAM
  * instead of an RGB565 band: one byte per grid cell, not per panel pixel.
  * The present task is what turns that back into pixels, once per dirty
  * band, by calling the functions here - a LUT lookup per cell plus a
@@ -127,7 +127,7 @@ gfx_indexed_dither16_classify(const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE
  * further quantizing to exploit); by dither CLASS when it is true (16
  * mode) - see gfx_indexed_dither16_classify()'s own comment for why that
  * is exact, not an approximation. The one decision an indexed-mode row
- * painter makes per cell under GFX_PIXFMT_INDEXED8. */
+ * painter makes per cell under GFX_LAYOUT_INDEXED. */
 static inline bool
 gfx_indexed_cell_changed(uint8_t old_idx, uint8_t new_idx, bool dither16_on,
                          const uint8_t dither_class[GFX_INDEXED_PALETTE_SIZE]) {

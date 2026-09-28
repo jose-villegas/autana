@@ -319,7 +319,7 @@ the dirty sends. A border is on the panel for exactly the present that sent
 it; the cost is up to one extra full strip per bordered row per present,
 paid only while an overlay is on (and once more after it is switched off).
 
-`GFX_PIXFMT_INDEXED8` carries both layers too: `run_present_indexed()` sends
+`GFX_LAYOUT_INDEXED` carries both layers too: `run_present_indexed()` sends
 whole dirty strips, but its marking still goes through `dirty_mark()`, so the
 leaves are real. `send_indexed_rows()` draws the borders into the expanded
 bounce slot - a disposable copy, nothing to restore - and the same clean

@@ -1504,7 +1504,7 @@ draw_readback_band_frame(int skip_row0) {
 
 static const gfx_mode_t*
 enter_rgb565_band_mode(void) {
-    const gfx_mode_request_t request = {.layout = GFX_LAYOUT_BANDS, .pixfmt = GFX_PIXFMT_RGB565};
+    const gfx_mode_request_t request = {.layout = GFX_LAYOUT_BANDS};
     return gfx_mode_enter(&request);
 }
 

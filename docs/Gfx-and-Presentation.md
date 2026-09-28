@@ -20,10 +20,11 @@ flowchart TB
     DRAW["gfx_* draw calls<br/>or direct writes"] --> TGT["gfx_target.h<br/>clip + translate"]
     TGT --> SEL{"gfx_mode_current()"}
     SEL -->|"GFX_LAYOUT_FULL_FB"| FB["framebuffer<br/>368 x 448 RGB565, PSRAM"]
-    SEL -->|"GFX_LAYOUT_BANDS + RGB565"| BR["2-slot band ring<br/>internal DMA RAM"]
-    SEL -->|"GFX_LAYOUT_BANDS + INDEXED8"| IX["index image<br/>internal RAM"]
+    SEL -->|"GFX_LAYOUT_BANDS"| BR["2-slot band ring<br/>internal DMA RAM"]
+    SEL -->|"GFX_LAYOUT_INDEXED"| IX["index image<br/>internal RAM"]
     DRAW -.->|"marks"| DT["gfx_dirty.h<br/>7 x 4 cell grid + leaves"]
     FB --> PT["present task, core 1"]
+    BR --> BP["gfx sends bands"]
     IX -->|"LUT expand"| PT
     DT --> PT
     PT -->|"copy"| BNC["strip_bounce / gather_buf<br/>internal DMA RAM"]
@@ -42,7 +43,7 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 
 | | Full framebuffer | Band ring | Indexed |
 |---|---|---|---|
-| Request | the default | `GFX_LAYOUT_BANDS` | `GFX_LAYOUT_BANDS` + `GFX_PIXFMT_INDEXED8` |
+| Request | the default | `GFX_LAYOUT_BANDS` | `GFX_LAYOUT_INDEXED` |
 | App writes | pixels, anywhere | pixels, one band at a time | palette indices, `gfx_indexed_image()` |
 | Buffer | 322 KiB, PSRAM | 2 x `GFX_BAND_HEIGHT` rows, DMA RAM | grid_w x grid_h bytes, internal RAM |
 | Who sends | present task | gfx, from the shell's frame loop | present task |
@@ -164,27 +165,31 @@ The wait is mandatory: DMA is still reading the buffer until it returns.
 
 ## The band ring
 
-An app opts in by requesting `GFX_LAYOUT_BANDS` in `enter()` and supplying
-`app_t.draw_band()`. The shell asks gfx for each band, calls the app only for
-dirty rows, replays the UI over those rows, then submits the finished band.
-An app without `draw_band()` keeps its existing presentation path.
+A picture is either **persistent** - a framebuffer or index image read by gfx
+on core 1 after `frame()` - or **transient** - an app's `draw_band()` callback,
+called for each dirty band. gfx owns every send. A transient app requests
+`GFX_LAYOUT_BANDS` in `enter()` and supplies `draw_band()`; gfx calls it only
+for dirty rows, replays the UI over those rows, then submits the finished band.
+An app without `draw_band()` keeps its persistent presentation path.
 
 Two slots, so band k+1 renders while band k is on the wire:
 
 ```mermaid
 sequenceDiagram
     participant S as shell
+    participant G as gfx
     participant A as app draw_band()
     participant S0 as slot 0
     participant S1 as slot 1
     participant Q as QSPI
-    S->>A: draw band 0
+    S->>G: gfx_band_run()
+    G->>A: draw band 0
     A->>S0: fill rows
-    S->>Q: replay UI, submit band 0
-    S->>A: draw band 1
+    G->>Q: replay UI, submit band 0
+    G->>A: draw band 1
     A->>S1: fill rows
-    Note over S,Q: wait for band 0 to land
-    S->>Q: replay UI, submit band 1
+    Note over G,Q: wait for band 0 to land
+    G->>Q: replay UI, submit band 1
 ```
 
 - `gfx_band_submit()` waits only for the *previous* band, never the one it

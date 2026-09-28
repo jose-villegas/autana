@@ -2104,7 +2104,7 @@ render_scene(const char* dir, int si, FILE* f, gfx_color_t* fb, uint8_t* grp) {
  *
  * sand_palette256.h: the 256-colour LUT (UI block 0-15, palette[] 16-255),
  * the shared 16-colour LUT, and one dither choice per 256-entry - the
- * device's GFX_PIXFMT_INDEXED8 path never recomputes any of this. Emitted
+ * device's GFX_LAYOUT_INDEXED path never recomputes any of this. Emitted
  * straight from the same build_palette()/ega_build() output the report
  * above is built from, not re-derived from mapping.csv, so the two cannot
  * drift apart.

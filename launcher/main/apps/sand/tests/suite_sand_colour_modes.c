@@ -262,7 +262,7 @@ dither_table_for(gfx_dither_mode_t mode) {
     }
 }
 
-/* Enters GFX_PIXFMT_INDEXED8 and resolves the repaint kind/class/cell
+/* Enters GFX_LAYOUT_INDEXED and resolves the repaint kind/class/cell
  * table for `mode`/`dither_mode`, mirroring app_sand.c's own
  * apply_gfx_enter_indexed() - resolved once here, never re-derived per
  * cell. The three class-table buffers are the caller's, each sized
@@ -272,14 +272,13 @@ measure_mode_enter_indexed(colour_mode_t mode, gfx_dither_mode_t dither_mode, ui
                            uint8_t* dither16_class, uint8_t* checker2_class, const uint8_t** class_table,
                            const gfx_color_t** cell_table) {
     gfx_mode_request_t req = {0};
-    req.layout = GFX_LAYOUT_BANDS;
+    req.layout = GFX_LAYOUT_INDEXED;
     req.resolution = GFX_RESOLUTION_FULL;
-    req.pixfmt = GFX_PIXFMT_INDEXED8;
     req.index_grid_w = CM_GRID_W;
     req.index_grid_h = CM_GRID_H;
     req.cell_size = CM_CELL;
     const gfx_mode_t* granted = gfx_mode_enter(&req);
-    TEST_ASSERT_TRUE_MESSAGE(granted->layout == GFX_LAYOUT_BANDS, "GFX_PIXFMT_INDEXED8 could not be granted");
+    TEST_ASSERT_TRUE_MESSAGE(granted->layout == GFX_LAYOUT_INDEXED, "GFX_LAYOUT_INDEXED could not be granted");
     memset(gfx_indexed_image(), 0, (size_t)CM_GRID_W * CM_GRID_H);
     gfx_indexed_set_lut(sand_palette256_lut);
     gfx_indexed_set_dither16(mode == CM_MODE_16);

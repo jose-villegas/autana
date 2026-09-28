@@ -141,7 +141,7 @@ run_band_frame(wire_totals_t* t, uint32_t dt_ms) {
         wire_draw_band(buf, row0, row0 + height);
         t->draw_us += esp_timer_get_time() - d0;
 
-        ui_replay_band(row0, row0 + height);
+        ui_replay_band(row0, row0 + height, buf);
         gfx_band_submit();
     }
 
