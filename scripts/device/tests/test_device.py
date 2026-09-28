@@ -344,7 +344,7 @@ class DeviceTests(unittest.TestCase):
     def test_capture_rejects_run_suite_when_build_has_no_suites(self):
         connection = FakeConnection([b"shell: ignoring line: 'RUNSUITE sand'\n"])
         with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaisesRegex(RuntimeError, "no test suites.*flash --variant diag"):
+            with self.assertRaisesRegex(RuntimeError, "no test suites.*autana flash diag"):
                 device.capture(connection, Path(directory) / "capture.log", 1, None,
                                suite_name="sand")
 
@@ -960,7 +960,7 @@ class BatchTests(unittest.TestCase):
 
     def run_batch(self, suites=("run_sand_perf_suite",), runs=3, fail_run=None,
                   perf_scope=False, script_text="--diag --dev --perf-scope", out=False,
-                  expect_build_id=None, flashed_build_id="abc123-diag"):
+                  expect_build_id=None, flashed_build_id="abc123-diag", flash=True):
         calls = {"locks": 0, "build": [], "flash": [], "run_suite": [], "events": []}
 
         class FakeLock:
@@ -1005,7 +1005,7 @@ class BatchTests(unittest.TestCase):
             args = Namespace(owner="agent", purpose="p", wait=0, worktree=str(worktree),
                              variant="diag", suite=list(suites), runs=runs, perf_scope=perf_scope,
                              max_seconds=1, idle_seconds=None, out=out_path,
-                             expect_build_id=expect_build_id)
+                             expect_build_id=expect_build_id, flash=flash)
             with mock.patch.object(device, "HeldLock", FakeLock), \
                  mock.patch.object(device, "build_image", fake_build_image), \
                  mock.patch.object(device, "write_image", fake_write_image), \
@@ -1052,6 +1052,29 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(len(calls["run_suite"]), 3)
         self.assertIn("- run 2: capture timed out", summary)
+
+    def test_no_flash_skips_the_build_and_flash_but_still_locks_and_captures(self):
+        code, calls, _ = self.run_batch(
+            suites=("run_sand_perf_suite", "run_gfx_suite"), runs=2, flash=False)
+        self.assertEqual(code, 0)
+        self.assertEqual(calls["locks"], 1)
+        self.assertEqual(calls["build"], [])
+        self.assertEqual(calls["flash"], [])
+        self.assertEqual(calls["events"], ["lock", "capture", "capture", "capture", "capture",
+                                           "unlock"])
+
+    def test_no_flash_passes_expect_build_id_straight_to_every_capture(self):
+        _, calls, _ = self.run_batch(runs=2, flash=False, expect_build_id="abc123-diag")
+        for suite, out, held_lock, expected, unused_worktree, unused_commit in calls["run_suite"]:
+            self.assertEqual(expected, "abc123-diag")
+
+    def test_no_flash_with_no_expect_build_id_checks_nothing(self):
+        _, calls, _ = self.run_batch(runs=1, flash=False)
+        self.assertIsNone(calls["run_suite"][0][3])
+
+    def test_perf_scope_without_flash_is_rejected(self):
+        with self.assertRaisesRegex(RuntimeError, "--perf-scope.*--flash"):
+            self.run_batch(flash=False, perf_scope=True)
 
     def test_writes_one_summary_for_the_batch(self):
         _, _, summary = self.run_batch(runs=2)

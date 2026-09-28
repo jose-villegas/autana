@@ -520,7 +520,8 @@ class FlashTests(Store):
         worktree = fake_flash.worktree(self.root / "engine")
         batch = Namespace(owner="agent", purpose="p", wait=0, worktree=str(worktree),
                           variant="diag", suite=["run_gfx_suite"], runs=1, perf_scope=False,
-                          max_seconds=5, idle_seconds=None, out=None, expect_build_id=None)
+                          flash=True, max_seconds=5, idle_seconds=None, out=None,
+                          expect_build_id=None)
         selftest = Namespace(owner="agent", purpose="p", wait=0, worktree=str(worktree), out=None,
                              perf_scope=False, max_seconds=5, idle_seconds=None)
         with self.scripts(write=silent_write), \
@@ -1353,7 +1354,7 @@ class SuiteFailureTests(Store):
 
     def test_batch(self):
         args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
-                         suite=["sand"], runs=2, perf_scope=False, max_seconds=5,
+                         suite=["sand"], runs=2, perf_scope=False, flash=True, max_seconds=5,
                          idle_seconds=None, out=None, expect_build_id=None)
         with mock.patch.object(device, "build_image"), \
                 mock.patch.object(device, "write_image", return_value="abc"), \
@@ -1370,7 +1371,7 @@ class SuiteFailureTests(Store):
 
     def test_a_batch_capture_that_breaks_is_an_error(self):
         args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
-                         suite=["sand"], runs=1, perf_scope=False, max_seconds=5,
+                         suite=["sand"], runs=1, perf_scope=False, flash=True, max_seconds=5,
                          idle_seconds=None, out=None, expect_build_id=None)
         with mock.patch.object(device, "build_image"), \
                 mock.patch.object(device, "write_image", return_value="abc"), \
