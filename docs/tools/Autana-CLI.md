@@ -79,17 +79,20 @@ suite this worktree registers, for a full pre-merge pass.
 
 | Command | What it does |
 |---|---|
-| `autana suite <name>... [--runs N] [--flash] [--verbose]` | Run one or more registered suites under one lock, `N` times each (1 when omitted). Without `--flash`: against the image already on the board - `autana suite <name>` against a non-diagnostics image says so plainly and names the fix (`autana flash diag`). With `--flash`: build and flash the diagnostics image first, so nobody else can flash between two captures - what `autana batch` (below) once did on its own. |
+| `autana suite <name>... [seconds] [--runs N] [--flash] [--verbose]` | Run one or more registered suites under one lock, `N` times each (1 when omitted), `seconds` capping the whole run (600 s when omitted). Without `--flash`: against the image already on the board - `autana suite <name>` against a non-diagnostics image says so plainly and names the fix (`autana flash diag`). With `--flash`: build and flash the diagnostics image first, so nobody else can flash between two captures. |
 | `autana suite list [text] [--json]` | The suites this worktree registers; `[on request]` ones run only by name. |
 | `autana selftest [seconds] [--verbose]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
 
 Each prints the report and capture paths, PASS/FAIL counts, up to ten failure
 messages (then a FAIL count per suite) and the end reason. `--verbose`
 prints the whole capture; to find something in it, grep the capture instead.
+One suite run once - `autana suite <name>` with no `--runs` or `--flash` -
+still produces exactly one capture and one report, the same as before this
+command absorbed `batch`.
 
 `autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` still works -
 the old spelling of `autana suite <suite>... --runs N --perf-scope --verbose
---flash` (`--runs 3` when omitted, matching `batch`'s old default). It prints
+--flash` (`--runs` defaults to 3 here, `suite`'s own default is 1). It prints
 one line naming the new form, then runs it.
 
 ## Watch the board
