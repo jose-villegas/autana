@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "build_variant.h"
+#include "util/frame_watch.h"
 
 #ifdef ESP_PLATFORM
 #include "esp_heap_caps.h"
@@ -86,6 +87,9 @@ job_bring_up(void) {
                                       JOB_CORE1_PRIORITY, job_stack, &job_task_tcb, JOB_CORE1);
     job_ready = (job_task_handle != NULL);
     job_unavailable = !job_ready;
+    if (job_ready) {
+        frame_watch_add_task(job_task_handle);
+    }
     return job_ready;
 #endif
 }

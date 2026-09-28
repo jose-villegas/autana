@@ -13,6 +13,8 @@
 #include "console/console_verbs.h"
 
 #include "console/device_state.h"
+#include "util/frame_watch.h"
+#include "util/json_splice.h"
 #include "util/screenshot.h"
 
 #include "esp_heap_caps.h"
@@ -61,38 +63,25 @@ static char* row_b64; /* +1: NUL, for printf("%s") */
  * a diagnostic path, not one worth re-deriving an exact bound for. */
 #define APP_DIAGNOSTIC_JSON_MAX 256
 
-/* Prints one SCREENSHOT_STATE: line of plain-text JSON (no base64 - it's
- * already printable ASCII, small enough that base64's reason to exist,
- * staying UART-safe, isn't worth the decode step for one line). Reading/
- * formatting live in console/device_state.h/.c. `current_app`'s OPTIONAL
- * diagnostic_json() is spliced in as an "app" key AFTER
- * device_state_format_json() produces a complete object - by overwriting
- * its closing `}` with `,"app":<fragment>}` rather than teaching
- * device_state.h about apps. */
+/* Prints one SCREENSHOT_STATE: line of plain-text JSON: the board's state,
+ * the frame watch's counts, and `current_app`'s OPTIONAL diagnostic_json()
+ * as an "app" key. */
 static void
 dump_state(const input_t* input, const app_t* current_app) {
     device_state_t state;
     device_state_read(&state);
 
-    char json[DEVICE_STATE_JSON_MAX];
+    /* Static: too large for the shell task's stack. */
+    static char json[DEVICE_STATE_JSON_MAX + FRAME_WATCH_JSON_MAX + APP_DIAGNOSTIC_JSON_MAX];
     device_state_format_json(&state, input, json);
 
-    if (current_app != NULL && current_app->diagnostic_json != NULL) {
-        char app_json[APP_DIAGNOSTIC_JSON_MAX];
-        current_app->diagnostic_json(app_json, sizeof app_json);
+    char fragment[APP_DIAGNOSTIC_JSON_MAX > FRAME_WATCH_JSON_MAX ? APP_DIAGNOSTIC_JSON_MAX : FRAME_WATCH_JSON_MAX];
+    frame_watch_json(fragment, sizeof fragment);
+    (void)json_splice_key(json, sizeof json, "frame_watch", fragment);
 
-        const size_t len = strlen(json);
-        /* json[len-1] is device_state_format_json()'s own closing `}` -
-         * always present, since that function always emits a complete
-         * object. Only splice if there is genuinely room for the fragment
-         * plus the `,"app":` wrapper plus the new closing `}` - a
-         * truncated app fragment would rather be dropped than emitted as
-         * broken JSON the host script's json.loads() then rejects
-         * outright, losing the WHOLE line (device state included, not
-         * just the app part) rather than only the addition. */
-        if (len > 0 && json[len - 1] == '}' && len - 1 + strlen(",\"app\":") + strlen(app_json) + 1 < sizeof json) {
-            snprintf(json + len - 1, sizeof(json) - (len - 1), ",\"app\":%s}", app_json);
-        }
+    if (current_app != NULL && current_app->diagnostic_json != NULL) {
+        current_app->diagnostic_json(fragment, APP_DIAGNOSTIC_JSON_MAX);
+        (void)json_splice_key(json, sizeof json, "app", fragment);
     }
 
     console_emit_line("SCREENSHOT_STATE:", json);

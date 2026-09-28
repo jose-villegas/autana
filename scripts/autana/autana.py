@@ -217,6 +217,22 @@ def buildid(args):
     return 0
 
 
+def framewatch(args):
+    """The frame watch's counts for the last frame and the sites repeating
+    now, as the board's own JSON - a development build only."""
+    if args:
+        sys.exit("usage: autana framewatch")
+    code, replies = send("FRAMEWATCH", reply="FRAMEWATCH", purpose="autana framewatch")
+    if code != 0 or not replies:
+        return code or 1
+    print(parse_framewatch(replies[-1]))
+    return 0
+
+
+def parse_framewatch(reply):
+    return reply.removeprefix("FRAMEWATCH ").strip()
+
+
 def read_json_flag(args, usage):
     if args == ["--json"]:
         return True
@@ -984,6 +1000,8 @@ COMMAND_GROUPS = (
     ("watch", "Watch the board", (
         Command("monitor", monitor, (
             ("monitor [seconds] [--follow] [--stream] [--elf PATH]", "the console live until Ctrl+C, or for N s"),)),
+        Command("framewatch", framewatch, (
+            ("framewatch", "allocations and log lines repeating frame after frame, as JSON"),)),
         Command("reset", reset, (
             ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
         Command("screenshot", screenshot, (

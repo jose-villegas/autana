@@ -35,6 +35,7 @@ set(app_srcs
     "render/r3d_path.c"
     "render/r3d_span.c"
     "util/frame_cost.c"
+    "util/frame_watch.c"
     "util/job.c"
     "util/tune.c"
 )
@@ -63,6 +64,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/console.c"
         "console/console_buildid.c"
         "console/console_freeze.c"
+        "console/console_frame_watch.c"
         "console/console_navigation.c"
         "console/console_tune.c"
         "console/console_screenshot.c"

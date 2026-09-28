@@ -40,9 +40,11 @@
 #include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"
 #include "util/frame_cost.h"
+#include "util/frame_watch.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "console/console.h"
+#include "console/console_frame_watch.h"
 #include "console/console_freeze.h"
 #include "console/console_navigation.h"
 #include "console/console_navigation_parse.h"
@@ -376,6 +378,7 @@ exit_app(const app_t** current) {
     (*current)->exit();
     app_arena_rewind(0);
     restore_system_display_state();
+    frame_watch_restart();
     *current = NULL;
     frame_ready = false;
     gfx_request_full_redraw();
@@ -405,6 +408,7 @@ start_app(const app_t** current, const app_t* next) {
     exit_requested = false;
     (*current)->enter();
     frame_ready = false;
+    frame_watch_restart();
 }
 
 /* The backdrop is the launcher's own frame under a scrim, drawn once and
@@ -796,6 +800,7 @@ run_pending_selftest_suite(void) {
     if (!found) {
         ESP_LOGE(TAG, "no suite named '%s' is registered", runsuite_name);
     }
+    suite_report_frame_watch();
     /* On its own line, so a harness knows the suite ended without having to
      * guess from how long the console has been quiet. */
     printf("\nRUNSUITE_COMPLETE name=%s found=%d\n", runsuite_name, found ? 1 : 0);
@@ -967,6 +972,7 @@ run_dev_frame_extras(input_t* input, const app_t* current) {
         console_screenshot_dump(input, current);
         gfx_request_full_redraw();
     }
+    console_frame_watch_answer();
     offer_console_line(current);
 }
 
@@ -1003,6 +1009,7 @@ run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms)
         if (console_screenshot_take_request()) {
             console_screenshot_dump(input, *current);
         }
+        console_frame_watch_answer();
         offer_console_line(*current);
         return true;
     }
@@ -1031,6 +1038,7 @@ app_main_loop(void) {
      * app_boot_init()'s print. */
     printf("BUILD_ID=%s\n", BUILD_ID);
     fflush(stdout);
+    frame_watch_start();
 
     while (1) {
         const int64_t now_us = esp_timer_get_time();

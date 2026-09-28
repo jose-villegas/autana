@@ -69,6 +69,14 @@ render_scene_sha256() {
 }
 
 render_scene_run() {
+    render_scene_build "$@" || return $?
+    render_scene_render
+}
+
+# Everything before the first render: the declarations checked, the options
+# read, the binary compiled to $_rs_bin. Also what a harness self-check calls
+# to build a fixture scene it then runs by hand.
+render_scene_build() {
     for _rs_required in scene_name scene_sources scene_renders; do
         eval "_rs_value=\${$_rs_required+set}"
         if [ -z "${_rs_value:-}" ]; then
@@ -145,7 +153,7 @@ render_scene_run() {
         _rs_flags="$_rs_flags -I $_rs_launcher/$_rs_inc"
     done
 
-    _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c"
+    _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c $_rs_tools/render/render_watch.c"
     for _rs_src in $scene_sources; do
         _rs_files="$_rs_files $_rs_launcher/$_rs_src"
     done
@@ -156,11 +164,15 @@ render_scene_run() {
     # this repo also builds on fold those into libc and link clean without
     # it, which is how a scene that needs them reached CI unlinked. Harmless
     # where libm is already part of libc - run_tests.sh ends its own link
-    # line the same way.
+    # line the same way. The --wrap pairs hand every scene allocation to
+    # render_watch.c.
     # shellcheck disable=SC2086
     "$_rs_cc" -std=c11 -Wall -Wextra -Wno-unused-parameter -Wno-unused-function \
-        -Wno-unused-variable -O1 $_rs_flags $scene_defines $_rs_files -o "$_rs_bin" -lm || return 1
+        -Wno-unused-variable -O1 -g $_rs_flags $scene_defines $_rs_files -o "$_rs_bin" \
+        -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm || return 1
+}
 
+render_scene_render() {
     _rs_log="$scene_out_dir/render.log"
     _rs_new="$scene_out_dir/baseline.new"
     : > "$_rs_new"
@@ -197,6 +209,14 @@ render_scene_run() {
                 echo "FAIL $scene_name/$_rs_label: wrote ${_rs_said:-nothing}, declared $_rs_want" >&2
                 exit 1
             fi
+            # Every render is judged by the frame watch (render_watch.h);
+            # one that says nothing about it was not.
+            _rs_judged=$(sed -n 's/^FRAME_WATCH judged \([0-9]*\) frames.*/\1/p' "$_rs_log")
+            if [ -z "$_rs_judged" ] || [ "$_rs_judged" -eq 0 ]; then
+                echo "FAIL $scene_name/$_rs_label: the frame watch judged no frames" >&2
+                exit 1
+            fi
+            echo "watched $scene_name/$_rs_label: $_rs_judged frames judged, none repeating"
             _rs_hash=$(render_scene_sha256 "$_rs_path")
             if [ "$_rs_pin_this" = 1 ]; then
                 printf '%s %s\n' "$_rs_label" "$_rs_hash" >> "$_rs_new"

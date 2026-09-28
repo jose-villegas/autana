@@ -7,6 +7,7 @@
 #include "gfx/gfx_heal.h"
 #include "gfx/gfx_present_guard.h"
 #include "gfx/gfx_target.h"
+#include "util/frame_watch.h"
 #include "util/intmath.h"
 #include "util/tune.h"
 
@@ -558,6 +559,7 @@ gfx_init(void) {
         ESP_LOGE(TAG, "Could not create the present task");
         return false;
     }
+    frame_watch_add_task(present_task_handle);
 
     /* Bring-up (board_detect(), panel_bring_up()) runs on that task - see
      * present_task_fn(). Its own ESP_LOGE already named the failure. */
@@ -2356,6 +2358,7 @@ dispatch_present(void) {
 
 void
 gfx_present_begin(void) {
+    frame_watch_presented();
     gfx_present_guard_begin();
     if (band_is_app_driven()) {
         return; /* the band ring sends and waits inside frame() itself */
