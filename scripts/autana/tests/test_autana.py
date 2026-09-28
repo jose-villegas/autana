@@ -315,6 +315,146 @@ class ScreenshotCommandTests(unittest.TestCase):
         self.assertEqual(code, 3)
         called.assert_not_called()
 
+    def test_owner_and_wait_are_forwarded(self):
+        status = mock.Mock(stdout="")
+        with mock.patch.object(autana.subprocess, "run", return_value=status), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.screenshot(["--owner", "delegate-1", "--wait", "20"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--owner") + 1], "delegate-1")
+        self.assertEqual(command[command.index("--wait") + 1], "20")
+
+
+class PopValueTests(unittest.TestCase):
+    """pop_value() is the one flag-with-a-value stripper every board
+    command's own parsing is built on."""
+
+    def test_absent_flag_leaves_args_untouched(self):
+        value, rest = autana.pop_value(["a", "b"], "--owner")
+        self.assertIsNone(value)
+        self.assertEqual(rest, ["a", "b"])
+
+    def test_present_flag_is_removed_with_its_value(self):
+        value, rest = autana.pop_value(["suite", "--owner", "sam", "30"], "--owner")
+        self.assertEqual(value, "sam")
+        self.assertEqual(rest, ["suite", "30"])
+
+    def test_a_flag_with_no_value_is_a_usage_error(self):
+        with self.assertRaises(SystemExit):
+            autana.pop_value(["suite", "--owner"], "--owner")
+
+
+class ResolveOwnerTests(unittest.TestCase):
+    def test_an_explicit_owner_wins_over_everything(self):
+        with mock.patch.dict(autana.os.environ, {"AUTANA_DEVICE_OWNER": "env-owner"}):
+            self.assertEqual(autana.resolve_owner("cli-owner"), "cli-owner")
+
+    def test_the_environment_variable_is_used_when_no_flag_is_given(self):
+        with mock.patch.dict(autana.os.environ, {"AUTANA_DEVICE_OWNER": "env-owner"}):
+            self.assertEqual(autana.resolve_owner(None), "env-owner")
+
+    def test_the_pid_tagged_default_is_used_when_neither_is_given(self):
+        with mock.patch.dict(autana.os.environ, {}, clear=True):
+            self.assertEqual(autana.resolve_owner(None), autana.owner())
+
+
+class DeviceCommandOwnerWaitTests(unittest.TestCase):
+    """device_command() is where every board command's --owner/--wait
+    actually reach `device.py`, ahead of the subcommand word."""
+
+    def setUp(self):
+        patcher = mock.patch.object(autana, "idf_python", return_value="python")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        patcher = mock.patch.object(autana, "device_tool", return_value=Path("device.py"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_owner_defaults_to_this_autanas_own_name(self):
+        with mock.patch.dict(autana.os.environ, {}, clear=True):
+            command = autana.device_command("status")
+        self.assertEqual(command[command.index("--owner") + 1], autana.owner())
+
+    def test_an_explicit_owner_is_used_instead(self):
+        command = autana.device_command("status", owner_name="delegate-1")
+        self.assertEqual(command[command.index("--owner") + 1], "delegate-1")
+
+    def test_no_wait_is_added_when_none_is_given(self):
+        command = autana.device_command("status")
+        self.assertNotIn("--wait", command)
+
+    def test_an_explicit_wait_is_forwarded(self):
+        command = autana.device_command("status", wait="45")
+        self.assertEqual(command[command.index("--wait") + 1], "45")
+
+    def test_owner_and_wait_precede_the_subcommand(self):
+        command = autana.device_command("flash", "--variant", "dev", owner_name="d", wait="5")
+        self.assertLess(command.index("--wait"), command.index("flash"))
+
+
+class WorktreeResolutionTests(unittest.TestCase):
+    """resolve_worktree() is autana's own version of
+    .dev/launcher/tools/build_flash_select.sh's create-if-missing lookup,
+    with no menu - the branch is given, not chosen."""
+
+    def test_no_value_uses_this_worktree(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/here"):
+            self.assertEqual(autana.resolve_worktree(None), "C:/here")
+
+    def test_a_path_that_already_looks_like_a_worktree_is_used_as_is(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "launcher").mkdir()
+            self.assertEqual(autana.resolve_worktree(directory), str(Path(directory).resolve()))
+
+    def test_a_branch_already_checked_out_returns_its_worktree(self):
+        with mock.patch.object(autana, "worktree_list",
+                               return_value=[("C:/wt1", "main"), ("C:/wt2", "feature/x")]), \
+             mock.patch.object(autana.subprocess, "run") as ran:
+            self.assertEqual(autana.resolve_worktree("feature/x"), "C:/wt2")
+        ran.assert_not_called()
+
+    def test_an_unknown_local_branch_creates_a_worktree_under_the_primary_checkout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            missing = Path(directory) / ".claude" / "worktrees" / "feature-y"
+            with mock.patch.object(autana, "worktree_list", return_value=[]), \
+                 mock.patch.object(autana, "git_common_root", return_value=directory), \
+                 mock.patch.object(autana, "git_ok",
+                                   side_effect=lambda *a: "refs/heads/" in a[-1]), \
+                 mock.patch.object(autana.subprocess, "run") as ran:
+                result = autana.resolve_worktree("feature/y")
+            self.assertEqual(result, str(missing))
+            ran.assert_called_once_with(
+                ["git", "worktree", "add", str(missing), "feature/y"], check=True)
+
+    def test_a_branch_only_on_origin_is_created_from_there(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(autana, "worktree_list", return_value=[]), \
+                 mock.patch.object(autana, "git_common_root", return_value=directory), \
+                 mock.patch.object(autana, "git_ok",
+                                   side_effect=lambda *a: "refs/remotes/origin/" in a[-1]), \
+                 mock.patch.object(autana.subprocess, "run") as ran:
+                autana.resolve_worktree("feature/z")
+            command = ran.call_args[0][0]
+            self.assertEqual(command[:3], ["git", "worktree", "add"])
+            self.assertIn("-b", command)
+
+    def test_a_branch_nowhere_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(autana, "worktree_list", return_value=[]), \
+                 mock.patch.object(autana, "git_common_root", return_value=directory), \
+                 mock.patch.object(autana, "git_ok", return_value=False), \
+                 self.assertRaises(SystemExit):
+                autana.resolve_worktree("no-such-branch")
+
+    def test_a_stray_directory_git_does_not_know_about_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stray = Path(directory) / ".claude" / "worktrees" / "feature-y"
+            stray.mkdir(parents=True)
+            with mock.patch.object(autana, "worktree_list", return_value=[]), \
+                 mock.patch.object(autana, "git_common_root", return_value=directory), \
+                 self.assertRaises(SystemExit):
+                autana.resolve_worktree("feature/y")
+
 
 class FlashCommandTests(unittest.TestCase):
     def test_perf_scope_is_forwarded(self):
@@ -341,6 +481,24 @@ class FlashCommandTests(unittest.TestCase):
             autana.flash(["diag", "--quiet"])
         command = called.call_args[0][0]
         self.assertNotIn("--perf-scope", command)
+
+    def test_owner_and_wait_are_forwarded(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana, "git", return_value=""), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.flash(["diag", "--quiet", "--owner", "delegate-1", "--wait", "20"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--owner") + 1], "delegate-1")
+        self.assertEqual(command[command.index("--wait") + 1], "20")
+
+    def test_worktree_is_resolved_and_used_for_both_the_banner_and_the_flash(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/other") as resolved, \
+             mock.patch.object(autana, "git", return_value=""), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.flash(["diag", "--quiet", "--worktree", "feature/x"])
+        resolved.assert_called_once_with("feature/x")
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--worktree") + 1], "C:/other")
 
 
 class BuildCommandTests(unittest.TestCase):
@@ -389,6 +547,61 @@ class BuildCommandTests(unittest.TestCase):
                 self.assertRaises(SystemExit):
             autana.build(["qemu"])
         built.assert_not_called()
+
+    def test_worktree_is_resolved_and_built(self):
+        device = autana.device_module()
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/other") as resolved, \
+             mock.patch.object(autana, "git", return_value=""), \
+             mock.patch.object(device, "build_worktree", return_value=0) as built, \
+             mock.patch("builtins.print"):
+            autana.build(["dev", "--worktree", "feature/x"])
+        resolved.assert_called_once_with("feature/x")
+        built.assert_called_once_with("C:/other", "dev", [])
+
+    def test_diag_check_runs_the_diag_check_script(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana, "build_diag_check", return_value=0) as checked:
+            code = autana.build(["diag", "--check"])
+        self.assertEqual(code, 0)
+        checked.assert_called_once_with("C:/wt")
+
+    def test_check_without_diag_is_refused(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana, "build_diag_check") as checked, \
+                self.assertRaises(SystemExit):
+            autana.build(["dev", "--check"])
+        checked.assert_not_called()
+
+    def test_check_with_a_second_word_is_refused(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana, "build_diag_check") as checked, \
+                self.assertRaises(SystemExit):
+            autana.build(["diag", "rel", "--check"])
+        checked.assert_not_called()
+
+
+class BuildDiagCheckTests(unittest.TestCase):
+    """build_diag_check() shells out to build_diag_check.sh unchanged -
+    the ratchet and the diagnostics build, together, no board."""
+
+    def test_runs_the_script_under_git_bash_in_the_worktree(self):
+        device = autana.device_module()
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "launcher" / "tools" / "build"
+            script.mkdir(parents=True)
+            (script / "build_diag_check.sh").write_text("#!/usr/bin/env bash\n")
+            with mock.patch.object(device, "git_bash", return_value="bash.exe"), \
+                 mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+                code = autana.build_diag_check(directory)
+        self.assertEqual(code, 0)
+        command = called.call_args[0][0]
+        self.assertEqual(command[0], "bash.exe")
+        self.assertTrue(command[1].endswith("build_diag_check.sh"))
+        self.assertEqual(called.call_args.kwargs["cwd"], directory)
+
+    def test_a_missing_script_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory, self.assertRaises(SystemExit):
+            autana.build_diag_check(directory)
 
 
 class MonitorCommandTests(unittest.TestCase):
@@ -472,12 +685,38 @@ class MonitorCommandTests(unittest.TestCase):
         with mock.patch.object(autana.subprocess, "Popen", return_value=process):
             self.assertEqual(autana.monitor(["--follow"]), 130)
 
+    def test_owner_and_wait_are_forwarded(self):
+        with mock.patch.object(autana.subprocess, "Popen") as started:
+            autana.monitor(["--follow", "--owner", "delegate-1", "--wait", "20"])
+        command = started.call_args.args[0]
+        self.assertEqual(command[command.index("--owner") + 1], "delegate-1")
+        self.assertEqual(command[command.index("--wait") + 1], "20")
+
+    def test_purpose_replaces_the_default(self):
+        with mock.patch.object(autana.subprocess, "Popen") as started:
+            autana.monitor(["--follow", "--purpose", "watching a repro"])
+        command = started.call_args.args[0]
+        self.assertEqual(command[command.index("--purpose") + 1], "watching a repro")
+
+    def test_out_is_forwarded(self):
+        with mock.patch.object(autana.subprocess, "Popen") as started:
+            autana.monitor(["--follow", "--out", "capture.log"])
+        command = started.call_args.args[0]
+        self.assertEqual(command[command.index("--out") + 1], "capture.log")
+
 
 class ResetCommandTests(unittest.TestCase):
     def test_verbose_reaches_reset_capture(self):
         with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
             autana.reset(["--capture", "--verbose"])
         self.assertIn("--verbose", called.call_args.args[0])
+
+    def test_owner_and_wait_are_forwarded(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.reset(["--owner", "delegate-1", "--wait", "20"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--owner") + 1], "delegate-1")
+        self.assertEqual(command[command.index("--wait") + 1], "20")
 
     def test_capture_forwards_its_window_to_device(self):
         with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
@@ -522,6 +761,22 @@ class SelftestCommandTests(unittest.TestCase):
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--max-seconds") + 1], "120.0")
 
+    def test_owner_and_wait_are_forwarded(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.selftest(["--owner", "delegate-1", "--wait", "20"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--owner") + 1], "delegate-1")
+        self.assertEqual(command[command.index("--wait") + 1], "20")
+
+    def test_worktree_is_resolved_and_used(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/other") as resolved, \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.selftest(["--worktree", "feature/x"])
+        resolved.assert_called_once_with("feature/x")
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--worktree") + 1], "C:/other")
+
 
 class BatchCommandTests(unittest.TestCase):
     def test_verbose_reaches_device(self):
@@ -564,12 +819,74 @@ class BatchCommandTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             autana.batch(["run_sand_perf_suite", "--bogus"])
 
+    def test_owner_and_wait_are_forwarded(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.batch(["run_sand_perf_suite", "--owner", "delegate-1", "--wait", "20"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--owner") + 1], "delegate-1")
+        self.assertEqual(command[command.index("--wait") + 1], "20")
+
+    def test_purpose_replaces_the_default(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.batch(["run_sand_perf_suite", "--purpose", "nightly perf"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--purpose") + 1], "nightly perf")
+
+    def test_out_is_forwarded(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.batch(["run_sand_perf_suite", "--runs", "1", "--out", "capture.log"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--out") + 1], "capture.log")
+
+    def test_expect_build_id_is_forwarded(self):
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.batch(["run_sand_perf_suite", "--expect-build-id", "abc123-diag"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--expect-build-id") + 1], "abc123-diag")
+
+    def test_worktree_is_resolved_and_used(self):
+        with mock.patch.object(autana, "resolve_worktree", return_value="C:/other") as resolved, \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.batch(["run_sand_perf_suite", "--worktree", "feature/x"])
+        resolved.assert_called_once_with("feature/x")
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--worktree") + 1], "C:/other")
+
 
 class SuiteCommandTests(unittest.TestCase):
     def test_verbose_reaches_device(self):
         with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
             autana.suite(["run_gfx_suite", "--verbose"])
         self.assertIn("--verbose", called.call_args.args[0])
+
+    def test_owner_and_wait_are_forwarded(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite", "--owner", "delegate-1", "--wait", "20"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--owner") + 1], "delegate-1")
+        self.assertEqual(command[command.index("--wait") + 1], "20")
+
+    def test_purpose_replaces_the_default(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite", "--purpose", "checking a repro"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--purpose") + 1], "checking a repro")
+
+    def test_out_is_forwarded(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite", "--out", "capture.log"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--out") + 1], "capture.log")
+
+    def test_expect_build_id_is_forwarded(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite", "--expect-build-id", "abc123-diag"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--expect-build-id") + 1], "abc123-diag")
 
 
 class LockCommandTests(unittest.TestCase):

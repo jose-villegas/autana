@@ -56,11 +56,98 @@ def git(*args):
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
+def git_ok(*args):
+    return subprocess.run(["git", *args], capture_output=True).returncode == 0
+
+
 def engine_worktree():
     worktree = git("rev-parse", "--show-toplevel")
     if not worktree or not (Path(worktree) / "launcher").is_dir():
         sys.exit("autana: not inside an engine worktree (no launcher/ here)")
     return worktree
+
+
+def git_common_root():
+    """The primary checkout - the one `.claude/worktrees/` lives under, no
+    matter which worktree this runs from."""
+    common_dir = git("rev-parse", "--path-format=absolute", "--git-common-dir")
+    if not common_dir:
+        sys.exit("autana: not inside a git repository")
+    return str(Path(common_dir).resolve().parent)
+
+
+def worktree_list():
+    """[(path, branch)] from `git worktree list --porcelain`; a detached
+    entry's branch reads as `(detached HEAD)`."""
+    raw = subprocess.run(["git", "worktree", "list", "--porcelain"],
+                         capture_output=True, text=True).stdout
+    entries = []
+    path = None
+    for line in raw.splitlines():
+        if line.startswith("worktree "):
+            path = line[len("worktree "):]
+        elif line.startswith("branch "):
+            entries.append((path, line[len("branch refs/heads/"):]))
+        elif line == "detached":
+            entries.append((path, "(detached HEAD)"))
+    return entries
+
+
+def sanitize_branch_for_dirname(name):
+    """claude/foo-bar -> foo-bar; a/b/c -> a-b-c - matches
+    .dev/launcher/tools/build_flash_select.sh's own naming for a worktree
+    it creates."""
+    return name.removeprefix("claude/").replace("/", "-")
+
+
+def resolve_worktree(value):
+    """`--worktree`'s value, resolved the way
+    .dev/launcher/tools/build_flash_select.sh resolves its own menu answer,
+    minus the menu: this worktree when `value` is None, `value` itself when
+    it already looks like a worktree, else the worktree already checked out
+    for that branch, else a fresh one created under the primary checkout's
+    `.claude/worktrees/`."""
+    if value is None:
+        return engine_worktree()
+    candidate = Path(value)
+    if (candidate / "launcher").is_dir():
+        return str(candidate.resolve())
+    for path, branch in worktree_list():
+        if branch == value:
+            return path
+    common_root = git_common_root()
+    target = Path(common_root) / ".claude" / "worktrees" / sanitize_branch_for_dirname(value)
+    if target.exists():
+        sys.exit(f"autana: refusing to reuse {target} - it exists but `git worktree list` "
+                 "does not know about it; clean it up by hand first")
+    if git_ok("show-ref", "--verify", "--quiet", f"refs/heads/{value}"):
+        subprocess.run(["git", "worktree", "add", str(target), value], check=True)
+    elif git_ok("show-ref", "--verify", "--quiet", f"refs/remotes/origin/{value}"):
+        subprocess.run(["git", "worktree", "add", "-b", value, str(target), f"origin/{value}"],
+                       check=True)
+    else:
+        sys.exit(f"autana: no such branch '{value}' locally or on origin")
+    return str(target)
+
+
+def pop_value(args, flag):
+    """`args` with `flag` and the value right after it removed, and that
+    value - (None, args unchanged) when `flag` is absent."""
+    if flag not in args:
+        return None, args
+    rest = list(args)
+    index = rest.index(flag)
+    if index + 1 >= len(rest):
+        sys.exit(f"usage: {flag} needs a value")
+    value = rest.pop(index + 1)
+    rest.pop(index)
+    return value, rest
+
+
+def resolve_owner(explicit):
+    """An explicit `--owner`, else AUTANA_DEVICE_OWNER, else this autana's
+    own pid-tagged name."""
+    return explicit or os.environ.get("AUTANA_DEVICE_OWNER") or owner()
 
 
 def device_tool():
@@ -82,10 +169,16 @@ def device_module():
     return device
 
 
-def device_command(*args):
+def device_command(*args, owner_name=None, wait=None):
     """device.py imports pyserial, so it runs under ESP-IDF's Python even
-    when some other interpreter started this file."""
-    return [idf_python(), "-u", str(device_tool()), *args]
+    when some other interpreter started this file. `--owner`/`--wait` are
+    device.py's own top-level flags: resolve_owner(owner_name) names the
+    lock holder, and `wait` overrides device.py's own lock-wait timeout
+    when a caller gives one."""
+    command = [idf_python(), "-u", str(device_tool()), "--owner", resolve_owner(owner_name)]
+    if wait is not None:
+        command += ["--wait", wait]
+    return command + list(args)
 
 
 def follow(log, finished):
@@ -140,10 +233,11 @@ def run_streaming_its_log(command):
     return code
 
 
-def variant_request(verb, args, flags):
+def variant_request(verb, args, flags, worktree=None):
     """The words `autana build` and `autana flash` share: one variant (dev
-    when omitted) and the `flags` given. Prints the banner; returns the
-    variant word asked, the variant, the flags seen and the worktree."""
+    when omitted) and the `flags` given, against `worktree` (this one when
+    omitted). Prints the banner; returns the variant word asked, the
+    variant, the flags seen and the worktree."""
     seen = {flag for flag in flags if flag in args}
     words = [arg for arg in args if arg not in flags]
     asked = words[0] if words else "dev"
@@ -151,32 +245,55 @@ def variant_request(verb, args, flags):
     if variant is None or len(words) > 1:
         sys.exit(f"usage: autana {verb} [rel|dev|diag] "
                  + " ".join(f"[{flag}]" for flag in flags))
-    worktree = engine_worktree()
-    branch = git("branch", "--show-current") or "detached"
-    commit = git("rev-parse", "--short", "HEAD")
-    dirty = " (dirty)" if git("status", "--porcelain") else ""
+    worktree = worktree or engine_worktree()
+    branch = git("-C", worktree, "branch", "--show-current") or "detached"
+    commit = git("-C", worktree, "rev-parse", "--short", "HEAD")
+    dirty = " (dirty)" if git("-C", worktree, "status", "--porcelain") else ""
     print(f"autana {verb}: {variant} of {branch} @ {commit}{dirty}", flush=True)
     return asked, variant, seen, worktree
 
 
 def flash(args):
-    asked, variant, seen, worktree = variant_request("flash", args,
-                                                     ("--quiet", "--perf-scope"))
+    worktree_arg, args = pop_value(args, "--worktree")
+    owner_name, args = pop_value(args, "--owner")
+    wait, args = pop_value(args, "--wait")
+    worktree = resolve_worktree(worktree_arg)
+    asked, variant, seen, worktree = variant_request(
+        "flash", args, ("--quiet", "--perf-scope"), worktree=worktree)
     quiet = "--quiet" in seen
     perf_scope = "--perf-scope" in seen
     command = device_command(
-        "--owner", owner(),
         "flash", "--variant", variant, "--worktree", worktree, "--purpose", f"autana flash {asked}",
+        owner_name=owner_name, wait=wait,
     )
     if perf_scope:
         command.append("--perf-scope")
     return subprocess.call(command) if quiet else run_streaming_its_log(command)
 
 
+def build_diag_check(worktree):
+    """The diagnostics build plus the complexity ratchet, unchanged from
+    launcher/tools/build/build_diag_check.sh - the two halves of what CI's
+    Build (Diagnostics) workflow decides, in one command, no board."""
+    script = Path(worktree) / "launcher" / "tools" / "build" / "build_diag_check.sh"
+    if not script.is_file():
+        sys.exit(f"autana: {script} not found")
+    return subprocess.call([device_module().git_bash(), str(script)], cwd=worktree)
+
+
 def build(args):
     """Build this worktree with no board and no lock: the build half of
-    `autana flash`, device.py's own, run in this process."""
-    _, variant, seen, worktree = variant_request("build", args, ("--perf-scope",))
+    `autana flash`, device.py's own, run in this process. `diag --check`
+    runs the diagnostics build plus the complexity ratchet instead."""
+    check = "--check" in args
+    args = [arg for arg in args if arg != "--check"]
+    worktree_arg, args = pop_value(args, "--worktree")
+    worktree = resolve_worktree(worktree_arg)
+    if check:
+        if [arg for arg in args if arg != "--perf-scope"] != ["diag"]:
+            sys.exit("usage: autana build diag --check")
+        return build_diag_check(worktree)
+    _, variant, seen, worktree = variant_request("build", args, ("--perf-scope",), worktree=worktree)
     return device_module().build_worktree(worktree, variant, sorted(seen))
 
 
@@ -251,13 +368,18 @@ def monitor(args):
     device.py decodes crashes using --elf or the capture's BUILD_ID."""
     elf = None
     rest = list(args)
-    usage = "usage: autana monitor [seconds] [--follow] [--stream] [--elf PATH]"
+    usage = ("usage: autana monitor [seconds] [--follow] [--stream] [--elf PATH] "
+             "[--owner NAME] [--wait SECONDS] [--purpose TEXT] [--out PATH]")
     if "--elf" in rest:
         index = rest.index("--elf")
         if index + 1 >= len(rest):
             sys.exit(usage)
         elf = rest[index + 1]
         del rest[index:index + 2]
+    owner_name, rest = pop_value(rest, "--owner")
+    wait, rest = pop_value(rest, "--wait")
+    purpose, rest = pop_value(rest, "--purpose")
+    out, rest = pop_value(rest, "--out")
     follow = "--follow" in rest
     if follow:
         rest.remove("--follow")
@@ -274,14 +396,16 @@ def monitor(args):
             raise SystemExit(2)
         follow = True
     command = device_command(
-        "--owner", owner(),
-        "listen", "--purpose", "autana monitor",
+        "listen", "--purpose", purpose or "autana monitor",
+        owner_name=owner_name, wait=wait,
     )
     command += ["--follow"] if follow else ["--seconds", str(seconds)]
     if terminal or stream:
         command.append("--echo")
     if elf:
         command += ["--elf", elf]
+    if out:
+        command += ["--out", out]
     process = subprocess.Popen(command)
     interrupted = False
     # Ctrl+C reaches device.py too; it saves the capture before exiting.
@@ -304,12 +428,14 @@ def reset(args):
     if "--capture" in rest:
         rest.remove("--capture")
         capture = True
-    seconds = seconds_argument(rest, None, "usage: autana reset [--capture [seconds]] [--verbose]")
+    owner_name, rest = pop_value(rest, "--owner")
+    wait, rest = pop_value(rest, "--wait")
+    usage = "usage: autana reset [--capture [seconds]] [--verbose] [--owner NAME] [--wait SECONDS]"
+    seconds = seconds_argument(rest, None, usage)
     if rest and not capture:
-        sys.exit("usage: autana reset [--capture [seconds]] [--verbose]")
+        sys.exit(usage)
     command = device_command(
-        "--owner", owner(),
-        "reset", "--purpose", "autana reset",
+        "reset", "--purpose", "autana reset", owner_name=owner_name, wait=wait,
     )
     if capture:
         command += ["--capture"]
@@ -328,20 +454,26 @@ def selftest(args):
     verbose = "--verbose" in rest
     if verbose:
         rest.remove("--verbose")
-    seconds = seconds_argument(rest, 3000.0, "usage: autana selftest [seconds] [--verbose]")
-    worktree = engine_worktree()
+    worktree_arg, rest = pop_value(rest, "--worktree")
+    owner_name, rest = pop_value(rest, "--owner")
+    wait, rest = pop_value(rest, "--wait")
+    usage = ("usage: autana selftest [seconds] [--verbose] [--owner NAME] [--wait SECONDS] "
+             "[--worktree PATH|BRANCH]")
+    seconds = seconds_argument(rest, 3000.0, usage)
+    worktree = resolve_worktree(worktree_arg)
     print(f"autana selftest: every suite, {worktree}", flush=True)
     command = device_command(
-        "--owner", owner(),
         "selftest", "--worktree", worktree, "--max-seconds", str(seconds),
-        "--purpose", "autana selftest",
+        "--purpose", "autana selftest", owner_name=owner_name, wait=wait,
     )
     if verbose:
         command.append("--verbose")
     return subprocess.call(command)
 
 
-BATCH_USAGE = "usage: autana batch <suite> [<suite> ...] [--runs N] [--perf-scope] [--verbose]"
+BATCH_USAGE = ("usage: autana batch <suite> [<suite> ...] [--runs N] [--perf-scope] [--verbose] "
+              "[--owner NAME] [--wait SECONDS] [--purpose TEXT] [--out PATH] "
+              "[--worktree PATH|BRANCH] [--expect-build-id ID]")
 
 
 def batch(args):
@@ -352,6 +484,12 @@ def batch(args):
     choice here would only ever have one real answer."""
     suites, runs, perf_scope, verbose = [], "3", False, False
     rest = list(args)
+    worktree_arg, rest = pop_value(rest, "--worktree")
+    owner_name, rest = pop_value(rest, "--owner")
+    wait, rest = pop_value(rest, "--wait")
+    purpose, rest = pop_value(rest, "--purpose")
+    out, rest = pop_value(rest, "--out")
+    expect_build_id, rest = pop_value(rest, "--expect-build-id")
     while rest:
         arg = rest.pop(0)
         if arg == "--runs" and rest:
@@ -366,12 +504,11 @@ def batch(args):
             suites.append(arg)
     if not suites:
         sys.exit(BATCH_USAGE)
-    worktree = engine_worktree()
+    worktree = resolve_worktree(worktree_arg)
     print(f"autana batch: {', '.join(suites)} x{runs}", flush=True)
     command = device_command(
-        "--owner", owner(),
         "batch", "--worktree", worktree, "--variant", "diag", "--runs", str(runs),
-        "--purpose", "autana batch",
+        "--purpose", purpose or "autana batch", owner_name=owner_name, wait=wait,
     )
     for suite_name in suites:
         command += ["--suite", suite_name]
@@ -379,6 +516,10 @@ def batch(args):
         command.append("--perf-scope")
     if verbose:
         command.append("--verbose")
+    if out:
+        command += ["--out", out]
+    if expect_build_id:
+        command += ["--expect-build-id", expect_build_id]
     return subprocess.call(command)
 
 
@@ -394,8 +535,7 @@ def release(args):
     - the token comes from what that command printed when it acquired it."""
     if len(args) != 1:
         sys.exit("usage: autana release <token>")
-    return subprocess.call(device_command("--owner", owner(),
-                                          "release", "--token", args[0]))
+    return subprocess.call(device_command("release", "--token", args[0]))
 
 
 def hand(args):
@@ -410,8 +550,7 @@ def hand(args):
         args = args[2:]
     if not args:
         sys.exit(usage)
-    command = device_command("--owner", owner(), "hand-to-human",
-                             "--note", " ".join(args), *wait)
+    command = device_command("hand-to-human", "--note", " ".join(args), *wait)
     if not wait:
         return subprocess.call(command)
     process = subprocess.Popen(command)
@@ -490,16 +629,27 @@ def suite(args):
     verbose = "--verbose" in rest
     if verbose:
         rest.remove("--verbose")
+    owner_name, rest = pop_value(rest, "--owner")
+    wait, rest = pop_value(rest, "--wait")
+    purpose, rest = pop_value(rest, "--purpose")
+    out, rest = pop_value(rest, "--out")
+    expect_build_id, rest = pop_value(rest, "--expect-build-id")
     # A perf row can sit silent for minutes; the cap is how long to wait for
     # the whole suite, not how long a quiet stretch inside one may last.
-    seconds = seconds_argument(rest, 600.0, "usage: autana suite <name> [seconds] [--verbose]")
+    usage = ("usage: autana suite <name> [seconds] [--verbose] [--owner NAME] [--wait SECONDS] "
+             "[--purpose TEXT] [--out PATH] [--expect-build-id ID]")
+    seconds = seconds_argument(rest, 600.0, usage)
     print(f"autana suite: {name}", flush=True)
     command = device_command(
-        "--owner", owner(),
-        "run-suite", name, "--max-seconds", str(seconds), "--purpose", f"autana suite {name}",
+        "run-suite", name, "--max-seconds", str(seconds),
+        "--purpose", purpose or f"autana suite {name}", owner_name=owner_name, wait=wait,
     )
     if verbose:
         command.append("--verbose")
+    if out:
+        command += ["--out", out]
+    if expect_build_id:
+        command += ["--expect-build-id", expect_build_id]
     return subprocess.call(command)
 
 
@@ -550,8 +700,7 @@ def send(line, reply="TUNE", purpose="autana tune", optional=False, seconds=None
         print(f"the board is busy - {holder}\nnothing was sent; try again when it is free",
               file=sys.stderr)
         return 3, []
-    command = device_command("--owner", owner(), "--wait", str(SEND_WAIT_S), "send", line,
-                             "--purpose", purpose)
+    command = device_command("send", line, "--purpose", purpose, wait=str(SEND_WAIT_S))
     if reply != "TUNE":
         command += ["--reply", reply]
         for one_until in until if until is not None else [reply]:
@@ -573,7 +722,10 @@ def screenshot(args):
     out = None
     view = None
     frames = None
-    usage = "usage: autana screenshot [--as-shown|--framebuffer] [-o PATH] [--frames N]"
+    owner_name = None
+    wait = None
+    usage = ("usage: autana screenshot [--as-shown|--framebuffer] [-o PATH] [--frames N] "
+             "[--owner NAME] [--wait SECONDS]")
     while args:
         arg = args.pop(0)
         if arg in ("-o", "--out") and args and out is None:
@@ -585,20 +737,24 @@ def screenshot(args):
             if not (count.isdigit() and int(count) >= 1):
                 sys.exit(usage + " - N is a positive count")
             frames = int(count)
+        elif arg == "--owner" and args and owner_name is None:
+            owner_name = args.pop(0)
+        elif arg == "--wait" and args and wait is None:
+            wait = args.pop(0)
         else:
             sys.exit(usage)
     if frames is not None:
         if out is None:
             sys.exit(usage + " - --frames needs -o PATH, the prefix of PATH-00, PATH-01, ...")
-        return screenshot_frames(frames, out, view)
-    return capture_screenshot(out, view)
+        return screenshot_frames(frames, out, view, owner_name, wait)
+    return capture_screenshot(out, view, owner_name, wait)
 
 
-def screenshot_frames(frames, out, view):
+def screenshot_frames(frames, out, view, owner_name=None, wait=None):
     """N consecutive frames: one capture while running (a band-mode app's
     first capture needs a frame to fill its copy of the panel), then FREEZE
     and a STEP between captures, then RESUME."""
-    code = capture_screenshot(None, view)
+    code = capture_screenshot(None, view, owner_name, wait)
     if code:
         return code
     code, _ = send("FREEZE", reply="FREEZE_STATE", purpose="autana screenshot --frames")
@@ -609,19 +765,19 @@ def screenshot_frames(frames, out, view):
             code, _ = send("STEP", reply="FREEZE_STATE", purpose="autana screenshot --frames")
             if code:
                 break
-        code = capture_screenshot(f"{out}-{i:02d}", view)
+        code = capture_screenshot(f"{out}-{i:02d}", view, owner_name, wait)
     resumed, _ = send("RESUME", reply="FREEZE_STATE", purpose="autana screenshot --frames")
     return code or resumed
 
 
-def capture_screenshot(out, view):
+def capture_screenshot(out, view, owner_name=None, wait=None):
     holder = board_holder()
     if holder:
         print(f"the board is busy - {holder}\nnothing was sent; try again when it is free",
               file=sys.stderr)
         return 3
-    command = device_command("--owner", owner(), "screenshot",
-                             "--purpose", "autana screenshot")
+    command = device_command("screenshot", "--purpose", "autana screenshot",
+                             owner_name=owner_name, wait=wait)
     if out:
         command += ["--out", out]
     if view:
@@ -981,31 +1137,40 @@ Command = namedtuple("Command", "name handler usages")
 COMMAND_GROUPS = (
     ("build", "Build and flash", (
         Command("build", build, (
-            ("build [rel|dev|diag] [--perf-scope]", "build this worktree, no board; dev when omitted"),)),
+            ("build [rel|dev|diag] [--perf-scope] [--worktree PATH|BRANCH]",
+             "build this worktree, no board; dev when omitted"),
+            ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
         Command("flash", flash, (
-            ("flash [rel|dev|diag] [--quiet] [--perf-scope]", "build and flash this worktree; dev when omitted"),)),
+            ("flash [rel|dev|diag] [--quiet] [--perf-scope] [--owner NAME] [--wait SECONDS] "
+             "[--worktree PATH|BRANCH]", "build and flash this worktree; dev when omitted"),)),
         Command("buildid", buildid, (
             ("buildid [--json]", "the BUILD_ID the board is running"),)),
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
-            ("suite <name> [seconds] [--verbose]", "run one registered suite on the board"),
+            ("suite <name> [seconds] [--verbose] [--owner NAME] [--wait SECONDS] [--purpose TEXT] "
+             "[--out PATH] [--expect-build-id ID]", "run one registered suite on the board"),
             ("suite list [text] [--json]", "the suites this worktree registers"))),
         Command("selftest", selftest, (
-            ("selftest [seconds] [--verbose]", "build diagnostics+autorun, run every suite on the board"),)),
+            ("selftest [seconds] [--verbose] [--owner NAME] [--wait SECONDS] [--worktree PATH|BRANCH]",
+             "build diagnostics+autorun, run every suite on the board"),)),
         Command("batch", batch, (
-            ("batch <suite>... [--runs N] [--perf-scope] [--verbose]",
+            ("batch <suite>... [--runs N] [--perf-scope] [--verbose] [--owner NAME] [--wait SECONDS] "
+             "[--purpose TEXT] [--out PATH] [--worktree PATH|BRANCH] [--expect-build-id ID]",
              "flash once, capture the suites N times under one lock"),)),
     )),
     ("watch", "Watch the board", (
         Command("monitor", monitor, (
-            ("monitor [seconds] [--follow] [--stream] [--elf PATH]", "the console live until Ctrl+C, or for N s"),)),
+            ("monitor [seconds] [--follow] [--stream] [--elf PATH] [--owner NAME] [--wait SECONDS] "
+             "[--purpose TEXT] [--out PATH]", "the console live until Ctrl+C, or for N s"),)),
         Command("framewatch", framewatch, (
             ("framewatch", "allocations and log lines repeating frame after frame, as JSON"),)),
         Command("reset", reset, (
-            ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
+            ("reset [--capture [seconds]] [--verbose] [--owner NAME] [--wait SECONDS]",
+             "reboot the board; --capture records the boot"),)),
         Command("screenshot", screenshot, (
-            ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),
+            ("screenshot [--as-shown|--framebuffer] [-o PATH] [--owner NAME] [--wait SECONDS]",
+             "the panel as PATH.png plus PATH.json"),
             ("screenshot --frames N -o PATH", "N consecutive frames, PATH-00 on, stepped while frozen"),)),
     )),
     ("input", "Drive input", (
