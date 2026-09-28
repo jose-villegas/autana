@@ -393,6 +393,7 @@ exit_app(const app_t** current) {
 #endif
     app_arena_rewind(0);
     restore_system_display_state();
+    ui_invalidate();
     frame_watch_restart();
     *current = NULL;
     frame_ready = false;

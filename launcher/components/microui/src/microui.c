@@ -20,7 +20,7 @@
 ** IN THE SOFTWARE.
 */
 
-/* LOCAL MODIFICATION: command alignment and zero padding keep command hashes stable. */
+/* LOCAL MODIFICATION: command alignment, zero padding and control capture keep shell state stable. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -688,6 +688,7 @@ void mu_update_control(mu_Context *ctx, mu_Id id, mu_Rect rect, int opt) {
 
   if (ctx->focus == id) { ctx->updated_focus = 1; }
   if (opt & MU_OPT_NOINTERACT) { return; }
+  if (ctx->on_control) { ctx->on_control(ctx, intersect_rects(rect, mu_get_clip_rect(ctx))); }
   if (mouseover && !ctx->mouse_down) { ctx->hover = id; }
 
   if (ctx->focus == id) {

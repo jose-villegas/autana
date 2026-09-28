@@ -50,8 +50,26 @@ TUNE(snap, reach, 40, 0, 120);
 
 static mu_Rect snap_rects[UI_SNAP_RECTS_MAX];
 static int snap_rect_count;
-static mu_Vec2 snapped_down;
-static bool snapped_down_active;
+static bool snap_rect_overflow;
+
+static void
+record_snap_rect(mu_Context* ctx, mu_Rect rect) {
+    (void)ctx;
+    if (rect.w <= 0 || rect.h <= 0) {
+        return;
+    }
+    if (snap_rect_count < UI_SNAP_RECTS_MAX) {
+        snap_rects[snap_rect_count++] = rect;
+        return;
+    }
+#ifdef DEVICE_BUILD
+    if (!snap_rect_overflow) {
+        ESP_LOGE(TAG, "snap target capacity exceeded (%d)", UI_SNAP_RECTS_MAX);
+    }
+#endif
+    snap_rect_overflow = true;
+}
+
 /* The style in force for the rest of this frame, and microui's own frame
  * painter, kept so UI_BUTTON_FLAT and every non-button frame stay exactly
  * what upstream draws. Captured from the context rather than
@@ -256,6 +274,8 @@ ui_layout_generation(void) {
 void
 ui_invalidate(void) {
     ui_invalidated = true;
+    snap_rect_count = 0;
+    snap_rect_overflow = false;
 }
 
 void
@@ -263,6 +283,7 @@ ui_init(void) {
     mu_init(&ui_ctx);
     ui_ctx.text_width = measure_text_width;
     ui_ctx.text_height = measure_text_height;
+    ui_ctx.on_control = record_snap_rect;
     font_scaled_count = 0;
     ui_set_font(gfx_font_ui());
 
@@ -272,8 +293,9 @@ ui_init(void) {
     ui_text_style = UI_TEXT_PLAIN;
     transform = ui_transform_identity();
     transform_valid = true;
+    ui_pointer_state = (ui_pointer_t){0};
     snap_rect_count = 0;
-    snapped_down_active = false;
+    snap_rect_overflow = false;
     /* Explicit, not left to a zeroed static's implicit value - see
      * ui_layout_generation()'s comment in ui.h. 0 is simply the first value
      * a monotonic counter can have; nothing reads meaning into it beyond
@@ -346,43 +368,13 @@ feed_input(const input_t* input) {
     input_t logical = *input;
     ui_to_logical(input->x, input->y, &logical.x, &logical.y);
     if (logical.pressed) {
-        snapped_down = ui_snap_point(snap_rects, snap_rect_count, mu_vec2(logical.x, logical.y), reach);
-        snapped_down_active = true;
+        ui_pointer_aim(&ui_pointer_state,
+                       ui_snap_point(snap_rects, snap_rect_count, mu_vec2(logical.x, logical.y), reach));
     }
     ui_pointer_event_t events[UI_POINTER_MAX_EVENTS];
     const int n = ui_pointer_step(&ui_pointer_state, &logical, events, UI_POINTER_MAX_EVENTS);
     for (int i = 0; i < n; i++) {
-        if (events[i].kind == UI_POINTER_MOVE && snapped_down_active) {
-            events[i].x = snapped_down.x;
-            events[i].y = snapped_down.y;
-        } else if (events[i].kind == UI_POINTER_DOWN) {
-            if (!snapped_down_active) {
-                snapped_down = ui_snap_point(snap_rects, snap_rect_count, mu_vec2(events[i].x, events[i].y), reach);
-                snapped_down_active = true;
-            }
-            if (i > 0 && events[i - 1].kind == UI_POINTER_MOVE) {
-                events[i - 1].x = snapped_down.x;
-                events[i - 1].y = snapped_down.y;
-            }
-            events[i].x = snapped_down.x;
-            events[i].y = snapped_down.y;
-        } else if (events[i].kind == UI_POINTER_UP && snapped_down_active) {
-            events[i].x = snapped_down.x;
-            events[i].y = snapped_down.y;
-            snapped_down_active = false;
-        } else if (events[i].kind == UI_POINTER_SCROLL) {
-            snapped_down_active = false;
-        }
-    }
-    for (int i = 0; i < n; i++) {
         replay_pointer_event(&events[i]);
-    }
-}
-
-void
-ui_record_control_rect(mu_Rect rect) {
-    if (snap_rect_count < UI_SNAP_RECTS_MAX) {
-        snap_rects[snap_rect_count++] = rect;
     }
 }
 
@@ -393,6 +385,7 @@ ui_begin(const input_t* input) {
     button_style = UI_BUTTON_FLAT;
     feed_input(input);
     snap_rect_count = 0;
+    snap_rect_overflow = false;
     mu_begin(&ui_ctx);
 }
 

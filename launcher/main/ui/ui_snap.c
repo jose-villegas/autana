@@ -1,5 +1,7 @@
 #include "ui/ui_snap.h"
 
+#include <stddef.h>
+
 static int
 nearest_edge(int p, int start, int length) {
     const int end = start + length;
@@ -17,10 +19,6 @@ ui_snap_point(const mu_Rect* rects, int count, mu_Vec2 point, int reach) {
     if (reach <= 0 || rects == NULL) {
         return point;
     }
-    if (count > UI_SNAP_RECTS_MAX) {
-        count = UI_SNAP_RECTS_MAX;
-    }
-
     int best_distance2 = reach * reach + 1;
     mu_Vec2 best = point;
     for (int i = 0; i < count; i++) {

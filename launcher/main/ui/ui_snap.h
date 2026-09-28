@@ -3,9 +3,8 @@
 
 #include "microui.h"
 
-/* The UI keeps this many controls from its completed frame. Extra controls
- * are drawn normally but cannot be snap candidates until capacity is raised. */
-#define UI_SNAP_RECTS_MAX 32
+/* The largest screen is the material palette. */
+#define UI_SNAP_RECTS_MAX 15
 
 /* Returns the unchanged point when it is inside a rect, no rect is reachable,
  * or reach is zero. Equal edge distances retain rect order. */

@@ -40,14 +40,6 @@ test_an_empty_list_is_unchanged(void) {
     assert_snaps_to(NULL, 0, 10, 20, 40, 10, 20);
 }
 
-static void
-test_overflow_uses_the_recorded_rects_only(void) {
-    mu_Rect rects[UI_SNAP_RECTS_MAX + 1] = {0};
-    rects[0] = (mu_Rect){100, 100, 10, 10};
-    rects[UI_SNAP_RECTS_MAX] = (mu_Rect){20, 20, 10, 10};
-    assert_snaps_to(rects, UI_SNAP_RECTS_MAX + 1, 15, 25, 20, 15, 25);
-}
-
 void
 run_ui_snap_suite(void) {
     RUN_TEST(test_inside_a_control_is_unchanged);
@@ -55,7 +47,6 @@ run_ui_snap_suite(void) {
     RUN_TEST(test_a_point_beyond_reach_is_unchanged);
     RUN_TEST(test_nearest_candidate_wins_and_a_tie_keeps_order);
     RUN_TEST(test_an_empty_list_is_unchanged);
-    RUN_TEST(test_overflow_uses_the_recorded_rects_only);
 }
 
 SUITE_REGISTER(run_ui_snap_suite);

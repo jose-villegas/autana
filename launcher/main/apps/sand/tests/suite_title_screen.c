@@ -218,12 +218,12 @@ test_disabled_buttons_are_inked_muted(void) {
 }
 
 static void
-test_a_button_with_nothing_behind_it_takes_no_tap(void) {
+test_a_disabled_button_does_not_block_a_nearby_live_target(void) {
     title_screen_layout_t lay;
     layout_for(false, &lay);
 
     tap_fixture(false);
-    TEST_ASSERT_EQUAL_INT(SAND_TITLE_NONE, tap(lay.buttons[SAND_TITLE_LOAD]));
+    TEST_ASSERT_EQUAL_INT(SAND_TITLE_OPTIONS, tap(lay.buttons[SAND_TITLE_LOAD]));
     tap_fixture(false);
     TEST_ASSERT_EQUAL_INT(SAND_TITLE_NONE, tap(lay.buttons[SAND_TITLE_GUIDE]));
 }
@@ -238,7 +238,7 @@ run_title_screen_suite(void) {
     RUN_TEST(test_a_tap_reports_the_button_under_it);
     RUN_TEST(test_a_landscape_tap_reports_the_button_under_it);
     RUN_TEST(test_disabled_buttons_are_inked_muted);
-    RUN_TEST(test_a_button_with_nothing_behind_it_takes_no_tap);
+    RUN_TEST(test_a_disabled_button_does_not_block_a_nearby_live_target);
 }
 
 SUITE_REGISTER(run_title_screen_suite);

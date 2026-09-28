@@ -16,6 +16,7 @@
 #include <stdint.h>
 
 #include "input/input.h"
+#include "microui.h"
 
 typedef enum {
     UI_POINTER_MOVE,
@@ -54,6 +55,8 @@ typedef struct {
      * out so far - the DOWN follows the UI_POINTER_HOVER_FRAMES'th. */
     uint8_t press_stage;
     int press_x, press_y;
+    int aim_x, aim_y;
+    bool aimed;
     bool down; /* a DOWN went out with no matching UP yet */
 
     /* Set by the caller after each frame: whether the pointer rests on
@@ -63,6 +66,10 @@ typedef struct {
     bool dragging;
     int last_x, last_y;
 } ui_pointer_t;
+
+/* Aim the next synthesized press at a control without moving its raw drag
+ * origin. */
+void ui_pointer_aim(ui_pointer_t* p, mu_Vec2 aim);
 
 /* Feed one frame's input_t; get back 0-UI_POINTER_MAX_EVENTS events in `out`,
  * in playback order. Returns the count written, or 0 if `max` can't hold the
