@@ -123,7 +123,7 @@ ui_theme_slider_int(mu_Context* ctx, mu_Rect r, int* value, int lo, int hi, int 
     colors[MU_COLOR_BUTTONFOCUS] = theme->accent_face;
 
     mu_layout_set_next(ctx, r, 0);
-    const bool changed = ui_slider_int(ctx, value, lo, hi, step);
+    const bool changed = ui_slider_int_with_id(ctx, &r, sizeof(r), value, lo, hi, step);
 
     colors[MU_COLOR_BASE] = base;
     colors[MU_COLOR_BORDER] = border;
