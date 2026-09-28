@@ -12,6 +12,9 @@
 | [render_qemu.sh](render_qemu.sh) | Captures a QEMU screen and compares it with a host render. |
 | [render_video.c](render_video.c) | Writes video frames from host render scenes. |
 | [render_video.h](render_video.h) | Video writer declarations. |
+| [render_watch.c](render_watch.c) | Fails a scene whose frames keep allocating or printing. |
+| [render_watch.h](render_watch.h) | Frame watch declarations for the host renderer. |
 | [render_masks.json](render_masks.json) | Named masks for image comparisons. |
 | [check_avi.py](check_avi.py) | Validates AVI structure and frame metadata. |
 | [scenes/](scenes/) | Engine render scenes and their pinned baselines. |
+| [tests/](tests/) | The harness checking its own frame watch against a fixture scene. |

@@ -684,12 +684,30 @@ def decode_crash_addresses(data, elf):
     for line in data.split(b"\n"):
         if b"Backtrace" in line or b"PC      :" in line or b"PC :" in line:
             addresses += CRASH_ADDRESS_RE.findall(line)
+    return decode_addresses([address.decode("ascii") for address in addresses], elf)
+
+
+# The firmware's frame watch warning (launcher/main/util/frame_watch.c):
+# `FRAME_WATCH <kind> in <n> of <window> frames at 0x<site>`, a log line's
+# format after it. tests/test_device.py holds this to that file's own text.
+FRAME_WATCH_LINE_RE = re.compile(r"FRAME_WATCH (alloc|free|console) in (\d+) of (\d+) frames at (0x[0-9a-fA-F]{8})")
+
+
+def decode_frame_watch_sites(data, elf):
+    """Every heap site a FRAME_WATCH warning names, resolved against `elf`.
+    A log line's site is its format string, already printed beside it."""
+    text = data.decode("utf-8", errors="replace")
+    sites = [match.group(4) for match in FRAME_WATCH_LINE_RE.finditer(text) if match.group(1) != "console"]
+    return decode_addresses(sites, elf)
+
+
+def decode_addresses(addresses, elf):
     if not addresses:
         return []
     addr2line = toolchain_addr2line()
     if addr2line is None:
         return []
-    unique = list(dict.fromkeys(address.decode("ascii") for address in addresses))
+    unique = list(dict.fromkeys(addresses))
     result = subprocess.run([str(addr2line), "-pfiaC", "-e", str(elf), *unique],
                             capture_output=True, text=True)
     return [line for line in result.stdout.splitlines() if line.strip()]
@@ -1148,6 +1166,11 @@ def selftest(args, store, board):
         return 1 if failed else 0
 
 
+def is_reported_line(text):
+    """What a quiet capture still shows: errors, and frame watch warnings."""
+    return bool(BOOT_ERROR.search(text) or FRAME_WATCH_LINE_RE.search(text))
+
+
 class ErrorLineSink:
     def __init__(self, output):
         self.output = output
@@ -1158,7 +1181,7 @@ class ErrorLineSink:
         while b"\n" in self.pending:
             line, self.pending = self.pending.split(b"\n", 1)
             text = line.decode("utf-8", errors="replace")
-            if BOOT_ERROR.search(text):
+            if is_reported_line(text):
                 self.output.write(text + "\n")
                 self.output.flush()
 
@@ -1167,7 +1190,7 @@ class ErrorLineSink:
 
     def finish(self):
         text = self.pending.decode("utf-8", errors="replace")
-        if BOOT_ERROR.search(text):
+        if is_reported_line(text):
             self.output.write(text + "\n")
         self.output.flush()
 
@@ -1208,11 +1231,12 @@ def listen(args, store, board):
     elf = Path(args.elf) if args.elf else find_elf_for_build_id(
         Path.cwd(), latest_build_id_from_bytes(data))
     if elf:
-        decoded = decode_crash_addresses(data, elf)
-        if decoded:
-            print("\ncrash addresses decoded against " + str(elf) + ":")
-            for line in decoded:
-                print("  " + line)
+        for label, decoded in (("crash addresses", decode_crash_addresses(data, elf)),
+                               ("frame watch sites", decode_frame_watch_sites(data, elf))):
+            if decoded:
+                print("\n" + label + " decoded against " + str(elf) + ":")
+                for line in decoded:
+                    print("  " + line)
 
 
 def replies_to(data, reply, until):

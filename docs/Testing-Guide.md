@@ -445,6 +445,25 @@ wall-clock says nothing about what the work costs on the chip.
 a scene, frames and synthetic touch, the pins, the QEMU backend, and
 `render_diff.sh`.
 
+## The frame watch as a gate
+
+The frame watch ([Firmware-Architecture.md](Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state))
+warns on the board; two places turn it into a failure, both by the rule in
+`util/frame_watch.h` (`FRAME_WATCH_REPEATS` of the last
+`FRAME_WATCH_WINDOW` frames, after `FRAME_WATCH_WARMUP`). Either also fails
+when the watch ran out of room for an event, since a finding could hide
+there.
+
+| Where | A frame is | Watched | Fails |
+|---|---|---|---|
+| Every host render scene (`render_all_scenes.sh`, CI) | one `draw()`; a scene with fewer frames than a warm-up and a window goes on drawing, unwritten, until it has them | `malloc`/`calloc`/`realloc`/`free` wrapped at link time, keyed by caller; anything written to stdout, which is where `ESP_LOG*` goes on a host | the render. A heap site's `FRAME_WATCH` line carries an `addr2line` command; a stdout one shows what that frame printed |
+| Every on-device test (the `RUN_TEST` wrapper in `test/timing.c`) | the span between two presents | the board's own watch | that test, with the `FRAME_WATCH` lines above its result. `FRAME_WATCH judged N of M tests` ends the run: a test is judged only once it presents more than `FRAME_WATCH_WARMUP` times |
+
+`tools/render/tests/check_frame_watch.sh` proves the host check: a fixture
+doing each kind of work every frame must fail naming that kind, once must
+pass, three call sites taking turns must not merge, and stdout must come
+back in order.
+
 ---
 
 ## POST is a third thing

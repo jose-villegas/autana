@@ -24,6 +24,7 @@
 #include "gfx/gfx.h"
 #include "gfx/gfx_color.h"
 #include "render_video.h"
+#include "render_watch.h"
 #include "ui/ui_transform.h"
 #include "util/screenshot.h"
 
@@ -243,19 +244,51 @@ main(int argc, char** argv) {
         return 1;
     }
 
+    /* stdout is free to watch only when the image goes to a file. */
+    char* console_path = NULL;
+    if (out_path != NULL) {
+        console_path = malloc(strlen(out_path) + sizeof ".console");
+        if (console_path != NULL) {
+            sprintf(console_path, "%s.console", out_path);
+        }
+    }
+    if (!render_watch_start(argv[0], console_path)) {
+        fprintf(stderr, "%s: cannot capture stdout in %s\n", scene->name, console_path);
+        free(console_path);
+        free(frame_buf);
+        return 1;
+    }
+
     render_frame_t frame = {.count = frames, .quarter = quarter, .dt_ms = dt_ms};
     bool video_ok = true;
     for (int i = 0; i < frames; i++) {
         frame.index = i;
         frame.elapsed_ms = (uint32_t)i * dt_ms;
         apply_input(scene, i, &frame.input);
+        render_watch_frame_begin();
         scene->draw(&frame);
+        render_watch_frame_end();
 
         convert_frame(fb, t, panel, out_w, out_h, stride, frame_buf);
         if (video_path != NULL && video_ok) {
             video_ok = render_video_write_frame(&video, frame_buf, stride * out_h);
         }
     }
+
+    /* However few frames the image needed, the scene goes on drawing until
+     * the watch has judged a whole window of it at rest. Nothing of these
+     * reaches the image. */
+    for (int i = frames; i < FRAME_WATCH_WARMUP + FRAME_WATCH_WINDOW; i++) {
+        frame.index = i;
+        frame.elapsed_ms = (uint32_t)i * dt_ms;
+        apply_input(scene, i, &frame.input);
+        render_watch_frame_begin();
+        scene->draw(&frame);
+        render_watch_frame_end();
+    }
+
+    const frame_watch_verdict_t verdict = render_watch_finish();
+    free(console_path);
 
     if (video_path != NULL) {
         video_ok = render_video_close(&video) && video_ok;
@@ -286,5 +319,13 @@ main(int argc, char** argv) {
          * scene's own first stderr line, not this one. */
         fprintf(stderr, "RENDER %s %dx%d %ld\n", scene->name, size.width, size.height, size.bytes);
     }
-    return ok ? 0 : 1;
+    if (verdict.repeating > 0) {
+        fprintf(stderr, "%s: %d call sites repeat frame after frame - see the FRAME_WATCH lines above\n", scene->name,
+                verdict.repeating);
+    }
+    if (verdict.dropped > 0) {
+        fprintf(stderr, "%s: the frame watch had no room for %lu events, so it may have missed one\n", scene->name,
+                (unsigned long)verdict.dropped);
+    }
+    return ok && frame_watch_verdict_clean(verdict) ? 0 : 1;
 }

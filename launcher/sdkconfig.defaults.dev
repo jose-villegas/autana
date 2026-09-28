@@ -9,3 +9,7 @@
 # Used by `tools/build/build.sh --dev`, which builds this into its own
 # build.dev/ so it never overwrites the release build in build/.
 CONFIG_LAUNCHER_DEVELOPMENT=y
+
+# The frame watch (util/frame_watch.h) counts allocations made inside a frame
+# through the heap's own hooks.
+CONFIG_HEAP_USE_HOOKS=y

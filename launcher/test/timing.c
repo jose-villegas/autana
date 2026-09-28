@@ -28,6 +28,11 @@
 #include "heap_arena.h"
 #endif
 
+#ifdef DEVICE_BUILD
+#include "unity.h"
+#include "util/frame_watch.h"
+#endif
+
 /* Not pulled from unity.h: that header only declares this when RUN_TEST is
  * NOT already defined (see timing.h's top comment) - the opposite of this
  * file's own situation, since it is what RUN_TEST now expands to. The real
@@ -37,6 +42,24 @@ extern void UnityDefaultTestRun(void (*Func)(void), const char* FuncName, const 
 
 #ifdef HOST_HEAP_ARENA
 static int leaks;
+#endif
+
+#ifdef DEVICE_BUILD
+static void (*watched_test)(void);
+static int tests_run;
+static int tests_judged;
+
+/* Each present a test makes is one of its frames; see frame_watch.h. */
+static void
+run_watched(void) {
+    frame_watch_test_begin();
+    watched_test();
+    const frame_watch_verdict_t verdict = frame_watch_test_end();
+    tests_judged += verdict.frames > 0;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, verdict.repeating,
+                                  "work repeated frame after frame - see the FRAME_WATCH lines above");
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, verdict.dropped, "the frame watch ran out of room, so it may have missed one");
+}
 #endif
 
 void
@@ -55,7 +78,14 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
     const clock_t started = clock();
 #endif
 
+#ifdef DEVICE_BUILD
+    watched_test = func;
+    tests_run++;
+    UnityDefaultTestRun(run_watched, name, line);
+    (void)frame_watch_test_end();
+#else
     UnityDefaultTestRun(func, name, line);
+#endif
 
 #ifdef DEVICE_BUILD
     const int64_t elapsed_ms = (esp_timer_get_time() - started) / 1000;
@@ -104,5 +134,14 @@ suite_leaks(void) {
     return leaks;
 #else
     return 0;
+#endif
+}
+
+void
+suite_report_frame_watch(void) {
+#ifdef DEVICE_BUILD
+    printf("FRAME_WATCH judged %d of %d tests\n", tests_judged, tests_run);
+    tests_run = 0;
+    tests_judged = 0;
 #endif
 }
