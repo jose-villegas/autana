@@ -391,16 +391,17 @@ can_impulse_enter(cell_t target, cell_t mover) {
     return material_of(mover)->kind != KIND_LIQUID || t->kind == KIND_LIQUID;
 }
 
-/* SHARED PREDICATE in `step_impulses()` uses speed gating in
- * `can_impulse_enter()`. Fixes gravity-drift and settled check.
- * `impulse_gravity_candidates()` applies. At or above
- * `SAND_IMPULSE_SINK_MIN_SPEED`, drag stops sideways but not downward. Below,
- * SPENT only enters empty cells. */
+static inline bool
+impulse_spent(uint8_t speed) {
+    return speed == 0;
+}
+
+/* A spent entry only enters empty or liquid cells, so a chunk out of flight
+ * energy cannot swap down through packed material. The settled check uses
+ * this same predicate. */
 static inline bool
 can_impulse_enter_gravity_ward(cell_t target, cell_t mover, uint8_t speed) {
-    if (speed < SAND_IMPULSE_SINK_MIN_SPEED) {
-        /* Packed grain holds chunks near the rim; fluids part around solids.
-         * Exhausted chunks check the medium; only powder and walls stop them. */
+    if (impulse_spent(speed)) {
         return CELL_IS_EMPTY(target) || material_of(target)->kind == KIND_LIQUID;
     }
     return can_impulse_enter(target, mover);
@@ -690,13 +691,8 @@ static_chunk_gravity_drift(sand_t* s, impulse_t* entry, int dx, int dy, impulse_
             continue;
         }
         const cell_t gtarget = sand_at(s, cx, cy);
-        /* can_impulse_enter_gravity_ward() is the same predicate the
-         * settled check uses. No separate "but not liquid" exclusion: this
-         * move is a SWAP, not an overwrite, so a lava cell a thrown chunk
-         * enters just relocates - conservation and "never smothered" both
-         * hold. An ENERGETIC chunk sinks into a liquid like a dense powder
-         * already does; below SAND_IMPULSE_SINK_MIN_SPEED a SPENT one gets
-         * none of this. */
+        /* A swap relocates rather than overwrites. Any chunk sinks into a
+         * liquid; only an energetic one also swaps down through powder. */
         if (!can_impulse_enter_gravity_ward(gtarget, entry->cell, entry->speed)) {
             continue;
         }
