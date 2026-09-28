@@ -49,7 +49,13 @@ typedef union {
 #define BLOCK_COLS ((W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
 #define BLOCK_ROWS ((H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
 extern sand_test_fx_t fx;
+
+/* Dirty-row tracking buffer, reused by dirty_fixture() and by any test
+ * elsewhere in the split that also exercises sand_track_dirty_rows(). */
 extern uint8_t dirty[H];
+
+/* Dirty-COLUMN span, one pair per row, reused by dirty_cols_fixture() the
+ * same way dirty[] is by dirty_fixture(). */
 extern uint16_t dirty_x0[H];
 extern uint16_t dirty_x1[H];
 extern uint8_t sleep_blocks[BLOCK_COLS * BLOCK_ROWS];

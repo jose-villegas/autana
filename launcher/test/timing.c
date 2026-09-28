@@ -18,21 +18,6 @@
 #include <stdint.h>
 #include <stdio.h>
 
-static void (*test_cleanup)(void);
-
-void
-suite_set_test_cleanup(void (*cleanup)(void)) {
-    test_cleanup = cleanup;
-}
-
-void
-suite_run_test_cleanup(void) {
-    if (test_cleanup != NULL) {
-        test_cleanup();
-        test_cleanup = NULL;
-    }
-}
-
 #ifdef DEVICE_BUILD
 #include "esp_timer.h"
 #else
@@ -60,6 +45,11 @@ static void (*watched_test)(void);
 static int tests_run;
 static int tests_judged;
 
+void
+suite_repeat_watched_test(void) {
+    watched_test();
+}
+
 /* Each present a test makes is one of its frames; see frame_watch.h. */
 static void
 run_watched(void) {
@@ -75,7 +65,7 @@ run_watched(void) {
 
 void
 suite_run_test_timed(void (*func)(void), const char* name, int line) {
-    test_cleanup = NULL;
+    suite_clear_test_cleanup();
 #ifdef HOST_HEAP_ARENA
     heap_arena_reset_peak();
 #endif

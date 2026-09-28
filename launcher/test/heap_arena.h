@@ -12,10 +12,8 @@
 
 #include <stddef.h>
 
-/* Outstanding block count and byte total right now - not a total-ever
- * counter. timing.c calls this before and after a test; a rise means the
- * test leaked (freed fewer blocks than it allocated), which is exactly the
- * assert-before-free failure mode this arena exists to catch. */
+/* Outstanding block count and byte total across the modeled internal and
+ * PSRAM pools. */
 void heap_arena_snapshot(size_t* out_blocks, size_t* out_bytes);
 
 /* Highest outstanding-byte total observed since the last reset. Not zeroed

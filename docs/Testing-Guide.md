@@ -156,15 +156,16 @@ each one cost a build-flash-capture cycle to find — twice over, for both:
   contiguity, not totals: the largest single request a device profile
   records (`DP_LARGEST_ALLOC_BYTES`) is tens of kilobytes, and it fails on a
   heap with 50 KB free whose largest block is 38 KB.
-- **An allocation a test does not release.** The host runner wraps standard
-  allocation with Unity's memory checker, which starts in runner setup and
-  evaluates in runner teardown. An outstanding allocation fails its test.
-  The Linux sanitizer run also enables AddressSanitizer, which diagnoses
-  leaks, use-after-free, and bounds errors. The device runner records its
-  8-bit and 32-bit free heap before every test and evaluates each in
-  teardown. A `MALLOC_CAP_*` failure means the test changed free heap beyond
-  the runner's retained-state allowance; release the allocation the test
-  owns.
+- **An allocation a test does not release.** The host runner snapshots the
+  arena's outstanding block count across its internal and PSRAM pools before
+  and after each test. An outstanding block fails its test and reports the
+  byte totals. The Linux sanitizer run poisons freed arena blocks and headers,
+  so AddressSanitizer catches use-after-free and out-of-bounds access in arena
+  memory; arena allocations are static storage, so it does not report them as
+  process leaks. The device runner records its 8-bit and 32-bit free heap
+  before every test. After cleanup, a first-use drop reruns that test and its
+  cleanup, then checks the second run at zero bytes. A `MALLOC_CAP_*` failure
+  therefore means heap loss repeated.
 
 Those numbers come from `launcher/tools/device/device_profiles/<chip>.sh`, selected
 by `$DEVICE_PROFILE` (default `esp32s3`), each carrying its own provenance.

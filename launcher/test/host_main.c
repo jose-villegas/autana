@@ -11,19 +11,32 @@
 
 #include <stdio.h>
 
+#include "heap_arena.h"
 #include "suites.h"
 #include "unity.h"
 
 /* Unity requires these once per binary. The runner owns the memory audit. */
+static size_t heap_blocks_before;
+static size_t heap_bytes_before;
+
 void
 setUp(void) {
-    UnityMalloc_StartTest();
+    heap_arena_snapshot(&heap_blocks_before, &heap_bytes_before);
 }
 
 void
 tearDown(void) {
     suite_run_test_cleanup();
-    UnityMalloc_EndTest();
+
+    size_t heap_blocks_after;
+    size_t heap_bytes_after;
+    heap_arena_snapshot(&heap_blocks_after, &heap_bytes_after);
+    if (heap_blocks_after != heap_blocks_before) {
+        char message[128];
+        (void)snprintf(message, sizeof(message), "test changed arena blocks %zu -> %zu (%zu -> %zu bytes)",
+                       heap_blocks_before, heap_blocks_after, heap_bytes_before, heap_bytes_after);
+        TEST_FAIL_MESSAGE(message);
+    }
 }
 
 int
