@@ -46,14 +46,12 @@ it readable; a flag works the same wherever the table below says it applies.
 | `--worktree PATH\|BRANCH` | Act on another worktree, `PATH`; or on `BRANCH`, finding the worktree already checked out for it, or creating one (local, else `origin/BRANCH`) under the primary checkout's `.claude/worktrees/` when none exists yet. Omitted, these act on the worktree you are standing in, as always. | build, flash, selftest, suite (with --flash) |
 
 Every board command's lock owner - *who* holds it, for `autana status` - is
-derived, not typed: the branch of the worktree it acts on plus `@<pid>`
-(`feature/foo@1234`), or `autana-cli@<pid>` outside git or on a detached
-HEAD. `AUTANA_DEVICE_OWNER` overrides it for every command in a shell.
-`AUTANA_DEVICE_WAIT` overrides how long a command waits for the board's lock
-before giving up - device.py's own default (600 s) applies when it is unset.
-Neither is a flag: a stray `--owner`, `--wait` or `--purpose` on the command
-line is now an unknown-flag error naming the command, e.g. `autana flash:
-unknown flag --owner`.
+derived, not typed: this process's own branch plus `@<pid>` (`feature/foo@1234`),
+or `autana-cli@<pid>` outside git or on a detached HEAD. `AUTANA_DEVICE_OWNER`
+overrides it for every command in a shell. `AUTANA_DEVICE_WAIT` overrides how
+long a command waits for the board's lock before giving up - device.py's own
+default (600 s) applies when it is unset. Neither is a flag: an unknown flag
+is named, e.g. `autana flash: unknown flag --owner`.
 
 ## Build and flash
 
@@ -151,7 +149,7 @@ The two raw levels below gesture, `touch` and `imu`, live under
 | Command | What it does |
 |---|---|
 | `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
-| `autana lock id [--json]` | The name this session holds the lock under: this worktree's branch plus `@<pid>`. |
+| `autana lock id [--json]` | The name this session holds the lock under: this process's own branch plus `@<pid>`. |
 | `autana lock release <token>` | Release a lock this session holds; the token is what its command printed. |
 | `autana lock hand [--wait <seconds>] <note...>` | Reserve the board and emit `human-reserved`; with `--wait`, wait until `take-back` emits `human-cleared`. |
 | `autana lock take-back` | Clear that reservation. |
@@ -164,11 +162,7 @@ flash; `suite --flash` and `selftest` hold one lock across flash and capture.
 Lock loss, estimates and flash success are defined in
 [Device-Lock.md](Device-Lock.md).
 
-Every board command's lock owner - see [Board flags](#board-flags) above -
-is its worktree's branch plus `@<pid>`, so `autana status` shows which of
-several sessions holds the board rather than every one reading the same
-name; `AUTANA_DEVICE_OWNER` overrides it, and `AUTANA_DEVICE_WAIT` overrides
-how long a command waits for the board's lock before giving up.
+The lock owner is set as described in [Board flags](#board-flags) above.
 
 `autana lock hand --wait 30 put the board in download mode` pauses a flash
 script until someone puts the board in download mode and runs `autana lock

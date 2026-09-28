@@ -10,6 +10,7 @@ scripts/device/device.py, which takes the device lock. The command list is
 COMMAND_GROUPS at the end of this file; docs/tools/Autana-CLI.md mirrors it.
 """
 
+import functools
 import gzip
 import importlib
 import json
@@ -29,19 +30,25 @@ from espressif import idf_python  # noqa: E402  (path must be set up first)
 VARIANTS = {"rel": "release", "release": "release", "dev": "dev", "diag": "diag"}
 
 
-def owner(worktree=None):
-    """What the device lock calls this autana: AUTANA_DEVICE_OWNER when set,
-    else the branch of the worktree a command acts on (`worktree`, else this
-    process's own cwd) plus this process's pid - two holders of one board
-    read apart at a glance, and the pid alone finds an entry that will not
-    let go in the task list. Outside git, or on a detached HEAD, there is no
-    branch to name it after: `autana-cli@<pid>`."""
+@functools.cache
+def branch():
+    """This process's own branch (git rev-parse --abbrev-ref HEAD), asked
+    once and cached: one process, one branch, however many worktrees
+    `--worktree` sends a command to - so lock id, board_holder()'s
+    self-check and every device_command() call agree on the same name."""
+    return git("rev-parse", "--abbrev-ref", "HEAD")
+
+
+def owner():
+    """What the device lock calls this autana: AUTANA_DEVICE_OWNER when set
+    (read fresh, not cached - a session can export it mid-run), else this
+    process's own branch() plus its pid. Outside git, or on a detached HEAD,
+    there is no branch to name it after: `autana-cli@<pid>`."""
     override = os.environ.get("AUTANA_DEVICE_OWNER")
     if override:
         return override
-    branch = git("-C", worktree, "rev-parse", "--abbrev-ref", "HEAD") if worktree \
-        else git("rev-parse", "--abbrev-ref", "HEAD")
-    label = branch if branch and branch != "HEAD" else "autana-cli"
+    current = branch()
+    label = current if current and current != "HEAD" else "autana-cli"
     return f"{label}@{os.getpid()}"
 
 
@@ -154,16 +161,16 @@ def device_module():
     return device
 
 
-def device_command(*args, worktree=None, default_wait=None):
+def device_command(*args, wait=None):
     """device.py imports pyserial, so it runs under ESP-IDF's Python even
     when some other interpreter started this file. `--owner`/`--wait` are
     device.py's own top-level flags, filled in one place for every board
-    command: owner(worktree) names the lock holder, and `--wait` is
-    AUTANA_DEVICE_WAIT when set, else `default_wait` for a caller that needs
-    its own (send()'s short fail-fast window), else left to device.py's own
+    command: owner() names the lock holder, and `--wait` is a caller's own
+    `wait` when it gives one (send()'s short fail-fast window overrides
+    everything else), else AUTANA_DEVICE_WAIT, else left to device.py's own
     600 s default."""
-    command = [idf_python(), "-u", str(device_tool()), "--owner", owner(worktree)]
-    wait = os.environ.get("AUTANA_DEVICE_WAIT", default_wait)
+    command = [idf_python(), "-u", str(device_tool()), "--owner", owner()]
+    wait = wait if wait is not None else os.environ.get("AUTANA_DEVICE_WAIT")
     if wait:
         command += ["--wait", str(wait)]
     return command + list(args)
@@ -261,7 +268,6 @@ def flash(args):
     perf_scope = "--perf-scope" in seen
     command = device_command(
         "flash", "--variant", variant, "--worktree", worktree, "--purpose", f"autana flash {asked}",
-        worktree=worktree,
     )
     if perf_scope:
         command.append("--perf-scope")
@@ -307,6 +313,7 @@ def seconds_argument(args, default, usage):
 
 def identify(args):
     """What the device lock calls this autana, and the process that is it."""
+    reject_unknown("id", args, ("--json",))
     json_output = read_json_flag(args, "usage: autana id [--json]")
     if json_output:
         print(json.dumps({"owner": owner(), "pid": os.getpid()}))
@@ -320,6 +327,7 @@ def identify(args):
 def buildid(args):
     """What the BOARD says it is running, asked of it rather than read out of
     a build directory: the point of the question is whether the two agree."""
+    reject_unknown("buildid", args, ("--json",))
     json_output = read_json_flag(args, "usage: autana buildid [--json]")
     code, replies = send("BUILDID", reply="BUILD_ID", purpose="autana buildid")
     if code != 0 or not replies:
@@ -334,6 +342,7 @@ def buildid(args):
 def framewatch(args):
     """The frame watch's counts for the last frame and the sites repeating
     now, as the board's own JSON - a development build only."""
+    reject_unknown("framewatch", args)
     if args:
         sys.exit("usage: autana framewatch")
     code, replies = send("FRAMEWATCH", reply="FRAMEWATCH", purpose="autana framewatch")
@@ -450,7 +459,7 @@ def selftest(args):
     print(f"autana selftest: every suite, {worktree}", flush=True)
     command = device_command(
         "selftest", "--worktree", worktree, "--max-seconds", str(seconds),
-        "--purpose", "autana selftest", worktree=worktree,
+        "--purpose", "autana selftest",
     )
     if verbose:
         command.append("--verbose")
@@ -479,6 +488,7 @@ def batch(args):
 
 def status(args):
     """Every board, whether it is free, and if not who has it and until when."""
+    reject_unknown("status", args, ("--json",))
     if read_json_flag(args, "usage: autana status [--json]"):
         return subprocess.call(device_command("status", "--json"))
     return subprocess.call(device_command("status"))
@@ -524,6 +534,7 @@ def hand(args):
 
 def take_back(args):
     """Clear a reservation `autana hand` made, freeing the board again."""
+    reject_unknown("take-back", args)
     if args:
         sys.exit("usage: autana take-back")
     return subprocess.call(device_command("take-back"))
@@ -626,7 +637,7 @@ def suite(args):
     command = device_command(
         "batch", "--worktree", worktree, "--variant", "diag", "--runs", runs,
         "--max-seconds", str(seconds),
-        "--purpose", "autana suite", worktree=worktree,
+        "--purpose", "autana suite",
     )
     if not flash:
         command.append("--no-flash")
@@ -690,7 +701,7 @@ def send(line, reply="TUNE", purpose="autana tune", optional=False, seconds=None
         print(f"the board is busy - {holder}\nnothing was sent; try again when it is free",
               file=sys.stderr)
         return 3, []
-    command = device_command("send", line, "--purpose", purpose, default_wait=SEND_WAIT_S)
+    command = device_command("send", line, "--purpose", purpose, wait=SEND_WAIT_S)
     if reply != "TUNE":
         command += ["--reply", reply]
         for one_until in until if until is not None else [reply]:
@@ -725,7 +736,7 @@ def screenshot(args):
                 sys.exit(usage + " - N is a positive count")
             frames = int(count)
         elif arg.startswith("--"):
-            sys.exit(f"autana screenshot: unknown flag {arg}")
+            reject_unknown("screenshot", [arg])
         else:
             sys.exit(usage)
     if frames is not None:
@@ -770,6 +781,7 @@ def capture_screenshot(out, view):
 
 
 def freeze(args):
+    reject_unknown("freeze", args)
     if args:
         sys.exit("usage: autana freeze")
     code, replies = send("FREEZE", reply="FREEZE_STATE", purpose="autana freeze")
@@ -778,6 +790,7 @@ def freeze(args):
 
 
 def resume(args):
+    reject_unknown("resume", args)
     if args:
         sys.exit("usage: autana resume")
     code, replies = send("RESUME", reply="FREEZE_STATE", purpose="autana resume")
@@ -786,6 +799,7 @@ def resume(args):
 
 
 def step(args):
+    reject_unknown("step", args)
     if len(args) > 1:
         sys.exit("usage: autana step [N]")
     count = args[0] if args else ""
@@ -806,6 +820,7 @@ def is_int(text):
 
 
 def touch(args):
+    reject_unknown("touch", args)
     if len(args) != 3 or args[0] not in ("down", "up") or not is_int(args[1]) or not is_int(args[2]):
         sys.exit("usage: autana touch <down|up> <x> <y>")
     code, replies = send("TOUCH " + " ".join(args), reply="TOUCH", purpose="autana touch",
@@ -815,6 +830,7 @@ def touch(args):
 
 
 def imu(args):
+    reject_unknown("imu", args)
     if args == ["release"]:
         code, replies = send("IMU release", reply="IMU", purpose="autana imu", optional=True, seconds=0.5)
         print("\n".join(replies) if replies else "sent")
@@ -828,6 +844,7 @@ def imu(args):
 
 
 def gesture(args, verb, usage):
+    reject_unknown(verb, args)
     if not all(is_int(value) for value in args):
         sys.exit(usage)
     code, replies = send(verb.upper() + " " + " ".join(args), reply=verb.upper(), until=[verb.upper() + "_OK"],
@@ -855,6 +872,7 @@ def drag(args):
 
 
 def button(args):
+    reject_unknown("button", args)
     if len(args) not in (1, 2) or args[0] not in ("boot", "power") \
             or len(args) == 2 and args[1] not in ("short", "long"):
         sys.exit("usage: autana button <boot|power> [short|long]")
@@ -871,6 +889,7 @@ def docs(args):
 
 
 def apps(args):
+    reject_unknown("apps", args, ("--json",))
     json_output = read_json_flag(args, "usage: autana apps [--json]")
     code, replies = send("APPS", reply="APPS", until=["APPS_END"], purpose="autana apps")
     if not json_output:
@@ -890,6 +909,7 @@ def parse_apps(replies):
 
 
 def open_app(args):
+    reject_unknown("open", args)
     if len(args) != 1:
         sys.exit("usage: autana open <name>")
     code, replies = send("OPEN " + args[0], reply="OPEN", purpose="autana open")
@@ -898,6 +918,7 @@ def open_app(args):
 
 
 def home(args):
+    reject_unknown("home", args)
     if args:
         sys.exit("usage: autana home")
     code, replies = send("HOME", reply="HOME", purpose="autana home")
@@ -985,6 +1006,7 @@ def tune(args):
     reachable through the filtered listing."""
     json_output = "--json" in args
     args = [arg for arg in args if arg != "--json"]
+    reject_unknown("tune", args)
     if json_output and (len(args) > 1 or args and args[0] in ("save", "reset")):
         sys.exit("usage: autana tune [text] [--json]")
     if args and args[0] == "save":
