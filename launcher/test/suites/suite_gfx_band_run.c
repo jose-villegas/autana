@@ -7,6 +7,7 @@
 
 #include "gfx/gfx.h"
 #include "gfx/gfx_band_run.h"
+#include "test_cleanup.h"
 
 typedef struct {
     int draw_calls;
@@ -24,6 +25,7 @@ fixture(void) {
     if (gfx_mode_current()->width == 0) {
         TEST_ASSERT_TRUE(gfx_init());
     }
+    suite_set_test_cleanup(gfx_reset_for_test);
 #endif
 #if CONFIG_LAUNCHER_DEVELOPMENT
     gfx_set_debug_overlay(false);

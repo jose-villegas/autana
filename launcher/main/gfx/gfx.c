@@ -2622,6 +2622,22 @@ reset_mode_to_full_fb(void) {
     current_mode.cell_size = 0;
 }
 
+#ifndef ESP_PLATFORM
+void
+gfx_reset_for_test(void) {
+    if (current_mode.layout == GFX_LAYOUT_INDEXED) {
+        free_indexed_image();
+    } else if (current_mode.layout == GFX_LAYOUT_BANDS) {
+        free_band_buffers();
+        free_band_snapshot();
+    }
+    free_full_framebuffer();
+    current_mode = (gfx_mode_t){0};
+    gfx_fb_guard_set_available(false);
+    gfx_clear_clip();
+}
+#endif
+
 /* Only GFX_RESOLUTION_FULL is wired to real rendering, so the system-wide
  * resolution cap a future Settings app would own (roadmap section 8,
  * decision 1) is not a variable yet - hardcoding it here is the one place

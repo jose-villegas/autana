@@ -81,6 +81,11 @@ _Static_assert(GFX_BAND_HEIGHT % 2 == 0, "a band's row range must round to even 
  * Returns false if either fails; the reason is logged. */
 bool gfx_init(void);
 
+#ifndef ESP_PLATFORM
+/* Restores host-only gfx state after a test owns its initialization. */
+void gfx_reset_for_test(void);
+#endif
+
 /* Convert 0xRRGGBB to the panel's pixel format.
  *
  * GFX_RGB in gfx_color.h does the same thing in a constant expression, which
