@@ -1359,13 +1359,17 @@ def batch(args, store, board):
     point of one lock is nobody else flashing between two captures of that
     image; without it, every suite runs against whatever is already on the
     board. A capture that errors is recorded and the batch continues; only a
-    failed build or flash stops it."""
+    failed build or flash stops it. One suite run once collapses to exactly
+    what a standalone `run-suite` leaves behind - one capture under its own
+    name, no `batch` summary or manifest row - since there is nothing across
+    runs for either to tell apart."""
     extra_flags = ["--perf-scope"] if args.perf_scope else []
     if args.out and (len(args.suite) != 1 or args.runs != 1):
         raise RuntimeError("--out only makes sense with exactly one --suite and --runs 1 - "
                            "several captures cannot all land on one path")
     if args.perf_scope and not args.flash:
         raise RuntimeError("--perf-scope selects the image built - it needs --flash")
+    single = len(args.suite) == 1 and args.runs == 1
     worktree = str(Path(args.worktree).resolve())
     started_at = now()
     entries = []
@@ -1390,11 +1394,15 @@ def batch(args, store, board):
         for run in range(1, args.runs + 1):
             for suite_name in args.suite:
                 capture_at = now()
-                out, _ = resolve_capture_path(
-                    args.out, "runsuite-" + suite_name + "-run" + str(run), args.owner, capture_at)
+                if single:
+                    out, purpose = args.out, args.purpose
+                else:
+                    resolved, _ = resolve_capture_path(
+                        args.out, "runsuite-" + suite_name + "-run" + str(run), args.owner,
+                        capture_at)
+                    out, purpose = str(resolved), f"{args.purpose} ({suite_name} run {run}/{args.runs})"
                 suite_args = argparse.Namespace(
-                    owner=args.owner, wait=args.wait, suite=suite_name, out=str(out),
-                    purpose=f"{args.purpose} ({suite_name} run {run}/{args.runs})",
+                    owner=args.owner, wait=args.wait, suite=suite_name, out=out, purpose=purpose,
                     max_seconds=args.max_seconds, idle_seconds=args.idle_seconds,
                     expect_build_id=build_id, verbose=getattr(args, "verbose", False))
                 print(f"batch: {suite_name} run {run}/{args.runs}", flush=True)
@@ -1408,10 +1416,13 @@ def batch(args, store, board):
                 except RuntimeError as caught:
                     error = str(caught)
                     print("batch: capture error, continuing: " + error, file=sys.stderr)
-                entries.append({"suite": suite_name, "run": run, "capture": str(out),
+                entries.append({"suite": suite_name, "run": run, "capture": out,
                                 "error": error, "failed": failed})
         if any(entry["error"] for entry in entries):
             held.error = "a batch capture failed"
+    if single:
+        entry = entries[0]
+        return 1 if (entry["error"] or entry["failed"]) else 0
     meta = {"build_id": build_id, "owner": args.owner, "purpose": args.purpose,
             "runs": args.runs, "worktree": worktree, "commit": commit}
     summary_path, _ = resolve_capture_path(None, "batch", args.owner, started_at)

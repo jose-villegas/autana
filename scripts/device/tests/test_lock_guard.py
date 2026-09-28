@@ -514,7 +514,8 @@ class FlashTests(Store):
 
         def suite(args, store, board, **unused_keywords):
             expected.append(args.expect_build_id)
-            Path(args.out).write_text(":1:test_one:PASS\n", encoding="utf-8")
+            if args.out:
+                Path(args.out).write_text(":1:test_one:PASS\n", encoding="utf-8")
             return 0
 
         worktree = fake_flash.worktree(self.root / "engine")
