@@ -249,7 +249,8 @@ void frame_watch_add_task(void* task);
  * site and interval, about every site repeating now. */
 void frame_watch_presented(void);
 
-/* frame_watch_settle() on the shared watch, for an app entered or left. */
+/* frame_watch_settle() on the shared watch, for an app entered or left.
+ * What is still pending, overflow included, falls in the new warm-up. */
 void frame_watch_restart(void);
 
 int frame_watch_json(char* out, size_t out_size);

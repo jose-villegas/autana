@@ -228,8 +228,8 @@ frame_watch_presented(void) {
 
 void
 frame_watch_restart(void) {
-    drain();
     frame_watch_settle(&watch);
+    drain();
 }
 
 int
