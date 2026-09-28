@@ -247,8 +247,9 @@ static void yours_exit(void) {
 
 The arena is PSRAM: right for large buffers, wrong for a small hot table
 that wants internal RAM. An app takes internal memory in `enter()` and frees
-it in `exit()`, including partial allocation on an enter failure. Development
-builds warn when an app returns with internal memory still held.
+it in `exit()`, including whatever a failed `enter()` had already taken. A
+development build logs `App <name> kept <n> internal bytes (other tasks can move this)`
+when the internal heap has less free after `exit()` than it had before `enter()`.
 
 ### What the shell resets for you
 
