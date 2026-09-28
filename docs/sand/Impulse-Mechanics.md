@@ -112,6 +112,10 @@ consumed - silently drops the entry instead of flying whatever is there
 now. No per-cell "in flight" bit needed; that would cost the same 40 KB
 this whole mechanism exists to avoid.
 
+An entry also cannot displace another tracked entry. It waits for that entry
+to take its own turn, so a multi-cell push cannot move a grain past the
+position from which its identity can be recovered.
+
 **Over the cap, a blast simply throws fewer grains, evenly.** `sand_explode()`
 seeds every occupied annulus cell in ring order, and if that exceeds the
 caller-sized buffer it thins its own density via a DDA accumulator so an

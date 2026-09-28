@@ -76,14 +76,6 @@ void sand_impulse_dislodge(sand_t* s, int x, int y, int dir, int speed, int ramp
  * `test_a_thrown_chunk_stops_near_the_rim_of_a_dirt_bank`. */
 #define SAND_IMPULSE_DRAG_POWDER_SHIFT      2
 
-/* Below this post-drag speed a KIND_STATIC entry is SPENT: its
- * unconditional gravity-drift may only enter an empty cell, not swap
- * through an occupant - the drift pays no drag, ever, so without this
- * floor a spent chunk swaps down through a whole bank, never stopping. A
- * spent chunk also rests mid-liquid rather than sinking - a deliberate
- * trade-off. */
-#define SAND_IMPULSE_SINK_MIN_SPEED         1
-
 /* RESTITUTION FLOOR for the wall-bounce - below this a blocked entry just
  * waits; above it, it reflects off the blocking surface's normal and pays
  * restitution for the privilege. Not a polish knob: unfloored, undamped,
