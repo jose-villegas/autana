@@ -213,6 +213,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "boot/selftest.c"
         "../test/suites.c"
         "../test/timing.c"
+        "../test/test_cleanup.c"
         ${suite_srcs}
         ${app_suites}
     )

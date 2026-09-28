@@ -11,16 +11,33 @@
 
 #include <stdio.h>
 
+#include "heap_arena.h"
 #include "suites.h"
 #include "unity.h"
 
-/* Unity requires these once per binary. Suites manage their own fixtures,
- * because several of them share this program. */
-void
-setUp(void) {}
+/* Unity requires these once per binary. The runner owns the memory audit. */
+static size_t heap_blocks_before;
+static size_t heap_bytes_before;
 
 void
-tearDown(void) {}
+setUp(void) {
+    heap_arena_snapshot(&heap_blocks_before, &heap_bytes_before);
+}
+
+void
+tearDown(void) {
+    suite_run_test_cleanup();
+
+    size_t heap_blocks_after;
+    size_t heap_bytes_after;
+    heap_arena_snapshot(&heap_blocks_after, &heap_bytes_after);
+    if (heap_blocks_after != heap_blocks_before) {
+        char message[128];
+        (void)snprintf(message, sizeof(message), "test changed arena blocks %zu -> %zu (%zu -> %zu bytes)",
+                       heap_blocks_before, heap_blocks_after, heap_bytes_before, heap_bytes_after);
+        TEST_FAIL_MESSAGE(message);
+    }
+}
 
 int
 main(void) {
@@ -35,10 +52,6 @@ main(void) {
     if (suites_dropped() > 0) {
         printf("FAIL: %d suite(s) dropped; raise SUITE_MAX in suites.h\n", suites_dropped());
         failures += suites_dropped();
-    }
-    if (suite_leaks() > 0) {
-        printf("FAIL: %d test(s) leaked arena blocks\n", suite_leaks());
-        failures += suite_leaks();
     }
     return failures;
 }

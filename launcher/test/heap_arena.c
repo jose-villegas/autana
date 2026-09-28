@@ -48,6 +48,23 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define HEAP_ARENA_ASAN 1
+#endif
+#endif
+#if defined(__SANITIZE_ADDRESS__)
+#define HEAP_ARENA_ASAN 1
+#endif
+#ifdef HEAP_ARENA_ASAN
+#include <sanitizer/asan_interface.h>
+#define arena_asan_poison(address, size)   ASAN_POISON_MEMORY_REGION(address, size)
+#define arena_asan_unpoison(address, size) ASAN_UNPOISON_MEMORY_REGION(address, size)
+#else
+#define arena_asan_poison(address, size)   ((void)0)
+#define arena_asan_unpoison(address, size) ((void)0)
+#endif
+
 #ifndef HOST_HEAP_ARENA_BYTES
 #error "heap_arena.c: HOST_HEAP_ARENA_BYTES must be supplied by the build " \
     "(-DHOST_HEAP_ARENA_BYTES=<n>), sourced from a device profile's " \
@@ -122,6 +139,22 @@ typedef struct {
     size_t peak_bytes;
     int initialized;
 } arena_pool_t;
+
+static void
+arena_unpoison_header(arena_block_t* b) {
+    arena_asan_unpoison(b, ARENA_HEADER_SIZE);
+}
+
+static void
+arena_unpoison_block(arena_block_t* b) {
+    arena_unpoison_header(b);
+    arena_asan_unpoison(b, ARENA_HEADER_SIZE + b->size);
+}
+
+static void
+arena_poison_block(arena_block_t* b) {
+    arena_asan_poison(b, ARENA_HEADER_SIZE + b->size);
+}
 
 /* _Alignas rather than a plain unsigned char[] - a static array has no
  * alignment guarantee stronger than 1 byte in the standard, and every
@@ -209,6 +242,7 @@ arena_pool_init_once(arena_pool_t* p) {
     p->head->size = p->cap > ARENA_HEADER_SIZE ? p->cap - ARENA_HEADER_SIZE : 0;
     p->head->in_use = 0;
     p->head->magic = 0;
+    arena_poison_block(p->head);
     p->initialized = 1;
 }
 
@@ -218,6 +252,7 @@ arena_pool_init_once(arena_pool_t* p) {
  * into this allocation instead of stranding an unusable sliver. */
 static void*
 arena_pool_take_block(arena_pool_t* p, arena_block_t* b, size_t need) {
+    arena_unpoison_block(b);
     size_t remaining = b->size - need;
     if (remaining >= ARENA_HEADER_SIZE + ARENA_ALIGN) {
         arena_block_t* nb = (arena_block_t*)((unsigned char*)b + ARENA_HEADER_SIZE + need);
@@ -231,6 +266,7 @@ arena_pool_take_block(arena_pool_t* p, arena_block_t* b, size_t need) {
         }
         b->next = nb;
         b->size = need;
+        arena_poison_block(nb);
     }
     b->in_use = 1;
     b->magic = ARENA_MAGIC_LIVE;
@@ -252,14 +288,18 @@ static void
 arena_pool_scan(arena_pool_t* p, size_t* out_total_free, size_t* out_largest_free, size_t* out_free_blocks) {
     arena_pool_init_once(p);
     size_t total = 0, largest = 0, blocks = 0;
-    for (arena_block_t* b = p->head; b; b = b->next) {
+    for (arena_block_t* b = p->head; b;) {
+        arena_unpoison_header(b);
+        arena_block_t* next = b->next;
         if (!b->in_use) {
             total += b->size;
             blocks += 1;
             if (b->size > largest) {
                 largest = b->size;
             }
+            arena_poison_block(b);
         }
+        b = next;
     }
     if (out_total_free) {
         *out_total_free = total;
@@ -284,10 +324,16 @@ arena_pool_alloc(arena_pool_t* p, size_t n) {
     }
     size_t need = align_up(n, ARENA_ALIGN);
 
-    for (arena_block_t* b = p->head; b; b = b->next) {
+    for (arena_block_t* b = p->head; b;) {
+        arena_unpoison_header(b);
+        arena_block_t* next = b->next;
         if (!b->in_use && b->size >= need) {
             return arena_pool_take_block(p, b, need);
         }
+        if (!b->in_use) {
+            arena_poison_block(b);
+        }
+        b = next;
     }
 
     size_t total_free, largest_free, free_blocks;
@@ -311,6 +357,9 @@ arena_pool_release(arena_pool_t* p, arena_block_t* b) {
     p->cur_bytes -= b->size;
     p->cur_blocks -= 1;
 
+    if (b->next) {
+        arena_unpoison_header(b->next);
+    }
     if (b->next && !b->next->in_use) {
         arena_block_t* n = b->next;
         b->size += ARENA_HEADER_SIZE + n->size;
@@ -319,6 +368,9 @@ arena_pool_release(arena_pool_t* p, arena_block_t* b) {
             b->next->prev = b;
         }
     }
+    if (b->prev) {
+        arena_unpoison_header(b->prev);
+    }
     if (b->prev && !b->prev->in_use) {
         arena_block_t* pr = b->prev;
         pr->size += ARENA_HEADER_SIZE + b->size;
@@ -326,7 +378,9 @@ arena_pool_release(arena_pool_t* p, arena_block_t* b) {
         if (pr->next) {
             pr->next->prev = pr;
         }
+        b = pr;
     }
+    arena_poison_block(b);
 }
 
 /* Caller must already know ptr is inside this pool - see ptr_in_pool()
@@ -351,11 +405,12 @@ arena_pool_free(arena_pool_t* p, void* ptr) {
 void
 heap_arena_snapshot(size_t* out_blocks, size_t* out_bytes) {
     arena_pool_init_once(&s_internal);
+    arena_pool_init_once(&s_psram);
     if (out_blocks) {
-        *out_blocks = s_internal.cur_blocks;
+        *out_blocks = s_internal.cur_blocks + s_psram.cur_blocks;
     }
     if (out_bytes) {
-        *out_bytes = s_internal.cur_bytes;
+        *out_bytes = s_internal.cur_bytes + s_psram.cur_bytes;
     }
 }
 
@@ -395,6 +450,10 @@ __wrap_free(void* ptr) {
         return;
     }
     if (!ptr_in_pool(&s_internal, ptr)) {
+        if (ptr_in_pool(&s_psram, ptr)) {
+            arena_pool_free(&s_psram, ptr);
+            return;
+        }
         /* Almost certainly a libc-internal allocation (strdup() and
          * friends) that never went through __wrap_malloc - see this
          * file's top comment. Forward it rather than misread foreign
@@ -423,13 +482,19 @@ __wrap_realloc(void* ptr, size_t size) {
     if (!ptr) {
         return arena_pool_alloc(&s_internal, size);
     }
-    if (!ptr_in_pool(&s_internal, ptr)) {
+    arena_pool_t* p = NULL;
+    if (ptr_in_pool(&s_internal, ptr)) {
+        p = &s_internal;
+    } else if (ptr_in_pool(&s_psram, ptr)) {
+        p = &s_psram;
+    }
+    if (!p) {
         /* Foreign pointer - see __wrap_free above for why this can happen
          * at all. Hand it to the real realloc untouched. */
         return __real_realloc(ptr, size);
     }
     if (size == 0) {
-        arena_pool_free(&s_internal, ptr);
+        arena_pool_free(p, ptr);
         return NULL;
     }
 
@@ -444,12 +509,12 @@ __wrap_realloc(void* ptr, size_t size) {
         return ptr;
     }
 
-    void* grown = arena_pool_alloc(&s_internal, size);
+    void* grown = arena_pool_alloc(p, size);
     if (!grown) {
         return NULL; /* realloc's own contract: leave the original intact */
     }
     memcpy(grown, ptr, b->size);
-    arena_pool_free(&s_internal, ptr);
+    arena_pool_free(p, ptr);
     return grown;
 }
 

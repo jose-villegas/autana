@@ -131,7 +131,7 @@ never runs in a release image - only in a SELFTEST build, either one suite
 at a time via runsuite (seconds) or as a full boot-time run - see
 ["Recommended practice"](#recommended-practice) for how long that takes.
 
-### The host runner enforces two of the device's limits
+### The runners enforce the device's memory limits
 
 The host has megabytes of stack and gigabytes of heap; the board's actual
 main-task stack and internal-heap figures are what
@@ -155,10 +155,17 @@ each one cost a build-flash-capture cycle to find — twice over, for both:
   heap. First-fit with real coalescing, because the rule that bites is
   contiguity, not totals: the largest single request a device profile
   records (`DP_LARGEST_ALLOC_BYTES`) is tens of kilobytes, and it fails on a
-  heap with 50 KB free whose largest block is 38 KB. Blocks still
-  outstanding when a test ends print a `LEAK` line naming that test and fail
-  the host run — that is the assert-before-free pattern, which on device
-  leaks that block and starves every later test in the same boot.
+  heap with 50 KB free whose largest block is 38 KB.
+- **An allocation a test does not release.** The host runner snapshots the
+  arena's outstanding block count across its internal and PSRAM pools before
+  and after each test. An outstanding block fails its test and reports the
+  byte totals. The Linux sanitizer run poisons freed arena blocks and headers,
+  so AddressSanitizer catches use-after-free and out-of-bounds access in arena
+  memory; arena allocations are static storage, so it does not report them as
+  process leaks. The device runner records its 8-bit and 32-bit free heap
+  before every test. After cleanup, a first-use drop reruns that test and its
+  cleanup, then checks the second run at zero bytes. A `MALLOC_CAP_*` failure
+  therefore means heap loss repeated.
 
 Those numbers come from `launcher/tools/device/device_profiles/<chip>.sh`, selected
 by `$DEVICE_PROFILE` (default `esp32s3`), each carrying its own provenance.
@@ -567,7 +574,8 @@ it.
 ## Conventions
 
 **Suites do not own the runner.** No suite defines `setUp`/`tearDown` or calls
-`UNITY_BEGIN`/`UNITY_END`, because several share one binary. Each keeps a
+`UNITY_BEGIN`/`UNITY_END`, because several share one binary. The runners use
+their one setup/teardown pair for the memory audit. Each suite keeps a
 `fixture()` helper and calls it at the top of every test, so a test never
 inherits state from the one before it.
 
@@ -723,20 +731,11 @@ by a substring of the name, so treat it as a lookup, not an area map.
    instead of on a second core.
 5. **Keep big fixtures off `.bss`.** A suite's file-scope objects are
    firmware static data in a diagnostics build, charged against the same
-   internal-heap budget as everything else in that build. A microui context
-   added to a suite this way once cost 10,744 bytes of `.bss` on its own.
-   Neither the host runner (a laptop's memory behind it) nor a release build
-   (which links no suites) can see it. Allocate anything large in
-   `fixture()` or in the suite's own run function instead, as
-   `suite_ui_pointer_microui.c` does with its context, and run
-   `tools/build/build_diag_check.sh` before pushing rather than finding out from a
-   pull request — nothing gates this automatically
-   ([`Build-Variants.md`](Build-Variants.md#a-diagnostics-build-can-be-scoped)),
-   so the check is `idf.py -B build.diag size` read by eye, not a pass/fail
-   script. The `.bss` reading
-   is the eyeball half of that script; the pass/fail half is the complexity
-   ratchet it runs first, in seconds, before the build
-   (`docs/tools/Complexity-Gate.md`).
+   internal-heap budget as everything else in that build. Constant tables are
+   `static const`; mutable buffers allocate in a test or its fixture and are
+   released before the suite returns. `tools/build/build_diag_check.sh`
+   enforces `SUITE_STATIC_DATA_LIMIT` per suite object after a diagnostics
+   build, in addition to the complexity ratchet.
 
    One trap makes a local measurement lie: **a local `build.diag` keeps
    whatever scope it was last configured with**. A leftover

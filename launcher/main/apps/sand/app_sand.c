@@ -765,6 +765,8 @@ sand_app_select_brush_for_test(int brush) {
     ui.brush = brush;
 }
 
+static void sand_exit(void);
+
 bool
 sand_app_test_survives_indexed_then_menu(int mode) {
     const int previous_mode = color_mode;
@@ -773,6 +775,7 @@ sand_app_test_survives_indexed_then_menu(int mode) {
     start_sim();
     sand_enter();
     const bool ok = !sand_colour_indexed_active(&colour_state);
+    sand_exit();
     color_mode = (sand_color_mode_t)previous_mode;
     return ok;
 }

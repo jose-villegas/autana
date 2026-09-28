@@ -4,6 +4,7 @@
  */
 
 #include <stdbool.h>
+#include <stdlib.h>
 
 #include "suites.h"
 #include "unity.h"
@@ -14,15 +15,26 @@
 #define LUT_SIZE   256
 #define UI_ENTRIES 16
 
-static gfx_color_t none_lut[LUT_SIZE];
-static gfx_color_t lut256[LUT_SIZE];
-static sand_mode_swatch_t swatches[SAND_COLOUR_MODE_COUNT];
+static gfx_color_t* none_lut;
+static gfx_color_t* lut256;
+static sand_mode_swatch_t* swatches;
+
+static void release_fixture(void);
 
 /* Sixteen greys for the 16-colour mode, repeated across the table the way
  * a nearest-colour table repeats them; a distinct colour per index above
  * the UI block for 256. */
 static void
 fixture(void) {
+    if (none_lut == NULL) {
+        none_lut = malloc(sizeof(*none_lut) * LUT_SIZE);
+        lut256 = malloc(sizeof(*lut256) * LUT_SIZE);
+        swatches = malloc(sizeof(*swatches) * SAND_COLOUR_MODE_COUNT);
+    }
+    TEST_ASSERT_NOT_NULL(none_lut);
+    TEST_ASSERT_NOT_NULL(lut256);
+    TEST_ASSERT_NOT_NULL(swatches);
+    suite_set_test_cleanup(release_fixture);
     for (int i = 0; i < LUT_SIZE; i++) {
         const int grey = (i % 16) * 16;
         none_lut[i] = GFX_RGB((uint32_t)(grey << 16 | grey << 8 | grey));
@@ -86,6 +98,7 @@ luma_of(uint32_t rgb) {
  * their luma order, so a sort-by-blue mistake shows up as a misordering. */
 static void
 test_sixteen_sorts_by_luma_not_by_a_single_channel(void) {
+    fixture();
     /* Round-tripped through GFX_RGB/gfx_color_rgb888 like every other entry,
      * since the LUT itself is quantised to RGB565 - comparing against the
      * raw literals would miss by a rounding bucket. */
@@ -122,6 +135,7 @@ test_sixteen_sorts_by_luma_not_by_a_single_channel(void) {
  * build_sixteen(). */
 static void
 test_sixteen_pads_by_repeating_the_last_colour_when_the_lut_has_fewer(void) {
+    fixture();
     const int distinct = 5;
     for (int i = 0; i < LUT_SIZE; i++) {
         const int grey = (i % distinct) * 40;
@@ -174,6 +188,16 @@ test_full_sweeps_hue_in_one_row(void) {
     for (int i = 1; i < s->cols; i++) {
         TEST_ASSERT_NOT_EQUAL(s->rgb[i - 1], s->rgb[i]);
     }
+}
+
+static void
+release_fixture(void) {
+    free(swatches);
+    swatches = NULL;
+    free(lut256);
+    lut256 = NULL;
+    free(none_lut);
+    none_lut = NULL;
 }
 
 void

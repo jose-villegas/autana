@@ -17,6 +17,8 @@
  */
 #pragma once
 
+#include "test_cleanup.h"
+
 #define RUN_TEST(func) suite_run_test_timed(func, #func, __LINE__)
 
 /* Runs the test exactly as RUN_TEST always has (same file:line:name:PASS
@@ -24,4 +26,6 @@
  * long it took. */
 void suite_run_test_timed(void (*func)(void), const char* name, int line);
 
-int suite_leaks(void);
+#ifdef DEVICE_BUILD
+void suite_repeat_watched_test(void);
+#endif

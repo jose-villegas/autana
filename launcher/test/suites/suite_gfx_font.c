@@ -21,6 +21,7 @@
  * step with what this suite expects.
  */
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "suites.h"
@@ -335,8 +336,10 @@ test_row_run_rect_never_leaves_the_characters_own_row_extent(void) {
 #define SIM_INK  ((gfx_color_t)1)
 #define SIM_HALO ((gfx_color_t)2)
 
-static gfx_color_t sim_old[SIM_DIM * SIM_DIM];
-static gfx_color_t sim_new[SIM_DIM * SIM_DIM];
+static gfx_color_t* sim_old;
+static gfx_color_t* sim_new;
+
+static void release_fixture(void);
 
 typedef void (*run_rect_fn_t)(const gfx_font_t*, int, int, int, int, int, int, int, int*, int*, int*, int*);
 
@@ -393,8 +396,17 @@ sim_draw_new(gfx_target_t target, const gfx_font_t* f, int x, int y, unsigned ch
  * replaced with sim_old/sim_new so both forms land in a real buffer. */
 static void
 assert_old_and_new_match(gfx_target_t band, int x, int y, unsigned char ch, int scale, int turn) {
-    memset(sim_old, 0, sizeof sim_old);
-    memset(sim_new, 0, sizeof sim_new);
+    if (sim_old == NULL) {
+        sim_old = malloc(sizeof(*sim_old) * SIM_DIM * SIM_DIM);
+    }
+    if (sim_new == NULL) {
+        sim_new = malloc(sizeof(*sim_new) * SIM_DIM * SIM_DIM);
+    }
+    TEST_ASSERT_NOT_NULL(sim_old);
+    TEST_ASSERT_NOT_NULL(sim_new);
+    suite_set_test_cleanup(release_fixture);
+    memset(sim_old, 0, sizeof(*sim_old) * SIM_DIM * SIM_DIM);
+    memset(sim_new, 0, sizeof(*sim_new) * SIM_DIM * SIM_DIM);
 
     gfx_target_t old_target = band, new_target = band;
     old_target.buf = sim_old;
@@ -533,12 +545,21 @@ sim_draw_merged(gfx_target_t target, const gfx_font_t* f, int x, int y, unsigned
     sim_walk_boxes(target, f, x, y, ch, scale, turn, gfx_font_run_box_rect, SIM_INK);
 }
 
-static gfx_color_t sim_merged[SIM_DIM * SIM_DIM];
+static gfx_color_t* sim_merged;
 
 static void
 assert_merged_matches_unmerged(gfx_target_t band, int x, int y, unsigned char ch, int scale, int turn) {
-    memset(sim_new, 0, sizeof sim_new);
-    memset(sim_merged, 0, sizeof sim_merged);
+    if (sim_new == NULL) {
+        sim_new = malloc(sizeof(*sim_new) * SIM_DIM * SIM_DIM);
+    }
+    if (sim_merged == NULL) {
+        sim_merged = malloc(sizeof(*sim_merged) * SIM_DIM * SIM_DIM);
+    }
+    TEST_ASSERT_NOT_NULL(sim_new);
+    TEST_ASSERT_NOT_NULL(sim_merged);
+    suite_set_test_cleanup(release_fixture);
+    memset(sim_new, 0, sizeof(*sim_new) * SIM_DIM * SIM_DIM);
+    memset(sim_merged, 0, sizeof(*sim_merged) * SIM_DIM * SIM_DIM);
 
     gfx_target_t unmerged_target = band, merged_target = band;
     unmerged_target.buf = sim_new;
@@ -573,6 +594,23 @@ test_merged_boxes_match_unmerged_runs_at_a_band_edge(void) {
     }
 }
 
+static void
+release_fixture(void) {
+    free(sim_merged);
+    sim_merged = NULL;
+    free(sim_new);
+    sim_new = NULL;
+    free(sim_old);
+    sim_old = NULL;
+}
+
+#undef RUN_TEST
+#define RUN_TEST(func)                                                                                                 \
+    do {                                                                                                               \
+        suite_run_test_timed(func, #func, __LINE__);                                                                   \
+        release_fixture();                                                                                             \
+    } while (0)
+
 void
 run_gfx_font_suite(void) {
     RUN_TEST(test_default_font_width_matches_char_w_per_character);
@@ -600,5 +638,7 @@ run_gfx_font_suite(void) {
     RUN_TEST(test_merged_boxes_match_unmerged_runs_at_every_turn);
     RUN_TEST(test_merged_boxes_match_unmerged_runs_at_a_band_edge);
 }
+
+#undef RUN_TEST
 
 SUITE_REGISTER(run_gfx_font_suite);

@@ -40,14 +40,15 @@
  * untouched; this is only the prototype, hand-matched to it. */
 extern void UnityDefaultTestRun(void (*Func)(void), const char* FuncName, const int FuncLineNum);
 
-#ifdef HOST_HEAP_ARENA
-static int leaks;
-#endif
-
 #ifdef DEVICE_BUILD
 static void (*watched_test)(void);
 static int tests_run;
 static int tests_judged;
+
+void
+suite_repeat_watched_test(void) {
+    watched_test();
+}
 
 /* Each present a test makes is one of its frames; see frame_watch.h. */
 static void
@@ -64,14 +65,10 @@ run_watched(void) {
 
 void
 suite_run_test_timed(void (*func)(void), const char* name, int line) {
+    suite_clear_test_cleanup();
 #ifdef HOST_HEAP_ARENA
-    /* Outside the timed window on both ends, same as the timer itself -
-     * this must never be what widens it. */
-    size_t blocks_before, bytes_before;
-    heap_arena_snapshot(&blocks_before, &bytes_before);
     heap_arena_reset_peak();
 #endif
-
 #ifdef DEVICE_BUILD
     const int64_t started = esp_timer_get_time();
 #else
@@ -93,20 +90,6 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
     const long elapsed_ms = (clock() - started) * 1000L / CLOCKS_PER_SEC;
 #endif
 
-#ifdef HOST_HEAP_ARENA
-    /* A rise in outstanding blocks means the test freed fewer than it
-     * allocated. A fixture that asserts before freeing skips
-     * every earlier free() and starves every test that runs after it. Own greppable line, no
-     * consumer parses it today, so its shape is free to be whatever reads
-     * clearest. */
-    size_t blocks_after, bytes_after;
-    heap_arena_snapshot(&blocks_after, &bytes_after);
-    if (blocks_after > blocks_before) {
-        printf("LEAK test=%s blocks=%zu bytes=%zu\n", name, blocks_after - blocks_before, bytes_after - bytes_before);
-        leaks++;
-    }
-#endif
-
     /* Own sentinel line, same key=value shape as SELFTEST_COMPLETE - a new
      * line rather than an appended suffix, so the existing result line's
      * format never changes. int64_t because these range from under a
@@ -126,15 +109,6 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
            heap_arena_peak_bytes()
 #endif
     );
-}
-
-int
-suite_leaks(void) {
-#ifdef HOST_HEAP_ARENA
-    return leaks;
-#else
-    return 0;
-#endif
 }
 
 void

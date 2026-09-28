@@ -68,6 +68,9 @@ CFLAGS="$BASE_CFLAGS"
 if [ "${HOST_SANITIZE:-}" = undefined ]; then
     # Instrumentation widens the ranges that format-truncation reasons about.
     CFLAGS="$CFLAGS -fsanitize=undefined -fsanitize-recover=undefined -Wno-format-truncation"
+    case "$(uname -s)" in
+        Linux) CFLAGS="$CFLAGS -fsanitize=address -fno-omit-frame-pointer" ;;
+    esac
 fi
 
 # --- the device's heap, on this machine ------------------------------------
@@ -89,6 +92,7 @@ SOURCES="
 $TEST_DIR/host_main.c
 $TEST_DIR/suites.c
 $TEST_DIR/timing.c
+$TEST_DIR/test_cleanup.c
 $TEST_DIR/heap_arena.c
 $MAIN_DIR/app_arena.c
 $MAIN_DIR/app_registry.c
@@ -175,8 +179,8 @@ case "${1:-}" in
             -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
             -I "$TEST_DIR/../components/microui/include" \
             -I "$TEST_DIR/../components/small3dlib/include" \
-            -I "$TEST_DIR/../tools/gen" -include "$TEST_DIR/timing.h" \
-            $HEAP_ARENA_DEFINES
+            -I "$TEST_DIR/../tools/gen" $HEAP_ARENA_DEFINES \
+            -include "$TEST_DIR/timing.h"
         exit 0
         ;;
 esac
@@ -190,6 +194,10 @@ if [ -z "${QUIET_INNER:-}" ]; then
     quiet_run host-tests env QUIET_INNER=1 VERBOSE="$VERBOSE" sh "$0" "$@" || true
     QUIET_SUMMARY=$(grep -E '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored' "$QUIET_LOG" | tail -n 1)
     export QUIET_SUMMARY
+    QUIET_FAILURES=$(grep -E ':FAIL|ERROR: (AddressSanitizer|LeakSanitizer)' "$QUIET_LOG" || true)
+    if [ -n "$QUIET_FAILURES" ]; then
+        printf 'Test and sanitizer failures:\n%s\n' "$QUIET_FAILURES"
+    fi
     if [ "${HOST_SANITIZE:-}" = undefined ]; then
         QUIET_FINDINGS=$(grep 'runtime error:' "$QUIET_LOG" | sed -E 's/:[0-9]+: runtime error:/: runtime error:/' | sort -u || true)
         if [ -n "$QUIET_FINDINGS" ]; then
@@ -273,10 +281,9 @@ SOURCES_RSP="$BUILD_DIR/sources.rsp"
     sed -e '/^$/d' -e 's/[\\"]/\\&/g' -e 's/.*/"&"/' >"$SOURCES_RSP"
 
 # shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
+"$CC_BIN" $CFLAGS $HEAP_ARENA_DEFINES -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
     -I "$TEST_DIR/../components/microui/include" \
     -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools/gen" -include "$TEST_DIR/timing.h" \
-    $HEAP_ARENA_DEFINES \
     "@$SOURCES_RSP" "$UNITY_OBJ" -o "$OUT" \
     -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm
 
@@ -341,7 +348,7 @@ for f in $SU_SOURCES; do
     n=$((n + 1))
     base=$(basename "$f" .c)
     # shellcheck disable=SC2086
-    "$CC_BIN" $BASE_CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
+    "$CC_BIN" $BASE_CFLAGS $HEAP_ARENA_DEFINES -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
         -I "$TEST_DIR/../components/microui/include" \
         -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools/gen" -include "$TEST_DIR/timing.h" \
         -fstack-usage -c "$f" -o "$SU_DIR/$(printf '%02d' "$n")_$base.o" &
@@ -381,4 +388,9 @@ fi
 # MinGW appends .exe; elsewhere the plain name is produced.
 [ -x "$OUT" ] || OUT="$OUT.exe"
 
-"$OUT"
+if [ "${HOST_SANITIZE:-}" = undefined ] && [ "$(uname -s)" = Linux ]; then
+    # Control ids are value addresses and must stay stable across frames, as on the device.
+    ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0" "$OUT"
+else
+    "$OUT"
+fi

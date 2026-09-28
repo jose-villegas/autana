@@ -9,6 +9,8 @@
  * settled scenes. The row painter is exercised by suite_sand_paint_row.c.
  */
 
+#include <stdlib.h>
+
 #include "suites.h"
 #include "unity.h"
 
@@ -163,7 +165,7 @@ test_metal_shine_cells_get_a_different_index_in_256_and_16(void) {
 #define SCENE_W 40
 #define SCENE_H 30
 
-static uint8_t scene_grid[SCENE_W * SCENE_H];
+static uint8_t* scene_grid;
 static sand_t scene_sim;
 
 typedef struct {
@@ -236,6 +238,8 @@ check_settled_cell_maps_and_expands(const uint8_t* row, int cx, int cy, const ch
  * against real (not hand-picked) hash/mask/depth combinations. */
 static void
 test_settled_scenes_map_and_expand_correctly_at_every_quality(void) {
+    scene_grid = malloc(SCENE_W * SCENE_H);
+    TEST_ASSERT_NOT_NULL(scene_grid);
     static const int cell_sizes[] = {2, 4, 8}; /* ULTRA, NORMAL, VERY LOW */
     const size_t n_sizes = sizeof cell_sizes / sizeof cell_sizes[0];
 
@@ -253,6 +257,8 @@ test_settled_scenes_map_and_expand_correctly_at_every_quality(void) {
             }
         }
     }
+    free(scene_grid);
+    scene_grid = NULL;
 }
 
 void
