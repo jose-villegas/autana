@@ -92,10 +92,13 @@ build.
 
 `batch` and `selftest` build first, then hold one lock across the flash and
 the capture. A separate `flash` and `run-suite` take two locks, and another
-session can flash between them: `run-suite --expect-build-id <id>` fails if
-the board reports another build, but `autana suite` passes no id, so after a
-separate flash use `batch` or `selftest` when the capture must be of that
-image.
+session can flash between them: `run-suite --expect-build-id <id>` (`autana
+suite`'s own `--expect-build-id`) fails if the board reports another build;
+without it, use `batch` or `selftest` when the capture must be of the image
+`flash` just wrote. `batch`'s own `--expect-build-id` checks the image it
+just flashed itself, before running any suite, against an id decided before
+the flash - a different check from `run-suite`'s, which is against what the
+board reports at capture time.
 
 ```mermaid
 sequenceDiagram
