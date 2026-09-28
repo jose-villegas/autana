@@ -578,6 +578,15 @@ class BuildCommandTests(unittest.TestCase):
             autana.build(["diag", "rel", "--check"])
         checked.assert_not_called()
 
+    def test_check_with_perf_scope_is_refused(self):
+        """build_diag_check.sh has no --perf-scope of its own - dropping the
+        flag silently would build something other than what was asked for."""
+        with mock.patch.object(autana, "engine_worktree", return_value="C:/wt"), \
+             mock.patch.object(autana, "build_diag_check") as checked, \
+                self.assertRaises(SystemExit):
+            autana.build(["diag", "--check", "--perf-scope"])
+        checked.assert_not_called()
+
 
 class BuildDiagCheckTests(unittest.TestCase):
     """build_diag_check() shells out to build_diag_check.sh unchanged -

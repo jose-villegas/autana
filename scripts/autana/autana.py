@@ -287,7 +287,7 @@ def build(args):
     worktree_arg, args = pop_value(args, "--worktree")
     worktree = resolve_worktree(worktree_arg)
     if check:
-        if [arg for arg in args if arg != "--perf-scope"] != ["diag"]:
+        if args != ["diag"]:
             sys.exit("usage: autana build diag --check")
         return build_diag_check(worktree)
     _, variant, seen, worktree = variant_request("build", args, ("--perf-scope",), worktree=worktree)
