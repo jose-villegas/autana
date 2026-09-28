@@ -140,15 +140,10 @@ $RECYCLE.BIN/
 # AUTANA_RECORDS names nowhere else - see docs/tools/Autana-CLI.md.
 .records/
 
-### The .dev tooling checkout
-# A separate repository that has to sit inside this one - see .dev/README.md.
-# AGENTS.md, the instruction file every agent reads, lives in it; the one at
-# this root is a symlink to it, so it belongs to that repository too. Rooted,
-# so an AGENTS.md written for a subdirectory would still be tracked.
+### A maintainer's private tooling checkout, and what it links in
+# Rooted, so an AGENTS.md written for a subdirectory would still be tracked.
 .dev/
 /AGENTS.md
-# .dev's skills, linked in by .dev/scripts/link-dev-into-worktree.sh, and the
-# agent worktrees Claude Code keeps beside them.
 /.claude/skills/
 /.claude/worktrees/
 

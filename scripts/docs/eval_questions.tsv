@@ -7,7 +7,6 @@ how do two agents share the same board without stepping on each other	docs/tools
 why is my host test failing but the device suite passes	docs/Testing-Guide.md	The host runner enforces two of the device's limits
 how do I make a tunable I can change live on the device	docs/tools/Live-Tuning.md	Making something tunable
 clang-format version mismatch breaks CI	docs/C-Style-Guide.md	One formatter version
-why can't a gfx file mention a specific app name in a comment	.dev/AGENTS.md	Includes are layer-qualified
 why is LVGL not used here	docs/Firmware-Architecture.md	Why microui, not LVGL
 touch taps feel laggy in the UI	docs/Firmware-Architecture.md	Two things to know before touching it
 how does dirty-band redraw skip repainting unchanged microui windows	docs/Firmware-Architecture.md	Immediate mode versus dirty bands
@@ -20,7 +19,6 @@ how is metal smelted from dirt in sand	docs/sand/Metal.md	How dirt becomes metal
 why does my liquid material look wrong, shading pipeline	docs/sand/Shading-and-Colour.md	The pipeline
 how do I capture a frame-budget performance report for sand	docs/sand/Testing-Sand.md	Capturing a frame-budget report
 explosion and thrown chunk mechanics, impulse	docs/sand/Impulse-Mechanics.md	Impulse Mechanics: things in flight
-what is a scene_*.c file versus app_*.c	.dev/AGENTS.md	Adding/removing an app touches no other file
 render_lab wireframe scene generator	launcher/tools/render/scenes/README.md	Render/Scenes
 how do I add a screen to the host editor	editor/README.md	Adding a screen
 running qemu tests without a board	docs/Testing-Guide.md	QEMU: the device image with no board
@@ -39,7 +37,3 @@ proposal for a compile-time log level per build variant	docs/plans/Log-Level-Pla
 plan for splitting diagnostics into a settings app	docs/plans/Settings-App-Plan.md	Plan: split Diagnostics into a Settings app, then unify SELFTEST/diagnostics naming
 UI editor plan, native app rendering in-process with Dear ImGui	docs/plans/UI-Editor-Plan.md	The shell: SDL2 + Dear ImGui
 band-mode framebuffer and span rasterizer roadmap for future games	docs/plans/Autana-Rendering-Roadmap.md	3.3 Read PSRAM, never write it in bulk: core-1 present and an internal-SRAM band ring
-when should a task go to Codex instead of Claude	.dev/docs/workflows/Model-Delegation-Workflow.md	Routing table
-worktrees don't have .dev folder, why	.dev/docs/workflows/Agent-Workflow.md	Worktrees get no `.dev`
-why did my screenshot look fine but the panel-link actually glitched	.dev/docs/notes/Device-Workflow.md	Panel-link faults are invisible to screenshots
-touchscreen hover synthesized frames costing tap latency, lesson learned	.dev/docs/UI-Lessons.md	A touchscreen needs two synthesized hover frames, and this shipped broken

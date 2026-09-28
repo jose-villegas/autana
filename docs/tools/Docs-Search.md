@@ -25,11 +25,15 @@ and `docs_outline`.
 | Source | Unit |
 |---|---|
 | Every Markdown file git tracks or would track, except `third_party/`, `launcher/components/` and `.claude/skills/` | a heading and the text up to the next heading |
-| `.dev/` Markdown when that checkout is linked in, except its records, agent definitions and datasheet text | the same |
 | The module docstring or leading comment of each tracked `.py`, `.sh` or `.mjs` file under `scripts/`, `launcher/tools/`, `launcher/test/` and `launcher/main/apps/`, except tests | one section per script |
 
 A section copied verbatim into two files is kept once. The index is rebuilt on
 every run, so it is never stale; an edit is searchable at once.
+
+Notes kept outside the tracked tree can join the index: `AUTANA_DOCS_EXTRA`
+names Markdown files and folders, separated by `;` on Windows and `:`
+elsewhere, each relative to the checkout unless absolute. A named folder's
+own `eval_questions.tsv` joins `--eval`.
 
 ## How it ranks
 
@@ -43,9 +47,10 @@ flowchart LR
     R -.->|"--ask"| A["local chat model<br/>short answer, cited"]
 ```
 
-Plans, `.dev` notes and sections headed "Related" or "See also" rank below
-documents of record: a plan describes code that does not exist yet, and a list
-of links names every topic and answers none. A question whose words no
+Plans, `AUTANA_DOCS_EXTRA` notes and sections headed "Related" or "See also"
+rank below documents of record: a plan describes code that does not exist
+yet, notes from outside the tree are not the record, and a list of links
+names every topic and answers none. A question whose words no
 document uses says so, and a result that neither holds most of the question's
 words nor is close in meaning is flagged as a weak match.
 

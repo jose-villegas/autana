@@ -185,9 +185,8 @@ autana> quit
 | `scripts/add-tools-to-path.sh [--check]` | Put `tools/` on the PATH, from the primary checkout (a worktree's entry dies with it). |
 
 The lock is one per machine, in the system temp folder. Each session writes a
-log and a manifest under `AUTANA_RECORDS` - the checkout's gitignored
-`.records/device` when unset, `.dev/records/device` when the PATH installer
-finds a `.dev` checkout beside it.
+log and a manifest under `AUTANA_RECORDS`, or the checkout's gitignored
+`.records/device` when that is unset.
 Set `AUTANA_LOCK_HOOK` to a shell command for lock events; see
 [Device-Lock.md](Device-Lock.md#lock-events) for events and variables.
 

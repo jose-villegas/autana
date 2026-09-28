@@ -1,24 +1,10 @@
 # The Windows half of scripts/add-tools-to-path.sh, which says what this is
-# for and passes the folder in AUTANA_TOOLS_ROOT, --check in
-# AUTANA_CHECK_ONLY, and the records folder - empty for none - in
-# AUTANA_RECORDS_DIR.
+# for and passes the folder in AUTANA_TOOLS_ROOT and --check in
+# AUTANA_CHECK_ONLY.
 $ErrorActionPreference = 'Stop'
 
 $root = $env:AUTANA_TOOLS_ROOT.TrimEnd('\')
 $checkOnly = $env:AUTANA_CHECK_ONLY -eq '1'
-$records = $env:AUTANA_RECORDS_DIR
-
-# The persistent USER variable, beside the PATH entry and by the same rules:
-# a terminal already open keeps its old environment.
-if ($records -and -not $checkOnly) {
-    $held = [Environment]::GetEnvironmentVariable('AUTANA_RECORDS', 'User')
-    if ($held -ieq $records) {
-        Write-Output "AUTANA_RECORDS already set: $records"
-    } else {
-        [Environment]::SetEnvironmentVariable('AUTANA_RECORDS', $records, 'User')
-        Write-Output "AUTANA_RECORDS set to: $records"
-    }
-}
 
 function Same-Folder($a, $b) {
     return $a.TrimEnd('\') -ieq $b.TrimEnd('\')
