@@ -18,13 +18,19 @@
 
 #include <stdio.h>
 
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "unity.h"
+#include "unity_test_utils_memory.h"
 
 #include "suites.h"
+#include "timing.h"
 
 static const char* TAG = "selftest";
+
+static size_t free_8bit_before;
+static size_t free_32bit_before;
 
 void
 __wrap_esp_system_console_put_char(char c) {
@@ -33,13 +39,25 @@ __wrap_esp_system_console_put_char(char c) {
     }
 }
 
-/* Unity requires these once per binary. The suites manage their own fixtures,
- * since they all share this program. */
+/* Unity requires these once per binary. The runner owns the memory audit. */
 void
-setUp(void) {}
+setUp(void) {
+    free_8bit_before = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    free_32bit_before = heap_caps_get_free_size(MALLOC_CAP_32BIT);
+    unity_utils_record_free_mem();
+}
 
 void
-tearDown(void) {}
+tearDown(void) {
+    suite_run_test_cleanup();
+    if (heap_caps_get_free_size(MALLOC_CAP_8BIT) < free_8bit_before
+        || heap_caps_get_free_size(MALLOC_CAP_32BIT) < free_32bit_before) {
+        unity_utils_record_free_mem();
+        suite_repeat_watched_test();
+        suite_run_test_cleanup();
+    }
+    unity_utils_evaluate_leaks_direct(0);
+}
 
 int
 selftest_run(void) {

@@ -33,7 +33,7 @@
 
 enum { GAS_RISE_TRIALS = 64, GAS_RISE_STEPS = 8, GAS_RISE_W = 64, GAS_RISE_H = 64 };
 
-static uint8_t gas_rise_cells[GAS_RISE_W * GAS_RISE_H];
+static uint8_t* gas_rise_cells;
 static sand_t gas_rise_sim;
 
 /* gas */
@@ -239,6 +239,8 @@ test_gas_is_blocked_by_a_stone_ceiling(void) {
 
 static void
 test_open_air_gas_rise_rate_stays_at_its_baseline(void) {
+    gas_rise_cells = malloc(GAS_RISE_W * GAS_RISE_H);
+    TEST_ASSERT_NOT_NULL(gas_rise_cells);
     int total_rise = 0;
 
     for (int trial = 0; trial < GAS_RISE_TRIALS; trial++) {
@@ -266,6 +268,8 @@ test_open_air_gas_rise_rate_stays_at_its_baseline(void) {
     TEST_ASSERT_INT_WITHIN_MESSAGE(
         9, 409, total_rise,
         "the 64-trial, eight-step baseline rises 409 cells; a move outside two percent changes open-air gas");
+    free(gas_rise_cells);
+    gas_rise_cells = NULL;
 }
 
 /* The pocket's interior is one cell, and an escape check has to know which
@@ -531,7 +535,7 @@ test_gas_decaying_away_marks_its_row_dirty(void) {
                                  * known row instead of wherever it drifted */
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, sand_spawn(&s, 3, 4, 0, MAT_GAS), "setup: exactly one gas grain placed");
-    memset(dirty, 0, sizeof(dirty));
+    memset(dirty, 0, H);
 
     for (int i = 0; i < MATERIAL_VARIANTS - 1; i++) {
         sand_step(&s, 0, 1000, 0);
@@ -690,8 +694,10 @@ static uint32_t
 burst_board_from_frame(uint8_t fill) {
     enum { BW = 6 * 40, BH = 5, BURST_STEPS = 3 };
 
-    static uint8_t cells[BW * BH];
-    static impulse_t impulses[BW * BH];
+    uint8_t* cells = malloc(BW * BH);
+    impulse_t* impulses = malloc(sizeof(*impulses) * BW * BH);
+    TEST_ASSERT_NOT_NULL(cells);
+    TEST_ASSERT_NOT_NULL(impulses);
 
     sand_t s;
     memset(&s, fill, sizeof s);
@@ -711,13 +717,16 @@ burst_board_from_frame(uint8_t fill) {
         hash ^= cells[i];
         hash *= 16777619u;
     }
+    free(impulses);
+    free(cells);
     return hash;
 }
 
 static void
 test_a_reaction_driven_board_does_not_read_the_callers_frame(void) {
     sand_t s;
-    static uint8_t cells[16 * 16];
+    uint8_t* cells = malloc(16 * 16);
+    TEST_ASSERT_NOT_NULL(cells);
 
     TEST_ASSERT_EQUAL_HEX32_MESSAGE(burst_board_from_frame(0x00), burst_board_from_frame(0xFF),
                                     "the pockets burst differently on a dirty frame than on a clean one");
@@ -726,6 +735,7 @@ test_a_reaction_driven_board_does_not_read_the_callers_frame(void) {
     sand_init(&s, cells, 16, 16, 1u);
     TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, s.explosions_this_step, "sand_init() left the explosion count unset");
     TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, s.confined_blasts_this_step, "sand_init() left the blast cap unset");
+    free(cells);
 }
 
 static void
@@ -1019,7 +1029,7 @@ test_igniting_a_neighbour_marks_its_row_dirty(void) {
                                       * targeted the ignited neighbour's
                                       * row specifically, not just the
                                       * fire cell's */
-    memset(dirty, 0, sizeof(dirty));
+    memset(dirty, 0, H);
 
     sand_step(&s, 0, 1000, 0);
 
@@ -1038,7 +1048,7 @@ test_fire_burning_out_marks_its_row_dirty(void) {
     sand_set_decay(&s, 255);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, sand_spawn(&s, 3, 4, 0, MAT_FIRE), "setup: exactly one fire cell placed");
-    memset(dirty, 0, sizeof(dirty));
+    memset(dirty, 0, H);
 
     for (int i = 0; i < MATERIAL_VARIANTS - 1; i++) {
         sand_step(&s, 0, 1000, 0);

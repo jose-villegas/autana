@@ -3,6 +3,8 @@
  * against one, and the statistics the taps add up to.
  */
 
+#include <stdlib.h>
+
 #include "suites.h"
 #include "unity.h"
 
@@ -170,12 +172,17 @@ test_the_settle_window_includes_both_bounds(void) {
 static const input_t IDLE = {0};
 
 /* Static: a tap's sample buffer is too large for the device's test stack. */
-static touch_probe_tap_t tap;
+static touch_probe_tap_t* tap;
+
+static void release_fixture(void);
 
 static touch_probe_tap_t*
 fresh_tap(void) {
-    tap = (touch_probe_tap_t){0};
-    return &tap;
+    free(tap);
+    tap = calloc(1, sizeof(*tap));
+    TEST_ASSERT_NOT_NULL(tap);
+    suite_set_test_cleanup(release_fixture);
+    return tap;
 }
 
 static input_t
@@ -263,6 +270,12 @@ test_a_long_hold_keeps_to_the_sample_buffer(void) {
     }
     TEST_ASSERT_EQUAL_INT(TOUCH_PROBE_SAMPLES_MAX, t->count);
     TEST_ASSERT_EQUAL_INT(3 * TOUCH_PROBE_SAMPLES_MAX * 5, t->held_ms);
+}
+
+static void
+release_fixture(void) {
+    free(tap);
+    tap = NULL;
 }
 
 void

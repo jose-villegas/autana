@@ -68,7 +68,7 @@ assert_every_change_is_marked(material_id_t m, int steps, const char* what) {
 
     for (int i = 0; i < steps; i++) {
         memcpy(seen, s.cells, (size_t)W * H);
-        memset(dirty, 0, sizeof dirty); /* the renderer clears as it draws */
+        memset(dirty, 0, H); /* the renderer clears as it draws */
         sand_step(&s, 0, 1000, 0);
 
         for (int y = 0; y < H; y++) {
@@ -423,7 +423,7 @@ test_erase_marks_the_rows_it_emptied(void) {
     for (int x = 0; x < W; x++) {
         sand_set(&s, x, 4, SAND_FIRST_SHADE);
     }
-    memset(dirty, 0, sizeof(dirty));
+    memset(dirty, 0, H);
 
     sand_erase(&s, 4, 4, 1);
 

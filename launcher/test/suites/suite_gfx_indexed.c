@@ -1,17 +1,39 @@
-/* Portable: one shared 8 KB table keeps this indexed/band coverage on target. */
+/* Portable suite: indexed expansion and repaint decisions. */
 
 #include "suites.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "unity.h"
 
 #include "gfx/gfx_indexed.h"
 
-static gfx_color_t lut[GFX_INDEXED_PALETTE_SIZE];
+static gfx_color_t* lut;
+static gfx_color_t* scratch;
+static uint8_t* class_out;
+static uint8_t* class_table;
+static uint8_t* incremental;
+static uint8_t* truth;
+static uint8_t* identity_class;
+
+static void release_fixture(void);
 
 static void
 fixture(void) {
+    if (lut == NULL) {
+        lut = malloc(sizeof(*lut) * GFX_INDEXED_PALETTE_SIZE);
+        scratch = malloc(sizeof(*scratch) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
+        class_out = malloc(sizeof(*class_out) * GFX_INDEXED_PALETTE_SIZE);
+        class_table = malloc(sizeof(*class_table) * GFX_INDEXED_PALETTE_SIZE);
+        identity_class = malloc(sizeof(*identity_class) * GFX_INDEXED_PALETTE_SIZE);
+    }
+    TEST_ASSERT_NOT_NULL(lut);
+    TEST_ASSERT_NOT_NULL(scratch);
+    TEST_ASSERT_NOT_NULL(class_out);
+    TEST_ASSERT_NOT_NULL(class_table);
+    TEST_ASSERT_NOT_NULL(identity_class);
+    suite_set_test_cleanup(release_fixture);
     for (int i = 0; i < GFX_INDEXED_PALETTE_SIZE; i++) {
         lut[i] = (gfx_color_t)(0x1000 + i);
     }
@@ -94,8 +116,6 @@ test_panel_row_to_grid_row_floors_and_back_is_the_bands_first_row(void) {
     TEST_ASSERT_EQUAL_INT(9, gfx_indexed_grid_row_to_panel_row(3, 3));
 }
 
-static gfx_color_t scratch[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES];
-
 #define dither_table   scratch
 #define checker_table  scratch
 #define bayer2_table   scratch
@@ -112,7 +132,8 @@ set_dither_entry(int index, int phase, gfx_color_t rgb) {
  * (x & 3)`, not a position local to this call. */
 static void
 test_dither_every_output_pixel_reads_its_own_index_phase_entry(void) {
-    memset(dither_table, 0, sizeof dither_table);
+    fixture();
+    memset(dither_table, 0, sizeof(*dither_table) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
     for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
         set_dither_entry(7, p, (gfx_color_t)(0x1000 + p));
     }
@@ -132,7 +153,8 @@ test_dither_every_output_pixel_reads_its_own_index_phase_entry(void) {
  * pixel - the expansion has no hidden state to drift between them. */
 static void
 test_dither_expansion_is_deterministic_at_the_same_panel_coordinates(void) {
-    memset(dither_table, 0, sizeof dither_table);
+    fixture();
+    memset(dither_table, 0, sizeof(*dither_table) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
     for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
         set_dither_entry(40, p, (gfx_color_t)(0x2000 + p));
     }
@@ -151,7 +173,8 @@ test_dither_expansion_is_deterministic_at_the_same_panel_coordinates(void) {
  * adjacent halves, column offset carried through panel_col0. */
 static void
 test_dither_expansion_stays_in_phase_across_a_band_boundary(void) {
-    memset(dither_table, 0, sizeof dither_table);
+    fixture();
+    memset(dither_table, 0, sizeof(*dither_table) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
     for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
         set_dither_entry(99, p, (gfx_color_t)(0x3000 + p));
     }
@@ -168,13 +191,12 @@ test_dither_expansion_stays_in_phase_across_a_band_boundary(void) {
     TEST_ASSERT_EQUAL_HEX16_ARRAY(whole + 16, right, 16);
 }
 
-static uint8_t class_out[GFX_INDEXED_PALETTE_SIZE];
-
 /* Two indices whose sixteen-entry rows are byte-identical land in the same
  * class - the property a caller's change detection depends on. */
 static void
 test_classify_groups_indices_with_an_identical_dither_row(void) {
-    memset(dither_table, 0, sizeof dither_table);
+    fixture();
+    memset(dither_table, 0, sizeof(*dither_table) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
     for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
         set_dither_entry(3, p, (gfx_color_t)(0x4000 + p));
         set_dither_entry(9, p, (gfx_color_t)(0x4000 + p)); /* same row as 3 */
@@ -192,6 +214,7 @@ test_classify_groups_indices_with_an_identical_dither_row(void) {
  * plain equality check would have told apart. */
 static void
 test_classify_gives_every_index_its_own_class_when_all_rows_differ(void) {
+    fixture();
     for (int i = 0; i < GFX_INDEXED_PALETTE_SIZE; i++) {
         for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
             set_dither_entry(i, p, (gfx_color_t)(i * GFX_INDEXED_DITHER16_PHASES + p));
@@ -209,7 +232,8 @@ test_classify_gives_every_index_its_own_class_when_all_rows_differ(void) {
  * only needs equality; a stable, low id keeps a dump of the table readable. */
 static void
 test_classify_names_a_class_after_its_smallest_member(void) {
-    memset(dither_table, 0, sizeof dither_table);
+    fixture();
+    memset(dither_table, 0, sizeof(*dither_table) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
     for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
         set_dither_entry(50, p, (gfx_color_t)(0x6000 + p));
         set_dither_entry(20, p, (gfx_color_t)(0x6000 + p));
@@ -255,6 +279,13 @@ xorshift32(uint32_t* state) {
  * unchanged 16-colour value really does mean identical pixels. */
 static void
 run_incremental_matches_full_reexpansion(uint32_t seed, bool dither16_on) {
+    fixture();
+    if (incremental == NULL) {
+        incremental = malloc(sizeof(*incremental) * IC_GRID_W * IC_GRID_H);
+        truth = malloc(sizeof(*truth) * IC_GRID_W * IC_GRID_H);
+    }
+    TEST_ASSERT_NOT_NULL(incremental);
+    TEST_ASSERT_NOT_NULL(truth);
     gfx_color_t* table = scratch;
     /* Every 4 consecutive indices share a row - a handful of classes, not
      * 256 distinct ones, the realistic case where suppression has
@@ -264,13 +295,10 @@ run_incremental_matches_full_reexpansion(uint32_t seed, bool dither16_on) {
             table[i * GFX_INDEXED_DITHER16_PHASES + p] = (gfx_color_t)((i / 4) * 100 + p);
         }
     }
-    static uint8_t class_table[GFX_INDEXED_PALETTE_SIZE];
     gfx_indexed_dither16_classify(table, class_table);
 
-    static uint8_t incremental[IC_GRID_W * IC_GRID_H];
-    static uint8_t truth[IC_GRID_W * IC_GRID_H];
-    memset(incremental, 0, sizeof incremental);
-    memset(truth, 0, sizeof truth);
+    memset(incremental, 0, sizeof(*incremental) * IC_GRID_W * IC_GRID_H);
+    memset(truth, 0, sizeof(*truth) * IC_GRID_W * IC_GRID_H);
 
     uint32_t rng = seed;
     for (int step = 0; step < IC_STEPS; step++) {
@@ -325,7 +353,7 @@ test_incremental_256_index_output_matches_a_full_reexpansion(void) {
  * else, and narrowing on index equality then would resend nothing. */
 static void
 test_needs_repaint_ignores_unchanged_index_when_forced(void) {
-    static uint8_t identity_class[GFX_INDEXED_PALETTE_SIZE];
+    fixture();
     for (int i = 0; i < GFX_INDEXED_PALETTE_SIZE; i++) {
         identity_class[i] = (uint8_t)i;
     }
@@ -339,7 +367,8 @@ test_needs_repaint_ignores_unchanged_index_when_forced(void) {
  * bypass only ever widens what gets repainted, never narrows it further. */
 static void
 test_needs_repaint_matches_cell_changed_when_not_forced(void) {
-    memset(dither_table, 0, sizeof dither_table);
+    fixture();
+    memset(dither_table, 0, sizeof(*dither_table) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
     for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
         set_dither_entry(11, p, (gfx_color_t)(0x7000 + p));
         set_dither_entry(22, p, (gfx_color_t)(0x7000 + p)); /* same row as 11 */
@@ -362,7 +391,8 @@ test_needs_repaint_matches_cell_changed_when_not_forced(void) {
  * per-pixel dither. */
 static void
 test_cell_checker_phase_is_gx_plus_cy_parity(void) {
-    memset(checker_table, 0, sizeof checker_table);
+    fixture();
+    memset(checker_table, 0, sizeof(*checker_table) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
     checker_table[7 * GFX_INDEXED_CELL_CHECKER_PHASES + 0] = (gfx_color_t)0xAAAA;
     checker_table[7 * GFX_INDEXED_CELL_CHECKER_PHASES + 1] = (gfx_color_t)0xBBBB;
     const uint8_t row_even[2] = {7, 7}; /* gx 0, 1 at grid row cy */
@@ -389,7 +419,8 @@ test_cell_checker_phase_is_gx_plus_cy_parity(void) {
  * positions of a 2x2 Bayer block over cells, not pixels. */
 static void
 test_cell_bayer2_phase_is_2x2_cell_position(void) {
-    memset(bayer2_table, 0, sizeof bayer2_table);
+    fixture();
+    memset(bayer2_table, 0, sizeof(*bayer2_table) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
     for (int p = 0; p < GFX_INDEXED_CELL_BAYER2_PHASES; p++) {
         bayer2_table[3 * GFX_INDEXED_CELL_BAYER2_PHASES + p] = (gfx_color_t)(0xC000 + p);
     }
@@ -413,7 +444,8 @@ test_cell_bayer2_phase_is_2x2_cell_position(void) {
  * expand function in this header shares. */
 static void
 test_cell_null_row_reads_background_phase(void) {
-    memset(checker_table, 0, sizeof checker_table);
+    fixture();
+    memset(checker_table, 0, sizeof(*checker_table) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
     checker_table[0] = (gfx_color_t)0xD00D; /* index 0, phase (gx=0)+(cy=0) & 1 == 0 */
     gfx_color_t out[4];
     gfx_indexed_expand_row_dither_cell(NULL, 1, checker_table, false, 4, 0, out, 4);
@@ -428,7 +460,7 @@ test_cell_null_row_reads_background_phase(void) {
  * gfx_indexed_dither16_classify()'s every-phase match. */
 static void
 set_agree_at_phase_0_only(void) {
-    memset(bayer2_table, 0, sizeof bayer2_table);
+    memset(bayer2_table, 0, sizeof(*bayer2_table) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
     bayer2_table[1 * GFX_INDEXED_CELL_BAYER2_PHASES + 0] = (gfx_color_t)0x1111;
     bayer2_table[2 * GFX_INDEXED_CELL_BAYER2_PHASES + 0] = (gfx_color_t)0x1111;
     bayer2_table[1 * GFX_INDEXED_CELL_BAYER2_PHASES + 1] = (gfx_color_t)0x2222;
@@ -437,6 +469,12 @@ set_agree_at_phase_0_only(void) {
 
 static void
 test_cell_dither_changed_is_exact_per_cell_not_every_phase(void) {
+    fixture();
+    memset(bayer2_table, 0, sizeof(*bayer2_table) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
+    bayer2_table[1 * GFX_INDEXED_CELL_BAYER2_PHASES] = (gfx_color_t)0x1111;
+    bayer2_table[2 * GFX_INDEXED_CELL_BAYER2_PHASES] = (gfx_color_t)0x1111;
+    bayer2_table[1 * GFX_INDEXED_CELL_BAYER2_PHASES + 1] = (gfx_color_t)0x2222;
+    bayer2_table[2 * GFX_INDEXED_CELL_BAYER2_PHASES + 1] = (gfx_color_t)0x3333;
     set_agree_at_phase_0_only();
 
     TEST_ASSERT_FALSE(gfx_indexed_cell_dither_changed(1, 2, bayer2_table, true, 0, 0)); /* (0,0): phase 0 */
@@ -450,6 +488,7 @@ test_cell_dither_changed_is_exact_per_cell_not_every_phase(void) {
  * the one case a stale index image must still repaint. */
 static void
 test_repaint_force_full_widens_every_kind(void) {
+    fixture();
     TEST_ASSERT_TRUE(gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_RAW, NULL, NULL, true, 5, 5, 0, 0));
     TEST_ASSERT_TRUE(gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_CELL_BAYER2, NULL, bayer2_table, true, 5, 5, 0, 0));
 }
@@ -458,6 +497,7 @@ test_repaint_force_full_widens_every_kind(void) {
  * tables prove no lookup happened. */
 static void
 test_repaint_unforced_unmoved_index_is_cheap_and_false(void) {
+    fixture();
     TEST_ASSERT_FALSE(gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_CLASS, NULL, NULL, false, 9, 9, 0, 0));
     TEST_ASSERT_FALSE(gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_CELL_CHECKER, NULL, NULL, false, 9, 9, 3, 4));
 }
@@ -465,13 +505,15 @@ test_repaint_unforced_unmoved_index_is_cheap_and_false(void) {
 /* RAW: any two distinct indices always repaint - 256 mode's own rule. */
 static void
 test_repaint_raw_kind_is_index_inequality(void) {
+    fixture();
     TEST_ASSERT_TRUE(gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_RAW, NULL, NULL, false, 1, 2, 0, 0));
 }
 
 /* CLASS matches gfx_indexed_cell_changed()'s own class-table compare. */
 static void
 test_repaint_class_kind_matches_cell_changed(void) {
-    memset(dither_table, 0, sizeof dither_table);
+    fixture();
+    memset(dither_table, 0, sizeof(*dither_table) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
     for (int p = 0; p < GFX_INDEXED_DITHER16_PHASES; p++) {
         set_dither_entry(11, p, (gfx_color_t)(0x8000 + p));
         set_dither_entry(22, p, (gfx_color_t)(0x8000 + p));
@@ -491,12 +533,18 @@ test_repaint_class_kind_matches_cell_changed(void) {
  * exact per-cell phase compare, at more than one (cx, cy). */
 static void
 test_repaint_cell_kinds_match_cell_dither_changed(void) {
+    fixture();
+    memset(bayer2_table, 0, sizeof(*bayer2_table) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
+    bayer2_table[1 * GFX_INDEXED_CELL_BAYER2_PHASES] = (gfx_color_t)0x1111;
+    bayer2_table[2 * GFX_INDEXED_CELL_BAYER2_PHASES] = (gfx_color_t)0x1111;
+    bayer2_table[1 * GFX_INDEXED_CELL_BAYER2_PHASES + 1] = (gfx_color_t)0x2222;
+    bayer2_table[2 * GFX_INDEXED_CELL_BAYER2_PHASES + 1] = (gfx_color_t)0x3333;
     set_agree_at_phase_0_only();
 
     TEST_ASSERT_FALSE(gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_CELL_BAYER2, NULL, bayer2_table, false, 1, 2, 0, 0));
     TEST_ASSERT_TRUE(gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_CELL_BAYER2, NULL, bayer2_table, false, 1, 2, 1, 0));
 
-    memset(checker_table, 0, sizeof checker_table);
+    memset(checker_table, 0, sizeof(*checker_table) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
     checker_table[7 * GFX_INDEXED_CELL_CHECKER_PHASES + 0] = (gfx_color_t)0xAAAA;
     checker_table[7 * GFX_INDEXED_CELL_CHECKER_PHASES + 1] = (gfx_color_t)0xBBBB;
     checker_table[9 * GFX_INDEXED_CELL_CHECKER_PHASES + 0] = (gfx_color_t)0xAAAA;
@@ -520,7 +568,8 @@ set_checker2_entry(int index, int row_phase, int chunk_px, gfx_color_t rgb) {
  * dither16's 4x4. */
 static void
 test_checker2_every_output_pixel_reads_its_own_phase_entry(void) {
-    memset(checker2_table, 0, sizeof checker2_table);
+    fixture();
+    memset(checker2_table, 0, sizeof(*checker2_table) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
     for (int py = 0; py < GFX_INDEXED_CHECKER2_ROW_PHASES; py++) {
         for (int px = 0; px < GFX_INDEXED_CHECKER2_CHUNK_PX; px++) {
             set_checker2_entry(9, py, px, (gfx_color_t)(0x8000 + py * 2 + px));
@@ -542,7 +591,8 @@ test_checker2_every_output_pixel_reads_its_own_phase_entry(void) {
  * carried through panel_col0 - odd alignments included. */
 static void
 test_checker2_stays_in_phase_across_a_band_boundary(void) {
-    memset(checker2_table, 0, sizeof checker2_table);
+    fixture();
+    memset(checker2_table, 0, sizeof(*checker2_table) * GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES);
     for (int py = 0; py < GFX_INDEXED_CHECKER2_ROW_PHASES; py++) {
         for (int px = 0; px < GFX_INDEXED_CHECKER2_CHUNK_PX; px++) {
             set_checker2_entry(5, py, px, (gfx_color_t)(0x9000 + py * 2 + px));
@@ -591,7 +641,8 @@ expected_pixel(const gfx_indexed_frame_t* frame, int x, int y) {
  * where a panel row belongs, reads a different entry of it. */
 static void
 test_panel_row_is_its_modes_own_expansion_in_every_colour_mode(void) {
-    for (int i = 0; i < (int)(sizeof any_mode_table / sizeof any_mode_table[0]); i++) {
+    fixture();
+    for (int i = 0; i < GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES; i++) {
         any_mode_table[i] = (gfx_color_t)((uint32_t)i * 2654435761u >> 16);
     }
 
@@ -626,6 +677,31 @@ test_panel_row_is_its_modes_own_expansion_in_every_colour_mode(void) {
     }
 }
 
+static void
+release_fixture(void) {
+    free(identity_class);
+    identity_class = NULL;
+    free(truth);
+    truth = NULL;
+    free(incremental);
+    incremental = NULL;
+    free(class_table);
+    class_table = NULL;
+    free(class_out);
+    class_out = NULL;
+    free(scratch);
+    scratch = NULL;
+    free(lut);
+    lut = NULL;
+}
+
+#undef RUN_TEST
+#define RUN_TEST(func)                                                                                                 \
+    do {                                                                                                               \
+        suite_run_test_timed(func, #func, __LINE__);                                                                   \
+        release_fixture();                                                                                             \
+    } while (0)
+
 void
 run_gfx_indexed_suite(void) {
     RUN_TEST(test_every_output_pixel_reads_its_own_cells_lut_entry);
@@ -656,5 +732,7 @@ run_gfx_indexed_suite(void) {
     RUN_TEST(test_checker2_stays_in_phase_across_a_band_boundary);
     RUN_TEST(test_panel_row_is_its_modes_own_expansion_in_every_colour_mode);
 }
+
+#undef RUN_TEST
 
 SUITE_REGISTER(run_gfx_indexed_suite);

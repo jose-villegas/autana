@@ -340,7 +340,7 @@ test_a_settled_grid_reports_nothing_dirty(void) {
     dirty_fixture();
     /* A grain in the corner, blocked on every side it could reach. */
     sand_set(&s, 0, H - 1, SAND_FIRST_SHADE);
-    memset(dirty, 0, sizeof(dirty));
+    memset(dirty, 0, H);
 
     for (int i = 0; i < 10; i++) {
         sand_step(&s, 0, 1, 0);
@@ -357,7 +357,7 @@ static void
 test_a_falling_grain_marks_both_rows_it_touched(void) {
     dirty_fixture();
     sand_set(&s, 3, 2, SAND_FIRST_SHADE);
-    memset(dirty, 0, sizeof(dirty));
+    memset(dirty, 0, H);
 
     sand_step(&s, 0, 1, 0);
 
@@ -381,7 +381,7 @@ test_every_changed_row_is_reported(void) {
     for (int i = 0; i < 90; i++) {
         uint8_t before[W * H];
         memcpy(before, cells, sizeof(before));
-        memset(dirty, 0, sizeof(dirty));
+        memset(dirty, 0, H);
 
         sand_step(&s, 300, 1000, 40);
 
@@ -409,7 +409,7 @@ test_spawning_marks_the_rows_it_filled(void) {
 static void
 test_tracking_starts_by_assuming_everything_changed(void) {
     fixture();
-    memset(dirty, 0, sizeof(dirty));
+    memset(dirty, 0, H);
 
     sand_track_dirty_rows(&s, dirty);
 
@@ -502,7 +502,7 @@ test_a_sideways_fall_does_not_dirty_a_settled_run_elsewhere_in_the_row(void) {
     sand_set(&s, 0, 3, SAND_FIRST_SHADE);
     /* Both placements just marked their own columns - clear that so only
      * the step below is being measured. */
-    memset(dirty, 0, sizeof(dirty));
+    memset(dirty, 0, H);
     for (int y = 0; y < H; y++) {
         dirty_x0[y] = (uint16_t)W;
         dirty_x1[y] = 0;

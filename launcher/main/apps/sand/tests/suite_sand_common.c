@@ -48,7 +48,7 @@ void
 dirty_fixture(void) {
     fixture();
     sand_track_dirty_rows(&s, dirty);
-    memset(dirty, 0, sizeof(dirty));
+    memset(dirty, 0, H);
 }
 
 void

@@ -40,7 +40,21 @@
 /* One entry per cell of the 8x8 fixture grid - big enough that no test below
  * needs to think about the cap, except the one written specifically to
  * exercise it (which uses its own, deliberately tiny buffer instead). */
-static impulse_t impulse_buf[W * H];
+static impulse_t* impulse_buf;
+
+static void release_fixture(void);
+
+static void
+impulse_fixture(void) {
+    fixture();
+    if (impulse_buf == NULL) {
+        impulse_buf = malloc(sizeof(*impulse_buf) * W * H);
+    }
+    TEST_ASSERT_NOT_NULL(impulse_buf);
+    suite_set_test_cleanup(release_fixture);
+}
+
+#define fixture() impulse_fixture()
 
 /* CHECKS DISC-COUNT TABLE DIFFERENTLY THAN GENERATION ALGORITHM. COVERS
  * OUT-OF-RANGE RADII. */
@@ -1842,7 +1856,7 @@ test_a_chunk_bounces_off_the_grid_edge_instead_of_waiting_there_forever(void) {
 static void
 test_a_chunk_thrown_into_a_closed_box_comes_to_rest(void) {
     for (uint32_t k = 1; k <= (uint32_t)BOX_SEEDS; k++) {
-        memset(cells, 0, sizeof cells);
+        memset(cells, 0, W * H);
         sand_init(&s, cells, W, H, k);
         sand_enable_impulses(&s, impulse_buf, W * H);
 
@@ -3182,6 +3196,12 @@ test_shaking_spreads_a_pile_sideways(void) {
 
     TEST_ASSERT_GREATER_THAN_MESSAGE(2, highest, "shaking must flatten the pile, not leave the column standing");
     TEST_ASSERT_EQUAL_INT_MESSAGE(6, sand_count(&s), "and shaking must still conserve grains");
+}
+
+static void
+release_fixture(void) {
+    free(impulse_buf);
+    impulse_buf = NULL;
 }
 
 void

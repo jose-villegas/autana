@@ -4,7 +4,7 @@ what does CONFIG_LAUNCHER_SELFTEST actually gate	docs/Build-Variants.md	Developm
 flash diagnostics build	docs/tools/Autana-CLI.md	Build and flash
 autana monitor without --follow hangs, why	docs/tools/Autana-CLI.md	Watch the board
 how do two agents share the same board without stepping on each other	docs/tools/Device-Lock.md	Device lock
-why is my host test failing but the device suite passes	docs/Testing-Guide.md	The host runner enforces two of the device's limits
+why is my host test failing but the device suite passes	docs/Testing-Guide.md	The runners enforce the device's memory limits
 how do I make a tunable I can change live on the device	docs/tools/Live-Tuning.md	Making something tunable
 clang-format version mismatch breaks CI	docs/C-Style-Guide.md	One formatter version
 why is LVGL not used here	docs/Firmware-Architecture.md	Why microui, not LVGL
