@@ -194,6 +194,10 @@ if [ -z "${QUIET_INNER:-}" ]; then
     quiet_run host-tests env QUIET_INNER=1 VERBOSE="$VERBOSE" sh "$0" "$@" || true
     QUIET_SUMMARY=$(grep -E '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored' "$QUIET_LOG" | tail -n 1)
     export QUIET_SUMMARY
+    QUIET_FAILURES=$(grep -E ':FAIL|ERROR: (AddressSanitizer|LeakSanitizer)' "$QUIET_LOG" || true)
+    if [ -n "$QUIET_FAILURES" ]; then
+        printf 'Test and sanitizer failures:\n%s\n' "$QUIET_FAILURES"
+    fi
     if [ "${HOST_SANITIZE:-}" = undefined ]; then
         QUIET_FINDINGS=$(grep 'runtime error:' "$QUIET_LOG" | sed -E 's/:[0-9]+: runtime error:/: runtime error:/' | sort -u || true)
         if [ -n "$QUIET_FINDINGS" ]; then
