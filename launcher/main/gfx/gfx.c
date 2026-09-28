@@ -128,11 +128,9 @@ indexed_frame(void) {
     };
 }
 
-/* True only for transient band mode, where an app's own frame() drives
- * gfx_band_next()/gfx_band_submit() itself - see gfx_present_begin()
- * below. */
+/* True while a transient band picture is generated and sent after frame(). */
 static inline bool
-band_is_app_driven(void) {
+band_is_transient(void) {
     return current_mode.layout == GFX_LAYOUT_BANDS;
 }
 
@@ -145,6 +143,8 @@ static gfx_color_t* band_snapshot;
 static int band_snapshot_bands;
 static bool band_snapshot_filling;
 static bool band_snapshot_complete;
+
+static bool alloc_full_framebuffer(void);
 
 /* What every pixel-writing primitive below actually draws into: the whole
  * framebuffer, or the band currently being rendered - see gfx_target.h for
@@ -623,13 +623,7 @@ gfx_init(void) {
              (unsigned)heap_caps_get_largest_free_block(BOARD_FRAMEBUFFER_CAPS));
     return true;
 #else
-    const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-#ifdef HOST_HEAP_ARENA
-    fb = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-#else
-    fb = malloc(bytes);
-#endif
-    if (fb == NULL) {
+    if (!alloc_full_framebuffer()) {
         return false;
     }
     current_mode.layout = GFX_LAYOUT_FULL_FB;
@@ -2361,8 +2355,8 @@ void
 gfx_present_begin(void) {
     frame_watch_presented();
     gfx_present_guard_begin();
-    if (band_is_app_driven()) {
-        return; /* the band ring sends and waits inside frame() itself */
+    if (band_is_transient()) {
+        return; /* gfx_band_run() sends and waits after frame() returns */
     }
     present_task_mode = PRESENT_TASK_NORMAL;
     dispatch_present();
@@ -2370,7 +2364,7 @@ gfx_present_begin(void) {
 
 void
 gfx_present_wait(void) {
-    if (!band_is_app_driven() && present_async_on) {
+    if (!band_is_transient() && present_async_on) {
         xSemaphoreTake(present_done_sem, portMAX_DELAY);
     }
     gfx_present_guard_end();
@@ -2401,9 +2395,8 @@ gfx_present_wait(void) {
     /* No panel on a host build; draining the dirty tracker here is what
      * lets a host test assert the same "sequencing leaves it clean"
      * property a real present provides - see suite_gfx_present_guard.c.
-     * The app-driven RGB565 band ring has no dirty tracker to drain - it
-     * already settled inside frame(). */
-    if (!band_is_app_driven()) {
+     * A transient band frame drains its dirty tracker in gfx_band_run(). */
+    if (!band_is_transient()) {
         dirty_frame_sent();
     }
     gfx_present_guard_end();
@@ -2575,6 +2568,8 @@ alloc_band_snapshot(void) {
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
 #ifdef ESP_PLATFORM
     band_snapshot = heap_caps_malloc(bytes, BOARD_FRAMEBUFFER_CAPS);
+#elif defined(HOST_HEAP_ARENA)
+    band_snapshot = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 #else
     band_snapshot = malloc(bytes);
 #endif
@@ -2587,6 +2582,8 @@ alloc_band_snapshot(void) {
 static void
 free_band_snapshot(void) {
 #ifdef ESP_PLATFORM
+    heap_caps_free(band_snapshot);
+#elif defined(HOST_HEAP_ARENA)
     heap_caps_free(band_snapshot);
 #else
     free(band_snapshot);
@@ -2737,7 +2734,7 @@ mark_band_overlay(gfx_color_t* buf, int row0, int height) {
 }
 #endif
 
-void
+static void
 gfx_band_frame_begin(void) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_BANDS);
@@ -2767,7 +2764,7 @@ gfx_band_frame_begin(void) {
 /* Band mode's own "does this band need touching" query, on gfx_dirty.h's
  * cell tracker. It always reads the band gfx_band_next() just handed out,
  * so there is no range to pass wrong. */
-bool
+static bool
 gfx_band_dirty(void) {
     const int row0 = band_render_row0;
     const int row1 = band_render_row0 + band_render_height;
@@ -2788,7 +2785,7 @@ gfx_band_dirty(void) {
 /* The band gfx_band_next() just handed out needs no redraw this frame
  * (gfx_band_dirty() said so) - advances past it without rendering or
  * sending anything, leaving whatever the panel already shows there. */
-void
+static void
 gfx_band_skip(void) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_BANDS);
@@ -2797,7 +2794,7 @@ gfx_band_skip(void) {
     gfx_band_ring_skip(&band_ring);
 }
 
-bool
+static bool
 gfx_band_next(void) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_BANDS);
@@ -2830,58 +2827,28 @@ gfx_band_next(void) {
     return true;
 }
 
-gfx_color_t*
+static gfx_color_t*
 gfx_band_buffer(void) {
     GFX_PRESENT_GUARD();
     return band_buf[band_current_slot];
 }
 
-int
+static int
 gfx_band_row0(void) {
     GFX_PRESENT_GUARD();
     return band_render_row0;
 }
 
-int
+static int
 gfx_band_height(void) {
     GFX_PRESENT_GUARD();
     return band_render_height;
 }
 
-int
-gfx_band_count(void) {
-    GFX_PRESENT_GUARD();
-    return band_ring.band_count;
-}
-
-bool
-gfx_band_run(gfx_band_draw_fn draw, gfx_band_draw_fn overlay) {
-    if (draw == NULL || current_mode.layout != GFX_LAYOUT_BANDS) {
-        return false;
-    }
-
-    gfx_band_frame_begin();
-    while (gfx_band_next()) {
-        if (!gfx_band_dirty()) {
-            gfx_band_skip();
-            continue;
-        }
-        const int row0 = gfx_band_row0();
-        const int row1 = row0 + gfx_band_height();
-        gfx_color_t* const target = gfx_band_buffer();
-        draw(row0, row1, target);
-        if (overlay != NULL) {
-            overlay(row0, row1, target);
-        }
-        gfx_band_submit();
-    }
-    return true;
-}
-
 /* Always the full band width, straight from the buffer the app drew: the
  * panel transfer takes no source stride, so a narrower send would first
  * have to repack the rows, and that costs more CPU than the bytes it saves. */
-void
+static void
 gfx_band_submit(void) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_BANDS);
@@ -2933,6 +2900,30 @@ gfx_band_submit(void) {
     gfx_band_ring_skip(&band_ring);
 }
 
+bool
+gfx_band_run(gfx_band_draw_fn draw, gfx_band_draw_fn overlay) {
+    if (draw == NULL || current_mode.layout != GFX_LAYOUT_BANDS) {
+        return false;
+    }
+
+    gfx_band_frame_begin();
+    while (gfx_band_next()) {
+        if (!gfx_band_dirty()) {
+            gfx_band_skip();
+            continue;
+        }
+        const int row0 = gfx_band_row0();
+        const int row1 = row0 + gfx_band_height();
+        gfx_color_t* const target = gfx_band_buffer();
+        draw(row0, row1, target);
+        if (overlay != NULL) {
+            overlay(row0, row1, target);
+        }
+        gfx_band_submit();
+    }
+    return true;
+}
+
 uint8_t*
 gfx_indexed_image(void) {
     GFX_PRESENT_GUARD();
@@ -2942,7 +2933,7 @@ gfx_indexed_image(void) {
 gfx_readback_t
 gfx_readback_begin(void) {
     GFX_PRESENT_GUARD();
-    if (!band_is_app_driven()) {
+    if (!band_is_transient()) {
         return GFX_READBACK_READY;
     }
     if (band_snapshot == NULL && !alloc_band_snapshot()) {
@@ -2975,7 +2966,7 @@ gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]) {
 void
 gfx_readback_end(void) {
     GFX_PRESENT_GUARD();
-    if (!band_is_app_driven()) {
+    if (!band_is_transient()) {
         free_band_snapshot();
     }
 }

@@ -35,6 +35,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "gfx/gfx.h"
+#include "gfx/gfx_band_run.h"
 #include "gfx/gfx_font_roles.h"
 #include "input/touch.h"
 #include "input/touch_fsm.h"
@@ -1476,25 +1477,30 @@ readback_row_colour(int y) {
     return readback_row_colour_frame(y, 0);
 }
 
-/* One band-mode frame painting every panel row its own colour for `frame`,
- * except the band starting at `skip_row0`, which it skips (-1 skips none). */
+static uint32_t readback_band_frame;
+
+static void
+draw_readback_band(int row0, int row1, gfx_color_t* buf) {
+    for (int r = row0; r < row1; r++) {
+        for (int x = 0; x < GFX_WIDTH; x++) {
+            buf[(r - row0) * GFX_WIDTH + x] = readback_row_colour_frame(r, readback_band_frame);
+        }
+    }
+}
+
 static void
 draw_readback_band_frame_n(int skip_row0, uint32_t frame) {
-    gfx_band_frame_begin();
-    while (gfx_band_next()) {
-        const int row0 = gfx_band_row0();
-        if (row0 == skip_row0 || !gfx_band_dirty()) {
-            gfx_band_skip();
-            continue;
-        }
-        gfx_color_t* buf = gfx_band_buffer();
-        for (int r = 0; r < gfx_band_height(); r++) {
-            for (int x = 0; x < GFX_WIDTH; x++) {
-                buf[r * GFX_WIDTH + x] = readback_row_colour_frame(row0 + r, frame);
+    readback_band_frame = frame;
+    if (skip_row0 < 0) {
+        gfx_invalidate();
+    } else {
+        for (int row0 = 0; row0 < GFX_HEIGHT; row0 += GFX_BAND_HEIGHT) {
+            if (row0 != skip_row0) {
+                gfx_mark_dirty(0, row0, GFX_WIDTH, GFX_BAND_HEIGHT);
             }
         }
-        gfx_band_submit();
     }
+    TEST_ASSERT_TRUE(gfx_band_run(draw_readback_band, NULL));
 }
 
 static void
@@ -1535,15 +1541,13 @@ test_band_mode_readback_is_the_frame_its_bands_drew(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, wrong_rows, "rows read back differ from what their band drew");
 }
 
-/* A frame that left a band unsent is not the panel's frame; the readback
- * stays pending and completes on the next whole frame instead. */
+/* A readback remains pending until the next complete transient frame. */
 static void
-test_band_mode_readback_waits_out_a_frame_missing_a_band(void) {
+test_band_mode_readback_waits_for_a_complete_frame(void) {
     fixture();
     TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_BANDS, enter_rgb565_band_mode()->layout);
 
     TEST_ASSERT_EQUAL_INT(GFX_READBACK_PENDING, gfx_readback_begin());
-    draw_readback_band_frame(GFX_BAND_HEIGHT * 3);
     const gfx_readback_t after_partial = gfx_readback_begin();
     draw_readback_band_frame(-1);
     const gfx_readback_t after_whole = gfx_readback_begin();
@@ -1568,7 +1572,6 @@ test_band_mode_readback_keeps_the_band_a_later_frame_skipped(void) {
     TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
     gfx_readback_end();
 
-    gfx_invalidate();
     draw_readback_band_frame_n(stale_row0, 1);
     const gfx_readback_t next = gfx_readback_begin();
 
@@ -1648,7 +1651,7 @@ run_gfx_suite(void) {
     RUN_TEST(test_a_corner_label_costs_less_than_its_rows_full_width);
     RUN_TEST(test_drawing_marks_what_it_touched);
     RUN_TEST(test_band_mode_readback_is_the_frame_its_bands_drew);
-    RUN_TEST(test_band_mode_readback_waits_out_a_frame_missing_a_band);
+    RUN_TEST(test_band_mode_readback_waits_for_a_complete_frame);
     RUN_TEST(test_band_mode_readback_keeps_the_band_a_later_frame_skipped);
 }
 

@@ -61,7 +61,7 @@ typedef struct app {
      * not depend on framerate. */
     void (*frame)(uint32_t dt_ms, const input_t* input);
 
-    /* Optional. An app that entered RGB565 band mode supplies the rows for
+    /* Optional. An app that entered GFX_LAYOUT_BANDS supplies the rows for
      * each dirty band; gfx replays UI commands and sends the finished band. */
     gfx_band_draw_fn draw_band;
 

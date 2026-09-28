@@ -107,8 +107,8 @@ refuse(const char* reason) {
     end_capture();
 }
 
-/* How many frames a band-mode capture waits for the app to draw a whole
- * frame before giving up - an app that stops calling gfx_band_next(). */
+/* How many frames a band-mode capture waits for draw_band() to complete a
+ * frame before giving up. */
 #define READBACK_PENDING_FRAMES_MAX 60
 
 static int s_readback_pending_frames;

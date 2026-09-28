@@ -24,7 +24,6 @@ flowchart TB
     SEL -->|"GFX_LAYOUT_INDEXED"| IX["index image<br/>internal RAM"]
     DRAW -.->|"marks"| DT["gfx_dirty.h<br/>7 x 4 cell grid + leaves"]
     FB --> PT["present task, core 1"]
-    BR --> BP["gfx sends bands"]
     IX -->|"LUT expand"| PT
     DT --> PT
     PT -->|"copy"| BNC["strip_bounce / gather_buf<br/>internal DMA RAM"]
@@ -170,7 +169,8 @@ on core 1 after `frame()` - or **transient** - an app's `draw_band()` callback,
 called for each dirty band. gfx owns every send. A transient app requests
 `GFX_LAYOUT_BANDS` in `enter()` and supplies `draw_band()`; gfx calls it only
 for dirty rows, replays the UI over those rows, then submits the finished band.
-An app without `draw_band()` keeps its persistent presentation path.
+An app without `draw_band()` keeps its persistent presentation path in
+`GFX_LAYOUT_FULL_FB` or `GFX_LAYOUT_INDEXED`.
 
 Two slots, so band k+1 renders while band k is on the wire:
 
@@ -185,11 +185,13 @@ sequenceDiagram
     S->>G: gfx_band_run()
     G->>A: draw band 0
     A->>S0: fill rows
-    G->>Q: replay UI, submit band 0
+    G->>S0: replay UI
+    G->>Q: submit band 0
     G->>A: draw band 1
     A->>S1: fill rows
     Note over G,Q: wait for band 0 to land
-    G->>Q: replay UI, submit band 1
+    G->>S1: replay UI
+    G->>Q: submit band 1
 ```
 
 - `gfx_band_submit()` waits only for the *previous* band, never the one it

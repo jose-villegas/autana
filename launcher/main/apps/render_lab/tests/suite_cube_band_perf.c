@@ -27,6 +27,7 @@
 
 #include "display/display.h"
 #include "gfx/gfx.h"
+#include "gfx/gfx_band_run.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
 
@@ -154,13 +155,11 @@ capture(void (*run_frame)(uint32_t dt_ms), int64_t duration_ms) {
 static const input_t null_input = {0};
 
 /* Time spent inside ui_replay_band() and how many bands that covers -
- * band mode's own per-band cost. touched_band_count/skipped_band_count
- * are gfx_band_dirty()'s decision (gfx.c). ui_build_us_accum times
- * draw_fps() itself, the once-per-frame cost both arms pay. */
+ * band mode's own per-band cost. ui_build_us_accum times draw_fps() itself,
+ * the once-per-frame cost both arms pay. */
 static int64_t replay_us_accum;
 static int replay_band_count;
 static int touched_band_count;
-static int skipped_band_count;
 static int64_t ui_build_us_accum;
 
 /* Total time inside cube_rasterize_band() across a capture - proof a
@@ -171,6 +170,26 @@ static int64_t raster_us_accum;
  * isolates the cube's own cost from the UI's, on (the default) is what
  * every capture before the orientation sweep always measured. */
 static bool run_fps_on = true;
+
+static void
+draw_cube_band(int row0, int row1, gfx_color_t* buf) {
+    const gfx_color_t bg = gfx_rgb(0x0A0C14);
+    touched_band_count++;
+    for (int i = 0; i < GFX_WIDTH * (row1 - row0); i++) {
+        buf[i] = bg;
+    }
+    const int64_t raster_start = esp_timer_get_time();
+    cube_rasterize_band(buf, row0, row1);
+    raster_us_accum += esp_timer_get_time() - raster_start;
+}
+
+static void
+replay_cube_band(int row0, int row1, gfx_color_t* buf) {
+    const int64_t replay_start = esp_timer_get_time();
+    ui_replay_band(row0, row1, buf);
+    replay_us_accum += esp_timer_get_time() - replay_start;
+    replay_band_count++;
+}
 
 static void
 full_fb_frame(uint32_t dt_ms) {
@@ -185,15 +204,10 @@ full_fb_frame(uint32_t dt_ms) {
     gfx_present();
 }
 
-/* render_lab_frame_band()'s own shape, rebuilt from scene_cube.c's exposed
- * pieces. cube_transform_and_bin() must run once per frame, before the
- * band loop - it also marks the cube's own coverage dirty, the only reason
- * gfx_band_dirty() below ever returns true. draw_fps(for_bands=true) builds
- * the HUD's commands once, for ui_replay_band() to bin per band below. */
+/* cube_transform_and_bin() marks coverage before gfx_band_run() visits the
+ * dirty bands. draw_fps(for_bands=true) builds the HUD commands once. */
 static void
 band_frame(uint32_t dt_ms) {
-    const gfx_color_t bg = gfx_rgb(0x0A0C14);
-
     cube_update_rotation(dt_ms);
     cube_transform_and_bin();
     if (run_fps_on) {
@@ -202,35 +216,7 @@ band_frame(uint32_t dt_ms) {
         ui_build_us_accum += esp_timer_get_time() - build_start;
     }
 
-    gfx_band_frame_begin();
-    while (gfx_band_next()) {
-        const int row0 = gfx_band_row0();
-        const int height = gfx_band_height();
-
-        if (!gfx_band_dirty()) {
-            gfx_band_skip();
-            skipped_band_count++;
-            continue;
-        }
-        touched_band_count++;
-
-        gfx_color_t* buf = gfx_band_buffer();
-        for (int i = 0; i < GFX_WIDTH * height; i++) {
-            buf[i] = bg;
-        }
-        const int64_t raster_start = esp_timer_get_time();
-        cube_rasterize_band(buf, row0, row0 + height);
-        raster_us_accum += esp_timer_get_time() - raster_start;
-
-        if (run_fps_on) {
-            const int64_t replay_start = esp_timer_get_time();
-            ui_replay_band(row0, row0 + height, buf);
-            replay_us_accum += esp_timer_get_time() - replay_start;
-            replay_band_count++;
-        }
-
-        gfx_band_submit();
-    }
+    TEST_ASSERT_TRUE(gfx_band_run(draw_cube_band, run_fps_on ? replay_cube_band : NULL));
 }
 
 void
@@ -258,7 +244,6 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     replay_us_accum = 0;
     replay_band_count = 0;
     touched_band_count = 0;
-    skipped_band_count = 0;
     raster_us_accum = 0;
     render_lab_enter();
     capture(band_frame, SAMPLE_MS);
@@ -281,10 +266,11 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
                  (double)replay_us_accum / sample_count);
     }
     {
-        const int total_bands = touched_band_count + skipped_band_count;
+        const int total_bands = sample_count * (GFX_HEIGHT / GFX_BAND_HEIGHT);
+        const int skipped_bands = total_bands - touched_band_count;
         const double touched_pct = total_bands > 0 ? 100.0 * touched_band_count / total_bands : 0.0;
         ESP_LOGI(TAG, "bands: %d touched, %d skipped (%.1f%% touched), %.0f bytes/frame sent", touched_band_count,
-                 skipped_band_count, touched_pct, band_bytes_per_frame);
+                 skipped_bands, touched_pct, band_bytes_per_frame);
     }
 
     /* After the log lines, not before: a failing arm must still print its
@@ -331,7 +317,6 @@ run_arm(const char* label, bool band_mode, int quarter, bool fps_on) {
     replay_us_accum = 0;
     replay_band_count = 0;
     touched_band_count = 0;
-    skipped_band_count = 0;
     raster_us_accum = 0;
 
     render_lab_band_mode = band_mode;
@@ -348,7 +333,7 @@ run_arm(const char* label, bool band_mode, int quarter, bool fps_on) {
         .replay_band_count = replay_band_count,
         .raster_us = raster_us_accum,
         .touched_bands = touched_band_count,
-        .skipped_bands = skipped_band_count,
+        .skipped_bands = sample_count * (GFX_HEIGHT / GFX_BAND_HEIGHT) - touched_band_count,
     };
     const int n = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES;
     r.frame = compute_stats(n);

@@ -25,6 +25,10 @@ fixture(void) {
         TEST_ASSERT_TRUE(gfx_init());
     }
 #endif
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    gfx_set_debug_overlay(false);
+    gfx_set_leaf_overlay(false);
+#endif
     probe = NULL;
 }
 
@@ -76,6 +80,7 @@ test_dirty_bands_are_drawn_then_overlaid_and_submitted(void) {
     fixture();
     enter_bands();
 
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_PENDING, gfx_readback_begin());
     probe = probe_new();
     TEST_ASSERT_TRUE(gfx_band_run(draw, NULL));
     probe_free(probe);
@@ -88,7 +93,12 @@ test_dirty_bands_are_drawn_then_overlaid_and_submitted(void) {
     TEST_ASSERT_EQUAL_INT(2 * GFX_BAND_HEIGHT, probe->row0[0]);
     TEST_ASSERT_EQUAL_INT(3 * GFX_BAND_HEIGHT, probe->row1[0]);
 
+    gfx_color_t row[GFX_WIDTH];
+    gfx_read_panel_row(2 * GFX_BAND_HEIGHT, row);
+    TEST_ASSERT_EQUAL_HEX16(0x2222, row[0]);
+
     probe_free(probe);
+    gfx_readback_end();
     gfx_mode_exit();
 }
 
@@ -110,7 +120,7 @@ test_full_dirty_frame_covers_every_row_once_in_order(void) {
 }
 
 static void
-test_an_app_without_a_band_callback_never_enters_the_loop(void) {
+test_draw_null_never_enters_the_loop(void) {
     fixture();
     enter_bands();
 
@@ -147,7 +157,7 @@ void
 run_gfx_band_run_suite(void) {
     RUN_TEST(test_dirty_bands_are_drawn_then_overlaid_and_submitted);
     RUN_TEST(test_full_dirty_frame_covers_every_row_once_in_order);
-    RUN_TEST(test_an_app_without_a_band_callback_never_enters_the_loop);
+    RUN_TEST(test_draw_null_never_enters_the_loop);
     RUN_TEST(test_an_indexed_picture_never_enters_the_transient_loop);
 }
 
