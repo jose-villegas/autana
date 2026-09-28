@@ -618,6 +618,10 @@ free_sim_buffers(void) {
     free(dirty_rows);
     dirty_rows = NULL;
     memset(&sim, 0, sizeof(sim));
+    grid_w = 0;
+    grid_h = 0;
+    block_cols = 0;
+    block_rows = 0;
 }
 
 static void
@@ -743,6 +747,11 @@ sand_app_enter_running_for_test(void) {
     start_sim();
     sand_spawn_cell(&sim, grid_w / 2, grid_h / 2, 3, brushes[0].cell);
     return previous_mode;
+}
+
+size_t
+sand_app_grid_bytes_for_test(void) {
+    return (size_t)grid_w * grid_h;
 }
 
 void
@@ -1988,6 +1997,9 @@ APP_CONSOLE("sand", sand_console_line);
  * when a palette or brush screen is what is actually showing. */
 static void
 sand_invalidate(void) {
+    if (grid == NULL) {
+        return;
+    }
     mark_sand_fully_dirty();
     if (ui.screen == SAND_UI_PALETTE || ui.screen == SAND_UI_BRUSH) {
         ui_invalidate();

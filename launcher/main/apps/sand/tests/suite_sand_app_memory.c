@@ -4,24 +4,35 @@
 #ifdef DEVICE_BUILD
 
 #include "app.h"
-#include "app_memory.h"
 #include "esp_heap_caps.h"
 
 extern app_t app_sand;
 extern int sand_app_enter_running_for_test(void);
+extern size_t sand_app_grid_bytes_for_test(void);
 extern void sand_app_restore_colour_mode_for_test(int mode);
 
 static void
-test_exit_returns_internal_memory(void) {
+test_running_then_reentering_returns_internal_memory(void) {
+    app_sand.enter();
+    const int warmup_mode = sand_app_enter_running_for_test();
+    app_sand.exit();
+    sand_app_restore_colour_mode_for_test(warmup_mode);
+
     const size_t free_before = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
 
     app_sand.enter();
     const int previous_mode = sand_app_enter_running_for_test();
+    const size_t free_while_running = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT(sand_app_grid_bytes_for_test(), free_before - free_while_running);
     app_sand.exit();
     sand_app_restore_colour_mode_for_test(previous_mode);
 
+    app_sand.enter();
+    app_sand.invalidate();
+    app_sand.exit();
+
     const size_t free_after = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-    TEST_ASSERT_EQUAL_UINT(0, app_internal_memory_leaked_bytes(free_before, free_after));
+    TEST_ASSERT_EQUAL_UINT(free_before, free_after);
 }
 
 #endif /* DEVICE_BUILD */
@@ -29,7 +40,7 @@ test_exit_returns_internal_memory(void) {
 void
 run_sand_app_memory_suite(void) {
 #ifdef DEVICE_BUILD
-    RUN_TEST(test_exit_returns_internal_memory);
+    RUN_TEST(test_running_then_reentering_returns_internal_memory);
 #endif
 }
 

@@ -71,8 +71,6 @@ static const char* TAG = "shell";
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "esp_heap_caps.h"
 
-#include "app_memory.h"
-
 static size_t app_internal_free_before_enter;
 
 /* Free heap alone never predicts whether the next big allocation fits:
@@ -381,10 +379,10 @@ exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    const size_t kept =
-        app_internal_memory_leaked_bytes(app_internal_free_before_enter, heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    if (kept != 0) {
-        ESP_LOGW(TAG, "App %s kept %u internal bytes", (*current)->name, (unsigned)kept);
+    const size_t free_after_exit = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    if (free_after_exit < app_internal_free_before_enter) {
+        ESP_LOGW(TAG, "App %s kept %u internal bytes (other tasks can move this)", (*current)->name,
+                 (unsigned)(app_internal_free_before_enter - free_after_exit));
     }
 #endif
     app_arena_rewind(0);
