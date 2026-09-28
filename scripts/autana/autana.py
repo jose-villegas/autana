@@ -474,50 +474,19 @@ BATCH_USAGE = ("usage: autana batch <suite> [<suite> ...] [--runs N] [--perf-sco
 
 
 def batch(args):
-    """Flash once and capture one or more suites `--runs` times under one
-    lock - see device.py's own batch() docstring for why this beats a
-    sequence of separate `suite` calls on a shared board. Always the
-    diagnostics image: a suite only exists to run in one, so a variant
-    choice here would only ever have one real answer."""
-    suites, runs, perf_scope, verbose = [], "3", False, False
-    rest = list(args)
-    worktree_arg, rest = pop_value(rest, "--worktree")
-    owner_name, rest = pop_value(rest, "--owner")
-    wait, rest = pop_value(rest, "--wait")
-    purpose, rest = pop_value(rest, "--purpose")
-    out, rest = pop_value(rest, "--out")
-    expect_build_id, rest = pop_value(rest, "--expect-build-id")
-    while rest:
-        arg = rest.pop(0)
-        if arg == "--runs" and rest:
-            runs = rest.pop(0)
-        elif arg == "--perf-scope":
-            perf_scope = True
-        elif arg == "--verbose":
-            verbose = True
-        elif arg.startswith("--"):
-            sys.exit(BATCH_USAGE)
-        else:
-            suites.append(arg)
-    if not suites:
+    """The old spelling of `suite <name>... --flash`, still the way to flash
+    once and capture several suites `--runs` times (3 when omitted) under
+    one lock - always the diagnostics image, since a suite only exists to
+    run in one."""
+    print("autana batch: use `autana suite <name>... --flash` - this spelling still works",
+         file=sys.stderr)
+    names, rest = [], list(args)
+    while rest and not rest[0].startswith("--"):
+        names.append(rest.pop(0))
+    if not names:
         sys.exit(BATCH_USAGE)
-    worktree = resolve_worktree(worktree_arg)
-    print(f"autana batch: {', '.join(suites)} x{runs}", flush=True)
-    command = device_command(
-        "batch", "--worktree", worktree, "--variant", "diag", "--runs", str(runs),
-        "--purpose", purpose or "autana batch", owner_name=owner_name, wait=wait,
-    )
-    for suite_name in suites:
-        command += ["--suite", suite_name]
-    if perf_scope:
-        command.append("--perf-scope")
-    if verbose:
-        command.append("--verbose")
-    if out:
-        command += ["--out", out]
-    if expect_build_id:
-        command += ["--expect-build-id", expect_build_id]
-    return subprocess.call(command)
+    runs, rest = pop_value(rest, "--runs")
+    return suite(names + ["--runs", runs or "3", "--flash"] + rest)
 
 
 def status(args):
@@ -614,33 +583,58 @@ def suite_list(args):
     return 0
 
 
+SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [--runs N] [--flash] [--perf-scope] "
+              "[--verbose] [--owner NAME] [--wait SECONDS] [--purpose TEXT] [--out PATH] "
+              "[--worktree PATH|BRANCH] [--expect-build-id ID] | autana suite list [text]")
+
+
 def suite(args):
-    """One registered suite, run where it can actually run. The name is the
-    suite's own function, as SUITE_REGISTER() in its source spells it."""
+    """One or more registered suites, captured under one lock - against the
+    image already on the board, or, with `--flash`, built and flashed first
+    (what `batch` once did on its own). The name is each suite's own
+    function, as SUITE_REGISTER() in its source spells it."""
     if not args:
-        sys.exit("usage: autana suite <name> [seconds] | autana suite list [text]")
+        sys.exit(SUITE_USAGE)
     if args[0] == "list":
         return suite_list(args[1:])
-    name, rest = args[0], args[1:]
-    rest = list(rest)
+    names, rest = [], list(args)
+    while rest and not rest[0].startswith("--"):
+        names.append(rest.pop(0))
+    if not names:
+        sys.exit(SUITE_USAGE)
+    flash = "--flash" in rest
+    if flash:
+        rest.remove("--flash")
+    perf_scope = "--perf-scope" in rest
+    if perf_scope:
+        rest.remove("--perf-scope")
     verbose = "--verbose" in rest
     if verbose:
         rest.remove("--verbose")
+    runs, rest = pop_value(rest, "--runs")
+    worktree_arg, rest = pop_value(rest, "--worktree")
     owner_name, rest = pop_value(rest, "--owner")
     wait, rest = pop_value(rest, "--wait")
     purpose, rest = pop_value(rest, "--purpose")
     out, rest = pop_value(rest, "--out")
     expect_build_id, rest = pop_value(rest, "--expect-build-id")
-    # A perf row can sit silent for minutes; the cap is how long to wait for
-    # the whole suite, not how long a quiet stretch inside one may last.
-    usage = ("usage: autana suite <name> [seconds] [--verbose] [--owner NAME] [--wait SECONDS] "
-             "[--purpose TEXT] [--out PATH] [--expect-build-id ID]")
-    seconds = seconds_argument(rest, 600.0, usage)
-    print(f"autana suite: {name}", flush=True)
+    if rest:
+        sys.exit(SUITE_USAGE)
+    if worktree_arg is not None and not flash:
+        sys.exit("usage: autana suite --worktree needs --flash - it names what to build")
+    worktree = resolve_worktree(worktree_arg)
+    runs = runs or "1"
+    print(f"autana suite: {', '.join(names)} x{runs}" + (" (flash)" if flash else ""), flush=True)
     command = device_command(
-        "run-suite", name, "--max-seconds", str(seconds),
-        "--purpose", purpose or f"autana suite {name}", owner_name=owner_name, wait=wait,
+        "batch", "--worktree", worktree, "--variant", "diag", "--runs", runs,
+        "--purpose", purpose or "autana suite", owner_name=owner_name, wait=wait,
     )
+    if not flash:
+        command.append("--no-flash")
+    for name in names:
+        command += ["--suite", name]
+    if perf_scope:
+        command.append("--perf-scope")
     if verbose:
         command.append("--verbose")
     if out:
@@ -1129,8 +1123,45 @@ def console(_args=None):
 
 Command = namedtuple("Command", "name handler usages")
 
+
+def alias(old, new, handler):
+    """`old` still works - one migration line to stderr, then straight into
+    `handler` - so a script built on a spelling `new` replaced does not
+    break on merge."""
+    def wrapped(args):
+        print(f"autana {old}: use `autana {new}` - this spelling still works", file=sys.stderr)
+        return handler(args)
+    return wrapped
+
+
+LOCK_VERBS = {"id": identify, "release": release, "hand": hand, "take-back": take_back}
+DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu,
+              "framewatch": framewatch}
+
+
+def lock(args):
+    """`autana lock <verb>` - id/release/hand/take-back, the lock-sharing
+    commands a session reaches for far less than `status`, which stays
+    top-level on its own."""
+    if not args or args[0] not in LOCK_VERBS:
+        sys.exit("usage: autana lock <" + "|".join(LOCK_VERBS) + "> ...")
+    verb, rest = args[0], args[1:]
+    return LOCK_VERBS[verb](rest)
+
+
+def debug(args):
+    """`autana debug <verb>` - freeze/resume/step/touch/imu/framewatch, kept
+    out of the top-level help (`autana help debug` still lists them) since a
+    session rarely needs them."""
+    if not args or args[0] not in DEBUG_VERBS:
+        sys.exit("usage: autana debug <" + "|".join(DEBUG_VERBS) + "> ...")
+    verb, rest = args[0], args[1:]
+    return DEBUG_VERBS[verb](rest)
+
+
 # (key, title, commands). `autana help <key>` shows one group; each usage is
-# (synopsis without "autana ", one line of what it does).
+# (synopsis without "autana ", one line of what it does). "debug" is left
+# out of the bare `autana help` listing - see HIDDEN_GROUPS.
 COMMAND_GROUPS = (
     ("build", "Build and flash", (
         Command("build", build, (
@@ -1144,21 +1175,17 @@ COMMAND_GROUPS = (
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
-            ("suite <name> [seconds] [--verbose]", "run one registered suite on the board"),
+            ("suite <name>... [--runs N] [--flash] [--verbose]",
+             "run suites under one lock; --flash builds and flashes first"),
             ("suite list [text] [--json]", "the suites this worktree registers"))),
         Command("selftest", selftest, (
             ("selftest [seconds] [--verbose]",
              "build diagnostics+autorun, run every suite on the board"),)),
-        Command("batch", batch, (
-            ("batch <suite>... [--runs N] [--perf-scope] [--verbose]",
-             "flash once, capture the suites N times under one lock"),)),
     )),
     ("watch", "Watch the board", (
         Command("monitor", monitor, (
             ("monitor [seconds] [--follow] [--stream] [--elf PATH]",
              "the console live until Ctrl+C, or for N s"),)),
-        Command("framewatch", framewatch, (
-            ("framewatch", "allocations and log lines repeating frame after frame, as JSON"),)),
         Command("reset", reset, (
             ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
         Command("screenshot", screenshot, (
@@ -1169,21 +1196,12 @@ COMMAND_GROUPS = (
         Command("tap", tap, (("tap <x> <y>", "tap a point"),)),
         Command("press", press, (("press <x> <y> [ms]", "hold a point; 1000 ms when omitted"),)),
         Command("drag", drag, (("drag <x0> <y0> <x1> <y1> <ms>", "drag between two points"),)),
-        Command("touch", touch, (("touch <down|up> <x> <y>", "one raw touch level; up hands back"),)),
-        Command("imu", imu, (
-            ("imu <ax> <ay> <az>", "raw accelerometer counts"),
-            ("imu release", "hand back to the sensor"))),
         Command("button", button, (("button <boot|power> [short|long]", "press a board button"),)),
     )),
     ("apps", "Apps", (
         Command("apps", apps, (("apps [--json]", "the registered apps, and which is running"),)),
         Command("open", open_app, (("open <name>", "enter an app; case-insensitive prefix"),)),
         Command("home", home, (("home", "back to the launcher"),)),
-    )),
-    ("frames", "Frame loop", (
-        Command("freeze", freeze, (("freeze", "stop the frame loop"),)),
-        Command("resume", resume, (("resume", "run it again"),)),
-        Command("step", step, (("step [N]", "advance N frames while frozen; 1 when omitted"),)),
     )),
     ("tune", "Tunables", (
         Command("tune", tune, (
@@ -1194,13 +1212,22 @@ COMMAND_GROUPS = (
     )),
     ("lock", "Sharing the board", (
         Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
-        Command("id", identify, (("id [--json]", "the name this session holds the lock under"),)),
-        Command("release", release, (("release <token>", "release a lock this session holds"),)),
-        Command("hand", hand, (("hand [--wait <seconds>] <note...>",
-                                 "reserve the board for a person at it"),)),
-        Command("take-back", take_back, (("take-back", "clear that reservation"),)),
+        Command("lock", lock, (
+            ("lock id [--json]", "the name this session holds the lock under"),
+            ("lock release <token>", "release a lock this session holds"),
+            ("lock hand [--wait <seconds>] <note...>", "reserve the board for a person at it"),
+            ("lock take-back", "clear that reservation"))),
     )),
-    ("docs", "Documentation", (
+    ("debug", "Debug", (
+        Command("debug", debug, (
+            ("debug freeze", "stop the frame loop where it is"),
+            ("debug resume", "run it again"),
+            ("debug step [N]", "advance N frames while frozen; 1 when omitted"),
+            ("debug touch <down|up> <x> <y>", "one raw touch level; up hands back"),
+            ("debug imu <ax> <ay> <az>", "raw accelerometer counts; imu release hands back"),
+            ("debug framewatch", "allocations and log lines repeating frame after frame, as JSON"))),
+    )),
+    ("docs", "No board needed", (
         Command("docs", docs, (
             ("docs <question...>", "the sections that answer it, and where to read on"),
             ("docs --section <path:line>", "one section whole; --deep adds its subsections"),
@@ -1209,9 +1236,26 @@ COMMAND_GROUPS = (
     )),
 )
 
+# Left out of the bare `autana help` listing; `autana help <key>` still shows
+# a hidden group in full, same as any other topic.
+HIDDEN_GROUPS = {"debug"}
+
+# Old spellings kept working - see alias()'s own docstring. "batch" moved
+# to suite() itself (its translation is not a plain forward) so it is not
+# here; every other renamed verb is a bare forward into its new group.
+RENAMED_VERBS = {
+    "id": ("lock id", identify), "release": ("lock release", release),
+    "hand": ("lock hand", hand), "take-back": ("lock take-back", take_back),
+    "freeze": ("debug freeze", freeze), "resume": ("debug resume", resume),
+    "step": ("debug step", step), "touch": ("debug touch", touch), "imu": ("debug imu", imu),
+    "framewatch": ("debug framewatch", framewatch),
+}
+
 COMMANDS = {command.name: command.handler
             for _, _, commands in COMMAND_GROUPS for command in commands}
 COMMANDS["console"] = console
+COMMANDS["batch"] = batch
+COMMANDS.update({old: alias(old, new, handler) for old, (new, handler) in RENAMED_VERBS.items()})
 HELP_TOPICS = [key for key, _, _ in COMMAND_GROUPS] + [
     command.name for _, _, commands in COMMAND_GROUPS for command in commands] + ["flags"]
 USAGE_WIDTH = 34
@@ -1222,20 +1266,20 @@ USAGE_WIDTH = 34
 BOARD_FLAGS = (
     ("--owner NAME", "name the lock holder for `autana status`, instead of "
                      "autana-cli@<pid>; AUTANA_DEVICE_OWNER sets it for every command",
-     "flash, suite, selftest, batch, monitor, reset, screenshot"),
+     "flash, suite, selftest, monitor, reset, screenshot"),
     ("--wait SECONDS", "how long to wait for the board's lock before giving up "
                        "(device.py's own default: 600 s)",
-     "flash, suite, selftest, batch, monitor, reset, screenshot"),
+     "flash, suite, selftest, monitor, reset, screenshot"),
     ("--purpose TEXT", "replace the default note the lock and the capture record carry",
-     "suite, batch, monitor"),
+     "suite, monitor"),
     ("--out PATH", "write the one capture here instead of the default path",
-     "suite, batch, monitor"),
-    ("--expect-build-id ID", "refuse to run a suite unless the board (suite) or the image "
-                             "just flashed (batch) carries this BUILD_ID",
-     "suite, batch"),
+     "suite, monitor"),
+    ("--expect-build-id ID", "refuse to run a suite unless the board, or the image `--flash` "
+                             "just wrote, carries this BUILD_ID",
+     "suite"),
     ("--worktree PATH|BRANCH", "act on another worktree, or a branch - creating a worktree "
                                "for it if none exists yet - instead of this one",
-     "build, flash, selftest, batch"),
+     "build, flash, selftest, suite (with --flash)"),
 )
 
 
@@ -1250,14 +1294,38 @@ def board_flags_text(prefix=""):
     return "\n".join(lines)
 
 
+# The five things a first run actually needs, each a real example rather than
+# a placeholder - `autana help` led three newcomer reads past this before
+# they found any of them among 37 commands in 9 groups.
+QUICKSTART = (
+    ("flash dev", "build and flash; the everyday form"),
+    ("monitor 30", "the console for 30 s"),
+    ("suite list", "then `suite <name>` to run one"),
+    ("tune ridge_trail", "a live value, read or set"),
+    ("screenshot -o shot", "the panel as shot.png plus shot.json"),
+)
+
+
+def quickstart_text(prefix):
+    width = max(len(prefix + synopsis) for synopsis, _ in QUICKSTART)
+    lines = ["Most used"]
+    for synopsis, summary in QUICKSTART:
+        lines.append(f"  {prefix + synopsis:<{width}}  {summary}")
+    return "\n".join(lines)
+
+
 def help_text(args, prefix="autana "):
     """Every group, or the one group or command `args` names, or the shared
-    board flags for `args == ["flags"]`."""
+    board flags for `args == ["flags"]`. With no args, leads with the
+    five-line quickstart and leaves out a hidden group (HIDDEN_GROUPS) -
+    `autana help <that group>` still shows it in full."""
     topic = args[0] if args else None
     if topic == "flags":
         return board_flags_text(prefix).rstrip()
-    lines = []
+    lines = [quickstart_text(prefix), ""] if topic is None else []
     for key, title, commands in COMMAND_GROUPS:
+        if topic is None and key in HIDDEN_GROUPS:
+            continue
         if topic not in (None, key):
             commands = [command for command in commands if command.name == topic]
             if not commands:
