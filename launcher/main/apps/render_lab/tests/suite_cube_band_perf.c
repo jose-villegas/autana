@@ -184,9 +184,9 @@ draw_cube_band(int row0, int row1, gfx_color_t* buf) {
 }
 
 static void
-replay_cube_band(int row0, int row1, gfx_color_t* buf) {
+replay_cube_band(int row0, int row1) {
     const int64_t replay_start = esp_timer_get_time();
-    ui_replay_band(row0, row1, buf);
+    ui_replay_band(row0, row1);
     replay_us_accum += esp_timer_get_time() - replay_start;
     replay_band_count++;
 }
@@ -216,7 +216,7 @@ band_frame(uint32_t dt_ms) {
         ui_build_us_accum += esp_timer_get_time() - build_start;
     }
 
-    TEST_ASSERT_TRUE(gfx_band_run(draw_cube_band, run_fps_on ? replay_cube_band : NULL));
+    gfx_band_run(draw_cube_band, run_fps_on ? replay_cube_band : NULL);
 }
 
 void
@@ -247,6 +247,7 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     raster_us_accum = 0;
     render_lab_enter();
     capture(band_frame, SAMPLE_MS);
+    const gfx_mode_t band_mode = *gfx_mode_current();
     render_lab_exit();
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, sample_count, "no band-mode frames captured");
     const int band_n = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES;
@@ -266,8 +267,9 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
                  (double)replay_us_accum / sample_count);
     }
     {
-        const int total_bands = sample_count * (GFX_HEIGHT / GFX_BAND_HEIGHT);
-        const int skipped_bands = total_bands - touched_band_count;
+        const int total_bands =
+            band_mode.layout == GFX_LAYOUT_BANDS ? sample_count * (band_mode.height / band_mode.band_height) : 0;
+        const int skipped_bands = band_mode.layout == GFX_LAYOUT_BANDS ? total_bands - touched_band_count : 0;
         const double touched_pct = total_bands > 0 ? 100.0 * touched_band_count / total_bands : 0.0;
         ESP_LOGI(TAG, "bands: %d touched, %d skipped (%.1f%% touched), %.0f bytes/frame sent", touched_band_count,
                  skipped_bands, touched_pct, band_bytes_per_frame);
@@ -322,6 +324,7 @@ run_arm(const char* label, bool band_mode, int quarter, bool fps_on) {
     render_lab_band_mode = band_mode;
     render_lab_enter();
     capture(band_mode ? band_frame : full_fb_frame, ORIENTATION_SAMPLE_MS);
+    const gfx_mode_t granted_mode = *gfx_mode_current();
     render_lab_exit();
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, sample_count, "no frames captured for this arm");
 
@@ -333,7 +336,9 @@ run_arm(const char* label, bool band_mode, int quarter, bool fps_on) {
         .replay_band_count = replay_band_count,
         .raster_us = raster_us_accum,
         .touched_bands = touched_band_count,
-        .skipped_bands = sample_count * (GFX_HEIGHT / GFX_BAND_HEIGHT) - touched_band_count,
+        .skipped_bands = granted_mode.layout == GFX_LAYOUT_BANDS
+                             ? (sample_count * (granted_mode.height / granted_mode.band_height)) - touched_band_count
+                             : 0,
     };
     const int n = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES;
     r.frame = compute_stats(n);

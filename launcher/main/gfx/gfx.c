@@ -128,7 +128,7 @@ indexed_frame(void) {
     };
 }
 
-/* True while a transient band picture is generated and sent after frame(). */
+/* True for the whole GFX_LAYOUT_BANDS mode. */
 static inline bool
 band_is_transient(void) {
     return current_mode.layout == GFX_LAYOUT_BANDS;
@@ -2471,11 +2471,31 @@ gfx_present_async_enabled(void) {
 
 /* Mode and the band ring */
 
+static void*
+fb_bytes_alloc(size_t bytes) {
+#ifdef ESP_PLATFORM
+    return heap_caps_malloc(bytes, BOARD_FRAMEBUFFER_CAPS);
+#elif defined(HOST_HEAP_ARENA)
+    return heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    return malloc(bytes);
+#endif
+}
+
+static void
+fb_bytes_free(void* p) {
+#if defined(ESP_PLATFORM) || defined(HOST_HEAP_ARENA)
+    heap_caps_free(p);
+#else
+    free(p);
+#endif
+}
+
 #ifdef ESP_PLATFORM
 static bool
 alloc_full_framebuffer(void) {
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-    fb = heap_caps_malloc(bytes, BOARD_FRAMEBUFFER_CAPS);
+    fb = fb_bytes_alloc(bytes);
     if (fb == NULL) {
         ESP_LOGE(TAG, "Could not reallocate the %u byte framebuffer leaving band mode", (unsigned)bytes);
         return false;
@@ -2485,7 +2505,7 @@ alloc_full_framebuffer(void) {
 
 static void
 free_full_framebuffer(void) {
-    heap_caps_free(fb);
+    fb_bytes_free(fb);
     fb = NULL;
 }
 
@@ -2518,21 +2538,13 @@ free_indexed_image(void) {
 static bool
 alloc_full_framebuffer(void) {
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-#ifdef HOST_HEAP_ARENA
-    fb = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-#else
-    fb = malloc(bytes);
-#endif
+    fb = fb_bytes_alloc(bytes);
     return fb != NULL;
 }
 
 static void
 free_full_framebuffer(void) {
-#ifdef HOST_HEAP_ARENA
-    heap_caps_free(fb);
-#else
-    free(fb);
-#endif
+    fb_bytes_free(fb);
     fb = NULL;
 }
 
@@ -2566,13 +2578,7 @@ free_indexed_image(void) {
 static bool
 alloc_band_snapshot(void) {
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-#ifdef ESP_PLATFORM
-    band_snapshot = heap_caps_malloc(bytes, BOARD_FRAMEBUFFER_CAPS);
-#elif defined(HOST_HEAP_ARENA)
-    band_snapshot = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-#else
-    band_snapshot = malloc(bytes);
-#endif
+    band_snapshot = fb_bytes_alloc(bytes);
     band_snapshot_bands = 0;
     band_snapshot_filling = false;
     band_snapshot_complete = false;
@@ -2581,13 +2587,7 @@ alloc_band_snapshot(void) {
 
 static void
 free_band_snapshot(void) {
-#ifdef ESP_PLATFORM
-    heap_caps_free(band_snapshot);
-#elif defined(HOST_HEAP_ARENA)
-    heap_caps_free(band_snapshot);
-#else
-    free(band_snapshot);
-#endif
+    fb_bytes_free(band_snapshot);
     band_snapshot = NULL;
     band_snapshot_filling = false;
     band_snapshot_complete = false;
@@ -2761,9 +2761,8 @@ gfx_band_frame_begin(void) {
     gfx_fb_guard_set_available(false);
     gfx_band_ring_begin(&band_ring, current_mode.height / current_mode.band_height);
 
-    /* Captured once per frame, not read live from gfx_band_dirty(): a
-     * gfx_invalidate() call mid-frame (an app's own BOOT-menu toggle, say)
-     * must not retroactively force bands this frame already skipped. */
+    /* Captured once per frame: gfx_invalidate() from a draw or overlay callback
+     * cannot retroactively force bands already skipped this frame. */
     band_frame_force_all = gfx_band_take_force_all();
 
     if (band_snapshot != NULL && !band_snapshot_complete) {
@@ -2916,11 +2915,12 @@ gfx_band_submit(void) {
     gfx_band_ring_skip(&band_ring);
 }
 
-bool
-gfx_band_run(gfx_band_draw_fn draw, gfx_band_draw_fn overlay) {
-    if (draw == NULL || current_mode.layout != GFX_LAYOUT_BANDS) {
-        return false;
+void
+gfx_band_run(gfx_band_draw_fn draw, gfx_band_overlay_fn overlay) {
+    if (current_mode.layout != GFX_LAYOUT_BANDS) {
+        return;
     }
+    assert(draw != NULL);
 
     gfx_band_frame_begin();
     while (gfx_band_next()) {
@@ -2933,11 +2933,10 @@ gfx_band_run(gfx_band_draw_fn draw, gfx_band_draw_fn overlay) {
         gfx_color_t* const target = gfx_band_buffer();
         draw(row0, row1, target);
         if (overlay != NULL) {
-            overlay(row0, row1, target);
+            overlay(row0, row1);
         }
         gfx_band_submit();
     }
-    return true;
 }
 
 uint8_t*

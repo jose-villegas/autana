@@ -37,6 +37,7 @@
 #include "gfx/gfx.h"
 #include "gfx/gfx_band_run.h"
 #include "gfx/gfx_font_roles.h"
+#include "gfx/gfx_test.h"
 #include "input/touch.h"
 #include "input/touch_fsm.h"
 
@@ -1500,7 +1501,7 @@ draw_readback_band_frame_n(int skip_row0, uint32_t frame) {
             }
         }
     }
-    TEST_ASSERT_TRUE(gfx_band_run(draw_readback_band, NULL));
+    gfx_band_run(draw_readback_band, NULL);
 }
 
 static void

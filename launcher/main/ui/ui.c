@@ -635,8 +635,7 @@ ui_end_for_bands(uint32_t background_rgb) {
 }
 
 void
-ui_replay_band(int row0, int row1, gfx_color_t* target) {
-    (void)target;
+ui_replay_band(int row0, int row1) {
     for (int i = 0; i < ui_band_bin_count; i++) {
         const ui_band_entry_t* e = &ui_band_bin[i];
         if (!e->always && !(e->y0 < row1 && e->y1 > row0)) {

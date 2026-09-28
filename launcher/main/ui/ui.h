@@ -32,7 +32,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/gfx_color.h"
 #include "gfx/gfx_font.h"
 #include "gfx/icon.h"
 #include "input/input.h"
@@ -220,11 +219,11 @@ bool ui_end_over(ui_backdrop_fn paint_backdrop);
 void ui_invalidate(void);
 
 /*
- * Band mode (gfx.h) has no retained framebuffer, so hash-and-skip does
- * not apply: every band redraws every frame regardless. Closes the frame
- * like ui_end() does, but BINS the commands by row range instead of
- * painting - ui_replay_band() draws a band's own share later. Call once
- * per frame, before the band loop. Pass UI_NO_BACKGROUND if the caller
+ * Band mode (gfx.h) has no retained framebuffer, so ui_end()'s hash-and-skip
+ * does not apply. Closes the frame like ui_end() does, but bins commands by
+ * row range instead of painting; ui_replay_band() draws a band's share when
+ * gfx_band_run() draws that band. Call once per frame from frame(). Pass
+ * UI_NO_BACKGROUND if the caller
  * already cleared the band itself.
  */
 void ui_end_for_bands(uint32_t background_rgb);
@@ -233,7 +232,7 @@ void ui_end_for_bands(uint32_t background_rgb);
  * call once per band, into gfx's current band draw target, after the
  * app's own band content. Commands replay in the same back-to-front,
  * within-canvas order ui_end() itself would paint them in. */
-void ui_replay_band(int row0, int row1, gfx_color_t* target);
+void ui_replay_band(int row0, int row1);
 
 /* Queues a plain opaque rect for the NEXT ui_end_for_bands() call to bin
  * alongside its own microui commands - for pixels to show in band mode

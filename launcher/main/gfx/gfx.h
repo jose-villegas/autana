@@ -81,11 +81,6 @@ _Static_assert(GFX_BAND_HEIGHT % 2 == 0, "a band's row range must round to even 
  * Returns false if either fails; the reason is logged. */
 bool gfx_init(void);
 
-#ifndef ESP_PLATFORM
-/* Restores host-only gfx state after a test owns its initialization. */
-void gfx_reset_for_test(void);
-#endif
-
 /* Convert 0xRRGGBB to the panel's pixel format.
  *
  * GFX_RGB in gfx_color.h does the same thing in a constant expression, which
@@ -371,12 +366,10 @@ void gfx_mode_exit(void);
 const gfx_mode_t* gfx_mode_current(void);
 
 /*
- * GFX_LAYOUT_INDEXED - a persistent index image gfx owns instead of an
- * RGB565 band, valid only between a matching gfx_mode_enter()/gfx_mode_exit().
- * The app writes indices; gfx
- * expands them through a LUT and sends them on the present task the next
- * time it calls gfx_present_begin()/gfx_present_wait() - the same two
- * calls it already uses for GFX_LAYOUT_FULL_FB, unchanged.
+ * GFX_LAYOUT_INDEXED - a persistent index image gfx owns instead of the
+ * PSRAM framebuffer, valid between a matching gfx_mode_enter()/gfx_mode_exit().
+ * The app writes indices; the present task expands them through a LUT on the
+ * same gfx_present_begin()/gfx_present_wait() path as GFX_LAYOUT_FULL_FB.
  */
 
 /* Row-major, gfx_mode_current()->index_grid_w bytes per row. Write only the

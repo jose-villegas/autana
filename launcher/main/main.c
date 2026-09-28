@@ -297,9 +297,7 @@ draw_home_hint(gesture_edge_t edge) {
 }
 
 /* Band mode (gfx.h) has no framebuffer for draw_home_hint() to write into.
- * Its loop runs after frame(), so queuing the hint before frame() lets
- * whichever ui_end_for_bands() call happens this frame (fps counter, BOOT
- * menu, whichever is showing) bin it alongside its own commands. */
+ * Queue it before frame(), so the app's ui_end_for_bands() call bins it. */
 static void
 queue_home_hint(gesture_edge_t edge) {
     int x, y, w, h;
@@ -505,7 +503,6 @@ step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
     if (current->update == NULL) {
         current->frame(dt_ms, input);
         gfx_band_run(current->draw_band, ui_replay_band);
-        assert(gfx_mode_current()->layout != GFX_LAYOUT_BANDS || current->draw_band != NULL);
         return;
     }
     if (frame_ready) {
@@ -515,7 +512,6 @@ step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
     }
     current->frame(dt_ms, input);
     gfx_band_run(current->draw_band, ui_replay_band);
-    assert(gfx_mode_current()->layout != GFX_LAYOUT_BANDS || current->draw_band != NULL);
     frame_ready = true;
 }
 
@@ -672,8 +668,9 @@ shell_test_band_update_frame_and_present(void) {
     const frame_watch_verdict_t verdict = frame_watch_test_end();
 
     const int passes = FRAME_WATCH_WARMUP + 1;
+    const gfx_mode_t* const mode = gfx_mode_current();
     const bool stepped = shell_test_updates == passes && shell_test_frames == passes + 1
-                         && shell_test_band_draws == (passes + 1) * (GFX_HEIGHT / GFX_BAND_HEIGHT);
+                         && shell_test_band_draws == (passes + 1) * (mode->height / mode->band_height);
     if (current != NULL) {
         exit_app(&current);
     }

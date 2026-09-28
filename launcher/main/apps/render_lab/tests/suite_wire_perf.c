@@ -86,8 +86,8 @@ draw_wire_band(int row0, int row1, gfx_color_t* buf) {
 }
 
 static void
-replay_wire_band(int row0, int row1, gfx_color_t* buf) {
-    ui_replay_band(row0, row1, buf);
+replay_wire_band(int row0, int row1) {
+    ui_replay_band(row0, row1);
 }
 
 static void
@@ -140,7 +140,7 @@ run_band_frame(wire_totals_t* t, uint32_t dt_ms) {
     draw_fps(&null_input, true);
 
     band_totals = t;
-    TEST_ASSERT_TRUE(gfx_band_run(draw_wire_band, replay_wire_band));
+    gfx_band_run(draw_wire_band, replay_wire_band);
     band_totals = NULL;
 
     t->frame_us += esp_timer_get_time() - frame_start;
