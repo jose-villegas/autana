@@ -71,6 +71,10 @@ static const char* TAG = "shell";
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "esp_heap_caps.h"
 
+#include "app_memory.h"
+
+static size_t app_internal_free_before_enter;
+
 /* Free heap alone never predicts whether the next big allocation fits:
  * the framebuffer and an app's largest buffer each need ONE CONTIGUOUS block,
  * and
@@ -376,6 +380,13 @@ static void
 exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    const size_t kept =
+        app_internal_memory_leaked_bytes(app_internal_free_before_enter, heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    if (kept != 0) {
+        ESP_LOGW(TAG, "App %s kept %u internal bytes", (*current)->name, (unsigned)kept);
+    }
+#endif
     app_arena_rewind(0);
     restore_system_display_state();
     frame_watch_restart();
@@ -406,6 +417,9 @@ start_app(const app_t** current, const app_t* next) {
     gfx_request_full_redraw();
     restore_system_display_state();
     exit_requested = false;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    app_internal_free_before_enter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+#endif
     (*current)->enter();
     frame_ready = false;
     frame_watch_restart();
