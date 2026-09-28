@@ -382,13 +382,13 @@ Acid -->|"dissolvable 110"| Metal
         self.assertEqual(missing[0][0].target_doc, "Target.md")
 
     def test_a_bare_doc_name_never_resolves_into_an_untracked_nested_checkout(self):
-        # A checkout may hold an ignored repository of someone's own, with docs
-        # of the same names; CI never has it. A citation must find the tracked doc.
+        # A checkout may hold untracked docs with the same names, which CI never
+        # has. A citation must find the tracked doc.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.write(root, "docs/sand/Architecture.md", "## The grid, in one byte\n")
             self.write(root, "docs/Guide.md", 'See Architecture.md\'s "The grid, in one byte".\n')
-            self.write(root, "notes/skills/references/Architecture.md", "## Something else\n")
+            self.write(root, "notes/Architecture.md", "## Something else\n")
             git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
             subprocess.run(git + ["init", "-q"], cwd=root, check=True)
             subprocess.run(git + ["add", "docs"], cwd=root, check=True)

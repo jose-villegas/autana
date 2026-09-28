@@ -170,7 +170,7 @@ def records_root():
     """Where a session's log and manifest are written.
 
     AUTANA_RECORDS names it, for anyone who keeps their device history
-    elsewhere. Unset, records land in the engine worktree's own gitignored
+    elsewhere. Unset, records land in this checkout's own gitignored
     .records/device - self-contained, and nothing a commit can pick up by
     accident."""
     named = os.environ.get("AUTANA_RECORDS")

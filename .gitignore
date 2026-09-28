@@ -141,10 +141,12 @@ $RECYCLE.BIN/
 .records/
 
 ### A maintainer's private tooling checkout, and what it links in
-# Rooted, so an AGENTS.md written for a subdirectory would still be tracked.
 .dev/
+# Rooted, so an AGENTS.md written for a subdirectory would still be tracked.
 /AGENTS.md
 /.claude/skills/
+
+### Claude Code's worktrees
 /.claude/worktrees/
 
 ### Beads (bd issue tracker)

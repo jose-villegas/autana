@@ -11,18 +11,18 @@
 Options: --top N (3), --more N (5), --budget CHARS (1800), --json, --lexical.
 
 The unit of an answer is a section: a heading and the text up to the next
-heading. Every tracked Markdown file is read, plus the header of every
-tracked script, so "how do I run X" finds the script that documents itself,
-plus any Markdown files or folders AUTANA_DOCS_EXTRA names (os.pathsep
-between them, each relative to the checkout unless absolute). Each result prints the
-paragraphs that carry the question, the section's path:line range to read the
-rest, and the code it cites.
+heading. Every tracked Markdown file is read, plus any Markdown files or
+folders AUTANA_DOCS_EXTRA names (os.pathsep between them, each relative to
+the checkout unless absolute), plus the header of every tracked script, so
+"how do I run X" finds the script that documents itself. Each result prints
+the paragraphs that carry the question, the section's path:line range to
+read the rest, and the code it cites.
 
 Two rankings are fused: BM25F over exact words, with the heading path weighted
 above the body, and embedding similarity from docs_llama.py's local model when
 it is set up. Without the model, search is the first alone and says so. The
 index is rebuilt on every run, in about a second, so it is never stale; only
-the vectors are cached. docs/tools/Docs-Search.md has the measurements.
+the vectors are cached. docs/tools/Docs-Search.md has the setup.
 """
 import argparse
 import json
@@ -39,7 +39,7 @@ import docs_llama
 Section = namedtuple("Section", "path start end title headings level body cites")
 Hit = namedtuple("Hit", "section score coverage similarity")
 
-SKIPPED_PREFIXES = ("third_party/", ".claude/skills/", "launcher/components/")
+SKIPPED_PREFIXES = ("third_party/", "launcher/components/")
 SCRIPT_ROOTS = ("scripts/", "launcher/tools/", "launcher/test/", "launcher/main/apps/")
 SCRIPT_SUFFIXES = (".py", ".sh", ".mjs")
 # A plan describes code that does not exist yet, and a document from outside
@@ -103,15 +103,24 @@ def tokens(text):
 
 
 def git_files(root, *patterns):
-    result = subprocess.run(["git", "-C", str(root), "ls-files", "--cached", "--others",
+    result = subprocess.run(["git", "-C", str(root), "ls-files", "-z", "--cached", "--others",
                              "--exclude-standard", *patterns],
                             capture_output=True, text=True, encoding="utf-8")
-    return result.stdout.split() if result.returncode == 0 else []
+    return [p for p in result.stdout.split("\0") if p] if result.returncode == 0 else []
 
 
 def extra_entries(root):
     value = os.environ.get(EXTRA_ENV, "")
-    return [Path(root) / entry for entry in value.split(os.pathsep) if entry.strip()]
+    return [Path(root) / entry.strip() for entry in value.split(os.pathsep) if entry.strip()]
+
+
+def own_repository(folder, root):
+    """Whether a folder belongs to a git work tree other than root's, whose ignores then apply."""
+    result = subprocess.run(["git", "-C", str(folder), "rev-parse", "--show-toplevel"],
+                            capture_output=True, text=True, encoding="utf-8")
+    if result.returncode != 0:
+        return False
+    return Path(result.stdout.strip()).resolve() != Path(root).resolve()
 
 
 def label_of(root, file):
@@ -126,19 +135,21 @@ def extra_files(root):
     files = []
     for entry in extra_entries(root):
         if entry.is_dir():
-            found = git_files(entry, "*.md") or [p.relative_to(entry).as_posix() for p in entry.rglob("*.md")]
-            files += [entry / p for p in found]
+            if own_repository(entry, root):
+                files += [entry / p for p in git_files(entry, "*.md")]
+            else:
+                files += sorted(entry.rglob("*.md"))
         elif entry.suffix == ".md" and entry.is_file():
             files.append(entry)
     return [(label_of(root, f), f) for f in files]
 
 
-def corpus_files(root):
+def corpus_files(root, extra=None):
     """(label, file) for every document: tracked Markdown, extra Markdown, script headers."""
     root = Path(root)
     files = [(p, root / p) for p in git_files(root, "*.md")
              if not p.startswith(SKIPPED_PREFIXES)]
-    files += extra_files(root)
+    files += extra_files(root) if extra is None else extra
     files += [(p, root / p) for p in git_files(root, *(f"*{s}" for s in SCRIPT_SUFFIXES))
               if p.startswith(SCRIPT_ROOTS) and "/tests/" not in p
               and not Path(p).name.startswith("test_")]
@@ -254,8 +265,9 @@ def unique(sections):
 class Index:
     def __init__(self, root, semantic=True):
         self.root = Path(root)
-        self.files = corpus_files(self.root)
-        self.extra = frozenset(label for label, _ in extra_files(self.root))
+        extra = extra_files(self.root)
+        self.files = corpus_files(self.root, extra)
+        self.extra = frozenset(label for label, _ in extra)
         self.sections = unique(s for label, file in self.files for s in read_sections(label, file))
         self.fields = [self.section_fields(s) for s in self.sections]
         self.average = {f: sum(len(d[f]) for d in self.fields) / max(len(self.fields), 1) or 1
