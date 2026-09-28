@@ -23,7 +23,6 @@
 #include "esp_timer.h"
 
 #include "app.h"
-#include "apps/input_lab/corner_arc.h"
 #include "apps/input_lab/touch_probe.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
@@ -225,8 +224,9 @@ static void
 draw_corner_arcs(mu_Context* ctx) {
     const mu_Color ink = ui_rgb(0xFF00FF);
     for (int row = 0; row < bezel_radius; row += ARC_STEP) {
-        const int inset = corner_arc_inset(bezel_radius, row);
-        const int before = row >= ARC_STEP ? corner_arc_inset(bezel_radius, row - ARC_STEP) : inset + 1;
+        const int inset = display_panel_corner_inset(bezel_radius, screen_h, row);
+        const int before =
+            row >= ARC_STEP ? display_panel_corner_inset(bezel_radius, screen_h, row - ARC_STEP) : inset + 1;
         const int w = before - inset > 1 ? before - inset : 1;
         const int bottom = screen_h - row - ARC_STEP;
         mu_draw_rect(ctx, mu_rect(inset, row, w, ARC_STEP), ink);

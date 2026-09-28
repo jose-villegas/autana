@@ -21,7 +21,10 @@
 /* The cover glass hides roughly this many pixels along every edge of the
  * panel, and more where the corners round off. Anything meant to be read
  * insets by at least this much. Measured on the board. */
-#define DISPLAY_PANEL_SAFE_INSET 15
+#define DISPLAY_PANEL_SAFE_INSET    15
+
+/* Measured on the panel's cover glass. */
+#define DISPLAY_PANEL_CORNER_RADIUS 42
 
 /* tan(60 deg) = 1.732..., approximated as a small integer ratio so the
  * hysteresis test is exact integer (cross-multiplied) arithmetic - no
@@ -29,8 +32,8 @@
  * top comment for why one ratio, applied relative to whichever quarter
  * is currently committed, is enough to give both the 60-degrees-out and
  * the 30-degrees-back behaviour. */
-#define DISPLAY_HYST_NUM         7
-#define DISPLAY_HYST_DEN         4
+#define DISPLAY_HYST_NUM            7
+#define DISPLAY_HYST_DEN            4
 
 typedef struct {
     /* Which quarter turn currently reads as "upright" - numbered the
@@ -82,6 +85,8 @@ void display_init(display_t* d);
 bool display_update(display_t* d, int gx, int gy);
 
 int display_quarter(const display_t* d);
+
+int display_panel_corner_inset(int radius, int panel_height, int row);
 
 /* The shell's own orientation - the quarter main.c last set the UI
  * transform to. Declared here but defined in main.c, not display.c:

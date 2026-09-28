@@ -10,6 +10,7 @@ authored screen. Every C identifier in the output derives from `screen`.
 
 import argparse
 import json
+import math
 import re
 from pathlib import Path
 
@@ -19,6 +20,26 @@ ORIENTATIONS = ("portrait", "landscape")
 CANVASES = {"portrait": (368, 448), "landscape": (448, 368)}
 MIN_TAP_TARGET = 56  # ui/ui.h UI_TAP_MIN
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def panel_corner_radius():
+    header = Path(__file__).resolve().parents[2] / "main" / "display" / "display.h"
+    match = re.search(r"^#define DISPLAY_PANEL_CORNER_RADIUS (\d+)$", header.read_text(encoding="utf-8"), re.M)
+    if not match:
+        fail("display/display.h must define DISPLAY_PANEL_CORNER_RADIUS")
+    return int(match.group(1))
+
+
+def panel_corner_inset(panel_height, row):
+    radius = panel_corner_radius()
+    edge_row = min(row, panel_height - 1 - row)
+    if edge_row >= radius:
+        return 0
+    up = radius - edge_row
+    root = math.isqrt(radius * radius - up * up)
+    if (root + 1) ** 2 - (radius * radius - up * up) <= radius * radius - up * up - root**2:
+        root += 1
+    return radius - root
 
 
 def fail(message):
@@ -70,6 +91,9 @@ def validate_orientation(name, authored, elements):
         x, y, width, height = rect
         if x < 0 or y < 0 or width <= 0 or height <= 0 or x + width > canvas[0] or y + height > canvas[1]:
             fail(f"{name}.{element_id} leaves the canvas")
+        inset = max(panel_corner_inset(canvas[1], y), panel_corner_inset(canvas[1], y + height - 1))
+        if x < inset or x + width > canvas[0] - inset:
+            fail(f"{name}.{element_id} enters a rounded panel corner")
         if element["interactive"] and (width < MIN_TAP_TARGET or height < MIN_TAP_TARGET):
             fail(f"{name}.{element_id} is smaller than the {MIN_TAP_TARGET}px tap target")
         rects[element_id] = tuple(rect)

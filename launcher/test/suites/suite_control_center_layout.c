@@ -10,11 +10,12 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "display/display.h"
 #include "ui/control_center_layout_generated.h"
 #include "ui/ui.h"
 
-/* About 15 px at every edge of the panel is not visible on the device. */
-#define PANEL_EDGE_INSET 15
+/* Layout air keeps controls and their text off the visible edge. */
+#define CONTROL_CENTER_EDGE_BREATHING_ROOM 16
 
 static const control_center_layout_t* const layouts[] = {
     &control_center_layout_portrait,
@@ -48,10 +49,19 @@ test_every_element_clears_the_panel_edge(void) {
         for (int e = 0; e < CONTROL_CENTER_ELEMENT_COUNT; e++) {
             const control_center_layout_rect_t* r = &layout->rects[e];
             const char* where = describe(layout, e);
+            const int top_inset = display_panel_corner_inset(DISPLAY_PANEL_CORNER_RADIUS, layout->canvas_height, r->y);
+            const int bottom_inset =
+                display_panel_corner_inset(DISPLAY_PANEL_CORNER_RADIUS, layout->canvas_height, r->y + r->height - 1);
+            const int corner_inset = top_inset > bottom_inset ? top_inset : bottom_inset;
             TEST_ASSERT_TRUE_MESSAGE(r->width > 0 && r->height > 0, where);
-            TEST_ASSERT_TRUE_MESSAGE(r->x >= PANEL_EDGE_INSET && r->y >= PANEL_EDGE_INSET, where);
-            TEST_ASSERT_TRUE_MESSAGE(r->x + r->width <= layout->canvas_width - PANEL_EDGE_INSET, where);
-            TEST_ASSERT_TRUE_MESSAGE(r->y + r->height <= layout->canvas_height - PANEL_EDGE_INSET, where);
+            TEST_ASSERT_TRUE_MESSAGE(r->x >= corner_inset && r->x + r->width <= layout->canvas_width - corner_inset,
+                                     where);
+            TEST_ASSERT_TRUE_MESSAGE(
+                r->x >= CONTROL_CENTER_EDGE_BREATHING_ROOM && r->y >= CONTROL_CENTER_EDGE_BREATHING_ROOM, where);
+            TEST_ASSERT_TRUE_MESSAGE(r->x + r->width <= layout->canvas_width - CONTROL_CENTER_EDGE_BREATHING_ROOM,
+                                     where);
+            TEST_ASSERT_TRUE_MESSAGE(r->y + r->height <= layout->canvas_height - CONTROL_CENTER_EDGE_BREATHING_ROOM,
+                                     where);
         }
     }
 }
