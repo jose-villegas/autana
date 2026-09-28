@@ -10,8 +10,8 @@ Everything lives outside the repository, in AUTANA_LLAMA_HOME (default
 worktree. One llama-server runs in router mode on 127.0.0.1:AUTANA_LLAMA_PORT
 (8765), loads a model on its first request and unloads it after ten idle
 minutes, so nothing holds memory between questions. Every download is pinned to
-a SHA-256 and checked before use. With several GPUs it runs on a discrete one
-(AUTANA_LLAMA_DEVICE, a name from `llama-server --list-devices`, overrides).
+a SHA-256 and checked before use. A GPU recognised as integrated is left out
+when another is present; llama.cpp's own LLAMA_ARG_DEVICE overrides.
 
 Without a setup, search is lexical and nothing here runs: a missing model is a
 weaker answer, never an error.
@@ -155,29 +155,29 @@ def setup(chat=False):
     print(f"{len(index.vectors)} passages embedded")
 
 
-def pick_device(listing):
-    """The device to run on from a `--list-devices` listing: the first that isn't integrated,
-    when there is more than one GPU; None leaves the choice to the server."""
+def pick_devices(listing):
+    """The devices in a `--list-devices` listing that aren't recognised as integrated, comma
+    separated, when that leaves out some but not all; None leaves the choice to the server."""
     devices = re.findall(r"^\s+(\w+): (.+)$", listing, re.MULTILINE)
-    discrete = [name for name, description in devices if not INTEGRATED.search(description)]
-    return discrete[0] if len(devices) > 1 and discrete else None
+    rest = [name for name, description in devices if not INTEGRATED.search(description)]
+    return ",".join(rest) if rest and len(rest) < len(devices) else None
 
 
-def device():
-    if os.environ.get("AUTANA_LLAMA_DEVICE"):
-        return os.environ["AUTANA_LLAMA_DEVICE"]
+def devices():
+    if os.environ.get("LLAMA_ARG_DEVICE"):
+        return None
     binary = server_binary()
     if binary is None:
         return None
     try:
-        listed = subprocess.run([str(binary), "--list-devices"], capture_output=True, text=True, timeout=30)
+        listed = subprocess.run([str(binary), "--list-devices"], capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.TimeoutExpired):
         return None
-    return pick_device(listed.stdout)
+    return pick_devices(listed.stdout)
 
 
 def write_preset():
-    chosen = device()
+    chosen = devices()
     lines = ["version = 1", "", "[*]", "ngl = 99"] + ([f"device = {chosen}"] if chosen else []) + [""]
     for kind, model in MODELS.items():
         if model_path(kind).is_file():
