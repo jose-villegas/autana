@@ -137,6 +137,8 @@ def board_for_lock(store, named=None):
     if wanted:
         return wanted
     present = sorted(found.serial for found in plugged_boards())
+    for serial in present:
+        store.note_seen(serial)
     candidates = present or store.boards()
     if len(candidates) == 1:
         return candidates[0]
@@ -1475,6 +1477,8 @@ def wait_for_human_release(store, board, reservation_id, seconds):
 def board_statuses(store, board=None):
     """Every board a lock record names or USB shows, or only `board`."""
     plugged = {found.serial: found.port for found in plugged_boards()}
+    for serial in plugged:
+        store.note_seen(serial)
     boards = [board] if board else sorted(set(store.boards()) | set(plugged))
     durations = device_lock.duration_history(store.root)
     return [device_lock.status_entry(store, name, plugged.get(name), durations=durations)

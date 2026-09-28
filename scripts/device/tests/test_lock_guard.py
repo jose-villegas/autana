@@ -1520,6 +1520,28 @@ class BoardChoiceTests(Store):
             self.assertEqual(self.main("take-back")[0], 0)
         self.assertIsNone(self.store.status(BOARD_A)["human"])
 
+    def test_a_board_stays_known_once_its_lock_is_fully_released(self):
+        # The idle state - no lock, no reservation, no waiter - is the common
+        # one, and the one a dropped-USB `hand` needs: nothing left behind by
+        # an ordinary flash should erase the board from the store's memory.
+        with plugged(usb(BOARD_A, "COM5")):
+            held = self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
+            self.store.release(BOARD_A, held["token"])
+            self.assertEqual(device.board_for_lock(self.store), BOARD_A)
+        with plugged():
+            self.assertEqual(device.board_for_lock(self.store), BOARD_A)
+
+    def test_hand_off_still_works_once_the_boards_lock_is_fully_released(self):
+        with plugged(usb(BOARD_A, "COM5")):
+            board = device.board_for_lock(self.store)
+            held = self.store.acquire(board, "alice", "flash", kind="flash")
+            self.store.release(board, held["token"])
+        with plugged():
+            code, errors = self.main("--owner", "agent", "hand-to-human",
+                                     "--note", "power cycle it")
+        self.assertEqual((code, errors), (0, ""))
+        self.assertEqual(self.store.status(BOARD_A)["human"]["note"], "power cycle it")
+
     def test_with_several_boards_known_and_none_plugged_the_choice_fails(self):
         self.store.set_human(BOARD_A, "maintainer", "bench")
         self.store.enqueue(BOARD_B, "bob", "look")

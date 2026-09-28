@@ -46,12 +46,15 @@ looked up again before every port open and every esptool call.
 
 A command acts on the board named by `--board <serial>`, else by
 `AUTANA_BOARD`, else on the only Espressif (VID `0x303A`) board plugged in.
-With none plugged in it takes the only board a lock, reservation or waiter
-names, so a command can queue while the holder's reset has the board off
-USB, and `take-back` works on an unplugged board; opening the port still
-waits for USB. Case and surrounding spaces do not matter. With several
-candidates and none named, a command fails and lists their serial numbers;
-each board has its own lock and queue.
+With none plugged in it takes the only board the store knows: whichever one
+a lock, reservation or waiter currently names, or - failing that - the last
+board any command saw on USB, remembered past that command's own lock, so an
+idle board (the common state) is not forgotten the moment nothing holds it.
+This is how a command can queue while the holder's reset has the board off
+USB, and how `hand`/`take-back` reserve or release an unplugged board;
+opening the port still waits for USB. Case and surrounding spaces do not
+matter. With several candidates and none named, a command fails and lists
+their serial numbers; each board has its own lock and queue.
 
 ## One copy of the tools
 

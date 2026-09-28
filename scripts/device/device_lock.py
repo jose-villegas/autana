@@ -118,6 +118,16 @@ class LockStore:
     def guard_path(self, board):
         return self.root / (self.stem(board) + ".guard")
 
+    def seen_path(self, board):
+        return self.root / (self.stem(board) + ".seen.json")
+
+    def note_seen(self, board):
+        """Remembers `board` past its own lock, reservation or waiter - all
+        of which vanish once released - so boards()/callers can still find a
+        board that is idle (the common state) and has since dropped off USB,
+        the case `autana lock hand` exists for."""
+        self.write_json(self.seen_path(board), {"board": board, "seen_at": self.now()})
+
     def read_json(self, path):
         # A file mid-replace on Windows refuses to open with PermissionError.
         for _ in range(250):
