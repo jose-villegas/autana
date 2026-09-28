@@ -327,8 +327,8 @@ resend applies, skipped for a row that is dirty again since that row goes out
 whole anyway.
 
 The band ring feeds the same tracker through `gfx_mark_dirty()`. The app's
-`draw_band` fills the band about to be sent: cyan around the band for the
-panel-grid layer, green around each marked leaf for the leaf
+`draw_band` fills the band about to be sent. gfx then borders the filled band:
+cyan around the band for the panel-grid layer, green around each marked leaf for the leaf
 layer (`GFX_BAND_HEIGHT` is a multiple of `LEAF_H`, so a leaf never straddles
 two bands). gfx holds no copy of a band to resend, so the clean-up runs
 through the app's `draw_band`: `gfx_band_dirty()` reports a band that was

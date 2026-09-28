@@ -571,13 +571,17 @@ hash_band_entries(int row0, int row1) {
  * rect narrower than the band is not tracked per-entry here, only per-band. */
 static void
 mark_changed_ui_bands(void) {
-    const int band_count = GFX_HEIGHT / GFX_BAND_HEIGHT;
+    const gfx_mode_t* const mode = gfx_mode_current();
+    if (mode->layout != GFX_LAYOUT_BANDS) {
+        return;
+    }
+    const int band_count = mode->height / mode->band_height;
 
     for (int b = 0; b < band_count && b < UI_BAND_HASH_MAX; b++) {
-        const int row0 = b * GFX_BAND_HEIGHT;
-        const uint64_t h = hash_band_entries(row0, row0 + GFX_BAND_HEIGHT);
+        const int row0 = b * mode->band_height;
+        const uint64_t h = hash_band_entries(row0, row0 + mode->band_height);
         if (h != ui_band_hash[b]) {
-            gfx_mark_dirty(0, row0, GFX_WIDTH, GFX_BAND_HEIGHT);
+            gfx_mark_dirty(0, row0, mode->width, mode->band_height);
             ui_band_hash[b] = h;
         }
     }
