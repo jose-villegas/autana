@@ -26,8 +26,9 @@ where Python has `readline` (Windows: `pip install pyreadline3`).
 
 | Command | What it does |
 |---|---|
-| `autana build [rel\|dev\|diag] [--perf-scope]` | Build this worktree, no board and no lock; `dev` when omitted. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. |
-| `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope]` | Build and flash this worktree; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
+| `autana build [rel\|dev\|diag] [--perf-scope] [--worktree PATH\|BRANCH]` | Build this worktree, no board and no lock; `dev` when omitted. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. `--worktree` acts on another worktree or branch instead - see below. |
+| `autana build diag --check` | The diagnostics build plus the complexity ratchet - `launcher/tools/build/build_diag_check.sh`, unchanged; no board. |
+| `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope] [--owner NAME] [--wait SECONDS] [--worktree PATH\|BRANCH]` | Build and flash this worktree; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
 
 `autana build` is the way to build: it runs `launcher/tools/build/build.sh`,
@@ -39,20 +40,34 @@ opens the port.
 It proves the write, not the boot:
 [what a flash proves](Device-Lock.md#what-a-flash-proves).
 
+`--worktree PATH` acts against that path directly; `--worktree BRANCH` finds
+the worktree already checked out for that branch, or creates one for it
+(local, else `origin/BRANCH`) under the primary checkout's
+`.claude/worktrees/` when none exists yet - the same resolution
+`.dev/launcher/tools/build_flash_select.sh` offers as a menu, without the
+menu. Omitted, these commands act on the worktree you are standing in, as
+always.
+
 ## Tests
 
 `autana help tests`
 
 | Command | What it does |
 |---|---|
-| `autana suite <name> [seconds] [--verbose]` | Run one registered suite on a diagnostics build already on the board. |
+| `autana suite <name> [seconds] [--verbose] [--owner NAME] [--wait SECONDS] [--purpose TEXT] [--out PATH] [--expect-build-id ID]` | Run one registered suite on a diagnostics build already on the board. `--expect-build-id` refuses to run it if the board is not running that `BUILD_ID`. |
 | `autana suite list [text] [--json]` | The suites this worktree registers; `[on request]` ones run only by name. |
-| `autana selftest [seconds] [--verbose]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
-| `autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` | Flash once, capture the suites `N` times (3) under one lock; one summary. |
+| `autana selftest [seconds] [--verbose] [--owner NAME] [--wait SECONDS] [--worktree PATH\|BRANCH]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
+| `autana batch <suite>... [--runs N] [--perf-scope] [--verbose] [--owner NAME] [--wait SECONDS] [--purpose TEXT] [--out PATH] [--worktree PATH\|BRANCH] [--expect-build-id ID]` | Flash once, capture the suites `N` times (3) under one lock; one summary. `--expect-build-id` refuses to run any suite if the image it just flashed does not carry that `BUILD_ID`. |
 
 Each prints the report and capture paths, PASS/FAIL counts, up to ten failure
 messages (then a FAIL count per suite) and the end reason. `--verbose`
 prints the whole capture; to find something in it, grep the capture instead.
+`--out` writes the one capture to that path instead of the default; on
+`batch` it only makes sense with exactly one suite and `--runs 1`. `--purpose`
+replaces the default note the lock and the capture record carry. `autana
+flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it -
+pass that value to a later `suite`/`batch`'s `--expect-build-id` to refuse
+measuring a board that has since been reflashed by someone else.
 
 ## Watch the board
 
@@ -60,10 +75,10 @@ prints the whole capture; to find something in it, grep the capture instead.
 
 | Command | What it does |
 |---|---|
-| `autana monitor [seconds] [--follow] [--stream] [--elf PATH]` | In a terminal: the console live, until Ctrl+C or for `seconds`. Piped or scripted: needs `seconds` or `--follow`, and prints only error lines and `FRAME_WATCH` warnings; `--stream` prints everything. Always ends with its capture path. Crash addresses and `FRAME_WATCH` sites decode against `PATH`, or the build whose `build_id.txt` matches. |
+| `autana monitor [seconds] [--follow] [--stream] [--elf PATH] [--owner NAME] [--wait SECONDS] [--purpose TEXT] [--out PATH]` | In a terminal: the console live, until Ctrl+C or for `seconds`. Piped or scripted: needs `seconds` or `--follow`, and prints only error lines and `FRAME_WATCH` warnings; `--stream` prints everything. Always ends with its capture path. Crash addresses and `FRAME_WATCH` sites decode against `PATH`, or the build whose `build_id.txt` matches. |
 | `autana framewatch` | A development build's frame watch as JSON: the last frame's allocations, frees and log lines, and every site repeating frame after frame ([the frame watch](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state)). |
-| `autana reset [--capture [seconds]] [--verbose]` | Reboot and wait for USB serial. `--capture` records the boot (20 s) and prints its path and any error lines. |
-| `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | `PATH.png` plus a `PATH.json` state snapshot. Landscape by default; `--as-shown` uses the board's orientation, `--framebuffer` the raw bytes. |
+| `autana reset [--capture [seconds]] [--verbose] [--owner NAME] [--wait SECONDS]` | Reboot and wait for USB serial. `--capture` records the boot (20 s) and prints its path and any error lines. |
+| `autana screenshot [--as-shown\|--framebuffer] [-o PATH] [--owner NAME] [--wait SECONDS]` | `PATH.png` plus a `PATH.json` state snapshot. Landscape by default; `--as-shown` uses the board's orientation, `--framebuffer` the raw bytes. |
 | `autana screenshot --frames N -o PATH` | `N` consecutive frames as `PATH-00` to `PATH-<N-1>`: one capture while running, then the loop frozen and stepped one frame between captures, then resumed. A band-mode capture shows the panel as it is, a band no frame resent included. |
 
 ## Drive input
@@ -129,6 +144,14 @@ lost`. A separate `flash` and `suite` leave a gap where another session can
 flash; `batch` and `selftest` hold one lock across flash and capture. Lock
 loss, estimates and flash success are defined in
 [Device-Lock.md](Device-Lock.md).
+
+`flash`, `suite`, `selftest`, `batch`, `monitor`, `reset` and `screenshot`
+take `--owner NAME`, so `autana status` shows which of several sessions
+holds the board rather than every one reading `autana-cli@<pid>`;
+`AUTANA_DEVICE_OWNER` sets the same name for every command in a shell
+without repeating the flag, and an explicit `--owner` wins over it. The same
+commands take `--wait SECONDS`, how long to wait for the board's lock before
+giving up - device.py's own default (600 s) applies when it is omitted.
 
 `autana hand --wait 30 put the board in download mode` pauses a flash script
 until someone puts the board in download mode and runs `autana take-back`.
