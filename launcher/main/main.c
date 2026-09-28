@@ -71,6 +71,9 @@ static const char* TAG = "shell";
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "esp_heap_caps.h"
 
+static size_t app_internal_free_before_enter;
+static size_t app_8bit_free_before_enter;
+
 /* Free heap alone never predicts whether the next big allocation fits:
  * the framebuffer and an app's largest buffer each need ONE CONTIGUOUS block,
  * and
@@ -376,6 +379,18 @@ static void
 exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    const size_t internal_after_exit = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    const size_t eight_bit_after_exit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    if (internal_after_exit < app_internal_free_before_enter) {
+        ESP_LOGW(TAG, "App %s kept %u internal heap bytes (other tasks can move this)", (*current)->name,
+                 (unsigned)(app_internal_free_before_enter - internal_after_exit));
+    }
+    if (eight_bit_after_exit < app_8bit_free_before_enter) {
+        ESP_LOGW(TAG, "App %s kept %u 8-bit heap bytes (other tasks can move this)", (*current)->name,
+                 (unsigned)(app_8bit_free_before_enter - eight_bit_after_exit));
+    }
+#endif
     app_arena_rewind(0);
     restore_system_display_state();
     frame_watch_restart();
@@ -406,6 +421,10 @@ start_app(const app_t** current, const app_t* next) {
     gfx_request_full_redraw();
     restore_system_display_state();
     exit_requested = false;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    app_internal_free_before_enter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    app_8bit_free_before_enter = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+#endif
     (*current)->enter();
     frame_ready = false;
     frame_watch_restart();

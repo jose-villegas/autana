@@ -649,10 +649,10 @@ lands) and pin it with `aligned(32)`; no 64-bit divides, no signed
 divides by powers of two; a unity build for cross-file inlining if the
 rasterizer spans files; host numbers predict code-shape changes well and
 work-quantity changes badly; and the RTOS tick and input tasks are a
-small, measurable tax. Take the bulk memory an app needs once at `enter()`,
-from the shell's [app arena](../Building-an-App.md#app-memory) — the
-repo's "app exclusivity" convention and every MCU renderer's "allocate at
-startup, never again" advice are the same rule.
+small, measurable tax. Take the bulk memory an app needs at `enter()`, from
+the shell's [app arena](../Building-an-App.md#app-memory), and nothing more
+during the visit: the usual MCU advice to allocate at startup and never
+again, applied to each visit.
 
 ---
 
