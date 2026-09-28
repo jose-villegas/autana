@@ -24,16 +24,19 @@ and `docs_outline`.
 
 | Source | Unit |
 |---|---|
-| Every Markdown file git tracks or would track, except `third_party/`, `launcher/components/` and `.claude/skills/` | a heading and the text up to the next heading |
+| Every Markdown file git tracks or would track, except `third_party/` and `launcher/components/` | a heading and the text up to the next heading |
+| The Markdown files and folders `AUTANA_DOCS_EXTRA` names | the same |
 | The module docstring or leading comment of each tracked `.py`, `.sh` or `.mjs` file under `scripts/`, `launcher/tools/`, `launcher/test/` and `launcher/main/apps/`, except tests | one section per script |
 
 A section copied verbatim into two files is kept once. The index is rebuilt on
 every run, so it is never stale; an edit is searchable at once.
 
-Notes kept outside the tracked tree can join the index: `AUTANA_DOCS_EXTRA`
-names Markdown files and folders, separated by `;` on Windows and `:`
-elsewhere, each relative to the checkout unless absolute. A named folder's
-own `eval_questions.tsv` joins `--eval`.
+`AUTANA_DOCS_EXTRA` lets notes kept outside the tracked tree join the index.
+Entries are separated by `;` on Windows and `:` elsewhere, each relative to
+the checkout unless absolute. A folder that is its own git repository gives
+what that repository tracks or would track; any other folder gives every
+Markdown file under it. A named folder's own `eval_questions.tsv` joins
+`--eval`, its rows citing documents by the path search shows for them.
 
 ## How it ranks
 
