@@ -83,6 +83,21 @@ PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 STILL_ACTIVE = 259
 
 
+def windows_kernel32():
+    """kernel32 with the calls the process table and job code share typed:
+    an untyped HANDLE is truncated to 32 bits on a 64-bit build."""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    return kernel32
+
+
 def windows_process_alive(pid, kernel32=None):
     """Never os.kill(pid, 0) on Windows: signal 0 there is CTRL_C_EVENT, so
     CPython calls GenerateConsoleCtrlEvent and treats the pid as a console
@@ -96,11 +111,7 @@ def windows_process_alive(pid, kernel32=None):
     from ctypes import wintypes
 
     if kernel32 is None:
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.OpenProcess.restype = wintypes.HANDLE
-        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-        kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
-        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32 = windows_kernel32()
     handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
     if not handle:
         return ctypes.get_last_error() == ERROR_ACCESS_DENIED
