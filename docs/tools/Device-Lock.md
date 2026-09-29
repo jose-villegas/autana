@@ -186,7 +186,7 @@ minutes.
 | The laptop slept, or the clock jumped | A sleep or forward jump of over 10 minutes makes every lock reclaimable: a waiter takes the board, and the sleeper fails with `device lock was lost` on waking, even with nobody waiting. A jump back only makes a stale lock last longer. The same clock times a reservation's hour. | Up to 10 minutes extra | Re-run the command. |
 | A terminal program has the port | Windows: the open fails and retries. Linux: `screen` and `minicom` ignore the lock and can open it alongside autana's readers, so both may read garbled output. autana ends nothing of yours. | Up to 10 minutes (12 seconds when a command reopens the port right after its own flash) | Close the other program. A message that names no previous-holder process says it was not autana. |
 | The board was unplugged mid-flash | `esptool` fails, `flash` fails naming that half with the first error line and the log's path, and the lock is released. The board may hold a partial image. | Seconds | Plug it in, run `autana flash` again. If it will not boot, [Flashing-and-Toolchain.md](../notes/Flashing-and-Toolchain.md) has download mode and recovery. |
-| Someone forgot `autana lock hand` | Every command is refused with `board reserved by ...` and the time left. A reservation has no heartbeat, so the hour after the last `hand` is the only thing that ends it. It then counts as released and `status` says so; the `human-expired` event fires at the next command or `hand` that finds it, not on the hour. | 1 hour | `autana lock take-back` if it is not yours to keep. |
+| Someone forgot `autana lock hand` | Every command is refused with `board reserved by ...` and the time left. A reservation has no heartbeat, so the hour after the last `hand` is the only thing that ends it. It then counts as released and `status` says so. | 1 hour | `autana lock take-back` if it is not yours to keep. |
 
 ## For a shared rig or CI
 
@@ -210,7 +210,7 @@ cannot help: an older install never looks in the new folder). Per board, with
 
 | File | What it is |
 |---|---|
-| `<serial>.json` | The lock: `owner`, `purpose`, `kind`, `acquired_at`, `heartbeat_at`, `host`, `pid`, `token`, `expected_build_id`, `log`, `protocol`, `autana_version`. The `token` is a random secret naming this one lock; the holder and every process it starts also carry it in their environment, which `autana lock release` uses when given none. `status` never prints it. |
+| `<serial>.json` | The lock: `owner`, `kind`, `acquired_at`, `heartbeat_at`, `host`, `pid`, `token`, `protocol`, `autana_version`. The `token` is a random secret naming this one lock; the holder and every process it starts also carry it in their environment, which `autana lock release` uses when given none. `status` never prints it. |
 | `<serial>.queue/` | One ticket per waiting command, in FIFO order; a dead waiter's is discarded. |
 | `<serial>.human.json` | A person's reservation, with `expires_at`. |
 | `<serial>.last.json` | The previous holder, one only: overwritten each time a lock ends, for the message in step 5. |
@@ -234,9 +234,8 @@ alone fall back once more to the only board this machine has ever seen.
 |---|---|
 | `0` | Success. |
 | `1` | Any other failure, including `device lock was lost`. |
-| `75` | The board was busy: `device lock was not acquired`, with `--wait 0` or after the wait ran out. Safe to retry on this code alone. |
-| `3`, `4` | `lock hand --until-back` only: `3` the wait timed out or was interrupted (the reservation stays), `4` the reservation was cleared and a new one made. `0` means it was released or expired. |
-| `130` | A second Ctrl+C on `monitor`. |
+| `75` | The board was busy: `device lock was not acquired`, with `--wait 0` or after the wait ran out. Safe to retry on this code alone. Also `lock hand --until-back` ending with the board not handed back, its wait timed out or the reservation replaced; the reservation stands, and `0` means it was released or expired. |
+| `130` | Ctrl+C: a second one on `monitor`, the only one on `lock hand --until-back` (the reservation stands). |
 | `2` | `device.py` itself, for a bad command line. |
 
 `autana status --json` prints `{"boards": [...]}`, one object per board.
@@ -247,7 +246,7 @@ Times are epoch seconds, so an age is the current time minus one; an estimate wi
 | `board` | USB serial number |
 | `port` | COM port now, `null` when the board is not on USB |
 | `state` | `unlocked`, `held`, or `human` (a person's reservation) |
-| `holder` | `{"owner", "purpose"}`, the purpose being a reservation's note; `null` when unlocked. A held lock's also carries `protocol` and `autana_version`. |
+| `holder` | `{"owner", "purpose"}`, the purpose being `autana <kind>` for a lock and the note for a reservation; `null` when unlocked. A held lock's also carries `protocol` and `autana_version`. |
 | `since` | when the holder took the board |
 | `estimated_free` | when the holder should be done |
 | `expires_at` | when a reservation lapses; else `null` |
@@ -262,22 +261,20 @@ a hook meant for every command needs the key in every checkout. It runs
 through `cmd.exe` on Windows (`%VAR%`) and `/bin/sh` elsewhere (`$VAR`), with
 `AUTANA_LOCK_EVENT`, `AUTANA_LOCK_BOARD` (the serial number),
 `AUTANA_LOCK_OWNER`, `AUTANA_LOCK_PURPOSE` and `AUTANA_LOCK_NOTE` set. Purpose
-is empty for reservations; note carries the reclaim reason for `lost` and the
-reservation note for the `human-` events. Hooks run in separate processes and
+is `autana <kind>`, or the note for the `human-` events; note is empty except on
+a reclaiming `acquired`. Hooks run in separate processes and
 are not ordered across them, so one holder's `released` can arrive after the
 next holder's `acquired`. A hook has a three second timeout; a failed or
 timed out hook is quiet and never changes the lock operation's outcome.
 
 | Event | When |
 |---|---|
-| `acquired` | A ticket takes the lock, including reclaiming a stale lock. |
+| `acquired` | A ticket takes the lock. Taking it from a dead or stale holder sets note to `reclaimed from <owner> (<reason>)`. |
 | `released` | The holder gives up the lock. |
 | `waiting` | A ticket begins a real wait for a held or reserved board; once per ticket. |
 | `gave-up` | A waiting ticket leaves without the lock. |
 | `human-reserved` | A reservation is recorded. Renewing one records nothing new. |
 | `human-cleared` | `lock take-back` cleared a reservation. |
-| `human-expired` | A lapsed reservation was found and treated as released, at the next claim or `hand`, not on the hour; the note is its own. |
-| `lost` | A stale lock is reclaimed; owner and purpose identify its former holder, and note gives the reclaim reason. |
 
 ### One copy of the tools
 
@@ -328,7 +325,7 @@ across holders.
 ### Calling `device.py` from a script
 
 Prefer `autana --owner NAME`. Run `scripts/device/device.py`
-directly only for what `autana` does not offer: a per-call `--purpose`, a
+directly only for what `autana` does not offer: a
 `send` with its own `--reply` and `--until`, or `report`. It runs under
 ESP-IDF's Python (a different interpreter re-runs it under that one). On
 Windows, `flash`, `suite --flash` and `selftest` run `build.sh` and
@@ -336,15 +333,13 @@ Windows, `flash`, `suite --flash` and `selftest` run `build.sh` and
 comes first on `PATH`, which from a native shell is WSL's launcher.
 
 ```sh
-python scripts/device/device.py --owner ci-7 --wait 0 --purpose "gfx suite" run-suite run_gfx_suite --expect-build-id 0123456789ab-dev
+python scripts/device/device.py --owner ci-7 --wait 0 run-suite run_gfx_suite --expect-build-id 0123456789ab-dev
 ```
 
 `--owner` defaults to `unknown`, and `--wait` is the lock wait in
-seconds. `release --token <t>`, `hand-to-human --token <t> --note <n>` and
-`take-back` are what `autana lock` calls. For inspection or emergency recovery
-`scripts/device/device_lock.py --board <serial>` takes `status`, `acquire
---owner ... --purpose ... --wait 60`, `heartbeat --token`, `release --token`,
-`check-token --token`, `human --owner ... --note ...` and `clear-human`.
+seconds. `release --token <t>`, `hand-to-human --note <n>` and `take-back` are
+what `autana lock` calls; `check-token --token <t>` exits 0 when the token is the
+board's live lock, which `flash_image.sh` asks before it opens the port.
 
 ## How it works
 
@@ -367,7 +362,7 @@ loses its watchdog) it says so, and the lock still works as a lock.
 **Heartbeat and reclaim.** A running command renews its lock every 5 seconds:
 its heartbeat. The next waiter reclaims a lock when its holder's process on
 this machine is dead, or when its heartbeat is more than 10 minutes old, and
-logs `reclaimed lock from <owner> for <purpose> (dead process | heartbeat
+logs `reclaimed lock from <owner> for autana <kind> (dead process | heartbeat
 expiry)`. A holder whose heartbeat is refused - its lock was replaced, or it
 went stale while it was paused - has lost the board: a capture stops at its
 next read, the next port open refuses, a flash in progress is ended, and the

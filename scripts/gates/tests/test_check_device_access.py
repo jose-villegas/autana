@@ -69,7 +69,7 @@ class DeviceAccessTest(unittest.TestCase):
         self.assertEqual(self.openers(
             "launcher/tools/build/build.sh",
             '#!/bin/sh\n'
-            'python "$DIR/scripts/device/device_lock.py" check-token --token "$T" || exit 1\n'
+            'python "$DIR/scripts/device/device.py" check-token --token "$T" || exit 1\n'
             'idf -B "$BUILD_DIR" -p "$COM_PORT" flash\n'), [3])
 
     def test_a_shell_merge_bin_is_not_flagged(self):

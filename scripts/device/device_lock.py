@@ -1,6 +1,5 @@
 """Cooperative, FIFO lock state for a shared development board."""
 
-import argparse
 import contextlib
 import datetime
 import errno
@@ -26,7 +25,8 @@ from version import __version__  # noqa: E402  (path must be set up first)
 # every HeldLock.HEARTBEAT_SECONDS in device.py.
 DEFAULT_STALE_SECONDS = 600
 # The exit status of a command that did not get the board (fail-fast or its
-# wait ran out): EX_TEMPFAIL, apart from 1 for failures, 3 and 4 for `hand`.
+# wait ran out) and of a `hand --until-back` whose board did not come back:
+# EX_TEMPFAIL, apart from 1 for failures.
 EXIT_BUSY = 75
 # guard() is an O_CREAT|O_EXCL file created and deleted around each
 # read-modify-write, so a crash inside one leaves it behind: past this age
@@ -42,6 +42,8 @@ GUARD_STALE_SECONDS = 30
 # still have to work the same board, so a mismatch is shown as information
 # (status, a wait notice), never a reason to stop. Protocol 2: a person's
 # reservation expires (expires_at) and the last holder is kept (.last.json).
+# Dropping display-only fields (purpose, expected_build_id, log) is no bump:
+# an older reader .get()s them, or indexes them only on its own records.
 LOCK_PROTOCOL = 2
 # A person's reservation has no heartbeat, so this is the only thing that
 # frees a forgotten one. Running `hand` again renews it.
@@ -50,7 +52,7 @@ HUMAN_RESERVATION_SECONDS = 3600
 # stale or dead, or a waiter's place in the FIFO - and so must be readable
 # off ANY record, of any age or protocol, without guessing: boards() reads
 # board; reclaim_reason()/is_stale() read pid/host/heartbeat_at; tickets()
-# sorts on sequence and _claim() matches on ticket. Everything else (purpose,
+# sorts on sequence and _claim() matches on ticket. Everything else (kind,
 # acquired_at, since_at, note, kind, ...) is display-only and read with
 # .get() wherever it might come from a record this autana did not just write.
 PROTOCOL_CORE_FIELDS = ("owner", "pid", "host", "heartbeat_at", "ticket", "sequence", "board", "protocol")
@@ -176,6 +178,22 @@ def human_left_text(human, now):
     return "" if expires is None else duration_text(expires - now) + " left"
 
 
+def record_label(record):
+    """What a lock, ticket or last-holder record says it is doing: `autana
+    <kind>`. A record from before `kind` carried only a free-text purpose."""
+    kind = record.get("kind")
+    return f"autana {kind}" if kind else record.get("purpose", "unknown")
+
+
+class Held(dict):
+    """The lock record a claim wrote, plus the one-shot line for the person
+    who took the board from a dead or stale holder - not part of the record."""
+
+    def __init__(self, record, log=""):
+        super().__init__(record)
+        self.log = log
+
+
 class LockStore:
     """Every method takes `board`, the board's USB serial number: the one key
     that survives the COM renumbering a reset can cause."""
@@ -292,11 +310,8 @@ class LockStore:
                 time.sleep(0.02)
         path.unlink(missing_ok=True)
 
-    def human_expires_at(self, human):
-        return human_expires_at(human)
-
     def human_expired(self, human):
-        expires = self.human_expires_at(human)
+        expires = human_expires_at(human)
         return expires is not None and self.now() >= expires
 
     def note_last_holder(self, board, lock, how):
@@ -304,12 +319,12 @@ class LockStore:
         the port stays busy after it won the lock. Under guard()."""
         self.write_json(self.last_path(board), {
             "board": board, "owner": lock.get("owner", "unknown"),
-            "purpose": lock.get("purpose", "unknown"), "pid": lock.get("pid"),
+            "kind": lock.get("kind"), "pid": lock.get("pid"),
             "host": lock.get("host"), "token": lock.get("token"),
             "acquired_at": lock.get("acquired_at"), "ended_at": self.now(),
             "how": how, "protocol": LOCK_PROTOCOL, "autana_version": __version__})
 
-    def enqueue(self, board, owner, purpose, pid=None, kind=None):
+    def enqueue(self, board, owner, kind, pid=None):
         with self.guard(board):
             directory = self.queue_dir(board)
             directory.mkdir(parents=True, exist_ok=True)
@@ -325,8 +340,7 @@ class LockStore:
                 "created_at": self.now(),
                 "owner": owner,
                 "pid": os.getpid() if pid is None else pid,
-                "purpose": purpose,
-                "kind": kind or purpose,
+                "kind": kind,
                 "sequence": sequence,
                 "ticket": ticket,
                 "protocol": LOCK_PROTOCOL,
@@ -363,29 +377,24 @@ class LockStore:
             return "heartbeat expiry"
         return ""
 
-    def claim(self, board, ticket, expected_build_id, stale_seconds=DEFAULT_STALE_SECONDS):
-        held, reclaimed, reason, expired = self._claim(board, ticket, expected_build_id,
-                                                       stale_seconds)
-        if expired:
-            device_hook.emit("human-expired", board, expired["owner"],
-                             note=expired.get("note", ""))
+    def claim(self, board, ticket, stale_seconds=DEFAULT_STALE_SECONDS):
+        held, evicted, reason = self._claim(board, ticket, stale_seconds)
         if held:
-            if reclaimed:
-                device_hook.emit("lost", board, reclaimed["owner"], reclaimed.get("purpose", ""),
-                                 note=reason)
-            device_hook.emit("acquired", board, held["owner"], held["purpose"])
+            note = (f"reclaimed from {evicted.get('owner', 'unknown')} ({reason})"
+                    if evicted else "")
+            device_hook.emit("acquired", board, held["owner"], record_label(held), note=note)
         return held
 
-    def _claim(self, board, ticket, expected_build_id, stale_seconds):
+    def _claim(self, board, ticket, stale_seconds):
         with self.guard(board):
             self.prune_crashed_waiters(board)
             pending = self.tickets(board)
             if not pending or pending[0]["ticket"] != ticket:
-                return None, None, "", None
+                return None, None, ""
             expired = self.read_json(self.human_path(board))
             if expired:
                 if not self.human_expired(expired):
-                    return None, None, "", None
+                    return None, None, ""
                 self.human_path(board).unlink(missing_ok=True)
             current = self.read_json(self.lock_path(board))
             reclaimed = ""
@@ -398,24 +407,21 @@ class LockStore:
                 # it is dead or stale - never refused, never a reason to stop.
                 reason = self.reclaim_reason(current, stale_seconds)
                 if not reason:
-                    return None, None, "", expired
+                    return None, None, ""
                 evicted = current
                 self.note_last_holder(board, current, "reclaimed")
-                reclaimed = "reclaimed lock from {owner} for {purpose} ({reason})".format(
-                    owner=current.get("owner", "unknown"), purpose=current.get("purpose", "unknown"),
+                reclaimed = "reclaimed lock from {owner} for {label} ({reason})".format(
+                    owner=current.get("owner", "unknown"), label=record_label(current),
                     reason=reason)
                 self.lock_path(board).unlink(missing_ok=True)
             now = self.now()
             held = {
                 "acquired_at": now,
                 "board": board,
-                "expected_build_id": expected_build_id,
                 "heartbeat_at": now,
                 "host": socket.gethostname(),
-                "log": reclaimed,
                 "owner": pending[0]["owner"],
                 "pid": pending[0]["pid"],
-                "purpose": pending[0]["purpose"],
                 "kind": pending[0]["kind"],
                 "token": uuid.uuid4().hex,
                 "protocol": LOCK_PROTOCOL,
@@ -423,33 +429,34 @@ class LockStore:
             }
             self.write_json(self.lock_path(board), held)
             (self.queue_dir(board) / (ticket + ".json")).unlink(missing_ok=True)
-            return held, evicted, reason, expired
+            return Held(held, reclaimed), evicted, reason
 
-    def acquire(self, board, owner, purpose, expected_build_id="", wait=0,
-                stale_seconds=DEFAULT_STALE_SECONDS, kind=None, on_wait=None):
-        ticket = self.enqueue(board, owner, purpose, kind=kind)
+    def acquire(self, board, owner, kind, wait=0, stale_seconds=DEFAULT_STALE_SECONDS,
+                on_wait=None):
+        ticket = self.enqueue(board, owner, kind)
         deadline = self.now() + wait
+        label = record_label({"kind": kind})
         waiting = False
         while True:
-            held = self.claim(board, ticket, expected_build_id, stale_seconds)
+            held = self.claim(board, ticket, stale_seconds)
             if held:
                 return held
             if not self.read_json(self.queue_dir(board) / (ticket + ".json")):
                 if waiting:
-                    device_hook.emit("gave-up", board, owner, purpose)
+                    device_hook.emit("gave-up", board, owner, label)
                 return None
             # A caller that asked to wait hears it is queued even when a slow
             # first claim has already used up its whole wait.
             if wait > 0:
                 if not waiting:
-                    device_hook.emit("waiting", board, owner, purpose)
+                    device_hook.emit("waiting", board, owner, label)
                     waiting = True
                 if on_wait:
                     on_wait(ticket)
             if self.now() >= deadline:
                 self.cancel(board, ticket)
                 if waiting:
-                    device_hook.emit("gave-up", board, owner, purpose)
+                    device_hook.emit("gave-up", board, owner, label)
                 return None
             time.sleep(min(0.1, max(0, deadline - self.now())))
 
@@ -470,15 +477,6 @@ class LockStore:
             self.write_json(self.lock_path(board), lock)
             return True
 
-    def set_expected_build_id(self, board, token, expected_build_id):
-        with self.guard(board):
-            lock = self.read_json(self.lock_path(board))
-            if not lock or lock.get("token") != token:
-                return False
-            lock["expected_build_id"] = expected_build_id
-            self.write_json(self.lock_path(board), lock)
-            return True
-
     def check_token(self, board, token, stale_seconds=DEFAULT_STALE_SECONDS):
         with self.guard(board):
             lock = self.read_json(self.lock_path(board))
@@ -488,7 +486,7 @@ class LockStore:
     def release(self, board, token):
         lock = self._release(board, token)
         if lock:
-            device_hook.emit("released", board, lock["owner"], lock["purpose"])
+            device_hook.emit("released", board, lock["owner"], record_label(lock))
         return bool(lock)
 
     def _release(self, board, token):
@@ -521,10 +519,8 @@ class LockStore:
                 "protocol": LOCK_PROTOCOL,
                 "autana_version": __version__,
             })
-        if lapsed:
-            device_hook.emit("human-expired", board, lapsed["owner"], note=lapsed.get("note", ""))
         if not renewing:
-            device_hook.emit("human-reserved", board, owner, note=note)
+            device_hook.emit("human-reserved", board, owner, purpose=note)
         return reservation_id, renewing
 
     def clear_human(self, board):
@@ -532,7 +528,7 @@ class LockStore:
             human = self.read_json(self.human_path(board))
             self.human_path(board).unlink(missing_ok=True)
         if human:
-            device_hook.emit("human-cleared", board, human["owner"], note=human.get("note", ""))
+            device_hook.emit("human-cleared", board, human["owner"], purpose=human.get("note", ""))
 
     def status(self, board, stale_seconds=DEFAULT_STALE_SECONDS):
         """A lock the next claim() would reclaim is reported under
@@ -677,7 +673,7 @@ def status_entry(store, board, port=None, now=None, durations=None):
         lapsed = status["expired_human"]
         entry["lapsed"] = {"owner": lapsed["owner"], "purpose": lapsed.get("note"),
                            "reason": RESERVATION_EXPIRED,
-                           "at": store.human_expires_at(lapsed)}
+                           "at": human_expires_at(lapsed)}
     if status["human"]:
         human = status["human"]
         entry.update(state="human", holder={"owner": human["owner"], "purpose": human.get("note")},
@@ -688,7 +684,7 @@ def status_entry(store, board, port=None, now=None, durations=None):
         duration = durations.get(lock.get("kind"))
         acquired = lock.get("acquired_at")
         entry.update(state="held",
-                     holder={"owner": lock["owner"], "purpose": lock.get("purpose"),
+                     holder={"owner": lock["owner"], "purpose": record_label(lock),
                              "protocol": lock.get("protocol", 0),
                              "autana_version": lock.get("autana_version")},
                      since=acquired,
@@ -696,10 +692,10 @@ def status_entry(store, board, port=None, now=None, durations=None):
                                      if duration is not None and acquired is not None else None))
     elif status["reclaimable"]:
         stale = status["reclaimable"]
-        entry["lapsed"] = {"owner": stale["owner"], "purpose": stale.get("purpose"),
+        entry["lapsed"] = {"owner": stale["owner"], "purpose": record_label(stale),
                            "reason": stale["reason"], "at": None}
     estimates = queue_estimates(status, now, durations)
-    entry["waiting"] = [{"owner": ticket["owner"], "purpose": ticket.get("purpose"),
+    entry["waiting"] = [{"owner": ticket["owner"], "purpose": record_label(ticket),
                          "estimated_start": estimates[ticket["ticket"]]}
                         for ticket in status["queue"]]
     return entry
@@ -741,7 +737,7 @@ def previous_holder_text(store, board, scope, now=None):
     when = f" {duration_text(now - ended)} ago" if isinstance(ended, (int, float)) else ""
     how = "was reclaimed" if last.get("how") == "reclaimed" else "ended"
     text = (f"The board's previous holder was {last.get('owner', 'unknown')} "
-            f"({last.get('purpose', 'unknown')}); its lock {how}{when}.")
+            f"({record_label(last)}); its lock {how}{when}.")
     alive = previous_holder_alive(store, last, scope)
     if alive:
         names = ", ".join(f"{pid} ({name})" if name else str(pid) for pid, name in alive)
@@ -773,7 +769,7 @@ def busy_text(status, now):
                 f"({left + '; ' if left else ''}`autana lock take-back` ends it)")
     lock = status.get("lock")
     if lock:
-        return (f"board held by {lock['owner']} for {lock.get('purpose')} since "
+        return (f"board held by {lock['owner']} for {record_label(lock)} since "
                 f"{local_time(lock['acquired_at'])}; `autana status` shows the queue")
     return "other commands are queued ahead"
 
@@ -821,59 +817,3 @@ def status_lines(entry, now):
         lines.append(f"  {place}. {waiter['owner']} for {waiter['purpose']}; estimated start "
                      f"{format_estimate(waiter['estimated_start'])}")
     return lines
-
-
-def main(argv=None):
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--root", type=Path, default=default_root())
-    parser.add_argument("--board", required=True, help="the board's USB serial number")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("status")
-    acquire = subparsers.add_parser("acquire")
-    acquire.add_argument("--owner", default=default_owner())
-    acquire.add_argument("--purpose", required=True)
-    acquire.add_argument("--expected-build-id", default="")
-    acquire.add_argument("--wait", type=float, default=0)
-    acquire.add_argument("--stale-seconds", type=float, default=DEFAULT_STALE_SECONDS)
-    heartbeat = subparsers.add_parser("heartbeat")
-    heartbeat.add_argument("--token", required=True)
-    release = subparsers.add_parser("release")
-    release.add_argument("--token", required=True)
-    check_token = subparsers.add_parser("check-token")
-    check_token.add_argument("--token", required=True)
-    human = subparsers.add_parser("human")
-    human.add_argument("--owner", required=True)
-    human.add_argument("--note", required=True)
-    subparsers.add_parser("clear-human")
-    args = parser.parse_args(argv)
-    board = normalise_board(args.board)
-    store = LockStore(args.root)
-    if args.command == "status":
-        now = store.now()
-        print("\n".join(status_lines(status_entry(store, board, now=now), now)))
-        return 0
-    if args.command == "acquire":
-        held = store.acquire(board, args.owner, args.purpose,
-                             args.expected_build_id, args.wait, args.stale_seconds)
-        if not held:
-            print("lock not acquired", file=sys.stderr)
-            return EXIT_BUSY
-        if held["log"]:
-            print(held["log"], file=sys.stderr)
-        print(json.dumps(held, sort_keys=True))
-        return 0
-    if args.command == "heartbeat":
-        return 0 if store.heartbeat(board, args.token) else 1
-    if args.command == "release":
-        return 0 if store.release(board, args.token) else 1
-    if args.command == "check-token":
-        return 0 if store.check_token(board, args.token) else 1
-    if args.command == "human":
-        store.set_human(board, args.owner, args.note)
-        return 0
-    store.clear_human(board)
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
