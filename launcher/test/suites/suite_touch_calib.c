@@ -6,6 +6,8 @@
 #include "unity.h"
 
 #include "input/touch_calib.h"
+#include "input/touch_fsm.h"
+#include "input/touch_point.h"
 
 /* A panel that stretches both axes and shifts them, the shape measured. */
 static const touch_calib_fit_t STRETCH = {.xx = 1.12f, .xy = 0.0f, .x0 = -23.0f, .yx = 0.0f, .yy = 1.18f, .y0 = -29.0f};
@@ -70,12 +72,126 @@ test_a_correction_stays_on_the_panel(void) {
     TEST_ASSERT_EQUAL_INT(0, y);
 }
 
+static void
+test_a_controller_point_is_corrected_once_before_the_fsm(void) {
+    const touch_calib_t calib = touch_calib_from_fit(STRETCH);
+    int x, y;
+    reported(STRETCH, 100, 300, &x, &y);
+
+    touch_fsm_t fsm;
+    input_t in;
+    touch_fsm_init(&fsm);
+    touch_point_prepare(false, true, &x, &y, true, &calib, 368, 448);
+    touch_fsm_update(&fsm, true, x, y, 0);
+    touch_fsm_take(&fsm, &in);
+    TEST_ASSERT_INT_WITHIN(1, 100, in.x);
+    TEST_ASSERT_INT_WITHIN(1, 300, in.y);
+}
+
+static void
+test_a_controller_point_is_unchanged_when_calibration_is_off(void) {
+    const touch_calib_t calib = touch_calib_from_fit(STRETCH);
+    int x, y;
+    reported(STRETCH, 100, 300, &x, &y);
+    const int reported_x = x, reported_y = y;
+
+    touch_fsm_t fsm;
+    input_t in;
+    touch_fsm_init(&fsm);
+    touch_point_prepare(false, true, &x, &y, false, &calib, 368, 448);
+    touch_fsm_update(&fsm, true, x, y, 0);
+    touch_fsm_take(&fsm, &in);
+    TEST_ASSERT_EQUAL_INT(reported_x, in.x);
+    TEST_ASSERT_EQUAL_INT(reported_y, in.y);
+}
+
+static void
+test_an_injected_point_is_not_corrected_before_the_fsm(void) {
+    const touch_calib_t calib = touch_calib_from_fit(STRETCH);
+    int x = 100, y = 300;
+
+    touch_fsm_t fsm;
+    input_t in;
+    touch_fsm_init(&fsm);
+    touch_point_prepare(true, true, &x, &y, true, &calib, 368, 448);
+    touch_fsm_update(&fsm, true, x, y, 0);
+    touch_fsm_take(&fsm, &in);
+    TEST_ASSERT_EQUAL_INT(100, in.x);
+    TEST_ASSERT_EQUAL_INT(300, in.y);
+}
+
+static void
+test_an_injected_lift_reaches_the_fsm_without_touching_the_point(void) {
+    const touch_calib_t calib = touch_calib_from_fit(STRETCH);
+    touch_fsm_t fsm;
+    input_t in;
+    int x = 100, y = 300;
+    touch_fsm_init(&fsm);
+
+    touch_point_prepare(true, true, &x, &y, true, &calib, 368, 448);
+    touch_fsm_update(&fsm, true, x, y, 0);
+    touch_fsm_take(&fsm, &in);
+    x = 71;
+    y = 83;
+    touch_point_prepare(true, false, &x, &y, true, &calib, 368, 448);
+    touch_fsm_update(&fsm, false, x, y, TOUCH_RELEASE_QUIET_US + 1);
+    touch_fsm_take(&fsm, &in);
+
+    TEST_ASSERT_TRUE(in.released);
+    TEST_ASSERT_FALSE(in.down);
+    TEST_ASSERT_EQUAL_INT(71, x);
+    TEST_ASSERT_EQUAL_INT(83, y);
+}
+
+static void
+test_controller_press_and_move_are_corrected_once_each_before_release(void) {
+    const touch_calib_t calib = touch_calib_from_fit(STRETCH);
+    touch_fsm_t fsm;
+    input_t in;
+    int x, y;
+    touch_fsm_init(&fsm);
+
+    reported(STRETCH, 100, 300, &x, &y);
+    touch_point_prepare(false, true, &x, &y, true, &calib, 368, 448);
+    touch_fsm_update(&fsm, true, x, y, 0);
+    touch_fsm_take(&fsm, &in);
+    TEST_ASSERT_TRUE(in.pressed);
+    TEST_ASSERT_INT_WITHIN(1, 100, in.press_x);
+    TEST_ASSERT_INT_WITHIN(1, 300, in.press_y);
+
+    reported(STRETCH, 250, 60, &x, &y);
+    touch_point_prepare(false, true, &x, &y, true, &calib, 368, 448);
+    touch_fsm_update(&fsm, true, x, y, 1000);
+    touch_fsm_take(&fsm, &in);
+    TEST_ASSERT_FALSE(in.pressed);
+    TEST_ASSERT_INT_WITHIN(1, 250, in.x);
+    TEST_ASSERT_INT_WITHIN(1, 60, in.y);
+
+    x = 71;
+    y = 83;
+    touch_point_prepare(false, false, &x, &y, true, &calib, 368, 448);
+    touch_fsm_update(&fsm, false, x, y, TOUCH_RELEASE_QUIET_US + 1001);
+    touch_fsm_take(&fsm, &in);
+    TEST_ASSERT_TRUE(in.released);
+    TEST_ASSERT_INT_WITHIN(1, 100, in.press_x);
+    TEST_ASSERT_INT_WITHIN(1, 300, in.press_y);
+    TEST_ASSERT_INT_WITHIN(1, 250, in.x);
+    TEST_ASSERT_INT_WITHIN(1, 60, in.y);
+    TEST_ASSERT_EQUAL_INT(71, x);
+    TEST_ASSERT_EQUAL_INT(83, y);
+}
+
 void
 run_touch_calib_suite(void) {
     RUN_TEST(test_a_stretched_tap_is_brought_back_to_where_it_was_aimed);
     RUN_TEST(test_a_sheared_panel_is_undone_too);
     RUN_TEST(test_an_honest_panel_changes_nothing);
     RUN_TEST(test_a_correction_stays_on_the_panel);
+    RUN_TEST(test_a_controller_point_is_corrected_once_before_the_fsm);
+    RUN_TEST(test_a_controller_point_is_unchanged_when_calibration_is_off);
+    RUN_TEST(test_an_injected_point_is_not_corrected_before_the_fsm);
+    RUN_TEST(test_an_injected_lift_reaches_the_fsm_without_touching_the_point);
+    RUN_TEST(test_controller_press_and_move_are_corrected_once_each_before_release);
 }
 
 SUITE_REGISTER(run_touch_calib_suite);
