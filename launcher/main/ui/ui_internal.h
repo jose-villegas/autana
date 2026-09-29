@@ -44,6 +44,10 @@ extern ui_text_style_t ui_text_style;
  * already know. */
 extern ui_pointer_t ui_pointer_state;
 
+/* Called by ui.c's ui_end*() right after mu_end(): reports the frame back to
+ * the pointer, or not at all for a ui_begin(NULL) frame. */
+void ui_end_pointer_frame(void);
+
 /* Zeroed by ui_init() (ui_build.c) even though only ui.c's repaint-skip
  * (mark_changed_canvases()/repaint_marked_canvases()) ever reads or writes
  * it afterward - a canvas hash is meaningless until a frame has painted, but

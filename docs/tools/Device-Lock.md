@@ -158,6 +158,39 @@ A process counts as dead only when the process table proves it: on Windows
 `OpenProcess`/`GetExitCodeProcess`, never `os.kill(pid, 0)`, whose signal 0
 is `CTRL_C_EVENT` there and misreports any process on another console.
 
+The lock is the promise of the port, and a child (esptool, a monitor) can
+keep the port after its parent is gone, so the lock outlives every process the
+command started. `lock_scope.py` gives every OS the same three calls, with one
+mechanism each:
+
+| OS | Members | A killed holder |
+|---|---|---|
+| Windows | a kill-on-close job object the holder joins when it takes the lock (`lock_job.py`); a process asking for `CREATE_BREAKAWAY_FROM_JOB` may leave | the kernel closes the job and kills every member |
+| Linux | processes carrying the lock's token in `AUTANA_DEVICE_LOCK_TOKEN`, found in `/proc` (`lock_group.py`) | a watchdog the holder started sees the holder's pipe close and kills every tagged process |
+
+The token, not parentage, is what names a member on Linux. It follows
+inheritance through any number of exited parents, which a process tree cannot
+(an orphan is reparented to init), and it beats `PR_SET_PDEATHSIG` (direct
+children only) and a subreaper (it dies with the holder). A process that
+scrubs its own environment or runs as another user is out of reach. `reset`'s esptool and
+`run_to_end`'s flash are covered like anything else the holder starts.
+
+A holder that ends normally gives the members that started under its lock two
+seconds, stops the rest (through a handle on Windows, a pidfd that re-checks
+the token on Linux) and prints their pids, then releases; work already running
+before the lock was taken is left alone, and a survivor is printed. Jobs nest,
+so a Windows holder already inside a launcher's or harness's job still gets its
+own; if it cannot join one it says so and the lock works as before. The
+watchdog is untagged, and a holder whose watchdog has died says so when it
+releases.
+
+On POSIX the port itself is opened exclusively (pyserial `exclusive`, an
+advisory `flock`), as Windows does by itself, so a leftover holder makes the
+next open fail as busy, which `open_when_free` retries, instead of two readers
+splitting the byte stream. Being advisory, it excludes this tool's readers and
+esptool but not `screen`, `minicom` or ModemManager. Where there is neither a
+job nor `/proc`, this is the only protection.
+
 The heartbeat refuses a lock that was replaced or has gone stale. From then
 on the command has lost the board: a capture or `send` stops at its next
 read, the next port open or esptool call refuses, a flash in progress is
@@ -178,7 +211,13 @@ stateDiagram-v2
     Stale --> Lost: a waiter reclaims it, or the heartbeat is refused
     Held --> Lost: lock replaced
     Lost --> [*]: the command stops and fails
-    Held --> [*]: released when the command ends
+    Held --> Draining: the command ends
+    Draining --> Reaped: members still running after 2 s
+    Draining --> Released: every member ended
+    Reaped --> Released: members killed
+    Released --> [*]: the next waiter may take the board
+    Held --> Killed: holder killed
+    Killed --> Stale: job closes or watchdog fires, members killed
 ```
 
 After winning the lock a command also waits for the serial port itself to

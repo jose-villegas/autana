@@ -21,6 +21,7 @@ set(app_srcs
     "input/tilt.c"
     "ui/ui.c"
     "ui/system_navigation.c"
+    "ui/ui_bridge.c"
     "ui/ui_build.c"
     "ui/ui_canvas_marks.c"
     "ui/ui_control_center.c"
