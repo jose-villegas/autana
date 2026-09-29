@@ -23,7 +23,6 @@
 #include "esp_timer.h"
 
 #include "app.h"
-#include "apps/input_lab/corner_arc.h"
 #include "apps/input_lab/touch_probe.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
@@ -47,7 +46,6 @@ static const char* TAG = "input_lab";
 #define HUD_SCALE      2
 #define MARK_SIDE      4
 #define COL_BACKGROUND 0x0A0C14
-#define BEZEL_RADIUS   30
 #define BEZEL_MAX      80
 #define BEZEL_DRAG_PX  4
 #define ARC_STEP       2
@@ -71,7 +69,7 @@ static bool have_last_tap;
 static int last_x, last_y;
 static bool last_hit;
 
-static int bezel_radius = BEZEL_RADIUS;
+static int bezel_radius = DISPLAY_PANEL_CORNER_RADIUS;
 static int radius_at_press;
 
 static void
@@ -225,8 +223,9 @@ static void
 draw_corner_arcs(mu_Context* ctx) {
     const mu_Color ink = ui_rgb(0xFF00FF);
     for (int row = 0; row < bezel_radius; row += ARC_STEP) {
-        const int inset = corner_arc_inset(bezel_radius, row);
-        const int before = row >= ARC_STEP ? corner_arc_inset(bezel_radius, row - ARC_STEP) : inset + 1;
+        const int inset = display_panel_corner_inset(bezel_radius, screen_h, row);
+        const int before =
+            row >= ARC_STEP ? display_panel_corner_inset(bezel_radius, screen_h, row - ARC_STEP) : inset + 1;
         const int w = before - inset > 1 ? before - inset : 1;
         const int bottom = screen_h - row - ARC_STEP;
         mu_draw_rect(ctx, mu_rect(inset, row, w, ARC_STEP), ink);

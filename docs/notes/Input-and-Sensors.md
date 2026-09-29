@@ -75,8 +75,9 @@ The long-axis stretch is identical in portrait and landscape, so it is the
 panel's; `input/touch_calib.c` undoes the fitted map on every raw point before
 anything reads it (`autana tune touch.calibrate 0` turns it off to compare).
 What stays is a finger's own scatter, 11–13 px (about 1 mm), which no
-calibration removes: controls need to be large, and the corners hide about
-42 px of radius. That app's own fitting tool refits the coefficients in
+calibration removes: controls need to be large. `DISPLAY_PANEL_CORNER_RADIUS`
+and `DISPLAY_PANEL_SAFE_INSET` are the two glass facts every layout clears.
+That app's own fitting tool refits the coefficients in
 `touch_calib.c` from a capture, and its tests fail if they stop being the
 fit of the captures behind the table.
 

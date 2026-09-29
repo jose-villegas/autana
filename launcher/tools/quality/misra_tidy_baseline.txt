@@ -168,7 +168,6 @@ readability-isolate-declaration	main/main.c	4
 readability-isolate-declaration	main/ui/ui.c	1
 readability-isolate-declaration	main/ui/ui_ridge.c	1
 readability-math-missing-parentheses	main/apps/input_lab/app_input_lab.c	7
-readability-math-missing-parentheses	main/apps/input_lab/corner_arc.c	2
 readability-math-missing-parentheses	main/apps/input_lab/tests/suite_touch_probe.c	2
 readability-math-missing-parentheses	main/apps/input_lab/touch_probe.c	2
 readability-math-missing-parentheses	main/apps/render_lab/rt_cornell.c	3

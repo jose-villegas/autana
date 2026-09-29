@@ -105,7 +105,9 @@ These constraints keep input, layout, and rendering behavior consistent.
 named `UI_ANCHOR_*` points select the parent corner, edge centre or centre;
 the pivot selects the same normalized point within the element. Offsets are
 pixels from that landing point. `ui_rect_inset()` makes a safe area by
-insetting each parent edge. Resolve the rectangle in the upright logical
+insetting each parent edge. `DISPLAY_PANEL_SAFE_INSET` and
+`DISPLAY_PANEL_CORNER_RADIUS` are the two glass facts every layout clears.
+Resolve the rectangle in the upright logical
 canvas, then map it with `ui_transform_rect()`.
 
 ## How to do the things a screen usually needs
