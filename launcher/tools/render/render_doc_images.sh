@@ -1,18 +1,17 @@
 #!/bin/sh
 #
-# Regenerate every image under docs/images/overview/ from the firmware's own
-# host renders.
+# Regenerate every image under docs/images/ from the firmware's own host renders.
 #
-#   ./launcher/tools/render/render_readme_images.sh            # rewrite the images in place
-#   ./launcher/tools/render/render_readme_images.sh --check    # only report which changed
+#   ./launcher/tools/render/render_doc_images.sh            # rewrite the images in place
+#   ./launcher/tools/render/render_doc_images.sh --check    # only report which changed
 #
 # Needs a host C compiler, Python with Pillow, and ffmpeg 5.1 or newer. Runs in
 # Git Bash on Windows and on Linux.
 #
-# This makes the launcher's images itself and then runs every
-# launcher/main/apps/*/tools/readme_images.sh, which makes that app's images
-# into the directory it is given. Everything is rendered into
-# launcher/tools/results/readme_images/out/ first.
+# This makes the launcher and UI toolkit images itself and then runs every
+# launcher/main/apps/*/tools/doc_images.sh, which makes that app's images into
+# the out tree it is given. Everything is rendered into
+# launcher/tools/results/doc_images/out/, laid out like docs/images/, first.
 #
 # --check compares each result with the committed image by decoded pixels
 # (compare_images.py), never by bytes: two encoder versions write different
@@ -31,8 +30,8 @@ TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$TOOLS_DIR/../../.." && pwd)
 cd "$ROOT"
 
-IMAGES=docs/images/overview
-RESULTS=launcher/tools/results/readme_images
+IMAGES=docs/images
+RESULTS=launcher/tools/results/doc_images
 WORK=$RESULTS/work
 OUT=$RESULTS/out
 
@@ -78,7 +77,7 @@ if ! command -v ffmpeg > /dev/null 2>&1; then
 fi
 
 rm -rf "$RESULTS"
-mkdir -p "$WORK" "$OUT"
+mkdir -p "$WORK" "$OUT/overview" "$OUT/ui"
 
 # The launcher lists the release build's apps, read from the tree.
 L=$WORK/launcher_home
@@ -99,7 +98,7 @@ for dir in launcher/main/apps/*/; do
 done
 "$L/launcher_home_render" --quarter 1 "$@" -o "$L/release.bmp" 2> "$WORK/launcher_home_png.log"
 "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' \
-    "$L/release.bmp" "$OUT/launcher-home.png"
+    "$L/release.bmp" "$OUT/overview/launcher-home.png"
 # The board rocking either way.
 "$L/launcher_home_render" --quarter 1 --tilt-sweep "$@" --frames 250 --dt 16 \
     -o "$L/sweep.bmp" --video "$L/sweep.avi" 2> "$WORK/launcher_home_sweep.log"
@@ -107,41 +106,50 @@ ffmpeg -hide_banner -loglevel error -y -i "$L/sweep.avi" \
     -vf "fps=15,palettegen=stats_mode=diff" "$L/sweep-palette.png"
 ffmpeg -hide_banner -loglevel error -y -i "$L/sweep.avi" -i "$L/sweep-palette.png" \
     -filter_complex "[0:v]fps=15[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" \
-    -loop 0 "$OUT/launcher-home.gif"
+    -loop 0 "$OUT/overview/launcher-home.gif"
 
-# Each app that has README images makes them.
-for script in launcher/main/apps/*/tools/readme_images.sh; do
+# The UI toolkit's gallery views.
+U=$WORK/ui_widgets
+sh launcher/tools/render/scenes/ui_widgets_render_host.sh -o "$U" > "$WORK/ui_widgets.log"
+for bmp in "$U"/*.bmp; do
+    "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' \
+        "$bmp" "$OUT/ui/$(basename "$bmp" .bmp).png"
+done
+
+# Each app that has doc images makes them.
+for script in launcher/main/apps/*/tools/doc_images.sh; do
     [ -f "$script" ] || continue
     app=$(basename "$(dirname "$(dirname "$script")")")
     sh "$script" "$OUT" "$WORK/$app"
 done
 
 if [ "$CHECK" = 0 ]; then
-    cp "$OUT"/* "$IMAGES"/
+    cp -R "$OUT"/. "$IMAGES"/
     echo "wrote $(find "$OUT" -type f | wc -l | tr -d ' ') images to $IMAGES"
     exit 0
 fi
 
 comparing=1
 status=0
-for made in "$OUT"/*; do
-    name=$(basename "$made")
+made_list=$(cd "$OUT" && find . -type f | sed 's|^\./||' | LC_ALL=C sort)
+kept_list=$(cd "$IMAGES" && find . -type f | sed 's|^\./||' | LC_ALL=C sort)
+for name in $made_list; do
     if [ ! -f "$IMAGES/$name" ]; then
         echo "changed $name: new image"
         status=1
         continue
     fi
     rc=0
-    result=$("$PYTHON" "$TOOLS_DIR/compare_images.py" "$IMAGES/$name" "$made") || rc=$?
+    result=$("$PYTHON" "$TOOLS_DIR/compare_images.py" "$IMAGES/$name" "$OUT/$name") || rc=$?
     case $rc in
         0) echo "same $name" ;;
         1) echo "changed $name: ${result#different: }"; status=1 ;;
         *) echo "unreadable $name: $result" >&2; exit 2 ;;
     esac
 done
-for kept in "$IMAGES"/*; do
-    if [ ! -f "$OUT/$(basename "$kept")" ]; then
-        echo "orphan $(basename "$kept"): no script makes it"
+for name in $kept_list; do
+    if [ ! -f "$OUT/$name" ]; then
+        echo "orphan $name: no script makes it"
         status=1
     fi
 done

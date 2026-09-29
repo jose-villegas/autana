@@ -372,5 +372,6 @@ sh launcher/tools/render/scenes/ui_widgets_render_host.sh
 It renders each view to `launcher/tools/results/render/ui_widgets/` and
 checks it against `ui_widgets_render_baseline.txt`, so a change that moves a
 pixel fails until the new picture is looked at and re-pinned with
-`--update-baseline`. With Pillow installed it writes a PNG beside each
-BMP; copy those into `docs/images/ui/`.
+`--update-baseline`. `launcher/tools/render/render_doc_images.sh` turns those
+renders into `docs/images/ui/`; see "Images in these docs" in
+[`tools/Render-Harness.md`](tools/Render-Harness.md).

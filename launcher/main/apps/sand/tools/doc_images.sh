@@ -1,16 +1,18 @@
 #!/bin/sh
 #
-# The sand app's images for docs/images/overview/, made by
-# launcher/tools/render/render_readme_images.sh.
+# The sand app's images for docs/images/, made by
+# launcher/tools/render/render_doc_images.sh.
 #
-#   readme_images.sh <out-dir> <work-dir>
+#   doc_images.sh <out-tree> <work-dir>
+#
+# <out-tree> mirrors docs/images/; these images go in its overview/.
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow;
 # ffmpeg must be on PATH. Renderer output goes to logs under <work-dir>.
 
 set -eu
 
-OUT=$1
+OUT=$1/overview
 W=$2
 mkdir -p "$W"
 
