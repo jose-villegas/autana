@@ -675,12 +675,10 @@ the dirty tracker's own begin/wait/present sequencing on a host, by including
 and `suite_gfx_band.c` (portable) cover the mode-grant arithmetic and the
 band-ring state machine the same way, including `gfx_mode.h`/`gfx_band.h`
 directly.
-`gfx.c`'s own allocation and DMA-send side
-of `gfx_mode_enter()`/`gfx_band_submit()` needs real device memory, so it is
-exercised instead by an app's device-only perf suite that times a
-full-redraw renderer's band-mode path against its full-framebuffer path on
-the same scene. No device suite covers band buffers sharing the
-strip-bounce slots.
+`suite_gfx_band_run.c` drives `gfx_band_run()` over host malloc'd band
+buffers. Only the DMA send and strip-bounce aliasing need the device, so an
+app's device-only perf suite times a full-redraw renderer's band-mode path
+against its full-framebuffer path on the same scene.
 
 Still untested by an assertion: small3dlib's per-pixel Gouraud shading -
 verified by running the firmware and looking at the screen, since an

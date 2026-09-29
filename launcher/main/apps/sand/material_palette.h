@@ -42,7 +42,7 @@ material_brush_color(cell_t c) {
     return material_palette()[cell_is_extended(c) ? c : CELL_MAKE(CELL_MATERIAL(c), 13)];
 }
 
-/* GFX_PIXFMT_INDEXED8's colour-to-index step: the sand_palette256_lut
+/* GFX_LAYOUT_INDEXED's colour-to-index step: the sand_palette256_lut
  * (sand_palette256.h) entry nearest `c`, always >= SAND_PALETTE_UI_ENTRIES.
  * See material_palette.c for the distance and why an exact match is the
  * expected common case. */

@@ -48,10 +48,15 @@ A command acts on the board named by `--board <serial>`, else by
 `AUTANA_BOARD`, else on the only Espressif (VID `0x303A`) board plugged in.
 With none plugged in it takes the only board a lock, reservation or waiter
 names, so a command can queue while the holder's reset has the board off
-USB, and `take-back` works on an unplugged board; opening the port still
-waits for USB. Case and surrounding spaces do not matter. With several
-candidates and none named, a command fails and lists their serial numbers;
-each board has its own lock and queue.
+USB. `hand` and `take-back` alone fall back once more, to the only board
+this machine has ever found on USB, so a board that has dropped off with no
+lock, reservation or waiter left to name it can still be handed to a human
+or taken back; every other command leaves that fallback alone,
+so an unplugged, idle board fails at once instead of queuing for a port
+that will never open. Opening the port still waits for USB. Case and
+surrounding spaces do not matter. With several candidates and none named, a
+command fails and lists their serial numbers; each board has its own lock
+and queue.
 
 ## One copy of the tools
 
@@ -319,7 +324,12 @@ overrides it). Per board, with `:` in the serial number written as `_`:
 `<serial>.json` is the lock - `board`, `owner`, `purpose`, `kind`,
 `acquired_at`, `heartbeat_at`, `expected_build_id`, `host`, `pid`, `log`
 (whom it was reclaimed from, if anyone), and an opaque `token`; `<serial>.queue/` holds the FIFO waiter tickets (a dead
-waiter's is discarded); `<serial>.human.json` is a person's reservation.
+waiter's is discarded); `<serial>.human.json` is a person's reservation;
+`<serial>.seen.json` just names a board once found on USB, written the
+first time and never after - `hand`/`take-back` alone read it, to still
+reach a board that has since dropped off with no lock, reservation or
+waiter left to name it. There is no verb to forget one; delete the file
+to make this machine stop offering that board as the fallback.
 
 `device.py --owner <owner> release --token <token>` releases a lock this
 owner holds without touching the board - for a run that finished early and

@@ -10,11 +10,10 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "display/display.h"
 #include "ui/control_center_layout_generated.h"
 #include "ui/ui.h"
-
-/* About 15 px at every edge of the panel is not visible on the device. */
-#define PANEL_EDGE_INSET 15
+#include "ui/ui_snap.h"
 
 static const control_center_layout_t* const layouts[] = {
     &control_center_layout_portrait,
@@ -48,10 +47,16 @@ test_every_element_clears_the_panel_edge(void) {
         for (int e = 0; e < CONTROL_CENTER_ELEMENT_COUNT; e++) {
             const control_center_layout_rect_t* r = &layout->rects[e];
             const char* where = describe(layout, e);
+            const int top_inset = display_panel_corner_inset(DISPLAY_PANEL_CORNER_RADIUS, layout->canvas_height, r->y);
+            const int bottom_inset =
+                display_panel_corner_inset(DISPLAY_PANEL_CORNER_RADIUS, layout->canvas_height, r->y + r->height - 1);
+            const int corner_inset = top_inset > bottom_inset ? top_inset : bottom_inset;
             TEST_ASSERT_TRUE_MESSAGE(r->width > 0 && r->height > 0, where);
-            TEST_ASSERT_TRUE_MESSAGE(r->x >= PANEL_EDGE_INSET && r->y >= PANEL_EDGE_INSET, where);
-            TEST_ASSERT_TRUE_MESSAGE(r->x + r->width <= layout->canvas_width - PANEL_EDGE_INSET, where);
-            TEST_ASSERT_TRUE_MESSAGE(r->y + r->height <= layout->canvas_height - PANEL_EDGE_INSET, where);
+            TEST_ASSERT_TRUE_MESSAGE(r->x >= corner_inset && r->x + r->width <= layout->canvas_width - corner_inset,
+                                     where);
+            TEST_ASSERT_TRUE_MESSAGE(r->x >= DISPLAY_PANEL_SAFE_INSET && r->y >= DISPLAY_PANEL_SAFE_INSET, where);
+            TEST_ASSERT_TRUE_MESSAGE(r->x + r->width <= layout->canvas_width - DISPLAY_PANEL_SAFE_INSET, where);
+            TEST_ASSERT_TRUE_MESSAGE(r->y + r->height <= layout->canvas_height - DISPLAY_PANEL_SAFE_INSET, where);
         }
     }
 }
@@ -86,12 +91,23 @@ test_no_two_elements_overlap(void) {
     }
 }
 
+static void
+test_a_tap_within_reach_of_a_card_is_aimed_onto_it(void) {
+    const control_center_layout_rect_t* r = &control_center_layout_portrait.rects[CONTROL_CENTER_ELEMENT_WIFI];
+    const ui_snap_rect_t card = {.r = {r->x, r->y, r->width, r->height}, .live = true};
+    const mu_Vec2 aimed = ui_snap_point(&card, 1, mu_vec2(r->x - 12, r->y + r->height / 2), 12);
+
+    TEST_ASSERT_EQUAL_INT(r->x, aimed.x);
+    TEST_ASSERT_EQUAL_INT(r->y + r->height / 2, aimed.y);
+}
+
 void
 suite_control_center_layout(void) {
     RUN_TEST(test_canvases_are_the_two_panel_orientations);
     RUN_TEST(test_every_element_clears_the_panel_edge);
     RUN_TEST(test_every_tap_target_is_finger_sized);
     RUN_TEST(test_no_two_elements_overlap);
+    RUN_TEST(test_a_tap_within_reach_of_a_card_is_aimed_onto_it);
 }
 
 SUITE_REGISTER(suite_control_center_layout);

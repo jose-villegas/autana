@@ -456,9 +456,8 @@ replace it, chosen by app kind:
    rows each (a Kconfig choice of 16/32/64, default 32 pending a device
    sweep - `tools/sweeps/band_height_sweep.sh`, section 8 decision 2),
    rendered and sent in turn, PSRAM never written. **The ring itself is built** - `gfx_mode_enter()`
-   grants `GFX_LAYOUT_BANDS`, `gfx_band_next()`/`gfx_band_submit()` (`gfx.h`,
-   `gfx_band.h`) hand out and send one band at a time, waiting only on the
-   previous band's transfer - and render_lab's cube scene ports onto it by transforming
+   grants `GFX_LAYOUT_BANDS`; `gfx_band_run()` (`gfx/gfx_band_run.h`) hands
+   each dirty band to `draw_band` and sends it - and render_lab's cube scene ports onto it by transforming
    and depth-sorting the scene once per frame, binning each triangle by its
    own screen-space row range, and per band drawing only the triangles that
    overlap it, scissored to that band's rows by a small hook added to
