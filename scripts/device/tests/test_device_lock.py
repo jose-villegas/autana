@@ -115,13 +115,29 @@ class LockTests(unittest.TestCase):
         self.assertIsNone(self.lock.status("COM5")["lock"])
 
     def test_acquired_event(self):
-        with mock.patch.dict(os.environ, {"AUTANA_LOCK_HOOK": "echo hook"}), \
+        with isolation.project(lock_hook="echo hook"), \
                 mock.patch.object(device_hook.subprocess, "run",
                                   return_value=subprocess.CompletedProcess([], 0)) as run, \
                 contextlib.redirect_stderr(io.StringIO()) as stderr:
             self.lock.acquire("COM5", "one", "flash")
+        self.assertEqual(run.call_args.args[0], "echo hook")
         self.assertEqual(run.call_args.kwargs["env"]["AUTANA_LOCK_EVENT"], "acquired")
         self.assertEqual(stderr.getvalue(), "")
+
+    def test_a_hook_in_the_environment_is_ignored(self):
+        with mock.patch.dict(os.environ, {"AUTANA_LOCK_HOOK": "echo hook"}), \
+                mock.patch.object(device_hook.subprocess, "run") as run:
+            self.lock.acquire("COM5", "one", "flash")
+        run.assert_not_called()
+
+    def test_a_projects_hook_fires_only_for_a_command_run_from_it(self):
+        with isolation.project(lock_hook="echo hook"), \
+                mock.patch.object(device_hook.subprocess, "run") as run:
+            self.lock.acquire("COM5", "one", "flash")
+        self.assertEqual(run.call_count, 1)
+        with isolation.project(), mock.patch.object(device_hook.subprocess, "run") as run:
+            self.lock.release("COM5", self.lock.status("COM5")["lock"]["token"])
+        run.assert_not_called()
 
     def test_state_events_once_with_facts(self):
         with mock.patch.object(device_hook, "emit") as emit:
@@ -163,7 +179,7 @@ class LockTests(unittest.TestCase):
         run.assert_not_called()
 
     def test_empty_hook_runs_nothing(self):
-        with mock.patch.dict(os.environ, {"AUTANA_LOCK_HOOK": ""}), \
+        with isolation.project(lock_hook=""), \
                 mock.patch.object(device_hook.subprocess, "run") as run, \
                 contextlib.redirect_stderr(io.StringIO()) as stderr:
             self.lock.acquire("COM5", "one", "flash")
@@ -175,7 +191,7 @@ class LockTests(unittest.TestCase):
         # machine starts a process: a loaded one takes seconds to, and only
         # a lock that waited the hook out would take the whole minute.
         command = f'"{sys.executable}" -c "import time; time.sleep(60)"'
-        with mock.patch.dict(os.environ, {"AUTANA_LOCK_HOOK": command}), \
+        with isolation.project(lock_hook=command), \
                 mock.patch.object(device_hook, "HOOK_TIMEOUT_SECONDS", 0.2), \
                 contextlib.redirect_stderr(io.StringIO()) as stderr:
             start = time.monotonic()
@@ -186,8 +202,7 @@ class LockTests(unittest.TestCase):
         self.assertEqual(stderr.getvalue(), "")
 
     def test_missing_command_warns_once_and_keeps_result(self):
-        with mock.patch.dict(os.environ, {"AUTANA_LOCK_HOOK":
-                                      "autana-hook-command-does-not-exist-88219"}), \
+        with isolation.project(lock_hook="autana-hook-command-does-not-exist-88219"), \
                 contextlib.redirect_stderr(io.StringIO()) as stderr:
             held = self.lock.acquire("COM5", "one", "flash")
         self.assertIsNotNone(held)
@@ -200,10 +215,11 @@ class LockTests(unittest.TestCase):
                 command = (f'"{sys.executable}" -c "import sys; '
                            f'print(12345); print(67890, file=sys.stderr); sys.exit({status})"')
                 environment = os.environ.copy()
-                environment["AUTANA_LOCK_HOOK"] = command
                 environment["PYTHONPATH"] = str(DEVICE)
-                result = subprocess.run([sys.executable, "-c", caller],
-                                        env=environment, capture_output=True, text=True)
+                with isolation.project(lock_hook=command) as project:
+                    environment["_AUTANA_PROJECT"] = str(project)
+                    result = subprocess.run([sys.executable, "-c", caller],
+                                            env=environment, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0)
                 self.assertEqual(result.stdout, "")
                 self.assertNotIn("12345", result.stderr)
@@ -211,27 +227,27 @@ class LockTests(unittest.TestCase):
                 self.assertEqual(result.stderr.count("warning: device lock hook failed:"),
                                  0)
 
-    def test_suite_ignores_inherited_hook(self):
-        if os.environ.get("AUTANA_HOOK_SUITE_CHILD"):
+    def test_suite_ignores_the_hook_of_the_project_it_was_started_in(self):
+        if os.environ.get("_AUTANA_HOOK_SUITE_CHILD"):
             self.skipTest("suite child")
         sentinel = Path(self.temp.name) / "sentinel"
         command = (f'"{sys.executable}" -c "import os; '
-                   "open(os.environ['AUTANA_HOOK_SENTINEL'], 'w').close()\"")
-        environment = os.environ.copy()
-        environment.update({"AUTANA_LOCK_HOOK": command,
-                            "AUTANA_HOOK_SENTINEL": str(sentinel),
-                            "AUTANA_HOOK_SUITE_CHILD": "1"})
-        result = subprocess.run([sys.executable, "-m", "unittest", "discover",
-                                 "-s", str(DEVICE / "tests"), "-p", "test_device_lock.py"],
-                                env=environment, capture_output=True, text=True)
+                   "open(os.environ['_AUTANA_HOOK_SENTINEL'], 'w').close()\"")
+        with isolation.project(lock_hook=command) as project:
+            environment = os.environ.copy()
+            environment.update({"_AUTANA_PROJECT": str(project),
+                                "_AUTANA_HOOK_SENTINEL": str(sentinel),
+                                "_AUTANA_HOOK_SUITE_CHILD": "1"})
+            result = subprocess.run([sys.executable, "-m", "unittest", "discover",
+                                     "-s", str(DEVICE / "tests"), "-p", "test_device_lock.py"],
+                                    env=environment, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr[-1000:])
         self.assertFalse(sentinel.exists())
 
     def test_hook_errors_leave_lock_operation_successful(self):
         for result in (subprocess.CompletedProcess([], 4),
                        subprocess.TimeoutExpired("hook", 3), RuntimeError()):
-            with self.subTest(result=result), mock.patch.dict(
-                    os.environ, {"AUTANA_LOCK_HOOK": "missing-command"}), \
+            with self.subTest(result=result), isolation.project(lock_hook="missing-command"), \
                     mock.patch.object(device_hook.subprocess, "run") as run, \
                     contextlib.redirect_stderr(io.StringIO()) as stderr:
                 if isinstance(result, BaseException):
@@ -250,9 +266,9 @@ class LockTests(unittest.TestCase):
                    "print('|'.join(os.environ[k] for k in "
                    "('AUTANA_LOCK_EVENT','AUTANA_LOCK_BOARD','AUTANA_LOCK_OWNER',"
                    "'AUTANA_LOCK_PURPOSE','AUTANA_LOCK_NOTE')), "
-                   "file=open(os.environ['AUTANA_LOCK_LOG'],'a'))\"")
-        with mock.patch.dict(os.environ, {"AUTANA_LOCK_HOOK": command,
-                                          "AUTANA_LOCK_LOG": str(output)}):
+                   "file=open(os.environ['_AUTANA_TEST_HOOK_LOG'],'a'))\"")
+        with isolation.project(lock_hook=command), \
+                mock.patch.dict(os.environ, {"_AUTANA_TEST_HOOK_LOG": str(output)}):
             held = self.lock.acquire("COM5", "one", "flash")
             self.lock.release("COM5", held["token"])
             self.lock.set_human("COM5", "person", "panel")
@@ -687,7 +703,7 @@ class HumanReservationProcessTests(unittest.TestCase):
         self.temp.cleanup()
 
     def run_lock(self, *arguments):
-        environment = dict(os.environ, AUTANA_LOCK_HOOK="")
+        environment = dict(os.environ)
         return subprocess.run([sys.executable, str(DEVICE / "device_lock.py"), "--root",
                                str(self.root), "--board", self.BOARD, *arguments],
                               capture_output=True, text=True, timeout=60, env=environment)
@@ -699,6 +715,13 @@ class HumanReservationProcessTests(unittest.TestCase):
         self.lock.write_json(self.lock.human_path(self.BOARD), {
             "board": self.BOARD, "id": "person", "note": "bench", "owner": "maintainer",
             "since_at": time.time() - age_seconds, "protocol": 1})
+
+    def test_an_unnamed_owner_is_user_at_host_colon_pid_not_unknown(self):
+        acquired = self.run_lock("acquire", "--purpose", "flash")
+        self.assertEqual(acquired.returncode, 0, acquired.stderr)
+        owner = json.loads(acquired.stdout)["owner"]
+        self.assertRegex(owner, r"^.+@.+:\d+$")
+        self.assertNotEqual(owner, "unknown")
 
     def test_an_hour_old_reservation_is_reported_released_and_does_not_block(self):
         self.write_reservation(3601)
@@ -778,7 +801,7 @@ class PreviousHolderTests(unittest.TestCase):
 
     def test_it_names_the_previous_owner_and_its_live_process_and_leaves_it_running(self):
         held = self.previous_holder(pid=os.getpid())
-        child = self.sleeper(AUTANA_DEVICE_LOCK_TOKEN=held["token"])
+        child = self.sleeper(_AUTANA_DEVICE_LOCK_TOKEN=held["token"])
         self.point_record_at(child.pid)
         self.clock.advance(185)
         text = self.text()

@@ -5,10 +5,10 @@
     python scripts/docs/docs_llama.py status          what is installed, and whether it runs
     python scripts/docs/docs_llama.py stop            stop the server
 
-Everything lives outside the repository, in AUTANA_LLAMA_HOME (default
-%LOCALAPPDATA%/autana/llama, or ~/.cache/autana/llama), shared by every
-worktree. One llama-server runs in router mode on 127.0.0.1:AUTANA_LLAMA_PORT
-(8765), loads a model on its first request and unloads it after ten idle
+Everything lives outside the repository, in the `docs.llama.home` setting
+(default %LOCALAPPDATA%/autana/llama, or ~/.cache/autana/llama), shared by
+every worktree. One llama-server runs in router mode on 127.0.0.1 at
+`docs.llama.port` (8765), loads a model on its first request and unloads it after ten idle
 minutes, so nothing holds memory between questions. Every download is pinned to
 a SHA-256 and checked before use. A GPU recognised as integrated is left out
 when another is present; llama.cpp's own LLAMA_ARG_DEVICE overrides.
@@ -33,6 +33,9 @@ import urllib.request
 import zipfile
 from array import array
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+import autana_config  # noqa: E402
 
 RELEASE = "b11188"
 RELEASE_URL = "https://github.com/ggml-org/llama.cpp/releases/download/" + RELEASE + "/"
@@ -69,14 +72,15 @@ INTEGRATED = re.compile(r"Radeon\(TM\) (\d+M|Graphics)|Intel\(R\) (UHD|HD|Iris|A
 
 
 def home():
-    if os.environ.get("AUTANA_LLAMA_HOME"):
-        return Path(os.environ["AUTANA_LLAMA_HOME"])
+    named = autana_config.load().get("docs.llama.home")
+    if named:
+        return autana_config.path_value(named)
     base = os.environ.get("LOCALAPPDATA") or Path.home() / ".cache"
     return Path(base) / "autana" / "llama"
 
 
 def port():
-    return int(os.environ.get("AUTANA_LLAMA_PORT", "8765"))
+    return autana_config.load().get("docs.llama.port", 8765)
 
 
 def url(path):
@@ -341,6 +345,11 @@ def status():
 
 
 def main(argv):
+    try:
+        autana_config.load()
+    except autana_config.ConfigError as error:
+        print(f"docs_llama: {error}", file=sys.stderr)
+        return 1
     command = argv[0] if argv else "status"
     if command == "setup":
         setup(chat="--chat" in argv)

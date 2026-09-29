@@ -13,14 +13,12 @@ the device lock. The command list is COMMAND_GROUPS at the end of this
 file; docs/tools/Autana-CLI.md mirrors it.
 """
 
-import getpass
 import gzip
 import importlib
 import json
 import os
 import re
 import shlex
-import socket
 import subprocess
 import sys
 import threading
@@ -29,7 +27,9 @@ from collections import namedtuple
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
-from espressif import idf_python  # noqa: E402  (path must be set up first)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+import autana_config  # noqa: E402  (path must be set up first)
+from espressif import idf_python  # noqa: E402
 from version import __version__  # noqa: E402
 
 VARIANTS = {"rel": "release", "release": "release", "dev": "dev", "diag": "diag"}
@@ -45,16 +45,11 @@ def owner():
     (OWNER_ENV), with this process's own pid still appended, when given -
     two shells that use the same label would otherwise see each other's lock as
     their own (board_holder()'s self-check compares by name) - else
-    "<user>@<host>:<pid>". getpass.getuser() can fail with no username in
-    the environment (a container); "user" then stands in for it."""
+    device_lock.default_owner(), "<user>@<host>:<pid>"."""
     override = os.environ.get(OWNER_ENV)
     if override:
         return f"{override}:{os.getpid()}"
-    try:
-        user = getpass.getuser()
-    except OSError:
-        user = "user"
-    return f"{user}@{socket.gethostname()}:{os.getpid()}"
+    return device_module().device_lock.default_owner()
 
 
 def git(*args):
@@ -110,10 +105,23 @@ def run_command(handler, args):
     global _project_arg
     value, args = pop_value(args, "--project")
     previous, _project_arg = _project_arg, value
+    inherited = os.environ.get(PROJECT_ENV)
     try:
+        # Children read the settings of the project the command acts on; one
+        # already named (a nested call, a test) is kept.
+        project = Path(value).resolve() if value else Path(inherited or Path.cwd())
+        os.environ[PROJECT_ENV] = str(project)
+        try:
+            autana_config.load(project)
+        except autana_config.ConfigError as error:
+            sys.exit(f"autana: {error}")
         return handler(args)
     finally:
         _project_arg = previous
+        if inherited is None:
+            os.environ.pop(PROJECT_ENV, None)
+        else:
+            os.environ[PROJECT_ENV] = inherited
 
 
 def pop_value(args, flag):
@@ -149,10 +157,14 @@ def device_module():
     return device
 
 
-# How the global `--wait` and `--owner` reach nested steps and child processes; private,
-# so a caller's environment is never a second way to set the wait.
+# How the global `--wait`, `--owner` and `--board` reach nested steps and child
+# processes; private, so a caller's environment is never a second way to set
+# them. The token is the one a running command's children prove their lock by.
 WAIT_ENV = "_AUTANA_WAIT_S"
 OWNER_ENV = "_AUTANA_OWNER"
+BOARD_ENV = autana_config.BOARD_ENV
+TOKEN_ENV = autana_config.TOKEN_ENV
+PROJECT_ENV = autana_config.PROJECT_ENV
 
 
 def device_command(*args, wait=None):
@@ -497,12 +509,12 @@ def status(args):
 
 def release(args):
     """Release a lock this session holds, before its own command would have.
-    The token is in AUTANA_DEVICE_LOCK_TOKEN in every process that command
-    started, which is where it comes from when none is given."""
-    token = args[0] if args else os.environ.get("AUTANA_DEVICE_LOCK_TOKEN")
+    The token is in TOKEN_ENV in every process that command started, which
+    is where it comes from when none is given."""
+    token = args[0] if args else os.environ.get(TOKEN_ENV)
     if len(args) > 1 or not token:
-        sys.exit("usage: autana lock release [<token>] - without one, "
-                 "AUTANA_DEVICE_LOCK_TOKEN, set inside a running command")
+        sys.exit("usage: autana lock release [<token>] - without one, the "
+                 "token of the command that holds the lock, inside that command")
     return subprocess.call(device_command("release", "--token", token))
 
 
@@ -672,7 +684,7 @@ SEND_WAIT_S = 5
 
 def board_holder():
     """'held by <owner> for <purpose>' when someone else has the board a
-    command would use, else ''. That board is AUTANA_BOARD's, else the only
+    command would use, else ''. That board is the global --board's, else the only
     one plugged in; with several plugged in and none named, device.py's own
     refusal says so.
 
@@ -684,8 +696,8 @@ def board_holder():
         boards = json.loads(result.stdout)["boards"]
     except (ValueError, KeyError, TypeError):
         return ""
-    # device.py already narrows the list to AUTANA_BOARD's board, plugged or not.
-    candidates = boards if os.environ.get("AUTANA_BOARD") else [b for b in boards if b["port"]]
+    # device.py already narrows the list to the named board, plugged or not.
+    candidates = boards if os.environ.get(BOARD_ENV) else [b for b in boards if b["port"]]
     if len(candidates) != 1:
         return ""
     board = candidates[0]
@@ -1238,7 +1250,7 @@ COMMAND_GROUPS = (
         Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
         Command("lock", lock, (
             ("lock id [--json]", "the name this session holds the lock under"),
-            ("lock release [<token>]", "release a lock this session holds; $AUTANA_DEVICE_LOCK_TOKEN when omitted"),
+            ("lock release [<token>]", "release a lock this session holds, given its token"),
             ("lock hand [--until-back <seconds>] <note...>",
              "reserve the board for a person at it for an hour; run again to renew"),
             ("lock take-back", "clear that reservation"))),
@@ -1282,7 +1294,7 @@ COMMANDS["console"] = console
 COMMANDS["batch"] = batch
 COMMANDS.update({old: alias(old, new, handler) for old, (new, handler) in RENAMED_VERBS.items()})
 HELP_TOPICS = [key for key, _, _ in COMMAND_GROUPS] + [
-    command.name for _, _, commands in COMMAND_GROUPS for command in commands] + ["flags"]
+    command.name for _, _, commands in COMMAND_GROUPS for command in commands] + ["flags", "config"]
 USAGE_WIDTH = 34
 
 # (flag, what it does, the commands that take it) - left out of every command's
@@ -1294,6 +1306,9 @@ BOARD_FLAGS = (
      "every board command"),
     ("--owner NAME", "global, goes before the command: label this run in the lock as "
                      "NAME:<pid>",
+     "every board command"),
+    ("--board SERIAL", "global, goes before the command: the board's USB serial number; "
+                       "without it, the only board plugged in",
      "every board command"),
     ("--out PATH", "write the one capture here instead of the default path",
      "selftest, suite, monitor"),
@@ -1349,6 +1364,8 @@ def help_text(args, prefix="autana "):
     topic = args[0] if args else None
     if topic == "flags":
         return board_flags_text(prefix).rstrip()
+    if topic == "config":
+        return autana_config.help_text()
     lines = [quickstart_text(prefix), ""] if topic is None else []
     for key, title, commands in COMMAND_GROUPS:
         if topic is None and key in HIDDEN_GROUPS:
@@ -1373,8 +1390,10 @@ def help_text(args, prefix="autana "):
         lines.append(f"{prefix}--wait SECONDS <command>  how long to wait for the board; 0 fails "
                      "at once")
         lines.append(f"{prefix}--owner NAME <command>    label this run in the lock")
-        lines.append(f"{prefix}help flags    --wait/--owner/--out/--expect-build-id/--project, which commands "
-                     "take them, and how the lock owner and its wait are set")
+        lines.append(f"{prefix}--board SERIAL <command>  which board, when several are plugged in")
+        lines.append(f"{prefix}help flags    --wait/--owner/--board/--out/--expect-build-id/--project, which "
+                     "commands take them, and how the lock owner and its wait are set")
+        lines.append(f"{prefix}help config   the settings a project's autana.local.toml can hold")
         lines.append(f"{prefix}help [topic]  one group or command"
                      + ("" if prefix else "; quit leaves the session"))
     return "\n".join(lines).rstrip()
@@ -1424,23 +1443,29 @@ def install_completion():
 MISPLACED_HINTS = {
     "--wait": "--wait goes before the command: autana --wait 0 monitor 5",
     "--owner": "--owner goes before the command: autana --owner ci-7 flash",
+    "--board": "--board goes before the command: autana --board 90:70:69:FE:A3:08 monitor 5",
 }
 
 
 def global_options(argv):
-    """`argv` without its leading `--wait SECONDS` and `--owner NAME`, in
-    either order. Each is written into WAIT_ENV / OWNER_ENV - what
-    device_command(), owner() and every child process read - so it covers
-    this call and each step nested in it. Either one anywhere after the
-    command is refused, because a command would otherwise report it as an
-    unknown flag without saying where it belongs."""
-    while argv[:1] in (["--wait"], ["--owner"]):
+    """`argv` without its leading `--wait SECONDS`, `--owner NAME` and
+    `--board SERIAL`, in any order. Each is written into WAIT_ENV / OWNER_ENV
+    / BOARD_ENV - what device_command(), owner() and every child process read
+    - so it covers this call and each step nested in it. Any of them
+    anywhere after the command is refused, because a command would otherwise
+    report it as an unknown flag without saying where it belongs."""
+    while argv[:1] in (["--wait"], ["--owner"], ["--board"]):
         flag, value = argv[0], (argv[1] if len(argv) > 1 else "")
         if flag == "--wait":
             if not (value.isascii() and value.isdigit()):
                 sys.exit("autana --wait needs a non-negative integer number of seconds, "
                          "e.g. autana --wait 0 monitor 5")
             os.environ[WAIT_ENV] = value
+        elif flag == "--board":
+            if not value.strip():
+                sys.exit("autana --board needs a board's USB serial number, "
+                         "e.g. autana --board 90:70:69:FE:A3:08 monitor 5")
+            os.environ[BOARD_ENV] = value
         else:
             if not value.strip():
                 sys.exit("autana --owner needs a name, e.g. autana --owner ci-7 flash")

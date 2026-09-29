@@ -53,8 +53,8 @@ sequenceDiagram
     Note over Dev,Build: a failed build ends here, never queued
     Dev->>Snap: copy flash_args, its files, build_id.txt
     Dev->>Lock: take the board's lock
-    Dev->>Sh: run on the snapshot, with the lock token and AUTANA_BOARD
-    Sh->>Lock: check-token for AUTANA_BOARD
+    Dev->>Sh: run on the snapshot, with the lock token and the board
+    Sh->>Lock: check-token for that board
     Sh->>Sh: device.py resolve-port - the board's COM port now
     Sh->>Board: esptool write_flash @flash_args, hash-verify each region
     Sh->>Board: RTS reset
@@ -143,7 +143,7 @@ it opens no port itself.
 No capture command needs `--out`: by default each writes to
 `<records>/<YYYYMMDD>/<HHMMSS>_<kind>_<owner>.log` (`kind` is
 `flash-<variant>`, `reset`, `runsuite-<suite>`, `selftest`, or `listen`).
-`<records>` is `$AUTANA_RECORDS` when set, otherwise the checkout's own
+`<records>` is the project's `records` setting when it has one, otherwise the checkout's own
 gitignored `.records/device`, so nothing a commit can pick up by accident. A
 default-path capture over 200 KB is gzipped in place (a flash log at about
 270 KB usually is); `--out <path>` writes exactly there instead,

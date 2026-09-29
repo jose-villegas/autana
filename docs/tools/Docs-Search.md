@@ -22,7 +22,7 @@ autana docs --ask can an app call vTaskDelay inside frame     # a written answer
 | Source | Unit |
 |---|---|
 | Every `*.md` anywhere in the checkout, except `third_party/` and `launcher/components/` | a heading and the text up to the next heading |
-| The Markdown files and folders `AUTANA_DOCS_EXTRA` names | the same |
+| The Markdown files and folders the project's `docs_extra` setting names | the same |
 | The module docstring or leading comment of each `.py`, `.sh` or `.mjs` file under `scripts/`, `launcher/tools/`, `launcher/test/` and `launcher/main/apps/`, except tests | one section per script |
 
 A section copied verbatim into two files is kept once. The index is rebuilt on
@@ -36,9 +36,9 @@ holds, never by its name, so `launcher/tools/build/`, a real source folder
 that only shares the name a generated build directory does, is never
 mistaken for one.
 
-`AUTANA_DOCS_EXTRA` lets notes kept outside the checkout join the index.
-Entries are separated by `;` on Windows and `:` elsewhere, each relative to
-the checkout unless absolute. A named folder is read in full - every Markdown
+The `docs_extra` key of `autana.local.toml` lets notes kept outside the
+checkout join the index ([Settings](Autana-CLI.md#settings)). It is a list of
+paths, each relative to the checkout unless absolute. A named folder is read in full - every Markdown
 file under it, recursively, with no ignore file of its own consulted - and a
 named file must end in `.md`. A named folder's own `eval_questions.tsv` joins
 `--eval`, its rows citing documents by the path search shows for them.
@@ -55,7 +55,7 @@ flowchart LR
     R -.->|"--ask"| A["local chat model<br/>short answer, cited"]
 ```
 
-Plans, `AUTANA_DOCS_EXTRA` notes and sections headed "Related" or "See also"
+Plans, `docs_extra` notes and sections headed "Related" or "See also"
 rank below documents of record: a plan describes code that does not exist
 yet, notes from outside the tree are not the record, and a list of links
 names every topic and answers none. A question whose words no
@@ -85,12 +85,12 @@ bge-small-en-v1.5 embedding model. `setup --chat` adds Qwen3-4B-Instruct for
 `scripts/docs/docs_llama.py` before use.
 
 Everything installs in `%LOCALAPPDATA%/autana/llama` (`~/.cache/autana/llama`
-elsewhere, `AUTANA_LLAMA_HOME` to move it), shared by every worktree. Setup
+elsewhere; `home` under `[docs.llama]` moves it), shared by every worktree. Setup
 ends by embedding the documentation once; after that only a section whose text
 changed is embedded again.
 
 One `llama-server` in router mode serves both models on `127.0.0.1:8765`
-(`AUTANA_LLAMA_PORT`). The first query starts it, it loads a model on first
+(`port` under `[docs.llama]`). The first query starts it, it loads a model on first
 use and unloads it after ten idle minutes. `docs_llama.py status` shows what
 is installed and running; `docs_llama.py stop` ends the server it started and
 no other. A GPU recognised as integrated is left out when another is present;

@@ -25,6 +25,7 @@ import fake_flash  # noqa: E402
 import device_lock
 import device_hook
 import device_report
+import autana_config
 
 # A board is named by its USB serial number; COM5 is where it enumerates.
 BOARD = "90:70:69:FE:A3:08"
@@ -71,18 +72,18 @@ class InterpreterTests(unittest.TestCase):
 
 class HookIsolationTests(unittest.TestCase):
     def test_suite_child_reservation_does_not_run_inherited_hook(self):
-        if os.environ.get("AUTANA_HOOK_SUITE_CHILD"):
+        if os.environ.get("_AUTANA_HOOK_SUITE_CHILD"):
             with tempfile.TemporaryDirectory() as root:
                 device_lock.LockStore(root=root).set_human(BOARD, "agent", "test")
             return
         with tempfile.TemporaryDirectory() as root:
             sentinel = Path(root) / "sentinel"
             command = (f'"{sys.executable}" -c "import os; '
-                       "open(os.environ['AUTANA_HOOK_SENTINEL'], 'w').close()\"")
+                       "open(os.environ['_AUTANA_HOOK_SENTINEL'], 'w').close()\"")
             environment = os.environ.copy()
             environment.update({"AUTANA_LOCK_HOOK": command,
-                                "AUTANA_HOOK_SENTINEL": str(sentinel),
-                                "AUTANA_HOOK_SUITE_CHILD": "1"})
+                                "_AUTANA_HOOK_SENTINEL": str(sentinel),
+                                "_AUTANA_HOOK_SUITE_CHILD": "1"})
             result = subprocess.run([sys.executable, "-m", "unittest", "discover",
                                      "-s", str(DEVICE / "tests"), "-p", "test_device.py",
                                      "-k", "HookIsolationTests.test_suite_child_reservation"],
@@ -541,6 +542,18 @@ class DeviceTests(unittest.TestCase):
                                           "hand-to-human", "--note", "check cable"]), 0)
         store.set_human.assert_called_once_with(BOARD, "agent", "check cable")
 
+    def test_an_unnamed_owner_is_user_at_host_colon_pid_not_unknown(self):
+        store = mock.Mock()
+        store.status.return_value = {"human": None, "lock": None, "queue": []}
+        store.set_human.return_value = ("id", False)
+        with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+                mock.patch.object(device_lock.getpass, "getuser", return_value="sam"), \
+                mock.patch.object(device_lock.socket, "gethostname", return_value="devbox"):
+            self.assertEqual(device.main(["--board", BOARD, "hand-to-human",
+                                          "--note", "check cable"]), 0)
+        store.set_human.assert_called_once_with(
+            BOARD, f"sam@devbox:{os.getpid()}", "check cable")
+
 
 class HumanWaitTests(unittest.TestCase):
     def setUp(self):
@@ -631,30 +644,40 @@ class SlugTests(unittest.TestCase):
 
 
 class RecordsRootTests(unittest.TestCase):
-    def setUp(self):
-        self.named = os.environ.pop("AUTANA_RECORDS", None)
-
-    def tearDown(self):
-        if self.named is not None:
-            os.environ["AUTANA_RECORDS"] = self.named
-        else:
-            os.environ.pop("AUTANA_RECORDS", None)
+    DEFAULT = Path(device.__file__).resolve().parents[2] / ".records" / "device"
 
     def test_defaults_into_the_checkout_regardless_of_cwd(self):
-        expected = Path(device.__file__).resolve().parents[2] / ".records" / "device"
-        self.assertEqual(device.records_root(), expected)
+        with isolation.project():
+            self.assertEqual(device.records_root(), self.DEFAULT)
 
-    def test_autana_records_names_it_instead(self):
-        os.environ["AUTANA_RECORDS"] = os.path.join("somewhere", "else")
-        self.assertEqual(device.records_root(), Path("somewhere") / "else")
+    def test_the_projects_records_setting_names_it_instead(self):
+        elsewhere = Path(tempfile.gettempdir()) / "elsewhere"
+        with isolation.project(records=str(elsewhere)):
+            self.assertEqual(device.records_root(), elsewhere)
 
-    def test_an_empty_autana_records_is_no_setting_at_all(self):
-        """An exported-but-empty variable is what a shell leaves behind after
-        a failed assignment - a records root of "" would otherwise resolve to
-        the working directory."""
-        os.environ["AUTANA_RECORDS"] = ""
-        expected = Path(device.__file__).resolve().parents[2] / ".records" / "device"
-        self.assertEqual(device.records_root(), expected)
+    def test_a_relative_records_setting_is_relative_to_the_project(self):
+        with isolation.project(records="history/device") as project:
+            self.assertEqual(device.records_root(), project / "history" / "device")
+
+    def test_a_captures_default_path_lands_under_the_configured_records(self):
+        with isolation.project(records="history") as project:
+            path, managed = device.resolve_capture_path(
+                None, "listen", "agent", datetime(2026, 9, 16, 12, 30, 45))
+        self.assertTrue(managed)
+        self.assertIn(project / "history", path.parents)
+
+    def test_an_environment_autana_records_is_ignored(self):
+        with isolation.project(), mock.patch.dict(os.environ, {"AUTANA_RECORDS": "elsewhere"}):
+            self.assertEqual(device.records_root(), self.DEFAULT)
+
+    def test_a_bad_settings_file_stops_the_command_naming_file_and_key(self):
+        with isolation.project() as project:
+            (project / "autana.local.toml").write_text("recods = 'x'\n")
+            with contextlib.redirect_stderr(io.StringIO()) as errors:
+                code = device.main(["status"])
+        self.assertEqual(code, 1)
+        self.assertIn("autana.local.toml", errors.getvalue())
+        self.assertIn("recods", errors.getvalue())
 
 
 class ResolveCapturePathTests(unittest.TestCase):
@@ -836,18 +859,25 @@ class FlashDefaultPathTests(unittest.TestCase):
             self.assertEqual(entry["commit"], "deadbeef")
 
     def test_builds_then_passes_the_lock_token_to_flash_image_sh(self):
-        # flash_image.sh refuses to flash without AUTANA_DEVICE_LOCK_TOKEN -
-        # write_image() is the one place that has the token to give it.
+        # flash_image.sh refuses to flash without the token - write_image()
+        # is the one place that has the token to give it.
         with tempfile.TemporaryDirectory() as directory:
             run = mock.Mock(side_effect=fake_flash.scripts("expected"))
             self.flash(directory, run, mock_store("sekrit-token"))
             build, write = run.call_args_list
             self.assertEqual(Path(build.args[0][1]).name, "build.sh")
-            self.assertNotIn("AUTANA_DEVICE_LOCK_TOKEN", build.kwargs["env"])
+            self.assertNotIn(autana_config.TOKEN_ENV, build.kwargs["env"])
             self.assertEqual(Path(write.args[0][1]).name, "flash_image.sh")
             self.assertTrue(Path(write.args[0][-1]).name.startswith("autana-image-"))
-            self.assertEqual(write.kwargs["env"]["AUTANA_DEVICE_LOCK_TOKEN"], "sekrit-token")
-            self.assertEqual(write.kwargs["env"]["AUTANA_BOARD"], BOARD)
+            self.assertEqual(write.kwargs["env"][autana_config.TOKEN_ENV], "sekrit-token")
+            self.assertEqual(write.kwargs["env"][autana_config.BOARD_ENV], BOARD)
+
+    def test_the_private_variables_are_the_ones_flash_image_sh_reads(self):
+        script = (DEVICE / "flash_image.sh").read_text(encoding="utf-8")
+        self.assertIn("${" + autana_config.TOKEN_ENV + ":-}", script)
+        self.assertIn("${" + autana_config.BOARD_ENV + ":-}", script)
+        self.assertTrue(autana_config.TOKEN_ENV.startswith("_AUTANA_"))
+        self.assertTrue(autana_config.BOARD_ENV.startswith("_AUTANA_"))
 
 
 class BuildWorktreeTests(unittest.TestCase):
@@ -875,7 +905,7 @@ class BuildWorktreeTests(unittest.TestCase):
         self.assertEqual([Path(command[1]).name] + command[2:],
                          ["build.sh", "--diag", "--perf-scope"])
         self.assertIsNone(lost)
-        self.assertNotIn("AUTANA_DEVICE_LOCK_TOKEN", options["env"])
+        self.assertNotIn(autana_config.TOKEN_ENV, options["env"])
 
     def test_a_failed_build_is_the_commands_exit_status(self):
         def failing(command, lost=None, **unused_options):

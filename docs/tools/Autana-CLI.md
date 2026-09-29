@@ -46,6 +46,7 @@ it readable; a flag works the same wherever the table below says it applies.
 |---|---|---|
 | `--wait SECONDS` | Global, goes before the command (`autana --wait 0 monitor 5`; after it, autana says so). Wait this long for the board's lock; 0 fails at once with exit 75. 600 s without it. Covers every step the command runs. | every board command |
 | `--owner NAME` | Global, goes before the command (`autana --owner ci-7 flash`; after it, autana says so). Label this run in the lock as `NAME:<pid>`; without it, `<user>@<host>:<pid>`. Name each CI job. | every board command |
+| `--board SERIAL` | Global, goes before the command (`autana --board 90:70:69:FE:A3:08 monitor 5`). The board's USB serial number; without it, the only board plugged in. | every board command |
 | `--out PATH` | Write the one capture here instead of the default path; with several suites or `--runs` above 1, only makes sense on `suite` when exactly one suite runs once. | selftest, suite, monitor |
 | `--expect-build-id ID` | Refuse to run a suite unless the board, or the image `--flash` just wrote, carries this `BUILD_ID`. `autana flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it - pass that value here to refuse measuring a board that has since been reflashed by someone else. | suite |
 | `--project PATH` | Act on `PATH` instead of the current directory - like `make -C`/`idf.py -C`, no searching parent directories. `PATH` must itself carry `launcher/CMakeLists.txt`; the current directory must too when `--project` is omitted, for every command below except `suite` without `--flash`, which only wants it for its capture's own record. Popped once ahead of any command's own parsing, so it works the same everywhere it applies. | build, flash, selftest, suite, suite list, tune save, docs |
@@ -164,12 +165,12 @@ The two raw levels below gesture, `touch` and `imu`, live under
 |---|---|
 | `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
 | `autana lock id [--json]` | The name this session holds the lock under: `"<user>@<host>:<pid>"`, or `"<NAME>:<pid>"` under `autana --owner NAME`. |
-| `autana lock release [<token>]` | Release the lock a command of this session holds, before it would have. The token is `AUTANA_DEVICE_LOCK_TOKEN` in every process that command started, and is what `lock release` uses when none is given. |
+| `autana lock release [<token>]` | Release the lock a command of this session holds, before it would have. Given a lock's token, or, run from inside the command that holds the lock, without one. |
 | `autana lock hand [--until-back <seconds>] <note...>` | Reserve the board for a person for an hour and emit `human-reserved`; running it again renews the hour, and an unrenewed reservation lapses (`human-expired`). With `--until-back`, wait until `take-back` emits `human-cleared`. |
 | `autana lock take-back` | Clear that reservation. |
 
 A board is named by its USB serial number, so the lock follows it across
-COM number changes; with several boards plugged in, `AUTANA_BOARD=<serial>`
+COM number changes; with several boards plugged in, `autana --board <serial>`
 picks one. If a command loses the lock it stops with `device lock was
 lost`. A command that finds the board busy and will not wait (`autana --wait 0 <command>`, or its
 wait ran out) exits 75, so a script can retry on the code alone. A separate `flash` and `suite` leave a gap where another session can
@@ -224,7 +225,7 @@ before running it.
 
 | Command | Fields |
 |---|---|
-| `status` | `boards`: `board`, `port`, `state` (`unlocked`, `held`, `human`), `holder` (`owner`, `purpose`), `since`, `elapsed_seconds`, `estimated_free`, `expires_at`, `remaining_seconds`, `stale` (`owner`, `purpose`, `reason`), `expired` (`owner`, `purpose`, `expired_at`, `ago_seconds`), `waiting` (`owner`, `purpose`, `estimated_start`). Times are epoch seconds; unknown ones are `null`. See [Device-Lock.md](Device-Lock.md#variables-exit-codes-and-json-status). |
+| `status` | `boards`: `board`, `port`, `state` (`unlocked`, `held`, `human`), `holder` (`owner`, `purpose`), `since`, `elapsed_seconds`, `estimated_free`, `expires_at`, `remaining_seconds`, `stale` (`owner`, `purpose`, `reason`), `expired` (`owner`, `purpose`, `expired_at`, `ago_seconds`), `waiting` (`owner`, `purpose`, `estimated_start`). Times are epoch seconds; unknown ones are `null`. See [Device-Lock.md](Device-Lock.md#exit-codes-and-json-status). |
 | `buildid` | `build_id` |
 | `lock id` | `owner`, `pid` |
 | `apps` | `apps`: `name`, `running` |
@@ -257,11 +258,43 @@ autana> quit
 | `scripts/add-tools-to-path.sh [--check]` | Put `tools/` on the PATH, from the primary checkout (a worktree's entry dies with it). |
 
 The lock is one per machine, in the system temp folder. Each session writes a
-log and a manifest under `AUTANA_RECORDS`, or the checkout's gitignored
-`.records/device` when that is unset
+log and a manifest under the `records` setting, or the checkout's gitignored
+`.records/device` without one
 ([Flash-and-Captures.md](Flash-and-Captures.md#where-a-capture-lands)).
-Set `AUTANA_LOCK_HOOK` to a shell command for lock events; see
-[Device-Lock.md](Device-Lock.md#lock-events) for events and variables.
+
+## Settings
+
+autana reads no environment variable. A setting is a global option before the
+command, which covers that one call, or a key in `autana.local.toml` in the
+project folder, which covers every command run from that checkout. The file is
+optional and gitignored, and `autana help config` lists its keys.
+
+| Global option | Sets |
+|---|---|
+| `--wait SECONDS` | How long a board command waits for the lock (600 s without it). |
+| `--owner NAME` | The name this run holds the lock under. |
+| `--board SERIAL` | Which board, when several are plugged in. |
+
+| Key | Meaning |
+|---|---|
+| `docs_extra` | A list of extra Markdown files or folders `autana docs` searches, relative to the project. |
+| `records` | Where captures and `index.jsonl` land; `.records/device` in the checkout without it. |
+| `lock_hook` | A shell command run on every device lock event; see [Device-Lock.md](Device-Lock.md#lock-events). It fires only for a command run from a checkout whose file sets it, so a machine-wide hook goes in each checkout's file. |
+| `[docs.llama]` `home`, `port` | Where the docs model and its server live (shared by every checkout, under your user folder without it) and the local port it listens on (8765 without it). |
+
+```toml
+docs_extra = ["notes/bench.md", "~/Documents/design-notes"]
+records = "~/autana-records"
+lock_hook = "python ~/bin/on_lock.py"
+
+[docs.llama]
+port = 8800
+```
+
+The file reads strings (in `"..."`, or `'...'` where a Windows path should stay
+as typed), integers and arrays of strings, and refuses anything else and any
+other key, naming the file and the line. The lock's folder is deliberately not a
+setting: one per checkout would split the lock the whole machine shares.
 
 ## Adding a command from an app
 

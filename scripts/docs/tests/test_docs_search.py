@@ -236,13 +236,18 @@ def fake_embed(texts, query=False):
 
 
 class Extra(unittest.TestCase):
-    """corpus_files() walks the whole checkout now, so AUTANA_DOCS_EXTRA only
-    still matters for content outside it - inside self.root is always read."""
+    """corpus_files() walks the whole checkout now, so the project's
+    `docs_extra` only still matters for content outside it - inside
+    self.root is always read."""
 
     def setUp(self):
         self.root = make_repo({"docs/Flashing.md": GUIDE})
-        self.saved = os.environ.pop(docs_search.EXTRA_ENV, None)
         self.outside_root = Path(tempfile.mkdtemp())
+
+    def set_extra(self, *entries):
+        listed = ", ".join("'" + str(entry) + "'" for entry in entries)
+        (self.root / "autana.local.toml").write_text(f"docs_extra = [{listed}]\n",
+                                                     encoding="utf-8")
 
     def outside(self, files, into=None):
         folder = into or Path(tempfile.mkdtemp())
@@ -250,11 +255,6 @@ class Extra(unittest.TestCase):
             (folder / file).parent.mkdir(parents=True, exist_ok=True)
             (folder / file).write_text(text, encoding="utf-8")
         return folder
-
-    def tearDown(self):
-        os.environ.pop(docs_search.EXTRA_ENV, None)
-        if self.saved is not None:
-            os.environ[docs_search.EXTRA_ENV] = self.saved
 
     def paths(self):
         return {s.path for s in docs_search.Index(self.root, semantic=False).sections}
@@ -268,28 +268,40 @@ class Extra(unittest.TestCase):
         notes = self.outside({
             "Private.md": "# Private\n\n## Bench notes\n\nThe spare board's USB port is loose.\n",
         }, into=self.outside_root)
-        os.environ[docs_search.EXTRA_ENV] = str(notes)
+        self.set_extra(notes)
         self.assertEqual(self.paths(), {"docs/Flashing.md", (notes / "Private.md").as_posix()})
+
+    def test_an_environment_autana_docs_extra_is_ignored(self):
+        notes = self.outside({"Private.md": "# Private\n\n## Bench notes\n\nLoose port.\n"})
+        with mock.patch.dict(os.environ, {"AUTANA_DOCS_EXTRA": str(notes)}):
+            self.assertEqual(self.paths(), {"docs/Flashing.md"})
+
+    def test_an_unknown_key_fails_naming_the_file_and_the_key(self):
+        (self.root / "autana.local.toml").write_text("docs_extras = ['x']\n", encoding="utf-8")
+        with self.assertRaises(docs_search.autana_config.ConfigError) as raised:
+            self.paths()
+        self.assertIn("autana.local.toml", str(raised.exception))
+        self.assertIn("docs_extras", str(raised.exception))
 
     def test_a_named_file_outside_the_checkout_is_read_under_its_full_path(self):
         extra = self.outside({"Extra.md": "# Extra\n\n## Loose ends\n\nOne more note.\n"})
-        os.environ[docs_search.EXTRA_ENV] = str(extra / "Extra.md")
+        self.set_extra(extra / "Extra.md")
         self.assertEqual(self.paths(), {"docs/Flashing.md", (extra / "Extra.md").as_posix()})
 
     def test_a_named_folder_inside_the_checkout_is_read_under_its_checkout_path(self):
-        """AUTANA_DOCS_EXTRA also accepts a checkout-relative path - redundant
+        """`docs_extra` also accepts a checkout-relative path - redundant
         with the default whole-tree walk today, but still resolved the same way."""
         (self.root / "notes").mkdir()
         (self.root / "notes" / "Private.md").write_text(
             "# Private\n\n## Bench notes\n\nThe spare board's USB port is loose.\n",
             encoding="utf-8")
-        os.environ[docs_search.EXTRA_ENV] = "notes"
+        self.set_extra("notes")
         self.assertEqual(self.paths(), {"docs/Flashing.md", "notes/Private.md"})
 
     def test_an_extra_document_ranks_below_a_document_of_record(self):
         notes = self.outside({"Private.md": "# Private\n\n## Bench notes\n\nThe spare "
                                             "board's USB port is loose.\n"})
-        os.environ[docs_search.EXTRA_ENV] = str(notes)
+        self.set_extra(notes)
         index = docs_search.Index(self.root, semantic=False)
         extra = next(s for s in index.sections if s.path == (notes / "Private.md").as_posix())
         tracked = next(s for s in index.sections if s.path == "docs/Flashing.md")
@@ -303,18 +315,18 @@ class Extra(unittest.TestCase):
         })
         row = ("loose usb port", "Private.md", "bench notes")
         self.assertNotIn(row, docs_search.load_eval(self.root))
-        os.environ[docs_search.EXTRA_ENV] = str(notes)
+        self.set_extra(notes)
         self.assertIn(row, docs_search.load_eval(self.root))
 
     def test_a_named_folder_is_read_in_full_no_ignore_file_consulted(self):
-        """AUTANA_DOCS_EXTRA is a plain rglob: a folder's own .gitignore, if it has
+        """`docs_extra` is a plain rglob: a folder's own .gitignore, if it has
         one, is just another file to it - not consulted, unlike the checkout walk."""
         vault = self.outside({
             ".gitignore": "Scratch.md\n",
             "Bench Notes.md": "# Bench\n\n## Spare board\n\nLoose port.\n",
             "Scratch.md": "# Scratch\n\n## Draft\n\nStill indexed.\n",
         })
-        os.environ[docs_search.EXTRA_ENV] = str(vault)
+        self.set_extra(vault)
         self.assertEqual(self.paths(),
                          {"docs/Flashing.md", (vault / "Bench Notes.md").as_posix(),
                           (vault / "Scratch.md").as_posix()})
@@ -322,7 +334,7 @@ class Extra(unittest.TestCase):
     def test_an_absolute_folder_is_read_under_its_full_path(self):
         first = self.outside({"README.md": "# First\n\n## Alpha notes\n\nOne.\n"})
         second = self.outside({"README.md": "# Second\n\n## Beta notes\n\nTwo.\n"})
-        os.environ[docs_search.EXTRA_ENV] = os.pathsep.join([str(first), str(second)])
+        self.set_extra(first, second)
         index = docs_search.Index(self.root, semantic=False)
         labels = {(first / "README.md").as_posix(), (second / "README.md").as_posix()}
         self.assertEqual({s.path for s in index.sections} - {"docs/Flashing.md"}, labels)
@@ -333,13 +345,13 @@ class Extra(unittest.TestCase):
             "Notes.txt": "# A plain text file whose leading comment is long enough to pass for a "
                         "script\n# header, so only its suffix keeps it out of the index.\n",
         })
-        os.environ[docs_search.EXTRA_ENV] = str(notes / "Notes.txt")
+        self.set_extra(notes / "Notes.txt")
         self.assertEqual(self.paths(), {"docs/Flashing.md"})
 
 class Semantic(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.mkdtemp()
-        patches = [mock.patch.dict(os.environ, {"AUTANA_LLAMA_HOME": self.home}),
+        patches = [mock.patch.object(docs_llama, "home", return_value=Path(self.home)),
                    mock.patch.object(docs_llama, "installed", return_value=True),
                    mock.patch.object(docs_llama, "start", return_value=True),
                    mock.patch.object(docs_llama, "embed", side_effect=fake_embed)]
@@ -447,17 +459,53 @@ class Device(unittest.TestCase):
 
     def test_the_preset_names_the_devices_only_when_there_is_a_choice(self):
         home = tempfile.mkdtemp()
-        with mock.patch.dict(os.environ, {"AUTANA_LLAMA_HOME": home}):
+        with mock.patch.object(docs_llama, "home", return_value=Path(home)):
             with mock.patch.object(docs_llama, "devices", return_value="Vulkan1"):
                 self.assertIn("device = Vulkan1", docs_llama.write_preset().read_text(encoding="utf-8"))
             with mock.patch.object(docs_llama, "devices", return_value=None):
                 self.assertNotIn("device", docs_llama.write_preset().read_text(encoding="utf-8"))
 
 
+class LlamaSettings(unittest.TestCase):
+    """The model's home and port are the project's `[docs.llama]` settings."""
+
+    def project(self, text=None):
+        folder = Path(tempfile.mkdtemp())
+        if text is not None:
+            (folder / "autana.local.toml").write_text(text, encoding="utf-8")
+        patch = mock.patch.dict(os.environ, {"_AUTANA_PROJECT": str(folder)})
+        patch.start()
+        self.addCleanup(patch.stop)
+        return folder
+
+    def test_the_settings_name_the_home_and_the_port(self):
+        folder = self.project("[docs.llama]\nhome = 'models'\nport = 9911\n")
+        self.assertEqual(docs_llama.home(), folder / "models")
+        self.assertEqual(docs_llama.port(), 9911)
+
+    def test_without_settings_the_port_is_8765(self):
+        self.project()
+        self.assertEqual(docs_llama.port(), 8765)
+
+    def test_environment_variables_no_longer_name_the_home_or_the_port(self):
+        self.project()
+        with mock.patch.dict(os.environ, {"AUTANA_LLAMA_HOME": "elsewhere",
+                                          "AUTANA_LLAMA_PORT": "9"}):
+            self.assertEqual(docs_llama.port(), 8765)
+            self.assertNotEqual(docs_llama.home(), Path("elsewhere"))
+
+    def test_a_port_that_is_not_a_number_fails_naming_the_file_and_key(self):
+        self.project("[docs.llama]\nport = 'high'\n")
+        with self.assertRaises(docs_llama.autana_config.ConfigError) as raised:
+            docs_llama.port()
+        self.assertIn("docs.llama.port", str(raised.exception))
+        self.assertIn("autana.local.toml", str(raised.exception))
+
+
 class Stop(unittest.TestCase):
     def setUp(self):
         home = tempfile.mkdtemp()
-        patch = mock.patch.dict(os.environ, {"AUTANA_LLAMA_HOME": home})
+        patch = mock.patch.object(docs_llama, "home", return_value=Path(home))
         patch.start()
         self.addCleanup(patch.stop)
 
@@ -480,11 +528,11 @@ class Stop(unittest.TestCase):
 
 class RealDocuments(unittest.TestCase):
     """Exact-word retrieval must meet FLOOR on the evaluation set, whose every row names a real section.
-    The engine's own documents only: a machine's AUTANA_DOCS_EXTRA must not move this gate."""
+    The engine's own documents only: this checkout's `docs_extra` must not move this gate."""
     FLOOR = 0.5
 
     def setUp(self):
-        patch = mock.patch.dict(os.environ, {docs_search.EXTRA_ENV: ""})
+        patch = mock.patch.object(docs_search, "extra_entries", return_value=[])
         patch.start()
         self.addCleanup(patch.stop)
 

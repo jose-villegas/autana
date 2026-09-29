@@ -65,7 +65,7 @@ markdown report, and reflashes the release firmware afterwards unless given
 checkout's own `scripts/device/device.py` directly (see
 [Device-Lock.md](tools/Device-Lock.md#one-copy-of-the-tools)). A report
 script takes its
-board from `AUTANA_BOARD`, as `autana` does, else the only board plugged in;
+board from its own `--board SERIAL`, as `autana` does, else the only board plugged in;
 its one positional is the report's own path, ending in `.md`. A report script
 differs from its siblings only in what it declares — capture timeout, which
 suite, sentinel, reporter, output location — so a build flag cannot reach one
