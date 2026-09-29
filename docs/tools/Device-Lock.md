@@ -20,12 +20,12 @@ A$ autana monitor 60
    ← A holds the board and reads the console
 B$ autana status
 B  board 90:70:69:FE:A3:08 (on COM5)
-B    held by sam@bench:4120 for autana monitor since 2026-09-29 16:42:51 ...
+B    held by sam@bench:4120 for autana monitor since 16:42:51 ...
 B$ autana monitor 5
-B  board held by sam@bench:4120 (autana 0.1.0, lock protocol 2) - waiting
-B  waiting for board: queue place 1; estimated start 2026-09-29 16:43:59
+B  board held by sam@bench:4120 (autana 0.1.0, ...) - waiting
+B  waiting for board: queue place 1; estimated start 16:43:59
    ← B's command waits in the queue
-A  sam@bench:4188 is waiting for the board (autana monitor) - Ctrl+C to ...
+A  sam@bench:4188 is waiting (...) - Ctrl+C to hand it over
    ← A is told, not interrupted
 A^C
    ← A's user hands the board over
