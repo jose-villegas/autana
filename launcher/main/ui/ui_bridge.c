@@ -1,6 +1,8 @@
 /* ui_bridge - see ui_bridge.h. */
 #include "ui/ui_bridge.h"
 
+#include <stddef.h>
+
 static void
 replay(mu_Context* ctx, const ui_pointer_event_t* e) {
     switch (e->kind) {
