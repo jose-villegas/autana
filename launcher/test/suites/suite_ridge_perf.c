@@ -13,23 +13,15 @@
 #include "esp_timer.h"
 
 #include "gfx/gfx.h"
+#include "ridge_arms.h"
 #include "ui/ui_ridge.h"
 #include "util/tune.h"
 
 static const char* TAG = "ridge_perf";
 
 #define ARM_MS             10000
-#define FRAME_DT_MS        16
+#define FRAME_DT_MS        RIDGE_ARM_FRAME_DT_MS
 #define LAUNCHER_HEAL_ROWS 32
-
-typedef enum {
-    ARM_IDLE,
-    ARM_PLUCK_STRUM,
-    ARM_TILT_SWEEP,
-    ARM_TILT_WOBBLE,
-    ARM_AMBIENT,
-    ARM_AMBIENT_PORTRAIT,
-} arm_t;
 
 typedef struct {
     int64_t elapsed_us;
@@ -40,56 +32,12 @@ typedef struct {
     int frames, full_bands, gathered, partial_bands;
 } arm_result_t;
 
-static const input_t idle_input = {0};
-
-static input_t
-pluck_strum_input(int frame) {
-    return (input_t){
-        .x = (frame * 19) % GFX_WIDTH,
-        .y = GFX_HEIGHT / 2,
-        .down = true,
-        .pressed = frame == 0,
-    };
-}
-
-static void
-set_sweep_gravity(int frame) {
-    static const int gravity[][2] = {
-        {-256, 0}, {-192, -128}, {-128, -192}, {0, -256}, {128, -192}, {192, -128},
-        {256, 0},  {192, 128},   {128, 192},   {0, 256},  {-128, 192}, {-192, 128},
-    };
-    const int phase = (frame / 12) % (int)(sizeof gravity / sizeof gravity[0]);
-    ui_ridge_set_gravity(gravity[phase][0], gravity[phase][1], 256, 0);
-}
-
-/* A hand tilting the board back and forth, about 15 degrees either side of
- * landscape, once a second. */
-static void
-set_wobble_gravity(int frame) {
-    static const int gravity[][2] = {
-        {-256, 0}, {-247, 66}, {-222, 128}, {-247, 66}, {-256, 0}, {-247, -66}, {-222, -128}, {-247, -66},
-    };
-    ui_ridge_set_gravity(gravity[(frame / 8) % 8][0], gravity[(frame / 8) % 8][1], 256, 0);
-}
-
-static void
-drive(arm_t arm, int frame, input_t* input) {
-    *input = idle_input;
-    if (arm == ARM_PLUCK_STRUM) {
-        *input = pluck_strum_input(frame);
-    } else if (arm == ARM_TILT_SWEEP) {
-        set_sweep_gravity(frame);
-    } else if (arm == ARM_TILT_WOBBLE) {
-        set_wobble_gravity(frame);
-    }
-}
-
 static void
 prime(void) {
     ui_ridge_reset_for_test();
     gfx_heal_set_budget(GFX_WIDTH * LAUNCHER_HEAL_ROWS);
     gfx_heal_set_rolling(LAUNCHER_HEAL_ROWS);
-    ui_ridge_step(&idle_input, FRAME_DT_MS);
+    ui_ridge_step(&ridge_arm_idle_input, FRAME_DT_MS);
     gfx_present();
 }
 
@@ -101,7 +49,7 @@ run_arm(arm_t arm) {
     if (arm == ARM_AMBIENT_PORTRAIT) {
         ui_ridge_set_gravity(0, 256, 256, 0);
         for (int frame = 0; frame < 200; frame++) {
-            ui_ridge_step(&idle_input, FRAME_DT_MS);
+            ui_ridge_step(&ridge_arm_idle_input, FRAME_DT_MS);
             gfx_present();
         }
         gfx_reset_strip_send_counts();
@@ -111,7 +59,7 @@ run_arm(arm_t arm) {
     const int64_t began = esp_timer_get_time();
     while (esp_timer_get_time() - began < (int64_t)ARM_MS * 1000) {
         input_t input;
-        drive(arm, result.frames, &input);
+        ridge_arm_drive(arm, result.frames, &input);
 
         int64_t phase = esp_timer_get_time();
         ui_ridge_step(&input, FRAME_DT_MS);
@@ -138,6 +86,8 @@ arm_name(arm_t arm) {
         case ARM_TILT_WOBBLE: return "tilt_wobble";
         case ARM_AMBIENT: return "ambient";
         case ARM_AMBIENT_PORTRAIT: return "ambient_portrait";
+        case ARM_AMBIENT_SHAKE: return "ambient_shake";
+        case ARM_AMBIENT_BOOT: return "ambient_boot";
     }
     return "unknown";
 }
@@ -211,7 +161,7 @@ pixels_unlike_a_full_paint_counting(arm_t arm, int frames, int* dissolved) {
     TEST_ASSERT_TRUE_MESSAGE(gfx_send_audit(), "the send audit did not come on");
     for (int frame = 0; frame < frames; frame++) {
         input_t input;
-        drive(arm, frame, &input);
+        ridge_arm_drive(arm, frame, &input);
         ui_ridge_step(&input, FRAME_DT_MS);
         gfx_present();
         if (dissolved != NULL && ui_ridge_dissolving_for_test()) {
@@ -221,7 +171,7 @@ pixels_unlike_a_full_paint_counting(arm_t arm, int frames, int* dissolved) {
     /* A switch between strips still dissolving in is by design unlike a
      * full paint: let it finish, holding the last tilt. */
     for (int frame = 0; frame < 240 && ui_ridge_dissolving_for_test(); frame++) {
-        ui_ridge_step(&idle_input, FRAME_DT_MS);
+        ui_ridge_step(&ridge_arm_idle_input, FRAME_DT_MS);
         gfx_present();
     }
     TEST_ASSERT_FALSE_MESSAGE(ui_ridge_dissolving_for_test(), "a strip switch never finished dissolving in");
@@ -263,25 +213,25 @@ test_ridge_settles_after_tilting(void) {
     prime();
     input_t input;
     for (int frame = 0; frame < 160; frame++) {
-        drive(ARM_TILT_WOBBLE, frame, &input);
+        ridge_arm_drive(ARM_TILT_WOBBLE, frame, &input);
         ui_ridge_step(&input, FRAME_DT_MS);
         gfx_present();
     }
     ui_ridge_set_gravity(-240, 88, 256, 0);
     for (int frame = 0; frame < 150; frame++) {
-        ui_ridge_step(&idle_input, FRAME_DT_MS);
+        ui_ridge_step(&ridge_arm_idle_input, FRAME_DT_MS);
         gfx_present();
     }
     /* A turn of about a degree, less than the gradient follows in one step:
      * it catches up only once the ridge holds still. */
     ui_ridge_set_gravity(-241, 84, 256, 0);
     for (int frame = 0; frame < 150; frame++) {
-        ui_ridge_step(&idle_input, FRAME_DT_MS);
+        ui_ridge_step(&ridge_arm_idle_input, FRAME_DT_MS);
         gfx_present();
     }
     gfx_reset_strip_send_counts();
     for (int frame = 0; frame < 60; frame++) {
-        ui_ridge_step(&idle_input, FRAME_DT_MS);
+        ui_ridge_step(&ridge_arm_idle_input, FRAME_DT_MS);
         gfx_present();
     }
     const int64_t per_frame = gfx_get_bytes_sent() / 60;
