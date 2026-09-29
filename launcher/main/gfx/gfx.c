@@ -238,8 +238,8 @@ static struct {
 } clip;
 
 #ifdef ESP_PLATFORM
-/* Scratch space for gather_and_send(), bounded by GATHER_MAX_PIXELS,
- * allocated with MALLOC_CAP_DMA. Misalignment causes DMA errors. */
+/* Overlay save/restore scratch (see overlay_cell_save()), allocated
+ * MALLOC_CAP_DMA. */
 static gfx_color_t* gather_buf;
 
 /* The panel controller takes a window only on even edges: an odd start or
@@ -1628,10 +1628,9 @@ static inline gfx_color_t (*overlay_leaf_save(void))[LEAF_BORDER_PIXELS] {
 }
 
 /* Shared by send_full_row() and gather_and_send(), never live at once:
- * the frame loop is single-threaded. Unlike the cell/leaf scratch above,
- * this cannot borrow gather_buf - which IS the destination leaf borders
- * draw into using this list's rects, so it must survive alongside
- * gather_buf, not overlap it. Malloc'd on enable/disable (1024 bytes)
+ * the frame loop is single-threaded. Read while the save scratch in
+ * gather_buf is live, so it cannot borrow that buffer. Malloc'd on
+ * enable/disable (1024 bytes)
  * rather than static: too big for app_main()'s stack, and a permanent
  * .bss reservation fares no better given this repo's history of
  * static-growth OOMs. */

@@ -12,10 +12,10 @@ lives with that app's documents instead:
   inventory, the memory budget built around the framebuffer living in
   PSRAM, and why the SD card and the display do not share a bus.
 - **[Display-and-Rendering.md](Display-and-Rendering.md)** — the path of a
-  frame to the panel, bring-up and its four silent failures, the bus-bound
+  frame to the panel, bring-up and its silent failures, the bus-bound
   blit and the QSPI clock (80 MHz is outside the panel's rating and corrupts
   partial redraws; no clock between 40 and 80 exists), why screenshots cannot
-  see a panel-link fault, the 118 us cost per call, the dirty-tracking
+  see a panel-link fault, the fixed cost per call, the dirty-tracking
   measurements, the tearing line, and the rejected and parked ideas.
 - **[Input-and-Sensors.md](Input-and-Sensors.md)** — touch, the IMU's axes
   and its accelerometer/gyroscope split, and the two buttons that are not

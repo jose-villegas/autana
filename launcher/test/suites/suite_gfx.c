@@ -913,7 +913,7 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
  * Sanity-checking one figure against the other by multiplying is not
  * valid. */
 
-/* PROTOTYPE: measures the gather-copy path in gfx_present() - a strip whose
+/* Measures the gather-copy path in gfx_present() - a strip whose
  * real dirty width is only a fraction of the band, written directly (not
  * through gfx_fill_rect(), which always claims the whole band via
  * mark_band() regardless of what it drew - see its comment). See

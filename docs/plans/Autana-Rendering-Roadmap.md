@@ -417,7 +417,7 @@ it through the GPIO matrix. An app that redraws only dirty regions shows
 stray pixels and thin lines that persist until the region is re-sent with
 a different layout; a full-frame renderer hides them within a frame. CS
 setup, pad drive, 40 MHz window commands and double sends were each tried
-on device and none made it clean (see "The blit is bus-bound" in
+on device and none made it clean (see "80 MHz is outside the panel's rating" in
 Display-and-Rendering.md). What is planned instead: keep both clocks, as a
 system display setting with a warning for partial-redraw apps, plus an
 opt-in gfx heal that re-sends app-marked regions with a different layout

@@ -7,30 +7,11 @@ The mechanisms live there. Every number here was measured on the board, or
 read from the source. The SPI2 wiring is in
 [`Board-and-Memory.md`](Board-and-Memory.md).
 
-## The path of a frame
-
-```mermaid
-flowchart LR
-    FB["PSRAM framebuffer<br/>368 x 448 RGB565"] -.->|"draw calls mark"| DT["dirty tracker<br/>cells, leaves"]
-    DT --> GAT["gathered run"]
-    DT --> BAND["partial band"]
-    DT --> FULL["full-width strip"]
-    GAT -->|"pack"| BNC["bounce slot<br/>internal DMA RAM"]
-    BAND -->|"copy"| BNC
-    FULL -->|"copy"| BNC
-    BNC --> Q["SPI2 DMA queue"]
-    Q --> LINK["QSPI, 4 lanes"]
-    LINK --> GRAM["panel GRAM"]
-```
-
 The panel refreshes itself from its GRAM, so a region that is not sent keeps
-its last picture. A **cell** is one box of the dirty tracker's 7 x 4 grid and
-a **leaf** a finer bit under it
-([Dirty tracking](../Gfx-and-Presentation.md#dirty-tracking)). Two other
-layouts replace the framebuffer: **band mode** (`GFX_LAYOUT_BANDS`) draws
-into a two-slot **band ring** that gfx sends band by band, and
-`GFX_LAYOUT_INDEXED` keeps a palette-index image that is expanded on send
-([Modes](../Gfx-and-Presentation.md#modes)).
+its last picture. The send path, cells, leaves, gathered runs, partial bands
+and bounce slots are in [The path](../Gfx-and-Presentation.md#the-path). A
+"band" below is one of the tracker's 64-row full-width strips, not a band of
+band mode's ring.
 
 ## Bring-up
 
@@ -45,7 +26,7 @@ Owning it costs the init commands, which the BSP also keeps private.
 `gfx.c` carries one table per panel: `lcd_init_cmds` for the SH8601, copied
 from the BSP, and `co5300_init_cmds` from Waveshare's colour-bar example,
 both Apache-2.0 with attribution. The driver's defaults are no substitute:
-Waveshare tuned `0x44`, `0x53` and `0x51` for this panel.
+Waveshare tuned the SH8601's `0x44`, `0x53` and `0x51`.
 
 Driving the panel directly has four failures that give wrong output and no
 error:
@@ -94,7 +75,7 @@ arrivals can drift apart, which eats that margin.
 
 At 80 MHz a stream of small moving partial updates shows sparse red pixels
 in landscape and thin black lines in portrait or while tilting; an indexed
-image shows it only at its smallest cell size. The fault is pattern-dependent,
+image shows it only at its finest grid. The fault is pattern-dependent,
 not noise: the same window sent again next frame fails the same way, and only
 a send with a different window or strip layout heals it. Other projects at
 80 MHz redraw whole frames, so a bad pixel lives about 16 ms; gfx sends dirty
@@ -135,29 +116,31 @@ A/B the link itself - clock, pad drive, PSRAM speed - one build at a time.
 ## Cost per call
 
 A QSPI transaction has a fixed cost of about **118 us**, on top of the bytes.
-It was found by sending a 20 px-wide change one row at a time across a 64-row
-band: 7,567 us, against 1,407 us for the same band as one full-width call
-(80 MHz figures), 5.4x slower. 7,567 / 64 rows is 118 us. Espressif's
-figure of 2 us covers only DMA descriptor linking, not the rest of
-`esp_lcd_panel_io_tx_color()` and the SPI master's setup.
+It was found by sending a 20 px-wide change one row at a time across a
+64-row band: 64 calls took 7,567 us, against 1,407 us for the same band as
+one full-width call, 5.4x slower. The payload was 64 x 40 B = 2.5 KB, about
+60 us on the bus, so 7,567 / 64 = 118 us is the call, not the bytes. The
+runs were at 80 MHz: the 1,407 us matches the 1,405 us band below, not the
+3,405 us one. Espressif's figure of 2 us covers only DMA descriptor linking,
+not the rest of `esp_lcd_panel_io_tx_color()` and the SPI master's setup.
 
-So a design that sends fewer bytes by making more calls pays off only while
-the call count stays under about a dozen against one full-band call, and
-gathers are bound by the fixed cost, not by the bytes. The gather and
-run-merging thresholds in `gfx.c` are fitted at 40 MHz (`gfx.h` says so);
+So a design that sends fewer bytes by making more calls cannot win past
+1,407 / 118 = 12 calls against one full-band call, before counting its own
+bytes, and gathers are bound by the fixed cost, not by the bytes. The gather
+and run-merging thresholds in `gfx.c` are fitted at 40 MHz (`gfx.h` says so);
 they need re-measuring, not reusing, at another clock.
 
 ## Dirty tracking, measured
 
-Two reference points, used below. One band (64 rows, full width) sent alone
-costs **3,405 us** at 40 MHz, about 1,405 at 80. Seven bands inside a real
-frame cost **18,147 us**, not 7 x 3,405 = 23,835: sends queue without
-waiting and the present drains them at the end, so they pipeline, and a lone
-band has nothing to overlap with. Ratio tests use the first, a present timed
-in a real frame the second, and neither converts to the other by the band
-count. Injecting 1 ms of busy-wait before each of seven sends added only
-1,000 us to a full frame (17,825 to 18,825 us): decision work hides behind
-the DMA already in flight, except the first send's.
+Two prices for a band, used below. Sent alone, one band costs **3,405 us**
+at 40 MHz (about 1,405 at 80): nothing else is in flight to overlap with.
+Seven bands inside a real frame cost **18,147 us**, not 7 x 3,405 = 23,835,
+because each send only queues and the present waits once at the end, so
+they pipeline. The ratio tests below use the lone price; timing a present
+inside a running frame gives the pipelined one, and neither converts to the
+other by the band count. Injecting 1 ms of busy-wait before each of seven
+sends added only 1,000 us to a full frame (17,825 to 18,825 us): decision
+work hides behind the DMA already in flight, except the first send's.
 
 Against the 3,405 us band, at 40 MHz:
 
@@ -175,7 +158,8 @@ fixed-cost-bound, while the band it replaces drops to about 1,405, so at
 80 MHz it loses. An idle present costs 3 us.
 
 The third send path, a box spanning the full panel width, is already
-contiguous in the framebuffer and goes out directly (`send_partial_band()`).
+contiguous in the framebuffer, so it goes out as one copy with no packing
+(`send_partial_band()`).
 It cut present cost by about 10% on two of three full-screen workloads and
 left the third, which dirties every strip full width and height, unchanged.
 The tracker is within 3% of the exact changed-cell ideal on every portrait
@@ -186,15 +170,16 @@ run cap (2) and `GATHER_MAX_PIXELS` (8192 px) were swept against synthetic
 tests and three full-screen workloads and all stay. The run caps change
 nothing: a row of alternating 1-cell runs needs the full-row fallback
 whatever the cap, a row with one run needs one run, and no measured scene
-falls between. Raising the pixel cap buys 5-9% only by growing the DMA
-buffer out of the scarce internal heap.
+falls between. Raising the pixel cap bought 5-9% in that sweep, run when
+gathers had their own DMA buffer; gathers now pack into a `strip_bounce`
+slot, so the cost side needs re-measuring before the cap moves.
 
 Two hazards on the gather path, and what stops each:
 
 | Failure | Guard |
 |---|---|
 | A source buffer the DMA cannot read cleanly reads back subtly wrong, with no error | the bounce slots are allocated `MALLOC_CAP_DMA` |
-| A slot rewritten while its transfer is still queued | two slots, and `esp_lcd` sends a window's address commands only after the previous transfer drained, so when `esp_lcd_panel_draw_bitmap()` returns the send before it is off the bus |
+| A slot rewritten while its transfer is still queued | two slots, and `esp_lcd` sends a window's address commands only after the previous transfer has drained: once `esp_lcd_panel_draw_bitmap()` returns, the transfer before it is off the bus and its slot is free again |
 
 Geometry, who must mark and the marking cost are in
 [Dirty tracking](../Gfx-and-Presentation.md#dirty-tracking) and the header of
@@ -204,8 +189,8 @@ Geometry, who must mark and the marking cost are in
 
 Both init tables send `0x35 0x00`: tearing-effect output on, mode 1, high
 only through the vertical porch. The panel drives it on FPC pin 2, which is
-GPIO13 (the schematic's LCD_TE net). Firmware never configures that pin, and each present
-starts whenever the frame loop reaches it.
+GPIO13 (the schematic's LCD_TE net). Firmware never configures that pin, and
+each present starts whenever the frame loop reaches it.
 
 Measured on the CO5300 board (dev build, 80 MHz, a probe counting GPIO13
 edges and timing each present against them):
@@ -228,6 +213,21 @@ that only if the write stays on one side of the scan for the whole frame:
 | Band ring, 3D | pace set by render cost per band; cheap bands catch the scan | still tears |
 | Partial, a few ms | crosses only if the scan is inside its rows | rarely matters |
 
+```mermaid
+gantt
+    dateFormat x
+    axisFormat %L
+    title One TE period (about 16.9 ms), each send started on TE, in ms
+    section Panel
+    Scan of 448 rows, 16.3 ms :crit, 0, 16ms
+    TE high, porch, 0.6 ms :16, 1ms
+    section Sends
+    Full frame at 80 MHz, 9.6 ms, ahead of the scan :0, 10ms
+    Full frame at 40 MHz, 17.6 ms, outlasts the scan :0, 18ms
+    Band ring frame, about 20 ms :0, 20ms
+    Gathered or partial send, about 3 ms :0, 3ms
+```
+
 A TE wait costs up to one period of latency (8.4 ms on average) and locks the
 frame rate to 59.3 / 29.6 / 19.8 fps. A band frame runs longer than one
 period, so waiting would halve its rate. It pays only for a full-frame sender
@@ -237,7 +237,7 @@ in the full-framebuffer layout at 80 MHz whose frame fits one period.
 
 | Idea | Status | Why |
 |---|---|---|
-| A 2D dirty box sent one row per call | rejected | up to 64 calls a band at 118 us each: 5.4x slower than the band. The grid bounds a row to at most `GRID_COLS / 2` gathers |
+| A 2D dirty box sent one row per call | rejected | up to 64 calls a band at 118 us each: 5.4x slower than the band. The grid bounds a row to at most `GRID_COLS` gathers: two runs, each split at most `LEAF_REFINE_MAX_RUNS` ways |
 | A firmware fix for 80 MHz | rejected | nothing in the table above cleared it; what remains is concealment (heal) or 40 MHz |
 | A clock between 40 and 80 | impossible | the divider gives 80 or at most 40 |
 | Vertical leaf refinement | parked | leaves only narrow a run's x-range; its y-range is already exact for rows marked 2 px tall. No case needs it, and it needs a new send function, not new data |
