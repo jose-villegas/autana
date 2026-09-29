@@ -12,7 +12,21 @@
 
 #include "display/display.h"
 
+#include <math.h>
 #include <stdint.h>
+
+int
+display_panel_corner_inset(int radius, int canvas_height, int row) {
+    if (radius <= 0 || row < 0 || row >= canvas_height) {
+        return 0;
+    }
+    const int from_nearest_edge = row < canvas_height - 1 - row ? row : canvas_height - 1 - row;
+    if (from_nearest_edge >= radius) {
+        return 0;
+    }
+    const int up = radius - from_nearest_edge;
+    return radius - (int)lroundf(sqrtf((float)((radius * radius) - (up * up))));
+}
 
 void
 display_init(display_t* d) {
