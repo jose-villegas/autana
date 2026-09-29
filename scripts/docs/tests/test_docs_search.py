@@ -1,14 +1,14 @@
 """Tests for scripts/docs: sectioning, ranking, and the vector cache.
 
-Every fixture is a throwaway git repository, and the models are replaced by a
-fake embedder, so nothing here downloads or starts a server. The last class
-scores the real documentation lexically against eval_questions.tsv.
+Every fixture is a throwaway plain folder - no git repository, no git binary
+involved - and the models are replaced by a fake embedder, so nothing here
+downloads or starts a server. The last class scores the real documentation
+lexically against eval_questions.tsv.
 
     python -m unittest discover -s scripts/docs/tests
 """
 import io
 import os
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -73,8 +73,6 @@ def make_repo(files):
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
-    subprocess.run(["git", "init", "-q", str(root)], check=True)
-    subprocess.run(["git", "-C", str(root), "add", "."], check=True)
     return root
 
 
@@ -120,6 +118,61 @@ class Sections(unittest.TestCase):
         [section] = docs_search.script_sections("scripts/bake_icons.py", SCRIPT)
         self.assertTrue(section.body.startswith("Bake icons from SVG"))
         self.assertNotIn("print", section.body)
+
+
+class Corpus(unittest.TestCase):
+    """corpus_files() walks the whole checkout - no VCS index consulted, no
+    ignore file read - pruning only SKIPPED_PREFIXES, managed_components/
+    results by name, a dotdir, a real build tree (CMakeCache.txt) or a
+    fetched clone (its own .git), whatever it contains."""
+
+    def test_root_level_and_any_depth_markdown_is_included(self):
+        root = make_repo({"README.md": "# R\n", "docs/A.md": "# A\n",
+                          "design/launcher/backdrop/README.md": "# Backdrop\n"})
+        self.assertEqual({p for p, _ in docs_search.corpus_files(root)},
+                         {"README.md", "docs/A.md", "design/launcher/backdrop/README.md"})
+
+    def test_skipped_prefixes_are_still_excluded(self):
+        root = make_repo({"docs/A.md": "# A\n",
+                          "launcher/components/vendor/README.md": "# Vendor\n",
+                          "third_party/x/README.md": "# Vendored\n"})
+        self.assertEqual({p for p, _ in docs_search.corpus_files(root)}, {"docs/A.md"})
+
+    def test_a_build_named_directory_that_is_not_a_build_tree_is_not_pruned(self):
+        """launcher/tools/build/ is a real, tracked source folder that only shares
+        the name a build directory does - only a real build tree's own marker
+        file prunes a directory now, never its name."""
+        root = make_repo({"launcher/tools/build/build.sh": "#!/bin/sh\n",
+                          "launcher/build/README.md": "# Not a build tree either\n"})
+        self.assertEqual({p for p, _ in docs_search.corpus_files(root)},
+                         {"launcher/tools/build/build.sh", "launcher/build/README.md"})
+
+    def test_a_real_build_tree_is_pruned_by_its_marker_file(self):
+        root = make_repo({"launcher/build.dev/CMakeCache.txt": "# generated\n",
+                          "launcher/build.dev/stray.md": "# Stray\n",
+                          "docs/A.md": "# A\n"})
+        self.assertEqual({p for p, _ in docs_search.corpus_files(root)}, {"docs/A.md"})
+
+    def test_a_fetched_clone_is_pruned_by_its_own_git(self):
+        """A tool pulled straight from GitHub (emsdk, say) is never named with a
+        leading dot, so only checking for its own .git tells it apart from an
+        ordinary source folder."""
+        root = make_repo({"third_party_tools/emsdk/.git": "gitdir: ../modules/emsdk\n",
+                          "third_party_tools/emsdk/README.md": "# emsdk\n",
+                          "docs/A.md": "# A\n"})
+        self.assertEqual({p for p, _ in docs_search.corpus_files(root)}, {"docs/A.md"})
+
+    def test_managed_components_and_results_are_pruned_at_any_depth(self):
+        root = make_repo({
+            "launcher/managed_components/pkg/README.md": "# Pkg\n",
+            "launcher/main/apps/sand/tools/results/README.md": "# Results\n",
+            "docs/A.md": "# A\n",
+        })
+        self.assertEqual({p for p, _ in docs_search.corpus_files(root)}, {"docs/A.md"})
+
+    def test_a_dotdir_is_pruned_at_any_depth(self):
+        root = make_repo({"docs/.obsidian/cache.md": "# Cache\n", "docs/A.md": "# A\n"})
+        self.assertEqual({p for p, _ in docs_search.corpus_files(root)}, {"docs/A.md"})
 
 
 class Search(unittest.TestCase):
@@ -183,32 +236,18 @@ def fake_embed(texts, query=False):
 
 
 class Extra(unittest.TestCase):
-    """Markdown outside the tracked tree is read only when AUTANA_DOCS_EXTRA names it."""
+    """corpus_files() walks the whole checkout now, so AUTANA_DOCS_EXTRA only
+    still matters for content outside it - inside self.root is always read."""
 
     def setUp(self):
-        self.root = make_repo({
-            ".gitignore": "notes/\nvault/\nExtra.md\nNotes.txt\n",
-            "docs/Flashing.md": GUIDE,
-            "notes/Private.md": "# Private\n\n## Bench notes\n\nThe spare board's USB port is loose.\n",
-            "notes/eval_questions.tsv": "loose usb port\tnotes/Private.md\tBench notes\n",
-            "Extra.md": "# Extra\n\n## Loose ends\n\nOne more note.\n",
-            "Notes.txt": "# A plain text file whose leading comment is long enough to pass for a script\n"
-                         "# header, so only its suffix keeps it out of the index.\n",
-        })
+        self.root = make_repo({"docs/Flashing.md": GUIDE})
         self.saved = os.environ.pop(docs_search.EXTRA_ENV, None)
+        self.outside_root = Path(tempfile.mkdtemp())
 
-    def own_repository(self, name, files):
-        folder = self.root / name
+    def outside(self, files, into=None):
+        folder = into or Path(tempfile.mkdtemp())
         for file, text in files.items():
             (folder / file).parent.mkdir(parents=True, exist_ok=True)
-            (folder / file).write_text(text, encoding="utf-8")
-        subprocess.run(["git", "init", "-q", str(folder)], check=True)
-        subprocess.run(["git", "-C", str(folder), "add", "."], check=True)
-        return folder
-
-    def outside(self, files):
-        folder = Path(tempfile.mkdtemp())
-        for file, text in files.items():
             (folder / file).write_text(text, encoding="utf-8")
         return folder
 
@@ -220,33 +259,65 @@ class Extra(unittest.TestCase):
     def paths(self):
         return {s.path for s in docs_search.Index(self.root, semantic=False).sections}
 
-    def test_nothing_outside_the_tracked_tree_is_read_by_default(self):
+    def test_nothing_outside_the_checkout_is_read_by_default(self):
+        self.outside({"Private.md": "# Private\n\n## Bench notes\n\nThe spare "
+                                    "board's USB port is loose.\n"}, into=self.outside_root)
         self.assertEqual(self.paths(), {"docs/Flashing.md"})
 
-    def test_a_named_folder_and_file_are_read_under_their_checkout_paths(self):
-        os.environ[docs_search.EXTRA_ENV] = os.pathsep.join([" notes ", "Extra.md "])
-        self.assertEqual(self.paths(), {"docs/Flashing.md", "notes/Private.md", "Extra.md"})
+    def test_a_named_folder_outside_the_checkout_is_read_under_its_full_path(self):
+        notes = self.outside({
+            "Private.md": "# Private\n\n## Bench notes\n\nThe spare board's USB port is loose.\n",
+        }, into=self.outside_root)
+        os.environ[docs_search.EXTRA_ENV] = str(notes)
+        self.assertEqual(self.paths(), {"docs/Flashing.md", (notes / "Private.md").as_posix()})
+
+    def test_a_named_file_outside_the_checkout_is_read_under_its_full_path(self):
+        extra = self.outside({"Extra.md": "# Extra\n\n## Loose ends\n\nOne more note.\n"})
+        os.environ[docs_search.EXTRA_ENV] = str(extra / "Extra.md")
+        self.assertEqual(self.paths(), {"docs/Flashing.md", (extra / "Extra.md").as_posix()})
+
+    def test_a_named_folder_inside_the_checkout_is_read_under_its_checkout_path(self):
+        """AUTANA_DOCS_EXTRA also accepts a checkout-relative path - redundant
+        with the default whole-tree walk today, but still resolved the same way."""
+        (self.root / "notes").mkdir()
+        (self.root / "notes" / "Private.md").write_text(
+            "# Private\n\n## Bench notes\n\nThe spare board's USB port is loose.\n",
+            encoding="utf-8")
+        os.environ[docs_search.EXTRA_ENV] = "notes"
+        self.assertEqual(self.paths(), {"docs/Flashing.md", "notes/Private.md"})
 
     def test_an_extra_document_ranks_below_a_document_of_record(self):
-        os.environ[docs_search.EXTRA_ENV] = "notes"
+        notes = self.outside({"Private.md": "# Private\n\n## Bench notes\n\nThe spare "
+                                            "board's USB port is loose.\n"})
+        os.environ[docs_search.EXTRA_ENV] = str(notes)
         index = docs_search.Index(self.root, semantic=False)
-        extra = next(s for s in index.sections if s.path == "notes/Private.md")
+        extra = next(s for s in index.sections if s.path == (notes / "Private.md").as_posix())
         tracked = next(s for s in index.sections if s.path == "docs/Flashing.md")
         self.assertEqual(docs_search.prior(extra, index.extra), docs_search.EXTRA_PRIOR)
         self.assertEqual(docs_search.prior(tracked, index.extra), 1.0)
 
     def test_a_named_folder_brings_its_own_evaluation_rows(self):
-        row = ("loose usb port", "notes/Private.md", "bench notes")
+        notes = self.outside({
+            "Private.md": "# Private\n\n## Bench notes\n\nThe spare board's USB port is loose.\n",
+            "eval_questions.tsv": "loose usb port\tPrivate.md\tBench notes\n",
+        })
+        row = ("loose usb port", "Private.md", "bench notes")
         self.assertNotIn(row, docs_search.load_eval(self.root))
-        os.environ[docs_search.EXTRA_ENV] = "notes"
+        os.environ[docs_search.EXTRA_ENV] = str(notes)
         self.assertIn(row, docs_search.load_eval(self.root))
 
-    def test_a_folder_that_is_its_own_repository_reads_only_what_it_would_track(self):
-        self.own_repository("vault", {".gitignore": "Scratch.md\n",
-                                      "Bench Notes.md": "# Bench\n\n## Spare board\n\nLoose port.\n",
-                                      "Scratch.md": "# Scratch\n\n## Draft\n\nNot for the index.\n"})
-        os.environ[docs_search.EXTRA_ENV] = "vault"
-        self.assertEqual(self.paths(), {"docs/Flashing.md", "vault/Bench Notes.md"})
+    def test_a_named_folder_is_read_in_full_no_ignore_file_consulted(self):
+        """AUTANA_DOCS_EXTRA is a plain rglob: a folder's own .gitignore, if it has
+        one, is just another file to it - not consulted, unlike the checkout walk."""
+        vault = self.outside({
+            ".gitignore": "Scratch.md\n",
+            "Bench Notes.md": "# Bench\n\n## Spare board\n\nLoose port.\n",
+            "Scratch.md": "# Scratch\n\n## Draft\n\nStill indexed.\n",
+        })
+        os.environ[docs_search.EXTRA_ENV] = str(vault)
+        self.assertEqual(self.paths(),
+                         {"docs/Flashing.md", (vault / "Bench Notes.md").as_posix(),
+                          (vault / "Scratch.md").as_posix()})
 
     def test_an_absolute_folder_is_read_under_its_full_path(self):
         first = self.outside({"README.md": "# First\n\n## Alpha notes\n\nOne.\n"})
@@ -258,7 +329,11 @@ class Extra(unittest.TestCase):
         self.assertEqual(index.extra, labels)
 
     def test_a_named_file_that_is_not_markdown_is_not_read(self):
-        os.environ[docs_search.EXTRA_ENV] = "Notes.txt"
+        notes = self.outside({
+            "Notes.txt": "# A plain text file whose leading comment is long enough to pass for a "
+                        "script\n# header, so only its suffix keeps it out of the index.\n",
+        })
+        os.environ[docs_search.EXTRA_ENV] = str(notes / "Notes.txt")
         self.assertEqual(self.paths(), {"docs/Flashing.md"})
 
 class Semantic(unittest.TestCase):

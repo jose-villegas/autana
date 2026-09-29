@@ -58,10 +58,13 @@ An app's frame-budget capture script lives in its own `tools/` and writes
 under its own `tools/results/`. Each report script declares what it wants
 and hands the work to `launcher/tools/device/device_report.sh`, which
 builds the diagnostics variant and then flashes it and captures the run
-under one held lock - through `device.py selftest` for a report on every
-suite, or `device.py batch --runs 1` for a report on one - writes a markdown
-report, and reflashes the release firmware afterwards unless given
-`--no-restore`. A report script takes its
+under one held lock - through `autana selftest` for a report on every
+suite, or `autana suite --runs 1 --flash` for a report on one - writes a
+markdown report, and reflashes the release firmware afterwards unless given
+`--no-restore`. Like every other `autana` command it never runs a
+checkout's own `scripts/device/device.py` directly (see
+[Device-Lock.md](tools/Device-Lock.md#one-copy-of-the-tools)). A report
+script takes its
 board from `AUTANA_BOARD`, as `autana` does, else the only board plugged in;
 its one positional is the report's own path, ending in `.md`. A report script
 differs from its siblings only in what it declares — capture timeout, which

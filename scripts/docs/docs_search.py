@@ -11,12 +11,18 @@
 Options: --top N (3), --more N (5), --budget CHARS (1800), --json, --lexical.
 
 The unit of an answer is a section: a heading and the text up to the next
-heading. Every tracked Markdown file is read, plus any Markdown files or
-folders AUTANA_DOCS_EXTRA names (os.pathsep between them, each relative to
-the checkout unless absolute), plus the header of every tracked script, so
-"how do I run X" finds the script that documents itself. Each result prints
-the paragraphs that carry the question, the section's path:line range to
-read the rest, and the code it cites.
+heading. The corpus is a plain filesystem walk of the checkout, not a VCS
+index - no git command runs: every *.md under it (except third_party/ and
+launcher/components/), plus any Markdown files or folders AUTANA_DOCS_EXTRA
+names (os.pathsep between them, each relative to the checkout unless
+absolute, read in full - no ignore file is consulted), plus the header of
+every script under the tool folders, so "how do I run X" finds the script
+that documents itself. A directory named `.something`, `managed_components`
+or `results`, one that contains `CMakeCache.txt` (a real build tree,
+wherever it lands), or one that contains its own `.git` (a fetched clone,
+such as a tool pulled straight from GitHub) is never walked. Each result
+prints the paragraphs that carry the question, the section's path:line
+range to read the rest, and the code it cites.
 
 Two rankings are fused: BM25F over exact words, with the heading path weighted
 above the body, and embedding similarity from docs_llama.py's local model when
@@ -29,7 +35,6 @@ import json
 import math
 import os
 import re
-import subprocess
 import sys
 from collections import Counter, namedtuple
 from pathlib import Path
@@ -40,6 +45,7 @@ Section = namedtuple("Section", "path start end title headings level body cites"
 Hit = namedtuple("Hit", "section score coverage similarity")
 
 SKIPPED_PREFIXES = ("third_party/", "launcher/components/")
+# Scripts document themselves from under these - fixed, not read off a VCS index.
 SCRIPT_ROOTS = ("scripts/", "launcher/tools/", "launcher/test/", "launcher/main/apps/")
 SCRIPT_SUFFIXES = (".py", ".sh", ".mjs")
 # A plan describes code that does not exist yet, and a document from outside
@@ -102,25 +108,44 @@ def tokens(text):
     return out
 
 
-def git_files(root, *patterns):
-    result = subprocess.run(["git", "-C", str(root), "ls-files", "-z", "--cached", "--others",
-                             "--exclude-standard", *patterns],
-                            capture_output=True, text=True, encoding="utf-8")
-    return [p for p in result.stdout.split("\0") if p] if result.returncode == 0 else []
+def pruned(dirpath, root):
+    """Directories a walk never enters: a dotfile/dotdir by name, one of
+    SKIPPED_PREFIXES, `managed_components`/`results` by name (both can nest
+    at any depth - launcher/managed_components, an app's own tools/results),
+    a real build tree (marked by CMakeCache.txt, at whatever depth ESP-IDF or
+    the editor happened to put it), or a fetched clone with its own `.git`
+    (a submodule checkout, or a tool like emsdk pulled straight from GitHub) -
+    detected by what the directory itself contains, not by a name that might
+    collide with a real source folder (`launcher/tools/build/`, say)."""
+    name = dirpath.name
+    if name.startswith(".") or name in ("managed_components", "results"):
+        return True
+    if (dirpath.relative_to(root).as_posix() + "/").startswith(SKIPPED_PREFIXES):
+        return True
+    try:
+        children = {entry.name for entry in dirpath.iterdir()}
+    except OSError:
+        return False
+    return "CMakeCache.txt" in children or ".git" in children
+
+
+def walk_tree(root, *suffixes):
+    """root-relative posix paths, walking the whole checkout, ending in one of
+    suffixes - a plain filesystem walk, no VCS index consulted."""
+    root = Path(root)
+    found = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirpath = Path(dirpath)
+        dirnames[:] = [d for d in sorted(dirnames) if not pruned(dirpath / d, root)]
+        for name in sorted(filenames):
+            if name.endswith(suffixes):
+                found.append((dirpath / name).relative_to(root).as_posix())
+    return found
 
 
 def extra_entries(root):
     value = os.environ.get(EXTRA_ENV, "")
     return [Path(root) / entry.strip() for entry in value.split(os.pathsep) if entry.strip()]
-
-
-def own_repository(folder, root):
-    """Whether a folder belongs to a git work tree other than root's, whose ignores then apply."""
-    result = subprocess.run(["git", "-C", str(folder), "rev-parse", "--show-toplevel"],
-                            capture_output=True, text=True, encoding="utf-8")
-    if result.returncode != 0:
-        return False
-    return Path(result.stdout.strip()).resolve() != Path(root).resolve()
 
 
 def label_of(root, file):
@@ -131,28 +156,27 @@ def label_of(root, file):
 
 
 def extra_files(root):
-    """(label, file) for the Markdown AUTANA_DOCS_EXTRA names."""
+    """(label, file) for the Markdown AUTANA_DOCS_EXTRA names - read in full, no ignore
+    file consulted, since a caller names this folder precisely because it wants it read."""
     files = []
     for entry in extra_entries(root):
         if entry.is_dir():
-            if own_repository(entry, root):
-                files += [entry / p for p in git_files(entry, "*.md")]
-            else:
-                files += sorted(entry.rglob("*.md"))
+            files += sorted(entry.rglob("*.md"))
         elif entry.suffix == ".md" and entry.is_file():
             files.append(entry)
     return [(label_of(root, f), f) for f in files]
 
 
 def corpus_files(root, extra=None):
-    """(label, file) for every document: tracked Markdown, extra Markdown, script headers."""
+    """(label, file) for every document: the project's Markdown, extra Markdown, script headers."""
     root = Path(root)
-    files = [(p, root / p) for p in git_files(root, "*.md")
-             if not p.startswith(SKIPPED_PREFIXES)]
+    found = walk_tree(root, ".md", *SCRIPT_SUFFIXES)
+    markdown = [p for p in found if p.endswith(".md") and not p.startswith(SKIPPED_PREFIXES)]
+    files = [(p, root / p) for p in markdown]
     files += extra_files(root) if extra is None else extra
-    files += [(p, root / p) for p in git_files(root, *(f"*{s}" for s in SCRIPT_SUFFIXES))
-              if p.startswith(SCRIPT_ROOTS) and "/tests/" not in p
-              and not Path(p).name.startswith("test_")]
+    scripts = [p for p in found if p.endswith(SCRIPT_SUFFIXES) and p.startswith(SCRIPT_ROOTS)
+              and "/tests/" not in p and not Path(p).name.startswith("test_")]
+    files += [(p, root / p) for p in scripts]
     return list(dict.fromkeys(files))
 
 
@@ -589,8 +613,8 @@ def evaluate(index, depth=3):
 
 
 def repo_root():
-    result = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
-    return Path(result.stdout.strip()) if result.returncode == 0 else Path(__file__).resolve().parents[2]
+    """This script's own checkout root - scripts/docs/docs_search.py is always two levels down."""
+    return Path(__file__).resolve().parents[2]
 
 
 def main(argv=None, root=None):

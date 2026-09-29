@@ -871,6 +871,27 @@ class SelftestCommandTests(unittest.TestCase):
             command = called.call_args[0][0]
             self.assertEqual(command[command.index("--worktree") + 1], str(Path(directory).resolve()))
 
+    def test_out_is_forwarded(self):
+        """A report script (launcher/tools/device/device_report.sh) needs its own
+        capture path, not the command's default `records/`-rooted one."""
+        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.selftest(["--out", "C:/report/raw.log"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--out") + 1], "C:/report/raw.log")
+
+    def test_out_is_omitted_when_not_given(self):
+        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.selftest([])
+        self.assertNotIn("--out", called.call_args[0][0])
+
+    def test_perf_scope_is_forwarded(self):
+        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.selftest(["--perf-scope"])
+        self.assertIn("--perf-scope", called.call_args[0][0])
+
 
 class BatchCommandTests(unittest.TestCase):
     def test_verbose_reaches_device(self):
@@ -1177,6 +1198,26 @@ class ConsoleRoutingTests(unittest.TestCase):
             code = autana.console()
         self.assertEqual(code, 0)
         fake.assert_not_called()
+
+
+class VersionCommandTests(unittest.TestCase):
+    def run_main(self, argv):
+        with mock.patch.object(autana.sys, "argv", ["autana", *argv]):
+            with self.assertRaises(SystemExit) as stop:
+                autana.main()
+        return stop.exception.code
+
+    def test_dash_dash_version_prints_the_version_and_exits_zero(self):
+        with mock.patch("builtins.print") as printed:
+            code = self.run_main(["--version"])
+        printed.assert_called_once_with(autana.__version__)
+        self.assertEqual(code, 0)
+
+    def test_dash_v_is_the_same_flag(self):
+        with mock.patch("builtins.print") as printed:
+            code = self.run_main(["-V"])
+        printed.assert_called_once_with(autana.__version__)
+        self.assertEqual(code, 0)
 
 
 class OneShotForwardingTests(unittest.TestCase):

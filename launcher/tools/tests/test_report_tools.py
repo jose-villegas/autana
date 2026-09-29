@@ -106,8 +106,11 @@ class ReporterExitCodeTest(CaptureFixture):
 
 
 class DeviceReportArgumentsTest(unittest.TestCase):
-    """device_report.sh as a report script sources it, with `python` stubbed
-    to record the device.py call instead of reaching a board."""
+    """device_report.sh as a report script sources it, with `autana` (not
+    device.py - #454 removed --owner/--worktree/--purpose from it, and
+    device_report.sh now goes through `autana` like every other command,
+    docs/tools/Device-Lock.md) stubbed to record the call instead of
+    reaching a board."""
 
     def setUp(self):
         sys.path.insert(0, str(TOOLS.parents[1] / "scripts" / "device"))
@@ -122,20 +125,20 @@ class DeviceReportArgumentsTest(unittest.TestCase):
         self.dir = pathlib.Path(temp.name)
         self.calls = self.dir / "calls.txt"
 
-    def run_report(self, *arguments, board=""):
+    def run_report(self, *arguments, board="", suite=""):
         script = (
-            'report_name=t; report_dir="$1"; report_timeout=1; report_suite=""\n'
+            'report_name=t; report_dir="$1"; report_timeout=1; report_suite="$4"\n'
             'report_generate() { :; }\n'
             '. "$2"\n'
             'calls="$3"\n'
-            'python() { printf "%s AUTANA_BOARD=%s\\n" "$*" "$AUTANA_BOARD" >> "$calls"; '
+            'autana() { printf "%s AUTANA_BOARD=%s\\n" "$*" "$AUTANA_BOARD" >> "$calls"; '
             'return 1; }\n'
-            'shift 3\n'
+            'shift 4\n'
             'device_report_run "$@"\n')
         return subprocess.run(
             [self.bash, "-c", script, str(TOOLS / "quality" / "report_test_results.sh"),
              self.dir.as_posix(), (TOOLS / "device" / "device_report.sh").as_posix(),
-             self.calls.as_posix(), "--no-restore", *arguments],
+             self.calls.as_posix(), suite, "--no-restore", *arguments],
             cwd=self.dir, stdin=subprocess.DEVNULL, capture_output=True, text=True,
             timeout=60, env=dict(os.environ, AUTANA_BOARD=board))
 
@@ -148,6 +151,60 @@ class DeviceReportArgumentsTest(unittest.TestCase):
         self.assertNotIn("--board", self.device_calls()[0])
         self.assertTrue(self.device_calls()[0].endswith(" AUTANA_BOARD=SERIAL1"),
                         self.device_calls())
+
+    def test_a_boot_time_report_calls_autana_selftest_with_project_and_out(self):
+        self.run_report("out.md", board="SERIAL1")
+        [call] = self.device_calls()
+        argv = call.split()
+        self.assertEqual(argv[0], "selftest")
+        self.assertIn("--out", argv)
+        self.assertIn("--project", argv)
+        # #454 removed these from every command - a leftover here means
+        # device_report.sh is passing a flag autana would refuse outright.
+        self.assertNotIn("--owner", argv)
+        self.assertNotIn("--worktree", argv)
+        self.assertNotIn("--purpose", argv)
+
+    def test_a_runsuite_report_calls_autana_suite_with_the_name_runs_and_flash(self):
+        self.run_report("out.md", board="SERIAL1", suite="run_gfx_suite")
+        [call] = self.device_calls()
+        argv = call.split()
+        self.assertEqual(argv[0], "suite")
+        self.assertIn("run_gfx_suite", argv)
+        self.assertIn("--runs", argv)
+        self.assertIn("--flash", argv)
+        self.assertIn("--project", argv)
+        self.assertNotIn("--owner", argv)
+        self.assertNotIn("--worktree", argv)
+        self.assertNotIn("--purpose", argv)
+
+    def test_the_lock_owner_names_this_report_without_an_owner_flag(self):
+        """autana's lock owner comes from AUTANA_DEVICE_OWNER now, not a
+        --owner flag device_report.sh would pass - device_report_run exports
+        it once, from the report's own name, unless the caller already set one."""
+        env = dict(os.environ, AUTANA_BOARD="SERIAL1")
+        env.pop("AUTANA_DEVICE_OWNER", None)
+        script = (
+            'report_name=owner-probe; report_dir="$1"; report_timeout=1; report_suite=""\n'
+            'report_generate() { :; }\n'
+            '. "$2"\n'
+            # A function called with arguments gets its own $1/$2/$3 for the
+            # duration of that call - "$3" inside autana() would name one of
+            # ITS OWN arguments, not this script's. Capture the real path
+            # into a named variable first, same as $calls above.
+            'owner_out="$3"\n'
+            'autana() { echo "$AUTANA_DEVICE_OWNER" > "$owner_out"; return 1; }\n'
+            'shift 3\n'
+            'device_report_run "$@"\n')
+        with tempfile.TemporaryDirectory() as directory:
+            owner_file = pathlib.Path(directory) / "owner.txt"
+            subprocess.run(
+                [self.bash, "-c", script, str(TOOLS / "quality" / "report_test_results.sh"),
+                 directory, (TOOLS / "device" / "device_report.sh").as_posix(),
+                 owner_file.as_posix(), "--no-restore", "out.md"],
+                cwd=directory, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                timeout=60, env=env)
+            self.assertEqual(owner_file.read_text().strip(), "device_report owner-probe")
 
     def test_anything_but_one_report_path_is_refused_before_any_device_call(self):
         for arguments in (("SERIAL1", "out.md"), ("SERIAL1",), ("--board", "SERIAL1"),
