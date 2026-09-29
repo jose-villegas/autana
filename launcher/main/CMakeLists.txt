@@ -144,15 +144,41 @@ endif()
 set(build_id_generated_dir "${CMAKE_CURRENT_BINARY_DIR}/generated")
 if(NOT CMAKE_SCRIPT_MODE_FILE)
     file(MAKE_DIRECTORY "${build_id_generated_dir}")
-    add_custom_target(build_id_header ALL
+    file(GLOB_RECURSE build_id_inputs CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_LIST_DIR}/*.c"
+        "${CMAKE_CURRENT_LIST_DIR}/*.h"
+        "${CMAKE_CURRENT_LIST_DIR}/*.S"
+        "${CMAKE_CURRENT_LIST_DIR}/*.cmake"
+        "${CMAKE_CURRENT_LIST_DIR}/*.yml"
+        "${CMAKE_CURRENT_LIST_DIR}/../test/*.c"
+        "${CMAKE_CURRENT_LIST_DIR}/../test/*.h"
+        "${CMAKE_CURRENT_LIST_DIR}/../components/*.c"
+        "${CMAKE_CURRENT_LIST_DIR}/../components/*.h"
+        "${CMAKE_CURRENT_LIST_DIR}/../components/*.S"
+        "${CMAKE_CURRENT_LIST_DIR}/../components/*.cmake"
+        "${CMAKE_CURRENT_LIST_DIR}/../components/*.yml"
+        "${CMAKE_CURRENT_LIST_DIR}/../bootloader_components/*.c"
+        "${CMAKE_CURRENT_LIST_DIR}/../bootloader_components/*.h"
+        "${CMAKE_CURRENT_LIST_DIR}/../bootloader_components/*.S"
+        "${CMAKE_CURRENT_LIST_DIR}/../bootloader_components/*.cmake"
+        "${CMAKE_CURRENT_LIST_DIR}/../bootloader_components/*.yml")
+    file(GLOB build_id_defaults CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/../sdkconfig.defaults*")
+    set(build_id_header "${build_id_generated_dir}/build_id_generated.h")
+    set(build_id_file "${CMAKE_BINARY_DIR}/build_id.txt")
+    add_custom_command(
+        OUTPUT "${build_id_header}" "${build_id_file}"
         COMMAND ${CMAKE_COMMAND}
-            -DSOURCE_DIR=${CMAKE_CURRENT_LIST_DIR}/../..
             -DBUILD_DIR=${CMAKE_BINARY_DIR}
             -DGENERATED_DIR=${build_id_generated_dir}
             -DVARIANT=${build_id_variant}
             -P ${CMAKE_CURRENT_LIST_DIR}/build_id.cmake
-        BYPRODUCTS "${build_id_generated_dir}/build_id_generated.h"
+        DEPENDS ${build_id_inputs} ${build_id_defaults}
+                "${CMAKE_CURRENT_LIST_DIR}/../CMakeLists.txt"
+                "${CMAKE_CURRENT_LIST_DIR}/../dependencies.lock"
+                "${CMAKE_CURRENT_LIST_DIR}/../partitions.csv"
+                "${CMAKE_CURRENT_LIST_DIR}/build_id.cmake"
         VERBATIM)
+    add_custom_target(build_id_header ALL DEPENDS "${build_id_header}" "${build_id_file}")
 endif()
 
 # post.c reaches for chip identity, flash size, I2C probing and the on-die

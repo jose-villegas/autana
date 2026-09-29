@@ -72,6 +72,10 @@ wrote; `flash` then prints `flashed BUILD_ID=<id> (esptool hash verified;
 boot not verified)`, the id read from the image it wrote. It proves the
 write, not the boot, for every variant.
 
+`BUILD_ID` is generated as `YYYYMMDDTHHMMSS-<eight lowercase hex digits>-<variant>`
+when build inputs change. It identifies the image independently of a source
+checkout; the development build mark uses `HHMMSS-<first four hex digits>`.
+
 A flash is two halves in one log. `launcher/tools/build/build.sh` builds the
 image with no board lock held, so other sessions keep the board meanwhile;
 a file lock on the build directory keeps a second build of the same worktree
