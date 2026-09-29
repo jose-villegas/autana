@@ -25,7 +25,7 @@ ui_snap_point(const ui_snap_rect_t* rects, int count, mu_Vec2 point, int reach) 
             return point;
         }
     }
-    int best_distance2 = reach * reach + 1;
+    int best_distance2 = (reach * reach) + 1;
     mu_Vec2 best = point;
     for (int i = 0; i < count; i++) {
         if (!rects[i].live) {
@@ -37,7 +37,7 @@ ui_snap_point(const ui_snap_rect_t* rects, int count, mu_Vec2 point, int reach) 
         };
         const int dx = candidate.x - point.x;
         const int dy = candidate.y - point.y;
-        const int distance2 = dx * dx + dy * dy;
+        const int distance2 = (dx * dx) + (dy * dy);
         if (distance2 < best_distance2) {
             best_distance2 = distance2;
             best = candidate;
