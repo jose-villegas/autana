@@ -51,10 +51,13 @@ it readable; a flag works the same wherever the table below says it applies.
 Every board command's lock owner is `"<user>@<host>:<pid>"`, or
 `"<AUTANA_DEVICE_OWNER>:<pid>"` when that variable is set - the pid still
 distinguishes two shells that export the same override, so `autana status`
-does not mistake one for the other's own lock. `AUTANA_DEVICE_WAIT`
-overrides how long a command waits for the board's lock before giving up -
-device.py's own default (600 s) applies when it is unset. Neither is a
-flag: an unknown flag is named, e.g. `autana flash: unknown flag --owner`.
+does not mistake one for the other's own lock. How long a command
+waits for the board's lock before giving up is set for one call with the
+global option `autana --wait SECONDS <command>` (`autana --wait 0 flash`
+fails at once, exit 75), for a shell or CI job with `AUTANA_DEVICE_WAIT`,
+and is 600 s when neither is given; `--wait` wins. It goes before the
+command and covers every step the command runs. The owner is not a flag:
+an unknown flag is named, e.g. `autana flash: unknown flag --owner`.
 
 ## Build and flash
 
@@ -166,7 +169,7 @@ The two raw levels below gesture, `touch` and `imu`, live under
 A board is named by its USB serial number, so the lock follows it across
 COM number changes; with several boards plugged in, `AUTANA_BOARD=<serial>`
 picks one. If a command loses the lock it stops with `device lock was
-lost`. A command that finds the board busy and will not wait (`AUTANA_DEVICE_WAIT=0`, or its
+lost`. A command that finds the board busy and will not wait (`autana --wait 0 <command>`, or its
 wait ran out) exits 75, so a script can retry on the code alone. A separate `flash` and `suite` leave a gap where another session can
 flash; `suite --flash` and `selftest` hold one lock across flash and capture.
 Lock loss is defined in [Device-Lock.md](Device-Lock.md); flash success,

@@ -1280,6 +1280,9 @@ USAGE_WIDTH = 34
 # own usage line (`autana help flags` instead) since most commands take most
 # of these and repeating them on every line was unreadable.
 BOARD_FLAGS = (
+    ("--wait SECONDS", "global, goes before the command: wait this long for the board's lock, "
+                       "0 to fail at once (exit 75); beats AUTANA_DEVICE_WAIT",
+     "every board command"),
     ("--out PATH", "write the one capture here instead of the default path",
      "selftest, suite, monitor"),
     ("--expect-build-id ID", "refuse to run a suite unless the board, or the image `--flash` "
@@ -1294,9 +1297,9 @@ BOARD_FLAGS = (
 def board_flags_text(prefix=""):
     width = max(len(flag) for flag, _, _ in BOARD_FLAGS)
     lines = ["Every board command's lock owner is \"<user>@<host>:<pid>\", or "
-             "\"<AUTANA_DEVICE_OWNER>:<pid>\" when that variable is set. AUTANA_DEVICE_WAIT "
-             "overrides how long a command waits for the board's lock (device.py's own "
-             "default: 600 s).",
+             "\"<AUTANA_DEVICE_OWNER>:<pid>\" when that variable is set. How long a command "
+             "waits for the board's lock: the global --wait, else "
+             "AUTANA_DEVICE_WAIT, else 600 s.",
              "",
              "Flags (on top of each command's own usage above)"]
     for flag, summary, commands in BOARD_FLAGS:
@@ -1356,7 +1359,9 @@ def help_text(args, prefix="autana "):
         return f"no command or group '{topic}'; groups: " + ", ".join(
             key for key, _, _ in COMMAND_GROUPS)
     if topic is None:
-        lines.append(f"{prefix}help flags    --out/--expect-build-id/--project, which commands "
+        lines.append(f"{prefix}--wait SECONDS <command>  how long to wait for the board; 0 fails "
+                     "at once")
+        lines.append(f"{prefix}help flags    --wait/--out/--expect-build-id/--project, which commands "
                      "take them, and how the lock owner and its wait are set")
         lines.append(f"{prefix}help [topic]  one group or command"
                      + ("" if prefix else "; quit leaves the session"))
@@ -1404,23 +1409,47 @@ def install_completion():
     readline.parse_and_bind("tab: complete")
 
 
+WAIT_HINT = "--wait goes before the command: autana --wait 0 monitor 5"
+
+
+def global_wait(argv):
+    """`argv` without a leading `--wait SECONDS`, which is written into
+    AUTANA_DEVICE_WAIT - the one setting device_command() and every child
+    process read - so it covers this call and each step nested in it.
+    `--wait` anywhere after the command is refused (except `hand`'s own,
+    a different wait), because a command would otherwise report it as an
+    unknown flag without saying where it belongs."""
+    if argv[:1] == ["--wait"]:
+        seconds = argv[1] if len(argv) > 1 else ""
+        if not (seconds.isascii() and seconds.isdigit()):
+            sys.exit("autana --wait needs a non-negative integer number of seconds, "
+                     "e.g. autana --wait 0 monitor 5")
+        os.environ["AUTANA_DEVICE_WAIT"] = seconds
+        argv = argv[2:]
+    if argv[:1] != ["hand"] and any(
+            arg == "--wait" or arg.startswith("--wait=") for arg in argv[1:]):
+        sys.exit(WAIT_HINT)
+    return argv
+
+
 def main():
-    if len(sys.argv) < 2:
+    argv = global_wait(sys.argv[1:])
+    if not argv:
         sys.exit(console())
-    if sys.argv[1] in ("--version", "-V"):
+    if argv[0] in ("--version", "-V"):
         print(__version__)
         sys.exit(0)
-    if sys.argv[1] in ("help", "--help", "-h"):
-        print(help_text(sys.argv[2:]))
+    if argv[0] in ("help", "--help", "-h"):
+        print(help_text(argv[1:]))
         sys.exit(0)
-    if sys.argv[1] not in COMMANDS:
+    if argv[0] not in COMMANDS:
         # A one-shot the same as a forwarded line in a session (forward()'s
         # own docstring) - every board operation goes through autana, not
         # only the ones with a command of their own.
-        replies = forward(" ".join(sys.argv[1:]), sys.argv[1])
+        replies = forward(" ".join(argv), argv[0])
         print("\n".join(replies) if replies else "sent")
         sys.exit(0)
-    sys.exit(run_command(COMMANDS[sys.argv[1]], sys.argv[2:]))
+    sys.exit(run_command(COMMANDS[argv[0]], argv[1:]))
 
 
 if __name__ == "__main__":

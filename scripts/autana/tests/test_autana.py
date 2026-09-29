@@ -1234,6 +1234,84 @@ class VersionCommandTests(unittest.TestCase):
         self.assertEqual(code, 0)
 
 
+class GlobalWaitTests(unittest.TestCase):
+    """`autana --wait SECONDS <command>` is AUTANA_DEVICE_WAIT for one
+    call: main() writes it into the environment, so device_command() and
+    every child process read the one mechanism."""
+
+    def run_main(self, argv, environ=None, handler=None):
+        handler = handler or mock.Mock(return_value=0)
+        with mock.patch.dict(autana.os.environ, environ or {}),              mock.patch.dict(autana.COMMANDS, {"status": handler}),              mock.patch.object(autana.sys, "argv", ["autana", *argv]),              mock.patch.object(autana, "idf_python", return_value="python"),              mock.patch.object(autana, "device_tool", return_value=Path("device.py")):
+            with self.assertRaises(SystemExit) as stop:
+                autana.main()
+        return stop.exception.code, handler
+
+    def wait_seen_by_device_step(self, argv, environ=None):
+        seen = []
+
+        def handler(args):
+            seen.append(autana.device_command("status"))
+            return 0
+
+        self.run_main(argv, environ, handler)
+        command = seen[0]
+        return command[command.index("--wait") + 1] if "--wait" in command else None
+
+    def test_wait_zero_reaches_the_device_step_as_a_zero_wait(self):
+        self.assertEqual(self.wait_seen_by_device_step(["--wait", "0", "status"]), "0")
+
+    def test_wait_overrides_the_environment(self):
+        seen = self.wait_seen_by_device_step(
+            ["--wait", "7", "status"], {"AUTANA_DEVICE_WAIT": "90"})
+        self.assertEqual(seen, "7")
+
+    def test_the_environment_still_applies_without_the_option(self):
+        seen = self.wait_seen_by_device_step(["status"], {"AUTANA_DEVICE_WAIT": "90"})
+        self.assertEqual(seen, "90")
+
+    def test_the_command_receives_its_own_arguments_only(self):
+        _, handler = self.run_main(["--wait", "0", "status", "x"])
+        handler.assert_called_once_with(["x"])
+
+    def test_a_nested_process_inherits_the_wait(self):
+        seen = []
+
+        def handler(args):
+            seen.append(autana.subprocess.check_output(
+                [sys.executable, "-c",
+                 "import os; print(os.environ['AUTANA_DEVICE_WAIT'])"], text=True).strip())
+            return 0
+
+        self.run_main(["--wait", "0", "status"], {"AUTANA_DEVICE_WAIT": "90"}, handler)
+        self.assertEqual(seen, ["0"])
+
+    def test_wait_after_the_command_is_rejected_with_the_hint(self):
+        for argv in (["status", "--wait", "0"], ["monitor", "5", "--wait", "0"],
+                     ["flash", "--wait=0"]):
+            with self.subTest(argv=argv):
+                code, _ = None, None
+                with self.assertRaises(SystemExit) as stop,                      mock.patch.object(autana.sys, "argv", ["autana", *argv]):
+                    autana.main()
+                self.assertIn("--wait goes before the command: autana --wait 0 monitor 5",
+                              str(stop.exception.code))
+
+    def test_an_invalid_value_is_rejected(self):
+        for value in ("-1", "abc", "1.5", ""):
+            with self.subTest(value=value):
+                code, handler = self.run_main(["--wait", value, "status"])
+                self.assertIn("non-negative integer number of seconds", str(code))
+                handler.assert_not_called()
+
+    def test_a_missing_value_is_rejected(self):
+        code, _ = self.run_main(["--wait"])
+        self.assertIn("non-negative integer number of seconds", str(code))
+
+    def test_help_lists_the_option_once_as_a_global_option(self):
+        text = autana.help_text(["flags"])
+        self.assertEqual(text.count("--wait SECONDS"), 1)
+        self.assertEqual(autana.help_text([]).count("--wait SECONDS"), 1)
+
+
 class OneShotForwardingTests(unittest.TestCase):
     """The maintainer's rule (every board operation goes through autana)
     applies to a one-shot invocation the same as a session line - main()

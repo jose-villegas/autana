@@ -94,12 +94,23 @@ work down this list.
    reservation the notice reads `board reserved by <owner>: <note> - waiting
    (59m left, unless renewed; ...)`.
 
-3. **Do not wait.** For a script that should fail rather than queue, set the
-   wait to zero (`AUTANA_DEVICE_WAIT` is in seconds):
+3. **Do not wait.** For one command that should fail rather than queue,
+   put `--wait 0` (seconds) before it; it covers every step the command
+   runs, such as the flash inside `suite --flash`:
+
+   ```text
+   autana --wait 0 flash
+   ```
+
+   For a shell or a CI job that should always fail fast, set the default
+   instead. `--wait` beats it when both are given:
 
    | Linux | Windows PowerShell |
    |---|---|
-   | `AUTANA_DEVICE_WAIT=0 autana flash` | `$env:AUTANA_DEVICE_WAIT = "0"; autana flash` |
+   | `export AUTANA_DEVICE_WAIT=0` | `$env:AUTANA_DEVICE_WAIT = "0"` |
+
+   `--wait` is only accepted before the command (`autana --wait 0 monitor
+   5`); after it, autana says so and does nothing.
 
    ```text
    device: device lock was not acquired: board held by sam@bench:4120 for autana monitor since 2026-09-29 16:42:51; `autana status` shows the queue
@@ -233,7 +244,7 @@ alone fall back once more to the only board this machine has ever seen.
 | Variable | Effect |
 |---|---|
 | `AUTANA_DEVICE_OWNER` | The owner shown to others, as `<value>:<pid>`; `<user>@<host>:<pid>` when unset. Give each CI job its own. |
-| `AUTANA_DEVICE_WAIT` | Seconds a command waits for the lock; 600 when unset, 0 fails at once. |
+| `AUTANA_DEVICE_WAIT` | Seconds a command waits for the lock; 600 when unset, 0 fails at once. `autana --wait SECONDS <command>` overrides it for one call. |
 | `AUTANA_BOARD` | The board's USB serial number, when several are plugged in. |
 | `AUTANA_DEVICE_LOCK_ROOT` | The lock folder. |
 | `AUTANA_DEVICE_LOCK_TOKEN` | Set inside a running command for the processes it starts. |
@@ -296,7 +307,7 @@ hold the board. Call `autana` (`tools/autana` on `PATH`,
 `scripts/add-tools-to-path.sh`), never a checkout's own `device.py`: it is one
 script at one fixed location, so every call runs the same lock code whichever
 checkout started it. Name a CI job with `AUTANA_DEVICE_OWNER` and
-`AUTANA_DEVICE_WAIT`, and what gets built comes from `--project` or the
+`AUTANA_DEVICE_WAIT` (or put `--wait` before a command), and what gets built comes from `--project` or the
 current directory (`autana help build`). A report script calls `autana
 selftest`, `autana suite` or `autana flash`.
 
