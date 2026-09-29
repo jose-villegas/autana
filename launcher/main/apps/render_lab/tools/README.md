@@ -26,8 +26,9 @@ Run from the repository root.
 | `docs/images/overview/render-lab-cube.png` | `./launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o <dir>` | `gouraud-landscape.png` |
 | `docs/images/overview/render-lab-cornell.png` | the same | `cornell-landscape.png` |
 | `docs/images/overview/render-lab-cube.gif` | below | |
+| `docs/images/overview/render-lab-sponza.gif` | below | |
 
-The GIF is 100 frames of the cube, reversed back onto itself as a loop:
+The cube GIF is 100 frames, reversed back onto itself as a loop:
 
 ```sh
 R=launcher/main/apps/render_lab/tools/results/render/render_lab
@@ -35,9 +36,21 @@ R=launcher/main/apps/render_lab/tools/results/render/render_lab
 $R/render_lab_render --quarter 1 --no-hud --scene gouraud --frames 100 --dt 33 \
     -o $R/cube-motion.bmp --video $R/cube-motion.avi
 ffmpeg -y -i $R/cube-motion.avi \
-    -vf "fps=12,scale=336:-1:flags=lanczos,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0,palettegen" \
+    -vf "fps=12,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0,palettegen" \
     docs/images/overview/render-lab-cube-palette.png
 ffmpeg -y -i $R/cube-motion.avi -i docs/images/overview/render-lab-cube-palette.png \
-    -filter_complex "[0:v]fps=12,scale=336:-1:flags=lanczos,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0[v];[v][1:v]paletteuse=dither=bayer" \
+    -filter_complex "[0:v]fps=12,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0[v];[v][1:v]paletteuse=dither=bayer" \
     -loop 0 docs/images/overview/render-lab-cube.gif
+```
+
+The Sponza GIF is the first 6 s of the flythrough at 8 frames a second:
+
+```sh
+$R/render_lab_render --quarter 1 --no-hud --scene sponza --frames 90 --dt 100 \
+    -o $R/sponza-motion.bmp --video $R/sponza-motion.avi
+ffmpeg -y -t 6 -i $R/sponza-motion.avi \
+    -vf "fps=8,palettegen=stats_mode=diff" $R/sponza-palette.png
+ffmpeg -y -t 6 -i $R/sponza-motion.avi -i $R/sponza-palette.png \
+    -filter_complex "[0:v]fps=8[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" \
+    -loop 0 docs/images/overview/render-lab-sponza.gif
 ```

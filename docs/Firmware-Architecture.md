@@ -15,7 +15,7 @@ home when the app exits. Each frame has one owner per step:
 | Update and draw | current app, or a system screen | Draw into the shared framebuffer, or regenerate dirty band rows, then return. |
 | Present | shell and `gfx/` | Send changed pixels to the panel. |
 
-![The launcher, rendered on a host with fixture entries](images/overview/launcher-home.png)
+![The launcher, rendered on a host with the release build's apps](images/overview/launcher-home.png)
 
 *The launcher on a host render: fixture entries over the ridge backdrop
 (`ui/ui_ridge.c`).*

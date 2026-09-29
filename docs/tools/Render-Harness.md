@@ -28,7 +28,31 @@ the commands from the repository root; a render script writes under its
 
 | Image | Command | Output to copy |
 |---|---|---|
-| `docs/images/overview/launcher-home.png` | `./launcher/tools/render/scenes/launcher_home_render_host.sh -o <dir>` | `landscape.png` |
+| `docs/images/overview/launcher-home.png` | below | |
+| `docs/images/overview/launcher-home.gif` | below | |
+
+Both list the release firmware's apps, read from every app folder without a
+`development_only.cmake`; the scene sorts them the way the firmware does. The
+GIF is one 4 s rock of the board, 30 degrees either way:
+
+```sh
+L=launcher/tools/results/render/launcher_home
+./launcher/tools/render/scenes/launcher_home_render_host.sh
+rows=()
+for d in launcher/main/apps/*/; do
+    [ -f "$d/development_only.cmake" ] && continue
+    while IFS= read -r name; do rows+=(--row "$name"); done \
+        < <(sed -n 's/^ *\.name = "\(.*\)",\r\{0,1\}$/\1/p' "$d"app_*.c)
+done
+$L/launcher_home_render --quarter 1 "${rows[@]}" -o $L/release.bmp
+python -c "from PIL import Image; Image.open('$L/release.bmp').save('docs/images/overview/launcher-home.png')"
+$L/launcher_home_render --quarter 1 --tilt-sweep "${rows[@]}" --frames 250 --dt 16 \
+    -o $L/sweep.bmp --video $L/sweep.avi
+ffmpeg -y -i $L/sweep.avi -vf "fps=15,palettegen=stats_mode=diff" $L/sweep-palette.png
+ffmpeg -y -i $L/sweep.avi -i $L/sweep-palette.png \
+    -filter_complex "[0:v]fps=15[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" \
+    -loop 0 docs/images/overview/launcher-home.gif
+```
 
 ---
 

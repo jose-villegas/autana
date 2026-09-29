@@ -18,6 +18,7 @@
  * registered.
  */
 
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -38,6 +39,8 @@ static app_t fixture_gamma = {.name = "Gamma", .summary = "The third fixture row
 
 static app_t stated[ROWS_MAX];
 static int stated_count;
+static bool tilt_sweep;
+static int scene_quarter;
 
 static void
 register_fixture(void) {
@@ -62,6 +65,10 @@ static const render_input_step_t touch[] = {
 static bool
 options(int argc, char** argv) {
     for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--tilt-sweep") == 0) {
+            tilt_sweep = true;
+            continue;
+        }
         if (strcmp(argv[i], "--row") != 0 || i + 1 >= argc) {
             return false;
         }
@@ -82,22 +89,40 @@ options(int argc, char** argv) {
     return true;
 }
 
+#define TWO_PI 6.283185307179586
+
+static const int DOWN[4][2] = {{0, 1}, {-1, 0}, {0, -1}, {1, 0}};
+
 /* A render stands for a device held the way it is drawn and already at
  * rest: down is where that quarter's own down points on the panel, the
  * backdrop is level with it, and nothing about it depends on the clock. */
 static bool
 setup(int quarter) {
-    static const int down[4][2] = {{0, 1}, {-1, 0}, {0, -1}, {1, 0}};
     ui_launcher_init();
+    scene_quarter = quarter;
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
-    ui_ridge_set_gravity(down[quarter & 3][0], down[quarter & 3][1], 256, 0);
+    ui_ridge_set_gravity(DOWN[quarter & 3][0], DOWN[quarter & 3][1], 256, 0);
     ui_ridge_set_ambient(false);
     ui_ridge_settle();
     return true;
 }
 
+/* --tilt-sweep rocks the board 30 degrees either way over 4 s, the one
+ * motion the launcher's backdrop answers on the device. */
+static void
+sweep_gravity(uint32_t elapsed_ms) {
+    const double turn = 30.0 / 360.0 * TWO_PI * sin(TWO_PI * (double)elapsed_ms / 4000.0);
+    const int dx = DOWN[scene_quarter & 3][0], dy = DOWN[scene_quarter & 3][1];
+    const int gx = (int)lround(1000.0 * (dx * cos(turn) - dy * sin(turn)));
+    const int gy = (int)lround(1000.0 * (dx * sin(turn) + dy * cos(turn)));
+    ui_ridge_set_gravity(gx, gy, 256, 0);
+}
+
 static void
 draw(const render_frame_t* frame) {
+    if (tilt_sweep) {
+        sweep_gravity(frame->elapsed_ms);
+    }
     ui_invalidate();
     ui_launcher_frame(&frame->input, frame->dt_ms);
 }
