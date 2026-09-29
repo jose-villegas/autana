@@ -56,7 +56,9 @@ def composite(panel: Image.Image, angle: float) -> Image.Image:
     plate.paste(panel.convert("RGBA"), (MARGIN, MARGIN))
     spun = plate.rotate(-angle, Image.Resampling.BICUBIC, expand=True)
     canvas.paste(spun, ((size - spun.width) // 2, (size - spun.height) // 2), spun)
-    return canvas
+    # Scaled once, after the turn, to the panel's width: the README table
+    # keeps every column as wide as one screen.
+    return canvas.resize((panel.width, panel.width), Image.Resampling.LANCZOS)
 
 
 def main() -> None:
