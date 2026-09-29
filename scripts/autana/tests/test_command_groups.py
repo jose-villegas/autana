@@ -112,7 +112,7 @@ class CommandGroupTests(unittest.TestCase):
 
     def test_the_doc_has_a_board_flags_section_listing_every_flag(self):
         sections, _ = doc_sections()
-        board = sections["Board flags"]
+        board = sections["Flags"]
         for flag, _, commands in autana.BOARD_FLAGS:
             self.assertIn(flag, board)
             self.assertIn(commands, board)

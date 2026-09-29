@@ -76,7 +76,7 @@ suite_static_data_gate() {
 }
 
 build_diag() {
-    "$REPO_ROOT/tools/autana" build diag
+    "$REPO_ROOT/tools/autana" build diag --project "$REPO_ROOT"
 }
 
 if [ -f "$COMPILE_DB" ]; then

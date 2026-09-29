@@ -25,8 +25,9 @@ runs:
         key: idf-ccache-${{ inputs.cache-name }}-${{ github.sha }}
         restore-keys: idf-ccache-${{ inputs.cache-name }}-
 
-    # safe.directory: the container's root does not own the checkout, and
-    # autana finds the worktree it builds by asking git.
+    # safe.directory: the container's root does not own the checkout - not
+    # that autana needs git for this: each command's own `--project ..`
+    # names the repository root from launcher/, where this runs.
     #
     # COMPILERCHECK=content: the release-v5.5 tag is rebuilt in place, and
     # hashing the compiler driver is cheap next to trusting the image to keep

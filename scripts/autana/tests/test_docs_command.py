@@ -35,7 +35,7 @@ class DocsCommandTests(unittest.TestCase):
     def run_docs(self, *args):
         root = worktree()
         stream = io.StringIO()
-        with mock.patch.object(autana, "engine_worktree", return_value=str(root)), \
+        with mock.patch.object(autana, "resolve_project", return_value=str(root)), \
                 mock.patch.object(autana, "send", side_effect=AssertionError("board")), \
                 mock.patch.object(autana, "device_command", side_effect=AssertionError("board")), \
                 mock.patch.object(docs_llama, "installed", return_value=False), \
