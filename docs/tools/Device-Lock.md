@@ -55,20 +55,22 @@ each board has its own lock and queue.
 
 ## One copy of the tools
 
-Every worktree carries its own `scripts/device/`, but the lock is one set of
+Every checkout carries its own `scripts/device/`, but the lock is one set of
 files on the machine, and two versions of the lock code can each believe
-they hold the board. Nothing hands a worktree's invocation off to another
-checkout at runtime any more - instead, always call `autana` (`tools/autana`
-on `PATH`, `scripts/add-tools-to-path.sh`) rather than a worktree's own
+they hold the board. Nothing hands a checkout's invocation off to another one
+at runtime any more - instead, always call `autana` (`tools/autana` on
+`PATH`, `scripts/add-tools-to-path.sh`) rather than a checkout's own
 `scripts/device/device.py` or `device_lock.py` directly. `autana` is one
 script at one fixed location, so every call runs the same lock code
-regardless of which worktree's shell invoked it; a report script such as
+regardless of which checkout's shell invoked it; a report script such as
 `launcher/tools/device/device_report.sh` calls `autana selftest`/`autana
-suite`/`autana flash`, never a computed path to its own worktree's
-`device.py`. What gets built and flashed still comes from the worktree named
-by `--worktree` or the current directory. LOCK_PROTOCOL (below) is what
-keeps two differently-versioned copies from corrupting each other's records
-on the rare path that still runs a worktree's own copy directly.
+suite`/`autana flash`, never a computed path to its own checkout's
+`device.py`. What gets built and flashed still comes from the project named
+by `--project` or the current directory (`autana help build`). LOCK_PROTOCOL
+(below) is what keeps two differently-versioned copies from corrupting each
+other's records on the rare path that still runs a checkout's own copy
+directly - one machine can have several installs of different ages, and
+nothing here is tied to git any more (`autana help`).
 
 ## What a flash proves
 
