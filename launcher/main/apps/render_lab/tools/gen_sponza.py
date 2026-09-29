@@ -11,7 +11,7 @@ installed and the meshoptimizer submodule checked out:
     python -m venv tools/r3d/.cache/venv
     tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.txt
 
-(bin/python on Linux and macOS). Each generated file's banner records the
+(bin/python on Linux). Each generated file's banner records the
 exact command that produced it.
 
 The model is Crytek Sponza from McGuire's Computer Graphics Archive

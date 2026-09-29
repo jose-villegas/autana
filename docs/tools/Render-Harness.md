@@ -6,7 +6,7 @@ diffing any of them against a device capture.
 [`../Testing-Guide.md`](../Testing-Guide.md) is the host/device test split
 this sits inside.
 
-On Windows, run the `.sh` commands below in Git Bash. On macOS/Linux, use a
+On Windows, run the `.sh` commands below in Git Bash. On Linux, use a
 terminal. You need a host C compiler; [the README](../../README.md#try-it-without-a-board)
 lists setup commands. A **scene** is a named screen and fixture input for the
 host renderer.

@@ -20,7 +20,6 @@ __pycache__/
 *.dll
 *.so
 *.so.*
-*.dylib
 
 # Executables
 *.exe
@@ -47,7 +46,6 @@ __pycache__/
 
 # Dynamic libraries
 *.so
-*.dylib
 *.dll
 
 # Static libraries

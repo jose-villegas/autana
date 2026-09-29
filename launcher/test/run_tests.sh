@@ -19,7 +19,7 @@
 # thousands of characters; the full stream is in the printed log path.
 #
 # POSIX sh on purpose: works under Git Bash or MSYS on Windows, and natively
-# on Linux and macOS.
+# on Linux.
 
 set -eu
 
@@ -56,7 +56,6 @@ if ! CC_BIN=$(find_cc); then
     echo "No C compiler found." >&2
     echo "  Windows: winget install BrechtSanders.WinLibs.POSIX.UCRT" >&2
     echo "  Debian:  sudo apt install build-essential" >&2
-    echo "  macOS:   xcode-select --install" >&2
     exit 1
 fi
 

@@ -182,7 +182,7 @@ def resolve_clang_tidy():
             f"{PINNED_MAJOR}.x - ESP-IDF's bundled esp-clang carries it "
             "(install ESP-IDF, or source its export script so PATH finds "
             "it), or install LLVM 19 directly "
-            f"(apt install clang-tidy-{PINNED_MAJOR} / brew install llvm@{PINNED_MAJOR})."
+            f"(apt install clang-tidy-{PINNED_MAJOR})."
         )
     candidate, major = fallback
     if not allow_any:

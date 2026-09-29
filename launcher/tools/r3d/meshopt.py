@@ -37,7 +37,7 @@ def _library():
     if not (SOURCE / "meshoptimizer.h").exists():
         raise SystemExit(f"{SOURCE} is missing: run `git submodule update --init third_party/upstream/meshoptimizer`")
     CACHE.mkdir(exist_ok=True)
-    suffix = {"win32": ".dll", "darwin": ".dylib"}.get(sys.platform, ".so")
+    suffix = {"win32": ".dll"}.get(sys.platform, ".so")
     path = CACHE / f"meshopt{suffix}"
     sources = sorted(SOURCE.glob("*.cpp"))
     if not path.exists() or path.stat().st_mtime < max(s.stat().st_mtime for s in sources):

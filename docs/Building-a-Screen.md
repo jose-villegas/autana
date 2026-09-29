@@ -8,7 +8,7 @@ For the shell's frame ownership see [Firmware Architecture](Firmware-Architectur
 
 To inspect an existing screen first, run
 [`launcher_home_render_host.sh`](../launcher/tools/render/scenes/launcher_home_render_host.sh) from Git Bash on
-Windows or a terminal on macOS/Linux. Its `results/render/launcher_home/`
+Windows or a terminal on Linux. Its `results/render/launcher_home/`
 folder contains BMP output and PNG output if Pillow is installed. You need a
 host C compiler, as described in the [README](../README.md#try-it-without-a-board).
 

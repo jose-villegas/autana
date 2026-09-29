@@ -41,10 +41,6 @@ BUILDS = {
                            "e5f9d28aef5601668a769adbe1eecda6a23461246bc0e7be473ac9eb4295c9bc"),
     ("Linux", "x86_64"): ("llama-b11188-bin-ubuntu-x64.tar.gz",
                           "f6c6065c49090f76feca27207f6b9ea6f19e2f8a75c5fd8c75b9eaf3805980a2"),
-    ("Darwin", "arm64"): ("llama-b11188-bin-macos-arm64.tar.gz",
-                          "c4d6e517f01823913739c3c1e03d183aa52db4582b26a7680b6364b6e59fe7bf"),
-    ("Darwin", "x86_64"): ("llama-b11188-bin-macos-x64.tar.gz",
-                           "2fc90e0b064b8c3b5642a630f22b17ba52f0bd2937fab2bf8394319310819148"),
 }
 HF = "https://huggingface.co/"
 MODELS = {
