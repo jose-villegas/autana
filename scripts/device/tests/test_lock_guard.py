@@ -257,7 +257,7 @@ class BoardTests(Store):
         with plugged():
             entry = json.loads(self.status("--json"))["boards"][0]
         self.assertEqual((entry["state"], entry["lapsed"]),
-                         ("unlocked", {"owner": "gone", "purpose": "autana listen",
+                         ("unlocked", {"owner": "gone", "purpose": "listen",
                                        "reason": "heartbeat expiry", "at": None}))
 
 

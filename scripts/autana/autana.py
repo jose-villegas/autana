@@ -33,9 +33,8 @@ import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python  # noqa: E402
 from version import __version__  # noqa: E402
 
-# 75 (EX_TEMPFAIL): the board was busy or did not come back; 130: Ctrl+C.
-EXIT_BUSY = 75
-EXIT_INTERRUPTED = 130
+EXIT_BUSY = autana_config.EXIT_BUSY
+EXIT_INTERRUPTED = autana_config.EXIT_INTERRUPTED
 
 VARIANTS = {"rel": "release", "release": "release", "dev": "dev", "diag": "diag"}
 
@@ -103,7 +102,7 @@ def resolve_project():
     return str(project)
 
 
-COMMAND_ENV = "_AUTANA_COMMAND"
+COMMAND_ENV = autana_config.COMMAND_ENV
 
 
 @contextlib.contextmanager

@@ -645,8 +645,8 @@ class HumanWaitTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(output.call_args_list[-1].args[0], "human reservation released")
         self.assertEqual(emit.call_args_list, [
-            mock.call("human-reserved", BOARD, "agent", purpose="download mode"),
-            mock.call("human-cleared", BOARD, "agent", purpose="download mode"),
+            mock.call("human-reserved", BOARD, "agent", note="download mode"),
+            mock.call("human-cleared", BOARD, "agent", note="download mode"),
         ])
 
     def test_timeout_keeps_reservation(self):

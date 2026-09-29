@@ -83,7 +83,8 @@ work down this list.
 
    `autana lock hand <note>` means "I am using the board by hand": it reserves
    the board so every command waits or fails until `autana lock take-back`,
-   or until an hour after the last `hand`. Below a holder, `waiting:` lists
+   or until an hour after the last `hand`. It is refused while a command
+   holds the board. Below a holder, `waiting:` lists
    the queue with each estimated start; an estimate is `unknown (no duration
    history)` until that command has run a few times on this machine. A
    `stale` or `expired` line needs nothing from you: the next command takes
@@ -210,7 +211,7 @@ cannot help: an older install never looks in the new folder). Per board, with
 
 | File | What it is |
 |---|---|
-| `<serial>.json` | The lock: `owner`, `kind`, `acquired_at`, `heartbeat_at`, `host`, `pid`, `token`, `protocol`, `autana_version`. The `token` is a random secret naming this one lock; the holder and every process it starts also carry it in their environment, which `autana lock release` uses when given none. `status` never prints it. |
+| `<serial>.json` | The lock: `owner`, `board`, `kind`, `purpose`, `acquired_at`, `heartbeat_at`, `host`, `pid`, `token`, `protocol`, `autana_version`; `purpose` is what `status` shows. The `token` is a random secret naming this one lock; the holder and every process it starts also carry it in their environment, which `autana lock release` uses when given none. `status` never prints it. |
 | `<serial>.queue/` | One ticket per waiting command, in FIFO order; a dead waiter's is discarded. |
 | `<serial>.human.json` | A person's reservation, with `expires_at`. |
 | `<serial>.last.json` | The previous holder, one only: overwritten each time a lock ends, for the message in step 5. |
@@ -232,10 +233,10 @@ alone fall back once more to the only board this machine has ever seen.
 
 | Exit code | Meaning |
 |---|---|
-| `0` | Success. |
+| `0` | Success. For `lock hand --until-back`: the reservation was taken back or lapsed. |
 | `1` | Any other failure, including `device lock was lost`. |
-| `75` | The board was busy: `device lock was not acquired`, with `--wait 0` or after the wait ran out. Safe to retry on this code alone. Also `lock hand --until-back` ending with the board not handed back, its wait timed out or the reservation replaced; the reservation stands, and `0` means it was released or expired. |
-| `130` | Ctrl+C: a second one on `monitor`, the only one on `lock hand --until-back` (the reservation stands). |
+| `75` | The board was busy: `device lock was not acquired`, with `--wait 0` or after the wait ran out. Safe to retry on this code alone. Also `lock hand --until-back` when its wait runs out or the reservation is replaced; the reservation stands. |
+| `130` | Ctrl+C: the second one on `monitor`, or the first on `lock hand --until-back`, which leaves the reservation in place. |
 | `2` | `device.py` itself, for a bad command line. |
 
 `autana status --json` prints `{"boards": [...]}`, one object per board.
@@ -261,8 +262,9 @@ a hook meant for every command needs the key in every checkout. It runs
 through `cmd.exe` on Windows (`%VAR%`) and `/bin/sh` elsewhere (`$VAR`), with
 `AUTANA_LOCK_EVENT`, `AUTANA_LOCK_BOARD` (the serial number),
 `AUTANA_LOCK_OWNER`, `AUTANA_LOCK_PURPOSE` and `AUTANA_LOCK_NOTE` set. Purpose
-is that command, or the note for the `human-` events; note is empty except on
-a reclaiming `acquired`. Hooks run in separate processes and
+is the command that holds or wants the lock, empty for reservations; note is the
+reservation note for the `human-` events and `reclaimed from <owner> (<reason>)`
+on an `acquired` that took the lock from a dead or stale holder. Hooks run in separate processes and
 are not ordered across them, so one holder's `released` can arrive after the
 next holder's `acquired`. A hook has a three second timeout; a failed or
 timed out hook is quiet and never changes the lock operation's outcome.

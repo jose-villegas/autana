@@ -20,6 +20,13 @@ CONFIG_NAME = "autana.local.toml"
 PROJECT_ENV = "_AUTANA_PROJECT"
 BOARD_ENV = "_AUTANA_BOARD"
 TOKEN_ENV = "_AUTANA_DEVICE_LOCK_TOKEN"
+# The autana command a running process is for; device.py names its lock by it.
+COMMAND_ENV = "_AUTANA_COMMAND"
+
+# Exit statuses beyond 0, 1 and 2: 75 (EX_TEMPFAIL) is a board that was busy
+# or not handed back, 130 is Ctrl+C. Documented in docs/tools/Device-Lock.md.
+EXIT_BUSY = 75
+EXIT_INTERRUPTED = 130
 
 KEYS = {
     "docs_extra": (list, "extra Markdown files or folders `autana docs` searches, "

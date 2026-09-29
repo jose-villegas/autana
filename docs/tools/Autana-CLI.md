@@ -153,7 +153,7 @@ The two raw levels below gesture, `touch` and `imu`, live under
 |---|---|
 | `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
 | `autana lock release [<token>]` | Release the lock a command of this session holds, before it would have. Given a lock's token, or, run from inside the command that holds the lock, without one. |
-| `autana lock hand [--until-back <seconds>] <note...>` | Reserve the board for a person for an hour and emit `human-reserved`; running it again renews the hour, and an unrenewed reservation lapses. With `--until-back`, wait until `take-back` emits `human-cleared`. |
+| `autana lock hand [--until-back <seconds>] <note...>` | Reserve the board for a person for an hour and emit `human-reserved`; running it again renews the hour, and an unrenewed reservation lapses. Refused while a command holds the board. With `--until-back`, wait until it is taken back or lapses. |
 | `autana lock take-back` | Clear that reservation. |
 
 A board is named by its USB serial number, so the lock follows it across
@@ -168,9 +168,8 @@ The lock owner is set as described in [Flags](#flags) above.
 
 `autana lock hand --until-back 30 put the board in download mode` pauses a flash
 script until someone puts the board in download mode and runs `autana lock
-take-back`. With `--until-back`, exit 0 means that reservation was released; any
-other exit (75, or 130 for Ctrl+C) means the board did not come back and the
-reservation stands. The caller decides how to proceed.
+take-back`. With `--until-back`, exit 0 means that reservation was released or
+lapsed; the other outcomes are in [exit codes](Device-Lock.md#exit-codes-and-json-status).
 
 ## Debug
 

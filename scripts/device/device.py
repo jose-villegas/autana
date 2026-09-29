@@ -32,8 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools
 from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
 
 
-# How autana names the command it runs this process for; private, never a setting.
-COMMAND_ENV = "_AUTANA_COMMAND"
+COMMAND_ENV = autana_config.COMMAND_ENV
 
 
 def command_label(kind):
@@ -43,8 +42,7 @@ def command_label(kind):
     return f"autana {named}" if named else f"device.py {kind}"
 
 
-# Ctrl+C, as a shell reports it.
-EXIT_INTERRUPTED = 130
+EXIT_INTERRUPTED = autana_config.EXIT_INTERRUPTED
 BAUD = 115200
 ESPRESSIF_VID = 0x303A
 BUILD_ID = re.compile(rb"BUILD_ID=([^\s\r\n]+)")
@@ -440,7 +438,7 @@ class HeldLock:
         self.board = board
         self.last_notice = None
         self.held = store.acquire(board, owner, kind, wait=wait, on_wait=self.wait_notice,
-                                  command=command_label(kind))
+                                  purpose=command_label(kind))
         if not self.held:
             raise LockBusy("device lock was not acquired: "
                            + device_lock.busy_text(store.status(board), store.now()))
@@ -487,7 +485,7 @@ class HeldLock:
                 if ticket["ticket"] not in self.notified:
                     self.notified.add(ticket["ticket"])
                     print(f'{ticket["owner"]} is waiting for the board '
-                          f'({device_lock.record_label(ticket)}) - Ctrl+C to hand it over', file=sys.stderr)
+                          f'({ticket.get("purpose", "unknown")}) - Ctrl+C to hand it over', file=sys.stderr)
             if time.monotonic() >= next_heartbeat:
                 if not self.store.heartbeat(self.board, self.held["token"]):
                     self.lost.set()
@@ -1712,7 +1710,7 @@ def main(argv=None):
             active = store.status(board)["lock"]
             if active:
                 raise RuntimeError(f"board held by {active['owner']} for "
-                                   f"{device_lock.record_label(active)}; `autana lock release` "
+                                   f"{active.get("purpose", "unknown")}; `autana lock release` "
                                    "it, or wait, before handing it over")
             reservation_id, renewed = store.set_human(board, args.owner, args.note)
             if args.wait is None:

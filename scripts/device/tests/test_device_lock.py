@@ -152,8 +152,8 @@ class LockTests(unittest.TestCase):
         self.assertEqual(emit.call_args_list, [
             mock.call("acquired", "COM5", "one", "autana flash", note=""),
             mock.call("released", "COM5", "one", "autana flash"),
-            mock.call("human-reserved", "COM5", "person", purpose="panel"),
-            mock.call("human-cleared", "COM5", "person", purpose="panel"),
+            mock.call("human-reserved", "COM5", "person", note="panel"),
+            mock.call("human-cleared", "COM5", "person", note="panel"),
         ])
 
     def test_waiting_once_over_polls_and_reclaim_acquires(self):
@@ -275,7 +275,7 @@ class LockTests(unittest.TestCase):
             self.lock.clear_human("COM5")
         self.assertEqual(output.read_text().splitlines(), [
             "acquired|COM5|one|autana flash|", "released|COM5|one|autana flash|",
-            "human-reserved|COM5|person|panel|", "human-cleared|COM5|person|panel|",
+            "human-reserved|COM5|person||panel", "human-cleared|COM5|person||panel",
         ])
 
     def test_waiters_are_fifo(self):
@@ -619,7 +619,7 @@ class HumanReservationExpiryTests(unittest.TestCase):
             second, _ = self.lock.set_human("COM5", "maintainer", "bench")
         self.assertNotEqual(second, first)
         self.assertEqual(emit.call_args_list, [
-            mock.call("human-reserved", "COM5", "maintainer", purpose="bench"),
+            mock.call("human-reserved", "COM5", "maintainer", note="bench"),
         ])
 
     def test_a_record_from_before_reservations_expired_lapses_an_hour_after_it_began(self):
@@ -1007,18 +1007,32 @@ class RecordLabelTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.lock = device_lock.LockStore(Path(self.temp.name))
 
-    def test_a_held_lock_and_its_ticket_carry_the_kind_and_no_purpose(self):
-        held = self.lock.acquire("COM5", "one", "flash")
-        ticket = self.lock.enqueue("COM5", "two", "listen")
+    # What the installed autana reads off a record with [] rather than .get():
+    # a newer autana must keep writing all of it, or an older one on PATH fails
+    # (release indexes purpose after it removes the lock).
+    OLD_READER_LOCK_KEYS = {"owner", "board", "pid", "host", "heartbeat_at", "token", "purpose",
+                            "kind", "acquired_at", "protocol"}
+    OLD_READER_TICKET_KEYS = {"owner", "board", "pid", "ticket", "sequence", "purpose", "kind"}
+
+    def test_a_record_written_now_has_every_key_an_older_reader_indexes(self):
+        self.lock.acquire("COM5", "one", "flash", purpose="autana tune")
+        self.lock.enqueue("COM5", "two", "listen")
         record = self.lock.read_json(self.lock.lock_path("COM5"))
         queued = self.lock.tickets("COM5")[0]
-        self.assertEqual((record["kind"], queued["kind"]), ("flash", "listen"))
-        for stored in (record, queued):
-            self.assertNotIn("purpose", stored)
-        for gone in ("expected_build_id", "log", "purpose"):
+        self.assertLessEqual(self.OLD_READER_LOCK_KEYS, set(record))
+        self.assertLessEqual(self.OLD_READER_TICKET_KEYS, set(queued))
+        self.assertEqual(record["purpose"], "autana tune")
+        self.assertEqual(queued["purpose"], "autana listen")
+        for gone in ("expected_build_id", "log", "command"):
             self.assertNotIn(gone, record)
-        self.assertEqual(queued["ticket"], ticket)
-        self.assertEqual(held["kind"], "flash")
+
+    def test_an_older_reader_can_release_and_show_a_lock_written_now(self):
+        held = self.lock.acquire("COM5", "one", "flash")
+        lock = self.lock.read_json(self.lock.lock_path("COM5"))
+        self.assertEqual(lock["purpose"], "autana flash")
+        self.assertTrue(self.lock.release("COM5", held["token"]))
+        last = self.lock.read_json(self.lock.last_path("COM5"))
+        self.assertEqual(last["purpose"], "autana flash")
 
     def test_the_reclaim_line_comes_back_from_acquire_not_from_the_record(self):
         self.lock.acquire("COM5", "gone", "listen")
@@ -1029,13 +1043,8 @@ class RecordLabelTests(unittest.TestCase):
         self.assertIn("reclaimed lock from gone for autana listen (heartbeat expiry)", held.log)
         self.assertNotIn("log", self.lock.read_json(self.lock.lock_path("COM5")))
 
-    def test_a_record_names_itself_autana_kind(self):
-        self.assertEqual(device_lock.record_label({"kind": "flash"}), "autana flash")
-
-    def test_a_record_from_before_kind_shows_its_own_purpose_text(self):
-        self.assertEqual(device_lock.record_label({"purpose": "autana flash dev"}),
-                         "autana flash dev")
-        self.assertEqual(device_lock.record_label({}), "unknown")
+    def test_a_lock_says_autana_kind_unless_told_more(self):
+        self.assertEqual(device_lock.purpose_of("flash"), "autana flash")
 
 
 class LockRecordShapeTests(unittest.TestCase):
@@ -1049,11 +1058,11 @@ class LockRecordShapeTests(unittest.TestCase):
     GOLDEN_KEYS = {
         2: {
             "lock": frozenset({
-                "acquired_at", "board", "heartbeat_at", "host", "owner", "pid", "kind", "command",
+                "acquired_at", "board", "heartbeat_at", "host", "owner", "pid", "kind", "purpose",
                 "token", "protocol", "autana_version",
             }),
             "ticket": frozenset({
-                "board", "created_at", "owner", "pid", "kind", "command", "sequence",
+                "board", "created_at", "owner", "pid", "kind", "purpose", "sequence",
                 "ticket", "protocol", "autana_version",
             }),
             "human": frozenset({
@@ -1061,7 +1070,7 @@ class LockRecordShapeTests(unittest.TestCase):
                 "autana_version",
             }),
             "last": frozenset({
-                "board", "owner", "kind", "command", "pid", "host", "token", "acquired_at", "ended_at", "how",
+                "board", "owner", "purpose", "pid", "host", "token", "acquired_at", "ended_at", "how",
                 "protocol", "autana_version",
             }),
         },
