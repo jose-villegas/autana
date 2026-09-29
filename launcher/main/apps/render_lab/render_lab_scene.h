@@ -3,8 +3,8 @@
  * number of them behind one HUD, one BOOT menu and one scene picker.
  *
  * The app owns gfx_mode_enter()/exit(), the layout switch, BOOT handling,
- * the menu, the fps counter, draw_fps(), the orientation-generation check
- * and the band loop with ui_replay_band(). A scene owns only its own
+ * the menu, the fps counter, draw_fps(), and the orientation-generation
+ * check. A scene owns only its own
  * geometry, pose, clear colour and coverage/dirty marking.
  */
 #pragma once

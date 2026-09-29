@@ -5,7 +5,7 @@
  * returns - it owns no frame loop, framebuffer or panel access of its own.
  *
  * Owns gfx_mode_enter()/exit(), the layout switch, BOOT handling, the menu,
- * the scene picker, the fps counter and the band loop. A scene
+ * the scene picker and the fps counter. A scene
  * (render_lab_scene.h) owns only its own geometry, pose, clear colour and
  * coverage/dirty marking.
  */
@@ -334,10 +334,8 @@ render_lab_coverage_mark(render_lab_coverage_t* last, bool have, int x0, int y0,
     last->valid = have;
 }
 
-/* The band-mode frame: the fps counter and BOOT menu are built once
- * (for_bands=true) before the band loop and replayed into each band by
- * ui_replay_band() - ui.c's own general mechanism. menu_open skips the
- * scene entirely, matching render_lab_frame()'s full-fb shape. */
+/* The band-mode frame builds one UI command list; the shell replays it over
+ * each dirty band after draw_band supplies the scene rows. */
 static void
 render_lab_frame_band(uint32_t dt_ms, const input_t* input) {
     if (!menu_open) {
@@ -350,24 +348,13 @@ render_lab_frame_band(uint32_t dt_ms, const input_t* input) {
     } else if (render_lab_show_hud) {
         draw_fps(input, true);
     }
+}
 
-    gfx_band_frame_begin();
-    while (gfx_band_next()) {
-        const int row0 = gfx_band_row0();
-        const int height = gfx_band_height();
-
-        if (!gfx_band_dirty()) {
-            gfx_band_skip(); /* the panel already shows what belongs here */
-            continue;
-        }
-
-        gfx_color_t* buf = gfx_band_buffer();
-        render_lab_clear_band(buf, height);
-        if (!menu_open) {
-            current_scene()->frame_band(buf, row0, row0 + height);
-        }
-        ui_replay_band(row0, row0 + height);
-        gfx_band_submit();
+static void
+render_lab_draw_band(int row0, int row1, gfx_color_t* buf) {
+    render_lab_clear_band(buf, row1 - row0);
+    if (!menu_open) {
+        current_scene()->frame_band(buf, row0, row1);
     }
 }
 
@@ -456,6 +443,7 @@ app_t app_render_lab = {
     .summary = "Software rendering experiments",
     .enter = render_lab_enter,
     .frame = render_lab_frame,
+    .draw_band = render_lab_draw_band,
     .update = render_lab_update,
     .exit = render_lab_exit,
     .invalidate = render_lab_invalidate,

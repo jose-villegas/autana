@@ -324,7 +324,7 @@ it, keep it, and compare later.
 |---|---|
 | `ui_end(background)` | the usual case. `UI_NO_BACKGROUND` draws over an app's own output instead of clearing |
 | `ui_end_over(paint_backdrop)` | the backdrop is a picture rather than a colour |
-| `ui_end_for_bands()`, `ui_replay_band()` | band mode, where the screen is drawn a strip at a time with no whole framebuffer kept (see [`Gfx-and-Presentation.md`](Gfx-and-Presentation.md)) |
+| `ui_end_for_bands()`, `ui_replay_band()` | band mode, where the screen is drawn a strip at a time with no whole framebuffer kept. The shell passes `ui_replay_band()` to `gfx_band_run()` as the per-band overlay (see [`Gfx-and-Presentation.md`](Gfx-and-Presentation.md)) |
 | `ui_invalidate()` | something replaced the screen behind the UI's back, so the next `ui_end()` must repaint |
 
 How a panel over a paused app and a drawn backdrop use these is in

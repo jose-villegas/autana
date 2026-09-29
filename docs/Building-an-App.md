@@ -66,6 +66,7 @@ board-free preview of its drawing, declare a scene with the
 | `name`, `summary` | yes | - | launcher list text; `name` is also the sort key |
 | `enter()` | yes | once, on launch | reset state, take memory from the app arena, `gfx_mode_enter()`. May have run before. |
 | `frame(dt_ms, input)` | yes | every pass | draw and return. `dt_ms` is clamped to `FRAME_DT_MAX_MS` (250 ms). |
+| `draw_band(row0, row1, target)` | no | each dirty transient band | required with `GFX_LAYOUT_BANDS` (gfx asserts it); after `frame()`, fill full-width rows `[row0, row1)` of `target`, row0 first. gfx replays the UI over them and sends the band. |
 | `exit()` | yes | once, on leave | release what `enter()` acquired, `gfx_mode_exit()` included. Arena memory needs nothing: the shell empties the arena right after `exit()`. |
 | `update(dt_ms, input)` | no | every pass, before `frame()` | state only - **no `gfx_*`, no framebuffer**; a dev build asserts it |
 | `invalidate()` | no | once per full-redraw request, before the next `frame()` | reset a draw cache the app keeps beyond the framebuffer |
@@ -147,15 +148,14 @@ sequenceDiagram
     S->>A: invalidate() if a full redraw is pending
     S->>A: frame(dt_ms, input)
     A->>G: gfx_* draws
+    alt band mode - GFX_LAYOUT_BANDS
+        S->>G: gfx_band_run(draw_band, ui_replay_band)
+    end
     alt full-framebuffer mode
         S->>G: draw the home hint strip, home_gesture only
     end
     S->>G: gfx_present()
 ```
-
-Band mode's whole loop runs inside `frame()`, with no chance to draw
-anything once it returns, so the shell queues its home hint before calling
-`frame()` instead of drawing one after - `queue_home_hint()`, `main.c`.
 
 With `update()` - the previous frame is sent on core 1 while `update()` runs on
 core 0:
@@ -164,6 +164,7 @@ core 0:
 sequenceDiagram
     participant S as shell (core 0)
     participant A as app
+    participant G as gfx
     participant P as present task (core 1)
     S->>P: gfx_present_begin() - previous frame
     par
@@ -173,6 +174,9 @@ sequenceDiagram
     end
     S->>P: gfx_present_wait()
     S->>A: frame(dt_ms, input)
+    alt band mode - GFX_LAYOUT_BANDS
+        S->>G: gfx_band_run(draw_band, ui_replay_band)
+    end
     Note over S,P: present_unless_deferred() leaves this frame to the next pass's gfx_present_begin()
 ```
 

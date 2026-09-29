@@ -144,7 +144,7 @@ one grid cell, upscaled to the panel
 └─────────────┘
 ```
 
-In `GFX_PIXFMT_INDEXED8` mode the band is sampled once at the cell's own
+In `GFX_LAYOUT_INDEXED` mode the band is sampled once at the cell's own
 centre instead of per pixel - see "Indexed colour modes" below.
 
 ---
@@ -395,9 +395,9 @@ tint it held the moment it went still.
 
 The sand options screen's COLOR MODE defaults to 256 and picks between FULL
 (the RGB565 path, byte-identical - this document's whole pipeline
-above), 256, and 16. Both alternates request `GFX_PIXFMT_INDEXED8`
-(`gfx/gfx_mode.h`): gfx frees the PSRAM framebuffer, as `GFX_LAYOUT_BANDS`
-already does, and instead owns a persistent `grid_w x grid_h` byte image of
+above), 256, and 16. Both alternates request `GFX_LAYOUT_INDEXED`
+(`gfx/gfx_mode.h`): gfx frees the PSRAM framebuffer and instead owns a
+persistent `grid_w x grid_h` byte image of
 palette indices in internal RAM plus a 256-entry RGB565 LUT. Sand writes
 indices, never pixels (`sand_paint_row_n()` - the same function the RGB565 path
 uses, forking only at the final write so hash, mask and local depth stay

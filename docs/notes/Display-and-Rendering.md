@@ -319,20 +319,20 @@ the dirty sends. A border is on the panel for exactly the present that sent
 it; the cost is up to one extra full strip per bordered row per present,
 paid only while an overlay is on (and once more after it is switched off).
 
-`GFX_PIXFMT_INDEXED8` carries both layers too: `run_present_indexed()` sends
+`GFX_LAYOUT_INDEXED` carries both layers too: `run_present_indexed()` sends
 whole dirty strips, but its marking still goes through `dirty_mark()`, so the
 leaves are real. `send_indexed_rows()` draws the borders into the expanded
 bounce slot - a disposable copy, nothing to restore - and the same clean
 resend applies, skipped for a row that is dirty again since that row goes out
 whole anyway.
 
-The app-driven band ring feeds the same tracker through `gfx_mark_dirty()`,
-so `gfx_band_submit()` draws into the band about to be sent: cyan around the
-band for the panel-grid layer, green around each marked leaf for the leaf
+The band ring feeds the same tracker through `gfx_mark_dirty()`. The app's
+`draw_band` fills the band about to be sent. gfx then borders the filled band:
+cyan around the band for the panel-grid layer, green around each marked leaf for the leaf
 layer (`GFX_BAND_HEIGHT` is a multiple of `LEAF_H`, so a leaf never straddles
 two bands). gfx holds no copy of a band to resend, so the clean-up runs
-through the app: `gfx_band_dirty()` reports a band that was bordered last
-frame as dirty once more, and that submit goes out bare. `gfx_band_next()`
+through the app's `draw_band`: `gfx_band_dirty()` reports a band that was
+bordered last frame as dirty once more, and that send goes out bare. gfx
 resets every row's cell boxes and leaf bits at the end of the frame, the
 same reset a full-framebuffer present gives each row it sends.
 

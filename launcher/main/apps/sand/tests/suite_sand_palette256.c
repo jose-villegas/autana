@@ -1,5 +1,5 @@
 /*
- * Portable suite: the GFX_PIXFMT_INDEXED8 pipeline - material_colours()'s
+ * Portable suite: the GFX_LAYOUT_INDEXED pipeline - material_colours()'s
  * body colour mapped to a sand_palette256_lut index (material_palette.c)
  * and back out through gfx_indexed_expand_row() (gfx_indexed.h). Pure and
  * host-portable, the same reason suite_sand_*.c can drive the real

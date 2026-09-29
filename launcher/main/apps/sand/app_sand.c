@@ -94,7 +94,7 @@ static const quality_t qualities[] = {
 static int quality = QUALITY_DEFAULT;
 
 /* FULL is today's RGB565 framebuffer path, byte-identical to before this
- * option existed. 256 and 16 both run GFX_PIXFMT_INDEXED8 (gfx_mode.h); 16 also
+ * option existed. 256 and 16 both run GFX_LAYOUT_INDEXED (gfx_mode.h); 16 also
  * turns on its ordered dither against a shared 16-colour table. */
 typedef enum {
     SAND_COLOR_FULL,
@@ -131,7 +131,7 @@ _Static_assert((int)SAND_COLOR_FULL == (int)SAND_COLOUR_FULL && (int)SAND_COLOR_
                    && (int)SAND_COLOR_16 == (int)SAND_COLOUR_16,
                "sand_color_mode_t must stay ordinal-compatible with sand_colour_mode_t");
 
-/* Whether GFX_PIXFMT_INDEXED8 is actually active right now - see
+/* Whether GFX_LAYOUT_INDEXED is actually active right now - see
  * sand_colour_state.h. The rest of the app asks sand_colour_indexed_active()
  * rather than color_mode directly: a mode request can be denied, and the
  * palette/brush screens suspend it without changing color_mode at all. */
@@ -368,15 +368,14 @@ sand_dither_table_for(gfx_dither_mode_t mode) {
 static void
 apply_gfx_enter_indexed(void) {
     gfx_mode_request_t req = {0};
-    req.layout = GFX_LAYOUT_BANDS;
+    req.layout = GFX_LAYOUT_INDEXED;
     req.resolution = GFX_RESOLUTION_FULL;
-    req.pixfmt = GFX_PIXFMT_INDEXED8;
     req.index_grid_w = grid_w;
     req.index_grid_h = grid_h;
     req.cell_size = cell;
 
     const gfx_mode_t* granted = gfx_mode_enter(&req);
-    if (granted->layout != GFX_LAYOUT_BANDS) {
+    if (granted->layout != GFX_LAYOUT_INDEXED) {
         ESP_LOGW(TAG, "COLOUR %s unavailable this session - staying FULL", color_names[color_mode]);
         sand_colour_grant_failed(&colour_state);
         return;
@@ -886,7 +885,7 @@ paint_row(gfx_color_t* fb, uint8_t* index_row, int cy, const uint8_t* row, int w
  * row_paint_span() call.
  * Run detection stays full-row, so row_run_x0/x1/n keeps seeing the row's
  * true shape, not just the part just repainted. `index_image` is NULL for
- * the RGB565 path; otherwise GFX_PIXFMT_INDEXED8's own index image, and
+ * the RGB565 path; otherwise GFX_LAYOUT_INDEXED's own index image, and
  * `fb` goes unused - see sand_paint_row_n()'s own comment. */
 static int
 draw_one_row(gfx_color_t* fb, uint8_t* index_image, int cy, uint16_t* cur_x0, uint16_t* cur_x1, int wx0, int wx1,

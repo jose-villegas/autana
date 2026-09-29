@@ -345,8 +345,8 @@ void gfx_heal_restore_defaults(void);
 bool gfx_heal_active(void);
 
 /*
- * Mode: a full PSRAM framebuffer, or an internal-SRAM band ring for a
- * full-redraw renderer (docs/plans/Autana-Rendering-Roadmap.md section 3.3).
+ * Mode: a full PSRAM framebuffer, an internal-SRAM band ring for a
+ * transient renderer, or a persistent internal-RAM index image.
  * Requested from enter(), released with gfx_mode_exit() from exit(). No
  * caller ever asks for anything but full resolution; an interlace request
  * is granted (gfx_mode.h) but changes nothing drawn - gfx_set_interlace()
@@ -366,38 +366,10 @@ void gfx_mode_exit(void);
 const gfx_mode_t* gfx_mode_current(void);
 
 /*
- * The band ring, valid only while gfx_mode_current()->layout is
- * GFX_LAYOUT_BANDS:
- *
- *     gfx_band_frame_begin();
- *     while (gfx_band_next()) {
- *         ...draw into gfx_band_buffer(), rows gfx_band_row0().. ...
- *         gfx_band_submit();
- *     }
- *
- * gfx_band_next() returning false has already waited for the last band's
- * send to land.
- */
-void gfx_band_frame_begin(void);
-bool gfx_band_next(void);
-gfx_color_t* gfx_band_buffer(void);
-int gfx_band_row0(void);
-int gfx_band_height(void);
-int gfx_band_count(void);
-
-/* Queues the current band's send, waiting first for whichever previous
- * band's send is still in flight (gfx_band_ring_must_wait(), gfx_band.h) -
- * never for the one just queued. Sends the whole band, full width, in one
- * esp_lcd_panel_draw_bitmap() call. */
-void gfx_band_submit(void);
-
-/*
- * GFX_PIXFMT_INDEXED8 - a persistent index image gfx owns instead of an
- * RGB565 band, valid only between a gfx_mode_enter() request carrying that
- * pixfmt and the matching gfx_mode_exit(). The app writes indices; gfx
- * expands them through a LUT and sends them on the present task the next
- * time it calls gfx_present_begin()/gfx_present_wait() - the same two
- * calls it already uses for GFX_LAYOUT_FULL_FB, unchanged.
+ * GFX_LAYOUT_INDEXED - a persistent index image gfx owns instead of the
+ * PSRAM framebuffer, valid between a matching gfx_mode_enter()/gfx_mode_exit().
+ * The app writes indices; the present task expands them through a LUT on the
+ * same gfx_present_begin()/gfx_present_wait() path as GFX_LAYOUT_FULL_FB.
  */
 
 /* Row-major, gfx_mode_current()->index_grid_w bytes per row. Write only the
@@ -410,7 +382,7 @@ uint8_t* gfx_indexed_image(void);
 
 /*
  * Readback - the frame on the panel, row by row, for a capture. A
- * framebuffer or index image is readable at once. In RGB565 band mode the
+ * framebuffer or index image is readable at once. In GFX_LAYOUT_BANDS the
  * first gfx_readback_begin() is PENDING until a frame has redrawn every
  * band into a PSRAM copy; every band sent after that updates the copy
  * until the mode exits, so later calls are READY at once, frozen loop
@@ -431,7 +403,7 @@ void gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]);
 /* Ends a capture. Band mode's copy stays until gfx_mode_exit(). */
 void gfx_readback_end(void);
 
-/* Installs the 256-entry LUT GFX_PIXFMT_INDEXED8 expands through when 16-
+/* Installs the 256-entry LUT GFX_LAYOUT_INDEXED expands through when 16-
  * colour dithering (below) is off. Copied, not referenced: the caller's
  * own table may be `static const` and go out of scope. */
 void gfx_indexed_set_lut(const gfx_color_t lut[GFX_INDEXED_PALETTE_SIZE]);
@@ -440,7 +412,7 @@ void gfx_indexed_set_lut(const gfx_color_t lut[GFX_INDEXED_PALETTE_SIZE]);
  * mode expands through instead - see gfx_indexed.h's own comment. */
 void gfx_indexed_set_lut16(const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES]);
 
-/* Selects which of the two installed LUTs GFX_PIXFMT_INDEXED8 expands
+/* Selects which of the two installed LUTs GFX_LAYOUT_INDEXED expands
  * through - off is the 256-colour path, on is the dithered 16-colour one.
  * Both LUTs stay installed either way, so switching is free. */
 void gfx_indexed_set_dither16(bool enabled);
@@ -451,16 +423,6 @@ void gfx_indexed_set_dither16(bool enabled);
  * mode's table must hold. Meaningless in 256 mode. Safe only between
  * frames, on the present task, like every other indexed setter here. */
 void gfx_indexed_set_dither(gfx_dither_mode_t mode, const gfx_color_t* table);
-
-/* True if the band gfx_band_next() just handed out needs rendering and
- * sending - fed by the ordinary gfx_mark_dirty() calls an app and ui.c
- * already make. Always true right after gfx_mode_enter() and on any frame
- * following gfx_invalidate(). */
-bool gfx_band_dirty(void);
-
-/* The band gfx_band_next() just handed out needs no redraw - advances past
- * it without rendering or sending, in place of gfx_band_submit(). */
-void gfx_band_skip(void);
 
 /* Test-only, always declared: an unsigned trip counter for the present-in-
  * flight guard above, and whether one is in flight right now. Both return
@@ -515,7 +477,7 @@ void gfx_get_strip_send_counts(int* full_bands, int* gathered, int* partial_band
 
 /* Panel-format bytes queued since the last gfx_reset_strip_send_counts() -
  * every send path alike, so a device test can compare pixel formats that
- * have no strip/gather distinction of their own (GFX_PIXFMT_INDEXED8)
+ * have no strip/gather distinction of their own (GFX_LAYOUT_INDEXED)
  * against ones that do. */
 int64_t gfx_get_bytes_sent(void);
 

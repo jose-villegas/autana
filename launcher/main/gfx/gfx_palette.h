@@ -1,5 +1,5 @@
 /*
- * gfx_palette - what a palette IS, for GFX_PIXFMT_INDEXED8: a named list of
+ * gfx_palette - what a palette IS, for GFX_LAYOUT_INDEXED: a named list of
  * RGB565 entries, and the lookup a caller does against a reverse map built
  * for it. Standalone and ESP-IDF-free, like gfx_indexed.h.
  *
@@ -17,7 +17,7 @@
 
 /* Indices 0-15 are reserved for UI (the shell's own chrome, drawn through
  * whichever palette an app installed) in any palette meant for
- * GFX_PIXFMT_INDEXED8 - a shading colour has no business landing on one. */
+ * GFX_LAYOUT_INDEXED - a shading colour has no business landing on one. */
 #define GFX_PALETTE_UI_ENTRIES  16
 
 #define GFX_PALETTE_MAX_ENTRIES 256

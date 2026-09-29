@@ -1,5 +1,5 @@
 /*
- * gfx_palette_gen - host-only build-time helpers for GFX_PIXFMT_INDEXED8:
+ * gfx_palette_gen - host-only build-time helpers for GFX_LAYOUT_INDEXED:
  * given a finished palette, build the reverse RGB565 -> index map an
  * app's own material_palette256_index()-style lookup needs, or the
  * per-(index, Bayer phase) dither table gfx_indexed_expand_row_dither16()

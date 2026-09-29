@@ -11,6 +11,7 @@
  * BOOT button - see docs/notes/Flashing-and-Toolchain.md.
  */
 
+#include <assert.h>
 #include <ctype.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -295,11 +296,8 @@ draw_home_hint(gesture_edge_t edge) {
     gfx_fill_rect(x, y, w, h, gfx_rgb(HOME_HINT_RGB));
 }
 
-/* Band mode (gfx.h) has no framebuffer for draw_home_hint() to write into,
- * and its whole band loop runs inside frame() with no chance to draw
- * afterward - see step_app(). Queuing the hint before frame() runs lets
- * whichever ui_end_for_bands() call happens this frame (fps counter, BOOT
- * menu, whichever is showing) bin it alongside its own commands. */
+/* Band mode (gfx.h) has no framebuffer for draw_home_hint() to write into.
+ * Queue it before frame(), so the app's ui_end_for_bands() call bins it. */
 static void
 queue_home_hint(gesture_edge_t edge) {
     int x, y, w, h;
@@ -350,6 +348,12 @@ shell_request_exit(void) {
 }
 
 static void present_unless_deferred(const app_t* current);
+
+static bool
+app_band_active(const app_t* app) {
+    const gfx_mode_t* mode = gfx_mode_current();
+    return app->draw_band != NULL && mode->layout == GFX_LAYOUT_BANDS;
+}
 
 /* The app half of gfx_request_full_redraw() (gfx.h): an app's own cache
  * beyond the framebuffer, if it keeps one, or the launcher's ui.c canvas
@@ -492,11 +496,13 @@ step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, u
  * (gfx_present_begin()/gfx_present_wait(), gfx.h) - skipped while priming
  * (frame_ready false), since nothing is queued yet. THIS pass's frame()
  * output is presented the same way, deferred to
- * present_unless_deferred() next pass. */
+ * present_unless_deferred() next pass. Every frame also gives gfx_band_run()
+ * its callback; it does nothing outside GFX_LAYOUT_BANDS. */
 static void
 step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
     if (current->update == NULL) {
         current->frame(dt_ms, input);
+        gfx_band_run(current->draw_band, ui_replay_band);
         return;
     }
     if (frame_ready) {
@@ -505,6 +511,7 @@ step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
         gfx_present_wait();
     }
     current->frame(dt_ms, input);
+    gfx_band_run(current->draw_band, ui_replay_band);
     frame_ready = true;
 }
 
@@ -541,11 +548,10 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
         return;
     }
 
-    /* Band mode's whole band loop runs inside frame(), with no chance to
-     * draw anything once it returns - see queue_home_hint()'s own comment.
-     * Queued before frame() runs; the trailing draw_home_hint() below
-     * covers every other app unchanged. */
-    if ((*current)->home_gesture && gfx_mode_current()->layout == GFX_LAYOUT_BANDS) {
+    /* The band loop follows frame(), so queue the hint before the app builds
+     * the UI commands it will replay. The trailing draw_home_hint() covers
+     * every full-frame app unchanged. */
+    if ((*current)->home_gesture && app_band_active(*current)) {
         queue_home_hint(exit_edge);
     }
 
@@ -561,6 +567,8 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
 static int shell_test_enters;
 static int shell_test_frames;
 static int shell_test_exits;
+static int shell_test_updates;
+static int shell_test_band_draws;
 
 #define SHELL_TEST_ARENA_TAKE 1024u
 
@@ -592,12 +600,82 @@ static const app_t shell_test_app = {
     .exit = shell_test_exit,
 };
 
+static void
+shell_test_band_enter(void) {
+    const gfx_mode_request_t request = {.layout = GFX_LAYOUT_BANDS};
+    (void)gfx_mode_enter(&request);
+}
+
+static void
+shell_test_band_update(uint32_t dt_ms, const input_t* input) {
+    (void)dt_ms;
+    (void)input;
+    shell_test_updates++;
+}
+
+static void
+shell_test_band_frame(uint32_t dt_ms, const input_t* input) {
+    shell_test_frame(dt_ms, input);
+    gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
+}
+
+static void
+shell_test_draw_band(int row0, int row1, gfx_color_t* target) {
+    (void)row0;
+    shell_test_band_draws++;
+    for (int i = 0; i < GFX_WIDTH * (row1 - row0); i++) {
+        target[i] = 0;
+    }
+}
+
+static void
+shell_test_band_exit(void) {
+    gfx_mode_exit();
+}
+
+static const app_t shell_test_band_app = {
+    .name = "Shell band test",
+    .enter = shell_test_band_enter,
+    .frame = shell_test_band_frame,
+    .draw_band = shell_test_draw_band,
+    .update = shell_test_band_update,
+    .exit = shell_test_band_exit,
+};
+
 void
 shell_test_fixture(void) {
     shell_test_enters = 0;
     shell_test_frames = 0;
     shell_test_exits = 0;
+    shell_test_updates = 0;
+    shell_test_band_draws = 0;
     exit_requested = false;
+}
+
+bool
+shell_test_band_update_frame_and_present(void) {
+    const app_t* current = NULL;
+    input_t input = {0};
+    start_app(&current, &shell_test_band_app);
+    step_app(&current, &input, 16);
+    present_unless_deferred(current);
+
+    frame_watch_test_begin();
+    for (int i = 0; i <= FRAME_WATCH_WARMUP; i++) {
+        step_app(&current, &input, 16);
+        present_unless_deferred(current);
+    }
+    const frame_watch_verdict_t verdict = frame_watch_test_end();
+
+    const int passes = FRAME_WATCH_WARMUP + 1;
+    const gfx_mode_t* const mode = gfx_mode_current();
+    const bool stepped = mode->layout == GFX_LAYOUT_BANDS && shell_test_updates == passes
+                         && shell_test_frames == passes + 1
+                         && shell_test_band_draws == (passes + 1) * (mode->height / mode->band_height);
+    if (current != NULL) {
+        exit_app(&current);
+    }
+    return stepped && verdict.frames == 1;
 }
 
 bool

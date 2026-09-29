@@ -219,11 +219,11 @@ bool ui_end_over(ui_backdrop_fn paint_backdrop);
 void ui_invalidate(void);
 
 /*
- * Band mode (gfx.h) has no retained framebuffer, so hash-and-skip does
- * not apply: every band redraws every frame regardless. Closes the frame
- * like ui_end() does, but BINS the commands by row range instead of
- * painting - ui_replay_band() draws a band's own share later. Call once
- * per frame, before the band loop. Pass UI_NO_BACKGROUND if the caller
+ * Band mode (gfx.h) has no retained framebuffer, so ui_end()'s hash-and-skip
+ * does not apply. Closes the frame like ui_end() does, but bins commands by
+ * row range instead of painting; ui_replay_band() draws a band's share when
+ * gfx_band_run() draws that band. Call once per frame from frame(). Pass
+ * UI_NO_BACKGROUND if the caller
  * already cleared the band itself.
  */
 void ui_end_for_bands(uint32_t background_rgb);

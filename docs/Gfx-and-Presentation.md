@@ -20,15 +20,15 @@ flowchart TB
     DRAW["gfx_* draw calls<br/>or direct writes"] --> TGT["gfx_target.h<br/>clip + translate"]
     TGT --> SEL{"gfx_mode_current()"}
     SEL -->|"GFX_LAYOUT_FULL_FB"| FB["framebuffer<br/>368 x 448 RGB565, PSRAM"]
-    SEL -->|"GFX_LAYOUT_BANDS + RGB565"| BR["2-slot band ring<br/>internal DMA RAM"]
-    SEL -->|"GFX_LAYOUT_BANDS + INDEXED8"| IX["index image<br/>internal RAM"]
+    SEL -->|"GFX_LAYOUT_BANDS"| BR["2-slot band ring<br/>internal DMA RAM"]
+    SEL -->|"GFX_LAYOUT_INDEXED"| IX["index image<br/>internal RAM"]
     DRAW -.->|"marks"| DT["gfx_dirty.h<br/>7 x 4 cell grid + leaves"]
     FB --> PT["present task, core 1"]
     IX -->|"LUT expand"| PT
     DT --> PT
     PT -->|"copy"| BNC["strip_bounce / gather_buf<br/>internal DMA RAM"]
     BNC -->|"QSPI DMA"| PANEL["panel GRAM"]
-    BR -->|"QSPI DMA, from frame()"| PANEL
+    BR -->|"QSPI DMA, from shell loop"| PANEL
 ```
 
 Exactly one target is live at a time. Entering a band or indexed mode **frees
@@ -42,10 +42,10 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 
 | | Full framebuffer | Band ring | Indexed |
 |---|---|---|---|
-| Request | the default | `GFX_LAYOUT_BANDS` | `GFX_LAYOUT_BANDS` + `GFX_PIXFMT_INDEXED8` |
+| Request | the default | `GFX_LAYOUT_BANDS` | `GFX_LAYOUT_INDEXED` |
 | App writes | pixels, anywhere | pixels, one band at a time | palette indices, `gfx_indexed_image()` |
 | Buffer | 322 KiB, PSRAM | 2 x `GFX_BAND_HEIGHT` rows, DMA RAM | grid_w x grid_h bytes, internal RAM |
-| Who sends | present task | the app's own loop, inside `frame()` | present task |
+| Who sends | present task | gfx, from the shell's frame loop | present task |
 | Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole |
 | Content kept between frames | yes | **no** - a band is gone once sent | yes |
 | For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette |
@@ -164,53 +164,50 @@ The wait is mandatory: DMA is still reading the buffer until it returns.
 
 ## The band ring
 
-The app drives the send itself, inside `frame()`:
-
-```c
-gfx_band_frame_begin();
-while (gfx_band_next()) {
-    if (!gfx_band_dirty()) {
-        gfx_band_skip();            /* panel still shows it */
-        continue;
-    }
-    /* draw this band into gfx_band_buffer(); gfx_* calls are translated */
-    gfx_band_submit();
-}
-```
+A picture is either **persistent** - a framebuffer or index image read by gfx
+on core 1 after `frame()` - or **transient** - an app's `draw_band` callback,
+called for each dirty band. gfx owns every send. A transient app requests
+`GFX_LAYOUT_BANDS` in `enter()` and supplies `draw_band`; gfx calls it once
+per dirty band, replays the UI over it, then submits the finished band.
+An app without `draw_band` keeps its persistent presentation path in
+`GFX_LAYOUT_FULL_FB` or `GFX_LAYOUT_INDEXED`.
 
 Two slots, so band k+1 renders while band k is on the wire:
 
 ```mermaid
 sequenceDiagram
-    participant A as app frame()
+    participant S as shell
+    participant G as gfx
+    participant A as app draw_band callback
     participant S0 as slot 0
     participant S1 as slot 1
     participant Q as QSPI
-    A->>S0: render band 0
-    A->>Q: submit band 0
-    A->>S1: render band 1
-    Note over A,Q: wait for band 0 to land
-    A->>Q: submit band 1
-    A->>S0: render band 2
-    Note over A,Q: wait for band 1 to land
-    A->>Q: submit band 2
+    S->>G: gfx_band_run()
+    G->>A: draw band 0
+    A->>S0: fill rows
+    G->>S0: replay UI
+    G->>Q: submit band 0
+    G->>A: draw band 1
+    A->>S1: fill rows
+    Note over G,Q: wait for band 0 to land
+    G->>S1: replay UI
+    G->>Q: submit band 1
 ```
 
-- `gfx_band_submit()` waits only for the *previous* band, never the one it
-  just queued. `gfx_band_next()` returning false has waited for the last.
+- `gfx_band_run()` waits for a slot only when it comes round again.
 - The ring state machine is `gfx_band.h`, pure and host-tested.
 - The first frame after `gfx_mode_enter()`, and any frame after
   `gfx_invalidate()`, forces every band.
-- A UI over a band renderer is built once and replayed per band:
-  `ui_end_for_bands()` bins the command list by rows, `ui_replay_band()`
-  draws a band's share. The shell queues its home hint with
-  `ui_queue_band_overlay_rect()` before `frame()`, since nothing can draw
-  after the loop.
-- `gfx_band_dirty()` answers for the band `gfx_band_next()` just handed
-  out; `gfx_band_submit()` sends that band whole, one
-  `esp_lcd_panel_draw_bitmap()` per band, straight from the buffer the app
-  drew. The transfer takes no source stride, so sending fewer columns would
-  mean repacking the rows first.
+- A UI over a band renderer is built once and replayed per dirty band:
+  `ui_end_for_bands()` bins the command list by rows. The shell passes
+  `ui_replay_band()` to `gfx_band_run()` as its overlay, which draws a
+  band's share after the app's content. The shell queues its home hint with
+  `ui_queue_band_overlay_rect()` before `frame()`, because the app's
+  `ui_end_for_bands()` call inside `frame()` bins it.
+- Each dirty band goes out whole: `gfx_band_run()` makes one
+  `esp_lcd_panel_draw_bitmap()` call per band, straight from the buffer the
+  app drew. The transfer takes no source stride, so sending fewer columns
+  would mean repacking the rows first.
 
 ## Indexed mode
 

@@ -24,6 +24,7 @@
 
 #include "display/display.h"
 #include "gfx/gfx.h"
+#include "gfx/gfx_band_run.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
 
@@ -74,6 +75,21 @@ typedef struct {
     int frames;
 } wire_totals_t;
 
+static wire_totals_t* band_totals;
+
+static void
+draw_wire_band(int row0, int row1, gfx_color_t* buf) {
+    const int64_t started = esp_timer_get_time();
+    render_lab_clear_band(buf, row1 - row0);
+    wire_draw_band(buf, row0, row1);
+    band_totals->draw_us += esp_timer_get_time() - started;
+}
+
+static void
+replay_wire_band(int row0, int row1) {
+    ui_replay_band(row0, row1);
+}
+
 static void
 run_full_fb_frame(wire_totals_t* t, uint32_t dt_ms) {
     const int64_t frame_start = esp_timer_get_time();
@@ -102,9 +118,7 @@ run_full_fb_frame(wire_totals_t* t, uint32_t dt_ms) {
     t->frames++;
 }
 
-/* render_lab_frame_band()'s own shape, rebuilt from scene_wire.c's exposed
- * pieces - wire_mark_bbox_dirty() must run once per frame, before the band
- * loop, the only reason gfx_band_dirty() below ever returns true. */
+/* wire_mark_bbox_dirty() must run once per frame, before gfx_band_run(). */
 static void
 run_band_frame(wire_totals_t* t, uint32_t dt_ms) {
     const int64_t frame_start = esp_timer_get_time();
@@ -125,25 +139,9 @@ run_band_frame(wire_totals_t* t, uint32_t dt_ms) {
 
     draw_fps(&null_input, true);
 
-    gfx_band_frame_begin();
-    while (gfx_band_next()) {
-        const int row0 = gfx_band_row0();
-        const int height = gfx_band_height();
-
-        if (!gfx_band_dirty()) {
-            gfx_band_skip();
-            continue;
-        }
-
-        gfx_color_t* buf = gfx_band_buffer();
-        const int64_t d0 = esp_timer_get_time();
-        render_lab_clear_band(buf, height);
-        wire_draw_band(buf, row0, row0 + height);
-        t->draw_us += esp_timer_get_time() - d0;
-
-        ui_replay_band(row0, row0 + height);
-        gfx_band_submit();
-    }
+    band_totals = t;
+    gfx_band_run(draw_wire_band, replay_wire_band);
+    band_totals = NULL;
 
     t->frame_us += esp_timer_get_time() - frame_start;
     t->frames++;
