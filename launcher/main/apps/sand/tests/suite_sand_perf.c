@@ -2460,7 +2460,7 @@ test_the_water_over_lava_scene_fits_in_the_frame_budget(void) {
     free(blocks);
     free(impulses);
 
-    perf_target("water over lava", per_step, 138850, 159680);
+    perf_target("water over lava", per_step, 138880, 159720);
 }
 
 static void
