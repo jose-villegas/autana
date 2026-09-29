@@ -2,9 +2,10 @@
 
 Per-checkout facts only, read by every autana script that needs one; the
 environment is never a second way to set any of them. Python 3.9 has no
-tomllib, so this reads the subset the keys need - strings, integers, arrays of
-strings and `[table]` headers - and refuses anything else by line, as it
-refuses an unknown key.
+tomllib, so this reads exactly what the one writer of the file emits - flat
+`key = "..."` or `key = '...'` lines and one-line arrays of such strings - and
+refuses anything else by line, as it refuses an unknown key. The syntax is
+TOML's, so tomllib can replace this reader later.
 """
 
 import os
@@ -20,7 +21,6 @@ PROJECT_ENV = "_AUTANA_PROJECT"
 BOARD_ENV = "_AUTANA_BOARD"
 TOKEN_ENV = "_AUTANA_DEVICE_LOCK_TOKEN"
 
-# key -> (type, meaning). `docs.llama.home` is `home` under `[docs.llama]`.
 KEYS = {
     "docs_extra": (list, "extra Markdown files or folders `autana docs` searches, "
                          "relative to the project"),
@@ -28,9 +28,6 @@ KEYS = {
                      "in the checkout"),
     "lock_hook": (str, "shell command run on every device lock event; fires only for "
                        "commands run from a checkout whose file sets it"),
-    "docs.llama.home": (str, "where the docs model and its server live; default is "
-                             "per user, shared by every checkout"),
-    "docs.llama.port": (int, "the docs model server's local port; 8765 by default"),
 }
 
 
@@ -46,119 +43,76 @@ def help_text():
     lines = [f"{CONFIG_NAME} in the project folder holds per-checkout settings; "
              "gitignored, optional.", ""]
     for key, (kind, meaning) in KEYS.items():
-        lines.append(f"  {key:<16} {kind.__name__:<5} {meaning}")
+        lines.append(f"  {key:<11} {kind.__name__:<5} {meaning}")
     return "\n".join(lines)
 
 
-class Reader:
-    def __init__(self, path, text):
-        self.path, self.text, self.at, self.line = path, text, 0, 1
+def string(text, at, fail):
+    """The string starting at text[at] and the index after it."""
+    quote, out = text[at], []
+    at += 1
+    while at < len(text):
+        char = text[at]
+        at += 1
+        if char == quote:
+            return "".join(out), at
+        if char == "\\" and quote == '"':
+            escape = text[at:at + 1]
+            at += 1
+            if escape not in ("\\", '"'):
+                fail(f"unsupported escape \\{escape} in a string; use a 'literal string' for paths")
+            out.append(escape)
+        else:
+            out.append(char)
+    fail("a string is not closed on its line")
 
-    def fail(self, message):
-        raise ConfigError(f"{self.path}:{self.line}: {message}")
 
-    def peek(self):
-        return self.text[self.at] if self.at < len(self.text) else ""
-
-    def skip_blank(self, newlines):
-        while self.peek() and (self.peek() in " \t\r" or (newlines and self.peek() == "\n")
-                               or self.peek() == "#"):
-            if self.peek() == "#":
-                while self.peek() and self.peek() != "\n":
-                    self.at += 1
-                continue
-            if self.peek() == "\n":
-                self.line += 1
-            self.at += 1
-
-    def string(self):
-        quote = self.peek()
-        self.at += 1
-        out = []
-        while True:
-            char = self.peek()
-            if not char or char == "\n":
-                self.fail("a string is not closed on its line")
-            self.at += 1
-            if char == quote:
-                return "".join(out)
-            if char == "\\" and quote == '"':
-                escape = self.peek()
-                self.at += 1
-                if escape not in ('\\', '"', "n", "t"):
-                    self.fail(f"unsupported escape \\{escape} in a string; "
-                              "use a 'literal string' for paths")
-                out.append({"n": "\n", "t": "\t"}.get(escape, escape))
-            else:
-                out.append(char)
-
-    def value(self):
-        char = self.peek()
-        if char in ('"', "'"):
-            return self.string()
-        if char == "[":
-            self.at += 1
-            items = []
-            while True:
-                self.skip_blank(newlines=True)
-                if self.peek() == "]":
-                    self.at += 1
-                    return items
-                if self.peek() not in ('"', "'"):
-                    self.fail("an array holds strings only")
-                items.append(self.string())
-                self.skip_blank(newlines=True)
-                if self.peek() == ",":
-                    self.at += 1
-                elif self.peek() != "]":
-                    self.fail("expected , or ] in an array")
-        match = re.compile(r"-?\d+").match(self.text, self.at)
-        if not match:
-            self.fail("a value is a string, an integer or an array of strings")
-        self.at = match.end()
-        return int(match.group())
+def value(text, at, fail):
+    """A string or a one-line array of strings from text[at:], and what follows it."""
+    if text[at:at + 1] in ('"', "'"):
+        return string(text, at, fail)
+    if text[at:at + 1] != "[":
+        fail("a value is a string or a one-line array of strings")
+    items, at = [], at + 1
+    while True:
+        at += len(text[at:]) - len(text[at:].lstrip(" \t"))
+        if text[at:at + 1] == "]":
+            return items, at + 1
+        if text[at:at + 1] not in ('"', "'"):
+            fail("an array holds strings only, on one line")
+        item, at = string(text, at, fail)
+        items.append(item)
+        at += len(text[at:]) - len(text[at:].lstrip(" \t"))
+        if text[at:at + 1] == ",":
+            at += 1
+        elif text[at:at + 1] != "]":
+            fail("expected , or ] in an array")
 
 
 def parse(path, text):
-    reader, values, table = Reader(path, text), {}, ""
-    while True:
-        reader.skip_blank(newlines=True)
-        char = reader.peek()
-        if not char:
-            return values
-        if char == "[":
-            end = text.find("]", reader.at)
-            name = text[reader.at + 1:end].strip() if end > 0 else ""
-            if text[reader.at + 1:reader.at + 2] == "[" or not re.fullmatch(r"[\w-]+(\.[\w-]+)*", name):
-                reader.fail("only plain [table] headers are supported")
-            table, reader.at = name + ".", end + 1
-            reader.skip_blank(newlines=False)
-            if reader.peek() not in ("", "\n"):
-                reader.fail("nothing follows a [table] header on its line")
+    values = {}
+    for number, line in enumerate(text.splitlines(), 1):
+        def fail(message):
+            raise ConfigError(f"{path}:{number}: {message}")
+
+        line = line.strip()
+        if not line or line.startswith("#"):
             continue
-        match = re.compile(r"[\w-]+").match(text, reader.at)
+        match = re.fullmatch(r"([\w-]+)\s*=\s*(.+)", line)
         if not match:
-            reader.fail("expected a key")
-        key, reader.at = table + match.group(), match.end()
-        reader.skip_blank(newlines=False)
-        if reader.peek() != "=":
-            reader.fail(f'expected = after "{key}"')
-        reader.at += 1
-        reader.skip_blank(newlines=False)
-        line = reader.line
-        value = reader.value()
+            fail("expected key = value")
+        key, rest = match.groups()
         if key not in KEYS:
-            raise ConfigError(f'{path}:{line}: unknown key "{key}" - `autana help config` '
-                              "lists the keys")
-        kind = KEYS[key][0]
-        if type(value) is not kind:
-            raise ConfigError(f'{path}:{line}: "{key}" must be a {kind.__name__}')
+            fail(f'unknown key "{key}" - `autana help config` lists the keys')
         if key in values:
-            raise ConfigError(f'{path}:{line}: "{key}" is set twice')
-        values[key] = value
-        reader.skip_blank(newlines=False)
-        if reader.peek() not in ("", "\n"):
-            reader.fail("one setting per line")
+            fail(f'"{key}" is set twice')
+        parsed, end = value(rest, 0, fail)
+        if rest[end:].strip() and not rest[end:].strip().startswith("#"):
+            fail("one setting per line")
+        if type(parsed) is not KEYS[key][0]:
+            fail(f'"{key}" must be a {KEYS[key][0].__name__}')
+        values[key] = parsed
+    return values
 
 
 def load(project=None):

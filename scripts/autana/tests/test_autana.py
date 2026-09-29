@@ -1749,6 +1749,21 @@ class ProjectSettingsTests(unittest.TestCase):
                 autana.os.environ[autana.PROJECT_ENV]) or 0)
         self.assertEqual(seen, [str(project.resolve())])
 
+    def test_a_child_autana_reads_its_own_checkouts_settings_not_an_outer_ones(self):
+        seen = []
+        with isolation.project() as outer, isolation.project() as inner:
+            with mock.patch.dict(autana.os.environ, {autana.PROJECT_ENV: str(outer)}):
+                self.run_main(["status", "--project", str(inner)], lambda args: seen.append(
+                    autana.os.environ[autana.PROJECT_ENV]) or 0)
+                previous = Path.cwd()
+                os.chdir(inner)
+                try:
+                    self.run_main(["status"], lambda args: seen.append(
+                        autana.os.environ[autana.PROJECT_ENV]) or 0)
+                finally:
+                    os.chdir(previous)
+        self.assertEqual(seen, [str(inner.resolve())] * 2)
+
     def test_an_unknown_key_stops_the_command_naming_the_file_and_the_key(self):
         handler = mock.Mock(return_value=0)
         with isolation.project() as project:

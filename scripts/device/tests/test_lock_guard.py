@@ -1093,7 +1093,7 @@ class FlashImageScriptTests(unittest.TestCase):
 
     def run_script(self, token, image=None):
         environment = dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN=token, _AUTANA_BOARD=BOARD_A,
-                           AUTANA_DEVICE_LOCK_ROOT=str(self.store.root), PYTHONPATH=str(self.stubs),
+                           _AUTANA_DEVICE_LOCK_ROOT=str(self.store.root), PYTHONPATH=str(self.stubs),
                            PATH=str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"])
         return subprocess.run([self.bash, str(self.tree / "scripts/device/flash_image.sh"),
                                (image or self.image).as_posix(), str(self.export)],

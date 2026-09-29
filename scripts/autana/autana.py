@@ -107,9 +107,10 @@ def run_command(handler, args):
     previous, _project_arg = _project_arg, value
     inherited = os.environ.get(PROJECT_ENV)
     try:
-        # Children read the settings of the project the command acts on; one
-        # already named (a nested call, a test) is kept.
-        project = Path(value).resolve() if value else Path(inherited or Path.cwd())
+        # The project is derived here exactly as resolve_project() does, so
+        # the settings a child device.py reads are the ones of the checkout
+        # this command acts on, whatever an outer autana left in the variable.
+        project = Path(value).resolve() if value else Path.cwd()
         os.environ[PROJECT_ENV] = str(project)
         try:
             autana_config.load(project)

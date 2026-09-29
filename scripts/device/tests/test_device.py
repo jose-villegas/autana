@@ -33,7 +33,7 @@ BOARD = "90:70:69:FE:A3:08"
 
 def mock_store(token="token"):
     store = mock.Mock()
-    store.root = Path(os.environ["AUTANA_DEVICE_LOCK_ROOT"])
+    store.root = Path(os.environ["_AUTANA_DEVICE_LOCK_ROOT"])
     store.acquire.return_value = {"log": "", "token": token, "acquired_at": 1000.0}
     return store
 

@@ -45,22 +45,14 @@ class Reading(ConfigTest):
         settings = self.load(
             "docs_extra = ['a', \"b\"]\n"
             "records = 'C:\\history'\n"
-            "lock_hook = 'notify --flag \"x\"'\n"
-            "[docs.llama]\n"
-            "home = 'models'\n"
-            "port = 9911\n")
+            "lock_hook = 'notify --flag \"x\"'\n")
         self.assertEqual(settings, {
             "docs_extra": ["a", "b"], "records": "C:\\history",
-            "lock_hook": 'notify --flag "x"', "docs.llama.home": "models",
-            "docs.llama.port": 9911})
+            "lock_hook": 'notify --flag "x"'})
 
-    def test_a_multiline_array_with_comments_and_a_trailing_comma(self):
-        settings = self.load(
-            "# what `autana docs` also reads\n"
-            "docs_extra = [\n"
-            "    'one',   # first\n"
-            "    'two',\n"
-            "]\n")
+    def test_comments_and_a_trailing_comment_are_skipped(self):
+        settings = self.load("# what `autana docs` also reads\n"
+                             "docs_extra = ['one', 'two']   # both\n")
         self.assertEqual(settings, {"docs_extra": ["one", "two"]})
 
     def test_a_windows_editor_file_reads_the_same(self):
@@ -89,11 +81,8 @@ class Refusing(ConfigTest):
         self.assertIn(":2:", message)
         self.assertIn('"recods"', message)
 
-    def test_an_unknown_key_in_a_table_is_named_in_full(self):
-        self.assertIn('"docs.llama.hme"', self.refusal("[docs.llama]\nhme = 'x'\n"))
-
     def test_a_value_of_the_wrong_type_names_the_key(self):
-        for text in ("records = 5\n", "docs_extra = 'one'\n", "[docs.llama]\nport = 'x'\n"):
+        for text in ("docs_extra = 'one'\n", "records = ['a']\n"):
             with self.subTest(text=text):
                 message = self.refusal(text)
                 self.assertIn(autana_config.CONFIG_NAME, message)
@@ -103,8 +92,8 @@ class Refusing(ConfigTest):
         self.assertIn("twice", self.refusal("records = 'a'\nrecords = 'b'\n"))
 
     def test_toml_this_reader_does_not_understand_is_refused_with_its_line(self):
-        for text in ("records = true\n", "records = {a = 1}\n", "[[docs]]\n",
-                     "docs_extra = [1]\n", "records = 'open\n", "records\n", "= 'x'\n",
+        for text in ("records = true\n", "records = 5\n", "records = {a = 1}\n", "[docs]\n",
+                     "docs_extra = [1]\n", "docs_extra = [\n", "docs_extra = ['a',\n", "records = 'open\n", "records\n", "= 'x'\n",
                      "records = 'a' 'b'\n", 'records = "\\q"\n'):
             with self.subTest(text=text):
                 self.assertIn(":1:", self.refusal(text))

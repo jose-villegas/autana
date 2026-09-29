@@ -151,3 +151,7 @@ test('names the browser to mmdc through a Puppeteer config, unless the caller ga
   assert.deepEqual(browserConfigArgs(['--puppeteerConfigFile=/ci/p.json'], '/usr/bin/chromium', '/tmp/p.json'), []);
   assert.deepEqual(browserConfigArgs([], null, '/tmp/p.json'), []);
 });
+
+test('a browser the user named through PUPPETEER_EXECUTABLE_PATH beats one found on PATH', () => {
+  assert.deepEqual(browserConfigArgs([], '/usr/bin/chromium', '/tmp/p.json', '/opt/chrome'), []);
+});

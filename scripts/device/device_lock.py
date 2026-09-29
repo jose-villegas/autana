@@ -63,9 +63,9 @@ def default_root():
     still exclude each other. A Linux autana older than this one used
     $TMPDIR/autana-device, so mixed installs do not exclude each other.
 
-    AUTANA_DEVICE_LOCK_ROOT is test only: a per-checkout or per-shell root
+    _AUTANA_DEVICE_LOCK_ROOT is test only: a per-checkout or per-shell root
     would split the one lock every checkout on the machine must share."""
-    named = os.environ.get("AUTANA_DEVICE_LOCK_ROOT")
+    named = os.environ.get("_AUTANA_DEVICE_LOCK_ROOT")
     if named:
         return Path(named)
     if os.name == "nt":

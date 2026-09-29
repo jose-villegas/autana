@@ -466,40 +466,20 @@ class Device(unittest.TestCase):
                 self.assertNotIn("device", docs_llama.write_preset().read_text(encoding="utf-8"))
 
 
-class LlamaSettings(unittest.TestCase):
-    """The model's home and port are the project's `[docs.llama]` settings."""
+class LlamaFixedFacts(unittest.TestCase):
+    """The model's home and port are machine facts, not settings."""
 
-    def project(self, text=None):
+    def test_the_port_is_8765_whatever_the_environment_or_project_says(self):
         folder = Path(tempfile.mkdtemp())
-        if text is not None:
-            (folder / "autana.local.toml").write_text(text, encoding="utf-8")
-        patch = mock.patch.dict(os.environ, {"_AUTANA_PROJECT": str(folder)})
-        patch.start()
-        self.addCleanup(patch.stop)
-        return folder
-
-    def test_the_settings_name_the_home_and_the_port(self):
-        folder = self.project("[docs.llama]\nhome = 'models'\nport = 9911\n")
-        self.assertEqual(docs_llama.home(), folder / "models")
-        self.assertEqual(docs_llama.port(), 9911)
-
-    def test_without_settings_the_port_is_8765(self):
-        self.project()
-        self.assertEqual(docs_llama.port(), 8765)
-
-    def test_environment_variables_no_longer_name_the_home_or_the_port(self):
-        self.project()
-        with mock.patch.dict(os.environ, {"AUTANA_LLAMA_HOME": "elsewhere",
+        (folder / "autana.local.toml").write_text("records = 'x'\n", encoding="utf-8")
+        with mock.patch.dict(os.environ, {"_AUTANA_PROJECT": str(folder),
                                           "AUTANA_LLAMA_PORT": "9"}):
             self.assertEqual(docs_llama.port(), 8765)
-            self.assertNotEqual(docs_llama.home(), Path("elsewhere"))
 
-    def test_a_port_that_is_not_a_number_fails_naming_the_file_and_key(self):
-        self.project("[docs.llama]\nport = 'high'\n")
-        with self.assertRaises(docs_llama.autana_config.ConfigError) as raised:
-            docs_llama.port()
-        self.assertIn("docs.llama.port", str(raised.exception))
-        self.assertIn("autana.local.toml", str(raised.exception))
+    def test_the_home_is_per_user_whatever_the_environment_says(self):
+        with mock.patch.dict(os.environ, {"AUTANA_LLAMA_HOME": "elsewhere"}):
+            self.assertNotEqual(docs_llama.home(), Path("elsewhere"))
+            self.assertEqual(docs_llama.home().parts[-2:], ("autana", "llama"))
 
 
 class Stop(unittest.TestCase):

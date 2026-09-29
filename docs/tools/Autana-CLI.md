@@ -264,7 +264,7 @@ log and a manifest under the `records` setting, or the checkout's gitignored
 
 ## Settings
 
-autana reads no environment variable. A setting is a global option before the
+No environment variable is a setting; `_AUTANA_*` names are autana's own plumbing to its children, and it still reads system ones such as `IDF_TOOLS_PATH`. A setting is a global option before the
 command, which covers that one call, or a key in `autana.local.toml` in the
 project folder, which covers every command run from that checkout. The file is
 optional and gitignored, and `autana help config` lists its keys.
@@ -280,21 +280,18 @@ optional and gitignored, and `autana help config` lists its keys.
 | `docs_extra` | A list of extra Markdown files or folders `autana docs` searches, relative to the project. |
 | `records` | Where captures and `index.jsonl` land; `.records/device` in the checkout without it. |
 | `lock_hook` | A shell command run on every device lock event; see [Device-Lock.md](Device-Lock.md#lock-events). It fires only for a command run from a checkout whose file sets it, so a machine-wide hook goes in each checkout's file. |
-| `[docs.llama]` `home`, `port` | Where the docs model and its server live (shared by every checkout, under your user folder without it) and the local port it listens on (8765 without it). |
 
 ```toml
 docs_extra = ["notes/bench.md", "~/Documents/design-notes"]
 records = "~/autana-records"
 lock_hook = "python ~/bin/on_lock.py"
-
-[docs.llama]
-port = 8800
 ```
 
-The file reads strings (in `"..."`, or `'...'` where a Windows path should stay
-as typed), integers and arrays of strings, and refuses anything else and any
-other key, naming the file and the line. The lock's folder is deliberately not a
-setting: one per checkout would split the lock the whole machine shares.
+The file reads `key = "..."` lines (or `'...'` where a Windows path should stay
+as typed) and one-line arrays of such strings, and refuses anything else and any
+other key, naming the file and the line. The lock's folder and the docs model's
+folder and port are deliberately not settings: they are machine facts shared by
+every checkout.
 
 ## Adding a command from an app
 

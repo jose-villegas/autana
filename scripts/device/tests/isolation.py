@@ -4,7 +4,7 @@ Every test module under scripts/device/tests and scripts/autana/tests
 imports this before anything else. Once per test process it makes one
 temporary project whose autana.local.toml sends the records to a temporary
 folder and names it the project every child process acts on, and points the
-lock root (AUTANA_DEVICE_LOCK_ROOT, test only) and the system temporary
+lock root (_AUTANA_DEVICE_LOCK_ROOT, test only) and the system temporary
 folder, where flash snapshots are made, at temporary directories too. A
 project with no lock hook notifies nobody. An audit hook then refuses any
 write this process makes under the roots it replaced, and the run exits
@@ -29,8 +29,8 @@ def replaced_roots():
     roots = [CHECKOUT / ".records" / "device", Path(tempfile.gettempdir()) / "autana-device"]
     if hasattr(os, "getuid"):
         roots.append(Path("/tmp") / f"autana-device-{os.getuid()}")
-    if os.environ.get("AUTANA_DEVICE_LOCK_ROOT"):
-        roots.append(Path(os.environ["AUTANA_DEVICE_LOCK_ROOT"]))
+    if os.environ.get("_AUTANA_DEVICE_LOCK_ROOT"):
+        roots.append(Path(os.environ["_AUTANA_DEVICE_LOCK_ROOT"]))
     # The records a real run of this checkout, or the project this process
     # was started for, would write to.
     sys.path.insert(0, str(CHECKOUT / "scripts" / "lib"))
@@ -49,24 +49,15 @@ REAL_ROOTS = replaced_roots()
 
 
 def write_config(project, **settings):
-    """`project`'s autana.local.toml holding `settings` ({"lock_hook": "cmd",
-    "docs.llama.port": 9})."""
+    """`project`'s autana.local.toml holding `settings` ({"lock_hook": "cmd"})."""
     def quoted(text):
         return '"' + str(text).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
-    top, tables = [], {}
+    lines = []
     for key, value in settings.items():
-        table, _, name = key.rpartition(".")
-        if isinstance(value, (list, tuple)):
-            text = "[" + ", ".join(quoted(item) for item in value) + "]"
-        elif isinstance(value, int):
-            text = str(value)
-        else:
-            text = quoted(value)
-        (tables.setdefault(table, []) if table else top).append(f"{name} = {text}")
-    lines = top
-    for table, rows in tables.items():
-        lines += ["[" + table + "]"] + rows
+        text = ("[" + ", ".join(quoted(item) for item in value) + "]"
+                if isinstance(value, (list, tuple)) else quoted(value))
+        lines.append(f"{key} = {text}")
     Path(project).mkdir(parents=True, exist_ok=True)
     (Path(project) / "autana.local.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -91,7 +82,10 @@ RECORDS = TEMP / "records"
 BASE_PROJECT = TEMP / "project"
 write_config(BASE_PROJECT, records=str(RECORDS))
 os.environ["_AUTANA_PROJECT"] = str(BASE_PROJECT)
-os.environ["AUTANA_DEVICE_LOCK_ROOT"] = str(TEMP / "locks")
+os.environ["_AUTANA_DEVICE_LOCK_ROOT"] = str(TEMP / "locks")
+# In-process autana derives its project from the cwd, so tests run in the
+# isolated one.
+os.chdir(BASE_PROJECT)
 IMAGES = TEMP / "images"
 IMAGES.mkdir()
 # Flash snapshots are made under the system's temporary folder, which is

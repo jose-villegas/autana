@@ -144,7 +144,7 @@ No capture command needs `--out`: by default each writes to
 `<records>/<YYYYMMDD>/<HHMMSS>_<kind>_<owner>.log` (`kind` is
 `flash-<variant>`, `reset`, `runsuite-<suite>`, `selftest`, or `listen`).
 `<records>` is the project's `records` setting when it has one, otherwise the checkout's own
-gitignored `.records/device`, so nothing a commit can pick up by accident. A
+gitignored `.records/device`, so nothing a commit can pick up by accident. Without a `records` key, captures land in the running autana's own checkout, whichever project a command acts on. A
 default-path capture over 200 KB is gzipped in place (a flash log at about
 270 KB usually is); `--out <path>` writes exactly there instead,
 uncompressed.

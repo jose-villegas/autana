@@ -630,11 +630,11 @@ class LockRootTests(unittest.TestCase):
 
     def without_override(self, **environment):
         base = {key: value for key, value in os.environ.items()
-                if key not in ("AUTANA_DEVICE_LOCK_ROOT", "TMPDIR", "TEMP", "TMP")}
+                if key not in ("_AUTANA_DEVICE_LOCK_ROOT", "TMPDIR", "TEMP", "TMP")}
         return mock.patch.dict(os.environ, dict(base, **environment), clear=True)
 
     def test_an_override_names_the_root(self):
-        with self.without_override(AUTANA_DEVICE_LOCK_ROOT="/somewhere"):
+        with self.without_override(_AUTANA_DEVICE_LOCK_ROOT="/somewhere"):
             self.assertEqual(device_lock.default_root(), Path("/somewhere"))
 
     @unittest.skipIf(os.name == "nt", "Windows keeps the account's own temp folder")

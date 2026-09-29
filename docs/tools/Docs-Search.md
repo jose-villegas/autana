@@ -85,12 +85,11 @@ bge-small-en-v1.5 embedding model. `setup --chat` adds Qwen3-4B-Instruct for
 `scripts/docs/docs_llama.py` before use.
 
 Everything installs in `%LOCALAPPDATA%/autana/llama` (`~/.cache/autana/llama`
-elsewhere; `home` under `[docs.llama]` moves it), shared by every worktree. Setup
+elsewhere), shared by every worktree. Setup
 ends by embedding the documentation once; after that only a section whose text
 changed is embedded again.
 
-One `llama-server` in router mode serves both models on `127.0.0.1:8765`
-(`port` under `[docs.llama]`). The first query starts it, it loads a model on first
+One `llama-server` in router mode serves both models on `127.0.0.1:8765`. The first query starts it, it loads a model on first
 use and unloads it after ten idle minutes. `docs_llama.py status` shows what
 is installed and running; `docs_llama.py stop` ends the server it started and
 no other. A GPU recognised as integrated is left out when another is present;

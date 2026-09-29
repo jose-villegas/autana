@@ -25,7 +25,7 @@
 
 set -eu
 
-VERBOSE=${VERBOSE:-0}
+VERBOSE=0
 SANITIZE=0
 BUILD_DIR=""
 while [ $# -gt 0 ]; do
@@ -203,7 +203,9 @@ if [ -z "${QUIET_INNER:-}" ]; then
     # shellcheck source=../../scripts/quiet.sh
     . "$TEST_DIR/../../scripts/quiet.sh"
     quiet_begin "$QUIET_LOG"
-    quiet_run host-tests env QUIET_INNER=1 VERBOSE="$VERBOSE" sh "$0" "$@" || true
+    [ "$VERBOSE" = 1 ] && set -- "$@" --verbose
+    [ "$SANITIZE" = 1 ] && set -- "$@" --sanitize
+    quiet_run host-tests env QUIET_INNER=1 sh "$0" "$@" --build-dir "$BUILD_DIR" || true
     QUIET_SUMMARY=$(grep -E '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored' "$QUIET_LOG" | tail -n 1)
     export QUIET_SUMMARY
     QUIET_FAILURES=$(grep -E ':FAIL|ERROR: (AddressSanitizer|LeakSanitizer)' "$QUIET_LOG" || true)

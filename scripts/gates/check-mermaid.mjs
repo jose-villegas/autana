@@ -16,8 +16,8 @@
 // CHECK_MERMAID_MMDC_ARGS appends extra space-separated arguments to every mmdc
 // invocation - CI uses it to pass `-p <puppeteer-config.json>` for a sandboxed Chrome.
 //
-// The browser is found without setup: a chromium or chrome on PATH, else whatever
-// PUPPETEER_EXECUTABLE_PATH already names, else the Chrome mermaid-cli bundles.
+// The browser is found without setup: whatever PUPPETEER_EXECUTABLE_PATH names when the
+// caller set it, else a chromium or chrome on PATH, else the Chrome mermaid-cli bundles.
 //
 // Requires @mermaid-js/mermaid-cli (npm install -g @mermaid-js/mermaid-cli) and the Chrome
 // it bundles; see docs/tools/Mermaid-Diagrams.md.
@@ -178,18 +178,18 @@ export function findBrowserOnPath(pathVariable, isWindows = IS_WINDOWS, exists =
 }
 
 // The mmdc arguments that name the browser: none when the caller already passed a Puppeteer
-// config (CI does) or when no browser is on PATH, which leaves mmdc to Puppeteer's own
-// PUPPETEER_EXECUTABLE_PATH, if set, or the Chrome it bundles.
-export function browserConfigArgs(extra, browser, configFile) {
+// config (CI does), named a browser through PUPPETEER_EXECUTABLE_PATH (explicit beats
+// discovered), or when no browser is on PATH, which leaves mmdc the Chrome it bundles.
+export function browserConfigArgs(extra, browser, configFile, explicitBrowser = '') {
   const given = extra.some((arg) => PUPPETEER_CONFIG_FLAGS.some((flag) => arg === flag || arg.startsWith(`${flag}=`)));
-  return given || !browser ? [] : ['-p', configFile];
+  return given || explicitBrowser || !browser ? [] : ['-p', configFile];
 }
 
 let browserConfigDir = null;
 
 async function browserArguments(extra) {
   const browser = findBrowserOnPath(process.env.PATH);
-  if (!browser || browserConfigArgs(extra, browser, '').length === 0) {
+  if (!browser || browserConfigArgs(extra, browser, '', process.env.PUPPETEER_EXECUTABLE_PATH).length === 0) {
     return [];
   }
   if (!browserConfigDir) {
@@ -197,7 +197,7 @@ async function browserArguments(extra) {
     await writeFile(join(browserConfigDir, 'puppeteer.json'), JSON.stringify({ executablePath: browser }));
     process.on('exit', () => rmSync(browserConfigDir, { recursive: true, force: true }));
   }
-  return browserConfigArgs(extra, browser, join(browserConfigDir, 'puppeteer.json'));
+  return browserConfigArgs(extra, browser, join(browserConfigDir, 'puppeteer.json'), process.env.PUPPETEER_EXECUTABLE_PATH);
 }
 
 // shell:true is required on Windows because mmdc is a .cmd shim, not a real executable -
