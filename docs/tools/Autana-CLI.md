@@ -159,8 +159,8 @@ The two raw levels below gesture, `touch` and `imu`, live under
 
 A board is named by its USB serial number, so the lock follows it across
 COM number changes. A command that loses the lock stops with `device lock was
-lost`; one that finds the board busy exits 75. Exit codes:
-[Device-Lock.md](Device-Lock.md#exit-codes-and-json-status). A separate `flash` and `suite` leave a gap where another session can
+lost`; one that finds the board busy exits 75
+([exit codes](Device-Lock.md#exit-codes-and-json-status)). A separate `flash` and `suite` leave a gap where another session can
 flash; `suite --flash` and `selftest` hold one lock across flash and capture.
 Lock loss is defined in [Device-Lock.md](Device-Lock.md); flash success,
 captures and wait estimates in [Flash-and-Captures.md](Flash-and-Captures.md).
@@ -260,10 +260,10 @@ optional and gitignored, and `autana help config` lists its keys.
 |---|---|
 | `--wait SECONDS` | How long a board command waits for the lock, across every step it runs: 600 s without it, `0` fails at once with exit 75. |
 | `--owner NAME` | The name this run holds the lock under, as `NAME:<pid>`; `<user>@<host>:<pid>` without it. Name each CI job. |
-| `--board SERIAL` | The board's USB serial number; without it, the only board plugged in. |
+| `--board SERIAL` | The board's USB serial number; without it, see [Which board](Device-Lock.md#which-board). |
 
 All three go before the command (`autana --wait 0 monitor 5`); after it,
-autana says so. None has an environment setting, so a CI job writes
+autana says so. A CI job that should fail rather than queue writes
 `autana --wait 0 <command>`.
 
 | Key | Meaning |

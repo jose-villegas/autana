@@ -560,6 +560,17 @@ class HumanReservationExpiryTests(unittest.TestCase):
         self.assertEqual((entry["since"], entry["expires_at"]), (1000.0, 1000.0 + self.HOUR))
         self.assertIn("40m left", "\n".join(device_lock.status_lines(entry, self.clock.now())))
 
+    def test_a_lapsed_reservation_still_shows_while_another_lock_is_held(self):
+        self.lock.set_human("COM5", "maintainer", "bench")
+        self.clock.advance(self.HOUR + 120)
+        self.lock.write_json(self.lock.lock_path("COM5"), {
+            "acquired_at": self.clock.now(), "heartbeat_at": self.clock.now(),
+            "host": "another-host", "owner": "alice", "pid": 1, "port": "COM5",
+            "purpose": "flash", "token": "t", "protocol": device_lock.LOCK_PROTOCOL})
+        entry = device_lock.status_entry(self.lock, "COM5", durations={})
+        self.assertEqual((entry["state"], entry["lapsed"]["reason"]),
+                         ("held", "reservation expired"))
+
     def test_status_json_carries_timestamps_and_no_relative_durations(self):
         self.lock.set_human("COM5", "maintainer", "bench")
         self.clock.advance(self.HOUR + 120)
