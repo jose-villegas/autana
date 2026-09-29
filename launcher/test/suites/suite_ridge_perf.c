@@ -86,6 +86,8 @@ arm_name(arm_t arm) {
         case ARM_TILT_WOBBLE: return "tilt_wobble";
         case ARM_AMBIENT: return "ambient";
         case ARM_AMBIENT_PORTRAIT: return "ambient_portrait";
+        case ARM_AMBIENT_SHAKE: return "ambient_shake";
+        case ARM_AMBIENT_BOOT: return "ambient_boot";
     }
     return "unknown";
 }
