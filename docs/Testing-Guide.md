@@ -43,10 +43,16 @@ from compilation and the gates, including the stack check. The full stream is
 saved in `launcher/test/build/run_tests.log`, whose path is printed before
 the run; `--verbose` streams it while saving it there too.
 
-Most of a host run is compiling. `run_tests.sh` builds the sources and then
-compiles them again for the `-fstack-usage` pass, without object caching
-between runs. The summary line reports the current test count; a repeat run
-still pays for both compilations.
+A host build is incremental. `run_tests.sh` writes a Makefile into
+`launcher/test/build/` and lets GNU make (`make`, or `mingw32-make` beside
+WinLibs' gcc) compile one object per source, in parallel, from the compiler's
+own dependency files: a rerun compiles nothing, a touched `.c` recompiles one
+object and a touched header recompiles exactly its includers. Every flag that
+shapes an object is stamped, so a changed flag rebuilds everything, and a
+sanitizer build keeps its objects in a directory of its own. Jobs default to
+half the CPUs, at most 8 (`--jobs N` overrides); `--build-only` compiles,
+links and runs the stack gate without running the suites. What is left of a
+warm run is executing the tests.
 
 `autana selftest` builds, flashes and runs every suite under the device
 lock, from any shell including Git Bash. For a markdown report instead of

@@ -85,6 +85,7 @@ idf_needs_shim() {
 }
 
 # Run one idf.py invocation. Returns its exit status.
+#
 idf() {
     idf_in "$_IDF_DIR" idf.py "$@"
 }
