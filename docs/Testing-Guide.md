@@ -272,8 +272,9 @@ every test skipped and prints `SUITE_TEST name=<test> selected=<0|1>` for
 each; if every pattern selected something it runs the suite for real, else it
 prints `SUITE_FILTER_UNMATCHED pattern=<p>` and runs nothing. The choke point
 is the `RUN_TEST` override (`launcher/test/timing.c`), so no suite changes;
-what a suite does between its `RUN_TEST` lines runs in both walks, and its
-summary lines count only what ran. `selected=` in the completion line is how
+what a suite does between its `RUN_TEST` lines runs in both walks, so a
+summary line it logs after the last test prints twice and the second is the
+run's; the totals count only what ran. `selected=` in the completion line is how
 many tests ran.
 
 ### Recommended practice
