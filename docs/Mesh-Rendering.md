@@ -16,7 +16,7 @@ them. The layers are in [Firmware-Architecture.md](Firmware-Architecture.md).
 | `r3d_vec3f.h` | The float 3-vector every float camera and path shares |
 | `r3d_ray.h` | A float ray camera: the direction through each physical pixel, on the same viewport a rasterizer uses |
 | `r3d_path.h` | A closed Catmull-Rom camera loop at a steady speed |
-| `r3d_span.h` | One depth-tested, Gouraud-shaded triangle, filled a scanline span at a time into a window of rows |
+| `r3d_span.h` | One depth-tested, Gouraud-shaded triangle filled into a window of rows, its coverage exact on 1/16-pixel positions |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex colour, spatial clusters, a node tree |
 | `r3d_lit_pipeline.h` | The mesh's stages: view, cull, transform, draw |
 | `r3d_lit_frame.h` | One whole frame of those stages on both cores, optionally doubled to twice its size |
@@ -87,6 +87,29 @@ sequenceDiagram
     J-->>C0: job_wait()
     Note over C0,P: frame N is presented on the next pass
 ```
+
+## Coverage and small triangles
+
+A pixel belongs to a triangle when its centre is inside by the top-left
+rule, decided in integers on positions snapped to 1/16 pixel. Two
+triangles sharing an edge therefore never both fill a pixel, nor both miss
+one, in any window of rows. `r3d_lit_transform()` snaps each vertex once,
+into an 8-byte `r3d_lit_vertex_t`.
+
+A detailed mesh drawn small has many triangles covering a few pixel
+centres or none, so the draw routes each by the centres its bounding box
+holds:
+
+| Bounding box holds | What the draw does |
+|---|---|
+| no centre | nothing: dropped before its colours are read |
+| at most 2 × 2 centres | tests each centre against its three edges, one depth and colour for all |
+| more | walks its rows, each edge's column found exactly by an integer step |
+
+Both paths apply the same rule to the same integers, so a small triangle
+and a walked one sharing an edge still meet without a gap or an overlap.
+`suite_r3d_lit.c` holds every triangle to a reference implementation of the
+rule, and a mesh of mixed sizes to one fill per pixel.
 
 ## Memory
 

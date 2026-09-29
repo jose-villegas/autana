@@ -58,7 +58,8 @@ r3d_span_first_centre(int32_t v) {
 }
 
 /* Temporary measurement switch: 0 draws normally; 1 stops after triangle
- * setup, 2 after walking the rows, 3 after each span's setup. */
+ * setup, 2 after walking the rows, 3 after each span's setup. A triangle
+ * tested centre by centre stops after its setup under any of them. */
 extern int r3d_span_stop_after;
 
 void r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
