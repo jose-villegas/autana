@@ -1,12 +1,8 @@
 /*
- * r3d_span - a depth-tested, Gouraud-shaded triangle filled one scanline
- * span at a time into a caller's window of rows.
- *
- * Setup is float, once per triangle; rows and spans step in fixed point with
- * integer adds. Edges and attributes are anchored at the triangle's own
- * first row, so a triangle clipped to a window of rows draws exactly the
- * pixels of the whole one. Depth is the caller's inverse depth in (0, 1],
- * larger nearer, kept as 16 bits.
+ * r3d_span - a depth-tested, Gouraud-shaded triangle filled into a
+ * caller's window of rows. Coverage is the top-left rule on 1/16-pixel
+ * positions, decided in integers: triangles sharing an edge never both fill
+ * or both miss a pixel. Depth is inverse depth in (0, 1], larger nearer.
  */
 #pragma once
 
@@ -22,11 +18,29 @@ typedef struct {
     int row0, row1;  /* the half-open screen rows this window holds */
 } r3d_span_target_t;
 
+#define R3D_SUBPIXEL       16
+/* Positions past this many pixels from the origin are held at it. */
+#define R3D_SUBPIXEL_LIMIT 67108864.0f
+
 typedef struct {
-    float x, y;    /* screen position, pixel centres at +0.5 */
+    int32_t x, y;  /* screen position in 1/R3D_SUBPIXEL pixels; pixel i's centre is at 16 i + 8 */
     float z;       /* inverse depth, (0, 1] */
     float r, g, b; /* 0..255 */
 } r3d_span_vertex_t;
+
+static inline int32_t
+r3d_span_snap(float pixels) {
+    const float v = pixels < -R3D_SUBPIXEL_LIMIT ? -R3D_SUBPIXEL_LIMIT
+                                                 : (pixels > R3D_SUBPIXEL_LIMIT ? R3D_SUBPIXEL_LIMIT : pixels);
+    const float scaled = v * (float)R3D_SUBPIXEL;
+    return (int32_t)(scaled + (scaled < 0.0F ? -0.5F : 0.5F));
+}
+
+/* The first pixel whose centre is at or past subpixel position v. */
+static inline int
+r3d_span_first_centre(int32_t v) {
+    return (v + (R3D_SUBPIXEL / 2) - 1) >> 4;
+}
 
 /* Temporary measurement switch: 0 draws normally; 1 stops after triangle
  * setup, 2 after walking the rows, 3 after each span's setup. */

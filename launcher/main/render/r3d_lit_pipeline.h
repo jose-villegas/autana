@@ -26,11 +26,12 @@ typedef struct {
     int width, height;
 } r3d_lit_view_t;
 
-/* 16 bytes: lens-space x and y are recomputed from the position for the
- * rare triangle that needs near clipping. */
+/* 8 bytes: the screen position is snapped to r3d_span's subpixels once, so
+ * every test on it is exact. A triangle with a vertex that has no position
+ * here is rebuilt from the mesh, as near clipping needs. */
 typedef struct {
-    float z;          /* lens space */
-    float sx, sy, iz; /* screen position and near_z / z, valid while z > near_z */
+    int16_t sx, sy; /* 1/R3D_SUBPIXEL pixels, valid while iz > 0 */
+    float iz;       /* near_z / z; 0 behind the near plane, below 0 in front but too far off screen to snap */
 } r3d_lit_vertex_t;
 
 /* `forward` need not be normalised but must not be vertical. The lens is

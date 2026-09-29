@@ -45,7 +45,7 @@ fixture(void) {
 
 static r3d_span_vertex_t
 sv(float x, float y, float z, float r, float g, float b) {
-    return (r3d_span_vertex_t){x, y, z, r, g, b};
+    return (r3d_span_vertex_t){r3d_span_snap(x), r3d_span_snap(y), z, r, g, b};
 }
 
 static int
@@ -85,8 +85,9 @@ test_two_triangles_sharing_an_edge_cover_a_square_exactly_once(void) {
     for (int i = 0; i < W * H; i++) {
         filled += hits[i];
     }
-    const float area = 0.5f * fabsf((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y))
-                       + 0.5f * fabsf((c.x - a.x) * (d.y - a.y) - (d.x - a.x) * (c.y - a.y));
+    const float subpixel_area = 0.5f * fabsf((float)((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)))
+                                + 0.5f * fabsf((float)((c.x - a.x) * (d.y - a.y) - (d.x - a.x) * (c.y - a.y)));
+    const float area = subpixel_area / (float)(R3D_SUBPIXEL * R3D_SUBPIXEL);
     TEST_ASSERT_INT_WITHIN((int)(area * 0.03f), (int)area, filled);
     free(hits);
 }
@@ -251,7 +252,7 @@ test_a_tiny_triangle_takes_the_average_of_its_corners(void) {
  * put that pixel in front of everything. */
 static void
 test_a_steep_sliver_puts_no_pixel_nearer_than_its_nearest_corner(void) {
-    static const r3d_span_vertex_t slivers[][3] = {
+    static const float slivers[][3][6] = {
         {{24.3595695f, 36.5131073f, 0.548884869f, 0, 0, 0},
          {68.97229f, 47.5016022f, 0.159555957f, 255, 255, 255},
          {68.3385162f, 48.167408f, 0.398059934f, 0, 0, 0}},
@@ -260,7 +261,11 @@ test_a_steep_sliver_puts_no_pixel_nearer_than_its_nearest_corner(void) {
          {-2.3143692f, 29.7081623f, 0.675357819f, 0, 0, 0}},
     };
     for (int i = 0; i < 2; i++) {
-        const r3d_span_vertex_t* v = slivers[i];
+        r3d_span_vertex_t v[3];
+        for (int k = 0; k < 3; k++) {
+            const float* f = slivers[i][k];
+            v[k] = sv(f[0], f[1], f[2], f[3], f[4], f[5]);
+        }
         const float nearest = fmaxf(v[0].z, fmaxf(v[1].z, v[2].z));
         r3d_span_target_t t = fixture();
         r3d_span_triangle(&t, &v[0], &v[1], &v[2]);
@@ -269,6 +274,150 @@ test_a_steep_sliver_puts_no_pixel_nearer_than_its_nearest_corner(void) {
                                      "a pixel came out nearer than any corner");
         }
     }
+}
+
+static uint32_t
+next_random(uint32_t* state) {
+    *state = (*state * 1664525u) + 1013904223u;
+    return *state >> 8;
+}
+
+/* A subpixel position in [lo, lo + span), landing on a pixel centre or a
+ * pixel edge one time in four so the ties are exercised. */
+static int32_t
+random_subpixel(uint32_t* state, float lo, float span) {
+    const int32_t v = r3d_span_snap(lo + (span * (float)(next_random(state) % 10000u) / 10000.0f));
+    return next_random(state) % 4u == 0 ? v & ~7 : v;
+}
+
+/* The textbook rule, written apart from r3d_span: with the triangle turned
+ * to wind positive, a centre is inside when it is inside every edge, or on
+ * one that is a top or a left edge. */
+static bool
+reference_inside(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, int x, int y) {
+    const int64_t px = ((int64_t)x * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2);
+    const int64_t py = ((int64_t)y * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2);
+    const r3d_span_vertex_t* v[3] = {a, b, c};
+    const int64_t area =
+        (((int64_t)b->x - a->x) * ((int64_t)c->y - a->y)) - (((int64_t)b->y - a->y) * ((int64_t)c->x - a->x));
+    if (area == 0) {
+        return false;
+    }
+    if (area < 0) {
+        v[1] = c;
+        v[2] = b;
+    }
+    for (int k = 0; k < 3; k++) {
+        const r3d_span_vertex_t* p = v[k];
+        const r3d_span_vertex_t* q = v[(k + 1) % 3];
+        const int64_t dx = (int64_t)q->x - p->x;
+        const int64_t dy = (int64_t)q->y - p->y;
+        const int64_t w = (dx * (py - p->y)) - (dy * (px - p->x));
+        const bool top_left = dy < 0 || (dy == 0 && dx > 0);
+        if (w < 0 || (w == 0 && !top_left)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Triangles from a fraction of a pixel to forty, so both the centre-by-
+ * centre path and the row walk are taken, each drawn as two windows of rows:
+ * every pixel is covered exactly when the reference says so. */
+static void
+test_every_triangle_covers_exactly_the_centres_the_top_left_rule_gives(void) {
+    uint32_t state = 12345u;
+    int mismatches = 0;
+    for (int i = 0; i < 2000; i++) {
+        const float size = 0.3f * powf(2.0f, (float)(next_random(&state) % 800u) / 100.0f);
+        const float cx = -4.0f + (float)(next_random(&state) % (unsigned)(W + 8));
+        const float cy = -4.0f + (float)(next_random(&state) % (unsigned)(H + 8));
+        r3d_span_vertex_t v[3];
+        for (int k = 0; k < 3; k++) {
+            v[k] = sv(0, 0, 0.5f, 90, 90, 90);
+            v[k].x = random_subpixel(&state, cx - size, 2.0f * size);
+            v[k].y = random_subpixel(&state, cy - size, 2.0f * size);
+        }
+        const int split = (int)(next_random(&state) % (unsigned)(H + 1));
+        r3d_span_target_t t = fixture();
+        const r3d_span_target_t top = {t.color, t.depth, W, 0, split};
+        const r3d_span_target_t bottom = {t.color + (split * W), t.depth + (split * W), W, split, H};
+        r3d_span_triangle(&top, &v[0], &v[1], &v[2]);
+        r3d_span_triangle(&bottom, &v[0], &v[1], &v[2]);
+        for (int y = 0; y < H; y++) {
+            for (int x = 0; x < W; x++) {
+                mismatches += (depth[(y * W) + x] != 0) != reference_inside(&v[0], &v[1], &v[2], x, y);
+            }
+        }
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, mismatches, "a pixel's coverage disagrees with the top-left rule");
+}
+
+/* A mesh whose cells run from half a pixel to six, so triangles tested
+ * centre by centre share edges with walked ones, and whose unjittered
+ * corners sit on half pixels, so edges run through centres: every pixel is
+ * filled by exactly one triangle. */
+static void
+test_a_mesh_of_small_and_large_triangles_fills_every_pixel_exactly_once(void) {
+    enum { CELLS_MAX = 160 };
+
+    uint32_t state = 777u;
+    float* xs = malloc(sizeof(float) * CELLS_MAX);
+    float* ys = malloc(sizeof(float) * CELLS_MAX);
+    TEST_ASSERT_NOT_NULL(xs);
+    TEST_ASSERT_NOT_NULL(ys);
+    int nx = 0;
+    int ny = 0;
+    for (float x = -3.0f; x < (float)W + 3.0f && nx < CELLS_MAX; nx++) {
+        xs[nx] = x;
+        x += 0.5f * (float)(1 + (next_random(&state) % 12u));
+    }
+    for (float y = -3.0f; y < (float)H + 3.0f && ny < CELLS_MAX; ny++) {
+        ys[ny] = y;
+        y += 0.5f * (float)(1 + (next_random(&state) % 12u));
+    }
+    r3d_span_vertex_t* grid = malloc(sizeof(*grid) * (size_t)(nx * ny));
+    uint8_t* hits = calloc(W * H, 1);
+    TEST_ASSERT_NOT_NULL(grid);
+    TEST_ASSERT_NOT_NULL(hits);
+    for (int j = 0; j < ny; j++) {
+        for (int i = 0; i < nx; i++) {
+            /* Within a fifth of the narrowest cell, so every cell stays convex. */
+            const float jitter = next_random(&state) % 2u == 0 ? 0.0f : 0.2f * 0.5f;
+            const float jx = jitter * (((float)(next_random(&state) % 200u) / 100.0f) - 1.0f);
+            const float jy = jitter * (((float)(next_random(&state) % 200u) / 100.0f) - 1.0f);
+            grid[(j * nx) + i] = sv(xs[i] + jx, ys[j] + jy, 0.5f, 90, 90, 90);
+        }
+    }
+    int small = 0;
+    for (int j = 0; j + 1 < ny; j++) {
+        for (int i = 0; i + 1 < nx; i++) {
+            const r3d_span_vertex_t* p00 = &grid[(j * nx) + i];
+            const r3d_span_vertex_t* p10 = p00 + 1;
+            const r3d_span_vertex_t* p01 = p00 + nx;
+            const r3d_span_vertex_t* p11 = p01 + 1;
+            const bool other_diagonal = next_random(&state) % 2u == 0;
+            const r3d_span_vertex_t* tris[2][3] = {{p00, p10, other_diagonal ? p01 : p11},
+                                                   {other_diagonal ? p10 : p00, p11, p01}};
+            for (int k = 0; k < 2; k++) {
+                r3d_span_target_t t = fixture();
+                r3d_span_triangle(&t, tris[k][0], tris[k][1], tris[k][2]);
+                const int n = covered();
+                small += n > 0 && n <= 4;
+                for (int p = 0; p < W * H; p++) {
+                    hits[p] += depth[p] != 0;
+                }
+            }
+        }
+    }
+    for (int p = 0; p < W * H; p++) {
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, hits[p], "a pixel was missed or filled twice");
+    }
+    TEST_ASSERT_GREATER_THAN_INT(100, small);
+    free(grid);
+    free(hits);
+    free(xs);
+    free(ys);
 }
 
 /* Camera and pipeline */
@@ -824,6 +973,8 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_triangle_reaching_far_off_screen_fills_exactly_its_on_screen_centres);
     RUN_TEST(test_a_tiny_triangle_takes_the_average_of_its_corners);
     RUN_TEST(test_a_steep_sliver_puts_no_pixel_nearer_than_its_nearest_corner);
+    RUN_TEST(test_every_triangle_covers_exactly_the_centres_the_top_left_rule_gives);
+    RUN_TEST(test_a_mesh_of_small_and_large_triangles_fills_every_pixel_exactly_once);
 
     RUN_TEST(test_a_counter_clockwise_face_toward_the_camera_is_drawn);
     RUN_TEST(test_a_face_turned_away_is_culled_unless_double_sided);

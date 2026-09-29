@@ -179,6 +179,9 @@ r3d_lit_cull_clusters(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, ui
     return count;
 }
 
+/* Pixels from the origin a snapped position can reach in int16. */
+#define SNAP_LIMIT 2047.0F
+
 static inline r3d_lit_rows_t
 transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const r3d_lit_cluster_t* c,
                   r3d_lit_vertex_t* cs) {
@@ -188,17 +191,24 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const 
         const int16_t* p = mesh->positions[v];
         const r3d_vec3f_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
         r3d_lit_vertex_t* out = &cs[v];
-        out->z = l.z;
         if (l.z <= view->near_z) {
+            out->iz = 0.0F;
             rows.crosses_near = true;
             continue;
         }
         const float inv = 1.0F / l.z;
-        out->sx = view->center_x + l.x * inv;
-        out->sy = view->center_y + l.y * inv;
+        const float sx = view->center_x + l.x * inv;
+        const float sy = view->center_y + l.y * inv;
+        if (!(fabsf(sx) < SNAP_LIMIT && fabsf(sy) < SNAP_LIMIT)) {
+            out->iz = -1.0F;
+            rows.crosses_near = true;
+            continue;
+        }
+        out->sx = (int16_t)r3d_span_snap(sx);
+        out->sy = (int16_t)r3d_span_snap(sy);
         out->iz = view->near_z * inv;
-        rows.y0 = out->sy < rows.y0 ? out->sy : rows.y0;
-        rows.y1 = out->sy > rows.y1 ? out->sy : rows.y1;
+        rows.y0 = sy < rows.y0 ? sy : rows.y0;
+        rows.y1 = sy > rows.y1 ? sy : rows.y1;
     }
     return rows;
 }
@@ -221,20 +231,24 @@ typedef struct {
 static r3d_span_vertex_t
 project(const r3d_lit_view_t* view, const clip_vertex_t* v) {
     const float inv = 1.0F / v->z;
-    return (r3d_span_vertex_t){
-        view->center_x + (v->x * inv), view->center_y + (v->y * inv), view->near_z * inv, v->r, v->g, v->b};
+    return (r3d_span_vertex_t){r3d_span_snap(view->center_x + (v->x * inv)),
+                               r3d_span_snap(view->center_y + (v->y * inv)),
+                               view->near_z * inv,
+                               v->r,
+                               v->g,
+                               v->b};
 }
 
-static inline float
-signed_area2(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
-    return ((b->x - a->x) * (c->y - a->y)) - ((c->x - a->x) * (b->y - a->y));
+static inline int64_t
+signed_area2(int64_t ax, int64_t ay, int64_t bx, int64_t by, int64_t cx, int64_t cy) {
+    return ((bx - ax) * (cy - ay)) - ((cx - ax) * (by - ay));
 }
 
 /* Front faces wind negative on screen: counter-clockwise in a y-up world
  * turns clockwise once screen y points down. */
 static inline bool
-facing_away(float area2, bool double_sided) {
-    return !double_sided && area2 >= 0.0F;
+facing_away(int64_t area2, bool double_sided) {
+    return !double_sided && area2 >= 0;
 }
 
 static void
@@ -264,7 +278,7 @@ draw_near_clipped(const r3d_lit_view_t* view, const clip_vertex_t in[3], bool do
     for (int i = 0; i < n; i++) {
         s[i] = project(view, &poly[i]);
     }
-    if (facing_away(signed_area2(&s[0], &s[1], &s[2]), double_sided)) {
+    if (facing_away(signed_area2(s[0].x, s[0].y, s[1].x, s[1].y, s[2].x, s[2].y), double_sided)) {
         return;
     }
     r3d_span_triangle(target, &s[0], &s[1], &s[2]);
@@ -273,14 +287,28 @@ draw_near_clipped(const r3d_lit_view_t* view, const clip_vertex_t in[3], bool do
     }
 }
 
+static inline int
+min3(int a, int b, int c) {
+    return a < b ? (a < c ? a : c) : (b < c ? b : c);
+}
+
+static inline int
+max3(int a, int b, int c) {
+    return a > b ? (a > c ? a : c) : (b > c ? b : c);
+}
+
+/* True when the bounding box holds no pixel centre inside the target, so
+ * the rasterizer would fill nothing: most of these are triangles smaller
+ * than a pixel falling between centres. */
 static inline bool
-outside_target(const r3d_lit_vertex_t* a, const r3d_lit_vertex_t* b, const r3d_lit_vertex_t* c,
-               const r3d_span_target_t* target) {
-    const float w = (float)target->width;
-    const float top = (float)target->row0;
-    const float bottom = (float)target->row1;
-    return (a->sx < 0.0F && b->sx < 0.0F && c->sx < 0.0F) || (a->sx > w && b->sx > w && c->sx > w)
-           || (a->sy < top && b->sy < top && c->sy < top) || (a->sy > bottom && b->sy > bottom && c->sy > bottom);
+misses_every_centre(const r3d_lit_vertex_t* a, const r3d_lit_vertex_t* b, const r3d_lit_vertex_t* c,
+                    const r3d_span_target_t* target) {
+    const int x_first = r3d_span_first_centre(min3(a->sx, b->sx, c->sx));
+    const int x_end = r3d_span_first_centre(max3(a->sx, b->sx, c->sx));
+    const int y_first = r3d_span_first_centre(min3(a->sy, b->sy, c->sy));
+    const int y_end = r3d_span_first_centre(max3(a->sy, b->sy, c->sy));
+    return x_first >= x_end || y_first >= y_end || x_end <= 0 || x_first >= target->width || y_end <= target->row0
+           || y_first >= target->row1;
 }
 
 static inline bool
@@ -304,11 +332,10 @@ draw_crossing_near(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const
 static inline void
 draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_vertex_t* const v[3], const uint16_t* tri, bool double_sided,
               const r3d_span_target_t* target) {
-    if (outside_target(v[0], v[1], v[2], target)) {
+    if (misses_every_centre(v[0], v[1], v[2], target)) {
         return;
     }
-    const float area2 =
-        ((v[1]->sx - v[0]->sx) * (v[2]->sy - v[0]->sy)) - ((v[2]->sx - v[0]->sx) * (v[1]->sy - v[0]->sy));
+    const int64_t area2 = signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy);
     if (facing_away(area2, double_sided)) {
         return;
     }
@@ -327,10 +354,9 @@ draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const r3d_l
     for (int t = c->triangle_first; t < end; t++) {
         const uint16_t* tri = mesh->triangles[t];
         const r3d_lit_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
-        const int in_front = (v[0]->z > view->near_z) + (v[1]->z > view->near_z) + (v[2]->z > view->near_z);
-        if (in_front == 3) {
+        if (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F) {
             draw_in_front(mesh, v, tri, c->double_sided, target);
-        } else if (in_front > 0) {
+        } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
             draw_crossing_near(mesh, view, tri, c->double_sided, target);
         }
     }
