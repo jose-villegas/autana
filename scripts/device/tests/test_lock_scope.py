@@ -11,7 +11,7 @@ the real interpreter in a job of its own. AUTANA_TEST_DEVICE_DIR points the
 holders at another copy of the device scripts, to watch these fail against an
 older one."""
 
-import isolation  # noqa: F401  (first: keeps the suite out of real records)
+import isolation  # (first: keeps the suite out of real records)
 import os
 import signal
 import socket
@@ -236,6 +236,7 @@ class Fixture(unittest.TestCase):
         for name, text in (("port_holder.py", PORT_HOLDER), ("hook.py", HOOK),
                            ("intermediate.py", INTERMEDIATE)):
             (self.dir / name).write_text(text)
+        # Test only: a copy of the device tools to run these scenarios against.
         under_test = os.environ.get("AUTANA_TEST_DEVICE_DIR", str(DEVICE))
         (self.dir / "outer.py").write_text(OUTER.format(device=str(DEVICE)))
         fields = dict(device=under_test, root=str(self.dir / "locks"), board=BOARD,
@@ -295,7 +296,9 @@ class HolderTests(Fixture):
     def test_a_normal_exit_stops_a_lingering_child_before_the_lock_is_released(self):
         seen = self.dir / "seen.txt"
         hook = f'"{sys.executable}" "{self.dir / "hook.py"}" {self.port} "{seen}"'
-        process, _, listed = self.start(self.holder_script, 0.3, AUTANA_LOCK_HOOK=hook)
+        isolation.write_config(self.dir / "project", lock_hook=hook)
+        process, _, listed = self.start(self.holder_script, 0.3,
+                                        _AUTANA_PROJECT=str(self.dir / "project"))
         self.assertTrue(listed, "the child is not among the lock's members")
         _, errors = process.communicate(timeout=60)
         self.assertEqual(seen.read_text(), "free", "the lock was released while the port was held")

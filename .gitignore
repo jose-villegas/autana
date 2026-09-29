@@ -134,9 +134,11 @@ $RECYCLE.BIN/
 /editor/imgui.ini
 
 ### autana CLI
-# Where scripts/device/device.py writes a session's log and manifest when
-# AUTANA_RECORDS names nowhere else - see docs/tools/Autana-CLI.md.
+# Where scripts/device/device.py writes a session's log and manifest when the
+# `records` setting names nowhere else - see docs/tools/Autana-CLI.md.
 .records/
+# This checkout's own settings; docs/tools/Autana-CLI.md lists the keys.
+/autana.local.toml
 
 ### A maintainer's private tooling checkout, and what it links in
 .dev/

@@ -32,7 +32,7 @@ set -eu
 
 TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 MAIN_DIR=$(CDPATH= cd -- "$TEST_DIR/../main" && pwd)
-BUILD_DIR="${TEST_BUILD_DIR:-$TEST_DIR/build}/su-device"
+BUILD_DIR="$TEST_DIR/build/su-device"
 
 # shellcheck source=../tools/device/device_profile.sh
 . "$TEST_DIR/../tools/device/device_profile.sh"

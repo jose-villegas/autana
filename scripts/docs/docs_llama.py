@@ -5,10 +5,9 @@
     python scripts/docs/docs_llama.py status          what is installed, and whether it runs
     python scripts/docs/docs_llama.py stop            stop the server
 
-Everything lives outside the repository, in AUTANA_LLAMA_HOME (default
-%LOCALAPPDATA%/autana/llama, or ~/.cache/autana/llama), shared by every
-worktree. One llama-server runs in router mode on 127.0.0.1:AUTANA_LLAMA_PORT
-(8765), loads a model on its first request and unloads it after ten idle
+Everything lives outside the repository, in %LOCALAPPDATA%/autana/llama (or
+~/.cache/autana/llama), shared by every worktree. One llama-server runs in
+router mode on 127.0.0.1:8765, loads a model on its first request and unloads it after ten idle
 minutes, so nothing holds memory between questions. Every download is pinned to
 a SHA-256 and checked before use. A GPU recognised as integrated is left out
 when another is present; llama.cpp's own LLAMA_ARG_DEVICE overrides.
@@ -69,14 +68,12 @@ INTEGRATED = re.compile(r"Radeon\(TM\) (\d+M|Graphics)|Intel\(R\) (UHD|HD|Iris|A
 
 
 def home():
-    if os.environ.get("AUTANA_LLAMA_HOME"):
-        return Path(os.environ["AUTANA_LLAMA_HOME"])
     base = os.environ.get("LOCALAPPDATA") or Path.home() / ".cache"
     return Path(base) / "autana" / "llama"
 
 
 def port():
-    return int(os.environ.get("AUTANA_LLAMA_PORT", "8765"))
+    return 8765
 
 
 def url(path):

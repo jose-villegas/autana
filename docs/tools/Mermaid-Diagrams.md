@@ -15,9 +15,10 @@ node scripts/gates/check-mermaid.mjs --verbose        # also list passes
 
 File discovery is `git ls-files`, so an untracked scratch file and a vendored
 submodule's own working tree are never scanned. Reports `file:line` for each
-failure. Requires `npm install -g @mermaid-js/mermaid-cli` and the Chrome it
-bundles for Puppeteer; a missing `mmdc` is reported once rather than once
-per block.
+failure. Requires `npm install -g @mermaid-js/mermaid-cli` and a browser: the one
+`PUPPETEER_EXECUTABLE_PATH` names if you set it, else a `chromium` or Chrome
+on `PATH`, found by itself, else the Chrome mermaid-cli bundles for Puppeteer. A missing `mmdc` is reported once rather
+than once per block.
 
 ## Pre-commit
 

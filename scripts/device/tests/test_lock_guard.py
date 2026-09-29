@@ -28,6 +28,7 @@ sys.path.insert(0, str(DEVICE))
 import device  # noqa: E402
 import device_lock  # noqa: E402
 import fake_flash  # noqa: E402
+from autana_config import BOARD_ENV  # noqa: E402
 
 BOARD_A = "90:70:69:FE:A3:08"
 BOARD_B = "90:70:69:FE:B1:22"
@@ -187,9 +188,15 @@ class BoardTests(Store):
 
     def test_autana_board_picks_one_of_two_by_serial(self):
         with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")), \
-                mock.patch.dict(os.environ, {"AUTANA_BOARD": BOARD_B.lower()}):
+                mock.patch.dict(os.environ, {BOARD_ENV: BOARD_B.lower()}):
             self.assertEqual(device.find_board(), device.Board(BOARD_B, "COM7"))
             self.assertEqual(device.find_board(BOARD_A), device.Board(BOARD_A, "COM5"))
+
+    def test_a_callers_autana_board_is_ignored(self):
+        with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")), \
+                mock.patch.dict(os.environ, {"AUTANA_BOARD": BOARD_B}):
+            with self.assertRaises(RuntimeError):
+                device.find_board()
 
     def test_two_boards_and_none_chosen_fails_naming_both(self):
         with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")):
@@ -242,7 +249,7 @@ class BoardTests(Store):
 
     def test_status_names_one_board_when_one_is_chosen(self):
         with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")):
-            with mock.patch.dict(os.environ, {"AUTANA_BOARD": BOARD_B}):
+            with mock.patch.dict(os.environ, {BOARD_ENV: BOARD_B}):
                 text = self.status()
         self.assertEqual(text, f"board {BOARD_B} (on COM7)\n  unlocked\n")
 
@@ -443,7 +450,7 @@ class FlashTests(Store):
         return self.output
 
     def entry(self):
-        index = Path(os.environ["AUTANA_RECORDS"]) / "index.jsonl"
+        index = isolation.RECORDS / "index.jsonl"
         return json.loads(index.read_text(encoding="utf-8").splitlines()[-1])
 
     def test_every_variant_names_its_build_and_says_its_boot_is_unverified(self):
@@ -463,8 +470,8 @@ class FlashTests(Store):
         self.assertEqual(self.entry()["build_id"], "abc")
 
     def records(self):
-        return sorted(path.relative_to(Path(os.environ["AUTANA_RECORDS"])).as_posix()
-                      for path in Path(os.environ["AUTANA_RECORDS"]).rglob("*"))
+        return sorted(path.relative_to(isolation.RECORDS).as_posix()
+                      for path in isolation.RECORDS.rglob("*"))
 
     @contextlib.contextmanager
     def snapshots(self):
@@ -537,7 +544,7 @@ class FlashTests(Store):
             self.assertEqual(device.batch(batch, self.store, BOARD_A), 0)
             self.assertEqual(expected, ["abc"])
             self.assertEqual(device.selftest(selftest, self.store, BOARD_A), 0)
-        flashes = [json.loads(line) for line in (Path(os.environ["AUTANA_RECORDS"])
+        flashes = [json.loads(line) for line in (isolation.RECORDS
                                                  / "index.jsonl").read_text().splitlines()
                    if json.loads(line)["command"] == "flash"]
         self.assertEqual([(entry["build_id"], entry["error"]) for entry in flashes[-2:]],
@@ -1036,7 +1043,7 @@ class FlashImageScriptTests(unittest.TestCase):
         (self.tree / "launcher").mkdir()
         for relative in ("scripts/device/flash_image.sh", "launcher/tools/build/idf.sh",
                          "launcher/tools/build/idf_shim.bat", "launcher/tools/build/espressif.py",
-                         "scripts/lib/python.sh",
+                         "scripts/lib/python.sh", "scripts/lib/autana_config.py",
                          "scripts/device/device.py", "scripts/device/device_lock.py",
                          "scripts/device/device_hook.py", "scripts/device/device_report.py",
                          "scripts/device/lock_job.py", "scripts/device/lock_scope.py",
@@ -1085,8 +1092,8 @@ class FlashImageScriptTests(unittest.TestCase):
         self.store = device_lock.LockStore(self.tree / "locks")
 
     def run_script(self, token, image=None):
-        environment = dict(os.environ, AUTANA_DEVICE_LOCK_TOKEN=token, AUTANA_BOARD=BOARD_A,
-                           AUTANA_DEVICE_LOCK_ROOT=str(self.store.root), PYTHONPATH=str(self.stubs),
+        environment = dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN=token, _AUTANA_BOARD=BOARD_A,
+                           _AUTANA_DEVICE_LOCK_ROOT=str(self.store.root), PYTHONPATH=str(self.stubs),
                            PATH=str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"])
         return subprocess.run([self.bash, str(self.tree / "scripts/device/flash_image.sh"),
                                (image or self.image).as_posix(), str(self.export)],
@@ -1314,7 +1321,7 @@ class DurationTests(Store):
                 mock.patch.object(device, "git_commit", return_value="c0ffee"), \
                 contextlib.redirect_stdout(io.StringIO()):
             device.reset_device(args, store, BOARD_A)
-        index = Path(os.environ["AUTANA_RECORDS"]) / "index.jsonl"
+        index = isolation.RECORDS / "index.jsonl"
         entry = json.loads(index.read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual((entry["board"], entry["acquired_at"]),
                          (BOARD_A, datetime.fromtimestamp(1000.0).isoformat()))
@@ -1390,7 +1397,7 @@ class SuiteFailureTests(Store):
                 contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(device.batch(args, self.store, BOARD_A), 1)
         self.assertIsNone(self.errors()["batch"])
-        index = Path(os.environ["AUTANA_RECORDS"]) / "index.jsonl"
+        index = isolation.RECORDS / "index.jsonl"
         entry = json.loads(index.read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual((entry["command"], entry["error"]), ("batch", None))
 
@@ -1474,10 +1481,12 @@ print("allowed", flush=True)
         elsewhere = self.root / "elsewhere"
         real.mkdir()
         elsewhere.mkdir()
-        result = subprocess.run(
-            [sys.executable, "-c", self.CHILD, str(real), str(elsewhere), str(Path(__file__).parent)],
-            env=dict(os.environ, AUTANA_RECORDS=str(real)), capture_output=True, text=True,
-            timeout=60)
+        with isolation.project(records=str(real)) as project:
+            result = subprocess.run(
+                [sys.executable, "-c", self.CHILD, str(real), str(elsewhere),
+                 str(Path(__file__).parent)],
+                env=dict(os.environ, _AUTANA_PROJECT=str(project)), capture_output=True,
+                text=True, timeout=60)
         self.assertEqual(result.stdout.split(), ["refused", "allowed"])
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("swallowed.txt", result.stderr)
@@ -1498,7 +1507,7 @@ class BoardChoiceTests(Store):
 
     def test_a_padded_autana_board_still_names_its_board(self):
         with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")), \
-                mock.patch.dict(os.environ, {"AUTANA_BOARD": " " + BOARD_B.lower() + "\n"}):
+                mock.patch.dict(os.environ, {BOARD_ENV: " " + BOARD_B.lower() + "\n"}):
             self.assertEqual(device.find_board(), device.Board(BOARD_B, "COM7"))
 
     def test_the_lock_cli_stores_the_board_as_every_record_spells_it(self):

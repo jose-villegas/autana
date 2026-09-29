@@ -6,8 +6,9 @@
 # Usage:
 #   tools/quality/report_test_results.sh [--no-restore] [OUT.md]
 #
-#   AUTANA_BOARD the board's USB serial number, in the environment. Unset:
-#                the only board plugged in - see scripts/device/device.py.
+#   --board SERIAL
+#                the board's USB serial number. Omitted: the only board
+#                plugged in.
 #   OUT.md       markdown report path, ending in .md. Default:
 #                tools/results/test_results_<timestamp>.md
 #   --no-restore leave the device on the diagnostics image afterwards.

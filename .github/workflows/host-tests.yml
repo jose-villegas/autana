@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: bash launcher/test/run_tests.sh
-      - run: HOST_SANITIZE=undefined bash launcher/test/run_tests.sh
+      - run: bash launcher/test/run_tests.sh --sanitize
       - name: Upload host test log
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4

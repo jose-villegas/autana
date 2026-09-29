@@ -131,29 +131,32 @@ class DeviceReportArgumentsTest(unittest.TestCase):
             'report_generate() { :; }\n'
             '. "$2"\n'
             'calls="$3"\n'
-            'autana() { printf "%s AUTANA_BOARD=%s\\n" "$*" "$AUTANA_BOARD" >> "$calls"; '
-            'return 1; }\n'
+            'autana() { echo "$*" >> "$calls"; return 1; }\n'
             'shift 4\n'
             'device_report_run "$@"\n')
         return subprocess.run(
             [self.bash, "-c", script, str(TOOLS / "quality" / "report_test_results.sh"),
              self.dir.as_posix(), (TOOLS / "device" / "device_report.sh").as_posix(),
-             self.calls.as_posix(), suite, "--no-restore", *arguments],
+             self.calls.as_posix(), suite, "--no-restore",
+             *(("--board", board) if board else ()), *arguments],
             cwd=self.dir, stdin=subprocess.DEVNULL, capture_output=True, text=True,
-            timeout=60, env=dict(os.environ, AUTANA_BOARD=board))
+            timeout=60)
 
     def device_calls(self):
         return self.calls.read_text().splitlines() if self.calls.exists() else []
 
-    def test_the_board_is_autana_boards_as_for_every_command(self):
+    def test_the_board_is_the_global_board_option_as_for_every_command(self):
         self.run_report("out.md", board="SERIAL1")
-        self.assertEqual(len(self.device_calls()), 1)
-        self.assertNotIn("--board", self.device_calls()[0])
-        self.assertTrue(self.device_calls()[0].endswith(" AUTANA_BOARD=SERIAL1"),
-                        self.device_calls())
+        [call] = self.device_calls()
+        self.assertTrue(call.startswith("--board SERIAL1 --owner "), call)
+
+    def test_no_board_option_leaves_the_board_to_autana(self):
+        self.run_report("out.md")
+        [call] = self.device_calls()
+        self.assertNotIn("--board", call)
 
     def test_a_boot_time_report_calls_autana_selftest_with_project_and_out(self):
-        self.run_report("out.md", board="SERIAL1")
+        self.run_report("out.md")
         [call] = self.device_calls()
         argv = call.split()
         self.assertEqual(argv[:3], ["--owner", "device_report", "t"])
@@ -166,7 +169,7 @@ class DeviceReportArgumentsTest(unittest.TestCase):
         self.assertNotIn("--purpose", argv)
 
     def test_a_runsuite_report_calls_autana_suite_with_the_name_runs_and_flash(self):
-        self.run_report("out.md", board="SERIAL1", suite="run_gfx_suite")
+        self.run_report("out.md", suite="run_gfx_suite")
         [call] = self.device_calls()
         argv = call.split()
         self.assertEqual(argv[:3], ["--owner", "device_report", "t"])
@@ -181,7 +184,7 @@ class DeviceReportArgumentsTest(unittest.TestCase):
     def test_the_lock_owner_names_this_report_without_an_owner_flag(self):
         """Every autana call device_report_run makes starts with the global
         `--owner "device_report <name>"`."""
-        env = dict(os.environ, AUTANA_BOARD="SERIAL1")
+        env = dict(os.environ)
         script = (
             'report_name=owner-probe; report_dir="$1"; report_timeout=1; report_suite=""\n'
             'report_generate() { :; }\n'
@@ -206,12 +209,12 @@ class DeviceReportArgumentsTest(unittest.TestCase):
                 "--owner device_report owner-probe "))
 
     def test_anything_but_one_report_path_is_refused_before_any_device_call(self):
-        for arguments in (("SERIAL1", "out.md"), ("SERIAL1",), ("--board", "SERIAL1"),
+        for arguments in (("SERIAL1", "out.md"), ("SERIAL1",), ("--board",),
                           ("one.md", "two.md")):
             with self.subTest(arguments=arguments):
                 done = self.run_report(*arguments)
                 self.assertNotEqual(done.returncode, 0)
-                self.assertIn("AUTANA_BOARD", done.stderr)
+                self.assertIn("--board", done.stderr)
                 self.assertEqual(self.device_calls(), [])
 
 

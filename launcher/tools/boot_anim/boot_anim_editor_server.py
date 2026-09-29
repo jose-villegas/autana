@@ -63,7 +63,7 @@ silently reverts it to a stale copy.
 POST /build_flash is the only other endpoint, and the only thing here that
 writes anything meant to be committed or touches the real device: same body
 shape as /render minus `ms`, plus `board` (the board's USB serial number;
-empty: AUTANA_BOARD, else the only board plugged in). It
+empty: the only board plugged in). It
 validates exactly like step 2 above (into a throwaway scratch file first, so
 a bad edit never reaches the real files), then overwrites the REAL
 main/boot/boot_anim_timeline.json and boot_anim_timeline.h - what

@@ -32,7 +32,7 @@ root="$repo/tools"
 on_windows() {
     local win_root
     win_root=$(cygpath -w "$root")
-    AUTANA_TOOLS_ROOT="$win_root" AUTANA_CHECK_ONLY="$check_only" \
+    _AUTANA_TOOLS_ROOT="$win_root" _AUTANA_CHECK_ONLY="$check_only" \
         powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$repo/scripts/lib/add-tools-to-path.ps1")"
 }
 

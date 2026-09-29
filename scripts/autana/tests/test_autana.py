@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "device" / "tests"))
 import isolation  # noqa: E402,F401  (first: keeps the suite out of real records)
 import contextlib
+import getpass
 import io
 import json
 import socket
@@ -146,7 +147,7 @@ class BoardHolderTests(unittest.TestCase):
 
     def test_the_named_board_is_judged_even_off_usb(self):
         named_off_usb = self.status_output(holder_pid=1, port=None)
-        with mock.patch.dict(autana.os.environ, {"AUTANA_BOARD": self.BOARD}):
+        with mock.patch.dict(autana.os.environ, {autana.BOARD_ENV: self.BOARD}):
             self.assertEqual(self.holder_seen(named_off_usb),
                              "held by killed@0pac for autana screenshot")
 
@@ -367,28 +368,28 @@ class OwnerTests(unittest.TestCase):
 
     def test_the_global_owner_wins_but_keeps_the_pid(self):
         with mock.patch.dict(autana.os.environ, {autana.OWNER_ENV: "env-owner"}), \
-             mock.patch.object(autana.getpass, "getuser", side_effect=AssertionError("unused")), \
+             mock.patch.object(getpass, "getuser", side_effect=AssertionError("unused")), \
              mock.patch.object(autana.os, "getpid", return_value=4242):
             self.assertEqual(autana.owner(), "env-owner:4242")
 
     def test_the_shape_is_user_at_host_colon_pid(self):
         with mock.patch.dict(autana.os.environ, {}, clear=True), \
-             mock.patch.object(autana.getpass, "getuser", return_value="sam"), \
-             mock.patch.object(autana.socket, "gethostname", return_value="devbox"), \
+             mock.patch.object(getpass, "getuser", return_value="sam"), \
+             mock.patch.object(socket, "gethostname", return_value="devbox"), \
              mock.patch.object(autana.os, "getpid", return_value=4242):
             self.assertEqual(autana.owner(), "sam@devbox:4242")
 
     def test_a_callers_autana_device_owner_is_ignored(self):
         with mock.patch.dict(autana.os.environ, {"AUTANA_DEVICE_OWNER": "ci-7"}, clear=True), \
-             mock.patch.object(autana.getpass, "getuser", return_value="sam"), \
-             mock.patch.object(autana.socket, "gethostname", return_value="devbox"), \
+             mock.patch.object(getpass, "getuser", return_value="sam"), \
+             mock.patch.object(socket, "gethostname", return_value="devbox"), \
              mock.patch.object(autana.os, "getpid", return_value=4242):
             self.assertEqual(autana.owner(), "sam@devbox:4242")
 
     def test_getpass_failure_falls_back_to_user(self):
         with mock.patch.dict(autana.os.environ, {}, clear=True), \
-             mock.patch.object(autana.getpass, "getuser", side_effect=OSError("no username")), \
-             mock.patch.object(autana.socket, "gethostname", return_value="devbox"), \
+             mock.patch.object(getpass, "getuser", side_effect=OSError("no username")), \
+             mock.patch.object(socket, "gethostname", return_value="devbox"), \
              mock.patch.object(autana.os, "getpid", return_value=4242):
             self.assertEqual(autana.owner(), "user@devbox:4242")
 
@@ -1023,13 +1024,13 @@ class LockCommandTests(unittest.TestCase):
 
     def test_release_without_a_token_or_the_variable_is_a_usage_error(self):
         environment = {key: value for key, value in autana.os.environ.items()
-                       if key != "AUTANA_DEVICE_LOCK_TOKEN"}
+                       if key != autana.TOKEN_ENV}
         with mock.patch.dict(autana.os.environ, environment, clear=True), \
                 self.assertRaises(SystemExit):
             autana.release([])
 
     def test_release_without_a_token_uses_the_one_a_running_command_has(self):
-        with mock.patch.dict(autana.os.environ, {"AUTANA_DEVICE_LOCK_TOKEN": "cafe"}), \
+        with mock.patch.dict(autana.os.environ, {autana.TOKEN_ENV: "cafe"}), \
                 mock.patch.object(autana.subprocess, "call", return_value=0) as called:
             autana.release([])
         command = called.call_args[0][0]
@@ -1680,6 +1681,112 @@ class BoardOnlyCommandsTests(unittest.TestCase):
         for handler, args in cases:
             with self.subTest(command=handler.__name__, args=args):
                 self.run_board_only(handler, args)
+
+
+class GlobalBoardTests(unittest.TestCase):
+    """`autana --board SERIAL <command>` names the board, through one private
+    variable every child reads; a caller's AUTANA_BOARD is ignored."""
+
+    def run_main(self, argv, handler=None, environ=None):
+        handler = handler or mock.Mock(return_value=0)
+        with mock.patch.dict(autana.os.environ, environ or {}), \
+             mock.patch.dict(autana.COMMANDS, {"status": handler}), \
+             mock.patch.object(autana.sys, "argv", ["autana", *argv]):
+            with self.assertRaises(SystemExit) as stop:
+                autana.main()
+        return stop.exception.code, handler
+
+    def test_a_nested_process_inherits_the_board(self):
+        seen = []
+
+        def handler(args):
+            seen.append(autana.subprocess.check_output(
+                [sys.executable, "-c",
+                 "import os, sys; print(os.environ[sys.argv[1]])", autana.BOARD_ENV],
+                text=True).strip())
+            return 0
+
+        self.run_main(["--board", "90:70:69:FE:A3:08", "status"], handler)
+        self.assertEqual(seen, ["90:70:69:FE:A3:08"])
+
+    def test_a_callers_autana_board_is_ignored(self):
+        seen = []
+        environ = {key: value for key, value in autana.os.environ.items()
+                   if key != autana.BOARD_ENV}
+        environ["AUTANA_BOARD"] = "90:70:69:FE:A3:08"
+        with mock.patch.dict(autana.os.environ, environ, clear=True):
+            self.run_main(["status"], lambda args: seen.append(
+                autana.os.environ.get(autana.BOARD_ENV)) or 0)
+        self.assertEqual(seen, [None])
+
+    def test_board_after_the_command_is_rejected_with_the_hint(self):
+        with self.assertRaises(SystemExit) as stop, \
+             mock.patch.object(autana.sys, "argv", ["autana", "status", "--board", "x"]):
+            autana.main()
+        self.assertIn("--board goes before the command", str(stop.exception.code))
+
+    def test_an_empty_board_is_rejected(self):
+        code, handler = self.run_main(["--board", " ", "status"])
+        self.assertIn("--board needs a board's USB serial number", str(code))
+        handler.assert_not_called()
+
+
+class ProjectSettingsTests(unittest.TestCase):
+    """Every command reads the settings file of the project it acts on, and
+    refuses to run on one it cannot trust."""
+
+    def run_main(self, argv, handler):
+        with mock.patch.dict(autana.COMMANDS, {"status": handler}), \
+             mock.patch.object(autana.sys, "argv", ["autana", *argv]):
+            with self.assertRaises(SystemExit) as stop:
+                autana.main()
+        return stop.exception.code
+
+    def test_children_are_told_which_project_the_command_acts_on(self):
+        seen = []
+        with isolation.project() as project:
+            self.run_main(["status", "--project", str(project)], lambda args: seen.append(
+                autana.os.environ[autana.PROJECT_ENV]) or 0)
+        self.assertEqual(seen, [str(project.resolve())])
+
+    def test_a_child_autana_reads_its_own_checkouts_settings_not_an_outer_ones(self):
+        seen = []
+        with isolation.project() as outer, isolation.project() as inner:
+            with mock.patch.dict(autana.os.environ, {autana.PROJECT_ENV: str(outer)}):
+                self.run_main(["status", "--project", str(inner)], lambda args: seen.append(
+                    autana.os.environ[autana.PROJECT_ENV]) or 0)
+                previous = Path.cwd()
+                os.chdir(inner)
+                try:
+                    self.run_main(["status"], lambda args: seen.append(
+                        autana.os.environ[autana.PROJECT_ENV]) or 0)
+                finally:
+                    os.chdir(previous)
+        self.assertEqual(seen, [str(inner.resolve())] * 2)
+
+    def test_an_unknown_key_stops_the_command_naming_the_file_and_the_key(self):
+        handler = mock.Mock(return_value=0)
+        with isolation.project() as project:
+            (project / "autana.local.toml").write_text("recods = 'x'\n")
+            code = self.run_main(["status", "--project", str(project)], handler)
+        self.assertIn("autana.local.toml", str(code))
+        self.assertIn("recods", str(code))
+        handler.assert_not_called()
+
+    def test_help_config_lists_every_key(self):
+        text = autana.help_text(["config"])
+        for key in autana.autana_config.KEYS:
+            self.assertIn(key, text)
+
+    def test_help_config_works_when_the_project_file_is_broken(self):
+        with isolation.project() as project:
+            (project / "autana.local.toml").write_text("recods = 'x'\n")
+            with mock.patch.object(autana.sys, "argv", ["autana", "help", "config"]), \
+                 contextlib.redirect_stdout(io.StringIO()) as printed, \
+                 self.assertRaises(SystemExit) as stop:
+                autana.main()
+        self.assertEqual(stop.exception.code, 0)
+        self.assertIn("records", printed.getvalue())
 
 
 if __name__ == "__main__":

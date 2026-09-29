@@ -208,8 +208,9 @@ session:
 | Windows | `%TEMP%\autana-device`, usually `C:\Users\<you>\AppData\Local\Temp\autana-device` |
 | Linux | `/tmp/autana-device-<uid>` (`id -u`), whatever `TMPDIR` is |
 
-`AUTANA_DEVICE_LOCK_ROOT` names another folder. Linux ignores `TMPDIR` so two
-jobs with different temp folders still exclude each other; an install older
+There is no setting for another folder: the lock is one per machine, and a
+folder chosen per checkout or per shell would split it. Linux ignores `TMPDIR`
+so two jobs with different temp folders still exclude each other; an install older
 than this rule used `$TMPDIR/autana-device` there, and until every copy on the
 machine is updated the two do not exclude each other (the lock protocol number
 cannot help: an older install never looks in the new folder). Per board, with
@@ -217,7 +218,7 @@ cannot help: an older install never looks in the new folder). Per board, with
 
 | File | What it is |
 |---|---|
-| `<serial>.json` | The lock: `owner`, `purpose`, `kind`, `acquired_at`, `heartbeat_at`, `host`, `pid`, `token`, `expected_build_id`, `log`, `protocol`, `autana_version`. The `token` is a random secret naming this one lock; the holder and every process it starts also have it in `AUTANA_DEVICE_LOCK_TOKEN`, which `autana lock release` uses when given none. `status` never prints it. |
+| `<serial>.json` | The lock: `owner`, `purpose`, `kind`, `acquired_at`, `heartbeat_at`, `host`, `pid`, `token`, `expected_build_id`, `log`, `protocol`, `autana_version`. The `token` is a random secret naming this one lock; the holder and every process it starts also carry it in their environment, which `autana lock release` uses when given none. `status` never prints it. |
 | `<serial>.queue/` | One ticket per waiting command, in FIFO order; a dead waiter's is discarded. |
 | `<serial>.human.json` | A person's reservation, with `expires_at`. |
 | `<serial>.last.json` | The previous holder, one only: overwritten each time a lock ends, for the message in step 5. |
@@ -228,22 +229,18 @@ cannot help: an older install never looks in the new folder). Per board, with
 
 A board is named by its USB serial number (the ESP32-S3's MAC address,
 `90:70:69:FE:A3:08`, say), so the lock and its queue survive a reset that
-brings it back on another COM number. A command acts on `AUTANA_BOARD`
-(or the one Espressif board plugged in, else the one board a lock,
+brings it back on another COM number. A command acts on the board `--board`
+names (or the one Espressif board plugged in, else the one board a lock,
 reservation or waiter names, so it can queue while a holder's reset has the
 board off USB). With several candidates and none named it fails and lists
 them; each board has its own lock and queue. `lock hand` and `lock take-back`
 alone fall back once more to the only board this machine has ever seen.
 
-### Variables, exit codes and JSON status
+### Exit codes and JSON status
 
-| Variable | Effect |
-|---|---|
-| `AUTANA_BOARD` | The board's USB serial number, when several are plugged in. |
-| `AUTANA_DEVICE_LOCK_ROOT` | The lock folder. |
-| `AUTANA_DEVICE_LOCK_TOKEN` | Set inside a running command for the processes it starts. |
-| `AUTANA_LOCK_HOOK` | A shell command run on lock events ([Lock events](#lock-events)). |
-| `AUTANA_RECORDS` | Where captures and `index.jsonl` land ([Flash-and-Captures.md](Flash-and-Captures.md#where-a-capture-lands)). |
+Which board, how long to wait and the lock's owner are the global options
+`--board`, `--wait` and `--owner`; the hook and the records folder are keys of
+`autana.local.toml` (see [Settings](Autana-CLI.md#settings)).
 
 | Exit code | Meaning |
 |---|---|
@@ -272,7 +269,9 @@ Times are epoch seconds; an estimate without enough history is `null`.
 
 ### Lock events
 
-Set `AUTANA_LOCK_HOOK` to a shell command to run when a lock changes. It runs
+Set `lock_hook` in `autana.local.toml` to a shell command to run when a lock
+changes. It fires only for a command run from a checkout whose file sets it, so
+a hook meant for every command needs the key in every checkout. It runs
 through `cmd.exe` on Windows (`%VAR%`) and `/bin/sh` elsewhere (`$VAR`), with
 `AUTANA_LOCK_EVENT`, `AUTANA_LOCK_BOARD` (the serial number),
 `AUTANA_LOCK_OWNER`, `AUTANA_LOCK_PURPOSE` and `AUTANA_LOCK_NOTE` set. Purpose
@@ -371,7 +370,7 @@ lock is gone.
 | | What the lock is tied to | If the holder dies |
 |---|---|---|
 | Windows | A job object the holder joins when it takes the lock. Every process it starts inherits the job, grandchildren of dead parents included. | The kernel closes the job and ends every member. A process started with `CREATE_BREAKAWAY_FROM_JOB` can leave it. |
-| Linux | A token: every process the holder starts carries the lock's token in `AUTANA_DEVICE_LOCK_TOKEN`, found through `/proc`. A small watchdog the holder starts holds the read end of a pipe. | The pipe closes, and the watchdog ends every process still carrying the token. A process that scrubs its environment or runs as another user is out of reach. |
+| Linux | A token: every process the holder starts carries the lock's token in its environment, found through `/proc`. A small watchdog the holder starts holds the read end of a pipe. | The pipe closes, and the watchdog ends every process still carrying the token. A process that scrubs its environment or runs as another user is out of reach. |
 
 A holder that ends normally gives the processes it started two seconds, ends
 the rest and prints their pids, then releases. Work that was already running

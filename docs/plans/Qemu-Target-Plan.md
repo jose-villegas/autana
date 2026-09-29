@@ -32,7 +32,7 @@ number nobody should trust.
   Whatever starts an instance owns killing it: an orphan held 1.1 GB for hours
   after the run that spawned it had finished, so every instance carries the pid
   of its owner and `stop` reaps the ones whose owner is gone.
-- `AUTANA_TARGET=qemu[:handle]`, or `--qemu`, points the ordinary verbs at an
+- A global `--qemu[=handle]` option points the ordinary verbs at an
   instance. Everything else about them is unchanged.
 - `scripts/device/device.py` grows one seam: the console is either a serial port
   or a socket. `launcher/test/qemu_run.py` already opens that socket and matches

@@ -16,13 +16,17 @@
 // CHECK_MERMAID_MMDC_ARGS appends extra space-separated arguments to every mmdc
 // invocation - CI uses it to pass `-p <puppeteer-config.json>` for a sandboxed Chrome.
 //
+// The browser is found without setup: whatever PUPPETEER_EXECUTABLE_PATH names when the
+// caller set it, else a chromium or chrome on PATH, else the Chrome mermaid-cli bundles.
+//
 // Requires @mermaid-js/mermaid-cli (npm install -g @mermaid-js/mermaid-cli) and the Chrome
 // it bundles; see docs/tools/Mermaid-Diagrams.md.
 
 import { execFile } from 'node:child_process';
+import { existsSync, rmSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, relative, resolve } from 'node:path';
+import { join, posix, relative, resolve, win32 } from 'node:path';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
@@ -154,13 +158,55 @@ export function parseExtraMmdcArgs(raw) {
   return raw ? raw.split(/\s+/).filter(Boolean) : [];
 }
 
+const BROWSER_NAMES = ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable', 'chrome'];
+const PUPPETEER_CONFIG_FLAGS = ['-p', '--puppeteerConfigFile'];
+
+// The first Chromium or Chrome on `pathVariable`, in BROWSER_NAMES order, else null. A
+// machine that has one should not also need an environment variable to say so.
+export function findBrowserOnPath(pathVariable, isWindows = IS_WINDOWS, exists = existsSync) {
+  const folders = (pathVariable || '').split(isWindows ? ';' : ':').filter(Boolean);
+  const joinPath = isWindows ? win32.join : posix.join;
+  for (const name of BROWSER_NAMES) {
+    for (const folder of folders) {
+      const candidate = joinPath(folder, isWindows ? `${name}.exe` : name);
+      if (exists(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+
+// The mmdc arguments that name the browser: none when the caller already passed a Puppeteer
+// config (CI does), named a browser through PUPPETEER_EXECUTABLE_PATH (explicit beats
+// discovered), or when no browser is on PATH, which leaves mmdc the Chrome it bundles.
+export function browserConfigArgs(extra, browser, configFile, explicitBrowser = '') {
+  const given = extra.some((arg) => PUPPETEER_CONFIG_FLAGS.some((flag) => arg === flag || arg.startsWith(`${flag}=`)));
+  return given || explicitBrowser || !browser ? [] : ['-p', configFile];
+}
+
+let browserConfigDir = null;
+
+async function browserArguments(extra) {
+  const browser = findBrowserOnPath(process.env.PATH);
+  if (!browser || browserConfigArgs(extra, browser, '', process.env.PUPPETEER_EXECUTABLE_PATH).length === 0) {
+    return [];
+  }
+  if (!browserConfigDir) {
+    browserConfigDir = await mkdtemp(join(tmpdir(), 'mermaid-browser-'));
+    await writeFile(join(browserConfigDir, 'puppeteer.json'), JSON.stringify({ executablePath: browser }));
+    process.on('exit', () => rmSync(browserConfigDir, { recursive: true, force: true }));
+  }
+  return browserConfigArgs(extra, browser, join(browserConfigDir, 'puppeteer.json'), process.env.PUPPETEER_EXECUTABLE_PATH);
+}
+
 // shell:true is required on Windows because mmdc is a .cmd shim, not a real executable -
 // but shell:true only concatenates args with spaces, it does not escape them, so a path
 // containing a space silently splits into extra arguments. Quoting each argument
 // ourselves first is the fix; POSIX needs neither the shell nor the quoting.
 async function runMmdc(args) {
   const extra = parseExtraMmdcArgs(process.env.CHECK_MERMAID_MMDC_ARGS);
-  const full = [...args, ...extra];
+  const full = [...args, ...extra, ...(await browserArguments(extra))];
   return execFileAsync('mmdc', IS_WINDOWS ? full.map(winQuote) : full, {
     shell: IS_WINDOWS,
     maxBuffer: 1024 * 1024 * 10,
