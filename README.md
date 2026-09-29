@@ -6,11 +6,12 @@
 
 Autana is software for the [Waveshare ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/esp32-s3-touch-amoled-1.8.htm): a home screen that launches a falling-sand sandbox and software-rendering experiments. Touch and board motion control the apps. The firmware draws each frame in software and sends its pixels directly to the board's AMOLED screen.
 
-| Falling Sand, board turning | Launcher, board rocking | Falling Sand title screen |
-|:---:|:---:|:---:|
-| <img src="docs/images/overview/sand-simulation.gif" width="280" alt="A volcano spilling toward a lake beside growing and burning trees as the board turns"> | <img src="docs/images/overview/launcher-home.gif" width="280" alt="The launcher listing Falling Sand and Render Lab, its backdrop ridge levelling as the board rocks"> | <img src="docs/images/overview/sand-menu.png" width="280" alt="The Falling Sand title screen with start, load, options, guide and exit"> |
-| **Rotating Render Lab cube** | **Sponza flythrough** | **Ray-traced Cornell box** |
-| <img src="docs/images/overview/render-lab-cube.gif" width="280" alt="A shaded cube rotating on a black screen"> | <img src="docs/images/overview/render-lab-sponza.gif" width="280" alt="A camera moving down the sunlit Crytek Sponza atrium between coloured curtains"> | <img src="docs/images/overview/render-lab-cornell.png" width="280" alt="A Cornell box with a red and a green wall around two blocks"> |
+<table>
+<tr><th width="33%">Falling Sand, board turning</th><th width="33%">Launcher, board rocking</th><th width="33%">Falling Sand title screen</th></tr>
+<tr><td width="33%"><img src="docs/images/overview/sand-simulation.gif" width="100%" alt="A volcano spilling toward a lake beside growing and burning trees as the board turns"></td><td width="33%"><img src="docs/images/overview/launcher-home.gif" width="100%" alt="The launcher listing Falling Sand and Render Lab, its backdrop ridge levelling as the board rocks"></td><td width="33%"><img src="docs/images/overview/sand-menu.png" width="100%" alt="The Falling Sand title screen with start, load, options, guide and exit"></td></tr>
+<tr><th width="33%">Rotating Render Lab cube</th><th width="33%">Sponza flythrough</th><th width="33%">Ray-traced Cornell box</th></tr>
+<tr><td width="33%"><img src="docs/images/overview/render-lab-cube.gif" width="100%" alt="A shaded cube rotating on a black screen"></td><td width="33%"><img src="docs/images/overview/render-lab-sponza.gif" width="100%" alt="A camera moving down the sunlit Crytek Sponza atrium between coloured curtains"></td><td width="33%"><img src="docs/images/overview/render-lab-cornell.png" width="100%" alt="A Cornell box with a red and a green wall around two blocks"></td></tr>
+</table>
 
 Every image is a host render of the real firmware drawing code at the panel's 448x368, shown here at a smaller size, not a board capture. The sand clip runs the real simulation with scripted tilt, and the launcher lists the apps a release build carries.
 
