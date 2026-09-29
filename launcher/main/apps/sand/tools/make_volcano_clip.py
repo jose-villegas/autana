@@ -30,24 +30,35 @@ def extract_frames(video: Path, work: Path) -> list[Path]:
     subprocess.run(
         [
             "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(video),
-            "-vf", "select=not(mod(n\\,6))", "-vsync", "0", str(work / "frame-%03d.png"),
+            "-vf", "select=not(mod(n\\,6))", "-fps_mode", "passthrough", str(work / "frame-%03d.png"),
         ],
         check=True,
     )
     return sorted(work.glob("frame-*.png"))
 
 
+MARGIN = 14
+
+
+def canvas_size(panel: Image.Image) -> int:
+    """Wide enough for the plate's diagonal, so every angle of the turn fits."""
+    return math.ceil(math.hypot(panel.width + 2 * MARGIN, panel.height + 2 * MARGIN)) + 12
+
+
 def composite(panel: Image.Image, angle: float) -> Image.Image:
-    size = 670
+    size = canvas_size(panel)
     canvas = Image.new("RGB", (size, size), "#101923")
     draw = ImageDraw.Draw(canvas)
     draw.ellipse((9, 9, size - 10, size - 10), outline="#39566a", width=2)
     draw.ellipse((size // 2 - 3, size // 2 - 3, size // 2 + 3, size // 2 + 3), fill="#39566a")
-    plate = Image.new("RGBA", (508, 418), "#080d13")
-    plate.paste(panel.resize((480, 390), Image.Resampling.LANCZOS).convert("RGBA"), (14, 14))
+    # The panel at its own resolution: only the turn itself resamples it.
+    plate = Image.new("RGBA", (panel.width + 2 * MARGIN, panel.height + 2 * MARGIN), "#080d13")
+    plate.paste(panel.convert("RGBA"), (MARGIN, MARGIN))
     spun = plate.rotate(-angle, Image.Resampling.BICUBIC, expand=True)
     canvas.paste(spun, ((size - spun.width) // 2, (size - spun.height) // 2), spun)
-    return canvas
+    # Scaled once, after the turn, to the panel's width: the README table
+    # keeps every column as wide as one screen.
+    return canvas.resize((panel.width, panel.width), Image.Resampling.LANCZOS)
 
 
 def main() -> None:
@@ -61,9 +72,10 @@ def main() -> None:
         paths = extract_frames(video, work)
         images = [composite(Image.open(path), angles[i * 6]) for i, path in enumerate(paths)]
         if args.contact:
-            contact = Image.new("RGB", (2010, 1340))
+            size = images[0].width
+            contact = Image.new("RGB", (3 * size, 2 * size))
             for slot, index in enumerate((0, 12, 24, 28, 29, 39)):
-                contact.paste(images[index], ((slot % 3) * 670, (slot // 3) * 670))
+                contact.paste(images[index], ((slot % 3) * size, (slot // 3) * size))
             args.contact.parent.mkdir(parents=True, exist_ok=True)
             contact.save(args.contact)
         sequence = [image.quantize(colors=32, method=Image.Quantize.FASTOCTREE) for image in images]
