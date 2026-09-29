@@ -1915,11 +1915,9 @@ sand_app_test_options_reach_start(sand_test_start_action_t action) {
 }
 
 /* Unlike sand_app_test_survives_indexed_then_menu() above, this runs the
- * START button itself, through the frames a finger gives it: the title is
- * built once as the player would see it, then the press frame (hover only)
- * and the frame that carries the DOWN, which is the click. The lift lands on
- * a frame that draws no UI, so the pointer's own idle-frame release is what
- * leaves no held button behind for the next screen. */
+ * START button itself, through a finger's frames: title built, press
+ * (hover only), DOWN (the click). The lift lands on a frame with no UI, so
+ * the pointer's idle-frame release leaves no button held. */
 bool
 sand_app_test_start_button_survives_the_ui_build(int mode) {
     const int previous_mode = color_mode;

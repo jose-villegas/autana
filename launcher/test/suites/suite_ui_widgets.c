@@ -712,7 +712,7 @@ many_list_scroll(mu_Rect list_rect) {
 }
 
 /* A finger already resting at (x, y), optionally with a raw scroll fed via
- * mu_input_scroll() - what replay_pointer_event() does for a resolved
+ * mu_input_scroll() - what ui_bridge_feed() does for a resolved
  * UI_POINTER_SCROLL, without depending on which held frame ui_pointer's own
  * drag threshold happens to trip on. */
 static int

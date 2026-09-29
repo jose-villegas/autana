@@ -36,14 +36,10 @@ typedef struct {
  * can play out - see ui_pointer_step()'s own comment. */
 #define UI_POINTER_MAX_EVENTS     3
 
-/* MOVE-only frames a press waits through before its DOWN is fed. A control
- * takes focus only from hover, and microui marks it hovered only on a frame
- * with the button up, so a DOWN with no hover frame before it draws a pressed
- * button that never submits. One frame suffices when the press frame's
- * seeded hover root (mu_seed_hover_root()) was the root microui then found
- * under the finger. When it was not - a screen switch, a list closing, the
- * first build of a window - `hover_stale` is set after that frame and the
- * press takes one more MOVE-only frame, or the tap would vanish. */
+/* MOVE-only frames before a press's DOWN: focus needs hover, and microui
+ * hovers only with the button up. One suffices while the root seeded by
+ * mu_seed_hover_root() is the one the press frame finds; otherwise
+ * `hover_stale` adds a frame, or the tap would vanish. */
 #define UI_POINTER_HOVER_FRAMES   1
 
 /* How far a finger on scrollable content moves before it is a drag rather
