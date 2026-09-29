@@ -25,6 +25,7 @@
 #include "unity.h"
 
 #include "microui.h"
+#include "ui/ui_hover.h"
 #include "ui/ui_pointer.h"
 
 #define CANVAS_W 368
@@ -93,6 +94,9 @@ frame(bool down, bool pressed, bool released, int x, int y) {
     }
 
     bool submitted = false;
+    if (in.pressed) {
+        ui_hover_seed_root(ctx);
+    }
     mu_begin(ctx);
     if (mu_begin_window_ex(ctx, "screen", mu_rect(0, 0, CANVAS_W, CANVAS_H),
                            MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
@@ -150,6 +154,86 @@ test_a_tap_submits_the_button_underneath_it(void) {
                                   "stayed green, leaving no app reachable from the launcher");
 }
 
+/* Latency: the press is answered on the second frame of contact, not the
+ * third. The DOWN is fed one frame after the first position, so microui must
+ * already have granted hover on that first frame. */
+static void
+test_a_tap_submits_on_the_second_frame_of_contact(void) {
+    fixture();
+    idle_frames(2);
+
+    const int cx = BTN_X + BTN_W / 2;
+    const int cy = BTN_Y + BTN_H / 2;
+    TEST_ASSERT_FALSE(frame(true, true, false, cx, cy));
+    TEST_ASSERT_TRUE_MESSAGE(frame(true, false, false, cx, cy),
+                             "the DOWN follows the first frame of contact, and it must click");
+    TEST_ASSERT_FALSE_MESSAGE(frame(true, false, false, cx, cy), "holding must not click again");
+    TEST_ASSERT_FALSE(frame(false, false, true, cx, cy));
+}
+
+/* Hover is resolved on the frame the finger lands, not the one after. */
+static void
+test_hover_is_granted_on_the_frame_a_press_lands(void) {
+    fixture();
+    idle_frames(2);
+
+    frame(true, true, false, BTN_X + BTN_W / 2, BTN_Y + BTN_H / 2);
+    TEST_ASSERT_NOT_NULL(ctx->hover_root);
+    TEST_ASSERT_NOT_EQUAL_UINT32(0, ctx->hover);
+}
+
+/* Two windows over the press point: the seed must pick the one on top, as
+ * begin_root_container() does, or the wrong window's button would be hovered
+ * and click through. Returns 1 for the back button, 2 for the front one. */
+static int
+stacked_frame(const input_t* in) {
+    ui_pointer_event_t ev[UI_POINTER_MAX_EVENTS];
+    const int n = ui_pointer_step(&pointer, in, ev, UI_POINTER_MAX_EVENTS);
+    for (int i = 0; i < n; i++) {
+        switch (ev[i].kind) {
+            case UI_POINTER_MOVE: mu_input_mousemove(ctx, ev[i].x, ev[i].y); break;
+            case UI_POINTER_DOWN: mu_input_mousedown(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
+            case UI_POINTER_UP: mu_input_mouseup(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
+            case UI_POINTER_SCROLL: break;
+        }
+    }
+    if (in->pressed) {
+        ui_hover_seed_root(ctx);
+    }
+
+    int submitted = 0;
+    const int opt = MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME;
+    mu_begin(ctx);
+    if (mu_begin_window_ex(ctx, "back", mu_rect(0, 0, CANVAS_W, CANVAS_H), opt)) {
+        mu_layout_set_next(ctx, mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), 0);
+        submitted += mu_button(ctx, "BACK") ? 1 : 0;
+        mu_end_window(ctx);
+    }
+    if (mu_begin_window_ex(ctx, "front", mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), opt)) {
+        mu_layout_set_next(ctx, mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), 0);
+        submitted += mu_button(ctx, "FRONT") ? 2 : 0;
+        mu_end_window(ctx);
+    }
+    mu_end(ctx);
+    return submitted;
+}
+
+static void
+test_a_press_over_stacked_windows_reaches_only_the_top_one(void) {
+    fixture();
+    const input_t idle = {0};
+    stacked_frame(&idle);
+    stacked_frame(&idle);
+
+    const int x = BTN_X + BTN_W / 2;
+    const int y = BTN_Y + BTN_H / 2;
+    int total = stacked_frame(&(input_t){.down = true, .pressed = true, .x = x, .y = y});
+    total += stacked_frame(&(input_t){.down = true, .x = x, .y = y});
+    total += stacked_frame(&(input_t){.down = true, .x = x, .y = y});
+    total += stacked_frame(&(input_t){.released = true, .x = x, .y = y});
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, total, "only the window on top may take the press, once");
+}
+
 /* However long the finger rests, one press is one click. Holding must not
  * re-fire the control it is resting on. */
 static void
@@ -160,24 +244,18 @@ test_holding_does_not_resubmit(void) {
     TEST_ASSERT_EQUAL_INT(1, taps_counted(40));
 }
 
-/* A press and release arriving in the SAME frame cannot click anything - a
- * property of microui, not a bug here: hover_root does not exist until the
- * frame after the pointer first moves somewhere, so the first frame at a
- * position can never resolve a control. Pinned rather than left
- * undiscovered: ui_pointer_step() still emits the full move/down/up
- * (suite_ui_pointer.c asserts that) - the click is simply not resolvable,
- * and only touch_fsm's TOUCH_RELEASE_QUIET_US (60ms) makes it reachable at
- * all. */
+/* A press and release arriving in the SAME frame still clicks: the press
+ * frame seeds hover_root, so the DOWN and UP folded into that frame find the
+ * control hovered and focus it. */
 static void
-test_a_one_frame_tap_cannot_resolve_a_control(void) {
+test_a_one_frame_tap_submits_once(void) {
     fixture();
     idle_frames(2);
 
     const int cx = BTN_X + BTN_W / 2;
     const int cy = BTN_Y + BTN_H / 2;
-    TEST_ASSERT_FALSE_MESSAGE(frame(true, true, true, cx, cy),
-                              "microui has no hover_root for a position it is seeing for the "
-                              "first time, so nothing can take focus on that frame");
+    TEST_ASSERT_TRUE(frame(true, true, true, cx, cy));
+    TEST_ASSERT_FALSE(frame(false, false, false, cx, cy));
 }
 
 static void
@@ -238,6 +316,9 @@ test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap(void) {
             }
         }
 
+        if (in.pressed) {
+            ui_hover_seed_root(ctx);
+        }
         mu_begin(ctx);
         if (mu_begin_window_ex(ctx, "screen", mu_rect(0, 0, CANVAS_W, CANVAS_H),
                                MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
@@ -288,6 +369,9 @@ list_frame(bool down, bool pressed, bool released, int x, int y) {
     }
 
     int submitted = -1;
+    if (in.pressed) {
+        ui_hover_seed_root(ctx);
+    }
     mu_begin(ctx);
     if (mu_begin_window_ex(ctx, "list", mu_rect(0, 0, CANVAS_W, CANVAS_H),
                            MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
@@ -394,8 +478,11 @@ void
 run_ui_pointer_microui_suite(void) {
     ctx = malloc(sizeof *ctx);
     RUN_TEST(test_a_tap_submits_the_button_underneath_it);
+    RUN_TEST(test_a_tap_submits_on_the_second_frame_of_contact);
+    RUN_TEST(test_hover_is_granted_on_the_frame_a_press_lands);
+    RUN_TEST(test_a_press_over_stacked_windows_reaches_only_the_top_one);
     RUN_TEST(test_holding_does_not_resubmit);
-    RUN_TEST(test_a_one_frame_tap_cannot_resolve_a_control);
+    RUN_TEST(test_a_one_frame_tap_submits_once);
     RUN_TEST(test_a_tap_outside_the_button_submits_nothing);
     RUN_TEST(test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap);
     RUN_TEST(test_dragging_up_scrolls_the_list_without_pressing_a_row);

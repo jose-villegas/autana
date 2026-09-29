@@ -28,6 +28,7 @@
 #include "gfx/gfx.h"
 #include "microui.h"
 #include "ui/ui.h"
+#include "ui/ui_hover.h"
 #include "ui/ui_launcher.h"
 #include "ui/ui_pointer.h"
 #include "ui/ui_transform.h"
@@ -126,6 +127,9 @@ launcher_frame(bool down, bool pressed, bool released, int x, int y, uint32_t dt
         }
     }
 
+    if (pressed) {
+        ui_hover_seed_root(ctx);
+    }
     mu_begin(ctx);
     const app_t* chosen = ui_launcher_draw(ctx, dt_ms);
     mu_end(ctx);

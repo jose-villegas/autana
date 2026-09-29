@@ -1917,10 +1917,9 @@ sand_app_test_options_reach_start(sand_test_start_action_t action) {
  * START button itself. One pressed+released frame is not enough: microui's
  * hover_root lags next_hover_root by a frame (begin_root_container(),
  * microui.c), so a brand-new window cannot grant hover the instant it
- * opens - PRESS/HOLD below replay ui_pointer_step()'s own
- * UI_POINTER_HOVER_FRAMES wait for that; `released` on the third frame
- * folds DOWN and UP into the same draw_menu() call, leaving no touch
- * state behind. */
+ * opens - the frames below replay ui_pointer_step()'s own
+ * UI_POINTER_HOVER_FRAMES wait for that, then the DOWN; the released frame
+ * is the UP, leaving no touch state behind. */
 bool
 sand_app_test_start_button_survives_the_ui_build(int mode) {
     const int previous_mode = color_mode;
@@ -1937,13 +1936,13 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
              start_rect.w, start_rect.h);
 
     const input_t press = {.pressed = true, .x = cx, .y = cy};
-    sand_frame(0, &press); /* primes next_hover_root - see the comment above */
+    sand_frame(0, &press); /* hover_root seeded, hover granted - see the comment above */
 
     const input_t hold = {.x = cx, .y = cy};
-    sand_frame(16, &hold); /* hover_root now Sand Title; hover granted this frame */
+    sand_frame(16, &hold); /* the DOWN: the click */
 
     const input_t release = {.released = true, .x = cx, .y = cy};
-    sand_frame(16, &release); /* DOWN then UP, same draw_menu() call - the click */
+    sand_frame(16, &release); /* the UP */
 
     const input_t idle = {0};
     sand_frame(16, &idle); /* pending_start applies here, before any UI build */

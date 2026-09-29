@@ -22,6 +22,7 @@
 #include "gfx/gfx.h"
 #include "microui.h"
 #include "ui/ui.h"
+#include "ui/ui_hover.h"
 #include "ui/ui_pointer.h"
 #include "ui/ui_scroll.h"
 #include "ui/ui_transform.h"
@@ -107,6 +108,9 @@ scroll_frame(bool down, bool pressed, bool released, int x, int y, uint32_t dt_m
     }
 
     int submitted = -1;
+    if (pressed) {
+        ui_hover_seed_root(ctx);
+    }
     mu_begin(ctx);
     build_rows(dt_ms, &submitted);
     mu_end(ctx);

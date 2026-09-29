@@ -377,7 +377,7 @@ two damage trackers.
 
 **The cost, for balance:** microui encodes a mouse (point, then click), and
 a touchscreen cannot produce the "point" half. The shell synthesizes it, at
-`UI_POINTER_HOVER_FRAMES` of latency on every tap - see below. A
+`UI_POINTER_HOVER_FRAMES` frame of latency on every tap - see below. A
 touch-native toolkit would not pay that.
 
 ### Two things to know before touching it
@@ -389,14 +389,16 @@ comments, rather than overridden from our side, because they determine the
 struct's layout and two translation units disagreeing would corrupt it
 silently.
 
-**Touch needs two synthesized hover frames.** `mu_update_control()` only
+**Touch needs one synthesized hover frame.** `mu_update_control()` only
 establishes hover on a frame where the button is *not* held, and a control
-only submits once focused. Two frames, not one: `mu_mouse_over()` needs
-`in_hover_root()`, and `mu_begin()` copies `hover_root` from the *previous*
-frame's `next_hover_root`. So the first frame at a new position only tells
-microui which window the finger is in; the second is the first that can mark
-a control hovered; the press follows. Ship the press a frame early and hover
-is never established, nothing takes focus, and every button draws its
+only submits once focused. `mu_mouse_over()` also needs `in_hover_root()`,
+and `mu_begin()` copies `hover_root` from the *previous* frame's
+`next_hover_root`, which a finger arriving from the parked pointer has not
+set yet. `ui_begin()` therefore seeds it on the press frame
+(`ui/ui_hover.c`), from the containers the last frame left in `root_list`, so
+the first frame at the new position can already mark a control hovered and
+the press follows on the second. Ship the press with no hover frame and
+hover is never established, nothing takes focus, and every button draws its
 pressed look while returning 0. `ui/ui_pointer.c` owns this policy, plus
 the held-`DOWN` a slider needs to track a drag (`ui/ui_pointer.h`), and
 `suite_ui_pointer_microui.c` pins it against real microui, since hover is

@@ -777,7 +777,6 @@ test_only_a_real_press_draws_a_button_pressed(void) {
     const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
     const input_t hold = {.down = true, .x = x, .y = y};
     widget_frame(&w, &press);
-    widget_frame(&w, &hold);
     TEST_ASSERT_EQUAL_MESSAGE(at_rest, canvas_hash("Widgets"), "hovered but not yet pressed must look at rest");
 
     widget_frame(&w, &hold);

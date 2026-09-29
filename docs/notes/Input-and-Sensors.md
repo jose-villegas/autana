@@ -47,7 +47,7 @@ until a finger is already down. Send move and press together and hover is never
 set, focus is never taken, and the control never fires.
 
 The fix synthesises hover frames before the press lands - `UI_POINTER_HOVER_FRAMES`,
-and why two, in
+and why one is enough, in
 [Firmware-Architecture.md](../Firmware-Architecture.md#two-things-to-know-before-touching-it).
 
 Worth knowing because it is not specific to buttons — every microui control

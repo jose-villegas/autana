@@ -36,13 +36,12 @@ typedef struct {
  * can play out - see ui_pointer_step()'s own comment. */
 #define UI_POINTER_MAX_EVENTS     3
 
-/* MOVE-only frames a press waits through before its DOWN is fed, and both
- * are load-bearing: mu_mouse_over() needs hover_root, which mu_begin()
- * copies from the PREVIOUS frame. Frame one only tells microui which window
- * the finger is in; frame two is the first that can mark the control
- * hovered. A DOWN before that focuses nothing, giving a button that draws
- * its pressed state and never submits. */
-#define UI_POINTER_HOVER_FRAMES   2
+/* MOVE-only frames a press waits through before its DOWN is fed. A control
+ * takes focus only from hover, and microui marks it hovered only on a frame
+ * with the button up, so a DOWN with no hover frame before it draws a pressed
+ * button that never submits. The one frame suffices because ui_begin() seeds
+ * hover_root on the press frame (ui_hover.h). */
+#define UI_POINTER_HOVER_FRAMES   1
 
 /* How far a finger on scrollable content moves before it is a drag rather
  * than a tap. microui controls act on the press, so on such content the DOWN

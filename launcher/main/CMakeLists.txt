@@ -26,6 +26,7 @@ set(app_srcs
     "ui/ui_control_center.c"
     "ui/ui_control_center_draw.c"
     "ui/ui_launcher.c"
+    "ui/ui_hover.c"
     "ui/ui_launcher_draw.c"
     "ui/ui_pointer.c"
     "ui/ui_snap.c"

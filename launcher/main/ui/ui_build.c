@@ -29,6 +29,7 @@ static const char* TAG = "ui";
 
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
+#include "ui/ui_hover.h"
 #include "ui/ui_internal.h"
 #include "ui/ui_pointer.h"
 #include "ui/ui_slider.h"
@@ -385,6 +386,9 @@ ui_begin(const input_t* input) {
      * not persist across frames. */
     button_style = UI_BUTTON_FLAT;
     feed_input(input);
+    if (input->pressed) {
+        ui_hover_seed_root(&ui_ctx);
+    }
     snap_rect_count = 0;
     mu_begin(&ui_ctx);
 }
