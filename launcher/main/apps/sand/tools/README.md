@@ -21,8 +21,8 @@ scripted tilt angle, and encodes the loop as a GIF.
 
 ## Images in the docs
 
-`launcher/tools/render/render_readme_images.sh` makes these in
-`docs/images/overview/`; see "Images in these docs" in
+`readme_images.sh` here makes these in `docs/images/overview/`, run by
+`launcher/tools/render/render_readme_images.sh`; see "Images in these docs" in
 [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harness.md).
 
 | Image | Shows |

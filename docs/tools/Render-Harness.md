@@ -22,28 +22,31 @@ checked, and compared with device captures.
 ## Images in these docs
 
 Every file in `docs/images/overview/` is made by one script, from the
-repository root:
+repository root. It makes the launcher's images itself and runs each app's
+`tools/readme_images.sh` for the app's own:
 
 ```sh
 ./launcher/tools/render/render_readme_images.sh           # rewrite the images
 ./launcher/tools/render/render_readme_images.sh --check   # report which would change
 ```
 
-It needs a host C compiler, Python with Pillow and ffmpeg 5.1 or newer, and
-takes about a minute. `--check` renders into `launcher/tools/results/readme_images/out/`
+It needs a host C compiler, Python with Pillow and ffmpeg 5.1 or newer.
+`--check` renders into `launcher/tools/results/readme_images/out/`
 and compares decoded pixels with `compare_images.py`, never bytes: another
 ffmpeg or Pillow writes different GIF bytes for the same frames. It prints
 `same` or `changed` per image, and `orphan` for a file nothing makes. The
-`readme-images` workflow runs it on every push to main and opens one pull
-request when an image changed.
+`readme-images` workflow runs it on pushes to main that touch `launcher/` or
+`docs/images/`, and opens one pull request when an image changed. It needs the
+repository setting Actions > "Allow GitHub Actions to create and approve pull
+requests".
 
 | Image | Shows |
 |---|---|
 | `launcher-home.png` | the launcher listing the release build's apps, read from the app folders |
-| `launcher-home.gif` | the same, one 4 s rock of the board 30 degrees either way |
+| `launcher-home.gif` | the same, rocking the board either way |
 
 The rest belong to apps, and each app's `tools/README.md` says what its
-images show. Files are at the panel's own 448x368 unless an app's README says otherwise.
+images show.
 
 ---
 

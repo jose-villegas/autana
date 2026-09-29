@@ -9,6 +9,9 @@ name: README Images
 # Pixels are compared, never bytes: launcher/tools/render/compare_images.py.
 # A pull request opened with GITHUB_TOKEN starts no other workflows, so its
 # checks do not run until someone reopens it or pushes to its branch.
+#
+# The repository setting Actions > "Allow GitHub Actions to create and approve
+# pull requests" must be on, or opening the PR fails.
 
 on:
   push:
@@ -20,7 +23,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -48,8 +51,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends ffmpeg
           ffmpeg -version | head -1
 
-      # Exit 1 means some image changed or is an orphan; 2 means it could not
-      # be rendered, which fails the job.
+      # Exit 1 means an image changed or is an orphan; an orphan or any exit
+      # above 1 fails the job.
       - name: Render and compare
         id: render
         run: |
