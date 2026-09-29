@@ -149,16 +149,21 @@ def device_module():
     return device
 
 
+# How the global `--wait` reaches nested steps and child processes; private,
+# so a caller's environment is never a second way to set the wait.
+WAIT_ENV = "_AUTANA_WAIT_S"
+
+
 def device_command(*args, wait=None):
     """device.py imports pyserial, so it runs under ESP-IDF's Python even
     when some other interpreter started this file. `--owner`/`--wait` are
     device.py's own top-level flags, filled in one place for every board
     command: owner() names the lock holder, and `--wait` is a caller's own
     `wait` when it gives one (send()'s short fail-fast window overrides
-    everything else), else AUTANA_DEVICE_WAIT, else left to device.py's own
-    600 s default."""
+    everything else), else the global `--wait` (WAIT_ENV), else left to
+    device.py's own 600 s default."""
     command = [idf_python(), "-u", str(device_tool()), "--owner", owner()]
-    wait = wait if wait is not None else os.environ.get("AUTANA_DEVICE_WAIT")
+    wait = wait if wait is not None else os.environ.get(WAIT_ENV)
     if wait:
         command += ["--wait", str(wait)]
     return command + list(args)
@@ -504,12 +509,15 @@ def hand(args):
     """Reserve the board for a maintainer sitting at it - autana refuses new
     work against it until `autana take-back`, or an hour after the last
     `hand`, which running it again renews."""
-    usage = "usage: autana hand [--wait <seconds>] <note...>"
+    usage = "usage: autana hand [--until-back <seconds>] <note...>"
     wait = []
     if args and args[0] == "--wait":
+        sys.exit("autana hand: --wait is how long to wait for the board; "
+                 "use --until-back to wait for it to be handed back")
+    if args and args[0] == "--until-back":
         if len(args) < 3:
             sys.exit(usage)
-        wait = args[:2]
+        wait = ["--wait", args[1]]
         args = args[2:]
     if not args:
         sys.exit(usage)
@@ -1230,7 +1238,7 @@ COMMAND_GROUPS = (
         Command("lock", lock, (
             ("lock id [--json]", "the name this session holds the lock under"),
             ("lock release [<token>]", "release a lock this session holds; $AUTANA_DEVICE_LOCK_TOKEN when omitted"),
-            ("lock hand [--wait <seconds>] <note...>",
+            ("lock hand [--until-back <seconds>] <note...>",
              "reserve the board for a person at it for an hour; run again to renew"),
             ("lock take-back", "clear that reservation"))),
     )),
@@ -1281,7 +1289,7 @@ USAGE_WIDTH = 34
 # of these and repeating them on every line was unreadable.
 BOARD_FLAGS = (
     ("--wait SECONDS", "global, goes before the command: wait this long for the board's lock, "
-                       "0 to fail at once (exit 75); beats AUTANA_DEVICE_WAIT",
+                       "0 to fail at once (exit 75); 600 s without it",
      "every board command"),
     ("--out PATH", "write the one capture here instead of the default path",
      "selftest, suite, monitor"),
@@ -1298,8 +1306,7 @@ def board_flags_text(prefix=""):
     width = max(len(flag) for flag, _, _ in BOARD_FLAGS)
     lines = ["Every board command's lock owner is \"<user>@<host>:<pid>\", or "
              "\"<AUTANA_DEVICE_OWNER>:<pid>\" when that variable is set. How long a command "
-             "waits for the board's lock: the global --wait, else "
-             "AUTANA_DEVICE_WAIT, else 600 s.",
+             "waits for the board's lock: the global --wait, else 600 s.",
              "",
              "Flags (on top of each command's own usage above)"]
     for flag, summary, commands in BOARD_FLAGS:
@@ -1414,20 +1421,18 @@ WAIT_HINT = "--wait goes before the command: autana --wait 0 monitor 5"
 
 def global_wait(argv):
     """`argv` without a leading `--wait SECONDS`, which is written into
-    AUTANA_DEVICE_WAIT - the one setting device_command() and every child
-    process read - so it covers this call and each step nested in it.
-    `--wait` anywhere after the command is refused (except `hand`'s own,
-    a different wait), because a command would otherwise report it as an
-    unknown flag without saying where it belongs."""
+    WAIT_ENV - what device_command() and every child process read - so it
+    covers this call and each step nested in it. `--wait` anywhere after
+    the command is refused, because a command would otherwise report it
+    as an unknown flag without saying where it belongs."""
     if argv[:1] == ["--wait"]:
         seconds = argv[1] if len(argv) > 1 else ""
         if not (seconds.isascii() and seconds.isdigit()):
             sys.exit("autana --wait needs a non-negative integer number of seconds, "
                      "e.g. autana --wait 0 monitor 5")
-        os.environ["AUTANA_DEVICE_WAIT"] = seconds
+        os.environ[WAIT_ENV] = seconds
         argv = argv[2:]
-    if argv[:1] != ["hand"] and any(
-            arg == "--wait" or arg.startswith("--wait=") for arg in argv[1:]):
+    if any(arg == "--wait" or arg.startswith("--wait=") for arg in argv[1:]):
         sys.exit(WAIT_HINT)
     return argv
 

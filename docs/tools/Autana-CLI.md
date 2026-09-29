@@ -44,7 +44,7 @@ it readable; a flag works the same wherever the table below says it applies.
 
 | Flag | What it does | Commands |
 |---|---|---|
-| `--wait SECONDS` | Global, goes before the command (`autana --wait 0 monitor 5`; after it, autana says so). Wait this long for the board's lock; 0 fails at once with exit 75. Beats `AUTANA_DEVICE_WAIT`, and covers every step the command runs. | every board command |
+| `--wait SECONDS` | Global, goes before the command (`autana --wait 0 monitor 5`; after it, autana says so). Wait this long for the board's lock; 0 fails at once with exit 75. 600 s without it. Covers every step the command runs. | every board command |
 | `--out PATH` | Write the one capture here instead of the default path; with several suites or `--runs` above 1, only makes sense on `suite` when exactly one suite runs once. | selftest, suite, monitor |
 | `--expect-build-id ID` | Refuse to run a suite unless the board, or the image `--flash` just wrote, carries this `BUILD_ID`. `autana flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it - pass that value here to refuse measuring a board that has since been reflashed by someone else. | suite |
 | `--project PATH` | Act on `PATH` instead of the current directory - like `make -C`/`idf.py -C`, no searching parent directories. `PATH` must itself carry `launcher/CMakeLists.txt`; the current directory must too when `--project` is omitted, for every command below except `suite` without `--flash`, which only wants it for its capture's own record. Popped once ahead of any command's own parsing, so it works the same everywhere it applies. | build, flash, selftest, suite, suite list, tune save, docs |
@@ -55,8 +55,8 @@ distinguishes two shells that export the same override, so `autana status`
 does not mistake one for the other's own lock. How long a command
 waits for the board's lock before giving up is set for one call with the
 global option `autana --wait SECONDS <command>` (`autana --wait 0 flash`
-fails at once, exit 75), for a shell or CI job with `AUTANA_DEVICE_WAIT`,
-and is 600 s when neither is given; `--wait` wins. It goes before the
+fails at once, exit 75) and is 600 s without it; there is no environment
+setting, so a CI job writes `autana --wait 0 <command>`. It goes before the
 command and covers every step the command runs. The owner is not a flag:
 an unknown flag is named, e.g. `autana flash: unknown flag --owner`.
 
@@ -164,7 +164,7 @@ The two raw levels below gesture, `touch` and `imu`, live under
 | `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
 | `autana lock id [--json]` | The name this session holds the lock under: `"<user>@<host>:<pid>"`, or `"<AUTANA_DEVICE_OWNER>:<pid>"` when that variable is set. |
 | `autana lock release [<token>]` | Release the lock a command of this session holds, before it would have. The token is `AUTANA_DEVICE_LOCK_TOKEN` in every process that command started, and is what `lock release` uses when none is given. |
-| `autana lock hand [--wait <seconds>] <note...>` | Reserve the board for a person for an hour and emit `human-reserved`; running it again renews the hour, and an unrenewed reservation lapses (`human-expired`). With `--wait`, wait until `take-back` emits `human-cleared`. |
+| `autana lock hand [--until-back <seconds>] <note...>` | Reserve the board for a person for an hour and emit `human-reserved`; running it again renews the hour, and an unrenewed reservation lapses (`human-expired`). With `--until-back`, wait until `take-back` emits `human-cleared`. |
 | `autana lock take-back` | Clear that reservation. |
 
 A board is named by its USB serial number, so the lock follows it across
@@ -178,9 +178,9 @@ captures and wait estimates in [Flash-and-Captures.md](Flash-and-Captures.md).
 
 The lock owner is set as described in [Flags](#flags) above.
 
-`autana lock hand --wait 30 put the board in download mode` pauses a flash
+`autana lock hand --until-back 30 put the board in download mode` pauses a flash
 script until someone puts the board in download mode and runs `autana lock
-take-back`. With `--wait`, exit 0 means that reservation was released. Exit 3
+take-back`. With `--until-back`, exit 0 means that reservation was released. Exit 3
 means the wait timed out or was interrupted with Ctrl+C; the reservation
 stays. Exit 4 means the reservation was cleared and a new one made; that
 reservation stays. The caller decides how to proceed after either nonzero result.

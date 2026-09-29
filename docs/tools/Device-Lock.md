@@ -102,12 +102,8 @@ work down this list.
    autana --wait 0 flash
    ```
 
-   For a shell or a CI job that should always fail fast, set the default
-   instead. `--wait` beats it when both are given:
-
-   | Linux | Windows PowerShell |
-   |---|---|
-   | `export AUTANA_DEVICE_WAIT=0` | `$env:AUTANA_DEVICE_WAIT = "0"` |
+   A CI job that should fail rather than queue writes `autana --wait 0
+   <command>` on every board command; there is no environment setting.
 
    `--wait` is only accepted before the command (`autana --wait 0 monitor
    5`); after it, autana says so and does nothing.
@@ -244,7 +240,6 @@ alone fall back once more to the only board this machine has ever seen.
 | Variable | Effect |
 |---|---|
 | `AUTANA_DEVICE_OWNER` | The owner shown to others, as `<value>:<pid>`; `<user>@<host>:<pid>` when unset. Give each CI job its own. |
-| `AUTANA_DEVICE_WAIT` | Seconds a command waits for the lock; 600 when unset, 0 fails at once. `autana --wait SECONDS <command>` overrides it for one call. |
 | `AUTANA_BOARD` | The board's USB serial number, when several are plugged in. |
 | `AUTANA_DEVICE_LOCK_ROOT` | The lock folder. |
 | `AUTANA_DEVICE_LOCK_TOKEN` | Set inside a running command for the processes it starts. |
@@ -256,7 +251,7 @@ alone fall back once more to the only board this machine has ever seen.
 | `0` | Success. |
 | `1` | Any other failure, including `device lock was lost`. |
 | `75` | The board was busy: `device lock was not acquired`, fail-fast or after the wait ran out. Safe to retry. |
-| `3`, `4` | `lock hand --wait` only: `3` the wait timed out or was interrupted (the reservation stays), `4` the reservation was cleared and a new one made. `0` means it was released or expired. |
+| `3`, `4` | `lock hand --until-back` only: `3` the wait timed out or was interrupted (the reservation stays), `4` the reservation was cleared and a new one made. `0` means it was released or expired. |
 | `130` | A second Ctrl+C on `monitor`. |
 | `2` | `device.py` itself, for a bad command line. |
 
@@ -306,8 +301,8 @@ files on the machine, and two versions of the lock code can each believe they
 hold the board. Call `autana` (`tools/autana` on `PATH`,
 `scripts/add-tools-to-path.sh`), never a checkout's own `device.py`: it is one
 script at one fixed location, so every call runs the same lock code whichever
-checkout started it. Name a CI job with `AUTANA_DEVICE_OWNER` and
-`AUTANA_DEVICE_WAIT` (or put `--wait` before a command), and what gets built comes from `--project` or the
+checkout started it. Name a CI job with `AUTANA_DEVICE_OWNER`, run its commands as
+`autana --wait 0 <command>`, and what gets built comes from `--project` or the
 current directory (`autana help build`). A report script calls `autana
 selftest`, `autana suite` or `autana flash`.
 

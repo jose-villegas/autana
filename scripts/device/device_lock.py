@@ -488,7 +488,7 @@ class LockStore:
     def set_human(self, board, owner, note):
         """Reserves the board for a person for HUMAN_RESERVATION_SECONDS. Any
         `hand` while one stands renews it, whichever process runs it (an owner
-        name carries the pid): the id, and so a `hand --wait` on it, carries over.
+        name carries the pid): the id, and so a `hand --until-back` on it, carries over.
         Returns (id, renewed)."""
         with self.guard(board):
             now = self.now()
