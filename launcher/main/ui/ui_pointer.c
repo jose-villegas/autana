@@ -193,7 +193,13 @@ ui_pointer_step(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out, 
     }
 
     /* Nothing down, nothing pending: park the pointer off-screen so no
-     * control sits hovered. */
+     * control sits hovered. A DOWN still unanswered means the lift went to a
+     * frame that never reached microui - a screen that draws no UI - and a
+     * button left held would keep every later control from being hovered. */
+    if (p->down) {
+        n = emit(out, n, UI_POINTER_UP, -1, -1);
+        p->down = false;
+    }
     n = emit(out, n, UI_POINTER_MOVE, -1, -1);
     return n;
 }

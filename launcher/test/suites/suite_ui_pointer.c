@@ -95,6 +95,21 @@ test_a_stale_hover_root_costs_one_more_hover_frame(void) {
     TEST_ASSERT_EQUAL_INT(UI_POINTER_DOWN, ev[1].kind);
 }
 
+/* The frame that carried the lift drew no UI, so its UP was never fed: the
+ * next frame with nothing on the glass must release it, once. */
+static void
+test_a_lift_that_never_reached_the_ui_is_released_on_the_next_idle_frame(void) {
+    fixture();
+    step(true, true, false, 10, 20);
+    step(true, false, false, 10, 20);
+    TEST_ASSERT_TRUE(p.down);
+
+    TEST_ASSERT_EQUAL_INT(2, step(false, false, false, 0, 0));
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_UP, ev[0].kind);
+    TEST_ASSERT_EQUAL_INT(1, step(false, false, false, 0, 0));
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
+}
+
 /* Holding, not releasing - the whole point of this module. */
 
 static void
@@ -337,6 +352,7 @@ void
 run_ui_pointer_suite(void) {
     RUN_TEST(test_a_tap_hovers_before_pressing);
     RUN_TEST(test_a_stale_hover_root_costs_one_more_hover_frame);
+    RUN_TEST(test_a_lift_that_never_reached_the_ui_is_released_on_the_next_idle_frame);
     RUN_TEST(test_a_drag_stays_down_across_moves_then_lifts_once);
     RUN_TEST(test_an_aim_stages_the_press_but_not_later_drag_moves);
     RUN_TEST(test_exactly_one_up_comes_out_of_one_press);

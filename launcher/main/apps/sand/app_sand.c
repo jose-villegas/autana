@@ -1916,8 +1916,10 @@ sand_app_test_options_reach_start(sand_test_start_action_t action) {
 
 /* Unlike sand_app_test_survives_indexed_then_menu() above, this runs the
  * START button itself, through the frames a finger gives it: the title is
- * built once as the player would see it, then the press frame (hover only),
- * the frame that carries the DOWN, and the UP. */
+ * built once as the player would see it, then the press frame (hover only)
+ * and the frame that carries the DOWN, which is the click. The lift lands on
+ * a frame that draws no UI, so the pointer's own idle-frame release is what
+ * leaves no held button behind for the next screen. */
 bool
 sand_app_test_start_button_survives_the_ui_build(int mode) {
     const int previous_mode = color_mode;
@@ -1943,9 +1945,9 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
     sand_frame(16, &hold); /* the DOWN: the click */
 
     const input_t release = {.released = true, .x = cx, .y = cy};
-    sand_frame(16, &release); /* the UP */
+    sand_frame(16, &release); /* pending_start applies before this frame's UI: no UI is built */
 
-    sand_frame(16, &idle); /* pending_start applies here, before any UI build */
+    sand_frame(16, &idle);
 
     const bool ok = sand_colour_indexed_active(&colour_state) && ui.screen == SAND_UI_RUNNING;
     ESP_LOGI(TAG, "START tap test: indexed_active=%d screen=%d -> %s", sand_colour_indexed_active(&colour_state),
