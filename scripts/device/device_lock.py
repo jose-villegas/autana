@@ -21,7 +21,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "autana"))
 from version import __version__  # noqa: E402  (path must be set up first)
 
 
+# A holder is reclaimed when its heartbeat is this old; the holder renews it
+# every HeldLock.HEARTBEAT_SECONDS in device.py.
 DEFAULT_STALE_SECONDS = 600
+# guard() is an O_CREAT|O_EXCL file created and deleted around each
+# read-modify-write, so a crash inside one leaves it behind: past this age
+# the next taker removes it instead of waiting for it forever.
 GUARD_STALE_SECONDS = 30
 # The mutex is guard() below (an O_CREAT|O_EXCL file), not an OS byte-range
 # lock - the JSON files are the state it protects, not locks themselves. This
@@ -511,6 +516,10 @@ class LockStore:
 
 
 DURATIONS_FILE = "durations.jsonl"
+# An estimate is the median of a command kind's last ESTIMATE_RECENT_RUNS
+# successful runs, and unknown before ESTIMATE_MINIMUM_RUNS of them. A holder
+# past its estimate counts as free now; a reservation or an unknown duration
+# ahead of a waiter makes the waiter's estimate unknown.
 ESTIMATE_MINIMUM_RUNS = 3
 ESTIMATE_RECENT_RUNS = 30
 # Past this many lines the file is trimmed back (trim_durations()), so
