@@ -85,7 +85,18 @@ idf_needs_shim() {
 }
 
 # Run one idf.py invocation. Returns its exit status.
+#
+# ccache is on unless AUTANA_CCACHE=0 (or IDF_CCACHE_ENABLE is already set):
+# ESP-IDF finds the ccache it installs itself, and the per-user cache is
+# shared by every worktree. A cache hit reproduces the compiler's own output,
+# so the ELF and its build id do not change.
 idf() {
+    if [ "${AUTANA_CCACHE:-1}" = 0 ]; then
+        : "${IDF_CCACHE_ENABLE:=0}"
+    else
+        : "${IDF_CCACHE_ENABLE:=1}"
+    fi
+    export IDF_CCACHE_ENABLE
     idf_in "$_IDF_DIR" idf.py "$@"
 }
 
