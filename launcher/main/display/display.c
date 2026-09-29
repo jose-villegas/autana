@@ -12,38 +12,20 @@
 
 #include "display/display.h"
 
+#include <math.h>
 #include <stdint.h>
 
-static int
-rounded_square_root(int value) {
-    int low = 0;
-    int high = value;
-    while (low < high) {
-        const int mid = low + (high - low + 1) / 2;
-        if ((int64_t)mid * mid <= value) {
-            low = mid;
-        } else {
-            high = mid - 1;
-        }
-    }
-    const int next = low + 1;
-    if ((int64_t)next * next - value <= value - (int64_t)low * low) {
-        return next;
-    }
-    return low;
-}
-
 int
-display_panel_corner_inset(int radius, int panel_height, int row) {
-    if (radius <= 0 || row < 0 || row >= panel_height) {
+display_panel_corner_inset(int radius, int canvas_height, int row) {
+    if (radius <= 0 || row < 0 || row >= canvas_height) {
         return 0;
     }
-    const int from_nearest_edge = row < panel_height - 1 - row ? row : panel_height - 1 - row;
+    const int from_nearest_edge = row < canvas_height - 1 - row ? row : canvas_height - 1 - row;
     if (from_nearest_edge >= radius) {
         return 0;
     }
     const int up = radius - from_nearest_edge;
-    return radius - rounded_square_root(radius * radius - up * up);
+    return radius - (int)lroundf(sqrtf((float)((radius * radius) - (up * up))));
 }
 
 void

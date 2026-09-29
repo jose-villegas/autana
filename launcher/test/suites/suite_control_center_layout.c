@@ -14,9 +14,6 @@
 #include "ui/control_center_layout_generated.h"
 #include "ui/ui.h"
 
-/* Layout air keeps controls and their text off the visible edge. */
-#define CONTROL_CENTER_EDGE_BREATHING_ROOM 16
-
 static const control_center_layout_t* const layouts[] = {
     &control_center_layout_portrait,
     &control_center_layout_landscape,
@@ -56,12 +53,9 @@ test_every_element_clears_the_panel_edge(void) {
             TEST_ASSERT_TRUE_MESSAGE(r->width > 0 && r->height > 0, where);
             TEST_ASSERT_TRUE_MESSAGE(r->x >= corner_inset && r->x + r->width <= layout->canvas_width - corner_inset,
                                      where);
-            TEST_ASSERT_TRUE_MESSAGE(
-                r->x >= CONTROL_CENTER_EDGE_BREATHING_ROOM && r->y >= CONTROL_CENTER_EDGE_BREATHING_ROOM, where);
-            TEST_ASSERT_TRUE_MESSAGE(r->x + r->width <= layout->canvas_width - CONTROL_CENTER_EDGE_BREATHING_ROOM,
-                                     where);
-            TEST_ASSERT_TRUE_MESSAGE(r->y + r->height <= layout->canvas_height - CONTROL_CENTER_EDGE_BREATHING_ROOM,
-                                     where);
+            TEST_ASSERT_TRUE_MESSAGE(r->x >= DISPLAY_PANEL_SAFE_INSET && r->y >= DISPLAY_PANEL_SAFE_INSET, where);
+            TEST_ASSERT_TRUE_MESSAGE(r->x + r->width <= layout->canvas_width - DISPLAY_PANEL_SAFE_INSET, where);
+            TEST_ASSERT_TRUE_MESSAGE(r->y + r->height <= layout->canvas_height - DISPLAY_PANEL_SAFE_INSET, where);
         }
     }
 }

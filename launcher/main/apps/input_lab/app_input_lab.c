@@ -46,7 +46,6 @@ static const char* TAG = "input_lab";
 #define HUD_SCALE      2
 #define MARK_SIDE      4
 #define COL_BACKGROUND 0x0A0C14
-#define BEZEL_RADIUS   30
 #define BEZEL_MAX      80
 #define BEZEL_DRAG_PX  4
 #define ARC_STEP       2
@@ -70,7 +69,7 @@ static bool have_last_tap;
 static int last_x, last_y;
 static bool last_hit;
 
-static int bezel_radius = BEZEL_RADIUS;
+static int bezel_radius = DISPLAY_PANEL_CORNER_RADIUS;
 static int radius_at_press;
 
 static void

@@ -86,7 +86,8 @@ bool display_update(display_t* d, int gx, int gy);
 
 int display_quarter(const display_t* d);
 
-int display_panel_corner_inset(int radius, int panel_height, int row);
+/* Returns the horizontal inset where a row meets a rounded canvas corner. */
+int display_panel_corner_inset(int radius, int canvas_height, int row);
 
 /* The shell's own orientation - the quarter main.c last set the UI
  * transform to. Declared here but defined in main.c, not display.c:
