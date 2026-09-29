@@ -4,19 +4,23 @@
     autana                  a console session with the device
     autana help [topic]     the commands, grouped; a topic is a group or a command
 
-Run from any folder of any autana worktree: a command acts on the worktree
-you are standing in. Anything that touches the board goes through
-scripts/device/device.py, which takes the device lock. The command list is
-COMMAND_GROUPS at the end of this file; docs/tools/Autana-CLI.md mirrors it.
+A system-installed tool, not tied to git or worktrees: run from any folder,
+board-only commands (monitor, tap, tune, ...) work from anywhere, and a
+command that needs a project - build, flash, selftest, suite --flash - acts
+on the current directory, like `make -C`, or on --project PATH. Anything
+that touches the board goes through scripts/device/device.py, which takes
+the device lock. The command list is COMMAND_GROUPS at the end of this
+file; docs/tools/Autana-CLI.md mirrors it.
 """
 
-import functools
+import getpass
 import gzip
 import importlib
 import json
 import os
 import re
 import shlex
+import socket
 import subprocess
 import sys
 import threading
@@ -29,103 +33,50 @@ from espressif import idf_python  # noqa: E402  (path must be set up first)
 
 VARIANTS = {"rel": "release", "release": "release", "dev": "dev", "diag": "diag"}
 
-
-@functools.cache
-def branch():
-    """This process's own branch (git rev-parse --abbrev-ref HEAD), asked
-    once and cached: one process, one branch, however many worktrees
-    `--worktree` sends a command to - so lock id, board_holder()'s
-    self-check and every device_command() call agree on the same name."""
-    return git("rev-parse", "--abbrev-ref", "HEAD")
+# What a directory needs to be an autana project - launcher/CMakeLists.txt,
+# not a .git folder: this tool is not tied to git, and a project built from
+# a tarball or a non-git checkout is still one.
+PROJECT_MARKER = Path("launcher") / "CMakeLists.txt"
 
 
 def owner():
-    """What the device lock calls this autana: AUTANA_DEVICE_OWNER when set
-    (read fresh, not cached - a session can export it mid-run), else this
-    process's own branch() plus its pid. Outside git, or on a detached HEAD,
-    there is no branch to name it after: `autana-cli@<pid>`."""
+    """What the device lock calls this autana: AUTANA_DEVICE_OWNER when set,
+    else "<user>@<host>:<pid>" - readable in a queue, and the pid alone finds
+    an entry that will not let go in the task list."""
     override = os.environ.get("AUTANA_DEVICE_OWNER")
     if override:
         return override
-    current = branch()
-    label = current if current and current != "HEAD" else "autana-cli"
-    return f"{label}@{os.getpid()}"
+    return f"{getpass.getuser()}@{socket.gethostname()}:{os.getpid()}"
 
 
 def git(*args):
-    result = subprocess.run(["git", *args], capture_output=True, text=True)
+    """A git answer, or "" - for the flash/build banner's branch and commit
+    only. autana itself is never tied to git: a missing binary, or no
+    repository here, is not an error, just nothing to show."""
+    try:
+        result = subprocess.run(["git", *args], capture_output=True, text=True)
+    except OSError:
+        return ""
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
 def git_ok(*args):
-    return subprocess.run(["git", *args], capture_output=True).returncode == 0
+    try:
+        return subprocess.run(["git", *args], capture_output=True).returncode == 0
+    except OSError:
+        return False
 
 
-def engine_worktree():
-    worktree = git("rev-parse", "--show-toplevel")
-    if not worktree or not (Path(worktree) / "launcher").is_dir():
-        sys.exit("autana: not inside an engine worktree (no launcher/ here)")
-    return worktree
-
-
-def git_common_root():
-    """The primary checkout - the one `.claude/worktrees/` lives under, no
-    matter which worktree this runs from."""
-    common_dir = git("rev-parse", "--path-format=absolute", "--git-common-dir")
-    if not common_dir:
-        sys.exit("autana: not inside a git repository")
-    return str(Path(common_dir).resolve().parent)
-
-
-def worktree_list():
-    """[(path, branch)] from `git worktree list --porcelain`; a detached
-    entry's branch reads as `(detached HEAD)`."""
-    raw = subprocess.run(["git", "worktree", "list", "--porcelain"],
-                         capture_output=True, text=True).stdout
-    entries = []
-    path = None
-    for line in raw.splitlines():
-        if line.startswith("worktree "):
-            path = line[len("worktree "):]
-        elif line.startswith("branch "):
-            entries.append((path, line[len("branch refs/heads/"):]))
-        elif line == "detached":
-            entries.append((path, "(detached HEAD)"))
-    return entries
-
-
-def sanitize_branch_for_dirname(name):
-    """claude/foo-bar -> foo-bar; a/b/c -> a-b-c: a predictable worktree
-    directory name for a branch, not a decorative one."""
-    return name.removeprefix("claude/").replace("/", "-")
-
-
-def resolve_worktree(value):
-    """`--worktree`'s value, with no menu: this worktree when `value` is
-    None, `value` itself when it already looks like a worktree, else the
-    worktree already checked out for that branch, else a fresh one created
-    under the primary checkout's `.claude/worktrees/`."""
-    if value is None:
-        return engine_worktree()
-    candidate = Path(value)
-    if (candidate / "launcher").is_dir():
-        return str(candidate.resolve())
-    for path, branch in worktree_list():
-        if branch == value:
-            return path
-    common_root = git_common_root()
-    target = Path(common_root) / ".claude" / "worktrees" / sanitize_branch_for_dirname(value)
-    if target.exists():
-        sys.exit(f"autana: refusing to reuse {target} - it exists but `git worktree list` "
-                 "does not know about it; clean it up by hand first")
-    if git_ok("show-ref", "--verify", "--quiet", f"refs/heads/{value}"):
-        subprocess.run(["git", "worktree", "add", str(target), value], check=True)
-    elif git_ok("show-ref", "--verify", "--quiet", f"refs/remotes/origin/{value}"):
-        subprocess.run(["git", "worktree", "add", "-b", value, str(target), f"origin/{value}"],
-                       check=True)
-    else:
-        sys.exit(f"autana: no such branch '{value}' locally or on origin")
-    return str(target)
+def resolve_project(value):
+    """`--project`'s value, or this process's own cwd when omitted - like
+    `make -C`/`idf.py -C`, never a search of parent directories. Either way
+    the directory itself must carry PROJECT_MARKER; failing that names
+    --project, never git."""
+    project = Path(value).resolve() if value is not None else Path.cwd()
+    if not (project / PROJECT_MARKER).is_file():
+        sys.exit(f"autana: {project} is not an autana project "
+                 f"(no {PROJECT_MARKER.as_posix()}) - pass --project PATH")
+    return str(project)
 
 
 def pop_value(args, flag):
@@ -238,11 +189,12 @@ def run_streaming_its_log(command):
     return code
 
 
-def variant_request(verb, args, flags, worktree=None):
+def variant_request(verb, args, flags, project=None):
     """The words `autana build` and `autana flash` share: one variant (dev
-    when omitted) and the `flags` given, against `worktree` (this one when
-    omitted). Prints the banner; returns the variant word asked, the
-    variant, the flags seen and the worktree."""
+    when omitted) and the `flags` given, against `project` (this directory
+    when omitted). Prints the banner - branch/commit/dirty only when git
+    answers for that project, never required - and returns the variant word
+    asked, the variant, the flags seen and the project."""
     reject_unknown(verb, args, flags)
     seen = {flag for flag in flags if flag in args}
     words = [arg for arg in args if arg not in flags]
@@ -251,53 +203,56 @@ def variant_request(verb, args, flags, worktree=None):
     if variant is None or len(words) > 1:
         sys.exit(f"usage: autana {verb} [rel|dev|diag] "
                  + " ".join(f"[{flag}]" for flag in flags))
-    worktree = worktree or engine_worktree()
-    branch = git("-C", worktree, "branch", "--show-current") or "detached"
-    commit = git("-C", worktree, "rev-parse", "--short", "HEAD")
-    dirty = " (dirty)" if git("-C", worktree, "status", "--porcelain") else ""
-    print(f"autana {verb}: {variant} of {branch} @ {commit}{dirty}", flush=True)
-    return asked, variant, seen, worktree
+    project = project or resolve_project(None)
+    where = project
+    if git_ok("-C", project, "rev-parse", "--is-inside-work-tree"):
+        current_branch = git("-C", project, "branch", "--show-current") or "detached"
+        commit = git("-C", project, "rev-parse", "--short", "HEAD")
+        dirty = " (dirty)" if git("-C", project, "status", "--porcelain") else ""
+        where = f"{current_branch} @ {commit}{dirty}"
+    print(f"autana {verb}: {variant} of {where}", flush=True)
+    return asked, variant, seen, project
 
 
 def flash(args):
-    worktree_arg, args = pop_value(args, "--worktree")
-    worktree = resolve_worktree(worktree_arg)
-    asked, variant, seen, worktree = variant_request(
-        "flash", args, ("--quiet", "--perf-scope"), worktree=worktree)
+    project_arg, args = pop_value(args, "--project")
+    project = resolve_project(project_arg)
+    asked, variant, seen, project = variant_request(
+        "flash", args, ("--quiet", "--perf-scope"), project=project)
     quiet = "--quiet" in seen
     perf_scope = "--perf-scope" in seen
     command = device_command(
-        "flash", "--variant", variant, "--worktree", worktree, "--purpose", f"autana flash {asked}",
+        "flash", "--variant", variant, "--worktree", project, "--purpose", f"autana flash {asked}",
     )
     if perf_scope:
         command.append("--perf-scope")
     return subprocess.call(command) if quiet else run_streaming_its_log(command)
 
 
-def build_diag_check(worktree):
+def build_diag_check(project):
     """The diagnostics build plus the complexity ratchet, unchanged from
     launcher/tools/build/build_diag_check.sh - the two halves of what CI's
     Build (Diagnostics) workflow decides, in one command, no board."""
-    script = Path(worktree) / "launcher" / "tools" / "build" / "build_diag_check.sh"
+    script = Path(project) / "launcher" / "tools" / "build" / "build_diag_check.sh"
     if not script.is_file():
         sys.exit(f"autana: {script} not found")
-    return subprocess.call([device_module().git_bash(), str(script)], cwd=worktree)
+    return subprocess.call([device_module().git_bash(), str(script)], cwd=project)
 
 
 def build(args):
-    """Build this worktree with no board and no lock: the build half of
+    """Build this project with no board and no lock: the build half of
     `autana flash`, device.py's own, run in this process. `diag --check`
     runs the diagnostics build plus the complexity ratchet instead."""
     check = "--check" in args
     args = [arg for arg in args if arg != "--check"]
-    worktree_arg, args = pop_value(args, "--worktree")
-    worktree = resolve_worktree(worktree_arg)
+    project_arg, args = pop_value(args, "--project")
+    project = resolve_project(project_arg)
     if check:
         if args != ["diag"]:
             sys.exit("usage: autana build diag --check")
-        return build_diag_check(worktree)
-    _, variant, seen, worktree = variant_request("build", args, ("--perf-scope",), worktree=worktree)
-    return device_module().build_worktree(worktree, variant, sorted(seen))
+        return build_diag_check(project)
+    _, variant, seen, project = variant_request("build", args, ("--perf-scope",), project=project)
+    return device_module().build_worktree(project, variant, sorted(seen))
 
 
 def seconds_argument(args, default, usage):
@@ -445,20 +400,20 @@ def reset(args):
 
 def selftest(args):
     """Build+flash the diagnostics+autorun image and run every suite this
-    worktree registers, on the device. Can take minutes - the full run's
+    project registers, on the device. Can take minutes - the full run's
     own budget, not a bug in this command."""
     rest = list(args)
     verbose = "--verbose" in rest
     if verbose:
         rest.remove("--verbose")
-    worktree_arg, rest = pop_value(rest, "--worktree")
-    usage = "usage: autana selftest [seconds] [--verbose] [--worktree PATH|BRANCH]"
+    project_arg, rest = pop_value(rest, "--project")
+    usage = "usage: autana selftest [seconds] [--verbose] [--project PATH]"
     reject_unknown("selftest", rest)
     seconds = seconds_argument(rest, 3000.0, usage)
-    worktree = resolve_worktree(worktree_arg)
-    print(f"autana selftest: every suite, {worktree}", flush=True)
+    project = resolve_project(project_arg)
+    print(f"autana selftest: every suite, {project}", flush=True)
     command = device_command(
-        "selftest", "--worktree", worktree, "--max-seconds", str(seconds),
+        "selftest", "--worktree", project, "--max-seconds", str(seconds),
         "--purpose", "autana selftest",
     )
     if verbose:
@@ -467,7 +422,7 @@ def selftest(args):
 
 
 BATCH_USAGE = ("usage: autana batch <suite> [<suite> ...] [--runs N] [--perf-scope] [--verbose] "
-              "[--out PATH] [--worktree PATH|BRANCH] [--expect-build-id ID]")
+              "[--out PATH] [--project PATH] [--expect-build-id ID]")
 
 
 def batch(args):
@@ -544,7 +499,7 @@ SUITE_REGISTRATION = re.compile(r"SUITE_REGISTER(_ON_REQUEST)?\(\s*([A-Za-z_]\w*
 
 
 def suite_list(args):
-    """What this worktree registers, read from its sources: a suite names
+    """What this project registers, read from its sources: a suite names
     itself where it is defined and the board serves no listing verb, so there
     is nowhere else to ask. A name is runnable once a build carrying it is on
     the board - which variant and scope was flashed decides that, not this."""
@@ -553,16 +508,16 @@ def suite_list(args):
     if len(args) > 1:
         sys.exit("usage: autana suite list [text] [--json]")
     wanted = args[0].lower() if args else ""
-    worktree = Path(engine_worktree())
+    project = Path(resolve_project(None))
 
     found = {}
-    for source in worktree.glob("launcher/**/*.c"):
+    for source in project.glob("launcher/**/*.c"):
         # A build directory holds generated copies of the same sources.
         if "build" in source.parts:
             continue
         text = source.read_text(encoding="utf-8", errors="replace")
         for on_request, name in SUITE_REGISTRATION.findall(text):
-            found[name] = (source.relative_to(worktree).as_posix(), bool(on_request),
+            found[name] = (source.relative_to(project).as_posix(), bool(on_request),
                            "#ifdef DEVICE_BUILD" in text)
 
     shown = [{"name": name, "source": found[name][0], "on_request": found[name][1],
@@ -583,7 +538,7 @@ def suite_list(args):
 
 
 SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [seconds] [--runs N] [--flash] "
-              "[--perf-scope] [--verbose] [--out PATH] [--worktree PATH|BRANCH] "
+              "[--perf-scope] [--verbose] [--out PATH] [--project PATH] "
               "[--expect-build-id ID] | autana suite list [text]")
 
 
@@ -623,19 +578,19 @@ def suite(args):
     if verbose:
         rest.remove("--verbose")
     runs, rest = pop_value(rest, "--runs")
-    worktree_arg, rest = pop_value(rest, "--worktree")
+    project_arg, rest = pop_value(rest, "--project")
     out, rest = pop_value(rest, "--out")
     expect_build_id, rest = pop_value(rest, "--expect-build-id")
     reject_unknown("suite", rest)
     if rest:
         sys.exit(SUITE_USAGE)
-    if worktree_arg is not None and not flash:
-        sys.exit("usage: autana suite --worktree needs --flash - it names what to build")
-    worktree = resolve_worktree(worktree_arg)
+    if project_arg is not None and not flash:
+        sys.exit("usage: autana suite --project needs --flash - it names what to build")
+    project = resolve_project(project_arg)
     runs = runs or "1"
     print(f"autana suite: {', '.join(names)} x{runs}" + (" (flash)" if flash else ""), flush=True)
     command = device_command(
-        "batch", "--worktree", worktree, "--variant", "diag", "--runs", runs,
+        "batch", "--worktree", project, "--variant", "diag", "--runs", runs,
         "--max-seconds", str(seconds),
         "--purpose", "autana suite",
     )
@@ -885,7 +840,7 @@ def button(args):
 def docs(args):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "docs"))
     import docs_search
-    return docs_search.main(args, root=engine_worktree())
+    return docs_search.main(args, root=resolve_project(None))
 
 
 def apps(args):
@@ -1042,10 +997,10 @@ def literal(name, value):
 TUNE_LINE = re.compile(r"^TUNE\(\s*(\w+)\s*,\s*(\w+)\s*,", re.MULTILINE)
 
 
-def declarations(worktree):
+def declarations(project):
     """{tunable name: file}, from the TUNE(owner, what, ...) lines in the tree."""
     found = {}
-    for source in (Path(worktree) / "launcher" / "main").rglob("*.[ch]"):
+    for source in (Path(project) / "launcher" / "main").rglob("*.[ch]"):
         text = source.read_text(encoding="utf-8", errors="replace")
         for owner, what in TUNE_LINE.findall(text):
             if owner != "owner":  # tune.h's own macro definition
@@ -1055,12 +1010,12 @@ def declarations(worktree):
 
 def save():
     """The device's values, written into the TUNE lines they came from."""
-    worktree = engine_worktree()
-    where = declarations(worktree)
+    project = resolve_project(None)
+    where = declarations(project)
     changed = 0
     for name, value, _low, _high, _default in tunables():
         if name not in where:
-            print(f"  {name}: not declared in this worktree - skipped")
+            print(f"  {name}: not declared in this project - skipped")
             continue
         source = where[name]
         owner, what = name.split(".", 1)
@@ -1079,7 +1034,7 @@ def save():
             continue
         start, end = declared.span(1)
         source.write_bytes((text[:start] + literal(name, value) + text[end:]).encode("utf-8"))
-        print(f"  {name}: {old} -> {literal(name, value)}   ({source.relative_to(worktree).as_posix()})")
+        print(f"  {name}: {old} -> {literal(name, value)}   ({source.relative_to(project).as_posix()})")
         changed += 1
     print(f"{changed} value(s) written" if changed else "the source already has the device's values")
     return 0
@@ -1180,11 +1135,11 @@ def debug(args):
 COMMAND_GROUPS = (
     ("build", "Build and flash", (
         Command("build", build, (
-            ("build [rel|dev|diag] [--perf-scope]", "build this worktree, no board; dev when omitted"),
+            ("build [rel|dev|diag] [--perf-scope]", "build this project, no board; dev when omitted"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
         Command("flash", flash, (
             ("flash [rel|dev|diag] [--quiet] [--perf-scope]",
-             "build and flash this worktree; dev when omitted"),)),
+             "build and flash this project; dev when omitted"),)),
         Command("buildid", buildid, (
             ("buildid [--json]", "the BUILD_ID the board is running"),)),
     )),
@@ -1192,7 +1147,7 @@ COMMAND_GROUPS = (
         Command("suite", suite, (
             ("suite <name>... [seconds] [--runs N] [--flash] [--verbose]",
              "run suites under one lock; --flash builds and flashes first"),
-            ("suite list [text] [--json]", "the suites this worktree registers"))),
+            ("suite list [text] [--json]", "the suites this project registers"))),
         Command("selftest", selftest, (
             ("selftest [seconds] [--verbose]",
              "build diagnostics+autorun, run every suite on the board"),)),
@@ -1223,7 +1178,7 @@ COMMAND_GROUPS = (
             ("tune [text] [--json]", "list the tunables, names containing text"),
             ("tune <name> [value]", "show one, or set it on the board"),
             ("tune reset <name>", "back to the value the source declares"),
-            ("tune save", "write the board's values into this worktree's TUNE() lines"))),
+            ("tune save", "write the board's values into this project's TUNE() lines"))),
     )),
     ("lock", "Sharing the board", (
         Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
@@ -1284,15 +1239,15 @@ BOARD_FLAGS = (
     ("--expect-build-id ID", "refuse to run a suite unless the board, or the image `--flash` "
                              "just wrote, carries this BUILD_ID",
      "suite"),
-    ("--worktree PATH|BRANCH", "act on another worktree, or a branch - creating a worktree "
-                               "for it if none exists yet - instead of this one",
+    ("--project PATH", "act on PATH instead of the current directory - it must itself carry "
+                       "launcher/CMakeLists.txt, no searching parent directories",
      "build, flash, selftest, suite (with --flash)"),
 )
 
 
 def board_flags_text(prefix=""):
     width = max(len(flag) for flag, _, _ in BOARD_FLAGS)
-    lines = ["Every board command's lock owner is this worktree's branch plus @<pid> - "
+    lines = ["Every board command's lock owner is \"<user>@<host>:<pid>\" - "
              "AUTANA_DEVICE_OWNER overrides it. AUTANA_DEVICE_WAIT overrides how long a "
              "command waits for the board's lock (device.py's own default: 600 s).",
              "",
@@ -1354,7 +1309,7 @@ def help_text(args, prefix="autana "):
         return f"no command or group '{topic}'; groups: " + ", ".join(
             key for key, _, _ in COMMAND_GROUPS)
     if topic is None:
-        lines.append(f"{prefix}help flags    --out/--expect-build-id/--worktree, which commands "
+        lines.append(f"{prefix}help flags    --out/--expect-build-id/--project, which commands "
                      "take them, and how the lock owner and its wait are set")
         lines.append(f"{prefix}help [topic]  one group or command"
                      + ("" if prefix else "; quit leaves the session"))

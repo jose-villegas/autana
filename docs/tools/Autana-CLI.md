@@ -2,7 +2,9 @@
 
 One command for everything that touches the board: build and flash, run
 suites, watch it, drive its input, change a number live. It takes the device
-lock and acts on the worktree you are standing in.
+lock and is not tied to git or worktrees - a board-only command (`monitor`,
+`tap`, `tune`, ...) works from any directory, and a command that builds or
+flashes acts on the current directory, like `make -C`, or on `--project PATH`.
 
 For a first board run, install ESP-IDF and set up `autana` as described in
 [the README](../../README.md#run-it-on-the-board), then use `autana flash dev`
@@ -30,7 +32,7 @@ group below.
 |---|---|
 | `autana flash dev` | Build and flash; the everyday form. |
 | `autana monitor 30` | The console for 30 s. |
-| `autana suite list` | What this worktree can run, then `autana suite <name>` to run one. |
+| `autana suite list` | What this project can run, then `autana suite <name>` to run one. |
 | `autana tune ridge_trail` | A live value, read or set. |
 | `autana screenshot -o shot` | The panel as `shot.png` plus `shot.json`. |
 
@@ -43,13 +45,12 @@ it readable; a flag works the same wherever the table below says it applies.
 |---|---|---|
 | `--out PATH` | Write the one capture here instead of the default path; with several suites or `--runs` above 1, only makes sense on `suite` when exactly one suite runs once. | suite, monitor |
 | `--expect-build-id ID` | Refuse to run a suite unless the board, or the image `--flash` just wrote, carries this `BUILD_ID`. `autana flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it - pass that value here to refuse measuring a board that has since been reflashed by someone else. | suite |
-| `--worktree PATH\|BRANCH` | Act on another worktree, `PATH`; or on `BRANCH`, finding the worktree already checked out for it, or creating one (local, else `origin/BRANCH`) under the primary checkout's `.claude/worktrees/` when none exists yet. Omitted, these act on the worktree you are standing in, as always. | build, flash, selftest, suite (with --flash) |
+| `--project PATH` | Act on `PATH` instead of the current directory - like `make -C`/`idf.py -C`, no searching parent directories. `PATH` must itself carry `launcher/CMakeLists.txt`; the current directory must too when `--project` is omitted. | build, flash, selftest, suite (with --flash) |
 
 Every board command's lock owner - *who* holds it, for `autana status` - is
-derived, not typed: this process's own branch plus `@<pid>` (`feature/foo@1234`),
-or `autana-cli@<pid>` outside git or on a detached HEAD. `AUTANA_DEVICE_OWNER`
-overrides it for every command in a shell. `AUTANA_DEVICE_WAIT` overrides how
-long a command waits for the board's lock before giving up - device.py's own
+derived, not typed: `"<user>@<host>:<pid>"`. `AUTANA_DEVICE_OWNER` overrides
+it for every command in a shell. `AUTANA_DEVICE_WAIT` overrides how long a
+command waits for the board's lock before giving up - device.py's own
 default (600 s) applies when it is unset. Neither is a flag: an unknown flag
 is named, e.g. `autana flash: unknown flag --owner`.
 
@@ -59,9 +60,9 @@ is named, e.g. `autana flash: unknown flag --owner`.
 
 | Command | What it does |
 |---|---|
-| `autana build [rel\|dev\|diag] [--perf-scope]` | Build this worktree, no board and no lock; `dev` when omitted. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. |
+| `autana build [rel\|dev\|diag] [--perf-scope]` | Build this project, no board and no lock; `dev` when omitted. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. |
 | `autana build diag --check` | The diagnostics build plus the complexity ratchet - `launcher/tools/build/build_diag_check.sh`, unchanged; no board. |
-| `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope]` | Build and flash this worktree; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
+| `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope]` | Build and flash this project; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
 
 `autana build` is the way to build: it runs `launcher/tools/build/build.sh`,
@@ -73,15 +74,20 @@ opens the port.
 It proves the write, not the boot:
 [what a flash proves](Device-Lock.md#what-a-flash-proves).
 
+Both print a banner naming the project and variant; when git answers for
+that project it adds the branch, commit and whether it is dirty - never
+required, so a project built from a tarball or a non-git checkout still
+builds and flashes.
+
 ## Tests
 
 `autana help tests` · `suite` is the everyday path - `selftest` is every
-suite this worktree registers, for a full pre-merge pass.
+suite this project registers, for a full pre-merge pass.
 
 | Command | What it does |
 |---|---|
 | `autana suite <name>... [seconds] [--runs N] [--flash] [--verbose]` | Run one or more registered suites under one lock, `N` times each (1 when omitted), `seconds` capping the whole run (600 s when omitted). Without `--flash`: against the image already on the board - `autana suite <name>` against a non-diagnostics image says so plainly and names the fix (`autana flash diag`). With `--flash`: build and flash the diagnostics image first, so nobody else can flash between two captures. |
-| `autana suite list [text] [--json]` | The suites this worktree registers; `[on request]` ones run only by name. |
+| `autana suite list [text] [--json]` | The suites this project registers; `[on request]` ones run only by name. |
 | `autana selftest [seconds] [--verbose]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
 
 Each prints the report and capture paths, PASS/FAIL counts, up to ten failure
@@ -140,7 +146,7 @@ The two raw levels below gesture, `touch` and `imu`, live under
 | `autana tune [text] [--json]` | List the tunables with their ranges; names containing `text`. |
 | `autana tune <name> [value]` | Show one, or set it on the board (lost on reboot). |
 | `autana tune reset <name>` | Back to the value the source declares. |
-| `autana tune save` | Write the board's values into this worktree's `TUNE(...)` lines. |
+| `autana tune save` | Write the board's values into this project's `TUNE(...)` lines. |
 
 ## Sharing the board
 
@@ -149,7 +155,7 @@ The two raw levels below gesture, `touch` and `imu`, live under
 | Command | What it does |
 |---|---|
 | `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
-| `autana lock id [--json]` | The name this session holds the lock under: this process's own branch plus `@<pid>`. |
+| `autana lock id [--json]` | The name this session holds the lock under: `"<user>@<host>:<pid>"`. |
 | `autana lock release <token>` | Release a lock this session holds; the token is what its command printed. |
 | `autana lock hand [--wait <seconds>] <note...>` | Reserve the board and emit `human-reserved`; with `--wait`, wait until `take-back` emits `human-cleared`. |
 | `autana lock take-back` | Clear that reservation. |
