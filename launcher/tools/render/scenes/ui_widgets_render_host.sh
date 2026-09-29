@@ -10,6 +10,7 @@ scene_sources="
 main/gfx/gfx.c
 main/util/tune.c
 main/ui/ui.c
+main/ui/ui_bridge.c
 main/ui/ui_build.c
 main/ui/ui_canvas_marks.c
 main/ui/ui_pointer.c

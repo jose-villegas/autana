@@ -54,7 +54,7 @@ OUT_BIN="$BUILD_DIR/brush_screen_preview"
 # report_fingerprint.sh (this file's sibling) pulls in, plus the ones this
 # tool alone needs.
 #
-# sand_ui.c, ui_build.c, ui_pointer.c and microui.c are linked only to satisfy
+# sand_ui.c, ui_bridge.c, ui_build.c, ui_pointer.c and microui.c are linked only to satisfy
 # the linker: ui/brush_screen.c holds the live brush_screen_draw() beside the
 # layout this tool calls, and an unreferenced function still brings its own
 # undefined symbols.
@@ -70,6 +70,7 @@ OUT_BIN="$BUILD_DIR/brush_screen_preview"
     "$SAND_DIR/material.c" \
     "$SAND_DIR/material_palette.c" \
     "$SAND_DIR/sand_ui.c" \
+    "$MAIN_DIR/ui/ui_bridge.c" \
     "$MAIN_DIR/ui/ui_build.c" \
     "$MAIN_DIR/ui/ui_canvas_marks.c" \
     "$MAIN_DIR/ui/ui_widgets.c" \

@@ -1,14 +1,8 @@
 /*
  * ui_pointer - input_t to a short list of pointer events, held not tapped.
  *
- * Pure logic, no microui calls and no gfx: what makes the touch-to-mouse
- * bridge host-testable at all - ui.c's own feed_input() has no host coverage
- * today because suite_ui.c is device-only. Same split input/touch_fsm.c and
- * input/button_fsm.c already use.
- *
- * Coordinates in and out are LOGICAL, the UI's own: the caller maps a touch
- * off the panel first, since which way a drag runs - down a list, or along
- * a slider - is a question about the screen, not the glass.
+ * Pure logic, no microui and no gfx; ui_bridge.c talks to microui. Coordinates
+ * are LOGICAL, the UI's own: the caller maps a touch off the panel first.
  */
 #pragma once
 
@@ -31,18 +25,9 @@ typedef struct {
     int x, y;
 } ui_pointer_event_t;
 
-/* One press-to-release cycle never needs more than a move, a down and an
- * up, even when a tap resolves before the natural hover-then-press cadence
- * can play out - see ui_pointer_step()'s own comment. */
-#define UI_POINTER_MAX_EVENTS     3
-
-/* MOVE-only frames a press waits through before its DOWN is fed, and both
- * are load-bearing: mu_mouse_over() needs hover_root, which mu_begin()
- * copies from the PREVIOUS frame. Frame one only tells microui which window
- * the finger is in; frame two is the first that can mark the control
- * hovered. A DOWN before that focuses nothing, giving a button that draws
- * its pressed state and never submits. */
-#define UI_POINTER_HOVER_FRAMES   2
+/* A frame never needs more than an owed UP, then a move, a down and an up
+ * for a tap that resolves within it. */
+#define UI_POINTER_MAX_EVENTS     4
 
 /* How far a finger on scrollable content moves before it is a drag rather
  * than a tap. microui controls act on the press, so on such content the DOWN
@@ -50,8 +35,10 @@ typedef struct {
 #define UI_POINTER_DRAG_THRESHOLD 12
 
 typedef struct {
-    /* 0 when no press is being staged, else how many hover frames have gone
-     * out so far - the DOWN follows the UI_POINTER_HOVER_FRAMES'th. */
+    /* Non-zero while a press is staged: focus needs hover and microui hovers
+     * only with the button up, so the DOWN follows a MOVE-only frame once the
+     * hover root is settled. A press and release inside one frame resolves at
+     * once, so on an unsettled root it is lost. */
     uint8_t press_stage;
     int press_x, press_y;
     int aim_x, aim_y;
@@ -61,6 +48,10 @@ typedef struct {
     /* Set by the caller after each frame: whether the pointer rests on
      * content that can scroll. */
     bool over_scrollable;
+
+    /* Set by the caller after every frame: the root microui hovers is not
+     * the one it found under the pointer, so no control can be hovered yet. */
+    bool hover_unsettled;
     bool press_deferred;
     bool dragging;
     int last_x, last_y;

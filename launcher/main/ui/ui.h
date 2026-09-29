@@ -73,13 +73,10 @@ void ui_init(void);
 /* The microui context, for building the UI between ui_begin and ui_end. */
 mu_Context* ui_context(void);
 
-/* Start a UI frame: translates touch into the mouse events microui
- * expects, then opens the frame. Also resets the button style to
- * UI_BUTTON_FLAT. Style is part of the frame's description, like
- * everything else in an immediate-mode UI - a caller that wants a style
- * states it every frame. That matters here because the whole shell
- * shares one mu_Context: without the reset, the launcher opting into a
- * bezel would leave the running app's own overlay buttons bezelled too. */
+/* Start a UI frame: touch becomes microui's mouse events, and the button
+ * style resets to UI_BUTTON_FLAT (the shell shares one mu_Context). A NULL
+ * `input` opens a repaint-only frame that leaves no trace - pointer, focus
+ * and hover root as they were - so a backdrop cannot take a tap or a drag. */
 void ui_begin(const input_t* input);
 
 /* Choose how button frames are drawn for the rest of this frame.

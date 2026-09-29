@@ -1038,6 +1038,8 @@ class FlashImageScriptTests(unittest.TestCase):
                          "scripts/lib/python.sh",
                          "scripts/device/device.py", "scripts/device/device_lock.py",
                          "scripts/device/device_hook.py", "scripts/device/device_report.py",
+                         "scripts/device/lock_job.py", "scripts/device/lock_scope.py",
+                         "scripts/device/lock_group.py",
                          "scripts/autana/version.py"):
             (self.tree / relative).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(ENGINE / relative, self.tree / relative)

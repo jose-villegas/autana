@@ -106,7 +106,7 @@ twice.
 
 `.frames` is at least two for anything built through microui: a window is
 clipped to the rect it had on the previous frame, and `ui_pointer.c`
-synthesizes hover frames before a press can land, so a settled screen is
+holds a press back a frame for hover, so a settled screen is
 never the first one. Touch is declared as `render_input_step_t` entries in
 **panel** coordinates - where a finger lands, not where the rotated canvas
 puts it - each holding until the next, so the harness derives the

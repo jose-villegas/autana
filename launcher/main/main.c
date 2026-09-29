@@ -332,9 +332,8 @@ show_post_failures(void) {
  * will draw it, untouched and whole. */
 static void
 paint_launcher_under_boot(void) {
-    const input_t no_input = {0};
     ui_invalidate();
-    ui_launcher_frame(&no_input, 0);
+    ui_launcher_frame(NULL, 0);
 }
 
 /* True once frame() has drawn a frame for the current app that update()'s
@@ -441,9 +440,8 @@ start_app(const app_t** current, const app_t* next) {
  * content has to draw it again. */
 static void
 paint_control_center_backdrop(uint32_t dt_ms) {
-    const input_t no_input = {0};
     ui_invalidate();
-    ui_launcher_frame(&no_input, dt_ms);
+    ui_launcher_frame(NULL, dt_ms);
     ui_control_center_dim_backdrop();
     ui_invalidate();
     control_center_backdrop_quarter = display_shell_quarter();
