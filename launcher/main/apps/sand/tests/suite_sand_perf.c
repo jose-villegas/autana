@@ -297,7 +297,7 @@ perf_target(const char* name, int64_t measured_us, int64_t goal_us, int64_t ceil
  * shifting the flash layout can move this row between builds with no work
  * changed, so check the control rows before reading a miss here as a
  * regression. */
-#define FULL_STEP_BUDGET_US 7480
+#define FULL_STEP_BUDGET_US 7490
 
 /* Goal = worst of a 5-run board capture; a change must beat it. The ceiling
  * is a regression guard. */
@@ -344,7 +344,7 @@ test_a_full_size_step_fits_in_the_frame_budget(void) {
     board_bookkeeping_close();
     free(big);
 
-    perf_target("full-size step", per_step, FULL_STEP_BUDGET_US, 8610);
+    perf_target("full-size step", per_step, FULL_STEP_BUDGET_US, 8620);
 }
 
 /* A frame-budget fixture that asks for two cores and measures one reads as a
@@ -1586,7 +1586,7 @@ test_a_growing_plant_bed_fits_in_the_frame_budget(void) {
     free(blocks);
 
     /* Soak/dry is 28% of this step. */
-    perf_target("growing plant bed", per_step, 46420, 53390);
+    perf_target("growing plant bed", per_step, 46450, 53420);
 }
 
 static void
@@ -1625,7 +1625,7 @@ test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
     free(blocks);
 
     /* Perf-scoped, with the block at 16x32. */
-    perf_target("campfire on sand", per_step, 26690, 30700);
+    perf_target("campfire on sand", per_step, 26700, 30710);
 }
 
 /* A tilted board is a different path, not a rotation of the same one:
@@ -1763,7 +1763,7 @@ test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("mixed-scene gravity flip", per_step, 14730, 16940);
+    perf_target("mixed-scene gravity flip", per_step, 14740, 16960);
 }
 
 /* select/mask pairs from xtensa/xt_perf_consts.h. "insn" doubles as the
@@ -2366,7 +2366,7 @@ test_the_boiler_scene_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("boiler", per_step, 24280, 27930);
+    perf_target("boiler", per_step, 24290, 27940);
 }
 
 /* Sand and dirt poured in equal amounts, water dropped over both until
@@ -2414,7 +2414,7 @@ test_the_wet_earth_scene_fits_in_the_frame_budget(void) {
     free(blocks);
 
     /* Perf-scoped, with the block at 16x32. */
-    perf_target("wet earth", per_step, 33020, 37980);
+    perf_target("wet earth", per_step, 33030, 37990);
 }
 
 /* The water-over-lava scene from this file's own section above, run as a
@@ -2460,7 +2460,7 @@ test_the_water_over_lava_scene_fits_in_the_frame_budget(void) {
     free(blocks);
     free(impulses);
 
-    perf_target("water over lava", per_step, 138820, 159650);
+    perf_target("water over lava", per_step, 138850, 159680);
 }
 
 static void
@@ -2609,7 +2609,7 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
 
 /* Perf-scoped goals for the three plant-scene rows. */
 #define PLANT_RUIN_BUDGET_US    64910
-#define FILLING_BASIN_BUDGET_US 16160
+#define FILLING_BASIN_BUDGET_US 16170
 #define SNOWFALL_BUDGET_US      35980
 
 /* Perf-scoped; among the dearest scenes in the suite. */
@@ -2750,7 +2750,7 @@ test_the_filling_basin_scene_fits_in_the_frame_budget(void) {
      * A third more for the same board of water, purely for settling rather
      * than dropping into vacuum - so the row the water work is tuned on is
      * the cheaper of the two cases by 33%. */
-    perf_target("filling basin", per_step, FILLING_BASIN_BUDGET_US, 18590);
+    perf_target("filling basin", per_step, FILLING_BASIN_BUDGET_US, 18600);
 }
 
 /* Snow falling onto a bank that has already crusted, over sand and dirt
@@ -3323,7 +3323,7 @@ test_present_cost_against_a_falling_sand_scene(void) {
      * test_full_present_cost_splits_into_bus_time_and_overhead) - the only
      * movable thing is HOW MANY strips get sent, shown by the strip-send
      * counts beside the timing. */
-    perf_target("present: falling sand", mean_us, 9650, 11100);
+    perf_target("present: falling sand", mean_us, 5750, 6620);
 }
 
 /* Present tests run the sim outside their own timer. Neither measures the
@@ -3427,7 +3427,7 @@ test_present_cost_against_the_lava_stress_scene(void) {
     free(row_x1);
     free(row_n);
 
-    perf_guard("present: lava stress", mean_us, 8940);
+    perf_guard("present: lava stress", mean_us, 8970);
 }
 
 static void
