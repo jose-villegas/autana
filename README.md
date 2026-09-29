@@ -13,6 +13,8 @@ The volcano, lake and growing trees use the real simulation and material shading
 | Launcher | Rotating Render Lab cube |
 |:---:|:---:|
 | ![The app launcher with three fixture entries](docs/images/overview/launcher-home.png) | ![A shaded cube rotating on a black screen](docs/images/overview/render-lab-cube.gif) |
+| **Sponza flythrough** | **Ray-traced Cornell box** |
+| ![A camera moving down the sunlit Crytek Sponza atrium between coloured curtains](docs/images/overview/render-lab-sponza.gif) | ![A Cornell box with a red and a green wall around two blocks](docs/images/overview/render-lab-cornell.png) |
 
 Image render commands are in each app's tools README ([sand](launcher/main/apps/sand/tools/README.md), [render lab](launcher/main/apps/render_lab/tools/README.md)) and the [render harness](docs/tools/Render-Harness.md#images-in-these-docs).
 
