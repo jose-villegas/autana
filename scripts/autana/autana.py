@@ -40,13 +40,20 @@ PROJECT_MARKER = Path("launcher") / "CMakeLists.txt"
 
 
 def owner():
-    """What the device lock calls this autana: AUTANA_DEVICE_OWNER when set,
-    else "<user>@<host>:<pid>" - readable in a queue, and the pid alone finds
-    an entry that will not let go in the task list."""
+    """What the device lock calls this autana: AUTANA_DEVICE_OWNER, with
+    this process's own pid still appended, when set - two shells that
+    export the same override would otherwise see each other's lock as
+    their own (board_holder()'s self-check compares by name) - else
+    "<user>@<host>:<pid>". getpass.getuser() can fail with no username in
+    the environment (a container); "user" then stands in for it."""
     override = os.environ.get("AUTANA_DEVICE_OWNER")
     if override:
-        return override
-    return f"{getpass.getuser()}@{socket.gethostname()}:{os.getpid()}"
+        return f"{override}:{os.getpid()}"
+    try:
+        user = getpass.getuser()
+    except OSError:
+        user = "user"
+    return f"{user}@{socket.gethostname()}:{os.getpid()}"
 
 
 def git(*args):
@@ -67,16 +74,45 @@ def git_ok(*args):
         return False
 
 
-def resolve_project(value):
-    """`--project`'s value, or this process's own cwd when omitted - like
-    `make -C`/`idf.py -C`, never a search of parent directories. Either way
-    the directory itself must carry PROJECT_MARKER; failing that names
-    --project, never git."""
-    project = Path(value).resolve() if value is not None else Path.cwd()
+# This invocation's own --project, popped once by run_command() ahead of
+# any command's own parsing (main()'s one-shot dispatch, and each line of a
+# console session) - so every command that reads it, not just the ones that
+# build or flash, shares one flag instead of parsing it for itself. Reset
+# around each dispatched call, so a console session's next line starts over.
+_project_arg = None
+
+
+def project_override():
+    """This invocation's own --project, unresolved and unvalidated - for a
+    command that only wants a path for metadata (`suite` without --flash)
+    and has no reason to require PROJECT_MARKER there. A command that
+    actually reads the project wants resolve_project() instead."""
+    return _project_arg
+
+
+def resolve_project():
+    """This invocation's own --project, or its cwd when none was given -
+    like `make -C`/`idf.py -C`, never a search of parent directories.
+    Either way the directory itself must carry PROJECT_MARKER; failing that
+    names --project, never git."""
+    project = Path(_project_arg).resolve() if _project_arg is not None else Path.cwd()
     if not (project / PROJECT_MARKER).is_file():
         sys.exit(f"autana: {project} is not an autana project "
                  f"(no {PROJECT_MARKER.as_posix()}) - pass --project PATH")
     return str(project)
+
+
+def run_command(handler, args):
+    """Pop `--project` once, ahead of `handler`'s own parsing, and let
+    resolve_project()/project_override() read it for the length of this
+    call. The one place main() and console() both dispatch through."""
+    global _project_arg
+    value, args = pop_value(args, "--project")
+    previous, _project_arg = _project_arg, value
+    try:
+        return handler(args)
+    finally:
+        _project_arg = previous
 
 
 def pop_value(args, flag):
@@ -189,12 +225,12 @@ def run_streaming_its_log(command):
     return code
 
 
-def variant_request(verb, args, flags, project=None):
+def variant_request(verb, args, flags, project):
     """The words `autana build` and `autana flash` share: one variant (dev
-    when omitted) and the `flags` given, against `project` (this directory
-    when omitted). Prints the banner - branch/commit/dirty only when git
-    answers for that project, never required - and returns the variant word
-    asked, the variant, the flags seen and the project."""
+    when omitted) and the `flags` given, against `project` - already
+    resolved by the caller. Prints the banner - branch/commit/dirty only
+    when git answers for that project, never required - and returns the
+    variant word asked, the variant and the flags seen."""
     reject_unknown(verb, args, flags)
     seen = {flag for flag in flags if flag in args}
     words = [arg for arg in args if arg not in flags]
@@ -203,7 +239,6 @@ def variant_request(verb, args, flags, project=None):
     if variant is None or len(words) > 1:
         sys.exit(f"usage: autana {verb} [rel|dev|diag] "
                  + " ".join(f"[{flag}]" for flag in flags))
-    project = project or resolve_project(None)
     where = project
     if git_ok("-C", project, "rev-parse", "--is-inside-work-tree"):
         current_branch = git("-C", project, "branch", "--show-current") or "detached"
@@ -211,14 +246,12 @@ def variant_request(verb, args, flags, project=None):
         dirty = " (dirty)" if git("-C", project, "status", "--porcelain") else ""
         where = f"{current_branch} @ {commit}{dirty}"
     print(f"autana {verb}: {variant} of {where}", flush=True)
-    return asked, variant, seen, project
+    return asked, variant, seen
 
 
 def flash(args):
-    project_arg, args = pop_value(args, "--project")
-    project = resolve_project(project_arg)
-    asked, variant, seen, project = variant_request(
-        "flash", args, ("--quiet", "--perf-scope"), project=project)
+    project = resolve_project()
+    asked, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope"), project)
     quiet = "--quiet" in seen
     perf_scope = "--perf-scope" in seen
     command = device_command(
@@ -245,13 +278,12 @@ def build(args):
     runs the diagnostics build plus the complexity ratchet instead."""
     check = "--check" in args
     args = [arg for arg in args if arg != "--check"]
-    project_arg, args = pop_value(args, "--project")
-    project = resolve_project(project_arg)
+    project = resolve_project()
     if check:
         if args != ["diag"]:
             sys.exit("usage: autana build diag --check")
         return build_diag_check(project)
-    _, variant, seen, project = variant_request("build", args, ("--perf-scope",), project=project)
+    _, variant, seen = variant_request("build", args, ("--perf-scope",), project)
     return device_module().build_worktree(project, variant, sorted(seen))
 
 
@@ -406,11 +438,10 @@ def selftest(args):
     verbose = "--verbose" in rest
     if verbose:
         rest.remove("--verbose")
-    project_arg, rest = pop_value(rest, "--project")
-    usage = "usage: autana selftest [seconds] [--verbose] [--project PATH]"
+    usage = "usage: autana selftest [seconds] [--verbose]"
     reject_unknown("selftest", rest)
     seconds = seconds_argument(rest, 3000.0, usage)
-    project = resolve_project(project_arg)
+    project = resolve_project()
     print(f"autana selftest: every suite, {project}", flush=True)
     command = device_command(
         "selftest", "--worktree", project, "--max-seconds", str(seconds),
@@ -422,7 +453,7 @@ def selftest(args):
 
 
 BATCH_USAGE = ("usage: autana batch <suite> [<suite> ...] [--runs N] [--perf-scope] [--verbose] "
-              "[--out PATH] [--project PATH] [--expect-build-id ID]")
+              "[--out PATH] [--expect-build-id ID]")
 
 
 def batch(args):
@@ -508,7 +539,7 @@ def suite_list(args):
     if len(args) > 1:
         sys.exit("usage: autana suite list [text] [--json]")
     wanted = args[0].lower() if args else ""
-    project = Path(resolve_project(None))
+    project = Path(resolve_project())
 
     found = {}
     for source in project.glob("launcher/**/*.c"):
@@ -538,8 +569,8 @@ def suite_list(args):
 
 
 SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [seconds] [--runs N] [--flash] "
-              "[--perf-scope] [--verbose] [--out PATH] [--project PATH] "
-              "[--expect-build-id ID] | autana suite list [text]")
+              "[--perf-scope] [--verbose] [--out PATH] [--expect-build-id ID] | "
+              "autana suite list [text]")
 
 
 def suite(args):
@@ -578,15 +609,16 @@ def suite(args):
     if verbose:
         rest.remove("--verbose")
     runs, rest = pop_value(rest, "--runs")
-    project_arg, rest = pop_value(rest, "--project")
     out, rest = pop_value(rest, "--out")
     expect_build_id, rest = pop_value(rest, "--expect-build-id")
     reject_unknown("suite", rest)
     if rest:
         sys.exit(SUITE_USAGE)
-    if project_arg is not None and not flash:
-        sys.exit("usage: autana suite --project needs --flash - it names what to build")
-    project = resolve_project(project_arg)
+    # Only --flash reads the project - it is what gets built. Without it,
+    # `suite` is board-only: the capture still names a project (device.py's
+    # own --worktree is metadata, not something it builds), but any
+    # directory does, unvalidated, same as project_override()'s other use.
+    project = resolve_project() if flash else (project_override() or str(Path.cwd()))
     runs = runs or "1"
     print(f"autana suite: {', '.join(names)} x{runs}" + (" (flash)" if flash else ""), flush=True)
     command = device_command(
@@ -840,7 +872,7 @@ def button(args):
 def docs(args):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "docs"))
     import docs_search
-    return docs_search.main(args, root=resolve_project(None))
+    return docs_search.main(args, root=resolve_project())
 
 
 def apps(args):
@@ -1010,7 +1042,7 @@ def declarations(project):
 
 def save():
     """The device's values, written into the TUNE lines they came from."""
-    project = resolve_project(None)
+    project = resolve_project()
     where = declarations(project)
     changed = 0
     for name, value, _low, _high, _default in tunables():
@@ -1081,7 +1113,7 @@ def console(_args=None):
             if verb == "help":
                 print(help_text(rest, prefix=""))
             elif verb in COMMANDS and verb != "console":
-                COMMANDS[verb](rest)
+                run_command(COMMANDS[verb], rest)
             else:
                 replies = forward(line, verb)
                 print("\n".join(replies) if replies else "sent")
@@ -1241,17 +1273,18 @@ BOARD_FLAGS = (
      "suite"),
     ("--project PATH", "act on PATH instead of the current directory - it must itself carry "
                        "launcher/CMakeLists.txt, no searching parent directories",
-     "build, flash, selftest, suite (with --flash)"),
+     "build, flash, selftest, suite, suite list, tune save, docs"),
 )
 
 
 def board_flags_text(prefix=""):
     width = max(len(flag) for flag, _, _ in BOARD_FLAGS)
-    lines = ["Every board command's lock owner is \"<user>@<host>:<pid>\" - "
-             "AUTANA_DEVICE_OWNER overrides it. AUTANA_DEVICE_WAIT overrides how long a "
-             "command waits for the board's lock (device.py's own default: 600 s).",
+    lines = ["Every board command's lock owner is \"<user>@<host>:<pid>\", or "
+             "\"<AUTANA_DEVICE_OWNER>:<pid>\" when that variable is set. AUTANA_DEVICE_WAIT "
+             "overrides how long a command waits for the board's lock (device.py's own "
+             "default: 600 s).",
              "",
-             "Board flags (on top of each command's own usage above)"]
+             "Flags (on top of each command's own usage above)"]
     for flag, summary, commands in BOARD_FLAGS:
         lines.append(f"  {flag:<{width}}  {summary}")
         lines.append(f"  {'':<{width}}  on: {commands}")
@@ -1370,7 +1403,7 @@ def main():
         replies = forward(" ".join(sys.argv[1:]), sys.argv[1])
         print("\n".join(replies) if replies else "sent")
         sys.exit(0)
-    sys.exit(COMMANDS[sys.argv[1]](sys.argv[2:]))
+    sys.exit(run_command(COMMANDS[sys.argv[1]], sys.argv[2:]))
 
 
 if __name__ == "__main__":

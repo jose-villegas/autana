@@ -36,23 +36,25 @@ group below.
 | `autana tune ridge_trail` | A live value, read or set. |
 | `autana screenshot -o shot` | The panel as `shot.png` plus `shot.json`. |
 
-## Board flags
+## Flags
 
 `autana help flags` - left off each command's own usage line below to keep
 it readable; a flag works the same wherever the table below says it applies.
+(Not all of "build" - `build` takes `--project` but touches no board.)
 
 | Flag | What it does | Commands |
 |---|---|---|
 | `--out PATH` | Write the one capture here instead of the default path; with several suites or `--runs` above 1, only makes sense on `suite` when exactly one suite runs once. | suite, monitor |
 | `--expect-build-id ID` | Refuse to run a suite unless the board, or the image `--flash` just wrote, carries this `BUILD_ID`. `autana flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it - pass that value here to refuse measuring a board that has since been reflashed by someone else. | suite |
-| `--project PATH` | Act on `PATH` instead of the current directory - like `make -C`/`idf.py -C`, no searching parent directories. `PATH` must itself carry `launcher/CMakeLists.txt`; the current directory must too when `--project` is omitted. | build, flash, selftest, suite (with --flash) |
+| `--project PATH` | Act on `PATH` instead of the current directory - like `make -C`/`idf.py -C`, no searching parent directories. `PATH` must itself carry `launcher/CMakeLists.txt`; the current directory must too when `--project` is omitted, for every command below except `suite` without `--flash`, which only wants it for its capture's own record. Popped once ahead of any command's own parsing, so it works the same everywhere it applies. | build, flash, selftest, suite, suite list, tune save, docs |
 
-Every board command's lock owner - *who* holds it, for `autana status` - is
-derived, not typed: `"<user>@<host>:<pid>"`. `AUTANA_DEVICE_OWNER` overrides
-it for every command in a shell. `AUTANA_DEVICE_WAIT` overrides how long a
-command waits for the board's lock before giving up - device.py's own
-default (600 s) applies when it is unset. Neither is a flag: an unknown flag
-is named, e.g. `autana flash: unknown flag --owner`.
+Every board command's lock owner is `"<user>@<host>:<pid>"`, or
+`"<AUTANA_DEVICE_OWNER>:<pid>"` when that variable is set - the pid still
+distinguishes two shells that export the same override, so `autana status`
+does not mistake one for the other's own lock. `AUTANA_DEVICE_WAIT`
+overrides how long a command waits for the board's lock before giving up -
+device.py's own default (600 s) applies when it is unset. Neither is a
+flag: an unknown flag is named, e.g. `autana flash: unknown flag --owner`.
 
 ## Build and flash
 
@@ -155,7 +157,7 @@ The two raw levels below gesture, `touch` and `imu`, live under
 | Command | What it does |
 |---|---|
 | `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
-| `autana lock id [--json]` | The name this session holds the lock under: `"<user>@<host>:<pid>"`. |
+| `autana lock id [--json]` | The name this session holds the lock under: `"<user>@<host>:<pid>"`, or `"<AUTANA_DEVICE_OWNER>:<pid>"` when that variable is set. |
 | `autana lock release <token>` | Release a lock this session holds; the token is what its command printed. |
 | `autana lock hand [--wait <seconds>] <note...>` | Reserve the board and emit `human-reserved`; with `--wait`, wait until `take-back` emits `human-cleared`. |
 | `autana lock take-back` | Clear that reservation. |
@@ -168,7 +170,7 @@ flash; `suite --flash` and `selftest` hold one lock across flash and capture.
 Lock loss, estimates and flash success are defined in
 [Device-Lock.md](Device-Lock.md).
 
-The lock owner is set as described in [Board flags](#board-flags) above.
+The lock owner is set as described in [Flags](#flags) above.
 
 `autana lock hand --wait 30 put the board in download mode` pauses a flash
 script until someone puts the board in download mode and runs `autana lock
