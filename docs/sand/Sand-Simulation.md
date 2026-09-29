@@ -1097,8 +1097,8 @@ halves it but is outside the panel's rating.
 Sand's partial redraws are exactly what shows it: stray red pixels or
 thin black lines through moving sand that stay until that region is
 re-sent differently. See
-[Display-and-Rendering.md](../notes/Display-and-Rendering.md), "The blit
-is bus-bound", for the finding and the heal sand uses.
+[Display-and-Rendering.md](../notes/Display-and-Rendering.md), "80 MHz
+is outside the panel's rating", for the finding and the heal sand uses.
 
 Water, not sand, is the bottleneck whenever a body of it is moving.
 

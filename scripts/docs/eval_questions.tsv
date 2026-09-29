@@ -29,7 +29,7 @@ console is not showing up as a normal UART port	docs/notes/Debugging.md	The cons
 IMU axes seem swapped compared to the screen orientation	docs/notes/Input-and-Sensors.md	The IMU's axes do not match the screen's
 board keeps resetting when flashing at high baud, warm reset issue	docs/notes/Flashing-and-Toolchain.md	Warm resets at 120 MHz
 internal heap budget with framebuffer in PSRAM	docs/notes/Board-and-Memory.md	Memory - the constraint that shapes everything
-partial screen updates only sending changed bands	docs/notes/Display-and-Rendering.md	Partial updates: only send the bands that changed
+partial screen updates only sending changed bands	docs/notes/Display-and-Rendering.md	Dirty tracking, measured
 cognitive complexity ratchet failing the build	docs/tools/Complexity-Gate.md	A ratchet with a fail line
 generating and validating a mermaid diagram before commit	docs/tools/Mermaid-Diagrams.md	Pre-commit
 icon baker generator rejects bad input	docs/tools/Icon-Baker.md	What the generator rejects before emitting
