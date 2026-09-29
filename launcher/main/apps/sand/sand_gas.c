@@ -225,8 +225,7 @@ build_gas_tables(void) {
  * downward is unsafe for a sweep that guarantees a single move per cell
  * only in the direction it sweeps. */
 static inline bool
-gas_walk_once(sand_t* s, uint8_t* row, int x, int y, int w, int rdx, int rdy, cell_t grain, uint8_t density) {
-    const int up = ring_of(rdx, rdy);
+gas_walk_once(sand_t* s, uint8_t* row, int x, int y, int w, int rdx, int rdy, int up, cell_t grain, uint8_t density) {
     const int roll = (int)(sand_rng_next_at(s, x, y, SAND_RNG_SLOT_GAS_WALK) & 0xFF);
 
     const int off = gas_walk_offset[roll];
@@ -325,7 +324,7 @@ gas_move_exhaustive(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8
 
 static bool
 step_one_gas_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int rdx,
-                   int rdy, const int* rslide_a, const int* rslide_b, int rload_dx, int rload_dy, int jostle,
+                   int rdy, const int* rslide_a, const int* rslide_b, int rload_dx, int rload_dy, int jostle, int up,
                    cell_t grain, bool driven_gas[MATERIAL_MAX][2]) {
     const material_t* mat = material_of(grain);
     const uint8_t mat_id = CELL_MATERIAL(grain);
@@ -351,7 +350,7 @@ step_one_gas_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_
         /* gas_walk_once() handles an up-ish draw blocked by a
          * lighter-than-gas liquid itself, so this needs no separate
          * try_bubble() call of its own. */
-        const bool walked = try_moving && gas_walk_once(s, row, x, y, w, rdx, rdy, grain, density);
+        const bool walked = try_moving && gas_walk_once(s, row, x, y, w, rdx, rdy, up, grain, density);
         if (walked) {
             wake_block_and_neighbors(s, x, y);
         }
@@ -380,7 +379,7 @@ typedef struct {
     bool found_any[SAND_LANE_COUNT];
     int rslide_a[2];
     int rslide_b[2];
-    int rdx, rdy, rx_step, rload_dx, rload_dy, jostle;
+    int rdx, rdy, rx_step, rload_dx, rload_dy, jostle, up;
     int y_step;
 } gas_pass_t;
 
@@ -430,7 +429,7 @@ step_one_gas_row(sand_t* s, const gas_row_t* r, const gas_pass_t* c) {
         }
         SAND_STEP_GATE(gas_body) {
             step_one_gas_grain(s, row, r->prow, r->arow, r->brow, x, y, w, c->rdx, c->rdy, c->rslide_a, c->rslide_b,
-                               c->rload_dx, c->rload_dy, c->jostle, cell, gas_driven);
+                               c->rload_dx, c->rload_dy, c->jostle, c->up, cell, gas_driven);
         }
     }
     return any;
@@ -1084,6 +1083,7 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
         .rload_dx = rload_dx,
         .rload_dy = rload_dy,
         .jostle = jostle,
+        .up = ring_of(rdx, rdy),
         .y_step = y_step,
     };
     if (!s->gas_walk || !step_gas_chunks(s, &found_any)) {
