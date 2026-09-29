@@ -44,7 +44,8 @@ held to that by `test_a_frame_budget_board_really_reaches_the_split_path`,
 which fails unless a busy full-size step dispatches at least one split pass.
 
 Every frame-budget row has a goal and a ceiling. The goal is the worst of a
-5-run board capture, rounded up to 10 us, so every row passes; a perf change
+5-run board capture plus 1% (layout drift between images moves a row by tenths
+of a percent), rounded up to 10 us, so every row passes; a perf change
 must push its row below the goal, judged by A/B against it. The ceiling is the
 goal x 1.15, a regression guard only. A run ends with `PERF TARGET SUMMARY:
 <n> unmet`; on an unchanged tree that count is zero. A perf-scoped run outlasts
