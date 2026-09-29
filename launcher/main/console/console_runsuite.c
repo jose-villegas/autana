@@ -43,7 +43,7 @@ console_verb_testfilter(const char* args, console_reply_fn reply) {
     }
 }
 
-CONSOLE_VERB(testfilter, 38, console_verb_testfilter)
+CONSOLE_VERB(testfilter, 37, console_verb_testfilter)
 
 bool
 console_runsuite_take_request(char* name_out, size_t name_out_size) {

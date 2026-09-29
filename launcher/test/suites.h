@@ -64,7 +64,7 @@ bool suites_run_one(const char* name);
 bool suites_filter_add(const char* pattern);
 void suites_filter_clear(void);
 
-/* Asked by RUN_TEST (timing.c) for each test: true to run it. Always true
+/* Asked by suite_run_test_timed() (timing.c) for each test: true to run it. Always true
  * outside a filtered suites_run_one(). */
 bool suites_test_runs(const char* test_name);
 

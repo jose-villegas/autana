@@ -1147,7 +1147,7 @@ def write_image(built, store, board, held_lock=None):
 
 # The console line, minus "TESTFILTER " (console/console_verbs.h). Longer
 # would be dropped whole by the device, so the run would silently be the full suite.
-TEST_PATTERN_MAX = 38
+TEST_PATTERN_MAX = 37
 # How many patterns the device keeps: SUITE_FILTER_MAX in launcher/test/suites.h.
 TEST_PATTERNS_MAX = 8
 
