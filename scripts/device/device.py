@@ -129,20 +129,30 @@ def find_board(board=None):
     return present[0]
 
 
-def board_for_lock(store, named=None):
+def board_for_lock(store, named=None, remembered=False):
     """The board a command queues for. A lock outlives the board's USB
     presence, so while a holder's reset has the only board off USB a waiter
-    still finds it through the lock records; only opening its port needs USB."""
+    still finds it through the lock records; only opening its port needs USB.
+    `remembered`, for `hand-to-human`/`take-back` only, falls back further
+    still - to a board merely seen on USB before, with nothing active
+    against it now - since those are the two commands a board dropped off
+    USB (and idle) needs."""
     wanted = chosen_board(named)
     if wanted:
         return wanted
     present = sorted(found.serial for found in plugged_boards())
-    candidates = present or store.boards()
+    for serial in present:
+        store.note_seen(serial)
+    candidates, source = present, "plugged in"
+    if not candidates:
+        candidates, source = store.boards(), "known to the lock"
+    if not candidates and remembered:
+        candidates, source = store.seen_boards(), "known to this machine"
     if len(candidates) == 1:
         return candidates[0]
     if not candidates:
         raise NoBoard("no USB Serial/JTAG board found (VID 0x303A)")
-    raise RuntimeError("several boards are " + ("plugged in" if present else "known to the lock")
+    raise RuntimeError("several boards are " + source
                        + " - name one with --board or AUTANA_BOARD: " + ", ".join(candidates))
 
 
@@ -1475,6 +1485,8 @@ def wait_for_human_release(store, board, reservation_id, seconds):
 def board_statuses(store, board=None):
     """Every board a lock record names or USB shows, or only `board`."""
     plugged = {found.serial: found.port for found in plugged_boards()}
+    for serial in plugged:
+        store.note_seen(serial)
     boards = [board] if board else sorted(set(store.boards()) | set(plugged))
     durations = device_lock.duration_history(store.root)
     return [device_lock.status_entry(store, name, plugged.get(name), durations=durations)
@@ -1495,7 +1507,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--board", help="the board's USB serial number (default: AUTANA_BOARD, "
                                         "else the only board plugged in, else the only one "
-                                        "a lock record names)")
+                                        "a lock record names; hand-to-human/take-back also try "
+                                        "the only board this machine has ever seen)")
     parser.add_argument("--owner", default=os.environ.get("AUTANA_DEVICE_OWNER", "unknown"))
     parser.add_argument("--wait", type=float, default=600)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1632,7 +1645,8 @@ def main(argv=None):
         if args.command == "resolve-port":
             print(find_board(args.board).port)
             return 0
-        board = board_for_lock(store, args.board)
+        board = board_for_lock(store, args.board,
+                               remembered=args.command in ("hand-to-human", "take-back"))
         if args.command == "release":
             return 0 if store.release(board, args.token) else 1
         if args.command == "hand-to-human":
