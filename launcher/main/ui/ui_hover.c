@@ -2,6 +2,7 @@
 #include "ui/ui_hover.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 
 static bool
 contains(mu_Rect r, mu_Vec2 p) {
