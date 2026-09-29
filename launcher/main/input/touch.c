@@ -181,12 +181,14 @@ poll_once(void) {
 #else
     poll_controller(&have_point, &x, &y);
 #endif
-    portENTER_CRITICAL(&lock);
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    touch_point_update_fsm(&fsm, injected, have_point, &x, &y, now_us, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
+    touch_point_prepare(injected, have_point, &x, &y, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
 #else
-    touch_point_update_fsm(&fsm, false, have_point, &x, &y, now_us, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
+    touch_point_prepare(false, have_point, &x, &y, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
 #endif
+
+    portENTER_CRITICAL(&lock);
+    touch_fsm_update(&fsm, have_point, x, y, now_us);
     was_touching = have_point;
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
