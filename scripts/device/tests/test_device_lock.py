@@ -546,8 +546,9 @@ class HumanReservationExpiryTests(unittest.TestCase):
         self.clock.advance(self.HOUR + 120)
         entry = device_lock.status_entry(self.lock, "COM5", durations={})
         self.assertEqual(entry["state"], "unlocked")
-        self.assertEqual(entry["expired"]["owner"], "maintainer")
-        self.assertEqual(entry["expired"]["expired_at"], 1000.0 + self.HOUR)
+        self.assertEqual(entry["lapsed"], {"owner": "maintainer", "purpose": "bench",
+                                           "reason": "reservation expired",
+                                           "at": 1000.0 + self.HOUR})
         text = "\n".join(device_lock.status_lines(entry, self.clock.now()))
         self.assertIn("human reservation from maintainer: bench expired 2m ago and is released",
                       text)
@@ -566,7 +567,7 @@ class HumanReservationExpiryTests(unittest.TestCase):
         self.lock.set_human("COM5", "maintainer", "bench")
         held = device_lock.status_entry(self.lock, "COM5", durations={})
         derived = {"elapsed_seconds", "remaining_seconds", "ago_seconds"}
-        self.assertFalse(derived & set(held) | derived & set(lapsed["expired"]))
+        self.assertFalse(derived & set(held) | derived & set(lapsed["lapsed"]))
 
     def test_reserving_again_renews_it(self):
         first, _ = self.lock.set_human("COM5", "maintainer", "bench")

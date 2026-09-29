@@ -264,8 +264,7 @@ are stored, so subtract them from the current time for an age; the human text do
 | `since` | when the holder took the board |
 | `estimated_free` | when the holder should be done |
 | `expires_at` | when a reservation lapses; else `null` |
-| `stale` | `{"owner", "purpose", "reason"}` of a lock the next waiter will reclaim, else `null` |
-| `expired` | `{"owner", "purpose", "expired_at"}` of a reservation that lapsed and is treated as released, else `null` |
+| `lapsed` | `{"owner", "purpose", "reason", "at"}` of the record an unlocked board still carries; else `null`. `reason` is `dead process` or `heartbeat expiry` (a lock the next waiter reclaims), or `reservation expired` (treated as released), the only one with an `at`: when it lapsed. |
 | `waiting` | `[{"owner", "purpose", "estimated_start"}]` in queue order |
 
 ### Lock events

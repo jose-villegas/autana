@@ -661,6 +661,9 @@ def queue_estimates(status, now, durations):
     return estimates
 
 
+RESERVATION_EXPIRED = "reservation expired"
+
+
 def status_entry(store, board, port=None, now=None, durations=None):
     """One board's state as `status --json` prints it. Times are epoch
     seconds; an estimate with too little history is None."""
@@ -669,11 +672,12 @@ def status_entry(store, board, port=None, now=None, durations=None):
     status = store.status(board)
     entry = {"board": board, "port": port, "state": "unlocked", "holder": None,
              "since": None, "estimated_free": None,
-             "stale": None, "expired": None, "expires_at": None, "waiting": []}
+             "lapsed": None, "expires_at": None, "waiting": []}
     if status.get("expired_human"):
         lapsed = status["expired_human"]
-        entry["expired"] = {"owner": lapsed["owner"], "purpose": lapsed.get("note"),
-                            "expired_at": store.human_expires_at(lapsed)}
+        entry["lapsed"] = {"owner": lapsed["owner"], "purpose": lapsed.get("note"),
+                           "reason": RESERVATION_EXPIRED,
+                           "at": store.human_expires_at(lapsed)}
     if status["human"]:
         human = status["human"]
         entry.update(state="human", holder={"owner": human["owner"], "purpose": human.get("note")},
@@ -692,8 +696,8 @@ def status_entry(store, board, port=None, now=None, durations=None):
                                      if duration is not None and acquired is not None else None))
     elif status["reclaimable"]:
         stale = status["reclaimable"]
-        entry["stale"] = {"owner": stale["owner"], "purpose": stale.get("purpose"),
-                          "reason": stale["reason"]}
+        entry["lapsed"] = {"owner": stale["owner"], "purpose": stale.get("purpose"),
+                           "reason": stale["reason"], "at": None}
     estimates = queue_estimates(status, now, durations)
     entry["waiting"] = [{"owner": ticket["owner"], "purpose": ticket.get("purpose"),
                          "estimated_start": estimates[ticket["ticket"]]}
@@ -802,13 +806,13 @@ def status_lines(entry, now):
                  f"{local_time(entry['since'])} (elapsed {elapsed_seconds(entry['since'], now)}s; "
                  f"estimated free {format_estimate(entry['estimated_free'])}; "
                  f"{holder_version_details(holder)})"]
-    elif entry["stale"]:
-        lines = ["unlocked - stale lock from {owner} for {purpose} ({reason})".format(
-            **entry["stale"])]
-    elif entry["expired"]:
-        lapsed = entry["expired"]
+    elif entry["lapsed"] and entry["lapsed"]["reason"] == RESERVATION_EXPIRED:
+        lapsed = entry["lapsed"]
         lines = [f"unlocked - human reservation from {lapsed['owner']}: {lapsed['purpose']} "
-                 f"expired {duration_text(now - lapsed['expired_at'])} ago and is released"]
+                 f"expired {duration_text(now - lapsed['at'])} ago and is released"]
+    elif entry["lapsed"]:
+        lines = ["unlocked - stale lock from {owner} for {purpose} ({reason})".format(
+            **entry["lapsed"])]
     else:
         lines = ["unlocked"]
     if entry["waiting"]:

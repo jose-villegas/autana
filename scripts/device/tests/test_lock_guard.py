@@ -243,8 +243,8 @@ class BoardTests(Store):
         self.assertEqual((by_board["90:70:69:FE:C0:01"]["port"],
                           by_board["90:70:69:FE:C0:01"]["state"]), (None, "human"))
         self.assertEqual(set(by_board[BOARD_B]), {
-            "board", "port", "state", "holder", "since", "estimated_free", "stale",
-            "expired", "expires_at", "waiting"})
+            "board", "port", "state", "holder", "since", "estimated_free", "lapsed",
+            "expires_at", "waiting"})
 
     def test_status_names_one_board_when_one_is_chosen(self):
         with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")):
@@ -258,9 +258,9 @@ class BoardTests(Store):
             "kind": "listen", "owner": "gone", "pid": 1, "purpose": "listen", "token": "t"})
         with plugged():
             entry = json.loads(self.status("--json"))["boards"][0]
-        self.assertEqual((entry["state"], entry["stale"]),
+        self.assertEqual((entry["state"], entry["lapsed"]),
                          ("unlocked", {"owner": "gone", "purpose": "listen",
-                                       "reason": "heartbeat expiry"}))
+                                       "reason": "heartbeat expiry", "at": None}))
 
 
 class PortFollowingTests(Store):
