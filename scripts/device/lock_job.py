@@ -6,8 +6,7 @@ grandchildren of dead parents included. When the holder dies by any means the
 kernel closes the job and kills the members, so no pid is inferred or
 trusted. Jobs nest since Windows 8, so a holder already inside a launcher's
 or a harness's job still gets its own. A process that asks for
-CREATE_BREAKAWAY_FROM_JOB may leave it. POSIX has no equivalent: there a
-killed holder's children are not stopped."""
+CREATE_BREAKAWAY_FROM_JOB may leave it. lock_group.py is the POSIX side."""
 
 import os
 import sys
@@ -91,7 +90,7 @@ def create_job(kernel32):
     return None
 
 
-def enter():
+def enter(token=None):
     """Puts this process in a job of its own, once. False, with the reason on
     stderr, where that is not possible: the lock then works as it always did."""
     global _job
@@ -109,6 +108,10 @@ def enter():
     report("could not join a job object; processes this command starts are not "
            "stopped with it")
     return False
+
+
+def leave():
+    """The job lasts as long as the process."""
 
 
 def members():

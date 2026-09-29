@@ -1,15 +1,19 @@
 """The lock and the serial port are two resources; the port is the real one.
 Nothing a lock holder started may keep the port after the holder is gone,
-however it went: on Windows the holder joins a kill-on-close job object.
+however it went: on Windows the holder joins a kill-on-close job object, on
+Linux what it starts is tagged through the environment and a watchdog kills
+the tagged processes if it dies. macOS is not exercised here.
 
 Real processes throughout. The port is stood in for by a localhost TCP port
-that one child binds and every other bind is refused. The holders run under
-the ESP-IDF venv python.exe, which is itself a launcher that puts the real
-interpreter in a job of its own. AUTANA_TEST_DEVICE_DIR points the holders at
-another copy of the device scripts, to watch these fail against an older one."""
+that one child binds and every other bind is refused. On Windows the holders
+run under the ESP-IDF venv python.exe, which is itself a launcher that puts
+the real interpreter in a job of its own. AUTANA_TEST_DEVICE_DIR points the
+holders at another copy of the device scripts, to watch these fail against an
+older one."""
 
 import isolation  # noqa: F401  (first: keeps the suite out of real records)
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -18,18 +22,22 @@ import textwrap
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 sys.path.insert(0, str(DEVICE.parents[1] / "launcher" / "tools" / "build"))
 BOARD = "90:70:69:FE:A3:08"
 WINDOWS = os.name == "nt"
-
-try:
-    from espressif import idf_python
-    IDF_PYTHON = idf_python() if WINDOWS else sys.executable
-except Exception:  # no ESP-IDF install on this machine
-    IDF_PYTHON = None
+LINUX = sys.platform.startswith("linux")
+PYTHON = sys.executable
+if WINDOWS:
+    try:
+        from espressif import idf_python
+        PYTHON = idf_python()
+    except Exception:  # no ESP-IDF install on this machine
+        PYTHON = None
+SUPPORTED = bool(PYTHON) and (WINDOWS or LINUX)
 
 PORT_HOLDER = textwrap.dedent("""
     import socket, sys, time
@@ -63,8 +71,8 @@ HOLDER = textwrap.dedent("""
                                  text=True)
         child.stdout.readline()
         try:
-            import lock_job
-            listed = child.pid in lock_job.members()
+            import lock_scope
+            listed = child.pid in lock_scope.members()
         except ImportError:
             listed = False
         print("holder", os.getpid(), child.pid, listed, flush=True)
@@ -172,35 +180,53 @@ def port_is_free(port):
             return False
 
 
+def kill_only(pid):
+    """Just `pid`, with no tree: what a killed holder leaves behind."""
+    if WINDOWS:
+        subprocess.run(["taskkill", "/F", "/PID", str(pid)], stdout=subprocess.DEVNULL)
+    else:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+
 def kill_tree(pid):
-    subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if WINDOWS:
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        kill_only(pid)
 
 
-@unittest.skipUnless(WINDOWS and IDF_PYTHON, "the kill-on-close job is Windows-only")
-class JobTests(unittest.TestCase):
+class Fixture(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.dir = Path(self.temp.name)
         self.port = free_port()
+        self.ports = [free_port(), free_port()]
         for name, text in (("port_holder.py", PORT_HOLDER), ("hook.py", HOOK),
                            ("intermediate.py", INTERMEDIATE)):
             (self.dir / name).write_text(text)
         under_test = os.environ.get("AUTANA_TEST_DEVICE_DIR", str(DEVICE))
         (self.dir / "outer.py").write_text(OUTER.format(device=str(DEVICE)))
+        fields = dict(device=under_test, root=str(self.dir / "locks"), board=BOARD,
+                      holder=str(self.dir / "port_holder.py"))
+        (self.dir / "sequence.py").write_text(SEQUENCE.format(**fields))
+        (self.dir / "direct.py").write_text(DIRECT.format(**fields))
+        holder = str(self.dir / "port_holder.py")
         self.holder_script = self.dir / "run.py"
         self.holder_script.write_text(HOLDER.format(
             device=under_test, root=str(self.dir / "locks"), board=BOARD,
-            command=[str(self.dir / "port_holder.py"), str(self.port)]))
+            command=[holder, str(self.port)]))
         self.chain_script = self.dir / "chain.py"
         self.chain_script.write_text(HOLDER.format(
             device=under_test, root=str(self.dir / "locks"), board=BOARD,
-            command=[str(self.dir / "intermediate.py"), str(self.dir / "port_holder.py"),
-                     str(self.port)]))
+            command=[str(self.dir / "intermediate.py"), holder, str(self.port)]))
 
     def start(self, script, seconds, wrap=(), **environment):
-        command = [IDF_PYTHON, *wrap, str(script), str(seconds)]
+        command = [PYTHON, *wrap, str(script), str(seconds)]
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    text=True, env=dict(os.environ, **environment))
         self.addCleanup(process.communicate)
@@ -211,62 +237,41 @@ class JobTests(unittest.TestCase):
         self.addCleanup(kill_tree, holder)
         return process, holder, words[3] == "True"
 
+    def run_script(self, name, *args):
+        done = subprocess.run([PYTHON, str(self.dir / name), *map(str, args)],
+                              capture_output=True, text=True, timeout=60)
+        return done.stdout, done.stderr
+
     def assert_port_free_within(self, seconds):
         deadline = time.monotonic() + seconds
         while not port_is_free(self.port) and time.monotonic() < deadline:
             time.sleep(0.05)
         self.assertTrue(port_is_free(self.port), "the port is still held")
 
-    def kill_only(self, pid):
-        subprocess.run(["taskkill", "/F", "/PID", str(pid)], check=True,
-                       stdout=subprocess.DEVNULL)
 
+@unittest.skipUnless(SUPPORTED, "needs a job object (Windows) or /proc (Linux)")
+class HolderTests(Fixture):
     def test_killing_only_the_holder_frees_the_port(self):
         _, holder, _ = self.start(self.holder_script, 60)
         self.assertFalse(port_is_free(self.port))
-        self.kill_only(holder)
+        kill_only(holder)
         self.assert_port_free_within(1.0)
 
     def test_a_grandchild_of_a_parent_that_already_exited_is_stopped_too(self):
         _, holder, _ = self.start(self.chain_script, 60)
         self.assertFalse(port_is_free(self.port))
-        self.kill_only(holder)
+        kill_only(holder)
         self.assert_port_free_within(1.0)
 
     def test_a_normal_exit_stops_a_lingering_child_before_the_lock_is_released(self):
         seen = self.dir / "seen.txt"
         hook = f'"{sys.executable}" "{self.dir / "hook.py"}" {self.port} "{seen}"'
-        process, _, _ = self.start(self.holder_script, 0.3, AUTANA_LOCK_HOOK=hook)
+        process, _, listed = self.start(self.holder_script, 0.3, AUTANA_LOCK_HOOK=hook)
+        self.assertTrue(listed, "the child is not among the lock's members")
         _, errors = process.communicate(timeout=60)
         self.assertEqual(seen.read_text(), "free", "the lock was released while the port was held")
         self.assertTrue(port_is_free(self.port))
         self.assertIn("stopped process", errors)
-
-    def test_the_holder_joins_its_own_job_inside_another_job_and_its_children_land_in_it(self):
-        _, holder, listed = self.start(self.holder_script, 60, wrap=[str(self.dir / "outer.py")])
-        self.assertTrue(listed, "the child is not a member of the holder's job")
-        self.kill_only(holder)
-        self.assert_port_free_within(1.0)
-
-
-@unittest.skipUnless(WINDOWS and IDF_PYTHON, "the kill-on-close job is Windows-only")
-class ScopeTests(unittest.TestCase):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        self.dir = Path(self.temp.name)
-        self.ports = [free_port(), free_port()]
-        (self.dir / "port_holder.py").write_text(PORT_HOLDER)
-        under_test = os.environ.get("AUTANA_TEST_DEVICE_DIR", str(DEVICE))
-        fields = dict(device=under_test, root=str(self.dir / "locks"), board=BOARD,
-                      holder=str(self.dir / "port_holder.py"))
-        (self.dir / "sequence.py").write_text(SEQUENCE.format(**fields))
-        (self.dir / "direct.py").write_text(DIRECT.format(**fields))
-
-    def run_script(self, name, *args):
-        done = subprocess.run([IDF_PYTHON, str(self.dir / name), *map(str, args)],
-                              capture_output=True, text=True, timeout=60)
-        return done.stdout, done.stderr
 
     def test_a_release_leaves_alone_what_was_running_before_its_lock(self):
         out, errors = self.run_script("sequence.py", *self.ports)
@@ -274,6 +279,15 @@ class ScopeTests(unittest.TestCase):
         earlier_free, inside_free = out.split()[1:]
         self.assertEqual(inside_free, "True", errors)
         self.assertEqual(earlier_free, "False", "work started before the lock was killed")
+
+
+@unittest.skipUnless(WINDOWS and PYTHON, "the kill-on-close job is Windows-only")
+class JobTests(Fixture):
+    def test_the_holder_joins_its_own_job_inside_another_job_and_its_children_land_in_it(self):
+        _, holder, listed = self.start(self.holder_script, 60, wrap=[str(self.dir / "outer.py")])
+        self.assertTrue(listed, "the child is not a member of the holder's job")
+        kill_only(holder)
+        self.assert_port_free_within(1.0)
 
     def test_only_a_member_of_the_job_is_stopped_and_by_handle(self):
         out, errors = self.run_script("direct.py", "handle", self.ports[0])
@@ -289,6 +303,52 @@ class ScopeTests(unittest.TestCase):
         out, errors = self.run_script("direct.py", "overflow", self.ports[0])
         self.assertIn("done", out, errors)
         self.assertIn("can be listed", errors)
+
+
+class ExclusiveOpenTests(unittest.TestCase):
+    """A leftover holder must make the next open fail rather than split the
+    byte stream, and open_when_free must read that as busy."""
+
+    def setUp(self):
+        try:
+            import serial  # noqa: F401
+        except ImportError:
+            self.skipTest("pyserial is not installed")
+        if WINDOWS:
+            self.skipTest("Windows refuses a second open on its own")
+        import pty
+        import device
+        self.device = device
+        master, slave = pty.openpty()
+        patcher = mock.patch.object(device, "locked_port", lambda: self.path)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(os.close, master)
+        self.addCleanup(os.close, slave)
+        self.path = os.ttyname(slave)
+
+    def test_a_second_open_fails_while_the_first_is_held(self):
+        with self.device.open_serial():
+            with self.assertRaises(OSError):
+                self.device.open_serial()
+        self.device.open_serial().close()
+
+    def test_a_holder_in_another_process_makes_the_open_fail(self):
+        script = ("import sys, time; sys.path.insert(0, %r); import device; "
+                  "device.locked_port = lambda: %r; c = device.open_serial(); "
+                  "print('open', flush=True); time.sleep(60)" % (str(DEVICE), self.path))
+        other = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, text=True)
+        self.addCleanup(other.communicate)
+        self.addCleanup(other.kill)
+        self.assertEqual(other.stdout.readline().strip(), "open")
+        with self.assertRaises(OSError):
+            self.device.open_serial()
+
+    def test_open_when_free_waits_for_it_and_then_names_the_port_busy(self):
+        with self.device.open_serial():
+            with self.assertRaises(self.device.PortUnavailable):
+                self.device.open_when_free(0.3, opener=lambda: self.device.open_serial(),
+                                           sleep=lambda _: time.sleep(0.05))
 
 
 if __name__ == "__main__":
