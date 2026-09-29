@@ -21,7 +21,7 @@ autana docs --ask can an app call vTaskDelay inside frame     # a written answer
 
 | Source | Unit |
 |---|---|
-| Every Markdown file git tracks or would track, except `third_party/` and `launcher/components/` | a heading and the text up to the next heading |
+| Every Markdown file under the checkout, except `third_party/`, `launcher/components/` and whatever the checkout's own `.gitignore` excludes | a heading and the text up to the next heading |
 | The Markdown files and folders `AUTANA_DOCS_EXTRA` names | the same |
 | The module docstring or leading comment of each tracked `.py`, `.sh` or `.mjs` file under `scripts/`, `launcher/tools/`, `launcher/test/` and `launcher/main/apps/`, except tests | one section per script |
 
@@ -30,9 +30,9 @@ every run, so it is never stale; an edit is searchable at once.
 
 `AUTANA_DOCS_EXTRA` lets notes kept outside the tracked tree join the index.
 Entries are separated by `;` on Windows and `:` elsewhere, each relative to
-the checkout unless absolute. A folder inside a git repository other than
-this checkout gives the Markdown that repository tracks or would track
-there; any other folder gives every Markdown file under it. A named folder's own `eval_questions.tsv` joins
+the checkout unless absolute. A named folder with its own `.gitignore` gives
+the Markdown that file does not exclude; any other folder gives every
+Markdown file under it. A named folder's own `eval_questions.tsv` joins
 `--eval`, its rows citing documents by the path search shows for them.
 
 ## How it ranks
@@ -63,7 +63,7 @@ names a real section, so a rename that orphans a question fails too.
 
 | To get | Needs |
 |---|---|
-| Exact-word search | Python 3.9 or later and git. Nothing to install. |
+| Exact-word search | Python 3.9 or later. Nothing to install. |
 | Search by meaning (`docs_llama.py setup`) | About 130 MB of disk and 200 MB of memory while in use. Any 64-bit CPU; no GPU. |
 | Written answers (`setup --chat`) | About 2.5 GB more disk and 3 GB of free memory. Runs on a CPU; a GPU answers sooner. |
 

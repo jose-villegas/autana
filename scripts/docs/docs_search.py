@@ -11,10 +11,12 @@
 Options: --top N (3), --more N (5), --budget CHARS (1800), --json, --lexical.
 
 The unit of an answer is a section: a heading and the text up to the next
-heading. Every tracked Markdown file is read, plus any Markdown files or
-folders AUTANA_DOCS_EXTRA names (os.pathsep between them, each relative to
-the checkout unless absolute), plus the header of every tracked script, so
-"how do I run X" finds the script that documents itself. Each result prints
+heading. Every Markdown file in the project is read (its own .gitignore, if
+any, decides what that means - no git command runs), plus any Markdown files
+or folders AUTANA_DOCS_EXTRA names (os.pathsep between them, each relative to
+the checkout unless absolute), plus the header of every script under the
+tool folders, so "how do I run X" finds the script that documents itself.
+Each result prints
 the paragraphs that carry the question, the section's path:line range to
 read the rest, and the code it cites.
 
@@ -25,11 +27,11 @@ index is rebuilt on every run, in about a second, so it is never stale; only
 the vectors are cached. docs/tools/Docs-Search.md has the setup.
 """
 import argparse
+import fnmatch
 import json
 import math
 import os
 import re
-import subprocess
 import sys
 from collections import Counter, namedtuple
 from pathlib import Path
@@ -102,25 +104,68 @@ def tokens(text):
     return out
 
 
-def git_files(root, *patterns):
-    result = subprocess.run(["git", "-C", str(root), "ls-files", "-z", "--cached", "--others",
-                             "--exclude-standard", *patterns],
-                            capture_output=True, text=True, encoding="utf-8")
-    return [p for p in result.stdout.split("\0") if p] if result.returncode == 0 else []
+def load_ignore(folder):
+    """folder's own .gitignore as ordered (pattern, negate, dir_only, anchored) rules, or
+    none - a plain folder walk, with no git binary involved, needs its own rule reader to
+    keep skipping the same build/vendor/scratch trees a `git ls-files` checkout used to."""
+    path = Path(folder) / ".gitignore"
+    if not path.is_file():
+        return []
+    rules = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.rstrip()
+        if not line or line.lstrip().startswith("#"):
+            continue
+        negate = line.startswith("!")
+        line = line[1:] if negate else line
+        dir_only = line.endswith("/")
+        line = line[:-1] if dir_only else line
+        anchored = line.startswith("/")
+        line = line[1:] if anchored else line
+        if line:
+            rules.append((line, negate, dir_only, anchored))
+    return rules
+
+
+def ignored(rel, is_dir, rules):
+    """Whether rel (posix, relative to the folder that owns rules) is excluded, last match
+    wins - the same precedence git itself gives a .gitignore."""
+    verdict = False
+    name = rel.rsplit("/", 1)[-1]
+    for pattern, negate, dir_only, anchored in rules:
+        if dir_only and not is_dir:
+            continue
+        hit = (fnmatch.fnmatchcase(rel, pattern) if anchored
+               else fnmatch.fnmatchcase(name, pattern) or fnmatch.fnmatchcase(rel, pattern)
+               or fnmatch.fnmatchcase(rel, f"*/{pattern}"))
+        if hit:
+            verdict = not negate
+    return verdict
+
+
+def walk_files(root, *suffixes):
+    """Every file under root ending in one of suffixes, honouring root's own .gitignore -
+    the folder-walk replacement for `git ls-files`. Always skips .git itself."""
+    root = Path(root)
+    rules = load_ignore(root)
+    found = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        rel_dir = Path(dirpath).relative_to(root).as_posix()
+        prefix = "" if rel_dir == "." else f"{rel_dir}/"
+        dirnames[:] = [d for d in sorted(dirnames)
+                       if d != ".git" and not ignored(f"{prefix}{d}", True, rules)]
+        for name in sorted(filenames):
+            if not name.endswith(suffixes):
+                continue
+            rel = f"{prefix}{name}"
+            if not ignored(rel, False, rules):
+                found.append(rel)
+    return found
 
 
 def extra_entries(root):
     value = os.environ.get(EXTRA_ENV, "")
     return [Path(root) / entry.strip() for entry in value.split(os.pathsep) if entry.strip()]
-
-
-def own_repository(folder, root):
-    """Whether a folder belongs to a git work tree other than root's, whose ignores then apply."""
-    result = subprocess.run(["git", "-C", str(folder), "rev-parse", "--show-toplevel"],
-                            capture_output=True, text=True, encoding="utf-8")
-    if result.returncode != 0:
-        return False
-    return Path(result.stdout.strip()).resolve() != Path(root).resolve()
 
 
 def label_of(root, file):
@@ -135,8 +180,8 @@ def extra_files(root):
     files = []
     for entry in extra_entries(root):
         if entry.is_dir():
-            if own_repository(entry, root):
-                files += [entry / p for p in git_files(entry, "*.md")]
+            if (entry / ".gitignore").is_file():
+                files += [entry / p for p in walk_files(entry, ".md")]
             else:
                 files += sorted(entry.rglob("*.md"))
         elif entry.suffix == ".md" and entry.is_file():
@@ -145,12 +190,12 @@ def extra_files(root):
 
 
 def corpus_files(root, extra=None):
-    """(label, file) for every document: tracked Markdown, extra Markdown, script headers."""
+    """(label, file) for every document: the project's Markdown, extra Markdown, script headers."""
     root = Path(root)
-    files = [(p, root / p) for p in git_files(root, "*.md")
+    files = [(p, root / p) for p in walk_files(root, ".md")
              if not p.startswith(SKIPPED_PREFIXES)]
     files += extra_files(root) if extra is None else extra
-    files += [(p, root / p) for p in git_files(root, *(f"*{s}" for s in SCRIPT_SUFFIXES))
+    files += [(p, root / p) for p in walk_files(root, *SCRIPT_SUFFIXES)
               if p.startswith(SCRIPT_ROOTS) and "/tests/" not in p
               and not Path(p).name.startswith("test_")]
     return list(dict.fromkeys(files))
@@ -589,8 +634,8 @@ def evaluate(index, depth=3):
 
 
 def repo_root():
-    result = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
-    return Path(result.stdout.strip()) if result.returncode == 0 else Path(__file__).resolve().parents[2]
+    """This script's own checkout root - scripts/docs/docs_search.py is always two levels down."""
+    return Path(__file__).resolve().parents[2]
 
 
 def main(argv=None, root=None):

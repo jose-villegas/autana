@@ -1,14 +1,14 @@
 """Tests for scripts/docs: sectioning, ranking, and the vector cache.
 
-Every fixture is a throwaway git repository, and the models are replaced by a
-fake embedder, so nothing here downloads or starts a server. The last class
-scores the real documentation lexically against eval_questions.tsv.
+Every fixture is a throwaway plain folder - no git repository, no git binary
+involved - and the models are replaced by a fake embedder, so nothing here
+downloads or starts a server. The last class scores the real documentation
+lexically against eval_questions.tsv.
 
     python -m unittest discover -s scripts/docs/tests
 """
 import io
 import os
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -73,8 +73,6 @@ def make_repo(files):
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
-    subprocess.run(["git", "init", "-q", str(root)], check=True)
-    subprocess.run(["git", "-C", str(root), "add", "."], check=True)
     return root
 
 
@@ -120,6 +118,41 @@ class Sections(unittest.TestCase):
         [section] = docs_search.script_sections("scripts/bake_icons.py", SCRIPT)
         self.assertTrue(section.body.startswith("Bake icons from SVG"))
         self.assertNotIn("print", section.body)
+
+
+class Ignore(unittest.TestCase):
+    """walk_files() replaces `git ls-files --exclude-standard`: no git binary, no .git
+    directory, just the folder's own .gitignore read directly."""
+
+    def test_a_plain_folder_with_no_gitignore_is_read_in_full(self):
+        root = make_repo({"docs/A.md": "# A\n", "notes/B.md": "# B\n"})
+        self.assertEqual(set(docs_search.walk_files(root, ".md")),
+                         {"docs/A.md", "notes/B.md"})
+
+    def test_an_ignored_tree_is_pruned(self):
+        root = make_repo({".gitignore": "build/\nnode_modules/\n",
+                          "docs/A.md": "# A\n",
+                          "build/generated.md": "# Generated\n",
+                          "node_modules/pkg/README.md": "# Pkg\n"})
+        self.assertEqual(set(docs_search.walk_files(root, ".md")), {"docs/A.md"})
+
+    def test_a_negated_path_inside_an_ignored_tree_is_kept(self):
+        """The real repo's own .gitignore ignores every `build/` by name, then negates
+        `launcher/tools/build/` specifically - the one that holds real tracked scripts."""
+        root = make_repo({".gitignore": "build/\n!launcher/tools/build/\n",
+                          "launcher/tools/build/build.sh": "#!/bin/sh\n",
+                          "other/build/scratch.sh": "#!/bin/sh\n"})
+        self.assertEqual(set(docs_search.walk_files(root, ".sh")),
+                         {"launcher/tools/build/build.sh"})
+
+    def test_no_gitignore_at_all_still_walks(self):
+        root = make_repo({"README.md": "# R\n"})
+        self.assertFalse((root / ".gitignore").exists())
+        self.assertEqual(set(docs_search.walk_files(root, ".md")), {"README.md"})
+
+    def test_dot_git_itself_is_never_walked_even_without_a_gitignore_rule(self):
+        root = make_repo({"docs/A.md": "# A\n", ".git/HEAD": "ref: refs/heads/main\n"})
+        self.assertEqual(set(docs_search.walk_files(root, ".md")), {"docs/A.md"})
 
 
 class Search(unittest.TestCase):
@@ -198,12 +231,12 @@ class Extra(unittest.TestCase):
         self.saved = os.environ.pop(docs_search.EXTRA_ENV, None)
 
     def own_repository(self, name, files):
+        """A folder with its own .gitignore - walk_files() then applies that folder's
+        own ignore rules to it, the same way a separate git work tree once did."""
         folder = self.root / name
         for file, text in files.items():
             (folder / file).parent.mkdir(parents=True, exist_ok=True)
             (folder / file).write_text(text, encoding="utf-8")
-        subprocess.run(["git", "init", "-q", str(folder)], check=True)
-        subprocess.run(["git", "-C", str(folder), "add", "."], check=True)
         return folder
 
     def outside(self, files):

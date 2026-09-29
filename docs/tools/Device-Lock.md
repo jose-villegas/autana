@@ -58,12 +58,16 @@ each board has its own lock and queue.
 Every worktree carries its own `scripts/device/`, but the lock is one set of
 files on the machine, and two versions of the lock code can each believe
 they hold the board. So `device.py` and `device_lock.py`, started from any
-worktree, run the main checkout's copy (the checkout that owns git's common
-directory) with the same arguments and exit with its status. What gets built
-and flashed still comes from the worktree named by `--worktree` or the
-current directory. Keep the main checkout current - fast-forward it after a
-change to these tools merges. `AUTANA_DEVICE_TOOLS=here` runs a worktree's
-own copy, for working on the tools themselves; the test suites set it.
+worktree, run the main checkout's copy with the same arguments and exit with
+its status. A worktree under `<main>/.claude/worktrees/<name>/` - what
+`--worktree BRANCH` always creates - names its main checkout from that path
+alone, no git call needed; a `--worktree PATH` placed somewhere else still
+asks git for the checkout that owns its common directory, so that case needs
+git installed. What gets built and flashed still comes from the worktree
+named by `--worktree` or the current directory. Keep the main checkout
+current - fast-forward it after a change to these tools merges.
+`AUTANA_DEVICE_TOOLS=here` runs a worktree's own copy, for working on the
+tools themselves; the test suites set it.
 
 ## What a flash proves
 
