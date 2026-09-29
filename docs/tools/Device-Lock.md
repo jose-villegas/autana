@@ -49,9 +49,9 @@ A command acts on the board named by `--board <serial>`, else by
 With none plugged in it takes the only board a lock, reservation or waiter
 names, so a command can queue while the holder's reset has the board off
 USB. `hand` and `take-back` alone fall back once more, to the only board
-this machine has ever found on USB, so a board that has simply dropped off
-- with no lock, reservation or waiter left to name it - can still be handed
-to a human or taken back; every other command leaves that fallback alone,
+this machine has ever found on USB, so a board that has dropped off with no
+lock, reservation or waiter left to name it can still be handed to a human
+or taken back; every other command leaves that fallback alone,
 so an unplugged, idle board fails at once instead of queuing for a port
 that will never open. Opening the port still waits for USB. Case and
 surrounding spaces do not matter. With several candidates and none named, a
