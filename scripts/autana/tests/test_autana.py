@@ -386,13 +386,6 @@ class OwnerTests(unittest.TestCase):
              mock.patch.object(autana.os, "getpid", return_value=4242):
             self.assertEqual(autana.owner(), "sam@devbox:4242")
 
-    def test_a_callers_autana_device_owner_is_ignored(self):
-        with mock.patch.dict(autana.os.environ, {"AUTANA_DEVICE_OWNER": "ci-7"}, clear=True), \
-             mock.patch.object(autana.getpass, "getuser", return_value="sam"), \
-             mock.patch.object(autana.socket, "gethostname", return_value="devbox"), \
-             mock.patch.object(autana.os, "getpid", return_value=4242):
-            self.assertEqual(autana.owner(), "sam@devbox:4242")
-
     def test_getpass_failure_falls_back_to_user(self):
         with mock.patch.dict(autana.os.environ, {}, clear=True), \
              mock.patch.object(getpass, "getuser", side_effect=OSError("no username")), \

@@ -32,6 +32,8 @@ for the other runners only when you need them.
 ```sh
 ./launcher/test/run_tests.sh          # portable suites, on this machine
 ./launcher/test/run_tests.sh --verbose  # the full build-and-test stream, not just the result
+./launcher/test/run_tests.sh --sanitize # with UBSan, and ASan on Linux (CI runs this too)
+./launcher/test/run_tests.sh --build-dir DIR  # build in DIR, so two runs never share a binary
 autana selftest                       # every suite, on the board, build+flash+run
 ```
 

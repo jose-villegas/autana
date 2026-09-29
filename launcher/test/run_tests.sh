@@ -5,6 +5,8 @@
 #   ./test/run_tests.sh
 #   CC=clang ./test/run_tests.sh
 #   ./test/run_tests.sh --verbose
+#   ./test/run_tests.sh --sanitize          # with UBSan, and ASan on Linux
+#   ./test/run_tests.sh --build-dir DIR     # build here, not in test/build
 #
 # This is the fast loop: it compiles for THIS machine, not the ESP32, and runs
 # in well under a second. Red-green-refactor is only practical with instant
@@ -24,9 +26,16 @@
 set -eu
 
 VERBOSE=${VERBOSE:-0}
+SANITIZE=0
+BUILD_DIR=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --verbose) VERBOSE=1 ;;
+        --sanitize) SANITIZE=1 ;;
+        --build-dir)
+            [ $# -ge 2 ] || { echo "--build-dir needs a folder" >&2; exit 2; }
+            BUILD_DIR=$2
+            shift ;;
         --print-sources|--print-flags) break ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
@@ -38,12 +47,12 @@ export VERBOSE
 TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck disable=SC1007
 MAIN_DIR=$(CDPATH= cd -- "$TEST_DIR/../main" && pwd)
-# Overridable so two runs cannot clobber each other: the build dir holds one
-# host_tests binary, so concurrent runs (two terminals, a sweep script
+# --build-dir keeps two runs from clobbering each other: the build dir holds
+# one host_tests binary, so concurrent runs (two terminals, a sweep script
 # running beside a manual run) otherwise race to compile and execute the
 # same file, and a result can end up attributed to a source state that never
-# existed. Defaults to the old path, so nothing that does not set it changes.
-BUILD_DIR="${TEST_BUILD_DIR:-$TEST_DIR/build}"
+# existed.
+BUILD_DIR="${BUILD_DIR:-$TEST_DIR/build}"
 
 # --- find a compiler -------------------------------------------------------
 # Sourced rather than defined here, so that report_reactions.sh (main/apps/
@@ -64,7 +73,7 @@ fi
 # 64-bit pointers and 8-byte alignment make every command bigger on the host.
 BASE_CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -Wno-unused-parameter -g -O1"
 CFLAGS="$BASE_CFLAGS"
-if [ "${HOST_SANITIZE:-}" = undefined ]; then
+if [ "$SANITIZE" = 1 ]; then
     # Instrumentation widens the ranges that format-truncation reasons about.
     CFLAGS="$CFLAGS -fsanitize=undefined -fsanitize-recover=undefined -Wno-format-truncation"
     case "$(uname -s)" in
@@ -201,7 +210,7 @@ if [ -z "${QUIET_INNER:-}" ]; then
     if [ -n "$QUIET_FAILURES" ]; then
         printf 'Test and sanitizer failures:\n%s\n' "$QUIET_FAILURES"
     fi
-    if [ "${HOST_SANITIZE:-}" = undefined ]; then
+    if [ "$SANITIZE" = 1 ]; then
         QUIET_FINDINGS=$(grep 'runtime error:' "$QUIET_LOG" | sed -E 's/:[0-9]+: runtime error:/: runtime error:/' | sort -u || true)
         if [ -n "$QUIET_FINDINGS" ]; then
             printf 'UBSan findings (%s):\n%s\n' "$(printf '%s\n' "$QUIET_FINDINGS" | wc -l | tr -d ' ')" "$QUIET_FINDINGS"
@@ -221,7 +230,7 @@ fi
 # The bootloader hook lives outside SOURCES too - a separate header world
 # entirely, so it gets its own standalone binary rather than joining the
 # suites above.
-"$TEST_DIR/check_pmic_cold_boot.sh"
+"$TEST_DIR/check_pmic_cold_boot.sh" --build-dir "$BUILD_DIR"
 
 OUT="$BUILD_DIR/host_tests"
 
@@ -387,7 +396,7 @@ PYTHON=$(find_python) || exit 1
 # MinGW appends .exe; elsewhere the plain name is produced.
 [ -x "$OUT" ] || OUT="$OUT.exe"
 
-if [ "${HOST_SANITIZE:-}" = undefined ] && [ "$(uname -s)" = Linux ]; then
+if [ "$SANITIZE" = 1 ] && [ "$(uname -s)" = Linux ]; then
     # Control ids are value addresses and must stay stable across frames, as on the device.
     ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0" "$OUT"
 else
