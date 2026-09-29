@@ -98,6 +98,7 @@ $MAIN_DIR/app_arena.c
 $MAIN_DIR/app_registry.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/touch_calib.c
+$MAIN_DIR/input/touch_point.c
 $MAIN_DIR/input/touch_inject_fsm.c
 $MAIN_DIR/input/gesture.c
 $MAIN_DIR/input/tilt.c
@@ -118,6 +119,7 @@ $MAIN_DIR/ui/ui_build.c
 $MAIN_DIR/ui/ui_canvas_marks.c
 $MAIN_DIR/ui/ui_launcher_draw.c
 $MAIN_DIR/ui/ui_pointer.c
+$MAIN_DIR/ui/ui_snap.c
 $MAIN_DIR/ui/ui_scroll.c
 $MAIN_DIR/ui/ui_widgets.c
 $MAIN_DIR/gfx/gfx_palette_standard.c

@@ -49,6 +49,7 @@ add_library(editor_runtime STATIC
     ${LAUNCHER_DIR}/main/ui/ui_launcher.c
     ${LAUNCHER_DIR}/main/ui/ui_launcher_draw.c
     ${LAUNCHER_DIR}/main/ui/ui_pointer.c
+    ${LAUNCHER_DIR}/main/ui/ui_snap.c
     ${LAUNCHER_DIR}/main/ui/ui_ridge.c
     ${LAUNCHER_DIR}/main/ui/ui_scroll.c
     ${LAUNCHER_DIR}/main/ui/ui_widgets.c

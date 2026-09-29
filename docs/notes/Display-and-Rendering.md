@@ -319,20 +319,20 @@ the dirty sends. A border is on the panel for exactly the present that sent
 it; the cost is up to one extra full strip per bordered row per present,
 paid only while an overlay is on (and once more after it is switched off).
 
-`GFX_PIXFMT_INDEXED8` carries both layers too: `run_present_indexed()` sends
+`GFX_LAYOUT_INDEXED` carries both layers too: `run_present_indexed()` sends
 whole dirty strips, but its marking still goes through `dirty_mark()`, so the
 leaves are real. `send_indexed_rows()` draws the borders into the expanded
 bounce slot - a disposable copy, nothing to restore - and the same clean
 resend applies, skipped for a row that is dirty again since that row goes out
 whole anyway.
 
-The app-driven band ring feeds the same tracker through `gfx_mark_dirty()`,
-so `gfx_band_submit()` draws into the band about to be sent: cyan around the
-band for the panel-grid layer, green around each marked leaf for the leaf
+The band ring feeds the same tracker through `gfx_mark_dirty()`. The app's
+`draw_band` fills the band about to be sent. gfx then borders the filled band:
+cyan around the band for the panel-grid layer, green around each marked leaf for the leaf
 layer (`GFX_BAND_HEIGHT` is a multiple of `LEAF_H`, so a leaf never straddles
 two bands). gfx holds no copy of a band to resend, so the clean-up runs
-through the app: `gfx_band_dirty()` reports a band that was bordered last
-frame as dirty once more, and that submit goes out bare. `gfx_band_next()`
+through the app's `draw_band`: `gfx_band_dirty()` reports a band that was
+bordered last frame as dirty once more, and that send goes out bare. gfx
 resets every row's cell boxes and leaf bits at the end of the frame, the
 same reset a full-framebuffer present gives each row it sends.
 
@@ -565,6 +565,46 @@ has nothing to overlap with. `suite_gfx.c`'s ratio tests measure the
 un-pipelined price; a present timed inside an app's real frames measures
 the pipelined one. Both are right, and multiplying one by the band
 count does not produce the other.
+
+### Tearing: the TE line is live, and nothing reads it
+
+Both init tables in `gfx.c` send `0x35 0x00`: tearing-effect output on, mode
+1, high only through the vertical porch. The panel drives it on FPC pin 2,
+which reaches GPIO13. Firmware never configures that pin, and every present
+starts whenever the frame loop gets to it.
+
+Measured on the CO5300 board (dev build, 80 MHz, a probe counting GPIO13
+edges and timing each present against them):
+
+| | |
+|---|---|
+| TE rate | 59.26 Hz, period 16.86-16.89 ms |
+| TE high (porch) | 581 us, so the scan of 448 rows takes ~16.3 ms |
+| Present start phase | uniform over the period; nothing is locked to the scan |
+| Band-mode 3D frame, TE to last band | longer than one period (about 50 fps) |
+| Retained partial sends | 1.4-7.4 ms, avg ~2.9 ms |
+
+A write tears when it and the scan pass each other. Starting a present on TE
+avoids that only when the write stays on one side of the scan for the whole
+frame:
+
+| Send | Against a 16.3 ms scan | TE-aligned start |
+|---|---|---|
+| Full frame, full-framebuffer layout, 80 MHz | ahead of the scan (bus time: CONFIG_LAUNCHER_GFX_QSPI_80MHZ help) | tear-free |
+| Full frame, full-framebuffer layout, 40 MHz | a full present outlasts the scan | still tears |
+| Band ring, 3D | pace set by render cost per band; cheap bands catch the scan | still tears |
+| Partial, a few ms | crosses only if the scan is inside its rows | rarely matters |
+
+What waiting costs: up to one period of latency (8.4 ms on average) and a
+frame rate locked to 59.3 / 29.6 / 19.8 fps. A band frame runs longer than
+one period, so a TE wait would halve its rate. So a TE wait pays only for a
+full-frame sender in the full-framebuffer layout at 80 MHz whose frame fits
+one period.
+
+Reading TE takes an any-edge GPIO13 interrupt. `touch_start()` runs after
+`gfx_init()` and installs the GPIO interrupt service through
+`esp_lcd_touch`, so gfx should add its handler with `gpio_isr_handler_add()`
+after touch starts, rather than install the service a second time.
 
 ---
 

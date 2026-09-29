@@ -27,12 +27,20 @@ GUARD_STALE_SECONDS = 30
 # lock - the JSON files are the state it protects, not locks themselves. This
 # numbers THAT state's shape: a claim, heartbeat or release that must
 # interpret a field the frozen core (below) does not promise refuses loudly
-# on a mismatch rather than guess. Bump it, and CHANGELOG-worthy, whenever a
-# record gains a field an older reader would need to not misinterpret.
+# on a mismatch rather than guess. Bump it whenever a record's fields change
+# in a way an older reader would misinterpret.
 LOCK_PROTOCOL = 1
-# Every version of autana that ever speaks this protocol can read these four
-# fields off any lock record; nothing else is promised across a protocol gap.
-PROTOCOL_CORE_FIELDS = ("owner", "pid", "host", "protocol")
+# Every version of autana that ever speaks this protocol can read these
+# fields off any record that carries them, regardless of protocol - exactly
+# what status(), reclaim_reason()/is_stale() and tickets() already read to
+# decide whether a lock is live, stale or dead, and what status_entry()
+# prints: owner/pid/host/protocol identify a record's holder and shape;
+# heartbeat_at is what staleness is judged by; purpose/acquired_at (lock),
+# note/since_at (human), sequence/ticket (waiter) are what status reports.
+# Nothing outside this set may be read from a record whose protocol differs
+# from LOCK_PROTOCOL.
+PROTOCOL_CORE_FIELDS = ("owner", "pid", "host", "protocol", "heartbeat_at",
+                        "purpose", "acquired_at", "since_at", "note", "sequence", "ticket")
 
 
 class ProtocolMismatch(RuntimeError):
@@ -148,6 +156,9 @@ class LockStore:
     def guard_path(self, board):
         return self.root / (self.stem(board) + ".guard")
 
+    def seen_path(self, board):
+        return self.root / (self.stem(board) + ".seen.json")
+
     def read_json(self, path):
         # A file mid-replace on Windows refuses to open with PermissionError.
         for _ in range(250):
@@ -175,9 +186,24 @@ class LockStore:
 
     def boards(self):
         """Every board a lock, reservation or waiter in this root names."""
-        paths = list(self.root.glob("*.json")) + list(self.root.glob("*.queue/*.json"))
+        paths = ([path for path in self.root.glob("*.json") if not path.name.endswith(".seen.json")]
+                 + list(self.root.glob("*.queue/*.json")))
         return sorted({record["board"] for record in map(self.read_json, paths)
                        if isinstance(record, dict) and isinstance(record.get("board"), str)})
+
+    def seen_boards(self):
+        """Every board this machine has ever found on USB, kept past its own
+        lock, reservation or waiter - only for hand-to-human/take-back to
+        recall a board that is now idle and unplugged."""
+        return sorted({record["board"] for record in map(self.read_json, self.root.glob("*.seen.json"))
+                       if isinstance(record, dict) and isinstance(record.get("board"), str)})
+
+    def note_seen(self, board):
+        """Records a board found on USB, once - nothing reads this again
+        until seen_boards() needs it, so a repeat sighting is a no-op."""
+        path = self.seen_path(board)
+        if not self.read_json(path):
+            self.write_json(path, {"board": board})
 
     @contextlib.contextmanager
     def guard(self, board):
@@ -294,9 +320,15 @@ class LockStore:
             evicted = None
             reason = ""
             if current:
-                require_known_protocol(current)
+                # Dead-process/stale is judged from PROTOCOL_CORE_FIELDS alone
+                # (host, pid, heartbeat_at), so it is safe before a protocol
+                # is even known, and a dead or stale foreign holder is always
+                # reclaimed - never wedges the board. Only a live, non-stale
+                # foreign holder - one this claim must leave standing - is
+                # refused loudly instead of just reported as "not yet".
                 reason = self.reclaim_reason(current, stale_seconds)
                 if not reason:
+                    require_known_protocol(current)
                     return None, None, ""
                 evicted = current
                 reclaimed = ("reclaimed lock from {owner} for {purpose} "

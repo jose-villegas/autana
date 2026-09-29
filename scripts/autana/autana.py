@@ -251,14 +251,12 @@ def variant_request(verb, args, flags, project):
 
 
 def flash(args):
-    purpose, args = pop_value(args, "--purpose")
     project = resolve_project()
     asked, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope"), project)
     quiet = "--quiet" in seen
     perf_scope = "--perf-scope" in seen
     command = device_command(
-        "flash", "--variant", variant, "--worktree", project,
-        "--purpose", purpose or f"autana flash {asked}",
+        "flash", "--variant", variant, "--worktree", project, "--purpose", f"autana flash {asked}",
     )
     if perf_scope:
         command.append("--perf-scope")
@@ -444,17 +442,15 @@ def selftest(args):
     perf_scope = "--perf-scope" in rest
     if perf_scope:
         rest.remove("--perf-scope")
-    purpose, rest = pop_value(rest, "--purpose")
     out, rest = pop_value(rest, "--out")
-    usage = ("usage: autana selftest [seconds] [--verbose] [--perf-scope] "
-             "[--purpose TEXT] [--out PATH]")
+    usage = "usage: autana selftest [seconds] [--verbose] [--perf-scope] [--out PATH]"
     reject_unknown("selftest", rest)
     seconds = seconds_argument(rest, 3000.0, usage)
     project = resolve_project()
     print(f"autana selftest: every suite, {project}", flush=True)
     command = device_command(
         "selftest", "--worktree", project, "--max-seconds", str(seconds),
-        "--purpose", purpose or "autana selftest",
+        "--purpose", "autana selftest",
     )
     if verbose:
         command.append("--verbose")
@@ -622,7 +618,6 @@ def suite(args):
     if verbose:
         rest.remove("--verbose")
     runs, rest = pop_value(rest, "--runs")
-    purpose, rest = pop_value(rest, "--purpose")
     out, rest = pop_value(rest, "--out")
     expect_build_id, rest = pop_value(rest, "--expect-build-id")
     reject_unknown("suite", rest)
@@ -638,7 +633,7 @@ def suite(args):
     command = device_command(
         "batch", "--worktree", project, "--variant", "diag", "--runs", runs,
         "--max-seconds", str(seconds),
-        "--purpose", purpose or "autana suite",
+        "--purpose", "autana suite",
     )
     if not flash:
         command.append("--no-flash")
@@ -1281,7 +1276,7 @@ USAGE_WIDTH = 34
 # of these and repeating them on every line was unreadable.
 BOARD_FLAGS = (
     ("--out PATH", "write the one capture here instead of the default path",
-     "suite, monitor"),
+     "selftest, suite, monitor"),
     ("--expect-build-id ID", "refuse to run a suite unless the board, or the image `--flash` "
                              "just wrote, carries this BUILD_ID",
      "suite"),

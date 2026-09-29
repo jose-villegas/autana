@@ -12,7 +12,7 @@ home when the app exits. Each frame has one owner per step:
 | Step | Owner | Job |
 |---|---|---|
 | Read touch and motion | shell (`main.c`) | Make one `input_t` for the frame. |
-| Update and draw | current app, or a system screen | Draw into the shared framebuffer, then return. |
+| Update and draw | current app, or a system screen | Draw into the shared framebuffer, or regenerate dirty band rows, then return. |
 | Present | shell and `gfx/` | Send changed pixels to the panel. |
 
 ![The launcher, rendered on a host with fixture entries](images/overview/launcher-home.png)
@@ -402,7 +402,8 @@ the held-`DOWN` a slider needs to track a drag (`ui/ui_pointer.h`), and
 `suite_ui_pointer_microui.c` pins it against real microui, since hover is
 microui's own state and event-list tests cannot see it. It applies to every
 control that reacts to a press, so reworking input handling means preserving
-it.
+it. A press within `snap.reach` of a control is aimed at its nearest edge;
+its raw position remains the drag origin, and later motion stays raw.
 
 ---
 

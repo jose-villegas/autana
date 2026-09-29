@@ -2,6 +2,7 @@
 #include "input/touch_calib.h"
 #include "input/touch_fsm.h"
 #include "input/touch_inject_fsm.h"
+#include "input/touch_point.h"
 
 #include "build_variant.h"
 #include "util/tune.h"
@@ -161,9 +162,6 @@ poll_controller(bool* have_point, int* x, int* y) {
                 *have_point = true;
                 *x = point.x;
                 *y = point.y;
-                if (calibrate) {
-                    touch_calib_apply(&calib, BSP_LCD_H_RES, BSP_LCD_V_RES, x, y);
-                }
             }
         }
     }
@@ -176,16 +174,23 @@ poll_once(void) {
     const int64_t now_us = esp_timer_get_time();
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    if (!poll_injected(now_us, &have_point, &x, &y)) {
+    const bool injected = poll_injected(now_us, &have_point, &x, &y);
+    if (!injected) {
         poll_controller(&have_point, &x, &y);
     }
 #else
     poll_controller(&have_point, &x, &y);
 #endif
-    was_touching = have_point;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    touch_point_prepare(injected, have_point, &x, &y, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
+#else
+    touch_point_prepare(false, have_point, &x, &y, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
+#endif
 
     portENTER_CRITICAL(&lock);
     touch_fsm_update(&fsm, have_point, x, y, now_us);
+    was_touching = have_point;
+
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (have_point) {
         point_samples++;

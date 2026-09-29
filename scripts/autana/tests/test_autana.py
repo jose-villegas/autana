@@ -587,25 +587,6 @@ class FlashCommandTests(unittest.TestCase):
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--worktree") + 1], str(Path(directory).resolve()))
 
-    def test_purpose_is_forwarded(self):
-        """A report script (launcher/tools/device/device_report.sh) restores
-        release firmware with its own purpose text, not the command's default."""
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana, "git", return_value=""), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
-            autana.flash(["--quiet", "--purpose", "device_report x (restore)"])
-        command = called.call_args[0][0]
-        self.assertEqual(command[command.index("--purpose") + 1], "device_report x (restore)")
-
-    def test_purpose_defaults_when_not_given(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana, "git", return_value=""), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called, \
-             mock.patch("builtins.print"):
-            autana.flash(["diag", "--quiet"])
-        command = called.call_args[0][0]
-        self.assertEqual(command[command.index("--purpose") + 1], "autana flash diag")
-
 
 class BuildCommandTests(unittest.TestCase):
     """autana build: device.py's build half, in this process, taking no
@@ -890,22 +871,14 @@ class SelftestCommandTests(unittest.TestCase):
             command = called.call_args[0][0]
             self.assertEqual(command[command.index("--worktree") + 1], str(Path(directory).resolve()))
 
-    def test_out_and_purpose_are_forwarded(self):
+    def test_out_is_forwarded(self):
         """A report script (launcher/tools/device/device_report.sh) needs its own
-        capture path and purpose text, not the command's hardcoded defaults."""
+        capture path, not the command's default `records/`-rooted one."""
         with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
              mock.patch.object(autana.subprocess, "call", return_value=0) as called:
-            autana.selftest(["--out", "C:/report/raw.log", "--purpose", "device_report x"])
+            autana.selftest(["--out", "C:/report/raw.log"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--out") + 1], "C:/report/raw.log")
-        self.assertEqual(command[command.index("--purpose") + 1], "device_report x")
-
-    def test_purpose_defaults_when_not_given(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
-            autana.selftest([])
-        command = called.call_args[0][0]
-        self.assertEqual(command[command.index("--purpose") + 1], "autana selftest")
 
     def test_out_is_omitted_when_not_given(self):
         with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \

@@ -487,19 +487,22 @@ class ProtocolTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def write_foreign_lock(self, protocol):
+    def write_foreign_lock(self, protocol, pid=99):
+        """pid 99 is dead per this test class's is_alive (only 1 and this
+        process's own pid are alive) - the default names a reclaimable
+        holder; pass pid=1 for a live one a claim must leave standing."""
         record = {
             "acquired_at": 1000, "heartbeat_at": 1000, "expected_build_id": "",
             "host": device_lock.socket.gethostname(), "owner": "other-autana",
-            "pid": 99, "purpose": "flash", "token": "old",
+            "pid": pid, "purpose": "flash", "token": "old",
             "autana_version": "9.9.9",
         }
         if protocol is not None:
             record["protocol"] = protocol
         self.lock.write_json(self.lock.lock_path("COM5"), record)
 
-    def test_a_different_protocol_refuses_a_claim_loudly(self):
-        self.write_foreign_lock(protocol=2)
+    def test_a_different_protocol_refuses_a_claim_from_a_live_holder(self):
+        self.write_foreign_lock(protocol=2, pid=1)
         ticket = self.lock.enqueue("COM5", "me", "flash", pid=1)
         with self.assertRaises(device_lock.ProtocolMismatch) as caught:
             self.lock.claim("COM5", ticket, "")
@@ -514,17 +517,36 @@ class ProtocolTests(unittest.TestCase):
                          "other-autana")
 
     def test_a_missing_protocol_field_counts_as_zero_and_is_refused(self):
-        self.write_foreign_lock(protocol=None)
+        self.write_foreign_lock(protocol=None, pid=1)
         ticket = self.lock.enqueue("COM5", "me", "flash", pid=1)
         with self.assertRaises(device_lock.ProtocolMismatch) as caught:
             self.lock.claim("COM5", ticket, "")
         self.assertIn("protocol 0", str(caught.exception))
+
+    def test_a_dead_holder_is_reclaimed_regardless_of_protocol(self):
+        """The board must never wedge on a dead peer just because it spoke a
+        different protocol: dead/stale is judged from PROTOCOL_CORE_FIELDS
+        alone (host, pid, heartbeat_at), so it never needs a protocol match."""
+        self.write_foreign_lock(protocol=2, pid=99)
+        ticket = self.lock.enqueue("COM5", "me", "flash", pid=1)
+        held = self.lock.claim("COM5", ticket, "")
+        self.assertEqual(held["owner"], "me")
+        self.assertIn("reclaimed lock from other-autana for flash (dead process)", held["log"])
 
     def test_a_matching_protocol_claims_normally(self):
         self.write_foreign_lock(protocol=device_lock.LOCK_PROTOCOL)
         ticket = self.lock.enqueue("COM5", "me", "flash", pid=1)
         held = self.lock.claim("COM5", ticket, "")
         self.assertEqual(held["owner"], "me")
+
+    def test_a_live_matching_protocol_holder_is_not_reclaimed(self):
+        """A same-protocol live holder is refused the ordinary way (None, no
+        exception) - the protocol check exists only to explain a foreign,
+        unreclaimable holder, never to second-guess one this autana already
+        understands fully."""
+        self.write_foreign_lock(protocol=device_lock.LOCK_PROTOCOL, pid=1)
+        ticket = self.lock.enqueue("COM5", "me", "flash", pid=1)
+        self.assertIsNone(self.lock.claim("COM5", ticket, ""))
 
     def test_a_foreign_lock_is_not_ours_to_heartbeat_or_release(self):
         """No token of ours ever matches a foreign lock's, so these return the
@@ -549,24 +571,29 @@ class ProtocolTests(unittest.TestCase):
 
 
 class LockRecordShapeTests(unittest.TestCase):
-    """A golden snapshot of every field a lock record carries. A deliberate
-    field addition or removal is exactly the case LOCK_PROTOCOL exists for:
-    this failing is the reminder to bump it (device_lock.py's own docstring
-    on LOCK_PROTOCOL says why) and update GOLDEN_LOCK_KEYS below to match -
-    never edit the snapshot to make a red test green without doing that."""
+    """A golden snapshot of every field a lock record carries, keyed by the
+    protocol that shape belongs to. A deliberate field addition or removal
+    is exactly the case LOCK_PROTOCOL exists for: this failing is the
+    reminder to bump LOCK_PROTOCOL (device_lock.py's own docstring on it says
+    why), add a new entry here for the new protocol, and keep the old one -
+    never edit an existing entry to make a red test green without doing that."""
 
-    GOLDEN_LOCK_KEYS = frozenset({
-        "acquired_at", "board", "expected_build_id", "heartbeat_at", "host",
-        "log", "owner", "pid", "purpose", "kind", "token", "protocol",
-        "autana_version",
-    })
-    GOLDEN_TICKET_KEYS = frozenset({
-        "board", "created_at", "owner", "pid", "purpose", "kind", "sequence",
-        "ticket", "protocol", "autana_version",
-    })
-    GOLDEN_HUMAN_KEYS = frozenset({
-        "board", "id", "note", "owner", "since_at", "protocol", "autana_version",
-    })
+    GOLDEN_KEYS = {
+        1: {
+            "lock": frozenset({
+                "acquired_at", "board", "expected_build_id", "heartbeat_at", "host",
+                "log", "owner", "pid", "purpose", "kind", "token", "protocol",
+                "autana_version",
+            }),
+            "ticket": frozenset({
+                "board", "created_at", "owner", "pid", "purpose", "kind", "sequence",
+                "ticket", "protocol", "autana_version",
+            }),
+            "human": frozenset({
+                "board", "id", "note", "owner", "since_at", "protocol", "autana_version",
+            }),
+        },
+    }
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -575,19 +602,44 @@ class LockRecordShapeTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def golden(self, kind):
+        return self.GOLDEN_KEYS[device_lock.LOCK_PROTOCOL][kind]
+
     def test_the_lock_records_keys_match_the_golden_set(self):
         held = self.lock.acquire("COM5", "me", "flash")
-        self.assertEqual(set(held), self.GOLDEN_LOCK_KEYS)
+        self.assertEqual(set(held), self.golden("lock"))
 
     def test_the_ticket_records_keys_match_the_golden_set(self):
         self.lock.enqueue("COM5", "me", "flash")
         [ticket] = self.lock.tickets("COM5")
-        self.assertEqual(set(ticket), self.GOLDEN_TICKET_KEYS)
+        self.assertEqual(set(ticket), self.golden("ticket"))
 
     def test_the_human_records_keys_match_the_golden_set(self):
         self.lock.set_human("COM5", "me", "note")
         human = self.lock.read_json(self.lock.human_path("COM5"))
-        self.assertEqual(set(human), self.GOLDEN_HUMAN_KEYS)
+        self.assertEqual(set(human), self.golden("human"))
+
+    def test_core_fields_a_lock_reader_needs_are_promised_and_present(self):
+        """status()/reclaim_reason()/is_stale() read these off a lock record
+        regardless of its protocol - PROTOCOL_CORE_FIELDS must promise them,
+        and this protocol's own golden set must actually carry them."""
+        needed = {"owner", "pid", "host", "protocol", "heartbeat_at", "purpose", "acquired_at"}
+        self.assertLessEqual(needed, set(device_lock.PROTOCOL_CORE_FIELDS))
+        self.assertLessEqual(needed, self.golden("lock"))
+
+    def test_core_fields_a_ticket_reader_needs_are_promised_and_present(self):
+        """tickets() sorts on sequence; status_entry() reads owner/purpose/ticket
+        off a waiter regardless of protocol."""
+        needed = {"owner", "pid", "purpose", "sequence", "ticket", "protocol"}
+        self.assertLessEqual(needed, set(device_lock.PROTOCOL_CORE_FIELDS))
+        self.assertLessEqual(needed, self.golden("ticket"))
+
+    def test_core_fields_a_human_reader_needs_are_promised_and_present(self):
+        """status_entry() reads owner/note/since_at off a reservation
+        regardless of protocol."""
+        needed = {"owner", "note", "since_at", "protocol"}
+        self.assertLessEqual(needed, set(device_lock.PROTOCOL_CORE_FIELDS))
+        self.assertLessEqual(needed, self.golden("human"))
 
 
 if __name__ == "__main__":

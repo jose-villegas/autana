@@ -11,15 +11,18 @@
 Options: --top N (3), --more N (5), --budget CHARS (1800), --json, --lexical.
 
 The unit of an answer is a section: a heading and the text up to the next
-heading. The corpus is a fixed set of roots, not a VCS index - no git command
-runs: every root-level *.md, everything under docs/, launcher/ and editor/,
-plus any Markdown files or folders AUTANA_DOCS_EXTRA names (os.pathsep between
-them, each relative to the checkout unless absolute, read in full - no ignore
-file is consulted), plus the header of every script under the tool folders,
-so "how do I run X" finds the script that documents itself. A directory named
-`.something`, `build*`, `managed_components` or `results` is never walked.
-Each result prints the paragraphs that carry the question, the section's
-path:line range to read the rest, and the code it cites.
+heading. The corpus is a plain filesystem walk of the checkout, not a VCS
+index - no git command runs: every *.md under it (except third_party/ and
+launcher/components/), plus any Markdown files or folders AUTANA_DOCS_EXTRA
+names (os.pathsep between them, each relative to the checkout unless
+absolute, read in full - no ignore file is consulted), plus the header of
+every script under the tool folders, so "how do I run X" finds the script
+that documents itself. A directory named `.something`, `managed_components`
+or `results`, one that contains `CMakeCache.txt` (a real build tree,
+wherever it lands), or one that contains its own `.git` (a fetched clone,
+such as a tool pulled straight from GitHub) is never walked. Each result
+prints the paragraphs that carry the question, the section's path:line
+range to read the rest, and the code it cites.
 
 Two rankings are fused: BM25F over exact words, with the heading path weighted
 above the body, and embedding similarity from docs_llama.py's local model when
@@ -42,9 +45,7 @@ Section = namedtuple("Section", "path start end title headings level body cites"
 Hit = namedtuple("Hit", "section score coverage similarity")
 
 SKIPPED_PREFIXES = ("third_party/", "launcher/components/")
-# Markdown lives under these, plus loose at the checkout root; scripts document
-# themselves from under these - both fixed, not read off a VCS index.
-MARKDOWN_ROOTS = ("docs", "launcher", "editor")
+# Scripts document themselves from under these - fixed, not read off a VCS index.
 SCRIPT_ROOTS = ("scripts/", "launcher/tools/", "launcher/test/", "launcher/main/apps/")
 SCRIPT_SUFFIXES = (".py", ".sh", ".mjs")
 # A plan describes code that does not exist yet, and a document from outside
@@ -107,43 +108,39 @@ def tokens(text):
     return out
 
 
-BUILD_OUTPUT_DEPTH = 2  # root/launcher/build, root/editor/build.dev - never deeper.
-
-
-def pruned(name, depth):
-    """Directories a walk never enters: dotfiles/dotdirs at any depth, the two
-    other trees nothing here ever wants to index at any depth, and a build
-    output - but only shallow. `launcher/tools/build/` (depth 3) is a real,
-    tracked source folder that happens to share the name a build directory
-    does (`launcher/build/`, `editor/build.dev/`, depth 2); nothing legitimate
-    nests a build output three levels down, so depth alone tells them apart
-    without hand-listing the one path that must survive the "build" rule."""
+def pruned(dirpath, root):
+    """Directories a walk never enters: a dotfile/dotdir by name, one of
+    SKIPPED_PREFIXES, `managed_components`/`results` by name (both can nest
+    at any depth - launcher/managed_components, an app's own tools/results),
+    a real build tree (marked by CMakeCache.txt, at whatever depth ESP-IDF or
+    the editor happened to put it), or a fetched clone with its own `.git`
+    (a submodule checkout, or a tool like emsdk pulled straight from GitHub) -
+    detected by what the directory itself contains, not by a name that might
+    collide with a real source folder (`launcher/tools/build/`, say)."""
+    name = dirpath.name
     if name.startswith(".") or name in ("managed_components", "results"):
         return True
-    return name.startswith("build") and depth <= BUILD_OUTPUT_DEPTH
+    if (dirpath.relative_to(root).as_posix() + "/").startswith(SKIPPED_PREFIXES):
+        return True
+    try:
+        children = {entry.name for entry in dirpath.iterdir()}
+    except OSError:
+        return False
+    return "CMakeCache.txt" in children or ".git" in children
 
 
-def walk_tree(root, subdir, *suffixes):
-    """root-relative posix paths, under root/subdir, ending in one of suffixes -
-    a plain filesystem walk, no VCS index consulted. Missing subdir is empty,
-    not an error, since AUTANA_DOCS_EXTRA and a bare checkout both hit this."""
-    root, base = Path(root), Path(root, subdir)
-    if not base.is_dir():
-        return []
+def walk_tree(root, *suffixes):
+    """root-relative posix paths, walking the whole checkout, ending in one of
+    suffixes - a plain filesystem walk, no VCS index consulted."""
+    root = Path(root)
     found = []
-    for dirpath, dirnames, filenames in os.walk(base):
-        depth = len(Path(dirpath).relative_to(root).parts) + 1
-        dirnames[:] = [d for d in sorted(dirnames) if not pruned(d, depth)]
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirpath = Path(dirpath)
+        dirnames[:] = [d for d in sorted(dirnames) if not pruned(dirpath / d, root)]
         for name in sorted(filenames):
             if name.endswith(suffixes):
-                found.append(Path(dirpath, name).relative_to(root).as_posix())
+                found.append((dirpath / name).relative_to(root).as_posix())
     return found
-
-
-def root_level_files(root, *suffixes):
-    """Files directly in root (not recursive) ending in one of suffixes."""
-    root = Path(root)
-    return sorted(p.name for p in root.iterdir() if p.is_file() and p.name.endswith(suffixes))
 
 
 def extra_entries(root):
@@ -173,16 +170,13 @@ def extra_files(root):
 def corpus_files(root, extra=None):
     """(label, file) for every document: the project's Markdown, extra Markdown, script headers."""
     root = Path(root)
-    markdown = root_level_files(root, ".md")
-    for subdir in MARKDOWN_ROOTS:
-        markdown += walk_tree(root, subdir, ".md")
-    files = [(p, root / p) for p in markdown if not p.startswith(SKIPPED_PREFIXES)]
+    found = walk_tree(root, ".md", *SCRIPT_SUFFIXES)
+    markdown = [p for p in found if p.endswith(".md") and not p.startswith(SKIPPED_PREFIXES)]
+    files = [(p, root / p) for p in markdown]
     files += extra_files(root) if extra is None else extra
-    scripts = []
-    for subdir in SCRIPT_ROOTS:
-        scripts += walk_tree(root, subdir.rstrip("/"), *SCRIPT_SUFFIXES)
-    files += [(p, root / p) for p in scripts
-              if "/tests/" not in p and not Path(p).name.startswith("test_")]
+    scripts = [p for p in found if p.endswith(SCRIPT_SUFFIXES) and p.startswith(SCRIPT_ROOTS)
+              and "/tests/" not in p and not Path(p).name.startswith("test_")]
+    files += [(p, root / p) for p in scripts]
     return list(dict.fromkeys(files))
 
 

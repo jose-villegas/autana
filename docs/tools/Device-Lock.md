@@ -48,10 +48,15 @@ A command acts on the board named by `--board <serial>`, else by
 `AUTANA_BOARD`, else on the only Espressif (VID `0x303A`) board plugged in.
 With none plugged in it takes the only board a lock, reservation or waiter
 names, so a command can queue while the holder's reset has the board off
-USB, and `take-back` works on an unplugged board; opening the port still
-waits for USB. Case and surrounding spaces do not matter. With several
-candidates and none named, a command fails and lists their serial numbers;
-each board has its own lock and queue.
+USB. `hand` and `take-back` alone fall back once more, to the only board
+this machine has ever found on USB, so a board that has dropped off with no
+lock, reservation or waiter left to name it can still be handed to a human
+or taken back; every other command leaves that fallback alone,
+so an unplugged, idle board fails at once instead of queuing for a port
+that will never open. Opening the port still waits for USB. Case and
+surrounding spaces do not matter. With several candidates and none named, a
+command fails and lists their serial numbers; each board has its own lock
+and queue.
 
 ## One copy of the tools
 
@@ -324,7 +329,12 @@ overrides it). Per board, with `:` in the serial number written as `_`:
 (whom it was reclaimed from, if anyone), an opaque `token`, and `protocol`/
 `autana_version` (next section); `<serial>.queue/` holds the FIFO waiter
 tickets (a dead waiter's is discarded), each carrying the same `protocol`/
-`autana_version`; `<serial>.human.json` is a person's reservation, likewise.
+`autana_version`; `<serial>.human.json` is a person's reservation, likewise;
+`<serial>.seen.json` just names a board once found on USB, written the
+first time and never after - `hand`/`take-back` alone read it, to still
+reach a board that has since dropped off with no lock, reservation or
+waiter left to name it. There is no verb to forget one; delete the file
+to make this machine stop offering that board as the fallback.
 
 #### Lock protocol
 
@@ -334,25 +344,29 @@ after 30 s so a crashed holder cannot wedge it forever. The JSON files above
 are the state that mutex protects, not locks themselves, and a machine can
 have autana installs of different ages meeting at one board, so every record
 carries `device_lock.LOCK_PROTOCOL`'s value as `"protocol"` (an integer, 0
-when the field is absent - an autana from before this existed). Four fields
-are the frozen core every protocol promises: `owner`, `pid`, `host`,
-`protocol` itself - `status` reads only those, so it never refuses to show a
-foreign record. Anything else - `heartbeat_at`, `token`, `expected_build_id`,
-and the rest - a claim, heartbeat or release must interpret to decide
-whether to touch that lock, and a mismatched `protocol` there refuses loudly
-instead of guessing at a shape it does not know:
+when the field is absent - an autana from before this existed).
+`PROTOCOL_CORE_FIELDS` names exactly what a reader that must keep working
+across a protocol gap actually reads off a foreign record: `owner`, `pid`,
+`host`, `protocol` itself, `heartbeat_at` (staleness), `purpose`/`acquired_at`
+(a lock), `note`/`since_at` (a reservation), `sequence`/`ticket` (a waiter) -
+`status` reads only those, so it never refuses to show a foreign record, and
+a dead or stale holder (judged from `host`, `pid` and `heartbeat_at` alone)
+is always reclaimed, whatever its protocol - never wedges the board. Only a
+*live, non-stale* foreign holder - one a claim must leave standing, and so
+never touches beyond those core fields - refuses loudly on a protocol
+mismatch instead of just reporting "not yet":
 
 ```
 board held by sam with lock protocol 2 (autana 0.4.1); this autana speaks protocol 1 - update autana
 ```
 
 `autana_version` rides along purely for that message; nothing ever compares
-it. Bump `LOCK_PROTOCOL` only when a record's fields change in a way an
-older reader would misinterpret - an added field nobody old has to
-understand yet does not need a bump. `scripts/device/tests/test_device_lock.py`
-pins every record's current keys as a golden set: a deliberate field change
-without also bumping `LOCK_PROTOCOL` and updating that snapshot is the
-failure telling you to do both.
+it. Bump `LOCK_PROTOCOL` whenever a record's fields change in a way an older
+reader would misinterpret - exact match, always; there is no "additive,
+so no bump needed" case. `scripts/device/tests/test_device_lock.py` pins
+every record's current keys as a golden set, keyed by protocol number: a
+deliberate field change without also bumping `LOCK_PROTOCOL` and adding a
+new entry there is the failure telling you to do both.
 
 `device.py --owner <owner> release --token <token>` releases a lock this
 owner holds without touching the board - for a run that finished early and

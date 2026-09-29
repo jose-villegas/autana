@@ -1,6 +1,6 @@
 /*
  * gfx_palette_standard - a handful of well-known fixed palettes, for any
- * app that wants GFX_PIXFMT_INDEXED8 without building its own study.
+ * app that wants GFX_LAYOUT_INDEXED without building its own study.
  *
  * Selected by name or position, not a Kconfig choice - an app calls
  * gfx_palette_standard_find() (or iterates gfx_palette_standard_count()/
