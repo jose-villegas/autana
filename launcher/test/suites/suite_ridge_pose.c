@@ -103,6 +103,19 @@ test_strips_ignore_which_way_the_pose_leans(void) {
     }
 }
 
+/* The thresholds are exact on the per-mille ratio, which a raw vector can
+ * land on: columns are left only past it, rows are entered only past it. */
+static void
+test_the_hysteresis_thresholds_are_exact_on_the_ratio(void) {
+    const int32_t slope = RIDGE_POSE_AXIS_SWITCH_SLOPE_PER_MILLE;
+    const ridge_vector_t on_ratio_leaning = {slope, 1000};
+    const ridge_vector_t on_ratio_upright = {1000, slope};
+    TEST_ASSERT_TRUE(ridge_pose_strips_by_column(on_ratio_leaning, true, true));
+    TEST_ASSERT_FALSE(ridge_pose_strips_by_column((ridge_vector_t){slope + 1, 1000}, true, true));
+    TEST_ASSERT_FALSE(ridge_pose_strips_by_column(on_ratio_upright, true, false));
+    TEST_ASSERT_TRUE(ridge_pose_strips_by_column((ridge_vector_t){1000, slope + 1}, true, false));
+}
+
 void
 suite_ridge_pose(void) {
     RUN_TEST(test_easing_keeps_a_unit_vector);
@@ -112,6 +125,7 @@ suite_ridge_pose(void) {
     RUN_TEST(test_columns_hold_until_two_degrees_past_the_diagonal);
     RUN_TEST(test_rows_hold_until_two_degrees_past_the_diagonal);
     RUN_TEST(test_strips_ignore_which_way_the_pose_leans);
+    RUN_TEST(test_the_hysteresis_thresholds_are_exact_on_the_ratio);
 }
 
 SUITE_REGISTER(suite_ridge_pose);

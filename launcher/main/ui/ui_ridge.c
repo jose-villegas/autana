@@ -1055,12 +1055,10 @@ gradient_due(void) {
     return drift >= gradient_steps || (drift > 0 && ridge->pose_still_ms >= GRADIENT_SETTLE_MS);
 }
 
+/* The pixels of a full paint at the ridge's state, into any buffer: no
+ * bookkeeping and no dirty marks, so a caller can compare against one. */
 static void
-paint_all(void) {
-    gfx_color_t* const framebuffer = gfx_framebuffer();
-    if (!ridge->painted) {
-        catch_up_gradient();
-    }
+paint_pixels(gfx_color_t* framebuffer) {
     if (!ridge->by_column && ridge->scanline_dither) {
         for (int y = 0; y < GFX_HEIGHT; y++) {
             paint_row_span(framebuffer, y, 0, GFX_WIDTH);
@@ -1076,6 +1074,14 @@ paint_all(void) {
             }
         }
     }
+}
+
+static void
+paint_all(void) {
+    if (!ridge->painted) {
+        catch_up_gradient();
+    }
+    paint_pixels(gfx_framebuffer());
     gfx_mark_all_dirty();
     memcpy(ridge->shown, ridge->boundary, sizeof ridge->shown);
     finish_dissolve();
@@ -1187,6 +1193,27 @@ ui_ridge_reset_for_test(void) {
     ridge->last_pluck_x = 0;
     ridge->ambient = false;
     ridge->painted = false;
+    ridge->by_column = false;
+    ridge->pose_still_ms = 0;
+    ridge->wave_ms = 0;
+    catch_up_gradient();
+    finish_dissolve();
+}
+
+void
+ui_ridge_restart_boot_for_test(void) {
+    allocate_once();
+    if (ridge != NULL) {
+        ridge->alive_ms = 0;
+    }
+}
+
+void
+ui_ridge_paint_reference_for_test(gfx_color_t* out) {
+    allocate_once();
+    if (ridge != NULL) {
+        paint_pixels(out);
+    }
 }
 #endif
 

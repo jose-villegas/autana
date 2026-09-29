@@ -18,6 +18,9 @@ typedef enum {
     ARM_TILT_WOBBLE,
     ARM_AMBIENT,
     ARM_AMBIENT_PORTRAIT,
+    /* After the device's arms: its loop ends at ARM_AMBIENT_PORTRAIT. */
+    ARM_AMBIENT_SHAKE,
+    ARM_AMBIENT_BOOT,
 } arm_t;
 
 #define RIDGE_ARM_FRAME_DT_MS 16
@@ -63,5 +66,7 @@ ridge_arm_drive(arm_t arm, int frame, input_t* input) {
         ridge_arm_set_sweep_gravity(frame);
     } else if (arm == ARM_TILT_WOBBLE) {
         ridge_arm_set_wobble_gravity(frame);
+    } else if (arm == ARM_AMBIENT_SHAKE) {
+        ui_ridge_set_gravity(-256, 0, 256, frame % 40 < 10 ? 120 : 0);
     }
 }
