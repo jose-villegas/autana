@@ -32,6 +32,15 @@
 #include "util/fixed.h"
 #include "util/intmath.h"
 
+#if CONFIG_LAUNCHER_SAND_PASS_GATES
+/* Gate definitions, kept at the top of the file rather than beside
+ * sand_step(): a definition dropped between an attribute and the function
+ * it was written for silently steals the attribute, and this campaign
+ * measures function alignment. */
+#define SAND_STEP_GATE_DEFINE(name) volatile bool sand_step_gate_##name = true;
+SAND_STEP_GATES(SAND_STEP_GATE_DEFINE)
+#undef SAND_STEP_GATE_DEFINE
+#endif
 /* See sand_priv.h. Defined here, not sand_liquid.c: move_liquid_grain()
  * (sand_liquid_move.h) is called only from this file's own sweep. */
 unsigned sand_liquid_sweep_moves;
@@ -1972,7 +1981,9 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
 #ifdef DEVICE_BUILD
         const int64_t gas_t0 = esp_timer_get_time();
 #endif
-        sand_step_gas(s, gx, gy, dx, dy, slide_a, slide_b, perp_a, perp_b, load_dx, load_dy, x_step, jostle);
+        SAND_STEP_GATE(gas) {
+            sand_step_gas(s, gx, gy, dx, dy, slide_a, slide_b, perp_a, perp_b, load_dx, load_dy, x_step, jostle);
+        }
 #ifdef DEVICE_BUILD
         s->pass_us.gas_us = esp_timer_get_time() - gas_t0;
 #endif

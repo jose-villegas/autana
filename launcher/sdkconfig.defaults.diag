@@ -30,3 +30,4 @@ CONFIG_UNITY_ENABLE_64BIT=y
 # The frame watch (util/frame_watch.h) counts allocations made inside a frame
 # through the heap's own hooks.
 CONFIG_HEAP_USE_HOOKS=y
+CONFIG_LAUNCHER_SAND_PASS_GATES=y

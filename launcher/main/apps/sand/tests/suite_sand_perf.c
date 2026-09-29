@@ -4411,6 +4411,90 @@ test_the_sand_app_can_still_allocate_everything_it_needs(void) {
                                  "the line above: the grid alone needs a contiguous 41,216 bytes, and "
                                  "this suite has just churned dozens of allocations that size");
 }
+#if CONFIG_LAUNCHER_SAND_PASS_GATES /* SAND PASS GATE ROUND BEGIN */
+/* SCAFFOLDING for one round. scripts/strip-pass-gates.py removes this
+ * region whole - both arms - so a stripped tree carries neither the
+ * measurement nor the failing ungated arm below. */
+static void
+pass_gates_enable_all(void) {
+#define SAND_STEP_GATE_ENABLE(name) sand_step_gate_##name = true;
+    SAND_STEP_GATES(SAND_STEP_GATE_ENABLE)
+#undef SAND_STEP_GATE_ENABLE
+}
+
+/* Every configuration is timed on a byte-identical board: rebuild, warm up
+ * with every gate on, drop one gate, time exactly one step, take the min.
+ * Timing many steps with a pass disabled measures a different board. */
+static int64_t
+pass_gate_single_step_us(void (*build)(sand_t*, uint8_t*, uint8_t*), int warmup_steps, volatile bool* gate, int gx,
+                         int gy) {
+    int64_t best = INT64_MAX;
+
+    for (int repeat = 0; repeat < 3; repeat++) {
+        uint8_t* big = malloc(REAL_W * REAL_H);
+        uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
+        TEST_ASSERT_NOT_NULL(big);
+        TEST_ASSERT_NOT_NULL(blocks);
+
+        sand_t real;
+        pass_gates_enable_all();
+        build(&real, big, blocks);
+        for (int step = 0; step < warmup_steps; step++) {
+            sand_step(&real, gx, gy, 0);
+        }
+
+        if (gate != NULL) {
+            *gate = false;
+        }
+        const int64_t t0 = esp_timer_get_time();
+        sand_step(&real, gx, gy, 0);
+        const int64_t elapsed = esp_timer_get_time() - t0;
+        pass_gates_enable_all();
+
+        free(big);
+        free(blocks);
+        if (elapsed < best) {
+            best = elapsed;
+        }
+    }
+    return best;
+}
+
+static void
+report_pass_gate_scene(const char* scene, void (*build)(sand_t*, uint8_t*, uint8_t*), int warmup_steps, int gx,
+                       int gy) {
+#define SAND_STEP_GATE_ROW(name) {#name, &sand_step_gate_##name},
+
+    static const struct {
+        const char* name;
+        volatile bool* flag;
+    } gates[] = {SAND_STEP_GATES(SAND_STEP_GATE_ROW)};
+
+#undef SAND_STEP_GATE_ROW
+    _Static_assert(sizeof gates / sizeof gates[0] >= 1, "a decomposition with no gate reports nothing");
+
+    const int64_t whole = pass_gate_single_step_us(build, warmup_steps, NULL, gx, gy);
+    ESP_LOGI("device_tests", "pass gates %s: every pass on: %lld us", scene, (long long)whole);
+    for (size_t i = 0; i < sizeof gates / sizeof gates[0]; i++) {
+        const int64_t without = pass_gate_single_step_us(build, warmup_steps, gates[i].flag, gx, gy);
+        ESP_LOGI("device_tests", "pass gates %s: %s: %lld us", scene, gates[i].name, (long long)(whole - without));
+    }
+}
+
+static void
+test_the_sand_step_passes_decompose(void) {
+    report_pass_gate_scene("fire portrait", build_fire_scene, FIRE_WARMUP_STEPS, 0, 1000);
+    report_pass_gate_scene("fire landscape", build_fire_scene, FIRE_WARMUP_STEPS, 1000, 0);
+}
+#else
+static void
+test_the_sand_step_passes_decompose(void) {
+    TEST_FAIL_MESSAGE("CONFIG_LAUNCHER_SAND_PASS_GATES is not in this image, so this capture "
+                      "measured no pass decomposition at all. Append CONFIG_LAUNCHER_SAND_PASS_GATES=y "
+                      "to launcher/sdkconfig.defaults.diag, delete launcher/build.diag/sdkconfig "
+                      "so the defaults are applied again, and rebuild");
+}
+#endif /* SAND PASS GATE ROUND END */
 #endif /* DEVICE_BUILD */
 
 void
@@ -4432,6 +4516,11 @@ run_sand_perf_suite(void) {
      * run in this boot left it at. */
     ESP_LOGI("device_tests", "run_sand_perf_suite: two_core_step_on=%d at entry", (int)sand_two_core_step_enabled());
     perf_unmet_targets = 0;
+    /* SAND PASS GATE ROUND BEGIN - removed whole by scripts/strip-pass-gates.py.
+     * Registered unconditionally: an ungated image has to report the
+     * failure, not a missing row. */
+    RUN_TEST(test_the_sand_step_passes_decompose);
+    /* SAND PASS GATE ROUND END */
     RUN_TEST(test_the_sand_app_can_still_allocate_everything_it_needs);
     RUN_TEST(test_a_full_size_step_fits_in_the_frame_budget);
     RUN_TEST(test_a_screen_of_settled_sand_costs_almost_nothing);
