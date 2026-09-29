@@ -2,31 +2,21 @@
  * gfx_dirty - the grid dirty-region tracker behind gfx_present(), as a
  * standalone, ESP-IDF-free module.
  *
- * Header-only, all functions static (some static inline), by necessity, not
- * by convenience: the marking calls sit on the drawing primitives' hot
- * path - a dithered glyph marks once per set font pixel - and
- * routing that through a real cross-translation-unit call once cost about
- * 5% of the launcher's framerate (see docs/notes/Display-and-Rendering.md's
- * "Partial updates"). A traditional .c/.h split would put mark_band() back
- * behind exactly that kind of call for every file that includes this one,
- * silently reintroducing a regression this project already measured and
- * fixed once. Keeping everything static and header-only means gfx.c gets
- * it inlined into its own translation unit, exactly as before, while a
- * host test file gets its own independent, fully working copy just by
- * including this file directly - no separate .c to link, no ESP-IDF
- * dependency to satisfy.
+ * Header-only and all static: marking sits on the drawing primitives' hot
+ * path - a dithered glyph marks once per set font pixel - and a
+ * cross-translation-unit call there costs about 5% of the launcher's frame
+ * rate. A host test includes this file directly and gets its own copy, with
+ * no .c to link and no ESP-IDF.
  *
  * gfx.c is the only place in the real firmware that ever includes this -
  * every other file goes through gfx.h's public gfx_mark_dirty()/
  * gfx_mark_all_dirty()/gfx_region_dirty(), which gfx.c implements as thin
  * wrappers around the dirty_*() functions here. Those three are the only
  * names in this file with a public-API counterpart to avoid colliding
- * with; everything else keeps the name it always had inside gfx.c.
+ * with; everything else is private to gfx.c.
  *
- * See docs/notes/Display-and-Rendering.md's "Partial updates" and "Still
- * untapped" for the full reasoning behind the grid, the leaf layer
- * underneath it, and the two real bugs (MALLOC_CAP_DMA, the semaphore's
- * lack of per-transfer identity) this design surfaced.
+ * The measurements behind the grid and the leaf layer are in
+ * docs/notes/Display-and-Rendering.md's "Dirty tracking, measured".
  */
 #pragma once
 
