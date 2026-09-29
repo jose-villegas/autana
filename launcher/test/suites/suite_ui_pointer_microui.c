@@ -25,7 +25,7 @@
 #include "unity.h"
 
 #include "microui.h"
-#include "ui/ui_hover.h"
+#include "ui/ui_bridge.h"
 #include "ui/ui_pointer.h"
 
 #define CANVAS_W 368
@@ -45,6 +45,7 @@
  * reset by every test's fixture(). */
 static mu_Context* ctx;
 static ui_pointer_t pointer;
+static mu_Id button_id;
 
 /* microui measures text through the context; the real shell hands it a font
  * atlas, and nothing here cares how wide a glyph is. */
@@ -82,21 +83,9 @@ frame(bool down, bool pressed, bool released, int x, int y) {
     in.x = x;
     in.y = y;
 
-    ui_pointer_event_t ev[UI_POINTER_MAX_EVENTS];
-    const int n = ui_pointer_step(&pointer, &in, ev, UI_POINTER_MAX_EVENTS);
-    for (int i = 0; i < n; i++) {
-        switch (ev[i].kind) {
-            case UI_POINTER_MOVE: mu_input_mousemove(ctx, ev[i].x, ev[i].y); break;
-            case UI_POINTER_DOWN: mu_input_mousedown(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
-            case UI_POINTER_UP: mu_input_mouseup(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
-            case UI_POINTER_SCROLL: mu_input_scroll(ctx, ev[i].x, ev[i].y); break;
-        }
-    }
+    ui_bridge_feed(ctx, &pointer, &in);
 
     bool submitted = false;
-    if (in.pressed) {
-        ui_hover_seed_root(ctx);
-    }
     mu_begin(ctx);
     if (mu_begin_window_ex(ctx, "screen", mu_rect(0, 0, CANVAS_W, CANVAS_H),
                            MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
@@ -104,9 +93,11 @@ frame(bool down, bool pressed, bool released, int x, int y) {
         if (mu_button(ctx, "GO")) {
             submitted = true;
         }
+        button_id = ctx->last_id;
         mu_end_window(ctx);
     }
     mu_end(ctx);
+    ui_bridge_end(ctx, &pointer);
     return submitted;
 }
 
@@ -171,7 +162,9 @@ test_a_tap_submits_on_the_second_frame_of_contact(void) {
     TEST_ASSERT_FALSE(frame(false, false, true, cx, cy));
 }
 
-/* Hover is resolved on the frame the finger lands, not the one after. */
+/* Hover is resolved on the frame the finger lands, and on the control under
+ * it - not the one after, and not another. On empty space inside a root the
+ * root is hovered and no control is. */
 static void
 test_hover_is_granted_on_the_frame_a_press_lands(void) {
     fixture();
@@ -179,7 +172,13 @@ test_hover_is_granted_on_the_frame_a_press_lands(void) {
 
     frame(true, true, false, BTN_X + BTN_W / 2, BTN_Y + BTN_H / 2);
     TEST_ASSERT_NOT_NULL(ctx->hover_root);
-    TEST_ASSERT_NOT_EQUAL_UINT32(0, ctx->hover);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(button_id, ctx->hover, "the button under the finger is the one hovered");
+
+    fixture();
+    idle_frames(2);
+    frame(true, true, false, BTN_X / 2, CANVAS_H - 4);
+    TEST_ASSERT_NOT_NULL_MESSAGE(ctx->hover_root, "the window under the finger is the hover root");
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, ctx->hover, "empty space hovers no control");
 }
 
 /* Two windows over the press point: the seed must pick the one on top, as
@@ -187,19 +186,7 @@ test_hover_is_granted_on_the_frame_a_press_lands(void) {
  * and click through. Returns 1 for the back button, 2 for the front one. */
 static int
 stacked_frame(const input_t* in) {
-    ui_pointer_event_t ev[UI_POINTER_MAX_EVENTS];
-    const int n = ui_pointer_step(&pointer, in, ev, UI_POINTER_MAX_EVENTS);
-    for (int i = 0; i < n; i++) {
-        switch (ev[i].kind) {
-            case UI_POINTER_MOVE: mu_input_mousemove(ctx, ev[i].x, ev[i].y); break;
-            case UI_POINTER_DOWN: mu_input_mousedown(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
-            case UI_POINTER_UP: mu_input_mouseup(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
-            case UI_POINTER_SCROLL: break;
-        }
-    }
-    if (in->pressed) {
-        ui_hover_seed_root(ctx);
-    }
+    ui_bridge_feed(ctx, &pointer, in);
 
     int submitted = 0;
     const int opt = MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME;
@@ -215,6 +202,7 @@ stacked_frame(const input_t* in) {
         mu_end_window(ctx);
     }
     mu_end(ctx);
+    ui_bridge_end(ctx, &pointer);
     return submitted;
 }
 
@@ -232,6 +220,52 @@ test_a_press_over_stacked_windows_reaches_only_the_top_one(void) {
     total += stacked_frame(&(input_t){.down = true, .x = x, .y = y});
     total += stacked_frame(&(input_t){.released = true, .x = x, .y = y});
     TEST_ASSERT_EQUAL_INT_MESSAGE(2, total, "only the window on top may take the press, once");
+}
+
+/* Two windows sharing an edge, the one that would win a tie built last: a
+ * point on the shared line belongs to the window whose rect starts there. */
+static void
+edge_frame(const input_t* in, const char* first, mu_Rect first_rect, const char* second, mu_Rect second_rect) {
+    ui_bridge_feed(ctx, &pointer, in);
+    const int opt = MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME;
+    mu_begin(ctx);
+    if (mu_begin_window_ex(ctx, first, first_rect, opt)) {
+        mu_end_window(ctx);
+    }
+    if (mu_begin_window_ex(ctx, second, second_rect, opt)) {
+        mu_end_window(ctx);
+    }
+    mu_end(ctx);
+    ui_bridge_end(ctx, &pointer);
+}
+
+static void
+assert_seed_lands_in(int x, int y, const char* want, const char* first, mu_Rect first_rect, const char* second,
+                     mu_Rect second_rect) {
+    fixture();
+    const input_t idle = {0};
+    edge_frame(&idle, first, first_rect, second, second_rect);
+    edge_frame(&idle, first, first_rect, second, second_rect);
+    edge_frame(&(input_t){.down = true, .pressed = true, .x = x, .y = y}, first, first_rect, second, second_rect);
+    TEST_ASSERT_EQUAL_PTR(mu_get_container(ctx, want), ctx->hover_root);
+}
+
+static void
+test_a_press_on_a_shared_vertical_edge_reaches_only_the_window_it_is_in(void) {
+    const int seam = CANVAS_W / 2;
+    const mu_Rect left = mu_rect(0, 0, seam, CANVAS_H);
+    const mu_Rect right = mu_rect(seam, 0, CANVAS_W - seam, CANVAS_H);
+    assert_seed_lands_in(seam, 100, "right", "right", right, "left", left);
+    assert_seed_lands_in(seam - 1, 100, "left", "right", right, "left", left);
+}
+
+static void
+test_a_press_on_a_shared_horizontal_edge_reaches_only_the_window_it_is_in(void) {
+    const int seam = CANVAS_H / 2;
+    const mu_Rect top = mu_rect(0, 0, CANVAS_W, seam);
+    const mu_Rect bottom = mu_rect(0, seam, CANVAS_W, CANVAS_H - seam);
+    assert_seed_lands_in(100, seam, "bottom", "bottom", bottom, "top", top);
+    assert_seed_lands_in(100, seam - 1, "top", "bottom", bottom, "top", top);
 }
 
 /* However long the finger rests, one press is one click. Holding must not
@@ -304,21 +338,8 @@ test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap(void) {
         in.x = x;
         in.y = BTN_Y + BTN_H / 2;
 
-        ui_pointer_event_t ev[UI_POINTER_MAX_EVENTS];
-        const int n = ui_pointer_step(&pointer, &in, ev, UI_POINTER_MAX_EVENTS);
-        for (int i = 0; i < n; i++) {
-            if (ev[i].kind == UI_POINTER_MOVE) {
-                mu_input_mousemove(ctx, ev[i].x, ev[i].y);
-            } else if (ev[i].kind == UI_POINTER_DOWN) {
-                mu_input_mousedown(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT);
-            } else if (ev[i].kind == UI_POINTER_UP) {
-                mu_input_mouseup(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT);
-            }
-        }
+        ui_bridge_feed(ctx, &pointer, &in);
 
-        if (in.pressed) {
-            ui_hover_seed_root(ctx);
-        }
         mu_begin(ctx);
         if (mu_begin_window_ex(ctx, "screen", mu_rect(0, 0, CANVAS_W, CANVAS_H),
                                MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
@@ -327,6 +348,7 @@ test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap(void) {
             mu_end_window(ctx);
         }
         mu_end(ctx);
+        ui_bridge_end(ctx, &pointer);
 
         /* Start dragging only once the press has actually landed, so the
          * movement is a drag and not a series of separate taps. */
@@ -357,21 +379,9 @@ list_frame(bool down, bool pressed, bool released, int x, int y) {
     in.x = x;
     in.y = y;
 
-    ui_pointer_event_t ev[UI_POINTER_MAX_EVENTS];
-    const int n = ui_pointer_step(&pointer, &in, ev, UI_POINTER_MAX_EVENTS);
-    for (int i = 0; i < n; i++) {
-        switch (ev[i].kind) {
-            case UI_POINTER_MOVE: mu_input_mousemove(ctx, ev[i].x, ev[i].y); break;
-            case UI_POINTER_DOWN: mu_input_mousedown(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
-            case UI_POINTER_UP: mu_input_mouseup(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
-            case UI_POINTER_SCROLL: mu_input_scroll(ctx, ev[i].x, ev[i].y); break;
-        }
-    }
+    ui_bridge_feed(ctx, &pointer, &in);
 
     int submitted = -1;
-    if (in.pressed) {
-        ui_hover_seed_root(ctx);
-    }
     mu_begin(ctx);
     if (mu_begin_window_ex(ctx, "list", mu_rect(0, 0, CANVAS_W, CANVAS_H),
                            MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
@@ -387,7 +397,7 @@ list_frame(bool down, bool pressed, bool released, int x, int y) {
         mu_end_window(ctx);
     }
     mu_end(ctx);
-    pointer.over_scrollable = ctx->scroll_target != NULL;
+    ui_bridge_end(ctx, &pointer);
     return submitted;
 }
 
@@ -481,6 +491,8 @@ run_ui_pointer_microui_suite(void) {
     RUN_TEST(test_a_tap_submits_on_the_second_frame_of_contact);
     RUN_TEST(test_hover_is_granted_on_the_frame_a_press_lands);
     RUN_TEST(test_a_press_over_stacked_windows_reaches_only_the_top_one);
+    RUN_TEST(test_a_press_on_a_shared_vertical_edge_reaches_only_the_window_it_is_in);
+    RUN_TEST(test_a_press_on_a_shared_horizontal_edge_reaches_only_the_window_it_is_in);
     RUN_TEST(test_holding_does_not_resubmit);
     RUN_TEST(test_a_one_frame_tap_submits_once);
     RUN_TEST(test_a_tap_outside_the_button_submits_nothing);

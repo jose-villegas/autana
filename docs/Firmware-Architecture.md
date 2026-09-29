@@ -377,7 +377,7 @@ two damage trackers.
 
 **The cost, for balance:** microui encodes a mouse (point, then click), and
 a touchscreen cannot produce the "point" half. The shell synthesizes it, at
-`UI_POINTER_HOVER_FRAMES` frame of latency on every tap - see below. A
+`UI_POINTER_HOVER_FRAMES` frames of latency on every tap - see below. A
 touch-native toolkit would not pay that.
 
 ### Two things to know before touching it
@@ -395,9 +395,13 @@ only submits once focused. `mu_mouse_over()` also needs `in_hover_root()`,
 and `mu_begin()` copies `hover_root` from the *previous* frame's
 `next_hover_root`, which a finger arriving from the parked pointer has not
 set yet. `ui_begin()` therefore seeds it on the press frame
-(`ui/ui_hover.c`), from the containers the last frame left in `root_list`, so
+(`mu_seed_hover_root()`, via `ui/ui_bridge.c`), from the containers the last frame left in `root_list`, so
 the first frame at the new position can already mark a control hovered and
-the press follows on the second. Ship the press with no hover frame and
+the press follows on the second. That holds only while the press frame builds
+the root that was seeded; on a screen switch, a list closing or a window's
+first build it does not, and `ui_bridge_end()` marks the seed stale
+(`hover_stale`) so the press takes one more MOVE-only frame - the old cost,
+and the tap is never lost. Ship the press with no hover frame and
 hover is never established, nothing takes focus, and every button draws its
 pressed look while returning 0. `ui/ui_pointer.c` owns this policy, plus
 the held-`DOWN` a slider needs to track a drag (`ui/ui_pointer.h`), and

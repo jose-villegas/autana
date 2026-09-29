@@ -1900,9 +1900,10 @@ sand_app_test_options_reach_start(sand_test_start_action_t action) {
 
     title_screen_layout_t title;
     title_screen_layout(ui_width(), ui_height(), &title);
+    const input_t idle = {0};
+    draw_menu(&idle); /* a screen is on the glass before it is tapped */
     sand_app_test_tap_menu_rect(title.buttons[SAND_TITLE_START]);
     const bool queued = pending_start;
-    const input_t idle = {0};
     sand_frame(0, &idle);
     const int expected_quality = action == SAND_TEST_APPLY_THEN_START ? menu.draft.quality : before.quality;
     const bool ok = queued && ui.screen == SAND_UI_RUNNING && !failed && current_options().quality == expected_quality
@@ -1914,12 +1915,9 @@ sand_app_test_options_reach_start(sand_test_start_action_t action) {
 }
 
 /* Unlike sand_app_test_survives_indexed_then_menu() above, this runs the
- * START button itself. One pressed+released frame is not enough: microui's
- * hover_root lags next_hover_root by a frame (begin_root_container(),
- * microui.c), so a brand-new window cannot grant hover the instant it
- * opens - the frames below replay ui_pointer_step()'s own
- * UI_POINTER_HOVER_FRAMES wait for that, then the DOWN; the released frame
- * is the UP, leaving no touch state behind. */
+ * START button itself, through the frames a finger gives it: the title is
+ * built once as the player would see it, then the press frame (hover only),
+ * the frame that carries the DOWN, and the UP. */
 bool
 sand_app_test_start_button_survives_the_ui_build(int mode) {
     const int previous_mode = color_mode;
@@ -1935,8 +1933,11 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
     ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", cx, cy, start_rect.x, start_rect.y,
              start_rect.w, start_rect.h);
 
+    const input_t idle = {0};
+    sand_frame(0, &idle); /* the title on the glass before the finger lands */
+
     const input_t press = {.pressed = true, .x = cx, .y = cy};
-    sand_frame(0, &press); /* hover_root seeded, hover granted - see the comment above */
+    sand_frame(16, &press); /* hover granted on the frame the finger lands */
 
     const input_t hold = {.x = cx, .y = cy};
     sand_frame(16, &hold); /* the DOWN: the click */
@@ -1944,7 +1945,6 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
     const input_t release = {.released = true, .x = cx, .y = cy};
     sand_frame(16, &release); /* the UP */
 
-    const input_t idle = {0};
     sand_frame(16, &idle); /* pending_start applies here, before any UI build */
 
     const bool ok = sand_colour_indexed_active(&colour_state) && ui.screen == SAND_UI_RUNNING;

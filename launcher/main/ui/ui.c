@@ -35,6 +35,7 @@
 #include "gfx/gfx.h"
 #include "gfx/gfx_target.h"
 #include "gfx/icons_system.h"
+#include "ui/ui_bridge.h"
 #include "ui/ui_internal.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -356,7 +357,7 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
 bool
 ui_end(uint32_t background_rgb) {
     mu_end(&ui_ctx);
-    ui_pointer_state.over_scrollable = ui_ctx.scroll_target != NULL;
+    ui_bridge_end(&ui_ctx, &ui_pointer_state);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     report_command_list_high_water(ui_ctx.command_list.idx);
@@ -381,7 +382,7 @@ ui_end(uint32_t background_rgb) {
 bool
 ui_end_over(ui_backdrop_fn paint_backdrop) {
     mu_end(&ui_ctx);
-    ui_pointer_state.over_scrollable = ui_ctx.scroll_target != NULL;
+    ui_bridge_end(&ui_ctx, &ui_pointer_state);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     report_command_list_high_water(ui_ctx.command_list.idx);
@@ -590,7 +591,7 @@ mark_changed_ui_bands(void) {
 void
 ui_end_for_bands(uint32_t background_rgb) {
     mu_end(&ui_ctx);
-    ui_pointer_state.over_scrollable = ui_ctx.scroll_target != NULL;
+    ui_bridge_end(&ui_ctx, &ui_pointer_state);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     report_command_list_high_water(ui_ctx.command_list.idx);

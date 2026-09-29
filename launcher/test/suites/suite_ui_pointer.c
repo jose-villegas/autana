@@ -58,15 +58,13 @@ press_through_hover(int x, int y) {
  */
 
 static void
-test_a_tap_hovers_two_frames_before_pressing(void) {
+test_a_tap_hovers_before_pressing(void) {
     fixture();
 
-    /* Both hover frames are MOVE-only, and both matter: the first tells
-     * microui which window the finger is in (hover_root, which mu_begin()
-     * copies from the previous frame), the second is the first frame that
-     * can mark a control hovered. A DOWN before that lands with nothing
-     * hovered, so nothing takes focus and no button ever submits - which
-     * is exactly what shipped and made every app unreachable. */
+    /* The hover frames are MOVE-only. A DOWN before a control has been
+     * marked hovered lands with nothing hovered, so nothing takes focus and
+     * no button ever submits - which is exactly what shipped and made every
+     * app unreachable. */
     for (int frame = 0; frame < UI_POINTER_HOVER_FRAMES; frame++) {
         const int n = step(true, frame == 0, false, 10, 20);
         TEST_ASSERT_EQUAL_INT_MESSAGE(1, n, "a hover frame carries a move and nothing else");
@@ -81,6 +79,20 @@ test_a_tap_hovers_two_frames_before_pressing(void) {
     TEST_ASSERT_EQUAL_INT(UI_POINTER_DOWN, ev[1].kind);
     TEST_ASSERT_EQUAL_INT(10, ev[1].x);
     TEST_ASSERT_EQUAL_INT(20, ev[1].y);
+}
+
+/* The caller reports after the press frame that the hover root it seeded was
+ * not the one the frame found: hover was not granted, so the DOWN waits one
+ * more MOVE-only frame. Without it the tap is lost. */
+static void
+test_a_stale_hover_root_costs_one_more_hover_frame(void) {
+    fixture();
+    step(true, true, false, 10, 20);
+    p.hover_stale = true;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, step(true, false, false, 10, 20), "one more MOVE-only frame");
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, step(true, false, false, 10, 20), "then the DOWN");
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_DOWN, ev[1].kind);
 }
 
 /* Holding, not releasing - the whole point of this module. */
@@ -323,7 +335,8 @@ test_a_sideways_drag_on_scrollable_content_presses_so_a_slider_still_moves(void)
 
 void
 run_ui_pointer_suite(void) {
-    RUN_TEST(test_a_tap_hovers_two_frames_before_pressing);
+    RUN_TEST(test_a_tap_hovers_before_pressing);
+    RUN_TEST(test_a_stale_hover_root_costs_one_more_hover_frame);
     RUN_TEST(test_a_drag_stays_down_across_moves_then_lifts_once);
     RUN_TEST(test_an_aim_stages_the_press_but_not_later_drag_moves);
     RUN_TEST(test_exactly_one_up_comes_out_of_one_press);

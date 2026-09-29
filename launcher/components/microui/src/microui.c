@@ -1172,6 +1172,27 @@ int mu_begin_window_ex(mu_Context *ctx, const char *title, mu_Rect rect, int opt
 }
 
 
+/* Local addition. mu_begin() takes hover_root from the previous frame, so a
+** pointer that just arrived has none until the frame after. Call between
+** feeding the pointer and mu_begin(): the roots the last frame left in
+** root_list are still valid, and picking among them by the rule
+** begin_root_container() uses gives the root the point will land in - as
+** long as this frame builds the same roots. */
+void mu_seed_hover_root(mu_Context *ctx) {
+  mu_Container *top = NULL;
+  int i;
+  for (i = 0; i < ctx->root_list.idx; i++) {
+    mu_Container *cnt = ctx->root_list.items[i];
+    if (rect_overlaps_vec2(cnt->rect, ctx->mouse_pos) &&
+        (!top || cnt->zindex > top->zindex)
+    ) {
+      top = cnt;
+    }
+  }
+  ctx->next_hover_root = top;
+}
+
+
 void mu_end_window(mu_Context *ctx) {
   mu_pop_clip_rect(ctx);
   end_root_container(ctx);

@@ -115,9 +115,9 @@ $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/gfx/gfx.c
 $MAIN_DIR/ui/ui.c
+$MAIN_DIR/ui/ui_bridge.c
 $MAIN_DIR/ui/ui_build.c
 $MAIN_DIR/ui/ui_canvas_marks.c
-$MAIN_DIR/ui/ui_hover.c
 $MAIN_DIR/ui/ui_launcher_draw.c
 $MAIN_DIR/ui/ui_pointer.c
 $MAIN_DIR/ui/ui_snap.c
