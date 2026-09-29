@@ -813,7 +813,7 @@ def main(argv=None):
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("status")
     acquire = subparsers.add_parser("acquire")
-    acquire.add_argument("--owner", default=os.environ.get("AUTANA_DEVICE_OWNER", "unknown"))
+    acquire.add_argument("--owner", default="unknown")
     acquire.add_argument("--purpose", required=True)
     acquire.add_argument("--expected-build-id", default="")
     acquire.add_argument("--wait", type=float, default=0)

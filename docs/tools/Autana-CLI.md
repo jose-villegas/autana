@@ -45,20 +45,21 @@ it readable; a flag works the same wherever the table below says it applies.
 | Flag | What it does | Commands |
 |---|---|---|
 | `--wait SECONDS` | Global, goes before the command (`autana --wait 0 monitor 5`; after it, autana says so). Wait this long for the board's lock; 0 fails at once with exit 75. 600 s without it. Covers every step the command runs. | every board command |
+| `--owner NAME` | Global, goes before the command (`autana --owner ci-7 flash`; after it, autana says so). Label this run in the lock as `NAME:<pid>`; without it, `<user>@<host>:<pid>`. Name each CI job. | every board command |
 | `--out PATH` | Write the one capture here instead of the default path; with several suites or `--runs` above 1, only makes sense on `suite` when exactly one suite runs once. | selftest, suite, monitor |
 | `--expect-build-id ID` | Refuse to run a suite unless the board, or the image `--flash` just wrote, carries this `BUILD_ID`. `autana flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it - pass that value here to refuse measuring a board that has since been reflashed by someone else. | suite |
 | `--project PATH` | Act on `PATH` instead of the current directory - like `make -C`/`idf.py -C`, no searching parent directories. `PATH` must itself carry `launcher/CMakeLists.txt`; the current directory must too when `--project` is omitted, for every command below except `suite` without `--flash`, which only wants it for its capture's own record. Popped once ahead of any command's own parsing, so it works the same everywhere it applies. | build, flash, selftest, suite, suite list, tune save, docs |
 
 Every board command's lock owner is `"<user>@<host>:<pid>"`, or
-`"<AUTANA_DEVICE_OWNER>:<pid>"` when that variable is set - the pid still
-distinguishes two shells that export the same override, so `autana status`
+`"<NAME>:<pid>"` when the call starts with `autana --owner NAME` - the pid still
+distinguishes two shells that use the same name, so `autana status`
 does not mistake one for the other's own lock. How long a command
 waits for the board's lock before giving up is set for one call with the
 global option `autana --wait SECONDS <command>` (`autana --wait 0 flash`
 fails at once, exit 75) and is 600 s without it; there is no environment
-setting, so a CI job writes `autana --wait 0 <command>`. It goes before the
-command and covers every step the command runs. The owner is not a flag:
-an unknown flag is named, e.g. `autana flash: unknown flag --owner`.
+setting, so a CI job writes `autana --wait 0 <command>`. Both global options
+go before the command and cover every step it runs; after the command,
+autana says where they belong.
 
 ## Build and flash
 
@@ -162,7 +163,7 @@ The two raw levels below gesture, `touch` and `imu`, live under
 | Command | What it does |
 |---|---|
 | `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
-| `autana lock id [--json]` | The name this session holds the lock under: `"<user>@<host>:<pid>"`, or `"<AUTANA_DEVICE_OWNER>:<pid>"` when that variable is set. |
+| `autana lock id [--json]` | The name this session holds the lock under: `"<user>@<host>:<pid>"`, or `"<NAME>:<pid>"` under `autana --owner NAME`. |
 | `autana lock release [<token>]` | Release the lock a command of this session holds, before it would have. The token is `AUTANA_DEVICE_LOCK_TOKEN` in every process that command started, and is what `lock release` uses when none is given. |
 | `autana lock hand [--until-back <seconds>] <note...>` | Reserve the board for a person for an hour and emit `human-reserved`; running it again renews the hour, and an unrenewed reservation lapses (`human-expired`). With `--until-back`, wait until `take-back` emits `human-cleared`. |
 | `autana lock take-back` | Clear that reservation. |

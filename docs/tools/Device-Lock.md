@@ -239,7 +239,6 @@ alone fall back once more to the only board this machine has ever seen.
 
 | Variable | Effect |
 |---|---|
-| `AUTANA_DEVICE_OWNER` | The owner shown to others, as `<value>:<pid>`; `<user>@<host>:<pid>` when unset. Give each CI job its own. |
 | `AUTANA_BOARD` | The board's USB serial number, when several are plugged in. |
 | `AUTANA_DEVICE_LOCK_ROOT` | The lock folder. |
 | `AUTANA_DEVICE_LOCK_TOKEN` | Set inside a running command for the processes it starts. |
@@ -301,7 +300,7 @@ files on the machine, and two versions of the lock code can each believe they
 hold the board. Call `autana` (`tools/autana` on `PATH`,
 `scripts/add-tools-to-path.sh`), never a checkout's own `device.py`: it is one
 script at one fixed location, so every call runs the same lock code whichever
-checkout started it. Name a CI job with `AUTANA_DEVICE_OWNER`, run its commands as
+checkout started it. Name a CI job with `autana --owner NAME`, run its commands as
 `autana --wait 0 <command>`, and what gets built comes from `--project` or the
 current directory (`autana help build`). A report script calls `autana
 selftest`, `autana suite` or `autana flash`.
@@ -342,7 +341,7 @@ across holders.
 
 ### Calling `device.py` from a script
 
-Prefer `autana` with `AUTANA_DEVICE_OWNER`. Run `scripts/device/device.py`
+Prefer `autana --owner NAME`. Run `scripts/device/device.py`
 directly only for what `autana` does not offer: a per-call `--purpose`, a
 `send` with its own `--reply` and `--until`, or `report`. It runs under
 ESP-IDF's Python (a different interpreter re-runs it under that one). On
@@ -354,7 +353,7 @@ comes first on `PATH`, which from a native shell is WSL's launcher.
 python scripts/device/device.py --owner ci-7 --wait 0 --purpose "gfx suite" run-suite run_gfx_suite --expect-build-id 0123456789ab-dev
 ```
 
-`--owner` defaults to `AUTANA_DEVICE_OWNER`, and `--wait` is the lock wait in
+`--owner` defaults to `unknown`, and `--wait` is the lock wait in
 seconds. `release --token <t>`, `hand-to-human --token <t> --note <n>` and
 `take-back` are what `autana lock` calls. For inspection or emergency recovery
 `scripts/device/device_lock.py --board <serial>` takes `status`, `acquire

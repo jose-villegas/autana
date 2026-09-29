@@ -122,8 +122,8 @@ not know the command or nothing answers within `--seconds` (default 3). It is
 not a capture: it adds no line to `index.jsonl`.
 
 From a script that names its own owner and purpose, `device.py` takes the same
-arguments (the interpreter is ESP-IDF's Python, and `--owner` defaults to
-`AUTANA_DEVICE_OWNER`):
+arguments (the interpreter is ESP-IDF's Python, and `--owner` names
+the lock holder):
 
 ```sh
 python scripts/device/device.py --owner maintainer send "SET ridge.theme_rgb 0x1199C8"

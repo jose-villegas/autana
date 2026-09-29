@@ -41,13 +41,13 @@ PROJECT_MARKER = Path("launcher") / "CMakeLists.txt"
 
 
 def owner():
-    """What the device lock calls this autana: AUTANA_DEVICE_OWNER, with
-    this process's own pid still appended, when set - two shells that
-    export the same override would otherwise see each other's lock as
+    """What the device lock calls this autana: the global `--owner` label
+    (OWNER_ENV), with this process's own pid still appended, when given -
+    two shells that use the same label would otherwise see each other's lock as
     their own (board_holder()'s self-check compares by name) - else
     "<user>@<host>:<pid>". getpass.getuser() can fail with no username in
     the environment (a container); "user" then stands in for it."""
-    override = os.environ.get("AUTANA_DEVICE_OWNER")
+    override = os.environ.get(OWNER_ENV)
     if override:
         return f"{override}:{os.getpid()}"
     try:
@@ -149,9 +149,10 @@ def device_module():
     return device
 
 
-# How the global `--wait` reaches nested steps and child processes; private,
+# How the global `--wait` and `--owner` reach nested steps and child processes; private,
 # so a caller's environment is never a second way to set the wait.
 WAIT_ENV = "_AUTANA_WAIT_S"
+OWNER_ENV = "_AUTANA_OWNER"
 
 
 def device_command(*args, wait=None):
@@ -1291,6 +1292,9 @@ BOARD_FLAGS = (
     ("--wait SECONDS", "global, goes before the command: wait this long for the board's lock, "
                        "0 to fail at once (exit 75); 600 s without it",
      "every board command"),
+    ("--owner NAME", "global, goes before the command: label this run in the lock as "
+                     "NAME:<pid>",
+     "every board command"),
     ("--out PATH", "write the one capture here instead of the default path",
      "selftest, suite, monitor"),
     ("--expect-build-id ID", "refuse to run a suite unless the board, or the image `--flash` "
@@ -1304,8 +1308,8 @@ BOARD_FLAGS = (
 
 def board_flags_text(prefix=""):
     width = max(len(flag) for flag, _, _ in BOARD_FLAGS)
-    lines = ["Every board command's lock owner is \"<user>@<host>:<pid>\", or "
-             "\"<AUTANA_DEVICE_OWNER>:<pid>\" when that variable is set. How long a command "
+    lines = ["Every board command's lock owner is \"<user>@<host>:<pid>\", or the "
+             "global --owner label. How long a command "
              "waits for the board's lock: the global --wait, else 600 s.",
              "",
              "Flags (on top of each command's own usage above)"]
@@ -1368,7 +1372,8 @@ def help_text(args, prefix="autana "):
     if topic is None:
         lines.append(f"{prefix}--wait SECONDS <command>  how long to wait for the board; 0 fails "
                      "at once")
-        lines.append(f"{prefix}help flags    --wait/--out/--expect-build-id/--project, which commands "
+        lines.append(f"{prefix}--owner NAME <command>    label this run in the lock")
+        lines.append(f"{prefix}help flags    --wait/--owner/--out/--expect-build-id/--project, which commands "
                      "take them, and how the lock owner and its wait are set")
         lines.append(f"{prefix}help [topic]  one group or command"
                      + ("" if prefix else "; quit leaves the session"))
@@ -1416,29 +1421,40 @@ def install_completion():
     readline.parse_and_bind("tab: complete")
 
 
-WAIT_HINT = "--wait goes before the command: autana --wait 0 monitor 5"
+MISPLACED_HINTS = {
+    "--wait": "--wait goes before the command: autana --wait 0 monitor 5",
+    "--owner": "--owner goes before the command: autana --owner ci-7 flash",
+}
 
 
-def global_wait(argv):
-    """`argv` without a leading `--wait SECONDS`, which is written into
-    WAIT_ENV - what device_command() and every child process read - so it
-    covers this call and each step nested in it. `--wait` anywhere after
-    the command is refused, because a command would otherwise report it
-    as an unknown flag without saying where it belongs."""
-    if argv[:1] == ["--wait"]:
-        seconds = argv[1] if len(argv) > 1 else ""
-        if not (seconds.isascii() and seconds.isdigit()):
-            sys.exit("autana --wait needs a non-negative integer number of seconds, "
-                     "e.g. autana --wait 0 monitor 5")
-        os.environ[WAIT_ENV] = seconds
+def global_options(argv):
+    """`argv` without its leading `--wait SECONDS` and `--owner NAME`, in
+    either order. Each is written into WAIT_ENV / OWNER_ENV - what
+    device_command(), owner() and every child process read - so it covers
+    this call and each step nested in it. Either one anywhere after the
+    command is refused, because a command would otherwise report it as an
+    unknown flag without saying where it belongs."""
+    while argv[:1] in (["--wait"], ["--owner"]):
+        flag, value = argv[0], (argv[1] if len(argv) > 1 else "")
+        if flag == "--wait":
+            if not (value.isascii() and value.isdigit()):
+                sys.exit("autana --wait needs a non-negative integer number of seconds, "
+                         "e.g. autana --wait 0 monitor 5")
+            os.environ[WAIT_ENV] = value
+        else:
+            if not value.strip():
+                sys.exit("autana --owner needs a name, e.g. autana --owner ci-7 flash")
+            os.environ[OWNER_ENV] = value
         argv = argv[2:]
-    if any(arg == "--wait" or arg.startswith("--wait=") for arg in argv[1:]):
-        sys.exit(WAIT_HINT)
+    for arg in argv[1:]:
+        for flag, hint in MISPLACED_HINTS.items():
+            if arg == flag or arg.startswith(flag + "="):
+                sys.exit(hint)
     return argv
 
 
 def main():
-    argv = global_wait(sys.argv[1:])
+    argv = global_options(sys.argv[1:])
     if not argv:
         sys.exit(console())
     if argv[0] in ("--version", "-V"):
