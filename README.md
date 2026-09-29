@@ -6,19 +6,17 @@
 
 Autana is software for the [Waveshare ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/esp32-s3-touch-amoled-1.8.htm): a home screen that launches a falling-sand sandbox and software-rendering experiments. Touch and board motion control the apps. The firmware draws each frame in software and sends its pixels directly to the board's AMOLED screen.
 
-![A volcano spilling toward a lake beside growing and burning trees as the board turns](docs/images/overview/sand-simulation.gif)
-
-The volcano, lake and growing trees use the real simulation and material shading code, rendered on a computer with scripted tilt. It is a host preview, not a board capture.
-
-| Launcher | Rotating Render Lab cube |
+| Falling Sand, board turning | Launcher, board rocking |
 |:---:|:---:|
-| ![The app launcher with three fixture entries](docs/images/overview/launcher-home.png) | ![A shaded cube rotating on a black screen](docs/images/overview/render-lab-cube.gif) |
-| **Sponza flythrough** | **Ray-traced Cornell box** |
-| ![A camera moving down the sunlit Crytek Sponza atrium between coloured curtains](docs/images/overview/render-lab-sponza.gif) | ![A Cornell box with a red and a green wall around two blocks](docs/images/overview/render-lab-cornell.png) |
+| ![A volcano spilling toward a lake beside growing and burning trees as the board turns](docs/images/overview/sand-simulation.gif) | ![The app launcher's backdrop ridge levelling as the board rocks](docs/images/overview/launcher-home.gif) |
+| **Rotating Render Lab cube** | **Sponza flythrough** |
+| ![A shaded cube rotating on a black screen](docs/images/overview/render-lab-cube.gif) | ![A camera moving down the sunlit Crytek Sponza atrium between coloured curtains](docs/images/overview/render-lab-sponza.gif) |
+| **Ray-traced Cornell box** | **Falling Sand title screen** |
+| ![A Cornell box with a red and a green wall around two blocks](docs/images/overview/render-lab-cornell.png) | ![The Falling Sand title screen with start, load, options, guide and exit](docs/images/overview/sand-menu.png) |
+
+Every image is a host render of the real firmware drawing code at the panel's 448x368, not a board capture. The sand clip runs the real simulation with scripted tilt; the launcher uses placeholder app names from the host fixture, where the board lists the apps built into the firmware.
 
 Image render commands are in each app's tools README ([sand](launcher/main/apps/sand/tools/README.md), [render lab](launcher/main/apps/render_lab/tools/README.md)) and the [render harness](docs/tools/Render-Harness.md#images-in-these-docs).
-
-The launcher image uses placeholder app names supplied by the host fixture. On the board, the shell lists the apps built into the firmware.
 
 ## Try it without a board
 

@@ -29,6 +29,20 @@ the commands from the repository root; a render script writes under its
 | Image | Command | Output to copy |
 |---|---|---|
 | `docs/images/overview/launcher-home.png` | `./launcher/tools/render/scenes/launcher_home_render_host.sh -o <dir>` | `landscape.png` |
+| `docs/images/overview/launcher-home.gif` | below | |
+
+The launcher GIF is one 4 s rock of the board, 30 degrees either way:
+
+```sh
+L=launcher/tools/results/render/launcher_home
+./launcher/tools/render/scenes/launcher_home_render_host.sh
+$L/launcher_home_render --quarter 1 --tilt-sweep --frames 250 --dt 16 \
+    -o $L/sweep.bmp --video $L/sweep.avi
+ffmpeg -y -i $L/sweep.avi -vf "fps=15,palettegen=stats_mode=diff" $L/sweep-palette.png
+ffmpeg -y -i $L/sweep.avi -i $L/sweep-palette.png \
+    -filter_complex "[0:v]fps=15[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" \
+    -loop 0 docs/images/overview/launcher-home.gif
+```
 
 ---
 
