@@ -19,6 +19,13 @@ distance(int a, int b) {
     return a > b ? a - b : b - a;
 }
 
+void
+ui_pointer_aim(ui_pointer_t* p, int x, int y) {
+    p->aim_x = x;
+    p->aim_y = y;
+    p->aimed = true;
+}
+
 static bool
 moved_vertically_past_threshold(const ui_pointer_t* p, const input_t* input) {
     const int dy = distance(input->y, p->press_y);
@@ -30,6 +37,7 @@ begin_drag(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out, int n
     p->press_stage = 0;
     p->press_deferred = false;
     p->dragging = true;
+    p->aimed = false;
     p->last_x = input->x;
     p->last_y = input->y;
     n = emit(out, n, UI_POINTER_MOVE, input->x, input->y);
@@ -58,17 +66,19 @@ step_deferred(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     if (!input->released && moved_vertically_past_threshold(p, input)) {
         return begin_drag(p, input, out, 0);
     }
-    int n = emit(out, 0, UI_POINTER_MOVE, p->press_x, p->press_y);
+    int n = emit(out, 0, UI_POINTER_MOVE, p->aim_x, p->aim_y);
     if (input->released) {
-        n = emit(out, n, UI_POINTER_DOWN, p->press_x, p->press_y);
-        n = emit(out, n, UI_POINTER_UP, p->press_x, p->press_y);
+        n = emit(out, n, UI_POINTER_DOWN, p->aim_x, p->aim_y);
+        n = emit(out, n, UI_POINTER_UP, input->x, input->y);
         p->press_deferred = false;
+        p->aimed = false;
         return n;
     }
     if (distance(input->x, p->press_x) > UI_POINTER_DRAG_THRESHOLD) {
-        n = emit(out, n, UI_POINTER_DOWN, p->press_x, p->press_y);
+        n = emit(out, n, UI_POINTER_DOWN, p->aim_x, p->aim_y);
         p->press_deferred = false;
         p->down = true;
+        p->aimed = false;
     }
     return n;
 }
@@ -84,15 +94,20 @@ step_pressed(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     p->press_stage = 1;
     p->press_x = input->x;
     p->press_y = input->y;
-    int n = emit(out, 0, UI_POINTER_MOVE, p->press_x, p->press_y);
+    if (!p->aimed) {
+        p->aim_x = p->press_x;
+        p->aim_y = p->press_y;
+    }
+    int n = emit(out, 0, UI_POINTER_MOVE, p->aim_x, p->aim_y);
 
     if (!input->released) {
         return n;
     }
-    n = emit(out, n, UI_POINTER_DOWN, p->press_x, p->press_y);
+    n = emit(out, n, UI_POINTER_DOWN, p->aim_x, p->aim_y);
     n = emit(out, n, UI_POINTER_UP, input->x, input->y);
     p->press_stage = 0;
     p->down = false;
+    p->aimed = false;
     return n;
 }
 
@@ -101,16 +116,17 @@ step_hover(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     if (p->over_scrollable && !input->released && moved_vertically_past_threshold(p, input)) {
         return begin_drag(p, input, out, 0);
     }
-    int n = emit(out, 0, UI_POINTER_MOVE, p->press_x, p->press_y);
+    int n = emit(out, 0, UI_POINTER_MOVE, p->aim_x, p->aim_y);
 
     const bool last_hover_frame = (p->press_stage >= UI_POINTER_HOVER_FRAMES);
     if (last_hover_frame && p->over_scrollable && !input->released) {
         p->press_stage = 0;
         p->press_deferred = true;
     } else if (last_hover_frame) {
-        n = emit(out, n, UI_POINTER_DOWN, p->press_x, p->press_y);
+        n = emit(out, n, UI_POINTER_DOWN, p->aim_x, p->aim_y);
         p->press_stage = 0;
         p->down = true;
+        p->aimed = false;
     } else {
         p->press_stage++;
     }
@@ -121,11 +137,12 @@ step_hover(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     /* Lifted mid-sequence. A press that never got its DOWN still owes one,
      * or the tap vanishes entirely. */
     if (!p->down) {
-        n = emit(out, n, UI_POINTER_DOWN, p->press_x, p->press_y);
+        n = emit(out, n, UI_POINTER_DOWN, p->aim_x, p->aim_y);
     }
     n = emit(out, n, UI_POINTER_UP, input->x, input->y);
     p->press_stage = 0;
     p->down = false;
+    p->aimed = false;
     return n;
 }
 

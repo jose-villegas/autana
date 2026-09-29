@@ -28,6 +28,7 @@ set(app_srcs
     "ui/ui_launcher.c"
     "ui/ui_launcher_draw.c"
     "ui/ui_pointer.c"
+    "ui/ui_snap.c"
     "ui/ui_ridge.c"
     "ui/ui_scroll.c"
     "ui/ui_widgets.c"
