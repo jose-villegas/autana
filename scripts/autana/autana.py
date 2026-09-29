@@ -499,7 +499,8 @@ def release(args):
 
 def hand(args):
     """Reserve the board for a maintainer sitting at it - autana refuses new
-    work against it until `autana take-back`."""
+    work against it until `autana take-back`, or an hour after the last
+    `hand`, which running it again renews."""
     usage = "usage: autana hand [--wait <seconds>] <note...>"
     wait = []
     if args and args[0] == "--wait":
@@ -1226,7 +1227,8 @@ COMMAND_GROUPS = (
         Command("lock", lock, (
             ("lock id [--json]", "the name this session holds the lock under"),
             ("lock release <token>", "release a lock this session holds"),
-            ("lock hand [--wait <seconds>] <note...>", "reserve the board for a person at it"),
+            ("lock hand [--wait <seconds>] <note...>",
+             "reserve the board for a person at it for an hour; run again to renew"),
             ("lock take-back", "clear that reservation"))),
     )),
     ("debug", "Debug", (

@@ -134,6 +134,28 @@ class PortWaitTests(unittest.TestCase):
             device.open_when_free(5, self.opener(99), self.sleep, lambda: self.clock[0])
         self.assertIn("wait ran out", str(caught.exception))
 
+    def test_the_timeout_names_the_previous_holder_and_what_of_it_still_runs(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = device_lock.LockStore(root)
+            held = store.acquire(BOARD, "sam@bench:41", "flash")
+            store.release(BOARD, held["token"])
+            active = mock.Mock(store=store, board=BOARD)
+            device.ACTIVE_LOCK.held = active
+            self.addCleanup(setattr, device.ACTIVE_LOCK, "held", None)
+            with mock.patch.object(device, "require_live_lock"),                     mock.patch.object(device.lock_scope, "survivors",
+                                      return_value=[(4242, "esptool")]) as survivors:
+                with self.assertRaises(device.PortUnavailable) as caught:
+                    device.open_when_free(5, self.opener(99), self.sleep, lambda: self.clock[0])
+        message = str(caught.exception)
+        self.assertIn("sam@bench:41 (flash)", message)
+        self.assertIn("4242 (esptool)", message)
+        self.assertEqual(survivors.call_args.args[0]["token"], held["token"])
+
+    def test_without_a_lock_the_timeout_names_no_holder(self):
+        with self.assertRaises(device.PortUnavailable) as caught:
+            device.open_when_free(5, self.opener(99), self.sleep, lambda: self.clock[0])
+        self.assertNotIn("previous holder", str(caught.exception))
+
     def test_reset_reenumeration_reason_reaches_the_timeout(self):
         with self.assertRaisesRegex(RuntimeError, "re-enumerating after reset"):
             device.open_when_free(0, self.opener(1), self.sleep,
@@ -567,13 +589,30 @@ class HumanWaitTests(unittest.TestCase):
 
     def test_replaced_reservation_is_reported(self):
         def replace():
-            self.store.set_human(BOARD, "agent", "download mode")
+            self.store.clear_human(BOARD)
+            self.store.set_human(BOARD, "colleague", "download mode")
 
         self.on_sleep = replace
         code, output = self.hand("--wait", "3")
         self.assertEqual(code, 4)
         self.assertEqual(output.call_args_list[-1].args[0], "human reservation replaced")
         self.assertEqual(self.store.status(BOARD)["human"]["note"], "download mode")
+
+    def test_a_wait_past_the_reservation_lifetime_ends_as_expired(self):
+        self.store.now = lambda: 1000 + self.clock[0]
+        code, output = self.hand("--wait", "7200")
+        self.assertEqual(code, 0)
+        self.assertEqual(output.call_args_list[-1].args[0], "human reservation expired")
+        self.assertGreaterEqual(self.clock[0], device_lock.HUMAN_RESERVATION_SECONDS)
+
+    def test_a_renewal_does_not_end_the_wait(self):
+        def renew():
+            self.store.set_human(BOARD, "agent", "download mode")
+
+        self.on_sleep = renew
+        code, output = self.hand("--wait", "3")
+        self.assertEqual(code, 3)
+        self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out")
 
 
 class SlugTests(unittest.TestCase):

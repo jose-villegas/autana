@@ -139,6 +139,16 @@ def members():
     return [pid for pid in found.Ids[:found.Listed] if pid != os.getpid()]
 
 
+def survivors(record):
+    """A finished holder's job died with it, so what is left is the holder
+    itself if it still runs, or a process that broke away; only the holder's
+    pid is known."""
+    pid = record.get("pid")
+    if not isinstance(pid, int) or pid == os.getpid() or not device_lock.process_alive(pid):
+        return []
+    return [(pid, "")]
+
+
 def terminate_member(pid):
     """Stops `pid` through a handle, and only if it is in this job: the pid
     alone could by now belong to an unrelated process."""

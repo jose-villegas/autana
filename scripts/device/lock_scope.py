@@ -17,3 +17,4 @@ enter = backend.enter
 leave = backend.leave
 members = backend.members
 reap = backend.reap
+survivors = backend.survivors
