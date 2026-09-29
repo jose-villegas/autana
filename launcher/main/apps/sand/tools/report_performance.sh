@@ -85,7 +85,7 @@ done
 # the draw's live in the gfx one. Reporting only the first hid the fact that
 # a present costs as much as a step.
 report_generate() {
-    python "$SCRIPT_DIR/report_performance.py" "$1" "$2" \
+    "$PYTHON" "$SCRIPT_DIR/report_performance.py" "$1" "$2" \
         --source "$LAUNCHER_DIR/main/apps/sand/tests/suite_sand_perf.c" \
         --source "$LAUNCHER_DIR/test/suites/suite_gfx.c"
 }
@@ -131,7 +131,7 @@ report_summary() {
         echo "=== Comparing against baseline: $BASELINE ==="
         # A non-win verdict, or an error like a missing control row, is a
         # normal outcome to print and read rather than a failure of this run.
-        python "$SCRIPT_DIR/compare_reports.py" --verdict "$BASELINE" "$2" || true
+        "$PYTHON" "$SCRIPT_DIR/compare_reports.py" --verdict "$BASELINE" "$2" || true
     fi
 }
 

@@ -38,6 +38,9 @@ jobs:
           done > "$RUNNER_TEMP/shell-scripts.txt"
           cat "$RUNNER_TEMP/shell-scripts.txt"
 
+      - name: Every script with a shebang is stored executable
+        run: sh scripts/gates/check-exec-bits.sh
+
       # Ubuntu's /bin/sh IS dash, so this is a genuine POSIX parse - unlike
       # the same command run from Git Bash, which cannot fail this way.
       - name: POSIX syntax check every #!/bin/sh script

@@ -116,7 +116,6 @@ fi
 if ! command -v cppcheck >/dev/null 2>&1; then
     echo "cppcheck not found on PATH. It's free/GPLv3 - install it:" >&2
     echo "  Windows: winget install cppcheck" >&2
-    echo "  macOS:   brew install cppcheck" >&2
     echo "  Linux:   apt-get install cppcheck (or your distro's package)" >&2
     exit 1
 fi
@@ -144,11 +143,8 @@ REPORT="$RESULTS_DIR/misra_${safe_name}.txt"
 
 if command -v timeout >/dev/null 2>&1; then
     TIMEOUT=timeout
-elif command -v gtimeout >/dev/null 2>&1; then
-    TIMEOUT=gtimeout
 else
     echo "GNU timeout is required so a bad addon rule cannot run indefinitely." >&2
-    echo "  macOS: brew install coreutils" >&2
     exit 1
 fi
 

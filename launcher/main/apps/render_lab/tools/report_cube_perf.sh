@@ -40,7 +40,7 @@ report_timeout=300
 report_sentinel="cube_perf: === CUBE PERF"
 
 report_generate() {
-    python "$SCRIPT_DIR/report_cube_perf.py" "$1" "$2"
+    "$PYTHON" "$SCRIPT_DIR/report_cube_perf.py" "$1" "$2"
 }
 
 # shellcheck source=../../../../tools/device/device_report.sh

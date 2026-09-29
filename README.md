@@ -19,7 +19,7 @@ Image render commands are in each app's tools README ([sand](launcher/main/apps/
 
 ## Try it without a board
 
-Use [Git Bash](https://git-scm.com/download/win) on Windows, or a terminal on macOS or Linux. You need a C compiler for your computer, plus a POSIX shell; **ESP-IDF and a board are not needed**. The renderer writes BMP files and also PNGs when Python has Pillow installed.
+Use [Git Bash](https://git-scm.com/download/win) on Windows, or a terminal on Linux. You need a C compiler for your computer, plus a POSIX shell; **ESP-IDF and a board are not needed**. The renderer writes BMP files and also PNGs when Python has Pillow installed.
 
 ```sh
 ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh
@@ -37,7 +37,6 @@ The test runner prints a verdict and saves its full log. It compiles and runs th
 |---|---|
 | Windows | `winget install BrechtSanders.WinLibs.POSIX.UCRT` |
 | Debian/Ubuntu | `sudo apt install build-essential` |
-| macOS | `xcode-select --install` |
 
 ## What is here
 
@@ -50,7 +49,7 @@ Each app lives in its own folder under `launcher/main/apps/`. The shell calls an
 
 ## Run it on the board
 
-The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a board build, install [ESP-IDF v5.5 or later](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/index.html) and make sure its export script works. The project scripts find ESP-IDF through `IDF_PATH` (on Linux and macOS they also check `~/esp/esp-idf`). Set `IDF_TOOLS_PATH` if your ESP-IDF tools are outside their default location. On Windows, use Git Bash for these commands; the build wrapper calls the ESP-IDF Windows environment through `cmd`.
+The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a board build, install [ESP-IDF v5.5 or later](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/index.html) and make sure its export script works. The project scripts find ESP-IDF through `IDF_PATH` (on Linux they also check `~/esp/esp-idf`). Set `IDF_TOOLS_PATH` if your ESP-IDF tools are outside their default location. On Windows, use Git Bash for these commands; the build wrapper calls the ESP-IDF Windows environment through `cmd`.
 
 ```sh
 ./tools/autana flash dev
