@@ -75,66 +75,53 @@ suites_run_all(void) {
     }
 }
 
-typedef enum {
-    FILTER_OFF,    /* every test runs */
-    FILTER_SURVEY, /* no test runs; each is listed and the patterns tallied */
-    FILTER_RUN,    /* only the selected tests run */
-} filter_phase_t;
-
 static char patterns[SUITE_FILTER_MAX][SUITE_FILTER_LEN];
 static int pattern_count;
 static int pattern_hits[SUITE_FILTER_MAX];
 static int selected_count;
-static filter_phase_t phase;
-static void (*survey_hook)(bool quiet);
+static bool filtering;
 
-bool
-suites_filter_add(const char* pattern) {
-    const size_t length = strlen(pattern);
-    if (length == 0 || length >= SUITE_FILTER_LEN || pattern_count >= SUITE_FILTER_MAX) {
-        return false;
-    }
-    memcpy(patterns[pattern_count], pattern, length + 1);
-    pattern_count++;
-    return true;
-}
-
-void
-suites_filter_clear(void) {
-    pattern_count = 0;
-}
-
-/* Counts a hit for every pattern the name contains, so one that matches
- * nothing stays visible even when another selects the same test. */
+/* Splits "a,b,c" into patterns. A refusal prints the offender, so the host
+ * can tell a refused filter from one that matched nothing. */
 static bool
-name_matches_a_pattern(const char* test_name) {
-    bool any = false;
-    for (int i = 0; i < pattern_count; i++) {
-        if (strstr(test_name, patterns[i]) != NULL) {
-            pattern_hits[i]++;
-            any = true;
+parse_patterns(const char* list) {
+    pattern_count = 0;
+    while (*list != '\0') {
+        const char* comma = strchr(list, ',');
+        const size_t length = comma != NULL ? (size_t)(comma - list) : strlen(list);
+        if (length == 0 || length >= SUITE_FILTER_LEN || pattern_count >= SUITE_FILTER_MAX) {
+            printf("SUITE_FILTER_REFUSED pattern=%.*s\n", (int)(length < 60 ? length : 60), list);
+            pattern_count = 0;
+            return false;
         }
+        memcpy(patterns[pattern_count], list, length);
+        patterns[pattern_count][length] = '\0';
+        pattern_count++;
+        list += length + (comma != NULL ? 1 : 0);
     }
-    return any;
+    return true;
 }
 
 bool
 suites_test_runs(const char* test_name) {
-    if (phase == FILTER_OFF) {
+    if (!filtering) {
         selected_count++;
         return true;
     }
-    const bool matches = name_matches_a_pattern(test_name);
-    if (phase == FILTER_SURVEY) {
-        printf("SUITE_TEST name=%s selected=%d\n", test_name, matches ? 1 : 0);
-        return false;
+    bool matches = false;
+    for (int i = 0; i < pattern_count; i++) {
+        if (strstr(test_name, patterns[i]) != NULL) {
+            pattern_hits[i]++;
+            matches = true;
+        }
     }
+    printf("SUITE_TEST name=%s selected=%d\n", test_name, matches ? 1 : 0);
     selected_count += matches ? 1 : 0;
     return matches;
 }
 
-int
-suites_filter_unmatched(void) {
+static int
+unmatched_patterns(void) {
     int unmatched = 0;
     for (int i = 0; i < pattern_count; i++) {
         unmatched += pattern_hits[i] == 0;
@@ -142,53 +129,43 @@ suites_filter_unmatched(void) {
     return unmatched;
 }
 
-int
-suites_filter_selected(void) {
-    return selected_count;
+suite_run_t
+suites_run_request(const char* request) {
+    suite_run_t run = {0};
+    const char* space = strchr(request, ' ');
+    const size_t name_length = space != NULL ? (size_t)(space - request) : strlen(request);
+    const char* list = space != NULL ? space + 1 : "";
+    if (name_length > SUITE_NAME_MAX) {
+        return run;
+    }
+    memcpy(run.name, request, name_length);
+
+    filtering = false;
+    selected_count = 0;
+    memset(pattern_hits, 0, sizeof pattern_hits);
+    for (int i = 0; i < registered; i++) {
+        if (strcmp(suites[i].name, run.name) != 0) {
+            continue;
+        }
+        run.found = true;
+        filtering = list[0] != '\0';
+        if (filtering && !parse_patterns(list)) {
+            filtering = false;
+            run.refused = true;
+            return run;
+        }
+        suites[i].fn();
+        run.selected = selected_count;
+        run.unmatched = filtering ? unmatched_patterns() : 0;
+        break;
+    }
+    filtering = false;
+    pattern_count = 0;
+    return run;
 }
 
 void
-suites_set_survey_hook(void (*hook)(bool quiet)) {
-    survey_hook = hook;
-}
-
-static void
-run_filtered(const suite_entry_t* entry) {
-    memset(pattern_hits, 0, sizeof pattern_hits);
-    phase = FILTER_SURVEY;
-    if (survey_hook != NULL) {
-        survey_hook(true);
-    }
-    entry->fn();
-    if (survey_hook != NULL) {
-        survey_hook(false);
-    }
-    if (suites_filter_unmatched() == 0) {
-        phase = FILTER_RUN;
-        entry->fn();
-    } else {
-        for (int i = 0; i < pattern_count; i++) {
-            if (pattern_hits[i] == 0) {
-                printf("SUITE_FILTER_UNMATCHED pattern=%s\n", patterns[i]);
-            }
-        }
-    }
-    phase = FILTER_OFF;
-}
-
-bool
-suites_run_one(const char* name) {
-    for (int i = 0; i < registered; i++) {
-        if (strcmp(suites[i].name, name) != 0) {
-            continue;
-        }
-        selected_count = 0;
-        if (pattern_count == 0) {
-            suites[i].fn();
-        } else {
-            run_filtered(&suites[i]);
-        }
-        return true;
-    }
-    return false;
+suites_print_run(const suite_run_t* run) {
+    printf("\nRUNSUITE_COMPLETE name=%s found=%d selected=%d unmatched=%d\n", run->name, run->found ? 1 : 0,
+           run->selected, run->unmatched);
 }

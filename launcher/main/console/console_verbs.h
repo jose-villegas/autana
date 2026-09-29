@@ -28,7 +28,17 @@
  * TUNE_NAME_MAX-long tunable name + " " (1) + an int32_t's longest text
  * ("-2147483648", 11 chars) + a NUL - see console_tune.c's own
  * CONSOLE_VERB(SET, ...) call, which is what this bound is sized for. */
+#if defined(ESP_PLATFORM)
+#include "sdkconfig.h"
+#endif
+
+/* A self-test build also takes RUNSUITE with a suite name and up to
+ * SUITE_FILTER_MAX patterns (console_runsuite.c asserts it fits). */
+#if defined(CONFIG_LAUNCHER_SELFTEST) && CONFIG_LAUNCHER_SELFTEST
+#define CONSOLE_LINE_MAX 384
+#else
 #define CONSOLE_LINE_MAX (4 + TUNE_NAME_MAX + 1 + 11 + 1)
+#endif
 
 /* Assembles one line from a byte stream: true once `line` holds a complete
  * one. A line longer than CONSOLE_LINE_MAX-1 sets `*overflowed` and is

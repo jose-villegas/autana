@@ -151,6 +151,25 @@ class BatchSummaryTests(unittest.TestCase):
         self.assertIn("| 7000 | 7550 | 9000 | 28.6% |", text)
         self.assertIn("| min | median | max | spread |", text)
 
+    def test_an_odd_sum_middle_pair_shows_a_half(self):
+        text = self.summary([(7000, "PASS"), (7001, "PASS")])
+        self.assertIn("| 7000 | 7000.5 | 7001 |", text)
+
+    def test_a_run_with_no_value_for_a_row_is_left_out_of_its_median(self):
+        with tempfile.TemporaryDirectory() as directory:
+            entries = []
+            for run, step in ((1, 7000), (2, None), (3, 7300)):
+                path = Path(directory) / f"run{run}.log"
+                path.write_text("" if step is None else REAL_PERF_RUN.format(step=step, hash="PASS"),
+                                encoding="utf-8")
+                entries.append({"suite": "run_sand_perf_suite", "run": run,
+                                "capture": str(path), "error": None})
+            text = device_report.batch_summary_markdown(entries, {
+                "build_id": "b", "owner": "t", "purpose": "p", "runs": 3, "worktree": "w",
+                "commit": "c"})
+        self.assertIn("| `test_a_full_size_step_fits_in_the_frame_budget` | 7000 | - | 7300 "
+                      "| 7000 | 7150 | 7300 | 4.3% |", text)
+
     def test_a_result_that_changes_between_runs_of_one_image_is_listed(self):
         text = self.summary([(7167, "FAIL"), (10937, "PASS"), (7169, "FAIL")])
         section = text.split("### Result changed between runs")[1].split("###")[0]

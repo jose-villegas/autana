@@ -1517,8 +1517,8 @@ class SuiteFlashAndRunsTests(unittest.TestCase):
 
 class SuiteSecondsTests(unittest.TestCase):
     """`suite`'s own per-call timeout: a trailing `suite <name> [seconds]`,
-    forwarded as device.py batch's --max-seconds. Left out, device.py sizes
-    it from the suite's recorded runs."""
+    forwarded as device.py batch's --max-seconds. Left out, batch's own
+    1800 s stands."""
 
     def test_no_seconds_leaves_the_window_to_device_py(self):
         with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \

@@ -625,8 +625,8 @@ def suite(args):
     """One or more registered suites, captured under one lock - against the
     image already on the board, or, with `--flash`, built and flashed first.
     The name is each suite's own function, as SUITE_REGISTER() in its source
-    spells it. `seconds` caps each capture; when omitted device.py sizes it
-    from how long that suite recently took. `--test` (repeatable, or a comma
+    spells it. `seconds` caps each capture (1800 when omitted, and a
+    silent board ends one sooner). `--test` (repeatable, or a comma
     list) narrows the run, on the device, to the tests whose name contains
     a pattern."""
     if not args:
@@ -1235,7 +1235,7 @@ COMMAND_GROUPS = (
         Command("suite", suite, (
             ("suite <name>... [seconds] [--runs N] [--flash] [--verbose]",
              "run suites under one lock; --flash builds and flashes first; seconds caps a "
-             "capture (default: from the suite's recorded runs)"),
+             "capture (1800 when omitted)"),
             ("suite <name> --test PATTERN[,PATTERN]",
              "only the tests whose name contains a pattern; --test repeats"),
             ("suite list [text] [--json]", "the suites this project registers"))),

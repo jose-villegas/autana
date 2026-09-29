@@ -586,15 +586,13 @@ def successful_duration(row):
     return duration if math.isfinite(duration) and duration >= 0 else None
 
 
-def record_duration(kind, seconds, error=None, root=None, detail=None):
-    """A failed run is recorded with its error and never shapes an estimate.
-    `detail` names what ran inside the kind - a suite and its test filter -
-    so a window can be sized from that suite's own history."""
+def record_duration(kind, seconds, error=None, root=None):
+    """A failed run is recorded with its error and never shapes an estimate."""
     path = Path(root or default_root()) / DURATIONS_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as stream:
         stream.write(json.dumps({"command": kind, "duration_seconds": seconds,
-                                 "error": error, **(detail or {})}) + "\n")
+                                 "error": error}) + "\n")
     rows = duration_rows(path.parent)
     if len(rows) > DURATIONS_TRIM_LINES:
         trim_durations(path, rows)
@@ -608,8 +606,7 @@ def trim_durations(path, rows):
     by_kind = {}
     for index, row in enumerate(rows):
         if successful_duration(row) is not None:
-            key = (row["command"], row.get("suite"), row.get("filter"))
-            by_kind.setdefault(key, []).append(index)
+            by_kind.setdefault(row["command"], []).append(index)
     recent = sorted(index for runs in by_kind.values() for index in runs[-ESTIMATE_RECENT_RUNS:])
     kept = recent[-DURATIONS_TRIM_LINES:]
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
@@ -626,22 +623,6 @@ def duration_history(root=None, minimum=ESTIMATE_MINIMUM_RUNS):
             history.setdefault(row["command"], []).append(duration)
     return {kind: statistics.median(values[-ESTIMATE_RECENT_RUNS:])
             for kind, values in history.items() if len(values) >= minimum}
-
-
-def suite_duration(root, suite, test_filter=None):
-    """The longest of the recent successful `run-suite` captures of `suite`
-    under this `test_filter` (a sorted comma-joined string, None for the
-    whole suite), in seconds. A filtered run never took longer than the whole
-    suite, so with no history of its own the whole suite's is its ceiling.
-    None when there is no history to go on."""
-    def longest(wanted):
-        seen = [duration for row in duration_rows(root)
-                if row.get("command") == "run-suite" and row.get("suite") == suite
-                and row.get("filter") == wanted
-                for duration in [successful_duration(row)] if duration is not None]
-        return max(seen[-ESTIMATE_RECENT_RUNS:]) if seen else None
-    found = longest(test_filter)
-    return found if found is not None or test_filter is None else longest(None)
 
 
 def local_time(timestamp):

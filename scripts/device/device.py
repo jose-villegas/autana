@@ -454,7 +454,6 @@ class HeldLock:
         self.started = time.monotonic()
         self.kind = kind
         self.error = None
-        self.detail = {}
 
     def wait_notice(self, ticket):
         now = self.store.now()
@@ -524,7 +523,7 @@ class HeldLock:
             error = (str(error_value) if error_type else
                      str(LockLost()) if lost else self.error)
             device_lock.record_duration(self.kind, time.monotonic() - self.started, error,
-                                        self.store.root, self.detail)
+                                        self.store.root)
         if lost and error_type is None:
             raise LockLost()
 
@@ -542,7 +541,6 @@ class NestedCommand:
         self.kind = kind
         self.started = time.monotonic()
         self.error = None
-        self.detail = {}
 
 
 def tests_done(data):
@@ -600,11 +598,9 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
                 if suite_name:
                     if b"ignoring line: 'RUNSUITE" in text:
                         raise RuntimeError("this build has no test suites - autana flash diag")
-                    if b"ignoring line: 'TESTFILTER" in text:
-                        raise RuntimeError("this build cannot filter tests (--test) - autana flash diag")
-                    if b"TESTFILTER refused '" in text:
-                        raise RuntimeError("the device refused a --test pattern: " +
-                                           text.split(b"TESTFILTER refused ")[1].decode("ascii", "replace"))
+                    if b"console line too long" in text:
+                        raise TestFilterError("the device dropped the request as too long for its "
+                                              "console line: " + text.decode("ascii", "replace"))
                     if (b"no suite named '" + suite_name.encode("ascii") + b"'") in text:
                         raise RuntimeError("no suite named " + suite_name + " on this build")
                     if b"SUITE_DONE" in text or text.startswith(suite_complete):
@@ -829,7 +825,7 @@ def holding(store, board, args, held_lock, kind):
         raise
     finally:
         device_lock.record_duration(kind, time.monotonic() - nested.started,
-                                    error or nested.error, store.root, nested.detail)
+                                    error or nested.error, store.root)
 
 
 FLASH_POLL_SECONDS = 0.5
@@ -1145,73 +1141,66 @@ def write_image(built, store, board, held_lock=None):
     return build_id
 
 
-# The console line, minus "TESTFILTER " (console/console_verbs.h). Longer
-# would be dropped whole by the device, so the run would silently be the full suite.
-TEST_PATTERN_MAX = 37
-# How many patterns the device keeps: SUITE_FILTER_MAX in launcher/test/suites.h.
-TEST_PATTERNS_MAX = 8
-
-
 def test_patterns(values):
     """The patterns of repeated `--test` values, each a comma list. A test's
     name is a C identifier, so a pattern is one too - the device matches it as
-    a case-sensitive substring of the name."""
+    a case-sensitive substring of the name, and refuses one past its limits
+    (SUITE_FILTER_MAX and SUITE_FILTER_LEN in launcher/test/suites.h)."""
     patterns = []
     for value in values or []:
         for pattern in value.split(","):
             pattern = pattern.strip()
             if not re.fullmatch(r"\w+", pattern):
-                raise RuntimeError(f"--test {pattern!r}: a pattern is part of a test name - "
-                                   "letters, digits and underscores")
-            if len(pattern) > TEST_PATTERN_MAX:
-                raise RuntimeError(f"--test {pattern!r} is longer than {TEST_PATTERN_MAX} "
-                                   "characters, which the device console cannot take")
+                raise TestFilterError(f"--test {pattern!r}: a pattern is part of a test name - "
+                                      "letters, digits and underscores")
             if pattern not in patterns:
                 patterns.append(pattern)
-    if len(patterns) > TEST_PATTERNS_MAX:
-        raise RuntimeError(f"--test: {len(patterns)} patterns, the device keeps {TEST_PATTERNS_MAX}")
     return patterns
 
 
-def filter_key(patterns):
-    """What the records call a filter, whatever order it was typed in."""
-    return ",".join(sorted(patterns)) if patterns else None
-
-
 def suite_request(suite, patterns):
-    """The console lines that run `suite`: TESTFILTER first (bare, to forget
-    any left from an earlier run), one pattern a line, then RUNSUITE."""
-    lines = ["", "TESTFILTER"] if patterns else [""]
-    lines += ["TESTFILTER " + pattern for pattern in patterns]
-    lines.append("RUNSUITE " + suite)
-    return ("\n".join(lines) + "\n").encode("ascii")
+    """The console line that runs `suite`, narrowed to `patterns` when given."""
+    return ("\nRUNSUITE " + " ".join([suite, ",".join(patterns)] if patterns else [suite])
+            + "\n").encode("ascii")
 
 
-SUITE_COMPLETE_RE = re.compile(r"RUNSUITE_COMPLETE name=\S+ found=\d+"
+SUITE_COMPLETE_RE = re.compile(r"RUNSUITE_COMPLETE name=.+? found=(?P<found>\d)"
                                r"(?: selected=(?P<selected>\d+) unmatched=(?P<unmatched>\d+))?")
 
 
-class NoTestMatched(RuntimeError):
-    """A --test pattern selected nothing; no test of the suite ran."""
+class TestFilterError(RuntimeError):
+    """The board cannot or will not run the filter asked for. It ends the
+    batch: the next run would meet the same board."""
+
+    __test__ = False
 
 
-def check_test_filter(data, suite, patterns):
-    """A filtered run that did not filter, or filtered to nothing, is an
-    error and not a result: the first would report every row of the suite as
-    if it had been asked for, the second lists the names to choose from."""
+class NoTestMatched(TestFilterError):
+    """A --test pattern selected nothing."""
+
+
+def check_test_filter(data, suite):
+    """A filtered run that did not filter, or had a pattern that matched
+    nothing, is an error and not a result: the first would report every row
+    of the suite as if it had been asked for, the second lists the names to
+    choose from."""
     text = data.decode("utf-8", errors="replace")
     complete = None
     for complete in SUITE_COMPLETE_RE.finditer(text):
         pass
+    refused = re.findall(r"SUITE_FILTER_REFUSED pattern=(\S*)", text)
+    if refused:
+        raise TestFilterError(f"the device refused --test {refused[0]!r}: a pattern is one to "
+                              "SUITE_FILTER_LEN - 1 characters, and there are at most "
+                              "SUITE_FILTER_MAX (launcher/test/suites.h)")
     if complete is None:
         return
     if complete.group("selected") is None:
-        raise RuntimeError("this build predates --test and ran the whole suite - autana flash diag")
+        raise TestFilterError("this image predates --test - autana flash diag")
     if int(complete.group("unmatched")):
-        missing = re.findall(r"SUITE_FILTER_UNMATCHED pattern=(\S+)", text)
         names = re.findall(r"SUITE_TEST name=(\S+)", text)
         raise NoTestMatched(
-            f"--test {', '.join(missing)} matches no test of {suite}; nothing ran. Its tests:\n  "
+            f"a --test pattern matches no test of {suite}. Its tests:\n  "
             + "\n  ".join(dict.fromkeys(names)))
 
 
@@ -1230,15 +1219,11 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
     held = None
     try:
         with holding(store, board, args, held_lock, "run-suite") as held:
-            held.detail = {"suite": args.suite, "filter": filter_key(patterns)}
             with open_when_free(FLASH_PORT_WAIT_SECONDS if held_lock else PORT_WAIT_SECONDS) as connection:
                 connection.write(suite_request(args.suite, patterns))
                 connection.flush()
                 data, reason = capture(connection, output, args.max_seconds, args.idle_seconds,
                                        args.expect_build_id, args.suite)
-            if reason != "complete":
-                # A capture cut short says nothing of how long the suite takes.
-                held.error = "capture ended: " + str(reason)
     except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
         error = str(caught)
         raise
@@ -1259,7 +1244,7 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
             print("report generation failed (capture is unaffected): " + str(report_error),
                   file=sys.stderr)
     if patterns:
-        check_test_filter(data, args.suite, patterns)
+        check_test_filter(data, args.suite)
     failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False))
     return 1 if failed else 0
 
@@ -1504,25 +1489,6 @@ def screenshot(args, store, board):
     return 0
 
 
-# Each capture's wait, when the caller names none: the longest that suite (with
-# this filter) recently took, with room for a slow run, never under the floor.
-# A suite with no history yet gets the generous figure - a first run of a long
-# suite must not time out on a guess.
-SUITE_WINDOW_FLOOR = 600
-SUITE_WINDOW_UNKNOWN = 1800
-SUITE_WINDOW_MARGIN = 1.5
-
-
-def suite_window(root, suites, patterns):
-    """Seconds one capture of the longest of `suites` may take."""
-    window = SUITE_WINDOW_FLOOR
-    for suite_name in suites:
-        recorded = device_lock.suite_duration(root, suite_name, filter_key(patterns))
-        window = max(window, SUITE_WINDOW_UNKNOWN if recorded is None
-                     else recorded * SUITE_WINDOW_MARGIN)
-    return window
-
-
 def batch(args, store, board):
     """Capture every suite `runs` times under ONE lock, then write one
     summary across all runs. `args.flash` builds and flashes first, as the
@@ -1562,10 +1528,6 @@ def batch(args, store, board):
         else:
             build_id = args.expect_build_id
         commit = git_commit(worktree)
-        window = args.max_seconds
-        if window is None:
-            window = suite_window(store.root, args.suite, patterns)
-        print(f"batch: each capture waits up to {window:.0f} s", flush=True)
         for run in range(1, args.runs + 1):
             for suite_name in args.suite:
                 capture_at = now()
@@ -1578,7 +1540,7 @@ def batch(args, store, board):
                     out, purpose = str(resolved), f"{args.purpose} ({suite_name} run {run}/{args.runs})"
                 suite_args = argparse.Namespace(
                     owner=args.owner, wait=args.wait, suite=suite_name, out=out, purpose=purpose,
-                    max_seconds=window, idle_seconds=args.idle_seconds,
+                    max_seconds=args.max_seconds, idle_seconds=args.idle_seconds,
                     expect_build_id=build_id, verbose=getattr(args, "verbose", False),
                     test_filter=patterns)
                 print(f"batch: {suite_name} run {run}/{args.runs}", flush=True)
@@ -1589,8 +1551,8 @@ def batch(args, store, board):
                 try:
                     failed = bool(run_suite(suite_args, store, board, held_lock=held,
                                             worktree=worktree, commit=commit))
-                except NoTestMatched:
-                    # The same pattern would miss again in every remaining run.
+                except TestFilterError:
+                    # The same board would answer the same in every remaining run.
                     raise
                 except RuntimeError as caught:
                     error = str(caught)
@@ -1779,9 +1741,7 @@ def main(argv=None):
                               help="capture against the image already on the board")
     batch_parser.add_argument("--perf-scope", action="store_true",
                               help="build the perf-scoped image (needs --flash, the default)")
-    batch_parser.add_argument("--max-seconds", type=float, default=None,
-                              help="each capture's wait; when omitted, sized from the recorded "
-                                   "duration of that suite (and test filter)")
+    batch_parser.add_argument("--max-seconds", type=float, default=1800)
     batch_parser.add_argument("--test", dest="test_filter", action="append", metavar="PATTERN",
                               help="run only the tests whose name contains PATTERN; repeat or "
                                    "comma-separate for several")

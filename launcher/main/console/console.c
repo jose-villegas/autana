@@ -154,8 +154,12 @@ console_task(void* arg) {
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
-        if (console_append_char(line, &len, &overflowed, c)
-            && !console_registry_handle_line(&shared, line, console_reply_stdio)) {
+        const bool was_overflowed = overflowed;
+        const bool complete = console_append_char(line, &len, &overflowed, c);
+        if (overflowed && !was_overflowed) {
+            ESP_LOGW(TAG, "console line too long (max %d) - dropped", CONSOLE_LINE_MAX - 1);
+        }
+        if (complete && !console_registry_handle_line(&shared, line, console_reply_stdio)) {
             queue_unclaimed_line(line);
         }
     }

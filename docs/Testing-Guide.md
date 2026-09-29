@@ -264,18 +264,18 @@ over. This is what makes iterating on one area fast: flash the diag build once, 
 `autana suite` whichever suite covers what changed, as many times as
 needed, without paying a rebuild-and-reflash cycle per attempt.
 
-**Narrowing a suite.** `testfilter <pattern>` (one substring per line, bare to
-forget them) sent before `runsuite` limits it to the tests whose name contains
-a pattern; `autana suite <name> --test <pattern>` sends it
-([syntax](tools/Autana-CLI.md#tests)). The runner walks the suite once with
-every test skipped and prints `SUITE_TEST name=<test> selected=<0|1>` for
-each; if every pattern selected something it runs the suite for real, else it
-prints `SUITE_FILTER_UNMATCHED pattern=<p>` and runs nothing. The choke point
-is the `RUN_TEST` override (`launcher/test/timing.c`), so no suite changes;
-what a suite does between its `RUN_TEST` lines runs in both walks, but the
-first has device logging switched off, so a summary a suite logs afterwards
-appears once, from the run. `selected=` in the completion line is how
-many tests ran.
+**Narrowing a suite.** `runsuite <suite> <pattern>[,<pattern>...]` limits the
+run to the tests whose name contains a pattern; `autana suite <name> --test
+<pattern>` sends it ([syntax](tools/Autana-CLI.md#tests)). A selftest build's
+console line is long enough for the most patterns `launcher/test/suites.h`
+allows. The choke point is the `RUN_TEST` override (`launcher/test/timing.c`),
+so no suite changes: for every test it reaches it prints
+`SUITE_TEST name=<test> selected=<0|1>` and runs only the selected. The
+patterns live for that one request, so the next `runsuite` runs everything. The
+completion line's `selected=` is how many tests ran and `unmatched=` how many
+patterns matched none; a refused pattern prints `SUITE_FILTER_REFUSED` and runs
+nothing. `launcher/test/tests/test_suite_filter_output.py` reads the runner's
+real output, so a reworded line turns the tooling tests red.
 
 ### Recommended practice
 

@@ -45,38 +45,32 @@ void suite_register_on_request(const char* name, suite_fn fn);
 /* Runs every registered suite, in name order so the output is stable. */
 void suites_run_all(void);
 
-/* Runs exactly one registered suite by its exact name - the string
- * SUITE_REGISTER() stringified its own function name into. For a targeted
- * run: a perf suite's own report can be minutes behind whatever registered
- * ahead of it alphabetically, and usually only one suite's output is wanted.
- *
- * Returns false (nothing run) if no suite matches `name` exactly, so the
- * caller can report that back rather than silently doing nothing. */
-bool suites_run_one(const char* name);
-
-/* Narrows suites_run_one() to tests whose name contains a pattern. It first
- * walks the suite with every test skipped, printing "SUITE_TEST name=...
- * selected=..." for each, and runs it for real only if every pattern matched
- * - a typo costs seconds, not minutes. Add before the call, clear after;
- * false when empty, too long or full. */
+/* One RUNSUITE request: "<suite>", or "<suite> <pattern>[,<pattern>...]" to
+ * run only the tests whose name contains a pattern (case-sensitive substring).
+ * A pattern holds at most SUITE_FILTER_LEN - 1 characters and a request at
+ * most SUITE_FILTER_MAX of them; one past either is refused, nothing runs.
+ * While filtering, suites_test_runs() prints "SUITE_TEST name=... selected=..."
+ * for every test reached. The patterns live for the call only. */
+#define SUITE_NAME_MAX   38
 #define SUITE_FILTER_MAX 8
 #define SUITE_FILTER_LEN 40
-bool suites_filter_add(const char* pattern);
 
-/* Called with true as the skip-everything walk starts and false as it ends,
- * so a platform can silence what a suite logs between its tests: that output
- * describes tests that did not run. */
-void suites_set_survey_hook(void (*hook)(bool quiet));
-void suites_filter_clear(void);
+typedef struct {
+    char name[SUITE_NAME_MAX + 1];
+    bool found;    /* a suite of that exact name is registered */
+    bool refused;  /* a pattern was too long, empty, or one too many */
+    int selected;  /* tests that ran */
+    int unmatched; /* patterns that matched no test */
+} suite_run_t;
 
-/* Asked by suite_run_test_timed() (timing.c) for each test: true to run it. Always true
- * outside a filtered suites_run_one(). */
+suite_run_t suites_run_request(const char* request);
+
+/* The completion line a harness waits for - one owner, so the tools that parse
+ * it are pinned to what this prints. */
+void suites_print_run(const suite_run_t* run);
+
+/* Asked by suite_run_test_timed() (timing.c) for each test: true to run it. */
 bool suites_test_runs(const char* test_name);
-
-/* After suites_run_one(): how many tests ran, and how many patterns matched
- * no test (then none ran). */
-int suites_filter_selected(void);
-int suites_filter_unmatched(void);
 
 /* How many suites did NOT fit and were dropped - see suite_register().
  *

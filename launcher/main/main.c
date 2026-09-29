@@ -895,20 +895,18 @@ app_boot_init(void) {
 /* See console/console.c for framebuffer contention explanation. */
 static void
 run_pending_selftest_suite(void) {
-    char runsuite_name[64];
-    if (!console_runsuite_take_request(runsuite_name, sizeof runsuite_name)) {
+    char request[CONSOLE_LINE_MAX];
+    if (!console_runsuite_take_request(request, sizeof request)) {
         return;
     }
-    const bool found = suites_run_one(runsuite_name);
-    if (!found) {
-        ESP_LOGE(TAG, "no suite named '%s' is registered", runsuite_name);
+    const suite_run_t run = suites_run_request(request);
+    if (!run.found) {
+        ESP_LOGE(TAG, "no suite named '%s' is registered", run.name);
     }
     suite_report_frame_watch();
     /* On its own line, so a harness knows the suite ended without having to
      * guess from how long the console has been quiet. */
-    printf("\nRUNSUITE_COMPLETE name=%s found=%d selected=%d unmatched=%d\n", runsuite_name, found ? 1 : 0,
-           suites_filter_selected(), suites_filter_unmatched());
-    suites_filter_clear();
+    suites_print_run(&run);
     fflush(stdout);
     /* A suite draws, clears and presents on its own, outside the shell's
      * own dirty tracking - the next real frame must repaint in full rather

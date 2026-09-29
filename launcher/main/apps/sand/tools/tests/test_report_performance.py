@@ -79,11 +79,41 @@ class ReportPerformanceTest(unittest.TestCase):
         self.assertNotIn(unselected, report)
         self.assertIn("test filter", report)
 
+    def test_a_selected_test_that_never_reported_is_still_missing(self):
+        # Only "selected=0" excuses a row: a selected test that left no result
+        # is a run that went wrong.
+        missing = "test_a_screen_of_water_fits_in_the_frame_budget"
+        capture = (BOOT
+                   + f"SUITE_TEST name={missing} selected=1\n"
+                   + f"SUITE_TEST name={BUDGETED} selected=1\n"
+                   + MEASURED + COMPLETE)
+        done, report = self.run_reporter(capture)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn(missing, report)
+        self.assertIn("did not appear in this capture", report)
+
     def test_a_test_missing_from_an_unfiltered_run_is_still_reported(self):
         done, report = self.run_reporter(BOOT + MEASURED + COMPLETE)
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("did not appear in this capture", report)
         self.assertNotIn("test filter", report)
+
+
+class SuiteTestLinesTest(unittest.TestCase):
+    """The reporter reads the runner's own SUITE_TEST lines, not a copy of them."""
+
+    def test_the_lines_a_filtered_run_prints_are_what_the_reporter_excuses(self):
+        sys.path.insert(0, str(TOOLS.parents[3] / "test" / "tests"))
+        import host_runner
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("report_performance", REPORTER)
+        reporter = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(reporter)
+        handle, capture = tempfile.mkstemp(suffix=".txt")
+        os.close(handle)
+        self.addCleanup(os.unlink, capture)
+        pathlib.Path(capture).write_text(host_runner.run("filter_fixture_suite fire"), encoding="utf-8")
+        self.assertEqual(reporter.parse_unselected(capture), {"test_gas_fits", "test_water_fits"})
 
 
 if __name__ == "__main__":
