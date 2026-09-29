@@ -28,3 +28,13 @@ capture. The Gouraud scene rotates when stepped over several frames.
 | `render-lab-cube.png`, `render-lab-cube.gif` | the Gouraud cube; the GIF plays the rotation forward and back |
 | `render-lab-cornell.png` | the ray-traced Cornell box, fully resolved, no HUD |
 | `render-lab-sponza.gif` | the start of the Sponza flythrough |
+
+## Sponza triangle sizes
+
+```sh
+./launcher/main/apps/render_lab/tools/report_sponza_triangle_sizes.sh [--write DIR | --against DIR]
+```
+
+At the poses `suite_sponza_perf.c` times, how many drawn triangles cover
+0, 1, 2-4 or more pixel centres. `--write` keeps each pose's frame and
+`--against` diffs a later build's frames with them, pixel by pixel.
