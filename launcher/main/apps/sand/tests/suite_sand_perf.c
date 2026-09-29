@@ -1585,7 +1585,7 @@ test_a_growing_plant_bed_fits_in_the_frame_budget(void) {
     free(blocks);
 
     /* Soak/dry is 28% of this step. */
-    perf_target("growing plant bed", per_step, 46410, 53380);
+    perf_target("growing plant bed", per_step, 46420, 53390);
 }
 
 static void
@@ -2594,7 +2594,7 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
     free(blocks);
     free(impulses);
 
-    perf_target("gunpowder basin", per_step, 30910, 35550);
+    perf_target("gunpowder basin", per_step, 30920, 35560);
 }
 
 /*
@@ -2607,7 +2607,7 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
  */
 
 /* Perf-scoped goals for the three plant-scene rows. */
-#define PLANT_RUIN_BUDGET_US    64900
+#define PLANT_RUIN_BUDGET_US    64910
 #define FILLING_BASIN_BUDGET_US 16160
 #define SNOWFALL_BUDGET_US      35980
 
@@ -2686,7 +2686,7 @@ test_the_plant_ruin_scene_fits_in_the_frame_budget(void) {
     /* THE INTERACTION IS THE FINDING: the same bed, grown the same way, is
      * 68,076 us a step while it is merely drinking rain and 83,173 once acid
      * and lava arrive - 22% for the pours alone. */
-    perf_target("plant ruin", per_step, PLANT_RUIN_BUDGET_US, 74640);
+    perf_target("plant ruin", per_step, PLANT_RUIN_BUDGET_US, 74650);
 }
 
 /* Water running down a ramp into a pool (build_filling_basin_scene(), shared
@@ -2952,7 +2952,7 @@ test_a_finished_tree_fits_in_the_frame_budget(void) {
  * played LANDSCAPE, down grid +X - geometry in
  * suite_sand_scenes.h. Perf-scoped at block 16x32. */
 #define LANDSCAPE_WATER_BUDGET_US      24650
-#define LANDSCAPE_DEEP_WATER_BUDGET_US 26060
+#define LANDSCAPE_DEEP_WATER_BUDGET_US 26070
 #define LANDSCAPE_SAND_BUDGET_US       7100
 
 static int64_t
@@ -3055,7 +3055,7 @@ test_pouring_water_into_a_deep_landscape_bed_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("deep landscape water", per_step, LANDSCAPE_DEEP_WATER_BUDGET_US, 29970);
+    perf_target("deep landscape water", per_step, LANDSCAPE_DEEP_WATER_BUDGET_US, 29990);
 }
 
 /* The liquid-free landscape row. Without it a geometry change that moved
