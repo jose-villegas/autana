@@ -16,6 +16,7 @@ DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 import device_lock
 import device_hook
+import lock_scope
 
 class Clock:
     def __init__(self):
@@ -471,6 +472,392 @@ class LockTests(unittest.TestCase):
         self.assertEqual(self.lock.status("COM5")["queue"], [])
 
 
+class HumanReservationExpiryTests(unittest.TestCase):
+    """A person's reservation has no heartbeat, so it lapses after
+    HUMAN_RESERVATION_SECONDS unless the same owner reserves again."""
+
+    HOUR = 3600
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.clock = Clock()
+        self.lock = device_lock.LockStore(
+            Path(self.temp.name), self.clock.now,
+            lambda pid: pid in (1, device_lock.os.getpid()))
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def claim(self, owner="agent"):
+        ticket = self.lock.enqueue("COM5", owner, "flash", pid=1)
+        held = self.lock.claim("COM5", ticket, "")
+        if held is None:
+            self.lock.cancel("COM5", ticket)
+        return held
+
+    def test_reserving_says_whether_it_renewed(self):
+        self.assertEqual(self.lock.set_human("COM5", "maintainer", "bench")[1], False)
+        self.assertEqual(self.lock.set_human("COM5", "maintainer", "bench")[1], True)
+
+    def test_the_lifetime_is_one_hour(self):
+        self.assertEqual(device_lock.HUMAN_RESERVATION_SECONDS, self.HOUR)
+
+    def test_a_reservation_just_short_of_an_hour_still_blocks(self):
+        self.lock.set_human("COM5", "maintainer", "bench")
+        self.clock.advance(self.HOUR - 1)
+        self.assertIsNone(self.claim())
+        self.assertEqual(self.lock.status("COM5")["human"]["owner"], "maintainer")
+
+    def test_an_hour_old_reservation_is_released_and_the_board_is_claimed(self):
+        self.lock.set_human("COM5", "maintainer", "bench")
+        self.clock.advance(self.HOUR)
+        held = self.claim()
+        self.assertEqual(held["owner"], "agent")
+        self.assertFalse(self.lock.human_path("COM5").exists())
+
+    def test_the_event_hook_says_the_reservation_expired(self):
+        self.lock.set_human("COM5", "maintainer", "bench")
+        self.clock.advance(self.HOUR)
+        with mock.patch.object(device_hook, "emit") as emit:
+            self.claim()
+        self.assertEqual(emit.call_args_list, [
+            mock.call("human-expired", "COM5", "maintainer", note="bench"),
+            mock.call("acquired", "COM5", "agent", "flash"),
+        ])
+
+    def test_status_treats_an_expired_reservation_as_released_and_says_so(self):
+        self.lock.set_human("COM5", "maintainer", "bench")
+        self.clock.advance(self.HOUR + 120)
+        entry = device_lock.status_entry(self.lock, "COM5", durations={})
+        self.assertEqual(entry["state"], "unlocked")
+        self.assertEqual(entry["expired"]["owner"], "maintainer")
+        self.assertEqual(entry["expired"]["ago_seconds"], 120)
+        text = "\n".join(device_lock.status_lines(entry))
+        self.assertIn("human reservation from maintainer: bench expired 2m ago and is released",
+                      text)
+
+    def test_status_shows_the_time_left(self):
+        self.lock.set_human("COM5", "maintainer", "bench")
+        self.clock.advance(1200)
+        entry = device_lock.status_entry(self.lock, "COM5", durations={})
+        self.assertEqual(entry["remaining_seconds"], self.HOUR - 1200)
+        self.assertIn("40m left", "\n".join(device_lock.status_lines(entry)))
+
+    def test_reserving_again_renews_it(self):
+        first, _ = self.lock.set_human("COM5", "maintainer", "bench")
+        self.clock.advance(self.HOUR - 60)
+        self.assertEqual(self.lock.set_human("COM5", "maintainer", "still at the bench")[0], first)
+        self.clock.advance(self.HOUR - 60)
+        self.assertIsNone(self.claim())
+        human = self.lock.status("COM5")["human"]
+        self.assertEqual((human["id"], human["note"]), (first, "still at the bench"))
+        self.clock.advance(61)
+        self.assertEqual(self.claim()["owner"], "agent")
+
+    def test_renewing_keeps_the_original_start_and_announces_nothing_new(self):
+        self.lock.set_human("COM5", "maintainer", "bench")
+        self.clock.advance(300)
+        with mock.patch.object(device_hook, "emit") as emit:
+            self.lock.set_human("COM5", "maintainer", "bench")
+        emit.assert_not_called()
+        human = self.lock.status("COM5")["human"]
+        self.assertEqual(human["since_at"], 1000.0)
+        self.assertEqual(human["expires_at"], 1300.0 + self.HOUR)
+
+    def test_a_later_hand_from_another_process_renews_under_its_own_name(self):
+        first, _ = self.lock.set_human("COM5", "ville@bench:100", "bench")
+        self.clock.advance(600)
+        self.assertEqual(self.lock.set_human("COM5", "ville@bench:200", "bench")[0], first)
+        human = self.lock.status("COM5")["human"]
+        self.assertEqual((human["owner"], human["expires_at"]), ("ville@bench:200", 1600.0 + self.HOUR))
+
+    def test_taking_back_then_reserving_is_a_new_reservation(self):
+        first, _ = self.lock.set_human("COM5", "maintainer", "bench")
+        self.lock.clear_human("COM5")
+        self.assertNotEqual(self.lock.set_human("COM5", "maintainer", "bench")[0], first)
+
+    def test_reserving_after_it_lapsed_starts_a_new_reservation(self):
+        first, _ = self.lock.set_human("COM5", "maintainer", "bench")
+        self.clock.advance(self.HOUR)
+        with mock.patch.object(device_hook, "emit") as emit:
+            second, _ = self.lock.set_human("COM5", "maintainer", "bench")
+        self.assertNotEqual(second, first)
+        self.assertEqual(emit.call_args_list, [
+            mock.call("human-expired", "COM5", "maintainer", note="bench"),
+            mock.call("human-reserved", "COM5", "maintainer", note="bench"),
+        ])
+
+    def test_a_record_from_before_reservations_expired_lapses_an_hour_after_it_began(self):
+        self.lock.write_json(self.lock.human_path("COM5"), {
+            "board": "COM5", "id": "old", "note": "bench", "owner": "maintainer",
+            "since_at": 1000.0, "protocol": 1})
+        self.clock.advance(self.HOUR - 1)
+        self.assertIsNone(self.claim())
+        self.clock.advance(1)
+        self.assertEqual(self.claim()["owner"], "agent")
+
+    def test_take_back_still_clears_a_live_reservation(self):
+        self.lock.set_human("COM5", "maintainer", "bench")
+        self.lock.clear_human("COM5")
+        self.assertEqual(self.claim()["owner"], "agent")
+
+    def test_a_waiter_behind_an_expiring_reservation_gets_the_board(self):
+        self.lock.set_human("COM5", "maintainer", "bench")
+        with mock.patch.object(device_lock.time, "sleep",
+                               side_effect=lambda seconds: self.clock.advance(self.HOUR)):
+            held = self.lock.acquire("COM5", "agent", "flash", wait=2 * self.HOUR)
+        self.assertEqual(held["owner"], "agent")
+
+
+class LockRootTests(unittest.TestCase):
+    """Where the lock lives must not depend on anything a job sets for itself."""
+
+    def without_override(self, **environment):
+        base = {key: value for key, value in os.environ.items()
+                if key not in ("AUTANA_DEVICE_LOCK_ROOT", "TMPDIR", "TEMP", "TMP")}
+        return mock.patch.dict(os.environ, dict(base, **environment), clear=True)
+
+    def test_an_override_names_the_root(self):
+        with self.without_override(AUTANA_DEVICE_LOCK_ROOT="/somewhere"):
+            self.assertEqual(device_lock.default_root(), Path("/somewhere"))
+
+    @unittest.skipIf(os.name == "nt", "Windows keeps the account's own temp folder")
+    def test_linux_ignores_tmpdir(self):
+        with self.without_override(TMPDIR="/tmp/job-1"):
+            first = device_lock.default_root()
+        with self.without_override(TMPDIR="/tmp/job-2"):
+            second = device_lock.default_root()
+        self.assertEqual(first, second)
+        self.assertEqual(first, Path("/tmp") / f"autana-device-{os.getuid()}")
+
+    @unittest.skipIf(os.name != "nt", "the Windows root is the account's %TEMP%")
+    def test_windows_keeps_the_account_temp_folder(self):
+        with self.without_override():
+            self.assertEqual(device_lock.default_root(),
+                             Path(tempfile.gettempdir()) / "autana-device")
+
+
+class BusyTextTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.clock = Clock()
+        self.lock = device_lock.LockStore(Path(self.temp.name), self.clock.now)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def busy(self):
+        return device_lock.busy_text(self.lock.status("COM5"), self.clock.now())
+
+    def test_a_holder_is_named_with_its_purpose(self):
+        self.lock.acquire("COM5", "alice@bench:9", "flash")
+        self.assertIn("board held by alice@bench:9 for flash since", self.busy())
+
+    def test_a_record_without_an_expiry_or_start_names_no_time_left(self):
+        self.lock.write_json(self.lock.human_path("COM5"), {
+            "board": "COM5", "id": "x", "note": "bench", "owner": "maintainer"})
+        self.assertEqual(self.busy(), "board reserved by maintainer: bench "
+                                      "(`autana lock take-back` ends it)")
+
+    def test_a_record_from_before_expiry_shows_its_hour_not_zero(self):
+        self.lock.write_json(self.lock.human_path("COM5"), {
+            "board": "COM5", "id": "x", "note": "bench", "owner": "maintainer",
+            "since_at": self.clock.now()})
+        self.assertIn("(1h left;", self.busy())
+
+    def test_a_reservation_is_named_with_the_time_left_and_the_way_out(self):
+        self.lock.set_human("COM5", "maintainer", "bench")
+        self.clock.advance(600)
+        self.assertEqual(self.busy(), "board reserved by maintainer: bench (50m left; "
+                                      "`autana lock take-back` ends it)")
+
+
+class HumanReservationProcessTests(unittest.TestCase):
+    """The same rule through real processes and the real clock: no injected
+    time, records written the way a lapsed hour leaves them."""
+
+    BOARD = "90:70:69:FE:A3:08"
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.lock = device_lock.LockStore(self.root)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def run_lock(self, *arguments):
+        environment = dict(os.environ, AUTANA_LOCK_HOOK="")
+        return subprocess.run([sys.executable, str(DEVICE / "device_lock.py"), "--root",
+                               str(self.root), "--board", self.BOARD, *arguments],
+                              capture_output=True, text=True, timeout=60, env=environment)
+
+    def acquire(self):
+        return self.run_lock("acquire", "--owner", "agent", "--purpose", "flash")
+
+    def write_reservation(self, age_seconds):
+        self.lock.write_json(self.lock.human_path(self.BOARD), {
+            "board": self.BOARD, "id": "person", "note": "bench", "owner": "maintainer",
+            "since_at": time.time() - age_seconds, "protocol": 1})
+
+    def test_an_hour_old_reservation_is_reported_released_and_does_not_block(self):
+        self.write_reservation(3601)
+        self.assertIn("expired", self.run_lock("status").stdout)
+        acquired = self.acquire()
+        self.assertEqual(acquired.returncode, 0, acquired.stderr)
+
+    def test_a_recent_reservation_blocks_and_shows_time_left(self):
+        self.write_reservation(60)
+        self.assertIn("left", self.run_lock("status").stdout)
+        self.assertEqual(self.acquire().returncode, 75)
+
+    def test_reserving_again_in_a_new_process_renews_it(self):
+        self.write_reservation(3000)
+        self.assertRegex(self.run_lock("status").stdout, r"(9m|10m) left")
+        reserved = self.run_lock("human", "--owner", "maintainer", "--note", "bench")
+        self.assertEqual(reserved.returncode, 0, reserved.stderr)
+        self.assertRegex(self.run_lock("status").stdout, r"(59m|1h) left")
+        self.assertEqual(self.acquire().returncode, 75)
+
+
+class FakeScope:
+    """What lock_scope answers, without an OS: name, start time, and any
+    processes found besides the holder's own."""
+
+    def __init__(self, start=None, name="", extra=()):
+        self.start, self.name, self.extra = start, name, list(extra)
+        self.asked = []
+
+    def process_start(self, pid):
+        return self.start
+
+    def process_name(self, pid):
+        return self.name
+
+    def survivors_extra(self, record):
+        self.asked.append(record)
+        return self.extra
+
+
+class PreviousHolderTests(unittest.TestCase):
+    """When a command wins the lock and the port still will not open, it says
+    who held the board before it and what of that holder still runs."""
+
+    BOARD = "90:70:69:FE:A3:08"
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.clock = Clock()
+        self.clock.value = time.time()
+        self.lock = device_lock.LockStore(Path(self.temp.name), self.clock.now)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def previous_holder(self, pid=None):
+        ticket = self.lock.enqueue(self.BOARD, "sam@bench:41", "flash", pid=pid)
+        held = self.lock.claim(self.BOARD, ticket, "")
+        self.lock.release(self.BOARD, held["token"])
+        return held
+
+    def sleeper(self, **environment):
+        child = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(120)"],
+            env=dict(os.environ, **environment), stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(lambda: (child.kill(), child.wait()))
+        return child
+
+    def text(self):
+        return device_lock.previous_holder_text(self.lock, self.BOARD, lock_scope)
+
+    def point_record_at(self, pid):
+        record = self.lock.read_json(self.lock.last_path(self.BOARD))
+        record["pid"] = pid
+        self.lock.write_json(self.lock.last_path(self.BOARD), record)
+
+    def test_it_names_the_previous_owner_and_its_live_process_and_leaves_it_running(self):
+        held = self.previous_holder(pid=os.getpid())
+        child = self.sleeper(AUTANA_DEVICE_LOCK_TOKEN=held["token"])
+        self.point_record_at(child.pid)
+        self.clock.advance(185)
+        text = self.text()
+        self.assertIn("sam@bench:41 (flash)", text)
+        self.assertIn("ended 3m ago", text)
+        self.assertIn(str(child.pid), text)
+        self.assertIn("never stops another holder's processes", text)
+        time.sleep(0.2)
+        self.assertIsNone(child.poll())
+
+    def test_the_holder_itself_is_named_though_it_carries_no_token(self):
+        """A holder sets the token after it starts, so /proc never shows it in
+        the holder's own environment: only its recorded pid can name it."""
+        self.previous_holder(pid=os.getpid())
+        child = self.sleeper()
+        self.point_record_at(child.pid)
+        self.assertIn(f"Still running from it: {child.pid}", self.text())
+
+    def test_a_pid_that_began_after_the_lock_was_taken_is_not_named(self):
+        """The holder is enqueued before it acquires; a process that started
+        later has only reused the number, and the text invites ending it."""
+        self.clock.value = time.time() - 100
+        self.previous_holder(pid=os.getpid())
+        child = self.sleeper()
+        self.point_record_at(child.pid)
+        text = self.text()
+        self.assertNotIn(str(child.pid), text)
+        self.assertNotIn("Still running", text)
+
+    def test_it_says_so_when_nothing_of_the_previous_holder_still_runs(self):
+        self.previous_holder(pid=os.getpid())
+        text = self.text()
+        self.assertIn("sam@bench:41", text)
+        self.assertNotIn("Still running", text)
+        self.assertIn("program outside autana", text)
+
+    def test_it_names_a_holder_reclaimed_from(self):
+        store = device_lock.LockStore(Path(self.temp.name), self.clock.now,
+                                      lambda pid: pid == os.getpid())
+        first = store.enqueue(self.BOARD, "hung@bench:7", "listen", pid=os.getpid())
+        self.assertIsNotNone(store.claim(self.BOARD, first, ""))
+        self.clock.advance(601)
+        second = store.enqueue(self.BOARD, "next@bench:8", "flash", pid=os.getpid())
+        self.assertIsNotNone(store.claim(self.BOARD, second, ""))
+        text = device_lock.previous_holder_text(store, self.BOARD, FakeScope())
+        self.assertIn("hung@bench:7 (listen)", text)
+        self.assertIn("reclaimed", text)
+
+    def test_an_unrecorded_holder_is_admitted(self):
+        self.assertIn("not recorded", self.text())
+
+    def test_a_holder_on_another_host_is_not_looked_up_here(self):
+        self.previous_holder(pid=os.getpid())
+        record = self.lock.read_json(self.lock.last_path(self.BOARD))
+        record["host"] = "some-other-machine"
+        self.lock.write_json(self.lock.last_path(self.BOARD), record)
+        scope = FakeScope(extra=[1])
+        text = device_lock.previous_holder_text(self.lock, self.BOARD, scope)
+        self.assertEqual(scope.asked, [])
+        self.assertNotIn("Still running", text)
+
+    def test_the_scope_adds_its_extras_once_beside_the_holders_pid(self):
+        self.previous_holder(pid=os.getpid())
+        self.point_record_at(1)
+        store = device_lock.LockStore(Path(self.temp.name), self.clock.now, lambda pid: pid == 1)
+        text = device_lock.previous_holder_text(
+            store, self.BOARD, FakeScope(name="python3", extra=[1, 77]))
+        self.assertIn("Still running from it: 1 (python3), 77 (python3).", text)
+
+    def test_a_record_without_a_lock_time_keeps_its_pid(self):
+        self.previous_holder(pid=os.getpid())
+        record = self.lock.read_json(self.lock.last_path(self.BOARD))
+        record.update(pid=1, acquired_at=None)
+        self.lock.write_json(self.lock.last_path(self.BOARD), record)
+        store = device_lock.LockStore(Path(self.temp.name), self.clock.now, lambda pid: pid == 1)
+        text = device_lock.previous_holder_text(store, self.BOARD, FakeScope(start=time.time() + 999))
+        self.assertIn("Still running from it: 1", text)
+
+
 class ProtocolTests(unittest.TestCase):
     """LOCK_PROTOCOL: the mutex is guard() (an O_CREAT|O_EXCL file); these JSON
     records are the state it protects. A protocol mismatch is never a reason
@@ -505,7 +892,7 @@ class ProtocolTests(unittest.TestCase):
     def test_a_live_holder_of_a_different_protocol_is_just_waited_for(self):
         """No exception, no refusal - a claim behind a live foreign-protocol
         holder is queued exactly like any other live holder."""
-        self.write_foreign_lock(protocol=2, pid=1)
+        self.write_foreign_lock(protocol=99, pid=1)
         ticket = self.lock.enqueue("COM5", "me", "flash", pid=1)
         self.assertIsNone(self.lock.claim("COM5", ticket, ""))
         # Never touched: the foreign record still stands, unguessed at.
@@ -531,7 +918,7 @@ class ProtocolTests(unittest.TestCase):
         """The board must never wedge on a dead peer just because it spoke a
         different protocol: dead/stale is judged from PROTOCOL_CORE_FIELDS
         alone (host, pid, heartbeat_at), so it never needs a protocol match."""
-        self.write_foreign_lock(protocol=2, pid=99)
+        self.write_foreign_lock(protocol=99, pid=99)
         ticket = self.lock.enqueue("COM5", "me", "flash", pid=1)
         held = self.lock.claim("COM5", ticket, "")
         self.assertEqual(held["owner"], "me")
@@ -559,7 +946,7 @@ class ProtocolTests(unittest.TestCase):
         """No token of ours ever matches a foreign lock's, so these return the
         same "not mine" answer as any other lock we do not hold - no crash,
         whatever its protocol."""
-        self.write_foreign_lock(protocol=2)
+        self.write_foreign_lock(protocol=99)
         self.assertFalse(self.lock.heartbeat("COM5", "not-mine"))
         self.assertFalse(self.lock.release("COM5", "not-mine"))
         self.assertFalse(self.lock.check_token("COM5", "not-mine"))
@@ -571,7 +958,7 @@ class ProtocolTests(unittest.TestCase):
         self.lock.enqueue("COM5", "waiting", "flash")
         [ticket] = [t for t in self.lock.tickets("COM5") if t["owner"] == "waiting"]
         self.assertEqual(ticket["protocol"], device_lock.LOCK_PROTOCOL)
-        reservation_id = self.lock.set_human("COM6", "person", "note")
+        reservation_id, _ = self.lock.set_human("COM6", "person", "note")
         self.assertTrue(reservation_id)
         human = self.lock.read_json(self.lock.human_path("COM6"))
         self.assertEqual(human["protocol"], device_lock.LOCK_PROTOCOL)
@@ -586,6 +973,25 @@ class LockRecordShapeTests(unittest.TestCase):
     never edit an existing entry to make a red test green without doing that."""
 
     GOLDEN_KEYS = {
+        2: {
+            "lock": frozenset({
+                "acquired_at", "board", "expected_build_id", "heartbeat_at", "host",
+                "log", "owner", "pid", "purpose", "kind", "token", "protocol",
+                "autana_version",
+            }),
+            "ticket": frozenset({
+                "board", "created_at", "owner", "pid", "purpose", "kind", "sequence",
+                "ticket", "protocol", "autana_version",
+            }),
+            "human": frozenset({
+                "board", "id", "note", "owner", "since_at", "expires_at", "protocol",
+                "autana_version",
+            }),
+            "last": frozenset({
+                "board", "owner", "purpose", "pid", "host", "token", "acquired_at", "ended_at", "how",
+                "protocol", "autana_version",
+            }),
+        },
         1: {
             "lock": frozenset({
                 "acquired_at", "board", "expected_build_id", "heartbeat_at", "host",
@@ -625,6 +1031,17 @@ class LockRecordShapeTests(unittest.TestCase):
         self.lock.set_human("COM5", "me", "note")
         human = self.lock.read_json(self.lock.human_path("COM5"))
         self.assertEqual(set(human), self.golden("human"))
+
+    def test_the_last_holder_records_keys_match_the_golden_set(self):
+        held = self.lock.acquire("COM5", "me", "flash")
+        self.lock.release("COM5", held["token"])
+        last = self.lock.read_json(self.lock.last_path("COM5"))
+        self.assertEqual(set(last), self.golden("last"))
+
+    def test_the_last_holder_names_no_board_of_its_own(self):
+        held = self.lock.acquire("COM5", "me", "flash")
+        self.lock.release("COM5", held["token"])
+        self.assertEqual(self.lock.boards(), [])
 
     def test_core_fields_a_lock_reader_needs_are_promised_and_present(self):
         """reclaim_reason()/is_stale() decide whether a lock is live, stale or
