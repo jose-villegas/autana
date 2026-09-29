@@ -6,15 +6,13 @@
 
 Autana is software for the [Waveshare ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/esp32-s3-touch-amoled-1.8.htm): a home screen that launches a falling-sand sandbox and software-rendering experiments. Touch and board motion control the apps. The firmware draws each frame in software and sends its pixels directly to the board's AMOLED screen.
 
-| Falling Sand, board turning | Launcher, board rocking |
-|:---:|:---:|
-| ![A volcano spilling toward a lake beside growing and burning trees as the board turns](docs/images/overview/sand-simulation.gif) | ![The launcher listing Falling Sand and Render Lab, its backdrop ridge levelling as the board rocks](docs/images/overview/launcher-home.gif) |
-| **Rotating Render Lab cube** | **Sponza flythrough** |
-| ![A shaded cube rotating on a black screen](docs/images/overview/render-lab-cube.gif) | ![A camera moving down the sunlit Crytek Sponza atrium between coloured curtains](docs/images/overview/render-lab-sponza.gif) |
-| **Ray-traced Cornell box** | **Falling Sand title screen** |
-| ![A Cornell box with a red and a green wall around two blocks](docs/images/overview/render-lab-cornell.png) | ![The Falling Sand title screen with start, load, options, guide and exit](docs/images/overview/sand-menu.png) |
+| Falling Sand, board turning | Launcher, board rocking | Falling Sand title screen |
+|:---:|:---:|:---:|
+| <img src="docs/images/overview/sand-simulation.gif" width="280" alt="A volcano spilling toward a lake beside growing and burning trees as the board turns"> | <img src="docs/images/overview/launcher-home.gif" width="280" alt="The launcher listing Falling Sand and Render Lab, its backdrop ridge levelling as the board rocks"> | <img src="docs/images/overview/sand-menu.png" width="280" alt="The Falling Sand title screen with start, load, options, guide and exit"> |
+| **Rotating Render Lab cube** | **Sponza flythrough** | **Ray-traced Cornell box** |
+| <img src="docs/images/overview/render-lab-cube.gif" width="280" alt="A shaded cube rotating on a black screen"> | <img src="docs/images/overview/render-lab-sponza.gif" width="280" alt="A camera moving down the sunlit Crytek Sponza atrium between coloured curtains"> | <img src="docs/images/overview/render-lab-cornell.png" width="280" alt="A Cornell box with a red and a green wall around two blocks"> |
 
-Every image is a host render of the real firmware drawing code at the panel's 448x368, not a board capture. The sand clip runs the real simulation with scripted tilt, and the launcher lists the apps a release build carries.
+Every image is a host render of the real firmware drawing code at the panel's 448x368, shown here at a smaller size, not a board capture. The sand clip runs the real simulation with scripted tilt, and the launcher lists the apps a release build carries.
 
 Image render commands are in each app's tools README ([sand](launcher/main/apps/sand/tools/README.md), [render lab](launcher/main/apps/render_lab/tools/README.md)) and the [render harness](docs/tools/Render-Harness.md#images-in-these-docs).
 
