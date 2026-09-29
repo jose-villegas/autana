@@ -60,7 +60,7 @@ if [ -z "${_AUTANA_DEVICE_LOCK_TOKEN:-}" ] || [ -z "${_AUTANA_BOARD:-}" ]; then
     echo "Run 'autana flash rel|dev|diag' instead." >&2
     exit 1
 fi
-if ! "$PYTHON" "$SCRIPT_DIR/device_lock.py" --board "$_AUTANA_BOARD" \
+if ! "$PYTHON" "$SCRIPT_DIR/device.py" --board "$_AUTANA_BOARD" \
         check-token --token "$_AUTANA_DEVICE_LOCK_TOKEN"; then
     echo "ERROR: device lock token is not active for board $_AUTANA_BOARD" >&2
     echo "Run 'autana flash rel|dev|diag' instead." >&2

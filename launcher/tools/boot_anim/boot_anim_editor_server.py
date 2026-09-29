@@ -585,7 +585,7 @@ class Renderer:
             try:
                 device.flash_script(
                     device.device_lock.LockStore(), board, "boot-anim-editor",
-                    "boot anim preview flash", bash, ENGINE_DIR, FLASH_VARIANT, 300,
+                    bash, ENGINE_DIR, FLASH_VARIANT, 300,
                     cwd=LAUNCHER_DIR, stdin=subprocess.DEVNULL, stdout=output,
                     stderr=subprocess.STDOUT, timeout=BUILD_FLASH_TIMEOUT_S)
             except subprocess.CalledProcessError as error:

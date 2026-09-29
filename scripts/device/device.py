@@ -32,6 +32,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools
 from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
 
 
+COMMAND_ENV = autana_config.COMMAND_ENV
+
+
+def command_label(kind):
+    """What the lock says its holder is doing: the autana command that started
+    this process, else this script called directly."""
+    named = os.environ.get(COMMAND_ENV)
+    return f"autana {named}" if named else f"device.py {kind}"
+
+
+EXIT_INTERRUPTED = autana_config.EXIT_INTERRUPTED
 BAUD = 115200
 ESPRESSIF_VID = 0x303A
 BUILD_ID = re.compile(rb"BUILD_ID=([^\s\r\n]+)")
@@ -421,24 +432,24 @@ class HeldLock:
     HEARTBEAT_SECONDS = 5
     NOTICE_SECONDS = 30
 
-    def __init__(self, store, board, owner, purpose, wait, announce_waiters=False, kind=None):
+    def __init__(self, store, board, owner, kind, wait, announce_waiters=False):
         self.store = store
         self.announce_waiters = announce_waiters
         self.board = board
         self.last_notice = None
-        self.held = store.acquire(board, owner, purpose, wait=wait, kind=kind,
-                                  on_wait=self.wait_notice)
+        self.held = store.acquire(board, owner, kind, wait=wait, on_wait=self.wait_notice,
+                                  purpose=command_label(kind))
         if not self.held:
             raise LockBusy("device lock was not acquired: "
                            + device_lock.busy_text(store.status(board), store.now()))
-        if self.held["log"]:
-            print(self.held["log"], file=sys.stderr)
+        if self.held.log:
+            print(self.held.log, file=sys.stderr)
         self.stop = threading.Event()
         self.lost = threading.Event()
         self.notified = set()
         self.thread = threading.Thread(target=self.keep_alive, daemon=True)
         self.started = time.monotonic()
-        self.kind = kind or purpose
+        self.kind = kind
         self.error = None
 
     def wait_notice(self, ticket):
@@ -474,7 +485,7 @@ class HeldLock:
                 if ticket["ticket"] not in self.notified:
                     self.notified.add(ticket["ticket"])
                     print(f'{ticket["owner"]} is waiting for the board '
-                          f'({ticket.get("purpose")}) - Ctrl+C to hand it over', file=sys.stderr)
+                          f'({ticket.get("purpose", "unknown")}) - Ctrl+C to hand it over', file=sys.stderr)
             if time.monotonic() >= next_heartbeat:
                 if not self.store.heartbeat(self.board, self.held["token"]):
                     self.lost.set()
@@ -679,7 +690,7 @@ def reset_device(args, store, board):
     """Reboot under the device lock, optionally keeping the post-reset
     console output as a capture record."""
     if not args.capture:
-        with HeldLock(store, board, args.owner, args.purpose, args.wait, kind="reset"):
+        with HeldLock(store, board, args.owner, "reset", args.wait):
             with open_when_free():
                 pass
             reset()
@@ -695,7 +706,7 @@ def reset_device(args, store, board):
     error = None
     held = None
     try:
-        with HeldLock(store, board, args.owner, args.purpose, args.wait, kind="reset") as held:
+        with HeldLock(store, board, args.owner, "reset", args.wait) as held:
             with open_when_free():
                 pass
             data, reason = reset_and_capture(output, args.seconds, None)
@@ -796,7 +807,7 @@ def holding(store, board, args, held_lock, kind):
     """The lock a command runs under: a fresh one, or `held_lock` when a
     batch already holds the board for the whole sequence."""
     if held_lock is None:
-        with HeldLock(store, board, args.owner, args.purpose, args.wait, kind=kind) as held:
+        with HeldLock(store, board, args.owner, kind, args.wait) as held:
             yield held
         return
     nested = NestedCommand(held_lock, kind)
@@ -998,7 +1009,7 @@ def write_snapshot(held, write, image_dir, **popen):
     run_to_end(write + [Path(image_dir).as_posix()], held.lost, env=environment, **popen)
 
 
-def flash_script(store, board, owner, purpose, bash, worktree, variant, wait, **popen):
+def flash_script(store, board, owner, bash, worktree, variant, wait, **popen):
     """A flash of `worktree`'s `variant` for a caller outside device.py: finds
     the board (`board`, else the global --board, else the only one), builds and
     snapshots with no lock held, then queues for the board's lock and holds
@@ -1010,7 +1021,7 @@ def flash_script(store, board, owner, purpose, bash, worktree, variant, wait, **
     image = new_image_directory()
     try:
         build_snapshot(build, build_dir, image, **popen)
-        with HeldLock(store, board, owner, purpose, wait, kind="flash") as held:
+        with HeldLock(store, board, owner, "flash", wait) as held:
             write_snapshot(held, write, image, **popen)
     finally:
         remove_image_directory(image)
@@ -1112,8 +1123,6 @@ def write_image(built, store, board, held_lock=None):
             built.run(lambda **popen: write_snapshot(held, built.write, built.image, **popen),
                       "ab")
             require_live_lock()
-            if not store.set_expected_build_id(board, held.held["token"], built.build_id):
-                raise LockLost()
             build_id = built.build_id
             print("flashed BUILD_ID=" + build_id + " (esptool hash verified; boot not verified)")
     except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
@@ -1185,7 +1194,7 @@ def selftest(args, store, board):
                                     wait=args.wait, worktree=args.worktree,
                                     variant="diag", out=None)
     with build_image(flash_args, board, extra_flags) as built, \
-            HeldLock(store, board, args.owner, args.purpose, args.wait, kind="selftest") as held:
+            HeldLock(store, board, args.owner, "selftest", args.wait) as held:
         build_id = write_image(built, store, board, held_lock=held)
         commit = git_commit(worktree)
 
@@ -1258,8 +1267,8 @@ def listen(args, store, board):
     sink = sys.stdout.buffer if echo else ErrorLineSink(sys.stdout)
     held = None
     try:
-        with HeldLock(store, board, args.owner, args.purpose, args.wait,
-                      announce_waiters=True, kind="listen") as held:
+        with HeldLock(store, board, args.owner, "listen", args.wait,
+                      announce_waiters=True) as held:
             with open_when_free() as connection:
                 data, reason = capture(connection, output, args.seconds, None,
                                        echo=sink, complete=None)
@@ -1332,7 +1341,7 @@ def send(args, store, board):
     """
     data = bytearray()
     found = []
-    with HeldLock(store, board, args.owner, args.purpose, args.wait, kind="send") as held:
+    with HeldLock(store, board, args.owner, "send", args.wait) as held:
         with open_when_free() as connection:
             connection.reset_input_buffer()
             connection.write(("\n" + args.line + "\n").encode("ascii"))
@@ -1376,7 +1385,7 @@ def screenshot(args, store, board):
     def report(message):
         print(message, file=sys.stderr, flush=True)
 
-    with HeldLock(store, board, args.owner, args.purpose, args.wait, kind="screenshot"):
+    with HeldLock(store, board, args.owner, "screenshot", args.wait):
         with open_when_free() as connection:
             png, state_json = screenshot_tool.read_screenshot(connection, args.timeout, on_status=report)
 
@@ -1435,7 +1444,7 @@ def batch(args, store, board):
     else:
         build_cm = contextlib.nullcontext(None)
     with build_cm as built, \
-            HeldLock(store, board, args.owner, args.purpose, args.wait, kind="batch") as held:
+            HeldLock(store, board, args.owner, "batch", args.wait) as held:
         if args.flash:
             build_id = write_image(built, store, board, held_lock=held)
             if args.expect_build_id and build_id != args.expect_build_id:
@@ -1518,15 +1527,15 @@ def wait_for_human_release(store, board, reservation_id, seconds):
                 return 0
             if human.get("id") != reservation_id:
                 print("human reservation replaced")
-                return 4
+                return device_lock.EXIT_BUSY
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 print("human reservation wait timed out")
-                return 3
+                return device_lock.EXIT_BUSY
             time.sleep(min(1.0, remaining))
     except KeyboardInterrupt:
         print("human reservation wait interrupted")
-        return 3
+        return EXIT_INTERRUPTED
 
 
 def board_statuses(store, board=None):
@@ -1571,14 +1580,14 @@ def main(argv=None):
     release.add_argument("--token", required=True)
     hand = subparsers.add_parser("hand-to-human")
     hand.add_argument("--note", required=True)
-    hand.add_argument("--token")
-    hand.add_argument("--purpose", default="handing board to maintainer")
     hand.add_argument("--wait", type=human_wait_seconds)
     subparsers.add_parser("take-back")
+    check_token = subparsers.add_parser(
+        "check-token", help="exit 0 when --token is the live lock on the board, else 1")
+    check_token.add_argument("--token", required=True)
     flash_parser = subparsers.add_parser("flash")
     flash_parser.add_argument("--variant", choices=("dev", "diag", "release"), required=True)
     flash_parser.add_argument("--worktree", required=True)
-    flash_parser.add_argument("--purpose", default="flash")
     flash_parser.add_argument("--out")
     flash_parser.add_argument("--perf-scope", action="store_true",
                               help="with --variant diag: build the perf-scoped image")
@@ -1592,14 +1601,12 @@ def main(argv=None):
     suite.add_argument("--idle-seconds", type=float, default=300)
     suite.add_argument("--expect-build-id")
     suite.add_argument("--verbose", action="store_true")
-    suite.add_argument("--purpose", default="run suite")
     listen_parser = subparsers.add_parser("listen")
     listen_duration = listen_parser.add_mutually_exclusive_group(required=True)
     listen_duration.add_argument("--seconds", type=float)
     listen_duration.add_argument("--follow", action="store_true")
     listen_parser.add_argument("--echo", action="store_true")
     listen_parser.add_argument("--out")
-    listen_parser.add_argument("--purpose", default="listen")
     listen_parser.add_argument("--elf",
                                help="decode any crash addresses seen against this .elf's symbols")
     reset_parser = subparsers.add_parser("reset", help="reboot the board and wait for USB serial")
@@ -1609,7 +1616,6 @@ def main(argv=None):
     reset_parser.add_argument("--seconds", type=float, default=20.0,
                               help="boot capture window (default: 20)")
     reset_parser.add_argument("--out")
-    reset_parser.add_argument("--purpose", default="reset")
     selftest_parser = subparsers.add_parser(
         "selftest", help="flash the diagnostics+autorun image and capture the on-device run "
                          "of every registered suite")
@@ -1622,7 +1628,6 @@ def main(argv=None):
     # launcher/tools/quality/report_test_results.sh.
     selftest_parser.add_argument("--max-seconds", type=float, default=3000)
     selftest_parser.add_argument("--idle-seconds", type=float, default=300)
-    selftest_parser.add_argument("--purpose", default="selftest")
     send_parser = subparsers.add_parser(
         "send", help="write one console line and print the device's replies to it")
     send_parser.add_argument("line")
@@ -1632,7 +1637,6 @@ def main(argv=None):
                              help="a reply prefix that ends the answer; repeatable "
                                   "(default: TUNE_OK, TUNE_ERR, TUNE_END)")
     send_parser.add_argument("--seconds", type=float, default=3.0)
-    send_parser.add_argument("--purpose", default="send")
     send_parser.add_argument("--optional", action="store_true",
                              help="a timeout with nothing seen is success, not an error - "
                                   "for a verb that only answers when something is wrong")
@@ -1642,7 +1646,6 @@ def main(argv=None):
                                    help="output path; any extension given is replaced with .png "
                                         "(default: a timestamped name in the current directory)")
     screenshot_parser.add_argument("--timeout", type=float, default=90.0)
-    screenshot_parser.add_argument("--purpose", default="screenshot")
     screenshot_view = screenshot_parser.add_mutually_exclusive_group()
     screenshot_view.add_argument("--as-shown", action="store_true")
     screenshot_view.add_argument("--framebuffer", action="store_true")
@@ -1660,7 +1663,6 @@ def main(argv=None):
                               help="build the perf-scoped image (needs --flash, the default)")
     batch_parser.add_argument("--max-seconds", type=float, default=1800)
     batch_parser.add_argument("--idle-seconds", type=float, default=300)
-    batch_parser.add_argument("--purpose", default="batch capture")
     batch_parser.add_argument("--out",
                               help="write the one capture here instead of the default path - "
                                    "only with exactly one --suite and --runs 1")
@@ -1671,6 +1673,7 @@ def main(argv=None):
     report_parser.add_argument("capture", help="an existing capture file (.log or .log.gz)")
     report_parser.add_argument("--index", help="override index.jsonl (default: records/device)")
     args = parser.parse_args(argv)
+    args.purpose = command_label(args.command)
 
     # Touches no lock and no board - it only reads a capture already on disk,
     # so it is handled before board discovery even runs, unlike every command
@@ -1701,11 +1704,14 @@ def main(argv=None):
                                remembered=args.command in ("hand-to-human", "take-back"))
         if args.command == "release":
             return 0 if store.release(board, args.token) else 1
+        if args.command == "check-token":
+            return 0 if store.check_token(board, args.token) else 1
         if args.command == "hand-to-human":
             active = store.status(board)["lock"]
             if active:
-                if not args.token or not store.release(board, args.token):
-                    raise RuntimeError("active lock requires its token before handoff")
+                raise RuntimeError(f"board held by {active['owner']} for "
+                                   f"{active.get("purpose", "unknown")}; `autana lock release` "
+                                   "it, or wait, before handing it over")
             reservation_id, renewed = store.set_human(board, args.owner, args.note)
             if args.wait is None:
                 lasts = device_lock.duration_text(device_lock.HUMAN_RESERVATION_SECONDS)

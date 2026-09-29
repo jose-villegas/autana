@@ -69,7 +69,7 @@ class SendCommandBuildingTests(unittest.TestCase):
         self.assertNotIn("--seconds", command)
 
     def test_a_non_default_reply_adds_reply_and_until(self):
-        autana.send("BUILDID", reply="BUILD_ID", purpose="autana buildid")
+        autana.send("BUILDID", reply="BUILD_ID")
         command = self.last_send_command()
         self.assertEqual(command[command.index("--reply") + 1], "BUILD_ID")
         self.assertEqual(command[command.index("--until") + 1], "BUILD_ID")
@@ -92,7 +92,7 @@ class SendCommandBuildingTests(unittest.TestCase):
         busy = mock.Mock(stdout=busy_status())
         with mock.patch.object(autana.subprocess, "run", return_value=busy):
             code, replies = autana.send("TUNE")
-        self.assertEqual(code, 3)
+        self.assertEqual(code, autana.EXIT_BUSY)
         self.assertEqual(replies, [])
 
     def test_the_short_fail_fast_wait_is_used_by_default(self):
@@ -166,7 +166,7 @@ class DeviceVerbCommandTests(unittest.TestCase):
         with mock.patch.object(autana, "send", return_value=(0, ["FREEZE_STATE frozen=1 steps=0"])) as sent, \
              mock.patch("builtins.print"):
             code = autana.freeze([])
-        sent.assert_called_once_with("FREEZE", reply="FREEZE_STATE", purpose="autana freeze")
+        sent.assert_called_once_with("FREEZE", reply="FREEZE_STATE")
         self.assertEqual(code, 0)
 
     def test_freeze_rejects_arguments(self):
@@ -176,17 +176,17 @@ class DeviceVerbCommandTests(unittest.TestCase):
     def test_resume_sends_the_bare_verb(self):
         with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
             autana.resume([])
-        sent.assert_called_once_with("RESUME", reply="FREEZE_STATE", purpose="autana resume")
+        sent.assert_called_once_with("RESUME", reply="FREEZE_STATE")
 
     def test_step_with_no_count_sends_a_bare_step(self):
         with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
             autana.step([])
-        sent.assert_called_once_with("STEP", reply="FREEZE_STATE", purpose="autana step")
+        sent.assert_called_once_with("STEP", reply="FREEZE_STATE")
 
     def test_step_with_a_count_appends_it(self):
         with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
             autana.step(["5"])
-        sent.assert_called_once_with("STEP 5", reply="FREEZE_STATE", purpose="autana step")
+        sent.assert_called_once_with("STEP 5", reply="FREEZE_STATE")
 
     def test_step_rejects_a_non_numeric_count(self):
         with self.assertRaises(SystemExit):
@@ -199,7 +199,7 @@ class DeviceVerbCommandTests(unittest.TestCase):
     def test_touch_passes_its_arguments_through_and_is_optional(self):
         with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
             autana.touch(["down", "10", "20"])
-        sent.assert_called_once_with("TOUCH down 10 20", reply="TOUCH", purpose="autana touch",
+        sent.assert_called_once_with("TOUCH down 10 20", reply="TOUCH",
                                      optional=True, seconds=0.5)
 
     def test_touch_rejects_a_state_word_that_is_not_down_or_up(self):
@@ -213,7 +213,7 @@ class DeviceVerbCommandTests(unittest.TestCase):
     def test_imu_passes_its_arguments_through_and_is_optional(self):
         with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
             autana.imu(["100", "-200", "16384"])
-        sent.assert_called_once_with("IMU 100 -200 16384", reply="IMU", purpose="autana imu",
+        sent.assert_called_once_with("IMU 100 -200 16384", reply="IMU",
                                      optional=True, seconds=0.5)
 
     def test_imu_rejects_a_non_integer_axis(self):
@@ -223,7 +223,7 @@ class DeviceVerbCommandTests(unittest.TestCase):
     def test_tap_sends_one_device_side_gesture(self):
         with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
             autana.tap(["10", "20"])
-        sent.assert_called_once_with("TAP 10 20", reply="TAP", until=["TAP_OK"], purpose="autana tap")
+        sent.assert_called_once_with("TAP 10 20", reply="TAP", until=["TAP_OK"])
 
     def test_drag_requires_its_duration(self):
         with self.assertRaises(SystemExit):
@@ -234,21 +234,21 @@ class DeviceVerbCommandTests(unittest.TestCase):
              mock.patch("builtins.print") as printed:
             autana.button(["power", "long"])
         sent.assert_called_once_with("BUTTON power long", reply="BUTTON",
-                                     until=["BUTTON_OK", "BUTTON_ERR"], purpose="autana button")
+                                     until=["BUTTON_OK", "BUTTON_ERR"])
         printed.assert_called_once_with("BUTTON_OK")
 
     def test_apps_waits_for_the_complete_listing(self):
         with mock.patch.object(autana, "send", return_value=(0, ["APPS name=Star Chart running=0", "APPS_END"])) as sent, \
              mock.patch("builtins.print") as printed:
             autana.apps([])
-        sent.assert_called_once_with("APPS", reply="APPS", until=["APPS_END"], purpose="autana apps")
+        sent.assert_called_once_with("APPS", reply="APPS", until=["APPS_END"])
         printed.assert_called_once_with("APPS name=Star Chart running=0")
 
     def test_open_sends_the_app_name(self):
         with mock.patch.object(autana, "send", return_value=(0, ["OPEN_OK name=Star Chart"])) as sent, \
              mock.patch("builtins.print"):
             autana.open_app(["star"])
-        sent.assert_called_once_with("OPEN star", reply="OPEN", purpose="autana open")
+        sent.assert_called_once_with("OPEN star", reply="OPEN")
 
 
 class ScreenshotCommandTests(unittest.TestCase):
@@ -327,7 +327,7 @@ class ScreenshotCommandTests(unittest.TestCase):
         with mock.patch.object(autana.subprocess, "run", return_value=busy), \
              mock.patch.object(autana.subprocess, "call") as called:
             code = autana.screenshot([])
-        self.assertEqual(code, 3)
+        self.assertEqual(code, autana.EXIT_BUSY)
         called.assert_not_called()
 
     def test_an_unknown_flag_is_named_and_rejected(self):
@@ -1052,31 +1052,26 @@ class LockCommandTests(unittest.TestCase):
 
     def test_hand_forwards_until_back_and_note(self):
         with mock.patch.object(autana.subprocess, "Popen") as called:
-            called.return_value.wait.return_value = 3
+            called.return_value.wait.return_value = autana.EXIT_BUSY
             code = autana.hand(["--until-back", "10", "enter", "download", "mode"])
-        self.assertEqual(code, 3)
+        self.assertEqual(code, autana.EXIT_BUSY)
         command = called.call_args.args[0]
         after = command[command.index("hand-to-human"):]
         self.assertEqual(after[after.index("--wait") + 1], "10")
         self.assertEqual(command[command.index("--note") + 1], "enter download mode")
 
-    def test_hand_interrupt_returns_child_timeout_status(self):
+    def test_hand_interrupt_returns_the_childs_interrupted_status(self):
         with mock.patch.object(autana.subprocess, "Popen") as started, \
              mock.patch("builtins.print") as output:
-            started.return_value.wait.side_effect = [KeyboardInterrupt, 3]
+            started.return_value.wait.side_effect = [KeyboardInterrupt, autana.EXIT_INTERRUPTED]
             code = autana.hand(["--until-back", "10", "download mode"])
-        self.assertEqual(code, 3)
+        self.assertEqual(code, autana.EXIT_INTERRUPTED)
         started.return_value.terminate.assert_not_called()
         output.assert_not_called()
 
     def test_hand_rejects_until_back_without_seconds(self):
         with self.assertRaises(SystemExit):
             autana.hand(["--until-back", "enter mode"])
-
-    def test_a_leftover_hand_wait_names_until_back(self):
-        with self.assertRaises(SystemExit) as stop:
-            autana.hand(["--wait", "10", "download mode"])
-        self.assertIn("--until-back", str(stop.exception.code))
 
     def test_take_back_takes_no_arguments(self):
         with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
@@ -1198,8 +1193,7 @@ class ConsoleRoutingTests(unittest.TestCase):
         with mock.patch.object(autana, "send", return_value=(0, ["EXAMPLE status=ok", "EXAMPLE_END"])) as sent, \
              mock.patch("builtins.print") as printed:
             self.run_console(["example status"])
-        sent.assert_called_once_with("example status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"],
-                                     purpose="autana console example", optional=True)
+        sent.assert_called_once_with("example status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], optional=True)
         printed.assert_any_call("EXAMPLE status=ok\nEXAMPLE_END")
 
     def test_a_forwarded_line_with_no_reply_says_sent(self):
@@ -1310,7 +1304,7 @@ class GlobalWaitTests(unittest.TestCase):
 
     def test_wait_after_the_command_is_rejected_with_the_hint(self):
         for argv in (["status", "--wait", "0"], ["monitor", "5", "--wait", "0"],
-                     ["flash", "--wait=0"], ["hand", "--wait", "5", "note"]):
+                     ["flash", "--wait=0"], ["lock", "hand", "--wait", "5", "note"]):
             with self.subTest(argv=argv):
                 code, _ = None, None
                 with self.assertRaises(SystemExit) as stop,                      mock.patch.object(autana.sys, "argv", ["autana", *argv]):
@@ -1443,8 +1437,7 @@ class OneShotForwardingTests(unittest.TestCase):
         with mock.patch.object(autana, "send", return_value=(0, ["EXAMPLE status=ok", "EXAMPLE_END"])) as sent, \
              mock.patch("builtins.print") as printed:
             code = self.run_main(["example", "status"])
-        sent.assert_called_once_with("example status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"],
-                                     purpose="autana console example", optional=True)
+        sent.assert_called_once_with("example status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], optional=True)
         printed.assert_any_call("EXAMPLE status=ok\nEXAMPLE_END")
         self.assertEqual(code, 0)
 
@@ -1587,8 +1580,8 @@ class LockAndDebugDispatchTests(unittest.TestCase):
 
     def test_lock_routes_to_its_verb(self):
         fake = mock.Mock(return_value=0)
-        with mock.patch.dict(autana.LOCK_VERBS, {"id": fake}):
-            code = autana.lock(["id", "--json"])
+        with mock.patch.dict(autana.LOCK_VERBS, {"release": fake}):
+            code = autana.lock(["release", "--json"])
         fake.assert_called_once_with(["--json"])
         self.assertEqual(code, 0)
 
@@ -1612,6 +1605,50 @@ class LockAndDebugDispatchTests(unittest.TestCase):
             autana.debug(["nope"])
 
 
+class CommandNameForTheLockTests(unittest.TestCase):
+    def seen_by_child(self, argv):
+        seen = []
+        with mock.patch.object(autana.sys, "argv", ["autana", *argv]), \
+                mock.patch.dict(autana.COMMANDS, {
+                    name: (lambda args: seen.append(os.environ.get(autana.COMMAND_ENV)) or 0)
+                    for name in ("tune", "lock", "debug")}), \
+                self.assertRaises(SystemExit):
+            autana.main()
+        return seen[0], os.environ.get(autana.COMMAND_ENV)
+
+    def test_the_child_is_told_the_command_and_it_is_forgotten_after(self):
+        self.assertEqual(self.seen_by_child(["tune", "x", "1"]), ("tune", None))
+
+    def test_a_router_names_its_verb(self):
+        self.assertEqual(self.seen_by_child(["debug", "freeze"]), ("debug freeze", None))
+        self.assertEqual(self.seen_by_child(["lock", "hand", "note"]), ("lock hand", None))
+
+    def test_it_is_not_a_setting_a_caller_can_pass_in(self):
+        self.assertTrue(autana.COMMAND_ENV.startswith("_AUTANA_"))
+
+
+class RemovedLockSpellingTests(unittest.TestCase):
+    def test_the_old_top_level_spellings_are_gone(self):
+        for old in ("id", "release", "hand", "take-back"):
+            self.assertNotIn(old, autana.COMMANDS)
+
+    def test_lock_id_is_not_a_verb(self):
+        self.assertNotIn("id", autana.LOCK_VERBS)
+        self.assertFalse(hasattr(autana, "identify"))
+        with self.assertRaises(SystemExit):
+            autana.lock(["id"])
+
+    def test_no_command_names_a_purpose_to_the_device(self):
+        with mock.patch.object(autana.subprocess, "call", return_value=0) as called, \
+                mock.patch.object(autana.subprocess, "Popen") as started:
+            started.return_value.wait.return_value = 0
+            autana.reset([])
+            autana.take_back([])
+            autana.hand(["note"])
+        for call in [*called.call_args_list, *started.call_args_list]:
+            self.assertNotIn("--purpose", call.args[0])
+
+
 class RenamedVerbAliasTests(unittest.TestCase):
     """Every bare old spelling in RENAMED_VERBS still works, printing the new
     one to stderr before calling straight through to the same handler."""
@@ -1628,9 +1665,7 @@ class RenamedVerbAliasTests(unittest.TestCase):
             self.assertIn(f"autana {old}: use `autana {new}`", stream.getvalue())
 
     def test_the_real_handlers_are_wired_up(self):
-        expected = {"id": autana.identify, "release": autana.release, "hand": autana.hand,
-                   "take-back": autana.take_back, "freeze": autana.freeze,
-                   "resume": autana.resume, "step": autana.step, "touch": autana.touch,
+        expected = {"freeze": autana.freeze, "resume": autana.resume, "step": autana.step, "touch": autana.touch,
                    "imu": autana.imu, "framewatch": autana.framewatch}
         self.assertEqual({old: handler for old, (_, handler) in autana.RENAMED_VERBS.items()},
                          expected)
@@ -1674,7 +1709,7 @@ class BoardOnlyCommandsTests(unittest.TestCase):
             (autana.apps, []),
             (autana.open_app, ["star"]),
             (autana.home, []),
-            (autana.lock, ["id"]),
+            (autana.lock, ["take-back"]),
             (autana.debug, ["freeze"]),
             (autana.suite, ["run_gfx_suite"]),
         ]
