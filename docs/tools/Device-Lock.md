@@ -94,26 +94,18 @@ work down this list.
    reservation the notice reads `board reserved by <owner>: <note> - waiting
    (59m left, unless renewed; ...)`.
 
-3. **Do not wait.** For one command that should fail rather than queue,
-   put `--wait 0` (seconds) before it; it covers every step the command
-   runs, such as the flash inside `suite --flash`:
+3. **Do not wait.** For a command that should fail rather than queue, put
+   `--wait 0` before it ([Settings](Autana-CLI.md#settings)):
 
    ```text
    autana --wait 0 flash
    ```
 
-   A CI job that should fail rather than queue writes `autana --wait 0
-   <command>` on every board command; there is no environment setting.
-
-   `--wait` is only accepted before the command (`autana --wait 0 monitor
-   5`); after it, autana says so and does nothing.
-
    ```text
    device: device lock was not acquired: board held by sam@bench:4120 for autana monitor since 2026-09-29 16:42:51; `autana status` shows the queue
    ```
 
-   It exits 75, the same status as a command whose 10-minute wait ran out, so
-   a CI job can retry on the code alone.
+   It exits 75 ([exit codes](#exit-codes-and-json-status)).
 
 4. **Read `stopped process(es)`.** When a command ends and something *it
    started* is still running (an `esptool` or a monitor that outlived its
@@ -238,22 +230,17 @@ alone fall back once more to the only board this machine has ever seen.
 
 ### Exit codes and JSON status
 
-Which board, how long to wait and the lock's owner are the global options
-`--board`, `--wait` and `--owner`; the hook and the records folder are keys of
-`autana.local.toml` (see [Settings](Autana-CLI.md#settings)).
-
 | Exit code | Meaning |
 |---|---|
 | `0` | Success. |
 | `1` | Any other failure, including `device lock was lost`. |
-| `75` | The board was busy: `device lock was not acquired`, fail-fast or after the wait ran out. Safe to retry. |
+| `75` | The board was busy: `device lock was not acquired`, with `--wait 0` or after the wait ran out. Safe to retry on this code alone. |
 | `3`, `4` | `lock hand --until-back` only: `3` the wait timed out or was interrupted (the reservation stays), `4` the reservation was cleared and a new one made. `0` means it was released or expired. |
 | `130` | A second Ctrl+C on `monitor`. |
 | `2` | `device.py` itself, for a bad command line. |
 
 `autana status --json` prints `{"boards": [...]}`, one object per board.
-Times are epoch seconds; an estimate without enough history is `null`. Only timestamps
-are stored, so subtract them from the current time for an age; the human text does that itself.
+Times are epoch seconds, so an age is the current time minus one; an estimate without enough history is `null`.
 
 | Field | |
 |---|---|

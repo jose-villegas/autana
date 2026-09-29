@@ -40,27 +40,15 @@ group below.
 
 `autana help flags` - left off each command's own usage line below to keep
 it readable; a flag works the same wherever the table below says it applies.
-(Not all of "build" - `build` takes `--project` but touches no board.)
 
 | Flag | What it does | Commands |
 |---|---|---|
-| `--wait SECONDS` | Global, goes before the command (`autana --wait 0 monitor 5`; after it, autana says so). Wait this long for the board's lock; 0 fails at once with exit 75. 600 s without it. Covers every step the command runs. | every board command |
-| `--owner NAME` | Global, goes before the command (`autana --owner ci-7 flash`; after it, autana says so). Label this run in the lock as `NAME:<pid>`; without it, `<user>@<host>:<pid>`. Name each CI job. | every board command |
-| `--board SERIAL` | Global, goes before the command (`autana --board 90:70:69:FE:A3:08 monitor 5`). The board's USB serial number; without it, the only board plugged in. | every board command |
+| `--wait SECONDS` | Global; see [Settings](#settings). | every board command |
+| `--owner NAME` | Global; see [Settings](#settings). | every board command |
+| `--board SERIAL` | Global; see [Settings](#settings). | every board command |
 | `--out PATH` | Write the one capture here instead of the default path; with several suites or `--runs` above 1, only makes sense on `suite` when exactly one suite runs once. | selftest, suite, monitor |
 | `--expect-build-id ID` | Refuse to run a suite unless the board, or the image `--flash` just wrote, carries this `BUILD_ID`. `autana flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it - pass that value here to refuse measuring a board that has since been reflashed by someone else. | suite |
 | `--project PATH` | Act on `PATH` instead of the current directory - like `make -C`/`idf.py -C`, no searching parent directories. `PATH` must itself carry `launcher/CMakeLists.txt`; the current directory must too when `--project` is omitted, for every command below except `suite` without `--flash`, which only wants it for its capture's own record. Popped once ahead of any command's own parsing, so it works the same everywhere it applies. | build, flash, selftest, suite, suite list, tune save, docs |
-
-Every board command's lock owner is `"<user>@<host>:<pid>"`, or
-`"<NAME>:<pid>"` when the call starts with `autana --owner NAME` - the pid still
-distinguishes two shells that use the same name, so `autana status`
-does not mistake one for the other's own lock. How long a command
-waits for the board's lock before giving up is set for one call with the
-global option `autana --wait SECONDS <command>` (`autana --wait 0 flash`
-fails at once, exit 75) and is 600 s without it; there is no environment
-setting, so a CI job writes `autana --wait 0 <command>`. Both global options
-go before the command and cover every step it runs; after the command,
-autana says where they belong.
 
 ## Build and flash
 
@@ -170,10 +158,9 @@ The two raw levels below gesture, `touch` and `imu`, live under
 | `autana lock take-back` | Clear that reservation. |
 
 A board is named by its USB serial number, so the lock follows it across
-COM number changes; with several boards plugged in, `autana --board <serial>`
-picks one. If a command loses the lock it stops with `device lock was
-lost`. A command that finds the board busy and will not wait (`autana --wait 0 <command>`, or its
-wait ran out) exits 75, so a script can retry on the code alone. A separate `flash` and `suite` leave a gap where another session can
+COM number changes. A command that loses the lock stops with `device lock was
+lost`; one that finds the board busy exits 75. Exit codes:
+[Device-Lock.md](Device-Lock.md#exit-codes-and-json-status). A separate `flash` and `suite` leave a gap where another session can
 flash; `suite --flash` and `selftest` hold one lock across flash and capture.
 Lock loss is defined in [Device-Lock.md](Device-Lock.md); flash success,
 captures and wait estimates in [Flash-and-Captures.md](Flash-and-Captures.md).
@@ -225,7 +212,7 @@ before running it.
 
 | Command | Fields |
 |---|---|
-| `status` | `boards`: `board`, `port`, `state` (`unlocked`, `held`, `human`), `holder` (`owner`, `purpose`), `since`, `estimated_free`, `expires_at`, `lapsed` (`owner`, `purpose`, `reason`, `at`), `waiting` (`owner`, `purpose`, `estimated_start`). Times are epoch seconds; unknown ones are `null`. See [Device-Lock.md](Device-Lock.md#exit-codes-and-json-status). |
+| `status` | `boards`, one object per board; the fields are in [Device-Lock.md](Device-Lock.md#exit-codes-and-json-status). |
 | `buildid` | `build_id` |
 | `lock id` | `owner`, `pid` |
 | `apps` | `apps`: `name`, `running` |
@@ -271,15 +258,19 @@ optional and gitignored, and `autana help config` lists its keys.
 
 | Global option | Sets |
 |---|---|
-| `--wait SECONDS` | How long a board command waits for the lock (600 s without it). |
-| `--owner NAME` | The name this run holds the lock under. |
-| `--board SERIAL` | Which board, when several are plugged in. |
+| `--wait SECONDS` | How long a board command waits for the lock, across every step it runs: 600 s without it, `0` fails at once with exit 75. |
+| `--owner NAME` | The name this run holds the lock under, as `NAME:<pid>`; `<user>@<host>:<pid>` without it. Name each CI job. |
+| `--board SERIAL` | The board's USB serial number; without it, the only board plugged in. |
+
+All three go before the command (`autana --wait 0 monitor 5`); after it,
+autana says so. None has an environment setting, so a CI job writes
+`autana --wait 0 <command>`.
 
 | Key | Meaning |
 |---|---|
 | `docs_extra` | A list of extra Markdown files or folders `autana docs` searches, relative to the project. |
 | `records` | Where captures and `index.jsonl` land; `.records/device` in the checkout without it. |
-| `lock_hook` | A shell command run on every device lock event; see [Device-Lock.md](Device-Lock.md#lock-events). It fires only for a command run from a checkout whose file sets it, so a machine-wide hook goes in each checkout's file. |
+| `lock_hook` | A shell command run on every device lock event ([events and environment](Device-Lock.md#lock-events)). |
 
 ```toml
 docs_extra = ["notes/bench.md", "~/Documents/design-notes"]
