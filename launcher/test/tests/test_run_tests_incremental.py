@@ -37,7 +37,7 @@ class IncrementalBuildTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.build = Path(tempfile.mkdtemp(prefix="host-build-"))
-        cls.env = dict(os.environ, TEST_BUILD_DIR=str(cls.build), QUIET_INNER="1")
+        cls.env = dict(os.environ, QUIET_INNER="1")
         cls.shell = device.git_bash()
         cls.cold = cls.run_build()
         cls.restore = []
@@ -49,10 +49,11 @@ class IncrementalBuildTest(unittest.TestCase):
         shutil.rmtree(cls.build, ignore_errors=True)
 
     @classmethod
-    def run_build(cls, **extra_env):
+    def run_build(cls, *flags, build=None):
         result = subprocess.run(
-            [cls.shell, str(TEST_DIR / "run_tests.sh"), "--build-only"],
-            env=dict(cls.env, **extra_env), capture_output=True, text=True)
+            [cls.shell, str(TEST_DIR / "run_tests.sh"), "--build-only", "--build-dir",
+             str(build or cls.build), *flags],
+            env=cls.env, capture_output=True, text=True)
         assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-2000:]
         return COMPILED.findall(result.stdout)
 
@@ -109,6 +110,20 @@ class IncrementalBuildTest(unittest.TestCase):
         stamp.write_text(stamp.read_text() + "-DSOME_OTHER_FLAG\n")
         rebuilt = self.run_build()
         self.assertEqual(sorted(c for c in self.cold if c[0] == "CC"), sorted(rebuilt))
+        self.assertEqual([], self.run_build())
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "the Windows compiler has no UBSan")
+    def test_6_a_sanitized_build_has_its_own_objects(self):
+        cold_cc = sorted(c for c in self.cold if c[0] == "CC")
+        self.assertEqual(cold_cc, sorted(self.run_build("--sanitize")))
+        self.assertEqual([], self.run_build("--sanitize"))
+        self.assertEqual([], self.run_build())
+
+    def test_7_another_build_dir_has_its_own_objects(self):
+        other = Path(tempfile.mkdtemp(prefix="host-build-other-"))
+        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
+        cold_cc = sorted(c for c in self.cold if c[0] == "CC")
+        self.assertEqual(cold_cc, sorted(c for c in self.run_build(build=other) if c[0] == "CC"))
         self.assertEqual([], self.run_build())
 
 

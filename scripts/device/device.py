@@ -23,6 +23,10 @@ import device_lock
 import device_report
 import lock_scope
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+import autana_config  # noqa: E402
+BOARD_ENV = autana_config.BOARD_ENV
+TOKEN_ENV = autana_config.TOKEN_ENV
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "device"))
 from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
@@ -112,12 +116,12 @@ def plugged_boards():
 
 
 def chosen_board(board=None):
-    named = board or os.environ.get("AUTANA_BOARD")
+    named = board or os.environ.get(BOARD_ENV)
     return device_lock.normalise_board(named) if named else None
 
 
 def find_board(board=None):
-    """The board named by `board` or AUTANA_BOARD, else the only one plugged in."""
+    """The board named by `board` or autana's global --board, else the only one plugged in."""
     wanted = chosen_board(board)
     present = plugged_boards()
     if wanted:
@@ -128,8 +132,8 @@ def find_board(board=None):
     if not present:
         raise NoBoard("no USB Serial/JTAG board found (VID 0x303A)")
     if len(present) > 1:
-        raise RuntimeError("several boards are plugged in - name one with --board or "
-                           "AUTANA_BOARD: " + ", ".join(sorted(b.serial for b in present)))
+        raise RuntimeError("several boards are plugged in - name one with --board: "
+                           + ", ".join(sorted(b.serial for b in present)))
     return present[0]
 
 
@@ -157,7 +161,7 @@ def board_for_lock(store, named=None, remembered=False):
     if not candidates:
         raise NoBoard("no USB Serial/JTAG board found (VID 0x303A)")
     raise RuntimeError("several boards are " + source
-                       + " - name one with --board or AUTANA_BOARD: " + ", ".join(candidates))
+                       + " - name one with --board: " + ", ".join(candidates))
 
 
 def open_serial():
@@ -190,13 +194,13 @@ def now():
 def records_root():
     """Where a session's log and manifest are written.
 
-    AUTANA_RECORDS names it, for anyone who keeps their device history
-    elsewhere. Unset, records land in this checkout's own gitignored
-    .records/device - self-contained, and nothing a commit can pick up by
-    accident."""
-    named = os.environ.get("AUTANA_RECORDS")
+    The project's `records` setting names it, for anyone who keeps their
+    device history elsewhere. Without one, records land in this checkout's
+    own gitignored .records/device - self-contained, and nothing a commit
+    can pick up by accident."""
+    named = autana_config.load().get("records")
     if named:
-        return Path(named)
+        return autana_config.path_value(named)
     return Path(__file__).resolve().parents[2] / ".records" / "device"
 
 
@@ -941,10 +945,8 @@ def script_environment(environment=None):
 def new_image_directory():
     """A snapshot's own folder: private, uniquely named, outside the records,
     and removed by its owner once the write is done or abandoned. Made under
-    AUTANA_IMAGE_ROOT when set (the tests' own folder), else the system's
-    temporary directory."""
-    return Path(tempfile.mkdtemp(prefix="autana-image-",
-                                 dir=os.environ.get("AUTANA_IMAGE_ROOT") or None))
+    the system's temporary directory."""
+    return Path(tempfile.mkdtemp(prefix="autana-image-"))
 
 
 def remove_image_directory(image):
@@ -991,14 +993,14 @@ def write_snapshot(held, write, image_dir, **popen):
     environment = script_environment(popen.pop("env", None))
     # Proof to flash_image.sh that this flash holds this board's lock: it
     # runs check-token with both before it opens the port.
-    environment["AUTANA_DEVICE_LOCK_TOKEN"] = held.held["token"]
-    environment["AUTANA_BOARD"] = held.board
+    environment[TOKEN_ENV] = held.held["token"]
+    environment[BOARD_ENV] = held.board
     run_to_end(write + [Path(image_dir).as_posix()], held.lost, env=environment, **popen)
 
 
 def flash_script(store, board, owner, purpose, bash, worktree, variant, wait, **popen):
     """A flash of `worktree`'s `variant` for a caller outside device.py: finds
-    the board (`board`, else AUTANA_BOARD, else the only one), builds and
+    the board (`board`, else the global --board, else the only one), builds and
     snapshots with no lock held, then queues for the board's lock and holds
     it only for the write. A failed build never queues. Returns the board's
     serial."""
@@ -1549,12 +1551,17 @@ def print_statuses(entries):
 
 
 def main(argv=None):
+    try:
+        autana_config.load()
+    except autana_config.ConfigError as error:
+        print("device: " + str(error), file=sys.stderr)
+        return 1
     parser = argparse.ArgumentParser()
-    parser.add_argument("--board", help="the board's USB serial number (default: AUTANA_BOARD, "
-                                        "else the only board plugged in, else the only one "
+    parser.add_argument("--board", help="the board's USB serial number (default: the only "
+                                        "board plugged in, else the only one "
                                         "a lock record names; hand-to-human/take-back also try "
                                         "the only board this machine has ever seen)")
-    parser.add_argument("--owner", default="unknown")
+    parser.add_argument("--owner", default=device_lock.default_owner())
     parser.add_argument("--wait", type=float, default=600)
     subparsers = parser.add_subparsers(dest="command", required=True)
     status_parser = subparsers.add_parser("status")

@@ -10,8 +10,9 @@
 #   main/apps/sand/tools/report_performance.sh [--no-restore] [--perf-scope] \
 #       [--baseline REPORT.md] [OUT.md]
 #
-#   AUTANA_BOARD the board's USB serial number, in the environment. Unset:
-#                the only board plugged in - see scripts/device/device.py.
+#   --board SERIAL
+#                the board's USB serial number. Omitted: the only board
+#                plugged in.
 #   OUT.md       markdown report path, ending in .md. Default:
 #                main/apps/sand/tools/results/performance_<timestamp>.md
 #   --no-restore skip rebuilding and reflashing the release firmware

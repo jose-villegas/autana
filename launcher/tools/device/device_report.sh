@@ -34,28 +34,35 @@
 #
 # and then calls device_report_run with the arguments every report takes:
 #
-#   [--no-restore] [OUT.md]
+#   [--board SERIAL] [--no-restore] [OUT.md]
 #
-# The board is AUTANA_BOARD's, else the only one plugged in, as for every
-# device.py command.
+# The board is --board's, else the only one plugged in, as for every autana
+# command.
 
 # The one positional is the report path, and it must end in .md, so a board
 # serial left in an old call's first slot is refused rather than written to.
 device_report_arguments() {
     _dr_restore=1
     _dr_out=""
+    _dr_board=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --no-restore) _dr_restore=0; shift ;;
-            -*) echo "ERROR: unknown flag: $1 - the board is AUTANA_BOARD's" >&2; return 1 ;;
+            --board)
+                if [ $# -lt 2 ]; then
+                    echo "ERROR: --board needs a board's USB serial number" >&2
+                    return 1
+                fi
+                _dr_board="$2"; shift 2 ;;
+            -*) echo "ERROR: unknown flag: $1 - name a board with --board" >&2; return 1 ;;
             *)
                 case "$1" in
                     *.md) ;;
-                    *) echo "ERROR: $1 is not a report path (OUT.md); name a board with AUTANA_BOARD" >&2
+                    *) echo "ERROR: $1 is not a report path (OUT.md); name a board with --board" >&2
                        return 1 ;;
                 esac
                 if [ -n "$_dr_out" ]; then
-                    echo "ERROR: one report path only; name a board with AUTANA_BOARD" >&2
+                    echo "ERROR: one report path only; name a board with --board" >&2
                     return 1
                 fi
                 _dr_out="$1"; shift ;;
@@ -142,13 +149,13 @@ device_report_capture() {
         # Unquoted on purpose: a caller declares zero or more flags in one string.
         # shellcheck disable=SC2086
         set -- "$@" $report_build_flags
-        autana --owner "$_dr_owner" suite "$@"
+        autana ${_dr_board:+--board "$_dr_board"} --owner "$_dr_owner" suite "$@"
     else
         set -- "$report_timeout" --out "$_dr_raw" --project "$_dr_worktree"
         echo "=== Building and capturing the self-test run ==="
         # shellcheck disable=SC2086
         set -- "$@" $report_build_flags
-        autana --owner "$_dr_owner" selftest "$@"
+        autana ${_dr_board:+--board "$_dr_board"} --owner "$_dr_owner" selftest "$@"
     fi
 }
 
@@ -193,7 +200,8 @@ device_report_finish() {
     _dr_final=$?
     if [ "$_dr_do_restore" -eq 1 ]; then
         echo "=== Restoring the release firmware ==="
-        autana --owner "$_dr_owner" flash release --quiet --project "$_dr_worktree" \
+        autana ${_dr_board:+--board "$_dr_board"} --owner "$_dr_owner" flash release --quiet \
+            --project "$_dr_worktree" \
             || echo "WARNING: could not restore the release firmware - the device may still be on build.diag"
     else
         echo "=== --no-restore: leaving the device on the diagnostics image ==="

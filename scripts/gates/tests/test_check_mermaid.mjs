@@ -11,6 +11,8 @@ import {
   winQuote,
   parseExtraMmdcArgs,
   findLiteralNewlineInStateDiagram,
+  findBrowserOnPath,
+  browserConfigArgs,
 } from '../check-mermaid.mjs';
 
 test('extracts a single fenced block with its start line', () => {
@@ -124,4 +126,32 @@ test('flags a literal \\n in a stateDiagram-v2 preceded by YAML frontmatter', ()
 test('does not flag a flowchart preceded by an %%{init}%% directive', () => {
   const source = ['%%{init: { "theme": "forest" } }%%', 'flowchart TD', 'A["one\\ntwo"] --> B'].join('\n');
   assert.equal(findLiteralNewlineInStateDiagram(source), null);
+});
+
+// The browser is found on PATH, so no environment variable has to name it.
+test('finds a chromium on PATH, in the order of the names, not of the folders', () => {
+  const present = new Set(['/opt/bin/google-chrome', '/usr/bin/chromium']);
+  const found = findBrowserOnPath('/opt/bin:/usr/bin', false, (path) => present.has(path));
+  assert.equal(found, '/usr/bin/chromium');
+});
+
+test('finds no browser when none is on PATH', () => {
+  assert.equal(findBrowserOnPath('/usr/bin:/bin', false, () => false), null);
+  assert.equal(findBrowserOnPath('', false, () => true), null);
+});
+
+test('looks for chrome.exe with the Windows separator', () => {
+  const found = findBrowserOnPath('C:\\a;C:\\chrome', true, (path) => path === 'C:\\chrome\\chrome.exe');
+  assert.equal(found, 'C:\\chrome\\chrome.exe');
+});
+
+test('names the browser to mmdc through a Puppeteer config, unless the caller gave one', () => {
+  assert.deepEqual(browserConfigArgs([], '/usr/bin/chromium', '/tmp/p.json'), ['-p', '/tmp/p.json']);
+  assert.deepEqual(browserConfigArgs(['-p', '/ci/p.json'], '/usr/bin/chromium', '/tmp/p.json'), []);
+  assert.deepEqual(browserConfigArgs(['--puppeteerConfigFile=/ci/p.json'], '/usr/bin/chromium', '/tmp/p.json'), []);
+  assert.deepEqual(browserConfigArgs([], null, '/tmp/p.json'), []);
+});
+
+test('a browser the user named through PUPPETEER_EXECUTABLE_PATH beats one found on PATH', () => {
+  assert.deepEqual(browserConfigArgs([], '/usr/bin/chromium', '/tmp/p.json', '/opt/chrome'), []);
 });

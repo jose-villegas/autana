@@ -23,7 +23,18 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 BOOT_C_DIR="$HERE/../bootloader_components/pmic_cold_boot"
 BOOT_TEST_DIR="$HERE/bootloader"
 STUBS="$HERE/stubs/bootloader"
-BUILD_DIR="${TEST_BUILD_DIR:-$HERE/build}"
+BUILD_DIR=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --build-dir)
+            [ $# -ge 2 ] || { echo "--build-dir needs a folder" >&2; exit 2; }
+            BUILD_DIR=$2
+            shift ;;
+        *) echo "unknown option: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+BUILD_DIR="${BUILD_DIR:-$HERE/build}"
 
 # shellcheck source=../tools/build/find_cc.sh
 . "$HERE/../tools/build/find_cc.sh"

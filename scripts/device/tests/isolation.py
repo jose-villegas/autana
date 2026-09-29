@@ -1,17 +1,19 @@
 """Keeps the device and autana test suites out of the real device records.
 
 Every test module under scripts/device/tests and scripts/autana/tests
-imports this before anything else. Once per test process it points the
-records root (AUTANA_RECORDS), the lock root (AUTANA_DEVICE_LOCK_ROOT) and
-where flash snapshots are made (AUTANA_IMAGE_ROOT) at one temporary
-directory, which child processes inherit, and drops an inherited
-AUTANA_LOCK_HOOK so no test notifies anybody. An audit hook then refuses any
+imports this before anything else. Once per test process it makes one
+temporary project whose autana.local.toml sends the records to a temporary
+folder and names it the project every child process acts on, and points the
+lock root (_AUTANA_DEVICE_LOCK_ROOT, test only) and the system temporary
+folder, where flash snapshots are made, at temporary directories too. A
+project with no lock hook notifies nobody. An audit hook then refuses any
 write this process makes under the roots it replaced, and the run exits
 non-zero if one was attempted, even where the code under test swallowed the
 error - or if a snapshot folder outlived the run.
 """
 
 import atexit
+import contextlib
 import os
 import shutil
 import sys
@@ -27,20 +29,71 @@ def replaced_roots():
     roots = [CHECKOUT / ".records" / "device", Path(tempfile.gettempdir()) / "autana-device"]
     if hasattr(os, "getuid"):
         roots.append(Path("/tmp") / f"autana-device-{os.getuid()}")
-    for name in ("AUTANA_RECORDS", "AUTANA_DEVICE_LOCK_ROOT"):
-        if os.environ.get(name):
-            roots.append(Path(os.environ[name]))
+    if os.environ.get("_AUTANA_DEVICE_LOCK_ROOT"):
+        roots.append(Path(os.environ["_AUTANA_DEVICE_LOCK_ROOT"]))
+    # The records a real run of this checkout, or the project this process
+    # was started for, would write to.
+    sys.path.insert(0, str(CHECKOUT / "scripts" / "lib"))
+    import autana_config
+    for real in (os.environ.get("_AUTANA_PROJECT"), CHECKOUT):
+        try:
+            named = autana_config.load(real).get("records") if real else None
+        except autana_config.ConfigError:
+            named = None
+        if named:
+            roots.append(autana_config.path_value(named, real))
     return [root.resolve() for root in roots]
 
 
 REAL_ROOTS = replaced_roots()
-os.environ["AUTANA_RECORDS"] = str(TEMP / "records")
-os.environ["AUTANA_DEVICE_LOCK_ROOT"] = str(TEMP / "locks")
+
+
+def write_config(project, **settings):
+    """`project`'s autana.local.toml holding `settings` ({"lock_hook": "cmd"})."""
+    def quoted(text):
+        return '"' + str(text).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+    lines = []
+    for key, value in settings.items():
+        text = ("[" + ", ".join(quoted(item) for item in value) + "]"
+                if isinstance(value, (list, tuple)) else quoted(value))
+        lines.append(f"{key} = {text}")
+    Path(project).mkdir(parents=True, exist_ok=True)
+    (Path(project) / "autana.local.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+@contextlib.contextmanager
+def project(**settings):
+    """A fresh project folder holding `settings` as its autana.local.toml -
+    no file at all when there are none - that every autana script in this
+    process and its children treats as the project while the block runs."""
+    with tempfile.TemporaryDirectory(dir=TEMP) as directory:
+        if settings:
+            write_config(directory, **settings)
+        previous = os.environ["_AUTANA_PROJECT"]
+        os.environ["_AUTANA_PROJECT"] = directory
+        try:
+            yield Path(directory)
+        finally:
+            os.environ["_AUTANA_PROJECT"] = previous
+
+
+RECORDS = TEMP / "records"
+BASE_PROJECT = TEMP / "project"
+write_config(BASE_PROJECT, records=str(RECORDS))
+os.environ["_AUTANA_PROJECT"] = str(BASE_PROJECT)
+os.environ["_AUTANA_DEVICE_LOCK_ROOT"] = str(TEMP / "locks")
+# In-process autana derives its project from the cwd, so tests run in the
+# isolated one.
+os.chdir(BASE_PROJECT)
 IMAGES = TEMP / "images"
 IMAGES.mkdir()
-os.environ["AUTANA_IMAGE_ROOT"] = str(IMAGES)
-os.environ.pop("AUTANA_LOCK_HOOK", None)
-os.environ.pop("AUTANA_BOARD", None)
+# Flash snapshots are made under the system's temporary folder, which is
+# where the leftover check looks; children inherit the variables.
+tempfile.tempdir = str(IMAGES)
+for name in ("TMPDIR", "TEMP", "TMP"):
+    os.environ[name] = str(IMAGES)
+os.environ.pop("_AUTANA_BOARD", None)
 
 violations = []
 checking = threading.local()
