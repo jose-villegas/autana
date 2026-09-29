@@ -31,9 +31,7 @@ GUARD_STALE_SECONDS = 30
 # ever refuses a record over its value - two machines with different-aged
 # autana installs still have to work the same board, so a mismatch is shown
 # as information (status, a wait notice), never a reason to stop.
-# 2: a lock record carries "tree", the pids the holder started, and a holder
-# that has exited keeps the lock while any of them runs (reclaim_reason()).
-LOCK_PROTOCOL = 2
+LOCK_PROTOCOL = 1
 # The fields that decide something - who a record is, whether a lock is live,
 # stale or dead, or a waiter's place in the FIFO - and so must be readable
 # off ANY record, of any age or protocol, without guessing: boards() reads
@@ -85,6 +83,21 @@ PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 STILL_ACTIVE = 259
 
 
+def windows_kernel32():
+    """kernel32 with the calls the process table and job code share typed:
+    an untyped HANDLE is truncated to 32 bits on a 64-bit build."""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    return kernel32
+
+
 def windows_process_alive(pid, kernel32=None):
     """Never os.kill(pid, 0) on Windows: signal 0 there is CTRL_C_EVENT, so
     CPython calls GenerateConsoleCtrlEvent and treats the pid as a console
@@ -98,11 +111,7 @@ def windows_process_alive(pid, kernel32=None):
     from ctypes import wintypes
 
     if kernel32 is None:
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.OpenProcess.restype = wintypes.HANDLE
-        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-        kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
-        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32 = windows_kernel32()
     handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
     if not handle:
         return ctypes.get_last_error() == ERROR_ACCESS_DENIED
@@ -272,18 +281,10 @@ class LockStore:
     def is_stale(self, lock, stale_seconds):
         return self.now() - lock["heartbeat_at"] > stale_seconds
 
-    def orphans(self, lock):
-        """The processes a holder that has exited left running. The lock
-        arbitrates intent while a child can still own the port, so it is not
-        free until they end (or the heartbeat window does)."""
-        if lock.get("host") != socket.gethostname() or self.is_alive(lock["pid"]):
-            return []
-        return [pid for pid in lock.get("tree", ()) if self.is_alive(pid)]
-
     def reclaim_reason(self, lock, stale_seconds):
         """Why `lock` may be taken from its holder, or "" while it holds."""
         same_host = lock.get("host") == socket.gethostname()
-        if same_host and not self.is_alive(lock["pid"]) and not self.orphans(lock):
+        if same_host and not self.is_alive(lock["pid"]):
             return "dead process"
         if self.is_stale(lock, stale_seconds):
             return "heartbeat expiry"
@@ -336,7 +337,6 @@ class LockStore:
                 "purpose": pending[0]["purpose"],
                 "kind": pending[0]["kind"],
                 "token": uuid.uuid4().hex,
-                "tree": [],
                 "protocol": LOCK_PROTOCOL,
                 "autana_version": __version__,
             }
@@ -376,11 +376,9 @@ class LockStore:
         with self.guard(board):
             (self.queue_dir(board) / (ticket + ".json")).unlink(missing_ok=True)
 
-    def heartbeat(self, board, token, tree=None):
+    def heartbeat(self, board, token):
         """Refuses a lock the next claim() may reclaim: a holder that stalled
         past the stale window has to find out it lost the board, not renew it.
-        `tree` is the pids the holder has started, kept in the record so they
-        outlive the holder's own pid as far as anyone else can tell.
         `token` is never a foreign lock's - a mismatch (missing or not ours)
         just means this is not our lock to touch, protocol notwithstanding."""
         with self.guard(board):
@@ -388,8 +386,6 @@ class LockStore:
             if not lock or lock.get("token") != token or self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
                 return False
             lock["heartbeat_at"] = self.now()
-            if tree is not None:
-                lock["tree"] = list(tree)
             self.write_json(self.lock_path(board), lock)
             return True
 
@@ -588,9 +584,6 @@ def status_entry(store, board, port=None, now=None, durations=None):
                      elapsed_seconds=round(max(0, now - acquired)) if acquired is not None else None,
                      estimated_free=(max(now, acquired + duration)
                                      if duration is not None and acquired is not None else None))
-        orphans = store.orphans(lock)
-        if orphans:
-            entry["holder"]["orphans"] = orphans
     elif status["reclaimable"]:
         stale = status["reclaimable"]
         entry["stale"] = {"owner": stale["owner"], "purpose": stale.get("purpose"),
@@ -620,9 +613,6 @@ def status_lines(entry):
                  f"{local_time(entry['since'])} (elapsed {entry['elapsed_seconds']}s; "
                  f"estimated free {format_estimate(entry['estimated_free'])}; "
                  f"{holder_version_text(holder)})"]
-        if holder.get("orphans"):
-            lines.append("  holder exited; still running under it: "
-                         + ", ".join(map(str, holder["orphans"])))
     elif entry["stale"]:
         lines = ["unlocked - stale lock from {owner} for {purpose} ({reason})".format(
             **entry["stale"])]

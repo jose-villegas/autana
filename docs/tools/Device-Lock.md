@@ -160,14 +160,16 @@ is `CTRL_C_EVENT` there and misreports any process on another console.
 
 The lock is the promise of the port, and a child (esptool, a monitor) can
 keep the port after its parent is gone, so the lock outlives every process the
-command started. On the way out the holder gives its descendants two seconds
-to end, kills what is left, and only then releases; the pids it killed are
-printed. The heartbeat records the descendants' pids in the lock (`tree`),
-and a holder that died with any of them running keeps the lock: `status`
-reads `held` and names them until they end or the heartbeat window does.
-A process the holder started and lost track of within one heartbeat is not
-covered, and on POSIX a child of a killed holder is only reported, not
-stopped.
+command started. On Windows the holder joins a kill-on-close job object
+(`lock_job.py`) when it takes the lock; everything it starts, `reset`'s esptool
+included, inherits it. A holder that ends normally gives the members two
+seconds, kills the rest and prints their pids, then releases. A holder killed
+by any means closes the job and the kernel kills every member, grandchildren
+of dead parents too, so no pid is ever inferred. Jobs nest, so a holder
+already inside a launcher's or harness's job still gets its own; if it
+cannot join one it says so and the lock works as before. POSIX has no
+kill-on-close: `run_to_end` stops its flash's process group on an error, but
+a killed holder's children there are left running.
 
 The heartbeat refuses a lock that was replaced or has gone stale. From then
 on the command has lost the board: a capture or `send` stops at its next
@@ -189,7 +191,13 @@ stateDiagram-v2
     Stale --> Lost: a waiter reclaims it, or the heartbeat is refused
     Held --> Lost: lock replaced
     Lost --> [*]: the command stops and fails
-    Held --> [*]: released when the command ends
+    Held --> Draining: the command ends
+    Draining --> Reaped: members still running after 2 s
+    Draining --> Released: every member ended
+    Reaped --> Released: members killed
+    Released --> [*]: the next waiter may take the board
+    Held --> Killed: holder killed
+    Killed --> Stale: the kernel closes the job and kills every member
 ```
 
 After winning the lock a command also waits for the serial port itself to
@@ -341,8 +349,7 @@ The lock root is `%TEMP%/autana-device` (`AUTANA_DEVICE_LOCK_ROOT`
 overrides it). Per board, with `:` in the serial number written as `_`:
 `<serial>.json` is the lock - `board`, `owner`, `purpose`, `kind`,
 `acquired_at`, `heartbeat_at`, `expected_build_id`, `host`, `pid`, `log`
-(whom it was reclaimed from, if anyone), an opaque `token`, `tree` (the pids
-the holder started, refreshed by each heartbeat), and `protocol`/
+(whom it was reclaimed from, if anyone), an opaque `token`, and `protocol`/
 `autana_version` (next section); `<serial>.queue/` holds the FIFO waiter
 tickets (a dead waiter's is discarded), each carrying the same `protocol`/
 `autana_version`; `<serial>.human.json` is a person's reservation, likewise;
