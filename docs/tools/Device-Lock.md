@@ -344,26 +344,31 @@ after 30 s so a crashed holder cannot wedge it forever. The JSON files above
 are the state that mutex protects, not locks themselves, and a machine can
 have autana installs of different ages meeting at one board, so every record
 carries `device_lock.LOCK_PROTOCOL`'s value as `"protocol"` (an integer, 0
-when the field is absent - an autana from before this existed).
-`PROTOCOL_CORE_FIELDS` names exactly what a reader that must keep working
-across a protocol gap actually reads off a foreign record: `owner`, `pid`,
-`host`, `protocol` itself, `heartbeat_at` (staleness), `purpose`/`acquired_at`
-(a lock), `note`/`since_at` (a reservation), `sequence`/`ticket` (a waiter) -
-`status` reads only those, so it never refuses to show a foreign record, and
-a dead or stale holder (judged from `host`, `pid` and `heartbeat_at` alone)
-is always reclaimed, whatever its protocol - never wedges the board. Only a
-*live, non-stale* foreign holder - one a claim must leave standing, and so
-never touches beyond those core fields - refuses loudly on a protocol
-mismatch instead of just reporting "not yet":
+when the field is absent - an autana from before this existed), alongside
+`"autana_version"`. Neither is ever compared or refused on - two autanas of
+different ages still have to work the same board, so a mismatch is only
+ever shown as information, in `status` and while waiting:
 
 ```
-board held by sam with lock protocol 2 (autana 0.4.1); this autana speaks protocol 1 - update autana
+held by sam for flash since ... (elapsed 12s; estimated free unknown; autana 0.4.1, lock protocol 2)
+board held by sam (autana 0.4.1, lock protocol 2) - waiting
 ```
 
-`autana_version` rides along purely for that message; nothing ever compares
-it. Bump `LOCK_PROTOCOL` whenever a record's fields change in a way an older
-reader would misinterpret - exact match, always; there is no "additive,
-so no bump needed" case. `scripts/device/tests/test_device_lock.py` pins
+`PROTOCOL_CORE_FIELDS` names exactly what a reader must be able to get off
+ANY record, of any age, without guessing - the fields that decide something:
+`owner`, `pid`, `host`, `heartbeat_at` (a lock's liveness and staleness),
+`ticket`/`sequence` (a waiter's identity and FIFO order), `board` (every
+record names the board it is for, read by `boards()`), and `protocol`
+itself. A dead or stale holder is judged from exactly these - `host`, `pid`
+and `heartbeat_at` - so it is always reclaimed, whatever its protocol -
+never wedges the board waiting for a peer that will never update it again.
+Everything else (`purpose`, `acquired_at`, `since_at`, `note`, `kind`, ...)
+is read with `.get()` wherever the record might not be one this autana just
+wrote itself, the same way `kind` always has been - display information a
+reader tolerates the absence of, never something a decision hinges on.
+
+Bump `LOCK_PROTOCOL` whenever a record's fields change in a way an older
+reader would misinterpret. `scripts/device/tests/test_device_lock.py` pins
 every record's current keys as a golden set, keyed by protocol number: a
 deliberate field change without also bumping `LOCK_PROTOCOL` and adding a
 new entry there is the failure telling you to do both.

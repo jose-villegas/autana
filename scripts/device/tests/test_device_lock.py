@@ -473,9 +473,9 @@ class LockTests(unittest.TestCase):
 
 class ProtocolTests(unittest.TestCase):
     """LOCK_PROTOCOL: the mutex is guard() (an O_CREAT|O_EXCL file); these JSON
-    records are the state it protects, and a claim, heartbeat or release that
-    would otherwise guess at a field the frozen core does not promise instead
-    refuses loudly - never overwrites a lock it does not understand."""
+    records are the state it protects. A protocol mismatch is never a reason
+    to stop - two machines with different-aged autana installs still have to
+    work the same board - only information shown in status and while waiting."""
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -487,7 +487,7 @@ class ProtocolTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def write_foreign_lock(self, protocol, pid=99):
+    def write_foreign_lock(self, protocol, pid=99, autana_version="9.9.9"):
         """pid 99 is dead per this test class's is_alive (only 1 and this
         process's own pid are alive) - the default names a reclaimable
         holder; pass pid=1 for a live one a claim must leave standing."""
@@ -495,33 +495,37 @@ class ProtocolTests(unittest.TestCase):
             "acquired_at": 1000, "heartbeat_at": 1000, "expected_build_id": "",
             "host": device_lock.socket.gethostname(), "owner": "other-autana",
             "pid": pid, "purpose": "flash", "token": "old",
-            "autana_version": "9.9.9",
         }
+        if autana_version is not None:
+            record["autana_version"] = autana_version
         if protocol is not None:
             record["protocol"] = protocol
         self.lock.write_json(self.lock.lock_path("COM5"), record)
 
-    def test_a_different_protocol_refuses_a_claim_from_a_live_holder(self):
+    def test_a_live_holder_of_a_different_protocol_is_just_waited_for(self):
+        """No exception, no refusal - a claim behind a live foreign-protocol
+        holder is queued exactly like any other live holder."""
         self.write_foreign_lock(protocol=2, pid=1)
         ticket = self.lock.enqueue("COM5", "me", "flash", pid=1)
-        with self.assertRaises(device_lock.ProtocolMismatch) as caught:
-            self.lock.claim("COM5", ticket, "")
-        message = str(caught.exception)
-        self.assertIn("other-autana", message)
-        self.assertIn("protocol 2", message)
-        self.assertIn("9.9.9", message)
-        self.assertIn(f"protocol {device_lock.LOCK_PROTOCOL}", message)
-        self.assertIn("update autana", message)
-        # Never guessed at, never overwritten: the foreign record still stands.
+        self.assertIsNone(self.lock.claim("COM5", ticket, ""))
+        # Never touched: the foreign record still stands, unguessed at.
         self.assertEqual(self.lock.read_json(self.lock.lock_path("COM5"))["owner"],
                          "other-autana")
 
-    def test_a_missing_protocol_field_counts_as_zero_and_is_refused(self):
-        self.write_foreign_lock(protocol=None, pid=1)
+    def test_a_live_holder_with_no_protocol_field_is_queued_behind_and_named(self):
+        """A lock written before LOCK_PROTOCOL existed (no "protocol" or
+        "autana_version" key at all) reads as protocol 0, unknown version -
+        still just waited for, and status/the wait notice both name it,
+        never crash reading a field it lacks."""
+        self.write_foreign_lock(protocol=None, pid=1, autana_version=None)
         ticket = self.lock.enqueue("COM5", "me", "flash", pid=1)
-        with self.assertRaises(device_lock.ProtocolMismatch) as caught:
-            self.lock.claim("COM5", ticket, "")
-        self.assertIn("protocol 0", str(caught.exception))
+        self.assertIsNone(self.lock.claim("COM5", ticket, ""))
+        entry = device_lock.status_entry(self.lock, "COM5", durations={})
+        self.assertEqual(entry["holder"]["protocol"], 0)
+        self.assertIsNone(entry["holder"]["autana_version"])
+        text = "\n".join(device_lock.status_lines(entry))
+        self.assertIn("lock protocol 0", text)
+        self.assertIn("autana unknown", text)
 
     def test_a_dead_holder_is_reclaimed_regardless_of_protocol(self):
         """The board must never wedge on a dead peer just because it spoke a
@@ -540,18 +544,21 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(held["owner"], "me")
 
     def test_a_live_matching_protocol_holder_is_not_reclaimed(self):
-        """A same-protocol live holder is refused the ordinary way (None, no
-        exception) - the protocol check exists only to explain a foreign,
-        unreclaimable holder, never to second-guess one this autana already
-        understands fully."""
         self.write_foreign_lock(protocol=device_lock.LOCK_PROTOCOL, pid=1)
         ticket = self.lock.enqueue("COM5", "me", "flash", pid=1)
         self.assertIsNone(self.lock.claim("COM5", ticket, ""))
 
+    def test_status_names_a_live_holders_protocol_and_version(self):
+        self.write_foreign_lock(protocol=device_lock.LOCK_PROTOCOL, pid=1)
+        entry = device_lock.status_entry(self.lock, "COM5", durations={})
+        text = "\n".join(device_lock.status_lines(entry))
+        self.assertIn(f"lock protocol {device_lock.LOCK_PROTOCOL}", text)
+        self.assertIn("autana 9.9.9", text)
+
     def test_a_foreign_lock_is_not_ours_to_heartbeat_or_release(self):
         """No token of ours ever matches a foreign lock's, so these return the
         same "not mine" answer as any other lock we do not hold - no crash,
-        no ProtocolMismatch, since neither interprets a field beyond that."""
+        whatever its protocol."""
         self.write_foreign_lock(protocol=2)
         self.assertFalse(self.lock.heartbeat("COM5", "not-mine"))
         self.assertFalse(self.lock.release("COM5", "not-mine"))
@@ -620,24 +627,27 @@ class LockRecordShapeTests(unittest.TestCase):
         self.assertEqual(set(human), self.golden("human"))
 
     def test_core_fields_a_lock_reader_needs_are_promised_and_present(self):
-        """status()/reclaim_reason()/is_stale() read these off a lock record
-        regardless of its protocol - PROTOCOL_CORE_FIELDS must promise them,
-        and this protocol's own golden set must actually carry them."""
-        needed = {"owner", "pid", "host", "protocol", "heartbeat_at", "purpose", "acquired_at"}
+        """reclaim_reason()/is_stale() decide whether a lock is live, stale or
+        dead from pid/host/heartbeat_at alone, and boards() reads board off
+        any record - PROTOCOL_CORE_FIELDS must promise these regardless of
+        protocol, and this protocol's own golden set must actually carry
+        them. purpose/acquired_at decide nothing and are read with .get()."""
+        needed = {"owner", "pid", "host", "heartbeat_at", "board", "protocol"}
         self.assertLessEqual(needed, set(device_lock.PROTOCOL_CORE_FIELDS))
         self.assertLessEqual(needed, self.golden("lock"))
 
     def test_core_fields_a_ticket_reader_needs_are_promised_and_present(self):
-        """tickets() sorts on sequence; status_entry() reads owner/purpose/ticket
-        off a waiter regardless of protocol."""
-        needed = {"owner", "pid", "purpose", "sequence", "ticket", "protocol"}
+        """tickets() sorts on sequence and _claim() matches on ticket -
+        both decide something and so must be promised regardless of
+        protocol. purpose decides nothing and is read with .get()."""
+        needed = {"owner", "pid", "sequence", "ticket", "board", "protocol"}
         self.assertLessEqual(needed, set(device_lock.PROTOCOL_CORE_FIELDS))
         self.assertLessEqual(needed, self.golden("ticket"))
 
     def test_core_fields_a_human_reader_needs_are_promised_and_present(self):
-        """status_entry() reads owner/note/since_at off a reservation
-        regardless of protocol."""
-        needed = {"owner", "note", "since_at", "protocol"}
+        """boards() reads board off any record; note/since_at decide nothing
+        and are read with .get()."""
+        needed = {"owner", "board", "protocol"}
         self.assertLessEqual(needed, set(device_lock.PROTOCOL_CORE_FIELDS))
         self.assertLessEqual(needed, self.golden("human"))
 

@@ -25,40 +25,21 @@ DEFAULT_STALE_SECONDS = 600
 GUARD_STALE_SECONDS = 30
 # The mutex is guard() below (an O_CREAT|O_EXCL file), not an OS byte-range
 # lock - the JSON files are the state it protects, not locks themselves. This
-# numbers THAT state's shape: a claim, heartbeat or release that must
-# interpret a field the frozen core (below) does not promise refuses loudly
-# on a mismatch rather than guess. Bump it whenever a record's fields change
-# in a way an older reader would misinterpret.
+# numbers THAT state's shape, purely as a bump reminder pinned by the golden
+# key-snapshot test in test_device_lock.py: bump it whenever a record's
+# fields change in a way an older reader would misinterpret. Nothing here
+# ever refuses a record over its value - two machines with different-aged
+# autana installs still have to work the same board, so a mismatch is shown
+# as information (status, a wait notice), never a reason to stop.
 LOCK_PROTOCOL = 1
-# Every version of autana that ever speaks this protocol can read these
-# fields off any record that carries them, regardless of protocol - exactly
-# what status(), reclaim_reason()/is_stale() and tickets() already read to
-# decide whether a lock is live, stale or dead, and what status_entry()
-# prints: owner/pid/host/protocol identify a record's holder and shape;
-# heartbeat_at is what staleness is judged by; purpose/acquired_at (lock),
-# note/since_at (human), sequence/ticket (waiter) are what status reports.
-# Nothing outside this set may be read from a record whose protocol differs
-# from LOCK_PROTOCOL.
-PROTOCOL_CORE_FIELDS = ("owner", "pid", "host", "protocol", "heartbeat_at",
-                        "purpose", "acquired_at", "since_at", "note", "sequence", "ticket")
-
-
-class ProtocolMismatch(RuntimeError):
-    """An existing lock, reservation or ticket record speaks a lock protocol
-    this autana does not understand - never guessed at, never overwritten."""
-
-
-def require_known_protocol(record):
-    """Refuses loudly when `record` (already read off disk) was written by a
-    different LOCK_PROTOCOL - safe to skip for a read that only touches
-    PROTOCOL_CORE_FIELDS, required before interpreting anything else."""
-    protocol = record.get("protocol", 0)
-    if protocol != LOCK_PROTOCOL:
-        holder = record.get("owner", "unknown")
-        version = record.get("autana_version", "an unknown autana version")
-        raise ProtocolMismatch(
-            f"board held by {holder} with lock protocol {protocol} ({version}); "
-            f"this autana speaks protocol {LOCK_PROTOCOL} - update autana")
+# The fields that decide something - who a record is, whether a lock is live,
+# stale or dead, or a waiter's place in the FIFO - and so must be readable
+# off ANY record, of any age or protocol, without guessing: boards() reads
+# board; reclaim_reason()/is_stale() read pid/host/heartbeat_at; tickets()
+# sorts on sequence and _claim() matches on ticket. Everything else (purpose,
+# acquired_at, since_at, note, kind, ...) is display-only and read with
+# .get() wherever it might come from a record this autana did not just write.
+PROTOCOL_CORE_FIELDS = ("owner", "pid", "host", "heartbeat_at", "ticket", "sequence", "board", "protocol")
 
 
 def default_root():
@@ -302,7 +283,7 @@ class LockStore:
         held, reclaimed, reason = self._claim(board, ticket, expected_build_id, stale_seconds)
         if held:
             if reclaimed:
-                device_hook.emit("lost", board, reclaimed["owner"], reclaimed["purpose"],
+                device_hook.emit("lost", board, reclaimed["owner"], reclaimed.get("purpose", ""),
                                  note=reason)
             device_hook.emit("acquired", board, held["owner"], held["purpose"])
         return held
@@ -320,19 +301,17 @@ class LockStore:
             evicted = None
             reason = ""
             if current:
-                # Dead-process/stale is judged from PROTOCOL_CORE_FIELDS alone
-                # (host, pid, heartbeat_at), so it is safe before a protocol
-                # is even known, and a dead or stale foreign holder is always
-                # reclaimed - never wedges the board. Only a live, non-stale
-                # foreign holder - one this claim must leave standing - is
-                # refused loudly instead of just reported as "not yet".
+                # Judged from PROTOCOL_CORE_FIELDS alone (pid, host,
+                # heartbeat_at), so this never depends on a protocol match: a
+                # live holder, of any protocol, simply keeps the board until
+                # it is dead or stale - never refused, never a reason to stop.
                 reason = self.reclaim_reason(current, stale_seconds)
                 if not reason:
-                    require_known_protocol(current)
                     return None, None, ""
                 evicted = current
-                reclaimed = ("reclaimed lock from {owner} for {purpose} "
-                             "({reason})".format(reason=reason, **current))
+                reclaimed = "reclaimed lock from {owner} for {purpose} ({reason})".format(
+                    owner=current.get("owner", "unknown"), purpose=current.get("purpose", "unknown"),
+                    reason=reason)
                 self.lock_path(board).unlink(missing_ok=True)
             now = self.now()
             held = {
@@ -448,7 +427,7 @@ class LockStore:
             human = self.read_json(self.human_path(board))
             self.human_path(board).unlink(missing_ok=True)
         if human:
-            device_hook.emit("human-cleared", board, human["owner"], note=human["note"])
+            device_hook.emit("human-cleared", board, human["owner"], note=human.get("note", ""))
 
     def status(self, board, stale_seconds=DEFAULT_STALE_SECONDS):
         """A lock the next claim() would reclaim is reported under
@@ -554,7 +533,9 @@ def queue_estimates(status, now, durations):
         start = None
     elif lock:
         duration = durations.get(lock.get("kind"))
-        start = max(now, lock["acquired_at"] + duration) if duration is not None else None
+        acquired = lock.get("acquired_at")
+        start = (max(now, acquired + duration)
+                if duration is not None and acquired is not None else None)
     else:
         start = now
     estimates = {}
@@ -576,26 +557,39 @@ def status_entry(store, board, port=None, now=None, durations=None):
              "stale": None, "waiting": []}
     if status["human"]:
         human = status["human"]
-        entry.update(state="human", holder={"owner": human["owner"], "purpose": human["note"]},
-                     since=human["since_at"],
-                     elapsed_seconds=round(max(0, now - human["since_at"])))
+        entry.update(state="human", holder={"owner": human["owner"], "purpose": human.get("note")},
+                     since=human.get("since_at"),
+                     elapsed_seconds=round(max(0, now - human["since_at"]))
+                     if human.get("since_at") is not None else None)
     elif status["lock"]:
         lock = status["lock"]
         duration = durations.get(lock.get("kind"))
-        entry.update(state="held", holder={"owner": lock["owner"], "purpose": lock["purpose"]},
-                     since=lock["acquired_at"],
-                     elapsed_seconds=round(max(0, now - lock["acquired_at"])),
-                     estimated_free=(max(now, lock["acquired_at"] + duration)
-                                     if duration is not None else None))
+        acquired = lock.get("acquired_at")
+        entry.update(state="held",
+                     holder={"owner": lock["owner"], "purpose": lock.get("purpose"),
+                             "protocol": lock.get("protocol", 0),
+                             "autana_version": lock.get("autana_version")},
+                     since=acquired,
+                     elapsed_seconds=round(max(0, now - acquired)) if acquired is not None else None,
+                     estimated_free=(max(now, acquired + duration)
+                                     if duration is not None and acquired is not None else None))
     elif status["reclaimable"]:
         stale = status["reclaimable"]
-        entry["stale"] = {"owner": stale["owner"], "purpose": stale["purpose"],
+        entry["stale"] = {"owner": stale["owner"], "purpose": stale.get("purpose"),
                           "reason": stale["reason"]}
     estimates = queue_estimates(status, now, durations)
-    entry["waiting"] = [{"owner": ticket["owner"], "purpose": ticket["purpose"],
+    entry["waiting"] = [{"owner": ticket["owner"], "purpose": ticket.get("purpose"),
                          "estimated_start": estimates[ticket["ticket"]]}
                         for ticket in status["queue"]]
     return entry
+
+
+def holder_version_text(holder):
+    """'(autana <version>, lock protocol <n>)' - the information a differently
+    versioned holder's record carries, shown while waiting and in `status`,
+    never a reason to refuse it."""
+    version = holder.get("autana_version") or "unknown"
+    return f"(autana {version}, lock protocol {holder.get('protocol', 0)})"
 
 
 def status_lines(entry):
@@ -606,7 +600,8 @@ def status_lines(entry):
     elif entry["state"] == "held":
         lines = [f"held by {holder['owner']} for {holder['purpose']} since "
                  f"{local_time(entry['since'])} (elapsed {entry['elapsed_seconds']}s; "
-                 f"estimated free {format_estimate(entry['estimated_free'])})"]
+                 f"estimated free {format_estimate(entry['estimated_free'])}; "
+                 f"{holder_version_text(holder)})"]
     elif entry["stale"]:
         lines = ["unlocked - stale lock from {owner} for {purpose} ({reason})".format(
             **entry["stale"])]

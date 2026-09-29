@@ -420,6 +420,10 @@ class HeldLock:
             return
         self.last_notice = now
         status = self.store.status(self.board)
+        if status["lock"]:
+            lock = status["lock"]
+            print(f"board held by {lock['owner']} "
+                  f"{device_lock.holder_version_text(lock)} - waiting", file=sys.stderr)
         place = next((index for index, item in enumerate(status["queue"], 1)
                       if item["ticket"] == ticket), None)
         if place:
@@ -437,7 +441,7 @@ class HeldLock:
                 if ticket["ticket"] not in self.notified:
                     self.notified.add(ticket["ticket"])
                     print(f'{ticket["owner"]} is waiting for the board '
-                          f'({ticket["purpose"]}) - Ctrl+C to hand it over', file=sys.stderr)
+                          f'({ticket.get("purpose")}) - Ctrl+C to hand it over', file=sys.stderr)
             if time.monotonic() >= next_heartbeat:
                 if not self.store.heartbeat(self.board, self.held["token"]):
                     self.lost.set()
