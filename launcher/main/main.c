@@ -895,7 +895,9 @@ app_boot_init(void) {
 /* See console/console.c for framebuffer contention explanation. */
 static void
 run_pending_selftest_suite(void) {
-    char request[CONSOLE_LINE_MAX];
+    /* Static: this task's stack is what the suites under test measure, and a
+     * request can be a few hundred bytes. */
+    static char request[CONSOLE_LINE_MAX];
     if (!console_runsuite_take_request(request, sizeof request)) {
         return;
     }
