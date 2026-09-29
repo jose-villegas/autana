@@ -252,6 +252,7 @@ int mu_check_clip(mu_Context *ctx, mu_Rect r);
 mu_Container* mu_get_current_container(mu_Context *ctx);
 mu_Container* mu_get_container(mu_Context *ctx, const char *name);
 void mu_bring_to_front(mu_Context *ctx, mu_Container *cnt);
+void mu_seed_hover_root(mu_Context *ctx);
 
 int mu_pool_init(mu_Context *ctx, mu_PoolItem *items, int len, mu_Id id);
 int mu_pool_get(mu_Context *ctx, mu_PoolItem *items, int len, mu_Id id);

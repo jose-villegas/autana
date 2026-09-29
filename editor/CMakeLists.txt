@@ -42,6 +42,7 @@ add_library(editor_runtime STATIC
     ${LAUNCHER_DIR}/main/input/gesture.c
     ${LAUNCHER_DIR}/main/ui/system_navigation.c
     ${LAUNCHER_DIR}/main/ui/ui.c
+    ${LAUNCHER_DIR}/main/ui/ui_bridge.c
     ${LAUNCHER_DIR}/main/ui/ui_build.c
     ${LAUNCHER_DIR}/main/ui/ui_canvas_marks.c
     ${LAUNCHER_DIR}/main/ui/ui_control_center.c

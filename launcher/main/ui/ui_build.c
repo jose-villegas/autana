@@ -29,6 +29,7 @@ static const char* TAG = "ui";
 
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
+#include "ui/ui_bridge.h"
 #include "ui/ui_internal.h"
 #include "ui/ui_pointer.h"
 #include "ui/ui_slider.h"
@@ -42,6 +43,12 @@ mu_Context ui_ctx;
 bool ui_invalidated = true;
 ui_text_style_t ui_text_style;
 ui_pointer_t ui_pointer_state;
+
+/* Whether the frame in progress only repaints - see ui_begin() - and the
+ * interaction state it must hand back as it found it. */
+static bool paint_only;
+static mu_Id held_focus;
+static mu_Container* held_next_hover_root;
 uint64_t ui_canvas_hash[MU_CONTAINERPOOL_SIZE];
 ui_canvas_marks_t ui_canvas_marks;
 
@@ -348,19 +355,6 @@ ui_to_logical(int x, int y, int* lx, int* ly) {
     ui_transform_point(inv, x, y, lx, ly);
 }
 
-/* One ui_pointer_t event replayed into microui. The policy itself - hover,
- * then hold down until the real release, park off-screen when idle - lives
- * in ui_pointer_step(); this only dispatches what it returns. */
-static void
-replay_pointer_event(const ui_pointer_event_t* e) {
-    switch (e->kind) {
-        case UI_POINTER_MOVE: mu_input_mousemove(&ui_ctx, e->x, e->y); break;
-        case UI_POINTER_DOWN: mu_input_mousedown(&ui_ctx, e->x, e->y, MU_MOUSE_LEFT); break;
-        case UI_POINTER_UP: mu_input_mouseup(&ui_ctx, e->x, e->y, MU_MOUSE_LEFT); break;
-        case UI_POINTER_SCROLL: mu_input_scroll(&ui_ctx, e->x, e->y); break;
-    }
-}
-
 /* Mapped before ui_pointer_step() rather than after, so that its "vertical
  * or sideways" judgement follows the screen's up, not the panel's: under a
  * quarter turn a drag down a list is a sideways stroke on the glass. */
@@ -372,11 +366,7 @@ feed_input(const input_t* input) {
         const mu_Vec2 aim = ui_snap_point(snap_rects, snap_rect_count, mu_vec2(logical.x, logical.y), reach);
         ui_pointer_aim(&ui_pointer_state, aim.x, aim.y);
     }
-    ui_pointer_event_t events[UI_POINTER_MAX_EVENTS];
-    const int n = ui_pointer_step(&ui_pointer_state, &logical, events, UI_POINTER_MAX_EVENTS);
-    for (int i = 0; i < n; i++) {
-        replay_pointer_event(&events[i]);
-    }
+    ui_bridge_feed(&ui_ctx, &ui_pointer_state, &logical);
 }
 
 void
@@ -384,9 +374,26 @@ ui_begin(const input_t* input) {
     /* Reset before the caller can state its own - see ui.h on why style does
      * not persist across frames. */
     button_style = UI_BUTTON_FLAT;
-    feed_input(input);
+    paint_only = input == NULL;
+    if (!paint_only) {
+        feed_input(input);
+    } else {
+        held_focus = ui_ctx.focus;
+        held_next_hover_root = ui_ctx.next_hover_root;
+        ui_ctx.updated_focus = 1;
+    }
     snap_rect_count = 0;
     mu_begin(&ui_ctx);
+}
+
+void
+ui_end_pointer_frame(void) {
+    if (!paint_only) {
+        ui_bridge_end(&ui_ctx, &ui_pointer_state);
+        return;
+    }
+    ui_ctx.focus = held_focus;
+    ui_ctx.next_hover_root = held_next_hover_root;
 }
 
 /* See ui.h: the physical viewport mapped through the inverse transform. Both

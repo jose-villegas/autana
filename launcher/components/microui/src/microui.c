@@ -20,7 +20,8 @@
 ** IN THE SOFTWARE.
 */
 
-/* LOCAL MODIFICATION: command alignment, zero padding and control capture keep shell state stable. */
+/* LOCAL MODIFICATION: command alignment, zero padding and control capture keep shell state stable.
+** LOCAL MODIFICATION: mu_seed_hover_root() and hover_beats() give a new pointer its hover root a frame early. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1062,6 +1063,14 @@ static void push_container_body(
 }
 
 
+/* LOCAL MODIFICATION: the hover-root rule, shared by begin_root_container()
+** and mu_seed_hover_root() so the seed can never disagree with the build. */
+static int hover_beats(mu_Context *ctx, mu_Container *cnt, mu_Container *best) {
+  return rect_overlaps_vec2(cnt->rect, ctx->mouse_pos) &&
+    (!best || cnt->zindex > best->zindex);
+}
+
+
 static void begin_root_container(mu_Context *ctx, mu_Container *cnt) {
   push(ctx->container_stack, cnt);
   /* push container to roots list and push head command */
@@ -1069,9 +1078,7 @@ static void begin_root_container(mu_Context *ctx, mu_Container *cnt) {
   cnt->head = push_jump(ctx, NULL);
   /* set as hover root if the mouse is overlapping this container and it has a
   ** higher zindex than the current hover root */
-  if (rect_overlaps_vec2(cnt->rect, ctx->mouse_pos) &&
-      (!ctx->next_hover_root || cnt->zindex > ctx->next_hover_root->zindex)
-  ) {
+  if (hover_beats(ctx, cnt, ctx->next_hover_root)) {
     ctx->next_hover_root = cnt;
   }
   /* clipping is reset here in case a root-container is made within
@@ -1169,6 +1176,25 @@ int mu_begin_window_ex(mu_Context *ctx, const char *title, mu_Rect rect, int opt
 
   mu_push_clip_rect(ctx, cnt->body);
   return MU_RES_ACTIVE;
+}
+
+
+/* LOCAL MODIFICATION. mu_begin() takes hover_root from the previous frame, so a
+** pointer that just arrived has none until the frame after. Call between
+** feeding the pointer and mu_begin(): the roots the last frame left in
+** root_list are still valid, and picking among them by the rule
+** begin_root_container() uses gives the root the point will land in - as
+** long as this frame builds the same roots. */
+void mu_seed_hover_root(mu_Context *ctx) {
+  mu_Container *top = NULL;
+  int i;
+  for (i = 0; i < ctx->root_list.idx; i++) {
+    mu_Container *cnt = ctx->root_list.items[i];
+    if (hover_beats(ctx, cnt, top)) {
+      top = cnt;
+    }
+  }
+  ctx->next_hover_root = top;
 }
 
 

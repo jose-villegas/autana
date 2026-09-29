@@ -29,7 +29,8 @@ ui_launcher_frame(const input_t* input, uint32_t dt_ms) {
     ui_begin(input);
     const app_t* chosen = ui_launcher_draw(ctx, dt_ms);
     FRAME_COST_END(built_from, "ui.build");
-    ui_ridge_step(input, dt_ms);
+    const input_t idle = {0};
+    ui_ridge_step(input != NULL ? input : &idle, dt_ms);
 
     /* Repaints only what looks different from what is already on screen, so
      * a home screen nobody is touching, its ridge at rest, costs no bus time

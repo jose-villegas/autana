@@ -38,6 +38,7 @@ main/render/r3d_lit_pipeline.c
 main/render/r3d_path.c
 main/render/r3d_span.c
 main/ui/ui.c
+main/ui/ui_bridge.c
 main/ui/ui_build.c
 main/ui/ui_canvas_marks.c
 main/ui/ui_widgets.c

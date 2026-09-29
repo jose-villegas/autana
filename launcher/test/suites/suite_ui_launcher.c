@@ -28,6 +28,7 @@
 #include "gfx/gfx.h"
 #include "microui.h"
 #include "ui/ui.h"
+#include "ui/ui_bridge.h"
 #include "ui/ui_launcher.h"
 #include "ui/ui_pointer.h"
 #include "ui/ui_transform.h"
@@ -115,21 +116,12 @@ launcher_frame(bool down, bool pressed, bool released, int x, int y, uint32_t dt
     in.x = x;
     in.y = y;
 
-    ui_pointer_event_t ev[UI_POINTER_MAX_EVENTS];
-    const int n = ui_pointer_step(&pointer, &in, ev, UI_POINTER_MAX_EVENTS);
-    for (int i = 0; i < n; i++) {
-        switch (ev[i].kind) {
-            case UI_POINTER_MOVE: mu_input_mousemove(ctx, ev[i].x, ev[i].y); break;
-            case UI_POINTER_DOWN: mu_input_mousedown(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
-            case UI_POINTER_UP: mu_input_mouseup(ctx, ev[i].x, ev[i].y, MU_MOUSE_LEFT); break;
-            case UI_POINTER_SCROLL: mu_input_scroll(ctx, ev[i].x, ev[i].y); break;
-        }
-    }
+    ui_bridge_feed(ctx, &pointer, &in);
 
     mu_begin(ctx);
     const app_t* chosen = ui_launcher_draw(ctx, dt_ms);
     mu_end(ctx);
-    pointer.over_scrollable = ctx->scroll_target != NULL;
+    ui_bridge_end(ctx, &pointer);
     return chosen;
 }
 
