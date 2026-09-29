@@ -21,6 +21,7 @@ from pathlib import Path
 
 import device_lock
 import device_report
+import process_tree
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "device"))
@@ -443,7 +444,8 @@ class HeldLock:
                     print(f'{ticket["owner"]} is waiting for the board '
                           f'({ticket.get("purpose")}) - Ctrl+C to hand it over', file=sys.stderr)
             if time.monotonic() >= next_heartbeat:
-                if not self.store.heartbeat(self.board, self.held["token"]):
+                if not self.store.heartbeat(self.board, self.held["token"],
+                                            tree=process_tree.descendants()):
                     self.lost.set()
                     print("device lock was lost", file=sys.stderr)
                     return
@@ -455,13 +457,29 @@ class HeldLock:
         self.thread.start()
         return self
 
+    def release_when_tree_is_gone(self):
+        """The lock is the promise of the port, so it outlives every process
+        this command started: those get a moment to finish, then are killed.
+        One that cannot be killed keeps the lock, recorded in it, until it
+        ends."""
+        killed, survivors = process_tree.reap(self.store.is_alive)
+        if killed:
+            print("stopped process(es) still running under the device lock: "
+                  + ", ".join(map(str, killed)), file=sys.stderr)
+        if survivors:
+            print("device lock kept: process(es) still running that could not be "
+                  "stopped: " + ", ".join(map(str, survivors)), file=sys.stderr)
+            self.store.heartbeat(self.board, self.held["token"], tree=survivors)
+            return
+        self.store.release(self.board, self.held["token"])
+
     def __exit__(self, error_type, error_value, unused_traceback):
         self.stop.set()
         try:
             self.thread.join()
         finally:
             lost = self.lost.is_set() or not self.store.check_token(self.board, self.held["token"])
-            self.store.release(self.board, self.held["token"])
+            self.release_when_tree_is_gone()
             ACTIVE_LOCK.held = self.previous_lock
             error = (str(error_value) if error_type else
                      str(LockLost()) if lost else self.error)

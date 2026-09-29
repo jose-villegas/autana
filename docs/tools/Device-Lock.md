@@ -158,6 +158,17 @@ A process counts as dead only when the process table proves it: on Windows
 `OpenProcess`/`GetExitCodeProcess`, never `os.kill(pid, 0)`, whose signal 0
 is `CTRL_C_EVENT` there and misreports any process on another console.
 
+The lock is the promise of the port, and a child (esptool, a monitor) can
+keep the port after its parent is gone, so the lock outlives every process the
+command started. On the way out the holder gives its descendants two seconds
+to end, kills what is left, and only then releases; the pids it killed are
+printed. The heartbeat records the descendants' pids in the lock (`tree`),
+and a holder that died with any of them running keeps the lock: `status`
+reads `held` and names them until they end or the heartbeat window does.
+A process the holder started and lost track of within one heartbeat is not
+covered, and on POSIX a child of a killed holder is only reported, not
+stopped.
+
 The heartbeat refuses a lock that was replaced or has gone stale. From then
 on the command has lost the board: a capture or `send` stops at its next
 read, the next port open or esptool call refuses, a flash in progress is
@@ -330,7 +341,8 @@ The lock root is `%TEMP%/autana-device` (`AUTANA_DEVICE_LOCK_ROOT`
 overrides it). Per board, with `:` in the serial number written as `_`:
 `<serial>.json` is the lock - `board`, `owner`, `purpose`, `kind`,
 `acquired_at`, `heartbeat_at`, `expected_build_id`, `host`, `pid`, `log`
-(whom it was reclaimed from, if anyone), an opaque `token`, and `protocol`/
+(whom it was reclaimed from, if anyone), an opaque `token`, `tree` (the pids
+the holder started, refreshed by each heartbeat), and `protocol`/
 `autana_version` (next section); `<serial>.queue/` holds the FIFO waiter
 tickets (a dead waiter's is discarded), each carrying the same `protocol`/
 `autana_version`; `<serial>.human.json` is a person's reservation, likewise;

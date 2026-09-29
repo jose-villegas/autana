@@ -586,6 +586,20 @@ class LockRecordShapeTests(unittest.TestCase):
     never edit an existing entry to make a red test green without doing that."""
 
     GOLDEN_KEYS = {
+        2: {
+            "lock": frozenset({
+                "acquired_at", "board", "expected_build_id", "heartbeat_at", "host",
+                "log", "owner", "pid", "purpose", "kind", "token", "tree", "protocol",
+                "autana_version",
+            }),
+            "ticket": frozenset({
+                "board", "created_at", "owner", "pid", "purpose", "kind", "sequence",
+                "ticket", "protocol", "autana_version",
+            }),
+            "human": frozenset({
+                "board", "id", "note", "owner", "since_at", "protocol", "autana_version",
+            }),
+        },
         1: {
             "lock": frozenset({
                 "acquired_at", "board", "expected_build_id", "heartbeat_at", "host",
