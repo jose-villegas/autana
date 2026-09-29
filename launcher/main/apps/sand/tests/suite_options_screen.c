@@ -14,6 +14,7 @@
 #include "gfx/gfx_font_roles.h"
 #include "input/input.h"
 #include "ui/ui.h"
+#include "ui/ui_bridge.h"
 #include "ui/ui_internal.h"
 #include "ui/ui_transform.h"
 #include "ui/ui_widgets.h"
@@ -198,7 +199,7 @@ options_frame(bool down, bool pressed, bool released, int x, int y) {
     ui_begin(&in);
     const sand_options_hits_t hits = options_screen_draw(ui_context(), &menu, committed, &LABELS);
     mu_end(ui_context());
-    ui_pointer_state.over_scrollable = ui_ctx.scroll_target != NULL;
+    ui_bridge_end(&ui_ctx, &ui_pointer_state);
     return hits;
 }
 

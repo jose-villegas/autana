@@ -49,15 +49,13 @@ register_fixture(void) {
     app_register(&fixture_gamma);
 }
 
-/* A press at the centre of the panel, held across two frames so
- * ui_pointer.c's synthesized hover has landed by the time the picture is
- * taken, then released. Panel coordinates, as a finger reports them: which
- * row that lands on is whatever the layout puts under the middle. Nothing
- * is pressed before frame 2, so `--frames 2` is the settled screen with no
- * finger on it - the state a capture of an idle device is in. */
+/* A press at the centre of the panel, held on the last frame of the default
+ * render so the row shows pressed; the release comes only in longer renders,
+ * such as the doc sweep. Panel coordinates, as a finger reports them. Nothing
+ * is pressed before frame 2, so `--frames 2` is the settled screen. */
 static const render_input_step_t touch[] = {
     {2, true, GFX_WIDTH / 2, GFX_HEIGHT / 2},
-    {4, false, GFX_WIDTH / 2, GFX_HEIGHT / 2},
+    {5, false, GFX_WIDTH / 2, GFX_HEIGHT / 2},
 };
 
 /* The screen's own init seeds the transform, so the turn is stated after

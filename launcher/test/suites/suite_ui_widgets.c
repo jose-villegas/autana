@@ -14,6 +14,7 @@
 #include "gfx/gfx_font_roles.h"
 #include "input/input.h"
 #include "ui/ui.h"
+#include "ui/ui_bridge.h"
 #include "ui/ui_internal.h"
 #include "ui/ui_transform.h"
 #include "ui/ui_widgets.h"
@@ -42,6 +43,13 @@ typedef struct {
     bool enabled;
 } widget_t;
 
+/* What ui_end() makes after a real frame: the pointer's report-back. */
+static void
+end_frame(void) {
+    mu_end(ui_context());
+    ui_end_pointer_frame();
+}
+
 static bool
 widget_frame(const widget_t* w, const input_t* in) {
     ui_begin(in);
@@ -51,7 +59,7 @@ widget_frame(const widget_t* w, const input_t* in) {
         hit = ui_icon_button(ui_context(), "button", BUTTON, &b, &THEME);
         mu_end_window(ui_context());
     }
-    mu_end(ui_context());
+    end_frame();
     return hit;
 }
 
@@ -64,7 +72,7 @@ plain_button_frame(const input_t* in) {
         hit = mu_button(ui_context(), "GO") != 0;
         mu_end_window(ui_context());
     }
-    mu_end(ui_context());
+    end_frame();
     return hit;
 }
 
@@ -76,7 +84,7 @@ label_frame(const input_t* in) {
         mu_label(ui_context(), "GO");
         mu_end_window(ui_context());
     }
-    mu_end(ui_context());
+    end_frame();
 }
 
 static int
@@ -87,7 +95,7 @@ slider_frame(const input_t* in, int* value) {
         ui_slider_int(ui_context(), value, 0, 100, 1);
         mu_end_window(ui_context());
     }
-    mu_end(ui_context());
+    end_frame();
     return *value;
 }
 
@@ -228,7 +236,7 @@ text_pos_in(mu_Rect r, const char* str, ui_align_t align) {
         ui_text_in(ui_context(), r, str, THEME.text, 2, align);
         mu_end_window(ui_context());
     }
-    mu_end(ui_context());
+    end_frame();
     mu_Command* cmd = NULL;
     while (mu_next_command(ui_context(), &cmd)) {
         if (cmd->type == MU_COMMAND_TEXT) {
@@ -367,7 +375,7 @@ dropdown_frame(const input_t* in, int selected) {
     if (paint_frames) {
         ui_end(0x0A0C14);
     } else {
-        mu_end(ui_context());
+        end_frame();
     }
     return picked;
 }
@@ -648,10 +656,7 @@ many_frame(const input_t* in, int selected) {
         many_open = ui_dropdown_is_open(ui_context(), "many");
         mu_end_window(ui_context());
     }
-    mu_end(ui_context());
-    /* The same report-back ui.c's ui_end() makes after painting a real
-     * frame - see ui_internal.h's own comment on ui_pointer_state. */
-    ui_pointer_state.over_scrollable = ui_ctx.scroll_target != NULL;
+    end_frame();
     return picked;
 }
 
@@ -707,7 +712,7 @@ many_list_scroll(mu_Rect list_rect) {
 }
 
 /* A finger already resting at (x, y), optionally with a raw scroll fed via
- * mu_input_scroll() - what replay_pointer_event() does for a resolved
+ * mu_input_scroll() - what ui_bridge_feed() does for a resolved
  * UI_POINTER_SCROLL, without depending on which held frame ui_pointer's own
  * drag threshold happens to trip on. */
 static int
@@ -723,8 +728,7 @@ many_frame_scroll(int x, int y, int selected, int scroll_dy) {
         many_open = ui_dropdown_is_open(ui_context(), "many");
         mu_end_window(ui_context());
     }
-    mu_end(ui_context());
-    ui_pointer_state.over_scrollable = ui_ctx.scroll_target != NULL;
+    end_frame();
     return picked;
 }
 
@@ -760,6 +764,253 @@ test_a_drag_scroll_sticks_through_later_frames(void) {
                                   "a drag-scroll must stick, not snap back to where the list opened");
 }
 
+/* One frame of the given full-screen window holding one plain button. */
+static bool
+named_screen_frame(const char* name, const input_t* in) {
+    ui_begin(in);
+    bool hit = false;
+    if (ui_begin_screen(ui_context(), name, MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+        mu_layout_set_next(ui_context(), BUTTON, 0);
+        hit = mu_button(ui_context(), "GO") != 0;
+        mu_end_window(ui_context());
+    }
+    end_frame();
+    return hit;
+}
+
+/* The latency the shell exists to keep: the control answers on the second
+ * frame of contact, through the real ui_begin(). */
+static void
+test_a_tap_submits_on_the_second_frame_of_contact_through_ui_begin(void) {
+    fixture();
+    const input_t idle = {0};
+    plain_button_frame(&idle);
+    plain_button_frame(&idle);
+
+    const int x = BUTTON.x + BUTTON.w / 2;
+    const int y = BUTTON.y + BUTTON.h / 2;
+    TEST_ASSERT_FALSE(plain_button_frame(&(input_t){.down = true, .pressed = true, .x = x, .y = y}));
+    TEST_ASSERT_TRUE_MESSAGE(plain_button_frame(&(input_t){.down = true, .x = x, .y = y}),
+                             "the second frame of contact must carry the click");
+}
+
+/* A press frame that builds a window microui had not seen the frame before:
+ * the seeded root is stale, and the tap must take the extra hover frame
+ * rather than vanish. */
+static void
+test_a_tap_on_the_first_build_of_another_screen_still_submits_once(void) {
+    fixture();
+    const input_t idle = {0};
+    named_screen_frame("Before", &idle);
+    named_screen_frame("Before", &idle);
+
+    const int x = BUTTON.x + BUTTON.w / 2;
+    const int y = BUTTON.y + BUTTON.h / 2;
+    int submits = named_screen_frame("After", &(input_t){.down = true, .pressed = true, .x = x, .y = y});
+    for (int i = 0; i < 4; i++) {
+        submits += named_screen_frame("After", &(input_t){.down = true, .x = x, .y = y});
+    }
+    submits += named_screen_frame("After", &(input_t){.released = true, .x = x, .y = y});
+    TEST_ASSERT_EQUAL_INT(1, submits);
+}
+
+/* A dropdown over a button, the button in the same window. Returns the row
+ * picked, and reports the button through *button. */
+static int
+over_button_frame(const input_t* in, bool* button) {
+    ui_begin(in);
+    int picked = -1;
+    if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+        mu_layout_set_next(ui_context(), BUTTON, 0);
+        *button = mu_button(ui_context(), "GO") != 0 || *button;
+        picked = ui_dropdown(ui_context(), "pick", DROPDOWN, ITEMS, 3, 0, &THEME);
+        dropdown_open = ui_dropdown_is_open(ui_context(), "pick");
+        mu_end_window(ui_context());
+    }
+    end_frame();
+    return picked;
+}
+
+typedef struct {
+    int picks;
+    int buttons;
+} taps_t;
+
+static void
+over_button_open(void) {
+    fixture();
+    bool button = false;
+    const input_t idle = {0};
+    over_button_frame(&idle, &button);
+    over_button_frame(&idle, &button);
+    const int x = DROPDOWN.x + 20;
+    const int y = DROPDOWN.y + 20;
+    over_button_frame(&(input_t){.down = true, .pressed = true, .x = x, .y = y}, &button);
+    for (int i = 0; i < 4; i++) {
+        over_button_frame(&(input_t){.down = true, .x = x, .y = y}, &button);
+    }
+    over_button_frame(&(input_t){.released = true, .x = x, .y = y}, &button);
+    over_button_frame(&idle, &button);
+    TEST_ASSERT_TRUE(dropdown_open);
+}
+
+static taps_t
+over_button_tap(int x, int y, int idle_frames_before) {
+    taps_t t = {0};
+    bool button = false;
+    const input_t idle = {0};
+    for (int i = 0; i < idle_frames_before; i++) {
+        over_button_frame(&idle, &button);
+    }
+    int p = over_button_frame(&(input_t){.down = true, .pressed = true, .x = x, .y = y}, &button);
+    t.picks += p >= 0;
+    for (int i = 0; i < 4; i++) {
+        p = over_button_frame(&(input_t){.down = true, .x = x, .y = y}, &button);
+        t.picks += p >= 0;
+    }
+    p = over_button_frame(&(input_t){.released = true, .x = x, .y = y}, &button);
+    t.picks += p >= 0;
+    t.buttons = button ? 1 : 0;
+    return t;
+}
+
+/* The list of a pick closes on a frame counted from the pick; a press that
+ * lands on any of those frames must reach exactly one thing - the row while
+ * the list is up, the button beneath once it is gone - never neither. */
+static void
+test_a_tap_on_a_closing_list_reaches_exactly_one_thing(void) {
+    for (int wait = 0; wait <= UI_DROPDOWN_CLOSE_FRAMES + 1; wait++) {
+        over_button_open();
+        const mu_Rect list = open_list_rect();
+        const int x = list.x + 20;
+        const int y = BUTTON.y + BUTTON.h / 2;
+        const taps_t first = over_button_tap(x, y, 0);
+        TEST_ASSERT_EQUAL_INT(1, first.picks);
+        const taps_t t = over_button_tap(x, y, wait);
+        char why[64];
+        snprintf(why, sizeof why, "wait %d picks %d buttons %d", wait, t.picks, t.buttons);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(1, t.picks + t.buttons, why);
+    }
+}
+
+static void
+test_a_one_frame_tap_on_an_open_list_row_picks_it_and_closes_it(void) {
+    over_button_open();
+    const mu_Rect list = open_list_rect();
+    bool button = false;
+    const input_t idle = {0};
+    const int picked = over_button_frame(
+        &(input_t){.pressed = true, .released = true, .x = list.x + 20, .y = list.y + DROPDOWN.h + 20}, &button);
+    TEST_ASSERT_EQUAL_INT(1, picked);
+    TEST_ASSERT_FALSE_MESSAGE(button, "the button beneath the list must not be clicked through it");
+    for (int i = 0; i < UI_DROPDOWN_CLOSE_FRAMES + 1; i++) {
+        over_button_frame(&idle, &button);
+    }
+    TEST_ASSERT_FALSE(dropdown_open);
+}
+
+static void
+test_a_one_frame_tap_outside_an_open_list_closes_it_and_picks_nothing(void) {
+    over_button_open();
+    bool button = false;
+    const input_t idle = {0};
+    const int picked =
+        over_button_frame(&(input_t){.pressed = true, .released = true, .x = 5, .y = ui_height() - 5}, &button);
+    TEST_ASSERT_EQUAL_INT(-1, picked);
+    TEST_ASSERT_FALSE(button);
+    over_button_frame(&idle, &button);
+    TEST_ASSERT_FALSE(dropdown_open);
+}
+
+/* The Control Center's backdrop: the screen underneath repainted through a
+ * repaint-only frame on the same frame the real screen is built. */
+static void
+backdrop_repaint(void) {
+    ui_begin(NULL);
+    if (ui_begin_screen(ui_context(), "Launcher", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+        mu_layout_set_next(ui_context(), BUTTON, 0);
+        mu_button(ui_context(), "UNDER");
+        mu_end_window(ui_context());
+    }
+    end_frame();
+}
+
+/* A tap into a screen whose backdrop is repainted on frame `repaint_on` of
+ * the tap must still submit its button exactly once. */
+static void
+test_a_tap_submits_once_when_the_backdrop_repaints_during_it(void) {
+    for (int repaint_on = 0; repaint_on < 4; repaint_on++) {
+        fixture();
+        const input_t idle = {0};
+        named_screen_frame("Center", &idle);
+        named_screen_frame("Center", &idle);
+
+        const int x = BUTTON.x + BUTTON.w / 2;
+        const int y = BUTTON.y + BUTTON.h / 2;
+        const input_t frames[] = {{.down = true, .pressed = true, .x = x, .y = y},
+                                  {.down = true, .x = x, .y = y},
+                                  {.down = true, .x = x, .y = y},
+                                  {.down = true, .x = x, .y = y},
+                                  {.released = true, .x = x, .y = y}};
+        int submits = 0;
+        for (int f = 0; f < (int)(sizeof frames / sizeof frames[0]); f++) {
+            if (f == repaint_on) {
+                backdrop_repaint();
+            }
+            submits += named_screen_frame("Center", &frames[f]);
+        }
+        char why[48];
+        snprintf(why, sizeof why, "repaint on frame %d", repaint_on);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(1, submits, why);
+    }
+}
+
+/* A slider held through a backdrop repaint keeps tracking the finger: the
+ * repaint builds no slider, and must not be the frame that drops its focus. */
+static void
+test_a_slider_drag_survives_a_backdrop_repaint(void) {
+    fixture();
+    const input_t idle = {0};
+    int value = 0;
+    slider_frame(&idle, &value);
+    slider_frame(&idle, &value);
+
+    const int y = BUTTON.y + BUTTON.h / 2;
+    int x = BUTTON.x + 10;
+    slider_frame(&(input_t){.down = true, .pressed = true, .x = x, .y = y}, &value);
+    int at_repaint = 0;
+    for (int f = 0; f < 12; f++) {
+        if (f == 5) {
+            backdrop_repaint();
+            at_repaint = value;
+        }
+        x += 12;
+        slider_frame(&(input_t){.down = true, .x = x, .y = y}, &value);
+    }
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(at_repaint, value, "the drag must keep moving the slider after the repaint");
+}
+
+/* The lift went to frames that never reached the UI; the next press proves
+ * it, and must still get a control hovered and clicked. */
+static void
+test_a_press_after_an_unseen_lift_still_submits(void) {
+    fixture();
+    const input_t idle = {0};
+    plain_button_frame(&idle);
+    plain_button_frame(&idle);
+
+    /* The first press lands on empty space, so nothing is left hovered for
+     * the second to fall back on. */
+    plain_button_frame(&(input_t){.down = true, .pressed = true, .x = 10, .y = ui_height() - 10});
+    plain_button_frame(&(input_t){.down = true, .x = 10, .y = ui_height() - 10});
+
+    const int x = BUTTON.x + BUTTON.w / 2;
+    const int y = BUTTON.y + BUTTON.h / 2;
+    int submits = plain_button_frame(&(input_t){.down = true, .pressed = true, .x = x, .y = y});
+    submits += plain_button_frame(&(input_t){.down = true, .x = x, .y = y});
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, submits, "the second press must land although the first lift was never seen");
+}
+
 /* A finger resting on a button before ui_pointer lands its press - which
  * is all a drag across a list ever is - must not draw it pressed; the
  * press itself must. */
@@ -777,7 +1028,6 @@ test_only_a_real_press_draws_a_button_pressed(void) {
     const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
     const input_t hold = {.down = true, .x = x, .y = y};
     widget_frame(&w, &press);
-    widget_frame(&w, &hold);
     TEST_ASSERT_EQUAL_MESSAGE(at_rest, canvas_hash("Widgets"), "hovered but not yet pressed must look at rest");
 
     widget_frame(&w, &hold);
@@ -834,7 +1084,7 @@ frame_without_dropdown(void) {
     if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
         mu_end_window(ui_context());
     }
-    mu_end(ui_context());
+    end_frame();
 }
 
 static void
@@ -857,7 +1107,7 @@ swatch_frame(mu_Rect r, const mu_Color* colors, int cols, int rows) {
         ui_swatch_grid(ui_context(), r, colors, cols, rows);
         mu_end_window(ui_context());
     }
-    mu_end(ui_context());
+    end_frame();
 }
 
 /* Every cell of a swatch grid must tile its rect exactly - no gap and no
@@ -937,6 +1187,14 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_a_list_that_fits_does_not_scroll);
     RUN_TEST(test_only_a_real_press_draws_a_button_pressed);
     RUN_TEST(test_a_press_that_slides_onto_a_button_from_off_it_is_not_a_click);
+    RUN_TEST(test_a_tap_submits_on_the_second_frame_of_contact_through_ui_begin);
+    RUN_TEST(test_a_tap_on_the_first_build_of_another_screen_still_submits_once);
+    RUN_TEST(test_a_tap_submits_once_when_the_backdrop_repaints_during_it);
+    RUN_TEST(test_a_press_after_an_unseen_lift_still_submits);
+    RUN_TEST(test_a_slider_drag_survives_a_backdrop_repaint);
+    RUN_TEST(test_a_tap_on_a_closing_list_reaches_exactly_one_thing);
+    RUN_TEST(test_a_one_frame_tap_on_an_open_list_row_picks_it_and_closes_it);
+    RUN_TEST(test_a_one_frame_tap_outside_an_open_list_closes_it_and_picks_nothing);
     RUN_TEST(test_a_list_its_dropdown_stopped_drawing_is_closed_when_it_returns);
     RUN_TEST(test_a_list_taller_than_the_screen_stays_inside_it);
     RUN_TEST(test_a_list_opens_scrolled_to_its_current_item);
