@@ -15,7 +15,7 @@
 # own variants, which this build directory is not. With a band-height image
 # on the board, capture under the same lock:
 #   autana suite run_cube_band_perf_suite \
-#       --out out.txt --purpose "band height $N"
+#       --out out.txt
 # out.txt's "CUBE BAND VS FULL-FB" line has present/rasterize timing for
 # both arms; boot's own HEAPMARK lines (main.c) have the largest free block.
 set -euo pipefail

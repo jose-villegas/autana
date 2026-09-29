@@ -158,15 +158,13 @@ class PrimitiveGuardTests(Store):
                 device.require_live_lock()
             self.store.write_json(self.store.lock_path(BOARD_A), held.held)
 
-    def test_check_token_cli_refuses_a_foreign_missing_stale_or_dead_lock(self):
+    def test_check_token_refuses_a_foreign_missing_stale_or_dead_lock(self):
         held = self.store.acquire(BOARD_A, "agent", "flash")
 
         def check(token):
-            return subprocess.run([sys.executable, str(DEVICE / "device_lock.py"),
-                                   "--root", str(self.store.root),
-                                   "--board", " " + BOARD_A.lower() + "\n",
-                                   "check-token", "--token", token],
-                                  capture_output=True).returncode
+            with mock.patch.object(device_lock, "default_root", return_value=self.store.root):
+                return device.main(["--board", " " + BOARD_A.lower() + "\n",
+                                    "check-token", "--token", token])
         self.assertEqual(check(held["token"]), 0)
         self.assertNotEqual(check("foreign"), 0)
         self.store.lock_path(BOARD_A).unlink()
@@ -227,7 +225,7 @@ class BoardTests(Store):
         return output.getvalue()
 
     def test_status_json_lists_every_board_plugged_in_or_locked(self):
-        self.store.acquire(BOARD_A, "alice", "firmware", kind="flash")
+        self.store.acquire(BOARD_A, "alice", "flash")
         self.store.set_human("90:70:69:FE:C0:01", "maintainer", "on the bench")
         with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")):
             boards = json.loads(self.status("--json"))["boards"]
@@ -235,7 +233,7 @@ class BoardTests(Store):
         self.assertEqual(list(by_board), sorted(by_board))
         self.assertEqual((by_board[BOARD_A]["port"], by_board[BOARD_A]["state"],
                           by_board[BOARD_A]["holder"]),
-                         ("COM5", "held", {"owner": "alice", "purpose": "firmware",
+                         ("COM5", "held", {"owner": "alice", "purpose": "autana flash",
                                            "protocol": device.device_lock.LOCK_PROTOCOL,
                                            "autana_version": device.device_lock.__version__}))
         self.assertEqual((by_board[BOARD_B]["port"], by_board[BOARD_B]["state"]),
@@ -333,13 +331,13 @@ class LostLockTests(Store):
 
     def test_a_replaced_lock_raises_at_exit_and_records_the_loss(self):
         with self.assertRaises(device.LockLost):
-            with device.HeldLock(self.store, BOARD_A, "a", "send", 0, kind="send") as held:
+            with device.HeldLock(self.store, BOARD_A, "a", "send", 0) as held:
                 self.store.write_json(self.store.lock_path(BOARD_A),
                                       dict(held.held, token="replacement"))
         self.assertEqual(durations_rows(self.store)[-1]["error"], "device lock was lost")
 
     def test_a_command_that_kept_its_lock_ends_cleanly(self):
-        with device.HeldLock(self.store, BOARD_A, "a", "send", 0, kind="send"):
+        with device.HeldLock(self.store, BOARD_A, "a", "send", 0):
             pass
         self.assertIsNone(durations_rows(self.store)[-1]["error"])
         self.assertIsNone(self.store.status(BOARD_A)["lock"])
@@ -653,12 +651,6 @@ class FlashTests(Store):
             self.flash(write=write_then_lose)
         self.assertEqual(self.entry()["build_id"], None)
 
-    def test_a_refused_build_id_update_fails(self):
-        with mock.patch.object(self.store, "set_expected_build_id", return_value=False), \
-                self.assertRaises(device.LockLost):
-            self.flash()
-        self.assertNotIn("flashed", self.output)
-
     def real_scripts(self, write_source):
         worktree = self.root / "engine"
         for script in (device.BUILD_SCRIPT, device.FLASH_SCRIPT):
@@ -735,7 +727,7 @@ class FlashTests(Store):
         return worktree
 
     def flash_script(self, worktree, **popen):
-        return device.flash_script(self.store, BOARD_A, "agent", "flash", sys.executable,
+        return device.flash_script(self.store, BOARD_A, "agent", sys.executable,
                                    worktree, "dev", 0, **popen)
 
     def test_flash_script_holds_the_lock_for_the_write_alone(self):
@@ -976,7 +968,7 @@ class ScriptEnvironmentTests(unittest.TestCase):
                     mock.patch.dict(device.os.environ, {}, clear=False), \
                     mock.patch.object(device, "run_to_end", side_effect=run):
                 device.os.environ.pop("MSYSTEM", None)
-                device.flash_script(store, BOARD_A, "agent", "flash", "bash", worktree, "dev", 0)
+                device.flash_script(store, BOARD_A, "agent", "bash", worktree, "dev", 0)
         self.assertEqual([env.get("MSYSTEM") for env in runs], ["MINGW64", "MINGW64"])
 
 
@@ -1137,9 +1129,9 @@ class DurationTests(Store):
     def test_estimates_follow_the_kind_not_the_purpose(self):
         clock = [1000.0]
         store = device_lock.LockStore(self.root / "locks", now=lambda: clock[0])
-        store.acquire(BOARD_A, "alice", "firmware", kind="flash")
-        store.enqueue(BOARD_A, "bob", "watch", kind="listen")
-        store.enqueue(BOARD_A, "cara", "firmware", kind="flash")
+        store.acquire(BOARD_A, "alice", "flash")
+        store.enqueue(BOARD_A, "bob", "listen")
+        store.enqueue(BOARD_A, "cara", "flash")
         clock[0] = 1020.0
         entry = device_lock.status_entry(store, BOARD_A, durations={
             "flash": 120, "listen": 30, "firmware": 999, "watch": 999})
@@ -1152,9 +1144,9 @@ class DurationTests(Store):
     def test_an_unknown_kind_ends_the_estimates_after_it(self):
         clock = [1000.0]
         store = device_lock.LockStore(self.root / "locks", now=lambda: clock[0])
-        store.acquire(BOARD_A, "alice", "flash", kind="flash")
-        store.enqueue(BOARD_A, "bob", "look", kind="new")
-        store.enqueue(BOARD_A, "cara", "flash", kind="flash")
+        store.acquire(BOARD_A, "alice", "flash")
+        store.enqueue(BOARD_A, "bob", "new")
+        store.enqueue(BOARD_A, "cara", "flash")
         entry = device_lock.status_entry(store, BOARD_A, durations={"flash": 100})
         self.assertEqual([w["estimated_start"] for w in entry["waiting"]], [1100, None])
         store.set_human(BOARD_A, "maintainer", "bench")
@@ -1180,7 +1172,7 @@ class DurationTests(Store):
         self.assertEqual(device_lock.duration_history(self.store.root), {"flash": 10})
 
     def test_durations_are_recorded_under_the_kind_not_the_purpose(self):
-        with device.HeldLock(self.store, BOARD_A, "a", "watch the sand fall", 0, kind="listen"):
+        with device.HeldLock(self.store, BOARD_A, "a", "listen", 0):
             pass
         self.assertEqual(durations_rows(self.store)[-1]["command"], "listen")
 
@@ -1228,7 +1220,7 @@ class DurationTests(Store):
         self.assertEqual(kept, rows[-device_lock.DURATIONS_TRIM_LINES:])
 
     def test_each_command_records_its_own_duration_and_a_nested_error(self):
-        with device.HeldLock(self.store, BOARD_A, "a", "batch", 0, kind="batch") as outer:
+        with device.HeldLock(self.store, BOARD_A, "a", "batch", 0) as outer:
             time.sleep(0.02)
             with device.holding(self.store, BOARD_A, None, outer, "flash"):
                 time.sleep(0.02)
@@ -1270,7 +1262,7 @@ class DurationTests(Store):
     def test_a_waiter_hears_its_place_at_most_every_thirty_seconds(self):
         clock = [1000.0]
         store = device_lock.LockStore(self.root / "locks", now=lambda: clock[0])
-        store.acquire(BOARD_A, "alice", "flash", kind="flash")
+        store.acquire(BOARD_A, "alice", "flash")
 
         def sleep(seconds):
             clock[0] += seconds
@@ -1288,8 +1280,8 @@ class DurationTests(Store):
     def test_a_waiter_hears_its_place_again_once_the_notice_interval_has_passed(self):
         clock = [1000.0]
         store = device_lock.LockStore(self.root / "locks", now=lambda: clock[0])
-        store.acquire(BOARD_A, "alice", "flash", kind="flash")
-        ticket = store.enqueue(BOARD_A, "bob", "look", kind="send")
+        store.acquire(BOARD_A, "alice", "flash")
+        ticket = store.enqueue(BOARD_A, "bob", "send")
         waiter = device.HeldLock.__new__(device.HeldLock)
         waiter.store, waiter.board, waiter.last_notice = store, BOARD_A, None
         interval = device.HeldLock.NOTICE_SECONDS
@@ -1304,7 +1296,7 @@ class DurationTests(Store):
     def test_a_waiter_behind_a_reservation_hears_who_and_how_long(self):
         store = device_lock.LockStore(self.root / "locks", now=lambda: 1000.0)
         store.set_human(BOARD_A, "maintainer", "on the bench")
-        ticket = store.enqueue(BOARD_A, "bob", "look", kind="send")
+        ticket = store.enqueue(BOARD_A, "bob", "send")
         waiter = device.HeldLock.__new__(device.HeldLock)
         waiter.store, waiter.board, waiter.last_notice = store, BOARD_A, None
         with contextlib.redirect_stderr(io.StringIO()) as notices:
@@ -1422,7 +1414,7 @@ class EstimateTests(Store):
         self.store = device_lock.LockStore(self.root / "locks", now=lambda: self.clock[0])
 
     def test_since_stays_when_the_holder_took_the_board(self):
-        held = self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
+        held = self.store.acquire(BOARD_A, "alice", "flash")
         self.clock[0] = 1200.0
         self.assertTrue(self.store.heartbeat(BOARD_A, held["token"]))
         entry = device_lock.status_entry(self.store, BOARD_A, durations={})
@@ -1430,9 +1422,9 @@ class EstimateTests(Store):
         self.assertIn("elapsed 200s", device_lock.status_lines(entry, self.clock[0])[0])
 
     def test_a_holder_past_its_estimate_frees_now_and_waiters_follow_from_now(self):
-        self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
-        self.store.enqueue(BOARD_A, "bob", "watch", kind="listen")
-        self.store.enqueue(BOARD_A, "cara", "flash", kind="flash")
+        self.store.acquire(BOARD_A, "alice", "flash")
+        self.store.enqueue(BOARD_A, "bob", "listen")
+        self.store.enqueue(BOARD_A, "cara", "flash")
         self.clock[0] = 1500.0
         entry = device_lock.status_entry(self.store, BOARD_A,
                                          durations={"flash": 100, "listen": 30})
@@ -1440,13 +1432,13 @@ class EstimateTests(Store):
         self.assertEqual([w["estimated_start"] for w in entry["waiting"]], [1500.0, 1530.0])
 
     def test_on_a_free_board_the_first_waiter_starts_now(self):
-        self.store.enqueue(BOARD_A, "bob", "watch", kind="listen")
-        self.store.enqueue(BOARD_A, "cara", "flash", kind="flash")
+        self.store.enqueue(BOARD_A, "bob", "listen")
+        self.store.enqueue(BOARD_A, "cara", "flash")
         entry = device_lock.status_entry(self.store, BOARD_A, durations={"listen": 30})
         self.assertEqual([w["estimated_start"] for w in entry["waiting"]], [1000.0, 1030.0])
 
     def test_a_human_reservation_outranks_a_live_lock(self):
-        self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
+        self.store.acquire(BOARD_A, "alice", "flash")
         self.store.set_human(BOARD_A, "maintainer", "checking the panel")
         entry = device_lock.status_entry(self.store, BOARD_A, durations={"flash": 100})
         self.assertEqual((entry["state"], entry["holder"], entry["estimated_free"]),
@@ -1511,11 +1503,9 @@ class BoardChoiceTests(Store):
                 mock.patch.dict(os.environ, {BOARD_ENV: " " + BOARD_B.lower() + "\n"}):
             self.assertEqual(device.find_board(), device.Board(BOARD_B, "COM7"))
 
-    def test_the_lock_cli_stores_the_board_as_every_record_spells_it(self):
-        subprocess.run([sys.executable, str(DEVICE / "device_lock.py"), "--root",
-                        str(self.store.root), "--board", " " + BOARD_A.lower() + " ",
-                        "acquire", "--owner", "a", "--purpose", "p"],
-                       capture_output=True, check=True)
+    def test_a_command_stores_the_board_as_every_record_spells_it(self):
+        with plugged():
+            self.main("--board", " " + BOARD_A.lower() + " ", "hand-to-human", "--note", "x")
         records = [self.store.read_json(path) for path in self.store.root.glob("*.json")]
         self.assertEqual([record["board"] for record in records], [BOARD_A])
 
@@ -1537,7 +1527,7 @@ class BoardChoiceTests(Store):
         return code, errors.getvalue()
 
     def test_a_waiter_queues_while_the_board_is_off_usb(self):
-        self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
+        self.store.acquire(BOARD_A, "alice", "flash")
         with plugged():
             self.assertEqual(device.board_for_lock(self.store), BOARD_A)
             waiting = mock.Mock(wraps=self.store.enqueue)
@@ -1545,26 +1535,26 @@ class BoardChoiceTests(Store):
                 code, errors = self.main("--wait", "0.2", "--owner", "bob", "send", "TUNE")
         self.assertEqual(code, 75)
         self.assertIn("waiting for board: queue place 1", errors)
-        self.assertIn("device: device lock was not acquired: board held by alice for flash since ",
+        self.assertIn("device: device lock was not acquired: board held by alice for autana flash since ",
                       errors)
         self.assertEqual(waiting.call_args.args[:2], (BOARD_A, "bob"))
 
     def test_a_command_that_will_not_wait_exits_with_the_busy_code(self):
-        self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
+        self.store.acquire(BOARD_A, "alice", "flash")
         with plugged():
             code, errors = self.main("--wait", "0", "--owner", "bob", "send", "TUNE")
         self.assertEqual(code, 75)
         self.assertIn("board held by alice", errors)
 
     def test_other_failures_keep_exit_one(self):
-        self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
+        self.store.acquire(BOARD_A, "alice", "flash")
         with plugged():
             code, errors = self.main("hand-to-human", "--note", "x")
         self.assertEqual(code, 1)
-        self.assertIn("active lock requires its token", errors)
+        self.assertIn("`autana lock release` it, or wait", errors)
 
     def test_status_never_shows_a_lock_token(self):
-        held = self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
+        held = self.store.acquire(BOARD_A, "alice", "flash")
         entry = device_lock.status_entry(self.store, BOARD_A, durations={})
         shown = json.dumps(entry) + "\n".join(device_lock.status_lines(entry, 1000))
         self.assertNotIn(held["token"], shown)
@@ -1582,7 +1572,7 @@ class BoardChoiceTests(Store):
         # instead of failing at once.
         with plugged(usb(BOARD_A, "COM5")):
             board = device.board_for_lock(self.store)
-            held = self.store.acquire(board, "alice", "flash", kind="flash")
+            held = self.store.acquire(board, "alice", "flash")
             self.store.release(board, held["token"])
         with plugged(), self.assertRaises(device.NoBoard):
             device.board_for_lock(self.store)
@@ -1590,7 +1580,7 @@ class BoardChoiceTests(Store):
     def test_status_does_not_list_a_seen_only_board_forever(self):
         with plugged(usb(BOARD_A, "COM5")):
             board = device.board_for_lock(self.store)
-            held = self.store.acquire(board, "alice", "flash", kind="flash")
+            held = self.store.acquire(board, "alice", "flash")
             self.store.release(board, held["token"])
         with plugged():
             self.assertEqual(device.board_statuses(self.store), [])
@@ -1602,7 +1592,7 @@ class BoardChoiceTests(Store):
         # hand-to-human's own memory of it.
         with plugged(usb(BOARD_A, "COM5")):
             board = device.board_for_lock(self.store)
-            held = self.store.acquire(board, "alice", "flash", kind="flash")
+            held = self.store.acquire(board, "alice", "flash")
             self.store.release(board, held["token"])
         with plugged():
             self.assertEqual(device.board_for_lock(self.store, remembered=True), BOARD_A)

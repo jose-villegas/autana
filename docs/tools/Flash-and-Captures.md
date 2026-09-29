@@ -121,7 +121,7 @@ ends at a line starting with one of `--until` (default `TUNE_OK`, `TUNE_ERR`,
 not know the command or nothing answers within `--seconds` (default 3). It is
 not a capture: it adds no line to `index.jsonl`.
 
-From a script that names its own owner and purpose, `device.py` takes the same
+From a script that names its own owner, `device.py` takes the same
 arguments (the interpreter is ESP-IDF's Python, and `--owner` names
 the lock holder):
 

@@ -34,7 +34,7 @@ BOARD = "90:70:69:FE:A3:08"
 def mock_store(token="token"):
     store = mock.Mock()
     store.root = Path(os.environ["_AUTANA_DEVICE_LOCK_ROOT"])
-    store.acquire.return_value = {"log": "", "token": token, "acquired_at": 1000.0}
+    store.acquire.return_value = device_lock.Held({"token": token, "acquired_at": 1000.0})
     return store
 
 
@@ -151,7 +151,7 @@ class PortWaitTests(unittest.TestCase):
                 with self.assertRaises(device.PortUnavailable) as caught:
                     device.open_when_free(5, self.opener(99), self.sleep, lambda: self.clock[0])
         message = str(caught.exception)
-        self.assertIn("sam@bench:41 (flash)", message)
+        self.assertIn("sam@bench:41 (autana flash)", message)
         self.assertIn("4242 (esptool)", message)
         self.assertEqual(scope.survivors_extra.call_args.args[0]["token"], held["token"])
 
@@ -556,6 +556,66 @@ class DeviceTests(unittest.TestCase):
             BOARD, f"sam@devbox:{os.getpid()}", "check cable")
 
 
+class RemovedParameterTests(unittest.TestCase):
+    """A command's lock label is its kind, and hand-to-human takes only a note."""
+
+    def refused(self, *argv):
+        with contextlib.redirect_stderr(io.StringIO()) as errors, \
+                self.assertRaises(SystemExit) as stop:
+            device.main(list(argv))
+        self.assertEqual(stop.exception.code, 2)
+        return errors.getvalue()
+
+    def test_no_command_takes_a_purpose(self):
+        for command in (["send", "TUNE"], ["listen", "--seconds", "1"], ["reset"],
+                        ["screenshot"], ["hand-to-human", "--note", "x"],
+                        ["flash", "--variant", "dev", "--worktree", "."]):
+            with self.subTest(command=command):
+                self.assertIn("--purpose", self.refused(command[0], "--purpose", "why", *command[1:]))
+
+    def test_hand_to_human_takes_no_token(self):
+        self.assertIn("--token", self.refused("hand-to-human", "--note", "x", "--token", "t"))
+
+    def test_check_token_is_a_device_command(self):
+        store = mock.Mock()
+        store.check_token.return_value = True
+        with mock.patch.object(device.device_lock, "LockStore", return_value=store):
+            self.assertEqual(device.main(["--board", BOARD, "check-token", "--token", "t"]), 0)
+            store.check_token.return_value = False
+            self.assertEqual(device.main(["--board", BOARD, "check-token", "--token", "t"]), 1)
+        store.check_token.assert_called_with(BOARD, "t")
+
+    def test_the_lock_module_has_no_command_line_of_its_own(self):
+        self.assertFalse(hasattr(device_lock, "main"))
+
+
+class LockLabelTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.store = device_lock.LockStore(root=self.temp.name)
+
+    def holder_label(self, environment):
+        with mock.patch.dict(os.environ, environment):
+            if not environment:
+                os.environ.pop(device.COMMAND_ENV, None)
+            with device.HeldLock(self.store, BOARD, "agent", "send", 0):
+                entry = device_lock.status_entry(self.store, BOARD, durations={})
+        return entry["holder"]["purpose"]
+
+    def test_the_command_autana_ran_is_what_status_shows(self):
+        for named in ("tune", "debug freeze"):
+            with self.subTest(command=named):
+                self.assertEqual(self.holder_label({device.COMMAND_ENV: named}), "autana " + named)
+
+    def test_a_direct_call_shows_device_py_and_its_kind(self):
+        self.assertEqual(self.holder_label({}), "device.py send")
+
+    def test_a_capture_manifest_uses_the_same_label(self):
+        with mock.patch.dict(os.environ, {device.COMMAND_ENV: "tune"}):
+            self.assertEqual(device.command_label("send"), "autana tune")
+
+
 class HumanWaitTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -591,7 +651,7 @@ class HumanWaitTests(unittest.TestCase):
 
     def test_timeout_keeps_reservation(self):
         code, output = self.hand("--wait", "2")
-        self.assertEqual(code, 3)
+        self.assertEqual(code, device_lock.EXIT_BUSY)
         self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out")
         self.assertEqual(self.store.status(BOARD)["human"]["note"], "download mode")
 
@@ -601,7 +661,7 @@ class HumanWaitTests(unittest.TestCase):
 
         self.on_sleep = interrupt
         code, output = self.hand("--wait", "3")
-        self.assertEqual(code, 3)
+        self.assertEqual(code, device.EXIT_INTERRUPTED)
         self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait interrupted")
         self.assertIsNotNone(self.store.status(BOARD)["human"])
 
@@ -612,7 +672,7 @@ class HumanWaitTests(unittest.TestCase):
 
         self.on_sleep = replace
         code, output = self.hand("--wait", "3")
-        self.assertEqual(code, 4)
+        self.assertEqual(code, device_lock.EXIT_BUSY)
         self.assertEqual(output.call_args_list[-1].args[0], "human reservation replaced")
         self.assertEqual(self.store.status(BOARD)["human"]["note"], "download mode")
 
@@ -629,7 +689,7 @@ class HumanWaitTests(unittest.TestCase):
 
         self.on_sleep = renew
         code, output = self.hand("--wait", "3")
-        self.assertEqual(code, 3)
+        self.assertEqual(code, device_lock.EXIT_BUSY)
         self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out")
 
 
