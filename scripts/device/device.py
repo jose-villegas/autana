@@ -21,7 +21,6 @@ from pathlib import Path
 
 import device_lock
 import device_report
-import main_copy
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "device"))
@@ -1676,6 +1675,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main_copy.run_main_checkout_copy(__file__)
     rerun = rerun_under_idf_python(sys.argv[1:])
     raise SystemExit(main() if rerun is None else rerun)

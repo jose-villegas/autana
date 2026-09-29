@@ -21,18 +21,24 @@ autana docs --ask can an app call vTaskDelay inside frame     # a written answer
 
 | Source | Unit |
 |---|---|
-| Every Markdown file under the checkout, except `third_party/`, `launcher/components/` and whatever the checkout's own `.gitignore` excludes | a heading and the text up to the next heading |
+| Every `*.md` loose at the checkout root, plus everything under `docs/`, `launcher/` and `editor/`, except `third_party/` and `launcher/components/` | a heading and the text up to the next heading |
 | The Markdown files and folders `AUTANA_DOCS_EXTRA` names | the same |
-| The module docstring or leading comment of each tracked `.py`, `.sh` or `.mjs` file under `scripts/`, `launcher/tools/`, `launcher/test/` and `launcher/main/apps/`, except tests | one section per script |
+| The module docstring or leading comment of each `.py`, `.sh` or `.mjs` file under `scripts/`, `launcher/tools/`, `launcher/test/` and `launcher/main/apps/`, except tests | one section per script |
 
 A section copied verbatim into two files is kept once. The index is rebuilt on
-every run, so it is never stale; an edit is searchable at once.
+every run, so it is never stale; an edit is searchable at once. It is a plain
+filesystem walk of those fixed roots, not a VCS index - no git command runs.
+A directory named `.something`, `build*`, `managed_components` or `results`
+is never walked, except two levels down under `docs/`, `launcher/` or
+`editor/`: that keeps out a generated build directory (`launcher/build.dev/`,
+`editor/build/`) without also sweeping up `launcher/tools/build/`, a real
+source folder three levels down that only shares the name.
 
-`AUTANA_DOCS_EXTRA` lets notes kept outside the tracked tree join the index.
+`AUTANA_DOCS_EXTRA` lets notes kept outside those roots join the index.
 Entries are separated by `;` on Windows and `:` elsewhere, each relative to
-the checkout unless absolute. A named folder with its own `.gitignore` gives
-the Markdown that file does not exclude; any other folder gives every
-Markdown file under it. A named folder's own `eval_questions.tsv` joins
+the checkout unless absolute. A named folder is read in full - every Markdown
+file under it, recursively, with no ignore file of its own consulted - and a
+named file must end in `.md`. A named folder's own `eval_questions.tsv` joins
 `--eval`, its rows citing documents by the path search shows for them.
 
 ## How it ranks

@@ -16,11 +16,41 @@ import uuid
 from pathlib import Path
 
 import device_hook
-import main_copy
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "autana"))
+from version import __version__  # noqa: E402  (path must be set up first)
 
 
 DEFAULT_STALE_SECONDS = 600
 GUARD_STALE_SECONDS = 30
+# The mutex is guard() below (an O_CREAT|O_EXCL file), not an OS byte-range
+# lock - the JSON files are the state it protects, not locks themselves. This
+# numbers THAT state's shape: a claim, heartbeat or release that must
+# interpret a field the frozen core (below) does not promise refuses loudly
+# on a mismatch rather than guess. Bump it, and CHANGELOG-worthy, whenever a
+# record gains a field an older reader would need to not misinterpret.
+LOCK_PROTOCOL = 1
+# Every version of autana that ever speaks this protocol can read these four
+# fields off any lock record; nothing else is promised across a protocol gap.
+PROTOCOL_CORE_FIELDS = ("owner", "pid", "host", "protocol")
+
+
+class ProtocolMismatch(RuntimeError):
+    """An existing lock, reservation or ticket record speaks a lock protocol
+    this autana does not understand - never guessed at, never overwritten."""
+
+
+def require_known_protocol(record):
+    """Refuses loudly when `record` (already read off disk) was written by a
+    different LOCK_PROTOCOL - safe to skip for a read that only touches
+    PROTOCOL_CORE_FIELDS, required before interpreting anything else."""
+    protocol = record.get("protocol", 0)
+    if protocol != LOCK_PROTOCOL:
+        holder = record.get("owner", "unknown")
+        version = record.get("autana_version", "an unknown autana version")
+        raise ProtocolMismatch(
+            f"board held by {holder} with lock protocol {protocol} ({version}); "
+            f"this autana speaks protocol {LOCK_PROTOCOL} - update autana")
 
 
 def default_root():
@@ -208,6 +238,8 @@ class LockStore:
                 "kind": kind or purpose,
                 "sequence": sequence,
                 "ticket": ticket,
+                "protocol": LOCK_PROTOCOL,
+                "autana_version": __version__,
             })
             return ticket
 
@@ -262,6 +294,7 @@ class LockStore:
             evicted = None
             reason = ""
             if current:
+                require_known_protocol(current)
                 reason = self.reclaim_reason(current, stale_seconds)
                 if not reason:
                     return None, None, ""
@@ -282,6 +315,8 @@ class LockStore:
                 "purpose": pending[0]["purpose"],
                 "kind": pending[0]["kind"],
                 "token": uuid.uuid4().hex,
+                "protocol": LOCK_PROTOCOL,
+                "autana_version": __version__,
             }
             self.write_json(self.lock_path(board), held)
             (self.queue_dir(board) / (ticket + ".json")).unlink(missing_ok=True)
@@ -321,10 +356,12 @@ class LockStore:
 
     def heartbeat(self, board, token):
         """Refuses a lock the next claim() may reclaim: a holder that stalled
-        past the stale window has to find out it lost the board, not renew it."""
+        past the stale window has to find out it lost the board, not renew it.
+        `token` is never a foreign lock's - a mismatch (missing or not ours)
+        just means this is not our lock to touch, protocol notwithstanding."""
         with self.guard(board):
             lock = self.read_json(self.lock_path(board))
-            if not lock or lock["token"] != token or self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
+            if not lock or lock.get("token") != token or self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
                 return False
             lock["heartbeat_at"] = self.now()
             self.write_json(self.lock_path(board), lock)
@@ -333,7 +370,7 @@ class LockStore:
     def set_expected_build_id(self, board, token, expected_build_id):
         with self.guard(board):
             lock = self.read_json(self.lock_path(board))
-            if not lock or lock["token"] != token:
+            if not lock or lock.get("token") != token:
                 return False
             lock["expected_build_id"] = expected_build_id
             self.write_json(self.lock_path(board), lock)
@@ -342,7 +379,7 @@ class LockStore:
     def check_token(self, board, token, stale_seconds=DEFAULT_STALE_SECONDS):
         with self.guard(board):
             lock = self.read_json(self.lock_path(board))
-            return bool(lock and lock["token"] == token and
+            return bool(lock and lock.get("token") == token and
                         not self.reclaim_reason(lock, stale_seconds))
 
     def release(self, board, token):
@@ -354,7 +391,7 @@ class LockStore:
     def _release(self, board, token):
         with self.guard(board):
             lock = self.read_json(self.lock_path(board))
-            if not lock or lock["token"] != token:
+            if not lock or lock.get("token") != token:
                 return None
             self.lock_path(board).unlink(missing_ok=True)
             return lock
@@ -368,6 +405,8 @@ class LockStore:
                 "note": note,
                 "owner": owner,
                 "since_at": self.now(),
+                "protocol": LOCK_PROTOCOL,
+                "autana_version": __version__,
             })
         device_hook.emit("human-reserved", board, owner, note=note)
         return reservation_id
@@ -601,5 +640,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main_copy.run_main_checkout_copy(__file__)
     raise SystemExit(main())

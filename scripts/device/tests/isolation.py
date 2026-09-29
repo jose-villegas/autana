@@ -37,8 +37,6 @@ os.environ["AUTANA_DEVICE_LOCK_ROOT"] = str(TEMP / "locks")
 IMAGES = TEMP / "images"
 IMAGES.mkdir()
 os.environ["AUTANA_IMAGE_ROOT"] = str(IMAGES)
-# The tools under test are this checkout's, never the main checkout's.
-os.environ["AUTANA_DEVICE_TOOLS"] = "here"
 os.environ.pop("AUTANA_LOCK_HOOK", None)
 os.environ.pop("AUTANA_BOARD", None)
 

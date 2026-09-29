@@ -387,7 +387,7 @@ class LockTests(unittest.TestCase):
             "acquired_at": 1000, "heartbeat_at": 1000,
             "expected_build_id": "", "host": device_lock.socket.gethostname(),
             "owner": "dead", "pid": 99, "port": "COM5", "purpose": "flash",
-            "token": "old",
+            "token": "old", "protocol": device_lock.LOCK_PROTOCOL,
         })
         held = self.lock.claim("COM5", ticket, "")
         self.assertIn("reclaimed lock from dead for flash (dead process)",
@@ -399,7 +399,7 @@ class LockTests(unittest.TestCase):
             "acquired_at": 1000, "heartbeat_at": 1000,
             "expected_build_id": "", "host": device_lock.socket.gethostname(),
             "owner": "live", "pid": 1, "port": "COM5", "purpose": "flash",
-            "token": "old",
+            "token": "old", "protocol": device_lock.LOCK_PROTOCOL,
         })
         self.assertIsNone(self.lock.claim("COM5", ticket, "", stale_seconds=600))
 
@@ -409,7 +409,7 @@ class LockTests(unittest.TestCase):
             "acquired_at": 1000, "heartbeat_at": 1000,
             "expected_build_id": "", "host": "another-host",
             "owner": "remote", "pid": 99, "port": "COM5", "purpose": "flash",
-            "token": "old",
+            "token": "old", "protocol": device_lock.LOCK_PROTOCOL,
         })
         self.assertIsNone(self.lock.claim("COM5", ticket, "", stale_seconds=600))
 
@@ -419,7 +419,7 @@ class LockTests(unittest.TestCase):
             "expected_build_id": "",
             "host": host or device_lock.socket.gethostname(),
             "owner": "gone", "pid": pid, "port": "COM5", "purpose": "screenshot",
-            "token": "old",
+            "token": "old", "protocol": device_lock.LOCK_PROTOCOL,
         })
 
     def printed_status(self):
@@ -469,6 +469,125 @@ class LockTests(unittest.TestCase):
         self.lock.set_human("COM5", "maintainer", "checking display")
         self.assertIsNone(self.lock.acquire("COM5", "agent", "flash", wait=0))
         self.assertEqual(self.lock.status("COM5")["queue"], [])
+
+
+class ProtocolTests(unittest.TestCase):
+    """LOCK_PROTOCOL: the mutex is guard() (an O_CREAT|O_EXCL file); these JSON
+    records are the state it protects, and a claim, heartbeat or release that
+    would otherwise guess at a field the frozen core does not promise instead
+    refuses loudly - never overwrites a lock it does not understand."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.clock = Clock()
+        self.lock = device_lock.LockStore(
+            Path(self.temp.name), self.clock.now,
+            lambda pid: pid in (1, device_lock.os.getpid()))
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def write_foreign_lock(self, protocol):
+        record = {
+            "acquired_at": 1000, "heartbeat_at": 1000, "expected_build_id": "",
+            "host": device_lock.socket.gethostname(), "owner": "other-autana",
+            "pid": 99, "purpose": "flash", "token": "old",
+            "autana_version": "9.9.9",
+        }
+        if protocol is not None:
+            record["protocol"] = protocol
+        self.lock.write_json(self.lock.lock_path("COM5"), record)
+
+    def test_a_different_protocol_refuses_a_claim_loudly(self):
+        self.write_foreign_lock(protocol=2)
+        ticket = self.lock.enqueue("COM5", "me", "flash", pid=1)
+        with self.assertRaises(device_lock.ProtocolMismatch) as caught:
+            self.lock.claim("COM5", ticket, "")
+        message = str(caught.exception)
+        self.assertIn("other-autana", message)
+        self.assertIn("protocol 2", message)
+        self.assertIn("9.9.9", message)
+        self.assertIn(f"protocol {device_lock.LOCK_PROTOCOL}", message)
+        self.assertIn("update autana", message)
+        # Never guessed at, never overwritten: the foreign record still stands.
+        self.assertEqual(self.lock.read_json(self.lock.lock_path("COM5"))["owner"],
+                         "other-autana")
+
+    def test_a_missing_protocol_field_counts_as_zero_and_is_refused(self):
+        self.write_foreign_lock(protocol=None)
+        ticket = self.lock.enqueue("COM5", "me", "flash", pid=1)
+        with self.assertRaises(device_lock.ProtocolMismatch) as caught:
+            self.lock.claim("COM5", ticket, "")
+        self.assertIn("protocol 0", str(caught.exception))
+
+    def test_a_matching_protocol_claims_normally(self):
+        self.write_foreign_lock(protocol=device_lock.LOCK_PROTOCOL)
+        ticket = self.lock.enqueue("COM5", "me", "flash", pid=1)
+        held = self.lock.claim("COM5", ticket, "")
+        self.assertEqual(held["owner"], "me")
+
+    def test_a_foreign_lock_is_not_ours_to_heartbeat_or_release(self):
+        """No token of ours ever matches a foreign lock's, so these return the
+        same "not mine" answer as any other lock we do not hold - no crash,
+        no ProtocolMismatch, since neither interprets a field beyond that."""
+        self.write_foreign_lock(protocol=2)
+        self.assertFalse(self.lock.heartbeat("COM5", "not-mine"))
+        self.assertFalse(self.lock.release("COM5", "not-mine"))
+        self.assertFalse(self.lock.check_token("COM5", "not-mine"))
+
+    def test_written_records_carry_the_current_protocol_and_version(self):
+        held = self.lock.acquire("COM5", "me", "flash")
+        self.assertEqual(held["protocol"], device_lock.LOCK_PROTOCOL)
+        self.assertEqual(held["autana_version"], device_lock.__version__)
+        self.lock.enqueue("COM5", "waiting", "flash")
+        [ticket] = [t for t in self.lock.tickets("COM5") if t["owner"] == "waiting"]
+        self.assertEqual(ticket["protocol"], device_lock.LOCK_PROTOCOL)
+        reservation_id = self.lock.set_human("COM6", "person", "note")
+        self.assertTrue(reservation_id)
+        human = self.lock.read_json(self.lock.human_path("COM6"))
+        self.assertEqual(human["protocol"], device_lock.LOCK_PROTOCOL)
+
+
+class LockRecordShapeTests(unittest.TestCase):
+    """A golden snapshot of every field a lock record carries. A deliberate
+    field addition or removal is exactly the case LOCK_PROTOCOL exists for:
+    this failing is the reminder to bump it (device_lock.py's own docstring
+    on LOCK_PROTOCOL says why) and update GOLDEN_LOCK_KEYS below to match -
+    never edit the snapshot to make a red test green without doing that."""
+
+    GOLDEN_LOCK_KEYS = frozenset({
+        "acquired_at", "board", "expected_build_id", "heartbeat_at", "host",
+        "log", "owner", "pid", "purpose", "kind", "token", "protocol",
+        "autana_version",
+    })
+    GOLDEN_TICKET_KEYS = frozenset({
+        "board", "created_at", "owner", "pid", "purpose", "kind", "sequence",
+        "ticket", "protocol", "autana_version",
+    })
+    GOLDEN_HUMAN_KEYS = frozenset({
+        "board", "id", "note", "owner", "since_at", "protocol", "autana_version",
+    })
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.lock = device_lock.LockStore(Path(self.temp.name))
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_the_lock_records_keys_match_the_golden_set(self):
+        held = self.lock.acquire("COM5", "me", "flash")
+        self.assertEqual(set(held), self.GOLDEN_LOCK_KEYS)
+
+    def test_the_ticket_records_keys_match_the_golden_set(self):
+        self.lock.enqueue("COM5", "me", "flash")
+        [ticket] = self.lock.tickets("COM5")
+        self.assertEqual(set(ticket), self.GOLDEN_TICKET_KEYS)
+
+    def test_the_human_records_keys_match_the_golden_set(self):
+        self.lock.set_human("COM5", "me", "note")
+        human = self.lock.read_json(self.lock.human_path("COM5"))
+        self.assertEqual(set(human), self.GOLDEN_HUMAN_KEYS)
 
 
 if __name__ == "__main__":

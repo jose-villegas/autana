@@ -120,39 +120,49 @@ class Sections(unittest.TestCase):
         self.assertNotIn("print", section.body)
 
 
-class Ignore(unittest.TestCase):
-    """walk_files() replaces `git ls-files --exclude-standard`: no git binary, no .git
-    directory, just the folder's own .gitignore read directly."""
+class Corpus(unittest.TestCase):
+    """corpus_files() walks a fixed set of roots - docs/, launcher/, editor/, every
+    root-level *.md, and the SCRIPT_ROOTS - no VCS index consulted, no ignore file read."""
 
-    def test_a_plain_folder_with_no_gitignore_is_read_in_full(self):
-        root = make_repo({"docs/A.md": "# A\n", "notes/B.md": "# B\n"})
-        self.assertEqual(set(docs_search.walk_files(root, ".md")),
-                         {"docs/A.md", "notes/B.md"})
+    def test_root_level_markdown_is_included(self):
+        root = make_repo({"README.md": "# R\n", "docs/A.md": "# A\n"})
+        self.assertEqual({p for p, _ in docs_search.corpus_files(root)},
+                         {"README.md", "docs/A.md"})
 
-    def test_an_ignored_tree_is_pruned(self):
-        root = make_repo({".gitignore": "build/\nnode_modules/\n",
-                          "docs/A.md": "# A\n",
-                          "build/generated.md": "# Generated\n",
-                          "node_modules/pkg/README.md": "# Pkg\n"})
-        self.assertEqual(set(docs_search.walk_files(root, ".md")), {"docs/A.md"})
+    def test_a_folder_outside_the_fixed_roots_is_not_indexed_by_default(self):
+        root = make_repo({"docs/A.md": "# A\n", "design/B.md": "# B\n"})
+        self.assertEqual({p for p, _ in docs_search.corpus_files(root)}, {"docs/A.md"})
 
-    def test_a_negated_path_inside_an_ignored_tree_is_kept(self):
-        """The real repo's own .gitignore ignores every `build/` by name, then negates
-        `launcher/tools/build/` specifically - the one that holds real tracked scripts."""
-        root = make_repo({".gitignore": "build/\n!launcher/tools/build/\n",
-                          "launcher/tools/build/build.sh": "#!/bin/sh\n",
-                          "other/build/scratch.sh": "#!/bin/sh\n"})
-        self.assertEqual(set(docs_search.walk_files(root, ".sh")),
+    def test_skipped_prefixes_are_still_excluded(self):
+        root = make_repo({"docs/A.md": "# A\n",
+                          "launcher/components/vendor/README.md": "# Vendor\n"})
+        self.assertEqual({p for p, _ in docs_search.corpus_files(root)}, {"docs/A.md"})
+
+    def test_a_shallow_build_directory_is_pruned(self):
+        root = make_repo({"launcher/build/stray.md": "# Stray\n",
+                          "launcher/build.dev/stray.md": "# Stray\n",
+                          "editor/build/stray.md": "# Stray\n",
+                          "docs/A.md": "# A\n"})
+        self.assertEqual({p for p, _ in docs_search.corpus_files(root)}, {"docs/A.md"})
+
+    def test_a_deep_build_named_directory_is_not_pruned(self):
+        """launcher/tools/build/ is a real, tracked source folder - the shallow-only
+        build rule must not sweep it up with a generated build output two levels up."""
+        root = make_repo({"launcher/tools/build/build.sh": "#!/bin/sh\n"})
+        self.assertEqual({p for p, _ in docs_search.corpus_files(root)},
                          {"launcher/tools/build/build.sh"})
 
-    def test_no_gitignore_at_all_still_walks(self):
-        root = make_repo({"README.md": "# R\n"})
-        self.assertFalse((root / ".gitignore").exists())
-        self.assertEqual(set(docs_search.walk_files(root, ".md")), {"README.md"})
+    def test_managed_components_and_results_are_pruned_at_any_depth(self):
+        root = make_repo({
+            "launcher/managed_components/pkg/README.md": "# Pkg\n",
+            "launcher/main/apps/sand/tools/results/README.md": "# Results\n",
+            "docs/A.md": "# A\n",
+        })
+        self.assertEqual({p for p, _ in docs_search.corpus_files(root)}, {"docs/A.md"})
 
-    def test_dot_git_itself_is_never_walked_even_without_a_gitignore_rule(self):
-        root = make_repo({"docs/A.md": "# A\n", ".git/HEAD": "ref: refs/heads/main\n"})
-        self.assertEqual(set(docs_search.walk_files(root, ".md")), {"docs/A.md"})
+    def test_a_dotdir_is_pruned_at_any_depth(self):
+        root = make_repo({"docs/.obsidian/cache.md": "# Cache\n", "docs/A.md": "# A\n"})
+        self.assertEqual({p for p, _ in docs_search.corpus_files(root)}, {"docs/A.md"})
 
 
 class Search(unittest.TestCase):
@@ -216,28 +226,18 @@ def fake_embed(texts, query=False):
 
 
 class Extra(unittest.TestCase):
-    """Markdown outside the tracked tree is read only when AUTANA_DOCS_EXTRA names it."""
+    """Markdown outside the fixed roots is read only when AUTANA_DOCS_EXTRA names it."""
 
     def setUp(self):
         self.root = make_repo({
-            ".gitignore": "notes/\nvault/\nExtra.md\nNotes.txt\n",
             "docs/Flashing.md": GUIDE,
             "notes/Private.md": "# Private\n\n## Bench notes\n\nThe spare board's USB port is loose.\n",
             "notes/eval_questions.tsv": "loose usb port\tnotes/Private.md\tBench notes\n",
-            "Extra.md": "# Extra\n\n## Loose ends\n\nOne more note.\n",
-            "Notes.txt": "# A plain text file whose leading comment is long enough to pass for a script\n"
-                         "# header, so only its suffix keeps it out of the index.\n",
+            "misc/Extra.md": "# Extra\n\n## Loose ends\n\nOne more note.\n",
+            "misc/Notes.txt": "# A plain text file whose leading comment is long enough to pass for a script\n"
+                              "# header, so only its suffix keeps it out of the index.\n",
         })
         self.saved = os.environ.pop(docs_search.EXTRA_ENV, None)
-
-    def own_repository(self, name, files):
-        """A folder with its own .gitignore - walk_files() then applies that folder's
-        own ignore rules to it, the same way a separate git work tree once did."""
-        folder = self.root / name
-        for file, text in files.items():
-            (folder / file).parent.mkdir(parents=True, exist_ok=True)
-            (folder / file).write_text(text, encoding="utf-8")
-        return folder
 
     def outside(self, files):
         folder = Path(tempfile.mkdtemp())
@@ -253,12 +253,12 @@ class Extra(unittest.TestCase):
     def paths(self):
         return {s.path for s in docs_search.Index(self.root, semantic=False).sections}
 
-    def test_nothing_outside_the_tracked_tree_is_read_by_default(self):
+    def test_nothing_outside_the_fixed_roots_is_read_by_default(self):
         self.assertEqual(self.paths(), {"docs/Flashing.md"})
 
     def test_a_named_folder_and_file_are_read_under_their_checkout_paths(self):
-        os.environ[docs_search.EXTRA_ENV] = os.pathsep.join([" notes ", "Extra.md "])
-        self.assertEqual(self.paths(), {"docs/Flashing.md", "notes/Private.md", "Extra.md"})
+        os.environ[docs_search.EXTRA_ENV] = os.pathsep.join([" notes ", "misc/Extra.md "])
+        self.assertEqual(self.paths(), {"docs/Flashing.md", "notes/Private.md", "misc/Extra.md"})
 
     def test_an_extra_document_ranks_below_a_document_of_record(self):
         os.environ[docs_search.EXTRA_ENV] = "notes"
@@ -274,12 +274,19 @@ class Extra(unittest.TestCase):
         os.environ[docs_search.EXTRA_ENV] = "notes"
         self.assertIn(row, docs_search.load_eval(self.root))
 
-    def test_a_folder_that_is_its_own_repository_reads_only_what_it_would_track(self):
-        self.own_repository("vault", {".gitignore": "Scratch.md\n",
-                                      "Bench Notes.md": "# Bench\n\n## Spare board\n\nLoose port.\n",
-                                      "Scratch.md": "# Scratch\n\n## Draft\n\nNot for the index.\n"})
+    def test_a_named_folder_is_read_in_full_no_ignore_file_consulted(self):
+        """AUTANA_DOCS_EXTRA is a plain rglob: a folder's own .gitignore, if it has
+        one, is just another file to it - not consulted, unlike the fixed roots."""
+        folder = self.root / "vault"
+        (folder / ".gitignore").parent.mkdir(parents=True, exist_ok=True)
+        (folder / ".gitignore").write_text("Scratch.md\n", encoding="utf-8")
+        (folder / "Bench Notes.md").write_text("# Bench\n\n## Spare board\n\nLoose port.\n",
+                                                encoding="utf-8")
+        (folder / "Scratch.md").write_text("# Scratch\n\n## Draft\n\nStill indexed.\n",
+                                           encoding="utf-8")
         os.environ[docs_search.EXTRA_ENV] = "vault"
-        self.assertEqual(self.paths(), {"docs/Flashing.md", "vault/Bench Notes.md"})
+        self.assertEqual(self.paths(),
+                         {"docs/Flashing.md", "vault/Bench Notes.md", "vault/Scratch.md"})
 
     def test_an_absolute_folder_is_read_under_its_full_path(self):
         first = self.outside({"README.md": "# First\n\n## Alpha notes\n\nOne.\n"})
@@ -291,7 +298,7 @@ class Extra(unittest.TestCase):
         self.assertEqual(index.extra, labels)
 
     def test_a_named_file_that_is_not_markdown_is_not_read(self):
-        os.environ[docs_search.EXTRA_ENV] = "Notes.txt"
+        os.environ[docs_search.EXTRA_ENV] = "misc/Notes.txt"
         self.assertEqual(self.paths(), {"docs/Flashing.md"})
 
 class Semantic(unittest.TestCase):

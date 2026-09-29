@@ -25,6 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 from espressif import idf_python  # noqa: E402  (path must be set up first)
+from version import __version__  # noqa: E402
 
 VARIANTS = {"rel": "release", "release": "release", "dev": "dev", "diag": "diag"}
 
@@ -254,13 +255,15 @@ def flash(args):
     worktree_arg, args = pop_value(args, "--worktree")
     owner_name, args = pop_value(args, "--owner")
     wait, args = pop_value(args, "--wait")
+    purpose, args = pop_value(args, "--purpose")
     worktree = resolve_worktree(worktree_arg)
     asked, variant, seen, worktree = variant_request(
         "flash", args, ("--quiet", "--perf-scope"), worktree=worktree)
     quiet = "--quiet" in seen
     perf_scope = "--perf-scope" in seen
     command = device_command(
-        "flash", "--variant", variant, "--worktree", worktree, "--purpose", f"autana flash {asked}",
+        "flash", "--variant", variant, "--worktree", worktree,
+        "--purpose", purpose or f"autana flash {asked}",
         owner_name=owner_name, wait=wait,
     )
     if perf_scope:
@@ -451,20 +454,29 @@ def selftest(args):
     verbose = "--verbose" in rest
     if verbose:
         rest.remove("--verbose")
+    perf_scope = "--perf-scope" in rest
+    if perf_scope:
+        rest.remove("--perf-scope")
     worktree_arg, rest = pop_value(rest, "--worktree")
     owner_name, rest = pop_value(rest, "--owner")
     wait, rest = pop_value(rest, "--wait")
-    usage = ("usage: autana selftest [seconds] [--verbose] [--owner NAME] [--wait SECONDS] "
-             "[--worktree PATH|BRANCH]")
+    purpose, rest = pop_value(rest, "--purpose")
+    out, rest = pop_value(rest, "--out")
+    usage = ("usage: autana selftest [seconds] [--verbose] [--perf-scope] [--owner NAME] "
+             "[--wait SECONDS] [--purpose TEXT] [--out PATH] [--worktree PATH|BRANCH]")
     seconds = seconds_argument(rest, 3000.0, usage)
     worktree = resolve_worktree(worktree_arg)
     print(f"autana selftest: every suite, {worktree}", flush=True)
     command = device_command(
         "selftest", "--worktree", worktree, "--max-seconds", str(seconds),
-        "--purpose", "autana selftest", owner_name=owner_name, wait=wait,
+        "--purpose", purpose or "autana selftest", owner_name=owner_name, wait=wait,
     )
     if verbose:
         command.append("--verbose")
+    if perf_scope:
+        command.append("--perf-scope")
+    if out:
+        command += ["--out", out]
     return subprocess.call(command)
 
 
@@ -1408,6 +1420,9 @@ def install_completion():
 def main():
     if len(sys.argv) < 2:
         sys.exit(console())
+    if sys.argv[1] in ("--version", "-V"):
+        print(__version__)
+        sys.exit(0)
     if sys.argv[1] in ("help", "--help", "-h"):
         print(help_text(sys.argv[2:]))
         sys.exit(0)

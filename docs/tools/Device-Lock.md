@@ -57,17 +57,18 @@ each board has its own lock and queue.
 
 Every worktree carries its own `scripts/device/`, but the lock is one set of
 files on the machine, and two versions of the lock code can each believe
-they hold the board. So `device.py` and `device_lock.py`, started from any
-worktree, run the main checkout's copy with the same arguments and exit with
-its status. A worktree under `<main>/.claude/worktrees/<name>/` - what
-`--worktree BRANCH` always creates - names its main checkout from that path
-alone, no git call needed; a `--worktree PATH` placed somewhere else still
-asks git for the checkout that owns its common directory, so that case needs
-git installed. What gets built and flashed still comes from the worktree
-named by `--worktree` or the current directory. Keep the main checkout
-current - fast-forward it after a change to these tools merges.
-`AUTANA_DEVICE_TOOLS=here` runs a worktree's own copy, for working on the
-tools themselves; the test suites set it.
+they hold the board. Nothing hands a worktree's invocation off to another
+checkout at runtime any more - instead, always call `autana` (`tools/autana`
+on `PATH`, `scripts/add-tools-to-path.sh`) rather than a worktree's own
+`scripts/device/device.py` or `device_lock.py` directly. `autana` is one
+script at one fixed location, so every call runs the same lock code
+regardless of which worktree's shell invoked it; a report script such as
+`launcher/tools/device/device_report.sh` calls `autana selftest`/`autana
+suite`/`autana flash`, never a computed path to its own worktree's
+`device.py`. What gets built and flashed still comes from the worktree named
+by `--worktree` or the current directory. LOCK_PROTOCOL (below) is what
+keeps two differently-versioned copies from corrupting each other's records
+on the rare path that still runs a worktree's own copy directly.
 
 ## What a flash proves
 
@@ -318,8 +319,38 @@ The lock root is `%TEMP%/autana-device` (`AUTANA_DEVICE_LOCK_ROOT`
 overrides it). Per board, with `:` in the serial number written as `_`:
 `<serial>.json` is the lock - `board`, `owner`, `purpose`, `kind`,
 `acquired_at`, `heartbeat_at`, `expected_build_id`, `host`, `pid`, `log`
-(whom it was reclaimed from, if anyone), and an opaque `token`; `<serial>.queue/` holds the FIFO waiter tickets (a dead
-waiter's is discarded); `<serial>.human.json` is a person's reservation.
+(whom it was reclaimed from, if anyone), an opaque `token`, and `protocol`/
+`autana_version` (next section); `<serial>.queue/` holds the FIFO waiter
+tickets (a dead waiter's is discarded), each carrying the same `protocol`/
+`autana_version`; `<serial>.human.json` is a person's reservation, likewise.
+
+#### Lock protocol
+
+The mutex is an OS-independent spinlock - an `O_CREAT|O_EXCL` guard file
+`device_lock.py` creates and deletes around each read-modify-write, stale
+after 30 s so a crashed holder cannot wedge it forever. The JSON files above
+are the state that mutex protects, not locks themselves, and a machine can
+have autana installs of different ages meeting at one board, so every record
+carries `device_lock.LOCK_PROTOCOL`'s value as `"protocol"` (an integer, 0
+when the field is absent - an autana from before this existed). Four fields
+are the frozen core every protocol promises: `owner`, `pid`, `host`,
+`protocol` itself - `status` reads only those, so it never refuses to show a
+foreign record. Anything else - `heartbeat_at`, `token`, `expected_build_id`,
+and the rest - a claim, heartbeat or release must interpret to decide
+whether to touch that lock, and a mismatched `protocol` there refuses loudly
+instead of guessing at a shape it does not know:
+
+```
+board held by sam with lock protocol 2 (autana 0.4.1); this autana speaks protocol 1 - update autana
+```
+
+`autana_version` rides along purely for that message; nothing ever compares
+it. Bump `LOCK_PROTOCOL` only when a record's fields change in a way an
+older reader would misinterpret - an added field nobody old has to
+understand yet does not need a bump. `scripts/device/tests/test_device_lock.py`
+pins every record's current keys as a golden set: a deliberate field change
+without also bumping `LOCK_PROTOCOL` and updating that snapshot is the
+failure telling you to do both.
 
 `device.py --owner <owner> release --token <token>` releases a lock this
 owner holds without touching the board - for a run that finished early and

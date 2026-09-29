@@ -81,7 +81,7 @@ suite this worktree registers, for a full pre-merge pass.
 |---|---|
 | `autana suite <name>... [seconds] [--runs N] [--flash] [--verbose]` | Run one or more registered suites under one lock, `N` times each (1 when omitted), `seconds` capping the whole run (600 s when omitted). Without `--flash`: against the image already on the board - `autana suite <name>` against a non-diagnostics image says so plainly and names the fix (`autana flash diag`). With `--flash`: build and flash the diagnostics image first, so nobody else can flash between two captures. |
 | `autana suite list [text] [--json]` | The suites this worktree registers; `[on request]` ones run only by name. |
-| `autana selftest [seconds] [--verbose]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
+| `autana selftest [seconds] [--verbose] [--perf-scope]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
 
 Each prints the report and capture paths, PASS/FAIL counts, up to ten failure
 messages (then a FAIL count per suite) and the end reason. `--verbose`
@@ -208,6 +208,7 @@ before running it.
 | `autana docs --section <path:line>` | One section whole, or `path#heading words`; `--deep` adds its subsections. |
 | `autana docs --outline <path>` | A document's headings with their lines and sizes, to pick a section without reading the file. |
 | `autana docs --ask <question...>` | A short answer written by the local chat model from those sections, with their sources. |
+| `autana --version` (or `-V`) | This autana's own version - purely informational, rides along in a device lock record so a refusal can name what is holding the board; see [Device-Lock.md](Device-Lock.md#lock-protocol). |
 
 ## JSON fields
 
