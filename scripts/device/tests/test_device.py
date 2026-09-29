@@ -142,14 +142,17 @@ class PortWaitTests(unittest.TestCase):
             active = mock.Mock(store=store, board=BOARD)
             device.ACTIVE_LOCK.held = active
             self.addCleanup(setattr, device.ACTIVE_LOCK, "held", None)
-            with mock.patch.object(device, "require_live_lock"),                     mock.patch.object(device.lock_scope, "survivors",
-                                      return_value=[(4242, "esptool")]) as survivors:
+            scope = mock.Mock(process_start=mock.Mock(return_value=None),
+                              process_name=mock.Mock(return_value="esptool"),
+                              survivors_extra=mock.Mock(return_value=[4242]))
+            with mock.patch.object(device, "require_live_lock"), \
+                    mock.patch.object(device, "lock_scope", scope):
                 with self.assertRaises(device.PortUnavailable) as caught:
                     device.open_when_free(5, self.opener(99), self.sleep, lambda: self.clock[0])
         message = str(caught.exception)
         self.assertIn("sam@bench:41 (flash)", message)
         self.assertIn("4242 (esptool)", message)
-        self.assertEqual(survivors.call_args.args[0]["token"], held["token"])
+        self.assertEqual(scope.survivors_extra.call_args.args[0]["token"], held["token"])
 
     def test_without_a_lock_the_timeout_names_no_holder(self):
         with self.assertRaises(device.PortUnavailable) as caught:
@@ -532,6 +535,7 @@ class DeviceTests(unittest.TestCase):
     def test_hand_records_reservation(self):
         store = mock.Mock()
         store.status.return_value = {"human": None, "lock": None, "queue": []}
+        store.set_human.return_value = ("id", False)
         with mock.patch.object(device.device_lock, "LockStore", return_value=store):
             self.assertEqual(device.main(["--board", BOARD, "--owner", "agent",
                                           "hand-to-human", "--note", "check cable"]), 0)

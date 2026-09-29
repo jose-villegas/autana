@@ -159,14 +159,15 @@ The two raw levels below gesture, `touch` and `imu`, live under
 |---|---|
 | `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
 | `autana lock id [--json]` | The name this session holds the lock under: `"<user>@<host>:<pid>"`, or `"<AUTANA_DEVICE_OWNER>:<pid>"` when that variable is set. |
-| `autana lock release <token>` | Release a lock this session holds; the token is what its command printed. |
+| `autana lock release [<token>]` | Release the lock a command of this session holds, before it would have. The token is `AUTANA_DEVICE_LOCK_TOKEN` in every process that command started, and is what `lock release` uses when none is given. |
 | `autana lock hand [--wait <seconds>] <note...>` | Reserve the board for a person for an hour and emit `human-reserved`; running it again renews the hour, and an unrenewed reservation lapses (`human-expired`). With `--wait`, wait until `take-back` emits `human-cleared`. |
 | `autana lock take-back` | Clear that reservation. |
 
 A board is named by its USB serial number, so the lock follows it across
 COM number changes; with several boards plugged in, `AUTANA_BOARD=<serial>`
 picks one. If a command loses the lock it stops with `device lock was
-lost`. A separate `flash` and `suite` leave a gap where another session can
+lost`. A command that finds the board busy and will not wait (`AUTANA_DEVICE_WAIT=0`, or its
+wait ran out) exits 75, so a script can retry on the code alone. A separate `flash` and `suite` leave a gap where another session can
 flash; `suite --flash` and `selftest` hold one lock across flash and capture.
 Lock loss is defined in [Device-Lock.md](Device-Lock.md); flash success,
 captures and wait estimates in [Flash-and-Captures.md](Flash-and-Captures.md).

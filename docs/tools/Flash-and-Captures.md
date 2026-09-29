@@ -29,7 +29,9 @@ image-sized goes into the records. Only then does it queue for the board, and
 under the lock `scripts/device/flash_image.sh` writes the snapshot with
 esptool, never `idf.py flash`: nothing builds while the board is held, a later
 build in that directory cannot change what is written, and the `BUILD_ID`
-recorded is the snapshot's own. A build that fails never queues. When either
+recorded is the snapshot's own. `flash_image.sh` checks the live lock token
+just before its write; it cannot prove ownership during the write, which is
+what the lock's heartbeat is for. A build that fails never queues. When either
 half fails, `flash` fails naming it, with the log's first error line
 (esptool's `Could not open COM3 ...`, say) and the log's path. What boots is
 proven only by a console that names it: a `selftest` or `suite --flash`

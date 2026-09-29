@@ -1014,9 +1014,23 @@ class LockCommandTests(unittest.TestCase):
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--token") + 1], "deadbeef")
 
-    def test_release_needs_exactly_a_token(self):
-        with self.assertRaises(SystemExit):
+    def test_release_without_a_token_or_the_variable_is_a_usage_error(self):
+        environment = {key: value for key, value in autana.os.environ.items()
+                       if key != "AUTANA_DEVICE_LOCK_TOKEN"}
+        with mock.patch.dict(autana.os.environ, environment, clear=True), \
+                self.assertRaises(SystemExit):
             autana.release([])
+
+    def test_release_without_a_token_uses_the_one_a_running_command_has(self):
+        with mock.patch.dict(autana.os.environ, {"AUTANA_DEVICE_LOCK_TOKEN": "cafe"}), \
+                mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.release([])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--token") + 1], "cafe")
+
+    def test_release_takes_no_more_than_one_token(self):
+        with self.assertRaises(SystemExit):
+            autana.release(["one", "two"])
 
     def test_hand_joins_its_words_into_one_note(self):
         with mock.patch.object(autana.subprocess, "call", return_value=0) as called:

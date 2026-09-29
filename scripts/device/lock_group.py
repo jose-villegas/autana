@@ -72,21 +72,36 @@ def stop(pid, token):
             os.close(descriptor)
 
 
-def survivors(record):
-    """(pid, name) of every process still carrying a finished holder's token
-    and the holder itself: what may still hold the port after its lock ended."""
+def survivors_extra(record):
+    """Pids still carrying a finished holder's token. The holder's own process
+    is not among them - it set the token after it started - so the caller
+    checks the record's pid itself."""
     token = record.get("token")
     if not token or not has_proc():
         return []
-    return [(pid, command_name(pid)) for pid in tagged_pids(token, {os.getpid()})]
+    return tagged_pids(token, {os.getpid()})
 
 
-def command_name(pid):
+def process_name(pid):
     try:
         with open(f"/proc/{pid}/comm", encoding="utf-8", errors="replace") as stream:
             return stream.read().strip()
     except OSError:
         return ""
+
+
+def process_start(pid):
+    """When `pid` began, in epoch seconds, or None where /proc cannot say."""
+    try:
+        with open(f"/proc/{pid}/stat", encoding="utf-8", errors="replace") as stream:
+            stat = stream.read()
+        with open("/proc/stat", encoding="utf-8") as stream:
+            boot = next(int(line.split()[1]) for line in stream if line.startswith("btime"))
+        # Field 22, counted from after the parenthesised command name.
+        ticks = int(stat[stat.rindex(")") + 2:].split()[19])
+        return boot + ticks / os.sysconf("SC_CLK_TCK")
+    except (OSError, ValueError, IndexError, StopIteration):
+        return None
 
 
 def enter(token):

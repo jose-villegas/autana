@@ -90,6 +90,10 @@ class LockLost(RuntimeError):
         super().__init__(message)
 
 
+class LockBusy(RuntimeError):
+    """The board was not free and this command would not, or could not, wait."""
+
+
 class PortUnavailable(RuntimeError):
     """The board's port did not open within the wait it was given."""
 
@@ -320,7 +324,7 @@ def previous_holder_note():
     if active is None:
         return ""
     return ". " + device_lock.previous_holder_text(active.store, active.board,
-                                                   lock_scope.survivors)
+                                                   lock_scope)
 
 
 def build_id_from_bytes(data):
@@ -421,8 +425,8 @@ class HeldLock:
         self.held = store.acquire(board, owner, purpose, wait=wait, kind=kind,
                                   on_wait=self.wait_notice)
         if not self.held:
-            raise RuntimeError("device lock was not acquired: "
-                               + device_lock.busy_text(store.status(board), store.now()))
+            raise LockBusy("device lock was not acquired: "
+                           + device_lock.busy_text(store.status(board), store.now()))
         if self.held["log"]:
             print(self.held["log"], file=sys.stderr)
         self.stop = threading.Event()
@@ -445,9 +449,9 @@ class HeldLock:
                   f"{device_lock.holder_version_text(lock)} - waiting", file=sys.stderr)
         elif status["human"]:
             human = status["human"]
-            left = device_lock.duration_text(self.store.human_expires_at(human) - now)
+            left = device_lock.human_left_text(human, now)
             print(f"board reserved by {human['owner']}: {human.get('note')} - waiting "
-                  f"(the reservation ends in {left} unless renewed; `autana status`, "
+                  f"({left + ', unless renewed; ' if left else ''}`autana status`, "
                   "`autana lock take-back`)", file=sys.stderr)
         place = next((index for index, item in enumerate(status["queue"], 1)
                       if item["ticket"] == ticket), None)
@@ -1503,9 +1507,10 @@ def wait_for_human_release(store, board, reservation_id, seconds):
     deadline = time.monotonic() + seconds
     try:
         while True:
-            human = store.status(board)["human"]
+            status = store.status(board)
+            human = status["human"]
             if human is None:
-                expired = store.status(board).get("expired_human")
+                expired = status.get("expired_human")
                 print("human reservation expired" if expired and expired.get("id") == reservation_id
                       else "human reservation released")
                 return 0
@@ -1694,9 +1699,7 @@ def main(argv=None):
             if active:
                 if not args.token or not store.release(board, args.token):
                     raise RuntimeError("active lock requires its token before handoff")
-            before = store.status(board)["human"]
-            reservation_id = store.set_human(board, args.owner, args.note)
-            renewed = bool(before) and before.get("id") == reservation_id
+            reservation_id, renewed = store.set_human(board, args.owner, args.note)
             if args.wait is None:
                 lasts = device_lock.duration_text(device_lock.HUMAN_RESERVATION_SECONDS)
                 print(f"human reservation {'renewed' if renewed else 'recorded'}; it expires "
@@ -1728,6 +1731,9 @@ def main(argv=None):
         else:
             listen(args, store, board)
         return 0
+    except LockBusy as error:
+        print("device: " + str(error), file=sys.stderr)
+        return device_lock.EXIT_BUSY
     except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
         print("device: " + str(error), file=sys.stderr)
         return 1

@@ -1303,7 +1303,7 @@ class DurationTests(Store):
         with contextlib.redirect_stderr(io.StringIO()) as notices:
             waiter.wait_notice(ticket)
         self.assertIn("board reserved by maintainer: on the bench - waiting "
-                      "(the reservation ends in 1h unless renewed", notices.getvalue())
+                      "(1h left, unless renewed", notices.getvalue())
 
     def test_a_capture_record_carries_the_board_and_when_it_was_acquired(self):
         store = device_lock.LockStore(self.root / "locks", now=lambda: 1000.0)
@@ -1533,11 +1533,31 @@ class BoardChoiceTests(Store):
             waiting = mock.Mock(wraps=self.store.enqueue)
             with mock.patch.object(device_lock.LockStore, "enqueue", waiting):
                 code, errors = self.main("--wait", "0.2", "--owner", "bob", "send", "TUNE")
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 75)
         self.assertIn("waiting for board: queue place 1", errors)
         self.assertIn("device: device lock was not acquired: board held by alice for flash since ",
                       errors)
         self.assertEqual(waiting.call_args.args[:2], (BOARD_A, "bob"))
+
+    def test_a_command_that_will_not_wait_exits_with_the_busy_code(self):
+        self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
+        with plugged():
+            code, errors = self.main("--wait", "0", "--owner", "bob", "send", "TUNE")
+        self.assertEqual(code, 75)
+        self.assertIn("board held by alice", errors)
+
+    def test_other_failures_keep_exit_one(self):
+        self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
+        with plugged():
+            code, errors = self.main("hand-to-human", "--note", "x")
+        self.assertEqual(code, 1)
+        self.assertIn("active lock requires its token", errors)
+
+    def test_status_never_shows_a_lock_token(self):
+        held = self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
+        entry = device_lock.status_entry(self.store, BOARD_A, durations={})
+        shown = json.dumps(entry) + "\n".join(device_lock.status_lines(entry))
+        self.assertNotIn(held["token"], shown)
 
     def test_take_back_works_while_the_board_is_unplugged(self):
         self.store.set_human(BOARD_A, "maintainer", "bench")
