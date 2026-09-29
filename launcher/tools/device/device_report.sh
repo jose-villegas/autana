@@ -102,10 +102,7 @@ device_report_run() {
     # shellcheck source=../../../scripts/lib/python.sh
     . "$_dr_worktree/scripts/lib/python.sh"
     PYTHON=$(find_python) || return 1
-    # autana no longer takes --owner or --purpose (#454) - the lock owner is
-    # whatever AUTANA_DEVICE_OWNER names, or "<user>@<host>:<pid>" unset, and
-    # exporting it here is the only way this report's own name reaches it.
-    export AUTANA_DEVICE_OWNER="${AUTANA_DEVICE_OWNER:-device_report $report_name}"
+    _dr_owner="device_report $report_name"
     command -v autana > /dev/null 2>&1 || {
         echo "ERROR: autana not on PATH - see scripts/add-tools-to-path.sh" >&2
         return 1
@@ -145,13 +142,13 @@ device_report_capture() {
         # Unquoted on purpose: a caller declares zero or more flags in one string.
         # shellcheck disable=SC2086
         set -- "$@" $report_build_flags
-        autana suite "$@"
+        autana --owner "$_dr_owner" suite "$@"
     else
         set -- "$report_timeout" --out "$_dr_raw" --project "$_dr_worktree"
         echo "=== Building and capturing the self-test run ==="
         # shellcheck disable=SC2086
         set -- "$@" $report_build_flags
-        autana selftest "$@"
+        autana --owner "$_dr_owner" selftest "$@"
     fi
 }
 
@@ -196,7 +193,7 @@ device_report_finish() {
     _dr_final=$?
     if [ "$_dr_do_restore" -eq 1 ]; then
         echo "=== Restoring the release firmware ==="
-        autana flash release --quiet --project "$_dr_worktree" \
+        autana --owner "$_dr_owner" flash release --quiet --project "$_dr_worktree" \
             || echo "WARNING: could not restore the release firmware - the device may still be on build.diag"
     else
         echo "=== --no-restore: leaving the device on the diagnostics image ==="
