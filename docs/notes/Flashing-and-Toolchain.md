@@ -44,7 +44,7 @@ bootloader.
 From there `autana flash` writes the image and ends with esptool's RTS
 reset. What a flash proves - esptool's hash check and the build's
 `BUILD_ID`, not the boot - and the whole hand-off under the device lock are
-in [Device-Lock.md](../tools/Device-Lock.md#what-a-flash-proves).
+in [Flash-and-Captures.md](../tools/Flash-and-Captures.md#what-a-flash-proves).
 
 The RTS reset is a warm reset, so the bootloader's PMIC restart (below)
 power-cycles the SoC: USB drops and comes back, possibly on a **different

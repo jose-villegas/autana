@@ -89,7 +89,7 @@ mechanism and the full field list.
 - **Development-only** (`--dev` or `--diag` build) - a release build carries
   none of it.
 - **Slow by design**: a full 368x448 frame is roughly 650 KB of base64 over
-  the serial port ([Device-Lock.md](../tools/Device-Lock.md) has the baud),
+  the serial port ([Flash-and-Captures.md](../tools/Flash-and-Captures.md#screenshots) has the baud),
   taking the better part of a minute. `autana screenshot`
   prints progress every few seconds so this does not read as a hang.
 - **Does not reset the board** - opens the port with DTR/RTS held low so a
