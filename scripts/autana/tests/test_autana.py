@@ -35,7 +35,7 @@ def busy_status(owner="someone-else@0001", port="COM3"):
     return json.dumps({"boards": [{
         "board": "90:70:69:FE:A3:08", "port": port, "state": "held",
         "holder": {"owner": owner, "purpose": "autana screenshot"}, "since": 1000,
-        "elapsed_seconds": 3, "estimated_free": None, "stale": None, "waiting": []}]})
+        "estimated_free": None, "lapsed": None, "waiting": []}]})
 
 
 class SendCommandBuildingTests(unittest.TestCase):

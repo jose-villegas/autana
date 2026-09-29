@@ -1302,14 +1302,11 @@ USAGE_WIDTH = 34
 # own usage line (`autana help flags` instead) since most commands take most
 # of these and repeating them on every line was unreadable.
 BOARD_FLAGS = (
-    ("--wait SECONDS", "global, goes before the command: wait this long for the board's lock, "
-                       "0 to fail at once (exit 75); 600 s without it",
+    ("--wait SECONDS", "how long to wait for the board's lock; 0 fails at once (exit 75)",
      "every board command"),
-    ("--owner NAME", "global, goes before the command: label this run in the lock as "
-                     "NAME:<pid>",
+    ("--owner NAME", "the lock owner's label",
      "every board command"),
-    ("--board SERIAL", "global, goes before the command: the board's USB serial number; "
-                       "without it, the only board plugged in",
+    ("--board SERIAL", "the board's USB serial number",
      "every board command"),
     ("--out PATH", "write the one capture here instead of the default path",
      "selftest, suite, monitor"),
@@ -1324,9 +1321,8 @@ BOARD_FLAGS = (
 
 def board_flags_text(prefix=""):
     width = max(len(flag) for flag, _, _ in BOARD_FLAGS)
-    lines = ["Every board command's lock owner is \"<user>@<host>:<pid>\", or the "
-             "global --owner label. How long a command "
-             "waits for the board's lock: the global --wait, else 600 s.",
+    lines = ["--wait, --owner and --board are global: they go before the command, and "
+             "docs/tools/Autana-CLI.md#settings has their defaults.",
              "",
              "Flags (on top of each command's own usage above)"]
     for flag, summary, commands in BOARD_FLAGS:

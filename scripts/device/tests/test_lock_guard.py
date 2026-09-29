@@ -243,9 +243,8 @@ class BoardTests(Store):
         self.assertEqual((by_board["90:70:69:FE:C0:01"]["port"],
                           by_board["90:70:69:FE:C0:01"]["state"]), (None, "human"))
         self.assertEqual(set(by_board[BOARD_B]), {
-            "board", "port", "state", "holder", "since", "elapsed_seconds",
-            "estimated_free", "stale", "expired", "expires_at", "remaining_seconds",
-            "waiting"})
+            "board", "port", "state", "holder", "since", "estimated_free", "lapsed",
+            "expires_at", "waiting"})
 
     def test_status_names_one_board_when_one_is_chosen(self):
         with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")):
@@ -259,9 +258,9 @@ class BoardTests(Store):
             "kind": "listen", "owner": "gone", "pid": 1, "purpose": "listen", "token": "t"})
         with plugged():
             entry = json.loads(self.status("--json"))["boards"][0]
-        self.assertEqual((entry["state"], entry["stale"]),
+        self.assertEqual((entry["state"], entry["lapsed"]),
                          ("unlocked", {"owner": "gone", "purpose": "listen",
-                                       "reason": "heartbeat expiry"}))
+                                       "reason": "heartbeat expiry", "at": None}))
 
 
 class PortFollowingTests(Store):
@@ -1144,7 +1143,8 @@ class DurationTests(Store):
         clock[0] = 1020.0
         entry = device_lock.status_entry(store, BOARD_A, durations={
             "flash": 120, "listen": 30, "firmware": 999, "watch": 999})
-        self.assertEqual(entry["elapsed_seconds"], 20)
+        self.assertEqual(entry["since"], 1000)
+        self.assertIn("elapsed 20s", device_lock.status_lines(entry, clock[0])[0])
         self.assertEqual(entry["estimated_free"], 1120)
         self.assertEqual([(w["owner"], w["estimated_start"]) for w in entry["waiting"]],
                          [("bob", 1120), ("cara", 1150)])
@@ -1426,7 +1426,8 @@ class EstimateTests(Store):
         self.clock[0] = 1200.0
         self.assertTrue(self.store.heartbeat(BOARD_A, held["token"]))
         entry = device_lock.status_entry(self.store, BOARD_A, durations={})
-        self.assertEqual((entry["since"], entry["elapsed_seconds"]), (1000.0, 200))
+        self.assertEqual(entry["since"], 1000.0)
+        self.assertIn("elapsed 200s", device_lock.status_lines(entry, self.clock[0])[0])
 
     def test_a_holder_past_its_estimate_frees_now_and_waiters_follow_from_now(self):
         self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
@@ -1565,7 +1566,7 @@ class BoardChoiceTests(Store):
     def test_status_never_shows_a_lock_token(self):
         held = self.store.acquire(BOARD_A, "alice", "flash", kind="flash")
         entry = device_lock.status_entry(self.store, BOARD_A, durations={})
-        shown = json.dumps(entry) + "\n".join(device_lock.status_lines(entry))
+        shown = json.dumps(entry) + "\n".join(device_lock.status_lines(entry, 1000))
         self.assertNotIn(held["token"], shown)
 
     def test_take_back_works_while_the_board_is_unplugged(self):
