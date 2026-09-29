@@ -10,8 +10,8 @@
 # directory, so it is right whichever checkout it is run from - and it should
 # be run from the PRIMARY checkout, the one that stays put; a worktree is
 # deleted sooner or later and would leave a dead PATH entry. What a command
-# ACTS on is still the worktree you are standing in, so one PATH entry serves
-# every worktree.
+# ACTS on is still the current directory, or --project PATH, so one PATH
+# entry serves every checkout.
 #
 # Windows: the persistent USER Path in the registry, no admin rights, which
 # cmd, PowerShell and Git Bash all inherit. Elsewhere: one line in ~/.profile.

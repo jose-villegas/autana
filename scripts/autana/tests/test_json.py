@@ -57,7 +57,7 @@ class JsonReadTests(unittest.TestCase):
             source = Path(temp) / "launcher" / "test" / "suite.c"
             source.parent.mkdir(parents=True)
             source.write_text("SUITE_REGISTER(run_example_suite)\n")
-            with mock.patch.object(autana, "engine_worktree", return_value=temp):
+            with mock.patch.object(autana, "resolve_project", return_value=temp):
                 self.assertEqual(self.output(autana.suite, ["list", "--json"]),
                                  {"suites": [{"name": "run_example_suite",
                                               "source": "launcher/test/suite.c",
