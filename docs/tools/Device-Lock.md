@@ -385,26 +385,16 @@ heartbeat: it lapses one hour after the last `lock hand`.
 
 ```mermaid
 stateDiagram-v2
-    state "Held, renewed by a heartbeat every 5 s" as Held
-    state "Reserved for a person" as Reserved
-    [*] --> Queued: ticket in the board's queue
-    Queued --> Held: first in line, board free
-    Queued --> [*]: wait ran out, or the waiter died
-    Held --> Stale: heartbeat 10 min old, or holder dead
-    Stale --> Lost: a waiter reclaims it, or the heartbeat is refused
-    Held --> Lost: lock replaced
-    Lost --> [*]: the command stops and fails
-    Held --> Draining: the command ends
-    Draining --> Reaped: members still running after 2 s
-    Draining --> Released: every member ended
-    Reaped --> Released: members ended
-    Released --> [*]: the next waiter may take the board
-    Held --> Killed: holder killed
-    Killed --> Stale: job closes or watchdog fires, members ended
-    [*] --> Reserved: autana lock hand
-    Reserved --> Reserved: lock hand again, one more hour
-    Reserved --> [*]: take-back, or an hour without renewal
+    [*] --> Waiting: a command needs the board
+    Waiting --> Holding: first in line
+    Waiting --> [*]: gave up (exit 75)
+    Holding --> [*]: command ends, leftovers stopped, board freed
+    Holding --> Reclaimed: holder died, or silent 10 min
+    Reclaimed --> [*]: next in line takes the board
 ```
+
+A person's reservation (`autana lock hand`) blocks every command until
+`take-back` or an hour without renewal.
 
 ## Related
 
