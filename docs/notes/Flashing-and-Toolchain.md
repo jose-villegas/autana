@@ -105,6 +105,9 @@ Nothing in the tree relies on any of those today.
   in one. Its Python environment is also somewhere `export.bat` does not
   look. Running ESP-IDF's own `install.bat` against that same checkout adds
   what is missing and re-downloads no toolchain.
+- **The firmware build does not use ccache.** The ELF embeds absolute worktree
+  paths, so worktrees cannot share cache hits, and a miss build measured
+  slower than no ccache on Windows.
 - **`IDF_TOOLS_PATH` is the root, not the `tools/` inside it.** Point it one
   level too deep and `idf_tools.py` installs a second copy of every toolchain
   under `tools/tools/`.
