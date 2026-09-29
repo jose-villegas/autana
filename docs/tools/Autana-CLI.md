@@ -73,8 +73,9 @@ CI builds through it too. `autana flash` runs that same build with no board
 lock held and snapshots the image it built, then, under the board's lock,
 `scripts/device/flash_image.sh` writes that snapshot - the one script that
 opens the port.
-It proves the write, not the boot:
+`BUILD_ID` identifies the image by its ELF hash; see
 [what a flash proves](Device-Lock.md#what-a-flash-proves).
+It proves the write, not the boot.
 
 Both print a banner naming the project and variant; when git answers for
 that project it adds the branch, commit and whether it is dirty - never

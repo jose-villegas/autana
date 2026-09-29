@@ -22,7 +22,6 @@
 #include "boot/post.h"
 #include "boot/post_layout.h"
 #include "boot/post_ui.h"
-#include "build_id_generated.h"
 #include "build_variant.h"
 #include "display/display.h"
 #include "display/panel_clock.h"
@@ -40,6 +39,7 @@
 #include "ui/ui_control_center.h"
 #include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"
+#include "util/build_id.h"
 #include "util/frame_cost.h"
 #include "util/frame_watch.h"
 
@@ -103,12 +103,13 @@ heap_mark(const char* where) {
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #define BUILD_MARK_GLYPH        8
-#define BUILD_MARK_TEXT         "D" BUILD_ID_SHORT
-#define BUILD_MARK_CHARS        ((int)sizeof(BUILD_MARK_TEXT) - 1)
+#define BUILD_MARK_CHARS        (1 + BUILD_ID_SHORT_CHARS)
 #define BUILD_MARK_SIZE         (BUILD_MARK_GLYPH * BUILD_MARK_CHARS)
 #define BUILD_MARK_RGB          0x384054
 /* The panel's rounded corners hide more than UI_MARGIN clears along an edge. */
 #define BUILD_MARK_CORNER_SHIFT 32
+
+static char build_mark_text[BUILD_MARK_CHARS + 1];
 
 /* Right-anchored to the upright screen's bottom-right corner, then mapped to
  * the framebuffer the way the UI's own text is. */
@@ -126,7 +127,7 @@ draw_build_mark(void) {
         int x = 0;
         int y = 0;
         ui_text_glyph0_origin(gfx_font_ui(), box, quarter, 1, &x, &y);
-        gfx_text_turned(x, y, BUILD_MARK_TEXT, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
+        gfx_text_turned(x, y, build_mark_text, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
     }
 }
 #endif
@@ -823,7 +824,13 @@ check_console_prefix_clashes(void) {
  * leaves the chip idle and unflashable. */
 static void
 app_boot_init(void) {
-    printf("BUILD_ID=%s\n", BUILD_ID);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    const int mark_length = snprintf(build_mark_text, sizeof(build_mark_text), "D%s", build_id_short());
+    if (mark_length < 0 || (size_t)mark_length >= sizeof(build_mark_text)) {
+        build_mark_text[0] = '\0';
+    }
+#endif
+    printf("BUILD_ID=%s\n", build_id());
     fflush(stdout);
     system_navigation_init(&system_navigation);
     tilt_reset(&launcher_tilt, IMU_COUNTS_PER_G);
@@ -1134,7 +1141,7 @@ app_main_loop(void) {
     /* Again, for a host that lost the port: after a PMIC cold restart, USB
      * Serial/JTAG enumerates only about 0.7 s into the new boot, after
      * app_boot_init()'s print. */
-    printf("BUILD_ID=%s\n", BUILD_ID);
+    printf("BUILD_ID=%s\n", build_id());
     fflush(stdout);
     frame_watch_start();
 

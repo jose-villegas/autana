@@ -263,11 +263,9 @@ static void log_pass_split(const char* name, int steps, int impulse_max, const i
 static int perf_unmet_targets;
 static bool gas_ab_reporting;
 
-/* Ceilings are worst + max(spread, 2% of worst) across 5 two-core-pinned S3
- * portrait captures, build a195574e7177-dirty-diag. Landscape
- * costs 17-37% more; not covered. The present-cost ceilings follow the same rule
- * across 3 captures with the panel clock pinned, build
- * 8e32ebfe3968-diag. */
+/* Ceilings are worst + max(spread, 2% of worst) across two-core-pinned S3
+ * portrait captures. Landscape costs 17-37% more; not covered. The
+ * present-cost ceilings follow the same rule with the panel clock pinned. */
 
 static void
 perf_guard(const char* name, int64_t measured_us, int64_t ceiling_us) {
