@@ -1166,6 +1166,36 @@ class DurationTests(Store):
             device_lock.record_duration("flash", seconds, root=root)
         self.assertEqual(device_lock.duration_history(root)["flash"], (recent - 1) / 2)
 
+    def record_suite(self, suite, seconds, test_filter=None, error=None):
+        device_lock.record_duration("run-suite", seconds, error, self.store.root,
+                                    {"suite": suite, "filter": test_filter})
+
+    def test_a_suite_duration_is_the_longest_recent_success_of_that_suite(self):
+        for seconds in (100, 900, 300):
+            self.record_suite("sand", seconds)
+        self.record_suite("sand", 5000, error="timeout")
+        self.record_suite("gfx", 40)
+        self.assertEqual(device_lock.suite_duration(self.store.root, "sand"), 900)
+        self.assertIsNone(device_lock.suite_duration(self.store.root, "nothing"))
+
+    def test_a_filtered_duration_is_its_own_or_else_the_whole_suites(self):
+        self.record_suite("sand", 900)
+        self.assertEqual(device_lock.suite_duration(self.store.root, "sand", "fire"), 900)
+        self.record_suite("sand", 120, "fire")
+        self.assertEqual(device_lock.suite_duration(self.store.root, "sand", "fire"), 120)
+        self.assertEqual(device_lock.suite_duration(self.store.root, "sand"), 900)
+
+    def test_a_trim_keeps_each_suites_and_filters_rows_apart(self):
+        recent = device_lock.ESTIMATE_RECENT_RUNS
+        rows = ([{"command": "run-suite", "duration_seconds": 900, "error": None,
+                  "suite": "sand", "filter": None}]
+                + [{"command": "run-suite", "duration_seconds": 5, "error": None,
+                    "suite": "gfx", "filter": None} for _ in range(3 * recent)])
+        path = self.store.root / device_lock.DURATIONS_FILE
+        self.store.root.mkdir(parents=True, exist_ok=True)
+        device_lock.trim_durations(path, rows)
+        self.assertEqual(device_lock.suite_duration(self.store.root, "sand"), 900)
+
     def test_the_estimate_is_a_median(self):
         for seconds in (10, 10, 1000):
             device_lock.record_duration("flash", seconds, root=self.store.root)

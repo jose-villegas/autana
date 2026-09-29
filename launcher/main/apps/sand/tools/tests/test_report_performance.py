@@ -68,6 +68,23 @@ class ReportPerformanceTest(unittest.TestCase):
         self.assertNotIn(f"| `{BUDGETED}` |", report)
         self.assertIn("logged no measurement", report)
 
+    def test_tests_a_filter_left_out_are_not_reported_as_missing(self):
+        unselected = "test_a_screen_of_water_fits_in_the_frame_budget"
+        capture = (BOOT
+                   + f"SUITE_TEST name={unselected} selected=0\n"
+                   + f"SUITE_TEST name={BUDGETED} selected=1\n"
+                   + MEASURED + COMPLETE)
+        done, report = self.run_reporter(capture)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn(unselected, report)
+        self.assertIn("test filter", report)
+
+    def test_a_test_missing_from_an_unfiltered_run_is_still_reported(self):
+        done, report = self.run_reporter(BOOT + MEASURED + COMPLETE)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("did not appear in this capture", report)
+        self.assertNotIn("test filter", report)
+
 
 if __name__ == "__main__":
     unittest.main()

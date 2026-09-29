@@ -54,6 +54,25 @@ void suites_run_all(void);
  * caller can report that back rather than silently doing nothing. */
 bool suites_run_one(const char* name);
 
+/* Narrows suites_run_one() to tests whose name contains a pattern. It first
+ * walks the suite with every test skipped, printing "SUITE_TEST name=...
+ * selected=..." for each, and runs it for real only if every pattern matched
+ * - a typo costs seconds, not minutes. Add before the call, clear after;
+ * false when empty, too long or full. */
+#define SUITE_FILTER_MAX 8
+#define SUITE_FILTER_LEN 40
+bool suites_filter_add(const char* pattern);
+void suites_filter_clear(void);
+
+/* Asked by RUN_TEST (timing.c) for each test: true to run it. Always true
+ * outside a filtered suites_run_one(). */
+bool suites_test_runs(const char* test_name);
+
+/* After suites_run_one(): how many tests ran, and how many patterns matched
+ * no test (then none ran). */
+int suites_filter_selected(void);
+int suites_filter_unmatched(void);
+
 /* How many suites did NOT fit and were dropped - see suite_register().
  *
  * Both runners fail when this is nonzero. It is checked there rather than in

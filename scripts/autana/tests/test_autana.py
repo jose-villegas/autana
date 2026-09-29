@@ -1516,16 +1516,15 @@ class SuiteFlashAndRunsTests(unittest.TestCase):
 
 
 class SuiteSecondsTests(unittest.TestCase):
-    """`suite`'s own per-call timeout, restored - the old `suite <name>
-    [seconds]` (600 s default), forwarded as device.py batch's --max-seconds
-    bound, the same idea as `selftest [seconds]`."""
+    """`suite`'s own per-call timeout: a trailing `suite <name> [seconds]`,
+    forwarded as device.py batch's --max-seconds. Left out, device.py sizes
+    it from the suite's recorded runs."""
 
-    def test_default_max_seconds_is_600(self):
+    def test_no_seconds_leaves_the_window_to_device_py(self):
         with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
              mock.patch.object(autana.subprocess, "call", return_value=0) as called:
             autana.suite(["run_gfx_suite"])
-        command = called.call_args[0][0]
-        self.assertEqual(command[command.index("--max-seconds") + 1], "600.0")
+        self.assertNotIn("--max-seconds", called.call_args[0][0])
 
     def test_a_trailing_seconds_argument_is_forwarded(self):
         with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
@@ -1550,6 +1549,43 @@ class SuiteSecondsTests(unittest.TestCase):
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--max-seconds") + 1], "90.0")
         self.assertEqual(command[command.index("--runs") + 1], "2")
+
+
+class SuiteTestFilterTests(unittest.TestCase):
+    """`suite --test` reaches device.py's batch, which sends it to the board."""
+
+    def run_suite(self, *args):
+        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(list(args))
+        return called.call_args[0][0]
+
+    def values(self, command):
+        return [command[i + 1] for i, word in enumerate(command) if word == "--test"]
+
+    def test_a_pattern_is_forwarded(self):
+        command = self.run_suite("run_sand_perf_suite", "--test", "fire")
+        self.assertEqual(self.values(command), ["fire"])
+
+    def test_repeated_and_comma_patterns_are_all_forwarded(self):
+        command = self.run_suite("run_sand_perf_suite", "--test", "fire,gas", "--test", "water")
+        self.assertEqual(self.values(command), ["fire,gas", "water"])
+
+    def test_no_test_flag_forwards_none(self):
+        self.assertEqual(self.values(self.run_suite("run_sand_perf_suite")), [])
+
+    def test_it_composes_with_runs_and_seconds(self):
+        command = self.run_suite("run_sand_perf_suite", "900", "--runs", "2", "--test", "fire")
+        self.assertEqual(self.values(command), ["fire"])
+        self.assertEqual(command[command.index("--runs") + 1], "2")
+        self.assertEqual(command[command.index("--max-seconds") + 1], "900.0")
+
+    def test_a_test_flag_without_a_value_is_rejected(self):
+        with self.assertRaises(SystemExit):
+            autana.suite(["run_sand_perf_suite", "--test"])
+
+    def test_help_names_the_flag(self):
+        self.assertIn("--test", autana.help_text(["suite"]))
 
 
 class BatchAliasTests(unittest.TestCase):

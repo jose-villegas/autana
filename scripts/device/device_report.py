@@ -169,7 +169,11 @@ def batch_summary_markdown(entries, meta):
     lines = ["# Device Batch Report", ""]
     for key in ("build_id", "worktree", "commit", "owner", "purpose"):
         lines.append(f"- {key.replace('_', ' ').title()}: `{meta.get(key)}`")
-    lines += [f"- Runs per suite: {runs}", ""]
+    lines.append(f"- Runs per suite: {runs}")
+    if meta.get("test_filter"):
+        lines.append("- Test filter: `" + ", ".join(meta["test_filter"]) + "` - only the tests "
+                     "whose name contains one of these ran")
+    lines.append("")
     suites = []
     for entry in entries:
         if entry["suite"] not in suites:
@@ -358,6 +362,9 @@ def build_report_markdown(capture_path, index_path):
     lines = ["# Device Capture Report", "", f"- Capture: `{capture_path}`"]
     if entry:
         lines.append(f"- Suite: `{entry.get('suite') or 'n/a'}`")
+        if entry.get("test_filter"):
+            lines.append("- Test filter: `" + ", ".join(entry["test_filter"]) + "` - only the "
+                         "tests whose name contains one of these ran")
         lines.append(f"- Build: `{entry.get('build_id') or 'unknown'}`")
         worktree = entry.get("worktree")
         commit = entry.get("commit")

@@ -1091,6 +1091,176 @@ class RunSuiteRecordsWorktreeTests(unittest.TestCase):
         self.assertEqual(entry["worktree"], str(Path("C:/some/worktree")))
 
 
+FILTERED_DONE = (b":1:test_fire_fits:PASS\n"
+                 b"RUNSUITE_COMPLETE name=sand found=1 selected=1 unmatched=0\n")
+NOTHING_MATCHED = (b"SUITE_TEST name=test_gas_fits selected=0\n"
+                   b"SUITE_TEST name=test_water_fits selected=0\n"
+                   b"SUITE_FILTER_UNMATCHED pattern=fyre\n"
+                   b"RUNSUITE_COMPLETE name=sand found=1 selected=0 unmatched=1\n")
+
+
+class TestFilterTests(unittest.TestCase):
+    """`--test` narrows a suite on the board: the request carries the
+    patterns, an empty selection is an error that names what could be
+    chosen, and the records say which rows ran."""
+
+    def run_filtered(self, chunks, patterns, root=None):
+        connection = FakeConnection(chunks)
+        args = Namespace(owner="agent", purpose="test", wait=0, suite="sand", out=None,
+                         max_seconds=1, idle_seconds=None, expect_build_id=None,
+                         test_filter=patterns)
+        store = mock_store()
+        with tempfile.TemporaryDirectory() as directory:
+            records = Path(directory) / "records"
+            args.out = str(Path(directory) / "capture.log")
+            with mock.patch.object(device, "open_when_free", return_value=connection), \
+                 mock.patch.object(device, "records_root", return_value=records), \
+                 mock.patch("builtins.print"):
+                try:
+                    code = device.run_suite(args, store, BOARD)
+                    error = None
+                except RuntimeError as caught:
+                    code, error = None, caught
+            index = records / "index.jsonl"
+            manifest = [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines()]
+        return code, error, connection.writes, manifest
+
+    def test_the_patterns_reach_the_device_before_the_run_request(self):
+        _, _, writes, _ = self.run_filtered([FILTERED_DONE], ["fire", "gas"])
+        self.assertEqual(b"".join(writes),
+                         b"\nTESTFILTER\nTESTFILTER fire\nTESTFILTER gas\nRUNSUITE sand\n")
+
+    def test_no_filter_sends_only_the_run_request(self):
+        _, _, writes, _ = self.run_filtered([b"SUITE_DONE sand\n"], [])
+        self.assertEqual(b"".join(writes), b"\nRUNSUITE sand\n")
+
+    def test_a_filtered_run_completes_and_records_its_filter(self):
+        code, error, _, manifest = self.run_filtered([FILTERED_DONE], ["fire"])
+        self.assertEqual((code, error), (0, None))
+        self.assertEqual(manifest[-1]["test_filter"], ["fire"])
+
+    def test_a_pattern_matching_nothing_fails_listing_the_tests(self):
+        _, error, _, _ = self.run_filtered([NOTHING_MATCHED], ["fyre"])
+        self.assertIsInstance(error, device.NoTestMatched)
+        self.assertIn("fyre", str(error))
+        self.assertIn("nothing ran", str(error))
+        self.assertIn("test_gas_fits", str(error))
+        self.assertIn("test_water_fits", str(error))
+
+    def test_a_build_that_predates_the_filter_is_an_error_not_a_full_run(self):
+        _, error, _, _ = self.run_filtered(
+            [b":1:test_fire_fits:PASS\nRUNSUITE_COMPLETE name=sand found=1\n"], ["fire"])
+        self.assertRegex(str(error), "predates --test")
+
+    def test_a_build_without_the_verb_stops_the_capture(self):
+        connection = FakeConnection([b"shell: ignoring line: 'TESTFILTER fire'\n"])
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(RuntimeError, "cannot filter tests.*autana flash diag"):
+                device.capture(connection, Path(directory) / "capture.log", 1, None,
+                               suite_name="sand")
+
+    def test_a_pattern_the_device_refuses_stops_the_capture(self):
+        connection = FakeConnection([b"E (5) console: TESTFILTER refused 'fire'\n"])
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(RuntimeError, "refused a --test pattern"):
+                device.capture(connection, Path(directory) / "capture.log", 1, None,
+                               suite_name="sand")
+
+    def test_patterns_split_on_commas_and_repeat_without_duplicates(self):
+        self.assertEqual(device.test_patterns(["fire,gas", "water", "gas"]),
+                         ["fire", "gas", "water"])
+        self.assertEqual(device.test_patterns(None), [])
+
+    def test_a_pattern_the_console_cannot_carry_is_refused(self):
+        for bad in ("has space", "", "x" * (device.TEST_PATTERN_MAX + 1), "a;b"):
+            with self.assertRaises(RuntimeError, msg=bad):
+                device.test_patterns([bad])
+        with self.assertRaisesRegex(RuntimeError, "keeps"):
+            device.test_patterns([f"p{i}" for i in range(device.TEST_PATTERNS_MAX + 1)])
+
+    def test_the_filter_key_ignores_the_order_it_was_typed_in(self):
+        self.assertEqual(device.filter_key(["gas", "fire"]), device.filter_key(["fire", "gas"]))
+        self.assertIsNone(device.filter_key([]))
+
+
+class SuiteWindowTests(unittest.TestCase):
+    """A capture's wait comes from how long that suite (and filter) recently
+    took, unless the caller gave one."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+
+    def record(self, suite, seconds, test_filter=None, error=None, command="run-suite"):
+        device_lock.record_duration(command, seconds, error, self.root,
+                                    {"suite": suite, "filter": test_filter})
+
+    def test_the_window_is_the_recorded_duration_with_room_to_spare(self):
+        self.record("sand", 2000)
+        self.record("sand", 2400)
+        self.assertEqual(device.suite_window(self.root, ["sand"], []),
+                         2400 * device.SUITE_WINDOW_MARGIN)
+
+    def test_a_short_suite_never_gets_less_than_the_floor(self):
+        self.record("gfx", 3)
+        self.assertEqual(device.suite_window(self.root, ["gfx"], []), device.SUITE_WINDOW_FLOOR)
+
+    def test_a_suite_never_recorded_gets_the_generous_window(self):
+        self.assertEqual(device.suite_window(self.root, ["sand"], []), device.SUITE_WINDOW_UNKNOWN)
+
+    def test_a_filtered_run_uses_its_own_history(self):
+        self.record("sand", 2400)
+        self.record("sand", 300, "fire,gas")
+        self.assertEqual(device.suite_window(self.root, ["sand"], ["gas", "fire"]),
+                         device.SUITE_WINDOW_FLOOR)
+
+    def test_a_filter_never_run_before_is_bounded_by_the_whole_suite(self):
+        self.record("sand", 2400)
+        self.assertEqual(device.suite_window(self.root, ["sand"], ["fire"]),
+                         2400 * device.SUITE_WINDOW_MARGIN)
+
+    def test_failed_runs_do_not_size_the_window(self):
+        self.record("sand", 2400, error="capture ended: timeout")
+        self.assertEqual(device.suite_window(self.root, ["sand"], []), device.SUITE_WINDOW_UNKNOWN)
+
+    def test_the_longest_of_several_suites_decides(self):
+        self.record("sand", 2000)
+        self.record("gfx", 30)
+        self.assertEqual(device.suite_window(self.root, ["gfx", "sand"], []),
+                         2000 * device.SUITE_WINDOW_MARGIN)
+
+    def run_recorded(self, chunks):
+        """The lock object run_suite() worked under, once it has finished."""
+        store = mock_store()
+        store.root = self.root
+        args = Namespace(owner="agent", purpose="test", wait=0, suite="sand", out=None,
+                         max_seconds=0.05, idle_seconds=None, expect_build_id=None,
+                         test_filter=["fire"])
+        held = mock.MagicMock()
+        held.__enter__.return_value = held
+        held.held = {"acquired_at": 1000.0}
+        held.detail = {}
+        held.error = None
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(device, "open_when_free", return_value=FakeConnection(chunks)), \
+             mock.patch.object(device, "records_root", return_value=Path(directory)), \
+             mock.patch.object(device, "holding", return_value=held), \
+             mock.patch("builtins.print"):
+            args.out = str(Path(directory) / "capture.log")
+            device.run_suite(args, store, BOARD)
+        return held
+
+    def test_run_suite_records_its_suite_and_filter_with_its_duration(self):
+        held = self.run_recorded([FILTERED_DONE])
+        self.assertEqual(held.detail, {"suite": "sand", "filter": "fire"})
+        self.assertIsNone(held.error)
+
+    def test_a_capture_cut_short_is_not_recorded_as_a_duration(self):
+        held = self.run_recorded([])
+        self.assertRegex(held.error, "timeout")
+
+
 class BatchTests(unittest.TestCase):
     """A batch flashes once and captures every suite N times under ONE lock -
     the property that stops another agent flashing between two captures of
@@ -1098,8 +1268,10 @@ class BatchTests(unittest.TestCase):
 
     def run_batch(self, suites=("run_sand_perf_suite",), runs=3, fail_run=None,
                   perf_scope=False, script_text="--diag --dev --perf-scope", out=False,
-                  expect_build_id=None, flashed_build_id="abc123-diag", flash=True):
-        calls = {"locks": 0, "build": [], "flash": [], "run_suite": [], "events": []}
+                  expect_build_id=None, flashed_build_id="abc123-diag", flash=True,
+                  test_filter=None, max_seconds=1, no_match_run=None, history=None):
+        calls = {"locks": 0, "build": [], "flash": [], "run_suite": [], "events": [],
+                 "suite_args": []}
 
         class FakeLock:
             def __init__(self, *unused, **unused_keywords):
@@ -1129,6 +1301,9 @@ class BatchTests(unittest.TestCase):
             calls["events"].append("capture")
             calls["run_suite"].append((args.suite, args.out, args.purpose, held_lock,
                                        args.expect_build_id, worktree, commit))
+            calls["suite_args"].append(args)
+            if no_match_run is not None and len(calls["run_suite"]) == no_match_run:
+                raise device.NoTestMatched("--test nope matches no test")
             if args.out:
                 Path(args.out).write_text(":1:test_one:PASS\n", encoding="utf-8")
             if fail_run is not None and len(calls["run_suite"]) == fail_run:
@@ -1143,8 +1318,14 @@ class BatchTests(unittest.TestCase):
             out_path = str(Path(directory) / "raw.txt") if out else None
             args = Namespace(owner="agent", purpose="p", wait=0, worktree=str(worktree),
                              variant="diag", suite=list(suites), runs=runs, perf_scope=perf_scope,
-                             max_seconds=1, idle_seconds=None, out=out_path,
-                             expect_build_id=expect_build_id, flash=flash)
+                             max_seconds=max_seconds, idle_seconds=None, out=out_path,
+                             expect_build_id=expect_build_id, flash=flash,
+                             test_filter=test_filter)
+            store = mock.Mock()
+            store.root = Path(directory) / "durations"
+            for suite_name, seconds, key in history or []:
+                device_lock.record_duration("run-suite", seconds, None, store.root,
+                                            {"suite": suite_name, "filter": key})
             with mock.patch.object(device, "HeldLock", FakeLock), \
                  mock.patch.object(device, "build_image", fake_build_image), \
                  mock.patch.object(device, "write_image", fake_write_image), \
@@ -1152,13 +1333,61 @@ class BatchTests(unittest.TestCase):
                  mock.patch.object(device, "records_root", return_value=Path(directory) / "rec"), \
                  mock.patch.object(device, "git_commit", return_value="c0ffee"), \
                  mock.patch("builtins.print"):
-                code = device.batch(args, mock.Mock(), BOARD)
+                try:
+                    code = device.batch(args, store, BOARD)
+                except device.NoTestMatched:
+                    code = "no match"
                 summaries = list((Path(directory) / "rec").rglob("*_batch_*.md"))
                 summary = summaries[0].read_text(encoding="utf-8") if summaries else ""
                 index = Path(directory) / "rec" / "index.jsonl"
                 manifest = [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines()] \
                     if index.exists() else []
         return code, calls, summary, manifest
+
+    def test_the_filter_reaches_every_capture_as_patterns(self):
+        _, calls, _, _ = self.run_batch(runs=2, test_filter=["fire,gas", "water"])
+        self.assertEqual([args.test_filter for args in calls["suite_args"]],
+                         [["fire", "gas", "water"]] * 2)
+
+    def test_an_unfiltered_batch_asks_for_no_filter(self):
+        _, calls, _, _ = self.run_batch(runs=1)
+        self.assertEqual(calls["suite_args"][0].test_filter, [])
+
+    def test_a_pattern_matching_nothing_ends_the_batch_at_the_first_capture(self):
+        code, calls, _, _ = self.run_batch(runs=5, test_filter=["nope"], no_match_run=1)
+        self.assertEqual(code, "no match")
+        self.assertEqual(len(calls["run_suite"]), 1)
+        self.assertEqual(calls["events"][-1], "unlock")
+
+    def test_a_bad_pattern_is_refused_before_anything_is_built(self):
+        with self.assertRaises(RuntimeError):
+            self.run_batch(test_filter=["has space"])
+
+    def test_the_summary_and_manifest_name_the_filter(self):
+        _, _, summary, manifest = self.run_batch(runs=2, test_filter=["fire", "gas"])
+        self.assertIn("Test filter: `fire, gas`", summary)
+        self.assertEqual(manifest[-1]["test_filter"], ["fire", "gas"])
+
+    def test_an_unfiltered_summary_names_no_filter(self):
+        _, _, summary, manifest = self.run_batch(runs=2)
+        self.assertNotIn("Test filter", summary)
+        self.assertNotIn("test_filter", manifest[-1])
+
+    def test_an_explicit_window_is_kept(self):
+        _, calls, _, _ = self.run_batch(runs=1, max_seconds=77,
+                                        history=[("run_sand_perf_suite", 5000, None)])
+        self.assertEqual(calls["suite_args"][0].max_seconds, 77)
+
+    def test_an_omitted_window_comes_from_the_recorded_durations(self):
+        _, calls, _, _ = self.run_batch(runs=1, max_seconds=None,
+                                        history=[("run_sand_perf_suite", 2000, None)])
+        self.assertEqual(calls["suite_args"][0].max_seconds, 2000 * device.SUITE_WINDOW_MARGIN)
+
+    def test_an_omitted_window_for_a_filter_comes_from_that_filters_runs(self):
+        _, calls, _, _ = self.run_batch(
+            runs=1, max_seconds=None, test_filter=["fire"],
+            history=[("run_sand_perf_suite", 2000, None), ("run_sand_perf_suite", 100, "fire")])
+        self.assertEqual(calls["suite_args"][0].max_seconds, device.SUITE_WINDOW_FLOOR)
 
     def test_one_lock_one_flash_for_every_capture(self):
         code, calls, _, _ = self.run_batch(suites=("run_sand_perf_suite", "run_gfx_suite"), runs=3)

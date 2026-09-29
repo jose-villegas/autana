@@ -257,12 +257,24 @@ autana suite run_ui_suite
 Both commands only set a flag; `main.c`'s frame loop does the actual work at
 a frame boundary, since there is no lock on the framebuffer and a second
 task drawing to it while the render loop runs would corrupt the panel. When
-the suite returns the shell prints `RUNSUITE_COMPLETE name=<suite> found=<0|1>`
-on its own line, so a harness need not guess from a quiet console that the
-run is over. This
-is what makes iterating on one area fast: flash the diag build once, then
+the suite returns the shell prints
+`RUNSUITE_COMPLETE name=<suite> found=<0|1> selected=<n> unmatched=<n>` on its
+own line, so a harness need not guess from a quiet console that the run is
+over. This is what makes iterating on one area fast: flash the diag build once, then
 `autana suite` whichever suite covers what changed, as many times as
 needed, without paying a rebuild-and-reflash cycle per attempt.
+
+**Narrowing a suite.** `testfilter <pattern>` (one substring per line, bare to
+forget them) sent before `runsuite` limits it to the tests whose name contains
+a pattern; `autana suite <name> --test <pattern>` sends it
+([syntax](tools/Autana-CLI.md#tests)). The runner walks the suite once with
+every test skipped and prints `SUITE_TEST name=<test> selected=<0|1>` for
+each; if every pattern selected something it runs the suite for real, else it
+prints `SUITE_FILTER_UNMATCHED pattern=<p>` and runs nothing. The choke point
+is the `RUN_TEST` override (`launcher/test/timing.c`), so no suite changes;
+what a suite does between its `RUN_TEST` lines runs in both walks, and its
+summary lines count only what ran. `selected=` in the completion line is how
+many tests ran.
 
 ### Recommended practice
 

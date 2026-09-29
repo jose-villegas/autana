@@ -175,7 +175,9 @@ python scripts/device/device.py report .records/device/20260916/153113_runsuite-
 `autana status` and a waiting command print when the board should be free.
 The estimate comes from `durations.jsonl` in the lock folder, one file shared
 by every checkout and session on the machine: each held command records how
-long it held the board, by kind (`flash`, a suite, `monitor`). The estimate
+long it held the board, by kind (`flash`, `run-suite`, `monitor`); a
+`run-suite` row also names the suite and its `--test` filter, which is what
+sizes a suite's wait ([`autana suite`](Autana-CLI.md#tests)). The estimate
 is the median of that kind's recent successful runs, and is `unknown (no
 duration history)` until there are a few. A command that fails or loses its
 lock never counts; a suite that reports FAIL does, since a perf capture that

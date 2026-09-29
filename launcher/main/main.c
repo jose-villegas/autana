@@ -906,7 +906,9 @@ run_pending_selftest_suite(void) {
     suite_report_frame_watch();
     /* On its own line, so a harness knows the suite ended without having to
      * guess from how long the console has been quiet. */
-    printf("\nRUNSUITE_COMPLETE name=%s found=%d\n", runsuite_name, found ? 1 : 0);
+    printf("\nRUNSUITE_COMPLETE name=%s found=%d selected=%d unmatched=%d\n", runsuite_name, found ? 1 : 0,
+           suites_filter_selected(), suites_filter_unmatched());
+    suites_filter_clear();
     fflush(stdout);
     /* A suite draws, clears and presents on its own, outside the shell's
      * own dirty tracking - the next real frame must repaint in full rather
