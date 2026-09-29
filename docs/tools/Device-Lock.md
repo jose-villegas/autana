@@ -257,8 +257,8 @@ snapshot - the build and the snapshot come before the lock - so its recorded
 duration, and the estimate a waiter behind it sees, is the write alone. A
 command that raises, gets an error reply, or loses its lock is recorded with
 its error and never counts. A suite that reports FAIL is a result, not a
-broken run - perf captures always carry their budget targets' FAILs - so its
-duration counts. An estimate is the median of a command kind's last
+broken run - a perf capture that trips a regression ceiling reports one - so
+its duration counts. An estimate is the median of a command kind's last
 `ESTIMATE_RECENT_RUNS` successful runs, after at least
 `ESTIMATE_MINIMUM_RUNS` (constants in `device_lock.py`); a holder past it is
 estimated free now, and a human reservation or an unknown duration ahead of

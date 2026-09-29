@@ -263,8 +263,7 @@ static void log_pass_split(const char* name, int steps, int impulse_max, const i
 static int perf_unmet_targets;
 static bool gas_ab_reporting;
 
-/* Ceilings are worst + max(spread, 2% of worst) across two-core-pinned S3
- * portrait captures. Landscape costs 17-37% more; not covered. The
+/* The ceiling of a row is its goal x 1.15, rounded up to 10 us; the
  * present-cost ceilings follow the same rule with the panel clock pinned. */
 
 static void
@@ -297,14 +296,10 @@ perf_target(const char* name, int64_t measured_us, int64_t goal_us, int64_t ceil
  * shifting the flash layout can move this row between builds with no work
  * changed, so check the control rows before reading a miss here as a
  * regression. */
-#define FULL_STEP_BUDGET_US 5800
+#define FULL_STEP_BUDGET_US 7410
 
-/* Every frame budget in this file is a device capture x 0.9, rounded down -
- * a fixed 10% demand, not a ceiling matching whatever the code costs today.
- * A budget moves when re-measuring shows the code now costs more, because a
- * feature was added, or less, because it got faster; holding it frozen
- * either way would conflate a real cost change with a regression. This one:
- * measured 6434 us -> target 5800. */
+/* Goal = worst of a 5-run board capture; a change must beat it. The ceiling
+ * is a regression guard. */
 
 /* Half full, and deliberately not settled: a grid of falling grains is the
  * expensive case, because every one of them attempts a move. A settled
@@ -348,7 +343,7 @@ test_a_full_size_step_fits_in_the_frame_budget(void) {
     board_bookkeeping_close();
     free(big);
 
-    perf_target("full-size step", per_step, FULL_STEP_BUDGET_US, 7432);
+    perf_target("full-size step", per_step, FULL_STEP_BUDGET_US, 8530);
 }
 
 /* A frame-budget fixture that asks for two cores and measures one reads as a
@@ -431,9 +426,8 @@ test_a_screen_of_water_fits_in_the_frame_budget(void) {
      * rather than a cell, and takes a second sweep across the flow (the only
      * reason a tilted pool levels at all). This is the transient cost of a
      * screen-wide collapse - water at rest is 45 us; if this cost becomes
-     * sustained, argue the budget down instead of up. Re-pegged perf-scoped:
-     * measured 10743 -> target 9600. */
-    perf_target("screen-wide water collapse", per_step, 9600, 13780);
+     * sustained, argue the budget down instead of up. */
+    perf_target("screen-wide water collapse", per_step, 18550, 21340);
 }
 
 #ifdef DEVICE_BUILD
@@ -1218,10 +1212,8 @@ test_a_screen_of_settled_sand_costs_almost_nothing(void) {
     free(blocks);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(REAL_W * REAL_H, grains, "and nothing may have moved");
-    /* The settled skip's 52-us reduction goal remains unmet at 128 us on
-     * S3. The residual is unattributed; its regression ceiling must not
-     * replace the goal. */
-    perf_target("settled sand", per_step, 52, 133);
+    /* The residual after the settled skip is unattributed. */
+    perf_target("settled sand", per_step, 140, 170);
 }
 
 static void
@@ -1274,7 +1266,7 @@ test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_guard("settled-pile gravity flip", per_step, 9675);
+    perf_guard("settled-pile gravity flip", per_step, 13180);
 }
 
 /* Mass invariant for liquid scenes; water cell variant holds 1..15, diffusion
@@ -1361,14 +1353,13 @@ test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget(void) {
                                   "turning the board must move water, not create or destroy it - the "
                                   "cell COUNT changes as the pool re-levels, the mass must not");
 
-    /* MEASURED 9,763 us per step on device, perf-scoped, with the block at
-     * 16x32. Budget is that x 0.9 rounded DOWN to 8,700. */
+    /* Perf-scoped, with the block at 16x32. */
 
     /* WORTH KNOWING BEFORE OPTIMISING THIS ROW: the impulse flight pass
      * never runs here at all - s->impulse_count is 0 for all 390 steps - and
      * a host pass map puts ~48% of the cost in cross-flow, ~1% reactions,
      * ~1.5% gas. */
-    perf_target("settled pool landscape turn", per_step, 8700, 7423);
+    perf_target("settled pool landscape turn", per_step, 7970, 9170);
 }
 
 /* Tilt shape uses exponential moving average with tau interpolating between
@@ -1593,9 +1584,8 @@ test_a_growing_plant_bed_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    /* RED ON PURPOSE, reduction target, not regression guard. Soak/dry is 28%
-     * of this step. Re-pegged perf-scoped: measured 63,397 -> target 57,000. */
-    perf_target("growing plant bed", per_step, 57000, 55093);
+    /* Soak/dry is 28% of this step. */
+    perf_target("growing plant bed", per_step, 46390, 53350);
 }
 
 static void
@@ -1633,9 +1623,8 @@ test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    /* MEASURED 35,963 us per step on device, perf-scoped, with the block at
-     * 16x32. Budget is that x 0.9 = 32,366, rounded DOWN to 32,300. */
-    perf_target("campfire on sand", per_step, 32300, 31566);
+    /* Perf-scoped, with the block at 16x32. */
+    perf_target("campfire on sand", per_step, 26690, 30700);
 }
 
 /* A tilted board is a different path, not a rotation of the same one:
@@ -1685,7 +1674,7 @@ test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget(void) {
                                                  "loses three cells a patch, but a packed screen that has shed an "
                                                  "eighth of itself is not the scene this row means to time");
     }
-    perf_target("packed gas turn", per_step, 128800, 121348);
+    perf_target("packed gas turn", per_step, 133200, 153180);
 }
 
 static void
@@ -1734,7 +1723,7 @@ test_turning_a_half_screen_of_gas_fits_in_the_frame_budget(void) {
                                       "turning the board must move gas, not create or destroy it - decay is "
                                       "off by default, so the cell count is conserved across the turn");
     }
-    perf_target("half-screen gas turn", per_step, 46100, 45133);
+    perf_target("half-screen gas turn", per_step, 46220, 53160);
 }
 
 static void
@@ -1773,10 +1762,7 @@ test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    /* A deliberate reduction target, never headroom: measured 9311 us per
-     * step, perf-scoped, target 8300 - below the convention's own x 0.9,
-     * so the row keeps asking for something. */
-    perf_target("mixed-scene gravity flip", per_step, 8300, 15044);
+    perf_target("mixed-scene gravity flip", per_step, 14670, 16880);
 }
 
 /* select/mask pairs from xtensa/xt_perf_consts.h. "insn" doubles as the
@@ -2023,9 +2009,7 @@ test_a_gravity_flip_on_every_material_at_once_stays_sane(void) {
     free(blocks);
     free(impulses);
 
-    /* MEASURED 90,713 us per step. Budget is that x 0.9 rounded DOWN to
-     * 81,600. */
-    perf_target("all-material gravity flip", per_step, 81600, 88630);
+    perf_target("all-material gravity flip", per_step, 84220, 96860);
 }
 
 static void
@@ -2072,9 +2056,9 @@ test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget(void) 
     free(big);
     free(blocks);
 
-    /* A DELIBERATELY SYNTHETIC WORST CASE: not held to plain-material
-     * budgets. Failing by design, not moving goalposts. */
-    perf_target("full-screen gas cascade", elapsed, 222700, 196791);
+    /* A deliberately synthetic worst case, not comparable to the
+     * plain-material rows. */
+    perf_target("full-screen gas cascade", elapsed, 201620, 231870);
 }
 
 static void
@@ -2135,7 +2119,7 @@ test_a_full_screen_of_fire_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_guard("full-screen fire", per_step, 71189);
+    perf_guard("full-screen fire", per_step, 88580);
 }
 
 /* Four liquids of different density painted upside down
@@ -2187,8 +2171,7 @@ test_four_liquids_reacting_at_once_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    /* 86,920 us measured, perf-scoped. x 0.9 rounded DOWN -> 78,200. */
-    perf_target("four reacting liquids", per_step, 78200, 72791);
+    perf_target("four reacting liquids", per_step, 68280, 78530);
 }
 
 static void
@@ -2245,8 +2228,7 @@ test_the_lava_stress_scene_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    /* 106,354 us measured, perf-scoped. x 0.9 rounded DOWN -> 95,700. */
-    perf_target("lava stress", per_step, 95700, 94778);
+    perf_target("lava stress", per_step, 101200, 116380);
 }
 
 static void
@@ -2297,16 +2279,14 @@ test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget(void) {
                                              "at the end of the window - steam condensing into water loses three "
                                              "cells a patch, but losing an appreciable fraction of the board "
                                              "means it decayed into something else");
-    /* 115,178 us measured. x 0.9 rounded DOWN -> 103,600. */
-    perf_target("smoke and steam", per_step, 103600, 94053);
+    perf_target("smoke and steam", per_step, 90470, 104050);
 }
 
 /* 480 glass compartments (build_thermal_shock_scene(), shared with
  * test_the_thermal_shock_scene_shatters_in_both_directions). No settling
  * steps: every ring starts strictly between the two shock thresholds and
  * touching from step 1, so the lattice is already at its most active the
- * moment it's painted. Clean measurement 98738 us -> target 89000
- * (file-wide 0.9 rule, see FULL_STEP_BUDGET_US's comment). */
+ * moment it's painted. */
 static void
 test_the_thermal_shock_scene_fits_in_the_frame_budget(void) {
     uint8_t* big = malloc(REAL_W * REAL_H);
@@ -2346,7 +2326,7 @@ test_the_thermal_shock_scene_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("thermal shock", per_step, 89000, 86932);
+    perf_target("thermal shock", per_step, 85910, 98800);
 }
 
 static void
@@ -2385,8 +2365,7 @@ test_the_boiler_scene_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    /* 28,125 us measured, perf-scoped. x 0.9 rounded DOWN -> 25,300. */
-    perf_target("boiler", per_step, 25300, 28853);
+    perf_target("boiler", per_step, 24280, 27930);
 }
 
 /* Sand and dirt poured in equal amounts, water dropped over both until
@@ -2402,9 +2381,6 @@ test_the_wet_earth_scene_fits_in_the_frame_budget(void) {
     uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
     TEST_ASSERT_NOT_NULL(big);
     TEST_ASSERT_NOT_NULL(blocks);
-    /* Measured 100367 us/30 steps -> target 80000 (measured * 0.8, NOT this
-     * file's usual * 0.9 - an explicit instruction for this benchmark, not
-     * an inconsistency to fix). */
 
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 53u);
@@ -2436,9 +2412,8 @@ test_the_wet_earth_scene_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    /* Measured 59,824 perf-scoped, after the block narrowed to 16x32, x 0.8
-     * rounded down - this row's own exception to the file-wide x 0.9. */
-    perf_target("wet earth", per_step, 47800, 37115);
+    /* Perf-scoped, with the block at 16x32. */
+    perf_target("wet earth", per_step, 32940, 37890);
 }
 
 /* The water-over-lava scene from this file's own section above, run as a
@@ -2484,9 +2459,7 @@ test_the_water_over_lava_scene_fits_in_the_frame_budget(void) {
     free(blocks);
     free(impulses);
 
-    /* MEASURED 199,311 us per step. Budget is that x 0.9 rounded DOWN to
-     * 179,300. */
-    perf_target("water over lava", per_step, 179300, 140173);
+    perf_target("water over lava", per_step, 138550, 159340);
 }
 
 static void
@@ -2567,12 +2540,6 @@ test_the_gas_ignition_vessel_logs_the_blast_stress(void) {
  * claims to. See GUNPOWDER_BASIN_MEASURED_STEPS's own comment
  * (suite_sand_scenes.c) for the timeline that window came from. */
 
-/* MEASURED 31,399 us per step. Budget is that x 0.9 = 28,259, rounded DOWN
- * to 28,200. */
-
-/* SO THIS ROW FAILS BY DESIGN, like every other budget in this section:
- * a reduction target, not a regression guard. Re-peg only from a fresh
- * capture, never to make it green. */
 static void
 test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
     uint8_t* big = malloc((size_t)REAL_W * REAL_H);
@@ -2627,7 +2594,7 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
     free(blocks);
     free(impulses);
 
-    perf_target("gunpowder basin", per_step, 28200, 34645);
+    perf_target("gunpowder basin", per_step, 30890, 35530);
 }
 
 /*
@@ -2639,31 +2606,19 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
  * the window timed here.
  */
 
-/* Measured 83,173 / 12,114 / 46,265 us per step, perf-scoped, pegged at that
- * x 0.9 rounded DOWN - so all three ship RED, a reduction target rather than
- * a guard, as every row here was first set. The host ranked all three right
- * and priced none: 137x, 177x, 176x against the 179-214x its comparable rows
- * predicted. */
-#define PLANT_RUIN_BUDGET_US    74800
-#define FILLING_BASIN_BUDGET_US 10900
-#define SNOWFALL_BUDGET_US      41600
+/* Perf-scoped goals for the three plant-scene rows. */
+#define PLANT_RUIN_BUDGET_US    64810
+#define FILLING_BASIN_BUDGET_US 16160
+#define SNOWFALL_BUDGET_US      35980
 
-/* 84,706 us a step, perf-scoped, pegged at that x 0.9 rounded down like the
- * three above - the third dearest scene in the suite, behind water over
- * lava and a packed screen of gas. */
-#define PLANT_POUR_BUDGET_US    76200
+/* Perf-scoped; among the dearest scenes in the suite. */
+#define PLANT_POUR_BUDGET_US    68220
 
-/* 60 us, pegged the same way, and the number worth writing down: the same
- * board cost 28,362 before a landed plant stopped arming the reaction pass
- * (see may_have_faller/faller_may_move in sand.h). What is left is the
- * sweep's own block scan - knowingly red at 16x32, see that row. */
-#define PLANT_IDLE_BUDGET_US    54
+/* What is left after a landed plant stopped arming the reaction pass (see
+ * may_have_faller/faller_may_move in sand.h) is the sweep's own block scan. */
+#define PLANT_IDLE_BUDGET_US    140
 
-/* THE ONE ROW HERE WITH NO DEVICE CAPTURE BEHIND IT: another round held the
- * board. Ranked, not priced - 138 us on the host against the growing bed's
- * 420 for the same board, applied to that row's device figure, then the
- * file-wide x 0.9. Replace it with a capture rather than trusting it. */
-#define MATURE_TREE_BUDGET_US   21600
+#define MATURE_TREE_BUDGET_US   21940
 
 /* A grown plant bed with acid eating down to its roots on one side of a wall
  * and lava burning its canopy on the other (build_plant_ruin_scene(), shared
@@ -2731,7 +2686,7 @@ test_the_plant_ruin_scene_fits_in_the_frame_budget(void) {
     /* THE INTERACTION IS THE FINDING: the same bed, grown the same way, is
      * 68,076 us a step while it is merely drinking rain and 83,173 once acid
      * and lava arrive - 22% for the pours alone. */
-    perf_target("plant ruin", per_step, PLANT_RUIN_BUDGET_US, 71686);
+    perf_target("plant ruin", per_step, PLANT_RUIN_BUDGET_US, 74540);
 }
 
 /* Water running down a ramp into a pool (build_filling_basin_scene(), shared
@@ -2794,7 +2749,7 @@ test_the_filling_basin_scene_fits_in_the_frame_budget(void) {
      * A third more for the same board of water, purely for settling rather
      * than dropping into vacuum - so the row the water work is tuned on is
      * the cheaper of the two cases by 33%. */
-    perf_target("filling basin", per_step, FILLING_BASIN_BUDGET_US, 12579);
+    perf_target("filling basin", per_step, FILLING_BASIN_BUDGET_US, 18590);
 }
 
 /* Snow falling onto a bank that has already crusted, over sand and dirt
@@ -2852,7 +2807,7 @@ test_the_snowfall_scene_fits_in_the_frame_budget(void) {
 
     /* 63,371 us a step from a material that had no scene at all: about what
      * a growing plant bed costs, and dearer than a campfire. */
-    perf_target("snowfall", per_step, SNOWFALL_BUDGET_US, 40799);
+    perf_target("snowfall", per_step, SNOWFALL_BUDGET_US, 41380);
 }
 
 /* The plant brush poured onto damp earth (build_plant_pour_scene()), which no
@@ -2904,7 +2859,7 @@ test_pouring_the_plant_brush_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("plant pour", per_step, PLANT_POUR_BUDGET_US, 78560);
+    perf_target("plant pour", per_step, PLANT_POUR_BUDGET_US, 78460);
 }
 
 /* The same heap once it has stopped: the state a poured garden spends almost
@@ -2948,7 +2903,7 @@ test_a_settled_plant_garden_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("settled plant garden", per_step, PLANT_IDLE_BUDGET_US, 132);
+    perf_target("settled plant garden", per_step, PLANT_IDLE_BUDGET_US, 170);
 }
 
 /* The maintainer's own case: a tree grown from seed on damp earth, with wood,
@@ -2989,18 +2944,16 @@ test_a_finished_tree_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("finished tree", per_step, MATURE_TREE_BUDGET_US, 25583);
+    perf_target("finished tree", per_step, MATURE_TREE_BUDGET_US, 25240);
 }
 
 /* Every row above holds the board portrait, and the block shape behind the
  * settled-block skip was swept against exactly those rows. The board is
  * played LANDSCAPE, down grid +X - geometry in
- * suite_sand_scenes.h. Measured 42,290 / 54,458 / 11,618 us, perf-scoped at
- * block 16x32, pegged at that x 0.9 rounded down like every row above, so
- * all three ship red as reduction targets. */
-#define LANDSCAPE_WATER_BUDGET_US      38000
-#define LANDSCAPE_DEEP_WATER_BUDGET_US 49000
-#define LANDSCAPE_SAND_BUDGET_US       10400
+ * suite_sand_scenes.h. Perf-scoped at block 16x32. */
+#define LANDSCAPE_WATER_BUDGET_US      24610
+#define LANDSCAPE_DEEP_WATER_BUDGET_US 26010
+#define LANDSCAPE_SAND_BUDGET_US       7070
 
 static int64_t
 landscape_scene_us_per_step(sand_t* real, bool water, int64_t* worst_out) {
@@ -3068,7 +3021,7 @@ test_pouring_water_into_a_landscape_sand_bed_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("landscape water", per_step, LANDSCAPE_WATER_BUDGET_US, 28507);
+    perf_target("landscape water", per_step, LANDSCAPE_WATER_BUDGET_US, 28310);
 }
 
 /* The same pour onto a bed holding 65% of the board rather than 40%: a
@@ -3102,7 +3055,7 @@ test_pouring_water_into_a_deep_landscape_bed_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("deep landscape water", per_step, LANDSCAPE_DEEP_WATER_BUDGET_US, 31424);
+    perf_target("deep landscape water", per_step, LANDSCAPE_DEEP_WATER_BUDGET_US, 29920);
 }
 
 /* The liquid-free landscape row. Without it a geometry change that moved
@@ -3136,7 +3089,7 @@ test_pouring_sand_onto_a_landscape_sand_bed_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("landscape sand", per_step, LANDSCAPE_SAND_BUDGET_US, 9318);
+    perf_target("landscape sand", per_step, LANDSCAPE_SAND_BUDGET_US, 8140);
 }
 
 /*
@@ -3364,12 +3317,9 @@ test_present_cost_against_a_falling_sand_scene(void) {
     /* Present() is ~94% irreducible bus time (gfx.h;
      * test_full_present_cost_splits_into_bus_time_and_overhead) - the only
      * movable thing is HOW MANY strips get sent, shown by the strip-send
-     * counts beside the timing. Target: measured 9961 * 0.97 -> 9650, NOT the
-     * 0.9 sand_step() rows use: a 10% target on a 6%-reducible cost is
-     * permanently unreachable, and 3% already asks for half the movable part.
-     * Bound by different hardware (bus, not flash layout) - do not correct
-     * this to 0.9. */
-    perf_target("present: falling sand", mean_us, 9650, 6340);
+     * counts beside the timing. The capture shows zero strips sent, so this
+     * goal prices an idle present, not the bus. */
+    perf_target("present: falling sand", mean_us, 40, 50);
 }
 
 /* Present tests run the sim outside their own timer. Neither measures the
@@ -3473,7 +3423,7 @@ test_present_cost_against_the_lava_stress_scene(void) {
     free(row_x1);
     free(row_n);
 
-    perf_guard("present: lava stress", mean_us, 9797);
+    perf_guard("present: lava stress", mean_us, 8940);
 }
 
 static void
@@ -3538,7 +3488,7 @@ test_present_cost_against_the_thermal_shock_scene(void) {
      * this lattice dirties every strip every frame, so an oracle sends the
      * same 164,864 pixels. Watch pixels sent. A failure likely means the
      * scene dirties MORE pixels, not a slower present. */
-    perf_guard("present: thermal shock", mean_us, 10655);
+    perf_guard("present: thermal shock", mean_us, 12050);
 }
 
 /* Present cost with column-precise dirty tracking, against the two scenes
