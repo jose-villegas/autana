@@ -239,7 +239,7 @@ alone fall back once more to the only board this machine has ever seen.
 | `2` | `device.py` itself, for a bad command line. |
 
 `autana status --json` prints `{"boards": [...]}`, one object per board.
-Times are epoch seconds, so an age is the current time minus one; an estimate without enough history is `null`.
+Times are epoch seconds; an age or a time left is the difference from now. An estimate without enough history is `null`.
 
 | Field | |
 |---|---|
@@ -250,7 +250,7 @@ Times are epoch seconds, so an age is the current time minus one; an estimate wi
 | `since` | when the holder took the board |
 | `estimated_free` | when the holder should be done |
 | `expires_at` | when a reservation lapses; else `null` |
-| `lapsed` | `{"owner", "purpose", "reason", "at"}` of the record an unlocked board still carries; else `null`. `reason` is `dead process` or `heartbeat expiry` (a lock the next waiter reclaims), or `reservation expired` (treated as released), the only one with an `at`: when it lapsed. |
+| `lapsed` | `{"owner", "purpose", "reason", "at"}` of a lock or reservation that lapsed but is still on disk, else `null`. `reason` is `dead process` or `heartbeat expiry` for a lock the next waiter reclaims (`at` is `null`), or `reservation expired` for a reservation treated as released (`at` is when it lapsed). |
 | `waiting` | `[{"owner", "purpose", "estimated_start"}]` in queue order |
 
 ### Lock events
