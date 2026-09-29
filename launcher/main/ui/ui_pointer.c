@@ -83,8 +83,8 @@ step_deferred(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     return n;
 }
 
-/* The press frame: position only, then the hover frames of
- * UI_POINTER_HOVER_FRAMES. A tap resolved within this frame still owes a
+/* The press frame: position only, the DOWN follows once the hover root is
+ * settled. A tap resolved within this frame still owes a
  * down/up pair, fed here so microui sees a mouse_down-already-clear frame. */
 static int
 step_pressed(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
@@ -117,7 +117,7 @@ step_hover(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     }
     int n = emit(out, 0, UI_POINTER_MOVE, p->aim_x, p->aim_y);
 
-    const bool last_hover_frame = (p->press_stage >= UI_POINTER_HOVER_FRAMES && !p->hover_unsettled);
+    const bool last_hover_frame = !p->hover_unsettled;
     if (last_hover_frame && p->over_scrollable && !input->released) {
         p->press_stage = 0;
         p->press_deferred = true;
@@ -126,8 +126,6 @@ step_hover(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
         p->press_stage = 0;
         p->down = true;
         p->aimed = false;
-    } else if (p->press_stage < UINT8_MAX) {
-        p->press_stage++;
     }
 
     if (!input->released) {

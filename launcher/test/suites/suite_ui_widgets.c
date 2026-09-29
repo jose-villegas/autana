@@ -965,6 +965,31 @@ test_a_tap_submits_once_when_the_backdrop_repaints_during_it(void) {
     }
 }
 
+/* A slider held through a backdrop repaint keeps tracking the finger: the
+ * repaint builds no slider, and must not be the frame that drops its focus. */
+static void
+test_a_slider_drag_survives_a_backdrop_repaint(void) {
+    fixture();
+    const input_t idle = {0};
+    int value = 0;
+    slider_frame(&idle, &value);
+    slider_frame(&idle, &value);
+
+    const int y = BUTTON.y + BUTTON.h / 2;
+    int x = BUTTON.x + 10;
+    slider_frame(&(input_t){.down = true, .pressed = true, .x = x, .y = y}, &value);
+    int at_repaint = 0;
+    for (int f = 0; f < 12; f++) {
+        if (f == 5) {
+            backdrop_repaint();
+            at_repaint = value;
+        }
+        x += 12;
+        slider_frame(&(input_t){.down = true, .x = x, .y = y}, &value);
+    }
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(at_repaint, value, "the drag must keep moving the slider after the repaint");
+}
+
 /* The lift went to frames that never reached the UI; the next press proves
  * it, and must still get a control hovered and clicked. */
 static void
@@ -1166,6 +1191,7 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_a_tap_on_the_first_build_of_another_screen_still_submits_once);
     RUN_TEST(test_a_tap_submits_once_when_the_backdrop_repaints_during_it);
     RUN_TEST(test_a_press_after_an_unseen_lift_still_submits);
+    RUN_TEST(test_a_slider_drag_survives_a_backdrop_repaint);
     RUN_TEST(test_a_tap_on_a_closing_list_reaches_exactly_one_thing);
     RUN_TEST(test_a_one_frame_tap_on_an_open_list_row_picks_it_and_closes_it);
     RUN_TEST(test_a_one_frame_tap_outside_an_open_list_closes_it_and_picks_nothing);

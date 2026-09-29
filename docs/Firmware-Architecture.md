@@ -377,7 +377,7 @@ two damage trackers.
 
 **The cost, for balance:** microui encodes a mouse (point, then click), and
 a touchscreen cannot produce the "point" half. The shell synthesizes it, at
-`UI_POINTER_HOVER_FRAMES` frames of latency on every tap - see below. A
+a frame of latency on every tap - see below. A
 touch-native toolkit would not pay that.
 
 ### Two things to know before touching it
@@ -420,8 +420,9 @@ different from the root found; the DOWN then waits, frame by frame, and the
 tap is never lost. Ship the press with no hover frame and nothing takes focus:
 every button draws its pressed look while returning 0. A press and release
 inside one frame resolves at once, so on an unsettled root it is lost.
-A repaint-only frame (`ui_begin(NULL)`, the Control Center's backdrop) neither
-steps nor reports to the pointer. `ui/ui_pointer.c` also owns the held `DOWN` a
+A repaint-only frame (`ui_begin(NULL)`, the Control Center's backdrop) leaves
+no trace: it neither steps nor reports to the pointer, and microui's focus and
+hover root are as it found them. `ui/ui_pointer.c` also owns the held `DOWN` a
 slider needs to track a drag and the UP owed when a lift never reached the UI
 (`ui/ui_pointer.h`); `suite_ui_pointer_microui.c` and `suite_ui_widgets.c` pin
 it against real microui, since hover is microui's own state and event-list

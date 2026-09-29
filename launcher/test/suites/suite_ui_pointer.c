@@ -40,20 +40,14 @@ step(bool down, bool pressed, bool released, int x, int y) {
     return ui_pointer_step(&p, &in, ev, UI_POINTER_MAX_EVENTS);
 }
 
-/* Walk a press through every hover frame, leaving the NEXT step() as the
- * one that carries the DOWN. Written against UI_POINTER_HOVER_FRAMES rather
- * than a hardcoded count so a change to the policy shows up as one failing
- * assertion about the policy, not as several tests silently testing the
- * wrong thing. */
+/* The press frame, leaving the NEXT step() as the one that carries the DOWN. */
 static void
 press_through_hover(int x, int y) {
-    for (int frame = 0; frame < UI_POINTER_HOVER_FRAMES; frame++) {
-        step(true, frame == 0, false, x, y);
-    }
+    step(true, true, false, x, y);
 }
 
 /*
- * The synthesized hover frame - load-bearing, see ui.h's touch-to-mouse
+ * The press frame carries no DOWN - load-bearing, see ui.h's touch-to-mouse
  * comment. Lost, a touchscreen tap could never resolve into a click at all.
  */
 
@@ -64,8 +58,8 @@ test_a_tap_hovers_before_pressing(void) {
     /* The hover frames are MOVE-only. A DOWN before a control has been
      * marked hovered lands with nothing hovered, so nothing takes focus and
      * no button ever submits. */
-    for (int frame = 0; frame < UI_POINTER_HOVER_FRAMES; frame++) {
-        const int n = step(true, frame == 0, false, 10, 20);
+    {
+        const int n = step(true, true, false, 10, 20);
         TEST_ASSERT_EQUAL_INT_MESSAGE(1, n, "a hover frame carries a move and nothing else");
         TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
         TEST_ASSERT_EQUAL_INT(10, ev[0].x);

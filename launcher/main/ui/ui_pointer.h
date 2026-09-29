@@ -29,20 +29,16 @@ typedef struct {
  * for a tap that resolves within it. */
 #define UI_POINTER_MAX_EVENTS     4
 
-/* MOVE-only frames before a press's DOWN: focus needs hover, and microui
- * hovers only with the button up. The DOWN goes out once that many have
- * passed and the last frame's hover root was settled. A press and release
- * inside one frame resolves at once, so on an unsettled root it is lost. */
-#define UI_POINTER_HOVER_FRAMES   1
-
 /* How far a finger on scrollable content moves before it is a drag rather
  * than a tap. microui controls act on the press, so on such content the DOWN
  * waits for the release, or for a sideways move a slider needs. */
 #define UI_POINTER_DRAG_THRESHOLD 12
 
 typedef struct {
-    /* 0 when no press is being staged, else how many hover frames have gone
-     * out so far - the DOWN follows the UI_POINTER_HOVER_FRAMES'th. */
+    /* Non-zero while a press is staged: focus needs hover and microui hovers
+     * only with the button up, so the DOWN follows a MOVE-only frame once the
+     * hover root is settled. A press and release inside one frame resolves at
+     * once, so on an unsettled root it is lost. */
     uint8_t press_stage;
     int press_x, press_y;
     int aim_x, aim_y;

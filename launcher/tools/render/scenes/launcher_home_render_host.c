@@ -49,8 +49,9 @@ register_fixture(void) {
     app_register(&fixture_gamma);
 }
 
-/* A press at the centre of the panel, still held on the last frame so the
- * picture shows the row pressed, then released. Panel coordinates, as a
+/* A press at the centre of the panel, still held on the last frame of the
+ * default render so the picture shows the row pressed; the release only comes
+ * in renders longer than that, such as the doc sweep. Panel coordinates, as a
  * finger reports them: which row that lands on is whatever the layout puts
  * under the middle. Nothing is pressed before frame 2, so `--frames 2` is
  * the settled screen with no finger on it - the state a capture of an idle

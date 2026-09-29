@@ -352,7 +352,7 @@ test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap(void) {
 
         /* Start dragging only once the press has actually landed, so the
          * movement is a drag and not a series of separate taps. */
-        if (f >= UI_POINTER_HOVER_FRAMES) {
+        if (f >= 1) {
             x += 15;
         }
     }

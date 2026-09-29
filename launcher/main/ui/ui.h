@@ -79,12 +79,13 @@ mu_Context* ui_context(void);
  * everything else in an immediate-mode UI - a caller that wants a style
  * states it every frame. That matters here because the whole shell
  * shares one mu_Context: without the reset, the launcher opting into a
- * bezel would leave the running app's own overlay buttons bezelled too. */
+ * bezel would leave the running app's own overlay buttons bezelled too.
+ *
+ * A NULL `input` opens a repaint-only frame that leaves no trace: the pointer
+ * is neither stepped nor updated, and microui's focus and hover root are as
+ * they were, so painting a backdrop cannot take a tap or a drag from the
+ * screen above. */
 void ui_begin(const input_t* input);
-
-/* NULL `input` opens a repaint-only frame: the pointer is neither stepped nor
- * updated, so painting a backdrop cannot take a tap meant for the screen
- * above. */
 
 /* Choose how button frames are drawn for the rest of this frame.
  *
