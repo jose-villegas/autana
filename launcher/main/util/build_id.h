@@ -1,16 +1,14 @@
 #pragma once
 
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 
-#define BUILD_ID_MAX      32
-#define BUILD_ID_LINE_MAX 48
+#define BUILD_ID_HASH_CHARS  12
+#define BUILD_ID_SHORT_CHARS 7
+#define BUILD_ID_LINE_MAX    48
 
-static inline int
-build_id_format(char* out, size_t out_size, const char* commit, bool dirty, const char* variant) {
-    return snprintf(out, out_size, "%s%s-%s", commit, dirty ? "-dirty" : "", variant);
-}
+const char* build_id(void);
+const char* build_id_short(void);
 
 static inline int
 build_id_line(char* out, size_t out_size, const char* build_id) {
