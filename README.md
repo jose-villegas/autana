@@ -8,13 +8,13 @@ Autana is software for the [Waveshare ESP32-S3-Touch-AMOLED-1.8](https://www.wav
 
 | Falling Sand, board turning | Launcher, board rocking |
 |:---:|:---:|
-| ![A volcano spilling toward a lake beside growing and burning trees as the board turns](docs/images/overview/sand-simulation.gif) | ![The app launcher's backdrop ridge levelling as the board rocks](docs/images/overview/launcher-home.gif) |
+| ![A volcano spilling toward a lake beside growing and burning trees as the board turns](docs/images/overview/sand-simulation.gif) | ![The launcher listing Falling Sand and Render Lab, its backdrop ridge levelling as the board rocks](docs/images/overview/launcher-home.gif) |
 | **Rotating Render Lab cube** | **Sponza flythrough** |
 | ![A shaded cube rotating on a black screen](docs/images/overview/render-lab-cube.gif) | ![A camera moving down the sunlit Crytek Sponza atrium between coloured curtains](docs/images/overview/render-lab-sponza.gif) |
 | **Ray-traced Cornell box** | **Falling Sand title screen** |
 | ![A Cornell box with a red and a green wall around two blocks](docs/images/overview/render-lab-cornell.png) | ![The Falling Sand title screen with start, load, options, guide and exit](docs/images/overview/sand-menu.png) |
 
-Every image is a host render of the real firmware drawing code at the panel's 448x368, not a board capture. The sand clip runs the real simulation with scripted tilt; the launcher uses placeholder app names from the host fixture, where the board lists the apps built into the firmware.
+Every image is a host render of the real firmware drawing code at the panel's 448x368, not a board capture. The sand clip runs the real simulation with scripted tilt, and the launcher lists the apps a release build carries.
 
 Image render commands are in each app's tools README ([sand](launcher/main/apps/sand/tools/README.md), [render lab](launcher/main/apps/render_lab/tools/README.md)) and the [render harness](docs/tools/Render-Harness.md#images-in-these-docs).
 
