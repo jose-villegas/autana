@@ -21,38 +21,29 @@ checked, and compared with device captures.
 
 ## Images in these docs
 
-An image under `docs/images/` that a scene draws is regenerated beside that
-scene: an engine scene's here, an app's in that app's `tools/README.md`. Run
-the commands from the repository root; a render script writes under its
-`-o` directory.
-
-| Image | Command | Output to copy |
-|---|---|---|
-| `docs/images/overview/launcher-home.png` | below | |
-| `docs/images/overview/launcher-home.gif` | below | |
-
-Both list the release firmware's apps, read from every app folder without a
-`development_only.cmake`; the scene sorts them the way the firmware does. The
-GIF is one 4 s rock of the board, 30 degrees either way:
+Every file in `docs/images/overview/` is made by one script, from the
+repository root:
 
 ```sh
-L=launcher/tools/results/render/launcher_home
-./launcher/tools/render/scenes/launcher_home_render_host.sh
-rows=()
-for d in launcher/main/apps/*/; do
-    [ -f "$d/development_only.cmake" ] && continue
-    while IFS= read -r name; do rows+=(--row "$name"); done \
-        < <(sed -n 's/^ *\.name = "\(.*\)",\r\{0,1\}$/\1/p' "$d"app_*.c)
-done
-$L/launcher_home_render --quarter 1 "${rows[@]}" -o $L/release.bmp
-python -c "from PIL import Image; Image.open('$L/release.bmp').save('docs/images/overview/launcher-home.png')"
-$L/launcher_home_render --quarter 1 --tilt-sweep "${rows[@]}" --frames 250 --dt 16 \
-    -o $L/sweep.bmp --video $L/sweep.avi
-ffmpeg -y -i $L/sweep.avi -vf "fps=15,palettegen=stats_mode=diff" $L/sweep-palette.png
-ffmpeg -y -i $L/sweep.avi -i $L/sweep-palette.png \
-    -filter_complex "[0:v]fps=15[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" \
-    -loop 0 docs/images/overview/launcher-home.gif
+./launcher/tools/render/render_readme_images.sh           # rewrite the images
+./launcher/tools/render/render_readme_images.sh --check   # report which would change
 ```
+
+It needs a host C compiler, Python with Pillow and ffmpeg 5.1 or newer, and
+takes about a minute. `--check` renders into `launcher/tools/results/readme_images/out/`
+and compares decoded pixels with `compare_images.py`, never bytes: another
+ffmpeg or Pillow writes different GIF bytes for the same frames. It prints
+`same` or `changed` per image, and `orphan` for a file nothing makes. The
+`readme-images` workflow runs it on every push to main and opens one pull
+request when an image changed.
+
+| Image | Shows |
+|---|---|
+| `launcher-home.png` | the launcher listing the release build's apps, read from the app folders |
+| `launcher-home.gif` | the same, one 4 s rock of the board 30 degrees either way |
+
+The rest belong to apps, and each app's `tools/README.md` says what its
+images show. Files are at the panel's own 448x368 unless an app's README says otherwise.
 
 ---
 

@@ -32,8 +32,9 @@ def frame_difference(a, b):
     peak = max(high for _, high in diff.getextrema())
     if peak == 0:
         return 0, 0
-    mask = diff.convert("L").point(lambda level: 255 if level else 0)
-    return peak, sum(mask.histogram()[1:])
+    red, green, blue = diff.split()
+    worst = ImageChops.lighter(ImageChops.lighter(red, green), blue)
+    return peak, sum(worst.histogram()[1:])
 
 
 def compare(a_frames, b_frames, tolerance=0):
