@@ -113,6 +113,24 @@ test_a_drag_stays_down_across_moves_then_lifts_once(void) {
 }
 
 static void
+test_an_aim_stages_the_press_but_not_later_drag_moves(void) {
+    fixture();
+    ui_pointer_aim(&p, 100, 200);
+
+    press_through_hover(80, 200);
+    int n = step(true, false, false, 80, 200);
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
+    TEST_ASSERT_EQUAL_INT(100, ev[0].x);
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_DOWN, ev[1].kind);
+    TEST_ASSERT_EQUAL_INT(100, ev[1].x);
+
+    n = step(true, false, false, 140, 200);
+    TEST_ASSERT_EQUAL_INT(1, n);
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
+    TEST_ASSERT_EQUAL_INT(140, ev[0].x);
+}
+
+static void
 test_exactly_one_up_comes_out_of_one_press(void) {
     fixture();
 
@@ -307,6 +325,7 @@ void
 run_ui_pointer_suite(void) {
     RUN_TEST(test_a_tap_hovers_two_frames_before_pressing);
     RUN_TEST(test_a_drag_stays_down_across_moves_then_lifts_once);
+    RUN_TEST(test_an_aim_stages_the_press_but_not_later_drag_moves);
     RUN_TEST(test_exactly_one_up_comes_out_of_one_press);
     RUN_TEST(test_a_same_frame_tap_still_yields_move_down_up);
     RUN_TEST(test_a_finger_already_down_at_open_synthesizes_no_press);

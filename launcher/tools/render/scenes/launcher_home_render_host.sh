@@ -27,6 +27,7 @@ main/ui/ui_widgets.c
 main/ui/ui_launcher.c
 main/ui/ui_launcher_draw.c
 main/ui/ui_pointer.c
+main/ui/ui_snap.c
 main/ui/ui_ridge.c
 main/ui/ui_scroll.c
 main/util/tune.c

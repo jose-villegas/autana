@@ -402,7 +402,8 @@ the held-`DOWN` a slider needs to track a drag (`ui/ui_pointer.h`), and
 `suite_ui_pointer_microui.c` pins it against real microui, since hover is
 microui's own state and event-list tests cannot see it. It applies to every
 control that reacts to a press, so reworking input handling means preserving
-it.
+it. A press within `snap.reach` of a control is aimed at its nearest edge;
+its raw position remains the drag origin, and later motion stays raw.
 
 ---
 

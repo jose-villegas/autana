@@ -56,6 +56,42 @@ widget_frame(const widget_t* w, const input_t* in) {
 }
 
 static bool
+plain_button_frame(const input_t* in) {
+    ui_begin(in);
+    bool hit = false;
+    if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+        mu_layout_set_next(ui_context(), BUTTON, 0);
+        hit = mu_button(ui_context(), "GO") != 0;
+        mu_end_window(ui_context());
+    }
+    mu_end(ui_context());
+    return hit;
+}
+
+static void
+label_frame(const input_t* in) {
+    ui_begin(in);
+    if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+        mu_layout_set_next(ui_context(), BUTTON, 0);
+        mu_label(ui_context(), "GO");
+        mu_end_window(ui_context());
+    }
+    mu_end(ui_context());
+}
+
+static int
+slider_frame(const input_t* in, int* value) {
+    ui_begin(in);
+    if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+        mu_layout_set_next(ui_context(), BUTTON, 0);
+        ui_slider_int(ui_context(), value, 0, 100, 1);
+        mu_end_window(ui_context());
+    }
+    mu_end(ui_context());
+    return *value;
+}
+
+static bool
 tap(const widget_t* w) {
     const int x = BUTTON.x + BUTTON.w / 2;
     const int y = BUTTON.y + BUTTON.h / 2;
@@ -93,6 +129,87 @@ test_a_disabled_button_takes_no_tap(void) {
     fixture();
     const widget_t w = {.enabled = false};
     TEST_ASSERT_FALSE(tap(&w));
+}
+
+static void
+test_a_reachable_touch_outside_a_button_submits_it(void) {
+    const widget_t w = {.enabled = true};
+    for (int turn = 0; turn <= 1; turn++) {
+        fixture();
+        const ui_transform_t transform = ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT);
+        ui_set_transform(transform);
+        int x, y;
+        ui_transform_point(transform, BUTTON.x - 20, BUTTON.y + BUTTON.h / 2, &x, &y);
+        const input_t idle = {0};
+        const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
+        const input_t hold = {.down = true, .x = x, .y = y};
+        const input_t release = {.released = true, .x = x, .y = y};
+
+        widget_frame(&w, &idle);
+        widget_frame(&w, &idle);
+        bool hit = widget_frame(&w, &press);
+        for (int i = 0; i < 4; i++) {
+            hit |= widget_frame(&w, &hold);
+        }
+        hit |= widget_frame(&w, &release);
+        TEST_ASSERT_TRUE_MESSAGE(hit, turn == 0 ? "portrait reachable touch" : "landscape reachable touch");
+    }
+}
+
+static void
+test_a_reachable_touch_submits_an_unwrapped_microui_button(void) {
+    fixture();
+    const input_t idle = {0};
+    const input_t press = {.down = true, .pressed = true, .x = BUTTON.x - 20, .y = BUTTON.y + BUTTON.h / 2};
+    const input_t hold = {.down = true, .x = press.x, .y = press.y};
+    const input_t release = {.released = true, .x = press.x, .y = press.y};
+
+    plain_button_frame(&idle);
+    plain_button_frame(&idle);
+    bool hit = plain_button_frame(&press);
+    for (int i = 0; i < 4; i++) {
+        hit |= plain_button_frame(&hold);
+    }
+    hit |= plain_button_frame(&release);
+    TEST_ASSERT_TRUE(hit);
+}
+
+static void
+test_disabled_controls_and_labels_do_not_aim_a_touch(void) {
+    fixture();
+    const input_t idle = {0};
+    const input_t press = {.down = true, .pressed = true, .x = BUTTON.x - 20, .y = BUTTON.y + BUTTON.h / 2};
+    const widget_t disabled = {.enabled = false};
+
+    widget_frame(&disabled, &idle);
+    widget_frame(&disabled, &idle);
+    widget_frame(&disabled, &press);
+    TEST_ASSERT_EQUAL_INT(press.x, ui_context()->mouse_pos.x);
+
+    fixture();
+    label_frame(&idle);
+    label_frame(&idle);
+    label_frame(&press);
+    TEST_ASSERT_EQUAL_INT(press.x, ui_context()->mouse_pos.x);
+}
+
+static void
+test_a_slider_drag_uses_raw_moves_after_its_aimed_press(void) {
+    fixture();
+    const input_t idle = {0};
+    const input_t press = {.down = true, .pressed = true, .x = BUTTON.x - 20, .y = BUTTON.y + BUTTON.h / 2};
+    const input_t hold = {.down = true, .x = press.x, .y = press.y};
+    const input_t drag = {
+        .down = true, .x = BUTTON.x + UI_SLIDER_KNOB_W / 2 + (BUTTON.w - UI_SLIDER_KNOB_W) * 63 / 100, .y = press.y};
+
+    int value = 0;
+    value = slider_frame(&idle, &value);
+    value = slider_frame(&idle, &value);
+    value = slider_frame(&press, &value);
+    value = slider_frame(&hold, &value);
+    value = slider_frame(&hold, &value);
+    value = slider_frame(&drag, &value);
+    TEST_ASSERT_EQUAL_INT(63, value);
 }
 
 static void
@@ -688,7 +805,7 @@ test_a_press_that_slides_onto_a_button_from_off_it_is_not_a_click(void) {
 
     const int bx = BUTTON.x + BUTTON.w / 2;
     const int by = BUTTON.y + BUTTON.h / 2;
-    const int off_x = BUTTON.x - 40;
+    const int off_x = BUTTON.x - 60;
 
     const input_t press_off = {.down = true, .pressed = true, .x = off_x, .y = by};
     const input_t hold_off = {.down = true, .x = off_x, .y = by};
@@ -798,6 +915,10 @@ void
 run_ui_widgets_suite(void) {
     RUN_TEST(test_an_enabled_button_reports_a_tap);
     RUN_TEST(test_a_disabled_button_takes_no_tap);
+    RUN_TEST(test_a_reachable_touch_outside_a_button_submits_it);
+    RUN_TEST(test_a_reachable_touch_submits_an_unwrapped_microui_button);
+    RUN_TEST(test_disabled_controls_and_labels_do_not_aim_a_touch);
+    RUN_TEST(test_a_slider_drag_uses_raw_moves_after_its_aimed_press);
     RUN_TEST(test_an_icon_leaves_less_room_for_the_label);
     RUN_TEST(test_text_aligns_to_either_edge_or_the_centre);
     RUN_TEST(test_a_list_goes_below_its_dropdown_when_it_fits);

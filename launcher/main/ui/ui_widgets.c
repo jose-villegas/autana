@@ -63,9 +63,9 @@ typedef struct {
 static control_t
 begin_control(mu_Context* ctx, const char* id, mu_Rect r, bool enabled, bool selected, const ui_theme_t* theme) {
     control_t c = {0};
+    const mu_Id mid = mu_get_id(ctx, id, (int)strlen(id));
+    mu_update_control(ctx, mid, r, enabled ? 0 : MU_OPT_NOINTERACT);
     if (enabled) {
-        const mu_Id mid = mu_get_id(ctx, id, (int)strlen(id));
-        mu_update_control(ctx, mid, r, 0);
         /* Focus, not hover: on touch the pointer sits on whatever a drag
          * crosses, and only a landed press is a press. */
         c.pressed = ctx->focus == mid;
