@@ -490,16 +490,20 @@ def status(args):
 
 
 def release(args):
-    """Release a lock this session holds, before its own command would have
-    - the token comes from what that command printed when it acquired it."""
-    if len(args) != 1:
-        sys.exit("usage: autana release <token>")
-    return subprocess.call(device_command("release", "--token", args[0]))
+    """Release a lock this session holds, before its own command would have.
+    The token is in AUTANA_DEVICE_LOCK_TOKEN in every process that command
+    started, which is where it comes from when none is given."""
+    token = args[0] if args else os.environ.get("AUTANA_DEVICE_LOCK_TOKEN")
+    if len(args) > 1 or not token:
+        sys.exit("usage: autana lock release [<token>] - without one, "
+                 "AUTANA_DEVICE_LOCK_TOKEN, set inside a running command")
+    return subprocess.call(device_command("release", "--token", token))
 
 
 def hand(args):
     """Reserve the board for a maintainer sitting at it - autana refuses new
-    work against it until `autana take-back`."""
+    work against it until `autana take-back`, or an hour after the last
+    `hand`, which running it again renews."""
     usage = "usage: autana hand [--wait <seconds>] <note...>"
     wait = []
     if args and args[0] == "--wait":
@@ -1225,8 +1229,9 @@ COMMAND_GROUPS = (
         Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
         Command("lock", lock, (
             ("lock id [--json]", "the name this session holds the lock under"),
-            ("lock release <token>", "release a lock this session holds"),
-            ("lock hand [--wait <seconds>] <note...>", "reserve the board for a person at it"),
+            ("lock release [<token>]", "release a lock this session holds; $AUTANA_DEVICE_LOCK_TOKEN when omitted"),
+            ("lock hand [--wait <seconds>] <note...>",
+             "reserve the board for a person at it for an hour; run again to renew"),
             ("lock take-back", "clear that reservation"))),
     )),
     ("debug", "Debug", (

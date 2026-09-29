@@ -11,7 +11,8 @@ The rest of this index explains the repository's checks and tools in depth.
 |---|---|
 | [Autana-CLI.md](Autana-CLI.md) | The `autana` terminal command: every command it takes, where it lives, and how it is put on the PATH. |
 | [Docs-Search.md](Docs-Search.md) | `autana docs`: answering a question from the documentation one section at a time, how it ranks, and the optional local models. |
-| [Device-Lock.md](Device-Lock.md) | `scripts/device/`, the only code that opens the board's serial port: the lock, flashing and capturing under it, where captures land, and recovery. |
+| [Device-Lock.md](Device-Lock.md) | The board lock in `scripts/device/`, the only code that opens the serial port: what to do when the board is busy, what is and is not guaranteed, failure modes, running a shared rig or CI, and how it works. |
+| [Flash-and-Captures.md](Flash-and-Captures.md) | What a flash proves, measuring with one lock across a flash and its captures, `send` and screenshots, where captures and records land, and wait estimates. |
 | [Complexity-Gate.md](Complexity-Gate.md) | The cognitive-complexity ratchet: what it measures, the committed baseline, and when a score fails or only warns. |
 | [Doc-Drift.md](Doc-Drift.md) | Ranking documents for review by age and changed cited sources, and recording a review in the ledger. |
 | [Live-Tuning.md](Live-Tuning.md) | Changing a number on a running device by name, with no build and no flash: the commands, the console protocol, and making a constant tunable. |

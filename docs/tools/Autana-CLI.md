@@ -74,7 +74,7 @@ lock held and snapshots the image it built, then, under the board's lock,
 `scripts/device/flash_image.sh` writes that snapshot - the one script that
 opens the port.
 `BUILD_ID` identifies the image by its ELF hash; see
-[what a flash proves](Device-Lock.md#what-a-flash-proves).
+[what a flash proves](Flash-and-Captures.md#what-a-flash-proves).
 It proves the write, not the boot.
 
 Both print a banner naming the project and variant; when git answers for
@@ -153,23 +153,24 @@ The two raw levels below gesture, `touch` and `imu`, live under
 
 ## Sharing the board
 
-`autana help lock` · the lock itself: [Device-Lock.md](Device-Lock.md)
+`autana help lock` · busy board, guarantees and recovery: [Device-Lock.md](Device-Lock.md)
 
 | Command | What it does |
 |---|---|
 | `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
 | `autana lock id [--json]` | The name this session holds the lock under: `"<user>@<host>:<pid>"`, or `"<AUTANA_DEVICE_OWNER>:<pid>"` when that variable is set. |
-| `autana lock release <token>` | Release a lock this session holds; the token is what its command printed. |
-| `autana lock hand [--wait <seconds>] <note...>` | Reserve the board and emit `human-reserved`; with `--wait`, wait until `take-back` emits `human-cleared`. |
+| `autana lock release [<token>]` | Release the lock a command of this session holds, before it would have. The token is `AUTANA_DEVICE_LOCK_TOKEN` in every process that command started, and is what `lock release` uses when none is given. |
+| `autana lock hand [--wait <seconds>] <note...>` | Reserve the board for a person for an hour and emit `human-reserved`; running it again renews the hour, and an unrenewed reservation lapses (`human-expired`). With `--wait`, wait until `take-back` emits `human-cleared`. |
 | `autana lock take-back` | Clear that reservation. |
 
 A board is named by its USB serial number, so the lock follows it across
 COM number changes; with several boards plugged in, `AUTANA_BOARD=<serial>`
 picks one. If a command loses the lock it stops with `device lock was
-lost`. A separate `flash` and `suite` leave a gap where another session can
+lost`. A command that finds the board busy and will not wait (`AUTANA_DEVICE_WAIT=0`, or its
+wait ran out) exits 75, so a script can retry on the code alone. A separate `flash` and `suite` leave a gap where another session can
 flash; `suite --flash` and `selftest` hold one lock across flash and capture.
-Lock loss, estimates and flash success are defined in
-[Device-Lock.md](Device-Lock.md).
+Lock loss is defined in [Device-Lock.md](Device-Lock.md); flash success,
+captures and wait estimates in [Flash-and-Captures.md](Flash-and-Captures.md).
 
 The lock owner is set as described in [Flags](#flags) above.
 
@@ -177,8 +178,8 @@ The lock owner is set as described in [Flags](#flags) above.
 script until someone puts the board in download mode and runs `autana lock
 take-back`. With `--wait`, exit 0 means that reservation was released. Exit 3
 means the wait timed out or was interrupted with Ctrl+C; the reservation
-stays. Exit 4 means another hand replaced the reservation; that reservation
-stays. The caller decides how to proceed after either nonzero result.
+stays. Exit 4 means the reservation was cleared and a new one made; that
+reservation stays. The caller decides how to proceed after either nonzero result.
 
 `autana id`, `autana release <token>`, `autana hand ...` and `autana
 take-back` still work, each printing the new spelling once before running it.
@@ -212,13 +213,13 @@ before running it.
 | `autana docs --section <path:line>` | One section whole, or `path#heading words`; `--deep` adds its subsections. |
 | `autana docs --outline <path>` | A document's headings with their lines and sizes, to pick a section without reading the file. |
 | `autana docs --ask <question...>` | A short answer written by the local chat model from those sections, with their sources. |
-| `autana --version` (or `-V`) | This autana's own version - purely informational, rides along in a device lock record so a refusal can name what is holding the board; see [Device-Lock.md](Device-Lock.md#lock-protocol). |
+| `autana --version` (or `-V`) | This autana's own version - purely informational, rides along in a device lock record so a refusal can name what is holding the board; see [Device-Lock.md](Device-Lock.md#one-copy-of-the-tools). |
 
 ## JSON fields
 
 | Command | Fields |
 |---|---|
-| `status` | `boards`: `board`, `port`, `state` (`unlocked`, `held`, `human`), `holder` (`owner`, `purpose`), `since`, `elapsed_seconds`, `estimated_free`, `stale` (`owner`, `purpose`, `reason`), `waiting` (`owner`, `purpose`, `estimated_start`). Times are epoch seconds; unknown ones are `null`. See [Device-Lock.md](Device-Lock.md#status). |
+| `status` | `boards`: `board`, `port`, `state` (`unlocked`, `held`, `human`), `holder` (`owner`, `purpose`), `since`, `elapsed_seconds`, `estimated_free`, `expires_at`, `remaining_seconds`, `stale` (`owner`, `purpose`, `reason`), `expired` (`owner`, `purpose`, `expired_at`, `ago_seconds`), `waiting` (`owner`, `purpose`, `estimated_start`). Times are epoch seconds; unknown ones are `null`. See [Device-Lock.md](Device-Lock.md#variables-exit-codes-and-json-status). |
 | `buildid` | `build_id` |
 | `lock id` | `owner`, `pid` |
 | `apps` | `apps`: `name`, `running` |
@@ -252,7 +253,8 @@ autana> quit
 
 The lock is one per machine, in the system temp folder. Each session writes a
 log and a manifest under `AUTANA_RECORDS`, or the checkout's gitignored
-`.records/device` when that is unset.
+`.records/device` when that is unset
+([Flash-and-Captures.md](Flash-and-Captures.md#where-a-capture-lands)).
 Set `AUTANA_LOCK_HOOK` to a shell command for lock events; see
 [Device-Lock.md](Device-Lock.md#lock-events) for events and variables.
 
