@@ -47,7 +47,7 @@ typedef struct {
 static void
 end_frame(void) {
     mu_end(ui_context());
-    ui_bridge_end(&ui_ctx, &ui_pointer_state);
+    ui_end_pointer_frame();
 }
 
 static bool
@@ -922,6 +922,70 @@ test_a_one_frame_tap_outside_an_open_list_closes_it_and_picks_nothing(void) {
     TEST_ASSERT_FALSE(dropdown_open);
 }
 
+/* The Control Center's backdrop: the screen underneath repainted through a
+ * repaint-only frame on the same frame the real screen is built. */
+static void
+backdrop_repaint(void) {
+    ui_begin(NULL);
+    if (ui_begin_screen(ui_context(), "Launcher", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+        mu_layout_set_next(ui_context(), BUTTON, 0);
+        mu_button(ui_context(), "UNDER");
+        mu_end_window(ui_context());
+    }
+    end_frame();
+}
+
+/* A tap into a screen whose backdrop is repainted on frame `repaint_on` of
+ * the tap must still submit its button exactly once. */
+static void
+test_a_tap_submits_once_when_the_backdrop_repaints_during_it(void) {
+    for (int repaint_on = 0; repaint_on < 4; repaint_on++) {
+        fixture();
+        const input_t idle = {0};
+        named_screen_frame("Center", &idle);
+        named_screen_frame("Center", &idle);
+
+        const int x = BUTTON.x + BUTTON.w / 2;
+        const int y = BUTTON.y + BUTTON.h / 2;
+        const input_t frames[] = {{.down = true, .pressed = true, .x = x, .y = y},
+                                  {.down = true, .x = x, .y = y},
+                                  {.down = true, .x = x, .y = y},
+                                  {.down = true, .x = x, .y = y},
+                                  {.released = true, .x = x, .y = y}};
+        int submits = 0;
+        for (int f = 0; f < (int)(sizeof frames / sizeof frames[0]); f++) {
+            if (f == repaint_on) {
+                backdrop_repaint();
+            }
+            submits += named_screen_frame("Center", &frames[f]);
+        }
+        char why[48];
+        snprintf(why, sizeof why, "repaint on frame %d", repaint_on);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(1, submits, why);
+    }
+}
+
+/* The lift went to frames that never reached the UI; the next press proves
+ * it, and must still get a control hovered and clicked. */
+static void
+test_a_press_after_an_unseen_lift_still_submits(void) {
+    fixture();
+    const input_t idle = {0};
+    plain_button_frame(&idle);
+    plain_button_frame(&idle);
+
+    /* The first press lands on empty space, so nothing is left hovered for
+     * the second to fall back on. */
+    plain_button_frame(&(input_t){.down = true, .pressed = true, .x = 10, .y = ui_height() - 10});
+    plain_button_frame(&(input_t){.down = true, .x = 10, .y = ui_height() - 10});
+
+    const int x = BUTTON.x + BUTTON.w / 2;
+    const int y = BUTTON.y + BUTTON.h / 2;
+    int submits = plain_button_frame(&(input_t){.down = true, .pressed = true, .x = x, .y = y});
+    submits += plain_button_frame(&(input_t){.down = true, .x = x, .y = y});
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, submits, "the second press must land although the first lift was never seen");
+}
+
 /* A finger resting on a button before ui_pointer lands its press - which
  * is all a drag across a list ever is - must not draw it pressed; the
  * press itself must. */
@@ -1100,6 +1164,8 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_a_press_that_slides_onto_a_button_from_off_it_is_not_a_click);
     RUN_TEST(test_a_tap_submits_on_the_second_frame_of_contact_through_ui_begin);
     RUN_TEST(test_a_tap_on_the_first_build_of_another_screen_still_submits_once);
+    RUN_TEST(test_a_tap_submits_once_when_the_backdrop_repaints_during_it);
+    RUN_TEST(test_a_press_after_an_unseen_lift_still_submits);
     RUN_TEST(test_a_tap_on_a_closing_list_reaches_exactly_one_thing);
     RUN_TEST(test_a_one_frame_tap_on_an_open_list_row_picks_it_and_closes_it);
     RUN_TEST(test_a_one_frame_tap_outside_an_open_list_closes_it_and_picks_nothing);

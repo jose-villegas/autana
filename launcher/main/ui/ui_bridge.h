@@ -10,5 +10,5 @@
 void ui_bridge_feed(mu_Context* ctx, ui_pointer_t* p, const input_t* input);
 
 /* After mu_end(): tell `p` whether the pointer rests on scrollable content,
- * and whether the press frame's seeded hover root turned out wrong. */
+ * and whether the hover root it ran under was the one the frame found. */
 void ui_bridge_end(mu_Context* ctx, ui_pointer_t* p);

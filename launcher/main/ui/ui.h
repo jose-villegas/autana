@@ -82,6 +82,10 @@ mu_Context* ui_context(void);
  * bezel would leave the running app's own overlay buttons bezelled too. */
 void ui_begin(const input_t* input);
 
+/* NULL `input` opens a repaint-only frame: the pointer is neither stepped nor
+ * updated, so painting a backdrop cannot take a tap meant for the screen
+ * above. */
+
 /* Choose how button frames are drawn for the rest of this frame.
  *
  * Call it after ui_begin() and before the buttons it should apply to; it can

@@ -90,7 +90,6 @@ static int
 step_pressed(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     p->press_deferred = false;
     p->dragging = false;
-    p->hover_stale = false;
     p->press_stage = 1;
     p->press_x = input->x;
     p->press_y = input->y;
@@ -118,8 +117,7 @@ step_hover(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     }
     int n = emit(out, 0, UI_POINTER_MOVE, p->aim_x, p->aim_y);
 
-    const int hover_frames = UI_POINTER_HOVER_FRAMES + (p->hover_stale ? 1 : 0);
-    const bool last_hover_frame = (p->press_stage >= hover_frames);
+    const bool last_hover_frame = (p->press_stage >= UI_POINTER_HOVER_FRAMES && !p->hover_unsettled);
     if (last_hover_frame && p->over_scrollable && !input->released) {
         p->press_stage = 0;
         p->press_deferred = true;
@@ -128,7 +126,7 @@ step_hover(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
         p->press_stage = 0;
         p->down = true;
         p->aimed = false;
-    } else {
+    } else if (p->press_stage < UINT8_MAX) {
         p->press_stage++;
     }
 
@@ -147,12 +145,8 @@ step_hover(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     return n;
 }
 
-int
-ui_pointer_step(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out, int max) {
-    if (max < UI_POINTER_MAX_EVENTS) {
-        return 0;
-    }
-
+static int
+step_input(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     int n = 0;
 
     if (input->pressed) {
@@ -193,13 +187,23 @@ ui_pointer_step(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out, 
     }
 
     /* Nothing down, nothing pending: park the pointer off-screen so no
-     * control sits hovered. A DOWN still unanswered means the lift went to a
-     * frame that never reached microui - a screen that draws no UI - and a
-     * button left held would keep every later control from being hovered. */
-    if (p->down) {
-        n = emit(out, n, UI_POINTER_UP, -1, -1);
-        p->down = false;
-    }
+     * control sits hovered. */
     n = emit(out, n, UI_POINTER_MOVE, -1, -1);
     return n;
+}
+
+/* A DOWN still unanswered when the finger is gone, or a new press arrives,
+ * means its lift went to a frame that never reached microui. Left held it
+ * would keep every later control from being hovered, so the UP is paid first. */
+int
+ui_pointer_step(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out, int max) {
+    if (max < UI_POINTER_MAX_EVENTS) {
+        return 0;
+    }
+    int owed = 0;
+    if (p->down && (input->pressed || !(input->down || input->released))) {
+        owed = emit(out, 0, UI_POINTER_UP, -1, -1);
+        p->down = false;
+    }
+    return owed + step_input(p, input, out + owed);
 }

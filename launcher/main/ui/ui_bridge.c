@@ -20,7 +20,6 @@ ui_bridge_feed(mu_Context* ctx, ui_pointer_t* p, const input_t* input) {
     for (int i = 0; i < n; i++) {
         replay(ctx, &events[i]);
     }
-    p->hover_seeded = input->pressed;
     if (input->pressed) {
         mu_seed_hover_root(ctx);
     }
@@ -29,8 +28,5 @@ ui_bridge_feed(mu_Context* ctx, ui_pointer_t* p, const input_t* input) {
 void
 ui_bridge_end(mu_Context* ctx, ui_pointer_t* p) {
     p->over_scrollable = ctx->scroll_target != NULL;
-    if (p->hover_seeded) {
-        p->hover_stale = ctx->hover_root != ctx->next_hover_root;
-        p->hover_seeded = false;
-    }
+    p->hover_unsettled = ctx->hover_root != ctx->next_hover_root;
 }

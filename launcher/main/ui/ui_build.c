@@ -43,6 +43,9 @@ mu_Context ui_ctx;
 bool ui_invalidated = true;
 ui_text_style_t ui_text_style;
 ui_pointer_t ui_pointer_state;
+
+/* Whether the frame in progress only repaints - see ui_begin(). */
+static bool paint_only;
 uint64_t ui_canvas_hash[MU_CONTAINERPOOL_SIZE];
 ui_canvas_marks_t ui_canvas_marks;
 
@@ -368,9 +371,19 @@ ui_begin(const input_t* input) {
     /* Reset before the caller can state its own - see ui.h on why style does
      * not persist across frames. */
     button_style = UI_BUTTON_FLAT;
-    feed_input(input);
+    paint_only = input == NULL;
+    if (!paint_only) {
+        feed_input(input);
+    }
     snap_rect_count = 0;
     mu_begin(&ui_ctx);
+}
+
+void
+ui_end_pointer_frame(void) {
+    if (!paint_only) {
+        ui_bridge_end(&ui_ctx, &ui_pointer_state);
+    }
 }
 
 /* See ui.h: the physical viewport mapped through the inverse transform. Both

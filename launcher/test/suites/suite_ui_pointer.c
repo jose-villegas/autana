@@ -63,8 +63,7 @@ test_a_tap_hovers_before_pressing(void) {
 
     /* The hover frames are MOVE-only. A DOWN before a control has been
      * marked hovered lands with nothing hovered, so nothing takes focus and
-     * no button ever submits - which is exactly what shipped and made every
-     * app unreachable. */
+     * no button ever submits. */
     for (int frame = 0; frame < UI_POINTER_HOVER_FRAMES; frame++) {
         const int n = step(true, frame == 0, false, 10, 20);
         TEST_ASSERT_EQUAL_INT_MESSAGE(1, n, "a hover frame carries a move and nothing else");
@@ -81,16 +80,17 @@ test_a_tap_hovers_before_pressing(void) {
     TEST_ASSERT_EQUAL_INT(20, ev[1].y);
 }
 
-/* The caller reports after the press frame that the hover root it seeded was
- * not the one the frame found: hover was not granted, so the DOWN waits one
- * more MOVE-only frame. Without it the tap is lost. */
+/* While the caller reports the hover root unsettled, hover has not been
+ * granted and the DOWN waits, however many frames that takes. */
 static void
-test_a_stale_hover_root_costs_one_more_hover_frame(void) {
+test_the_down_waits_for_a_settled_hover_root(void) {
     fixture();
     step(true, true, false, 10, 20);
-    p.hover_stale = true;
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, step(true, false, false, 10, 20), "one more MOVE-only frame");
+    p.hover_unsettled = true;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, step(true, false, false, 10, 20), "a MOVE-only frame");
     TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, step(true, false, false, 10, 20), "still waiting");
+    p.hover_unsettled = false;
     TEST_ASSERT_EQUAL_INT_MESSAGE(2, step(true, false, false, 10, 20), "then the DOWN");
     TEST_ASSERT_EQUAL_INT(UI_POINTER_DOWN, ev[1].kind);
 }
@@ -108,6 +108,21 @@ test_a_lift_that_never_reached_the_ui_is_released_on_the_next_idle_frame(void) {
     TEST_ASSERT_EQUAL_INT(UI_POINTER_UP, ev[0].kind);
     TEST_ASSERT_EQUAL_INT(1, step(false, false, false, 0, 0));
     TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
+}
+
+/* A new press edge proves the finger lifted as well, whatever the frames in
+ * between did: the owed UP goes out ahead of the new press. */
+static void
+test_a_new_press_pays_the_owed_up_first(void) {
+    fixture();
+    step(true, true, false, 10, 20);
+    step(true, false, false, 10, 20);
+    TEST_ASSERT_TRUE(p.down);
+
+    TEST_ASSERT_EQUAL_INT(2, step(true, true, false, 30, 40));
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_UP, ev[0].kind);
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[1].kind);
+    TEST_ASSERT_FALSE(p.down);
 }
 
 /* Holding, not releasing - the whole point of this module. */
@@ -351,8 +366,9 @@ test_a_sideways_drag_on_scrollable_content_presses_so_a_slider_still_moves(void)
 void
 run_ui_pointer_suite(void) {
     RUN_TEST(test_a_tap_hovers_before_pressing);
-    RUN_TEST(test_a_stale_hover_root_costs_one_more_hover_frame);
+    RUN_TEST(test_the_down_waits_for_a_settled_hover_root);
     RUN_TEST(test_a_lift_that_never_reached_the_ui_is_released_on_the_next_idle_frame);
+    RUN_TEST(test_a_new_press_pays_the_owed_up_first);
     RUN_TEST(test_a_drag_stays_down_across_moves_then_lifts_once);
     RUN_TEST(test_an_aim_stages_the_press_but_not_later_drag_moves);
     RUN_TEST(test_exactly_one_up_comes_out_of_one_press);

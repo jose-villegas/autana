@@ -389,27 +389,46 @@ comments, rather than overridden from our side, because they determine the
 struct's layout and two translation units disagreeing would corrupt it
 silently.
 
-**Touch needs one synthesized hover frame.** `mu_update_control()` only
-establishes hover on a frame where the button is *not* held, and a control
-only submits once focused. `mu_mouse_over()` also needs `in_hover_root()`,
-and `mu_begin()` copies `hover_root` from the *previous* frame's
-`next_hover_root`, which a finger arriving from the parked pointer has not
-set yet. `ui_begin()` therefore seeds it on the press frame
-(`mu_seed_hover_root()`, via `ui/ui_bridge.c`), from the containers the last frame left in `root_list`, so
-the first frame at the new position can already mark a control hovered and
-the press follows on the second. That holds only while the press frame builds
-the root that was seeded; on a screen switch, a list closing or a window's
-first build it does not, and `ui_bridge_end()` marks the seed stale
-(`hover_stale`) so the press takes one more MOVE-only frame - the old cost,
-and the tap is never lost. Ship the press with no hover frame and
-hover is never established, nothing takes focus, and every button draws its
-pressed look while returning 0. `ui/ui_pointer.c` owns this policy, plus
-the held-`DOWN` a slider needs to track a drag (`ui/ui_pointer.h`), and
-`suite_ui_pointer_microui.c` pins it against real microui, since hover is
-microui's own state and event-list tests cannot see it. It applies to every
-control that reacts to a press, so reworking input handling means preserving
-it. A press within `snap.reach` of a control is aimed at its nearest edge;
-its raw position remains the drag origin, and later motion stays raw.
+**Touch needs one synthesized hover frame.** `mu_update_control()` marks a
+control hovered only on a frame where the button is *not* held, and a control
+submits only once focused, so a press needs a frame with the finger present
+and no DOWN before the DOWN. Hover also needs `hover_root`, which `mu_begin()`
+copies from the *previous* frame, so on the press frame `ui/ui_bridge.c` seeds
+it (`mu_seed_hover_root()`) from the roots the last frame left in `root_list`.
+After the frame it compares the seed with the root microui then found and
+records the result in `hover_unsettled`; `ui/ui_pointer.c` sends the DOWN
+only once that is clear.
+
+```mermaid
+sequenceDiagram
+    participant P as ui_pointer
+    participant B as ui_bridge
+    participant M as microui
+    Note over P,M: press frame
+    P->>B: MOVE to the finger
+    B->>M: seed hover root from last frame's roots
+    M->>M: build frame, hover the control
+    B->>P: hover_unsettled = seed differs from root found
+    Note over P,M: next frame, once settled
+    P->>B: DOWN
+    B->>M: mouse down over the hovered control
+    M->>M: focus and submit
+```
+
+A screen switch, a list closing or a window's first build leaves the seed
+different from the root found; the DOWN then waits, frame by frame, and the
+tap is never lost. Ship the press with no hover frame and nothing takes focus:
+every button draws its pressed look while returning 0. A press and release
+inside one frame resolves at once, so on an unsettled root it is lost.
+A repaint-only frame (`ui_begin(NULL)`, the Control Center's backdrop) neither
+steps nor reports to the pointer. `ui/ui_pointer.c` also owns the held `DOWN` a
+slider needs to track a drag and the UP owed when a lift never reached the UI
+(`ui/ui_pointer.h`); `suite_ui_pointer_microui.c` and `suite_ui_widgets.c` pin
+it against real microui, since hover is microui's own state and event-list
+tests cannot see it. It applies to every control that reacts to a press, so
+reworking input handling means preserving it. A press within `snap.reach` of a
+control is aimed at its nearest edge; its raw position remains the drag
+origin, and later motion stays raw.
 
 ---
 
