@@ -30,7 +30,7 @@
 typedef void (*suite_fn)(void);
 
 /* Called by the SUITE_REGISTER macros before main(). `on_request` keeps a
- * suite out of suites_run_all() while leaving suites_run_one() able to find
+ * suite out of suites_run_all() while leaving suites_run_request() able to find
  * it: a sweep measured in hours belongs to whoever asks for it by name, not
  * to every boot of every image that carries it. */
 void suite_register(const char* name, suite_fn fn);
