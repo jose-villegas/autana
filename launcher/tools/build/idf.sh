@@ -30,7 +30,7 @@
 #   cmd /c "set MSYSTEM=&& …" -> works, but nested quotes reach argv literally
 #   cmd /c shim.bat …        -> works, argv intact, semicolons survive
 #
-# On Linux and macOS none of this applies: idf.py is called directly.
+# On Linux none of this applies: idf.py is called directly.
 
 _IDF_DIR=""
 _IDF_EXPORT=""

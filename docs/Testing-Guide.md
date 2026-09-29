@@ -4,7 +4,7 @@ How this project tests firmware, and why it is set up the way it is. Read this
 before adding a test or deciding something "can't be tested".
 
 For a first result without hardware, run [`run_tests.sh`](../launcher/test/run_tests.sh) in
-Git Bash on Windows or a terminal on macOS/Linux. It needs a host C compiler,
+Git Bash on Windows or a terminal on Linux. It needs a host C compiler,
 but no ESP-IDF installation or board. It prints the verdict and writes the
 full build and test log under `launcher/test/build/`. The same portable suites
 can also run in the firmware on the device. A successful run ends with
@@ -71,8 +71,7 @@ differs from its siblings only in what it declares — capture timeout, which
 suite, sentinel, reporter, output location — so a build flag cannot reach one
 of them and miss another.
 
-POSIX sh — works under Git Bash or MSYS on Windows and natively on Linux and
-macOS. It finds a compiler via `$CC`, then `PATH`, then the location winget
+POSIX sh — works under Git Bash or MSYS on Windows and natively on Linux. It finds a compiler via `$CC`, then `PATH`, then the location winget
 installs MinGW to on Windows, and tells you how to install one if there is
 none.
 
@@ -82,7 +81,8 @@ Requires a **host** compiler, not the ESP32 toolchain:
 |---|---|
 | Windows | `winget install BrechtSanders.WinLibs.POSIX.UCRT` |
 | Debian/Ubuntu | `sudo apt install build-essential` |
-| macOS | `xcode-select --install` |
+
+The Python tools and `scripts/run-tool-tests.sh` need `python3` (Debian/Ubuntu ship no plain `python`; the scripts try `python3`, `python`, then `py`, and take the first that runs; commands written `python` in these docs are `python3` there), and the `.mjs` suites need `nodejs` (`sudo apt install python3 nodejs`).
 
 **An app's own frame-budget capture and its rules live beside the app**,
 in its docs folder and its `tools/` - any free-heap precondition, the
@@ -755,7 +755,7 @@ by a substring of the name, so treat it as a lookup, not an area map.
    `-std=c11`, which on glibc hides everything POSIX-only behind
    `__STRICT_ANSI__` - so `strnlen`, `strdup` and friends compile on a
    Windows toolchain whose headers declare them unconditionally, and
-   fail on Linux and macOS. The suites have to build on all three.
+   fail on Linux. The suites have to build on both.
 7. **On device, watch for the two traps** above (64-bit asserts, and
    logging after rather than before an assert).
 8. Break the implementation, confirm red, restore.

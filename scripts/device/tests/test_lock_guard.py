@@ -1036,6 +1036,7 @@ class FlashImageScriptTests(unittest.TestCase):
         (self.tree / "launcher").mkdir()
         for relative in ("scripts/device/flash_image.sh", "launcher/tools/build/idf.sh",
                          "launcher/tools/build/idf_shim.bat", "launcher/tools/build/espressif.py",
+                         "scripts/lib/python.sh",
                          "scripts/device/device.py", "scripts/device/device_lock.py",
                          "scripts/device/device_hook.py", "scripts/device/device_report.py",
                          "scripts/device/lock_job.py", "scripts/device/lock_scope.py",
@@ -1075,6 +1076,9 @@ class FlashImageScriptTests(unittest.TestCase):
             (stubs / "idf.py").chmod(0o755)
             self.export = stubs / "export.sh"
             self.export.write_text(f'PATH="{stubs.as_posix()}:$PATH"\n')
+            # ESP-IDF's export puts its own interpreter on PATH as plain `python`.
+            (stubs / "python").write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+            (stubs / "python").chmod(0o755)
         self.stubs = stubs
         self.image = self.tree / "flash.image"
         fake_flash.write_image(self.image, "abc123-dev", app=b"the built app")

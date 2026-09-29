@@ -15,10 +15,9 @@ set -eu
 
 TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-if ! PYTHON=$(command -v python3 || command -v python); then
-    echo "No Python found; render_diff.py needs one (standard library only)." >&2
-    exit 1
-fi
+# shellcheck source=../../../scripts/lib/python.sh
+. "$TOOLS_DIR/../../scripts/lib/python.sh"
+PYTHON=$(find_python) || exit 1
 
 # Git Bash hands this script MSYS paths (/c/...), which the Windows python
 # it finds cannot open. cygpath exists only there, which is also the only

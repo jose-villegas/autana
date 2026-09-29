@@ -33,7 +33,7 @@ bugprone-unused-return-value	main/apps/sand/tests/suite_sand_scenes.c	41
 bugprone-unused-return-value	main/apps/sand/tests/suite_sand_spawning.c	4
 bugprone-unused-return-value	main/apps/sand/tests/suite_sand_tone.c	11
 bugprone-unused-return-value	main/apps/sand/tests/suite_sand_two_core.c	37
-bugprone-unused-return-value	main/apps/sand/tools/brush_screen_preview.c	3
+bugprone-unused-return-value	main/apps/sand/tools/brush_screen_render_host.c	3
 bugprone-unused-return-value	main/apps/sand/tools/dump_reactions.c	34
 bugprone-unused-return-value	main/apps/sand/tools/rng_low_bits.c	4
 bugprone-unused-return-value	main/apps/sand/tools/shading_palette.c	18
@@ -78,7 +78,7 @@ cert-err33-c	main/apps/sand/tests/suite_sand_scenes.c	41
 cert-err33-c	main/apps/sand/tests/suite_sand_spawning.c	4
 cert-err33-c	main/apps/sand/tests/suite_sand_tone.c	11
 cert-err33-c	main/apps/sand/tests/suite_sand_two_core.c	37
-cert-err33-c	main/apps/sand/tools/brush_screen_preview.c	10
+cert-err33-c	main/apps/sand/tools/brush_screen_render_host.c	10
 cert-err33-c	main/apps/sand/tools/chunk_layout.c	2
 cert-err33-c	main/apps/sand/tools/dump_reactions.c	59
 cert-err33-c	main/apps/sand/tools/grid_fingerprint.c	3
@@ -150,7 +150,7 @@ readability-isolate-declaration	main/apps/sand/tests/suite_sand_tone.c	8
 readability-isolate-declaration	main/apps/sand/tests/suite_sand_two_core.c	9
 readability-isolate-declaration	main/apps/sand/tests/suite_sand_ui.c	1
 readability-isolate-declaration	main/apps/sand/tests/suite_title_screen.c	2
-readability-isolate-declaration	main/apps/sand/tools/brush_screen_preview.c	1
+readability-isolate-declaration	main/apps/sand/tools/brush_screen_render_host.c	1
 readability-isolate-declaration	main/apps/sand/tools/chunk_layout.c	3
 readability-isolate-declaration	main/apps/sand/tools/colour_lever1_counters.c	3
 readability-isolate-declaration	main/apps/sand/tools/grid_fingerprint.c	1
@@ -221,7 +221,7 @@ readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_spawning.c	
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_tone.c	2
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_two_core.c	25
 readability-math-missing-parentheses	main/apps/sand/tests/suite_title_screen.c	3
-readability-math-missing-parentheses	main/apps/sand/tools/brush_screen_preview.c	17
+readability-math-missing-parentheses	main/apps/sand/tools/brush_screen_render_host.c	17
 readability-math-missing-parentheses	main/apps/sand/tools/chunk_layout.c	3
 readability-math-missing-parentheses	main/apps/sand/tools/colour_lever1_counters.c	9
 readability-math-missing-parentheses	main/apps/sand/tools/grid_fingerprint.c	3

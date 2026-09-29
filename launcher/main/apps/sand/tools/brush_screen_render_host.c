@@ -1,14 +1,9 @@
 /*
- * brush_screen_preview - render the sand app's brush screen through the real
- * firmware drawing code on a host, at both canvas sizes, so its composition
- * can be judged without a device build or a flash. Same shape as
- * launcher/tools/render/scenes/boot_anim_render_host.c: real drawing code, a malloc'd
- * framebuffer, no device.
- *
- *     main/apps/sand/tools/report_brush_screen_preview.sh
- *
- * writes brush_screen_portrait.png and brush_screen_landscape.png into this
- * tool's own build/. Not built by idf.py, not part of run_tests.sh.
+ * brush_screen_render_host - the sand app's brush screen drawn on a host, at
+ * both canvas sizes, so its composition can be judged without a device build
+ * or a flash. Real gfx and layout code, a malloc'd framebuffer, no device;
+ * the harness in launcher/tools/render/render_host.h owns the frame loop and
+ * the BMP.
  *
  * EVERY RECT COMES FROM brush_screen_layout() - nothing here hardcodes a
  * position. A preview that disagrees with the screen it previews is worse
@@ -19,12 +14,6 @@
  * the real screen, making that a value to know rather than a gap); a
  * segment's icon/label sub-layout is mirrored from draw_brush_screen()'s own
  * inline arithmetic; and a flat fill stands in for the frozen sandbox.
- *
- * Landscape: gfx.c's framebuffer is fixed at 368x448 at compile time, so the
- * landscape render goes through the same quarter-turn transform ui.c applies
- * for a rotated device, and landscape_pixel() reads it back through that
- * turn's inverse - derived by mapping a rect's corner, because a raw
- * per-pixel inverse of a rect-based transform is off by one at the edge.
  */
 
 #include <stdbool.h>
@@ -40,6 +29,7 @@
 #include "icons_sand.h"
 #include "material.h"
 #include "material_palette.h"
+#include "render_host.h"
 #include "sand_swatch.h"
 #include "sand_ui.h"
 #include "ui/brush_screen.h"
@@ -47,7 +37,6 @@
 #include "ui/ui_slider.h"
 #include "ui/ui_style.h"
 #include "ui/ui_transform.h"
-#include "util/screenshot.h"
 
 /* A real brush cell, mode and radius to draw - GUNPOWDER_CELL(0) is
  * "Gunpowder", the longest name in app_sand.c's brushes[] (see
@@ -278,102 +267,35 @@ draw_screen(ui_transform_t t, int screen_w, int screen_h) {
     draw_slider(t, lay.slider_track, SAND_UI_RADIUS_MIN, SAND_UI_RADIUS_MAX, PREVIEW_RADIUS_PX);
 }
 
-/* Task C: the numbers behind the composition question, read straight off
- * brush_screen_layout() rather than assumed - never a second, hand-derived
- * copy of BLOCK_H's own arithmetic. */
-static void
-print_gaps(const char* label, int screen_w, int screen_h) {
-    brush_screen_layout_t lay;
-    brush_screen_layout(screen_w, screen_h, &lay);
-    const int top_gap = lay.header_panel.y - UI_MARGIN;
-    const int bottom_gap = screen_h - UI_MARGIN - (lay.size_panel.y + lay.size_panel.h);
-    printf("%-10s %dx%d: top gap %dpx, bottom gap %dpx\n", label, screen_w, screen_h, top_gap, bottom_gap);
+static ui_transform_t transform;
+static int screen_w;
+static int screen_h;
+
+int
+display_shell_quarter(void) {
+    return 0;
 }
 
 static bool
-write_bmp(const char* path, int32_t width, int32_t height, gfx_color_t (*pixel_at)(int x, int y)) {
-    FILE* f = fopen(path, "wb");
-    if (f == NULL) {
-        fprintf(stderr, "cannot open %s for writing\n", path);
-        return false;
-    }
-
-    uint8_t header[SCREENSHOT_BMP_HEADER_SIZE];
-    screenshot_bmp_header(header, width, height);
-    fwrite(header, 1, sizeof header, f);
-
-    const int32_t stride = screenshot_bmp_row_stride(width);
-    uint8_t* row = calloc(1, (size_t)stride);
-    if (row == NULL) {
-        fprintf(stderr, "out of memory\n");
-        fclose(f);
-        return false;
-    }
-
-    /* Bottom-up, per screenshot_bmp_header()'s own contract. */
-    for (int y = height - 1; y >= 0; y--) {
-        for (int x = 0; x < width; x++) {
-            const uint32_t rgb = gfx_color_rgb888(pixel_at(x, y));
-            row[x * 3 + 0] = (uint8_t)(rgb);
-            row[x * 3 + 1] = (uint8_t)(rgb >> 8);
-            row[x * 3 + 2] = (uint8_t)(rgb >> 16);
-        }
-        fwrite(row, 1, (size_t)stride, f);
-    }
-
-    free(row);
-    return fclose(f) == 0;
+setup(int quarter) {
+    transform = ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT);
+    screen_w = (quarter % 2 == 0) ? GFX_WIDTH : GFX_HEIGHT;
+    screen_h = (quarter % 2 == 0) ? GFX_HEIGHT : GFX_WIDTH;
+    return true;
 }
 
-static gfx_color_t
-portrait_pixel(int x, int y) {
-    return gfx_framebuffer()[(size_t)y * GFX_WIDTH + x];
-}
-
-/* The inverse of ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT) - see
- * the Landscape paragraph of this file's header for the rect-corner
- * derivation this formula comes from: logical pixel (lx, ly) lands at
- * physical column (GFX_WIDTH - 1 - ly), row lx. */
-static gfx_color_t
-landscape_pixel(int lx, int ly) {
-    return gfx_framebuffer()[(size_t)lx * GFX_WIDTH + (size_t)(GFX_WIDTH - 1 - ly)];
-}
-
-int
-main(int argc, char** argv) {
-    if (argc != 2) {
-        fprintf(stderr, "usage: %s <output_dir>\n", argv[0]);
-        return 1;
-    }
-    const char* out_dir = argv[1];
-
-    if (!gfx_init()) {
-        fprintf(stderr, "gfx_init failed\n");
-        return 1;
-    }
-
-    print_gaps("portrait", GFX_WIDTH, GFX_HEIGHT);
-    print_gaps("landscape", GFX_HEIGHT, GFX_WIDTH);
-
-    char path[1024];
-
-    /* Portrait: identity transform, logical == physical, dumped directly. */
+static void
+draw(const render_frame_t* frame) {
+    (void)frame;
     gfx_clear(gfx_rgb(0x000000));
-    draw_screen(ui_transform_identity(), GFX_WIDTH, GFX_HEIGHT);
-    snprintf(path, sizeof path, "%s/brush_screen_portrait.bmp", out_dir);
-    if (!write_bmp(path, GFX_WIDTH, GFX_HEIGHT, portrait_pixel)) {
-        return 1;
-    }
-
-    /* Landscape: drawn through the same quarter turn ui.c itself applies for
-     * a physically rotated device - see this file's header. */
-    gfx_clear(gfx_rgb(0x000000));
-    const ui_transform_t landscape_t = ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT);
-    draw_screen(landscape_t, GFX_HEIGHT, GFX_WIDTH);
-    snprintf(path, sizeof path, "%s/brush_screen_landscape.bmp", out_dir);
-    if (!write_bmp(path, GFX_HEIGHT, GFX_WIDTH, landscape_pixel)) {
-        return 1;
-    }
-
-    return 0;
+    draw_screen(transform, screen_w, screen_h);
 }
+
+const render_scene_t render_scene = {
+    .name = "brush_screen",
+    .quarter = 0,
+    .frames = 3,
+    .dt_ms = 16,
+    .setup = setup,
+    .draw = draw,
+};

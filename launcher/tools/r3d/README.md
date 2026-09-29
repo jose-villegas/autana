@@ -24,7 +24,7 @@ else `c++` or `g++`). From `launcher/`:
 ```sh
 git submodule update --init ../third_party/upstream/meshoptimizer
 python -m venv tools/r3d/.cache/venv
-tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.txt   # bin/python on Linux and macOS
+tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.txt   # bin/python on Linux
 ```
 
 A generator is a script beside the model's consumer: it loads and bakes the

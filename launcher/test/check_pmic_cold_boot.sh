@@ -15,7 +15,7 @@
 # to a bootloader-only file with its own tiny, disjoint header world.
 #
 # POSIX sh, like run_tests.sh: works under Git Bash or MSYS on Windows, and
-# natively on Linux and macOS.
+# natively on Linux.
 
 set -eu
 

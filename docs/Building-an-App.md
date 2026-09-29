@@ -53,7 +53,7 @@ release symbol check finds a development-only app by that name.
 
 To check a new `app_*.c` file without the ESP32 toolchain, run
 [`check_app_sources.sh`](../launcher/test/check_app_sources.sh) in Git Bash on
-Windows or a terminal on macOS/Linux. It syntax-checks the hardware-facing
+Windows or a terminal on Linux. It syntax-checks the hardware-facing
 app sources with host stand-in headers; it does not run the app. A new app
 appears in the launcher after a firmware build and flash. To make a separate
 board-free preview of its drawing, declare a scene with the
