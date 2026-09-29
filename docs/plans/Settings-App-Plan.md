@@ -120,7 +120,7 @@ occasion to relitigate what belongs where.
   every app switch (Building-an-App.md, "What the shell resets for you"). At 80 a
   partial-redraw app opts into gfx heal to stay clean. The row keeps the
   warning; see [Display-and-Rendering.md](../notes/Display-and-Rendering.md),
-  "The blit is bus-bound".
+  "80 MHz is outside the panel's rating".
 - Should Settings be reachable from the launcher unconditionally (like any
   other app) or only exist in `--dev`/`--diag` builds the way Diagnostics
   does today? Development-only content argues for the latter, and an
