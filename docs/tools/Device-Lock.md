@@ -246,7 +246,7 @@ Times are epoch seconds; an age or a time left is the difference from now. An es
 | `board` | USB serial number |
 | `port` | COM port now, `null` when the board is not on USB |
 | `state` | `unlocked`, `held`, or `human` (a person's reservation) |
-| `holder` | `{"owner", "purpose"}`, the purpose being `autana <kind>` for a lock and the note for a reservation; `null` when unlocked. A held lock's also carries `protocol` and `autana_version`. |
+| `holder` | `{"owner", "purpose"}`, the purpose being the command that holds a lock (`autana tune`; `device.py <kind>` for a direct call) and the note for a reservation; `null` when unlocked. A held lock's also carries `protocol` and `autana_version`. |
 | `since` | when the holder took the board |
 | `estimated_free` | when the holder should be done |
 | `expires_at` | when a reservation lapses; else `null` |
@@ -261,7 +261,7 @@ a hook meant for every command needs the key in every checkout. It runs
 through `cmd.exe` on Windows (`%VAR%`) and `/bin/sh` elsewhere (`$VAR`), with
 `AUTANA_LOCK_EVENT`, `AUTANA_LOCK_BOARD` (the serial number),
 `AUTANA_LOCK_OWNER`, `AUTANA_LOCK_PURPOSE` and `AUTANA_LOCK_NOTE` set. Purpose
-is `autana <kind>`, or the note for the `human-` events; note is empty except on
+is that command, or the note for the `human-` events; note is empty except on
 a reclaiming `acquired`. Hooks run in separate processes and
 are not ordered across them, so one holder's `released` can arrive after the
 next holder's `acquired`. A hook has a three second timeout; a failed or
@@ -362,7 +362,7 @@ loses its watchdog) it says so, and the lock still works as a lock.
 **Heartbeat and reclaim.** A running command renews its lock every 5 seconds:
 its heartbeat. The next waiter reclaims a lock when its holder's process on
 this machine is dead, or when its heartbeat is more than 10 minutes old, and
-logs `reclaimed lock from <owner> for autana <kind> (dead process | heartbeat
+logs `reclaimed lock from <owner> for <command> (dead process | heartbeat
 expiry)`. A holder whose heartbeat is refused - its lock was replaced, or it
 went stale while it was paused - has lost the board: a capture stops at its
 next read, the next port open refuses, a flash in progress is ended, and the

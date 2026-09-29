@@ -589,6 +589,33 @@ class RemovedParameterTests(unittest.TestCase):
         self.assertFalse(hasattr(device_lock, "main"))
 
 
+class LockLabelTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.store = device_lock.LockStore(root=self.temp.name)
+
+    def holder_label(self, environment):
+        with mock.patch.dict(os.environ, environment):
+            if not environment:
+                os.environ.pop(device.COMMAND_ENV, None)
+            with device.HeldLock(self.store, BOARD, "agent", "send", 0):
+                entry = device_lock.status_entry(self.store, BOARD, durations={})
+        return entry["holder"]["purpose"]
+
+    def test_the_command_autana_ran_is_what_status_shows(self):
+        for named in ("tune", "debug freeze"):
+            with self.subTest(command=named):
+                self.assertEqual(self.holder_label({device.COMMAND_ENV: named}), "autana " + named)
+
+    def test_a_direct_call_shows_device_py_and_its_kind(self):
+        self.assertEqual(self.holder_label({}), "device.py send")
+
+    def test_a_capture_manifest_uses_the_same_label(self):
+        with mock.patch.dict(os.environ, {device.COMMAND_ENV: "tune"}):
+            self.assertEqual(device.command_label("send"), "autana tune")
+
+
 class HumanWaitTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

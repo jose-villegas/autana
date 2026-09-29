@@ -1605,6 +1605,28 @@ class LockAndDebugDispatchTests(unittest.TestCase):
             autana.debug(["nope"])
 
 
+class CommandNameForTheLockTests(unittest.TestCase):
+    def seen_by_child(self, argv):
+        seen = []
+        with mock.patch.object(autana.sys, "argv", ["autana", *argv]), \
+                mock.patch.dict(autana.COMMANDS, {
+                    name: (lambda args: seen.append(os.environ.get(autana.COMMAND_ENV)) or 0)
+                    for name in ("tune", "lock", "debug")}), \
+                self.assertRaises(SystemExit):
+            autana.main()
+        return seen[0], os.environ.get(autana.COMMAND_ENV)
+
+    def test_the_child_is_told_the_command_and_it_is_forgotten_after(self):
+        self.assertEqual(self.seen_by_child(["tune", "x", "1"]), ("tune", None))
+
+    def test_a_router_names_its_verb(self):
+        self.assertEqual(self.seen_by_child(["debug", "freeze"]), ("debug freeze", None))
+        self.assertEqual(self.seen_by_child(["lock", "hand", "note"]), ("lock hand", None))
+
+    def test_it_is_not_a_setting_a_caller_can_pass_in(self):
+        self.assertTrue(autana.COMMAND_ENV.startswith("_AUTANA_"))
+
+
 class RemovedLockSpellingTests(unittest.TestCase):
     def test_the_old_top_level_spellings_are_gone(self):
         for old in ("id", "release", "hand", "take-back"):

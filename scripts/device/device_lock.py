@@ -179,10 +179,12 @@ def human_left_text(human, now):
 
 
 def record_label(record):
-    """What a lock, ticket or last-holder record says it is doing: `autana
-    <kind>`. A record from before `kind` carried only a free-text purpose."""
+    """What a lock, ticket or last-holder record says it is doing: the command
+    that took it, else `autana <kind>`. A record from before `kind` carried
+    only a free-text purpose."""
     kind = record.get("kind")
-    return f"autana {kind}" if kind else record.get("purpose", "unknown")
+    return (record.get("command") or (f"autana {kind}" if kind else None)
+            or record.get("purpose", "unknown"))
 
 
 class Held(dict):
@@ -319,12 +321,12 @@ class LockStore:
         the port stays busy after it won the lock. Under guard()."""
         self.write_json(self.last_path(board), {
             "board": board, "owner": lock.get("owner", "unknown"),
-            "kind": lock.get("kind"), "pid": lock.get("pid"),
+            "kind": lock.get("kind"), "command": lock.get("command"), "pid": lock.get("pid"),
             "host": lock.get("host"), "token": lock.get("token"),
             "acquired_at": lock.get("acquired_at"), "ended_at": self.now(),
             "how": how, "protocol": LOCK_PROTOCOL, "autana_version": __version__})
 
-    def enqueue(self, board, owner, kind, pid=None):
+    def enqueue(self, board, owner, kind, pid=None, command=None):
         with self.guard(board):
             directory = self.queue_dir(board)
             directory.mkdir(parents=True, exist_ok=True)
@@ -341,6 +343,7 @@ class LockStore:
                 "owner": owner,
                 "pid": os.getpid() if pid is None else pid,
                 "kind": kind,
+                "command": command,
                 "sequence": sequence,
                 "ticket": ticket,
                 "protocol": LOCK_PROTOCOL,
@@ -423,6 +426,7 @@ class LockStore:
                 "owner": pending[0]["owner"],
                 "pid": pending[0]["pid"],
                 "kind": pending[0]["kind"],
+                "command": pending[0].get("command"),
                 "token": uuid.uuid4().hex,
                 "protocol": LOCK_PROTOCOL,
                 "autana_version": __version__,
@@ -432,10 +436,10 @@ class LockStore:
             return Held(held, reclaimed), evicted, reason
 
     def acquire(self, board, owner, kind, wait=0, stale_seconds=DEFAULT_STALE_SECONDS,
-                on_wait=None):
-        ticket = self.enqueue(board, owner, kind)
+                on_wait=None, command=None):
+        ticket = self.enqueue(board, owner, kind, command=command)
         deadline = self.now() + wait
-        label = record_label({"kind": kind})
+        label = record_label({"kind": kind, "command": command})
         waiting = False
         while True:
             held = self.claim(board, ticket, stale_seconds)

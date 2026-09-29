@@ -32,6 +32,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools
 from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
 
 
+# How autana names the command it runs this process for; private, never a setting.
+COMMAND_ENV = "_AUTANA_COMMAND"
+
+
+def command_label(kind):
+    """What the lock says its holder is doing: the autana command that started
+    this process, else this script called directly."""
+    named = os.environ.get(COMMAND_ENV)
+    return f"autana {named}" if named else f"device.py {kind}"
+
+
 # Ctrl+C, as a shell reports it.
 EXIT_INTERRUPTED = 130
 BAUD = 115200
@@ -428,7 +439,8 @@ class HeldLock:
         self.announce_waiters = announce_waiters
         self.board = board
         self.last_notice = None
-        self.held = store.acquire(board, owner, kind, wait=wait, on_wait=self.wait_notice)
+        self.held = store.acquire(board, owner, kind, wait=wait, on_wait=self.wait_notice,
+                                  command=command_label(kind))
         if not self.held:
             raise LockBusy("device lock was not acquired: "
                            + device_lock.busy_text(store.status(board), store.now()))
@@ -1663,7 +1675,7 @@ def main(argv=None):
     report_parser.add_argument("capture", help="an existing capture file (.log or .log.gz)")
     report_parser.add_argument("--index", help="override index.jsonl (default: records/device)")
     args = parser.parse_args(argv)
-    args.purpose = device_lock.record_label({"kind": args.command})
+    args.purpose = command_label(args.command)
 
     # Touches no lock and no board - it only reads a capture already on disk,
     # so it is handled before board discovery even runs, unlike every command

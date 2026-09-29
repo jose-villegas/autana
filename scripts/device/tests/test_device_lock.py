@@ -1049,11 +1049,11 @@ class LockRecordShapeTests(unittest.TestCase):
     GOLDEN_KEYS = {
         2: {
             "lock": frozenset({
-                "acquired_at", "board", "heartbeat_at", "host", "owner", "pid", "kind",
+                "acquired_at", "board", "heartbeat_at", "host", "owner", "pid", "kind", "command",
                 "token", "protocol", "autana_version",
             }),
             "ticket": frozenset({
-                "board", "created_at", "owner", "pid", "kind", "sequence",
+                "board", "created_at", "owner", "pid", "kind", "command", "sequence",
                 "ticket", "protocol", "autana_version",
             }),
             "human": frozenset({
@@ -1061,7 +1061,7 @@ class LockRecordShapeTests(unittest.TestCase):
                 "autana_version",
             }),
             "last": frozenset({
-                "board", "owner", "kind", "pid", "host", "token", "acquired_at", "ended_at", "how",
+                "board", "owner", "kind", "command", "pid", "host", "token", "acquired_at", "ended_at", "how",
                 "protocol", "autana_version",
             }),
         },

@@ -13,6 +13,7 @@ the device lock. The command list is COMMAND_GROUPS at the end of this
 file; docs/tools/Autana-CLI.md mirrors it.
 """
 
+import contextlib
 import gzip
 import importlib
 import json
@@ -102,7 +103,32 @@ def resolve_project():
     return str(project)
 
 
-def run_command(handler, args):
+COMMAND_ENV = "_AUTANA_COMMAND"
+
+
+@contextlib.contextmanager
+def command_named(name):
+    """Tells the device.py children of this command what to call the lock
+    they take (the label `status` shows), for the length of the command."""
+    previous = os.environ.get(COMMAND_ENV)
+    os.environ[COMMAND_ENV] = name
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(COMMAND_ENV, None)
+        else:
+            os.environ[COMMAND_ENV] = previous
+
+
+def command_words(words):
+    """`tune`, or `lock hand` / `debug freeze` for the two verb routers."""
+    if len(words) > 1 and words[0] in ("lock", "debug") and not words[1].startswith("-"):
+        return f"{words[0]} {words[1]}"
+    return words[0]
+
+
+def run_command(handler, args, name=None):
     """Pop `--project` once, ahead of `handler`'s own parsing, and let
     resolve_project()/project_override() read it for the length of this
     call. The one place main() and console() both dispatch through."""
@@ -120,7 +146,8 @@ def run_command(handler, args):
             autana_config.load(project)
         except autana_config.ConfigError as error:
             sys.exit(f"autana: {error}")
-        return handler(args)
+        with command_named(name) if name else contextlib.nullcontext():
+            return handler(args)
     finally:
         _project_arg = previous
         if inherited is None:
@@ -1103,7 +1130,8 @@ def forward(line, verb):
     no dedicated autana command of its own (runsuite, today) falls back to
     that window, since nothing then completes early."""
     reply = verb.upper()
-    _, replies = send(line, reply=reply, until=[reply + "_END", reply + "_ERR"], optional=True)
+    with command_named(f"console {verb}"):
+        _, replies = send(line, reply=reply, until=[reply + "_END", reply + "_ERR"], optional=True)
     return replies
 
 
@@ -1131,7 +1159,7 @@ def console(_args=None):
             if verb == "help":
                 print(help_text(rest, prefix=""))
             elif verb in COMMANDS and verb != "console":
-                run_command(COMMANDS[verb], rest)
+                run_command(COMMANDS[verb], rest, command_words([verb, *rest]))
             else:
                 replies = forward(line, verb)
                 print("\n".join(replies) if replies else "sent")
@@ -1472,7 +1500,7 @@ def main():
         replies = forward(" ".join(argv), argv[0])
         print("\n".join(replies) if replies else "sent")
         sys.exit(0)
-    sys.exit(run_command(COMMANDS[argv[0]], argv[1:]))
+    sys.exit(run_command(COMMANDS[argv[0]], argv[1:], command_words(argv)))
 
 
 if __name__ == "__main__":
