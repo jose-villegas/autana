@@ -44,6 +44,7 @@ ignore_tune_reply(const char* line) {
 static void
 release(void) {
     tune_handle_line("RESET ridge.axis_dissolve_ms", ignore_tune_reply);
+    tune_handle_line("RESET ridge.level_tau_ms", ignore_tune_reply);
     gfx_heal_restore_defaults();
     gfx_reset_for_test();
 }
@@ -235,6 +236,32 @@ test_a_dissolved_strip_switch_is_sent_and_ends_on_a_full_paint(void) {
     assert_audit("dissolved switch", &audit);
 }
 
+/* Crossing the diagonal again before the first dissolve is over restarts
+ * it: the levels already painted must not be left showing the old picture. */
+static void
+test_a_strip_switch_inside_a_running_dissolve_is_sent_and_ends_on_a_full_paint(void) {
+    fixture();
+    tune_handle_line("SET ridge.axis_dissolve_ms 400", ignore_tune_reply);
+    tune_handle_line("SET ridge.level_tau_ms 60", ignore_tune_reply);
+    start_arm(ARM_TILT_SWEEP);
+    rig_t rig;
+    rig_open(&rig);
+    for (int frame = 0; frame < 144; frame++) {
+        const bool upright = frame / 12 % 2 == 0;
+        ui_ridge_set_gravity(upright ? -87 : -241, upright ? 241 : 87, 256, 0);
+        rig_frame(&rig, &ridge_arm_idle_input);
+    }
+    for (int frame = 0; frame < 60; frame++) {
+        rig_frame(&rig, &ridge_arm_idle_input);
+    }
+    const int restarts = ui_ridge_dissolve_restarts_for_test();
+    const bool dissolving = ui_ridge_dissolving_for_test();
+    const audit_t audit = rig_close(&rig);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, restarts, "no switch began inside a running dissolve");
+    TEST_ASSERT_FALSE_MESSAGE(dissolving, "the restarted dissolve never finished");
+    assert_audit("restarted dissolve", &audit);
+}
+
 /* Once the tilting stops, the gradient catches up with the ridge - even a
  * turn of about a degree, less than it follows in one step - and every
  * frame on the way is a full paint's. */
@@ -276,6 +303,7 @@ suite_ridge_repaint(void) {
     RUN_TEST(test_shaking_plucks_repaint_as_a_full_paint_and_are_sent);
     RUN_TEST(test_the_boot_hold_and_ease_in_repaint_as_a_full_paint_and_are_sent);
     RUN_TEST(test_a_dissolved_strip_switch_is_sent_and_ends_on_a_full_paint);
+    RUN_TEST(test_a_strip_switch_inside_a_running_dissolve_is_sent_and_ends_on_a_full_paint);
     RUN_TEST(test_the_gradient_catches_up_once_the_tilt_stops);
 }
 

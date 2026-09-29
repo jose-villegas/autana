@@ -130,6 +130,7 @@ typedef struct {
 #if TUNE_ENABLED
     uint32_t dissolve_ms;
     int dissolve_level;
+    int dissolve_restarts;
 #endif
     edge_lines_t was_lines, now_lines;
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
@@ -1007,6 +1008,7 @@ dissolve_wanted(void) {
 
 static void
 start_dissolve(void) {
+    ridge->dissolve_restarts += dissolving();
     memcpy(ridge->shown, ridge->boundary, sizeof ridge->shown);
     ridge->dissolve_level = 0;
     ridge->dissolve_ms = 0;
@@ -1198,6 +1200,9 @@ ui_ridge_reset_for_test(void) {
     ridge->wave_ms = 0;
     catch_up_gradient();
     finish_dissolve();
+#if TUNE_ENABLED
+    ridge->dissolve_restarts = 0;
+#endif
 }
 
 void
@@ -1222,6 +1227,16 @@ bool
 ui_ridge_dissolving_for_test(void) {
     allocate_once();
     return ridge != NULL && dissolving();
+}
+
+int
+ui_ridge_dissolve_restarts_for_test(void) {
+    allocate_once();
+#if TUNE_ENABLED
+    return ridge != NULL ? ridge->dissolve_restarts : 0;
+#else
+    return 0;
+#endif
 }
 
 int
