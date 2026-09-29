@@ -1540,13 +1540,13 @@ def board_statuses(store, board=None):
             for name in boards]
 
 
-def print_statuses(entries):
+def print_statuses(entries, now):
     if not entries:
         print("no board found")
     for entry in entries:
         where = "on " + entry["port"] if entry["port"] else "not on USB"
         print(f"board {entry['board']} ({where})")
-        for line in device_lock.status_lines(entry):
+        for line in device_lock.status_lines(entry, now):
             print("  " + line)
 
 
@@ -1692,7 +1692,7 @@ def main(argv=None):
             if args.json:
                 print(json.dumps({"boards": entries}))
             else:
-                print_statuses(entries)
+                print_statuses(entries, store.now())
             return 0
         if args.command == "resolve-port":
             print(find_board(args.board).port)
@@ -1715,7 +1715,7 @@ def main(argv=None):
             return wait_for_human_release(store, board, reservation_id, args.wait)
         if args.command == "take-back":
             store.clear_human(board)
-            print_statuses(board_statuses(store, board))
+            print_statuses(board_statuses(store, board), store.now())
             return 0
         if args.command == "flash":
             extra_flags = ["--perf-scope"] if args.perf_scope else []

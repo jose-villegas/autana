@@ -225,7 +225,7 @@ before running it.
 
 | Command | Fields |
 |---|---|
-| `status` | `boards`: `board`, `port`, `state` (`unlocked`, `held`, `human`), `holder` (`owner`, `purpose`), `since`, `elapsed_seconds`, `estimated_free`, `expires_at`, `remaining_seconds`, `stale` (`owner`, `purpose`, `reason`), `expired` (`owner`, `purpose`, `expired_at`, `ago_seconds`), `waiting` (`owner`, `purpose`, `estimated_start`). Times are epoch seconds; unknown ones are `null`. See [Device-Lock.md](Device-Lock.md#exit-codes-and-json-status). |
+| `status` | `boards`: `board`, `port`, `state` (`unlocked`, `held`, `human`), `holder` (`owner`, `purpose`), `since`, `estimated_free`, `expires_at`, `stale` (`owner`, `purpose`, `reason`), `expired` (`owner`, `purpose`, `expired_at`), `waiting` (`owner`, `purpose`, `estimated_start`). Times are epoch seconds; unknown ones are `null`. See [Device-Lock.md](Device-Lock.md#exit-codes-and-json-status). |
 | `buildid` | `build_id` |
 | `lock id` | `owner`, `pid` |
 | `apps` | `apps`: `name`, `running` |

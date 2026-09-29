@@ -252,7 +252,8 @@ Which board, how long to wait and the lock's owner are the global options
 | `2` | `device.py` itself, for a bad command line. |
 
 `autana status --json` prints `{"boards": [...]}`, one object per board.
-Times are epoch seconds; an estimate without enough history is `null`.
+Times are epoch seconds; an estimate without enough history is `null`. Only timestamps
+are stored, so subtract them from the current time for an age; the human text does that itself.
 
 | Field | |
 |---|---|
@@ -260,11 +261,11 @@ Times are epoch seconds; an estimate without enough history is `null`.
 | `port` | COM port now, `null` when the board is not on USB |
 | `state` | `unlocked`, `held`, or `human` (a person's reservation) |
 | `holder` | `{"owner", "purpose"}`, the purpose being a reservation's note; `null` when unlocked. A held lock's also carries `protocol` and `autana_version`. |
-| `since`, `elapsed_seconds` | when the holder took the board, and for how long |
+| `since` | when the holder took the board |
 | `estimated_free` | when the holder should be done |
-| `expires_at`, `remaining_seconds` | when a reservation lapses, and how long is left; else `null` |
+| `expires_at` | when a reservation lapses; else `null` |
 | `stale` | `{"owner", "purpose", "reason"}` of a lock the next waiter will reclaim, else `null` |
-| `expired` | `{"owner", "purpose", "expired_at", "ago_seconds"}` of a reservation that lapsed and is treated as released, else `null` |
+| `expired` | `{"owner", "purpose", "expired_at"}` of a reservation that lapsed and is treated as released, else `null` |
 | `waiting` | `[{"owner", "purpose", "estimated_start"}]` in queue order |
 
 ### Lock events

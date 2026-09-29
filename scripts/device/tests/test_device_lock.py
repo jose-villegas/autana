@@ -441,7 +441,7 @@ class LockTests(unittest.TestCase):
 
     def printed_status(self):
         return "\n".join(device_lock.status_lines(
-            device_lock.status_entry(self.lock, "COM5", durations={})))
+            device_lock.status_entry(self.lock, "COM5", durations={}), self.clock.now()))
 
     def test_status_does_not_report_a_dead_holder_as_holding_the_board(self):
         self.write_holder(pid=99)
@@ -547,8 +547,8 @@ class HumanReservationExpiryTests(unittest.TestCase):
         entry = device_lock.status_entry(self.lock, "COM5", durations={})
         self.assertEqual(entry["state"], "unlocked")
         self.assertEqual(entry["expired"]["owner"], "maintainer")
-        self.assertEqual(entry["expired"]["ago_seconds"], 120)
-        text = "\n".join(device_lock.status_lines(entry))
+        self.assertEqual(entry["expired"]["expired_at"], 1000.0 + self.HOUR)
+        text = "\n".join(device_lock.status_lines(entry, self.clock.now()))
         self.assertIn("human reservation from maintainer: bench expired 2m ago and is released",
                       text)
 
@@ -556,8 +556,17 @@ class HumanReservationExpiryTests(unittest.TestCase):
         self.lock.set_human("COM5", "maintainer", "bench")
         self.clock.advance(1200)
         entry = device_lock.status_entry(self.lock, "COM5", durations={})
-        self.assertEqual(entry["remaining_seconds"], self.HOUR - 1200)
-        self.assertIn("40m left", "\n".join(device_lock.status_lines(entry)))
+        self.assertEqual((entry["since"], entry["expires_at"]), (1000.0, 1000.0 + self.HOUR))
+        self.assertIn("40m left", "\n".join(device_lock.status_lines(entry, self.clock.now())))
+
+    def test_status_json_carries_timestamps_and_no_relative_durations(self):
+        self.lock.set_human("COM5", "maintainer", "bench")
+        self.clock.advance(self.HOUR + 120)
+        lapsed = device_lock.status_entry(self.lock, "COM5", durations={})
+        self.lock.set_human("COM5", "maintainer", "bench")
+        held = device_lock.status_entry(self.lock, "COM5", durations={})
+        derived = {"elapsed_seconds", "remaining_seconds", "ago_seconds"}
+        self.assertFalse(derived & set(held) | derived & set(lapsed["expired"]))
 
     def test_reserving_again_renews_it(self):
         first, _ = self.lock.set_human("COM5", "maintainer", "bench")
@@ -933,7 +942,7 @@ class ProtocolTests(unittest.TestCase):
         entry = device_lock.status_entry(self.lock, "COM5", durations={})
         self.assertEqual(entry["holder"]["protocol"], 0)
         self.assertIsNone(entry["holder"]["autana_version"])
-        text = "\n".join(device_lock.status_lines(entry))
+        text = "\n".join(device_lock.status_lines(entry, self.clock.now()))
         self.assertIn("lock protocol 0", text)
         self.assertIn("autana unknown", text)
 
@@ -961,7 +970,7 @@ class ProtocolTests(unittest.TestCase):
     def test_status_names_a_live_holders_protocol_and_version(self):
         self.write_foreign_lock(protocol=device_lock.LOCK_PROTOCOL, pid=1)
         entry = device_lock.status_entry(self.lock, "COM5", durations={})
-        text = "\n".join(device_lock.status_lines(entry))
+        text = "\n".join(device_lock.status_lines(entry, self.clock.now()))
         self.assertIn(f"lock protocol {device_lock.LOCK_PROTOCOL}", text)
         self.assertIn("autana 9.9.9", text)
 

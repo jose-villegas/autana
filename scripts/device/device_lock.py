@@ -668,23 +668,17 @@ def status_entry(store, board, port=None, now=None, durations=None):
     durations = duration_history(store.root) if durations is None else durations
     status = store.status(board)
     entry = {"board": board, "port": port, "state": "unlocked", "holder": None,
-             "since": None, "elapsed_seconds": None, "estimated_free": None,
-             "stale": None, "expired": None, "expires_at": None,
-             "remaining_seconds": None, "waiting": []}
+             "since": None, "estimated_free": None,
+             "stale": None, "expired": None, "expires_at": None, "waiting": []}
     if status.get("expired_human"):
         lapsed = status["expired_human"]
         entry["expired"] = {"owner": lapsed["owner"], "purpose": lapsed.get("note"),
-                            "expired_at": store.human_expires_at(lapsed),
-                            "ago_seconds": round(max(0, now - store.human_expires_at(lapsed)))}
+                            "expired_at": store.human_expires_at(lapsed)}
     if status["human"]:
         human = status["human"]
         entry.update(state="human", holder={"owner": human["owner"], "purpose": human.get("note")},
                      since=human.get("since_at"),
-                     expires_at=human_expires_at(human),
-                     remaining_seconds=None if human_expires_at(human) is None
-                     else round(max(0, human_expires_at(human) - now)),
-                     elapsed_seconds=round(max(0, now - human["since_at"]))
-                     if human.get("since_at") is not None else None)
+                     expires_at=human_expires_at(human))
     elif status["lock"]:
         lock = status["lock"]
         duration = durations.get(lock.get("kind"))
@@ -694,7 +688,6 @@ def status_entry(store, board, port=None, now=None, durations=None):
                              "protocol": lock.get("protocol", 0),
                              "autana_version": lock.get("autana_version")},
                      since=acquired,
-                     elapsed_seconds=round(max(0, now - acquired)) if acquired is not None else None,
                      estimated_free=(max(now, acquired + duration)
                                      if duration is not None and acquired is not None else None))
     elif status["reclaimable"]:
@@ -792,16 +785,21 @@ def duration_text(seconds):
     return f"{minutes // 60}h {minutes % 60}m" if minutes % 60 else f"{minutes // 60}h"
 
 
-def status_lines(entry):
+def elapsed_seconds(since, now):
+    return round(max(0, now - since)) if since is not None else None
+
+
+def status_lines(entry, now):
+    """The human text of one entry; durations are `now` minus its timestamps."""
     holder = entry["holder"]
     if entry["state"] == "human":
-        left = (f"; {duration_text(entry['remaining_seconds'])} left, "
+        left = (f"; {duration_text(entry['expires_at'] - now)} left, "
                 "`autana lock hand` again renews it") if entry["expires_at"] is not None else ""
         lines = [f"human reservation: {holder['owner']}: {holder['purpose']} "
-                 f"(since {local_time(entry['since'])}; {entry['elapsed_seconds']}s ago{left})"]
+                 f"(since {local_time(entry['since'])}; {elapsed_seconds(entry['since'], now)}s ago{left})"]
     elif entry["state"] == "held":
         lines = [f"held by {holder['owner']} for {holder['purpose']} since "
-                 f"{local_time(entry['since'])} (elapsed {entry['elapsed_seconds']}s; "
+                 f"{local_time(entry['since'])} (elapsed {elapsed_seconds(entry['since'], now)}s; "
                  f"estimated free {format_estimate(entry['estimated_free'])}; "
                  f"{holder_version_details(holder)})"]
     elif entry["stale"]:
@@ -810,7 +808,7 @@ def status_lines(entry):
     elif entry["expired"]:
         lapsed = entry["expired"]
         lines = [f"unlocked - human reservation from {lapsed['owner']}: {lapsed['purpose']} "
-                 f"expired {duration_text(lapsed['ago_seconds'])} ago and is released"]
+                 f"expired {duration_text(now - lapsed['expired_at'])} ago and is released"]
     else:
         lines = ["unlocked"]
     if entry["waiting"]:
@@ -847,7 +845,8 @@ def main(argv=None):
     board = normalise_board(args.board)
     store = LockStore(args.root)
     if args.command == "status":
-        print("\n".join(status_lines(status_entry(store, board))))
+        now = store.now()
+        print("\n".join(status_lines(status_entry(store, board, now=now), now)))
         return 0
     if args.command == "acquire":
         held = store.acquire(board, args.owner, args.purpose,
