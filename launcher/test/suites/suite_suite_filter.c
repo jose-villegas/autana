@@ -24,8 +24,22 @@ probe(void) {
     probe_calls++;
 }
 
+static bool quiet_now;
+static int quiet_calls_seen_by_fixture;
+static int loud_calls_seen_by_fixture;
+
+static void
+hook(bool quiet) {
+    quiet_now = quiet;
+}
+
 static void
 filter_fixture_suite(void) {
+    if (quiet_now) {
+        quiet_calls_seen_by_fixture++;
+    } else {
+        loud_calls_seen_by_fixture++;
+    }
     for (int i = 0; i < FIXTURE_TESTS; i++) {
         ran[i] += suites_test_runs(fixture_names[i]) ? 1 : 0;
     }
@@ -44,6 +58,10 @@ fixture(void) {
     suites_filter_clear();
     memset(ran, 0, sizeof ran);
     probe_calls = 0;
+    quiet_now = false;
+    quiet_calls_seen_by_fixture = 0;
+    loud_calls_seen_by_fixture = 0;
+    suites_set_survey_hook(NULL);
 }
 
 static void
@@ -98,6 +116,32 @@ test_a_pattern_matching_nothing_runs_no_test_at_all(void) {
 }
 
 static void
+test_the_survey_walk_is_quiet_and_the_real_run_is_not(void) {
+    fixture();
+    suites_set_survey_hook(hook);
+    TEST_ASSERT_TRUE(suites_filter_add("fire"));
+    TEST_ASSERT_TRUE(suites_run_one("filter_fixture_suite"));
+    TEST_ASSERT_EQUAL_INT(1, quiet_calls_seen_by_fixture);
+    TEST_ASSERT_EQUAL_INT(1, loud_calls_seen_by_fixture);
+    TEST_ASSERT_FALSE(quiet_now);
+    suites_filter_clear();
+    suites_set_survey_hook(NULL);
+}
+
+static void
+test_an_unmatched_survey_ends_quiet_mode_too(void) {
+    fixture();
+    suites_set_survey_hook(hook);
+    TEST_ASSERT_TRUE(suites_filter_add("nothing_is_called_this"));
+    TEST_ASSERT_TRUE(suites_run_one("filter_fixture_suite"));
+    TEST_ASSERT_EQUAL_INT(1, quiet_calls_seen_by_fixture);
+    TEST_ASSERT_EQUAL_INT(0, loud_calls_seen_by_fixture);
+    TEST_ASSERT_FALSE(quiet_now);
+    suites_filter_clear();
+    suites_set_survey_hook(NULL);
+}
+
+static void
 test_the_timed_runner_skips_a_test_the_filter_does_not_select(void) {
     fixture();
     TEST_ASSERT_TRUE(suites_filter_add("nothing_is_called_this"));
@@ -136,6 +180,8 @@ run_suite_filter_suite(void) {
     RUN_TEST(test_a_pattern_runs_only_the_tests_whose_name_contains_it);
     RUN_TEST(test_several_patterns_select_the_union);
     RUN_TEST(test_a_pattern_matching_nothing_runs_no_test_at_all);
+    RUN_TEST(test_the_survey_walk_is_quiet_and_the_real_run_is_not);
+    RUN_TEST(test_an_unmatched_survey_ends_quiet_mode_too);
     RUN_TEST(test_the_timed_runner_skips_a_test_the_filter_does_not_select);
     RUN_TEST(test_clearing_the_filter_restores_the_whole_suite);
     RUN_TEST(test_a_pattern_the_device_cannot_hold_is_refused);

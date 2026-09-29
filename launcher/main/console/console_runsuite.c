@@ -10,6 +10,8 @@
 #include "console/console_latch.h"
 #include "console/console_verbs.h"
 
+#include <stdarg.h>
+
 #include "esp_log.h"
 #include "suites.h"
 
@@ -29,6 +31,32 @@ console_verb_runsuite(const char* args, console_reply_fn reply) {
  * name to fit it, the same reasoning suites.h's own SUITE_MAX comment
  * gives. */
 CONSOLE_VERB(runsuite, 38, console_verb_runsuite)
+
+/* The survey walk runs a suite's code between its tests without the tests, so
+ * whatever it logs there (a summary, a perf line) would read as a verdict on
+ * tests that never ran. */
+static vprintf_like_t log_before_survey;
+
+static int
+discard_log(const char* format, va_list args) {
+    (void)format;
+    (void)args;
+    return 0;
+}
+
+static void
+silence_survey_logs(bool quiet) {
+    if (quiet) {
+        log_before_survey = esp_log_set_vprintf(discard_log);
+    } else {
+        esp_log_set_vprintf(log_before_survey);
+    }
+}
+
+__attribute__((constructor)) static void
+register_survey_hook(void) {
+    suites_set_survey_hook(silence_survey_logs);
+}
 
 /* TESTFILTER <pattern> adds one substring the next RUNSUITE narrows its tests
  * to; bare TESTFILTER forgets them all. A line holds one pattern because the

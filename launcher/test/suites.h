@@ -62,6 +62,11 @@ bool suites_run_one(const char* name);
 #define SUITE_FILTER_MAX 8
 #define SUITE_FILTER_LEN 40
 bool suites_filter_add(const char* pattern);
+
+/* Called with true as the skip-everything walk starts and false as it ends,
+ * so a platform can silence what a suite logs between its tests: that output
+ * describes tests that did not run. */
+void suites_set_survey_hook(void (*hook)(bool quiet));
 void suites_filter_clear(void);
 
 /* Asked by suite_run_test_timed() (timing.c) for each test: true to run it. Always true

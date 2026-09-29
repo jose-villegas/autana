@@ -144,7 +144,12 @@ class BatchSummaryTests(unittest.TestCase):
     def test_reports_each_run_and_the_spread(self):
         text = self.summary([(7000, "PASS"), (7700, "PASS"), (7350, "PASS")])
         self.assertIn("| `test_a_full_size_step_fits_in_the_frame_budget` | 7000 | 7700 | 7350 "
-                      "| 7000 | 7700 | 10.0% |", text)
+                      "| 7000 | 7350 | 7700 | 10.0% |", text)
+
+    def test_the_median_of_an_even_number_of_runs_is_the_middle_pair_mean(self):
+        text = self.summary([(7000, "PASS"), (9000, "PASS"), (7100, "PASS"), (8000, "PASS")])
+        self.assertIn("| 7000 | 7550 | 9000 | 28.6% |", text)
+        self.assertIn("| min | median | max | spread |", text)
 
     def test_a_result_that_changes_between_runs_of_one_image_is_listed(self):
         text = self.summary([(7167, "FAIL"), (10937, "PASS"), (7169, "FAIL")])
@@ -192,7 +197,7 @@ class FilteredRunReportTests(unittest.TestCase):
 
     def test_the_batch_summary_has_rows_for_the_tests_that_ran_only(self):
         text = self.batch(True)
-        self.assertIn("| `test_fire_fits` | 5000 | 5000 | 5000 | 5000 | 0.0% |", text)
+        self.assertIn("| `test_fire_fits` | 5000 | 5000 | 5000 | 5000 | 5000 | 0.0% |", text)
         self.assertIn("| `test_gas_fits` |", text)
         self.assertNotIn("test_water_fits", text)
         self.assertNotIn("missing", text.lower())

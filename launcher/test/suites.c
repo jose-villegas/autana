@@ -86,6 +86,7 @@ static int pattern_count;
 static int pattern_hits[SUITE_FILTER_MAX];
 static int selected_count;
 static filter_phase_t phase;
+static void (*survey_hook)(bool quiet);
 
 bool
 suites_filter_add(const char* pattern) {
@@ -146,11 +147,22 @@ suites_filter_selected(void) {
     return selected_count;
 }
 
+void
+suites_set_survey_hook(void (*hook)(bool quiet)) {
+    survey_hook = hook;
+}
+
 static void
 run_filtered(const suite_entry_t* entry) {
     memset(pattern_hits, 0, sizeof pattern_hits);
     phase = FILTER_SURVEY;
+    if (survey_hook != NULL) {
+        survey_hook(true);
+    }
     entry->fn();
+    if (survey_hook != NULL) {
+        survey_hook(false);
+    }
     if (suites_filter_unmatched() == 0) {
         phase = FILTER_RUN;
         entry->fn();
