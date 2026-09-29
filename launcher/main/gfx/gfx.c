@@ -818,8 +818,8 @@ gfx_region_dirty(int x, int y, int w, int h) {
 
 /* Colour */
 
-/* Pack 0xRRGGBB to RGB565, byte-swapped. QSPI needs high and low bytes
- * swapped, but LVGL's port doesn't handle it. */
+/* Pack 0xRRGGBB to RGB565, byte-swapped: the panel takes the high byte
+ * first, the CPU stores the low byte first, and DMA sends memory as it lies. */
 gfx_color_t
 gfx_rgb(uint32_t rgb) {
     return GFX_RGB(rgb);

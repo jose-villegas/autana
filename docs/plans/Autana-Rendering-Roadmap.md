@@ -1081,7 +1081,7 @@ cheapest path to something that is unmistakably a game.
    height (one command each); Phase 2 still ends with the device sweep
    itself across heights measuring present time, rasterizer time, and RAM
    freed, in the same style as the `GATHER_MAX_PIXELS` and
-   `LEAF_REFINE_MAX_RUNS` sweeps recorded in Display-and-Rendering.md.
+   `LEAF_REFINE_MAX_RUNS` sweeps summarised in Display-and-Rendering.md.
 3. ~~"Parallax" in the platformer~~ **Decided: layered
    parallax scrolling**, not per-pixel parallax mapping.
 4. ~~Own rasterizer vs. deeper small3dlib configuration.~~ **Decided:

@@ -1,577 +1,211 @@
 # Display and Rendering
 
-Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 - see
-[`README.md`](README.md) for the full set. Everything here was verified on the
-actual board or read out of the actual source. See
-[Board-and-Memory.md](Board-and-Memory.md) for the SPI2 wiring this builds on.
+The measured facts about the panel link that
+[`Gfx-and-Presentation.md`](../Gfx-and-Presentation.md) designs around: what
+the bus costs, what the panel tolerates, what a call costs, what was tried.
+The mechanisms live there. Every number here was measured on the board, or
+read from the source. The SPI2 wiring is in
+[`Board-and-Memory.md`](Board-and-Memory.md).
 
----
+## The path of a frame
 
-## Owning panel bring-up
+```mermaid
+flowchart LR
+    FB["PSRAM framebuffer<br/>368 x 448 RGB565"] -.->|"draw calls mark"| DT["dirty tracker<br/>cells, leaves"]
+    DT --> GAT["gathered run"]
+    DT --> BAND["partial band"]
+    DT --> FULL["full-width strip"]
+    GAT -->|"pack"| BNC["bounce slot<br/>internal DMA RAM"]
+    BAND -->|"copy"| BNC
+    FULL -->|"copy"| BNC
+    BNC --> Q["SPI2 DMA queue"]
+    Q --> LINK["QSPI, 4 lanes"]
+    LINK --> GRAM["panel GRAM"]
+```
 
-`gfx.c` does not call the BSP's `bsp_display_new()`. It initialises SPI2, the
-panel IO and the panel itself, keeping `board_detect()` for variant detection
-and the reset lines on the (optional) IO expander.
+The panel refreshes itself from its GRAM, so a region that is not sent keeps
+its last picture. A **cell** is one box of the dirty tracker's 7 x 4 grid and
+a **leaf** a finer bit under it
+([Dirty tracking](../Gfx-and-Presentation.md#dirty-tracking)). Two other
+layouts replace the framebuffer: **band mode** (`GFX_LAYOUT_BANDS`) draws
+into a two-slot **band ring** that gfx sends band by band, and
+`GFX_LAYOUT_INDEXED` keeps a palette-index image that is expanded on send
+([Modes](../Gfx-and-Presentation.md#modes)).
 
-That is not a preference. The BSP holds `panel_handle` and `io_handle` as
-private statics and offers no way to reach the init sequence at all — owning
-bring-up is what lets `gfx.c` set its own QSPI clock (`GFX_QSPI_HZ`), the
-transfer queue that strip_bounce relies on, and Waveshare-tuned init commands rather than the
-BSP's defaults.
+## Bring-up
 
-Owning bring-up costs one thing: Waveshare's `sh8601_lcd_init_cmds` array is a
-private static too. It is nine commands, Apache-2.0, and is copied into `gfx.c`
-with attribution — the driver's built-in defaults are *not* a substitute, since
-Waveshare tuned `0x44`/`0x53`/`0x51` for this panel.
+`gfx.c` does not call the BSP's `bsp_display_new()`. It opens SPI2, the panel
+IO and the panel itself, and keeps `board_detect()` to tell the two panel
+variants apart (SH8601 with FT touch, CO5300 with CST). The BSP keeps its
+panel and IO handles private and offers no way to reach the init sequence,
+and owning bring-up is what lets `gfx.c` set its own QSPI clock and queue
+several transfers.
 
----
+Owning it costs the init commands, which the BSP also keeps private.
+`gfx.c` carries one table per panel: `lcd_init_cmds` for the SH8601, copied
+from the BSP, and `co5300_init_cmds` from Waveshare's colour-bar example,
+both Apache-2.0 with attribution. The driver's defaults are no substitute:
+Waveshare tuned `0x44`, `0x53` and `0x51` for this panel.
 
-## Driving the panel directly
+Driving the panel directly has four failures that give wrong output and no
+error:
 
-Driving the panel directly requires four safeguards. All four
-fail *silently* — wrong output rather than an error.
-
-**1. `esp_lcd_panel_draw_bitmap()` is asynchronous.** It queues a DMA transfer
-that reads out of the buffer you passed. Touching that memory before the
-transfer completes shreds the image: the CPU's fill and the DMA's read race
-each other down the buffer, so only a narrow band of real content survives per
-strip. Symptom looked like "two thin lines waving". Register
-`on_color_trans_done` and wait for it.
-
-**2. The completion semaphore must be counting, not binary.** A whole frame's
-strips get queued before any is awaited, so several finish first. A binary
-semaphore saturates at one and discards the rest — the second `take` blocks
-forever. Symptom: clean boot log that stops dead after the last setup line.
-
-**3. RGB565 must be byte-swapped.** The panel transfer expects swapped bytes;
-`gfx.c` performs the swap.
-
-**4. Coordinates want 2-pixel alignment.** Full-width strips at multiples of
-64 rows satisfy this naturally.
-
----
-
-## Measured performance
-
-A 3D scene's clear/rasterize/blit timing comes from its own app's
-frame-budget suite - see
-[`../plans/Autana-Rendering-Roadmap.md`](../plans/Autana-Rendering-Roadmap.md) for where
-that stands. What follows here is bus-level measurement, board-verified and
-independent of any one scene.
-
-### The blit is bus-bound, and the clock was half what it could be
-
-The most useful number here. One frame is 322 KiB over four QSPI lanes, and at
-40 MHz `gfx_present()` measured **17.6 ms against a theoretical 16.5** - 94% of
-the bus's peak. That settles a question worth settling: the blit is *purely*
-bandwidth-bound. No amount of CPU optimisation touches it. Only two things can:
-send fewer bytes, or clock the bus faster.
-
-The vendor driver defaults to 40 MHz, and `SH8601_PANEL_IO_QSPI_CONFIG` bakes
-that in. The panel runs at 80 without complaint on the surface:
-
-| | 40 MHz | 80 MHz |
+| Symptom | Cause | Guard |
 |---|---|---|
-| `gfx_present()` | 17,602 us | 9,600 us |
-| Shell framerate | 43.5 fps | 70.0 fps |
+| Two thin lines waving, the rest of the image gone | `esp_lcd_panel_draw_bitmap()` only queues a DMA read of your buffer; the CPU's next write races it | never touch a sent buffer before its `on_color_trans_done` fires (`on_strip_sent`) |
+| Clean boot log that stops after the last setup line | a whole frame is queued before any transfer is awaited, so several finish first | `strip_sent` is a counting semaphore, one take per queued transfer |
+| Colours wrong | the panel wants byte-swapped RGB565 | `gfx_rgb()` swaps |
+| Stale pixels at a window's corners | the controller takes windows on even edges only | `even_floor()`/`even_ceil()` round every window outward |
 
-**80 MHz is outside the panel's rating** (proven on device). The
-CO5300 datasheet, section 6.4 (QSPI write):
+## The panel link
+
+### The blit is bus-bound
+
+One frame is 322 KiB over four QSPI lanes. At 40 MHz `gfx_present()`
+measured **17.6 ms against a theoretical 16.5**, 94% of the bus's peak: the
+blit is bandwidth-bound and no CPU optimisation touches it. Only sending
+fewer bytes or a faster clock can.
+
+| Full frame | 40 MHz | 80 MHz |
+|---|---|---|
+| Bus time, theoretical | 16.5 ms | 8.2 ms |
+| `gfx_present()`, measured | 17,602 us | 9,600 us |
+| Shell frame rate | 43.5 fps | 70.0 fps |
+
+The vendor driver defaults to 40 MHz and the panel accepts 80. There is
+nothing in between: GPSPI2 derives its clock from 80 MHz through an integer
+divider (`spi_ll_master_cal_clock()`), which yields 80, or at most 40 for
+any request of 60 MHz or under. A 60 MHz request measured byte-identical to
+40, boot timestamps included, because it was 40.
+
+### 80 MHz is outside the panel's rating
+
+The CO5300 datasheet (section 6.4, QSPI write) against this board, whose
+panel pins all go through the GPIO matrix. Setup and hold are how long data
+must be stable around the clock edge; skew is how far the clock and data
+arrivals can drift apart, which eats that margin.
 
 | Parameter | Datasheet | At 80 MHz | At 40 MHz |
 |---|---|---|---|
 | Clock cycle | >= 20 ns (50 MHz max) | 12.5 ns | 25 ns |
 | Clock high / low | >= 6.5 ns | 6.25 ns | 12.5 ns |
 | CS setup (IDF default, half a clock) | >= 10 ns | 6.25 ns | 12.5 ns |
-| Data setup / hold | >= 4 / 4 ns | +-2.25 ns clock-to-data skew left | +-8.5 ns |
+| Data setup / hold | >= 4 / 4 ns | +-2.25 ns of skew left | +-8.5 ns |
 
-On this board every panel pin (SCK GPIO11, D0-D3 GPIO4-7, CS GPIO12) goes
-through the GPIO matrix; the SPI2 IOMUX pins are elsewhere. The S3 cannot
-make anything between 40 and 80 (see below), so 40 is the fastest in-spec
-clock.
+At 80 MHz a stream of small moving partial updates shows sparse red pixels
+in landscape and thin black lines in portrait or while tilting; an indexed
+image shows it only at its smallest cell size. The fault is pattern-dependent,
+not noise: the same window sent again next frame fails the same way, and only
+a send with a different window or strip layout heals it. Other projects at
+80 MHz redraw whole frames, so a bad pixel lives about 16 ms; gfx sends dirty
+regions, so it stays until the region changes. 40 MHz is clean. Both clocks
+stay, with the shell owning the choice and a heal for partial redraws: see
+[Panel clock and heal](../Gfx-and-Presentation.md#panel-clock-and-heal) and
+`GFX_QSPI_HZ` in `gfx.h`.
 
-**What it looks like.** A stream of small moving regions, each sent as a
-partial update, shows sparse red pixels in landscape and thin black lines
-through the moving area in portrait or while tilting; 256-colour mode shows
-it only at its finest cell size. 40 MHz is clean.
-The corruption is pattern-dependent, not random noise: re-sending the same
-window next frame fails the same way, and only a send with a different
-window or strip layout (a full redraw, say) heals it. Screenshots never show
-it - see "Panel-link faults are invisible to screenshots" below.
+Each of these was tried hands-on at 80 MHz, and none cleared it:
 
-**Why other projects run 80 MHz without seeing it.** Most community code for
-this board runs 40. The ones at 80 redraw whole frames or full-width bands
-every frame, so a bad pixel lives ~16 ms. gfx sends only dirty regions, so a
-bad pixel stays until that region changes.
+| Tried | What it rules out |
+|---|---|
+| 40 mA pad drive (`CONFIG_LAUNCHER_GFX_QSPI_STRONG_PADS`) | weak drive strength |
+| `cs_ena_pretrans = 1` (18.75 ns CS setup) | CS setup |
+| `CASET`/`RASET` at 40 MHz, pixel data at 80 | the panel latching a window late |
+| every dirty region sent twice, one present apart | a one-off glitch |
+| no pixel write continued across a held CS (sub-windows under 32 KiB) | one long transaction |
+| PSRAM and flash at 80 instead of 120 MHz | memory-bus contention |
+| the send audit: every changed pixel went out with correct bytes, PSRAM read clean | a software fault |
 
-**Ruled out on device, each hands-on at 80 MHz:**
-
-- 40 mA pad drive (`CONFIG_LAUNCHER_GFX_QSPI_STRONG_PADS`)
-- `cs_ena_pretrans = 1` (18.75 ns CS setup instead of 6.25)
-- window commands (`CASET`/`RASET`) at 40 MHz, pixel data at 80
-- every dirty region sent twice, one present apart
-- no pixel write continued across a held CS (sub-windows under 32 KiB)
-- PSRAM and flash at 80 instead of 120 MHz
-- a software fault: the dev-only send audit (`gfx_set_send_audit()`)
-  showed every changed pixel sent with correct bytes, and PSRAM reads
-  clean
-
-**Even edges are still required, at either clock.** Corner-shaped stale
-pixels appeared at 40 MHz on the CO5300 and went away once every window was
-rounded outward to even edges (gfx.c, `even_floor()`/`even_ceil()`;
-Waveshare's BSP rounds every flush area the same way). That fix is real, but
-it is not what goes wrong at 80: the older explanation here - a race between
-the panel latching `CASET`/`RASET` and the `RAMWR` burst - is also retired,
-since commands at 40 with pixels at 80 still corrupted.
-
-**Decision.** Both clocks stay: 80 is a large present win (8.2 against
-16.5 ms of bus for a full frame) and safe for a renderer that redraws whole
-frames. So:
-
-- the shell owns a system panel clock, 80 (default) or 40, kept in NVS and
-  set from Developer Toggles until the Settings app exists (see
-  [Settings-App-Plan.md](../plans/Settings-App-Plan.md)); every app starts
-  at it, may force another rate, and gets the system value restored on every
-  app switch - see Building-an-App.md, "What the shell resets for you";
-- gfx heal, opt-in and active only at 80 MHz: a caller marks rows with
-  `gfx_heal_mark()`, and gfx re-sends them as full-width strips with the
-  strip grid shifted each time, under a per-present pixel budget. The app
-  owns the policy - for example, re-sending a band a few presents after it
-  goes quiet.
-
-A synthetic cost independently regressed at 80 MHz too, for an unrelated
-reason worth keeping in mind if this is ever revisited: gathering two small,
-far-apart regions instead of sending the whole band costs about 1,916 us at
-either clock, because that cost is almost entirely the *fixed* per-transaction
-overhead above, not bandwidth - two gathers means two CASET/RASET/RAMWR
-triples, largely clock-independent. The full band it is being compared
-against, by contrast, **is** bandwidth-bound and drops from 3,405 us to about
-1,405 us at 80 MHz. So the same gather that comfortably wins at 40 MHz
-(1,916 < 3,405) loses at 80 (1,916 > 1,405) - not because gathering got worse,
-but because the alternative it is competing against got proportionally
-cheaper. `GATHER_MAX_PIXELS` and the run-merging thresholds in `gfx.c` are
-tuned against the 40 MHz numbers; they would need re-measuring, not just
-reusing, if the clock ever changes.
-
-`GFX_QSPI_HZ` (`gfx.h`, `CONFIG_LAUNCHER_GFX_QSPI_80MHZ`) is the boot
-default; the running clock is the shell's system panel clock above.
-
-An in-between clock looked like the obvious next thing to try - more margin
-than 80, still faster than 40 - and is exactly what 60 MHz was tried as. It
-is not available on this chip. GPSPI2's clock is derived from an 80 MHz
-source through an integer `pre`/`n` divider
-(`spi_ll_master_cal_clock()` in the IDF's `spi_ll.h`): a request over 60 MHz
-uses that 80 MHz source directly, and anything at or under 60 MHz is bound
-by the divider search's `n >= 2` floor to at most `80/2 = 40`. There is no
-integer divider that lands near 60 - the 60 MHz request measured
-byte-identical to plain 40, including matching millisecond-since-boot log
-timestamps across independent reboots, because it silently *was* plain 40.
-Every achievable value in this range is one of exactly two clocks; there is
-no third option to chase here.
+Even edges are needed at either clock. Corner-shaped stale pixels appeared
+at 40 MHz on the CO5300 until every window was rounded outward to even x and
+y; Waveshare's BSP rounds the same way. That is a separate fault from the
+80 MHz one, which survives it.
 
 ### Panel-link faults are invisible to screenshots
 
-`autana screenshot` reads the framebuffer, not the glass, and `main.c` requests
-a full redraw right after a capture - which re-sends every region with a
-different layout and heals whatever the link corrupted. A fault between the
-chip and the panel has to be judged by eye on the device. To tell a software
-fault from a link fault, turn on the dev-only send audit
-(`gfx_set_send_audit()`): it logs whether every changed pixel went out with
-the right bytes. If it did, A/B the link itself - clock, pad drive, PSRAM
-speed - one build at a time.
+`autana screenshot` reads the framebuffer, not the glass. While the frame
+loop runs, `main.c` requests a full redraw right after a capture, which
+re-sends every region in a different layout and heals whatever the link
+corrupted; a held frame (`freeze`, see
+[`Autana-CLI.md`](../tools/Autana-CLI.md)) is not redrawn. Either way a link
+fault has to be judged by eye on the device. To tell a software fault from a
+link fault, turn on the dev-only send audit (`gfx_set_send_audit()`): it
+logs whether every changed pixel went out with the right bytes. If it did,
+A/B the link itself - clock, pad drive, PSRAM speed - one build at a time.
 
-### Partial updates: only send the bands that changed
+## Cost per call
 
-With the clock settled, the only remaining way to make the blit cheaper is to
-send fewer bytes. `esp_lcd_panel_draw_bitmap()` takes an arbitrary rectangle and
-sets the panel's address window per call, and the panel refreshes from its own
-GRAM - so anything not sent simply keeps showing what it last received.
+A QSPI transaction has a fixed cost of about **118 us**, on top of the bytes.
+It was found by sending a 20 px-wide change one row at a time across a 64-row
+band: 7,567 us, against 1,407 us for the same band as one full-width call
+(80 MHz figures), 5.4x slower. 7,567 / 64 rows is 118 us. Espressif's
+figure of 2 us covers only DMA descriptor linking, not the rest of
+`esp_lcd_panel_io_tx_color()` and the SPI master's setup.
 
-A dirty bit per 64-row band, sending a band whole or not at all, costs
-this at 80 MHz (not comparable with the 40 MHz tables below):
+So a design that sends fewer bytes by making more calls pays off only while
+the call count stays under about a dozen against one full-band call, and
+gathers are bound by the fixed cost, not by the bytes. The gather and
+run-merging thresholds in `gfx.c` are fitted at 40 MHz (`gfx.h` says so);
+they need re-measuring, not reusing, at another clock.
 
-| Frame content | `gfx_present()` |
-|---|---|
-| Everything changed | 9,880 us |
-| One band of seven | 1,406 us |
-| Nothing changed | **3 us** |
+## Dirty tracking, measured
 
-Strips save along one axis only: rotate the device and every band is
-touched however little changed. Sending each row's real width, one
-`esp_lcd_panel_draw_bitmap()` per row, is 5.4x slower: a QSPI
-transaction's fixed cost is about 118 us (derived under "Still untapped"
-below).
+Two reference points, used below. One band (64 rows, full width) sent alone
+costs **3,405 us** at 40 MHz, about 1,405 at 80. Seven bands inside a real
+frame cost **18,147 us**, not 7 x 3,405 = 23,835: sends queue without
+waiting and the present drains them at the end, so they pipeline, and a lone
+band has nothing to overlap with. Ratio tests use the first, a present timed
+in a real frame the second, and neither converts to the other by the band
+count. Injecting 1 ms of busy-wait before each of seven sends added only
+1,000 us to a full frame (17,825 to 18,825 us): decision work hides behind
+the DMA already in flight, except the first send's.
 
-**The grid:** the screen is a fixed 7×4 grid - 64-row bands, each
-split into `GRID_COLS = 4` columns of 92 px each - 28 cells in total.
-Each cell tracks a real `(x0,x1)×(y0,y1)` box, not just a
-bit, via `gfx_mark_dirty()`; a caller that only touched part of a cell sends
-only that part. Within one row, contiguous dirty *columns* merge into a single
-gathered transfer (`collect_dirty_runs()`/`run_box()` in `gfx.c`) - adjacent
-activity pays the ~118 us fixed cost once, not once per cell, while two
-genuinely separate dirty regions in the same row still skip the untouched
-middle between them rather than being forced into one box that spans it. If
-any single run's box grows past `GATHER_MAX_PIXELS` (128×64), the *whole row*
-falls back to one full-width send instead of a partial gather plus a
-full-width send double-covering part of it.
+Against the 3,405 us band, at 40 MHz:
 
-This is the fix for the strips-only problem above: a grid has no privileged
-axis, so a device rotation does not leave one direction permanently unable to
-benefit the way pure horizontal strips did. Is it actually a win, though, and
-not just a better-reasoned design? Measured directly, same session, same
-40 MHz clock throughout, so this table and the "one band" cost it is compared
-against are directly comparable to each other in a way the historical table
-above is not:
-
-| Change shape | `gfx_present()` | vs. one full band (3,405 us) |
+| Change | `gfx_present()` | Against one full band |
 |---|---|---|
-| 20 px-wide strip, single cell | 747 us | 4.6x cheaper |
-| 300×8 px, spans all 4 columns, one merged run | 591 us | 5.8x cheaper |
-| Two 15×15 px, opposite corners, two separate runs | 1,916 us | 1.8x cheaper |
+| A 20 px-wide strip, one cell | 747 us | 4.6x cheaper |
+| 300 x 8 px, across all 4 columns, one merged run | 591 us | 5.8x cheaper |
+| Two 15 x 15 px, opposite corners, two runs | 1,916 us | 1.8x cheaper |
+| Two 10 x 10 marks 65 px apart in one 92 px cell (leaf split) | 1,960 us | 1.7x cheaper than the coarse box |
 
-The comparison is a fair one, not a favourable framing: the strips-only design
-had no move for any of these three shapes *except* sending the full band -
-whatever changed within a 64-row strip, the whole strip went out, because a
-bit has no notion of "how much". So "one full band" here is not a strawman,
-it is genuinely what the predecessor design would have cost for the exact
-same three changes. All three beat it, including the two-corners case, where
-two independent gathers still cost less than resending the whole thing despite
-paying the fixed per-transaction cost twice - the grid design is a measured
-win over strips-only, not just an orientation-independence argument on paper.
+The last row is `test_two_marks_in_one_cell_cost_less_than_the_coarse_box`
+in `suite_gfx.c`: a cell-level run cannot see the gap, the leaf layer can.
+At 80 MHz the two-corners gather still costs 1,916 us, being
+fixed-cost-bound, while the band it replaces drops to about 1,405, so at
+80 MHz it loses. An idle present costs 3 us.
 
-(The two-corners comparison specifically flips at 80 MHz - 1,916 us either
-way, since it is fixed-overhead-bound, against a full band that drops to
-about 1,405 us - but that is the threshold re-fit covered above, not a
-property of the grid design itself.)
+The third send path, a box spanning the full panel width, is already
+contiguous in the framebuffer and goes out directly (`send_partial_band()`).
+It cut present cost by about 10% on two of three full-screen workloads and
+left the third, which dirties every strip full width and height, unchanged.
+The tracker is within 3% of the exact changed-cell ideal on every portrait
+scene measured (landscape unmeasured), so it is at its ceiling.
 
-Two bugs surfaced by this that are worth remembering if the design is ever
-touched again:
+The caps are inert. `LEAF_REFINE_MAX_RUNS` (2), a marking caller's per-row
+run cap (2) and `GATHER_MAX_PIXELS` (8192 px) were swept against synthetic
+tests and three full-screen workloads and all stay. The run caps change
+nothing: a row of alternating 1-cell runs needs the full-row fallback
+whatever the cap, a row with one run needs one run, and no measured scene
+falls between. Raising the pixel cap buys 5-9% only by growing the DMA
+buffer out of the scarce internal heap.
 
-- **The gather buffer needs `MALLOC_CAP_DMA`.** A plain `static` array only
-  guarantees the alignment its element type needs, not what the GDMA engine
-  actually requires - a source buffer it cannot read cleanly does not fail
-  loudly, it reads back subtly wrong. Allocated the same way as the real
-  framebuffer now.
-- **The completion semaphore has no identity.** `strip_sent` is a plain
-  counting semaphore; a `Take()` right after queuing a gather can be satisfied
-  by *any* transfer that happens to finish first, not necessarily that
-  gather's own - including an unrelated, already-queued full-width send.
-  Fixed by draining every outstanding queued transfer before a gather touches
-  the shared buffer, relying on same-device SPI transactions completing in
-  the order they were queued.
+Two hazards on the gather path, and what stops each:
 
-`gfx_clear()` marks the whole screen, so a screen that clears before drawing
-needs no marking of its own. The rule only bites code writing through
-`gfx_framebuffer()` directly, which gfx cannot see: that code must call
-`gfx_mark_dirty()`, and forgetting shows up as stale pixels rather than a
-crash.
+| Failure | Guard |
+|---|---|
+| A source buffer the DMA cannot read cleanly reads back subtly wrong, with no error | the bounce slots are allocated `MALLOC_CAP_DMA` |
+| A slot rewritten while its transfer is still queued | two slots, and `esp_lcd` sends a window's address commands only after the previous transfer drained, so when `esp_lcd_panel_draw_bitmap()` returns the send before it is off the bus |
 
-**Marking must be cheap.** A dithered glyph calls gfx_fill_rect_dither() once per set font pixel, so marking can run once per lit pixel of text. Routing it through the public entry point, with its re-clipping and call overhead, measured about 5% of the launcher's framerate with every glyph drawn a pixel at a time; an inlined helper on the already-clipped path fixed it.
+Geometry, who must mark and the marking cost are in
+[Dirty tracking](../Gfx-and-Presentation.md#dirty-tracking) and the header of
+`gfx/gfx_dirty.h`.
 
-The same dirty information can answer "what needs redrawing" as well as
-"what needs sending": a caller that records which rows its own state change
-touched repaints only those and hands the same boxes to `gfx_mark_dirty()`.
+## Tearing and the TE line
 
-**A development-only visualizer** makes this concrete on real hardware
-instead of only in synthetic tests, as two fully independent layers, each
-switched by its own setter, correct in all four on/off combinations.
-The setters exist under `CONFIG_LAUNCHER_DEVELOPMENT`, not the narrower
-`CONFIG_LAUNCHER_SELFTEST` (see `docs/Firmware-Architecture.md`), so a plain
-`--dev` build reaches them too:
-
-- **Panel-grid layer** (`gfx_set_debug_overlay(true)`) outlines whichever
-  cells are actually being sent each frame - yellow for a gathered run, cyan
-  for a full-row fallback, each cell bordered at its own tight bounds rather
-  than one box drawn around a whole merged run, so a border can never land
-  on the fixed line shared with a neighbouring cell.
-- **Leaf layer** (`gfx_set_leaf_overlay(true)`) outlines the leaves that
-  were actually updated this frame, one green rectangle per dirty leaf, via
-  `gfx_dirty.h`'s `dirty_leaf_rects()`. Since leaf bits are only ever set by
-  a caller that hands `dirty_mark()` a real box (`mark_band()` never marks
-  them - see "A second, finer level underneath the grid" below), a region
-  only ever touched by `mark_band()` legitimately shows no green at all;
-  that is a consequence of the design, not a gap in the overlay.
-
-Either layer's borders mark one frame's sends and are gone by the next, and
-a device at framerate never holds one long enough to read. `freeze`,
-`step [n]` and `resume` over the console (`console/console_freeze.c`) hold
-the frame loop between passes, so a frame can be looked at, captured with
-`screenshot`, and advanced one at a time. A held pass still reads touch,
-buttons and the IMU, so an orientation change latches its own full redraw
-for whichever `step` comes next.
-
-A full-width send straight out of the framebuffer (`send_full_row()`) has no
-disposable scratch copy to draw into, so turning either layer on there means
-saving the exact pixels about to be overwritten, drawing, sending
-(blocking), then restoring - everything either layer touches is saved
-before either one draws anything, so a pixel the two layers share (a leaf
-edge landing on a cell edge, for instance) still restores to its true
-original regardless of draw or restore order. A gathered send
-(`gather_and_send()`) instead draws into the disposable `gather_buf`, so its
-borders are simply never persisted.
-
-Borders exist only in the bytes sent, never in the framebuffer, so the panel
-would keep one until its strip is next sent - which, for a region nothing
-changes in again, is never. `send_dirty_rows()` therefore records which
-strip rows went out with an overlay on (`overlay_bordered_rows`), and
-`run_present_normal()` opens the next present by sending each one again, full-width and unbordered, before
-the dirty sends. A border is on the panel for exactly the present that sent
-it; the cost is up to one extra full strip per bordered row per present,
-paid only while an overlay is on (and once more after it is switched off).
-
-`GFX_LAYOUT_INDEXED` carries both layers too: `run_present_indexed()` sends
-whole dirty strips, but its marking still goes through `dirty_mark()`, so the
-leaves are real. `send_indexed_rows()` draws the borders into the expanded
-bounce slot - a disposable copy, nothing to restore - and the same clean
-resend applies, skipped for a row that is dirty again since that row goes out
-whole anyway.
-
-The band ring feeds the same tracker through `gfx_mark_dirty()`. The app's
-`draw_band` fills the band about to be sent. gfx then borders the filled band:
-cyan around the band for the panel-grid layer, green around each marked leaf for the leaf
-layer (`GFX_BAND_HEIGHT` is a multiple of `LEAF_H`, so a leaf never straddles
-two bands). gfx holds no copy of a band to resend, so the clean-up runs
-through the app's `draw_band`: `gfx_band_dirty()` reports a band that was
-bordered last frame as dirty once more, and that send goes out bare. gfx
-resets every row's cell boxes and leaf bits at the end of the frame, the
-same reset a full-framebuffer present gives each row it sends.
-
-The overlay setters (`gfx_set_debug_overlay()`, `gfx_set_leaf_overlay()`,
-`gfx_set_send_audit()`) are declared only under
-`CONFIG_LAUNCHER_DEVELOPMENT`, in both the header and the implementation - not
-just compiled out of a release build, but undefined there: a caller outside a
-development-only file that forgets to guard a call to it fails to compile
-rather than silently doing nothing.
-
-### A second, finer level underneath the grid
-
-Subdividing further than the 7x4 grid - floated as "a quadtree" - is now
-built, not just reasoned about: each cell also carries a fixed 4x4 grid of
-`LEAF_W x LEAF_H` (23x16 px) leaves, one bit each, geometry derived
-arithmetically rather than stored (a leaf is already small enough that
-tracking a tighter box inside one buys nothing). Two levels, not three:
-`92`'s only useful factor pair is `4*23`, and 23 is prime, so a third level
-does not divide cleanly.
-
-The worst-case worry that made this seem risky did not hold up once
-measured directly (not just reasoned about): `send_full_row()` only queues
-a transfer, `gfx_present()` waits once at the end, not once per row, so
-CPU-side decision work for one row overlaps with the DMA transfer already
-in flight for a previous one. Injecting a synthetic, deliberately generous
-1 ms busy-wait before every one of the 7 rows' sends - 7 ms total if it
-behaved serially - only added 1,000 us to a full worst-case frame
-(17,825 us -> 18,825 us). Six of the seven rows' injected cost vanished
-into DMA overlap entirely; only the first row, with nothing queued yet to
-hide behind, paid its cost directly. That leaves real margin - a genuine
-tree walk over a few dozen nodes is microseconds, not milliseconds - for
-whatever the leaf layer's own bookkeeping costs.
-
-**What it is for:** `gfx_mark_dirty()`'s cell-level tracking already keeps
-a tight box, but only as tight as the *one* box a caller hands it - it has
-no way to know about a gap the caller never mentioned. Before the existing
-`GATHER_MAX_PIXELS` full-row fallback, `send_one_row()`
-narrows a run's box further via the leaf layer if none of its cells are at
-their full coarse extent (the same "was this touched by `mark_band()`"
-test `gfx_mark_dirty()`'s own comment already relies on), re-validates each
-resulting split against the gather budget (a wide run with a small gap can
-still split into pieces individually too big for `gather_buf`'s fixed
-allocation - skipping that check is a buffer overflow risk, not a
-graceful degradation), and falls back to the coarse box whenever there is
-nothing safe or worthwhile to split on. A
-new device test (`test_two_marks_in_one_cell_cost_less_than_the_coarse_box`
-in `suite_gfx.c`) proves the case a cell-level run alone cannot: two 10x10
-marks 65 px apart inside one 92 px cell measured **1,960 us against
-3,405 us** for the coarse box spanning both.
-
-**`mark_band()`'s cheap path is untouched by any of this** - it never
-reads or writes the leaf state, so a caller that only ever knows rows
-(`gfx_pixel()`) pays nothing extra. Only the tight-box path ever engages
-the leaf layer, which is the literal form the "should be optional"
-requirement took: not a runtime toggle, an architectural split between the
-two existing entry points. The rect and blit primitives sit on the
-tight-box side - they have already clipped a real box by the time they
-mark, so keeping it costs nothing and is what stops a corner readout from
-dirtying its strips full width.
-
-**Consumers stay unaware the split exists.** `gfx_mark_dirty()`,
-`gfx_mark_all_dirty()` and `gfx_region_dirty()` keep their exact names and
-signatures; the actual tracking state and logic moved into
-`gfx/gfx_dirty.h`, and `gfx.c` implements the three public functions as
-thin wrappers around it. That header is deliberately *not* a matching
-`.c`/`.h` pair despite being the natural first instinct: marking sits on
-the drawing primitives' hot path (a dithered glyph marks once per
-set font pixel), and routing it through a real cross-translation-
-unit call costs about 5% of the launcher's framerate - see "Marking must
-be cheap" above. A separate `.c` file would put it right back behind
-exactly that kind of call. Keeping `gfx_dirty.h` header-only and `static` (matching
-`mark_band()`'s own pre-existing style) means `gfx.c` gets everything
-inlined into its own translation unit exactly as before, while a host test
-file gets its own fully independent copy just by including the header
-directly - no separate object to link, no ESP-IDF dependency to satisfy.
-`test/suites/suite_gfx_dirty.c` covers the geometry and bitmask logic this
-way - leaf boundary math, run-collection edge cases, the gather-budget
-rejection path - none of which was reachable from a host before.
-
-**A caller that finds its own runs.** A caller that splits each row into
-runs itself and hands every run to `gfx_mark_dirty()` separately, rather
-than one `(min, max)` span per row, gets two separate regions sent as two
-runs with the gap between them skipped. Each run it hands over is then
-already gap-free, so the leaf layer typically has nothing to add for it -
-the gain comes from `gfx.c`'s existing cell-level run-merging seeing one
-mark per run. A caller doing this must also cover every run it sent last
-frame that nothing covers now, or a region that vanished stays on the
-panel. The leaf layer's own value is the caller-invisible version of the
-same thing, for a caller that does no run-detection.
-
-A run being gap-free is not the same as a run no bigger than what changed:
-every non-empty run in a dirty row still goes out whole, so one changed
-pixel in an otherwise static run re-sends the run. A caller that also keeps
-a per-row changed-column span, and clips both its pixel writes and the
-rects it marks to that span, closes that. It matters most where rows hold
-long runs that rarely change.
-
-### Still untapped
-
-Rendering ideas raised and reasoned through, deliberately not built yet -
-kept here so the reasoning survives to whoever picks one up.
-
-- ~~A 2D dirty bounding box, sent per row instead of per strip.~~ **This
-  specific prototype does not pay off - kept for the reasoning, not as a
-  next step.** A *different* 2D design, built afterward with this finding in
-  hand, did ship - see "Partial updates" above for the grid-and-gathered-runs
-  design that replaced plain strips. The difference is call count: this
-  prototype could reach up to 64 `esp_lcd_panel_draw_bitmap()` calls for one band, which
-  the ~118 us/call figure below rules out categorically; the shipped design
-  bounds a row to at most `GRID_COLS/2` gathered calls (2, here) by merging
-  adjacent dirty columns into one transfer first and falling back to a
-  single full-width send whenever a run would still be too big to be worth
-  gathering - it never reaches for "one call per dirty unit" the way this
-  one did.
-
-  The theory: `esp_lcd_panel_draw_bitmap()` takes one flat buffer per call
-  with no stride parameter, so a full-width band is contiguous in the
-  framebuffer for free but an arbitrary sub-rectangle is not; a single
-  row's sub-range, though, is already contiguous (`fb + y*GFX_WIDTH + x`),
-  so a tracked (min x, max x, min y, max y) box could be sent as one
-  `esp_lcd_panel_draw_bitmap()` call per row inside it - no copy needed - and
-  `gfx_present()` already queues every strip's transfer before waiting on
-  any of their semaphores, so this should not have added a wait per row.
-  Espressif's docs put DMA descriptor setup at ~2 us per transaction,
-  which is what the estimate was built on.
-
-  Built and measured directly (`test_a_narrow_change_costs_less_than_a_full_band`
-  in `suite_gfx.c`, since reverted): a 20 px-wide strip sent one row at a
-  time across a 64-row band cost **7,567 us**, against **1,407 us** for the
-  same band sent as a single full-width call - **5.4x slower**, not
-  faster. `7567 / 64 rows` is almost exactly 118 us/transaction, which
-  means the real, measured fixed cost per `esp_lcd_panel_draw_bitmap()` call is roughly
-  **59x higher** than the ~2 us figure the estimate used. That 2 us covers
-  only DMA descriptor linking; it does not cover whatever the rest of
-  `esp_lcd_panel_io_tx_color()` and the SPI master driver's transaction
-  setup actually costs per call on this chip. Confirmed by feel on device
-  too: a narrow single-finger pour was visibly choppier with this path
-  active, matching the number.
-
-  The conclusion generalises past this one threshold: at ~118 us/call, any
-  design that trades "send fewer bytes" for "make more `esp_lcd_panel_draw_bitmap()`
-  calls" needs the call count itself to be very small - rough breakeven
-  against one 1,407 us full-band call is somewhere under a dozen calls,
-  not the up-to-64 a per-row scheme can reach. A version gated on the
-  *number of individually dirty rows* rather than pixel width might still
-  clear that bar in a genuinely sparse case, but it was not judged worth
-  the added correctness surface (the row-span bookkeeping, the semaphore
-  resize, the union logic to avoid leaving stale pixels behind) for how
-  narrow the win would be.
-- **A smaller `STRIP_HEIGHT`.** Still open. The *horizontal* equivalent of
-  this - splitting each band into narrower columns - already shipped as
-  `GRID_COLS`; this is the same idea for the vertical axis, unexplored so
-  far because `GRID_COLS` alone was enough to fix strips-only design's real
-  problem (no benefit after a device rotation). Re-read against the
-  ~118 us/transaction figure rather than the original 2 us guess: a shorter
-  band still needs no copy - any full-width vertical range stays contiguous
-  - and does not multiply transaction count the way the per-row idea did,
-  since it changes the grid's fixed shape rather than adding a call per
-  dirty unit. It only helps when the active vertical range is smaller than
-  the new, shorter band, and can lose when an active range straddles two
-  shorter bands that a single taller one would have covered in one call.
-  Only worth trying with real numbers either side of that trade, not
-  assumed.
-- **Vertical leaf refinement.** The leaf layer described above (see "A
-  second, finer level underneath the grid") only narrows the x-range of a
-  run; the y-range stays the run's existing tight `cell_y0`/`cell_y1`
-  union, which is already exact for a caller marking 2 px-tall rows -
-  the case it was built for. `leaf_dirty` is a genuinely 2D array, so a
-  future pass could OR fewer leaf-rows together (or none) to split
-  vertically too, without any data-structure change - only a new send-side
-  function. Not started: no concrete motivating case has needed it yet.
-- ~~`LEAF_REFINE_MAX_RUNS` and a caller's own per-row run cap are both 2,
-  unmeasured.~~ **Measured** - see "The cap sweeps" below. Both stay at 2.
-- ~~Fixing 80 MHz at the driver level.~~ **Tried; no firmware knob makes
-  it clean.** Window commands at 40 MHz with pixels at 80, CS setup, pad
-  drive and sending every region twice were each tried on device - see
-  "The blit is bus-bound" above. The clock is out of the panel's rating, so
-  what remains is concealment: the opt-in heal described there, or 40 MHz.
-- **A tiled (swizzled) framebuffer - parked on purpose, not a next step.**
-  Store pixels in fixed NxN tile order instead of scanline order, so a
-  whole tile - not just one row of it - is a single contiguous run and
-  transfers with no copy and one `esp_lcd_panel_draw_bitmap()` call, the property a
-  full-width strip already gets today. Real, standard technique (GPU
-  texture memory does the same thing), and with power-of-two tile
-  dimensions the address math is shifts, same trick as `STRIP_HEIGHT`.
-  Parked because `gfx.c` owns the framebuffer for the *whole device*, not
-  one app - every `gfx_fill_rect()`, every glyph, the 3D rasterizer in
-  `render/`, and `ui.c`'s canvas painting all currently address a pixel
-  with one multiply-add assuming scanline order. Tiled storage replaces
-  that with a permanent tile-index-plus-offset computation on every draw
-  call, system-wide, to buy a transfer-side win only a pattern of many
-  small scattered changes would exploit. The ~118 us/transaction figure
-  above cuts the other way for this one too, if it is ever revisited: it
-  only pays off
-  with tiles large enough to keep the transaction count low, same
-  constraint that just sank the per-row idea - many small tiles would
-  reintroduce exactly the problem tiling was meant to solve.
-### The dirty-region caps: swept, and mostly inert
-
-A caller's per-row run cap, `LEAF_REFINE_MAX_RUNS` (2 and 2) and
-`GATHER_MAX_PIXELS` (8192) were swept against both synthetic device tests
-and three real full-screen workloads whose present cost an app's own perf
-suite measures, all of them portrait. All three
-stay at their shipped values: the run caps are structurally inert against
-those scenes (a checkerboard row needs the full-row fallback regardless of
-the cap, a slab row needs one run either way, and no measured scene falls
-between those two shapes), and raising the pixel cap buys a further 5-9% only by
-growing the DMA gather buffer to match, against the internal free heap
-left once every other internal allocation is accounted for
-(the framebuffer lives in PSRAM and never competes for it - see
-[Board-and-Memory.md](Board-and-Memory.md)). The dirty-region tracker
-itself is at its ceiling against an uncapped oracle - within 3% of the
-exact changed-cell ideal on every portrait scene measured (landscape is
-unmeasured) - so the one real win left was a missing third send path: a box spanning the
-full panel width is already contiguous in the framebuffer and can go out
-directly, rather than through the fixed gather buffer or a full 64-row
-band. That path (`send_partial_band()` in `gfx.c`) cut present cost by
-about 10% on two of those workloads for zero extra memory; the third, which
-really does dirty every strip full width and full height every frame, was
-unaffected.
-
-### A full band has two prices
-
-Worth knowing before comparing any two numbers in this file. Measured
-alone, one band costs **3,405 us**. Measured inside a real frame, seven
-bands come to **18,147 us**, not 7 x 3,405 = 23,835: `send_full_row()`
-queues its transfer without waiting and `gfx_present()` drains them all
-at the end, so in a real frame the bands pipeline and an isolated one
-has nothing to overlap with. `suite_gfx.c`'s ratio tests measure the
-un-pipelined price; a present timed inside an app's real frames measures
-the pipelined one. Both are right, and multiplying one by the band
-count does not produce the other.
-
-### Tearing: the TE line is live, and nothing reads it
-
-Both init tables in `gfx.c` send `0x35 0x00`: tearing-effect output on, mode
-1, high only through the vertical porch. The panel drives it on FPC pin 2,
-which reaches GPIO13. Firmware never configures that pin, and every present
-starts whenever the frame loop gets to it.
+Both init tables send `0x35 0x00`: tearing-effect output on, mode 1, high
+only through the vertical porch. The panel drives it on FPC pin 2, which is
+GPIO13 (the schematic's LCD_TE net). Firmware never configures that pin, and each present
+starts whenever the frame loop reaches it.
 
 Measured on the CO5300 board (dev build, 80 MHz, a probe counting GPIO13
 edges and timing each present against them):
@@ -579,53 +213,52 @@ edges and timing each present against them):
 | | |
 |---|---|
 | TE rate | 59.26 Hz, period 16.86-16.89 ms |
-| TE high (porch) | 581 us, so the scan of 448 rows takes ~16.3 ms |
-| Present start phase | uniform over the period; nothing is locked to the scan |
+| TE high (porch) | 581 us, so the scan of 448 rows takes about 16.3 ms |
+| Present start phase | uniform over the period: nothing is locked to the scan |
 | Band-mode 3D frame, TE to last band | longer than one period (about 50 fps) |
-| Retained partial sends | 1.4-7.4 ms, avg ~2.9 ms |
+| Retained partial sends | 1.4-7.4 ms, average about 2.9 ms |
 
-A write tears when it and the scan pass each other. Starting a present on TE
-avoids that only when the write stays on one side of the scan for the whole
-frame:
+A write tears when it and the scan pass each other. Starting on TE avoids
+that only if the write stays on one side of the scan for the whole frame:
 
 | Send | Against a 16.3 ms scan | TE-aligned start |
 |---|---|---|
-| Full frame, full-framebuffer layout, 80 MHz | ahead of the scan (bus time: CONFIG_LAUNCHER_GFX_QSPI_80MHZ help) | tear-free |
-| Full frame, full-framebuffer layout, 40 MHz | a full present outlasts the scan | still tears |
+| Full frame, full framebuffer, 80 MHz | ahead of the scan (8.2 ms of bus) | tear-free |
+| Full frame, full framebuffer, 40 MHz | a full present outlasts the scan | still tears |
 | Band ring, 3D | pace set by render cost per band; cheap bands catch the scan | still tears |
 | Partial, a few ms | crosses only if the scan is inside its rows | rarely matters |
 
-What waiting costs: up to one period of latency (8.4 ms on average) and a
-frame rate locked to 59.3 / 29.6 / 19.8 fps. A band frame runs longer than
-one period, so a TE wait would halve its rate. So a TE wait pays only for a
-full-frame sender in the full-framebuffer layout at 80 MHz whose frame fits
-one period.
+A TE wait costs up to one period of latency (8.4 ms on average) and locks the
+frame rate to 59.3 / 29.6 / 19.8 fps. A band frame runs longer than one
+period, so waiting would halve its rate. It pays only for a full-frame sender
+in the full-framebuffer layout at 80 MHz whose frame fits one period.
 
-Reading TE takes an any-edge GPIO13 interrupt. `touch_start()` runs after
-`gfx_init()` and installs the GPIO interrupt service through
-`esp_lcd_touch`, so gfx should add its handler with `gpio_isr_handler_add()`
-after touch starts, rather than install the service a second time.
+## Rejected and parked
 
----
+| Idea | Status | Why |
+|---|---|---|
+| A 2D dirty box sent one row per call | rejected | up to 64 calls a band at 118 us each: 5.4x slower than the band. The grid bounds a row to at most `GRID_COLS / 2` gathers |
+| A firmware fix for 80 MHz | rejected | nothing in the table above cleared it; what remains is concealment (heal) or 40 MHz |
+| A clock between 40 and 80 | impossible | the divider gives 80 or at most 40 |
+| Vertical leaf refinement | parked | leaves only narrow a run's x-range; its y-range is already exact for rows marked 2 px tall. No case needs it, and it needs a new send function, not new data |
+| A shorter tracker band | parked | the full-framebuffer tracker's 64-row band is fixed (band mode already runs 16, 32 or 64). Shorter helps only when activity fits, and loses when it straddles two bands one taller band covered in a single call |
+| A tiled (swizzled) framebuffer | parked | a tile would be one contiguous send, as a full-width strip is, but the framebuffer serves every draw call, so every pixel address would carry a tile computation to buy a win only many small scattered changes could use. Small tiles reintroduce the 118 us problem |
 
-## There is no graphics acceleration
+## No graphics acceleration
 
-Verified, not assumed. `SOC_PPA_SUPPORTED` is defined **only for the ESP32-P4**
-in ESP-IDF's SoC caps — this chip has no Pixel Processing Accelerator, no 2D
-blitter, no GPU. Rendering here runs as scalar C; the render task runs on
-core 1, and a per-frame step that needs more splits across both
-(`util/job.h`).
-
-If graphics throughput ever becomes the requirement, that is a board decision:
-the ESP32-P4 has the PPA, PSRAM, *and* a real SDMMC host.
-
----
+`SOC_PPA_SUPPORTED` is defined only for the ESP32-P4 in ESP-IDF's SoC caps:
+this chip has no pixel-processing accelerator, no 2D blitter and no GPU.
+Rendering is scalar C in the frame loop on core 0. Core 1 holds the present
+task and the job worker, and a stage that wants more hands splits onto core 1
+through `util/job.h`
+([Mesh-Rendering.md](../Mesh-Rendering.md#on-both-cores)). If graphics
+throughput becomes the requirement, that is a board decision: the ESP32-P4
+has the PPA, PSRAM and a real SDMMC host.
 
 ## Related
 
-- [../Gfx-and-Presentation.md](../Gfx-and-Presentation.md) — the mechanisms as
-  they stand today; this page is the measurements and bugs behind them.
-- [Board-and-Memory.md](Board-and-Memory.md) — the SPI2 wiring this all sits
-  on top of.
-- [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md) — the -O2 build-flag
-  history referenced above.
+- [`Gfx-and-Presentation.md`](../Gfx-and-Presentation.md) - the mechanisms
+  these numbers justify
+- [`Board-and-Memory.md`](Board-and-Memory.md) - the SPI2 wiring and the
+  internal-RAM budget the bounce slots come out of
+- [`Debugging.md`](Debugging.md) - telling a link fault from a software one

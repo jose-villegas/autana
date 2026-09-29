@@ -11,11 +11,12 @@ lives with that app's documents instead:
 - **[Board-and-Memory.md](Board-and-Memory.md)** — the board's hardware
   inventory, the memory budget built around the framebuffer living in
   PSRAM, and why the SD card and the display do not share a bus.
-- **[Display-and-Rendering.md](Display-and-Rendering.md)** — owning the
-  panel directly, the QSPI clock (80 MHz is outside the panel's rating and
-  corrupts partial redraws, needs the strips sent from internal RAM, and no
-  intermediate clock exists), why screenshots cannot see a panel-link fault,
-  and the dirty-region tracking that partial screen updates are built on.
+- **[Display-and-Rendering.md](Display-and-Rendering.md)** — the path of a
+  frame to the panel, bring-up and its four silent failures, the bus-bound
+  blit and the QSPI clock (80 MHz is outside the panel's rating and corrupts
+  partial redraws; no clock between 40 and 80 exists), why screenshots cannot
+  see a panel-link fault, the 118 us cost per call, the dirty-tracking
+  measurements, the tearing line, and the rejected and parked ideas.
 - **[Input-and-Sensors.md](Input-and-Sensors.md)** — touch, the IMU's axes
   and its accelerometer/gyroscope split, and the two buttons that are not
   the same kind of device.

@@ -6,8 +6,7 @@
  * by convenience: the marking calls sit on the drawing primitives' hot
  * path - a dithered glyph marks once per set font pixel - and
  * routing that through a real cross-translation-unit call once cost about
- * 5% of the launcher's framerate (see docs/notes/Display-and-Rendering.md's
- * "Partial updates"). A traditional .c/.h split would put mark_band() back
+ * 5% of the launcher's framerate. A traditional .c/.h split would put mark_band() back
  * behind exactly that kind of call for every file that includes this one,
  * silently reintroducing a regression this project already measured and
  * fixed once. Keeping everything static and header-only means gfx.c gets
@@ -23,10 +22,8 @@
  * names in this file with a public-API counterpart to avoid colliding
  * with; everything else keeps the name it always had inside gfx.c.
  *
- * See docs/notes/Display-and-Rendering.md's "Partial updates" and "Still
- * untapped" for the full reasoning behind the grid, the leaf layer
- * underneath it, and the two real bugs (MALLOC_CAP_DMA, the semaphore's
- * lack of per-transfer identity) this design surfaced.
+ * The measurements behind the grid and the leaf layer are in
+ * docs/notes/Display-and-Rendering.md's "Dirty tracking, measured".
  */
 #pragma once
 
