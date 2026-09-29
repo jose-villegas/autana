@@ -517,10 +517,11 @@ class DeviceTests(unittest.TestCase):
             store = device_lock.LockStore(root, now=lambda: 1000)
             store.set_human(BOARD, "maintainer", "panel")
             entry = device_lock.status_entry(store, BOARD, now=1065)
-        self.assertEqual((entry["state"], entry["holder"], entry["elapsed_seconds"]),
-                         ("human", {"owner": "maintainer", "purpose": "panel"}, 65))
-        self.assertTrue(device_lock.status_lines(entry)[0].startswith(
-            "human reservation: maintainer: panel (since "))
+        self.assertEqual((entry["state"], entry["holder"], entry["since"]),
+                         ("human", {"owner": "maintainer", "purpose": "panel"}, 1000))
+        line = device_lock.status_lines(entry, 1065)[0]
+        self.assertTrue(line.startswith("human reservation: maintainer: panel (since "))
+        self.assertIn("65s ago", line)
 
     def test_take_back_clears_human_reservation_and_prints_status(self):
         with tempfile.TemporaryDirectory() as root:
