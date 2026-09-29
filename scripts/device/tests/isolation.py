@@ -25,6 +25,8 @@ TEMP = Path(tempfile.mkdtemp(prefix="autana-device-tests-"))
 
 def replaced_roots():
     roots = [CHECKOUT / ".records" / "device", Path(tempfile.gettempdir()) / "autana-device"]
+    if hasattr(os, "getuid"):
+        roots.append(Path("/tmp") / f"autana-device-{os.getuid()}")
     for name in ("AUTANA_RECORDS", "AUTANA_DEVICE_LOCK_ROOT"):
         if os.environ.get(name):
             roots.append(Path(os.environ[name]))

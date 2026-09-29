@@ -1,464 +1,285 @@
 # Device lock
 
-Nothing outside `scripts/device/` opens a board's USB serial port: no
-monitor, capture helper, `esptool`, or direct pyserial command
-(`scripts/gates/check_device_access.py` holds the tree to that). Every
-command takes the board's lock before it opens the port, so sessions sharing
-a board queue for it instead of fighting over the port.
+One board, one command at a time; the others queue. Windows and Linux differ
+only in how autana finds and ends the processes a command leaves behind; what
+you do is the same on both.
 
-Day-to-day use goes through `tools/autana` ([Autana-CLI.md](Autana-CLI.md)) -
-every `autana` command calls `device.py`. This doc covers `device.py`
-itself: its command line, for a script that names its own
-`--owner`/`--purpose`, what the lock guarantees, and recovery when a lock will
-not let go.
+Every command that touches the board - `flash`, `suite`, `selftest`,
+`monitor`, `screenshot`, `tune`, `reset` - takes the board's lock first, so two
+terminals, two agents or a CI job sharing one board wait for each other
+instead of fighting over the USB serial port.
 
-Run the tool with ESP-IDF's Python (the `python.exe` under
-`%USERPROFILE%\.espressif\python_env\idf<version>_py<version>_env\Scripts\`
-on Windows), so its pyserial installation is available; a different
-interpreter re-runs it under that one. The examples write it as `python`.
-It works the same from PowerShell, cmd or Git Bash: `flash`, `batch`, and
-`selftest` run `build.sh` and `flash_image.sh` with Git for Windows'
-own `bash.exe`, never
-whatever `bash` is first on `PATH` - from a native shell that is WSL's
-launcher, which cannot run ESP-IDF.
+A command is named `user@host:pid`: your login, the machine, and the
+command's process id. That is who `status` says holds the board or waits for
+it.
 
-Every command but `report` takes `--owner` (defaults to
-`AUTANA_DEVICE_OWNER`) and its own `--purpose` (each subcommand has a
-sensible default - `flash`, `reset`, `run suite`, `send`, `screenshot`,
-`batch capture` - override it to say why on a shared board).
+Two terminals, A and B, in the order things happen:
 
-```powershell
-python scripts/device/device.py status
-python scripts/device/device.py --owner sam flash --variant dev --worktree C:\path\to\engine
-python scripts/device/device.py --owner sam run-suite run_gfx_suite --expect-build-id 0123456789ab-dev
-python scripts/device/device.py --owner sam listen --seconds 30
+```text
+A$ autana monitor 60
+   ← A holds the board and reads the console
+B$ autana status
+B  board 90:70:69:FE:A3:08 (on COM5)
+B    held by sam@bench:4120 for autana monitor since 16:42:51 ...
+B$ autana monitor 5
+B  board held by sam@bench:4120 (autana 0.1.0, ...) - waiting
+B  waiting for board: queue place 1; estimated start 16:43:59
+   ← B's command waits in the queue
+A  sam@bench:4188 is waiting (...) - Ctrl+C to hand it over
+   ← A is told, not interrupted
+A^C
+   ← A's user hands the board over
+A  listen capture: .../164251_listen_sam-bench-4120.log
+A  listen capture ended: stopped
+B  listen capture: .../164258_listen_sam-bench-4188.log
+B  listen capture ended: timeout
+   ← B has the board and runs
 ```
-
-`listen` takes `--follow` to run until Ctrl+C and `--echo` to print the full stream.
-
-## Which board
-
-A board is named by its USB serial number, which the ESP32-S3's USB
-Serial/JTAG reports as the chip's MAC address (`90:70:69:FE:A3:08`, say).
-It stays the same when a reset brings the board back on another COM
-number, so the lock, the records and `status` all use it; COM numbers are
-looked up again before every port open and every esptool call.
-
-A command acts on the board named by `--board <serial>`, else by
-`AUTANA_BOARD`, else on the only Espressif (VID `0x303A`) board plugged in.
-With none plugged in it takes the only board a lock, reservation or waiter
-names, so a command can queue while the holder's reset has the board off
-USB. `hand` and `take-back` alone fall back once more, to the only board
-this machine has ever found on USB, so a board that has dropped off with no
-lock, reservation or waiter left to name it can still be handed to a human
-or taken back; every other command leaves that fallback alone,
-so an unplugged, idle board fails at once instead of queuing for a port
-that will never open. Opening the port still waits for USB. Case and
-surrounding spaces do not matter. With several candidates and none named, a
-command fails and lists their serial numbers; each board has its own lock
-and queue.
-
-## One copy of the tools
-
-Every checkout carries its own `scripts/device/`, but the lock is one set of
-files on the machine, and two versions of the lock code can each believe
-they hold the board. Nothing hands a checkout's invocation off to another one
-at runtime any more - instead, always call `autana` (`tools/autana` on
-`PATH`, `scripts/add-tools-to-path.sh`) rather than a checkout's own
-`scripts/device/device.py` or `device_lock.py` directly. `autana` is one
-script at one fixed location, so every call runs the same lock code
-regardless of which checkout's shell invoked it; a report script such as
-`launcher/tools/device/device_report.sh` calls `autana selftest`/`autana
-suite`/`autana flash`, never a computed path to its own checkout's
-`device.py`. What gets built and flashed still comes from the project named
-by `--project` or the current directory (`autana help build`). LOCK_PROTOCOL
-(below) is what keeps two differently-versioned copies from corrupting each
-other's records on the rare path that still runs a checkout's own copy
-directly - one machine can have several installs of different ages, and
-nothing here is tied to git any more (`autana help`).
-
-## What a flash proves
-
-A flash succeeds when esptool's `write_flash` hash-verified every region it
-wrote; `flash` then prints `flashed BUILD_ID=<id> (esptool hash verified;
-boot not verified)`, the id read from the image it wrote. It proves the
-write, not the boot, for every variant.
-
-`BUILD_ID` is the first twelve lowercase hexadecimal characters of the
-image's ELF hash, followed by its variant. It changes exactly when the image
-does; the development build mark uses the first seven hash characters.
-
-A flash is two halves in one log. `launcher/tools/build/build.sh` builds the
-image with no board lock held, so other sessions keep the board meanwhile;
-a file lock on the build directory keeps a second build of the same worktree
-and variant out until this one is done. `device.py` then copies the image -
-`flash_args`, every file it lists and `build_id.txt` - into a snapshot of its
-own, a private temporary folder that no other flash shares and that is
-removed once the write is done, has failed or was stopped; nothing
-image-sized goes into the records. Only then does it queue for the board, and
-under the lock `scripts/device/flash_image.sh` writes the snapshot with
-esptool, never `idf.py flash`: nothing builds while the board is held, a later
-build in that directory cannot change what is written, and the `BUILD_ID`
-recorded is the snapshot's own. A build that fails never queues. When either
-half fails, `flash` fails naming it, with the log's first error line
-(esptool's `Could not open COM3 ...`, say) and the log's path. What boots is
-proven only by a console that names it: a `selftest` or `batch` capture,
-which fails on any other `BUILD_ID`, or `autana buildid` on a development
-build.
-
-`batch` and `selftest` build first, then hold one lock across the flash and
-the capture. A separate `flash` and `run-suite` take two locks, and another
-session can flash between them: `run-suite --expect-build-id <id>` (`autana
-suite`'s own `--expect-build-id`) fails if the board reports another build;
-without it, use `batch` or `selftest` when the capture must be of the image
-`flash` just wrote. `batch`'s own `--expect-build-id` checks the image it
-just flashed itself, before running any suite, against an id decided before
-the flash - a different check from `run-suite`'s, which is against what the
-board reports at capture time.
 
 ```mermaid
 sequenceDiagram
-    participant Dev as device.py
-    participant Build as build.sh
-    participant Snap as snapshot (temp folder)
-    participant Lock as board lock
-    participant Sh as flash_image.sh
-    participant Board as board
+    participant A as Terminal A
+    participant L as Device lock
+    participant B as Terminal B
 
-    Note over Dev,Build: build directory locked, no board lock
-    Dev->>Build: run
-    Build-->>Dev: exit status, build.dev/ with flash_args and build_id.txt
-    Note over Dev,Build: a failed build ends here, never queued
-    Dev->>Snap: copy flash_args, its files, build_id.txt
-    Dev->>Lock: take the board's lock
-    Dev->>Sh: run on the snapshot, with the lock token and AUTANA_BOARD
-    Sh->>Lock: check-token for AUTANA_BOARD
-    Sh->>Sh: device.py resolve-port - the board's COM port now
-    Sh->>Board: esptool write_flash @flash_args, hash-verify each region
-    Sh->>Board: RTS reset
-    Sh-->>Dev: exit status
-    Dev->>Lock: live-lock check, record the snapshot's BUILD_ID
-    Dev->>Snap: remove, whether the write succeeded or not
-    opt batch and selftest, still under the same lock
-        Dev->>Board: reopen the port, capture until the suites end
-        Note over Dev,Board: the capture fails on any other BUILD_ID
-    end
-    Dev->>Lock: release, record the duration
+    A->>L: autana monitor 60
+    L-->>A: held
+    B->>L: autana monitor 5
+    L-->>B: busy, queue place 1
+    L-->>A: B is waiting, Ctrl+C hands it over
+    Note over A: the user presses Ctrl+C
+    A->>L: release
+    L-->>B: the board is yours
+    B->>L: reads the console for 5 s
 ```
 
-## Holding the board, and losing it
+- `autana 0.1.0, lock protocol 2` is the holder's tool version and lock-file
+  format; it only matters when installs of different ages share a board.
+- `monitor` appears as a `listen capture`: it is the console read.
+- The line in A's terminal only tells its user someone is queued. Nothing
+  interrupts A; Ctrl+C is A's user choosing to hand the board over.
+- Ctrl+C ends A's command and releases the lock, and B, next in line, starts
+  by itself. Nothing needs cleaning up after an interrupt. Closing the
+  terminal or killing the process is the same: B prints
+  `reclaimed lock from sam@bench:4120 for autana monitor (dead process)` and
+  carries on.
 
-`flash`, `run-suite`, `selftest`, `batch`, `listen`, `reset`, `send`, and
-`screenshot` take the lock before they touch the board and keep it for their
-whole operation. A heartbeat renews it every 5 seconds. A lock is reclaimed
-by the next waiter when its heartbeat is more than ten minutes old, or when
-its holder's process on this host is dead; the acquirer logs
-`reclaimed lock from <owner> for <purpose> (heartbeat expiry | dead process)`.
-A process counts as dead only when the process table proves it: on Windows
-`OpenProcess`/`GetExitCodeProcess`, never `os.kill(pid, 0)`, whose signal 0
-is `CTRL_C_EVENT` there and misreports any process on another console.
+## Board busy?
 
-The lock is the promise of the port, and a child (esptool, a monitor) can
-keep the port after its parent is gone, so the lock outlives every process the
-command started. `lock_scope.py` gives every OS the same three calls, with one
-mechanism each:
+"Busy" means queued. Seeing `waiting` is the queue working, not an error: your
+command starts by itself when the board is free, and the 30 seconds of
+`monitor 30` count from when it gets the board. If you would rather not wait,
+work down this list.
 
-| OS | Members | A killed holder |
-|---|---|---|
-| Windows | a kill-on-close job object the holder joins when it takes the lock (`lock_job.py`); a process asking for `CREATE_BREAKAWAY_FROM_JOB` may leave | the kernel closes the job and kills every member |
-| Linux | processes carrying the lock's token in `AUTANA_DEVICE_LOCK_TOKEN`, found in `/proc` (`lock_group.py`) | a watchdog the holder started sees the holder's pipe close and kills every tagged process |
+1. **See who has it.** `autana status` lists every board plugged in or named
+   by a lock, and for each one of the held line above, or:
 
-The token, not parentage, is what names a member on Linux. It follows
-inheritance through any number of exited parents, which a process tree cannot
-(an orphan is reparented to init), and it beats `PR_SET_PDEATHSIG` (direct
-children only) and a subreaper (it dies with the holder). A process that
-scrubs its own environment or runs as another user is out of reach. `reset`'s esptool and
-`run_to_end`'s flash are covered like anything else the holder starts.
+   ```text
+   human reservation: sam@bench:39780: checking the panel (since 2026-09-29 16:45:43; 1s ago; 59m left, `autana lock hand` again renews it)
+   unlocked - stale lock from sam@bench:25848 for autana monitor (dead process)
+   unlocked - human reservation from sam@bench:11816: still checking expired 2m ago and is released
+   unlocked
+   ```
 
-A holder that ends normally gives the members that started under its lock two
-seconds, stops the rest (through a handle on Windows, a pidfd that re-checks
-the token on Linux) and prints their pids, then releases; work already running
-before the lock was taken is left alone, and a survivor is printed. Jobs nest,
-so a Windows holder already inside a launcher's or harness's job still gets its
-own; if it cannot join one it says so and the lock works as before. The
-watchdog is untagged, and a holder whose watchdog has died says so when it
-releases.
+   `autana lock hand <note>` means "I am using the board by hand": it reserves
+   the board so every command waits or fails until `autana lock take-back`,
+   or until an hour after the last `hand`. Below a holder, `waiting:` lists
+   the queue with each estimated start; an estimate is `unknown (no duration
+   history)` until that command has run a few times on this machine. A
+   `stale` or `expired` line needs nothing from you: the next command takes
+   the board and says what it took.
 
-On POSIX the port itself is opened exclusively (pyserial `exclusive`, an
-advisory `flock`), as Windows does by itself, so a leftover holder makes the
-next open fail as busy, which `open_when_free` retries, instead of two readers
-splitting the byte stream. Being advisory, it excludes this tool's readers and
-esptool but not `screen`, `minicom` or ModemManager. Where there is neither a
-job nor `/proc`, this is the only protection.
+2. **Wait.** A waiting command prints its place at most every 30 seconds
+   (the two notices in the transcript) and gives up after 10 minutes. Behind a
+   reservation the notice reads `board reserved by <owner>: <note> - waiting
+   (59m left, unless renewed; ...)`.
 
-The heartbeat refuses a lock that was replaced or has gone stale. From then
-on the command has lost the board: a capture or `send` stops at its next
-read, the next port open or esptool call refuses, a flash in progress is
-stopped (its whole process tree), and the command fails with
-`device lock was lost`. A command that finds its lock replaced when it ends
-fails the same way, even if nothing else noticed. `flash_image.sh` checks
-the live token for the named board just before its esptool write; it cannot
-prove ownership during the write itself, which is what the heartbeat is
-for.
+3. **Do not wait.** For one command that should fail rather than queue,
+   put `--wait 0` (seconds) before it; it covers every step the command
+   runs, such as the flash inside `suite --flash`:
 
-```mermaid
-stateDiagram-v2
-    state "Held, renewed by a heartbeat every 5 s" as Held
-    [*] --> Queued: ticket in the board's queue
-    Queued --> Held: first in line, board free
-    Queued --> [*]: wait ran out, or the waiter died
-    Held --> Stale: heartbeat 10 min old, or holder dead
-    Stale --> Lost: a waiter reclaims it, or the heartbeat is refused
-    Held --> Lost: lock replaced
-    Lost --> [*]: the command stops and fails
-    Held --> Draining: the command ends
-    Draining --> Reaped: members still running after 2 s
-    Draining --> Released: every member ended
-    Reaped --> Released: members killed
-    Released --> [*]: the next waiter may take the board
-    Held --> Killed: holder killed
-    Killed --> Stale: job closes or watchdog fires, members killed
-```
+   ```text
+   autana --wait 0 flash
+   ```
 
-After winning the lock a command also waits for the serial port itself to
-come free, since a previous holder's reader can outlive its lock. The
-default lock wait is ten minutes; `--wait 0` returns at once when the board
-is busy, and a waiting command prints its queue place and estimated start at
-most every 30 seconds.
+   A CI job that should fail rather than queue writes `autana --wait 0
+   <command>` on every board command; there is no environment setting.
 
-## Status
+   `--wait` is only accepted before the command (`autana --wait 0 monitor
+   5`); after it, autana says so and does nothing.
 
-`status` lists every board a lock, reservation or waiter names, and every
-board plugged in; `--board` or `AUTANA_BOARD` narrows it to one. A board off
-USB - unplugged, or mid-reset - is listed with no port. Text output gives,
-per board, the holder with local start time, elapsed time and estimated free
-time, a stale lock that is waiting to be reclaimed, and the waiters in FIFO
-order with their estimated starts.
+   ```text
+   device: device lock was not acquired: board held by sam@bench:4120 for autana monitor since 2026-09-29 16:42:51; `autana status` shows the queue
+   ```
 
-`status --json` prints `{"boards": [...]}`, one object per board. Times are
-epoch seconds; an estimate without enough history is `null`.
+   It exits 75, the same status as a command whose 10-minute wait ran out, so
+   a CI job can retry on the code alone.
+
+4. **Read `stopped process(es)`.** When a command ends and something *it
+   started* is still running (an `esptool` or a monitor that outlived its
+   parent), autana does not release the lock while that could still hold the
+   port: it gives the process two seconds, ends it, and prints
+
+   ```text
+   stopped process(es) still running under the device lock: 5120, 5133
+   ```
+
+   Only processes your own command started are ever ended. An `esptool` or a
+   terminal program you started yourself is never touched: its port open
+   fails, or the port open of your next command does. If autana cannot end
+   one it says `device lock released with process(es) still running that could
+   not be stopped: ...`.
+
+5. **The lock was yours but the port will not open.** A command that won the
+   lock waits for the port itself to come free, up to 10 minutes, saying
+   `waiting for the board port, held by another process`. If it never does:
+
+   ```text
+   device: board port still held by another process when the 600s wait ran out: <the OS's error>. The board's previous holder was sam@bench:4120 (autana monitor); its lock ended 3m ago. Still running from it: 5120 (python3), 5133 (esptool). autana never stops another holder's processes; end them yourself if you are sure they are not needed, or wait.
+   ```
+
+   The message names the one holder before you and the processes of it that
+   are still alive: its own process, and on Linux everything that started
+   under its lock; on Windows only its own process. With none left it says a
+   program outside autana (a serial terminal, a monitor) probably has the port
+   open; close it. Only a person decides to end a process; autana does not.
+
+6. **Ending a reservation or a lock.** A reservation is someone's
+   `autana lock hand`; `autana lock take-back` clears it now. A held lock is a
+   running command: end it with Ctrl+C in its terminal. Do not clear it from
+   outside while the command lives; if it is truly stuck see [Forcing a stuck
+   lock clear](#forcing-a-stuck-lock-clear).
+
+## Guarantees and non-guarantees
+
+> **Guaranteed**
+>
+> - One command per board, per user account, on one machine, at a time.
+> - Commands take the board in first-come order: a FIFO queue.
+> - The lock covers every process its command started: autana ends them when
+>   the command ends normally, and on Windows and Linux also when the command
+>   is killed (see the failure table for the one soft case).
+> - The port is opened exclusively. On Windows any program holding it makes
+>   the next open fail; on Linux the exclusive open is advisory, so it
+>   excludes autana processes and `esptool`, not `screen`, `minicom` or
+>   ModemManager. Either way a leftover autana process makes the next open
+>   fail loudly instead of two readers splitting the byte stream.
+> - A flash is hash-verified: esptool checked every region it wrote.
+> - A holder that was paused (a suspended laptop, a debugger) ends its own
+>   processes when it wakes and finds its lock gone.
+> - A new holder never kills another holder's processes.
+> - A process you started yourself (`esptool`, a terminal program) is never
+>   ended by autana.
+>
+> **Not covered**
+>
+> - Sharing one board across machines. Not supported: the lock is files on
+>   one machine's disk.
+> - Two OS user accounts on one PC. Each account has its own lock folder, so
+>   both would believe they hold the board. Give a board to one account.
+> - Programs that ignore the lock: on Linux, `screen`, `minicom` and
+>   ModemManager can open a port autana holds.
+> - Boot correctness. A flash proves the write, not that the firmware boots.
+
+## When something goes wrong
+
+Timings are set in [How it works](#how-it-works): a heartbeat every 5 seconds,
+and a lock is reclaimable when its holder is dead or has been silent 10
+minutes.
+
+| What happened | What happens | How long | What you do |
+|---|---|---|---|
+| The holder died (terminal closed, `kill -9`, power off) | Windows: the kernel ends every process the command started. Linux: a watchdog the command started sees it die and ends every tagged process. The next waiter reclaims the lock (`reclaimed lock from ... (dead process)`). The soft case: on Linux the watchdog is a separate process, so if it dies with the holder (logout, `kill -9 -1`, a stopped container) nothing ends the started processes; they keep the port until they exit and the next open fails with the previous-holder message naming them. | Seconds | Nothing, or end the named processes. |
+| The holder is alive but stuck | A holder that keeps renewing its lock keeps the board however long that is. One whose whole process stopped is reclaimed once it has been silent 10 minutes (`heartbeat expiry`); when it wakes it fails with `device lock was lost`. | While it lives; 10 minutes if stopped | `autana status` shows how long it has held. End it with Ctrl+C in its terminal, or kill it: the lock is then reclaimed at once. |
+| The laptop slept, or the clock jumped | A sleep or forward jump of over 10 minutes makes every lock reclaimable: a waiter takes the board, and the sleeper fails with `device lock was lost` on waking, even with nobody waiting. A jump back only makes a stale lock last longer. The same clock times a reservation's hour. | Up to 10 minutes extra | Re-run the command. |
+| A terminal program has the port | Windows: the open fails and retries. Linux: `screen` and `minicom` ignore the lock and can open it alongside autana's readers, so both may read garbled output. autana ends nothing of yours. | Up to 10 minutes (12 seconds when a command reopens the port right after its own flash) | Close the other program. A message that names no previous-holder process says it was not autana. |
+| The board was unplugged mid-flash | `esptool` fails, `flash` fails naming that half with the first error line and the log's path, and the lock is released. The board may hold a partial image. | Seconds | Plug it in, run `autana flash` again. If it will not boot, [Flashing-and-Toolchain.md](../notes/Flashing-and-Toolchain.md) has download mode and recovery. |
+| Someone forgot `autana lock hand` | Every command is refused with `board reserved by ...` and the time left. A reservation has no heartbeat, so the hour after the last `hand` is the only thing that ends it. It then counts as released and `status` says so; the `human-expired` event fires at the next command or `hand` that finds it, not on the hour. | 1 hour | `autana lock take-back` if it is not yours to keep. |
+
+## For a shared rig or CI
+
+### Where the lock lives
+
+One folder per user account and machine, shared by every checkout and
+session:
+
+| | Lock folder |
+|---|---|
+| Windows | `%TEMP%\autana-device`, usually `C:\Users\<you>\AppData\Local\Temp\autana-device` |
+| Linux | `/tmp/autana-device-<uid>` (`id -u`), whatever `TMPDIR` is |
+
+`AUTANA_DEVICE_LOCK_ROOT` names another folder. Linux ignores `TMPDIR` so two
+jobs with different temp folders still exclude each other; an install older
+than this rule used `$TMPDIR/autana-device` there, and until every copy on the
+machine is updated the two do not exclude each other (the lock protocol number
+cannot help: an older install never looks in the new folder). Per board, with
+`:` in the serial number written as `_`:
+
+| File | What it is |
+|---|---|
+| `<serial>.json` | The lock: `owner`, `purpose`, `kind`, `acquired_at`, `heartbeat_at`, `host`, `pid`, `token`, `expected_build_id`, `log`, `protocol`, `autana_version`. The `token` is a random secret naming this one lock; the holder and every process it starts also have it in `AUTANA_DEVICE_LOCK_TOKEN`, which `autana lock release` uses when given none. `status` never prints it. |
+| `<serial>.queue/` | One ticket per waiting command, in FIFO order; a dead waiter's is discarded. |
+| `<serial>.human.json` | A person's reservation, with `expires_at`. |
+| `<serial>.last.json` | The previous holder, one only: overwritten each time a lock ends, for the message in step 5. |
+| `<serial>.seen.json` | Names a board once found on USB, so `lock hand` and `lock take-back` can still reach it when it has since dropped off. Delete it to make this machine forget the board. |
+| `durations.jsonl` | How long each kind of command held the board, for estimates ([Flash-and-Captures.md](Flash-and-Captures.md#wait-estimates)). |
+
+### Which board
+
+A board is named by its USB serial number (the ESP32-S3's MAC address,
+`90:70:69:FE:A3:08`, say), so the lock and its queue survive a reset that
+brings it back on another COM number. A command acts on `AUTANA_BOARD`
+(or the one Espressif board plugged in, else the one board a lock,
+reservation or waiter names, so it can queue while a holder's reset has the
+board off USB). With several candidates and none named it fails and lists
+them; each board has its own lock and queue. `lock hand` and `lock take-back`
+alone fall back once more to the only board this machine has ever seen.
+
+### Variables, exit codes and JSON status
+
+| Variable | Effect |
+|---|---|
+| `AUTANA_BOARD` | The board's USB serial number, when several are plugged in. |
+| `AUTANA_DEVICE_LOCK_ROOT` | The lock folder. |
+| `AUTANA_DEVICE_LOCK_TOKEN` | Set inside a running command for the processes it starts. |
+| `AUTANA_LOCK_HOOK` | A shell command run on lock events ([Lock events](#lock-events)). |
+| `AUTANA_RECORDS` | Where captures and `index.jsonl` land ([Flash-and-Captures.md](Flash-and-Captures.md#where-a-capture-lands)). |
+
+| Exit code | Meaning |
+|---|---|
+| `0` | Success. |
+| `1` | Any other failure, including `device lock was lost`. |
+| `75` | The board was busy: `device lock was not acquired`, fail-fast or after the wait ran out. Safe to retry. |
+| `3`, `4` | `lock hand --until-back` only: `3` the wait timed out or was interrupted (the reservation stays), `4` the reservation was cleared and a new one made. `0` means it was released or expired. |
+| `130` | A second Ctrl+C on `monitor`. |
+| `2` | `device.py` itself, for a bad command line. |
+
+`autana status --json` prints `{"boards": [...]}`, one object per board.
+Times are epoch seconds; an estimate without enough history is `null`.
 
 | Field | |
 |---|---|
 | `board` | USB serial number |
 | `port` | COM port now, `null` when the board is not on USB |
 | `state` | `unlocked`, `held`, or `human` (a person's reservation) |
-| `holder` | `{"owner", "purpose"}`, the purpose being a reservation's note; `null` when unlocked |
+| `holder` | `{"owner", "purpose"}`, the purpose being a reservation's note; `null` when unlocked. A held lock's also carries `protocol` and `autana_version`. |
 | `since`, `elapsed_seconds` | when the holder took the board, and for how long |
 | `estimated_free` | when the holder should be done |
+| `expires_at`, `remaining_seconds` | when a reservation lapses, and how long is left; else `null` |
 | `stale` | `{"owner", "purpose", "reason"}` of a lock the next waiter will reclaim, else `null` |
+| `expired` | `{"owner", "purpose", "expired_at", "ago_seconds"}` of a reservation that lapsed and is treated as released, else `null` |
 | `waiting` | `[{"owner", "purpose", "estimated_start"}]` in queue order |
 
-Estimates come from `durations.jsonl` beside the lock files, one file shared
-by every checkout and session on the machine. Each held command records how
-long it held the board, nested `flash` and `run-suite` inside `batch` or
-`selftest` included. A `flash` holds the board only while esptool writes its
-snapshot - the build and the snapshot come before the lock - so its recorded
-duration, and the estimate a waiter behind it sees, is the write alone. A
-command that raises, gets an error reply, or loses its lock is recorded with
-its error and never counts. A suite that reports FAIL is a result, not a
-broken run - a perf capture that trips a regression ceiling reports one - so
-its duration counts. An estimate is the median of a command kind's last
-`ESTIMATE_RECENT_RUNS` successful runs, after at least
-`ESTIMATE_MINIMUM_RUNS` (constants in `device_lock.py`); a holder past it is
-estimated free now, and a human reservation or an unknown duration ahead of
-a waiter makes its estimate unknown. Past `DURATIONS_TRIM_LINES` lines the file is cut back to each
-kind's last `ESTIMATE_RECENT_RUNS` successful runs, and then to the newest
-`DURATIONS_TRIM_LINES` of those.
+### Lock events
 
-### Talking to a running device: `send`
-
-`send` writes one console line and prints the device's replies to it, under
-the lock like everything else. It is what live tuning uses - the firmware's
-`util/tune` answers `SET <name> <value>`, `GET <name>` and `TUNE` on a
-development build - and what `autana tune` calls:
-
-```powershell
-python scripts/device/device.py --owner maintainer send "SET ridge.theme_rgb 0x1199C8"
-python scripts/device/device.py --owner maintainer send TUNE
-```
-
-A reply is everything from `--reply` (default `TUNE`) to the end of its
-line, since the console also carries the firmware's log lines; the answer
-ends at a line starting with one of `--until` (default `TUNE_OK`, `TUNE_ERR`,
-`TUNE_END`). It exits 1 on an `_ERR` reply, and says so when the build does
-not know the command or nothing answers within `--seconds` (default 3).
-`send` is not a capture: it adds no line to `index.jsonl`.
-
-### Screenshots: `device.py screenshot`
-
-`device.py screenshot [--as-shown|--framebuffer] [--out PATH]
-[--timeout SECONDS]` takes the lock, requests the panel capture and writes a
-`.png` plus a `.json` state snapshot; `autana screenshot` calls it the same
-way. The wire protocol and the BMP-to-PNG decoder live in
-`launcher/tools/device/screenshot.py`, imported as a library - it opens no
-port itself.
-
-### Measuring: use `suite --flash`, not a sequence of commands
-
-A measurement holds one lock across a flash and every capture: builds once, then
-takes the lock once, flashes once, captures every suite `--runs` times, and writes
-one summary across all runs. `autana suite <suite>... --runs N --flash` calls it
-the same way ([Autana-CLI.md](Autana-CLI.md)); `autana batch` is its old spelling.
-
-```powershell
-python scripts/device/device.py --owner sam batch --worktree C:\path\to\engine --suite run_boot_anim_perf_suite --suite run_gfx_suite --runs 3
-```
-
-The summary (`<HHMMSS>_batch_<owner>.md` in the day's records folder) shows,
-per suite: every timing per run with min, max and spread; every test whose
-result changed between runs of the image - a test that flaps on one binary is
-a finding, not noise; the tests that failed in every run; and each
-`PERF TARGET` per run. A capture that errors or reports a failed test
-is recorded and the batch continues, then exits 1; only a failed build or
-flash stops it. `--perf-scope` builds the
-perf-scoped image. `--out PATH` writes the one raw capture to `PATH` - only
-with exactly one `--suite` and `--runs 1`, which is how `device_report.sh`'s
-RUNSUITE-scoped reports (report_boot_anim_perf.sh) call it. `selftest`
-builds the autorun diagnostics image and captures the boot-time run until
-`SELFTEST_COMPLETE`.
-
-`run-suite` stops at the shell's `RUNSUITE_COMPLETE name=<suite>` line (or an
-older build's `SUITE_DONE`), or after its non-`shell:` output is idle. A port
-that disappears mid-capture ends it as `port lost` with what was read kept, so
-a `batch` carries on with its next suite. It fails if the build has no suites,
-does not contain the requested suite, or reports any failed test. `reset`
-reboots with esptool and returns once the port is back; `reset --capture` and
-`selftest` reopen the port if it vanishes or stays silent after the reset.
-
-### Where a capture lands
-
-No capture command needs `--out`: by default each writes to
-`<records>/<YYYYMMDD>/<HHMMSS>_<kind>_<owner>.log` (`kind` is
-`flash-<variant>`, `reset`, `runsuite-<suite>`, `selftest`, or `listen`). `<records>` is
-`$AUTANA_RECORDS` when set, otherwise the checkout's own gitignored
-`.records/device`, so nothing a commit can pick up by accident. A
-default-path capture over 200 KB is gzipped in place (a flash log at
-~270 KB usually is); pass `--out <path>` to write exactly there instead,
-uncompressed:
-
-```powershell
-python scripts/device/device.py --owner sam run-suite run_gfx_suite --out C:\Temp\gfx.log
-```
-
-Every invocation - default path or explicit `--out`, success or failure -
-also appends one line to `<records>/index.jsonl`: the board, owner, purpose,
-command, suite, build id (from the flash log for a flash, seen in the
-capture otherwise), when the command started (`started_at`) and when it won
-the lock (`acquired_at`), the worktree and commit involved, how the capture
-ended, and any error. `device.py` never commits these records; whoever ran
-the command commits the evidence with the work.
-
-`run-suite` also writes a parsed `<same stem>.md` beside its capture -
-suite PASS/FAIL counts, every failing test's Unity message, and any
-`PERF TARGET` lines. When the manifest's `worktree` names a checkout with
-exactly one app whose `tools/report_performance.py` registers the suite that
-ran, that reporter's table is appended too; zero or several matches,
-or a reporter that fails, are noted in the report instead - a capture is
-never failed over this. Rebuild a report for any existing capture:
-
-```powershell
-python scripts/device/device.py report .records/device/20260916/153113_runsuite-run_boot_anim_perf_suite_sam.log
-```
-
-`report` touches no lock and no board.
-
-### Lock files and recovery
-
-The lock root is `%TEMP%/autana-device` (`AUTANA_DEVICE_LOCK_ROOT`
-overrides it). Per board, with `:` in the serial number written as `_`:
-`<serial>.json` is the lock - `board`, `owner`, `purpose`, `kind`,
-`acquired_at`, `heartbeat_at`, `expected_build_id`, `host`, `pid`, `log`
-(whom it was reclaimed from, if anyone), an opaque `token`, and `protocol`/
-`autana_version` (next section); `<serial>.queue/` holds the FIFO waiter
-tickets (a dead waiter's is discarded), each carrying the same `protocol`/
-`autana_version`; `<serial>.human.json` is a person's reservation, likewise;
-`<serial>.seen.json` just names a board once found on USB, written the
-first time and never after - `hand`/`take-back` alone read it, to still
-reach a board that has since dropped off with no lock, reservation or
-waiter left to name it. There is no verb to forget one; delete the file
-to make this machine stop offering that board as the fallback.
-
-#### Lock protocol
-
-The mutex is an OS-independent spinlock - an `O_CREAT|O_EXCL` guard file
-`device_lock.py` creates and deletes around each read-modify-write, stale
-after 30 s so a crashed holder cannot wedge it forever. The JSON files above
-are the state that mutex protects, not locks themselves, and a machine can
-have autana installs of different ages meeting at one board, so every record
-carries `device_lock.LOCK_PROTOCOL`'s value as `"protocol"` (an integer, 0
-when the field is absent - an autana from before this existed), alongside
-`"autana_version"`. Neither is ever compared or refused on - two autanas of
-different ages still have to work the same board, so a mismatch is only
-ever shown as information, in `status` and while waiting:
-
-```
-held by sam for flash since ... (elapsed 12s; estimated free unknown; autana 0.4.1, lock protocol 2)
-board held by sam (autana 0.4.1, lock protocol 2) - waiting
-```
-
-`PROTOCOL_CORE_FIELDS` names exactly what a reader must be able to get off
-ANY record, of any age, without guessing - the fields that decide something:
-`owner`, `pid`, `host`, `heartbeat_at` (a lock's liveness and staleness),
-`ticket`/`sequence` (a waiter's identity and FIFO order), `board` (every
-record names the board it is for, read by `boards()`), and `protocol`
-itself. A dead or stale holder is judged from exactly these - `host`, `pid`
-and `heartbeat_at` - so it is always reclaimed, whatever its protocol -
-never wedges the board waiting for a peer that will never update it again.
-Everything else (`purpose`, `acquired_at`, `since_at`, `note`, `kind`, ...)
-is read with `.get()` wherever the record might not be one this autana just
-wrote itself, the same way `kind` always has been - display information a
-reader tolerates the absence of, never something a decision hinges on.
-
-Bump `LOCK_PROTOCOL` whenever a record's fields change in a way an older
-reader would misinterpret. `scripts/device/tests/test_device_lock.py` pins
-every record's current keys as a golden set, keyed by protocol number: a
-deliberate field change without also bumping `LOCK_PROTOCOL` and adding a
-new entry there is the failure telling you to do both.
-
-`device.py --owner <owner> release --token <token>` releases a lock this
-owner holds without touching the board - for a run that finished early and
-wants to hand the board to the next waiter now. `autana lock release <token>`
-calls it the same way. For inspection or emergency recovery, the lower-level
-command takes the board's serial number:
-
-```powershell
-python scripts/device/device_lock.py --board 90:70:69:FE:A3:08 status
-python scripts/device/device_lock.py --board 90:70:69:FE:A3:08 acquire --owner sam --purpose investigate --wait 60
-python scripts/device/device_lock.py --board 90:70:69:FE:A3:08 heartbeat --token <token>
-python scripts/device/device_lock.py --board 90:70:69:FE:A3:08 release --token <token>
-```
-
-The acquire result prints the token as JSON. Releasing requires that token, so
-one owner cannot release another owner's active lock.
-
-To reserve the board for a person, record the reservation before using it -
-`autana lock hand <note>`, or `hand-to-human` directly with an active lock's own
-token:
-
-```powershell
-python scripts/device/device.py --owner maintainer hand-to-human --token <token> --note "checking the panel"
-```
-
-When a session holds the board, its token releases that lock before the
-reservation is recorded; without an active lock, omit `--token` (what
-`autana lock hand` always does). The reservation appears in `status` and blocks
-every acquisition until it is cleared - `autana lock take-back`, or
-`device.py --owner maintainer take-back`, which prints the board's status
-after. `device_lock.py --board <serial> clear-human` does the same for
-recovery.
-
-## Lock events
-
-Set `AUTANA_LOCK_HOOK` to a shell command to run when a lock changes. The
-command receives these environment variables: `AUTANA_LOCK_EVENT`,
-`AUTANA_LOCK_BOARD` (the serial number), `AUTANA_LOCK_OWNER`,
-`AUTANA_LOCK_PURPOSE`, and `AUTANA_LOCK_NOTE`. Purpose is empty for human
-reservations; note carries the reclaim reason for `lost` and the reservation
-note for human events. The command runs through `cmd.exe` on Windows
-(`%VAR%`) and `/bin/sh` elsewhere (`$VAR`). Hooks run in separate processes
-and are not ordered across them, so one holder's `released` can arrive after
-the next holder's `acquired`. A hook has a three second timeout; a failed or
+Set `AUTANA_LOCK_HOOK` to a shell command to run when a lock changes. It runs
+through `cmd.exe` on Windows (`%VAR%`) and `/bin/sh` elsewhere (`$VAR`), with
+`AUTANA_LOCK_EVENT`, `AUTANA_LOCK_BOARD` (the serial number),
+`AUTANA_LOCK_OWNER`, `AUTANA_LOCK_PURPOSE` and `AUTANA_LOCK_NOTE` set. Purpose
+is empty for reservations; note carries the reclaim reason for `lost` and the
+reservation note for the `human-` events. Hooks run in separate processes and
+are not ordered across them, so one holder's `released` can arrive after the
+next holder's `acquired`. A hook has a three second timeout; a failed or
 timed out hook is quiet and never changes the lock operation's outcome.
 
 | Event | When |
@@ -467,18 +288,123 @@ timed out hook is quiet and never changes the lock operation's outcome.
 | `released` | The holder gives up the lock. |
 | `waiting` | A ticket begins a real wait for a held or reserved board; once per ticket. |
 | `gave-up` | A waiting ticket leaves without the lock. |
-| `human-reserved` | A human reservation is recorded. |
-| `human-cleared` | A human reservation is cleared. |
+| `human-reserved` | A reservation is recorded. Renewing one records nothing new. |
+| `human-cleared` | `lock take-back` cleared a reservation. |
+| `human-expired` | A lapsed reservation was found and treated as released, at the next claim or `hand`, not on the hour; the note is its own. |
 | `lost` | A stale lock is reclaimed; owner and purpose identify its former holder, and note gives the reclaim reason. |
 
-`autana lock hand --wait <seconds> <note...>` waits without holding the device
-lock; `human-reserved` fires when the reservation is recorded and
-`human-cleared` when it is released. Release returns 0, timeout or Ctrl+C
-returns 3, and a replacement reservation returns 4 without clearing it.
+### One copy of the tools
+
+Every checkout carries its own `scripts/device/`, but the lock is one set of
+files on the machine, and two versions of the lock code can each believe they
+hold the board. Call `autana` (`tools/autana` on `PATH`,
+`scripts/add-tools-to-path.sh`), never a checkout's own `device.py`: it is one
+script at one fixed location, so every call runs the same lock code whichever
+checkout started it. Name a CI job with `autana --owner NAME`, run its commands as
+`autana --wait 0 <command>`, and what gets built comes from `--project` or the
+current directory (`autana help build`). A report script calls `autana
+selftest`, `autana suite` or `autana flash`.
+
+Installs of different ages can still meet at one board. Every record carries
+its `protocol` number and `autana_version`, and a difference is only shown,
+never refused. A dead or stale holder is judged from `host`, `pid` and
+`heartbeat_at` alone, so it is reclaimed whatever its protocol. An install
+older than protocol 2 does not know a reservation lapses, so on a shared
+machine update every copy.
+
+### Forcing a stuck lock clear
+
+Normally nothing needs forcing: a dead holder is reclaimed at once and a
+silent one after 10 minutes. If a lock has to go now:
+
+1. Read the `token` field of `<serial>.json` and run `autana lock release
+   <token>`. It releases the lock without touching the board.
+2. If the file cannot be read, delete it. Either way the holder, if it lives,
+   fails with `device lock was lost` and ends its own processes within about 5
+   seconds:
+
+   | Linux | Windows PowerShell |
+   |---|---|
+   | `rm /tmp/autana-device-$(id -u)/90_70_69_FE_A3_08.json` | `Remove-Item "$env:TEMP\autana-device\90_70_69_FE_A3_08.json"` |
+
+3. A `.guard` file left by a crash clears itself after 30 seconds. A
+   reservation clears with `autana lock take-back`.
+
+**Never force-clear a lock during a flash.** The next command can start
+writing at once, while the first flash keeps writing for up to one heartbeat
+(about 5 seconds) before it notices. `flash_image.sh` checks the token just
+before its write but cannot prove ownership during it; the heartbeat is what
+does.
+
+A leftover process of the previous holder is yours to end; nothing here kills
+across holders.
+
+### Calling `device.py` from a script
+
+Prefer `autana --owner NAME`. Run `scripts/device/device.py`
+directly only for what `autana` does not offer: a per-call `--purpose`, a
+`send` with its own `--reply` and `--until`, or `report`. It runs under
+ESP-IDF's Python (a different interpreter re-runs it under that one). On
+Windows, `flash`, `suite --flash` and `selftest` run `build.sh` and
+`flash_image.sh` with Git for Windows' own `bash.exe`, never whatever `bash`
+comes first on `PATH`, which from a native shell is WSL's launcher.
+
+```sh
+python scripts/device/device.py --owner ci-7 --wait 0 --purpose "gfx suite" run-suite run_gfx_suite --expect-build-id 0123456789ab-dev
+```
+
+`--owner` defaults to `unknown`, and `--wait` is the lock wait in
+seconds. `release --token <t>`, `hand-to-human --token <t> --note <n>` and
+`take-back` are what `autana lock` calls. For inspection or emergency recovery
+`scripts/device/device_lock.py --board <serial>` takes `status`, `acquire
+--owner ... --purpose ... --wait 60`, `heartbeat --token`, `release --token`,
+`check-token --token`, `human --owner ... --note ...` and `clear-human`.
+
+## How it works
+
+`scripts/device/` is the only code that opens the board's serial port
+(`scripts/gates/check_device_access.py` holds the tree to that). A lock is a
+file, taken in queue order, kept alive by a heartbeat, and tied to the
+processes its command starts so that none of them can hold the port after the
+lock is gone.
+
+| | What the lock is tied to | If the holder dies |
+|---|---|---|
+| Windows | A job object the holder joins when it takes the lock. Every process it starts inherits the job, grandchildren of dead parents included. | The kernel closes the job and ends every member. A process started with `CREATE_BREAKAWAY_FROM_JOB` can leave it. |
+| Linux | A token: every process the holder starts carries the lock's token in `AUTANA_DEVICE_LOCK_TOKEN`, found through `/proc`. A small watchdog the holder starts holds the read end of a pipe. | The pipe closes, and the watchdog ends every process still carrying the token. A process that scrubs its environment or runs as another user is out of reach. |
+
+A holder that ends normally gives the processes it started two seconds, ends
+the rest and prints their pids, then releases. Work that was already running
+before the lock was taken is left alone. If a holder cannot join a job (or
+loses its watchdog) it says so, and the lock still works as a lock.
+
+**Heartbeat and reclaim.** A running command renews its lock every 5 seconds:
+its heartbeat. The next waiter reclaims a lock when its holder's process on
+this machine is dead, or when its heartbeat is more than 10 minutes old, and
+logs `reclaimed lock from <owner> for <purpose> (dead process | heartbeat
+expiry)`. A holder whose heartbeat is refused - its lock was replaced, or it
+went stale while it was paused - has lost the board: a capture stops at its
+next read, the next port open refuses, a flash in progress is ended, and the
+command fails with `device lock was lost`. A person's reservation has no
+heartbeat: it lapses one hour after the last `lock hand`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Waiting: a command needs the board
+    Waiting --> Holding: first in line
+    Waiting --> [*]: gave up (exit 75)
+    Holding --> [*]: command ends, leftovers stopped, board freed
+    Holding --> Reclaimed: holder died, or silent 10 min
+    Reclaimed --> [*]: next in line takes the board
+```
+
+A person's reservation (`autana lock hand`) blocks every command until
+`take-back` or an hour without renewal.
 
 ## Related
 
-- [Autana-CLI.md](Autana-CLI.md) - the interactive `autana` command built on
-  top of this lock.
+- [Flash-and-Captures.md](Flash-and-Captures.md) - what a flash proves, how a
+  measurement holds one lock, and where captures land.
+- [Autana-CLI.md](Autana-CLI.md) - the `autana` command built on this lock.
 - [Flashing-and-Toolchain.md](../notes/Flashing-and-Toolchain.md) - resets,
   download mode and recovery on this board.
