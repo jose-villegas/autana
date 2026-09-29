@@ -488,7 +488,7 @@ class LockStore:
     def set_human(self, board, owner, note):
         """Reserves the board for a person for HUMAN_RESERVATION_SECONDS. Any
         `hand` while one stands renews it, whichever process runs it (an owner
-        name carries the pid): the id, and so a `hand --wait` on it, carries over.
+        name carries the pid): the id, and so a `hand --until-back` on it, carries over.
         Returns (id, renewed)."""
         with self.guard(board):
             now = self.now()
@@ -813,7 +813,7 @@ def main(argv=None):
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("status")
     acquire = subparsers.add_parser("acquire")
-    acquire.add_argument("--owner", default=os.environ.get("AUTANA_DEVICE_OWNER", "unknown"))
+    acquire.add_argument("--owner", default="unknown")
     acquire.add_argument("--purpose", required=True)
     acquire.add_argument("--expected-build-id", default="")
     acquire.add_argument("--wait", type=float, default=0)

@@ -1554,7 +1554,7 @@ def main(argv=None):
                                         "else the only board plugged in, else the only one "
                                         "a lock record names; hand-to-human/take-back also try "
                                         "the only board this machine has ever seen)")
-    parser.add_argument("--owner", default=os.environ.get("AUTANA_DEVICE_OWNER", "unknown"))
+    parser.add_argument("--owner", default="unknown")
     parser.add_argument("--wait", type=float, default=600)
     subparsers = parser.add_subparsers(dest="command", required=True)
     status_parser = subparsers.add_parser("status")

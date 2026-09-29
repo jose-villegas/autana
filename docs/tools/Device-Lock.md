@@ -94,12 +94,19 @@ work down this list.
    reservation the notice reads `board reserved by <owner>: <note> - waiting
    (59m left, unless renewed; ...)`.
 
-3. **Do not wait.** For a script that should fail rather than queue, set the
-   wait to zero (`AUTANA_DEVICE_WAIT` is in seconds):
+3. **Do not wait.** For one command that should fail rather than queue,
+   put `--wait 0` (seconds) before it; it covers every step the command
+   runs, such as the flash inside `suite --flash`:
 
-   | Linux | Windows PowerShell |
-   |---|---|
-   | `AUTANA_DEVICE_WAIT=0 autana flash` | `$env:AUTANA_DEVICE_WAIT = "0"; autana flash` |
+   ```text
+   autana --wait 0 flash
+   ```
+
+   A CI job that should fail rather than queue writes `autana --wait 0
+   <command>` on every board command; there is no environment setting.
+
+   `--wait` is only accepted before the command (`autana --wait 0 monitor
+   5`); after it, autana says so and does nothing.
 
    ```text
    device: device lock was not acquired: board held by sam@bench:4120 for autana monitor since 2026-09-29 16:42:51; `autana status` shows the queue
@@ -232,8 +239,6 @@ alone fall back once more to the only board this machine has ever seen.
 
 | Variable | Effect |
 |---|---|
-| `AUTANA_DEVICE_OWNER` | The owner shown to others, as `<value>:<pid>`; `<user>@<host>:<pid>` when unset. Give each CI job its own. |
-| `AUTANA_DEVICE_WAIT` | Seconds a command waits for the lock; 600 when unset, 0 fails at once. |
 | `AUTANA_BOARD` | The board's USB serial number, when several are plugged in. |
 | `AUTANA_DEVICE_LOCK_ROOT` | The lock folder. |
 | `AUTANA_DEVICE_LOCK_TOKEN` | Set inside a running command for the processes it starts. |
@@ -245,7 +250,7 @@ alone fall back once more to the only board this machine has ever seen.
 | `0` | Success. |
 | `1` | Any other failure, including `device lock was lost`. |
 | `75` | The board was busy: `device lock was not acquired`, fail-fast or after the wait ran out. Safe to retry. |
-| `3`, `4` | `lock hand --wait` only: `3` the wait timed out or was interrupted (the reservation stays), `4` the reservation was cleared and a new one made. `0` means it was released or expired. |
+| `3`, `4` | `lock hand --until-back` only: `3` the wait timed out or was interrupted (the reservation stays), `4` the reservation was cleared and a new one made. `0` means it was released or expired. |
 | `130` | A second Ctrl+C on `monitor`. |
 | `2` | `device.py` itself, for a bad command line. |
 
@@ -295,8 +300,8 @@ files on the machine, and two versions of the lock code can each believe they
 hold the board. Call `autana` (`tools/autana` on `PATH`,
 `scripts/add-tools-to-path.sh`), never a checkout's own `device.py`: it is one
 script at one fixed location, so every call runs the same lock code whichever
-checkout started it. Name a CI job with `AUTANA_DEVICE_OWNER` and
-`AUTANA_DEVICE_WAIT`, and what gets built comes from `--project` or the
+checkout started it. Name a CI job with `autana --owner NAME`, run its commands as
+`autana --wait 0 <command>`, and what gets built comes from `--project` or the
 current directory (`autana help build`). A report script calls `autana
 selftest`, `autana suite` or `autana flash`.
 
@@ -336,7 +341,7 @@ across holders.
 
 ### Calling `device.py` from a script
 
-Prefer `autana` with `AUTANA_DEVICE_OWNER`. Run `scripts/device/device.py`
+Prefer `autana --owner NAME`. Run `scripts/device/device.py`
 directly only for what `autana` does not offer: a per-call `--purpose`, a
 `send` with its own `--reply` and `--until`, or `report`. It runs under
 ESP-IDF's Python (a different interpreter re-runs it under that one). On
@@ -348,7 +353,7 @@ comes first on `PATH`, which from a native shell is WSL's launcher.
 python scripts/device/device.py --owner ci-7 --wait 0 --purpose "gfx suite" run-suite run_gfx_suite --expect-build-id 0123456789ab-dev
 ```
 
-`--owner` defaults to `AUTANA_DEVICE_OWNER`, and `--wait` is the lock wait in
+`--owner` defaults to `unknown`, and `--wait` is the lock wait in
 seconds. `release --token <t>`, `hand-to-human --token <t> --note <n>` and
 `take-back` are what `autana lock` calls. For inspection or emergency recovery
 `scripts/device/device_lock.py --board <serial>` takes `status`, `acquire
