@@ -178,8 +178,8 @@ by every checkout and session on the machine: each held command records how
 long it held the board, by kind (`flash`, a suite, `monitor`). The estimate
 is the median of that kind's recent successful runs, and is `unknown (no
 duration history)` until there are a few. A command that fails or loses its
-lock never counts; a suite that reports FAIL does, since perf captures always
-carry failing budget targets. A `flash` holds the board only while esptool
+lock never counts; a suite that reports FAIL does, since a perf capture that
+trips a regression ceiling reports one. A `flash` holds the board only while esptool
 writes - the build and the snapshot come before the lock - so the estimate a
 waiter sees behind a flash is the write alone. A person's reservation, or a
 holder of unknown length, makes every estimate behind it unknown.
