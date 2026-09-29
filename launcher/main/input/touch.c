@@ -57,6 +57,10 @@ static volatile bool report_pending;
  * change must still be read while a finger rests, or the FSM sees a lift. */
 static bool was_touching;
 
+/* Woken by the INT edge so a new contact is read at once instead of at the
+ * next poll tick. NULL until the task exists, and when it could not start. */
+static TaskHandle_t touch_task_handle;
+
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static uint32_t point_samples, moved_samples;
 static int last_x = -1, last_y = -1;
@@ -66,6 +70,11 @@ static void IRAM_ATTR
 on_touch_int(esp_lcd_touch_handle_t tp) {
     (void)tp;
     report_pending = true;
+    if (touch_task_handle != NULL) {
+        BaseType_t woken = pdFALSE;
+        vTaskNotifyGiveFromISR(touch_task_handle, &woken);
+        portYIELD_FROM_ISR(woken);
+    }
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -209,7 +218,17 @@ touch_task(void* arg) {
 
     while (1) {
         poll_once();
-        vTaskDelayUntil(&last_wake, period > 0 ? period : 1);
+        const TickType_t ticks = period > 0 ? period : 1;
+        if (was_touching) {
+            /* A resting finger is sampled at the poll rate, however often
+             * the controller pulses. */
+            vTaskDelayUntil(&last_wake, ticks);
+        } else {
+            /* Idle: a contact wakes the task, the timeout still polls the
+             * level when no interrupt is registered. */
+            ulTaskNotifyTake(pdTRUE, ticks);
+            last_wake = xTaskGetTickCount();
+        }
     }
 }
 
@@ -240,7 +259,7 @@ touch_start(void) {
      * an autorun self-test image, touch_start() runs after the test
      * suite has allocated and freed the heap into a state with no 3 KB run
      * left, so this call can fail and must not fail silently. */
-    if (xTaskCreate(touch_task, "touch", 3072, NULL, 6, NULL) != pdPASS) {
+    if (xTaskCreate(touch_task, "touch", 3072, NULL, 6, &touch_task_handle) != pdPASS) {
         ESP_LOGE(TAG,
                  "Could not start the touch task (largest free block "
                  "is %u bytes); input will not work",
