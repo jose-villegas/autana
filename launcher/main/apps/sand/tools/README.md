@@ -21,9 +21,11 @@ scripted tilt angle, and encodes the loop as a GIF.
 
 ## Images in the docs
 
-Run from the repository root.
+`doc_images.sh` here makes these in `docs/images/overview/`, run by
+`launcher/tools/render/render_doc_images.sh`; see "Images in these docs" in
+[`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harness.md).
 
-| Image | Command | Output to copy |
-|---|---|---|
-| `docs/images/overview/sand-menu.png` | `./launcher/main/apps/sand/tools/sand_menu_render_host.sh -o <dir>` | `title-landscape.png` |
-| `docs/images/overview/sand-simulation.gif` | `python launcher/main/apps/sand/tools/make_volcano_clip.py` | written in place; `--contact <path>` also writes a six-frame inspection strip |
+| Image | Shows |
+|---|---|
+| `sand-menu.png` | the title screen |
+| `sand-simulation.gif` | the volcano, lake and grove inside its turning panel, made by `make_volcano_clip.py`; `--contact <path>` also writes a six-frame inspection strip |
