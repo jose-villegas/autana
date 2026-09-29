@@ -71,6 +71,10 @@ jobs:
         if: github.event_name == 'pull_request'
         run: python3 scripts/gates/doc_citers.py --changed "origin/${{ github.base_ref }}"
 
+      # The exclusive-open tests drive the real serial library on a pty.
+      - name: pyserial
+        run: pip install pyserial==3.5
+
       # Python and, for check-mermaid.mjs's pure parts, Node;
       # scripts/run-tool-tests.sh owns which suites.
       - name: Tool tests

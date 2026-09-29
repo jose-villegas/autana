@@ -21,6 +21,7 @@ from pathlib import Path
 
 import device_lock
 import device_report
+import lock_scope
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "device"))
@@ -156,12 +157,19 @@ def board_for_lock(store, named=None, remembered=False):
 
 
 def open_serial():
+    """Opens the locked board's port for this process alone. Windows refuses a
+    second open on its own; POSIX needs `exclusive` (an advisory flock, so it
+    excludes our readers and esptool but not screen or ModemManager), else a
+    leftover holder and this reader silently split the byte stream. The
+    refusal is an OSError, which open_when_free treats as busy."""
     port = locked_port()
     try:
         import serial
     except ImportError as error:
         raise RuntimeError("pyserial is required; run this with the ESP-IDF Python") from error
     connection = serial.Serial()
+    if os.name != "nt":
+        connection.exclusive = True
     connection.port = port
     connection.baudrate = BAUD
     connection.timeout = 0.2
@@ -452,6 +460,8 @@ class HeldLock:
     def __enter__(self):
         self.previous_lock = getattr(ACTIVE_LOCK, "held", None)
         ACTIVE_LOCK.held = self
+        lock_scope.enter(self.held["token"])
+        self.members_before = set(lock_scope.members())
         self.thread.start()
         return self
 
@@ -461,6 +471,14 @@ class HeldLock:
             self.thread.join()
         finally:
             lost = self.lost.is_set() or not self.store.check_token(self.board, self.held["token"])
+            killed, survivors = lock_scope.reap(self.members_before)
+            lock_scope.leave()
+            if killed:
+                print("stopped process(es) still running under the device lock: "
+                      + ", ".join(map(str, killed)), file=sys.stderr)
+            if survivors:
+                print("device lock released with process(es) still running that could not "
+                      "be stopped: " + ", ".join(map(str, survivors)), file=sys.stderr)
             self.store.release(self.board, self.held["token"])
             ACTIVE_LOCK.held = self.previous_lock
             error = (str(error_value) if error_type else
