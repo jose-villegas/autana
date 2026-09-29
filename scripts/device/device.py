@@ -454,6 +454,7 @@ class HeldLock:
         self.previous_lock = getattr(ACTIVE_LOCK, "held", None)
         ACTIVE_LOCK.held = self
         lock_job.enter()
+        self.members_before = set(lock_job.members())
         self.thread.start()
         return self
 
@@ -463,10 +464,13 @@ class HeldLock:
             self.thread.join()
         finally:
             lost = self.lost.is_set() or not self.store.check_token(self.board, self.held["token"])
-            killed = lock_job.reap()
+            killed, survivors = lock_job.reap(self.members_before)
             if killed:
                 print("stopped process(es) still running under the device lock: "
                       + ", ".join(map(str, killed)), file=sys.stderr)
+            if survivors:
+                print("device lock released with process(es) still running that could not "
+                      "be stopped: " + ", ".join(map(str, survivors)), file=sys.stderr)
             self.store.release(self.board, self.held["token"])
             ACTIVE_LOCK.held = self.previous_lock
             error = (str(error_value) if error_type else

@@ -162,8 +162,11 @@ The lock is the promise of the port, and a child (esptool, a monitor) can
 keep the port after its parent is gone, so the lock outlives every process the
 command started. On Windows the holder joins a kill-on-close job object
 (`lock_job.py`) when it takes the lock; everything it starts, `reset`'s esptool
-included, inherits it. A holder that ends normally gives the members two
-seconds, kills the rest and prints their pids, then releases. A holder killed
+included, inherits it. A holder that ends normally gives the members that
+started under its lock two seconds, stops the rest through their handles and
+prints their pids, then releases; work already in the job before the lock
+was taken is left alone. A process that asks for `CREATE_BREAKAWAY_FROM_JOB`
+may leave the job. A holder killed
 by any means closes the job and the kernel kills every member, grandchildren
 of dead parents too, so no pid is ever inferred. Jobs nest, so a holder
 already inside a launcher's or harness's job still gets its own; if it

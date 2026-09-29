@@ -85,6 +85,64 @@ OUTER = textwrap.dedent("""
     sys.exit(subprocess.call([sys.executable] + sys.argv[1:]))
 """)
 
+# Two locks in one process, and a child started between them: the second
+# lock's release must leave that one alone.
+SEQUENCE = textwrap.dedent("""
+    import os, subprocess, sys
+    sys.path.insert(0, {device!r})
+    import device, device_lock
+    store = device_lock.LockStore({root!r})
+    holder = {holder!r}
+    def start(port):
+        child = subprocess.Popen([sys.executable, holder, port], stdout=subprocess.PIPE,
+                                 stderr=subprocess.DEVNULL, text=True)
+        child.stdout.readline()
+        return child.pid
+    with device.HeldLock(store, {board!r}, "job-test", "first", 0):
+        pass
+    before = start(sys.argv[1])
+    with device.HeldLock(store, {board!r}, "job-test", "second", 0):
+        inside = start(sys.argv[2])
+    import socket
+    def free(port):
+        with socket.socket() as sock:
+            try:
+                sock.bind(("127.0.0.1", int(port)))
+                return True
+            except OSError:
+                return False
+    print("state", free(sys.argv[1]), free(sys.argv[2]), flush=True)
+""")
+
+# lock_job on its own, for what one call does.
+DIRECT = textwrap.dedent("""
+    import os, subprocess, sys
+    sys.path.insert(0, {device!r})
+    import lock_job
+    holder = {holder!r}
+    def start(*flags, **options):
+        child = subprocess.Popen([sys.executable, holder, sys.argv[2]], stdout=subprocess.PIPE,
+                                 stderr=subprocess.DEVNULL, text=True, **options)
+        child.stdout.readline()
+        return child
+    mode = sys.argv[1]
+    if mode == "handle":
+        lock_job.enter()
+        child = start()
+        print("result", lock_job.terminate_member(os.getppid()),
+              lock_job.terminate_member(child.pid), flush=True)
+    elif mode == "breakaway":
+        lock_job.enter()
+        print("pid", start(creationflags=0x01000000).pid, flush=True)
+    elif mode == "overflow":
+        lock_job.MAX_MEMBERS = 2
+        lock_job.enter()
+        for _ in range(3):
+            subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        lock_job.members()
+        print("done", flush=True)
+""")
+
 # Runs at the lock's `released` event and records whether the port was free.
 HOOK = textwrap.dedent("""
     import os, socket, sys
@@ -189,6 +247,48 @@ class JobTests(unittest.TestCase):
         self.assertTrue(listed, "the child is not a member of the holder's job")
         self.kill_only(holder)
         self.assert_port_free_within(1.0)
+
+
+@unittest.skipUnless(WINDOWS and IDF_PYTHON, "the kill-on-close job is Windows-only")
+class ScopeTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.dir = Path(self.temp.name)
+        self.ports = [free_port(), free_port()]
+        (self.dir / "port_holder.py").write_text(PORT_HOLDER)
+        under_test = os.environ.get("AUTANA_TEST_DEVICE_DIR", str(DEVICE))
+        fields = dict(device=under_test, root=str(self.dir / "locks"), board=BOARD,
+                      holder=str(self.dir / "port_holder.py"))
+        (self.dir / "sequence.py").write_text(SEQUENCE.format(**fields))
+        (self.dir / "direct.py").write_text(DIRECT.format(**fields))
+
+    def run_script(self, name, *args):
+        done = subprocess.run([IDF_PYTHON, str(self.dir / name), *map(str, args)],
+                              capture_output=True, text=True, timeout=60)
+        return done.stdout, done.stderr
+
+    def test_a_release_leaves_alone_what_was_running_before_its_lock(self):
+        out, errors = self.run_script("sequence.py", *self.ports)
+        self.assertEqual(out.split()[:1], ["state"], errors)
+        earlier_free, inside_free = out.split()[1:]
+        self.assertEqual(inside_free, "True", errors)
+        self.assertEqual(earlier_free, "False", "work started before the lock was killed")
+
+    def test_only_a_member_of_the_job_is_stopped_and_by_handle(self):
+        out, errors = self.run_script("direct.py", "handle", self.ports[0])
+        self.assertEqual(out.split()[1:], ["False", "True"], errors)
+
+    def test_a_process_that_asks_to_break_away_can_leave_the_job(self):
+        out, errors = self.run_script("direct.py", "breakaway", self.ports[0])
+        self.assertTrue(out.startswith("pid"), errors)
+        self.addCleanup(kill_tree, int(out.split()[1]))
+        self.assertFalse(port_is_free(self.ports[0]), "the breakaway child died with its job")
+
+    def test_a_job_too_big_to_list_says_so(self):
+        out, errors = self.run_script("direct.py", "overflow", self.ports[0])
+        self.assertIn("done", out, errors)
+        self.assertIn("can be listed", errors)
 
 
 if __name__ == "__main__":
