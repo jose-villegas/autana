@@ -353,61 +353,73 @@ test_every_triangle_covers_exactly_the_centres_the_top_left_rule_gives(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, mismatches, "a pixel's coverage disagrees with the top-left rule");
 }
 
+#define GRID_LINES_MAX 160
+
+/* Grid lines on half pixels from -3 to hi + 3, half a pixel to six apart. */
+static int
+grid_lines(uint32_t* state, float hi, float* out) {
+    int n = 0;
+    for (float v = -3.0f; v < hi + 3.0f && n < GRID_LINES_MAX; n++) {
+        out[n] = v;
+        v += 0.5f * (float)(1 + (next_random(state) % 12u));
+    }
+    return n;
+}
+
+/* Half the corners stay on their grid lines; the rest move by up to a
+ * fifth of the narrowest cell, so every cell stays convex. */
+static void
+jittered_grid(uint32_t* state, const float* xs, int nx, const float* ys, int ny, r3d_span_vertex_t* grid) {
+    for (int j = 0; j < ny; j++) {
+        for (int i = 0; i < nx; i++) {
+            const float jitter = next_random(state) % 2u == 0 ? 0.0f : 0.2f * 0.5f;
+            const float jx = jitter * (((float)(next_random(state) % 200u) / 100.0f) - 1.0f);
+            const float jy = jitter * (((float)(next_random(state) % 200u) / 100.0f) - 1.0f);
+            grid[(j * nx) + i] = sv(xs[i] + jx, ys[j] + jy, 0.5f, 90, 90, 90);
+        }
+    }
+}
+
+/* Draws one triangle alone and adds its pixels to hits; returns how many. */
+static int
+draw_counting(const r3d_span_vertex_t* const tri[3], uint8_t* hits) {
+    r3d_span_target_t t = fixture();
+    r3d_span_triangle(&t, tri[0], tri[1], tri[2]);
+    for (int p = 0; p < W * H; p++) {
+        hits[p] += depth[p] != 0;
+    }
+    return covered();
+}
+
 /* A mesh whose cells run from half a pixel to six, so triangles tested
  * centre by centre share edges with walked ones, and whose unjittered
  * corners sit on half pixels, so edges run through centres: every pixel is
  * filled by exactly one triangle. */
 static void
 test_a_mesh_of_small_and_large_triangles_fills_every_pixel_exactly_once(void) {
-    enum { CELLS_MAX = 160 };
-
     uint32_t state = 777u;
-    float* xs = malloc(sizeof(float) * CELLS_MAX);
-    float* ys = malloc(sizeof(float) * CELLS_MAX);
+    float* xs = malloc(sizeof(float) * GRID_LINES_MAX);
+    float* ys = malloc(sizeof(float) * GRID_LINES_MAX);
     TEST_ASSERT_NOT_NULL(xs);
     TEST_ASSERT_NOT_NULL(ys);
-    int nx = 0;
-    int ny = 0;
-    for (float x = -3.0f; x < (float)W + 3.0f && nx < CELLS_MAX; nx++) {
-        xs[nx] = x;
-        x += 0.5f * (float)(1 + (next_random(&state) % 12u));
-    }
-    for (float y = -3.0f; y < (float)H + 3.0f && ny < CELLS_MAX; ny++) {
-        ys[ny] = y;
-        y += 0.5f * (float)(1 + (next_random(&state) % 12u));
-    }
+    const int nx = grid_lines(&state, (float)W, xs);
+    const int ny = grid_lines(&state, (float)H, ys);
     r3d_span_vertex_t* grid = malloc(sizeof(*grid) * (size_t)(nx * ny));
     uint8_t* hits = calloc(W * H, 1);
     TEST_ASSERT_NOT_NULL(grid);
     TEST_ASSERT_NOT_NULL(hits);
-    for (int j = 0; j < ny; j++) {
-        for (int i = 0; i < nx; i++) {
-            /* Within a fifth of the narrowest cell, so every cell stays convex. */
-            const float jitter = next_random(&state) % 2u == 0 ? 0.0f : 0.2f * 0.5f;
-            const float jx = jitter * (((float)(next_random(&state) % 200u) / 100.0f) - 1.0f);
-            const float jy = jitter * (((float)(next_random(&state) % 200u) / 100.0f) - 1.0f);
-            grid[(j * nx) + i] = sv(xs[i] + jx, ys[j] + jy, 0.5f, 90, 90, 90);
-        }
-    }
+    jittered_grid(&state, xs, nx, ys, ny, grid);
     int small = 0;
     for (int j = 0; j + 1 < ny; j++) {
         for (int i = 0; i + 1 < nx; i++) {
             const r3d_span_vertex_t* p00 = &grid[(j * nx) + i];
-            const r3d_span_vertex_t* p10 = p00 + 1;
             const r3d_span_vertex_t* p01 = p00 + nx;
-            const r3d_span_vertex_t* p11 = p01 + 1;
             const bool other_diagonal = next_random(&state) % 2u == 0;
-            const r3d_span_vertex_t* tris[2][3] = {{p00, p10, other_diagonal ? p01 : p11},
-                                                   {other_diagonal ? p10 : p00, p11, p01}};
-            for (int k = 0; k < 2; k++) {
-                r3d_span_target_t t = fixture();
-                r3d_span_triangle(&t, tris[k][0], tris[k][1], tris[k][2]);
-                const int n = covered();
-                small += n > 0 && n <= 4;
-                for (int p = 0; p < W * H; p++) {
-                    hits[p] += depth[p] != 0;
-                }
-            }
+            const r3d_span_vertex_t* const first[3] = {p00, p00 + 1, other_diagonal ? p01 : p01 + 1};
+            const r3d_span_vertex_t* const second[3] = {other_diagonal ? p00 + 1 : p00, p01 + 1, p01};
+            const int a = draw_counting(first, hits);
+            const int b = draw_counting(second, hits);
+            small += (a > 0 && a <= 4) + (b > 0 && b <= 4);
         }
     }
     for (int p = 0; p < W * H; p++) {

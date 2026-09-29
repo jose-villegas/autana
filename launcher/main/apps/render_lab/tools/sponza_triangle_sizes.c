@@ -64,6 +64,39 @@ first_centre(float lo) {
     return (int)ceilf(lo - 0.5F);
 }
 
+typedef struct {
+    int x0, x1, y0, y1; /* the centres the bounding box holds, half-open */
+} box_t;
+
+static box_t
+centre_box(const point_t v[3]) {
+    return (box_t){
+        first_centre(fminf(v[0].x, fminf(v[1].x, v[2].x))),
+        first_centre(fmaxf(v[0].x, fmaxf(v[1].x, v[2].x))),
+        first_centre(fminf(v[0].y, fminf(v[1].y, v[2].y))),
+        first_centre(fmaxf(v[0].y, fmaxf(v[1].y, v[2].y))),
+    };
+}
+
+static int
+clamp_int(int v, int lo, int hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
+}
+
+/* Counts the centres a positive-winding triangle owns, stopping past 4. */
+static long
+count_centres(const point_t v[3], box_t b) {
+    long covered = 0;
+    for (int y = clamp_int(b.y0, 0, HEIGHT); y < clamp_int(b.y1, 0, HEIGHT) && covered <= 4; y++) {
+        for (int x = clamp_int(b.x0, 0, WIDTH); x < clamp_int(b.x1, 0, WIDTH) && covered <= 4; x++) {
+            const float px = (float)x + 0.5F;
+            const float py = (float)y + 0.5F;
+            covered += owns(v[0], v[1], px, py) && owns(v[1], v[2], px, py) && owns(v[2], v[0], px, py);
+        }
+    }
+    return covered;
+}
+
 static void
 size_triangle(point_t v[3], bool double_sided, sizes_t* s) {
     const float area2 = edge(v[0], v[1], v[2].x, v[2].y);
@@ -75,32 +108,18 @@ size_triangle(point_t v[3], bool double_sided, sizes_t* s) {
         v[1] = v[2];
         v[2] = t;
     }
-    const float lo_x = fminf(v[0].x, fminf(v[1].x, v[2].x));
-    const float hi_x = fmaxf(v[0].x, fmaxf(v[1].x, v[2].x));
-    const float lo_y = fminf(v[0].y, fminf(v[1].y, v[2].y));
-    const float hi_y = fmaxf(v[0].y, fmaxf(v[1].y, v[2].y));
-    if (hi_x < 0.0F || lo_x > (float)WIDTH || hi_y < 0.0F || lo_y > (float)HEIGHT) {
+    const box_t b = centre_box(v);
+    if (b.x1 <= 0 || b.x0 >= WIDTH || b.y1 <= 0 || b.y0 >= HEIGHT) {
         return;
     }
     s->drawn++;
-    const int x0 = first_centre(lo_x);
-    const int x1 = first_centre(hi_x); /* exclusive */
-    const int y0 = first_centre(lo_y);
-    const int y1 = first_centre(hi_y);
-    if (x0 >= x1 || y0 >= y1) {
+    if (b.x0 >= b.x1 || b.y0 >= b.y1) {
         s->box_empty++;
         s->bins[BIN_ZERO]++;
         return;
     }
-    s->box_two_by_two += (x1 - x0 <= 2 && y1 - y0 <= 2);
-    long covered = 0;
-    for (int y = y0 < 0 ? 0 : y0; y < (y1 > HEIGHT ? HEIGHT : y1) && covered <= 4; y++) {
-        for (int x = x0 < 0 ? 0 : x0; x < (x1 > WIDTH ? WIDTH : x1) && covered <= 4; x++) {
-            const float px = (float)x + 0.5F;
-            const float py = (float)y + 0.5F;
-            covered += owns(v[0], v[1], px, py) && owns(v[1], v[2], px, py) && owns(v[2], v[0], px, py);
-        }
-    }
+    s->box_two_by_two += (b.x1 - b.x0 <= 2 && b.y1 - b.y0 <= 2);
+    const long covered = count_centres(v, b);
     s->bins[covered == 0 ? BIN_ZERO : covered == 1 ? BIN_ONE : covered <= 4 ? BIN_TWO_TO_FOUR : BIN_MORE]++;
 }
 
