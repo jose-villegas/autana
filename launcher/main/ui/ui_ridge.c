@@ -74,20 +74,16 @@ TUNE(ridge, axis_dissolve_ms, 0, 0, 3000);
 TUNE(ridge, boot_hold_ms, 700, 0, 10000);
 TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 
-#define RIDGE_EXTRA                 88
-#define RIDGE_COLUMNS               (RIDGE_CURVE_POINTS + (2 * RIDGE_EXTRA))
-#define RIDGE_LAYER_COUNT           3
-#define RIDGE_MAX_LIP_PX            48
-#define MIN_TILT_STRENGTH           64
+#define RIDGE_EXTRA        88
+#define RIDGE_COLUMNS      (RIDGE_CURVE_POINTS + (2 * RIDGE_EXTRA))
+#define RIDGE_LAYER_COUNT  3
+#define RIDGE_MAX_LIP_PX   48
+#define MIN_TILT_STRENGTH  64
 /* Once the board holds still, a pose within 1.5 degrees of its target jumps
  * the rest of the way instead of creeping a half-degree step at a time. */
-#define POSE_ARRIVE_STEP            430
-#define POSE_STEPS                  720
-#define GRADIENT_SETTLE_MS          200
-/* Strips switch between rows and columns only two degrees past the
- * diagonal, either way (tan 47 = 1.072): a board held near it does not
- * switch back and forth. */
-#define AXIS_SWITCH_SLOPE_PER_MILLE 1072
+#define POSE_ARRIVE_STEP   430
+#define POSE_STEPS         720
+#define GRADIENT_SETTLE_MS 200
 #if TUNE_ENABLED
 #define DISSOLVE_LEVELS 16
 #endif
@@ -346,24 +342,11 @@ snap_pose_on_screen(void) {
     return moved;
 }
 
-static bool
-strips_run_by_column(ridge_vector_t pose) {
-    const int across = abs(pose.down_x);
-    const int down = abs(pose.down_y);
-    if (!ridge->painted) {
-        return down >= across;
-    }
-    if (ridge->by_column) {
-        return across * 1000 <= down * AXIS_SWITCH_SLOPE_PER_MILLE;
-    }
-    return down * 1000 > across * AXIS_SWITCH_SLOPE_PER_MILLE;
-}
-
 static void
 raster_boundaries(void) {
     const bool was_by_column = ridge->by_column;
     const ridge_vector_t pose = ridge->pose_on_screen;
-    ridge->by_column = strips_run_by_column(pose);
+    ridge->by_column = ridge_pose_strips_by_column(pose, ridge->painted, was_by_column);
     ridge->axis_on_screen = ridge->painted && was_by_column != ridge->by_column;
     ridge->strips = ridge->by_column ? GFX_WIDTH : GFX_HEIGHT;
     ridge->down_sign = (ridge->by_column ? pose.down_y : pose.down_x) >= 0 ? 1 : -1;
@@ -1182,7 +1165,7 @@ ui_ridge_settle(void) {
     }
 }
 
-#if CONFIG_LAUNCHER_SELFTEST
+#if CONFIG_LAUNCHER_SELFTEST || !defined(ESP_PLATFORM)
 void
 ui_ridge_reset_for_test(void) {
     allocate_once();
@@ -1207,7 +1190,7 @@ ui_ridge_reset_for_test(void) {
 }
 #endif
 
-#if CONFIG_LAUNCHER_SELFTEST
+#if CONFIG_LAUNCHER_SELFTEST || !defined(ESP_PLATFORM)
 bool
 ui_ridge_dissolving_for_test(void) {
     allocate_once();

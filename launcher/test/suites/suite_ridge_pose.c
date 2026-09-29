@@ -1,5 +1,6 @@
 /* Portable suite: gravity into a stable, unit-length ridge pose. */
 
+#include <math.h>
 #include <stdint.h>
 
 #include "suites.h"
@@ -59,11 +60,58 @@ test_column_under_tracks_the_pose_axis(void) {
     TEST_ASSERT_EQUAL_INT(99, ridge_pose_column_under((ridge_vector_t){0, RIDGE_POSE_ONE}, 100, 200, 100, 99, 100));
 }
 
+/* A pose `degrees` off straight down, toward the side. */
+static ridge_vector_t
+off_down_by(double degrees) {
+    const double radians = degrees * 3.14159265358979 / 180.0;
+    return (ridge_vector_t){(int32_t)lround(sin(radians) * RIDGE_POSE_ONE),
+                            (int32_t)lround(cos(radians) * RIDGE_POSE_ONE)};
+}
+
+static void
+test_strips_pick_the_plain_diagonal_before_the_first_paint(void) {
+    TEST_ASSERT_TRUE(ridge_pose_strips_by_column(off_down_by(44.9), false, false));
+    TEST_ASSERT_TRUE(ridge_pose_strips_by_column(off_down_by(44.9), false, true));
+    TEST_ASSERT_FALSE(ridge_pose_strips_by_column(off_down_by(45.1), false, false));
+    TEST_ASSERT_FALSE(ridge_pose_strips_by_column(off_down_by(45.1), false, true));
+    TEST_ASSERT_TRUE(ridge_pose_strips_by_column((ridge_vector_t){RIDGE_POSE_ONE, RIDGE_POSE_ONE}, false, false));
+}
+
+static void
+test_columns_hold_until_two_degrees_past_the_diagonal(void) {
+    TEST_ASSERT_TRUE(ridge_pose_strips_by_column(off_down_by(46.9), true, true));
+    TEST_ASSERT_FALSE(ridge_pose_strips_by_column(off_down_by(47.1), true, true));
+    TEST_ASSERT_TRUE(ridge_pose_strips_by_column(off_down_by(46.0), true, true));
+}
+
+static void
+test_rows_hold_until_two_degrees_past_the_diagonal(void) {
+    TEST_ASSERT_FALSE(ridge_pose_strips_by_column(off_down_by(43.1), true, false));
+    TEST_ASSERT_TRUE(ridge_pose_strips_by_column(off_down_by(42.9), true, false));
+    TEST_ASSERT_FALSE(ridge_pose_strips_by_column(off_down_by(44.0), true, false));
+}
+
+static void
+test_strips_ignore_which_way_the_pose_leans(void) {
+    for (int sign_x = -1; sign_x <= 1; sign_x += 2) {
+        for (int sign_y = -1; sign_y <= 1; sign_y += 2) {
+            const ridge_vector_t lean = off_down_by(46.0);
+            const ridge_vector_t pose = {sign_x * lean.down_x, sign_y * lean.down_y};
+            TEST_ASSERT_TRUE(ridge_pose_strips_by_column(pose, true, true));
+            TEST_ASSERT_FALSE(ridge_pose_strips_by_column(pose, true, false));
+        }
+    }
+}
+
 void
 suite_ridge_pose(void) {
     RUN_TEST(test_easing_keeps_a_unit_vector);
     RUN_TEST(test_steady_gravity_arrives_exactly_at_level);
     RUN_TEST(test_column_under_tracks_the_pose_axis);
+    RUN_TEST(test_strips_pick_the_plain_diagonal_before_the_first_paint);
+    RUN_TEST(test_columns_hold_until_two_degrees_past_the_diagonal);
+    RUN_TEST(test_rows_hold_until_two_degrees_past_the_diagonal);
+    RUN_TEST(test_strips_ignore_which_way_the_pose_leans);
 }
 
 SUITE_REGISTER(suite_ridge_pose);

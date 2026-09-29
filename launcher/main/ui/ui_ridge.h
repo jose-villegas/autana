@@ -29,7 +29,7 @@ void ui_ridge_step(const input_t* input, uint32_t dt_ms);
 /* The whole layered backdrop and the ridge as it stands - a ui_backdrop_fn. */
 void ui_ridge_paint(void);
 
-#if CONFIG_LAUNCHER_SELFTEST
+#if CONFIG_LAUNCHER_SELFTEST || !defined(ESP_PLATFORM)
 /* Starts a device perf arm from the settled landscape state. */
 void ui_ridge_reset_for_test(void);
 /* Whether the switch between row and column strips is still dissolving in. */

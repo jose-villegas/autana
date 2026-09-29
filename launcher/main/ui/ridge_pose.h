@@ -150,3 +150,24 @@ ridge_pose_column_under(ridge_vector_t pose, int panel_w, int panel_h, int colum
     const int64_t dy2 = (2 * (int64_t)panel_y) - (panel_h - 1);
     return (int)((columns - 1 + (dx2 * right_x + dy2 * right_y) / RIDGE_POSE_ONE) / 2);
 }
+
+/* Strips switch between rows and columns only two degrees past the
+ * diagonal, either way (tan 47 = 1.072): a board held near it does not
+ * switch back and forth. */
+#define AXIS_SWITCH_SLOPE_PER_MILLE 1072
+
+/* Whether strips run by column at `pose`: the plain diagonal before the
+ * first paint, the hysteresis after it. `was_by_column` is what is on
+ * screen. */
+static inline bool
+ridge_pose_strips_by_column(ridge_vector_t pose, bool painted, bool was_by_column) {
+    const int across = abs(pose.down_x);
+    const int down = abs(pose.down_y);
+    if (!painted) {
+        return down >= across;
+    }
+    if (was_by_column) {
+        return across * 1000 <= down * AXIS_SWITCH_SLOPE_PER_MILLE;
+    }
+    return down * 1000 > across * AXIS_SWITCH_SLOPE_PER_MILLE;
+}

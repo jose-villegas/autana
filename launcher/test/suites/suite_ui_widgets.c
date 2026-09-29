@@ -12,15 +12,12 @@
 
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
+#include "gfx/gfx_test.h"
 #include "input/input.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
 #include "ui/ui_transform.h"
 #include "ui/ui_widgets.h"
-
-#ifdef HOST_HEAP_ARENA
-#include "esp_heap_caps.h"
-#endif
 
 static const ui_theme_t THEME = {
     .panel_face = UI_RGB(0x202020),
@@ -624,11 +621,7 @@ test_closing_the_list_restores_the_pixels_under_it(void) {
     TEST_ASSERT_EQUAL_MESSAGE(before, framebuffer_rect_hash(list), "the vanished list must leave its original pixels");
 
     paint_frames = false;
-#ifdef HOST_HEAP_ARENA
-    heap_caps_free(gfx_framebuffer());
-#else
-    free(gfx_framebuffer());
-#endif
+    gfx_reset_for_test();
 }
 #endif
 
