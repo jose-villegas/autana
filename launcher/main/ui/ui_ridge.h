@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "gfx/gfx.h"
 #include "input/input.h"
 
 /* Which way is down in the screen plane, as input/tilt.h reports it: `gx`
@@ -29,11 +30,18 @@ void ui_ridge_step(const input_t* input, uint32_t dt_ms);
 /* The whole layered backdrop and the ridge as it stands - a ui_backdrop_fn. */
 void ui_ridge_paint(void);
 
-#if CONFIG_LAUNCHER_SELFTEST
+#if CONFIG_LAUNCHER_SELFTEST || !defined(ESP_PLATFORM)
 /* Starts a device perf arm from the settled landscape state. */
 void ui_ridge_reset_for_test(void);
+/* Puts the boot hold and the ambient ease-in back at their start. */
+void ui_ridge_restart_boot_for_test(void);
+/* A full paint of the ridge as it stands into `out`, one framebuffer's
+ * worth, touching neither the ridge's bookkeeping nor gfx's dirty state. */
+void ui_ridge_paint_reference_for_test(gfx_color_t* out);
 /* Whether the switch between row and column strips is still dissolving in. */
 bool ui_ridge_dissolving_for_test(void);
+/* Strip switches that arrived while a dissolve was still running. */
+int ui_ridge_dissolve_restarts_for_test(void);
 /* How many pose steps the fill's gradient trails the ridge by. */
 int ui_ridge_gradient_lag_for_test(void);
 #endif
