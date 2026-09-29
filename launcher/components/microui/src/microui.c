@@ -683,11 +683,16 @@ int mu_mouse_over(mu_Context *ctx, mu_Rect rect) {
 }
 
 
+static void report_control(mu_Context *ctx, mu_Rect rect, int opt) {
+  if (ctx->on_control) { ctx->on_control(ctx, intersect_rects(rect, mu_get_clip_rect(ctx)), opt); }
+}
+
+
 void mu_update_control(mu_Context *ctx, mu_Id id, mu_Rect rect, int opt) {
   int mouseover = mu_mouse_over(ctx, rect);
 
   if (ctx->focus == id) { ctx->updated_focus = 1; }
-  if (ctx->on_control) { ctx->on_control(ctx, intersect_rects(rect, mu_get_clip_rect(ctx)), opt); }
+  report_control(ctx, rect, opt);
   if (opt & MU_OPT_NOINTERACT) { return; }
   if (mouseover && !ctx->mouse_down) { ctx->hover = id; }
 
