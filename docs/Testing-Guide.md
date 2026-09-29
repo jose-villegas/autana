@@ -48,11 +48,9 @@ own dependency files: a rerun compiles nothing, a touched `.c` recompiles one
 object and a touched header recompiles exactly its includers. Every flag that
 shapes an object is stamped, so a changed flag rebuilds everything, and a
 sanitizer build keeps its objects in a directory of its own. Jobs default to
-half the CPUs, at most 8 (`HOST_JOBS=N` overrides); `--build-only` compiles,
+half the CPUs, at most 8 (`--jobs N` overrides); `--build-only` compiles,
 links and runs the stack gate without running the suites. What is left of a
-warm run is executing the tests. `AUTANA_CCACHE=1` puts ccache in front of the
-compiler; it is off by default because a cache miss measured slower than no
-ccache on Windows.
+warm run is executing the tests.
 
 `autana selftest` builds, flashes and runs every suite under the device
 lock, from any shell including Git Bash. For a markdown report instead of

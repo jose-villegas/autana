@@ -1,15 +1,10 @@
 #!/bin/sh
 #
-# Helpers for incremental host builds: find make, find ccache, pick a job
-# count. Source this file; nothing runs on source.
+# Helpers for incremental host builds: find make and pick a job count. Source this file; nothing runs on source.
 #
 #   . "$TOOLS_DIR/host_make.sh"
 #   MAKE_BIN=$(find_make) || exit 1
-#   CCACHE_BIN=$(find_ccache) || CCACHE_BIN=""
-#   JOBS=$(host_jobs)
-#
-# ccache is opt-in (AUTANA_CCACHE=1): on Windows a cache-miss build is far
-# slower than no ccache and a hit saves nothing, so it is not on by default.
+#   JOBS=$(host_jobs "$requested")
 
 # GNU make is `make` on Linux and `mingw32-make` on Windows, where WinLibs
 # (the documented compiler) ships it beside gcc.
@@ -23,25 +18,10 @@ find_make() {
     return 1
 }
 
-# ccache on PATH, else the copy ESP-IDF installs under its tools directory.
-find_ccache() {
-    [ "${AUTANA_CCACHE:-0}" = 1 ] || return 1
-    if command -v ccache >/dev/null 2>&1; then echo ccache; return 0; fi
-    for root in "${IDF_TOOLS_PATH:-}" "${HOME:-}/.espressif" "${USERPROFILE:-}/.espressif"; do
-        [ -n "$root" ] || continue
-        for c in "$root"/tools/ccache/*/ccache* "$root"/tools/ccache/*/*/ccache*; do
-            case "$c" in
-                *.exe | */ccache) [ -x "$c" ] && { echo "$c"; return 0; } ;;
-            esac
-        done
-    done
-    return 1
-}
-
 # Half the logical CPUs, at most 8: a full-width compile fan-out once starved
-# the whole machine of memory. HOST_JOBS overrides.
+# the whole machine of memory. An explicit request ($1) wins.
 host_jobs() {
-    if [ -n "${HOST_JOBS:-}" ]; then echo "$HOST_JOBS"; return 0; fi
+    if [ -n "${1:-}" ]; then echo "$1"; return 0; fi
     n=$(nproc 2>/dev/null || echo "${NUMBER_OF_PROCESSORS:-2}")
     n=$((n / 2))
     [ "$n" -ge 1 ] || n=1

@@ -6,7 +6,7 @@
 #   CC=clang ./test/run_tests.sh
 #   ./test/run_tests.sh --verbose
 #   ./test/run_tests.sh --build-only     # compile, link and the stack gate; run nothing
-#   HOST_JOBS=4 HOST_EXTRA_CFLAGS=-O2 ./test/run_tests.sh
+#   ./test/run_tests.sh --jobs 4         # parallel compiles (default: half the CPUs, at most 8)
 #
 # This is the fast loop: it compiles for THIS machine, not the ESP32, and runs
 # in well under a second. Red-green-refactor is only practical with instant
@@ -27,10 +27,16 @@ set -eu
 
 VERBOSE=${VERBOSE:-0}
 BUILD_ONLY=0
+JOBS=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --verbose) VERBOSE=1 ;;
         --build-only) BUILD_ONLY=1 ;;
+        --jobs)
+            [ $# -ge 2 ] || { echo "--jobs needs a number" >&2; exit 2; }
+            JOBS=$2
+            shift
+            ;;
         --print-sources|--print-flags) break ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
@@ -242,7 +248,7 @@ fi
 # an object (compiler, flags, defines, includes) is written into a stamp file
 # that all objects depend on - a change rebuilds everything, and a sanitizer
 # build keeps its objects in a directory of its own so switching does not
-# thrash. ccache, when found, sits in front of the compiler.
+# thrash.
 #
 # unity.c must NOT see the -include timing.h that every other source gets:
 # Unity's RUN_TEST is guarded by "#ifndef RUN_TEST", and if timing.h has
@@ -267,8 +273,7 @@ fi
 # shellcheck source=../tools/build/host_make.sh
 . "$TEST_DIR/../tools/build/host_make.sh"
 MAKE_BIN=$(find_make) || exit 1
-CCACHE_BIN=$(find_ccache) || CCACHE_BIN=""
-JOBS=$(host_jobs)
+JOBS=$(host_jobs "$JOBS")
 
 # make reads native paths: on Windows it is a native program, so the MSYS
 # path rewriting that shields gcc under sh does not apply to it.
@@ -302,7 +307,6 @@ LAUNCHER_N=$(native "$(CDPATH= cd -- "$TEST_DIR/.." && pwd)")
 BUILD_N=$(native "$BUILD_DIR")
 COMMON_INC="-I $MAIN_N -I $TEST_N -I $TEST_N/framework -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/components/small3dlib/include -I $LAUNCHER_N/tools/gen"
-EXTRA_CFLAGS="${HOST_EXTRA_CFLAGS:-}"
 LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm"
 
 # The source lists, one native path per line. Test code (test/'s own
@@ -332,9 +336,9 @@ MK="$BUILD_DIR/host.mk"
 EXPECT_OBJ="$BUILD_DIR/expected_obj.txt"
 EXPECT_SU="$BUILD_DIR/expected_su.txt"
 {
-    printf 'CC := %s\nCCACHE := %s\n' "$CC_MK" "$CCACHE_BIN"
-    printf 'CFLAGS := %s %s\n' "$CFLAGS" "$EXTRA_CFLAGS"
-    printf 'BASE_CFLAGS := %s %s\n' "$BASE_CFLAGS" "$EXTRA_CFLAGS"
+    printf 'CC := %s\n' "$CC_MK"
+    printf 'CFLAGS := %s\n' "$CFLAGS"
+    printf 'BASE_CFLAGS := %s\n' "$BASE_CFLAGS"
     printf 'TEST_FLAGS := %s %s -include %s/timing.h\n' "$HEAP_ARENA_DEFINES" "$TEST_INC" "$TEST_N"
     printf 'OBJ := %s\nSU := su\n' "$OBJ_DIR"
     printf 'OBJS :='
@@ -345,11 +349,11 @@ EXPECT_SU="$BUILD_DIR/expected_su.txt"
     printf '%s\n' "$OBJ_PAIRS" | awk '{
         printf "$(OBJ)/%s.o: %s $(OBJ)/flags.stamp\n", $1, $2
         printf "\t@echo \"  CC $(notdir $@)\"\n"
-        printf "\t@$(CCACHE) $(CC) $(CFLAGS) $(TEST_FLAGS) -MMD -MP -c $< -o $@\n"
+        printf "\t@$(CC) $(CFLAGS) $(TEST_FLAGS) -MMD -MP -c $< -o $@\n"
     }'
     printf '$(OBJ)/unity.o: %s/framework/unity.c $(OBJ)/flags.stamp\n' "$TEST_N"
     printf '\t@echo "  CC unity.o"\n'
-    printf '\t@$(CCACHE) $(CC) $(CFLAGS) %s -MMD -MP -c $< -o $@\n' "$COMMON_INC"
+    printf '\t@$(CC) $(CFLAGS) %s -MMD -MP -c $< -o $@\n' "$COMMON_INC"
     printf '%s: $(OBJS) $(OBJ)/unity.o $(OBJ)/flags.stamp\n' "$OUT_N"
     printf '\t@echo "  LD host_tests"\n'
     printf '\t@$(CC) $(CFLAGS) $(OBJS) $(OBJ)/unity.o -o $@ %s\n' "$LDFLAGS"
@@ -368,10 +372,10 @@ write_stamp() { # file, content
 }
 CC_ID="$("$CC_BIN" --version 2>&1 | sed -n 1p) $CC_MK"
 write_stamp "$BUILD_DIR/$OBJ_DIR/flags.stamp" "$CC_ID
-$CFLAGS $EXTRA_CFLAGS
+$CFLAGS
 $HEAP_ARENA_DEFINES $TEST_INC $LDFLAGS"
 write_stamp "$SU_DIR/flags.stamp" "$CC_ID
-$BASE_CFLAGS $EXTRA_CFLAGS
+$BASE_CFLAGS
 $HEAP_ARENA_DEFINES $TEST_INC"
 
 # Drop objects, depfiles and .su files whose source is gone, so a deleted

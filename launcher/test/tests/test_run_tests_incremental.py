@@ -5,8 +5,7 @@
 Each test drives the real script into a scratch build directory and reads
 which objects it compiled from its "  CC name.o" / "  SU name.o" lines. The
 first build is cold (one compile per translation unit), so the class takes a
-minute or two; the rest are incremental. ccache is off so every counted
-compile is a real one.
+minute or two; the rest are incremental.
 """
 import os
 import re
@@ -38,8 +37,7 @@ class IncrementalBuildTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.build = Path(tempfile.mkdtemp(prefix="host-build-"))
-        cls.env = dict(os.environ, TEST_BUILD_DIR=str(cls.build),
-                       QUIET_INNER="1", AUTANA_CCACHE="0")
+        cls.env = dict(os.environ, TEST_BUILD_DIR=str(cls.build), QUIET_INNER="1")
         cls.shell = device.git_bash()
         cls.cold = cls.run_build()
         cls.restore = []
@@ -105,9 +103,17 @@ class IncrementalBuildTest(unittest.TestCase):
         self.assertEqual(sorted(expected), sorted(self.run_build()))
 
     def test_5_a_flags_change_rebuilds_everything(self):
-        rebuilt = self.run_build(HOST_EXTRA_CFLAGS="-DHOST_BUILD_STAMP_TEST=1")
-        self.assertEqual(sorted(self.cold), sorted(rebuilt))
-        self.assertEqual([], self.run_build(HOST_EXTRA_CFLAGS="-DHOST_BUILD_STAMP_TEST=1"))
+        # A different flag set is a different stamp: give the stamp another
+        # content, as a changed flag would, and every object must rebuild.
+        stamp = self.build / "obj" / "plain" / "flags.stamp"
+        stamp.write_text(stamp.read_text() + "-DSOME_OTHER_FLAG\n")
+        rebuilt = self.run_build()
+        self.assertEqual(sorted(c for c in self.cold if c[0] == "CC"), sorted(rebuilt))
+        self.assertEqual([], self.run_build())
+
+
+if __name__ == "__main__":
+    unittest.main()
 
 
 if __name__ == "__main__":
