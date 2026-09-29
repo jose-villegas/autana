@@ -745,7 +745,12 @@ check_console_prefix_clashes(void) {
  * leaves the chip idle and unflashable. */
 static void
 app_boot_init(void) {
-    snprintf(build_mark_text, sizeof(build_mark_text), "D%s", build_id_short());
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    const int mark_length = snprintf(build_mark_text, sizeof(build_mark_text), "D%s", build_id_short());
+    if (mark_length < 0 || (size_t)mark_length >= sizeof(build_mark_text)) {
+        build_mark_text[0] = '\0';
+    }
+#endif
     printf("BUILD_ID=%s\n", build_id());
     fflush(stdout);
     system_navigation_init(&system_navigation);

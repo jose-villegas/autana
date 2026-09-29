@@ -20,7 +20,11 @@ static char short_id[BUILD_ID_SHORT_CHARS + 1];
 const char*
 build_id(void) {
     esp_app_get_elf_sha256(id, BUILD_ID_HASH_CHARS + 1);
-    snprintf(id + BUILD_ID_HASH_CHARS, sizeof(id) - BUILD_ID_HASH_CHARS, "-%s", BUILD_ID_VARIANT);
+    const int variant_length =
+        snprintf(id + BUILD_ID_HASH_CHARS, sizeof(id) - BUILD_ID_HASH_CHARS, "-%s", BUILD_ID_VARIANT);
+    if (variant_length < 0 || (size_t)variant_length >= sizeof(id) - BUILD_ID_HASH_CHARS) {
+        id[0] = '\0';
+    }
     return id;
 }
 
