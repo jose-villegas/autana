@@ -36,6 +36,7 @@ set(app_srcs
     "render/r3d_span.c"
     "util/frame_cost.c"
     "util/frame_watch.c"
+    "util/build_id.c"
     "util/job.c"
     "util/tune.c"
 )
@@ -133,54 +134,6 @@ endif()
 
 list(APPEND app_srcs ${discovered_apps})
 
-if(CONFIG_LAUNCHER_SELFTEST)
-    set(build_id_variant diag)
-elseif(CONFIG_LAUNCHER_DEVELOPMENT)
-    set(build_id_variant dev)
-else()
-    set(build_id_variant release)
-endif()
-
-set(build_id_generated_dir "${CMAKE_CURRENT_BINARY_DIR}/generated")
-if(NOT CMAKE_SCRIPT_MODE_FILE)
-    file(MAKE_DIRECTORY "${build_id_generated_dir}")
-    file(GLOB_RECURSE build_id_inputs CONFIGURE_DEPENDS
-        "${CMAKE_CURRENT_LIST_DIR}/*.c"
-        "${CMAKE_CURRENT_LIST_DIR}/*.h"
-        "${CMAKE_CURRENT_LIST_DIR}/*.S"
-        "${CMAKE_CURRENT_LIST_DIR}/*.cmake"
-        "${CMAKE_CURRENT_LIST_DIR}/*.yml"
-        "${CMAKE_CURRENT_LIST_DIR}/../test/*.c"
-        "${CMAKE_CURRENT_LIST_DIR}/../test/*.h"
-        "${CMAKE_CURRENT_LIST_DIR}/../components/*.c"
-        "${CMAKE_CURRENT_LIST_DIR}/../components/*.h"
-        "${CMAKE_CURRENT_LIST_DIR}/../components/*.S"
-        "${CMAKE_CURRENT_LIST_DIR}/../components/*.cmake"
-        "${CMAKE_CURRENT_LIST_DIR}/../components/*.yml"
-        "${CMAKE_CURRENT_LIST_DIR}/../bootloader_components/*.c"
-        "${CMAKE_CURRENT_LIST_DIR}/../bootloader_components/*.h"
-        "${CMAKE_CURRENT_LIST_DIR}/../bootloader_components/*.S"
-        "${CMAKE_CURRENT_LIST_DIR}/../bootloader_components/*.cmake"
-        "${CMAKE_CURRENT_LIST_DIR}/../bootloader_components/*.yml")
-    file(GLOB build_id_defaults CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/../sdkconfig.defaults*")
-    set(build_id_header "${build_id_generated_dir}/build_id_generated.h")
-    set(build_id_file "${CMAKE_BINARY_DIR}/build_id.txt")
-    add_custom_command(
-        OUTPUT "${build_id_header}" "${build_id_file}"
-        COMMAND ${CMAKE_COMMAND}
-            -DBUILD_DIR=${CMAKE_BINARY_DIR}
-            -DGENERATED_DIR=${build_id_generated_dir}
-            -DVARIANT=${build_id_variant}
-            -P ${CMAKE_CURRENT_LIST_DIR}/build_id.cmake
-        DEPENDS ${build_id_inputs} ${build_id_defaults}
-                "${CMAKE_CURRENT_LIST_DIR}/../CMakeLists.txt"
-                "${CMAKE_CURRENT_LIST_DIR}/../dependencies.lock"
-                "${CMAKE_CURRENT_LIST_DIR}/../partitions.csv"
-                "${CMAKE_CURRENT_LIST_DIR}/build_id.cmake"
-        VERBATIM)
-    add_custom_target(build_id_header ALL DEPENDS "${build_id_header}" "${build_id_file}")
-endif()
-
 # post.c reaches for chip identity, flash size, I2C probing and the on-die
 # temperature sensor, so it pulls in more of the platform than the rest.
 #
@@ -194,7 +147,7 @@ endif()
 set(app_reqs microui small3dlib esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash
              fatfs esp_driver_sdmmc sdmmc
-             esp_driver_usb_serial_jtag vfs nvs_flash
+             esp_driver_usb_serial_jtag vfs nvs_flash esp_app_format
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300
              # perfmon and unity are both listed unconditionally, NOT inside
              # the block below: ESP-IDF expands REQUIRES in an early pass
@@ -262,7 +215,7 @@ endif()
 
 idf_component_register(
     SRCS ${app_srcs}
-    INCLUDE_DIRS "." "${build_id_generated_dir}"
+    INCLUDE_DIRS "."
     PRIV_INCLUDE_DIRS ${app_private_include_dirs}
     REQUIRES ${app_reqs}
 
@@ -282,7 +235,6 @@ idf_component_register(
 
 if(NOT CMAKE_SCRIPT_MODE_FILE)
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=vla -Werror=unused-macros)
-    add_dependencies(${COMPONENT_LIB} build_id_header)
 endif()
 
 if(CONFIG_LAUNCHER_SELFTEST)

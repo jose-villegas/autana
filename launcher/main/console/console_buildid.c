@@ -5,7 +5,7 @@
  */
 #include "console/console_verbs.h"
 
-#include "build_id_generated.h"
+#include "util/build_id.h"
 
 #include <stdio.h>
 
@@ -13,7 +13,7 @@ static void
 console_verb_buildid(const char* args, console_reply_fn reply) {
     (void)args;
     (void)reply;
-    printf("BUILD_ID=%s\n", BUILD_ID);
+    printf("BUILD_ID=%s\n", build_id());
     fflush(stdout);
 }
 

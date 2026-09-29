@@ -142,9 +142,5 @@ fi
 # shellcheck disable=SC2086
 quiet_run build idf_variant_build "$LAUNCHER_DIR" "$VARIANT" "$BUILD_DIR" $VARIANT_OPTIONS
 
-if [ ! -f "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt" ]; then
-    echo "build reported success but produced no build id at" >&2
-    echo "  $LAUNCHER_DIR/$BUILD_DIR/build_id.txt" >&2
-    exit 1
-fi
+sh "$SCRIPT_DIR/write_build_id.sh" "$LAUNCHER_DIR/$BUILD_DIR" "$VARIANT"
 echo "=== Done - $BUILD_DIR built, build id $(tr -d '\r\n' < "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt") ==="

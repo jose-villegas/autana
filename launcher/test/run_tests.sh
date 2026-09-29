@@ -394,5 +394,3 @@ if [ "${HOST_SANITIZE:-}" = undefined ] && [ "$(uname -s)" = Linux ]; then
 else
     "$OUT"
 fi
-
-"$PYTHON" "$TEST_DIR/test_build_id_generator.py"

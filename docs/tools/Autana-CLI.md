@@ -69,11 +69,9 @@ CI builds through it too. `autana flash` runs that same build with no board
 lock held and snapshots the image it built, then, under the board's lock,
 `scripts/device/flash_image.sh` writes that snapshot - the one script that
 opens the port.
-Each changed image receives a `BUILD_ID` in the form
-`YYYYMMDDTHHMMSS-<eight lowercase hex digits>-<variant>`; a no-op build keeps
-its existing id.
-It proves the write, not the boot:
+`BUILD_ID` identifies the image by its ELF hash; see
 [what a flash proves](Device-Lock.md#what-a-flash-proves).
+It proves the write, not the boot.
 
 ## Tests
 
