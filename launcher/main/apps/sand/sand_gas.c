@@ -428,8 +428,10 @@ step_one_gas_row(sand_t* s, const gas_row_t* r, const gas_pass_t* c) {
         if (sand_row_cell_stamped(r->stamp_row, x)) {
             continue;
         }
-        step_one_gas_grain(s, row, r->prow, r->arow, r->brow, x, y, w, c->rdx, c->rdy, c->rslide_a, c->rslide_b,
-                           c->rload_dx, c->rload_dy, c->jostle, cell, gas_driven);
+        SAND_STEP_GATE(gas_body) {
+            step_one_gas_grain(s, row, r->prow, r->arow, r->brow, x, y, w, c->rdx, c->rdy, c->rslide_a, c->rslide_b,
+                               c->rload_dx, c->rload_dy, c->jostle, cell, gas_driven);
+        }
     }
     return any;
 }
@@ -1099,8 +1101,10 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
      * liquid's cross-flow does (see sand_step_liquids() in sand_liquid.c).
      * Kept on its own flip flag rather than sharing liquid_flip, so gas's
      * alternation is not coupled to whether water also moved this step. */
-    if (equalise_gas(s, s->gas_flip ? perp_a : perp_b, rdx, rdy)) {
-        found_any = true;
+    SAND_STEP_GATE(gas_equalise) {
+        if (equalise_gas(s, s->gas_flip ? perp_a : perp_b, rdx, rdy)) {
+            found_any = true;
+        }
     }
     s->gas_flip = !s->gas_flip;
 
