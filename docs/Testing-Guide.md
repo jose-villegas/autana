@@ -32,6 +32,8 @@ for the other runners only when you need them.
 ```sh
 ./launcher/test/run_tests.sh          # portable suites, on this machine
 ./launcher/test/run_tests.sh --verbose  # the full build-and-test stream, not just the result
+./launcher/test/run_tests.sh --sanitize # with UBSan, and ASan on Linux (CI runs this too)
+./launcher/test/run_tests.sh --build-dir DIR  # build in DIR, so two runs never share a binary
 autana selftest                       # every suite, on the board, build+flash+run
 ```
 
@@ -41,10 +43,16 @@ from compilation and the gates, including the stack check. The full stream is
 saved in `launcher/test/build/run_tests.log`, whose path is printed before
 the run; `--verbose` streams it while saving it there too.
 
-Most of a host run is compiling. `run_tests.sh` builds the sources and then
-compiles them again for the `-fstack-usage` pass, without object caching
-between runs. The summary line reports the current test count; a repeat run
-still pays for both compilations.
+A host build is incremental. `run_tests.sh` writes a Makefile into
+`launcher/test/build/` and lets GNU make (`make`, or `mingw32-make` beside
+WinLibs' gcc) compile one object per source, in parallel, from the compiler's
+own dependency files: a rerun compiles nothing, a touched `.c` recompiles one
+object and a touched header recompiles exactly its includers. Every flag that
+shapes an object is stamped, so a changed flag rebuilds everything, and a
+sanitizer build keeps its objects in a directory of its own. Jobs default to
+half the CPUs, at most 8 (`--jobs N` overrides); `--build-only` compiles,
+links and runs the stack gate without running the suites. What is left of a
+warm run is executing the tests.
 
 `autana selftest` builds, flashes and runs every suite under the device
 lock, from any shell including Git Bash. For a markdown report instead of
@@ -65,7 +73,7 @@ markdown report, and reflashes the release firmware afterwards unless given
 checkout's own `scripts/device/device.py` directly (see
 [Device-Lock.md](tools/Device-Lock.md#one-copy-of-the-tools)). A report
 script takes its
-board from `AUTANA_BOARD`, as `autana` does, else the only board plugged in;
+board from its own `--board SERIAL`, as `autana` does, else the only board plugged in;
 its one positional is the report's own path, ending in `.md`. A report script
 differs from its siblings only in what it declares — capture timeout, which
 suite, sentinel, reporter, output location — so a build flag cannot reach one

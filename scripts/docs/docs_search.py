@@ -13,9 +13,9 @@ Options: --top N (3), --more N (5), --budget CHARS (1800), --json, --lexical.
 The unit of an answer is a section: a heading and the text up to the next
 heading. The corpus is a plain filesystem walk of the checkout, not a VCS
 index - no git command runs: every *.md under it (except third_party/ and
-launcher/components/), plus any Markdown files or folders AUTANA_DOCS_EXTRA
-names (os.pathsep between them, each relative to the checkout unless
-absolute, read in full - no ignore file is consulted), plus the header of
+launcher/components/), plus any Markdown files or folders the project's
+`docs_extra` setting names (each relative to the checkout unless absolute,
+read in full - no ignore file is consulted), plus the header of
 every script under the tool folders, so "how do I run X" finds the script
 that documents itself. A directory named `.something`, `managed_components`
 or `results`, one that contains `CMakeCache.txt` (a real build tree,
@@ -41,6 +41,9 @@ from pathlib import Path
 
 import docs_llama
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+import autana_config  # noqa: E402
+
 Section = namedtuple("Section", "path start end title headings level body cites")
 Hit = namedtuple("Hit", "section score coverage similarity")
 
@@ -52,7 +55,6 @@ SCRIPT_SUFFIXES = (".py", ".sh", ".mjs")
 # the tracked tree is someone's own notes; both answer fewer questions than
 # the documents of record.
 PRIORS = (("docs/plans/", 0.8),)
-EXTRA_ENV = "AUTANA_DOCS_EXTRA"
 EXTRA_PRIOR = 0.85
 # A list of links to other documents names every topic and answers none.
 NAVIGATION = re.compile(r"^(related|see also|further reading|where to go next)\b", re.I)
@@ -144,8 +146,8 @@ def walk_tree(root, *suffixes):
 
 
 def extra_entries(root):
-    value = os.environ.get(EXTRA_ENV, "")
-    return [Path(root) / entry.strip() for entry in value.split(os.pathsep) if entry.strip()]
+    entries = autana_config.load(root).get("docs_extra", [])
+    return [autana_config.path_value(entry, root) for entry in entries if entry.strip()]
 
 
 def label_of(root, file):
@@ -156,7 +158,7 @@ def label_of(root, file):
 
 
 def extra_files(root):
-    """(label, file) for the Markdown AUTANA_DOCS_EXTRA names - read in full, no ignore
+    """(label, file) for the Markdown `docs_extra` names - read in full, no ignore
     file consulted, since a caller names this folder precisely because it wants it read."""
     files = []
     for entry in extra_entries(root):
@@ -585,7 +587,7 @@ def format_outline(index, path):
 
 def load_eval(root=None):
     """The evaluation rows: this folder's, plus an eval_questions.tsv in any
-    folder AUTANA_DOCS_EXTRA names, whose rows cite its documents."""
+    folder `docs_extra` names, whose rows cite its documents."""
     sources = [Path(__file__).with_name("eval_questions.tsv")]
     if root is not None:
         sources += [e / "eval_questions.tsv" for e in extra_entries(root) if (e / "eval_questions.tsv").is_file()]
@@ -633,6 +635,11 @@ def main(argv=None, root=None):
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--lexical", action="store_true")
     args = parser.parse_args(argv)
+    try:
+        autana_config.load(root or repo_root())
+    except autana_config.ConfigError as error:
+        print(f"docs_search: {error}", file=sys.stderr)
+        return 1
     index = Index(root or repo_root(), semantic=not args.lexical)
     if args.eval:
         ranks = evaluate(index)

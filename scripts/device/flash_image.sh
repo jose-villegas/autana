@@ -15,8 +15,8 @@
 # rebuilds first and writes whatever the build directory holds by then.
 #
 # This opens the board's serial port, which is why it lives in
-# scripts/device/. It refuses unless AUTANA_DEVICE_LOCK_TOKEN is the live
-# lock on AUTANA_BOARD (the board's USB serial number); device.py sets both
+# scripts/device/. It refuses unless _AUTANA_DEVICE_LOCK_TOKEN is the live
+# lock on _AUTANA_BOARD (the board's USB serial number); device.py sets both
 # after taking that lock. The token sits in plain text in the lock file, so
 # this catches an accident, not a forger. The port is looked up only now: a
 # board keeps its serial number but can come back from a reset on another COM.
@@ -55,18 +55,18 @@ LAUNCHER_DIR="$(cd "$SCRIPT_DIR/../../launcher" && pwd)"
 . "$SCRIPT_DIR/../lib/python.sh"
 PYTHON=$(find_python) || exit 2
 
-if [ -z "${AUTANA_DEVICE_LOCK_TOKEN:-}" ] || [ -z "${AUTANA_BOARD:-}" ]; then
+if [ -z "${_AUTANA_DEVICE_LOCK_TOKEN:-}" ] || [ -z "${_AUTANA_BOARD:-}" ]; then
     echo "ERROR: flashing needs the device lock on a named board." >&2
     echo "Run 'autana flash rel|dev|diag' instead." >&2
     exit 1
 fi
-if ! "$PYTHON" "$SCRIPT_DIR/device_lock.py" --board "$AUTANA_BOARD" \
-        check-token --token "$AUTANA_DEVICE_LOCK_TOKEN"; then
-    echo "ERROR: device lock token is not active for board $AUTANA_BOARD" >&2
+if ! "$PYTHON" "$SCRIPT_DIR/device_lock.py" --board "$_AUTANA_BOARD" \
+        check-token --token "$_AUTANA_DEVICE_LOCK_TOKEN"; then
+    echo "ERROR: device lock token is not active for board $_AUTANA_BOARD" >&2
     echo "Run 'autana flash rel|dev|diag' instead." >&2
     exit 1
 fi
-COM_PORT=$("$PYTHON" "$SCRIPT_DIR/device.py" --board "$AUTANA_BOARD" resolve-port)
+COM_PORT=$("$PYTHON" "$SCRIPT_DIR/device.py" --board "$_AUTANA_BOARD" resolve-port)
 
 # shellcheck source=../../launcher/tools/build/idf.sh
 . "$LAUNCHER_DIR/tools/build/idf.sh"

@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import datetime
 import errno
+import getpass
 import json
 import math
 import os
@@ -60,13 +61,27 @@ def default_root():
     session. Windows: the account's own temp folder. Elsewhere a fixed
     /tmp folder per uid, never $TMPDIR: two jobs with different TMPDIRs must
     still exclude each other. A Linux autana older than this one used
-    $TMPDIR/autana-device, so mixed installs do not exclude each other."""
-    named = os.environ.get("AUTANA_DEVICE_LOCK_ROOT")
+    $TMPDIR/autana-device, so mixed installs do not exclude each other.
+
+    _AUTANA_DEVICE_LOCK_ROOT is test only: a per-checkout or per-shell root
+    would split the one lock every checkout on the machine must share."""
+    named = os.environ.get("_AUTANA_DEVICE_LOCK_ROOT")
     if named:
         return Path(named)
     if os.name == "nt":
         return Path(tempfile.gettempdir()) / "autana-device"
     return Path("/tmp") / f"autana-device-{os.getuid()}"
+
+
+def default_owner():
+    """What a caller that names no owner is called in the lock:
+    "<user>@<host>:<pid>". getpass.getuser() can fail with no username in the
+    environment (a container); "user" then stands in for it."""
+    try:
+        user = getpass.getuser()
+    except OSError:
+        user = "user"
+    return f"{user}@{socket.gethostname()}:{os.getpid()}"
 
 
 def normalise_board(serial):
@@ -813,7 +828,7 @@ def main(argv=None):
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("status")
     acquire = subparsers.add_parser("acquire")
-    acquire.add_argument("--owner", default="unknown")
+    acquire.add_argument("--owner", default=default_owner())
     acquire.add_argument("--purpose", required=True)
     acquire.add_argument("--expected-build-id", default="")
     acquire.add_argument("--wait", type=float, default=0)

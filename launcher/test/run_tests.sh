@@ -5,6 +5,10 @@
 #   ./test/run_tests.sh
 #   CC=clang ./test/run_tests.sh
 #   ./test/run_tests.sh --verbose
+#   ./test/run_tests.sh --build-only     # compile, link and the stack gate; run nothing
+#   ./test/run_tests.sh --jobs 4         # parallel compiles (default: half the CPUs, at most 8)
+#   ./test/run_tests.sh --sanitize       # with UBSan, and ASan on Linux
+#   ./test/run_tests.sh --build-dir DIR  # build here, not in test/build
 #
 # This is the fast loop: it compiles for THIS machine, not the ESP32, and runs
 # in well under a second. Red-green-refactor is only practical with instant
@@ -23,10 +27,26 @@
 
 set -eu
 
-VERBOSE=${VERBOSE:-0}
+VERBOSE=0
+SANITIZE=0
+BUILD_DIR=""
+BUILD_ONLY=0
+JOBS=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --verbose) VERBOSE=1 ;;
+        --sanitize) SANITIZE=1 ;;
+        --build-dir)
+            [ $# -ge 2 ] || { echo "--build-dir needs a folder" >&2; exit 2; }
+            BUILD_DIR=$2
+            shift
+            ;;
+        --build-only) BUILD_ONLY=1 ;;
+        --jobs)
+            [ $# -ge 2 ] || { echo "--jobs needs a number" >&2; exit 2; }
+            JOBS=$2
+            shift
+            ;;
         --print-sources|--print-flags) break ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
@@ -38,12 +58,12 @@ export VERBOSE
 TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck disable=SC1007
 MAIN_DIR=$(CDPATH= cd -- "$TEST_DIR/../main" && pwd)
-# Overridable so two runs cannot clobber each other: the build dir holds one
-# host_tests binary, so concurrent runs (two terminals, a sweep script
+# --build-dir keeps two runs from clobbering each other: the build dir holds
+# one host_tests binary, so concurrent runs (two terminals, a sweep script
 # running beside a manual run) otherwise race to compile and execute the
 # same file, and a result can end up attributed to a source state that never
-# existed. Defaults to the old path, so nothing that does not set it changes.
-BUILD_DIR="${TEST_BUILD_DIR:-$TEST_DIR/build}"
+# existed.
+BUILD_DIR="${BUILD_DIR:-$TEST_DIR/build}"
 
 # --- find a compiler -------------------------------------------------------
 # Sourced rather than defined here, so that report_reactions.sh (main/apps/
@@ -64,7 +84,7 @@ fi
 # 64-bit pointers and 8-byte alignment make every command bigger on the host.
 BASE_CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -Wno-unused-parameter -g -O1"
 CFLAGS="$BASE_CFLAGS"
-if [ "${HOST_SANITIZE:-}" = undefined ]; then
+if [ "$SANITIZE" = 1 ]; then
     # Instrumentation widens the ranges that format-truncation reasons about.
     CFLAGS="$CFLAGS -fsanitize=undefined -fsanitize-recover=undefined -Wno-format-truncation"
     case "$(uname -s)" in
@@ -194,14 +214,18 @@ if [ -z "${QUIET_INNER:-}" ]; then
     # shellcheck source=../../scripts/quiet.sh
     . "$TEST_DIR/../../scripts/quiet.sh"
     quiet_begin "$QUIET_LOG"
-    quiet_run host-tests env QUIET_INNER=1 VERBOSE="$VERBOSE" sh "$0" "$@" || true
+    [ "$VERBOSE" = 1 ] && set -- "$@" --verbose
+    [ "$SANITIZE" = 1 ] && set -- "$@" --sanitize
+    [ "$BUILD_ONLY" = 1 ] && set -- "$@" --build-only
+    [ -n "$JOBS" ] && set -- "$@" --jobs "$JOBS"
+    quiet_run host-tests env QUIET_INNER=1 sh "$0" "$@" --build-dir "$BUILD_DIR" || true
     QUIET_SUMMARY=$(grep -E '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored' "$QUIET_LOG" | tail -n 1)
     export QUIET_SUMMARY
     QUIET_FAILURES=$(grep -E ':FAIL|ERROR: (AddressSanitizer|LeakSanitizer)' "$QUIET_LOG" || true)
     if [ -n "$QUIET_FAILURES" ]; then
         printf 'Test and sanitizer failures:\n%s\n' "$QUIET_FAILURES"
     fi
-    if [ "${HOST_SANITIZE:-}" = undefined ]; then
+    if [ "$SANITIZE" = 1 ]; then
         QUIET_FINDINGS=$(grep 'runtime error:' "$QUIET_LOG" | sed -E 's/:[0-9]+: runtime error:/: runtime error:/' | sort -u || true)
         if [ -n "$QUIET_FINDINGS" ]; then
             printf 'UBSan findings (%s):\n%s\n' "$(printf '%s\n' "$QUIET_FINDINGS" | wc -l | tr -d ' ')" "$QUIET_FINDINGS"
@@ -216,157 +240,177 @@ fi
 # they cannot link here - which also meant nothing compiled them at all
 # until a full device build. Compile-check them first, so a change that
 # does not build is caught here rather than on the board.
-"$TEST_DIR/check_app_sources.sh"
+if [ "$BUILD_ONLY" != 1 ]; then
+    "$TEST_DIR/check_app_sources.sh"
 
-# The bootloader hook lives outside SOURCES too - a separate header world
-# entirely, so it gets its own standalone binary rather than joining the
-# suites above.
-"$TEST_DIR/check_pmic_cold_boot.sh"
+    # The bootloader hook lives outside SOURCES too - a separate header world
+    # entirely, so it gets its own standalone binary rather than joining the
+    # suites above.
+    "$TEST_DIR/check_pmic_cold_boot.sh" --build-dir "$BUILD_DIR"
+fi
 
-OUT="$BUILD_DIR/host_tests"
-
-# Every suite calls RUN_TEST(func) directly; timing.h intercepts that macro
-# (see its own comment) to log a wall-clock line per test without editing a
-# single suite file - forced in ahead of everything else's own
-# "#include unity.h" via -include below.
+# --- incremental build ------------------------------------------------------
+# One object per translation unit, built by GNU make from a Makefile this
+# script writes into the build dir: make already does exactly the two things
+# this needs (mtime comparison and -MMD depfile tracking) and runs jobs in
+# parallel, and it exists on both platforms this repo builds on (make on
+# Linux, mingw32-make beside WinLibs' gcc). A sh loop would have to
+# re-implement depfile parsing.
 #
-# unity.c itself must NOT see that -include: Unity's RUN_TEST is guarded by
-# "#ifndef RUN_TEST", and if timing.h has already defined it by the time
-# unity.c's own copy of that guard runs, Unity assumes a full replacement
-# runner has been supplied (UNITY_SKIP_DEFAULT_RUNNER) and compiles
-# UnityDefaultTestRun's body out entirely - the one function timing.c
-# calls. So it is compiled alone, first, without -include.
-UNITY_OBJ="$BUILD_DIR/unity.o"
-# shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
-    -c "$TEST_DIR/framework/unity.c" -o "$UNITY_OBJ"
-
-# components/microui/include is on the path for ui_style.h's sake: it needs
-# mu_Rect and mu_Color, and those are plain declarations in microui.h with no
-# library behind them. microui.c itself IS linked now, for exactly one suite:
-# suite_ui_pointer_microui.c drives the real widget code, because the event
-# list ui_pointer.c emits can be perfectly correct and still produce a UI in
-# which nothing is clickable - see that file's own comment. Every other
-# suite here still needs only the declarations - see suite_ui_style.c on
-# why a style's geometry was kept free of it.
+# Nothing but the compiler's own facts decides staleness: a header edit
+# rebuilds its includers through the depfiles, and every flag that shapes
+# an object (compiler, flags, defines, includes) is written into a stamp file
+# that all objects depend on - a change rebuilds everything, and a sanitizer
+# build keeps its objects in a directory of its own so switching does not
+# thrash.
 #
-# components/small3dlib/include is on the path for boot_anim.h's sake: its
-# camera/space transforms are small3dlib's own S3L_Transform3D/S3L_Mat4 - see
-# boot_anim.h's own top comment. Safe to include here alongside boot_anim.c's
-# own translation unit (which this test binary does NOT compile - only
-# suite_boot_anim.c, testing the pure math) because every small3dlib symbol
-# is `static inline` - see small3dlib.h's own "PATCHED" comment for why that
-# had to be true before this could work at all.
+# unity.c must NOT see the -include timing.h that every other source gets:
+# Unity's RUN_TEST is guarded by "#ifndef RUN_TEST", and if timing.h has
+# already defined it, Unity assumes a replacement runner exists and compiles
+# UnityDefaultTestRun - the one function timing.c calls - out entirely.
 #
-# -lm LAST, after the sources, because GNU ld resolves left to right and
-# would otherwise have discarded libm before seeing who needed it. Only
-# Linux actually needs it: the Windows toolchains this repo also builds on
-# fold the math functions into libc, so a suite using atan2() or fabs()
-# links clean locally and fails only in CI, which is exactly how it was
-# found. Harmless where libm is already part of libc.
+# components/microui/include is on the path for ui_style.h's sake, which needs
+# mu_Rect and mu_Color; microui.c itself is linked for the one suite that
+# drives the real widget code. small3dlib is all `static inline`, so its
+# headers are safe beside boot_anim.c's math.
 #
 # --wrap routes the suite's own allocations into heap_arena.c's device-sized
 # arena, so a fixture that asks for more than the board has fails HERE
 # rather than after a flash. Only this runner defines HOST_HEAP_ARENA: any
 # other build compiling the same timing.c gets every arena line preprocessed
-# out, which is why the hooks had to be behind one macro rather than merely
-# unused. Note that libc-internal allocations do not route
-# through --wrap at all (a pointer from strdup() arrives at __wrap_free
-# never having been seen by __wrap_malloc), which is why the arena forwards
-# pointers it does not own instead of trusting every free().
+# out. libc-internal allocations do not route through --wrap (a pointer from
+# strdup() reaches __wrap_free never having been seen by __wrap_malloc),
+# which is why the arena forwards pointers it does not own.
 #
-# The sources go through a response file: every path is absolute, and under a
-# long checkout path their total length exceeds Windows' 32K command-line limit. MSYS
-# rewrites /c/... paths on a command line but not inside a file, hence cygpath.
-SOURCES_RSP="$BUILD_DIR/sources.rsp"
-# shellcheck disable=SC2086
-(printf '%s\n' $SOURCES | cygpath -m -f - 2>/dev/null || printf '%s\n' $SOURCES) |
-    sed -e '/^$/d' -e 's/[\\"]/\\&/g' -e 's/.*/"&"/' >"$SOURCES_RSP"
+# -lm goes last: GNU ld resolves left to right. Only Linux needs it, but a
+# suite using atan2() links clean on Windows and fails only in CI otherwise.
+# shellcheck source=../tools/build/host_make.sh
+. "$TEST_DIR/../tools/build/host_make.sh"
+MAKE_BIN=$(find_make) || exit 1
+JOBS=$(host_jobs "$JOBS")
 
-# shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS $HEAP_ARENA_DEFINES -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
-    -I "$TEST_DIR/../components/microui/include" \
-    -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools/gen" -include "$TEST_DIR/timing.h" \
-    "@$SOURCES_RSP" "$UNITY_OBJ" -o "$OUT" \
-    -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm
+# make reads native paths: on Windows it is a native program, so the MSYS
+# path rewriting that shields gcc under sh does not apply to it.
+if command -v cygpath >/dev/null 2>&1; then
+    to_native() { cygpath -m -f -; }
+else
+    to_native() { cat; }
+fi
+# Collapses "a/../b" so two spellings of one file get one object name.
+squash() { sed -e ':a' -e 's|/[^/][^/]*/\.\./|/|' -e 'ta'; }
+native() { printf '%s\n' "$1" | to_native | squash; }
 
-# --- static stack-frame gate ------------------------------------------------
-# A separate, cheap compile pass over test-code translation units only, with
-# -fstack-usage added - GCC/Clang then write one <name>.su file per object
-# naming every function's own frame size, without executing anything. Kept
-# out of the compile+link command above on purpose: -fstack-usage writes its
-# .su file beside whatever -o path was given, and that command emits one
-# binary from many files at once, so its .su files would scatter into the
-# CWD rather than land somewhere this script can find them.
-#
-# Test code only (test/'s own drivers, test/suites/*.c, and each app's
-# suite_*.c) - not the product logic those suites exercise. A huge frame in
-# sand.c itself would be a real risk too, but it is not the risk that
-# already panic-looped the board twice (see check_stack_usage.py's header),
-# and widening this to product code is a separate decision. Derived from
-# $SOURCES already assembled above, rather than a fresh glob, so this only
-# compiles files already proven to build on a host.
+case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*) EXE=.exe ;;
+    *) EXE= ;;
+esac
+OUT="$BUILD_DIR/host_tests$EXE"
+OUT_N=$(native "$OUT")
+
+CONFIG=plain
+[ "$SANITIZE" = 1 ] && CONFIG=ubsan
+OBJ_DIR="obj/$CONFIG"
 SU_DIR="$BUILD_DIR/su"
-rm -rf "$SU_DIR"
-mkdir -p "$SU_DIR"
+mkdir -p "$BUILD_DIR/$OBJ_DIR" "$SU_DIR"
 
+CC_MK=$CC_BIN
+case "$CC_BIN" in */* | *\\*) CC_MK=$(native "$CC_BIN") ;; esac
+MAIN_N=$(native "$MAIN_DIR")
+TEST_N=$(native "$TEST_DIR")
+LAUNCHER_N=$(native "$(CDPATH= cd -- "$TEST_DIR/.." && pwd)")
+BUILD_N=$(native "$BUILD_DIR")
+COMMON_INC="-I $MAIN_N -I $TEST_N -I $TEST_N/framework -I $TEST_N/stubs"
+TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/components/small3dlib/include -I $LAUNCHER_N/tools/gen"
+LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm"
+
+# The source lists, one native path per line. Test code (test/'s own
+# drivers, test/suites/*.c and each app's suite_*.c) also gets the
+# -fstack-usage pass below.
+SRC_LIST="$BUILD_DIR/sources.txt"
+printf '%s\n' $SOURCES | sed '/^$/d' | to_native | squash >"$SRC_LIST"
+SU_LIST="$BUILD_DIR/su_sources.txt"
 SU_SOURCES=""
 for f in $SOURCES; do
     case "$f" in
-        "$TEST_DIR"/*) SU_SOURCES="$SU_SOURCES
-$f" ;;
-        */suite_*.c) SU_SOURCES="$SU_SOURCES
-$f" ;;
+        "$TEST_DIR"/* | */suite_*.c) SU_SOURCES="$SU_SOURCES $f" ;;
     esac
 done
+printf '%s\n' $SU_SOURCES | sed '/^$/d' | to_native | squash >"$SU_LIST"
 
-# Compiled in parallel, in batches, because these are two dozen independent
-# translation units and the cost is almost entirely per-process compiler
-# launch overhead rather than -fstack-usage itself - serially this pass
-# roughly doubled the wall time of a suite whose whole point is being fast
-# enough to run constantly. Batched rather than all-at-once so this does not
-# fork two dozen compilers on a small machine; `wait` without arguments is
-# POSIX and waits for the whole batch.
-#
-# Each batch's exit statuses are collected into su_failed rather than
-# checked with `set -e`, because a failing background job does not abort the
-# script and an unnoticed compile failure here would mean a silently
-# incomplete set of .su files - the exact "gate that checks nothing" this
-# pass is trying not to be.
-SU_BATCH=8
-n=0
-in_batch=0
-su_pids=""
-su_failed=0
-
-su_wait_batch() {
-    for pid in $su_pids; do
-        wait "$pid" || su_failed=1
-    done
-    su_pids=""
-    in_batch=0
+# An object's name is its launcher-relative path with the slashes flattened;
+# "name source" pairs feed awk, so the whole Makefile costs a handful of
+# process launches (each one is expensive under MSYS).
+pairs() { # source-list-file
+    sed -e "s|^$LAUNCHER_N/||" -e 's|/|__|g' -e 's|\.c$||' "$1" | paste -d' ' - "$1"
 }
+OBJ_PAIRS=$(pairs "$SRC_LIST")
+SU_PAIRS=$(pairs "$SU_LIST")
 
-for f in $SU_SOURCES; do
-    n=$((n + 1))
-    base=$(basename "$f" .c)
-    # shellcheck disable=SC2086
-    "$CC_BIN" $BASE_CFLAGS $HEAP_ARENA_DEFINES -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
-        -I "$TEST_DIR/../components/microui/include" \
-        -I "$TEST_DIR/../components/small3dlib/include" -I "$TEST_DIR/../tools/gen" -include "$TEST_DIR/timing.h" \
-        -fstack-usage -c "$f" -o "$SU_DIR/$(printf '%02d' "$n")_$base.o" &
-    su_pids="$su_pids $!"
-    in_batch=$((in_batch + 1))
-    [ "$in_batch" -lt "$SU_BATCH" ] || su_wait_batch
-done
-[ "$in_batch" -eq 0 ] || su_wait_batch
+MK="$BUILD_DIR/host.mk"
+EXPECT_OBJ="$BUILD_DIR/expected_obj.txt"
+EXPECT_SU="$BUILD_DIR/expected_su.txt"
+{
+    printf 'CC := %s\n' "$CC_MK"
+    printf 'CFLAGS := %s\n' "$CFLAGS"
+    printf 'BASE_CFLAGS := %s\n' "$BASE_CFLAGS"
+    printf 'TEST_FLAGS := %s %s -include %s/timing.h\n' "$HEAP_ARENA_DEFINES" "$TEST_INC" "$TEST_N"
+    printf 'OBJ := %s\nSU := su\n' "$OBJ_DIR"
+    printf 'OBJS :='
+    printf '%s\n' "$OBJ_PAIRS" | awk '{ printf " $(OBJ)/%s.o", $1 }'
+    printf '\nSUOBJS :='
+    printf '%s\n' "$SU_PAIRS" | awk '{ printf " $(SU)/%s.o", $1 }'
+    printf '\nall: %s $(SUOBJS)\n' "$OUT_N"
+    printf '%s\n' "$OBJ_PAIRS" | awk '{
+        printf "$(OBJ)/%s.o: %s $(OBJ)/flags.stamp\n", $1, $2
+        printf "\t@echo \"  CC $(notdir $@)\"\n"
+        printf "\t@$(CC) $(CFLAGS) $(TEST_FLAGS) -MMD -MP -c $< -o $@\n"
+    }'
+    printf '$(OBJ)/unity.o: %s/framework/unity.c $(OBJ)/flags.stamp\n' "$TEST_N"
+    printf '\t@echo "  CC unity.o"\n'
+    printf '\t@$(CC) $(CFLAGS) %s -MMD -MP -c $< -o $@\n' "$COMMON_INC"
+    printf '%s: $(OBJS) $(OBJ)/unity.o $(OBJ)/flags.stamp\n' "$OUT_N"
+    printf '\t@echo "  LD host_tests"\n'
+    printf '\t@$(CC) $(CFLAGS) $(OBJS) $(OBJ)/unity.o -o $@ %s\n' "$LDFLAGS"
+    printf '%s\n' "$SU_PAIRS" | awk '{
+        printf "$(SU)/%s.o: %s $(SU)/flags.stamp\n", $1, $2
+        printf "\t@echo \"  SU $(notdir $@)\"\n"
+        printf "\t@$(CC) $(BASE_CFLAGS) $(TEST_FLAGS) -fstack-usage -MMD -MP -c $< -o $@\n"
+    }'
+    printf -- '-include $(wildcard $(OBJ)/*.d $(SU)/*.d)\n'
+} >"$MK"
 
-if [ "$su_failed" -ne 0 ]; then
-    echo "the -fstack-usage pass failed to compile at least one test source;" >&2
-    echo "its .su file is missing, so the stack gate would be checking an" >&2
-    echo "incomplete set of functions. Refusing to continue." >&2
-    exit 1
-fi
+# Everything that shapes an object goes in a stamp, rewritten only when it
+# differs so an unchanged configuration leaves the objects current.
+write_stamp() { # file, content
+    if [ "$(cat "$1" 2>/dev/null)" != "$2" ]; then printf '%s\n' "$2" >"$1"; fi
+}
+CC_ID="$("$CC_BIN" --version 2>&1 | sed -n 1p) $CC_MK"
+write_stamp "$BUILD_DIR/$OBJ_DIR/flags.stamp" "$CC_ID
+$CFLAGS
+$HEAP_ARENA_DEFINES $TEST_INC $LDFLAGS"
+write_stamp "$SU_DIR/flags.stamp" "$CC_ID
+$BASE_CFLAGS
+$HEAP_ARENA_DEFINES $TEST_INC"
+
+# Drop objects, depfiles and .su files whose source is gone, so a deleted
+# suite cannot leave a stale .su for the stack gate to read.
+prune() { # dir, expected-name-list-file
+    (cd "$1" && ls -1) | LC_ALL=C sort | LC_ALL=C comm -23 - "$2" | while IFS= read -r f; do
+        rm -f "$1/$f"
+    done
+}
+{
+    printf '%s\n' "$OBJ_PAIRS" | awk '{ print $1 ".o"; print $1 ".d" }'
+    printf '%s\n' unity.o unity.d flags.stamp
+} | LC_ALL=C sort >"$EXPECT_OBJ"
+{
+    printf '%s\n' "$SU_PAIRS" | awk '{ print $1 ".o"; print $1 ".d"; print $1 ".su" }'
+    printf '%s\n' flags.stamp
+} | LC_ALL=C sort >"$EXPECT_SU"
+prune "$BUILD_DIR/$OBJ_DIR" "$EXPECT_OBJ"
+prune "$SU_DIR" "$EXPECT_SU"
+
+"$MAKE_BIN" -f "$BUILD_N/host.mk" -C "$BUILD_N" -j "$JOBS"
 
 # A gate that quietly checks nothing is worse than no gate: if -fstack-usage
 # is not supported (older compiler, unexpected toolchain), no .su files are
@@ -384,10 +428,9 @@ fi
 PYTHON=$(find_python) || exit 1
 "$PYTHON" "$TEST_DIR/check_stack_usage.py" "$SU_DIR"
 
-# MinGW appends .exe; elsewhere the plain name is produced.
-[ -x "$OUT" ] || OUT="$OUT.exe"
+[ "$BUILD_ONLY" != 1 ] || exit 0
 
-if [ "${HOST_SANITIZE:-}" = undefined ] && [ "$(uname -s)" = Linux ]; then
+if [ "$SANITIZE" = 1 ] && [ "$(uname -s)" = Linux ]; then
     # Control ids are value addresses and must stay stable across frames, as on the device.
     ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0" "$OUT"
 else

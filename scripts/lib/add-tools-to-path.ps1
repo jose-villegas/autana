@@ -1,10 +1,10 @@
 # The Windows half of scripts/add-tools-to-path.sh, which says what this is
-# for and passes the folder in AUTANA_TOOLS_ROOT and --check in
-# AUTANA_CHECK_ONLY.
+# for and passes the folder in _AUTANA_TOOLS_ROOT and --check in
+# _AUTANA_CHECK_ONLY.
 $ErrorActionPreference = 'Stop'
 
-$root = $env:AUTANA_TOOLS_ROOT.TrimEnd('\')
-$checkOnly = $env:AUTANA_CHECK_ONLY -eq '1'
+$root = $env:_AUTANA_TOOLS_ROOT.TrimEnd('\')
+$checkOnly = $env:_AUTANA_CHECK_ONLY -eq '1'
 
 function Same-Folder($a, $b) {
     return $a.TrimEnd('\') -ieq $b.TrimEnd('\')
