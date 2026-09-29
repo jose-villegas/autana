@@ -24,7 +24,7 @@ how do I add a screen to the host editor	editor/README.md	Adding a screen
 running qemu tests without a board	docs/Testing-Guide.md	QEMU: the device image with no board
 pinning pixels for a rendered scene against a reference capture	docs/tools/Render-Harness.md	Diffing against a capture
 what suite naming pattern does SUITE_REGISTER expect	docs/Testing-Guide.md	Adding a suite
-how do I take a screenshot of the panel from the CLI	docs/tools/Device-Lock.md	Screenshots: `device.py screenshot`
+how do I take a screenshot of the panel from the CLI	docs/tools/Flash-and-Captures.md	Screenshots
 console is not showing up as a normal UART port	docs/notes/Debugging.md	The console is USB-Serial-JTAG, not UART0
 IMU axes seem swapped compared to the screen orientation	docs/notes/Input-and-Sensors.md	The IMU's axes do not match the screen's
 board keeps resetting when flashing at high baud, warm reset issue	docs/notes/Flashing-and-Toolchain.md	Warm resets at 120 MHz
