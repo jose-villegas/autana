@@ -99,6 +99,9 @@ device_report_run() {
     fi
     _dr_tools="$_dr_launcher/tools"
     _dr_worktree="$(cd "$_dr_launcher/.." && pwd)"
+    # shellcheck source=../../../scripts/lib/python.sh
+    . "$_dr_worktree/scripts/lib/python.sh"
+    PYTHON=$(find_python) || return 1
     # autana no longer takes --owner or --purpose (#454) - the lock owner is
     # whatever AUTANA_DEVICE_OWNER names, or "<user>@<host>:<pid>" unset, and
     # exporting it here is the only way this report's own name reaches it.
@@ -166,7 +169,7 @@ device_report_validate() {
     if [ -n "$report_sentinel" ]; then
         set -- "$@" --sentinel "$report_sentinel"
     fi
-    python "$_dr_tools/sweeps/validate_capture.py" "$@"
+    "$PYTHON" "$_dr_tools/sweeps/validate_capture.py" "$@"
 }
 
 device_report_report() {
