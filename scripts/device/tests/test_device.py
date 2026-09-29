@@ -639,6 +639,10 @@ class GitCommitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             self.assertIsNone(device.git_commit(directory))
 
+    def test_returns_none_and_never_raises_when_git_is_not_installed(self):
+        with mock.patch("subprocess.run", side_effect=OSError("git not found")):
+            self.assertIsNone(device.git_commit())
+
 
 class RecordCaptureTests(unittest.TestCase):
     def test_appends_an_index_line_and_leaves_an_explicit_out_uncompressed(self):

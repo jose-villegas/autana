@@ -30,6 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 from espressif import idf_python  # noqa: E402  (path must be set up first)
+from version import __version__  # noqa: E402
 
 VARIANTS = {"rel": "release", "release": "release", "dev": "dev", "diag": "diag"}
 
@@ -438,7 +439,11 @@ def selftest(args):
     verbose = "--verbose" in rest
     if verbose:
         rest.remove("--verbose")
-    usage = "usage: autana selftest [seconds] [--verbose]"
+    perf_scope = "--perf-scope" in rest
+    if perf_scope:
+        rest.remove("--perf-scope")
+    out, rest = pop_value(rest, "--out")
+    usage = "usage: autana selftest [seconds] [--verbose] [--perf-scope] [--out PATH]"
     reject_unknown("selftest", rest)
     seconds = seconds_argument(rest, 3000.0, usage)
     project = resolve_project()
@@ -449,6 +454,10 @@ def selftest(args):
     )
     if verbose:
         command.append("--verbose")
+    if perf_scope:
+        command.append("--perf-scope")
+    if out:
+        command += ["--out", out]
     return subprocess.call(command)
 
 
@@ -1267,7 +1276,7 @@ USAGE_WIDTH = 34
 # of these and repeating them on every line was unreadable.
 BOARD_FLAGS = (
     ("--out PATH", "write the one capture here instead of the default path",
-     "suite, monitor"),
+     "selftest, suite, monitor"),
     ("--expect-build-id ID", "refuse to run a suite unless the board, or the image `--flash` "
                              "just wrote, carries this BUILD_ID",
      "suite"),
@@ -1393,6 +1402,9 @@ def install_completion():
 def main():
     if len(sys.argv) < 2:
         sys.exit(console())
+    if sys.argv[1] in ("--version", "-V"):
+        print(__version__)
+        sys.exit(0)
     if sys.argv[1] in ("help", "--help", "-h"):
         print(help_text(sys.argv[2:]))
         sys.exit(0)

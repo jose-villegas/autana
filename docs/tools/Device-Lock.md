@@ -60,15 +60,22 @@ and queue.
 
 ## One copy of the tools
 
-Every worktree carries its own `scripts/device/`, but the lock is one set of
+Every checkout carries its own `scripts/device/`, but the lock is one set of
 files on the machine, and two versions of the lock code can each believe
-they hold the board. So `device.py` and `device_lock.py`, started from any
-worktree, run the main checkout's copy (the checkout that owns git's common
-directory) with the same arguments and exit with its status. What gets built
-and flashed still comes from the worktree named by `--worktree` or the
-current directory. Keep the main checkout current - fast-forward it after a
-change to these tools merges. `AUTANA_DEVICE_TOOLS=here` runs a worktree's
-own copy, for working on the tools themselves; the test suites set it.
+they hold the board. Nothing hands a checkout's invocation off to another one
+at runtime any more - instead, always call `autana` (`tools/autana` on
+`PATH`, `scripts/add-tools-to-path.sh`) rather than a checkout's own
+`scripts/device/device.py` or `device_lock.py` directly. `autana` is one
+script at one fixed location, so every call runs the same lock code
+regardless of which checkout's shell invoked it; a report script such as
+`launcher/tools/device/device_report.sh` calls `autana selftest`/`autana
+suite`/`autana flash`, never a computed path to its own checkout's
+`device.py`. What gets built and flashed still comes from the project named
+by `--project` or the current directory (`autana help build`). LOCK_PROTOCOL
+(below) is what keeps two differently-versioned copies from corrupting each
+other's records on the rare path that still runs a checkout's own copy
+directly - one machine can have several installs of different ages, and
+nothing here is tied to git any more (`autana help`).
 
 ## What a flash proves
 
@@ -323,13 +330,52 @@ The lock root is `%TEMP%/autana-device` (`AUTANA_DEVICE_LOCK_ROOT`
 overrides it). Per board, with `:` in the serial number written as `_`:
 `<serial>.json` is the lock - `board`, `owner`, `purpose`, `kind`,
 `acquired_at`, `heartbeat_at`, `expected_build_id`, `host`, `pid`, `log`
-(whom it was reclaimed from, if anyone), and an opaque `token`; `<serial>.queue/` holds the FIFO waiter tickets (a dead
-waiter's is discarded); `<serial>.human.json` is a person's reservation;
+(whom it was reclaimed from, if anyone), an opaque `token`, and `protocol`/
+`autana_version` (next section); `<serial>.queue/` holds the FIFO waiter
+tickets (a dead waiter's is discarded), each carrying the same `protocol`/
+`autana_version`; `<serial>.human.json` is a person's reservation, likewise;
 `<serial>.seen.json` just names a board once found on USB, written the
 first time and never after - `hand`/`take-back` alone read it, to still
 reach a board that has since dropped off with no lock, reservation or
 waiter left to name it. There is no verb to forget one; delete the file
 to make this machine stop offering that board as the fallback.
+
+#### Lock protocol
+
+The mutex is an OS-independent spinlock - an `O_CREAT|O_EXCL` guard file
+`device_lock.py` creates and deletes around each read-modify-write, stale
+after 30 s so a crashed holder cannot wedge it forever. The JSON files above
+are the state that mutex protects, not locks themselves, and a machine can
+have autana installs of different ages meeting at one board, so every record
+carries `device_lock.LOCK_PROTOCOL`'s value as `"protocol"` (an integer, 0
+when the field is absent - an autana from before this existed), alongside
+`"autana_version"`. Neither is ever compared or refused on - two autanas of
+different ages still have to work the same board, so a mismatch is only
+ever shown as information, in `status` and while waiting:
+
+```
+held by sam for flash since ... (elapsed 12s; estimated free unknown; autana 0.4.1, lock protocol 2)
+board held by sam (autana 0.4.1, lock protocol 2) - waiting
+```
+
+`PROTOCOL_CORE_FIELDS` names exactly what a reader must be able to get off
+ANY record, of any age, without guessing - the fields that decide something:
+`owner`, `pid`, `host`, `heartbeat_at` (a lock's liveness and staleness),
+`ticket`/`sequence` (a waiter's identity and FIFO order), `board` (every
+record names the board it is for, read by `boards()`), and `protocol`
+itself. A dead or stale holder is judged from exactly these - `host`, `pid`
+and `heartbeat_at` - so it is always reclaimed, whatever its protocol -
+never wedges the board waiting for a peer that will never update it again.
+Everything else (`purpose`, `acquired_at`, `since_at`, `note`, `kind`, ...)
+is read with `.get()` wherever the record might not be one this autana just
+wrote itself, the same way `kind` always has been - display information a
+reader tolerates the absence of, never something a decision hinges on.
+
+Bump `LOCK_PROTOCOL` whenever a record's fields change in a way an older
+reader would misinterpret. `scripts/device/tests/test_device_lock.py` pins
+every record's current keys as a golden set, keyed by protocol number: a
+deliberate field change without also bumping `LOCK_PROTOCOL` and adding a
+new entry there is the failure telling you to do both.
 
 `device.py --owner <owner> release --token <token>` releases a lock this
 owner holds without touching the board - for a run that finished early and

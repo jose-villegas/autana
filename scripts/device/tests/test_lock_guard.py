@@ -228,7 +228,9 @@ class BoardTests(Store):
         self.assertEqual(list(by_board), sorted(by_board))
         self.assertEqual((by_board[BOARD_A]["port"], by_board[BOARD_A]["state"],
                           by_board[BOARD_A]["holder"]),
-                         ("COM5", "held", {"owner": "alice", "purpose": "firmware"}))
+                         ("COM5", "held", {"owner": "alice", "purpose": "firmware",
+                                           "protocol": device.device_lock.LOCK_PROTOCOL,
+                                           "autana_version": device.device_lock.__version__}))
         self.assertEqual((by_board[BOARD_B]["port"], by_board[BOARD_B]["state"]),
                          ("COM7", "unlocked"))
         self.assertEqual((by_board["90:70:69:FE:C0:01"]["port"],
@@ -1035,7 +1037,7 @@ class FlashImageScriptTests(unittest.TestCase):
                          "launcher/tools/build/idf_shim.bat", "launcher/tools/build/espressif.py",
                          "scripts/device/device.py", "scripts/device/device_lock.py",
                          "scripts/device/device_hook.py", "scripts/device/device_report.py",
-                         "scripts/device/main_copy.py"):
+                         "scripts/autana/version.py"):
             (self.tree / relative).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(ENGINE / relative, self.tree / relative)
         stubs = self.tree / "stubs"
@@ -1264,8 +1266,10 @@ class DurationTests(Store):
             with self.assertRaisesRegex(RuntimeError, "not acquired"):
                 device.HeldLock(store, BOARD_A, "bob", "look", 100)
         lines = notices.getvalue().splitlines()
-        self.assertEqual(lines, ["waiting for board: queue place 1; estimated start "
-                                 "unknown (no duration history)"] * 4)
+        holder_line = (f"board held by alice (autana {device_lock.__version__}, "
+                       f"lock protocol {device_lock.LOCK_PROTOCOL}) - waiting")
+        place_line = "waiting for board: queue place 1; estimated start unknown (no duration history)"
+        self.assertEqual(lines, [holder_line, place_line] * 4)
 
     def test_a_waiter_hears_its_place_again_once_the_notice_interval_has_passed(self):
         clock = [1000.0]
@@ -1279,7 +1283,9 @@ class DurationTests(Store):
             for offset in (0, interval - 0.01, interval):
                 clock[0] = 1000.0 + offset
                 waiter.wait_notice(ticket)
-        self.assertEqual(len(notices.getvalue().splitlines()), 2)
+        # Two notices fire (offset 0 and interval; the middle one is too soon),
+        # and each now prints two lines: the holder's, then the queue place.
+        self.assertEqual(len(notices.getvalue().splitlines()), 4)
 
     def test_a_capture_record_carries_the_board_and_when_it_was_acquired(self):
         store = device_lock.LockStore(self.root / "locks", now=lambda: 1000.0)

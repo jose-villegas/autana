@@ -22,7 +22,7 @@
 #                      run needs the suites started before the shell, a
 #                      RUNSUITE run needs the shell up to listen, so the
 #                      image can never be the wrong one for the capture.
-#   report_build_flags extra device.py selftest flags, e.g. --perf-scope
+#   report_build_flags extra `autana selftest`/`autana suite` flags, e.g. --perf-scope
 #   report_sentinel    a line the capture must contain to count as having
 #                      measured anything, beyond the results every run prints
 #   report_failures_ok 1 if the reporter exits 1 to mean "the report records
@@ -99,8 +99,14 @@ device_report_run() {
     fi
     _dr_tools="$_dr_launcher/tools"
     _dr_worktree="$(cd "$_dr_launcher/.." && pwd)"
-    _dr_device_py="$_dr_worktree/scripts/device/device.py"
-    _dr_owner="${AUTANA_DEVICE_OWNER:-device_report}"
+    # autana no longer takes --owner or --purpose (#454) - the lock owner is
+    # whatever AUTANA_DEVICE_OWNER names, or "<user>@<host>:<pid>" unset, and
+    # exporting it here is the only way this report's own name reaches it.
+    export AUTANA_DEVICE_OWNER="${AUTANA_DEVICE_OWNER:-device_report $report_name}"
+    command -v autana > /dev/null 2>&1 || {
+        echo "ERROR: autana not on PATH - see scripts/add-tools-to-path.sh" >&2
+        return 1
+    }
 
     mkdir -p "$report_dir"
     _dr_stamp="$(date +%Y%m%d_%H%M%S)"
@@ -123,25 +129,27 @@ device_report_run() {
     fi
 }
 
-# Build, flash and capture are one call, scripts/device/device.py's own
-# `selftest` (report_suite="", every suite at boot) or `batch --runs 1`
-# (report_suite=<name>, one suite via RUNSUITE): the build first, then the
-# flash and the capture under one held lock.
+# Build, flash and capture are one call, through `autana` on PATH - never a
+# worktree's own scripts/device/device.py, so every report always runs the
+# one lock code every other autana command does (docs/tools/Device-Lock.md):
+# `autana suite --runs 1 --flash` (report_suite=<name>, one suite via
+# RUNSUITE) or `autana selftest` (report_suite="", every suite at boot).
 device_report_capture() {
     if [ -n "$report_suite" ]; then
-        set -- --owner "$_dr_owner" batch --worktree "$_dr_worktree" --suite "$report_suite" \
-               --runs 1 --out "$_dr_raw" --max-seconds "$report_timeout" \
-               --purpose "device_report $report_name"
+        set -- "$report_suite" "$report_timeout" --runs 1 --flash --out "$_dr_raw" \
+               --project "$_dr_worktree"
         echo "=== Building and capturing RUNSUITE $report_suite ==="
+        # Unquoted on purpose: a caller declares zero or more flags in one string.
+        # shellcheck disable=SC2086
+        set -- "$@" $report_build_flags
+        autana suite "$@"
     else
-        set -- --owner "$_dr_owner" selftest --worktree "$_dr_worktree" --out "$_dr_raw" \
-               --max-seconds "$report_timeout" --purpose "device_report $report_name"
+        set -- "$report_timeout" --out "$_dr_raw" --project "$_dr_worktree"
         echo "=== Building and capturing the self-test run ==="
+        # shellcheck disable=SC2086
+        set -- "$@" $report_build_flags
+        autana selftest "$@"
     fi
-    # Unquoted on purpose: a caller declares zero or more flags in one string.
-    # shellcheck disable=SC2086
-    set -- "$@" $report_build_flags
-    python "$_dr_device_py" "$@"
 }
 
 # A capture that never finished, crashed, or measured nothing still produces
@@ -185,9 +193,7 @@ device_report_finish() {
     _dr_final=$?
     if [ "$_dr_do_restore" -eq 1 ]; then
         echo "=== Restoring the release firmware ==="
-        set -- --owner "$_dr_owner" flash --variant release --worktree "$_dr_worktree" \
-               --purpose "device_report $report_name (restore)"
-        python "$_dr_device_py" "$@" \
+        autana flash release --quiet --project "$_dr_worktree" \
             || echo "WARNING: could not restore the release firmware - the device may still be on build.diag"
     else
         echo "=== --no-restore: leaving the device on the diagnostics image ==="
