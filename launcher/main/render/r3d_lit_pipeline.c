@@ -204,8 +204,8 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const 
             rows.crosses_near = true;
             continue;
         }
-        out->sx = (int16_t)r3d_span_snap(sx);
-        out->sy = (int16_t)r3d_span_snap(sy);
+        out->sx = (int16_t)r3d_span_snap_near(sx);
+        out->sy = (int16_t)r3d_span_snap_near(sy);
         out->iz = view->near_z * inv;
         rows.y0 = sy < rows.y0 ? sy : rows.y0;
         rows.y1 = sy > rows.y1 ? sy : rows.y1;

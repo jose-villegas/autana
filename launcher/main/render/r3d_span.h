@@ -28,8 +28,23 @@ typedef struct {
     float r, g, b; /* 0..255 */
 } r3d_span_vertex_t;
 
+/* Pixels from the origin inside which r3d_span_snap_near() holds. */
+#define R3D_SUBPIXEL_NEAR 2048.0f
+
+/* The nearest subpixel, without a branch: the bias keeps the sum positive,
+ * where truncating is flooring. */
+static inline int32_t
+r3d_span_snap_near(float pixels) {
+    return (int32_t)((pixels * (float)R3D_SUBPIXEL) + 32768.5F) - 32768;
+}
+
+/* The same subpixel r3d_span_snap_near() gives wherever that holds, so a
+ * vertex snaps alike whichever path projected it. */
 static inline int32_t
 r3d_span_snap(float pixels) {
+    if (pixels > -R3D_SUBPIXEL_NEAR && pixels < R3D_SUBPIXEL_NEAR) {
+        return r3d_span_snap_near(pixels);
+    }
     const float v = pixels < -R3D_SUBPIXEL_LIMIT ? -R3D_SUBPIXEL_LIMIT
                                                  : (pixels > R3D_SUBPIXEL_LIMIT ? R3D_SUBPIXEL_LIMIT : pixels);
     const float scaled = v * (float)R3D_SUBPIXEL;
