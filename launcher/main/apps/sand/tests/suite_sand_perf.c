@@ -40,6 +40,7 @@
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
 #include "apps/sand/tests/suite_sand_scenes.h"
+#include "util/frame_watch.h"
 #include "util/intmath.h"
 
 #define REAL_BLOCK_COLS ((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
@@ -3292,7 +3293,6 @@ test_present_cost_against_a_falling_sand_scene(void) {
 
     sand_t real;
     build_falling_sand_present_scene(&real, big, dirty_rows, row_x0, row_x1, row_n);
-    board_bookkeeping_open(&real);
 
     int full_bands = 0, gathered = 0, partial_bands = 0;
     const int measured_steps = 20;
@@ -3307,19 +3307,23 @@ test_present_cost_against_a_falling_sand_scene(void) {
              "strip-sends)",
              REAL_W, REAL_H, (long long)mean_us, measured_steps, full_bands, gathered, partial_bands);
 
-    board_bookkeeping_close();
     free(big);
     free(dirty_rows);
     free(row_x0);
     free(row_x1);
     free(row_n);
 
+    /* The scene owns its dirty-row buffer, which a bookkeeping fixture would
+     * replace, leaving the present nothing to send and this row timing an
+     * idle frame. */
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, full_bands + gathered + partial_bands,
+                                         "the present sent no strip, so the row is not timing the bus");
+
     /* Present() is ~94% irreducible bus time (gfx.h;
      * test_full_present_cost_splits_into_bus_time_and_overhead) - the only
      * movable thing is HOW MANY strips get sent, shown by the strip-send
-     * counts beside the timing. The capture shows zero strips sent, so this
-     * goal prices an idle present, not the bus. */
-    perf_target("present: falling sand", mean_us, 40, 50);
+     * counts beside the timing. */
+    perf_target("present: falling sand", mean_us, 9650, 11100);
 }
 
 /* Present tests run the sim outside their own timer. Neither measures the
@@ -4319,6 +4323,7 @@ static void
 clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_window_t* settled) {
     gfx_set_panel_clock_hz(row == CLOCK_ROW_40 ? GFX_PANEL_CLOCK_SLOW_HZ : GFX_PANEL_CLOCK_FAST_HZ);
     app_sand.enter();
+    frame_watch_restart();
     const int previous_mode = sand_app_enter_running_for_test();
     sand_app_select_brush_for_test(brush);
     if (row == CLOCK_ROW_80) {
@@ -4336,6 +4341,7 @@ clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_wi
     *settled = clock_row_measure(CLOCK_ROW_SETTLED_FRAMES, false, &frame_index);
 
     app_sand.exit();
+    frame_watch_restart();
     sand_app_restore_colour_mode_for_test(previous_mode);
     gfx_heal_restore_defaults();
 }
