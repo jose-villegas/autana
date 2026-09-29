@@ -115,7 +115,7 @@ test_a_drag_stays_down_across_moves_then_lifts_once(void) {
 static void
 test_an_aim_stages_the_press_but_not_later_drag_moves(void) {
     fixture();
-    ui_pointer_aim(&p, mu_vec2(100, 200));
+    ui_pointer_aim(&p, 100, 200);
 
     press_through_hover(80, 200);
     int n = step(true, false, false, 80, 200);

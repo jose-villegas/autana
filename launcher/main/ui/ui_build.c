@@ -19,6 +19,7 @@
 
 #include "ui/ui.h"
 
+#include <assert.h>
 #include <string.h>
 
 #ifdef DEVICE_BUILD
@@ -48,26 +49,27 @@ static ui_button_style_t button_style;
 TUNE_OWNER(snap);
 TUNE(snap, reach, 40, 0, 120);
 
-static mu_Rect snap_rects[UI_SNAP_RECTS_MAX];
+static ui_snap_rect_t snap_rects[UI_SNAP_RECTS_MAX];
 static int snap_rect_count;
 static bool snap_rect_overflow;
 
 static void
-record_snap_rect(mu_Context* ctx, mu_Rect rect) {
+record_snap_rect(mu_Context* ctx, mu_Rect rect, int opt) {
     (void)ctx;
     if (rect.w <= 0 || rect.h <= 0) {
         return;
     }
-    if (snap_rect_count < UI_SNAP_RECTS_MAX) {
-        snap_rects[snap_rect_count++] = rect;
+    if (snap_rect_count >= UI_SNAP_RECTS_MAX) {
+#ifdef DEVICE_BUILD
+        if (!snap_rect_overflow) {
+            ESP_LOGE(TAG, "snap target capacity exceeded (%d)", UI_SNAP_RECTS_MAX);
+        }
+#endif
+        snap_rect_overflow = true;
+        assert(snap_rect_count < UI_SNAP_RECTS_MAX);
         return;
     }
-#ifdef DEVICE_BUILD
-    if (!snap_rect_overflow) {
-        ESP_LOGE(TAG, "snap target capacity exceeded (%d)", UI_SNAP_RECTS_MAX);
-    }
-#endif
-    snap_rect_overflow = true;
+    snap_rects[snap_rect_count++] = (ui_snap_rect_t){.r = rect, .live = !(opt & MU_OPT_NOINTERACT)};
 }
 
 /* The style in force for the rest of this frame, and microui's own frame
@@ -275,7 +277,6 @@ void
 ui_invalidate(void) {
     ui_invalidated = true;
     snap_rect_count = 0;
-    snap_rect_overflow = false;
 }
 
 void
@@ -368,8 +369,8 @@ feed_input(const input_t* input) {
     input_t logical = *input;
     ui_to_logical(input->x, input->y, &logical.x, &logical.y);
     if (logical.pressed) {
-        ui_pointer_aim(&ui_pointer_state,
-                       ui_snap_point(snap_rects, snap_rect_count, mu_vec2(logical.x, logical.y), reach));
+        const mu_Vec2 aim = ui_snap_point(snap_rects, snap_rect_count, mu_vec2(logical.x, logical.y), reach);
+        ui_pointer_aim(&ui_pointer_state, aim.x, aim.y);
     }
     ui_pointer_event_t events[UI_POINTER_MAX_EVENTS];
     const int n = ui_pointer_step(&ui_pointer_state, &logical, events, UI_POINTER_MAX_EVENTS);
@@ -385,7 +386,6 @@ ui_begin(const input_t* input) {
     button_style = UI_BUTTON_FLAT;
     feed_input(input);
     snap_rect_count = 0;
-    snap_rect_overflow = false;
     mu_begin(&ui_ctx);
 }
 

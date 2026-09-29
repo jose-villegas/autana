@@ -194,7 +194,7 @@ struct mu_Context {
   int (*text_width)(mu_Font font, const char *str, int len);
   int (*text_height)(mu_Font font);
   void (*draw_frame)(mu_Context *ctx, mu_Rect rect, int colorid);
-  void (*on_control)(mu_Context *ctx, mu_Rect rect);
+  void (*on_control)(mu_Context *ctx, mu_Rect rect, int opt);
   /* core state */
   mu_Style _style;
   mu_Style *style;

@@ -15,16 +15,25 @@ nearest_edge(int p, int start, int length) {
 }
 
 mu_Vec2
-ui_snap_point(const mu_Rect* rects, int count, mu_Vec2 point, int reach) {
+ui_snap_point(const ui_snap_rect_t* rects, int count, mu_Vec2 point, int reach) {
     if (reach <= 0 || rects == NULL) {
         return point;
+    }
+    for (int i = 0; i < count; i++) {
+        const mu_Rect r = rects[i].r;
+        if (point.x >= r.x && point.x < r.x + r.w && point.y >= r.y && point.y < r.y + r.h) {
+            return point;
+        }
     }
     int best_distance2 = reach * reach + 1;
     mu_Vec2 best = point;
     for (int i = 0; i < count; i++) {
+        if (!rects[i].live) {
+            continue;
+        }
         const mu_Vec2 candidate = {
-            .x = nearest_edge(point.x, rects[i].x, rects[i].w),
-            .y = nearest_edge(point.y, rects[i].y, rects[i].h),
+            .x = nearest_edge(point.x, rects[i].r.x, rects[i].r.w),
+            .y = nearest_edge(point.y, rects[i].r.y, rects[i].r.h),
         };
         const int dx = candidate.x - point.x;
         const int dy = candidate.y - point.y;
