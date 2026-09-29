@@ -166,14 +166,13 @@ mechanism each:
 | OS | Members | A killed holder |
 |---|---|---|
 | Windows | a kill-on-close job object the holder joins when it takes the lock (`lock_job.py`); a process asking for `CREATE_BREAKAWAY_FROM_JOB` may leave | the kernel closes the job and kills every member |
-| Linux | processes carrying the lock's token in `AUTANA_LOCK_TOKEN`, found in `/proc` (`lock_group.py`) | a watchdog the holder started sees the holder's pipe close and kills every tagged process |
-| macOS | descendants of the holder from the process table (`lock_group.py`) | not stopped |
+| Linux | processes carrying the lock's token in `AUTANA_DEVICE_LOCK_TOKEN`, found in `/proc` (`lock_group.py`) | a watchdog the holder started sees the holder's pipe close and kills every tagged process |
 
 The token, not parentage, is what names a member on Linux. It follows
 inheritance through any number of exited parents, which a process tree cannot
 (an orphan is reparented to init), and it beats `PR_SET_PDEATHSIG` (direct
 children only) and a subreaper (it dies with the holder). A process that
-scrubs its own environment is out of reach. `reset`'s esptool and
+scrubs its own environment or runs as another user is out of reach. `reset`'s esptool and
 `run_to_end`'s flash are covered like anything else the holder starts.
 
 A holder that ends normally gives the members that started under its lock two
@@ -181,14 +180,16 @@ seconds, stops the rest (through a handle on Windows, a pidfd that re-checks
 the token on Linux) and prints their pids, then releases; work already running
 before the lock was taken is left alone, and a survivor is printed. Jobs nest,
 so a Windows holder already inside a launcher's or harness's job still gets its
-own; if it cannot join one it says so and the lock works as before. On macOS a
-killed holder's children keep running; the exclusive open below makes the
-next open fail loudly.
+own; if it cannot join one it says so and the lock works as before. The
+watchdog is untagged, and a holder whose watchdog has died says so when it
+releases.
 
-On POSIX the port itself is opened exclusively (pyserial `exclusive`: TIOCEXCL
-and flock), as Windows does by itself, so a leftover holder makes the next open
-fail as busy, which `open_when_free` retries, instead of two readers splitting
-the byte stream.
+On POSIX the port itself is opened exclusively (pyserial `exclusive`, an
+advisory `flock`), as Windows does by itself, so a leftover holder makes the
+next open fail as busy, which `open_when_free` retries, instead of two readers
+splitting the byte stream. Being advisory, it excludes this tool's readers and
+esptool but not `screen`, `minicom` or ModemManager. Where there is neither a
+job nor `/proc`, this is the only protection.
 
 The heartbeat refuses a lock that was replaced or has gone stale. From then
 on the command has lost the board: a capture or `send` stops at its next

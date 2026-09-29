@@ -158,9 +158,10 @@ def board_for_lock(store, named=None, remembered=False):
 
 def open_serial():
     """Opens the locked board's port for this process alone. Windows refuses a
-    second open on its own; POSIX needs `exclusive` (TIOCEXCL and flock) for
-    the same, else a leftover holder and this reader silently split the byte
-    stream. The refusal is an OSError, which open_when_free treats as busy."""
+    second open on its own; POSIX needs `exclusive` (an advisory flock, so it
+    excludes our readers and esptool but not screen or ModemManager), else a
+    leftover holder and this reader silently split the byte stream. The
+    refusal is an OSError, which open_when_free treats as busy."""
     port = locked_port()
     try:
         import serial

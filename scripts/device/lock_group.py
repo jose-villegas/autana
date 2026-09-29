@@ -1,19 +1,16 @@
-"""What a lock holder started, on POSIX, so nothing can keep the serial port
+"""What a lock holder started, on Linux, so nothing can keep the serial port
 after the lock is gone.
 
-Linux tags every process the holder starts through the environment: the lock's
-token is exported as AUTANA_LOCK_TOKEN and inherited, so /proc names the
-holder's descendants through any number of exited parents, which a process
+Every process the holder starts is tagged through the environment: the lock's
+token is exported as AUTANA_DEVICE_LOCK_TOKEN and inherited, so /proc names
+the holder's descendants through any number of exited parents, which a process
 tree walk cannot (an orphan is reparented to init). PR_SET_PDEATHSIG covers
 only direct children and a subreaper dies with the holder, so neither can end
 grandchildren of a killed holder. A small watchdog, started with the lock and
 holding the read end of a pipe the holder keeps open, sees the holder end by
 any means and kills every tagged process. A process that scrubs its own
-environment is out of reach.
-
-macOS has no /proc: the descendants of a living holder are found from the
-process table and stopped on a normal exit; a killed holder's children are
-not stopped there, and the exclusive port open makes that loud."""
+environment or runs as another user is out of reach. Without /proc this does
+nothing."""
 
 import os
 import signal
@@ -21,7 +18,7 @@ import subprocess
 import sys
 import time
 
-TOKEN_VARIABLE = "AUTANA_LOCK_TOKEN"
+TOKEN_VARIABLE = "AUTANA_DEVICE_LOCK_TOKEN"
 GRACE_SECONDS = 2.0
 POLL_SECONDS = 0.05
 WATCHDOG_PATIENCE_SECONDS = 10.0
@@ -53,36 +50,9 @@ def tagged_pids(token, skip=()):
             if name.isdigit() and int(name) not in skip and tagged(int(name), token)]
 
 
-def descendants(root):
-    """Live processes below `root`, from the process table. Only meaningful
-    while `root` is alive: a dead parent's children belong to init."""
-    output = subprocess.run(["ps", "-A", "-o", "pid=,ppid=,stat="], capture_output=True,
-                            text=True).stdout
-    table = {}
-    for line in output.splitlines():
-        fields = line.split()
-        if len(fields) == 3 and fields[0].isdigit() and fields[1].isdigit() \
-                and not fields[2].startswith("Z"):
-            table[int(fields[0])] = int(fields[1])
-    found, frontier = [], [root]
-    while frontier:
-        parent = frontier.pop(0)
-        for child, above in table.items():
-            if above == parent and child not in found:
-                found.append(child)
-                frontier.append(child)
-    return found
-
-
 def stop(pid, token):
-    """SIGKILL for `pid`. On Linux through a pidfd, after checking the process
-    still carries the token: the number alone could by now be someone else's."""
-    if not has_proc():
-        try:
-            os.kill(pid, signal.SIGKILL)
-            return True
-        except OSError:
-            return False
+    """SIGKILL for `pid` through a pidfd, after checking the process still
+    carries the token: the number alone could by now be someone else's."""
     try:
         descriptor = os.pidfd_open(pid)
     except (AttributeError, OSError):
@@ -103,18 +73,20 @@ def stop(pid, token):
 
 
 def enter(token):
-    """Tags what this process starts from now on with `token`; on Linux also
-    starts the watchdog. Always True: without the watchdog it says so."""
+    """Tags what this process starts from now on with `token` and starts the
+    watchdog, which is itself untagged. False where there is no /proc."""
+    if not has_proc():
+        return False
+    clean = {name: value for name, value in os.environ.items() if name != TOKEN_VARIABLE}
     watchdog = None
-    if has_proc():
-        try:
-            watchdog = subprocess.Popen(
-                [sys.executable, os.path.abspath(__file__), "watch", token],
-                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                start_new_session=True, env=dict(os.environ, **{TOKEN_VARIABLE: token}))
-        except (OSError, ValueError) as error:
-            report(f"could not start the watchdog ({error}); processes this command "
-                   "starts are not stopped if it is killed")
+    try:
+        watchdog = subprocess.Popen(
+            [sys.executable, os.path.abspath(__file__), "watch", token],
+            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True, env=clean)
+    except (OSError, ValueError) as error:
+        report(f"could not start the watchdog ({error}); processes this command "
+               "starts are not stopped if it is killed")
     _stack.append((token, os.environ.get(TOKEN_VARIABLE), watchdog))
     os.environ[TOKEN_VARIABLE] = token
     return True
@@ -140,15 +112,10 @@ def leave():
 
 
 def members():
-    """The pids started under the current lock, other than this process and
-    its watchdog."""
+    """The pids started under the current lock, other than this process."""
     if not _stack:
         return []
-    token, _, watchdog = _stack[-1]
-    if has_proc():
-        skip = {os.getpid()} | ({watchdog.pid} if watchdog else set())
-        return tagged_pids(token, skip)
-    return descendants(os.getpid())
+    return tagged_pids(_stack[-1][0], {os.getpid()})
 
 
 def reap(before=frozenset(), grace=GRACE_SECONDS):
@@ -157,7 +124,12 @@ def reap(before=frozenset(), grace=GRACE_SECONDS):
     def started_here():
         return [pid for pid in members() if pid not in before]
 
-    token = _stack[-1][0] if _stack else ""
+    if not _stack:
+        return [], []
+    token, _, watchdog = _stack[-1]
+    if watchdog is None or watchdog.poll() is not None:
+        report("the watchdog is not running; a killed holder would have left its "
+               "processes behind")
     deadline = time.monotonic() + grace
     while started_here() and time.monotonic() < deadline:
         time.sleep(POLL_SECONDS)

@@ -2,7 +2,7 @@
 Nothing a lock holder started may keep the port after the holder is gone,
 however it went: on Windows the holder joins a kill-on-close job object, on
 Linux what it starts is tagged through the environment and a watchdog kills
-the tagged processes if it dies. macOS is not exercised here.
+the tagged processes if it dies.
 
 Real processes throughout. The port is stood in for by a localhost TCP port
 that one child binds and every other bind is refused. On Windows the holders
@@ -151,6 +151,33 @@ DIRECT = textwrap.dedent("""
         print("done", flush=True)
 """)
 
+# What a normal exit leaves: the token and the watchdog's pid, then the exit.
+LEFTOVER = textwrap.dedent("""
+    import os, subprocess, sys
+    sys.path.insert(0, {device!r})
+    import device, device_lock, lock_group
+    store = device_lock.LockStore({root!r})
+    with device.HeldLock(store, {board!r}, "job-test", "leftover", 0):
+        child = subprocess.Popen([sys.executable, {holder!r}, sys.argv[1]], stdout=subprocess.PIPE,
+                                 stderr=subprocess.DEVNULL, text=True)
+        child.stdout.readline()
+        print("state", os.environ[lock_group.TOKEN_VARIABLE], lock_group._stack[-1][2].pid,
+              flush=True)
+""")
+
+# A holder whose watchdog dies first must still release, and say so.
+NO_WATCHDOG = textwrap.dedent("""
+    import sys
+    sys.path.insert(0, {device!r})
+    import device, device_lock, lock_group
+    store = device_lock.LockStore({root!r})
+    with device.HeldLock(store, {board!r}, "job-test", "nowatch", 0):
+        watchdog = lock_group._stack[-1][2]
+        watchdog.kill()
+        watchdog.wait()
+    print("released", store.status({board!r})["lock"] is None, flush=True)
+""")
+
 # Runs at the lock's `released` event and records whether the port was free.
 HOOK = textwrap.dedent("""
     import os, socket, sys
@@ -215,6 +242,8 @@ class Fixture(unittest.TestCase):
                       holder=str(self.dir / "port_holder.py"))
         (self.dir / "sequence.py").write_text(SEQUENCE.format(**fields))
         (self.dir / "direct.py").write_text(DIRECT.format(**fields))
+        (self.dir / "leftover.py").write_text(LEFTOVER.format(**fields))
+        (self.dir / "nowatch.py").write_text(NO_WATCHDOG.format(**fields))
         holder = str(self.dir / "port_holder.py")
         self.holder_script = self.dir / "run.py"
         self.holder_script.write_text(HOLDER.format(
@@ -279,6 +308,32 @@ class HolderTests(Fixture):
         earlier_free, inside_free = out.split()[1:]
         self.assertEqual(inside_free, "True", errors)
         self.assertEqual(earlier_free, "False", "work started before the lock was killed")
+
+
+@unittest.skipUnless(LINUX, "the token and watchdog are Linux-only")
+class LinuxScopeTests(Fixture):
+    def test_a_normal_exit_leaves_no_tagged_process_and_no_watchdog(self):
+        import lock_group
+        out, errors = self.run_script("leftover.py", self.port)
+        self.assertEqual(out.split()[:1], ["state"], errors)
+        token, watchdog = out.split()[1], int(out.split()[2])
+        self.assertEqual(lock_group.tagged_pids(token), [])
+        self.assertFalse(os.path.exists(f"/proc/{watchdog}"), "the watchdog is still running")
+        self.assertTrue(port_is_free(self.port))
+
+    def test_stop_leaves_a_live_process_that_does_not_carry_the_token(self):
+        import lock_group
+        other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        self.addCleanup(other.wait)
+        self.addCleanup(other.kill)
+        self.assertFalse(lock_group.stop(other.pid, "not-its-token"))
+        time.sleep(0.2)
+        self.assertIsNone(other.poll(), "an untagged process was killed")
+
+    def test_a_holder_whose_watchdog_died_still_releases_and_says_so(self):
+        out, errors = self.run_script("nowatch.py")
+        self.assertEqual(out.split(), ["released", "True"], errors)
+        self.assertIn("watchdog is not running", errors)
 
 
 @unittest.skipUnless(WINDOWS and PYTHON, "the kill-on-close job is Windows-only")
