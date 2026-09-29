@@ -86,13 +86,11 @@ OUT_BIN="$BUILD_DIR/brush_screen_preview"
 
 # screenshot.py's bmp_bytes_to_png() is standard library only (zlib/struct,
 # no Pillow, no pyserial) - any Python 3 on PATH runs it.
-PYTHON=$(command -v python3 || command -v python || true)
-if [ -z "${PYTHON:-}" ]; then
-    echo "no Python found (need Python 3, for screenshot.py's bmp_bytes_to_png)" >&2
-    exit 1
-fi
+# shellcheck source=../../../../../scripts/lib/python.sh
+. "$LAUNCHER_DIR/../scripts/lib/python.sh"
+PYTHON=$(find_python) || exit 1
 
-"$PYTHON" - "$LAUNCHER_DIR/tools" "$BUILD_DIR" <<'PY'
+"$PYTHON" - "$LAUNCHER_DIR/tools/device" "$BUILD_DIR" <<'PY'
 import sys
 
 sys.path.insert(0, sys.argv[1])
