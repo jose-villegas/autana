@@ -1,12 +1,12 @@
 """Say whether two image files show the same pixels.
 
-    compare_images.py <a> <b> [--tolerance N]
+    compare_images.py <a> <b>
 
 Encoders write different bytes for the same picture (Pillow, ffmpeg and their
 palette quantizers all change between versions), so files are never compared as
 bytes: every frame is decoded to RGB and the frames are compared one by one.
 Size and frame count are compared first; a frame counts as different when any
-channel of any pixel differs by more than --tolerance (default 0).
+channel of any pixel differs.
 
 Exit status: 0 the images show the same pixels, 1 they differ, 2 a file could
 not be read. One line is printed either way, naming the first difference.
@@ -37,7 +37,7 @@ def frame_difference(a, b):
     return peak, sum(worst.histogram()[1:])
 
 
-def compare(a_frames, b_frames, tolerance=0):
+def compare(a_frames, b_frames):
     """None when the images show the same pixels, else a sentence saying how they differ."""
     if a_frames[0].size != b_frames[0].size:
         return "size %dx%d vs %dx%d" % (*a_frames[0].size, *b_frames[0].size)
@@ -45,7 +45,7 @@ def compare(a_frames, b_frames, tolerance=0):
         return "%d frames vs %d frames" % (len(a_frames), len(b_frames))
     for index, (a, b) in enumerate(zip(a_frames, b_frames)):
         peak, pixels = frame_difference(a, b)
-        if peak > tolerance:
+        if peak:
             return "frame %d: %d pixels differ, by up to %d" % (index, pixels, peak)
     return None
 
@@ -54,7 +54,6 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("a")
     parser.add_argument("b")
-    parser.add_argument("--tolerance", type=int, default=0, help="largest per-channel difference still counted equal")
     args = parser.parse_args()
     try:
         a_frames = load_frames(args.a)
@@ -62,7 +61,7 @@ def main():
     except OSError as error:
         print("unreadable: %s" % error)
         return 2
-    difference = compare(a_frames, b_frames, args.tolerance)
+    difference = compare(a_frames, b_frames)
     if difference is None:
         print("same pixels (%d frame%s)" % (len(a_frames), "" if len(a_frames) == 1 else "s"))
         return 0

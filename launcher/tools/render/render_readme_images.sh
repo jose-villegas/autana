@@ -17,6 +17,10 @@
 # folder that this script does not make is reported as "orphan" and fails
 # the check, so a picture cannot sit outside the refresh.
 #
+# The Cornell box is float path tracing with the C library's sinf and cosf, so
+# a local --check on Windows may call it changed against a CI render; CI
+# compares Linux with Linux and is the authority.
+#
 # The scenes themselves are pinned by render_all_scenes.sh; this only turns
 # their frames into the files the docs embed.
 
@@ -95,7 +99,8 @@ R=$WORK/render_lab
 sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o "$R" > "$WORK/render_lab.log"
 bmp_to_png "$R/gouraud-landscape.bmp" "$OUT/render-lab-cube.png"
 # Converged and without the HUD, which would print the fps readout over it.
-"$R/render_lab_render" --quarter 1 --no-hud --scene cornell --frames 40     -o "$R/cornell-clean.bmp" 2> /dev/null
+"$R/render_lab_render" --quarter 1 --no-hud --scene cornell --frames 40 \
+    -o "$R/cornell-clean.bmp" 2> /dev/null
 bmp_to_png "$R/cornell-clean.bmp" "$OUT/render-lab-cornell.png"
 # 100 frames, reversed back onto itself as a loop.
 "$R/render_lab_render" --quarter 1 --no-hud --scene gouraud --frames 100 --dt 33 \
@@ -126,24 +131,13 @@ if [ "$CHECK" = 0 ]; then
     exit 0
 fi
 
-# The Cornell box is path traced in float with the C library's sinf and cosf,
-# which can differ in the last bit between platforms and move a few pixels by
-# a level or two. Everything else is integer or fixed point and must match.
-tolerance_for() {
-    case "$1" in
-        render-lab-cornell.png) echo 2 ;;
-        *) echo 0 ;;
-    esac
-}
-
 status=0
 for made in "$OUT"/*; do
     name=$(basename "$made")
     if [ ! -f "$IMAGES/$name" ]; then
         echo "changed $name: new image"
         status=1
-    elif result=$("$PYTHON" "$TOOLS_DIR/compare_images.py" --tolerance "$(tolerance_for "$name")" \
-        "$IMAGES/$name" "$made"); then
+    elif result=$("$PYTHON" "$TOOLS_DIR/compare_images.py" "$IMAGES/$name" "$made"); then
         echo "same $name"
     else
         echo "changed $name: ${result#different: }"
