@@ -1,7 +1,7 @@
 # Sand tools
 
 Host-only scripts; the firmware build skips this folder. Each `report_*.sh`
-names what it measures in its own header. The render harness the two
+names what it measures in its own header. The render harness the
 `*_render_host.sh` scenes use is
 [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harness.md).
 
@@ -9,6 +9,7 @@ names what it measures in its own header. The render harness the two
 
 ```sh
 ./launcher/main/apps/sand/tools/sand_menu_render_host.sh    # title and options screens
+./launcher/main/apps/sand/tools/brush_screen_render_host.sh # brush screen, both orientations
 ./launcher/main/apps/sand/tools/sand_sim_render_host.sh --video
 ```
 

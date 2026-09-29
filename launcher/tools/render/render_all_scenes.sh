@@ -55,7 +55,6 @@ if ! find_cc > /dev/null; then
     echo "No C compiler found - skipping the host render scenes." >&2
     echo "  Windows: winget install BrechtSanders.WinLibs.POSIX.UCRT" >&2
     echo "  Debian:  sudo apt install build-essential" >&2
-    echo "  macOS:   xcode-select --install" >&2
     exit 0
 fi
 

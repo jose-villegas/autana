@@ -7,7 +7,7 @@
 	# Upstream tracks both TODO.txt and todo.txt, and both
 	# programs/pokitto/modelViewer.bin and modelviewer.bin. A case-insensitive
 	# filesystem holds one of each pair, so the worktree reports modified the
-	# moment it is cloned on Windows or macOS and no checkout can clear it.
+	# moment it is cloned on Windows and no checkout can clear it.
 	# Commit changes still show; only worktree dirt is ignored.
 	ignore = dirty
 [submodule "third_party/upstream/Waveshare-ESP32-components"]

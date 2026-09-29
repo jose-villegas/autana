@@ -98,10 +98,8 @@ if [ -z "$(find "$BUILD_DIR" -maxdepth 1 -name '*.su' -print -quit)" ]; then
     exit 1
 fi
 
-PYTHON=$(command -v python3 || command -v python || true)
-if [ -z "${PYTHON:-}" ]; then
-    echo "no Python found to run check_stack_usage.py" >&2
-    exit 1
-fi
+# shellcheck source=../../scripts/lib/python.sh
+. "$TEST_DIR/../../scripts/lib/python.sh"
+PYTHON=$(find_python) || exit 1
 echo "frames below are the TARGET's own, from $CC_BIN"
 "$PYTHON" "$TEST_DIR/check_stack_usage.py" "$BUILD_DIR"

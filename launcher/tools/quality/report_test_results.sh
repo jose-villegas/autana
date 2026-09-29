@@ -38,7 +38,7 @@ report_suite=""
 report_failures_ok=1
 
 report_generate() {
-    python "$SCRIPT_DIR/report_test_results.py" "$1" "$2"
+    "$PYTHON" "$SCRIPT_DIR/report_test_results.py" "$1" "$2"
 }
 
 # shellcheck source=./device_report.sh

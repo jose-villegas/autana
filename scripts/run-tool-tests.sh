@@ -41,13 +41,9 @@ QUIET_LOG="$REPO_ROOT/launcher/test/build/run-tool-tests.log"
 # shellcheck source=quiet.sh
 . "$REPO_ROOT/scripts/quiet.sh"
 
-PYTHON=""
-for candidate in python3 python; do
-    if command -v "$candidate" >/dev/null 2>&1; then
-        PYTHON="$candidate"
-        break
-    fi
-done
+# shellcheck source=lib/python.sh
+. "$REPO_ROOT/scripts/lib/python.sh"
+PYTHON=$(find_python 2>/dev/null) || PYTHON=""
 
 py_dirs=$(git -C "$REPO_ROOT" ls-files -- ':(glob)**/test_*.py' | sed 's|/[^/]*$||' | sort -u)
 mjs_files=$(git -C "$REPO_ROOT" ls-files -- ':(glob)**/test_*.mjs' | sort)

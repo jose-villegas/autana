@@ -728,8 +728,7 @@ def main():
         sys.exit(
             "boot_anim_editor_server.py: no C compiler found.\n"
             "  Windows: winget install BrechtSanders.WinLibs.POSIX.UCRT\n"
-            "  Debian:  sudo apt install build-essential\n"
-            "  macOS:   xcode-select --install")
+            "  Debian:  sudo apt install build-essential")
     print("using compiler:", cc, file=sys.stderr)
 
     Handler.renderer = Renderer(cc, port)

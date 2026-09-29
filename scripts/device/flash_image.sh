@@ -51,19 +51,22 @@ IMAGE_DIR="$(cd "$IMAGE_DIR" && pwd)"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_DIR="$(cd "$SCRIPT_DIR/../../launcher" && pwd)"
+# shellcheck source=../lib/python.sh
+. "$SCRIPT_DIR/../lib/python.sh"
+PYTHON=$(find_python) || exit 2
 
 if [ -z "${AUTANA_DEVICE_LOCK_TOKEN:-}" ] || [ -z "${AUTANA_BOARD:-}" ]; then
     echo "ERROR: flashing needs the device lock on a named board." >&2
     echo "Run 'autana flash rel|dev|diag' instead." >&2
     exit 1
 fi
-if ! python "$SCRIPT_DIR/device_lock.py" --board "$AUTANA_BOARD" \
+if ! "$PYTHON" "$SCRIPT_DIR/device_lock.py" --board "$AUTANA_BOARD" \
         check-token --token "$AUTANA_DEVICE_LOCK_TOKEN"; then
     echo "ERROR: device lock token is not active for board $AUTANA_BOARD" >&2
     echo "Run 'autana flash rel|dev|diag' instead." >&2
     exit 1
 fi
-COM_PORT=$(python "$SCRIPT_DIR/device.py" --board "$AUTANA_BOARD" resolve-port)
+COM_PORT=$("$PYTHON" "$SCRIPT_DIR/device.py" --board "$AUTANA_BOARD" resolve-port)
 
 # shellcheck source=../../launcher/tools/build/idf.sh
 . "$LAUNCHER_DIR/tools/build/idf.sh"

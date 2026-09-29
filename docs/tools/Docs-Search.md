@@ -79,7 +79,7 @@ names a real section, so a rename that orphans a question fails too.
 
 Without them, search is exact words only and says so on its first line.
 `python scripts/docs/docs_llama.py setup` adds meaning: a pinned
-`llama-server` build (Vulkan on Windows, Metal on macOS, CPU on Linux) and the
+`llama-server` build (Vulkan on Windows, CPU on Linux) and the
 bge-small-en-v1.5 embedding model. `setup --chat` adds Qwen3-4B-Instruct for
 `--ask`. Every download is checked against the SHA-256 in
 `scripts/docs/docs_llama.py` before use.

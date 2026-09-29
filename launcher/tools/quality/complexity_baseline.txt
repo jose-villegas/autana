@@ -275,7 +275,7 @@
 10	launcher/main/apps/sand/tests/suite_sand_seeds.c:1445	test_a_bare_trunk_in_wet_ground_buds_again
 10	launcher/main/apps/sand/tests/suite_sand_spawning.c:738	test_a_running_water_emitter_accumulates_mass_on_the_floor
 10	launcher/main/apps/sand/tests/suite_sand_swatch.c:39	test_the_same_spec_col_row_return_the_same_cell_every_call
-10	launcher/main/apps/sand/tools/brush_screen_preview.c:201	draw_screen
+10	launcher/main/apps/sand/tools/brush_screen_render_host.c:201	draw_screen
 10	launcher/main/apps/sand/tools/chunk_layout.c:286	measure_layout
 10	launcher/main/apps/sand/tools/dump_reactions.c:1772	emit_flammability
 10	launcher/main/apps/sand/tools/dump_reactions.c:1450	emit_regrow
@@ -964,7 +964,6 @@
 5	launcher/main/apps/sand/tests/suite_sand_two_core.c:256	test_the_split_liquid_pass_ignores_how_its_lanes_interleave
 5	launcher/main/apps/sand/tests/suite_sand_two_core.c:2030	test_the_split_reaction_pass_ignores_how_its_lanes_interleave
 5	launcher/main/apps/sand/tests/suite_sand_two_core.c:228	test_the_split_sweep_ignores_how_its_lanes_interleave
-5	launcher/main/apps/sand/tools/brush_screen_preview.c:294	write_bmp
 5	launcher/main/apps/sand/tools/chunk_layout.c:199	insert_side
 5	launcher/main/apps/sand/tools/dump_reactions.c:1101	build_rows
 5	launcher/main/apps/sand/tools/dump_reactions.c:543	cause_at
@@ -1196,8 +1195,7 @@
 4	launcher/main/apps/sand/tests/suite_sand_two_core.c:1075	tc_body_breaks_at
 4	launcher/main/apps/sand/tests/suite_sand_two_core.c:1048	tc_extent_add
 4	launcher/main/apps/sand/tests/suite_sand_two_core.c:1253	tc_fuse_blast_impulses
-4	launcher/main/apps/sand/tools/brush_screen_preview.c:150	draw_swatch
-4	launcher/main/apps/sand/tools/brush_screen_preview.c:343	main
+4	launcher/main/apps/sand/tools/brush_screen_render_host.c:150	draw_swatch
 4	launcher/main/apps/sand/tools/colour_lever1_counters.c:64	build_scene_settled_pour
 4	launcher/main/apps/sand/tools/dump_reactions.c:687	adverb_exception_for
 4	launcher/main/apps/sand/tools/dump_reactions.c:562	causes_are_complete
@@ -1485,8 +1483,8 @@
 3	launcher/main/apps/sand/tests/suite_sand_two_core.c:321	test_split_gas_walk_uses_hashed_rng
 3	launcher/main/apps/sand/tests/suite_sand_two_core.c:473	test_two_core_step_changes_the_draw_stream_at_smaller_qualities
 3	launcher/main/apps/sand/tests/suite_sand_two_core.c:889	test_two_core_step_matches_serial_fall_distance_at_a_seam
-3	launcher/main/apps/sand/tools/brush_screen_preview.c:175	draw_slider
-3	launcher/main/apps/sand/tools/brush_screen_preview.c:134	draw_text
+3	launcher/main/apps/sand/tools/brush_screen_render_host.c:175	draw_slider
+3	launcher/main/apps/sand/tools/brush_screen_render_host.c:134	draw_text
 3	launcher/main/apps/sand/tools/chunk_layout.c:268	by_landscape_then_balance
 3	launcher/main/apps/sand/tools/chunk_layout.c:322	print_shortlist
 3	launcher/main/apps/sand/tools/chunk_layout.c:344	report_quality

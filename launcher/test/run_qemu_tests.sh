@@ -96,10 +96,8 @@ if [ "$RUN" = 0 ]; then
     exit 0
 fi
 
-PYTHON=$(command -v python3 || command -v python || true)
-if [ -z "${PYTHON:-}" ]; then
-    echo "no Python found to run qemu_run.py" >&2
-    exit 1
-fi
+# shellcheck source=../../scripts/lib/python.sh
+. "$LAUNCHER_DIR/../scripts/lib/python.sh"
+PYTHON=$(find_python) || exit 1
 # shellcheck disable=SC2086
 "$PYTHON" "$TEST_DIR/qemu_run.py" "$LAUNCHER_DIR/$BUILD_DIR" $RUN_ARGS

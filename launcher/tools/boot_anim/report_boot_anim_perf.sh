@@ -40,7 +40,7 @@ report_timeout=60
 report_sentinel="boot_anim_perf: === BOOT_ANIM PERF"
 
 report_generate() {
-    python "$SCRIPT_DIR/report_boot_anim_perf.py" "$1" "$2"
+    "$PYTHON" "$SCRIPT_DIR/report_boot_anim_perf.py" "$1" "$2"
 }
 
 # shellcheck source=./device_report.sh

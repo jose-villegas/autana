@@ -59,17 +59,9 @@ case "${1:-}" in
 esac
 
 # Windows has a python3 launcher stub that is not Python; ask for Pillow.
-PYTHON=""
-for candidate in python3 python; do
-    if command -v "$candidate" > /dev/null 2>&1 && "$candidate" -c 'import PIL' > /dev/null 2>&1; then
-        PYTHON=$candidate
-        break
-    fi
-done
-if [ -z "$PYTHON" ]; then
-    echo "No Python with Pillow found (pip install pillow)." >&2
-    exit 2
-fi
+# shellcheck source=../../../scripts/lib/python.sh
+. "$(dirname "$0")/../../../scripts/lib/python.sh"
+PYTHON=$(find_python PIL) || exit 2
 export PYTHON
 if ! command -v ffmpeg > /dev/null 2>&1; then
     echo "ffmpeg not found." >&2

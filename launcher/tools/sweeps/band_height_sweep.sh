@@ -14,7 +14,7 @@
 # docs/tools/Device-Lock.md), and `autana flash` builds and flashes only its
 # own variants, which this build directory is not. With a band-height image
 # on the board, capture under the same lock:
-#   python scripts/device/device.py --owner <you> run-suite run_cube_band_perf_suite \
+#   autana suite run_cube_band_perf_suite \
 #       --out out.txt --purpose "band height $N"
 # out.txt's "CUBE BAND VS FULL-FB" line has present/rasterize timing for
 # both arms; boot's own HEAPMARK lines (main.c) have the largest free block.
@@ -56,4 +56,4 @@ fi
 
 echo "=== Done - $BUILD_DIR built, nothing flashed ==="
 echo "Flashing:     not by this script - see its header"
-echo "Capture with: python scripts/device/device.py --owner <you> run-suite run_cube_band_perf_suite --out $BUILD_DIR.out.txt"
+echo "Capture with: autana suite run_cube_band_perf_suite --out $BUILD_DIR.out.txt"

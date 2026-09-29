@@ -132,7 +132,6 @@ render_scene_build() {
         echo "No C compiler found." >&2
         echo "  Windows: winget install BrechtSanders.WinLibs.POSIX.UCRT" >&2
         echo "  Debian:  sudo apt install build-essential" >&2
-        echo "  macOS:   xcode-select --install" >&2
         return 1
     fi
 
@@ -268,7 +267,9 @@ render_scene_render() {
 
     # A .png beside each BMP when Python and Pillow happen to be installed.
     # Neither is a dependency, and nothing here installs one.
-    if _rs_python=$(command -v python3 || command -v python); then
+    # shellcheck source=../../../scripts/lib/python.sh
+    . "$_rs_launcher/../scripts/lib/python.sh"
+    if _rs_python=$(find_python 2> /dev/null); then
         "$_rs_python" "$(render_scene_to_native "$_rs_tools/render/render_png.py")" \
             "$(render_scene_to_native "$scene_out_dir")" || return 1
     fi

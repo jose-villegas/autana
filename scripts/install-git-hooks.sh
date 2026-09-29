@@ -14,7 +14,7 @@
 # wholesale, so any hook you have there stops running - this script says so
 # if it finds one.
 #
-# The hooks report format errors before commits and invalid branch names before
+# The hooks report format errors and non-executable scripts before commits and invalid branch names before
 # pushes. CI enforces both checks on pull requests.
 
 set -eu
@@ -33,7 +33,7 @@ case "${1:-}" in
             if [ "$current" != "$HOOKS_DIR" ]; then
                 echo "  (not this repository's $HOOKS_DIR - pre-commit and pre-push hooks are NOT active)"
             else
-                echo "  pre-commit checks formatting; pre-push checks target branch names."
+                echo "  pre-commit checks formatting and exec bits; pre-push checks target branch names."
             fi
         else
             echo "core.hooksPath is unset; git uses .git/hooks, so pre-commit and pre-push hooks are NOT active."

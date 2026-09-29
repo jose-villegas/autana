@@ -25,11 +25,7 @@ set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-for py in python3 python py; do
-    if command -v "$py" >/dev/null 2>&1; then
-        exec "$py" "$here/check_comment_length.py" "$@"
-    fi
-done
-
-echo "python 3 was not found on PATH (tried python3, python, py)." >&2
-exit 1
+# shellcheck source=../lib/python.sh
+. "$here/../lib/python.sh"
+py=$(find_python) || exit 1
+exec "$py" "$here/check_comment_length.py" "$@"

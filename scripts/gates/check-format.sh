@@ -70,9 +70,6 @@ print_install_help() {
     echo "                 script find \$IDF_TOOLS_PATH (default ~/.espressif)" >&2
     echo "                 /tools/esp-clang/*/esp-clang/bin/" >&2
     case "$(uname -s)" in
-        Darwin)
-            echo "  macOS:         brew install llvm@${PINNED_MAJOR}" >&2
-            ;;
         Linux)
             echo "  Linux:         apt-get install clang-format-${PINNED_MAJOR}" >&2
             echo "                 (from the LLVM apt repository if your distribution is older)" >&2

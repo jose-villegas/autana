@@ -19,7 +19,7 @@
 # thousands of characters; the full stream is in the printed log path.
 #
 # POSIX sh on purpose: works under Git Bash or MSYS on Windows, and natively
-# on Linux and macOS.
+# on Linux.
 
 set -eu
 
@@ -56,7 +56,6 @@ if ! CC_BIN=$(find_cc); then
     echo "No C compiler found." >&2
     echo "  Windows: winget install BrechtSanders.WinLibs.POSIX.UCRT" >&2
     echo "  Debian:  sudo apt install build-essential" >&2
-    echo "  macOS:   xcode-select --install" >&2
     exit 1
 fi
 
@@ -380,13 +379,9 @@ if [ -z "$(find "$SU_DIR" -maxdepth 1 -name '*.su' -print -quit)" ]; then
     exit 1
 fi
 
-# Same interpreter search as elsewhere in this tree: whatever python
-# happens to be on PATH, python3 preferred.
-PYTHON=$(command -v python3 || command -v python || true)
-if [ -z "${PYTHON:-}" ]; then
-    echo "no Python found to run check_stack_usage.py" >&2
-    exit 1
-fi
+# shellcheck source=../../scripts/lib/python.sh
+. "$TEST_DIR/../../scripts/lib/python.sh"
+PYTHON=$(find_python) || exit 1
 "$PYTHON" "$TEST_DIR/check_stack_usage.py" "$SU_DIR"
 
 # MinGW appends .exe; elsewhere the plain name is produced.

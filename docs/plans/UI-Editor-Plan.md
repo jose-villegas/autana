@@ -79,7 +79,7 @@ is not paid at all.
 
 ## What already exists, and does not need building
 
-- **The render path.** `apps/sand/tools/brush_screen_preview.c` renders the
+- **The render path.** `apps/sand/tools/brush_screen_render_host.c` renders the
   screen at both orientations, on a host, through the real `gfx.c` and the
   real `ui_style.h` / `ui_slider.h` / `gfx/icon.h` geometry. That is what a
   `/render` endpoint needs; it is already written.
@@ -119,7 +119,7 @@ scale" would let you draw those same bugs, visually, and call it a design.
 Two decisions, and the first one forces the second.
 
 **Native, cross-platform, not a web page.** One source tree runs on
-Windows, Linux and macOS, with nothing Windows-specific. Web stays a
+Windows and Linux, with nothing Windows-specific. Web stays a
 *target* - something the engine may one day be built for - never the way
 the editor draws itself.
 
@@ -225,8 +225,8 @@ run by `.github/workflows/host-tests.yml`.
   consequence: two editor architectures coexist until the older one is
   either migrated or retired. Not a reason to make this one a page.
 
-- **Anything platform-specific** - Win32, WinUI, Cocoa, GTK-only. One source
-  tree has to serve Windows, Linux and macOS, which is the same bar every
+- **Anything platform-specific** - Win32, WinUI, GTK-only. One source
+  tree has to serve Windows and Linux, which is the same bar every
   shell script here already meets.
 - **Editing the mockup instead.** A design image is an input to authoring,
   not the authored artifact. The brush screen already diverges from its
