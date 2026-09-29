@@ -57,11 +57,9 @@ if [ -z "${QUIET_INNER:-}" ]; then
     exit 0
 fi
 
-PYTHON=$(command -v python3 || command -v python || true)
-if [ -z "$PYTHON" ]; then
-    echo "python 3 was not found on PATH (tried python3, python)." >&2
-    exit 1
-fi
+# shellcheck source=../../../scripts/lib/python.sh
+. "$REPO_ROOT/scripts/lib/python.sh"
+PYTHON=$(find_python) || exit 1
 
 complexity_gate() {
     echo "=== Complexity ratchet (--changed $GATE_BASE) ==="

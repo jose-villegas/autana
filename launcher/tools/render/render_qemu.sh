@@ -50,10 +50,9 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if ! PYTHON=$(command -v python3 || command -v python); then
-    echo "No Python found; the capture and the diff both need one." >&2
-    exit 1
-fi
+# shellcheck source=../../../scripts/lib/python.sh
+. "$LAUNCHER_DIR/../scripts/lib/python.sh"
+PYTHON=$(find_python) || exit 1
 
 mkdir -p "$OUT_DIR"
 CAPTURE="$OUT_DIR/qemu.png"

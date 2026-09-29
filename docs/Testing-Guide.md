@@ -82,7 +82,7 @@ Requires a **host** compiler, not the ESP32 toolchain:
 | Windows | `winget install BrechtSanders.WinLibs.POSIX.UCRT` |
 | Debian/Ubuntu | `sudo apt install build-essential` |
 
-The Python tools and `scripts/run-tool-tests.sh` need `python3` (Debian/Ubuntu ship no plain `python`; the scripts try `python3`, then `python`; commands written `python` in these docs are `python3` there), and the `.mjs` suites need `nodejs` (`sudo apt install python3 nodejs`).
+The Python tools and `scripts/run-tool-tests.sh` need `python3` (Debian/Ubuntu ship no plain `python`; the scripts try `python3`, `python`, then `py`, and take the first that runs; commands written `python` in these docs are `python3` there), and the `.mjs` suites need `nodejs` (`sudo apt install python3 nodejs`).
 
 **An app's own frame-budget capture and its rules live beside the app**,
 in its docs folder and its `tools/` - any free-heap precondition, the

@@ -79,7 +79,7 @@ is not paid at all.
 
 ## What already exists, and does not need building
 
-- **The render path.** `apps/sand/tools/brush_screen_preview.c` renders the
+- **The render path.** `apps/sand/tools/brush_screen_render_host.c` renders the
   screen at both orientations, on a host, through the real `gfx.c` and the
   real `ui_style.h` / `ui_slider.h` / `gfx/icon.h` geometry. That is what a
   `/render` endpoint needs; it is already written.

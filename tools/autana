@@ -8,9 +8,11 @@ here=$(cd "$(dirname "$0")/.." && pwd -P)
 # shellcheck source=../launcher/tools/build/espressif.sh
 . "$here/launcher/tools/build/espressif.sh"
 
-# Windows' Store stub answers `command -v` but exits instead of running, so
-# each candidate has to prove it executes.
-for python in python3 python \
+# shellcheck source=../scripts/lib/python.sh
+. "$here/scripts/lib/python.sh"
+# find_python skips Windows' Store stub, which answers `command -v` but exits;
+# ESP-IDF's own python is the fallback, and each candidate has to run.
+for python in "$(find_python 2>/dev/null)" \
               "$(espressif_tools_root)"/python_env/idf*_env/Scripts/python.exe; do
     "$python" -c '' >/dev/null 2>&1 && exec "$python" "$here/scripts/autana/autana.py" "$@"
 done

@@ -8,15 +8,14 @@
 #   scripts/gates/check-exec-bits.sh
 #
 # A shebang says the file is a program, so a sourced library that carries one
-# is held to it too.
+# is held to it too. One awk reads the first line of every candidate, because
+# a process per file is what makes a shell loop slow on Windows.
 
 set -eu
 
 cd "$(git rev-parse --show-toplevel)"
-bad=$(git ls-files -s | awk -F'\t' '$1 ~ /^100644/ && $2 !~ /^third_party\// {print $2}' |
-    while IFS= read -r path; do
-        if [ "$(head -c 2 -- "$path" 2>/dev/null)" = "#!" ]; then echo "$path"; fi
-    done)
+bad=$(git ls-files -s | awk -F'\t' '$1 ~ /^100644/ {print $2}' | tr '\n' '\0' |
+    xargs -0 -r awk 'FNR==1 && /^#!/ {print FILENAME} {nextfile}')
 if [ -n "$bad" ]; then
     echo "tracked scripts that are not executable:" >&2
     echo "$bad" | sed 's/^/  /' >&2
