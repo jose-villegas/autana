@@ -1344,6 +1344,16 @@ class BatchTests(unittest.TestCase):
                     if index.exists() else []
         return code, calls, summary, manifest
 
+    def test_the_command_line_flag_reaches_batch_as_the_filter(self):
+        seen = []
+        with mock.patch.object(device, "board_for_lock", return_value=BOARD), \
+             mock.patch.object(device, "device_lock") as fake_lock_module, \
+             mock.patch.object(device, "batch", side_effect=lambda args, *unused: seen.append(args) or 0):
+            fake_lock_module.LockStore.return_value = mock.Mock()
+            device.main(["--owner", "a", "batch", "--worktree", "C:/wt", "--suite", "sand",
+                         "--test", "fire,gas", "--test", "water"])
+        self.assertEqual(seen[0].test_filter, ["fire,gas", "water"])
+
     def test_the_filter_reaches_every_capture_as_patterns(self):
         _, calls, _, _ = self.run_batch(runs=2, test_filter=["fire,gas", "water"])
         self.assertEqual([args.test_filter for args in calls["suite_args"]],

@@ -1782,7 +1782,7 @@ def main(argv=None):
     batch_parser.add_argument("--max-seconds", type=float, default=None,
                               help="each capture's wait; when omitted, sized from the recorded "
                                    "duration of that suite (and test filter)")
-    batch_parser.add_argument("--test", action="append", metavar="PATTERN",
+    batch_parser.add_argument("--test", dest="test_filter", action="append", metavar="PATTERN",
                               help="run only the tests whose name contains PATTERN; repeat or "
                                    "comma-separate for several")
     batch_parser.add_argument("--idle-seconds", type=float, default=300)
