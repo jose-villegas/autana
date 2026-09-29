@@ -10,4 +10,5 @@
 | [espressif.py](espressif.py) | Finds the local ESP-IDF Python and tool installation. |
 | [espressif.sh](espressif.sh) | Finds the local Espressif tools from shell scripts. |
 | [find_cc.sh](find_cc.sh) | Finds a host C compiler. |
+| [host_make.sh](host_make.sh) | Finds GNU make and ccache and picks a job count for incremental host builds. |
 | [check_release_symbols.sh](check_release_symbols.sh) | Checks that release firmware excludes development symbols. |

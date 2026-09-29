@@ -105,6 +105,13 @@ Nothing in the tree relies on any of those today.
   in one. Its Python environment is also somewhere `export.bat` does not
   look. Running ESP-IDF's own `install.bat` against that same checkout adds
   what is missing and re-downloads no toolchain.
+- **ccache is opt-in: `AUTANA_CCACHE=1 autana build dev`.** The build scripts
+  then set `IDF_CCACHE_ENABLE=1` and ESP-IDF uses the ccache it installs. The
+  cache is per user (`ccache -s` shows it, `ccache -C` clears it), never per
+  worktree, but a hit needs the same absolute source paths, which the ELF also
+  embeds, so a fresh worktree does not hit. On Windows a miss build measured
+  about three times slower than no ccache and a hit no faster, so it is off
+  by default; a hit does not change the ELF.
 - **`IDF_TOOLS_PATH` is the root, not the `tools/` inside it.** Point it one
   level too deep and `idf_tools.py` installs a second copy of every toolchain
   under `tools/tools/`.

@@ -86,17 +86,15 @@ idf_needs_shim() {
 
 # Run one idf.py invocation. Returns its exit status.
 #
-# ccache is on unless AUTANA_CCACHE=0 (or IDF_CCACHE_ENABLE is already set):
-# ESP-IDF finds the ccache it installs itself, and the per-user cache is
-# shared by every worktree. A cache hit reproduces the compiler's own output,
-# so the ELF and its build id do not change.
+# AUTANA_CCACHE=1 turns ccache on (ESP-IDF finds the one it installs); the
+# per-user cache is shared by every worktree that compiles the same absolute
+# paths. It is opt-in because on Windows a cache-miss build measured three
+# times slower than none and a hit saved nothing. A hit reproduces the
+# compiler's own output, so the ELF does not change.
 idf() {
-    if [ "${AUTANA_CCACHE:-1}" = 0 ]; then
-        : "${IDF_CCACHE_ENABLE:=0}"
-    else
-        : "${IDF_CCACHE_ENABLE:=1}"
+    if [ "${AUTANA_CCACHE:-0}" = 1 ]; then
+        export IDF_CCACHE_ENABLE=1
     fi
-    export IDF_CCACHE_ENABLE
     idf_in "$_IDF_DIR" idf.py "$@"
 }
 

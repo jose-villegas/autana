@@ -267,11 +267,7 @@ fi
 # shellcheck source=../tools/build/host_make.sh
 . "$TEST_DIR/../tools/build/host_make.sh"
 MAKE_BIN=$(find_make) || exit 1
-# ccache is opt-in here (HOST_CCACHE=1): these are small translation units,
-# and on Windows a cache-miss build measured twice as slow as no ccache
-# (122 s against 53 s) while a warm hit saved only a few seconds.
-CCACHE_BIN=""
-if [ "${HOST_CCACHE:-0}" = 1 ]; then CCACHE_BIN=$(find_ccache) || CCACHE_BIN=""; fi
+CCACHE_BIN=$(find_ccache) || CCACHE_BIN=""
 JOBS=$(host_jobs)
 
 # make reads native paths: on Windows it is a native program, so the MSYS

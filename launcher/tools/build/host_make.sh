@@ -8,8 +8,8 @@
 #   CCACHE_BIN=$(find_ccache) || CCACHE_BIN=""
 #   JOBS=$(host_jobs)
 #
-# ccache is optional everywhere: without it a build is only slower.
-# AUTANA_CCACHE=0 turns it off even when installed.
+# ccache is opt-in (AUTANA_CCACHE=1): on Windows a cache-miss build is far
+# slower than no ccache and a hit saves nothing, so it is not on by default.
 
 # GNU make is `make` on Linux and `mingw32-make` on Windows, where WinLibs
 # (the documented compiler) ships it beside gcc.
@@ -25,7 +25,7 @@ find_make() {
 
 # ccache on PATH, else the copy ESP-IDF installs under its tools directory.
 find_ccache() {
-    [ "${AUTANA_CCACHE:-1}" = 0 ] && return 1
+    [ "${AUTANA_CCACHE:-0}" = 1 ] || return 1
     if command -v ccache >/dev/null 2>&1; then echo ccache; return 0; fi
     for root in "${IDF_TOOLS_PATH:-}" "${HOME:-}/.espressif" "${USERPROFILE:-}/.espressif"; do
         [ -n "$root" ] || continue
