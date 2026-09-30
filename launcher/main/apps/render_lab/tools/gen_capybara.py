@@ -33,6 +33,7 @@ WALK_SECONDS = 1.0
 RING = 16
 LEG_RING = 8
 WEIGHT_STEPS = 256
+SNAP = float(1 << 20)
 MAX_INFLUENCE_DISTANCE = 0.40
 SEED = 20260930
 
@@ -123,6 +124,12 @@ SRGB = {
 }
 
 
+def snap(x):
+    """Round to a 2^-20 grid: libm differs between platforms in the last bits
+    of sin, cos and pow, and the committed bytes must not."""
+    return round(x * SNAP) / SNAP
+
+
 def srgb_to_linear(rgb):
     out = []
     for c in rgb:
@@ -192,9 +199,9 @@ class MeshBuilder:
         self.shells = []
 
     def add_vertex(self, position, color, weights):
-        self.positions.append(position)
-        self.colors.append(srgb_to_linear(color))
-        self.weights.append(weights)
+        self.positions.append(tuple(snap(c) for c in position))
+        self.colors.append(tuple(snap(c) for c in srgb_to_linear(color)))
+        self.weights.append({name: snap(w) for name, w in weights.items()})
         return len(self.positions) - 1
 
     def add_loft(self, rings, start_cap, end_cap):
@@ -578,6 +585,8 @@ class GlbWriter:
         while len(self.blob) % 4:
             self.blob.append(0)
         offset = len(self.blob)
+        if component == 5126:
+            values = [tuple(snap(c) for c in value) for value in values]
         for value in values:
             self.blob += struct.pack("<" + fmt * width, *value)
         view = {"buffer": 0, "byteOffset": offset, "byteLength": len(self.blob) - offset}
