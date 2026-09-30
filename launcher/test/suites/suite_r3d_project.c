@@ -1,5 +1,5 @@
 /*
- * Portable suite: render/r3d_project.h - the camera-space near-plane clip
+ * Portable suite: render/r3d_project.h, the camera-space near-plane clip
  * and perspective projection a caller reaches once it has already composed
  * its own model*view matrix. Header-only and free of any particular
  * caller's resolution or unit choice, so every check here builds its own
@@ -75,7 +75,7 @@ test_a_point_on_the_optical_axis_lands_on_center(void) {
 
 /* Divisions are chosen to be exact, so this is a real cross-check against
  * the formula rather than a restatement of it with different variable
- * names - two unrelated center/scale/focal settings, so a hardcoded output
+ * names: two unrelated center/scale/focal settings, so a hardcoded output
  * cannot pass either. */
 static void
 check_off_axis_point_matches_the_formula(int center_x, int center_y, int scale, S3L_Unit focal, int expected_x,
@@ -142,8 +142,8 @@ test_segment_with_both_ends_behind_returns_false(void) {
 }
 
 /* near_z sits exactly halfway between the two z's, so the crossing point is
- * plain averaging - independent of the Q16 interpolation the function under
- * test actually does - rather than a hand copy of its formula. */
+ * plain averaging (independent of the Q16 interpolation the function under
+ * test actually does) rather than a hand copy of its formula. */
 static void
 test_one_end_behind_clips_to_the_near_plane_crossing(void) {
     r3d_view_t view = fixture();

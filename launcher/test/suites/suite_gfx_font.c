@@ -1,20 +1,20 @@
 /*
- * Portable suite: gfx_font - the pure metrics half of a font descriptor,
+ * Portable suite: gfx_font, the pure metrics half of a font descriptor,
  * plus gfx_font_row_run_rect()'s screen-space geometry.
  *
  * gfx_font.h splits a font into pure metrics (gfx_font_advance(),
- * gfx_font_text_width(), gfx_font_height() - `static inline` in the header,
+ * gfx_font_text_width(), gfx_font_height(), `static inline` in the header,
  * same reason icon_walk_blocks() is in gfx/icon.h: it links on a host with no
  * gfx.h, no BSP, no drivers) and drawing (gfx_text_font() in gfx.c, which
  * calls gfx_fill_rect() and so cannot). This suite exercises the metrics and
- * the geometry, the same split suite_icons.c makes for gfx/icons_system.h -
+ * the geometry, the same split suite_icons.c makes for gfx/icons_system.h:
  * gfx_font_row_run_rect() computes where a rect goes, gfx.c only calls it.
  *
- * gfx.h is deliberately NOT included here - it pulls in bsp/esp-bsp.h, which
+ * gfx.h is deliberately NOT included here: it pulls in bsp/esp-bsp.h, which
  * does not compile on a host. That means GFX_CHAR_W, GFX_CHAR_H and
  * GFX_GLYPH_SCALE (gfx.h) are not reachable from this file, so the few
  * assertions that need "the size the UI is laid out around" mirror
- * GFX_GLYPH_SCALE as a local constant instead of including it - see
+ * GFX_GLYPH_SCALE as a local constant instead of including it; see
  * MIRRORED_GLYPH_SCALE below. Everything else is derived from
  * gfx_font_8x8's own fields (cell_w, cell_h) rather than a second hardcoded
  * 8, so a change to the bitmap's cell size cannot silently drift out of
@@ -30,16 +30,16 @@
 #include "gfx/gfx_font.h"
 #include "gfx/gfx_target.h"
 
-/* Mirrors gfx.h's GFX_GLYPH_SCALE (8x8 glyphs drawn at 2x - see gfx.h's own
+/* Mirrors gfx.h's GFX_GLYPH_SCALE (8x8 glyphs drawn at 2x; see gfx.h's own
  * comment on GFX_CHAR_W/GFX_CHAR_H). Kept in one place, right where it is
  * used, rather than repeated as a magic 2 at every call site below. */
 #define MIRRORED_GLYPH_SCALE 2
 
-/* gfx_font_8x8 - the real, shipped font */
+/* gfx_font_8x8: the real, shipped font */
 
 static void
 test_default_font_width_matches_char_w_per_character(void) {
-    /* GFX_CHAR_W is 8 * GFX_GLYPH_SCALE (gfx.h) - i.e. cell_w * scale here. */
+    /* GFX_CHAR_W is 8 * GFX_GLYPH_SCALE (gfx.h), i.e. cell_w * scale here. */
     const int char_w = gfx_font_8x8.cell_w * MIRRORED_GLYPH_SCALE;
 
     TEST_ASSERT_EQUAL_INT(char_w, gfx_font_text_width(&gfx_font_8x8, "A", 1, MIRRORED_GLYPH_SCALE));
@@ -93,13 +93,13 @@ test_zero_length_string_is_zero_wide(void) {
 
 static void
 test_height_matches_char_h_at_default_scale(void) {
-    /* GFX_CHAR_H is 8 * GFX_GLYPH_SCALE (gfx.h) - i.e. cell_h * scale here. */
+    /* GFX_CHAR_H is 8 * GFX_GLYPH_SCALE (gfx.h), i.e. cell_h * scale here. */
     const int char_h = gfx_font_8x8.cell_h * MIRRORED_GLYPH_SCALE;
     TEST_ASSERT_EQUAL_INT(char_h, gfx_font_height(&gfx_font_8x8, MIRRORED_GLYPH_SCALE));
 }
 
 /* Monospace: every glyph advances by cell_w * scale, whether or not the
- * codepoint is one the font actually covers - the same thing the old
+ * codepoint is one the font actually covers, the same thing the old
  * gfx_text_turned() did, advancing by a fixed cell every character even
  * past one it declined to draw (see gfx.c's gfx_text_font()). */
 static void
@@ -120,7 +120,7 @@ test_monospace_advance_is_cell_w_times_scale_for_every_glyph(void) {
 }
 
 /*
- * A synthetic proportional descriptor - the case with no real font behind
+ * A synthetic proportional descriptor, the case with no real font behind
  * it yet, and so the easiest to get silently wrong (a monospace-only test
  * would still pass even if `advance` were never actually consulted).
  */
@@ -154,7 +154,7 @@ test_proportional_advance_is_per_glyph(void) {
 
 static void
 test_proportional_advance_falls_back_outside_its_range(void) {
-    /* 'Z' and the space before 'A' are both outside [first, first+count) -
+    /* 'Z' and the space before 'A' are both outside [first, first+count):
      * neither has an entry in synth_advance, so both must fall back to the
      * monospace cell_w * scale rather than reading synth_advance
      * out-of-bounds. */
@@ -167,13 +167,13 @@ static void
 test_proportional_text_width_sums_per_glyph_advances(void) {
     /* "ABCD" -> 3 + 4 + 5 + 6 = 18 at scale 1, 36 at scale 2. Unlike the
      * monospace shortcut, this path genuinely reads each of the `len`
-     * characters, so - deliberately, unlike the monospace test above - `len`
+     * characters, so (deliberately, unlike the monospace test above) `len`
      * here never exceeds what the literal actually holds. */
     TEST_ASSERT_EQUAL_INT(18, gfx_font_text_width(&synth_font, "ABCD", 4, 1));
     TEST_ASSERT_EQUAL_INT(36, gfx_font_text_width(&synth_font, "ABCD", 4, 2));
 
     /* A prefix stops summing where `len` says to, not at the string's own
-     * end - "AB" worth of width out of the longer "ABCD" literal. */
+     * end: "AB" worth of width out of the longer "ABCD" literal. */
     TEST_ASSERT_EQUAL_INT(3 + 4, gfx_font_text_width(&synth_font, "ABCD", 2, 1));
 }
 
@@ -189,7 +189,7 @@ test_proportional_height_is_cell_h_times_scale(void) {
 }
 
 /*
- * gfx_font_row_run_rect() - proof that batching a run of set bits into one
+ * gfx_font_row_run_rect(): proof that batching a run of set bits into one
  * rect covers exactly the same pixels as drawing one bit at a time.
  * gfx.c cannot link on a host, so the pixel transform is mirrored here.
  */
@@ -238,7 +238,7 @@ extend_run_union(int ux, int uy, int ux1, int uy1, int* x0, int* y0, int* x1, in
 }
 
 /* Every unit cell in [col0, col1] at `turn`, unioned, must equal the one
- * rect gfx_font_row_run_rect() returns - exactly, not just in area, or a
+ * rect gfx_font_row_run_rect() returns, exactly, not just in area, or a
  * gap or an off-by-one overlap could slip through unnoticed. */
 static void
 assert_run_rect_matches_reference(const gfx_font_t* f, int x, int y, int row, int col0, int col1, int scale, int turn) {
@@ -269,7 +269,7 @@ assert_run_rect_matches_reference(const gfx_font_t* f, int x, int y, int row, in
 static void
 test_row_run_rect_matches_per_bit_placement_at_every_turn(void) {
     /* A single bit, a run in the middle, and a run touching each edge of
-     * the cell - across all four turns, gfx_font_8x8's own 8x8 shape. */
+     * the cell, across all four turns, gfx_font_8x8's own 8x8 shape. */
     const int col0s[] = {3, 0, 2, 0};
     const int col1s[] = {3, 2, 7, 7};
 
@@ -294,11 +294,11 @@ test_row_run_rect_matches_per_bit_placement_at_scale_one_and_at_origin(void) {
 
 /*
  * gfx_text_font() (gfx.c) skips a whole character when its own row extent
- * misses the current gfx_target_t entirely - one command replayed into
+ * misses the current gfx_target_t entirely: one command replayed into
  * several bands (ui_replay_band()) otherwise re-walks every character per
  * band. Safe only if every rect gfx_font_row_run_rect() can ever produce
  * for that character stays inside the same row extent, so skipping never
- * discards a rect that would have painted anything - proven here for every
+ * discards a rect that would have painted anything, proven here for every
  * (row, col) a real glyph can pass, at every turn, without gfx.c.
  */
 static void
@@ -324,7 +324,7 @@ test_row_run_rect_never_leaves_the_characters_own_row_extent(void) {
 }
 
 /*
- * gfx_font_row_run_rect_dilated() - proof that one dilated-halo pass
+ * gfx_font_row_run_rect_dilated(): proof that one dilated-halo pass
  * paints the same pixels as UI_TEXT_OUTLINED's 8 unit-offset copies of
  * gfx_text_font(), ink drawn last either way. Rasterizes both forms into
  * small pixel grids via gfx_target_fill_rect() (the same body gfx.c's
@@ -385,14 +385,14 @@ sim_draw_old(gfx_target_t target, const gfx_font_t* f, int x, int y, unsigned ch
 }
 
 /* gfx_text_font_halo()/gfx_text_font() at the row-run level: one dilated
- * SIM_HALO pass, SIM_INK last, unshifted - draw_command()'s fast path. */
+ * SIM_HALO pass, SIM_INK last, unshifted, draw_command()'s fast path. */
 static void
 sim_draw_new(gfx_target_t target, const gfx_font_t* f, int x, int y, unsigned char ch, int scale, int turn) {
     sim_walk_runs(target, f, x, y, ch, scale, turn, gfx_font_row_run_rect_dilated, SIM_HALO);
     sim_walk_runs(target, f, x, y, ch, scale, turn, gfx_font_row_run_rect, SIM_INK);
 }
 
-/* `band` gives the row range to draw into - its own buf is ignored and
+/* `band` gives the row range to draw into; its own buf is ignored and
  * replaced with sim_old/sim_new so both forms land in a real buffer. */
 static void
 assert_old_and_new_match(gfx_target_t band, int x, int y, unsigned char ch, int scale, int turn) {
@@ -430,7 +430,7 @@ test_dilated_halo_matches_eight_offset_copies_at_every_turn(void) {
     }
 }
 
-/* A band edge cutting straight through the glyph's own rows - the case
+/* A band edge cutting straight through the glyph's own rows, the case
  * ui_replay_band() creates for real: the target's own row range narrower
  * than SIM_DIM, clipping both forms the same way gfx_target_clip_y()
  * always does. */
@@ -444,13 +444,13 @@ test_dilated_halo_matches_eight_offset_copies_at_a_band_edge(void) {
 }
 
 /*
- * gfx_font_glyph_run_boxes() - the merge itself, against synthetic glyphs
+ * gfx_font_glyph_run_boxes(): the merge itself, against synthetic glyphs
  * whose exact box output is known by construction, plus proof that
  * merging changes no pixel real letters draw, at every turn and a band
  * edge.
  */
 
-/* Rows 0-2 share one run (cols 1-2), rows 3-7 share another (cols 3-4) -
+/* Rows 0-2 share one run (cols 1-2), rows 3-7 share another (cols 3-4):
  * two boxes, not eight one-row runs. */
 static const uint8_t merge_synth_atlas[8] = {0x06, 0x06, 0x06, 0x18, 0x18, 0x18, 0x18, 0x18};
 static const gfx_font_t merge_synth_font = {
@@ -492,7 +492,7 @@ test_glyph_run_boxes_merges_consecutive_identical_rows(void) {
     TEST_ASSERT_EQUAL_INT(4, boxes[1].col1);
 }
 
-/* The same [1, 2] run at rows 0 and 2, but not row 1 - two single-row
+/* The same [1, 2] run at rows 0 and 2, but not row 1: two single-row
  * boxes, since a gap must not bridge a merge. */
 static const uint8_t merge_gap_atlas[8] = {0x06, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00};
 static const gfx_font_t merge_gap_font = {
@@ -597,7 +597,7 @@ test_merged_boxes_match_unmerged_runs_at_every_turn(void) {
     }
 }
 
-/* A band edge cutting through a merged, multi-row box - the case a tall
+/* A band edge cutting through a merged, multi-row box: the case a tall
  * merged rect must still clip correctly against. */
 static void
 test_merged_boxes_match_unmerged_runs_at_a_band_edge(void) {

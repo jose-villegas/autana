@@ -1,6 +1,6 @@
 /*
  * Portable suite: the band-ring state machine (gfx_band.h) behind
- * gfx_band_next()/gfx_band_submit() (gfx.c) - driven directly since the
+ * gfx_band_next()/gfx_band_submit() (gfx.c), driven directly since the
  * header carries no ESP-IDF dependency. The real DMA send and buffer
  * allocation gfx.c wires around this need real device memory and are not
  * covered here.
@@ -25,7 +25,7 @@ test_a_fresh_ring_starts_at_band_zero_with_nothing_in_flight(void) {
     TEST_ASSERT_FALSE_MESSAGE(gfx_band_ring_must_wait(&ring), "band 0 has no previous send to wait for");
 }
 
-/* The two buffers alternate with every send - what lets the app render
+/* The two buffers alternate with every send, what lets the app render
  * band k+1 into the OTHER slot while band k's send is in flight. */
 static void
 test_slots_alternate_between_the_two_buffers(void) {
@@ -68,7 +68,7 @@ test_row0_advances_by_one_band_height_each_time(void) {
     }
 }
 
-/* The contract gfx_band_submit() relies on: only band 0 skips the wait -
+/* The contract gfx_band_submit() relies on: only band 0 skips the wait;
  * every later band must wait for whichever one is still in flight before
  * its own send can be queued. */
 static void
@@ -98,7 +98,7 @@ test_the_ring_is_done_only_after_every_band_was_handed_out(void) {
 }
 
 /* gfx_band_next() (gfx.c) waits for the final band's send, then settles the
- * ring exactly once - gfx_band_ring_settled() has to go from false to true
+ * ring exactly once: gfx_band_ring_settled() has to go from false to true
  * across that, and stay true without a further wait if asked again. */
 static void
 test_settling_clears_the_in_flight_band_exactly_once(void) {
@@ -114,7 +114,7 @@ test_settling_clears_the_in_flight_band_exactly_once(void) {
 }
 
 /* A single-band frame (a degenerate GFX_BAND_HEIGHT equal to the whole
- * screen) never asks for a wait at all - there is only ever one band in
+ * screen) never asks for a wait at all: there is only ever one band in
  * flight, never a second one racing it. */
 static void
 test_a_single_band_frame_never_waits(void) {

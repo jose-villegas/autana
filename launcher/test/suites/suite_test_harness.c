@@ -1,6 +1,6 @@
 /*
- * Device-only: the audit RUN_TEST wraps around every test on the board - the
- * leak check and the frame watch - holds for a test that ends in
+ * Device-only: the audit RUN_TEST wraps around every test on the board (the
+ * leak check and the frame watch) holds for a test that ends in
  * TEST_PASS(), which leaves by longjmp.
  */
 

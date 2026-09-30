@@ -1,8 +1,8 @@
 /*
- * Specification for the home gesture - a swipe from whichever screen edge is
+ * Specification for the home gesture: a swipe from whichever screen edge is
  * currently carrying it, toward the centre, which is how an app is closed.
  * Which edge that is depends on the shell's orientation (see main.c's
- * exit_edge_for_quarter()) - this module only judges a swipe against
+ * exit_edge_for_quarter()); this module only judges a swipe against
  * whichever edge it is told, one of the four in gesture_edge_t.
  *
  * This has to be forgiving enough to trigger reliably with a fingertip, and
@@ -11,7 +11,7 @@
  *
  * The bulk of the boundary and false-positive coverage lives on the bottom
  * edge, since that logic is shared (just relabelled per edge) with top/
- * left/right - see gesture.c. The other three edges each get a smaller,
+ * left/right; see gesture.c. The other three edges each get a smaller,
  * edge-specific set: one trigger, one wrong-direction, one too-short, one
  * wrong-start-zone, enough to prove the axis and sign are right for that
  * edge without re-deriving every boundary already covered for bottom.
@@ -88,7 +88,7 @@ test_a_downward_swipe_does_not_trigger(void) {
 
 void
 test_a_lifted_finger_does_not_trigger(void) {
-    /* The gesture fires mid-swipe, so it must require contact - otherwise the
+    /* The gesture fires mid-swipe, so it must require contact; otherwise the
      * stale coordinates left behind after a lift would re-trigger it. */
     input_t in = dragging(180, SCREEN_H - 20, 180, SCREEN_H - 170);
     in.down = false;
@@ -133,7 +133,7 @@ test_the_distance_threshold_is_inclusive(void) {
 
 void
 test_swipe_down_from_the_top_edge_triggers(void) {
-    /* Starts 20 px from the top, travels 150 px down - the mirror image of
+    /* Starts 20 px from the top, travels 150 px down, the mirror image of
      * the bottom-edge case. */
     input_t in = dragging(180, 20, 180, 170);
     TEST_ASSERT_TRUE(gesture_is_home_swipe(&in, GESTURE_EDGE_TOP, SCREEN_W, SCREEN_H));

@@ -1,5 +1,5 @@
 /*
- * Portable suite: ui_widgets - what a tap on each widget reports, what it
+ * Portable suite: ui_widgets, what a tap on each widget reports, what it
  * draws, and where a dropdown's list opens. Driven through the real
  * ui_begin() and microui.
  */
@@ -294,7 +294,7 @@ test_a_list_too_tall_for_either_side_fills_the_roomier_one(void) {
 
 /* The exact pixel where ui_dropdown_list_rect() switches sides: a list
  * exactly the room below still fits below, one pixel taller does not and
- * goes above instead - and the same edge holds for the room above, since
+ * goes above instead, and the same edge holds for the room above, since
  * this anchor leaves far more room above than below. */
 static void
 test_a_list_switches_sides_at_the_exact_pixel_of_room(void) {
@@ -338,7 +338,7 @@ test_a_list_opens_scrolled_to_its_current_item(void) {
 }
 
 /* ui_dropdown_list_scroll() must CENTRE the row, not merely bring it on
- * screen - a value only far enough to show the row would satisfy the test
+ * screen: a value only far enough to show the row would satisfy the test
  * above too, so this checks the row's own centre lands on the list's. */
 static void
 test_a_list_opens_scrolled_so_the_row_sits_centred(void) {
@@ -505,7 +505,7 @@ test_opening_the_list_changes_the_screen_under_it(void) {
     TEST_ASSERT_NOT_EQUAL(closed, canvas_hash("Widgets"));
 }
 
-/* Only the rects inside the chevron's own icon box - not a whole-canvas
+/* Only the rects inside the chevron's own icon box, not a whole-canvas
  * hash, which the dropdown BUTTON's own press bezel also changes on the
  * very frame a held press lands, for a reason unrelated to the chevron. */
 static uint64_t
@@ -530,7 +530,7 @@ chevron_hash(void) {
 }
 
 /* was_open is read at the top of ui_dropdown(), before this same frame's own
- * click can open the list - so the very frame the list's own open flag
+ * click can open the list, so the very frame the list's own open flag
  * flips true must still draw the closed chevron, changing only on the frame
  * after. Finds that transition frame rather than assuming which one it is. */
 static void
@@ -562,7 +562,7 @@ test_the_chevron_lags_the_lists_own_open_flag_by_one_frame(void) {
     TEST_ASSERT_NOT_EQUAL_MESSAGE(closed, chevron_hash(), "the frame after opening must show the open chevron");
 }
 
-/* Closing a list - by a pick, or by a tap outside it - must put the
+/* Closing a list (by a pick, or by a tap outside it) must put the
  * dropdown's own drawing back to exactly its pre-open closed state, not
  * merely stop showing the list. `selected` stays 0 through the whole test so
  * the chosen label never itself changes what the canvas would hash to. */
@@ -688,7 +688,7 @@ test_the_last_row_of_a_list_taller_than_the_screen_can_be_picked(void) {
     TEST_ASSERT_EQUAL_INT(MANY_COUNT - 1, many_tap(list.x + 20, last_y + DROPDOWN.h / 2, MANY_COUNT - 1));
 }
 
-/* The "many" dropdown's own open list, found by its rect - it is a nested
+/* The "many" dropdown's own open list, found by its rect: it is a nested
  * popup, so a bare mu_get_container(ctx, "many list") hashes to the wrong id
  * outside the window scope it was opened in and silently returns an unrelated,
  * always-empty container instead. */
@@ -705,7 +705,7 @@ many_list_scroll(mu_Rect list_rect) {
 }
 
 /* A finger already resting at (x, y), optionally with a raw scroll fed via
- * mu_input_scroll() - what ui_bridge_feed() does for a resolved
+ * mu_input_scroll(), what ui_bridge_feed() does for a resolved
  * UI_POINTER_SCROLL, without depending on which held frame ui_pointer's own
  * drag threshold happens to trip on. */
 static int
@@ -726,7 +726,7 @@ many_frame_scroll(int x, int y, int selected, int scroll_dy) {
 }
 
 /* A drag-scroll through a tall open list must stick where the finger left
- * it: later frames - held still, or idle once the finger lifts - must not
+ * it: later frames (held still, or idle once the finger lifts) must not
  * snap the list back to where it opened. */
 static void
 test_a_drag_scroll_sticks_through_later_frames(void) {
@@ -868,8 +868,8 @@ over_button_tap(int x, int y, int idle_frames_before) {
 }
 
 /* The list of a pick closes on a frame counted from the pick; a press that
- * lands on any of those frames must reach exactly one thing - the row while
- * the list is up, the button beneath once it is gone - never neither. */
+ * lands on any of those frames must reach exactly one thing: the row while
+ * the list is up, the button beneath once it is gone, never neither. */
 static void
 test_a_tap_on_a_closing_list_reaches_exactly_one_thing(void) {
     for (int wait = 0; wait <= UI_DROPDOWN_CLOSE_FRAMES + 1; wait++) {
@@ -1004,8 +1004,8 @@ test_a_press_after_an_unseen_lift_still_submits(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, submits, "the second press must land although the first lift was never seen");
 }
 
-/* A finger resting on a button before ui_pointer lands its press - which
- * is all a drag across a list ever is - must not draw it pressed; the
+/* A finger resting on a button before ui_pointer lands its press (which
+ * is all a drag across a list ever is) must not draw it pressed; the
  * press itself must. */
 static void
 test_only_a_real_press_draws_a_button_pressed(void) {
@@ -1035,7 +1035,7 @@ test_only_a_real_press_draws_a_button_pressed(void) {
 
 /* A press that lands off the button and only slides onto it afterward is
  * exactly what a drag across a list looks like to a plain button beneath
- * it - it must never draw pressed and never report a click, since the
+ * it; it must never draw pressed and never report a click, since the
  * button never actually took focus. */
 static void
 test_a_press_that_slides_onto_a_button_from_off_it_is_not_a_click(void) {
@@ -1103,9 +1103,9 @@ swatch_frame(mu_Rect r, const mu_Color* colors, int cols, int rows) {
     end_frame();
 }
 
-/* Every cell of a swatch grid must tile its rect exactly - no gap and no
+/* Every cell of a swatch grid must tile its rect exactly: no gap and no
  * overlap between neighbours, and the grid's own edges must reach the
- * rect's - including a size that does not divide evenly by its column or
+ * rect's, including a size that does not divide evenly by its column or
  * row count. */
 static void
 test_ui_swatch_grid_tiles_the_rect_exactly(void) {

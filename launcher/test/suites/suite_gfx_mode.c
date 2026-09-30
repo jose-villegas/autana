@@ -1,9 +1,9 @@
 /*
- * Portable suite: gfx_mode_resolve() - the mode-grant arithmetic behind
+ * Portable suite: gfx_mode_resolve(), the mode-grant arithmetic behind
  * gfx_mode_enter() (gfx.c), driven directly since gfx_mode.h carries no
  * ESP-IDF dependency. gfx.c's own allocation and geometry-swap side of
  * gfx_mode_enter()/gfx_mode_exit() needs real device memory and is not
- * covered here - see suite_gfx.c for that half.
+ * covered here; see suite_gfx.c for that half.
  */
 
 #include "suites.h"
@@ -90,7 +90,7 @@ test_interlace_choice_passes_through_unchanged(void) {
 
 /* GFX_LAYOUT_INDEXED and its index-image geometry pass through the same
  * "request wins, system caps nothing yet" arithmetic every other field
- * already does - gfx_mode_resolve() has no opinion of its own about them. */
+ * already does; gfx_mode_resolve() has no opinion of its own about them. */
 static void
 test_indexed_layout_and_index_geometry_pass_through_unchanged(void) {
     gfx_mode_request_t r = request(GFX_LAYOUT_INDEXED, GFX_RESOLUTION_FULL, false, false);

@@ -226,7 +226,7 @@ test_the_shorter_axis_alone_sets_the_lens_tangent_portrait(void) {
 }
 
 /* The physical pixel that r3d_physical_to_upright() maps to the upright
- * picture's top-centre, worked out by inverting that mapping by hand -
+ * picture's top-centre, worked out by inverting that mapping by hand,
  * an independent check, not a call into the code under test. */
 static void
 physical_for_upright_top_centre(int quarter, int width, int height, int* px, int* py) {

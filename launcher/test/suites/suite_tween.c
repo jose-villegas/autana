@@ -1,11 +1,11 @@
 /*
- * Portable suite: util/tween.h - timeline ramps, easing and lerps.
+ * Portable suite: util/tween.h, timeline ramps, easing and lerps.
  *
  * These moved here from boot_anim.h, which had its own private copies and
  * its own tests for them under boot_anim-specific names. The tests moved
  * too, generalised away from anything boot_anim-shaped (a millisecond of
  * the boot animation, a letter's flight) into checks about the primitives
- * themselves - see suite_boot_anim.c's own history for the originals this
+ * themselves; see suite_boot_anim.c's own history for the originals this
  * suite is closest to.
  */
 
@@ -82,7 +82,7 @@ test_the_ease_in_never_goes_backwards(void) {
 }
 
 /* The whole reason tween_ease_in() exists: composed after tween_ease_out()
- * meets its own end, the two should leave a smooth apex, not a corner - so
+ * meets its own end, the two should leave a smooth apex, not a corner, so
  * both should be moving slowly (small steps) right at that shared point. */
 static void
 test_ease_out_into_ease_in_makes_a_smooth_apex(void) {
@@ -132,7 +132,7 @@ test_lerp_works_the_same_shrinking_as_growing(void) {
 static void
 test_lerp_handles_a_span_too_wide_for_int32_untouched(void) {
     /* (b - a) * 255 alone would already be close to overflowing int32_t for
-     * a span in the tens of millions - not a shape any call site here
+     * a span in the tens of millions, not a shape any call site here
      * actually needs, but the (int64_t) widening exists specifically so a
      * future one does not have to rediscover that the hard way. */
     const int32_t a = -1000000000;

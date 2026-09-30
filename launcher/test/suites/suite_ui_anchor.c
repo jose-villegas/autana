@@ -1,5 +1,5 @@
 /*
- * Portable suite: ui_anchor - rectangle anchors and pivots.
+ * Portable suite: ui_anchor, rectangle anchors and pivots.
  */
 
 #include "suites.h"

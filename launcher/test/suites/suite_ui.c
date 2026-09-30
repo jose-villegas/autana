@@ -5,7 +5,7 @@
  * costs nothing, and a UI made of several windows repaints only the windows
  * that actually changed.
  *
- * Device-only because it needs the real framebuffer and gfx's band tracking -
+ * Device-only because it needs the real framebuffer and gfx's band tracking:
  * "which parts of the screen would be sent" is the thing being measured, and
  * that is not a question a host can answer.
  *
@@ -170,7 +170,7 @@ test_layout_generation_counts_a_sequence_of_genuine_changes(void) {
     ui_set_transform(ui_transform_identity());
     const uint32_t start = ui_layout_generation();
 
-    /* Four calls, three of which are genuine changes - the repeat of turn 1
+    /* Four calls, three of which are genuine changes: the repeat of turn 1
      * must not double-count, the same property the first test above checks
      * in isolation, now inside a longer sequence. */
     ui_set_transform(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT));
@@ -195,7 +195,7 @@ test_layout_generation_counts_a_sequence_of_genuine_changes(void) {
 
 /* Opens and immediately closes one full-screen window via ui_begin_screen(),
  * simulating one visit to it in whatever orientation `quarter` selects
- * (0 = identity/portrait-native, 1 = a quarter turn - see
+ * (0 = identity/portrait-native, 1 = a quarter turn; see
  * ui_transform_quarter_turn()'s own comment for the domain/viewport split). */
 static void
 visit_screen(const char* title, int quarter) {
@@ -213,14 +213,14 @@ static void
 test_ui_begin_screen_corrects_a_stale_rect_from_a_prior_orientation(void) {
     fixture();
 
-    /* First-ever visit to this title, in one orientation - this is the call
+    /* First-ever visit to this title, in one orientation: this is the call
      * that would seed cnt->rect under plain mu_begin_window_ex(), and pin it
      * there for good. */
     visit_screen("Reused Screen", 0);
     const int portrait_w = ui_width();
     const int portrait_h = ui_height();
 
-    /* Same title, different orientation - a quarter turn swaps ui_width()/
+    /* Same title, different orientation: a quarter turn swaps ui_width()/
      * ui_height(). Without ui_begin_screen()'s correction, the container's
      * rect would still read the portrait dimensions from the first visit. */
     visit_screen("Reused Screen", 1);

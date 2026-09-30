@@ -7,11 +7,11 @@ and fails if any function's frame exceeds the device profile's ceiling.
 
 Why this exists: two device panics in this project's history were "Stack
 protection fault" loops, both caused by a test fixture declaring a huge local
-array - a 4 KB comparison buffer, and later an impulse_t[4096] (24 KB). Both
+array: a 4 KB comparison buffer, and later an impulse_t[4096] (24 KB). Both
 passed green on the host, whose stack is megabytes; this board's main task
 stack (CONFIG_ESP_MAIN_TASK_STACK_SIZE) is 3,584 bytes, shared with Unity,
 printf, and the call chain above the fixture. The host build
-cannot reproduce a stack panic - it can only predict one, statically, from
+cannot reproduce a stack panic; it can only predict one, statically, from
 the frame sizes GCC/Clang already compute for their own prologues. This gate
 is that prediction, run every time the host suite runs.
 
@@ -23,7 +23,7 @@ both historical panics (24 KB and 4 KB) with two orders of magnitude to
 spare. Measured against the tree on 2026-09-03, the largest frame that
 clears the ceiling today is 864 bytes
 (test_a_direction_flip_does_not_corrupt_the_boundary_debounce,
-suite_sand_liquid_depth.c since the suite_sand.c split) - so 1024 is not
+suite_sand_liquid_depth.c since the suite_sand.c split), so 1024 is not
 starving anything real, it is just below where the next
 genuine outlier would have to be caught.
 
@@ -130,7 +130,7 @@ def parse_su_file(path):
         C:/repo/launcher/test/suites/suite_rng.c:16:13:test_foo	48	static
 
     The location field is itself colon-separated (file:line:col:function),
-    and on Windows the file half already contains a drive-letter colon - so
+    and on Windows the file half already contains a drive-letter colon, so
     splitting from the right, a fixed three fields at a time, is the only
     split that is safe on every platform this runs on.
     """
