@@ -1121,6 +1121,8 @@ run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms)
 }
 #endif
 
+/* Its frame sits under every app and every suite on the main task's small
+ * stack, so a helper it calls with a larger frame than its own is noinline. */
 static void
 app_main_loop(void) {
     const app_t* current = NULL; /* NULL means the launcher is showing */
