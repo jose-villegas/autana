@@ -1,7 +1,6 @@
 /*
  * Portable suite: r3d_span.h's triangle fill, r3d_lit_pipeline.h's camera,
- * culling and near clip, r3d_lit_frame.h's two-core frame, and r3d_path.h's
- * loop. Every mesh here is built inside the test, never a baked one.
+ * culling and near clip, r3d_lit_frame.h's two-core frame. Every mesh here is built inside the test, never a baked one.
  */
 
 #include <math.h>
@@ -16,7 +15,6 @@
 #include "gfx/gfx_color.h"
 #include "render/r3d_lit_frame.h"
 #include "render/r3d_lit_pipeline.h"
-#include "render/r3d_path.h"
 #include "render/r3d_ray.h"
 
 #define W 64
@@ -1142,66 +1140,6 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     free(doubled);
 }
 
-/* Camera path */
-
-static const r3d_waypoint_t square[] = {
-    {{0, 0, 0}, {0, 0, -1}},
-    {{100, 0, 0}, {100, 0, -1}},
-    {{100, 0, 100}, {100, 0, 99}},
-    {{0, 0, 100}, {0, 0, 99}},
-};
-static const r3d_path_t square_path = {square, 4, 50.0f, 1.0f};
-
-static void
-test_the_path_passes_through_each_waypoint(void) {
-    uint32_t t = 0;
-    for (int i = 0; i < 4; i++) {
-        r3d_vec3f_t eye, forward;
-        r3d_path_sample(&square_path, t, &eye, &forward);
-        TEST_ASSERT_FLOAT_WITHIN(0.01f, square[i].eye.x, eye.x);
-        TEST_ASSERT_FLOAT_WITHIN(0.01f, square[i].eye.z, eye.z);
-        TEST_ASSERT_FLOAT_WITHIN(0.01f, -1.0f, forward.z);
-        t += 2000; /* 100 units at 50 per second */
-    }
-    TEST_ASSERT_EQUAL_UINT32(8000, r3d_path_period_ms(&square_path));
-}
-
-static void
-test_the_path_is_continuous_and_loops(void) {
-    const uint32_t period = r3d_path_period_ms(&square_path);
-    r3d_vec3f_t prev, forward;
-    r3d_path_sample(&square_path, 0, &prev, &forward);
-    for (uint32_t t = 10; t <= period; t += 10) {
-        r3d_vec3f_t eye;
-        r3d_path_sample(&square_path, t, &eye, &forward);
-        const float step = sqrtf((eye.x - prev.x) * (eye.x - prev.x) + (eye.z - prev.z) * (eye.z - prev.z));
-        TEST_ASSERT_TRUE_MESSAGE(step < 1.5f, "the eye jumped between two samples 10 ms apart");
-        prev = eye;
-    }
-}
-
-/* Two waypoints a unit apart: the eye barely moves, yet each leg still
- * takes the path's minimum time. */
-static void
-test_a_leg_that_barely_moves_still_takes_the_minimum_time(void) {
-    static const r3d_waypoint_t close[] = {{{0, 0, 0}, {0, 0, -1}}, {{1, 0, 0}, {1, 0, -1}}};
-    const r3d_path_t path = {close, 2, 50.0f, 1.0f};
-    TEST_ASSERT_EQUAL_UINT32(2000, r3d_path_period_ms(&path));
-}
-
-/* Every waypoint of the square looks one unit down -z, so the look
- * direction is that between the waypoints too. */
-static void
-test_forward_is_the_target_minus_the_eye_between_waypoints(void) {
-    for (uint32_t t = 0; t < r3d_path_period_ms(&square_path); t += 170) {
-        r3d_vec3f_t eye, forward;
-        r3d_path_sample(&square_path, t, &eye, &forward);
-        TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, forward.x);
-        TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, forward.y);
-        TEST_ASSERT_FLOAT_WITHIN(0.001f, -1.0f, forward.z);
-    }
-}
-
 static void
 release_fixture(void) {
     free(shared_parts);
@@ -1249,11 +1187,6 @@ run_r3d_lit_suite(void) {
 
     RUN_TEST(test_the_frame_carves_its_scratch_without_overlap);
     RUN_TEST(test_the_two_core_frame_matches_one_full_draw);
-
-    RUN_TEST(test_the_path_passes_through_each_waypoint);
-    RUN_TEST(test_the_path_is_continuous_and_loops);
-    RUN_TEST(test_a_leg_that_barely_moves_still_takes_the_minimum_time);
-    RUN_TEST(test_forward_is_the_target_minus_the_eye_between_waypoints);
 }
 
 #undef RUN_TEST

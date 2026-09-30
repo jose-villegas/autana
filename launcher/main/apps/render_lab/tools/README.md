@@ -31,12 +31,17 @@ capture. The Gouraud scene rotates when stepped over several frames.
 
 ## Sponza poses
 
-`gen_sponza_poses.sh` prints the flythrough as a poses file for
-[`tools/r3d/report_triangle_sizes.sh`](../../../../tools/r3d/README.md#triangle-sizes):
-the poses `sponza_poses()` gives, the ones `suite_sponza_perf.c` times.
+The flythrough is a glTF camera animation, `../assets/flythrough.glb`, baked
+to `../flythrough_tracks_generated.c` by
+[`tools/anim/bake_tracks.py`](../../../../tools/anim/README.md). Its poses for
+[`tools/r3d/report_triangle_sizes.sh`](../../../../tools/r3d/README.md#triangle-sizes)
+come from the generic track sampler, at the poses `suite_sponza_perf.c` times
+(every `SPONZA_POSE_EVERY_MS`) and the size and lens `sponza_flythrough.h` names:
 
 ```sh
-./launcher/main/apps/render_lab/tools/gen_sponza_poses.sh |
+./launcher/tools/anim/sample_tracks.sh \
+    --tracks launcher/main/apps/render_lab/flythrough_tracks_generated.c:flythrough \
+    --every 5000 --poses camera 184 224 0.62 6 |
     ./launcher/tools/r3d/report_triangle_sizes.sh \
         --mesh launcher/main/apps/render_lab/sponza_mesh_generated.c:sponza_mesh -
 ```

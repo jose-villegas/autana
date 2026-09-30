@@ -166,7 +166,7 @@ report_frame_cost(const char* label, const r3d_lit_mesh_t* mesh) {
     bench_open(&b, mesh);
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===", label, mesh->triangle_count,
              mesh->vertex_count, mesh->cluster_count, SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT);
-    const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
+    const uint32_t period = sponza_flythrough_period_ms();
     int64_t frame_sum = 0;
     int64_t worst = 0;
     int samples = 0;
