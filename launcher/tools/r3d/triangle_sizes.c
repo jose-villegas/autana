@@ -161,8 +161,11 @@ read_line(const char* line, r3d_sizes_poses_t* out) {
         out->half_fov_short_tan = v[0];
         out->near_z = v[1];
     } else if (strncmp(line, "pose ", 5) == 0) {
-        if (!read_floats(line + 5, v, 6) || out->count >= R3D_SIZES_POSES_MAX) {
-            return "a pose line needs an eye and a forward, and there can be at most R3D_SIZES_POSES_MAX";
+        if (!read_floats(line + 5, v, 6)) {
+            return "a pose line needs an eye and a forward, three numbers each";
+        }
+        if (out->count >= R3D_SIZES_POSES_MAX) {
+            return "more poses than R3D_SIZES_POSES_MAX";
         }
         out->eye[out->count] = (r3d_vec3f_t){v[0], v[1], v[2]};
         out->forward[out->count] = (r3d_vec3f_t){v[3], v[4], v[5]};
@@ -173,18 +176,35 @@ read_line(const char* line, r3d_sizes_poses_t* out) {
     return NULL;
 }
 
-const char*
-r3d_sizes_read_poses(FILE* f, r3d_sizes_poses_t* out) {
+bool
+r3d_sizes_read_poses(FILE* f, r3d_sizes_poses_t* out, char* problem, size_t problem_size) {
     memset(out, 0, sizeof(*out));
     char line[256];
-    while (fgets(line, sizeof line, f) != NULL) {
-        const char* problem = read_line(line, out);
-        if (problem != NULL) {
-            return problem;
+    for (int number = 1; fgets(line, sizeof line, f) != NULL; number++) {
+        const char* wrong = read_line(line, out);
+        if (wrong != NULL) {
+            (void)snprintf(problem, problem_size, "line %d: %s", number, wrong); /* truncation still reads */
+            return false;
         }
     }
     if (out->width == 0 || out->near_z == 0.0F || out->count == 0) {
-        return "a poses file needs a size, a lens and at least one pose";
+        (void)snprintf(problem, problem_size, "a poses file needs a size, a lens and at least one pose");
+        return false;
     }
-    return NULL;
+    return true;
+}
+
+bool
+r3d_sizes_read_poses_path(const char* path, r3d_sizes_poses_t* out, char* problem, size_t problem_size) {
+    if (strcmp(path, "-") == 0) {
+        return r3d_sizes_read_poses(stdin, out, problem, problem_size);
+    }
+    FILE* f = fopen(path, "r");
+    if (f == NULL) {
+        (void)snprintf(problem, problem_size, "cannot open it");
+        return false;
+    }
+    const bool read = r3d_sizes_read_poses(f, out, problem, problem_size);
+    (void)fclose(f);
+    return read;
 }

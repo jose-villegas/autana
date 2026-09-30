@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "suites.h"
 #include "unity.h"
@@ -131,15 +132,18 @@ test_distance_moves_triangles_between_the_bins(void) {
     grid_close(&g);
 }
 
+static char problem[160];
+
+/* NULL when the text reads whole, else the reader's problem. */
 static const char*
 read_poses_text(const char* text, r3d_sizes_poses_t* out) {
     FILE* f = tmpfile();
     TEST_ASSERT_NOT_NULL(f);
     TEST_ASSERT_TRUE(fputs(text, f) >= 0);
     rewind(f);
-    const char* problem = r3d_sizes_read_poses(f, out);
+    const bool read = r3d_sizes_read_poses(f, out, problem, sizeof problem);
     TEST_ASSERT_EQUAL_INT(0, fclose(f));
-    return problem;
+    return read ? NULL : problem;
 }
 
 static void
@@ -167,6 +171,30 @@ test_a_poses_file_missing_a_part_or_a_number_is_refused(void) {
     TEST_ASSERT_NOT_NULL(read_poses_text("size 64 48\nlens 0.5 1\npose 0 0 400 0 0\n", p));
     TEST_ASSERT_NOT_NULL(read_poses_text("size 64 48\nlens 0.5 1\npose 0 0 400 0 0 -1 7\n", p));
     TEST_ASSERT_NOT_NULL(read_poses_text("size 64 48\nlens 0.5 1\nposes 0 0 400 0 0 -1\n", p));
+    TEST_ASSERT_NOT_NULL(strstr(read_poses_text("size 64 48\n# lens next\nlens 0.5\n", p), "line 3"));
+    free(p);
+}
+
+#define STDIN_POSES "suite_r3d_triangle_sizes_poses.txt"
+
+/* "-" reads the poses from standard input, where a generator pipes them. */
+static void
+test_poses_read_from_standard_input_when_the_path_is_a_dash(void) {
+    r3d_sizes_poses_t* p = malloc(sizeof(*p));
+    TEST_ASSERT_NOT_NULL(p);
+    FILE* f = fopen(STDIN_POSES, "w");
+    TEST_ASSERT_NOT_NULL(f);
+    TEST_ASSERT_TRUE(fputs("size 32 16\nlens 0.5 1\npose 0 0 50 0 0 -1\n", f) >= 0);
+    TEST_ASSERT_EQUAL_INT(0, fclose(f));
+    TEST_ASSERT_NOT_NULL(freopen(STDIN_POSES, "r", stdin));
+    const bool read = r3d_sizes_read_poses_path("-", p, problem, sizeof problem);
+    /* Windows keeps an open file; the host runner never reads stdin. */
+    TEST_ASSERT_EQUAL_INT(0, fclose(stdin));
+    TEST_ASSERT_EQUAL_INT(0, remove(STDIN_POSES));
+    TEST_ASSERT_TRUE_MESSAGE(read, problem);
+    TEST_ASSERT_EQUAL_INT(32, p->width);
+    TEST_ASSERT_EQUAL_INT(1, p->count);
+    TEST_ASSERT_FALSE(r3d_sizes_read_poses_path("no-such-poses-file.txt", p, problem, sizeof problem));
     free(p);
 }
 
@@ -176,6 +204,7 @@ run_r3d_triangle_sizes_suite(void) {
     RUN_TEST(test_distance_moves_triangles_between_the_bins);
     RUN_TEST(test_a_poses_file_gives_its_size_lens_and_poses);
     RUN_TEST(test_a_poses_file_missing_a_part_or_a_number_is_refused);
+    RUN_TEST(test_poses_read_from_standard_input_when_the_path_is_a_dash);
 }
 
 #else

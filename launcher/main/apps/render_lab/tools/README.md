@@ -31,13 +31,12 @@ capture. The Gouraud scene rotates when stepped over several frames.
 
 ## Sponza poses
 
-`sponza_poses.txt` is the flythrough as a poses file for
+`gen_sponza_poses.sh` prints the flythrough as a poses file for
 [`tools/r3d/report_triangle_sizes.sh`](../../../../tools/r3d/README.md#triangle-sizes):
-a pose every 5 s, the poses `suite_sponza_perf.c` times.
-`gen_sponza_poses.sh` regenerates it after the flythrough changes.
+the poses `sponza_poses()` gives, the ones `suite_sponza_perf.c` times.
 
 ```sh
-./launcher/tools/r3d/report_triangle_sizes.sh \
-    --mesh launcher/main/apps/render_lab/sponza_mesh_generated.c:sponza_mesh \
-    launcher/main/apps/render_lab/tools/sponza_poses.txt
+./launcher/main/apps/render_lab/tools/gen_sponza_poses.sh |
+    ./launcher/tools/r3d/report_triangle_sizes.sh \
+        --mesh launcher/main/apps/render_lab/sponza_mesh_generated.c:sponza_mesh -
 ```

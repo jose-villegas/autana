@@ -1,9 +1,10 @@
 #!/bin/sh
 #
-# Regenerate sponza_poses.txt beside this script from the flythrough, after
-# the flythrough, its lens or the render size changes.
+# Print the Sponza flythrough as a poses file, for tools/r3d's
+# report_triangle_sizes.sh to read from a pipe. Nothing is written to disk,
+# so the poses are always the flythrough's own.
 #
-#   main/apps/render_lab/tools/gen_sponza_poses.sh
+#   main/apps/render_lab/tools/gen_sponza_poses.sh | launcher/tools/r3d/report_triangle_sizes.sh --mesh ... -
 
 set -eu
 
@@ -23,11 +24,10 @@ fi
 BUILD_DIR="$SCRIPT_DIR/build"
 mkdir -p "$BUILD_DIR"
 OUT_BIN="$BUILD_DIR/gen_sponza_poses"
-"$CC_BIN" -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2 -I "$MAIN_DIR" -I "$LAUNCHER_DIR/test" \
+"$CC_BIN" -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2 -I "$MAIN_DIR" \
     -I "$LAUNCHER_DIR/components/small3dlib/include" \
     "$SCRIPT_DIR/gen_sponza_poses.c" "$APP_DIR/sponza_flythrough.c" \
     "$MAIN_DIR/render/r3d_lit_pipeline.c" "$MAIN_DIR/render/r3d_path.c" "$MAIN_DIR/render/r3d_span.c" \
     -lm -o "$OUT_BIN"
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"
-"$OUT_BIN" > "$SCRIPT_DIR/sponza_poses.txt"
-echo "wrote $SCRIPT_DIR/sponza_poses.txt"
+"$OUT_BIN"

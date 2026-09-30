@@ -6,6 +6,8 @@
  */
 #pragma once
 
+#include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -42,5 +44,10 @@ typedef struct {
     r3d_vec3f_t forward[R3D_SIZES_POSES_MAX];
 } r3d_sizes_poses_t;
 
-/* NULL when the file was read whole, else what is wrong with it. */
-const char* r3d_sizes_read_poses(FILE* f, r3d_sizes_poses_t* out);
+/* True when the file was read whole; else false, with what is wrong and on
+ * which line written to `problem`. */
+bool r3d_sizes_read_poses(FILE* f, r3d_sizes_poses_t* out, char* problem, size_t problem_size);
+
+/* The same from a path, "-" reading standard input, so a generator can pipe
+ * its poses in and no copy of them is kept to go stale. */
+bool r3d_sizes_read_poses_path(const char* path, r3d_sizes_poses_t* out, char* problem, size_t problem_size);

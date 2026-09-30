@@ -14,6 +14,16 @@ const r3d_path_t sponza_flythrough = {
     3.0F,
 };
 
+int
+sponza_poses(r3d_vec3f_t* eye, r3d_vec3f_t* forward, int max) {
+    const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
+    int count = 0;
+    for (uint32_t t_ms = 0; t_ms < period && count < max; t_ms += SPONZA_POSE_EVERY_MS, count++) {
+        r3d_path_sample(&sponza_flythrough, t_ms, &eye[count], &forward[count]);
+    }
+    return count;
+}
+
 void
 sponza_view_at(r3d_lit_view_t* view, uint32_t t_ms, int position_scale, int quarter) {
     r3d_vec3f_t eye;

@@ -1,8 +1,8 @@
 # r3d
 
-The offline half of `main/render/`'s r3d renderer: mesh baking. Nothing here runs
-on the board: a generator imports these modules, bakes a model, and writes
-checked-in C data.
+The offline half of `main/render/`'s r3d renderer: the Python modules that bake
+a mesh into checked-in C data, and host tools that measure a baked mesh.
+Nothing here runs on the board.
 
 | Module | What it does |
 |---|---|
@@ -36,13 +36,15 @@ of each file it writes records the exact command that produced it.
 ## Triangle sizes
 
 ```sh
-./launcher/tools/r3d/report_triangle_sizes.sh --mesh SOURCE.c:SYMBOL POSES [--write DIR | --against DIR]
+./launcher/tools/r3d/report_triangle_sizes.sh --mesh SOURCE.c:SYMBOL POSES|- [--write DIR | --against DIR]
 ```
 
 How many of a baked mesh's drawn triangles cover 0, 1, 2-4 or more pixel
 centres at each pose, which sizes the rasterizer's small-triangle work.
 `--mesh` names the C file a generator wrote and its `r3d_lit_mesh_t`;
 `POSES` is a text file of `size`, `lens` and `pose` lines, its format in
-[`triangle_sizes.h`](triangle_sizes.h), owned by whoever owns the scene.
+[`triangle_sizes.h`](triangle_sizes.h), and `-` reads it from standard
+input: a scene prints its poses from its own camera rather than keeping a
+copy that can go stale.
 `--write` keeps each pose's frame and `--against` diffs a later build's
 frames with them, pixel by pixel.

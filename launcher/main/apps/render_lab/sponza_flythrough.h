@@ -25,5 +25,11 @@
 
 extern const r3d_path_t sponza_flythrough;
 
+/* The loop is measured at a pose this often, from its start. */
+#define SPONZA_POSE_EVERY_MS 5000
+
+/* The measured poses' eyes and forwards, at most `max`; returns how many. */
+int sponza_poses(r3d_vec3f_t* eye, r3d_vec3f_t* forward, int max);
+
 /* The view t_ms into the loop at the render size, turned for `quarter`. */
 void sponza_view_at(r3d_lit_view_t* view, uint32_t t_ms, int position_scale, int quarter);

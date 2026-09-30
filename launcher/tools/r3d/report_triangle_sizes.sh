@@ -5,10 +5,10 @@
 # format is in triangle_sizes.h).
 #
 # Usage:
-#   launcher/tools/r3d/report_triangle_sizes.sh --mesh SOURCE.c:SYMBOL POSES [--write DIR | --against DIR]
+#   launcher/tools/r3d/report_triangle_sizes.sh --mesh SOURCE.c:SYMBOL POSES|- [--write DIR | --against DIR]
 #
 #   --mesh SOURCE.c:SYMBOL  the baked mesh: the C file that defines it and its r3d_lit_mesh_t symbol
-#   POSES                   the poses file: size, lens and one line per pose
+#   POSES                   the poses file: size, lens and one line per pose; - reads standard input
 #   --write DIR             also keep each pose's frame in DIR
 #   --against DIR           also compare each pose's frame with the one kept in DIR, pixel by pixel
 
@@ -20,7 +20,7 @@ LAUNCHER_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 MAIN_DIR="$LAUNCHER_DIR/main"
 
 usage() {
-    echo "usage: $0 --mesh SOURCE.c:SYMBOL POSES [--write DIR | --against DIR]" >&2
+    echo "usage: $0 --mesh SOURCE.c:SYMBOL POSES|- [--write DIR | --against DIR]" >&2
     exit 2
 }
 
@@ -34,7 +34,7 @@ mesh_symbol=${2##*:}
 poses=$3
 shift 3
 [ -f "$mesh_source" ] || { echo "no mesh source $mesh_source" >&2; exit 2; }
-[ -f "$poses" ] || { echo "no poses file $poses" >&2; exit 2; }
+[ "$poses" = - ] || [ -f "$poses" ] || { echo "no poses file $poses" >&2; exit 2; }
 mode=""
 dir=""
 case "${1:-}" in

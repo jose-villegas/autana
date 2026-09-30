@@ -247,7 +247,7 @@ check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
     const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
     float sum = 0.0F;
     int samples = 0;
-    for (uint32_t t = 0; t < period; t += 5000) {
+    for (uint32_t t = 0; t < period; t += SPONZA_POSE_EVERY_MS) {
         sum += share_covered_at(&frame, t);
         samples++;
     }

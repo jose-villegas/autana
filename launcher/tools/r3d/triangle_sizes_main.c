@@ -1,6 +1,6 @@
 /*
  * The triangle_sizes tool: a lit mesh's triangles by the pixel centres they
- * cover at each pose of a poses file, and each pose's rendered frame kept
+ * cover at each pose of a poses file or standard input, and each pose's rendered frame kept
  * or compared. The mesh is linked in by report_triangle_sizes.sh, which
  * names its symbol as R3D_SIZES_MESH.
  */
@@ -116,14 +116,8 @@ print_sizes(int pose, const r3d_sizes_t* s) {
 
 static void
 read_poses_or_exit(const char* path, r3d_sizes_poses_t* poses) {
-    FILE* f = fopen(path, "r");
-    if (f == NULL) {
-        (void)fprintf(stderr, "cannot open %s\n", path);
-        exit(1);
-    }
-    const char* problem = r3d_sizes_read_poses(f, poses);
-    (void)fclose(f);
-    if (problem != NULL) {
+    char problem[160];
+    if (!r3d_sizes_read_poses_path(path, poses, problem, sizeof problem)) {
         (void)fprintf(stderr, "%s: %s\n", path, problem);
         exit(1);
     }
@@ -148,8 +142,9 @@ render_pose(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, int count, c
 
 int
 main(int argc, char** argv) {
-    if (argc != 2 && argc != 4) {
-        (void)fputs("usage: triangle_sizes POSES [--write DIR | --against DIR]\n", stderr);
+    const bool flag_known = argc == 4 && (strcmp(argv[2], "--write") == 0 || strcmp(argv[2], "--against") == 0);
+    if (argc != 2 && !flag_known) {
+        (void)fputs("usage: triangle_sizes POSES|- [--write DIR | --against DIR]\n", stderr);
         return 2;
     }
     const char* dir = argc == 4 ? argv[3] : NULL;
