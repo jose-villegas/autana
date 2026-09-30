@@ -1,5 +1,5 @@
 /*
- * ui_launcher_draw - the home screen's own rows. See ui_launcher.c for what
+ * ui_launcher_draw: the home screen's own rows. See ui_launcher.c for what
  * this is split out of and why: the framebuffer, and so ui_end(), belongs
  * to that file alone, which is what lets this half link and run on a host.
  */
@@ -29,10 +29,10 @@ draw_banner(mu_Context* ctx) {
     mu_layout_next(ctx);
 }
 
-/* Fixed-width, centred not filled - see ui_centered_rect(). FLOWED, not
+/* Fixed-width, centred not filled; see ui_centered_rect(). FLOWED, not
  * placed at an absolute y, so enough registered apps now overflow into the
  * window's own scroll instead of pushing later entries off screen with no
- * way back to them - see ui_scroll.h. Returns which app this frame's tap
+ * way back to them; see ui_scroll.h. Returns which app this frame's tap
  * chose, or NULL. */
 static const app_t*
 draw_app_rows(mu_Context* ctx) {
@@ -49,8 +49,8 @@ draw_app_rows(mu_Context* ctx) {
 
 const app_t*
 ui_launcher_draw(mu_Context* ctx, uint32_t dt_ms) {
-    /* Bezelled buttons, stated every frame because style does not persist
-     * - see ui.h. One full-screen window with no chrome, sized from
+    /* Bezelled buttons, stated every frame because style does not persist (see
+     * ui.h). One full-screen window with no chrome, sized from
      * ui_width()/ui_height() rather than GFX_WIDTH/GFX_HEIGHT so it still
      * fits after a quarter turn swaps which one is larger. */
     ui_set_button_style(UI_BUTTON_BEZEL);

@@ -1,5 +1,5 @@
 /*
- * ui_control_center_draw - the Control Center's own widgets, placed at the
+ * ui_control_center_draw: the Control Center's own widgets, placed at the
  * rects of a control_center_layout_t. No framebuffer access, so it links and
  * runs on a host the same way ui_launcher_draw.c does; ui_control_center.c
  * owns the frame and the dimmed backdrop.

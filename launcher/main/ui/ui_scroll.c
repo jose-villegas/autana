@@ -1,4 +1,4 @@
-/* ui_scroll - see ui_scroll.h. */
+/* ui_scroll: see ui_scroll.h. */
 #include "ui/ui_scroll.h"
 
 #include <math.h>
@@ -17,10 +17,10 @@ ui_scroll_view_default(void) {
 
 /* One in-flight coast at a time, matching the shell's own one-window-at-a-
  * time model (main.c: one app, one screen, drawn once per frame). Keyed by
- * container identity so switching screens - a different mu_Container* -
+ * container identity so switching screens (a different mu_Container*)
  * starts clean rather than inheriting a stale velocity. */
 static const mu_Container* momentum_cnt;
-static float momentum_v; /* px/ms, vertical only - see ui_scroll.h */
+static float momentum_v; /* px/ms, vertical only; see ui_scroll.h */
 static int momentum_prev_scroll_y;
 
 static int
@@ -31,7 +31,7 @@ clamp_int(int v, int lo, int hi) {
     return (v > hi) ? hi : v;
 }
 
-/* Same bound the scrollbar() macro (microui.c) clamps to - content_size and
+/* Same bound the scrollbar() macro (microui.c) clamps to: content_size and
  * body are last frame's, the same one-frame lag that macro already accepts. */
 static int
 max_scroll_y(const mu_Context* ctx, const mu_Container* cnt) {
@@ -42,7 +42,7 @@ max_scroll_y(const mu_Context* ctx, const mu_Container* cnt) {
 
 /* Applies this frame's momentum coast to `cnt->scroll.y`, if any is owed,
  * and always refreshes the velocity estimate the NEXT coast would start
- * from - continuously, not just at release, so a finger that was already
+ * from, continuously, not just at release, so a finger that was already
  * slowing down before it lifted does not coast as though it were still at
  * full speed several frames ago. */
 static void

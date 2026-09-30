@@ -1,5 +1,5 @@
 /*
- * ui_pointer - input_t to a short list of pointer events, held not tapped.
+ * ui_pointer: input_t to a short list of pointer events, held not tapped.
  *
  * Pure logic, no microui and no gfx; ui_bridge.c talks to microui. Coordinates
  * are LOGICAL, the UI's own: the caller maps a touch off the panel first.
@@ -63,6 +63,6 @@ void ui_pointer_aim(ui_pointer_t* p, int x, int y);
 
 /* Feed one frame's input_t; get back 0-UI_POINTER_MAX_EVENTS events in `out`,
  * in playback order. Returns the count written, or 0 if `max` can't hold the
- * largest possible result - ui_bezel_spans()'s all-or-nothing rule, so a
+ * largest possible result, ui_bezel_spans()'s all-or-nothing rule, so a
  * partial count never lets a caller read past a too-small array. */
 int ui_pointer_step(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out, int max);
