@@ -1,5 +1,5 @@
 /*
- * boot_anim - drawing the startup animation, and the five seconds it owns.
+ * boot_anim: drawing the startup animation, and the five seconds it owns.
  *
  * The projection, the smoothing, the colour and the timeline are all in
  * boot_anim.h, where they are host-testable, and the curve is a generated
@@ -10,20 +10,20 @@
  * docs/Firmware-Architecture.md says there is exactly one frame loop and it
  * belongs to the shell, which is a rule about APPS: an app must not loop,
  * because the shell has to stay able to switch away from it. Nothing can be
- * switched to yet at this point in boot - touch is not even running - so this
+ * switched to yet at this point in boot (touch is not even running), so this
  * runs to completion before app_main() reaches its loop at all, the same way
  * show_post_failures() already blocks on a hardware fault. It still yields
  * every frame, so the idle task keeps feeding the watchdog.
  *
  * EVERY FRAME IS A FULL REPAINT
  *
- * Which is the one thing the rest of this project works hard to avoid - see
+ * Which is the one thing the rest of this project works hard to avoid; see
  * ui.c on skipping unchanged canvases. It is right there and wrong here: the
  * trail behind the pen re-colours a long stretch of curve every frame, so a
  * frame differs from the one before it almost everywhere and there is nothing
  * to save. The clear also gets the picture back to true black, which is both
  * what the additive strokes need underneath them and (until the photograph
- * arrives - see draw_image()'s own comment on why that phase composites
+ * arrives; see draw_image()'s own comment on why that phase composites
  * rather than clearing into) what the dissolve at the end fades into.
  */
 
@@ -108,7 +108,7 @@ lit_whitened(uint32_t rgb, uint8_t whiten, uint8_t alpha) {
  * nonsensical for a point behind the camera; a LINE reads
  * boot_anim_project_segment(), which clips a segment straddling the near
  * plane instead of rejecting it whole. Nothing reads the raw, unclipped
- * boot_anim_project(). There is no "shrunk" variant - scale lives in the
+ * boot_anim_project(). There is no "shrunk" variant: scale lives in the
  * space transform's own SCALE channel.
  */
 
@@ -122,7 +122,7 @@ units(int n) {
  * The floor
  *
  * Drawn at t = 0 as a POLAR grid (concentric circles + radial spokes),
- * not a square lattice - boot_anim_wave_height() lifts a point by its
+ * not a square lattice: boot_anim_wave_height() lifts a point by its
  * true distance from the origin, so only a real circle rises as one
  * uniform ring, and only a real circle matches boot_anim_grid_hue()'s
  * one-tone-per-ring colouring.
@@ -130,7 +130,7 @@ units(int n) {
 
 #define BOOT_ANIM_GRID_CIRCLE_STEPS     12
 
-/* NEAR portion vertices span distance, smooth growth, dashed segments - not
+/* NEAR portion vertices span distance, smooth growth, dashed segments, not
  * wave. */
 #define BOOT_ANIM_GRID_SPOKE_STEPS      32
 
@@ -209,11 +209,11 @@ draw_grid_circle(int32_t radius, int32_t t, gfx_color_t c, int steps, const boot
 
 /* Drawn FLAT: a spoke is a plane guide line, not the ring data the wave
  * is about. TWO PARTS, ONE reveal: `reach` scales one target radius
- * across the full near..far span - the near portion (stepped, dashable)
+ * across the full near..far span: the near portion (stepped, dashable)
  * walks to min(target, near); the tail (one segment, undashed) appears
  * once that is done. Stepping the tail at the near resolution wastes
  * budget nothing is close enough to see. `dash` skips whole segment
- * GROUPS (a full gfx_line_ex() call each), not pixel-thinning - genuinely
+ * GROUPS (a full gfx_line_ex() call each), not pixel-thinning, genuinely
  * cheaper. */
 static void
 draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool dash, uint8_t reach,
@@ -396,7 +396,7 @@ draw_zeros(int32_t pen_t_q8, uint8_t ink, const boot_anim_view_t* view) {
         if (t > pen_t_q8) {
             break; /* the table is in order, so nothing after it either */
         }
-        /* Not boot_anim_project(): marker off-screen issue - see
+        /* Not boot_anim_project(): marker off-screen issue; see
          * boot_anim_project_point(). */
         int x, y;
         if (!boot_anim_project_point(0, 0, t, view, &x, &y)) {
@@ -598,7 +598,7 @@ title_glyph_origin(int view_x, int view_y, int glyph_w, int glyph_h, int* panel_
  * Drop-shadow dx/dy (authored, signed) go through
  * boot_anim_title_shadow_offset()'s quarter-turn first: "down-right" in
  * the reader's frame differs from panel space. DITHERED, not solid: fake
- * transparency, this panel's usual trick with no real blending - 255 is
+ * transparency, this panel's usual trick with no real blending; 255 is
  * pixel-identical to a solid draw, 0 disables. Halo is plain COL_BG, not
  * luminance-derived: that flips white the instant ink dips dark,
  * backwards for fading to black. */
@@ -642,7 +642,7 @@ draw_title(uint32_t now_ms, uint8_t ink) {
 /*
  * The one thing here that is not drawn but COMPOSITED. Every draw_* call
  * above stores a colour without reading the framebuffer, which is fine over
- * black and wrong over a photograph - a half-faded grid line drawn that way
+ * black and wrong over a photograph: a half-faded grid line drawn that way
  * paints an opaque scratch across the mountain. So the crossfade is a choice
  * not to WRITE: gfx_dither_covers() inspects only a pixel's (x, y), and the
  * scene stays as drawn wherever the reveal does not yet cover it.
@@ -659,7 +659,7 @@ draw_image(uint8_t ink, uint8_t reveal) {
         /* DITHERED, not blended: no framebuffer-read blend hardware, the
          * same trade this file makes for the title's shadow (draw_title()).
          * A per-pixel gfx_color_mix() over every pixel was measurably the
-         * most expensive part of a crossfade frame - see
+         * most expensive part of a crossfade frame; see
          * suite_boot_anim_perf.c. */
         gfx_blit_dither(0, 0, GFX_WIDTH, GFX_HEIGHT, photo, GFX_WIDTH, reveal);
     } else {
