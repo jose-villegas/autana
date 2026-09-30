@@ -1,5 +1,5 @@
 /*
- * Portable suite: touch_probe: where targets may fall, how a tap is scored
+ * Portable suite: touch_probe, where targets may fall, how a tap is scored
  * against one, and the statistics the taps add up to.
  */
 

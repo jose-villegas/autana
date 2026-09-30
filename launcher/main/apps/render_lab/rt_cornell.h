@@ -1,5 +1,5 @@
 /*
- * rt_cornell: a Whitted-style ray tracer for a Cornell box: one primary ray
+ * rt_cornell, a Whitted-style ray tracer for a Cornell box: one primary ray
  * per pixel, one point light with a hard shadow ray, no reflection or
  * refraction yet. Float throughout - see rt_cornell.c's own header for why.
  * The tracer itself is rt_geometry.h; rt_cornell_scene.h is the box's data.

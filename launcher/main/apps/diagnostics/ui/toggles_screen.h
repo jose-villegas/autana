@@ -8,13 +8,13 @@
  * which value changed, the split docs/Building-a-Screen.md asks every
  * screen to keep.
  *
- * The self-test button and its result line are narrower still; drawn only
+ * The self-test button and its result line are narrower still, drawn only
  * in a CONFIG_LAUNCHER_SELFTEST build, guarded in toggles_screen.c itself
  * rather than here: this header is included before any file in a
  * translation unit has necessarily pulled in the config macro yet (a
  * `#if CONFIG_LAUNCHER_SELFTEST` at parse time here saw it as always
  * undefined once, silently dropping the fields for every includer), so its
- * two fields below stay unconditional; a few unused bytes outside a
+ * two fields below stay unconditional, a few unused bytes outside a
  * SELFTEST build, never a missing member. A host build (CONFIG_LAUNCHER_
  * SELFTEST never defined there) measures this page without the row they
  * feed; only a SELFTEST build's own run of tests/suite_command_list_budget.c

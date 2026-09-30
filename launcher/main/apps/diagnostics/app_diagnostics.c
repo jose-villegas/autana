@@ -22,7 +22,7 @@
  *
  * The toggle screen is built with microui like any other app UI (see
  * ui_launcher.c), a real checkbox, tappable, drawn and dirty-tracked the
- * same way the launcher's own menu is; rather than hand-rolling a
+ * same way the launcher's own menu is, rather than hand-rolling a
  * one-off control that reads a button directly. Any future developer
  * toggle belongs on this same page as another mu_checkbox() row, not as
  * its own bespoke screen.
@@ -48,7 +48,7 @@
 
 static int page;
 
-/* Persisted like `page` above, a developer toggle that resets to off every
+/* Persisted like `page` above: a developer toggle that resets to off every
  * visit would defeat the point of leaving the board on this screen while
  * physically turning it through its holds to read the numbers off. */
 static int show_orientation;
@@ -88,7 +88,7 @@ draw_toggles_page(const input_t* input) {
     mu_Context* ctx = ui_context();
     ui_begin(input);
 
-    /* imu_read() is an I2C transaction; read only while the checkbox is
+    /* imu_read() is an I2C transaction: read only while the checkbox is
      * already on, not on the frame that turns it on (that frame shows the
      * previous reading's absence for one repaint and self-corrects the
      * next), so a page most visits never enable never pays for it. */
@@ -145,7 +145,7 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
 
 #if CONFIG_LAUNCHER_SELFTEST
     /* Consumed here, before this frame's own ui_begin()/ui_end() bracket
-     * opens; never from inside mu_button()'s own if-block in
+     * opens, never from inside mu_button()'s own if-block in
      * draw_toggles_page(). selftest_run() runs suite_ui.c, whose
      * fixture() calls ui_init()/mu_init() on the same ui_context()
      * singleton every window in this shell draws through; running it
@@ -156,7 +156,7 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
         selftest_failures = selftest_run();
         /* selftest_run()'s own tests set ui_set_transform() to a fixed
          * sequence of quarter-turns ending wherever the LAST test left
-         * it, not the board's real orientation; restored here
+         * it, not the board's real orientation, restored here
          * immediately, one frame of latency before draw_toggles_page()
          * ever opens its own frame. */
         ui_set_transform(ui_transform_quarter_turn(display_shell_quarter(), GFX_WIDTH, GFX_HEIGHT));

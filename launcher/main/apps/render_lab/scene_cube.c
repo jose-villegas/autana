@@ -58,13 +58,13 @@ static S3L_Scene scene;
 static uint32_t elapsed_ms;
 
 /* This frame's drawn-pixel bounds, accumulated by shade_pixel() while
- * render_lab_partial_updates is on; reset to an empty range at the top of
+ * render_lab_partial_updates is on, reset to an empty range at the top of
  * cube_rasterize_frame(), widened by every covered pixel small3dlib
  * reports. */
 static int frame_x0, frame_y0, frame_x1, frame_y1;
 
-/* This frame's overall cube coverage: the union of every bin entry's own
- * extent, accumulated by cube_transform_and_bin(); and last frame's,
+/* This frame's overall cube coverage (the union of every bin entry's own
+ * extent, accumulated by cube_transform_and_bin()) and last frame's,
  * remembered so band mode can mark the union of where the cube WAS and
  * where it IS dirty: a band the cube left still needs erasing even though
  * nothing there overlaps this frame. */
@@ -157,7 +157,7 @@ cube_clear_frame(void) {
 
 /* Exposed (suite_cube_perf.c) so the perf suite can time this without
  * touching small3dlib itself. small3dlib.h defines real, non-static
- * functions when included with S3L_PIXEL_FUNCTION etc. set; so only this
+ * functions when included with S3L_PIXEL_FUNCTION etc. set, so only this
  * translation unit can call S3L_newFrame()/S3L_drawScene() at all; a
  * second #include from suite_cube_perf.c would redefine those symbols and
  * fail to link. */
@@ -274,7 +274,7 @@ void
 cube_transform_and_bin(void) {
     S3L_Mat4 mat_camera, mat_final;
 
-    assert(cube.customTransformMatrix == 0); /* S3L_sceneInit()'s own default; never set by this scene */
+    assert(cube.customTransformMatrix == 0); /* S3L_sceneInit()'s own default, never set by this scene */
 
     S3L_makeCameraMatrix(scene.camera.transform, mat_camera);
     S3L_makeWorldMatrix(cube.transform, mat_final);

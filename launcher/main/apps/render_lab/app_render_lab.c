@@ -48,7 +48,7 @@ static int current_scene_index;
  * rewind to it, so each scene takes from the same spot. */
 static size_t scene_arena_mark;
 
-/* current_scene_index's own re-entry seed, a scene's key; NULL (the cube)
+/* current_scene_index's own re-entry seed, a scene's key, NULL (the cube)
  * by default. Read only at enter(), the same contract render_lab_band_mode
  * below documents. */
 const char* render_lab_start_scene_key;
@@ -77,7 +77,7 @@ current_scene(void) {
  * needs a re-entry to take hold. */
 bool render_lab_band_mode = true;
 
-/* Hides the fps/title overlay draw_fps() builds; on by default. A render
+/* Hides the fps/title overlay draw_fps() builds, on by default. A render
  * host pin needs it off: the fps line is a double formatted with "%.1f",
  * which a pin cannot rely on across compilers. Read every frame. */
 bool render_lab_show_hud = true;
@@ -96,7 +96,7 @@ render_lab_scene_shows_views(void) {
 }
 
 /* -1 (default) leaves the fps box at its corner inset. Any other value pins
- * the box's own logical x there instead; a test-only hook
+ * the box's own logical x there instead, a test-only hook
  * (suite_cube_band_perf.c) for measuring the UI cost of a box whose PANEL
  * row extent (a 90-degree turn maps logical x onto panel rows) starts on a
  * band boundary rather than wherever the inset lands it. */
@@ -123,18 +123,18 @@ static bool menu_open;
 static render_lab_mode_switch_t mode_switch;
 
 /* A scene change can change the layout, and the menu that asks for one runs
- * mid-frame, with a band frame possibly about to begin; so it is taken at
+ * mid-frame, with a band frame possibly about to begin, so it is taken at
  * the top of the next frame, as the layout toggle is. */
 static bool scene_switch_pending;
 
-/* What gfx actually granted at enter(); not simply render_lab_band_mode,
+/* What gfx actually granted at enter(), not simply render_lab_band_mode,
  * which is only the request: gfx falls back to GFX_LAYOUT_FULL_FB if the
  * band ring fails to allocate, and render_lab_frame() has to follow the
  * grant rather than call gfx_band_*() against buffers that were never
  * allocated. */
 static bool band_mode_active;
 
-/* On-screen framerate readout; main.c's own report_fps() only ever reaches
+/* On-screen framerate readout: main.c's own report_fps() only ever reaches
  * a serial console, so this is what lets a scene's own cost be seen with
  * nothing but the board itself. Windowed on dt_ms rather than
  * esp_timer_get_time() like report_fps() does, so this needs nothing beyond
@@ -245,7 +245,7 @@ draw_fps(const input_t* input, bool for_bands) {
 }
 
 /* The BOOT-opened menu holds the runtime rendering options and the scene
- * picker as centered bezel buttons; the place any future option belongs,
+ * picker as centered bezel buttons, the place any future option belongs,
  * rather than growing the persistent HUD in draw_fps(). See menu_open's
  * own comment for why BOOT opens this instead of flipping a toggle
  * directly. */
