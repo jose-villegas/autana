@@ -220,7 +220,7 @@ solid_blocks(uint16_t* depth, uint16_t* out, int blocks, int32_t z, int32_t dz, 
                      "1:\n"
                      : [d] "+r"(depth), [o] "+r"(out), [p] "+r"(p)
                      : [n] "r"(blocks), [c] "r"(&color), [b] "r"(&bias)
-                     : "sar", "memory");
+                     : "memory");
 }
 
 /* Where the whole 8-pixel blocks of a span start, or false when it has
