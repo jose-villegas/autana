@@ -211,10 +211,12 @@ gfx_font_run_box_rect_dilated(const gfx_font_t* f, int x, int y, int row0, int r
 
 /* One coalesced box of a glyph's own set bits - [row0, row1) x [col0,
  * col1], in glyph-local coordinates, before any turn is applied. What
- * gfx_font_glyph_run_boxes() below emits instead of one entry per row. */
+ * gfx_font_glyph_run_boxes() below emits instead of one entry per row.
+ * Bytes, like the cell it indexes: every text draw holds arrays of these on
+ * the stack of whichever task draws. */
 typedef struct {
-    int row0, row1;
-    int col0, col1;
+    uint8_t row0, row1;
+    uint8_t col0, col1;
 } gfx_font_run_box_t;
 
 /* A caller's own gfx_font_run_box_t[] needs no more than this many slots
@@ -260,10 +262,10 @@ gfx_font_glyph_run_boxes(const gfx_font_t* f, unsigned char ch, gfx_font_run_box
                 end++;
             }
             if (current_count < GFX_FONT_MAX_OPEN_RUNS) {
-                current[current_count].row0 = row;
-                current[current_count].row1 = row + 1;
-                current[current_count].col0 = col;
-                current[current_count].col1 = end;
+                current[current_count].row0 = (uint8_t)row;
+                current[current_count].row1 = (uint8_t)(row + 1);
+                current[current_count].col0 = (uint8_t)col;
+                current[current_count].col1 = (uint8_t)end;
                 current_count++;
             }
             col = end + 1;
@@ -288,7 +290,7 @@ gfx_font_glyph_run_boxes(const gfx_font_t* f, unsigned char ch, gfx_font_run_box
                 current_matched[found] = true;
                 if (next_open_count < GFX_FONT_MAX_OPEN_RUNS) {
                     next_open[next_open_count] = open_runs[p];
-                    next_open[next_open_count].row1 = row + 1;
+                    next_open[next_open_count].row1 = (uint8_t)(row + 1);
                     next_open_count++;
                 }
             } else if (n < max_out) {

@@ -363,14 +363,20 @@ test_the_header_is_present_in_portrait_and_absent_in_landscape(void) {
     TEST_ASSERT_EQUAL_INT(0, layout_for(true).header.h);
 }
 
+/* Out of line, so the whole layout is off the stack under the taps. */
+static __attribute__((noinline)) mu_Rect
+dither_rect(bool landscape) {
+    return layout_for(landscape).dither;
+}
+
 static void
 test_the_dither_dropdown_picks_from_its_list(void) {
     tap_fixture(SAND_COLOUR_16, false);
-    const options_screen_layout_t lay = layout_for(false);
-    TEST_ASSERT_FALSE(any_hit(tap(lay.dither)));
+    const mu_Rect dither = dither_rect(false);
+    TEST_ASSERT_FALSE(any_hit(tap(dither)));
 
-    const mu_Rect list = ui_dropdown_list_rect(lay.dither, DITHER_COUNT, lay.dither.h, canvas_h(false), UI_MARGIN);
-    const sand_options_hits_t hits = tap_at(list.x + list.w / 2, list.y + lay.dither.h / 2);
+    const mu_Rect list = ui_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(false), UI_MARGIN);
+    const sand_options_hits_t hits = tap_at(list.x + list.w / 2, list.y + dither.h / 2);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, hits.dither, "the top row of the list is the first dither");
     TEST_ASSERT_FALSE_MESSAGE(hits.color >= 0, "the list, not a tile beneath it, takes the tap");
 }
@@ -378,13 +384,12 @@ test_the_dither_dropdown_picks_from_its_list(void) {
 static void
 test_a_landscape_tap_picks_the_open_dither_list_row(void) {
     tap_fixture(SAND_COLOUR_16, true);
-    const options_screen_layout_t lay = layout_for(true);
-    TEST_ASSERT_FALSE(any_hit(tap(lay.dither)));
-    const mu_Rect list = ui_dropdown_list_rect(lay.dither, DITHER_COUNT, lay.dither.h, canvas_h(true), UI_MARGIN);
+    const mu_Rect dither = dither_rect(true);
+    TEST_ASSERT_FALSE(any_hit(tap(dither)));
+    const mu_Rect list = ui_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(true), UI_MARGIN);
     const int row = 2;
-    const int scroll = ui_dropdown_list_scroll(menu.draft.dither, DITHER_COUNT, lay.dither.h, list.h);
-    const sand_options_hits_t hits =
-        tap_at(list.x + list.w / 2, list.y + row * lay.dither.h - scroll + lay.dither.h / 2);
+    const int scroll = ui_dropdown_list_scroll(menu.draft.dither, DITHER_COUNT, dither.h, list.h);
+    const sand_options_hits_t hits = tap_at(list.x + list.w / 2, list.y + row * dither.h - scroll + dither.h / 2);
     TEST_ASSERT_EQUAL_INT(row, hits.dither);
     TEST_ASSERT_FALSE(hits.color >= 0);
 }
@@ -413,15 +418,15 @@ static void
 assert_a_drag_scrolls_the_dither_list(bool landscape) {
     tap_fixture(SAND_COLOUR_16, landscape);
     menu.draft.dither = 0;
-    const options_screen_layout_t lay = layout_for(landscape);
-    TEST_ASSERT_FALSE(any_hit(tap(lay.dither)));
-    const mu_Rect list = ui_dropdown_list_rect(lay.dither, DITHER_COUNT, lay.dither.h, canvas_h(landscape), UI_MARGIN);
+    const mu_Rect dither = dither_rect(landscape);
+    TEST_ASSERT_FALSE(any_hit(tap(dither)));
+    const mu_Rect list = ui_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(landscape), UI_MARGIN);
     const mu_Container* cnt = open_list(list);
     TEST_ASSERT_NOT_NULL_MESSAGE(cnt, "the tap must have opened the list");
-    TEST_ASSERT_LESS_THAN_INT_MESSAGE(DITHER_COUNT * lay.dither.h, list.h, "a list that fits has nothing to scroll");
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(DITHER_COUNT * dither.h, list.h, "a list that fits has nothing to scroll");
     const int before = cnt->scroll.y;
     const int x = list.x + list.w / 2;
-    const int y0 = list.y + list.h - lay.dither.h / 2;
+    const int y0 = list.y + list.h - dither.h / 2;
     finger_at(landscape, true, false, x, y0);
     for (int i = 0; i < 3; i++) {
         finger_at(landscape, false, false, x, y0);
