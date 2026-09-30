@@ -1,10 +1,10 @@
 /*
  * r3d_lit_mesh - a triangle mesh whose lighting was baked into one sRGB colour
- * per vertex, split into spatial clusters so a renderer culls a cluster's
- * vertices and triangles together. Each cluster owns a contiguous range of
- * both arrays, and its triangles index only its own vertices. The clusters
- * are the leaves of a tree rooted at nodes[0], so a whole subtree is culled
- * with one box test.
+ * per vertex, split into meshlets: compact clusters of a few dozen triangles.
+ * A renderer culls a cluster's vertices and triangles together. Each cluster
+ * owns a contiguous range of both arrays, and its triangles index only its
+ * own vertices. The clusters are the leaves of a tree rooted at nodes[0], so
+ * a whole subtree is culled with one box test.
  */
 #pragma once
 

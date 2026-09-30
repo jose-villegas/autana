@@ -32,7 +32,7 @@ here into one sRGB colour per vertex, with the mesh tools in launcher/tools/r3d:
    vertices, and small props keep a reserved share (--props-share).
    --simplifier quadric runs per-material decimation, then splits where the
    sun's exposure changes, for comparison.
-4. Triangles are grouped into an octree whose leaves are clusters.
+4. The triangles become meshlets under an octree (tools/r3d/lit_mesh.py).
 
 What is here is Sponza's own: which materials are thin sheets, how hard to
 decimate each and where a camera may stand. tools/r3d/lit_mesh.py clusters,
@@ -160,8 +160,6 @@ def main():
     parser.add_argument("--ambient", type=float, default=0.06)
     parser.add_argument("--tonemap-white", type=float, default=0.35)
     parser.add_argument("--ray-offset", type=float, default=0.5)
-    parser.add_argument("--leaf-triangles", type=int, default=160, help="most triangles an octree leaf holds")
-    parser.add_argument("--max-depth", type=int, default=10)
     parser.add_argument("--out-dir", required=True, help="where <name>_mesh_generated.h and .c are written")
     parser.add_argument("--name", default="sponza", help="prefix of the files and of every symbol they define")
     parser.add_argument("--visibility-rounds", type=int, default=160)
@@ -247,9 +245,10 @@ def main():
     if args.npz:
         np.savez_compressed(args.npz, pos=positions, rgb=rgb, tris=tris, double=tri_double)
 
-    counts = write_lit_mesh(args.out_dir, args.name, positions, rgb, tris, tri_double, banner_lines(args),
-                            args.leaf_triangles, args.max_depth, POSITION_SCALE)
-    log("emitted {} vertices, {} triangles, {} clusters, {} nodes".format(*counts))
+    mesh = write_lit_mesh(args.out_dir, args.name, positions, rgb, tris, tri_double, banner_lines(args),
+                          position_scale=POSITION_SCALE)
+    log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, "
+        f"{len(mesh.nodes)} nodes")
 
 
 def banner_lines(args):
@@ -266,9 +265,9 @@ def banner_lines(args):
         "Crytek Sponza (Frank Meinl, Crytek; CC BY 3.0), from the OBJ in",
         "McGuire's Computer Graphics Archive, casual-effects.com/data.",
         "Simplified, lit by a sun and sky with baked shadows, one sRGB colour",
-        "per vertex, clusters as the leaves of an octree. Other settings:",
+        "per vertex. Other settings:",
         f"  --max-edge {args.max_edge:g} --sun {args.sun[0]:g} {args.sun[1]:g} {args.sun[2]:g}",
-        f"  --sun-rays {args.sun_rays} --sky-rays {args.sky_rays} --leaf-triangles {args.leaf_triangles}",
+        f"  --sun-rays {args.sun_rays} --sky-rays {args.sky_rays}",
     ]
 
 

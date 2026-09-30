@@ -207,6 +207,22 @@ test_both_bakes_have_the_structure_the_pipeline_relies_on(void) {
     r3d_lit_mesh_expect_valid(&sponza_lite_mesh);
 }
 
+/* The baked clusters are meshlets: none over 32 triangles, and sharing
+ * vertices enough that a cluster holds fewer vertices than triangles. */
+static void
+check_the_clusters_are_meshlets(const r3d_lit_mesh_t* mesh) {
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        TEST_ASSERT_TRUE_MESSAGE(mesh->clusters[c].triangle_count <= 32, "a cluster is bigger than a meshlet");
+    }
+    TEST_ASSERT_TRUE_MESSAGE(mesh->vertex_count < mesh->triangle_count, "meshlets do not share their vertices");
+}
+
+static void
+test_both_bakes_are_cut_into_meshlets(void) {
+    check_the_clusters_are_meshlets(&sponza_mesh);
+    check_the_clusters_are_meshlets(&sponza_lite_mesh);
+}
+
 static void
 test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(void) {
     check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(&sponza_mesh);
@@ -282,6 +298,7 @@ test_the_flythrough_sees_mostly_building(void) {
 static void
 run_sponza_suite(void) {
     RUN_TEST(test_both_bakes_have_the_structure_the_pipeline_relies_on);
+    RUN_TEST(test_both_bakes_are_cut_into_meshlets);
     RUN_TEST(test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps);
     RUN_TEST(test_the_flythrough_moves_smoothly_and_closes_its_loop);
     RUN_TEST(test_the_flythrough_keeps_clear_of_every_triangle);

@@ -1,23 +1,25 @@
-"""A cluster tree: triangles split by centroid into an octree whose leaves become clusters."""
+"""A cluster tree: clusters split by centre into an octree whose leaves hold runs of clusters."""
 
 import numpy as np
 
 
-def build_octree(positions, tris, leaf_triangles, max_depth):
-    """Splits the triangles by centroid until a node holds leaf_triangles or
-    fewer. Only axes at least half as long as the node's longest are split,
-    so a long thin node halves along its length first."""
-    centroid = positions[tris].mean(axis=1)
+def build_octree(points, weights, leaf_weight, max_depth):
+    """Splits the items by point until a node holds one item, or items whose
+    weights sum to leaf_weight or less. Only axes at least half as long as
+    the node's longest are split, so a long thin node halves along its
+    length first."""
+    points = np.asarray(points, dtype=np.float64)
+    weights = np.asarray(weights)
 
     def build(members, lo, hi, depth):
-        if len(members) <= leaf_triangles or depth >= max_depth:
+        if len(members) == 1 or weights[members].sum() <= leaf_weight or depth >= max_depth:
             return {"leaf": members}
         extent = hi - lo
         axes = [a for a in range(3) if extent[a] >= 0.5 * extent.max()]
         mid = (lo + hi) / 2
         code = np.zeros(len(members), dtype=np.int64)
         for bit, a in enumerate(axes):
-            code |= (centroid[members, a] >= mid[a]).astype(np.int64) << bit
+            code |= (points[members, a] >= mid[a]).astype(np.int64) << bit
         children = []
         for c in np.unique(code):
             clo, chi = lo.copy(), hi.copy()
@@ -31,23 +33,19 @@ def build_octree(positions, tris, leaf_triangles, max_depth):
             return children[0]
         return {"children": children}
 
-    return build(np.arange(len(tris)), positions.min(axis=0), positions.max(axis=0), 0)
+    return build(np.arange(len(points)), points.min(axis=0), points.max(axis=0), 0)
 
 
-def flatten_octree(root, tri_double):
-    """Nodes breadth first, so each node's children sit together; leaves'
-    clusters depth first, so a subtree's clusters sit together too. A leaf
-    holding both single- and double-sided triangles owns two clusters."""
-    clusters = []
+def flatten_octree(root):
+    """Returns (order, nodes): the items in leaf order, and the nodes breadth
+    first, so each node's children sit together while a subtree's items sit
+    together in `order`; a leaf's first and count index `order`."""
+    order = []
 
     def collect(node):
         if "leaf" in node:
-            node["first_cluster"] = len(clusters)
-            for double in (False, True):
-                members = node["leaf"][tri_double[node["leaf"]] == int(double)]
-                if len(members):
-                    clusters.append((double, members))
-            node["cluster_count"] = len(clusters) - node["first_cluster"]
+            node["first_item"] = len(order)
+            order.extend(int(m) for m in node["leaf"])
         else:
             for child in node["children"]:
                 collect(child)
@@ -59,12 +57,12 @@ def flatten_octree(root, tri_double):
     while i < len(queue):
         node = queue[i]
         if "leaf" in node:
-            nodes.append({"leaf": True, "first": node["first_cluster"], "count": node["cluster_count"]})
+            nodes.append({"leaf": True, "first": node["first_item"], "count": len(node["leaf"])})
         else:
             nodes.append({"leaf": False, "first": len(queue), "count": len(node["children"])})
             queue.extend(node["children"])
         i += 1
-    return clusters, nodes
+    return order, nodes
 
 
 def node_bounds(nodes, clusters):
