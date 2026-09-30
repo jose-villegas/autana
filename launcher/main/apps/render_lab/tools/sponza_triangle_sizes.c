@@ -36,7 +36,7 @@ static void*
 checked_malloc(size_t bytes) {
     void* p = malloc(bytes);
     if (p == NULL) {
-        fputs("out of memory\n", stderr);
+        (void)fputs("out of memory\n", stderr);
         exit(1);
     }
     return p;
@@ -175,25 +175,32 @@ channel_gap(uint16_t a, uint16_t b) {
 static void
 keep_frame(const char* dir, bool compare, int pose, const uint16_t* color) {
     char path[512];
-    snprintf(path, sizeof path, "%s/pose_%02d.raw", dir, pose);
+    const int length = snprintf(path, sizeof path, "%s/pose_%02d.raw", dir, pose);
+    if (length < 0 || (size_t)length >= sizeof path) {
+        (void)fputs("frame directory path too long\n", stderr);
+        exit(1);
+    }
     FILE* f = fopen(path, compare ? "rb" : "wb");
     if (f == NULL) {
-        fprintf(stderr, "cannot open %s\n", path);
+        (void)fprintf(stderr, "cannot open %s\n", path);
         exit(1);
     }
     if (!compare) {
-        fwrite(color, sizeof(*color), PIXELS, f);
-        fclose(f);
+        const size_t wrote = fwrite(color, sizeof(*color), PIXELS, f);
+        if (fclose(f) != 0 || wrote != PIXELS) {
+            (void)fprintf(stderr, "cannot write %s\n", path);
+            exit(1);
+        }
         return;
     }
     uint16_t* before = checked_malloc(PIXELS * sizeof(*before));
     const size_t got = fread(before, sizeof(*before), PIXELS, f);
     const bool longer = fgetc(f) != EOF;
-    fclose(f);
+    (void)fclose(f); /* read only: a failed close loses nothing */
     long differ = 0;
     int worst = 0;
     if (got != PIXELS || longer) {
-        fprintf(stderr, "%s is not a %dx%d frame\n", path, WIDTH, HEIGHT);
+        (void)fprintf(stderr, "%s is not a %dx%d frame\n", path, WIDTH, HEIGHT);
         exit(1);
     }
     for (size_t i = 0; i < PIXELS; i++) {
@@ -203,19 +210,20 @@ keep_frame(const char* dir, bool compare, int pose, const uint16_t* color) {
             worst = gap > worst ? gap : worst;
         }
     }
-    printf("  pose %2d: %ld of %zu pixels differ (%.3f%%), largest channel gap %d of 255\n", pose, differ, PIXELS,
-           100.0 * (double)differ / (double)PIXELS, worst);
+    (void)printf("  pose %2d: %ld of %zu pixels differ (%.3f%%), largest channel gap %d of 255\n", pose, differ, PIXELS,
+                 100.0 * (double)differ / (double)PIXELS, worst);
     free(before);
 }
 
 static void
 print_sizes(const char* label, const sizes_t* s) {
     const double n = s->drawn > 0 ? (double)s->drawn : 1.0;
-    printf("%-8s drawn %6ld | 0: %5.1f%% (box empty %5.1f%%) | 1: %5.1f%% | 2-4: %5.1f%% | >4: %5.1f%% | box <= 2x2: "
-           "%5.1f%%\n",
-           label, s->drawn, 100.0 * (double)s->bins[BIN_ZERO] / n, 100.0 * (double)s->box_empty / n,
-           100.0 * (double)s->bins[BIN_ONE] / n, 100.0 * (double)s->bins[BIN_TWO_TO_FOUR] / n,
-           100.0 * (double)s->bins[BIN_MORE] / n, 100.0 * (double)s->box_two_by_two / n);
+    (void)printf(
+        "%-8s drawn %6ld | 0: %5.1f%% (box empty %5.1f%%) | 1: %5.1f%% | 2-4: %5.1f%% | >4: %5.1f%% | box <= 2x2: "
+        "%5.1f%%\n",
+        label, s->drawn, 100.0 * (double)s->bins[BIN_ZERO] / n, 100.0 * (double)s->box_empty / n,
+        100.0 * (double)s->bins[BIN_ONE] / n, 100.0 * (double)s->bins[BIN_TWO_TO_FOUR] / n,
+        100.0 * (double)s->bins[BIN_MORE] / n, 100.0 * (double)s->box_two_by_two / n);
 }
 
 int
@@ -233,8 +241,8 @@ main(int argc, char** argv) {
     uint16_t* color = checked_malloc(PIXELS * sizeof(uint16_t));
     uint16_t* depth = checked_malloc(PIXELS * sizeof(uint16_t));
 
-    printf("Sponza, %d triangles, rendered %dx%d; triangles by pixel centres covered\n", mesh->triangle_count, WIDTH,
-           HEIGHT);
+    (void)printf("Sponza, %d triangles, rendered %dx%d; triangles by pixel centres covered\n", mesh->triangle_count,
+                 WIDTH, HEIGHT);
     sizes_t total = {0};
     const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
     int pose = 0;
@@ -245,7 +253,9 @@ main(int argc, char** argv) {
         sizes_t s = {0};
         size_pose(mesh, &view, visible, count, &s);
         char label[16];
-        snprintf(label, sizeof label, "t=%us", (unsigned)(t_ms / 1000));
+        if (snprintf(label, sizeof label, "t=%us", (unsigned)(t_ms / 1000)) < 0) {
+            return 1;
+        }
         print_sizes(label, &s);
         total.drawn += s.drawn;
         total.box_empty += s.box_empty;

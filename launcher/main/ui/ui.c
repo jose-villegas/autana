@@ -436,7 +436,7 @@ typedef struct {
     mu_Rect rect;          /* UI_BAND_ENTRY_FILL_RECT only */
     mu_Color color;        /* UI_BAND_ENTRY_FILL_RECT only */
     int y0, y1;            /* this entry's own row range - ignored when always is true */
-    bool always;           /* replay regardless of a band's own range: CLIP_RESET,
+    bool always;           /* replay regardless of a band's own range: UI_BAND_ENTRY_CLIP_RESET,
                                 and any command type command_row_range() does not
                                 recognise (currently just MU_COMMAND_CLIP, whose
                                 effect is state for what follows, not pixels of
