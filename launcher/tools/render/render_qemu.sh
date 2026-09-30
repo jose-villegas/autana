@@ -8,7 +8,7 @@
 #
 # The second backend of the host render harness: the same scenes, the real
 # Xtensa image instead of a host build. The capture itself is entirely
-# test/run_qemu_tests.sh's - it builds the no-autorun image in
+# test/run_qemu_tests.sh's, it builds the no-autorun image in
 # build.qemu.shell/, boots it, asks its console for the screen and writes a
 # PNG plus a state .json exactly as autana screenshot does from a board.
 # Nothing here re-implements any of that.

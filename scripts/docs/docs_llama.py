@@ -225,7 +225,7 @@ def pid_file():
 
 
 def stop():
-    """End the server this module started, and the model processes under it - no other."""
+    """End the server this module started, and the model processes under it, no other."""
     try:
         pid = int(pid_file().read_text(encoding="ascii"))
     except (OSError, ValueError):

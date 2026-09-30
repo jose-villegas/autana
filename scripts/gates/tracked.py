@@ -1,4 +1,4 @@
-"""The files git tracks under a root - what CI sees, not whatever a build or a
+"""The files git tracks under a root; what CI sees, not whatever a build or a
 checkout nested inside this one has left beside them."""
 import fnmatch
 import pathlib
@@ -26,7 +26,7 @@ def tracked_files(root, patterns=()):
 
     A git listing is taken once per root and pattern set and then reused: a
     gate reads one snapshot of the tree, and re-listing per lookup made the
-    citations gate four times slower. Outside git - a test fixture - every
+    citations gate four times slower. Outside git (a test fixture), every
     file under `root` instead, never cached, since a fixture changes between
     calls."""
     root = pathlib.Path(root)

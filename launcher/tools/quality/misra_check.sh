@@ -2,7 +2,7 @@
 #
 # Runs Cppcheck's MISRA C:2012 addon (plus its native defect checks) over
 # app source, using a real ESP-IDF compile_commands.json so include paths
-# and macros resolve correctly - a standalone run without one produces
+# and macros resolve correctly; a standalone run without one produces
 # mostly noise (unresolved types make almost everything look like a 10.x
 # essential-type violation).
 #
@@ -10,14 +10,14 @@
 # argument, a timeout or a cppcheck failure exits non-zero, so a report
 # consumer cannot patch from a truncated report. The whole
 # of main/ currently turns up ~6400 MISRA findings of its own (dominated by
-# 12.1, 10.4 and 15.5 - see below), so gating CI on this before triage
+# 12.1, 10.4 and 15.5, see below), so gating CI on this before triage
 # would just be a wall no one reads. Flip EXIT_ON_FINDINGS below once a
 # rule set has been chosen and the backlog triaged.
 #
 # Usage:
 #   tools/quality/misra_check.sh [build_dir] [file_filter]
 #
-#   build_dir     defaults to build.dev - must have compile_commands.json
+#   build_dir     defaults to build.dev; must have compile_commands.json
 #                 (run `autana build dev` first if it doesn't)
 #   file_filter   cppcheck --file-filter glob, defaults to the sand app
 #                 (pass "*/main/*" for the whole project, minus vendored
@@ -33,12 +33,12 @@
 #                          to 150 (the whole project under main/ is ~80)
 #
 # NEVER pass a bare "*". --file-filter controls what cppcheck actually
-# ANALYZES, not just what gets reported -- "*" matches every translation
+# ANALYZES, not just what gets reported; "*" matches every translation
 # unit in compile_commands.json, well over a thousand on this repo and
 # nearly all of them vendored ESP-IDF code, none of it main/ code worth a
 # finding. That runs cppcheck's MISRA addon over the whole SDK for nothing,
 # past 12GB of RAM, with no end in sight. "*/main/*" scopes
-# analysis to the ~80 real translation units under main/ instead -- use
+# analysis to the ~80 real translation units under main/ instead; use
 # that for a whole-project scan, not "*". The filter is checked for shape
 # and then the matches are counted, so a filter that reaches that far is
 # refused before cppcheck starts rather than discovered an hour in.
@@ -59,7 +59,7 @@ MAX_UNITS="${MISRA_MAX_UNITS:-150}"
 
 # Anchored at the front, so "*/managed_components/*/main/*" cannot pass by
 # merely containing the word. The filter's shape is only half the guard
-# though - it is matched against whatever absolute paths the compile database
+# though; it is matched against whatever absolute paths the compile database
 # holds, so a checkout living under a directory called main/ would satisfy
 # any spelling of this. What is actually analysed is counted below, and that
 # count is what refuses to run.
@@ -152,7 +152,7 @@ echo "Scanning '$FILE_FILTER' against $BUILD_DIR/compile_commands.json ($JOBS jo
 cd "$LAUNCHER_DIR"
 
 # A compile database lists the files that existed when it was generated, and
-# cppcheck only complains when the filter matches NOTHING - so a file added
+# cppcheck only complains when the filter matches NOTHING, so a file added
 # since the last build is skipped in silence and the report reads as a clean
 # one. material_palette.c was a week old and in no build directory here.
 # Naming what will actually be analysed is the cheapest way to notice.

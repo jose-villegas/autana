@@ -12,7 +12,7 @@ import strip_comment_rules  # noqa: E402
 class SameLineRuleTest(unittest.TestCase):
     def test_a_rule_drawn_on_the_same_line_as_its_text_is_detected(self):
         # The form this tree actually uses for a drawn-rule heading: a short
-        # leading run, the title, then padding out to the margin - all on one
+        # leading run, the title, then padding out to the margin, all on one
         # line, unlike the multi-line "/*====" banner has_rule already finds.
         source = "void f(void) {\n"
         source += "/* --- suite --------------------------------------------------- */\n"
@@ -37,7 +37,7 @@ class SameLineRuleTest(unittest.TestCase):
 
     def test_a_same_line_rule_beside_a_colon_and_prose_keeps_every_word(self):
         # suite_gfx.c's real shape: leading "---", a title with its own
-        # punctuation, then a long trailing pad - every prose word must
+        # punctuation, then a long trailing pad; every prose word must
         # survive, only the dash runs go.
         source = ("void f(void) {\n"
                   "/* --- gfx_blit_dither: image-over-live-content compositing ---- */\n"
@@ -67,7 +67,7 @@ class SameLineRuleTest(unittest.TestCase):
 
     def test_widening_to_three_does_not_eat_a_leading_triple_star_emphasis(self):
         # LEAD_RULE/TAIL_RULE dropped from a 4-char run to 3 to strip this
-        # tree's real "---" padding - which must not also start stripping a
+        # tree's real "---" padding, which must not also start stripping a
         # genuine "***" emphasis marker a prose line happens to open with.
         source = ("void f(void) {\n"
                   "/* =====================================================\n"

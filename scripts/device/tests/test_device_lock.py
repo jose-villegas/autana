@@ -52,7 +52,7 @@ class LivenessTests(unittest.TestCase):
             4242, self.kill_raising(OSError(errno.EIO, "io"))))
 
     def detached_sleeper(self):
-        """A live process on a DIFFERENT console from this one - the case an
+        """A live process on a DIFFERENT console from this one, the case an
         agent under Git Bash and one under PowerShell or Codex are in."""
         flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
         child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
@@ -898,8 +898,8 @@ class PreviousHolderTests(unittest.TestCase):
 class ProtocolTests(unittest.TestCase):
     """LOCK_PROTOCOL: the mutex is guard() (an O_CREAT|O_EXCL file); these JSON
     records are the state it protects. A protocol mismatch is never a reason
-    to stop - two machines with different-aged autana installs still have to
-    work the same board - only information shown in status and while waiting."""
+    to stop: two machines with different-aged autana installs still have to
+    work the same board, only information shown in status and while waiting."""
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -913,7 +913,7 @@ class ProtocolTests(unittest.TestCase):
 
     def write_foreign_lock(self, protocol, pid=99, autana_version="9.9.9"):
         """pid 99 is dead per this test class's is_alive (only 1 and this
-        process's own pid are alive) - the default names a reclaimable
+        process's own pid are alive); the default names a reclaimable
         holder; pass pid=1 for a live one a claim must leave standing."""
         record = {
             "acquired_at": 1000, "heartbeat_at": 1000, "expected_build_id": "",
@@ -927,7 +927,7 @@ class ProtocolTests(unittest.TestCase):
         self.lock.write_json(self.lock.lock_path("COM5"), record)
 
     def test_a_live_holder_of_a_different_protocol_is_just_waited_for(self):
-        """No exception, no refusal - a claim behind a live foreign-protocol
+        """No exception, no refusal; a claim behind a live foreign-protocol
         holder is queued exactly like any other live holder."""
         self.write_foreign_lock(protocol=99, pid=1)
         ticket = self.lock.enqueue("COM5", "me", "flash", pid=1)
@@ -938,7 +938,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_a_live_holder_with_no_protocol_field_is_queued_behind_and_named(self):
         """A lock written before LOCK_PROTOCOL existed (no "protocol" or
-        "autana_version" key at all) reads as protocol 0, unknown version -
+        "autana_version" key at all) reads as protocol 0, unknown version,
         still just waited for, and status/the wait notice both name it,
         never crash reading a field it lacks."""
         self.write_foreign_lock(protocol=None, pid=1, autana_version=None)
@@ -981,7 +981,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_a_foreign_lock_is_not_ours_to_heartbeat_or_release(self):
         """No token of ours ever matches a foreign lock's, so these return the
-        same "not mine" answer as any other lock we do not hold - no crash,
+        same "not mine" answer as any other lock we do not hold, no crash,
         whatever its protocol."""
         self.write_foreign_lock(protocol=99)
         self.assertFalse(self.lock.heartbeat("COM5", "not-mine"))
@@ -1052,7 +1052,7 @@ class LockRecordShapeTests(unittest.TestCase):
     protocol that shape belongs to. A deliberate field addition or removal
     is exactly the case LOCK_PROTOCOL exists for: this failing is the
     reminder to bump LOCK_PROTOCOL (device_lock.py's own docstring on it says
-    why), add a new entry here for the new protocol, and keep the old one -
+    why), add a new entry here for the new protocol, and keep the old one;
     never edit an existing entry to make a red test green without doing that."""
 
     GOLDEN_KEYS = {
@@ -1128,7 +1128,7 @@ class LockRecordShapeTests(unittest.TestCase):
     def test_core_fields_a_lock_reader_needs_are_promised_and_present(self):
         """reclaim_reason()/is_stale() decide whether a lock is live, stale or
         dead from pid/host/heartbeat_at alone, and boards() reads board off
-        any record - PROTOCOL_CORE_FIELDS must promise these regardless of
+        any record; PROTOCOL_CORE_FIELDS must promise these regardless of
         protocol, and this protocol's own golden set must actually carry
         them. purpose/acquired_at decide nothing and are read with .get()."""
         needed = {"owner", "pid", "host", "heartbeat_at", "board", "protocol"}
@@ -1136,7 +1136,7 @@ class LockRecordShapeTests(unittest.TestCase):
         self.assertLessEqual(needed, self.golden("lock"))
 
     def test_core_fields_a_ticket_reader_needs_are_promised_and_present(self):
-        """tickets() sorts on sequence and _claim() matches on ticket -
+        """tickets() sorts on sequence and _claim() matches on ticket;
         both decide something and so must be promised regardless of
         protocol. purpose decides nothing and is read with .get()."""
         needed = {"owner", "pid", "sequence", "ticket", "board", "protocol"}

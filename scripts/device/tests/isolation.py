@@ -9,7 +9,7 @@ folder, where flash snapshots are made, at temporary directories too. A
 project with no lock hook notifies nobody. An audit hook then refuses any
 write this process makes under the roots it replaced, and the run exits
 non-zero if one was attempted, even where the code under test swallowed the
-error - or if a snapshot folder outlived the run.
+error, or if a snapshot folder outlived the run.
 """
 
 import atexit
@@ -64,8 +64,8 @@ def write_config(project, **settings):
 
 @contextlib.contextmanager
 def project(**settings):
-    """A fresh project folder holding `settings` as its autana.local.toml -
-    no file at all when there are none - that every autana script in this
+    """A fresh project folder holding `settings` as its autana.local.toml (
+    no file at all when there are none) that every autana script in this
     process and its children treats as the project while the block runs."""
     with tempfile.TemporaryDirectory(dir=TEMP) as directory:
         if settings:

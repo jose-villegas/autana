@@ -3,7 +3,7 @@ name: Comment Rules
 # The comment rules docs/C-Style-Guide.md states, measured rather than
 # argued: nothing beside code over 500 characters, no file header over 50
 # lines, no comment citing a name, file or heading that is not there,
-# none below apps/ naming an app - nor any engine document - and none
+# none below apps/ naming an app, nor any engine document, and none
 # recording where code moved.
 # Alongside it, the tree-wide invariants documentation and tooling must
 # hold: every citation, down to a named section, resolves, constants match

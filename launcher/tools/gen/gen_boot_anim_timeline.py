@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate main/boot/boot_anim_timeline.h - the boot animation's timing
+"""Generate main/boot/boot_anim_timeline.h: the boot animation's timing
 constants and its scalar settings.
 
     python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h
@@ -15,13 +15,13 @@ tools/anim/bake_tracks.py; this script only reads it to check it.
 
 `camera_focal`, `grid_step_m` and `wave_height_m`/`wave_wavelength_m`/
 `wave_period_ms` are single settings: `camera_focal` is a lens setting
-(small3dlib's own S3L_Camera.focalLength - see boot_anim.h's "The
+(small3dlib's own S3L_Camera.focalLength, see boot_anim.h's "The
 projection" section for what 0 does to it: an orthographic projection, not
 a second code path to maintain); `grid_step_m` is the spacing between floor
 rings, authored in meters and converted at bake time; `wave_height_m`/
 `wave_wavelength_m`/`wave_period_ms` are the ripple's own peak amplitude,
 its crest-to-crest distance, and how long one full cycle takes to pass a
-fixed point (see boot_anim.h's "The wave" section - a genuine radial sine,
+fixed point (see boot_anim.h's "The wave" section, a genuine radial sine,
 height(r, t) = amplitude * sin(2*pi*r/wavelength - 2*pi*t/period)).
 `grid_rings` (how many rings the floor draws before fading out) lives in
 `timing` instead, a plain count with nothing to convert.
@@ -37,7 +37,7 @@ Refuses to emit anything that would draw something broken (curve still being
 drawn when the fade starts, a motion scale that overflows small3dlib) the same way
 gen_zeta_curve.py refuses to ship a curve that fails its own zero check.
 Aesthetic-only concerns (a title letter still flying when the fade starts)
-are a warning, not a refusal - unlike a broken curve, that might be exactly
+are a warning, not a refusal; unlike a broken curve, that might be exactly
 what someone editing the timeline wants.
 """
 
@@ -52,7 +52,7 @@ from gltf import gltf_read  # noqa: E402
 MOTION_ANIMATION = "boot_motion"
 MOTION_NODES = ("camera", "space")
 
-# Must match BOOT_ANIM_TITLE_LEN in boot_anim.h - only used for the
+# Must match BOOT_ANIM_TITLE_LEN in boot_anim.h, only used for the
 # soft landing-before-fade warning below, not emitted anywhere.
 TITLE_LEN = 6
 
@@ -65,7 +65,7 @@ def warn(msg):
     print("gen_boot_anim_timeline.py: warning: " + msg, file=sys.stderr)
 
 
-# One space-unit is one meter - see boot_anim.h's own top comment - so this
+# One space-unit is one meter, see boot_anim.h's own top comment, so this
 # is the SAME conversion boot_anim.c's units() does for the curve/grid's own
 # geometry, not small3dlib's fixed point (S3L_F above). BOOT_ANIM_ONE, not
 # imported from boot_anim.h to keep this script standalone.
@@ -77,34 +77,34 @@ def meters_to_q12(v):
 
 
 # Mirrors BOOT_ANIM_AXIS_FAR_UNITS/BOOT_ANIM_GRID_SPOKE_FAR_UNITS in
-# boot_anim.h (both 500, by design - see that constant's own comment) -
+# boot_anim.h (both 500, by design, see that constant's own comment),
 # duplicated here rather than imported, same reason BOOT_ANIM_ONE above is:
 # this script stays standalone. The worst-case LOCAL-SPACE coordinate an
-# authored keyframe's own space/camera transform ever has to multiply -
+# authored keyframe's own space/camera transform ever has to multiply;
 # an axis/spoke tail is the longest reach this project draws, and this is
 # its value BEFORE that transform (S3L_vec3Xmat4's own input), not after.
 _FAR_UNITS = 500
 _WORST_CASE_S3L_COORD = (_FAR_UNITS * BOOT_ANIM_ONE) >> 3  # BOOT_ANIM_ZETA_TO_S3L
 
 # The scale-overflow guard below trades exactness for a real, defensible
-# margin - see its own comment at the call site for the full derivation.
+# margin, see its own comment at the call site for the full derivation.
 # Conservative on purpose: small3dlib's own matrix COMPOSITION step
 # (S3L_mat4Xmat4 in small3dlib.h, also plain int32_t) has its own overflow
 # risk that scales with rotation too, not just this scale product, and is
-# not modeled exactly here - this check catches the dominant, easily-
+# not modeled exactly here, this check catches the dominant, easily-
 # reasoned-about term (the final per-point multiply), not every path to
 # the same failure.
 _MAX_COMBINED_SCALE = 8
 
 
 def check_transform_scale_overflow(space_scale, camera_scale):
-    """small3dlib's own S3L_vec3Xmat4() (vendored, plain int32_t - this
+    """small3dlib's own S3L_vec3Xmat4() (vendored, plain int32_t; this
     project does not build with S3L_USE_WIDER_TYPES) multiplies a camera-
     space coordinate by a composed space*camera matrix element that is
     itself proportional to authored scale*S3L_F. At this project's own
     largest authored reach (_WORST_CASE_S3L_COORD, from the 500-unit axis/
     spoke tail), INT32_MAX / (_WORST_CASE_S3L_COORD * S3L_F) is about
-    16.4 - a combined space*camera scale anywhere near that silently wraps
+    16.4; a combined space*camera scale anywhere near that silently wraps
     the point somewhere nonsensical (signed overflow is undefined
     behaviour in C, not guaranteed wraparound, so "wraps" is the observed
     behaviour, not a guarantee). _MAX_COMBINED_SCALE leaves real headroom
@@ -196,13 +196,13 @@ def validate(cfg):
              "straight into a #define read as a C uint8_t; a value outside "
              "that range would silently wrap rather than fail loudly on "
              "the device" % (timing["title_shadow_alpha"],))
-    # 368/8/5 mirror BOOT_ANIM_TITLE_VIEW_H/the glyph cell in boot_anim.h -
+    # 368/8/5 mirror BOOT_ANIM_TITLE_VIEW_H/the glyph cell in boot_anim.h,
     # the same "named here, not pulled from the C header" convention
     # suite_boot_anim.c's own top comment already uses for this panel's
     # fixed dimensions. Only a COARSE bound: title_amplitude_px/
     # title_wave_amplitude_px are the two knobs that can carry a landed
     # letter off title_height_px, so they stand in as a margin rather than
-    # replaying tween_ease_out()'s own curve here - the exact simulation
+    # replaying tween_ease_out()'s own curve here; the exact simulation
     # is test_the_title_stays_on_the_panel_once_visible() in
     # suite_boot_anim.c, which this only backstops for a value obviously
     # wrong enough that no test run would ever be needed to see it.
@@ -221,12 +221,12 @@ def validate(cfg):
               timing["title_amplitude_px"], timing["title_wave_amplitude_px"]))
     # Exact, not coarse like title_height_px's own bound above: unlike Y,
     # X has no wobble or idle wave added to it once a letter lands (see
-    # boot_anim_title_letter() in boot_anim.h - only p.y gets one) so
+    # boot_anim_title_letter() in boot_anim.h, only p.y gets one) so
     # there is no margin to stand in for here, just the word's own fixed
     # width. 448/8/5/3/6 mirror BOOT_ANIM_TITLE_VIEW_W/the glyph cell/gap/
     # BOOT_ANIM_TITLE_LEN in boot_anim.h, the same "named here" convention
     # as _title_view_h above. No trailing gap after the LAST glyph, which
-    # is why this is LEN cells minus one gap, not LEN cells outright - see
+    # is why this is LEN cells minus one gap, not LEN cells outright, see
     # boot_anim.h's own comment on this section for the same subtraction.
     _title_view_w = 448
     _title_cell_w = 8 * 5 + 3
@@ -262,7 +262,7 @@ def validate(cfg):
              (timing["title_wave_out_ms"], timing["title_wave_fade_ms"]))
 
     # Only worth saying when the calming is actually authored to happen at
-    # all - the default parks title_wave_out_ms at total_ms, where the wave
+    # all; the default parks title_wave_out_ms at total_ms, where the wave
     # simply never calms and there is nothing to warn about. Mirrors the
     # image_start_ms < total_ms guard on its own crossfade warning below.
     if (timing["title_wave_out_ms"] < timing["total_ms"] and
@@ -315,7 +315,7 @@ def validate(cfg):
              "it will still be arriving when the picture starts dissolving"
              % (last_letter_lands, timing["fade_start_ms"]))
 
-    # Only when the crossfade is actually authored to happen at all - the
+    # Only when the crossfade is actually authored to happen at all: the
     # same guard the wave's own warns above use (cfg["wave_height_m"] !=
     # 0), and for the same reason: the inert backward-compat default
     # (image_start_ms == total_ms, see its own setdefault comment) would
@@ -428,7 +428,7 @@ def main():
         fail("keyframes no longer live in the timeline: the camera and space "
              "move by main/boot/boot_anim_motion.glb")
 
-    # pen_finish_ms is newer than fade_start_ms - a file baked before it
+    # pen_finish_ms is newer than fade_start_ms; a file baked before it
     # existed has no way to carry it. Defaulting it to fade_start_ms
     # reproduces exactly what boot_anim_pen() always did before the two
     # were split apart (see its own "TWO PHASES" comment), so an old
@@ -437,17 +437,17 @@ def main():
     timing = cfg.get("timing", {})
     timing.setdefault("pen_finish_ms", timing.get("fade_start_ms"))
 
-    # The wave is newer still - a file baked before it existed has no
+    # The wave is newer still; a file baked before it existed has no
     # wave_* fields at all. Defaulting the height to 0 turns it off
     # outright regardless of wavelength/period, the same "behaves exactly
     # like before this existed" reasoning pen_finish_ms's own default above
-    # uses - an old timeline should not suddenly grow a ripple its author
+    # uses; an old timeline should not suddenly grow a ripple its author
     # never asked for.
     cfg.setdefault("wave_height_m", 0)
     # wave_wavelength_m/wave_period_ms replace an EARLIER version's
-    # wave_decay_m/wave_start_ms/wave_end_ms/wave_ease outright - a genuine
+    # wave_decay_m/wave_start_ms/wave_end_ms/wave_ease outright, a genuine
     # radial sine now, not a travelling front with a decaying trail behind
-    # it (see boot_anim.h's own comment on why) - so this is not a faithful
+    # it (see boot_anim.h's own comment on why), so this is not a faithful
     # reproduction of the old shape for anyone who already had a nonzero
     # wave_height_m under that model, the same honest caveat the
     # front-based rewrite before THIS one already carried (the two are not
@@ -456,22 +456,22 @@ def main():
     # migration.
     cfg.setdefault("wave_wavelength_m", 3 * cfg.get("grid_step_m", 1))
     cfg.setdefault("wave_period_ms", 3000)
-    # wave_in_ms/wave_out_ms are newer again - starting to lerp in a
+    # wave_in_ms/wave_out_ms are newer again: starting to lerp in a
     # second in, and starting to lerp back out a second before the end,
     # are simply reasonable starting points, like wave_wavelength_m/
     # wave_period_ms's own defaults above.
     timing.setdefault("wave_in_ms", 1000)
     timing.setdefault("wave_out_ms",
                       max(1000, timing.get("total_ms", 5800) - 1000))
-    # grid_spokes is newer than the polar grid itself - the radial guide
+    # grid_spokes is newer than the polar grid itself: the radial guide
     # lines used to be a fixed 8, unauthored; 8 is the exact same default
     # for a file baked before this existed, so it keeps looking the way it
     # always did.
     timing.setdefault("grid_spokes", 8)
-    # grid_spoke_dash is newer still - a file baked before it existed drew
+    # grid_spoke_dash is newer still; a file baked before it existed drew
     # every spoke solid, so 0 (solid) is what keeps it looking the same.
     timing.setdefault("grid_spoke_dash", 0)
-    # grid_spoke_start_ms/grid_spoke_draw_ms are newer again - a file baked
+    # grid_spoke_start_ms/grid_spoke_draw_ms are newer again; a file baked
     # before they existed drew every spoke at full length the instant it
     # was eligible to show at all, with no outward reveal of its own. 0/0
     # reproduces exactly that: tween_ramp()'s own "dur_ms of 0 jumps
@@ -480,48 +480,48 @@ def main():
     # have appeared in before these existed.
     timing.setdefault("grid_spoke_start_ms", 0)
     timing.setdefault("grid_spoke_draw_ms", 0)
-    # image_start_ms/image_fade_ms are newer again - a file baked before
+    # image_start_ms/image_fade_ms are newer again; a file baked before
     # they existed had no photograph in it at all, and total_ms is what
     # reproduces that exactly: boot_anim_run() never draws a frame past
     # total_ms, so defaulting image_start_ms TO total_ms means boot_anim_
-    # image_reveal() is 0 for every frame that is ever actually drawn -
+    # image_reveal() is 0 for every frame that is ever actually drawn;
     # the crossfade is authored but never reached, not merely set to a
     # short/instant duration, until someone deliberately pulls it
     # earlier. image_fade_ms's own default only matters once that happens.
-    # title_height_px is newer than the title itself - BOOT_ANIM_TITLE_
+    # title_height_px is newer than the title itself; BOOT_ANIM_TITLE_
     # VIEW_Y used to be a fixed constant in boot_anim.h (derived from a
-    # golden-rectangle construction - see that section's own comment,
-    # still there as this default's own reasoning), so 50 - what it was
-    # fixed at - is what keeps a file baked before this existed landing
+    # golden-rectangle construction, see that section's own comment,
+    # still there as this default's own reasoning), so 50, what it was
+    # fixed at, is what keeps a file baked before this existed landing
     # the title exactly where it always did.
     timing.setdefault("title_height_px", 50)
-    # title_x_px is newer still - BOOT_ANIM_TITLE_VIEW_X was the last of
+    # title_x_px is newer still; BOOT_ANIM_TITLE_VIEW_X was the last of
     # the pair still fixed in boot_anim.h, same golden-rectangle
     # derivation as Y's own default above, hand-nudged from there for
-    # margin (see that section's own comment for the full chain) - 170,
+    # margin (see that section's own comment for the full chain), 170,
     # what it was fixed at, for the same "a file baked before this
     # existed keeps landing the title exactly where it always did" reason.
     timing.setdefault("title_x_px", 170)
-    # title_shadow_dx/dy are newer again - the shadow used to be a fixed
+    # title_shadow_dx/dy are newer again; the shadow used to be a fixed
     # (1, 1) two gfx_text_font() calls always drew, so 1/1 is what keeps
     # a file baked before this existed looking exactly the same rather
     # than silently losing its shadow.
     timing.setdefault("title_shadow_dx", 1)
     timing.setdefault("title_shadow_dy", 1)
-    # title_shadow_alpha is newer again - the shadow used to be fully
+    # title_shadow_alpha is newer again; the shadow used to be fully
     # solid (there was no dithering to be less than that), so 255 is
     # what keeps a file baked before this existed looking exactly the
     # same rather than silently turning translucent.
     timing.setdefault("title_shadow_alpha", 255)
     timing.setdefault("image_start_ms", timing.get("total_ms", 5800))
     timing.setdefault("image_fade_ms", 800)
-    # title_wave_out_ms/title_wave_fade_ms are newer again - the idle wave
+    # title_wave_out_ms/title_wave_fade_ms are newer again; the idle wave
     # used to run at full swing for as long as the title was on screen,
     # with no way to settle it. Defaulting the START of the calming to
     # total_ms means boot_anim_title_wave_reach() is 255 for every frame
     # boot_anim_run() actually draws (it stops at total_ms), so a file
     # baked before these existed keeps its wave running exactly as it
-    # did - the same "default it past the end so it never fires" trick
+    # did: the same "default it past the end so it never fires" trick
     # image_start_ms above already uses.
     timing.setdefault("title_wave_out_ms", timing.get("total_ms", 5800))
     timing.setdefault("title_wave_fade_ms", 600)
@@ -531,7 +531,7 @@ def main():
     if len(sys.argv) == 3:
         validate_motion(load_motion(sys.argv[2]), cfg["timing"])
 
-    # See gen_zeta_curve.py's own comment on this - LF only, so regenerating
+    # See gen_zeta_curve.py's own comment on this; LF only, so regenerating
     # on Windows does not rewrite the file for everyone else.
     sys.stdout.reconfigure(newline="\n")
 

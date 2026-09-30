@@ -8,8 +8,8 @@ of something this tree uses but does not define.
 ESP-IDF is the checkout espressif.idf_path() finds ($IDF_PATH, else
 ~/esp/esp-idf); the C library is the headers of every xtensa-esp-elf
 toolchain under espressif_tools_root(). From ESP-IDF's components/ and
-tools/ it takes every file a doc can cite by path; what C code declares -
-prototypes, definitions, #defines, enum values, type names - with comments
+tools/ it takes every file a doc can cite by path; what C code declares:
+prototypes, definitions, #defines, enum values, type names, with comments
 and string literals blanked, so a name ESP-IDF only calls, quotes or
 mentions is not vocabulary; every CONSTANT_NAME CMake code spells; and
 CONFIG_<NAME> for every Kconfig option. From the toolchain, the same from

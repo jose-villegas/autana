@@ -5,8 +5,8 @@ ESP-IDF.
     python scripts/gates/check_doc_citations.py [--root ROOT] [--require-idf]
 
 A backticked function (`name()`), path or CONSTANT_NAME a doc cites must be
-defined in this tree - the vendored components under launcher/components/
-included - or, for what the firmware uses but does not define, declared
+defined in this tree (the vendored components under launcher/components/
+included) or, for what the firmware uses but does not define, declared
 by ESP-IDF or its toolchain's C library (idf_vocabulary.outside_vocabulary()).
 ESP-IDF counts for every chip it supports, so a name declared only for
 another chip resolves too: that is the check's known limit. A quoted
@@ -37,7 +37,7 @@ PLANS = "docs/plans/"
 SKIP_FENCES = {"sh", "shell", "bash", "console", "text", "output"}
 
 # A citation of one or more sections of a doc: `X.md`'s "Section", or "One"
-# and "Two" in X.md. The backtick around the doc name is optional - both
+# and "Two" in X.md. The backtick around the doc name is optional: both
 # spellings appear in this tree. Quoted phrases are only allowed to pile up
 # behind one doc reference, joined by "," or "and", matching how a comment
 # citing two sections of the same doc actually reads.
@@ -109,7 +109,7 @@ def citations(root):
 
 
 def resolve_doc(root, value, citing_doc=None):
-    """Resolve a citation's path the way this tree actually writes one -
+    """Resolve a citation's path the way this tree actually writes one,
     absolute from the repo root, `launcher/`- or `apps/`-rooted, a bare
     filename found anywhere, or (given the citing document) `../`/`./`
     relative to it. Returns the resolved Path or None. Shared by path
@@ -146,7 +146,7 @@ def path_exists(root, value, citing_doc=None):
 
 def _paragraphs(lines):
     """(start_line, joined_text) for each run of consecutive non-blank
-    lines - the same unit a reader sees as one sentence, so a quoted
+    lines; the same unit a reader sees as one sentence, so a quoted
     section split across a wrapped line still reads as one citation."""
     start, buf = None, []
     for number, line in enumerate(lines, 1):
@@ -170,8 +170,8 @@ class SectionCitation:
 
 
 def section_citations(root):
-    """Every quoted-section citation - `X.md`'s "Section", or "One" and
-    "Two" in X.md - across tracked docs and C comments."""
+    """Every quoted-section citation (`X.md`'s "Section", or "One" and
+    "Two" in X.md) across tracked docs and C comments."""
     root = pathlib.Path(root)
     found = []
 
@@ -243,8 +243,8 @@ def _outside(citation, outside):
 
 def resolve(root, outside):
     """(missing, unchecked): the citations neither this tree nor `outside`,
-    an idf_vocabulary.OutsideVocabulary, defines, and - when `outside` is
-    None, no ESP-IDF to ask - the ones this tree does not define."""
+    an idf_vocabulary.OutsideVocabulary, defines, and, when `outside` is
+    None, no ESP-IDF to ask, the ones this tree does not define."""
     root = pathlib.Path(root)
     vocab = vocabulary(root)
     functions, macros = vocab.functions | vocab.script_functions, vocab.constants

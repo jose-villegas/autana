@@ -1,5 +1,5 @@
 /*
- * launcher_home_render_host - the home screen, drawn on a host through the
+ * launcher_home_render_host, the home screen, drawn on a host through the
  * real ui layer: ui_begin(), microui, ui_end() and gfx.c, unmodified.
  *
  * A render_host.h scene, and the one that exercises the general path
@@ -9,11 +9,11 @@
  * Two frames at a minimum. microui clips a window to the rect it had on the
  * previous frame, and a touchscreen never produces the "point, then click"
  * sequence microui expects, so ui_pointer.c synthesizes hover frames before
- * a press can land - a settled screen is never the first frame.
+ * a press can land; a settled screen is never the first frame.
  *
- * The default list is a FIXTURE: three invented entries with no callbacks -
+ * The default list is a FIXTURE: three invented entries with no callbacks;
  * nothing drawn here came from a real app. `--row <label>`, repeatable,
- * registers the rows a caller states instead - what a comparison against a
+ * registers the rows a caller states instead; what a comparison against a
  * real image's home screen needs, since only that image knows what it
  * registered.
  */

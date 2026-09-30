@@ -3,7 +3,7 @@
 # Build the launcher's firmware: what `autana build` runs, the way to build
 # (docs/tools/Autana-CLI.md). Writing it to the board is the other half of
 # `autana flash`: device.py runs this script before it takes the board's
-# lock, and then, under it, scripts/device/flash_image.sh - the only one of
+# lock, and then, under it, scripts/device/flash_image.sh, the only one of
 # the two that opens the serial port. Nothing here needs a board or a lock.
 #
 # Usage:
@@ -30,7 +30,7 @@
 #               static RAM a capture needs to instrument itself; drops
 #               behaviour coverage, so never a merge gate, and its numbers
 #               compare only with other perf-scoped captures.
-#   IDF_EXPORT  path to ESP-IDF's export script - export.bat on Windows,
+#   IDF_EXPORT  path to ESP-IDF's export script: export.bat on Windows,
 #               export.sh elsewhere. Default: the one under $IDF_PATH.
 #
 # Run from anywhere (it cds to launcher/ itself); double-click from Explorer
@@ -38,13 +38,13 @@
 # "Git Bash Here" -> `./build.sh`.
 #
 # All the logic here is POSIX sh. On Windows the ESP-IDF calls go through
-# tools/build/idf_shim.bat, which exists only to delete MSYSTEM - see tools/build/idf.sh
+# tools/build/idf_shim.bat, which exists only to delete MSYSTEM, see tools/build/idf.sh
 # for the ESP-IDF environment setup.
 #
 # WHY --dev AND --diag BOTH EXIST
 #
 # CONFIG_LAUNCHER_DEVELOPMENT and CONFIG_LAUNCHER_SELFTEST answer different
-# questions - the first is "does this build carry anything meant only for a
+# questions; the first is "does this build carry anything meant only for a
 # developer at the console" (frame timings, the screenshot listener, and the
 # Diagnostics app, whose folder main/CMakeLists.txt excludes unless it is
 # set), the second is "does this build carry the on-device test suites",
@@ -52,11 +52,11 @@
 # `select`s DEVELOPMENT, so a diag build gets both; DEVELOPMENT alone does
 # not pull SELFTEST in (see main/Kconfig.projbuild). --dev and --diag are
 # what expose that same independence here, rather than only ever being able
-# to get instrumentation bundled with the test harness's own footprint -
-# every suite linked in, and run at boot before the shell starts - which is
+# to get instrumentation bundled with the test harness's own footprint:
+# every suite linked in, and run at boot before the shell starts, which is
 # fine on a bench and unwanted just to watch a frame-timing log line or pull
 # a screenshot. Note the Diagnostics app carries its own side effects in
-# EITHER build: entering it re-runs POST, cycling the audio rail - that is
+# EITHER build: entering it re-runs POST, cycling the audio rail; that is
 # the cost of the way in being compiled at all, not of the test suites.
 
 set -euo pipefail

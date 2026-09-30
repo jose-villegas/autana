@@ -33,8 +33,8 @@ def source_paths(root):
 
 
 def _listed(base):
-    """Every file under `base` git would commit - tracked, or new and not
-    ignored - so a build directory's output never counts while
+    """Every file under `base` git would commit (tracked, or new and not
+    ignored), so a build directory's output never counts while
     launcher/tools/build/ does. Outside git (a test fixture), every file
     not under a SKIP directory; tracked.git_listing() raises on any other
     git failure."""
@@ -48,12 +48,12 @@ def _listed(base):
 def _without_comments_or_strings(text, strings=True):
     """`text` with every C/C++ comment and string/char literal blanked to
     spaces (newlines kept, so line numbers and `^`-anchored regexes still
-    line up). C syntax only - `#`, `//` as division, `'` inside a word and a
+    line up). C syntax only, `#`, `//` as division, `'` inside a word and a
     triple-quoted docstring all parse wrong under it, so `vocabulary()` below
     applies this to C and .mjs sources, never to a .py file.
 
-    A name spelled `name()` only inside a comment or a message string - a
-    citation of some OTHER function, say - is not a declaration or a call,
+    A name spelled `name()` only inside a comment or a message string, a
+    citation of some OTHER function, say, is not a declaration or a call,
     so it must not count as the name being defined. Without this, a comment
     that itself cites a dead name (a stale "replaces old_name()") makes
     old_name() look real to every later scan, and a trim that garbles a
@@ -98,7 +98,7 @@ class Vocabulary:
 
     `constants`: spelled in C code or a string literal, #defined, a Kconfig
     option (with or without CONFIG_), an sdkconfig default, or anywhere in a
-    Python or shell script outside its `#` comments - never a name only a
+    Python or shell script outside its `#` comments: never a name only a
     comment spells.
 
     `families`: the first word of every C #define, and CONFIG_ plus the
@@ -137,7 +137,7 @@ def vocabulary(root):
         elif path.suffix == ".py":
             vocab.script_functions |= set(FUNCTION.findall(text))
             # Top-level assignments, and names a script only spells in a
-            # string - an environment variable it reads, a line it matches.
+            # string; an environment variable it reads, a line it matches.
             vocab.constants |= set(PY_CONSTANT.findall(text))
             vocab.constants |= set(CONSTANT.findall(PY_COMMENT.sub("", text)))
         elif path.suffix == ".sh":

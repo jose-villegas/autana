@@ -3,11 +3,11 @@
 
 A run of consecutive own-line `//` comments, or of consecutive own-line
 `/* */` blocks with no code between them, counts as ONE comment, the way a
-reader sees it - otherwise one explanation chopped into several blocks would
+reader sees it; otherwise one explanation chopped into several blocks would
 each score under the limit while the paragraph they form does not. A `//`
 trailing on a code line stands alone. Length is measured
-on the comment's prose - markers, per-line indentation, `*` gutters and the
-blank line inside a paragraph break are stripped first - so reformatting a
+on the comment's prose: markers, per-line indentation, `*` gutters and the
+blank line inside a paragraph break are stripped first, so reformatting a
 comment across more or fewer lines never changes its score.
 
 Usage:
@@ -26,7 +26,7 @@ Options:
 
   --comments-only REF   check nothing about length: assert instead that every
                         changed file differs from REF in COMMENTS ALONE. Proves
-                        a comment-only change moved no code - a diff of
+                        a comment-only change moved no code; a diff of
                         thousands of reflowed comments cannot be read, but it
                         can be checked instead.
 """
@@ -51,8 +51,8 @@ EXCLUDED = (
 )
 
 
-# A drawn rule's run: 3+ of `=`, `_`, `#` or `-` - this tree's own
-# "/* --- title ---- */" padding is exactly 3 dashes - but `*` alone needs
+# A drawn rule's run: 3+ of `=`, `_`, `#` or `-`; this tree's own
+# "/* --- title ---- */" padding is exactly 3 dashes, but `*` alone needs
 # 4+, since a bare "***" is style(9) emphasis, not decoration.
 RULE_RUN = r"(?:[=_#\-]{3,}|[=*_#\-]{4,})"
 
@@ -98,8 +98,8 @@ class Comment:
 
     @property
     def has_rule(self):
-        """Opens with a drawn rule - `/*====`, `//----` - or draws one on the
-        same line as its own text - `/* --- title ---- */`. Decoration this
+        """Opens with a drawn rule (`/*====`, `//----`) or draws one on the
+        same line as its own text: `/* --- title ---- */`. Decoration this
         tree does not use; scripts/gates/strip_comment_rules.py finds any that
         returns."""
         first = self.raw_lines[0].strip()
@@ -113,7 +113,7 @@ class Comment:
 
     @property
     def is_banner(self):
-        """The file's header - its first comment, wherever it sits.
+        """The file's header: its first comment, wherever it sits.
 
         Only meaningful when the whole file was scanned. An edit fragment has
         a first comment too, and it is rarely the file's; code holding a
@@ -251,7 +251,7 @@ def added_lines(ref, path):
 
 
 def comments_at_ref(ref):
-    """Comment prose the base held in files this change deleted or edited -
+    """Comment prose the base held in files this change deleted or edited;
     the only places a verbatim move can come from."""
     files = subprocess.run(
         ["git", "diff", "--name-only", "--no-renames", "--diff-filter=DM", ref],
@@ -269,7 +269,7 @@ def comments_at_ref(ref):
 def file_at_ref(ref, path):
     # text=True alone decodes with the platform default (cp1252 on
     # Windows), which mangles any non-ASCII byte a source file carries (an
-    # em dash, say) into extra characters - harmless for ASCII-only files,
+    # em dash, say) into extra characters; harmless for ASCII-only files,
     # but it makes --comments-only misreport a real code change on one
     # that isn't. Source files are UTF-8; decode them as such.
     r = subprocess.run(["git", "show", f"{ref}:{path}"],
@@ -426,7 +426,7 @@ def main(argv):
               f"  (median offender {lengths[len(lengths) // 2]})")
         print(f"  of those       {banners} file headers,"
               f" {len(over) - banners} beside code")
-        # Headers answer to height, not characters - see Comment.lines.
+        # Headers answer to height, not characters, see Comment.lines.
         heads = [c for c in comments if c.is_banner]
         if heads:
             tall = sum(1 for c in heads if c.lines > 50)
@@ -444,7 +444,7 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    # Defaults come from `git ls-files`, so run from the repo root - but the
+    # Defaults come from `git ls-files`, so run from the repo root, but the
     # caller's own arguments were written relative to wherever they stood.
     args = [os.path.abspath(a) if os.path.exists(a) else a
             for a in sys.argv[1:]]

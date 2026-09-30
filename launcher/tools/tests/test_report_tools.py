@@ -3,7 +3,7 @@
     python -m unittest discover -s launcher/tools/tests
 
 A capture that measured nothing must FAIL rather than turn into a clean-
-looking report - that is what these pin down, since the device itself cannot
+looking report; that is what these pin down, since the device itself cannot
 be asked for an empty capture on demand.
 """
 import os
@@ -107,7 +107,7 @@ class ReporterExitCodeTest(CaptureFixture):
 
 class DeviceReportArgumentsTest(unittest.TestCase):
     """device_report.sh as a report script sources it, with `autana` (not
-    device.py - #454 removed --owner/--worktree/--purpose from it, and
+    device.py, #454 removed --owner/--worktree/--purpose from it, and
     device_report.sh now goes through `autana` like every other command,
     docs/tools/Device-Lock.md) stubbed to record the call instead of
     reaching a board."""
@@ -163,7 +163,7 @@ class DeviceReportArgumentsTest(unittest.TestCase):
         self.assertEqual(argv[3], "selftest")
         self.assertIn("--out", argv)
         self.assertIn("--project", argv)
-        # #454 removed these from every command - a leftover here means
+        # #454 removed these from every command; a leftover here means
         # device_report.sh is passing a flag autana would refuse outright.
         self.assertNotIn("--worktree", argv)
         self.assertNotIn("--purpose", argv)
@@ -190,7 +190,7 @@ class DeviceReportArgumentsTest(unittest.TestCase):
             'report_generate() { :; }\n'
             '. "$2"\n'
             # A function called with arguments gets its own $1/$2/$3 for the
-            # duration of that call - "$3" inside autana() would name one of
+            # duration of that call; "$3" inside autana() would name one of
             # ITS OWN arguments, not this script's. Capture the real path
             # into a named variable first, same as $calls above.
             'owner_out="$3"\n'
