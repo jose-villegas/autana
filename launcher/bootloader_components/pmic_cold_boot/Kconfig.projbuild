@@ -1,0 +1,11 @@
+menu "PMIC cold boot"
+
+    config PMIC_COLD_BOOT_HOST_DRAIN
+        bool "Hold the reset until the host has read the crash output"
+        default n
+        help
+            The PMIC power cycle drops the USB-Serial/JTAG port, and the host
+            loses whatever it had not read yet. A development or diagnostics
+            build waits before the cycle; a release build does not.
+
+endmenu

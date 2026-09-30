@@ -35,3 +35,4 @@ bool pmic_bus_saw_mid_byte_edge(void);
 bool pmic_bus_pin_is_driven_low(uint32_t pin);
 int pmic_bus_gpio_call_count(void);
 bool pmic_bus_saw_delay_us(uint32_t us);
+uint32_t pmic_bus_longest_delay_us(void);
