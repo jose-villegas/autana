@@ -2,7 +2,7 @@
 #
 # Render this app's scenes on a host, with no board and no flash cycle.
 #
-#   ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh [-o <dir>] [--update-baseline]
+#   ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh [-o <dir>] [--update-baseline] [--depth]
 #
 # Each declared render starts on one scene (--scene) via
 # render_lab_start_scene_key and steps 16 ms frames, full-framebuffer
@@ -52,7 +52,7 @@ $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
     find main/apps/render_lab \( -type d \( -name tools -o -name tests \) -prune \) -o \
         \( -type f -name '*.c' ! -name 'suite_*.c' -print \) | LC_ALL=C sort)
 "
-scene_includes="components/small3dlib/include"
+scene_includes="components/small3dlib/include main/apps/render_lab"
 scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
 
 # The integer scenes with the HUD hidden are pinned. Everything carrying the
@@ -91,6 +91,20 @@ cornell-pt-accum|--quarter 1 --scene cornell-pt --frames 45|448x368|nopin
 sponza-landscape|--quarter 1 --no-hud --scene sponza --frames 2|448x368|nopin
 sponza-portrait|--quarter 0 --no-hud --scene sponza --frames 2|368x448|nopin
 "
+
+# --depth: beside each mesh render, its depth buffer and the 8x8 tile view of
+# it (see render_lab_render_host.c). Consumed here, not by render_scene_run.
+_rl_count=$#
+while [ "$_rl_count" -gt 0 ]; do
+    _rl_arg=$1
+    shift
+    if [ "$_rl_arg" = "--depth" ]; then
+        scene_extra_args="--depth @STEM@"
+    else
+        set -- "$@" "$_rl_arg"
+    fi
+    _rl_count=$((_rl_count - 1))
+done
 
 # shellcheck source=../../../../tools/render/render_scene.sh
 . "$SCRIPT_DIR/../../../../tools/render/render_scene.sh"

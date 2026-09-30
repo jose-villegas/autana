@@ -25,6 +25,7 @@
 #include "gfx/gfx.h"
 #include "render/r3d_lit_frame.h"
 #include "render_lab.h"
+#include "render_lab_mesh_frame.h"
 #include "render_lab_scene.h"
 #include "sponza_flythrough.h"
 #include "sponza_lite_mesh_generated.h"
@@ -92,6 +93,11 @@ render(uint32_t dt_ms) {
     sponza_view_at(&view, elapsed_ms, frame.mesh->position_scale, display_shell_quarter());
     stats = r3d_lit_frame_render(&frame, &view);
     rendered = true;
+}
+
+const r3d_lit_frame_t*
+render_lab_mesh_frame(void) {
+    return scratch != NULL ? &frame : NULL;
 }
 
 static void

@@ -36,6 +36,9 @@
 #                   deliberate act: --update-baseline, after looking at the
 #                   images. A render with no pinned hash yet says so and
 #                   passes.
+#   scene_extra_args OPTIONAL; arguments appended to every render, with @STEM@
+#                   replaced by that render's output path minus its extension,
+#                   so a scene can ask its binary for files beside the .bmp.
 #   scene_pin       OPTIONAL, 1 by default. A scene whose pixels are not
 #                   guaranteed identical on every compiler and C library
 #                   declares 0 and says why: it is then checked for its
@@ -87,6 +90,7 @@ render_scene_build() {
     : "${scene_includes:=}"
     : "${scene_defines:=}"
     : "${scene_pin:=1}"
+    : "${scene_extra_args:=}"
 
     # launcher/, wherever this scene lives: beside tools/render/render_scene.sh, or
     # further down in an app's own tools/. Found by walking up to the folder
@@ -197,8 +201,9 @@ render_scene_render() {
                 _rs_video_args="--video $scene_out_dir/$_rs_label.avi"
             fi
 
+            _rs_extra=$(printf '%s' "$scene_extra_args" | sed "s|@STEM@|$scene_out_dir/$_rs_label|g")
             # shellcheck disable=SC2086
-            if ! "$_rs_bin" $_rs_args -o "$_rs_path" $_rs_video_args 2> "$_rs_log"; then
+            if ! "$_rs_bin" $_rs_args $_rs_extra -o "$_rs_path" $_rs_video_args 2> "$_rs_log"; then
                 cat "$_rs_log" >&2
                 echo "FAIL $scene_name/$_rs_label: the renderer exited non-zero" >&2
                 exit 1
