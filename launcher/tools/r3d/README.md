@@ -30,12 +30,13 @@ tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.tx
 ```
 
 `rebake.py` or a full bake: when only what happens after lighting changes,
-the clustering, the levels or the format, `python -m r3d.rebake` rewrites a
-committed mesh from its own triangles and colours in seconds. Anything before
-that stage, the model, its simplification or its light, needs the generator.
-The committed meshes have been rebaked but not regenerated since the
-clustering changed, so a full generator run is still owed. Levels are opt-in
-(`--lod` on either); without it a mesh holds the finest meshlets and cones.
+the format (`--clustering keep`, the default), the clustering (`octree` or
+`meshlet`, with `--meshlet-triangles`) or the levels (`--lod`, meshlets only),
+`python -m r3d.rebake` rewrites a committed mesh from its own triangles and
+colours in seconds. Anything before that stage, the model, its simplification
+or its light, needs the generator. The committed meshes have been rebaked but
+not regenerated since the clustering options were added, so a full generator
+run is still owed.
 
 A generator is a script beside the model's consumer: it loads and bakes the
 model with these modules and ends in one `write_lit_mesh()` call. The banner
