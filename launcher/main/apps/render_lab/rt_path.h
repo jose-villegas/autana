@@ -1,5 +1,5 @@
 /*
- * rt_path - an accumulating path tracer over the same Cornell box
+ * rt_path: an accumulating path tracer over the same Cornell box
  * rt_cornell.h shades with one Whitted bounce: next-event estimation at
  * every hit, a cosine-weighted indirect bounce three deep, and a fixed-point
  * running-mean accumulator so a caller can fold in one more sample per pixel
@@ -95,7 +95,7 @@ void rt_path_schedule_reset(rt_path_schedule_t* sch);
 /* `fb` and `accum` are `width * height` each, row-major, owned by the
  * caller. `accum` may be NULL: the allocation-failure fallback, direct
  * light only, rendered once through the same seeding lattice and never
- * revisited - see rt_path_schedule_advance()'s own comment. */
+ * revisited: see rt_path_schedule_advance()'s own comment. */
 typedef struct {
     gfx_color_t* fb;
     rt_path_accum_px_t* accum;

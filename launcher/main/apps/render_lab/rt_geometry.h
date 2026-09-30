@@ -1,5 +1,5 @@
 /*
- * rt_geometry - the small general tracer a Whitted-style integrator sits on
+ * rt_geometry: the small general tracer a Whitted-style integrator sits on
  * top of: ray/plane, ray/rotated-box, a scene of const walls and boxes plus
  * one light, nearest hit and occlusion. No scene DATA lives here - a scene
  * is built and owned by whoever traces it, such as rt_cornell_scene.c.

@@ -1,5 +1,5 @@
 /*
- * rt_cornell_scene - the Cornell box's own DATA for rt_geometry.h's tracer:
+ * rt_cornell_scene: the Cornell box's own DATA for rt_geometry.h's tracer:
  * walls, boxes and the ceiling light, adapted from the classic Cornell Box
  * reference arrangement (white room, red left / green right, a short and a
  * tall box turned oppositely) at a normalized scale, rather than copied
