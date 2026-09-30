@@ -791,6 +791,40 @@ test_a_plane_below_zero_at_a_corner_is_bounded_by_its_lift(void) {
     TEST_ASSERT_EQUAL_INT32(R3D_DEPTH_NEAREST, r3d_span_plane_bound(INT32_MAX, INT32_MAX, INT32_MAX, box));
 }
 
+/* A span skips its clamps only when the plane is inside the range at every
+ * centre of the box: checked against each centre, with planes small enough
+ * that a corner often lands on 0, on the range's top, or one past either. */
+static void
+test_a_plane_is_in_range_exactly_when_every_centre_of_its_box_is(void) {
+    uint32_t state = 0x1a2b3c4du;
+    int inside = 0;
+    int outside = 0;
+    for (int i = 0; i < 20000; i++) {
+        const int x0 = (int)(next_random(&state) % 20u), y0 = (int)(next_random(&state) % 20u);
+        const r3d_span_box_t box = {x0, x0 + 1 + (int)(next_random(&state) % 12u), y0,
+                                    y0 + 1 + (int)(next_random(&state) % 12u)};
+        const int32_t top = (int32_t)(next_random(&state) % 320u) - 32;
+        const int32_t dx = (int32_t)(next_random(&state) % 41u) - 20;
+        const int32_t dy = (int32_t)(next_random(&state) % 41u) - 20;
+        bool every = true;
+        for (int y = box.y0; y < box.y1; y++) {
+            for (int x = box.x0; x < box.x1; x++) {
+                const int32_t v = top + (dx * (x - box.x0)) + (dy * (y - box.y0));
+                every = every && v >= 0 && v <= 255;
+            }
+        }
+        inside += every;
+        outside += !every;
+        TEST_ASSERT_EQUAL_MESSAGE(every, r3d_span_plane_in_range(top, dx, dy, 255, box),
+                                  "the range check disagrees with the box's centres");
+    }
+    TEST_ASSERT_GREATER_THAN_INT(1000, inside);
+    TEST_ASSERT_GREATER_THAN_INT(1000, outside);
+    /* Past any 32-bit sum at the far corner. */
+    const r3d_span_box_t wide = {0, 1000, 0, 1000};
+    TEST_ASSERT_FALSE(r3d_span_plane_in_range(0, INT32_MAX / 2, INT32_MAX / 2, INT32_MAX, wide));
+}
+
 /* Behind a nearer wall, a triangle leaves both buffers as they were. */
 static void
 test_triangles_behind_a_nearer_wall_leave_colour_and_depth_untouched(void) {
@@ -1866,6 +1900,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_triangle_hidden_in_one_window_still_draws_in_the_other);
     RUN_TEST(test_a_plane_behind_a_wall_is_hidden_and_one_reaching_past_it_is_not);
     RUN_TEST(test_a_plane_below_zero_at_a_corner_is_bounded_by_its_lift);
+    RUN_TEST(test_a_plane_is_in_range_exactly_when_every_centre_of_its_box_is);
     RUN_TEST(test_triangles_behind_a_nearer_wall_leave_colour_and_depth_untouched);
     RUN_TEST(test_a_window_holding_a_few_rows_of_a_tall_sliver_draws_them_as_the_whole_does);
     RUN_TEST(test_a_triangle_with_corners_past_the_snap_range_fills_its_centres);

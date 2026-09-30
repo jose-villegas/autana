@@ -25,6 +25,7 @@ typedef struct {
     int32_t dx[ATTRIBUTES];
     int32_t dy[ATTRIBUTES];
     int x_origin;
+    bool in_range; /* every plane stays inside its range across the whole box */
 } gradients_t;
 
 static inline float
@@ -104,13 +105,20 @@ fill_span(const r3d_span_target_t* target, const gradients_t* g, const int32_t r
     const int count = x_last - x_first;
     int32_t v[ATTRIBUTES];
     int32_t d[ATTRIBUTES];
-    for (int k = 0; k < ATTRIBUTES; k++) {
-        const int32_t start = clamp_value(row[k] + (g->dx[k] * offset), value_max[k]);
-        const int32_t end = start + (g->dx[k] * count);
-        v[k] = start;
-        d[k] = g->dx[k];
-        if (count > 0 && (end < 0 || end > value_max[k])) {
-            d[k] = (clamp_value(end, value_max[k]) - start) / count;
+    if (g->in_range) {
+        for (int k = 0; k < ATTRIBUTES; k++) {
+            v[k] = row[k] + (g->dx[k] * offset);
+            d[k] = g->dx[k];
+        }
+    } else {
+        for (int k = 0; k < ATTRIBUTES; k++) {
+            const int32_t start = clamp_value(row[k] + (g->dx[k] * offset), value_max[k]);
+            const int32_t end = start + (g->dx[k] * count);
+            v[k] = start;
+            d[k] = g->dx[k];
+            if (count > 0 && (end < 0 || end > value_max[k])) {
+                d[k] = (clamp_value(end, value_max[k]) - start) / count;
+            }
         }
     }
     if (r3d_span_stop_after == 3) {
@@ -418,6 +426,15 @@ r3d_span_plane_bound(int32_t top, int32_t dx, int32_t dy, r3d_span_box_t box) {
 }
 
 bool
+r3d_span_plane_in_range(int32_t top, int32_t dx, int32_t dy, int32_t max, r3d_span_box_t box) {
+    const int64_t across = (int64_t)dx * (box.x1 - 1 - box.x0);
+    const int64_t bottom = top + ((int64_t)dy * (box.y1 - 1 - box.y0));
+    const int64_t low = (top < bottom ? top : bottom) + (across < 0 ? across : 0);
+    const int64_t high = (top > bottom ? top : bottom) + (across > 0 ? across : 0);
+    return low >= 0 && high <= max;
+}
+
+bool
 r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, r3d_span_box_t box) {
     for (int y = box.y0; y < box.y1; y++) {
         const uint16_t* depth = target->depth + ((y - target->row0) * target->width);
@@ -451,8 +468,10 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3]
     }
     if (!f->flat && !f->constant_color) {
         colour_gradients(&p, v[0], v[1], v[2], g);
-        for (int k = 1; k < ATTRIBUTES; k++) {
-            row[k] = first_row_value(g, k, box.y0, y_anchor);
+        g->in_range = true;
+        for (int k = 0; k < ATTRIBUTES; k++) {
+            row[k] = k == 0 ? row[0] : first_row_value(g, k, box.y0, y_anchor);
+            g->in_range = g->in_range && r3d_span_plane_in_range(row[k], g->dx[k], g->dy[k], value_max[k], box);
         }
     }
     return true;
