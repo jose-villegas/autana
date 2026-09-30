@@ -1,6 +1,6 @@
 """Read one device profile from device_profiles/, for Python callers.
 
-The sh half is device_profile.sh, and the two parse the SAME files - see
+The sh half is device_profile.sh, and the two parse the SAME files; see
 that script's header for the format's rules and for why a profile may not
 contain anything a shell would have to evaluate. This module is the reason
 that restriction exists: it parses the files itself rather than shelling

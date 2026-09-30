@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate main/boot_anim_curve.h - the zeta curve the startup animation draws.
+"""Generate main/boot_anim_curve.h: the zeta curve the startup animation draws.
 
     python tools/gen/gen_zeta_curve.py > main/boot/boot_anim_curve.h
 
@@ -8,13 +8,13 @@ WHY THIS IS A TABLE AND NOT DEVICE CODE
 The animation plots zeta(1/2 + it) as t rises. That value cannot be had
 cheaply on this device: the Dirichlet series does not converge on the
 critical line, the alternating series that does converges far too slowly to
-be worth 240 evaluations a frame, and it is computed in double precision -
+be worth 240 evaluations a frame, and it is computed in double precision;
 this chip's FPU is single-precision only, so every step of it is still a
 soft-float library call.
 
 None of that matters, because the curve never changes. It is one fixed
 polyline, so it is computed here, once, in double precision, and shipped in
-.rodata where it is memory-mapped from flash at no cost in RAM - about 1.4
+.rodata where it is memory-mapped from flash at no cost in RAM, about 1.4
 KiB of flash.
 
 HOW ZETA IS EVALUATED
@@ -25,7 +25,7 @@ gives full double precision with nothing but the standard library:
     eta(s) ~ -1/d[n] * sum over k of (-1)^k (d[k] - d[n]) / (k+1)^s
     zeta(s) = eta(s) / (1 - 2^(1-s))
 
-Checked against known values before anything is emitted - see main(). If
+Checked against known values before anything is emitted; see main(). If
 those checks ever fail this exits rather than printing a plausible-looking
 table of wrong numbers.
 
@@ -50,8 +50,8 @@ from math import factorial
 
 # 100, not the 64 that was enough while the climb stopped at t ~ 70: Borwein's
 # error bound degrades with the imaginary part, and extending the climb to
-# t ~ 126 brought the same failure back at the new top - an order of 80 was
-# only good to ~3e-4 by t ~ 124 - which the zero check below caught again,
+# t ~ 126 brought the same failure back at the new top (an order of 80 was
+# only good to ~3e-4 by t ~ 124), which the zero check below caught again,
 # being an assertion about a number that should be zero rather than about a
 # number that merely looks plausible. 100 is good to ~3e-9 at the new
 # farthest zero checked (t ~ 124.3), comfortably past this file's 1e-6 bar.
@@ -87,12 +87,12 @@ def zeta(s):
 # These four MUST match boot_anim.h. They are here because the sampling
 # depends on them: a different height or scale wants its points spaced
 # differently.
-T_MAX = 126.0       # BOOT_ANIM_T_MAX - int16 Q8 tops out at 32767/256 =
+T_MAX = 126.0       # BOOT_ANIM_T_MAX; int16 Q8 tops out at 32767/256 =
                     # 127.996; stopped short of that rather than at it, so
                     # rounding a sample's own t up never overflows
-T_PER_Z = 9.0 / 35.0  # BOOT_ANIM_T_PX / BOOT_ANIM_Z_PX - unchanged: a
+T_PER_Z = 9.0 / 35.0  # BOOT_ANIM_T_PX / BOOT_ANIM_Z_PX, unchanged: a
                       # property of the projection, not of how far up it climbs
-STEP = 0.14         # target spacing between samples, in plane units - was
+STEP = 0.14         # target spacing between samples, in plane units, was
                     # 0.18; tightened so the table stays at least 3x its
                     # previous length even though most of the extra T_MAX
                     # this climb already had (70) went into this step
@@ -100,8 +100,8 @@ STEP = 0.14         # target spacing between samples, in plane units - was
 Q = 12              # BOOT_ANIM_Q, for re/im
 TQ = 8              # t is stored in Q8: 126 * 256 still fits an int16
 
-# Where phase 1 of the reveal - the part boot_anim.h's boot_anim_pen() paces
-# identically to before this climb was extended - hands off to phase 2. The
+# Where phase 1 of the reveal (the part boot_anim.h's boot_anim_pen() paces
+# identically to before this climb was extended) hands off to phase 2. The
 # original T_MAX: everything up to here is (up to floating-point noise in
 # the arc-length walk below) the same table this file shipped when the climb
 # stopped at 35, so the picture during phase 1 does not change. See

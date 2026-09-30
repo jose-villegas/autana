@@ -29,7 +29,7 @@ def espressif_tools_root():
 
 def idf_path():
     """The ESP-IDF checkout: $IDF_PATH, which ESP-IDF's installers and
-    export scripts set, else Espressif's documented ~/esp/esp-idf - the
+    export scripts set, else Espressif's documented ~/esp/esp-idf; the
     same rule as idf.sh's idf_default_export(). It may not exist."""
     env = os.environ.get("IDF_PATH")
     return Path(env) if env else Path.home() / "esp" / "esp-idf"
@@ -37,7 +37,7 @@ def idf_path():
 
 def _version_key(path):
     """(idf major, idf minor, py major, py minor), so idf5.10 sorts after
-    idf5.9 and py3.14 after py3.9 - a plain string sort gets both backwards
+    idf5.9 and py3.14 after py3.9; a plain string sort gets both backwards
     (`"5.10" < "5.9"`)."""
     m = VERSION.search(path)
     return tuple(int(g) for g in m.groups()) if m else (0, 0, 0, 0)
