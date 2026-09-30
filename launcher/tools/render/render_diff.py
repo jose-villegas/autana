@@ -15,7 +15,7 @@ and is refused without one, and half a turn keeps the panel's own shape
 while still being upside down, which no size can reveal. Everything is
 compared in panel coordinates.
 
-MASKS COVER WHAT THE SHELL DRAWS AND A SCENE DOES NOT - the development
+MASKS COVER WHAT THE SHELL DRAWS AND A SCENE DOES NOT; the development
 build's corner mark, the swipe-home strip. They are declared in
 render_masks.json, per quarter, and named on the command line; nothing is
 inferred from the images themselves.
