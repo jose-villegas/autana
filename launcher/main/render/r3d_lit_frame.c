@@ -27,7 +27,7 @@ transform_slice(void* ctx) {
 }
 
 /* Two panel rows per source row, each pixel written twice as one 32-bit
- * store. A pixel nothing covered (depth still 0) takes the clear colour
+ * store. A pixel nothing covered (R3D_DEPTH_EMPTY) takes the clear colour
  * here, so the colour buffer itself is never cleared. */
 static void
 double_rows(const r3d_lit_frame_t* f, int first, int count) {
@@ -38,7 +38,7 @@ double_rows(const r3d_lit_frame_t* f, int first, int count) {
         uint32_t* top = (uint32_t*)(f->doubled + ((size_t)(2 * y) * (size_t)out_width));
         uint32_t* bottom = top + f->width;
         for (int x = 0; x < f->width; x++) {
-            const uint16_t c = depth[x] != 0 ? src[x] : f->clear;
+            const uint16_t c = depth[x] != R3D_DEPTH_EMPTY ? src[x] : f->clear;
             const uint32_t pair = ((uint32_t)c << 16) | c;
             top[x] = pair;
             bottom[x] = pair;

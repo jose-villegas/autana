@@ -1140,6 +1140,316 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     free(doubled);
 }
 
+/* Views of the depth */
+
+typedef struct {
+    r3d_lit_frame_t frame;
+} shown_t;
+
+static shown_t* shown;
+
+static void
+release_shown(void) {
+    if (shown != NULL) {
+        free(shown->frame.color);
+        free(shown->frame.depth);
+        free(shown);
+        shown = NULL;
+    }
+}
+
+/* A frame of `width` by `height` with nothing drawn and a clear colour that
+ * is no grey. */
+static r3d_lit_frame_t*
+shown_frame(int width, int height) {
+    release_shown();
+    shown = calloc(1, sizeof *shown);
+    TEST_ASSERT_NOT_NULL(shown);
+    suite_set_test_cleanup(release_shown);
+    const size_t count = (size_t)width * (size_t)height;
+    shown->frame.width = width;
+    shown->frame.height = height;
+    shown->frame.clear = SKY;
+    shown->frame.color = malloc(count * sizeof(uint16_t));
+    shown->frame.depth = calloc(count, sizeof(uint16_t));
+    TEST_ASSERT_NOT_NULL(shown->frame.color);
+    TEST_ASSERT_NOT_NULL(shown->frame.depth);
+    memset(shown->frame.color, 0xA5, count * sizeof(uint16_t));
+    return &shown->frame;
+}
+
+static void
+fill_depth(const r3d_lit_frame_t* f, uint16_t d) {
+    for (int i = 0; i < f->width * f->height; i++) {
+        f->depth[i] = d;
+    }
+}
+
+static uint16_t*
+depth_at(const r3d_lit_frame_t* f, int x, int y) {
+    return &f->depth[y * f->width + x];
+}
+
+static uint16_t
+color_at(const r3d_lit_frame_t* f, int x, int y) {
+    return f->color[y * f->width + x];
+}
+
+static uint16_t
+native565(uint16_t px) {
+    return (uint16_t)((px >> 8) | (px << 8));
+}
+
+/* A pixel's red channel, 0..31, the panel's byte swap undone. */
+static int
+level(uint16_t px) {
+    return native565(px) >> 11;
+}
+
+static bool
+is_grey(uint16_t px) {
+    const uint16_t n = native565(px);
+    return (n >> 11) == (n & 31) && (n >> 11) == ((n >> 5) & 63) / 2;
+}
+
+#define LEVEL_MAX 31
+#define WHITE     0xFFFF
+
+/* Every pixel of the tile whose first pixel is (x0, y0), clipped to the frame. */
+static void
+assert_tile_is(const r3d_lit_frame_t* f, int x0, int y0, uint16_t want, const char* what) {
+    for (int y = y0; y < y0 + R3D_LIT_TILE && y < f->height; y++) {
+        for (int x = x0; x < x0 + R3D_LIT_TILE && x < f->width; x++) {
+            TEST_ASSERT_EQUAL_HEX16_MESSAGE(want, color_at(f, x, y), what);
+        }
+    }
+}
+
+/* A tile shows the farthest depth in it, which is the smaller value. */
+static void
+test_a_tile_holds_its_minimum_depth_not_its_maximum(void) {
+    r3d_lit_frame_t* f = shown_frame(3 * R3D_LIT_TILE, R3D_LIT_TILE);
+    fill_depth(f, 40000);
+    for (int y = 0; y < R3D_LIT_TILE; y++) {
+        for (int x = R3D_LIT_TILE; x < 2 * R3D_LIT_TILE; x++) {
+            *depth_at(f, x, y) = 10000;
+        }
+    }
+    *depth_at(f, 3, 3) = 10000; /* one far pixel in the first tile, the rest near */
+    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH_TILES);
+
+    const uint16_t far_tile = color_at(f, R3D_LIT_TILE, 0);
+    const uint16_t near_tile = color_at(f, 2 * R3D_LIT_TILE, 0);
+    TEST_ASSERT_TRUE_MESSAGE(level(far_tile) < level(near_tile), "the farther tile is not darker");
+    assert_tile_is(f, 0, 0, far_tile, "a tile with one far pixel does not take that pixel's depth");
+    assert_tile_is(f, 2 * R3D_LIT_TILE, 0, near_tile, "a uniform near tile changed");
+}
+
+/* One empty pixel, wherever in the tile, is a hole a cull must not skip. */
+static void
+test_one_empty_pixel_empties_its_tile_at_any_position_and_only_its_tile(void) {
+    const int w = 3 * R3D_LIT_TILE;
+    const int h = 3 * R3D_LIT_TILE;
+    const int last = R3D_LIT_TILE - 1;
+    const int corners[][2] = {{0, 0}, {last, last}, {last, 0}, {0, last}};
+    for (int c = 0; c < 4; c++) {
+        r3d_lit_frame_t* f = shown_frame(w, h);
+        fill_depth(f, 30000);
+        *depth_at(f, R3D_LIT_TILE + corners[c][0], R3D_LIT_TILE + corners[c][1]) = R3D_DEPTH_EMPTY;
+        r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH_TILES);
+
+        for (int ty = 0; ty < 3; ty++) {
+            for (int tx = 0; tx < 3; tx++) {
+                const int x0 = tx * R3D_LIT_TILE;
+                const int y0 = ty * R3D_LIT_TILE;
+                const bool holed = tx == 1 && ty == 1;
+                TEST_ASSERT_TRUE_MESSAGE(holed == (color_at(f, x0, y0) == SKY),
+                                         "an empty pixel emptied a neighbour, or missed its own tile");
+                assert_tile_is(f, x0, y0, color_at(f, x0, y0), "a tile is not one colour");
+            }
+        }
+    }
+}
+
+/* A frame that is no multiple of the tile ends in narrower and shorter
+ * tiles, which are tiles like the others and read nothing outside the frame. */
+static void
+test_the_partial_tiles_at_the_right_and_bottom_are_reduced_within_the_frame(void) {
+    const int w = (2 * R3D_LIT_TILE) + 4;
+    const int h = R3D_LIT_TILE + 3;
+    r3d_lit_frame_t* f = shown_frame(w, h);
+    fill_depth(f, 50000);
+    *depth_at(f, w - 1, h - 1) = 20000; /* the last pixel of the corner tile */
+    for (int y = 0; y < R3D_LIT_TILE; y++) {
+        for (int x = 2 * R3D_LIT_TILE; x < w; x++) {
+            *depth_at(f, x, y) = 60000; /* the right tile, nearest */
+        }
+    }
+    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH_TILES);
+
+    const uint16_t corner = color_at(f, w - 1, h - 1);
+    assert_tile_is(f, 2 * R3D_LIT_TILE, R3D_LIT_TILE, corner, "the corner tile did not take its last pixel's depth");
+    const uint16_t right = color_at(f, w - 1, 0);
+    assert_tile_is(f, 2 * R3D_LIT_TILE, 0, right, "the right tile is not one colour");
+    TEST_ASSERT_TRUE_MESSAGE(level(corner) < level(right), "the corner tile is not the farther");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, level(corner), "the farthest tile is not black");
+    for (int ty = 0; ty < 2; ty++) {
+        for (int tx = 0; tx < 2; tx++) {
+            const uint16_t mid = color_at(f, tx * R3D_LIT_TILE, ty * R3D_LIT_TILE);
+            TEST_ASSERT_TRUE_MESSAGE(level(mid) > level(corner) && level(mid) < level(right),
+                                     "a whole tile is not between the extremes");
+            assert_tile_is(f, tx * R3D_LIT_TILE, ty * R3D_LIT_TILE, mid, "a partial tile spilled into a whole one");
+        }
+    }
+
+    *depth_at(f, w - 1, h - 1) = R3D_DEPTH_EMPTY;
+    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH_TILES);
+    assert_tile_is(f, 2 * R3D_LIT_TILE, R3D_LIT_TILE, SKY, "an empty pixel in a partial tile left it drawn");
+    TEST_ASSERT_TRUE_MESSAGE(color_at(f, 0, h - 1) != SKY, "the empty pixel reached the bottom-left tile");
+}
+
+/* Nearest brightest, farthest darkest, whichever way the depth runs across
+ * the picture. */
+static void
+test_the_nearest_depth_is_the_brightest_and_the_farthest_the_darkest(void) {
+    for (int reversed = 0; reversed < 2; reversed++) {
+        r3d_lit_frame_t* f = shown_frame(64, 1);
+        for (int x = 0; x < 64; x++) {
+            *depth_at(f, x, 0) = (uint16_t)(1000 + ((reversed ? 63 - x : x) * 900));
+        }
+        r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH);
+        const int far_x = reversed ? 63 : 0;
+        const int near_x = 63 - far_x;
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, level(color_at(f, far_x, 0)), "the farthest pixel is not black");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(LEVEL_MAX, level(color_at(f, near_x, 0)), "the nearest pixel is not white");
+        const int step = reversed ? -1 : 1;
+        for (int x = 0; x < 63; x++) {
+            TEST_ASSERT_TRUE_MESSAGE(level(color_at(f, x + 1, 0)) * step >= level(color_at(f, x, 0)) * step,
+                                     "a nearer pixel is darker than a farther one");
+        }
+    }
+}
+
+/* Nothing to stretch over is a fixed grey, not a division by zero, and empty
+ * is a colour no grey is. */
+static void
+test_a_frame_of_one_depth_is_one_grey_and_empty_is_no_grey(void) {
+    r3d_lit_frame_t* f = shown_frame(16, 4);
+    fill_depth(f, 777);
+    *depth_at(f, 5, 2) = R3D_DEPTH_EMPTY;
+    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH);
+    const uint16_t grey = color_at(f, 0, 0);
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(WHITE, grey, "a frame of one depth is not the nearest end of the ramp");
+    for (int i = 0; i < 16 * 4; i++) {
+        TEST_ASSERT_EQUAL_HEX16(i == (2 * 16) + 5 ? SKY : grey, f->color[i]);
+    }
+    TEST_ASSERT_FALSE_MESSAGE(is_grey(SKY), "the clear colour used here is a grey");
+
+    f = shown_frame(256, 1);
+    for (int x = 0; x < 256; x++) {
+        *depth_at(f, x, 0) = (uint16_t)(1 + (x * 200));
+    }
+    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH);
+    for (int x = 0; x < 256; x++) {
+        TEST_ASSERT_TRUE_MESSAGE(is_grey(color_at(f, x, 0)), "a drawn depth is not a grey");
+        TEST_ASSERT_TRUE_MESSAGE(color_at(f, x, 0) != SKY, "a drawn depth reads as empty");
+    }
+}
+
+/* The range the grey is stretched over is the drawn pixels'. */
+static void
+test_the_range_ignores_empty_pixels_and_survives_none_or_one_drawn(void) {
+    r3d_lit_frame_t* f = shown_frame(8, 8);
+    *depth_at(f, 1, 1) = 30000;
+    *depth_at(f, 6, 6) = 60000;
+    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, level(color_at(f, 1, 1)), "the empty pixels stretched the range");
+    TEST_ASSERT_EQUAL_INT(LEVEL_MAX, level(color_at(f, 6, 6)));
+    TEST_ASSERT_EQUAL_HEX16(SKY, color_at(f, 0, 0));
+
+    f = shown_frame(8, 8);
+    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH);
+    for (int i = 0; i < 64; i++) {
+        TEST_ASSERT_EQUAL_HEX16(SKY, f->color[i]);
+    }
+    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH_TILES);
+    for (int i = 0; i < 64; i++) {
+        TEST_ASSERT_EQUAL_HEX16(SKY, f->color[i]);
+    }
+
+    f = shown_frame(8, 8);
+    *depth_at(f, 3, 4) = 4242;
+    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH);
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(WHITE, color_at(f, 3, 4),
+                                    "a single drawn pixel is not the nearest end of the ramp");
+    TEST_ASSERT_EQUAL_HEX16(SKY, color_at(f, 4, 4));
+}
+
+/* The view of pixel i in the doubled picture. */
+static uint16_t
+doubled_at(const uint16_t* doubled, int i) {
+    return doubled[((i / W) * 2 * 2 * W) + ((i % W) * 2)];
+}
+
+/* The views are read from the depth the render left and add nothing to it,
+ * and the shaded one is the render untouched. */
+static void
+test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
+    parts_t* const p = parts_buffer();
+    build_wall_and_stack(p);
+    gfx_color_t* doubled = malloc(sizeof(gfx_color_t) * 4 * W * H);
+    char* scratch = malloc(r3d_lit_frame_scratch_bytes(&p->mesh, W, H));
+    uint16_t* depth_before = malloc(sizeof(uint16_t) * W * H);
+    uint16_t* shaded = malloc(sizeof(uint16_t) * W * H);
+    TEST_ASSERT_NOT_NULL(doubled);
+    TEST_ASSERT_NOT_NULL(scratch);
+    TEST_ASSERT_NOT_NULL(depth_before);
+    TEST_ASSERT_NOT_NULL(shaded);
+    r3d_lit_frame_t frame = {.mesh = &p->mesh, .width = W, .height = H, .clear = SKY, .doubled = doubled};
+    r3d_lit_frame_use_scratch(&frame, scratch);
+
+    static const float eye_heights[] = {-100.0f, 150.0f, 300.0f};
+    uint16_t first_depth_sum = 0;
+    for (int e = 0; e < 3; e++) {
+        const r3d_lit_view_t view = look_down_minus_z(eye_heights[e], 400, 1.0f);
+        r3d_lit_frame_render(&frame, &view);
+        memcpy(depth_before, frame.depth, sizeof(uint16_t) * W * H);
+        memcpy(shaded, frame.color, sizeof(uint16_t) * W * H);
+
+        r3d_lit_frame_show(&frame, R3D_LIT_VIEW_SHADED);
+        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(shaded, frame.color, W * H, "the shaded view changed the render");
+
+        r3d_lit_frame_show(&frame, R3D_LIT_VIEW_DEPTH);
+        r3d_lit_frame_double(&frame);
+        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(depth_before, frame.depth, W * H, "showing the depth changed it");
+        int drawn = 0;
+        uint16_t depth_sum = 0;
+        for (int i = 0; i < W * H; i++) {
+            const uint16_t d = depth_before[i];
+            const uint16_t c = doubled_at(doubled, i);
+            TEST_ASSERT_TRUE_MESSAGE((d == R3D_DEPTH_EMPTY) == (c == SKY),
+                                     "empty in the depth but not in the view, or the reverse");
+            TEST_ASSERT_TRUE_MESSAGE(d == R3D_DEPTH_EMPTY || is_grey(c), "a drawn pixel is not a grey");
+            drawn += d != R3D_DEPTH_EMPTY;
+            depth_sum = (uint16_t)(depth_sum + d);
+            if (i + 1 < W * H && (i + 1) % W != 0 && d != R3D_DEPTH_EMPTY && depth_before[i + 1] > d) {
+                TEST_ASSERT_TRUE_MESSAGE(level(doubled_at(doubled, i + 1)) >= level(c),
+                                         "the grey does not follow the depth");
+            }
+        }
+        TEST_ASSERT_TRUE_MESSAGE(drawn > 0, "the frame drew nothing");
+        if (e == 0) {
+            first_depth_sum = depth_sum;
+        } else {
+            TEST_ASSERT_TRUE_MESSAGE(depth_sum != first_depth_sum, "the eye moved and the depth did not");
+        }
+    }
+    free(shaded);
+    free(depth_before);
+    free(scratch);
+    free(doubled);
+}
+
 static void
 release_fixture(void) {
     free(shared_parts);
@@ -1187,6 +1497,13 @@ run_r3d_lit_suite(void) {
 
     RUN_TEST(test_the_frame_carves_its_scratch_without_overlap);
     RUN_TEST(test_the_two_core_frame_matches_one_full_draw);
+    RUN_TEST(test_a_tile_holds_its_minimum_depth_not_its_maximum);
+    RUN_TEST(test_one_empty_pixel_empties_its_tile_at_any_position_and_only_its_tile);
+    RUN_TEST(test_the_partial_tiles_at_the_right_and_bottom_are_reduced_within_the_frame);
+    RUN_TEST(test_the_nearest_depth_is_the_brightest_and_the_farthest_the_darkest);
+    RUN_TEST(test_a_frame_of_one_depth_is_one_grey_and_empty_is_no_grey);
+    RUN_TEST(test_the_range_ignores_empty_pixels_and_survives_none_or_one_drawn);
+    RUN_TEST(test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone);
 }
 
 #undef RUN_TEST
