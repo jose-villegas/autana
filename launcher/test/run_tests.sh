@@ -145,6 +145,7 @@ $MAIN_DIR/ui/ui_scroll.c
 $MAIN_DIR/ui/ui_widgets.c
 $MAIN_DIR/gfx/gfx_palette_standard.c
 $MAIN_DIR/../tools/gen/gfx_palette_gen.c
+$MAIN_DIR/../tools/r3d/triangle_sizes.c
 $TEST_DIR/../components/microui/src/microui.c
 "
 
@@ -202,7 +203,7 @@ case "${1:-}" in
             -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
             -I "$TEST_DIR/../components/microui/include" \
             -I "$TEST_DIR/../components/small3dlib/include" \
-            -I "$TEST_DIR/../tools/gen" $HEAP_ARENA_DEFINES \
+            -I "$TEST_DIR/../tools/gen" -I "$TEST_DIR/../tools/r3d" $HEAP_ARENA_DEFINES \
             -include "$TEST_DIR/timing.h"
         exit 0
         ;;
@@ -320,7 +321,7 @@ TEST_N=$(native "$TEST_DIR")
 LAUNCHER_N=$(native "$(CDPATH= cd -- "$TEST_DIR/.." && pwd)")
 BUILD_N=$(native "$BUILD_DIR")
 COMMON_INC="-I $MAIN_N -I $TEST_N -I $TEST_N/framework -I $TEST_N/stubs"
-TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/components/small3dlib/include -I $LAUNCHER_N/tools/gen"
+TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/components/small3dlib/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
 LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm"
 
 # The source lists, one native path per line. Test code (test/'s own

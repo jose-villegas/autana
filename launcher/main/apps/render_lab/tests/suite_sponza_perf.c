@@ -30,8 +30,7 @@
 
 static const char* TAG = "sponza_perf";
 
-#define SAMPLE_EVERY_MS 5000
-#define PANEL_PIXELS    ((size_t)GFX_WIDTH * GFX_HEIGHT)
+#define PANEL_PIXELS ((size_t)GFX_WIDTH * GFX_HEIGHT)
 
 typedef struct {
     void* scratch;
@@ -171,7 +170,7 @@ report_frame_cost(const char* label, const r3d_lit_mesh_t* mesh) {
     int64_t frame_sum = 0;
     int64_t worst = 0;
     int samples = 0;
-    for (uint32_t t_ms = 0; t_ms < period; t_ms += SAMPLE_EVERY_MS) {
+    for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
         const r3d_lit_view_t view = view_at(mesh, t_ms);
         const int64_t start = esp_timer_get_time();
         const r3d_lit_stats_t stats = r3d_lit_frame_render(&b.frame, &view);

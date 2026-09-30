@@ -29,15 +29,17 @@ capture. The Gouraud scene rotates when stepped over several frames.
 | `render-lab-cornell.png` | the ray-traced Cornell box, fully resolved, no HUD |
 | `render-lab-sponza.gif` | the start of the Sponza flythrough |
 
-## Sponza triangle sizes
+## Sponza poses
+
+`gen_sponza_poses.sh` prints the flythrough as a poses file for
+[`tools/r3d/report_triangle_sizes.sh`](../../../../tools/r3d/README.md#triangle-sizes):
+the poses `sponza_poses()` gives, the ones `suite_sponza_perf.c` times.
 
 ```sh
-./launcher/main/apps/render_lab/tools/report_sponza_triangle_sizes.sh [--write DIR | --against DIR]
+./launcher/main/apps/render_lab/tools/gen_sponza_poses.sh |
+    ./launcher/tools/r3d/report_triangle_sizes.sh \
+        --mesh launcher/main/apps/render_lab/sponza_mesh_generated.c:sponza_mesh -
 ```
-
-At the poses `suite_sponza_perf.c` times, how many drawn triangles cover
-0, 1, 2-4 or more pixel centres. `--write` keeps each pose's frame and
-`--against` diffs a later build's frames with them, pixel by pixel.
 
 ## The capybara test asset
 
