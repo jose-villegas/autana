@@ -1257,6 +1257,8 @@ class BatchTests(unittest.TestCase):
                  mock.patch.object(device, "build_image", fake_build_image), \
                  mock.patch.object(device, "write_image", fake_write_image), \
                  mock.patch.object(device, "run_suite", fake_run_suite), \
+                 mock.patch.object(device, "await_console",
+                                   lambda *unused: calls["events"].append("boot")), \
                  mock.patch.object(device, "records_root", return_value=Path(directory) / "rec"), \
                  mock.patch.object(device, "git_commit", return_value="c0ffee"), \
                  mock.patch("builtins.print"):
@@ -1327,7 +1329,8 @@ class BatchTests(unittest.TestCase):
 
     def test_builds_before_the_lock_then_flashes_and_captures_under_it(self):
         _, calls, _, _ = self.run_batch(runs=2)
-        self.assertEqual(calls["events"], ["build", "lock", "flash", "capture", "capture", "unlock"])
+        self.assertEqual(calls["events"],
+                         ["build", "lock", "flash", "boot", "capture", "capture", "unlock"])
         self.assertEqual(calls["flash"][0][1], "built")
 
     def test_every_capture_runs_inside_the_batch_lock_on_the_flashed_build(self):
