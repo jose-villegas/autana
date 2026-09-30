@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate main/boot/boot_anim_image.h - the photograph the boot animation
+"""Generate main/boot/boot_anim_image.h: the photograph the boot animation
 crossfades to.
 
     python tools/gen/gen_boot_anim_image.py ../design/boot/boot.png > main/boot/boot_anim_image.h
@@ -7,7 +7,7 @@ crossfades to.
 WHY THIS IS A TABLE AND NOT A RUNTIME DECODE
 
 There is no PNG decoder in this firmware and no PSRAM to decode into even if
-there were - every byte of a decoded 368x448 frame is exactly one
+there were; every byte of a decoded 368x448 frame is exactly one
 framebuffer's worth (see gfx.h's own top comment), and this board has
 exactly one to spare. Converting once, here, and shipping the already-panel-
 format result in .rodata costs zero RAM (it is memory-mapped from flash,
@@ -16,12 +16,12 @@ KiB of flash in the app partition.
 
 WHY THE ROTATION HAPPENS HERE AND NOT AT DRAW TIME
 
-design/boot/boot.png is 448x368 - exactly boot_anim.h's own
+design/boot/boot.png is 448x368; exactly boot_anim.h's own
 BOOT_ANIM_TITLE_VIEW_W/H, the "landscape" frame the title's own letters are
 already laid out in before being turned a quarter into the panel's native
 368x448 portrait framebuffer. Doing that same turn here, once, means
 boot_anim.c's draw_image() reads this table row-major into a row-major
-framebuffer - the fast case for this chip's cache. Rotating per pixel at
+framebuffer; the fast case for this chip's cache. Rotating per pixel at
 draw time instead would mean a transposed read on one side of that copy,
 every frame the photo is on screen, which is the thrashing case (see
 docs/notes/Board-and-Memory.md's own note on sequential vs. random flash-
@@ -29,8 +29,8 @@ mapped reads).
 
 THE ROTATION ITSELF
 
-Derived from boot_anim.c's title_glyph_origin() - the same mapping the
-title's own letters already go through - not reinvented: that function
+Derived from boot_anim.c's title_glyph_origin(); the same mapping the
+title's own letters already go through, not reinvented: that function
 maps a BOX (a glyph cell) from the "view" frame to the panel; a single
 pixel is a 1x1 box, so its own glyph_h correction drops out and what is
 left is
@@ -56,12 +56,12 @@ the other sign was tried first and was visibly wrong by 180 degrees.
 HOW A PIXEL IS PACKED
 
 gfx_color_t is RGB565 with the two bytes swapped (see gfx_color.h's own
-comment for why - it is what this panel's QSPI controller wants, the
+comment for why; it is what this panel's QSPI controller wants, the
 opposite of the chip's native order), not plain RGB565 and not 0xRRGGBB.
 gfx_rgb565()/gfx_rgb() below replicate gfx_color.h's GFX_RGB565/GFX_RGB
 macros exactly, channel-by-channel rather than via the packed-integer shift
 form the C macros use, because that is the form easiest to check against
-known GFX_RGB(...) values independently (see the self-check in main()) -
+known GFX_RGB(...) values independently (see the self-check in main());
 the two are algebraically identical, verified there rather than assumed.
 """
 
