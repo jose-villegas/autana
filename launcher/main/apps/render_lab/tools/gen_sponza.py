@@ -264,8 +264,8 @@ def main():
         face_rgb = face_colours(positions, tris, tri_mat, range(len(names)), double_materials, albedo_of, intersector,
                                 args, rng)
 
-    mesh = write_lit_mesh(args.out_dir, args.name, positions, rgb, tris, tri_double, banner_lines(args),
-                          position_scale=POSITION_SCALE, flat=args.flat, face_rgb=face_rgb)
+    mesh = write_lit_mesh(args.out_dir, args.name, positions, None if args.flat else rgb, tris, tri_double,
+                          banner_lines(args), position_scale=POSITION_SCALE, face_rgb=face_rgb)
     log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, "
         f"{len(mesh.nodes)} nodes")
 

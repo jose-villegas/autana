@@ -9,7 +9,7 @@ flowchart LR
     Source[Source model] --> Gen[Generator and recipe]
     Gen --> Simp["Simplify<br/><i>seal_seams optional</i>"]
     Simp --> Quant[Quantise to int16]
-    Quant --> Light[Bake light]
+    Quant --> Light["Bake light<br/>per vertex or per face"]
     Light --> Meshlets[Meshlets and octree]
     Meshlets --> C["Baked C<br/><i>r3d_lit_mesh_t</i>"]
 ```

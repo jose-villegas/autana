@@ -6911,7 +6911,10 @@ static const r3d_lit_node_t sponza_nodes[] = {
 };
 
 const r3d_lit_mesh_t sponza_mesh = {
-    sponza_positions, sponza_colors, sponza_triangles, sponza_clusters, sponza_nodes,
-    SPONZA_VERTEX_COUNT, SPONZA_TRIANGLE_COUNT, SPONZA_CLUSTER_COUNT, SPONZA_NODE_COUNT,
-    SPONZA_POSITION_SCALE, 0,
+    .positions = sponza_positions,
+    .colors = sponza_colors,
+    .triangles = sponza_triangles, .clusters = sponza_clusters, .nodes = sponza_nodes,
+    .vertex_count = SPONZA_VERTEX_COUNT, .triangle_count = SPONZA_TRIANGLE_COUNT,
+    .cluster_count = SPONZA_CLUSTER_COUNT, .node_count = SPONZA_NODE_COUNT,
+    .position_scale = SPONZA_POSITION_SCALE,
 };

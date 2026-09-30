@@ -98,6 +98,22 @@ colour_gradients(const plane_t* p, const r3d_span_vertex_t* a, const r3d_span_ve
  * range, and a wrapped channel would be a wrong-coloured pixel. Each span's
  * start is clamped; only a span whose end would still leave the range pays
  * for a step recomputed from both clamped ends. */
+static inline void
+span_step(const gradients_t* g, const int32_t row[ATTRIBUTES], int k, int offset, int count, int32_t* value,
+          int32_t* step) {
+    *step = g->dx[k];
+    if (g->in_range) {
+        *value = row[k] + (g->dx[k] * offset);
+        return;
+    }
+    const int32_t start = clamp_value(row[k] + (g->dx[k] * offset), value_max[k]);
+    const int32_t end = start + (g->dx[k] * count);
+    *value = start;
+    if (count > 0 && (end < 0 || end > value_max[k])) {
+        *step = (clamp_value(end, value_max[k]) - start) / count;
+    }
+}
+
 static void
 fill_span(const r3d_span_target_t* target, const gradients_t* g, const int32_t row[ATTRIBUTES], int y, int x_first,
           int x_last) {
@@ -105,21 +121,8 @@ fill_span(const r3d_span_target_t* target, const gradients_t* g, const int32_t r
     const int count = x_last - x_first;
     int32_t v[ATTRIBUTES];
     int32_t d[ATTRIBUTES];
-    if (g->in_range) {
-        for (int k = 0; k < ATTRIBUTES; k++) {
-            v[k] = row[k] + (g->dx[k] * offset);
-            d[k] = g->dx[k];
-        }
-    } else {
-        for (int k = 0; k < ATTRIBUTES; k++) {
-            const int32_t start = clamp_value(row[k] + (g->dx[k] * offset), value_max[k]);
-            const int32_t end = start + (g->dx[k] * count);
-            v[k] = start;
-            d[k] = g->dx[k];
-            if (count > 0 && (end < 0 || end > value_max[k])) {
-                d[k] = (clamp_value(end, value_max[k]) - start) / count;
-            }
-        }
+    for (int k = 0; k < ATTRIBUTES; k++) {
+        span_step(g, row, k, offset, count, &v[k], &d[k]);
     }
     if (r3d_span_stop_after == 3) {
         return;
@@ -158,20 +161,23 @@ fill_flat_span(const r3d_span_target_t* target, int y, int x_first, int x_last, 
     }
 }
 
+/* A face's own colour with the depth plane walked as usual. */
 static void
-fill_constant_span(const r3d_span_target_t* target, const gradients_t* g, const int32_t row_values[ATTRIBUTES], int y,
-                   int x_first, int x_last, uint16_t color) {
-    const int row = (y - target->row0) * target->width;
-    uint16_t* depth = target->depth + row;
-    uint16_t* out = target->color + row;
-    int32_t z = row_values[0] + (g->dx[0] * (x_first - g->x_origin));
+fill_solid_span(const r3d_span_target_t* target, const gradients_t* g, const int32_t row[ATTRIBUTES], int y,
+                int x_first, int x_last, uint16_t color) {
+    int32_t z;
+    int32_t dz;
+    span_step(g, row, 0, x_first - g->x_origin, x_last - x_first, &z, &dz);
+    const int row_offset = (y - target->row0) * target->width;
+    uint16_t* depth = target->depth + row_offset;
+    uint16_t* out = target->color + row_offset;
     for (int x = x_first; x <= x_last; x++) {
-        const uint16_t zq = (uint16_t)(clamp_value(z, value_max[0]) >> 8);
+        const uint16_t zq = (uint16_t)(z >> 8);
         if (zq > depth[x]) {
             depth[x] = zq;
             out[x] = color;
         }
-        z += g->dx[0];
+        z += dz;
     }
 }
 
@@ -188,7 +194,7 @@ fill_constant_span(const r3d_span_target_t* target, const gradients_t* g, const 
 
 typedef struct {
     bool flat;
-    bool constant_color;
+    const uint16_t* face; /* the colour every pixel takes, or NULL for the vertices' */
     uint16_t flat_z;
     uint16_t flat_color;
     const gradients_t* g;
@@ -203,10 +209,10 @@ fill_row(const r3d_span_target_t* target, const fill_t* f, const int32_t row[ATT
     if (x_first > x_last || r3d_span_stop_after == 2) {
         return;
     }
-    if (f->constant_color) {
-        fill_constant_span(target, f->g, row, y, x_first, x_last, f->flat_color);
-    } else if (f->flat) {
+    if (f->flat) {
         fill_flat_span(target, y, x_first, x_last, f->flat_z, f->flat_color);
+    } else if (f->face != NULL) {
+        fill_solid_span(target, f->g, row, y, x_first, x_last, f->flat_color);
     } else {
         fill_span(target, f->g, row, y, x_first, x_last);
     }
@@ -215,7 +221,7 @@ fill_row(const r3d_span_target_t* target, const fill_t* f, const int32_t row[ATT
 static inline void
 step_row(const fill_t* f, int32_t row[ATTRIBUTES]) {
     if (!f->flat) {
-        const int attributes = f->constant_color ? 1 : ATTRIBUTES;
+        const int attributes = f->face == NULL ? ATTRIBUTES : 1;
         for (int k = 0; k < attributes; k++) {
             row[k] += f->g->dy[k];
         }
@@ -360,9 +366,12 @@ small_side(const small_edge_t* e, int32_t x, int32_t y) {
 
 static void
 fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-           const r3d_span_vertex_t* c, bool positive, r3d_span_box_t box) {
+           const r3d_span_vertex_t* c, bool positive, r3d_span_box_t box, const uint16_t* face) {
     fill_t f;
     set_flat(&f, a, b, c);
+    if (face != NULL) {
+        f.flat_color = *face;
+    }
     if (r3d_span_stop_after != 0) {
         return;
     }
@@ -378,34 +387,6 @@ fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3
                 && f.flat_z > target->depth[row + x]) {
                 target->depth[row + x] = f.flat_z;
                 target->color[row + x] = f.flat_color;
-            }
-        }
-    }
-}
-
-static void
-fill_small_constant(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                    const r3d_span_vertex_t* c, bool positive, r3d_span_box_t box, uint16_t color) {
-    plane_t p;
-    gradients_t g = {0};
-    if (!plane_of(a, b, c, box.x0, box.y0, &p)) {
-        return;
-    }
-    gradient(&p, a->z * DEPTH_SCALE, b->z * DEPTH_SCALE, c->z * DEPTH_SCALE, 0, &g);
-    const r3d_span_vertex_t* p0 = positive ? b : c;
-    const r3d_span_vertex_t* p1 = positive ? c : b;
-    const small_edge_t e[3] = {small_edge(a, p0), small_edge(p0, p1), small_edge(p1, a)};
-    for (int y = box.y0; y < box.y1; y++) {
-        const int row = (y - target->row0) * target->width;
-        const int32_t cy = (y << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
-        for (int x = box.x0; x < box.x1; x++) {
-            const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
-            const int32_t z = g.base[0] + (g.dx[0] * (x - box.x0)) + (g.dy[0] * (y - box.y0));
-            const uint16_t zq = (uint16_t)(clamp_value(z, value_max[0]) >> 8);
-            if ((small_side(&e[0], cx, cy) | small_side(&e[1], cx, cy) | small_side(&e[2], cx, cy)) >= 0
-                && zq > target->depth[row + x]) {
-                target->depth[row + x] = zq;
-                target->color[row + x] = color;
             }
         }
     }
@@ -462,14 +443,20 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3]
     } else {
         return false;
     }
+    if (f->face != NULL) {
+        f->flat_color = *f->face;
+    }
     const int32_t bound = f->flat ? f->flat_z : r3d_span_plane_bound(row[0], g->dx[0], g->dy[0], box);
     if (r3d_span_hidden(target, bound, box)) {
         return false;
     }
-    if (!f->flat && !f->constant_color) {
-        colour_gradients(&p, v[0], v[1], v[2], g);
+    if (!f->flat) {
+        const int attributes = f->face == NULL ? ATTRIBUTES : 1;
+        if (f->face == NULL) {
+            colour_gradients(&p, v[0], v[1], v[2], g);
+        }
         g->in_range = true;
-        for (int k = 0; k < ATTRIBUTES; k++) {
+        for (int k = 0; k < attributes; k++) {
             row[k] = k == 0 ? row[0] : first_row_value(g, k, box.y0, y_anchor);
             g->in_range = g->in_range && r3d_span_plane_in_range(row[k], g->dx[k], g->dy[k], value_max[k], box);
         }
@@ -479,7 +466,7 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3]
 
 static void
 r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                       const r3d_span_vertex_t* c, bool constant_color, uint16_t color) {
+                       const r3d_span_vertex_t* c, const uint16_t* face) {
     const r3d_span_vertex_t* v0 = a;
     const r3d_span_vertex_t* v1 = b;
     const r3d_span_vertex_t* v2 = c;
@@ -505,16 +492,11 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
         return;
     }
     if (x_end - x_first <= SMALL_MAX_SIDE && rows <= SMALL_MAX_SIDE) {
-        if (constant_color) {
-            fill_small_constant(target, a, b, c, area2 > 0, box, color);
-        } else {
-            fill_small(target, a, b, c, area2 > 0, box);
-        }
+        fill_small(target, a, b, c, area2 > 0, box, face);
         return;
     }
 
-    fill_t f = {!constant_color && rows <= FLAT_MAX_ROWS && hi_x - lo_x <= FLAT_MAX_WIDTH, constant_color, 0, color,
-                NULL};
+    fill_t f = {rows <= FLAT_MAX_ROWS && hi_x - lo_x <= FLAT_MAX_WIDTH, face, 0, 0, NULL};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
     const int y_anchor = clampi(r3d_span_first_centre(v0->y), -1, target->row1 + 1);
@@ -536,11 +518,11 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
 void
 r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                   const r3d_span_vertex_t* c) {
-    r3d_span_triangle_impl(target, a, b, c, false, 0);
+    r3d_span_triangle_impl(target, a, b, c, NULL);
 }
 
 void
-r3d_span_triangle_flat(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                       const r3d_span_vertex_t* c, uint16_t color) {
-    r3d_span_triangle_impl(target, a, b, c, true, color);
+r3d_span_triangle_solid(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                        const r3d_span_vertex_t* c, uint16_t color) {
+    r3d_span_triangle_impl(target, a, b, c, &color);
 }

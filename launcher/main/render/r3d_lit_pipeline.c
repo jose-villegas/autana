@@ -347,7 +347,7 @@ draw_clipped(const r3d_lit_view_t* view, const clip_vertex_t in[3], bool double_
         if (face_color == NULL) {
             r3d_span_triangle(target, &s[0], &s[i], &s[i + 1]);
         } else {
-            r3d_span_triangle_flat(target, &s[0], &s[i], &s[i + 1], *face_color);
+            r3d_span_triangle_solid(target, &s[0], &s[i], &s[i + 1], *face_color);
         }
     }
 }
@@ -403,7 +403,7 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_vertex_t* const v[3], co
     if (face_color == NULL) {
         r3d_span_triangle(target, &s[0], &s[1], &s[2]);
     } else {
-        r3d_span_triangle_flat(target, &s[0], &s[1], &s[2], *face_color);
+        r3d_span_triangle_solid(target, &s[0], &s[1], &s[2], *face_color);
     }
 }
 

@@ -159,12 +159,27 @@ test_a_flat_triangle_keeps_its_face_colour_and_interpolates_depth(void) {
     const r3d_span_vertex_t a = sv(4, 4, 0.2f, 0, 0, 0), b = sv(52, 4, 0.8f, 0, 0, 0), c = sv(4, 40, 0.5f, 0, 0, 0);
     const uint16_t face = GFX_RGB(0x12AB34);
     r3d_span_target_t t = fixture();
-    r3d_span_triangle_flat(&t, &a, &b, &c, face);
+    r3d_span_triangle_solid(&t, &a, &b, &c, face);
     const int near = 8 * W + 8;
     const int far = 8 * W + 40;
     TEST_ASSERT_EQUAL_HEX16(face, color[near]);
     TEST_ASSERT_EQUAL_HEX16(face, color[far]);
     TEST_ASSERT_GREATER_THAN_UINT16(depth[near], depth[far]);
+}
+
+static void
+test_a_tiny_solid_triangle_takes_its_face_colour(void) {
+    const r3d_span_vertex_t a = sv(10.0f, 10.0f, 0.5f, 0, 0, 0), b = sv(12.6f, 10.0f, 0.5f, 0, 0, 0),
+                            c = sv(10.0f, 12.6f, 0.5f, 0, 0, 0);
+    const uint16_t face = GFX_RGB(0x12AB34);
+    r3d_span_target_t t = fixture();
+    r3d_span_triangle_solid(&t, &a, &b, &c, face);
+    TEST_ASSERT_GREATER_THAN_INT(0, covered());
+    for (int i = 0; i < W * H; i++) {
+        if (depth[i] != 0) {
+            TEST_ASSERT_EQUAL_HEX16(face, color[i]);
+        }
+    }
 }
 
 static void
@@ -1072,11 +1087,13 @@ static const uint16_t quad_back[][3] = {{0, 2, 1}, {0, 3, 2}};
 
 static const r3d_lit_node_t quad_node = {{-100, -100, 0}, {100, 100, 0}, 0, 1, true};
 
+/* A mesh lit by its vertices, or by `face_colors` alone when given. */
 static r3d_lit_mesh_t
-quad_mesh(const uint16_t (*triangles)[3], bool double_sided, r3d_lit_cluster_t* cluster) {
+quad_mesh(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* face_colors, r3d_lit_cluster_t* cluster) {
     *cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {-100, -100, 0}, {100, 100, 0}, double_sided};
     return (r3d_lit_mesh_t){.positions = quad_positions,
-                            .colors = quad_colors,
+                            .colors = face_colors == NULL ? quad_colors : NULL,
+                            .face_colors = face_colors,
                             .triangles = triangles,
                             .clusters = cluster,
                             .nodes = &quad_node,
@@ -1089,9 +1106,9 @@ quad_mesh(const uint16_t (*triangles)[3], bool double_sided, r3d_lit_cluster_t* 
 
 /* The quad faces +z; this camera stands on +z looking back at it. */
 static int
-draw_quad(const uint16_t (*triangles)[3], bool double_sided) {
+draw_quad_with(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* face_colors) {
     r3d_lit_cluster_t cluster;
-    const r3d_lit_mesh_t mesh = quad_mesh(triangles, double_sided, &cluster);
+    const r3d_lit_mesh_t mesh = quad_mesh(triangles, double_sided, face_colors, &cluster);
     r3d_lit_view_t view;
     r3d_lit_view_look(&view, (r3d_vec3f_t){0, 0, 400}, (r3d_vec3f_t){0, 0, -1}, 0.5f, 1.0f, 1,
                       (r3d_viewport_t){W, H, 0});
@@ -1102,6 +1119,11 @@ draw_quad(const uint16_t (*triangles)[3], bool double_sided) {
     const r3d_span_target_t t = fixture();
     r3d_lit_draw(&mesh, &view, visible, count, cs, NULL, &t);
     return covered();
+}
+
+static int
+draw_quad(const uint16_t (*triangles)[3], bool double_sided) {
+    return draw_quad_with(triangles, double_sided, NULL);
 }
 
 /* 200 units across at 400 away, 48 pixels per unit of tangent: 24 pixels
@@ -1125,7 +1147,7 @@ test_a_face_turned_away_is_culled_unless_double_sided(void) {
 static void
 test_a_cluster_behind_the_camera_is_culled(void) {
     r3d_lit_cluster_t cluster;
-    const r3d_lit_mesh_t mesh = quad_mesh(quad_front, false, &cluster);
+    const r3d_lit_mesh_t mesh = quad_mesh(quad_front, false, NULL, &cluster);
     r3d_lit_view_t view;
     r3d_lit_view_look(&view, (r3d_vec3f_t){0, 0, 400}, (r3d_vec3f_t){0, 0, 1}, 0.5f, 1.0f, 1,
                       (r3d_viewport_t){W, H, 0});
@@ -1133,17 +1155,18 @@ test_a_cluster_behind_the_camera_is_culled(void) {
     TEST_ASSERT_EQUAL_INT(0, r3d_lit_cull_clusters(&mesh, &view, visible));
 }
 
-/* A floor running from behind the camera to far ahead: the near clip keeps
- * the part in front and nothing lands above the horizon row. */
+/* A floor running from behind the camera to far ahead, seen from above it
+ * with its near half behind the near plane. */
 static void
-test_a_floor_crossing_the_near_plane_draws_only_below_the_horizon(void) {
+draw_floor(const uint16_t* face_colors) {
     static const int16_t floor_positions[][3] = {
         {-1000, 0, 1000}, {1000, 0, 1000}, {1000, 0, -3000}, {-1000, 0, -3000}};
     static const uint16_t floor_up[][3] = {{0, 1, 2}, {0, 2, 3}};
     r3d_lit_cluster_t cluster = {0, 4, 0, 2, {-1000, 0, -3000}, {1000, 0, 1000}, false};
     static const r3d_lit_node_t floor_node = {{-1000, 0, -3000}, {1000, 0, 1000}, 0, 1, true};
     const r3d_lit_mesh_t mesh = {.positions = floor_positions,
-                                 .colors = quad_colors,
+                                 .colors = face_colors == NULL ? quad_colors : NULL,
+                                 .face_colors = face_colors,
                                  .triangles = floor_up,
                                  .clusters = &cluster,
                                  .nodes = &floor_node,
@@ -1163,7 +1186,12 @@ test_a_floor_crossing_the_near_plane_draws_only_below_the_horizon(void) {
     r3d_lit_transform(&mesh, &view, visible, count, cs, NULL);
     const r3d_span_target_t t = fixture();
     r3d_lit_draw(&mesh, &view, visible, count, cs, NULL, &t);
+}
 
+/* The near clip keeps the part in front and nothing lands above the horizon row. */
+static void
+test_a_floor_crossing_the_near_plane_draws_only_below_the_horizon(void) {
+    draw_floor(NULL);
     for (int y = 0; y < H / 2; y++) {
         for (int x = 0; x < W; x++) {
             TEST_ASSERT_EQUAL_UINT16(0, depth[y * W + x]);
@@ -1171,6 +1199,45 @@ test_a_floor_crossing_the_near_plane_draws_only_below_the_horizon(void) {
     }
     /* The floor's far edge sits at row 24.8 and it is wider than the view
      * from row 26 down. */
+    for (int y = 26; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            TEST_ASSERT_NOT_EQUAL_MESSAGE(0, depth[y * W + x], "a pixel of the floor was missed");
+        }
+    }
+}
+
+static void
+expect_only_these_two_colours(uint16_t first, uint16_t second, int* first_count, int* second_count) {
+    *first_count = *second_count = 0;
+    for (int i = 0; i < W * H; i++) {
+        if (depth[i] == 0) {
+            continue;
+        }
+        TEST_ASSERT_TRUE_MESSAGE(color[i] == first || color[i] == second, "a pixel took a colour no face carries");
+        *first_count += color[i] == first;
+        *second_count += color[i] == second;
+    }
+}
+
+static void
+test_a_mesh_with_face_colours_draws_each_triangle_in_its_own(void) {
+    static const uint16_t faces[2] = {GFX_RGB(0x2040E0), GFX_RGB(0xE0A020)};
+    TEST_ASSERT_EQUAL_INT(24 * 24, draw_quad_with(quad_front, false, faces));
+    int first, second;
+    expect_only_these_two_colours(faces[0], faces[1], &first, &second);
+    TEST_ASSERT_GREATER_THAN_INT(0, first);
+    TEST_ASSERT_GREATER_THAN_INT(0, second);
+    TEST_ASSERT_EQUAL_INT(24 * 24, first + second);
+}
+
+static void
+test_face_colours_survive_a_triangle_clipped_by_the_near_plane(void) {
+    static const uint16_t faces[2] = {GFX_RGB(0x2040E0), GFX_RGB(0xE0A020)};
+    draw_floor(faces);
+    int first, second;
+    expect_only_these_two_colours(faces[0], faces[1], &first, &second);
+    TEST_ASSERT_GREATER_THAN_INT(0, first);
+    TEST_ASSERT_GREATER_THAN_INT(0, second);
     for (int y = 26; y < H; y++) {
         for (int x = 0; x < W; x++) {
             TEST_ASSERT_NOT_EQUAL_MESSAGE(0, depth[y * W + x], "a pixel of the floor was missed");
@@ -1885,6 +1952,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_tiny_and_large_triangles_tile_without_gaps_or_overlap);
     RUN_TEST(test_the_nearer_triangle_wins_in_either_order);
     RUN_TEST(test_a_flat_triangle_keeps_its_face_colour_and_interpolates_depth);
+    RUN_TEST(test_a_tiny_solid_triangle_takes_its_face_colour);
     RUN_TEST(test_a_window_of_rows_matches_the_same_rows_of_a_full_draw);
     RUN_TEST(test_colours_stay_within_the_vertex_range_even_at_the_edges);
     RUN_TEST(test_an_axis_aligned_square_fills_exactly_the_centres_inside_it);
@@ -1911,6 +1979,8 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_face_turned_away_is_culled_unless_double_sided);
     RUN_TEST(test_a_cluster_behind_the_camera_is_culled);
     RUN_TEST(test_a_floor_crossing_the_near_plane_draws_only_below_the_horizon);
+    RUN_TEST(test_a_mesh_with_face_colours_draws_each_triangle_in_its_own);
+    RUN_TEST(test_face_colours_survive_a_triangle_clipped_by_the_near_plane);
     RUN_TEST(test_a_point_up_and_right_lands_up_and_right_in_every_quarter);
     RUN_TEST(test_a_triangle_cut_by_the_near_plane_draws_the_whole_quad_left_in_front);
     RUN_TEST(test_colour_along_the_near_cut_is_interpolated_to_the_cut);
