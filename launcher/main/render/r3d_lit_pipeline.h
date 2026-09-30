@@ -63,7 +63,7 @@ void r3d_lit_transform(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, c
 /* Measurement probe, never ships: a nonzero stop ends each triangle's draw
  * early, each stop including the ones before it; a triangle to be rebuilt
  * is skipped under all of them. */
-#define R3D_LIT_PROBE 1 /* 0 compiles every stop out */
+#define R3D_LIT_PROBE 0 /* 0 compiles every stop out */
 
 enum { R3D_LIT_PROBE_WALK = 1, R3D_LIT_PROBE_FETCH, R3D_LIT_PROBE_REJECT, R3D_LIT_PROBE_COLOR };
 
