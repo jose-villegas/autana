@@ -65,19 +65,34 @@ grid_open(grid_mesh_t* g) {
     }
     const int16_t lo[3] = {(int16_t)-half, (int16_t)-half, 0};
     const int16_t hi[3] = {(int16_t)half, (int16_t)half, 0};
-    g->cluster =
-        (r3d_lit_cluster_t){0, (uint16_t)(side * side), 0, (uint16_t)t, {lo[0], lo[1], 0}, {hi[0], hi[1], 0}, false};
-    g->node = (r3d_lit_node_t){{lo[0], lo[1], 0}, {hi[0], hi[1], 0}, 0, 1, true};
-    g->mesh = (r3d_lit_mesh_t){(const int16_t(*)[3])g->positions,
-                               (const uint8_t(*)[3])g->colors,
-                               (const uint16_t(*)[3])g->triangles,
-                               &g->cluster,
-                               &g->node,
-                               side * side,
-                               t,
-                               1,
-                               1,
-                               1};
+    g->cluster = (r3d_lit_cluster_t){
+        .vertex_first = 0,
+        .vertex_count = (uint16_t)(side * side),
+        .triangle_first = 0,
+        .triangle_count = (uint16_t)t,
+        .lo = {lo[0], lo[1], 0},
+        .hi = {hi[0], hi[1], 0},
+        .double_sided = false,
+    };
+    g->node = (r3d_lit_node_t){
+        .lo = {lo[0], lo[1], 0},
+        .hi = {hi[0], hi[1], 0},
+        .first = 0,
+        .count = 1,
+        .leaf = true,
+    };
+    g->mesh = (r3d_lit_mesh_t){
+        .positions = (const int16_t(*)[3])g->positions,
+        .colors = (const uint8_t(*)[3])g->colors,
+        .triangles = (const uint16_t(*)[3])g->triangles,
+        .clusters = &g->cluster,
+        .nodes = &g->node,
+        .vertex_count = side * side,
+        .triangle_count = t,
+        .cluster_count = 1,
+        .node_count = 1,
+        .position_scale = 1,
+    };
 }
 
 static void
