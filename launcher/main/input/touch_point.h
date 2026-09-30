@@ -1,4 +1,4 @@
-/* touch_point - prepares a sampled point for the touch state machine. */
+/* touch_point: prepares a sampled point for the touch state machine. */
 #pragma once
 
 #include <stdbool.h>

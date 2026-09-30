@@ -1,5 +1,5 @@
 /*
- * touch_fsm - turns raw contact reports into press/release events.
+ * touch_fsm: turns raw contact reports into press/release events.
  *
  * Deliberately free of hardware: no I2C, no FreeRTOS, and time arrives as an
  * argument rather than being read from a clock. That is what lets the whole

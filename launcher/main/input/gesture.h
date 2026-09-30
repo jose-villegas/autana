@@ -1,5 +1,5 @@
 /*
- * gesture - recognising touch gestures from input state.
+ * gesture: recognising touch gestures from input state.
  *
  * Pure logic, deliberately free of hardware and of any screen it might be
  * running on, so it can be tested on the host. The screen dimensions are
@@ -7,7 +7,7 @@
  *
  * Which edge carries the home gesture is also a parameter, not a constant:
  * this module has no idea the board rotates, where the USB connector is, or
- * which edge the shell currently wants - that mapping is a piece of
+ * which edge the shell currently wants: that mapping is a piece of
  * shell-integration knowledge that belongs in main.c, not here. All this
  * module knows is "an edge", expressed as one of the four values below.
  */
@@ -18,7 +18,7 @@
 #include "input/input.h"
 
 /* Which physical edge of the screen the home gesture currently lives on.
- * The caller decides this - see main.c's exit_edge_for_quarter() - by
+ * The caller decides this (see main.c's exit_edge_for_quarter()) by
  * working out which edge is opposite the USB connector for the board's
  * current orientation. */
 typedef enum {
@@ -43,7 +43,7 @@ typedef enum {
  * enough toward the centre of the screen.
  *
  * Requires the finger to still be down, so it fires partway through the swipe
- * rather than on release - waiting for the lift feels sluggish. That also means
+ * rather than on release: waiting for the lift feels sluggish. That also means
  * it must not match on stale coordinates once contact ends. */
 bool gesture_is_edge_swipe(const input_t* input, gesture_edge_t edge, int screen_w, int screen_h);
 
