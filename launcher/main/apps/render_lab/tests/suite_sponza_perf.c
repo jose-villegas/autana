@@ -21,6 +21,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 
+#include "apps/render_lab/sponza_flat_mesh_generated.h"
 #include "apps/render_lab/sponza_flythrough.h"
 #include "apps/render_lab/sponza_lite_mesh_generated.h"
 #include "apps/render_lab/sponza_mesh_generated.h"
@@ -191,6 +192,7 @@ void
 test_sponza_frame_cost_along_the_flythrough(void) {
     report_frame_cost("sponza", &sponza_mesh);
     report_frame_cost("lite", &sponza_lite_mesh);
+    report_frame_cost("flat", &sponza_flat_mesh);
     TEST_PASS();
 }
 
