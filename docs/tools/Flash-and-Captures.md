@@ -62,7 +62,9 @@ sequenceDiagram
     Dev->>Lock: live-lock check, record the snapshot's BUILD_ID
     Dev->>Snap: remove, whether the write succeeded or not
     opt suite --flash and selftest, still under the same lock
-        Dev->>Board: reopen the port, capture until the suites end
+        Dev->>Board: reopen the port as the board power cycles and boots
+        Dev->>Board: suite --flash: once its console is up, send RUNSUITE
+        Dev->>Board: capture until the suites end
         Note over Dev,Board: the capture fails on any other BUILD_ID
     end
     Dev->>Lock: release, record the duration
@@ -81,6 +83,13 @@ what the board reports at capture time.
 A measurement holds one lock across a flash and every capture: it builds once,
 takes the lock once, flashes once, captures every suite `--runs` times, and
 writes one summary across all runs.
+
+Between the flash and the first request it waits, still under the lock, for
+the new image to boot to its console. A development bootloader power cycles
+the chip after the flash's reset, so the port the flash used re-enumerates
+about a second later, and a request sent before then is lost. That boot is
+kept as a `boot-diag` capture; a board with no console within 30 s is
+reported, and the first run goes ahead to show what it does instead.
 
 ```sh
 autana suite run_boot_anim_perf_suite run_gfx_suite --runs 3 --flash
@@ -120,6 +129,10 @@ ends at a line starting with one of `--until` (default `TUNE_OK`, `TUNE_ERR`,
 `TUNE_END`). It exits 1 on an `_ERR` reply, and says so when the build does
 not know the command or nothing answers within `--seconds` (default 3). It is
 not a capture: it adds no line to `index.jsonl`.
+
+It is asked from a prompt, so a board another command holds is reported at
+once, with nothing sent and exit 75, rather than waited for. A global
+`--wait` asks to queue for the board instead, as every other command does.
 
 From a script that names its own owner, `device.py` takes the same
 arguments (the interpreter is ESP-IDF's Python, and `--owner` names
