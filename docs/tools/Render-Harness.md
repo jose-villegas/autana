@@ -264,7 +264,9 @@ chrome moves, that file has to move with it.
 ## Comparing two revisions
 
 ```sh
-./launcher/tools/render/render_compare.sh --script <app>/tools/<scene>_render_host.sh     --clear RRGGBB -o /tmp/cmp <A> <B> --sheet poses     --render early "<renderer arguments>" --render late "<renderer arguments>"
+./launcher/tools/render/render_compare.sh --script <host-render-script> \
+    --clear RRGGBB -o /tmp/cmp [--video [--fps N]] [--crops N [--zoom K]] <A> <B> \
+    [--sheet poses] --render early "<renderer arguments>" --render late "<renderer arguments>"
 ```
 
 `A` and `B` are git revisions (each built in a temporary worktree, removed
@@ -275,6 +277,27 @@ difference as a greyscale heatmap (`--gain`, default 8, amplifies it). With
 `--clear`, pixels clear on one side and drawn on the other are red and counted
 as holes on the side that left them clear. `summary.txt` gives per render the
 changed-pixel count and share, the mean absolute difference and the holes.
+
+`--video` compares motion, which shows a difference a still can hide. Both
+revisions record every render through the renderer's own `--video` over the
+same frames (put `--frames` and `--dt` in the renderer arguments; a scene
+runs from time zero, so a stretch that starts late still records from the
+start). It writes `<label>.mp4`, one panel per side plus the heatmap on every
+frame, each labelled with the revision's short hash and the frame's time, and
+`<label>.frames.csv` with the changed share, mean difference and holes of
+each frame. The recorded AVIs are the harness's video path; ffmpeg only packs
+the composed frames into H.264, as for the doc GIFs, because an uncompressed
+side-by-side runs to tens of megabytes. `--fps` sets the playback rate
+(default `1000/dt`), so a coarse `--dt` with a higher `--fps` plays a long
+stretch quickly.
+
+`--crops N` adds `<name>.crops.png` beside each sheet and video: the `N` places
+the two differ most, A above B, enlarged `K` times (`--zoom`, default 4) with
+no smoothing. Changed pixels (a channel off by more than 8, or a hole) within
+3 px of each other are one place; places with holes rank first, then by total
+difference; a place larger than 64 px is cut to its strongest 64 px window. A
+video takes them from its two frames with the most holes, then the most
+changed pixels.
 
 ---
 
