@@ -38,3 +38,22 @@ capture. The Gouraud scene rotates when stepped over several frames.
 At the poses `suite_sponza_perf.c` times, how many drawn triangles cover
 0, 1, 2-4 or more pixel centres. `--write` keeps each pose's frame and
 `--against` diffs a later build's frames with them, pixel by pixel.
+
+## The capybara test asset
+
+`gen_capybara.py` writes `../assets/capybara.glb`, a rigged low-poly capybara
+modelled entirely in code: 1336 triangles, 20 joints, and two looping clips at
+30 fps, `idle` (3.5 s) and an in-place `walk` (1 s, no root motion). It is a
+plain glTF 2.0 file, the input a skinned-mesh baker is tested with.
+
+```sh
+python launcher/main/apps/render_lab/tools/gen_capybara.py
+python -m unittest discover -s launcher/main/apps/render_lab/tools/tests
+```
+
+The file is read back and posed with the engine's glTF tools in
+[`launcher/tools/r3d/`](../../../../tools/r3d/README.md); to watch it:
+
+```sh
+python launcher/tools/r3d/gltf_preview.py launcher/main/apps/render_lab/assets/capybara.glb --gif walk --out walk.gif
+```
