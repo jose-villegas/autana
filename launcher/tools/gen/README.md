@@ -40,5 +40,4 @@ plus a visual check.
 **A tool that regenerates for you picks one of two policies.** State a
 browser is actively editing goes to a scratch copy and reaches the tree only
 on an explicit save; a file on disk the generator merely mirrors is
-regenerated in place whenever the source is newer. The boot animation
-editor does both: the timeline is the first kind, the photograph the second.
+regenerated in place whenever the source is newer.

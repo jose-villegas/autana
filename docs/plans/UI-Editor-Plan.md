@@ -35,28 +35,25 @@ absolute per orientation. That was enough for Control Center and will not be
 for a flowed list such as the launcher, which is why the launcher is only
 previewed.
 
-## This pattern already runs in this repo
+## The render half already runs in this repo
 
-`tools/boot_anim/boot_anim_editor_server.py` serves `tools/boot_anim/boot_anim_editor.html` and
-answers `POST /render` with **a real frame rendered by the real firmware
-code** - `main/gfx/gfx.c` plus `main/boot/boot_anim.c`, unmodified, compiled
-for the host. It writes the edited payload to a *scratch* copy of
-`boot_anim_timeline.json` placed on the include path ahead of the committed
-one, so a draft never touches the real header. It hashes the payload so
-scrubbing time never recompiles, and it has a build-and-flash path out the
-back.
+The render harness (`launcher/tools/render/`) compiles the firmware's
+host-portable C - `main/gfx/gfx.c` plus a scene such as `main/boot/boot_anim.c`,
+unmodified - and renders **a real frame by the real firmware code** on the
+host. Authored data reaches it as a baked header or generated source, so a
+draft can be baked and rendered without touching the committed one.
 
-That is the architecture, running, for one payload. A level editor
-proposes it for a second. This plan is the third:
+That is the architecture, running, for one payload. A level editor proposes
+it for a second. This plan is the third:
 
 | | authored data | generator | rendered by |
 |---|---|---|---|
-| boot animation | `boot_anim_timeline.json` | `gen_boot_anim_timeline.py` | real `boot_anim.c` + `gfx.c` on host |
+| boot animation | `boot_anim_motion.glb`, `boot_anim_timeline.json` | `bake_tracks.py`, `gen_boot_anim_timeline.py` | real `boot_anim.c` + `gfx.c` on host |
 | level editor | material blocks | bake to a header | real sand code on host |
 | **UI editor (this)** | **a screen's layout** | **bake to a header** | **real `gfx.c` + pure geometry on host** |
 
 They are not three tools. They are one pattern with three payloads, and the
-pattern is already proven.
+render half is already proven.
 
 ## The one thing that has to change
 
@@ -124,9 +121,8 @@ Windows and Linux, with nothing Windows-specific. Web stays a
 the editor draws itself.
 
 **It links the firmware's host-portable C in-process**, rather than spawning
-a renderer and reading back an image. `boot_anim_editor_server.py` spawns
-and recompiles because its payload is baked into a header the C reads; there
-is no way around it there. Layout-as-data removes that tax entirely: nothing
+a renderer and reading back an image. A spawned renderer recompiles whenever
+its payload is baked into a header the C reads; there is no way around it there. Layout-as-data removes that tax entirely: nothing
 is generated to preview a change, so the editor can mutate a struct, call
 the same layout and draw code the firmware calls, and re-render at frame
 rate. Direct manipulation needs that - dragging a panel through a subprocess
@@ -214,16 +210,12 @@ run by `.github/workflows/host-tests.yml`.
   input - the convention every other generated file here already follows.
   Parsing back what a generator emitted is how the authored source and the
   artifact drift.
-- **A JavaScript reimplementation of the renderer for the editor.** The boot
-  animation editor rejected exactly this and says so in its own header: it
-  renders through the real C rather than a JS twin. A preview that is not
-  the shipping renderer is a preview of something that does not exist.
+- **A JavaScript reimplementation of the renderer for the editor.** The
+  preview renders through the real C rather than a JS twin. A preview that is
+  not the shipping renderer is a preview of something that does not exist.
 
-- **A browser-hosted editor at all**, which is what the boot animation
-  editor is. It suits a timeline with a scrubber; a layout editor wants
-  direct manipulation, and that wants in-process rendering. Accepted
-  consequence: two editor architectures coexist until the older one is
-  either migrated or retired. Not a reason to make this one a page.
+- **A browser-hosted editor at all.** A layout editor wants direct
+  manipulation, and that wants in-process rendering.
 
 - **Anything platform-specific** - Win32, WinUI, GTK-only. One source
   tree has to serve Windows and Linux, which is the same bar every
