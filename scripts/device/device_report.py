@@ -17,6 +17,7 @@ subcommand and its call from run_suite().
 import gzip
 import json
 import re
+import statistics
 import subprocess
 import sys
 from pathlib import Path
@@ -159,7 +160,7 @@ def _row(per_run, run, name):
 
 def batch_summary_markdown(entries, meta):
     """One report across a batch: every suite's timings side by side per run
-    with the spread, the tests whose result CHANGED between runs of the same
+    with min, median, max and the spread, the tests whose result CHANGED between runs of the same
     image (a test that flaps is a finding, not noise), the tests that failed
     in every run, and each target's measurement per run. `entries` is a list
     of {suite, run, capture, error}; `meta` carries build_id, owner, purpose,
@@ -169,7 +170,11 @@ def batch_summary_markdown(entries, meta):
     lines = ["# Device Batch Report", ""]
     for key in ("build_id", "worktree", "commit", "owner", "purpose"):
         lines.append(f"- {key.replace('_', ' ').title()}: `{meta.get(key)}`")
-    lines += [f"- Runs per suite: {runs}", ""]
+    lines.append(f"- Runs per suite: {runs}")
+    if meta.get("test_filter"):
+        lines.append("- Test filter: `" + ", ".join(meta["test_filter"]) + "` - only the tests "
+                     "whose name contains one of these ran")
+    lines.append("")
     suites = []
     for entry in entries:
         if entry["suite"] not in suites:
@@ -195,15 +200,17 @@ def batch_summary_markdown(entries, meta):
         timed = [n for n in names if any(_row(per_run, r, n)[1] is not None for r in run_ids)]
         if timed:
             lines += ["### Timings (us)", "",
-                      "| Test | " + " | ".join(f"run {r}" for r in run_ids) + " | min | max | spread |",
-                      "|---|" + "---:|" * (len(run_ids) + 3)]
+                      "| Test | " + " | ".join(f"run {r}" for r in run_ids) + " | min | median | max | spread |",
+                      "|---|" + "---:|" * (len(run_ids) + 4)]
             for name in timed:
                 values = [_row(per_run, r, name)[1] for r in run_ids]
                 present = [v for v in values if v is not None]
                 low, high = min(present), max(present)
+                middle = statistics.median(present)
+                middle = int(middle) if middle == int(middle) else round(middle, 1)
                 spread = f"{(high - low) * 100 / low:.1f}%" if low else "-"
                 cells = " | ".join("-" if v is None else str(v) for v in values)
-                lines.append(f"| `{name}` | {cells} | {low} | {high} | {spread} |")
+                lines.append(f"| `{name}` | {cells} | {low} | {middle} | {high} | {spread} |")
             lines.append("")
 
         flapping, always_failed = [], []
@@ -358,6 +365,9 @@ def build_report_markdown(capture_path, index_path):
     lines = ["# Device Capture Report", "", f"- Capture: `{capture_path}`"]
     if entry:
         lines.append(f"- Suite: `{entry.get('suite') or 'n/a'}`")
+        if entry.get("test_filter"):
+            lines.append("- Test filter: `" + ", ".join(entry["test_filter"]) + "` - only the "
+                         "tests whose name contains one of these ran")
         lines.append(f"- Build: `{entry.get('build_id') or 'unknown'}`")
         worktree = entry.get("worktree")
         commit = entry.get("commit")

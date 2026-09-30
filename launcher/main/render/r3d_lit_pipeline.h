@@ -24,13 +24,16 @@ typedef struct {
     float center_x, center_y;
     float near_z; /* model units */
     int width, height;
+    float snap_cx, snap_cy; /* the centre in subpixels, plus R3D_SNAP_BIAS */
+    float near_subpixels;   /* near_z / R3D_SUBPIXEL */
 } r3d_lit_view_t;
 
-/* 16 bytes: lens-space x and y are recomputed from the position for the
- * rare triangle that needs near clipping. */
+/* 8 bytes: the screen position is snapped to r3d_span's subpixels once, so
+ * every test on it is exact. A triangle with a vertex that has no position
+ * here is rebuilt from the mesh, as near clipping needs. */
 typedef struct {
-    float z;          /* lens space */
-    float sx, sy, iz; /* screen position and near_z / z, valid while z > near_z */
+    int16_t sx, sy; /* 1/R3D_SUBPIXEL pixels, valid while iz > 0 */
+    float iz;       /* near_z / z; 0 behind the near plane, below 0 in front but too far off screen to snap */
 } r3d_lit_vertex_t;
 
 /* `forward` need not be normalised but must not be vertical. The lens is
@@ -45,11 +48,11 @@ void r3d_lit_view_look(r3d_lit_view_t* view, r3d_vec3f_t eye, r3d_vec3f_t forwar
 int r3d_lit_cull_clusters(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, uint16_t* out);
 
 /* The screen rows a cluster's vertices span, for a caller drawing only some
- * rows to skip it whole. A cluster reaching behind the near plane has no
- * bounded span and is never skipped. */
+ * rows to skip it whole. A cluster with a vertex behind the near plane or
+ * too far off screen to snap is unbounded, and never skipped. */
 typedef struct {
     float y0, y1;
-    bool crosses_near;
+    bool unbounded;
 } r3d_lit_rows_t;
 
 /* `rows`, when not NULL, holds mesh->cluster_count entries and is filled for

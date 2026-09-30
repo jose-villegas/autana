@@ -13,6 +13,7 @@ the device lock. The command list is COMMAND_GROUPS at the end of this
 file; docs/tools/Autana-CLI.md mirrors it.
 """
 
+import contextlib
 import gzip
 import importlib
 import json
@@ -31,6 +32,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python  # noqa: E402
 from version import __version__  # noqa: E402
+
+EXIT_BUSY = autana_config.EXIT_BUSY
+EXIT_INTERRUPTED = autana_config.EXIT_INTERRUPTED
 
 VARIANTS = {"rel": "release", "release": "release", "dev": "dev", "diag": "diag"}
 
@@ -98,7 +102,32 @@ def resolve_project():
     return str(project)
 
 
-def run_command(handler, args):
+COMMAND_ENV = autana_config.COMMAND_ENV
+
+
+@contextlib.contextmanager
+def command_named(name):
+    """Tells the device.py children of this command what to call the lock
+    they take (the label `status` shows), for the length of the command."""
+    previous = os.environ.get(COMMAND_ENV)
+    os.environ[COMMAND_ENV] = name
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(COMMAND_ENV, None)
+        else:
+            os.environ[COMMAND_ENV] = previous
+
+
+def command_words(words):
+    """`tune`, or `lock hand` / `debug freeze` for the two verb routers."""
+    if len(words) > 1 and words[0] in ("lock", "debug") and not words[1].startswith("-"):
+        return f"{words[0]} {words[1]}"
+    return words[0]
+
+
+def run_command(handler, args, name=None):
     """Pop `--project` once, ahead of `handler`'s own parsing, and let
     resolve_project()/project_override() read it for the length of this
     call. The one place main() and console() both dispatch through."""
@@ -116,7 +145,8 @@ def run_command(handler, args):
             autana_config.load(project)
         except autana_config.ConfigError as error:
             sys.exit(f"autana: {error}")
-        return handler(args)
+        with command_named(name) if name else contextlib.nullcontext():
+            return handler(args)
     finally:
         _project_arg = previous
         if inherited is None:
@@ -271,11 +301,11 @@ def variant_request(verb, args, flags, project):
 
 def flash(args):
     project = resolve_project()
-    asked, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope"), project)
+    _, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope"), project)
     quiet = "--quiet" in seen
     perf_scope = "--perf-scope" in seen
     command = device_command(
-        "flash", "--variant", variant, "--worktree", project, "--purpose", f"autana flash {asked}",
+        "flash", "--variant", variant, "--worktree", project,
     )
     if perf_scope:
         command.append("--perf-scope")
@@ -318,25 +348,12 @@ def seconds_argument(args, default, usage):
         sys.exit(usage)
 
 
-def identify(args):
-    """What the device lock calls this autana, and the process that is it."""
-    reject_unknown("id", args, ("--json",))
-    json_output = read_json_flag(args, "usage: autana id [--json]")
-    if json_output:
-        print(json.dumps({"owner": owner(), "pid": os.getpid()}))
-        return 0
-    if args:
-        sys.exit("usage: autana id")
-    print(f"{owner()}   pid {os.getpid()}")
-    return 0
-
-
 def buildid(args):
     """What the BOARD says it is running, asked of it rather than read out of
     a build directory: the point of the question is whether the two agree."""
     reject_unknown("buildid", args, ("--json",))
     json_output = read_json_flag(args, "usage: autana buildid [--json]")
-    code, replies = send("BUILDID", reply="BUILD_ID", purpose="autana buildid")
+    code, replies = send("BUILDID", reply="BUILD_ID")
     if code != 0 or not replies:
         return code or 1
     if json_output:
@@ -352,7 +369,7 @@ def framewatch(args):
     reject_unknown("framewatch", args)
     if args:
         sys.exit("usage: autana framewatch")
-    code, replies = send("FRAMEWATCH", reply="FRAMEWATCH", purpose="autana framewatch")
+    code, replies = send("FRAMEWATCH", reply="FRAMEWATCH")
     if code != 0 or not replies:
         return code or 1
     print(parse_framewatch(replies[-1]))
@@ -405,7 +422,7 @@ def monitor(args):
             print(usage, file=sys.stderr)
             raise SystemExit(2)
         follow = True
-    command = device_command("listen", "--purpose", "autana monitor")
+    command = device_command("listen")
     command += ["--follow"] if follow else ["--seconds", str(seconds)]
     if terminal or stream:
         command.append("--echo")
@@ -421,7 +438,7 @@ def monitor(args):
             return process.wait()
         except KeyboardInterrupt:
             if interrupted:
-                return 130
+                return EXIT_INTERRUPTED
             interrupted = True
 
 
@@ -440,7 +457,7 @@ def reset(args):
     seconds = seconds_argument(rest, None, usage)
     if rest and not capture:
         sys.exit(usage)
-    command = device_command("reset", "--purpose", "autana reset")
+    command = device_command("reset")
     if capture:
         command += ["--capture"]
         if seconds is not None:
@@ -469,7 +486,6 @@ def selftest(args):
     print(f"autana selftest: every suite, {project}", flush=True)
     command = device_command(
         "selftest", "--worktree", project, "--max-seconds", str(seconds),
-        "--purpose", "autana selftest",
     )
     if verbose:
         command.append("--verbose")
@@ -521,13 +537,10 @@ def release(args):
 
 def hand(args):
     """Reserve the board for a maintainer sitting at it - autana refuses new
-    work against it until `autana take-back`, or an hour after the last
-    `hand`, which running it again renews."""
-    usage = "usage: autana hand [--until-back <seconds>] <note...>"
+    work against it until `autana lock take-back`, or an hour after the last
+    `lock hand`, which running it again renews."""
+    usage = "usage: autana lock hand [--until-back <seconds>] <note...>"
     wait = []
-    if args and args[0] == "--wait":
-        sys.exit("autana hand: --wait is how long to wait for the board; "
-                 "use --until-back to wait for it to be handed back")
     if args and args[0] == "--until-back":
         if len(args) < 3:
             sys.exit(usage)
@@ -548,16 +561,16 @@ def hand(args):
             process.terminate()
             process.wait()
             code = None
-        if code != 3:
+        if code != EXIT_INTERRUPTED:
             print("human reservation wait interrupted")
-        return 3
+        return EXIT_INTERRUPTED
 
 
 def take_back(args):
-    """Clear a reservation `autana hand` made, freeing the board again."""
-    reject_unknown("take-back", args)
+    """Clear a reservation `autana lock hand` made, freeing the board again."""
+    reject_unknown("lock take-back", args)
     if args:
-        sys.exit("usage: autana take-back")
+        sys.exit("usage: autana lock take-back")
     return subprocess.call(device_command("take-back"))
 
 
@@ -603,8 +616,8 @@ def suite_list(args):
     return 0
 
 
-SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [seconds] [--runs N] [--flash] "
-              "[--perf-scope] [--verbose] [--out PATH] [--expect-build-id ID] | "
+SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [seconds] [--runs N] [--test PATTERN] "
+              "[--flash] [--perf-scope] [--verbose] [--out PATH] [--expect-build-id ID] | "
               "autana suite list [text]")
 
 
@@ -612,8 +625,10 @@ def suite(args):
     """One or more registered suites, captured under one lock - against the
     image already on the board, or, with `--flash`, built and flashed first.
     The name is each suite's own function, as SUITE_REGISTER() in its source
-    spells it. `seconds` caps the whole run, 600 when omitted - the same
-    idea as `selftest`'s own trailing `seconds`."""
+    spells it. `seconds` caps each capture (1800 when omitted, and a
+    silent board ends one sooner). `--test` (repeatable, or a comma
+    list) narrows the run, on the device, to the tests whose name contains
+    a pattern."""
     if not args:
         sys.exit(SUITE_USAGE)
     if args[0] == "list":
@@ -623,7 +638,7 @@ def suite(args):
         positional.append(rest.pop(0))
     if not positional:
         sys.exit(SUITE_USAGE)
-    seconds = 600.0
+    seconds = None
     if len(positional) > 1:
         try:
             seconds = float(positional[-1])
@@ -646,6 +661,10 @@ def suite(args):
     runs, rest = pop_value(rest, "--runs")
     out, rest = pop_value(rest, "--out")
     expect_build_id, rest = pop_value(rest, "--expect-build-id")
+    tests = []
+    while "--test" in rest:
+        value, rest = pop_value(rest, "--test")
+        tests.append(value)
     reject_unknown("suite", rest)
     if rest:
         sys.exit(SUITE_USAGE)
@@ -655,12 +674,16 @@ def suite(args):
     # directory does, unvalidated, same as project_override()'s other use.
     project = resolve_project() if flash else (project_override() or str(Path.cwd()))
     runs = runs or "1"
-    print(f"autana suite: {', '.join(names)} x{runs}" + (" (flash)" if flash else ""), flush=True)
+    filtered = f" --test {','.join(tests)}" if tests else ""
+    print(f"autana suite: {', '.join(names)} x{runs}{filtered}" + (" (flash)" if flash else ""),
+          flush=True)
     command = device_command(
         "batch", "--worktree", project, "--variant", "diag", "--runs", runs,
-        "--max-seconds", str(seconds),
-        "--purpose", "autana suite",
     )
+    if seconds is not None:
+        command += ["--max-seconds", str(seconds)]
+    for value in tests:
+        command += ["--test", value]
     if not flash:
         command.append("--no-flash")
     for name in names:
@@ -708,7 +731,7 @@ def board_holder():
     return ""
 
 
-def send(line, reply="TUNE", purpose="autana tune", optional=False, seconds=None, until=None):
+def send(line, reply="TUNE", optional=False, seconds=None, until=None):
     """One console line to the device, under the lock. Returns (exit code,
     reply lines). `reply` is what the answer's lines start with. `until` are
     the prefixes that end the answer - one reply-line verb needs only
@@ -722,8 +745,8 @@ def send(line, reply="TUNE", purpose="autana tune", optional=False, seconds=None
     if holder:
         print(f"the board is busy - {holder}\nnothing was sent; try again when it is free",
               file=sys.stderr)
-        return 3, []
-    command = device_command("send", line, "--purpose", purpose, wait=SEND_WAIT_S)
+        return EXIT_BUSY, []
+    command = device_command("send", line, wait=SEND_WAIT_S)
     if reply != "TUNE":
         command += ["--reply", reply]
         for one_until in until if until is not None else [reply]:
@@ -775,16 +798,16 @@ def screenshot_frames(frames, out, view):
     code = capture_screenshot(None, view)
     if code:
         return code
-    code, _ = send("FREEZE", reply="FREEZE_STATE", purpose="autana screenshot --frames")
+    code, _ = send("FREEZE", reply="FREEZE_STATE")
     for i in range(frames):
         if code:
             break
         if i:
-            code, _ = send("STEP", reply="FREEZE_STATE", purpose="autana screenshot --frames")
+            code, _ = send("STEP", reply="FREEZE_STATE")
             if code:
                 break
         code = capture_screenshot(f"{out}-{i:02d}", view)
-    resumed, _ = send("RESUME", reply="FREEZE_STATE", purpose="autana screenshot --frames")
+    resumed, _ = send("RESUME", reply="FREEZE_STATE")
     return code or resumed
 
 
@@ -793,8 +816,8 @@ def capture_screenshot(out, view):
     if holder:
         print(f"the board is busy - {holder}\nnothing was sent; try again when it is free",
               file=sys.stderr)
-        return 3
-    command = device_command("screenshot", "--purpose", "autana screenshot")
+        return EXIT_BUSY
+    command = device_command("screenshot")
     if out:
         command += ["--out", out]
     if view:
@@ -806,7 +829,7 @@ def freeze(args):
     reject_unknown("freeze", args)
     if args:
         sys.exit("usage: autana freeze")
-    code, replies = send("FREEZE", reply="FREEZE_STATE", purpose="autana freeze")
+    code, replies = send("FREEZE", reply="FREEZE_STATE")
     print("\n".join(replies))
     return code
 
@@ -815,7 +838,7 @@ def resume(args):
     reject_unknown("resume", args)
     if args:
         sys.exit("usage: autana resume")
-    code, replies = send("RESUME", reply="FREEZE_STATE", purpose="autana resume")
+    code, replies = send("RESUME", reply="FREEZE_STATE")
     print("\n".join(replies))
     return code
 
@@ -827,8 +850,7 @@ def step(args):
     count = args[0] if args else ""
     if count and not (count.isdigit() and int(count) >= 1):
         sys.exit("usage: autana step [N] - N is a positive count")
-    code, replies = send("STEP " + count if count else "STEP", reply="FREEZE_STATE",
-                         purpose="autana step")
+    code, replies = send("STEP " + count if count else "STEP", reply="FREEZE_STATE")
     print("\n".join(replies))
     return code
 
@@ -845,7 +867,7 @@ def touch(args):
     reject_unknown("touch", args)
     if len(args) != 3 or args[0] not in ("down", "up") or not is_int(args[1]) or not is_int(args[2]):
         sys.exit("usage: autana touch <down|up> <x> <y>")
-    code, replies = send("TOUCH " + " ".join(args), reply="TOUCH", purpose="autana touch",
+    code, replies = send("TOUCH " + " ".join(args), reply="TOUCH",
                          optional=True, seconds=0.5)
     print("\n".join(replies) if replies else "sent")
     return code
@@ -854,12 +876,12 @@ def touch(args):
 def imu(args):
     reject_unknown("imu", args)
     if args == ["release"]:
-        code, replies = send("IMU release", reply="IMU", purpose="autana imu", optional=True, seconds=0.5)
+        code, replies = send("IMU release", reply="IMU", optional=True, seconds=0.5)
         print("\n".join(replies) if replies else "sent")
         return code
     if len(args) != 3 or not all(is_int(value) for value in args):
         sys.exit("usage: autana imu <ax> <ay> <az> | autana imu release")
-    code, replies = send("IMU " + " ".join(args), reply="IMU", purpose="autana imu",
+    code, replies = send("IMU " + " ".join(args), reply="IMU",
                          optional=True, seconds=0.5)
     print("\n".join(replies) if replies else "sent")
     return code
@@ -869,8 +891,7 @@ def gesture(args, verb, usage):
     reject_unknown(verb, args)
     if not all(is_int(value) for value in args):
         sys.exit(usage)
-    code, replies = send(verb.upper() + " " + " ".join(args), reply=verb.upper(), until=[verb.upper() + "_OK"],
-                         purpose="autana " + verb)
+    code, replies = send(verb.upper() + " " + " ".join(args), reply=verb.upper(), until=[verb.upper() + "_OK"])
     print("\n".join(replies))
     return code
 
@@ -899,7 +920,7 @@ def button(args):
             or len(args) == 2 and args[1] not in ("short", "long"):
         sys.exit("usage: autana button <boot|power> [short|long]")
     code, replies = send("BUTTON " + " ".join(args), reply="BUTTON",
-                         until=["BUTTON_OK", "BUTTON_ERR"], purpose="autana button")
+                         until=["BUTTON_OK", "BUTTON_ERR"])
     print("\n".join(replies))
     return code
 
@@ -913,7 +934,7 @@ def docs(args):
 def apps(args):
     reject_unknown("apps", args, ("--json",))
     json_output = read_json_flag(args, "usage: autana apps [--json]")
-    code, replies = send("APPS", reply="APPS", until=["APPS_END"], purpose="autana apps")
+    code, replies = send("APPS", reply="APPS", until=["APPS_END"])
     if not json_output:
         print("\n".join(reply for reply in replies if reply.startswith("APPS ")))
     elif code == 0:
@@ -934,7 +955,7 @@ def open_app(args):
     reject_unknown("open", args)
     if len(args) != 1:
         sys.exit("usage: autana open <name>")
-    code, replies = send("OPEN " + args[0], reply="OPEN", purpose="autana open")
+    code, replies = send("OPEN " + args[0], reply="OPEN")
     print("\n".join(replies))
     return code
 
@@ -943,7 +964,7 @@ def home(args):
     reject_unknown("home", args)
     if args:
         sys.exit("usage: autana home")
-    code, replies = send("HOME", reply="HOME", purpose="autana home")
+    code, replies = send("HOME", reply="HOME")
     print("\n".join(replies))
     return code
 
@@ -1119,8 +1140,8 @@ def forward(line, verb):
     no dedicated autana command of its own (runsuite, today) falls back to
     that window, since nothing then completes early."""
     reply = verb.upper()
-    _, replies = send(line, reply=reply, until=[reply + "_END", reply + "_ERR"],
-                      purpose=f"autana console {verb}", optional=True)
+    with command_named(f"console {verb}"):
+        _, replies = send(line, reply=reply, until=[reply + "_END", reply + "_ERR"], optional=True)
     return replies
 
 
@@ -1148,7 +1169,7 @@ def console(_args=None):
             if verb == "help":
                 print(help_text(rest, prefix=""))
             elif verb in COMMANDS and verb != "console":
-                run_command(COMMANDS[verb], rest)
+                run_command(COMMANDS[verb], rest, command_words([verb, *rest]))
             else:
                 replies = forward(line, verb)
                 print("\n".join(replies) if replies else "sent")
@@ -1171,13 +1192,13 @@ def alias(old, new, handler):
     return wrapped
 
 
-LOCK_VERBS = {"id": identify, "release": release, "hand": hand, "take-back": take_back}
+LOCK_VERBS = {"release": release, "hand": hand, "take-back": take_back}
 DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu,
               "framewatch": framewatch}
 
 
 def lock(args):
-    """`autana lock <verb>` - id/release/hand/take-back, the lock-sharing
+    """`autana lock <verb>` - release/hand/take-back, the lock-sharing
     commands a session reaches for far less than `status`, which stays
     top-level on its own."""
     if not args or args[0] not in LOCK_VERBS:
@@ -1213,7 +1234,10 @@ COMMAND_GROUPS = (
     ("tests", "Tests", (
         Command("suite", suite, (
             ("suite <name>... [seconds] [--runs N] [--flash] [--verbose]",
-             "run suites under one lock; --flash builds and flashes first"),
+             "run suites under one lock; --flash builds and flashes first; seconds caps a "
+             "capture (1800 when omitted)"),
+            ("suite <name> --test PATTERN[,PATTERN]",
+             "only the tests whose name contains a pattern; --test repeats"),
             ("suite list [text] [--json]", "the suites this project registers"))),
         Command("selftest", selftest, (
             ("selftest [seconds] [--verbose]",
@@ -1250,7 +1274,6 @@ COMMAND_GROUPS = (
     ("lock", "Sharing the board", (
         Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
         Command("lock", lock, (
-            ("lock id [--json]", "the name this session holds the lock under"),
             ("lock release [<token>]", "release a lock this session holds, given its token"),
             ("lock hand [--until-back <seconds>] <note...>",
              "reserve the board for a person at it for an hour; run again to renew"),
@@ -1282,8 +1305,6 @@ HIDDEN_GROUPS = {"debug"}
 # to suite() itself (its translation is not a plain forward) so it is not
 # here; every other renamed verb is a bare forward into its new group.
 RENAMED_VERBS = {
-    "id": ("lock id", identify), "release": ("lock release", release),
-    "hand": ("lock hand", hand), "take-back": ("lock take-back", take_back),
     "freeze": ("debug freeze", freeze), "resume": ("debug resume", resume),
     "step": ("debug step", step), "touch": ("debug touch", touch), "imu": ("debug imu", imu),
     "framewatch": ("debug framewatch", framewatch),
@@ -1302,14 +1323,11 @@ USAGE_WIDTH = 34
 # own usage line (`autana help flags` instead) since most commands take most
 # of these and repeating them on every line was unreadable.
 BOARD_FLAGS = (
-    ("--wait SECONDS", "global, goes before the command: wait this long for the board's lock, "
-                       "0 to fail at once (exit 75); 600 s without it",
+    ("--wait SECONDS", "how long to wait for the board's lock; 0 fails at once (exit 75)",
      "every board command"),
-    ("--owner NAME", "global, goes before the command: label this run in the lock as "
-                     "NAME:<pid>",
+    ("--owner NAME", "the lock owner's label",
      "every board command"),
-    ("--board SERIAL", "global, goes before the command: the board's USB serial number; "
-                       "without it, the only board plugged in",
+    ("--board SERIAL", "the board's USB serial number",
      "every board command"),
     ("--out PATH", "write the one capture here instead of the default path",
      "selftest, suite, monitor"),
@@ -1324,9 +1342,8 @@ BOARD_FLAGS = (
 
 def board_flags_text(prefix=""):
     width = max(len(flag) for flag, _, _ in BOARD_FLAGS)
-    lines = ["Every board command's lock owner is \"<user>@<host>:<pid>\", or the "
-             "global --owner label. How long a command "
-             "waits for the board's lock: the global --wait, else 600 s.",
+    lines = ["--wait, --owner and --board are global: they go before the command, and "
+             "docs/tools/Autana-CLI.md#settings has their defaults.",
              "",
              "Flags (on top of each command's own usage above)"]
     for flag, summary, commands in BOARD_FLAGS:
@@ -1496,7 +1513,7 @@ def main():
         replies = forward(" ".join(argv), argv[0])
         print("\n".join(replies) if replies else "sent")
         sys.exit(0)
-    sys.exit(run_command(COMMANDS[argv[0]], argv[1:]))
+    sys.exit(run_command(COMMANDS[argv[0]], argv[1:], command_words(argv)))
 
 
 if __name__ == "__main__":

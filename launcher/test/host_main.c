@@ -10,6 +10,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 
 #include "heap_arena.h"
 #include "suites.h"
@@ -39,11 +40,27 @@ tearDown(void) {
     }
 }
 
+/* `host_tests --run "<suite> [patterns]"` (repeatable) is a RUNSUITE as the
+ * board takes it, for the tooling tests that read its output. */
+static void
+run_requests(int argc, char** argv) {
+    for (int i = 1; i + 1 < argc; i++) {
+        if (strcmp(argv[i], "--run") == 0) {
+            const suite_run_t run = suites_run_request(argv[i + 1]);
+            suites_print_run(&run);
+        }
+    }
+}
+
 int
-main(void) {
+main(int argc, char** argv) {
     UNITY_BEGIN();
 
-    suites_run_all();
+    if (argc > 1) {
+        run_requests(argc, argv);
+    } else {
+        suites_run_all();
+    }
 
     int failures = UNITY_END();
 

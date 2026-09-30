@@ -108,6 +108,18 @@ FRAME_TIME_PHASE_RE = re.compile(
     r"device_tests: frame time, .+?: (?P<phase>sim|mark|present|total) (?P<us>\d+) us/frame")
 
 
+# A run narrowed with `autana suite --test` lists every test of the suite and
+# whether it was selected (test/suites.c); the unselected ones were asked not
+# to run, so they are not "missing" from this capture.
+SUITE_TEST_RE = re.compile(r"^SUITE_TEST name=(?P<name>\w+) selected=(?P<selected>[01])\s*$", re.MULTILINE)
+
+
+def parse_unselected(capture_path: str) -> set:
+    with open(capture_path, "r", errors="replace") as f:
+        text = f.read()
+    return {m.group("name") for m in SUITE_TEST_RE.finditer(text) if m.group("selected") == "0"}
+
+
 def parse_budgets(source_path: str) -> dict:
     with open(source_path, "r", errors="replace") as f:
         text = f.read()
@@ -273,7 +285,8 @@ def main() -> int:
     # a test present in one but not the other is worth surfacing, not
     # silently dropping.
     known = sorted(set(budgets) & set(capture))
-    only_in_source = sorted(set(budgets) - set(capture))
+    unselected = parse_unselected(args.capture_path)
+    only_in_source = sorted(set(budgets) - set(capture) - unselected)
     only_in_capture = sorted(name for name in set(capture) - set(budgets)
                              if capture[name]["measured"] is not None)
 
@@ -319,6 +332,10 @@ def main() -> int:
                      + ", ".join(f"`{n}`" for n in unmeasured))
         lines.append("")
 
+    if unselected:
+        lines.append(f"> Run with a test filter: {len(unselected)} tests were not selected and are "
+                     "not counted as missing.")
+        lines.append("")
     if only_in_source:
         lines.append("> Declared a budget in source but did not appear in this capture "
                      "(not run, or renamed): " + ", ".join(f"`{n}`" for n in only_in_source))

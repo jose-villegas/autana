@@ -35,7 +35,7 @@
  * discarded up to and including its terminator, so its tail never arrives
  * as a line of its own. */
 static inline bool
-console_append_char(char* line, int* len, bool* overflowed, int c) {
+console_append_char_max(char* line, int line_max, int* len, bool* overflowed, int c) {
     /* Either terminator ends a line: a host terminal's Enter key may send
      * '\r' or '\n', depending on platform. */
     if (c == '\n' || c == '\r') {
@@ -54,13 +54,20 @@ console_append_char(char* line, int* len, bool* overflowed, int c) {
     if (*overflowed) {
         return false;
     }
-    if (*len < CONSOLE_LINE_MAX - 1) {
+    if (*len < line_max - 1) {
         line[(*len)++] = (char)c;
     } else {
         *overflowed = true;
         *len = 0;
     }
     return false;
+}
+
+/* The same, for the one reader whose buffer is longer than CONSOLE_LINE_MAX
+ * because some verb takes a longer line (see CONSOLE_VERB_LONG). */
+static inline bool
+console_append_char(char* line, int* len, bool* overflowed, int c) {
+    return console_append_char_max(line, CONSOLE_LINE_MAX, len, overflowed, c);
 }
 
 typedef void (*console_reply_fn)(const char* line);
@@ -119,6 +126,17 @@ console_clash_t console_find_clash(const console_registry_t* verbs, const char* 
  * console.h, so this pure header can build the macro below without pulling
  * in a driver-facing header nothing here needs. */
 console_registry_t* console_shared(void);
+
+/* A verb whose line is longer than CONSOLE_LINE_MAX: the reader's buffer is
+ * sized to `line_max` (console.c), and the verb owns its own copy of the
+ * args. Every other verb still sees only lines of CONSOLE_LINE_MAX. */
+#define CONSOLE_VERB_LONG(VERB, longest_args, line_max, function)                                                      \
+    _Static_assert(sizeof(#VERB) + 1 + (longest_args) <= (line_max),                                                   \
+                   #VERB " plus its longest args cannot fit " #line_max);                                              \
+    static console_verb_t VERB##_console_verb = {#VERB, (function), NULL};                                             \
+    __attribute__((constructor)) static void VERB##_console_verb_register(void) {                                      \
+        console_register(console_shared(), &VERB##_console_verb);                                                      \
+    }
 
 #define CONSOLE_VERB(VERB, longest_args, function)                                                                     \
     _Static_assert(sizeof(#VERB) + 1 + (longest_args) <= CONSOLE_LINE_MAX,                                             \

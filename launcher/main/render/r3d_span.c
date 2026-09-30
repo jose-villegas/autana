@@ -4,8 +4,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "util/fast_float.h"
-
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
 /* Attributes run in fixed point: depth as 16.8 (65535 is nearest), colour
@@ -50,13 +48,20 @@ pack(int32_t r, int32_t g, int32_t b) {
     return (uint16_t)((native >> 8) | (native << 8));
 }
 
+static inline float
+pixels_of(int32_t subpixels) {
+    return (float)subpixels * (1.0F / (float)R3D_SUBPIXEL);
+}
+
 static bool
 compute_gradients(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, int x_origin,
                   int y_anchor, gradients_t* out) {
-    const float e1x = b->x - a->x;
-    const float e1y = b->y - a->y;
-    const float e2x = c->x - a->x;
-    const float e2y = c->y - a->y;
+    const float ax = pixels_of(a->x);
+    const float ay = pixels_of(a->y);
+    const float e1x = pixels_of(b->x) - ax;
+    const float e1y = pixels_of(b->y) - ay;
+    const float e2x = pixels_of(c->x) - ax;
+    const float e2y = pixels_of(c->y) - ay;
     const float area2 = (e1x * e2y) - (e2x * e1y);
     if (area2 > -1e-6F && area2 < 1e-6F) {
         return false;
@@ -65,8 +70,8 @@ compute_gradients(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const 
     const float va[ATTRIBUTES] = {a->z * DEPTH_SCALE, a->r * COLOR_SCALE, a->g * COLOR_SCALE, a->b * COLOR_SCALE};
     const float vb[ATTRIBUTES] = {b->z * DEPTH_SCALE, b->r * COLOR_SCALE, b->g * COLOR_SCALE, b->b * COLOR_SCALE};
     const float vc[ATTRIBUTES] = {c->z * DEPTH_SCALE, c->r * COLOR_SCALE, c->g * COLOR_SCALE, c->b * COLOR_SCALE};
-    const float ox = (float)x_origin + 0.5F - a->x;
-    const float oy = (float)y_anchor + 0.5F - a->y;
+    const float ox = (float)x_origin + 0.5F - ax;
+    const float oy = (float)y_anchor + 0.5F - ay;
     for (int k = 0; k < ATTRIBUTES; k++) {
         const float d1 = vb[k] - va[k];
         const float d2 = vc[k] - va[k];
@@ -138,48 +143,15 @@ fill_flat_span(const r3d_span_target_t* target, int y, int x_first, int x_last, 
 }
 
 /* Small enough that a gradient across it is invisible: one colour, one
- * depth. Its coverage is still decided by the same edge walk. */
+ * depth. Its coverage is still decided by the same edges. */
 #define FLAT_MAX_ROWS  2
-#define FLAT_MAX_WIDTH 3.0f
+#define FLAT_MAX_WIDTH (3 * R3D_SUBPIXEL)
 
-/* An edge in 16.16, anchored at its own first row whatever window is being
- * drawn: both triangles sharing it, and any window of rows, get the same
- * position on every row, so there are no gaps and no double fills. 64 bits,
- * because a triangle just past the near plane reaches far off screen. */
-typedef struct {
-    int64_t x;
-    int64_t step;
-} edge_t;
+/* A triangle whose bounding box holds at most this many pixel centres a
+ * side has each centre tested against its edges instead of walked. */
+#define SMALL_MAX_SIDE 2
 
-static edge_t
-edge_at(const r3d_span_vertex_t* top, const r3d_span_vertex_t* bottom, int y) {
-    const float dy = bottom->y - top->y;
-    const float slope = dy > 0.0F ? (bottom->x - top->x) / dy : 0.0F;
-    const int anchor = fast_ceil(top->y - 0.5F);
-    const float x = top->x + (((float)anchor + 0.5F - top->y) * slope);
-    const edge_t e = {(int64_t)(x * 65536.0F), (int64_t)(slope * 65536.0F)};
-    return y == anchor ? e : (edge_t){e.x + ((int64_t)(y - anchor) * e.step), e.step};
-}
-
-/* ceil(x - 0.5) of a 16.16 position: the first pixel whose centre is at or
- * right of it. */
-static inline int
-first_pixel(int64_t x) {
-    return (int)((x + 0x7FFF) >> 16);
-}
-
-static inline int
-first_pixel32(int32_t x) {
-    return (x + 0x7FFF) >> 16;
-}
-
-/* Inside this, edge positions fit 32 bits; a triangle reaching past it (only
- * just past the near plane) walks in 64. */
-#define NARROW_LIMIT    8192.0f
-
-/* A step this steep means an edge under one row tall: it is never taken
- * before the edge ends, so clamping it changes nothing. */
-#define NARROW_STEP_MAX 1073741824
+#define HALF_PIXEL     (R3D_SUBPIXEL / 2)
 
 typedef struct {
     bool flat;
@@ -213,103 +185,105 @@ step_row(const fill_t* f, int32_t row[ATTRIBUTES]) {
     }
 }
 
+/* An edge's first column at or right of it, row by row, exactly: ceil(n /
+ * d) for an n growing a fixed step per row, held as quotient q and
+ * remainder r in [0, d). Two triangles sharing the edge get the same column
+ * on every row in any window, so one fills up to it and the other from it. */
 typedef struct {
-    int32_t x;
-    int32_t step;
-} edge32_t;
+    int32_t q, r, qs, rs, d;
+} edge_t;
 
-/* edge_at() in 32 bits, for vertices inside NARROW_LIMIT: the same float
- * arithmetic, so the same positions, without 64-bit conversions - each of
- * which is a library call on this chip. */
-static edge32_t
-edge32_at(const r3d_span_vertex_t* top, const r3d_span_vertex_t* bottom, int y) {
-    const float dy = bottom->y - top->y;
-    const float slope = dy > 0.0F ? (bottom->x - top->x) / dy : 0.0F;
-    const int anchor = fast_ceil(top->y - 0.5F);
-    const float x = top->x + (((float)anchor + 0.5F - top->y) * slope);
-    const edge32_t e = {(int32_t)(x * 65536.0F),
-                        (int32_t)clampf(slope * 65536.0F, (float)-NARROW_STEP_MAX, (float)NARROW_STEP_MAX)};
-    return y == anchor ? e : (edge32_t){e.x + ((y - anchor) * e.step), e.step};
-}
-
-static void
-walk32(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge32_t left,
-       edge32_t right) {
-    int32_t lx = left.x;
-    int32_t rx = right.x;
-    for (int y = y0; y < y1; y++) {
-        fill_row(target, f, row, y, first_pixel32(lx), first_pixel32(rx) - 1);
-        lx += left.step;
-        rx += right.step;
-        step_row(f, row);
+static inline void
+floor_div(int32_t n, int32_t d, int32_t* q, int32_t* r) {
+    *q = n / d;
+    *r = n - (*q * d);
+    if (*r < 0) {
+        *q -= 1;
+        *r += d;
     }
 }
 
-static void
-walk64(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge_t left,
-       edge_t right) {
-    for (int y = y0; y < y1; y++) {
-        fill_row(target, f, row, y, first_pixel(left.x), first_pixel(right.x) - 1);
-        left.x += left.step;
-        right.x += right.step;
-        step_row(f, row);
-    }
-}
-
-/* Walks rows [y0, y1) between the edges top-a..bottom-a and top-b..bottom-b,
- * `a_on_left` saying which is which. */
-static void
-walk(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1,
-     const r3d_span_vertex_t* top_a, const r3d_span_vertex_t* bottom_a, const r3d_span_vertex_t* top_b,
-     const r3d_span_vertex_t* bottom_b, bool a_on_left, bool narrow) {
-    if (y0 >= y1) {
-        return;
-    }
-    if (narrow) {
-        const edge32_t a = edge32_at(top_a, bottom_a, y0);
-        const edge32_t b = edge32_at(top_b, bottom_b, y0);
-        walk32(target, f, row, y0, y1, a_on_left ? a : b, a_on_left ? b : a);
-    } else {
-        const edge_t a = edge_at(top_a, bottom_a, y0);
-        const edge_t b = edge_at(top_b, bottom_b, y0);
-        walk64(target, f, row, y0, y1, a_on_left ? a : b, a_on_left ? b : a);
-    }
+/* Row y's centre line crosses the edge at x = top.x + (16 y + 8 - top.y)
+ * dx / dy, and the first centre at or right of it is ceil((x - 8) / 16).
+ * With every coordinate inside R3D_SPAN_RANGE the numerator stays under
+ * 2^31 for any row of the edge. */
+static edge_t
+edge_at(const r3d_span_vertex_t* top, const r3d_span_vertex_t* bottom, int y) {
+    const int32_t dx = bottom->x - top->x;
+    const int32_t dy = bottom->y - top->y;
+    const int32_t row_offset = (y << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL - top->y;
+    edge_t e = {0, 0, 0, 0, dy << R3D_SUBPIXEL_SHIFT};
+    floor_div(((top->x - HALF_PIXEL) * dy) + (row_offset * dx) + e.d - 1, e.d, &e.q, &e.r);
+    floor_div(dx, dy, &e.qs, &e.rs);
+    e.rs <<= R3D_SUBPIXEL_SHIFT;
+    return e;
 }
 
 static inline void
+step_edge(edge_t* e) {
+    e->q += e->qs;
+    e->r += e->rs;
+    if (e->r >= e->d) {
+        e->r -= e->d;
+        e->q++;
+    }
+}
+
+static void
+walk_rows(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge_t* left,
+          edge_t* right) {
+    for (int y = y0; y < y1; y++) {
+        fill_row(target, f, row, y, left->q, right->q - 1);
+        step_edge(left);
+        step_edge(right);
+        step_row(f, row);
+    }
+}
+
+typedef struct {
+    const r3d_span_vertex_t *v0, *v1, *v2; /* by y */
+    int y_first, split, y_end;
+    bool long_on_left;
+} walk_t;
+
+/* The long edge v0-v2 runs the whole height on one side; the short side is
+ * v0-v1 above the split and v1-v2 below it. */
+static void
+walk(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], const walk_t* w) {
+    edge_t long_edge = edge_at(w->v0, w->v2, w->y_first);
+    if (w->y_first < w->split) {
+        edge_t upper = edge_at(w->v0, w->v1, w->y_first);
+        walk_rows(target, f, row, w->y_first, w->split, w->long_on_left ? &long_edge : &upper,
+                  w->long_on_left ? &upper : &long_edge);
+    }
+    if (w->split < w->y_end) {
+        edge_t lower = edge_at(w->v1, w->v2, w->split);
+        walk_rows(target, f, row, w->split, w->y_end, w->long_on_left ? &long_edge : &lower,
+                  w->long_on_left ? &lower : &long_edge);
+    }
+}
+
+/* Returns true when the sort swapped an odd number of times, which turns
+ * the triangle's winding over. */
+static inline bool
 sort_by_y(const r3d_span_vertex_t** v0, const r3d_span_vertex_t** v1, const r3d_span_vertex_t** v2) {
     const r3d_span_vertex_t* t;
+    bool odd = false;
     if ((*v1)->y < (*v0)->y) {
-        t = *v0, *v0 = *v1, *v1 = t;
+        t = *v0, *v0 = *v1, *v1 = t, odd = !odd;
     }
     if ((*v2)->y < (*v1)->y) {
-        t = *v1, *v1 = *v2, *v2 = t;
+        t = *v1, *v1 = *v2, *v2 = t, odd = !odd;
     }
     if ((*v1)->y < (*v0)->y) {
-        t = *v0, *v0 = *v1, *v1 = t;
+        t = *v0, *v0 = *v1, *v1 = t, odd = !odd;
     }
+    return odd;
 }
 
 static inline int
 clampi(int v, int lo, int hi) {
     return v < lo ? lo : (v > hi ? hi : v);
-}
-
-static inline float
-min3(float a, float b, float c) {
-    return a < b ? (a < c ? a : c) : (b < c ? b : c);
-}
-
-static inline float
-max3(float a, float b, float c) {
-    return a > b ? (a > c ? a : c) : (b > c ? b : c);
-}
-
-/* The pixel-centre row a y position rounds to, with y held one row beyond
- * the window on either side. */
-static inline int
-row_at(const r3d_span_target_t* target, float y) {
-    return fast_ceil(clampf(y, (float)target->row0 - 1.0F, (float)target->row1 + 1.0F) - 0.5F);
 }
 
 static inline void
@@ -328,49 +302,109 @@ first_row_values(const gradients_t* g, int y_first, int y_anchor, int32_t row[AT
     }
 }
 
+/* Edge a-b of a triangle winding positive, where (b - a) x (p - a) is above
+ * zero inside; a centre exactly on it belongs to it only on a top or left
+ * edge, which is the walk's rule in the same integers. */
+typedef struct {
+    int32_t ax, ay, dx, dy, bias;
+} small_edge_t;
+
+static inline small_edge_t
+small_edge(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b) {
+    const int32_t dx = b->x - a->x;
+    const int32_t dy = b->y - a->y;
+    const bool top_left = dy < 0 || (dy == 0 && dx > 0);
+    return (small_edge_t){a->x, a->y, dx, dy, top_left ? 0 : 1};
+}
+
+/* Negative when the centre is outside. */
+static inline int32_t
+small_side(const small_edge_t* e, int32_t x, int32_t y) {
+    return (e->dx * (y - e->ay)) - (e->dy * (x - e->ax)) - e->bias;
+}
+
+typedef struct {
+    int x0, x1, y0, y1; /* half-open, rows already inside the window */
+} centres_t;
+
+static void
+fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+           const r3d_span_vertex_t* c, bool positive, centres_t box) {
+    fill_t f;
+    set_flat(&f, a, b, c);
+    if (r3d_span_stop_after != 0) {
+        return;
+    }
+    const r3d_span_vertex_t* p = positive ? b : c;
+    const r3d_span_vertex_t* q = positive ? c : b;
+    const small_edge_t e[3] = {small_edge(a, p), small_edge(p, q), small_edge(q, a)};
+    const int x0 = box.x0 < 0 ? 0 : box.x0;
+    const int x1 = box.x1 > target->width ? target->width : box.x1;
+    for (int y = box.y0; y < box.y1; y++) {
+        const int row = (y - target->row0) * target->width;
+        const int32_t cy = (y << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
+        for (int x = x0; x < x1; x++) {
+            const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
+            if ((small_side(&e[0], cx, cy) | small_side(&e[1], cx, cy) | small_side(&e[2], cx, cy)) >= 0
+                && f.flat_z > target->depth[row + x]) {
+                target->depth[row + x] = f.flat_z;
+                target->color[row + x] = f.flat_color;
+            }
+        }
+    }
+}
+
 void
 r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                   const r3d_span_vertex_t* c) {
     const r3d_span_vertex_t* v0 = a;
     const r3d_span_vertex_t* v1 = b;
     const r3d_span_vertex_t* v2 = c;
-    sort_by_y(&v0, &v1, &v2);
+    const bool odd = sort_by_y(&v0, &v1, &v2);
 
-    const int y_first = clampi(row_at(target, v0->y), target->row0, target->row1);
-    const int y_end = clampi(row_at(target, v2->y), target->row0, target->row1);
-    if (y_first >= y_end) {
-        return; /* no pixel centre row inside this window */
+    /* The whole triangle's rows, not the window's, decide its path, so any
+     * window of rows draws exactly those rows of the whole. */
+    const int rows = r3d_span_first_centre(v2->y) - r3d_span_first_centre(v0->y);
+    const int y_first = clampi(r3d_span_first_centre(v0->y), target->row0, target->row1);
+    const int y_end = clampi(r3d_span_first_centre(v2->y), target->row0, target->row1);
+    const int32_t lo_x = r3d_span_min3(a->x, b->x, c->x);
+    const int32_t hi_x = r3d_span_max3(a->x, b->x, c->x);
+    const int x_first = r3d_span_first_centre(lo_x);
+    const int x_end = r3d_span_first_centre(hi_x);
+    if (y_first >= y_end || x_first >= x_end) {
+        return; /* no pixel centre inside this window */
+    }
+    /* Twice the signed area of a-b-c; each product is under 2^30. */
+    const int32_t area2 = ((b->x - a->x) * (c->y - a->y)) - ((b->y - a->y) * (c->x - a->x));
+    if (area2 == 0) {
+        return;
+    }
+    if (x_end - x_first <= SMALL_MAX_SIDE && rows <= SMALL_MAX_SIDE) {
+        fill_small(target, a, b, c, area2 > 0, (centres_t){x_first, x_end, y_first, y_end});
+        return;
     }
 
-    const float lo_x = min3(a->x, b->x, c->x);
-    const float hi_x = max3(a->x, b->x, c->x);
-    fill_t f = {y_end - y_first <= FLAT_MAX_ROWS && hi_x - lo_x <= FLAT_MAX_WIDTH, 0, 0, NULL};
-
+    fill_t f = {rows <= FLAT_MAX_ROWS && hi_x - lo_x <= FLAT_MAX_WIDTH, 0, 0, NULL};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
-    const int y_anchor = fast_ceil(clampf(v0->y, -1.0F, (float)target->row1 + 1.0F) - 0.5F);
+    const int y_anchor = clampi(r3d_span_first_centre(v0->y), -1, target->row1 + 1);
     gradients_t g = {0};
     f.g = &g;
     if (f.flat) {
         set_flat(&f, a, b, c);
-    } else if (!compute_gradients(a, b, c, clampi(fast_ceil(lo_x - 0.5F), 0, INT32_MAX), y_anchor, &g)) {
+    } else if (!compute_gradients(a, b, c, x_first < 0 ? 0 : x_first, y_anchor, &g)) {
         return;
     }
     if (r3d_span_stop_after == 1) {
         return;
     }
 
-    /* The long edge v0-v2 runs the whole height, on the same side all the
-     * way down; the short side is v0-v1 above v1 and v1-v2 below it. */
-    const int split = clampi(row_at(target, v1->y), y_first, y_end);
-    const float long_x_at_v1 = v2->y > v0->y ? v0->x + ((v1->y - v0->y) * (v2->x - v0->x) / (v2->y - v0->y)) : v0->x;
-    const bool long_on_left = long_x_at_v1 < v1->x;
-    const bool narrow = lo_x > -NARROW_LIMIT && hi_x < NARROW_LIMIT && v0->y > -NARROW_LIMIT && v2->y < NARROW_LIMIT;
-
     int32_t row[ATTRIBUTES] = {0};
     if (!f.flat) {
         first_row_values(&g, y_first, y_anchor, row);
     }
-    walk(target, &f, row, y_first, split, v0, v2, v0, v1, long_on_left, narrow);
-    walk(target, &f, row, split, y_end, v0, v2, v1, v2, long_on_left, narrow);
+    /* v1 lies right of the long edge v0-v2 when v0-v1-v2 winds positive. */
+    const walk_t w = {
+        v0, v1, v2, y_first, clampi(r3d_span_first_centre(v1->y), y_first, y_end), y_end, (area2 > 0) != odd};
+    walk(target, &f, row, &w);
 }

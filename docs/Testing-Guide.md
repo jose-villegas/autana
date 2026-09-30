@@ -257,12 +257,26 @@ autana suite run_ui_suite
 Both commands only set a flag; `main.c`'s frame loop does the actual work at
 a frame boundary, since there is no lock on the framebuffer and a second
 task drawing to it while the render loop runs would corrupt the panel. When
-the suite returns the shell prints `RUNSUITE_COMPLETE name=<suite> found=<0|1>`
-on its own line, so a harness need not guess from a quiet console that the
-run is over. This
-is what makes iterating on one area fast: flash the diag build once, then
+the suite returns the shell prints
+`RUNSUITE_COMPLETE name=<suite> found=<0|1> selected=<n> unmatched=<n>` on its
+own line, so a harness need not guess from a quiet console that the run is
+over. This is what makes iterating on one area fast: flash the diag build once, then
 `autana suite` whichever suite covers what changed, as many times as
 needed, without paying a rebuild-and-reflash cycle per attempt.
+
+**Narrowing a suite.** `runsuite <suite> <pattern>[,<pattern>...]` limits the
+run to the tests whose name contains a pattern; `autana suite <name> --test
+<pattern>` sends it ([syntax](tools/Autana-CLI.md#tests)). In a selftest
+build the console reads a line long enough for the most patterns
+`launcher/test/suites.h` allows, for `runsuite` alone; every other verb is
+still held to `CONSOLE_LINE_MAX`. The choke point is the `RUN_TEST` override (`launcher/test/timing.c`),
+so no suite changes: for every test it reaches it prints
+`SUITE_TEST name=<test> selected=<0|1>` and runs only the selected. The
+patterns live for that one request, so the next `runsuite` runs everything. The
+completion line's `selected=` is how many tests ran and `unmatched=` how many
+patterns matched none; a refused pattern prints `SUITE_FILTER_REFUSED` and runs
+nothing. `launcher/test/tests/test_suite_filter_output.py` reads the runner's
+real output, so a reworded line turns the tooling tests red.
 
 ### Recommended practice
 

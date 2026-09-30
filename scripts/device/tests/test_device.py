@@ -34,7 +34,7 @@ BOARD = "90:70:69:FE:A3:08"
 def mock_store(token="token"):
     store = mock.Mock()
     store.root = Path(os.environ["_AUTANA_DEVICE_LOCK_ROOT"])
-    store.acquire.return_value = {"log": "", "token": token, "acquired_at": 1000.0}
+    store.acquire.return_value = device_lock.Held({"token": token, "acquired_at": 1000.0})
     return store
 
 
@@ -151,7 +151,7 @@ class PortWaitTests(unittest.TestCase):
                 with self.assertRaises(device.PortUnavailable) as caught:
                     device.open_when_free(5, self.opener(99), self.sleep, lambda: self.clock[0])
         message = str(caught.exception)
-        self.assertIn("sam@bench:41 (flash)", message)
+        self.assertIn("sam@bench:41 (autana flash)", message)
         self.assertIn("4242 (esptool)", message)
         self.assertEqual(scope.survivors_extra.call_args.args[0]["token"], held["token"])
 
@@ -517,10 +517,11 @@ class DeviceTests(unittest.TestCase):
             store = device_lock.LockStore(root, now=lambda: 1000)
             store.set_human(BOARD, "maintainer", "panel")
             entry = device_lock.status_entry(store, BOARD, now=1065)
-        self.assertEqual((entry["state"], entry["holder"], entry["elapsed_seconds"]),
-                         ("human", {"owner": "maintainer", "purpose": "panel"}, 65))
-        self.assertTrue(device_lock.status_lines(entry)[0].startswith(
-            "human reservation: maintainer: panel (since "))
+        self.assertEqual((entry["state"], entry["holder"], entry["since"]),
+                         ("human", {"owner": "maintainer", "purpose": "panel"}, 1000))
+        line = device_lock.status_lines(entry, 1065)[0]
+        self.assertTrue(line.startswith("human reservation: maintainer: panel (since "))
+        self.assertIn("65s ago", line)
 
     def test_take_back_clears_human_reservation_and_prints_status(self):
         with tempfile.TemporaryDirectory() as root:
@@ -553,6 +554,66 @@ class DeviceTests(unittest.TestCase):
                                           "--note", "check cable"]), 0)
         store.set_human.assert_called_once_with(
             BOARD, f"sam@devbox:{os.getpid()}", "check cable")
+
+
+class RemovedParameterTests(unittest.TestCase):
+    """A command's lock label is its kind, and hand-to-human takes only a note."""
+
+    def refused(self, *argv):
+        with contextlib.redirect_stderr(io.StringIO()) as errors, \
+                self.assertRaises(SystemExit) as stop:
+            device.main(list(argv))
+        self.assertEqual(stop.exception.code, 2)
+        return errors.getvalue()
+
+    def test_no_command_takes_a_purpose(self):
+        for command in (["send", "TUNE"], ["listen", "--seconds", "1"], ["reset"],
+                        ["screenshot"], ["hand-to-human", "--note", "x"],
+                        ["flash", "--variant", "dev", "--worktree", "."]):
+            with self.subTest(command=command):
+                self.assertIn("--purpose", self.refused(command[0], "--purpose", "why", *command[1:]))
+
+    def test_hand_to_human_takes_no_token(self):
+        self.assertIn("--token", self.refused("hand-to-human", "--note", "x", "--token", "t"))
+
+    def test_check_token_is_a_device_command(self):
+        store = mock.Mock()
+        store.check_token.return_value = True
+        with mock.patch.object(device.device_lock, "LockStore", return_value=store):
+            self.assertEqual(device.main(["--board", BOARD, "check-token", "--token", "t"]), 0)
+            store.check_token.return_value = False
+            self.assertEqual(device.main(["--board", BOARD, "check-token", "--token", "t"]), 1)
+        store.check_token.assert_called_with(BOARD, "t")
+
+    def test_the_lock_module_has_no_command_line_of_its_own(self):
+        self.assertFalse(hasattr(device_lock, "main"))
+
+
+class LockLabelTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.store = device_lock.LockStore(root=self.temp.name)
+
+    def holder_label(self, environment):
+        with mock.patch.dict(os.environ, environment):
+            if not environment:
+                os.environ.pop(device.COMMAND_ENV, None)
+            with device.HeldLock(self.store, BOARD, "agent", "send", 0):
+                entry = device_lock.status_entry(self.store, BOARD, durations={})
+        return entry["holder"]["purpose"]
+
+    def test_the_command_autana_ran_is_what_status_shows(self):
+        for named in ("tune", "debug freeze"):
+            with self.subTest(command=named):
+                self.assertEqual(self.holder_label({device.COMMAND_ENV: named}), "autana " + named)
+
+    def test_a_direct_call_shows_device_py_and_its_kind(self):
+        self.assertEqual(self.holder_label({}), "device.py send")
+
+    def test_a_capture_manifest_uses_the_same_label(self):
+        with mock.patch.dict(os.environ, {device.COMMAND_ENV: "tune"}):
+            self.assertEqual(device.command_label("send"), "autana tune")
 
 
 class HumanWaitTests(unittest.TestCase):
@@ -590,7 +651,7 @@ class HumanWaitTests(unittest.TestCase):
 
     def test_timeout_keeps_reservation(self):
         code, output = self.hand("--wait", "2")
-        self.assertEqual(code, 3)
+        self.assertEqual(code, device_lock.EXIT_BUSY)
         self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out")
         self.assertEqual(self.store.status(BOARD)["human"]["note"], "download mode")
 
@@ -600,7 +661,7 @@ class HumanWaitTests(unittest.TestCase):
 
         self.on_sleep = interrupt
         code, output = self.hand("--wait", "3")
-        self.assertEqual(code, 3)
+        self.assertEqual(code, device.EXIT_INTERRUPTED)
         self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait interrupted")
         self.assertIsNotNone(self.store.status(BOARD)["human"])
 
@@ -611,7 +672,7 @@ class HumanWaitTests(unittest.TestCase):
 
         self.on_sleep = replace
         code, output = self.hand("--wait", "3")
-        self.assertEqual(code, 4)
+        self.assertEqual(code, device_lock.EXIT_BUSY)
         self.assertEqual(output.call_args_list[-1].args[0], "human reservation replaced")
         self.assertEqual(self.store.status(BOARD)["human"]["note"], "download mode")
 
@@ -628,7 +689,7 @@ class HumanWaitTests(unittest.TestCase):
 
         self.on_sleep = renew
         code, output = self.hand("--wait", "3")
-        self.assertEqual(code, 3)
+        self.assertEqual(code, device_lock.EXIT_BUSY)
         self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out")
 
 
@@ -1030,6 +1091,107 @@ class RunSuiteRecordsWorktreeTests(unittest.TestCase):
         self.assertEqual(entry["worktree"], str(Path("C:/some/worktree")))
 
 
+FILTERED_DONE = (b"SUITE_TEST name=test_fire_fits selected=1\n"
+                 b":1:test_fire_fits:PASS\n"
+                 b"\nRUNSUITE_COMPLETE name=sand found=1 selected=1 unmatched=0\n")
+NOTHING_MATCHED = (b"SUITE_TEST name=test_gas_fits selected=0\n"
+                   b"SUITE_TEST name=test_water_fits selected=0\n"
+                   b"\nRUNSUITE_COMPLETE name=sand found=1 selected=0 unmatched=1\n")
+
+
+class TestFilterRunTests(unittest.TestCase):
+    """`--test` narrows a suite on the board: the request carries the
+    patterns, a pattern that selects nothing or one the board cannot take is
+    an error, and the records say which rows ran. What the firmware really
+    prints is pinned in launcher/test/tests/test_suite_filter_output.py."""
+
+    def run_filtered(self, chunks, patterns):
+        connection = FakeConnection(chunks)
+        args = Namespace(owner="agent", purpose="test", wait=0, suite="sand", out=None,
+                         max_seconds=1, idle_seconds=None, expect_build_id=None,
+                         test_filter=patterns)
+        store = mock_store()
+        with tempfile.TemporaryDirectory() as directory:
+            records = Path(directory) / "records"
+            args.out = str(Path(directory) / "capture.log")
+            with mock.patch.object(device, "open_when_free", return_value=connection), \
+                 mock.patch.object(device, "records_root", return_value=records), \
+                 mock.patch("builtins.print"):
+                try:
+                    code = device.run_suite(args, store, BOARD)
+                    error = None
+                except RuntimeError as caught:
+                    code, error = None, caught
+            index = records / "index.jsonl"
+            manifest = [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines()]
+        return code, error, connection.writes, manifest
+
+    def test_the_patterns_ride_the_run_request(self):
+        _, _, writes, _ = self.run_filtered([FILTERED_DONE], ["fire", "gas"])
+        self.assertEqual(b"".join(writes), b"\nRUNSUITE sand fire,gas\n")
+
+    def test_no_filter_sends_only_the_suite_name(self):
+        _, _, writes, _ = self.run_filtered([b"SUITE_DONE sand\n"], [])
+        self.assertEqual(b"".join(writes), b"\nRUNSUITE sand\n")
+
+    def test_a_filtered_run_completes_and_records_its_filter(self):
+        code, error, _, manifest = self.run_filtered([FILTERED_DONE], ["fire"])
+        self.assertEqual((code, error), (0, None))
+        self.assertEqual(manifest[-1]["test_filter"], ["fire"])
+
+    def test_a_pattern_matching_nothing_fails_listing_the_tests(self):
+        _, error, _, _ = self.run_filtered([NOTHING_MATCHED], ["fyre"])
+        self.assertIsInstance(error, device.NoTestMatched)
+        self.assertIn("test_gas_fits", str(error))
+        self.assertIn("test_water_fits", str(error))
+
+    def test_a_refused_pattern_is_a_filter_error(self):
+        chunks = [b"SUITE_FILTER_REFUSED pattern=xxxx\n"
+                  b"\nRUNSUITE_COMPLETE name=sand found=1 selected=0 unmatched=0\n"]
+        _, error, _, _ = self.run_filtered(chunks, ["xxxx"])
+        self.assertIsInstance(error, device.TestFilterError)
+        self.assertNotIsInstance(error, device.NoTestMatched)
+        self.assertIn("xxxx", str(error))
+
+    def test_an_image_that_predates_the_filter_is_a_filter_error(self):
+        # It reads "sand fire" as a suite name and answers found=0 with no counts.
+        chunks = [b"\nRUNSUITE_COMPLETE name=sand fire found=0\n"]
+        _, error, _, _ = self.run_filtered(chunks, ["fire"])
+        self.assertIsInstance(error, device.TestFilterError)
+        self.assertRegex(str(error), "predates --test")
+
+    def test_a_filtered_run_with_no_completion_line_is_a_filter_error(self):
+        # An image that predates the filter drops a long request whole.
+        _, error, _, _ = self.run_filtered([b"SUITE_DONE sand\n"], ["fire"])
+        self.assertIsInstance(error, device.TestFilterError)
+        self.assertRegex(str(error), "no RUNSUITE_COMPLETE")
+
+    def test_an_unfiltered_run_with_no_completion_line_is_still_fine(self):
+        code, error, _, _ = self.run_filtered([b"SUITE_DONE sand\n"], [])
+        self.assertEqual((code, error), (0, None))
+
+    def test_a_request_too_long_for_the_console_line_is_a_filter_error(self):
+        connection = FakeConnection([b"W (5) console: console line too long (max 48) - dropped\n"])
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(device.TestFilterError):
+                device.capture(connection, Path(directory) / "capture.log", 1, None,
+                               suite_name="sand")
+
+    def test_patterns_split_on_commas_and_repeat_without_duplicates(self):
+        self.assertEqual(device.test_patterns(["fire,gas", "water", "gas"]),
+                         ["fire", "gas", "water"])
+        self.assertEqual(device.test_patterns(None), [])
+
+    def test_a_pattern_that_would_break_the_request_line_is_refused(self):
+        for bad in ("has space", "", "a;b"):
+            with self.assertRaises(device.TestFilterError, msg=bad):
+                device.test_patterns([bad])
+
+    def test_no_test_matched_is_a_test_filter_error_and_a_runtime_error(self):
+        self.assertTrue(issubclass(device.NoTestMatched, device.TestFilterError))
+        self.assertTrue(issubclass(device.TestFilterError, RuntimeError))
+
+
 class BatchTests(unittest.TestCase):
     """A batch flashes once and captures every suite N times under ONE lock -
     the property that stops another agent flashing between two captures of
@@ -1037,8 +1199,10 @@ class BatchTests(unittest.TestCase):
 
     def run_batch(self, suites=("run_sand_perf_suite",), runs=3, fail_run=None,
                   perf_scope=False, script_text="--diag --dev --perf-scope", out=False,
-                  expect_build_id=None, flashed_build_id="abc123-diag", flash=True):
-        calls = {"locks": 0, "build": [], "flash": [], "run_suite": [], "events": []}
+                  expect_build_id=None, flashed_build_id="abc123-diag", flash=True,
+                  test_filter=None, filter_error_run=None, error_class=None):
+        calls = {"locks": 0, "build": [], "flash": [], "run_suite": [], "events": [],
+                 "suite_args": []}
 
         class FakeLock:
             def __init__(self, *unused, **unused_keywords):
@@ -1068,6 +1232,9 @@ class BatchTests(unittest.TestCase):
             calls["events"].append("capture")
             calls["run_suite"].append((args.suite, args.out, args.purpose, held_lock,
                                        args.expect_build_id, worktree, commit))
+            calls["suite_args"].append(args)
+            if filter_error_run is not None and len(calls["run_suite"]) == filter_error_run:
+                raise (error_class or device.TestFilterError)("the board cannot filter")
             if args.out:
                 Path(args.out).write_text(":1:test_one:PASS\n", encoding="utf-8")
             if fail_run is not None and len(calls["run_suite"]) == fail_run:
@@ -1083,7 +1250,9 @@ class BatchTests(unittest.TestCase):
             args = Namespace(owner="agent", purpose="p", wait=0, worktree=str(worktree),
                              variant="diag", suite=list(suites), runs=runs, perf_scope=perf_scope,
                              max_seconds=1, idle_seconds=None, out=out_path,
-                             expect_build_id=expect_build_id, flash=flash)
+                             expect_build_id=expect_build_id, flash=flash,
+                             test_filter=test_filter)
+            store = mock.Mock()
             with mock.patch.object(device, "HeldLock", FakeLock), \
                  mock.patch.object(device, "build_image", fake_build_image), \
                  mock.patch.object(device, "write_image", fake_write_image), \
@@ -1091,13 +1260,63 @@ class BatchTests(unittest.TestCase):
                  mock.patch.object(device, "records_root", return_value=Path(directory) / "rec"), \
                  mock.patch.object(device, "git_commit", return_value="c0ffee"), \
                  mock.patch("builtins.print"):
-                code = device.batch(args, mock.Mock(), BOARD)
+                try:
+                    code = device.batch(args, store, BOARD)
+                except device.TestFilterError:
+                    code = "filter error"
                 summaries = list((Path(directory) / "rec").rglob("*_batch_*.md"))
                 summary = summaries[0].read_text(encoding="utf-8") if summaries else ""
                 index = Path(directory) / "rec" / "index.jsonl"
                 manifest = [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines()] \
                     if index.exists() else []
         return code, calls, summary, manifest
+
+    def test_the_command_line_flag_reaches_batch_as_the_filter(self):
+        seen = []
+        with mock.patch.object(device, "board_for_lock", return_value=BOARD), \
+             mock.patch.object(device, "device_lock") as fake_lock_module, \
+             mock.patch.object(device, "batch", side_effect=lambda args, *unused: seen.append(args) or 0):
+            fake_lock_module.LockStore.return_value = mock.Mock()
+            device.main(["--owner", "a", "batch", "--worktree", "C:/wt", "--suite", "sand",
+                         "--test", "fire,gas", "--test", "water"])
+        self.assertEqual(seen[0].test_filter, ["fire,gas", "water"])
+
+    def test_the_filter_reaches_every_capture_as_patterns(self):
+        _, calls, _, _ = self.run_batch(runs=2, test_filter=["fire,gas", "water"])
+        self.assertEqual([args.test_filter for args in calls["suite_args"]],
+                         [["fire", "gas", "water"]] * 2)
+
+    def test_an_unfiltered_batch_asks_for_no_filter(self):
+        _, calls, _, _ = self.run_batch(runs=1)
+        self.assertEqual(calls["suite_args"][0].test_filter, [])
+
+    def test_a_filter_error_ends_the_batch_at_the_first_capture_and_frees_the_lock(self):
+        for error_class in (device.TestFilterError, device.NoTestMatched):
+            code, calls, _, _ = self.run_batch(runs=3, test_filter=["fire"], filter_error_run=1,
+                                               error_class=error_class)
+            self.assertEqual(code, "filter error")
+            self.assertEqual(len(calls["run_suite"]), 1)
+            self.assertEqual(calls["events"][-1], "unlock")
+
+    def test_an_ordinary_capture_error_in_a_filtered_batch_still_continues(self):
+        code, calls, _, _ = self.run_batch(runs=3, test_filter=["fire"], fail_run=2)
+        self.assertEqual(code, 1)
+        self.assertEqual(len(calls["run_suite"]), 3)
+
+    def test_a_bad_pattern_is_refused_before_anything_is_built(self):
+        code, calls, _, _ = self.run_batch(test_filter=["has space"])
+        self.assertEqual(code, "filter error")
+        self.assertEqual(calls["events"], [])
+
+    def test_the_summary_and_manifest_name_the_filter(self):
+        _, _, summary, manifest = self.run_batch(runs=2, test_filter=["fire", "gas"])
+        self.assertIn("Test filter: `fire, gas`", summary)
+        self.assertEqual(manifest[-1]["test_filter"], ["fire", "gas"])
+
+    def test_an_unfiltered_summary_names_no_filter(self):
+        _, _, summary, manifest = self.run_batch(runs=2)
+        self.assertNotIn("Test filter", summary)
+        self.assertNotIn("test_filter", manifest[-1])
 
     def test_one_lock_one_flash_for_every_capture(self):
         code, calls, _, _ = self.run_batch(suites=("run_sand_perf_suite", "run_gfx_suite"), runs=3)

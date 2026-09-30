@@ -26,10 +26,17 @@ flowchart TB
     FB --> PT["present task, core 1"]
     IX -->|"LUT expand"| PT
     DT --> PT
-    PT -->|"copy"| BNC["strip_bounce / gather_buf<br/>internal DMA RAM"]
+    PT -->|"copy"| BNC["strip_bounce<br/>internal DMA RAM"]
     BNC -->|"QSPI DMA"| PANEL["panel GRAM"]
     BR -->|"QSPI DMA, from shell loop"| PANEL
 ```
+
+A **strip** is one of the tracker's 7 full-width, 64-row bands (not the band
+ring's band). A **gathered run** is a box spanning only some columns of a
+strip, packed row by row into a bounce slot and sent as one transfer. A
+**partial band** is a full-width box shorter than a strip, sent as the
+contiguous framebuffer rows it covers. A **bounce slot** is one of two
+strip-sized buffers in internal DMA RAM that every send is copied through.
 
 Exactly one target is live at a time. Entering a band or indexed mode **frees
 the PSRAM framebuffer**; `gfx_mode_exit()` allocates it again.
@@ -109,7 +116,7 @@ flowchart TB
     BOX --> LEAF{"plan_run(): leaves show<br/>a real gap inside?"}
     LEAF -->|yes| SPLIT["gathered send, split in<br/>up to LEAF_REFINE_MAX_RUNS"]
     LEAF -->|no| FIT{"box <= GATHER_MAX_PIXELS?"}
-    FIT -->|yes| GATHER["gathered send:<br/>pack box into gather_buf"]
+    FIT -->|yes| GATHER["gathered send:<br/>pack box into the next strip_bounce slot"]
     FIT -->|no| FULLW{"full width and<br/>shorter than the strip?"}
     FULLW -->|yes| PARTOK{"send_partial_band()<br/>succeeds?"}
     PARTOK -->|yes| PART["partial band:<br/>only rows y0..y1"]
@@ -119,7 +126,7 @@ flowchart TB
 
 | Send path | Source | Cost |
 |---|---|---|
-| gathered | rows packed into `gather_buf`, at most `GATHER_MAX_PIXELS` (8192 px) | drains every queued transfer first - the buffer is shared |
+| gathered | rows packed into the next of `STRIP_BOUNCE_SLOTS` (2), at most `GATHER_MAX_PIXELS` (8192 px) | queued back to back |
 | partial band / full strip | `send_fb_rows()` copies into the next of `STRIP_BOUNCE_SLOTS` (2) | queued back to back |
 
 - Every window is rounded out to **even edges**: the panel controller leaves
