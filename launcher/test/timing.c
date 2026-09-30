@@ -31,10 +31,10 @@
 #endif
 
 #ifdef DEVICE_BUILD
+#include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "unity.h"
-#include "util/frame_watch.h"
 #endif
 
 /* Not pulled from unity.h: that header only declares this when RUN_TEST is
@@ -45,25 +45,87 @@
 extern void UnityDefaultTestRun(void (*Func)(void), const char* FuncName, const int FuncLineNum);
 
 #ifdef DEVICE_BUILD
+/* Suites run on the main task. An overflow trips FreeRTOS's canary only at a
+ * context switch and resets the chip, so a test that leaves less than an
+ * interrupt's saved context plus a log line fails by name instead. */
+#define STACK_RESERVE_BYTES 512U
+
 static void (*watched_test)(void);
+static suite_test_verdict_t watched_verdict;
 static int tests_run;
 static int tests_judged;
 
+/* Unity has one abort frame: a TEST_PASS() or a failed assertion jumps
+ * straight to it. A frame here ends fn alone, so what follows it still runs.
+ * Nothing is saved: the main task's stack has no bytes to spare. */
+static void
+call_protected(void (*fn)(void)) {
+    if (TEST_PROTECT()) {
+        fn();
+    }
+}
+
+static size_t
+drop(size_t before, size_t after) {
+    return before > after ? before - after : 0;
+}
+
+/* Inlined into both callers: under RUN_TEST, a frame of its own is 32 bytes
+ * less stack for every test body. */
+static inline __attribute__((always_inline)) void
+run_body(void (*body)(void), suite_test_verdict_t* verdict) {
+    size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    size_t free_32bit = heap_caps_get_free_size(MALLOC_CAP_32BIT);
+    const size_t stack_free_before = uxTaskGetStackHighWaterMark(NULL);
+
+    frame_watch_test_begin();
+    call_protected(body);
+    call_protected(suite_run_test_cleanup);
+    verdict->watch = frame_watch_test_end();
+    verdict->stack_free = uxTaskGetStackHighWaterMark(NULL);
+    verdict->stack_deepened = verdict->stack_free < stack_free_before;
+
+    /* A first run may fill a cache that lives on; only memory a second run
+     * loses again is a leak. */
+    if (drop(free_8bit, heap_caps_get_free_size(MALLOC_CAP_8BIT)) > 0
+        || drop(free_32bit, heap_caps_get_free_size(MALLOC_CAP_32BIT)) > 0) {
+        free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+        free_32bit = heap_caps_get_free_size(MALLOC_CAP_32BIT);
+        call_protected(body);
+        call_protected(suite_run_test_cleanup);
+        /* The second run is for the heap alone; its frames are not judged. */
+        (void)frame_watch_test_end();
+    }
+    verdict->leaked_8bit = drop(free_8bit, heap_caps_get_free_size(MALLOC_CAP_8BIT));
+    verdict->leaked_32bit = drop(free_32bit, heap_caps_get_free_size(MALLOC_CAP_32BIT));
+}
+
 void
-suite_repeat_watched_test(void) {
-    watched_test();
+suite_run_body(void (*body)(void), suite_test_verdict_t* verdict) {
+    run_body(body, verdict);
 }
 
 /* Each present a test makes is one of its frames; see frame_watch.h. */
 static void
 run_watched(void) {
-    frame_watch_test_begin();
-    watched_test();
-    const frame_watch_verdict_t verdict = frame_watch_test_end();
-    tests_judged += verdict.frames > 0;
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, verdict.repeating,
+    watched_verdict = (suite_test_verdict_t){0};
+    run_body(watched_test, &watched_verdict);
+    tests_judged += watched_verdict.watch.frames > 0;
+}
+
+void
+suite_judge_watched_test(void) {
+    const suite_test_verdict_t* verdict = &watched_verdict;
+    if (verdict->stack_deepened) {
+        TEST_ASSERT_GREATER_OR_EQUAL_UINT32_MESSAGE(STACK_RESERVE_BYTES, verdict->stack_free,
+                                                    "the test left the main task's stack almost full");
+    }
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, verdict->leaked_8bit, "the test leaked 8-bit heap on its second run");
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, verdict->leaked_32bit, "the test leaked 32-bit heap on its second run");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, verdict->watch.repeating,
                                   "work repeated frame after frame - see the FRAME_WATCH lines above");
-    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, verdict.dropped, "the frame watch ran out of room, so it may have missed one");
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, verdict->watch.dropped,
+                                     "the frame watch ran out of room, so it may have missed one");
 }
 #endif
 
@@ -86,7 +148,6 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
     watched_test = func;
     tests_run++;
     UnityDefaultTestRun(run_watched, name, line);
-    (void)frame_watch_test_end();
     const unsigned long stack_free_bytes = (unsigned long)uxTaskGetStackHighWaterMark(NULL);
 #else
     UnityDefaultTestRun(func, name, line);
