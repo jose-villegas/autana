@@ -10,6 +10,18 @@
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
+/* Measurement probe, never ships: R3D_LIT_PROBE 0 compiles every stop out. */
+#ifndef R3D_LIT_PROBE
+#define R3D_LIT_PROBE 1
+#endif
+int r3d_lit_probe_stop;
+volatile int32_t r3d_lit_probe_sink;
+#if R3D_LIT_PROBE
+#define PROBE_STOP r3d_lit_probe_stop
+#else
+#define PROBE_STOP 0
+#endif
+
 static void
 set_row(float row[4], r3d_vec3f_t axis, r3d_vec3f_t eye, float scale, float ticks_to_units) {
     row[0] = axis.x * scale * ticks_to_units;
@@ -391,10 +403,18 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_vertex_t* const v[3], co
     if (facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), double_sided)) {
         return;
     }
+    if (PROBE_STOP == R3D_LIT_PROBE_REJECT) {
+        r3d_lit_probe_sink++;
+        return;
+    }
     r3d_span_vertex_t s[3];
     for (int k = 0; k < 3; k++) {
         const uint8_t* rgb = mesh->colors[tri[k]];
         s[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[0], rgb[1], rgb[2]};
+    }
+    if (PROBE_STOP == R3D_LIT_PROBE_COLOR) {
+        r3d_lit_probe_sink += (int32_t)(s[0].r + s[1].g + s[2].b);
+        return;
     }
     r3d_span_triangle(target, &s[0], &s[1], &s[2]);
 }
@@ -402,15 +422,30 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_vertex_t* const v[3], co
 static void
 draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const r3d_lit_cluster_t* c,
              const r3d_lit_vertex_t* cs, const r3d_span_target_t* target) {
+    if (PROBE_STOP == R3D_LIT_PROBE_WALK) {
+        r3d_lit_probe_sink++;
+        return;
+    }
     const int end = c->triangle_first + c->triangle_count;
+    int32_t sink = 0;
     for (int t = c->triangle_first; t < end; t++) {
         const uint16_t* tri = mesh->triangles[t];
         const r3d_lit_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
         if (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F) {
+            if (PROBE_STOP == R3D_LIT_PROBE_FETCH) {
+                sink += v[0]->sx + v[1]->sy + v[2]->sx;
+                continue;
+            }
             draw_in_front(mesh, v, tri, c->double_sided, target);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
+            if (PROBE_STOP != 0 && PROBE_STOP <= R3D_LIT_PROBE_COLOR) {
+                continue;
+            }
             draw_rebuilt(mesh, view, tri, c->double_sided, target);
         }
+    }
+    if (sink != 0) {
+        r3d_lit_probe_sink += sink;
     }
 }
 

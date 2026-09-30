@@ -60,6 +60,14 @@ typedef struct {
 void r3d_lit_transform(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* clusters, int count,
                        r3d_lit_vertex_t* cs, r3d_lit_rows_t* rows);
 
+/* Measurement probe, never ships: a nonzero stop ends each triangle's draw
+ * early, each stop including the ones before it; a triangle to be rebuilt
+ * is skipped under all of them. */
+enum { R3D_LIT_PROBE_WALK = 1, R3D_LIT_PROBE_FETCH, R3D_LIT_PROBE_REJECT, R3D_LIT_PROBE_COLOR };
+
+extern int r3d_lit_probe_stop;
+extern volatile int32_t r3d_lit_probe_sink;
+
 /* `rows` as r3d_lit_transform() filled it, or NULL to test every triangle. */
 void r3d_lit_draw(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* clusters, int count,
                   const r3d_lit_vertex_t* cs, const r3d_lit_rows_t* rows, const r3d_span_target_t* target);
