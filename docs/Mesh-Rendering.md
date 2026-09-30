@@ -37,15 +37,25 @@ check the result against `r3d_lit_mesh.h`'s invariants before writing a byte.
 
 ## The baked hierarchy
 
-The clusters are **meshlets**: compact runs of at most 64 triangles from
-meshoptimizer's clusterizer, each owning the vertices its triangles use. They
-are the mesh's finest level and sit under the octree, which is built over the
-meshlets' centres and is all a renderer needs to draw the whole mesh.
+The clusters are the mesh's finest level, each owning the vertices its
+triangles use, under an octree that is all a renderer needs to draw the whole
+mesh. A bake chooses how they are cut:
+
+| Clustering | A cluster is | Octree over |
+|---|---|---|
+| `octree` | one leaf of an octree of the triangles, at most a set number of them | the triangles |
+| `meshlet` | a compact run of a few dozen triangles from meshoptimizer's clusterizer | the meshlets' centres |
+
+Meshlets share more vertices (fewer vertices per triangle, so less to
+transform) but each spans a looser box than a leaf of the same size, so more
+triangles are submitted for the same view; which wins depends on the size and
+is measured on the board, not assumed. `rebake` with `keep` leaves the
+clusters as they are.
 
 Every finest cluster also has a normal cone in `r3d_lit_mesh_t.cones`, two
 int8 words a cluster for skipping one that faces away.
 
-A bake made with `--lod` adds `r3d_lit_mesh_t.lod`, the coarser levels, made
+A meshlet bake made with `--lod` adds `r3d_lit_mesh_t.lod`, the coarser levels, made
 the way meshoptimizer's `clusterlod` example does. It costs about as much
 flash again as the finest level, so it is opt-in: a mesh baked without it has
 `lod` NULL and carries no level data.
