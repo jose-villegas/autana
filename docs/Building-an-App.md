@@ -142,13 +142,13 @@ sequenceDiagram
     participant G as gfx
     S->>S: read touch, buttons, orientation
     S->>S: leaving? then exit() and stop here
-    alt band mode - GFX_LAYOUT_BANDS
+    alt band mode: GFX_LAYOUT_BANDS
         S->>G: queue the home hint, home_gesture only
     end
     S->>A: invalidate() if a full redraw is pending
     S->>A: frame(dt_ms, input)
     A->>G: gfx_* draws
-    alt band mode - GFX_LAYOUT_BANDS
+    alt band mode: GFX_LAYOUT_BANDS
         S->>G: gfx_band_run(draw_band, ui_replay_band)
     end
     alt full-framebuffer mode
@@ -166,7 +166,7 @@ sequenceDiagram
     participant A as app
     participant G as gfx
     participant P as present task (core 1)
-    S->>P: gfx_present_begin() - previous frame
+    S->>P: gfx_present_begin(), previous frame
     par
         S->>A: update(dt_ms, input)
     and
@@ -174,7 +174,7 @@ sequenceDiagram
     end
     S->>P: gfx_present_wait()
     S->>A: frame(dt_ms, input)
-    alt band mode - GFX_LAYOUT_BANDS
+    alt band mode: GFX_LAYOUT_BANDS
         S->>G: gfx_band_run(draw_band, ui_replay_band)
     end
     Note over S,P: present_unless_deferred() leaves this frame to the next pass's gfx_present_begin()
@@ -217,8 +217,8 @@ edge. An app with an on-screen way out calls
 |---|---|
 | Draw via `gfx_*`, or into `gfx_framebuffer()`, from `frame()` | yes |
 | Animate from `dt_ms` | yes |
-| Ask for another draw target in `enter()` - `gfx_mode_enter()` (bands, indexed) | yes, and `gfx_mode_exit()` in `exit()` |
-| Set its own panel clock - `gfx_set_panel_clock_hz()` | yes, and never restore it |
+| Ask for another draw target in `enter()`: `gfx_mode_enter()` (bands, indexed) | yes, and `gfx_mode_exit()` in `exit()` |
+| Set its own panel clock: `gfx_set_panel_clock_hz()` | yes, and never restore it |
 | Call `gfx_request_full_redraw()` | yes, from anywhere on core 0 |
 | Call `gfx_present()` | **no**; the shell presents |
 | Loop, block or `vTaskDelay` | **no**; return promptly |
@@ -291,8 +291,8 @@ main/apps/<name>/
 
 | Path pattern | Firmware | Host test runner |
 |---|---|---|
-| `app_*.c` | yes | no - compiled against stubs by `check_app_sources.sh` |
-| `scene_*.c` | yes | no - same treatment as `app_*.c` |
+| `app_*.c` | yes | no: compiled against stubs by `check_app_sources.sh` |
+| `scene_*.c` | yes | no: same treatment as `app_*.c` |
 | other `*.c` | yes | yes |
 | `suite_*.c` | only `CONFIG_LAUNCHER_SELFTEST` builds | yes |
 | `scope_perf.cmake` | only `--perf-scope` builds | no |
@@ -316,9 +316,9 @@ Boot logs `Ready, N apps registered`; launch and leave log `Starting <name>` /
 
 ## Related
 
-- [`Building-a-Screen.md`](Building-a-Screen.md) - microui screens inside an app
-- [`Gfx-and-Presentation.md`](Gfx-and-Presentation.md) - draw targets, dirty tracking, the present path, heal
-- [`Firmware-Architecture.md`](Firmware-Architecture.md) - why one framebuffer and one frame loop
-- [`Testing-Guide.md`](Testing-Guide.md) - suites and runners
-- [`Build-Variants.md`](Build-Variants.md) - what release, dev and
+- [`Building-a-Screen.md`](Building-a-Screen.md): microui screens inside an app
+- [`Gfx-and-Presentation.md`](Gfx-and-Presentation.md): draw targets, dirty tracking, the present path, heal
+- [`Firmware-Architecture.md`](Firmware-Architecture.md): why one framebuffer and one frame loop
+- [`Testing-Guide.md`](Testing-Guide.md): suites and runners
+- [`Build-Variants.md`](Build-Variants.md): what release, dev and
   diagnostics builds carry, and which flag gates what

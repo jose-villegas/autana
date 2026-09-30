@@ -326,7 +326,7 @@ Two rules follow:
   means repainting anything above it that overlaps, or the repaint erases
   what was on top.
 - **`ui_invalidate()`.** If something replaced the screen in a way `ui_end()`
-  cannot detect - returning to the launcher after an app - the UI must be
+  cannot detect, returning to the launcher after an app, the UI must be
   told its pixels are gone, or it compares an unchanged command list, skips,
   and leaves the app's last frame on screen.
 
@@ -341,14 +341,14 @@ A panel over a paused screen dims what is behind it with one full-screen
 be: everything in the command list is re-emitted on every repaint, and a
 blend fill reads the pixel it writes, so a scrim repeated per repaint walks
 the frozen backdrop toward black. It is applied **once per repaint of what is
-underneath** - when the panel opens, and again whenever the backdrop itself
+underneath**: when the panel opens, and again whenever the backdrop itself
 is redrawn (a full-redraw request, a turn). The shell's own Control Center is
 the reference implementation: `paint_control_center_backdrop()` in `main.c`.
 `suite_gfx_color.c` pins the arithmetic; the recipe for an app is in
 [Building-a-Screen.md](Building-a-Screen.md#a-panel-over-a-paused-app).
 
 That shortcut holds while panels are opaque and do not move. A translucent
-or moving panel needs the general form - whoever repaints a region restores
+or moving panel needs the general form: whoever repaints a region restores
 the backdrop under it, re-scrims that region, then draws.
 
 ---
@@ -367,7 +367,7 @@ its header (below).
 
 **Apps own their whole frame.** An app draws straight to the framebuffer on
 its own schedule, with no widget tree in between. A retained-mode toolkit wants to own
-the display and the refresh cycle; microui's command list asks for nothing -
+the display and the refresh cycle; microui's command list asks for nothing;
 whoever is drawing paints it whenever and into whatever they like.
 
 **The render pipeline is built around skipping unchanged frames**, because a
@@ -378,7 +378,7 @@ two damage trackers.
 
 **The cost, for balance:** microui encodes a mouse (point, then click), and
 a touchscreen cannot produce the "point" half. The shell synthesizes it, at
-a frame of latency on every tap - see below. A
+a frame of latency on every tap; see below. A
 touch-native toolkit would not pay that.
 
 ### Two things to know before touching it

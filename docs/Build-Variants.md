@@ -3,10 +3,10 @@
 What a build is FOR is one Kconfig `choice` in `main/Kconfig.projbuild`, and
 exactly one of its two entries is ever true:
 
-- **`CONFIG_LAUNCHER_RELEASE`** — the product, and the default. No test
+- **`CONFIG_LAUNCHER_RELEASE`**: the product, and the default. No test
   suites, no profiling counters, no logging meant to be read over a serial
   console.
-- **`CONFIG_LAUNCHER_DEVELOPMENT`** — everything meant for someone at the
+- **`CONFIG_LAUNCHER_DEVELOPMENT`**: everything meant for someone at the
   device or watching its console while working on it: frame timings, step
   counters, debug overlays, the screenshot listener, the development-only
   apps.
@@ -38,11 +38,11 @@ and CI builds every variant the same way.
 ## Release builds contain no test code
 
 `CONFIG_LAUNCHER_SELFTEST` defaults **off**, and the CMake conditional leaves
-the suites and the runner out of the build entirely — not `#ifdef`-ed out,
+the suites and the runner out of the build entirely, not `#ifdef`-ed out,
 simply never compiled. `build/launcher.elf` (release) is neither DEVELOPMENT
 nor SELFTEST, so **a development-only app** is out of it too, for a related
 but separate reason: it is gated on `CONFIG_LAUNCHER_DEVELOPMENT`, a strictly
-broader flag than `CONFIG_LAUNCHER_SELFTEST` — it also ships in a `--dev`
+broader flag than `CONFIG_LAUNCHER_SELFTEST`: it also ships in a `--dev`
 build, which carries no test suites at all. An app is gated this way by
 holding a `development_only.cmake` in its own folder; `main/CMakeLists.txt`
 globs the markers and names no app (see
@@ -72,13 +72,13 @@ A development-only app is a bench tool. One that re-runs POST on entry
 cycles the audio power rail and re-mounts the SD card live (both while the
 display keeps running undisturbed, since neither shares its bus):
 reasonable while debugging, not something to leave reachable in a shipped
-product — hence DEVELOPMENT, not left ungated. The boot POST still runs in
-release — only this way *in* is compiled out. The self-test *runner* an app
+product, hence DEVELOPMENT, not left ungated. The boot POST still runs in
+release; only this way *in* is compiled out. The self-test *runner* an app
 hosts (a button, its result line, the `selftest_run()` call) is narrower
 still: gated on `CONFIG_LAUNCHER_SELFTEST` specifically, inside the app's
 own file, because `selftest_run()` is not even a linkable symbol outside a
 SELFTEST build (`boot/selftest.c` is only added to `app_srcs` under
-`CONFIG_LAUNCHER_SELFTEST` — see `main/CMakeLists.txt`).
+`CONFIG_LAUNCHER_SELFTEST`; see `main/CMakeLists.txt`).
 
 ## A diagnostics build can be scoped
 
@@ -102,7 +102,7 @@ configured with.
 
 | scope | fragment | carries | for |
 |---|---|---|---|
-| Full — the default | none | every suite, shell-owned and app-owned | every gate: `autana selftest`, `report_test_results.sh` |
+| Full: the default | none | every suite, shell-owned and app-owned | every gate: `autana selftest`, `report_test_results.sh` |
 | Perf | `sdkconfig.defaults.diag_perf` | sources each app declares in `scope_perf.cmake` | a performance capture |
 
 An app's own frame-budget capture script, in its `tools/`, passes the flag
@@ -128,19 +128,19 @@ sources it needs, so deleting its folder also removes its declaration.
 
 A perf-scoped build is **not a gate**: it drops behaviour coverage on purpose.
 Never take a merge decision from one, and never diff its numbers against an
-unscoped capture's — different scope, different layout.
+unscoped capture's: different scope, different layout.
 
 ## Development-only instrumentation is its own flag, not SELFTEST
 
 `CONFIG_LAUNCHER_SELFTEST` answers "does this build carry the test suites."
-It does not answer "is this a development build" — that is a broader
+It does not answer "is this a development build"; that is a broader
 question, and `CONFIG_LAUNCHER_DEVELOPMENT` answers it instead.
 
 This project does not do telemetry. Nobody downstream ever reads a frame
 counter or a step-timing average; the only audience for that kind of number
 is a developer at the device or watching its serial console while working on
-it. So anything built purely for that audience — rolling averages, per-frame
-timers, a summary logged on exit — is pure cost in a release image: flash for
+it. So anything built purely for that audience (rolling averages, per-frame
+timers, a summary logged on exit) is pure cost in a release image: flash for
 the strings and the accounting, cycles for the bookkeeping, for output that
 helps nobody. It gets guarded by `CONFIG_LAUNCHER_DEVELOPMENT`, the same way
 test code is guarded by `CONFIG_LAUNCHER_SELFTEST`.
@@ -148,12 +148,12 @@ test code is guarded by `CONFIG_LAUNCHER_SELFTEST`.
 The two are related but not the same flag, because they answer different
 questions and can genuinely diverge:
 
-- `LAUNCHER_SELFTEST` **depends on** `LAUNCHER_DEVELOPMENT` — a build
+- `LAUNCHER_SELFTEST` **depends on** `LAUNCHER_DEVELOPMENT`: a build
   carrying the test suites is a development build by definition. Kconfig does
   not turn the second one on for you: a config that asks for SELFTEST alone
   silently gets neither, which is why every defaults fragment sets both.
 - The reverse is not forced. A build can want the profiling and logging
-  without the test suites — watching real frame timings without also paying
+  without the test suites: watching real frame timings without also paying
   for Unity and the suites' own footprint.
 
 `LAUNCHER_DEVELOPMENT` and `LAUNCHER_RELEASE` are the two entries of one
@@ -162,8 +162,8 @@ neither is "off by omission." Checking `CONFIG_LAUNCHER_DEVELOPMENT` means
 "not a release build," not "development, or maybe some other thing nobody
 named yet."
 
-**The rule going forward:** guard anything whose only reader is a developer —
-a log line, a rolling average, a debug overlay — with
+**The rule going forward:** guard anything whose only reader is a developer (
+a log line, a rolling average, a debug overlay) with
 `CONFIG_LAUNCHER_DEVELOPMENT`. Guard the test suites themselves, and anything
 that only makes sense alongside them, with `CONFIG_LAUNCHER_SELFTEST`. Neither
 belongs ungated, and neither belongs gated on the other one just because they
@@ -172,7 +172,7 @@ currently happen to travel together in `build.diag/`.
 A bare log line specifically has a second, complementary mechanism worth
 knowing about: ESP-IDF's own `CONFIG_LOG_MAXIMUM_LEVEL` compiles
 `ESP_LOGI`/`ESP_LOGW`/etc. calls out of the binary entirely above a given
-severity, project-wide, with no per-call-site `#if` needed — this project
+severity, project-wide, with no per-call-site `#if` needed; this project
 just doesn't split that ceiling per build variant yet. See
 [Log-Level-Plan.md](plans/Log-Level-Plan.md).
 
@@ -182,7 +182,7 @@ source, compiled out of release the same as everything else in this section.
 A bracket put inside a stage to answer one question is scaffolding instead:
 it leaves with the measurement it was for, the same as any switch that turns
 a phase of work off to see what it cost. The first kind may stay because it
-only reads a clock - the code that ships is the code that was measured,
+only reads a clock: the code that ships is the code that was measured,
 minus two clock reads per stage.
 
 ## The Kconfig trap in REQUIRES
@@ -193,18 +193,18 @@ entry in `REQUIRES`.
 ESP-IDF expands component requirements in an early pass where `CONFIG_*` is not
 yet defined, so a Kconfig-gated `REQUIRES` silently evaluates false and does
 nothing. `SRCS` and `target_compile_definitions` are evaluated in a later pass
-and *do* work — which makes the failure genuinely confusing: the test sources
+and *do* work, which makes the failure genuinely confusing: the test sources
 get compiled, `DEVICE_BUILD` is defined, and every one of them fails with
 `fatal error: unity.h: No such file or directory`.
 
 Worse, it only shows up on a **clean** build directory. An incremental build
-already has a `sdkconfig`, so it appears to work — meaning this can sit latent
+already has a `sdkconfig`, so it appears to work, meaning this can sit latent
 until CI, or until someone deletes `build.diag/`.
 
 So `unity` is listed unconditionally. That costs release nothing: IDF puts unity
 in the component graph either way, `REQUIRES` only decides whether `main` can
 see its headers, and with no test sources compiled nothing references it and
-`--gc-sections` drops it. Confirmed — the release binary is byte-for-byte the
+`--gc-sections` drops it. Confirmed: the release binary is byte-for-byte the
 same size with and without the entry.
 
 ```sh
@@ -215,7 +215,7 @@ autana selftest                       # build.diag/  firmware + suites
 The two use separate build directories so each keeps its own `sdkconfig` and
 running the tests can never silently reconfigure your normal build.
 
-This is the norm, not a compromise. Unit tests verify *units* - `touch_fsm.c`
+This is the norm, not a compromise. Unit tests verify *units*: `touch_fsm.c`
 compiles from identical sources with identical flags in both variants, and
 linking a test framework beside it cannot change how it behaves. Verifying an
 *image* is a separate activity (POST, functional tests, checksums) that unit
@@ -225,7 +225,7 @@ If anything the direction favours release: the diagnostics variant carries more
 code and less free RAM, so a suite passing there leaves release with more
 headroom, not less.
 
-A failing self test is logged, not fatal — the harness reads the result from
+A failing self test is logged, not fatal: the harness reads the result from
 the console, and a board that still boots is easier to investigate than one
 that refuses to.
 
@@ -233,12 +233,12 @@ that refuses to.
 
 ## Related
 
-- [`Testing-Guide.md`](Testing-Guide.md) — the suites these flags carry or
+- [`Testing-Guide.md`](Testing-Guide.md): the suites these flags carry or
   drop, and how to run them.
-- [`notes/Debugging.md`](notes/Debugging.md) —
+- [`notes/Debugging.md`](notes/Debugging.md):
   which tool to reach for when the board misbehaves, and which build each
   one needs.
-- [`plans/Log-Level-Plan.md`](plans/Log-Level-Plan.md) — a planned
+- [`plans/Log-Level-Plan.md`](plans/Log-Level-Plan.md): a planned
   compile-time log-severity ceiling per variant, complementing this split.
-- [`plans/Settings-App-Plan.md`](plans/Settings-App-Plan.md) — the remaining
+- [`plans/Settings-App-Plan.md`](plans/Settings-App-Plan.md): the remaining
   DEVELOPMENT/SELFTEST seam inside a development-only app.

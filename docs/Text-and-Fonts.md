@@ -94,7 +94,7 @@ when the command list hashes the same:
 flowchart LR
     SF["ui_set_font_scaled(font, scale)"] --> PAIR["interned {font, scale} pair<br/>same pair, same address"]
     PAIR --> CMD["mu_Font in every text command"]
-    CMD --> HASH["hash changes - repaints"]
+    CMD --> HASH["hash changes: repaints"]
     ST["ui_set_text_style()"] -.->|"read at render time,<br/>not in the list"| MISS["hash unchanged -<br/>stale text unless invalidated"]
 ```
 

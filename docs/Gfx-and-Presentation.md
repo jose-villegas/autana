@@ -260,7 +260,7 @@ same window sent again fails the same way.
 | `gfx_heal_mark()` | queue rows; `x` and `w` are ignored |
 | `gfx_heal_set_budget()` | pixels of heal per present, default `GFX_HEAL_DEFAULT_BUDGET_PIXELS` |
 | `gfx_heal_set_rolling()` | rows per present of a whole-screen sweep, 0 for none |
-| `gfx_heal_restore_defaults()` | empty the queue, reset both - the shell calls it on every app switch |
+| `gfx_heal_restore_defaults()` | empty the queue, reset both; the shell calls it on every app switch |
 
 Band mode heals nothing, the same as the slow clock: a band is gone once
 sent, so gfx holds nothing to resend.
@@ -282,7 +282,7 @@ Both are pure headers, loud on development and host builds, silent on release.
 | Guard | Catches | On release |
 |---|---|---|
 | `gfx_present_guard.h` | a `gfx_*` call between `gfx_present_begin()` and `gfx_present_wait()` | compiled out |
-| `gfx_fb_guard.h` | a draw with no live target - band mode between bands, or after the framebuffer was freed | the draw is a no-op, never a NULL write |
+| `gfx_fb_guard.h` | a draw with no live target: band mode between bands, or after the framebuffer was freed | the draw is a no-op, never a NULL write |
 
 ## Readback
 
@@ -305,8 +305,8 @@ checkboxes toggle them.
 |---|---|
 | `gfx_set_debug_overlay()` | outlines what was sent: cyan a full strip, yellow a gathered run |
 | `gfx_set_leaf_overlay()` | green outlines of the leaves marked this frame |
-| `gfx_set_send_audit()` | PSRAM shadow of every pixel sent, compared after each present - the tool for panel-link faults a screenshot cannot see |
-| (both overlays) | every present path; a border lasts one present, then its strip is resent clean - in band mode, by `gfx_band_dirty()` asking the app for the band once more |
+| `gfx_set_send_audit()` | PSRAM shadow of every pixel sent, compared after each present, the tool for panel-link faults a screenshot cannot see |
+| (both overlays) | every present path; a border lasts one present, then its strip is resent clean, in band mode, by `gfx_band_dirty()` asking the app for the band once more |
 | `gfx_get_strip_send_counts()` | full / gathered / partial counts since the last reset |
 | `gfx_get_bytes_sent()`, `gfx_get_heal_bytes_sent()` | bytes queued, and heal's share |
 
