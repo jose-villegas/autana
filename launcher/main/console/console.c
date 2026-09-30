@@ -14,6 +14,9 @@
  */
 #include "console/console.h"
 #include "console/console_latch.h"
+#if CONFIG_LAUNCHER_SELFTEST
+#include "console/console_runsuite.h"
+#endif
 
 #include <stdio.h>
 #include <string.h>
@@ -131,6 +134,19 @@ console_emit_line(const char* prefix, const char* payload) {
     emit_bytes("\n", 1);
 }
 
+/* Only RUNSUITE may use the long line; a handler written for CONSOLE_LINE_MAX
+ * never sees more. */
+static bool
+runsuite_line(const char* line) {
+#if CONFIG_LAUNCHER_SELFTEST
+    const char* args;
+    return console_word_match(line, "runsuite", &args);
+#else
+    (void)line;
+    return false;
+#endif
+}
+
 static void
 queue_unclaimed_line(const char* line) {
     if (app_line_queue == NULL || xQueueSend(app_line_queue, line, 0) != pdTRUE) {
@@ -138,10 +154,23 @@ queue_unclaimed_line(const char* line) {
     }
 }
 
+/* The one buffer that reads a line. A self-test build's RUNSUITE carries
+ * patterns, so its line is longer; every other verb is held to
+ * CONSOLE_LINE_MAX (see console_task). */
+#if CONFIG_LAUNCHER_SELFTEST
+#define READER_LINE_MAX RUNSUITE_LINE_MAX
+#else
+#define READER_LINE_MAX CONSOLE_LINE_MAX
+#endif
+
 static void
 console_task(void* arg) {
     (void)arg;
-    char line[CONSOLE_LINE_MAX];
+#if CONFIG_LAUNCHER_SELFTEST
+    static char line[READER_LINE_MAX];
+#else
+    char line[READER_LINE_MAX];
+#endif
     int len = 0;
     bool overflowed = false;
 
@@ -154,8 +183,14 @@ console_task(void* arg) {
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
-        if (console_append_char(line, &len, &overflowed, c)
-            && !console_registry_handle_line(&shared, line, console_reply_stdio)) {
+        const bool was_overflowed = overflowed;
+        const bool complete = console_append_char_max(line, READER_LINE_MAX, &len, &overflowed, c);
+        if (overflowed && !was_overflowed) {
+            ESP_LOGW(TAG, "console line too long (max %d) - dropped", READER_LINE_MAX - 1);
+        }
+        if (complete && strlen(line) >= CONSOLE_LINE_MAX && !runsuite_line(line)) {
+            ESP_LOGW(TAG, "console line too long (max %d) - dropped", CONSOLE_LINE_MAX - 1);
+        } else if (complete && !console_registry_handle_line(&shared, line, console_reply_stdio)) {
             queue_unclaimed_line(line);
         }
     }

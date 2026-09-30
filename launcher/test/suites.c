@@ -75,13 +75,98 @@ suites_run_all(void) {
     }
 }
 
+static char patterns[SUITE_FILTER_MAX][SUITE_FILTER_LEN];
+static int pattern_count;
+static int pattern_hits[SUITE_FILTER_MAX];
+static int selected_count;
+static bool filtering;
+
+/* Splits "a,b,c" into patterns. A refusal prints the offender, so the host
+ * can tell a refused filter from one that matched nothing. */
+static bool
+parse_patterns(const char* list) {
+    pattern_count = 0;
+    while (*list != '\0') {
+        const char* comma = strchr(list, ',');
+        const size_t length = comma != NULL ? (size_t)(comma - list) : strlen(list);
+        if (length == 0 || length >= SUITE_FILTER_LEN || pattern_count >= SUITE_FILTER_MAX) {
+            printf("SUITE_FILTER_REFUSED pattern=%.*s\n", (int)(length < SUITE_FILTER_LEN ? length : SUITE_FILTER_LEN),
+                   list);
+            pattern_count = 0;
+            return false;
+        }
+        memcpy(patterns[pattern_count], list, length);
+        patterns[pattern_count][length] = '\0';
+        pattern_count++;
+        list += length + (comma != NULL ? 1 : 0);
+    }
+    return true;
+}
+
 bool
-suites_run_one(const char* name) {
-    for (int i = 0; i < registered; i++) {
-        if (strcmp(suites[i].name, name) == 0) {
-            suites[i].fn();
-            return true;
+suites_test_runs(const char* test_name) {
+    if (!filtering) {
+        selected_count++;
+        return true;
+    }
+    bool matches = false;
+    for (int i = 0; i < pattern_count; i++) {
+        if (strstr(test_name, patterns[i]) != NULL) {
+            pattern_hits[i]++;
+            matches = true;
         }
     }
-    return false;
+    printf("SUITE_TEST name=%s selected=%d\n", test_name, matches ? 1 : 0);
+    selected_count += matches ? 1 : 0;
+    return matches;
+}
+
+static int
+unmatched_patterns(void) {
+    int unmatched = 0;
+    for (int i = 0; i < pattern_count; i++) {
+        unmatched += pattern_hits[i] == 0;
+    }
+    return unmatched;
+}
+
+suite_run_t
+suites_run_request(const char* request) {
+    suite_run_t run = {0};
+    const char* space = strchr(request, ' ');
+    const size_t name_length = space != NULL ? (size_t)(space - request) : strlen(request);
+    const char* list = space != NULL ? space + 1 : "";
+    if (name_length > SUITE_NAME_MAX) {
+        return run;
+    }
+    memcpy(run.name, request, name_length);
+
+    filtering = false;
+    selected_count = 0;
+    memset(pattern_hits, 0, sizeof pattern_hits);
+    for (int i = 0; i < registered; i++) {
+        if (strcmp(suites[i].name, run.name) != 0) {
+            continue;
+        }
+        run.found = true;
+        filtering = list[0] != '\0';
+        if (filtering && !parse_patterns(list)) {
+            filtering = false;
+            run.refused = true;
+            return run;
+        }
+        suites[i].fn();
+        run.selected = selected_count;
+        run.unmatched = filtering ? unmatched_patterns() : 0;
+        break;
+    }
+    filtering = false;
+    pattern_count = 0;
+    return run;
+}
+
+void
+suites_print_run(const suite_run_t* run) {
+    printf("\nRUNSUITE_COMPLETE name=%s found=%d selected=%d unmatched=%d\n", run->name, run->found ? 1 : 0,
+           run->selected, run->unmatched);
 }

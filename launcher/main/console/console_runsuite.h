@@ -1,14 +1,22 @@
 #pragma once
 
 #include <stdbool.h>
-#include <stddef.h>
 
-/* Same "read and consume once per frame" contract as
- * console_screenshot_take_request() (console_screenshot.h), for a RUNSUITE
- * line - see console.c's own top comment for why a suite run needs this
- * even more: suites_run_one() draws, clears, and presents repeatedly, and
- * must never interleave with the shell's own frame loop on a different
- * task. Copies the pending suite name into `name_out` (caller-owned,
- * NUL-terminated) and returns true if a RUNSUITE line arrived; false
- * otherwise. */
-bool console_runsuite_take_request(char* name_out, size_t name_out_size);
+#include "suites.h"
+
+/* The longest request suites_run_request() accepts: a name, a space, and
+ * SUITE_FILTER_MAX patterns with a comma between each. */
+#define RUNSUITE_ARGS_MAX (SUITE_NAME_MAX + 1 + SUITE_FILTER_MAX * SUITE_FILTER_LEN)
+
+/* The console line that carries it, and the size of the reader's buffer. */
+#define RUNSUITE_LINE_MAX (sizeof("runsuite") + 1 + RUNSUITE_ARGS_MAX)
+
+/* A RUNSUITE line for the frame loop, which alone may run a suite: a suite
+ * draws, clears and presents, and must never interleave with the shell's own
+ * frame loop on another task (see console.c's own top comment).
+ *
+ * Returns the pending request - a suite name, then any patterns - or NULL.
+ * The pointer stays valid until console_runsuite_finish(), and a RUNSUITE
+ * that arrives before then is refused rather than overwriting it. */
+const char* console_runsuite_take_request(void);
+void console_runsuite_finish(void);

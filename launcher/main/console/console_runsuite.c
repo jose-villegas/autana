@@ -1,34 +1,52 @@
 /*
- * console_runsuite - RUNSUITE <name>: runs one named self-test suite
- * instead of the whole boot-time run. CONFIG_LAUNCHER_SELFTEST only - the
- * verb itself only sets a latch; main.c's frame loop is what actually
- * calls suites_run_one(), for the same reason SCREENSHOT does not draw
- * from this task either (see console.c's own top comment).
+ * console_runsuite - RUNSUITE <name> [<pattern>[,<pattern>...]]: runs one
+ * named self-test suite instead of the whole boot-time run, narrowed to the
+ * tests whose name contains a pattern when any are given.
+ * CONFIG_LAUNCHER_SELFTEST only - the verb itself only sets a latch;
+ * main.c's frame loop is what actually calls suites_run_request(), for the
+ * same reason SCREENSHOT does not draw from this task either (see console.c's
+ * own top comment).
  */
 #include "console/console_runsuite.h"
 #include "console/console_latch.h"
 #include "console/console_verbs.h"
 
 #include "esp_log.h"
+#include "suites.h"
 
 static const char* TAG = "console";
 
-static console_latch_t runsuite_latch;
+/* The one copy of the request: the verb fills it, the frame loop reads it in
+ * place. Sized by the limits, not by CONSOLE_LINE_MAX, so no other console
+ * buffer grows for it. */
+static char request[RUNSUITE_ARGS_MAX + 1];
+
+static volatile enum { IDLE, PENDING, RUNNING } state;
 
 static void
 console_verb_runsuite(const char* args, console_reply_fn reply) {
     (void)reply;
+    if (state != IDLE) {
+        ESP_LOGW(TAG, "RUNSUITE refused: the previous one has not finished");
+        return;
+    }
     ESP_LOGI(TAG, "RUNSUITE %s", args);
-    console_latch_set(&runsuite_latch, args);
+    console_latch_copy(request, sizeof request, args);
+    state = PENDING;
 }
 
-/* Headroom over the longest registered suite name today
- * (suite_control_center_layout, 27 chars) - bump this rather than trim a
- * name to fit it, the same reasoning suites.h's own SUITE_MAX comment
- * gives. */
-CONSOLE_VERB(runsuite, 38, console_verb_runsuite)
+CONSOLE_VERB_LONG(runsuite, RUNSUITE_ARGS_MAX, RUNSUITE_LINE_MAX, console_verb_runsuite)
 
-bool
-console_runsuite_take_request(char* name_out, size_t name_out_size) {
-    return console_latch_take(&runsuite_latch, name_out, name_out_size);
+const char*
+console_runsuite_take_request(void) {
+    if (state != PENDING) {
+        return NULL;
+    }
+    state = RUNNING;
+    return request;
+}
+
+void
+console_runsuite_finish(void) {
+    state = IDLE;
 }
