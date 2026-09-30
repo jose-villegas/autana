@@ -17,7 +17,7 @@ in a sleep loop rather than returning from `app_main`: the device has to stay
 flashable even when startup fails.
 
 If the board becomes unreachable, BOOT has to be held at the moment power
-arrives; so what produces that moment decides the procedure.
+arrives, so what produces that moment decides the procedure.
 
 | # | No battery fitted | Battery fitted |
 |---|---|---|
@@ -42,8 +42,8 @@ Connecting almost instantly (a few dots) means the chip is sitting in the
 bootloader.
 
 From there `autana flash` writes the image and ends with esptool's RTS
-reset. What a flash proves; esptool's hash check and the build's
-`BUILD_ID`, not the boot; and the whole hand-off under the device lock are
+reset. What a flash proves (esptool's hash check and the build's
+`BUILD_ID`, not the boot) and the whole hand-off under the device lock are
 in [Flash-and-Captures.md](../tools/Flash-and-Captures.md#what-a-flash-proves).
 
 The RTS reset is a warm reset, so the bootloader's PMIC restart (below)
@@ -54,18 +54,18 @@ first open after the drop can get the old handle, which reads nothing; only
 `reset --capture` and `selftest` reopen a silent handle, and `selftest` and
 `batch` check the console `BUILD_ID` against the flashed image.
 
-If it vanishes from USB entirely: no COM port, no device at vendor ID
-`0x303A`, check
+If it vanishes from USB entirely (no COM port, no device at vendor ID
+`0x303A`), check
 the cable first, then the PWR button: this board's power is managed by an
 **AXP2101 PMIC**, so a long press cuts system power.
 
 ### Warm resets at 120 MHz
 
-At 120 MHz PSRAM and flash, a warm reset; esptool's RTS reset, a watchdog, a
-panic, a restart, hangs in the app's PSRAM timing tuning, and repeated, it
+At 120 MHz PSRAM and flash, a warm reset (esptool's RTS reset, a watchdog, a
+panic, a restart) hangs in the app's PSRAM timing tuning, and repeated, it
 leaves the chip deaf to esptool until a power cycle; a power-on reset boots.
-The cause is not established; flash high-performance mode surviving the
-reset is as likely as PSRAM; so the fix is a workaround:
+The cause is not established (flash high-performance mode surviving the
+reset is as likely as PSRAM), so the fix is a workaround:
 `launcher/bootloader_components/pmic_cold_boot/` has the AXP2101 power-cycle
 the SoC whenever the reset was not a power-on.
 
