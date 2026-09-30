@@ -212,7 +212,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
     # macro (see its own comment) to log a wall-clock line per test without
     # editing a single suite file. -include forces it in ahead of each
     # suite's own "#include unity.h", which is what lets Unity's own
-    # "#ifndef RUN_TEST" step aside for it. Scoped to just the suite files -
+    # "#ifndef RUN_TEST" step aside for it. Scoped to just the suite files;
     # forcing it onto every source in this component would be harmless too
     # (nothing else calls RUN_TEST), but there's no reason to.
     set_source_files_properties(${suite_srcs} ${app_suites} PROPERTIES
