@@ -14,7 +14,7 @@ mesh. Nothing here runs on the board.
 | [meshopt.py](meshopt.py) | [meshoptimizer](https://github.com/zeux/meshoptimizer)'s simplifier and meshlet clusterizer through ctypes, built once from the pinned `third_party/upstream/meshoptimizer` submodule into `.cache/`. |
 | [light.py](light.py) | Baked direct light: a sun with soft shadows and sky visibility, albedo from textures, and culling of what no point in a region can see. |
 | [octree.py](octree.py) | Groups weighted items, here meshlets, into an octree whose leaves hold runs of them. |
-| [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under an octree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as C data; the size defaults live here and nowhere else. `read_lit_mesh()` reads that data back. |
+| [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under an octree, gives each a normal cone, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as C data; the size defaults live here and nowhere else. `read_lit_mesh()` reads that data back. |
 | [rebake.py](rebake.py) | Rewrites a baked mesh's clusters from its own triangles and colours, with no relighting. |
 | [fetch.py](fetch.py) | Downloads a source model once into `.cache/`, checked against a SHA-256. |
 | [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling (LINEAR, STEP, CUBICSPLINE), linear-blend skinning; reads through [`tools/gltf/`](../gltf/gltf_read.py), the reader and reference sampler [`tools/anim/`](../anim/README.md) shares. Standard library only. |
@@ -59,4 +59,5 @@ centres at each pose, which sizes the rasterizer's small-triangle work.
 input: a scene prints its poses from its own camera rather than keeping a
 copy that can go stale.
 `--write` keeps each pose's frame and `--against` diffs a later build's
-frames with them, pixel by pixel.
+frames with them, pixel by pixel. `--no-cones` culls no cluster by the way it faces, which
+checks that the cones change no pixel and counts what they drop.
