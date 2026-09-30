@@ -935,13 +935,10 @@ ring_dir(int i) {
 
 static inline int
 ring_of(int dx, int dy) {
-    for (int i = 0; i < 8; i++) {
-        const int* d = ring_dir(i);
-        if (d[0] == dx && d[1] == dy) {
-            return i;
-        }
-    }
-    return 0; /* unreachable for a unit direction */
+    static const int8_t ring_index[9] = {
+        5, 4, 3, 6, -1, 2, 7, 0, 1,
+    };
+    return ring_index[(dy + 1) * 3 + dx + 1];
 }
 
 /* KIND_STATIC wall-bounce geometry for step_impulses() (sand_impulse.c). Same

@@ -226,12 +226,11 @@ build_gas_tables(void) {
  * only in the direction it sweeps. */
 static inline bool
 gas_walk_once(sand_t* s, uint8_t* row, int x, int y, int w, int rdx, int rdy, cell_t grain, uint8_t density) {
-    const int up = ring_of(rdx, rdy);
     const int roll = (int)(sand_rng_next_at(s, x, y, SAND_RNG_SLOT_GAS_WALK) & 0xFF);
 
     const int off = gas_walk_offset[roll];
 
-    const int* d = ring_dir(up + off);
+    const int* d = ring_dir(ring_of(rdx, rdy) + off);
     const int ny = y + d[1];
     const int nx = x + d[0];
 

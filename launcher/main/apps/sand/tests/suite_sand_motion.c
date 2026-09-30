@@ -78,6 +78,17 @@ test_gravity_quantises_to_eight_directions(void) {
 }
 
 static void
+test_ring_of_matches_the_direction_ring(void) {
+    fixture();
+
+    for (int i = 0; i < 8; i++) {
+        const int* const direction = ring_dir(i);
+        TEST_ASSERT_EQUAL_INT(i, ring_of(direction[0], direction[1]));
+    }
+    TEST_ASSERT_EQUAL_INT(-1, ring_of(0, 0));
+}
+
+static void
 test_a_slight_tilt_still_reads_as_straight_down(void) {
     fixture();
     int dx, dy;
@@ -887,6 +898,7 @@ test_turning_the_board_wakes_a_sleeping_pile(void) {
 void
 run_sand_motion_suite(void) {
     RUN_TEST(test_gravity_quantises_to_eight_directions);
+    RUN_TEST(test_ring_of_matches_the_direction_ring);
     RUN_TEST(test_a_slight_tilt_still_reads_as_straight_down);
     RUN_TEST(test_no_gravity_has_no_direction);
     RUN_TEST(test_an_exactly_aligned_direction_is_never_dithered);
