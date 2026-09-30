@@ -1,5 +1,5 @@
 /*
- * r3d_trs - float translation, rotation and scale as one small3dlib
+ * r3d_trs: float translation, rotation and scale as one small3dlib
  * transform, for a caller that plays an animation track (anim/) onto an
  * object drawn in fixed point.
  *
