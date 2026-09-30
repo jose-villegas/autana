@@ -17,14 +17,9 @@
  *                                comment)
  *     main/boot/boot_anim.c     (host-portable for the same reason)
  *
- * tools/boot_anim/boot_anim_editor_server.py compiles the same four with a scratch
- * directory holding a DRAFT boot_anim_timeline.h placed AHEAD of `main` on
- * the include path, so it shadows the real, committed one without ever
- * touching it - see that script's own top comment.
- *
- * Also prints one line to STDERR - "ORIGIN <x> <y>", the space's own local
- * origin projected through this frame's transform. It must stay the FIRST
- * stderr line: that script reads one line and stops.
+ * The camera and space it draws through are the baked tracks in
+ * main/boot/boot_anim_tracks_generated.c, and the timing is
+ * boot_anim_timeline.h.
  */
 
 #include <stdint.h>
@@ -51,15 +46,6 @@ static void
 draw(const render_frame_t* frame) {
     const uint32_t t_ms = now_ms + frame->elapsed_ms;
     boot_anim_draw_frame(t_ms);
-
-    /* The space's own local origin (0,0,0 - t=0, zeta=0), projected through
-     * this frame's camera+space transform: the JSON side has nowhere to
-     * author a screen position directly, so boot_anim_editor_server.py reads
-     * this as a read-only "where does the origin land" readout. */
-    const boot_anim_view_t view = boot_anim_view(GFX_WIDTH, GFX_HEIGHT, t_ms);
-    int ox, oy;
-    boot_anim_project(0, 0, 0, &view, &ox, &oy);
-    fprintf(stderr, "ORIGIN %d %d\n", ox, oy);
 }
 
 const render_scene_t render_scene = {

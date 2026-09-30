@@ -1,16 +1,12 @@
 /*=============================================================================
  * GENERATED FILE - do not edit.
  *
- *     python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json > main/boot/boot_anim_timeline.h
+ *     python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h
  *
- * The boot animation's timing constants and its two keyframed 3D
- * transforms (camera, and the space the grid+curve live in), edited as
- * main/boot/boot_anim_timeline.json - by hand, or via
- * tools/boot_anim/boot_anim_editor.html's Bake button - and turned into this header by
- * this script. See that script's own top comment for what a keyframe is
- * (plain meters/degrees/multiplier units, converted to small3dlib's fixed
- * point right here) and boot_anim.h's boot_anim_timeline_sample() for how
- * they are interpolated.
+ * The boot animation's timing constants and settings, edited as
+ * main/boot/boot_anim_timeline.json and turned into this header by
+ * this script. Its camera and space move by
+ * boot_anim_tracks_generated.c instead.
  *===========================================================================*/
 #pragma once
 
@@ -150,58 +146,3 @@
  * cycle takes" unit title_wave_period_ms already is for the title's
  * own wobble. */
 #define BOOT_ANIM_WAVE_PERIOD_MS 800
-
-typedef enum {
-    BOOT_ANIM_EASE_LINEAR = 0,   /* no easing - a plain ramp        */
-    BOOT_ANIM_EASE_OUT    = 1,   /* tween_ease_out() - fast then settle */
-    BOOT_ANIM_EASE_IN     = 2,   /* tween_ease_in() - slow then rush    */
-} boot_anim_ease_t;
-
-/* Both transforms' pos/rot/scale are small3dlib fixed point (S3L_F =
- * 512 = 1.0) already - converted from the JSON's plain meters/degrees/
- * multiplier units by this script, not at runtime. `ease` says how the
- * segment ENDING at this keyframe - from the previous one - is eased;
- * the first keyframe's is unused. */
-typedef struct {
-    uint32_t ms;
-    int32_t  camera_pos[3];
-    int32_t  camera_rot[3];
-    int32_t  camera_scale[3];
-    int32_t  space_pos[3];
-    int32_t  space_rot[3];
-    int32_t  space_scale[3];
-    uint8_t  ease;
-} boot_anim_keyframe_t;
-
-#define BOOT_ANIM_KEYFRAME_COUNT 7
-
-static const boot_anim_keyframe_t boot_anim_keyframes[BOOT_ANIM_KEYFRAME_COUNT] = {
-    {     0,
-      {      0,      0,  -5120 }, {      0,      0,      0 }, {    512,    512,    512 },
-      {   5120,      0,      0 }, {   -192,    -64,    128 }, {    512,    512,    512 },
-      BOOT_ANIM_EASE_LINEAR },
-    {   700,
-      {      0,      0,  -5120 }, {      0,      0,      0 }, {    512,    512,    512 },
-      {  -2560,      0,      0 }, {   -192,    -64,    128 }, {    512,    512,    512 },
-      BOOT_ANIM_EASE_OUT },
-    {  1580,
-      {      0,      0,  -5120 }, {      0,      0,      0 }, {    512,    512,    512 },
-      {  -2560,      0,      0 }, {   -192,     38,    128 }, {    512,    512,    512 },
-      BOOT_ANIM_EASE_LINEAR },
-    {  2000,
-      {      0,      0,  -5120 }, {      0,      0,      0 }, {    512,    512,    512 },
-      {  -2560,      0,      0 }, {   -192,     38,    128 }, {    512,    512,    512 },
-      BOOT_ANIM_EASE_LINEAR },
-    {  2800,
-      {      0,      0,  -5120 }, {      0,      0,      0 }, {    512,    512,    512 },
-      {  -2560,      0,      0 }, {   -192,      0,    128 }, {    512,    512,    512 },
-      BOOT_ANIM_EASE_LINEAR },
-    {  3100,
-      {      0,      0,  -5120 }, {      0,      0,      0 }, {    512,    512,    512 },
-      {  -1024,   4096,      0 }, {   -256,    -64,      0 }, {    512,    512,    512 },
-      BOOT_ANIM_EASE_LINEAR },
-    {  4300,
-      {      0,      0,  -5120 }, {      0,      0,      0 }, {    512,    512,    512 },
-      {  -1024,   4096,      0 }, {   -256,      0,      0 }, {    307,    307,    307 },
-      BOOT_ANIM_EASE_LINEAR },
-};

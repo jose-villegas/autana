@@ -1015,25 +1015,6 @@ def write_snapshot(held, write, image_dir, **popen):
     run_to_end(write + [Path(image_dir).as_posix()], held.lost, env=environment, **popen)
 
 
-def flash_script(store, board, owner, bash, worktree, variant, wait, **popen):
-    """A flash of `worktree`'s `variant` for a caller outside device.py: finds
-    the board (`board`, else the global --board, else the only one), builds and
-    snapshots with no lock held, then queues for the board's lock and holds
-    it only for the write. A failed build never queues. Returns the board's
-    serial."""
-    board = board_for_lock(store, board)
-    build, write = flash_commands(bash, worktree, variant)
-    build_dir = build_directory(worktree, variant)
-    image = new_image_directory()
-    try:
-        build_snapshot(build, build_dir, image, **popen)
-        with HeldLock(store, board, owner, "flash", wait) as held:
-            write_snapshot(held, write, image, **popen)
-    finally:
-        remove_image_directory(image)
-    return board
-
-
 FLASH_FAILURE = re.compile(r"fatal error|\berror:|^error\b|could not", re.I)
 
 

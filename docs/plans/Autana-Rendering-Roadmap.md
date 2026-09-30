@@ -768,8 +768,8 @@ keeps every present cheap in a fixed-camera room.
   empty. A list of a few dozen records is a few hundred bytes, so levels
   are tiny as baked headers and a larger world costs nothing to keep in
   flash. A level editor draws the rectangles, previews through the *real*
-  compiled sand code on the host — the boot animation editor already does
-  exactly this — and bakes the level to a header with the regenerate
+  compiled sand code on the host, as the render harness does for other
+  screens, and bakes the level to a header with the regenerate
   command in its banner. Entity spawns and event triggers are records in
   the same list.
 - **Materials and reactions are data, not scripts.** A script per cell

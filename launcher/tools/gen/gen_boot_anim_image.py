@@ -51,9 +51,7 @@ Cross-checked two more ways before trusting it (see main()'s own
 self-validation below, which asserts this outright rather than merely
 assuming it): ui_transform.h's ui_transform_quarter_turn(1, w, h) is the
 same mapping in its general corner-to-corner form, and
-tools/boot_anim/boot_anim_editor.html's own render-preview CSS applies the exact
-inverse (a -90deg rotation) with a comment recording that the OTHER sign
-was tried first and was visibly wrong by 180 degrees.
+the other sign was tried first and was visibly wrong by 180 degrees.
 
 HOW A PIXEL IS PACKED
 
