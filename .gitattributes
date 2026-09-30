@@ -11,3 +11,4 @@
 *.png binary
 *.otf binary
 *.xcf binary
+*.glb binary

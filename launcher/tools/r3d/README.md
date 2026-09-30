@@ -16,6 +16,8 @@ checked-in C data.
 | [octree.py](octree.py) | Groups triangles into an octree whose leaves become clusters. |
 | [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: clusters a lit mesh, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as C data. |
 | [fetch.py](fetch.py) | Downloads a source model once into `.cache/`, checked against a SHA-256. |
+| [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling, linear-blend skinning. Standard library only. |
+| [gltf_preview.py](gltf_preview.py) | Renders any skinned `.glb` with Pillow: a looping GIF of one animation (`--gif NAME`) or the bind pose from four sides (`--sheet`). |
 
 The environment is pinned in [requirements.txt](requirements.txt), and the
 simplifier needs the meshoptimizer submodule and a host C++ compiler (`CXX`,
