@@ -46,36 +46,50 @@ pixels_of(int32_t subpixels) {
     return (float)subpixels * (1.0F / (float)R3D_SUBPIXEL);
 }
 
+/* What every attribute's plane shares: the edges from corner a, the
+ * reciprocal of twice the area, and the origin pixel's centre from a. */
+typedef struct {
+    float e1x, e1y, e2x, e2y, inv, ox, oy;
+} plane_t;
+
 static bool
-compute_gradients(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, int x_origin,
-                  int y_anchor, gradients_t* out) {
+plane_of(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, int x_origin, int y_anchor,
+         plane_t* p) {
     const float ax = pixels_of(a->x);
     const float ay = pixels_of(a->y);
-    const float e1x = pixels_of(b->x) - ax;
-    const float e1y = pixels_of(b->y) - ay;
-    const float e2x = pixels_of(c->x) - ax;
-    const float e2y = pixels_of(c->y) - ay;
-    const float area2 = (e1x * e2y) - (e2x * e1y);
+    p->e1x = pixels_of(b->x) - ax;
+    p->e1y = pixels_of(b->y) - ay;
+    p->e2x = pixels_of(c->x) - ax;
+    p->e2y = pixels_of(c->y) - ay;
+    const float area2 = (p->e1x * p->e2y) - (p->e2x * p->e1y);
     if (area2 > -1e-6F && area2 < 1e-6F) {
         return false;
     }
-    const float inv = 1.0F / area2;
-    const float va[ATTRIBUTES] = {a->z * DEPTH_SCALE, a->r * COLOR_SCALE, a->g * COLOR_SCALE, a->b * COLOR_SCALE};
-    const float vb[ATTRIBUTES] = {b->z * DEPTH_SCALE, b->r * COLOR_SCALE, b->g * COLOR_SCALE, b->b * COLOR_SCALE};
-    const float vc[ATTRIBUTES] = {c->z * DEPTH_SCALE, c->r * COLOR_SCALE, c->g * COLOR_SCALE, c->b * COLOR_SCALE};
-    const float ox = (float)x_origin + 0.5F - ax;
-    const float oy = (float)y_anchor + 0.5F - ay;
-    for (int k = 0; k < ATTRIBUTES; k++) {
-        const float d1 = vb[k] - va[k];
-        const float d2 = vc[k] - va[k];
-        const float ddx = (d1 * e2y - d2 * e1y) * inv;
-        const float ddy = (d2 * e1x - d1 * e2x) * inv;
-        out->dx[k] = to_step(ddx);
-        out->dy[k] = to_step(ddy);
-        out->base[k] = (int32_t)clampf(va[k] + (ddx * ox) + (ddy * oy), -2.0e9F, 2.0e9F);
-    }
-    out->x_origin = x_origin;
+    p->inv = 1.0F / area2;
+    p->ox = (float)x_origin + 0.5F - ax;
+    p->oy = (float)y_anchor + 0.5F - ay;
     return true;
+}
+
+static void
+gradient(const plane_t* p, float va, float vb, float vc, int k, gradients_t* out) {
+    const float d1 = vb - va;
+    const float d2 = vc - va;
+    const float ddx = (d1 * p->e2y - d2 * p->e1y) * p->inv;
+    const float ddy = (d2 * p->e1x - d1 * p->e2x) * p->inv;
+    out->dx[k] = to_step(ddx);
+    out->dy[k] = to_step(ddy);
+    out->base[k] = (int32_t)clampf(va + (ddx * p->ox) + (ddy * p->oy), -2.0e9F, 2.0e9F);
+}
+
+/* The colour planes, left until the depth plane has shown the triangle is
+ * not hidden. */
+static void
+colour_gradients(const plane_t* p, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c,
+                 gradients_t* out) {
+    gradient(p, a->r * COLOR_SCALE, b->r * COLOR_SCALE, c->r * COLOR_SCALE, 1, out);
+    gradient(p, a->g * COLOR_SCALE, b->g * COLOR_SCALE, c->g * COLOR_SCALE, 2, out);
+    gradient(p, a->b * COLOR_SCALE, b->b * COLOR_SCALE, c->b * COLOR_SCALE, 3, out);
 }
 
 /* A pixel centre just outside the triangle extrapolates past the vertex
@@ -288,11 +302,9 @@ set_flat(fill_t* f, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, cons
                                   (int32_t)(clampf((a->b + b->b + c->b) * third, 0.0F, 255.0F) * COLOR_SCALE));
 }
 
-static inline void
-first_row_values(const gradients_t* g, int y_first, int y_anchor, int32_t row[ATTRIBUTES]) {
-    for (int k = 0; k < ATTRIBUTES; k++) {
-        row[k] = (int32_t)(g->base[k] + ((int64_t)(y_first - y_anchor) * g->dy[k]));
-    }
+static inline int32_t
+first_row_value(const gradients_t* g, int k, int y_first, int y_anchor) {
+    return (int32_t)(g->base[k] + ((int64_t)(y_first - y_anchor) * g->dy[k]));
 }
 
 /* Edge a-b of a triangle winding positive, where (b - a) x (p - a) is above
@@ -347,6 +359,43 @@ fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3
     }
 }
 
+/* An upper bound on the depth any pixel of the triangle writes. A span's
+ * depth runs monotonically from its clamped start to its clamped end, each
+ * a value of the plane at a centre inside `box`, so the plane's largest
+ * corner bounds it. A start clamped up from below zero would lift the whole
+ * span, so a negative corner gives no bound. */
+static int32_t
+nearest_depth(const fill_t* f, const int32_t row[ATTRIBUTES], centres_t box) {
+    if (f->flat) {
+        return f->flat_z;
+    }
+    const int32_t dx = f->g->dx[0];
+    const int32_t across = dx * (box.x1 - 1 - box.x0);
+    const int32_t top = row[0];
+    const int32_t bottom = top + (f->g->dy[0] * (box.y1 - 1 - box.y0));
+    const int32_t low = (top < bottom ? top : bottom) + (across < 0 ? across : 0);
+    const int32_t high = (top > bottom ? top : bottom) + (across > 0 ? across : 0);
+    if (low < 0) {
+        return R3D_DEPTH_NEAREST + 1;
+    }
+    return clamp_value(high, value_max[0]) >> 8;
+}
+
+/* True when every pixel of `box` already holds a depth at or nearer than
+ * `nearest`, so the triangle would write none of them. */
+static bool
+hidden(const r3d_span_target_t* target, int32_t nearest, centres_t box) {
+    for (int y = box.y0; y < box.y1; y++) {
+        const uint16_t* depth = target->depth + ((y - target->row0) * target->width);
+        for (int x = box.x0; x < box.x1; x++) {
+            if (depth[x] < nearest) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 void
 r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                   const r3d_span_vertex_t* c) {
@@ -381,20 +430,31 @@ r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
     const int y_anchor = clampi(r3d_span_first_centre(v0->y), -1, target->row1 + 1);
+    const centres_t box = {x_first < 0 ? 0 : x_first, x_end > target->width ? target->width : x_end, y_first, y_end};
     gradients_t g = {0};
+    plane_t p;
+    int32_t row[ATTRIBUTES] = {0};
     f.g = &g;
+    g.x_origin = box.x0;
     if (f.flat) {
         set_flat(&f, a, b, c);
-    } else if (!compute_gradients(a, b, c, x_first < 0 ? 0 : x_first, y_anchor, &g)) {
+    } else if (plane_of(a, b, c, box.x0, y_anchor, &p)) {
+        gradient(&p, a->z * DEPTH_SCALE, b->z * DEPTH_SCALE, c->z * DEPTH_SCALE, 0, &g);
+        row[0] = first_row_value(&g, 0, y_first, y_anchor);
+    } else {
         return;
+    }
+    if (box.x0 >= box.x1 || hidden(target, nearest_depth(&f, row, box), box)) {
+        return;
+    }
+    if (!f.flat) {
+        colour_gradients(&p, a, b, c, &g);
+        for (int k = 1; k < ATTRIBUTES; k++) {
+            row[k] = first_row_value(&g, k, y_first, y_anchor);
+        }
     }
     if (r3d_span_stop_after == 1) {
         return;
-    }
-
-    int32_t row[ATTRIBUTES] = {0};
-    if (!f.flat) {
-        first_row_values(&g, y_first, y_anchor, row);
     }
     /* v1 lies right of the long edge v0-v2 when v0-v1-v2 winds positive. */
     const walk_t w = {

@@ -435,6 +435,75 @@ test_a_mesh_of_small_and_large_triangles_fills_every_pixel_exactly_once(void) {
     free(ys);
 }
 
+static r3d_span_vertex_t
+random_vertex(uint32_t* state, float cx, float cy, float radius, float z_lo, float z_span) {
+    const float r = (float)(next_random(state) % 256u), g = (float)(next_random(state) % 256u);
+    const float b = (float)(next_random(state) % 256u);
+    const float z = z_lo + (z_span * (float)(next_random(state) % 1000u) / 1000.0f);
+    return (r3d_span_vertex_t){random_subpixel(state, cx - radius, 2.0f * radius),
+                               random_subpixel(state, cy - radius, 2.0f * radius),
+                               z,
+                               r,
+                               g,
+                               b};
+}
+
+/* Draws into both halves of the rows, as two windows. */
+static void
+draw_in_two_windows(gfx_color_t* to_color, uint16_t* to_depth, const r3d_span_vertex_t v[3]) {
+    const int split = H / 2 - 3;
+    const r3d_span_target_t top = {to_color, to_depth, W, 0, split};
+    const r3d_span_target_t bottom = {to_color + (split * W), to_depth + (split * W), W, split, H};
+    r3d_span_triangle(&top, &v[0], &v[1], &v[2]);
+    r3d_span_triangle(&bottom, &v[0], &v[1], &v[2]);
+}
+
+/* Overlapping triangles of every size, at depths within a few steps of
+ * each other and some steeply sloped: drawn in turn, each pixel holds what
+ * the nearest triangle there would draw alone, so skipping a triangle whose
+ * every pixel is already nearer never loses one it would have won. */
+static void
+test_a_triangle_drawn_over_nearer_depth_writes_exactly_what_it_would_alone(void) {
+    uint32_t state = 4242u;
+    r3d_span_target_t t = fixture();
+    (void)t;
+    gfx_color_t* alone_color = malloc(sizeof(*alone_color) * W * H);
+    uint16_t* alone_depth = malloc(sizeof(*alone_depth) * W * H);
+    gfx_color_t* want_color = calloc(W * H, sizeof(*want_color));
+    uint16_t* want_depth = calloc(W * H, sizeof(*want_depth));
+    TEST_ASSERT_NOT_NULL(alone_color);
+    TEST_ASSERT_NOT_NULL(alone_depth);
+    TEST_ASSERT_NOT_NULL(want_color);
+    TEST_ASSERT_NOT_NULL(want_depth);
+    for (int i = 0; i < 600; i++) {
+        const float radius = 0.5f + (float)(next_random(&state) % 300u) / 10.0f;
+        const float cx = (float)(next_random(&state) % (W + 16u)) - 8.0f;
+        const float cy = (float)(next_random(&state) % (H + 16u)) - 8.0f;
+        const uint32_t kind = next_random(&state) % 8u;
+        const float z_lo = kind == 0 ? 0.05f : (kind == 1 ? 1e-7f : 0.5f);
+        const float z_span = kind == 0 ? 0.9f : (kind == 1 ? 2e-5f : 0.002f);
+        const r3d_span_vertex_t v[3] = {random_vertex(&state, cx, cy, radius, z_lo, z_span),
+                                        random_vertex(&state, cx, cy, radius, z_lo, z_span),
+                                        random_vertex(&state, cx, cy, radius, z_lo, z_span)};
+        memset(alone_color, 0, sizeof(*alone_color) * W * H);
+        memset(alone_depth, 0, sizeof(*alone_depth) * W * H);
+        draw_in_two_windows(alone_color, alone_depth, v);
+        for (int p = 0; p < W * H; p++) {
+            if (alone_depth[p] > want_depth[p]) {
+                want_depth[p] = alone_depth[p];
+                want_color[p] = alone_color[p];
+            }
+        }
+        draw_in_two_windows(color, depth, v);
+    }
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(want_depth, depth, W * H);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(want_color, color, W * H);
+    free(alone_color);
+    free(alone_depth);
+    free(want_color);
+    free(want_depth);
+}
+
 /* A tall sliver at most two centres wide, cut so one window holds one or
  * two of its rows: each window draws exactly the whole triangle's pixels,
  * colour and depth, whatever path its full height takes. */
@@ -1479,6 +1548,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_steep_sliver_puts_no_pixel_nearer_than_its_nearest_corner);
     RUN_TEST(test_every_triangle_covers_exactly_the_centres_the_top_left_rule_gives);
     RUN_TEST(test_a_mesh_of_small_and_large_triangles_fills_every_pixel_exactly_once);
+    RUN_TEST(test_a_triangle_drawn_over_nearer_depth_writes_exactly_what_it_would_alone);
     RUN_TEST(test_a_window_holding_a_few_rows_of_a_tall_sliver_draws_them_as_the_whole_does);
     RUN_TEST(test_a_triangle_with_corners_past_the_snap_range_fills_its_centres);
     RUN_TEST(test_a_triangle_whose_only_centre_is_at_a_window_edge_is_drawn);
