@@ -21,6 +21,8 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "unity.h"
 #include "unity_test_utils_memory.h"
 
@@ -31,6 +33,12 @@ static const char* TAG = "selftest";
 
 static size_t free_8bit_before;
 static size_t free_32bit_before;
+static UBaseType_t stack_free_before;
+
+/* Suites run on the main task. An overflow trips FreeRTOS's canary only at a
+ * context switch and resets the chip, so a test that leaves less than an
+ * interrupt's saved context plus a log line fails by name instead. */
+#define STACK_RESERVE_BYTES 512U
 
 void
 __wrap_esp_system_console_put_char(char c) {
@@ -44,12 +52,18 @@ void
 setUp(void) {
     free_8bit_before = heap_caps_get_free_size(MALLOC_CAP_8BIT);
     free_32bit_before = heap_caps_get_free_size(MALLOC_CAP_32BIT);
+    stack_free_before = uxTaskGetStackHighWaterMark(NULL);
     unity_utils_record_free_mem();
 }
 
 void
 tearDown(void) {
     suite_run_test_cleanup();
+    const UBaseType_t stack_free = uxTaskGetStackHighWaterMark(NULL);
+    if (stack_free < stack_free_before) {
+        TEST_ASSERT_GREATER_OR_EQUAL_UINT32_MESSAGE(STACK_RESERVE_BYTES, stack_free,
+                                                    "the test left the main task's stack almost full");
+    }
     if (heap_caps_get_free_size(MALLOC_CAP_8BIT) < free_8bit_before
         || heap_caps_get_free_size(MALLOC_CAP_32BIT) < free_32bit_before) {
         unity_utils_record_free_mem();
