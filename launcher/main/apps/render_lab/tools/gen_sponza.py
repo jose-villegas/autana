@@ -75,6 +75,8 @@ SPONZA_SHA256 = "da005cbee0be2df2abc8513f3ceb61bcb6f69aac112babcd9c00169a27c2770
 POSITION_SCALE = 8  # int16 ticks per model unit
 DOUBLE_SIDED = {"fabric_a", "fabric_c", "fabric_d", "fabric_e", "fabric_f", "fabric_g", "leaf", "chain", "Material__57"}
 MASK_KEEP_ALPHA = 0.5
+FACE_SAMPLES = 4
+FLAT_SKY_RAYS = 128
 # (share of triangles kept by decimation relative to --keep, longest edge
 # relative to --max-edge): the floor carries the sharpest shadows, the roof
 # is seen only edge-on from inside.
@@ -176,7 +178,11 @@ def main():
                         help="meshopt: import the mesh as it is, without the seal_seams option "
                         "(joined touching pieces, light regularizing, merged colour seams)")
     parser.add_argument("--flat", action="store_true",
-                        help="bake one RGB565 colour at each triangle centre and weld positions only")
+                        help="bake one RGB565 colour per triangle and weld positions only")
+    parser.add_argument("--face-samples", type=int, default=FACE_SAMPLES,
+                        help="flat: points per triangle the light is averaged over")
+    parser.add_argument("--flat-sky-rays", type=int, default=FLAT_SKY_RAYS,
+                        help="flat: sky directions shared by every face")
     parser.add_argument("--props-share", type=float, default=0.3, help="meshopt: budget share held for props")
     args = parser.parse_args()
     rng = np.random.default_rng(args.seed)
@@ -262,7 +268,7 @@ def main():
             return sample_albedo(centres, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd)
 
         face_rgb = face_colours(positions, tris, tri_mat, range(len(names)), double_materials, albedo_of, intersector,
-                                args, rng)
+                                args, args.face_samples, args.flat_sky_rays)
 
     mesh = write_lit_mesh(args.out_dir, args.name, positions, None if args.flat else rgb, tris, tri_double,
                           banner_lines(args), position_scale=POSITION_SCALE, face_rgb=face_rgb)
@@ -278,6 +284,8 @@ def banner_lines(args):
         (f"        --name {args.name} --simplifier meshopt --triangles {args.triangles}"
          f" --props-share {args.props_share:g} --dense-edge {args.dense_edge:g}"
          + (" --flat" if args.flat else "")
+         + (f" --face-samples {args.face_samples}" if args.flat and args.face_samples != FACE_SAMPLES else "")
+         + (f" --flat-sky-rays {args.flat_sky_rays}" if args.flat and args.flat_sky_rays != FLAT_SKY_RAYS else "")
          + (" --no-seal-seams" if args.no_seal_seams else "")
          if args.simplifier == "meshopt" else
          f"        --name {args.name} --simplifier quadric --keep {args.keep:g}"
@@ -286,9 +294,9 @@ def banner_lines(args):
         "Crytek Sponza (Frank Meinl, Crytek; CC BY 3.0), from the OBJ in",
         "McGuire's Computer Graphics Archive, casual-effects.com/data.",
         "Simplified, lit by a sun and sky with baked shadows, one sRGB colour",
-        "per triangle centre. Other settings:" if args.flat else "per vertex. Other settings:",
+        "per triangle, area-averaged. Other settings:" if args.flat else "per vertex. Other settings:",
         f"  --max-edge {args.max_edge:g} --sun {args.sun[0]:g} {args.sun[1]:g} {args.sun[2]:g}",
-        f"  --sun-rays {args.sun_rays} --sky-rays {args.sky_rays}",
+        f"  --sun-rays {args.sun_rays}" + ("" if args.flat else f" --sky-rays {args.sky_rays}"),
     ]
 
 

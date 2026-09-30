@@ -9,15 +9,18 @@ import collections
 import pathlib
 import sys
 import tempfile
+import types
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 try:
     import numpy as np
+    import trimesh
+    from trimesh.ray.ray_pyembree import RayMeshIntersector
 
     from r3d.geometry import triangle_areas, weld
-    from r3d.light import merge_matching_colours
+    from r3d.light import face_colours, light, merge_matching_colours
     from r3d import lit_mesh, rebake
     from r3d.lit_mesh import MESHLET_TRIANGLES, bake_lit_mesh, read_lit_mesh, validate, weld_quantised, write_lit_mesh
     from r3d.meshopt import build_meshlets, simplify_with_update
@@ -437,6 +440,60 @@ def canonical(pos, tris):
         k = corners.index(min(corners))
         out.append(tuple(corners[k:] + corners[:k]))
     return collections.Counter(out)
+
+
+def lighting_args(**changes):
+    args = dict(sun=[-0.25, 1.0, 0.22], sun_disc_deg=1.2, sun_rays=4, sky_rays=8, sun_intensity=3.0,
+                sky_intensity=0.9, ambient=0.06, tonemap_white=0.35, ray_offset=0.5)
+    return types.SimpleNamespace(**{**args, **changes})
+
+
+def walled_floors(offsets):
+    """An 8x8 floor (two triangles) with a tall wall along one side, once per
+    x offset: every copy sees the same sky, shadowed on one side."""
+    meshes, positions, tris = [], [], []
+    for ox in offsets:
+        floor = trimesh.Trimesh([(ox, 0, 0), (ox, 0, 8), (ox + 8, 0, 8), (ox + 8, 0, 0)], [(0, 1, 2), (0, 2, 3)],
+                                process=False)
+        wall = trimesh.creation.box(extents=(1, 6, 8))
+        wall.apply_translation((ox + 8.5, 3, 4))
+        meshes += [floor, wall]
+        tris.append(np.array(floor.faces) + 4 * len(positions))
+        positions.append(np.array(floor.vertices))
+    return np.concatenate(positions), np.concatenate(tris), RayMeshIntersector(trimesh.util.concatenate(meshes))
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class FlatLightTests(unittest.TestCase):
+    def colours(self, offsets, **kw):
+        p, tris, intersector = walled_floors(offsets)
+        grey = lambda points, spacing, m: np.full((len(points), 3), 0.3)
+        args = lighting_args(sun=[0.8, 1.0, 0.0], sun_intensity=1.0, sky_intensity=1.0, ambient=0.02)
+        return face_colours(p, tris, np.zeros(len(tris), dtype=int), [0], set(), grey, intersector, args, **kw)
+
+    def test_coplanar_faces_with_the_same_surroundings_get_the_same_colour(self):
+        c = self.colours([0, 64])
+        self.assertEqual(c[:2].tolist(), c[2:].tolist())
+        self.assertNotEqual(c[0].tolist(), c[1].tolist(), "the wall must shade the two faces differently")
+
+    def test_more_samples_per_face_converge(self):
+        reference = self.colours([0], samples=256).astype(float)
+        error = {n: np.abs(self.colours([0], samples=n) - reference).mean() for n in (1, 8, 64)}
+        self.assertLess(error[64], error[8])
+        self.assertLess(error[8], error[1])
+
+    def test_a_smooth_bake_draws_its_rays_as_before(self):
+        floor = trimesh.Trimesh([(0, 0, 0), (0, 0, 8), (8, 0, 8), (8, 0, 0)], [(0, 1, 2), (0, 2, 3)], process=False)
+        wall = trimesh.creation.box(extents=(1, 6, 8))
+        wall.apply_translation((8.5, 3, 4))
+        points = np.array([[1, 0, 1], [4, 0, 4], [7, 0, 2], [7.5, 0, 7.5], [2, 0, 6]], dtype=float)
+        normals = np.tile([0.0, 1.0, 0.0], (5, 1))
+        normals[4] = [0, -1, 0]
+        got = light(points, normals, np.array([False, False, False, False, True]),
+                    RayMeshIntersector(trimesh.util.concatenate([floor, wall])), lighting_args(), np.random.default_rng(7))
+        # Recorded from the bake before flat faces shared their sky directions.
+        want = [[3.4013203074259875, 3.290614682831909, 3.09012983979227], [3.3394453074259873, 3.214114682831909, 2.98887983979227], [3.277570307425987, 3.137614682831909, 2.88762983979227], [3.2156953074259875, 3.0611146828319087, 2.78637983979227], [3.3394453074259873, 3.214114682831909, 2.98887983979227]]
+        np.testing.assert_allclose(got, want, rtol=0, atol=1e-12)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
