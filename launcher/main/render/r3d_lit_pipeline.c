@@ -170,6 +170,17 @@ cone_faces_away(const r3d_lit_cone_t* cone, const float eye[3]) {
     return a > 0.0F && a * a >= cutoff * cutoff * ((d[0] * d[0]) + (d[1] * d[1]) + (d[2] * d[2]));
 }
 
+/* `mask` holds the planes its leaf's box did not wholly clear. */
+static inline bool
+cluster_kept(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const plane_t planes[PLANE_COUNT], int c,
+             unsigned mask) {
+    const r3d_lit_cluster_t* cluster = &mesh->clusters[c];
+    if (mesh->cones != NULL && !cluster->double_sided && cone_faces_away(&mesh->cones[c], view->eye)) {
+        return false;
+    }
+    return mask == 0 || classify_box(cluster->lo, cluster->hi, planes, &mask) != BOX_OUTSIDE;
+}
+
 int
 r3d_lit_cull_clusters(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, uint16_t* out) {
     plane_t planes[PLANE_COUNT];
@@ -192,12 +203,7 @@ r3d_lit_cull_clusters(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, ui
         }
         for (int i = 0; i < node->count; i++) {
             const int c = node->first + i;
-            if (mesh->cones != NULL && !mesh->clusters[c].double_sided && cone_faces_away(&mesh->cones[c], view->eye)) {
-                continue;
-            }
-            unsigned cluster_mask = mask;
-            if (cluster_mask == 0
-                || classify_box(mesh->clusters[c].lo, mesh->clusters[c].hi, planes, &cluster_mask) != BOX_OUTSIDE) {
+            if (cluster_kept(mesh, view, planes, c, mask)) {
                 out[count++] = (uint16_t)c;
             }
         }

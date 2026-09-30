@@ -55,6 +55,21 @@ reach the same depth the first drawn wins, so a redrawn frame differs from the
 old clustering's in a fraction of a percent of its pixels, from ties alone:
 the triangles are the same.
 
+Each meshlet also carries meshoptimizer's **normal cone**: an apex in position
+ticks, an axis and a cutoff in 1/127ths, 16 bytes in `r3d_lit_mesh_t::cones`.
+`r3d_lit_cull_clusters()` drops a cluster when
+`dot(apex - eye, axis) >= cutoff * |apex - eye|`, squared so it takes no root,
+before its box is tested. The bake rounds the cutoff up for the 8-bit axis, so
+the test never drops a cluster with a visible front face, and gives a
+double-sided cluster and one whose normals spread past a hemisphere the cutoff
+that never culls. A mesh with no `cones` culls none by facing.
+
+The test pays only where a view sees many clusters from behind. In an enclosed
+interior it drops about 2% of the submitted clusters and triangles, which the
+draw's per-triangle facing test rejects cheaply anyway, so a frame gets no
+faster: about 0.7% on a small mesh and 0.2% slower on a larger one. The rendered
+frames are unchanged.
+
 Levels of detail built on the meshlets, and what they would save, are in
 [plans/Cluster-LOD.md](plans/Cluster-LOD.md).
 
