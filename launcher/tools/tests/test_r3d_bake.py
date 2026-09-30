@@ -19,7 +19,8 @@ try:
     from r3d.geometry import triangle_areas, weld
     from r3d.light import merge_matching_colours
     from r3d import lit_mesh, rebake
-    from r3d.lit_mesh import MESHLET_TRIANGLES, bake_lit_mesh, read_lit_mesh, validate, weld_quantised, write_lit_mesh
+    from r3d.lit_mesh import (MESHLET_TRIANGLES, bake_lit_mesh, merge_close_colours, read_lit_mesh, validate,
+                              weld_quantised, write_lit_mesh)
     from r3d.meshopt import build_meshlets, simplify_with_update
     from r3d.octree import build_octree, flatten_octree
     from r3d.repair import repair
@@ -154,6 +155,22 @@ class RepairTests(unittest.TestCase):
         self.assertTrue(np.array_equal(rt, tris))
         self.assertEqual(len(rgb), len(p))
         self.assertEqual(len(labels), len(tris))
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class ColourSeamTests(unittest.TestCase):
+    def test_colours_within_the_tolerance_at_one_position_merge_and_only_they_do(self):
+        q = np.zeros((4, 3), dtype=np.int64)
+        rgb = np.array([(100, 100, 100), (104, 96, 100), (140, 100, 100), (100, 100, 100)])
+        out = merge_close_colours(q, rgb, 10)
+        self.assertEqual(len({tuple(c) for c in out}), 2)
+        self.assertTrue(np.array_equal(out[2], rgb[2]), "a colour further than the tolerance changed")
+        self.assertTrue(np.array_equal(merge_close_colours(q, out, 10), out), "merging again changed the colours")
+
+    def test_vertices_at_different_positions_never_merge(self):
+        q = np.arange(6).reshape(2, 3)
+        rgb = np.full((2, 3), 50)
+        self.assertTrue(np.array_equal(merge_close_colours(q, rgb, 255), rgb))
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

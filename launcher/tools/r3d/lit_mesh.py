@@ -29,12 +29,38 @@ MESHLET_TRIANGLES = 32
 LEAF_TRIANGLES = 320
 MAX_DEPTH = 10
 POSITION_SCALE = 8
+COLOUR_TOLERANCE = 10  # levels; about one RGB565 step
 
 
-def weld_quantised(q, rgb, tris, double):
+def merge_close_colours(q, rgb, tolerance):
+    """rgb with each vertex that shares a position with an earlier vertex
+    (in colour order) within `tolerance` levels on every channel given that
+    vertex's colour. What stays differs from every other colour at its
+    position by more, so merging again changes nothing."""
+    _, ids, count = np.unique(q, axis=0, return_inverse=True, return_counts=True)
+    ids = ids.reshape(-1)
+    out = rgb.copy()
+    order = np.argsort(ids, kind="stable")
+    bounds = np.concatenate([[0], np.cumsum(count)])
+    for group in np.flatnonzero(count > 1):
+        members = order[bounds[group]:bounds[group + 1]]
+        kept = []
+        for i in members[np.lexsort(rgb[members].T[::-1])]:
+            near = next((c for c in kept if np.abs(rgb[i] - c).max() <= tolerance), None)
+            if near is None:
+                kept.append(rgb[i])
+            else:
+                out[i] = near
+    return out
+
+
+def weld_quantised(q, rgb, tris, double, colour_tolerance=0):
     """One vertex per position and colour, in order of position then colour,
     the triangles that collapsed dropped and the vertices nothing uses gone.
-    A seam, two vertices at one position with different colours, stays a seam."""
+    A seam, two vertices at one position with different colours, stays a
+    seam unless the colours are within `colour_tolerance` levels."""
+    if colour_tolerance:
+        rgb = merge_close_colours(q, rgb, colour_tolerance)
     key = np.concatenate([q, rgb], axis=1)
     _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
     t = inverse.reshape(-1)[tris]
@@ -73,7 +99,7 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
     sidedness; an octree leaf holds meshlets to leaf_triangles triangles."""
     q = np.round(np.asarray(positions) * position_scale).astype(np.int64)
     col = np.clip(np.rint(rgb), 0, 255).astype(np.int64)
-    q, col, tris, double = weld_quantised(q, col, np.asarray(tris, dtype=np.int64), double)
+    q, col, tris, double = weld_quantised(q, col, np.asarray(tris, dtype=np.int64), double, COLOUR_TOLERANCE)
     tris, double = canonical_order(tris, double)
 
     entries = []
