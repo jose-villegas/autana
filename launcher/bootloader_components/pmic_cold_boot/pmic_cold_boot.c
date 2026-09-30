@@ -32,6 +32,7 @@
 #define PMIC_RESTART_BIT  (1u << 1)
 #define PMIC_POWEROFF_BIT (1u << 0)
 #define I2C_HALF_US       5
+#define HOST_DRAIN_US     250000
 
 static bool
 needs_cold_restart(soc_reset_reason_t reason) {
@@ -165,6 +166,10 @@ bootloader_after_init(void) {
     i2c_release(PMIC_SDA_GPIO);
     i2c_release(PMIC_SCL_GPIO);
 
+#if CONFIG_PMIC_COLD_BOOT_HOST_DRAIN
+    /* Without this the host loses the panic output when the port vanishes. */
+    esp_rom_delay_us(HOST_DRAIN_US);
+#endif
     bool acknowledged = pmic_restart();
     i2c_release(PMIC_SDA_GPIO);
     i2c_release(PMIC_SCL_GPIO);

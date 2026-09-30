@@ -85,6 +85,13 @@ sequenceDiagram
     App->>Host: BUILD_ID again, after shell Ready
 ```
 
+The power cycle drops the USB port, and Windows discards serial data the host
+had not read yet, so a panic's backtrace and `rst:` line never reached a
+capture. Development and diagnostics builds (`CONFIG_PMIC_COLD_BOOT_HOST_DRAIN`,
+set in their `sdkconfig.defaults.*`, since the bootloader's Kconfig cannot see
+`CONFIG_LAUNCHER_DEVELOPMENT`) wait 250 ms before the cycle; release does
+not. A power-on reset never waits.
+
 So the app always starts from, and reports, a power-on reset: after a panic
 or a watchdog the cause shows only in what was logged before it, RTC memory
 does not survive, and a deep-sleep wake would become a full power cycle.

@@ -156,6 +156,18 @@ test_no_ack_on_data_byte_aborts_without_retry(void) {
 }
 
 static void
+test_warm_reset_waits_for_the_host_before_the_power_cycle(void) {
+    fixture();
+    pmic_bus_set_reset_reason(RESET_REASON_CORE_SW);
+    pmic_bus_set_read_value(0x04);
+
+    bootloader_after_init();
+
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32_MESSAGE(100000, pmic_bus_longest_delay_us(),
+                                                "a warm reset must give the host time to read the crash output");
+}
+
+static void
 test_power_on_reset_does_not_touch_pmic_pins(void) {
     fixture();
     pmic_bus_set_reset_reason(RESET_REASON_CHIP_POWER_ON);
@@ -164,6 +176,7 @@ test_power_on_reset_does_not_touch_pmic_pins(void) {
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pmic_bus_gpio_call_count(), "a power-on reset must not touch a GPIO at all");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pmic_bus_token_count(), "a power-on reset must not start a transaction");
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, pmic_bus_longest_delay_us(), "a power-on reset must not wait");
 }
 
 static void
@@ -193,6 +206,7 @@ main(void) {
     RUN_TEST(test_no_ack_on_address_byte_aborts_without_retry);
     RUN_TEST(test_no_ack_on_register_pointer_aborts_without_retry);
     RUN_TEST(test_no_ack_on_data_byte_aborts_without_retry);
+    RUN_TEST(test_warm_reset_waits_for_the_host_before_the_power_cycle);
     RUN_TEST(test_power_on_reset_does_not_touch_pmic_pins);
     RUN_TEST(test_every_non_power_on_reset_reason_starts_a_transaction);
     return UNITY_END();
