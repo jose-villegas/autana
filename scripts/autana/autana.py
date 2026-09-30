@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""autana - terminal commands for the autana engine repo.
+"""autana: terminal commands for the autana engine repo.
 
     autana                  a console session with the device
     autana help [topic]     the commands, grouped; a topic is a group or a command
 
 A system-installed tool, not tied to git or worktrees: run from any folder,
 board-only commands (monitor, tap, tune, ...) work from anywhere, and a
-command that needs a project - build, flash, selftest, suite --flash - acts
+command that needs a project (build, flash, selftest, suite --flash) acts
 on the current directory, like `make -C`, or on --project PATH. Anything
 that touches the board goes through scripts/device/device.py, which takes
 the device lock. The command list is COMMAND_GROUPS at the end of this
@@ -38,7 +38,7 @@ EXIT_INTERRUPTED = autana_config.EXIT_INTERRUPTED
 
 VARIANTS = {"rel": "release", "release": "release", "dev": "dev", "diag": "diag"}
 
-# What a directory needs to be an autana project - launcher/CMakeLists.txt,
+# What a directory needs to be an autana project, launcher/CMakeLists.txt,
 # not a .git folder: this tool is not tied to git, and a project built from
 # a tarball or a non-git checkout is still one.
 PROJECT_MARKER = Path("launcher") / "CMakeLists.txt"
@@ -46,9 +46,9 @@ PROJECT_MARKER = Path("launcher") / "CMakeLists.txt"
 
 def owner():
     """What the device lock calls this autana: the global `--owner` label
-    (OWNER_ENV), with this process's own pid still appended, when given -
+    (OWNER_ENV), with this process's own pid still appended, when given:
     two shells that use the same label would otherwise see each other's lock as
-    their own (board_holder()'s self-check compares by name) - else
+    their own (board_holder()'s self-check compares by name); else
     device_lock.default_owner(), "<user>@<host>:<pid>"."""
     override = os.environ.get(OWNER_ENV)
     if override:
@@ -57,7 +57,7 @@ def owner():
 
 
 def git(*args):
-    """A git answer, or "" - for the flash/build banner's branch and commit
+    """A git answer, or "", for the flash/build banner's branch and commit
     only. autana itself is never tied to git: a missing binary, or no
     repository here, is not an error, just nothing to show."""
     try:
@@ -76,14 +76,14 @@ def git_ok(*args):
 
 # This invocation's own --project, popped once by run_command() ahead of
 # any command's own parsing (main()'s one-shot dispatch, and each line of a
-# console session) - so every command that reads it, not just the ones that
+# console session), so every command that reads it, not just the ones that
 # build or flash, shares one flag instead of parsing it for itself. Reset
 # around each dispatched call, so a console session's next line starts over.
 _project_arg = None
 
 
 def project_override():
-    """This invocation's own --project, unresolved and unvalidated - for a
+    """This invocation's own --project, unresolved and unvalidated, for a
     command that only wants a path for metadata (`suite` without --flash)
     and has no reason to require PROJECT_MARKER there. A command that
     actually reads the project wants resolve_project() instead."""
@@ -91,7 +91,7 @@ def project_override():
 
 
 def resolve_project():
-    """This invocation's own --project, or its cwd when none was given -
+    """This invocation's own --project, or its cwd when none was given,
     like `make -C`/`idf.py -C`, never a search of parent directories.
     Either way the directory itself must carry PROJECT_MARKER; failing that
     names --project, never git."""
@@ -157,7 +157,7 @@ def run_command(handler, args, name=None):
 
 def pop_value(args, flag):
     """`args` with `flag` and the value right after it removed, and that
-    value - (None, args unchanged) when `flag` is absent."""
+    value: (None, args unchanged) when `flag` is absent."""
     if flag not in args:
         return None, args
     rest = list(args)
@@ -214,7 +214,7 @@ def device_command(*args, wait=None):
 
 
 def reject_unknown(cmd, args, allowed=()):
-    """Any leftover `--flag` a command's own parsing did not recognise -
+    """Any leftover `--flag` a command's own parsing did not recognise:
     named, not folded into a generic usage dump. `allowed` are flags this
     command already popped by hand and still wants to see in `args`."""
     for arg in args:
@@ -277,9 +277,9 @@ def run_streaming_its_log(command):
 
 def variant_request(verb, args, flags, project):
     """The words `autana build` and `autana flash` share: one variant (dev
-    when omitted) and the `flags` given, against `project` - already
-    resolved by the caller. Prints the banner - branch/commit/dirty only
-    when git answers for that project, never required - and returns the
+    when omitted) and the `flags` given, against `project`, already
+    resolved by the caller. Prints the banner (branch/commit/dirty only
+    when git answers for that project, never required) and returns the
     variant word asked, the variant and the flags seen."""
     reject_unknown(verb, args, flags)
     seen = {flag for flag in flags if flag in args}
@@ -314,7 +314,7 @@ def flash(args):
 
 def build_diag_check(project):
     """The diagnostics build plus the complexity ratchet, unchanged from
-    launcher/tools/build/build_diag_check.sh - the two halves of what CI's
+    launcher/tools/build/build_diag_check.sh, the two halves of what CI's
     Build (Diagnostics) workflow decides, in one command, no board."""
     script = Path(project) / "launcher" / "tools" / "build" / "build_diag_check.sh"
     if not script.is_file():
@@ -365,7 +365,7 @@ def buildid(args):
 
 def framewatch(args):
     """The frame watch's counts for the last frame and the sites repeating
-    now, as the board's own JSON - a development build only."""
+    now, as the board's own JSON, a development build only."""
     reject_unknown("framewatch", args)
     if args:
         sys.exit("usage: autana framewatch")
@@ -469,7 +469,7 @@ def reset(args):
 
 def selftest(args):
     """Build+flash the diagnostics+autorun image and run every suite this
-    project registers, on the device. Can take minutes - the full run's
+    project registers, on the device. Can take minutes: the full run's
     own budget, not a bug in this command."""
     rest = list(args)
     verbose = "--verbose" in rest
@@ -503,7 +503,7 @@ BATCH_USAGE = ("usage: autana batch <suite> [<suite> ...] [--runs N] [--perf-sco
 def batch(args):
     """The old spelling of `suite <name>... --flash`, still the way to flash
     once and capture several suites `--runs` times (3 when omitted) under
-    one lock - always the diagnostics image, since a suite only exists to
+    one lock; always the diagnostics image, since a suite only exists to
     run in one."""
     print("autana batch: use `autana suite <name>... --flash` - this spelling still works",
          file=sys.stderr)
@@ -536,7 +536,7 @@ def release(args):
 
 
 def hand(args):
-    """Reserve the board for a maintainer sitting at it - autana refuses new
+    """Reserve the board for a maintainer sitting at it; autana refuses new
     work against it until `autana lock take-back`, or an hour after the last
     `lock hand`, which running it again renews."""
     usage = "usage: autana lock hand [--until-back <seconds>] <note...>"
@@ -581,7 +581,7 @@ def suite_list(args):
     """What this project registers, read from its sources: a suite names
     itself where it is defined and the board serves no listing verb, so there
     is nowhere else to ask. A name is runnable once a build carrying it is on
-    the board - which variant and scope was flashed decides that, not this."""
+    the board, which variant and scope was flashed decides that, not this."""
     json_output = "--json" in args
     args = [arg for arg in args if arg != "--json"]
     if len(args) > 1:
@@ -622,7 +622,7 @@ SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [seconds] [--runs N] [--
 
 
 def suite(args):
-    """One or more registered suites, captured under one lock - against the
+    """One or more registered suites, captured under one lock, against the
     image already on the board, or, with `--flash`, built and flashed first.
     The name is each suite's own function, as SUITE_REGISTER() in its source
     spells it. `seconds` caps each capture (1800 when omitted, and a
@@ -668,7 +668,7 @@ def suite(args):
     reject_unknown("suite", rest)
     if rest:
         sys.exit(SUITE_USAGE)
-    # Only --flash reads the project - it is what gets built. Without it,
+    # Only --flash reads the project; it is what gets built. Without it,
     # `suite` is board-only: the capture still names a project (device.py's
     # own --worktree is metadata, not something it builds), but any
     # directory does, unvalidated, same as project_override()'s other use.
@@ -746,7 +746,7 @@ def board_holder():
 def send(line, reply="TUNE", optional=False, seconds=None, until=None):
     """One console line to the device, under the lock. Returns (exit code,
     reply lines). `reply` is what the answer's lines start with. `until` are
-    the prefixes that end the answer - one reply-line verb needs only
+    the prefixes that end the answer; one reply-line verb needs only
     `[reply]` itself (device.py's default when `until` is omitted; util/tune's
     three endings are its own default for `reply="TUNE"`), a multi-line one
     (an app's own command) passes `[<PREFIX>_END, <PREFIX>_ERR]`. `optional`
@@ -773,7 +773,7 @@ def send(line, reply="TUNE", optional=False, seconds=None, until=None):
 
 def screenshot(args):
     """SCREENSHOT, captured and decoded by launcher/tools/device/screenshot.py's own
-    read_screenshot()/write_capture(), under the device lock - see
+    read_screenshot()/write_capture(), under the device lock, see
     device.py's own `screenshot` subcommand."""
     out = None
     view = None
@@ -1016,7 +1016,7 @@ def full_name(name):
 
 def exact_tune_matches(rows, name):
     """Rows whose name IS `name`, or whose name ends `.<name>` when that is
-    unambiguous - `theme_rgb` for `ridge.theme_rgb`, the same drop-the-owner shorthand
+    unambiguous: `theme_rgb` for `ridge.theme_rgb`, the same drop-the-owner shorthand
     `full_name()` resolves for a set/reset."""
     if "." in name:
         return [row for row in rows if row[0] == name]
@@ -1137,13 +1137,13 @@ def save():
 
 
 def forward(line, verb):
-    """A line no autana command recognises, sent to the device as typed -
+    """A line no autana command recognises, sent to the device as typed;
     the maintainer's rule that every board operation goes through autana,
     for an app's own command (docs/tools/Autana-CLI.md's "Adding a command
     from an app") same as any built-in one. The reply prefix is the line's
     own first word in capitals: an app's reply always starts with its own
     prefix, so this returns as soon as `<PREFIX>_END`/`<PREFIX>_ERR`
-    arrives rather than waiting out send()'s own window - a raw verb with
+    arrives rather than waiting out send()'s own window; a raw verb with
     no dedicated autana command of its own (runsuite, today) falls back to
     that window, since nothing then completes early."""
     reply = verb.upper()
@@ -1190,8 +1190,8 @@ Command = namedtuple("Command", "name handler usages")
 
 
 def alias(old, new, handler):
-    """`old` still works - one migration line to stderr, then straight into
-    `handler` - so a script built on a spelling `new` replaced does not
+    """`old` still works: one migration line to stderr, then straight into
+    `handler`, so a script built on a spelling `new` replaced does not
     break on merge."""
     def wrapped(args):
         print(f"autana {old}: use `autana {new}` - this spelling still works", file=sys.stderr)
@@ -1205,7 +1205,7 @@ DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch,
 
 
 def lock(args):
-    """`autana lock <verb>` - release/hand/take-back, the lock-sharing
+    """`autana lock <verb>`: release/hand/take-back, the lock-sharing
     commands a session reaches for far less than `status`, which stays
     top-level on its own."""
     if not args or args[0] not in LOCK_VERBS:
@@ -1215,7 +1215,7 @@ def lock(args):
 
 
 def debug(args):
-    """`autana debug <verb>` - freeze/resume/step/touch/imu/framewatch, kept
+    """`autana debug <verb>`: freeze/resume/step/touch/imu/framewatch, kept
     out of the top-level help (`autana help debug` still lists them) since a
     session rarely needs them."""
     if not args or args[0] not in DEBUG_VERBS:
@@ -1226,7 +1226,7 @@ def debug(args):
 
 # (key, title, commands). `autana help <key>` shows one group; each usage is
 # (synopsis without "autana ", one line of what it does). "debug" is left
-# out of the bare `autana help` listing - see HIDDEN_GROUPS.
+# out of the bare `autana help` listing, see HIDDEN_GROUPS.
 COMMAND_GROUPS = (
     ("build", "Build and flash", (
         Command("build", build, (
@@ -1308,7 +1308,7 @@ COMMAND_GROUPS = (
 # a hidden group in full, same as any other topic.
 HIDDEN_GROUPS = {"debug"}
 
-# Old spellings kept working - see alias()'s own docstring. "batch" moved
+# Old spellings kept working, see alias()'s own docstring. "batch" moved
 # to suite() itself (its translation is not a plain forward) so it is not
 # here; every other renamed verb is a bare forward into its new group.
 RENAMED_VERBS = {
@@ -1326,7 +1326,7 @@ HELP_TOPICS = [key for key, _, _ in COMMAND_GROUPS] + [
     command.name for _, _, commands in COMMAND_GROUPS for command in commands] + ["flags", "config"]
 USAGE_WIDTH = 34
 
-# (flag, what it does, the commands that take it) - left out of every command's
+# (flag, what it does, the commands that take it), left out of every command's
 # own usage line (`autana help flags` instead) since most commands take most
 # of these and repeating them on every line was unreadable.
 BOARD_FLAGS = (
@@ -1362,7 +1362,7 @@ def board_flags_text(prefix=""):
 
 
 # The five things a first run actually needs, each a real example rather than
-# a placeholder - `autana help` led three newcomer reads past this before
+# a placeholder; `autana help` led three newcomer reads past this before
 # they found any of them among 37 commands in 9 groups.
 QUICKSTART = (
     ("flash dev", "build and flash; the everyday form"),
@@ -1384,7 +1384,7 @@ def quickstart_text(prefix):
 def help_text(args, prefix="autana "):
     """Every group, or the one group or command `args` names, or the shared
     board flags for `args == ["flags"]`. With no args, leads with the
-    five-line quickstart and leaves out a hidden group (HIDDEN_GROUPS) -
+    five-line quickstart and leaves out a hidden group (HIDDEN_GROUPS);
     `autana help <that group>` still shows it in full."""
     topic = args[0] if args else None
     if topic == "flags":
@@ -1475,8 +1475,8 @@ MISPLACED_HINTS = {
 def global_options(argv):
     """`argv` without its leading `--wait SECONDS`, `--owner NAME` and
     `--board SERIAL`, in any order. Each is written into WAIT_ENV / OWNER_ENV
-    / BOARD_ENV - what device_command(), owner() and every child process read
-    - so it covers this call and each step nested in it. Any of them
+    / BOARD_ENV, what device_command(), owner() and every child process read,
+    so it covers this call and each step nested in it. Any of them
     anywhere after the command is refused, because a command would otherwise
     report it as an unknown flag without saying where it belongs."""
     while argv[:1] in (["--wait"], ["--owner"], ["--board"]):
@@ -1515,7 +1515,7 @@ def main():
         sys.exit(0)
     if argv[0] not in COMMANDS:
         # A one-shot the same as a forwarded line in a session (forward()'s
-        # own docstring) - every board operation goes through autana, not
+        # own docstring); every board operation goes through autana, not
         # only the ones with a command of their own.
         replies = forward(" ".join(argv), argv[0])
         print("\n".join(replies) if replies else "sent")

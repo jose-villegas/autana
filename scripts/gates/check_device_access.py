@@ -4,16 +4,16 @@
     python scripts/gates/check_device_access.py
 
 Every command that touches the board goes through `scripts/device/device.py`,
-which takes the device lock before it opens the port - see
+which takes the device lock before it opens the port, see
 docs/tools/Autana-CLI.md and docs/tools/Device-Lock.md. A file elsewhere that
 opens pyserial's `Serial(`, invokes `idf_monitor`/`idf.py monitor`, runs
 `idf.py ... flash`, or shells out to `esptool` bypasses that lock, so two
 sessions can fight over one port. scripts/device/ and scripts/gates/ are
 exempt by folder, and nothing else is.
 
-The one esptool call that is not a bypass is one whose subcommand - the
+The one esptool call that is not a bypass is one whose subcommand, the
 first argument after `esptool` that is neither an option nor an option's
-value - is `merge_bin` (or `merge-bin`): it writes an image file and opens no
+value, is `merge_bin` (or `merge-bin`): it writes an image file and opens no
 port. Each esptool call on a line is judged by its own subcommand, a shell
 comment is no part of the command, and a Python argument list is read across
 the lines it spans.
@@ -28,7 +28,7 @@ from tracked import tracked_files
 SERIAL_OPEN_RE = re.compile(r"\bserial\.Serial\s*\(|(?<![.\w])Serial\s*\(")
 SERIAL_IMPORT_RE = re.compile(r"^\s*(import serial\b|from serial\b)", re.MULTILINE)
 # Naming idf_monitor in prose ("the same problem idf_monitor has") is
-# common and not a violation; only an actual invocation shape is - the
+# common and not a violation; only an actual invocation shape is, the
 # script file, its own entry point, or an `idf.py ... monitor` command line.
 IDF_MONITOR_RE = re.compile(r"\bidf_monitor\.py\b|\bidf_monitor_main\b|\bidf(\.py)?\b[^\n#]*\bmonitor\b")
 ESPTOOL_MODULE_RE = re.compile(r'"-m",\s*"esptool"')
@@ -65,7 +65,7 @@ def is_comment_or_print(path, line):
 
 
 # scripts/device/ is the one place allowed to touch the port at all;
-# scripts/gates/ is exempt too - a gate's own source and tests describe and
+# scripts/gates/ is exempt too, a gate's own source and tests describe and
 # exercise these exact patterns as data, never run them against hardware.
 EXEMPT_PREFIXES = ("scripts/device/", "scripts/gates/")
 
@@ -144,7 +144,7 @@ def _comment_start(line):
 
 def serial_port_openers(root):
     """Every (path, line, reason) where a file outside scripts/device/ opens
-    the board's serial port - pyserial, idf_monitor, idf.py flash or
+    the board's serial port, pyserial, idf_monitor, idf.py flash or
     esptool."""
     root = pathlib.Path(root)
     found = []

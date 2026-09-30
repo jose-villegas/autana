@@ -1,7 +1,7 @@
 """Dispatch and console-routing tests for scripts/autana/autana.py. No
 hardware and no real device.py process: every device-touching call is
-mocked at the subprocess boundary, or at send() - autana's own thin wrapper
-around one `device.py send` call - for the commands built on top of it. See
+mocked at the subprocess boundary, or at send() (autana's own thin wrapper
+around one `device.py send` call), for the commands built on top of it. See
 scripts/device/tests/test_device.py and launcher/tools/tests/test_screenshot.py
 for device.py's and the wire protocol's own coverage.
 
@@ -39,8 +39,8 @@ def busy_status(owner="someone-else@0001", port="COM3"):
 
 
 class SendCommandBuildingTests(unittest.TestCase):
-    """send() is the one place that actually shells out to `device.py send`
-    - every device-verb command (freeze, touch, tune, ...) goes through it,
+    """send() is the one place that actually shells out to `device.py send`;
+    every device-verb command (freeze, touch, tune, ...) goes through it,
     so its own command-building is worth pinning once, directly."""
 
     def setUp(self):
@@ -76,7 +76,7 @@ class SendCommandBuildingTests(unittest.TestCase):
 
     def test_an_explicit_until_list_overrides_the_reply_default(self):
         """An app's own command (forward()) ends on either of two lines,
-        not one - a multi-line reply's _END, or its _ERR."""
+        not one, a multi-line reply's _END, or its _ERR."""
         autana.send("EXAMPLE status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"])
         command = self.last_send_command()
         untils = [command[i + 1] for i, word in enumerate(command) if word == "--until"]
@@ -263,7 +263,7 @@ class DeviceVerbCommandTests(unittest.TestCase):
 
 class ScreenshotCommandTests(unittest.TestCase):
     """autana screenshot goes straight to `device.py screenshot`, not
-    through send() - see device.py's own screenshot() for the capture and
+    through send(), see device.py's own screenshot() for the capture and
     decode this only triggers."""
 
     def test_builds_the_device_screenshot_invocation_with_out(self):
@@ -383,7 +383,7 @@ class OwnerTests(unittest.TestCase):
     """owner() is the one place a board command's lock identity comes from:
     the global `--owner` first (with this process's own pid still appended,
     so two shells sharing the label don't see each other's lock as
-    theirs), else "<user>@<host>:<pid>" - no git, no worktree, so it works
+    theirs), else "<user>@<host>:<pid>", no git, no worktree, so it works
     the same whether or not this process is anywhere near a project."""
 
     def test_the_global_owner_wins_but_keeps_the_pid(self):
@@ -459,7 +459,7 @@ class DeviceCommandTests(unittest.TestCase):
 
 
 class ProjectResolutionTests(unittest.TestCase):
-    """resolve_project() - no git, no worktree, no upward search: this
+    """resolve_project(), no git, no worktree, no upward search: this
     invocation's own --project (project_override(), set by run_command())
     used as-is, or the current directory itself, like `make -C`. Either way
     the directory named must carry PROJECT_MARKER."""
@@ -515,7 +515,7 @@ class ProjectResolutionTests(unittest.TestCase):
 
 
 class ProjectOverrideTests(unittest.TestCase):
-    """project_override() - the unvalidated form resolve_project() is built
+    """project_override(); the unvalidated form resolve_project() is built
     on, for a command that wants a path for metadata only (suite without
     --flash) and has no reason to require PROJECT_MARKER there."""
 
@@ -529,7 +529,7 @@ class ProjectOverrideTests(unittest.TestCase):
 
 
 class RunCommandTests(unittest.TestCase):
-    """run_command() is the one place `--project` is popped - ahead of any
+    """run_command() is the one place `--project` is popped, ahead of any
     command's own parsing, and reset once that command returns."""
 
     def test_project_is_popped_before_the_handler_sees_its_args(self):
@@ -618,7 +618,7 @@ class FlashCommandTests(unittest.TestCase):
 
 class BuildCommandTests(unittest.TestCase):
     """autana build: device.py's build half, in this process, taking no
-    board and no lock - LockStore and device.py's own command line both
+    board and no lock, LockStore and device.py's own command line both
     refuse here."""
 
     def build(self, *args, code=0):
@@ -697,7 +697,7 @@ class BuildCommandTests(unittest.TestCase):
         checked.assert_not_called()
 
     def test_check_with_perf_scope_is_refused(self):
-        """build_diag_check.sh has no --perf-scope of its own - dropping the
+        """build_diag_check.sh has no --perf-scope of its own; dropping the
         flag silently would build something other than what was asked for."""
         with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
              mock.patch.object(autana, "build_diag_check") as checked, \
@@ -707,7 +707,7 @@ class BuildCommandTests(unittest.TestCase):
 
 
 class BuildDiagCheckTests(unittest.TestCase):
-    """build_diag_check() shells out to build_diag_check.sh unchanged -
+    """build_diag_check() shells out to build_diag_check.sh unchanged,
     the ratchet and the diagnostics build, together, no board."""
 
     def test_runs_the_script_under_git_bash_in_the_worktree(self):
@@ -733,7 +733,7 @@ class BuildDiagCheckTests(unittest.TestCase):
 class MonitorCommandTests(unittest.TestCase):
     """autana monitor forwards to `device.py listen`, which matches the
     capture's own BUILD_ID to a build directory itself when --elf is not
-    given - autana no longer guesses an ELF by file mtime."""
+    given; autana no longer guesses an ELF by file mtime."""
 
     def test_no_elf_given_omits_the_flag_entirely(self):
         with mock.patch.object(autana.subprocess, "Popen") as called:
@@ -949,7 +949,7 @@ class BatchCommandTests(unittest.TestCase):
         self.assertIn("--perf-scope", command)
 
     def test_no_variant_option_exists(self):
-        # A suite only exists to run in the diagnostics image - offering a
+        # A suite only exists to run in the diagnostics image; offering a
         # variant choice here would only ever have one real answer.
         with self.assertRaises(SystemExit):
             autana.batch(["run_sand_perf_suite", "--variant", "dev"])
@@ -1105,7 +1105,7 @@ class LockCommandTests(unittest.TestCase):
 
 
 class TuneCommandTests(unittest.TestCase):
-    """Tuning is no longer implicit - `tune` and its subforms are the only
+    """Tuning is no longer implicit; `tune` and its subforms are the only
     way to a tunable, on the command line and in the console alike."""
 
     ROWS = [("ridge.trail", "226", "0", "255", "226"),
@@ -1189,7 +1189,7 @@ class TuneCommandTests(unittest.TestCase):
 class ConsoleRoutingTests(unittest.TestCase):
     """A bare word in the session is only ever an autana command (which
     includes the device console verbs autana now exposes directly) or "not
-    understood" - never an implicit tunable lookup."""
+    understood", never an implicit tunable lookup."""
 
     def run_console(self, lines):
         with mock.patch("builtins.input", side_effect=[*lines, EOFError()]):
@@ -1209,7 +1209,7 @@ class ConsoleRoutingTests(unittest.TestCase):
 
     def test_a_line_no_autana_command_recognises_is_forwarded_to_the_device(self):
         """The reply prefix autana asks for is the line's own first word in
-        capitals - an app's own reply always starts with its own prefix."""
+        capitals; an app's own reply always starts with its own prefix."""
         with mock.patch.object(autana, "send", return_value=(0, ["EXAMPLE status=ok", "EXAMPLE_END"])) as sent, \
              mock.patch("builtins.print") as printed:
             self.run_console(["example status"])
@@ -1443,7 +1443,7 @@ class GlobalOwnerTests(unittest.TestCase):
 
 class OneShotForwardingTests(unittest.TestCase):
     """The maintainer's rule (every board operation goes through autana)
-    applies to a one-shot invocation the same as a session line - main()
+    applies to a one-shot invocation the same as a session line, main()
     forwards a first argument no COMMANDS entry recognises rather than
     refusing it."""
 
@@ -1472,7 +1472,7 @@ class OneShotForwardingTests(unittest.TestCase):
 
 class SuiteFlashAndRunsTests(unittest.TestCase):
     """`suite` merged what `batch` used to do on its own: several suites,
-    N runs, one lock, an optional flash first - all through device.py's
+    N runs, one lock, an optional flash first; all through device.py's
     own `batch` subcommand, never `run-suite` directly any more."""
 
     def test_default_is_one_run_with_no_flash(self):
@@ -1501,7 +1501,7 @@ class SuiteFlashAndRunsTests(unittest.TestCase):
 
     def test_project_without_flash_is_accepted_but_not_resolved(self):
         """`suite` without `--flash` builds nothing, so its `--project` (if
-        any) is metadata only - project_override(), not resolve_project(),
+        any) is metadata only, project_override(), not resolve_project(),
         and never validated against PROJECT_MARKER."""
         with mock.patch.object(autana, "resolve_project",
                                side_effect=AssertionError("should not validate")), \
@@ -1729,7 +1729,7 @@ class RenamedVerbAliasTests(unittest.TestCase):
 
 class BoardOnlyCommandsTests(unittest.TestCase):
     """Every command that only talks to the board, never a project, must
-    never call resolve_project() - a fresh clone with no launcher/ folder
+    never call resolve_project(); a fresh clone with no launcher/ folder
     can still `autana tap 1 2` or `autana suite <name>` against whatever is
     already on the board."""
 
