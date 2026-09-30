@@ -1,12 +1,12 @@
 /*
- * spring_line - a row of points on springs: each is pulled toward rest and
+ * spring_line, a row of points on springs: each is pulled toward rest and
  * toward its neighbours, so a push travels along the row as a wave and dies
  * away. One offset per column, which displaces the caller's curve.
  *
  * Built to go QUIET. At rest nothing is simulated and nothing is reported as
  * changed, so a screen that owns one costs no draw and no bus time until it
- * is touched. Integer physics does not come to rest by itself - it rounds
- * its way into a small orbit forever - so the line is put to rest once all
+ * is touched. Integer physics does not come to rest by itself: it rounds
+ * its way into a small orbit forever, so the line is put to rest once all
  * of it is slow and close enough. All of it, not point by point: zeroing one
  * point beside moving neighbours is a kick at the grid's own wavelength, and
  * near the tension limit those kicks outran the damping and never stopped.
@@ -149,7 +149,7 @@ spring_line_quiet(const spring_line_t* line, int x) {
 
 /* Puts to rest the quiet columns at each END of the active range, which is
  * all of them once the whole line is quiet. A quiet column between moving
- * ones is left alone - see the top of this file. */
+ * ones is left alone; see the top of this file. */
 static inline void
 spring_line_trim(spring_line_t* line) {
     while (line->active_lo < line->active_hi && spring_line_quiet(line, line->active_lo)) {
@@ -165,7 +165,7 @@ spring_line_trim(spring_line_t* line) {
 }
 
 /* One tick. Velocities first, from offsets that are all still last tick's,
- * then offsets from the new velocities - which needs no scratch copy and is
+ * then offsets from the new velocities, which needs no scratch copy and is
  * the order that keeps the energy from creeping up. The ends are free: the
  * missing neighbour mirrors the point itself. */
 static inline void
@@ -216,7 +216,7 @@ spring_line_advance(spring_line_t* line, uint32_t dt_ms) {
 }
 
 /* Writes rest + offset into `out`, both Q4, and reports the columns whose
- * value changed, half open and empty when none did - measured against what
+ * value changed, half open and empty when none did, measured against what
  * `out` holds, so it has to be the array last drawn. Returns the furthest
  * any column moved, in whole pixels rounded up. */
 static inline int

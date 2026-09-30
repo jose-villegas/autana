@@ -10,7 +10,7 @@
  *
  * tools/gen/gen_zeta_curve.py already refuses to emit a table unless its own
  * evaluation of zeta checks out, but that proves nothing about the file
- * actually in the repo - which could be stale, hand-edited, or generated with
+ * actually in the repo, which could be stale, hand-edited, or generated with
  * different constants than boot_anim.h now uses.
  *
  * So the shipped numbers are checked directly, and against the one thing that
@@ -41,7 +41,7 @@ mag_sq(const boot_anim_sample_t* s) {
     return (int32_t)s->re * s->re + (int32_t)s->im * s->im;
 }
 
-/* A Q12 magnitude, squared - what mag_sq() is compared against. */
+/* A Q12 magnitude, squared, what mag_sq() is compared against. */
 static int32_t
 threshold_sq(int32_t q12) {
     return q12 * q12;
@@ -161,7 +161,7 @@ test_the_quarter_wave_rises_all_the_way(void) {
 }
 
 /* The identity that pins every entry down at once, checked across the full
- * turn rather than just the arc the camera actually uses - a general-purpose
+ * turn rather than just the arc the camera actually uses: a general-purpose
  * table should hold everywhere, and this is what makes trig_sin()/cos()
  * safe to reuse for anything else that turns up needing one. */
 static void
@@ -187,13 +187,13 @@ test_the_quarter_points_are_exact(void) {
 }
 
 /* A moment safely after the curve finishes (pen saturates at 2500ms) but
- * before the finale starts (2700ms) - the view here is what the old,
+ * before the finale starts (2700ms); the view here is what the old,
  * pre-finale tests meant by "full progress". */
 #define CURVE_DONE_MS 2600
 
 /* A plain identity matrix (small3dlib's own S3L_mat4Init()) and an
- * orthographic focal length (0 - see boot_anim.h's "The projection" section
- * on why 0 means that) - the simplest boot_anim_view_t there is, built
+ * orthographic focal length (0; see boot_anim.h's "The projection" section
+ * on why 0 means that), the simplest boot_anim_view_t there is, built
  * directly rather than through boot_anim_view()/the motion tracks, so
  * these tests can check boot_anim_project()'s own arithmetic in isolation
  * from whatever the CURRENT seed motion happens to say. */
@@ -210,7 +210,7 @@ identity_view(S3L_Unit focal) {
 }
 
 /* The space's own local origin (0,0,0) has to land at the screen's centre
- * under an identity transform and an orthographic projection - no camera
+ * under an identity transform and an orthographic projection: no camera
  * offset, no rotation, no depth-dependent scale to reason about, just
  * small3dlib's own S3L_mapProjectionPlaneToScreen() centring a (0,0) point.
  * The most basic thing boot_anim_project() has to get right. */
@@ -231,7 +231,7 @@ test_identity_transform_leaves_the_origin_at_screen_centre(void) {
 /* The property that distinguishes a real perspective projection: a point
  * further from the camera must project SMALLER (closer to screen centre)
  * than the same point nearer the camera, for a real focal length. re/im
- * map to X/Z (see boot_anim_project()'s axis-mapping comment) - im is
+ * map to X/Z (see boot_anim_project()'s axis-mapping comment); im is
  * depth, re is the offset compared at two depths. */
 static void
 test_a_point_further_from_the_camera_projects_smaller(void) {
@@ -257,8 +257,8 @@ test_a_point_further_from_the_camera_projects_smaller(void) {
  * boot_anim_project() is refusing to write anything for a point at or
  * behind the near plane, rather than projecting it to an ordinary-looking
  * but geometrically nonsense screen position. `im_q12 = 408` sits exactly
- * ON the boundary - under an identity transform
- * BOOT_ANIM_ZETA_TO_S3L(408) = 51 = R3D_NEAR_Z - so this exercises
+ * ON the boundary: under an identity transform
+ * BOOT_ANIM_ZETA_TO_S3L(408) = 51 = R3D_NEAR_Z, so this exercises
  * the `<=`, which a `<` typo would still pass anywhere further back. */
 static void
 test_project_point_rejects_a_point_at_the_near_plane(void) {
@@ -329,7 +329,7 @@ test_project_segment_cs_clips_asymmetric_coordinates(void) {
                                    "double-precision reference - a wide miss here is exactly the "
                                    "S3L_F-precision rounding this test guards against");
 
-    /* p1 was already in front - not clipped at all, so it must match
+    /* p1 was already in front: not clipped at all, so it must match
      * projecting it directly, independent of whatever the clip branch
      * above did. */
     int fx, fy;
@@ -349,7 +349,7 @@ test_project_segment_cs_clips_asymmetric_coordinates(void) {
  * the origin (nothing drawn yet), and reach=255 must land exactly on
  * `far` (a spoke actually finishes where it was told to, not asymptotic-
  * ally close). Both are relied on directly by draw_grid_spoke() in
- * boot_anim.c - see its own comment on `near_target`/`target`. */
+ * boot_anim.c; see its own comment on `near_target`/`target`. */
 static void
 test_spoke_reveal_target_hits_its_endpoints_exactly(void) {
     const int32_t near = 10 * BOOT_ANIM_ONE;
@@ -374,7 +374,7 @@ test_spoke_reveal_target_advances_evenly_in_screen_space(void) {
     const int32_t far = 500 * BOOT_ANIM_ONE;
     const int steps = 10;
 
-    /* Starts at i=1 (reach>0), not 0 - reach=0's own target=0 is already
+    /* Starts at i=1 (reach>0), not 0: reach=0's own target=0 is already
      * covered exactly by
      * test_spoke_reveal_target_hits_its_endpoints_exactly() above, and 1/0
      * has no meaningful "screen position" to compare against the next
@@ -392,7 +392,7 @@ test_spoke_reveal_target_advances_evenly_in_screen_space(void) {
                                                    "target itself must be monotonically non-decreasing");
             if (i > 2) {
                 /* prev_delta == 0 would mean the PRIOR step had zero
-                 * shrinkage - a plateau, not something these constants
+                 * shrinkage: a plateau, not something these constants
                  * produce, but an explicit message beats an inf/NaN
                  * ratio silently failing the comparison below for a
                  * reason this test's own output does not explain. */
@@ -400,7 +400,7 @@ test_spoke_reveal_target_advances_evenly_in_screen_space(void) {
                                                            "1/target - a plateau these test constants should "
                                                            "never actually produce");
                 /* Consecutive per-step shrinkages should stay within 25%
-                 * of each other - loose on purpose (a fixed-point
+                 * of each other; loose on purpose (a fixed-point
                  * approximation, not exact reciprocal interpolation), but
                  * tight enough to reject a linear-in-radius formula, whose
                  * first step alone covers ~90% of the span. */
@@ -416,7 +416,7 @@ test_spoke_reveal_target_advances_evenly_in_screen_space(void) {
     }
 }
 
-/* "Scale renders as 1,1,1 for default values" - the exact ask this table
+/* "Scale renders as 1,1,1 for default values", the exact ask this table
  * exists to satisfy: an untouched space's scale has to read back as S3L_F (small3dlib's
  * own 1.0), on every axis, not some other number that happens to look
  * right today. */
@@ -432,10 +432,10 @@ test_an_untouched_scale_reads_back_as_identity(void) {
 /*
  * The seed motion
  *
- * A freely animated camera has no blanket off-panel guarantee - a wrong
+ * A freely animated camera has no blanket off-panel guarantee: a wrong
  * angle can put the scene off-panel, a legitimate edit, not a bug. Worth
  * protecting: the SEED this repo ships, a sanity sweep against
- * boot_anim_motion.glb. A generous margin, not a tight fit - catches the
+ * boot_anim_motion.glb. A generous margin, not a tight fit; catches the
  * seed going wildly broken, not tunable tighter.
  */
 
@@ -450,7 +450,7 @@ test_the_seeds_curve_stays_near_the_panel_throughout(void) {
         const int last = (int)(((int64_t)progress * span) >> BOOT_ANIM_Q);
 
         /* The head (furthest-drawn point) alone is enough to catch a
-         * camera pointed somewhere absurd - checking every sample every
+         * camera pointed somewhere absurd; checking every sample every
          * 100ms as well would be thousands of assertions for the same
          * signal. */
         if (last < 0 || last >= BOOT_ANIM_CURVE_POINTS) {
@@ -472,7 +472,7 @@ test_the_seeds_curve_stays_near_the_panel_throughout(void) {
 }
 
 /* The three axes, projected from the seed's own first pose, must not
- * collapse onto each other - a camera that happened to look straight down
+ * collapse onto each other: a camera that happened to look straight down
  * one of them would still "work" in the sense of not crashing, but the
  * picture would read as two lines, not three. A weak, non-fragile check on
  * purpose: it is not this test's job to say WHERE the axes should point
@@ -498,9 +498,9 @@ test_the_seeds_three_axes_project_to_distinct_directions(void) {
 /* The wave */
 
 /* `amp_q12`/`wavelength_q12`/`period_ms` are fabricated here, not read
- * from BOOT_ANIM_WAVE_HEIGHT_Q12/WAVELENGTH_Q12/PERIOD_MS - see
+ * from BOOT_ANIM_WAVE_HEIGHT_Q12/WAVELENGTH_Q12/PERIOD_MS; see
  * boot_anim_wave_height()'s own comment on why it takes all three as
- * parameters: the shipped seed's own height is 0 (off by default -
+ * parameters: the shipped seed's own height is 0 (off by default;
  * test_the_seeds_wave_is_coherently_authored() below is what actually
  * checks that), which at 0 would make every one of these assertions trivially
  * true for the wrong reason. */
@@ -515,7 +515,7 @@ test_wave_height_is_zero_when_the_wavelength_is_not_positive(void) {
     TEST_ASSERT_EQUAL_INT32(0, boot_anim_wave_height(BOOT_ANIM_ONE, 0, BOOT_ANIM_ONE, -1, 1000));
 }
 
-/* sin() is exactly periodic in r for a fixed t - a vertex a full
+/* sin() is exactly periodic in r for a fixed t: a vertex a full
  * wavelength further out should read back the identical height. This is
  * the structural fact that actually lets several rings show the ripple's
  * own crests/troughs at once, all from the one formula, rather than
@@ -535,7 +535,7 @@ test_wave_height_is_periodic_in_radius(void) {
                                     "same point in the same crest/trough cycle");
 }
 
-/* Also exactly periodic in TIME, for a fixed r - one full period_ms
+/* Also exactly periodic in TIME, for a fixed r: one full period_ms
  * brings the pattern back to where it started. */
 static void
 test_wave_height_is_periodic_in_time(void) {
@@ -554,7 +554,7 @@ test_wave_height_is_periodic_in_time(void) {
 
 /* The travelling look itself: the same point in the crest/trough cycle
  * that is a quarter wavelength closer to the origin right now is exactly
- * where THIS vertex will be a quarter period from now - see
+ * where THIS vertex will be a quarter period from now; see
  * boot_anim_wave_height()'s own comment on why subtracting the time term
  * is what makes a crest's own radius grow with time, the pattern moving
  * outward rather than inward. */
@@ -575,8 +575,8 @@ test_wave_height_travels_outward_with_time(void) {
                                     "- the pattern travels OUTWARD as time advances");
 }
 
-/* period_ms of 0 is a legitimate, if unusual, choice - a static ripple
- * that never travels - not a division by zero. */
+/* period_ms of 0 is a legitimate, if unusual, choice (a static ripple
+ * that never travels), not a division by zero. */
 static void
 test_wave_height_is_frozen_when_the_period_is_zero(void) {
     const int32_t wavelength = 3 * BOOT_ANIM_ONE;
@@ -613,10 +613,10 @@ test_the_seeds_wave_is_coherently_authored(void) {
     }
 }
 
-/* boot_anim_wave_envelope() takes no parameters of its own to fabricate -
+/* boot_anim_wave_envelope() takes no parameters of its own to fabricate:
  * unlike boot_anim_wave_height() above, IT is the timeline, the same
  * reason boot_anim_grid_alpha() reads BOOT_ANIM_GRID_START_MS/RING_MS/
- * FADE_MS directly rather than taking them as arguments - so these test
+ * FADE_MS directly rather than taking them as arguments, so these test
  * against the seed's own real generated values (BOOT_ANIM_WAVE_IN_MS,
  * BOOT_ANIM_WAVE_OUT_MS, BOOT_ANIM_MS). */
 static void
@@ -625,7 +625,7 @@ test_wave_envelope_is_zero_at_the_very_start(void) {
 }
 
 /* The whole point of wave_in_ms being a MOMENT rather than a duration:
- * the ripple stays muted right up to and including that moment itself -
+ * the ripple stays muted right up to and including that moment itself;
  * an author controls exactly when it is allowed to start, not merely how
  * long a ramp beginning at frame 0 takes. */
 static void
@@ -646,14 +646,14 @@ test_wave_envelope_plateaus_between_in_and_out(void) {
 }
 
 /* Symmetric with test_wave_envelope_is_still_muted_at_wave_in_ms_itself
- * above: still at FULL strength right at wave_out_ms itself - that moment
+ * above: still at FULL strength right at wave_out_ms itself; that moment
  * is when the fade-out ramp starts, not when it has already finished. */
 static void
 test_wave_envelope_is_still_full_at_wave_out_ms_itself(void) {
     TEST_ASSERT_EQUAL_UINT8(255, boot_anim_wave_envelope(BOOT_ANIM_WAVE_OUT_MS));
 }
 
-/* The title's idle wave calming down - a different wave entirely from the
+/* The title's idle wave calming down: a different wave entirely from the
  * floor ripple above (see boot_anim_title_wave()), but the same "255 minus
  * a ramp" envelope, so the same three moments are worth pinning: full
  * swing before it starts, still full AT the start (that instant is when
@@ -673,7 +673,7 @@ test_the_title_wave_reaches_stillness_after_its_fade(void) {
 /* The point of scaling the AMPLITUDE rather than gating the wave off: the
  * motion has to shrink monotonically through the window, so a letter
  * caught mid-bob rides its own arc down instead of snapping straight. The
- * envelope is what carries that, so it is what gets swept - the wave
+ * envelope is what carries that, so it is what gets swept; the wave
  * itself keeps oscillating underneath and would not be monotonic. */
 static void
 test_the_title_wave_never_swings_wider_as_it_calms(void) {
@@ -694,7 +694,7 @@ test_the_title_wave_never_swings_wider_as_it_calms(void) {
  * and whether that lands before the animation's own end is a timeline
  * choice, not a property of this function. The seed currently parks
  * wave_out_ms exactly at total_ms, so the ripple is still at full
- * strength on the last frame - fine, since boot_anim_ink() has been
+ * strength on the last frame: fine, since boot_anim_ink() has been
  * taking the whole picture to black since fade_start_ms long before
  * then. */
 static void
@@ -707,7 +707,7 @@ test_wave_envelope_fades_back_to_zero_after_its_ramp(void) {
  * exactly, covering the all-zero case (gen_boot_anim_timeline.py's own
  * comment); a seed that animates its spokes instead simply moves where
  * they are sampled, which is the point. tween_ramp() makes the second
- * assertion exact at the boundary rather than merely close - see its own
+ * assertion exact at the boundary rather than merely close; see its own
  * comment on reaching 255 AT start + duration, not one millisecond
  * after. */
 static void
@@ -803,7 +803,7 @@ test_a_span_climbs_steadily_when_its_points_do(void) {
  * control points to camera space and THEN interpolating must land on the
  * same point as interpolating in world space and THEN transforming, which
  * is what lets a caller skip a full matrix transform per drawn sub-point.
- * Checked against a real rotated, translated, perspective view - an
+ * Checked against a real rotated, translated, perspective view: an
  * identity transform would not catch a bug that only shows up once
  * translation and rotation are mixed in. */
 static void
@@ -837,7 +837,7 @@ test_spline_cs_matches_transforming_the_world_space_spline(void) {
 /* Basic level of detail */
 
 /* Two points far enough apart on screen that boot_anim_curve_lod_steps()
- * must not shortcut - an identity, orthographic view (focal 0) so the
+ * must not shortcut: an identity, orthographic view (focal 0) so the
  * points' own x/y ARE their screen offset from centre, no projection math
  * to work back through by hand. */
 static void
@@ -853,7 +853,7 @@ test_curve_lod_steps_keeps_full_detail_for_a_wide_chord(void) {
 
 /* The actual point of the LOD shortcut: two points that already land on
  * (near enough) the same pixel cannot have a spline through them worth
- * subdividing - see boot_anim_curve_lod_steps()'s own comment on the
+ * subdividing; see boot_anim_curve_lod_steps()'s own comment on the
  * convex-hull argument for why the two OUTER points are enough to decide
  * this without looking at anything in between. */
 static void
@@ -869,7 +869,7 @@ test_curve_lod_steps_collapses_a_tiny_chord_to_one_step(void) {
 
 /* boot_anim_screen_chord_lt()'s whole point over projecting the points for
  * real: the perspective cross-multiplication has to agree with what the
- * projection would say - the SAME camera-space pair reads as a wide chord
+ * projection would say; the SAME camera-space pair reads as a wide chord
  * near the camera and a tiny one far from it, because apparent size falls
  * off with z. dx=100 S3L units with focal=S3L_F: at z of one unit it spans
  * ~36 screen px (well over the 3px bar); pushed a hundred units out it
@@ -890,7 +890,7 @@ test_screen_chord_shrinks_with_distance(void) {
                              "read as tiny - apparent size falls off with z");
 }
 
-/* The pure decision half of the whole-curve sample decimation - see
+/* The pure decision half of the whole-curve sample decimation; see
  * boot_anim_curve_stride()'s own comment. Full detail while the curve is
  * anywhere near panel-sized; samples only start dropping once the whole
  * thing has shrunk to a fraction of it. */
@@ -905,7 +905,7 @@ test_lod_stride_tiers_by_extent(void) {
 }
 
 /* The safety fallback: a span the probe cannot even project (both ends at
- * or behind the near plane here) must NOT be reported as "tiny, skip it" -
+ * or behind the near plane here) must NOT be reported as "tiny, skip it";
  * boot_anim_curve_lod_steps() has no idea how big it actually is on
  * screen in that case, so it has to default to full detail rather than
  * guess low. */
@@ -928,7 +928,7 @@ test_curve_lod_steps_keeps_full_detail_when_the_probe_cannot_project(void) {
  * primitives themselves.
  */
 
-/* Phase 1 only - see boot_anim_pen()'s own "TWO PHASES" comment. It reaches
+/* Phase 1 only; see boot_anim_pen()'s own "TWO PHASES" comment. It reaches
  * BOOT_ANIM_CURVE_PHASE1_FRACTION, not BOOT_ANIM_ONE, at the end of
  * BOOT_ANIM_PEN_MS now; test_the_curve_is_finished_by_pen_finish_ms()
  * covers phase 2's own end. */
@@ -940,9 +940,9 @@ test_the_pen_runs_from_nothing_to_phase_ones_end(void) {
 }
 
 /* Phase 2: continues past phase 1's end rather than sitting still, and
- * reaches the whole curve by BOOT_ANIM_PEN_FINISH_MS - an authored moment
+ * reaches the whole curve by BOOT_ANIM_PEN_FINISH_MS, an authored moment
  * of its own, independent of BOOT_ANIM_FADE_START_MS (see boot_anim_pen()'s
- * own "TWO PHASES" comment on why the two were split apart) - see
+ * own "TWO PHASES" comment on why the two were split apart); see
  * test_the_curve_is_finished_by_pen_finish_ms() for that half, kept as its
  * own test since it is really a claim about PEN_FINISH_MS, not about the
  * pen's climb in general. */
@@ -963,9 +963,9 @@ test_the_curve_is_finished_by_pen_finish_ms(void) {
                                     "the curve should have reached its full extent by pen_finish_ms");
 }
 
-/* Not a claim boot_anim_pen() itself makes - see its own comment on why
+/* Not a claim boot_anim_pen() itself makes (see its own comment on why
  * PEN_FINISH_MS landing after FADE_START_MS is only ever a generator
- * warning, not a refusal - but true of the SEED this repo ships, and worth
+ * warning, not a refusal) but true of the SEED this repo ships, and worth
  * catching if a future edit to the committed timeline quietly breaks it. */
 static void
 test_the_seed_finishes_the_curve_before_the_dissolve_starts(void) {
@@ -982,7 +982,7 @@ test_the_picture_is_lit_until_the_dissolve_and_dark_at_the_end(void) {
     TEST_ASSERT_TRUE(boot_anim_ink(BOOT_ANIM_MS - 100) < 255);
 }
 
-/* boot_anim_image_reveal()'s own two guaranteed endpoints - the crossfade
+/* boot_anim_image_reveal()'s own two guaranteed endpoints: the crossfade
  * has not started at or before BOOT_ANIM_IMAGE_START_MS, and it is fully
  * arrived (and stays arrived) once BOOT_ANIM_IMAGE_FADE_MS has passed
  * since. */
@@ -997,7 +997,7 @@ test_the_photograph_arrives_over_its_own_window(void) {
 /* The whole point of the pair (see boot_anim_scene_reach()'s own comment
  * in boot_anim.h): one window, two halves that always sum to a whole
  * picture. If these ever stopped summing to 255 the crossfade would
- * visibly dip or bloom partway through - exactly the artefact plain, not
+ * visibly dip or bloom partway through: exactly the artefact plain, not
  * eased, tween_ramp() is chosen to avoid. */
 static void
 test_the_scene_leaves_exactly_as_fast_as_the_photograph_arrives(void) {
@@ -1044,7 +1044,7 @@ test_the_floor_fades_in_from_the_origin_outward(void) {
  * not strictly dimmer at every ring: falloff is left * ceiling / FADE,
  * so with 128 rings against a ceiling of 64, each ring is worth half a
  * level and adjacent pairs land on the same integer (63, 63, 62, 62,
- * ...) - arithmetic, not a regression, invisible on the panel since the
+ * ...): arithmetic, not a regression, invisible on the panel since the
  * eye reads the overall gradient. */
 static void
 test_the_floor_fades_out_with_distance_rather_than_stopping(void) {
@@ -1066,11 +1066,11 @@ test_the_floor_fades_out_with_distance_rather_than_stopping(void) {
                                     "the floor should be completely gone by the end of its fade");
 }
 
-/* Backdrop, not subject - the floor covers far more of the screen than the
+/* Backdrop, not subject: the floor covers far more of the screen than the
  * curve does, so it is never let all the way up to the axes' own full 255.
  * The ceiling itself climbs though (see boot_anim_grid_climb()'s own
  * comment for why alpha has to climb alongside the whitening, not stay
- * fixed while only the colour moves) - so the bound checked here is the
+ * fixed while only the colour moves), so the bound checked here is the
  * per-moment BOOT_ANIM_GRID_CEILING_MAX, not the starting BOOT_ANIM_GRID_MAX. */
 static void
 test_the_floor_stays_dim_enough_to_be_a_backdrop(void) {
@@ -1083,7 +1083,7 @@ test_the_floor_stays_dim_enough_to_be_a_backdrop(void) {
 }
 
 /* The clock boot_anim_grid_alpha()'s own ceiling and boot_anim_grid_whiten()
- * both ride - starts flat at 0 before the floor appears, climbs steadily
+ * both ride: starts flat at 0 before the floor appears, climbs steadily
  * and monotonically, and reaches its top exactly at BOOT_ANIM_MS. */
 static void
 test_the_grid_climb_runs_the_whole_animation(void) {
@@ -1111,7 +1111,7 @@ static void
 test_the_floor_opacity_never_falls_back(void) {
     /* Ring 1's own fade-in (BOOT_ANIM_GRID_RING_MS + BOOT_ANIM_GRID_FADE_MS
      * after BOOT_ANIM_GRID_START_MS) is long done by either of these, plus
-     * a little slack - so the only thing left changing its alpha between
+     * a little slack, so the only thing left changing its alpha between
      * them is the ceiling itself climbing, not "arrived" still ramping. */
     const uint32_t early_ms = BOOT_ANIM_GRID_START_MS + BOOT_ANIM_GRID_RING_MS + BOOT_ANIM_GRID_FADE_MS + 50;
     const uint8_t early = boot_anim_grid_alpha(early_ms, 1);
@@ -1165,7 +1165,7 @@ test_the_axes_are_there_before_the_curve_starts_climbing(void) {
 /* Colour */
 
 /* Checks that hue's RGB has one full channel (255) and one empty channel
- * (0) - what makes it a point on a fully-saturated hue wheel rather than
+ * (0), what makes it a point on a fully-saturated hue wheel rather than
  * a pastel. */
 static void
 check_hue_is_fully_saturated(int hue) {
@@ -1227,7 +1227,7 @@ test_height_changes_the_hue(void) {
 }
 
 /* One pen's trail, sampled within the gap before the next pen contributes
- * anything - so this is that pen alone, fading. */
+ * anything, so this is that pen alone, fading. */
 static void
 test_a_pens_trail_fades_behind_it(void) {
     const int32_t pen = BOOT_ANIM_ONE / 2;
@@ -1289,7 +1289,7 @@ test_a_pens_colour_arrives_gradually(void) {
                              "a pen's hue should fade in with its trail rather than switch on");
 }
 
-/* Beyond the trail's reach, only the base is left - which is what the
+/* Beyond the trail's reach, only the base is left, which is what the
  * finished picture is made of, and it must still be lit and still be
  * coloured. */
 static void
@@ -1302,7 +1302,7 @@ test_settled_curve_keeps_its_colour(void) {
     TEST_ASSERT_EQUAL_UINT8(1, settled.width);
 }
 
-/* The bloom is capped well short of white on purpose - see boot_anim.h. A
+/* The bloom is capped well short of white on purpose; see boot_anim.h. A
  * trail that reaches white has no colour left exactly where it is brightest. */
 static void
 test_the_trail_never_washes_out_to_white(void) {
@@ -1336,11 +1336,11 @@ test_the_wobble_is_exactly_flat_once_a_letter_has_arrived(void) {
 }
 
 /* THE test: catches a wobble whose frequency stays constant while only
- * its AMPLITUDE shrinks - it would pass every other test here and still
+ * its AMPLITUDE shrinks; it would pass every other test here and still
  * be wrong, vibrating to a stop instead of settling. Counts sign changes
  * in each HALF of the flight: phase is driven off d SQUARED, so the
  * first half of the approach (d 1.0 to 0.5) sweeps three quarters of the
- * total phase and the second half only the remaining quarter - comparing
+ * total phase and the second half only the remaining quarter; comparing
  * the two halves measures exactly that, and needs just one crossing to
  * do it. */
 static void
@@ -1370,7 +1370,7 @@ test_the_wobbles_oscillation_slows_as_it_lands(void) {
 
 /* "on its final position" now means the ARRIVAL wobble (see
  * boot_anim_title_wobble()) has fully decayed, not that the letter sits
- * dead still - boot_anim_title_wave() keeps a small idle motion going
+ * dead still: boot_anim_title_wave() keeps a small idle motion going
  * forever, by design, so a landed letter's y is BOOT_ANIM_TITLE_VIEW_Y plus
  * whatever that wave says at this instant, not BOOT_ANIM_TITLE_VIEW_Y alone. */
 static void
@@ -1387,7 +1387,7 @@ test_a_letter_lands_exactly_on_its_final_position(void) {
     }
 }
 
-/* Each letter starts later than the one before it - "one after another",
+/* Each letter starts later than the one before it: "one after another",
  * not all six arriving as a block. */
 static void
 test_letters_are_staggered_left_to_right(void) {
@@ -1409,7 +1409,7 @@ test_letters_are_staggered_left_to_right(void) {
              * has been moving for half a stagger interval, i has not moved
              * at all yet (tween_ramp() is exactly 0 until STRICTLY past
              * its own start, so checking AT i's start catches neither
-             * letter moving - checking here is what actually exercises "an
+             * letter moving; checking here is what actually exercises "an
              * earlier letter is further along"). */
             const uint32_t mid =
                 BOOT_ANIM_TITLE_START_MS + (uint32_t)i * BOOT_ANIM_TITLE_STAGGER_MS - BOOT_ANIM_TITLE_STAGGER_MS / 2;
@@ -1431,9 +1431,9 @@ test_a_letter_starts_off_panel_to_the_left(void) {
 /* Regression guard for the bug boot_anim_title_letter()'s own comment in
  * boot_anim.h describes: a fixed per-letter cell, `i * (8 * SCALE +
  * GAP)`, is correct only for a MONOSPACE font. Checks the real formula
- * directly against gfx_font_text_width() - the same pure sum-of-advances
+ * directly against gfx_font_text_width() (the same pure sum-of-advances
  * function gfx_font.h's own suite already pins against a synthetic
- * proportional font - rather than a second, hand-derived copy of the
+ * proportional font) rather than a second, hand-derived copy of the
  * arithmetic that could make the same mistake twice. */
 static void
 test_final_x_matches_the_advance_sum(void) {
@@ -1459,13 +1459,13 @@ test_final_x_matches_the_advance_sum(void) {
 /* The layout guard, in the same spirit as
  * test_the_seeds_curve_stays_near_the_panel_throughout(): every
  * letter, at every moment of its flight including the wildest part of the
- * wobble, must land within the VIEWER's frame once it is actually visible
- * - BOOT_ANIM_TITLE_VIEW_W/H, not PANEL_W/PANEL_H, since
+ * wobble, must land within the VIEWER's frame once it is actually visible,
+ * BOOT_ANIM_TITLE_VIEW_W/H, not PANEL_W/PANEL_H, since
  * boot_anim_title_letter() lays the word out in that frame and a letter
  * kept inside it stays on the panel by construction. */
 static void
 test_the_title_stays_on_the_panel_once_visible(void) {
-    /* The full glyph cell, not just its anchor corner - (x, y) is where a
+    /* The full glyph cell, not just its anchor corner: (x, y) is where a
      * glyph's cell BEGINS, so the cell's far edge is what actually has to
      * stay on the panel. */
     const int cell_w = TITLE_FONT->cell_w * BOOT_ANIM_TITLE_SCALE;
@@ -1476,7 +1476,7 @@ test_the_title_stays_on_the_panel_once_visible(void) {
         for (uint32_t t = start; t <= start + BOOT_ANIM_TITLE_FLIGHT_MS; t += 15) {
             const boot_anim_title_pos_t p = boot_anim_title_letter(TITLE_FONT, i, t);
             if (p.x + cell_w < 0) {
-                continue; /* still off-panel to the left - not visible yet */
+                continue; /* still off-panel to the left, not visible yet */
             }
             TEST_ASSERT_TRUE_MESSAGE(p.x + cell_w <= BOOT_ANIM_TITLE_VIEW_W,
                                      "a letter drifted off the right edge of the viewer's frame");
@@ -1488,7 +1488,7 @@ test_the_title_stays_on_the_panel_once_visible(void) {
 }
 
 /* boot_anim_title_shadow_offset() is the one piece of draw_title()'s
- * shadow logic this file can reach directly - draw_title() itself needs a
+ * shadow logic this file can reach directly: draw_title() itself needs a
  * framebuffer and a panel (see this file's own top comment), so this is
  * also the only test standing between a future edit here and the exact
  * "up-right instead of down-right" bug this function was extracted to fix
@@ -1508,9 +1508,9 @@ test_title_shadow_offset_turns_reader_frame_into_panel_frame(void) {
                                   "on the panel's own Y");
 
     /* Pure right (no vertical component) must not move the panel X at
-     * all - panel_x tracks -view_y, so it is only the DOWN component that
-     * can touch it. Pure down, in turn, must not move the panel Y at all
-     * - panel_y tracks view_x, only the RIGHT component reaches it. The
+     * all: panel_x tracks -view_y, so it is only the DOWN component that
+     * can touch it. Pure down, in turn, must not move the panel Y at all:
+     * panel_y tracks view_x, only the RIGHT component reaches it. The
      * two axes are a plain 90-degree swap, not a general rotation that
      * would mix them. */
     boot_anim_title_shadow_offset(5, 0, &dx, &dy);
@@ -1518,7 +1518,7 @@ test_title_shadow_offset_turns_reader_frame_into_panel_frame(void) {
     boot_anim_title_shadow_offset(0, 5, &dx, &dy);
     TEST_ASSERT_EQUAL_INT(0, dy);
 
-    /* (0, 0) - the "shadow disabled" sentinel draw_title() checks for -
+    /* (0, 0) (the "shadow disabled" sentinel draw_title() checks for)
      * must stay the identity, not become a spurious offset. */
     boot_anim_title_shadow_offset(0, 0, &dx, &dy);
     TEST_ASSERT_EQUAL_INT(0, dx);

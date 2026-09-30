@@ -1,5 +1,5 @@
 /*
- * Portable suite: frame_watch - a call site that repeats across frames,
+ * Portable suite: frame_watch, a call site that repeats across frames,
  * told apart from one that fires on the frame something happened.
  */
 

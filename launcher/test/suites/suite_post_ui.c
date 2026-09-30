@@ -1,5 +1,5 @@
 /*
- * Portable suite: post_layout - the power-on self-test report's geometry.
+ * Portable suite: post_layout, the power-on self-test report's geometry.
  *
  * Every assertion is derived from the canvas handed in, so the two panel
  * orientations are the only fixed numbers here and a change to the inset,
@@ -20,7 +20,7 @@
 #define PANEL_SHORT_SIDE 368
 #define PANEL_LONG_SIDE  448
 
-/* `columns` columns with a whole line of air between checks - the widest gap
+/* `columns` columns with a whole line of air between checks: the widest gap
  * the layout ever gives, and the one every rule below is stated against. */
 static post_layout_t
 full_gap_layout(int screen_w, int screen_h, int columns) {
@@ -234,9 +234,9 @@ assert_every_column_starts_on_the_top_row(post_layout_t l, int checks, int lines
     }
 }
 
-/* Every run length in turn, so the case the sweep is really after - a check
+/* Every run length in turn, so the case the sweep is really after (a check
  * ending exactly on a column's last row, leaving the gap to fall at the top
- * of the next - is covered wherever the divisors put it. */
+ * of the next) is covered wherever the divisors put it. */
 static void
 assert_no_run_length_pushes_a_column_down(post_layout_t l) {
     for (int lines_each = 1; lines_each <= l.rows; lines_each++) {
@@ -358,7 +358,7 @@ filled_to_remainder(const post_layout_t* l, int remaining) {
 static void
 assert_a_check_that_does_not_fit_moves_whole(post_layout_t l) {
     if (l.columns < 2) {
-        return; /* nowhere to move to - see the single-column test */
+        return; /* nowhere to move to; see the single-column test */
     }
 
     for (int height = 2; height <= l.rows; height++) {
@@ -378,7 +378,7 @@ test_a_check_that_does_not_fit_the_remainder_moves_whole_to_the_next_column(void
     assert_a_check_that_does_not_fit_moves_whole(landscape());
 }
 
-/* A check with exactly the room it needs stays where it is - the rule must
+/* A check with exactly the room it needs stays where it is; the rule must
  * not spend a column break it does not owe. */
 static void
 assert_a_check_that_exactly_fits_stays(post_layout_t l) {
@@ -456,7 +456,7 @@ static const char* const wrap_samples[] = {
 };
 
 /* The count and the walk are the same routine, so a drawer that walks it
- * consumes exactly the lines the measure promised - and the walk covers the
+ * consumes exactly the lines the measure promised, and the walk covers the
  * whole string, dropping nothing but the spaces it breaks on. */
 static void
 assert_the_wrap_walk_matches_its_count(const char* text, int columns) {
@@ -531,7 +531,7 @@ listed_entries(listed_t* list, int count) {
     return entries;
 }
 
-/* Detail strings around the length a check's format string produces - short
+/* Detail strings around the length a check's format string produces: short
  * enough to sit on one line in a full-width column, long enough to wrap in a
  * narrow one. */
 static const char* const report_details[] = {
@@ -554,7 +554,7 @@ static const char* const report_details[] = {
 
 #define REPORT_CHECKS ((int)(sizeof(report_details) / sizeof(report_details[0])))
 
-/* Long enough that only the narrowest columns hold it in few lines - what a
+/* Long enough that only the narrowest columns hold it in few lines, what a
  * report needs before it wants every column the orientation allows. */
 static const char* const tall_details[] = {
     "a detail long enough that it wraps to several lines even across a very wide column indeed",
@@ -640,7 +640,7 @@ walk_report(const post_layout_t* l, const post_entries_t* entries) {
 }
 
 /* Two failures do not need three narrow columns, and a wide one wraps their
- * details far less - which is the whole reason to prefer fewer. */
+ * details far less, which is the whole reason to prefer fewer. */
 static void
 test_a_short_report_in_landscape_takes_one_wide_column(void) {
     listed_t list = {2, short_details};
@@ -667,7 +667,7 @@ test_a_tall_report_in_landscape_takes_the_orientation_ceiling(void) {
 }
 
 /* Candidate order: a report that fits in one column only by giving up its
- * air, but fits in two columns with it, must take the second - air is
+ * air, but fits in two columns with it, must take the second: air is
  * preferred over fewer columns, not the other way round. */
 static void
 test_spacing_is_preferred_over_fewer_columns(void) {
@@ -741,7 +741,7 @@ test_a_report_with_room_gets_a_full_line_of_air(void) {
 }
 
 /* Portrait cannot afford a full line between fifteen checks, so the air
- * thins rather than the report losing its tail - and it thins to the very
+ * thins rather than the report losing its tail, and it thins to the very
  * widest gap that still fits, which is what both sides of this assert. */
 static void
 test_portrait_takes_the_widest_gap_that_still_fits(void) {
@@ -794,7 +794,7 @@ test_a_report_with_no_slack_gets_no_air(void) {
 }
 
 /* A band with nothing in it takes no height, and the columns get what it
- * would have held - which is what lets portrait carry every check. */
+ * would have held, which is what lets portrait carry every check. */
 static void
 test_a_report_without_a_footer_gives_that_band_to_the_columns(void) {
     const int ceiling = post_layout_max_columns(PANEL_SHORT_SIDE, PANEL_LONG_SIDE);
@@ -817,7 +817,7 @@ test_the_column_count_follows_the_orientation(void) {
 }
 
 /* Landscape loses height for the same report, so the columns have to buy
- * those lines back - otherwise the split has not paid for itself. */
+ * those lines back; otherwise the split has not paid for itself. */
 static void
 test_landscape_holds_at_least_as_many_lines_as_portrait(void) {
     const post_layout_t tall = portrait();

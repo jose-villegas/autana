@@ -1,8 +1,8 @@
 /*
- * post - power-on self test.
+ * post: power-on self test.
  *
  * A health check of the board's hardware, run on every boot in EVERY build,
- * release included. It answers "is this board working right now?" - a different
+ * release included. It answers "is this board working right now?", a different
  * question from "is this code correct?", which the test suites answer.
  *
  * That distinction is why this is separate from selftest.c:
@@ -27,7 +27,7 @@
 
 typedef enum {
     POST_REQUIRED, /* absence means the board is faulty */
-    POST_OPTIONAL, /* absence is legitimate - a missing SD card, say */
+    POST_OPTIONAL, /* absence is legitimate: a missing SD card, say */
 } post_severity_t;
 
 typedef struct {
@@ -36,14 +36,14 @@ typedef struct {
     post_severity_t severity;
     /* 96 comfortably fits every check's detail string, including
      * check_sdcard_live()'s "<name>, <capacity> MB (live, <n> ms round
-     * trip)" in post.c, the longest one - with margin for GCC's own
+     * trip)" in post.c, the longest one, with margin for GCC's own
      * (pessimistic) -Wformat-truncation estimate of that string's maximum
      * length, which came out to 79 bytes. */
     char detail[96];
 } post_result_t;
 
 /* POST runs in two phases. The SD card is tested first, before gfx_init()
- * brings the display up - a matter of ordering convenience, not necessity:
+ * brings the display up, a matter of ordering convenience, not necessity:
  * the card sits on its own dedicated SDMMC bus, entirely independent of the
  * display's SPI2, so there is no bus contention to sequence around.
  *
@@ -56,18 +56,18 @@ typedef struct {
 void post_run_before_display(void);
 
 /* Returns true if all REQUIRED checks passed across both phases. Optional
- * peripherals - an absent SD card, say - are reported but never fail. */
+ * peripherals (an absent SD card, say) are reported but never fail. */
 bool post_run_after_display(void);
 
 /* Re-runs every check that can be repeated while the shell is live, replacing
  * the retained results. The SD card is included: it sits on its own SDMMC
  * bus, entirely independent of the display, so re-testing it live costs
- * nothing more than a plain mount/unmount - see check_sdcard_live() in
+ * nothing more than a plain mount/unmount; see check_sdcard_live() in
  * post.c. */
 void post_rerun(void);
 
 /* The results of the last run, retained so they can be shown on screen as well
- * as logged - a board in the field may have no serial cable attached. */
+ * as logged: a board in the field may have no serial cable attached. */
 const post_result_t* post_results(void);
 int post_result_count(void);
 int post_failure_count(void);

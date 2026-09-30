@@ -1,5 +1,5 @@
 /*
- * Portable suite: touch_calib - a fitted misreport undone, point by point.
+ * Portable suite: touch_calib, a fitted misreport undone, point by point.
  */
 
 #include "suites.h"

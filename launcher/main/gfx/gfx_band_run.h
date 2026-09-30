@@ -1,5 +1,5 @@
 /*
- * gfx_band_run - one transient-picture frame. gfx owns the band ring and
+ * gfx_band_run: one transient-picture frame. gfx owns the band ring and
  * send; callers supply the picture and optional overlay rows. The target
  * holds [row0, row1) at full width. Outside GFX_LAYOUT_BANDS it does nothing.
  */

@@ -1,4 +1,4 @@
-/* console_navigation - APPS, OPEN and HOME request shell navigation. */
+/* console_navigation: APPS, OPEN and HOME request shell navigation. */
 #include "console/console_navigation.h"
 #include "console/console_latch.h"
 #include "console/console_verbs.h"

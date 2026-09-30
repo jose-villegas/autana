@@ -1,5 +1,5 @@
 /*
- * ui_build - builds one microui frame: touch-to-mouse translation, style and
+ * ui_build builds one microui frame: touch-to-mouse translation, style and
  * font state, and the widget helpers (ui_slider_int(), ui_draw_icon(),
  * styled button frames) an app's own screen calls while doing it. See ui.h
  * for the whole module's why; ui.c is this file's other half, painting the
@@ -7,12 +7,12 @@
  *
  * THE SPLIT, AND WHY IT IS HOST-PORTABLE
  *
- * Everything here stops at describing the picture - mu_draw_rect() and
+ * Everything here stops at describing the picture: mu_draw_rect() and
  * friends append to microui's own command list, never touch a pixel. The one
  * thing that turns a command list into pixels, ui.c's draw_command(), is the
  * only part of the module that cannot link without the real framebuffer and
- * panel. Splitting on exactly that line is what lets an app's own screen -
- * built through the calls this file exports - run on a host, against the
+ * panel. Splitting on exactly that line is what lets an app's own screen (
+ * built through the calls this file exports) run on a host, against the
  * real microui and the real font metrics, and be measured or asserted on
  * there instead of only judged by eye on the device.
  */
@@ -37,14 +37,14 @@ static const char* TAG = "ui";
 #include "ui/ui_widgets.h"
 #include "util/tune.h"
 
-/* Definitions for the externs ui_internal.h declares - see that header for
+/* Definitions for the externs ui_internal.h declares; see that header for
  * what each one is shared for. */
 mu_Context ui_ctx;
 bool ui_invalidated = true;
 ui_text_style_t ui_text_style;
 ui_pointer_t ui_pointer_state;
 
-/* Whether the frame in progress only repaints - see ui_begin() - and the
+/* Whether the frame in progress only repaints (see ui_begin()) and the
  * interaction state it must hand back as it found it. */
 static bool paint_only;
 static mu_Id held_focus;
@@ -88,19 +88,19 @@ record_snap_rect(mu_Context* ctx, mu_Rect rect, int opt) {
 static void (*base_draw_frame)(mu_Context*, mu_Rect, int);
 
 /* The transform every command is mapped through before it is drawn, and
- * whether it is one draw_command() may actually use - see ui_set_transform()
+ * whether it is one draw_command() may actually use; see ui_set_transform()
  * below for why an invalid one is remembered rather than rejected outright. */
 static ui_transform_t transform;
 static bool transform_valid;
 
 /* See ui.h's own comment above ui_layout_generation() for what this counts
  * and, more importantly, what it is not. Bumped in the same branch of
- * ui_set_transform() below that already calls ui_invalidate() - a genuine
+ * ui_set_transform() below that already calls ui_invalidate(); a genuine
  * transform change is the one and only thing that increments it. */
 static uint32_t layout_generation;
 
 /* Every (font, scale) pair anyone has asked for, so the same pair always
- * yields the same address - see intern_font_scaled() below for why that
+ * yields the same address; see intern_font_scaled() below for why that
  * stability is load-bearing. Small and never cleared: one shell, one
  * mu_Context, realistically a handful of roles at a handful of scales
  * for the app's whole lifetime, not a per-screen or per-frame set. */
@@ -110,7 +110,7 @@ static int font_scaled_count;
 
 /* Returns the SAME address for the same (font, scale) every time, which is
  * what lets hash_canvas() (ui.c) notice a scale change on its own, the
- * same way it already does for a font change - see ui_set_font()'s
+ * same way it already does for a font change; see ui_set_font()'s
  * comment. */
 static const ui_font_scaled_t*
 intern_font_scaled(const gfx_font_t* font, int scale) {
@@ -124,8 +124,8 @@ intern_font_scaled(const gfx_font_t* font, int scale) {
         return &font_scaled_table[font_scaled_count++];
     }
     /* Full: hand back the default pair rather than recycling a slot.
-     * Overwriting one retargets every mu_Font already pointing at it - slot 0
-     * is the shell default - so the picture changes while the command list
+     * Overwriting one retargets every mu_Font already pointing at it (slot 0
+     * is the shell default), so the picture changes while the command list
      * keeps the same bytes, which is exactly what hash_canvas() cannot see.
      * Text at the wrong size is visible and recoverable; a canvas that skips
      * its repaint is neither. Raise UI_FONT_SCALED_MAX instead. */
@@ -135,7 +135,7 @@ intern_font_scaled(const gfx_font_t* font, int scale) {
     return &font_scaled_table[0];
 }
 
-/* mu_Font is NULL only before ui_init() has run - see
+/* mu_Font is NULL only before ui_init() has run; see
  * measure_text_width()/measure_text_height() below, which is where that
  * matters. */
 ui_font_scaled_t
@@ -148,7 +148,7 @@ ui_resolve_font_scaled(mu_Font font) {
 
 /* microui asks us for text metrics rather than measuring anything itself.
  * `font` is whatever ui_ctx.style->font held when the widget that wants
- * metrics ran - see ui_set_font() in ui.h. Falling back rather than
+ * metrics ran; see ui_set_font() in ui.h. Falling back rather than
  * dereferencing NULL means a widget measured before ui_init() gets a
  * sane answer instead of a crash. */
 static int
@@ -199,10 +199,10 @@ ui_set_button_style(ui_button_style_t style) {
 /* WHY THIS NEEDS ui_invalidate() AND ui_set_button_style() DOES NOT: a
  * bezel is real mu_draw_rect() commands, so a style change is a content
  * change ui_end()'s hash sees. Text style applies at RENDER time inside
- * draw_command() - the command list is byte-identical either way, so
+ * draw_command(): the command list is byte-identical either way, so
  * hash_canvas() can't see it and the repaint is skipped, leaving OLD
- * pixels under the new intent. Do NOT delete this call "for consistency"
- * - the two are not symmetric, and deleting it reintroduces the bug it
+ * pixels under the new intent. Do NOT delete this call "for consistency":
+ * the two are not symmetric, and deleting it reintroduces the bug it
  * prevents. */
 void
 ui_set_text_style(ui_text_style_t style) {
@@ -215,7 +215,7 @@ ui_set_text_style(ui_text_style_t style) {
 /* WHY THIS NEEDS NO ui_invalidate(), UNLIKE ui_set_text_style() ABOVE:
  * mu_Font rides inside every mu_TextCommand, so a font (or scale) change
  * is different bytes and hash_canvas() sees it unaided. THAT property is
- * exactly why the scale lives here too rather than a render-time global -
+ * exactly why the scale lives here too rather than a render-time global;
  * a global would need invalidating on every size change, which a two-size
  * screen hits every frame, permanently defeating the repaint skip. */
 void
@@ -238,7 +238,7 @@ transforms_equal(ui_transform_t a, ui_transform_t b) {
 
 /* See ui.h for why a transform change must call ui_invalidate(). WHY AN
  * INVALID TRANSFORM IS REMEMBERED RATHER THAN REJECTED. ui_transform_t can
- * express more than this renderer can draw - see ui_transform.h. Logging at
+ * express more than this renderer can draw; see ui_transform.h. Logging at
  * set time, not render time, keeps this to one log line, not one per frame. */
 void
 ui_set_transform(ui_transform_t t) {
@@ -247,7 +247,7 @@ ui_set_transform(ui_transform_t t) {
     }
     transform = t;
     transform_valid = ui_transform_is_axis_preserving(t);
-    /* Past transforms_equal()'s early return, so this IS a genuine change -
+    /* Past transforms_equal()'s early return, so this IS a genuine change;
      * see ui_layout_generation()'s comment in ui.h for what counts as one
      * and why this is the only place that gets to bump it. */
     layout_generation++;
@@ -264,7 +264,7 @@ ui_set_transform(ui_transform_t t) {
 
 /* What draw_command() (ui.c), feed_input() and ui_width()/ui_height() below
  * actually use: the transform in force, or identity for as long as it fails
- * ui_transform_is_axis_preserving() - see ui_set_transform() above. */
+ * ui_transform_is_axis_preserving(); see ui_set_transform() above. */
 ui_transform_t
 ui_effective_transform(void) {
     return transform_valid ? transform : ui_transform_identity();
@@ -304,14 +304,14 @@ ui_init(void) {
     ui_pointer_state = (ui_pointer_t){0};
     snap_rect_count = 0;
     snap_rect_overflow = false;
-    /* Explicit, not left to a zeroed static's implicit value - see
+    /* Explicit, not left to a zeroed static's implicit value; see
      * ui_layout_generation()'s comment in ui.h. 0 is simply the first value
      * a monotonic counter can have; nothing reads meaning into it beyond
      * "no genuine transform change has happened yet this run". */
     layout_generation = 0;
 
     /* Palette. Deliberately dark: this is an OLED, so black pixels are off
-     * pixels - it costs less power and looks better than a grey chrome. */
+     * pixels; it costs less power and looks better than a grey chrome. */
     ui_ctx.style->colors[MU_COLOR_WINDOWBG] = (mu_Color){0x0A, 0x0C, 0x14, 255};
     ui_ctx.style->colors[MU_COLOR_TEXT] = (mu_Color){0xE6, 0xEA, 0xF2, 255};
     ui_ctx.style->colors[MU_COLOR_BUTTON] = (mu_Color){0x16, 0x1A, 0x28, 255};
@@ -330,7 +330,7 @@ ui_init(void) {
 
 /*
  * mu_update_control() takes hover only on a frame where the button is NOT
- * held, and submits only once it has focus - the mouse's "point, then
+ * held, and submits only once it has focus: the mouse's "point, then
  * click". A touchscreen has no such sequence, so the missing frame is
  * synthesised: on the press, deliver the position alone and hold
  * button-down for the following frame.
@@ -371,7 +371,7 @@ feed_input(const input_t* input) {
 
 void
 ui_begin(const input_t* input) {
-    /* Reset before the caller can state its own - see ui.h on why style does
+    /* Reset before the caller can state its own; see ui.h on why style does
      * not persist across frames. */
     button_style = UI_BUTTON_FLAT;
     paint_only = input == NULL;
@@ -398,7 +398,7 @@ ui_end_pointer_frame(void) {
 
 /* See ui.h: the physical viewport mapped through the inverse transform. Both
  * go through one shared computation since a rect's width and height are just
- * as entangled by a quarter turn as its x and y are - deriving them
+ * as entangled by a quarter turn as its x and y are; deriving them
  * separately would mean inverting the transform twice for one answer. */
 static mu_Rect
 logical_viewport(void) {
@@ -430,7 +430,7 @@ ui_measure_text(const char* str) {
 }
 
 /* icon_walk_blocks()'s callback context: everything one emitted run needs to
- * become a mu_draw_rect() call, and nothing else - kept off the stack as an
+ * become a mu_draw_rect() call, and nothing else, kept off the stack as an
  * array only, never grown into a buffer. */
 typedef struct {
     mu_Context* c;
@@ -471,7 +471,7 @@ ui_slider_int(mu_Context* c, int* value, int lo, int hi, int step) {
     const int pn = ui_panel_spans(track, c->style->colors[MU_COLOR_BASE], c->style->colors[MU_COLOR_BORDER], panel,
                                   UI_PANEL_MAX_SPANS);
     if (pn > 0) {
-        /* Face, then the filled portion, then the border last - so the
+        /* Face, then the filled portion, then the border last, so the
          * border still frames the whole track rather than the fill
          * painting over it where the two overlap. */
         mu_draw_rect(c, panel[0].rect, panel[0].color);
@@ -494,7 +494,7 @@ ui_slider_int(mu_Context* c, int* value, int lo, int hi, int step) {
 
 /* See ui.h for the full argument. Short version: mu_begin_window_ex()
  * only seeds cnt->rect the FIRST time a title is opened, remembering it
- * forever after - correct for a desktop window manager, wrong here,
+ * forever after, correct for a desktop window manager, wrong here,
  * where a rect must track ui_width()/ui_height() every frame. So this
  * always passes the current logical canvas, then checks what the
  * container got. A stale rect from an earlier orientation is

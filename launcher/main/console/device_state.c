@@ -19,7 +19,7 @@ device_state_read(device_state_t* out) {
      * scaling (no CONFIG_PM_ENABLE), so the Kconfig value already IS the
      * running frequency, and reading it back at runtime would need
      * esp_clk_cpu_freq() from esp_hw_support's private
-     * esp_private/esp_clk.h - not a header this module should reach into
+     * esp_private/esp_clk.h, not a header this module should reach into
      * for a value that cannot actually change on this board. */
     out->cpu_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
 

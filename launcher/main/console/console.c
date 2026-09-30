@@ -1,15 +1,15 @@
 /*
- * console - see console.h. The device half: installs whichever serial
+ * console: see console.h. The device half: installs whichever serial
  * driver this build's console runs on, then blocks a dedicated task on it
  * for one verb line at a time, matched against console_shared()'s
  * registry. A line nothing there claims is queued for the frame loop
  * (console_take_unclaimed_line()) instead of being logged and dropped.
  *
- * Every verb this dispatches to only sets a flag or writes a small reply -
+ * Every verb this dispatches to only sets a flag or writes a small reply;
  * none of them draw, none call into gfx or an app. That split matters most
  * for SCREENSHOT and RUNSUITE (console_screenshot.c, console_runsuite.c):
- * there is no lock on the framebuffer, so a capture - or worse, a suite
- * that draws and presents on its own - running on this task while the
+ * there is no lock on the framebuffer, so a capture (or worse, a suite
+ * that draws and presents on its own) running on this task while the
  * render loop runs on the main one would be two tasks driving one panel.
  */
 #include "console/console.h"
@@ -109,7 +109,7 @@ console_write(const char* bytes, size_t len) {
 
 /* Protocol lines bypass stdio. The console VFS drops every byte once the
  * host has not drained the TX ring for 50 ms (TX_FLUSH_TIMEOUT_US in
- * usb_serial_jtag_vfs.c) - right for logs, fatal for a 660 KB capture,
+ * usb_serial_jtag_vfs.c), right for logs, fatal for a 660 KB capture,
  * which lost rows mid-stream on the S3. The driver call below waits
  * instead. */
 /* No single write may exceed the driver's TX ring (tx_buffer_size in
@@ -178,7 +178,7 @@ console_task(void* arg) {
         const int c = fgetc(stdin);
         if (c == EOF) {
             /* Should not happen once the driver is installed (fgetc blocks
-             * until a byte arrives) - guarded anyway so a console detached
+             * until a byte arrives); guarded anyway so a console detached
              * mid-run degrades to a slow poll instead of a spin loop. */
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
@@ -224,7 +224,7 @@ console_start(void) {
     if (err != ESP_OK) {
         /* The one most worth calling out by name: this is what happens if
          * something else already installed this driver before
-         * console_start() ran (ESP_ERR_INVALID_STATE) - silently leaving
+         * console_start() ran (ESP_ERR_INVALID_STATE), silently leaving
          * the console on its default non-blocking reader, which looks from
          * the host exactly like a request that vanished into nothing
          * rather than a boot-time failure. */
@@ -232,7 +232,7 @@ console_start(void) {
         return;
     }
 
-    /* Runs at a low priority (below touch/buttons - see input/touch.c,
+    /* Runs at a low priority (below touch/buttons; see input/touch.c,
      * input/buttons.c for their own 6/5) since it spends essentially all
      * its time blocked waiting on bytes nobody is usually sending; when a
      * line does arrive there is nothing time-critical about noticing it a

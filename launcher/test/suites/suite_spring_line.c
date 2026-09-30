@@ -1,5 +1,5 @@
 /*
- * Portable suite: spring_line.h - a row of points on springs, and above all
+ * Portable suite: spring_line.h, a row of points on springs, and above all
  * that it comes to rest, which integer physics does not do unasked.
  */
 
@@ -15,7 +15,7 @@
 #define CENTRE    100
 #define MAX_TICKS 5000
 
-/* This suite's own fixture, not what ships - the numbers these assertions
+/* This suite's own fixture, not what ships: the numbers these assertions
  * were written against. */
 #define TENSION   200
 #define STIFFNESS 2
@@ -114,8 +114,8 @@ test_the_wave_spreads_one_column_a_tick_and_evenly_both_ways(void) {
     fixture_end();
 }
 
-/* Tick to tick the sum wobbles - the two halves of a tick are a step apart
- * in time - so the claims are the ones that hold: never above where it
+/* Tick to tick the sum wobbles: the two halves of a tick are a step apart
+ * in time, so the claims are the ones that hold: never above where it
  * started, and lower every hundred ticks. */
 static void
 test_energy_never_exceeds_its_start_and_keeps_falling(void) {

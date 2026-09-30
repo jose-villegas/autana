@@ -5,7 +5,7 @@
  * starts before it and stops after it returns, so nothing here runs inside
  * setUp(), the test body, or tearDown(). That matters because a handful of
  * tests time their own subject with esp_timer_get_time() around a narrower
- * window (one call of the thing under test, say) - this must never be what
+ * window (one call of the thing under test, say); this must never be what
  * widens that window.
  *
  * The elapsed-time line is printed AFTER UnityDefaultTestRun returns, so it
@@ -39,7 +39,7 @@
 #endif
 
 /* Not pulled from unity.h: that header only declares this when RUN_TEST is
- * NOT already defined (see timing.h's top comment) - the opposite of this
+ * NOT already defined (see timing.h's top comment), the opposite of this
  * file's own situation, since it is what RUN_TEST now expands to. The real
  * definition lives in Unity's own unity.c/UnityDefaultTestRun and is
  * untouched; this is only the prototype, hand-matched to it. */
@@ -163,7 +163,7 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
     const long elapsed_ms = (clock() - started) * 1000L / CLOCKS_PER_SEC;
 #endif
 
-    /* Own sentinel line, same key=value shape as SELFTEST_COMPLETE - a new
+    /* Own sentinel line, same key=value shape as SELFTEST_COMPLETE; a new
      * line rather than an appended suffix, so the existing result line's
      * format never changes. int64_t because these range from under a
      * millisecond to the better part of eight minutes.

@@ -1,5 +1,5 @@
 /*
- * Portable suite: gfx_color_mix - blending two panel-packed pixels.
+ * Portable suite: gfx_color_mix, blending two panel-packed pixels.
  *
  * gfx_color_t is RGB565 with the bytes swapped (see gfx_color.h's own top
  * comment on GFX_RGB), so mixing it means undoing that swap, blending each
@@ -7,7 +7,7 @@
  * swap wrong still produces a plausible-looking colour rather than an
  * obviously broken one, so every expected value here is checked against
  * GFX_RGB(...) built from a hand-picked 0xRRGGBB constant, never against
- * gfx_color_mix's own round-trip - a test that reused the implementation's
+ * gfx_color_mix's own round-trip: a test that reused the implementation's
  * swap logic could carry the same bug and still pass.
  *
  * The 0xRRGGBB constants below are chosen so each 8-bit channel lands
@@ -44,7 +44,7 @@ test_t_255_returns_b_exactly(void) {
 
 static void
 test_mixing_a_colour_with_itself_is_identity_at_any_t(void) {
-    /* Not black or white - both would pass an identity test even with a
+    /* Not black or white: both would pass an identity test even with a
      * broken blend, since 0 and 0xFFFF are fixed points of most channel
      * arithmetic. */
     const gfx_color_t c = GFX_RGB(0x5C7AAF);
@@ -60,10 +60,10 @@ test_mixing_a_colour_with_itself_is_identity_at_any_t(void) {
 static void
 test_black_toward_white_at_half_gives_mid_grey(void) {
     /* Hand-derived: mr = (0*127 + 31*128 + 127) / 255 = 16, mg =
-     * (0*127 + 63*128 + 127) / 255 = 32, mb = 16 - i.e. R8=G8=B8=128
+     * (0*127 + 63*128 + 127) / 255 = 32, mb = 16, i.e. R8=G8=B8=128
      * (0x808080) once each is scaled back up by its own bucket width
      * (16*8=128, 32*4=128, 16*8=128). All three land near, not exactly on,
-     * half of their own max (15.5, 31.5, 15.5) - which is the point: a
+     * half of their own max (15.5, 31.5, 15.5), which is the point: a
      * blend that used 8-bit weights for every channel would not land here. */
     const gfx_color_t black = GFX_RGB(0x000000);
     const gfx_color_t white = GFX_RGB(0xFFFFFF);
@@ -91,7 +91,7 @@ static void
 test_channels_blend_independently_green_stays_put(void) {
     /* Same red-toward-blue pair as above, at several more t. Neither input
      * carries any green, so if channels were blended independently the
-     * result must not either at ANY t - every expected constant below has
+     * result must not either at ANY t: every expected constant below has
      * a green byte of 0x00. Picked to also sweep R and B away from the
      * t=128 case already covered: t=64 gives mr=(31*191+127)/255=23,
      * mb=(31*64+127)/255=8 (0xB80040); t=192 gives mr=(31*63+127)/255=8,
@@ -184,7 +184,7 @@ static void
 test_expanding_a_colour_twice_is_idempotent(void) {
     /* Feeding an already-expanded colour back through GFX_RGB() and
      * gfx_color_rgb888() a second time must land on exactly the same
-     * 0xRRGGBB, not merely one that happens to look right once - the
+     * 0xRRGGBB, not merely one that happens to look right once; the
      * expansion has to be a fixed point of the round trip, since the UI
      * layer reads a panel colour into an 8-bit mu_Color once and nothing
      * downstream of that is allowed to keep drifting it. */
@@ -308,7 +308,7 @@ check_covers_both_at_cell(int x, int y) {
 }
 
 /* Coverage is monotonic in alpha at a fixed cell (proved above), so testing
- * the lower of two alphas must agree with testing each and ANDing - the
+ * the lower of two alphas must agree with testing each and ANDing, the
  * property a caller folding two gfx_dither_covers() calls into one leans
  * on. Swept in steps of 17 (255 is not divisible by 17, so both endpoints
  * are still hit): a monotonic step function agreeing at every 17th value
@@ -326,7 +326,7 @@ test_covers_both_equals_covers_the_lower_alpha(void) {
 /* Why a scrim may only be applied once: gfx_fill_rect_blend() mixes into
  * the pixel it reads, so a second application over an un-repainted region
  * lands on the first one's own output. Same mix, same alpha, twice is
- * strictly darker than once, and repeating it walks the picture to black -
+ * strictly darker than once, and repeating it walks the picture to black,
  * so a caller scrims once per repaint of the backdrop, never per frame. */
 static void
 test_mixing_toward_black_twice_is_darker_than_once(void) {

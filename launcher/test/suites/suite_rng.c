@@ -1,7 +1,7 @@
 /*
  * Portable suite: the pseudo-random generator.
  *
- * Small, but everything above it leans on the two properties here - that the
+ * Small, but everything above it leans on the two properties here: that the
  * same seed replays exactly, and that the probability boundaries mean what
  * they say. A test like "shaking flattens a pile" is only reproducible because
  * of the first, and the friction model expresses "never" and "always" as 0 and

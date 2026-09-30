@@ -23,7 +23,7 @@ count_pixel(S3L_PixelInfo* p) {
 }
 
 /* A triangle spanning the full 64-row height, wide enough that every row it
- * touches covers real pixels - the worst case for a per-band re-rasterize:
+ * touches covers real pixels, the worst case for a per-band re-rasterize:
  * with no scissor it is rasterized floor to ceiling regardless of which
  * band asked for it. */
 static void
@@ -70,7 +70,7 @@ test_scissoring_to_one_band_draws_far_fewer_pixels(void) {
 }
 
 /* Splitting the same triangle into eight non-overlapping bands and summing
- * their pixel counts must reproduce the unscissored count exactly - no row
+ * their pixel counts must reproduce the unscissored count exactly: no row
  * is drawn twice, none is skipped, band mode's per-band redraw covers the
  * same picture the old single pass did. */
 static void
@@ -94,7 +94,7 @@ test_bands_sum_back_to_the_unscissored_count(void) {
 }
 
 /* A band entirely above or below the triangle's own screen extent must
- * draw nothing at all - the case a real band-mode frame hits constantly
+ * draw nothing at all: the case a real band-mode frame hits constantly
  * once triangles are binned by row range and a band skips a triangle that
  * does not reach it. */
 static void
@@ -105,7 +105,7 @@ test_a_band_outside_the_triangle_draws_nothing(void) {
                              this narrow band still lands mostly above where
                              either slanted edge has reached any width */
     draw_full_height_triangle();
-    /* Not asserting zero here - the triangle's apex does start at row 0 -
+    /* Not asserting zero here (the triangle's apex does start at row 0):
        this test's real value is the next one below, over a band clearly
        past the triangle's bottom edge. */
 

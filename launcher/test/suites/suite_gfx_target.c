@@ -1,5 +1,5 @@
 /*
- * Portable suite: gfx_target.h - the clip-and-translate arithmetic every
+ * Portable suite: gfx_target.h, the clip-and-translate arithmetic every
  * pixel-writing gfx_* primitive goes through, driven directly since the
  * header carries no ESP-IDF dependency. gfx_target_fill_rect() is
  * gfx_fill_rect()'s own body; text ultimately reduces to the same
@@ -50,7 +50,7 @@ test_a_rect_entirely_inside_the_target_is_untouched_by_clipping(void) {
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(0, full_buf[5 * WIDTH + 2], "the rect must not touch its neighbours");
 }
 
-/* A target shorter than the app's own clip rect (the band case) must win -
+/* A target shorter than the app's own clip rect (the band case) must win:
  * a caller's clip never widens what the target itself can hold. */
 static void
 test_the_targets_own_row_range_narrows_a_wider_clip(void) {
@@ -76,7 +76,7 @@ test_the_apps_clip_narrows_a_wider_target(void) {
 }
 
 /* gfx_target_row() must translate an absolute row into the target's own
- * local storage - a band target's row 0 is NOT the buffer's own row 0
+ * local storage: a band target's row 0 is NOT the buffer's own row 0
  * unless the band happens to start at the top of the screen. */
 static void
 test_row_translation_lands_in_the_bands_own_local_row(void) {
@@ -101,7 +101,7 @@ test_a_rect_straddling_a_band_edge_splits_correctly(void) {
     const gfx_target_t a = {band_a, 0, 4, WIDTH};
     const gfx_target_t b = {band_b, 4, 4, WIDTH};
 
-    /* A column at x=3, rows [2, 6) - straddles the row-4 band edge. */
+    /* A column at x=3, rows [2, 6), straddles the row-4 band edge. */
     int ax0, ay0, ax1, ay1, bx0, by0, bx1, by1;
     gfx_target_fill_rect(a, 0, 0, WIDTH, HEIGHT, 3, 2, 1, 4, (gfx_color_t)0x1111, &ax0, &ay0, &ax1, &ay1);
     gfx_target_fill_rect(b, 0, 0, WIDTH, HEIGHT, 3, 2, 1, 4, (gfx_color_t)0x1111, &bx0, &by0, &bx1, &by1);
@@ -121,7 +121,7 @@ test_a_rect_straddling_a_band_edge_splits_correctly(void) {
 
 /* Several rects, standing in for a frame's worth of UI commands (a
  * background box, a text glyph's pixels, a border), rendered once into one
- * full-height target versus once per band into N separate band targets -
+ * full-height target versus once per band into N separate band targets:
  * the union of the bands must equal the full render pixel for pixel, with
  * no row lost or drawn twice. */
 static void
@@ -170,7 +170,7 @@ test_the_union_of_all_bands_equals_the_full_target_render(void) {
 }
 
 /* A shape that never reaches a given band must be skipped, not merely
- * clipped to nothing - gfx_target_row_range_overlaps() is what a replay
+ * clipped to nothing: gfx_target_row_range_overlaps() is what a replay
  * loop checks before it bothers calling the fill at all. */
 static void
 test_row_range_overlap_rejects_a_shape_the_band_never_reaches(void) {

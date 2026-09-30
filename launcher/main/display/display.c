@@ -1,11 +1,11 @@
 /*
- * display - see display.h for the module's job and the hysteresis math.
+ * display: see display.h for the module's job and the hysteresis math.
  *
  * A real translation unit rather than static inline in the header (compare
  * ui_style.h/ui_transform.h, which are header-only because their geometry is
  * a handful of one-shot computations with no state of their own to carry
- * between calls). This module is a small state machine - the decision on
- * one call depends on where display_update() left `quarter` last time - so
+ * between calls). This module is a small state machine: the decision on
+ * one call depends on where display_update() left `quarter` last time, so
  * it gets the same treatment as gesture.c and tilt.c, the two modules this
  * one is explicitly modelled on.
  */
@@ -30,16 +30,16 @@ display_panel_corner_inset(int radius, int canvas_height, int row) {
 
 void
 display_init(display_t* d) {
-    /* 0, always - a neutral reset with no opinion about which way the
+    /* 0, always: a neutral reset with no opinion about which way the
      * board is actually held. DISPLAY_DEFAULT_QUARTER (display.h) is a
      * physical fact about THIS shell's board, not something a
-     * device-agnostic module should bake into its own idea of "reset" -
+     * device-agnostic module should bake into its own idea of "reset";
      * main.c applies it explicitly, once, right after this call. */
     d->quarter = 0;
 }
 
 /* Splits (gx, gy) into the component along quarter `q`'s own "down"
- * direction and the component perpendicular to it - see display.h's top
+ * direction and the component perpendicular to it; see display.h's top
  * comment. Mirrors the branch structure of picking a quarter from scratch:
  * quarters 0/2 read gy as the deciding axis and gx as the offender; 1/3 the
  * other way round. `*aligned` is positive when the board is still roughly
@@ -68,7 +68,7 @@ split_gravity(int q, int gx, int gy, int* aligned, int* perp) {
 
 /* Which quarter is reached by leaving `q` when `perp` (the perpendicular
  * component split_gravity() just computed for `q`) is the one driving the
- * switch - entered from whichever quarter is already current instead of
+ * switch, entered from whichever quarter is already current instead of
  * recomputed from nothing every call. */
 static int
 neighbor_quarter(int q, int perp) {
@@ -97,8 +97,8 @@ display_update(display_t* d, int gx, int gy) {
     }
 
     /* neighbor_quarter() always returns something other than d->quarter by
-     * construction - each of the four cases above maps to one of the other
-     * three - so reaching here always is a real change. */
+     * construction: each of the four cases above maps to one of the other
+     * three, so reaching here always is a real change. */
     d->quarter = neighbor_quarter(d->quarter, perp);
     return true;
 }

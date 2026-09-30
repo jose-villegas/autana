@@ -2,7 +2,7 @@
  * Portable suite: console_verbs (dispatch, registration discipline,
  * console_word_match(), console_find_clash(), the line assembler) and
  * console_latch (the frame-loop handoff), driven here with a registry and
- * latches this suite owns - never console_shared(), which only a device
+ * latches this suite owns, never console_shared(), which only a device
  * build's CONSOLE_VERB() entries ever touch. Also the input-injection and
  * app-name parsers (console_inject_parse.h, console_navigation_parse.h),
  * pure enough to run on a host.
@@ -131,7 +131,7 @@ test_name_plus_space_carries_args_without_the_verb_or_the_space(void) {
     TEST_ASSERT_EQUAL_STRING("one two", last_args);
 }
 
-/* SET must not answer to SETTLE, and TUNE must not answer to TUNES - the
+/* SET must not answer to SETTLE, and TUNE must not answer to TUNES: the
  * same pair suite_tune.c already pins one level up (util/tune.c). Proven
  * here too since this level is where the "name, or name-plus-space" rule
  * actually lives now. */
@@ -171,7 +171,7 @@ test_a_verb_answers_whatever_case_it_is_typed_in(void) {
 }
 
 /* Two names that differ only in case are one name, so the second is the
- * clash console_register() already refuses - otherwise it would register
+ * clash console_register() already refuses; otherwise it would register
  * and then never be reached, since the first one matches every line. */
 static void
 test_a_name_already_taken_in_another_case_is_refused(void) {

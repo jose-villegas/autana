@@ -1,5 +1,5 @@
 /*
- * button_fsm - raw button samples to press and release events.
+ * button_fsm: raw button samples to press and release events.
  *
  * Pure logic: no GPIO, no clock, no I2C. Samples and the current time are
  * passed in, which is what lets a 40 ms debounce be asserted instantly in a
@@ -9,7 +9,7 @@
  * The board's two buttons are not the same kind of thing, and this handles the
  * one that needs handling:
  *
- *   BOOT is a plain GPIO, so it reports a LEVEL and it bounces - a mechanical
+ *   BOOT is a plain GPIO, so it reports a LEVEL and it bounces: a mechanical
  *   contact chatters for a few milliseconds on both make and break. Reading it
  *   naively turns one press into several.
  *
@@ -32,7 +32,7 @@
  *
  * Long enough that a brisk, deliberate press never fires it by accident;
  * short enough that holding the button down does not feel like the device
- * has stopped responding. Must stay well clear of BUTTON_DEBOUNCE_US above -
+ * has stopped responding. Must stay well clear of BUTTON_DEBOUNCE_US above:
  * it times from the debounced edge, not the first raw sample, so the two
  * windows do not compete. */
 #define BUTTON_HOLD_US     (600 * 1000)
@@ -52,7 +52,7 @@ typedef struct {
     int64_t candidate_us; /* when the candidate first appeared */
     bool primed;
 
-    int64_t down_since_us; /* when `stable` last became true - the hold clock */
+    int64_t down_since_us; /* when `stable` last became true, the hold clock */
     bool hold_fired;       /* whether this press has already delivered `held` */
 
     /* Edges, true only on the update that produced them. Cleared by
@@ -70,7 +70,7 @@ void button_fsm_update(button_fsm_t* b, bool raw_down, int64_t now_us);
 bool button_fsm_is_down(const button_fsm_t* b);
 
 /* Read and clear the pending edges. Reading consumes them, so a press cannot
- * be handled twice by two different readers - the same contract touch_fsm
+ * be handled twice by two different readers, the same contract touch_fsm
  * uses, and for the same reason. */
 bool button_fsm_take_pressed(button_fsm_t* b);
 bool button_fsm_take_released(button_fsm_t* b);

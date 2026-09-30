@@ -109,7 +109,7 @@ r3d_lit_frame_use_scratch(r3d_lit_frame_t* frame, void* scratch) {
 }
 
 /* The row splitting the visible triangles in half, counting each cluster
- * at the middle of its rows - the halves are then drawn by one core each. */
+ * at the middle of its rows; the halves are then drawn by one core each. */
 static int
 balanced_split_row(const r3d_lit_frame_t* frame, int visible) {
     uint32_t weight[SPLIT_BUCKETS] = {0};

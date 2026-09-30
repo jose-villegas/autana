@@ -1,5 +1,5 @@
 /*
- * r3d_camera - a camera DESCRIPTION in the engine's fixed-point conventions
+ * r3d_camera: a camera DESCRIPTION in the engine's fixed-point conventions
  * (S3L_F units, angles in S3L turns), renderer-agnostic, and the two things
  * every caller placing one needs: the roll that keeps a scene's up on the
  * shell's up, and the mapping onto a non-square viewport (centre, scale,

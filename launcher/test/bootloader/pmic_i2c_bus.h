@@ -5,7 +5,7 @@
 /* A simulated two-wire bus and a small AXP2101 stand-in, behind the
  * stubs/bootloader/ gpio_ll and esp_rom declarations. It reacts to the
  * shipped bit-banging like the real chip (an ACK, a shifted-out register),
- * then separately decodes the waveform - what a test asserts against. */
+ * then separately decodes the waveform, what a test asserts against. */
 
 #define PMIC_BUS_SDA_PIN 15
 #define PMIC_BUS_SCL_PIN 14

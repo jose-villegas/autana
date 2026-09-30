@@ -15,7 +15,7 @@
  * draws, clears and presents, and must never interleave with the shell's own
  * frame loop on another task (see console.c's own top comment).
  *
- * Returns the pending request - a suite name, then any patterns - or NULL.
+ * Returns the pending request (a suite name, then any patterns) or NULL.
  * The pointer stays valid until console_runsuite_finish(), and a RUNSUITE
  * that arrives before then is refused rather than overwriting it. */
 const char* console_runsuite_take_request(void);

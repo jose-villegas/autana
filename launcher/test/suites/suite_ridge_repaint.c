@@ -262,8 +262,8 @@ test_a_strip_switch_inside_a_running_dissolve_is_sent_and_ends_on_a_full_paint(v
     assert_audit("restarted dissolve", &audit);
 }
 
-/* Once the tilting stops, the gradient catches up with the ridge - even a
- * turn of about a degree, less than it follows in one step - and every
+/* Once the tilting stops, the gradient catches up with the ridge (even a
+ * turn of about a degree, less than it follows in one step) and every
  * frame on the way is a full paint's. */
 static void
 test_the_gradient_catches_up_once_the_tilt_stops(void) {

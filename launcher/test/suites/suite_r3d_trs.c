@@ -1,5 +1,5 @@
 /*
- * Portable suite: render/r3d_trs.h - a float translation, quaternion and
+ * Portable suite: render/r3d_trs.h, a float translation, quaternion and
  * scale as one small3dlib transform. The rotation is judged by the matrix
  * small3dlib builds from it, since a rotation has more than one Euler
  * triple. The quaternions pinned below are those of two known angle triples,

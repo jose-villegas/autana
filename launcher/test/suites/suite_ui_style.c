@@ -1,11 +1,11 @@
 /*
- * Portable suite: ui_bezel_spans - the bezel's geometry and shading.
+ * Portable suite: ui_bezel_spans, the bezel's geometry and shading.
  *
  * ui_style.h splits a style into geometry (ui_bezel_spans() and ui_shade(),
  * `static inline` in the header so they link on a host with neither gfx.c nor
  * microui.c) and painting (styled_draw_frame() in ui.c, which turns the spans
  * into mu_draw_rect() calls and so cannot). This suite exercises only the
- * geometry - the same reasoning as suite_icons.c: nobody can eyeball five
+ * geometry, the same reasoning as suite_icons.c: nobody can eyeball five
  * overlapping rectangles reliably, so the shape is checked here rather than by
  * looking at the screen.
  *
@@ -27,7 +27,7 @@
 #define ROW_W 336
 #define ROW_H 64
 
-/* The launcher's own button face - see ui_init() in ui.c. */
+/* The launcher's own button face; see ui_init() in ui.c. */
 static const mu_Color FACE = {0x16, 0x1A, 0x28, 255};
 
 static mu_Rect
@@ -46,7 +46,7 @@ same_color(mu_Color a, mu_Color b) {
 }
 
 /* Rough perceived brightness, only ever used to compare two shades of one
- * colour - which is lighter is the whole question a bezel turns on. */
+ * colour: which is lighter is the whole question a bezel turns on. */
 static int
 luma(mu_Color c) {
     return c.r * 2 + c.g * 5 + c.b;
@@ -158,7 +158,7 @@ test_the_shadowed_edges_are_drawn_over_the_lit_ones(void) {
     /* The bottom span is full width and comes after the left span, which is
      * full height, so it owns the bottom-left corner; the right span owns the
      * top-right the same way. Both corners therefore come out shadowed, which
-     * is the classic bevel - see ui_bezel_spans, which explains why the edges
+     * is the classic bevel; see ui_bezel_spans, which explains why the edges
      * overlap rather than being mitred. */
     TEST_ASSERT_EQUAL_INT_MESSAGE(ROW_W, s[3].rect.w, "the bottom edge must span the full width to reach the corner");
     TEST_ASSERT_EQUAL_INT_MESSAGE(ROW_H, s[4].rect.h, "the right edge must span the full height to reach the corner");
@@ -170,7 +170,7 @@ test_the_shadowed_edges_are_drawn_over_the_lit_ones(void) {
 /*
  * The panel
  *
- * ui_panel_spans() is ui_bezel_spans()'s sibling for a section frame - see
+ * ui_panel_spans() is ui_bezel_spans()'s sibling for a section frame; see
  * ui_style.h's "The panel" section. Same reasoning as the bezel tests above:
  * pure geometry, checked directly rather than by eyeballing five rects.
  */
@@ -261,7 +261,7 @@ test_panel_a_buffer_too_small_produces_nothing(void) {
 /*
  * Text styles
  *
- * ui_text_passes() is ui_bezel_spans()'s sibling for text - see ui_style.h's
+ * ui_text_passes() is ui_bezel_spans()'s sibling for text; see ui_style.h's
  * "Text" section for the reasoning. Same approach here: nobody can eyeball
  * nine overlapping text draws either, so the passes are checked directly
  * rather than by rendering anything.

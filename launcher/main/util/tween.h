@@ -1,13 +1,13 @@
 /*
- * tween - timeline ramps, easing and lerps, in one place.
+ * tween: timeline ramps, easing and lerps, in one place.
  *
  * Pulled out of boot_anim.h, where every one of these was hand-rolled first:
  * a millisecond ramp to a 0..255 fraction, an ease-out curve applied to one,
  * and an "a plus (b minus a) times a fraction over 255" lerp repeated at
  * something like a dozen call sites. boot_anim.c is a one-shot five-second
  * sequence, but it will not stay the only thing in this tree animating a
- * value over time - an app's own intro or a transition is the same problem
- * again - so this is where that vocabulary lives now, not copied a second
+ * value over time (an app's own intro or a transition is the same problem
+ * again), so this is where that vocabulary lives now, not copied a second
  * time into the next place that needs it.
  *
  * `static inline`, like fixed.h next to it: nothing here is expensive enough
@@ -19,8 +19,8 @@
  * tween_ramp() takes plain uint32_t milliseconds rather than a fixed-point
  * time, because every caller so far has a wall-clock timestamp already
  * (esp_timer_get_time(), scaled to ms) and nothing here needs sub-millisecond
- * precision. The OUTPUT fraction is Q0 - a uint8_t, 0..255 standing for
- * 0.0..1.0 - deliberately coarser than the Q12/Q16.16 this tree uses
+ * precision. The OUTPUT fraction is Q0 (a uint8_t, 0..255 standing for
+ * 0.0..1.0), deliberately coarser than the Q12/Q16.16 this tree uses
  * elsewhere: a choreography fraction only ever multiplies something and gets
  * divided by 255 again, so nothing is lost by keeping it in a single byte,
  * and a single byte is what threads cleanly through boot_anim.h's existing
@@ -56,13 +56,13 @@ tween_ease_out(uint8_t linear) {
     return (uint8_t)(255u - (left * left) / 255u);
 }
 
-/* Slow off the mark, fast by the end - mirror of tween_ease_out() above.
+/* Slow off the mark, fast by the end, mirror of tween_ease_out() above.
  * That belongs on motion arriving somewhere (slowing as it gets there);
- * this belongs on motion LEAVING somewhere it sat still - a swell
+ * this belongs on motion LEAVING somewhere it sat still, a swell
  * easing down off its own peak. Composed back to back (ease_out then
  * ease_in) the curves meet with a matching, near-zero rate of change,
  * reading as one smooth apex rather than a flat hold with a corner at
- * each end - the whole reason this exists over reusing tween_ease_out()
+ * each end, the whole reason this exists over reusing tween_ease_out()
  * for both halves. */
 static inline uint8_t
 tween_ease_in(uint8_t linear) {
@@ -70,8 +70,8 @@ tween_ease_in(uint8_t linear) {
 }
 
 /* a, at u8 = 0; b, at u8 = 255; linear between. The shape "interpolate
- * toward a target" recurs in this tree - a position lerping to a settle
- * point, an angle turning to a camera's end, a growing length - worth
+ * toward a target" recurs in this tree (a position lerping to a settle
+ * point, an angle turning to a camera's end, a growing length), worth
  * naming once rather than re-deriving `a + (b - a) * u8 / 255`
  * everywhere. int64_t through the widening fx_mul_floor() insists on:
  * (b - a) can be tens of thousands, a naive int32_t product won't

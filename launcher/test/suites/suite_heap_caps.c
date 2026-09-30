@@ -1,5 +1,5 @@
 /*
- * Host-only: heap_arena.c's heap_caps_* pools - a device build has the real
+ * Host-only: heap_arena.c's heap_caps_* pools; a device build has the real
  * allocator.
  */
 

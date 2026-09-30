@@ -8,13 +8,13 @@
 
 #include "gfx/gfx_font_roles.h"
 
-/* gfx_font_ui() - the UI/body-text role */
+/* gfx_font_ui(): the UI/body-text role */
 
 /* Pointer identity, not a field-by-field comparison: gfx_font_ui() promises
  * to hand back gfx_font_8x8 itself, the one instance every drawing path
  * already reads its atlas/metrics from, not a copy that merely looks the
  * same today. A copy would still pass a field comparison while breaking the
- * whole point of a compile-time role - see gfx_font_roles.h's own "static
+ * whole point of a compile-time role; see gfx_font_roles.h's own "static
  * inline" reasoning. */
 static void
 test_ui_role_is_the_shipped_8x8_font(void) {
@@ -26,7 +26,7 @@ test_ui_role_is_the_shipped_8x8_font(void) {
 }
 
 /* gfx_font_ui() takes no arguments, so calling it twice must be provably
- * idempotent - the only way a `static inline` accessor like this could ever
+ * idempotent: the only way a `static inline` accessor like this could ever
  * disagree with itself is a stray global it should not have. */
 static void
 test_ui_role_is_stable_across_calls(void) {
