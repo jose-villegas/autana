@@ -1,6 +1,6 @@
 # Flashing and Toolchain
 
-Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 - see
+Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8; see
 [`README.md`](README.md) for the full set.
 
 ---
@@ -9,7 +9,7 @@ Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 - see
 
 **The chip only accepts auto-reset while an app is actively running.** Once
 firmware returns from `app_main` and goes idle, reset signalling stops working
-entirely — `Hard resetting via RTS pin` does nothing, esptool reports
+entirely: `Hard resetting via RTS pin` does nothing, esptool reports
 `No serial data received`, and manual DTR/RTS pulses produce zero bytes.
 
 This is why the launcher's frame loop never exits, and why its error paths park
@@ -17,7 +17,7 @@ in a sleep loop rather than returning from `app_main`: the device has to stay
 flashable even when startup fails.
 
 If the board becomes unreachable, BOOT has to be held at the moment power
-arrives - so what produces that moment decides the procedure.
+arrives; so what produces that moment decides the procedure.
 
 | # | No battery fitted | Battery fitted |
 |---|---|---|
@@ -42,30 +42,30 @@ Connecting almost instantly (a few dots) means the chip is sitting in the
 bootloader.
 
 From there `autana flash` writes the image and ends with esptool's RTS
-reset. What a flash proves - esptool's hash check and the build's
-`BUILD_ID`, not the boot - and the whole hand-off under the device lock are
+reset. What a flash proves; esptool's hash check and the build's
+`BUILD_ID`, not the boot; and the whole hand-off under the device lock are
 in [Flash-and-Captures.md](../tools/Flash-and-Captures.md#what-a-flash-proves).
 
 The RTS reset is a warm reset, so the bootloader's PMIC restart (below)
 power-cycles the SoC: USB drops and comes back, possibly on a **different
-COM number**. Nothing depends on the number - `device.py` finds the board by
+COM number**. Nothing depends on the number; `device.py` finds the board by
 its USB serial number and looks the port up again before every open. The
 first open after the drop can get the old handle, which reads nothing; only
 `reset --capture` and `selftest` reopen a silent handle, and `selftest` and
 `batch` check the console `BUILD_ID` against the flashed image.
 
-If it vanishes from USB entirely — no COM port, no device at vendor ID
-`0x303A` — check
+If it vanishes from USB entirely: no COM port, no device at vendor ID
+`0x303A`, check
 the cable first, then the PWR button: this board's power is managed by an
 **AXP2101 PMIC**, so a long press cuts system power.
 
 ### Warm resets at 120 MHz
 
-At 120 MHz PSRAM and flash, a warm reset - esptool's RTS reset, a watchdog, a
-panic, a restart - hangs in the app's PSRAM timing tuning, and repeated, it
+At 120 MHz PSRAM and flash, a warm reset; esptool's RTS reset, a watchdog, a
+panic, a restart, hangs in the app's PSRAM timing tuning, and repeated, it
 leaves the chip deaf to esptool until a power cycle; a power-on reset boots.
-The cause is not established - flash high-performance mode surviving the
-reset is as likely as PSRAM - so the fix is a workaround:
+The cause is not established; flash high-performance mode surviving the
+reset is as likely as PSRAM; so the fix is a workaround:
 `launcher/bootloader_components/pmic_cold_boot/` has the AXP2101 power-cycle
 the SoC whenever the reset was not a power-on.
 
@@ -121,12 +121,12 @@ Nothing in the tree relies on any of those today.
 - BSP component: the vendored `launcher/components/esp32_s3_touch_amoled_1_8/`,
   plus the panel drivers main declares directly to see their headers:
   `espressif/esp_lcd_co5300` (V2) and `waveshare/esp_lcd_sh8601` (original).
-- `sdkconfig.defaults` worth keeping: `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y` —
+- `sdkconfig.defaults` worth keeping: `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`;
   without it the image header says 2 MB and the bootloader warns on every boot.
 
 Console output reaches the USB CDC port because
 `CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y` makes USB-Serial-JTAG the *primary*
-console outright — this board's one USB-C port is the SoC's own native
+console outright; this board's one USB-C port is the SoC's own native
 USB-Serial/JTAG peripheral, not an external USB-UART bridge on UART0.
 ESP-IDF's own default assumes the other, more common board design (UART0
 primary, USB-Serial-JTAG a write-only secondary mirror), which would leave
@@ -155,5 +155,5 @@ figure, which quantises around any small change.
 
 ## Related
 
-- [Display-and-Rendering.md](Display-and-Rendering.md) — the render-path
+- [Display-and-Rendering.md](Display-and-Rendering.md): the render-path
   numbers these build settings affect.
