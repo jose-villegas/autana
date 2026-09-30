@@ -6,11 +6,10 @@
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
-/* Attributes run in fixed point: depth as 16.8 (65535 is nearest), colour
- * channels as 8.8, whose steepest real step - all 255 levels in one pixel -
- * is far below the clamp. Only a sliver's depth step can reach 2^22; with
- * that bound and at most a screen of steps from the triangle's own corner,
- * every sum stays inside int32. */
+/* Attributes run in fixed point: depth as 16.8, colour channels as 8.8, whose
+ * steepest real step (255 levels in one pixel) is far below the clamp. Only a
+ * sliver's depth step can reach 2^22; with that bound and at most a screen of
+ * steps from the triangle's corner, every sum stays inside int32. */
 #define ATTRIBUTES  4
 #define DEPTH_SCALE 16776960.0f /* 65535 << 8 */
 #define COLOR_SCALE 256.0f
@@ -40,12 +39,6 @@ to_step(float step) {
 static inline int32_t
 clamp_value(int32_t v, int32_t max) {
     return v < 0 ? 0 : (v > max ? max : v);
-}
-
-static inline uint16_t
-pack(int32_t r, int32_t g, int32_t b) {
-    const uint32_t native = ((uint32_t)r & 0xF800U) | (((uint32_t)g >> 5) & 0x07E0U) | ((uint32_t)b >> 11);
-    return (uint16_t)((native >> 8) | (native << 8));
 }
 
 static inline float
@@ -120,7 +113,7 @@ fill_span(const r3d_span_target_t* target, const gradients_t* g, const int32_t r
         const uint16_t zq = (uint16_t)(z >> 8);
         if (zq > depth[x]) {
             depth[x] = zq;
-            color[x] = pack(r, gg, b);
+            color[x] = r3d_span_pack(r, gg, b);
         }
         z += d[0];
         r += d[1];
@@ -290,9 +283,9 @@ static inline void
 set_flat(fill_t* f, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
     const float third = 1.0F / 3.0F;
     f->flat_z = (uint16_t)(clampf((a->z + b->z + c->z) * third, 0.0F, 1.0F) * 65535.0F);
-    f->flat_color = pack((int32_t)(clampf((a->r + b->r + c->r) * third, 0.0F, 255.0F) * COLOR_SCALE),
-                         (int32_t)(clampf((a->g + b->g + c->g) * third, 0.0F, 255.0F) * COLOR_SCALE),
-                         (int32_t)(clampf((a->b + b->b + c->b) * third, 0.0F, 255.0F) * COLOR_SCALE));
+    f->flat_color = r3d_span_pack((int32_t)(clampf((a->r + b->r + c->r) * third, 0.0F, 255.0F) * COLOR_SCALE),
+                                  (int32_t)(clampf((a->g + b->g + c->g) * third, 0.0F, 255.0F) * COLOR_SCALE),
+                                  (int32_t)(clampf((a->b + b->b + c->b) * third, 0.0F, 255.0F) * COLOR_SCALE));
 }
 
 static inline void

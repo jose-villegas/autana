@@ -19,7 +19,7 @@ them. The layers are in [Firmware-Architecture.md](Firmware-Architecture.md).
 | `r3d_span.h` | One depth-tested, Gouraud-shaded triangle filled into a window of rows, its coverage exact on 1/16-pixel positions |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex colour, meshlet clusters, a node tree |
 | `r3d_lit_pipeline.h` | The mesh's stages: view, cull, transform, draw |
-| `r3d_lit_frame.h` | One whole frame of those stages on both cores, optionally doubled to twice its size |
+| `r3d_lit_frame.h` | One whole frame of those stages on both cores, optionally doubled to twice its size; in development builds, a view of its depth |
 
 A camera that moves is an [animation track](Animation-Tracks.md), sampled
 by its caller into an eye and a look direction for `r3d_lit_view_look()`.
@@ -140,6 +140,32 @@ sequenceDiagram
     J-->>C0: job_wait()
     Note over C0,P: frame N is presented on the next pass
 ```
+
+### View modes
+
+Development builds can look at the depth a frame drew instead of its
+colour. `r3d_lit_frame_show()` runs after `r3d_lit_frame_render()` and before
+`r3d_lit_frame_double()`, and overwrites the frame's colour buffer from its
+depth buffer, which it reads as the render left it and never writes.
+
+```mermaid
+flowchart LR
+    Render["r3d_lit_frame_render()<br/><i>colour and depth</i>"] --> Show
+    Show["r3d_lit_frame_show(mode)<br/><i>colour from depth</i>"] --> Double["r3d_lit_frame_double()<br/><i>to twice the size</i>"]
+```
+
+| Mode | The colour buffer becomes |
+|---|---|
+| `R3D_LIT_VIEW_SHADED` | untouched: the baked colours as drawn |
+| `R3D_LIT_VIEW_DEPTH` | the depth as a grey ramp, nearest white and farthest black |
+| `R3D_LIT_VIEW_DEPTH_TILES` | the same ramp, each `R3D_LIT_TILE` square at its farthest depth: the value a hierarchical depth test would cull against |
+
+The ramp is stretched over the range this frame drew, so it shows the most
+detail within a frame and is not comparable between frames. A pixel nothing
+drew takes `frame->clear`, the colour doubling gives it, so it reads as empty
+in every view; a tile holding one such pixel is empty. The views are at the
+frame's own size, before doubling. `r3d_span.h` defines the depth encoding
+they read.
 
 ## Coverage and small triangles
 
