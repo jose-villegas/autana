@@ -42,34 +42,6 @@
 #include "sand_chunk_sched.h"
 #include "util/job.h"
 
-#if CONFIG_LAUNCHER_SAND_PASS_GATES
-/* SCAFFOLDING for one round, removed at the end of it by
- * scripts/strip-pass-gates.py. Volatile is load-bearing: an #if would let
- * the compiler prove the guarded work unreachable and delete the walk that
- * reaches it, which is how an earlier code-skip probe measured nothing. */
-
-/* One list. The externs below, the definitions in sand.c and the report
- * table in suite_sand_perf.c are all expansions of it, and each row's
- * printed label is its own name, so a report cannot name a gate it did
- * not read. */
-#define SAND_STEP_GATES(X)                                                                                             \
-    /* Makes gas movement removable as one priced pass. */                                                             \
-    X(gas)                                                                                                             \
-    /* Separates gas grains from the pass walk. */                                                                     \
-    X(gas_body)                                                                                                        \
-    /* Separates gas spread from the rise walk. */                                                                     \
-    X(gas_equalise)
-
-#define SAND_STEP_GATE_DECLARE(name) extern volatile bool sand_step_gate_##name;
-SAND_STEP_GATES(SAND_STEP_GATE_DECLARE)
-#undef SAND_STEP_GATE_DECLARE
-
-#define SAND_STEP_GATE(name)        if (sand_step_gate_##name)
-#define SAND_STEP_GATED(name, cond) (sand_step_gate_##name && (cond))
-#else
-#define SAND_STEP_GATE(name)
-#define SAND_STEP_GATED(name, cond) (cond)
-#endif
 #define SAND_CHUNK_SIDE_MIN (2 * SAND_LIQUID_SIGHT + 1)
 
 _Static_assert(SAND_CHUNK_SIDE_MIN > 2 * SAND_LIQUID_SIGHT,
@@ -963,13 +935,10 @@ ring_dir(int i) {
 
 static inline int
 ring_of(int dx, int dy) {
-    for (int i = 0; i < 8; i++) {
-        const int* d = ring_dir(i);
-        if (d[0] == dx && d[1] == dy) {
-            return i;
-        }
-    }
-    return 0; /* unreachable for a unit direction */
+    static const int8_t ring_index[9] = {
+        5, 4, 3, 6, -1, 2, 7, 0, 1,
+    };
+    return ring_index[(dy + 1) * 3 + dx + 1];
 }
 
 /* KIND_STATIC wall-bounce geometry for step_impulses() (sand_impulse.c). Same
