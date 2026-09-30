@@ -458,7 +458,7 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3]
     return true;
 }
 
-void
+static void
 r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c, bool constant_color, uint16_t color) {
     const r3d_span_vertex_t* v0 = a;
@@ -494,10 +494,8 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
         return;
     }
 
-    fill_t f = {rows <= FLAT_MAX_ROWS && hi_x - lo_x <= FLAT_MAX_WIDTH, constant_color, 0, color, NULL};
-    if (constant_color) {
-        f.flat = false;
-    }
+    fill_t f = {!constant_color && rows <= FLAT_MAX_ROWS && hi_x - lo_x <= FLAT_MAX_WIDTH, constant_color, 0, color,
+                NULL};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
     const int y_anchor = clampi(r3d_span_first_centre(v0->y), -1, target->row1 + 1);

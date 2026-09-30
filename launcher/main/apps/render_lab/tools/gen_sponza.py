@@ -53,9 +53,10 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / "tools"))
 from r3d import log  # noqa: E402
 from r3d.decimate import decimate  # noqa: E402
 from r3d.fetch import fetch_zip  # noqa: E402
-from r3d.geometry import compact, corner_normals, triangle_areas, weld, weld_keeping  # noqa: E402
+from r3d.geometry import compact, corner_normals, weld, weld_keeping  # noqa: E402
 from r3d.light import (  # noqa: E402
     drop_masked,
+    face_colours,
     light,
     merge_matching_colours,
     sample_albedo,
@@ -253,30 +254,20 @@ def main():
         np.savez_compressed(args.npz, pos=positions, rgb=rgb, tris=tris, double=tri_double)
 
     face_rgb = None
-    vertices_before_weld = len(positions)
     if args.flat:
-        face_rgb = np.zeros((len(tris), 3))
-        for m in range(len(names)):
-            selected = np.nonzero(tri_mat == m)[0]
-            if not len(selected):
-                continue
-            faces = tris[selected]
-            a, b, c = positions[faces[:, 0]], positions[faces[:, 1]], positions[faces[:, 2]]
-            normals = np.cross(b - a, c - a)
-            normals /= np.linalg.norm(normals, axis=1, keepdims=True)
-            centres = (a + b + c) / 3.0
-            spacing = np.sqrt(triangle_areas(positions, faces))
+        double_materials = {m for m, n in enumerate(names) if n in DOUBLE_SIDED}
+
+        def albedo_of(centres, spacing, m):
             kd = materials.get(names[m], {}).get("Kd", (1.0, 1.0, 1.0))
-            albedo = sample_albedo(centres, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd)
-            radiance = light(centres, normals, np.full(len(faces), names[m] in DOUBLE_SIDED), intersector, args, rng)
-            face_rgb[selected] = to_srgb8(albedo * radiance, args.tonemap_white)
+            return sample_albedo(centres, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd)
+
+        face_rgb = face_colours(positions, tris, tri_mat, range(len(names)), double_materials, albedo_of, intersector,
+                                args, rng)
 
     mesh = write_lit_mesh(args.out_dir, args.name, positions, rgb, tris, tri_double, banner_lines(args),
                           position_scale=POSITION_SCALE, flat=args.flat, face_rgb=face_rgb)
     log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, "
         f"{len(mesh.nodes)} nodes")
-    if args.flat:
-        log(f"flat vertices: {vertices_before_weld} before position weld, {len(mesh.pos)} after")
 
 
 def banner_lines(args):
