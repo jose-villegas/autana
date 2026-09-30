@@ -4,7 +4,7 @@
  *     main/apps/sand/tools/report_shading_palette.sh
  *
  * The 256-entry sand palette (UI block 0-15, sand 16-255) and its
- * 16-colour dithered counterpart - see docs/sand/Shading-and-Colour.md
+ * 16-colour dithered counterpart, see docs/sand/Shading-and-Colour.md
  * and shading_palette.c's own top comment for how these are chosen.
  *===========================================================================*/
 #pragma once

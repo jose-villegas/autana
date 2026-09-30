@@ -1,7 +1,7 @@
 /*
  * material_palette - what a material looks like, built once at compile time.
  *
- * Split off material.c's data half (materials[], reactions[] - see that
+ * Split off material.c's data half (materials[], reactions[], see that
  * file's own banner) because everything below is colour, not behaviour: a
  * 256-entry palette and the per-cell function app_sand.c's row painter
  * (sand_paint_row_n()) calls once per cell, every frame. Keeping it separate
@@ -506,7 +506,7 @@ static const gfx_color_t metal_grain[8] = GRAIN8_ROW(METAL_DARK, METAL_LIGHT);
 
 /* HATCHED's only effect - lifted off METAL_LIGHT for uniform highlight. */
 static const gfx_color_t metal_shine = GFX_RGB(LERP(METAL_LIGHT, 0xFFFFFF, 11));
-/* One grain row per shade step, fresh first - see ROOT_OLD above. */
+/* One grain row per shade step, fresh first, see ROOT_OLD above. */
 static const gfx_color_t root_grain[ROOT_SHADES][8] = {
     GRAIN8_ROW(ROOT_STEP(0), ROOT_STEP_LIGHT(0)),
     GRAIN8_ROW(ROOT_STEP(1), ROOT_STEP_LIGHT(1)),
@@ -523,7 +523,7 @@ static const gfx_color_t stone_edge_speckle[MATERIAL_VARIANTS][8] = {
 };
 
 #ifdef ANALYSIS_SCAN
-/* Last table is behind us - see LERP's own stub above. */
+/* Last table is behind us, see LERP's own stub above. */
 #undef LERP
 #define LERP(lo, hi, sh) LERP_RGB(lo, hi, sh)
 #endif
@@ -628,7 +628,7 @@ static const int8_t wood_leaf_ring[8][2] = {
 
 /* Recomputing fresh every frame flips right at a tie between neighbouring
  * ring directions, popping every wood cell whose top5 just changed in one
- * frame - see Shading-and-Colour.md, "hysteresis hides the seam, it does
+ * frame, see Shading-and-Colour.md, "hysteresis hides the seam, it does
  * not remove it". `*last_down` is the caller's own state, like
  * glass_last_phase. */
 void
@@ -712,7 +712,7 @@ material_set_glass_phase(int phase) {
 
 /* A short gust, not a slow ramp - a symmetric triangle read as one broad
  * pulse. WOOD_LEAF_WAVE_SCREEN_SPAN_MS is a multiple of
- * WOOD_LEAF_WAVE_PERIOD_MS so several bands show at once. `hash` salts each cell's phase - see glass's own `(hash & 0xFF)
+ * WOOD_LEAF_WAVE_PERIOD_MS so several bands show at once. `hash` salts each cell's phase, see glass's own `(hash & 0xFF)
  * + glass_phase`. */
 #define WOOD_LEAF_WAVE_PERIOD_MS        600u
 #define WOOD_LEAF_WAVE_RISE_MS          60u
@@ -844,7 +844,7 @@ sand_colours(cell_t c, uint8_t v, unsigned hash, gfx_color_t out[3]) {
     return MATERIAL_FLAT;
 }
 
-/* Switched on low nibble for identity - see MATX(). Non-grained ones take
+/* Switched on low nibble for identity, see MATX(). Non-grained ones take
  * their palette entry. Metal returns MATERIAL_HATCHED, not MATERIAL_SPECKLED
  * like the rest - the ternary below cannot express a third pattern, so it
  * gets its own early return. */

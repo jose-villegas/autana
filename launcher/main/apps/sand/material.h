@@ -12,7 +12,7 @@
  * stacks or the UI. So a cell is one byte and always will be:
  *
  *     high nibble   material, 0 meaning empty, so 15 materials
- *     low nibble    a variant - see below
+ *     low nibble    a variant, see below
  *
  * WHAT THE LOW NIBBLE MEANS DEPENDS ON THE MATERIAL
  *
@@ -28,7 +28,7 @@
  * one. Give the cell an amount and the same pair becomes 15 and 0, averages to
  * 8 and 7, and the difference spreads outward one neighbour at a time.
  *
- * For GLASS it is HEAT, 0 to 15 - see reaction_t.heat_ramp. Glass is static,
+ * For GLASS it is HEAT, 0 to 15, see reaction_t.heat_ramp. Glass is static,
  * so its nibble was a shade and nothing read it. Heat is the one piece of
  * per-cell state this simulation would otherwise have no room for: a second
  * byte across the grid is 41 KB it does not have. One material can afford it
@@ -295,7 +295,7 @@ typedef struct {
     uint8_t dissolvable;
 
     /* Overrides materials[]'s shared density for the dislodge-toughness
-     * roll (queue_flying_grain(), sand_impulse.c) - the only place an
+     * roll (queue_flying_grain(), sand_impulse.c), the only place an
      * extended static's own density matters, since every extended code
      * otherwise inherits one shared materials[] row. 0 = no override. */
     uint8_t dislodge_density;

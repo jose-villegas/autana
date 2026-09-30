@@ -9,7 +9,7 @@
  *
  * The grid is caller-owned. On this board the framebuffer already claims 322 of
  * ~424 KiB, so the app decides how coarse the grid must be to fit in what is
- * left - see apps/app_sand.c.
+ * left, see apps/app_sand.c.
  *
  * Coordinates follow the screen: x grows right, y grows DOWN. So ordinary
  * gravity is (0, +1).
@@ -33,7 +33,7 @@
 #define SAND_LAST_SHADE   CELL_MAKE(MAT_SAND, MATERIAL_VARIANTS - 1)
 
 /* Cells per block for the settled-block tracking behind
- * sand_enable_sleeping() - see the comment there. W is the knob in either
+ * sand_enable_sleeping(), see the comment there. W is the knob in either
  * orientation: every block-level rejection spans along X in units of it,
  * where H only divides rows into block rows. Narrowing W buys 12-54% on
  * every row where something moves and costs the two settled rows, which is
@@ -42,7 +42,7 @@
 #define SAND_BLOCK_W      16
 #define SAND_BLOCK_H      32
 
-/* How many persistent emitters sand_t can carry - see sand_add_emitter(). A
+/* How many persistent emitters sand_t can carry, see sand_add_emitter(). A
  * fixed cap keeps the list a small inline array; 16 is more taps than this
  * board can usefully tell apart as distinct streams. */
 #define SAND_MAX_EMITTERS 16
@@ -101,11 +101,11 @@ typedef struct sand_s {
      * answer yes, and 255 is the default. Recomputed once a step. */
     bool may_have_viscous_liquid;
 
-    /* Same idea as may_have_liquid, for gas - see sand_step_gas() in
+    /* Same idea as may_have_liquid, for gas, see sand_step_gas() in
      * sand_gas.c. */
     bool may_have_gas;
 
-    /* For anything that burns - see sand_step_reactions() in sand_reactions.c.
+    /* For anything that burns, see sand_step_reactions() in sand_reactions.c.
      * Keyed on reaction_t.burns, not kind == KIND_STATIC: stone shares that
      * kind with ember and is poured often. */
     bool may_have_burning;
@@ -288,7 +288,7 @@ void sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed);
 void sand_clear(sand_t* s);
 
 /* Record rows in caller-owned `rows` array; opt-in, useful only if acted
- * on - see gfx_mark_dirty(). Caller avoids redrawing unchanged rows and
+ * on, see gfx_mark_dirty(). Caller avoids redrawing unchanged rows and
  * sending unchanged bands, saving frame cost. Rows set to 1 and never
  * cleared here; clearing is caller's responsibility. Functions marking
  * changes: settling, spawning, sand_set, sand_clear. */
@@ -379,7 +379,7 @@ int sand_erase(sand_t* s, int cx, int cy, int radius);
  * written exactly as given, like `sand_spawn_cell()`'s `spec`. */
 bool sand_add_emitter(sand_t* s, int x, int y, cell_t cell);
 
-/* Remove every emitter within `radius` of (cx, cy) - the same disc test
+/* Remove every emitter within `radius` of (cx, cy), the same disc test
  * sand_erase() uses, so "within radius" means the same thing in both
  * places. Returns how many were removed. Does not touch the grid itself:
  * whatever an emitter already placed stays put, only the tap stops. */
@@ -399,7 +399,7 @@ bool sand_emitter_at(const sand_t* s, int i, int* x, int* y, cell_t* cell);
 
 /* Radius and decaying trigger CHANCE for a water grain's splash - a real
  * splash's reach, exaggerated so it reads clearly here. WATER ONLY, NOT
- * ACID - see acid_bubble(). A grain landing back in the liquid would
+ * ACID, see acid_bubble(). A grain landing back in the liquid would
  * otherwise re-trigger the call, so SAND_SPLASH_CHANCE_* and
  * SAND_SPLASH_RADIUS_WATER_* both step down on every trigger, independently, settling a bounce chain rather
  * than rattling on. */
@@ -450,7 +450,7 @@ bool sand_emitter_at(const sand_t* s, int i, int* x, int* y, cell_t* cell);
 #define SAND_ACID_BUBBLE_SPEED             180
 
 /* DILUTION - water touching acid rolls to decide who wins (winner boils
- * into vapour, loser converts to the winner's material - see the ladder
+ * into vapour, loser converts to the winner's material, see the ladder
  * in step_one_dissolver_cell()). Chance-in-256 that WATER wins, before
  * SAND_ACID_DILUTE_MASS_BIAS adjusts for local backing. 118, not 128:
  * SAND_ACID_DILUTE_EVAPORATE_CHANCE's 20-in-256 comes off the roll first,
@@ -630,7 +630,7 @@ void sand_set_lava_cooloff(sand_t* s, int chance);
  * this radius, not SAND_EXPLODE_CORE_DIVISOR: that divisor is shared by
  * every explosion, so retuning it for one caller would rescale detonate
  * mode and the confined-gas burst too. Smaller than gunpowder's own blast
- * radius (material.h) - the material whose whole point is to go off
+ * radius (material.h), the material whose whole point is to go off
  * should own the biggest blast, not a vessel's side effect. */
 #define SAND_LAVA_BURST_RADIUS    12
 

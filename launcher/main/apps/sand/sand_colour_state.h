@@ -48,7 +48,7 @@ sand_colour_on_start_sim(sand_colour_state_t* st, sand_colour_mode_t requested) 
         st->indexed_active = false;
         return SAND_GFX_NONE;
     }
-    st->indexed_active = true; /* optimistic - see sand_colour_grant_failed() */
+    st->indexed_active = true; /* optimistic, see sand_colour_grant_failed() */
     return SAND_GFX_ENTER_INDEXED;
 }
 
@@ -72,7 +72,7 @@ sand_colour_on_enter_menu(sand_colour_state_t* st) {
     return SAND_GFX_NONE;
 }
 
-/* Leaving the app entirely (home swipe) - the same requirement as reaching
+/* Leaving the app entirely (home swipe), the same requirement as reaching
  * the menu: whatever runs next assumes GFX_LAYOUT_FULL_FB. */
 static inline sand_gfx_action_t
 sand_colour_on_exit_app(sand_colour_state_t* st) {
@@ -96,7 +96,7 @@ static inline sand_gfx_action_t
 sand_colour_on_close_overlay(sand_colour_state_t* st) {
     if (st->indexed_suspended) {
         st->indexed_suspended = false;
-        st->indexed_active = true; /* optimistic - see sand_colour_grant_failed() */
+        st->indexed_active = true; /* optimistic, see sand_colour_grant_failed() */
         return SAND_GFX_ENTER_INDEXED;
     }
     return SAND_GFX_NONE;

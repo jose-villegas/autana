@@ -7,7 +7,7 @@
  * against a diagonal water surface - sampled at its native 4px-per-cell
  * resolution (92x112) and upscaled 2x (nearest) to the perf suite's own
  * 184x224 grid. Classified by colour: empty is near-black, water is
- * blue-dominant, sand is red-dominant - see gen_captured_slope.py for the
+ * blue-dominant, sand is red-dominant, see gen_captured_slope.py for the
  * exact thresholds. Water cells are filled to MASS_MAX.
  *=============================================================================*/
 #pragma once
