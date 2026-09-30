@@ -40,3 +40,22 @@ the poses `sponza_poses()` gives, the ones `suite_sponza_perf.c` times.
     ./launcher/tools/r3d/report_triangle_sizes.sh \
         --mesh launcher/main/apps/render_lab/sponza_mesh_generated.c:sponza_mesh -
 ```
+
+## The capybara test asset
+
+`gen_capybara.py` writes `../assets/capybara.glb`, a rigged low-poly capybara
+modelled entirely in code: 1336 triangles, 20 joints, and two looping clips at
+30 fps, `idle` (3.5 s) and an in-place `walk` (1 s, no root motion). It is a
+plain glTF 2.0 file, the input a skinned-mesh baker is tested with.
+
+```sh
+python launcher/main/apps/render_lab/tools/gen_capybara.py
+python -m unittest discover -s launcher/main/apps/render_lab/tools/tests
+```
+
+The file is read back and posed with the engine's glTF tools in
+[`launcher/tools/r3d/`](../../../../tools/r3d/README.md); to watch it:
+
+```sh
+python launcher/tools/r3d/gltf_preview.py launcher/main/apps/render_lab/assets/capybara.glb --gif walk --out walk.gif
+```
