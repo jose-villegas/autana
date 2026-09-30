@@ -2121,7 +2121,7 @@ test_a_full_screen_of_fire_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("full-screen fire", per_step, 68750, 79070);
+    perf_target("full-screen fire", per_step, 68040, 78246);
 }
 
 /* Four liquids of different density painted upside down
@@ -2281,7 +2281,7 @@ test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget(void) {
                                              "at the end of the window - steam condensing into water loses three "
                                              "cells a patch, but losing an appreciable fraction of the board "
                                              "means it decayed into something else");
-    perf_target("smoke and steam", per_step, 85970, 98870);
+    perf_target("smoke and steam", per_step, 85040, 97796);
 }
 
 /* 480 glass compartments (build_thermal_shock_scene(), shared with
