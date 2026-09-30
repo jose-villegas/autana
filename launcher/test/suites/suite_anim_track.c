@@ -1,0 +1,171 @@
+/*
+ * Portable suite: anim/anim_track - what a track returns at, before and
+ * after its keys, whatever it will later drive. Every track is built here.
+ * That the baker's output and the Python sampler agree with it is
+ * tools/tests/test_anim_bake.py.
+ */
+
+#include <math.h>
+#include <stdint.h>
+
+#include "suites.h"
+#include "unity.h"
+
+#include "anim/anim_track.h"
+
+#define EPSILON 1e-5F
+
+static const float TIMES[] = {0.0F, 1.0F, 3.0F};
+
+static anim_track_t
+scalar_track(const float* values, anim_interp_t interp) {
+    return (anim_track_t){TIMES, values, 3, 1, (uint8_t)interp, 0};
+}
+
+static void
+test_a_linear_track_lerps_between_its_keys(void) {
+    const float values[] = {0.0F, 10.0F, 30.0F};
+    const anim_track_t track = scalar_track(values, ANIM_LINEAR);
+    float out[ANIM_WIDTH_MAX];
+    anim_track_sample(&track, 500, ANIM_CLAMP, out);
+    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 5.0F, out[0]);
+    anim_track_sample(&track, 2000, ANIM_CLAMP, out);
+    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 20.0F, out[0]);
+}
+
+static void
+test_a_step_track_holds_a_value_until_the_next_key(void) {
+    const float values[] = {1.0F, 2.0F, 3.0F};
+    const anim_track_t track = scalar_track(values, ANIM_STEP);
+    float out[ANIM_WIDTH_MAX];
+    anim_track_sample(&track, 999, ANIM_CLAMP, out);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, out[0]);
+    anim_track_sample(&track, 1000, ANIM_CLAMP, out);
+    TEST_ASSERT_EQUAL_FLOAT(2.0F, out[0]);
+}
+
+static void
+test_a_clamped_track_holds_its_ends(void) {
+    const float values[] = {4.0F, 10.0F, 30.0F};
+    const anim_track_t track = scalar_track(values, ANIM_LINEAR);
+    float out[ANIM_WIDTH_MAX];
+    anim_track_sample(&track, 3000, ANIM_CLAMP, out);
+    TEST_ASSERT_EQUAL_FLOAT(30.0F, out[0]);
+    anim_track_sample(&track, 90000, ANIM_CLAMP, out);
+    TEST_ASSERT_EQUAL_FLOAT(30.0F, out[0]);
+    anim_track_sample(&track, 0, ANIM_CLAMP, out);
+    TEST_ASSERT_EQUAL_FLOAT(4.0F, out[0]);
+}
+
+static void
+test_a_looped_track_wraps_at_its_last_key(void) {
+    const float values[] = {0.0F, 10.0F, 30.0F};
+    const anim_track_t track = scalar_track(values, ANIM_LINEAR);
+    float out[ANIM_WIDTH_MAX];
+    anim_track_sample(&track, 3500, ANIM_LOOP, out);
+    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 5.0F, out[0]);
+    anim_track_sample(&track, 3000 * 7 + 2000, ANIM_LOOP, out);
+    TEST_ASSERT_FLOAT_WITHIN(EPSILON * 20.0F, 20.0F, out[0]);
+}
+
+static void
+test_time_counts_from_the_first_key_not_from_zero(void) {
+    const float times[] = {2.0F, 4.0F};
+    const float values[] = {0.0F, 8.0F};
+    const anim_track_t track = {times, values, 2, 1, ANIM_LINEAR, 0};
+    float out[ANIM_WIDTH_MAX];
+    anim_track_sample(&track, 1000, ANIM_CLAMP, out);
+    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 4.0F, out[0]);
+    anim_track_sample(&track, 3000, ANIM_LOOP, out);
+    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 4.0F, out[0]);
+}
+
+static void
+test_a_single_key_track_is_that_value_always(void) {
+    const float times[] = {0.0F};
+    const float values[] = {7.0F};
+    const anim_track_t track = {times, values, 1, 1, ANIM_LINEAR, 0};
+    float out[ANIM_WIDTH_MAX];
+    anim_track_sample(&track, 12345, ANIM_LOOP, out);
+    TEST_ASSERT_EQUAL_FLOAT(7.0F, out[0]);
+}
+
+static void
+test_a_cubic_track_leaves_and_arrives_at_its_tangents(void) {
+    /* Keys (0, tangent 0) and (1, tangent 0) make the smoothstep: the
+     * midpoint is half way, and a quarter in is 5/32 of the way. */
+    const float times[] = {0.0F, 1.0F};
+    const float values[] = {0.0F, 0.0F, 0.0F, 0.0F, 8.0F, 0.0F};
+    const anim_track_t track = {times, values, 2, 1, ANIM_CUBIC, 0};
+    float out[ANIM_WIDTH_MAX];
+    anim_track_sample(&track, 500, ANIM_CLAMP, out);
+    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 4.0F, out[0]);
+    anim_track_sample(&track, 250, ANIM_CLAMP, out);
+    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 8.0F * 0.15625F, out[0]);
+}
+
+static void
+test_a_cubic_tangent_is_per_second_so_a_longer_segment_covers_the_same_shape(void) {
+    /* A value going 0 to 6 with slope 3 per second both ways, over 2 s, is a line. */
+    const float times[] = {0.0F, 2.0F};
+    const float values[] = {3.0F, 0.0F, 3.0F, 3.0F, 6.0F, 3.0F};
+    const anim_track_t track = {times, values, 2, 1, ANIM_CUBIC, 0};
+    float out[ANIM_WIDTH_MAX];
+    anim_track_sample(&track, 500, ANIM_CLAMP, out);
+    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 1.5F, out[0]);
+}
+
+static void
+test_a_quaternion_track_turns_the_short_way_at_constant_speed(void) {
+    const float half = sqrtf(0.5F);
+    /* Identity to 90 degrees about z, the second key stored negated. */
+    const float times[] = {0.0F, 1.0F};
+    const float values[] = {0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, -half, -half};
+    const anim_track_t track = {times, values, 2, 4, ANIM_LINEAR, 1};
+    float q[ANIM_WIDTH_MAX];
+    anim_track_sample(&track, 500, ANIM_CLAMP, q);
+    const float eighth_turn_sine = sinf(0.3926991F); /* sine of 22.5 degrees, half the 45 the slerp is at */
+    TEST_ASSERT_FLOAT_WITHIN(EPSILON, eighth_turn_sine, fabsf(q[2]));
+    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 1.0F, sqrtf((q[0] * q[0]) + (q[1] * q[1]) + (q[2] * q[2]) + (q[3] * q[3])));
+}
+
+static void
+test_rotating_by_a_quaternion_turns_a_vector(void) {
+    const float half = sqrtf(0.5F);
+    const float about_y[4] = {0.0F, half, 0.0F, half}; /* 90 degrees about +y */
+    const float ahead[3] = {0.0F, 0.0F, -1.0F};
+    float out[3];
+    anim_quat_rotate(about_y, ahead, out);
+    TEST_ASSERT_FLOAT_WITHIN(EPSILON, -1.0F, out[0]);
+    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 0.0F, out[1]);
+    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 0.0F, out[2]);
+}
+
+static void
+test_a_track_of_any_width_fills_that_many_values(void) {
+    const float times[] = {0.0F, 1.0F};
+    const float values[] = {0.0F, 10.0F, 20.0F, 30.0F, 1.0F, 11.0F, 21.0F, 31.0F};
+    const anim_track_t track = {times, values, 2, 4, ANIM_LINEAR, 0};
+    float out[ANIM_WIDTH_MAX];
+    anim_track_sample(&track, 500, ANIM_CLAMP, out);
+    for (int i = 0; i < 4; i++) {
+        TEST_ASSERT_FLOAT_WITHIN(EPSILON, (10.0F * (float)i) + 0.5F, out[i]);
+    }
+}
+
+void
+suite_anim_track(void) {
+    RUN_TEST(test_a_linear_track_lerps_between_its_keys);
+    RUN_TEST(test_a_step_track_holds_a_value_until_the_next_key);
+    RUN_TEST(test_a_clamped_track_holds_its_ends);
+    RUN_TEST(test_a_looped_track_wraps_at_its_last_key);
+    RUN_TEST(test_time_counts_from_the_first_key_not_from_zero);
+    RUN_TEST(test_a_single_key_track_is_that_value_always);
+    RUN_TEST(test_a_cubic_track_leaves_and_arrives_at_its_tangents);
+    RUN_TEST(test_a_cubic_tangent_is_per_second_so_a_longer_segment_covers_the_same_shape);
+    RUN_TEST(test_a_quaternion_track_turns_the_short_way_at_constant_speed);
+    RUN_TEST(test_rotating_by_a_quaternion_turns_a_vector);
+    RUN_TEST(test_a_track_of_any_width_fills_that_many_values);
+}
+
+SUITE_REGISTER(suite_anim_track);

@@ -33,6 +33,7 @@ set(app_srcs
     "ui/ui_ridge.c"
     "ui/ui_scroll.c"
     "ui/ui_widgets.c"
+    "anim/anim_track.c"
     "render/r3d_lit_frame.c"
     "render/r3d_lit_pipeline.c"
     "render/r3d_path.c"

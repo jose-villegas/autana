@@ -125,6 +125,7 @@ $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/post_layout.c
 $MAIN_DIR/util/job.c
+$MAIN_DIR/anim/anim_track.c
 $MAIN_DIR/render/r3d_lit_frame.c
 $MAIN_DIR/render/r3d_lit_pipeline.c
 $MAIN_DIR/render/r3d_path.c

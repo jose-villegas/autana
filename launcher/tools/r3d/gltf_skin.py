@@ -4,8 +4,9 @@ Standard library only, so asset tests and bakers can share it without the
 pinned environment. It covers what a skinned mesh uses: accessors (any
 component type, normalized or not, strided or packed), the node tree's TRS,
 the first skinned primitive (normals and indices optional), animation
-channels on translation/rotation/scale with LINEAR or STEP samplers, and
-linear-blend skinning.
+channels on translation/rotation/scale with LINEAR, STEP or CUBICSPLINE
+samplers (also read for any glTF animation by tools/anim/, pointer-targeted
+channels included), and linear-blend skinning.
 """
 
 import json
@@ -135,6 +136,61 @@ def quat_slerp(a, b, t):
     return tuple(x / norm for x in out)
 
 
+def sample_keys(times, values, time, interpolation="LINEAR", quaternion=False):
+    """One glTF animation sampler evaluated at `time` seconds, clamped at
+    both ends. `values` holds one tuple per key, or for CUBICSPLINE three per
+    key: in-tangent, value, out-tangent."""
+    cubic = interpolation == "CUBICSPLINE"
+    value = (lambda k: values[3 * k + 1]) if cubic else (lambda k: values[k])
+    if time <= times[0] or len(times) == 1:
+        return value(0)
+    if time >= times[-1]:
+        return value(len(times) - 1)
+    hi = next(i for i, t in enumerate(times) if t >= time)
+    lo = hi - 1
+    if interpolation == "STEP":
+        return value(lo)
+    dt = times[hi] - times[lo]
+    s = (time - times[lo]) / dt
+    if cubic:
+        s2, s3 = s * s, s * s * s
+        out = tuple(
+            (2 * s3 - 3 * s2 + 1) * p0 + (s3 - 2 * s2 + s) * dt * m0
+            + (-2 * s3 + 3 * s2) * p1 + (s3 - s2) * dt * m1
+            for p0, m0, p1, m1 in zip(
+                values[3 * lo + 1], values[3 * lo + 2],
+                values[3 * hi + 1], values[3 * hi]
+            )
+        )
+        if quaternion:
+            norm = math.sqrt(sum(x * x for x in out))
+            out = tuple(x / norm for x in out)
+        return out
+    if quaternion:
+        return quat_slerp(values[lo], values[hi], s)
+    return tuple(a + (b - a) * s for a, b in zip(values[lo], values[hi]))
+
+
+def read_animation(document, binary, animation):
+    """The channels of one animation dict: each a dict with `node` (None for a
+    pointer channel), `path`, `pointer` (None unless one), `interpolation`,
+    `times` and `values`."""
+    channels = []
+    for channel in animation["channels"]:
+        sampler = animation["samplers"][channel["sampler"]]
+        target = channel["target"]
+        pointer = target.get("extensions", {}).get("KHR_animation_pointer", {}).get("pointer")
+        channels.append({
+            "node": target.get("node"),
+            "path": target["path"],
+            "pointer": pointer,
+            "interpolation": sampler.get("interpolation", "LINEAR"),
+            "times": [t[0] for t in read_accessor(document, binary, sampler["input"])],
+            "values": read_accessor(document, binary, sampler["output"]),
+        })
+    return channels
+
+
 class SkinnedAsset:
     """The first skinned mesh primitive of a glTF document, poseable."""
 
@@ -204,25 +260,12 @@ class SkinnedAsset:
             times = [t[0] for t in self._read(sampler["input"])]
             values = self._read(sampler["output"])
             path = channel["target"]["path"]
-            pose[channel["target"]["node"]][path] = self._interpolate(
-                times, values, time, path, sampler.get("interpolation", "LINEAR")
+            if "node" not in channel["target"] or path not in ("translation", "rotation", "scale"):
+                continue
+            pose[channel["target"]["node"]][path] = sample_keys(
+                times, values, time, sampler.get("interpolation", "LINEAR"), path == "rotation"
             )
         return pose
-
-    @staticmethod
-    def _interpolate(times, values, time, path, interpolation):
-        if time <= times[0]:
-            return values[0]
-        if time >= times[-1]:
-            return values[-1]
-        hi = next(i for i, t in enumerate(times) if t >= time)
-        lo = hi - 1
-        if interpolation == "STEP":
-            return values[lo]
-        t = (time - times[lo]) / (times[hi] - times[lo])
-        if path == "rotation":
-            return quat_slerp(values[lo], values[hi], t)
-        return tuple(a + (b - a) * t for a, b in zip(values[lo], values[hi]))
 
     def world_matrices(self, pose):
         world = [None] * len(pose)
