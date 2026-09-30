@@ -54,7 +54,7 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 | Buffer | 322 KiB, PSRAM | 2 x `GFX_BAND_HEIGHT` rows, DMA RAM | grid_w x grid_h bytes, internal RAM |
 | Who sends | present task | gfx, from the shell's frame loop | present task |
 | Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole |
-| Content kept between frames | yes | **no** - a band is gone once sent | yes |
+| Content kept between frames | yes | **no**: a band is gone once sent | yes |
 | For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette |
 | Used by | the launcher, any microui screen | a software 3D renderer | a frame that is a grid of palette indices |
 
@@ -75,7 +75,7 @@ pixel hot paths. One tracker serves all three modes.
 
 Two ways in. `dirty_mark()` takes a real box and may narrow a cell; the
 rect and blit primitives use it, so a glyph dirties the glyph. `mark_band()`
-takes rows only and has to claim every column at full width - what
+takes rows only and has to claim every column at full width: what
 `gfx_pixel()` and `gfx_clear()`'s full path are left with.
 
 ```
@@ -95,13 +95,13 @@ takes rows only and has to claim every column at full width - what
 |---|---|---|---|
 | strip | 368 x `STRIP_HEIGHT` (64), `STRIP_COUNT` = 7 | - | - |
 | cell | `COL_WIDTH` (92) x 64, `GRID_COLS` = 4 per strip | one bit + a box | every mark |
-| leaf | `LEAF_W` (23) x `LEAF_H` (16) | one bit | a real box only - never `mark_band()` |
+| leaf | `LEAF_W` (23) x `LEAF_H` (16) | one bit | a real box only, never `mark_band()` |
 
 | Caller | What it must do |
 |---|---|
-| any `gfx_*` draw call | nothing - it marks what it touched |
-| `gfx_clear()` | nothing - marks the whole screen |
-| writes through `gfx_framebuffer()` or `gfx_indexed_image()` | **`gfx_mark_dirty()` the rectangle** - a miss looks like a frozen region, not a crash |
+| any `gfx_*` draw call | nothing: it marks what it touched |
+| `gfx_clear()` | nothing: marks the whole screen |
+| writes through `gfx_framebuffer()` or `gfx_indexed_image()` | **`gfx_mark_dirty()` the rectangle**: a miss looks like a frozen region, not a crash |
 | static overlay content | ask `gfx_region_dirty()`; if false, skip the draw and the send |
 
 ## Present: what gets sent
@@ -171,8 +171,8 @@ The wait is mandatory: DMA is still reading the buffer until it returns.
 
 ## The band ring
 
-A picture is either **persistent** - a framebuffer or index image read by gfx
-on core 1 after `frame()` - or **transient** - an app's `draw_band` callback,
+A picture is either **persistent**, a framebuffer or index image read by gfx
+on core 1 after `frame()`, or **transient**, an app's `draw_band` callback,
 called for each dirty band. gfx owns every send. A transient app requests
 `GFX_LAYOUT_BANDS` in `enter()` and supplies `draw_band`; gfx calls it once
 per dirty band, replays the UI over it, then submits the finished band.
@@ -218,8 +218,8 @@ sequenceDiagram
 
 ## Indexed mode
 
-The app writes bytes into `gfx_indexed_image()` - row-major,
-`index_grid_w` per row - and marks the matching panel rectangle dirty; cell
+The app writes bytes into `gfx_indexed_image()`, row-major,
+`index_grid_w` per row, and marks the matching panel rectangle dirty; cell
 (cx, cy) covers `cell_size` x `cell_size` panel pixels. It then presents with
 the same `gfx_present_begin()` / `gfx_present_wait()` as the default mode.
 
@@ -260,7 +260,7 @@ same window sent again fails the same way.
 | `gfx_heal_mark()` | queue rows; `x` and `w` are ignored |
 | `gfx_heal_set_budget()` | pixels of heal per present, default `GFX_HEAL_DEFAULT_BUDGET_PIXELS` |
 | `gfx_heal_set_rolling()` | rows per present of a whole-screen sweep, 0 for none |
-| `gfx_heal_restore_defaults()` | empty the queue, reset both - the shell calls it on every app switch |
+| `gfx_heal_restore_defaults()` | empty the queue, reset both; the shell calls it on every app switch |
 
 Band mode heals nothing, the same as the slow clock: a band is gone once
 sent, so gfx holds nothing to resend.
@@ -282,7 +282,7 @@ Both are pure headers, loud on development and host builds, silent on release.
 | Guard | Catches | On release |
 |---|---|---|
 | `gfx_present_guard.h` | a `gfx_*` call between `gfx_present_begin()` and `gfx_present_wait()` | compiled out |
-| `gfx_fb_guard.h` | a draw with no live target - band mode between bands, or after the framebuffer was freed | the draw is a no-op, never a NULL write |
+| `gfx_fb_guard.h` | a draw with no live target: band mode between bands, or after the framebuffer was freed | the draw is a no-op, never a NULL write |
 
 ## Readback
 
@@ -305,8 +305,8 @@ checkboxes toggle them.
 |---|---|
 | `gfx_set_debug_overlay()` | outlines what was sent: cyan a full strip, yellow a gathered run |
 | `gfx_set_leaf_overlay()` | green outlines of the leaves marked this frame |
-| `gfx_set_send_audit()` | PSRAM shadow of every pixel sent, compared after each present - the tool for panel-link faults a screenshot cannot see |
-| (both overlays) | every present path; a border lasts one present, then its strip is resent clean - in band mode, by `gfx_band_dirty()` asking the app for the band once more |
+| `gfx_set_send_audit()` | PSRAM shadow of every pixel sent, compared after each present, the tool for panel-link faults a screenshot cannot see |
+| (both overlays) | every present path; a border lasts one present, then its strip is resent clean, in band mode, by `gfx_band_dirty()` asking the app for the band once more |
 | `gfx_get_strip_send_counts()` | full / gathered / partial counts since the last reset |
 | `gfx_get_bytes_sent()`, `gfx_get_heal_bytes_sent()` | bytes queued, and heal's share |
 
@@ -314,7 +314,7 @@ Frame stage timing is described in [`tools/Frame-Cost.md`](tools/Frame-Cost.md).
 
 ## Related
 
-- [`Building-an-App.md`](Building-an-App.md) - when the shell presents, and `update()`
-- [`Firmware-Architecture.md`](Firmware-Architecture.md) - why one framebuffer, one frame loop
-- [`notes/Display-and-Rendering.md`](notes/Display-and-Rendering.md) - the measurements and the bugs behind each mechanism
-- [`plans/Autana-Rendering-Roadmap.md`](plans/Autana-Rendering-Roadmap.md) - where this is going
+- [`Building-an-App.md`](Building-an-App.md): when the shell presents, and `update()`
+- [`Firmware-Architecture.md`](Firmware-Architecture.md): why one framebuffer, one frame loop
+- [`notes/Display-and-Rendering.md`](notes/Display-and-Rendering.md): the measurements and the bugs behind each mechanism
+- [`plans/Autana-Rendering-Roadmap.md`](plans/Autana-Rendering-Roadmap.md): where this is going

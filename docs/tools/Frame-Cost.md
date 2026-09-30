@@ -33,6 +33,6 @@ brackets compile to nothing.
 
 ## Related
 
-- [`../Build-Variants.md`](../Build-Variants.md) - development and release instrumentation
-- [`../Firmware-Architecture.md`](../Firmware-Architecture.md) - the shell frame loop
-- [`../Gfx-and-Presentation.md`](../Gfx-and-Presentation.md) - gfx send counters and overlays
+- [`../Build-Variants.md`](../Build-Variants.md): development and release instrumentation
+- [`../Firmware-Architecture.md`](../Firmware-Architecture.md): the shell frame loop
+- [`../Gfx-and-Presentation.md`](../Gfx-and-Presentation.md): gfx send counters and overlays

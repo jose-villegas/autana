@@ -66,8 +66,8 @@ An app's frame-budget capture script lives in its own `tools/` and writes
 under its own `tools/results/`. Each report script declares what it wants
 and hands the work to `launcher/tools/device/device_report.sh`, which
 builds the diagnostics variant and then flashes it and captures the run
-under one held lock - through `autana selftest` for a report on every
-suite, or `autana suite --runs 1 --flash` for a report on one - writes a
+under one held lock, through `autana selftest` for a report on every
+suite, or `autana suite --runs 1 --flash` for a report on one, writes a
 markdown report, and reflashes the release firmware afterwards unless given
 `--no-restore`. Like every other `autana` command it never runs a
 checkout's own `scripts/device/device.py` directly (see
@@ -75,11 +75,11 @@ checkout's own `scripts/device/device.py` directly (see
 script takes its
 board from its own `--board SERIAL`, as `autana` does, else the only board plugged in;
 its one positional is the report's own path, ending in `.md`. A report script
-differs from its siblings only in what it declares — capture timeout, which
-suite, sentinel, reporter, output location — so a build flag cannot reach one
+differs from its siblings only in what it declares: capture timeout, which
+suite, sentinel, reporter, output location, so a build flag cannot reach one
 of them and miss another.
 
-POSIX sh — works under Git Bash or MSYS on Windows and natively on Linux. It finds a compiler via `$CC`, then `PATH`, then the location winget
+POSIX sh: works under Git Bash or MSYS on Windows and natively on Linux. It finds a compiler via `$CC`, then `PATH`, then the location winget
 installs MinGW to on Windows, and tells you how to install one if there is
 none.
 
@@ -93,7 +93,7 @@ Requires a **host** compiler, not the ESP32 toolchain:
 The Python tools and `scripts/run-tool-tests.sh` need `python3` (Debian/Ubuntu ship no plain `python`; the scripts try `python3`, `python`, then `py`, and take the first that runs; commands written `python` in these docs are `python3` there), and the `.mjs` suites need `nodejs` (`sudo apt install python3 nodejs`).
 
 **An app's own frame-budget capture and its rules live beside the app**,
-in its docs folder and its `tools/` - any free-heap precondition, the
+in its docs folder and its `tools/`: any free-heap precondition, the
 perf-scope trade-off, and the frame-budget scenes. Start here for
 everything else; go there once you are capturing that app's numbers.
 
@@ -130,7 +130,7 @@ flowchart LR
 ```
 
 **The host runner is the TDD loop.** The tests themselves run in seconds;
-the wait is compiling - see "Running them" above. Still far more practical
+the wait is compiling; see "Running them" above. Still far more practical
 for red-green-refactor than a ninety-second build-and-flash. It runs the
 portable suites only.
 
@@ -138,8 +138,8 @@ portable suites only.
 the portable ones. That is deliberate: passing on a laptop only proves the logic is
 right on x86, whereas running on-target proves the same source behaves
 identically built by the Xtensa toolchain and executed on this chip. It
-never runs in a release image - only in a SELFTEST build, either one suite
-at a time via runsuite (seconds) or as a full boot-time run - see
+never runs in a release image, only in a SELFTEST build, either one suite
+at a time via runsuite (seconds) or as a full boot-time run; see
 ["Recommended practice"](#recommended-practice) for how long that takes.
 
 ### The runners enforce the device's memory limits
@@ -149,7 +149,7 @@ main-task stack and internal-heap figures are what
 `launcher/tools/device/device_profiles/esp32s3.sh` records
 (`DP_MAIN_TASK_STACK_BYTES`, `DP_FREE_HEAP_BYTES`,
 `DP_LARGEST_FREE_BLOCK_BYTES`). Two classes of bug lived in that gap, and
-each one cost a build-flash-capture cycle to find — twice over, for both:
+each one cost a build-flash-capture cycle to find, twice over, for both:
 
 - **A fixture whose stack frame cannot fit.** `run_tests.sh` compiles the
   test sources a second time with `-fstack-usage` and
@@ -198,12 +198,12 @@ measured is the literal `unmeasured`, and both loaders refuse to hand one
 to a gate.
 
 **These are approximations, and worth knowing where they end.** The stack
-gate checks test code only, one function at a time — it does not sum a call
+gate checks test code only, one function at a time: it does not sum a call
 chain, so it bounds the worst single frame rather than the deepest path.
 Its frames are the host compiler's: the Xtensa frame is half the size at
 the median but up to 1.67x larger in the worst measured case, so
-`check_stack_usage_device.sh` — the same checker over the target
-compiler's own frames, no device needed — is what to run when a host frame
+`check_stack_usage_device.sh`, the same checker over the target
+compiler's own frames, no device needed, is what to run when a host frame
 nears the ceiling.
 The arena models one process's allocations from a clean start, so it cannot
 show fragmentation inherited from the rest of a real boot. Neither gate
@@ -213,7 +213,7 @@ a laptop instead of a capture cycle, which is the entire claim.
 ### Release builds contain no test code
 
 `CONFIG_LAUNCHER_SELFTEST` defaults off and the suites are simply never
-compiled into a release image — not `#ifdef`-ed out. Verified by counting
+compiled into a release image, not `#ifdef`-ed out. Verified by counting
 symbols in the two `.elf` files rather than assumed.
 [`Build-Variants.md`](Build-Variants.md#release-builds-contain-no-test-code)
 
@@ -227,15 +227,15 @@ gate, and its numbers compare only with other scoped captures.
 
 ### Development-only instrumentation is its own flag, not SELFTEST
 
-Guard anything whose only reader is a developer — a log line, a rolling
-average, a debug overlay — with `CONFIG_LAUNCHER_DEVELOPMENT`. Guard the test
+Guard anything whose only reader is a developer (a log line, a rolling
+average, a debug overlay) with `CONFIG_LAUNCHER_DEVELOPMENT`. Guard the test
 suites, and only those, with `CONFIG_LAUNCHER_SELFTEST`.
 [`Build-Variants.md`](Build-Variants.md#development-only-instrumentation-is-its-own-flag-not-selftest)
 
 ### The Kconfig trap in REQUIRES
 
 `unity` stays unconditional in `REQUIRES`. A Kconfig-gated `REQUIRES` is
-expanded before `CONFIG_*` exists, so it silently evaluates false — and only
+expanded before `CONFIG_*` exists, so it silently evaluates false, and only
 on a clean build directory, which is what makes it a trap.
 [`Build-Variants.md`](Build-Variants.md#the-kconfig-trap-in-requires)
 
@@ -246,9 +246,9 @@ on a clean build directory, which is what makes it a trap.
 A diag build (`CONFIG_LAUNCHER_SELFTEST` on, `AUTORUN` off) answers
 `runsuite <suite>` on the console (`console/console_runsuite.c`, one of the
 verbs `launcher/main/console/console.c` dispatches); `autana suite <name>`
-sends it. `screenshot` (`console_screenshot.c`) is another verb - it dumps
+sends it. `screenshot` (`console_screenshot.c`) is another verb: it dumps
 the frame on screen. `runsuite <suite_function_name>` runs exactly that one
-registered suite and prints its result — **with no rebuild and no reflash**:
+registered suite and prints its result, **with no rebuild and no reflash**:
 
 ```
 autana suite run_gfx_suite
@@ -284,14 +284,14 @@ real output, so a reworded line turns the tooling tests red.
 1. **During development**, `autana suite <name>` the suites for the area
    you touched, on a normal diag build (SELFTEST on, AUTORUN off, full
    scope).
-2. **Scoped builds for perf captures only** — see
+2. **Scoped builds for perf captures only**: see
    [`Build-Variants.md`](Build-Variants.md#a-diagnostics-build-can-be-scoped),
    and the capturing app's own docs for its capture.
-3. **The full self-test before a merge** — `report_test_results.sh` or
+3. **The full self-test before a merge**: `report_test_results.sh` or
    `autana selftest`, full scope, autorun, unattended. About 18 minutes
    on this board; treat it as the gate, not the everyday loop.
 4. **Know which suites cover which area** so a change to shell code (gfx,
-   ui) can be checked without waiting on an app's suites at all — see
+   ui) can be checked without waiting on an app's suites at all; see
    ["Which suites cover which area"](#which-suites-cover-which-area) below.
 
 ### Two device-only traps
@@ -301,14 +301,14 @@ what the device build does differently, not about test logic:
 
 - **64-bit asserts silently fail on device.** The device Unity build has
   64-bit support disabled, so `TEST_ASSERT_EQUAL_INT64` and friends fail at
-  runtime with `Unity 64-bit Support Disabled` — a message that looks like
+  runtime with `Unity 64-bit Support Disabled`, a message that looks like
   a real assertion failure and is not one. Host tests cannot catch this,
   because the host Unity build has no such restriction. Use `int32_t`
   asserts, or `TEST_ASSERT_TRUE`/`TEST_ASSERT_FALSE` on a boolean built
   from the 64-bit expression, instead.
 - **Log the measurement before asserting on it.** A perf test that logs its
   number only after a passing assert prints nothing at all when the assert
-  fails — exactly the moment the number is most wanted. Put the `ESP_LOGI`
+  fails, exactly the moment the number is most wanted. Put the `ESP_LOGI`
   (or equivalent) ahead of the `TEST_ASSERT_*` line, always.
 
 ### Perf tests assert sanity, not just log
@@ -316,8 +316,8 @@ what the device build does differently, not about test logic:
 A test that only logs a number and never asserts on it is decoration: a
 band-render test passed while band mode rendered nothing at all, because
 nothing in the test checked that any bytes were actually sent. Assert
-something cheap and real alongside the number —
-bytes transferred greater than zero, a frame time not impossibly fast — so
+something cheap and real alongside the number:
+bytes transferred greater than zero, a frame time not impossibly fast, so
 a silently-broken code path fails loudly instead of producing a clean log
 line for work that never happened. `test_present_overlap_against_serial`
 (below) is the pattern: it logs the overlap measurement and only asserts
@@ -347,7 +347,7 @@ it. See [Device-Lock.md](tools/Device-Lock.md).
 ## QEMU: the device image with no board
 
 Espressif's QEMU has an `esp32s3` machine, and the diagnostics image runs
-its suites under it — the real Xtensa binary, ESP-IDF, FreeRTOS and both
+its suites under it: the real Xtensa binary, ESP-IDF, FreeRTOS and both
 cores, with no board and therefore no port to share. Any number of
 instances run at once.
 
@@ -374,7 +374,7 @@ QEMU exposes; the runner reaches it as a local TCP socket.
 The image is the autorun diagnostics build with `sdkconfig.defaults.qemu`
 layered last, in its own `build.qemu*/`. That fragment does three things.
 It drops the 120 MHz flash configuration, which QEMU's flash model cannot
-follow — such an image resets silently in the second-stage bootloader. It
+follow: such an image resets silently in the second-stage bootloader. It
 moves the console to UART0, the port QEMU exposes. And it sets
 `CONFIG_LAUNCHER_QEMU`: no panel, I/O expander or touch controller exists
 there, so board identification fails, and with that option `gfx.c` gives an
@@ -383,7 +383,7 @@ property of the link the code above depends on: a strip occupies the bus
 for its own transfer time at the current panel clock, one strip after
 another, and only then counts as sent. The framebuffer, the present task and
 everything drawn through them run as they do on the board, and bus time
-keeps its order — a narrow window cheaper than a band, a band cheaper than
+keeps its order: a narrow window cheaper than a band, a band cheaper than
 a frame, nothing sent costing nothing. A whole present's measured cost does
 not: the CPU work around the bus is priced by the emulator, not the chip,
 so a test that compares two presents' times reports the comparison there
@@ -394,7 +394,7 @@ task reads ahead of the controller, and with no controller answering there is
 nothing else to read. The sample still travels the touch state machine to
 `touch_read()`, so a test can drive input end to end.
 The IMU likewise: with no sensor answering, `imu_init()` succeeds and
-`imu_read()` returns what `imu_inject()` last set - held upright and still
+`imu_read()` returns what `imu_inject()` last set: held upright and still
 until then, so the shell picks portrait as it would in a hand.
 The option also makes the temperature read report failure, because
 ESP-IDF's driver waits forever on a sensor QEMU does not have.
@@ -412,7 +412,7 @@ python launcher/test/qemu_run.py launcher/build.qemu.shell \
 ```
 
 That opens an app from the launcher, turns the board on its side and swipes
-home, about a minute with no board - the boot animation, the frame loop,
+home, about a minute with no board: the boot animation, the frame loop,
 the launcher, entering and leaving an app and the rotation, none of which a
 suite reaches. Leave `--icount` off: a press is timed in the emulated clock,
 which then runs far slower than the host's. An app that does not set
@@ -420,21 +420,21 @@ which then runs far slower than the host's. An app that does not set
 button has no stand-in, so such an app cannot be left.
 
 **What a run is evidence of.** Pass and fail, for any test that does not
-read a clock - a time a test measures, against a ceiling pegged on the
+read a clock: a time a test measures, against a ceiling pegged on the
 board or another present in the same run, is reported there and not
 enforced. The full scope runs to `SELFTEST_COMPLETE` in about fourteen
 minutes on an idle desktop, twice that with `--icount`, which puts both
 emulated cores on one host thread. Without it they get a thread each, so a
 busy host stretches the two-core tests by minutes. The tests
-of hardware QEMU lacks skip themselves — the performance-monitor test, since
+of hardware QEMU lacks skip themselves: the performance-monitor test, since
 QEMU does not model the PMU and every counter reads zero, and the test that
-a touch controller physically answers — so any failure is a real one, fails
+a touch controller physically answers, so any failure is a real one, fails
 the run, and deserves a look on the board. A run says nothing about the real
 panel, the real touch controller, the IMU or timing.
 
 **`--icount` counts instructions, never time.** Virtual time then advances
 one nanosecond per executed instruction, so a `us per step` line times 1000
-is instructions per step — for a measurement that sends nothing, since time
+is instructions per step: for a measurement that sends nothing, since time
 spent waiting on the null panel's modelled bus passes with no instructions
 behind it. A step that runs on one core repeats run to run, and keeps
 repeating while the host is busy: across five concurrent instances on a
@@ -443,7 +443,7 @@ four were identical to the digit.
 
 **A step shared between two cores cannot be ranked this way at all.** The
 count sums both cores, so the second one is charged for whatever it does
-while it waits — its bounded spin, or its idle task. That is a two-core
+while it waits: its bounded spin, or its idle task. That is a two-core
 floor unrelated to the work: it barely moves between a step doing full work
 and one with almost nothing left to do, and under host load such
 measurements moved by up to 25%. Measure the same work order walked by one
@@ -474,7 +474,7 @@ Reach for it to judge a layout, prove a screen still draws what it drew, or
 diff a render against a device capture. **It is never a perf oracle:** host
 wall-clock says nothing about what the work costs on the chip.
 
-[`tools/Render-Harness.md`](tools/Render-Harness.md) is the manual - declaring
+[`tools/Render-Harness.md`](tools/Render-Harness.md) is the manual: declaring
 a scene, frames and synthetic touch, the pins, the QEMU backend, and
 `render_diff.sh`.
 
@@ -509,12 +509,12 @@ different rules.
 |---|---|---|
 | Ships in release | **yes** | diagnostics builds (SELFTEST) only |
 | Asks | "is this **board** working?" | "is this **code** correct?" |
-| Side effects | none — probe and report | draws to the panel, mutates state |
+| Side effects | none: probe and report | draws to the panel, mutates state |
 | Cost | ~95 ms | runsuite: seconds; full self-test: see ["Recommended practice"](#recommended-practice) |
 | A failure means | this unit is faulty | this code is wrong |
 
 It probes each I2C peripheral, checks flash size, heap headroom, MAC validity
-and reads the on-die temperature — fifteen checks, printed as a table and
+and reads the on-die temperature: fifteen checks, printed as a table and
 summarised on one machine-readable line (`POST_COMPLETE checks=N failures=N`)
 so a production rig can grep it.
 
@@ -527,7 +527,7 @@ independent SDMMC bus and never contends with the display), which makes it a
 real mount rather than an assumption, with nothing to tear down afterwards. An
 absent card is optional, not a failure. The audio codec needs its power-amp
 rail raised before it will answer, so POST raises it, probes, and lowers it
-again — leaving the state the shell inherits unchanged.
+again, leaving the state the shell inherits unchanged.
 
 ---
 
@@ -546,8 +546,8 @@ void touch_fsm_update(touch_fsm_t *fsm, bool have_point,
 ```
 
 That single choice is what lets a test assert a 60 ms debounce *instantly*
-instead of sleeping, and lets it construct sequences — a dropout in the middle
-of a touch — that are genuinely awkward to produce on real hardware.
+instead of sleeping, and lets it construct sequences (a dropout in the middle
+of a touch) that are genuinely awkward to produce on real hardware.
 
 Any timeout, debounce, animation or rate limit should take time as a parameter.
 
@@ -577,7 +577,7 @@ flowchart LR
         HW4["main.c<br/><i>frame loop</i>"]
     end
 
-    subgraph pure["Pure logic — host AND device"]
+    subgraph pure["Pure logic: host AND device"]
         direction TB
         P1["touch_fsm.c<br/><i>samples to events</i>"]
         P2["gesture.c<br/><i>swipe recognition</i>"]
@@ -635,7 +635,7 @@ exactly when they need it.
 ## The loop
 
 Write the test and watch it fail, make it pass the simplest way, then clean
-up with the tests still green - and back to red for the next one. The
+up with the tests still green, and back to red for the next one. The
 failing step is not ceremony. A test never seen red might be asserting
 nothing at all, and you will not find out until it fails to catch a regression.
 
@@ -660,15 +660,15 @@ is worth anything.
 Bias toward the things that have already hurt. Every current test exists
 because of a real bug:
 
-- `test_brief_dropout_is_not_a_release` — the FT5x06's INT line signals "data
+- `test_brief_dropout_is_not_a_release`: the FT5x06's INT line signals "data
   ready", not "finger down", and drops mid-touch. Treating that as a lift made
   a held finger flicker.
-- `test_contact_resuming_after_a_dropout_does_not_re_press` — the same fault
+- `test_contact_resuming_after_a_dropout_does_not_re_press`: the same fault
   seen from the other side.
-- The gesture boundary tests — thresholds that must be forgiving enough to
+- The gesture boundary tests: thresholds that must be forgiving enough to
   trigger with a fingertip and strict enough never to fire during normal use.
 
-A bug found on hardware should become a test before it is fixed — a host one if
+A bug found on hardware should become a test before it is fixed: a host one if
 the logic can be extracted, a device one if it genuinely needs the chip. That is
 the cheapest moment to capture it, and the only thing that stops it returning.
 
@@ -678,16 +678,16 @@ the cheapest moment to capture it, and the only thing that stops it returning.
 
 `suite_gfx.c` covers what a host structurally cannot:
 
-- **Framebuffer read-back** — after `gfx_fill_rect`, count the pixels that
+- **Framebuffer read-back**: after `gfx_fill_rect`, count the pixels that
   actually changed and assert it is exactly `w*h`, with neighbours untouched.
 - **Clipping at every edge**, including rectangles straddling the boundary. If
   clipping were wrong this would corrupt memory rather than fail politely.
 - **Colour packing** under the target's real endianness and integer promotion.
-- **DMA completion** — `gfx_present()` returning at all is the regression guard
+- **DMA completion**: `gfx_present()` returning at all is the regression guard
   for the counting-semaphore deadlock, which was impossible to catch off-device.
   If it ever regresses the call never returns, boot hangs, and that is the
   correct, loud outcome.
-- **The present/update overlap** — `test_present_overlap_against_serial` begins
+- **The present/update overlap**: `test_present_overlap_against_serial` begins
   a present, runs a fixed CPU-bound workload standing in for an app's
   `update()`, waits, and logs that against the same work done serially
   (`gfx_set_present_async(false)`); a sanity assert only, not a budget. The
@@ -696,7 +696,7 @@ the cheapest moment to capture it, and the only thing that stops it returning.
 
 `suite_gfx_present_guard.c` (portable) covers the present-in-flight guard and
 the dirty tracker's own begin/wait/present sequencing on a host, by including
-`gfx_present_guard.h` and `gfx_dirty.h` directly — the same reason
+`gfx_present_guard.h` and `gfx_dirty.h` directly: the same reason
 `suite_gfx_dirty.c` can, and gfx.c's panel plumbing cannot. `suite_gfx_mode.c`
 and `suite_gfx_band.c` (portable) cover the mode-grant arithmetic and the
 band-ring state machine the same way, including `gfx_mode.h`/`gfx_band.h`
@@ -706,14 +706,14 @@ buffers. Only the DMA send and strip-bounce aliasing need the device, so an
 app's device-only perf suite times a full-redraw renderer's band-mode path
 against its full-framebuffer path on the same scene.
 
-Still untested by an assertion: small3dlib's per-pixel Gouraud shading -
+Still untested by an assertion: small3dlib's per-pixel Gouraud shading:
 verified by running the firmware and looking at the screen, since an
 animated 3D scene never settles into the fixed picture a render-harness
 pixel diff needs (`docs/tools/Render-Harness.md`). `ui_launcher.c`'s microui
 integration is driven by `suite_ui_launcher.c`, and small3dlib's row scissor
 by `suite_small3dlib_scissor.c`.
 
-The framework is Unity — the ThrowTheSwitch C library, no relation to the game
+The framework is Unity, the ThrowTheSwitch C library, no relation to the game
 engine. The host runner uses a vendored copy; the device uses the one ESP-IDF
 already bundles. Same API, so the suites do not care which they are built
 against.
@@ -737,11 +737,11 @@ by a substring of the name, so treat it as a lookup, not an area map.
    by that folder, so one placed elsewhere still runs rather than vanishing.
 2. Write the tests, then a `void run_<name>_suite(void)` that calls
    `RUN_TEST(...)` for each. Do **not** define `setUp`/`tearDown` or call
-   `UNITY_BEGIN`/`UNITY_END` — the runners own those, because several suites
+   `UNITY_BEGIN`/`UNITY_END`: the runners own those, because several suites
    share one binary. Give the suite its own `fixture()` helper instead and call
    it at the top of each test.
 3. Register it from inside itself: `SUITE_REGISTER(run_<name>_suite);`. That is
-   all — there is no list in `suites.h`, no call in `host_main.c` and none in
+   all: there is no list in `suites.h`, no call in `host_main.c` and none in
    `selftest.c`. Both runners discover `suite_*.c`, so a new suite joins the
    full scope automatically and can be run alone with
    `runsuite run_<name>_suite` on an already-flashed diagnostics build. If a
@@ -750,7 +750,7 @@ by a substring of the name, so treat it as a lookup, not an area map.
    The perf scope carries no shell suite (see "A diagnostics build can be scoped").
 4. Guard anything needing hardware with `#ifdef DEVICE_BUILD`, including its
    `RUN_TEST` line. A suite can be portable and still have a device-only
-   section — `suite_job.c` runs every one of its tests on both, and fences
+   section: `suite_job.c` runs every one of its tests on both, and fences
    the one assertion that holds only on a host, where a job runs inline
    instead of on a second core.
 5. **Keep big fixtures off `.bss`.** A suite's file-scope objects are
@@ -764,7 +764,7 @@ by a substring of the name, so treat it as a lookup, not an area map.
    One trap makes a local measurement lie: **a local `build.diag` keeps
    whatever scope it was last configured with**. A leftover
    `CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF=y` compiles the perf suite alone,
-   which reads a much smaller `.bss` than full scope does - a comfortably
+   which reads a much smaller `.bss` than full scope does: a comfortably
    wrong number if you believed it was the full-scope figure. CI always
    generates a fresh config and so always sees full scope. The sequence
    that answers the real question is:
@@ -776,7 +776,7 @@ by a substring of the name, so treat it as a lookup, not an area map.
    ```
 6. **Stick to ISO C in a suite.** The host runner compiles with
    `-std=c11`, which on glibc hides everything POSIX-only behind
-   `__STRICT_ANSI__` - so `strnlen`, `strdup` and friends compile on a
+   `__STRICT_ANSI__`, so `strnlen`, `strdup` and friends compile on a
    Windows toolchain whose headers declare them unconditionally, and
    fail on Linux. The suites have to build on both.
 7. **On device, watch for the two traps** above (64-bit asserts, and
@@ -787,13 +787,13 @@ by a substring of the name, so treat it as a lookup, not an area map.
 
 ## Related
 
-- `docs/Build-Variants.md` — what RELEASE, DEVELOPMENT and SELFTEST each
+- `docs/Build-Variants.md`: what RELEASE, DEVELOPMENT and SELFTEST each
   gate, the scope choice, and the `REQUIRES` trap.
-- `docs/Building-an-App.md` — how an app plugs into the shell, and the
+- `docs/Building-an-App.md`: how an app plugs into the shell, and the
   folder layout the app-suite convention above assumes.
-- `docs/tools/Render-Harness.md` — rendering a real screen on a host,
+- `docs/tools/Render-Harness.md`: rendering a real screen on a host,
   pinning its pixels, and diffing it against a capture.
-- `docs/notes/` — the hardware constraints behind the device-only
+- `docs/notes/`: the hardware constraints behind the device-only
   performance tests. Start at `docs/notes/README.md`.
-- `docs/plans/` — the two plans that build on the DEVELOPMENT/SELFTEST
+- `docs/plans/`: the two plans that build on the DEVELOPMENT/SELFTEST
   split are listed in `docs/Build-Variants.md`'s own Related.

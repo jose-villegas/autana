@@ -4,8 +4,8 @@ One board, one command at a time; the others queue. Windows and Linux differ
 only in how autana finds and ends the processes a command leaves behind; what
 you do is the same on both.
 
-Every command that touches the board - `flash`, `suite`, `selftest`,
-`monitor`, `screenshot`, `tune`, `reset` - takes the board's lock first, so two
+Every command that touches the board (`flash`, `suite`, `selftest`,
+`monitor`, `screenshot`, `tune`, `reset`) takes the board's lock first, so two
 terminals, two agents or a CI job sharing one board wait for each other
 instead of fighting over the USB serial port.
 
@@ -365,8 +365,8 @@ loses its watchdog) it says so, and the lock still works as a lock.
 its heartbeat. The next waiter reclaims a lock when its holder's process on
 this machine is dead, or when its heartbeat is more than 10 minutes old, and
 logs `reclaimed lock from <owner> for <command> (dead process | heartbeat
-expiry)`. A holder whose heartbeat is refused - its lock was replaced, or it
-went stale while it was paused - has lost the board: a capture stops at its
+expiry)`. A holder whose heartbeat is refused (its lock was replaced, or it
+went stale while it was paused) has lost the board: a capture stops at its
 next read, the next port open refuses, a flash in progress is ended, and the
 command fails with `device lock was lost`. A person's reservation has no
 heartbeat: it lapses one hour after the last `lock hand`.
@@ -386,8 +386,8 @@ A person's reservation (`autana lock hand`) blocks every command until
 
 ## Related
 
-- [Flash-and-Captures.md](Flash-and-Captures.md) - what a flash proves, how a
+- [Flash-and-Captures.md](Flash-and-Captures.md): what a flash proves, how a
   measurement holds one lock, and where captures land.
-- [Autana-CLI.md](Autana-CLI.md) - the `autana` command built on this lock.
-- [Flashing-and-Toolchain.md](../notes/Flashing-and-Toolchain.md) - resets,
+- [Autana-CLI.md](Autana-CLI.md): the `autana` command built on this lock.
+- [Flashing-and-Toolchain.md](../notes/Flashing-and-Toolchain.md): resets,
   download mode and recovery on this board.

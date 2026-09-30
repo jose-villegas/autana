@@ -77,14 +77,14 @@ Time a change on the device, or under QEMU's `--icount` for counts.
 
 Two files, the same declare-then-source shape a report script uses:
 
-- **`<name>_render_host.c`** defines one `render_scene` - see
+- **`<name>_render_host.c`** defines one `render_scene`; see
   `launcher/tools/render/render_host.h` for the fields: a setup hook that runs
   once after `gfx_init()`, a draw hook that runs once per frame, and an
   options hook taking whatever arguments the harness did not recognise.
 - **`<name>_render_host.sh`** declares `scene_name`, `scene_sources` and
   `scene_renders`, then sources `launcher/tools/render/render_scene.sh` and calls
-  `render_scene_run "$@"`. Everything else - finding a compiler, building,
-  checking each image, converting to PNG - is that one procedure.
+  `render_scene_run "$@"`. Everything else (finding a compiler, building,
+  checking each image, converting to PNG) is that one procedure.
 
 An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives
 in that app's own `tools/`, so nothing in the engine's tooling names an app.
@@ -108,8 +108,8 @@ twice.
 clipped to the rect it had on the previous frame, and `ui_pointer.c`
 holds a press back a frame for hover, so a settled screen is
 never the first one. Touch is declared as `render_input_step_t` entries in
-**panel** coordinates - where a finger lands, not where the rotated canvas
-puts it - each holding until the next, so the harness derives the
+**panel** coordinates: where a finger lands, not where the rotated canvas
+puts it, each holding until the next, so the harness derives the
 pressed/released edges rather than the scene restating them.
 
 An image comes out the way the board is READ at that quarter (448x368 for
@@ -121,7 +121,7 @@ band ring retains no frame to read back, the same reason a device capture
 refuses one.
 
 Every `draw()` is also a frame to the frame watch (`render_watch.h`), which
-judges it by the board's rule - see
+judges it by the board's rule; see
 [Testing-Guide.md](../Testing-Guide.md#the-frame-watch-as-a-gate). A scene
 declaring fewer frames than a warm-up and a window goes on drawing past its
 image until it has them, so every scene is judged at rest; its pixels and
@@ -146,8 +146,8 @@ passes, so a new scene is not blocked on one.
 **A pin only holds where the pixels are integer-exact**, since CI renders on
 a different compiler and C library than anyone's desk. The self-test report,
 the home screen and the boot animation are pinned: `gfx.c` does no float
-maths, and the scroll view's momentum - the one part of the UI that reaches
-the maths library - is switched off at a zero time constant, so it is
+maths, and the scroll view's momentum, the one part of the UI that reaches
+the maths library, is switched off at a zero time constant, so it is
 linked but never called. A render that is not integer-exact ends its line
 with `|nopin` and is checked for its declared size alone (`scene_pin=0` does
 the same for a whole scene). Anything that formats a `double` for display
@@ -168,7 +168,7 @@ changed. The failure names the file to look at and the command to run.
 ## Video
 
 A BMP is one frame. `--video PATH` (`render_video.h`/`.c`) appends every
-drawn frame instead, into an uncompressed RIFF AVI - so motion, a
+drawn frame instead, into an uncompressed RIFF AVI, so motion, a
 transition, or a scene's settle time can be judged without a flash cycle,
 the same reason the rest of this harness exists. The frame rate is
 `1000 / --dt`, exact as a rational, not rounded. `-o` keeps working
@@ -192,14 +192,14 @@ A scene animates a `--video` run the way it animates any multi-frame
 render: `boot_anim_render_host.c`'s `<now_ms>` is where the first frame
 starts, and each later frame adds that frame's own `elapsed_ms` to it, the
 harness's usual per-frame schedule. Like every other render this harness
-writes, a video's frames are drawn from a scene's own fixture data - never a
+writes, a video's frames are drawn from a scene's own fixture data, never a
 reading from any board.
 
 ## The second backend: the real image under QEMU
 
 The same scenes, the real Xtensa binary. `test/run_qemu_tests.sh` builds an
 image that boots into the shell rather than running its suites, and its
-console answers `screenshot` with the frame - the board tool's own protocol,
+console answers `screenshot` with the frame, the board tool's own protocol,
 over a socket instead of USB.
 
 ```sh
@@ -226,8 +226,8 @@ only way to see a screen whose app cannot be linked on a host at all.
 
 *`dt` is real elapsed time.* The image runs its own frame loop against a
 clock, so a QEMU run cannot reproduce a scene's declared frame schedule.
-Only a screen that has SETTLED - one whose picture does not depend on how
-many frames it took to get there - compares pixel-exact with a host render.
+Only a screen that has SETTLED (one whose picture does not depend on how
+many frames it took to get there) compares pixel-exact with a host render.
 The home screen is such a screen. A scene stepped a fixed number of frames
 for its animation is not: the same step count does not mean the same
 accumulated time.
@@ -256,7 +256,7 @@ uses `--framebuffer`, so it remains panel-native; its sidecar's
 not applied. A render in the read orientation must say `--quarter-a` /
 `--quarter-b` or it is refused rather than turned on a guess.
 
-**Masks cover what the shell draws and a scene does not** - the development
+**Masks cover what the shell draws and a scene does not**: the development
 build's corner mark, the swipe-home strip. They are declared per quarter in
 `launcher/tools/render/render_masks.json` and named on the command line. If that
 chrome moves, that file has to move with it.
@@ -297,10 +297,10 @@ The tool needs Pillow and numpy (`launcher/tools/render/requirements.txt`).
 
 ## Related
 
-- [`../Testing-Guide.md`](../Testing-Guide.md) - the host and device test
+- [`../Testing-Guide.md`](../Testing-Guide.md): the host and device test
   runners, runsuite, and the QEMU suite run this harness's second backend
   borrows its image from.
-- [`../Building-a-Screen.md`](../Building-a-Screen.md) - building the screen
+- [`../Building-a-Screen.md`](../Building-a-Screen.md): building the screen
   a scene renders.
-- [`../notes/Optimization-Playbook.md`](../notes/Optimization-Playbook.md) -
+- [`../notes/Optimization-Playbook.md`](../notes/Optimization-Playbook.md):
   why a host timing is not a cost.

@@ -53,7 +53,7 @@ without it (`board_audio_amp_enable()`).
 `board_detect()` tells them apart; go through it rather than hardcoding a
 driver, and do not add the gap yourself.
 
-## Memory - the constraint that shapes everything
+## Memory: the constraint that shapes everything
 
 ```mermaid
 flowchart LR
@@ -81,7 +81,7 @@ is what `APP_ARENA_BYTES` leaves.
 | Measurement | Value | Source |
 |---|---|---|
 | Internal (non-PSRAM) free heap after `gfx_init()` | **130,635 bytes** | `launcher/tools/device/device_profiles/esp32s3.sh`'s `DP_FREE_HEAP_BYTES`, device capture on the diagnostics build |
-| Largest free block in it | **51,200 bytes** | `DP_LARGEST_FREE_BLOCK_BYTES`, same capture - `gfx_init()` holds a gather buffer and two 46 KiB strip buffers in this pool |
+| Largest free block in it | **51,200 bytes** | `DP_LARGEST_FREE_BLOCK_BYTES`, same capture; `gfx_init()` holds a gather buffer and two 46 KiB strip buffers in this pool |
 
 The framebuffer is not in this pool; the figure is what is left for stacks,
 app state and non-release test fixtures.
@@ -144,7 +144,7 @@ it live.
 
 ## Related
 
-- [Display-and-Rendering.md](Display-and-Rendering.md) - panel bring-up and
+- [Display-and-Rendering.md](Display-and-Rendering.md): panel bring-up and
   the rest of the SPI2 story.
-- [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md) - the toolchain and
+- [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md): the toolchain and
   build flags behind these numbers.
