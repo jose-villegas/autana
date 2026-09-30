@@ -396,6 +396,33 @@ hidden(const r3d_span_target_t* target, int32_t nearest, centres_t box) {
     return true;
 }
 
+/* The depth plane first, then the colour planes only for a triangle not
+ * already hidden; false when it would write nothing. */
+static bool
+set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3], centres_t box, int y_anchor,
+            fill_t* f, gradients_t* g, int32_t row[ATTRIBUTES]) {
+    plane_t p;
+    g->x_origin = box.x0;
+    if (f->flat) {
+        set_flat(f, v[0], v[1], v[2]);
+    } else if (plane_of(v[0], v[1], v[2], box.x0, y_anchor, &p)) {
+        gradient(&p, v[0]->z * DEPTH_SCALE, v[1]->z * DEPTH_SCALE, v[2]->z * DEPTH_SCALE, 0, g);
+        row[0] = first_row_value(g, 0, box.y0, y_anchor);
+    } else {
+        return false;
+    }
+    if (box.x0 >= box.x1 || hidden(target, nearest_depth(f, row, box), box)) {
+        return false;
+    }
+    if (!f->flat) {
+        colour_gradients(&p, v[0], v[1], v[2], g);
+        for (int k = 1; k < ATTRIBUTES; k++) {
+            row[k] = first_row_value(g, k, box.y0, y_anchor);
+        }
+    }
+    return true;
+}
+
 void
 r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                   const r3d_span_vertex_t* c) {
@@ -432,26 +459,10 @@ r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
     const int y_anchor = clampi(r3d_span_first_centre(v0->y), -1, target->row1 + 1);
     const centres_t box = {x_first < 0 ? 0 : x_first, x_end > target->width ? target->width : x_end, y_first, y_end};
     gradients_t g = {0};
-    plane_t p;
     int32_t row[ATTRIBUTES] = {0};
     f.g = &g;
-    g.x_origin = box.x0;
-    if (f.flat) {
-        set_flat(&f, a, b, c);
-    } else if (plane_of(a, b, c, box.x0, y_anchor, &p)) {
-        gradient(&p, a->z * DEPTH_SCALE, b->z * DEPTH_SCALE, c->z * DEPTH_SCALE, 0, &g);
-        row[0] = first_row_value(&g, 0, y_first, y_anchor);
-    } else {
+    if (!set_up_fill(target, (const r3d_span_vertex_t* const[3]){a, b, c}, box, y_anchor, &f, &g, row)) {
         return;
-    }
-    if (box.x0 >= box.x1 || hidden(target, nearest_depth(&f, row, box), box)) {
-        return;
-    }
-    if (!f.flat) {
-        colour_gradients(&p, a, b, c, &g);
-        for (int k = 1; k < ATTRIBUTES; k++) {
-            row[k] = first_row_value(&g, k, y_first, y_anchor);
-        }
     }
     if (r3d_span_stop_after == 1) {
         return;
