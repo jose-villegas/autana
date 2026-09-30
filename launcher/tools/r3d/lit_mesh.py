@@ -89,19 +89,96 @@ def sphere(bounds):
     return centre, radius, error
 
 
-def bake_lit_mesh(positions, rgb, tris, double, leaf_triangles, max_depth, position_scale=8, meshlet_triangles=64,
-                  partition_size=8, colour_weight=1.0, with_lod=False):
+def bake_lit_mesh(positions, rgb, tris, double, leaf_triangles, max_depth, position_scale=8, clustering="octree",
+                  meshlet_triangles=64, partition_size=8, colour_weight=1.0, with_lod=False):
     """Bakes positions (model units), rgb (0..255 per vertex) and tris
     (counter-clockwise seen from the front, `double` one flag per triangle)
     into a SimpleNamespace holding the finest level (pos, rgb, tris, clusters,
-    nodes), a normal cone per finest cluster, and with `with_lod` the coarser
-    levels (lod, else None) and a record per cluster of every level. The
-    hierarchy is always built; it is only kept, and emitted, on request."""
+    nodes) and a normal cone per finest cluster.
+
+    clustering "octree" makes each octree leaf of at most leaf_triangles
+    triangles a cluster; "meshlet" makes compact clusters of at most
+    meshlet_triangles under an octree of at most leaf_triangles a leaf, and
+    with `with_lod` also keeps the coarser levels (lod, else None) and a
+    record per cluster of every level."""
+    assert clustering in ("octree", "meshlet"), clustering
+    assert clustering == "meshlet" or not with_lod, "levels need meshlet clusters"
     q = np.round(np.asarray(positions) * position_scale).astype(np.int64)
     col = np.clip(np.rint(rgb), 0, 255).astype(np.int64)
     tris = np.asarray(tris, dtype=np.int64)
     q, col, tris, double = weld_quantised(q, col, tris, double)
 
+    if clustering == "octree":
+        finest, nodes, coarse = octree_clusters(q, tris, double, leaf_triangles, max_depth)
+    else:
+        finest, nodes, coarse = meshlet_clusters(q, col, tris, double, leaf_triangles, max_depth, meshlet_triangles,
+                                                 partition_size, colour_weight)
+    for e in finest + coarse:
+        e["box"] = box_of(q, e["tris"])
+        e["cone"] = cone(q, e["tris"], e["axis"], e["double"])
+
+    out = SimpleNamespace(position_scale=position_scale)
+    out.pos, out.rgb, out.tris, out.clusters, out.source = lay_out(q, col, finest)
+    node_bounds(nodes, out.clusters)
+    out.nodes = nodes
+    out.cones = [e["cone"] for e in finest]
+    out.records = records(finest + coarse) if with_lod and coarse else []
+    lod = None
+    if with_lod and coarse:
+        lod = SimpleNamespace()
+        lod.pos, lod.rgb, lod.tris, lod.clusters, lod.source = lay_out(q, col, coarse)
+        lod.level_count = max(e["level"] for e in coarse) + 1
+        lod.cluster_count = len(coarse)
+    out.lod = lod
+    validate(out.pos, out.rgb, out.tris, out.clusters, out.nodes)
+    validate_lod(out)
+    return out
+
+
+def migrate(mesh):
+    """A read mesh's finest level as it is, clusters and tree untouched, with
+    a normal cone per cluster: what changing the data format costs."""
+    out = SimpleNamespace(position_scale=mesh.position_scale, pos=mesh.pos, rgb=mesh.rgb, tris=mesh.tris,
+                          clusters=mesh.clusters, nodes=mesh.nodes, source=None, records=[], lod=None)
+    out.cones = []
+    for vbase, vcount, tbase, tcount, lo, hi, double in mesh.clusters:
+        ct = mesh.tris[tbase : tbase + tcount]
+        out.cones.append(cone(mesh.pos, ct, mean_normal(mesh.pos, ct), double))
+    validate(out.pos, out.rgb, out.tris, out.clusters, out.nodes)
+    validate_lod(out)
+    return out
+
+
+def mean_normal(q, tris):
+    n = triangle_normals(q, tris).sum(axis=0)
+    length = np.linalg.norm(n)
+    return n / length if length else n
+
+
+def octree_clusters(q, tris, double, leaf_triangles, max_depth):
+    """(finest entries in tree order, nodes, no coarser entries): an octree
+    over the triangles' centroids whose leaves are clusters, a leaf holding
+    both sidednesses making one of each."""
+    root = build_octree(q[tris].mean(axis=1), np.ones(len(tris)), leaf_triangles, max_depth)
+    order, nodes = flatten_octree(root)
+    order = np.array(order)
+    finest = []
+    for node in sorted((n for n in nodes if n["leaf"]), key=lambda n: n["first"]):
+        members = order[node["first"] : node["first"] + node["count"]]
+        first = len(finest)
+        for is_double in (0, 1):
+            part = members[double[members] == is_double]
+            if len(part):
+                finest.append({"double": is_double, "level": 0, "tris": tris[part], "axis": mean_normal(q, tris[part])})
+        node["first"], node["count"] = first, len(finest) - first
+    return finest, nodes, []
+
+
+def meshlet_clusters(q, col, tris, double, leaf_triangles, max_depth, meshlet_triangles, partition_size,
+                     colour_weight):
+    """(finest entries in tree order, nodes, coarser entries): meshoptimizer's
+    clusterlod per sidedness, the finest meshlets under an octree over their
+    centres."""
     classes = [np.flatnonzero(double == d) for d in (0, 1)]
     classes = [c for c in classes if len(c)]
     lock = np.zeros(len(q), dtype=np.uint8)
@@ -126,31 +203,11 @@ def bake_lit_mesh(positions, rgb, tris, double, leaf_triangles, max_depth, posit
 
     finest = [e for e in entries if e["level"] == 0]
     coarse = sorted((e for e in entries if e["level"] > 0), key=lambda e: e["level"])
-    for e in finest + coarse:
-        e["box"] = box_of(q, e["tris"])
-        e["cone"] = cone(q, e["tris"], e["axis"], e["double"])
-
-    centres = np.array([(e["box"][0] + e["box"][1]) / 2.0 for e in finest])
+    boxes = [box_of(q, e["tris"]) for e in finest]
+    centres = np.array([(lo + hi) / 2.0 for lo, hi in boxes])
     root = build_octree(centres, [len(e["tris"]) for e in finest], leaf_triangles, max_depth)
     order, nodes = flatten_octree(root)
-    finest = [finest[i] for i in order]
-
-    out = SimpleNamespace(position_scale=position_scale)
-    out.pos, out.rgb, out.tris, out.clusters, out.source = lay_out(q, col, finest)
-    node_bounds(nodes, out.clusters)
-    out.nodes = nodes
-    out.cones = [e["cone"] for e in finest]
-    out.records = records(finest + coarse) if with_lod and coarse else []
-    lod = None
-    if with_lod and coarse:
-        lod = SimpleNamespace()
-        lod.pos, lod.rgb, lod.tris, lod.clusters, lod.source = lay_out(q, col, coarse)
-        lod.level_count = max(e["level"] for e in coarse) + 1
-        lod.cluster_count = len(coarse)
-    out.lod = lod
-    validate(out.pos, out.rgb, out.tris, out.clusters, out.nodes)
-    validate_lod(out)
-    return out
+    return [finest[i] for i in order], nodes, coarse
 
 
 def box_of(q, tris):
