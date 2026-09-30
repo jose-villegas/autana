@@ -29,7 +29,10 @@ for path in sys.argv[1:]:
         subs[v][1][t].append(int(m.group(5)))
     for m in SP.finditer(text):
         v, t, stop = m.group(1), int(m.group(2)), m.group(3)
-        fields = dict(kv.split("=") for kv in m.group(4).split())
+        pairs = [kv.split("=") for kv in m.group(4).split()]
+        if len(pairs) != 10 or any(len(p) != 2 or not p[1].isdigit() for p in pairs):
+            continue  # a line the console interleaved or cut
+        fields = dict(pairs)
         for core in (0, 1):
             data[v][stop][core][t].append({k[3:]: int(x) for k, x in fields.items() if k.startswith(f"c{core}_")})
     runs += text.count("batch:") or 1
