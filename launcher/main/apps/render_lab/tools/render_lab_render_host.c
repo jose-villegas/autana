@@ -18,9 +18,9 @@
 #include <string.h>
 
 #include "app.h"
+#include "apps/render_lab/render_lab_mesh_frame.h"
 #include "gfx/gfx.h"
 #include "render_host.h"
-#include "render_lab_mesh_frame.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
 #include "util/screenshot.h"

@@ -52,7 +52,7 @@ $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
     find main/apps/render_lab \( -type d \( -name tools -o -name tests \) -prune \) -o \
         \( -type f -name '*.c' ! -name 'suite_*.c' -print \) | LC_ALL=C sort)
 "
-scene_includes="components/small3dlib/include main/apps/render_lab"
+scene_includes="components/small3dlib/include"
 scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
 
 # The integer scenes with the HUD hidden are pinned. Everything carrying the
