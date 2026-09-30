@@ -36,17 +36,18 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from code_vocabulary import CONSTANT, family, vocabulary  # noqa: E402
 from check_comment_length import EXCLUDED, scan  # noqa: E402
 from idf_vocabulary import not_verified_notice, outside_vocabulary, required_missing  # noqa: E402
+from tracked import committable  # noqa: E402
 
-SKIP = ("build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components")
 CITED = re.compile(r"\b([a-z_][a-z0-9_]*)\(\)")
 PINNED = re.compile(r"\b([a-z_][a-z0-9_]*\(\)|[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]*)"
                     r"(?:'s own [^(),]{0,40})?\s*(?:\(|,\s*)(?:see\s+)?`?([\w./-]+\.[ch])`?\)")
 HEADING = re.compile(r"(?:'s(?: own)?\s+|\(\s*)\"([A-Z][A-Z0-9 ,'/-]*[A-Z0-9])\"")
 
 def comments(root):
-    """Every checked comment under `root`, as (path, Comment)."""
-    for p in sorted(pathlib.Path(root).rglob("*")):
-        if p.suffix not in (".c", ".h") or any(s in p.parts for s in SKIP):
+    """Every checked comment under `root`, as (path, Comment), in files git
+    would commit: a local venv's headers cite names CI never sees."""
+    for p in committable(root):
+        if p.suffix not in (".c", ".h"):
             continue
         rp = p.as_posix()
         if any(rp.startswith(e) for e in EXCLUDED):

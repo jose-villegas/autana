@@ -32,6 +32,16 @@ class TrackedFilesTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "dubious ownership"):
                     tracked.tracked_files(pathlib.Path(temp))
 
+    def test_committable_skips_what_git_ignores_and_keeps_a_new_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            for name, text in {".gitignore": ".cache/\n", "new.c": "x\n",
+                               ".cache/venv/numpy.h": "x\n"}.items():
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                (root / name).write_text(text, encoding="utf-8")
+            self.assertEqual(tracked.committable(root), [root / ".gitignore", root / "new.c"])
+
 
 if __name__ == "__main__":
     unittest.main()
