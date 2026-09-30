@@ -259,7 +259,7 @@ median4(uint32_t v[EVENT_COUNT]) {
 
 static void
 measure_pose(const char* variant, r3d_lit_frame_t* frame, parts_t* parts, uint32_t t_ms) {
-    r3d_lit_view_t view;
+    static r3d_lit_view_t view; /* statics here: the main task's stack is tight */
     sponza_view_at(&view, t_ms, frame->mesh->position_scale, 0);
     const int n = r3d_lit_cull_clusters(frame->mesh, &view, frame->visible);
     partition(parts, frame->visible, n);
@@ -276,11 +276,13 @@ measure_pose(const char* variant, r3d_lit_frame_t* frame, parts_t* parts, uint32
     for (int s = 0; s < STOP_COUNT; s++) {
         r3d_lit_probe_stop = STOPS[s].lit_stop;
         r3d_span_stop_after = STOPS[s].span_stop;
-        uint32_t cyc[2][EVENT_COUNT];
-        uint32_t val[2][EVENT_COUNT];
+        static uint32_t cyc[2][EVENT_COUNT];
+        static uint32_t val[2][EVENT_COUNT];
         for (int e = 0; e < EVENT_COUNT; e++) {
-            core_job_t c1 = {frame, &view, parts, &EVENTS[e], 0, mid, &cyc[1][e], &val[1][e]};
-            core_job_t c0 = {frame, &view, parts, &EVENTS[e], mid, frame->height, &cyc[0][e], &val[0][e]};
+            static core_job_t c1;
+            static core_job_t c0;
+            c1 = (core_job_t){frame, &view, parts, &EVENTS[e], 0, mid, &cyc[1][e], &val[1][e]};
+            c0 = (core_job_t){frame, &view, parts, &EVENTS[e], mid, frame->height, &cyc[0][e], &val[0][e]};
             TEST_ASSERT_TRUE(job_try_core1(core_draw, &c1, sizeof c1));
             core_draw(&c0);
             TEST_ASSERT_TRUE(job_wait(2000));
@@ -342,6 +344,8 @@ test_setup_split_lite(void) {
     run_variant("lite_tri", &sponza_lite_mesh, PLACE_TRI);
     run_variant("lite_col", &sponza_lite_mesh, PLACE_COL);
     run_variant("lite_tricol", &sponza_lite_mesh, PLACE_TRI | PLACE_COL);
+    run_variant("lite_cstri", &sponza_lite_mesh, PLACE_CS | PLACE_TRI);
+    run_variant("lite_cscol", &sponza_lite_mesh, PLACE_CS | PLACE_COL);
     run_variant("lite_all", &sponza_lite_mesh, PLACE_CS | PLACE_TRI | PLACE_COL);
     run_variant("lite_base2", &sponza_lite_mesh, 0);
     TEST_PASS();
