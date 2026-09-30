@@ -70,3 +70,41 @@ def simplify_with_update(pos, rgb, tris, target_triangles, colour_weight=1.0, op
     out = i[:n].reshape(-1, 3).astype(np.int64)
     kept, local = np.unique(out, return_inverse=True)
     return (p[kept].astype(np.float64), np.clip(a[kept] * 255.0, 0.0, 255.0), local.reshape(-1, 3), kept)
+
+
+class _Meshlet(ctypes.Structure):
+    _fields_ = [("vertex_offset", ctypes.c_uint), ("triangle_offset", ctypes.c_uint), ("vertex_count", ctypes.c_uint),
+                ("triangle_count", ctypes.c_uint)]
+
+
+def build_meshlets(pos, tris, max_triangles):
+    """Cuts the triangles into compact meshlets of at most max_triangles
+    triangles and as many vertices, none under a third of that but the last
+    few, and orders each meshlet's triangles for locality. Returns a list
+    with one (n, 3) array of indices into pos per meshlet."""
+    lib = _library()
+    flex = lib.meshopt_buildMeshletsFlex
+    flex.restype = ctypes.c_size_t
+    bound = lib.meshopt_buildMeshletsBound
+    bound.restype = ctypes.c_size_t
+    p = np.ascontiguousarray(pos, dtype=np.float32).copy()
+    i = np.ascontiguousarray(np.asarray(tris).reshape(-1), dtype=np.uint32).copy()
+    min_triangles = max_triangles // 3
+    meshlets = (_Meshlet * bound(ctypes.c_size_t(len(i)), ctypes.c_size_t(max_triangles),
+                                 ctypes.c_size_t(min_triangles)))()
+    vertices = np.zeros(len(i), dtype=np.uint32)
+    triangles = np.zeros(len(i), dtype=np.uint8)
+    c = ctypes.c_void_p
+    n = flex(meshlets, vertices.ctypes.data_as(c), triangles.ctypes.data_as(c), i.ctypes.data_as(c),
+             ctypes.c_size_t(len(i)), p.ctypes.data_as(c), ctypes.c_size_t(len(p)), ctypes.c_size_t(12),
+             ctypes.c_size_t(max_triangles), ctypes.c_size_t(min_triangles), ctypes.c_size_t(max_triangles),
+             ctypes.c_float(0.0), ctypes.c_float(2.0))
+    optimize = lib.meshopt_optimizeMeshletLevel
+    out = []
+    for m in meshlets[:n]:
+        v = vertices[m.vertex_offset :]
+        t = triangles[m.triangle_offset :]
+        optimize(v.ctypes.data_as(c), ctypes.c_size_t(m.vertex_count), t.ctypes.data_as(c),
+                 ctypes.c_size_t(m.triangle_count), ctypes.c_int(1))
+        out.append(v[t[: 3 * m.triangle_count]].reshape(-1, 3).astype(np.int64))
+    return out
