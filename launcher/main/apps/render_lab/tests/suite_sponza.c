@@ -18,15 +18,16 @@
 
 #include "esp_heap_caps.h"
 
+#include "apps/render_lab/sponza_flat_mesh_generated.h"
 #include "apps/render_lab/sponza_flythrough.h"
 #include "apps/render_lab/sponza_lite_mesh_generated.h"
 #include "apps/render_lab/sponza_mesh_generated.h"
 #include "r3d_lit_mesh_expect.h"
 #include "render/r3d_lit_frame.h"
 
-_Static_assert(SPONZA_VERTEX_COUNT <= 65535 && SPONZA_LITE_VERTEX_COUNT <= 65535,
+_Static_assert(SPONZA_VERTEX_COUNT <= 65535 && SPONZA_LITE_VERTEX_COUNT <= 65535 && SPONZA_FLAT_VERTEX_COUNT <= 65535,
                "triangles index vertices with uint16_t");
-_Static_assert(SPONZA_LITE_CLUSTER_COUNT <= SPONZA_CLUSTER_COUNT,
+_Static_assert(SPONZA_LITE_CLUSTER_COUNT <= SPONZA_CLUSTER_COUNT && SPONZA_FLAT_CLUSTER_COUNT <= SPONZA_CLUSTER_COUNT,
                "the working arrays below are sized for the larger bake");
 
 /* The flat reference: every cluster's eight corners against each plane. */
@@ -205,6 +206,7 @@ static void
 test_both_bakes_have_the_structure_the_pipeline_relies_on(void) {
     r3d_lit_mesh_expect_valid(&sponza_mesh);
     r3d_lit_mesh_expect_valid(&sponza_lite_mesh);
+    r3d_lit_mesh_expect_valid(&sponza_flat_mesh);
 }
 
 /* The baked clusters are meshlets: none over 32 triangles, and sharing
@@ -221,18 +223,21 @@ static void
 test_both_bakes_are_cut_into_meshlets(void) {
     check_the_clusters_are_meshlets(&sponza_mesh);
     check_the_clusters_are_meshlets(&sponza_lite_mesh);
+    check_the_clusters_are_meshlets(&sponza_flat_mesh);
 }
 
 static void
 test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(void) {
     check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(&sponza_mesh);
     check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(&sponza_lite_mesh);
+    check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(&sponza_flat_mesh);
 }
 
 static void
 test_the_flythrough_keeps_clear_of_every_triangle(void) {
     check_the_flythrough_keeps_clear_of_every_triangle(&sponza_mesh);
     check_the_flythrough_keeps_clear_of_every_triangle(&sponza_lite_mesh);
+    check_the_flythrough_keeps_clear_of_every_triangle(&sponza_flat_mesh);
 }
 
 /* At the pace of a slow walk, with the seam between a lap's end and its start
@@ -294,6 +299,7 @@ static void
 test_the_flythrough_sees_mostly_building(void) {
     check_the_flythrough_sees_mostly_building(&sponza_mesh);
     check_the_flythrough_sees_mostly_building(&sponza_lite_mesh);
+    check_the_flythrough_sees_mostly_building(&sponza_flat_mesh);
 }
 
 static void

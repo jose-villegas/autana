@@ -72,9 +72,9 @@ def main(argv=None):
     lines = banner_of(path)
     lines = ["GENERATED FILE - do not edit.", "", "    " + command(out_dir / path.name, options), "", INTRO, ""] \
         + provenance(lines)
-    pos, rgb, tris, double = finest_triangles(mesh)
+    pos, rgb, tris, double, face = finest_triangles(mesh)
     baked = write_lit_mesh(out_dir, name, pos / mesh.position_scale, rgb, tris, double, lines,
-                           position_scale=mesh.position_scale, **options)
+                           position_scale=mesh.position_scale, face_rgb=face, **options)
     log(f"{name}: {len(baked.pos)} vertices, {len(baked.tris)} triangles, {len(baked.clusters)} clusters, "
         f"{len(baked.nodes)} nodes")
     return 0

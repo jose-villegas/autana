@@ -56,6 +56,7 @@ from r3d.fetch import fetch_zip  # noqa: E402
 from r3d.geometry import compact, corner_normals, weld, weld_keeping  # noqa: E402
 from r3d.light import (  # noqa: E402
     drop_masked,
+    face_colours,
     light,
     merge_matching_colours,
     sample_albedo,
@@ -174,6 +175,8 @@ def main():
     parser.add_argument("--no-seal-seams", action="store_true",
                         help="meshopt: import the mesh as it is, without the seal_seams option "
                         "(joined touching pieces, light regularizing, merged colour seams)")
+    parser.add_argument("--flat", action="store_true",
+                        help="bake one RGB565 colour at each triangle centre and weld positions only")
     parser.add_argument("--props-share", type=float, default=0.3, help="meshopt: budget share held for props")
     args = parser.parse_args()
     rng = np.random.default_rng(args.seed)
@@ -239,18 +242,30 @@ def main():
     rgb = np.concatenate(all_rgb)
     tris = np.concatenate(all_tris)
     tri_double = np.concatenate(all_double)
+    tri_mat = np.concatenate(all_mat)
     seal_seams = args.simplifier == "meshopt" and not args.no_seal_seams
     if args.simplifier == "meshopt":
         props = [(frozenset(i for i, n in enumerate(names) if n in PROPS), args.props_share)]
-        positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, np.concatenate(all_mat),
+        positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat,
                                                  args.triangles, props, seal_seams=seal_seams)
         rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
         tri_double = np.isin(tri_mat, [i for i, n in enumerate(names) if n in DOUBLE_SIDED]).astype(np.int64)
     if args.npz:
         np.savez_compressed(args.npz, pos=positions, rgb=rgb, tris=tris, double=tri_double)
 
-    mesh = write_lit_mesh(args.out_dir, args.name, positions, rgb, tris, tri_double, banner_lines(args),
-                          position_scale=POSITION_SCALE)
+    face_rgb = None
+    if args.flat:
+        double_materials = {m for m, n in enumerate(names) if n in DOUBLE_SIDED}
+
+        def albedo_of(centres, spacing, m):
+            kd = materials.get(names[m], {}).get("Kd", (1.0, 1.0, 1.0))
+            return sample_albedo(centres, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd)
+
+        face_rgb = face_colours(positions, tris, tri_mat, range(len(names)), double_materials, albedo_of, intersector,
+                                args, rng)
+
+    mesh = write_lit_mesh(args.out_dir, args.name, positions, None if args.flat else rgb, tris, tri_double,
+                          banner_lines(args), position_scale=POSITION_SCALE, face_rgb=face_rgb)
     log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, "
         f"{len(mesh.nodes)} nodes")
 
@@ -262,6 +277,7 @@ def banner_lines(args):
         "    python main/apps/render_lab/tools/gen_sponza.py --out-dir main/apps/render_lab \\",
         (f"        --name {args.name} --simplifier meshopt --triangles {args.triangles}"
          f" --props-share {args.props_share:g} --dense-edge {args.dense_edge:g}"
+         + (" --flat" if args.flat else "")
          + (" --no-seal-seams" if args.no_seal_seams else "")
          if args.simplifier == "meshopt" else
          f"        --name {args.name} --simplifier quadric --keep {args.keep:g}"
@@ -270,7 +286,7 @@ def banner_lines(args):
         "Crytek Sponza (Frank Meinl, Crytek; CC BY 3.0), from the OBJ in",
         "McGuire's Computer Graphics Archive, casual-effects.com/data.",
         "Simplified, lit by a sun and sky with baked shadows, one sRGB colour",
-        "per vertex. Other settings:",
+        "per triangle centre. Other settings:" if args.flat else "per vertex. Other settings:",
         f"  --max-edge {args.max_edge:g} --sun {args.sun[0]:g} {args.sun[1]:g} {args.sun[2]:g}",
         f"  --sun-rays {args.sun_rays} --sky-rays {args.sky_rays}",
     ]

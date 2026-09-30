@@ -20,8 +20,8 @@ them. The layers are in [Firmware-Architecture.md](Firmware-Architecture.md).
 | `r3d_vec3f.h` | The float 3-vector every float camera shares |
 | `r3d_ray.h` | A float ray camera: the direction through each physical pixel, on the same viewport a rasterizer uses |
 | `r3d_trs.h` | A float translation, quaternion and scale as one small3dlib transform, for an object an animation track moves |
-| `r3d_span.h` | One depth-tested, Gouraud-shaded triangle filled into a window of rows, its coverage exact on 1/16-pixel positions |
-| `r3d_lit_mesh.h` | The baked mesh format: per-vertex colour, meshlet clusters, a node tree |
+| `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions |
+| `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree |
 | `r3d_lit_pipeline.h` | The mesh's stages: view, cull, transform, draw |
 | `r3d_lit_frame.h` | One whole frame of those stages on both cores, optionally doubled to twice its size; in development builds, a view of its depth |
 
