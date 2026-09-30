@@ -202,6 +202,9 @@ static const int8_t gas_walk_offset[256] = {
  * dereferencing a 12-byte struct in flash for every cell on the grid, gas or
  * not. Four bytes rather than a 32-byte table, for the same reason. */
 static uint32_t gas_kind_mask;
+static uint8_t gas_density[MATERIAL_MAX];
+static uint8_t gas_decay[MATERIAL_MAX];
+static uint8_t gas_mobility[MATERIAL_MAX];
 static bool gas_tables_ready;
 
 static void
@@ -213,6 +216,12 @@ build_gas_tables(void) {
         if (materials[r].kind == KIND_GAS) {
             gas_kind_mask |= 1u << r;
         }
+    }
+    for (int m = 0; m < MATERIAL_MAX; m++) {
+        const material_t* const mat = material_by_id((material_id_t)m);
+        gas_density[m] = mat->density;
+        gas_decay[m] = mat->decay;
+        gas_mobility[m] = mat->mobility;
     }
     gas_tables_ready = true;
 }
@@ -326,11 +335,10 @@ static bool
 step_one_gas_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, int x, int y, int w, int rdx,
                    int rdy, const int* rslide_a, const int* rslide_b, int rload_dx, int rload_dy, int jostle,
                    cell_t grain, bool driven_gas[MATERIAL_MAX][2]) {
-    const material_t* mat = material_of(grain);
     const uint8_t mat_id = CELL_MATERIAL(grain);
-    const uint8_t density = mat->density;
+    const uint8_t density = gas_density[mat_id];
 
-    if (!tick_decay(s, row, x, y, &grain, mat_id, (s->decay >= 0) ? s->decay : mat->decay)) {
+    if (!tick_decay(s, row, x, y, &grain, mat_id, (s->decay >= 0) ? s->decay : gas_decay[mat_id])) {
         return true; /* vanished - already woken, nothing left to move */
     }
 
@@ -338,7 +346,7 @@ step_one_gas_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_
      * sand_set_mobility()), but defaults to 255 (always) rather than 0 -
      * "off" for a rise-gate means "never rises", which would break every
      * test that places gas and expects a deterministic one-cell move. */
-    const int mobility = (s->mobility >= 0) ? s->mobility : mat->mobility;
+    const int mobility = (s->mobility >= 0) ? s->mobility : gas_mobility[mat_id];
     const bool try_moving =
         jostle != 0 || (int)(sand_rng_next_at(s, x, y, SAND_RNG_SLOT_GAS_MOBILITY) & 0xFF) < mobility;
 
@@ -357,6 +365,7 @@ step_one_gas_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_
         return walked;
     }
 
+    const material_t* const mat = material_of(grain);
     const bool moved = try_moving
                        && gas_move_exhaustive(s, row, prow, arow, brow, x, y, w, rdx, rdy, rslide_a, rslide_b, rload_dx,
                                               rload_dy, jostle, grain, mat_id, density, mat, driven_gas);
