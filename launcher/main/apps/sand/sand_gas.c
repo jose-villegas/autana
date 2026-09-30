@@ -41,6 +41,8 @@
  * immortal, same as any other material with decay unset.
  */
 
+#include <limits.h>
+
 #include "sand_priv.h"
 
 /* Which materials are gas, as a bitmask over the nibble - see
@@ -589,15 +591,18 @@ find_nearest_empty(const sand_t* s, int x, int y, int px, int py, int sight, uin
     return 0;
 }
 
+/* find_nearest_empty() along one axis-aligned line: a row is `stride` 1, a
+ * column `stride` w, `at` and `n` the position and length along it. */
 static inline int
-find_nearest_empty_in_row(const uint8_t* row, int x, int px, int w, int sight, uint8_t gas_id, int* run_len_out) {
+find_nearest_empty_in_line(const uint8_t* line, int at, int dir, int n, int stride, int sight, uint8_t gas_id,
+                           int* run_len_out) {
 #pragma GCC unroll 4
     for (int k = 1; k <= sight; k++) {
-        const int sx = x + px * k;
-        if ((unsigned)sx >= (unsigned)w) {
+        const int sa = at + dir * k;
+        if ((unsigned)sa >= (unsigned)n) {
             return 0;
         }
-        const cell_t o = row[sx];
+        const cell_t o = line[(size_t)sa * (size_t)stride];
         if (CELL_IS_EMPTY(o)) {
             return k;
         }
@@ -609,18 +614,36 @@ find_nearest_empty_in_row(const uint8_t* row, int x, int px, int w, int sight, u
     return 0;
 }
 
-/* equalise_gas_one_row() sweeps with x_step = -px, so the cell after x
- * sits at x - px and casts a ray revisiting x's ray shifted by one. What
- * find_nearest_empty() found about x's ray is also true of x - px's,
- * once x is counted at the near end - this lets the sweep skip a full
- * sight-length re-walk of a packed pocket on almost every cell. `id`/`len`
- * hold the verified run's material and length. Valid only when py == 0;
- * equalise_gas_one_cell() writes them only when carry_ok, so id stays -1
- * otherwise. */
+/* The sweep runs against the ray, so a line's next cell casts the ray of the
+ * one before shifted by one: what find_nearest_empty() found about it still
+ * holds once that cell is counted at the near end - a packed pocket skips a
+ * sight-length re-walk on almost every cell. `id`/`len` hold the verified
+ * run's material and length, written only when carry_ok: along a row
+ * (py == 0), or along a column in gas_col_runs[] (px == 0). A diagonal ray
+ * leaves id at -1. */
 typedef struct {
-    int id;
-    int len;
+    int16_t id;
+    int16_t len;
 } gas_run_t;
+
+/* Column x's next cell comes a whole row later, so its run outlives the row.
+ * A hop stays in its own column (tx == x when px == 0), so the columns swept
+ * in between never touch it; the sweep stays row-major, which is what keeps
+ * has_room_above()'s read of the next column identical. A wider grid runs
+ * without the carry. `stale` asks for a reset before the next swept row. */
+#define GAS_COL_MAX 256
+
+static struct {
+    gas_run_t run[GAS_COL_MAX];
+    bool stale;
+} gas_cols;
+
+static bool gas_line_fast_on = true;
+
+void
+sand_gas_line_fast_paths_enable(bool on) {
+    gas_line_fast_on = on;
+}
 
 /* How far ahead the nearest open cell sits along the ray, 0 for none within
  * `sight`. A run already covering this ray answers without walking it: the
@@ -635,13 +658,20 @@ gas_gap_ahead(sand_t* s, const uint8_t* row, int x, int y, int px, int py, int s
         return 0;
     }
 
+    /* carry_ok off a row means along a column - see gas_run_t. */
     int scan_len = 0;
-    const int at = (py == 0) ? find_nearest_empty_in_row(row, x, px, s->w, sight, gas_id, &scan_len)
-                             : find_nearest_empty(s, x, y, px, py, sight, gas_id, &scan_len);
+    int at;
+    if (py == 0) {
+        at = find_nearest_empty_in_line(row, x, px, s->w, 1, sight, gas_id, &scan_len);
+    } else if (carry_ok) {
+        at = find_nearest_empty_in_line(s->cells + x, y, py, s->h, s->w, sight, gas_id, &scan_len);
+    } else {
+        at = find_nearest_empty(s, x, y, px, py, sight, gas_id, &scan_len);
+    }
 
     if (carry_ok && at == 0 && scan_len == sight) {
-        run->id = (int)gas_id;
-        run->len = scan_len;
+        run->id = (int16_t)gas_id;
+        run->len = (int16_t)scan_len;
     }
     return at;
 }
@@ -660,8 +690,8 @@ note_gas_late_arrival(unsigned* late, int x, int y, int tx, int ty) {
  * cell along (px, py), if sub-pass 1 could not already move it and a real
  * gap exists. No mass to split - a grain either moves the whole way, or
  * not at all. `run` carries gas_run_t's verified-run state between cells
- * of the same row sweep (see that struct's own comment for the geometry)
- * and `carry_ok` is that carry's on/off switch, true only when py == 0. */
+ * of the same line (see that struct's own comment for the geometry) and
+ * `carry_ok` is that carry's on/off switch. */
 static inline bool
 equalise_gas_one_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_t* nrow, int x, int y, int px, int py,
                       int rdx, int rdy, int sight, uint8_t gas_id, cell_t grain, bool* stayed_in_row, int* touched_x,
@@ -693,7 +723,7 @@ equalise_gas_one_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_
     if (moved) {
         run->id = -1;
     } else if (run->id == (int)gas_id) {
-        run->len += 1;
+        run->len = (int16_t)(run->len + 1);
     }
 
     if (!moved) {
@@ -795,10 +825,27 @@ row_is_packed(const uint8_t* row, int w, uint16_t is_gas, bool* any_gas, int* ma
     return true;
 }
 
-/* One row's share of spread. Returns whether it held any gas. No
- * per-row "no gas here" skip yet - deferred until real usage patterns exist to
- * measure against, same as every other tunable in this project; may_have_gas
- * alone is the pass's cheap-skip for now. */
+/* One row's cells, the run carried along the row or down each column.
+ * `along_col` is a constant at both call sites, so each gets its own loop. */
+static inline __attribute__((always_inline)) bool
+equalise_gas_row_cells(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_t* nrow, int y, int x_from, int x_to,
+                       int x_step, int px, int py, int rdx, int rdy, uint16_t is_gas, bool along_col, bool* touched,
+                       int* touched_x0, int* touched_x1, unsigned* late) {
+    const bool carry_ok = along_col || py == 0;
+    gas_run_t row_run = {.id = -1, .len = 0};
+    bool any_gas = false;
+
+    for (int x = x_from; x != x_to; x += x_step) {
+        gas_run_t* const run = along_col ? &gas_cols.run[x] : &row_run;
+        if (equalise_gas_one_row_cell(s, row, arow, nrow, x, y, px, py, rdx, rdy, is_gas, touched, touched_x0,
+                                      touched_x1, carry_ok, run, late)) {
+            any_gas = true;
+        }
+    }
+    return any_gas;
+}
+
+/* One row's share of spread. Returns whether it held any gas. */
 static bool
 equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, int px, int py, int rdx, int rdy,
                      uint16_t is_gas, int* clean_run, unsigned* late) {
@@ -810,15 +857,7 @@ equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, 
     bool touched = false;
     int touched_x0 = 0, touched_x1 = 0;
 
-    /* carry_ok gates gas_run_t's cheap re-walk skip off the moment gravity
-     * is not axis-aligned - see gas_run_t's own comment for why the sweep
-     * geometry it relies on only holds when py == 0. */
-    const bool carry_ok = (py == 0);
-
-    /* Reset at the start of every row: a run only ever describes cells
-     * within the same row, and the sweep has not looked at any of them
-     * yet. */
-    gas_run_t run = {.id = -1, .len = 0};
+    const bool along_col = px == 0 && py != 0 && gas_line_fast_on && w <= GAS_COL_MAX;
 
     /* A tilted ray from THIS row's own cells can only reach rows already
      * behind the sweep - *clean_run counts consecutive packed rows there
@@ -829,7 +868,9 @@ equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, 
     const bool packed = row_is_packed(row, w, is_gas, &any_gas, &row_sight);
     const bool skip = packed && (py == 0 || *clean_run >= row_sight);
     *clean_run = packed ? *clean_run + 1 : 0;
+    /* A row not swept leaves its cells uncounted in every column's run. */
     if (skip) {
+        gas_cols.stale |= along_col;
         return any_gas;
     }
 
@@ -838,14 +879,22 @@ equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, 
      * breaks on the first empty cell, so on a sparse row it is a handful of
      * loads and the per-cell loop below is what the skip is worth. */
     if (!gas_row_may_hold(y)) {
+        gas_cols.stale |= along_col;
         return false;
     }
 
-    for (int x = x_from; x != x_to; x += x_step) {
-        if (equalise_gas_one_row_cell(s, row, arow, nrow, x, y, px, py, rdx, rdy, is_gas, &touched, &touched_x0,
-                                      &touched_x1, carry_ok, &run, late)) {
-            any_gas = true;
+    if (along_col) {
+        if (gas_cols.stale) {
+            for (int x = 0; x < w; x++) {
+                gas_cols.run[x] = (gas_run_t){.id = -1, .len = 0};
+            }
         }
+        gas_cols.stale = false;
+        any_gas |= equalise_gas_row_cells(s, row, arow, nrow, y, x_from, x_to, x_step, px, py, rdx, rdy, is_gas, true,
+                                          &touched, &touched_x0, &touched_x1, late);
+    } else {
+        any_gas |= equalise_gas_row_cells(s, row, arow, nrow, y, x_from, x_to, x_step, px, py, rdx, rdy, is_gas, false,
+                                          &touched, &touched_x0, &touched_x1, late);
     }
 
     if (touched) {
@@ -1008,8 +1057,10 @@ equalise_gas(sand_t* s, const int* perp, int rdx, int rdy) {
     /* Consecutive packed rows immediately behind the sweep pointer. py > 0
      * sweeps y descending while a tilted ray reads downward (increasing y);
      * py < 0 sweeps ascending while the ray reads upward - either way the
-     * ray's targets are exactly the rows this count has already crossed. */
-    int clean_run = 0;
+     * ray's targets are exactly the rows this count has already crossed.
+     * The sweep starts at the edge those rays leave by, and leaving the grid
+     * ends a scan as a wall does, so that edge counts as packed without end. */
+    int clean_run = (row_crossing && gas_line_fast_on) ? INT_MAX / 2 : 0;
 
     if (row_crossing || !equalise_gas_chunks(s, px, py, rdx, rdy, x_step, is_gas, &found_any)) {
         if (equalise_gas_every_row(s, px, py, rdx, rdy, is_gas, y_from, y_to, y_step, x_from, x_to, x_step,
@@ -1070,6 +1121,7 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     bool found_any = false;
     const int w = s->w;
     gas_row_map_live = (s->h <= GAS_ROW_MAX);
+    gas_cols.stale = true;
     memset(gas_row_map.w, 0, sizeof gas_row_map.w);
 
     gas_pass = (gas_pass_t){

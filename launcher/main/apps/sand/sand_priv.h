@@ -522,6 +522,11 @@ extern unsigned sand_gas_equalise_runs;
 void sand_gas_rank_audit_enable(bool on, bool reverse_ray);
 extern unsigned sand_gas_late_arrivals;
 
+/* Not sand.h API: off, the gas spread pass drops the fast paths a ray across
+ * the rows takes (column carry and find, the edge-packed skip), so a suite
+ * can hold the result byte-equal to that slow path. On by default. */
+void sand_gas_line_fast_paths_enable(bool on);
+
 /* Not sand.h API: a test hook for the reaction pass's soak-only skip (see
  * sand_step_reactions()). Counts every cell the per-row dispatch actually
  * visits, so a suite can compare it against a bound derived from
