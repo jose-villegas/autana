@@ -6,7 +6,7 @@ else on the board.
 ## What it is
 
 `MATX_METAL`, extended material 3. No new `reaction_t` field, no new
-`KIND`, no new sweep flag — it is a reaction row and a palette entry.
+`KIND`, no new sweep flag; it is a reaction row and a palette entry.
 
 Staying in the extended range costs it a **variant nibble**, so metal
 cannot glow, cannot hold a temperature, and cannot melt. The design leans
@@ -25,12 +25,12 @@ else on the board does. Every other solid stops heat; metal carries it.
 
 One axis of difference each. Metal has **no `heats_to`** deliberately:
 with no variant it cannot ramp, so the only way to melt it would be a
-memoryless roll — and that would make a metal wall beside lava randomly
+memoryless roll, and that would make a metal wall beside lava randomly
 turn into lava.
 
 ## How dirt becomes metal
 
-Dirt under heat rolls once, then a second roll decides the product -
+Dirt under heat rolls once, then a second roll decides the product:
 [Reaction-Table.md](Reaction-Table.md) has the generated per-material
 chances:
 
@@ -46,7 +46,7 @@ The flaw roll is re-rolled only every fifth cell
 rather than salt-and-pepper.
 
 Wet dirt takes a different exit first: `spoils_to = MAT_SAND` at 77/256
-(~30%) — soaked ground gives up sand before it ever smelts.
+(~30%): soaked ground gives up sand before it ever smelts.
 
 ## The rod that grows itself
 
@@ -62,7 +62,7 @@ into metal, which lengthens the bar, which reaches one cell further:
 ```
 
 A lava source grows its own **33-cell** rod out of a dirt bed and then
-stops — 33, not 32, because the walk can still cross a run already at the
+stops: 33, not 32, because the walk can still cross a run already at the
 cap, placing one more cell before the next attempt fails to fit
 (`test_the_rod_terminates_at_conduct_reach_not_the_far_wall`,
 `suite_sand_metal.c`).
@@ -81,7 +81,7 @@ Rolled per cell crossed, so depth *d* succeeds with probability
 | 16 | 8.5% | 60% |
 | 32 | 0.8% | **36%** |
 
-248 puts the mean walk at ~32 cells, exactly `CONDUCT_REACH` — so the cap
+248 puts the mean walk at ~32 cells, exactly `CONDUCT_REACH`, so the cap
 does real work instead of being slack, and the rod length above is a
 designed number rather than an accident.
 

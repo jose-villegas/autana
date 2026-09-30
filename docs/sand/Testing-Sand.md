@@ -20,9 +20,9 @@ autana suite run_sand_perf_suite
 
 runs the sand frame-budget suite alone, on the board already flashed, with
 no rebuild and no reflash. `--test fire,gas` narrows it to the rows whose
-test name contains `fire` or `gas` - about a minute instead of a dozen,
+test name contains `fire` or `gas`, about a minute instead of a dozen,
 and with `--runs` the A/B summary covers those rows alone
-([`autana suite`](../tools/Autana-CLI.md#tests)). Any other sand suite works the same way -
+([`autana suite`](../tools/Autana-CLI.md#tests)). Any other sand suite works the same way:
 `run_sand_materials_suite`, `run_sand_combustion_suite`, and so on;
 the sand suites are the ones registered in files under
 `launcher/main/apps/sand/` (`autana suite list` prints each suite's
@@ -69,7 +69,7 @@ Three rules keep a reading honest:
   control row too, the capture's flash layout shifted, and every other
   delta in that capture needs to be read against that shift rather than
   treated as real on its own.
-- **Measure landscape first.** Landscape is the shipping orientation -
+- **Measure landscape first.** Landscape is the shipping orientation:
   gravity moves within a fixed grid, so a portrait-tuned scene measures
   the wrong thing. A portrait-only frame-budget row has hidden real costs
   before: rotated UI work, and sand rows running along gravity rather
@@ -85,8 +85,8 @@ the raw capture for `free heap after framebuffer`.
 
 ## Perf sanity, not just logging
 
-A perf test should assert that work actually happened - bytes sent
-greater than zero, a frame time not impossibly fast - not only log a
+A perf test should assert that work actually happened: bytes sent
+greater than zero, a frame time not impossibly fast, not only log a
 number. A logging-only test can pass while the mode it measures renders
 nothing. Log the measurement **before** asserting on it, so a failing
 budget still prints what it measured instead of losing the number to
@@ -95,19 +95,19 @@ the same assert that failed.
 ## Scoping a build for a capture
 
 The perf scope (`CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF`) compiles only
-`suite_sand_perf.c` plus the scene builders and fixtures it calls -
-`suite_sand_scenes.c` and `suite_sand_common.c` - instead of every suite.
-It buys run time, not memory - the framebuffer lives in PSRAM - and
+`suite_sand_perf.c` plus the scene builders and fixtures it calls,
+`suite_sand_scenes.c` and `suite_sand_common.c`, instead of every suite.
+It buys run time, not memory (the framebuffer lives in PSRAM) and
 changes the image's layout in the 32 KB instruction cache. That second
 effect means **a scoped capture's numbers compare only with other scoped
-captures**, never with an unscoped run - same reasoning as the
+captures**, never with an unscoped run, same reasoning as the
 within-capture-only rule above, one layer up.
 
 ```sh
 bash launcher/main/apps/sand/tools/report_performance.sh --perf-scope
 ```
 
-Use scoping for perf captures only, not for a merge decision - the full
+Use scoping for perf captures only, not for a merge decision; the full
 self-test is what gates a merge, and it runs unscoped by construction.
 
 ## The chunk layout sweep
@@ -138,7 +138,7 @@ instances run at once:
 
 It prices the chunking itself, through the one-thread arm. The two-lane arm
 is readable there only for its abort count, because an instruction count
-sums both cores - see
+sums both cores, see
 [`../Testing-Guide.md`](../Testing-Guide.md#qemu-the-device-image-with-no-board)
 for why, and for what several instances at once cost each other.
 
@@ -161,12 +161,12 @@ sweep it was not asked for.
 
 Every cell is measured four ways, named in the line's `arm=` field:
 
-- `serial` - the plain one-core walk, which is what a split has to beat.
-- `serial-hashed` - that same walk drawing the split's per-cell hash, so
+- `serial`: the plain one-core walk, which is what a split has to beat.
+- `serial-hashed`: that same walk drawing the split's per-cell hash, so
   the hash is priced apart from the chunking that needs it.
-- `solo` - the chunk order walked by one thread, which is the chunking's
+- `solo`: the chunk order walked by one thread, which is the chunking's
   own cost with no second core in it.
-- `split` - the real two-lane step.
+- `split`: the real two-lane step.
 
 ### What it prints
 
@@ -178,8 +178,8 @@ pass, so a layout that helps the liquid passes and hurts the gas pass is
 visible instead of averaged into one number. `took_us` is the whole timed
 window over `steps` steps, unrounded.
 
-Each quality opens with a `CHUNK_SWEEP_FLOOR` line - `quality=`,
-`serial_us=`, `split_us=`, `settle_steps=` - a settled pile stepped serial
+Each quality opens with a `CHUNK_SWEEP_FLOOR` line (`quality=`,
+`serial_us=`, `split_us=`, `settle_steps=`), a settled pile stepped serial
 against split on the shipped side, which is what involving the second core
 costs before any work is handed to it. `settle_steps` is how many steps the
 pile needed to stop changing; at the cap it never came to rest, and the two
@@ -199,8 +199,8 @@ square cut they replaced, so a round stays comparable with the one before
 it; `test_the_sweep_measures_both_cuts_every_quality_ships` fails if a
 shipped cut is missing from the list it is ranked against.
 
-The scene list ends in a gas pair - an open block still climbing through
-the measured window, and a sealed box whose gas has packed against a wall -
+The scene list ends in a gas pair: an open block still climbing through
+the measured window, and a sealed box whose gas has packed against a wall,
 so the gas walk and the gas spread are each ranked on work they really do,
 which `test_the_sweeps_gas_scenes_put_work_in_both_gas_passes` checks on a
 host.
@@ -209,7 +209,7 @@ A quality's cell count is its side list times the scene list times two
 orientations times four arms; `sweep_qualities`, `sweep_scenes` and
 `sweep_orients` in `suite_sand_perf.c` are those lists, and reading them
 beats any count written here. As an order of magnitude, a quality carrying
-five sides is a few hundred cells, at roughly 0.8 s of board time each - so
+five sides is a few hundred cells, at roughly 0.8 s of board time each, so
 one quality is minutes on the board, and longer under emulation.
 
 ## The frame-budget tests
@@ -220,7 +220,7 @@ against the real 184x224 grid. Read each test's own comment in
 
 ## Related
 
-- [`../Testing-Guide.md`](../Testing-Guide.md) - the host/device split,
+- [`../Testing-Guide.md`](../Testing-Guide.md): the host/device split,
   runsuite, the two device-only traps, and the suite-to-area table.
-- [`Architecture.md`](Architecture.md) - the app's own shape: the grid,
+- [`Architecture.md`](Architecture.md), the app's own shape: the grid,
   the material tables, the step pipeline.

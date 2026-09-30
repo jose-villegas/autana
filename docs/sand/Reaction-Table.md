@@ -337,17 +337,17 @@ $\textcolor{#296984}{\text{Glass}}$: *Shatters* into $\textcolor{#D6A663}{\text{
 ## Gunpowder's fuse: what the table above cannot express
 
 Four mechanics live entirely at a read site in `sand_reactions.c`, on no
-`reaction_t` field this generator can walk - see this doc's own top note and
+`reaction_t` field this generator can walk; see this doc's own top note and
 `report_reactions.sh`'s comment on why the generated region stops at the
 marker above rather than guessing at them.
 
 **Moisture damps ignition, generically.** `try_ignite_given()` right-shifts
 the flammability roll by `SAND_DAMP_IGNITION_SHIFT` (2) bits *per moisture
-level*, not by a flat amount - so each further level of wetness costs
+level*, not by a flat amount, so each further level of wetness costs
 proportionally more of what is left. Gunpowder's flammability of 200 runs
 200 -> 50 -> 12 -> 3 -> 0 across its four wet codes (`moist_max` 4): damp
 powder misfires far more often than dry, and fully saturated powder is
-inert outright - the roll is rejected *before it is ever drawn*, so a
+inert outright: the roll is rejected *before it is ever drawn*, so a
 scene that never wets gunpowder stays bit-identical. Only heat driving the
 moisture back down first (`try_heat_transform_given()`'s wet-earth stage)
 or drying out over time makes it catch again. This is not gunpowder-
@@ -360,10 +360,10 @@ like any `burn_decay` material and counts down the same way. When its own
 countdown reaches `lit_from` and would otherwise simply vanish,
 `step_one_burning_cell()` asks `find_lit_two_by_two()` whether the cell is
 one corner of any 2x2 square whose other three cells are also lit
-gunpowder - off-board counts as NOT lit. If so *and* the simulation has an
+gunpowder; off-board counts as NOT lit. If so *and* the simulation has an
 impulse buffer (`s->impulse_buf != NULL`), the cell detonates via
-`sand_explode()` at `SAND_GUNPOWDER_BLAST_RADIUS` (20); otherwise - a lone
-cell, a one-wide trail, impulses disabled entirely - it just becomes plain
+`sand_explode()` at `SAND_GUNPOWDER_BLAST_RADIUS` (20); otherwise (a lone
+cell, a one-wide trail, impulses disabled entirely) it just becomes plain
 `MAT_FIRE`, the same fallback the confined-gas pocket already relies on
 for the same reason (`sand_explode()` is a documented no-op with no
 impulse buffer). A fully-lit 3x3 was the first rule and made blasts rare
@@ -371,23 +371,23 @@ enough on the device to look broken: burn-out rolls are independent per
 cell, so the neighbours lit before a cell are usually fire by the time it
 goes. Three lit neighbours in one quadrant is what a lit pile actually
 presents at burn-out. Blasts stagger across frames rather than landing
-all in one because of `SAND_GUNPOWDER_BLAST_COOLDOWN` (8, board-wide) -
+all in one because of `SAND_GUNPOWDER_BLAST_COOLDOWN` (8, board-wide),
 the number of steps the board waits after one detonation before another
-may fire, checked before `sand_explode()` is called - not merely because each blast's core and
+may fire, checked before `sand_explode()` is called, not merely because each blast's core and
 thrown grains take the lit cells around it out of every 2x2 they were
 part of; that removal helps too, but is a secondary effect of the
 geometry, not what bounds the cost.
 
 **Quenching a lit fuse leaves it soaked, not merely unlit.** Water or acid
 touching a *lit* gunpowder cell does not reset it to the plain unlit dry
-tone the way a burning log resets to unlit wood - it is written through
+tone the way a burning log resets to unlit wood; it is written through
 `with_moisture()` to fully saturated instead. A doused fuse is wet, and
 resetting it to dry-and-unlit would put it right back at the front of the
 flammability curve above, ready to relight off whatever neighbour just wet
 it.
 
-**A buried fuse is never smothered.** `smothered()` - the "buried on all
-four sides" check that puts an ordinary fire or ember out - is skipped
+**A buried fuse is never smothered.** `smothered()`, the "buried on all
+four sides" check that puts an ordinary fire or ember out, is skipped
 outright for any material with `explodes != 0`. Gunpowder carries its own
 oxidiser, unlike wood or a candle, which both need outside air to keep
 burning; without this exception a fuse buried in the middle of its own
