@@ -1,5 +1,5 @@
 /*
- * render_lab_scene - what a scene provides so app_render_lab.c can host any
+ * render_lab_scene: what a scene provides so app_render_lab.c can host any
  * number of them behind one HUD, one BOOT menu and one scene picker.
  *
  * The app owns gfx_mode_enter()/exit(), the layout switch, BOOT handling,
@@ -16,7 +16,7 @@
 
 typedef struct {
     const char* name;    /* shown on the HUD and the menu's scene picker */
-    const char* key;     /* short, stable, lowercase - a start request names one of these */
+    const char* key;     /* short, stable, lowercase; a start request names one of these */
     void (*enter)(void); /* allocate, reset pose; layout is already entered */
 
     /* Outside band mode, advances by dt_ms and draws. In band mode
@@ -42,7 +42,7 @@ typedef struct {
     bool shows_view_modes;
 
     /* Optional. Runs while the previous frame is still being sent to the
-     * panel, so it may only touch the scene's own memory - never gfx or the
+     * panel, so it may only touch the scene's own memory; never gfx or the
      * framebuffer (app.h's update() contract). Not called while the menu is
      * open. */
     void (*update)(uint32_t dt_ms);

@@ -1,5 +1,5 @@
 /*
- * render_lab_hud_screen - the fps readout in the top-left corner, a scene's
+ * render_lab_hud_screen: the fps readout in the top-left corner, a scene's
  * status under it, and the scene's name while it is newly entered.
  *
  * app_render_lab.c owns the fps clock, the title's lifetime and the
