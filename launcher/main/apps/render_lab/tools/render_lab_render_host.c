@@ -58,7 +58,7 @@ view_from_name(const char* name) {
             return true;
         }
     }
-    fprintf(stderr, "render_lab_render_host: --view is shaded, depth or tiles, not %s\n", name);
+    (void)fprintf(stderr, "render_lab_render_host: --view is shaded, depth or tiles, not %s\n", name);
     return false;
 }
 
@@ -98,7 +98,7 @@ setup(int quarter) {
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
     registered->enter();
     if (render_lab_view_mode != R3D_LIT_VIEW_SHADED && !render_lab_scene_shows_views()) {
-        fprintf(stderr, "--view: the scene %s has no depth to show\n", render_lab_start_scene_key);
+        (void)fprintf(stderr, "--view: the scene %s has no depth to show\n", render_lab_start_scene_key);
         return false;
     }
     return true;
