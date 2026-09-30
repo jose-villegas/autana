@@ -1,4 +1,5 @@
 #include "render/r3d_span.h"
+#include "render/r3d_span_internal.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -18,7 +19,6 @@
 static const int32_t value_max[ATTRIBUTES] = {16776960, 65280, 65280, 65280};
 
 int r3d_span_stop_after;
-uint32_t r3d_span_dropped;
 
 typedef struct {
     int32_t base[ATTRIBUTES]; /* at the centre of pixel (x_origin, the triangle's first row) */
@@ -329,13 +329,9 @@ small_side(const small_edge_t* e, int32_t x, int32_t y) {
     return (e->dx * (y - e->ay)) - (e->dy * (x - e->ax)) - e->bias;
 }
 
-typedef struct {
-    int x0, x1, y0, y1; /* half-open, already inside the window */
-} centres_t;
-
 static void
 fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-           const r3d_span_vertex_t* c, bool positive, centres_t box) {
+           const r3d_span_vertex_t* c, bool positive, r3d_span_box_t box) {
     fill_t f;
     set_flat(&f, a, b, c);
     if (r3d_span_stop_after != 0) {
@@ -358,33 +354,26 @@ fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3
     }
 }
 
-/* An upper bound on the depth any pixel of the triangle writes. A span
- * runs from its clamped start to its end, both values of the plane at
- * centres in `box`, so the largest corner bounds it; a start clamped up from
- * below zero lifts the span by at most the lowest corner's shortfall. The
- * corners lie past where the walk steps, so the sums need 64 bits. */
-static int32_t
-nearest_depth(const fill_t* f, const int32_t row[ATTRIBUTES], centres_t box) {
-    if (f->flat) {
-        return f->flat_z;
-    }
-    const int64_t across = (int64_t)f->g->dx[0] * (box.x1 - 1 - box.x0);
-    const int64_t top = row[0];
-    const int64_t bottom = top + ((int64_t)f->g->dy[0] * (box.y1 - 1 - box.y0));
+/* A span runs from its clamped start to its end, both values of the plane
+ * at centres in `box`, so the largest corner bounds it; a start clamped up
+ * from below zero lifts the span by at most the lowest corner's shortfall.
+ * The corners lie past where the walk steps, so the sums need 64 bits. */
+int32_t
+r3d_span_plane_bound(int32_t top, int32_t dx, int32_t dy, r3d_span_box_t box) {
+    const int64_t across = (int64_t)dx * (box.x1 - 1 - box.x0);
+    const int64_t bottom = top + ((int64_t)dy * (box.y1 - 1 - box.y0));
     const int64_t low = (top < bottom ? top : bottom) + (across < 0 ? across : 0);
     const int64_t high = (top > bottom ? top : bottom) + (across > 0 ? across : 0);
     const int64_t lifted = high - (low < 0 ? low : 0);
     return (int32_t)((lifted < value_max[0] ? lifted : value_max[0]) >> 8);
 }
 
-/* True when every pixel of `box` already holds a depth at or nearer than
- * `nearest`, so the triangle would write none of them. */
-static bool
-hidden(const r3d_span_target_t* target, int32_t nearest, centres_t box) {
+bool
+r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, r3d_span_box_t box) {
     for (int y = box.y0; y < box.y1; y++) {
         const uint16_t* depth = target->depth + ((y - target->row0) * target->width);
         for (int x = box.x0; x < box.x1; x++) {
-            if (depth[x] < nearest) {
+            if (depth[x] < bound) {
                 return false;
             }
         }
@@ -395,7 +384,7 @@ hidden(const r3d_span_target_t* target, int32_t nearest, centres_t box) {
 /* The depth plane first, then the colour planes only for a triangle not
  * already hidden; false when it would write nothing. */
 static bool
-set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3], centres_t box, int y_anchor,
+set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3], r3d_span_box_t box, int y_anchor,
             fill_t* f, gradients_t* g, int32_t row[ATTRIBUTES]) {
     plane_t p;
     g->x_origin = box.x0;
@@ -407,8 +396,8 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3]
     } else {
         return false;
     }
-    if (hidden(target, nearest_depth(f, row, box), box)) {
-        r3d_span_dropped++;
+    const int32_t bound = f->flat ? f->flat_z : r3d_span_plane_bound(row[0], g->dx[0], g->dy[0], box);
+    if (r3d_span_hidden(target, bound, box)) {
         return false;
     }
     if (!f->flat) {
@@ -437,7 +426,8 @@ r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
     const int32_t hi_x = r3d_span_max3(a->x, b->x, c->x);
     const int x_first = r3d_span_first_centre(lo_x);
     const int x_end = r3d_span_first_centre(hi_x);
-    const centres_t box = {x_first < 0 ? 0 : x_first, x_end > target->width ? target->width : x_end, y_first, y_end};
+    const r3d_span_box_t box = {x_first < 0 ? 0 : x_first, x_end > target->width ? target->width : x_end, y_first,
+                                y_end};
     if (box.y0 >= box.y1 || box.x0 >= box.x1) {
         return; /* no pixel centre inside this window */
     }

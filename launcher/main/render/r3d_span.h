@@ -79,8 +79,6 @@ r3d_span_max3(int32_t a, int32_t b, int32_t c) {
  * setup, 2 after walking the rows, 3 after each span's setup. A triangle
  * tested centre by centre stops after its setup under any of them. */
 extern int r3d_span_stop_after;
-/* Counts the triangles dropped because their box already held nearer depth. */
-extern uint32_t r3d_span_dropped;
 
 void r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c);

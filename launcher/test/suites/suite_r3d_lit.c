@@ -18,6 +18,7 @@
 #include "render/r3d_lit_frame.h"
 #include "render/r3d_lit_pipeline.h"
 #include "render/r3d_ray.h"
+#include "render/r3d_span_internal.h"
 
 #define W 64
 #define H 48
@@ -734,27 +735,69 @@ test_a_triangle_hidden_in_one_window_still_draws_in_the_other(void) {
     }
 }
 
-/* The cheap exit has to be taken, not only be safe: behind a nearer wall,
- * every triangle that takes the test is dropped, and counted. */
 static void
-test_triangles_behind_a_nearer_wall_are_dropped(void) {
+draw_wall(const canvas_t* c, float z) {
+    const r3d_span_vertex_t a[3] = {sv(0.0f, 0.0f, z, 9, 9, 9), sv((float)c->w, 0.0f, z, 9, 9, 9),
+                                    sv((float)c->w, (float)c->h, z, 9, 9, 9)};
+    const r3d_span_vertex_t b[3] = {sv(0.0f, 0.0f, z, 9, 9, 9), sv((float)c->w, (float)c->h, z, 9, 9, 9),
+                                    sv(0.0f, (float)c->h, z, 9, 9, 9)};
+    canvas_draw(c, 0, a);
+    canvas_draw(c, 0, b);
+}
+
+/* The cheap exit has to be taken, not only be safe: a plane whose nearest
+ * corner is behind a wall is reported hidden, and one reaching past the
+ * wall at its far corner is not. Planes are 16.8, one step a column. */
+static void
+test_a_plane_behind_a_wall_is_hidden_and_one_reaching_past_it_is_not(void) {
     const canvas_t* c = canvas_open(W, H);
     canvas_fill(c, R3D_DEPTH_EMPTY);
-    const r3d_span_vertex_t wall_a[3] = {sv(0.0f, 0.0f, 0.9f, 9, 9, 9), sv((float)W, 0.0f, 0.9f, 9, 9, 9),
-                                         sv((float)W, (float)H, 0.9f, 9, 9, 9)};
-    const r3d_span_vertex_t wall_b[3] = {sv(0.0f, 0.0f, 0.9f, 9, 9, 9), sv((float)W, (float)H, 0.9f, 9, 9, 9),
-                                         sv(0.0f, (float)H, 0.9f, 9, 9, 9)};
-    canvas_draw(c, 0, wall_a);
-    canvas_draw(c, 0, wall_b);
-    const uint32_t before = r3d_span_dropped;
-    const int count = 10;
-    for (int i = 0; i < count; i++) {
+    draw_wall(c, 0.9f);
+    const int32_t wall = c->depth[0];
+    const r3d_span_target_t t = {c->color, c->depth, c->w, 0, c->h};
+    const r3d_span_box_t box = {5, 15, 3, 9};
+    const int32_t step = 1 << 8;
+    TEST_ASSERT_EQUAL_INT32(wall - 1, r3d_span_plane_bound((wall - 10) * step, step, 0, box));
+    TEST_ASSERT_TRUE(r3d_span_hidden(&t, r3d_span_plane_bound((wall - 10) * step, step, 0, box), box));
+    TEST_ASSERT_TRUE(r3d_span_hidden(&t, r3d_span_plane_bound((wall - 5) * step, 0, step, box), box));
+    TEST_ASSERT_TRUE(r3d_span_hidden(&t, wall, box));
+    TEST_ASSERT_EQUAL_INT32(wall + 4, r3d_span_plane_bound((wall - 5) * step, step, 0, box));
+    TEST_ASSERT_FALSE(r3d_span_hidden(&t, r3d_span_plane_bound((wall - 5) * step, step, 0, box), box));
+    TEST_ASSERT_FALSE(r3d_span_hidden(&t, wall + 1, box));
+    /* One pixel of the box farther than the bound is enough. */
+    c->depth[(box.y1 - 1) * c->w + (box.x1 - 1)] = (uint16_t)(wall - 2);
+    TEST_ASSERT_FALSE(r3d_span_hidden(&t, wall - 1, box));
+}
+
+/* A start clamped up from below zero lifts its span by the shortfall. */
+static void
+test_a_plane_below_zero_at_a_corner_is_bounded_by_its_lift(void) {
+    const r3d_span_box_t box = {0, 11, 0, 1};
+    const int32_t step = 1 << 8;
+    TEST_ASSERT_EQUAL_INT32(10, r3d_span_plane_bound(-3 * step, step, 0, box));
+    TEST_ASSERT_EQUAL_INT32(R3D_DEPTH_NEAREST, r3d_span_plane_bound(INT32_MAX, INT32_MAX, INT32_MAX, box));
+}
+
+/* Behind a nearer wall, a triangle leaves both buffers as they were. */
+static void
+test_triangles_behind_a_nearer_wall_leave_colour_and_depth_untouched(void) {
+    const canvas_t* c = canvas_open(W, H);
+    canvas_fill(c, R3D_DEPTH_EMPTY);
+    draw_wall(c, 0.9f);
+    memcpy(c->alone, c->depth, sizeof(uint16_t) * (size_t)(c->w * c->h));
+    gfx_color_t* colour = malloc(sizeof(gfx_color_t) * (size_t)(c->w * c->h));
+    TEST_ASSERT_NOT_NULL(colour);
+    memcpy(colour, c->color, sizeof(gfx_color_t) * (size_t)(c->w * c->h));
+    for (int i = 0; i < 10; i++) {
         const float x = 2.3f + (4.9f * (float)i);
-        const r3d_span_vertex_t v[3] = {sv(x, 3.1f, 0.2f, 9, 9, 9), sv(x + 11.2f, 20.6f, 0.4f, 9, 9, 9),
-                                        sv(x + 1.7f, 41.3f, 0.3f, 9, 9, 9)};
-        canvas_draw(c, 0, v);
+        const r3d_span_vertex_t v[3] = {sv(x, 3.1f, 0.2f, 99, 9, 9), sv(x + 11.2f, 20.6f, 0.4f, 9, 99, 9),
+                                        sv(x + 1.7f, 41.3f, 0.3f, 9, 9, 99)};
+        canvas_draw(c, c->h / 2, v);
     }
-    TEST_ASSERT_EQUAL_UINT32((uint32_t)count, r3d_span_dropped - before);
+    const bool same = memcmp(colour, c->color, sizeof(gfx_color_t) * (size_t)(c->w * c->h)) == 0;
+    free(colour);
+    TEST_ASSERT_TRUE_MESSAGE(same, "a triangle behind the wall changed the colour");
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(c->alone, c->depth, c->w * c->h);
 }
 
 /* A tall sliver at most two centres wide, cut so one window holds one or
@@ -1807,7 +1850,9 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_span_start_clamped_up_from_below_zero_still_bounds_the_span);
     RUN_TEST(test_one_open_pixel_anywhere_in_the_box_draws_the_triangle);
     RUN_TEST(test_a_triangle_hidden_in_one_window_still_draws_in_the_other);
-    RUN_TEST(test_triangles_behind_a_nearer_wall_are_dropped);
+    RUN_TEST(test_a_plane_behind_a_wall_is_hidden_and_one_reaching_past_it_is_not);
+    RUN_TEST(test_a_plane_below_zero_at_a_corner_is_bounded_by_its_lift);
+    RUN_TEST(test_triangles_behind_a_nearer_wall_leave_colour_and_depth_untouched);
     RUN_TEST(test_a_window_holding_a_few_rows_of_a_tall_sliver_draws_them_as_the_whole_does);
     RUN_TEST(test_a_triangle_with_corners_past_the_snap_range_fills_its_centres);
     RUN_TEST(test_a_triangle_whose_only_centre_is_at_a_window_edge_is_drawn);
