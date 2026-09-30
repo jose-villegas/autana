@@ -170,6 +170,15 @@ channel_gap(uint16_t a, uint16_t b) {
     return dr > dg ? (dr > db ? dr : db) : (dg > db ? dg : db);
 }
 
+static void
+write_frame(FILE* f, const char* path, const uint16_t* color) {
+    const size_t wrote = fwrite(color, sizeof(*color), PIXELS, f);
+    if (fclose(f) != 0 || wrote != PIXELS) {
+        (void)fprintf(stderr, "cannot write %s\n", path);
+        exit(1);
+    }
+}
+
 /* Writes the frame to dir/pose_NN.raw, or with `compare` reports how it
  * differs from the one already there. */
 static void
@@ -186,17 +195,13 @@ keep_frame(const char* dir, bool compare, int pose, const uint16_t* color) {
         exit(1);
     }
     if (!compare) {
-        const size_t wrote = fwrite(color, sizeof(*color), PIXELS, f);
-        if (fclose(f) != 0 || wrote != PIXELS) {
-            (void)fprintf(stderr, "cannot write %s\n", path);
-            exit(1);
-        }
+        write_frame(f, path, color);
         return;
     }
     uint16_t* before = checked_malloc(PIXELS * sizeof(*before));
     const size_t got = fread(before, sizeof(*before), PIXELS, f);
     const bool longer = fgetc(f) != EOF;
-    (void)fclose(f); /* read only: a failed close loses nothing */
+    (void)fclose(f);
     long differ = 0;
     int worst = 0;
     if (got != PIXELS || longer) {
