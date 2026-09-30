@@ -29,19 +29,16 @@ _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
 
 static bool probe_enabled;
 static r3d_lit_frame_probe_t probe;
+#ifdef ESP_PLATFORM
 static r3d_span_probe_t span_probe[2];
 
 static void
 probe_work(const slice_t* s, int64_t start) {
-#ifdef ESP_PLATFORM
     if (probe_enabled) {
         probe.work_us[s->stage][s->core] = esp_timer_get_time() - start;
     }
-#else
-    (void)s;
-    (void)start;
-#endif
 }
+#endif
 
 static void
 transform_slice(void* ctx) {
@@ -94,9 +91,15 @@ draw_slice(void* ctx) {
     }
     memset(depth, 0, pixels * sizeof(*depth));
 
+#ifdef ESP_PLATFORM
     r3d_span_probe_t local_probe = {.split_row = probe.split_row};
+#endif
     const r3d_span_target_t target = {
+#ifdef ESP_PLATFORM
         color, depth, f->width, s->first, s->first + s->count, probe_enabled ? &local_probe : NULL};
+#else
+        color, depth, f->width, s->first, s->first + s->count};
+#endif
     r3d_lit_draw(f->mesh, s->view, f->visible, s->visible_count, f->cs, f->rows, &target);
 #ifdef ESP_PLATFORM
     if (probe_enabled) {
