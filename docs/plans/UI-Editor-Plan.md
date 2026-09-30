@@ -6,7 +6,7 @@ document and the launcher a preview beside it. The brush screen is not yet a
 document.
 
 The objective is a tool where a screen is **authored visually and edited
-again later** - not screenshotted and re-typed. The brush screen should open
+again later**, not screenshotted and re-typed. The brush screen should open
 in it as an editable instance. It is a component of the engine direction in
 [`Autana-Rendering-Roadmap.md`](Autana-Rendering-Roadmap.md), sibling
 to the level editor already banked in that roadmap.
@@ -38,8 +38,8 @@ previewed.
 ## The render half already runs in this repo
 
 The render harness (`launcher/tools/render/`) compiles the firmware's
-host-portable C - `main/gfx/gfx.c` plus a scene such as `main/boot/boot_anim.c`,
-unmodified - and renders **a real frame by the real firmware code** on the
+host-portable C: `main/gfx/gfx.c` plus a scene such as `main/boot/boot_anim.c`,
+unmodified, and renders **a real frame by the real firmware code** on the
 host. Authored data reaches it as a baked header or generated source, so a
 draft can be baked and rendered without touching the committed one.
 
@@ -57,7 +57,7 @@ render half is already proven.
 
 ## The one thing that has to change
 
-`brush_screen_layout()` computes rects from arithmetic over `#define`s -
+`brush_screen_layout()` computes rects from arithmetic over `#define`s:
 `HEADER_H`, `MODE_H`, `SIZE_H`, gaps, `UI_MARGIN`, a centred remainder. **An
 editor cannot edit arithmetic, only data.**
 
@@ -69,7 +69,7 @@ shipped artifact tested independently of the generator).
 
 **The device never sees the editor, and never sees JSON.** It links a static
 baked table: no runtime layout engine, no solver, no allocation, no RAM
-cost - the same deal fonts, icons and the boot timeline already have. That
+cost: the same deal fonts, icons and the boot timeline already have. That
 distinction is the whole reason this is affordable here and LVGL was not:
 the cost of a retained UI system is paid at build time, on a laptop, or it
 is not paid at all.
@@ -81,14 +81,14 @@ is not paid at all.
   real `ui_style.h` / `ui_slider.h` / `gfx/icon.h` geometry. That is what a
   `/render` endpoint needs; it is already written.
 - **Host-linkable everything.** `gfx.c` (behind its `ESP_PLATFORM` guards),
-  the pure geometry headers, the baked icon atlases, and `microui.c` - the
+  the pure geometry headers, the baked icon atlases, and `microui.c`: the
   last of these linked for `suite_ui_pointer_microui.c` and available now.
 - **The validation.** `suite_brush_screen.c` already asserts, at both
   368x448 and 448x368: everything inside the canvas, no panel overlap, equal
   segment widths, a `UI_TAP_MIN` floor on every tap target, and every fixed string
   measured against its own rect.
 
-That last one matters more than it looks - see below.
+That last one matters more than it looks; see below.
 
 ## The data model: grow it from need, and do not build a solver
 
@@ -102,9 +102,9 @@ rows within a panel. Express those, and add a seventh when a real screen
 demands it rather than in anticipation.
 
 **Text is a first-class constrained thing, not a string dropped in a rect.**
-Both real defects the brush screen shipped were text-versus-box - a value
+Both real defects the brush screen shipped were text-versus-box (a value
 box sized by eye at 64px for a string needing 80, and a caption row 232px
-wide for wording needing 240 - and the weakness the host preview then found
+wide for wording needing 240) and the weakness the host preview then found
 in portrait is a *scale policy* failing: a long material name steps down
 until it is the same size as the caption above it, and the type hierarchy
 collapses. So an entry carries its string source, its scale policy and its
@@ -117,7 +117,7 @@ Two decisions, and the first one forces the second.
 
 **Native, cross-platform, not a web page.** One source tree runs on
 Windows and Linux, with nothing Windows-specific. Web stays a
-*target* - something the engine may one day be built for - never the way
+*target*, something the engine may one day be built for, never the way
 the editor draws itself.
 
 **It links the firmware's host-portable C in-process**, rather than spawning
@@ -125,7 +125,7 @@ a renderer and reading back an image. A spawned renderer recompiles whenever
 its payload is baked into a header the C reads; there is no way around it there. Layout-as-data removes that tax entirely: nothing
 is generated to preview a change, so the editor can mutate a struct, call
 the same layout and draw code the firmware calls, and re-render at frame
-rate. Direct manipulation needs that - dragging a panel through a subprocess
+rate. Direct manipulation needs that: dragging a panel through a subprocess
 round trip per frame is not the same product.
 
 That choice also serves the web goal instead of fighting it: the same
@@ -149,7 +149,7 @@ pinned tag, never vendored.
 cheaper, and then the hierarchy, inspector, docking and text input become
 editor chrome to write by hand.
 
-**SDL2 + microui** would build the editor with the toolkit it edits - every
+**SDL2 + microui** would build the editor with the toolkit it edits: every
 gap in `ui/` found by daily use. It loses on the same count, harder: microui
 has no real text input, no file dialogs and no docking.
 
@@ -166,7 +166,7 @@ run by `.github/workflows/host-tests.yml`.
 
    For a screen that already computes its rects, the acceptance is that its
    suite passes untouched and **the baked rects are identical to what the
-   function produced**. Same discipline the icon baker used - a generator
+   function produced**. Same discipline the icon baker used: a generator
    that cannot reproduce known-good output is not ready to produce new
    output. `brush_screen_layout()` is the first such screen.
 
@@ -174,8 +174,8 @@ run by `.github/workflows/host-tests.yml`.
    orientation, a layout that overlaps, leaves the canvas or drops an
    interactive element below `UI_TAP_MIN`. *Exists*, mirrored in the document so the
    editor reports the same problems while dragging. **Not yet: a string in a
-   box it does not fit** - the defect this plan cares most about. The host
-   suite keeps its own assertions as the independent witness - the generator
+   box it does not fit**, the defect this plan cares most about. The host
+   suite keeps its own assertions as the independent witness: the generator
    checking itself is not a test.
 
 3. **The editor shell.** A native window that links the layout and draw code
@@ -195,7 +195,7 @@ run by `.github/workflows/host-tests.yml`.
 
 6. **Cost overlays.** The panel's bands and dirty cells drawn over the canvas
    in the user's orientation, optional snapping to them, and a per-element
-   cost hint - the same reactive text costs a hundred times more across
+   cost hint: the same reactive text costs a hundred times more across
    bands than along one. Guidance in the tool, never a rule in the format.
 
 ## Considered and rejected
@@ -207,7 +207,7 @@ run by `.github/workflows/host-tests.yml`.
   every screen in this tree is a stack of panels. Revisit only when a real
   screen cannot be expressed.
 - **Round-tripping generated C.** The generated header is output and never
-  input - the convention every other generated file here already follows.
+  input: the convention every other generated file here already follows.
   Parsing back what a generator emitted is how the authored source and the
   artifact drift.
 - **A JavaScript reimplementation of the renderer for the editor.** The
@@ -217,7 +217,7 @@ run by `.github/workflows/host-tests.yml`.
 - **A browser-hosted editor at all.** A layout editor wants direct
   manipulation, and that wants in-process rendering.
 
-- **Anything platform-specific** - Win32, WinUI, GTK-only. One source
+- **Anything platform-specific**: Win32, WinUI, GTK-only. One source
   tree has to serve Windows and Linux, which is the same bar every
   shell script here already meets.
 - **Editing the mockup instead.** A design image is an input to authoring,
@@ -227,6 +227,6 @@ run by `.github/workflows/host-tests.yml`.
 
 ## Related
 
-- [`../Building-a-Screen.md`](../Building-a-Screen.md) - how a screen is built by hand today
-- [`../tools/Icon-Baker.md`](../tools/Icon-Baker.md) - the same authored-data-to-baked-header pattern, for artwork
-- [`Autana-Rendering-Roadmap.md`](Autana-Rendering-Roadmap.md) - the engine direction this serves
+- [`../Building-a-Screen.md`](../Building-a-Screen.md): how a screen is built by hand today
+- [`../tools/Icon-Baker.md`](../tools/Icon-Baker.md): the same authored-data-to-baked-header pattern, for artwork
+- [`Autana-Rendering-Roadmap.md`](Autana-Rendering-Roadmap.md): the engine direction this serves

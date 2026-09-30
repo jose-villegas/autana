@@ -27,19 +27,19 @@ autana docs --ask can an app call vTaskDelay inside frame     # a written answer
 
 A section copied verbatim into two files is kept once. The index is rebuilt on
 every run, so it is never stale; an edit is searchable at once. It is a plain
-filesystem walk of the checkout, not a VCS index - no git command runs. A
+filesystem walk of the checkout, not a VCS index; no git command runs. A
 directory is never walked if it is named `.something`, `managed_components`
 or `results`, if it contains its own `CMakeCache.txt` (a real build tree,
 wherever it lands), or if it contains its own `.git` (a fetched clone, such
-as a tool pulled straight from GitHub) - judged by what the directory itself
+as a tool pulled straight from GitHub), judged by what the directory itself
 holds, never by its name, so `launcher/tools/build/`, a real source folder
 that only shares the name a generated build directory does, is never
 mistaken for one.
 
 The `docs_extra` key of `autana.local.toml` lets notes kept outside the
 checkout join the index ([Settings](Autana-CLI.md#settings)). It is a list of
-paths, each relative to the checkout unless absolute. A named folder is read in full - every Markdown
-file under it, recursively, with no ignore file of its own consulted - and a
+paths, each relative to the checkout unless absolute. A named folder is read in full: every Markdown
+file under it, recursively, with no ignore file of its own consulted, and a
 named file must end in `.md`. A named folder's own `eval_questions.tsv` joins
 `--eval`, its rows citing documents by the path search shows for them.
 
