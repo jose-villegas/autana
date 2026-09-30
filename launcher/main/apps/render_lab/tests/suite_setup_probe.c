@@ -52,6 +52,7 @@ typedef struct {
     int lit_stop, span_stop;
 } stop_t;
 
+#if R3D_LIT_PROBE
 static const stop_t STOPS[] = {
     {"walk", R3D_LIT_PROBE_WALK, 0},
     {"fetch", R3D_LIT_PROBE_FETCH, 0},
@@ -62,6 +63,9 @@ static const stop_t STOPS[] = {
     {"spanset", 0, 3},
     {"whole", 0, 0},
 };
+#else
+static const stop_t STOPS[] = {{"setup", 0, 1}, {"whole", 0, 0}};
+#endif
 #define STOP_COUNT ((int)(sizeof(STOPS) / sizeof(STOPS[0])))
 
 typedef struct {

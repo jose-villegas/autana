@@ -10,10 +10,6 @@
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
-/* Measurement probe, never ships: R3D_LIT_PROBE 0 compiles every stop out. */
-#ifndef R3D_LIT_PROBE
-#define R3D_LIT_PROBE 1
-#endif
 int r3d_lit_probe_stop;
 volatile int32_t r3d_lit_probe_sink;
 #if R3D_LIT_PROBE
