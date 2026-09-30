@@ -441,7 +441,9 @@ origin, and later motion stays raw.
   ([Input-and-Sensors.md](notes/Input-and-Sensors.md)), flashing and
   recovery.
 - [Mesh-Rendering.md](Mesh-Rendering.md) - `render/`: cameras, the span
-  rasterizer, the baked lit-mesh pipeline.
+  rasterizer, the two-core frame.
+- [Mesh-Import.md](Mesh-Import.md) - how a source mesh becomes a baked
+  lit-mesh: simplify, light, meshlets, the format.
 - [Animation-Tracks.md](Animation-Tracks.md) - `anim/`: glTF keyed values
   sampled over time, and how a scene's properties are animated.
 - [Text-and-Fonts.md](Text-and-Fonts.md) - what a font is, the role

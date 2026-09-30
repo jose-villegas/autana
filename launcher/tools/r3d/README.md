@@ -44,7 +44,7 @@ been regenerated, and the generator's output is committed as written.
 **The `seal_seams` import option.** `simplify(seal_seams=True)`, off by default,
 is another way to import the same mesh, with fewer empty pixel-sized spots at
 the price of frame time; what it does and costs is in
-[Mesh-Rendering.md](../../../docs/Mesh-Rendering.md#sealing-seams). A generator
+[Mesh-Import.md](../../../docs/Mesh-Import.md#sealing-seams). A generator
 turns it on by passing it, and a scene's generator can take a flag such as `--no-seal-seams` to turn
 it off.
 
