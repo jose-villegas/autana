@@ -16,7 +16,14 @@ typedef struct {
     uint16_t* depth; /* the same shape as `color`; R3D_DEPTH_EMPTY where nothing was drawn */
     int width;       /* pixels per row, and the stride of both buffers */
     int row0, row1;  /* the half-open screen rows this window holds */
+    struct r3d_span_probe* probe;
 } r3d_span_target_t;
+
+typedef struct r3d_span_probe {
+    int split_row;
+    uint32_t straddling;
+    uint32_t setup_cycles;
+} r3d_span_probe_t;
 
 /* The depth encoding: inverse depth scaled to 16 bits, so a larger value is
  * nearer. A cleared buffer holds R3D_DEPTH_EMPTY, infinitely far, which no

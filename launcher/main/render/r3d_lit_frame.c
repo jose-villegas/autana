@@ -4,6 +4,11 @@
 #include <stdbool.h>
 #include <string.h>
 
+#ifdef ESP_PLATFORM
+#include "esp_log.h"
+#include "esp_timer.h"
+#endif
+
 #include "util/job.h"
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
@@ -16,14 +21,38 @@ typedef struct {
     const r3d_lit_view_t* view;
     int visible_count;
     int first, count; /* clusters of visible[], or rows */
+    int stage;
+    int core;
 } slice_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
 
+static bool probe_enabled;
+static r3d_lit_frame_probe_t probe;
+static r3d_span_probe_t span_probe[2];
+
+static void
+probe_work(const slice_t* s, int64_t start) {
+#ifdef ESP_PLATFORM
+    if (probe_enabled) {
+        probe.work_us[s->stage][s->core] = esp_timer_get_time() - start;
+    }
+#else
+    (void)s;
+    (void)start;
+#endif
+}
+
 static void
 transform_slice(void* ctx) {
     const slice_t* s = ctx;
+#ifdef ESP_PLATFORM
+    const int64_t start = probe_enabled ? esp_timer_get_time() : 0;
+#endif
     r3d_lit_transform(s->frame->mesh, s->view, s->frame->visible + s->first, s->count, s->frame->cs, s->frame->rows);
+#ifdef ESP_PLATFORM
+    probe_work(s, start);
+#endif
 }
 
 /* Two panel rows per source row, each pixel written twice as one 32-bit
@@ -54,6 +83,9 @@ draw_slice(void* ctx) {
     const size_t pixels = (size_t)s->count * (size_t)f->width;
     uint16_t* color = f->color + offset;
     uint16_t* depth = f->depth + offset;
+#ifdef ESP_PLATFORM
+    const int64_t start = probe_enabled ? esp_timer_get_time() : 0;
+#endif
 
     if (f->doubled == NULL) {
         for (size_t i = 0; i < pixels; i++) {
@@ -62,21 +94,55 @@ draw_slice(void* ctx) {
     }
     memset(depth, 0, pixels * sizeof(*depth));
 
-    const r3d_span_target_t target = {color, depth, f->width, s->first, s->first + s->count};
+    r3d_span_probe_t local_probe = {.split_row = probe.split_row};
+    const r3d_span_target_t target = {
+        color, depth, f->width, s->first, s->first + s->count, probe_enabled ? &local_probe : NULL};
     r3d_lit_draw(f->mesh, s->view, f->visible, s->visible_count, f->cs, f->rows, &target);
+#ifdef ESP_PLATFORM
+    if (probe_enabled) {
+        span_probe[s->core] = local_probe;
+    }
+    probe_work(s, start);
+#endif
 }
 
 static void
 double_slice(void* ctx) {
     const slice_t* s = ctx;
+#ifdef ESP_PLATFORM
+    const int64_t start = probe_enabled ? esp_timer_get_time() : 0;
+#endif
     double_rows(s->frame, s->first, s->count);
+#ifdef ESP_PLATFORM
+    probe_work(s, start);
+#endif
 }
 
 static void
 run_split(job_fn_t fn, slice_t first_half, slice_t second_half) {
-    (void)job_run_core1(fn, &second_half, sizeof second_half);
+    const bool dispatched = job_try_core1(fn, &second_half, sizeof second_half);
+    if (!dispatched) {
+#ifdef ESP_PLATFORM
+        const int64_t start = probe_enabled ? esp_timer_get_time() : 0;
+#endif
+        fn(&second_half);
+#ifdef ESP_PLATFORM
+        if (probe_enabled) {
+            probe.inline_count[second_half.stage]++;
+            probe.inline_us[second_half.stage] += esp_timer_get_time() - start;
+        }
+#endif
+    }
     fn(&first_half);
+#ifdef ESP_PLATFORM
+    const int64_t wait_start = probe_enabled ? esp_timer_get_time() : 0;
+#endif
     const bool done = job_wait(JOB_WAIT_MS);
+#ifdef ESP_PLATFORM
+    if (probe_enabled) {
+        probe.wait_us[first_half.stage] = esp_timer_get_time() - wait_start;
+    }
+#endif
     assert(done); /* the next stage reads what core 1 wrote */
     (void)done;
 }
@@ -136,24 +202,56 @@ balanced_split_row(const r3d_lit_frame_t* frame, int visible) {
 
 r3d_lit_stats_t
 r3d_lit_frame_render(const r3d_lit_frame_t* frame, const r3d_lit_view_t* view) {
+#ifdef ESP_PLATFORM
+    const int64_t cull_start = probe_enabled ? esp_timer_get_time() : 0;
+#endif
     const int visible = r3d_lit_cull_clusters(frame->mesh, view, frame->visible);
+#ifdef ESP_PLATFORM
+    if (probe_enabled) {
+        memset(&probe, 0, sizeof probe);
+        probe.cull_us = esp_timer_get_time() - cull_start;
+    }
+#endif
     r3d_lit_stats_t stats = {visible, 0};
     for (int i = 0; i < visible; i++) {
         stats.triangles += frame->mesh->clusters[frame->visible[i]].triangle_count;
     }
 
     const int half = visible / 2;
-    run_split(transform_slice, (slice_t){frame, view, visible, 0, half},
-              (slice_t){frame, view, visible, half, visible - half});
+    run_split(transform_slice, (slice_t){frame, view, visible, 0, half, 0, 0},
+              (slice_t){frame, view, visible, half, visible - half, 0, 1});
 
     const int mid = balanced_split_row(frame, visible);
-    run_split(draw_slice, (slice_t){frame, view, visible, mid, frame->height - mid},
-              (slice_t){frame, view, visible, 0, mid});
+#ifdef ESP_PLATFORM
+    if (probe_enabled) {
+        probe.split_row = mid;
+        memset(span_probe, 0, sizeof span_probe);
+    }
+#endif
+    run_split(draw_slice, (slice_t){frame, view, visible, mid, frame->height - mid, 1, 0},
+              (slice_t){frame, view, visible, 0, mid, 1, 1});
+#ifdef ESP_PLATFORM
+    if (probe_enabled) {
+        probe.straddling = span_probe[0].straddling;
+        probe.setup_cycles = span_probe[0].setup_cycles + span_probe[1].setup_cycles;
+    }
+#endif
     return stats;
 }
 
 void
 r3d_lit_frame_double(const r3d_lit_frame_t* frame) {
     const int mid = frame->height / 2;
-    run_split(double_slice, (slice_t){frame, NULL, 0, mid, frame->height - mid}, (slice_t){frame, NULL, 0, 0, mid});
+    run_split(double_slice, (slice_t){frame, NULL, 0, mid, frame->height - mid, 2, 0},
+              (slice_t){frame, NULL, 0, 0, mid, 2, 1});
+}
+
+void
+r3d_lit_frame_probe_enable(bool enabled) {
+    probe_enabled = enabled;
+}
+
+const r3d_lit_frame_probe_t*
+r3d_lit_frame_probe(void) {
+    return &probe;
 }
