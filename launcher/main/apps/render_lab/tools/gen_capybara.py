@@ -27,6 +27,9 @@ import random
 import struct
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), *[os.pardir] * 4, "tools"))
+from r3d import gltf_skin  # noqa: E402
+
 FPS = 30
 IDLE_SECONDS = 3.5
 WALK_SECONDS = 1.0
@@ -749,6 +752,11 @@ def main():
     ]
     validate(mesh, animations)
     data = encode(mesh, animations)
+    readback = gltf_skin.SkinnedAsset(*gltf_skin.parse_glb(data))
+    if (len(readback.positions), readback.triangles, sorted(readback.animations)) != (
+        len(mesh.positions), mesh.triangles, ["idle", "walk"]
+    ):
+        raise SystemExit("the encoded file does not read back as the mesh built")
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "wb") as handle:
         handle.write(data)

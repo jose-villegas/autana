@@ -1,10 +1,11 @@
 """Read a binary glTF 2.0 file and pose its skinned mesh on the CPU.
 
-Standard library only, so the asset tests and any baker can share it. It
-covers what a skinned-mesh asset uses: accessors (any component type,
-strided or packed), the node tree's TRS, one skin, animation channels on
-translation/rotation/scale with LINEAR or STEP samplers, and linear-blend
-skinning of positions and normals.
+Standard library only, so asset tests and bakers can share it without the
+pinned environment. It covers what a skinned mesh uses: accessors (any
+component type, normalized or not, strided or packed), the node tree's TRS,
+the first skinned primitive (normals and indices optional), animation
+channels on translation/rotation/scale with LINEAR or STEP samplers, and
+linear-blend skinning.
 """
 
 import json
@@ -157,11 +158,14 @@ class SkinnedAsset:
         primitive = document["meshes"][mesh_node["mesh"]]["primitives"][0]
         attributes = primitive["attributes"]
         self.positions = self._read(attributes["POSITION"])
-        self.normals = self._read(attributes["NORMAL"])
+        self.normals = self._read(attributes["NORMAL"]) if "NORMAL" in attributes else None
         self.colors = self._read(attributes["COLOR_0"]) if "COLOR_0" in attributes else None
         self.joint_indices = self._read(attributes["JOINTS_0"])
         self.weights = self._read(attributes["WEIGHTS_0"])
-        flat = [i[0] for i in self._read(primitive["indices"])]
+        if "indices" in primitive:
+            flat = [i[0] for i in self._read(primitive["indices"])]
+        else:
+            flat = list(range(len(self.positions)))
         self.triangles = [tuple(flat[i:i + 3]) for i in range(0, len(flat), 3)]
         self.animations = {
             a.get("name", str(i)): a for i, a in enumerate(document.get("animations", []))
@@ -243,11 +247,13 @@ class SkinnedAsset:
         ]
 
     def skin(self, pose):
-        """Skinned (positions, normals) for a pose from sample()."""
+        """Skinned (positions, normals) for a pose from sample(); normals is
+        None when the mesh has none."""
         matrices = self.joint_matrices(pose)
         positions = []
-        normals = []
-        for p, n, js, ws in zip(self.positions, self.normals, self.joint_indices, self.weights):
+        normals = [] if self.normals is not None else None
+        source_normals = self.normals or [None] * len(self.positions)
+        for p, n, js, ws in zip(self.positions, source_normals, self.joint_indices, self.weights):
             blended = [0.0] * 16
             for j, w in zip(js, ws):
                 if w > 0.0:
@@ -256,6 +262,8 @@ class SkinnedAsset:
                         blended[k] += m[k] * w
             blended[15] = 1.0
             positions.append(transform_point(blended, p))
+            if n is None:
+                continue
             nx, ny, nz = transform_vector(blended, n)
             length = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
             normals.append((nx / length, ny / length, nz / length))

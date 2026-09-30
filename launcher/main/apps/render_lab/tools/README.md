@@ -41,6 +41,9 @@ python launcher/main/apps/render_lab/tools/gen_capybara.py
 python -m unittest discover -s launcher/main/apps/render_lab/tools/tests
 ```
 
-`gltf_skin.py` reads any `.glb` and poses its skin on the CPU, standard library
-only. `gltf_preview.py` renders one with Pillow: a looping GIF of a clip
-(`--gif walk`) or the bind pose from four sides (`--sheet`).
+The file is read back and posed with the engine's glTF tools in
+[`launcher/tools/r3d/`](../../../../tools/r3d/README.md); to watch it:
+
+```sh
+python launcher/tools/r3d/gltf_preview.py launcher/main/apps/render_lab/assets/capybara.glb --gif walk --out walk.gif
+```

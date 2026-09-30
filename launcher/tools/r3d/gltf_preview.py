@@ -2,10 +2,10 @@
 """Render any skinned glTF on the CPU: a looping GIF of one animation, or a
 sheet of the bind pose from front, side, top and three-quarter views.
 
-    python main/apps/render_lab/tools/gltf_preview.py ASSET.glb --gif walk --out walk.gif
-    python main/apps/render_lab/tools/gltf_preview.py ASSET.glb --sheet --out bind.png
+    python tools/r3d/gltf_preview.py ASSET.glb --gif walk --out walk.gif
+    python tools/r3d/gltf_preview.py ASSET.glb --sheet --out bind.png
 
-Needs Pillow. Flat-shaded, z-buffered, with each triangle's vertical shadow
+Run from launcher/. Needs Pillow. Flat-shaded, z-buffered, with each triangle's vertical shadow
 on a checkered ground at y = 0, so a sliding or sinking foot shows against
 the checks. The camera frames the bind pose once and never moves, so an
 animation's motion is not hidden by re-framing.
@@ -18,8 +18,8 @@ import sys
 
 from PIL import Image, ImageDraw
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import gltf_skin  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from r3d import gltf_skin  # noqa: E402
 
 LIGHT = (0.45, 0.80, 0.40)
 AMBIENT = 0.38

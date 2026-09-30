@@ -18,8 +18,8 @@ import unittest
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 ASSET = TOOLS.parent / "assets" / "capybara.glb"
 GENERATOR = TOOLS / "gen_capybara.py"
-sys.path.insert(0, str(TOOLS))
-import gltf_skin  # noqa: E402
+sys.path.insert(0, str(TOOLS.parents[3] / "tools"))
+from r3d import gltf_skin  # noqa: E402
 
 FPS = 30
 MAX_INFLUENCE_DISTANCE = 0.40
