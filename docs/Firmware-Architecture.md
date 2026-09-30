@@ -25,9 +25,9 @@ and means something different by each:
 
 | | |
 |---|---|
-| **shell** | the frame loop and the app switching - `main.c`, whose log tag is literally `shell` |
-| **launcher** | the home screen the shell draws when no app is running - `ui/ui_launcher.c` |
-| **boot** | what runs once before the loop exists and never again - `boot/` |
+| **shell** | the frame loop and the app switching; `main.c`, whose log tag is literally `shell` |
+| **launcher** | the home screen the shell draws when no app is running; `ui/ui_launcher.c` |
+| **boot** | what runs once before the loop exists and never again; `boot/` |
 
 The top-level folder `launcher/` is the whole firmware, not the home
 screen.
@@ -74,13 +74,13 @@ flowchart TB
     end
 
     R1 --> R3 --> R4 --> R5 --> R6 --> R7
-    Contract(["app.h - the shell/app contract"]):::contract
+    Contract(["app.h: the shell/app contract"]):::contract
     Main -.->|"calls through app.h"| Apps
     Contract -.->|"includes input/input.h"| Input
 ```
 
-- **Includes are layer-qualified** - `"gfx/gfx.h"`, not `"gfx.h"`, even
-  between two files in the same folder - so an app reaching past `ui` into
+- **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
+  between two files in the same folder; so an app reaching past `ui` into
   `gfx` is visible at the line that does it.
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. How a
   draw call becomes pixels on the panel is
@@ -127,7 +127,7 @@ rasterizer would want ~1.3 MB here.
 Apps do not loop, do not present, do not block and do not yield. An app's
 `frame()` draws and returns. So:
 
-- switching apps is instant - no teardown of a running loop
+- switching apps is instant; no teardown of a running loop
 - no app can wedge the device by forgetting to `vTaskDelay`
 - the shell decides when to present, and can draw its own chrome afterwards
 
@@ -183,8 +183,8 @@ described in `boot/boot_anim.h`.
 ## The frame loop
 
 The shell is a two-state machine. `current == NULL` means a system screen is
-showing; anything else is the running app. Which system screen - the
-launcher or Control Center - is `system_navigation_t`'s one field.
+showing; anything else is the running app. Which system screen; the
+launcher or Control Center; is `system_navigation_t`'s one field.
 
 ```mermaid
 stateDiagram-v2
@@ -236,7 +236,7 @@ frame. A development build watches for that at runtime
 
 | | |
 |---|---|
-| The frame | From one `gfx_present_begin()` to the next: the shell presents once per pass, so a frame is the shell's pass, the app's `frame()` and `update()`, and the present. A pass that presents nothing - a frozen device, which still answers the console - joins the next frame. Work counts on the loop's task, the panel's sender and the core-1 job worker. |
+| The frame | From one `gfx_present_begin()` to the next: the shell presents once per pass, so a frame is the shell's pass, the app's `frame()` and `update()`, and the present. A pass that presents nothing; a frozen device, which still answers the console; joins the next frame. Work counts on the loop's task, the panel's sender and the core-1 job worker. |
 | Watched | Every heap allocation and free, through ESP-IDF's heap hooks (`CONFIG_HEAP_USE_HOOKS`, dev and diag defaults), keyed by the caller's address. Every `ESP_LOG*` line, through `esp_log_set_vprintf()`, keyed by its format string. A plain `printf()` is not watched on the board. |
 | Repeating | The same site in `FRAME_WATCH_REPEATS` of the last `FRAME_WATCH_WINDOW` frames (`util/frame_watch.h`), a fraction of a second at this board's frame rate. Work done once when something happens, or a report every second or two, never qualifies. The `FRAME_WATCH_WARMUP` frames after an app is entered or left are counted but not judged. |
 | Warning | One line per site, `FRAME_WATCH <alloc\|free\|console> in <n> of <window> frames at 0x<address>`, repeated at most once per `FRAME_WATCH_REPORT_INTERVAL_US` while it lasts. `console` is a log line, and its site also shows its format. `scripts/device/device.py` parses this line, so its shape is fixed by a test. |
@@ -248,7 +248,7 @@ to a file and line under "frame watch sites decoded" against the matching
 `.elf`. In a saved capture, `grep FRAME_WATCH` finds it. The fix is the
 [Building-an-App.md](Building-an-App.md#rules) rule: allocate in `enter()`,
 free in `exit()`, and keep what a frame needs from one frame to the next. A
-log line belongs to a change - log when a value changes, not every frame it
+log line belongs to a change; log when a value changes, not every frame it
 holds.
 
 The gates are in [Testing-Guide.md](Testing-Guide.md#the-frame-watch-as-a-gate):
@@ -291,14 +291,14 @@ integration underneath them works.
 
 These fight. Immediate mode rebuilds and repaints the UI every frame, which
 means clearing every frame, which marks every band dirty and forces a full
-transfer - discarding the saving partial updates exist to provide.
+transfer; discarding the saving partial updates exist to provide.
 
 The resolution: an immediate-mode UI is **rebuilt** every frame but not
 necessarily **changed**. microui's command list is a complete description
 of the output, so two frames that hash the same *are* the same picture. A
 retained-mode engine knows what changed because changing it is an explicit
 act; immediate mode throws that signal away, so it is recovered from the
-other end - compare output where an engine compares intent.
+other end; compare output where an engine compares intent.
 
 ### One window is one canvas
 
@@ -436,20 +436,20 @@ origin, and later motion stays raw.
 
 ## Related
 
-- [notes/README.md](notes/README.md) - the hardware underneath: memory
+- [notes/README.md](notes/README.md): the hardware underneath: memory
   budget, panel and touch behaviour
   ([Input-and-Sensors.md](notes/Input-and-Sensors.md)), flashing and
   recovery.
-- [Mesh-Rendering.md](Mesh-Rendering.md) - `render/`: cameras, the span
+- [Mesh-Rendering.md](Mesh-Rendering.md): `render/`: cameras, the span
   rasterizer, the two-core frame.
-- [Mesh-Import.md](Mesh-Import.md) - how a source mesh becomes a baked
+- [Mesh-Import.md](Mesh-Import.md): how a source mesh becomes a baked
   lit-mesh: simplify, light, meshlets, the format.
-- [Animation-Tracks.md](Animation-Tracks.md) - `anim/`: glTF keyed values
+- [Animation-Tracks.md](Animation-Tracks.md): `anim/`: glTF keyed values
   sampled over time, and how a scene's properties are animated.
-- [Text-and-Fonts.md](Text-and-Fonts.md) - what a font is, the role
+- [Text-and-Fonts.md](Text-and-Fonts.md): what a font is, the role
   accessor, text at more than one size.
-- [tools/Frame-Cost.md](tools/Frame-Cost.md) - where a frame's time goes, by
+- [tools/Frame-Cost.md](tools/Frame-Cost.md): where a frame's time goes, by
   stage.
-- [Testing-Guide.md](Testing-Guide.md) - how to test any of it.
-- [Build-Variants.md](Build-Variants.md) - what release, development and
+- [Testing-Guide.md](Testing-Guide.md): how to test any of it.
+- [Build-Variants.md](Build-Variants.md): what release, development and
   diagnostics builds each carry.
