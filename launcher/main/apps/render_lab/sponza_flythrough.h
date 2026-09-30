@@ -20,6 +20,9 @@
  * plane never cuts into a wall; suite_sponza.c holds the path to it. */
 #define SPONZA_FLYTHROUGH_CLEARANCE 25.0f
 
+#define SPONZA_HALF_FOV_SHORT_TAN   0.62f
+#define SPONZA_NEAR_Z               6.0f
+
 extern const r3d_path_t sponza_flythrough;
 
 /* The view t_ms into the loop at the render size, turned for `quarter`. */

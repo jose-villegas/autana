@@ -16,6 +16,8 @@ checked-in C data.
 | [octree.py](octree.py) | Groups triangles into an octree whose leaves become clusters. |
 | [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: clusters a lit mesh, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as C data. |
 | [fetch.py](fetch.py) | Downloads a source model once into `.cache/`, checked against a SHA-256. |
+| [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, and the poses file; host-tested by `suite_r3d_triangle_sizes.c`. |
+| [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
 
 The environment is pinned in [requirements.txt](requirements.txt), and the
 simplifier needs the meshoptimizer submodule and a host C++ compiler (`CXX`,
@@ -30,3 +32,17 @@ tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.tx
 A generator is a script beside the model's consumer: it loads and bakes the
 model with these modules and ends in one `write_lit_mesh()` call. The banner
 of each file it writes records the exact command that produced it.
+
+## Triangle sizes
+
+```sh
+./launcher/tools/r3d/report_triangle_sizes.sh --mesh SOURCE.c:SYMBOL POSES [--write DIR | --against DIR]
+```
+
+How many of a baked mesh's drawn triangles cover 0, 1, 2-4 or more pixel
+centres at each pose, which sizes the rasterizer's small-triangle work.
+`--mesh` names the C file a generator wrote and its `r3d_lit_mesh_t`;
+`POSES` is a text file of `size`, `lens` and `pose` lines, its format in
+[`triangle_sizes.h`](triangle_sizes.h), owned by whoever owns the scene.
+`--write` keeps each pose's frame and `--against` diffs a later build's
+frames with them, pixel by pixel.
