@@ -203,9 +203,9 @@ def device_command(*args, wait=None):
     when some other interpreter started this file. `--owner`/`--wait` are
     device.py's own top-level flags, filled in one place for every board
     command: owner() names the lock holder, and `--wait` is a caller's own
-    `wait` when it gives one (send()'s short fail-fast window overrides
-    everything else), else the global `--wait` (WAIT_ENV), else left to
-    device.py's own 600 s default."""
+    `wait` when it gives one (send()'s short fail-fast window, used only
+    without a global `--wait`), else the global `--wait` (WAIT_ENV), else
+    left to device.py's own 600 s default."""
     command = [idf_python(), "-u", str(device_tool()), "--owner", owner()]
     wait = wait if wait is not None else os.environ.get(WAIT_ENV)
     if wait:
@@ -702,8 +702,20 @@ def suite(args):
 # A console line is asked from a prompt somebody is sitting at: a board another
 # owner holds is reported at once rather than waited for, which from the
 # outside is a terminal that has hung. The few seconds cover a lock changing
-# hands between the look and the send.
+# hands between the look and the send. A global --wait asks to queue instead.
 SEND_WAIT_S = 5
+
+
+def refused_as_busy():
+    """True, having said so, when another owner holds the board and no
+    global --wait asked to wait for it."""
+    if os.environ.get(WAIT_ENV):
+        return False
+    holder = board_holder()
+    if holder:
+        print(f"the board is busy - {holder}\nnothing was sent; try again when it is free, "
+              "or give --wait", file=sys.stderr)
+    return bool(holder)
 
 
 def board_holder():
@@ -741,12 +753,10 @@ def send(line, reply="TUNE", optional=False, seconds=None, until=None):
     is for a verb that answers only when something is wrong (TOUCH, IMU): a
     timeout with nothing seen is success, not "no reply", since silence is
     that verb's normal happy path."""
-    holder = board_holder()
-    if holder:
-        print(f"the board is busy - {holder}\nnothing was sent; try again when it is free",
-              file=sys.stderr)
+    if refused_as_busy():
         return EXIT_BUSY, []
-    command = device_command("send", line, wait=SEND_WAIT_S)
+    command = device_command("send", line,
+                             wait=None if os.environ.get(WAIT_ENV) else SEND_WAIT_S)
     if reply != "TUNE":
         command += ["--reply", reply]
         for one_until in until if until is not None else [reply]:
@@ -812,10 +822,7 @@ def screenshot_frames(frames, out, view):
 
 
 def capture_screenshot(out, view):
-    holder = board_holder()
-    if holder:
-        print(f"the board is busy - {holder}\nnothing was sent; try again when it is free",
-              file=sys.stderr)
+    if refused_as_busy():
         return EXIT_BUSY
     command = device_command("screenshot")
     if out:

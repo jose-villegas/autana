@@ -692,6 +692,46 @@ def capture_after_reset(output, seconds, idle_seconds, expected_build_id=None,
             print("reset capture lost the port; reopening", file=sys.stderr)
 
 
+# What a development image logs once its console reads lines
+# (console_start()); the frame loop, which takes a RUNSUITE, follows it.
+CONSOLE_UP = b"listening for 'screenshot'"
+BOOT_WAIT_SECONDS = 30
+
+
+def console_up(build_id):
+    def complete(data):
+        return CONSOLE_UP in data and b"BUILD_ID=" + build_id.encode("ascii") in data
+    return complete
+
+
+def await_console(args, board, build_id, acquired_at):
+    """A flash ends with an RTS reset, and a development bootloader then power
+    cycles the chip, so the port the write used re-enumerates about a second
+    later: a request sent before that lands in the old boot or on a handle
+    about to die. Waits under the caller's lock for `build_id` to boot to
+    its console; a board that never gets there is reported, not refused,
+    since the capture that follows says what it did instead."""
+    started_at = now()
+    output, managed = resolve_capture_path(None, "boot-" + args.variant, args.owner, started_at)
+    data, reason = b"", None
+    try:
+        data, reason = capture_after_reset(output, BOOT_WAIT_SECONDS, None, build_id,
+                                           console_up(build_id))
+    except PortUnavailable as unavailable:
+        reason = str(unavailable)
+    finally:
+        path = record_capture(output, managed, started_at=started_at, board=board,
+                              owner=args.owner, purpose=args.purpose, command="boot",
+                              build_id=latest_build_id_from_bytes(data), reason=reason,
+                              worktree=str(Path(args.worktree).resolve()),
+                              commit=git_commit(args.worktree), acquired_at=acquired_at)
+    if reason == "complete":
+        print("booted BUILD_ID=" + build_id + " to its console")
+    else:
+        print(f"no console from BUILD_ID={build_id} within {BOOT_WAIT_SECONDS}s ({reason}) - "
+              f"sending anyway; the boot: {path}", file=sys.stderr)
+
+
 def reset_device(args, store, board):
     """Reboot under the device lock, optionally keeping the post-reset
     console output as a capture record."""
@@ -1160,12 +1200,13 @@ class NoTestMatched(TestFilterError):
     """A --test pattern selected nothing."""
 
 
-def check_test_filter(data, suite, patterns):
+def check_test_filter(data, suite, patterns, reason="complete"):
     """A filtered run that did not filter, or had a pattern that matched
     nothing, is an error and not a result: the first would report every row
     of the suite as if it had been asked for, the second lists the names to
     choose from. With `patterns` given, a capture that never printed the
-    completion line is one too."""
+    completion line is one too - a filter error when the board went on to
+    finish, a capture error, which a batch survives, when it was cut short."""
     text = data.decode("utf-8", errors="replace")
     complete = None
     for complete in SUITE_COMPLETE_RE.finditer(text):
@@ -1176,9 +1217,11 @@ def check_test_filter(data, suite, patterns):
                               "SUITE_FILTER_LEN - 1 characters, and there are at most "
                               "SUITE_FILTER_MAX (launcher/test/suites.h)")
     if complete is None:
+        if patterns and reason != "complete":
+            raise RuntimeError(f"no RUNSUITE_COMPLETE line arrived: the capture ended {reason}")
         if patterns:
             raise TestFilterError("no RUNSUITE_COMPLETE line arrived: an image that predates --test "
-                                  "drops a request this long, or the capture was cut short")
+                                  "drops a request this long")
         return
     if complete.group("selected") is None:
         raise TestFilterError("this image predates --test - autana flash diag")
@@ -1229,7 +1272,7 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
             print("report generation failed (capture is unaffected): " + str(report_error),
                   file=sys.stderr)
     if patterns:
-        check_test_filter(data, args.suite, patterns)
+        check_test_filter(data, args.suite, patterns, reason)
     failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False))
     return 1 if failed else 0
 
@@ -1510,6 +1553,7 @@ def batch(args, store, board):
                 raise RuntimeError(
                     f"build id mismatch: expected {args.expect_build_id}, flashed {build_id} - "
                     "refusing to run any suite")
+            await_console(flash_args, board, build_id, held.held["acquired_at"])
         else:
             build_id = args.expect_build_id
         commit = git_commit(worktree)
