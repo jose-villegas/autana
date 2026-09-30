@@ -5,7 +5,7 @@
 /* Defined in terms of PALETTE_COLS_FOR() (palette.h) rather than
  * reimplementing floor+clamp here, so the runtime and the compile-time
  * _Static_assert path (PALETTE_FITS, also built from PALETTE_COLS_FOR())
- * share exactly one formula - see PALETTE_COLS_FOR()'s own comment for why
+ * share exactly one formula, see PALETTE_COLS_FOR()'s own comment for why
  * that matters. */
 int
 palette_cols(int screen_w) {

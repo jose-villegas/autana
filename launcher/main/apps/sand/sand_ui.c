@@ -47,7 +47,7 @@ close_palette(sand_ui_t* ui) {
  * mirroring where the panel opens in SAND_UI_RUNNING: it cannot close on
  * the SAME edge that opened it, since edges are read-and-cleared once
  * per frame before this function ever runs for the first time. Selecting
- * or toggling a tile is NOT decided here - see sand_ui.h's "WHO
+ * or toggling a tile is NOT decided here, see sand_ui.h's "WHO
  * HIT-TESTS AND WHO DECIDES". What is left is swallow_release's own
  * bookkeeping: disarm it the first frame a finger already down when
  * opened is lifted. */
@@ -65,7 +65,7 @@ handle_palette_input(sand_ui_t* ui, const input_t* input) {
         return close_palette(ui);
     }
 
-    /* The dangling touch's own lift, not any particular click - see this
+    /* The dangling touch's own lift, not any particular click, see this
      * function's own top comment. Checked every SAND_UI_PALETTE frame,
      * not just once, because the finger can take more than one frame to
      * actually come up. */
@@ -76,7 +76,7 @@ handle_palette_input(sand_ui_t* ui, const input_t* input) {
     return 0;
 }
 
-/* What a click on palette tile `index` means - see this function's own
+/* What a click on palette tile `index` means, see this function's own
  * doc comment in sand_ui.h for the full contract, and the "WHO
  * HIT-TESTS AND WHO DECIDES" note there for why the hit-test producing
  * `index` belongs to microui, not this module. draw_palette() in
@@ -86,7 +86,7 @@ handle_palette_input(sand_ui_t* ui, const input_t* input) {
 unsigned
 sand_ui_tile_clicked(sand_ui_t* ui, int index) {
     /* Swallow the first click after the panel opens with a finger already
-     * down - see `swallow_release`'s own comment on sand_ui_t, and
+     * down, see `swallow_release`'s own comment on sand_ui_t, and
      * handle_palette_input()'s own comment for the other half of this
      * guard (disarming it on the finger's actual lift). This is the same
      * family of bug BOOT already had to fix: an edge that outlives the
@@ -171,7 +171,7 @@ handle_brush_screen_input(sand_ui_t* ui, const input_t* input) {
     return 0;
 }
 
-/* What a tap on brush-mode segment `index` means - see this function's own
+/* What a tap on brush-mode segment `index` means, see this function's own
  * doc comment in sand_ui.h for the full contract, and "WHO HIT-TESTS AND
  * WHO DECIDES" for why the hit-test producing `index` is not this
  * module's job. `index` lines up with sand_mode_t directly - see
@@ -224,7 +224,7 @@ handle_running_input(sand_ui_t* ui, const input_t* input) {
     return 0;
 }
 
-/* One frame's worth of input, dispatched by screen - see this function's
+/* One frame's worth of input, dispatched by screen, see this function's
  * own comment in sand_ui.h. Reading `ui->screen` exactly once, before any
  * branch can change it, is what keeps the press that opens a panel from
  * also being read by that panel's own close check in the same call. */

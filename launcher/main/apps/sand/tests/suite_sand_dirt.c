@@ -4,7 +4,7 @@
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
- * live in suite_sand_common.{c,h} - see that header.
+ * live in suite_sand_common.{c,h}, see that header.
  */
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
                      * but every file inherited suite_sand.c's own include
@@ -296,7 +296,7 @@ test_dirt_made_from_soaked_sand_still_dries_out_asleep(void) {
 }
 
 /* Freshly drawn dirt is dry, and freshly poured dirt is banded the way a
- * freshly poured grain of sand is - see random_cell() (sand.c).
+ * freshly poured grain of sand is, see random_cell() (sand.c).
  *
  * A brushful is centred on ONE pour band with the same +/-1 jitter sand's
  * own shade uses, so it is NOT expected to use every one of
@@ -434,7 +434,7 @@ test_soil_loses_its_tone_across_a_wetting_and_gets_a_fresh_one_drying(void) {
 
 /* THE DRYING-FRONT IMPRINT: a donor cell that empties itself by handing
  * its very last unit of moisture to a drier neighbour dries out biased by
- * THAT neighbour, not bone pale - see soil_dry_out() (sand_priv.h).
+ * THAT neighbour, not bone pale, see soil_dry_out() (sand_priv.h).
  * It is what makes a pile that dried top-down legible as having dried
  * top-down.
  *

@@ -3,7 +3,7 @@
  * body colour mapped to a sand_palette256_lut index (material_palette.c)
  * and back out through gfx_indexed_expand_row() (gfx_indexed.h). Pure and
  * host-portable, the same reason suite_sand_*.c can drive the real
- * simulation at all - see suite_sand_common.h's own top comment.
+ * simulation at all, see suite_sand_common.h's own top comment.
  *
  * This suite checks the palette mapping and indexed expansion against
  * settled scenes. The row painter is exercised by suite_sand_paint_row.c.
@@ -116,7 +116,7 @@ test_expansion_reproduces_the_real_lut_cell_for_cell(void) {
 /* MATERIAL_HATCHED belongs to metal (MATX_METAL); MAT_GLASS is a flat
  * MATERIAL_SPECKLED gradient with no sub-cell pattern, so it needs no
  * shine-index handling. Metal's shine cells get col[2]'s own index, which
- * dithers to a different 16-colour entry too - see sp_paint_indexed_cell()'s own
+ * dithers to a different 16-colour entry too, see sp_paint_indexed_cell()'s own
  * comment (sand_paint_row.h) for why one index byte forces this adaptation. */
 static void
 test_metal_shine_cells_get_a_different_index_in_256_and_16(void) {

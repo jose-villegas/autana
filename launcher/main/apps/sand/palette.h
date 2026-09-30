@@ -24,7 +24,7 @@
  */
 #pragma once
 
-/* Duplicated from gfx.h's GFX_WIDTH/GFX_HEIGHT - see this file's own top
+/* Duplicated from gfx.h's GFX_WIDTH/GFX_HEIGHT, see this file's own top
  * comment for why this module cannot simply include that header. */
 #define PALETTE_SCREEN_W 368
 #define PALETTE_SCREEN_H 448
@@ -60,7 +60,7 @@
     ((((w) / PALETTE_TILE) < 1) ? 1                                                                                    \
                                 : (((w) / PALETTE_TILE) > PALETTE_COLS_MAX ? PALETTE_COLS_MAX : ((w) / PALETTE_TILE)))
 
-/* How many columns a `screen_w`-wide canvas gets - see this file's own
+/* How many columns a `screen_w`-wide canvas gets, see this file's own
  * "WHY DERIVED, NOT FIXED" comment above. Callers pass the LOGICAL
  * canvas width (see ui.h's ui_width(), not GFX_WIDTH) and thread the
  * result through explicitly, the same way screen_w/screen_h are already
@@ -68,7 +68,7 @@
  * hidden global. */
 int palette_cols(int screen_w);
 
-/* Duplicated from gfx.h's GFX_CHAR_W/GFX_CHAR_H - see the PALETTE_SCREEN_W/H
+/* Duplicated from gfx.h's GFX_CHAR_W/GFX_CHAR_H, see the PALETTE_SCREEN_W/H
  * paragraph of this file's top comment for why: gfx.h
  * drags in bsp/esp-bsp.h, which this host-testable module cannot
  * include. Both are 16 (an 8x8 font glyph at GFX_GLYPH_SCALE 2) and must
@@ -111,9 +111,9 @@ void palette_tile_rect(int index, int count, int cols, int screen_w, int screen_
 /* Which tile contains (px, py), or -1 for none - including a point in
  * the empty part of a centred partial row, a point outside the panel
  * entirely, and negative coordinates. Must stay exactly consistent with
- * palette_tile_rect() - see this file's top comment. `cols`, `screen_w`
+ * palette_tile_rect(), see this file's top comment. `cols`, `screen_w`
  * and `screen_h` must be the same values passed to palette_tile_rect()
- * for the two to agree - see that function's own comment on why `cols`
+ * for the two to agree, see that function's own comment on why `cols`
  * is threaded through rather than recomputed. */
 int palette_hit(int px, int py, int count, int cols, int screen_w, int screen_h);
 

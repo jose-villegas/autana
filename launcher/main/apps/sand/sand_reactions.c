@@ -224,7 +224,7 @@ try_heat_ramp_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cell_t n
     }
     s->cells[at] = CELL_MAKE(CELL_MATERIAL(n), heat + 1);
     s->may_have_temperature = true;
-    mark_rows(s, nx, ny, ny); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
+    mark_rows(s, nx, ny, ny); /* drawn, not woken, see HEAT LEVELS DO NOT WAKE */
     return true;
 }
 
@@ -241,7 +241,7 @@ dry_heated_soil(sand_t* s, int nx, int ny, int w, int h, size_t at, cell_t n, co
         place_reacted(s, nx, ny, at, (material_id_t)r->spoils_to);
         return;
     }
-    /* No neighbour to bias from - see soil_set_moisture() comment. */
+    /* No neighbour to bias from, see soil_set_moisture() comment. */
     s->cells[at] = soil_set_moisture(n, (uint8_t)(moisture_of(n, r) - 1), 0);
     mark_rows(s, nx, ny, ny);
     wake_block_and_neighbors(s, nx, ny);
@@ -329,7 +329,7 @@ typedef struct {
 _Static_assert(sizeof(react_deferred_t) <= SAND_LANE_DEFER_BYTES,
                "the reaction split's deferred queues must fit one lane's scratch");
 
-/* Test hooks - see sand_priv.h. Never reset by the pass itself. */
+/* Test hooks, see sand_priv.h. Never reset by the pass itself. */
 unsigned sand_reactions_defer_queued[SAND_LANE_COUNT];
 unsigned sand_reactions_defer_applied;
 unsigned sand_reactions_defer_peak_q8;
@@ -1001,7 +1001,7 @@ cold_carry_ray(sand_t* s, int x, int y, int w, int h, const int* dir) {
         if ((depth % COLD_CARRY_RUN) == 0 && (int)(rng_next(&s->rng) & 0xFF) >= cr->conducts) {
             break; /* the cold did not carry this far this step */
         }
-        /* Drawn, not woken - see HEAT LEVELS DO NOT WAKE. */
+        /* Drawn, not woken, see HEAT LEVELS DO NOT WAKE. */
         s->cells[cat] = CELL_MAKE(CELL_MATERIAL(cc), (uint8_t)(ct - 1));
         s->may_have_temperature = true;
         mark_rows(s, cx, cy, cy);
@@ -1038,7 +1038,7 @@ cold_carry_walk(sand_t* s, int x, int y, int w, int h) {
 static bool
 cold_thaws_beside(sand_t* s, int x, int y, int w, int nx, int ny, size_t nat, cell_t n, const reaction_t* nr,
                   const reaction_t* r) {
-    /* MELTING, from any liquid - see reaction_t.thaws. */
+    /* MELTING, from any liquid, see reaction_t.thaws. */
     if (r->thaws != 0 && r->heats_to != 0 && material_of(n)->kind == KIND_LIQUID
         && (int)(rng_next(&s->rng) & 0xFF) < r->thaws) {
         place_reacted(s, x, y, (size_t)y * (size_t)w + (size_t)x, (material_id_t)r->heats_to);
@@ -1093,7 +1093,7 @@ cold_chills_neighbor(sand_t* s, int x, int y, int w, int h, int nx, int ny, size
 
     s->cells[nat] = CELL_MAKE(CELL_MATERIAL(n), (uint8_t)(temp - 1));
     s->may_have_temperature = true;
-    mark_rows(s, nx, ny, ny); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
+    mark_rows(s, nx, ny, ny); /* drawn, not woken, see HEAT LEVELS DO NOT WAKE */
 
     return temp > SAND_AMBIENT_HEAT && try_heat_transform(s, x, y, w, h);
 }
@@ -1189,7 +1189,7 @@ temper_push_into(sand_t* s, int nx, int ny, size_t nat, cell_t n, const reaction
     }
     s->cells[nat] = CELL_MAKE(CELL_MATERIAL(n), (uint8_t)(gap > 0 ? nt + 1 : nt - 1));
     s->may_have_temperature = true;
-    mark_rows(s, nx, ny, ny); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
+    mark_rows(s, nx, ny, ny); /* drawn, not woken, see HEAT LEVELS DO NOT WAKE */
 }
 
 /* Pushes this cell's temperature one level into any heat-banking
@@ -1256,7 +1256,7 @@ step_one_tempered_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, cons
 
     const uint8_t next = (uint8_t)(temp > SAND_AMBIENT_HEAT ? temp - 1 : temp + 1);
     row[x] = CELL_MAKE(CELL_MATERIAL(c), next);
-    mark_rows(s, x, y, y); /* drawn, not woken - see HEAT LEVELS DO NOT WAKE */
+    mark_rows(s, x, y, y); /* drawn, not woken, see HEAT LEVELS DO NOT WAKE */
     return next != SAND_AMBIENT_HEAT;
 }
 
@@ -1930,7 +1930,7 @@ tick_burning_cell(const reaction_row_t* reaction_row, int x, cell_t* grain, cons
     return tick_decay(reaction_row->s, reaction_row->row, x, reaction_row->y, grain, mat_id, plan->tick_rate);
 }
 
-/* The explosive half of a burn-out - see finish_burning_cell(). Split out
+/* The explosive half of a burn-out, see finish_burning_cell(). Split out
  * so the common, non-exploding case never carries its weight, and so the
  * `_or_defer` gate below sits at one small call rather than growing the
  * caller. */
@@ -2122,7 +2122,7 @@ try_lava_burst(const burning_cell_t* cell) {
 }
 
 /* try_lava_burst() reads and bumps the shared confined-blast counter and
- * calls sand_explode() - a chunk-parallel call queues the candidate
+ * calls sand_explode(); a chunk-parallel call queues the candidate
  * instead and reports "did not burst", the same as a roll that missed;
  * sand_step_reaction_reach() runs the real check afterward, single core. */
 static bool
@@ -2386,11 +2386,11 @@ step_one_acid_rain_cell(sand_t* s, int x, int y, int w, int h) {
 #define FOUND_CONDENSING  64u
 
 /* Cells the dispatch loop below actually visits, across both the full row
- * walk and the soak-only partial walk. Never reset here - see its own
+ * walk and the soak-only partial walk. Never reset here, see its own
  * comment in sand_priv.h. */
 unsigned sand_reactions_cells_dispatched;
 
-/* Which shape the call below took - see sand_priv.h. */
+/* Which shape the call below took, see sand_priv.h. */
 bool sand_reactions_last_was_soak_only;
 
 /* One cell of step_one_reacting_row()'s walk. `done` is the stage chain's
@@ -2435,7 +2435,7 @@ react_stage_dissolve(reacting_cell_t* k) {
     }
     const reaction_row_t* rr = k->rr;
     k->found |= FOUND_DISSOLVER;
-    /* MAT_ACID specific - see acid_bubble()'s comment. Future
+    /* MAT_ACID specific, see acid_bubble()'s comment. Future
      * dissolvers may not bubble. */
     dissolver_and_bubble_or_defer(rr->s, rr->row, k->x, rr->y, rr->w, rr->h, k->r, CELL_MATERIAL(k->c) == MAT_ACID);
     k->done = true;
@@ -3187,7 +3187,7 @@ react_walk_every_row(sand_t* s, bool soak_only) {
     return found;
 }
 
-/* Every row of the reaction pass, split or not - see reactions_may_split()
+/* Every row of the reaction pass, split or not, see reactions_may_split()
  * for the gate and the two block comments above for what each half does. */
 static unsigned
 run_reaction_rows(sand_t* s, bool soak_only, bool may_split, bool hash_serial) {
