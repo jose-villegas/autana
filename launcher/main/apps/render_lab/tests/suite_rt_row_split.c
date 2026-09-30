@@ -104,7 +104,7 @@ test_uniform_range_end_counts_whole_rows(void) {
 static rt_cornell_camera_t
 cornell_camera(void) {
     rt_cornell_camera_t cam;
-    rt_cornell_camera_init(&cam, (r3d_viewport_t){DET_W, DET_H, 0});
+    rt_cornell_camera_init(&cam, (viewport_t){DET_W, DET_H, 0});
     return cam;
 }
 
@@ -191,7 +191,7 @@ test_render_lattice_budget_matches_render_rows_over_the_same_range(void) {
 static rt_cornell_camera_t
 path_camera(void) {
     rt_cornell_camera_t cam;
-    rt_cornell_camera_init(&cam, (r3d_viewport_t){PT_W, PT_H, 0});
+    rt_cornell_camera_init(&cam, (viewport_t){PT_W, PT_H, 0});
     return cam;
 }
 

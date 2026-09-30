@@ -17,12 +17,12 @@
 #define SCREEN_W 368
 #define SCREEN_H 448
 
-static r3d_view_t
+static r3d_line_view_t
 fixture(void) {
-    r3d_view_t v;
+    r3d_line_view_t v;
     S3L_mat4Init(v.matrix);
     v.focal = S3L_F;
-    v.near_z = R3D_NEAR_Z;
+    v.near_z = R3D_LINE_NEAR_Z;
     v.center_x = SCREEN_W / 2;
     v.center_y = SCREEN_H / 2;
     v.scale = SCREEN_W / 2;
@@ -40,7 +40,7 @@ static const wire_mesh_t identity_pose_mesh = {identity_pose_vertices, one_edge,
 
 static void
 test_identity_pose_matches_the_hand_derived_screen_points(void) {
-    const r3d_view_t view = fixture();
+    const r3d_line_view_t view = fixture();
     wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
     wire_frame_t frame = {cs, 2, segments, 1, 0, 0, 0, 0, 0};
@@ -66,7 +66,7 @@ static const wire_mesh_t rotated_pose_mesh = {rotated_pose_vertices, one_edge, 2
 
 static void
 test_a_rotated_pose_matches_the_hand_derived_screen_points(void) {
-    r3d_view_t view = fixture();
+    r3d_line_view_t view = fixture();
     S3L_mat4Init(view.matrix);
     view.matrix[0][0] = 0;
     view.matrix[0][2] = S3L_F;
@@ -130,7 +130,7 @@ build_grid(int n, wire_vertex_t* vertices, wire_edge_t* edges) {
  * size already crowds the frame-size ceiling in one function. */
 static void
 check_grid_is_fully_visible(int n) {
-    const r3d_view_t view = fixture();
+    const r3d_line_view_t view = fixture();
     const int vertex_count = n * n;
     const int max_edges = 2 * n * (n - 1);
     wire_vertex_t* vertices = malloc(sizeof(*vertices) * (size_t)vertex_count);
@@ -180,7 +180,7 @@ test_a_5x5_grid_is_fully_visible(void) {
 
 static void
 test_both_ends_behind_near_plane_drop_the_edge(void) {
-    const r3d_view_t view = fixture();
+    const r3d_line_view_t view = fixture();
     const wire_vertex_t vertices[2] = {{0, 0, 0}, {10, 10, (int16_t)view.near_z}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
     wire_cs_vertex_t cs[2];
@@ -194,7 +194,7 @@ test_both_ends_behind_near_plane_drop_the_edge(void) {
 
 static void
 test_one_end_behind_clips_to_the_near_plane_crossing(void) {
-    r3d_view_t view = fixture();
+    r3d_line_view_t view = fixture();
     view.near_z = 100;
     const wire_vertex_t vertices[2] = {{0, 0, 0}, {40, 20, 200}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
@@ -222,7 +222,7 @@ test_one_end_behind_clips_to_the_near_plane_crossing(void) {
 
 static void
 test_an_endpoint_exactly_at_near_z_counts_as_behind(void) {
-    const r3d_view_t view = fixture();
+    const r3d_line_view_t view = fixture();
     const wire_vertex_t vertices[2] = {{10, 10, (int16_t)view.near_z}, {0, 0, 300}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
     wire_cs_vertex_t cs[2];
@@ -249,7 +249,7 @@ test_an_endpoint_exactly_at_near_z_counts_as_behind(void) {
 
 static void
 check_edge_dropped(int16_t x0, int16_t y0, int16_t x1, int16_t y1) {
-    const r3d_view_t view = fixture();
+    const r3d_line_view_t view = fixture();
     const wire_vertex_t vertices[2] = {{x0, y0, S3L_F}, {x1, y1, S3L_F}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
     wire_cs_vertex_t cs[2];
@@ -283,7 +283,7 @@ test_an_edge_fully_below_the_screen_is_dropped(void) {
 
 static void
 test_an_edge_straddling_the_right_edge_is_kept_and_clipped(void) {
-    const r3d_view_t view = fixture();
+    const r3d_line_view_t view = fixture();
     const wire_vertex_t vertices[2] = {{0, 0, S3L_F}, {4 * S3L_F, 0, S3L_F}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
     wire_cs_vertex_t cs[2];
@@ -306,7 +306,7 @@ test_an_edge_straddling_the_right_edge_is_kept_and_clipped(void) {
  * exercising the 64-bit clip that runs before narrowing. */
 static void
 test_a_far_off_endpoint_is_narrowed_within_one_pixel(void) {
-    r3d_view_t view = fixture();
+    r3d_line_view_t view = fixture();
     S3L_mat4Init(view.matrix);
     view.matrix[0][0] = 500 * S3L_F;
     view.matrix[1][1] = 250 * S3L_F;
@@ -346,7 +346,7 @@ test_a_far_off_endpoint_is_narrowed_within_one_pixel(void) {
 
 static void
 test_exceeding_capacity_caps_the_count_and_reports_overflow(void) {
-    const r3d_view_t view = fixture();
+    const r3d_line_view_t view = fixture();
     const int n = 2;
     const int vertex_count = n * n;
     wire_vertex_t vertices[4];
@@ -386,7 +386,7 @@ static const wire_mesh_t bbox_mesh = {bbox_vertices, bbox_edges, 4, 2};
 
 static void
 test_bbox_is_the_union_of_the_emitted_segments(void) {
-    const r3d_view_t view = fixture();
+    const r3d_line_view_t view = fixture();
     wire_cs_vertex_t cs[4];
     wire_segment_t segments[2];
     wire_frame_t frame = {cs, 4, segments, 2, 0, 0, 0, 0, 0};

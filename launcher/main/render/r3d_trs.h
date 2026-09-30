@@ -14,4 +14,4 @@
 
 #include "render/r3d_project.h"
 
-S3L_Transform3D r3d_transform_from_trs(const float translation[3], const float rotation[4], const float scale[3]);
+S3L_Transform3D r3d_trs_to_transform(const float translation[3], const float rotation[4], const float scale[3]);

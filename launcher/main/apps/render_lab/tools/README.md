@@ -21,10 +21,10 @@ capture. The Gouraud scene rotates when stepped over several frames.
 
 `--view shaded|depth|tiles` shows a lit-mesh scene's frame as the renderer
 left it (`shaded`, the default), as its depth buffer, or as that depth
-reduced to `R3D_LIT_TILE` squares. The depth is `r3d_lit_frame_render()`'s
-own buffer, unchanged; `r3d_lit_frame_show()` only colours it and takes each
+reduced to `RASTER_SHOW_TILE` squares. The depth is `raster_draw()`'s
+own buffer, unchanged; `raster_show()` only colours it and takes each
 tile's farthest depth, so the views are what the renderer holds at the
-moment it doubles the frame. Near is bright and far dark, stretched over the
+moment it upscales the frame. Near is bright and far dark, stretched over the
 range that frame drew, so grey compares pixels within a frame, not across
 frames; a pixel nothing reached takes the scene's clear colour, as the
 shaded frame does, and a tile with one such pixel is empty.
@@ -32,7 +32,7 @@ shaded frame does, and a tile with one such pixel is empty.
 They are ordinary renders: `sponza-depth-*.bmp` and `sponza-tiles-*.bmp`
 beside `sponza-*.bmp`, each with a `.png` when Pillow is installed, turned to
 the panel's orientation and the size the script declares. The picture is the
-renderer's resolution, half the panel's each way, doubled like the shaded
+renderer's resolution, half the panel's each way, upscaled like the shaded
 one. They are `|nopin`, like the shaded Sponza renders: the camera path is
 float, so which pixels a triangle reaches can differ by compiler.
 `--view` sets the tunable `render_lab.view`, so on a development build

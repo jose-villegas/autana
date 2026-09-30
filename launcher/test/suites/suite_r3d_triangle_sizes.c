@@ -14,7 +14,7 @@
 
 #ifndef DEVICE_BUILD
 
-#include "render/r3d_lit_pipeline.h"
+#include "render/r3d_pipeline.h"
 #include "triangle_sizes.h"
 
 #define GRID  24 /* quads a side */
@@ -104,13 +104,13 @@ grid_close(grid_mesh_t* g) {
 
 static r3d_sizes_t
 sizes_at(const grid_mesh_t* g, float distance) {
-    r3d_lit_view_t view;
-    r3d_lit_view_look(&view, (r3d_vec3f_t){0.0f, 0.0f, distance}, (r3d_vec3f_t){0.0f, 0.001f, -1.0f}, 0.5f, 1.0f,
-                      g->mesh.position_scale, (r3d_viewport_t){64, 48, 0});
+    r3d_lens_t lens;
+    r3d_lens_init(&lens, &(camera_t){{0.0f, 0.0f, distance}, {0.0f, 0.001f, -1.0f}, 0.5f, 1.0f}, g->mesh.position_scale,
+                  (viewport_t){64, 48, 0});
     uint16_t visible[1];
-    const int count = r3d_lit_cull_clusters(&g->mesh, &view, visible);
+    const int count = r3d_pipeline_cull(&g->mesh, &lens, visible);
     r3d_sizes_t s = {0};
-    r3d_sizes_count(&g->mesh, &view, visible, count, &s);
+    r3d_sizes_count(&g->mesh, &lens, visible, count, &s);
     return s;
 }
 

@@ -105,7 +105,7 @@ expand_bbox(wire_frame_t* frame, int x0, int y0, int x1, int y1) {
 }
 
 void
-wire_transform(const wire_mesh_t* mesh, const r3d_view_t* view, wire_frame_t* frame) {
+wire_transform(const wire_mesh_t* mesh, const r3d_line_view_t* view, wire_frame_t* frame) {
     assert(mesh->vertex_count <= frame->cs_capacity);
 
     for (uint16_t i = 0; i < mesh->vertex_count; i++) {
@@ -120,7 +120,8 @@ wire_transform(const wire_mesh_t* mesh, const r3d_view_t* view, wire_frame_t* fr
 }
 
 bool
-wire_project_edges(const wire_mesh_t* mesh, const r3d_view_t* view, int screen_w, int screen_h, wire_frame_t* frame) {
+wire_project_edges(const wire_mesh_t* mesh, const r3d_line_view_t* view, int screen_w, int screen_h,
+                   wire_frame_t* frame) {
     frame->segment_count = 0;
 
     for (uint16_t i = 0; i < mesh->edge_count; i++) {

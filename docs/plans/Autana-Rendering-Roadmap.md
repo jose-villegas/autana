@@ -100,7 +100,7 @@ The green-bordered nodes above are already in the tree, not proposed:
 `gfx_present_begin()`/`gfx_present_wait()`), `bandRing` (`gfx/gfx_band.h`,
 already what render lab draws into), `hostHarness`
 (`docs/tools/Render-Harness.md`'s `*_render_host.sh` + `render_diff.sh`),
-`s3lExtract` (`render/r3d_project.h`, `r3d_camera.h`, `r3d_ray.h`), and
+`s3lExtract` (`render/r3d_project.h`, `r3d_line_camera.h`, `ray.h`), and
 `tiltShake` (`input/tilt.{h,c}`, a pure, host-tested reader of down,
 strength and shake that the shell and apps both call).
 
@@ -468,15 +468,15 @@ replace it, chosen by app kind:
    per-pixel access, and a per-band one arrives with the rasterizer, not
    with the ring alone.
 
-**A measured exception: the lit-mesh frame.** `render/r3d_lit_frame.h`
+**A measured exception: the lit-mesh raster.** `render/raster.h`
 renders at half resolution into colour and depth targets in PSRAM and
-doubles the result into the framebuffer, both cores writing PSRAM in bulk
+upscales the result into the framebuffer, both cores writing PSRAM in bulk
 every frame. It stays there until the span rasterizer draws into the band
 ring; `apps/render_lab/tests/suite_sponza_perf.c`, on a full diagnostics
 build, prints what a frame of each bake costs on both cores before present.
-The doubling belongs to gfx (section 8,
+The upscaling belongs to gfx (section 8,
 decision 1) and moves there when gfx resolves an app's resolution; until
-then `r3d_lit_frame_double()` does it inside render/.
+then `raster_upscale()` does it inside render/.
 
 PSRAM's role narrows to bulk and cold data read at load or per frame:
 textures, levels, the retained framebuffer as a read source, never the
@@ -1103,7 +1103,7 @@ cheapest path to something that is unmistakably a game.
    reference on the host. small3dlib stays vendored only until the boot
    animation stops including it, then the component is deleted. The first
    piece is in the tree: `render/r3d_span.h` fills depth-tested Gouraud
-   spans into a window of rows, and `render/r3d_lit_pipeline.h` culls,
+   spans into a window of rows, and `render/r3d_pipeline.h` culls,
    transforms and clips a mesh whose light is baked into vertex colours.
    Its fill rule is the top-left rule on 4 fractional bits, exact in
    integers and held to a slow reference on the host, with triangles of up

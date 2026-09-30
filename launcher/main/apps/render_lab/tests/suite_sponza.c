@@ -2,7 +2,7 @@
  * Portable suite: the two baked Sponza meshes (sponza_mesh_generated.h,
  * sponza_lite_mesh_generated.h) and the camera loop through them
  * (sponza_flythrough.h). Each mesh is checked for the structure
- * r3d_lit_pipeline.h relies on, never against the generator; the path and
+ * r3d_pipeline.h relies on, never against the generator; the path and
  * the pictures it sees are checked against the shipped meshes themselves.
  */
 
@@ -23,7 +23,8 @@
 #include "apps/render_lab/sponza_lite_mesh_generated.h"
 #include "apps/render_lab/sponza_mesh_generated.h"
 #include "r3d_lit_mesh_expect.h"
-#include "render/r3d_lit_frame.h"
+#include "render/r3d.h"
+#include "render/r3d_pipeline.h"
 
 _Static_assert(SPONZA_VERTEX_COUNT <= 65535 && SPONZA_LITE_VERTEX_COUNT <= 65535 && SPONZA_FLAT_VERTEX_COUNT <= 65535,
                "triangles index vertices with uint16_t");
@@ -32,20 +33,20 @@ _Static_assert(SPONZA_LITE_CLUSTER_COUNT <= SPONZA_CLUSTER_COUNT && SPONZA_FLAT_
 
 /* The flat reference: every cluster's eight corners against each plane. */
 static bool
-cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lit_view_t* view) {
+cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lens_t* lens) {
     int beyond[5] = {0};
     for (int i = 0; i < 8; i++) {
         const float x = (float)(i & 1 ? c->hi[0] : c->lo[0]);
         const float y = (float)(i & 2 ? c->hi[1] : c->lo[1]);
         const float z = (float)(i & 4 ? c->hi[2] : c->lo[2]);
-        const float lx = (view->m[0][0] * x) + (view->m[0][1] * y) + (view->m[0][2] * z) + view->m[0][3];
-        const float ly = (view->m[1][0] * x) + (view->m[1][1] * y) + (view->m[1][2] * z) + view->m[1][3];
-        const float lz = (view->m[2][0] * x) + (view->m[2][1] * y) + (view->m[2][2] * z) + view->m[2][3];
-        beyond[0] += lz < view->near_z;
-        beyond[1] += lx < -view->center_x * lz;
-        beyond[2] += lx > ((float)view->width - view->center_x) * lz;
-        beyond[3] += ly < -view->center_y * lz;
-        beyond[4] += ly > ((float)view->height - view->center_y) * lz;
+        const float lx = (lens->m[0][0] * x) + (lens->m[0][1] * y) + (lens->m[0][2] * z) + lens->m[0][3];
+        const float ly = (lens->m[1][0] * x) + (lens->m[1][1] * y) + (lens->m[1][2] * z) + lens->m[1][3];
+        const float lz = (lens->m[2][0] * x) + (lens->m[2][1] * y) + (lens->m[2][2] * z) + lens->m[2][3];
+        beyond[0] += lz < lens->near_z;
+        beyond[1] += lx < -lens->center_x * lz;
+        beyond[2] += lx > ((float)lens->width - lens->center_x) * lz;
+        beyond[3] += ly < -lens->center_y * lz;
+        beyond[4] += ly > ((float)lens->height - lens->center_y) * lz;
     }
     for (int p = 0; p < 5; p++) {
         if (beyond[p] == 8) {
@@ -63,18 +64,20 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
     TEST_ASSERT_NOT_NULL(walked);
     TEST_ASSERT_NOT_NULL(kept);
     for (uint32_t t = 0; t < period; t += 2500) {
-        r3d_lit_view_t view;
-        sponza_view_at(&view, t, mesh->position_scale, (int)(t / 2500) & 3);
+        const camera_t camera = sponza_camera_at(t);
+        const viewport_t viewport = {SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, (int)(t / 2500) & 3};
+        r3d_lens_t lens;
+        r3d_lens_init(&lens, &camera, mesh->position_scale, viewport);
 
         memset(kept, 0, SPONZA_CLUSTER_COUNT);
-        const int count = r3d_lit_cull_clusters(mesh, &view, walked);
+        const int count = r3d_pipeline_cull(mesh, &lens, walked);
         for (int i = 0; i < count; i++) {
             TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, kept[walked[i]], "a cluster was listed twice");
             kept[walked[i]] = 1;
         }
         int flat = 0;
         for (int c = 0; c < mesh->cluster_count; c++) {
-            const bool in_view = cluster_in_view(&mesh->clusters[c], &view);
+            const bool in_view = cluster_in_view(&mesh->clusters[c], &lens);
             flat += in_view;
             TEST_ASSERT_EQUAL_MESSAGE(in_view, kept[c], "the walk and the flat test disagree on a cluster");
         }
@@ -187,8 +190,8 @@ static void
 check_the_flythrough_keeps_clear_of_every_triangle(const r3d_lit_mesh_t* mesh) {
     const uint32_t period = sponza_flythrough_period_ms();
     for (uint32_t t = 0; t < period; t += 100) {
-        r3d_vec3f_t eye;
-        r3d_vec3f_t forward;
+        vec3f_t eye;
+        vec3f_t forward;
         sponza_flythrough_sample(t, &eye, &forward);
         const float d = clearance(mesh, (v3){eye.x, eye.y, eye.z});
         if (d < SPONZA_FLYTHROUGH_CLEARANCE) {
@@ -245,30 +248,29 @@ test_the_flythrough_keeps_clear_of_every_triangle(void) {
 static void
 test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
     const uint32_t period = sponza_flythrough_period_ms();
-    r3d_vec3f_t previous;
-    r3d_vec3f_t forward;
+    vec3f_t previous;
+    vec3f_t forward;
     sponza_flythrough_sample(0, &previous, &forward);
     for (uint32_t t = 10; t <= period + 100; t += 10) {
-        r3d_vec3f_t eye;
+        vec3f_t eye;
         sponza_flythrough_sample(t, &eye, &forward);
-        const r3d_vec3f_t step = r3d_vec3f_sub(eye, previous);
-        TEST_ASSERT_TRUE_MESSAGE(r3d_vec3f_dot(step, step) < 2.0F * 2.0F,
-                                 "the eye jumped between two samples 10 ms apart");
-        TEST_ASSERT_FLOAT_WITHIN(0.001F, 1.0F, sqrtf(r3d_vec3f_dot(forward, forward)));
+        const vec3f_t step = vec3f_sub(eye, previous);
+        TEST_ASSERT_TRUE_MESSAGE(vec3f_dot(step, step) < 2.0F * 2.0F, "the eye jumped between two samples 10 ms apart");
+        TEST_ASSERT_FLOAT_WITHIN(0.001F, 1.0F, sqrtf(vec3f_dot(forward, forward)));
         previous = eye;
     }
 }
 
 /* The fraction of the picture covered at `t_ms` into the flythrough. */
 static float
-share_covered_at(const r3d_lit_frame_t* frame, uint32_t t_ms) {
-    r3d_lit_view_t view;
-    sponza_view_at(&view, t_ms, frame->mesh->position_scale, 0);
-    r3d_lit_frame_render(frame, &view);
-    const int pixels = frame->width * frame->height;
+share_covered_at(const raster_t* raster, uint32_t t_ms) {
+    const camera_t camera = sponza_camera_at(t_ms);
+    raster_draw(raster, &camera, 0);
+    const int pixels = raster->width * raster->height;
+    const uint16_t* depth = r3d_pipeline_carve(raster).depth;
     int covered = 0;
     for (int i = 0; i < pixels; i++) {
-        covered += frame->depth[i] != 0;
+        covered += depth[i] != 0;
     }
     return (float)covered / (float)pixels;
 }
@@ -279,16 +281,15 @@ share_covered_at(const r3d_lit_frame_t* frame, uint32_t t_ms) {
  * only the building's far sides, about 0.6. */
 static void
 check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
-    r3d_lit_frame_t frame = {.mesh = mesh, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
-    void* scratch = heap_caps_malloc(r3d_lit_frame_scratch_bytes(mesh, frame.width, frame.height),
-                                     MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    raster_t raster = {.mesh = mesh, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
+    void* scratch = heap_caps_malloc(raster_scratch_bytes(&raster), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     TEST_ASSERT_NOT_NULL(scratch);
-    r3d_lit_frame_use_scratch(&frame, scratch);
+    raster.scratch = scratch;
     const uint32_t period = sponza_flythrough_period_ms();
     float sum = 0.0F;
     int samples = 0;
     for (uint32_t t = 0; t < period; t += SPONZA_POSE_EVERY_MS) {
-        sum += share_covered_at(&frame, t);
+        sum += share_covered_at(&raster, t);
         samples++;
     }
     heap_caps_free(scratch);

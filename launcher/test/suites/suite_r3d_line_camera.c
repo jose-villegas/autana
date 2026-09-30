@@ -1,6 +1,6 @@
 /*
- * Portable suite: render/r3d_camera.h (the fixed-point camera and its
- * viewport fit) and render/r3d_ray.h (the float ray camera). Both are
+ * Portable suite: render/r3d_line_camera.h (the fixed-point camera and its
+ * viewport fit) and render/ray.h (the float ray camera). Both are
  * header-only and free of any particular caller's resolution, quarter or
  * unit choice, so every check here builds its own camera and viewport
  * rather than reading one a scene authored.
@@ -13,17 +13,17 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "render/r3d_camera.h"
-#include "render/r3d_ray.h"
+#include "render/r3d_line_camera.h"
+#include "render/ray.h"
 
-/* r3d_camera_view() */
+/* r3d_line_camera_view() */
 
-static r3d_camera_t
+static r3d_line_camera_t
 camera_fixture(void) {
-    r3d_camera_t camera = {0};
+    r3d_line_camera_t camera = {0};
     S3L_transform3DInit(&camera.pose);
     camera.focal = S3L_F;
-    camera.near_z = R3D_NEAR_Z;
+    camera.near_z = R3D_LINE_NEAR_Z;
     return camera;
 }
 
@@ -31,8 +31,8 @@ static void
 test_an_on_axis_point_lands_on_the_viewport_centre(void) {
     S3L_Transform3D model;
     S3L_transform3DInit(&model);
-    const r3d_viewport_t viewport = {.width = 368, .height = 448, .quarter = 0};
-    const r3d_view_t view = r3d_camera_view(camera_fixture(), model, viewport);
+    const viewport_t viewport = {.width = 368, .height = 448, .quarter = 0};
+    const r3d_line_view_t view = r3d_line_camera_view(camera_fixture(), model, viewport);
 
     const S3L_Vec4 p = r3d_to_camera_space((S3L_Vec4){0, 0, 5 * S3L_F, S3L_F}, &view);
     int x, y;
@@ -42,14 +42,14 @@ test_an_on_axis_point_lands_on_the_viewport_centre(void) {
     TEST_ASSERT_EQUAL_INT(view.center_y, y);
 }
 
-/* Independent of r3d_camera_view()'s own arithmetic: builds the matrix by
+/* Independent of r3d_line_camera_view()'s own arithmetic: builds the matrix by
  * hand, from a pose and a model. */
 static void
 check_view_matrix_matches_hand_built(S3L_Transform3D camera_pose, S3L_Transform3D model) {
-    const r3d_camera_t camera = {.pose = camera_pose, .focal = S3L_F, .near_z = R3D_NEAR_Z};
-    const r3d_viewport_t viewport = {.width = 368, .height = 448, .quarter = 0};
+    const r3d_line_camera_t camera = {.pose = camera_pose, .focal = S3L_F, .near_z = R3D_LINE_NEAR_Z};
+    const viewport_t viewport = {.width = 368, .height = 448, .quarter = 0};
 
-    const r3d_view_t got = r3d_camera_view(camera, model, viewport);
+    const r3d_line_view_t got = r3d_line_camera_view(camera, model, viewport);
 
     S3L_Mat4 world_mat, camera_mat;
     S3L_makeWorldMatrix(model, world_mat);
@@ -90,9 +90,9 @@ static void
 check_viewport_centre_and_scale(int width, int height, int expect_center_x, int expect_center_y, int expect_scale) {
     S3L_Transform3D model;
     S3L_transform3DInit(&model);
-    const r3d_viewport_t viewport = {.width = width, .height = height, .quarter = 0};
+    const viewport_t viewport = {.width = width, .height = height, .quarter = 0};
 
-    const r3d_view_t view = r3d_camera_view(camera_fixture(), model, viewport);
+    const r3d_line_view_t view = r3d_line_camera_view(camera_fixture(), model, viewport);
 
     TEST_ASSERT_EQUAL_INT(expect_center_x, view.center_x);
     TEST_ASSERT_EQUAL_INT(expect_center_y, view.center_y);
@@ -105,15 +105,15 @@ test_viewport_centre_and_scale_fit_the_shorter_axis(void) {
     check_viewport_centre_and_scale(400, 300, 200, 150, 150); /* landscape: width is longer */
 }
 
-/* r3d_camera_upright() */
+/* r3d_line_camera_upright() */
 
 static void
 check_up_point_moves_toward_the_quarters_own_edge(int quarter, int expect_dx_sign, int expect_dy_sign) {
     S3L_Transform3D model;
     S3L_transform3DInit(&model);
-    const r3d_camera_t camera = r3d_camera_upright(camera_fixture(), quarter);
-    const r3d_viewport_t viewport = {.width = 368, .height = 448, .quarter = 0};
-    const r3d_view_t view = r3d_camera_view(camera, model, viewport);
+    const r3d_line_camera_t camera = r3d_line_camera_upright(camera_fixture(), quarter);
+    const viewport_t viewport = {.width = 368, .height = 448, .quarter = 0};
+    const r3d_line_view_t view = r3d_line_camera_view(camera, model, viewport);
 
     const S3L_Vec4 target = r3d_to_camera_space((S3L_Vec4){0, 0, 5 * S3L_F, S3L_F}, &view);
     const S3L_Vec4 up = r3d_to_camera_space((S3L_Vec4){0, S3L_F, 5 * S3L_F, S3L_F}, &view);
@@ -147,25 +147,25 @@ test_a_point_above_the_target_projects_toward_each_quarters_own_up_edge(void) {
     check_up_point_moves_toward_the_quarters_own_edge(3, -1, 0);
 }
 
-/* r3d_ray_direction() */
+/* ray_direction() */
 
 #define RAY_WIDTH  101 /* odd: a pixel centre lands exactly on the optical axis */
 #define RAY_HEIGHT 81
 
-static r3d_ray_camera_t
-ray_camera_fixture(r3d_viewport_t viewport, float half_fov_short_tan) {
-    r3d_ray_camera_t cam;
-    r3d_ray_camera_init(&cam, (r3d_vec3f_t){0, 0, 0}, (r3d_vec3f_t){0, 0, 1}, (r3d_vec3f_t){1, 0, 0},
-                        (r3d_vec3f_t){0, 1, 0}, half_fov_short_tan, viewport);
+static ray_camera_t
+ray_camera_fixture(viewport_t viewport, float half_fov_short_tan) {
+    ray_camera_t cam;
+    ray_camera_init(&cam, (vec3f_t){0, 0, 0}, (vec3f_t){0, 0, 1}, (vec3f_t){1, 0, 0}, (vec3f_t){0, 1, 0},
+                    half_fov_short_tan, viewport);
     return cam;
 }
 
 static void
 test_the_centre_pixel_ray_is_the_forward_axis(void) {
-    const r3d_viewport_t viewport = {.width = RAY_WIDTH, .height = RAY_HEIGHT, .quarter = 0};
-    const r3d_ray_camera_t cam = ray_camera_fixture(viewport, 0.7f);
+    const viewport_t viewport = {.width = RAY_WIDTH, .height = RAY_HEIGHT, .quarter = 0};
+    const ray_camera_t cam = ray_camera_fixture(viewport, 0.7f);
 
-    const r3d_vec3f_t dir = r3d_ray_direction(&cam, RAY_WIDTH / 2, RAY_HEIGHT / 2);
+    const vec3f_t dir = ray_direction(&cam, RAY_WIDTH / 2, RAY_HEIGHT / 2);
 
     TEST_ASSERT_FLOAT_WITHIN(0.0001f, cam.forward.x, dir.x);
     TEST_ASSERT_FLOAT_WITHIN(0.0001f, cam.forward.y, dir.y);
@@ -174,21 +174,21 @@ test_the_centre_pixel_ray_is_the_forward_axis(void) {
 
 static void
 test_the_four_corner_rays_are_symmetric_about_the_centre(void) {
-    const r3d_viewport_t viewport = {.width = RAY_WIDTH, .height = RAY_HEIGHT, .quarter = 0};
-    const r3d_ray_camera_t cam = ray_camera_fixture(viewport, 0.7f);
+    const viewport_t viewport = {.width = RAY_WIDTH, .height = RAY_HEIGHT, .quarter = 0};
+    const ray_camera_t cam = ray_camera_fixture(viewport, 0.7f);
 
-    const r3d_vec3f_t tl = r3d_ray_direction(&cam, 0, 0);
-    const r3d_vec3f_t tr = r3d_ray_direction(&cam, RAY_WIDTH - 1, 0);
-    const r3d_vec3f_t bl = r3d_ray_direction(&cam, 0, RAY_HEIGHT - 1);
-    const r3d_vec3f_t br = r3d_ray_direction(&cam, RAY_WIDTH - 1, RAY_HEIGHT - 1);
+    const vec3f_t tl = ray_direction(&cam, 0, 0);
+    const vec3f_t tr = ray_direction(&cam, RAY_WIDTH - 1, 0);
+    const vec3f_t bl = ray_direction(&cam, 0, RAY_HEIGHT - 1);
+    const vec3f_t br = ray_direction(&cam, RAY_WIDTH - 1, RAY_HEIGHT - 1);
 
     const float tolerance = 0.0005f;
-    TEST_ASSERT_FLOAT_WITHIN(tolerance, -r3d_vec3f_dot(tl, cam.right), r3d_vec3f_dot(tr, cam.right));
-    TEST_ASSERT_FLOAT_WITHIN(tolerance, r3d_vec3f_dot(tl, cam.up), r3d_vec3f_dot(tr, cam.up));
-    TEST_ASSERT_FLOAT_WITHIN(tolerance, -r3d_vec3f_dot(tl, cam.up), r3d_vec3f_dot(bl, cam.up));
-    TEST_ASSERT_FLOAT_WITHIN(tolerance, r3d_vec3f_dot(tl, cam.right), r3d_vec3f_dot(bl, cam.right));
-    TEST_ASSERT_FLOAT_WITHIN(tolerance, -r3d_vec3f_dot(tl, cam.right), r3d_vec3f_dot(br, cam.right));
-    TEST_ASSERT_FLOAT_WITHIN(tolerance, -r3d_vec3f_dot(tl, cam.up), r3d_vec3f_dot(br, cam.up));
+    TEST_ASSERT_FLOAT_WITHIN(tolerance, -vec3f_dot(tl, cam.right), vec3f_dot(tr, cam.right));
+    TEST_ASSERT_FLOAT_WITHIN(tolerance, vec3f_dot(tl, cam.up), vec3f_dot(tr, cam.up));
+    TEST_ASSERT_FLOAT_WITHIN(tolerance, -vec3f_dot(tl, cam.up), vec3f_dot(bl, cam.up));
+    TEST_ASSERT_FLOAT_WITHIN(tolerance, vec3f_dot(tl, cam.right), vec3f_dot(bl, cam.right));
+    TEST_ASSERT_FLOAT_WITHIN(tolerance, -vec3f_dot(tl, cam.right), vec3f_dot(br, cam.right));
+    TEST_ASSERT_FLOAT_WITHIN(tolerance, -vec3f_dot(tl, cam.up), vec3f_dot(br, cam.up));
 }
 
 /* The longer axis's own size must not change what the shorter axis sees:
@@ -197,13 +197,13 @@ test_the_four_corner_rays_are_symmetric_about_the_centre(void) {
  * column/row exactly on the optical axis of the varying axis. */
 static void
 test_the_shorter_axis_alone_sets_the_lens_tangent_landscape(void) {
-    const r3d_viewport_t viewport_a = {.width = 201, .height = 101, .quarter = 0}; /* aspect 1.99 */
-    const r3d_viewport_t viewport_b = {.width = 351, .height = 101, .quarter = 0}; /* aspect 3.48 */
-    const r3d_ray_camera_t cam_a = ray_camera_fixture(viewport_a, 0.6f);
-    const r3d_ray_camera_t cam_b = ray_camera_fixture(viewport_b, 0.6f);
+    const viewport_t viewport_a = {.width = 201, .height = 101, .quarter = 0}; /* aspect 1.99 */
+    const viewport_t viewport_b = {.width = 351, .height = 101, .quarter = 0}; /* aspect 3.48 */
+    const ray_camera_t cam_a = ray_camera_fixture(viewport_a, 0.6f);
+    const ray_camera_t cam_b = ray_camera_fixture(viewport_b, 0.6f);
 
-    const r3d_vec3f_t a = r3d_ray_direction(&cam_a, 100, 0); /* (201-1)/2 = 100: exactly on-axis */
-    const r3d_vec3f_t b = r3d_ray_direction(&cam_b, 175, 0); /* (351-1)/2 = 175: exactly on-axis */
+    const vec3f_t a = ray_direction(&cam_a, 100, 0); /* (201-1)/2 = 100: exactly on-axis */
+    const vec3f_t b = ray_direction(&cam_b, 175, 0); /* (351-1)/2 = 175: exactly on-axis */
 
     TEST_ASSERT_EQUAL_FLOAT(a.x, b.x);
     TEST_ASSERT_EQUAL_FLOAT(a.y, b.y);
@@ -212,20 +212,20 @@ test_the_shorter_axis_alone_sets_the_lens_tangent_landscape(void) {
 
 static void
 test_the_shorter_axis_alone_sets_the_lens_tangent_portrait(void) {
-    const r3d_viewport_t viewport_a = {.width = 101, .height = 201, .quarter = 0};
-    const r3d_viewport_t viewport_b = {.width = 101, .height = 351, .quarter = 0};
-    const r3d_ray_camera_t cam_a = ray_camera_fixture(viewport_a, 0.6f);
-    const r3d_ray_camera_t cam_b = ray_camera_fixture(viewport_b, 0.6f);
+    const viewport_t viewport_a = {.width = 101, .height = 201, .quarter = 0};
+    const viewport_t viewport_b = {.width = 101, .height = 351, .quarter = 0};
+    const ray_camera_t cam_a = ray_camera_fixture(viewport_a, 0.6f);
+    const ray_camera_t cam_b = ray_camera_fixture(viewport_b, 0.6f);
 
-    const r3d_vec3f_t a = r3d_ray_direction(&cam_a, 0, 100);
-    const r3d_vec3f_t b = r3d_ray_direction(&cam_b, 0, 175);
+    const vec3f_t a = ray_direction(&cam_a, 0, 100);
+    const vec3f_t b = ray_direction(&cam_b, 0, 175);
 
     TEST_ASSERT_EQUAL_FLOAT(a.x, b.x);
     TEST_ASSERT_EQUAL_FLOAT(a.y, b.y);
     TEST_ASSERT_EQUAL_FLOAT(a.z, b.z);
 }
 
-/* The physical pixel that r3d_physical_to_upright() maps to the upright
+/* The physical pixel that viewport_physical_to_upright() maps to the upright
  * picture's top-centre, worked out by inverting that mapping by hand,
  * an independent check, not a call into the code under test. */
 static void
@@ -256,35 +256,35 @@ physical_for_upright_top_centre(int quarter, int width, int height, int* px, int
 static void
 test_the_upright_top_centre_pixel_has_a_positive_up_component(void) {
     for (int quarter = 0; quarter < 4; quarter++) {
-        const r3d_viewport_t viewport = {.width = RAY_WIDTH, .height = RAY_HEIGHT, .quarter = quarter};
-        const r3d_ray_camera_t cam = ray_camera_fixture(viewport, 0.7f);
+        const viewport_t viewport = {.width = RAY_WIDTH, .height = RAY_HEIGHT, .quarter = quarter};
+        const ray_camera_t cam = ray_camera_fixture(viewport, 0.7f);
 
         int px, py;
         physical_for_upright_top_centre(quarter, RAY_WIDTH, RAY_HEIGHT, &px, &py);
 
-        const r3d_vec3f_t dir = r3d_ray_direction(&cam, px, py);
-        TEST_ASSERT_TRUE_MESSAGE(r3d_vec3f_dot(dir, cam.up) > 0.0f,
+        const vec3f_t dir = ray_direction(&cam, px, py);
+        TEST_ASSERT_TRUE_MESSAGE(vec3f_dot(dir, cam.up) > 0.0f,
                                  "the upright picture's top-centre pixel must read as looking upward");
     }
 }
 
 static void
 test_a_ray_direction_is_unit_length(void) {
-    const r3d_viewport_t viewport = {.width = RAY_WIDTH, .height = RAY_HEIGHT, .quarter = 2};
-    const r3d_ray_camera_t cam = ray_camera_fixture(viewport, 0.9f);
+    const viewport_t viewport = {.width = RAY_WIDTH, .height = RAY_HEIGHT, .quarter = 2};
+    const ray_camera_t cam = ray_camera_fixture(viewport, 0.9f);
 
     const int xs[] = {0, RAY_WIDTH / 3, RAY_WIDTH - 1};
     const int ys[] = {0, RAY_HEIGHT / 2, RAY_HEIGHT - 1};
 
     for (size_t i = 0; i < sizeof(xs) / sizeof(xs[0]); i++) {
-        const r3d_vec3f_t dir = r3d_ray_direction(&cam, xs[i], ys[i]);
-        const float length = sqrtf(r3d_vec3f_dot(dir, dir));
+        const vec3f_t dir = ray_direction(&cam, xs[i], ys[i]);
+        const float length = sqrtf(vec3f_dot(dir, dir));
         TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, length);
     }
 }
 
 void
-run_r3d_camera_suite(void) {
+run_r3d_line_camera_suite(void) {
     RUN_TEST(test_an_on_axis_point_lands_on_the_viewport_centre);
     RUN_TEST(test_view_matrix_matches_the_hand_built_matrix_for_two_unrelated_poses);
     RUN_TEST(test_viewport_centre_and_scale_fit_the_shorter_axis);
@@ -298,4 +298,4 @@ run_r3d_camera_suite(void) {
     RUN_TEST(test_a_ray_direction_is_unit_length);
 }
 
-SUITE_REGISTER(run_r3d_camera_suite);
+SUITE_REGISTER(run_r3d_line_camera_suite);

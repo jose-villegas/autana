@@ -87,7 +87,7 @@ test_translation_and_scale_land_in_small3dlib_units(void) {
     const float move[3] = {1.5F, -2.0F, 0.25F};
     const float size[3] = {1.0F, 0.6F, 2.0F};
     const float identity[4] = {0.0F, 0.0F, 0.0F, 1.0F};
-    const S3L_Transform3D t = r3d_transform_from_trs(move, identity, size);
+    const S3L_Transform3D t = r3d_trs_to_transform(move, identity, size);
     TEST_ASSERT_EQUAL_INT32(S3L_F * 3 / 2, t.translation.x);
     TEST_ASSERT_EQUAL_INT32(-2 * S3L_F, t.translation.y);
     TEST_ASSERT_EQUAL_INT32(S3L_F / 4, t.translation.z);
@@ -111,7 +111,7 @@ test_a_rotation_read_back_builds_the_matrix_it_came_from(void) {
                 matrix_of(want, m);
                 float q[4];
                 quaternion_of(m, q);
-                const S3L_Transform3D t = r3d_transform_from_trs(ORIGIN, q, UNIT);
+                const S3L_Transform3D t = r3d_trs_to_transform(ORIGIN, q, UNIT);
                 assert_same_rotation(want, t.rotation);
             }
         }
@@ -123,8 +123,8 @@ test_the_quaternions_of_known_angles_read_back_as_those_angles(void) {
     /* -135, -45, 90 degrees and -180, -45, 0, as S3L units (512 to a turn). */
     const float first[4] = {0.5F, 0.70710678F, -0.5F, 0.0F};
     const float second[4] = {0.92387953F, 0.0F, -0.38268343F, 0.0F};
-    assert_same_rotation((S3L_Vec4){-192, -64, 128, 0}, r3d_transform_from_trs(ORIGIN, first, UNIT).rotation);
-    assert_same_rotation((S3L_Vec4){-256, -64, 0, 0}, r3d_transform_from_trs(ORIGIN, second, UNIT).rotation);
+    assert_same_rotation((S3L_Vec4){-192, -64, 128, 0}, r3d_trs_to_transform(ORIGIN, first, UNIT).rotation);
+    assert_same_rotation((S3L_Vec4){-256, -64, 0, 0}, r3d_trs_to_transform(ORIGIN, second, UNIT).rotation);
 }
 
 void

@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #include "gfx/gfx_color.h"
-#include "render/r3d_ray.h"
+#include "render/r3d.h"
 #include "rt_cornell.h"
 
 /* A running mean per channel, fixed point rather than a float sum: it
@@ -28,20 +28,20 @@ typedef struct {
 
 /* The linear radiance a stored mean currently reads as - the resolve step's
  * input, and what a test compares a reference estimate against. */
-r3d_vec3f_t rt_path_accum_radiance(rt_path_accum_px_t px);
+vec3f_t rt_path_accum_radiance(rt_path_accum_px_t px);
 
 /* Folds `sample` into `*px` as the n-th of an exact running mean:
  * mean += (sample - mean) / n. A constant `sample` stream leaves `*px`
  * unchanged from the second call on - integer division, so its own zero
  * delta never drifts. n == 1 on an unwritten (zeroed) `*px` is exact
  * seeding: the mean becomes `sample`. */
-void rt_path_accum_add(rt_path_accum_px_t* px, r3d_vec3f_t sample, uint32_t n);
+void rt_path_accum_add(rt_path_accum_px_t* px, vec3f_t sample, uint32_t n);
 
 /* The seeding pass's own term: next-event direct light off the primary hit,
  * sampled at the light quad's own CENTRE rather than a random point - no
  * RNG at all, so a flat lit surface reads as a smooth falloff rather than
  * per-pixel noise. Deterministic in (x, y) alone. */
-r3d_vec3f_t rt_path_direct_estimate(const rt_cornell_camera_t* cam, int x, int y);
+vec3f_t rt_path_direct_estimate(const rt_cornell_camera_t* cam, int x, int y);
 
 /* One full path sample for pixel (x, y): next-event direct light at every
  * hit, then a cosine-weighted bounce, three hits deep. Deterministic in
@@ -49,7 +49,7 @@ r3d_vec3f_t rt_path_direct_estimate(const rt_cornell_camera_t* cam, int x, int y
  * nothing here carries state between calls or needs a per-pixel RNG
  * buffer. The same (x, y, sample_index) always returns the same colour,
  * on host and on device alike. */
-r3d_vec3f_t rt_path_sample(const rt_cornell_camera_t* cam, int x, int y, uint32_t sample_index);
+vec3f_t rt_path_sample(const rt_cornell_camera_t* cam, int x, int y, uint32_t sample_index);
 
 /* The same integrator with every indirect bounce switched off - next-event
  * direct light at the primary hit alone, still a live random point on the
@@ -57,18 +57,18 @@ r3d_vec3f_t rt_path_sample(const rt_cornell_camera_t* cam, int x, int y, uint32_
  * What a colour-bleed test compares a full rt_path_sample() against to
  * isolate the bounce's own contribution, rather than eyeballing a noisy
  * picture. */
-r3d_vec3f_t rt_path_sample_direct_only(const rt_cornell_camera_t* cam, int x, int y, uint32_t sample_index);
+vec3f_t rt_path_sample_direct_only(const rt_cornell_camera_t* cam, int x, int y, uint32_t sample_index);
 
 /* Identity below a knee, Reinhard-shaped above it - a path estimate
  * routinely exceeds the 1.0 the plain Whitted picture never does, and
  * quantizing without compressing first would just clip the brightest
  * pixels flat. Ordinary, already-under-1.0 brightness passes through
  * unchanged rather than getting dimmed along with the highlights. */
-r3d_vec3f_t rt_path_tonemap(r3d_vec3f_t linear);
+vec3f_t rt_path_tonemap(vec3f_t linear);
 
 /* Tone-mapped, ordered-dither resolve of a raw radiance value - the
  * fallback path when there is no accumulator to read from. */
-gfx_color_t rt_path_resolve_radiance(r3d_vec3f_t radiance, int x, int y);
+gfx_color_t rt_path_resolve_radiance(vec3f_t radiance, int x, int y);
 
 /* Tone-mapped, ordered-dither resolve of a stored running mean. */
 gfx_color_t rt_path_resolve(rt_path_accum_px_t px, int x, int y);
