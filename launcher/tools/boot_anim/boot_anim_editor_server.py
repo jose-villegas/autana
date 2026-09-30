@@ -21,6 +21,9 @@ writes the REAL header directly, not a scratch copy - there is no "draft"
 concept for a photo, and regenerating in place is exactly what running
 tools/gen/gen_boot_anim_image.py by hand already does.
 
+POST /import_motion (a .glb's bytes in, keyframes out) and POST /export_motion
+(keyframes in, a .glb out) are the editor's Import and Export glTF.
+
 POST /render body is {"timing": {...}, "camera_focal": 512, "grid_step_m":
 0.25, "wave_height_m": 0, "wave_wavelength_m": 0.75, "wave_period_ms": 3000,
 "keyframes": [...], "ms": 1234} - boot_anim_timeline.json's own shape
@@ -33,14 +36,17 @@ else here.
      build, skip straight to step 4 - scrubbing/playback (ms alone
      changing) never recompiles, it is one process spawn of an
      already-built binary.
-  2. Otherwise: write that JSON to a SCRATCH copy of boot_anim_timeline.json
-     (never the real, committed one - see build_and_flash() below for the
-     one thing here that does write it) and run
-     tools/gen/gen_boot_anim_timeline.py against it. A validation failure there
+  2. Otherwise: write the JSON without its keyframes to a SCRATCH copy of
+     boot_anim_timeline.json (never the real, committed one - see
+     build_and_flash() below for the one thing here that does write it),
+     convert the keyframes to a scratch glTF with boot_motion.py, bake
+     that to scratch tracks with tools/anim/bake_tracks.py, and run
+     tools/gen/gen_boot_anim_timeline.py against both. A validation failure there
      (curve still drawing when the fade starts, etc.) is reported back as a
      400 with the generator's own message.
   3. Compile tools/render/scenes/boot_anim_render_host.c + tools/render/render_host.c +
-     main/gfx/gfx.c + main/boot/boot_anim.c, with the scratch directory
+     main/gfx/gfx.c + main/boot/boot_anim.c + the engine's anim and r3d_trs
+     sources, with the scratch directory
      (holding the DRAFT boot_anim_timeline.h from step 2),
      components/small3dlib/include (the camera/space transform math
      boot_anim.h builds on) and components/microui/include (the rect type
@@ -54,7 +60,8 @@ else here.
      own comment on that line) passed through as an X-Origin header.
 
 GET /timeline returns the REAL, committed main/boot/boot_anim_timeline.json
-verbatim - what the editor page fetches on open instead of relying solely on
+with the keyframes read back from the committed main/boot/boot_anim_motion.glb
+- what the editor page fetches on open instead of relying solely on
 its own hand-duplicated DEFAULT_STATE (see boot_anim_editor.html's own
 comment on that constant), so opening the page always reflects what is
 actually committed, and skipping Load before Build & Flash no longer
@@ -99,6 +106,9 @@ ENGINE_DIR = os.path.dirname(LAUNCHER_DIR)
 sys.path.insert(0, os.path.join(ENGINE_DIR, "scripts", "device"))
 import device  # noqa: E402
 
+sys.path.insert(0, TOOLS_DIR)
+import boot_motion  # noqa: E402
+
 FLASH_VARIANT = "dev"
 MAIN_DIR = os.path.join(LAUNCHER_DIR, "main")
 SMALL3DLIB_DIR = os.path.join(LAUNCHER_DIR, "components", "small3dlib", "include")
@@ -110,6 +120,13 @@ GENERATOR = os.path.join(LAUNCHER_DIR, "tools", "gen", "gen_boot_anim_timeline.p
 # these, unlike everything render() touches, are not disposable.
 TIMELINE_JSON = os.path.join(MAIN_DIR, "boot", "boot_anim_timeline.json")
 TIMELINE_HEADER = os.path.join(MAIN_DIR, "boot", "boot_anim_timeline.h")
+
+# The camera and the space move by a glTF animation, baked to C tracks. The
+# editor's keyframes are converted to it (tools/boot_anim/boot_motion.py)
+# whenever they reach a scratch or the real copy.
+MOTION_GLB = os.path.join(MAIN_DIR, "boot", "boot_anim_motion.glb")
+TRACKS_STEM = os.path.join(MAIN_DIR, "boot", "boot_anim_tracks_generated")
+BAKER = os.path.join(LAUNCHER_DIR, "tools", "anim", "bake_tracks.py")
 
 # The photograph half of the same "keep the generated header in sync"
 # story, but with no live payload to compare it against - unlike the
@@ -194,7 +211,32 @@ WATCHED_TOP_LEVEL_DIRS = (
 # extra compiles, and confusing to reason about when it fires.
 WATCHED_EXCLUDE = frozenset([
     os.path.join(MAIN_DIR, "boot", "boot_anim_timeline.h"),
+    TRACKS_STEM + ".c",
+    TRACKS_STEM + ".h",
 ])
+
+
+def _bake_motion(keyframes, glb_path, out_dir):
+    """Writes the glTF for `keyframes` at glb_path and bakes it into
+    out_dir/boot_anim_tracks_generated.{c,h}. RenderError on a refusal."""
+    try:
+        data = boot_motion.keyframes_to_glb(keyframes)
+    except (KeyError, ValueError, IndexError, TypeError) as exc:
+        raise RenderError(400, "keyframes could not be turned into glTF: %s" % exc)
+    with open(glb_path, "wb") as f:
+        f.write(data)
+    bake = subprocess.run(
+        [sys.executable, BAKER, glb_path, "--animation", boot_motion.ANIMATION,
+         "--name", "boot_anim", "--out-dir", out_dir],
+        capture_output=True, text=True)
+    if bake.returncode != 0:
+        raise RenderError(400, bake.stderr.strip() or "bake_tracks.py failed with no message")
+
+
+def _split_payload(payload):
+    """(the timeline JSON without keyframes, the keyframes)."""
+    timeline = {k: v for k, v in payload.items() if k != "keyframes"}
+    return timeline, payload["keyframes"]
 
 
 def _watched_source_paths():
@@ -414,11 +456,15 @@ class Renderer:
         scratch_json = os.path.join(self.scratch, "boot_anim_timeline.json")
         scratch_header = os.path.join(self.scratch, "boot", "boot_anim_timeline.h")
 
+        timeline, keyframes = _split_payload(payload)
         with open(scratch_json, "w", encoding="utf-8") as f:
-            json.dump(payload, f)
+            json.dump(timeline, f)
+        scratch_glb = os.path.join(self.scratch, "boot_anim_motion.glb")
+        os.makedirs(os.path.dirname(scratch_header), exist_ok=True)
+        _bake_motion(keyframes, scratch_glb, os.path.dirname(scratch_header))
 
         gen = subprocess.run(
-            [sys.executable, GENERATOR, scratch_json],
+            [sys.executable, GENERATOR, scratch_json, scratch_glb],
             capture_output=True, text=True)
         if gen.returncode != 0:
             raise RenderError(400, gen.stderr.strip() or
@@ -431,6 +477,12 @@ class Renderer:
             os.path.join(LAUNCHER_DIR, "tools", "render", "render_host.c"),
             os.path.join(MAIN_DIR, "gfx", "gfx.c"),
             os.path.join(MAIN_DIR, "boot", "boot_anim.c"),
+            os.path.join(MAIN_DIR, "anim", "anim_track.c"),
+            os.path.join(MAIN_DIR, "render", "r3d_trs.c"),
+            os.path.join(MAIN_DIR, "util", "tune.c"),
+            os.path.join(LAUNCHER_DIR, "tools", "render", "render_video.c"),
+            os.path.join(LAUNCHER_DIR, "tools", "render", "render_watch.c"),
+            TRACKS_STEM.replace(MAIN_DIR, self.scratch) + ".c",
         ]
         cmd = [
             self.cc, "-std=c11", "-Wall", "-Wextra",
@@ -438,7 +490,10 @@ class Renderer:
             "-Wno-unused-variable", "-O1",
             "-I", self.scratch, "-I", MAIN_DIR, "-I", SMALL3DLIB_DIR,
             "-I", MICROUI_DIR, "-I", os.path.join(LAUNCHER_DIR, "tools", "render"),
-            *sources, "-o", self.binary,
+            "-DCONFIG_LAUNCHER_DEVELOPMENT=0", "-I", os.path.join(LAUNCHER_DIR, "test"),
+            "-I", os.path.join(LAUNCHER_DIR, "test", "stubs"),
+            *sources, "-Wl,--wrap=malloc", "-Wl,--wrap=calloc", "-Wl,--wrap=realloc",
+            "-Wl,--wrap=free", "-lm", "-o", self.binary,
         ]
         cc_result = subprocess.run(cmd, capture_output=True, text=True)
         if cc_result.returncode != 0:
@@ -495,20 +550,30 @@ class Renderer:
         # warning at all.
         _ensure_image_current()
 
-        fd, scratch_json = tempfile.mkstemp(suffix=".json",
-                                            prefix="boot_anim_timeline_")
+        timeline, keyframes = _split_payload(payload)
+        scratch_dir = tempfile.mkdtemp(prefix="boot_anim_build_")
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(payload, f)
+            scratch_json = os.path.join(scratch_dir, "boot_anim_timeline.json")
+            scratch_glb = os.path.join(scratch_dir, "boot_anim_motion.glb")
+            with open(scratch_json, "w", encoding="utf-8") as f:
+                json.dump(timeline, f)
+            _bake_motion(keyframes, scratch_glb, scratch_dir)
             gen = subprocess.run(
-                [sys.executable, GENERATOR, scratch_json],
+                [sys.executable, GENERATOR, scratch_json, scratch_glb],
                 capture_output=True, text=True)
             if gen.returncode != 0:
                 raise RenderError(400, gen.stderr.strip() or
                                   "gen_boot_anim_timeline.py failed with no message")
             header_text = gen.stdout
+            with open(scratch_glb, "rb") as f:
+                glb_bytes = f.read()
+            tracks = {}
+            for suffix in (".c", ".h"):
+                with open(os.path.join(scratch_dir, "boot_anim_tracks_generated" + suffix),
+                          "r", encoding="utf-8", newline="") as f:
+                    tracks[suffix] = f.read()
         finally:
-            os.remove(scratch_json)
+            shutil.rmtree(scratch_dir, ignore_errors=True)
 
         # newline="\n" like every other write in this file (and like
         # gen_zeta_curve.py's own reconfigure): without it Python's text
@@ -516,10 +581,15 @@ class Renderer:
         # lines as CRLF, so `git diff` after a bake shows the whole file
         # changed and buries the handful of values actually retuned.
         with open(TIMELINE_JSON, "w", encoding="utf-8", newline="\n") as f:
-            json.dump(payload, f, indent=4)
+            json.dump(timeline, f, indent=4)
             f.write("\n")
         with open(TIMELINE_HEADER, "w", encoding="utf-8", newline="\n") as f:
             f.write(header_text)
+        with open(MOTION_GLB, "wb") as f:
+            f.write(glb_bytes)
+        for suffix, text in tracks.items():
+            with open(TRACKS_STEM + suffix, "w", encoding="utf-8", newline="\n") as f:
+                f.write(text)
 
         bash = find_bash()
         if bash is None:
@@ -624,8 +694,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         the committed timeline with that stale copy."""
         try:
             with open(TIMELINE_JSON, "r", encoding="utf-8") as f:
-                data = f.read()
-        except OSError as exc:
+                timeline = json.load(f)
+            with open(MOTION_GLB, "rb") as f:
+                timeline["keyframes"] = boot_motion.glb_to_keyframes(f.read())
+            data = json.dumps(timeline)
+        except (OSError, ValueError, StopIteration, KeyError) as exc:
             self._send_json_error(
                 500, "could not read %s: %s" % (TIMELINE_JSON, exc))
             return
@@ -641,8 +714,42 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._do_render()
         elif self.path == "/build_flash":
             self._do_build_flash()
+        elif self.path == "/import_motion":
+            self._do_import_motion()
+        elif self.path == "/export_motion":
+            self._do_export_motion()
         else:
             self.send_error(404)
+
+    def _do_import_motion(self):
+        """A glTF file's bytes in, the keyframes it holds out."""
+        length = int(self.headers.get("Content-Length", "0"))
+        try:
+            keyframes = boot_motion.glb_to_keyframes(self.rfile.read(length))
+        except Exception as exc:   # noqa: BLE001 - a bad file is the browser's to see
+            self._send_json_error(400, "not a boot motion glTF: %s: %s" % (type(exc).__name__, exc))
+            return
+        body = json.dumps({"keyframes": keyframes}).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _do_export_motion(self):
+        """Keyframes in, the glTF file out."""
+        length = int(self.headers.get("Content-Length", "0"))
+        try:
+            keyframes = json.loads(self.rfile.read(length) or b"{}")["keyframes"]
+            glb = boot_motion.keyframes_to_glb(keyframes)
+        except Exception as exc:   # noqa: BLE001
+            self._send_json_error(400, "keyframes could not be turned into glTF: %s" % exc)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "model/gltf-binary")
+        self.send_header("Content-Length", str(len(glb)))
+        self.end_headers()
+        self.wfile.write(glb)
 
     def _do_render(self):
         length = int(self.headers.get("Content-Length", "0"))

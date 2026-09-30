@@ -18,9 +18,12 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=boot_anim
 scene_sources="
+main/anim/anim_track.c
 main/gfx/gfx.c
 main/util/tune.c
 main/boot/boot_anim.c
+main/boot/boot_anim_tracks_generated.c
+main/render/r3d_trs.c
 tools/render/scenes/boot_anim_render_host.c
 "
 scene_includes="components/small3dlib/include"

@@ -84,7 +84,8 @@ anim_track_sample(&prefix_cameras_0_perspective_yfov, t_ms, ANIM_LOOP, fov);
 
 Mapping the value onto the object, including any unit or fixed-point
 conversion, belongs to the caller. Tracks are float; a fixed-point caller
-converts after sampling.
+converts after sampling, and `render/r3d_trs.h` does it for an object drawn
+through small3dlib.
 
 ## Looking at a baked animation
 

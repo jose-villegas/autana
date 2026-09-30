@@ -378,6 +378,9 @@
       <button id="btnLoad">Load</button>
       <input type="file" id="fileInput" accept=".json" style="display:none">
       <button id="btnBake" class="primary">Bake</button>
+      <button id="btnImportGltf" title="Replace the keyframes with the camera and space motion of a glTF (.glb) file">Import glTF</button>
+      <input type="file" id="gltfInput" accept=".glb" style="display:none">
+      <button id="btnExportGltf" title="Download the keyframes as the glTF animation the firmware bakes">Export glTF</button>
     </div>
     <div class="playbar-row">
       <input type="text" id="flashBoard" value="" placeholder="only board"
@@ -1226,7 +1229,6 @@ document.getElementById('btnBake').addEventListener('click', () => {
     wave_height_m: state.wave_height_m,
     wave_wavelength_m: state.wave_wavelength_m,
     wave_period_ms: state.wave_period_ms,
-    keyframes: state.keyframes,
   };
   const blob = new Blob([JSON.stringify(payload, null, 4)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -1247,9 +1249,14 @@ document.getElementById('btnBake').addEventListener('click', () => {
  * has always had; the caller decides what to do with that (Load shows it
  * to the person who chose the file, boot-time load falls back quietly). */
 function applyLoadedState(loaded) {
-  if (!loaded.timing || !loaded.keyframes || loaded.camera_focal === undefined ||
+  if (!loaded.timing || loaded.camera_focal === undefined ||
       loaded.grid_step_m === undefined) {
-    throw new Error('missing timing/camera_focal/grid_step_m/keyframes');
+    throw new Error('missing timing/camera_focal/grid_step_m');
+  }
+  /* The motion is a glTF now, not part of the JSON: a file without
+   * keyframes keeps the ones being edited. */
+  if (!loaded.keyframes) {
+    loaded.keyframes = state.keyframes;
   }
   loaded.timing = Object.fromEntries(Object.entries(loaded.timing).filter(
     ([key]) => Object.prototype.hasOwnProperty.call(DEFAULT_STATE.timing, key)));
@@ -1384,6 +1391,51 @@ document.getElementById('fileInput').addEventListener('change', (e) => {
   };
   reader.readAsText(file);
   e.target.value = '';
+});
+
+/* The camera and the space move by a glTF animation (see
+ * tools/boot_anim/boot_motion.py for how keyframes map to it): the server
+ * converts both ways, this page only moves the file. */
+document.getElementById('btnExportGltf').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/export_motion', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyframes: state.keyframes }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'HTTP ' + res.status);
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'boot_anim_motion.glb';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert('Could not export the glTF: ' + err.message);
+  }
+});
+document.getElementById('btnImportGltf').addEventListener('click', () => {
+  document.getElementById('gltfInput').click();
+});
+document.getElementById('gltfInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const res = await fetch('/import_motion', { method: 'POST', body: await file.arrayBuffer() });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'HTTP ' + res.status);
+    state.keyframes = body.keyframes;
+    selectedKf = 0;
+    renderKfTrack();
+    renderKfList();
+    renderKfDetail();
+    renderDebounced();
+  } catch (err) {
+    alert('Could not import that glTF: ' + err.message);
+  }
 });
 
 /* ===========================================================================

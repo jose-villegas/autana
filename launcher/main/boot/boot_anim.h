@@ -15,14 +15,16 @@
  * zeta(1/2 + it) for t from 0 to 126 plotted at height t, touching the t
  * axis at each nontrivial zero in that range (BOOT_ANIM_ZEROS of them).
  *
- * A CAMERA and a SPACE, both keyframed: two independent small3dlib
- * transforms from boot_anim_keyframes[], generated from
- * boot_anim_timeline.json by tools/gen/gen_boot_anim_timeline.py. Projection is
+ * A CAMERA and a SPACE, both animated: two independent small3dlib
+ * transforms sampled from the glTF tracks in boot_anim_motion.glb, baked to
+ * boot_anim_tracks_generated.c (docs/Animation-Tracks.md). Projection is
  * real perspective, not axonometric. One space-unit is one meter, and the
  * curve and grid's own coordinates ARE that space.
  *
- * The chip has no FPU, so everything is integers, in more than one scale -
- * mixing them up is the mistake to watch for:
+ * The drawing is integers, in more than one scale, because small3dlib and the
+ * curve table are - the S3's FPU does single-precision floats, and the tracks
+ * are sampled with them and converted once per frame. Mixing the scales up is
+ * the mistake to watch for:
  *
  *   Q12    a value of zeta. 4096 is 1.0, one unit of the floor grid.
  *   Q8     a height t. 256 is 1.0, and 35 * 256 still fits an int16.
@@ -54,10 +56,13 @@ boot_anim_unused_pixel(S3L_PixelInfo* pixel) {
     (void)pixel;
 }
 
+#include "anim/anim_track.h"
 #include "boot/boot_anim_curve.h"
 #include "boot/boot_anim_timeline.h"
+#include "boot/boot_anim_tracks_generated.h"
 #include "gfx/gfx_font.h"
 #include "render/r3d_camera.h"
+#include "render/r3d_trs.h"
 #include "util/intmath.h"
 #include "util/trig.h"
 #include "util/tween.h"
@@ -69,11 +74,11 @@ boot_anim_unused_pixel(S3L_PixelInfo* pixel) {
 /*
  * The timeline
  *
- * A keyframe's position is in METERS, one space-unit to one. Rotation is
- * small3dlib's S3L_F-per-turn convention (one degree = S3L_F / 360) and
- * composes in Z, THEN X, THEN Y order, not X-Y-Z (S3L_Transform3D's own
- * comment in small3dlib.h). Scale is a plain multiplier with S3L_F
- * standing for 1.0, so an untouched keyframe reads back as 1,1,1.
+ * The tracks hold a position in METERS, one space-unit to one, a rotation as
+ * a quaternion and a scale as a plain multiplier. r3d_transform_from_trs()
+ * turns them into small3dlib's fixed point (S3L_F per unit, S3L_F per turn,
+ * rotation composed Z, THEN X, THEN Y, not X-Y-Z: S3L_Transform3D's own
+ * comment in small3dlib.h). Clamps at both ends.
  */
 
 typedef struct {
@@ -81,79 +86,26 @@ typedef struct {
     S3L_Transform3D space;
 } boot_anim_timeline_state_t;
 
-static inline uint8_t
-boot_anim_timeline_ease(uint8_t linear, uint8_t ease) {
-    switch (ease) {
-        case BOOT_ANIM_EASE_OUT: return tween_ease_out(linear);
-        case BOOT_ANIM_EASE_IN: return tween_ease_in(linear);
-        default: return linear;
-    }
-}
-
 static inline S3L_Transform3D
-boot_anim_kf_transform(const int32_t pos[3], const int32_t rot[3], const int32_t scale[3]) {
-    S3L_Transform3D t;
-    t.translation.x = pos[0];
-    t.translation.y = pos[1];
-    t.translation.z = pos[2];
-    t.rotation.x = rot[0];
-    t.rotation.y = rot[1];
-    t.rotation.z = rot[2];
-    t.scale.x = scale[0];
-    t.scale.y = scale[1];
-    t.scale.z = scale[2];
-    t.translation.w = t.rotation.w = t.scale.w = 0;
-    return t;
+boot_anim_node_transform(const anim_track_t* move, const anim_track_t* turn, const anim_track_t* size,
+                         uint32_t now_ms) {
+    float t[ANIM_WIDTH_MAX];
+    float q[ANIM_WIDTH_MAX];
+    float s[ANIM_WIDTH_MAX];
+    anim_track_sample(move, now_ms, ANIM_CLAMP, t);
+    anim_track_sample(turn, now_ms, ANIM_CLAMP, q);
+    anim_track_sample(size, now_ms, ANIM_CLAMP, s);
+    return r3d_transform_from_trs(t, q, s);
 }
 
-static inline S3L_Transform3D
-boot_anim_lerp_transform(S3L_Transform3D a, S3L_Transform3D b, uint8_t u8) {
-    S3L_Transform3D t;
-    t.translation.x = tween_lerp_i32(a.translation.x, b.translation.x, u8);
-    t.translation.y = tween_lerp_i32(a.translation.y, b.translation.y, u8);
-    t.translation.z = tween_lerp_i32(a.translation.z, b.translation.z, u8);
-    t.rotation.x = tween_lerp_i32(a.rotation.x, b.rotation.x, u8);
-    t.rotation.y = tween_lerp_i32(a.rotation.y, b.rotation.y, u8);
-    t.rotation.z = tween_lerp_i32(a.rotation.z, b.rotation.z, u8);
-    t.scale.x = tween_lerp_i32(a.scale.x, b.scale.x, u8);
-    t.scale.y = tween_lerp_i32(a.scale.y, b.scale.y, u8);
-    t.scale.z = tween_lerp_i32(a.scale.z, b.scale.z, u8);
-    t.translation.w = t.rotation.w = t.scale.w = 0;
-    return t;
-}
-
-/* Clamps ends, like boot_anim_sample. Table short, linear scan sufficient. */
 static inline boot_anim_timeline_state_t
 boot_anim_timeline_sample(uint32_t now_ms) {
-    const boot_anim_keyframe_t* first = &boot_anim_keyframes[0];
-    const boot_anim_keyframe_t* last = &boot_anim_keyframes[BOOT_ANIM_KEYFRAME_COUNT - 1];
-    boot_anim_timeline_state_t s;
-
-    if (now_ms <= first->ms || now_ms >= last->ms) {
-        const boot_anim_keyframe_t* k = now_ms <= first->ms ? first : last;
-        s.camera = boot_anim_kf_transform(k->camera_pos, k->camera_rot, k->camera_scale);
-        s.space = boot_anim_kf_transform(k->space_pos, k->space_rot, k->space_scale);
-        return s;
-    }
-
-    int i = 1;
-    while (boot_anim_keyframes[i].ms < now_ms) {
-        i++;
-    }
-    const boot_anim_keyframe_t* a = &boot_anim_keyframes[i - 1];
-    const boot_anim_keyframe_t* b = &boot_anim_keyframes[i];
-
-    const uint8_t linear = tween_ramp(now_ms, a->ms, b->ms - a->ms);
-    const uint8_t u8 = boot_anim_timeline_ease(linear, b->ease);
-
-    const S3L_Transform3D ca = boot_anim_kf_transform(a->camera_pos, a->camera_rot, a->camera_scale);
-    const S3L_Transform3D cb = boot_anim_kf_transform(b->camera_pos, b->camera_rot, b->camera_scale);
-    const S3L_Transform3D sa = boot_anim_kf_transform(a->space_pos, a->space_rot, a->space_scale);
-    const S3L_Transform3D sb = boot_anim_kf_transform(b->space_pos, b->space_rot, b->space_scale);
-
-    s.camera = boot_anim_lerp_transform(ca, cb, u8);
-    s.space = boot_anim_lerp_transform(sa, sb, u8);
-    return s;
+    boot_anim_timeline_state_t st;
+    st.camera = boot_anim_node_transform(&boot_anim_camera_translation, &boot_anim_camera_rotation,
+                                         &boot_anim_camera_scale, now_ms);
+    st.space = boot_anim_node_transform(&boot_anim_space_translation, &boot_anim_space_rotation, &boot_anim_space_scale,
+                                        now_ms);
+    return st;
 }
 
 /*

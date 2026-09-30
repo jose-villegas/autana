@@ -194,9 +194,9 @@ test_the_quarter_points_are_exact(void) {
 /* A plain identity matrix (small3dlib's own S3L_mat4Init()) and an
  * orthographic focal length (0 - see boot_anim.h's "The projection" section
  * on why 0 means that) - the simplest boot_anim_view_t there is, built
- * directly rather than through boot_anim_view()/the keyframe table, so
+ * directly rather than through boot_anim_view()/the motion tracks, so
  * these tests can check boot_anim_project()'s own arithmetic in isolation
- * from whatever the CURRENT seed keyframes happen to say. */
+ * from whatever the CURRENT seed motion happens to say. */
 static boot_anim_view_t
 identity_view(S3L_Unit focal) {
     boot_anim_view_t v;
@@ -417,29 +417,25 @@ test_spoke_reveal_target_advances_evenly_in_screen_space(void) {
 }
 
 /* "Scale renders as 1,1,1 for default values" - the exact ask this table
- * exists to satisfy (see boot_anim_timeline.json's own comment): an
- * untouched keyframe's space scale has to read back as S3L_F (small3dlib's
+ * exists to satisfy: an untouched space's scale has to read back as S3L_F (small3dlib's
  * own 1.0), on every axis, not some other number that happens to look
  * right today. */
 static void
-test_an_untouched_keyframes_scale_reads_back_as_identity(void) {
-    const boot_anim_timeline_state_t st = boot_anim_timeline_sample(boot_anim_keyframes[0].ms);
+test_an_untouched_scale_reads_back_as_identity(void) {
+    const boot_anim_timeline_state_t st = boot_anim_timeline_sample(0);
 
-    TEST_ASSERT_EQUAL_INT32_MESSAGE(S3L_F, st.space.scale.x,
-                                    "an unscaled keyframe's space.scale.x should read back as 1.0");
-    TEST_ASSERT_EQUAL_INT32_MESSAGE(S3L_F, st.space.scale.y,
-                                    "an unscaled keyframe's space.scale.y should read back as 1.0");
-    TEST_ASSERT_EQUAL_INT32_MESSAGE(S3L_F, st.space.scale.z,
-                                    "an unscaled keyframe's space.scale.z should read back as 1.0");
+    TEST_ASSERT_EQUAL_INT32_MESSAGE(S3L_F, st.space.scale.x, "an unscaled space's scale.x should read back as 1.0");
+    TEST_ASSERT_EQUAL_INT32_MESSAGE(S3L_F, st.space.scale.y, "an unscaled space's scale.y should read back as 1.0");
+    TEST_ASSERT_EQUAL_INT32_MESSAGE(S3L_F, st.space.scale.z, "an unscaled space's scale.z should read back as 1.0");
 }
 
 /*
- * The seed keyframes
+ * The seed motion
  *
- * A freely keyframed camera has no blanket off-panel guarantee - a wrong
+ * A freely animated camera has no blanket off-panel guarantee - a wrong
  * angle can put the scene off-panel, a legitimate edit, not a bug. Worth
  * protecting: the SEED this repo ships, a sanity sweep against
- * boot_anim_keyframes[]. A generous margin, not a tight fit - catches the
+ * boot_anim_motion.glb. A generous margin, not a tight fit - catches the
  * seed going wildly broken, not tunable tighter.
  */
 
@@ -475,7 +471,7 @@ test_the_seeds_curve_stays_near_the_panel_throughout(void) {
     }
 }
 
-/* The three axes, projected from the seed's own first keyframe, must not
+/* The three axes, projected from the seed's own first pose, must not
  * collapse onto each other - a camera that happened to look straight down
  * one of them would still "work" in the sense of not crashing, but the
  * picture would read as two lines, not three. A weak, non-fragile check on
@@ -1549,7 +1545,7 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_project_segment_cs_clips_asymmetric_coordinates);
     RUN_TEST(test_spoke_reveal_target_hits_its_endpoints_exactly);
     RUN_TEST(test_spoke_reveal_target_advances_evenly_in_screen_space);
-    RUN_TEST(test_an_untouched_keyframes_scale_reads_back_as_identity);
+    RUN_TEST(test_an_untouched_scale_reads_back_as_identity);
     RUN_TEST(test_the_seeds_curve_stays_near_the_panel_throughout);
     RUN_TEST(test_the_seeds_three_axes_project_to_distinct_directions);
 
