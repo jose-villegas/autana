@@ -157,6 +157,6 @@ so none of it has to take internal RAM.
 
 ## Related
 
-- [Firmware-Architecture.md](Firmware-Architecture.md) - the layers and the frame loop
-- [Gfx-and-Presentation.md](Gfx-and-Presentation.md#present-who-runs-it) - the split present `update()` overlaps
-- [Building-an-App.md](Building-an-App.md#app-memory) - the app arena, one place a frame's scratch block can come from
+- [Firmware-Architecture.md](Firmware-Architecture.md): the layers and the frame loop
+- [Gfx-and-Presentation.md](Gfx-and-Presentation.md#present-who-runs-it): the split present `update()` overlaps
+- [Building-an-App.md](Building-an-App.md#app-memory): the app arena, one place a frame's scratch block can come from
