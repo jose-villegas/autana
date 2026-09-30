@@ -6,6 +6,10 @@ import subprocess
 
 _LISTINGS = {}
 
+# What a walk outside git skips: the output of a build or a package manager.
+SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell",
+        "managed_components", "node_modules", ".git"}
+
 
 def git_listing(cwd, args):
     """The lines `git ls-files <args>` prints in `cwd`, or None when `cwd` is
@@ -41,3 +45,16 @@ def tracked_files(root, patterns=()):
                      if not patterns or any(fnmatch.fnmatch(name, p) for p in patterns))
     _LISTINGS[key] = tuple(listing)
     return _LISTINGS[key]
+
+
+def committable(base):
+    """Every file under `base` git would commit (tracked, or new and not
+    ignored), as sorted paths: a build's output or a local venv never
+    counts, a file not yet added does. Outside git (a test fixture), every
+    file not under a SKIP directory."""
+    base = pathlib.Path(base)
+    listing = git_listing(base, ["--cached", "--others", "--exclude-standard"])
+    if listing is not None:
+        return sorted(path for path in (base / line for line in listing) if path.is_file())
+    return sorted(path for path in base.rglob("*")
+                  if path.is_file() and not any(part in SKIP for part in path.relative_to(base).parts))

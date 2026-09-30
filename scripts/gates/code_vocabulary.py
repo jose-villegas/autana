@@ -2,9 +2,8 @@
 import pathlib
 import re
 
-from tracked import git_listing
+from tracked import committable
 
-SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell", "managed_components", "node_modules", ".git"}
 SOURCE_SUFFIXES = {".c", ".h", ".py", ".sh", ".mjs"}
 C_SUFFIXES = {".c", ".h"}
 FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\(")
@@ -27,22 +26,10 @@ def source_paths(root):
     for base in bases:
         if not base.is_dir():
             continue
-        for path in _listed(base):
+        for path in committable(base):
             if path.suffix in SOURCE_SUFFIXES or path.name == "Kconfig.projbuild":
                 yield path
 
-
-def _listed(base):
-    """Every file under `base` git would commit (tracked, or new and not
-    ignored), so a build directory's output never counts while
-    launcher/tools/build/ does. Outside git (a test fixture), every file
-    not under a SKIP directory; tracked.git_listing() raises on any other
-    git failure."""
-    listing = git_listing(base, ["--cached", "--others", "--exclude-standard"])
-    if listing is not None:
-        return sorted(path for path in (base / line for line in listing) if path.is_file())
-    return sorted(path for path in base.rglob("*")
-                  if path.is_file() and not any(part in SKIP for part in path.relative_to(base).parts))
 
 
 def _without_comments_or_strings(text, strings=True):
@@ -153,8 +140,8 @@ def vocabulary(root):
     vocab.script_functions -= vocab.functions
     vocab.constants |= {"CONFIG_" + name for name in kconfig} | set(kconfig)
     vocab.families |= {"CONFIG_" + name.split("_", 1)[0] for name in kconfig}
-    for path in sorted(root.rglob("sdkconfig.defaults*")):
-        if not any(part in SKIP for part in path.parts):
+    for path in committable(root):
+        if path.name.startswith("sdkconfig.defaults"):
             vocab.constants |= set(SDKCONFIG.findall(path.read_text(encoding="utf-8", errors="replace")))
     return vocab
 

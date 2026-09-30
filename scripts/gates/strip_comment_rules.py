@@ -19,8 +19,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from check_comment_length import EXCLUDED, RULE_RUN, code_only, scan  # noqa: E402
+from tracked import committable  # noqa: E402
 
-SKIP = ("managed_components", "build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell")
 ONE_LINE_MAX = 78
 
 LEAD_RULE = re.compile("^" + RULE_RUN)
@@ -101,8 +101,8 @@ def prose_of(path, source):
 
 
 def sources(root):
-    for p in sorted(pathlib.Path(root).rglob("*")):
-        if p.suffix not in (".c", ".h") or any(s in p.parts for s in SKIP):
+    for p in committable(root):
+        if p.suffix not in (".c", ".h"):
             continue
         if any(p.as_posix().startswith(e) for e in EXCLUDED):
             continue

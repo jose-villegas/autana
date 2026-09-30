@@ -18,6 +18,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from check_comment_length import scan  # noqa: E402
+from tracked import committable  # noqa: E402
 
 SIGNS = re.compile(
     r"(a first attempt|an earlier version|was considered|used to |reverted|"
@@ -36,11 +37,12 @@ TOMBSTONE = re.compile(
     r"|\blives\s+in\s+`?[\w/{},]+\.(?:c|h)`?\s+now\b",
     re.I)
 
-SKIP = ("managed_components", "components", "build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell")
+# Vendored code; a build's output and anything git ignores never reach the walk.
+SKIP = ("components",)
 
 
 def find(root, min_chars):
-    for p in sorted(pathlib.Path(root).rglob("*")):
+    for p in committable(root):
         if p.suffix not in (".c", ".h") or any(s in p.parts for s in SKIP):
             continue
         text = p.read_text(encoding="utf-8", errors="replace")
@@ -52,7 +54,7 @@ def find(root, min_chars):
 
 
 def tombstones(root):
-    for p in sorted(pathlib.Path(root).rglob("*")):
+    for p in committable(root):
         if p.suffix not in (".c", ".h") or any(s in p.parts for s in SKIP):
             continue
         text = p.read_text(encoding="utf-8", errors="replace")
