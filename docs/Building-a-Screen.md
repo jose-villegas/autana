@@ -25,7 +25,7 @@ host C compiler, as described in the [README](../README.md#try-it-without-a-boar
      build this screen's command list: `ui_begin_screen()` through
      `mu_end_window()`, taking a `mu_Context*` and a small state struct
      rather than reaching for `app_*.c`'s own statics. This is what makes a
-     screen's OWN drawing host-testable - a host suite in each app's
+     screen's OWN drawing host-testable; a host suite in each app's
      `tests/` drives the real function against a real microui and asserts
      its command-list use fits `MU_COMMANDLIST_SIZE`.
 
@@ -52,7 +52,7 @@ same bug costs a second on a laptop.
 ## Exact commands
 
 ```sh
-./launcher/test/run_tests.sh          # host suites - the TDD loop, see Testing-Guide.md
+./launcher/test/run_tests.sh          # host suites: the TDD loop, see Testing-Guide.md
 ./launcher/test/check_app_sources.sh  # compiles app_*.c against host stubs
 autana flash dev                      # --dev, always: autana screenshot needs it
 autana screenshot --framebuffer -o shot.png  # lossless PNG, does not reset
@@ -70,10 +70,10 @@ through the real drawing code and the real `gfx.c`:
 A screen built through microui is rendered the same way, driven over
 several frames with a declared synthetic touch. Declaring a scene for your
 own screen is two files, and diffing one against a device capture is one
-command - both in
+command; both are in
 [`tools/Render-Harness.md`](tools/Render-Harness.md). Every
-scene stands in the data its screen normally gets - a fixture table, a
-timestamp - so nothing a render shows came off hardware.
+scene stands in the data its screen normally gets: a fixture table, a
+timestamp, so nothing a render shows came off hardware.
 
 `idf.py -B build.dev build` is also worth running for anything touching
 device-only files: it is a real cross-compile and catches what host stubs
@@ -134,7 +134,7 @@ bitmap, so integer scales stay crisp.
 
 **Do not add a render-time global for a UI setting.** Anything read at
 render time is invisible to the repaint hash and needs `ui_invalidate()` on
-every change - which a two-size screen hits every frame, defeating the skip
+every change; a two-size screen hits every frame, defeating the skip
 entirely. Settings that ride *inside* the command list (the font, and so the
 scale) are free. Ask which kind you are adding before you add it.
 
@@ -155,8 +155,8 @@ follows its scroll.
 
 `ui_draw_icon()` (`ui/ui.h`) emits a bitmap as run-length rects into the
 command list. Application artwork lives in the app's own folder so deleting the app
-deletes it. Structural facts only in tests - non-empty, bbox in range, run
-count under the cap, declared symmetries - never assert artwork against the
+deletes it. Structural facts only in tests: non-empty, bbox in range, run
+count under the cap, declared symmetries; never assert artwork against the
 code that draws it.
 
 **Icons are always baked assets.** Do not assemble a symbol from
