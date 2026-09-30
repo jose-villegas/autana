@@ -2124,6 +2124,122 @@ test_a_full_screen_of_fire_fits_in_the_frame_budget(void) {
     perf_target("full-screen fire", per_step, 68750, 79070);
 }
 
+static void
+test_a_packed_landscape_screen_of_gas_fits_in_the_frame_budget(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t real;
+    sand_init(&real, big, REAL_W, REAL_H, 31u);
+    sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
+
+    for (int y = 0; y < REAL_H; y++) {
+        for (int x = 0; x < REAL_W; x++) {
+            sand_set(&real, x, y, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
+        }
+    }
+
+    const two_core_scope_t core = two_core_scope_begin(true);
+    const int64_t start = esp_timer_get_time();
+    sand_step(&real, LANDSCAPE_GX, 0, 0);
+    const int64_t elapsed = esp_timer_get_time() - start;
+    two_core_scope_end(core);
+
+    ESP_LOGI("device_tests", "packed landscape gas, %dx%d: %lld us for one step, gas pass %lld us", REAL_W, REAL_H,
+             (long long)elapsed, (long long)real.pass_us.gas_us);
+
+    board_bookkeeping_close();
+    free(big);
+    free(blocks);
+
+    perf_target("landscape packed gas", elapsed, 42400, 48760);
+}
+
+static void
+test_a_full_landscape_screen_of_fire_fits_in_the_frame_budget(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t real;
+    sand_init(&real, big, REAL_W, REAL_H, 19u);
+    sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
+
+    for (int y = 0; y < REAL_H; y++) {
+        for (int x = 0; x < REAL_W; x++) {
+            sand_set(&real, x, y, FIRE);
+        }
+    }
+    const int total = REAL_W * REAL_H;
+
+    const two_core_scope_t core = two_core_scope_begin(true);
+    const int64_t start = esp_timer_get_time();
+    const int steps = 10;
+    for (int i = 0; i < steps; i++) {
+        sand_step(&real, LANDSCAPE_GX, 0, 0);
+    }
+    const int64_t per_step = (esp_timer_get_time() - start) / steps;
+    two_core_scope_end(core);
+
+    ESP_LOGI("device_tests", "full landscape fire, %dx%d: %lld us per step", REAL_W, REAL_H, (long long)per_step);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(total, sand_count(&real),
+                                  "a fully packed screen of same-density fire cannot displace, ignite, or smother "
+                                  "anything - the count must not drift");
+
+    board_bookkeeping_close();
+    free(big);
+    free(blocks);
+
+    perf_target("landscape full fire", per_step, 68790, 79110);
+}
+
+static void
+test_fire_cascading_through_a_full_landscape_screen_of_gas_fits_in_the_frame_budget(void) {
+    uint8_t* big = malloc(REAL_W * REAL_H);
+    uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
+    TEST_ASSERT_NOT_NULL(big);
+    TEST_ASSERT_NOT_NULL(blocks);
+
+    sand_t real;
+    sand_init(&real, big, REAL_W, REAL_H, 17u);
+    sand_enable_sleeping(&real, blocks);
+    board_bookkeeping_open(&real);
+
+    for (int y = 0; y < REAL_H; y++) {
+        for (int x = 0; x < REAL_W; x++) {
+            sand_set(&real, x, y, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
+        }
+    }
+    sand_set(&real, 0, 0, FIRE);
+    const int total = REAL_W * REAL_H;
+
+    const two_core_scope_t core = two_core_scope_begin(true);
+    const int64_t start = esp_timer_get_time();
+    sand_step(&real, LANDSCAPE_GX, 0, 0);
+    const int64_t elapsed = esp_timer_get_time() - start;
+    two_core_scope_end(core);
+
+    ESP_LOGI("device_tests", "landscape fire cascade through %dx%d gas: %lld us, gas pass %lld us", REAL_W, REAL_H,
+             (long long)elapsed, (long long)real.pass_us.gas_us);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(total, sand_count(&real),
+                                  "cells must only convert material while gas ignites into fire");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&real, REAL_W - 1, REAL_H - 1)),
+                                  "the cascade must reach the far corner in the measured step");
+
+    board_bookkeeping_close();
+    free(big);
+    free(blocks);
+
+    perf_target("landscape gas cascade", elapsed, 193390, 222400);
+}
+
 /* Four liquids of different density painted upside down
  * (build_four_liquid_scene(), shared with test_the_four_liquid_scene_
  * keeps_reacting_after_settling) so lava, acid, water and oil migrate past
@@ -4457,6 +4573,9 @@ run_sand_perf_suite(void) {
         two_core_scope_end(core);
     }
     RUN_TEST(test_a_full_screen_of_fire_fits_in_the_frame_budget);
+    RUN_TEST(test_a_packed_landscape_screen_of_gas_fits_in_the_frame_budget);
+    RUN_TEST(test_a_full_landscape_screen_of_fire_fits_in_the_frame_budget);
+    RUN_TEST(test_fire_cascading_through_a_full_landscape_screen_of_gas_fits_in_the_frame_budget);
     RUN_TEST(test_four_liquids_reacting_at_once_fits_in_the_frame_budget);
     RUN_TEST(test_the_lava_stress_scene_fits_in_the_frame_budget);
     RUN_TEST(test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget);
