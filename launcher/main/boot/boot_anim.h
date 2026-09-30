@@ -62,7 +62,7 @@ boot_anim_unused_pixel(S3L_PixelInfo* pixel) {
 #include "boot/boot_anim_tracks_generated.h"
 #include "gfx/gfx_font.h"
 #include "render/r3d_line_camera.h"
-#include "render/r3d_trs.h"
+#include "render/trs.h"
 #include "util/intmath.h"
 #include "util/trig.h"
 #include "util/tween.h"
@@ -75,7 +75,7 @@ boot_anim_unused_pixel(S3L_PixelInfo* pixel) {
  * The timeline
  *
  * The tracks hold a position in METERS, one space-unit to one, a rotation as
- * a quaternion and a scale as a plain multiplier. r3d_transform_from_trs()
+ * a quaternion and a scale as a plain multiplier. trs_to_transform()
  * turns them into small3dlib's fixed point (S3L_F per unit, S3L_F per turn,
  * rotation composed Z, THEN X, THEN Y, not X-Y-Z: S3L_Transform3D's own
  * comment in small3dlib.h). Clamps at both ends.
@@ -94,7 +94,7 @@ boot_anim_node_transform(const anim_track_t* move, const anim_track_t* turn, con
     anim_track_sample(move, seconds, t);
     anim_track_sample(turn, seconds, q);
     anim_track_sample(size, seconds, s);
-    return r3d_transform_from_trs(t, q, s);
+    return trs_to_transform(t, q, s);
 }
 
 static inline boot_anim_timeline_state_t
@@ -158,7 +158,7 @@ boot_anim_view(int w, int h, uint32_t now_ms) {
     /* w (the panel's native WIDTH) is narrower than h (its native HEIGHT),
      * so r3d_line_camera_view()'s shorter-axis fit is exactly half w; boot's
      * pixels must not move if that inequality ever changes. */
-    const r3d_viewport_t viewport = {.width = w, .height = h, .quarter = 0};
+    const viewport_t viewport = {.width = w, .height = h, .quarter = 0};
     return r3d_line_camera_view(camera, st.space, viewport);
 }
 

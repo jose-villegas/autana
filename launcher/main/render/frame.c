@@ -1,4 +1,4 @@
-#include "render/r3d.h"
+#include "render/frame.h"
 
 #include <assert.h>
 #include <stdbool.h>
@@ -13,7 +13,7 @@
 #define SPLIT_BUCKETS 64
 
 typedef struct {
-    const r3d_frame_t* frame;
+    const frame_t* frame;
     const r3d_lens_t* lens;
     int visible_count;
     int first, count; /* clusters of visible[], or rows */
@@ -32,7 +32,7 @@ transform_slice(void* ctx) {
  * store. A pixel nothing covered (R3D_DEPTH_EMPTY) takes the clear colour
  * here, so the colour buffer itself is never cleared. */
 static void
-double_rows(const r3d_frame_t* f, int first, int count) {
+double_rows(const frame_t* f, int first, int count) {
     const int out_width = 2 * f->width;
     for (int y = first; y < first + count; y++) {
         const uint16_t* src = f->color + ((size_t)y * (size_t)f->width);
@@ -51,7 +51,7 @@ double_rows(const r3d_frame_t* f, int first, int count) {
 static void
 draw_slice(void* ctx) {
     const slice_t* s = ctx;
-    const r3d_frame_t* f = s->frame;
+    const frame_t* f = s->frame;
     const size_t offset = (size_t)s->first * (size_t)f->width;
     const size_t pixels = (size_t)s->count * (size_t)f->width;
     uint16_t* color = f->color + offset;
@@ -89,7 +89,7 @@ pixels(int width, int height) {
 }
 
 size_t
-r3d_frame_scratch_bytes(const r3d_lit_mesh_t* mesh, int width, int height) {
+frame_scratch_bytes(const r3d_lit_mesh_t* mesh, int width, int height) {
     return (sizeof(r3d_pipeline_vertex_t) * (size_t)mesh->vertex_count)
            + ((sizeof(r3d_pipeline_rows_t) + sizeof(uint16_t)) * (size_t)mesh->cluster_count)
            + (2 * sizeof(uint16_t) * pixels(width, height));
@@ -97,7 +97,7 @@ r3d_frame_scratch_bytes(const r3d_lit_mesh_t* mesh, int width, int height) {
 
 /* Widest alignment first, so each part lands aligned after the one before. */
 void
-r3d_frame_use_scratch(r3d_frame_t* frame, void* scratch) {
+frame_use_scratch(frame_t* frame, void* scratch) {
     char* p = scratch;
     frame->cs = (r3d_pipeline_vertex_t*)p;
     p += sizeof(r3d_pipeline_vertex_t) * (size_t)frame->mesh->vertex_count;
@@ -113,7 +113,7 @@ r3d_frame_use_scratch(r3d_frame_t* frame, void* scratch) {
 /* The row splitting the visible triangles in half, counting each cluster
  * at the middle of its rows; the halves are then drawn by one core each. */
 static int
-balanced_split_row(const r3d_frame_t* frame, int visible) {
+balanced_split_row(const frame_t* frame, int visible) {
     uint32_t weight[SPLIT_BUCKETS] = {0};
     uint32_t total = 0;
     for (int i = 0; i < visible; i++) {
@@ -136,12 +136,12 @@ balanced_split_row(const r3d_frame_t* frame, int visible) {
     return frame->height / 2;
 }
 
-r3d_frame_stats_t
-r3d_frame_draw(const r3d_frame_t* frame, const r3d_camera_t* camera, int quarter) {
+frame_stats_t
+frame_draw(const frame_t* frame, const camera_t* camera, int quarter) {
     r3d_lens_t lens;
-    r3d_lens_init(&lens, camera, frame->mesh->position_scale, (r3d_viewport_t){frame->width, frame->height, quarter});
+    r3d_lens_init(&lens, camera, frame->mesh->position_scale, (viewport_t){frame->width, frame->height, quarter});
     const int visible = r3d_pipeline_cull(frame->mesh, &lens, frame->visible);
-    r3d_frame_stats_t stats = {visible, 0};
+    frame_stats_t stats = {visible, 0};
     for (int i = 0; i < visible; i++) {
         stats.triangles += frame->mesh->clusters[frame->visible[i]].triangle_count;
     }
@@ -157,7 +157,7 @@ r3d_frame_draw(const r3d_frame_t* frame, const r3d_camera_t* camera, int quarter
 }
 
 void
-r3d_frame_double(const r3d_frame_t* frame) {
+frame_double(const frame_t* frame) {
     const int mid = frame->height / 2;
     run_split(double_slice, (slice_t){frame, NULL, 0, mid, frame->height - mid}, (slice_t){frame, NULL, 0, 0, mid});
 }

@@ -1,5 +1,5 @@
 /*
- * r3d_pipeline: the stages r3d_frame_draw() runs to draw a r3d_lit_mesh_t
+ * r3d_pipeline: the stages frame_draw() runs to draw a r3d_lit_mesh_t
  * through a camera: cluster culling, one transform per vertex, near-plane
  * clipping and r3d_span. Internal to render/: only it, its suites and host
  * tools include this.
@@ -14,10 +14,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "render/r3d.h"
+#include "render/camera.h"
+#include "render/frame.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span.h"
-#include "render/r3d_vec3f.h"
+#include "render/vec3f.h"
+#include "render/viewport.h"
 
 /* A camera made ready for one viewport and one mesh's position scale.
  * Lens space: x and y are already pixels at unit depth, turned for the
@@ -39,8 +41,8 @@ struct r3d_pipeline_vertex {
     float iz;       /* near_z / z; 0 behind the near plane, below 0 in front but too far off screen to snap */
 };
 
-/* Turned for the viewport's quarter as r3d_ray.h maps it. */
-void r3d_lens_init(r3d_lens_t* lens, const r3d_camera_t* camera, int position_scale, r3d_viewport_t viewport);
+/* Turned for the viewport's quarter as viewport.h maps it. */
+void r3d_lens_init(r3d_lens_t* lens, const camera_t* camera, int position_scale, viewport_t viewport);
 
 /* Walks the node tree and writes the clusters any part of which may be on
  * screen, roughly nearest first, returning how many. `out` holds

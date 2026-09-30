@@ -6,36 +6,36 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "render/r3d_ray.h"
+#include "render/viewport.h"
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
 static void
-set_row(float row[4], r3d_vec3f_t axis, r3d_vec3f_t eye, float scale, float ticks_to_units) {
+set_row(float row[4], vec3f_t axis, vec3f_t eye, float scale, float ticks_to_units) {
     row[0] = axis.x * scale * ticks_to_units;
     row[1] = axis.y * scale * ticks_to_units;
     row[2] = axis.z * scale * ticks_to_units;
-    row[3] = -r3d_vec3f_dot(axis, eye) * scale;
+    row[3] = -vec3f_dot(axis, eye) * scale;
 }
 
-static r3d_vec3f_t
-upright_step(r3d_vec3f_t right, r3d_vec3f_t down, int step_right, int step_down) {
-    return r3d_vec3f_add(r3d_vec3f_scale(right, (float)step_right), r3d_vec3f_scale(down, (float)step_down));
+static vec3f_t
+upright_step(vec3f_t right, vec3f_t down, int step_right, int step_down) {
+    return vec3f_add(vec3f_scale(right, (float)step_right), vec3f_scale(down, (float)step_down));
 }
 
 void
-r3d_lens_init(r3d_lens_t* lens, const r3d_camera_t* camera, int position_scale, r3d_viewport_t viewport) {
-    const r3d_vec3f_t eye = camera->eye;
+r3d_lens_init(r3d_lens_t* lens, const camera_t* camera, int position_scale, viewport_t viewport) {
+    const vec3f_t eye = camera->eye;
     const float near_z = camera->near_z;
-    const r3d_vec3f_t f = r3d_vec3f_normalize(camera->forward);
-    const r3d_vec3f_t right = r3d_vec3f_normalize(r3d_vec3f_cross(f, (r3d_vec3f_t){0.0F, 1.0F, 0.0F}));
-    const r3d_vec3f_t down = r3d_vec3f_cross(f, right);
+    const vec3f_t f = vec3f_normalize(camera->forward);
+    const vec3f_t right = vec3f_normalize(vec3f_cross(f, (vec3f_t){0.0F, 1.0F, 0.0F}));
+    const vec3f_t down = vec3f_cross(f, right);
 
     const int shorter = viewport.width < viewport.height ? viewport.width : viewport.height;
     const float k = (float)shorter / (2.0F * camera->half_fov_short_tan);
     const float ticks_to_units = 1.0F / (float)position_scale;
 
-    const r3d_quarter_axes_t a = r3d_quarter_axes(viewport.quarter);
+    const viewport_quarter_axes_t a = viewport_quarter_axes(viewport.quarter);
     set_row(lens->m[0], upright_step(right, down, a.x_right, a.x_down), eye, k, ticks_to_units);
     set_row(lens->m[1], upright_step(right, down, a.y_right, a.y_down), eye, k, ticks_to_units);
     set_row(lens->m[2], f, eye, 1.0F, ticks_to_units);
@@ -49,10 +49,10 @@ r3d_lens_init(r3d_lens_t* lens, const r3d_camera_t* camera, int position_scale, 
     lens->height = viewport.height;
 }
 
-static inline r3d_vec3f_t
+static inline vec3f_t
 to_lens(const r3d_lens_t* lens, float x, float y, float z) {
     const float(*m)[4] = lens->m;
-    return (r3d_vec3f_t){
+    return (vec3f_t){
         (m[0][0] * x) + (m[0][1] * y) + (m[0][2] * z) + m[0][3],
         (m[1][0] * x) + (m[1][1] * y) + (m[1][2] * z) + m[1][3],
         (m[2][0] * x) + (m[2][1] * y) + (m[2][2] * z) + m[2][3],
@@ -214,7 +214,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
     bool unbounded = false;
     for (int v = c->vertex_first; v < end; v++) {
         const int16_t* p = mesh->positions[v];
-        const r3d_vec3f_t l = to_lens(lens, (float)p[0], (float)p[1], (float)p[2]);
+        const vec3f_t l = to_lens(lens, (float)p[0], (float)p[1], (float)p[2]);
         r3d_pipeline_vertex_t* out = &cs[v];
         if (l.z <= lens->near_z) {
             out->iz = 0.0F;
@@ -382,7 +382,7 @@ draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
     for (int k = 0; k < 3; k++) {
         const int16_t* p = mesh->positions[tri[k]];
         const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
-        const r3d_vec3f_t l = to_lens(lens, (float)p[0], (float)p[1], (float)p[2]);
+        const vec3f_t l = to_lens(lens, (float)p[0], (float)p[1], (float)p[2]);
         in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[0], rgb[1], rgb[2]};
     }
     draw_clipped(lens, in, double_sided, face_color, target);

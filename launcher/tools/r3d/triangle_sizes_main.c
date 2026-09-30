@@ -167,8 +167,8 @@ main(int argc, char** argv) {
     for (int pose = 0; pose < poses->count; pose++) {
         r3d_lens_t view;
         r3d_lens_init(&view,
-                      &(r3d_camera_t){poses->eye[pose], poses->forward[pose], poses->half_fov_short_tan, poses->near_z},
-                      mesh->position_scale, (r3d_viewport_t){size.width, size.height, 0});
+                      &(camera_t){poses->eye[pose], poses->forward[pose], poses->half_fov_short_tan, poses->near_z},
+                      mesh->position_scale, (viewport_t){size.width, size.height, 0});
         const int count = r3d_pipeline_cull(mesh, &view, b.visible);
         r3d_sizes_t s = {0};
         r3d_sizes_count(mesh, &view, b.visible, count, &s);

@@ -39,8 +39,8 @@
 static const char* TAG = "sponza";
 
 static void* scratch;
-static r3d_frame_t frame; /* carved from scratch at enter() */
-static r3d_frame_stats_t stats;
+static frame_t frame; /* carved from scratch at enter() */
+static frame_stats_t stats;
 static uint32_t elapsed_ms;
 static bool rendered; /* update() drew a frame that frame() has not doubled yet */
 
@@ -49,19 +49,19 @@ enter_with(const r3d_lit_mesh_t* mesh) {
     gfx_set_partial_clear(false);
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
 
-    frame = (r3d_frame_t){
+    frame = (frame_t){
         .mesh = mesh,
         .width = SPONZA_RENDER_WIDTH,
         .height = SPONZA_RENDER_HEIGHT,
         .clear = GFX_RGB(SKY_RGB),
         .doubled = gfx_framebuffer(),
     };
-    const size_t bytes = r3d_frame_scratch_bytes(mesh, frame.width, frame.height);
+    const size_t bytes = frame_scratch_bytes(mesh, frame.width, frame.height);
     scratch = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (scratch == NULL) {
         ESP_LOGE(TAG, "no %u bytes of PSRAM for the frame: the scene stays blank", (unsigned)bytes);
     } else {
-        r3d_frame_use_scratch(&frame, scratch);
+        frame_use_scratch(&frame, scratch);
     }
     elapsed_ms = 0;
     rendered = false;
@@ -97,10 +97,10 @@ scene_sponza_invalidate(void) {}
 static void
 render(uint32_t dt_ms) {
     elapsed_ms += dt_ms;
-    const r3d_camera_t camera = sponza_camera_at(elapsed_ms);
-    stats = r3d_frame_draw(&frame, &camera, display_shell_quarter());
+    const camera_t camera = sponza_camera_at(elapsed_ms);
+    stats = frame_draw(&frame, &camera, display_shell_quarter());
 #if TUNE_ENABLED
-    r3d_frame_show(&frame, render_lab_view());
+    frame_show(&frame, render_lab_view());
 #endif
     rendered = true;
 }
@@ -121,7 +121,7 @@ scene_sponza_frame(uint32_t dt_ms, bool band_mode_active) {
     if (!rendered) {
         render(dt_ms); /* no update() ran since the last frame: the first after entering */
     }
-    r3d_frame_double(&frame);
+    frame_double(&frame);
     rendered = false;
     gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
 }

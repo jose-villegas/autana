@@ -64,8 +64,8 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
     TEST_ASSERT_NOT_NULL(walked);
     TEST_ASSERT_NOT_NULL(kept);
     for (uint32_t t = 0; t < period; t += 2500) {
-        const r3d_camera_t camera = sponza_camera_at(t);
-        const r3d_viewport_t viewport = {SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, (int)(t / 2500) & 3};
+        const camera_t camera = sponza_camera_at(t);
+        const viewport_t viewport = {SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, (int)(t / 2500) & 3};
         r3d_lens_t view;
         r3d_lens_init(&view, &camera, mesh->position_scale, viewport);
 
@@ -190,8 +190,8 @@ static void
 check_the_flythrough_keeps_clear_of_every_triangle(const r3d_lit_mesh_t* mesh) {
     const uint32_t period = sponza_flythrough_period_ms();
     for (uint32_t t = 0; t < period; t += 100) {
-        r3d_vec3f_t eye;
-        r3d_vec3f_t forward;
+        vec3f_t eye;
+        vec3f_t forward;
         sponza_flythrough_sample(t, &eye, &forward);
         const float d = clearance(mesh, (v3){eye.x, eye.y, eye.z});
         if (d < SPONZA_FLYTHROUGH_CLEARANCE) {
@@ -248,25 +248,24 @@ test_the_flythrough_keeps_clear_of_every_triangle(void) {
 static void
 test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
     const uint32_t period = sponza_flythrough_period_ms();
-    r3d_vec3f_t previous;
-    r3d_vec3f_t forward;
+    vec3f_t previous;
+    vec3f_t forward;
     sponza_flythrough_sample(0, &previous, &forward);
     for (uint32_t t = 10; t <= period + 100; t += 10) {
-        r3d_vec3f_t eye;
+        vec3f_t eye;
         sponza_flythrough_sample(t, &eye, &forward);
-        const r3d_vec3f_t step = r3d_vec3f_sub(eye, previous);
-        TEST_ASSERT_TRUE_MESSAGE(r3d_vec3f_dot(step, step) < 2.0F * 2.0F,
-                                 "the eye jumped between two samples 10 ms apart");
-        TEST_ASSERT_FLOAT_WITHIN(0.001F, 1.0F, sqrtf(r3d_vec3f_dot(forward, forward)));
+        const vec3f_t step = vec3f_sub(eye, previous);
+        TEST_ASSERT_TRUE_MESSAGE(vec3f_dot(step, step) < 2.0F * 2.0F, "the eye jumped between two samples 10 ms apart");
+        TEST_ASSERT_FLOAT_WITHIN(0.001F, 1.0F, sqrtf(vec3f_dot(forward, forward)));
         previous = eye;
     }
 }
 
 /* The fraction of the picture covered at `t_ms` into the flythrough. */
 static float
-share_covered_at(const r3d_frame_t* frame, uint32_t t_ms) {
-    const r3d_camera_t camera = sponza_camera_at(t_ms);
-    r3d_frame_draw(frame, &camera, 0);
+share_covered_at(const frame_t* frame, uint32_t t_ms) {
+    const camera_t camera = sponza_camera_at(t_ms);
+    frame_draw(frame, &camera, 0);
     const int pixels = frame->width * frame->height;
     int covered = 0;
     for (int i = 0; i < pixels; i++) {
@@ -281,11 +280,11 @@ share_covered_at(const r3d_frame_t* frame, uint32_t t_ms) {
  * only the building's far sides, about 0.6. */
 static void
 check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
-    r3d_frame_t frame = {.mesh = mesh, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
+    frame_t frame = {.mesh = mesh, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
     void* scratch =
-        heap_caps_malloc(r3d_frame_scratch_bytes(mesh, frame.width, frame.height), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        heap_caps_malloc(frame_scratch_bytes(mesh, frame.width, frame.height), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     TEST_ASSERT_NOT_NULL(scratch);
-    r3d_frame_use_scratch(&frame, scratch);
+    frame_use_scratch(&frame, scratch);
     const uint32_t period = sponza_flythrough_period_ms();
     float sum = 0.0F;
     int samples = 0;

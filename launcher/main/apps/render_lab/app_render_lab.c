@@ -84,11 +84,11 @@ bool render_lab_band_mode = true;
 bool render_lab_show_hud = true;
 
 TUNE_OWNER(render_lab);
-TUNE(render_lab, view, R3D_SHOW_SHADED, R3D_SHOW_SHADED, R3D_SHOW_DEPTH_TILES);
+TUNE(render_lab, view, FRAME_SHOW_SHADED, FRAME_SHOW_SHADED, FRAME_SHOW_DEPTH_TILES);
 
-r3d_show_t
+frame_show_t
 render_lab_view(void) {
-    return (r3d_show_t)view;
+    return (frame_show_t)view;
 }
 
 bool

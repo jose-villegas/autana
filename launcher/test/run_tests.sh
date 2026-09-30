@@ -127,11 +127,11 @@ $MAIN_DIR/boot/boot_anim_tracks_generated.c
 $MAIN_DIR/boot/post_layout.c
 $MAIN_DIR/util/job.c
 $MAIN_DIR/anim/anim_track.c
-$MAIN_DIR/render/r3d_frame.c
-$MAIN_DIR/render/r3d_frame_show.c
+$MAIN_DIR/render/frame.c
+$MAIN_DIR/render/frame_show.c
 $MAIN_DIR/render/r3d_pipeline.c
 $MAIN_DIR/render/r3d_span.c
-$MAIN_DIR/render/r3d_trs.c
+$MAIN_DIR/render/trs.c
 $MAIN_DIR/util/tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/display/panel_clock.c

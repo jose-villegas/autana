@@ -100,7 +100,7 @@ The green-bordered nodes above are already in the tree, not proposed:
 `gfx_present_begin()`/`gfx_present_wait()`), `bandRing` (`gfx/gfx_band.h`,
 already what render lab draws into), `hostHarness`
 (`docs/tools/Render-Harness.md`'s `*_render_host.sh` + `render_diff.sh`),
-`s3lExtract` (`render/r3d_project.h`, `r3d_line_camera.h`, `r3d_ray.h`), and
+`s3lExtract` (`render/r3d_project.h`, `r3d_line_camera.h`, `ray.h`), and
 `tiltShake` (`input/tilt.{h,c}`, a pure, host-tested reader of down,
 strength and shake that the shell and apps both call).
 
@@ -476,7 +476,7 @@ ring; `apps/render_lab/tests/suite_sponza_perf.c`, on a full diagnostics
 build, prints what a frame of each bake costs on both cores before present.
 The doubling belongs to gfx (section 8,
 decision 1) and moves there when gfx resolves an app's resolution; until
-then `r3d_frame_double()` does it inside render/.
+then `frame_double()` does it inside render/.
 
 PSRAM's role narrows to bulk and cold data read at load or per frame:
 textures, levels, the retained framebuffer as a read source, never the

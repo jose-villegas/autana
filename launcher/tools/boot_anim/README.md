@@ -15,7 +15,7 @@
 
 `boot_anim.h` samples the tracks with the engine's
 [animation tracks](../../../docs/Animation-Tracks.md) and converts each
-frame's values to small3dlib's fixed point in `render/r3d_trs.h`. The space's
+frame's values to small3dlib's fixed point in `render/trs.h`. The space's
 rotation is a quaternion slerp between its keys. Frames render on a host with
 `tools/render/scenes/boot_anim_render_host.sh` (`--video` for the whole
 animation).

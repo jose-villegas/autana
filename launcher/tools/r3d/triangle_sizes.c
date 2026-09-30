@@ -167,8 +167,8 @@ read_line(const char* line, r3d_sizes_poses_t* out) {
         if (out->count >= R3D_SIZES_POSES_MAX) {
             return "more poses than R3D_SIZES_POSES_MAX";
         }
-        out->eye[out->count] = (r3d_vec3f_t){v[0], v[1], v[2]};
-        out->forward[out->count] = (r3d_vec3f_t){v[3], v[4], v[5]};
+        out->eye[out->count] = (vec3f_t){v[0], v[1], v[2]};
+        out->forward[out->count] = (vec3f_t){v[3], v[4], v[5]};
         out->count++;
     } else if (line[strspn(line, " \t\r\n")] != '\0' && line[strspn(line, " \t")] != '#') {
         return "a line is not size, lens, pose or a comment";

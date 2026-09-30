@@ -58,7 +58,7 @@ seconds once. `ANIM_CLAMP` holds it at the duration instead; a loop authors
 its first key again as its last. `anim_track_sample()` holds a track's first
 value before its first key and its last after its last, as glTF defines.
 `anim_quat_rotate()` turns a vector by a sampled rotation, which is how a
-camera track gives an `r3d_camera_t` its look direction.
+camera track gives an `camera_t` its look direction.
 
 ## Authoring
 
@@ -95,7 +95,7 @@ anim_track_sample(&prefix_lens_perspective_yfov, seconds, fov);
 
 Mapping the value onto the object, including any unit or fixed-point
 conversion, belongs to the caller. Tracks are float; a fixed-point caller
-converts after sampling, and `render/r3d_trs.h` does it for an object drawn
+converts after sampling, and `render/trs.h` does it for an object drawn
 through small3dlib.
 
 ## Looking at a baked animation

@@ -126,7 +126,7 @@ wire_advance_pose(uint32_t dt_ms) {
     camera.pose.rotation.x = -WIRE_ELEVATION_ANGLE;
     camera = r3d_line_camera_upright(camera, display_shell_quarter());
 
-    const r3d_viewport_t viewport = {.width = GFX_WIDTH, .height = GFX_HEIGHT, .quarter = 0};
+    const viewport_t viewport = {.width = GFX_WIDTH, .height = GFX_HEIGHT, .quarter = 0};
     current_view = r3d_line_camera_view(camera, world, viewport);
 }
 

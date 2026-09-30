@@ -29,7 +29,7 @@
 uint32_t sponza_flythrough_period_ms(void);
 
 /* The eye and look direction t_ms into the loop, which wraps at the period. */
-void sponza_flythrough_sample(uint32_t t_ms, r3d_vec3f_t* eye, r3d_vec3f_t* forward);
+void sponza_flythrough_sample(uint32_t t_ms, vec3f_t* eye, vec3f_t* forward);
 
 /* The camera t_ms into the loop. */
-r3d_camera_t sponza_camera_at(uint32_t t_ms);
+camera_t sponza_camera_at(uint32_t t_ms);
