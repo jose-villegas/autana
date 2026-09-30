@@ -1,12 +1,12 @@
 # Live tuning
 
 Changing a number on a running device, by name, with no build and no flash.
-For a constant that is judged by eye - how a theme starts, how high a
-wave is - where each guess otherwise costs a build and a flash.
+For a constant that is judged by eye: how a theme starts, how high a
+wave is, where each guess otherwise costs a build and a flash.
 
 `autana` alone opens a console session with the device, and everything below
 works in it without the prefix. A bare word is never an implicit tunable
-lookup - `tune` is always the way to one, in the session and on the command
+lookup; `tune` is always the way to one, in the session and on the command
 line alike:
 
 ```
@@ -27,9 +27,9 @@ autana tune save
 ```
 
 A name may drop its owner when that is unambiguous: `theme_rgb` for
-`ridge.theme_rgb` - and when it is not exactly one tunable's own, `tune <name>`
+`ridge.theme_rgb`, and when it is not exactly one tunable's own, `tune <name>`
 falls back to the same filtered listing `tune [text]` gives. `autana` is the
-terminal command - every command it takes is in
+terminal command: every command it takes is in
 [Autana-CLI.md](Autana-CLI.md). It calls `scripts/device/device.py send`,
 which takes the device lock like everything else that touches the board. A
 console session takes the lock for each line and lets go, so the board stays
@@ -41,7 +41,7 @@ a plain constant there, and a value set on a device is gone at its next
 reboot. The source stays the truth, and `save` is what puts a session's
 values into it: it asks the device for every tunable and rewrites the
 initial value in the `TUNE` line each was declared with, in the worktree
-it is run from - those lines only, byte for byte otherwise. What it wrote is
+it is run from; those lines only, byte for byte otherwise. What it wrote is
 an ordinary diff to review and commit, and the next build, release included,
 is made with it.
 
@@ -104,7 +104,7 @@ TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
   name and `TUNE` reports the clash.
 - A tunable is a variable in one build and a constant in the other, so it
   cannot size an array or label a `case`, and a development build does not
-  fold it the way release does - a timing taken on one is a little
+  fold it the way release does; a timing taken on one is a little
   pessimistic.
 - A value read every frame takes effect at once. One baked into a table needs
   its owner to notice:
@@ -117,4 +117,4 @@ TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
 
 ## Related
 
-- [`../Build-Variants.md`](../Build-Variants.md) - what a development build is
+- [`../Build-Variants.md`](../Build-Variants.md): what a development build is

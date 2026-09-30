@@ -1,6 +1,6 @@
 # Mermaid diagrams
 
-GitHub renders ```` ```mermaid ```` fences natively in the repo view - the
+GitHub renders ```` ```mermaid ```` fences natively in the repo view, the
 only render target here. It fails silently: a broken diagram shows a parse
 error where the picture should be, so `scripts/gates/check-mermaid.mjs`
 renders every one through `mmdc` (mermaid-cli) and checks that it parses.
@@ -32,7 +32,7 @@ A failing diagram blocks the commit. A missing `node` or `mmdc` skips the
 check with a warning instead. An `mmdc` that runs but cannot find a Chrome
 still blocks the commit: the probe only proves the binary starts, not that
 it can render, so every block then fails for real. `--no-verify` skips the
-hook entirely; CI is what actually gates a diagram - see below.
+hook entirely; CI is what actually gates a diagram; see below.
 
 ## CI
 
@@ -47,7 +47,7 @@ nothing else here can affect.
 
 ## Tests
 
-`scripts/gates/tests/test_check_mermaid.mjs` covers the pure parts - fence
+`scripts/gates/tests/test_check_mermaid.mjs` covers the pure parts: fence
 extraction, the line-number rewrite, and the Windows argument-quoting
-helper - with `node --test`, no `mmdc` or `git` involved.
+helper, with `node --test`, no `mmdc` or `git` involved.
 `scripts/run-tool-tests.sh` runs it alongside the Python tool suites.

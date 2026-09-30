@@ -162,8 +162,8 @@ neither is "off by omission." Checking `CONFIG_LAUNCHER_DEVELOPMENT` means
 "not a release build," not "development, or maybe some other thing nobody
 named yet."
 
-**The rule going forward:** guard anything whose only reader is a developer (
-a log line, a rolling average, a debug overlay) with
+**The rule going forward:** guard anything whose only reader is a developer
+(a log line, a rolling average, a debug overlay) with
 `CONFIG_LAUNCHER_DEVELOPMENT`. Guard the test suites themselves, and anything
 that only makes sense alongside them, with `CONFIG_LAUNCHER_SELFTEST`. Neither
 belongs ungated, and neither belongs gated on the other one just because they

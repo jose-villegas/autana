@@ -14,7 +14,7 @@ gitignored, regenerated on every run) from two sources, merged with no
 file counted twice:
 
 - **The diagnostics build's own database**,
-  `launcher/build.diag/compile_commands.json` - real esp32s3 flags,
+  `launcher/build.diag/compile_commands.json`: real esp32s3 flags,
   restricted to `launcher/main/` and `launcher/test/`. This is what
   reaches every hardware-facing file the diagnostics build compiles: every
   `app_*.c`/`scene_*.c`, the shell and boot sources, `board/`, `console/`,
@@ -24,13 +24,13 @@ file counted twice:
   `--sysroot`/`--gcc-toolchain` pointing at the same `xtensa-esp-elf` GCC
   install ESP-IDF itself uses, found under the ESP-IDF tools root:
   `$IDF_TOOLS_PATH` when set, else `~/.espressif`).
-- **`launcher/test/run_tests.sh --print-sources`/`--print-flags`** - the
+- **`launcher/test/run_tests.sh --print-sources`/`--print-flags`**: the
   same host-portable file list and flags that script proves compile,
   used for whatever the diagnostics build's database does not contain: the
   host-only test-runner files (`host_main.c`, `heap_arena.c`) and
   `gfx/gfx_palette_standard.c`. esp-clang's own default target has no
   usable libc either, so these get the same `--sysroot`/`--gcc-toolchain`
-  treatment against the host compiler `tools/build/find_cc.sh` resolves -
+  treatment against the host compiler `tools/build/find_cc.sh` resolves,
   never a second, independently-guessed compiler.
 - **`apps/*/tools/*.c`** (sweep and report scripts, excluded from the
   firmware and the host build alike by long-standing convention) get the
@@ -42,14 +42,14 @@ file counted twice:
 `launcher/main/` is walked directly from the filesystem, independent of
 either database, and compared against what was actually measured. A file
 neither source reaches, and that is not excluded, fails the gate by name.
-`EXCLUDED_MAIN_FILES` in `complexity_gate.py` is that exclusion list - each
+`EXCLUDED_MAIN_FILES` in `complexity_gate.py` is that exclusion list: each
 entry carries the reason a reader can check.
 
 Unmodified vendored code (`launcher/components/`, `managed_components/`,
-`test/framework/`) is out of scope - a ratchet on this project's own
+`test/framework/`) is out of scope: a ratchet on this project's own
 functions has nothing to say about code it did not write, and it is never
 a source of a coverage gap since it sits outside `launcher/main/`. A
-vendored function this project changed is measured - see the end of this
+vendored function this project changed is measured; see the end of this
 page. A `static inline` helper defined only in a
 shared header (for example `gfx/gfx_band.h`'s `gfx_band_ring_advance()`) is
 still invisible to this gate: clang-tidy's default scope is the file
@@ -68,7 +68,7 @@ rather than an empty scan; a full scan never leaves a file out.
 
 `launcher/tools/quality/complexity_baseline.txt` records every measured
 function's current score, one line per function
-(`score<TAB>file:line<TAB>name`, sorted worst first) - a plain text file
+(`score<TAB>file:line<TAB>name`, sorted worst first): a plain text file
 meant to be diffed in review like any other. It is the source for a
 function's current score; nothing here restates a count or a number that
 the baseline itself already holds.
@@ -80,19 +80,19 @@ something above it grew is not treated as a complexity change:
 - a function whose score **rose** above its baseline entry fails the gate
   when the new score is above `FAIL_THRESHOLD` (15); at or under 15 the
   rise is a warning (a GitHub annotation on the line in CI), left to review
-- a function whose score **fell** passes, with a note - lowering the
+- a function whose score **fell** passes, with a note: lowering the
   baseline is only ever `--update-baseline`, run by a person on purpose,
   never automatic, so an improvement has to be noticed before it sticks
 - a function with **no baseline entry** (new, or the new half of a
   rename) fails when it scores above `FAIL_THRESHOLD`
 - a baseline entry with **no matching function** (the old half of a
   rename, or a real deletion) is reported as stale and otherwise
-  ignored - it costs nothing to leave in the file until the next
+  ignored: it costs nothing to leave in the file until the next
   `--update-baseline` regenerates it
 
 ## Using it
 
-Needs a diagnostics build first - `launcher/build.diag/compile_commands.json`
+Needs a diagnostics build first: `launcher/build.diag/compile_commands.json`
 is one of the gate's two sources, and a missing one fails with a message
 saying so rather than a stack trace:
 
@@ -104,15 +104,15 @@ python launcher/tools/quality/complexity_gate.py --changed origin/main  # only f
 ```
 
 `build_diag_check.sh` runs `--changed origin/main` itself before it starts
-the build, and a failing ratchet stops it there - the two halves CI's
+the build, and a failing ratchet stops it there: the two halves CI's
 `build-diagnostics.yml` workflow decides are one local command. Point it at a
 different ref with `COMPLEXITY_GATE_BASE`. With no `build.diag` on disk
 yet the ratchet has no database to read and runs after that build instead;
 the database is also the previous build's, so a `.c` file added since then
 fails the ratchet as unmeasured until a build catches the database up.
 
-A file only a build variant compiles - `gfx/gfx_null_panel.c`, which exists
-for `CONFIG_LAUNCHER_QEMU` alone - is in no diagnostics build's database at all.
+A file only a build variant compiles (`gfx/gfx_null_panel.c`, which exists
+for `CONFIG_LAUNCHER_QEMU` alone) is in no diagnostics build's database at all.
 `VARIANT_ONLY_FILES` names a sibling in the same folder whose compile command
 it borrows, and the variant's own symbol, which is defined for it: what such
 a file calls is often declared only under that symbol, and an undeclared
@@ -134,7 +134,7 @@ clang-tidy is pinned to major 19, resolved the same way
 then `clang-tidy-19` or `clang-tidy` on `PATH`, then ESP-IDF's bundled
 esp-clang under the ESP-IDF tools root. A different major scores this
 check differently, so anything else is refused unless
-`CLANG_TIDY_ANY_VERSION=1` is set - informational use only, never CI.
+`CLANG_TIDY_ANY_VERSION=1` is set: informational use only, never CI.
 
 Vendored code is measured where this project changed it. Pristine upstream
 copies are git submodules under `third_party/upstream/`, pinned to the
@@ -156,7 +156,7 @@ so changing a function's linkage without touching its body does not bring
 it in. Editing any vendored function body brings it into scope on the next
 scan with no list to update. Headers are scored from every measured file
 that includes them, keeping the highest score. A modified function
-clang-tidy cannot score - no control flow, or compiled in no measured
-configuration - is listed as unscored rather than dropped. Every function
+clang-tidy cannot score (no control flow, or compiled in no measured
+configuration) is listed as unscored rather than dropped. Every function
 clang-tidy scores in a vendored file must also be found by the body
 comparison, or the gate fails.
