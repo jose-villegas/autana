@@ -36,6 +36,8 @@ extern const char* render_lab_start_scene_key;
 
 /* Where --depth writes, or NULL. */
 static const char* depth_stem;
+/* --holes: each frame's pinhole count on stderr. */
+static bool report_holes;
 static int shell_quarter;
 
 /* Which names are valid is app_render_lab.c's own knowledge (each scene's
@@ -53,6 +55,8 @@ options(int argc, char** argv) {
         } else if (strcmp(argv[i], "--depth") == 0 && i + 1 < argc) {
             depth_stem = argv[i + 1];
             i++;
+        } else if (strcmp(argv[i], "--holes") == 0) {
+            report_holes = true;
         }
     }
     if (!have_scene) {
@@ -111,6 +115,23 @@ depth_tiles(const uint16_t* depth, int w, int h, uint16_t* out) {
             }
         }
     }
+}
+
+/* Empty pixels whose four neighbours were all drawn: a pinhole in solid
+ * geometry rather than sky, which comes in runs. */
+static int
+depth_holes(const uint16_t* depth, int w, int h) {
+    int holes = 0;
+    for (int y = 1; y + 1 < h; y++) {
+        for (int x = 1; x + 1 < w; x++) {
+            const uint16_t* p = depth + ((size_t)y * w) + x;
+            if (p[0] == DEPTH_EMPTY && p[-1] != DEPTH_EMPTY && p[1] != DEPTH_EMPTY && p[-w] != DEPTH_EMPTY
+                && p[w] != DEPTH_EMPTY) {
+                holes++;
+            }
+        }
+    }
+    return holes;
 }
 
 /* The range of the pixels something was drawn to; false when none was. */
@@ -207,9 +228,9 @@ depth_write_all(const r3d_lit_frame_t* lit, int quarter) {
     if (note == NULL) {
         return false;
     }
-    fprintf(note, "depth %dx%d range %u..%u (65535 nearest, 0 empty, magenta) %s, tiles %dx%d px\n", w, h,
-            drawn ? (unsigned)lo : 0u, drawn ? (unsigned)hi : 0u, drawn ? "drawn" : "nothing drawn", DEPTH_TILE,
-            DEPTH_TILE);
+    fprintf(note, "depth %dx%d range %u..%u (65535 nearest, 0 empty, magenta) %s, tiles %dx%d px, holes %d\n", w, h,
+            drawn ? (unsigned)lo : 0U, drawn ? (unsigned)hi : 0U, drawn ? "drawn" : "nothing drawn", DEPTH_TILE,
+            DEPTH_TILE, depth_holes(lit->depth, w, h));
     fclose(note);
     return ok;
 }
@@ -217,10 +238,15 @@ depth_write_all(const r3d_lit_frame_t* lit, int quarter) {
 static void
 draw(const render_frame_t* frame) {
     app_list()->frame(frame->dt_ms, &frame->input);
+    const r3d_lit_frame_t* lit = render_lab_mesh_frame();
+    if (report_holes && lit != NULL && frame->index < frame->count) {
+        /* The scene's clock has already taken this frame's step. */
+        fprintf(stderr, "holes pose %u ms %d\n", (unsigned)(frame->elapsed_ms + frame->dt_ms),
+                depth_holes(lit->depth, lit->width, lit->height));
+    }
     if (depth_stem == NULL || frame->index != frame->count - 1) {
         return;
     }
-    const r3d_lit_frame_t* lit = render_lab_mesh_frame();
     if (lit == NULL) {
         fprintf(stderr, "--depth: this scene keeps no mesh frame, no depth written\n");
     } else if (!depth_write_all(lit, frame->quarter)) {

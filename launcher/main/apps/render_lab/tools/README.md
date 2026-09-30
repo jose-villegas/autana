@@ -20,9 +20,15 @@ capture. The Gouraud scene rotates when stepped over several frames.
 `--depth` also writes, for each mesh scene, `<label>-depth.png` (the frame's
 depth buffer at the renderer's own size, near bright, far dark, empty pixels
 magenta), `<label>-tiles.png` (each 8x8 tile's farthest depth, the values a
-hierarchical-Z cull would test) and `<label>-depth.txt` (the depth range). A
-pose of the flythrough: `render_lab_render --scene sponza --frames 1 --dt 15000
---depth <stem> -o <colour.bmp>`, the pose being frames times dt.
+hierarchical-Z cull would test) and `<label>-depth.txt` (the depth range and
+the hole count). A pose of the flythrough: `render_lab_render --scene sponza
+--frames 1 --dt 15000 --depth <stem> -o <colour.bmp>`, the pose being frames
+times dt.
+
+A hole is an empty pixel whose four neighbours were all drawn: a pinhole in
+solid geometry, where sky comes in runs. `--holes` prints each frame's count
+to stderr as `holes pose <ms> ms <count>`, so one run sweeps the loop:
+`--frames 145 --dt 250` visits every quarter second of its 36.3 s.
 
 ## Images in the docs
 
