@@ -1107,7 +1107,7 @@ cheapest path to something that is unmistakably a game.
    transforms and clips a mesh whose light is baked into vertex colours.
    Its fill rule is the top-left rule on 4 fractional bits, exact in
    integers and held to a slow reference on the host, with triangles of up
-   to 2 × 2 pixel centres tested centre by centre instead of walked.
+   to 2 Ã— 2 pixel centres tested centre by centre instead of walked.
 5. **Decided: the platformer is exploratory, with both world
    models kept.** Track B (the sand automaton as the world, fixed-camera
    rooms, levels as blocks of a material, materials and reactions as

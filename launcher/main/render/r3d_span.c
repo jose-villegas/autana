@@ -151,10 +151,7 @@ fill_flat_span(const r3d_span_target_t* target, int y, int x_first, int x_last, 
  * side has each centre tested against its edges instead of walked. */
 #define SMALL_MAX_SIDE 2
 
-/* Coordinates inside this, in subpixels, keep every edge quantity of the
- * walk in 32 bits; a triangle reaching past it (only just past the near
- * plane) walks in 64, where each division is a library call. */
-#define NARROW_LIMIT   32768
+#define HALF_PIXEL     (R3D_SUBPIXEL / 2)
 
 typedef struct {
     bool flat;
@@ -194,24 +191,10 @@ step_row(const fill_t* f, int32_t row[ATTRIBUTES]) {
  * on every row in any window, so one fills up to it and the other from it. */
 typedef struct {
     int32_t q, r, qs, rs, d;
-} edge32_t;
-
-typedef struct {
-    int64_t q, r, qs, rs, d;
-} edge64_t;
+} edge_t;
 
 static inline void
-floor_div32(int32_t n, int32_t d, int32_t* q, int32_t* r) {
-    *q = n / d;
-    *r = n - (*q * d);
-    if (*r < 0) {
-        *q -= 1;
-        *r += d;
-    }
-}
-
-static inline void
-floor_div64(int64_t n, int64_t d, int64_t* q, int64_t* r) {
+floor_div(int32_t n, int32_t d, int32_t* q, int32_t* r) {
     *q = n / d;
     *r = n - (*q * d);
     if (*r < 0) {
@@ -222,91 +205,37 @@ floor_div64(int64_t n, int64_t d, int64_t* q, int64_t* r) {
 
 /* Row y's centre line crosses the edge at x = top.x + (16 y + 8 - top.y)
  * dx / dy, and the first centre at or right of it is ceil((x - 8) / 16).
- * Anchored at the edge's own first row, whose offset from top.y is under 16,
- * so every term fits 32 bits. */
-static edge32_t
-edge32_at(const r3d_span_vertex_t* top, const r3d_span_vertex_t* bottom, int y) {
+ * With every coordinate inside R3D_SPAN_RANGE the numerator stays under
+ * 2^31 for any row of the edge. */
+static edge_t
+edge_at(const r3d_span_vertex_t* top, const r3d_span_vertex_t* bottom, int y) {
     const int32_t dx = bottom->x - top->x;
     const int32_t dy = bottom->y - top->y;
-    const int anchor = r3d_span_first_centre(top->y);
-    const int32_t row_offset = (anchor * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2) - top->y;
-    const int32_t from = top->x - (R3D_SUBPIXEL / 2);
-    edge32_t e = {0, 0, 0, 0, dy * R3D_SUBPIXEL};
-    floor_div32(((from & (R3D_SUBPIXEL - 1)) * dy) + (row_offset * dx) + e.d - 1, e.d, &e.q, &e.r);
-    e.q += from >> 4;
-    floor_div32(dx, dy, &e.qs, &e.rs);
-    e.rs *= R3D_SUBPIXEL;
-    if (y > anchor) {
-        const int64_t r = e.r + ((int64_t)(y - anchor) * e.rs);
-        e.q += ((y - anchor) * e.qs) + (int32_t)(r / e.d);
-        e.r = (int32_t)(r % e.d);
-    }
-    return e;
-}
-
-static edge64_t
-edge64_at(const r3d_span_vertex_t* top, const r3d_span_vertex_t* bottom, int y) {
-    const int64_t dx = (int64_t)bottom->x - top->x;
-    const int64_t dy = (int64_t)bottom->y - top->y;
-    const int anchor = r3d_span_first_centre(top->y);
-    const int64_t row_offset = ((int64_t)anchor * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2) - top->y;
-    const int64_t from = (int64_t)top->x - (R3D_SUBPIXEL / 2);
-    edge64_t e = {0, 0, 0, 0, dy * R3D_SUBPIXEL};
-    floor_div64(((from & (R3D_SUBPIXEL - 1)) * dy) + (row_offset * dx) + e.d - 1, e.d, &e.q, &e.r);
-    e.q += from >> 4;
-    floor_div64(dx, dy, &e.qs, &e.rs);
-    e.rs *= R3D_SUBPIXEL;
-    if (y > anchor) {
-        int64_t skipped;
-        floor_div64(e.r + ((int64_t)(y - anchor) * e.rs), e.d, &skipped, &e.r);
-        e.q += ((int64_t)(y - anchor) * e.qs) + skipped;
-    }
+    const int32_t row_offset = (y << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL - top->y;
+    edge_t e = {0, 0, 0, 0, dy << R3D_SUBPIXEL_SHIFT};
+    floor_div(((top->x - HALF_PIXEL) * dy) + (row_offset * dx) + e.d - 1, e.d, &e.q, &e.r);
+    floor_div(dx, dy, &e.qs, &e.rs);
+    e.rs <<= R3D_SUBPIXEL_SHIFT;
     return e;
 }
 
 static inline void
-step32(edge32_t* e) {
+step_edge(edge_t* e) {
     e->q += e->qs;
     e->r += e->rs;
     if (e->r >= e->d) {
         e->r -= e->d;
         e->q++;
     }
-}
-
-static inline void
-step64(edge64_t* e) {
-    e->q += e->qs;
-    e->r += e->rs;
-    if (e->r >= e->d) {
-        e->r -= e->d;
-        e->q++;
-    }
-}
-
-static inline int
-column64(int64_t q, int width) {
-    return q < -1 ? -1 : (q > width ? width : (int)q);
 }
 
 static void
-walk32(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge32_t* left,
-       edge32_t* right) {
+walk_rows(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge_t* left,
+          edge_t* right) {
     for (int y = y0; y < y1; y++) {
         fill_row(target, f, row, y, left->q, right->q - 1);
-        step32(left);
-        step32(right);
-        step_row(f, row);
-    }
-}
-
-static void
-walk64(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge64_t* left,
-       edge64_t* right) {
-    for (int y = y0; y < y1; y++) {
-        fill_row(target, f, row, y, column64(left->q, target->width), column64(right->q, target->width) - 1);
-        step64(left);
-        step64(right);
+        step_edge(left);
+        step_edge(right);
         step_row(f, row);
     }
 }
@@ -320,62 +249,41 @@ typedef struct {
 /* The long edge v0-v2 runs the whole height on one side; the short side is
  * v0-v1 above the split and v1-v2 below it. */
 static void
-walk_narrow(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], const walk_t* w) {
-    edge32_t long_edge = edge32_at(w->v0, w->v2, w->y_first);
+walk(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], const walk_t* w) {
+    edge_t long_edge = edge_at(w->v0, w->v2, w->y_first);
     if (w->y_first < w->split) {
-        edge32_t upper = edge32_at(w->v0, w->v1, w->y_first);
-        walk32(target, f, row, w->y_first, w->split, w->long_on_left ? &long_edge : &upper,
-               w->long_on_left ? &upper : &long_edge);
+        edge_t upper = edge_at(w->v0, w->v1, w->y_first);
+        walk_rows(target, f, row, w->y_first, w->split, w->long_on_left ? &long_edge : &upper,
+                  w->long_on_left ? &upper : &long_edge);
     }
     if (w->split < w->y_end) {
-        edge32_t lower = edge32_at(w->v1, w->v2, w->split);
-        walk32(target, f, row, w->split, w->y_end, w->long_on_left ? &long_edge : &lower,
-               w->long_on_left ? &lower : &long_edge);
+        edge_t lower = edge_at(w->v1, w->v2, w->split);
+        walk_rows(target, f, row, w->split, w->y_end, w->long_on_left ? &long_edge : &lower,
+                  w->long_on_left ? &lower : &long_edge);
     }
 }
 
-static void
-walk_wide(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], const walk_t* w) {
-    edge64_t long_edge = edge64_at(w->v0, w->v2, w->y_first);
-    if (w->y_first < w->split) {
-        edge64_t upper = edge64_at(w->v0, w->v1, w->y_first);
-        walk64(target, f, row, w->y_first, w->split, w->long_on_left ? &long_edge : &upper,
-               w->long_on_left ? &upper : &long_edge);
-    }
-    if (w->split < w->y_end) {
-        edge64_t lower = edge64_at(w->v1, w->v2, w->split);
-        walk64(target, f, row, w->split, w->y_end, w->long_on_left ? &long_edge : &lower,
-               w->long_on_left ? &lower : &long_edge);
-    }
-}
-
-static inline void
+/* Returns true when the sort swapped an odd number of times, which turns
+ * the triangle's winding over. */
+static inline bool
 sort_by_y(const r3d_span_vertex_t** v0, const r3d_span_vertex_t** v1, const r3d_span_vertex_t** v2) {
     const r3d_span_vertex_t* t;
+    bool odd = false;
     if ((*v1)->y < (*v0)->y) {
-        t = *v0, *v0 = *v1, *v1 = t;
+        t = *v0, *v0 = *v1, *v1 = t, odd = !odd;
     }
     if ((*v2)->y < (*v1)->y) {
-        t = *v1, *v1 = *v2, *v2 = t;
+        t = *v1, *v1 = *v2, *v2 = t, odd = !odd;
     }
     if ((*v1)->y < (*v0)->y) {
-        t = *v0, *v0 = *v1, *v1 = t;
+        t = *v0, *v0 = *v1, *v1 = t, odd = !odd;
     }
+    return odd;
 }
 
 static inline int
 clampi(int v, int lo, int hi) {
     return v < lo ? lo : (v > hi ? hi : v);
-}
-
-static inline int32_t
-min3i(int32_t a, int32_t b, int32_t c) {
-    return a < b ? (a < c ? a : c) : (b < c ? b : c);
-}
-
-static inline int32_t
-max3i(int32_t a, int32_t b, int32_t c) {
-    return a > b ? (a > c ? a : c) : (b > c ? b : c);
 }
 
 static inline void
@@ -415,26 +323,28 @@ small_side(const small_edge_t* e, int32_t x, int32_t y) {
     return (e->dx * (y - e->ay)) - (e->dy * (x - e->ax)) - e->bias;
 }
 
-/* Narrow and under 3 pixels wide, so every product fits 32 bits. */
+typedef struct {
+    int x0, x1, y0, y1; /* half-open, rows already inside the window */
+} centres_t;
+
 static void
 fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-           const r3d_span_vertex_t* c, int x0, int x1, int y0, int y1) {
+           const r3d_span_vertex_t* c, bool positive, centres_t box) {
     fill_t f;
     set_flat(&f, a, b, c);
     if (r3d_span_stop_after != 0) {
         return;
     }
-    const bool positive = ((b->x - a->x) * (c->y - a->y)) - ((b->y - a->y) * (c->x - a->x)) > 0;
     const r3d_span_vertex_t* p = positive ? b : c;
     const r3d_span_vertex_t* q = positive ? c : b;
     const small_edge_t e[3] = {small_edge(a, p), small_edge(p, q), small_edge(q, a)};
-    x0 = x0 < 0 ? 0 : x0;
-    x1 = x1 > target->width ? target->width : x1;
-    for (int y = y0; y < y1; y++) {
+    const int x0 = box.x0 < 0 ? 0 : box.x0;
+    const int x1 = box.x1 > target->width ? target->width : box.x1;
+    for (int y = box.y0; y < box.y1; y++) {
         const int row = (y - target->row0) * target->width;
-        const int32_t cy = (y * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2);
+        const int32_t cy = (y << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
         for (int x = x0; x < x1; x++) {
-            const int32_t cx = (x * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2);
+            const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
             if ((small_side(&e[0], cx, cy) | small_side(&e[1], cx, cy) | small_side(&e[2], cx, cy)) >= 0
                 && f.flat_z > target->depth[row + x]) {
                 target->depth[row + x] = f.flat_z;
@@ -444,41 +354,37 @@ fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3
     }
 }
 
-static inline bool
-is_narrow(int32_t lo_x, int32_t hi_x, int32_t lo_y, int32_t hi_y) {
-    return lo_x > -NARROW_LIMIT && hi_x < NARROW_LIMIT && lo_y > -NARROW_LIMIT && hi_y < NARROW_LIMIT;
-}
-
 void
 r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                   const r3d_span_vertex_t* c) {
     const r3d_span_vertex_t* v0 = a;
     const r3d_span_vertex_t* v1 = b;
     const r3d_span_vertex_t* v2 = c;
-    sort_by_y(&v0, &v1, &v2);
+    const bool odd = sort_by_y(&v0, &v1, &v2);
 
+    /* The whole triangle's rows, not the window's, decide its path, so any
+     * window of rows draws exactly those rows of the whole. */
+    const int rows = r3d_span_first_centre(v2->y) - r3d_span_first_centre(v0->y);
     const int y_first = clampi(r3d_span_first_centre(v0->y), target->row0, target->row1);
     const int y_end = clampi(r3d_span_first_centre(v2->y), target->row0, target->row1);
-    const int32_t lo_x = min3i(a->x, b->x, c->x);
-    const int32_t hi_x = max3i(a->x, b->x, c->x);
+    const int32_t lo_x = r3d_span_min3(a->x, b->x, c->x);
+    const int32_t hi_x = r3d_span_max3(a->x, b->x, c->x);
     const int x_first = r3d_span_first_centre(lo_x);
     const int x_end = r3d_span_first_centre(hi_x);
     if (y_first >= y_end || x_first >= x_end) {
         return; /* no pixel centre inside this window */
     }
-    /* Above zero when v1 lies right of the long edge v0-v2. */
-    const int64_t cross =
-        (((int64_t)v1->x - v0->x) * ((int64_t)v2->y - v0->y)) - (((int64_t)v1->y - v0->y) * ((int64_t)v2->x - v0->x));
-    if (cross == 0) {
+    /* Twice the signed area of a-b-c; each product is under 2^30. */
+    const int32_t area2 = ((b->x - a->x) * (c->y - a->y)) - ((b->y - a->y) * (c->x - a->x));
+    if (area2 == 0) {
         return;
     }
-    const bool narrow = is_narrow(lo_x, hi_x, v0->y, v2->y);
-    if (narrow && x_end - x_first <= SMALL_MAX_SIDE && y_end - y_first <= SMALL_MAX_SIDE) {
-        fill_small(target, a, b, c, x_first, x_end, y_first, y_end);
+    if (x_end - x_first <= SMALL_MAX_SIDE && rows <= SMALL_MAX_SIDE) {
+        fill_small(target, a, b, c, area2 > 0, (centres_t){x_first, x_end, y_first, y_end});
         return;
     }
 
-    fill_t f = {y_end - y_first <= FLAT_MAX_ROWS && (int64_t)hi_x - lo_x <= FLAT_MAX_WIDTH, 0, 0, NULL};
+    fill_t f = {rows <= FLAT_MAX_ROWS && hi_x - lo_x <= FLAT_MAX_WIDTH, 0, 0, NULL};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
     const int y_anchor = clampi(r3d_span_first_centre(v0->y), -1, target->row1 + 1);
@@ -497,10 +403,8 @@ r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
     if (!f.flat) {
         first_row_values(&g, y_first, y_anchor, row);
     }
-    const walk_t w = {v0, v1, v2, y_first, clampi(r3d_span_first_centre(v1->y), y_first, y_end), y_end, cross > 0};
-    if (narrow) {
-        walk_narrow(target, &f, row, &w);
-    } else {
-        walk_wide(target, &f, row, &w);
-    }
+    /* v1 lies right of the long edge v0-v2 when v0-v1-v2 winds positive. */
+    const walk_t w = {
+        v0, v1, v2, y_first, clampi(r3d_span_first_centre(v1->y), y_first, y_end), y_end, (area2 > 0) != odd};
+    walk(target, &f, row, &w);
 }

@@ -4,6 +4,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 #include "render/r3d_ray.h"
 
@@ -40,6 +41,9 @@ r3d_lit_view_look(r3d_lit_view_t* view, r3d_vec3f_t eye, r3d_vec3f_t forward, fl
     view->center_x = (float)viewport.width * 0.5F;
     view->center_y = (float)viewport.height * 0.5F;
     view->near_z = near_z;
+    view->near_subpixels = near_z / (float)R3D_SUBPIXEL;
+    view->snap_cx = (view->center_x * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
+    view->snap_cy = (view->center_y * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     view->width = viewport.width;
     view->height = viewport.height;
 }
@@ -179,38 +183,57 @@ r3d_lit_cull_clusters(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, ui
     return count;
 }
 
-/* Pixels from the origin a snapped position can reach in int16. */
-#define SNAP_LIMIT 2047.0F
+/* The rebuilt path clips to GUARD_PIXELS from the origin, inside what
+ * r3d_span takes; the fast path keeps vertices within FAST_PIXELS, inside
+ * the guard, so a clip never cuts an edge that a fast triangle shares. */
+#define RANGE_PIXELS (R3D_SPAN_RANGE >> R3D_SUBPIXEL_SHIFT)
+#define GUARD_PIXELS (RANGE_PIXELS - 16)
+#define FAST_PIXELS  (GUARD_PIXELS - 16)
+#define FAST_LO      (R3D_SNAP_BIAS - (float)(FAST_PIXELS * R3D_SUBPIXEL))
+#define FAST_HI      (R3D_SNAP_BIAS + (float)(FAST_PIXELS * R3D_SUBPIXEL))
+
+typedef struct {
+    float x, y; /* subpixels plus R3D_SNAP_BIAS */
+} biased_t;
+
+/* The one place a lens position becomes a screen position, so a vertex
+ * that both paths project snaps alike. `inv` is R3D_SUBPIXEL / z. */
+static inline biased_t
+biased_screen(const r3d_lit_view_t* view, float lx, float ly, float inv) {
+    return (biased_t){view->snap_cx + (lx * inv), view->snap_cy + (ly * inv)};
+}
 
 static inline r3d_lit_rows_t
 transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const r3d_lit_cluster_t* c,
                   r3d_lit_vertex_t* cs) {
     const int end = c->vertex_first + c->vertex_count;
-    r3d_lit_rows_t rows = {INFINITY, -INFINITY, false};
+    int y0 = INT16_MAX;
+    int y1 = INT16_MIN;
+    bool unbounded = false;
     for (int v = c->vertex_first; v < end; v++) {
         const int16_t* p = mesh->positions[v];
         const r3d_vec3f_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
         r3d_lit_vertex_t* out = &cs[v];
         if (l.z <= view->near_z) {
             out->iz = 0.0F;
-            rows.crosses_near = true;
+            unbounded = true;
             continue;
         }
-        const float inv = 1.0F / l.z;
-        const float sx = view->center_x + l.x * inv;
-        const float sy = view->center_y + l.y * inv;
-        if (!(fabsf(sx) < SNAP_LIMIT && fabsf(sy) < SNAP_LIMIT)) {
+        const float inv = (float)R3D_SUBPIXEL / l.z;
+        const biased_t b = biased_screen(view, l.x, l.y, inv);
+        if (!(b.x > FAST_LO && b.x < FAST_HI && b.y > FAST_LO && b.y < FAST_HI)) {
             out->iz = -1.0F;
-            rows.crosses_near = true;
+            unbounded = true;
             continue;
         }
-        out->sx = (int16_t)r3d_span_snap_near(sx);
-        out->sy = (int16_t)r3d_span_snap_near(sy);
-        out->iz = view->near_z * inv;
-        rows.y0 = sy < rows.y0 ? sy : rows.y0;
-        rows.y1 = sy > rows.y1 ? sy : rows.y1;
+        out->sx = (int16_t)r3d_span_unbias(b.x);
+        out->sy = (int16_t)r3d_span_unbias(b.y);
+        out->iz = view->near_subpixels * inv;
+        y0 = out->sy < y0 ? out->sy : y0;
+        y1 = out->sy > y1 ? out->sy : y1;
     }
-    return rows;
+    const float to_pixels = 1.0F / (float)R3D_SUBPIXEL;
+    return (r3d_lit_rows_t){(float)y0 * to_pixels, (float)y1 * to_pixels, unbounded};
 }
 
 void
@@ -230,71 +253,99 @@ typedef struct {
 
 static r3d_span_vertex_t
 project(const r3d_lit_view_t* view, const clip_vertex_t* v) {
-    const float inv = 1.0F / v->z;
-    return (r3d_span_vertex_t){r3d_span_snap(view->center_x + (v->x * inv)),
-                               r3d_span_snap(view->center_y + (v->y * inv)),
-                               view->near_z * inv,
-                               v->r,
-                               v->g,
-                               v->b};
-}
-
-static inline int64_t
-signed_area2(int64_t ax, int64_t ay, int64_t bx, int64_t by, int64_t cx, int64_t cy) {
-    return ((bx - ax) * (cy - ay)) - ((cx - ax) * (by - ay));
+    const float inv = (float)R3D_SUBPIXEL / v->z;
+    const biased_t b = biased_screen(view, v->x, v->y, inv);
+    return (r3d_span_vertex_t){
+        r3d_span_unbias(b.x), r3d_span_unbias(b.y), view->near_subpixels * inv, v->r, v->g, v->b};
 }
 
 /* Front faces wind negative on screen: counter-clockwise in a y-up world
  * turns clockwise once screen y points down. */
 static inline bool
-facing_away(int64_t area2, bool double_sided) {
+facing_away(int32_t area2, bool double_sided) {
     return !double_sided && area2 >= 0;
 }
 
-static void
-draw_near_clipped(const r3d_lit_view_t* view, const clip_vertex_t in[3], bool double_sided,
-                  const r3d_span_target_t* target) {
-    clip_vertex_t poly[4];
-    int n = 0;
-    for (int i = 0; i < 3; i++) {
+/* Twice the signed area; with coordinates inside R3D_SPAN_RANGE each
+ * product is under 2^30. */
+static inline int32_t
+signed_area2(int32_t ax, int32_t ay, int32_t bx, int32_t by, int32_t cx, int32_t cy) {
+    return ((bx - ax) * (cy - ay)) - ((cx - ax) * (by - ay));
+}
+
+#define CLIP_PLANES     5
+#define CLIP_VERTEX_MAX (3 + CLIP_PLANES)
+
+typedef struct {
+    float x, y, z, w; /* inside where x lx + y ly + z lz + w >= 0 */
+} clip_plane_t;
+
+static inline float
+plane_distance(const clip_plane_t* p, const clip_vertex_t* v) {
+    return (p->x * v->x) + (p->y * v->y) + (p->z * v->z) + p->w;
+}
+
+static int
+clip_to_plane(const clip_plane_t* p, const clip_vertex_t* in, int n, clip_vertex_t* out) {
+    int m = 0;
+    for (int i = 0; i < n; i++) {
         const clip_vertex_t* a = &in[i];
-        const clip_vertex_t* b = &in[(i + 1) % 3];
-        const bool a_in = a->z > view->near_z;
-        const bool b_in = b->z > view->near_z;
-        if (a_in) {
-            poly[n++] = *a;
+        const clip_vertex_t* b = &in[(i + 1) % n];
+        const float da = plane_distance(p, a);
+        const float db = plane_distance(p, b);
+        if (da >= 0.0F) {
+            out[m++] = *a;
         }
-        if (a_in != b_in) {
-            const float t = (view->near_z - a->z) / (b->z - a->z);
-            poly[n++] =
-                (clip_vertex_t){a->x + ((b->x - a->x) * t), a->y + ((b->y - a->y) * t), view->near_z,
+        if ((da >= 0.0F) != (db >= 0.0F)) {
+            const float t = da / (da - db);
+            out[m++] =
+                (clip_vertex_t){a->x + ((b->x - a->x) * t), a->y + ((b->y - a->y) * t), a->z + ((b->z - a->z) * t),
                                 a->r + ((b->r - a->r) * t), a->g + ((b->g - a->g) * t), a->b + ((b->b - a->b) * t)};
         }
     }
+    return m;
+}
+
+/* The near plane, then the screen's guard band: every corner left projects
+ * inside what r3d_span takes. */
+static int
+clip_to_guard(const r3d_lit_view_t* view, clip_vertex_t poly[CLIP_VERTEX_MAX], int n) {
+    const float g = (float)GUARD_PIXELS;
+    const clip_plane_t planes[CLIP_PLANES] = {
+        {0.0F, 0.0F, 1.0F, -view->near_z},       {1.0F, 0.0F, view->center_x + g, 0.0F},
+        {-1.0F, 0.0F, g - view->center_x, 0.0F}, {0.0F, 1.0F, view->center_y + g, 0.0F},
+        {0.0F, -1.0F, g - view->center_y, 0.0F},
+    };
+    clip_vertex_t other[CLIP_VERTEX_MAX];
+    for (int p = 0; p < CLIP_PLANES && n >= 3; p++) {
+        n = clip_to_plane(&planes[p], poly, n, other);
+        memcpy(poly, other, sizeof(clip_vertex_t) * (size_t)n);
+    }
+    return n;
+}
+
+static void
+draw_clipped(const r3d_lit_view_t* view, const clip_vertex_t in[3], bool double_sided,
+             const r3d_span_target_t* target) {
+    clip_vertex_t poly[CLIP_VERTEX_MAX] = {in[0], in[1], in[2]};
+    const int n = clip_to_guard(view, poly, 3);
     if (n < 3) {
         return;
     }
-    r3d_span_vertex_t s[4];
+    r3d_span_vertex_t s[CLIP_VERTEX_MAX];
+    int64_t area2 = 0;
     for (int i = 0; i < n; i++) {
         s[i] = project(view, &poly[i]);
     }
-    if (facing_away(signed_area2(s[0].x, s[0].y, s[1].x, s[1].y, s[2].x, s[2].y), double_sided)) {
+    for (int i = 1; i + 1 < n; i++) {
+        area2 += signed_area2(s[0].x, s[0].y, s[i].x, s[i].y, s[i + 1].x, s[i + 1].y);
+    }
+    if (!double_sided && area2 >= 0) {
         return;
     }
-    r3d_span_triangle(target, &s[0], &s[1], &s[2]);
-    if (n == 4) {
-        r3d_span_triangle(target, &s[0], &s[2], &s[3]);
+    for (int i = 1; i + 1 < n; i++) {
+        r3d_span_triangle(target, &s[0], &s[i], &s[i + 1]);
     }
-}
-
-static inline int
-min3(int a, int b, int c) {
-    return a < b ? (a < c ? a : c) : (b < c ? b : c);
-}
-
-static inline int
-max3(int a, int b, int c) {
-    return a > b ? (a > c ? a : c) : (b > c ? b : c);
 }
 
 /* True when the bounding box holds no pixel centre inside the target, so
@@ -303,22 +354,24 @@ max3(int a, int b, int c) {
 static inline bool
 misses_every_centre(const r3d_lit_vertex_t* a, const r3d_lit_vertex_t* b, const r3d_lit_vertex_t* c,
                     const r3d_span_target_t* target) {
-    const int x_first = r3d_span_first_centre(min3(a->sx, b->sx, c->sx));
-    const int x_end = r3d_span_first_centre(max3(a->sx, b->sx, c->sx));
-    const int y_first = r3d_span_first_centre(min3(a->sy, b->sy, c->sy));
-    const int y_end = r3d_span_first_centre(max3(a->sy, b->sy, c->sy));
+    const int x_first = r3d_span_first_centre(r3d_span_min3(a->sx, b->sx, c->sx));
+    const int x_end = r3d_span_first_centre(r3d_span_max3(a->sx, b->sx, c->sx));
+    const int y_first = r3d_span_first_centre(r3d_span_min3(a->sy, b->sy, c->sy));
+    const int y_end = r3d_span_first_centre(r3d_span_max3(a->sy, b->sy, c->sy));
     return x_first >= x_end || y_first >= y_end || x_end <= 0 || x_first >= target->width || y_end <= target->row0
            || y_first >= target->row1;
 }
 
 static inline bool
 rows_miss_target(const r3d_lit_rows_t* r, const r3d_span_target_t* target) {
-    return !r->crosses_near && (r->y1 < (float)target->row0 || r->y0 > (float)target->row1);
+    return !r->unbounded && (r->y1 < (float)target->row0 || r->y0 > (float)target->row1);
 }
 
+/* A triangle with a corner behind the near plane or too far off screen to
+ * snap is rebuilt from the mesh and clipped. */
 static void
-draw_crossing_near(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* tri, bool double_sided,
-                   const r3d_span_target_t* target) {
+draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* tri, bool double_sided,
+             const r3d_span_target_t* target) {
     clip_vertex_t in[3];
     for (int k = 0; k < 3; k++) {
         const int16_t* p = mesh->positions[tri[k]];
@@ -326,7 +379,7 @@ draw_crossing_near(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const
         const r3d_vec3f_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
         in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[0], rgb[1], rgb[2]};
     }
-    draw_near_clipped(view, in, double_sided, target);
+    draw_clipped(view, in, double_sided, target);
 }
 
 static inline void
@@ -335,8 +388,7 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_vertex_t* const v[3], co
     if (misses_every_centre(v[0], v[1], v[2], target)) {
         return;
     }
-    const int64_t area2 = signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy);
-    if (facing_away(area2, double_sided)) {
+    if (facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), double_sided)) {
         return;
     }
     r3d_span_vertex_t s[3];
@@ -357,7 +409,7 @@ draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const r3d_l
         if (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F) {
             draw_in_front(mesh, v, tri, c->double_sided, target);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
-            draw_crossing_near(mesh, view, tri, c->double_sided, target);
+            draw_rebuilt(mesh, view, tri, c->double_sided, target);
         }
     }
 }

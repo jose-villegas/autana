@@ -32,6 +32,16 @@ typedef struct {
     float x, y;
 } point_t;
 
+static void*
+checked_malloc(size_t bytes) {
+    void* p = malloc(bytes);
+    if (p == NULL) {
+        fputs("out of memory\n", stderr);
+        exit(1);
+    }
+    return p;
+}
+
 static bool
 project(const r3d_lit_view_t* view, const int16_t p[3], point_t* out) {
     float l[3];
@@ -176,12 +186,17 @@ keep_frame(const char* dir, bool compare, int pose, const uint16_t* color) {
         fclose(f);
         return;
     }
-    uint16_t* before = malloc(PIXELS * sizeof(*before));
+    uint16_t* before = checked_malloc(PIXELS * sizeof(*before));
     const size_t got = fread(before, sizeof(*before), PIXELS, f);
+    const bool longer = fgetc(f) != EOF;
     fclose(f);
     long differ = 0;
     int worst = 0;
-    for (size_t i = 0; i < PIXELS && got == PIXELS; i++) {
+    if (got != PIXELS || longer) {
+        fprintf(stderr, "%s is not a %dx%d frame\n", path, WIDTH, HEIGHT);
+        exit(1);
+    }
+    for (size_t i = 0; i < PIXELS; i++) {
         if (before[i] != color[i]) {
             differ++;
             const int gap = channel_gap(before[i], color[i]);
@@ -212,11 +227,11 @@ main(int argc, char** argv) {
         dir = argv[i + 1];
     }
     const r3d_lit_mesh_t* mesh = &sponza_mesh;
-    uint16_t* visible = malloc(sizeof(uint16_t) * (size_t)mesh->cluster_count);
-    r3d_lit_rows_t* rows = malloc(sizeof(r3d_lit_rows_t) * (size_t)mesh->cluster_count);
-    void* cs = malloc(sizeof(r3d_lit_vertex_t) * (size_t)mesh->vertex_count);
-    uint16_t* color = malloc(PIXELS * sizeof(uint16_t));
-    uint16_t* depth = malloc(PIXELS * sizeof(uint16_t));
+    uint16_t* visible = checked_malloc(sizeof(uint16_t) * (size_t)mesh->cluster_count);
+    r3d_lit_rows_t* rows = checked_malloc(sizeof(r3d_lit_rows_t) * (size_t)mesh->cluster_count);
+    void* cs = checked_malloc(sizeof(r3d_lit_vertex_t) * (size_t)mesh->vertex_count);
+    uint16_t* color = checked_malloc(PIXELS * sizeof(uint16_t));
+    uint16_t* depth = checked_malloc(PIXELS * sizeof(uint16_t));
 
     printf("Sponza, %d triangles, rendered %dx%d; triangles by pixel centres covered\n", mesh->triangle_count, WIDTH,
            HEIGHT);

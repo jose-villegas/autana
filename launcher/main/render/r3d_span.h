@@ -18,43 +18,47 @@ typedef struct {
     int row0, row1;  /* the half-open screen rows this window holds */
 } r3d_span_target_t;
 
-#define R3D_SUBPIXEL       16
-/* Positions past this many pixels from the origin are held at it. */
-#define R3D_SUBPIXEL_LIMIT 67108864.0f
+#define R3D_SUBPIXEL_SHIFT 4
+#define R3D_SUBPIXEL       (1 << R3D_SUBPIXEL_SHIFT)
+/* Every coordinate r3d_span_triangle() takes is inside +-R3D_SPAN_RANGE
+ * subpixels (1024 pixels), which keeps each edge's arithmetic in 32 bits. */
+#define R3D_SPAN_RANGE     (1 << 14)
+/* Added before truncating, so the sum is positive and truncating floors. */
+#define R3D_SNAP_BIAS      ((float)R3D_SPAN_RANGE + 0.5F)
 
 typedef struct {
-    int32_t x, y;  /* screen position in 1/R3D_SUBPIXEL pixels; pixel i's centre is at 16 i + 8 */
+    int32_t x, y;  /* screen position in subpixels; pixel i's centre is at R3D_SUBPIXEL i + R3D_SUBPIXEL / 2 */
     float z;       /* inverse depth, (0, 1] */
     float r, g, b; /* 0..255 */
 } r3d_span_vertex_t;
 
-/* Pixels from the origin inside which r3d_span_snap_near() holds. */
-#define R3D_SUBPIXEL_NEAR 2048.0f
-
-/* The nearest subpixel, without a branch: the bias keeps the sum positive,
- * where truncating is flooring. */
+/* A subpixel position plus R3D_SNAP_BIAS, as a float, to the nearest
+ * subpixel. `biased` must lie in (0, 2 R3D_SPAN_RANGE). */
 static inline int32_t
-r3d_span_snap_near(float pixels) {
-    return (int32_t)((pixels * (float)R3D_SUBPIXEL) + 32768.5F) - 32768;
+r3d_span_unbias(float biased) {
+    return (int32_t)biased - R3D_SPAN_RANGE;
 }
 
-/* The same subpixel r3d_span_snap_near() gives wherever that holds, so a
- * vertex snaps alike whichever path projected it. */
+/* A position in pixels, under 1024 from the origin, to the nearest subpixel. */
 static inline int32_t
 r3d_span_snap(float pixels) {
-    if (pixels > -R3D_SUBPIXEL_NEAR && pixels < R3D_SUBPIXEL_NEAR) {
-        return r3d_span_snap_near(pixels);
-    }
-    const float v = pixels < -R3D_SUBPIXEL_LIMIT ? -R3D_SUBPIXEL_LIMIT
-                                                 : (pixels > R3D_SUBPIXEL_LIMIT ? R3D_SUBPIXEL_LIMIT : pixels);
-    const float scaled = v * (float)R3D_SUBPIXEL;
-    return (int32_t)(scaled + (scaled < 0.0F ? -0.5F : 0.5F));
+    return r3d_span_unbias((pixels * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS);
 }
 
 /* The first pixel whose centre is at or past subpixel position v. */
 static inline int
 r3d_span_first_centre(int32_t v) {
-    return (v + (R3D_SUBPIXEL / 2) - 1) >> 4;
+    return (v + (R3D_SUBPIXEL / 2) - 1) >> R3D_SUBPIXEL_SHIFT;
+}
+
+static inline int32_t
+r3d_span_min3(int32_t a, int32_t b, int32_t c) {
+    return a < b ? (a < c ? a : c) : (b < c ? b : c);
+}
+
+static inline int32_t
+r3d_span_max3(int32_t a, int32_t b, int32_t c) {
+    return a > b ? (a > c ? a : c) : (b > c ? b : c);
 }
 
 /* Temporary measurement switch: 0 draws normally; 1 stops after triangle

@@ -94,7 +94,12 @@ A pixel belongs to a triangle when its centre is inside by the top-left
 rule, decided in integers on positions snapped to 1/16 pixel. Two
 triangles sharing an edge therefore never both fill a pixel, nor both miss
 one, in any window of rows. `r3d_lit_transform()` snaps each vertex once,
-into an 8-byte `r3d_lit_vertex_t`.
+into an 8-byte `r3d_lit_vertex_t`. Every position the rasterizer takes is
+within 1024 pixels of the origin, which keeps its edge arithmetic in 32
+bits: a triangle with a corner behind the near plane or farther off
+screen is rebuilt from the mesh and clipped to a guard band inside that
+reach, and the fast path stops short of the guard band, so a clip never
+cuts an edge that a fast triangle shares.
 
 A detailed mesh drawn small has many triangles covering a few pixel
 centres or none, so the draw routes each by the centres its bounding box
