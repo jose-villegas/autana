@@ -36,6 +36,7 @@ set(app_srcs
     "ui/ui_widgets.c"
     "anim/anim_track.c"
     "render/r3d_lit_frame.c"
+    "render/upscale.c"
     "render/r3d_lit_pipeline.c"
     "render/r3d_span.c"
     "render/r3d_trs.c"

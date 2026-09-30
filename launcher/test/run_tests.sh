@@ -128,6 +128,7 @@ $MAIN_DIR/boot/post_layout.c
 $MAIN_DIR/util/job.c
 $MAIN_DIR/anim/anim_track.c
 $MAIN_DIR/render/r3d_lit_frame.c
+$MAIN_DIR/render/upscale.c
 $MAIN_DIR/render/r3d_lit_frame_show.c
 $MAIN_DIR/render/r3d_lit_pipeline.c
 $MAIN_DIR/render/r3d_span.c
