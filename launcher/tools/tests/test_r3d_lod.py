@@ -73,7 +73,7 @@ def sheet(n, size=800.0):
 def bake(mesh, **options):
     p, rgb, tris, double = mesh
     return bake_lit_mesh(p, rgb, tris, double, leaf_triangles=200, max_depth=8, meshlet_triangles=MESHLET,
-                         partition_size=4, with_lod=True, **options)
+                         partition_size=4, clustering="meshlet", with_lod=True, **options)
 
 
 def canonical(pos, tris):
@@ -256,7 +256,7 @@ class MeshTests(unittest.TestCase):
     @per_mesh
     def test_the_c_data_reads_back_as_what_was_baked(self, m, mesh):
         with tempfile.TemporaryDirectory() as out:
-            write_lit_mesh(out, "demo", *m, ["test"], 200, 8, meshlet_triangles=MESHLET, partition_size=4, with_lod=True)
+            write_lit_mesh(out, "demo", *m, ["test"], 200, 8, meshlet_triangles=MESHLET, partition_size=4, clustering="meshlet", with_lod=True)
             back = read_lit_mesh(str(pathlib.Path(out) / "demo_mesh_generated.c"))
         self.assertTrue(np.array_equal(back.pos, mesh.pos))
         self.assertTrue(np.array_equal(back.tris, mesh.tris))
@@ -269,9 +269,9 @@ class MeshTests(unittest.TestCase):
     @per_mesh
     def test_rebaking_keeps_the_finest_triangles(self, m, mesh):
         with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
-            write_lit_mesh(first, "demo", *m, ["test"], 200, 8, meshlet_triangles=MESHLET, partition_size=4, with_lod=True)
+            write_lit_mesh(first, "demo", *m, ["test"], 200, 8, meshlet_triangles=MESHLET, partition_size=4, clustering="meshlet", with_lod=True)
             rebake([str(pathlib.Path(first) / "demo_mesh_generated.c"), "--out-dir", second,
-                    "--meshlet-triangles", "48", "--partition-size", "6", "--lod"])
+                    "--meshlet-triangles", "48", "--partition-size", "6", "--clustering", "meshlet", "--lod"])
             back = read_lit_mesh(str(pathlib.Path(second) / "demo_mesh_generated.c"))
         self.assertEqual(canonical(back.pos, back.tris), canonical(mesh.pos, mesh.tris))
 
@@ -283,7 +283,8 @@ class DefaultTests(unittest.TestCase):
     def test_a_mesh_is_finest_only_with_cones_unless_levels_are_asked_for(self):
         p, rgb, tris, double = sphere(2)
         with tempfile.TemporaryDirectory() as out:
-            mesh = write_lit_mesh(out, "demo", p, rgb, tris, double, ["test"], 200, 8, meshlet_triangles=MESHLET)
+            mesh = write_lit_mesh(out, "demo", p, rgb, tris, double, ["test"], 200, 8, clustering="meshlet",
+                                meshlet_triangles=MESHLET)
             text = (pathlib.Path(out) / "demo_mesh_generated.c").read_text()
             back = read_lit_mesh(str(pathlib.Path(out) / "demo_mesh_generated.c"))
         self.assertIsNone(mesh.lod)
@@ -295,6 +296,39 @@ class DefaultTests(unittest.TestCase):
         level = lod_eval.Level(back)
         cam = camera(*next(eyes(back, 1, 4)))
         self.assertTrue(np.array_equal(lod_eval.pick(level, cam, 1.0), lod_eval.finest(level, cam)))
+
+    def test_octree_clustering_makes_each_leaf_a_cluster_of_one_sidedness(self):
+        for m in (sphere(3), sheet(28)):
+            p, rgb, tris, double = m
+            mesh = bake_lit_mesh(p, rgb, tris, double, leaf_triangles=100, max_depth=8)
+            self.assertIsNone(mesh.lod)
+            self.assertEqual(len(mesh.cones), len(mesh.clusters))
+            self.assertLessEqual(max(c[3] for c in mesh.clusters), 100)
+            q = np.round(p * mesh.position_scale).astype(np.int64)
+            wq, _, wt, _ = weld_quantised(q, np.clip(np.rint(rgb), 0, 255).astype(np.int64), tris, double)
+            self.assertEqual(canonical(mesh.pos, mesh.tris), canonical(wq, wt))
+            self.assertEqual({c[6] for c in mesh.clusters}, {bool(d) for d in np.unique(double)})
+            leaf_clusters = sum(n["count"] for n in mesh.nodes if n["leaf"])
+            self.assertEqual(leaf_clusters, len(mesh.clusters))
+
+    def test_keeping_the_clusters_changes_only_the_format(self):
+        p, rgb, tris, double = sheet(20)
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            write_lit_mesh(first, "demo", p, rgb, tris, double, ["test"], 100, 8)
+            rebake([str(pathlib.Path(first) / "demo_mesh_generated.c"), "--out-dir", second])
+            a = read_lit_mesh(str(pathlib.Path(first) / "demo_mesh_generated.c"))
+            b = read_lit_mesh(str(pathlib.Path(second) / "demo_mesh_generated.c"))
+        self.assertTrue(np.array_equal(a.pos, b.pos) and np.array_equal(a.tris, b.tris))
+        self.assertEqual([tuple(map(np.ndarray.tolist, (c[4], c[5]))) + c[:4] for c in a.clusters],
+                         [tuple(map(np.ndarray.tolist, (c[4], c[5]))) + c[:4] for c in b.clusters])
+        self.assertEqual([(n["first"], n["count"], n["leaf"]) for n in a.nodes],
+                         [(n["first"], n["count"], n["leaf"]) for n in b.nodes])
+        self.assertEqual(len(b.cones), len(b.clusters))
+
+    def test_levels_need_meshlets(self):
+        p, rgb, tris, double = sphere(1)
+        with self.assertRaises(AssertionError):
+            bake_lit_mesh(p, rgb, tris, double, 100, 8, with_lod=True)
 
     def test_a_poses_file_gives_its_size_lens_and_poses(self):
         size, lens, poses = lod_eval.read_poses("# c\nsize 4 6\nlens 0.5 2\npose 1 2 3 4 5 6 # x\n")
@@ -310,7 +344,7 @@ class TreeMeshTests(unittest.TestCase):
         if not SPONZA.exists():
             self.skipTest("no baked mesh in the tree")
         with tempfile.TemporaryDirectory() as out:
-            rebake([str(SPONZA), "--out-dir", out, "--lod"])
+            rebake([str(SPONZA), "--out-dir", out, "--clustering", "meshlet", "--lod"])
             mesh = read_lit_mesh(str(pathlib.Path(out) / SPONZA.name))
         self.assertIsNotNone(mesh.lod, "the baked mesh has no coarser levels")
         level = lod_eval.Level(mesh)
