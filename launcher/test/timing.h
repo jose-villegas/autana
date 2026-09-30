@@ -25,27 +25,3 @@
  * line, byte for byte - see timing.c), then logs a separate line with how
  * long it took. */
 void suite_run_test_timed(void (*func)(void), const char* name, int line);
-
-#ifdef DEVICE_BUILD
-#include <stdbool.h>
-#include <stddef.h>
-
-#include "util/frame_watch.h"
-
-/* What one test body left behind. The body runs a second time when the
- * heap dropped, and leaked_* is what that second run lost. */
-typedef struct {
-    size_t leaked_8bit;
-    size_t leaked_32bit;
-    frame_watch_verdict_t watch;
-    size_t stack_free;   /* the main task's high-water mark after the first run */
-    bool stack_deepened; /* the first run set that mark */
-} suite_test_verdict_t;
-
-/* Runs body the way RUN_TEST runs every test on the board and fills in
- * verdict, judging nothing; TEST_PASS() included, however body ends. It
- * leaves Unity's abort frame spent: a caller inside a test restores its own.
- * suite_judge_watched_test() judges RUN_TEST's own, from tearDown(). */
-void suite_run_body(void (*body)(void), suite_test_verdict_t* verdict);
-void suite_judge_watched_test(void);
-#endif

@@ -23,7 +23,7 @@
 #include "unity.h"
 
 #include "suites.h"
-#include "timing.h"
+#include "test_harness.h"
 
 static const char* TAG = "selftest";
 

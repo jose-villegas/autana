@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "gfx/gfx.h"
+#include "test_harness.h"
 #include "unity.h"
 
 #define LEAK_BYTES       64

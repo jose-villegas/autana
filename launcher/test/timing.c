@@ -34,6 +34,7 @@
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "test_harness.h"
 #include "unity.h"
 #endif
 
@@ -57,8 +58,9 @@ static int tests_judged;
 
 /* Unity has one abort frame: a TEST_PASS() or a failed assertion jumps
  * straight to it. A frame here ends fn alone, so what follows it still runs.
- * Nothing is saved: the main task's stack has no bytes to spare. */
-static void
+ * Nothing is saved, to spare the main task's stack, so nothing after it may
+ * assert until tearDown(): the frame it leaves is dead. */
+static __attribute__((noinline)) void
 call_protected(void (*fn)(void)) {
     if (TEST_PROTECT()) {
         fn();
@@ -87,8 +89,10 @@ run_body(void (*body)(void), suite_test_verdict_t* verdict) {
 
     /* A first run may fill a cache that lives on; only memory a second run
      * loses again is a leak. */
-    if (drop(free_8bit, heap_caps_get_free_size(MALLOC_CAP_8BIT)) > 0
-        || drop(free_32bit, heap_caps_get_free_size(MALLOC_CAP_32BIT)) > 0) {
+    const bool judged = !Unity.CurrentTestFailed && !Unity.CurrentTestIgnored;
+    if (judged
+        && (drop(free_8bit, heap_caps_get_free_size(MALLOC_CAP_8BIT)) > 0
+            || drop(free_32bit, heap_caps_get_free_size(MALLOC_CAP_32BIT)) > 0)) {
         free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
         free_32bit = heap_caps_get_free_size(MALLOC_CAP_32BIT);
         call_protected(body);
