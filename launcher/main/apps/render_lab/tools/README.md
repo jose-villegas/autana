@@ -17,6 +17,13 @@ with `"%.1f"`, and so are the Cornell scenes, which are float throughout.
 The fps text comes from the host fixture - time the board with a device
 capture. The Gouraud scene rotates when stepped over several frames.
 
+`--depth` also writes, for each mesh scene, `<label>-depth.png` (the frame's
+depth buffer at the renderer's own size, near bright, far dark, empty pixels
+magenta), `<label>-tiles.png` (each 8x8 tile's farthest depth, the values a
+hierarchical-Z cull would test) and `<label>-depth.txt` (the depth range). A
+pose of the flythrough: `render_lab_render --scene sponza --frames 1 --dt 15000
+--depth <stem> -o <colour.bmp>`, the pose being frames times dt.
+
 ## Images in the docs
 
 `doc_images.sh` here makes these in `docs/images/overview/`, run by
