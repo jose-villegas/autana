@@ -298,6 +298,51 @@ class ClusterTreeTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class LitMeshTests(unittest.TestCase):
+    def test_a_flat_bake_keeps_one_centre_colour_per_triangle_and_welds_positions(self):
+        p = np.array([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 0), (1, 1, 0)])
+        rgb = np.array([(1, 2, 3), (4, 5, 6), (7, 8, 9), (200, 201, 202), (10, 11, 12)])
+        tris = np.array([(0, 1, 2), (3, 4, 1)])
+        centres = p[tris].mean(axis=1)
+        sampled = np.column_stack((centres[:, 0] * 255, centres[:, 1] * 255, np.zeros(len(centres))))
+        mesh = bake_lit_mesh(p, rgb, tris, np.zeros(len(tris), dtype=int), face_rgb=sampled)
+        self.assertIsNone(mesh.rgb)
+        self.assertEqual(len(mesh.pos), 4)
+        self.assertEqual(sorted(mesh.face_colors.tolist()), sorted(np.rint(sampled).astype(int).tolist()))
+
+    def test_back_to_back_triangles_keep_their_own_face_colours(self):
+        p = np.array([(0, 0, 0), (1, 0, 0), (0, 1, 0)])
+        tris = np.array([(0, 1, 2), (0, 2, 1)])
+        faces = np.array([(10, 20, 30), (200, 210, 220)])
+        mesh = bake_lit_mesh(p, None, tris, np.zeros(2, dtype=int), face_rgb=faces)
+        def area(t):
+            a, bb, c = mesh.pos[t][:, :2]
+            return np.cross(bb - a, c - a)
+
+        by_side = {bool(area(t) > 0): tuple(c) for t, c in zip(mesh.tris, mesh.face_colors)}
+        self.assertEqual(by_side[True], (10, 20, 30))
+        self.assertEqual(by_side[False], (200, 210, 220))
+
+    def test_a_smooth_bake_carries_no_face_colours(self):
+        p, tris = grid(2)
+        mesh = bake_lit_mesh(p, np.full((len(p), 3), 128), tris, np.zeros(len(tris), dtype=int))
+        self.assertIsNone(mesh.face_colors)
+        self.assertEqual(len(mesh.rgb), len(mesh.pos))
+
+    def test_a_flat_mesh_is_written_with_designated_fields_and_a_smooth_one_never_names_face_colours(self):
+        p, tris = grid(2)
+        double = np.zeros(len(tris), dtype=int)
+        with tempfile.TemporaryDirectory() as out:
+            write_lit_mesh(out, "smooth", p, np.full((len(p), 3), 128), tris, double, ["test"])
+            write_lit_mesh(out, "solid", p, None, tris, double, ["test"], face_rgb=np.full((len(tris), 3), 64))
+            smooth = (pathlib.Path(out) / "smooth_mesh_generated.c").read_text()
+            solid = (pathlib.Path(out) / "solid_mesh_generated.c").read_text()
+        self.assertNotIn("face_colors", smooth)
+        self.assertNotIn("NULL", smooth + solid)
+        self.assertIn(".colors = smooth_colors", smooth)
+        self.assertIn(".face_colors = solid_face_colors", solid)
+        self.assertNotIn(".colors", solid)
+        self.assertIn("GFX_RGB(0x404040)", solid)
+
     def test_a_written_mesh_names_its_counts(self):
         p, tris = grid(6)
         rgb = np.full((len(p), 3), 128)
@@ -307,6 +352,18 @@ class LitMeshTests(unittest.TestCase):
             header = (pathlib.Path(out) / "demo_mesh_generated.h").read_text()
         self.assertIn(f"#define DEMO_TRIANGLE_COUNT {len(tris)}", header)
         self.assertEqual(len(mesh.tris), len(tris))
+
+    def test_rebaking_a_flat_mesh_is_a_fixed_point(self):
+        p, tris = grid(2)
+        face_rgb = np.arange(len(tris) * 3).reshape(-1, 3) * 20
+        with tempfile.TemporaryDirectory() as out:
+            write_lit_mesh(out, "demo", p, None, tris, np.zeros(len(tris), dtype=int), ["test"], face_rgb=face_rgb)
+            c = pathlib.Path(out) / "demo_mesh_generated.c"
+            rebake.main([str(c)])
+            once = (c.read_text(), c.with_suffix(".h").read_text())
+            rebake.main([str(c)])
+            twice = (c.read_text(), c.with_suffix(".h").read_text())
+        self.assertEqual(once, twice)
 
     def test_validation_refuses_a_triangle_reaching_outside_its_cluster(self):
         pos = np.zeros((6, 3), dtype=np.int64)
@@ -422,7 +479,7 @@ class MeshletTests(unittest.TestCase):
         for m, mesh in list(self.each()):
             p, rgb, tris, double = m
             q = np.round(p * mesh.position_scale).astype(np.int64)
-            wq, _, wt, _ = weld_quantised(q, np.clip(np.rint(rgb), 0, 255).astype(np.int64), tris, double)
+            wq, _, wt, _, _ = weld_quantised(q, np.clip(np.rint(rgb), 0, 255).astype(np.int64), tris, double)
             self.assertEqual(canonical(mesh.pos, mesh.tris), canonical(wq, wt))
 
     def test_a_cluster_is_of_one_sidedness_and_both_kinds_are_there(self):

@@ -170,6 +170,25 @@ def to_srgb8(linear, tonemap_white):
     return np.clip(np.round(255.0 * np.clip(mapped, 0, 1) ** (1 / 2.2)), 0, 255).astype(np.int64)
 
 
+def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_of, intersector, args, rng):
+    """One sRGB colour per triangle, lit and textured at the triangle's centre
+    on its face normal. albedo_of(centres, spacing, material) gives the albedo."""
+    out = np.zeros((len(tris), 3), dtype=np.int64)
+    for m in materials:
+        selected = np.nonzero(tri_mat == m)[0]
+        if not len(selected):
+            continue
+        faces = tris[selected]
+        a, b, c = positions[faces[:, 0]], positions[faces[:, 1]], positions[faces[:, 2]]
+        normals = np.cross(b - a, c - a)
+        normals /= np.linalg.norm(normals, axis=1, keepdims=True)
+        centres = (a + b + c) / 3.0
+        albedo = albedo_of(centres, np.sqrt(triangle_areas(positions, faces)), m)
+        radiance = light(centres, normals, np.full(len(faces), m in double_materials), intersector, args, rng)
+        out[selected] = to_srgb8(albedo * radiance, args.tonemap_white)
+    return out
+
+
 def merge_matching_colours(pos, rgb, tris, step=6):
     """A crease splits a vertex so each side can be lit on its own normal;
     where both sides came out the same colour, one vertex is enough."""

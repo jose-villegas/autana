@@ -26,11 +26,12 @@ typedef struct {
 } r3d_lit_node_t;
 
 typedef struct {
-    const int16_t (*positions)[3]; /* ticks; position_scale ticks per model unit */
-    const uint8_t (*colors)[3];
+    const int16_t (*positions)[3];  /* ticks; position_scale ticks per model unit */
+    const uint8_t (*colors)[3];     /* NULL when face_colors carries the lighting */
     const uint16_t (*triangles)[3]; /* counter-clockwise seen from the front */
     const r3d_lit_cluster_t* clusters;
     const r3d_lit_node_t* nodes; /* children of a node sit together */
     int vertex_count, triangle_count, cluster_count, node_count;
     int position_scale;
+    const uint16_t* face_colors; /* target-format RGB565, one per triangle, or NULL */
 } r3d_lit_mesh_t;

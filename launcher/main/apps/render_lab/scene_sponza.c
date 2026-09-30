@@ -2,10 +2,11 @@
  * scene_sponza: Crytek Sponza flown through on a looping camera path, as a
  * render_lab scene.
  *
- * All light is baked into vertex colours by tools/gen_sponza.py (a sun with
- * shadows plus sky light), so a frame is only cull, transform, clip and
- * fill: r3d_lit_frame.h on both cores. Two scenes share this code, one per
- * bake: the full mesh and a lighter one, the same flythrough through each.
+ * All light is baked into vertex or face colours by tools/gen_sponza.py (a
+ * sun with shadows plus sky light), so a frame is only cull, transform, clip
+ * and fill: r3d_lit_frame.h on both cores. Three scenes share this code, one
+ * per bake: the full mesh, a lighter one and the full mesh baked flat, the
+ * same flythrough through each.
  *
  * It renders at half the panel's resolution into its own PSRAM target and
  * doubles that into the framebuffer, so it asks for the full-framebuffer
@@ -27,6 +28,7 @@
 #include "render_lab.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
+#include "sponza_flat_mesh_generated.h"
 #include "sponza_flythrough.h"
 #include "sponza_lite_mesh_generated.h"
 #include "sponza_mesh_generated.h"
@@ -73,6 +75,11 @@ scene_sponza_enter(void) {
 static void
 scene_sponza_lite_enter(void) {
     enter_with(&sponza_lite_mesh);
+}
+
+static void
+scene_sponza_flat_enter(void) {
+    enter_with(&sponza_flat_mesh);
 }
 
 static void
@@ -147,6 +154,20 @@ const render_lab_scene_t scene_sponza_lite = {
     .name = "Sponza Lite",
     .key = "sponza-lite",
     .enter = scene_sponza_lite_enter,
+    .frame = scene_sponza_frame,
+    .update = scene_sponza_update,
+    .frame_band = NULL,
+    .exit = scene_sponza_exit,
+    .invalidate = scene_sponza_invalidate,
+    .status = sponza_status,
+    .needs_full_framebuffer = true,
+    .shows_view_modes = true,
+};
+
+const render_lab_scene_t scene_sponza_flat = {
+    .name = "Sponza Flat",
+    .key = "sponza-flat",
+    .enter = scene_sponza_flat_enter,
     .frame = scene_sponza_frame,
     .update = scene_sponza_update,
     .frame_band = NULL,

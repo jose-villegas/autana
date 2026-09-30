@@ -65,6 +65,8 @@ r3d_lit_mesh_expect_subtree(const r3d_lit_mesh_t* mesh, int node, uint8_t* reach
 static inline void
 r3d_lit_mesh_expect_valid(const r3d_lit_mesh_t* mesh) {
     TEST_ASSERT_TRUE(mesh->position_scale > 0);
+    TEST_ASSERT_TRUE_MESSAGE((mesh->colors == NULL) != (mesh->face_colors == NULL),
+                             "a mesh is lit by vertex colours or by face colours, never both or neither");
     int next_vertex = 0, next_triangle = 0;
     for (int i = 0; i < mesh->cluster_count; i++) {
         const r3d_lit_cluster_t* c = &mesh->clusters[i];

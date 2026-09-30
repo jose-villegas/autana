@@ -325,7 +325,7 @@ clip_to_guard(const r3d_lit_view_t* view, clip_vertex_t poly[CLIP_VERTEX_MAX], i
 }
 
 static void
-draw_clipped(const r3d_lit_view_t* view, const clip_vertex_t in[3], bool double_sided,
+draw_clipped(const r3d_lit_view_t* view, const clip_vertex_t in[3], bool double_sided, const uint16_t* face_color,
              const r3d_span_target_t* target) {
     clip_vertex_t poly[CLIP_VERTEX_MAX] = {in[0], in[1], in[2]};
     const int n = clip_to_guard(view, poly, 3);
@@ -344,7 +344,11 @@ draw_clipped(const r3d_lit_view_t* view, const clip_vertex_t in[3], bool double_
         return;
     }
     for (int i = 1; i + 1 < n; i++) {
-        r3d_span_triangle(target, &s[0], &s[i], &s[i + 1]);
+        if (face_color == NULL) {
+            r3d_span_triangle(target, &s[0], &s[i], &s[i + 1]);
+        } else {
+            r3d_span_triangle_solid(target, &s[0], &s[i], &s[i + 1], *face_color);
+        }
     }
 }
 
@@ -370,21 +374,21 @@ rows_miss_target(const r3d_lit_rows_t* r, const r3d_span_target_t* target) {
 /* A triangle with a corner behind the near plane or too far off screen to
  * snap is rebuilt from the mesh and clipped. */
 static void
-draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* tri, bool double_sided,
-             const r3d_span_target_t* target) {
+draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* tri, const uint16_t* face_color,
+             bool double_sided, const r3d_span_target_t* target) {
     clip_vertex_t in[3];
     for (int k = 0; k < 3; k++) {
         const int16_t* p = mesh->positions[tri[k]];
-        const uint8_t* rgb = mesh->colors[tri[k]];
+        const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
         const r3d_vec3f_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
         in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[0], rgb[1], rgb[2]};
     }
-    draw_clipped(view, in, double_sided, target);
+    draw_clipped(view, in, double_sided, face_color, target);
 }
 
 static inline void
-draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_vertex_t* const v[3], const uint16_t* tri, bool double_sided,
-              const r3d_span_target_t* target) {
+draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_vertex_t* const v[3], const uint16_t* tri,
+              const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target) {
     if (misses_every_centre(v[0], v[1], v[2], target)) {
         return;
     }
@@ -393,10 +397,14 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_vertex_t* const v[3], co
     }
     r3d_span_vertex_t s[3];
     for (int k = 0; k < 3; k++) {
-        const uint8_t* rgb = mesh->colors[tri[k]];
+        const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
         s[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[0], rgb[1], rgb[2]};
     }
-    r3d_span_triangle(target, &s[0], &s[1], &s[2]);
+    if (face_color == NULL) {
+        r3d_span_triangle(target, &s[0], &s[1], &s[2]);
+    } else {
+        r3d_span_triangle_solid(target, &s[0], &s[1], &s[2], *face_color);
+    }
 }
 
 static void
@@ -405,11 +413,12 @@ draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const r3d_l
     const int end = c->triangle_first + c->triangle_count;
     for (int t = c->triangle_first; t < end; t++) {
         const uint16_t* tri = mesh->triangles[t];
+        const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
         const r3d_lit_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
         if (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F) {
-            draw_in_front(mesh, v, tri, c->double_sided, target);
+            draw_in_front(mesh, v, tri, face_color, c->double_sided, target);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
-            draw_rebuilt(mesh, view, tri, c->double_sided, target);
+            draw_rebuilt(mesh, view, tri, face_color, c->double_sided, target);
         }
     }
 }
