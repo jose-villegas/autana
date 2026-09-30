@@ -12,7 +12,7 @@ material does already exists as data in `reactions[]` and
 `extended_reactions[]`; this turns it into player-facing text.
 
 Everything below is the unbuilt part. For how the generator works, read
-`dump_reactions.c` and `report_reactions.sh` - they are the live record,
+`dump_reactions.c` and `report_reactions.sh`; they are the live record,
 and this plan is no longer it.
 
 ---
@@ -38,28 +38,28 @@ claiming something the table no longer supports. When weathering was
 reverted mid-session, this would have said "sand's blurb describes a crust;
 no field supports it."
 
-Showing a blurb is UI work — where it fits on the panel, whether it wraps
-or times out like the mode label at `app_sand.c:812` — and is deliberately
+Showing a blurb is UI work (where it fits on the panel, whether it wraps
+or times out like the mode label at `app_sand.c:812`) and is deliberately
 out of scope here.
 
 ---
 
 ## Phasing
 
-**Phase 1 — get a table on screen.** `dump_reactions.c`: field spec with
+**Phase 1: get a table on screen.** `dump_reactions.c`: field spec with
 group/kind, the static assert, the rate ladder, the pairwise join, and a
 generated `docs/sand/Reaction-Table.md`. Plus `report_reactions.sh` in the
 same folder, and a `--check` mode wired into
 `.github/workflows/host-tests.yml` (no new CI dependency: gcc and a diff).
 
-**Additive only — phase 1 touches no simulation source.** New files
+**Additive only: phase 1 touches no simulation source.** New files
 (`dump_reactions.c`, `report_reactions.sh`, the generated
 `Reaction-Table.md`) plus one line in the CI workflow, and nothing else. It
 reads `material.c`'s tables by linking them; it does not edit them.
 
 That is worth protecting rather than treating as a happy accident. The
-simulation is under active change — weathering landed and was reverted
-within a day — so anything that edits `material.h` or `sand_reactions.c`
+simulation is under active change: weathering landed and was reverted
+within a day, so anything that edits `material.h` or `sand_reactions.c`
 buys merge conflicts for no benefit. It also means phase 1 **can land
 independently**: it cannot break the sim, so it need not wait on it.
 
@@ -71,32 +71,32 @@ table-integrity test for the sand test suite (`suite_sand_*.c`). Phase 2's `REAC
 Deliberately ships with **no hand-written text at all**: every adverb takes
 its computed bucket, and every cause renders as a visible `[TODO: trigger]`
 placeholder. The point is to have real output to look at as early as
-possible — the adverb calibration, the groupings and the clause wording are
+possible: the adverb calibration, the groupings and the clause wording are
 all far easier to judge against a generated table than in the abstract, and
 the placeholders show exactly how many clauses phase 2 owes. Tune after
 seeing it, not before.
 
-**Phase 2 (done)** — `REACTION_DOC` registration in `sand_reactions.c`, cause
+**Phase 2 (done)**: `REACTION_DOC` registration in `sand_reactions.c`, cause
 clauses at every read site (`shatters_to`'s two thresholds, `spoils_to`,
 `hardens_to`'s still-attached exception), and the by-feel adverb pass (the
 3-bucket ladder with a silent middle and 0/255 as absolutes, plus one
-measured exception - sand's `heat_chance` computes fast and plays slow).
+measured exception: sand's `heat_chance` computes fast and plays slow).
 
 The EMBER chart in `Adding-a-Material.md` was not retired as originally
 planned here. A separate line of work kept that hand-drawn diagram instead
-and updated it as the simulation grew (dirt, metal, and more since) - a
+and updated it as the simulation grew (dirt, metal, and more since): a
 live, actively-maintained chart, not the stale one this plan was written
 against. Only the "two independent axes" diagram's own stale ember mention,
 in a different section, still needed fixing, and has been.
 
-**Phase 3** — the blurb table, audit mode, and the sentence-per-material
+**Phase 3**: the blurb table, audit mode, and the sentence-per-material
 output the whole thing is for.
 
-**Optional** — the mermaid chain, and node colours from
+**Optional**: the mermaid chain, and node colours from
 `material_colours()` (`gfx_color_t` is RGB565 byte-swapped; getting back to
 `#rrggbb` means un-swapping and expanding 5/6/5). Demoted from the earlier
-draft: a graph cannot express a variant-only reaction — `Dirt -> Dirt` is a
-self-loop that reads as noise — so the diagram needs different emission
+draft: a graph cannot express a variant-only reaction; `Dirt -> Dirt` is a
+self-loop that reads as noise, so the diagram needs different emission
 rules from the table, not a shared walk.
 
 ---
@@ -106,14 +106,14 @@ rules from the table, not a shared walk.
 The sand test suite (`suite_sand_*.c`) asserts individual reaction values
 but never sweeps the tables. Add one test that walks both and asserts
 every `_to` target names
-something that exists — a material id below `MAT_COUNT`, or a cell spec
+something that exists: a material id below `MAT_COUNT`, or a cell spec
 whose extended nibble has a name in `extended_names[]`. A row pointing at a
 dead slot is a live bug nothing would currently catch, and the generator
 reads those same fields.
 
 ---
 
-## Found while planning (fix separately — see phase 1's additive-only rule)
+## Found while planning (fix separately; see phase 1's additive-only rule)
 
 **`material.h` comment order.** The `SOAKING UP A LIQUID` block sits above
 the `WETTING` block, and `soaks` / `soaks_to` are then declared bare two
@@ -133,7 +133,7 @@ hour.
 
 Material names are coloured with the device's exact palette values. Measured
 against a 3:1 contrast floor on both GitHub themes, 14 of 18-plus materials
-failed somewhere - roughly half unreadable on a dark background, the rest on
+failed somewhere: roughly half unreadable on a dark background, the rest on
 a light one.
 
 The cause was structural, not a bad palette: **it was designed to fill
@@ -143,7 +143,7 @@ legibility problems, and one set of values cannot serve both.
 
 Fixed by lifting or darkening only the colours that actually fail, hue and
 saturation held, moved the least distance that clears 3:1 on both
-backgrounds - not the alternative of clamping every colour into one narrow
+backgrounds, not the alternative of clamping every colour into one narrow
 band, which was considered and rejected: it would have collapsed several
 pale, hue-distinguished materials (snow, steam, ice, gas) into
 near-identical mid-tones. The adjusted values live in `LEGIBILITY_OVERRIDES`
@@ -153,7 +153,7 @@ device palette has since moved out from under it, so a stale override
 cannot ship silently.
 
 Measure rather than eyeball. The generator's own colour list follows this
-same WCAG relative-luminance formula, not plain HSL lightness - see
+same WCAG relative-luminance formula, not plain HSL lightness; see
 `LEGIBILITY_OVERRIDES`'s own comment for the exact method if this ever needs
 recomputing.
 
@@ -167,7 +167,7 @@ audit. Overruled, correctly: the objection was to naive
 one-clause-per-field emission, not to generation. Grouping, an adverb
 ladder and a declared cause clause produce natural subject-verb-object
 sentences, and generation is what makes it cover every material rather than
-only the 14 brushes — and what keeps it from drifting.
+only the 14 brushes, and what keeps it from drifting.
 
 **Gate the un-derivable, script the rest.** 33 of 41 fields have a usable
 first sentence in their own comment and the other 8 inherit from a sibling
