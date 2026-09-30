@@ -462,9 +462,23 @@ static const gfx_font_t merge_synth_font = {
     .advance = NULL,
 };
 
+static gfx_font_run_box_t* sim_boxes;
+
+/* A box array on the stack puts these frames over the main task's
+ * headroom on the device, so it lives in the per-test fixture. */
+static gfx_font_run_box_t*
+alloc_run_boxes(void) {
+    if (sim_boxes == NULL) {
+        sim_boxes = malloc(sizeof(*sim_boxes) * GFX_FONT_RUN_BOXES_MAX);
+    }
+    TEST_ASSERT_NOT_NULL(sim_boxes);
+    suite_set_test_cleanup(release_fixture);
+    return sim_boxes;
+}
+
 static void
 test_glyph_run_boxes_merges_consecutive_identical_rows(void) {
-    gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
+    gfx_font_run_box_t* boxes = alloc_run_boxes();
     const int n = gfx_font_glyph_run_boxes(&merge_synth_font, 'A', boxes, GFX_FONT_RUN_BOXES_MAX);
 
     TEST_ASSERT_EQUAL_INT(2, n);
@@ -492,7 +506,7 @@ static const gfx_font_t merge_gap_font = {
 
 static void
 test_glyph_run_boxes_does_not_merge_across_a_gap_row(void) {
-    gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
+    gfx_font_run_box_t* boxes = alloc_run_boxes();
     const int n = gfx_font_glyph_run_boxes(&merge_gap_font, 'A', boxes, GFX_FONT_RUN_BOXES_MAX);
 
     TEST_ASSERT_EQUAL_INT(2, n);
@@ -513,13 +527,13 @@ test_glyph_run_boxes_empty_glyph_yields_none(void) {
         .count = 1,
         .advance = NULL,
     };
-    gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
+    gfx_font_run_box_t* boxes = alloc_run_boxes();
     TEST_ASSERT_EQUAL_INT(0, gfx_font_glyph_run_boxes(&blank_font, 'A', boxes, GFX_FONT_RUN_BOXES_MAX));
 }
 
 static void
 test_glyph_run_boxes_out_of_range_char_yields_none(void) {
-    gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
+    gfx_font_run_box_t* boxes = alloc_run_boxes();
     TEST_ASSERT_EQUAL_INT(0, gfx_font_glyph_run_boxes(&merge_synth_font, 'Z', boxes, GFX_FONT_RUN_BOXES_MAX));
 }
 
@@ -528,7 +542,7 @@ typedef void (*run_box_fn_t)(const gfx_font_t*, int, int, int, int, int, int, in
 static void
 sim_walk_boxes(gfx_target_t target, const gfx_font_t* f, int x, int y, unsigned char ch, int scale, int turn,
                run_box_fn_t box_fn, gfx_color_t color) {
-    gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
+    gfx_font_run_box_t* boxes = alloc_run_boxes();
     const int n = gfx_font_glyph_run_boxes(f, ch, boxes, GFX_FONT_RUN_BOXES_MAX);
     for (int i = 0; i < n; i++) {
         int rx, ry, rw, rh, ox0, oy0, ox1, oy1;
@@ -596,6 +610,8 @@ test_merged_boxes_match_unmerged_runs_at_a_band_edge(void) {
 
 static void
 release_fixture(void) {
+    free(sim_boxes);
+    sim_boxes = NULL;
     free(sim_merged);
     sim_merged = NULL;
     free(sim_new);
