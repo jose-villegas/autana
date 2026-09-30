@@ -1,10 +1,10 @@
 /*
- * app - the contract between the shell and the things it launches.
+ * app: the contract between the shell and the things it launches.
  *
  * "Apps" here are not processes. There is one binary, one address space and
  * one core; an app is a set of callbacks the shell drives. That keeps
  * switching instant and costs no flash partitions, at the price of apps not
- * being isolated from each other - a misbehaving app can corrupt the shell.
+ * being isolated from each other: a misbehaving app can corrupt the shell.
  *
  * An app never owns the screen or the frame loop. It draws into the shared
  * framebuffer when asked and returns; the shell decides when to present, and
@@ -19,7 +19,7 @@
 #include "gfx/gfx_band_run.h"
 #include "input/input.h"
 
-/* An app's own console command - docs/tools/Autana-CLI.md's "Adding a
+/* An app's own console command: docs/tools/Autana-CLI.md's "Adding a
  * command from an app". The shell matches `prefix` as a whole word
  * (console_word_match()) and passes `handle` only what follows it. */
 typedef struct {
@@ -33,7 +33,7 @@ typedef struct {
  * sanctioned way to fill one: two macros because the assert below is a
  * declaration, which cannot sit inside app_t's own constant initializer.
  * A clash and an over-long prefix are both checked at boot instead
- * (console_find_clash(), main.c) - this app.h stays clear of console/, so
+ * (console_find_clash(), main.c); this app.h stays clear of console/, so
  * an app pulls in only what it names. */
 #define APP_CONSOLE(prefix, handler)                                                                                   \
     _Static_assert(sizeof(prefix) > 1, "APP_CONSOLE needs a non-empty prefix");                                        \
@@ -69,7 +69,7 @@ typedef struct app {
      * it with sending the PREVIOUS frame() call's output on core 1
      * (gfx_present_begin()/gfx_present_wait(), gfx.h). update() may change
      * app state but MUST NOT call any gfx_* function or touch the
-     * framebuffer - that buffer may still be mid-send. A development build
+     * framebuffer: that buffer may still be mid-send. A development build
      * asserts this (see gfx_present_guard.h). Left NULL: frame(), then
      * gfx_present(). */
     void (*update)(uint32_t dt_ms, const input_t* input);
@@ -78,7 +78,7 @@ typedef struct app {
     void (*exit)(void);
 
     /* Opt-in, NULL unless an app keeps a draw cache of its own beyond the
-     * framebuffer - row-run spans, a partial-clear bbox, and so on. The
+     * framebuffer: row-run spans, a partial-clear bbox, and so on. The
      * shell calls this once, before the next frame() after
      * gfx_request_full_redraw() (gfx.h) was called by the shell or by the
      * app itself, so that cache can be reset the same way the framebuffer
@@ -87,7 +87,7 @@ typedef struct app {
 
     /* Opt-in, not opt-out: false unless an app sets it. main.c only
      * tracks the edge-swipe-home gesture and draws its hint strip while
-     * an app with this true is running - an app that leaves it unset
+     * an app with this true is running; an app that leaves it unset
      * gets neither, and is responsible for its own way back to the
      * launcher. It exists for an app whose own input is a touch drag
      * near a screen edge, which the swipe-home gesture cannot be told
@@ -98,11 +98,11 @@ typedef struct app {
     /* Opt-in, like home_gesture above: NULL unless an app sets it. If
      * set, called only from console_screenshot_dump()
      * (CONFIG_LAUNCHER_DEVELOPMENT builds only) to let the running app
-     * attach its own state to a screenshot capture - a JSON OBJECT fragment
+     * attach its own state to a screenshot capture: a JSON OBJECT fragment
      * (starting with `{`,
      * ending with `}`, no trailing comma) written into `out` (at most
      * `len` bytes, NUL-terminated). Spliced into the capture's
-     * device-state JSON as a new "app" key. Diagnostic only - nothing
+     * device-state JSON as a new "app" key. Diagnostic only: nothing
      * about the app's own behaviour depends on this. */
     void (*diagnostic_json)(char* out, size_t len);
 
@@ -125,7 +125,7 @@ void shell_set_system_panel_clock_hz(int hz);
 int shell_system_panel_clock_hz(void);
 
 /* Leaves the running app for the launcher before its next frame, as the
- * home gesture does - for an app with an on-screen way out. */
+ * home gesture does, for an app with an on-screen way out. */
 void shell_request_exit(void);
 
 /*
@@ -141,7 +141,7 @@ void app_register(app_t* app);
     __attribute__((constructor)) static void symbol##_register(void) { app_register(&symbol); }
 
 /* The head of the registered apps, sorted by name and linked through
- * app_t.next - NULL-terminated; NULL itself when nothing is registered.
+ * app_t.next, NULL-terminated; NULL itself when nothing is registered.
  * Valid from the first line of app_main(). */
 const app_t* app_list(void);
 

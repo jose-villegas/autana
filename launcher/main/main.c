@@ -8,7 +8,7 @@
  *
  * Note this task must never return. Once firmware goes idle on this board the
  * chip stops responding to reset signalling and can only be recovered with the
- * BOOT button - see docs/notes/Flashing-and-Toolchain.md.
+ * BOOT button; see docs/notes/Flashing-and-Toolchain.md.
  */
 
 #include <assert.h>
@@ -337,7 +337,7 @@ paint_launcher_under_boot(void) {
 }
 
 /* True once frame() has drawn a frame for the current app that update()'s
- * caller has not yet begun presenting - see step_app(). Reset whenever the
+ * caller has not yet begun presenting; see step_app(). Reset whenever the
  * running app changes, so a freshly entered one always primes first. */
 static bool frame_ready;
 static bool exit_requested;
@@ -412,7 +412,7 @@ leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint3
      * rather than the app's last one. */
     ui_launcher_frame(input, dt_ms);
     /* ui_launcher_frame() just repainted its whole rect over the hint
-     * strip's band, so this has to run again to put it back - dirty
+     * strip's band, so this has to run again to put it back; dirty
      * tracking alone will not retry it, since nothing else marks that
      * band dirty on a later frame. */
     draw_home_hint(exit_edge);
@@ -493,7 +493,7 @@ step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, u
 }
 
 /* An app with update(): overlap it with sending the frame drawn last pass
- * (gfx_present_begin()/gfx_present_wait(), gfx.h) - skipped while priming
+ * (gfx_present_begin()/gfx_present_wait(), gfx.h), skipped while priming
  * (frame_ready false), since nothing is queued yet. THIS pass's frame()
  * output is presented the same way, deferred to
  * present_unless_deferred() next pass. Every frame also gives gfx_band_run()
@@ -776,7 +776,7 @@ park_forever(void) {
 }
 
 /* Two lines can never both be reached once a verb and an app's prefix, or
- * two apps' own prefixes, read the same - loud here, at boot, rather than
+ * two apps' own prefixes, read the same: loud here, at boot, rather than
  * silently losing one of them to whichever an unclaimed line happens to
  * match first. */
 static void
@@ -818,7 +818,7 @@ check_console_prefix_clashes(void) {
 }
 #endif
 
-/* Park rather than return on graphics failure - returning from app_main
+/* Park rather than return on graphics failure: returning from app_main
  * leaves the chip idle and unflashable. */
 static __attribute__((noinline)) void
 app_boot_init(void) {
@@ -910,7 +910,7 @@ run_pending_selftest_suite(void) {
     console_runsuite_finish();
     fflush(stdout);
     /* A suite draws, clears and presents on its own, outside the shell's
-     * own dirty tracking - the next real frame must repaint in full rather
+     * own dirty tracking; the next real frame must repaint in full rather
      * than trust whatever a test left behind. */
     gfx_request_full_redraw();
 }
@@ -936,7 +936,7 @@ sample_display_orientation(int64_t now_us, int64_t* next_sample_us) {
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-/* `<PREFIX>_ERR <reason>` - the app's own prefix in capitals, like a
+/* `<PREFIX>_ERR <reason>`: the app's own prefix in capitals, like a
  * verb's own TUNE_ERR, so a caller matching `<PREFIX>_ERR`
  * (docs/tools/Autana-CLI.md) recognises either failure below the same way
  * it recognises a completed reply. */
@@ -1083,7 +1083,7 @@ run_dev_frame_extras(input_t* input, const app_t* current) {
 #endif
 
 /* An app with update() manages its own present begin/wait inside step_app(),
- * deferring the frame just drawn to next pass's begin - see its own
+ * deferring the frame just drawn to next pass's begin; see its own
  * comment. Everything else (the launcher included) keeps presenting here,
  * synchronously, exactly as before. */
 static void
@@ -1108,7 +1108,7 @@ run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms)
      * still answers the console and still latches an orientation change's
      * own full redraw, so the STEP after a rotation draws the frame that
      * rotation asked for. A held frame never reaches run_dev_frame_extras(),
-     * so the line is offered here - freeze, inspect, step. */
+     * so the line is offered here: freeze, inspect, step. */
     if (!console_freeze_frame_allowed()) {
         if (console_screenshot_take_request()) {
             console_screenshot_dump(input, *current);

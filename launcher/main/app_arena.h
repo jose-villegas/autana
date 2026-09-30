@@ -1,5 +1,5 @@
 /*
- * app_arena - the one block of bulk memory the shell lends to whichever app
+ * app_arena: the one block of bulk memory the shell lends to whichever app
  * is running.
  *
  * A static block in PSRAM, handed out by bumping an offset. The shell rewinds

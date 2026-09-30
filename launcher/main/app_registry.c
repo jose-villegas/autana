@@ -1,9 +1,9 @@
 /*
- * app_registry - the one app_t list, threaded through app_t.next.
+ * app_registry: the one app_t list, threaded through app_t.next.
  *
  * Apps register themselves, so an app is entirely contained in
- * main/apps/<name>/ and deleting that folder removes it - source, logic and
- * tests - without touching another file, CMakeLists.txt included.
+ * main/apps/<name>/ and deleting that folder removes it: source, logic and
+ * tests, without touching another file, CMakeLists.txt included.
  *
  * Portable: no hardware dependency, so the firmware, the host test runner,
  * the editor's runtime and every render-host harness link this one list
