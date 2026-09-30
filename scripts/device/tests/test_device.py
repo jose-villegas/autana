@@ -1160,6 +1160,16 @@ class TestFilterRunTests(unittest.TestCase):
         self.assertIsInstance(error, device.TestFilterError)
         self.assertRegex(str(error), "predates --test")
 
+    def test_a_filtered_run_with_no_completion_line_is_a_filter_error(self):
+        # An image that predates the filter drops a long request whole.
+        _, error, _, _ = self.run_filtered([b"SUITE_DONE sand\n"], ["fire"])
+        self.assertIsInstance(error, device.TestFilterError)
+        self.assertRegex(str(error), "no RUNSUITE_COMPLETE")
+
+    def test_an_unfiltered_run_with_no_completion_line_is_still_fine(self):
+        code, error, _, _ = self.run_filtered([b"SUITE_DONE sand\n"], [])
+        self.assertEqual((code, error), (0, None))
+
     def test_a_request_too_long_for_the_console_line_is_a_filter_error(self):
         connection = FakeConnection([b"W (5) console: console line too long (max 48) - dropped\n"])
         with tempfile.TemporaryDirectory() as directory:

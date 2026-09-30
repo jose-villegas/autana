@@ -90,7 +90,8 @@ parse_patterns(const char* list) {
         const char* comma = strchr(list, ',');
         const size_t length = comma != NULL ? (size_t)(comma - list) : strlen(list);
         if (length == 0 || length >= SUITE_FILTER_LEN || pattern_count >= SUITE_FILTER_MAX) {
-            printf("SUITE_FILTER_REFUSED pattern=%.*s\n", (int)(length < 60 ? length : 60), list);
+            printf("SUITE_FILTER_REFUSED pattern=%.*s\n", (int)(length < SUITE_FILTER_LEN ? length : SUITE_FILTER_LEN),
+                   list);
             pattern_count = 0;
             return false;
         }

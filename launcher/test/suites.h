@@ -52,8 +52,8 @@ void suites_run_all(void);
  * While filtering, suites_test_runs() prints "SUITE_TEST name=... selected=..."
  * for every test reached. The patterns live for the call only. */
 #define SUITE_NAME_MAX   38
-#define SUITE_FILTER_MAX 8
-#define SUITE_FILTER_LEN 40
+#define SUITE_FILTER_MAX 4
+#define SUITE_FILTER_LEN 24
 
 typedef struct {
     char name[SUITE_NAME_MAX + 1];

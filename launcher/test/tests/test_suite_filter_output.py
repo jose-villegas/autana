@@ -35,7 +35,7 @@ class FilteredRunOutputTests(unittest.TestCase):
         complete = device.SUITE_COMPLETE_RE.search(output)
         self.assertEqual((complete.group("found"), complete.group("selected"),
                           complete.group("unmatched")), ("1", "1", "0"))
-        device.check_test_filter(output.encode(), FIXTURE)
+        device.check_test_filter(output.encode(), FIXTURE, ["x"])
 
     def test_every_test_is_listed_with_whether_it_was_selected(self):
         output = host_runner.run(f"{FIXTURE} fire")
@@ -46,7 +46,7 @@ class FilteredRunOutputTests(unittest.TestCase):
         output = host_runner.run(f"{FIXTURE} fyre")
         self.assertEqual(probes(output), [])
         with self.assertRaises(device.NoTestMatched) as caught:
-            device.check_test_filter(output.encode(), FIXTURE)
+            device.check_test_filter(output.encode(), FIXTURE, ["x"])
         for name in ("test_fire_fits", "test_gas_fits", "test_water_fits"):
             self.assertIn(name, str(caught.exception))
 
@@ -54,7 +54,7 @@ class FilteredRunOutputTests(unittest.TestCase):
         output = host_runner.run(f"{FIXTURE} fire,fyre")
         self.assertEqual(probes(output), ["test_fire_fits"])
         with self.assertRaises(device.NoTestMatched):
-            device.check_test_filter(output.encode(), FIXTURE)
+            device.check_test_filter(output.encode(), FIXTURE, ["x"])
 
     def test_a_plain_request_after_a_filtered_one_runs_every_test(self):
         output = host_runner.run(f"{FIXTURE} fire", FIXTURE)
@@ -65,7 +65,7 @@ class FilteredRunOutputTests(unittest.TestCase):
         def outcome(request):
             output = host_runner.run(request)
             try:
-                device.check_test_filter(output.encode(), FIXTURE)
+                device.check_test_filter(output.encode(), FIXTURE, ["x"])
             except device.NoTestMatched:
                 return "accepted"
             except device.TestFilterError:

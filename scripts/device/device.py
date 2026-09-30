@@ -1179,11 +1179,12 @@ class NoTestMatched(TestFilterError):
     """A --test pattern selected nothing."""
 
 
-def check_test_filter(data, suite):
+def check_test_filter(data, suite, patterns):
     """A filtered run that did not filter, or had a pattern that matched
     nothing, is an error and not a result: the first would report every row
     of the suite as if it had been asked for, the second lists the names to
-    choose from."""
+    choose from. With `patterns` given, a capture that never printed the
+    completion line is one too."""
     text = data.decode("utf-8", errors="replace")
     complete = None
     for complete in SUITE_COMPLETE_RE.finditer(text):
@@ -1194,6 +1195,9 @@ def check_test_filter(data, suite):
                               "SUITE_FILTER_LEN - 1 characters, and there are at most "
                               "SUITE_FILTER_MAX (launcher/test/suites.h)")
     if complete is None:
+        if patterns:
+            raise TestFilterError("no RUNSUITE_COMPLETE line arrived: an image that predates --test "
+                                  "drops a request this long, or the capture was cut short")
         return
     if complete.group("selected") is None:
         raise TestFilterError("this image predates --test - autana flash diag")
@@ -1244,7 +1248,7 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
             print("report generation failed (capture is unaffected): " + str(report_error),
                   file=sys.stderr)
     if patterns:
-        check_test_filter(data, args.suite)
+        check_test_filter(data, args.suite, patterns)
     failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False))
     return 1 if failed else 0
 

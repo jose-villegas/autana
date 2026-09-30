@@ -16,23 +16,37 @@
 
 static const char* TAG = "console";
 
-static console_latch_t runsuite_latch;
+/* The one copy of the request: the verb fills it, the frame loop reads it in
+ * place. Sized by the limits, not by CONSOLE_LINE_MAX, so no other console
+ * buffer grows for it. */
+static char request[RUNSUITE_ARGS_MAX + 1];
+
+static volatile enum { IDLE, PENDING, RUNNING } state;
 
 static void
 console_verb_runsuite(const char* args, console_reply_fn reply) {
     (void)reply;
+    if (state != IDLE) {
+        ESP_LOGW(TAG, "RUNSUITE refused: the previous one has not finished");
+        return;
+    }
     ESP_LOGI(TAG, "RUNSUITE %s", args);
-    console_latch_set(&runsuite_latch, args);
+    console_latch_copy(request, sizeof request, args);
+    state = PENDING;
 }
 
-/* The longest request suites_run_request() accepts: a name, a space, and
- * SUITE_FILTER_MAX patterns with a comma between each. The verb's own
- * static assert then holds CONSOLE_LINE_MAX to it. */
-#define RUNSUITE_ARGS_MAX (SUITE_NAME_MAX + 1 + SUITE_FILTER_MAX * SUITE_FILTER_LEN)
+CONSOLE_VERB_LONG(runsuite, RUNSUITE_ARGS_MAX, RUNSUITE_LINE_MAX, console_verb_runsuite)
 
-CONSOLE_VERB(runsuite, RUNSUITE_ARGS_MAX, console_verb_runsuite)
+const char*
+console_runsuite_take_request(void) {
+    if (state != PENDING) {
+        return NULL;
+    }
+    state = RUNNING;
+    return request;
+}
 
-bool
-console_runsuite_take_request(char* name_out, size_t name_out_size) {
-    return console_latch_take(&runsuite_latch, name_out, name_out_size);
+void
+console_runsuite_finish(void) {
+    state = IDLE;
 }

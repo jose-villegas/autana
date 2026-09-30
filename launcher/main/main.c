@@ -895,10 +895,8 @@ app_boot_init(void) {
 /* See console/console.c for framebuffer contention explanation. */
 static void
 run_pending_selftest_suite(void) {
-    /* Static: this task's stack is what the suites under test measure, and a
-     * request can be a few hundred bytes. */
-    static char request[CONSOLE_LINE_MAX];
-    if (!console_runsuite_take_request(request, sizeof request)) {
+    const char* request = console_runsuite_take_request();
+    if (request == NULL) {
         return;
     }
     const suite_run_t run = suites_run_request(request);
@@ -909,6 +907,7 @@ run_pending_selftest_suite(void) {
     /* On its own line, so a harness knows the suite ended without having to
      * guess from how long the console has been quiet. */
     suites_print_run(&run);
+    console_runsuite_finish();
     fflush(stdout);
     /* A suite draws, clears and presents on its own, outside the shell's
      * own dirty tracking - the next real frame must repaint in full rather
