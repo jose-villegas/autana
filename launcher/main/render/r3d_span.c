@@ -1,6 +1,10 @@
 #include "render/r3d_span.h"
 #include "render/r3d_span_internal.h"
 
+#ifdef ESP_PLATFORM
+#include "esp_cpu.h"
+#endif
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -506,6 +510,10 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
         return;
     }
 
+#ifdef ESP_PLATFORM
+    const uint32_t setup_start = target->probe != NULL ? esp_cpu_get_cycle_count() : 0;
+#endif
+
     fill_t f = {rows <= FLAT_MAX_ROWS && hi_x - lo_x <= FLAT_MAX_WIDTH, face, 0, 0, NULL};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
@@ -516,6 +524,12 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     if (!set_up_fill(target, (const r3d_span_vertex_t* const[3]){a, b, c}, box, y_anchor, &f, &g, row)) {
         return;
     }
+#ifdef ESP_PLATFORM
+    if (target->probe != NULL && y_first < target->probe->split_row && y_end > target->probe->split_row) {
+        target->probe->straddling++;
+        target->probe->setup_cycles += esp_cpu_get_cycle_count() - setup_start;
+    }
+#endif
     if (r3d_span_stop_after == 1) {
         return;
     }

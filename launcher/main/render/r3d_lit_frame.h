@@ -43,6 +43,17 @@ typedef struct {
     int clusters, triangles; /* what survived culling */
 } r3d_lit_stats_t;
 
+typedef struct {
+    int64_t cull_us;
+    int64_t work_us[3][2];
+    int64_t wait_us[3];
+    int64_t inline_us[3];
+    unsigned inline_count[3];
+    unsigned straddling;
+    uint32_t setup_cycles;
+    int split_row;
+} r3d_lit_frame_probe_t;
+
 /* Everything a frame of `mesh` at width by height works in (per-vertex,
  * per-cluster, colour and depth) as one block: the caller obtains it once
  * and r3d_lit_frame_use_scratch() carves it, after setting mesh, width and
@@ -55,6 +66,10 @@ r3d_lit_stats_t r3d_lit_frame_render(const r3d_lit_frame_t* frame, const r3d_lit
 /* Doubles the frame r3d_lit_frame_render() last drew into `doubled`, both cores
  * taking half the rows. */
 void r3d_lit_frame_double(const r3d_lit_frame_t* frame);
+
+/* Development measurement hook; its results describe the last split frame. */
+void r3d_lit_frame_probe_enable(bool enabled);
+const r3d_lit_frame_probe_t* r3d_lit_frame_probe(void);
 
 /* Development builds only: a release caller fails at link. Between render and double, overwrites
  * `frame->color` from `frame->depth`: nearest white, farthest black over the

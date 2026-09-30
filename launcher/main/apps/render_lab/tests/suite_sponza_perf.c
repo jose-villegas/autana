@@ -173,12 +173,25 @@ report_frame_cost(const char* label, const r3d_lit_mesh_t* mesh) {
     int samples = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
         const r3d_lit_view_t view = view_at(mesh, t_ms);
+        gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
+        gfx_present_begin();
         const int64_t start = esp_timer_get_time();
         const r3d_lit_stats_t stats = r3d_lit_frame_render(&b.frame, &view);
+        gfx_present_wait();
         r3d_lit_frame_double(&b.frame);
         const int64_t us = esp_timer_get_time() - start;
+        const r3d_lit_frame_probe_t* const p = r3d_lit_frame_probe();
         ESP_LOGI(TAG, "%s t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", label, (unsigned)(t_ms / 1000),
                  stats.clusters, stats.triangles, (long long)us);
+        ESP_LOGI(TAG,
+                 "two_core %s t=%u cull=%lldus split=%d straddle=%u setup=%u cyc waits=%lld/%lld/%lldus "
+                 "work0=%lld/%lld/%lldus work1=%lld/%lld/%lldus inline=%u/%u/%u cost=%lld/%lld/%lldus",
+                 label, (unsigned)(t_ms / 1000), (long long)p->cull_us, p->split_row, p->straddling, p->setup_cycles,
+                 (long long)p->wait_us[0], (long long)p->wait_us[1], (long long)p->wait_us[2],
+                 (long long)p->work_us[0][0], (long long)p->work_us[1][0], (long long)p->work_us[2][0],
+                 (long long)p->work_us[0][1], (long long)p->work_us[1][1], (long long)p->work_us[2][1],
+                 p->inline_count[0], p->inline_count[1], p->inline_count[2], (long long)p->inline_us[0],
+                 (long long)p->inline_us[1], (long long)p->inline_us[2]);
         frame_sum += us;
         worst = us > worst ? us : worst;
         samples++;
@@ -190,9 +203,11 @@ report_frame_cost(const char* label, const r3d_lit_mesh_t* mesh) {
 
 void
 test_sponza_frame_cost_along_the_flythrough(void) {
+    r3d_lit_frame_probe_enable(true);
     report_frame_cost("sponza", &sponza_mesh);
     report_frame_cost("lite", &sponza_lite_mesh);
     report_frame_cost("flat", &sponza_flat_mesh);
+    r3d_lit_frame_probe_enable(false);
     TEST_PASS();
 }
 
