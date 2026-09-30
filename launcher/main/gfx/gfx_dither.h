@@ -1,5 +1,5 @@
 /*
- * gfx_dither - screen-fixed ordered thresholds for coverage and quantising.
+ * gfx_dither: screen-fixed ordered thresholds for coverage and quantising.
  */
 #pragma once
 

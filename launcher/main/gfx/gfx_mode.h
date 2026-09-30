@@ -1,5 +1,5 @@
 /*
- * gfx_mode - the mode-grant arithmetic behind gfx_mode_enter(), as a
+ * gfx_mode: the mode-grant arithmetic behind gfx_mode_enter(), as a
  * standalone, ESP-IDF-free module so a host suite can drive it without a
  * framebuffer or a panel.
  *
@@ -7,8 +7,8 @@
  * per-axis interlace choice. gfx_mode_resolve() is the pure function
  * that turns a request into a grant; gfx_mode_enter() (gfx.c) is the only
  * caller that also allocates. All layouts are wired to real rendering,
- * but only GFX_RESOLUTION_FULL with no interlace is - no caller ever
- * requests HALF or turns interlace on - so those fields exist ahead of a
+ * but only GFX_RESOLUTION_FULL with no interlace is (no caller ever
+ * requests HALF or turns interlace on), so those fields exist ahead of a
  * caller that needs them.
  */
 #pragma once
@@ -22,7 +22,7 @@ typedef enum {
 } gfx_layout_t;
 
 /* Ordered least-restrictive first, so resolving a grant is "whichever of
- * request and system max asks for less" - see gfx_mode_resolve() below,
+ * request and system max asks for less"; see gfx_mode_resolve() below,
  * where the higher ordinal (the smaller resolution) always wins. */
 typedef enum {
     GFX_RESOLUTION_FULL = 0,
@@ -55,7 +55,7 @@ typedef struct {
 /* Resolves a request against the system's resolution cap and the panel's own
  * geometry, without touching any buffer. `full_width`/`full_height` are the
  * panel's real geometry (GFX_WIDTH/GFX_HEIGHT on the device) and
- * `full_band_height` is GFX_BAND_HEIGHT - passed in rather than read from a
+ * `full_band_height` is GFX_BAND_HEIGHT, passed in rather than read from a
  * macro so a host suite can drive this with its own numbers. Layout and
  * interlace pass through unchanged: gfx does not yet cap either. */
 static inline gfx_mode_t
