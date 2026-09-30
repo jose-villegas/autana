@@ -1,5 +1,5 @@
 /*
- * r3d_lit_frame - one whole frame of a r3d_lit_mesh_t on both cores: cull on the
+ * r3d_lit_frame, one whole frame of a r3d_lit_mesh_t on both cores: cull on the
  * caller's core, then each core transforms half the visible clusters and
  * clears and fills half the rows. On a host, or with core 1 busy, the
  * second half runs inline. Rendering at half the size of the doubled
@@ -43,8 +43,8 @@ typedef struct {
     int clusters, triangles; /* what survived culling */
 } r3d_lit_stats_t;
 
-/* Everything a frame of `mesh` at width by height works in - per-vertex,
- * per-cluster, colour and depth - as one block: the caller obtains it once
+/* Everything a frame of `mesh` at width by height works in (per-vertex,
+ * per-cluster, colour and depth) as one block: the caller obtains it once
  * and r3d_lit_frame_use_scratch() carves it, after setting mesh, width and
  * height, so none of it has to live in internal RAM. */
 size_t r3d_lit_frame_scratch_bytes(const r3d_lit_mesh_t* mesh, int width, int height);

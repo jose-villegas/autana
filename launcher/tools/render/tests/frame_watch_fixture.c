@@ -1,5 +1,5 @@
 /*
- * frame_watch_fixture - a scene doing one kind of heap or stdout work on
+ * frame_watch_fixture, a scene doing one kind of heap or stdout work on
  * every frame, on one, or spread over three call sites taking turns, so
  * check_frame_watch.sh can see what the render harness fails and passes.
  *

@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Points this clone's git hooks at scripts/git-hooks/, which is tracked - so
+# Points this clone's git hooks at scripts/git-hooks/, which is tracked, so
 # the hooks travel with the repository and an improvement to one reaches
 # everybody who has run this once.
 #
@@ -11,7 +11,7 @@
 # It sets core.hooksPath rather than copying files into .git/hooks, because a
 # copy is a snapshot: it goes stale the moment the tracked hook changes, and
 # nothing tells you. The tradeoff is that core.hooksPath replaces .git/hooks
-# wholesale, so any hook you have there stops running - this script says so
+# wholesale, so any hook you have there stops running: this script says so
 # if it finds one.
 #
 # The hooks report format errors and non-executable scripts before commits and invalid branch names before

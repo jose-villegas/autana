@@ -1,4 +1,4 @@
-/* Host-only: no firmware image compiles gfx_palette_standard.c - the
+/* Host-only: no firmware image compiles gfx_palette_standard.c; the
  * standard palettes and their generator are host-side data. */
 
 #include "suites.h"
@@ -84,7 +84,7 @@ test_standard_registry_finds_every_palette_by_name(void) {
     TEST_ASSERT_TRUE(saw_grayscale256);
 }
 
-/* Every one of a small palette's own entries maps back to itself exactly -
+/* Every one of a small palette's own entries maps back to itself exactly:
  * the round trip a nearest-in-OKLab search must get right when the target
  * IS one of the palette's own colours, not merely close to one. */
 static void
@@ -99,7 +99,7 @@ test_index_map_round_trips_every_entry_of_a_small_palette(void) {
 }
 
 /* first_index lets a caller reserve a UI block ahead of its own colour
- * entries - the reserved ones must never come back from an ordinary
+ * entries; the reserved ones must never come back from an ordinary
  * lookup. */
 static void
 test_index_map_never_returns_a_reserved_entry(void) {
@@ -115,7 +115,7 @@ test_index_map_never_returns_a_reserved_entry(void) {
 }
 
 /* A 256-colour entry that IS exactly one of the 16-colour palette's own
- * entries dithers to that same colour at every phase - alpha 0, no
+ * entries dithers to that same colour at every phase: alpha 0, no
  * dithering needed, the trivial case any build must get exactly right. */
 static void
 test_dither_table_reproduces_an_exact_16_colour_match_at_every_phase(void) {
@@ -123,7 +123,7 @@ test_dither_table_reproduces_an_exact_16_colour_match_at_every_phase(void) {
     gfx_palette_gen_build_dither16(&gfx_palette_vga256, &gfx_palette_cga16, table);
 
     /* gfx_palette_vga256's own first 16 entries are EGA16, bit-identical to
-     * CGA16 (see test_ega16_is_bit_identical_to_cga16) - index 0 is black,
+     * CGA16 (see test_ega16_is_bit_identical_to_cga16); index 0 is black,
      * present in both palettes. */
     for (int phase = 0; phase < GFX_INDEXED_DITHER16_PHASES; phase++) {
         TEST_ASSERT_EQUAL_HEX16(gfx_palette_cga16.entries[0], table[0 * GFX_INDEXED_DITHER16_PHASES + phase]);
@@ -192,7 +192,7 @@ test_dither_cell_bayer2_is_deterministic(void) {
 }
 
 /* GFX_DITHER_PIXEL_CHECKER2's own table: solid across all 4 (row, column)
- * phase combinations - the same exact-match case
+ * phase combinations, the same exact-match case
  * gfx_palette_gen_build_dither16()'s own test covers for the 4x4 pattern. */
 static void
 test_dither_checker2_reproduces_an_exact_match_at_every_phase(void) {

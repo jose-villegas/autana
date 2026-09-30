@@ -1,5 +1,5 @@
 /*
- * imu - QMI8658 driver.
+ * imu: QMI8658 driver.
  *
  * Register map and the initialisation values follow the QST QMI8658A/C
  * datasheet. The configuration chosen here is the common one for motion sensing
@@ -164,7 +164,7 @@ imu_read(imu_sample_t* out) {
 #endif
 
     /* One twelve-byte burst rather than six word reads. Beyond being faster, it
-     * guarantees all six axes come from the same sample - reading them
+     * guarantees all six axes come from the same sample; reading them
      * separately can straddle an update and produce a vector that never
      * physically existed. */
     uint8_t raw[12];

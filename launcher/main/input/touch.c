@@ -160,7 +160,7 @@ static void
 poll_controller(bool* have_point, int* x, int* y) {
     /* Only talk to the controller when it has something: a controller NACKs
      * register reads while idle, and each failed transaction costs a bus
-     * timeout - polling blindly at this rate would swamp the system. */
+     * timeout; polling blindly at this rate would swamp the system. */
     const bool pending = report_pending;
     report_pending = false;
     if (panel != NULL && (pending || was_touching || gpio_get_level(BSP_LCD_TOUCH_INT) == 0)) {
@@ -254,7 +254,7 @@ touch_start(void) {
         ESP_LOGW(TAG, "No touch interrupt; falling back to sampling INT's level");
     }
 
-    /* Above the render loop's priority so a long blit cannot delay sampling -
+    /* Above the render loop's priority so a long blit cannot delay sampling,
      * the entire point of running it separately. The result is CHECKED: on
      * an autorun self-test image, touch_start() runs after the test
      * suite has allocated and freed the heap into a state with no 3 KB run

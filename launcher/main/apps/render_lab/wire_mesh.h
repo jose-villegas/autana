@@ -1,5 +1,5 @@
 /*
- * wire_mesh - an edge list a wireframe pipeline projects, not a triangle
+ * wire_mesh: an edge list a wireframe pipeline projects, not a triangle
  * mesh. An edge shared by two faces appears once, so a solid's cost is its
  * silhouette and creases, never its face count. Model space only, in
  * S3L_F units; no small3dlib type appears here so a caller can use this

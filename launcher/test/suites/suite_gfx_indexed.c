@@ -91,7 +91,7 @@ test_the_margin_past_the_grids_own_width_is_background(void) {
     TEST_ASSERT_EQUAL_HEX16(lut[0], out[9]);
 }
 
-/* A NULL grid row - a panel row past the grid's own height - reads all
+/* A NULL grid row (a panel row past the grid's own height) reads all
  * background, the margin on the other axis. */
 static void
 test_a_null_grid_row_reads_all_background(void) {
@@ -127,7 +127,7 @@ set_dither_entry(int index, int phase, gfx_color_t rgb) {
     dither_table[index * GFX_INDEXED_DITHER16_PHASES + phase] = rgb;
 }
 
-/* Every output pixel reads its own (index, phase) slot - `phase` keyed by
+/* Every output pixel reads its own (index, phase) slot: `phase` keyed by
  * the panel coordinates the RGB565 table was baked to, `(y & 3) * 4 +
  * (x & 3)`, not a position local to this call. */
 static void
@@ -150,7 +150,7 @@ test_dither_every_output_pixel_reads_its_own_index_phase_entry(void) {
 }
 
 /* Same inputs, same absolute panel coordinates: two calls agree pixel for
- * pixel - the expansion has no hidden state to drift between them. */
+ * pixel: the expansion has no hidden state to drift between them. */
 static void
 test_dither_expansion_is_deterministic_at_the_same_panel_coordinates(void) {
     fixture();
@@ -168,7 +168,7 @@ test_dither_expansion_is_deterministic_at_the_same_panel_coordinates(void) {
     TEST_ASSERT_EQUAL_HEX16_ARRAY(a, b, 24);
 }
 
-/* Two dithered bands sent side by side must stay in the same phase -
+/* Two dithered bands sent side by side must stay in the same phase:
  * expanding one wide row in one call must equal expanding it as two
  * adjacent halves, column offset carried through panel_col0. */
 static void
@@ -192,7 +192,7 @@ test_dither_expansion_stays_in_phase_across_a_band_boundary(void) {
 }
 
 /* Two indices whose sixteen-entry rows are byte-identical land in the same
- * class - the property a caller's change detection depends on. */
+ * class, the property a caller's change detection depends on. */
 static void
 test_classify_groups_indices_with_an_identical_dither_row(void) {
     fixture();
@@ -210,7 +210,7 @@ test_classify_groups_indices_with_an_identical_dither_row(void) {
 }
 
 /* No two rows agree anywhere in this table: every index is its own class,
- * matching a raw index compare exactly - classifying never merges what a
+ * matching a raw index compare exactly; classifying never merges what a
  * plain equality check would have told apart. */
 static void
 test_classify_gives_every_index_its_own_class_when_all_rows_differ(void) {
@@ -253,7 +253,7 @@ test_classify_names_a_class_after_its_smallest_member(void) {
  * row painter calling it is not.
  */
 
-/* Deterministic across platforms and libc versions, unlike rand() - "many
+/* Deterministic across platforms and libc versions, unlike rand(): "many
  * steps, seeds varied" must reproduce exactly on a re-run. */
 static uint32_t
 xorshift32(uint32_t* state) {
@@ -275,7 +275,7 @@ xorshift32(uint32_t* state) {
  * rule; `truth` always takes the fresh value, standing in for a full
  * repaint every step.
  * Every step, both re-expand through the SAME table and must match pixel
- * for pixel - the dither depends only on panel position and index, so an
+ * for pixel: the dither depends only on panel position and index, so an
  * unchanged 16-colour value really does mean identical pixels. */
 static void
 run_incremental_matches_full_reexpansion(uint32_t seed, bool dither16_on) {
@@ -287,7 +287,7 @@ run_incremental_matches_full_reexpansion(uint32_t seed, bool dither16_on) {
     TEST_ASSERT_NOT_NULL(incremental);
     TEST_ASSERT_NOT_NULL(truth);
     gfx_color_t* table = scratch;
-    /* Every 4 consecutive indices share a row - a handful of classes, not
+    /* Every 4 consecutive indices share a row: a handful of classes, not
      * 256 distinct ones, the realistic case where suppression has
      * something to catch. */
     for (int i = 0; i < GFX_INDEXED_PALETTE_SIZE; i++) {
@@ -347,7 +347,7 @@ test_incremental_256_index_output_matches_a_full_reexpansion(void) {
 }
 
 /* The forced-repaint bypass: indices unchanged (even the same class) must
- * still come back "needs repaint" once force_full is set - a mode switch,
+ * still come back "needs repaint" once force_full is set; a mode switch,
  * an overlay closing, an invalidate() can leave the index image already
  * holding the value about to be recomputed while the panel shows something
  * else, and narrowing on index equality then would resend nothing. */
@@ -363,7 +363,7 @@ test_needs_repaint_ignores_unchanged_index_when_forced(void) {
     TEST_ASSERT_TRUE(gfx_indexed_cell_needs_repaint(true, 5, 5, false, identity_class));
 }
 
-/* Unforced, the combinator is exactly gfx_indexed_cell_changed() - the
+/* Unforced, the combinator is exactly gfx_indexed_cell_changed(); the
  * bypass only ever widens what gets repainted, never narrows it further. */
 static void
 test_needs_repaint_matches_cell_changed_when_not_forced(void) {
@@ -387,7 +387,7 @@ test_needs_repaint_matches_cell_changed_when_not_forced(void) {
 
 /* lever 2: cell dither modes */
 
-/* Every cell reads its own (gx + cy) & 1 phase, whole cells solid - not a
+/* Every cell reads its own (gx + cy) & 1 phase, whole cells solid, not a
  * per-pixel dither. */
 static void
 test_cell_checker_phase_is_gx_plus_cy_parity(void) {
@@ -415,7 +415,7 @@ test_cell_checker_phase_is_gx_plus_cy_parity(void) {
     }
 }
 
-/* Every cell reads its own (cy & 1) * 2 + (gx & 1) phase - the four
+/* Every cell reads its own (cy & 1) * 2 + (gx & 1) phase: the four
  * positions of a 2x2 Bayer block over cells, not pixels. */
 static void
 test_cell_bayer2_phase_is_2x2_cell_position(void) {
@@ -440,7 +440,7 @@ test_cell_bayer2_phase_is_2x2_cell_position(void) {
 }
 
 /* A NULL grid row (a panel row past the grid's own height) reads phase 0
- * of index 0, the reserved background entry - the margin every other
+ * of index 0, the reserved background entry: the margin every other
  * expand function in this header shares. */
 static void
 test_cell_null_row_reads_background_phase(void) {
@@ -456,7 +456,7 @@ test_cell_null_row_reads_background_phase(void) {
 
 /* Exact, not merely safe: two indices sharing THIS cell's own phase are
  * unchanged even if they differ at some other phase this cell never
- * visits - the property that makes the cell-mode rule tighter than
+ * visits: the property that makes the cell-mode rule tighter than
  * gfx_indexed_dither16_classify()'s every-phase match. */
 static void
 set_agree_at_phase_0_only(void) {
@@ -484,7 +484,7 @@ test_cell_dither_changed_is_exact_per_cell_not_every_phase(void) {
 
 /* lever 1/2 unified dispatch: gfx_indexed_cell_repaint() */
 
-/* force_full widens past every kind, even RAW with the tables left NULL -
+/* force_full widens past every kind, even RAW with the tables left NULL:
  * the one case a stale index image must still repaint. */
 static void
 test_repaint_force_full_widens_every_kind(void) {
@@ -493,7 +493,7 @@ test_repaint_force_full_widens_every_kind(void) {
     TEST_ASSERT_TRUE(gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_CELL_BAYER2, NULL, bayer2_table, true, 5, 5, 0, 0));
 }
 
-/* An unmoved index answers false before any table is even read - NULL
+/* An unmoved index answers false before any table is even read: NULL
  * tables prove no lookup happened. */
 static void
 test_repaint_unforced_unmoved_index_is_cheap_and_false(void) {
@@ -502,7 +502,7 @@ test_repaint_unforced_unmoved_index_is_cheap_and_false(void) {
     TEST_ASSERT_FALSE(gfx_indexed_cell_repaint(GFX_INDEXED_REPAINT_CELL_CHECKER, NULL, NULL, false, 9, 9, 3, 4));
 }
 
-/* RAW: any two distinct indices always repaint - 256 mode's own rule. */
+/* RAW: any two distinct indices always repaint, 256 mode's own rule. */
 static void
 test_repaint_raw_kind_is_index_inequality(void) {
     fixture();
@@ -563,7 +563,7 @@ set_checker2_entry(int index, int row_phase, int chunk_px, gfx_color_t rgb) {
         rgb;
 }
 
-/* Every output pixel reads its own (index, row phase, column phase) slot -
+/* Every output pixel reads its own (index, row phase, column phase) slot:
  * phase keyed by absolute panel coordinates, a 2-pixel period instead of
  * dither16's 4x4. */
 static void
@@ -588,7 +588,7 @@ test_checker2_every_output_pixel_reads_its_own_phase_entry(void) {
 }
 
 /* Two dithered bands sent side by side stay in phase, column offset
- * carried through panel_col0 - odd alignments included. */
+ * carried through panel_col0, odd alignments included. */
 static void
 test_checker2_stays_in_phase_across_a_band_boundary(void) {
     fixture();
@@ -603,7 +603,7 @@ test_checker2_stays_in_phase_across_a_band_boundary(void) {
     gfx_color_t whole[12];
     gfx_indexed_expand_row_dither_checker2(row, 6, checker2_table, 2, 3, 0, whole, 12);
 
-    /* Odd split, at an odd starting column - both irregular on purpose. */
+    /* Odd split, at an odd starting column: both irregular on purpose. */
     gfx_color_t left[5], right[7];
     gfx_indexed_expand_row_dither_checker2(row, 6, checker2_table, 2, 3, 0, left, 5);
     gfx_indexed_expand_row_dither_checker2(row, 6, checker2_table, 2, 3, 5, right, 7);

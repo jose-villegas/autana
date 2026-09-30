@@ -17,11 +17,11 @@ host C compiler, as described in the [README](../README.md#try-it-without-a-boar
 0. **Decide what owns what, before any code.** Three files, three jobs, and
    the split is what makes a screen testable at all:
 
-   - **layout** (`<screen>.c/.h`) - pure geometry, canvas width and height
+   - **layout** (`<screen>.c/.h`): pure geometry, canvas width and height
      taken as parameters. No `gfx.h`, no hardware.
-   - **state** (`*_ui.c/.h`) - which screen is up, what a click MEANS, what
+   - **state** (`*_ui.c/.h`): which screen is up, what a click MEANS, what
      the screen remembers. Pure, no drawing.
-   - **drawing** (`apps/<app>/ui/<screen>.c/.h`) - the microui calls that
+   - **drawing** (`apps/<app>/ui/<screen>.c/.h`): the microui calls that
      build this screen's command list: `ui_begin_screen()` through
      `mu_end_window()`, taking a `mu_Context*` and a small state struct
      rather than reaching for `app_*.c`'s own statics. This is what makes a
@@ -170,7 +170,7 @@ panels, tracks and status indicators, not pictograms.
 
 1. `ui_end(UI_NO_BACKGROUND)` so the frozen app survives in the gaps.
 2. Dim it **once** with `gfx_fill_rect_blend(0, 0, GFX_WIDTH, GFX_HEIGHT,
-   black, alpha)` - once per repaint of the backdrop, never per frame: the
+   black, alpha)`, once per repaint of the backdrop, never per frame: the
    blend reads the pixel it writes, so a second pass darkens the first.
    Repaint the backdrop and dim again on a full-redraw request or a turn.
    Why this is a pixel write and not a command is
@@ -198,7 +198,7 @@ and not a colour; the launcher's ridge (`ui/ui_ridge.c`) is the model.
 
 ### Knowing what a screen costs
 
-`MU_COMMANDLIST_SIZE` is 8 KiB and everything drawn spends it - roughly 250
+`MU_COMMANDLIST_SIZE` is 8 KiB and everything drawn spends it, roughly 250
 rects for a whole screen. A `CONFIG_LAUNCHER_DEVELOPMENT` build logs the
 high-water mark from `ui_end()`. Check it before adding a texture or a
 fifth icon.
@@ -212,13 +212,13 @@ fifth icon.
   because an event-list suite stayed green while no button in the shell
   could be pressed.
 - **Watch every behavioural test fail first, with a mutation that COMPILES.**
-  A stub that trips `-Werror` prints no test lines and proves nothing - grep
+  A stub that trips `-Werror` prints no test lines and proves nothing; grep
   the run for `error:` to be sure you saw an assertion.
 - **Vary the fixture's arbitrary starting condition** and confirm the
   assertion still catches what it claims.
 - **A UI suite's file-scope objects are firmware `.bss`.** A
   diagnostics build links every suite, and UI fixtures are exactly the ones
-  that get large - a microui context alone is 10,744 bytes, real weight against
+  that get large: a microui context alone is 10,744 bytes, real weight against
   internal heap headroom. Allocate them in `fixture()`, and run
   `tools/build/build_diag_check.sh` to build that configuration locally rather
   than finding out from CI.
@@ -235,12 +235,12 @@ fifth icon.
 
 ## Related
 
-- [`Building-an-App.md`](Building-an-App.md) - the app a screen lives in
-- [`UI-Toolkit.md`](UI-Toolkit.md) - every control and helper available, pictured
-- [`Text-and-Fonts.md`](Text-and-Fonts.md) - fonts, scales, text styles
-- [`Firmware-Architecture.md`](Firmware-Architecture.md) - the mechanisms
-- [`Testing-Guide.md`](Testing-Guide.md) - suites and runners
-- [`Build-Variants.md`](Build-Variants.md) - what release, dev and
+- [`Building-an-App.md`](Building-an-App.md): the app a screen lives in
+- [`UI-Toolkit.md`](UI-Toolkit.md): every control and helper available, pictured
+- [`Text-and-Fonts.md`](Text-and-Fonts.md): fonts, scales, text styles
+- [`Firmware-Architecture.md`](Firmware-Architecture.md): the mechanisms
+- [`Testing-Guide.md`](Testing-Guide.md): suites and runners
+- [`Build-Variants.md`](Build-Variants.md): what release, dev and
   diagnostics builds carry
-- [`tools/Render-Harness.md`](tools/Render-Harness.md) - rendering a screen
+- [`tools/Render-Harness.md`](tools/Render-Harness.md): rendering a screen
   on a host, and diffing it against a capture

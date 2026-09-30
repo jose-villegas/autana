@@ -13,11 +13,11 @@ given text and exits 2 (never a false "clean") if that matches nothing.
 
 Two rules a script cannot judge reliably were left out rather than scripted
 badly: journey words in prose docs (find_narrative_comments.py's own
-SIGNS list is, by its own docstring, "a WORKLIST, NOT A VERDICT" - tested
+SIGNS list is, by its own docstring, "a WORKLIST, NOT A VERDICT"; tested
 against this tree's docs it is nearly all ordinary technical prose, not
 narration) and whether a comment should exist at all (docs/C-Style-Guide.md
 calls that judgement, not a length or a name). HEADING-COMMENT is WARN for
-the same reason - a worklist, not a verdict.
+the same reason: a worklist, not a verdict.
 """
 import pathlib
 import re
@@ -74,11 +74,11 @@ def _register(kind):
     return make_decorator
 
 
-# Every rule function takes (root, path, data) - or, for a c_comment_rule,
+# Every rule function takes (root, path, data), or, for a c_comment_rule,
 # (root, path, text, comments), since a comment rule sometimes needs the raw
-# text too (brace context, say) and the walker already read it - and yields
+# text too (brace context, say) and the walker already read it, and yields
 # (line, message) pairs. Every fixer takes (root, path, text) and returns
-# the file's new text, or None to leave it alone - the same shape
+# the file's new text, or None to leave it alone, the same shape
 # regardless of which walker found the violation, so --fix does not need to
 # know which kind of rule it is re-running.
 doc_rule = _register("doc")
@@ -102,7 +102,7 @@ def _doc_walk(root):
 
 def _c_walk(root):
     """First-party .c/.h files: vendored trees and GENERATED FILE headers
-    keep their upstream or generator-owned form - the same exemption
+    keep their upstream or generator-owned form, the same exemption
     check-format.sh and check_comment_length.py give them."""
     root = pathlib.Path(root)
     for rel in tracked_files(root, ["*.c", "*.h"]):
@@ -134,10 +134,10 @@ def _text_walk(root):
 
 
 # RULE: a tracker issue id or a git commit hash names a system this repo
-# does not keep in sync with itself - it belongs in bd/beads or git, never
+# does not keep in sync with itself; it belongs in bd/beads or git, never
 # in tracked text. A bd id is a short, 3-4 character code (autana-zq7,
 # autana-qqx); "bd " in front is optional. The only real compound word this
-# repo's own CLI names that shape - "autana-cli" - is excluded by name,
+# repo's own CLI names that shape, "autana-cli", is excluded by name,
 # since every other one ("autana-screenshot", "autana-device",
 # "autana-monitor") is already too long to match. A 40-character hex run is
 # an unambiguous full SHA; a 12-character build id is perf provenance, not
@@ -215,8 +215,8 @@ def rule_living_document(root, path, raw_lines):
 # "$MAIN_DIR" in run_tests.sh), so every header under one of the shared
 # layers, or living at main/'s own root, is reachable without a dot.
 #
-# resolve_include() finds the file the way the compiler does - next to the
-# including file first, then from launcher/main - so an app's own local
+# resolve_include() finds the file the way the compiler does: next to the
+# including file first, then from launcher/main, so an app's own local
 # header (found next to it) is never mistaken for a layer header that
 # merely shares its basename, and a fix always rewrites to the one spelling
 # that file actually has.
@@ -228,7 +228,7 @@ def resolve_include(root, path, inc):
     """Where the compiler actually finds a quoted include from `path`: next
     to the including file first (the real search order for
     `#include "..."`), then relative to launcher/main (its registered "."
-    INCLUDE_DIRS root). None if neither has it - a real compile error, and
+    INCLUDE_DIRS root). None if neither has it, a real compile error, and
     not this rule's business."""
     main_dir = pathlib.Path(root) / "launcher/main"
     same_dir = (path.parent / inc).resolve()
@@ -307,7 +307,7 @@ INCLUDE_DIRECTION_EXCEPTIONS = {}
 
 def _layer_dirs_match(root):
     """A folder under launcher/main/ this table has never heard of makes
-    every tier comparison below it a guess - fail loudly rather than
+    every tier comparison below it a guess; fail loudly rather than
     silently trust an order that might already be wrong. A LAYER_TIER entry
     with no folder on disk (a fixture, or a layer deleted since) is not
     this check's business."""
@@ -395,7 +395,7 @@ KNOWN_MARKERS = re.compile(
 
 
 # RULE: a working copy written with CRLF. .gitattributes normalises it on
-# staging and CI reads the index, so this never reaches a commit - but a tool
+# staging and CI reads the index, so this never reaches a commit, but a tool
 # that rewrites a file whole leaves the checkout mixed, and the next reader
 # sees a whole-file diff that is not there. A WARN with a fixer: --fix
 # normalises it and nobody spends a thought on it.
@@ -491,7 +491,7 @@ def rule_accidental_bullet(root, path, raw_lines):
         if prev != prev.lstrip():
             continue  # indented: continuing a nested block, not a bare paragraph
         if LIST_MARKER.match(prev):
-            continue  # the previous line is itself a list item - a normal list
+            continue  # the previous line is itself a list item; a normal list
         start = i - 1
         while start > 0 and lines[start - 1].strip() != "":
             start -= 1
@@ -595,7 +595,7 @@ def _fix_trailing_blank(text):
     return new if new != text else None
 
 
-# RULE: a drawn comment rule (`/*====`, `//----`) is decoration - OpenBSD
+# RULE: a drawn comment rule (`/*====`, `//----`) is decoration; OpenBSD
 # style(9) has three comment shapes and none of them has one.
 # scripts/gates/strip_comment_rules.py already proves the rewrite safe (code
 # unchanged, prose unchanged word for word); this rule reuses its detection
@@ -612,12 +612,12 @@ def rule_drawn_comment(root, path, text, comments):
 
 # RULE: a one-line block comment of up to five plain words, sitting inside a
 # function body, is a leftover section label for a block that should have
-# been an extracted, named helper - docs/C-Style-Guide.md's "needing to
+# been an extracted, named helper, docs/C-Style-Guide.md's "needing to
 # comment parts of a function separately means the function is the
 # problem." The identical shape is also this tree's normal way to divide a
 # FILE's top-level declarations into named groups (gfx.c's own
 # "/* Dirty tracking */" before its dirty-tracking statics), which is a
-# different, accepted use - so this only fires once brace tracking proves
+# different, accepted use, so this only fires once brace tracking proves
 # the comment sits inside a real function body, not a top-level divider or
 # initializer. WARN, not ERROR: whether a comment should exist at all is
 # judgement (docs/C-Style-Guide.md's "Judgment rules"), and this is a
@@ -628,7 +628,7 @@ LABEL = re.compile(r"^[A-Z][a-z]+(?:\s[A-Za-z][a-z]*){0,4}$")
 
 def _blank_comments_and_strings(text, comments):
     """`text` with every comment span (from `comments`) and every string/
-    char literal blanked to spaces, newlines and length preserved - so a
+    char literal blanked to spaces, newlines and length preserved, so a
     brace inside either can never affect the count below."""
     out = list(text)
     for c in comments:
@@ -655,10 +655,10 @@ def _blank_comments_and_strings(text, comments):
 
 def _function_body_comments(text, comments):
     """The subset of `comments` sitting inside a real function body: a '{'
-    at brace-depth 0 opens one only when the character before it is ')' -
+    at brace-depth 0 opens one only when the character before it is ')',
     the one shape a struct/array/enum initializer's '{' never has, since
     those follow '=' or a bare type keyword. Everything nested inside that
-    frame - if/for/switch blocks, compound literals - inherits its state,
+    frame (if/for/switch blocks, compound literals) inherits its state,
     counted in the one loop below."""
     blanked = _blank_comments_and_strings(text, comments)
     spans = {start: c for c in comments for start, _ in c.spans}

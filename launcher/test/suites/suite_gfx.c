@@ -48,7 +48,7 @@ static const char* TAG = "device_tests";
  * more; these pegs do not cover that orientation. */
 
 /* gfx owns global hardware state and is already initialised by the time this
- * runs - the shipped firmware brings the display up before self-testing. Tests
+ * runs; the shipped firmware brings the display up before self-testing. Tests
  * may leave the framebuffer in any state, but must not deinitialise it, and
  * must reset the clip rect since they share it. */
 static void
@@ -63,7 +63,7 @@ perf_guard(const char* name, int64_t measured_us, int64_t ceiling_us) {
 #if CONFIG_LAUNCHER_QEMU
     /* Whether the ceiling was pegged on the board or is another present
      * timed in the same run, it prices the chip's balance of CPU against bus
-     * time, which an emulator does not keep - so there it is reported and not
+     * time, which an emulator does not keep, so there it is reported and not
      * enforced. */
     ESP_LOGI("device_tests", "%s: %lld us, limit %lld us not enforced", name, (long long)measured_us,
              (long long)ceiling_us);
@@ -114,7 +114,7 @@ test_framebuffer_fits_with_headroom_to_spare(void) {
 void
 test_touch_controller_is_present(void) {
     fixture();
-    /* Confirms the I2C bus works and something answers - the host suite can
+    /* Confirms the I2C bus works and something answers; the host suite can
      * test what samples mean, but never that the controller exists. */
 #if CONFIG_LAUNCHER_QEMU
     TEST_IGNORE_MESSAGE("no controller exists under QEMU");
@@ -319,7 +319,7 @@ test_dither_coverage_is_monotonic_and_graduated(void) {
 /* The dither is keyed to each pixel's ABSOLUTE panel position, not one
  * local to whichever call drew it, so two abutting dithered rects read as
  * one continuous texture instead of each restarting the pattern at its own
- * corner. Sampled at the seam across all four dither phase-rows - the Bayer
+ * corner. Sampled at the seam across all four dither phase-rows, the Bayer
  * table's own period. */
 void
 test_dither_stays_in_phase_across_separate_calls(void) {
@@ -354,7 +354,7 @@ test_dither_stays_in_phase_across_separate_calls(void) {
 
 /* gfx_blit_dither: image-over-live-content compositing */
 
-/* One synthetic source pixel per index - every value distinct from its
+/* One synthetic source pixel per index: every value distinct from its
  * neighbours and never equal to the black background (the | 1), so a blit
  * writing the WRONG source pixel reads as a value mismatch, not a
  * coincidental pass. Heap, not the 3584-byte main-task stack, and not
@@ -528,7 +528,7 @@ test_a_line_is_the_same_line_drawn_backwards(void) {
     const gfx_color_t fg = gfx_rgb(0xFF8800);
 
     /* Same two points, opposite order. Bresenham breaks ties by the direction
-     * it steps in, so the two passes can differ - but only where they are
+     * it steps in, so the two passes can differ, but only where they are
      * already adjacent, never by a pixel's worth of coverage. */
     gfx_clear(bg);
     gfx_line(5, 7, 60, 33, fg);
@@ -644,7 +644,7 @@ test_an_open_line_leaves_its_first_pixel_alone(void) {
 
 /* The reason GFX_LINE_OPEN exists. A polyline drawn as closed segments
  * adds the shared pixel at each joint twice, which under additive blending is
- * a brighter dot at every joint - a curve made of a few hundred segments
+ * a brighter dot at every joint; a curve made of a few hundred segments
  * comes out visibly beaded. Chaining open segments puts exactly one
  * contribution on every pixel. */
 void
@@ -808,7 +808,7 @@ test_repeated_presents_stay_in_sync(void) {
  * Most tests below assert a ratio against a reference measured in the same
  * run AND an absolute budget: the ratio proves the mechanism but is blind
  * to a uniform slowdown. Absolutes are affordable because these tests are
- * bus-bound - the full-band reference measured 3,405/3,405/3,404/3,406 us
+ * bus-bound: the full-band reference measured 3,405/3,405/3,404/3,406 us
  * across four captures, a 0.06% spread. */
 
 static int64_t
@@ -834,7 +834,7 @@ test_an_unchanged_frame_costs_almost_nothing(void) {
                unchanged, full / 10);
 
     /* 3-4 us across four device captures: seven dirty_row_is_dirty() checks,
-     * all clean. 50 us is generous on purpose - the regression it guards
+     * all clean. 50 us is generous on purpose: the regression it guards
      * against, an unchanged frame sending pixels again, lands in the
      * thousands rather than 10% over. */
     perf_guard("an unchanged frame's cost grew past what a clean dirty-check should "
@@ -869,7 +869,7 @@ test_full_present_cost_splits_into_bus_time_and_overhead(void) {
              (long long)present_us, (long long)raw_us, (long long)overhead_us);
 
     /* Sanity bounds only: this test exists to log the split, not to hold it
-     * to a ceiling. PROVISIONAL - no device capture of the split exists yet;
+     * to a ceiling. PROVISIONAL: no device capture of the split exists yet;
      * peg a real budget on the overhead from the first one. */
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(1000, (int)raw_us,
                                          "the raw blit returned implausibly fast - did it actually wait for "
@@ -895,11 +895,11 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
                one_band, full / 2);
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, (int)one_band, "but it must still actually send something");
 
-    /* One band, un-pipelined - the same reference every ratio test below
+    /* One band, un-pipelined, the same reference every ratio test below
      * this one measures, and the tightest of the lot: 3,400 / 3,398 / 3,398
      * / 3,399 us across four captures, a 0.06% spread. 3,550 us leaves
      * about 4.4% over the observed maximum, tight because the reference
-     * itself is this stable - a looser margin here would just be slack that
+     * itself is this stable; a looser margin here would just be slack that
      * a real regression could hide in. */
     perf_guard("one band alone cost more than its stable observed price - the bus "
                "clock or the QSPI setup may have regressed",
@@ -913,10 +913,10 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
  * Sanity-checking one figure against the other by multiplying is not
  * valid. */
 
-/* Measures the gather-copy path in gfx_present() - a strip whose
+/* Measures the gather-copy path in gfx_present(): a strip whose
  * real dirty width is only a fraction of the band, written directly (not
  * through gfx_fill_rect(), which always claims the whole band via
- * mark_band() regardless of what it drew - see its comment). See
+ * mark_band() regardless of what it drew; see its comment). See
  * docs/notes/Display-and-Rendering.md's "Cost per call" for why this
  * exists. */
 static void
@@ -931,7 +931,7 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
     const int64_t full_band = time_present();
 
     /* A narrow strip within a band, written directly and marked with its
-     * real bounds - a caller repainting a narrow changed strip. */
+     * real bounds: a caller repainting a narrow changed strip. */
     gfx_color_t* fb = gfx_framebuffer();
     const int w = 20;
     for (int y = 0; y < 64; y++) {
@@ -950,7 +950,7 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
                "for itself",
                narrow, full_band);
 
-    /* 757 / 750 / 766 / 743 us across four captures - a 3% spread, wider
+    /* 757 / 750 / 766 / 743 us across four captures, a 3% spread, wider
      * than the full-band reference because this path does a memcpy into
      * gather_buf on top of the same DMA wait, and that copy is what varies.
      * 850 us leaves about 11% over the observed maximum: room for that
@@ -962,7 +962,7 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
 }
 
 /* The box is bounded by area, not width alone, specifically so a
- * wide-but-short change gathers as cheaply as a narrow-but-tall one - tilt
+ * wide-but-short change gathers as cheaply as a narrow-but-tall one: tilt
  * the board so gravity points sideways and a falling stream is wide and
  * short instead of narrow and tall, and a width-only bound would give it no
  * benefit at all. See docs/notes/Display-and-Rendering.md's "Dirty
@@ -977,7 +977,7 @@ test_a_short_wide_change_costs_less_than_a_full_band(void) {
     gfx_fill_rect(0, 0, GFX_WIDTH, 64, gfx_rgb(0x602040));
     const int64_t full_band = time_present();
 
-    /* Wide but short: most of the band's width, a sliver of its height -
+    /* Wide but short: most of the band's width, a sliver of its height:
      * the shape a sideways-falling stream leaves behind. */
     gfx_color_t* fb = gfx_framebuffer();
     const int w = 300;
@@ -998,12 +998,12 @@ test_a_short_wide_change_costs_less_than_a_full_band(void) {
                "matter to whether gathering pays off",
                wide, full_band);
 
-    /* 562 / 605 / 576 / 591 us across four captures - the widest spread of
+    /* 562 / 605 / 576 / 591 us across four captures, the widest spread of
      * any gathered-piece test here, about 7.6%, from the same memcpy-plus-
      * DMA-wait shape as the narrow strip above but at a different aspect
      * ratio. 700 us leaves about 16% over the observed maximum, wider than
      * the narrow strip's margin because this test's own captures already
-     * moved twice as much - the margin tracks the spread it is guarding,
+     * moved twice as much; the margin tracks the spread it is guarding,
      * not a fixed percentage. */
     perf_guard("the gathered wide-short box cost more than its observed price - "
                "the gather-copy path may have regressed",
@@ -1012,7 +1012,7 @@ test_a_short_wide_change_costs_less_than_a_full_band(void) {
 
 /* Full width, most of a band's height: 368x48 is far over GATHER_MAX_PIXELS,
  * yet a full-width box is already contiguous in the framebuffer and needs no
- * gather buffer at all - the case send_partial_band() (gfx.c) exists for.
+ * gather buffer at all: the case send_partial_band() (gfx.c) exists for.
  *
  * 90% is the threshold, not 75%, on purpose: 48 of a band's 64 rows is 75%
  * of its pixels, and a present is ~94% bus time (gfx.h), so once the fixed
@@ -1027,7 +1027,7 @@ test_a_full_width_partial_height_change_costs_less_than_a_band(void) {
     gfx_fill_rect(0, 0, GFX_WIDTH, 64, gfx_rgb(0x406020));
     const int64_t full_band = time_present();
 
-    /* Full width, 48 of the band's 64 rows - the shape a wide change
+    /* Full width, 48 of the band's 64 rows: the shape a wide change
      * leaves that has not yet grown to fill its whole strip. */
     gfx_color_t* fb = gfx_framebuffer();
     const int h = 48;
@@ -1050,7 +1050,7 @@ test_a_full_width_partial_height_change_costs_less_than_a_band(void) {
                partial, full_band * 9 / 10);
 }
 
-/* Two small clusters in the same band but opposite corners - each cheap
+/* Two small clusters in the same band but opposite corners, each cheap
  * enough on its own to gather independently, which is the point: this is
  * the case a single adaptive box per strip cannot help with at all, since
  * a box spanning both would cover nearly the whole band for no reason. Two
@@ -1077,7 +1077,7 @@ test_two_far_corners_cost_less_than_a_full_band(void) {
     }
     gfx_mark_dirty(0, 0, size, size);
 
-    /* Bottom-right corner - a different row range within the same band, a
+    /* Bottom-right corner: a different row range within the same band, a
      * different column, nothing in between touched. */
     const int y0 = 64 - size;
     const int x0 = GFX_WIDTH - size;
@@ -1097,11 +1097,11 @@ test_two_far_corners_cost_less_than_a_full_band(void) {
                "still cost less than the whole band",
                two_corners, full_band);
 
-    /* 1,914 / 1,917 / 1,916 / 1,914 us across four captures - a 0.16%
+    /* 1,914 / 1,917 / 1,916 / 1,914 us across four captures, a 0.16%
      * spread, nearly as tight as the full-band reference itself, because
      * two independent gather-and-waits dominated by DMA time leave little
      * room for the copy-side jitter the single-piece gathers above show.
-     * 2,000 us leaves about 4.3% over the observed maximum - tight, to
+     * 2,000 us leaves about 4.3% over the observed maximum: tight, to
      * match how tight the reference is. */
     perf_guard("two far corners cost more than their observed price - one of the "
                "two independent gathers may have regressed",
@@ -1111,7 +1111,7 @@ test_two_far_corners_cost_less_than_a_full_band(void) {
 /* Three separated marks, one more than LEAF_REFINE_MAX_RUNS (gfx_dirty.h)
  * tracks. Cells 0-2 are adjacent, so collect_dirty_runs() merges them into
  * one coarse run, and splitting that run into its three gaps is what the cap
- * governs - marks in non-adjacent cells never reach it. At the shipped cap
+ * governs; marks in non-adjacent cells never reach it. At the shipped cap
  * of 2 plan_run() falls back to run_box()'s coarse union, one ~240x64 send
  * that a raised cap's three small sends are not guaranteed to beat. */
 static void
@@ -1126,7 +1126,7 @@ test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
 
     gfx_color_t* fb = gfx_framebuffer();
     const int size = 15;
-    /* Cells 0, 1 and 2 (COL_WIDTH=92 each) - adjacent, so these merge
+    /* Cells 0, 1 and 2 (COL_WIDTH=92 each): adjacent, so these merge
      * into one 276px-wide coarse run, not three separate cell-level ones.
      * Each mark sits inside its own cell with real room either side, so
      * the gaps are genuine at the leaf level, not an artifact of landing
@@ -1149,7 +1149,7 @@ test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
 
     /* No ratio against full_band on purpose: whether the fallback beats a
      * full band is the open question this test measures. The absolute is
-     * safe to peg - 869/882/875/877 us across four captures, a 1.5% spread;
+     * safe to peg: 869/882/875/877 us across four captures, a 1.5% spread;
      * 980 leaves about 11% over, room for a different fallback shape. */
     perf_guard("three far-apart marks' fallback send cost more than its observed "
                "price",
@@ -1159,9 +1159,9 @@ test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
 /* A small mark plus a wide one in the same coarse run, sized to land the
  * wide mark's leaf-refined piece right where GATHER_MAX_PIXELS decides
  * whether it gets gathered. Literal numbers because gfx_dirty.h is
- * header-only and static - a second include would duplicate its
+ * header-only and static; a second include would duplicate its
  * dirty-tracking state. The wide mark covers leaf columns 2-6, so
- * refine_run() reports a 5-leaf 115px piece: 115 * 64 = 7360 px - over
+ * refine_run() reports a 5-leaf 115px piece: 115 * 64 = 7360 px; over
  * budget at 4096 and 6144, under it at the shipped 8192. */
 static void
 test_a_near_budget_split_crosses_the_gather_threshold(void) {
@@ -1202,7 +1202,7 @@ test_a_near_budget_split_crosses_the_gather_threshold(void) {
 }
 
 /* Two small marks inside the SAME 92px cell, far enough apart to leave a
- * real gap between them - the shape only leaf refinement can split on.
+ * real gap between them: the shape only leaf refinement can split on.
  * test_two_far_corners above lands in different CELLS, which
  * collect_dirty_runs() alone already separates without any help from the
  * leaf layer; this test is the one that actually exercises it. See
@@ -1246,7 +1246,7 @@ test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
     perf_guard("two marks in one cell", two_marks, 2976);
 }
 
-/* The drawing calls narrow the dirty region themselves - no app-side
+/* The drawing calls narrow the dirty region themselves: no app-side
  * gfx_mark_dirty() anywhere in this test, unlike the two above. Text is
  * where it is worth proving: a glyph reaches the tracker as a handful of
  * run-box fills a few pixels wide each (draw_glyph_font()), so a readout
@@ -1264,7 +1264,7 @@ test_a_corner_label_costs_less_than_its_rows_full_width(void) {
     gfx_fill_rect(0, 0, GFX_WIDTH, 64, gfx_rgb(0x406020));
     const int64_t full_band = time_present();
 
-    /* 4 glyphs at GFX_GLYPH_SCALE is 64 px wide and 16 tall - inside one
+    /* 4 glyphs at GFX_GLYPH_SCALE is 64 px wide and 16 tall, inside one
      * 92 px column, well inside one strip. */
     gfx_text(8, 8, "59.7", gfx_rgb(0xFFFFFF));
     const int64_t label = time_present();

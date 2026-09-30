@@ -1,5 +1,5 @@
 /*
- * tilt - turning raw accelerometer counts into a direction worth steering
+ * tilt, turning raw accelerometer counts into a direction worth steering
  * something with: which way is down in the plane of the screen, how hard,
  * and how much the device is being shaken.
  *
@@ -23,13 +23,13 @@
  * two thirds of the distance to a new reading.
  *
  * STILL is long enough to bury sensor noise. MOVING is short enough that a
- * deliberate tilt arrives without perceptible lag - below roughly 50 ms the eye
+ * deliberate tilt arrives without perceptible lag: below roughly 50 ms the eye
  * stops registering it as delay. */
 #define TILT_TAU_STILL_MS   260
 #define TILT_TAU_MOVING_MS  40
 
 /* A frame longer than this is treated as this long. Guards against a huge step
- * after a pause - a stall should not teleport the filter to the newest reading,
+ * after a pause: a stall should not teleport the filter to the newest reading,
  * and unbounded dt would overflow the fixed-point arithmetic. */
 #define TILT_MAX_DT_MS      100
 
@@ -70,7 +70,7 @@ typedef struct {
 void tilt_reset(tilt_t* t, int counts_per_g);
 
 /* Feed one sample. (gx, gy) is gravity in SCREEN axes and `gz` is the
- * component through the screen - needed only for the magnitude, but
+ * component through the screen, needed only for the magnitude, but
  * needed: without it a flat device looks identical to free fall.
  * `rotation` is 0-255 from the GYROSCOPE, setting only how quickly the
  * filter tracks; deliberately not what shaking is read from. The first
@@ -82,7 +82,7 @@ void tilt_update(tilt_t* t, int gx, int gy, int gz, int rotation, uint32_t dt_ms
 int tilt_x(const tilt_t* t);
 int tilt_y(const tilt_t* t);
 
-/* How much of a g lies in the screen plane, as 0-256 - which is sin of
+/* How much of a g lies in the screen plane, as 0-256, which is sin of
  * the tilt away from flat, and therefore how hard gravity drives anything
  * in that plane. A caller simulating it should scale its rate by this:
  * upright it runs at full speed, laid flat it coasts to a stop instead of

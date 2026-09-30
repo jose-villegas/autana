@@ -5,9 +5,9 @@ does not match a heading GitHub will actually generate that id for.
 
     python scripts/gates/check_doc_index.py [--root ROOT]
 
-A link to a folder reaches that folder's README.md. Only real links count -
+A link to a folder reaches that folder's README.md. Only real links count;
 a path written in backticks names a document, it does not index it. An
-anchor is checked only when the link's target file ends in `.md` - `#L3`
+anchor is checked only when the link's target file ends in `.md`; `#L3`
 in a link to a script is never a document heading.
 """
 import pathlib
@@ -29,8 +29,8 @@ def tracked_docs(root):
 
 
 def blank_fences(lines):
-    """`lines` with the content of each fenced code block - delimiters
-    included - replaced by an empty string. Same length and positions as
+    """`lines` with the content of each fenced code block, delimiters
+    included, replaced by an empty string. Same length and positions as
     `lines`, so a line number computed against the result still matches
     the original file; a shell transcript's own "```"-shaped text can
     never be mistaken for prose this way either."""
@@ -46,7 +46,7 @@ def blank_fences(lines):
 
 
 def doc_headings(path):
-    """Every heading's raw text in `path`, in document order - duplicates
+    """Every heading's raw text in `path`, in document order, duplicates
     kept, since GitHub numbers a repeated slug by occurrence, and a
     citation match only needs to know some heading matches. None if
     `path` is not a file."""
@@ -96,8 +96,8 @@ def check(root):
 
 def slugify(text):
     """GitHub's heading-id algorithm: lowercase, drop anything that isn't a
-    letter/digit/space/hyphen, then turn each space - not each RUN of
-    spaces - into its own hyphen. That last part matters: a heading
+    letter/digit/space/hyphen, then turn each space, not each RUN of
+    spaces, into its own hyphen. That last part matters: a heading
     punctuated with an em dash drops the dash but keeps both surrounding
     spaces, so it slugs with a double hyphen, not a single one."""
     text = re.sub(r"`([^`]*)`", r"\1", text)
@@ -124,7 +124,7 @@ def heading_slugs(path):
 
 def anchor_links(root):
     """(doc, line, displayed_target, fragment, resolved_path) for every
-    link whose target - explicit or the same file - resolves to a `.md`
+    link whose target, explicit or the same file, resolves to a `.md`
     file and carries a `#fragment`."""
     root = pathlib.Path(root)
     for doc in sorted(tracked_docs(root)):

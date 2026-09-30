@@ -1,5 +1,5 @@
 /*
- * render_lab_view - how a lit-mesh scene shows its frame. Apart from
+ * render_lab_view: how a lit-mesh scene shows its frame. Apart from
  * render_lab.h so that a scene which sets small3dlib's options before its own
  * includes does not meet the renderer's first.
  */

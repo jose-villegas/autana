@@ -13,7 +13,7 @@ narrowed further, to `CONFIG_LAUNCHER_SELFTEST`
 CONFIG_LAUNCHER_SELFTEST` guards).
 
 Step 1 (the Settings extraction) is open, and is a UI/
-organisation question, not one of memory or build correctness -
+organisation question, not one of memory or build correctness;
 see "What survives" below. Step 2 (the SELFTEST/diagnostics rename) remains
 open too: "diagnostics" names an app that ships in a build that is not
 itself called diagnostics, which is exactly the kind of naming friction
@@ -25,11 +25,11 @@ step 2 exists to remove.
 
 Two vocabularies name the same flag today:
 
-- `CONFIG_LAUNCHER_SELFTEST` (Kconfig), `boot/selftest.c`, `selftest_run()`
-  — the code that actually runs the suites calls this "selftest."
+- `CONFIG_LAUNCHER_SELFTEST` (Kconfig), `boot/selftest.c`, `selftest_run()`:
+  the code that actually runs the suites calls this "selftest."
 - `main/apps/diagnostics/`, `app_diagnostics`, `build.diag/`,
   `build.sh --diag`,
-  `sdkconfig.defaults.diag`, `.github/workflows/build-diagnostics.yml` —
+  `sdkconfig.defaults.diag`, `.github/workflows/build-diagnostics.yml`:
   the app, the tooling, the CI workflow, and the prose docs all call this
   "diagnostics."
 
@@ -39,29 +39,29 @@ is two different screens' worth of concerns wearing one
 page, gated at two different granularities:
 
 - **The "run self test suite" button and its result line** on page 1 are
-  genuinely `CONFIG_LAUNCHER_SELFTEST`-shaped - they exist only because the
+  genuinely `CONFIG_LAUNCHER_SELFTEST`-shaped: they exist only because the
   suites are compiled in, and are guarded that way in the source
   (`#if CONFIG_LAUNCHER_SELFTEST` in `app_diagnostics.c`).
-- **Everything else** - page 0 (the POST report) and the rest of page 1 (the
+- **Everything else**: page 0 (the POST report) and the rest of page 1 (the
   gfx dirty-region overlay checkbox, the gfx leaf-grid overlay checkbox, the
   interlace-mode checkbox, and the show orientation toggle with its
-  accel/gravity/quarter readout) - is `CONFIG_LAUNCHER_DEVELOPMENT`-shaped by
+  accel/gravity/quarter readout), is `CONFIG_LAUNCHER_DEVELOPMENT`-shaped by
   the project's own stated rule (Build-Variants.md, "Development-only
   instrumentation is its own flag, not SELFTEST"): none of it needs the test
   suites, all of it is exactly "meant for someone AT the device or watching
-  its serial console while working on it" - and that is exactly the flag
+  its serial console while working on it", and that is exactly the flag
   the whole app (not just these rows) is gated on.
 
 "Diagnostics" and "selftest" are not the same concept: only the
 button/result-line pair needs `CONFIG_LAUNCHER_SELFTEST`'s narrower gate,
-and everything else needs only `CONFIG_LAUNCHER_DEVELOPMENT`'s wider one -
+and everything else needs only `CONFIG_LAUNCHER_DEVELOPMENT`'s wider one;
 `--dev` is what proves the two flags are independently useful.
 
 ## The plan
 
 **1. Extract the DEVELOPMENT-only rows into a new Settings app.** This step
-does not change what a `--dev` build can reach - the
-whole Diagnostics app, POST report included, already ships there - so it is
+does not change what a `--dev` build can reach: the
+whole Diagnostics app, POST report included, already ships there, so it is
 purely an organisation/UI question: should the gfx overlay checkboxes,
 interlace toggle, and orientation readout live on their own screen instead
 of as Diagnostics' second page, and does a `--dev` build want a `Settings`
@@ -74,17 +74,17 @@ diagnostics naming mismatch is a clean, low-risk mechanical rename**
 (Kconfig symbol, app folder, build directory, CLI flags, CI workflow file,
 docs). It does not strictly need to wait on step 1:
 `app_diagnostics.c` has only one small SELFTEST-shaped island (the
-button + result line) rather than a whole hybrid page - but doing the
+button + result line) rather than a whole hybrid page, but doing the
 extraction first still keeps the rename mechanical rather than another
 occasion to relitigate what belongs where.
 
 ## Open questions to settle when this is actually picked up
 
 - **What does Settings contain besides the migrated toggles?** Just the
-  four rows verbatim at first, presumably - but "Settings" as a name
+  four rows verbatim at first, presumably, but "Settings" as a name
   invites more than debug overlays eventually (this project has no
-  persisted user preferences of any kind yet - display orientation
-  defaults, sound, etc. - worth deciding whether this app is scoped to
+  persisted user preferences of any kind yet: display orientation
+  defaults, sound, etc., worth deciding whether this app is scoped to
   developer toggles only or genuinely user-facing settings from the start).
 - **Which word wins the rename**: "selftest" (already the Kconfig symbol
   and the suite-runner file name) or "diagnostics" (already the app name,
@@ -93,7 +93,7 @@ occasion to relitigate what belongs where.
 - **Does `CONFIG_LAUNCHER_SELFTEST_AUTORUN` rename too**, for the same
   consistency reason.
 - **CI workflow file rename** (`build-diagnostics.yml`) changes the
-  workflow's badge URL - the README badges section needs updating in the
+  workflow's badge URL: the README badges section needs updating in the
   same change, not as an afterthought.
 - **A memory-layout view belongs in Settings, and the display-mode toggles
   hang off it.** Resolution and colour mode are being
@@ -102,8 +102,8 @@ occasion to relitigate what belongs where.
   scaler, so it buys memory, not bus time), RGB444 returns 25% of both.
   A toggle is only legible if the screen shows the ledger it moves: the
   framebuffer at its current size, the running app's grid, static
-  `.data`/`.bss`, free heap and its largest contiguous block, and - beside
-  each toggle - the projected delta. The sources all exist
+  `.data`/`.bss`, free heap and its largest contiguous block, and, beside
+  each toggle, the projected delta. The sources all exist
   (`heap_caps_get_info()`, the linker's `_bss_start`/`_bss_end`, the
   framebuffer and grid sizes gfx and sand already know). It doubles as
   the diagnostic this project has needed twice: the round where three

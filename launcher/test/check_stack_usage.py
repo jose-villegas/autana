@@ -7,11 +7,11 @@ and fails if any function's frame exceeds the device profile's ceiling.
 
 Why this exists: two device panics in this project's history were "Stack
 protection fault" loops, both caused by a test fixture declaring a huge local
-array - a 4 KB comparison buffer, and later an impulse_t[4096] (24 KB). Both
+array: a 4 KB comparison buffer, and later an impulse_t[4096] (24 KB). Both
 passed green on the host, whose stack is megabytes; this board's main task
 stack (CONFIG_ESP_MAIN_TASK_STACK_SIZE) is 3,584 bytes, shared with Unity,
 printf, and the call chain above the fixture. The host build
-cannot reproduce a stack panic - it can only predict one, statically, from
+cannot reproduce a stack panic; it can only predict one, statically, from
 the frame sizes GCC/Clang already compute for their own prologues. This gate
 is that prediction, run every time the host suite runs.
 
@@ -23,7 +23,7 @@ both historical panics (24 KB and 4 KB) with two orders of magnitude to
 spare. Measured against the tree on 2026-09-03, the largest frame that
 clears the ceiling today is 864 bytes
 (test_a_direction_flip_does_not_corrupt_the_boundary_debounce,
-suite_sand_liquid_depth.c since the suite_sand.c split) - so 1024 is not
+suite_sand_liquid_depth.c since the suite_sand.c split), so 1024 is not
 starving anything real, it is just below where the next
 genuine outlier would have to be caught.
 
@@ -64,7 +64,7 @@ import device_profile  # noqa: E402  (path must be set up first)
 # raising the ceiling to match the worst of them or leaving every one of
 # them permanently red. This is NOT a permission slip: each value is the
 # frame size measured when the entry was recorded, and a function only
-# leaves this list by shrinking its frame below the ceiling - never by
+# leaves this list by shrinking its frame below the ceiling, never by
 # bumping the recorded number to match a regrowth. A function that grows
 # meaningfully past its recorded size fails exactly like a brand-new
 # offender would.
@@ -74,7 +74,7 @@ import device_profile  # noqa: E402  (path must be set up first)
 # measured 1,216 bytes on the Windows MinGW gcc the list was recorded with
 # and 1,456 bytes (+19.7%) on the Linux gcc in CI, for identical source.
 # So a recorded value is compared with STACK_FRAME_TOOLCHAIN_TOLERANCE of
-# headroom rather than exactly - enough to absorb one compiler's opinion of
+# headroom rather than exactly, enough to absorb one compiler's opinion of
 # another's frame, nowhere near enough to hide the class this gate exists
 # for (the three historical offenders were 4 KB, 24 KB and 41 KB against a
 # ~1.5 KB record). The device's own frames, which are what actually matter,
@@ -85,7 +85,7 @@ STACK_FRAME_TOOLCHAIN_TOLERANCE = 0.25
 # this survives being checked out to a different absolute location.
 #
 # A frame that shrinks but stays over the ceiling gets its entry RE-RECORDED
-# at the lower number, which is tightening, not loosening - leaving the old
+# at the lower number, which is tightening, not loosening: leaving the old
 # value there would licence it to grow all the way back. That has already
 # happened once: this list's worst entry was
 # test_a_submerged_obstacle_casts_a_gravity_aligned_shadow at 42,848 bytes,
@@ -130,7 +130,7 @@ def parse_su_file(path):
         C:/repo/launcher/test/suites/suite_rng.c:16:13:test_foo	48	static
 
     The location field is itself colon-separated (file:line:col:function),
-    and on Windows the file half already contains a drive-letter colon - so
+    and on Windows the file half already contains a drive-letter colon, so
     splitting from the right, a fixed three fields at a time, is the only
     split that is safe on every platform this runs on.
     """
@@ -234,9 +234,9 @@ def main(argv):
     offenders = [r for r in records if r.bytes > ceiling]
 
     # Split what is over the ceiling into: brand-new (fails), grown past its
-    # recorded debt (fails - the allowlist caps a frame, it does not exempt
+    # recorded debt (fails; the allowlist caps a frame, it does not exempt
     # it from ever growing further), and known debt within its recorded size
-    # (does not fail the build, but is never silent - see the summary line).
+    # (does not fail the build, but is never silent; see the summary line).
     new_offenders = []
     grown_offenders = []
     known_debt = []

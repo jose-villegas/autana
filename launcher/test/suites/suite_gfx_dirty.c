@@ -1,8 +1,8 @@
 /*
- * Portable suite: gfx_dirty - the grid/leaf dirty-region tracker.
+ * Portable suite: gfx_dirty, the grid/leaf dirty-region tracker.
  *
  * gfx_dirty.h carries no ESP-IDF dependency, unlike gfx.c (which
- * unconditionally includes ESP-IDF SPI headers) - that split is what
+ * unconditionally includes ESP-IDF SPI headers); that split is what
  * makes this logic reachable from a host at all.
  * suite_gfx.c (device-only) still covers whether the design is actually
  * cheaper to send; this suite covers whether the geometry and bitmask
@@ -18,7 +18,7 @@
 
 #include "gfx/gfx_dirty.h"
 
-/* gfx_dirty.h's state is static, so this file gets its own private copy -
+/* gfx_dirty.h's state is static, so this file gets its own private copy,
  * exactly like a real device build's gfx.c does, and exactly what makes it
  * possible to reset and inspect directly here. */
 static void
@@ -71,7 +71,7 @@ test_mark_leaves_spans_a_cell_boundary_too(void) {
     fixture();
     /* COL_WIDTH=92=LEAF_W*4, so a box straddling x=92 crosses from the
      * last leaf of cell 0 (column 3) into the first leaf of cell 1
-     * (column 4) - a boundary between LEAF_SUB groups, not just between
+     * (column 4): a boundary between LEAF_SUB groups, not just between
      * two leaves within one. */
     dirty_mark(COL_WIDTH - 1, 0, 2, 1);
 
@@ -81,7 +81,7 @@ test_mark_leaves_spans_a_cell_boundary_too(void) {
 /*
  * dirty_leaf_rects()
  *
- * Backs the leaf debug-overlay layer in gfx.c - one rectangle per dirty
+ * Backs the leaf debug-overlay layer in gfx.c: one rectangle per dirty
  * leaf, unmerged, clipped to the caller's box. A host build cannot reach
  * gfx.c's overlay code at all (it is CONFIG_LAUNCHER_DEVELOPMENT, ESP-IDF-
  * dependent), so this enumerator, not the drawing that consumes it, is
@@ -191,7 +191,7 @@ test_dirty_leaf_rects_leaf_rows_are_independent(void) {
     dirty_mark(5, 0, 1, 1);          /* leaf row 0 */
     dirty_mark(5, 2 * LEAF_H, 1, 1); /* leaf row 2 */
 
-    /* Box only spans leaf row 0's own height - leaf row 2's rect must not
+    /* Box only spans leaf row 0's own height; leaf row 2's rect must not
      * leak into this result just because it shares the same strip row. */
     dirty_leaf_rect_t out[8];
     const int n = dirty_leaf_rects(0, 0, 0, GFX_DIRTY_WIDTH, LEAF_H, out, 8);
@@ -215,7 +215,7 @@ test_run_is_leaf_eligible_when_every_cell_is_tight(void) {
 static void
 test_run_is_leaf_eligible_false_if_any_cell_in_the_run_is_coarse(void) {
     fixture();
-    /* Cell 0's box exactly fills its own full extent - treated the same as
+    /* Cell 0's box exactly fills its own full extent, treated the same as
      * a mark_band() touch, per dirty_mark()'s own documented invariant. */
     dirty_mark(0, 0, COL_WIDTH, STRIP_HEIGHT);
     dirty_mark(COL_WIDTH + 5, 0, 10, 10);
@@ -228,7 +228,7 @@ test_run_is_leaf_eligible_false_if_any_cell_in_the_run_is_coarse(void) {
 /*
  * collect_runs_from_mask
  *
- * Shared by the cell-level and leaf-level run finders in gfx.c - these
+ * Shared by the cell-level and leaf-level run finders in gfx.c; these
  * exercise it directly, at the bit-manipulation level, rather than only
  * indirectly through whichever caller happens to reach it.
  */
@@ -253,7 +253,7 @@ test_collect_runs_from_mask_finds_one_contiguous_run(void) {
 static void
 test_collect_runs_from_mask_separates_a_real_gap(void) {
     int s[4], e[4];
-    /* Bit 0 and bit 7 - opposite ends of the mask, nothing shared. */
+    /* Bit 0 and bit 7: opposite ends of the mask, nothing shared. */
     const int n = collect_runs_from_mask(0x81 /* 0b10000001 */, 8, s, e, 4);
 
     TEST_ASSERT_EQUAL_INT(2, n);
@@ -285,7 +285,7 @@ test_collect_runs_from_mask_fits_exactly_at_the_cap(void) {
 static void
 test_collect_runs_from_mask_gives_up_past_the_cap(void) {
     int s[2], e[2];
-    /* Four isolated single-bit runs, cap of 2 - the third one must trip
+    /* Four isolated single-bit runs, cap of 2; the third one must trip
      * the "too fragmented" case. */
     const int n = collect_runs_from_mask(0x55 /* 0b01010101 */, 8, s, e, 2);
 
@@ -297,7 +297,7 @@ test_collect_runs_from_mask_gives_up_past_the_cap(void) {
  *
  * collect_dirty_runs()/run_box() are the cell-granularity counterparts of
  * collect_runs_from_mask() above, and plan_run() is what decides whether a
- * run gets leaf-refined at all - exercised directly here rather than only
+ * run gets leaf-refined at all, exercised directly here rather than only
  * indirectly through gfx.c's send path, which a host build cannot reach.
  */
 
@@ -305,7 +305,7 @@ static void
 test_collect_dirty_runs_finds_two_separate_cell_runs(void) {
     fixture();
     dirty_mark(5, 0, 10, 10);                 /* cell 0 */
-    dirty_mark(3 * COL_WIDTH + 5, 0, 10, 10); /* cell 3 - opposite end */
+    dirty_mark(3 * COL_WIDTH + 5, 0, 10, 10); /* cell 3: opposite end */
 
     int run_start[GRID_COLS], run_end[GRID_COLS];
     const int n = collect_dirty_runs(0, run_start, run_end);
@@ -336,7 +336,7 @@ static void
 test_plan_run_finds_a_real_gap_inside_one_cell(void) {
     fixture();
     /* Two marks in the same cell, far enough apart to leave a real leaf
-     * gap between them - the exact shape test_two_marks_in_one_cell_costs_
+     * gap between them: the exact shape test_two_marks_in_one_cell_costs_
      * less_than_the_coarse_box exercises on real hardware in suite_gfx.c;
      * this is the same case at the logic level, host-side. */
     dirty_mark(5, 0, 5, 5);
@@ -351,7 +351,7 @@ test_plan_run_finds_a_real_gap_inside_one_cell(void) {
 /* Derived from GATHER_MAX_PIXELS/STRIP_HEIGHT plus a margin rather than
  * hardcoded, so the "over budget" case tracks whatever the budget is tuned
  * to. Valid only while two such marks, with a gap between them, still fit
- * inside one 4-cell run - the static assert below catches a
+ * inside one 4-cell run; the static assert below catches a
  * GATHER_MAX_PIXELS large enough to break that. */
 #define OVER_BUDGET_MARK_W ((GATHER_MAX_PIXELS / STRIP_HEIGHT) + 8)
 
@@ -363,7 +363,7 @@ test_plan_run_rejects_a_split_over_the_gather_budget(void) {
                    "construction needs rethinking above this budget, not a bigger "
                    "mark");
     fixture();
-    /* Two wide marks at opposite ends of a 4-cell run, full strip height -
+    /* Two wide marks at opposite ends of a 4-cell run, full strip height:
      * each half, once split, is over GATHER_MAX_PIXELS. Must fall back to
      * 0 (use the coarse box) rather than hand back a split
      * gather_and_send()'s fixed-size buffer cannot hold. */
@@ -466,7 +466,7 @@ test_band_extent_ignores_a_band_outside_the_marked_rows(void) {
                               "a band nowhere near the mark must report nothing dirty");
 }
 
-/* A band-ring band is often narrower than STRIP_HEIGHT (64) - the query
+/* A band-ring band is often narrower than STRIP_HEIGHT (64): the query
  * must use the mark's own narrowed cell_y0/y1, not the whole strip, so a
  * band above or below the real mark inside the SAME strip still misses it. */
 static void
@@ -480,7 +480,7 @@ test_band_extent_only_sees_the_part_of_a_strip_its_own_range_covers(void) {
                               "a band in the same strip but above the mark's own rows must not");
 }
 
-/* dirty_mark_all() is what a caller reaches for to force everything - band
+/* dirty_mark_all() is what a caller reaches for to force everything: band
  * mode's own "orientation change / app enter / gfx_invalidate()" case (see
  * gfx.c) ends up here too, so this is the query-side half of that promise:
  * once marked, every row range reports the full width dirty. */
@@ -507,9 +507,9 @@ test_band_extent_follows_a_moving_box_across_several_frames(void) {
     /* One full STRIP_HEIGHT per frame: a smaller step re-marks the same
      * cell with a different sub-range each frame, and a cell's box only
      * ever widens within its own lifetime (never narrows before the next
-     * dirty_mark_all()) - correct, but it would make this test's exact
+     * dirty_mark_all()); correct, but it would make this test's exact
      * per-frame equality assert fail on a real, harmless over-touch. */
-    const int band_height = 32; /* a real GFX_BAND_HEIGHT choice (gfx.h) - not reachable from here, see file comment */
+    const int band_height = 32; /* a real GFX_BAND_HEIGHT choice (gfx.h), not reachable from here, see file comment */
     const int box_x = 10, box_w = 15, box_h = 20;
     int box_y = 0;
     bool prev_valid = false;

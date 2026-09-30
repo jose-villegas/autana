@@ -1,6 +1,6 @@
 name: Shell Scripts
 
-# Every shell script in the repo, checked on Linux - which is the only place
+# Every shell script in the repo, checked on Linux, which is the only place
 # some of it can be checked at all.
 #
 # Development happens on Windows in Git Bash, where /bin/sh is bash wearing
@@ -41,7 +41,7 @@ jobs:
       - name: Every script with a shebang is stored executable
         run: sh scripts/gates/check-exec-bits.sh
 
-      # Ubuntu's /bin/sh IS dash, so this is a genuine POSIX parse - unlike
+      # Ubuntu's /bin/sh IS dash, so this is a genuine POSIX parse; unlike
       # the same command run from Git Bash, which cannot fail this way.
       - name: POSIX syntax check every #!/bin/sh script
         run: |
@@ -69,7 +69,7 @@ jobs:
 
       # -S error to begin with: a floor, not a ceiling. shellcheck's style
       # and info findings on scripts written before it was wired up are worth
-      # fixing, but not worth failing the build over on the day it lands -
+      # fixing, but not worth failing the build over on the day it lands;
       # raise this to warning once they are cleared rather than leaving the
       # gate permanently soft.
       - name: shellcheck (errors)

@@ -1,4 +1,4 @@
-/* console_navigation_parse - portable app-name matching for OPEN. */
+/* console_navigation_parse: portable app-name matching for OPEN. */
 #pragma once
 
 #include <ctype.h>

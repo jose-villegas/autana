@@ -1,5 +1,5 @@
 /*
- * ui_control_center - the Control Center's frame, ui_begin()/ui_end()
+ * ui_control_center: the Control Center's frame, ui_begin()/ui_end()
  * included, and the dimmed backdrop it is painted over. The widgets live in
  * ui_control_center_draw.c, split the way ui_launcher.c splits from
  * ui_launcher_draw.c.

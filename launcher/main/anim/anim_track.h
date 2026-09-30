@@ -1,5 +1,5 @@
 /*
- * anim_track - keyed values over time, sampled the way glTF 2.0 defines
+ * anim_track: keyed values over time, sampled the way glTF 2.0 defines
  * them, so a track authored in Blender and baked by tools/anim/ plays back
  * unchanged. A track knows nothing of what it drives: a caller maps the
  * sampled numbers onto a camera, a light, a material value, anything a

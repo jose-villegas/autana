@@ -1,5 +1,5 @@
 /*
- * Portable suite: ui_slider - the geometry behind ui_slider_int(), the knob
+ * Portable suite: ui_slider, the geometry behind ui_slider_int(), the knob
  * you can drag rather than only tap-to-jump (see ui_pointer.h, Phase 1,
  * which is what makes a drag possible at all).
  *
@@ -33,7 +33,7 @@ fixture(void) {
 }
 
 /*
- * The round trip - the property that stops a knob drifting a step every
+ * The round trip: the property that stops a knob drifting a step every
  * time a finger touches it without moving.
  */
 
@@ -162,7 +162,7 @@ test_fill_width_grows_with_value(void) {
 }
 
 /*
- * Degenerate cases - none of these may divide by zero or hand back a knob
+ * Degenerate cases: none of these may divide by zero or hand back a knob
  * wider than its track.
  */
 
@@ -188,7 +188,7 @@ static void
 test_step_of_zero_falls_back_rather_than_dividing_by_zero(void) {
     const slider_fixture_t f = fixture();
 
-    /* Only asserting it returns something in range - step 0 has no
+    /* Only asserting it returns something in range: step 0 has no
      * meaningful "correct" quantization, only a safe one. */
     const int v = ui_slider_value_at_x(f.track, f.lo, f.hi, f.knob_w, 0, f.track.x + f.track.w / 2);
     TEST_ASSERT_TRUE(v >= f.lo && v <= f.hi);

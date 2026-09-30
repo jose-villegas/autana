@@ -1,5 +1,5 @@
 /*
- * Portable suite: ui_centered_rect - fixed-width, centred content.
+ * Portable suite: ui_centered_rect, fixed-width, centred content.
  *
  * ui_centered_rect() (ui.h) is pure geometry, `static inline` for the same
  * reason ui_bezel_spans() (ui_style.h, see suite_ui_style.c) and
@@ -18,7 +18,7 @@
 
 #include "ui/ui.h"
 
-/* Equal left/right margins, within a pixel - integer division means an odd
+/* Equal left/right margins, within a pixel: integer division means an odd
  * leftover pixel can fall on either side, never both. */
 static void
 assert_centered(int canvas_w, int w, const char* msg) {

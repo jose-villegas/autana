@@ -468,7 +468,7 @@ Acid -->|"dissolvable 110"| Metal
         self.assertEqual(bad, [])
 
     def test_anchor_link_to_a_non_markdown_target_is_not_checked(self):
-        # `#L3` in a link to a script is a line number, not a heading - and
+        # `#L3` in a link to a script is a line number, not a heading, and
         # a Python "# comment" in that file is not a Markdown heading either.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
@@ -479,7 +479,7 @@ Acid -->|"dissolvable 110"| Metal
 
     def test_anchor_link_to_a_directory_is_not_checked(self):
         # A directory link ([notes](docs/notes/#top)) resolves to a folder,
-        # not a .md file - it is what reachable() expands to that folder's
+        # not a .md file; it is what reachable() expands to that folder's
         # README.md, a step check_anchors() does not need to repeat.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

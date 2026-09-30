@@ -1,5 +1,5 @@
 /*
- * console_latch - one verb's request for the frame loop to consume, set by
+ * console_latch: one verb's request for the frame loop to consume, set by
  * the console's reader task and taken by the shell once per set.
  *
  * `pending` alone is enough of a handoff: the reader task is the only
@@ -39,7 +39,7 @@ console_latch_copy(char* into, size_t into_size, const char* from) {
 
 /* The reader task: records a new request, truncating args that do not fit
  * rather than overflowing. A newer call before the frame loop has taken the
- * previous one overwrites it - the latest line is what the device actually
+ * previous one overwrites it: the latest line is what the device actually
  * saw most recently, so that is what a late frame loop should act on. */
 static inline void
 console_latch_set(console_latch_t* latch, const char* args) {

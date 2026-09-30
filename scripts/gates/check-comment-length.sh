@@ -10,7 +10,7 @@
 #   check-comment-length.sh --no-banners        # skip each file's header
 #   check-comment-length.sh path/to/file.c ...  # just these files
 #
-# As a gate, on the comments a change actually touches - which is what makes
+# As a gate, on the comments a change actually touches, which is what makes
 # the rule enforceable while the existing backlog is still there:
 #   check-comment-length.sh --changed main      # vs a branch point
 #   check-comment-length.sh --staged            # what is about to be committed

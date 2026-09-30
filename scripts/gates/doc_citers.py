@@ -18,7 +18,7 @@ change inside one of its functions is still theirs to reread. CMake has no
 functions to name a hunk by, so a CMake change also touches every ALL_CAPS
 word on its changed lines. A file whose diff is empty touches nothing, so
 not even its path is reported.
-Plans are skipped - they keep proposed and superseded names on purpose.
+Plans are skipped; they keep proposed and superseded names on purpose.
 Nothing here fails: a touched citation is a reason to reread the document,
 not proof it is wrong.
 """

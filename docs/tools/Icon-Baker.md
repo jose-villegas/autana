@@ -3,7 +3,7 @@
 `launcher/tools/gen/gen_icons.py` bakes icons from an atlas; the rules below
 are the generator's. Reads a PNG atlas cell or an integer-grid SVG path per
 icon (pixelarticons' shape: `M`/`H`/`V`/`h`/`v`/`Z` only) and emits one
-`icons_<name>.h` per manifest - `gfx/icons_system.h` for the shared set,
+`icons_<name>.h` per manifest: `gfx/icons_system.h` for the shared set,
 `apps/<name>/icons_<name>.h` for an app's own. The shared type both
 instantiate is `icon_t` (`gfx/icon.h`); drawing is `icon_walk_blocks()`
 (streamed runs, not a collected buffer) and `ui_draw_icon()` (`ui/ui.h`).
@@ -22,12 +22,12 @@ Same generator, same format, same tests.
 ## What the generator rejects before emitting
 
 - any PNG pixel that is not strictly on or off (no antialiasing threshold);
-- any SVG icon whose path is not an axis-aligned integer rectangle grid -
+- any SVG icon whose path is not an axis-aligned integer rectangle grid:
   a curve, an arc or a non-integer coordinate is a rejection, not an
   approximation;
 - a named cell that is empty, or a non-empty cell with no name;
 - duplicate names, or names that are not valid C identifiers;
-- an SVG entry missing its `upstream`/`commit` provenance - **provenance is
+- an SVG entry missing its `upstream`/`commit` provenance: **provenance is
   a first-class requirement**, not paperwork, so a re-bake years from now
   stays reproducible and the licence stays checkable;
 - a pack/unpack round trip that does not reproduce the source pixels
@@ -40,5 +40,5 @@ content bounding box inside its declared `w x h`, its baked `blocks` count
 matching what `icon_walk_blocks()` actually produces, and any declared
 symmetry holding. The shared set's suites are `suite_icons_system.c` and
 `suite_icons.c`; an app's header is tested from that app's `tests/`. **Do not
-assert the baked bytes against a Python re-implementation of the packer** -
+assert the baked bytes against a Python re-implementation of the packer**:
 that tests the generator twice and the artifact never.

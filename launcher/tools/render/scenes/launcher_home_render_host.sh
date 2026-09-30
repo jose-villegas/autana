@@ -6,7 +6,7 @@
 #   ./launcher/tools/render/scenes/launcher_home_render_host.sh [-o <dir>]
 #
 # This is the scene that proves the general path: the real ui layer, real
-# microui, several frames and a declared synthetic touch - see
+# microui, several frames and a declared synthetic touch, see
 # launcher_home_render_host.c for what it presses and why two frames are
 # the floor. The rows are a fixture registered into the real app_registry.c.
 #

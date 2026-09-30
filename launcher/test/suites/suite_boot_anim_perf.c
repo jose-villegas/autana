@@ -12,14 +12,14 @@
  * So this FREEZES time instead of letting it run: boot_anim_draw_frame()
  * being a pure function of now_ms means calling it repeatedly at one fixed
  * timestamp is a legitimate, repeatable measurement of exactly what that
- * moment in the animation costs - not a hand-picked scene standing in for
+ * moment in the animation costs, not a hand-picked scene standing in for
  * it. A handful of checkpoints (see build_checkpoints() below), each timed
  * per-phase (clear/floor/axes/curve/zeros/image/title/present), with the
  * same min/max/avg/median/p95 report every performance suite here reports.
  *
- * Runs under DEVICE_BUILD only - needs real panel, DMA, and framebuffer.
+ * Runs under DEVICE_BUILD only: needs real panel, DMA, and framebuffer.
  */
-#include "suites.h" /* portable - needed by SUITE_REGISTER() even on host */
+#include "suites.h" /* portable: needed by SUITE_REGISTER() even on host */
 
 #ifdef DEVICE_BUILD
 
@@ -35,7 +35,7 @@
 #include "boot/boot_anim_timeline.h"
 #include "gfx/gfx.h"
 
-/* boot_anim.c's own draw_* functions, exposed specifically for this suite -
+/* boot_anim.c's own draw_* functions, exposed specifically for this suite;
  * see boot_anim.c's own comment above draw_floor() for why they are
  * non-static rather than declared in boot_anim.h. Calling these directly,
  * not a hand-copy of boot_anim_draw_frame()'s own sequencing, means this
@@ -154,7 +154,7 @@ clamp_below(uint32_t ms, uint32_t exclusive_max) {
  * raw ms literal: the timeline is actively tuned, and a literal would stop
  * meaning what its label says at the next retune.
  *
- * "crossfade_late" is the worst case - a nearly fully grown curve still
+ * "crossfade_late" is the worst case: a nearly fully grown curve still
  * overlapping the per-pixel dithered image loop, which runs only while
  * reveal is strictly between 0 and 255. It sits at 90% through the window,
  * not at the edge, so tween rounding cannot drop the frame into the cheap

@@ -7,7 +7,7 @@
 #   scripts/add-tools-to-path.sh --check    # verify only, change nothing
 #
 # The folder is found from this script's own place, never from the working
-# directory, so it is right whichever checkout it is run from - and it should
+# directory, so it is right whichever checkout it is run from, and it should
 # be run from the PRIMARY checkout, the one that stays put; a worktree is
 # deleted sooner or later and would leave a dead PATH entry. What a command
 # ACTS on is still the current directory, or --project PATH, so one PATH
@@ -16,7 +16,7 @@
 # Windows: the persistent USER Path in the registry, no admin rights, which
 # cmd, PowerShell and Git Bash all inherit. Elsewhere: one line in ~/.profile.
 # Either way it is a no-op when the folder is already there, and a terminal
-# that is already open keeps its old PATH - open a new one.
+# that is already open keeps its old PATH: open a new one.
 #
 # Verification does not trust this shell's PATH: it builds the PATH a NEW
 # terminal would get and resolves `autana` in that, then runs it.

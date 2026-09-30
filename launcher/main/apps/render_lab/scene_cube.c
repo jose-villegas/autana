@@ -16,7 +16,7 @@
 #include "render_lab.h"
 #include "render_lab_scene.h"
 
-/* small3dlib config - must precede its include. */
+/* small3dlib config: must precede its include. */
 #define S3L_PIXEL_FUNCTION     shade_pixel
 #define S3L_RESOLUTION_X       GFX_WIDTH
 #define S3L_RESOLUTION_Y       GFX_HEIGHT
@@ -58,13 +58,13 @@ static S3L_Scene scene;
 static uint32_t elapsed_ms;
 
 /* This frame's drawn-pixel bounds, accumulated by shade_pixel() while
- * render_lab_partial_updates is on - reset to an empty range at the top of
+ * render_lab_partial_updates is on, reset to an empty range at the top of
  * cube_rasterize_frame(), widened by every covered pixel small3dlib
  * reports. */
 static int frame_x0, frame_y0, frame_x1, frame_y1;
 
-/* This frame's overall cube coverage - the union of every bin entry's own
- * extent, accumulated by cube_transform_and_bin() - and last frame's,
+/* This frame's overall cube coverage (the union of every bin entry's own
+ * extent, accumulated by cube_transform_and_bin()) and last frame's,
  * remembered so band mode can mark the union of where the cube WAS and
  * where it IS dirty: a band the cube left still needs erasing even though
  * nothing there overlaps this frame. */
@@ -90,7 +90,7 @@ clamp_to_byte(S3L_Unit v) {
     return (uint8_t)v;
 }
 
-/* Called by small3dlib for every pixel a triangle covers - the equivalent
+/* Called by small3dlib for every pixel a triangle covers: the equivalent
  * of a fragment shader, running on the CPU. pixel->barycentric holds
  * three weights summing to S3L_F that say how close this pixel is to
  * each corner, so averaging corner colours with them produces a smooth
@@ -112,7 +112,7 @@ shade_pixel(S3L_PixelInfo* pixel) {
 
     if (band_target != NULL) {
         if (pixel->y < band_row0 || pixel->y >= band_row1) {
-            return; /* not this band's row - small3dlib drew the whole scene */
+            return; /* not this band's row; small3dlib drew the whole scene */
         }
         band_target[(pixel->y - band_row0) * GFX_WIDTH + pixel->x] = color;
         return;
@@ -120,7 +120,7 @@ shade_pixel(S3L_PixelInfo* pixel) {
 
     gfx_framebuffer()[pixel->y * GFX_WIDTH + pixel->x] = color;
 
-    /* Only tracked in render_lab_partial_updates mode - cube_rasterize_frame() is the
+    /* Only tracked in render_lab_partial_updates mode; cube_rasterize_frame() is the
      * sole reader, and there is no reason to pay for it on every one of the
      * tens of thousands of pixels a frame otherwise covers. */
     if (render_lab_partial_updates) {
@@ -157,7 +157,7 @@ cube_clear_frame(void) {
 
 /* Exposed (suite_cube_perf.c) so the perf suite can time this without
  * touching small3dlib itself. small3dlib.h defines real, non-static
- * functions when included with S3L_PIXEL_FUNCTION etc. set - so only this
+ * functions when included with S3L_PIXEL_FUNCTION etc. set, so only this
  * translation unit can call S3L_newFrame()/S3L_drawScene() at all; a
  * second #include from suite_cube_perf.c would redefine those symbols and
  * fail to link. */
@@ -190,7 +190,7 @@ cube_rasterize_frame(void) {
     }
 }
 
-/* One visible triangle, transformed once per frame - see
+/* One visible triangle, transformed once per frame; see
  * cube_transform_and_bin(). y0/y1 is its screen-space row extent, so a band
  * can test overlap without touching small3dlib; sort_value is
  * S3L_drawScene()'s own depth key, kept so the bin stays back-to-front. */
@@ -274,7 +274,7 @@ void
 cube_transform_and_bin(void) {
     S3L_Mat4 mat_camera, mat_final;
 
-    assert(cube.customTransformMatrix == 0); /* S3L_sceneInit()'s own default - never set by this scene */
+    assert(cube.customTransformMatrix == 0); /* S3L_sceneInit()'s own default, never set by this scene */
 
     S3L_makeCameraMatrix(scene.camera.transform, mat_camera);
     S3L_makeWorldMatrix(cube.transform, mat_final);
@@ -366,7 +366,7 @@ static void
 scene_cube_frame(uint32_t dt_ms, bool band_mode_active) {
     cube_update_rotation(dt_ms);
     if (band_mode_active) {
-        cube_transform_and_bin(); /* also marks the cube's own coverage dirty - see its own comment */
+        cube_transform_and_bin(); /* also marks the cube's own coverage dirty; see its own comment */
     } else {
         cube_clear_frame();
         cube_rasterize_frame();

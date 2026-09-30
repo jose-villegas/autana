@@ -65,14 +65,14 @@ typedef struct {
 
 suite_run_t suites_run_request(const char* request);
 
-/* The completion line a harness waits for - one owner, so the tools that parse
+/* The completion line a harness waits for: one owner, so the tools that parse
  * it are pinned to what this prints. */
 void suites_print_run(const suite_run_t* run);
 
 /* Asked by suite_run_test_timed() (timing.c) for each test: true to run it. */
 bool suites_test_runs(const char* test_name);
 
-/* How many suites did NOT fit and were dropped - see suite_register().
+/* How many suites did NOT fit and were dropped; see suite_register().
  *
  * Both runners fail when this is nonzero. It is checked there rather than in
  * a suite of its own for the obvious reason: a guard that registers like

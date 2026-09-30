@@ -18,10 +18,10 @@ static int64_t now;
 static void
 fixture(void) {
     button_fsm_reset(&b);
-    now = 1000000; /* arbitrary, but not zero - catches sloppy comparisons */
+    now = 1000000; /* arbitrary, but not zero: catches sloppy comparisons */
 }
 
-/* One sample at a moment in time - for constructing bounce sequences. */
+/* One sample at a moment in time, for constructing bounce sequences. */
 static void
 advance(int64_t ms, bool level) {
     now += ms * MS;
@@ -119,14 +119,14 @@ static void
 test_a_button_already_down_at_startup_does_not_fire(void) {
     fixture();
 
-    /* Held as the app starts - the BOOT button is easy to still be pressing
+    /* Held as the app starts: the BOOT button is easy to still be pressing
      * a moment after a reset. */
     advance(0, true);
     TEST_ASSERT_FALSE_MESSAGE(button_fsm_take_pressed(&b), "the first sample is the starting state, not an event");
     TEST_ASSERT_TRUE(button_fsm_is_down(&b));
 
     /* Priming sets hold_fired = true for a button already down, so a hold
-     * never phantom-fires for it (see the held tests below) - and that same
+     * never phantom-fires for it (see the held tests below), and that same
      * flag is what a real press-that-became-a-hold uses to swallow its
      * release. The two share one flag, so they share one consequence: a
      * press we never witnessed the start of now delivers no synthetic edge
@@ -211,7 +211,7 @@ test_hold_is_timed_from_the_debounced_press_not_the_first_raw_sample(void) {
     fixture();
     advance(0, false);
 
-    /* Bounce on make, as in the contact-bounce test above - every one of
+    /* Bounce on make, as in the contact-bounce test above: every one of
      * these transitions is well inside the debounce window, so none of them
      * is the real, debounced press. */
     advance(2, true);
@@ -220,7 +220,7 @@ test_hold_is_timed_from_the_debounced_press_not_the_first_raw_sample(void) {
     advance(2, false);
     advance(3, true);
 
-    advance(30, true); /* now it settles - this is the debounced press */
+    advance(30, true); /* now it settles: this is the debounced press */
     TEST_ASSERT_TRUE(button_fsm_take_pressed(&b));
 
     /* If the hold clock had started at the very first raw sample (11 ms
@@ -239,7 +239,7 @@ static void
 test_a_button_already_down_at_startup_fires_no_pressed_or_held(void) {
     fixture();
 
-    /* Held as the app starts, same setup as the plain startup test above -
+    /* Held as the app starts, same setup as the plain startup test above,
      * but held long enough here to also rule out a phantom `held`. */
     advance(0, true);
     TEST_ASSERT_FALSE(button_fsm_take_pressed(&b));

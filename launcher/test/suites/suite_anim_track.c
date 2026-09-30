@@ -1,5 +1,5 @@
 /*
- * Portable suite: anim/anim_track - what a track returns at, before and
+ * Portable suite: anim/anim_track, what a track returns at, before and
  * after its keys, whatever it will later drive. Every track is built here.
  * That the baker's output and the Python sampler agree with it is
  * tools/tests/test_anim_bake.py.

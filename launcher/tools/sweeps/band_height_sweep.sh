@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
 # ems.2 acceptance 3: builds the diagnostics image with one GFX_BAND_HEIGHT
-# choice (16, 32 or 64 - see main/Kconfig.projbuild), so a device sweep
+# choice (16, 32 or 64, see main/Kconfig.projbuild), so a device sweep
 # across heights is the same command three times rather than a hand-edited
-# sdkconfig each time. Never flashes or opens a serial port - band-per-band
+# sdkconfig each time. Never flashes or opens a serial port; band-per-band
 # perf is a device measurement someone at the board has to take.
 #
 # Usage:
@@ -38,7 +38,7 @@ BUILD_DIR="build.diag.bh$HEIGHT"
 DEFAULTS_FILE="$LAUNCHER_DIR/sdkconfig.defaults.band_height_$HEIGHT"
 
 # A fourth defaults layer, same idea as sdkconfig.defaults.diag_autorun
-# layering onto sdkconfig.defaults.diag - one line, applied on top of the
+# layering onto sdkconfig.defaults.diag, one line, applied on top of the
 # diag build's own defaults, never touching main/Kconfig.projbuild's
 # default (32) for a plain build.
 printf 'CONFIG_LAUNCHER_GFX_BAND_HEIGHT_%s=y\n' "$HEIGHT" > "$DEFAULTS_FILE"

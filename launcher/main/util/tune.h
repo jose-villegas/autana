@@ -1,5 +1,5 @@
 /*
- * tune - numbers a developer can change on a running device, by name, over
+ * tune, numbers a developer can change on a running device, by name, over
  * the console: "SET ridge.theme_rgb 0x1199C8". For a constant that is judged by eye,
  * where each guess otherwise costs a build and a flash.
  *
@@ -15,8 +15,8 @@
  * is written back into its TUNE line, and nothing is kept across a reboot.
  *
  * A registry is a list threaded through the entries themselves, so there is
- * no table to fill. The protocol is pure - a line in, replies out through a
- * callback, against a registry a test can own - and the console listener is
+ * no table to fill. The protocol is pure (a line in, replies out through a
+ * callback, against a registry a test can own) and the console listener is
  * the device's caller, against the shared one.
  */
 #pragma once

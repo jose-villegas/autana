@@ -1,5 +1,5 @@
 /*
- * ui_dropdown_render_host - ui_dropdown() on its own, driven by a scripted
+ * ui_dropdown_render_host, ui_dropdown() on its own, driven by a scripted
  * finger: open it, drag its list down and back up, pick another item, then
  * all of it again from the new pick. Twelve items near the bottom of the
  * canvas, so the list opens upward and has to scroll.

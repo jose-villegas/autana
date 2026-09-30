@@ -237,7 +237,7 @@ post_layout_entry_height(const post_layout_t* l, const char* detail) {
     return 1 + post_wrap_count(detail, post_layout_wrap_columns(l, POST_LAYOUT_MARK_CHARS));
 }
 
-/* The pass the drawer would walk, walked rather than drawn - so what "fits"
+/* The pass the drawer would walk, walked rather than drawn, so what "fits"
  * means here cannot drift from where the drawer actually stops. */
 static bool
 report_fits(const post_layout_t* l, const post_entries_t* entries) {

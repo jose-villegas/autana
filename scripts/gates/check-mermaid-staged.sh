@@ -5,7 +5,7 @@
 #
 #   scripts/gates/check-mermaid-staged.sh
 #
-# Checks the staged blob, not the file on disk - same reasoning as
+# Checks the staged blob, not the file on disk; same reasoning as
 # check-format-staged.sh: `git show ":$file"` piped into check-mermaid.mjs's
 # --stdin mode, one file at a time, so a partially staged file is judged by
 # what is actually about to be committed.

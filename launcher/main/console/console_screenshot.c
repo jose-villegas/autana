@@ -1,11 +1,11 @@
 /*
- * console_screenshot - SCREENSHOT: prints the frame gfx holds
+ * console_screenshot (SCREENSHOT): prints the frame gfx holds
  * (gfx_read_panel_row()) as base64 between marker lines that
  * tools/device/screenshot.py reads back out of the console stream idf_monitor
  * already uses. The verb itself only sets a latch; console_screenshot_dump()
- * does the actual streaming, called from main.c's frame loop - see
+ * does the actual streaming, called from main.c's frame loop; see
  * console.c's own top comment for why nothing here may draw on this task.
- * Development builds only - see console.h.
+ * Development builds only; see console.h.
  */
 #include "console/console_screenshot.h"
 #include "console/console.h"
@@ -49,17 +49,17 @@ console_screenshot_take_request(void) {
 /* Not stack-local: console_screenshot_dump() runs on the shell task
  * (3584-byte stack), and a 736-byte pixel row, its 1104-byte BMP row and
  * 1472 bytes of base64 would be most of that budget on top of
- * printf/ESP_LOGI's own use. Not permanently static either - held only for
+ * printf/ESP_LOGI's own use. Not permanently static either: held only for
  * the duration of a capture, because static here competes for the largest
  * contiguous heap block an app may need at runtime. */
 static gfx_color_t* pixels;
 static uint8_t* row;
 static char* row_b64; /* +1: NUL, for printf("%s") */
 
-/* How much room an app's diagnostic_json() fragment is given - see app_t's
+/* How much room an app's diagnostic_json() fragment is given; see app_t's
  * own comment in app.h for what it may contain. Generous relative to what
  * any existing implementation actually uses, on the same reasoning
- * DEVICE_STATE_JSON_MAX budgets headroom rather than a tight fit - this is
+ * DEVICE_STATE_JSON_MAX budgets headroom rather than a tight fit; this is
  * a diagnostic path, not one worth re-deriving an exact bound for. */
 #define APP_DIAGNOSTIC_JSON_MAX 256
 

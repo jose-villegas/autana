@@ -1,5 +1,5 @@
 /*
- * ui_anchor - fixed-point anchors and pivots for pure rectangle placement.
+ * ui_anchor: fixed-point anchors and pivots for pure rectangle placement.
  */
 #pragma once
 

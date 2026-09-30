@@ -4,13 +4,13 @@
  *
  * Drives the real ui_launcher_draw() through ui_pointer_step(), the same
  * bridge suite_ui_pointer_microui.c proves against a plain list, with this
- * suite's own mu_begin()/mu_end() standing in for ui_begin()/ui_end() -
+ * suite's own mu_begin()/mu_end() standing in for ui_begin()/ui_end();
  * ui_end() alone needs the real framebuffer, which is why ui_launcher_draw()
  * was split out from it in the first place (see ui_launcher.c's own top
  * comment).
  *
  * Registers its fixture apps through the real app_register() and clears
- * them with app_registry_reset_for_test(), which no device build has -
+ * them with app_registry_reset_for_test(), which no device build has;
  * hence run_tests.sh only.
  */
 
@@ -33,7 +33,7 @@
 #include "ui/ui_pointer.h"
 #include "ui/ui_transform.h"
 
-/* LAUNCHER_BTN_W (ui_launcher_draw.c) - private to that file, mirrored here so
+/* LAUNCHER_BTN_W (ui_launcher_draw.c), private to that file, mirrored here so
  * this suite can tap the same physical spot a real finger would. */
 #define LAUNCHER_BTN_W 240
 
@@ -55,7 +55,7 @@ static void
 noop_exit(void) {}
 
 /* Zero-padded so ascending index order and the registry's own name order
- * agree - test_apps[i] lands at row i either way. */
+ * agree: test_apps[i] lands at row i either way. */
 static void
 set_app_count(int n) {
     TEST_ASSERT_TRUE(n <= MAX_TEST_APPS);
@@ -158,7 +158,7 @@ drag(int x, int y0, int y1, int steps) {
 
 /* Today's own formula (ui_launcher.c's draw_app_rows()): row i sits
  * UI_BANNER_HEIGHT + UI_ROW_GAP down, then UI_ROW_HEIGHT + UI_ROW_GAP per
- * row after that - unchanged by the migration, only how it reaches
+ * row after that, unchanged by the migration, only how it reaches
  * microui. */
 static mu_Rect
 old_row_rect(int i) {

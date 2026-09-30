@@ -1,12 +1,12 @@
 /*
- * gfx_present_guard - the "no present in flight" invariant every gfx_*
+ * gfx_present_guard: the "no present in flight" invariant every gfx_*
  * entry point that reads or writes drawing state or the framebuffer checks,
  * as a standalone, ESP-IDF-free module.
  *
  * Header-only and static, the same reason gfx_dirty.h is: gfx.c includes
  * this once and gets its own flag and trip counter; a host suite includes it
  * again and gets an independent copy to drive and inspect directly, with no
- * ESP-IDF dependency to satisfy - see suite_gfx_present_guard.c.
+ * ESP-IDF dependency to satisfy; see suite_gfx_present_guard.c.
  *
  * Compiled out of a release device build entirely (GFX_PRESENT_GUARD() folds
  * to nothing there, so the check costs nothing), active on a development
@@ -31,7 +31,7 @@ static bool gfx_present_guard_in_flight;
 static unsigned gfx_present_guard_trips;
 #endif
 
-/* gfx_present_begin() calls this once it has committed to sending - device
+/* gfx_present_begin() calls this once it has committed to sending, device
  * or host alike. */
 static inline void
 gfx_present_guard_begin(void) {

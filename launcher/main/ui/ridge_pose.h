@@ -1,5 +1,5 @@
 /*
- * ridge_pose - the launcher ridge's pose: gravity turned into a unit
+ * ridge_pose, the launcher ridge's pose: gravity turned into a unit
  * vector, eased and snapped level once it holds still, and where a screen
  * point lies along it.
  *
@@ -57,8 +57,8 @@ ridge_pose_within(ridge_vector_t a, ridge_vector_t b, int step) {
 }
 
 /* The level a gravity reading points to: `gx`, `gy` normalised to a unit
- * vector, or `level` unchanged if the reading is weaker than `min_strength`
- * - too flat a device for "down" to mean anything. */
+ * vector, or `level` unchanged if the reading is weaker than `min_strength`,
+ * too flat a device for "down" to mean anything. */
 static inline ridge_vector_t
 ridge_pose_level_from_gravity(ridge_vector_t level, int gx, int gy, int strength, int min_strength) {
     if (strength < min_strength) {
@@ -99,7 +99,7 @@ ridge_pose_ease(ridge_pose_t* rp, ridge_vector_t target, uint32_t dt_ms, int tau
 
 /* Where the pose is heading: `boot_pose` until `alive_ms` reaches `hold_ms`,
  * then the level down settled on once it has held within `steady_step` for
- * `steady_hold_ms` - so a resting line is not chasing sensor noise. */
+ * `steady_hold_ms`, so a resting line is not chasing sensor noise. */
 static inline ridge_vector_t
 ridge_pose_target(ridge_pose_t* rp, const ridge_pose_params_t* params, uint32_t dt_ms, uint32_t alive_ms) {
     if (alive_ms < params->hold_ms) {
@@ -116,7 +116,7 @@ ridge_pose_target(ridge_pose_t* rp, const ridge_pose_params_t* params, uint32_t 
 
 /* One frame of `ridge_pose_target` then `ridge_pose_ease`, snapped to the
  * target exactly once steady for `steady_hold_ms` and within `redraw_step`
- * of it - easing never quite arriving would otherwise leave the line a
+ * of it: easing never quite arriving would otherwise leave the line a
  * fraction of a degree off level forever. Returns whether it snapped. */
 static inline bool
 ridge_pose_advance(ridge_pose_t* rp, const ridge_pose_params_t* params, uint32_t dt_ms, uint32_t alive_ms) {

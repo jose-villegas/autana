@@ -1,5 +1,5 @@
 /*
- * ui_transform - a 2x3 affine transform for the UI layer, in fixed point.
+ * ui_transform: a 2x3 affine transform for the UI layer, in fixed point.
  *
  * Every rect, icon, clip and text position microui hands to ui.c is in the
  * UI's own LOGICAL coordinates. This turns a logical point into the PHYSICAL
@@ -70,7 +70,7 @@ ui_fp_mul(ui_fp_t a, ui_fp_t b) {
 }
 
 /* Divide two Q16.16 numbers, rounding the result to Q16.16. `den` must be
- * nonzero - callers here only ever divide by a determinant already checked
+ * nonzero: callers here only ever divide by a determinant already checked
  * against zero. */
 static inline ui_fp_t
 ui_fp_div(ui_fp_t num, ui_fp_t den) {
@@ -85,12 +85,12 @@ ui_transform_identity(void) {
 }
 
 /* Rotation by `turn` quarter turns (mod 4, negative allowed), about a
- * viewport `viewport_w` x `viewport_h` wide - the PHYSICAL panel,
+ * viewport `viewport_w` x `viewport_h` wide: the PHYSICAL panel,
  * unchanged in size when the UI turns. The domain expected is the
  * LOGICAL canvas: for an odd turn that is viewport_h wide, viewport_w
  * tall (see ui_width()/ui_height()), for turn 0 or 2 it is viewport_w x
  * viewport_h. Each matrix entry is exactly 0, UI_FP_ONE or -UI_FP_ONE,
- * translations exact integers scaled by UI_FP_ONE - exact in Q16.16, no
+ * translations exact integers scaled by UI_FP_ONE, exact in Q16.16, no
  * rounding to compound. */
 static inline ui_transform_t
 ui_transform_quarter_turn(int turn, int viewport_w, int viewport_h) {
@@ -107,7 +107,7 @@ ui_transform_quarter_turn(int turn, int viewport_w, int viewport_h) {
     }
 }
 
-/* The transform equivalent to applying `inner` first and `outer` second -
+/* The transform equivalent to applying `inner` first and `outer` second,
  * i.e. the point mapping outer(inner(p)), matrix-multiplied as outer*inner.
  * Read the argument order the way you would read compose(f, g) meaning
  * "f then g". */
@@ -125,7 +125,7 @@ ui_transform_compose(ui_transform_t inner, ui_transform_t outer) {
 }
 
 /* Inverts `t` into `*out`. Returns false, leaving `*out` untouched, if `t` is
- * singular (zero determinant) - a caller pushing a degenerate transform (a
+ * singular (zero determinant); a caller pushing a degenerate transform (a
  * zero scale, say) gets told rather than handed nonsense. */
 static inline bool
 ui_transform_invert(ui_transform_t t, ui_transform_t* out) {
@@ -166,7 +166,7 @@ ui_transform_point(ui_transform_t t, int x, int y, int* ox, int* oy) {
 }
 
 /* Maps all four corners of `r` and returns their axis-aligned bounding
- * box. This is a BOUNDING box, not a rotated rect - mu_Rect has no room
+ * box. This is a BOUNDING box, not a rotated rect: mu_Rect has no room
  * to carry a rotation, so a caller wanting the actual quadrilateral
  * (nothing here does yet) would have to map the corners itself. For
  * anything ui_transform_is_axis_preserving() accepts, the four mapped
@@ -199,7 +199,7 @@ ui_transform_rect(ui_transform_t t, mu_Rect r) {
 }
 
 /* icon_walk_blocks()'s callback context, adapted to transform each run
- * before it reaches the caller's own `emit` - see ui_transform_icon_blocks()
+ * before it reaches the caller's own `emit`; see ui_transform_icon_blocks()
  * below for why this exists instead of transforming `box` once up front. */
 typedef struct {
     ui_transform_t t;
@@ -217,7 +217,7 @@ ui_transform_icon_emit(void* ctx, int x, int y, int w, int h) {
 }
 
 /* icon_walk_blocks() (gfx/icon.h), with each emitted run mapped through `t`
- * before `emit` sees it, not just the enclosing `box` - transforming only
+ * before `emit` sees it, not just the enclosing `box`: transforming only
  * the box lands it correctly but leaves the glyph inside it upright under
  * any quarter turn, the bug MU_COMMAND_RECT/_TEXT never had. `box` is
  * LOGICAL, the same one microui's command carries. */
@@ -229,7 +229,7 @@ ui_transform_icon_blocks(ui_transform_t t, const uint8_t* rows, int iw, int ih, 
 }
 
 /* Which of gfx_text_turned()'s four quarters `t` represents, for a
- * caller that needs to draw text through it - see ui.c's
+ * caller that needs to draw text through it; see ui.c's
  * draw_command(). Only the SIGN pattern of the linear part is read, not
  * its magnitude, so this still answers correctly under a scaled
  * transform (see ui_transform_compose() with a quarter turn folded into
@@ -250,30 +250,30 @@ ui_transform_quarter(ui_transform_t t) {
     if (t.b < 0 && t.c > 0) {
         return 3;
     }
-    return 0; /* not a rotation at all (e.g. the zero matrix) - identity is
+    return 0; /* not a rotation at all (e.g. the zero matrix): identity is
                  the least wrong answer, and
                  ui_transform_is_axis_preserving() would have already
                  rejected this transform anyway. */
 }
 
-/* Where gfx_text_font()'s (x, y) origin - the FIRST glyph's cell,
- * whichever way the string is about to be drawn - must be placed so a
+/* Where gfx_text_font()'s (x, y) origin (the FIRST glyph's cell,
+ * whichever way the string is about to be drawn) must be placed so a
  * string measuring `box` draws flush inside it at `quarter` turns.
  * Turns 0 and 1 walk FORWARD from the origin, so box's own (x, y)
- * corner already IS where glyph 0 belongs - no correction, none
+ * corner already IS where glyph 0 belongs: no correction, none
  * applied. */
 static inline void
 ui_text_glyph0_origin(const gfx_font_t* font, mu_Rect box, int quarter, int scale, int* out_x, int* out_y) {
     *out_x = box.x;
     *out_y = box.y;
     /* Turns 2 and 3 walk BACKWARD, so glyph 0 starts ONE GLYPH CELL in
-     * from the box's FAR edge. That step is `font->cell_w` - NOT
-     * cell_h, NOT advance - in BOTH turn 2 (X) and turn 3 (Y): rotation
+     * from the box's FAR edge. That step is `font->cell_w` (NOT
+     * cell_h, NOT advance) in BOTH turn 2 (X) and turn 3 (Y): rotation
      * always maps a glyph's COLUMN axis (span cell_w) onto whichever
      * screen axis the string walks along, so glyph 0's footprint is
      * cell_w in every turn, never cell_h. Verified three ways
      * (symbolically, via ui_transform_rect(), pixel-for-pixel against a
-     * non-square font) - see suite_ui_transform.c. */
+     * non-square font); see suite_ui_transform.c. */
     if (quarter == 2) {
         *out_x = box.x + box.w - font->cell_w * scale;
     } else if (quarter == 3) {
@@ -281,10 +281,10 @@ ui_text_glyph0_origin(const gfx_font_t* font, mu_Rect box, int quarter, int scal
     }
 }
 
-/* Whether `t` maps axis-aligned rects to axis-aligned rects - the
+/* Whether `t` maps axis-aligned rects to axis-aligned rects: the
  * condition under which gfx_fill_rect(), gfx_set_clip() and the dirty
  * tracker can be trusted, and gfx_text_turned() gets a turn to give.
- * Each logical axis maps onto ONE physical axis, not a mix - either the
+ * Each logical axis maps onto ONE physical axis, not a mix: either the
  * x/y columns keep to their axis (b == c == 0, unrotated, scaled) or
  * swap cleanly (a == d == 0, a 90/270 turn). A shear or arbitrary
  * rotation has a nonzero entry in both columns. `!= 0` rules out a zero

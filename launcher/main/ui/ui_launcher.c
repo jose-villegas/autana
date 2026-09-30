@@ -1,9 +1,9 @@
 /*
- * ui_launcher - the home screen's frame, ui_begin()/ui_end() included.
+ * ui_launcher: the home screen's frame, ui_begin()/ui_end() included.
  *
  * The row layout itself lives in ui_launcher_draw.c, split out the same way
  * every app's own screen splits drawing from ui_begin()/ui_end() (see
- * docs/Building-a-Screen.md) - not for reuse, but because ui_end() needs the
+ * docs/Building-a-Screen.md), not for reuse, but because ui_end() needs the
  * real framebuffer and ui_launcher_draw() alone does not, which is what
  * lets a host suite drive the real row layout without linking gfx.c.
  */

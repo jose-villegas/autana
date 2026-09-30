@@ -1,5 +1,5 @@
 /*
- * board - ESP32-S3 binding (Waveshare ESP32-S3-Touch-AMOLED-1.8).
+ * board: ESP32-S3 binding (Waveshare ESP32-S3-Touch-AMOLED-1.8).
  *
  * The BSP ships only the display/touch/I2C/SD building blocks and has no
  * board_detect() of its own, so this file does the probe itself: which
@@ -18,7 +18,7 @@
 
 static const char* TAG = "board";
 
-/* Drives the audio power amplifier directly - this board has no IO
+/* Drives the audio power amplifier directly; this board has no IO
  * expander pin for it. */
 #define AUDIO_AMP_GPIO GPIO_NUM_46
 

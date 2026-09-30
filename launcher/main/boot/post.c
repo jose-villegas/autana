@@ -104,7 +104,7 @@ post_run_before_display(void) {
          * shell should inherit. */
         bsp_sdcard_unmount();
     } else {
-        /* No card is a normal state, not a fault - hence OPTIONAL. */
+        /* No card is a normal state, not a fault, hence OPTIONAL. */
         report("sd card", false, POST_OPTIONAL,
                err == ESP_ERR_NOT_FOUND ? "no card inserted" : "no card / not mountable");
     }
@@ -125,13 +125,13 @@ check_sdcard_live(void) {
         bsp_sdcard_unmount();
     }
 
-    /* SD has its own bus here, so there is nothing to hand back and forth -
+    /* SD has its own bus here, so there is nothing to hand back and forth;
      * only the mount/unmount cost is worth timing. */
     const int64_t t_end = esp_timer_get_time();
     ESP_LOGI(TAG, "sd round trip: card %lld us", (long long)(t_end - t0));
 
     /* Matches post_result_t::detail's size exactly, like every other check in
-     * this file - report()'s copy into it can never truncate what fit here. */
+     * this file; report()'s copy into it can never truncate what fit here. */
     char detail[96];
     snprintf(detail, sizeof(detail), "%s (live, %lld ms round trip)", card, (long long)((t_end - t0) / 1000));
 
@@ -229,7 +229,7 @@ check_temperature(void) {
 
 /* Every I2C peripheral shares one bus, so a single probe per address
  * establishes whether each chip is alive and addressable. This is the heart of
- * the POST - it is how "can we talk to the gyro" gets answered. */
+ * the POST; it is how "can we talk to the gyro" gets answered. */
 static void
 check_i2c_devices(void) {
     i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
@@ -285,7 +285,7 @@ check_audio_codec(void) {
 
     /* The codec sits behind the amplifier enable board_audio_amp_enable()
      * controls, so bring that up before probing or an alive codec reports
-     * as missing. This only powers the rail - it makes no sound and
+     * as missing. This only powers the rail; it makes no sound and
      * configures nothing. */
     const bool powered = board_audio_amp_enable(true) == ESP_OK;
     vTaskDelay(pdMS_TO_TICKS(10)); /* let the rail settle before probing */

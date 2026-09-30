@@ -1,5 +1,5 @@
 /*
- * Portable suite: frame_cost - microseconds charged to named slots, read out
+ * Portable suite: frame_cost, microseconds charged to named slots, read out
  * as milliseconds per frame.
  */
 

@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 
 # Unity's own output shape: "<file>:<line>:<test_name>:PASS" or
 # "<file>:<line>:<test_name>:FAIL: <message>". Only lines that end in
-# :PASS or :FAIL(: ...) are test results - everything else in the capture
+# :PASS or :FAIL(: ...) are test results; everything else in the capture
 # (boot log, ESP_LOGI lines) is noise for this report.
 RESULT_RE = re.compile(r"^(?P<file>\S*):(?P<line>\d+):(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
 COMPLETE_RE = re.compile(r"SELFTEST_COMPLETE failures=(\d+) elapsed_ms=(\d+)")
@@ -103,7 +103,7 @@ def main() -> int:
         f.write("\n".join(lines))
 
     print(f"{len(results)} tests, {len(passed)} passed, {len(failed)} failed -> {args.out_path}")
-    # Deliberately not gated on a specific "expected" failure count here -
+    # Deliberately not gated on a specific "expected" failure count here;
     # whether N failures is a known baseline (see docs/sand/Architecture.md)
     # or a real regression is a judgement call for whoever reads the
     # report, not something this general-purpose parser should assume.

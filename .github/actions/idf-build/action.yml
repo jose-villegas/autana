@@ -25,7 +25,7 @@ runs:
         key: idf-ccache-${{ inputs.cache-name }}-${{ github.sha }}
         restore-keys: idf-ccache-${{ inputs.cache-name }}-
 
-    # safe.directory: the container's root does not own the checkout - not
+    # safe.directory: the container's root does not own the checkout, not
     # that autana needs git for this: each command's own `--project ..`
     # names the repository root from launcher/, where this runs.
     #
