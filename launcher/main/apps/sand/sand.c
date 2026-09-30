@@ -1194,6 +1194,10 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
     const int lo = im_max(bx * SAND_BLOCK_W, ctx->x0);
     const int hi = im_min(bx * SAND_BLOCK_W + SAND_BLOCK_W, ctx->x1);
 
+    if (span_is_empty(ctx->row, lo, hi)) {
+        return;
+    }
+
     int cx_from, cx_to, cx_step;
     span_x_order(lo, hi, ctx->x_step, &cx_from, &cx_to, &cx_step);
 

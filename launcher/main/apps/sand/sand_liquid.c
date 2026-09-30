@@ -279,20 +279,6 @@ equalise_one_block(sand_t* s, uint8_t* row, int y, int cx_from, int cx_to, int x
     return any_liquid;
 }
 
-/* A block is SAND_BLOCK_H rows tall, so "liquid is near" holds for every row
- * of a band a pool merely touches, and half of those rows hold nothing at
- * all. Worth its own scan rather than the walk's: one induction variable and
- * an empty test, against the walk's four and a spilled reload per cell. */
-static inline bool
-span_is_empty(const uint8_t* row, int x0, int x1) {
-    for (int x = x0; x < x1; x++) {
-        if (!CELL_IS_EMPTY(row[x])) {
-            return false;
-        }
-    }
-    return true;
-}
-
 /* The answer a skipped span still owes equalise_liquids(): found_any is what
  * clears may_have_liquid. */
 static inline bool
