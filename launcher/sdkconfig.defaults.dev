@@ -13,3 +13,7 @@ CONFIG_LAUNCHER_DEVELOPMENT=y
 # The frame watch (util/frame_watch.h) counts allocations made inside a frame
 # through the heap's own hooks.
 CONFIG_HEAP_USE_HOOKS=y
+
+# The bootloader's own Kconfig cannot see LAUNCHER_DEVELOPMENT, so a
+# development-type build turns the reset drain on here.
+CONFIG_PMIC_COLD_BOOT_HOST_DRAIN=y
