@@ -1189,10 +1189,24 @@ typedef struct {
 /* Marks BLOCK_ACTIVE if anything moves in a block's x-span within a row, for
  * compute_settled_bit()'s later finalisation pass; does nothing if
  * block_state is disabled. */
+static inline bool
+span_is_empty(const uint8_t* row, int x0, int x1) {
+    for (int x = x0; x < x1; x++) {
+        if (!CELL_IS_EMPTY(row[x])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void
 step_one_block(const sweep_ctx_t* ctx, int bx) {
     const int lo = im_max(bx * SAND_BLOCK_W, ctx->x0);
     const int hi = im_min(bx * SAND_BLOCK_W + SAND_BLOCK_W, ctx->x1);
+
+    if (span_is_empty(ctx->row, lo, hi)) {
+        return;
+    }
 
     int cx_from, cx_to, cx_step;
     span_x_order(lo, hi, ctx->x_step, &cx_from, &cx_to, &cx_step);
