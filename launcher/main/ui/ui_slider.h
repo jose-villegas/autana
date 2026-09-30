@@ -1,11 +1,11 @@
 /*
- * ui_slider - pure geometry for an integer-valued slider: the knob and
+ * ui_slider, pure geometry for an integer-valued slider: the knob and
  * filled-track rects for a value, and the inverse (a touch x -> a value).
  *
  * Same split ui_style.h makes, for the same reason: WHERE things go is a
- * host-testable question, HOW they get onto the framebuffer is not -
+ * host-testable question, HOW they get onto the framebuffer is not;
  * ui_slider_int() in ui_build.c turns this into mu_draw_rect() calls via
- * ui_panel_spans()/ui_bezel_spans(). Nothing here calls a microui function -
+ * ui_panel_spans()/ui_bezel_spans(). Nothing here calls a microui function:
  * mu_rect() is a real function in microui.c, so rects below are compound
  * literals, which is what keeps this header linkable on its own.
  *
@@ -17,7 +17,7 @@
 #include "microui.h"
 
 /* Round a/b to the nearest integer, ties away from zero. `a` and `b` are
- * both assumed non-negative here - every call site below only ever divides
+ * both assumed non-negative here: every call site below only ever divides
  * a pixel offset or a value span, neither of which goes negative. */
 static inline int
 ui_slider_round_div(int a, int b) {
@@ -40,7 +40,7 @@ ui_slider_travel(mu_Rect track, int knob_w) {
 
 /* The knob rect for `value` within [lo, hi] over `track`, `knob_w` wide
  * (clamped to fit, see ui_slider_knob_w()). y and h always match the
- * track - only x moves. `lo == hi` (or any range <= 0) parks the knob at
+ * track; only x moves. `lo == hi` (or any range <= 0) parks the knob at
  * the track's start rather than dividing by zero. */
 static inline mu_Rect
 ui_slider_knob_rect(mu_Rect track, int lo, int hi, int value, int knob_w) {
@@ -52,7 +52,7 @@ ui_slider_knob_rect(mu_Rect track, int lo, int hi, int value, int knob_w) {
     return (mu_Rect){x, track.y, w, track.h};
 }
 
-/* Where the knob's centre sits for `value` - the point a finger is
+/* Where the knob's centre sits for `value`: the point a finger is
  * actually placing when it drags. ui_slider_value_at_x() inverts THIS,
  * not the knob's left edge: map the finger to the edge instead and the
  * knob rides half its own width to the right of the thumb pushing it. */
@@ -63,7 +63,7 @@ ui_slider_knob_center_x(mu_Rect track, int lo, int hi, int value, int knob_w) {
 }
 
 /* The filled portion of the track, from its left edge to the knob's
- * centre - the part of the design already "passed" by the current value. */
+ * centre, the part of the design already "passed" by the current value. */
 static inline mu_Rect
 ui_slider_fill_rect(mu_Rect track, int lo, int hi, int value, int knob_w) {
     const mu_Rect knob = ui_slider_knob_rect(track, lo, hi, value, knob_w);
@@ -74,7 +74,7 @@ ui_slider_fill_rect(mu_Rect track, int lo, int hi, int value, int knob_w) {
 /* Touch x within `track` -> the value it represents, quantized to `step`
  * and clamped to [lo, hi]. Out-of-range x clamps, never wraps. `step <= 0`
  * falls back to 1. The exact inverse of ui_slider_knob_center_x(), not of
- * the knob's left edge - see that function for why. */
+ * the knob's left edge; see that function for why. */
 static inline int
 ui_slider_value_at_x(mu_Rect track, int lo, int hi, int knob_w, int step, int x) {
     const int range = hi - lo;

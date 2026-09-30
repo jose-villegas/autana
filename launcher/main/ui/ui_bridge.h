@@ -1,4 +1,4 @@
-/* ui_bridge - the pointer's events into microui, and what microui reports back. */
+/* ui_bridge: the pointer's events into microui, and what microui reports back. */
 #pragma once
 
 #include "input/input.h"

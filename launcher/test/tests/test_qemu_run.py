@@ -1,4 +1,4 @@
-"""Tests for launcher/test/qemu_run.py's verdict on a finished console log -
+"""Tests for launcher/test/qemu_run.py's verdict on a finished console log:
 the part of a QEMU run that decides its exit status, with no QEMU needed.
 
     python -m unittest discover -s launcher/test/tests

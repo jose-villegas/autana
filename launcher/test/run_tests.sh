@@ -16,7 +16,7 @@
 #
 # It runs only the PORTABLE suites. The hardware ones need real framebuffer
 # memory, DMA and I2C, so they live in the firmware and run at boot on the
-# device - see main/selftest.c. The suite sources are shared, so what passes
+# device; see main/selftest.c. The suite sources are shared, so what passes
 # here is the same set of assertions the board makes.
 #
 # Default output is the verdict and test count. A passing run can emit
@@ -67,7 +67,7 @@ BUILD_DIR="${BUILD_DIR:-$TEST_DIR/build}"
 
 # --- find a compiler -------------------------------------------------------
 # Sourced rather than defined here, so that report_reactions.sh (main/apps/
-# sand/tools/) can find a compiler the same way without a hand-copied twin -
+# sand/tools/) can find a compiler the same way without a hand-copied twin;
 # see tools/build/find_cc.sh's own top comment.
 # shellcheck source=../tools/build/find_cc.sh
 . "$TEST_DIR/../tools/build/find_cc.sh"
@@ -162,7 +162,7 @@ done
 # app needs no change here.
 #
 # The convention: inside main/apps/<name>/, the file named app_*.c is the
-# hardware-facing entry point - it talks to gfx, the IMU and the frame loop, so
+# hardware-facing entry point; it talks to gfx, the IMU and the frame loop, so
 # it cannot link on a host. A scene_*.c is the same kind of file: one of
 # several hardware-facing renderers an app hosts behind its single app_*.c.
 # Everything else in the folder is portable logic and is
@@ -173,10 +173,10 @@ done
 # can be tested on a laptop at all.
 #
 # Recursive, matching main/CMakeLists.txt's own discovered_apps glob and its
-# tools/ exclusion - a screen's drawing code lives one level deeper, in
+# tools/ exclusion: a screen's drawing code lives one level deeper, in
 # apps/<name>/ui/, so a one-level walk would silently drop it from this
-# runner while the firmware kept building it. apps/<name>/tools/ - sweep
-# scripts, report generators - is excluded the same way CMake excludes it:
+# runner while the firmware kept building it. apps/<name>/tools/ (sweep
+# scripts, report generators) is excluded the same way CMake excludes it:
 # by folder, not depth, so a future two-level-deep non-tools folder is swept
 # in rather than silently skipped.
 for f in $(find "$MAIN_DIR/apps" -name '*.c' ! -path '*/tools/*' | sort); do
@@ -189,7 +189,7 @@ $f"
 done
 
 # Exit here, before touching a compiler, for a caller that only wants the
-# exact file list or flag set this script proves compilable - the clang-tidy
+# exact file list or flag set this script proves compilable: the clang-tidy
 # complexity gate (tools/quality/complexity_gate.py) builds its compile database
 # from these instead of keeping its own copy, so the two cannot drift apart
 # the way cognitive_complexity.py's own function finder did. -Werror is
@@ -241,13 +241,13 @@ if [ -z "${QUIET_INNER:-}" ]; then
 fi
 
 # The hardware-facing app_*.c files are excluded from SOURCES above because
-# they cannot link here - which also meant nothing compiled them at all
+# they cannot link here, which also meant nothing compiled them at all
 # until a full device build. Compile-check them first, so a change that
 # does not build is caught here rather than on the board.
 if [ "$BUILD_ONLY" != 1 ]; then
     "$TEST_DIR/check_app_sources.sh"
 
-    # The bootloader hook lives outside SOURCES too - a separate header world
+    # The bootloader hook lives outside SOURCES too: a separate header world
     # entirely, so it gets its own standalone binary rather than joining the
     # suites above.
     "$TEST_DIR/check_pmic_cold_boot.sh" --build-dir "$BUILD_DIR"
@@ -264,14 +264,14 @@ fi
 # Nothing but the compiler's own facts decides staleness: a header edit
 # rebuilds its includers through the depfiles, and every flag that shapes
 # an object (compiler, flags, defines, includes) is written into a stamp file
-# that all objects depend on - a change rebuilds everything, and a sanitizer
+# that all objects depend on; a change rebuilds everything, and a sanitizer
 # build keeps its objects in a directory of its own so switching does not
 # thrash.
 #
 # unity.c must NOT see the -include timing.h that every other source gets:
 # Unity's RUN_TEST is guarded by "#ifndef RUN_TEST", and if timing.h has
 # already defined it, Unity assumes a replacement runner exists and compiles
-# UnityDefaultTestRun - the one function timing.c calls - out entirely.
+# UnityDefaultTestRun (the one function timing.c calls) out entirely.
 #
 # components/microui/include is on the path for ui_style.h's sake, which needs
 # mu_Rect and mu_Color; microui.c itself is linked for the one suite that

@@ -1,5 +1,5 @@
 /*
- * console_freeze - FREEZE, RESUME and STEP. See console_freeze.h.
+ * console_freeze: FREEZE, RESUME and STEP. See console_freeze.h.
  */
 #include "console/console_freeze.h"
 #include "console/console_latch.h"
@@ -16,11 +16,11 @@ static const char* TAG = "freeze";
  * long enough to look like RESUME. */
 #define STEP_MAX      1000
 
-/* The digits of STEP_MAX - what CONSOLE_VERB() sizes its line against. */
+/* The digits of STEP_MAX: what CONSOLE_VERB() sizes its line against. */
 #define STEP_ARGS_MAX 4
 
 /* One latch for all three verbs: they are three ways of saying the same
- * thing - what the loop should do next - so a later one replacing an
+ * thing (what the loop should do next), so a later one replacing an
  * earlier one still waiting is right, which is exactly what a latch does
  * (console_latch.h). The leading character says which verb wrote it. */
 static console_latch_t command;

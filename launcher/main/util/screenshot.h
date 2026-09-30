@@ -1,7 +1,7 @@
 /*
- * screenshot - the byte-exact pieces of a framebuffer-as-BMP capture: the
+ * screenshot, the byte-exact pieces of a framebuffer-as-BMP capture: the
  * BMP header and the base64 encoding below, pure arithmetic with no BSP, no
- * USB and no framebuffer - built and checked on a host (see
+ * USB and no framebuffer, built and checked on a host (see
  * test/suites/suite_screenshot.c).
  *
  * The console listener and the live framebuffer walk are a higher layer,
@@ -13,12 +13,12 @@
 #include <stdint.h>
 
 /*
- * BMP encoding - see console_screenshot.c's write loop for how these two
+ * BMP encoding: see console_screenshot.c's write loop for how these two
  * are used together to build one row at a time.
  */
 
 /* BITMAPFILEHEADER (14 bytes) + BITMAPINFOHEADER (40 bytes), with no pixel
- * data - see screenshot_bmp_header() below. */
+ * data; see screenshot_bmp_header() below. */
 #define SCREENSHOT_BMP_HEADER_SIZE 54
 
 /* Bytes per row once padded to BMP's 4-byte row boundary: width * 3 (24bpp,
@@ -30,10 +30,10 @@ screenshot_bmp_row_stride(int32_t width) {
 
 /* Fills `out[SCREENSHOT_BMP_HEADER_SIZE]` with a BITMAPFILEHEADER +
  * BITMAPINFOHEADER for an uncompressed, bottom-up, 24bpp BMP of `width`
- * x `height` pixels - pixel data follows. Written byte-by-byte in
+ * x `height` pixels; pixel data follows. Written byte-by-byte in
  * explicit little-endian order, not a packed struct: a compiler may pad
  * struct members for alignment, and BMP's layout has no padding between
- * fields - the two agree only by accident on a particular compiler/ABI.
+ * fields; the two agree only by accident on a particular compiler/ABI.
  * `width`/`height` are taken as given: the one caller always passes
  * GFX_WIDTH/GFX_HEIGHT. */
 static inline void
@@ -89,7 +89,7 @@ screenshot_bmp_header(uint8_t out[SCREENSHOT_BMP_HEADER_SIZE], int32_t width, in
  * RFC 4648, no line breaks of its own, '=' padding for a partial group.
  */
 
-/* How many bytes screenshot_base64_encode() writes for `len` input bytes -
+/* How many bytes screenshot_base64_encode() writes for `len` input bytes,
  * NOT including a NUL terminator, which callers wanting a C string must
  * budget for separately. */
 static inline int32_t
@@ -98,8 +98,8 @@ screenshot_base64_encoded_len(int32_t len) {
 }
 
 /* Encodes `len` bytes at `in` into `out`, which must hold at least
- * screenshot_base64_encoded_len(len) bytes. Does not NUL-terminate. Pure -
- * no chunking state between calls - which lets a caller call it once per
+ * screenshot_base64_encoded_len(len) bytes. Does not NUL-terminate. Pure,
+ * no chunking state between calls, which lets a caller call it once per
  * BMP row: every row is a multiple of 3 bytes, so each call ends on a
  * clean group boundary and the '=' padding a partial group needs never
  * occurs for that caller. Tested for a width where it DOES occur

@@ -1,5 +1,5 @@
 /*
- * gfx_heal - which rows to send again, and how, so a region the panel link
+ * gfx_heal: which rows to send again, and how, so a region the panel link
  * received wrong gets corrected without the caller redrawing it.
  *
  * Past the panel's rated clock a send can land with stray pixels, and the
@@ -86,7 +86,7 @@ gfx_heal_pending(const gfx_heal_t* h) {
 }
 
 /* The start of the lattice strip holding `row`, before clipping to the
- * screen - negative when `row` sits above the lattice's first full strip. */
+ * screen; negative when `row` sits above the lattice's first full strip. */
 static inline int
 gfx_heal_strip_start(int row, int phase) {
     const int rel = row - phase;

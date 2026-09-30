@@ -7,7 +7,7 @@
 # run_tests.sh deliberately skips every apps/<name>/app_*.c and scene_*.c:
 # those are the files that talk to gfx, the IMU and the frame loop, so they
 # cannot link on a laptop and there is nothing to run. That is the right call for
-# TESTING and it left a hole in CHECKING - the files were not compiled at
+# TESTING and it left a hole in CHECKING: the files were not compiled at
 # all, by anything, until a full ESP-IDF build on the device.
 #
 # The hole was not theoretical. A rendering change referred to three
@@ -18,8 +18,8 @@
 #
 # So: syntax-only, with stand-in headers (stubs/) for the handful of IDF
 # and BSP things these files include. Nothing is linked and nothing runs.
-# It catches what a compiler catches - undeclared identifiers, bad types,
-# wrong format strings, unused statics - which is exactly the class that
+# It catches what a compiler catches (undeclared identifiers, bad types,
+# wrong format strings, unused statics), which is exactly the class that
 # was getting through.
 #
 # Not a substitute for building on device. A stub only declares what the
@@ -46,11 +46,11 @@ fi
 CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -fsyntax-only"
 
 # CONFIG_LAUNCHER_DEVELOPMENT on, so the development-only branches are
-# compiled too - they are the ones nobody looks at until they break.
+# compiled too; they are the ones nobody looks at until they break.
 DEFS="-DCONFIG_LAUNCHER_DEVELOPMENT=1"
 
 # Vendored components the apps include directly. Discovered rather than
-# listed, so a new one needs no change here - the same reasoning
+# listed, so a new one needs no change here, the same reasoning
 # run_tests.sh uses for finding app sources.
 INCS="-I $STUBS -I $MAIN_DIR"
 for inc in "$HERE"/../components/*/include; do

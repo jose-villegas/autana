@@ -17,7 +17,7 @@ void ui_ridge_set_gravity(int gx, int gy, int strength, int shake);
  * level. */
 void ui_ridge_set_ambient(bool on);
 
-/* Puts the line at level now, with no easing and no hold after boot - for a
+/* Puts the line at level now, with no easing and no hold after boot, for a
  * caller with no time to pass, such as a preview. */
 void ui_ridge_settle(void);
 
@@ -27,7 +27,7 @@ void ui_ridge_settle(void);
  * untouched. */
 void ui_ridge_step(const input_t* input, uint32_t dt_ms);
 
-/* The whole layered backdrop and the ridge as it stands - a ui_backdrop_fn. */
+/* The whole layered backdrop and the ridge as it stands: a ui_backdrop_fn. */
 void ui_ridge_paint(void);
 
 #if CONFIG_LAUNCHER_SELFTEST || !defined(ESP_PLATFORM)

@@ -1,5 +1,5 @@
 /*
- * Portable suite: json_splice - one more key on a JSON object already
+ * Portable suite: json_splice, one more key on a JSON object already
  * written, whole or not at all.
  */
 

@@ -1,5 +1,5 @@
 /*
- * app_arena - see app_arena.h. Portable: on a host the block is ordinary
+ * app_arena: see app_arena.h. Portable: on a host the block is ordinary
  * static memory, so the allocator is tested there as it runs on the board.
  */
 #include "app_arena.h"

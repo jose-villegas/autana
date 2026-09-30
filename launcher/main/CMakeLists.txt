@@ -1,4 +1,4 @@
-# The shell and the board drivers. Apps are NOT listed here - see below.
+# The shell and the board drivers. Apps are NOT listed here; see below.
 set(app_srcs
     "main.c"
     "app_arena.c"
@@ -67,7 +67,7 @@ endif()
 
 # The console listener: a release image has nobody watching the serial
 # console to type a verb into (see console/console.h), so a release build
-# compiles none of console/*.c - no reader task, no registry, no verbs.
+# compiles none of console/*.c: no reader task, no registry, no verbs.
 # RUNSUITE and TOUCH/IMU narrow further still, to the one build variant
 # each actually answers on.
 if(CONFIG_LAUNCHER_DEVELOPMENT)
@@ -98,7 +98,7 @@ list(APPEND app_srcs "board/board_esp32s3.c")
 
 # Apps are discovered, not listed.
 #
-# Everything an app owns lives in main/apps/<name>/ - its entry point, any
+# Everything an app owns lives in main/apps/<name>/: its entry point, any
 # logic of its own, and its test suite. Adding an app means creating the
 # folder; deleting one means deleting the folder. Neither touches this file,
 # and neither touches main.c, because apps register themselves (see app.h).
@@ -111,7 +111,7 @@ list(APPEND app_srcs "board/board_esp32s3.c")
 # CONFIGURE_DEPENDS is illegal in script mode and hard-errors the configure.
 # The script pass only cares about REQUIRES, so plain globbing is fine there.
 # (This is the same early pass that makes a Kconfig-gated REQUIRES silently
-# fail - see the note on unity below.)
+# fail; see the note on unity below.)
 launcher_glob(discovered_apps "${CMAKE_CURRENT_LIST_DIR}/apps/*.c")
 
 # apps/<name>/tools/ is an app's host-side tooling, not firmware. The glob
@@ -152,7 +152,7 @@ list(APPEND app_srcs ${discovered_apps})
 # SPI2. "sdmmc" itself is still needed for sdmmc_card_t and the protocol
 # layer underneath the host driver.
 #
-# esp_lcd_co5300 brings up the V2 (CO5300 panel) revision - see gfx.c. It is
+# esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see gfx.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
 set(app_reqs microui small3dlib esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
@@ -163,7 +163,7 @@ set(app_reqs microui small3dlib esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              # perfmon and unity are both listed unconditionally, NOT inside
              # the block below: ESP-IDF expands REQUIRES in an early pass
              # where CONFIG_* is not yet defined, so a Kconfig-gated REQUIRES
-             # silently does nothing - SRCS and compile definitions are
+             # silently does nothing; SRCS and compile definitions are
              # evaluated later and do work, which makes the failure look
              # baffling: the code compiles but cannot find the header.
              #
@@ -176,7 +176,7 @@ set(app_reqs microui small3dlib esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
 if(CONFIG_LAUNCHER_SELFTEST)
     launcher_glob(suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c")
     # SCOPE: full is the default and stays globbed, so nothing can lose
-    # coverage by accident - a scope only ever NARROWS, and only when asked
+    # coverage by accident; a scope only ever NARROWS, and only when asked
     # for by name (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild). The
     # perf scope replaces the shell suites outright with what apps declare.
     if(CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF)
@@ -212,7 +212,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
     # macro (see its own comment) to log a wall-clock line per test without
     # editing a single suite file. -include forces it in ahead of each
     # suite's own "#include unity.h", which is what lets Unity's own
-    # "#ifndef RUN_TEST" step aside for it. Scoped to just the suite files -
+    # "#ifndef RUN_TEST" step aside for it. Scoped to just the suite files;
     # forcing it onto every source in this component would be harmless too
     # (nothing else calls RUN_TEST), but there's no reason to.
     set_source_files_properties(${suite_srcs} ${app_suites} PROPERTIES
@@ -234,7 +234,7 @@ idf_component_register(
     #
     # This component becomes libmain.a, and a linker only extracts an archive
     # member if it resolves an undefined symbol. Nothing references an app by
-    # name any more - that is the entire point - so app_sand.o would never be
+    # name any more (that is the entire point), so app_sand.o would never be
     # extracted, its constructor would never enter .init_array, and the app
     # would silently vanish from the menu. Not a link error: a smaller binary
     # and a shorter list.

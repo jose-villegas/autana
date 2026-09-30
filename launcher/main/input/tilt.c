@@ -6,7 +6,7 @@
 
 /* Integer square root, by binary search over the bits. Needed because shaking
  * is measured as a DISTANCE from one g, and a distance cannot be compared in
- * squared space - unlike the trust gate, which only asks which side of a
+ * squared space, unlike the trust gate, which only asks which side of a
  * boundary a value falls. Runs once per frame. */
 static int32_t
 isqrt64(int64_t v) {
@@ -111,7 +111,7 @@ tilt_update(tilt_t* t, int gx, int gy, int gz, int rotation, uint32_t dt_ms) {
         /* Deliberately not conditioned on t->primed. A sample violent enough
          * to be shaking is exactly one the trust gate below rejects, so the
          * position filter may never prime at all while the board is being
-         * shaken - tying the two together left shake unsmoothed and snapping
+         * shaken; tying the two together left shake unsmoothed and snapping
          * to zero the instant the board was set down. */
         if (step == 0) {
             /* no time passed, so nothing to integrate */
@@ -157,7 +157,7 @@ tilt_update(tilt_t* t, int gx, int gy, int gz, int rotation, uint32_t dt_ms) {
 
     /* Interpolate the time constant itself. Still hands get heavy smoothing, a
      * moving board gets a short one, and everything between is proportional
-     * rather than a switch - a threshold here would just move the rigidity from
+     * rather than a switch; a threshold here would just move the rigidity from
      * whatever follows the tilt to the filter.
      *
      * Safe only because the trust gate above has already thrown out the samples
@@ -181,8 +181,8 @@ tilt_y(const tilt_t* t) {
 int
 tilt_strength(const tilt_t* t) {
     if (t->free_fall) {
-        /* The estimate is deliberately stale here - free fall is not a reading
-         * to follow - so it cannot be trusted to be small. Say so explicitly. */
+        /* The estimate is deliberately stale here (free fall is not a reading
+         * to follow), so it cannot be trusted to be small. Say so explicitly. */
         return 0;
     }
 

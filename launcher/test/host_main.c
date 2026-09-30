@@ -1,5 +1,5 @@
 /*
- * Host runner - the fast loop.
+ * Host runner: the fast loop.
  *
  * Builds and runs in well under a second, which is what makes
  * red-green-refactor practical. It runs only the portable suites; the

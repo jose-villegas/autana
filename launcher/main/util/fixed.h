@@ -1,8 +1,8 @@
 /*
- * fixed - shift-based fixed-point arithmetic, in one place.
+ * fixed: shift-based fixed-point arithmetic, in one place.
  *
  * `static inline` because some of these run in innermost loops where a
- * cross-file call is not free - the same reasoning as intmath.h.
+ * cross-file call is not free, the same reasoning as intmath.h.
  *
  * `shift` is a parameter rather than a constant because the tree works in
  * more than one fixed-point scale, and one vocabulary per scale is how this
@@ -27,7 +27,7 @@
 /* Rounds `v`, ties away from zero (see header top for floor vs round).
  * Splitting on sign matters: a plain arithmetic shift on a negative value
  * rounds toward -infinity, pushing a value half a unit below zero further
- * from zero than one half above it - unlike a truncating cast. Exposed
+ * from zero than one half above it, unlike a truncating cast. Exposed
  * separately from fx_mul_round() because ui_transform.h's ui_fp_round()
  * sums several Q16.16 products (see ui_transform_point()), not a single
  * product, so it needs this directly. */
@@ -55,7 +55,7 @@ fx_mul_round(int32_t a, int32_t b, int shift) {
 
 /* Divide two fixed-point numbers in Q(*.shift), rounding the Q(*.shift)
  * result to the nearest representable value, ties away from zero. `den` must
- * be nonzero - same contract ui_fp_div() has always had, just relocated.
+ * be nonzero, same contract ui_fp_div() has always had, just relocated.
  * Magnitudes are taken after widening: INT32_MIN has none in 32 bits. */
 static inline int32_t
 fx_div_round(int32_t num, int32_t den, int shift) {

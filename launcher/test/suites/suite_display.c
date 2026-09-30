@@ -1,5 +1,5 @@
 /*
- * Specification for display - shell-owned orientation, decided from a
+ * Specification for display: shell-owned orientation, decided from a
  * smoothed gravity vector with hysteresis around the quarter boundaries.
  *
  * The test that matters is the boundary sweep: a slow tilt crossing the
@@ -21,7 +21,7 @@
 
 /* Feeds the same steady (gx, gy) repeatedly, as a steadily-held tilt would
  * read at ~10 Hz, until display_update() stops reporting a change (or a
- * generous cap is hit) - see display.h's own note that a single call can
+ * generous cap is hit); see display.h's own note that a single call can
  * only ever move one quarter, so settling into a fully opposite orientation
  * from a strong start can take a second call. Four calls is more than any
  * reachable case needs. */
@@ -77,7 +77,7 @@ test_a_slow_sweep_through_a_boundary_flips_exactly_once(void) {
 
     /* gy held fixed while gx climbs from 0 well past the old 45-degree snap
      * point (gx == gy) and on past the 60-degree hysteresis trigger, in
-     * small steps - a tilt swept smoothly rather than jumped. */
+     * small steps: a tilt swept smoothly rather than jumped. */
     const int gy = STRONG;
     int changes = 0;
     for (int gx = 0; gx <= 2 * STRONG; gx += 5) {
@@ -97,7 +97,7 @@ test_parked_on_the_old_boundary_does_not_oscillate(void) {
     display_t d;
     display_init(&d); /* quarter 0 */
 
-    /* |gx| == |gy| is the OLD snap-to-nearest boundary (45 degrees) - well
+    /* |gx| == |gy| is the OLD snap-to-nearest boundary (45 degrees), well
      * inside this module's 30..60 degree hysteresis band either way, so it
      * must never be enough to switch. */
     for (int i = 0; i < 20; i++) {
@@ -130,15 +130,15 @@ test_returning_partway_does_not_flip_until_the_inner_threshold(void) {
     settle(&d, STRONG, 0); /* quarter 3: down is to the right */
     TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
 
-    /* Tilting back toward "down is down", but only a little - angle from the
+    /* Tilting back toward "down is down", but only a little: angle from the
      * x axis is arctan(700/1000) =~ 35 degrees, short of the 60-degree
      * threshold this module needs to leave quarter 3. Must hold. */
     TEST_ASSERT_FALSE_MESSAGE(display_update(&d, 1000, 700), "a partial return must not flip the orientation yet");
     TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
 
-    /* Further still - angle from the x axis is now arctan(1000/500) =~ 63
+    /* Further still: angle from the x axis is now arctan(1000/500) =~ 63
      * degrees, past the threshold (equivalently, ~27 degrees from "down is
-     * down", inside the 30-degree inner band) - now it must flip. */
+     * down", inside the 30-degree inner band); now it must flip. */
     TEST_ASSERT_TRUE_MESSAGE(display_update(&d, 500, 1000), "a return well past the inner threshold must flip back");
     TEST_ASSERT_EQUAL_INT(0, display_quarter(&d));
 }

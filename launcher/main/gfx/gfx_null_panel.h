@@ -1,12 +1,12 @@
 /*
- * gfx_null_panel - an esp_lcd panel with nothing behind it, for an image
+ * gfx_null_panel: an esp_lcd panel with nothing behind it, for an image
  * that runs where no panel exists (CONFIG_LAUNCHER_QEMU).
  *
  * It keeps the one property of the real link the code above it depends on:
  * a strip occupies the bus for its own transfer time, one strip after
  * another, and only then reports itself sent. Costs therefore keep their
- * order - a narrow window is cheaper than a band, a band cheaper than a
- * frame, nothing sent costs nothing - without any of them being the board's
+ * order: a narrow window is cheaper than a band, a band cheaper than a
+ * frame, nothing sent costs nothing, without any of them being the board's
  * own microseconds.
  */
 #pragma once

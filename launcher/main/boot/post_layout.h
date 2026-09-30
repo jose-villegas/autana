@@ -1,11 +1,11 @@
 /*
- * post_layout - where the power-on self-test report's title, summary and
+ * post_layout: where the power-on self-test report's title, summary and
  * report lines sit on the panel.
  *
  * Pure geometry with the canvas passed in, so the same rects resolve on a
  * host as on the board; post_ui.c owns the drawing. Arithmetic rather than a
- * UI layout because this report is drawn before the frame loop - and the UI
- * layer's screens with it - exists.
+ * UI layout because this report is drawn before the frame loop, and the UI
+ * layer's screens with it, exists.
  *
  * Rects resolve in the UPRIGHT LOGICAL canvas, width and height already
  * swapped for whichever quarter turn the panel is read at, and the drawer
@@ -25,7 +25,7 @@
  * gives up a column rather than truncate; a longer detail string wraps. */
 #define POST_LAYOUT_WIDEST_LINE       "[ok] audio codec"
 
-/* The MOST columns an orientation will split into - landscape's short side
+/* The MOST columns an orientation will split into: landscape's short side
  * is what forces any at all, portrait has the height for a single list. A
  * report uses the fewest it fits in, which is rarely the ceiling. */
 #define POST_LAYOUT_LANDSCAPE_COLUMNS 3
@@ -79,7 +79,7 @@ mu_Rect post_layout_column(const post_layout_t* l, int column);
  * next. Empty once the columns are full, which is the drawer's cue to stop. */
 mu_Rect post_layout_line(const post_layout_t* l, int index);
 
-/* Text lines the columns hold with nothing between them - what
+/* Text lines the columns hold with nothing between them, what
  * post_layout_line() addresses, and the most a report can ever show. */
 int post_layout_capacity(const post_layout_t* l);
 
@@ -128,12 +128,12 @@ typedef struct {
 } post_wrap_line_t;
 
 /* Walks `text` one wrapped line at a time at `columns` wide, breaking at the
- * last space that still fits and hard-breaking a token longer than the line -
+ * last space that still fits and hard-breaking a token longer than the line,
  * so a pathological string still renders rather than looping forever. Start
  * `cursor` at 0; a returned `len` of 0 ends the walk. */
 post_wrap_line_t post_wrap_next(const char* text, int columns, int* cursor);
 
-/* The same walk, counted rather than drawn - which is how a check's height
+/* The same walk, counted rather than drawn, which is how a check's height
  * is known before a line of it is placed. */
 int post_wrap_count(const char* text, int columns);
 
@@ -143,7 +143,7 @@ int post_wrap_count(const char* text, int columns);
 int post_layout_entry_height(const post_layout_t* l, const char* detail);
 
 /* The checks a report is about to draw, without committing to how they are
- * stored - all the layout needs is each one's detail string, to measure. */
+ * stored: all the layout needs is each one's detail string, to measure. */
 typedef struct {
     int count;
     const char* (*detail)(void* ctx, int index);
@@ -154,6 +154,6 @@ typedef struct {
 /* The layout to draw this report with: the fewest columns it fits in with a
  * full line of air between checks, since fewer columns are wider ones and
  * wrap the details less. Where no column count affords that, every column is
- * used and the air shrinks to the widest uniform pixel gap that still fits -
+ * used and the air shrinks to the widest uniform pixel gap that still fits;
  * air thinner than a line beats dropping checks off the end. */
 post_layout_t post_layout_for_report(const gfx_font_t* font, int screen_w, int screen_h, const post_entries_t* entries);

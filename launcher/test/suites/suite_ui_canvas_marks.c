@@ -1,5 +1,5 @@
 /*
- * Portable suite: ui_canvas_marks - a window that stops being drawn has the
+ * Portable suite: ui_canvas_marks, a window that stops being drawn has the
  * rect it was last painted over reported once, so ui_end() can repaint it.
  */
 

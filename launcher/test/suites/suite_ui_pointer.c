@@ -1,8 +1,8 @@
 /*
- * Portable suite: ui_pointer - input_t to move/down/up events, held not
+ * Portable suite: ui_pointer, input_t to move/down/up events, held not
  * tapped.
  *
- * ui.c's own feed_input() has no host coverage - suite_ui.c is device-only -
+ * ui.c's own feed_input() has no host coverage (suite_ui.c is device-only),
  * so this is the first place the touch-to-mouse bridge's policy is actually
  * asserted rather than eyeballed on a screenshot.
  */
@@ -47,7 +47,7 @@ press_through_hover(int x, int y) {
 }
 
 /*
- * The press frame carries no DOWN - load-bearing, see ui.h's touch-to-mouse
+ * The press frame carries no DOWN, load-bearing, see ui.h's touch-to-mouse
  * comment. Lost, a touchscreen tap could never resolve into a click at all.
  */
 
@@ -119,7 +119,7 @@ test_a_new_press_pays_the_owed_up_first(void) {
     TEST_ASSERT_FALSE(p.down);
 }
 
-/* Holding, not releasing - the whole point of this module. */
+/* Holding, not releasing: the whole point of this module. */
 
 static void
 test_a_drag_stays_down_across_moves_then_lifts_once(void) {
@@ -241,7 +241,7 @@ test_a_finger_already_down_at_open_then_released_emits_no_up(void) {
 }
 
 /*
- * The header promises never more than `max` - a too-small buffer must be
+ * The header promises never more than `max`: a too-small buffer must be
  * rejected outright, not partially filled, and must not touch state either
  * (a caller with a short buffer must not silently eat a press edge).
  */

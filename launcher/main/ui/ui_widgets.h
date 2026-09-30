@@ -1,5 +1,5 @@
 /*
- * ui_widgets - the controls microui does not have, built the way
+ * ui_widgets, the controls microui does not have, built the way
  * docs/Building-a-Screen.md asks: mu_get_id() + mu_update_control() for the
  * hit, commands for everything drawn, and the caller deciding what a hit
  * means.
@@ -64,7 +64,7 @@ bool ui_theme_slider_int(mu_Context* ctx, mu_Rect r, int* value, int lo, int hi,
 int ui_icon_button_label_width(int button_w, bool has_icon, const ui_theme_t* theme);
 
 /* The icon above the label, for one of a row of choices; the icon takes
- * whatever square the label leaves - ui_tile_icon_rect(), where a caller
+ * whatever square the label leaves: ui_tile_icon_rect(), where a caller
  * with no icon may draw its own picture of the choice instead. */
 mu_Rect ui_tile_icon_rect(mu_Rect r, const ui_theme_t* theme);
 

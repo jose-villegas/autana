@@ -1,5 +1,5 @@
 /*
- * Portable suite: ui_scroll's shared scroll view - the scroll view every
+ * Portable suite: ui_scroll's shared scroll view: the scroll view every
  * scrolling menu uses. Drives real microui
  * through ui_pointer_step(), the same bridge suite_ui_pointer_microui.c
  * proves against a plain list, so these assertions cover ui_flow_row() and
@@ -9,7 +9,7 @@
  * The axis-lock and momentum tests drive microui directly instead
  * (mu_input_mousemove()/mu_input_scroll(), no ui_pointer_step()): both are
  * about what ui_scroll.c itself does with a scroll delta once one arrives,
- * not about whether a touch gesture produces one - already covered by the
+ * not about whether a touch gesture produces one, already covered by the
  * drag-based tests above and by suite_ui_pointer_microui.c.
  */
 
@@ -106,7 +106,7 @@ scroll_frame(bool down, bool pressed, bool released, int x, int y, uint32_t dt_m
     return submitted;
 }
 
-/* A frame built directly against microui - no ui_pointer_step(), so the
+/* A frame built directly against microui: no ui_pointer_step(), so the
  * caller controls mouse_down and any scroll delta exactly. */
 static void
 raw_frame(int mouse_x, int mouse_y, bool mouse_down, uint32_t dt_ms) {
@@ -157,7 +157,7 @@ test_rows_flow_and_the_container_reports_content_height(void) {
     /* mu_layout_next()'s RELATIVE path folds a row's already-padding-
      * corrected y into content_size by re-adding, then pop_container()
      * subtracts the container's own body.y (== padding at rest) back out
-     * once - see ui_flow_row()'s own comment. */
+     * once; see ui_flow_row()'s own comment. */
     const int expected = ROWS * ROW_H + (ROWS - 1) * ROW_GAP - ctx->style->padding;
     TEST_ASSERT_EQUAL_INT_MESSAGE(expected, cnt->content_size.y,
                                   "a RELATIVE flowed row must fold into content_size - an ABSOLUTE "
@@ -204,7 +204,7 @@ test_a_hidden_scrollbar_still_scrolls(void) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, cnt->scroll.y, "a hidden scrollbar must still let content scroll");
 }
 
-/* Settles hover_root over the window's body - mu_mouse_over() needs a
+/* Settles hover_root over the window's body: mu_mouse_over() needs a
  * hover_root from the PREVIOUS frame (mu_begin() copies it), so nothing
  * before the second of these frames can ever become a scroll_target. */
 static void
@@ -220,8 +220,8 @@ test_an_axis_locked_view_refuses_the_other_axis(void) {
     settle_over_body();
 
     /* mu_end() (called after this suite's raw_frame() returns) is what
-     * actually applies a scroll delta, so the axis lock - applied at the
-     * TOP of the next window build, before layout uses it - needs one more
+     * actually applies a scroll delta, so the axis lock (applied at the
+     * TOP of the next window build, before layout uses it) needs one more
      * frame to zero it back out. The same one-frame lag microui's own
      * scrollbar clamp already runs on. */
     mu_input_scroll(ctx, 40, 0);
@@ -236,7 +236,7 @@ test_an_axis_locked_view_refuses_the_other_axis(void) {
 }
 
 /* The smoothing knob: a coast must cover the same distance over the same
- * elapsed time regardless of how that time is split into frames - the
+ * elapsed time regardless of how that time is split into frames: the
  * closed-form integral ui_scroll.c's step_momentum() uses, not a per-frame
  * fixed fraction, is what this pins down. */
 static int
@@ -249,7 +249,7 @@ run_coast(uint32_t frame_dt_ms, int frame_count) {
     settle_over_body();
 
     /* An 80px move over 16ms while held, giving step_momentum() a known,
-     * deterministic v0 = 5 px/ms to start the coast from - no touch-state
+     * deterministic v0 = 5 px/ms to start the coast from: no touch-state
      * warm-up involved, since that is what the drag-based tests above
      * already prove reachable. */
     raw_frame(cx, cy, true, 16);

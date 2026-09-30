@@ -59,7 +59,7 @@ static gfx_color_t* fb;
  * a framebuffer to send at all. */
 static gfx_mode_t current_mode;
 
-/* The band ring's own buffers - declared here, not with the rest of the
+/* The band ring's own buffers, declared here, not with the rest of the
  * mode/band implementation further down, so current_target() below can
  * reach them. band_render_active is true only between a successful
  * gfx_band_next() and the matching gfx_band_submit(); outside that window
@@ -72,12 +72,12 @@ static int band_render_row0;
 static int band_render_height;
 
 /* gfx_band_force_all_dirty itself lives in gfx_full_redraw.h, for the same
- * reason gfx_dirty.h's all_dirty does - a host suite needs its own copy.
+ * reason gfx_dirty.h's all_dirty does; a host suite needs its own copy.
  * band_frame_force_all is this frame's own captured value, taken once by
  * gfx_band_frame_begin() so a later gfx_invalidate() call mid-frame
  * affects the NEXT frame, not this one. */
 
-/* GFX_LAYOUT_INDEXED's own state - the app writes indices,
+/* GFX_LAYOUT_INDEXED's own state: the app writes indices,
  * run_present_indexed() below expands them through whichever LUT is
  * installed. Not a gfx_target.h render target: no drawing primitive writes
  * through it. */
@@ -87,7 +87,7 @@ static gfx_color_t indexed_lut256[GFX_INDEXED_PALETTE_SIZE];
 static bool indexed_dither16_on;
 
 /* Lever 2: which of gfx_dither_mode_t's five is installed for 16-colour
- * mode - meaningless while indexed_dither16_on is false (256 mode keeps
+ * mode, meaningless while indexed_dither16_on is false (256 mode keeps
  * its own plain LUT above, no dither concept at all). One table per mode,
  * not a shared buffer: gfx_indexed_set_dither() only ever overwrites the
  * one an app's own mode switch actually asks for. */
@@ -147,7 +147,7 @@ static bool band_snapshot_complete;
 static bool alloc_full_framebuffer(void);
 
 /* What every pixel-writing primitive below actually draws into: the whole
- * framebuffer, or the band currently being rendered - see gfx_target.h for
+ * framebuffer, or the band currently being rendered; see gfx_target.h for
  * why a target carries its own row range rather than every primitive
  * checking band_render_active for itself. */
 static inline gfx_target_t
@@ -199,7 +199,7 @@ static present_task_mode_t present_task_mode;
 #define PRESENT_TASK_CORE        1
 
 /* Copied from the Waveshare BSP (Apache-2.0, (c) 2026 Waveshare Team),
- * where it is a private static - needed here because gfx brings the
+ * where it is a private static; needed here because gfx brings the
  * panel up itself rather than calling bsp_display_new(), which offers no
  * way to reach the init sequence at all. Command 0x11 (sleep out) carries
  * a 120 ms settle, dominating a full init's cost. */
@@ -265,14 +265,14 @@ _Static_assert(GATHER_WINDOW_MAX_PIXELS <= GFX_WIDTH * STRIP_HEIGHT,
                "a gathered window must fit one strip_bounce slot");
 
 /* band_buf[] (alloc_band_buffers() below) always aliases these slots
- * instead of allocating - idle whenever band mode is, since band mode
+ * instead of allocating; idle whenever band mode is, since band mode
  * never runs the full-fb send path they belong to. */
 _Static_assert(GFX_BAND_HEIGHT <= STRIP_HEIGHT, "a band must fit one strip_bounce slot to alias it");
 _Static_assert(GFX_BAND_SLOTS == STRIP_BOUNCE_SLOTS, "band_buf[] aliasing strip_bounce[] needs equal slot counts");
 #endif
 
 /*
- * Panel plumbing - device-only. A host build never brings a panel up or
+ * Panel plumbing: device-only. A host build never brings a panel up or
  * presents to one; see gfx_init()/gfx_present() below for the host side of
  * each.
  */
@@ -305,7 +305,7 @@ qspi_bus_up(void) {
     }
 
 #if defined(CONFIG_LAUNCHER_GFX_QSPI_STRONG_PADS) && CONFIG_LAUNCHER_GFX_QSPI_STRONG_PADS
-    /* AFTER spi_bus_initialize(), which is what configures these pads - set
+    /* AFTER spi_bus_initialize(), which is what configures these pads; set
      * before it and the driver overwrites the setting. Does not bring 80 MHz
      * back inside the panel's rating; see the option's help text. */
     {
@@ -341,7 +341,7 @@ panel_open_sh8601(int hz) {
         .flags = {.use_qspi_interface = 1},
     };
     const esp_lcd_panel_dev_config_t panel_config = {
-        .reset_gpio_num = GPIO_NUM_NC, /* no dedicated reset line - see board_detect() */
+        .reset_gpio_num = GPIO_NUM_NC, /* no dedicated reset line; see board_detect() */
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16,
         .vendor_config = &vendor,
@@ -364,7 +364,7 @@ panel_open_co5300(int hz) {
         .flags = {.use_qspi_interface = 1},
     };
     const esp_lcd_panel_dev_config_t panel_config = {
-        .reset_gpio_num = GPIO_NUM_NC, /* no dedicated reset line - see board_detect() */
+        .reset_gpio_num = GPIO_NUM_NC, /* no dedicated reset line; see board_detect() */
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16,
         .vendor_config = &vendor,
@@ -397,7 +397,7 @@ panel_open(int hz) {
     return panel_open_sh8601(hz);
 }
 
-/* SH8601 panel - the original (pre-V2) revision. */
+/* SH8601 panel: the original (pre-V2) revision. */
 static esp_err_t
 panel_bring_up_sh8601(int hz) {
     esp_err_t err = qspi_bus_up();
@@ -415,7 +415,7 @@ panel_bring_up_sh8601(int hz) {
     return ESP_OK;
 }
 
-/* CO5300 panel - the V2 revision only. */
+/* CO5300 panel: the V2 revision only. */
 static esp_err_t
 panel_bring_up_co5300(int hz) {
     esp_err_t err = qspi_bus_up();
@@ -435,7 +435,7 @@ panel_bring_up_co5300(int hz) {
 
 static int panel_clock_applied_hz;
 
-/* VERY important: only with nothing queued on the link - deleting the io
+/* VERY important: only with nothing queued on the link; deleting the io
  * waits out its transactions, but the strip_sent a caller is owed is lost. */
 static void
 panel_clock_apply(void) {
@@ -456,7 +456,7 @@ panel_clock_apply(void) {
     panel_clock_applied_hz = hz;
 }
 
-/* Picks the driver the detected board revision actually needs - see
+/* Picks the driver the detected board revision actually needs; see
  * board_variant_t. */
 static esp_err_t
 panel_bring_up(int hz) {
@@ -482,7 +482,7 @@ display_bring_up(int hz) {
     }
     return true;
 }
-#endif /* ESP_PLATFORM - panel plumbing */
+#endif /* ESP_PLATFORM: panel plumbing */
 
 #ifdef ESP_PLATFORM
 /* Defined far below, alongside every other send-path function; the task
@@ -493,7 +493,7 @@ static void run_present_raw_full(void);
 #endif
 
 /* Runs entirely on core 1. Bring-up happens here, once, so the strip-sent
- * interrupt esp_lcd installs lands on this core - see panel_bring_up().
+ * interrupt esp_lcd installs lands on this core; see panel_bring_up().
  * After reporting bring-up, waits for a notification per present and gives
  * present_done_sem back once everything queued has actually landed. */
 static void
@@ -562,7 +562,7 @@ gfx_init(void) {
     }
     frame_watch_add_task(present_task_handle);
 
-    /* Bring-up (board_detect(), panel_bring_up()) runs on that task - see
+    /* Bring-up (board_detect(), panel_bring_up()) runs on that task; see
      * present_task_fn(). Its own ESP_LOGE already named the failure. */
     xSemaphoreTake(present_bringup_sem, portMAX_DELAY);
     if (!present_bringup_ok) {
@@ -578,7 +578,7 @@ gfx_init(void) {
 #endif
 
     /* PSRAM: the internal pool has no room for it. It never goes to the
-     * panel directly - see strip_bounce. */
+     * panel directly; see strip_bounce. */
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
     fb = heap_caps_malloc(bytes, BOARD_FRAMEBUFFER_CAPS);
     if (fb == NULL) {
@@ -642,7 +642,7 @@ gfx_framebuffer(void) {
     /* gfx can't guess intent. "Everything" wastes resources. Raw writers use
      * gfx_mark_dirty(). Be cautious. */
     GFX_PRESENT_GUARD();
-    /* fb is already NULL in band mode - the right answer for a caller that
+    /* fb is already NULL in band mode, the right answer for a caller that
      * checks. This call is only the loud dev-time signal that one reached
      * for the framebuffer at all while it does not exist. */
     (void)GFX_REQUIRE_FRAMEBUFFER();
@@ -694,7 +694,7 @@ gfx_invalidate(void) {
 }
 
 /* Guard-free body of gfx_mark_all_dirty(), also called from the send path
- * itself (already past the guard by definition - a present is in flight)
+ * itself (already past the guard by definition: a present is in flight)
  * when a rejected esp_lcd_panel_draw_bitmap() means this frame never
  * reached the panel. */
 static void
@@ -710,7 +710,7 @@ TUNE_OWNER(gfx);
  * its rows, every column at full width, which is all mark_band() can
  * express. The band path's skip test (dirty_band_extent(), gfx_dirty.h)
  * reads a cell's narrowed y as well as its x, so a band no narrowed cell
- * overlaps is skipped - SET gfx.tight_fill_marks 0 separates that from a
+ * overlaps is skipped; SET gfx.tight_fill_marks 0 separates that from a
  * fault in an app's own marking, on the device, without a reflash. */
 TUNE(gfx, tight_fill_marks, 1, 0, 1);
 
@@ -738,7 +738,7 @@ gfx_mark_all_dirty(void) {
  * and gfx_invalidate() separately: every gfx-side cache that decides
  * whether to repaint or resend a region is reset in one place. Latches a
  * pending flag an app's optional invalidate() callback (app.h) answers to
- * on the pass that follows - see gfx_full_redraw_pending() below. Sets
+ * on the pass that follows; see gfx_full_redraw_pending() below. Sets
  * state only and frees nothing, so it is safe from anywhere on core 0,
  * including inside a UI build or an app callback. */
 void
@@ -750,7 +750,7 @@ gfx_request_full_redraw(void) {
 }
 
 /* True once gfx_request_full_redraw() has been called and the shell has
- * not yet cleared it for the pass that follows - see
+ * not yet cleared it for the pass that follows; see
  * gfx_full_redraw_clear_pending(). */
 bool
 gfx_full_redraw_pending(void) {
@@ -759,7 +759,7 @@ gfx_full_redraw_pending(void) {
 
 /* Ends the window gfx_request_full_redraw() opened. The shell calls this
  * once it has read the flag and decided whether to invoke an app's
- * invalidate(), before that pass's frame() runs - see main.c's
+ * invalidate(), before that pass's frame() runs; see main.c's
  * apply_pending_full_redraw(). */
 void
 gfx_full_redraw_clear_pending(void) {
@@ -852,7 +852,7 @@ gfx_clear_clip(void) {
 
 /* Ignores clip rect; clears the whole target (a bounding box in full-fb
  * mode's partial-clear path, or the whole target buffer otherwise) and
- * marks it dirty - dirty tracking is meaningless while a band is the
+ * marks it dirty: dirty tracking is meaningless while a band is the
  * target, since band mode resends every band every frame regardless, so
  * that half is skipped entirely there. */
 void
@@ -1094,7 +1094,7 @@ gfx_fill_rect(int x, int y, int w, int h, gfx_color_t color) {
  * Dithered fake transparency
  *
  * gfx_fill_rect_blend() (further down) is a REAL per-pixel blend, but pays
- * for a framebuffer read - affordable at glyph scale, not a whole frame
+ * for a framebuffer read, affordable at glyph scale, not a whole frame
  * (its own comment). Dithering fakes transparency instead: ordered (Bayer)
  * dithering picks WHICH pixels to draw via a per-pixel threshold, no
  * framebuffer read, no float math.
@@ -1201,7 +1201,7 @@ blit_dither_row(gfx_color_t* dp, const gfx_color_t* sp, int x0, int x1, const bo
 
 /* Cheap by construction, not by luck: alpha is one value for the whole
  * call, and the Bayer pattern repeats every 4 pixels, so the per-pixel
- * decision collapses to four booleans per row - a fully-covered row is a
+ * decision collapses to four booleans per row: a fully-covered row is a
  * plain memcpy, an untouched row costs nothing. Phase-locked to absolute
  * panel coordinates like every other dithered draw in gfx.h, so
  * overlapping dithered shapes stay in register with each other. First
@@ -1285,7 +1285,7 @@ draw_glyph_font(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_colo
     }
 
     /* One filled rect per coalesced box of set bits, not one per run
-     * per row - gfx_font_glyph_run_boxes() merges a vertical stroke's
+     * per row: gfx_font_glyph_run_boxes() merges a vertical stroke's
      * identical run across every row it spans into one box, so
      * gfx_font_run_box_rect() covers it with one gfx_fill_rect() call
      * regardless of which glyph axis a turn maps onto the screen's
@@ -1301,7 +1301,7 @@ draw_glyph_font(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_colo
 }
 
 /* draw_glyph_font()'s halo variant: each run is
- * gfx_font_row_run_rect_dilated() instead of gfx_font_row_run_rect() -
+ * gfx_font_row_run_rect_dilated() instead of gfx_font_row_run_rect();
  * see that function's own comment for why this covers the same area as
  * UI_TEXT_OUTLINED's 8 unit-offset copies. */
 static void
@@ -1340,7 +1340,7 @@ gfx_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int 
     };
 
     /* A quarter turn of 1 or 3 swaps which cell dimension becomes the
-     * on-screen row extent - see gfx_font_row_run_rect()'s own comment. */
+     * on-screen row extent; see gfx_font_row_run_rect()'s own comment. */
     const int char_h = (turn & 1) ? font->cell_w * scale : font->cell_h * scale;
     const gfx_target_t target = current_target();
 
@@ -1367,7 +1367,7 @@ gfx_text_turned(int x, int y, const char* text, gfx_color_t color, int scale, in
 }
 
 /* gfx_text_font()'s own loop, drawing each character's halo
- * (draw_glyph_font_halo()) rather than its ink - see gfx.h's own comment.
+ * (draw_glyph_font_halo()) rather than its ink; see gfx.h's own comment.
  * UI_TEXT_OUTLINED is the only caller and only ever styles gfx_font_ui(). */
 void
 gfx_text_font_halo(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
@@ -1523,7 +1523,7 @@ static int dev_strips_sent_gathered;
 static int dev_strips_sent_partial;
 
 /* Actual panel-format bytes queued, every send path alike (full-fb gather/
- * strip, and GFX_LAYOUT_INDEXED's own whole-strip send) - what the three
+ * strip, and GFX_LAYOUT_INDEXED's own whole-strip send), what the three
  * counts above cannot answer by themselves for a mode with no strip/gather
  * distinction at all. Exists for a device test comparing send cost across
  * pixel formats. Not reset by gfx_present(). */
@@ -1574,7 +1574,7 @@ mark_rect_border(gfx_color_t* buf, int stride, int w, int h, gfx_color_t colour)
     }
 }
 
-/* Used for full-width send border. No scratch copy - direct to fb. Inverse
+/* Used for full-width send border. No scratch copy: direct to fb. Inverse
  * save/restore. */
 #define BORDER_PIXELS      (2 * (COL_WIDTH + STRIP_HEIGHT))
 
@@ -1806,7 +1806,7 @@ send_audit_check(void) {
 #endif
 
 /* A rejected esp_lcd_panel_draw_bitmap() queues nothing, so its strip_sent
- * give never comes - every send site below checks this instead of taking
+ * give never comes; every send site below checks this instead of taking
  * the semaphore unconditionally. present_send_failed lets one present
  * notice a mid-frame rejection and force a full resend once, at the end,
  * rather than re-deriving which region was affected at each call site. */
@@ -1890,7 +1890,7 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
 }
 
 /* Queues framebuffer rows [y0, y1) through the next strip_bounce slot. At
- * most STRIP_HEIGHT rows. Returns whether the panel accepted the transfer -
+ * most STRIP_HEIGHT rows. Returns whether the panel accepted the transfer:
  * false means no strip_sent give is coming for it. */
 static bool
 send_fb_rows(int y0, int y1) {
@@ -2111,7 +2111,7 @@ send_one_row(int row, int* queued) {
             const size_t area = (size_t)(box_x1[r] - box_x0[r]) * (size_t)(box_y1[r] - box_y0[r]);
             if (area > GATHER_MAX_PIXELS) {
                 /* See send_partial_band(). Full-width box means row's only
-                 * run - safe to return. */
+                 * run: safe to return. */
                 if (box_x0[r] == 0 && box_x1[r] == GFX_WIDTH && box_y1[r] - box_y0[r] < STRIP_HEIGHT
                     && send_partial_band(box_y0[r], box_y1[r], queued)) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -2142,7 +2142,7 @@ send_one_row(int row, int* queued) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Strip rows whose last send carried overlay borders. A border exists only
  * in the bytes sent, never in `fb`, so the panel keeps it until its row is
- * sent again - and the dirty tracker never resends a row nothing changed
+ * sent again, and the dirty tracker never resends a row nothing changed
  * in. Outlives the overlay toggles so switching one off still cleans up. */
 static uint32_t overlay_bordered_rows;
 _Static_assert(STRIP_COUNT <= 32, "one bit per strip row");
@@ -2182,11 +2182,11 @@ send_heal_strips(bool (*send_rows)(int y0, int y1), int* queued) {
     }
 }
 
-/* GFX_LAYOUT_INDEXED's own send loop - whole dirty STRIP_HEIGHT strips,
+/* GFX_LAYOUT_INDEXED's own send loop, whole dirty STRIP_HEIGHT strips,
  * full width, rather than send_one_row()'s per-run gathering: the index
  * image is small enough that expanding a strip nothing changed in costs
  * little, and every dirty strip still goes through gfx_dirty.h's own
- * tracker unmodified. No interlace or partial-clear here - both are
+ * tracker unmodified. No interlace or partial-clear here: both are
  * independent app opt-ins the RGB565 path alone offers. */
 static void
 run_present_indexed(void) {
@@ -2237,7 +2237,7 @@ send_dirty_rows(int* queued) {
 
     for (int row = 0; row < STRIP_COUNT; row++) {
         if (!dirty_row_is_dirty(row)) {
-            continue; /* unchanged - the panel is still showing it */
+            continue; /* unchanged: the panel is still showing it */
         }
 
         if (interlace_on && (row % 2) != frame_parity) {
@@ -2258,7 +2258,7 @@ send_dirty_rows(int* queued) {
 }
 
 /* The real send, run on the present task (async) or on the caller
- * (gfx_set_present_async(false)) - either way, on whichever core called it,
+ * (gfx_set_present_async(false)), either way, on whichever core called it,
  * since strip_sent is an ordinary FreeRTOS semaphore and the panel's own
  * strip-sent interrupt is core-agnostic about who it wakes. */
 static void
@@ -2329,7 +2329,7 @@ run_present_raw_full(void) {
 }
 #endif
 
-/* Dispatches to the present task when async, runs directly otherwise - see
+/* Dispatches to the present task when async, runs directly otherwise; see
  * gfx_set_present_async(). Shared by gfx_present_begin() and the raw-full
  * test helper below, which only differ in present_task_mode. */
 static void
@@ -2339,7 +2339,7 @@ dispatch_present(void) {
         return;
     }
     /* Synchronous: the send happens now, on the caller's own core, before
-     * gfx_present_begin() returns - gfx_present_wait() then has nothing
+     * gfx_present_begin() returns; gfx_present_wait() then has nothing
      * left to wait for. */
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (present_task_mode == PRESENT_TASK_RAW_FULL) {
@@ -2372,7 +2372,7 @@ gfx_present_wait(void) {
 #else /* !ESP_PLATFORM */
 
 /* collect_dirty_runs()/plan_run()/run_box() (gfx_dirty.h) back send_one_row()
- * and friends below, which exist only on the device - a host build's own
+ * and friends below, which exist only on the device: a host build's own
  * copy of the header (this file includes it directly, same as any suite
  * that does) would otherwise trip -Wunused-function. See
  * suite_gfx_present_guard.c's touch_unused_dirty_symbols() for the same
@@ -2393,7 +2393,7 @@ void
 gfx_present_wait(void) {
     /* No panel on a host build; draining the dirty tracker here is what
      * lets a host test assert the same "sequencing leaves it clean"
-     * property a real present provides - see suite_gfx_present_guard.c.
+     * property a real present provides; see suite_gfx_present_guard.c.
      * A transient band frame drains its dirty tracker in gfx_band_run(). */
     if (!band_is_transient()) {
         dirty_frame_sent();
@@ -2401,7 +2401,7 @@ gfx_present_wait(void) {
     gfx_present_guard_end();
 }
 
-#endif /* ESP_PLATFORM - the presentation pipeline */
+#endif /* ESP_PLATFORM: the presentation pipeline */
 
 void
 gfx_present(void) {
@@ -2595,7 +2595,7 @@ free_band_snapshot(void) {
 static void
 free_band_buffers(void) {
 #ifdef ESP_PLATFORM
-    /* Aliased into strip_bounce[] - that memory outlives band mode. */
+    /* Aliased into strip_bounce[]: that memory outlives band mode. */
     for (int i = 0; i < GFX_BAND_SLOTS; i++) {
         band_buf[i] = NULL;
     }
@@ -2639,7 +2639,7 @@ gfx_reset_for_test(void) {
 
 /* Only GFX_RESOLUTION_FULL is wired to real rendering, so the system-wide
  * resolution cap a future Settings app would own (roadmap section 8,
- * decision 1) is not a variable yet - hardcoding it here is the one place
+ * decision 1) is not a variable yet; hardcoding it here is the one place
  * that changes once it is. */
 const gfx_mode_t*
 gfx_mode_enter(const gfx_mode_request_t* request) {
@@ -2684,7 +2684,7 @@ gfx_mode_exit(void) {
         free_indexed_image();
     } else if (current_mode.layout == GFX_LAYOUT_BANDS) {
 #ifdef ESP_PLATFORM
-        /* band_buf[] aliases strip_bounce[] - the full-fb path that
+        /* band_buf[] aliases strip_bounce[]: the full-fb path that
          * owns it next must never write it while this mode's last
          * band is still on the wire. */
         if (!gfx_band_ring_settled(&band_ring)) {
@@ -2701,7 +2701,7 @@ gfx_mode_exit(void) {
         }
 #ifdef ESP_PLATFORM
         else {
-            /* Nothing downstream can draw without a framebuffer - the same
+            /* Nothing downstream can draw without a framebuffer: the same
              * dead end gfx_init() itself parks in on the same allocation. */
             while (1) {
                 vTaskDelay(pdMS_TO_TICKS(1000));
@@ -2797,7 +2797,7 @@ gfx_band_dirty(void) {
 }
 
 /* The band gfx_band_next() just handed out needs no redraw this frame
- * (gfx_band_dirty() said so) - advances past it without rendering or
+ * (gfx_band_dirty() said so), advances past it without rendering or
  * sending anything, leaving whatever the panel already shows there. */
 static void
 gfx_band_skip(void) {
@@ -2906,7 +2906,7 @@ gfx_band_submit(void) {
         gfx_band_ring_advance(&band_ring);
         return;
     }
-    /* Nothing queued, so nothing will ever mark this band's strip_sent -
+    /* Nothing queued, so nothing will ever mark this band's strip_sent;
      * settle the ring in place and force every band next frame instead of
      * leaving gfx_band_next() waiting on a give that is never coming. */
     gfx_band_force_all();
@@ -3003,10 +3003,10 @@ gfx_indexed_set_dither16(bool enabled) {
     indexed_dither16_on = enabled;
 }
 
-/* Installs `table` for `mode` and selects it as the active one -
+/* Installs `table` for `mode` and selects it as the active one:
  * GFX_LAYOUT_INDEXED's own dither pattern while indexed_dither16_on is
  * true (gfx_indexed_set_dither16()); meaningless in 256 mode, which never
- * consults it. `table` must be sized for `mode` - see gfx_dither_mode_t's
+ * consults it. `table` must be sized for `mode`; see gfx_dither_mode_t's
  * own comment (gfx_indexed.h) for which. Present-task-only, like every
  * other indexed setter here (GFX_PRESENT_GUARD()). */
 void
@@ -3055,7 +3055,7 @@ gfx_fb_guard_trip_count(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #ifdef ESP_PLATFORM
 /* Every send runs on the present task (or the caller, under
- * gfx_set_present_async(false)) - never call this while a present is
+ * gfx_set_present_async(false)): never call this while a present is
  * already in flight; it is a test helper, not part of the app-facing
  * pipeline, so it has no begin/wait split of its own. */
 void

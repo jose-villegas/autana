@@ -26,7 +26,7 @@ button_fsm_update(button_fsm_t* b, bool raw_down, int64_t now_us) {
         b->down_since_us = now_us;
         /* Same reasoning as the phantom-press decision above: a button
          * already held at startup should not fire a phantom hold either, so
-         * treat it as a press that has already delivered its `held` edge -
+         * treat it as a press that has already delivered its `held` edge;
          * there just wasn't a debounced press edge to time it from. */
         b->hold_fired = raw_down;
         return;
@@ -34,7 +34,7 @@ button_fsm_update(button_fsm_t* b, bool raw_down, int64_t now_us) {
 
     /* A button held continuously down sits right here: candidate == stable,
      * so every early return below this point takes it and reports "nothing
-     * changing" - which is correct for pressed/released, but would silently
+     * changing", which is correct for pressed/released, but would silently
      * swallow `held` forever if the check lived after them. It must run
      * before all of those early returns instead, even though "after the
      * other checks" looks like the natural place to put it. */

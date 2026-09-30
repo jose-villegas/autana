@@ -28,7 +28,7 @@ register_suite(const char* name, suite_fn fn, bool on_request) {
         /* Counted as well as printed. A dropped suite is a test that did not
          * run, and a printf on its own leaves that as one line in a boot log
          * nobody reads, directly above a summary saying everything passed.
-         * suites_dropped() is what turns the run red - see both runners. */
+         * suites_dropped() is what turns the run red; see both runners. */
         dropped++;
         printf("SUITE OVERFLOW: '%s' was not registered (max %d)\n", name, SUITE_MAX);
         return;

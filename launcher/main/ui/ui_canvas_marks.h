@@ -1,5 +1,5 @@
 /*
- * ui_canvas_marks - which screen rect each window was last painted over, so
+ * ui_canvas_marks: which screen rect each window was last painted over, so
  * a window that stops being drawn has its rect repainted rather than left
  * showing what it last drew. Nothing redraws a rect on its own when a
  * window closes: the canvases still drawn are unchanged, and ui_end() only

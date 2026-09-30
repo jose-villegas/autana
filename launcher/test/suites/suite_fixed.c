@@ -1,9 +1,9 @@
 /*
- * Portable suite: util/fixed.h - shift-based fixed-point arithmetic.
+ * Portable suite: util/fixed.h, shift-based fixed-point arithmetic.
  *
  * The whole reason this header exists is a widening cast (int64_t) that must
  * never be dropped, and a floor-vs-round distinction that must never be
- * confused for the other - see fixed.h's own top comment. Both are easy to
+ * confused for the other; see fixed.h's own top comment. Both are easy to
  * get right by accident on a small hand-checked example and wrong on the
  * values that actually occur (a 32-bit product, a negative accumulator that
  * is not an exact multiple of the shift), so this suite is built around
@@ -48,7 +48,7 @@ test_mul_floor_matches_a_hand_written_widened_shift(void) {
  * floor vs round: the divergence that would change an accumulator's output.
  *
  * A signed accumulator decayed step after step is routinely negative. It uses
- * fx_mul_floor(), matching a plain `>> 8` on a negative accumulator - which
+ * fx_mul_floor(), matching a plain `>> 8` on a negative accumulator, which
  * FLOORS toward negative infinity, not toward zero. If a future reader swaps
  * that for fx_mul_round() because "round" sounds more correct, this is the
  * exact shape of value that would silently change: a negative product that
@@ -93,7 +93,7 @@ test_mul_round_rounds_to_nearest_for_positives(void) {
 
 static void
 test_mul_round_ties_away_from_zero_for_negatives(void) {
-    /* -1 * 1, shift 1: exactly -0.5. Away-from-zero ties round to -1, not 0 -
+    /* -1 * 1, shift 1: exactly -0.5. Away-from-zero ties round to -1, not 0:
      * the same rule ui_fp_round() has always used (splitting on sign rather
      * than a plain arithmetic shift, which would instead floor a negative
      * tie toward -infinity and bias every negative half-pixel the same way). */
@@ -137,7 +137,7 @@ test_floor_and_round_agree_on_exact_multiples(void) {
 static void
 test_mul_floor_survives_a_32_bit_overflowing_product(void) {
     /* 46341 * 46341 = 2,147,488,281, which is already past INT32_MAX
-     * (2,147,483,647) - a plain `int32_t * int32_t` here would overflow
+     * (2,147,483,647); a plain `int32_t * int32_t` here would overflow
      * before any shift ever ran. The final answer, after shifting right by
      * 8, comfortably fits back in int32_t (8,388,626), which is exactly the
      * shape of bug the (int64_t) widening in fx_mul_floor() exists to
@@ -147,7 +147,7 @@ test_mul_floor_survives_a_32_bit_overflowing_product(void) {
     /* Plain TEST_ASSERT_TRUE rather than a *_INT64 comparison macro: the
      * device build runs with CONFIG_UNITY_ENABLE_64BIT off (see sdkconfig),
      * where Unity's 64-bit-typed assertions are compiled-out stubs that fail
-     * unconditionally. A boolean expression has no such restriction - only
+     * unconditionally. A boolean expression has no such restriction: only
      * the numeric-comparison macros need 64-bit formatting support. */
     TEST_ASSERT_TRUE_MESSAGE(product > (int64_t)INT32_MAX,
                              "the test itself is only meaningful if this product overflows int32_t");
@@ -180,11 +180,11 @@ test_the_same_helpers_serve_both_shift_8_and_shift_16(void) {
     TEST_ASSERT_EQUAL_INT32(256, fx_mul_round(256, 256, 8));
 
     /* Q16.16 "one times one is one", as ui_transform.h's UI_FP_ONE would
-     * need - the same function, just given a different shift. */
+     * need, the same function, just given a different shift. */
     TEST_ASSERT_EQUAL_INT32(65536, fx_mul_floor(65536, 65536, 16));
     TEST_ASSERT_EQUAL_INT32(65536, fx_mul_round(65536, 65536, 16));
 
-    /* And fx_div_round() at both scales too - `x` divided by itself is
+    /* And fx_div_round() at both scales too: `x` divided by itself is
      * exactly one, at either shift. */
     TEST_ASSERT_EQUAL_INT32(256, fx_div_round(100, 100, 8));
     TEST_ASSERT_EQUAL_INT32(65536, fx_div_round(100, 100, 16));

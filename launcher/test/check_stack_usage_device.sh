@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # The same stack-frame gate as run_tests.sh's, but against the frames the
-# DEVICE's own compiler computes - the ground truth the host pass
+# DEVICE's own compiler computes, the ground truth the host pass
 # approximates.
 #
 #   ./check_stack_usage_device.sh
@@ -13,7 +13,7 @@
 #
 # It compiles every suite for the target with -fstack-usage, using the
 # device profile's own ISA and codegen flags, and runs the same
-# check_stack_usage.py over the result. No device, no flash, no idf.py -
+# check_stack_usage.py over the result. No device, no flash, no idf.py:
 # the suites are portable C, so the cross compiler alone is enough to get
 # real target frames.
 #
@@ -23,7 +23,7 @@
 # median 0.50x, but 67 are LARGER on Xtensa, worst 1.67x (576 -> 960 bytes,
 # suite_gfx_font.c's glyph_run_boxes tests). Nothing crossed the ceiling here
 # that the host had not also flagged, except code only a DEVICE_BUILD
-# compiles. So the host is an estimate, not a bound - re-run this after a
+# compiles. So the host is an estimate, not a bound; re-run this after a
 # toolchain or -O-level change, and whenever a host frame nears the ceiling.
 #
 # POSIX sh, same portability reasoning as run_tests.sh.

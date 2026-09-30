@@ -1,9 +1,9 @@
 /*
- * display - which way is "up", decided once for the whole shell.
+ * display: which way is "up", decided once for the whole shell.
  *
  * Orientation belongs to the physical device, not to any one app's panel, so
  * it is decided here and main.c applies it; every UI surface follows. No IMU,
- * no gfx, no ui - the gravity vector arrives already read, which is what lets
+ * no gfx, no ui: the gravity vector arrives already read, which is what lets
  * this link and run on a host.
  *
  * The hysteresis is the module, not a refinement of it. Snapping to whichever
@@ -27,7 +27,7 @@
 #define DISPLAY_PANEL_CORNER_RADIUS 42
 
 /* tan(60 deg) = 1.732..., approximated as a small integer ratio so the
- * hysteresis test is exact integer (cross-multiplied) arithmetic - no
+ * hysteresis test is exact integer (cross-multiplied) arithmetic: no
  * division, no float, no rounding to reason about. See this header's
  * top comment for why one ratio, applied relative to whichever quarter
  * is currently committed, is enough to give both the 60-degrees-out and
@@ -36,11 +36,11 @@
 #define DISPLAY_HYST_DEN            4
 
 typedef struct {
-    /* Which quarter turn currently reads as "upright" - numbered the
+    /* Which quarter turn currently reads as "upright", numbered the
      * same way gfx_text_turned() and ui_transform_quarter_turn() do: 0
      * upright, 1 top-to-bottom, 2 upside down, 3 bottom-to-top. The only
      * state this module keeps. The hysteresis test above is a pure
-     * function of (quarter, gx, gy) - nothing here accumulates over
+     * function of (quarter, gx, gy); nothing here accumulates over
      * time or needs a clock, which is also why display_update() takes
      * no dt: main.c controls how often it is called, and the decision
      * itself does not care. */
@@ -48,13 +48,13 @@ typedef struct {
 } display_t;
 
 /* Starts upright (quarter 0). There is no "unknown" orientation to
- * represent - a board that has not been read yet is assumed held the most
+ * represent: a board that has not been read yet is assumed held the most
  * common way, and the first real reading corrects it if that guess was
  * wrong, the same as any other update. */
 
 /* WHAT EACH QUARTER IS, MEASURED NOT DERIVED: which orientation a turn
- * corresponds to is not visible from source - depends on how the case
- * is held versus how the panel's rows/columns are wired - so it was
+ * corresponds to is not visible from source, depends on how the case
+ * is held versus how the panel's rows/columns are wired, so it was
  * measured, by holding the board each way with a development build's
  * show-orientation overlay on and reading it off the panel.
  *
@@ -68,10 +68,10 @@ typedef struct {
 #define DISPLAY_LANDSCAPE_UPSIDE_DOWN 3
 
 /* The orientation the SHELL applies at boot, before the first gravity
- * sample arrives - main.c sets this once, after display_init(), which
+ * sample arrives; main.c sets this once, after display_init(), which
  * stays a neutral 0: this is a physical fact about one board, not
  * something a device-agnostic module should bake into its reset.
- * DISPLAY_LANDSCAPE, not a bare 1 - this board is normally held sideways
+ * DISPLAY_LANDSCAPE, not a bare 1: this board is normally held sideways
  * to its native upright, and the table above confirms that is quarter
  * 1, independent of which edge USB sits on. */
 #define DISPLAY_DEFAULT_QUARTER       DISPLAY_LANDSCAPE
@@ -79,7 +79,7 @@ typedef struct {
 void display_init(display_t* d);
 
 /* Feed the current gravity vector, in whatever consistent units the caller's
- * IMU reading uses (screen X/Y axes, not raw sensor axes - see main.c's own
+ * IMU reading uses (screen X/Y axes, not raw sensor axes; see main.c's own
  * mapping). Returns true when d->quarter actually changed, which is main.c's
  * cue to push a new ui_set_transform(). */
 bool display_update(display_t* d, int gx, int gy);
@@ -89,10 +89,10 @@ int display_quarter(const display_t* d);
 /* Returns the horizontal inset where a row meets a rounded canvas corner. */
 int display_panel_corner_inset(int radius, int canvas_height, int row);
 
-/* The shell's own orientation - the quarter main.c last set the UI
+/* The shell's own orientation: the quarter main.c last set the UI
  * transform to. Declared here but defined in main.c, not display.c:
  * main.c is the only thing that calls display_update() and owns the
- * display_t the decision is made against - the same app.h split between
+ * display_t the decision is made against, the same app.h split between
  * "declared where callers look" and "defined where the instance lives".
  * For an app drawing through the shell's transform: knowing when it
  * changed underneath you, without reading the IMU again or duplicating

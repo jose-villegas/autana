@@ -1,5 +1,5 @@
 /*
- * frame_watch - work that repeats frame after frame: a heap allocation, a
+ * frame_watch, work that repeats frame after frame: a heap allocation, a
  * free or a log line whose call site turns up in most recent frames.
  * One such event on the frame something happened is not a finding; the same
  * site in FRAME_WATCH_REPEATS of the last FRAME_WATCH_WINDOW frames is.
@@ -27,7 +27,7 @@
 #define FRAME_WATCH_WINDOW             16
 #define FRAME_WATCH_REPEATS            8
 
-/* Frames after a restart - an app entered, a test begun - that are counted
+/* Frames after a restart (an app entered, a test begun) that are counted
  * but not judged, so a cache filled over the first few frames is not a
  * finding. */
 #define FRAME_WATCH_WARMUP             16
@@ -71,7 +71,7 @@ frame_watch_reset(frame_watch_t* w) {
     *w = (frame_watch_t){.warmup_left = FRAME_WATCH_WARMUP};
 }
 
-/* What is drawn has changed - an app entered or left: every site's history
+/* What is drawn has changed (an app entered or left): every site's history
  * is forgotten and the warm-up starts again. */
 static inline void
 frame_watch_settle(frame_watch_t* w) {
@@ -153,7 +153,7 @@ frame_watch_close_frame(frame_watch_t* w) {
 }
 
 /* What a gate judges: frames past the warm-up, sites that became repeating,
- * and events no slot could hold - a finding may be hiding among those. */
+ * and events no slot could hold; a finding may be hiding among those. */
 typedef struct {
     uint32_t frames;
     int repeating;

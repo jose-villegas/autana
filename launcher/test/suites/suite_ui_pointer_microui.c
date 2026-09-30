@@ -2,7 +2,7 @@
  * Portable suite: ui_pointer driving REAL microui.
  *
  * suite_ui_pointer.c only asserts the event LIST ui_pointer_step()
- * produces - a list of events matching does not mean microui can resolve
+ * produces: a list of events matching does not mean microui can resolve
  * a click from them; only microui itself decides that. This suite links
  * real microui.c to prove it.
  *
@@ -14,7 +14,7 @@
  * lands with nothing hovered, nothing takes focus, and mu_button() renders a
  * pressed frame while returning 0 forever.
  *
- * microui.c is plain C over stdio/stdlib/string, so it links here unchanged -
+ * microui.c is plain C over stdio/stdlib/string, so it links here unchanged;
  * this is the only suite that links it.
  */
 
@@ -40,7 +40,7 @@
 /* Heap, not a file-scope object: a mu_Context is 10,744 bytes, and the
  * diagnostics build links every suite into firmware, where internal heap
  * headroom is scarce enough that a second context in .bss would not be
- * free - something host tests, with a laptop's memory behind them,
+ * free: something host tests, with a laptop's memory behind them,
  * cannot notice. Allocated for the suite's run, outside any one test, and
  * reset by every test's fixture(). */
 static mu_Context* ctx;
@@ -163,7 +163,7 @@ test_a_tap_submits_on_the_second_frame_of_contact(void) {
 }
 
 /* Hover is resolved on the frame the finger lands, and on the control under
- * it - not the one after, and not another. On empty space inside a root the
+ * it, not the one after, and not another. On empty space inside a root the
  * root is hovered and no control is. */
 static void
 test_hover_is_granted_on_the_frame_a_press_lands(void) {
@@ -315,7 +315,7 @@ test_a_tap_outside_the_button_submits_nothing(void) {
 
 /* The capability the held pointer exists for. */
 
-/* A slider needs mouse_down to persist ACROSS frames - microui only tracks
+/* A slider needs mouse_down to persist ACROSS frames: microui only tracks
  * its value while (mouse_down | mouse_pressed) is set. This is what the
  * whole hold policy was introduced for, and it must keep working alongside
  * the hover frames the fix added. */

@@ -2,7 +2,7 @@
  * Host test for pmic_cold_boot.c, unchanged, against stubs/bootloader/.
  * pmic_i2c_bus.c plays the AXP2101 and decodes the waveform independently,
  * so an assertion reads the pins, not the model's bookkeeping.
- * bootloader_after_init() is the only entry point - a standalone binary.
+ * bootloader_after_init() is the only entry point: a standalone binary.
  */
 
 #include <stddef.h>

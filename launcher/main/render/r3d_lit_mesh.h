@@ -1,5 +1,5 @@
 /*
- * r3d_lit_mesh - a triangle mesh whose lighting was baked into one sRGB colour
+ * r3d_lit_mesh, a triangle mesh whose lighting was baked into one sRGB colour
  * per vertex, split into meshlets: compact clusters of a few dozen triangles.
  * A renderer culls a cluster's vertices and triangles together. Each cluster
  * owns a contiguous range of both arrays, and its triangles index only its

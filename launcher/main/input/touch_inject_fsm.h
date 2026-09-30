@@ -1,4 +1,4 @@
-/* touch_inject_fsm - a scripted contact sampled by the touch poller. */
+/* touch_inject_fsm: a scripted contact sampled by the touch poller. */
 #pragma once
 
 #include <stdbool.h>

@@ -1,7 +1,7 @@
 /*
  * Portable suite: the tilt filter.
  *
- * Everything here would be miserable to test on hardware - "does a step change
+ * Everything here would be miserable to test on hardware: "does a step change
  * arrive in about a quarter of a second" needs a controllable clock, and
  * "is the smoothing framerate-independent" needs two framerates at once. Both
  * are trivial when time is a parameter.
@@ -13,7 +13,7 @@
 #include "input/tilt.h"
 
 /* Roughly 1 g in the units the QMI8658 reports, which is what the filter sees
- * in the app. The exact value does not matter - the filter is unit-agnostic -
+ * in the app. The exact value does not matter (the filter is unit-agnostic),
  * but using the real magnitude keeps the tolerances meaningful. */
 #define ONE_G 4096
 
@@ -27,7 +27,7 @@ fixture(void) {
 /* Feed a constant reading for `ms` milliseconds in `dt_ms` slices.
  *
  * gz is whatever keeps the total magnitude at one g, so the sample reads as
- * honest gravity - anything else would be rejected by the trust gate, which is
+ * honest gravity: anything else would be rejected by the trust gate, which is
  * tested separately below. */
 static void
 hold(int gx, int gy, int shake, uint32_t dt_ms, uint32_t ms) {
@@ -145,7 +145,7 @@ test_a_stalled_frame_does_not_teleport_the_filter(void) {
     fixture();
     tilt_update(&t, 0, ONE_G, 0, 0, 14);
 
-    /* A two-second stall - a long flash, or a breakpoint. Without a clamp the
+    /* A two-second stall: a long flash, or a breakpoint. Without a clamp the
      * filter would jump straight to the new reading. */
     tilt_update(&t, ONE_G, 0, 0, 0, 2000);
 
@@ -176,7 +176,7 @@ test_a_shove_is_not_mistaken_for_gravity(void) {
     const int settled = tilt_y(&t);
 
     /* Two g sideways: the device is being yanked, not turned. An accelerometer
-     * cannot tell the difference within one sample - but it can tell that the
+     * cannot tell the difference within one sample, but it can tell that the
      * magnitude is nowhere near one g, which is enough to know the reading is
      * not describing orientation. */
     for (int i = 0; i < 40; i++) {
@@ -290,7 +290,7 @@ test_turning_the_board_does_not_read_as_shaking(void) {
      * friction. A turn keeps the magnitude at one g however fast it is, so
      * the gyro is pinned at maximum here to make the point. */
     /* A REAL rotation, which keeps the magnitude at exactly one g. Built from
-     * the 3-4-5 triangle so the components are exact in integers - a naive
+     * the 3-4-5 triangle so the components are exact in integers: a naive
      * sweep like (k, ONE_G - k) is not a rotation at all, it shrinks the vector
      * to 0.71 g in the middle and would read as being dropped. */
     static const int unit[][2] = {
@@ -346,7 +346,7 @@ test_shaking_fades_rather_than_switching_off(void) {
     const int during = tilt_shake(&t);
     TEST_ASSERT_GREATER_THAN(100, during);
 
-    /* Put it down. It must not snap to zero on the first still sample - a
+    /* Put it down. It must not snap to zero on the first still sample: a
      * shake should carry for a moment rather than flicker between strokes. */
     tilt_update(&t, 0, ONE_G, 0, 0, 14);
     const int just_after = tilt_shake(&t);

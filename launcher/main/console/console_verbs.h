@@ -1,5 +1,5 @@
 /*
- * console_verbs - a line off the console matched to a registered verb by
+ * console_verbs: a line off the console matched to a registered verb by
  * exact name, or by name plus one space before its arguments. Also
  * console_append_char(), the byte-by-byte line assembler the console's
  * reader task feeds this dispatch from.
@@ -8,7 +8,7 @@
  * dependency of its own, so it is exercised the same way on a laptop
  * (test/suites/suite_console.c drives a registry the test owns) as on the
  * device (console.c drives the one console_shared()). A verb's own handler
- * never sees its name or the space after it - `args` is only what follows.
+ * never sees its name or the space after it; `args` is only what follows.
  *
  * CONSOLE_VERB() is how a device-only file joins the shared registry before
  * app_main() runs, the same self-registering shape as TUNE() (util/tune.h)
@@ -26,7 +26,7 @@
 
 /* The longest line any registered verb needs today: "SET " (4) + a
  * TUNE_NAME_MAX-long tunable name + " " (1) + an int32_t's longest text
- * ("-2147483648", 11 chars) + a NUL - see console_tune.c's own
+ * ("-2147483648", 11 chars) + a NUL; see console_tune.c's own
  * CONSOLE_VERB(SET, ...) call, which is what this bound is sized for. */
 #define CONSOLE_LINE_MAX (4 + TUNE_NAME_MAX + 1 + 11 + 1)
 
@@ -87,7 +87,7 @@ typedef struct {
 } console_registry_t;
 
 /* Kept in name order, so dispatch and any future listing never depend on
- * link order - the same discipline tune_register() (util/tune.c) already
+ * link order, the same discipline tune_register() (util/tune.c) already
  * uses. A name already taken by a different verb is refused (false); the
  * same verb object registered twice is a no-op (true, since it is already
  * there). */
@@ -95,7 +95,7 @@ bool console_register(console_registry_t* registry, console_verb_t* verb);
 
 /* True if `line` is `name`, or `name` plus one space and more (never a
  * longer word starting the same way), folded like console_register()'s own
- * clash check. `*args` gets what follows - "" for a bare match. Shared by a
+ * clash check. `*args` gets what follows: "" for a bare match. Shared by a
  * verb's dispatch below and an app's console prefix (app.h). */
 bool console_word_match(const char* line, const char* name, const char** args);
 
@@ -114,7 +114,7 @@ typedef enum {
 /* The boot-time check that no two console words can ever claim one line:
  * walks `verbs`'s own linked list directly rather than a fixed-size copy
  * that could silently drop one. A prefix with a space is rejected on its
- * own - console_word_match() treats a prefix as one word, so "set tool"
+ * own: console_word_match() treats a prefix as one word, so "set tool"
  * would never fully match; "set" would claim the line first. `*from`/
  * `*other` are the offending prefix and, where there is one, what it
  * clashes with. */

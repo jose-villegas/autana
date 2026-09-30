@@ -15,7 +15,7 @@ static const char* TAG = "buttons";
 /* AXP2101 power-management chip. PWR button wired to it, not the SoC, so the
  * only way to see a press is over I2C. Interrupts are three enable + three
  * status registers; power-key events live in the second of each. A status
- * bit clears by writing a ONE back, not zero - the obvious guess leaves it
+ * bit clears by writing a ONE back, not zero: the obvious guess leaves it
  * set and the button appears stuck. */
 #define AXP2101_I2C_HZ      400000
 #define AXP2101_TIMEOUT_MS  100
@@ -25,15 +25,15 @@ static const char* TAG = "buttons";
 
 /* Within INTEN2/INTSTS2: bit 0 rising, bit 1 falling, bit 2 long press, bit 3
  * short press. Short/long are enabled; rising/falling are not (see
- * buttons.h - no `down` level to build them from). Long press fires at its
+ * buttons.h: no `down` level to build them from). Long press fires at its
  * own threshold (REG 0x27 bits 5:4, irqlevel), independent of the PMU's own
  * power-off threshold (REG 0x27 bits 3:2, offlevel) gated by its own enable
  * bit (REG 0x22 bit 1, btn_pwroff_en) firmware could clear but this bit does
- * not touch - so both can fire from one hold. */
+ * not touch, so both can fire from one hold. */
 #define AXP2101_PKEY_SHORT  (1u << 3)
 #define AXP2101_PKEY_LONG   (1u << 2)
 
-/* REG 0x27, IRQLEVEL/OFFLEVEL/ONLEVEL setting - three independent thresholds
+/* REG 0x27, IRQLEVEL/OFFLEVEL/ONLEVEL setting, three independent thresholds
  * packed into one register: bits 5:4 the long-press IRQ above, bits 3:2 the
  * PMU's own power-off, bits 1:0 power-on. Read-only here; see pmu_init(). */
 #define AXP2101_REG_LEVELS  0x27
@@ -41,12 +41,12 @@ static const char* TAG = "buttons";
 /* REG 0x22, bit 1 btn_pwroff_en enables PWRON held past OFFLEVEL as a
  * power-off source at all; bit 0 btn_pwroff_mode picks power-off vs restart
  * when it fires. Both default from EFUSE/POR, so what a board actually
- * boots with is not knowable from the datasheet - only logged here, never
+ * boots with is not knowable from the datasheet, only logged here, never
  * written. */
 #define AXP2101_REG_PWROFF  0x22
 
 /* 50 Hz. Fast enough that a press never feels missed, slow enough that the I2C
- * read is nothing next to the rest of the frame - and deliberately decoupled
+ * read is nothing next to the rest of the frame, and deliberately decoupled
  * from the render loop, which now runs at up to 1000 fps and would hammer the
  * shared bus if it polled the PMU itself. */
 #define POLL_HZ             50
@@ -56,7 +56,7 @@ static bool pmu_ready;
 
 static button_fsm_t boot_fsm;
 
-/* PWR is an event, nothing to debounce - just flags waiting to be
+/* PWR is an event, nothing to debounce: just flags waiting to be
  * collected, one per interrupt bit below. The PMU itself decides "held",
  * timing the press against its own irqlevel threshold, so there is no local
  * hold-timer state to keep the way BOOT's button_fsm_t needs one. */
@@ -100,7 +100,7 @@ pmu_init(void) {
     }
 
     /* Enable the short-press and long-press interrupts, leaving the other
-     * enables alone - charging and battery events are the PMU's business and
+     * enables alone: charging and battery events are the PMU's business and
      * stamping over them would be rude. */
     uint8_t enables = 0;
     if (!pmu_read(AXP2101_REG_INTEN2, &enables)) {
@@ -121,7 +121,7 @@ pmu_init(void) {
 
     /* Log what this board's PMU actually boots with. 0x22 and 0x27 default
      * from EFUSE/POR, so this is not something the datasheet can answer and
-     * the only way to know is to ask the chip, once, here. Observation only -
+     * the only way to know is to ask the chip, once, here. Observation only;
      * neither register is written. */
     uint8_t levels = 0, pwroff = 0;
     if (pmu_read(AXP2101_REG_LEVELS, &levels) && pmu_read(AXP2101_REG_PWROFF, &pwroff)) {
@@ -143,7 +143,7 @@ pmu_init(void) {
     }
 }
 
-/* One I2C read serves both events rather than one each - poll_once() runs at
+/* One I2C read serves both events rather than one each; poll_once() runs at
  * POLL_HZ regardless of whether anything happened, so halving its bus traffic
  * here is free. */
 static void
@@ -232,7 +232,7 @@ buttons_read(button_t* boot, button_t* power) {
     boot->held = button_fsm_take_held(&boot_fsm);
 
     /* Not a level because the PMU's edge interrupts are not enabled, not
-     * because it cannot report one - see buttons.h. */
+     * because it cannot report one; see buttons.h. */
     power->down = false;
     power->pressed = power_pressed;
     power->released = false;

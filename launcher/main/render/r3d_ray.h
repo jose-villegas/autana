@@ -1,6 +1,6 @@
 /*
- * r3d_ray - a float ray camera: origin plus an orthonormal forward/right/up
- * basis, and the direction of the ray through a physical pixel - the
+ * r3d_ray, a float ray camera: origin plus an orthonormal forward/right/up
+ * basis, and the direction of the ray through a physical pixel, the
  * quarter-turn physical-to-upright mapping and a lens fitted to the
  * viewport's SHORTER axis, on the same r3d_viewport_t a rasteriser uses.
  *

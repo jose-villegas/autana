@@ -8,7 +8,7 @@ gesture_is_edge_swipe(const input_t* input, gesture_edge_t edge, int screen_w, i
 
     /* Which axis and coordinate matter depends on the edge: top/bottom read
      * y against screen_h, left/right read x against screen_w. In each case
-     * "travelled" is measured toward the centre - away from that edge - in
+     * "travelled" is measured toward the centre (away from that edge) in
      * whichever sign that means for it, since y grows downward and x grows
      * rightward. */
     bool started_in_zone = false;

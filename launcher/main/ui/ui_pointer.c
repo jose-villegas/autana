@@ -1,4 +1,4 @@
-/* ui_pointer - see ui_pointer.h. */
+/* ui_pointer: see ui_pointer.h. */
 #include "ui/ui_pointer.h"
 
 static ui_pointer_event_t
@@ -166,7 +166,7 @@ step_input(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     if (input->released) {
         n = emit(out, n, UI_POINTER_MOVE, input->x, input->y);
         if (p->down) {
-            /* Only a DOWN we actually emitted needs a matching UP - a
+            /* Only a DOWN we actually emitted needs a matching UP: a
              * finger already on the glass when the UI opened never got
              * one (see input->down below), so its lift must stay silent. */
             n = emit(out, n, UI_POINTER_UP, input->x, input->y);
@@ -177,7 +177,7 @@ step_input(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
 
     if (input->down) {
         /* A drag reads its position here every frame in between; also
-         * covers a finger already down when the UI opened - no `pressed`
+         * covers a finger already down when the UI opened: no `pressed`
          * edge was ever seen for it, so no DOWN is synthesized for it
          * either, only this move. */
         n = emit(out, n, UI_POINTER_MOVE, input->x, input->y);

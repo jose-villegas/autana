@@ -1,5 +1,5 @@
 /*
- * r3d_lit_pipeline - draws a r3d_lit_mesh_t through a pinhole camera: cluster
+ * r3d_lit_pipeline: draws a r3d_lit_mesh_t through a pinhole camera: cluster
  * culling, one transform per vertex, near-plane clipping and r3d_span.
  *
  * Split into stages so two cores can share a frame: r3d_lit_transform() writes

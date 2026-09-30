@@ -10,7 +10,7 @@
  * logic on a laptop; running them here proves the same code behaves
  * identically built by the Xtensa toolchain and executed on this chip.
  *
- * A full run takes about 18 minutes on the S3 - too long for every boot,
+ * A full run takes about 18 minutes on the S3, too long for every boot,
  * which is why autorun is opt-in.
  */
 
@@ -54,7 +54,7 @@ selftest_run(void) {
     UNITY_BEGIN();
 
     /* Every registered suite, portable and hardware alike. Which ones exist
-     * is decided at compile time by what was built in - see suites.h. */
+     * is decided at compile time by what was built in; see suites.h. */
     suites_run_all();
     suite_report_frame_watch();
 
@@ -62,7 +62,7 @@ selftest_run(void) {
     const int64_t elapsed_ms = (esp_timer_get_time() - started) / 1000;
 
     /* A suite that did not fit is a test that did not run. Folded into the
-     * count so the sentinel below - and every harness that reads it - sees a
+     * count so the sentinel below (and every harness that reads it) sees a
      * failed run rather than a green one that tested less than it claims. */
     if (suites_dropped() > 0) {
         ESP_LOGE(TAG, "%d suite(s) dropped; raise SUITE_MAX in suites.h", suites_dropped());

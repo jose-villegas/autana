@@ -8,7 +8,7 @@
  *
  * FIRST-FIT WITH REAL FRAGMENTATION is the point: a doubly-linked list of
  * address-ordered blocks, failing an allocation exactly when no ONE free
- * block is big enough, even if the sum of several is - the same rule the
+ * block is big enough, even if the sum of several is, the same rule the
  * device's own allocator runs under, which a running-total byte counter
  * would not catch (a 41 KB request can fail on a heap with 50 KB free but
  * no block over 38 KB).
@@ -24,7 +24,7 @@
  * THE ONE CAVEAT THAT MATTERS: libc-internal allocations do not reliably
  * route through the wrapper. Measured on this toolchain (MinGW-w64
  * x86_64-ucrt gcc 16.1.0): a pointer allocated inside strdup() arrived at
- * __wrap_free() having never been seen by __wrap_malloc() - the CRT's own
+ * __wrap_free() having never been seen by __wrap_malloc(); the CRT's own
  * strdup calls its own already-resolved reference to malloc, not the
  * import our --wrap redirects. So every function below that receives a
  * pointer (free, realloc) MUST tell an arena pointer from a foreign one
@@ -88,7 +88,7 @@
 #endif
 
 /* Static storage is sized well above HOST_HEAP_ARENA_BYTES so the runtime
- * override below can WIDEN the cap for an experiment without a rebuild -
+ * override below can WIDEN the cap for an experiment without a rebuild;
  * HOST_HEAP_ARENA_BYTES is only the compile-time DEFAULT. 4 MiB costs
  * nothing in a host test binary's .bss. */
 #ifndef HOST_HEAP_ARENA_STORAGE_BYTES
@@ -106,7 +106,7 @@ typedef struct arena_block {
     struct arena_block* next;
     size_t size; /* usable payload bytes, excludes this header */
     int in_use;
-    unsigned magic; /* set while in_use, checked on free() - catches a
+    unsigned magic; /* set while in_use, checked on free(), catches a
                       * double-free or a foreign pointer that happened to
                       * land inside the arena's byte range */
 } arena_block_t;
@@ -122,8 +122,8 @@ align_up(size_t n, size_t a) {
 }
 
 /* One independently-capped, independently-fragmenting first-fit pool. Two
- * instances below stand in for the board's two allocation pools - internal
- * SRAM and PSRAM - so a request tagged for one can never eat the other's
+ * instances below stand in for the board's two allocation pools ( internal
+ * SRAM and PSRAM), so a request tagged for one can never eat the other's
  * budget, the same separation MALLOC_CAP_* gives the real allocator. */
 typedef struct {
     unsigned char* storage;
@@ -156,7 +156,7 @@ arena_poison_block(arena_block_t* b) {
     arena_asan_poison(b, ARENA_HEADER_SIZE + b->size);
 }
 
-/* _Alignas rather than a plain unsigned char[] - a static array has no
+/* _Alignas rather than a plain unsigned char[]: a static array has no
  * alignment guarantee stronger than 1 byte in the standard, and every
  * block header below assumes it can place an arena_block_t at the base. */
 static _Alignas(max_align_t) unsigned char s_internal_storage[HOST_HEAP_ARENA_STORAGE_BYTES];
@@ -210,7 +210,7 @@ heap_arena_psram_heap_bytes(const char* override) {
     return arena_pool_heap_bytes(&s_psram, override, &origin);
 }
 
-/* Reads a pool's cap - so a one-off experiment can widen or narrow either
+/* Reads a pool's cap, so a one-off experiment can widen or narrow either
  * cap without a rebuild. Prints the effective cap and where it came from
  * exactly once per pool, since a gate whose cap is silently different from
  * what the last person read in the log is worse than one that never widened
@@ -248,7 +248,7 @@ arena_pool_init_once(arena_pool_t* p) {
 
 /* Splits and hands out the free block b (already known to be big enough),
  * leaving the remainder as a new free block when there is enough of it to
- * be worth a header - a remainder smaller than one more header is folded
+ * be worth a header; a remainder smaller than one more header is folded
  * into this allocation instead of stranding an unusable sliver. */
 static void*
 arena_pool_take_block(arena_pool_t* p, arena_block_t* b, size_t need) {
@@ -281,7 +281,7 @@ arena_pool_take_block(arena_pool_t* p, arena_block_t* b, size_t need) {
 /* Walks a pool's own block list for its true free-byte total, true largest
  * free block, and free-block count. Not an approximation: each pool is a
  * real first-fit list, so this is the same quantity a bump-pointer or
- * byte-counter model could only guess at - see
+ * byte-counter model could only guess at; see
  * heap_caps_get_largest_free_block() below for what that honesty does and
  * does not buy. */
 static void
@@ -313,7 +313,7 @@ arena_pool_scan(arena_pool_t* p, size_t* out_total_free, size_t* out_largest_fre
 }
 
 /* First-fit search plus, on failure, the same story a device OOM would
- * give ("41.2 KiB needed, 38 KiB largest free block") -
+ * give ("41.2 KiB needed, 38 KiB largest free block"),
  * printed here rather than left for the caller to reconstruct from a bare
  * NULL. */
 static void*
@@ -383,7 +383,7 @@ arena_pool_release(arena_pool_t* p, arena_block_t* b) {
     arena_poison_block(b);
 }
 
-/* Caller must already know ptr is inside this pool - see ptr_in_pool()
+/* Caller must already know ptr is inside this pool; see ptr_in_pool()
  * calls at every call site below. Aborts on a bad header instead of
  * silently corrupting the list: a double-free or an in-pool-but-not-a-
  * live-block pointer is a real bug, and a test gate that swallows it
@@ -422,7 +422,7 @@ heap_arena_peak_bytes(void) {
 void
 heap_arena_reset_peak(void) {
     arena_pool_init_once(&s_internal);
-    /* Floored at what's already outstanding, not zeroed - a test that
+    /* Floored at what's already outstanding, not zeroed: a test that
      * starts after an earlier leak should show that leak weighing on its
      * own peak, the same way it would starve a real boot. */
     s_internal.peak_bytes = s_internal.cur_bytes;
@@ -431,7 +431,7 @@ heap_arena_reset_peak(void) {
 /* malloc/calloc/realloc/free interposition */
 /*
  * Everything below this point charges the INTERNAL pool only, exactly as
- * before PSRAM was modeled - plain malloc()/calloc()/free() never routes to
+ * before PSRAM was modeled: plain malloc()/calloc()/free() never routes to
  * PSRAM on their own; only an explicit heap_caps_* call (below) can.
  */
 
@@ -455,7 +455,7 @@ __wrap_free(void* ptr) {
             return;
         }
         /* Almost certainly a libc-internal allocation (strdup() and
-         * friends) that never went through __wrap_malloc - see this
+         * friends) that never went through __wrap_malloc; see this
          * file's top comment. Forward it rather than misread foreign
          * bytes as one of our headers. */
         __real_free(ptr);
@@ -467,7 +467,7 @@ __wrap_free(void* ptr) {
 void*
 __wrap_calloc(size_t nmemb, size_t size) {
     if (nmemb != 0 && size > (size_t)-1 / nmemb) {
-        return NULL; /* overflow - same contract calloc itself makes */
+        return NULL; /* overflow: same contract calloc itself makes */
     }
     size_t total = nmemb * size;
     void* p = arena_pool_alloc(&s_internal, total);
@@ -489,7 +489,7 @@ __wrap_realloc(void* ptr, size_t size) {
         p = &s_psram;
     }
     if (!p) {
-        /* Foreign pointer - see __wrap_free above for why this can happen
+        /* Foreign pointer: see __wrap_free above for why this can happen
          * at all. Hand it to the real realloc untouched. */
         return __real_realloc(ptr, size);
     }
@@ -501,7 +501,7 @@ __wrap_realloc(void* ptr, size_t size) {
     arena_block_t* b = (arena_block_t*)((unsigned char*)ptr - ARENA_HEADER_SIZE);
     size_t need = align_up(size, ARENA_ALIGN);
     if (need <= b->size) {
-        /* Shrinking (or same size) in place. No split on shrink - kept
+        /* Shrinking (or same size) in place. No split on shrink: kept
          * simple on purpose, this is a test gate, not a production
          * allocator, and the extra fragmentation from not splitting here
          * only ever makes a fixture's job HARDER, never easier, so it
@@ -521,7 +521,7 @@ __wrap_realloc(void* ptr, size_t size) {
 /* heap_caps_* models the board's two pools (board.h's BOARD_FRAMEBUFFER_CAPS,
  * the sdkconfig's CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL). An explicit
  * MALLOC_CAP_SPIRAM/_INTERNAL/_DMA request never spills into the other pool
- * on failure - that spill is the device-only failure this exists to catch.
+ * on failure: that spill is the device-only failure this exists to catch.
  * A bare MALLOC_CAP_8BIT/_DEFAULT is the one path with a fallback, since
  * ALWAYSINTERNAL is itself a fallback rule on the device. */
 
@@ -608,7 +608,7 @@ heap_caps_get_free_size(uint32_t caps) {
 
 /* Honest about fragmentation, and about the limits of that honesty: this is
  * the TRUE largest free block in OUR modeled pool (a real first-fit list,
- * scanned exactly, not estimated - see arena_pool_scan() above), never a
+ * scanned exactly, not estimated; see arena_pool_scan() above), never a
  * prediction of the device's own fragmentation. That depends on the
  * device's actual allocation order and history, which a host test does not
  * replay, so this number can legitimately differ from a real capture even

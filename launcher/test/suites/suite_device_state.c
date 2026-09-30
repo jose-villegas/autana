@@ -72,7 +72,7 @@ test_imu_ready_but_read_failed(void) {
 
 static void
 test_temp_not_ok_is_json_null_not_a_string(void) {
-    /* "null" (bare, no quotes) - a host json.loads() must see None, not the
+    /* "null" (bare, no quotes): a host json.loads() must see None, not the
      * four-character string "null", or a consumer checking `is None` would
      * silently see a string instead and never notice the sensor failed. */
     device_state_t state = {0};

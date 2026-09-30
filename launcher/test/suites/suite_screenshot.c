@@ -1,11 +1,11 @@
 /*
- * Portable suite: screenshot_bmp_header/screenshot_bmp_row_stride - the pure
+ * Portable suite: screenshot_bmp_header/screenshot_bmp_row_stride, the pure
  * byte layout of the BMP console_screenshot_dump()
  * (console/console_screenshot.c, device-only) writes.
  *
  * Every expected byte below is spelled out by hand against the
  * BITMAPFILEHEADER/BITMAPINFOHEADER field order rather than derived from the
- * same arithmetic screenshot_bmp_header() uses - a test that reused the
+ * same arithmetic screenshot_bmp_header() uses: a test that reused the
  * implementation's own shifts could carry the same bug and still pass.
  */
 
@@ -67,7 +67,7 @@ test_header_dimensions_and_bit_depth(void) {
                            | ((uint32_t)header[21] << 24);
     TEST_ASSERT_EQUAL_UINT32(368, width);
 
-    /* biHeight is POSITIVE - a negative value in a real BMP would mean
+    /* biHeight is POSITIVE: a negative value in a real BMP would mean
      * top-down rows, which is not what console_screenshot_dump()'s write
      * loop produces (it walks y from GFX_HEIGHT-1 down to 0, bottom-up). */
     const uint32_t height = (uint32_t)header[22] | ((uint32_t)header[23] << 8) | ((uint32_t)header[24] << 16)
@@ -80,7 +80,7 @@ test_header_dimensions_and_bit_depth(void) {
     const uint16_t bpp = (uint16_t)(header[28] | (header[29] << 8));
     TEST_ASSERT_EQUAL_UINT16(24, bpp);
 
-    /* biCompression must be BI_RGB (0) - this is an UNCOMPRESSED image,
+    /* biCompression must be BI_RGB (0): this is an UNCOMPRESSED image,
      * the entire point of choosing BMP over a codec in the first place. */
     const uint32_t compression = (uint32_t)header[30] | ((uint32_t)header[31] << 8) | ((uint32_t)header[32] << 16)
                                  | ((uint32_t)header[33] << 24);
@@ -90,7 +90,7 @@ test_header_dimensions_and_bit_depth(void) {
 static void
 test_header_is_exactly_54_bytes_with_no_trailing_garbage(void) {
     /* biClrUsed and biClrImportant (the header's last 8 bytes) are always
-     * zero for a 24bpp image with no palette - a stray nonzero byte here
+     * zero for a 24bpp image with no palette: a stray nonzero byte here
      * would be the kind of off-by-one that only shows up as a viewer
      * misreading the image, not a crash. */
     uint8_t header[SCREENSHOT_BMP_HEADER_SIZE];
@@ -105,7 +105,7 @@ test_header_is_exactly_54_bytes_with_no_trailing_garbage(void) {
  *
  * The encode tests use RFC 4648's own worked example ("Man" and its
  * prefixes) plus the standard "f"/"fo"/"foo" padding vectors, rather than
- * anything derived from this file's own arithmetic - the same reasoning
+ * anything derived from this file's own arithmetic, the same reasoning
  * suite_gfx_color.c's top comment gives for checking gfx_color_mix()
  * against GFX_RGB(...) constants instead of its own round-trip.
  */
@@ -122,7 +122,7 @@ static void
 test_encode_empty_input_produces_no_bytes(void) {
     char out[1] = {'x'};
     screenshot_base64_encode((const uint8_t*)"", 0, out);
-    /* Nothing written - out[0] must still hold whatever the caller put
+    /* Nothing written: out[0] must still hold whatever the caller put
      * there, i.e. this must not have touched it. */
     TEST_ASSERT_EQUAL_CHAR('x', out[0]);
 }
@@ -164,7 +164,7 @@ static void
 test_encode_two_clean_groups_matches_encoding_them_together(void) {
     /* The property console_screenshot_dump() actually leans on: encoding "foobar"
      * as two independent 3-byte calls ("foo" then "bar") must produce the
-     * same bytes, in order, as encoding it as one 6-byte call - see
+     * same bytes, in order, as encoding it as one 6-byte call; see
      * screenshot_base64_encode()'s own comment on why a BMP row boundary
      * (always a multiple of 3 here) is safe to split calls on. */
     char whole[9] = {0};

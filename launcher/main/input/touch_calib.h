@@ -1,5 +1,5 @@
 /*
- * touch_calib - undoes a touch panel's measured misreporting. A panel that
+ * touch_calib: undoes a touch panel's measured misreporting. A panel that
  * reports a tap at `reported = A * true + offset`, per axis, is corrected by
  * the inverse of that map: the map is fitted offline from logged taps and
  * compiled in, and the inverse applied to every controller point before

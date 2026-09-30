@@ -1,4 +1,4 @@
-/* console_navigation - development console requests that the shell applies
+/* console_navigation: development console requests that the shell applies
  * at a frame boundary. */
 #pragma once
 

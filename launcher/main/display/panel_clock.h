@@ -1,5 +1,5 @@
 /*
- * panel_clock - the shell's memory of the system panel clock, the user's
+ * panel_clock: the shell's memory of the system panel clock, the user's
  * choice, and the rule that every app switch returns to it whatever the
  * previous app set.
  *

@@ -1,5 +1,5 @@
 /*
- * r3d_lit_mesh_expect - one Unity check that a baked r3d_lit_mesh_t has the
+ * r3d_lit_mesh_expect: one Unity check that a baked r3d_lit_mesh_t has the
  * structure render/r3d_lit_pipeline.h relies on, for a suite holding any
  * bake to call once per mesh: clusters tile both arrays in order, every
  * triangle indexes three distinct vertices of its own cluster, bounds hold

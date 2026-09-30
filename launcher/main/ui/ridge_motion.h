@@ -1,5 +1,5 @@
 /*
- * ridge_motion - what the launcher's ridge does when nobody touches it. It
+ * ridge_motion: what the launcher's ridge does when nobody touches it. It
  * breathes: its shape eases toward a smoothed copy of itself and back to the
  * rigid original. A wave runs along it. And the wave has momentum: while the
  * device turns the line lags true level, the ridge is for that moment a

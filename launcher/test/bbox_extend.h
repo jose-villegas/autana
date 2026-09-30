@@ -1,5 +1,5 @@
 /*
- * bbox_extend - one bounding-box widening step, shared by every suite that
+ * bbox_extend: one bounding-box widening step, shared by every suite that
  * tracks the inclusive min/max span of cells or pixels it has touched.
  *
  * Header-only (static inline) so a suite anywhere under launcher/main/ or
@@ -8,7 +8,7 @@
  */
 #pragma once
 
-/* Widens [*min_x,*max_x] x [*min_y,*max_y] to include (x, y) - both ends
+/* Widens [*min_x,*max_x] x [*min_y,*max_y] to include (x, y), both ends
  * inclusive, so an empty box starts at (max < min) and a single point
  * leaves min == max on that axis. */
 static inline void

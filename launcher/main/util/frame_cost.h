@@ -1,5 +1,5 @@
 /*
- * frame_cost - where a frame's time goes, by name: a bracket's microseconds
+ * frame_cost, where a frame's time goes, by name: a bracket's microseconds
  * go to a named slot, own time only, and once a window the slots are read
  * out as milliseconds per frame and forgotten.
  *
@@ -83,7 +83,7 @@ frame_cost_enter(frame_cost_t* cost, int64_t now_us) {
  * the whole elapsed time into the level below, so that one is exclusive of
  * it in turn. Dropping the stack straight to `mark` both pops this level and
  * discards, uncharged, any deeper one whose own END never ran. A `mark` no
- * longer on the stack - already popped, or FRAME_COST_IGNORE_MARK - charges
+ * longer on the stack (already popped, or FRAME_COST_IGNORE_MARK) charges
  * nothing. */
 static inline void
 frame_cost_leave(frame_cost_t* cost, int mark, const char* name, int64_t now_us) {
@@ -119,7 +119,7 @@ frame_cost_append_total(char* out, size_t out_size, int length, int64_t total_av
     return length + wrote;
 }
 
-/* " +N dropped", once there is a total to trail - a name refused for want of
+/* " +N dropped", once there is a total to trail: a name refused for want of
  * a slot, this window. */
 static inline int
 frame_cost_append_dropped(char* out, size_t out_size, int length, int dropped) {
@@ -139,7 +139,7 @@ frame_cost_append_dropped(char* out, size_t out_size, int length, int dropped) {
  * bracket leaves no stale level for that bracket's own END to find.
  *
  * `frames` zero leaves the window for the next report to find; `out_size`
- * zero writes nothing but still clears the window - the caller did ask for
+ * zero writes nothing but still clears the window: the caller did ask for
  * a report. */
 static inline int
 frame_cost_report(frame_cost_t* cost, uint32_t frames, char* out, size_t out_size) {

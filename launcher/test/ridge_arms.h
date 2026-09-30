@@ -1,6 +1,6 @@
 /*
- * The launcher ridge's scripted motions - a tilt sweep, a wobble, a pluck
- * and strum - shared by the host suite that audits every repainted frame
+ * The launcher ridge's scripted motions (a tilt sweep, a wobble, a pluck
+ * and strum), shared by the host suite that audits every repainted frame
  * and the device suite that times them, so both drive the same frames.
  */
 #pragma once

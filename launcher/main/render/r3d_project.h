@@ -1,10 +1,10 @@
 /*
- * r3d_project - camera-space near-plane clip and perspective projection for
+ * r3d_project: camera-space near-plane clip and perspective projection for
  * a caller that has already composed its own model*view matrix and wants a
  * screen pixel out the other end.
  *
  * Header-only, static inline, and ESP-IDF-free, so a host suite can check
- * every line of it without a panel - see test/suites/suite_r3d_project.c.
+ * every line of it without a panel; see test/suites/suite_r3d_project.c.
  * This owns none of a caller's units, timeline or resolution: `r3d_view_t`
  * carries the whole environment a camera-space point needs (matrix, focal
  * length, near clip, and where the projection plane lands on screen), so a
@@ -31,7 +31,7 @@ r3d_unused_pixel(S3L_PixelInfo* pixel) {
 }
 #endif
 
-/* A small fraction of one S3L_F unit - a caller with its own physical unit
+/* A small fraction of one S3L_F unit: a caller with its own physical unit
  * (a meter, a grid cell) is free to pick a near_z of its own instead. */
 #define R3D_NEAR_Z (S3L_F / 10)
 
@@ -57,11 +57,11 @@ r3d_camera_to_screen(S3L_Vec4 p, const r3d_view_t* view, int* screen_x, int* scr
 
     /* NOT S3L_mapProjectionPlaneToScreen(): its S3L_ScreenCoord defaults
      * to int16_t, and S3L_USE_WIDER_TYPES would widen S3L_Unit itself to
-     * int64_t everywhere - a real cost with no native 64-bit ALU. This
+     * int64_t everywhere, a real cost with no native 64-bit ALU. This
      * repeats its formula but with just the multiply done in int64_t: a
      * near-camera point's already-divided p.x/p.y can be large enough to
      * overflow a 32-bit product here even though the final on/off-panel
-     * result never does - gfx.c's clip_line() leans on the same trick. */
+     * result never does; gfx.c's clip_line() leans on the same trick. */
     *screen_x = (int)(view->center_x + ((int64_t)p.x * view->scale) / S3L_F);
     *screen_y = (int)(view->center_y - ((int64_t)p.y * view->scale) / S3L_F);
 }

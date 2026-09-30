@@ -1,5 +1,5 @@
 /*
- * gfx_font_roles - which typeface plays which part, decided once, here, so
+ * gfx_font_roles: which typeface plays which part, decided once, here, so
  * retyping the UI is an edit here rather than a grep.
  *
  * The UI and boot title use the same bitmap font. Scale is a call-site

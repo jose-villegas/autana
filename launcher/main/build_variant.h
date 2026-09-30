@@ -1,9 +1,9 @@
 /*
- * build_variant - CONFIG_LAUNCHER_{RELEASE,DEVELOPMENT,SELFTEST}, reached on
+ * build_variant: CONFIG_LAUNCHER_{RELEASE,DEVELOPMENT,SELFTEST}, reached on
  * purpose rather than by whichever ESP-IDF header happened to already be
  * included.
  *
- * ESP-IDF does not force sdkconfig.h into every translation unit - a file
+ * ESP-IDF does not force sdkconfig.h into every translation unit: a file
  * only sees a CONFIG_* macro if it, or something it includes, asks for
  * sdkconfig.h first. A file relying on another header to pull sdkconfig.h
  * in compiles its #if block out silently once its includes are all
@@ -13,7 +13,7 @@
  * that to chance.
  *
  * A host build defines no ESP_PLATFORM and has no sdkconfig.h to find, so
- * every CONFIG_LAUNCHER_* macro is simply undefined there - #if treats that
+ * every CONFIG_LAUNCHER_* macro is simply undefined there; #if treats that
  * as 0, the existing, deliberate way a host test opts out of a
  * variant-gated branch.
  */

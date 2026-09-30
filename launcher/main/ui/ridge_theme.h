@@ -1,4 +1,4 @@
-/* ridge_theme - a seed colour expanded into the launcher's fixed lightness roles. */
+/* ridge_theme: a seed colour expanded into the launcher's fixed lightness roles. */
 #pragma once
 
 #include <math.h>

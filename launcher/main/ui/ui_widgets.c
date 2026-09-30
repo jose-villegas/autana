@@ -254,8 +254,8 @@ ui_dropdown_is_open(mu_Context* ctx, const char* id) {
     return list != NULL && list->open;
 }
 
-/* A list its dropdown stopped drawing - the screen changed, or the app left
- * mid-close - is closed rather than found open on the next visit. */
+/* A list its dropdown stopped drawing (the screen changed, or the app left
+ * mid-close) is closed rather than found open on the next visit. */
 static void
 close_if_abandoned(mu_Context* ctx, mu_Container* list) {
     if (list == NULL || !list->open) {

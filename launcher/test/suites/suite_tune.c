@@ -1,5 +1,5 @@
 /*
- * Portable suite: tune - the console protocol for changing a number on a
+ * Portable suite: tune, the console protocol for changing a number on a
  * running device, driven here with lines and a reply callback.
  */
 

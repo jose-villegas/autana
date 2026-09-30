@@ -1,5 +1,5 @@
 /*
- * imu - the QMI8658 six-axis accelerometer and gyroscope.
+ * imu: the QMI8658 six-axis accelerometer and gyroscope.
  *
  * Sits on the shared I2C bus at 0x6b, the same bus POST probes. There is no
  * driver for it in the BSP, so this is written against the QST datasheet.
@@ -13,7 +13,7 @@
  *     tilted, as long as it is being held still. It is what tells you the
  *     board is being shaken or spun.
  *
- * Both are read in one transfer - the data registers are contiguous - so using
+ * Both are read in one transfer (the data registers are contiguous), so using
  * both costs nothing over using either.
  */
 #pragma once
@@ -56,7 +56,7 @@ void imu_inject_release(void);
 
 /* Sensor axes to screen axes: how the QMI8658 is soldered relative to the
  * panel is a board layout fact no datasheet carries, so both facts here come
- * from tilting the board - held upright the sensor reads about +1 g on its
+ * from tilting the board: held upright the sensor reads about +1 g on its
  * X axis and roughly zero on Y, so the chip's X runs down the screen and its
  * Y runs across it pointing left, hence the negation. */
 static inline int

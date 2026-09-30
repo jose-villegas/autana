@@ -1,14 +1,14 @@
 /*
- * Portable suite: gfx/icons_system.h - the baked system icon atlas.
+ * Portable suite: gfx/icons_system.h, the baked system icon atlas.
  *
  * The check mark's own artwork is pinned independently in suite_icons.c
  * (hand-transcribed expected rows, not read back from this generated
- * header) - this file checks facts a scan can pin down across the whole
+ * header); this file checks facts a scan can pin down across the whole
  * atlas instead: run counts, struct self-consistency, one SVG import traced
  * by hand against its source.
  *
  * Everything here works over EVERY baked icon by index, never assuming a
- * 16-wide/2-byte-stride shape - the atlas mixes the 16x16 PNG-sourced check
+ * 16-wide/2-byte-stride shape: the atlas mixes the 16x16 PNG-sourced check
  * mark with 24x24 SVG-sourced imports, and icon_t's own w/h/stride fields
  * are what make that mixing safe.
  */
@@ -33,7 +33,7 @@ baked_bit(const icon_t* icon, int x, int y) {
 }
 
 /* A run-length walk of the UNPACKED rows, independent of count_runs() in
- * gen_icons.py - proving every baked `blocks` field against what the bytes
+ * gen_icons.py, proving every baked `blocks` field against what the bytes
  * actually contain, not against the generator's own count of what it
  * intended to write. Covers both the PNG-sourced check mark and every
  * SVG-sourced import, whatever their own w/h/stride happen to be. */
@@ -71,7 +71,7 @@ test_all_icons_struct_fields_are_self_consistent(void) {
 }
 
 /* design/icons/system/chevron-left.svg's 7 rectangles, traced BY HAND from
- * its path data rather than by calling gen_icons.py's SVG reader - a green
+ * its path data rather than by calling gen_icons.py's SVG reader: a green
  * result proves the baked bytes against the source file, not the parser's
  * own idea of what it read. */
 static const char* const chevron_left_expected_rows[24] = {
@@ -121,7 +121,7 @@ reference_icon_scale(int iw, int ih, int box_w, int box_h) {
     return scale;
 }
 
-/* Bounding box of the icon's own drawn ink - min/max x and y over every
+/* Bounding box of the icon's own drawn ink: min/max x and y over every
  * set bit. */
 static void
 reference_icon_bbox(const icon_t* icon, int iw, int ih, int* min_x, int* max_x, int* min_y, int* max_y) {
@@ -138,9 +138,9 @@ reference_icon_bbox(const icon_t* icon, int iw, int ih, int* min_x, int* max_x, 
     }
 }
 
-/* A second, independent extraction of the same geometry - built on
+/* A second, independent extraction of the same geometry, built on
  * baked_bit()/icon_system_table lookups rather than on icon_walk_blocks()
- * or its internals - so agreement with the streaming walker below proves
+ * or its internals, so agreement with the streaming walker below proves
  * the reshape into a callback changed no geometry, not merely that the
  * walker agrees with itself. */
 static int
@@ -181,7 +181,7 @@ reference_blocks(const icon_t* icon, int box_w, int box_h, icon_rect_t* out, int
 }
 
 /* home's own 50 is the largest baked run count in the atlas, so this bounds
- * every buffer below - malloc'd, not on-stack, per check_stack_usage.py's
+ * every buffer below: malloc'd, not on-stack, per check_stack_usage.py's
  * gate (see its own header on the two device panics that gate exists for). */
 #define TEST_MAX_BLOCKS 64
 
@@ -244,10 +244,10 @@ test_streaming_walker_matches_reference_extraction(void) {
 }
 
 /* Every pixelarticons import is already centred in its own 24x24 grid, so
- * content-bbox and full-grid centring coincide for all of them - only
+ * content-bbox and full-grid centring coincide for all of them; only
  * icon_check's hand-drawn ink is off-centre (1px top margin, 2px bottom),
  * which is what actually catches a caller centring on w x h instead. At a
- * 32x32 box its first run (row 1, col 13) lands at (26, 3), not (26, 2) -
+ * 32x32 box its first run (row 1, col 13) lands at (26, 3), not (26, 2),
  * hand-derived from the centring formula. */
 static void
 test_content_bbox_centring_uses_a_specific_expected_origin(void) {

@@ -1,8 +1,8 @@
 /*
- * board - the one place a board fact gets bound to a concrete value.
+ * board: the one place a board fact gets bound to a concrete value.
  *
  * Every other file names a ROLE (the PMU's address, the boot button's GPIO,
- * the framebuffer's caps) and never a literal number - see board_esp32s3.c
+ * the framebuffer's caps) and never a literal number; see board_esp32s3.c
  * for the binding to the Waveshare ESP32-S3-Touch-AMOLED-1.8.
  */
 #pragma once
@@ -27,7 +27,7 @@ board_variant_t board_variant(void);
 const char* board_variant_name(board_variant_t variant);
 
 /* Powers the audio amplifier rail. Behind an IO expander pin on one board
- * and a plain GPIO on another - callers never need to know which. */
+ * and a plain GPIO on another; callers never need to know which. */
 esp_err_t board_audio_amp_enable(bool on);
 
 /* Which step of the on-die temperature sensor's cycle below a failure

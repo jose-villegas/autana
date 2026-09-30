@@ -1,5 +1,5 @@
 /*
- * Portable suite: ridge_motion.h - the ridge breathing, the wave along it,
+ * Portable suite: ridge_motion.h, the ridge breathing, the wave along it,
  * and the momentum a slope gives that wave.
  */
 

@@ -33,9 +33,9 @@ static int master_byte_index;
 static int nack_at;
 static uint8_t read_value;
 
-/* Only the distinct delay values matter to a test - I2C_HALF_US repeats a
+/* Only the distinct delay values matter to a test: I2C_HALF_US repeats a
  * couple hundred times per transfer, the 20 ms post-restart wait exactly
- * once - so this dedups rather than logging every call. */
+ * once, so this dedups rather than logging every call. */
 #define DISTINCT_DELAYS_MAX 8
 static uint32_t distinct_delays[DISTINCT_DELAYS_MAX];
 static int distinct_delay_count;
@@ -197,8 +197,8 @@ static void
 slave_on_8_bits_clocked(void) {
     if (current_byte_slave_driven) {
         /* This protocol only ever has the slave send one byte per read;
-         * whatever comes after it - an ack slot the master decides, then a
-         * repeated start or a stop - is not another slave-sent byte. */
+         * whatever comes after it (an ack slot the master decides, then a
+         * repeated start or a stop) is not another slave-sent byte. */
         next_byte_slave_driven = false;
         return;
     }

@@ -5,7 +5,7 @@
 #include "gfx/gfx_palette_standard_generated.h"
 
 /* IBM CGA/EGA 16-colour palette. Index 6 (brown, not the sequential dark
- * yellow) is deliberate CGA hardware behaviour, not a typo - see the
+ * yellow) is deliberate CGA hardware behaviour, not a typo; see the
  * sources cited in gfx_palette_standard.h. */
 static const gfx_color_t cga_ega_16[16] = {
     GFX_RGB(0x000000), GFX_RGB(0x0000AA), GFX_RGB(0x00AA00), GFX_RGB(0x00AAAA), GFX_RGB(0xAA0000), GFX_RGB(0xAA00AA),
@@ -34,7 +34,7 @@ static const gfx_color_t db32[32] = {
     GFX_RGB(0x8F974A), GFX_RGB(0x8A6F30),
 };
 
-/* i*17 for i in 0..15 - exact, since 15*17 == 255. */
+/* i*17 for i in 0..15: exact, since 15*17 == 255. */
 static const gfx_color_t grayscale_16[16] = {
     GFX_RGB(0x000000), GFX_RGB(0x111111), GFX_RGB(0x222222), GFX_RGB(0x333333), GFX_RGB(0x444444), GFX_RGB(0x555555),
     GFX_RGB(0x666666), GFX_RGB(0x777777), GFX_RGB(0x888888), GFX_RGB(0x999999), GFX_RGB(0xAAAAAA), GFX_RGB(0xBBBBBB),

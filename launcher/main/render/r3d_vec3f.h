@@ -1,5 +1,5 @@
 /*
- * r3d_vec3f - the float 3-vector every float camera in render/ shares.
+ * r3d_vec3f: the float 3-vector every float camera in render/ shares.
  *
  * SINGLE PRECISION ONLY. The FPU this runs on has no double, so one stray
  * promotion costs an order of magnitude; a .c including this carries

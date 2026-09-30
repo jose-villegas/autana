@@ -1,4 +1,4 @@
-/* ui_ridge - the launcher's layered, gravity-level backdrop. */
+/* ui_ridge: the launcher's layered, gravity-level backdrop. */
 
 #include "ui/ui_ridge.h"
 

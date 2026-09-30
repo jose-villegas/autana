@@ -1,5 +1,5 @@
 /*
- * Portable suite: gfx/icons_system.h's ICON_SYSTEM_CHECK - the artwork
+ * Portable suite: gfx/icons_system.h's ICON_SYSTEM_CHECK, the artwork
  * MU_ICON_CHECK renders from the baked atlas (see ui.c's draw_command()).
  *
  * check_expected_rows below is transcribed BY HAND from icons.h's own icon_check_bitmap picture, not
@@ -10,12 +10,12 @@
  * a scan can pin down instead.
  *
  * The two sizes exercised throughout are the module's two real callers:
- *   - 18px, a per-tile palette badge's icon size (scale 1 - see
+ *   - 18px, a per-tile palette badge's icon size (scale 1; see
  *     icon_walk_blocks' own comment on why a box smaller than the bitmap
  *     still gets scale 1);
  *   - 64px, the icon rect mu_checkbox() draws at (scale 4). mu_checkbox() in
  *     components/microui/src/microui.c builds its box as
- *     mu_rect(r.x, r.y, r.h, r.h), and r.h is UI_ROW_HEIGHT (64 - see ui.h),
+ *     mu_rect(r.x, r.y, r.h, r.h), and r.h is UI_ROW_HEIGHT (64; see ui.h),
  *     the row height a settings-style toggle screen lays its two
  *     mu_checkbox() rows out at.
  */
@@ -37,8 +37,8 @@ baked_bit(const icon_t* icon, int x, int y) {
     return (byte & (0x80 >> (x % 8))) != 0;
 }
 
-/* check's own baked run count (icon_system_table[ICON_SYSTEM_CHECK].blocks)
- * - big enough buffer for it at any box size, since a run's count is
+/* check's own baked run count (icon_system_table[ICON_SYSTEM_CHECK].blocks),
+ * big enough buffer for it at any box size, since a run's count is
  * scale-invariant (icon_walk_blocks' own comment). */
 #define CHECK_TEST_MAX_BLOCKS 16
 
@@ -100,7 +100,7 @@ test_fits_inside_its_box_across_the_supported_range(void) {
 }
 
 /* The bounding box of every returned block, at whatever scale, must be
- * centred within (0, 0, w, h) to within a pixel on both axes - the whole
+ * centred within (0, 0, w, h) to within a pixel on both axes: the whole
  * point of icon_walk_blocks() scanning the bitmap's own content box rather
  * than centring the full (mostly empty) 16x16 bitmap. */
 static void
@@ -156,7 +156,7 @@ test_centred_at_32px(void) {
     assert_centred_within_a_pixel(32, 32);
 }
 
-/* Transcribed from icons.h's icon_check_bitmap - see this file's own top
+/* Transcribed from icons.h's icon_check_bitmap; see this file's own top
  * comment for why the comparison is against a hand copy, not the generated
  * header. A short limb descends left-to-right to a vertex, then a long limb
  * rises past it about a third again as far. */
@@ -201,7 +201,7 @@ popcount_of(const char* const* rows) {
 static void
 test_bitmap_is_neither_empty_nor_full(void) {
     /* 256 native pixels total. A recognisable check mark's stroke covers a
-     * clear minority of its box - well under half - but is not a handful of
+     * clear minority of its box (well under half) but is not a handful of
      * stray pixels either. 20..100 is generous either side of this bitmap's
      * actual count while still catching "went empty" or "went solid". */
     const int set = popcount_of(check_expected_rows);
@@ -214,7 +214,7 @@ test_bitmap_is_neither_empty_nor_full(void) {
 /* Every row of the artwork has at most two separate runs (the three rows
  * where both limbs are visible at once) and icon_system_table's own
  * `blocks` field for ICON_SYSTEM_CHECK is exactly the sum of every row's
- * run count - the worst case this icon actually needs, not a round number
+ * run count, the worst case this icon actually needs, not a round number
  * picked for headroom. */
 static void
 test_blocks_matches_the_artworks_actual_run_count(void) {
@@ -237,7 +237,7 @@ test_blocks_matches_the_artworks_actual_run_count(void) {
 }
 
 /* The stroke is 2-3 native px through the body. Exactly one run is allowed
- * to be thinner than that: the long limb's free-end taper, a single pixel -
+ * to be thinner than that: the long limb's free-end taper, a single pixel;
  * every other run must meet the 2px floor, or the mark reads as scattered
  * dots rather than a stroke. */
 static void

@@ -25,7 +25,7 @@ touch_fsm_update(touch_fsm_t* fsm, bool have_point, int x, int y, int64_t now_us
     }
 
     /* No contact reported. Only treat that as a lift once the controller has
-     * been quiet long enough - a brief gap is a dropout, not a release. */
+     * been quiet long enough; a brief gap is a dropout, not a release. */
     if (fsm->down && (now_us - fsm->last_contact_us) > TOUCH_RELEASE_QUIET_US) {
         fsm->down = false;
         fsm->released = true;

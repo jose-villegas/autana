@@ -1,5 +1,5 @@
 /*
- * gfx_target - the buffer every pixel-writing gfx_* primitive actually
+ * gfx_target: the buffer every pixel-writing gfx_* primitive actually
  * writes into: the whole framebuffer in GFX_LAYOUT_FULL_FB, or one band's
  * own buffer while a band is being rendered in GFX_LAYOUT_BANDS
  * (gfx_mode.h). A standalone, ESP-IDF-free module, the same reason
@@ -27,7 +27,7 @@ typedef struct {
 } gfx_target_t;
 
 /* The absolute row range [y0, y1) intersected with `clip`'s and the
- * target's own row range - never wider than either. Callers that already
+ * target's own row range, never wider than either. Callers that already
  * have an x range apply their own clip.x0/x1 separately; only y depends on
  * the target. */
 static inline void
@@ -47,7 +47,7 @@ gfx_target_clip_y(gfx_target_t target, int clip_y0, int clip_y1, int* y0, int* y
 }
 
 /* The row pointer for absolute row `y`, once it is known to lie inside
- * [target.y0, target.y0 + target.height) - gfx_target_clip_y() above is
+ * [target.y0, target.y0 + target.height): gfx_target_clip_y() above is
  * what a caller uses to know that. */
 static inline gfx_color_t*
 gfx_target_row(gfx_target_t target, int y) {
@@ -55,7 +55,7 @@ gfx_target_row(gfx_target_t target, int y) {
 }
 
 /* True if a shape whose own row extent is [y0, y1) has anything at all to
- * draw into this target - the check a caller decides whether to bother
+ * draw into this target, the check a caller decides whether to bother
  * drawing with, before paying for the call: a per-band triangle bin and
  * ui.c's per-band command replay both use this to skip work outside the
  * current band rather than discover it clips to nothing. */
@@ -69,7 +69,7 @@ gfx_target_row_range_overlaps(gfx_target_t target, int y0, int y1) {
  * (x, y, w, h) and `clip` are in full-screen space, the same as every
  * gfx_fill_rect() caller already uses; only the write lands in the
  * target's own local rows. Reports the actually-painted rect back through
- * the out params - gfx.c's own caller needs it (already clipped) to mark
+ * the out params: gfx.c's own caller needs it (already clipped) to mark
  * the right dirty region. */
 static inline void
 gfx_target_fill_rect(gfx_target_t target, int clip_x0, int clip_y0, int clip_x1, int clip_y1, int x, int y, int w,

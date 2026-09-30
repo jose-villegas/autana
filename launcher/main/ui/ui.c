@@ -1,14 +1,14 @@
 /*
- * ui - paints one microui frame into the real framebuffer. See ui.h for what
+ * ui: paints one microui frame into the real framebuffer. See ui.h for what
  * and why, and ui_build.c for the other half of this module: building the
  * frame this file paints, split out specifically because it needs none of
- * gfx.c and so can run on a host - see ui_build.c's own top comment.
+ * gfx.c and so can run on a host; see ui_build.c's own top comment.
  *
  * THE CANVAS MODEL
  *
  * A retained-mode engine knows what changed because changing it is an explicit
  * act: you mutate a node, the node marks itself dirty, and only its canvas is
- * rebuilt. Immediate mode throws that signal away by construction - the UI is
+ * rebuilt. Immediate mode throws that signal away by construction; the UI is
  * rebuilt from scratch every frame, so "was it modified?" has no answer.
  *
  * The signal is recoverable from the other end. microui's command list is a
@@ -24,7 +24,7 @@
  *
  * The one rule that has to be respected is painter's order. Windows are drawn
  * back to front, so repainting one means repainting anything above it that
- * overlaps - otherwise the repaint erases what was on top.
+ * overlaps; otherwise the repaint erases what was on top.
  */
 
 #include "ui/ui.h"
@@ -56,7 +56,7 @@ report_command_list_high_water(int used) {
  * Painting
  *
  * Every command's geometry is mapped through the transform in force before
- * it reaches gfx - see ui_transform.h for what that buys, and ui_build.c's
+ * it reaches gfx; see ui_transform.h for what that buys, and ui_build.c's
  * ui_set_transform() for why an invalid one renders as identity rather than
  * being rejected at the point it was set.
  */
@@ -71,7 +71,7 @@ icon_fill_emit(void* ctx_, int x, int y, int w, int h) {
     gfx_fill_rect(x, y, w, h, fc->color);
 }
 
-/* microui colour to the panel's own, alpha dropped - a style works in
+/* microui colour to the panel's own, alpha dropped; a style works in
  * microui's colour space and never sees a panel pixel; this is the one
  * place a command's colour crosses into gfx's. */
 static gfx_color_t
@@ -94,17 +94,17 @@ draw_text_command(const mu_Command* cmd, ui_transform_t t) {
      * "walk N glyphs, take the far edge" under rotation, so mapping
      * just the origin and walking per-glyph from there drifts a
      * string off at quarter turns 1-3. Mapping the LOGICAL box
-     * instead - the same one used to size it - keeps it exact, like
+     * instead (the same one used to size it) keeps it exact, like
      * every other command. */
     const int tw = gfx_font_text_width(font, cmd->text.str, -1, scale);
     const int th = gfx_font_height(font, scale);
     const mu_Rect box = ui_transform_rect(t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
 
     /* gfx_text_font()'s (x, y) is the FIRST GLYPH's cell, not a
-     * corner of the box - see ui_text_glyph0_origin()'s own comment
+     * corner of the box; see ui_text_glyph0_origin()'s own comment
      * (ui_transform.h) for the full derivation. Extracted there, not
      * kept inline, so it's testable against a synthetic proportional
-     * font on a host - a port of the same origin math an app's own
+     * font on a host: a port of the same origin math an app's own
      * label-drawing code solves for itself, ported rather than called
      * directly because ui/ sits below apps/, so reaching into an
      * app's source would be a backwards layering dependency. */
@@ -136,13 +136,13 @@ draw_text_command(const mu_Command* cmd, ui_transform_t t) {
         const gfx_color_t color = mu_color_to_gfx(c);
 
         /* THE HALO OFFSET IS ADDED AFTER THE MAPPING, NOT BEFORE.
-         * passes[i].dx/dy is a SCREEN-SPACE offset - see ui_style.h's
+         * passes[i].dx/dy is a SCREEN-SPACE offset; see ui_style.h's
          * OUTLINED/SHADOWED passes, which sit a halo a fixed pixel
          * count from the glyph on the panel. (mx, my) already IS a
          * screen position. Transforming (dx, dy) itself would instead
          * rotate the halo with the glyph: a shadow meant to fall
          * down-and-right on screen would fall down-and-right in
-         * LOGICAL space instead - a different physical direction once
+         * LOGICAL space instead, a different physical direction once
          * turn is nonzero. */
         gfx_text_font(mx + passes[i].dx, my + passes[i].dy, cmd->text.str, color, scale, quarter, font);
     }
@@ -173,7 +173,7 @@ draw_command(const mu_Command* cmd) {
          * is real artwork (gfx/icons_system.h's baked ICON_SYSTEM_CHECK)
          * because two callers need it: a checkbox toggle, and a per-tile
          * spawn-selection badge. The other three stay a small
-         * centred-square placeholder - a deliberate gap, not
+         * centred-square placeholder: a deliberate gap, not
          * an oversight, because nothing in this shell closes a window or
          * collapses a tree yet to ask for them. */
             const mu_Color c = cmd->icon.color;
@@ -203,7 +203,7 @@ draw_command(const mu_Command* cmd) {
 /* One canvas's commands.
  *
  * Walked directly rather than through mu_next_command(), which follows the
- * jump chain across every container - the entire point here is to paint one
+ * jump chain across every container; the entire point here is to paint one
  * container and leave the others alone. */
 static void
 paint_canvas(const mu_Container* cnt) {
@@ -223,7 +223,7 @@ paint_canvas(const mu_Container* cnt) {
 }
 
 /* FNV-1a. Cheap, and only ever run over the few hundred bytes a canvas's
- * commands occupy - the buffer is 8 KiB but almost none of it is used. */
+ * commands occupy; the buffer is 8 KiB but almost none of it is used. */
 static uint64_t
 hash_canvas(const mu_Container* cnt) {
     const unsigned char* p = (const unsigned char*)cnt->head + cnt->head->base.size;
@@ -242,8 +242,8 @@ rects_overlap(mu_Rect a, mu_Rect b) {
     return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
 
-/* cnt->rect is LOGICAL - ui_begin_screen() seeds it from
- * ui_width()/ui_height() - but every use below needs the PHYSICAL
+/* cnt->rect is LOGICAL (ui_begin_screen() seeds it from
+ * ui_width()/ui_height()) but every use below needs the PHYSICAL
  * footprint, same as draw_command() gets via ui_transform_rect(). Under
  * an odd quarter (GFX_WIDTH != GFX_HEIGHT) the rects differ in shape: an
  * unrotated (0,0,448,368) clipped onto a 368x448 framebuffer covers only
@@ -377,7 +377,7 @@ ui_end(uint32_t background_rgb) {
 
 /* A backdrop is shared by every canvas, so once the UI itself has changed
  * it is painted once and every canvas goes over it. A UI that is unchanged
- * and only drawn under - the backdrop animating - is painted back on top
+ * and only drawn under (the backdrop animating) is painted back on top
  * with no backdrop call: whoever drew under it has already drawn that part. */
 bool
 ui_end_over(ui_backdrop_fn paint_backdrop) {
@@ -415,7 +415,7 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
  * Band mode replay
  *
  * Band mode has no framebuffer to hash against, so ui_end()'s whole
- * changed/unchanged question does not apply - every band redraws every
+ * changed/unchanged question does not apply; every band redraws every
  * frame regardless. What DOES matter is not walking or drawing a command
  * for a band it never reaches, the same reason a software rasterizer bins
  * shapes by row range instead of re-rasterizing the whole scene per band.
@@ -423,7 +423,7 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
 
 typedef enum {
     UI_BAND_ENTRY_COMMAND,    /* replay via draw_command() */
-    UI_BAND_ENTRY_FILL_RECT,  /* an opaque rect with no mu_Command behind it -
+    UI_BAND_ENTRY_FILL_RECT,  /* an opaque rect with no mu_Command behind it:
                                  a canvas's own background, or a queued
                                  overlay (ui_queue_band_overlay_rect()) */
     UI_BAND_ENTRY_CLIP_RESET, /* paint_canvas()'s own trailing gfx_clear_clip(),
@@ -435,7 +435,7 @@ typedef struct {
     const mu_Command* cmd; /* UI_BAND_ENTRY_COMMAND only */
     mu_Rect rect;          /* UI_BAND_ENTRY_FILL_RECT only */
     mu_Color color;        /* UI_BAND_ENTRY_FILL_RECT only */
-    int y0, y1;            /* this entry's own row range - ignored when always is true */
+    int y0, y1;            /* this entry's own row range, ignored when always is true */
     bool always;           /* replay regardless of a band's own range: UI_BAND_ENTRY_CLIP_RESET,
                                 and any command type command_row_range() does not
                                 recognise (currently just MU_COMMAND_CLIP, whose
@@ -443,7 +443,7 @@ typedef struct {
                                 its own) */
 } ui_band_entry_t;
 
-/* Headroom, not a tight fit - see gfx_dirty.h's own SUITE_MAX comment for
+/* Headroom, not a tight fit; see gfx_dirty.h's own SUITE_MAX comment for
  * the same reasoning. A typical screen here is a handful of commands per
  * window plus one boundary marker; this leaves room for several such
  * windows in one frame. */
@@ -469,7 +469,7 @@ ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb) {
     }
 }
 
-/* The row range `cmd`'s own drawing would touch, after the transform -
+/* The row range `cmd`'s own drawing would touch, after the transform:
  * geometry only, no colour or font-pass work, since binning only needs to
  * decide whether a band should bother calling draw_command() at all.
  * False means "no extent of its own" (MU_COMMAND_CLIP), which the caller
@@ -519,7 +519,7 @@ bin_fill_rect(mu_Rect rect, mu_Color color) {
 }
 
 /* One hash per possible band slot, sized for the smallest GFX_BAND_HEIGHT
- * (16) regardless of which one this build actually uses - a build using a
+ * (16) regardless of which one this build actually uses; a build using a
  * taller band simply leaves the tail unused. Compared and updated once per
  * ui_end_for_bands() call, this is the UI's own contribution to band
  * mode's per-band dirty decision (gfx_band_dirty(), gfx.c): a band whose
@@ -527,7 +527,7 @@ bin_fill_rect(mu_Rect rect, mu_Color color) {
 #define UI_BAND_HASH_MAX (GFX_HEIGHT / 16)
 static uint64_t ui_band_hash[UI_BAND_HASH_MAX];
 
-/* FNV-1a, folded over whatever bytes make up an entry's own content -
+/* FNV-1a, folded over whatever bytes make up an entry's own content,
  * the same algorithm hash_canvas() already uses for the same reason. */
 static uint64_t
 hash_bytes(uint64_t h, const void* data, size_t len) {
@@ -539,7 +539,7 @@ hash_bytes(uint64_t h, const void* data, size_t len) {
     return h;
 }
 
-/* Hashes whichever bound entries overlap [row0, row1) - a COMMAND entry by
+/* Hashes whichever bound entries overlap [row0, row1): a COMMAND entry by
  * its own bytes (cmd->base.size is trustworthy: paint_canvas() already
  * relies on it the same way), a FILL_RECT by its rect and colour. Two
  * frames whose relevant entries hash the same drew the identical picture
@@ -566,7 +566,7 @@ hash_band_entries(int row0, int row1) {
     return h;
 }
 
-/* The UI's own half of band mode's per-band dirty decision - marks a band
+/* The UI's own half of band mode's per-band dirty decision: marks a band
  * dirty (gfx_mark_dirty(), gfx.c) exactly when what would replay into it
  * changed since last frame, at that band's own full width: an entry's own
  * rect narrower than the band is not tracked per-entry here, only per-band. */

@@ -1,9 +1,9 @@
 /*
- * gfx_font - a font DESCRIPTOR, so gfx can carry more than one font.
+ * gfx_font: a font DESCRIPTOR, so gfx can carry more than one font.
  *
  * Pure, like gfx_color.h: no gfx.h, no BSP, no drivers. That is what lets a
  * font's metrics be computed and tested on a host, the same way a colour
- * table can be built and tested without the panel - see gfx_color.h's own
+ * table can be built and tested without the panel; see gfx_color.h's own
  * top comment for why that split matters on this project.
  *
  * The 8x8 bitmap in font8x8_basic.h is wrapped below as gfx_font_8x8.
@@ -21,7 +21,7 @@
  * which codepoints it covers, and cursor advance per glyph. `atlas` is
  * const so it lands in flash at zero RAM. Glyphs are packed cell by
  * cell from `first`; a 1bpp glyph is `cell_h` bytes, one per row, bit 0
- * (LSB) the LEFTMOST pixel - see gfx_font_8x8 below. */
+ * (LSB) the LEFTMOST pixel; see gfx_font_8x8 below. */
 typedef struct {
     const uint8_t* atlas;   /* glyph bitmaps, cell by cell */
     uint8_t cell_w, cell_h; /* one glyph's cell, in atlas pixels */
@@ -33,9 +33,9 @@ typedef struct {
 
 /* The existing 8x8 font, as an ordinary gfx_font_t. font8x8_basic
  * covers U+0000-U+007F, one row of bits per byte, bit 0 (LSB) the
- * leftmost pixel - exactly the layout `atlas` above promises for a
+ * leftmost pixel, exactly the layout `atlas` above promises for a
  * 1bpp font, so the table is pointed at directly with no repacking.
- * Monospace: `advance` is NULL, so every glyph advances by cell_w - see
+ * Monospace: `advance` is NULL, so every glyph advances by cell_w; see
  * gfx_font_advance() below. `static const`, not `extern`: this header
  * is pure and included from more than one translation unit, and
  * internal linkage keeps that safe. */
@@ -49,8 +49,8 @@ static const gfx_font_t gfx_font_8x8 = {
 };
 
 /* How far the cursor moves for one glyph of `ch`, at `scale`. A
- * codepoint outside [f->first, f->first + f->count) - or any codepoint
- * at all, for a monospace font - falls back to cell_w * scale. That
+ * codepoint outside [f->first, f->first + f->count), or any codepoint
+ * at all, for a monospace font, falls back to cell_w * scale. That
  * matches the font this module ships today exactly, where
  * gfx_text_turned() advanced by a fixed cell every character regardless
  * of range; see gfx.c. A font WITH an advance table looks up the
@@ -70,7 +70,7 @@ gfx_font_advance(const gfx_font_t* f, unsigned char ch, int scale) {
 /* Width in pixels of `len` characters of `s`, at `scale`. `len < 0`
  * means NUL-terminated, same contract gfx_text_width() has. For a
  * monospace font (advance == NULL) this is len * cell_w * scale and
- * never looks at `s`'s content, matching gfx_text_width() exactly - a
+ * never looks at `s`'s content, matching gfx_text_width() exactly; a
  * caller passing a `len` longer than what `s` holds is not reading past
  * it today, and must not start to just because this got more general. A
  * font with a real advance table has no such shortcut and reads each
@@ -108,7 +108,7 @@ gfx_font_height(const gfx_font_t* f, int scale) {
 /* Screen-space rect for glyph columns [col0, col1] of one row, at `turn`
  * (numbered as display.h) and `scale`. A quarter turn maps one glyph
  * axis onto one screen axis, so a run of set bits within a row is always
- * a straight span in screen space too - one rect instead of one per bit.
+ * a straight span in screen space too: one rect instead of one per bit.
  * col0 <= col1 required. */
 static inline void
 gfx_font_row_run_rect(const gfx_font_t* f, int x, int y, int row, int col0, int col1, int scale, int turn, int* out_x,
@@ -142,7 +142,7 @@ gfx_font_row_run_rect(const gfx_font_t* f, int x, int y, int row, int col0, int 
     }
 }
 
-/* gfx_font_row_run_rect(), grown by one pixel on every side - unioning a
+/* gfx_font_row_run_rect(), grown by one pixel on every side: unioning a
  * rect's 8 unit-offset copies (ui_style.h's UI_TEXT_OUTLINED) covers the
  * same area as this, since those 8 offsets are a full 3x3 neighbourhood
  * minus its own centre, which the caller redraws in ink afterwards
@@ -158,7 +158,7 @@ gfx_font_row_run_rect_dilated(const gfx_font_t* f, int x, int y, int row, int co
 }
 
 /* gfx_font_row_run_rect(), generalised from one glyph row to a row RANGE
- * [row0, row1) sharing the same [col0, col1] run - a vertical stroke
+ * [row0, row1) sharing the same [col0, col1] run: a vertical stroke
  * spans several rows with an identical run, and mapping the whole box at
  * once, rather than row by row, is what turns landscape's "one narrow
  * rect per row" into one rect regardless of turn. Reduces to
@@ -196,8 +196,8 @@ gfx_font_run_box_rect(const gfx_font_t* f, int x, int y, int row0, int row1, int
     }
 }
 
-/* gfx_font_run_box_rect(), grown by one pixel on every side - see
- * gfx_font_row_run_rect_dilated()'s own comment; the same Minkowski
+/* gfx_font_run_box_rect(), grown by one pixel on every side (see
+ * gfx_font_row_run_rect_dilated()'s own comment); the same Minkowski
  * argument holds for any box, not just a single-row run. */
 static inline void
 gfx_font_run_box_rect_dilated(const gfx_font_t* f, int x, int y, int row0, int row1, int col0, int col1, int scale,
@@ -209,7 +209,7 @@ gfx_font_run_box_rect_dilated(const gfx_font_t* f, int x, int y, int row0, int r
     *out_h += 2;
 }
 
-/* One coalesced box of a glyph's own set bits - [row0, row1) x [col0,
+/* One coalesced box of a glyph's own set bits: [row0, row1) x [col0,
  * col1], in glyph-local coordinates, before any turn is applied. What
  * gfx_font_glyph_run_boxes() below emits instead of one entry per row.
  * Bytes, like the cell it indexes: every text draw holds arrays of these on
@@ -226,7 +226,7 @@ typedef struct {
 #define GFX_FONT_RUN_BOXES_MAX 32
 
 /* A 1bpp glyph's own bit-runs, coalesced across consecutive rows sharing
- * the identical [col0, col1] - a vertical stroke becomes one box instead
+ * the identical [col0, col1]: a vertical stroke becomes one box instead
  * of one per row, before rotation, so the merge is turn-independent. At
  * most cell_w/2 runs open at once (an alternating bit pattern), well
  * under GFX_FONT_MAX_OPEN_RUNS for the one 1bpp font shipped (8 wide).

@@ -1,15 +1,15 @@
 /*
- * gfx_color - what a pixel is, separately from how the panel works.
+ * gfx_color: what a pixel is, separately from how the panel works.
  *
  * Split out of gfx.h because this part is pure arithmetic and nothing else:
  * no BSP, no drivers, no hardware headers. That lets code which only needs to
- * describe colours - a table of named colours, say - be compiled and tested
+ * describe colours (a table of named colours, say) be compiled and tested
  * on a host,
  * while gfx.h keeps everything that genuinely needs the board.
  *
  * The macros matter for more than tidiness. A colour table built from them is
  * a compile-time constant, so it lands in .rodata and is memory-mapped from
- * flash at zero cost in RAM - which on this board is the resource that actually
+ * flash at zero cost in RAM, which on this board is the resource that actually
  * runs out. Computing the same table at startup would cost real bytes of the
  * scarcest thing there is.
  */
@@ -27,11 +27,11 @@ typedef uint16_t gfx_color_t;
     ((((uint32_t)(rgb) >> 8) & 0xF800u) | (((uint32_t)(rgb) >> 5) & 0x07E0u) | (((uint32_t)(rgb) >> 3) & 0x001Fu))
 
 /* 0xRRGGBB to the panel's format: RGB565 with the bytes swapped, which is what
- * this QSPI controller expects - the opposite order to the chip's native
+ * this QSPI controller expects, the opposite order to the chip's native
  * layout. Usable in a constant expression. */
 #define GFX_RGB(rgb) ((gfx_color_t)((GFX_RGB565(rgb) >> 8) | (GFX_RGB565(rgb) << 8)))
 
-/* The panel colour for three already-quantised channels (5, 6, 5 bits) -
+/* The panel colour for three already-quantised channels (5, 6, 5 bits),
  * what GFX_RGB does after its own 8-bit-to-565 truncation, for a caller
  * (a dithered tracer, say) that quantised its own channels and only needs
  * the packing and the panel's byte swap. */
@@ -44,7 +44,7 @@ gfx_color_rgb565(uint8_t r5, uint8_t g6, uint8_t b5) {
 /* Blend `a` toward `b`. t is 0..255, 0 all `a`, 255 all `b`. A gfx_color_t
  * is RGB565 with bytes swapped (see GFX_RGB above), not RGB565 itself, so
  * blending means swapping to native RGB565, unpacking R5/G6/B5, blending,
- * repacking, swapping again. Skipping either swap does not fail loudly -
+ * repacking, swapping again. Skipping either swap does not fail loudly:
  * a plausible but wrong colour, why this is tested against GFX_RGB(...)
  * constants. Channels are NOT the same width (red/blue 5 bits, green 6);
  * treating all three as 8-bit shifts the hue instead of crashing. */
@@ -62,7 +62,7 @@ div255(uint32_t v) {
     return (v + (v >> 8) + 1) >> 8;
 }
 
-/* The 0xRRGGBB a packed panel colour came from - the inverse of GFX_RGB().
+/* The 0xRRGGBB a packed panel colour came from: the inverse of GFX_RGB().
  * Expands each channel back to 8 bits by BIT REPLICATION (v<<3|v>>2 for
  * 5-bit, v<<2|v>>4 for 6-bit), not a plain shift: a plain shift leaves the
  * low bits zero, so GFX_RGB565's truncating >>3 recovers v only by
@@ -71,7 +71,7 @@ div255(uint32_t v) {
  * high bits instead, so GFX_RGB(gfx_color_rgb888(c)) == c for every c. */
 static inline uint32_t
 gfx_color_rgb888(gfx_color_t c) {
-    /* Undo the byte swap to get back to native-endian RGB565 - see
+    /* Undo the byte swap to get back to native-endian RGB565; see
      * gfx_color_mix() above for the same first step. */
     const uint16_t native = (uint16_t)((c >> 8) | (c << 8));
 
@@ -102,7 +102,7 @@ gfx_color_mix(gfx_color_t a, gfx_color_t b, uint8_t t) {
 
     /* (channel * (255 - t) + channel * t) / 255, rounded rather than
      * truncated so t=255 lands exactly on `b` and t=0 exactly on `a`.
-     * The divide is done as div255() - not an approximation, an exact
+     * The divide is done as div255(), not an approximation, an exact
      * identity over the range these numerators can reach. This function
      * is on the per-pixel path of every antialiased line, and three
      * hardware divides per pixel was measurably the most expensive thing
@@ -119,10 +119,10 @@ gfx_color_mix(gfx_color_t a, gfx_color_t b, uint8_t t) {
 }
 
 /* The standard order-4 Bayer matrix, values 0..15 rather than pre-scaled
- * to 0..255 - gfx_dither_covers() scales the ONE side that needs to be a
+ * to 0..255; gfx_dither_covers() scales the ONE side that needs to be a
  * byte (alpha), not the table it is compared against. Indexed by each
  * pixel's own ABSOLUTE panel row/col (y & 3, x & 3), not a position
- * local to whatever shape is dithered - that keeps two dithered shapes
+ * local to whatever shape is dithered; that keeps two dithered shapes
  * that overlap or sit edge to edge in phase: a local index would have
  * every shape restart the pattern at its own corner, reading as a seam
  * where two meet. */
@@ -135,7 +135,7 @@ static const uint8_t gfx_dither4x4[4][4] = {
 
 /* The alpha -> Bayer-level scaling gfx_dither_covers() compares against
  * the table, exposed on its own so a caller with a whole ROW of pixels
- * at one alpha can compute the level once instead of per pixel - see
+ * at one alpha can compute the level once instead of per pixel; see
  * boot_anim.c's draw_image(). Rounded, not truncated: a plain
  * `alpha >> 4` maps every alpha in 1..15 to level 0, covering nothing;
  * +8 rounds to the nearest of 16 levels instead of flooring. 17, not 16:
@@ -153,7 +153,7 @@ gfx_dither_level(uint8_t alpha) {
 }
 
 /* Whether an ordered (Bayer) dither at `alpha` (0 nothing, 255 everything,
- * 16 graduated levels between - see gfx_fill_rect_dither()'s own comment
+ * 16 graduated levels between; see gfx_fill_rect_dither()'s own comment
  * in gfx.c) covers absolute panel pixel (x, y). Pulled out of
  * gfx_fill_rect_dither() so a caller with its own pixel loop can reuse
  * the identical table and rounding rule rather than keeping a second
@@ -167,7 +167,7 @@ gfx_dither_covers(int x, int y, uint8_t alpha) {
 
 /* Add `b` to `a`, saturating each channel at its own maximum: two strokes
  * crossing on a black field make a brighter colour rather than whichever
- * was drawn second - see boot_anim.c, where hundreds of curve segments
+ * was drawn second; see boot_anim.c, where hundreds of curve segments
  * cross and flat writes made the picture look like stacked wires. Same
  * trap as gfx_color_mix() above: channels are NOT the same width.
  * Clamping all three at 31 dims green by half; at 63, red and blue wrap

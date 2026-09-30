@@ -1,5 +1,5 @@
 /*
- * post_ui - drawing the self-test report on the panel.
+ * post_ui: drawing the self-test report on the panel.
  *
  * Kept out of post.c so that file stays about hardware, and out of
  * post_layout.c so the geometry stays answerable on a host. Shared by the
@@ -38,7 +38,7 @@ text_width(const char* text, int scale) {
 }
 
 /* The string's LOGICAL box is mapped, not its origin, then glyph 0 is placed
- * inside the mapped box - walking glyphs from a mapped point instead drifts
+ * inside the mapped box; walking glyphs from a mapped point instead drifts
  * the string off at every quarter but the first. */
 static void
 draw_text(const report_pen_t* pen, int x, int y, const char* text, int scale, gfx_color_t colour) {

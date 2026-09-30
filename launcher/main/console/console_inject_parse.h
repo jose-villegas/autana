@@ -1,5 +1,5 @@
 /*
- * console_inject_parse - reading the args of the verbs that stand in for
+ * console_inject_parse: reading the args of the verbs that stand in for
  * touch, the IMU and the board buttons (see console_inject.c). Pure and
  * portable: no verb dispatch, no controller, just sscanf() and bounds.
  */
@@ -13,7 +13,7 @@
 /* Reads `<down|up> <x> <y>` into its three parts, in panel coordinates.
  * Returns false and writes nothing for a malformed line: a caller acts on a
  * whole sample or on none of it, never on half of one. Coordinates are not
- * range-checked here - the panel's size is not this header's to know, and a
+ * range-checked here: the panel's size is not this header's to know, and a
  * sample past the edge is a caller's question. */
 static inline bool
 console_touch_parse(const char* args, bool* down, int* x, int* y) {
