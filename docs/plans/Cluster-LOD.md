@@ -27,5 +27,10 @@ The mesh was already reduced to the picture's budget, so little was sub-pixel.
 The levels roughly doubled the mesh's flash. A denser mesh, or one drawn
 smaller, would save more; the branch's tool answers that for any baked mesh.
 
+**Why it is parked.** Enclosed interiors, such as the measured atrium or a
+cathedral, never put a cluster far enough away for a coarser level to pay:
+the walls bound the view. LOD is for scenes with a far plane. Revisit it when
+an open scene with distant geometry exists.
+
 **Not done.** A runtime that picks per cluster, and normal-cone culling, which
 the branch bakes but nothing reads.
