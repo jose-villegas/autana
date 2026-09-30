@@ -10,6 +10,7 @@ Designs written before or during the work they describe. Each plan's own
 | [Settings-App-Plan.md](Settings-App-Plan.md) | Splitting Diagnostics into a Settings app, and unifying SELFTEST/diagnostics naming. |
 | [Networking-Plan.md](Networking-Plan.md) | What the board's radios allow, their RAM cost, and updating the firmware over the air. |
 | [Log-Level-Plan.md](Log-Level-Plan.md) | A compile-time log-level ceiling per build variant. |
+| [Cluster-LOD.md](Cluster-LOD.md) | Levels of detail over the baked meshlets: the pick rule, what it saved, and the branch that holds the tooling. |
 | [Qemu-Target-Plan.md](Qemu-Target-Plan.md) | Driving an emulated image from autana, and what it cannot answer. |
 | [Motion-Design-Plan.md](Motion-Design-Plan.md) | Motion for the launcher: springs and easing, a sliding Control Center, a cached blurred backdrop, app open and close, orientation morphs. |
 | [Reaction-Doc-Generator-Plan.md](Reaction-Doc-Generator-Plan.md) | A generated short description for every sand brush. |

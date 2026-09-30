@@ -17,7 +17,7 @@ them. The layers are in [Firmware-Architecture.md](Firmware-Architecture.md).
 | `r3d_ray.h` | A float ray camera: the direction through each physical pixel, on the same viewport a rasterizer uses |
 | `r3d_path.h` | A closed Catmull-Rom camera loop at a steady speed |
 | `r3d_span.h` | One depth-tested, Gouraud-shaded triangle filled into a window of rows, its coverage exact on 1/16-pixel positions |
-| `r3d_lit_mesh.h` | The baked mesh format: per-vertex colour, spatial clusters, a node tree |
+| `r3d_lit_mesh.h` | The baked mesh format: per-vertex colour, meshlet clusters, a node tree |
 | `r3d_lit_pipeline.h` | The mesh's stages: view, cull, transform, draw |
 | `r3d_lit_frame.h` | One whole frame of those stages on both cores, optionally doubled to twice its size |
 
@@ -32,8 +32,28 @@ ticks, `position_scale` ticks per model unit.
 
 A mesh is const C data, written by a generator using the offline tools in
 [`launcher/tools/r3d/`](../launcher/tools/r3d/README.md). They load a model,
-simplify it, bake its light, cluster it by octree and check the result
-against `r3d_lit_mesh.h`'s invariants before writing a byte.
+simplify it, bake its light, cut it into meshlets, and
+check the result against `r3d_lit_mesh.h`'s invariants before writing a byte.
+
+## Meshlets
+
+The clusters are **meshlets**: compact runs of at most 32 triangles from
+meshoptimizer's clusterizer, each of one sidedness and owning the vertices its
+triangles use. The octree above them is built over the meshlets' centres, and
+its leaves hold a few hundred triangles' worth.
+
+Meshlets share more vertices than clusters cut as leaves of an octree of the
+triangles, so a frame transforms fewer. Bigger ones span looser boxes and
+submit more triangles for the same view, and smaller ones cost more clusters
+to walk. The size trades these: 64 lost on the board and 32 won.
+
+Meshlets also change the draw order of the finest level. Where two triangles
+reach the same depth the first drawn wins, so a redrawn frame differs from the
+old clustering's in a fraction of a percent of its pixels, from ties alone:
+the triangles are the same.
+
+Levels of detail built on the meshlets, and what they would save, are in
+[plans/Cluster-LOD.md](plans/Cluster-LOD.md).
 
 ## One frame
 

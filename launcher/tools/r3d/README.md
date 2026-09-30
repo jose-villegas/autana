@@ -11,10 +11,11 @@ mesh. Nothing here runs on the board.
 | [decimate.py](decimate.py) | Quadric decimation to a triangle budget, falling back to vertex clustering where many small disconnected pieces stall it (the `--simplifier quadric` path). |
 | [tessellate.py](tessellate.py) | Conforming edge splits, and splitting where baked light changes along an edge (the `--simplifier quadric` path). |
 | [simplify.py](simplify.py) | Appearance-preserving simplification: split evenly, weld across materials, one colour-aware pass with reserved budget shares for small props. |
-| [meshopt.py](meshopt.py) | [meshoptimizer](https://github.com/zeux/meshoptimizer)'s simplifier through ctypes, built once from the pinned `third_party/upstream/meshoptimizer` submodule into `.cache/`. |
+| [meshopt.py](meshopt.py) | [meshoptimizer](https://github.com/zeux/meshoptimizer)'s simplifier and meshlet clusterizer through ctypes, built once from the pinned `third_party/upstream/meshoptimizer` submodule into `.cache/`. |
 | [light.py](light.py) | Baked direct light: a sun with soft shadows and sky visibility, albedo from textures, and culling of what no point in a region can see. |
-| [octree.py](octree.py) | Groups triangles into an octree whose leaves become clusters. |
-| [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: clusters a lit mesh, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as C data. |
+| [octree.py](octree.py) | Groups weighted items, here meshlets, into an octree whose leaves hold runs of them. |
+| [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under an octree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as C data; the size defaults live here and nowhere else. `read_lit_mesh()` reads that data back. |
+| [rebake.py](rebake.py) | Rewrites a baked mesh's clusters from its own triangles and colours, with no relighting. |
 | [fetch.py](fetch.py) | Downloads a source model once into `.cache/`, checked against a SHA-256. |
 | [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling, linear-blend skinning. Standard library only. |
 | [gltf_preview.py](gltf_preview.py) | Renders any skinned `.glb` with Pillow: a looping GIF of one animation (`--gif NAME`) or the bind pose from four sides (`--sheet`). |
@@ -30,6 +31,15 @@ git submodule update --init ../third_party/upstream/meshoptimizer
 python -m venv tools/r3d/.cache/venv
 tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.txt   # bin/python on Linux
 ```
+
+**`rebake.py` or a full bake.** Rebake when only the clustering or the data
+format changes: it reads a committed mesh's triangles and colours back and
+rewrites the clusters in seconds, in place, and rewriting its own output is a
+fixed point (the triangles are put in a canonical order first), so the banner's
+one command reproduces the file. Anything before that stage, the model, its
+simplification or its light, needs the generator. The committed meshes have
+been rebaked but not regenerated since the clustering changed, so a full
+generator run is still owed.
 
 A generator is a script beside the model's consumer: it loads and bakes the
 model with these modules and ends in one `write_lit_mesh()` call. The banner
