@@ -58,7 +58,7 @@ seconds once. `ANIM_CLAMP` holds it at the duration instead; a loop authors
 its first key again as its last. `anim_track_sample()` holds a track's first
 value before its first key and its last after its last, as glTF defines.
 `anim_quat_rotate()` turns a vector by a sampled rotation, which is how a
-camera track gives a look direction.
+camera track gives an `r3d_camera_t` its look direction.
 
 ## Authoring
 

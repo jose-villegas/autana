@@ -1,6 +1,6 @@
 /*
- * Portable suite: r3d_span.h's triangle fill, r3d_lit_pipeline.h's camera,
- * culling and near clip, r3d_lit_frame.h's two-core frame. Every mesh here is built inside the test, never a baked one.
+ * Portable suite: r3d_span.h's triangle fill, r3d_pipeline.h's camera,
+ * culling and near clip, r3d.h's two-core frame. Every mesh here is built inside the test, never a baked one.
  */
 
 #include <math.h>
@@ -15,8 +15,8 @@
 
 #include "gfx/gfx.h"
 #include "gfx/gfx_color.h"
-#include "render/r3d_lit_frame.h"
-#include "render/r3d_lit_pipeline.h"
+#include "render/r3d.h"
+#include "render/r3d_pipeline.h"
 #include "render/r3d_ray.h"
 #include "render/r3d_span_internal.h"
 
@@ -900,18 +900,18 @@ typedef struct {
     r3d_lit_node_t node;
 } screen_mesh_t;
 
-static r3d_lit_view_t
+static r3d_lens_t
 subpixel_view(void) {
     const float s = 1.0f / (float)R3D_SUBPIXEL;
-    return (r3d_lit_view_t){{{s, 0, 0, 0}, {0, s, 0, 0}, {0, 0, 1, 0}},
-                            0.0f,
-                            0.0f,
-                            0.5f,
-                            W,
-                            H,
-                            R3D_SNAP_BIAS,
-                            R3D_SNAP_BIAS,
-                            0.5f / (float)R3D_SUBPIXEL};
+    return (r3d_lens_t){{{s, 0, 0, 0}, {0, s, 0, 0}, {0, 0, 1, 0}},
+                        0.0f,
+                        0.0f,
+                        0.5f,
+                        W,
+                        H,
+                        R3D_SNAP_BIAS,
+                        R3D_SNAP_BIAS,
+                        0.5f / (float)R3D_SUBPIXEL};
 }
 
 static r3d_lit_mesh_t
@@ -937,16 +937,16 @@ screen_mesh(screen_mesh_t* m, int vertices, int triangles) {
 /* Transforms the mesh with cluster rows and draws it as two windows. */
 static void
 draw_screen_mesh(const r3d_lit_mesh_t* mesh, int split) {
-    const r3d_lit_view_t view = subpixel_view();
+    const r3d_lens_t view = subpixel_view();
     const uint16_t visible[1] = {0};
-    r3d_lit_vertex_t cs[9];
-    r3d_lit_rows_t rows[1];
-    r3d_lit_transform(mesh, &view, visible, 1, cs, rows);
+    r3d_pipeline_vertex_t cs[9];
+    r3d_pipeline_rows_t rows[1];
+    r3d_pipeline_transform(mesh, &view, visible, 1, cs, rows);
     r3d_span_target_t t = fixture();
     const r3d_span_target_t top = {t.color, t.depth, W, 0, split};
     const r3d_span_target_t bottom = {t.color + (split * W), t.depth + (split * W), W, split, H};
-    r3d_lit_draw(mesh, &view, visible, 1, cs, rows, &top);
-    r3d_lit_draw(mesh, &view, visible, 1, cs, rows, &bottom);
+    r3d_pipeline_draw(mesh, &view, visible, 1, cs, rows, &top);
+    r3d_pipeline_draw(mesh, &view, visible, 1, cs, rows, &bottom);
 }
 
 /* Whether the reference says the same of a centre nudged a subpixel either
@@ -1007,7 +1007,7 @@ test_a_triangle_with_corners_past_the_snap_range_fills_its_centres(void) {
 }
 
 /* A triangle around a single centre at each edge of a window, drawn through
- * r3d_lit_draw: the cull that drops triangles holding no centre keeps it. */
+ * r3d_pipeline_draw: the cull that drops triangles holding no centre keeps it. */
 static void
 test_a_triangle_whose_only_centre_is_at_a_window_edge_is_drawn(void) {
     const int row0 = 10;
@@ -1027,14 +1027,14 @@ test_a_triangle_whose_only_centre_is_at_a_window_edge_is_drawn(void) {
             m.triangles[0][k] = (uint16_t)k;
         }
         const r3d_lit_mesh_t mesh = screen_mesh(&m, 3, 1);
-        const r3d_lit_view_t view = subpixel_view();
+        const r3d_lens_t view = subpixel_view();
         const uint16_t visible[1] = {0};
-        r3d_lit_vertex_t cs[3];
-        r3d_lit_rows_t rows[1];
-        r3d_lit_transform(&mesh, &view, visible, 1, cs, rows);
+        r3d_pipeline_vertex_t cs[3];
+        r3d_pipeline_rows_t rows[1];
+        r3d_pipeline_transform(&mesh, &view, visible, 1, cs, rows);
         r3d_span_target_t t = fixture();
         const r3d_span_target_t window = {t.color + (row0 * W), t.depth + (row0 * W), W, row0, row1};
-        r3d_lit_draw(&mesh, &view, visible, 1, cs, rows, &window);
+        r3d_pipeline_draw(&mesh, &view, visible, 1, cs, rows, &window);
         TEST_ASSERT_EQUAL_INT_MESSAGE(1, covered(), "a one-centre triangle at a window edge was dropped");
         TEST_ASSERT_NOT_EQUAL(0, depth[(spots[i][1] * W) + spots[i][0]]);
     }
@@ -1109,15 +1109,14 @@ static int
 draw_quad_with(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* face_colors) {
     r3d_lit_cluster_t cluster;
     const r3d_lit_mesh_t mesh = quad_mesh(triangles, double_sided, face_colors, &cluster);
-    r3d_lit_view_t view;
-    r3d_lit_view_look(&view, (r3d_vec3f_t){0, 0, 400}, (r3d_vec3f_t){0, 0, -1}, 0.5f, 1.0f, 1,
-                      (r3d_viewport_t){W, H, 0});
+    r3d_lens_t view;
+    r3d_lens_init(&view, &(r3d_camera_t){{0, 0, 400}, {0, 0, -1}, 0.5f, 1.0f}, 1, (r3d_viewport_t){W, H, 0});
     uint16_t visible[1];
-    const int count = r3d_lit_cull_clusters(&mesh, &view, visible);
-    r3d_lit_vertex_t cs[4];
-    r3d_lit_transform(&mesh, &view, visible, count, cs, NULL);
+    const int count = r3d_pipeline_cull(&mesh, &view, visible);
+    r3d_pipeline_vertex_t cs[4];
+    r3d_pipeline_transform(&mesh, &view, visible, count, cs, NULL);
     const r3d_span_target_t t = fixture();
-    r3d_lit_draw(&mesh, &view, visible, count, cs, NULL, &t);
+    r3d_pipeline_draw(&mesh, &view, visible, count, cs, NULL, &t);
     return covered();
 }
 
@@ -1148,11 +1147,10 @@ static void
 test_a_cluster_behind_the_camera_is_culled(void) {
     r3d_lit_cluster_t cluster;
     const r3d_lit_mesh_t mesh = quad_mesh(quad_front, false, NULL, &cluster);
-    r3d_lit_view_t view;
-    r3d_lit_view_look(&view, (r3d_vec3f_t){0, 0, 400}, (r3d_vec3f_t){0, 0, 1}, 0.5f, 1.0f, 1,
-                      (r3d_viewport_t){W, H, 0});
+    r3d_lens_t view;
+    r3d_lens_init(&view, &(r3d_camera_t){{0, 0, 400}, {0, 0, 1}, 0.5f, 1.0f}, 1, (r3d_viewport_t){W, H, 0});
     uint16_t visible[1];
-    TEST_ASSERT_EQUAL_INT(0, r3d_lit_cull_clusters(&mesh, &view, visible));
+    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &view, visible));
 }
 
 /* A floor running from behind the camera to far ahead, seen from above it
@@ -1176,16 +1174,15 @@ draw_floor(const uint16_t* face_colors) {
                                  .node_count = 1,
                                  .position_scale = 1};
 
-    r3d_lit_view_t view;
-    r3d_lit_view_look(&view, (r3d_vec3f_t){0, 50, 0}, (r3d_vec3f_t){0, 0, -1}, 0.5f, 1.0f, 1,
-                      (r3d_viewport_t){W, H, 0});
+    r3d_lens_t view;
+    r3d_lens_init(&view, &(r3d_camera_t){{0, 50, 0}, {0, 0, -1}, 0.5f, 1.0f}, 1, (r3d_viewport_t){W, H, 0});
     uint16_t visible[1];
-    const int count = r3d_lit_cull_clusters(&mesh, &view, visible);
+    const int count = r3d_pipeline_cull(&mesh, &view, visible);
     TEST_ASSERT_EQUAL_INT(1, count);
-    r3d_lit_vertex_t cs[4];
-    r3d_lit_transform(&mesh, &view, visible, count, cs, NULL);
+    r3d_pipeline_vertex_t cs[4];
+    r3d_pipeline_transform(&mesh, &view, visible, count, cs, NULL);
     const r3d_span_target_t t = fixture();
-    r3d_lit_draw(&mesh, &view, visible, count, cs, NULL, &t);
+    r3d_pipeline_draw(&mesh, &view, visible, count, cs, NULL, &t);
 }
 
 /* The near clip keeps the part in front and nothing lands above the horizon row. */
@@ -1251,8 +1248,8 @@ static void
 test_a_point_up_and_right_lands_up_and_right_in_every_quarter(void) {
     for (int quarter = 0; quarter < 4; quarter++) {
         const r3d_viewport_t viewport = {W, H, quarter};
-        r3d_lit_view_t view;
-        r3d_lit_view_look(&view, (r3d_vec3f_t){0, 0, 0}, (r3d_vec3f_t){0, 0, -1}, 0.5f, 1.0f, 1, viewport);
+        r3d_lens_t view;
+        r3d_lens_init(&view, &(r3d_camera_t){{0, 0, 0}, {0, 0, -1}, 0.5f, 1.0f}, 1, viewport);
         const float px = view.m[0][0] * 30 + view.m[0][1] * 20 + view.m[0][2] * -100 + view.m[0][3];
         const float py = view.m[1][0] * 30 + view.m[1][1] * 20 + view.m[1][2] * -100 + view.m[1][3];
         const float pz = view.m[2][0] * 30 + view.m[2][1] * 20 + view.m[2][2] * -100 + view.m[2][3];
@@ -1360,27 +1357,34 @@ parts_add_rect(parts_t* p, int x0, int y0, int x1, int y1, int z, uint8_t shade)
     parts_add(p, corners, 4, rgb, false);
 }
 
-static r3d_lit_view_t
+static r3d_camera_t
+camera_down_minus_z(float eye_y, float eye_z, float near_z) {
+    return (r3d_camera_t){{0, eye_y, eye_z}, {0, 0, -1}, 0.5f, near_z};
+}
+
+/* The lens r3d_frame_draw() makes of camera_down_minus_z() for a W by H
+ * frame of a mesh at position scale 1. */
+static r3d_lens_t
 look_down_minus_z(float eye_y, float eye_z, float near_z) {
-    r3d_lit_view_t view;
-    r3d_lit_view_look(&view, (r3d_vec3f_t){0, eye_y, eye_z}, (r3d_vec3f_t){0, 0, -1}, 0.5f, near_z, 1,
-                      (r3d_viewport_t){W, H, 0});
+    const r3d_camera_t camera = camera_down_minus_z(eye_y, eye_z, near_z);
+    r3d_lens_t view;
+    r3d_lens_init(&view, &camera, 1, (r3d_viewport_t){W, H, 0});
     return view;
 }
 
 /* Cull, transform and draw every cluster into `t`; with `use_rows`, the
  * draw skips clusters by their rows. */
 static void
-draw_parts(const parts_t* p, const r3d_lit_view_t* view, const r3d_span_target_t* t, bool use_rows) {
+draw_parts(const parts_t* p, const r3d_lens_t* view, const r3d_span_target_t* t, bool use_rows) {
     uint16_t* visible = malloc(sizeof(*visible) * PARTS_MAX);
-    r3d_lit_vertex_t* cs = malloc(sizeof(*cs) * PARTS_MAX * 4);
-    r3d_lit_rows_t* rows = malloc(sizeof(*rows) * PARTS_MAX);
+    r3d_pipeline_vertex_t* cs = malloc(sizeof(*cs) * PARTS_MAX * 4);
+    r3d_pipeline_rows_t* rows = malloc(sizeof(*rows) * PARTS_MAX);
     TEST_ASSERT_NOT_NULL(visible);
     TEST_ASSERT_NOT_NULL(cs);
     TEST_ASSERT_NOT_NULL(rows);
-    const int count = r3d_lit_cull_clusters(&p->mesh, view, visible);
-    r3d_lit_transform(&p->mesh, view, visible, count, cs, use_rows ? rows : NULL);
-    r3d_lit_draw(&p->mesh, view, visible, count, cs, use_rows ? rows : NULL, t);
+    const int count = r3d_pipeline_cull(&p->mesh, view, visible);
+    r3d_pipeline_transform(&p->mesh, view, visible, count, cs, use_rows ? rows : NULL);
+    r3d_pipeline_draw(&p->mesh, view, visible, count, cs, use_rows ? rows : NULL, t);
     free(rows);
     free(cs);
     free(visible);
@@ -1398,7 +1402,7 @@ draw_cut(const int16_t corners[3][3], bool double_sided) {
     parts_t* const p = parts_buffer();
     parts_begin(p);
     parts_add(p, corners, 3, cut_colors, double_sided);
-    const r3d_lit_view_t view = look_down_minus_z(0, 0, 100.0f);
+    const r3d_lens_t view = look_down_minus_z(0, 0, 100.0f);
     const r3d_span_target_t t = fixture();
     draw_parts(p, &view, &t, false);
     return covered();
@@ -1455,7 +1459,7 @@ static void
 test_drawing_a_window_with_cluster_rows_matches_a_full_draw(void) {
     parts_t* const p = parts_buffer();
     build_floor_and_rects(p);
-    const r3d_lit_view_t view = look_down_minus_z(50, 0, 1.0f);
+    const r3d_lens_t view = look_down_minus_z(50, 0, 1.0f);
     const r3d_span_target_t full = fixture();
     draw_parts(p, &view, &full, false);
 
@@ -1490,7 +1494,7 @@ test_a_triangle_over_any_side_of_the_screen_is_drawn(void) {
     static const int16_t beyond_right[3][3] = {{80, 0, -100}, {120, -20, -100}, {120, 20, -100}};
     static const uint8_t white[3][3] = {{255, 255, 255}, {255, 255, 255}, {255, 255, 255}};
     parts_t* const p = parts_buffer();
-    const r3d_lit_view_t view = look_down_minus_z(0, 0, 1.0f);
+    const r3d_lens_t view = look_down_minus_z(0, 0, 1.0f);
     for (int side = 0; side < 4; side++) {
         parts_begin(p);
         parts_add(p, over[side], 3, white, true);
@@ -1527,7 +1531,7 @@ build_wall_and_stack(parts_t* p) {
 /* One draw of every visible cluster into a full-height target, doubled,
  * with the clear colour wherever nothing was drawn. */
 static void
-reference_frame(const parts_t* p, const r3d_lit_view_t* view, gfx_color_t* doubled) {
+reference_frame(const parts_t* p, const r3d_lens_t* view, gfx_color_t* doubled) {
     const r3d_span_target_t full = fixture();
     draw_parts(p, view, &full, false);
     for (int y = 0; y < H; y++) {
@@ -1549,14 +1553,14 @@ static void
 test_the_frame_carves_its_scratch_without_overlap(void) {
     parts_t* const p = parts_buffer();
     build_wall_and_stack(p);
-    r3d_lit_frame_t frame = {.mesh = &p->mesh, .width = W, .height = H};
-    const size_t bytes = r3d_lit_frame_scratch_bytes(&p->mesh, W, H);
+    r3d_frame_t frame = {.mesh = &p->mesh, .width = W, .height = H};
+    const size_t bytes = r3d_frame_scratch_bytes(&p->mesh, W, H);
     char* scratch = malloc(bytes);
     TEST_ASSERT_NOT_NULL(scratch);
-    r3d_lit_frame_use_scratch(&frame, scratch);
+    r3d_frame_use_scratch(&frame, scratch);
     const span_of_bytes_t parts[] = {
-        {(const char*)frame.cs, sizeof(r3d_lit_vertex_t) * (size_t)p->mesh.vertex_count},
-        {(const char*)frame.rows, sizeof(r3d_lit_rows_t) * (size_t)p->mesh.cluster_count},
+        {(const char*)frame.cs, sizeof(r3d_pipeline_vertex_t) * (size_t)p->mesh.vertex_count},
+        {(const char*)frame.rows, sizeof(r3d_pipeline_rows_t) * (size_t)p->mesh.cluster_count},
         {(const char*)frame.visible, sizeof(uint16_t) * (size_t)p->mesh.cluster_count},
         {(const char*)frame.color, sizeof(uint16_t) * W * H},
         {(const char*)frame.depth, sizeof(uint16_t) * W * H},
@@ -1585,29 +1589,31 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     build_wall_and_stack(p);
     gfx_color_t* doubled = malloc(sizeof(gfx_color_t) * 4 * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    char* scratch = malloc(r3d_lit_frame_scratch_bytes(&p->mesh, W, H));
+    char* scratch = malloc(r3d_frame_scratch_bytes(&p->mesh, W, H));
     TEST_ASSERT_NOT_NULL(doubled);
     TEST_ASSERT_NOT_NULL(want);
     TEST_ASSERT_NOT_NULL(scratch);
-    r3d_lit_frame_t frame = {.mesh = &p->mesh, .width = W, .height = H, .clear = SKY, .doubled = doubled};
-    r3d_lit_frame_use_scratch(&frame, scratch);
+    r3d_frame_t frame = {.mesh = &p->mesh, .width = W, .height = H, .clear = SKY, .doubled = doubled};
+    r3d_frame_use_scratch(&frame, scratch);
 
     static const float eye_heights[] = {-100.0f, 0.0f, 150.0f, 230.0f, 300.0f};
     for (int e = 0; e < (int)(sizeof eye_heights / sizeof eye_heights[0]); e++) {
-        const r3d_lit_view_t view = look_down_minus_z(eye_heights[e], 400, 1.0f);
+        const r3d_camera_t camera = camera_down_minus_z(eye_heights[e], 400, 1.0f);
+        const r3d_lens_t view = look_down_minus_z(eye_heights[e], 400, 1.0f);
         for (int i = 0; i < W * H; i++) {
             frame.color[i] = 0xBEEF;
         }
-        r3d_lit_frame_render(&frame, &view);
-        r3d_lit_frame_double(&frame);
+        r3d_frame_draw(&frame, &camera, 0);
+        r3d_frame_double(&frame);
         reference_frame(p, &view, want);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, doubled, 4 * W * H, "the doubled frame differs from one full draw");
     }
 
     /* With nothing to double into, the frame clears its own colour target. */
     frame.doubled = NULL;
-    const r3d_lit_view_t view = look_down_minus_z(150.0f, 400, 1.0f);
-    r3d_lit_frame_render(&frame, &view);
+    const r3d_camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
+    const r3d_lens_t view = look_down_minus_z(150.0f, 400, 1.0f);
+    r3d_frame_draw(&frame, &camera, 0);
     reference_frame(p, &view, want);
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
@@ -1622,7 +1628,7 @@ test_the_two_core_frame_matches_one_full_draw(void) {
 /* Views of the depth */
 
 typedef struct {
-    r3d_lit_frame_t frame;
+    r3d_frame_t frame;
 } shown_t;
 
 static shown_t* shown;
@@ -1639,7 +1645,7 @@ release_shown(void) {
 
 /* A frame of `width` by `height` with nothing drawn and a clear colour that
  * is no grey. */
-static r3d_lit_frame_t*
+static r3d_frame_t*
 shown_frame(int width, int height) {
     release_shown();
     shown = calloc(1, sizeof *shown);
@@ -1658,19 +1664,19 @@ shown_frame(int width, int height) {
 }
 
 static void
-fill_depth(const r3d_lit_frame_t* f, uint16_t d) {
+fill_depth(const r3d_frame_t* f, uint16_t d) {
     for (int i = 0; i < f->width * f->height; i++) {
         f->depth[i] = d;
     }
 }
 
 static uint16_t*
-depth_at(const r3d_lit_frame_t* f, int x, int y) {
+depth_at(const r3d_frame_t* f, int x, int y) {
     return &f->depth[y * f->width + x];
 }
 
 static uint16_t
-color_at(const r3d_lit_frame_t* f, int x, int y) {
+color_at(const r3d_frame_t* f, int x, int y) {
     return f->color[y * f->width + x];
 }
 
@@ -1696,9 +1702,9 @@ is_grey(uint16_t px) {
 
 /* Every pixel of the tile whose first pixel is (x0, y0), clipped to the frame. */
 static void
-assert_tile_is(const r3d_lit_frame_t* f, int x0, int y0, uint16_t want, const char* what) {
-    for (int y = y0; y < y0 + R3D_LIT_TILE && y < f->height; y++) {
-        for (int x = x0; x < x0 + R3D_LIT_TILE && x < f->width; x++) {
+assert_tile_is(const r3d_frame_t* f, int x0, int y0, uint16_t want, const char* what) {
+    for (int y = y0; y < y0 + R3D_SHOW_TILE && y < f->height; y++) {
+        for (int x = x0; x < x0 + R3D_SHOW_TILE && x < f->width; x++) {
             TEST_ASSERT_EQUAL_HEX16_MESSAGE(want, color_at(f, x, y), what);
         }
     }
@@ -1707,40 +1713,40 @@ assert_tile_is(const r3d_lit_frame_t* f, int x0, int y0, uint16_t want, const ch
 /* A tile shows the farthest depth in it, which is the smaller value. */
 static void
 test_a_tile_holds_its_minimum_depth_not_its_maximum(void) {
-    r3d_lit_frame_t* f = shown_frame(3 * R3D_LIT_TILE, R3D_LIT_TILE);
+    r3d_frame_t* f = shown_frame(3 * R3D_SHOW_TILE, R3D_SHOW_TILE);
     fill_depth(f, 40000);
-    for (int y = 0; y < R3D_LIT_TILE; y++) {
-        for (int x = R3D_LIT_TILE; x < 2 * R3D_LIT_TILE; x++) {
+    for (int y = 0; y < R3D_SHOW_TILE; y++) {
+        for (int x = R3D_SHOW_TILE; x < 2 * R3D_SHOW_TILE; x++) {
             *depth_at(f, x, y) = 10000;
         }
     }
     *depth_at(f, 3, 3) = 10000; /* one far pixel in the first tile, the rest near */
-    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH_TILES);
+    r3d_frame_show(f, R3D_SHOW_DEPTH_TILES);
 
-    const uint16_t far_tile = color_at(f, R3D_LIT_TILE, 0);
-    const uint16_t near_tile = color_at(f, 2 * R3D_LIT_TILE, 0);
+    const uint16_t far_tile = color_at(f, R3D_SHOW_TILE, 0);
+    const uint16_t near_tile = color_at(f, 2 * R3D_SHOW_TILE, 0);
     TEST_ASSERT_TRUE_MESSAGE(level(far_tile) < level(near_tile), "the farther tile is not darker");
     assert_tile_is(f, 0, 0, far_tile, "a tile with one far pixel does not take that pixel's depth");
-    assert_tile_is(f, 2 * R3D_LIT_TILE, 0, near_tile, "a uniform near tile changed");
+    assert_tile_is(f, 2 * R3D_SHOW_TILE, 0, near_tile, "a uniform near tile changed");
 }
 
 /* One empty pixel, wherever in the tile, is a hole a cull must not skip. */
 static void
 test_one_empty_pixel_empties_its_tile_at_any_position_and_only_its_tile(void) {
-    const int w = 3 * R3D_LIT_TILE;
-    const int h = 3 * R3D_LIT_TILE;
-    const int last = R3D_LIT_TILE - 1;
+    const int w = 3 * R3D_SHOW_TILE;
+    const int h = 3 * R3D_SHOW_TILE;
+    const int last = R3D_SHOW_TILE - 1;
     const int corners[][2] = {{0, 0}, {last, last}, {last, 0}, {0, last}};
     for (int c = 0; c < 4; c++) {
-        r3d_lit_frame_t* f = shown_frame(w, h);
+        r3d_frame_t* f = shown_frame(w, h);
         fill_depth(f, 30000);
-        *depth_at(f, R3D_LIT_TILE + corners[c][0], R3D_LIT_TILE + corners[c][1]) = R3D_DEPTH_EMPTY;
-        r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH_TILES);
+        *depth_at(f, R3D_SHOW_TILE + corners[c][0], R3D_SHOW_TILE + corners[c][1]) = R3D_DEPTH_EMPTY;
+        r3d_frame_show(f, R3D_SHOW_DEPTH_TILES);
 
         for (int ty = 0; ty < 3; ty++) {
             for (int tx = 0; tx < 3; tx++) {
-                const int x0 = tx * R3D_LIT_TILE;
-                const int y0 = ty * R3D_LIT_TILE;
+                const int x0 = tx * R3D_SHOW_TILE;
+                const int y0 = ty * R3D_SHOW_TILE;
                 const bool holed = tx == 1 && ty == 1;
                 TEST_ASSERT_TRUE_MESSAGE(holed == (color_at(f, x0, y0) == SKY),
                                          "an empty pixel emptied a neighbour, or missed its own tile");
@@ -1754,36 +1760,36 @@ test_one_empty_pixel_empties_its_tile_at_any_position_and_only_its_tile(void) {
  * tiles, which are tiles like the others and read nothing outside the frame. */
 static void
 test_the_partial_tiles_at_the_right_and_bottom_are_reduced_within_the_frame(void) {
-    const int w = (2 * R3D_LIT_TILE) + 4;
-    const int h = R3D_LIT_TILE + 3;
-    r3d_lit_frame_t* f = shown_frame(w, h);
+    const int w = (2 * R3D_SHOW_TILE) + 4;
+    const int h = R3D_SHOW_TILE + 3;
+    r3d_frame_t* f = shown_frame(w, h);
     fill_depth(f, 50000);
     *depth_at(f, w - 1, h - 1) = 20000; /* the last pixel of the corner tile */
-    for (int y = 0; y < R3D_LIT_TILE; y++) {
-        for (int x = 2 * R3D_LIT_TILE; x < w; x++) {
+    for (int y = 0; y < R3D_SHOW_TILE; y++) {
+        for (int x = 2 * R3D_SHOW_TILE; x < w; x++) {
             *depth_at(f, x, y) = 60000; /* the right tile, nearest */
         }
     }
-    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH_TILES);
+    r3d_frame_show(f, R3D_SHOW_DEPTH_TILES);
 
     const uint16_t corner = color_at(f, w - 1, h - 1);
-    assert_tile_is(f, 2 * R3D_LIT_TILE, R3D_LIT_TILE, corner, "the corner tile did not take its last pixel's depth");
+    assert_tile_is(f, 2 * R3D_SHOW_TILE, R3D_SHOW_TILE, corner, "the corner tile did not take its last pixel's depth");
     const uint16_t right = color_at(f, w - 1, 0);
-    assert_tile_is(f, 2 * R3D_LIT_TILE, 0, right, "the right tile is not one colour");
+    assert_tile_is(f, 2 * R3D_SHOW_TILE, 0, right, "the right tile is not one colour");
     TEST_ASSERT_TRUE_MESSAGE(level(corner) < level(right), "the corner tile is not the farther");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, level(corner), "the farthest tile is not black");
     for (int ty = 0; ty < 2; ty++) {
         for (int tx = 0; tx < 2; tx++) {
-            const uint16_t mid = color_at(f, tx * R3D_LIT_TILE, ty * R3D_LIT_TILE);
+            const uint16_t mid = color_at(f, tx * R3D_SHOW_TILE, ty * R3D_SHOW_TILE);
             TEST_ASSERT_TRUE_MESSAGE(level(mid) > level(corner) && level(mid) < level(right),
                                      "a whole tile is not between the extremes");
-            assert_tile_is(f, tx * R3D_LIT_TILE, ty * R3D_LIT_TILE, mid, "a partial tile spilled into a whole one");
+            assert_tile_is(f, tx * R3D_SHOW_TILE, ty * R3D_SHOW_TILE, mid, "a partial tile spilled into a whole one");
         }
     }
 
     *depth_at(f, w - 1, h - 1) = R3D_DEPTH_EMPTY;
-    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH_TILES);
-    assert_tile_is(f, 2 * R3D_LIT_TILE, R3D_LIT_TILE, SKY, "an empty pixel in a partial tile left it drawn");
+    r3d_frame_show(f, R3D_SHOW_DEPTH_TILES);
+    assert_tile_is(f, 2 * R3D_SHOW_TILE, R3D_SHOW_TILE, SKY, "an empty pixel in a partial tile left it drawn");
     TEST_ASSERT_TRUE_MESSAGE(color_at(f, 0, h - 1) != SKY, "the empty pixel reached the bottom-left tile");
 }
 
@@ -1792,11 +1798,11 @@ test_the_partial_tiles_at_the_right_and_bottom_are_reduced_within_the_frame(void
 static void
 test_the_nearest_depth_is_the_brightest_and_the_farthest_the_darkest(void) {
     for (int reversed = 0; reversed < 2; reversed++) {
-        r3d_lit_frame_t* f = shown_frame(64, 1);
+        r3d_frame_t* f = shown_frame(64, 1);
         for (int x = 0; x < 64; x++) {
             *depth_at(f, x, 0) = (uint16_t)(1000 + ((reversed ? 63 - x : x) * 900));
         }
-        r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH);
+        r3d_frame_show(f, R3D_SHOW_DEPTH);
         const int far_x = reversed ? 63 : 0;
         const int near_x = 63 - far_x;
         TEST_ASSERT_EQUAL_INT_MESSAGE(0, level(color_at(f, far_x, 0)), "the farthest pixel is not black");
@@ -1813,10 +1819,10 @@ test_the_nearest_depth_is_the_brightest_and_the_farthest_the_darkest(void) {
  * is a colour no grey is. */
 static void
 test_a_frame_of_one_depth_is_one_grey_and_empty_is_no_grey(void) {
-    r3d_lit_frame_t* f = shown_frame(16, 4);
+    r3d_frame_t* f = shown_frame(16, 4);
     fill_depth(f, 777);
     *depth_at(f, 5, 2) = R3D_DEPTH_EMPTY;
-    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH);
+    r3d_frame_show(f, R3D_SHOW_DEPTH);
     const uint16_t grey = color_at(f, 0, 0);
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(WHITE, grey, "a frame of one depth is not the nearest end of the ramp");
     for (int i = 0; i < 16 * 4; i++) {
@@ -1828,7 +1834,7 @@ test_a_frame_of_one_depth_is_one_grey_and_empty_is_no_grey(void) {
     for (int x = 0; x < 256; x++) {
         *depth_at(f, x, 0) = (uint16_t)(1 + (x * 200));
     }
-    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH);
+    r3d_frame_show(f, R3D_SHOW_DEPTH);
     for (int x = 0; x < 256; x++) {
         TEST_ASSERT_TRUE_MESSAGE(is_grey(color_at(f, x, 0)), "a drawn depth is not a grey");
         TEST_ASSERT_TRUE_MESSAGE(color_at(f, x, 0) != SKY, "a drawn depth reads as empty");
@@ -1838,27 +1844,27 @@ test_a_frame_of_one_depth_is_one_grey_and_empty_is_no_grey(void) {
 /* The range the grey is stretched over is the drawn pixels'. */
 static void
 test_the_range_ignores_empty_pixels_and_survives_none_or_one_drawn(void) {
-    r3d_lit_frame_t* f = shown_frame(8, 8);
+    r3d_frame_t* f = shown_frame(8, 8);
     *depth_at(f, 1, 1) = 30000;
     *depth_at(f, 6, 6) = 60000;
-    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH);
+    r3d_frame_show(f, R3D_SHOW_DEPTH);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, level(color_at(f, 1, 1)), "the empty pixels stretched the range");
     TEST_ASSERT_EQUAL_INT(LEVEL_MAX, level(color_at(f, 6, 6)));
     TEST_ASSERT_EQUAL_HEX16(SKY, color_at(f, 0, 0));
 
     f = shown_frame(8, 8);
-    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH);
+    r3d_frame_show(f, R3D_SHOW_DEPTH);
     for (int i = 0; i < 64; i++) {
         TEST_ASSERT_EQUAL_HEX16(SKY, f->color[i]);
     }
-    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH_TILES);
+    r3d_frame_show(f, R3D_SHOW_DEPTH_TILES);
     for (int i = 0; i < 64; i++) {
         TEST_ASSERT_EQUAL_HEX16(SKY, f->color[i]);
     }
 
     f = shown_frame(8, 8);
     *depth_at(f, 3, 4) = 4242;
-    r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH);
+    r3d_frame_show(f, R3D_SHOW_DEPTH);
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(WHITE, color_at(f, 3, 4),
                                     "a single drawn pixel is not the nearest end of the ramp");
     TEST_ASSERT_EQUAL_HEX16(SKY, color_at(f, 4, 4));
@@ -1877,29 +1883,29 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
     parts_t* const p = parts_buffer();
     build_wall_and_stack(p);
     gfx_color_t* doubled = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    char* scratch = malloc(r3d_lit_frame_scratch_bytes(&p->mesh, W, H));
+    char* scratch = malloc(r3d_frame_scratch_bytes(&p->mesh, W, H));
     uint16_t* depth_before = malloc(sizeof(uint16_t) * W * H);
     uint16_t* shaded = malloc(sizeof(uint16_t) * W * H);
     TEST_ASSERT_NOT_NULL(doubled);
     TEST_ASSERT_NOT_NULL(scratch);
     TEST_ASSERT_NOT_NULL(depth_before);
     TEST_ASSERT_NOT_NULL(shaded);
-    r3d_lit_frame_t frame = {.mesh = &p->mesh, .width = W, .height = H, .clear = SKY, .doubled = doubled};
-    r3d_lit_frame_use_scratch(&frame, scratch);
+    r3d_frame_t frame = {.mesh = &p->mesh, .width = W, .height = H, .clear = SKY, .doubled = doubled};
+    r3d_frame_use_scratch(&frame, scratch);
 
     static const float eye_heights[] = {-100.0f, 150.0f, 300.0f};
     uint16_t first_depth_sum = 0;
     for (int e = 0; e < 3; e++) {
-        const r3d_lit_view_t view = look_down_minus_z(eye_heights[e], 400, 1.0f);
-        r3d_lit_frame_render(&frame, &view);
+        const r3d_camera_t camera = camera_down_minus_z(eye_heights[e], 400, 1.0f);
+        r3d_frame_draw(&frame, &camera, 0);
         memcpy(depth_before, frame.depth, sizeof(uint16_t) * W * H);
         memcpy(shaded, frame.color, sizeof(uint16_t) * W * H);
 
-        r3d_lit_frame_show(&frame, R3D_LIT_VIEW_SHADED);
+        r3d_frame_show(&frame, R3D_SHOW_SHADED);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(shaded, frame.color, W * H, "the shaded view changed the render");
 
-        r3d_lit_frame_show(&frame, R3D_LIT_VIEW_DEPTH);
-        r3d_lit_frame_double(&frame);
+        r3d_frame_show(&frame, R3D_SHOW_DEPTH);
+        r3d_frame_double(&frame);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(depth_before, frame.depth, W * H, "showing the depth changed it");
         int drawn = 0;
         uint16_t depth_sum = 0;

@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "render/r3d_lit_pipeline.h"
+#include "render/r3d_pipeline.h"
 #include "triangle_sizes.h"
 
 #ifndef R3D_SIZES_MESH
@@ -125,19 +125,19 @@ read_poses_or_exit(const char* path, r3d_sizes_poses_t* poses) {
 
 typedef struct {
     uint16_t* visible;
-    r3d_lit_rows_t* rows;
-    r3d_lit_vertex_t* cs;
+    r3d_pipeline_rows_t* rows;
+    r3d_pipeline_vertex_t* cs;
     uint16_t* color;
     uint16_t* depth;
 } buffers_t;
 
 static void
-render_pose(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, int count, const buffers_t* b, frame_size_t size) {
+render_pose(const r3d_lit_mesh_t* mesh, const r3d_lens_t* view, int count, const buffers_t* b, frame_size_t size) {
     memset(b->color, 0, size.pixels * sizeof(*b->color));
     memset(b->depth, 0, size.pixels * sizeof(*b->depth));
-    r3d_lit_transform(mesh, view, b->visible, count, b->cs, b->rows);
+    r3d_pipeline_transform(mesh, view, b->visible, count, b->cs, b->rows);
     const r3d_span_target_t target = {b->color, b->depth, size.width, 0, size.height};
-    r3d_lit_draw(mesh, view, b->visible, count, b->cs, b->rows, &target);
+    r3d_pipeline_draw(mesh, view, b->visible, count, b->cs, b->rows, &target);
 }
 
 int
@@ -156,8 +156,8 @@ main(int argc, char** argv) {
     const frame_size_t size = {poses->width, poses->height, (size_t)poses->width * (size_t)poses->height};
     const buffers_t b = {
         checked_malloc(sizeof(uint16_t) * (size_t)mesh->cluster_count),
-        checked_malloc(sizeof(r3d_lit_rows_t) * (size_t)mesh->cluster_count),
-        checked_malloc(sizeof(r3d_lit_vertex_t) * (size_t)mesh->vertex_count),
+        checked_malloc(sizeof(r3d_pipeline_rows_t) * (size_t)mesh->cluster_count),
+        checked_malloc(sizeof(r3d_pipeline_vertex_t) * (size_t)mesh->vertex_count),
         checked_malloc(size.pixels * sizeof(uint16_t)),
         checked_malloc(size.pixels * sizeof(uint16_t)),
     };
@@ -165,10 +165,11 @@ main(int argc, char** argv) {
                  size.height);
     r3d_sizes_t total = {0};
     for (int pose = 0; pose < poses->count; pose++) {
-        r3d_lit_view_t view;
-        r3d_lit_view_look(&view, poses->eye[pose], poses->forward[pose], poses->half_fov_short_tan, poses->near_z,
-                          mesh->position_scale, (r3d_viewport_t){size.width, size.height, 0});
-        const int count = r3d_lit_cull_clusters(mesh, &view, b.visible);
+        r3d_lens_t view;
+        r3d_lens_init(&view,
+                      &(r3d_camera_t){poses->eye[pose], poses->forward[pose], poses->half_fov_short_tan, poses->near_z},
+                      mesh->position_scale, (r3d_viewport_t){size.width, size.height, 0});
+        const int count = r3d_pipeline_cull(mesh, &view, b.visible);
         r3d_sizes_t s = {0};
         r3d_sizes_count(mesh, &view, b.visible, count, &s);
         print_sizes(pose, &s);

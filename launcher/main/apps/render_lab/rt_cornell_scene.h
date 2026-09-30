@@ -7,7 +7,7 @@
  */
 #pragma once
 
-#include "render/r3d_ray.h"
+#include "render/r3d.h"
 #include "rt_geometry.h"
 
 extern const rt_scene_t rt_cornell_scene;

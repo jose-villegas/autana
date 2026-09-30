@@ -38,7 +38,7 @@ typedef struct {
     bool needs_full_framebuffer;
 
     /* True for a scene that draws a lit mesh and gives its frame to
-     * r3d_lit_frame_show() with render_lab_view(), when tunables are enabled. */
+     * r3d_frame_show() with render_lab_view(), when tunables are enabled. */
     bool shows_view_modes;
 
     /* Optional. Runs while the previous frame is still being sent to the

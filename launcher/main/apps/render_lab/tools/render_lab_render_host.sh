@@ -33,9 +33,9 @@ main/app_registry.c
 main/gfx/gfx.c
 main/util/tune.c
 main/util/job.c
-main/render/r3d_lit_frame.c
-main/render/r3d_lit_frame_show.c
-main/render/r3d_lit_pipeline.c
+main/render/r3d_frame.c
+main/render/r3d_frame_show.c
+main/render/r3d_pipeline.c
 main/anim/anim_track.c
 main/render/r3d_span.c
 main/ui/ui.c
@@ -56,7 +56,7 @@ $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
 scene_includes="components/small3dlib/include"
 scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
 
-# The lit-mesh scene's views (--view shaded|depth|tiles) are r3d_lit_frame_show()
+# The lit-mesh scene's views (--view shaded|depth|tiles) are r3d_frame_show()
 # over the same frame, so each is unpinned for the reason the shaded one is: its
 # camera path is float, so which pixels a triangle reaches is not identical on
 # every compiler. The tests in tools/tests compare the views with each other.

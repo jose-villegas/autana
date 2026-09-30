@@ -5,7 +5,7 @@
  *
  * Header-only, static inline, and ESP-IDF-free, so a host suite can check
  * every line of it without a panel; see test/suites/suite_r3d_project.c.
- * This owns none of a caller's units, timeline or resolution: `r3d_view_t`
+ * This owns none of a caller's units, timeline or resolution: `r3d_line_view_t`
  * carries the whole environment a camera-space point needs (matrix, focal
  * length, near clip, and where the projection plane lands on screen), so a
  * caller with its own scale and its own screen size passes it in rather
@@ -33,7 +33,7 @@ r3d_unused_pixel(S3L_PixelInfo* pixel) {
 
 /* A small fraction of one S3L_F unit: a caller with its own physical unit
  * (a meter, a grid cell) is free to pick a near_z of its own instead. */
-#define R3D_NEAR_Z (S3L_F / 10)
+#define R3D_LINE_NEAR_Z (S3L_F / 10)
 
 typedef struct {
     S3L_Mat4 matrix; /* model * view, composed by the caller */
@@ -42,16 +42,16 @@ typedef struct {
     int center_x;    /* screen pixel the optical axis lands on */
     int center_y;
     int scale; /* pixels per projection-plane unit S3L_F, both axes */
-} r3d_view_t;
+} r3d_line_view_t;
 
 static inline S3L_Vec4
-r3d_to_camera_space(S3L_Vec4 model_point, const r3d_view_t* view) {
+r3d_to_camera_space(S3L_Vec4 model_point, const r3d_line_view_t* view) {
     S3L_vec3Xmat4(&model_point, (S3L_Unit(*)[4])view->matrix);
     return model_point;
 }
 
 static inline void
-r3d_camera_to_screen(S3L_Vec4 p, const r3d_view_t* view, int* screen_x, int* screen_y) {
+r3d_camera_to_screen(S3L_Vec4 p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
     p.z = S3L_nonZero(p.z);
     S3L_perspectiveDivide(&p, view->focal);
 
@@ -68,7 +68,7 @@ r3d_camera_to_screen(S3L_Vec4 p, const r3d_view_t* view, int* screen_x, int* scr
 
 /* Draws if point is in front; checks visibility, avoids invalid coordinates. */
 static inline bool
-r3d_project_point_cs(S3L_Vec4 p, const r3d_view_t* view, int* screen_x, int* screen_y) {
+r3d_project_point_cs(S3L_Vec4 p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
     if (p.z <= view->near_z) {
         return false;
     }
@@ -79,7 +79,7 @@ r3d_project_point_cs(S3L_Vec4 p, const r3d_view_t* view, int* screen_x, int* scr
 /* Clips to near plane; avoids screen wrap. Returns false if segment is at or
  * behind the plane. */
 static inline bool
-r3d_project_segment_cs(S3L_Vec4 p0, S3L_Vec4 p1, const r3d_view_t* view, int* ax, int* ay, int* bx, int* by) {
+r3d_project_segment_cs(S3L_Vec4 p0, S3L_Vec4 p1, const r3d_line_view_t* view, int* ax, int* ay, int* bx, int* by) {
     const bool front0 = p0.z > view->near_z;
     const bool front1 = p1.z > view->near_z;
 

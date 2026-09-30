@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #include "gfx/gfx_color.h"
-#include "render/r3d_ray.h"
+#include "render/r3d.h"
 #include "rt_cornell.h"
 
 /* A running mean per channel, fixed point rather than a float sum: it

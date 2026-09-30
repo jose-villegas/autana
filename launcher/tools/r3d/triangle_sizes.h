@@ -11,7 +11,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "render/r3d_lit_pipeline.h"
+#include "render/r3d_pipeline.h"
 #include "render/r3d_vec3f.h"
 
 enum { R3D_SIZES_ZERO, R3D_SIZES_ONE, R3D_SIZES_TWO_TO_FOUR, R3D_SIZES_MORE, R3D_SIZES_BINS };
@@ -24,7 +24,7 @@ typedef struct {
 } r3d_sizes_t;
 
 /* Adds the triangles of the `count` clusters in `visible` to `out`. */
-void r3d_sizes_count(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* visible, int count,
+void r3d_sizes_count(const r3d_lit_mesh_t* mesh, const r3d_lens_t* view, const uint16_t* visible, int count,
                      r3d_sizes_t* out);
 
 void r3d_sizes_add(r3d_sizes_t* total, const r3d_sizes_t* s);

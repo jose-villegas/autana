@@ -1,5 +1,5 @@
 /*
- * Portable suite: render/r3d_camera.h (the fixed-point camera and its
+ * Portable suite: render/r3d_line_camera.h (the fixed-point camera and its
  * viewport fit) and render/r3d_ray.h (the float ray camera). Both are
  * header-only and free of any particular caller's resolution, quarter or
  * unit choice, so every check here builds its own camera and viewport
@@ -13,17 +13,17 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "render/r3d_camera.h"
+#include "render/r3d_line_camera.h"
 #include "render/r3d_ray.h"
 
-/* r3d_camera_view() */
+/* r3d_line_camera_view() */
 
-static r3d_camera_t
+static r3d_line_camera_t
 camera_fixture(void) {
-    r3d_camera_t camera = {0};
+    r3d_line_camera_t camera = {0};
     S3L_transform3DInit(&camera.pose);
     camera.focal = S3L_F;
-    camera.near_z = R3D_NEAR_Z;
+    camera.near_z = R3D_LINE_NEAR_Z;
     return camera;
 }
 
@@ -32,7 +32,7 @@ test_an_on_axis_point_lands_on_the_viewport_centre(void) {
     S3L_Transform3D model;
     S3L_transform3DInit(&model);
     const r3d_viewport_t viewport = {.width = 368, .height = 448, .quarter = 0};
-    const r3d_view_t view = r3d_camera_view(camera_fixture(), model, viewport);
+    const r3d_line_view_t view = r3d_line_camera_view(camera_fixture(), model, viewport);
 
     const S3L_Vec4 p = r3d_to_camera_space((S3L_Vec4){0, 0, 5 * S3L_F, S3L_F}, &view);
     int x, y;
@@ -42,14 +42,14 @@ test_an_on_axis_point_lands_on_the_viewport_centre(void) {
     TEST_ASSERT_EQUAL_INT(view.center_y, y);
 }
 
-/* Independent of r3d_camera_view()'s own arithmetic: builds the matrix by
+/* Independent of r3d_line_camera_view()'s own arithmetic: builds the matrix by
  * hand, from a pose and a model. */
 static void
 check_view_matrix_matches_hand_built(S3L_Transform3D camera_pose, S3L_Transform3D model) {
-    const r3d_camera_t camera = {.pose = camera_pose, .focal = S3L_F, .near_z = R3D_NEAR_Z};
+    const r3d_line_camera_t camera = {.pose = camera_pose, .focal = S3L_F, .near_z = R3D_LINE_NEAR_Z};
     const r3d_viewport_t viewport = {.width = 368, .height = 448, .quarter = 0};
 
-    const r3d_view_t got = r3d_camera_view(camera, model, viewport);
+    const r3d_line_view_t got = r3d_line_camera_view(camera, model, viewport);
 
     S3L_Mat4 world_mat, camera_mat;
     S3L_makeWorldMatrix(model, world_mat);
@@ -92,7 +92,7 @@ check_viewport_centre_and_scale(int width, int height, int expect_center_x, int 
     S3L_transform3DInit(&model);
     const r3d_viewport_t viewport = {.width = width, .height = height, .quarter = 0};
 
-    const r3d_view_t view = r3d_camera_view(camera_fixture(), model, viewport);
+    const r3d_line_view_t view = r3d_line_camera_view(camera_fixture(), model, viewport);
 
     TEST_ASSERT_EQUAL_INT(expect_center_x, view.center_x);
     TEST_ASSERT_EQUAL_INT(expect_center_y, view.center_y);
@@ -105,15 +105,15 @@ test_viewport_centre_and_scale_fit_the_shorter_axis(void) {
     check_viewport_centre_and_scale(400, 300, 200, 150, 150); /* landscape: width is longer */
 }
 
-/* r3d_camera_upright() */
+/* r3d_line_camera_upright() */
 
 static void
 check_up_point_moves_toward_the_quarters_own_edge(int quarter, int expect_dx_sign, int expect_dy_sign) {
     S3L_Transform3D model;
     S3L_transform3DInit(&model);
-    const r3d_camera_t camera = r3d_camera_upright(camera_fixture(), quarter);
+    const r3d_line_camera_t camera = r3d_line_camera_upright(camera_fixture(), quarter);
     const r3d_viewport_t viewport = {.width = 368, .height = 448, .quarter = 0};
-    const r3d_view_t view = r3d_camera_view(camera, model, viewport);
+    const r3d_line_view_t view = r3d_line_camera_view(camera, model, viewport);
 
     const S3L_Vec4 target = r3d_to_camera_space((S3L_Vec4){0, 0, 5 * S3L_F, S3L_F}, &view);
     const S3L_Vec4 up = r3d_to_camera_space((S3L_Vec4){0, S3L_F, 5 * S3L_F, S3L_F}, &view);
@@ -284,7 +284,7 @@ test_a_ray_direction_is_unit_length(void) {
 }
 
 void
-run_r3d_camera_suite(void) {
+run_r3d_line_camera_suite(void) {
     RUN_TEST(test_an_on_axis_point_lands_on_the_viewport_centre);
     RUN_TEST(test_view_matrix_matches_the_hand_built_matrix_for_two_unrelated_poses);
     RUN_TEST(test_viewport_centre_and_scale_fit_the_shorter_axis);
@@ -298,4 +298,4 @@ run_r3d_camera_suite(void) {
     RUN_TEST(test_a_ray_direction_is_unit_length);
 }
 
-SUITE_REGISTER(run_r3d_camera_suite);
+SUITE_REGISTER(run_r3d_line_camera_suite);

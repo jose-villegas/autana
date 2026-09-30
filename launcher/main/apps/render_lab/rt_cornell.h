@@ -11,7 +11,7 @@
 #pragma once
 
 #include "gfx/gfx_color.h"
-#include "render/r3d_ray.h"
+#include "render/r3d.h"
 
 typedef r3d_ray_camera_t rt_cornell_camera_t;
 

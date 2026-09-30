@@ -35,8 +35,8 @@ set(app_srcs
     "ui/ui_scroll.c"
     "ui/ui_widgets.c"
     "anim/anim_track.c"
-    "render/r3d_lit_frame.c"
-    "render/r3d_lit_pipeline.c"
+    "render/r3d_frame.c"
+    "render/r3d_pipeline.c"
     "render/r3d_span.c"
     "render/r3d_trs.c"
     "util/frame_cost.c"
@@ -62,7 +62,7 @@ endif()
 # The frame's view modes: a development tool, with nothing calling them in a
 # release build.
 if(CONFIG_LAUNCHER_DEVELOPMENT)
-    list(APPEND app_srcs "render/r3d_lit_frame_show.c")
+    list(APPEND app_srcs "render/r3d_frame_show.c")
 endif()
 
 # The console listener: a release image has nobody watching the serial

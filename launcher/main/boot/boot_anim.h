@@ -61,7 +61,7 @@ boot_anim_unused_pixel(S3L_PixelInfo* pixel) {
 #include "boot/boot_anim_timeline.h"
 #include "boot/boot_anim_tracks_generated.h"
 #include "gfx/gfx_font.h"
-#include "render/r3d_camera.h"
+#include "render/r3d_line_camera.h"
 #include "render/r3d_trs.h"
 #include "util/intmath.h"
 #include "util/trig.h"
@@ -146,20 +146,20 @@ boot_anim_t_to_s3l(int32_t t_q8) {
 
 /* The general camera-space clip and perspective projection this needs live
  * in render/r3d_project.h, shared with a caller drawing something other
- * than this timeline; boot_anim_view_t is the r3d_view_t that environment
+ * than this timeline; boot_anim_view_t is the r3d_line_view_t that environment
  * takes, plus whatever boot_anim_view() below fills it with each frame. */
-typedef r3d_view_t boot_anim_view_t;
+typedef r3d_line_view_t boot_anim_view_t;
 
 static inline boot_anim_view_t
 boot_anim_view(int w, int h, uint32_t now_ms) {
     const boot_anim_timeline_state_t st = boot_anim_timeline_sample(now_ms);
 
-    const r3d_camera_t camera = {.pose = st.camera, .focal = BOOT_ANIM_CAMERA_FOCAL, .near_z = R3D_NEAR_Z};
+    const r3d_line_camera_t camera = {.pose = st.camera, .focal = BOOT_ANIM_CAMERA_FOCAL, .near_z = R3D_LINE_NEAR_Z};
     /* w (the panel's native WIDTH) is narrower than h (its native HEIGHT),
-     * so r3d_camera_view()'s shorter-axis fit is exactly half w; boot's
+     * so r3d_line_camera_view()'s shorter-axis fit is exactly half w; boot's
      * pixels must not move if that inequality ever changes. */
     const r3d_viewport_t viewport = {.width = w, .height = h, .quarter = 0};
-    return r3d_camera_view(camera, st.space, viewport);
+    return r3d_line_camera_view(camera, st.space, viewport);
 }
 
 /* CAMERA space transform; boot_anim_project() refactored for z check. Q12

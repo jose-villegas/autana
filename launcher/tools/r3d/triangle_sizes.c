@@ -10,7 +10,7 @@ typedef struct {
 } point_t;
 
 static bool
-project(const r3d_lit_view_t* view, const int16_t p[3], point_t* out) {
+project(const r3d_lens_t* view, const int16_t p[3], point_t* out) {
     float l[3];
     for (int r = 0; r < 3; r++) {
         l[r] = (view->m[r][0] * (float)p[0]) + (view->m[r][1] * (float)p[1]) + (view->m[r][2] * (float)p[2])
@@ -104,7 +104,7 @@ size_triangle(point_t v[3], bool double_sided, int width, int height, r3d_sizes_
 }
 
 void
-r3d_sizes_count(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* visible, int count,
+r3d_sizes_count(const r3d_lit_mesh_t* mesh, const r3d_lens_t* view, const uint16_t* visible, int count,
                 r3d_sizes_t* out) {
     for (int i = 0; i < count; i++) {
         const r3d_lit_cluster_t* c = &mesh->clusters[visible[i]];

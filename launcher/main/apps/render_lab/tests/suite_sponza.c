@@ -2,7 +2,7 @@
  * Portable suite: the two baked Sponza meshes (sponza_mesh_generated.h,
  * sponza_lite_mesh_generated.h) and the camera loop through them
  * (sponza_flythrough.h). Each mesh is checked for the structure
- * r3d_lit_pipeline.h relies on, never against the generator; the path and
+ * r3d_pipeline.h relies on, never against the generator; the path and
  * the pictures it sees are checked against the shipped meshes themselves.
  */
 
@@ -23,7 +23,8 @@
 #include "apps/render_lab/sponza_lite_mesh_generated.h"
 #include "apps/render_lab/sponza_mesh_generated.h"
 #include "r3d_lit_mesh_expect.h"
-#include "render/r3d_lit_frame.h"
+#include "render/r3d.h"
+#include "render/r3d_pipeline.h"
 
 _Static_assert(SPONZA_VERTEX_COUNT <= 65535 && SPONZA_LITE_VERTEX_COUNT <= 65535 && SPONZA_FLAT_VERTEX_COUNT <= 65535,
                "triangles index vertices with uint16_t");
@@ -32,7 +33,7 @@ _Static_assert(SPONZA_LITE_CLUSTER_COUNT <= SPONZA_CLUSTER_COUNT && SPONZA_FLAT_
 
 /* The flat reference: every cluster's eight corners against each plane. */
 static bool
-cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lit_view_t* view) {
+cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lens_t* view) {
     int beyond[5] = {0};
     for (int i = 0; i < 8; i++) {
         const float x = (float)(i & 1 ? c->hi[0] : c->lo[0]);
@@ -63,11 +64,13 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
     TEST_ASSERT_NOT_NULL(walked);
     TEST_ASSERT_NOT_NULL(kept);
     for (uint32_t t = 0; t < period; t += 2500) {
-        r3d_lit_view_t view;
-        sponza_view_at(&view, t, mesh->position_scale, (int)(t / 2500) & 3);
+        const r3d_camera_t camera = sponza_camera_at(t);
+        const r3d_viewport_t viewport = {SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, (int)(t / 2500) & 3};
+        r3d_lens_t view;
+        r3d_lens_init(&view, &camera, mesh->position_scale, viewport);
 
         memset(kept, 0, SPONZA_CLUSTER_COUNT);
-        const int count = r3d_lit_cull_clusters(mesh, &view, walked);
+        const int count = r3d_pipeline_cull(mesh, &view, walked);
         for (int i = 0; i < count; i++) {
             TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, kept[walked[i]], "a cluster was listed twice");
             kept[walked[i]] = 1;
@@ -261,10 +264,9 @@ test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
 
 /* The fraction of the picture covered at `t_ms` into the flythrough. */
 static float
-share_covered_at(const r3d_lit_frame_t* frame, uint32_t t_ms) {
-    r3d_lit_view_t view;
-    sponza_view_at(&view, t_ms, frame->mesh->position_scale, 0);
-    r3d_lit_frame_render(frame, &view);
+share_covered_at(const r3d_frame_t* frame, uint32_t t_ms) {
+    const r3d_camera_t camera = sponza_camera_at(t_ms);
+    r3d_frame_draw(frame, &camera, 0);
     const int pixels = frame->width * frame->height;
     int covered = 0;
     for (int i = 0; i < pixels; i++) {
@@ -279,11 +281,11 @@ share_covered_at(const r3d_lit_frame_t* frame, uint32_t t_ms) {
  * only the building's far sides, about 0.6. */
 static void
 check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
-    r3d_lit_frame_t frame = {.mesh = mesh, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
-    void* scratch = heap_caps_malloc(r3d_lit_frame_scratch_bytes(mesh, frame.width, frame.height),
-                                     MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    r3d_frame_t frame = {.mesh = mesh, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
+    void* scratch =
+        heap_caps_malloc(r3d_frame_scratch_bytes(mesh, frame.width, frame.height), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     TEST_ASSERT_NOT_NULL(scratch);
-    r3d_lit_frame_use_scratch(&frame, scratch);
+    r3d_frame_use_scratch(&frame, scratch);
     const uint32_t period = sponza_flythrough_period_ms();
     float sum = 0.0F;
     int samples = 0;

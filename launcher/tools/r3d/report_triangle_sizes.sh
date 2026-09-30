@@ -61,7 +61,7 @@ OUT_BIN="$BUILD_DIR/triangle_sizes"
     "$SCRIPT_DIR/triangle_sizes_main.c" \
     "$SCRIPT_DIR/triangle_sizes.c" \
     "$mesh_source" \
-    "$MAIN_DIR/render/r3d_lit_pipeline.c" \
+    "$MAIN_DIR/render/r3d_pipeline.c" \
     "$MAIN_DIR/render/r3d_span.c" \
     -lm -o "$OUT_BIN"
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"

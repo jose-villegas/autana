@@ -7,11 +7,11 @@
 
 #include <stdbool.h>
 
-#include "render/r3d_lit_frame.h"
+#include "render/r3d.h"
 
 /* The tunable render_lab.view: as shaded, or as the depth the frame left
- * (r3d_lit_frame_show()). Constant R3D_LIT_VIEW_SHADED when tunables are. */
-r3d_lit_view_mode_t render_lab_view(void);
+ * (r3d_frame_show()). Constant R3D_SHOW_SHADED when tunables are. */
+r3d_show_t render_lab_view(void);
 
 /* Whether the running scene honours it (render_lab_scene_t). */
 bool render_lab_scene_shows_views(void);

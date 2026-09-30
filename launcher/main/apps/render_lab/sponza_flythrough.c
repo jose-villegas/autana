@@ -22,11 +22,9 @@ sponza_flythrough_sample(uint32_t t_ms, r3d_vec3f_t* eye, r3d_vec3f_t* forward) 
     *forward = (r3d_vec3f_t){ahead[0], ahead[1], ahead[2]};
 }
 
-void
-sponza_view_at(r3d_lit_view_t* view, uint32_t t_ms, int position_scale, int quarter) {
-    r3d_vec3f_t eye;
-    r3d_vec3f_t forward;
-    sponza_flythrough_sample(t_ms, &eye, &forward);
-    r3d_lit_view_look(view, eye, forward, SPONZA_HALF_FOV_SHORT_TAN, SPONZA_NEAR_Z, position_scale,
-                      (r3d_viewport_t){SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, quarter});
+r3d_camera_t
+sponza_camera_at(uint32_t t_ms) {
+    r3d_camera_t camera = {.half_fov_short_tan = SPONZA_HALF_FOV_SHORT_TAN, .near_z = SPONZA_NEAR_Z};
+    sponza_flythrough_sample(t_ms, &camera.eye, &camera.forward);
+    return camera;
 }

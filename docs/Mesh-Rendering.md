@@ -11,44 +11,74 @@ offline. It sits beside `gfx/`, and the only other things it includes are
 draws into buffers its caller hands it, and a framebuffer is only one of
 them. The layers are in [Firmware-Architecture.md](Firmware-Architecture.md).
 
+## What a scene uses
+
+A scene includes `render/r3d.h` and nothing else from render/:
+
+| Noun | What it is |
+|---|---|
+| `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](Mesh-Import.md)) |
+| `r3d_camera_t` | A pinhole camera in model units: eye, look direction, lens, near plane |
+| `r3d_viewport_t` | The picture's size and the quarter turn the panel is read at; every camera in render/ takes it |
+| `r3d_frame_t` | One mesh drawn at one size into buffers the caller hands it. Its options are fields the caller sets: `clear`, and `doubled` for a picture twice the size |
+| `r3d_frame_draw()` | Draws the mesh through a camera, turned for the panel's quarter |
+| `r3d_frame_double()` | Doubles what was drawn into `doubled` |
+| `r3d_frame_show()` | Development builds: shows the depth instead of the colour, as a [view mode](#view-modes) |
+| `r3d_ray_camera_t` | A ray tracer's camera: the direction through each physical pixel |
+
+Flat or smooth shading is the mesh's own, not an option: a mesh baked flat
+carries a colour per face and the frame draws what the mesh carries.
+
+A camera that moves is an [animation track](Animation-Tracks.md), sampled
+by its caller into the camera's eye and look direction.
+
+The ray tracer keeps its own camera. It holds an explicit right and up in
+the tracer's own handedness, where `r3d_camera_t` derives them from the look
+direction the rasterizer's way, which mirrors the picture.
+
 ## The files
 
 | File | What it is |
 |---|---|
-| `r3d_camera.h` | A camera description in fixed point (S3L units and turns): the roll that keeps a scene's up on the shell's up, and the fit onto a non-square viewport |
-| `r3d_project.h` | Camera-space near clip and perspective projection, for a caller that composed its own model-view matrix |
+| `r3d.h` | What a scene includes: the camera, the frame and the view modes; it brings in the three below |
+| `r3d_viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
 | `r3d_vec3f.h` | The float 3-vector every float camera shares |
-| `r3d_ray.h` | A float ray camera: the direction through each physical pixel, on the same viewport a rasterizer uses |
-| `r3d_trs.h` | A float translation, quaternion and scale as one small3dlib transform, for an object an animation track moves |
-| `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions |
+| `r3d_ray.h` | The ray camera: the direction through each physical pixel |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree |
-| `r3d_lit_pipeline.h` | The mesh's stages: view, cull, transform, draw |
-| `r3d_lit_frame.h` | One whole frame of those stages on both cores, optionally doubled to twice its size; in development builds, a view of its depth |
+| `r3d_frame.c` | One whole frame on both cores, optionally doubled to twice its size |
+| `r3d_pipeline.h` | Internal: the frame's stages, lens, cull, transform, draw |
+| `r3d_span.h` | Internal: one depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions |
+| `r3d_line_camera.h` | A camera for points and segments in small3dlib's fixed point (S3L units and turns): a pose with a roll, and the fit onto a non-square viewport |
+| `r3d_project.h` | Camera-space near clip and perspective projection of those points and segments |
+| `r3d_trs.h` | A float translation, quaternion and scale as one small3dlib transform, for an object an animation track moves |
 
-A camera that moves is an [animation track](Animation-Tracks.md), sampled
-by its caller into an eye and a look direction for `r3d_lit_view_look()`.
+The line camera stays apart from `r3d_camera_t`: its pose composes with a
+model transform in integers and carries a roll, and it brings small3dlib's
+configuration with it, which `r3d.h` must not impose on a scene. Internal
+headers are included only by render/, its suites and host tools.
 
 ## One frame
 
 ```mermaid
 flowchart LR
-    View["r3d_lit_view_look()<br/><i>eye, forward, lens</i>"] --> Cull
-    subgraph Render["r3d_lit_frame_render()"]
-        Cull["r3d_lit_cull_clusters()<br/><i>walk the tree, nearest first</i>"] --> Transform["r3d_lit_transform()<br/><i>each vertex once</i>"]
-        Transform --> Draw["r3d_lit_draw()<br/><i>near clip, r3d_span</i>"]
+    Camera["r3d_camera_t<br/><i>eye, forward, lens</i>"] --> Lens
+    subgraph Render["r3d_frame_draw()"]
+        Lens["r3d_lens_init()<br/><i>for this viewport</i>"] --> Cull
+        Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
+        Transform --> Draw["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
     end
-    Draw --> Double["r3d_lit_frame_double()<br/><i>to twice the size</i>"]
+    Draw --> Double["r3d_frame_double()<br/><i>to twice the size</i>"]
 ```
 
-A caller builds the view, then calls `r3d_lit_frame_render()`, and
-`r3d_lit_frame_double()` when it set `doubled`; the stages inside are
-public for a caller that schedules them itself.
+A caller fills a camera, then calls `r3d_frame_draw()`, and
+`r3d_frame_double()` when it set `doubled`. The stages inside are
+`r3d_pipeline.h`'s, for a suite or tool that schedules them itself.
 
 The stages are split so two cores can share them. Transforming disjoint
 cluster lists writes disjoint vertex ranges, and drawing touches only the
-rows of its own target. `r3d_lit_transform()` also records the screen rows
+rows of its own target. `r3d_pipeline_transform()` also records the screen rows
 each cluster spans, so a core drawing half the rows skips a cluster wholly
-outside them. `r3d_lit_frame.h` renders at the caller's width and height and
+outside them. The frame renders at the caller's width and height and
 can double the result into a picture twice each, so rendering at half the
 panel's size quarters the pixels and halves the rows and spans.
 
@@ -84,21 +114,21 @@ sequenceDiagram
 ### View modes
 
 Development builds can look at the depth a frame drew instead of its
-colour. `r3d_lit_frame_show()` runs after `r3d_lit_frame_render()` and before
-`r3d_lit_frame_double()`, and overwrites the frame's colour buffer from its
+colour. `r3d_frame_show()` runs after `r3d_frame_draw()` and before
+`r3d_frame_double()`, and overwrites the frame's colour buffer from its
 depth buffer, which it reads as the render left it and never writes.
 
 ```mermaid
 flowchart LR
-    Render["r3d_lit_frame_render()<br/><i>colour and depth</i>"] --> Show
-    Show["r3d_lit_frame_show(mode)<br/><i>colour from depth</i>"] --> Double["r3d_lit_frame_double()<br/><i>to twice the size</i>"]
+    Render["r3d_frame_draw()<br/><i>colour and depth</i>"] --> Show
+    Show["r3d_frame_show(mode)<br/><i>colour from depth</i>"] --> Double["r3d_frame_double()<br/><i>to twice the size</i>"]
 ```
 
 | Mode | The colour buffer becomes |
 |---|---|
-| `R3D_LIT_VIEW_SHADED` | untouched: the baked colours as drawn |
-| `R3D_LIT_VIEW_DEPTH` | the depth as a grey ramp, nearest white and farthest black |
-| `R3D_LIT_VIEW_DEPTH_TILES` | the same ramp, each `R3D_LIT_TILE` square at its farthest depth: the value a hierarchical depth test would cull against |
+| `R3D_SHOW_SHADED` | untouched: the baked colours as drawn |
+| `R3D_SHOW_DEPTH` | the depth as a grey ramp, nearest white and farthest black |
+| `R3D_SHOW_DEPTH_TILES` | the same ramp, each `R3D_SHOW_TILE` square at its farthest depth: the value a hierarchical depth test would cull against |
 
 The ramp is stretched over the range this frame drew, so it shows the most
 detail within a frame and is not comparable between frames. A pixel nothing
@@ -112,8 +142,8 @@ they read.
 A pixel belongs to a triangle when its centre is inside by the top-left
 rule, decided in integers on positions snapped to 1/16 pixel. Two
 triangles sharing an edge therefore never both fill a pixel, nor both miss
-one, in any window of rows. `r3d_lit_transform()` snaps each vertex once,
-into an 8-byte `r3d_lit_vertex_t`. Every position the rasterizer takes is
+one, in any window of rows. `r3d_pipeline_transform()` snaps each vertex once,
+into an 8-byte `r3d_pipeline_vertex_t`. Every position the rasterizer takes is
 within 1024 pixels of the origin, which keeps its edge arithmetic in 32
 bits: a triangle with a corner behind the near plane or farther off
 screen is rebuilt from the mesh and clipped to a guard band inside that
@@ -151,8 +181,8 @@ fills its spans without those clamps, which would change nothing there.
 The layer allocates nothing, and nothing a frame needs lives at file
 scope. A frame's per-vertex, per-cluster, colour and depth buffers are one
 block:
-`r3d_lit_frame_scratch_bytes()` sizes it, the caller obtains it once, and
-`r3d_lit_frame_use_scratch()` carves it. The caller decides where it lives,
+`r3d_frame_scratch_bytes()` sizes it, the caller obtains it once, and
+`r3d_frame_use_scratch()` carves it. The caller decides where it lives,
 so none of it has to take internal RAM.
 
 ## Rules the layer keeps

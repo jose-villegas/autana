@@ -1,4 +1,4 @@
-#include "render/r3d_lit_pipeline.h"
+#include "render/r3d_pipeline.h"
 
 #include <assert.h>
 #include <math.h>
@@ -24,33 +24,34 @@ upright_step(r3d_vec3f_t right, r3d_vec3f_t down, int step_right, int step_down)
 }
 
 void
-r3d_lit_view_look(r3d_lit_view_t* view, r3d_vec3f_t eye, r3d_vec3f_t forward, float half_fov_short_tan, float near_z,
-                  int position_scale, r3d_viewport_t viewport) {
-    const r3d_vec3f_t f = r3d_vec3f_normalize(forward);
+r3d_lens_init(r3d_lens_t* lens, const r3d_camera_t* camera, int position_scale, r3d_viewport_t viewport) {
+    const r3d_vec3f_t eye = camera->eye;
+    const float near_z = camera->near_z;
+    const r3d_vec3f_t f = r3d_vec3f_normalize(camera->forward);
     const r3d_vec3f_t right = r3d_vec3f_normalize(r3d_vec3f_cross(f, (r3d_vec3f_t){0.0F, 1.0F, 0.0F}));
     const r3d_vec3f_t down = r3d_vec3f_cross(f, right);
 
     const int shorter = viewport.width < viewport.height ? viewport.width : viewport.height;
-    const float k = (float)shorter / (2.0F * half_fov_short_tan);
+    const float k = (float)shorter / (2.0F * camera->half_fov_short_tan);
     const float ticks_to_units = 1.0F / (float)position_scale;
 
     const r3d_quarter_axes_t a = r3d_quarter_axes(viewport.quarter);
-    set_row(view->m[0], upright_step(right, down, a.x_right, a.x_down), eye, k, ticks_to_units);
-    set_row(view->m[1], upright_step(right, down, a.y_right, a.y_down), eye, k, ticks_to_units);
-    set_row(view->m[2], f, eye, 1.0F, ticks_to_units);
-    view->center_x = (float)viewport.width * 0.5F;
-    view->center_y = (float)viewport.height * 0.5F;
-    view->near_z = near_z;
-    view->near_subpixels = near_z / (float)R3D_SUBPIXEL;
-    view->snap_cx = (view->center_x * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
-    view->snap_cy = (view->center_y * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
-    view->width = viewport.width;
-    view->height = viewport.height;
+    set_row(lens->m[0], upright_step(right, down, a.x_right, a.x_down), eye, k, ticks_to_units);
+    set_row(lens->m[1], upright_step(right, down, a.y_right, a.y_down), eye, k, ticks_to_units);
+    set_row(lens->m[2], f, eye, 1.0F, ticks_to_units);
+    lens->center_x = (float)viewport.width * 0.5F;
+    lens->center_y = (float)viewport.height * 0.5F;
+    lens->near_z = near_z;
+    lens->near_subpixels = near_z / (float)R3D_SUBPIXEL;
+    lens->snap_cx = (lens->center_x * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
+    lens->snap_cy = (lens->center_y * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
+    lens->width = viewport.width;
+    lens->height = viewport.height;
 }
 
 static inline r3d_vec3f_t
-to_lens(const r3d_lit_view_t* view, float x, float y, float z) {
-    const float(*m)[4] = view->m;
+to_lens(const r3d_lens_t* lens, float x, float y, float z) {
+    const float(*m)[4] = lens->m;
     return (r3d_vec3f_t){
         (m[0][0] * x) + (m[0][1] * y) + (m[0][2] * z) + m[0][3],
         (m[1][0] * x) + (m[1][1] * y) + (m[1][2] * z) + m[1][3],
@@ -66,22 +67,23 @@ typedef struct {
     float w[4]; /* inside where w . (x, y, z, 1) >= 0, in position ticks */
 } plane_t;
 
-/* The view's five planes (near, left, right, top, bottom) written in lens
- * space, then carried back through the view matrix to position ticks, so a
+/* The camera's five planes (near, left, right, top, bottom) written in lens
+ * space, then carried back through the lens's matrix to position ticks, so a
  * box is tested without transforming its corners. */
 static void
-frustum_planes(const r3d_lit_view_t* view, plane_t planes[PLANE_COUNT]) {
-    const float right = (float)view->width - view->center_x;
-    const float bottom = (float)view->height - view->center_y;
-    const float lens[PLANE_COUNT][4] = {
-        {0.0F, 0.0F, 1.0F, -view->near_z},  {1.0F, 0.0F, view->center_x, 0.0F}, {-1.0F, 0.0F, right, 0.0F},
-        {0.0F, 1.0F, view->center_y, 0.0F}, {0.0F, -1.0F, bottom, 0.0F},
+frustum_planes(const r3d_lens_t* lens, plane_t planes[PLANE_COUNT]) {
+    const float right = (float)lens->width - lens->center_x;
+    const float bottom = (float)lens->height - lens->center_y;
+    const float in_lens[PLANE_COUNT][4] = {
+        {0.0F, 0.0F, 1.0F, -lens->near_z},  {1.0F, 0.0F, lens->center_x, 0.0F}, {-1.0F, 0.0F, right, 0.0F},
+        {0.0F, 1.0F, lens->center_y, 0.0F}, {0.0F, -1.0F, bottom, 0.0F},
     };
     for (int p = 0; p < PLANE_COUNT; p++) {
         for (int j = 0; j < 4; j++) {
-            planes[p].w[j] = lens[p][0] * view->m[0][j] + lens[p][1] * view->m[1][j] + lens[p][2] * view->m[2][j];
+            planes[p].w[j] =
+                in_lens[p][0] * lens->m[0][j] + in_lens[p][1] * lens->m[1][j] + in_lens[p][2] * lens->m[2][j];
         }
-        planes[p].w[3] += lens[p][3];
+        planes[p].w[3] += in_lens[p][3];
     }
 }
 
@@ -113,8 +115,8 @@ classify_box(const int16_t lo[3], const int16_t hi[3], const plane_t planes[PLAN
 }
 
 static float
-box_depth(const r3d_lit_view_t* view, const int16_t lo[3], const int16_t hi[3]) {
-    const float* f = view->m[2];
+box_depth(const r3d_lens_t* lens, const int16_t lo[3], const int16_t hi[3]) {
+    const float* f = lens->m[2];
     return (f[0] * 0.5F * ((float)lo[0] + (float)hi[0])) + (f[1] * 0.5F * ((float)lo[1] + (float)hi[1]))
            + (f[2] * 0.5F * ((float)lo[2] + (float)hi[2])) + f[3];
 }
@@ -127,14 +129,14 @@ typedef struct {
 /* Children go on the stack farthest first, so the nearest pops first and
  * the walk visits leaves roughly front to back. */
 static int
-push_children(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const r3d_lit_node_t* node, unsigned mask,
+push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_node_t* node, unsigned mask,
               walk_entry_t* stack, int top) {
     uint16_t order[8];
     float depth[8];
     int n = 0;
     for (int i = 0; i < node->count; i++) {
         const uint16_t child = (uint16_t)(node->first + i);
-        const float d = box_depth(view, mesh->nodes[child].lo, mesh->nodes[child].hi);
+        const float d = box_depth(lens, mesh->nodes[child].lo, mesh->nodes[child].hi);
         int slot = n++;
         while (slot > 0 && depth[slot - 1] < d) {
             depth[slot] = depth[slot - 1];
@@ -152,9 +154,9 @@ push_children(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const r3d_
 }
 
 int
-r3d_lit_cull_clusters(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, uint16_t* out) {
+r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out) {
     plane_t planes[PLANE_COUNT];
-    frustum_planes(view, planes);
+    frustum_planes(lens, planes);
 
     walk_entry_t stack[WALK_STACK_MAX];
     int top = 0;
@@ -168,7 +170,7 @@ r3d_lit_cull_clusters(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, ui
             continue;
         }
         if (!node->leaf) {
-            top = push_children(mesh, view, node, mask, stack, top);
+            top = push_children(mesh, lens, node, mask, stack, top);
             continue;
         }
         for (int i = 0; i < node->count; i++) {
@@ -199,28 +201,28 @@ typedef struct {
 /* The one place a lens position becomes a screen position, so a vertex
  * that both paths project snaps alike. `inv` is R3D_SUBPIXEL / z. */
 static inline biased_t
-biased_screen(const r3d_lit_view_t* view, float lx, float ly, float inv) {
-    return (biased_t){view->snap_cx + (lx * inv), view->snap_cy + (ly * inv)};
+biased_screen(const r3d_lens_t* lens, float lx, float ly, float inv) {
+    return (biased_t){lens->snap_cx + (lx * inv), lens->snap_cy + (ly * inv)};
 }
 
-static inline r3d_lit_rows_t
-transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const r3d_lit_cluster_t* c,
-                  r3d_lit_vertex_t* cs) {
+static inline r3d_pipeline_rows_t
+transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c,
+                  r3d_pipeline_vertex_t* cs) {
     const int end = c->vertex_first + c->vertex_count;
     int y0 = INT16_MAX;
     int y1 = INT16_MIN;
     bool unbounded = false;
     for (int v = c->vertex_first; v < end; v++) {
         const int16_t* p = mesh->positions[v];
-        const r3d_vec3f_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
-        r3d_lit_vertex_t* out = &cs[v];
-        if (l.z <= view->near_z) {
+        const r3d_vec3f_t l = to_lens(lens, (float)p[0], (float)p[1], (float)p[2]);
+        r3d_pipeline_vertex_t* out = &cs[v];
+        if (l.z <= lens->near_z) {
             out->iz = 0.0F;
             unbounded = true;
             continue;
         }
         const float inv = (float)R3D_SUBPIXEL / l.z;
-        const biased_t b = biased_screen(view, l.x, l.y, inv);
+        const biased_t b = biased_screen(lens, l.x, l.y, inv);
         if (!(b.x > FAST_LO && b.x < FAST_HI && b.y > FAST_LO && b.y < FAST_HI)) {
             out->iz = -1.0F;
             unbounded = true;
@@ -228,19 +230,19 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const 
         }
         out->sx = (int16_t)r3d_span_unbias(b.x);
         out->sy = (int16_t)r3d_span_unbias(b.y);
-        out->iz = view->near_subpixels * inv;
+        out->iz = lens->near_subpixels * inv;
         y0 = out->sy < y0 ? out->sy : y0;
         y1 = out->sy > y1 ? out->sy : y1;
     }
     const float to_pixels = 1.0F / (float)R3D_SUBPIXEL;
-    return (r3d_lit_rows_t){(float)y0 * to_pixels, (float)y1 * to_pixels, unbounded};
+    return (r3d_pipeline_rows_t){(float)y0 * to_pixels, (float)y1 * to_pixels, unbounded};
 }
 
 void
-r3d_lit_transform(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* clusters, int count,
-                  r3d_lit_vertex_t* cs, r3d_lit_rows_t* rows) {
+r3d_pipeline_transform(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
+                       r3d_pipeline_vertex_t* cs, r3d_pipeline_rows_t* rows) {
     for (int i = 0; i < count; i++) {
-        const r3d_lit_rows_t r = transform_cluster(mesh, view, &mesh->clusters[clusters[i]], cs);
+        const r3d_pipeline_rows_t r = transform_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs);
         if (rows != NULL) {
             rows[clusters[i]] = r;
         }
@@ -252,11 +254,11 @@ typedef struct {
 } clip_vertex_t;
 
 static r3d_span_vertex_t
-project(const r3d_lit_view_t* view, const clip_vertex_t* v) {
+project(const r3d_lens_t* lens, const clip_vertex_t* v) {
     const float inv = (float)R3D_SUBPIXEL / v->z;
-    const biased_t b = biased_screen(view, v->x, v->y, inv);
+    const biased_t b = biased_screen(lens, v->x, v->y, inv);
     return (r3d_span_vertex_t){
-        r3d_span_unbias(b.x), r3d_span_unbias(b.y), view->near_subpixels * inv, v->r, v->g, v->b};
+        r3d_span_unbias(b.x), r3d_span_unbias(b.y), lens->near_subpixels * inv, v->r, v->g, v->b};
 }
 
 /* Front faces wind negative on screen: counter-clockwise in a y-up world
@@ -309,12 +311,12 @@ clip_to_plane(const clip_plane_t* p, const clip_vertex_t* in, int n, clip_vertex
 /* The near plane, then the screen's guard band: every corner left projects
  * inside what r3d_span takes. */
 static int
-clip_to_guard(const r3d_lit_view_t* view, clip_vertex_t poly[CLIP_VERTEX_MAX], int n) {
+clip_to_guard(const r3d_lens_t* lens, clip_vertex_t poly[CLIP_VERTEX_MAX], int n) {
     const float g = (float)GUARD_PIXELS;
     const clip_plane_t planes[CLIP_PLANES] = {
-        {0.0F, 0.0F, 1.0F, -view->near_z},       {1.0F, 0.0F, view->center_x + g, 0.0F},
-        {-1.0F, 0.0F, g - view->center_x, 0.0F}, {0.0F, 1.0F, view->center_y + g, 0.0F},
-        {0.0F, -1.0F, g - view->center_y, 0.0F},
+        {0.0F, 0.0F, 1.0F, -lens->near_z},       {1.0F, 0.0F, lens->center_x + g, 0.0F},
+        {-1.0F, 0.0F, g - lens->center_x, 0.0F}, {0.0F, 1.0F, lens->center_y + g, 0.0F},
+        {0.0F, -1.0F, g - lens->center_y, 0.0F},
     };
     clip_vertex_t other[CLIP_VERTEX_MAX];
     for (int p = 0; p < CLIP_PLANES && n >= 3; p++) {
@@ -325,17 +327,17 @@ clip_to_guard(const r3d_lit_view_t* view, clip_vertex_t poly[CLIP_VERTEX_MAX], i
 }
 
 static void
-draw_clipped(const r3d_lit_view_t* view, const clip_vertex_t in[3], bool double_sided, const uint16_t* face_color,
+draw_clipped(const r3d_lens_t* lens, const clip_vertex_t in[3], bool double_sided, const uint16_t* face_color,
              const r3d_span_target_t* target) {
     clip_vertex_t poly[CLIP_VERTEX_MAX] = {in[0], in[1], in[2]};
-    const int n = clip_to_guard(view, poly, 3);
+    const int n = clip_to_guard(lens, poly, 3);
     if (n < 3) {
         return;
     }
     r3d_span_vertex_t s[CLIP_VERTEX_MAX];
     int64_t area2 = 0;
     for (int i = 0; i < n; i++) {
-        s[i] = project(view, &poly[i]);
+        s[i] = project(lens, &poly[i]);
     }
     for (int i = 1; i + 1 < n; i++) {
         area2 += signed_area2(s[0].x, s[0].y, s[i].x, s[i].y, s[i + 1].x, s[i + 1].y);
@@ -356,7 +358,7 @@ draw_clipped(const r3d_lit_view_t* view, const clip_vertex_t in[3], bool double_
  * the rasterizer would fill nothing: most of these are triangles smaller
  * than a pixel falling between centres. */
 static inline bool
-misses_every_centre(const r3d_lit_vertex_t* a, const r3d_lit_vertex_t* b, const r3d_lit_vertex_t* c,
+misses_every_centre(const r3d_pipeline_vertex_t* a, const r3d_pipeline_vertex_t* b, const r3d_pipeline_vertex_t* c,
                     const r3d_span_target_t* target) {
     const int x_first = r3d_span_first_centre(r3d_span_min3(a->sx, b->sx, c->sx));
     const int x_end = r3d_span_first_centre(r3d_span_max3(a->sx, b->sx, c->sx));
@@ -367,27 +369,27 @@ misses_every_centre(const r3d_lit_vertex_t* a, const r3d_lit_vertex_t* b, const 
 }
 
 static inline bool
-rows_miss_target(const r3d_lit_rows_t* r, const r3d_span_target_t* target) {
+rows_miss_target(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
     return !r->unbounded && (r->y1 < (float)target->row0 || r->y0 > (float)target->row1);
 }
 
 /* A triangle with a corner behind the near plane or too far off screen to
  * snap is rebuilt from the mesh and clipped. */
 static void
-draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* tri, const uint16_t* face_color,
+draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
              bool double_sided, const r3d_span_target_t* target) {
     clip_vertex_t in[3];
     for (int k = 0; k < 3; k++) {
         const int16_t* p = mesh->positions[tri[k]];
         const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
-        const r3d_vec3f_t l = to_lens(view, (float)p[0], (float)p[1], (float)p[2]);
+        const r3d_vec3f_t l = to_lens(lens, (float)p[0], (float)p[1], (float)p[2]);
         in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[0], rgb[1], rgb[2]};
     }
-    draw_clipped(view, in, double_sided, face_color, target);
+    draw_clipped(lens, in, double_sided, face_color, target);
 }
 
 static inline void
-draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_vertex_t* const v[3], const uint16_t* tri,
+draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
               const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target) {
     if (misses_every_centre(v[0], v[1], v[2], target)) {
         return;
@@ -408,28 +410,28 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_vertex_t* const v[3], co
 }
 
 static void
-draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const r3d_lit_cluster_t* c,
-             const r3d_lit_vertex_t* cs, const r3d_span_target_t* target) {
+draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c,
+             const r3d_pipeline_vertex_t* cs, const r3d_span_target_t* target) {
     const int end = c->triangle_first + c->triangle_count;
     for (int t = c->triangle_first; t < end; t++) {
         const uint16_t* tri = mesh->triangles[t];
         const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
-        const r3d_lit_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
+        const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
         if (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F) {
             draw_in_front(mesh, v, tri, face_color, c->double_sided, target);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
-            draw_rebuilt(mesh, view, tri, face_color, c->double_sided, target);
+            draw_rebuilt(mesh, lens, tri, face_color, c->double_sided, target);
         }
     }
 }
 
 void
-r3d_lit_draw(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* clusters, int count,
-             const r3d_lit_vertex_t* cs, const r3d_lit_rows_t* rows, const r3d_span_target_t* target) {
+r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
+                  const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target) {
     for (int i = 0; i < count; i++) {
         if (rows != NULL && rows_miss_target(&rows[clusters[i]], target)) {
             continue;
         }
-        draw_cluster(mesh, view, &mesh->clusters[clusters[i]], cs, target);
+        draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, target);
     }
 }

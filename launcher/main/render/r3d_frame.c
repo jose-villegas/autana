@@ -1,9 +1,10 @@
-#include "render/r3d_lit_frame.h"
+#include "render/r3d.h"
 
 #include <assert.h>
 #include <stdbool.h>
 #include <string.h>
 
+#include "render/r3d_pipeline.h"
 #include "util/job.h"
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
@@ -12,8 +13,8 @@
 #define SPLIT_BUCKETS 64
 
 typedef struct {
-    const r3d_lit_frame_t* frame;
-    const r3d_lit_view_t* view;
+    const r3d_frame_t* frame;
+    const r3d_lens_t* lens;
     int visible_count;
     int first, count; /* clusters of visible[], or rows */
 } slice_t;
@@ -23,14 +24,15 @@ _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
 static void
 transform_slice(void* ctx) {
     const slice_t* s = ctx;
-    r3d_lit_transform(s->frame->mesh, s->view, s->frame->visible + s->first, s->count, s->frame->cs, s->frame->rows);
+    r3d_pipeline_transform(s->frame->mesh, s->lens, s->frame->visible + s->first, s->count, s->frame->cs,
+                           s->frame->rows);
 }
 
 /* Two panel rows per source row, each pixel written twice as one 32-bit
  * store. A pixel nothing covered (R3D_DEPTH_EMPTY) takes the clear colour
  * here, so the colour buffer itself is never cleared. */
 static void
-double_rows(const r3d_lit_frame_t* f, int first, int count) {
+double_rows(const r3d_frame_t* f, int first, int count) {
     const int out_width = 2 * f->width;
     for (int y = first; y < first + count; y++) {
         const uint16_t* src = f->color + ((size_t)y * (size_t)f->width);
@@ -49,7 +51,7 @@ double_rows(const r3d_lit_frame_t* f, int first, int count) {
 static void
 draw_slice(void* ctx) {
     const slice_t* s = ctx;
-    const r3d_lit_frame_t* f = s->frame;
+    const r3d_frame_t* f = s->frame;
     const size_t offset = (size_t)s->first * (size_t)f->width;
     const size_t pixels = (size_t)s->count * (size_t)f->width;
     uint16_t* color = f->color + offset;
@@ -63,7 +65,7 @@ draw_slice(void* ctx) {
     memset(depth, 0, pixels * sizeof(*depth));
 
     const r3d_span_target_t target = {color, depth, f->width, s->first, s->first + s->count};
-    r3d_lit_draw(f->mesh, s->view, f->visible, s->visible_count, f->cs, f->rows, &target);
+    r3d_pipeline_draw(f->mesh, s->lens, f->visible, s->visible_count, f->cs, f->rows, &target);
 }
 
 static void
@@ -87,20 +89,20 @@ pixels(int width, int height) {
 }
 
 size_t
-r3d_lit_frame_scratch_bytes(const r3d_lit_mesh_t* mesh, int width, int height) {
-    return (sizeof(r3d_lit_vertex_t) * (size_t)mesh->vertex_count)
-           + ((sizeof(r3d_lit_rows_t) + sizeof(uint16_t)) * (size_t)mesh->cluster_count)
+r3d_frame_scratch_bytes(const r3d_lit_mesh_t* mesh, int width, int height) {
+    return (sizeof(r3d_pipeline_vertex_t) * (size_t)mesh->vertex_count)
+           + ((sizeof(r3d_pipeline_rows_t) + sizeof(uint16_t)) * (size_t)mesh->cluster_count)
            + (2 * sizeof(uint16_t) * pixels(width, height));
 }
 
 /* Widest alignment first, so each part lands aligned after the one before. */
 void
-r3d_lit_frame_use_scratch(r3d_lit_frame_t* frame, void* scratch) {
+r3d_frame_use_scratch(r3d_frame_t* frame, void* scratch) {
     char* p = scratch;
-    frame->cs = (r3d_lit_vertex_t*)p;
-    p += sizeof(r3d_lit_vertex_t) * (size_t)frame->mesh->vertex_count;
-    frame->rows = (r3d_lit_rows_t*)p;
-    p += sizeof(r3d_lit_rows_t) * (size_t)frame->mesh->cluster_count;
+    frame->cs = (r3d_pipeline_vertex_t*)p;
+    p += sizeof(r3d_pipeline_vertex_t) * (size_t)frame->mesh->vertex_count;
+    frame->rows = (r3d_pipeline_rows_t*)p;
+    p += sizeof(r3d_pipeline_rows_t) * (size_t)frame->mesh->cluster_count;
     frame->color = (uint16_t*)p;
     p += sizeof(uint16_t) * pixels(frame->width, frame->height);
     frame->depth = (uint16_t*)p;
@@ -111,11 +113,11 @@ r3d_lit_frame_use_scratch(r3d_lit_frame_t* frame, void* scratch) {
 /* The row splitting the visible triangles in half, counting each cluster
  * at the middle of its rows; the halves are then drawn by one core each. */
 static int
-balanced_split_row(const r3d_lit_frame_t* frame, int visible) {
+balanced_split_row(const r3d_frame_t* frame, int visible) {
     uint32_t weight[SPLIT_BUCKETS] = {0};
     uint32_t total = 0;
     for (int i = 0; i < visible; i++) {
-        const r3d_lit_rows_t* r = &frame->rows[frame->visible[i]];
+        const r3d_pipeline_rows_t* r = &frame->rows[frame->visible[i]];
         const float middle = r->unbounded ? 0.5F * (float)frame->height : 0.5F * (r->y0 + r->y1);
         int row = (int)middle;
         row = row < 0 ? 0 : (row >= frame->height ? frame->height - 1 : row);
@@ -134,26 +136,28 @@ balanced_split_row(const r3d_lit_frame_t* frame, int visible) {
     return frame->height / 2;
 }
 
-r3d_lit_stats_t
-r3d_lit_frame_render(const r3d_lit_frame_t* frame, const r3d_lit_view_t* view) {
-    const int visible = r3d_lit_cull_clusters(frame->mesh, view, frame->visible);
-    r3d_lit_stats_t stats = {visible, 0};
+r3d_frame_stats_t
+r3d_frame_draw(const r3d_frame_t* frame, const r3d_camera_t* camera, int quarter) {
+    r3d_lens_t lens;
+    r3d_lens_init(&lens, camera, frame->mesh->position_scale, (r3d_viewport_t){frame->width, frame->height, quarter});
+    const int visible = r3d_pipeline_cull(frame->mesh, &lens, frame->visible);
+    r3d_frame_stats_t stats = {visible, 0};
     for (int i = 0; i < visible; i++) {
         stats.triangles += frame->mesh->clusters[frame->visible[i]].triangle_count;
     }
 
     const int half = visible / 2;
-    run_split(transform_slice, (slice_t){frame, view, visible, 0, half},
-              (slice_t){frame, view, visible, half, visible - half});
+    run_split(transform_slice, (slice_t){frame, &lens, visible, 0, half},
+              (slice_t){frame, &lens, visible, half, visible - half});
 
     const int mid = balanced_split_row(frame, visible);
-    run_split(draw_slice, (slice_t){frame, view, visible, mid, frame->height - mid},
-              (slice_t){frame, view, visible, 0, mid});
+    run_split(draw_slice, (slice_t){frame, &lens, visible, mid, frame->height - mid},
+              (slice_t){frame, &lens, visible, 0, mid});
     return stats;
 }
 
 void
-r3d_lit_frame_double(const r3d_lit_frame_t* frame) {
+r3d_frame_double(const r3d_frame_t* frame) {
     const int mid = frame->height / 2;
     run_split(double_slice, (slice_t){frame, NULL, 0, mid, frame->height - mid}, (slice_t){frame, NULL, 0, 0, mid});
 }
