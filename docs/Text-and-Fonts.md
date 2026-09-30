@@ -31,13 +31,13 @@ and an optional per-glyph `advance` table.
 |---|---|
 | Shipped | `gfx_font_8x8`, 8 x 8 cells, U+0000-U+007F |
 | Glyph data | one byte per row, bit 0 leftmost |
-| Spacing | monospace - `advance` is NULL |
+| Spacing | monospace: `advance` is NULL |
 | Drawn by | solid fills, one per run of set bits |
 | Scaling | crisp at any integer `scale` |
 | Flash | 1 KiB |
 
-Metrics - `gfx_font_advance()`, `gfx_font_text_width()`,
-`gfx_font_height()` - are pure functions in the header, so layout is
+Metrics: `gfx_font_advance()`, `gfx_font_text_width()`,
+`gfx_font_height()` are pure functions in the header, so layout is
 host-testable with no framebuffer.
 
 ## Drawing
@@ -51,8 +51,8 @@ cell begins.
 | `gfx_text_scaled()` | `gfx_font_ui()` | given | upright |
 | `gfx_text_turned()` | `gfx_font_ui()` | given | 0-3 quarter turns |
 | `gfx_text_font()` | given | given | given |
-| `gfx_text_font_dither()` | given | given | given - glyphs at a dithered `alpha`, for text that fades |
-| `gfx_text_font_halo()` | given | given | given - each run one pixel wider, the outline pass |
+| `gfx_text_font_dither()` | given | given | given: glyphs at a dithered `alpha`, for text that fades |
+| `gfx_text_font_halo()` | given | given | given: each run one pixel wider, the outline pass |
 
 | Quarter turns | Reads |
 |---|---|
@@ -99,7 +99,7 @@ flowchart LR
 ```
 
 So a screen mixing a caption and a large value sets the scale as often as it
-likes for free. **Do not add a render-time global for a text setting** - put
+likes for free. **Do not add a render-time global for a text setting:** put
 it in the command list, or it costs an invalidate on every change.
 
 An outlined string is `gfx_text_font_halo()` then the ink pass, not eight
@@ -111,7 +111,7 @@ A typeface is another 1 bpp bitmap table in the shape of `font8x8_basic.h`,
 plus a `gfx_font_t` describing it.
 
 1. Add the table and its `gfx_font_t` under `launcher/main/gfx/`.
-2. Include the header **only where it is used** - or give it a role in
+2. Include the header **only where it is used**, or give it a role in
    `gfx_font_roles.h` if it replaces one.
 3. Check `launcher.map` for what it cost.
 
@@ -123,5 +123,5 @@ plus a `gfx_font_t` describing it.
 
 ## Related
 
-- [`Building-a-Screen.md`](Building-a-Screen.md) - text that must fit, measured in the layout test
-- [`Gfx-and-Presentation.md`](Gfx-and-Presentation.md) - the drawing primitives text is built from
+- [`Building-a-Screen.md`](Building-a-Screen.md): text that must fit, measured in the layout test
+- [`Gfx-and-Presentation.md`](Gfx-and-Presentation.md): the drawing primitives text is built from

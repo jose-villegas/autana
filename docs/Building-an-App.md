@@ -20,7 +20,7 @@ one binary, one address space, no isolation.
 
 ## Minimal app
 
-`launcher/main/apps/<name>/app_<name>.c` - nothing else is edited, not
+`launcher/main/apps/<name>/app_<name>.c`: nothing else is edited, not
 `main.c`, not `CMakeLists.txt`:
 
 ```c
@@ -68,11 +68,11 @@ board-free preview of its drawing, declare a scene with the
 | `frame(dt_ms, input)` | yes | every pass | draw and return. `dt_ms` is clamped to `FRAME_DT_MAX_MS` (250 ms). |
 | `draw_band(row0, row1, target)` | no | each dirty transient band | required with `GFX_LAYOUT_BANDS` (gfx asserts it); after `frame()`, fill full-width rows `[row0, row1)` of `target`, row0 first. gfx replays the UI over them and sends the band. |
 | `exit()` | yes | once, on leave | release what `enter()` acquired, `gfx_mode_exit()` included. Arena memory needs nothing: the shell empties the arena right after `exit()`. |
-| `update(dt_ms, input)` | no | every pass, before `frame()` | state only - **no `gfx_*`, no framebuffer**; a dev build asserts it |
+| `update(dt_ms, input)` | no | every pass, before `frame()` | state only; **no `gfx_*`, no framebuffer**; a dev build asserts it |
 | `invalidate()` | no | once per full-redraw request, before the next `frame()` | reset a draw cache the app keeps beyond the framebuffer |
 | `home_gesture` | no (`false`) | - | `true`: shell owns the way home (edge swipe + hint strip) |
 | `diagnostic_json(out, len)` | no | dev builds, on a screenshot capture | write one JSON object; spliced in as the capture's `"app"` key |
-| `console` | no | dev builds, at most once per frame, for a line under this app's own prefix | set with `APP_CONSOLE()`/`APP_CONSOLE_PTR()` - see `docs/tools/Autana-CLI.md`'s "Adding a command from an app" |
+| `console` | no | dev builds, at most once per frame, for a line under this app's own prefix | set with `APP_CONSOLE()`/`APP_CONSOLE_PTR()`; see `docs/tools/Autana-CLI.md`'s "Adding a command from an app" |
 
 The shell calls the three required pointers without a NULL check.
 
@@ -86,7 +86,7 @@ flowchart LR
 ```
 
 - `app_register()` runs before `app_main()`, threading each `app_t` into a
-  list through its own `next` field - no allocation, no capacity to exceed.
+  list through its own `next` field; no allocation, no capacity to exceed.
 - It inserts in `name` order directly, so constructor order (link order)
   never shows.
 - `WHOLE_ARCHIVE` is what keeps an app nothing references by name in the
@@ -101,18 +101,18 @@ an app leaves by leaving the build:
 
 | To | Do |
 |---|---|
-| remove an app | delete `apps/<name>/` - code, tests and artwork go with it |
+| remove an app | delete `apps/<name>/`; code, tests and artwork go with it |
 | keep one out of release images | add `apps/<name>/development_only.cmake`; its presence alone does it (a comment saying why is all it holds) |
 
 ## Lifecycle
 
-The shell's state machine - Launcher, Control Center and a running app - is
+The shell's state machine (Launcher, Control Center, and a running app) is
 in [Firmware-Architecture.md](Firmware-Architecture.md#the-frame-loop). An
 app only ever sees the `Running` state; it leaves by home swipe
 (`home_gesture`), PWR long-press (no `home_gesture`), or its own call to
 `shell_request_exit()`.
 
-What the shell does on each transition, in order - `step_launcher()` on
+What the shell does on each transition, in order: `step_launcher()` on
 launch, `leave_app()` on leave:
 
 | Launch | Leave |
@@ -133,7 +133,7 @@ never sees the input that closed it.
 leaving and stepping, `step_running_app()` picks one of the two shapes below
 and `present_unless_deferred()` presents for the first.
 
-Without `update()` - the shell presents synchronously after `frame()`:
+Without `update()`: the shell presents synchronously after `frame()`.
 
 ```mermaid
 sequenceDiagram
@@ -157,8 +157,8 @@ sequenceDiagram
     S->>G: gfx_present()
 ```
 
-With `update()` - the previous frame is sent on core 1 while `update()` runs on
-core 0:
+With `update()`: the previous frame is sent on core 1 while `update()` runs on
+core 0.
 
 ```mermaid
 sequenceDiagram
@@ -191,7 +191,7 @@ button fields are `button_t`, from `input/buttons.h`.
 
 | Field | Meaning |
 |---|---|
-| `pressed`, `released` | edges - true for one pass. What UI wants. |
+| `pressed`, `released` | edges: true for one pass. What UI wants. |
 | `down` | level |
 | `x`, `y` / `press_x`, `press_y` | current (or last) position / where this touch began |
 | `boot` | BOOT button, a `button_t`: `down`, `pressed`, `released`, `held` |
@@ -220,13 +220,13 @@ edge. An app with an on-screen way out calls
 | Ask for another draw target in `enter()` - `gfx_mode_enter()` (bands, indexed) | yes, and `gfx_mode_exit()` in `exit()` |
 | Set its own panel clock - `gfx_set_panel_clock_hz()` | yes, and never restore it |
 | Call `gfx_request_full_redraw()` | yes, from anywhere on core 0 |
-| Call `gfx_present()` | **no** - the shell presents |
-| Loop, block or `vTaskDelay` | **no** - return promptly |
-| Keep a second framebuffer | **no** - there is one |
-| Any `gfx_*` call from `update()` | **no** - the buffer may be mid-send |
+| Call `gfx_present()` | **no**; the shell presents |
+| Loop, block or `vTaskDelay` | **no**; return promptly |
+| Keep a second framebuffer | **no**; there is one |
+| Any `gfx_*` call from `update()` | **no**; the buffer may be mid-send |
 
 Expensive work belongs in `enter()`, not `frame()`. New permanent statics cost
-every app heap. Bulk memory comes from the app arena - see
+every app heap. Bulk memory comes from the app arena; see
 [App memory](#app-memory).
 
 ### App memory
@@ -236,7 +236,7 @@ and lends it to the running app. Nothing taken from it survives the visit.
 
 | Call | Who | What |
 |---|---|---|
-| `app_arena_take(size, align)` | the app, usually in `enter()` | the next `size` bytes, or `NULL` when the rest cannot hold them - never an abort, so keep a fallback |
+| `app_arena_take(size, align)` | the app, usually in `enter()` | the next `size` bytes, or `NULL` when the rest cannot hold them; never an abort, so keep a fallback |
 | `app_arena_mark()` / `app_arena_rewind(mark)` | the app | scope a shorter lifetime inside one visit; rewinding past what is in use asserts |
 | `app_arena_rewind(0)` | the shell only | right after the leaving app's `exit()` |
 
@@ -260,7 +260,7 @@ the internal or 8-bit heap has less free after `exit()` than it had before `ente
 
 On every launch and leave, `restore_system_display_state()`: the panel clock goes back to the system value
 (`shell_system_panel_clock_hz()`, the user's 80 or 40 MHz choice, kept in NVS)
-and gfx heal goes back to its defaults. The gfx mode is **not** reset - that is
+and gfx heal goes back to its defaults. The gfx mode is **not** reset; that is
 `exit()`'s job.
 
 An app that minds a stray pixel at 80 MHz opts into heal: `gfx_heal_mark()`,
@@ -274,7 +274,7 @@ top of the next pass `apply_pending_full_redraw()` clears the flag and calls
 `invalidate()`. A
 request made inside `frame()` is served the following pass. The shell requests
 one on launch, leave, an orientation change, a screenshot and a self-test run.
-Implement `invalidate()` only for a cache gfx cannot see - per-row runs of
+Implement `invalidate()` only for a cache gfx cannot see: per-row runs of
 what the last frame drew, or the bounding box it covered in each band.
 
 ## An app is a folder
