@@ -184,10 +184,12 @@ report_frame_cost(const char* label, const r3d_lit_mesh_t* mesh) {
         ESP_LOGI(TAG, "%s t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", label, (unsigned)(t_ms / 1000),
                  stats.clusters, stats.triangles, (long long)us);
         ESP_LOGI(TAG,
-                 "two_core %s t=%u cull=%lldus split=%d straddle=%u setup=%u cyc waits=%lld/%lld/%lldus "
+                 "two_core %s t=%u cull=%lldus split=%d straddle=%u setup=%u cyc idle0=%lld/%lld/%lldus "
+                 "idle1=%lld/%lld/%lldus "
                  "work0=%lld/%lld/%lldus work1=%lld/%lld/%lldus inline=%u/%u/%u cost=%lld/%lld/%lldus",
                  label, (unsigned)(t_ms / 1000), (long long)p->cull_us, p->split_row, p->straddling, p->setup_cycles,
-                 (long long)p->wait_us[0], (long long)p->wait_us[1], (long long)p->wait_us[2],
+                 (long long)p->idle_us[0][0], (long long)p->idle_us[1][0], (long long)p->idle_us[2][0],
+                 (long long)p->idle_us[0][1], (long long)p->idle_us[1][1], (long long)p->idle_us[2][1],
                  (long long)p->work_us[0][0], (long long)p->work_us[1][0], (long long)p->work_us[2][0],
                  (long long)p->work_us[0][1], (long long)p->work_us[1][1], (long long)p->work_us[2][1],
                  p->inline_count[0], p->inline_count[1], p->inline_count[2], (long long)p->inline_us[0],
