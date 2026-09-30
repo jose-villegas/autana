@@ -33,20 +33,20 @@ _Static_assert(SPONZA_LITE_CLUSTER_COUNT <= SPONZA_CLUSTER_COUNT && SPONZA_FLAT_
 
 /* The flat reference: every cluster's eight corners against each plane. */
 static bool
-cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lens_t* view) {
+cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lens_t* lens) {
     int beyond[5] = {0};
     for (int i = 0; i < 8; i++) {
         const float x = (float)(i & 1 ? c->hi[0] : c->lo[0]);
         const float y = (float)(i & 2 ? c->hi[1] : c->lo[1]);
         const float z = (float)(i & 4 ? c->hi[2] : c->lo[2]);
-        const float lx = (view->m[0][0] * x) + (view->m[0][1] * y) + (view->m[0][2] * z) + view->m[0][3];
-        const float ly = (view->m[1][0] * x) + (view->m[1][1] * y) + (view->m[1][2] * z) + view->m[1][3];
-        const float lz = (view->m[2][0] * x) + (view->m[2][1] * y) + (view->m[2][2] * z) + view->m[2][3];
-        beyond[0] += lz < view->near_z;
-        beyond[1] += lx < -view->center_x * lz;
-        beyond[2] += lx > ((float)view->width - view->center_x) * lz;
-        beyond[3] += ly < -view->center_y * lz;
-        beyond[4] += ly > ((float)view->height - view->center_y) * lz;
+        const float lx = (lens->m[0][0] * x) + (lens->m[0][1] * y) + (lens->m[0][2] * z) + lens->m[0][3];
+        const float ly = (lens->m[1][0] * x) + (lens->m[1][1] * y) + (lens->m[1][2] * z) + lens->m[1][3];
+        const float lz = (lens->m[2][0] * x) + (lens->m[2][1] * y) + (lens->m[2][2] * z) + lens->m[2][3];
+        beyond[0] += lz < lens->near_z;
+        beyond[1] += lx < -lens->center_x * lz;
+        beyond[2] += lx > ((float)lens->width - lens->center_x) * lz;
+        beyond[3] += ly < -lens->center_y * lz;
+        beyond[4] += ly > ((float)lens->height - lens->center_y) * lz;
     }
     for (int p = 0; p < 5; p++) {
         if (beyond[p] == 8) {
@@ -66,18 +66,18 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
     for (uint32_t t = 0; t < period; t += 2500) {
         const camera_t camera = sponza_camera_at(t);
         const viewport_t viewport = {SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, (int)(t / 2500) & 3};
-        r3d_lens_t view;
-        r3d_lens_init(&view, &camera, mesh->position_scale, viewport);
+        r3d_lens_t lens;
+        r3d_lens_init(&lens, &camera, mesh->position_scale, viewport);
 
         memset(kept, 0, SPONZA_CLUSTER_COUNT);
-        const int count = r3d_pipeline_cull(mesh, &view, walked);
+        const int count = r3d_pipeline_cull(mesh, &lens, walked);
         for (int i = 0; i < count; i++) {
             TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, kept[walked[i]], "a cluster was listed twice");
             kept[walked[i]] = 1;
         }
         int flat = 0;
         for (int c = 0; c < mesh->cluster_count; c++) {
-            const bool in_view = cluster_in_view(&mesh->clusters[c], &view);
+            const bool in_view = cluster_in_view(&mesh->clusters[c], &lens);
             flat += in_view;
             TEST_ASSERT_EQUAL_MESSAGE(in_view, kept[c], "the walk and the flat test disagree on a cluster");
         }
@@ -263,13 +263,14 @@ test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
 
 /* The fraction of the picture covered at `t_ms` into the flythrough. */
 static float
-share_covered_at(const frame_t* frame, uint32_t t_ms) {
+share_covered_at(const raster_t* frame, uint32_t t_ms) {
     const camera_t camera = sponza_camera_at(t_ms);
-    frame_draw(frame, &camera, 0);
+    raster_draw(frame, &camera, 0);
     const int pixels = frame->width * frame->height;
+    const uint16_t* depth = r3d_pipeline_carve(frame).depth;
     int covered = 0;
     for (int i = 0; i < pixels; i++) {
-        covered += frame->depth[i] != 0;
+        covered += depth[i] != 0;
     }
     return (float)covered / (float)pixels;
 }
@@ -280,11 +281,10 @@ share_covered_at(const frame_t* frame, uint32_t t_ms) {
  * only the building's far sides, about 0.6. */
 static void
 check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
-    frame_t frame = {.mesh = mesh, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
-    void* scratch =
-        heap_caps_malloc(frame_scratch_bytes(mesh, frame.width, frame.height), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    raster_t frame = {.mesh = mesh, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
+    void* scratch = heap_caps_malloc(raster_scratch_bytes(&frame), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     TEST_ASSERT_NOT_NULL(scratch);
-    frame_use_scratch(&frame, scratch);
+    frame.scratch = scratch;
     const uint32_t period = sponza_flythrough_period_ms();
     float sum = 0.0F;
     int samples = 0;

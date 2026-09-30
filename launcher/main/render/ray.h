@@ -1,8 +1,8 @@
 /*
- * ray, a float ray camera: origin plus an orthonormal forward/right/up
- * basis, and the direction of the ray through a physical pixel, the
- * quarter-turn physical-to-upright mapping and a lens fitted to the
- * viewport's SHORTER axis, on the same viewport_t a rasteriser uses.
+ * ray: the ray tracer's camera, an origin and an orthonormal
+ * forward/right/up basis, and the direction through each physical pixel of
+ * a viewport_t, upright for its quarter, with the lens fitted to the
+ * viewport's SHORTER axis.
  *
  * Single precision only, for the reason vec3f.h gives. The pose is
  * float rather than S3L_F units because a caller's numbers need not be

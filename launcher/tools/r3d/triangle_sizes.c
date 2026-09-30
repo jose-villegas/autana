@@ -10,16 +10,16 @@ typedef struct {
 } point_t;
 
 static bool
-project(const r3d_lens_t* view, const int16_t p[3], point_t* out) {
+project(const r3d_lens_t* lens, const int16_t p[3], point_t* out) {
     float l[3];
     for (int r = 0; r < 3; r++) {
-        l[r] = (view->m[r][0] * (float)p[0]) + (view->m[r][1] * (float)p[1]) + (view->m[r][2] * (float)p[2])
-               + view->m[r][3];
+        l[r] = (lens->m[r][0] * (float)p[0]) + (lens->m[r][1] * (float)p[1]) + (lens->m[r][2] * (float)p[2])
+               + lens->m[r][3];
     }
-    if (l[2] <= view->near_z) {
+    if (l[2] <= lens->near_z) {
         return false;
     }
-    *out = (point_t){view->center_x + (l[0] / l[2]), view->center_y + (l[1] / l[2])};
+    *out = (point_t){lens->center_x + (l[0] / l[2]), lens->center_y + (l[1] / l[2])};
     return true;
 }
 
@@ -104,7 +104,7 @@ size_triangle(point_t v[3], bool double_sided, int width, int height, r3d_sizes_
 }
 
 void
-r3d_sizes_count(const r3d_lit_mesh_t* mesh, const r3d_lens_t* view, const uint16_t* visible, int count,
+r3d_sizes_count(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* visible, int count,
                 r3d_sizes_t* out) {
     for (int i = 0; i < count; i++) {
         const r3d_lit_cluster_t* c = &mesh->clusters[visible[i]];
@@ -112,10 +112,10 @@ r3d_sizes_count(const r3d_lit_mesh_t* mesh, const r3d_lens_t* view, const uint16
             point_t v[3];
             bool in_front = true;
             for (int k = 0; k < 3; k++) {
-                in_front = in_front && project(view, mesh->positions[mesh->triangles[t][k]], &v[k]);
+                in_front = in_front && project(lens, mesh->positions[mesh->triangles[t][k]], &v[k]);
             }
             if (in_front) {
-                size_triangle(v, c->double_sided, view->width, view->height, out);
+                size_triangle(v, c->double_sided, lens->width, lens->height, out);
             }
         }
     }

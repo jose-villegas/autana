@@ -132,12 +132,12 @@ typedef struct {
 } buffers_t;
 
 static void
-render_pose(const r3d_lit_mesh_t* mesh, const r3d_lens_t* view, int count, const buffers_t* b, frame_size_t size) {
+render_pose(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int count, const buffers_t* b, frame_size_t size) {
     memset(b->color, 0, size.pixels * sizeof(*b->color));
     memset(b->depth, 0, size.pixels * sizeof(*b->depth));
-    r3d_pipeline_transform(mesh, view, b->visible, count, b->cs, b->rows);
+    r3d_pipeline_transform(mesh, lens, b->visible, count, b->cs, b->rows);
     const r3d_span_target_t target = {b->color, b->depth, size.width, 0, size.height};
-    r3d_pipeline_draw(mesh, view, b->visible, count, b->cs, b->rows, &target);
+    r3d_pipeline_draw(mesh, lens, b->visible, count, b->cs, b->rows, &target);
 }
 
 int
@@ -165,16 +165,16 @@ main(int argc, char** argv) {
                  size.height);
     r3d_sizes_t total = {0};
     for (int pose = 0; pose < poses->count; pose++) {
-        r3d_lens_t view;
-        r3d_lens_init(&view,
+        r3d_lens_t lens;
+        r3d_lens_init(&lens,
                       &(camera_t){poses->eye[pose], poses->forward[pose], poses->half_fov_short_tan, poses->near_z},
                       mesh->position_scale, (viewport_t){size.width, size.height, 0});
-        const int count = r3d_pipeline_cull(mesh, &view, b.visible);
+        const int count = r3d_pipeline_cull(mesh, &lens, b.visible);
         r3d_sizes_t s = {0};
-        r3d_sizes_count(mesh, &view, b.visible, count, &s);
+        r3d_sizes_count(mesh, &lens, b.visible, count, &s);
         print_sizes(pose, &s);
         r3d_sizes_add(&total, &s);
-        render_pose(mesh, &view, count, &b, size);
+        render_pose(mesh, &lens, count, &b, size);
         if (dir != NULL) {
             keep_frame(dir, compare, pose, b.color, size);
         }

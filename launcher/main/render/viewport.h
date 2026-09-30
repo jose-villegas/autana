@@ -1,7 +1,8 @@
 /*
  * viewport: the picture a camera is drawn into, and how the panel's own
- * axes lie in it once the shell reads the panel at a quarter turn. Every
- * camera in render/ takes this one viewport. Header-only and ESP-IDF-free.
+ * axes lie in it once the shell reads the panel at a quarter turn. The ray
+ * and line cameras take one; raster_draw() builds its own from its size
+ * and the quarter. Header-only and ESP-IDF-free.
  */
 #pragma once
 

@@ -21,8 +21,8 @@ capture. The Gouraud scene rotates when stepped over several frames.
 
 `--view shaded|depth|tiles` shows a lit-mesh scene's frame as the renderer
 left it (`shaded`, the default), as its depth buffer, or as that depth
-reduced to `FRAME_SHOW_TILE` squares. The depth is `frame_draw()`'s
-own buffer, unchanged; `frame_show()` only colours it and takes each
+reduced to `RASTER_SHOW_TILE` squares. The depth is `raster_draw()`'s
+own buffer, unchanged; `raster_show()` only colours it and takes each
 tile's farthest depth, so the views are what the renderer holds at the
 moment it upscales the frame. Near is bright and far dark, stretched over the
 range that frame drew, so grey compares pixels within a frame, not across

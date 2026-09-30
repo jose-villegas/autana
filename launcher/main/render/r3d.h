@@ -7,8 +7,8 @@
 #pragma once
 
 #include "render/camera.h"
-#include "render/frame.h"
 #include "render/r3d_lit_mesh.h"
+#include "render/raster.h"
 #include "render/ray.h"
 #include "render/vec3f.h"
 #include "render/viewport.h"

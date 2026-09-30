@@ -10,8 +10,8 @@
 #include "render/r3d.h"
 
 /* The tunable render_lab.view: as shaded, or as the depth the frame left
- * (frame_show()). Constant FRAME_SHOW_SHADED when tunables are. */
-frame_show_t render_lab_view(void);
+ * (raster_show()). Constant RASTER_SHOW_SHADED when tunables are. */
+raster_show_t render_lab_view(void);
 
 /* Whether the running scene honours it (render_lab_scene_t). */
 bool render_lab_scene_shows_views(void);

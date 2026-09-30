@@ -1,4 +1,4 @@
-#include "render/trs.h"
+#include "render/r3d_trs.h"
 
 #include <math.h>
 
@@ -64,7 +64,7 @@ rotation_units(const float q[4]) {
 }
 
 S3L_Transform3D
-trs_to_transform(const float translation[3], const float rotation[4], const float scale[3]) {
+r3d_trs_to_transform(const float translation[3], const float rotation[4], const float scale[3]) {
     S3L_Transform3D t;
     t.translation = (S3L_Vec4){to_units(translation[0]), to_units(translation[1]), to_units(translation[2]), 0};
     t.scale = (S3L_Vec4){to_units(scale[0]), to_units(scale[1]), to_units(scale[2]), 0};

@@ -1,6 +1,6 @@
 /*
  * triangle_sizes: how many of a lit mesh's drawn triangles cover 0, 1, 2-4
- * or more pixel centres from a view, counted by the top-left rule from the
+ * or more pixel centres from a lens, counted by the top-left rule from the
  * view itself, so any version of the pipeline means the same; and the poses
  * file the triangle_sizes tool reads.
  */
@@ -24,7 +24,7 @@ typedef struct {
 } r3d_sizes_t;
 
 /* Adds the triangles of the `count` clusters in `visible` to `out`. */
-void r3d_sizes_count(const r3d_lit_mesh_t* mesh, const r3d_lens_t* view, const uint16_t* visible, int count,
+void r3d_sizes_count(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* visible, int count,
                      r3d_sizes_t* out);
 
 void r3d_sizes_add(r3d_sizes_t* total, const r3d_sizes_t* s);

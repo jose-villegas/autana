@@ -13,76 +13,78 @@ them. The layers are in [Firmware-Architecture.md](Firmware-Architecture.md).
 
 ## What a scene uses
 
-A scene includes `render/r3d.h` and nothing else from render/:
+A scene that draws a baked mesh or traces rays includes `render/r3d.h`;
+one that projects points and segments takes `render/r3d_line_camera.h`.
 
 | Noun | What it is |
 |---|---|
 | `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](Mesh-Import.md)) |
 | `camera_t` | A pinhole camera in model units: eye, look direction, lens, near plane |
-| `viewport_t` | The picture's size and the quarter turn the panel is read at; every camera in render/ takes it |
-| `frame_t` | One mesh drawn at one size into buffers the caller hands it. Its options are fields the caller sets: `clear`, a `destination` picture, and the render `scale`, the destination's size over the frame's |
-| `frame_draw()` | Draws the mesh through a camera, turned for the panel's quarter |
-| `frame_upscale()` | Scales what was drawn up by `scale` into `destination`; the scale is 1 or 2 |
-| `frame_show()` | Development builds: shows the depth instead of the colour, as a [view mode](#view-modes) |
+| `viewport_t` | The picture's size and the quarter turn the panel is read at; the ray and line cameras take one, and `raster_draw()` builds its own from the size and the quarter |
+| `raster_t` | One mesh drawn at one size into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and a `destination` picture with its own size |
+| `raster_draw()` | Draws the mesh through a camera, turned for the panel's quarter |
+| `raster_upscale()` | Scales what was drawn up into `destination` |
+| `raster_show()` | Development builds: shows the depth instead of the colour, as a [view mode](#view-modes) |
 | `ray_camera_t` | A ray tracer's camera: the direction through each physical pixel |
 
 Flat or smooth shading is the mesh's own, not an option: a mesh baked flat
-carries a colour per face and the frame draws what the mesh carries.
+carries a colour per face and the raster draws what the mesh carries.
 
 A camera that moves is an [animation track](Animation-Tracks.md), sampled
 by its caller into the camera's eye and look direction.
 
-The ray tracer keeps its own camera. It holds an explicit right and up in
-the tracer's own handedness, where `camera_t` derives them from the look
-direction the rasterizer's way, which mirrors the picture.
+The ray tracer keeps its own camera, which holds an explicit right and up.
+`camera_t` has only a look direction, and the rasterizer derives right from
+it with the opposite handedness, so a ray camera built from a `camera_t`
+would see the scene mirrored.
 
 ## The files
 
 | File | What it is |
 |---|---|
-| `r3d.h` | What a scene includes: it brings in the six headers below it |
+| `r3d.h` | What a scene includes: it brings in the headers below it down to the mesh format |
 | `camera.h` | The camera |
-| `frame.h` | One whole frame on both cores, optionally upscaled into a larger picture, and the view modes |
+| `raster.h` | One mesh drawn on both cores, optionally upscaled into a destination picture, and the view modes |
 | `viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
 | `vec3f.h` | The float 3-vector every float camera shares |
 | `ray.h` | The ray camera: the direction through each physical pixel |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree |
-| `r3d_pipeline.h` | Internal: the frame's stages, lens, cull, transform, draw |
+| `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
 | `r3d_span.h` | Internal: one depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions |
 | `r3d_line_camera.h` | A camera for points and segments in small3dlib's fixed point (S3L units and turns): a pose with a roll, and the fit onto a non-square viewport |
 | `r3d_project.h` | Camera-space near clip and perspective projection of those points and segments |
-| `trs.h` | A float translation, quaternion and scale as one small3dlib transform, for an object an animation track moves |
+| `r3d_trs.h` | A float translation, quaternion and scale as one small3dlib transform, for an object an animation track moves |
 
 The line camera stays apart from `camera_t`: its pose composes with a
 model transform in integers and carries a roll, and it brings small3dlib's
-configuration with it, which `r3d.h` must not impose on a scene. The `r3d_`
-headers are render/'s own: only render/, its suites and host tools include
-the internal ones.
+configuration with it, which `r3d.h` must not impose on a scene. Only
+`r3d_pipeline.h` and `r3d_span.h` are internal: render/, its suites and
+host tools include them.
 
 ## One frame
 
 ```mermaid
 flowchart LR
     Camera["camera_t<br/><i>eye, forward, lens</i>"] --> Lens
-    subgraph Render["frame_draw()"]
+    subgraph Render["raster_draw()"]
         Lens["r3d_lens_init()<br/><i>for this viewport</i>"] --> Cull
         Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
         Transform --> Draw["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
     end
-    Draw --> Upscale["frame_upscale()<br/><i>by the render scale</i>"]
+    Draw --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
 ```
 
-A caller fills a camera, then calls `frame_draw()`, and
-`frame_upscale()` when it set `destination`. The stages inside are
+A caller fills a camera, then calls `raster_draw()`, and
+`raster_upscale()` when it set `destination`. The stages inside are
 `r3d_pipeline.h`'s, for a suite or tool that schedules them itself.
 
 The stages are split so two cores can share them. Transforming disjoint
 cluster lists writes disjoint vertex ranges, and drawing touches only the
 rows of its own target. `r3d_pipeline_transform()` also records the screen rows
 each cluster spans, so a core drawing half the rows skips a cluster wholly
-outside them. The frame renders at the caller's width and height and
-can upscale the result by its render scale into a larger picture, so
-rendering at half the panel's size quarters the pixels and halves the rows and spans.
+outside them. The raster draws at the caller's width and height and can
+upscale the result into a destination picture, so rendering at half the
+panel's size quarters the pixels and halves the rows and spans.
 
 ### On both cores
 
@@ -116,25 +118,25 @@ sequenceDiagram
 ### View modes
 
 Development builds can look at the depth a frame drew instead of its
-colour. `frame_show()` runs after `frame_draw()` and before
-`frame_upscale()`, and overwrites the frame's colour buffer from its
+colour. `raster_show()` runs after `raster_draw()` and before
+`raster_upscale()`, and overwrites the raster's colour buffer from its
 depth buffer, which it reads as the render left it and never writes.
 
 ```mermaid
 flowchart LR
-    Render["frame_draw()<br/><i>colour and depth</i>"] --> Show
-    Show["frame_show(mode)<br/><i>colour from depth</i>"] --> Upscale["frame_upscale()<br/><i>by the render scale</i>"]
+    Render["raster_draw()<br/><i>colour and depth</i>"] --> Show
+    Show["raster_show(mode)<br/><i>colour from depth</i>"] --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
 ```
 
 | Mode | The colour buffer becomes |
 |---|---|
-| `FRAME_SHOW_SHADED` | untouched: the baked colours as drawn |
-| `FRAME_SHOW_DEPTH` | the depth as a grey ramp, nearest white and farthest black |
-| `FRAME_SHOW_DEPTH_TILES` | the same ramp, each `FRAME_SHOW_TILE` square at its farthest depth: the value a hierarchical depth test would cull against |
+| `RASTER_SHOW_SHADED` | untouched: the baked colours as drawn |
+| `RASTER_SHOW_DEPTH` | the depth as a grey ramp, nearest white and farthest black |
+| `RASTER_SHOW_DEPTH_TILES` | the same ramp, each `RASTER_SHOW_TILE` square at its farthest depth: the value a hierarchical depth test would cull against |
 
 The ramp is stretched over the range this frame drew, so it shows the most
 detail within a frame and is not comparable between frames. A pixel nothing
-drew takes `frame->clear`, the colour upscaling gives it, so it reads as empty
+drew takes the raster's `clear`, the colour upscaling gives it, so it reads as empty
 in every view; a tile holding one such pixel is empty. The views are at the
 frame's own size, before upscaling. `r3d_span.h` defines the depth encoding
 they read.
@@ -183,8 +185,8 @@ fills its spans without those clamps, which would change nothing there.
 The layer allocates nothing, and nothing a frame needs lives at file
 scope. A frame's per-vertex, per-cluster, colour and depth buffers are one
 block:
-`frame_scratch_bytes()` sizes it, the caller obtains it once, and
-`frame_use_scratch()` carves it. The caller decides where it lives,
+`raster_scratch_bytes()` sizes it, the caller obtains it once and sets
+`scratch`, and each call carves it. The caller decides where it lives,
 so none of it has to take internal RAM.
 
 ## Rules the layer keeps

@@ -937,16 +937,16 @@ screen_mesh(screen_mesh_t* m, int vertices, int triangles) {
 /* Transforms the mesh with cluster rows and draws it as two windows. */
 static void
 draw_screen_mesh(const r3d_lit_mesh_t* mesh, int split) {
-    const r3d_lens_t view = subpixel_view();
+    const r3d_lens_t lens = subpixel_view();
     const uint16_t visible[1] = {0};
     r3d_pipeline_vertex_t cs[9];
     r3d_pipeline_rows_t rows[1];
-    r3d_pipeline_transform(mesh, &view, visible, 1, cs, rows);
+    r3d_pipeline_transform(mesh, &lens, visible, 1, cs, rows);
     r3d_span_target_t t = fixture();
     const r3d_span_target_t top = {t.color, t.depth, W, 0, split};
     const r3d_span_target_t bottom = {t.color + (split * W), t.depth + (split * W), W, split, H};
-    r3d_pipeline_draw(mesh, &view, visible, 1, cs, rows, &top);
-    r3d_pipeline_draw(mesh, &view, visible, 1, cs, rows, &bottom);
+    r3d_pipeline_draw(mesh, &lens, visible, 1, cs, rows, &top);
+    r3d_pipeline_draw(mesh, &lens, visible, 1, cs, rows, &bottom);
 }
 
 /* Whether the reference says the same of a centre nudged a subpixel either
@@ -1027,14 +1027,14 @@ test_a_triangle_whose_only_centre_is_at_a_window_edge_is_drawn(void) {
             m.triangles[0][k] = (uint16_t)k;
         }
         const r3d_lit_mesh_t mesh = screen_mesh(&m, 3, 1);
-        const r3d_lens_t view = subpixel_view();
+        const r3d_lens_t lens = subpixel_view();
         const uint16_t visible[1] = {0};
         r3d_pipeline_vertex_t cs[3];
         r3d_pipeline_rows_t rows[1];
-        r3d_pipeline_transform(&mesh, &view, visible, 1, cs, rows);
+        r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, rows);
         r3d_span_target_t t = fixture();
         const r3d_span_target_t window = {t.color + (row0 * W), t.depth + (row0 * W), W, row0, row1};
-        r3d_pipeline_draw(&mesh, &view, visible, 1, cs, rows, &window);
+        r3d_pipeline_draw(&mesh, &lens, visible, 1, cs, rows, &window);
         TEST_ASSERT_EQUAL_INT_MESSAGE(1, covered(), "a one-centre triangle at a window edge was dropped");
         TEST_ASSERT_NOT_EQUAL(0, depth[(spots[i][1] * W) + spots[i][0]]);
     }
@@ -1109,14 +1109,14 @@ static int
 draw_quad_with(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* face_colors) {
     r3d_lit_cluster_t cluster;
     const r3d_lit_mesh_t mesh = quad_mesh(triangles, double_sided, face_colors, &cluster);
-    r3d_lens_t view;
-    r3d_lens_init(&view, &(camera_t){{0, 0, 400}, {0, 0, -1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
+    r3d_lens_t lens;
+    r3d_lens_init(&lens, &(camera_t){{0, 0, 400}, {0, 0, -1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
     uint16_t visible[1];
-    const int count = r3d_pipeline_cull(&mesh, &view, visible);
+    const int count = r3d_pipeline_cull(&mesh, &lens, visible);
     r3d_pipeline_vertex_t cs[4];
-    r3d_pipeline_transform(&mesh, &view, visible, count, cs, NULL);
+    r3d_pipeline_transform(&mesh, &lens, visible, count, cs, NULL);
     const r3d_span_target_t t = fixture();
-    r3d_pipeline_draw(&mesh, &view, visible, count, cs, NULL, &t);
+    r3d_pipeline_draw(&mesh, &lens, visible, count, cs, NULL, &t);
     return covered();
 }
 
@@ -1147,10 +1147,10 @@ static void
 test_a_cluster_behind_the_camera_is_culled(void) {
     r3d_lit_cluster_t cluster;
     const r3d_lit_mesh_t mesh = quad_mesh(quad_front, false, NULL, &cluster);
-    r3d_lens_t view;
-    r3d_lens_init(&view, &(camera_t){{0, 0, 400}, {0, 0, 1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
+    r3d_lens_t lens;
+    r3d_lens_init(&lens, &(camera_t){{0, 0, 400}, {0, 0, 1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
     uint16_t visible[1];
-    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &view, visible));
+    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &lens, visible));
 }
 
 /* A floor running from behind the camera to far ahead, seen from above it
@@ -1174,15 +1174,15 @@ draw_floor(const uint16_t* face_colors) {
                                  .node_count = 1,
                                  .position_scale = 1};
 
-    r3d_lens_t view;
-    r3d_lens_init(&view, &(camera_t){{0, 50, 0}, {0, 0, -1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
+    r3d_lens_t lens;
+    r3d_lens_init(&lens, &(camera_t){{0, 50, 0}, {0, 0, -1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
     uint16_t visible[1];
-    const int count = r3d_pipeline_cull(&mesh, &view, visible);
+    const int count = r3d_pipeline_cull(&mesh, &lens, visible);
     TEST_ASSERT_EQUAL_INT(1, count);
     r3d_pipeline_vertex_t cs[4];
-    r3d_pipeline_transform(&mesh, &view, visible, count, cs, NULL);
+    r3d_pipeline_transform(&mesh, &lens, visible, count, cs, NULL);
     const r3d_span_target_t t = fixture();
-    r3d_pipeline_draw(&mesh, &view, visible, count, cs, NULL, &t);
+    r3d_pipeline_draw(&mesh, &lens, visible, count, cs, NULL, &t);
 }
 
 /* The near clip keeps the part in front and nothing lands above the horizon row. */
@@ -1248,14 +1248,14 @@ static void
 test_a_point_up_and_right_lands_up_and_right_in_every_quarter(void) {
     for (int quarter = 0; quarter < 4; quarter++) {
         const viewport_t viewport = {W, H, quarter};
-        r3d_lens_t view;
-        r3d_lens_init(&view, &(camera_t){{0, 0, 0}, {0, 0, -1}, 0.5f, 1.0f}, 1, viewport);
-        const float px = view.m[0][0] * 30 + view.m[0][1] * 20 + view.m[0][2] * -100 + view.m[0][3];
-        const float py = view.m[1][0] * 30 + view.m[1][1] * 20 + view.m[1][2] * -100 + view.m[1][3];
-        const float pz = view.m[2][0] * 30 + view.m[2][1] * 20 + view.m[2][2] * -100 + view.m[2][3];
+        r3d_lens_t lens;
+        r3d_lens_init(&lens, &(camera_t){{0, 0, 0}, {0, 0, -1}, 0.5f, 1.0f}, 1, viewport);
+        const float px = lens.m[0][0] * 30 + lens.m[0][1] * 20 + lens.m[0][2] * -100 + lens.m[0][3];
+        const float py = lens.m[1][0] * 30 + lens.m[1][1] * 20 + lens.m[1][2] * -100 + lens.m[1][3];
+        const float pz = lens.m[2][0] * 30 + lens.m[2][1] * 20 + lens.m[2][2] * -100 + lens.m[2][3];
         int ux, uy;
-        viewport_physical_to_upright(viewport, (int)floorf(view.center_x + px / pz),
-                                     (int)floorf(view.center_y + py / pz), &ux, &uy);
+        viewport_physical_to_upright(viewport, (int)floorf(lens.center_x + px / pz),
+                                     (int)floorf(lens.center_y + py / pz), &ux, &uy);
 
         /* The lens fits the shorter upright axis: tan = 0.5 spans half of it. */
         const int upright_width = (quarter & 1) ? H : W, upright_height = (quarter & 1) ? W : H;
@@ -1362,29 +1362,29 @@ camera_down_minus_z(float eye_y, float eye_z, float near_z) {
     return (camera_t){{0, eye_y, eye_z}, {0, 0, -1}, 0.5f, near_z};
 }
 
-/* The lens frame_draw() makes of camera_down_minus_z() for a W by H
+/* The lens raster_draw() makes of camera_down_minus_z() for a W by H
  * frame of a mesh at position scale 1. */
 static r3d_lens_t
 look_down_minus_z(float eye_y, float eye_z, float near_z) {
     const camera_t camera = camera_down_minus_z(eye_y, eye_z, near_z);
-    r3d_lens_t view;
-    r3d_lens_init(&view, &camera, 1, (viewport_t){W, H, 0});
-    return view;
+    r3d_lens_t lens;
+    r3d_lens_init(&lens, &camera, 1, (viewport_t){W, H, 0});
+    return lens;
 }
 
 /* Cull, transform and draw every cluster into `t`; with `use_rows`, the
  * draw skips clusters by their rows. */
 static void
-draw_parts(const parts_t* p, const r3d_lens_t* view, const r3d_span_target_t* t, bool use_rows) {
+draw_parts(const parts_t* p, const r3d_lens_t* lens, const r3d_span_target_t* t, bool use_rows) {
     uint16_t* visible = malloc(sizeof(*visible) * PARTS_MAX);
     r3d_pipeline_vertex_t* cs = malloc(sizeof(*cs) * PARTS_MAX * 4);
     r3d_pipeline_rows_t* rows = malloc(sizeof(*rows) * PARTS_MAX);
     TEST_ASSERT_NOT_NULL(visible);
     TEST_ASSERT_NOT_NULL(cs);
     TEST_ASSERT_NOT_NULL(rows);
-    const int count = r3d_pipeline_cull(&p->mesh, view, visible);
-    r3d_pipeline_transform(&p->mesh, view, visible, count, cs, use_rows ? rows : NULL);
-    r3d_pipeline_draw(&p->mesh, view, visible, count, cs, use_rows ? rows : NULL, t);
+    const int count = r3d_pipeline_cull(&p->mesh, lens, visible);
+    r3d_pipeline_transform(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL);
+    r3d_pipeline_draw(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL, t);
     free(rows);
     free(cs);
     free(visible);
@@ -1402,9 +1402,9 @@ draw_cut(const int16_t corners[3][3], bool double_sided) {
     parts_t* const p = parts_buffer();
     parts_begin(p);
     parts_add(p, corners, 3, cut_colors, double_sided);
-    const r3d_lens_t view = look_down_minus_z(0, 0, 100.0f);
+    const r3d_lens_t lens = look_down_minus_z(0, 0, 100.0f);
     const r3d_span_target_t t = fixture();
-    draw_parts(p, &view, &t, false);
+    draw_parts(p, &lens, &t, false);
     return covered();
 }
 
@@ -1459,9 +1459,9 @@ static void
 test_drawing_a_window_with_cluster_rows_matches_a_full_draw(void) {
     parts_t* const p = parts_buffer();
     build_floor_and_rects(p);
-    const r3d_lens_t view = look_down_minus_z(50, 0, 1.0f);
+    const r3d_lens_t lens = look_down_minus_z(50, 0, 1.0f);
     const r3d_span_target_t full = fixture();
-    draw_parts(p, &view, &full, false);
+    draw_parts(p, &lens, &full, false);
 
     gfx_color_t* band_color = malloc(sizeof(gfx_color_t) * W * H);
     uint16_t* band_depth = malloc(sizeof(uint16_t) * W * H);
@@ -1473,7 +1473,7 @@ test_drawing_a_window_with_cluster_rows_matches_a_full_draw(void) {
         memset(band_color, 0, sizeof(gfx_color_t) * W * H);
         memset(band_depth, 0, sizeof(uint16_t) * W * H);
         const r3d_span_target_t band = {band_color, band_depth, W, row0, row1};
-        draw_parts(p, &view, &band, true);
+        draw_parts(p, &lens, &band, true);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(color + row0 * W, band_color, (row1 - row0) * W,
                                               "a window drawn with cluster rows lost something");
     }
@@ -1494,18 +1494,18 @@ test_a_triangle_over_any_side_of_the_screen_is_drawn(void) {
     static const int16_t beyond_right[3][3] = {{80, 0, -100}, {120, -20, -100}, {120, 20, -100}};
     static const uint8_t white[3][3] = {{255, 255, 255}, {255, 255, 255}, {255, 255, 255}};
     parts_t* const p = parts_buffer();
-    const r3d_lens_t view = look_down_minus_z(0, 0, 1.0f);
+    const r3d_lens_t lens = look_down_minus_z(0, 0, 1.0f);
     for (int side = 0; side < 4; side++) {
         parts_begin(p);
         parts_add(p, over[side], 3, white, true);
         const r3d_span_target_t t = fixture();
-        draw_parts(p, &view, &t, false);
+        draw_parts(p, &lens, &t, false);
         TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, covered(), "a triangle reaching over a side was dropped");
     }
     parts_begin(p);
     parts_add(p, beyond_right, 3, white, true);
     const r3d_span_target_t t = fixture();
-    draw_parts(p, &view, &t, false);
+    draw_parts(p, &lens, &t, false);
     TEST_ASSERT_EQUAL_INT(0, covered());
 }
 
@@ -1531,9 +1531,9 @@ build_wall_and_stack(parts_t* p) {
 /* One draw of every visible cluster into a full-height target, upscaled,
  * with the clear colour wherever nothing was drawn. */
 static void
-reference_frame(const parts_t* p, const r3d_lens_t* view, gfx_color_t* upscaled) {
+reference_frame(const parts_t* p, const r3d_lens_t* lens, gfx_color_t* upscaled) {
     const r3d_span_target_t full = fixture();
-    draw_parts(p, view, &full, false);
+    draw_parts(p, lens, &full, false);
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
             const gfx_color_t c = depth[y * W + x] != 0 ? color[y * W + x] : SKY;
@@ -1553,17 +1553,18 @@ static void
 test_the_frame_carves_its_scratch_without_overlap(void) {
     parts_t* const p = parts_buffer();
     build_wall_and_stack(p);
-    frame_t frame = {.mesh = &p->mesh, .width = W, .height = H};
-    const size_t bytes = frame_scratch_bytes(&p->mesh, W, H);
+    raster_t frame = {.mesh = &p->mesh, .width = W, .height = H};
+    const size_t bytes = raster_scratch_bytes(&frame);
     char* scratch = malloc(bytes);
     TEST_ASSERT_NOT_NULL(scratch);
-    frame_use_scratch(&frame, scratch);
+    frame.scratch = scratch;
+    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(&frame);
     const span_of_bytes_t parts[] = {
-        {(const char*)frame.cs, sizeof(r3d_pipeline_vertex_t) * (size_t)p->mesh.vertex_count},
-        {(const char*)frame.rows, sizeof(r3d_pipeline_rows_t) * (size_t)p->mesh.cluster_count},
-        {(const char*)frame.visible, sizeof(uint16_t) * (size_t)p->mesh.cluster_count},
-        {(const char*)frame.color, sizeof(uint16_t) * W * H},
-        {(const char*)frame.depth, sizeof(uint16_t) * W * H},
+        {(const char*)b.cs, sizeof(r3d_pipeline_vertex_t) * (size_t)p->mesh.vertex_count},
+        {(const char*)b.rows, sizeof(r3d_pipeline_rows_t) * (size_t)p->mesh.cluster_count},
+        {(const char*)b.visible, sizeof(uint16_t) * (size_t)p->mesh.cluster_count},
+        {(const char*)b.color, sizeof(uint16_t) * W * H},
+        {(const char*)b.depth, sizeof(uint16_t) * W * H},
     };
     size_t total = 0;
     for (int i = 0; i < 5; i++) {
@@ -1589,23 +1590,29 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     build_wall_and_stack(p);
     gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    char* scratch = malloc(frame_scratch_bytes(&p->mesh, W, H));
+    char* scratch = malloc(raster_scratch_bytes(&(raster_t){.mesh = &p->mesh, .width = W, .height = H}));
     TEST_ASSERT_NOT_NULL(upscaled);
     TEST_ASSERT_NOT_NULL(want);
     TEST_ASSERT_NOT_NULL(scratch);
-    frame_t frame = {.mesh = &p->mesh, .width = W, .height = H, .clear = SKY, .destination = upscaled, .scale = 2};
-    frame_use_scratch(&frame, scratch);
+    raster_t frame = {.mesh = &p->mesh,
+                      .width = W,
+                      .height = H,
+                      .clear = SKY,
+                      .destination = upscaled,
+                      .destination_width = 2 * W,
+                      .destination_height = 2 * H};
+    frame.scratch = scratch;
 
     static const float eye_heights[] = {-100.0f, 0.0f, 150.0f, 230.0f, 300.0f};
     for (int e = 0; e < (int)(sizeof eye_heights / sizeof eye_heights[0]); e++) {
         const camera_t camera = camera_down_minus_z(eye_heights[e], 400, 1.0f);
-        const r3d_lens_t view = look_down_minus_z(eye_heights[e], 400, 1.0f);
+        const r3d_lens_t lens = look_down_minus_z(eye_heights[e], 400, 1.0f);
         for (int i = 0; i < W * H; i++) {
-            frame.color[i] = 0xBEEF;
+            r3d_pipeline_carve(&frame).color[i] = 0xBEEF;
         }
-        frame_draw(&frame, &camera, 0);
-        frame_upscale(&frame);
-        reference_frame(p, &view, want);
+        raster_draw(&frame, &camera, 0);
+        raster_upscale(&frame);
+        reference_frame(p, &lens, want);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, upscaled, 4 * W * H,
                                               "the upscaled frame differs from one full draw");
     }
@@ -1613,12 +1620,12 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     /* With nothing to upscale into, the frame clears its own colour target. */
     frame.destination = NULL;
     const camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
-    const r3d_lens_t view = look_down_minus_z(150.0f, 400, 1.0f);
-    frame_draw(&frame, &camera, 0);
-    reference_frame(p, &view, want);
+    const r3d_lens_t lens = look_down_minus_z(150.0f, 400, 1.0f);
+    raster_draw(&frame, &camera, 0);
+    reference_frame(p, &lens, want);
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
-            TEST_ASSERT_EQUAL_HEX16(want[2 * y * 2 * W + 2 * x], frame.color[y * W + x]);
+            TEST_ASSERT_EQUAL_HEX16(want[2 * y * 2 * W + 2 * x], r3d_pipeline_carve(&frame).color[y * W + x]);
         }
     }
     free(scratch);
@@ -1626,26 +1633,32 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     free(upscaled);
 }
 
-/* At render scale 1 the destination is the frame at its own size, taking
+/* A destination the raster's own size is a copy of it, taking
  * the clear colour wherever nothing was drawn. */
 static void
-test_a_frame_at_scale_one_copies_into_its_destination(void) {
+test_a_destination_of_the_same_size_is_a_copy(void) {
     parts_t* const p = parts_buffer();
     build_wall_and_stack(p);
     gfx_color_t* destination = malloc(sizeof(gfx_color_t) * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    char* scratch = malloc(frame_scratch_bytes(&p->mesh, W, H));
+    char* scratch = malloc(raster_scratch_bytes(&(raster_t){.mesh = &p->mesh, .width = W, .height = H}));
     TEST_ASSERT_NOT_NULL(destination);
     TEST_ASSERT_NOT_NULL(want);
     TEST_ASSERT_NOT_NULL(scratch);
-    frame_t frame = {.mesh = &p->mesh, .width = W, .height = H, .clear = SKY, .destination = destination, .scale = 1};
-    frame_use_scratch(&frame, scratch);
+    raster_t frame = {.mesh = &p->mesh,
+                      .width = W,
+                      .height = H,
+                      .clear = SKY,
+                      .destination = destination,
+                      .destination_width = W,
+                      .destination_height = H};
+    frame.scratch = scratch;
 
     const camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
-    const r3d_lens_t view = look_down_minus_z(150.0f, 400, 1.0f);
-    frame_draw(&frame, &camera, 0);
-    frame_upscale(&frame);
-    reference_frame(p, &view, want);
+    const r3d_lens_t lens = look_down_minus_z(150.0f, 400, 1.0f);
+    raster_draw(&frame, &camera, 0);
+    raster_upscale(&frame);
+    reference_frame(p, &lens, want);
     int sky = 0;
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
@@ -1662,7 +1675,8 @@ test_a_frame_at_scale_one_copies_into_its_destination(void) {
 /* Views of the depth */
 
 typedef struct {
-    frame_t frame;
+    raster_t frame;
+    r3d_lit_mesh_t mesh; /* nothing to draw: its scratch is colour and depth */
 } shown_t;
 
 static shown_t* shown;
@@ -1670,8 +1684,7 @@ static shown_t* shown;
 static void
 release_shown(void) {
     if (shown != NULL) {
-        free(shown->frame.color);
-        free(shown->frame.depth);
+        free(shown->frame.scratch);
         free(shown);
         shown = NULL;
     }
@@ -1679,7 +1692,7 @@ release_shown(void) {
 
 /* A frame of `width` by `height` with nothing drawn and a clear colour that
  * is no grey. */
-static frame_t*
+static raster_t*
 shown_frame(int width, int height) {
     release_shown();
     shown = calloc(1, sizeof *shown);
@@ -1689,29 +1702,28 @@ shown_frame(int width, int height) {
     shown->frame.width = width;
     shown->frame.height = height;
     shown->frame.clear = SKY;
-    shown->frame.color = malloc(count * sizeof(uint16_t));
-    shown->frame.depth = calloc(count, sizeof(uint16_t));
-    TEST_ASSERT_NOT_NULL(shown->frame.color);
-    TEST_ASSERT_NOT_NULL(shown->frame.depth);
-    memset(shown->frame.color, 0xA5, count * sizeof(uint16_t));
+    shown->frame.mesh = &shown->mesh;
+    shown->frame.scratch = calloc(1, raster_scratch_bytes(&shown->frame));
+    TEST_ASSERT_NOT_NULL(shown->frame.scratch);
+    memset(r3d_pipeline_carve(&shown->frame).color, 0xA5, count * sizeof(uint16_t));
     return &shown->frame;
 }
 
 static void
-fill_depth(const frame_t* f, uint16_t d) {
+fill_depth(const raster_t* f, uint16_t d) {
     for (int i = 0; i < f->width * f->height; i++) {
-        f->depth[i] = d;
+        r3d_pipeline_carve(f).depth[i] = d;
     }
 }
 
 static uint16_t*
-depth_at(const frame_t* f, int x, int y) {
-    return &f->depth[y * f->width + x];
+depth_at(const raster_t* f, int x, int y) {
+    return &r3d_pipeline_carve(f).depth[y * f->width + x];
 }
 
 static uint16_t
-color_at(const frame_t* f, int x, int y) {
-    return f->color[y * f->width + x];
+color_at(const raster_t* f, int x, int y) {
+    return r3d_pipeline_carve(f).color[y * f->width + x];
 }
 
 static uint16_t
@@ -1736,9 +1748,9 @@ is_grey(uint16_t px) {
 
 /* Every pixel of the tile whose first pixel is (x0, y0), clipped to the frame. */
 static void
-assert_tile_is(const frame_t* f, int x0, int y0, uint16_t want, const char* what) {
-    for (int y = y0; y < y0 + FRAME_SHOW_TILE && y < f->height; y++) {
-        for (int x = x0; x < x0 + FRAME_SHOW_TILE && x < f->width; x++) {
+assert_tile_is(const raster_t* f, int x0, int y0, uint16_t want, const char* what) {
+    for (int y = y0; y < y0 + RASTER_SHOW_TILE && y < f->height; y++) {
+        for (int x = x0; x < x0 + RASTER_SHOW_TILE && x < f->width; x++) {
             TEST_ASSERT_EQUAL_HEX16_MESSAGE(want, color_at(f, x, y), what);
         }
     }
@@ -1747,40 +1759,40 @@ assert_tile_is(const frame_t* f, int x0, int y0, uint16_t want, const char* what
 /* A tile shows the farthest depth in it, which is the smaller value. */
 static void
 test_a_tile_holds_its_minimum_depth_not_its_maximum(void) {
-    frame_t* f = shown_frame(3 * FRAME_SHOW_TILE, FRAME_SHOW_TILE);
+    raster_t* f = shown_frame(3 * RASTER_SHOW_TILE, RASTER_SHOW_TILE);
     fill_depth(f, 40000);
-    for (int y = 0; y < FRAME_SHOW_TILE; y++) {
-        for (int x = FRAME_SHOW_TILE; x < 2 * FRAME_SHOW_TILE; x++) {
+    for (int y = 0; y < RASTER_SHOW_TILE; y++) {
+        for (int x = RASTER_SHOW_TILE; x < 2 * RASTER_SHOW_TILE; x++) {
             *depth_at(f, x, y) = 10000;
         }
     }
     *depth_at(f, 3, 3) = 10000; /* one far pixel in the first tile, the rest near */
-    frame_show(f, FRAME_SHOW_DEPTH_TILES);
+    raster_show(f, RASTER_SHOW_DEPTH_TILES);
 
-    const uint16_t far_tile = color_at(f, FRAME_SHOW_TILE, 0);
-    const uint16_t near_tile = color_at(f, 2 * FRAME_SHOW_TILE, 0);
+    const uint16_t far_tile = color_at(f, RASTER_SHOW_TILE, 0);
+    const uint16_t near_tile = color_at(f, 2 * RASTER_SHOW_TILE, 0);
     TEST_ASSERT_TRUE_MESSAGE(level(far_tile) < level(near_tile), "the farther tile is not darker");
     assert_tile_is(f, 0, 0, far_tile, "a tile with one far pixel does not take that pixel's depth");
-    assert_tile_is(f, 2 * FRAME_SHOW_TILE, 0, near_tile, "a uniform near tile changed");
+    assert_tile_is(f, 2 * RASTER_SHOW_TILE, 0, near_tile, "a uniform near tile changed");
 }
 
 /* One empty pixel, wherever in the tile, is a hole a cull must not skip. */
 static void
 test_one_empty_pixel_empties_its_tile_at_any_position_and_only_its_tile(void) {
-    const int w = 3 * FRAME_SHOW_TILE;
-    const int h = 3 * FRAME_SHOW_TILE;
-    const int last = FRAME_SHOW_TILE - 1;
+    const int w = 3 * RASTER_SHOW_TILE;
+    const int h = 3 * RASTER_SHOW_TILE;
+    const int last = RASTER_SHOW_TILE - 1;
     const int corners[][2] = {{0, 0}, {last, last}, {last, 0}, {0, last}};
     for (int c = 0; c < 4; c++) {
-        frame_t* f = shown_frame(w, h);
+        raster_t* f = shown_frame(w, h);
         fill_depth(f, 30000);
-        *depth_at(f, FRAME_SHOW_TILE + corners[c][0], FRAME_SHOW_TILE + corners[c][1]) = R3D_DEPTH_EMPTY;
-        frame_show(f, FRAME_SHOW_DEPTH_TILES);
+        *depth_at(f, RASTER_SHOW_TILE + corners[c][0], RASTER_SHOW_TILE + corners[c][1]) = R3D_DEPTH_EMPTY;
+        raster_show(f, RASTER_SHOW_DEPTH_TILES);
 
         for (int ty = 0; ty < 3; ty++) {
             for (int tx = 0; tx < 3; tx++) {
-                const int x0 = tx * FRAME_SHOW_TILE;
-                const int y0 = ty * FRAME_SHOW_TILE;
+                const int x0 = tx * RASTER_SHOW_TILE;
+                const int y0 = ty * RASTER_SHOW_TILE;
                 const bool holed = tx == 1 && ty == 1;
                 TEST_ASSERT_TRUE_MESSAGE(holed == (color_at(f, x0, y0) == SKY),
                                          "an empty pixel emptied a neighbour, or missed its own tile");
@@ -1794,38 +1806,38 @@ test_one_empty_pixel_empties_its_tile_at_any_position_and_only_its_tile(void) {
  * tiles, which are tiles like the others and read nothing outside the frame. */
 static void
 test_the_partial_tiles_at_the_right_and_bottom_are_reduced_within_the_frame(void) {
-    const int w = (2 * FRAME_SHOW_TILE) + 4;
-    const int h = FRAME_SHOW_TILE + 3;
-    frame_t* f = shown_frame(w, h);
+    const int w = (2 * RASTER_SHOW_TILE) + 4;
+    const int h = RASTER_SHOW_TILE + 3;
+    raster_t* f = shown_frame(w, h);
     fill_depth(f, 50000);
     *depth_at(f, w - 1, h - 1) = 20000; /* the last pixel of the corner tile */
-    for (int y = 0; y < FRAME_SHOW_TILE; y++) {
-        for (int x = 2 * FRAME_SHOW_TILE; x < w; x++) {
+    for (int y = 0; y < RASTER_SHOW_TILE; y++) {
+        for (int x = 2 * RASTER_SHOW_TILE; x < w; x++) {
             *depth_at(f, x, y) = 60000; /* the right tile, nearest */
         }
     }
-    frame_show(f, FRAME_SHOW_DEPTH_TILES);
+    raster_show(f, RASTER_SHOW_DEPTH_TILES);
 
     const uint16_t corner = color_at(f, w - 1, h - 1);
-    assert_tile_is(f, 2 * FRAME_SHOW_TILE, FRAME_SHOW_TILE, corner,
+    assert_tile_is(f, 2 * RASTER_SHOW_TILE, RASTER_SHOW_TILE, corner,
                    "the corner tile did not take its last pixel's depth");
     const uint16_t right = color_at(f, w - 1, 0);
-    assert_tile_is(f, 2 * FRAME_SHOW_TILE, 0, right, "the right tile is not one colour");
+    assert_tile_is(f, 2 * RASTER_SHOW_TILE, 0, right, "the right tile is not one colour");
     TEST_ASSERT_TRUE_MESSAGE(level(corner) < level(right), "the corner tile is not the farther");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, level(corner), "the farthest tile is not black");
     for (int ty = 0; ty < 2; ty++) {
         for (int tx = 0; tx < 2; tx++) {
-            const uint16_t mid = color_at(f, tx * FRAME_SHOW_TILE, ty * FRAME_SHOW_TILE);
+            const uint16_t mid = color_at(f, tx * RASTER_SHOW_TILE, ty * RASTER_SHOW_TILE);
             TEST_ASSERT_TRUE_MESSAGE(level(mid) > level(corner) && level(mid) < level(right),
                                      "a whole tile is not between the extremes");
-            assert_tile_is(f, tx * FRAME_SHOW_TILE, ty * FRAME_SHOW_TILE, mid,
+            assert_tile_is(f, tx * RASTER_SHOW_TILE, ty * RASTER_SHOW_TILE, mid,
                            "a partial tile spilled into a whole one");
         }
     }
 
     *depth_at(f, w - 1, h - 1) = R3D_DEPTH_EMPTY;
-    frame_show(f, FRAME_SHOW_DEPTH_TILES);
-    assert_tile_is(f, 2 * FRAME_SHOW_TILE, FRAME_SHOW_TILE, SKY, "an empty pixel in a partial tile left it drawn");
+    raster_show(f, RASTER_SHOW_DEPTH_TILES);
+    assert_tile_is(f, 2 * RASTER_SHOW_TILE, RASTER_SHOW_TILE, SKY, "an empty pixel in a partial tile left it drawn");
     TEST_ASSERT_TRUE_MESSAGE(color_at(f, 0, h - 1) != SKY, "the empty pixel reached the bottom-left tile");
 }
 
@@ -1834,11 +1846,11 @@ test_the_partial_tiles_at_the_right_and_bottom_are_reduced_within_the_frame(void
 static void
 test_the_nearest_depth_is_the_brightest_and_the_farthest_the_darkest(void) {
     for (int reversed = 0; reversed < 2; reversed++) {
-        frame_t* f = shown_frame(64, 1);
+        raster_t* f = shown_frame(64, 1);
         for (int x = 0; x < 64; x++) {
             *depth_at(f, x, 0) = (uint16_t)(1000 + ((reversed ? 63 - x : x) * 900));
         }
-        frame_show(f, FRAME_SHOW_DEPTH);
+        raster_show(f, RASTER_SHOW_DEPTH);
         const int far_x = reversed ? 63 : 0;
         const int near_x = 63 - far_x;
         TEST_ASSERT_EQUAL_INT_MESSAGE(0, level(color_at(f, far_x, 0)), "the farthest pixel is not black");
@@ -1855,14 +1867,14 @@ test_the_nearest_depth_is_the_brightest_and_the_farthest_the_darkest(void) {
  * is a colour no grey is. */
 static void
 test_a_frame_of_one_depth_is_one_grey_and_empty_is_no_grey(void) {
-    frame_t* f = shown_frame(16, 4);
+    raster_t* f = shown_frame(16, 4);
     fill_depth(f, 777);
     *depth_at(f, 5, 2) = R3D_DEPTH_EMPTY;
-    frame_show(f, FRAME_SHOW_DEPTH);
+    raster_show(f, RASTER_SHOW_DEPTH);
     const uint16_t grey = color_at(f, 0, 0);
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(WHITE, grey, "a frame of one depth is not the nearest end of the ramp");
     for (int i = 0; i < 16 * 4; i++) {
-        TEST_ASSERT_EQUAL_HEX16(i == (2 * 16) + 5 ? SKY : grey, f->color[i]);
+        TEST_ASSERT_EQUAL_HEX16(i == (2 * 16) + 5 ? SKY : grey, r3d_pipeline_carve(f).color[i]);
     }
     TEST_ASSERT_FALSE_MESSAGE(is_grey(SKY), "the clear colour used here is a grey");
 
@@ -1870,7 +1882,7 @@ test_a_frame_of_one_depth_is_one_grey_and_empty_is_no_grey(void) {
     for (int x = 0; x < 256; x++) {
         *depth_at(f, x, 0) = (uint16_t)(1 + (x * 200));
     }
-    frame_show(f, FRAME_SHOW_DEPTH);
+    raster_show(f, RASTER_SHOW_DEPTH);
     for (int x = 0; x < 256; x++) {
         TEST_ASSERT_TRUE_MESSAGE(is_grey(color_at(f, x, 0)), "a drawn depth is not a grey");
         TEST_ASSERT_TRUE_MESSAGE(color_at(f, x, 0) != SKY, "a drawn depth reads as empty");
@@ -1880,27 +1892,27 @@ test_a_frame_of_one_depth_is_one_grey_and_empty_is_no_grey(void) {
 /* The range the grey is stretched over is the drawn pixels'. */
 static void
 test_the_range_ignores_empty_pixels_and_survives_none_or_one_drawn(void) {
-    frame_t* f = shown_frame(8, 8);
+    raster_t* f = shown_frame(8, 8);
     *depth_at(f, 1, 1) = 30000;
     *depth_at(f, 6, 6) = 60000;
-    frame_show(f, FRAME_SHOW_DEPTH);
+    raster_show(f, RASTER_SHOW_DEPTH);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, level(color_at(f, 1, 1)), "the empty pixels stretched the range");
     TEST_ASSERT_EQUAL_INT(LEVEL_MAX, level(color_at(f, 6, 6)));
     TEST_ASSERT_EQUAL_HEX16(SKY, color_at(f, 0, 0));
 
     f = shown_frame(8, 8);
-    frame_show(f, FRAME_SHOW_DEPTH);
+    raster_show(f, RASTER_SHOW_DEPTH);
     for (int i = 0; i < 64; i++) {
-        TEST_ASSERT_EQUAL_HEX16(SKY, f->color[i]);
+        TEST_ASSERT_EQUAL_HEX16(SKY, r3d_pipeline_carve(f).color[i]);
     }
-    frame_show(f, FRAME_SHOW_DEPTH_TILES);
+    raster_show(f, RASTER_SHOW_DEPTH_TILES);
     for (int i = 0; i < 64; i++) {
-        TEST_ASSERT_EQUAL_HEX16(SKY, f->color[i]);
+        TEST_ASSERT_EQUAL_HEX16(SKY, r3d_pipeline_carve(f).color[i]);
     }
 
     f = shown_frame(8, 8);
     *depth_at(f, 3, 4) = 4242;
-    frame_show(f, FRAME_SHOW_DEPTH);
+    raster_show(f, RASTER_SHOW_DEPTH);
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(WHITE, color_at(f, 3, 4),
                                     "a single drawn pixel is not the nearest end of the ramp");
     TEST_ASSERT_EQUAL_HEX16(SKY, color_at(f, 4, 4));
@@ -1919,37 +1931,45 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
     parts_t* const p = parts_buffer();
     build_wall_and_stack(p);
     gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    char* scratch = malloc(frame_scratch_bytes(&p->mesh, W, H));
+    char* scratch = malloc(raster_scratch_bytes(&(raster_t){.mesh = &p->mesh, .width = W, .height = H}));
     uint16_t* depth_before = malloc(sizeof(uint16_t) * W * H);
     uint16_t* shaded = malloc(sizeof(uint16_t) * W * H);
     TEST_ASSERT_NOT_NULL(upscaled);
     TEST_ASSERT_NOT_NULL(scratch);
     TEST_ASSERT_NOT_NULL(depth_before);
     TEST_ASSERT_NOT_NULL(shaded);
-    frame_t frame = {.mesh = &p->mesh, .width = W, .height = H, .clear = SKY, .destination = upscaled, .scale = 2};
-    frame_use_scratch(&frame, scratch);
+    raster_t frame = {.mesh = &p->mesh,
+                      .width = W,
+                      .height = H,
+                      .clear = SKY,
+                      .destination = upscaled,
+                      .destination_width = 2 * W,
+                      .destination_height = 2 * H};
+    frame.scratch = scratch;
 
     static const float eye_heights[] = {-100.0f, 150.0f, 300.0f};
     uint16_t first_depth_sum = 0;
     for (int e = 0; e < 3; e++) {
         const camera_t camera = camera_down_minus_z(eye_heights[e], 400, 1.0f);
-        frame_draw(&frame, &camera, 0);
-        memcpy(depth_before, frame.depth, sizeof(uint16_t) * W * H);
-        memcpy(shaded, frame.color, sizeof(uint16_t) * W * H);
+        raster_draw(&frame, &camera, 0);
+        memcpy(depth_before, r3d_pipeline_carve(&frame).depth, sizeof(uint16_t) * W * H);
+        memcpy(shaded, r3d_pipeline_carve(&frame).color, sizeof(uint16_t) * W * H);
 
-        frame_show(&frame, FRAME_SHOW_SHADED);
-        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(shaded, frame.color, W * H, "the shaded view changed the render");
+        raster_show(&frame, RASTER_SHOW_SHADED);
+        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(shaded, r3d_pipeline_carve(&frame).color, W * H,
+                                              "the shaded view changed the render");
 
-        frame_show(&frame, FRAME_SHOW_DEPTH);
-        frame_upscale(&frame);
-        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(depth_before, frame.depth, W * H, "showing the depth changed it");
+        raster_show(&frame, RASTER_SHOW_DEPTH);
+        raster_upscale(&frame);
+        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(depth_before, r3d_pipeline_carve(&frame).depth, W * H,
+                                              "showing the depth changed it");
         int drawn = 0;
         uint16_t depth_sum = 0;
         for (int i = 0; i < W * H; i++) {
             const uint16_t d = depth_before[i];
             const uint16_t c = upscaled_at(upscaled, i);
             TEST_ASSERT_TRUE_MESSAGE((d == R3D_DEPTH_EMPTY) == (c == SKY),
-                                     "empty in the depth but not in the view, or the reverse");
+                                     "empty in the depth but not in the lens, or the reverse");
             TEST_ASSERT_TRUE_MESSAGE(d == R3D_DEPTH_EMPTY || is_grey(c), "a drawn pixel is not a grey");
             drawn += d != R3D_DEPTH_EMPTY;
             depth_sum = (uint16_t)(depth_sum + d);
@@ -2032,7 +2052,7 @@ run_r3d_lit_suite(void) {
 
     RUN_TEST(test_the_frame_carves_its_scratch_without_overlap);
     RUN_TEST(test_the_two_core_frame_matches_one_full_draw);
-    RUN_TEST(test_a_frame_at_scale_one_copies_into_its_destination);
+    RUN_TEST(test_a_destination_of_the_same_size_is_a_copy);
     RUN_TEST(test_a_tile_holds_its_minimum_depth_not_its_maximum);
     RUN_TEST(test_one_empty_pixel_empties_its_tile_at_any_position_and_only_its_tile);
     RUN_TEST(test_the_partial_tiles_at_the_right_and_bottom_are_reduced_within_the_frame);
