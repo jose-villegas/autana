@@ -10,15 +10,24 @@
  * per vertex, clusters as the leaves of an octree. Other settings:
  *   --max-edge 900 --sun -0.25 1 0.22
  *   --sun-rays 8 --sky-rays 48 --leaf-triangles 160
+ *
+ * Rebaked with r3d.rebake: the geometry and colours are the bake's own; the
+ * meshlets, coarser levels and octree were rebuilt from them:
+ *     python -m r3d.rebake sponza_mesh_generated.c --out-dir . --leaf-triangles 320 --max-depth 10 \
+ *         --meshlet-triangles 64 --partition-size 8 --colour-weight 1
  */
 #pragma once
 
 #include "render/r3d_lit_mesh.h"
 
-#define SPONZA_VERTEX_COUNT 19744
+#define SPONZA_VERTEX_COUNT 15601
 #define SPONZA_TRIANGLE_COUNT 17375
-#define SPONZA_CLUSTER_COUNT 474
-#define SPONZA_NODE_COUNT 470
+#define SPONZA_CLUSTER_COUNT 293
+#define SPONZA_NODE_COUNT 183
 #define SPONZA_POSITION_SCALE 8
+#define SPONZA_LOD_VERTEX_COUNT 17216
+#define SPONZA_LOD_TRIANGLE_COUNT 17025
+#define SPONZA_LOD_CLUSTER_COUNT 371
+#define SPONZA_LOD_LEVEL_COUNT 9
 
 extern const r3d_lit_mesh_t sponza_mesh;
