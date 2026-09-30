@@ -1,5 +1,5 @@
 /*
- * render_lab - what every scene in this app shares with the app itself: the
+ * render_lab: what every scene in this app shares with the app itself: the
  * background colour, the partial-update toggle, the band clear, and the
  * last-frame coverage a scene marks dirty. app_render_lab.c defines all of
  * it; a scene includes this rather than keeping a copy.
