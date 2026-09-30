@@ -1,6 +1,6 @@
 /*
  * Portable suite: r3d_span.h's triangle fill, r3d_pipeline.h's camera,
- * culling and near clip, r3d.h's two-core frame. Every mesh here is built inside the test, never a baked one.
+ * culling and near clip, raster.h's two-core draw. Every mesh here is built inside the test, never a baked one.
  */
 
 #include <math.h>
@@ -1363,7 +1363,7 @@ camera_down_minus_z(float eye_y, float eye_z, float near_z) {
 }
 
 /* The lens raster_draw() makes of camera_down_minus_z() for a W by H
- * frame of a mesh at position scale 1. */
+ * raster of a mesh at position scale 1. */
 static r3d_lens_t
 look_down_minus_z(float eye_y, float eye_z, float near_z) {
     const camera_t camera = camera_down_minus_z(eye_y, eye_z, near_z);
@@ -1553,12 +1553,12 @@ static void
 test_the_frame_carves_its_scratch_without_overlap(void) {
     parts_t* const p = parts_buffer();
     build_wall_and_stack(p);
-    raster_t frame = {.mesh = &p->mesh, .width = W, .height = H};
-    const size_t bytes = raster_scratch_bytes(&frame);
+    raster_t raster = {.mesh = &p->mesh, .width = W, .height = H};
+    const size_t bytes = raster_scratch_bytes(&raster);
     char* scratch = malloc(bytes);
     TEST_ASSERT_NOT_NULL(scratch);
-    frame.scratch = scratch;
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(&frame);
+    raster.scratch = scratch;
+    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(&raster);
     const span_of_bytes_t parts[] = {
         {(const char*)b.cs, sizeof(r3d_pipeline_vertex_t) * (size_t)p->mesh.vertex_count},
         {(const char*)b.rows, sizeof(r3d_pipeline_rows_t) * (size_t)p->mesh.cluster_count},
@@ -1594,38 +1594,38 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     TEST_ASSERT_NOT_NULL(upscaled);
     TEST_ASSERT_NOT_NULL(want);
     TEST_ASSERT_NOT_NULL(scratch);
-    raster_t frame = {.mesh = &p->mesh,
-                      .width = W,
-                      .height = H,
-                      .clear = SKY,
-                      .destination = upscaled,
-                      .destination_width = 2 * W,
-                      .destination_height = 2 * H};
-    frame.scratch = scratch;
+    raster_t raster = {.mesh = &p->mesh,
+                       .width = W,
+                       .height = H,
+                       .clear = SKY,
+                       .destination = upscaled,
+                       .destination_width = 2 * W,
+                       .destination_height = 2 * H};
+    raster.scratch = scratch;
 
     static const float eye_heights[] = {-100.0f, 0.0f, 150.0f, 230.0f, 300.0f};
     for (int e = 0; e < (int)(sizeof eye_heights / sizeof eye_heights[0]); e++) {
         const camera_t camera = camera_down_minus_z(eye_heights[e], 400, 1.0f);
         const r3d_lens_t lens = look_down_minus_z(eye_heights[e], 400, 1.0f);
         for (int i = 0; i < W * H; i++) {
-            r3d_pipeline_carve(&frame).color[i] = 0xBEEF;
+            r3d_pipeline_carve(&raster).color[i] = 0xBEEF;
         }
-        raster_draw(&frame, &camera, 0);
-        raster_upscale(&frame);
+        raster_draw(&raster, &camera, 0);
+        raster_upscale(&raster);
         reference_frame(p, &lens, want);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, upscaled, 4 * W * H,
                                               "the upscaled frame differs from one full draw");
     }
 
-    /* With nothing to upscale into, the frame clears its own colour target. */
-    frame.destination = NULL;
+    /* With nothing to upscale into, the raster clears its own colour target. */
+    raster.destination = NULL;
     const camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
     const r3d_lens_t lens = look_down_minus_z(150.0f, 400, 1.0f);
-    raster_draw(&frame, &camera, 0);
+    raster_draw(&raster, &camera, 0);
     reference_frame(p, &lens, want);
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
-            TEST_ASSERT_EQUAL_HEX16(want[2 * y * 2 * W + 2 * x], r3d_pipeline_carve(&frame).color[y * W + x]);
+            TEST_ASSERT_EQUAL_HEX16(want[2 * y * 2 * W + 2 * x], r3d_pipeline_carve(&raster).color[y * W + x]);
         }
     }
     free(scratch);
@@ -1645,19 +1645,19 @@ test_a_destination_of_the_same_size_is_a_copy(void) {
     TEST_ASSERT_NOT_NULL(destination);
     TEST_ASSERT_NOT_NULL(want);
     TEST_ASSERT_NOT_NULL(scratch);
-    raster_t frame = {.mesh = &p->mesh,
-                      .width = W,
-                      .height = H,
-                      .clear = SKY,
-                      .destination = destination,
-                      .destination_width = W,
-                      .destination_height = H};
-    frame.scratch = scratch;
+    raster_t raster = {.mesh = &p->mesh,
+                       .width = W,
+                       .height = H,
+                       .clear = SKY,
+                       .destination = destination,
+                       .destination_width = W,
+                       .destination_height = H};
+    raster.scratch = scratch;
 
     const camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
     const r3d_lens_t lens = look_down_minus_z(150.0f, 400, 1.0f);
-    raster_draw(&frame, &camera, 0);
-    raster_upscale(&frame);
+    raster_draw(&raster, &camera, 0);
+    raster_upscale(&raster);
     reference_frame(p, &lens, want);
     int sky = 0;
     for (int y = 0; y < H; y++) {
@@ -1675,7 +1675,7 @@ test_a_destination_of_the_same_size_is_a_copy(void) {
 /* Views of the depth */
 
 typedef struct {
-    raster_t frame;
+    raster_t raster;
     r3d_lit_mesh_t mesh; /* nothing to draw: its scratch is colour and depth */
 } shown_t;
 
@@ -1684,13 +1684,13 @@ static shown_t* shown;
 static void
 release_shown(void) {
     if (shown != NULL) {
-        free(shown->frame.scratch);
+        free(shown->raster.scratch);
         free(shown);
         shown = NULL;
     }
 }
 
-/* A frame of `width` by `height` with nothing drawn and a clear colour that
+/* A raster of `width` by `height` with nothing drawn and a clear colour that
  * is no grey. */
 static raster_t*
 shown_frame(int width, int height) {
@@ -1699,14 +1699,14 @@ shown_frame(int width, int height) {
     TEST_ASSERT_NOT_NULL(shown);
     suite_set_test_cleanup(release_shown);
     const size_t count = (size_t)width * (size_t)height;
-    shown->frame.width = width;
-    shown->frame.height = height;
-    shown->frame.clear = SKY;
-    shown->frame.mesh = &shown->mesh;
-    shown->frame.scratch = calloc(1, raster_scratch_bytes(&shown->frame));
-    TEST_ASSERT_NOT_NULL(shown->frame.scratch);
-    memset(r3d_pipeline_carve(&shown->frame).color, 0xA5, count * sizeof(uint16_t));
-    return &shown->frame;
+    shown->raster.width = width;
+    shown->raster.height = height;
+    shown->raster.clear = SKY;
+    shown->raster.mesh = &shown->mesh;
+    shown->raster.scratch = calloc(1, raster_scratch_bytes(&shown->raster));
+    TEST_ASSERT_NOT_NULL(shown->raster.scratch);
+    memset(r3d_pipeline_carve(&shown->raster).color, 0xA5, count * sizeof(uint16_t));
+    return &shown->raster;
 }
 
 static void
@@ -1746,7 +1746,7 @@ is_grey(uint16_t px) {
 #define LEVEL_MAX 31
 #define WHITE     0xFFFF
 
-/* Every pixel of the tile whose first pixel is (x0, y0), clipped to the frame. */
+/* Every pixel of the tile whose first pixel is (x0, y0), clipped to the raster. */
 static void
 assert_tile_is(const raster_t* f, int x0, int y0, uint16_t want, const char* what) {
     for (int y = y0; y < y0 + RASTER_SHOW_TILE && y < f->height; y++) {
@@ -1802,8 +1802,8 @@ test_one_empty_pixel_empties_its_tile_at_any_position_and_only_its_tile(void) {
     }
 }
 
-/* A frame that is no multiple of the tile ends in narrower and shorter
- * tiles, which are tiles like the others and read nothing outside the frame. */
+/* A raster that is no multiple of the tile ends in narrower and shorter
+ * tiles, which are tiles like the others and read nothing outside the raster. */
 static void
 test_the_partial_tiles_at_the_right_and_bottom_are_reduced_within_the_frame(void) {
     const int w = (2 * RASTER_SHOW_TILE) + 4;
@@ -1938,30 +1938,30 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
     TEST_ASSERT_NOT_NULL(scratch);
     TEST_ASSERT_NOT_NULL(depth_before);
     TEST_ASSERT_NOT_NULL(shaded);
-    raster_t frame = {.mesh = &p->mesh,
-                      .width = W,
-                      .height = H,
-                      .clear = SKY,
-                      .destination = upscaled,
-                      .destination_width = 2 * W,
-                      .destination_height = 2 * H};
-    frame.scratch = scratch;
+    raster_t raster = {.mesh = &p->mesh,
+                       .width = W,
+                       .height = H,
+                       .clear = SKY,
+                       .destination = upscaled,
+                       .destination_width = 2 * W,
+                       .destination_height = 2 * H};
+    raster.scratch = scratch;
 
     static const float eye_heights[] = {-100.0f, 150.0f, 300.0f};
     uint16_t first_depth_sum = 0;
     for (int e = 0; e < 3; e++) {
         const camera_t camera = camera_down_minus_z(eye_heights[e], 400, 1.0f);
-        raster_draw(&frame, &camera, 0);
-        memcpy(depth_before, r3d_pipeline_carve(&frame).depth, sizeof(uint16_t) * W * H);
-        memcpy(shaded, r3d_pipeline_carve(&frame).color, sizeof(uint16_t) * W * H);
+        raster_draw(&raster, &camera, 0);
+        memcpy(depth_before, r3d_pipeline_carve(&raster).depth, sizeof(uint16_t) * W * H);
+        memcpy(shaded, r3d_pipeline_carve(&raster).color, sizeof(uint16_t) * W * H);
 
-        raster_show(&frame, RASTER_SHOW_SHADED);
-        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(shaded, r3d_pipeline_carve(&frame).color, W * H,
+        raster_show(&raster, RASTER_SHOW_SHADED);
+        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(shaded, r3d_pipeline_carve(&raster).color, W * H,
                                               "the shaded view changed the render");
 
-        raster_show(&frame, RASTER_SHOW_DEPTH);
-        raster_upscale(&frame);
-        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(depth_before, r3d_pipeline_carve(&frame).depth, W * H,
+        raster_show(&raster, RASTER_SHOW_DEPTH);
+        raster_upscale(&raster);
+        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(depth_before, r3d_pipeline_carve(&raster).depth, W * H,
                                               "showing the depth changed it");
         int drawn = 0;
         uint16_t depth_sum = 0;

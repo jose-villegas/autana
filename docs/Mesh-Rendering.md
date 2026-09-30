@@ -58,8 +58,8 @@ would see the scene mirrored.
 The line camera stays apart from `camera_t`: its pose composes with a
 model transform in integers and carries a roll, and it brings small3dlib's
 configuration with it, which `r3d.h` must not impose on a scene. Only
-`r3d_pipeline.h` and `r3d_span.h` are internal: render/, its suites and
-host tools include them.
+`r3d_pipeline.h` and `r3d_span.h` are internal: render/ and any suite or
+host tool include them.
 
 ## One frame
 
@@ -138,7 +138,7 @@ The ramp is stretched over the range this frame drew, so it shows the most
 detail within a frame and is not comparable between frames. A pixel nothing
 drew takes the raster's `clear`, the colour upscaling gives it, so it reads as empty
 in every view; a tile holding one such pixel is empty. The views are at the
-frame's own size, before upscaling. `r3d_span.h` defines the depth encoding
+raster's own size, before upscaling. `r3d_span.h` defines the depth encoding
 they read.
 
 ## Coverage and small triangles

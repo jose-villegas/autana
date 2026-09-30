@@ -263,11 +263,11 @@ test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
 
 /* The fraction of the picture covered at `t_ms` into the flythrough. */
 static float
-share_covered_at(const raster_t* frame, uint32_t t_ms) {
+share_covered_at(const raster_t* raster, uint32_t t_ms) {
     const camera_t camera = sponza_camera_at(t_ms);
-    raster_draw(frame, &camera, 0);
-    const int pixels = frame->width * frame->height;
-    const uint16_t* depth = r3d_pipeline_carve(frame).depth;
+    raster_draw(raster, &camera, 0);
+    const int pixels = raster->width * raster->height;
+    const uint16_t* depth = r3d_pipeline_carve(raster).depth;
     int covered = 0;
     for (int i = 0; i < pixels; i++) {
         covered += depth[i] != 0;
@@ -281,15 +281,15 @@ share_covered_at(const raster_t* frame, uint32_t t_ms) {
  * only the building's far sides, about 0.6. */
 static void
 check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
-    raster_t frame = {.mesh = mesh, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
-    void* scratch = heap_caps_malloc(raster_scratch_bytes(&frame), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    raster_t raster = {.mesh = mesh, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
+    void* scratch = heap_caps_malloc(raster_scratch_bytes(&raster), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     TEST_ASSERT_NOT_NULL(scratch);
-    frame.scratch = scratch;
+    raster.scratch = scratch;
     const uint32_t period = sponza_flythrough_period_ms();
     float sum = 0.0F;
     int samples = 0;
     for (uint32_t t = 0; t < period; t += SPONZA_POSE_EVERY_MS) {
-        sum += share_covered_at(&frame, t);
+        sum += share_covered_at(&raster, t);
         samples++;
     }
     heap_caps_free(scratch);

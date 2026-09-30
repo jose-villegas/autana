@@ -1,8 +1,8 @@
 /*
  * r3d_pipeline: the stages raster_draw() runs to draw a r3d_lit_mesh_t
  * through a camera: cluster culling, one transform per vertex, near-plane
- * clipping and r3d_span. Internal to render/: only it, its suites and host
- * tools include this.
+ * clipping and r3d_span. Internal: render/ and any suite or host tool
+ * include it.
  *
  * Split into stages so two cores can share a frame: r3d_pipeline_transform()
  * writes disjoint vertex ranges for disjoint cluster lists, and

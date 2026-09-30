@@ -38,17 +38,17 @@
 
 static const char* TAG = "sponza";
 
-static raster_t frame; /* holds its scratch from enter() to exit() */
+static raster_t raster; /* holds its scratch from enter() to exit() */
 static raster_stats_t stats;
 static uint32_t elapsed_ms;
-static bool rendered; /* update() drew a frame that frame() has not upscaled yet */
+static bool rendered; /* update() drew the raster, which frame() has not upscaled yet */
 
 static void
 enter_with(const r3d_lit_mesh_t* mesh) {
     gfx_set_partial_clear(false);
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
 
-    frame = (raster_t){
+    raster = (raster_t){
         .mesh = mesh,
         .width = SPONZA_RENDER_WIDTH,
         .height = SPONZA_RENDER_HEIGHT,
@@ -57,9 +57,9 @@ enter_with(const r3d_lit_mesh_t* mesh) {
         .destination_width = GFX_WIDTH,
         .destination_height = GFX_HEIGHT,
     };
-    const size_t bytes = raster_scratch_bytes(&frame);
-    frame.scratch = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (frame.scratch == NULL) {
+    const size_t bytes = raster_scratch_bytes(&raster);
+    raster.scratch = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (raster.scratch == NULL) {
         ESP_LOGE(TAG, "no %u bytes of PSRAM for the frame: the scene stays blank", (unsigned)bytes);
     }
     elapsed_ms = 0;
@@ -83,8 +83,8 @@ scene_sponza_flat_enter(void) {
 
 static void
 scene_sponza_exit(void) {
-    heap_caps_free(frame.scratch);
-    frame.scratch = NULL;
+    heap_caps_free(raster.scratch);
+    raster.scratch = NULL;
 }
 
 /* Every frame already redraws the whole screen. */
@@ -97,16 +97,16 @@ static void
 render(uint32_t dt_ms) {
     elapsed_ms += dt_ms;
     const camera_t camera = sponza_camera_at(elapsed_ms);
-    stats = raster_draw(&frame, &camera, display_shell_quarter());
+    stats = raster_draw(&raster, &camera, display_shell_quarter());
 #if TUNE_ENABLED
-    raster_show(&frame, render_lab_view());
+    raster_show(&raster, render_lab_view());
 #endif
     rendered = true;
 }
 
 static void
 scene_sponza_update(uint32_t dt_ms) {
-    if (frame.scratch != NULL) {
+    if (raster.scratch != NULL) {
         render(dt_ms);
     }
 }
@@ -114,13 +114,13 @@ scene_sponza_update(uint32_t dt_ms) {
 static void
 scene_sponza_frame(uint32_t dt_ms, bool band_mode_active) {
     assert(!band_mode_active); /* needs_full_framebuffer keeps the app out of band mode for this scene */
-    if (frame.scratch == NULL) {
+    if (raster.scratch == NULL) {
         return;
     }
     if (!rendered) {
         render(dt_ms); /* no update() ran since the last frame: the first after entering */
     }
-    raster_upscale(&frame);
+    raster_upscale(&raster);
     rendered = false;
     gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
 }
