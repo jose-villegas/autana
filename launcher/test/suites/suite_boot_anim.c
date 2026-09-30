@@ -476,7 +476,7 @@ test_the_seeds_curve_stays_near_the_panel_throughout(void) {
  * one of them would still "work" in the sense of not crashing, but the
  * picture would read as two lines, not three. A weak, non-fragile check on
  * purpose: it is not this test's job to say WHERE the axes should point
- * (that is a creative choice made through the editor now), only that they
+ * (that is a creative choice made in the motion glTF), only that they
  * are not degenerate. */
 static void
 test_the_seeds_three_axes_project_to_distinct_directions(void) {

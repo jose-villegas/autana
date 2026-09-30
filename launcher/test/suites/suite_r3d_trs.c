@@ -2,9 +2,8 @@
  * Portable suite: render/r3d_trs.h - a float translation, quaternion and
  * scale as one small3dlib transform. The rotation is judged by the matrix
  * small3dlib builds from it, since a rotation has more than one Euler
- * triple. The quaternions pinned below are the ones
- * tools/boot_anim/boot_motion.py writes for the same angles, so the two
- * sides agree on the convention.
+ * triple. The quaternions pinned below are those of two known angle triples,
+ * worked out from small3dlib's own convention.
  */
 
 #include <math.h>
@@ -120,7 +119,7 @@ test_a_rotation_read_back_builds_the_matrix_it_came_from(void) {
 }
 
 static void
-test_the_quaternions_the_editor_writes_read_back_as_the_angles_they_came_from(void) {
+test_the_quaternions_of_known_angles_read_back_as_those_angles(void) {
     /* -135, -45, 90 degrees and -180, -45, 0, as S3L units (512 to a turn). */
     const float first[4] = {0.5F, 0.70710678F, -0.5F, 0.0F};
     const float second[4] = {0.92387953F, 0.0F, -0.38268343F, 0.0F};
@@ -132,7 +131,7 @@ void
 suite_r3d_trs(void) {
     RUN_TEST(test_translation_and_scale_land_in_small3dlib_units);
     RUN_TEST(test_a_rotation_read_back_builds_the_matrix_it_came_from);
-    RUN_TEST(test_the_quaternions_the_editor_writes_read_back_as_the_angles_they_came_from);
+    RUN_TEST(test_the_quaternions_of_known_angles_read_back_as_those_angles);
 }
 
 SUITE_REGISTER(suite_r3d_trs);

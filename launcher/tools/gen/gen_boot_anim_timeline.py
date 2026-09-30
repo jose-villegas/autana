@@ -7,14 +7,11 @@ constants and its scalar settings.
 WHERE THIS DATA COMES FROM
 
 main/boot/boot_anim_timeline.json is the source of truth for everything
-that is not motion: hand-edited, or edited through
-tools/boot_anim/boot_anim_editor.html's "Bake" button, which downloads a
-JSON file in exactly this shape to replace it. The camera and the space
-the grid and curve live in move by a glTF animation instead,
-main/boot/boot_anim_motion.glb (see tools/boot_anim/boot_motion.py and
-docs/Animation-Tracks.md), baked to main/boot/boot_anim_tracks_generated.c
-by tools/anim/bake_tracks.py; this script only reads it to check it. It
-never talks to the editor directly - the files are the whole interface.
+that is not motion, edited by hand. The camera and the space the grid and
+curve live in move by a glTF animation instead,
+main/boot/boot_anim_motion.glb (see docs/Animation-Tracks.md), authored in
+any glTF tool and baked to main/boot/boot_anim_tracks_generated.c by
+tools/anim/bake_tracks.py; this script only reads it to check it.
 
 `camera_focal`, `grid_step_m` and `wave_height_m`/`wave_wavelength_m`/
 `wave_period_ms` are single settings: `camera_focal` is a lens setting
@@ -429,8 +426,7 @@ def main():
         cfg = json.load(f)
     if "keyframes" in cfg:
         fail("keyframes no longer live in the timeline: the camera and space "
-             "move by main/boot/boot_anim_motion.glb (tools/boot_anim/boot_motion.py "
-             "writes one from keyframes)")
+             "move by main/boot/boot_anim_motion.glb")
 
     # pen_finish_ms is newer than fade_start_ms - a file baked before it
     # existed has no way to carry it. Defaulting it to fade_start_ms
@@ -456,15 +452,14 @@ def main():
     # wave_height_m under that model, the same honest caveat the
     # front-based rewrite before THIS one already carried (the two are not
     # the same picture). Three ring-spacings and three seconds are simply
-    # reasonable starting points to look at through the editor, not a
+    # reasonable starting points, not a
     # migration.
     cfg.setdefault("wave_wavelength_m", 3 * cfg.get("grid_step_m", 1))
     cfg.setdefault("wave_period_ms", 3000)
     # wave_in_ms/wave_out_ms are newer again - starting to lerp in a
     # second in, and starting to lerp back out a second before the end,
-    # are simply reasonable starting points, the same "look at it through
-    # the editor" reasoning wave_wavelength_m/wave_period_ms's own
-    # defaults above use.
+    # are simply reasonable starting points, like wave_wavelength_m/
+    # wave_period_ms's own defaults above.
     timing.setdefault("wave_in_ms", 1000)
     timing.setdefault("wave_out_ms",
                       max(1000, timing.get("total_ms", 5800) - 1000))
@@ -549,9 +544,8 @@ def main():
     w(" *     python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h\n")
     w(" *\n")
     w(" * The boot animation's timing constants and settings, edited as\n")
-    w(" * main/boot/boot_anim_timeline.json - by hand, or via\n")
-    w(" * tools/boot_anim/boot_anim_editor.html's Bake button - and turned into this\n")
-    w(" * header by this script. Its camera and space move by\n")
+    w(" * main/boot/boot_anim_timeline.json and turned into this header by\n")
+    w(" * this script. Its camera and space move by\n")
     w(" * boot_anim_tracks_generated.c instead.\n")
     w(" *===========================================================================*/\n")
     w("#pragma once\n\n#include <stdint.h>\n\n")

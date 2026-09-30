@@ -6,9 +6,8 @@
 #   ./launcher/tools/render/scenes/boot_anim_render_host.sh [-o <dir>]
 #
 # The milliseconds below are three points the animation is recognisably
-# different at, not measurements. tools/boot_anim/boot_anim_editor_server.py drives
-# the same binary at whatever millisecond its browser asks for; this script
-# is the standing check that the renderer still works at all.
+# different at, not measurements. This script is the standing check that the
+# renderer still works at all; --video renders the whole animation.
 #
 # Everything this does beyond the declarations below is
 # tools/render/render_scene.sh.

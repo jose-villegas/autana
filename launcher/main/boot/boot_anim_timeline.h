@@ -4,9 +4,8 @@
  *     python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h
  *
  * The boot animation's timing constants and settings, edited as
- * main/boot/boot_anim_timeline.json - by hand, or via
- * tools/boot_anim/boot_anim_editor.html's Bake button - and turned into this
- * header by this script. Its camera and space move by
+ * main/boot/boot_anim_timeline.json and turned into this header by
+ * this script. Its camera and space move by
  * boot_anim_tracks_generated.c instead.
  *===========================================================================*/
 #pragma once
