@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Turns a raw device capture into a markdown report of suite_boot_anim_
-perf.c's per-checkpoint frame breakdown - the same idea as
+perf.c's per-checkpoint frame breakdown, the same idea as
 main/apps/render_lab/tools/report_cube_perf.py, but for boot_anim's own
 suite, whose output shape is different enough (only Total/Image/Present
 carry a full min/max/avg/med/p95 breakdown; Clear/Floor/Axes/Curve/Zeros/
@@ -9,12 +9,12 @@ console output from scrolling past what a 300s capture window can hold)
 that it needs its own parser rather than reusing cube's.
 
 ESP_LOGI is the only persistent output a DEVICE_BUILD suite has here (no
-mounted filesystem - see report_cube_perf.py's own comment on why), so this
+mounted filesystem, see report_cube_perf.py's own comment on why), so this
 generates the report on the host from a captured serial log instead.
 
 Each checkpoint's own label states what point in the animation it froze
-time at (curve_climbing, crossfade_mid, ...) - see suite_boot_anim_perf.c's
-own build_checkpoints() - rather than this script needing to know what any
+time at (curve_climbing, crossfade_mid, ...), see suite_boot_anim_perf.c's
+own build_checkpoints(), rather than this script needing to know what any
 particular one means, so a new checkpoint added to the suite shows up in
 the report with no changes needed here.
 
@@ -25,7 +25,7 @@ Exit 2 means the capture has no checkpoint in it to report on.
 
 Lives in tools/, not test/suites/, the same convention gen_boot_anim_
 timeline.py and gen_boot_anim_image.py already follow for boot_anim's own
-host-side tooling - it is not app-owned the way cube's report generator is.
+host-side tooling; it is not app-owned the way cube's report generator is.
 """
 import argparse
 import re
@@ -71,12 +71,12 @@ def parse_capture(capture_path: str):
             if current_label not in runs:
                 order.append(current_label)
             else:
-                # A second header for a label already seen - two runs of the
+                # A second header for a label already seen; two runs of the
                 # same suite concatenated into one capture (e.g. re-run after
                 # a fix, or a full-selftest capture that looped). Silently
                 # overwriting here would let a LATER, possibly-worse run
                 # (still contended, still warming up) quietly replace an
-                # earlier one with no trace in the report - the exact "which
+                # earlier one with no trace in the report, the exact "which
                 # numbers am I actually looking at" trap this list exists to
                 # avoid. Last occurrence still wins (the most recent run in
                 # the capture is the most likely one anybody meant to keep),
@@ -110,7 +110,7 @@ def parse_capture(capture_path: str):
 
 
 def incomplete_labels(runs, order):
-    """Labels whose run is missing one or more of PHASE_ORDER's lines - a
+    """Labels whose run is missing one or more of PHASE_ORDER's lines; a
     capture that was cut off (timeout, device reset, a too-short
     --max-seconds on device.py's own run-suite/selftest) mid-checkpoint
     would otherwise produce a report that LOOKS complete: every table still

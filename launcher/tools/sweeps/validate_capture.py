@@ -2,7 +2,7 @@
 """Answers exactly one question about a raw device capture: is it worth
 reading at all?
 
-A capture can look plausible and measure nothing - a timeout with no
+A capture can look plausible and measure nothing: a timeout with no
 SELFTEST_COMPLETE, a crash loop, or (worst, because it produces a clean-
 looking report) an image where the suites never actually ran and the device
 just sat in the launcher printing its idle frame rate. Each of those burns
@@ -17,7 +17,7 @@ lines. Everything else here is true of any capture.
 
 Deliberately read-only: it never modifies, filters or deletes the raw
 capture. Stripping a diagnostic before a human reads it is exactly how the
-one explaining line goes missing - this only reports what it sees.
+one explaining line goes missing; this only reports what it sees.
 
 Usage:
     python validate_capture.py <raw_capture.txt> [--sentinel TEXT]...
@@ -30,20 +30,20 @@ import re
 import sys
 
 # The device prints this line only when the self-test loop actually reaches
-# its end - absent means the run never finished, for any reason (timeout,
+# its end; absent means the run never finished, for any reason (timeout,
 # device wedged, serial dropped). A capture of ONE suite triggered by
 # RUNSUITE never prints it at all, which is what --no-complete is for.
 SELFTEST_COMPLETE_RE = re.compile(r"SELFTEST_COMPLETE(?:\s+failures=(\d+)\s+elapsed_ms=(\d+))?")
 
 # Both phrases appear on ESP-IDF's panic banner; either is sufficient to
 # call it a crash. The parenthesised text after "panic'ed" is the exception
-# type (e.g. "Stack protection fault") and is worth surfacing verbatim -
+# type (e.g. "Stack protection fault") and is worth surfacing verbatim;
 # it is usually enough on its own to point at the offending change.
 PANIC_LINE_RE = re.compile(r"Guru Meditation|panic'ed")
 PANIC_TYPE_RE = re.compile(r"panic'ed\s*\(([^)]+)\)")
 
-# One per boot. More than one means the device reset mid-run - a crash
-# loop, not a slow run - which changes what a stall in the capture means.
+# One per boot. More than one means the device reset mid-run, a crash
+# loop, not a slow run, which changes what a stall in the capture means.
 BOOT_BANNER = "ESP-ROM:esp32s3"
 
 # A line matching this is a Unity test result. Used both as proof that any
@@ -61,7 +61,7 @@ CONTEXT_LINES = 5  # how many prior test results to show before a panic
 
 
 def _panic_context(lines, panic_index):
-    """Last few Unity result lines before the first panic - the crashing
+    """Last few Unity result lines before the first panic; the crashing
     test is usually the very last PASS before the dump starts."""
     context = []
     for line in reversed(lines[:panic_index]):
@@ -73,7 +73,7 @@ def _panic_context(lines, panic_index):
 
 
 def validate(capture_path: str, sentinels=(), require_complete: bool = True):
-    """Returns (failures, warnings) - both lists of message strings.
+    """Returns (failures, warnings): both lists of message strings.
     Empty failures means the capture is valid."""
     with open(capture_path, "r", errors="replace") as f:
         text = f.read()
@@ -131,7 +131,7 @@ def validate(capture_path: str, sentinels=(), require_complete: bool = True):
         )
 
     # What each sentinel means depends entirely on whether the suite ran at
-    # all, so the two cases are reported differently - reading them as one
+    # all, so the two cases are reported differently, reading them as one
     # thing produced a confidently wrong diagnosis on this tool's first real
     # use, blaming the image when the suite had in fact run and a fixture had
     # simply failed to allocate.

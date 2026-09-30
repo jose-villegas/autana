@@ -28,7 +28,7 @@ rgb_to_lin(uint32_t rgb888) {
 }
 
 /* OKLab, scaled by 100 so a distance reads like a CIE delta E (about 1-2 is
- * a just noticeable difference) - the same formula and scale main/apps/
+ * a just noticeable difference), the same formula and scale main/apps/
  * sand/tools/shading_palette.c's own palette study uses. */
 static lab_t
 lin_to_lab(lin_t c) {
@@ -42,7 +42,7 @@ lin_to_lab(lin_t c) {
     };
 }
 
-/* Bit-replication expansion, not a plain shift - see gfx_color_rgb888()'s
+/* Bit-replication expansion, not a plain shift, see gfx_color_rgb888()'s
  * own comment in gfx_color.h for why a plain shift recovers the wrong
  * value on the round trip this whole file depends on. */
 static uint32_t
@@ -91,7 +91,7 @@ gfx_palette_gen_build_index_map(const gfx_palette_t* palette, int first_index, u
 
 /* One 16-colour palette entry's dither choice for a target colour: the
  * single nearest entry, or the finest-matching point along the segment
- * between the two entries whose linear-light blend comes closest - the
+ * between the two entries whose linear-light blend comes closest, the
  * same two-stage search main/apps/sand/tools/shading_palette.c's own
  * ega_choose() used before this was generalised out of it. */
 typedef struct {
@@ -165,7 +165,7 @@ lin_lab_of_palette16(const gfx_palette_t* palette16, lin_t out_lin[16], lab_t ou
     }
 }
 
-/* palette256 entry `i`'s own dither choice against palette16 - the one
+/* palette256 entry `i`'s own dither choice against palette16, the one
  * step every build function below shares; only how each lays lo/hi/level
  * onto pixels or cells differs. */
 static dither_choice_t
@@ -176,7 +176,7 @@ dither_choice_of_entry(const gfx_palette_t* palette256, int i, const lin_t* lin1
     return choose_dither(lin16, lab16, count16, target_lab, target_lin);
 }
 
-/* palette256 entry `i`'s own NEAREST palette16 entry, never a blend -
+/* palette256 entry `i`'s own NEAREST palette16 entry, never a blend:
  * GFX_DITHER_NONE's own choice. */
 static uint8_t
 nearest_index_of_entry(const gfx_palette_t* palette256, int i, const lab_t* lab16, int count16) {
@@ -234,7 +234,7 @@ gfx_palette_gen_build_dither_cell(const gfx_palette_t* palette256, const gfx_pal
         const dither_choice_t ch = dither_choice_of_entry(palette256, i, lin16, lab16, palette16->count);
         if (!bayer2) {
             /* checker: solid when the search found no worthwhile blend,
-             * else alternating - matches
+             * else alternating; matches
              * gfx_indexed_expand_row_dither_cell()'s own (gx + cy) & 1 phase
              * order. */
             out_table[i * 2 + 0] = palette16->entries[ch.lo];

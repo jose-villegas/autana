@@ -3,8 +3,8 @@
 
     python launcher/tools/render/check_avi.py <file.avi>...
 
-Re-parses the RIFF structure from scratch - walking LIST/chunk headers
-rather than trusting the byte offsets render_video.c itself used - and
+Re-parses the RIFF structure from scratch, walking LIST/chunk headers
+rather than trusting the byte offsets render_video.c itself used, and
 checks that the frame count, frame size, rate and idx1 entries it finds are
 mutually consistent, and that the RIFF/LIST size fields match what is
 actually there. Exits nonzero on the first mismatch. Standard library only.

@@ -1,5 +1,5 @@
 /*
- * render_host - render REAL firmware drawing code on a host, to a BMP.
+ * render_host: render REAL firmware drawing code on a host, to a BMP.
  *
  * One procedure, many scenes. A SCENE is a translation unit declaring the
  * `render_scene` below: what to draw, at which quarter turn, over how many
@@ -18,11 +18,11 @@
  *     --dt N        milliseconds per frame
  *     -o PATH       output file (default: stdout)
  *     --video PATH  also append every drawn frame to an uncompressed AVI at
- *                   PATH, in the same orientation the BMP gets - see
+ *                   PATH, in the same orientation the BMP gets, see
  *                   render_video.h
  *
- * A scene stands in the data its screen normally gets - a fixture table, a
- * timestamp - so nothing rendered here is a reading from any board.
+ * A scene stands in the data its screen normally gets: a fixture table, a
+ * timestamp, so nothing rendered here is a reading from any board.
  */
 #ifndef RENDER_HOST_H
 #define RENDER_HOST_H
@@ -43,7 +43,7 @@ typedef struct {
     input_t input;
 } render_frame_t;
 
-/* A declared touch sample, in PANEL coordinates - where a finger lands, not
+/* A declared touch sample, in PANEL coordinates, where a finger lands, not
  * where the rotated canvas puts it, exactly as the touch controller reports
  * it. It holds from `frame` until the next step, so a press and a release
  * are two entries, not one per frame. */

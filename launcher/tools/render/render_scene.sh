@@ -59,7 +59,7 @@ render_scene_to_native() {
 }
 
 # Empty where the platform has neither, which turns the pinned-hash check
-# into a notice rather than a silent pass - see render_scene_run() below.
+# into a notice rather than a silent pass, see render_scene_run() below.
 render_scene_sha256() {
     if command -v sha256sum > /dev/null 2>&1; then
         sha256sum "$1" | cut -d' ' -f1
@@ -109,8 +109,8 @@ render_scene_build() {
     fi
     _rs_tools="$_rs_launcher/tools"
 
-    # Results belong to whichever tools/ folder owns the scene - the shared
-    # one, or an app's - and both are already gitignored there.
+    # Results belong to whichever tools/ folder owns the scene (the shared
+    # one, or an app's) and both are already gitignored there.
     _rs_owner="$_rs_here"
     while [ "$(basename "$_rs_owner")" != "tools" ] && [ "$_rs_owner" != "/" ]; do
         _rs_owner=$(dirname "$_rs_owner")
@@ -170,7 +170,7 @@ render_scene_build() {
     # view's momentum reaches expf() and lroundf(); the Windows toolchains
     # this repo also builds on fold those into libc and link clean without
     # it, which is how a scene that needs them reached CI unlinked. Harmless
-    # where libm is already part of libc - run_tests.sh ends its own link
+    # where libm is already part of libc; run_tests.sh ends its own link
     # line the same way. The --wrap pairs hand every scene allocation to
     # render_watch.c.
     # shellcheck disable=SC2086

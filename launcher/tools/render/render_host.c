@@ -1,5 +1,5 @@
 /*
- * render_host - the one procedure behind every host render. See
+ * render_host: the one procedure behind every host render. See
  * render_host.h for what a scene declares and which options land here.
  *
  * Not built by idf.py, not part of test/run_tests.sh: standalone binaries,
@@ -9,7 +9,7 @@
  * No device, no serial, no file the firmware knows about: gfx_init()
  * mallocs a plain framebuffer, the scene draws into it exactly as it would
  * on the real panel, and this reads gfx_framebuffer() straight back out.
- * The BMP encoding is util/screenshot.h's - already pure, already
+ * The BMP encoding is util/screenshot.h's, already pure, already
  * host-portable, already tested (test/suites/suite_screenshot.c). --video
  * appends every drawn frame through render_video.c instead of keeping only
  * the last.
@@ -69,7 +69,7 @@ output_size(int quarter, bool panel, int* out_w, int* out_h) {
 }
 
 /* Fills `buf` (screenshot_bmp_row_stride(out_w) * out_h bytes) with one
- * frame's bottom-up 24-bit BGR pixels - the body a BMP and an AVI 'DIB '
+ * frame's bottom-up 24-bit BGR pixels, the body a BMP and an AVI 'DIB '
  * chunk both carry unchanged, so the BMP write and every --video frame
  * share this instead of each walking the framebuffer on its own. */
 static void
@@ -206,7 +206,7 @@ main(int argc, char** argv) {
 
 #if defined(_WIN32)
     /* stdout is text mode by default on Windows, which would rewrite every
-     * 0x0A pixel byte into a 0x0D 0x0A pair - silently corrupting the image
+     * 0x0A pixel byte into a 0x0D 0x0A pair, silently corrupting the image
      * rather than failing loudly. */
     _setmode(_fileno(stdout), _O_BINARY);
 #endif
@@ -223,7 +223,7 @@ main(int argc, char** argv) {
     const gfx_color_t* fb = gfx_framebuffer();
     if (fb == NULL) {
         /* Band mode keeps no retained frame to read back, so there is
-         * nothing to write - the same refusal a device capture makes. A
+         * nothing to write; the same refusal a device capture makes. A
          * scene wanting an image asks for the full-framebuffer layout. */
         fprintf(stderr, "no framebuffer to read: the scene left gfx in band mode\n");
         return 1;

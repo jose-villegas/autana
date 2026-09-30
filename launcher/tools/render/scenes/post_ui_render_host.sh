@@ -11,8 +11,8 @@
 #
 # post.c is NOT among the sources; see post_ui_render_host.c's own top
 # comment for what stands in for it. Everything this does beyond the
-# declarations below - finding a compiler, building, checking each image
-# against its declared size, converting to PNG - is tools/render/render_scene.sh.
+# declarations below (finding a compiler, building, checking each image
+# against its declared size, converting to PNG) is tools/render/render_scene.sh.
 
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
