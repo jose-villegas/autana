@@ -4,7 +4,7 @@
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
- * live in suite_sand_common.{c,h} - see that header.
+ * live in suite_sand_common.{c,h}, see that header.
  */
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
                      * but every file inherited suite_sand.c's own include
@@ -608,7 +608,7 @@ test_fire_ignites_an_adjacent_flammable_neighbour(void) {
 }
 
 /* An igniting gas cell touching a KIND_STATIC neighbour bursts instead of
- * just catching - see gas_ignite_confined() (sand_reactions.c) for the
+ * just catching, see gas_ignite_confined() (sand_reactions.c) for the
  * design and try_ignite_given() for why it is gated on s->impulse_buf != NULL.
  *
  * The two tests below each malloc their own impulse buffer on the HEAP and
@@ -618,7 +618,7 @@ test_fire_ignites_an_adjacent_flammable_neighbour(void) {
 static void
 test_a_confined_gas_pocket_bursts_instead_of_just_catching(void) {
     /* fire_room() boxes row 3 in stone above and below (see its own
-     * comment) - the same room test_fire_ignites_an_adjacent_flammable_
+     * comment), the same room test_fire_ignites_an_adjacent_flammable_
      * neighbour uses, just with impulses now enabled, so the gas cell
      * cannot rise away before reactions gets a turn at it and its
      * ceiling/floor neighbours are real KIND_STATIC cells to burst into,
@@ -646,7 +646,7 @@ test_a_confined_gas_pocket_bursts_instead_of_just_catching(void) {
     const int impulse_count = s.impulse_count;
 
     /* Freed BEFORE the assertions: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. All reads of confined_gas_impulse_buf (via `s`) are done by
      * this point. */
     free(confined_gas_impulse_buf);
@@ -786,7 +786,7 @@ test_an_open_gas_pocket_still_just_catches_fire(void) {
     sand_enable_impulses(&s, confined_gas_impulse_buf, W * H);
     sand_set_mobility(&s, 0); /* keep the gas from rising away before
                                  * reactions gets a turn at it this same
-                                 * step - see test_fire_is_not_smothered_
+                                 * step, see test_fire_is_not_smothered_
                                  * by_gas's own use of this for the same
                                  * reason */
 
@@ -805,7 +805,7 @@ test_an_open_gas_pocket_still_just_catches_fire(void) {
     const int impulse_count = s.impulse_count;
 
     /* Freed BEFORE the assertions: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(confined_gas_impulse_buf);
 
@@ -1066,7 +1066,7 @@ static void
 test_fire_spreads_through_a_connected_pocket_in_one_step(void) {
     fixture();
     sand_set_gas_walk(&s, false); /* gas runs before reactions in
-                                     * sand_step() - the walk would scatter
+                                     * sand_step(); the walk would scatter
                                      * this line before reactions ever saw
                                      * it, so the pass is pinned to isolate
                                      * reaction scan order, not gas motion */
@@ -1863,7 +1863,7 @@ test_placing_fire_arms_both_gas_and_fire_passes(void) {
  * smothering itself or drifting away before reactions runs. fire_room()
  * won't do here: it seals all four sides with stone, which works for GAS
  * (density 10, lighter than fire's 15, never completes smothered()'s
- * ALL-of-4) but not WOOD (density 150, denser than fire) - a wood
+ * ALL-of-4) but not WOOD (density 150, denser than fire); a wood
  * neighbour on the last open side would complete the smother alone. The
  * cell below fire stays open: gas only rises or spreads sideways, never
  * falls. */
@@ -1947,7 +1947,7 @@ test_an_ember_burns_out_over_time(void) {
 static void
 test_an_ember_flares_fire_into_an_empty_neighbour(void) {
     fixture();
-    /* Decay left off (the default) - see material.c's own comment on
+    /* Decay left off (the default), see material.c's own comment on
      * wood's burn_decay figure and test_an_ember_burns_out_over_time
      * above; this test wants an ember that lives long enough to get many
      * tries at the flare roll, not one racing its own burn-out. */
@@ -2029,7 +2029,7 @@ test_acid_quenching_fire_never_leaves_steam(void) {
     }
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(quench_cells);
 
@@ -2052,7 +2052,7 @@ test_acid_quenching_fire_sometimes_leaves_nothing(void) {
     }
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(quench_cells);
 
@@ -2081,7 +2081,7 @@ test_acid_quenching_fire_favours_smoke_over_gas(void) {
     }
 
     /* Freed BEFORE the assertions: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(quench_cells);
 
@@ -2198,7 +2198,7 @@ test_burnt_out_fire_can_leave_smoke(void) {
 }
 
 /* Relative luminance of a rendered cell, 0-255. The palette stores
- * panel-ready (byte-swapped) RGB565 - see gfx_color.h - so this undoes
+ * panel-ready (byte-swapped) RGB565, see gfx_color.h, so this undoes
  * both before weighting the channels the way an eye does. */
 static int
 cell_luminance(cell_t c) {

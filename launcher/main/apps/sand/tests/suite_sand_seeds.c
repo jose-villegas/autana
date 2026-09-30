@@ -3,7 +3,7 @@
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
- * live in suite_sand_common.{c,h} - see that header.
+ * live in suite_sand_common.{c,h}, see that header.
  */
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
                      * but every file inherited suite_sand.c's own include
@@ -913,7 +913,7 @@ static void
 test_a_limb_travels_outward_instead_of_climbing(void) {
     /* HEAP, not static file scope - one malloc reused across all eight
      * seeds via memset + a fresh sand_init() each time, freed once after
-     * the loop - see drop_impulse_buf's own comment above for why this
+     * the loop, see drop_impulse_buf's own comment above for why this
      * file's static test fixtures cannot share the framebuffer's memory
      * budget. */
     uint8_t* limb_cells = malloc((size_t)LIMB_W * LIMB_H);
@@ -949,7 +949,7 @@ test_a_limb_travels_outward_instead_of_climbing(void) {
     }
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(limb_cells);
 

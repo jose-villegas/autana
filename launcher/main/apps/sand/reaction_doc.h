@@ -41,7 +41,7 @@
  * rather than guessing, if it is anything else (an identifier, a macro, a
  * concatenation), or if `field` does not name one of field_docs[]'s own
  * rows. Write it as a sentence FRAGMENT that completes the generated
- * sentence: lower case, no trailing period - see dump_reactions.c's
+ * sentence: lower case, no trailing period, see dump_reactions.c's
  * field_docs[]/emit_*() functions for the shape it drops into. "if chilled
  * while hot", not "when CELL_VARIANT(n) <= SAND_SHOCK_COLD".
  */

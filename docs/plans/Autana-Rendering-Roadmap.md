@@ -35,19 +35,19 @@ flowchart LR
   classDef side fill:#adb5bd,color:#000,stroke:none
   classDef done stroke:#06d6a0,stroke-width:4px
 
-  subgraph P0["Phase 0 - attribution"]
+  subgraph P0["Phase 0: attribution"]
     direction TB
     frameTime["Frame-time row<br/>sim + draw + present"]:::p0
     cubePerf["Cube perf report,<br/>cycles per covered pixel"]:::p0
   end
-  subgraph P1["Phase 1 - memory, cores and bus"]
+  subgraph P1["Phase 1: memory, cores and bus"]
     direction TB
     resSettings["Resolution / colour<br/>system settings"]:::p1
     busRoot["80 MHz QSPI<br/>clock setting + heal"]:::p1
     corePresent["Core-1 present +<br/>sim/update overlap"]:::p1
     memPlacement["Hot buffers to internal RAM,<br/>icache 32K / dcache 64K experiment"]:::p1
   end
-  subgraph P2["Phase 2 - r3d"]
+  subgraph P2["Phase 2: r3d"]
     direction TB
     s3lExtract["Extract S3L transform<br/>from boot_anim"]:::side
     bandRing["Internal-SRAM band ring"]:::p2
@@ -62,7 +62,7 @@ flowchart LR
     levelEditor["Level editor"]:::side
     sandInstance["Sand core as an instance"]:::side
   end
-  subgraph G["Phases 3-5 - the games"]
+  subgraph G["Phases 3-5: the games"]
     direction TB
     raycaster["Raycaster + FPS"]:::game
     rollingBall["Rolling ball"]:::game
@@ -107,10 +107,10 @@ strength and shake that the shell and apps both call).
 ### Where a frame's time goes, by which path an app takes
 
 An app without `update()` gets a synchronous present: `frame()` runs, then
-`gfx_present()` blocks until the last DMA transfer drains - the CPU idles
+`gfx_present()` blocks until the last DMA transfer drains; the CPU idles
 for the whole present. An app that sets `update()` instead overlaps it:
 core 1 only *reads* a retained PSRAM framebuffer while it presents, in
-parallel with core 0 running the next `update()` - decision B, "read
+parallel with core 0 running the next `update()`, decision B, "read
 PSRAM, never write it in bulk". A PSRAM-resident double buffer with a
 catch-up copy was measured instead of that: the copy cost 6-15 ms per
 frame at ~22 MB/s and sand fell from ~17-20 to 11-12 drawn fps, which is
@@ -178,11 +178,11 @@ flowchart TB
   BALL["Rolling ball:<br/>physics + lighting"]:::game
   PLAT["Platformer:<br/>tiles and/or sand world,<br/>parallax, 2D light"]:::game
 
-  RC["render/rc - raycaster<br/>DDA per column, textured<br/>vertical spans, depth array"]:::r
-  R3D["render/r3d - span rasterizer<br/>flat / Gouraud / dithered / affine,<br/>ordering table, 16-bit z per band, internal SRAM"]:::r
+  RC["render/rc: raycaster<br/>DDA per column, textured<br/>vertical spans, depth array"]:::r
+  R3D["render/r3d: span rasterizer<br/>flat / Gouraud / dithered / affine,<br/>ordering table, 16-bit z per band, internal SRAM"]:::r
   M7["Mode-7 floor<br/>per-scanline affine plane"]:::r
-  SPR["render/r2d - tiles, line scroll,<br/>sprites, collision, sim-window<br/>compositing"]:::r
-  SIM["sim/sand - the automaton as instances:<br/>full-screen world, or VFX windows<br/>over tiles; materials as data"]:::r
+  SPR["render/r2d: tiles, line scroll,<br/>sprites, collision, sim-window<br/>compositing"]:::r
+  SIM["sim/sand: the automaton as instances:<br/>full-screen world, or VFX windows<br/>over tiles; materials as data"]:::r
 
   GFX["gfx retained fb, core-1 present +<br/>internal-SRAM band ring, dirty bands,<br/>mode request at enter()"]:::core
   CM["colormap / palettes + CLUT<br/>textures + Bayer dither"]:::core
@@ -223,9 +223,9 @@ rather than their headline number. A few that are representative:
 - [andresragot/esp32_3d_engine](https://github.com/andresragot/esp32_3d_engine)
   and its P4/S3 sibling: a complete transform/clip/raster pipeline in C
   with a framebuffer, the conventional shape.
-- The 1990s canon these all descend from — Doom's column and span
+- The 1990s canon these all descend from (Doom's column and span
   renderers with a colormap for lighting, Quake's perspective correction
-  every 16 pixels, the PS1's affine-with-subdivision — is the real
+  every 16 pixels, the PS1's affine-with-subdivision) is the real
   reference library. None of it needs a GPU or more RAM than we have.
 
 The S3 demo is the closest match in pixel count and panel interface, so it
@@ -236,7 +236,7 @@ is the one worth putting beside ours:
 | Pixels per frame | 480×320 = 153,600 | 368×448 = 164,864 |
 | Bus | 1 lane × 80 MHz = 10 MB/s | 4 lanes × 40 MHz = 20 MB/s |
 | Full frame on the bus | ~30 ms theoretical, 24 fps achieved | 16.5 ms theoretical; 18.0-18.9 ms measured (`boot_anim_perf` rows, device) |
-| CPU | 2 × Xtensa LX7 @ 240 MHz, FPU | 2 × Xtensa LX7 @ 240 MHz, single-precision FPU — same class of chip |
+| CPU | 2 × Xtensa LX7 @ 240 MHz, FPU | 2 × Xtensa LX7 @ 240 MHz, single-precision FPU, same class of chip |
 | Per-pixel work | flat fill (a store), later affine texture | Gouraud: 3 barycentric interpolations + RGB pack + 4 bbox compares |
 | Triangles | a few hundred small ones | 12 that each cover thousands of pixels |
 | Frame pipeline | interlaced fields | full frames, or interlaced via the Diagnostics toggle |
@@ -258,7 +258,7 @@ Three things fall out of that table:
    small triangles; at this pixel count it is not the metric that binds.
 3. **We already hold every hardware lever that list uses, plus two it does
    not.** Two Xtensa LX7 cores at 240 MHz with a hardware FPU are this
-   board's own silicon, not a wishlist — integer math, lookup tables,
+   board's own silicon, not a wishlist: integer math, lookup tables,
    interlacing, no runtime allocation and spans all still apply, and the
    second core and the FPU are levers the SPI demo's single-core chip does
    not have at all. None of it is wired into the render path yet: today
@@ -288,15 +288,15 @@ cheap per pixel. Where a trick lands in this plan:
 | Trick | Origin | What it was | Our version | Where |
 |---|---|---|---|---|
 | **Line scroll** | Saturn VDP2 | a per-scanline horizontal offset table for background layers: parallax, wavy water, heat shimmer | a per-row offset per layer in the tile renderer; rows are already the unit gfx presents, so it costs no extra bus work | r2d, platformer |
-| **Rotation plane** ("Mode 7") | Saturn VDP2, SNES | a floor/ceiling as one affine-transformed texture, per scanline a constant (u,v) step | per-scanline affine floor: one load + one store per pixel, no polygons — the cheapest possible ground for the raycaster and a viable v1 table for the rolling ball before a heightfield mesh | raycaster floor, ball |
+| **Rotation plane** ("Mode 7") | Saturn VDP2, SNES | a floor/ceiling as one affine-transformed texture, per scanline a constant (u,v) step | per-scanline affine floor: one load + one store per pixel, no polygons, the cheapest possible ground for the raycaster and a viable v1 table for the rolling ball before a heightfield mesh | raycaster floor, ball |
 | **Mesh transparency** | Saturn VDP1 | a checkerboard of drawn/skipped pixels instead of real blending | already here: `gfx_fill_rect_dither` / `gfx_blit_dither` on the 4×4 Bayer table | done |
 | **Distorted sprites** | Saturn VDP1 | every polygon is a quad, textured by *forward* mapping (walk texels, write pixels) | a sprite scaler/rotator for billboards: FPS enemies, the ball, particles. Forward mapping leaves gaps on magnification, so use it for shrink/rotate only | raycaster, ball |
 | **Backgrounds on a separate layer** | Saturn VDP2 | sky and distant scenery as scrolling bitmap layers, polygons only on objects | a scrolling skybox strip drawn as a 2D blit before the 3D pass, never a triangle | raycaster, ball |
-| **Ordering table** | PS1 GPU | no z-buffer; a bucket sort by depth (one linked list per depth slot), painter's order in O(n) | per-band OT instead of small3dlib's sort — cheaper than a comparison sort and gives band binning for free when the bucket key includes the band | r3d |
+| **Ordering table** | PS1 GPU | no z-buffer; a bucket sort by depth (one linked list per depth slot), painter's order in O(n) | per-band OT instead of small3dlib's sort: cheaper than a comparison sort and gives band binning for free when the bucket key includes the band | r3d |
 | **Affine texturing with subdivision** | PS1 | no perspective correction per pixel; near polygons are split so the warp stays small | perspective-correct every 8–16 px with linear steps between (the Quake cadence), and subdivide only the nearest floor quads | r3d |
 | **4-bit CLUT textures** | PS1 | textures as 4- or 8-bit palette indices; a 64×64 4-bit texture is 2 KB | indexed textures in RAM, palette × light level folded into one colormap lookup (index → lit RGB565). This is what makes textures affordable on a 40 KB free block | r3d, raycaster |
 | **Pre-lit vertices** | PS1 | lighting baked into vertex colours at authoring time; only moving lights computed at runtime | the same, plus Gouraud by stepping; point lights per vertex only | r3d, ball |
-| **Depth-cue fog** | PS1 | colour blended toward a fog colour by depth | a light-level column in the colormap indexed by span depth — the Doom "light diminishing" table, one lookup per span | r3d, raycaster |
+| **Depth-cue fog** | PS1 | colour blended toward a fog colour by depth | a light-level column in the colormap indexed by span depth, the Doom "light diminishing" table, one lookup per span | r3d, raycaster |
 | **Subpixel precision** | what the PS1 *lacked* | integer vertex snapping gave the PS1 its polygon wobble | keep 4 fractional bits in span setup; it costs setup math only, not per-pixel, so we get the stability the PS1 could not afford | r3d |
 | **Precomputed visibility** | Crash Bandicoot, Quake PVS | per-region lists of what can be seen, computed offline | per-cell or per-sector visibility baked into the map for the sector renderer; a raycaster does not need it | FPS, later |
 | **Vertex animation, not skinning** | PS1 | keyframed vertex positions, interpolated | same: no bones, no per-vertex matrix palette | ball, FPS |
@@ -314,7 +314,7 @@ them.
 
 What we have and what each fact means for a renderer. Sources: the
 ESP32-S3 datasheet, the boot-time BSP probe, and this repo's own device
-captures — see [Board-and-Memory.md](../notes/Board-and-Memory.md) and
+captures; see [Board-and-Memory.md](../notes/Board-and-Memory.md) and
 [Display-and-Rendering.md](../notes/Display-and-Rendering.md) for the full
 detail behind every row.
 
@@ -324,20 +324,20 @@ detail behind every row.
 | FPU | single-precision hardware; `double` is software-emulated | float32 is fine per vertex/object; `double` stays banned on the device (decision A) |
 | SIMD | PIE 128-bit (16×8 / 8×16 lanes), inline asm only | any vector path sits behind a scalar reference implementation with a test asserting identical output (decision A) |
 | Integer mul/div | hardware, pipelined 32-bit mul and div; **64-bit div is a library call** | `__divdi3` and signed `/ 2^n` stay banned in hot loops (see the Optimization Playbook's "A 64-bit divide on a 32-bit core is a library call" and "Division by a power of two is not automatically a shift") |
-| Internal RAM | 512 KB SRAM: ~296 KiB main heap region + 21 KiB + 32 KiB DRAM at boot; free heap and largest block after `gfx_init()` (framebuffer excluded — it lives in PSRAM) are `DP_FREE_HEAP_BYTES`/`DP_LARGEST_FREE_BLOCK_BYTES` (Board-and-Memory.md) | stacks, the DMA gather and strip buffers, and hot per-step buffers (sand's grids, via `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536`) live here; the band ring's buffers will too |
+| Internal RAM | 512 KB SRAM: ~296 KiB main heap region + 21 KiB + 32 KiB DRAM at boot; free heap and largest block after `gfx_init()` (framebuffer excluded: it lives in PSRAM) are `DP_FREE_HEAP_BYTES`/`DP_LARGEST_FREE_BLOCK_BYTES` (Board-and-Memory.md) | stacks, the DMA gather and strip buffers, and hot per-step buffers (sand's grids, via `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536`) live here; the band ring's buffers will too |
 | PSRAM | 8 MB octal @ 80 MHz (120 MHz experimental); `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps allocations up to 64 KB internal and routes larger ones here; memcpy out ~58 MB/s, in ~47, PSRAM to PSRAM ~22 | under decision B this is read-only bulk/cold storage: the one retained framebuffer, textures and levels; it is never the target of a full-screen write or copy; headroom is a non-issue |
-| Data cache | 32 KB, 32-byte line, 8-way; 64 KB measured no gain | every PSRAM access — CPU render writes and DMA present reads alike — goes through this cache; see 3.3 |
-| Instruction cache | 32 KB, 32-byte line, 8-way (`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB`; IDF's default is 16 KB) — the larger size measured 1-11% per sand step | costs 16 KB of internal RAM over the default |
-| DMA | GDMA, 3 TX + 3 RX channels; async memcpy supported | strip transfers already DMA; mem-to-mem copies could offload clears — measure, do not assume |
+| Data cache | 32 KB, 32-byte line, 8-way; 64 KB measured no gain | every PSRAM access (CPU render writes and DMA present reads alike) goes through this cache; see 3.3 |
+| Instruction cache | 32 KB, 32-byte line, 8-way (`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB`; IDF's default is 16 KB): the larger size measured 1-11% per sand step | costs 16 KB of internal RAM over the default |
+| DMA | GDMA, 3 TX + 3 RX channels; async memcpy supported | strip transfers already DMA; mem-to-mem copies could offload clears; measure, do not assume |
 | Display bus | QSPI, both board revisions share the same 368×448 panel geometry and SPI2 wiring, all through the GPIO matrix; 40 MHz clean, 80 MHz outside the panel's 50 MHz rating | 80 MHz halves present but corrupts partial redraws; full-frame renderers are safe, partial ones need 40 or gfx heal (3.2) |
-| Second processor | ULP-RISC-V and ULP-FSM coprocessors | low-power only, not a render resource — they cannot touch the framebuffer at speed |
+| Second processor | ULP-RISC-V and ULP-FSM coprocessors | low-power only, not a render resource: they cannot touch the framebuffer at speed |
 | Graphics acceleration | none (`SOC_PPA_SUPPORTED` is P4-only) | scalar C, verified not assumed |
 
 The two numbers to carry in your head for the S3:
 
 - **Cycles per pixel per core.** 240 MHz at 60 fps is 4 M cycles per frame
-  per core, or **~24 cycles per pixel for a full-screen pass on one core**
-  — computed from the clock and the pixel count, not measured. At 30 fps
+  per core, or **~24 cycles per pixel for a full-screen pass on one core**,
+  computed from the clock and the pixel count, not measured. At 30 fps
   it is ~48. At half resolution (184×224, the sand grid's own size) it is
   ~97 at 60 fps. Every renderer design below is judged against this
   ceiling. Two cores exist (decision B puts read-only present on the
@@ -352,19 +352,19 @@ The two numbers to carry in your head for the S3:
   band ring's own band buffers (64 rows / 47 KiB each) for full-redraw
   renderers. PSRAM (8 MB) holds the one retained framebuffer (322 KiB),
   textures and levels, with room to spare; decision B keeps it read-only
-  in bulk, so no z-buffer lives here — a full-redraw renderer's z-buffer
+  in bulk, so no z-buffer lives here: a full-redraw renderer's z-buffer
   is per-band, in internal SRAM, alongside the band it belongs to.
   Measured: PSRAM read throughput is 33-58 MB/s depending on access
   pattern, versus 365-724 MB/s for internal RAM, and PSRAM writes cost
   more than reads because each cache line is loaded from PSRAM before
   it is written back (device; Espressif staff on esp32.com;
-  matches the independent project-x51/esp32-s3-memorycopy benchmark) —
+  matches the independent project-x51/esp32-s3-memorycopy benchmark),
   the reason decision B avoids bulk PSRAM writes rather than trying to
   make them cheap.
 
-What the move to PSRAM costs the sand campaign's existing findings — which
+What the move to PSRAM costs the sand campaign's existing findings (which
 of them transfer to a chip with a data cache and which were written on the
-premise that there is none — split cleanly: the algorithmic skips
+premise that there is none) split cleanly: the algorithmic skips
 transfer, and the old SRAM-mask-style wins plausibly do not, because a
 data cache now sits between the CPU and where the grids live (see
 [`notes/Optimization-Playbook.md`](../notes/Optimization-Playbook.md), "Know
@@ -382,7 +382,7 @@ all is retired now that the port has happened.
 Nothing measures the frame a user sees: every sand budget row times
 `sand_step()` alone, the present-cost rows time the bus alone, and the
 cube has no committed numbers on this board. A real
-frame-time row — sim + draw + present — is the prerequisite for
+frame-time row (sim + draw + present) is the prerequisite for
 everything in this document. Add to it:
 
 - Run `suite_cube_perf.c` on the device and check the report in (all four
@@ -403,8 +403,8 @@ present figures sit above the 16.5 ms theoretical; the gap is *unmeasured*
 why.
 
 **80 MHz is the default.** Reading the framebuffer in
-place from PSRAM does not survive 80 MHz — DMA from PSRAM shares the PSRAM
-bus's bandwidth and the panel received dropped data — so every full-width
+place from PSRAM does not survive 80 MHz: DMA from PSRAM shares the PSRAM
+bus's bandwidth and the panel received dropped data, so every full-width
 strip is copied into one of two 47 KB internal DMA buffers first. On the
 device that took the boot animation from 22.9 to 28.4 fps and the cube and
 sand from 11.8–14.3 to 16.7–20.3 drawn frames per second, at a cost of
@@ -443,9 +443,9 @@ replace it, chosen by app kind:
 
 1. **Retained apps** (sand, the UI, anything that draws only what
    changed) get **one retained framebuffer in PSRAM**. Present runs on
-   core 1 and only *reads* it — strip copies into internal DMA buffers,
-   then the bus, ~10.2-10.9 ms per full frame measured (device)
-   — while core 0 runs the next frame's update step in
+   core 1 and only *reads* it: strip copies into internal DMA buffers,
+   then the bus, ~10.2-10.9 ms per full frame measured (device),
+   while core 0 runs the next frame's update step in
    parallel. The draw phase waits for core 1 to finish reading, so there
    is no second buffer and no copy. This needs the app contract to
    separate an update phase from a draw phase so the shell can schedule
@@ -454,10 +454,10 @@ replace it, chosen by app kind:
 2. **Full-redraw renderers** (the 3D renderer, raycaster, image kernels)
    get **a band ring in internal SRAM**: band buffers, `GFX_BAND_HEIGHT`
    rows each (a Kconfig choice of 16/32/64, default 32 pending a device
-   sweep - `tools/sweeps/band_height_sweep.sh`, section 8 decision 2),
-   rendered and sent in turn, PSRAM never written. **The ring itself is built** - `gfx_mode_enter()`
+   sweep: `tools/sweeps/band_height_sweep.sh`, section 8 decision 2),
+   rendered and sent in turn, PSRAM never written. **The ring itself is built**: `gfx_mode_enter()`
    grants `GFX_LAYOUT_BANDS`; `gfx_band_run()` (`gfx/gfx_band_run.h`) hands
-   each dirty band to `draw_band` and sends it - and render_lab's cube scene ports onto it by transforming
+   each dirty band to `draw_band` and sends it, and render_lab's cube scene ports onto it by transforming
    and depth-sorting the scene once per frame, binning each triangle by its
    own screen-space row range, and per band drawing only the triangles that
    overlap it, scissored to that band's rows by a small hook added to
@@ -478,8 +478,8 @@ The doubling belongs to gfx (section 8,
 decision 1) and moves there when gfx resolves an app's resolution; until
 then `r3d_lit_frame_double()` does it inside render/.
 
-PSRAM's role narrows to bulk and cold data read at load or per frame —
-textures, levels, the retained framebuffer as a read source — never the
+PSRAM's role narrows to bulk and cold data read at load or per frame:
+textures, levels, the retained framebuffer as a read source, never the
 target of full-screen writes, effects, or copies. 120 MHz PSRAM
 (experimental, flash also at 120 MHz, being made the development default)
 raised cube frame rates 4-9% and left the sand simulation unchanged (it
@@ -518,8 +518,8 @@ different interlace setups is a real constraint, and it splits "interlace"
 into two independent halvings that today's toggle conflates:
 
 - *Bus-side*: which rows are sent. This is always panel rows, because a
-  QSPI window is a run of whole rows and every transaction costs ~118 µs
-  — alternate *columns* cannot be sent cheaply. Its comb artifact appears
+  QSPI window is a run of whole rows and every transaction costs ~118 µs;
+  alternate *columns* cannot be sent cheaply. Its comb artifact appears
   on motion perpendicular to the field lines, so in portrait it combs on
   vertical motion (falling sand) and in landscape on horizontal motion
   (a scrolling platformer, an FPS turning). The same field split is
@@ -554,7 +554,7 @@ the per-frame change is the union of the old and new bounding boxes of
 the moving objects, and fill and bus both drop by an order of magnitude.
 There are two ways to get it:
 
-- *Retained framebuffer plus dirty rectangles* — the classic form, how
+- *Retained framebuffer plus dirty rectangles*: the classic form, how
   fixed-camera games of the PS1 era worked, and exactly what decision B's
   retained-app mechanism gives for free. Static geometry is drawn once;
   each frame restores the background under the old boxes (either
@@ -562,7 +562,7 @@ There are two ways to get it:
   pre-rendered background baked into flash like the boot photograph) and
   redraws the dynamic objects. Needs full-fb mode: 322 KiB, or ~80 KB at
   half-res.
-- *With the band ring, band-level dirtiness* — no retained buffer; the
+- *With the band ring, band-level dirtiness*: no retained buffer; the
   scene is the retained state. A band nothing moved through is neither
   rendered nor sent. A band something moved through is re-rendered whole
   from the scene and sent. No restore step, no second copy, and it
@@ -572,7 +572,7 @@ There are two ways to get it:
   baked per-band background image removes. Prototyped for the cube
   (`gfx_band_dirty()`, `gfx.c`): reuses `gfx_dirty.h`'s own strip/cell
   tracker rather than a second one, fed by the app's own frame bounding
-  box and by `ui.c`'s per-band command hashing - still whole-band
+  box and by `ui.c`'s per-band command hashing: still whole-band
   touch/skip only, no column-span narrowing within a touched band yet.
 
 This is a per-app choice through the same `enter()` request, and it
@@ -588,14 +588,14 @@ into per-span, per-triangle, or bake-time work:
 - **Spans, not callbacks.** Rasterize scanlines into spans (x0, x1, and
   the per-span start values and deltas), then fill spans in a tight loop
   the compiler can see whole. small3dlib's design is a callback per pixel
-  with barycentrics recomputed per pixel — good for a teaching library,
+  with barycentrics recomputed per pixel, good for a teaching library,
   wrong for this budget. Keep its transform half (extracting exactly
   that family out of `boot_anim.h`); replace the rasterizer.
 - **Step, don't interpolate.** Gouraud becomes three adds per pixel (or
   one add on a packed 5-6-5 accumulator with guard bits) instead of nine
   multiplies. Affine texture mapping becomes two adds and one load.
   Perspective correction, when wanted, is done once every 8 or 16 pixels
-  with linear steps in between — the PS1/Quake trick, and small3dlib's
+  with linear steps in between, the PS1/Quake trick, and small3dlib's
   `S3L_PERSPECTIVE_CORRECTION 2` does the same.
 - **Two pixels per store.** RGB565 pairs into one 32-bit write, the same
   trick `gfx_clear()` already uses. Flat spans are `memset`-shaped.
@@ -620,7 +620,7 @@ into per-span, per-triangle, or bake-time work:
   | Per-pixel dither, threshold lookup | 5–8 |
 - **Lighting through tables, not arithmetic.** Doom's colormap: a
   32-level × 256-entry table maps (light, colour index) to a packed RGB565
-  word — one load per pixel, no per-channel math, and the table is 16 KB
+  word: one load per pixel, no per-channel math, and the table is 16 KB
   in flash or 16 KB in RAM if the icache misses show up. Dithered
   gradients (the Bayer machinery in `gfx_color.h`) replace true blending
   everywhere except at glyph scale.
@@ -629,7 +629,7 @@ into per-span, per-triangle, or bake-time work:
   size). Fill cost drops 4×, the band buffers drop 4×, and on a 1.8-inch
   AMOLED the doubling is barely visible. The bus bytes do not change
   (the panel has no scaler), so this is a CPU and RAM lever, not a bus
-  lever — which is why 3.2 and 3.3 come first. Resolution is the app's
+  lever, which is why 3.2 and 3.3 come first. Resolution is the app's
   choice at `enter()`, capped by a system-wide maximum the user sets
   (decision 1 in section 8): gfx grants min(requested, system max) and
   reports back what was granted.
@@ -664,7 +664,7 @@ technique that fits the ~24 cycles-per-pixel-per-core budget.
 ### 4.1 FPS with gyro and buttons → raycaster first, sectors later
 
 A grid-map raycaster (Wolfenstein-style) is the right first FPS on this
-class of hardware, and it is not a compromise — it is what the budget
+class of hardware, and it is not a compromise; it is what the budget
 buys at 60 fps:
 
 - One ray per screen column: 368 rays, or 184 at half-res. Each is a DDA
@@ -683,7 +683,7 @@ buys at 60 fps:
   on-screen stick if two buttons prove too few.
 
 The band ring (3.3) fits a raycaster naturally: columns are independent,
-so rendering band *k* means rendering 64 rows of every column — the ray
+so rendering band *k* means rendering 64 rows of every column: the ray
 results (hit distance, texture column, span bounds) are computed once per
 frame and the per-band pass is only fills.
 
@@ -699,18 +699,18 @@ band ring's per-band z-buffer in internal SRAM (3.3) earn their place:
 - The world is a heightfield or tiled floor, rendered as a mesh with
   vertex lighting (Gouraud via span stepping) and an affine floor texture.
   A regular grid drawn back-to-front from the camera needs no z-buffer at
-  all — painter's order is trivial on a grid — so the depth buffer can be
+  all: painter's order is trivial on a grid, so the depth buffer can be
   skipped until something non-grid appears.
-- A cheaper v1 exists (section 1.1): a flat Mode-7 floor — one affine
+- A cheaper v1 exists (section 1.1): a flat Mode-7 floor (one affine
   texture, per-scanline constant steps, one load and one store per
-  pixel — with the ball and obstacles as sprites. It has no height, but
+  pixel) with the ball and obstacles as sprites. It has no height, but
   it needs no mesh rasterizer, so it can be playable before r3d lands
   and then be replaced by the heightfield when slopes are wanted.
 - The ball is a sphere, and a sphere is view-invariant: shade it as a disc
   with a baked normal lookup (a radius-squared table gives the normal per
   pixel, one N·L per pixel or a baked lit-disc sprite per light bucket).
   Its rolling is conveyed by a textured shell, which is an affine sprite
-  rotation — or by the shadow and motion alone, which is cheaper and
+  rotation, or by the shadow and motion alone, which is cheaper and
   reads fine at this size. Shadow: a dithered dark ellipse.
 - Physics is fixed-point 2.5D on the heightfield (position, velocity,
   slope from the height gradient); the gyro's gravity vector, from the
@@ -735,7 +735,7 @@ combine. The architectural requirement that makes the combination
 possible is stated at the end, because it has to be built before either
 track gets far.
 
-**Track A — the tile engine, scrolling.**
+**Track A: the tile engine, scrolling.**
 
 - Layered tile map with **parallax scrolling** (layers move at different
   rates); each layer is a blit of 16×16 or 32×32 tiles, a screen is 23×28
@@ -751,9 +751,9 @@ track gets far.
   Per-pixel parallax *mapping* (a raymarch per pixel) is not on the
   table; a one-step normal/height UV offset gives most of that cue.
 
-**Track B — the sand automaton as the world.**
+**Track B: the sand automaton as the world.**
 
-Noita is the precedent — a platformer where the world is a falling-sand
+Noita is the precedent: a platformer where the world is a falling-sand
 simulation and the player is a sprite colliding against cells. What it
 buys is everything already built and tuned: destructible terrain,
 liquids, fire, heat and reactions for free; block sleeping so a static
@@ -762,7 +762,7 @@ keeps every present cheap in a fixed-camera room.
 
 - **Levels are placed blocks of a material.** A level is an ordered list
   of rectangles, each "material *m*, size (*w*, *h*), at (*x*, *y*)" in
-  cell units — not a uniform tile grid. Loading
+  cell units, not a uniform tile grid. Loading
   a room fills the rectangles into the instance's grid in list order, so
   a later block overwrites an earlier one and carving is just a block of
   empty. A list of a few dozen records is a few hundred bytes, so levels
@@ -797,18 +797,18 @@ keeps every present cheap in a fixed-camera room.
   a handful of lookups. Sprites draw after the sand pass and mark their
   rectangles dirty, so a frame where nothing moves sends nothing.
 - **2D lighting** is a per-block light level folded into the per-cell
-  palette lookup the draw pass already does — `palette[material][light]`
-  — at near-zero cost, plus dithered radial gradients for soft edges.
+  palette lookup the draw pass already does, `palette[material][light]`,
+  at near-zero cost, plus dithered radial gradients for soft edges.
   Per-pixel normal-mapped lighting stays an option inside a light's
   radius only.
 
-**Track C — the mix: the automaton as a VFX and terrain layer over
+**Track C: the mix: the automaton as a VFX and terrain layer over
 tiles.** This is where the two stop being alternatives:
 
 - **Windowed simulation.** Run the automaton only inside small
-  rectangular *sim windows* anchored in world space — a torch's fire, a
+  rectangular *sim windows* anchored in world space (a torch's fire, a
   pipe pouring water, sand released by a trap, an explosion, smoke and
-  sparks — composited over the scrolling tile map. A 48×48-cell window is
+  sparks) composited over the scrolling tile map. A 48×48-cell window is
   2.3 KB and a few microseconds when settled; a dozen of them are cheaper
   than one full grid. Empty cells are transparent, so the tiles show
   through. The cellular automaton becomes the particle system, with
@@ -831,9 +831,9 @@ tiles.** This is where the two stop being alternatives:
   the windows' step, which is small. In a room-based game the whole
   screen can be one window and Track B falls out as the special case.
 
-**Track C design sketch.** The two things the mix needs —
+**Track C design sketch.** The two things the mix needs:
 cells that are spatially aware of layers, and cells that survive
-scrolling — are one design seen from two sides, and the choice that
+scrolling, are one design seen from two sides, and the choice that
 decides it is *which coordinate frame the cells live in*. The answer is
 both, for different jobs:
 
@@ -844,14 +844,14 @@ both, for different jobs:
   Windows are created by emitters and events, grow to a cap when grains
   reach their edge, sleep through the existing block sleeping, and close
   when empty or when settled cells bake back into a tile. Cells in
-  different windows do not interact — fine for effects, and the reason
+  different windows do not interact, fine for effects, and the reason
   terrain needs the other frame.
 - **A screen-anchored grid with a scroll vector, for the active area.**
   One grid the size of the screen plus a margin. Camera motion is
   accumulated and split: the whole-cell part is applied *between* steps
   as a translation of the grid (one `memmove` per row, ~41 KB, well under
   a millisecond) and the strip that came into view is filled from the
-  world — the gameplay tile layer's collision mask as static solid cells,
+  world: the gameplay tile layer's collision mask as static solid cells,
   plus any stored cells for that strip from a compressed off-screen
   store. The fractional part (cells are 2 px, the camera moves in
   pixels) is only a draw offset. Physics never sees the scroll. This is
@@ -873,10 +873,10 @@ both, for different jobs:
   per-pixel cost.
 - **Compositing.** Scrolling: every frame is full, so the draw is
   `draw(instance, band, clip, offset)` per band for each overlapping
-  window — the band ring of 3.3. Rooms: the row-run dirty path as today.
+  window, the band ring of 3.3. Rooms: the row-run dirty path as today.
   Same instance type, two draw paths.
 - **Budget, estimates.** A 48×48 window is ~2,300 cells: from the sand
-  app's measured 6,623 us full-size step for 41,216 cells (device —
+  app's measured 6,623 us full-size step for 41,216 cells (device;
   see 3.3 for why this is currently slower than the
   pegged budget), *estimate* ~0.37 ms per step fully active
   and near zero asleep, so a dozen live windows are *estimate* a few
@@ -906,9 +906,9 @@ both, for different jobs:
   scale.
 - **Keep the quad axis-aligned with an integer scale** (1×, 2×, 4× cells
   to pixels). A rotated or arbitrarily scaled quad turns the cheap blit
-  into a per-pixel affine sample — the Mode-7 cost class — which is not
+  into a per-pixel affine sample, the Mode-7 cost class, which is not
   worth paying for smoke.
-- **Left open on purpose:** what happens when two windows meet — merge
+- **Left open on purpose:** what happens when two windows meet: merge
   into one, or stay independent. Effects can stay independent; terrain
   cannot, and that boundary is exactly where the active-area grid takes
   over from windows. Decide on the first case that needs it.
@@ -968,13 +968,13 @@ apps/       the games, each a folder, APP_REGISTER, no other file touched
 Principles, each of which is already a repo habit:
 
 - **Numeric policy (decision A).** float32 is allowed
-  per vertex and per object — transforms, physics, lighting setup;
+  per vertex and per object: transforms, physics, lighting setup;
   per-pixel and per-cell hot loops, and anything that must be bit-exact
   between host and device (the sand simulation and its fingerprint rule),
   stay integer/fixed point. `double` is banned on the device
   (software-emulated); PIE SIMD sits behind a scalar reference
   implementation with a test asserting identical output. The FPU does not
-  help sand — there is no float math in its hot loop; sand's levers are
+  help sand: there is no float math in its hot loop; sand's levers are
   memory placement and branches (3.3).
 - **Everything above `board/` compiles on the host.** The boot animation
   editor already renders real frames through the real `gfx.c` on the host
@@ -998,7 +998,7 @@ Principles, each of which is already a repo habit:
 - **One board, `board/` binds the facts.** `board/board.h` and
   `board_esp32s3.c` pick the bus clocks, the PSRAM policy (one retained
   framebuffer read by core-1 present; full-redraw renderers use the
-  internal-SRAM band ring instead), and the input wiring — one binary, one
+  internal-SRAM band ring instead), and the input wiring: one binary, one
   board, no per-target folders. Same panel, same driver, same dirty
   tracker across the two detected hardware revisions.
 
@@ -1014,9 +1014,9 @@ in.
 | **0. Attribution on the S3** | Real frame-time row (sim + draw + present); cube perf report checked in (all four variants: baseline, no HUD, no partial, interlaced); a cycles-per-covered-pixel counter; re-peg the device frame budgets once memory placement is settled | A checked-in `suite_cube_perf.c` report, every row sourced |
 | **1. Memory, cores and bus** | Core-1 present with sim/update overlap for retained apps (decision B); 80 MHz QSPI on this panel (present measured ~10.2-10.9 ms full-frame; out of the panel's rating, so a 40/80 display setting plus an opt-in heal for partial-redraw apps); an internal-RAM build-time gate now that hot buffers are internal | Sand frame time serial vs overlap measured and checked in; core 0's update never blocks on core 1's present |
 | **2. r3d v1** | Span rasterizer built band-aware into the internal-SRAM band ring (3.3): flat, Gouraud, affine texture, colormap lighting; transform/clip extracted from boot_anim; triangle binning; half-res mode (scope unchanged) | Gates recomputed for 240 MHz and the band ring; cycles/pixel judged against the ~24 cycles/pixel/core ceiling (section 2), the old flat/textured sub-targets pending re-derivation |
-| **3. Raycaster and the FPS prototype** | `render/rc`, column-major textures, per-column depth, sprites, gyro look via the tilt/shake library, buttons move (scope unchanged) | Original target — 60 fps full-res walls + sprites, playable on the glass — reviewed against S3 numbers once Phases 0-1 land |
-| **4. Rolling ball** | Heightfield mesh on r3d, lit-disc ball, 2.5D fixed-point physics, gyro gravity (scope unchanged) | Original target — 30+ fps full-res, physics stable at dt 16-33 ms — reviewed against S3 numbers |
-| **5. Platformer, two tracks and the mix** | Sand core as an instance (size-agnostic, several alive, host-supplied boundary); Track B first: sprite + collision layer over the automaton, rooms, per-block lighting; level editor; materials as baked data; then Track A tiles + line scroll and Track C sim windows over tiles (scope unchanged) | Original targets — Track B ≥ 30 fps with the automaton live, zero bands sent when nothing moves; Track A/C 60 fps scrolling with three layers and a dozen live sim windows — reviewed against S3 numbers |
+| **3. Raycaster and the FPS prototype** | `render/rc`, column-major textures, per-column depth, sprites, gyro look via the tilt/shake library, buttons move (scope unchanged) | Original target: 60 fps full-res walls + sprites, playable on the glass, reviewed against S3 numbers once Phases 0-1 land |
+| **4. Rolling ball** | Heightfield mesh on r3d, lit-disc ball, 2.5D fixed-point physics, gyro gravity (scope unchanged) | Original target: 30+ fps full-res, physics stable at dt 16-33 ms, reviewed against S3 numbers |
+| **5. Platformer, two tracks and the mix** | Sand core as an instance (size-agnostic, several alive, host-supplied boundary); Track B first: sprite + collision layer over the automaton, rooms, per-block lighting; level editor; materials as baked data; then Track A tiles + line scroll and Track C sim windows over tiles (scope unchanged) | Original targets: Track B ≥ 30 fps with the automaton live, zero bands sent when nothing moves; Track A/C 60 fps scrolling with three layers and a dozen live sim windows, reviewed against S3 numbers |
 | **Throughout** | Graduate boot-anim tech (the authored-timeline system, the S3L transform extraction); host render harness; inlining-cliff gate | Every graduated piece has a second consumer and a reference test |
 
 Phase 0 is a week of measurement and no shipping code. Phases 1 and 2 are
@@ -1035,7 +1035,7 @@ cheapest path to something that is unmistakably a game.
   retained buffer and band ring, and do not add LVGL.** Decision B
   already gives retained apps one PSRAM framebuffer read
   only by present, and full-redraw renderers an internal-SRAM band ring
-  with its own per-band z-buffer — anything more is redundant state to
+  with its own per-band z-buffer: anything more is redundant state to
   keep in sync. A full-screen z-buffer in PSRAM is specifically ruled
   out: per-pixel access to it pays PSRAM's read cost on every touch (3.3).
   LVGL is ruled out in Firmware-Architecture.md regardless.
@@ -1047,12 +1047,12 @@ cheapest path to something that is unmistakably a game.
   half, replace its rasterizer.
 - **Do not put `double`, a 64-bit divide, or a signed divide by a power of
   two in a hot loop.** `double` is software-emulated even with the S3's
-  FPU; the divides are the two known traps - the Optimization Playbook's
+  FPU; the divides are the two known traps: the Optimization Playbook's
   "A 64-bit divide on a 32-bit core is a library call" and "Division by a
   power of two is not automatically a shift". float32 is fine per vertex
-  or per object — it does not belong in a per-pixel/per-cell loop or
+  or per object: it does not belong in a per-pixel/per-cell loop or
   anywhere that must stay bit-exact with the host (decision A).
-- **Do not trust a host win on a work-quantity change** - the Optimization
+- **Do not trust a host win on a work-quantity change**: the Optimization
   Playbook's "A host-validated win is a hypothesis until the target
   measures it"; host numbers are for code shape.
 
@@ -1075,7 +1075,7 @@ cheapest path to something that is unmistakably a game.
    image kernels); PSRAM is never their render target (one
    measured exception, section 3.3). Band height stays
    a compile-time constant (`GFX_BAND_HEIGHT`, divisors of 448: 64, 32,
-   16), now a Kconfig choice rather than a hard-coded macro — the ring
+   16), now a Kconfig choice rather than a hard-coded macro: the ring
    ships with 32 as the default, absent a device sweep saying otherwise.
    `tools/sweeps/band_height_sweep.sh` builds one diagnostics image per
    height (one command each); Phase 2 still ends with the device sweep
@@ -1137,7 +1137,7 @@ what is making it:
   never seen red proves nothing. Sand's byte-identical fingerprint rule
   applies to anything that touches the sand app.
 - A performance claim is measured on the device with its source named, or
-  explicitly marked an estimate — no "should be faster". Verify inlining
+  explicitly marked an estimate: no "should be faster". Verify inlining
   with `objdump`, not the attribute, and diff `.bss` for every build
   variant before trusting a static buffer's size.
 - No new file-scope `static` buffer in any build variant without a `.bss`
@@ -1157,13 +1157,13 @@ what is making it:
 
 ## Related
 
-- [Firmware-Architecture.md](../Firmware-Architecture.md) — the three rules
+- [Firmware-Architecture.md](../Firmware-Architecture.md): the three rules
   the framebuffer modes have to respect.
-- [notes/Display-and-Rendering.md](../notes/Display-and-Rendering.md) — every
+- [notes/Display-and-Rendering.md](../notes/Display-and-Rendering.md): every
   bus and dirty-tracking number cited above, and the parked ideas.
-- [notes/Optimization-Playbook.md](../notes/Optimization-Playbook.md) — the
+- [notes/Optimization-Playbook.md](../notes/Optimization-Playbook.md): the
   code-shape rules a new renderer will hit.
-- [notes/Board-and-Memory.md](../notes/Board-and-Memory.md) — the memory
+- [notes/Board-and-Memory.md](../notes/Board-and-Memory.md): the memory
   budget the retained framebuffer and the band ring are designed against.
-- [Settings-App-Plan.md](Settings-App-Plan.md) — the
+- [Settings-App-Plan.md](Settings-App-Plan.md): the
   mode switch the framebuffer geometry lands in.

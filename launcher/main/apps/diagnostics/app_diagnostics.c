@@ -1,14 +1,14 @@
 /*
- * app_diagnostics - shows the POST report on demand, plus a second page of
+ * app_diagnostics: shows the POST report on demand, plus a second page of
  * developer-only toggles.
  *
  * The POST itself is silent when everything passes, which is the right default
  * for a device that should just boot. This is how you look anyway, without
- * attaching a serial cable - a board in the field usually has nothing on its
+ * attaching a serial cable; a board in the field usually has nothing on its
  * console.
  *
  * Entering it RE-RUNS the checks, so the report is live rather than a record of
- * what boot found - the point of opening it is usually to see whether something
+ * what boot found; the point of opening it is usually to see whether something
  * is failing now.
  *
  * Every check is repeated, including the SD card: the re-run just re-mounts
@@ -16,13 +16,13 @@
  * the report prints how long that round trip took.
  *
  * BOOT pages between the report and the toggle screen, rather than the
- * toggle screen adding a control to the report itself - the report is
+ * toggle screen adding a control to the report itself; the report is
  * already a dense list with no obvious room, and a second page costs
  * nothing the report's own layout has to account for.
  *
  * The toggle screen is built with microui like any other app UI (see
- * ui_launcher.c) - a real checkbox, tappable, drawn and dirty-tracked the
- * same way the launcher's own menu is - rather than hand-rolling a
+ * ui_launcher.c), a real checkbox, tappable, drawn and dirty-tracked the
+ * same way the launcher's own menu is, rather than hand-rolling a
  * one-off control that reads a button directly. Any future developer
  * toggle belongs on this same page as another mu_checkbox() row, not as
  * its own bespoke screen.
@@ -48,7 +48,7 @@
 
 static int page;
 
-/* Persisted like `page` above - a developer toggle that resets to off every
+/* Persisted like `page` above: a developer toggle that resets to off every
  * visit would defeat the point of leaving the board on this screen while
  * physically turning it through its holds to read the numbers off. */
 static int show_orientation;
@@ -59,20 +59,20 @@ static int show_orientation;
  * re-running the checks on every visit already happens via
  * post_rerun() for the (cheap) POST report, but the self test suite is
  * a separate, heavier action the user explicitly asks for by tapping
- * the button below - it must not silently re-run just because the page
+ * the button below; it must not silently re-run just because the page
  * was revisited. -1 means "never tapped yet", so it reads differently
  * from a run that tapped and found zero failures. */
 static int selftest_failures = -1;
 
 /* Set by a tap of the button below; consumed at the top of
- * diagnostics_frame(), never run from inside mu_button()'s own if-block -
+ * diagnostics_frame(), never run from inside mu_button()'s own if-block;
  * see the comment there for why. */
 static bool selftest_pending;
 #endif /* CONFIG_LAUNCHER_SELFTEST */
 
 static void
 diagnostics_enter(void) {
-    /* Always open on the report - the page you came here for by default,
+    /* Always open on the report: the page you came here for by default,
      * and the same screen every time regardless of where a previous visit
      * left off. */
     page = 0;
@@ -88,7 +88,7 @@ draw_toggles_page(const input_t* input) {
     mu_Context* ctx = ui_context();
     ui_begin(input);
 
-    /* imu_read() is an I2C transaction - read only while the checkbox is
+    /* imu_read() is an I2C transaction: read only while the checkbox is
      * already on, not on the frame that turns it on (that frame shows the
      * previous reading's absence for one repaint and self-corrects the
      * next), so a page most visits never enable never pays for it. */
@@ -129,7 +129,7 @@ draw_toggles_page(const input_t* input) {
 #if CONFIG_LAUNCHER_SELFTEST
     /* Only FLAGGED here, not run: selftest_run() itself happens at the top
      * of diagnostics_frame(), outside this page's own ui_begin()/ui_end()
-     * bracket - see the comment there for why it cannot run from inside
+     * bracket; see the comment there for why it cannot run from inside
      * this call. */
     if (result.selftest_clicked) {
         selftest_pending = true;
@@ -145,7 +145,7 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
 
 #if CONFIG_LAUNCHER_SELFTEST
     /* Consumed here, before this frame's own ui_begin()/ui_end() bracket
-     * opens - never from inside mu_button()'s own if-block in
+     * opens, never from inside mu_button()'s own if-block in
      * draw_toggles_page(). selftest_run() runs suite_ui.c, whose
      * fixture() calls ui_init()/mu_init() on the same ui_context()
      * singleton every window in this shell draws through; running it
@@ -156,7 +156,7 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
         selftest_failures = selftest_run();
         /* selftest_run()'s own tests set ui_set_transform() to a fixed
          * sequence of quarter-turns ending wherever the LAST test left
-         * it, not the board's real orientation - restored here
+         * it, not the board's real orientation, restored here
          * immediately, one frame of latency before draw_toggles_page()
          * ever opens its own frame. */
         ui_set_transform(ui_transform_quarter_turn(display_shell_quarter(), GFX_WIDTH, GFX_HEIGHT));
@@ -167,7 +167,7 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
         page = (page + 1) % PAGE_COUNT;
         if (page == 1) {
             /* Switching in from the report page, drawn entirely outside
-             * microui - ui_end() compares this page's own command list
+             * microui; ui_end() compares this page's own command list
              * against its last paint and would otherwise see no change
              * and skip repainting, leaving the report's pixels on screen
              * underneath. See ui_invalidate()'s own comment. */
@@ -194,7 +194,7 @@ app_t app_diagnostics = {
     .enter = diagnostics_enter,
     .frame = diagnostics_frame,
     .exit = diagnostics_exit,
-    /* No cache of its own beyond ui.c's shared one - see ui_invalidate()'s
+    /* No cache of its own beyond ui.c's shared one; see ui_invalidate()'s
      * own comment for why a repaint replacing the screen out from under it
      * needs this. */
     .invalidate = ui_invalidate,

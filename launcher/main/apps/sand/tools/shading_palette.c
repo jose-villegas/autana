@@ -1,5 +1,5 @@
 /*
- * shading_palette - does sand's shading fit a 256-entry indexed palette?
+ * shading_palette: does sand's shading fit a 256-entry indexed palette?
  *
  * Three jobs, host only:
  *
@@ -2103,21 +2103,21 @@ render_scene(const char* dir, int si, FILE* f, gfx_color_t* fb, uint8_t* grp) {
  * production header
  *
  * sand_palette256.h: the 256-colour LUT (UI block 0-15, palette[] 16-255),
- * the shared 16-colour LUT, and one dither choice per 256-entry - the
+ * the shared 16-colour LUT, and one dither choice per 256-entry: the
  * device's GFX_LAYOUT_INDEXED path never recomputes any of this. Emitted
  * straight from the same build_palette()/ega_build() output the report
  * above is built from, not re-derived from mapping.csv, so the two cannot
  * drift apart.
  */
 
-/* gfx_color_t is RGB565 with its bytes swapped (gfx_color.h) - the inverse
+/* gfx_color_t is RGB565 with its bytes swapped (gfx_color.h), the inverse
  * of native_key() above. */
 static uint16_t
 to_gfx_color(uint16_t native) {
     return (uint16_t)((native >> 8) | (native << 8));
 }
 
-/* A generator that half-works is worse than one that fails outright - see
+/* A generator that half-works is worse than one that fails outright; see
  * launcher/tools/gen/README.md's rules. */
 static void
 validate_palette_or_exit(void) {
@@ -2202,7 +2202,7 @@ build_rgb565_to_index(uint8_t* out, int* collisions, int* unswept) {
 }
 
 /* palette[] already holds UI_ENTRIES entries (build_palette() seeds them
- * with ui_key()) - a plain 0..255 copy, no separate UI case. Unused
+ * with ui_key()), a plain 0..255 copy, no separate UI case. Unused
  * trailing entries (palette_used < PALETTE_SIZE) fall back to a valid,
  * already-built index rather than reading unwritten memory. */
 static void
@@ -2314,7 +2314,7 @@ write_final_struct(FILE* f) {
 static void
 write_sand_palette_header(const char* path) {
     /* "wb", not "w": this output is committed, and every text file in the
-     * tree is LF - text mode would translate it to CRLF on Windows. */
+     * tree is LF; text mode would translate it to CRLF on Windows. */
     FILE* f = fopen(path, "wb");
     if (f == NULL) {
         fprintf(stderr, "cannot write %s\n", path);
@@ -2345,7 +2345,7 @@ static uint8_t grids[SCENE_COUNT][GRID_W * GRID_H];
 static gfx_color_t common_fb[PANEL_W * PANEL_H];
 static uint8_t common_grp[PANEL_W * PANEL_H];
 
-/* Sweep, settle every scene, and build both palettes - shared by the normal
+/* Sweep, settle every scene, and build both palettes, shared by the normal
  * report below and run_dither_pattern_compare() (dp_*), which needs the same
  * ega_global/palette/map_index and grids[] but writes no header and no
  * stats.txt. */
@@ -2392,11 +2392,11 @@ common_setup(void) {
 }
 
 /*
- * dither pattern exploration (report only - writes no generated header,
+ * dither pattern exploration (report only; writes no generated header,
  * not part of report_shading_palette.sh's own gate)
  */
 
-/* The single nearest entry, never a blend - what ega_choose() itself starts
+/* The single nearest entry, never a blend, what ega_choose() itself starts
  * from before searching for a better pair. Variant (e)'s own choice. */
 static ega_choice_t
 ega_nearest(const ega_palette_t* pal, uint16_t key) {
@@ -2428,7 +2428,7 @@ static const char* const dp_names[DP_VARIANT_COUNT] = {
 
 /* gfx_dither4x4 (gfx_color.h) at order 2: the same recursive Bayer
  * construction, its four taps spaced evenly over gfx_dither_level()'s
- * 0..16 domain - 5 achievable coverages per cell (0 to 4 of the
+ * 0..16 domain: 5 achievable coverages per cell (0 to 4 of the
  * surrounding 2x2 block), once every cell renders solid. */
 static const int dp_bayer2x2[2][2] = {
     {0, 8},
@@ -2467,7 +2467,7 @@ dp_pixel(dp_variant_t v, const ega_palette_t* pal, const ega_choice_t* ch, int p
 
 typedef struct {
     const char* name;
-    int cell; /* panel pixels per side - CELL_PX is this study's own ULTRA */
+    int cell; /* panel pixels per side: CELL_PX is this study's own ULTRA */
 } dp_quality_t;
 
 static const dp_quality_t dp_qualities[] = {
@@ -2477,7 +2477,7 @@ static const dp_quality_t dp_qualities[] = {
 #define DP_QUALITY_COUNT ((int)(sizeof dp_qualities / sizeof dp_qualities[0]))
 
 /* mixed and water_pool: one scene busy across every material group, one
- * dominated by a single liquid's own dither - scenes[]'s own declaration
+ * dominated by a single liquid's own dither; scenes[]'s own declaration
  * order (top of this file) fixes these indices. */
 static const int dp_scene_idx[] = {5, 1};
 #define DP_SCENE_COUNT ((int)(sizeof dp_scene_idx / sizeof dp_scene_idx[0]))

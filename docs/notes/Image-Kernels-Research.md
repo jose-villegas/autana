@@ -10,7 +10,7 @@ A claim with no source says so.
 
 The budget these estimates are held against, from the rendering roadmap: a
 368×448 pass is 164,864 pixels, and one core at 240 MHz and 60 fps has about
-**24 cycles per pixel** for it — about 48 at 30 fps, and about 97 at half
+**24 cycles per pixel** for it, about 48 at 30 fps, and about 97 at half
 resolution (184×224) and 60 fps.
 
 ---
@@ -52,9 +52,9 @@ register without carrying into each other, then pack back.
 
 **Sources.**
 
-- Riemersma, "Quick colour averaging", CompuPhase, 2002 —
+- Riemersma, "Quick colour averaging", CompuPhase, 2002:
   https://www.compuphase.com/graphic/scale3.htm *(checked)*
-- LVGL issue #5015, 32-bit guard-bit blending —
+- LVGL issue #5015, 32-bit guard-bit blending:
   https://github.com/lvgl/lvgl/issues/5015 *(checked)*
 - Warren, *Hacker's Delight*, §2-5, floor and ceiling average identities
   *(from memory)*
@@ -71,7 +71,7 @@ multiply per field.
 **Repeated box as a Gaussian.** Three box passes are visually Gaussian
 (Wells 1986); Kovesi 2010 gives the box widths for a target sigma.
 *Estimate*: three times the box cost, roughly 30–40 cycles per pixel for
-full-screen packed RGB565 — a 30 fps candidate, or 60 fps on luminance
+full-screen packed RGB565, a 30 fps candidate, or 60 fps on luminance
 only.
 
 **Stack blur.** A triangular kernel built from running sums (Klingemann
@@ -90,10 +90,10 @@ source was found for using it as an image blur.
 
 - Kovesi, "Fast Almost-Gaussian Filtering", DICTA 2010,
   doi:10.1109/DICTA.2010.30 *(checked)*
-- Getreuer, "A Survey of Gaussian Convolution Algorithms", IPOL 2013 —
-  https://www.ipol.im/pub/art/2013/87/ — covers Wells, Deriche and
+- Getreuer, "A Survey of Gaussian Convolution Algorithms", IPOL 2013:
+  https://www.ipol.im/pub/art/2013/87/, covers Wells, Deriche and
   Young–van Vliet, boundary handling included *(checked)*
-- Kutskir, "Fastest Gaussian Blur" —
+- Kutskir, "Fastest Gaussian Blur":
   https://blog.ivank.net/fastest-gaussian-blur.html *(checked)*
 
 ## 3. Reduced pixel representations
@@ -108,12 +108,12 @@ keeps its bit depth; Co and Cg gain one bit. *Estimate*: about 8 ops
 forward and 8 back, so it pays only if the frame stays in YCoCg rather than
 converting per effect.
 
-- Malvar & Sullivan, JVT-I014r3, 2003 —
+- Malvar & Sullivan, JVT-I014r3, 2003:
   https://www.microsoft.com/en-us/research/wp-content/uploads/2016/06/Malvar_Sullivan_YCoCg-R_JVT-I014r3-2.pdf
   *(checked)*
 
 **Indexed (palette) 8-bit.** The kernel runs on 8-bit indices or heat
-values, and one lookup maps the result to RGB565 — the classic fire effect
+values, and one lookup maps the result to RGB565, the classic fire effect
 (section 7).
 
 **What each effect needs.** No source; this is standard practice.
@@ -145,7 +145,7 @@ the previous pixel saves about a third.
 subtracted; about 20 cycles *(estimate)*. Kovesi 2010 covers it.
 
 - Simd library, `SobelDx` / `GaussianBlur3x3`, SSE and NEON implementations
-  on u8 input with s16 output — https://github.com/ermig1979/Simd *(checked)*
+  on u8 input with s16 output: https://github.com/ermig1979/Simd *(checked)*
 
 ## 5. SIMD on the S3
 
@@ -169,7 +169,7 @@ The u8 case is about 55× faster, or ~0.17 cycles per tap.
 
 **Why that does not transfer to per-pixel kernels.** A library call per
 pixel costs more than the kernel itself. The shape that fits is
-hand-written SIMD over whole rows — 16 u8 or 8 s16 values per instruction —
+hand-written SIMD over whole rows, 16 u8 or 8 s16 values per instruction,
 the same shape as Simd's NEON code. *Estimate*: 2–5 cycles per pixel for a
 3×3 Sobel or blur on luminance.
 
@@ -190,9 +190,9 @@ convolution for display images was found.
 ## 7. Precedent
 
 - **Jare's fire (1993).** 8-neighbour sum, `>> 3`, a 256-colour palette,
-  run at 80×50 for speed — https://www.hanshq.net/fire.html *(checked)*
+  run at 80×50 for speed: https://www.hanshq.net/fire.html *(checked)*
 - **Lode's fire.** Averages only the rows below the current one, so it
-  needs a single buffer — https://lodev.org/cgtutor/fire.html *(checked)*
+  needs a single buffer: https://lodev.org/cgtutor/fire.html *(checked)*
 - **No ESP32 or GBA precedent found.** No documented blur or edge trick
   turned up for either. An ESP32 demoscene write-up
   (https://theor.xyz/esp32-love-notes-demoscene/) covers palette cycling
@@ -213,5 +213,5 @@ building on it.
 
 ## Related
 
-- [`../plans/Autana-Rendering-Roadmap.md`](../plans/Autana-Rendering-Roadmap.md) — the
+- [`../plans/Autana-Rendering-Roadmap.md`](../plans/Autana-Rendering-Roadmap.md): the
   cycle budget and the frame architecture over the one framebuffer.

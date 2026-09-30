@@ -13,7 +13,7 @@
  * respectively - and a call across translation units is not guaranteed to
  * inline the way a call within the same file is. A header of small inline
  * functions gives each .c file its own inlinable copy, which is what lets the
- * file split without also risking a performance regression for it - see the
+ * file split without also risking a performance regression for it, see the
  * frame-budget tests in suite_sand_perf.c, which is exactly what would catch it if
  * this ever stopped being true.
  *
@@ -380,7 +380,7 @@ enum {
     SAND_RNG_SLOT_SPAWN_SHARE,
 };
 
-/* Draws for (x, y) at `slot` - see the enum above. Sequential and
+/* Draws for (x, y) at `slot`, see the enum above. Sequential and
  * identical to plain rng_next() unless a chunk-parallel pass has
  * armed s->rng_hashed (sand.h); every other caller, including these same
  * functions when reactions or gas call them, is untouched. */
@@ -404,7 +404,7 @@ sand_rng_chance_at(sand_t* s, int x, int y, uint32_t slot, int chance) {
 }
 
 /* rng_below()'s own modulo, drawn through sand_rng_next_at() instead of
- * rng_next() directly - see that function for what changes and what does
+ * rng_next() directly, see that function for what changes and what does
  * not. */
 static inline int
 sand_rng_below_at(sand_t* s, int x, int y, uint32_t slot, int bound) {
@@ -1069,7 +1069,7 @@ impulse_drag_of(cell_t displaced) {
     unsigned d = (unsigned)m->density;
 
     if (m->kind == KIND_LIQUID) {
-        return 0u; /* a fluid parts around a mover - see the constant */
+        return 0u; /* a fluid parts around a mover, see the constant */
     }
     if (m->kind == KIND_POWDER) {
         d <<= SAND_IMPULSE_DRAG_POWDER_SHIFT;

@@ -4,7 +4,7 @@
  * brush_screen_draw()/title_screen_draw()/options_screen_draw() against a
  * real microui (ui_init() + ui_begin(), the same calls app_sand.c makes)
  * rather than a
- * hand-mirrored reconstruction - see docs/Building-a-Screen.md.
+ * hand-mirrored reconstruction, see docs/Building-a-Screen.md.
  *
  * production's own brushes[] lives in app_sand.c (the hardware entry
  * point, not host-compiled), so test_brushes[] below is a representative

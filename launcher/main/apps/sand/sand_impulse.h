@@ -1,7 +1,7 @@
 /*
  * sand_impulse - the public API for grains, chunks and splashes in flight:
  * explosions, thrown debris, splash pushback. Split out of sand.h for the
- * same reason sand_impulse.c is split out of sand.c - see that file's own
+ * same reason sand_impulse.c is split out of sand.c, see that file's own
  * banner.
  *
  * Included FROM sand.h, not instead of it - a caller anywhere else in the
@@ -112,7 +112,7 @@ void sand_impulse_dislodge(sand_t* s, int x, int y, int dir, int speed, int ramp
 void sand_displace(sand_t* s, int cx, int cy, int radius);
 
 /* Same as sand_displace(), but only cells whose material is exactly
- * `mat_id` are ever queued - see its own comment in sand_impulse.c. Used
+ * `mat_id` are ever queued, see its own comment in sand_impulse.c. Used
  * by splash_displace() (sand_liquid_move.h) so a liquid's splash cannot fling
  * unrelated material (dirt under a pool of water, say) along with it. */
 void sand_displace_material(sand_t* s, int cx, int cy, int radius, uint8_t mat_id);

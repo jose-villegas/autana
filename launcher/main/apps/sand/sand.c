@@ -7,7 +7,7 @@
  * that pours through a gap all fall out of those three attempts. Nothing here
  * models them explicitly.
  *
- * The one subtlety is sweep order - see the comment on sand_step().
+ * The one subtlety is sweep order, see the comment on sand_step().
  *
  * A liquid's DOWN-AND-SLIDE movement is here too, in move_liquid_grain() -
  * called from the same sweep, because it obeys the same gravity-ward
@@ -212,8 +212,8 @@ sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
     s->soak = 0; /* nothing soaks unless asked - see
                              * sand_set_soak() */
     s->mobility = 255;
-    s->may_have_viscous_liquid = false;                            /* full speed by default - see sand_set_mobility() */
-    s->gas_walk = true;                                            /* random walk, 23% cheaper - see sand_set_gas_walk()
+    s->may_have_viscous_liquid = false;                            /* full speed by default, see sand_set_mobility() */
+    s->gas_walk = true;                                            /* random walk, 23% cheaper, see sand_set_gas_walk()
                                 * for the deterministic exhaustive mover */
     s->flammability = SAND_FLAMMABILITY_PER_MATERIAL;              /* see sand_set_flammability() */
     s->conduction = SAND_CONDUCTION_PER_MATERIAL;                  /* see sand_set_conduction() */
@@ -512,7 +512,7 @@ int
 sand_spawn_cell_share(sand_t* s, int cx, int cy, int radius, cell_t spec, int share_pct) {
     int filled = 0;
     const int r2 = radius * radius;
-    /* Once for the whole brushful - see random_cell().
+    /* Once for the whole brushful, see random_cell().
      * material_shade_span_cell(), not the plain id-only macro, because `spec` may be gunpowder
      * (whose span is 3, read off its own reaction row) rather than a
      * material_id_t CELL_MATERIAL() could safely extract a span for. */
@@ -568,7 +568,7 @@ sand_erase(sand_t* s, int cx, int cy, int radius) {
         }
     }
 
-    /* Also switches off any emitter in the same disc - see this function's
+    /* Also switches off any emitter in the same disc, see this function's
      * own comment in sand.h for why. Not folded into `removed`: that count
      * means cells changed, and an emitter is not a cell. */
     sand_remove_emitters(s, cx, cy, radius);
@@ -577,7 +577,7 @@ sand_erase(sand_t* s, int cx, int cy, int radius) {
 }
 
 /*
- * Emitters - see the `emitters` field of sand_t and the EMITTERS section of
+ * Emitters, see the `emitters` field of sand_t and the EMITTERS section of
  * sand.h for the design. What is here is just list management; the actual
  * per-step write lives in emit_from_emitters() below, next to sand_step().
  */
@@ -1212,7 +1212,7 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
         }
         /* Accumulated in a register and stored once per block, same shape as
          * moved_here. BLOCK_HAS_LIQUID keeps it true at O(blocks) per step
-         * instead of O(moves) - a skip structure earns its cost only when it
+         * instead of O(moves); a skip structure earns its cost only when it
          * is questioned before it is built. Counted BEFORE the stamped skip:
          * a cell that arrived here this pass is still liquid sitting in this
          * block, and cross-flow looks nowhere the sweep did not mark. */
@@ -1317,7 +1317,7 @@ build_xflow(xflow_t* f, int gx, int gy) {
      * `ax` runs perpendicular to that axis, `dg` built from the same two
      * signs (not looked up), so it is always the diagonal beside the
      * lean, never the far one. `q_q8` is the raw ratio of the smaller
-     * gravity component to the larger (0-256) - the TANGENT of the tilt,
+     * gravity component to the larger (0-256), the TANGENT of the tilt,
      * deliberately not diagonal_weight()'s angle correction (that answers
      * where the true angle sits between octants for dithering gravity,
      * not the slope wanted here). */

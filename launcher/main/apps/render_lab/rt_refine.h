@@ -1,5 +1,5 @@
 /*
- * rt_refine - the order a progressive tracer visits pixels in: coarse to
+ * rt_refine, the order a progressive tracer visits pixels in: coarse to
  * fine on halving lattices, 8, 4, 2, then every pixel. A pass traces only the
  * lattice points no coarser pass reached and paints each as a step x step
  * block, so a whole blocky picture exists after 1/64 of the work and no pixel

@@ -4,7 +4,7 @@
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
- * live in suite_sand_common.{c,h} - see that header.
+ * live in suite_sand_common.{c,h}, see that header.
  */
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
                      * but every file inherited suite_sand.c's own include
@@ -390,14 +390,14 @@ test_a_blast_at_the_edge_stays_in_bounds(void) {
 
         sand_explode(&s, spots[i].cx, spots[i].cy, 3);
 
-        /* Measured AFTER the explode - see test_a_blast_conserves_grains's
+        /* Measured AFTER the explode, see test_a_blast_conserves_grains's
          * own comment on why the core's removal is real and everything
          * past this point is the invariant under test. */
         const int expected = sand_count(&s);
 
         for (int step = 0; step < 20; step++) {
             sand_step(&s, 0, 1000, 0);
-            /* Bounded, not exact - see test_a_blast_conserves_grains.
+            /* Bounded, not exact, see test_a_blast_conserves_grains.
              * INCREASE past `expected` is a hard bug. */
             TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(expected, sand_count(&s),
                                                   "a blast centred on the grid edge must never manufacture a "
@@ -743,7 +743,7 @@ far_sink_penetration_for_seed(uint8_t* cells, impulse_t* buf, uint32_t seed) {
 
     sand_impulse_dislodge(&g, mover_x, 0, DIR_UP, 255, SAND_IMPULSE_SPEED_RAMP);
 
-    /* PAST THE DETERMINISTIC FLIGHT-TIME BOUND - see this file's own
+    /* PAST THE DETERMINISTIC FLIGHT-TIME BOUND, see this file's own
      * max_lifetime derivation elsewhere for the same reasoning: a
      * regression back to the unconditional drift can keep this entry
      * tracked (and sinking) for up to a full ramp's worth of steps
@@ -842,7 +842,7 @@ test_a_spent_static_chunk_still_sinks_through_water_to_the_bottom(void) {
     sand_clear(&s);
     sand_enable_impulses(&s, impulse_buf, W * H);
 
-    /* CELL_MAKE(MAT_WATER, MASS_MAX), NOT THE WATER MACRO - see the
+    /* CELL_MAKE(MAT_WATER, MASS_MAX), NOT THE WATER MACRO, see the
      * energetic test just above for why the half-mass WATER macro leaves
      * ordinary equalisation room to open a genuine gap on its own. */
     sand_set(&s, SETTLE_COL, SETTLE_TOP_ROW, STONE);
@@ -934,7 +934,7 @@ test_a_chunk_stacked_on_an_in_flight_chunk_waits_instead_of_settling_and_both_ev
     sand_set(&s, COL - 1, BOTTOM_ROW, WOOD);
     sand_set(&s, COL + 1, BOTTOM_ROW, WOOD);
 
-    /* A first, THEN B - see this test's own top comment for why the order
+    /* A first, THEN B, see this test's own top comment for why the order
      * matters: it is what puts A's turn before B's in step_impulses()'s
      * own loop. */
     sand_impulse_dislodge(&s, COL, TOP_ROW, 0, 0, SAND_IMPULSE_SPEED_RAMP);
@@ -1265,7 +1265,7 @@ test_a_thrown_chunk_loses_speed_proportional_to_the_density_it_displaces(void) {
 }
 
 /* THE SAME PIN, KIND_POWDER THIS TIME: a thrown grain pays the identical
- * density-scaled drag a thrown chunk does - see SAND_IMPULSE_DRAG_POWDER_
+ * density-scaled drag a thrown chunk does, see SAND_IMPULSE_DRAG_POWDER_
  * SHIFT's own comment in sand.h for when powders joined drag's scope (they
  * were briefly out; this comment used to say so and was stale by the time
  * this rung's own name says otherwise). impulse_count is 2 for the same
@@ -1460,7 +1460,7 @@ test_a_sub_divisor_speed_impulse_never_moves_more_than_one_cell_a_step(void) {
     uint8_t* cells = malloc((size_t)SUBDIV_W * SUBDIV_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(cells, "sub-divisor sweep grid must fit in what the framebuffer leaves");
     /* Only ever one entry tracked (the lone mover, never near enough to a
-     * wall or the floor to spawn a TRANSFER or CASCADE follow-up) - a small
+     * wall or the floor to spawn a TRANSFER or CASCADE follow-up), a small
      * stack array, not a grid-sized malloc(), same as this file's other
      * single-mover scenes. */
     impulse_t buf[8];
@@ -2578,7 +2578,7 @@ test_a_thrown_powder_grain_flings_dirt_out_of_the_bank_it_hits(void) {
 #define AIRBORNE_CHUNK_Y  (AIRBORNE_SURFACE - 6)
 
 /* True if the cell at (x,y) has all eight neighbours genuinely
- * CELL_IS_EMPTY() - see this section's own top comment for why that is a
+ * CELL_IS_EMPTY(), see this section's own top comment for why that is a
  * stricter, more specific claim than "outside its original footprint". */
 static bool
 cell_is_airborne(sand_t* g, int x, int y) {
@@ -2677,7 +2677,7 @@ test_a_stone_chunk_thrown_into_a_sand_bed_launches_sand_airborne(void) {
              "actually distinguishes the two, not merely confirms some "
              "airborne sand exists at all",
              AIRBORNE_SEEDS, peak, seeds_with_any, AIRBORNE_SEEDS);
-    /* 4, not 1 - see this section's own top comment for why the OLD code
+    /* 4, not 1, see this section's own top comment for why the OLD code
      * already clears a bar as low as 1 on this scene (a thrown chunk's own
      * gravity-drift plus rung 1/2's ordinary bounce can separate two
      * grains onto different steps even without this rung's multi-cell

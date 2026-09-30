@@ -1,5 +1,5 @@
 /*
- * render_lab_menu_screen - the BOOT-opened runtime-options menu's microui
+ * render_lab_menu_screen: the BOOT-opened runtime-options menu's microui
  * drawing.
  *
  * app_render_lab.c owns the toggles and the scene picker this reads, and

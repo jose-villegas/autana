@@ -21,7 +21,7 @@
  * A single previous/current min/max union is enough to guarantee a cell
  * that just emptied still gets sent once, clearing its stale pixels.
  * Moving to multiple runs per row turns that into a small diff between two
- * short run lists instead of one interval union - see row_runs_reconcile()
+ * short run lists instead of one interval union, see row_runs_reconcile()
  * for the two rules that make it still safe.
  */
 #pragma once

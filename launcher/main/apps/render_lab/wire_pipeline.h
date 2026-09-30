@@ -1,5 +1,5 @@
 /*
- * wire_pipeline - transform-then-project stages a scene runs once per frame
+ * wire_pipeline: transform-then-project stages a scene runs once per frame
  * to turn a wire_mesh_t into screen-space line segments for gfx_line(). No
  * allocation and no file-scope state: every buffer is the caller's, sized
  * and freed around entering and leaving a scene.

@@ -2,7 +2,7 @@
 
 One command for everything that touches the board: build and flash, run
 suites, watch it, drive its input, change a number live. It takes the device
-lock and is not tied to git or worktrees - a board-only command (`monitor`,
+lock and is not tied to git or worktrees: a board-only command (`monitor`,
 `tap`, `tune`, ...) works from any directory, and a command that builds or
 flashes acts on the current directory, like `make -C`, or on `--project PATH`.
 
@@ -25,7 +25,7 @@ where Python has `readline` (Windows: `pip install pyreadline3`).
 ## Most used
 
 The five commands almost every session starts with, each a real example
-rather than a placeholder - `autana help`'s own first block, ahead of every
+rather than a placeholder: `autana help`'s own first block, ahead of every
 group below.
 
 | Command | What it does |
@@ -38,7 +38,7 @@ group below.
 
 ## Flags
 
-`autana help flags` - left off each command's own usage line below to keep
+`autana help flags`: left off each command's own usage line below to keep
 it readable; a flag works the same wherever the table below says it applies.
 
 | Flag | What it does | Commands |
@@ -47,8 +47,8 @@ it readable; a flag works the same wherever the table below says it applies.
 | `--owner NAME` | Global; see [Settings](#settings). | every board command |
 | `--board SERIAL` | Global; see [Settings](#settings). | every board command |
 | `--out PATH` | Write the one capture here instead of the default path; with several suites or `--runs` above 1, only makes sense on `suite` when exactly one suite runs once. | selftest, suite, monitor |
-| `--expect-build-id ID` | Refuse to run a suite unless the board, or the image `--flash` just wrote, carries this `BUILD_ID`. `autana flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it - pass that value here to refuse measuring a board that has since been reflashed by someone else. | suite |
-| `--project PATH` | Act on `PATH` instead of the current directory - like `make -C`/`idf.py -C`, no searching parent directories. `PATH` must itself carry `launcher/CMakeLists.txt`; the current directory must too when `--project` is omitted, for every command below except `suite` without `--flash`, which only wants it for its capture's own record. Popped once ahead of any command's own parsing, so it works the same everywhere it applies. | build, flash, selftest, suite, suite list, tune save, docs |
+| `--expect-build-id ID` | Refuse to run a suite unless the board, or the image `--flash` just wrote, carries this `BUILD_ID`. `autana flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it; pass that value here to refuse measuring a board that has since been reflashed by someone else. | suite |
+| `--project PATH` | Act on `PATH` instead of the current directory, like `make -C`/`idf.py -C`, no searching parent directories. `PATH` must itself carry `launcher/CMakeLists.txt`; the current directory must too when `--project` is omitted, for every command below except `suite` without `--flash`, which only wants it for its capture's own record. Popped once ahead of any command's own parsing, so it works the same everywhere it applies. | build, flash, selftest, suite, suite list, tune save, docs |
 
 ## Build and flash
 
@@ -57,7 +57,7 @@ it readable; a flag works the same wherever the table below says it applies.
 | Command | What it does |
 |---|---|
 | `autana build [rel\|dev\|diag] [--perf-scope]` | Build this project, no board and no lock; `dev` when omitted. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. |
-| `autana build diag --check` | The diagnostics build plus the complexity ratchet - `launcher/tools/build/build_diag_check.sh`, unchanged; no board. |
+| `autana build diag --check` | The diagnostics build plus the complexity ratchet: `launcher/tools/build/build_diag_check.sh`, unchanged; no board. |
 | `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope]` | Build and flash this project; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
 
@@ -65,25 +65,25 @@ it readable; a flag works the same wherever the table below says it applies.
 holding only the build directory so two builds of one variant take turns, and
 CI builds through it too. `autana flash` runs that same build with no board
 lock held and snapshots the image it built, then, under the board's lock,
-`scripts/device/flash_image.sh` writes that snapshot - the one script that
+`scripts/device/flash_image.sh` writes that snapshot, the one script that
 opens the port.
 `BUILD_ID` identifies the image by its ELF hash; see
 [what a flash proves](Flash-and-Captures.md#what-a-flash-proves).
 It proves the write, not the boot.
 
 Both print a banner naming the project and variant; when git answers for
-that project it adds the branch, commit and whether it is dirty - never
+that project it adds the branch, commit and whether it is dirty; never
 required, so a project built from a tarball or a non-git checkout still
 builds and flashes.
 
 ## Tests
 
-`autana help tests` · `suite` is the everyday path - `selftest` is every
+`autana help tests` · `suite` is the everyday path; `selftest` is every
 suite this project registers, for a full pre-merge pass.
 
 | Command | What it does |
 |---|---|
-| `autana suite <name>... [seconds] [--runs N] [--flash] [--verbose]` | Run one or more registered suites under one lock, `N` times each (1 when omitted), `seconds` capping each capture (1800 s when omitted; a board that goes silent for 300 s ends one sooner). Without `--flash`: against the image already on the board - `autana suite <name>` against a non-diagnostics image says so plainly and names the fix (`autana flash diag`). With `--flash`: build and flash the diagnostics image first, so nobody else can flash between two captures. |
+| `autana suite <name>... [seconds] [--runs N] [--flash] [--verbose]` | Run one or more registered suites under one lock, `N` times each (1 when omitted), `seconds` capping each capture (1800 s when omitted; a board that goes silent for 300 s ends one sooner). Without `--flash`: against the image already on the board; `autana suite <name>` against a non-diagnostics image says so plainly and names the fix (`autana flash diag`). With `--flash`: build and flash the diagnostics image first, so nobody else can flash between two captures. |
 | `autana suite <name> --test PATTERN[,PATTERN]` | Only the tests of that suite whose name contains a pattern; `--test` repeats. |
 | `autana suite list [text] [--json]` | The suites this project registers; `[on request]` ones run only by name. |
 | `autana selftest [seconds] [--verbose] [--perf-scope] [--out PATH]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
@@ -91,7 +91,7 @@ suite this project registers, for a full pre-merge pass.
 Each prints the report and capture paths, PASS/FAIL counts, up to ten failure
 messages (then a FAIL count per suite) and the end reason. `--verbose`
 prints the whole capture; to find something in it, grep the capture instead.
-One suite run once - `autana suite <name>` with no `--runs` or `--flash` -
+One suite run once (`autana suite <name>` with no `--runs` or `--flash`)
 still produces exactly one capture and one report, the same as before this
 command absorbed `batch`.
 
@@ -104,12 +104,12 @@ a full suite's quarter hour. The limits (a pattern's length, how many) are the
 board's, in `launcher/test/suites.h`; it refuses one past them. A pattern that
 matches no test fails after the capture, listing the suite's test names, and
 ends a `--runs` batch there; with a single pattern nothing ran. The report and
-the `--runs` summary cover only the tests that ran - an unselected test is not
-missing, failed or unmet - and name the filter, so an A/B read later knows
+the `--runs` summary cover only the tests that ran (an unselected test is not
+missing, failed or unmet) and name the filter, so an A/B read later knows
 which rows it compares. It needs a diagnostics build whose `RUNSUITE` takes
 patterns (`autana flash diag`), and says so when the board runs an older one.
 
-`autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` still works -
+`autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` still works:
 the old spelling of `autana suite <suite>... --runs N --perf-scope --verbose
 --flash` (`--runs` defaults to 3 here, `suite`'s own default is 1). It prints
 one line naming the new form, then runs it.
@@ -188,7 +188,7 @@ lapsed; the other outcomes are in [exit codes](Device-Lock.md#exit-codes-and-jso
 
 ## Debug
 
-`autana help debug` - left out of the bare `autana help` listing; a session
+`autana help debug`: left out of the bare `autana help` listing; a session
 rarely needs the frame loop paused or a raw sensor level, so these stay one
 `autana help debug` away rather than crowding the everyday groups above.
 
@@ -215,7 +215,7 @@ before running it.
 | `autana docs --section <path:line>` | One section whole, or `path#heading words`; `--deep` adds its subsections. |
 | `autana docs --outline <path>` | A document's headings with their lines and sizes, to pick a section without reading the file. |
 | `autana docs --ask <question...>` | A short answer written by the local chat model from those sections, with their sources. |
-| `autana --version` (or `-V`) | This autana's own version - purely informational, rides along in a device lock record so a refusal can name what is holding the board; see [Device-Lock.md](Device-Lock.md#one-copy-of-the-tools). |
+| `autana --version` (or `-V`) | This autana's own version: purely informational, rides along in a device lock record so a refusal can name what is holding the board; see [Device-Lock.md](Device-Lock.md#one-copy-of-the-tools). |
 
 ## JSON fields
 
