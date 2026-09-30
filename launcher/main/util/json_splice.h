@@ -1,5 +1,5 @@
 /*
- * json_splice - one more key on a JSON object already written: the closing
+ * json_splice, one more key on a JSON object already written: the closing
  * brace becomes `,"<key>":<fragment>}`, with no comma on an empty object.
  * Nothing parses the object; its last byte must be that brace.
  */

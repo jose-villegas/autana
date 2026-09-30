@@ -1,5 +1,5 @@
 /*
- * trig - sine and cosine of a 16-bit phase, in integers: 65536 is one turn
+ * trig, sine and cosine of a 16-bit phase, in integers: 65536 is one turn
  * and the result is Q15. A quarter-wave table of 65 entries, interpolated,
  * which is 256 steps a turn before interpolation and exact at the quarter
  * points.
