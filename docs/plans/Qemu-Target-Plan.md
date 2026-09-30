@@ -21,7 +21,7 @@ build already uses the null panel and why injected touch existed there first.
 | Timing | real | meaningless |
 
 Logic, layout, navigation, a suite that asserts behaviour: emulated. Anything
-that measures - frame budget, present cost, PSRAM bandwidth, touch latency -
+that measures (frame budget, present cost, PSRAM bandwidth, touch latency)
 stays on the board, and the CLI should say so rather than quietly reporting a
 number nobody should trust.
 
@@ -38,7 +38,7 @@ number nobody should trust.
   or a socket. `launcher/test/qemu_run.py` already opens that socket and matches
   lines on it, so the reader belongs there, shared rather than copied.
 - The device lock arbitrates the board. An instance is private to its starter,
-  so it takes no lock - but two instances must not share a port, and a stale
+  so it takes no lock; but two instances must not share a port, and a stale
   instance must not be adopted by accident.
 
 ## What has to be decided when it is built
@@ -49,7 +49,7 @@ number nobody should trust.
   x86. Emulated Xtensa is a third answer, and the report must name which one it
   is.
 - **What a screenshot means with no panel.** The framebuffer is real; the panel
-  is not. A capture is what the app drew, not what a screen would show - no
+  is not. A capture is what the app drew, not what a screen would show; no
   panel timing, no orientation quirk, none of the faults a screenshot is usually
   reached for.
 - **Whether the image is a variant or a build.** It is `sdkconfig.defaults.qemu`
@@ -60,5 +60,5 @@ number nobody should trust.
 ## What it does not replace
 
 The render harness draws a real firmware screen on the host at native speed,
-with no emulation at all - the better answer when the question is what a screen
+with no emulation at all; that is the better answer when the question is what a screen
 looks like. QEMU's answer is what the firmware does.
