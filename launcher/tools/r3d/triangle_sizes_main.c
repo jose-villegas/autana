@@ -140,11 +140,35 @@ render_pose(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, int count, c
     r3d_lit_draw(mesh, view, b->visible, count, b->cs, b->rows, &target);
 }
 
+static bool
+take_flag(int* argc, char** argv, const char* flag) {
+    for (int i = 1; i < *argc; i++) {
+        if (strcmp(argv[i], flag) == 0) {
+            for (int j = i; j + 1 < *argc; j++) {
+                argv[j] = argv[j + 1];
+            }
+            (*argc)--;
+            return true;
+        }
+    }
+    return false;
+}
+
+static long
+submitted_triangles(const r3d_lit_mesh_t* mesh, const uint16_t* visible, int count) {
+    long triangles = 0;
+    for (int i = 0; i < count; i++) {
+        triangles += mesh->clusters[visible[i]].triangle_count;
+    }
+    return triangles;
+}
+
 int
 main(int argc, char** argv) {
+    const bool no_cones = take_flag(&argc, argv, "--no-cones");
     const bool flag_known = argc == 4 && (strcmp(argv[2], "--write") == 0 || strcmp(argv[2], "--against") == 0);
     if (argc != 2 && !flag_known) {
-        (void)fputs("usage: triangle_sizes POSES|- [--write DIR | --against DIR]\n", stderr);
+        (void)fputs("usage: triangle_sizes POSES|- [--no-cones] [--write DIR | --against DIR]\n", stderr);
         return 2;
     }
     const char* dir = argc == 4 ? argv[3] : NULL;
@@ -152,7 +176,9 @@ main(int argc, char** argv) {
     r3d_sizes_poses_t* poses = checked_malloc(sizeof(*poses));
     read_poses_or_exit(argv[1], poses);
 
-    const r3d_lit_mesh_t* mesh = &R3D_SIZES_MESH;
+    r3d_lit_mesh_t without_cones = R3D_SIZES_MESH;
+    without_cones.cones = NULL;
+    const r3d_lit_mesh_t* mesh = no_cones ? &without_cones : &R3D_SIZES_MESH;
     const frame_size_t size = {poses->width, poses->height, (size_t)poses->width * (size_t)poses->height};
     const buffers_t b = {
         checked_malloc(sizeof(uint16_t) * (size_t)mesh->cluster_count),
@@ -164,11 +190,15 @@ main(int argc, char** argv) {
     (void)printf("%d triangles, rendered %dx%d; triangles by pixel centres covered\n", mesh->triangle_count, size.width,
                  size.height);
     r3d_sizes_t total = {0};
+    long clusters_submitted = 0;
+    long triangles_submitted = 0;
     for (int pose = 0; pose < poses->count; pose++) {
         r3d_lit_view_t view;
         r3d_lit_view_look(&view, poses->eye[pose], poses->forward[pose], poses->half_fov_short_tan, poses->near_z,
                           mesh->position_scale, (r3d_viewport_t){size.width, size.height, 0});
         const int count = r3d_lit_cull_clusters(mesh, &view, b.visible);
+        clusters_submitted += count;
+        triangles_submitted += submitted_triangles(mesh, b.visible, count);
         r3d_sizes_t s = {0};
         r3d_sizes_count(mesh, &view, b.visible, count, &s);
         print_sizes(pose, &s);
@@ -179,6 +209,8 @@ main(int argc, char** argv) {
         }
     }
     print_sizes(-1, &total);
+    (void)printf("submitted %ld clusters and %ld triangles over %d poses (%d clusters, %d triangles in the mesh)\n",
+                 clusters_submitted, triangles_submitted, poses->count, mesh->cluster_count, mesh->triangle_count);
     free(poses);
     free(b.visible);
     free(b.rows);

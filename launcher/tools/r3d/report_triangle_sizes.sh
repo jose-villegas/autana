@@ -5,10 +5,11 @@
 # format is in triangle_sizes.h).
 #
 # Usage:
-#   launcher/tools/r3d/report_triangle_sizes.sh --mesh SOURCE.c:SYMBOL POSES|- [--write DIR | --against DIR]
+#   launcher/tools/r3d/report_triangle_sizes.sh --mesh SOURCE.c:SYMBOL POSES|- [--no-cones] [--write DIR | --against DIR]
 #
 #   --mesh SOURCE.c:SYMBOL  the baked mesh: the C file that defines it and its r3d_lit_mesh_t symbol
 #   POSES                   the poses file: size, lens and one line per pose; - reads standard input
+#   --no-cones              cull no cluster by the direction it faces, to compare against
 #   --write DIR             also keep each pose's frame in DIR
 #   --against DIR           also compare each pose's frame with the one kept in DIR, pixel by pixel
 
@@ -20,7 +21,7 @@ LAUNCHER_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 MAIN_DIR="$LAUNCHER_DIR/main"
 
 usage() {
-    echo "usage: $0 --mesh SOURCE.c:SYMBOL POSES|- [--write DIR | --against DIR]" >&2
+    echo "usage: $0 --mesh SOURCE.c:SYMBOL POSES|- [--no-cones] [--write DIR | --against DIR]" >&2
     exit 2
 }
 
@@ -35,6 +36,11 @@ poses=$3
 shift 3
 [ -f "$mesh_source" ] || { echo "no mesh source $mesh_source" >&2; exit 2; }
 [ "$poses" = - ] || [ -f "$poses" ] || { echo "no poses file $poses" >&2; exit 2; }
+cones=""
+if [ "${1:-}" = --no-cones ]; then
+    cones=--no-cones
+    shift
+fi
 mode=""
 dir=""
 case "${1:-}" in
@@ -68,7 +74,7 @@ OUT_BIN="$BUILD_DIR/triangle_sizes"
 
 if [ -n "$mode" ]; then
     mkdir -p "$dir"
-    "$OUT_BIN" "$poses" "$mode" "$dir"
+    "$OUT_BIN" "$poses" ${cones:+"$cones"} "$mode" "$dir"
 else
-    "$OUT_BIN" "$poses"
+    "$OUT_BIN" "$poses" ${cones:+"$cones"}
 fi

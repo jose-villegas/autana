@@ -72,6 +72,12 @@ def simplify_with_update(pos, rgb, tris, target_triangles, colour_weight=1.0, op
     return (p[kept].astype(np.float64), np.clip(a[kept] * 255.0, 0.0, 255.0), local.reshape(-1, 3), kept)
 
 
+class _Bounds(ctypes.Structure):
+    _fields_ = [("center", ctypes.c_float * 3), ("radius", ctypes.c_float), ("cone_apex", ctypes.c_float * 3),
+                ("cone_axis", ctypes.c_float * 3), ("cone_cutoff", ctypes.c_float), ("axis_s8", ctypes.c_byte * 3),
+                ("cutoff_s8", ctypes.c_byte)]
+
+
 class _Meshlet(ctypes.Structure):
     _fields_ = [("vertex_offset", ctypes.c_uint), ("triangle_offset", ctypes.c_uint), ("vertex_count", ctypes.c_uint),
                 ("triangle_count", ctypes.c_uint)]
@@ -107,4 +113,25 @@ def build_meshlets(pos, tris, max_triangles):
         optimize(v.ctypes.data_as(c), ctypes.c_size_t(m.vertex_count), t.ctypes.data_as(c),
                  ctypes.c_size_t(m.triangle_count), ctypes.c_int(1))
         out.append(v[t[: 3 * m.triangle_count]].reshape(-1, 3).astype(np.int64))
+    return out
+
+
+def meshlet_cones(pos, meshlets):
+    """meshoptimizer's normal cone of each meshlet, a list of (apex, axis,
+    cutoff): the apex in pos's units as three float32, the axis in 1/127ths
+    and the cutoff rounded up in 1/127ths so the 8-bit test stays
+    conservative. A meshlet with no useful cone gets cutoff 127."""
+    lib = _library()
+    compute = lib.meshopt_computeMeshletBounds
+    compute.restype = _Bounds
+    p = np.ascontiguousarray(pos, dtype=np.float32).copy()
+    c = ctypes.c_void_p
+    out = []
+    for tris in meshlets:
+        used, local = np.unique(tris.reshape(-1), return_inverse=True)
+        vertices = np.ascontiguousarray(used, dtype=np.uint32)
+        triangles = np.ascontiguousarray(local, dtype=np.uint8)
+        b = compute(vertices.ctypes.data_as(c), triangles.ctypes.data_as(c), ctypes.c_size_t(len(tris)),
+                    p.ctypes.data_as(c), ctypes.c_size_t(len(p)), ctypes.c_size_t(12))
+        out.append((tuple(b.cone_apex), tuple(b.axis_s8), int(b.cutoff_s8)))
     return out

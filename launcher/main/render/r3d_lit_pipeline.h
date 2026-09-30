@@ -26,6 +26,7 @@ typedef struct {
     int width, height;
     float snap_cx, snap_cy; /* the centre in subpixels, plus R3D_SNAP_BIAS */
     float near_subpixels;   /* near_z / R3D_SUBPIXEL */
+    float eye[3];           /* position ticks */
 } r3d_lit_view_t;
 
 /* 8 bytes: the screen position is snapped to r3d_span's subpixels once, so
@@ -43,7 +44,8 @@ void r3d_lit_view_look(r3d_lit_view_t* view, r3d_vec3f_t eye, r3d_vec3f_t forwar
                        float near_z, int position_scale, r3d_viewport_t viewport);
 
 /* Walks the node tree and writes the clusters any part of which may be on
- * screen, roughly nearest first, returning how many. `out` holds
+ * screen and, when the mesh has cones, that do not face wholly away from the
+ * eye, roughly nearest first, returning how many. `out` holds
  * mesh->cluster_count entries. */
 int r3d_lit_cull_clusters(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, uint16_t* out);
 

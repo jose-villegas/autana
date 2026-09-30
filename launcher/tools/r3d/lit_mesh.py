@@ -2,7 +2,8 @@
 and reads such data back.
 
 The triangles are cut into meshlets, compact clusters of a few dozen
-triangles, under an octree over the meshlets' centres. Positions are
+triangles, under an octree over the meshlets' centres, each with a normal cone
+for the renderer to skip it when it faces away. Positions are
 quantized to int16 ticks and the result is checked against the format's
 invariants before a byte is written. A mesh's triangles are put in a canonical
 order first, so the same triangles always bake to the same bytes."""
@@ -14,7 +15,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from r3d.meshopt import build_meshlets
+from r3d.meshopt import build_meshlets, meshlet_cones
 from r3d.octree import build_octree, flatten_octree, node_bounds
 
 INT16_MAX = 32767
@@ -23,6 +24,7 @@ MAX_NODES = 65535
 MAX_TRIANGLES = 65535  # uint16 triangle_first
 MAX_CLUSTERS = 65535  # uint16 leaf first cluster
 MAX_NODE_CHILDREN = 255
+CONE_NEVER = 127  # the cutoff, in 1/127ths, at which a cone culls nothing
 
 # What a bake uses unless asked otherwise, and the only place these are set.
 MESHLET_TRIANGLES = 32
@@ -81,18 +83,24 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
         members = tris[double == is_double]
         if len(members):
             entries += [{"double": is_double, "tris": t} for t in build_meshlets(q, members, meshlet_triangles)]
-    for e in entries:
+    for e, cone in zip(entries, meshlet_cones(q, [e["tris"] for e in entries])):
         e["box"] = box_of(q, e["tris"])
+        e["cone"] = NO_CONE if e["double"] else cone
     centres = np.array([(lo + hi) / 2.0 for lo, hi in (e["box"] for e in entries)])
     root = build_octree(centres, [len(e["tris"]) for e in entries], leaf_triangles, max_depth)
     order, nodes = flatten_octree(root)
 
     out = SimpleNamespace(position_scale=position_scale)
-    out.pos, out.rgb, out.tris, out.clusters = lay_out(q, col, [entries[i] for i in order])
+    ordered = [entries[i] for i in order]
+    out.pos, out.rgb, out.tris, out.clusters = lay_out(q, col, ordered)
+    out.cones = [e["cone"] for e in ordered]
     node_bounds(nodes, out.clusters)
     out.nodes = nodes
-    validate(out.pos, out.rgb, out.tris, out.clusters, out.nodes)
+    validate(out.pos, out.rgb, out.tris, out.clusters, out.nodes, out.cones)
     return out
+
+
+NO_CONE = ((0.0, 0.0, 0.0), (0, 0, 0), CONE_NEVER)
 
 
 def box_of(q, tris):
@@ -116,7 +124,7 @@ def lay_out(q, col, entries):
     return np.concatenate(pos), np.concatenate(rgb), np.concatenate(tris), clusters
 
 
-def validate(pos, rgb, tris, clusters, nodes):
+def validate(pos, rgb, tris, clusters, nodes, cones):
     assert len(pos) <= MAX_VERTICES, f"{len(pos)} vertices exceed uint16 indices"
     assert len(tris) <= MAX_TRIANGLES, f"{len(tris)} triangles exceed uint16 offsets"
     assert len(clusters) <= MAX_CLUSTERS, f"{len(clusters)} clusters exceed uint16 offsets"
@@ -133,6 +141,10 @@ def validate(pos, rgb, tris, clusters, nodes):
         assert np.all(cp >= lo) and np.all(cp <= hi)
         next_v, next_t = vbase + vcount, tbase + tcount
     assert next_v == len(pos) and next_t == len(tris)
+    assert len(cones) == len(clusters), "one cone per cluster"
+    for cluster, (apex, axis, cutoff) in zip(clusters, cones):
+        assert all(-127 <= a <= 127 for a in axis) and 0 <= cutoff <= CONE_NEVER
+        assert not cluster[6] or cutoff == CONE_NEVER, "a double-sided cluster is never culled"
     reached = np.zeros(len(clusters), dtype=np.int64)
     stack = [0]
     while stack:
@@ -175,6 +187,10 @@ def triple(v):
     return "{" + ", ".join(str(int(x)) for x in v) + "}"
 
 
+def c_float(v):
+    return np.format_float_positional(np.float32(v), unique=True, trim="0") + "F"
+
+
 def c_bool(v):
     return "true" if v else "false"
 
@@ -211,6 +227,11 @@ def emit(out_dir, name, banner_lines, mesh):
             print(f"    {{{vbase}, {vcount}, {tbase}, {tcount}, {triple(lo)}, {triple(hi)}, {c_bool(double)}}},", file=out)
         print("};", file=out)
         print(file=out)
+        print(f"static const r3d_lit_cone_t {low}_cones[] = {{", file=out)
+        for apex, axis, cutoff in mesh.cones:
+            print(f"    {{{{{', '.join(c_float(a) for a in apex)}}}, {triple(axis)}, {cutoff}}},", file=out)
+        print("};", file=out)
+        print(file=out)
         print(f"static const r3d_lit_node_t {low}_nodes[] = {{", file=out)
         for n in mesh.nodes:
             print(f"    {{{triple(n['lo'])}, {triple(n['hi'])}, {n['first']}, {n['count']}, {c_bool(n['leaf'])}}},", file=out)
@@ -219,7 +240,7 @@ def emit(out_dir, name, banner_lines, mesh):
         print(f"const r3d_lit_mesh_t {low}_mesh = {{", file=out)
         print(f"    {low}_positions, {low}_colors, {low}_triangles, {low}_clusters, {low}_nodes,", file=out)
         print(f"    {up}_VERTEX_COUNT, {up}_TRIANGLE_COUNT, {up}_CLUSTER_COUNT, {up}_NODE_COUNT,", file=out)
-        print(f"    {up}_POSITION_SCALE,", file=out)
+        print(f"    {up}_POSITION_SCALE, {low}_cones,", file=out)
         print("};", file=out)
 
 

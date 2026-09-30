@@ -145,19 +145,19 @@ class LitMeshTests(unittest.TestCase):
         clusters = [(0, 3, 0, 1, np.zeros(3), np.zeros(3), False), (3, 3, 1, 1, np.zeros(3), np.zeros(3), False)]
         nodes = [{"leaf": True, "first": 0, "count": 2}]
         with self.assertRaises(AssertionError):
-            validate(pos, np.zeros((6, 3)), tris, clusters, nodes)
+            validate(pos, np.zeros((6, 3)), tris, clusters, nodes, [])
 
     def test_validation_refuses_more_triangles_than_uint16_offsets_hold(self):
         pos = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
         tris = np.tile([0, 1, 2], (65536, 1))
         with self.assertRaisesRegex(AssertionError, "triangles"):
-            validate(pos, np.zeros((3, 3)), tris, [], [])
+            validate(pos, np.zeros((3, 3)), tris, [], [], [])
 
     def test_validation_refuses_more_clusters_than_uint16_offsets_hold(self):
         pos = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
         clusters = [(0, 3, 0, 1, np.zeros(3), np.zeros(3), False)] * 65536
         with self.assertRaisesRegex(AssertionError, "clusters"):
-            validate(pos, np.zeros((3, 3)), np.array([[0, 1, 2]]), clusters, [])
+            validate(pos, np.zeros((3, 3)), np.array([[0, 1, 2]]), clusters, [], [])
 
 
 def sphere(subdivisions, radius=400.0):
@@ -264,6 +264,37 @@ class MeshletTests(unittest.TestCase):
         for _, mesh in list(self.each()):
             self.assertEqual(sum(n["count"] for n in mesh.nodes if n["leaf"]), len(mesh.clusters))
             self.assertLess(len(mesh.nodes), len(mesh.clusters))
+
+    @staticmethod
+    def culled(cone, eye):
+        """r3d_lit_pipeline.c's test, on the same numbers."""
+        apex, axis, cutoff = np.array(cone[0], dtype=np.float32), np.array(cone[1], dtype=np.float32), cone[2]
+        d = apex - eye.astype(np.float32)
+        a = float(d @ axis)
+        return cutoff < lit_mesh.CONE_NEVER and a > 0 and a * a >= cutoff * cutoff * float(d @ d)
+
+    def test_a_cluster_a_cone_culls_has_no_triangle_facing_the_eye(self):
+        rng = np.random.default_rng(5)
+        for _, mesh in list(self.each()):
+            eyes = rng.uniform(-900, 900, (300, 3)) * mesh.position_scale
+            dropped = 0
+            for cluster, cone in zip(mesh.clusters, mesh.cones):
+                v = mesh.pos[cluster[0] : cluster[0] + cluster[1]].astype(np.float64)
+                t = mesh.tris[cluster[2] : cluster[2] + cluster[3]] - cluster[0]
+                n = np.cross(v[t[:, 1]] - v[t[:, 0]], v[t[:, 2]] - v[t[:, 0]])
+                for eye in eyes:
+                    if self.culled(cone, eye):
+                        dropped += 1
+                        self.assertFalse(cluster[6])
+                        self.assertTrue(np.all(np.einsum("ij,ij->i", n, eye - v[t[:, 0]]) <= 0))
+            self.assertGreater(dropped, 0)
+
+    def test_a_double_sided_cluster_gets_a_cone_that_never_culls(self):
+        for _, mesh in list(self.each()):
+            self.assertEqual(len(mesh.cones), len(mesh.clusters))
+            for cluster, cone in zip(mesh.clusters, mesh.cones):
+                if cluster[6]:
+                    self.assertEqual(cone[2], lit_mesh.CONE_NEVER)
 
     def test_the_c_data_reads_back_as_what_was_baked(self):
         for m, mesh in list(self.each()):
