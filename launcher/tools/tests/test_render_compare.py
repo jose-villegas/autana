@@ -13,6 +13,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "render"))
 
+import check_avi  # noqa: E402
 import render_compare  # noqa: E402
 
 CLEAR = (10, 20, 30)
@@ -83,6 +84,12 @@ class SheetTest(unittest.TestCase):
         a = image([[DRAWN, DRAWN]])
         sheet = render_compare.sheet([("one", a, a), ("two", a, a)], CLEAR, gain=8)
         self.assertEqual(sheet.size, (6, 2))
+
+    def test_rows_of_different_widths_are_padded_to_the_widest(self):
+        narrow, wide = image([[DRAWN, DRAWN]]), image([[DRAWN, DRAWN, DRAWN, DRAWN]])
+        sheet = render_compare.sheet([("n", narrow, narrow), ("w", wide, wide)], CLEAR)
+        self.assertEqual(sheet.size, (12, 2))
+        self.assertEqual(sheet.getpixel((8, 0)), (0, 0, 0))
 
     def test_size_mismatch_is_refused(self):
         with self.assertRaises(ValueError):
@@ -188,6 +195,22 @@ class CropSheetTest(unittest.TestCase):
         pixels = np.asarray(render_compare.crop_sheet([("t", a, b, clusters[:1])], zoom=4))
         self.assertLessEqual(pixels.shape[1], 512 + 100)
 
+    def test_no_difference_writes_no_crops_file(self):
+        same = blank(20, 20)
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "x.crops.png"
+            self.assertFalse(render_compare.write_crops([("t", same, same, [])], str(target)))
+            self.assertFalse(target.exists())
+
+    def test_a_difference_writes_the_crops_file(self):
+        a = blank(20, 20)
+        b = with_pixels(a, blob(5, 5), DRAWN)
+        entries = [("t", a, b, render_compare.find_clusters(a, b, None))]
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "x.crops.png"
+            self.assertTrue(render_compare.write_crops(entries, str(target)))
+            self.assertTrue(target.exists())
+
     def test_no_clusters_still_gives_a_picture(self):
         self.assertGreater(render_compare.crop_sheet([("t", blank(4, 4), blank(4, 4), [])]).size[0], 0)
 
@@ -223,15 +246,29 @@ class VideoTest(unittest.TestCase):
         path.write_bytes(avi_bytes(frames[0].size[0], frames[0].size[1], frames, dt_ms))
         return str(path)
 
-    def test_read_avi_gives_top_down_rgb_frames_and_the_rate(self):
+    def test_read_video_gives_top_down_rgb_frames_and_the_rate(self):
         frame = with_pixels(blank(5, 4), [(1, 0)], DRAWN)
         with tempfile.TemporaryDirectory() as tmp:
-            fps, frames = render_compare.read_avi(self.write_avi(tmp, "a.avi", [frame, blank(5, 4)]))
+            fps, frames = render_compare.read_video(self.write_avi(tmp, "a.avi", [frame, blank(5, 4)]))
             frames = list(frames)
         self.assertEqual(fps, 4.0)
         self.assertEqual(len(frames), 2)
         self.assertEqual(tuple(frames[0][0, 1]), DRAWN)
         self.assertEqual(tuple(frames[0][3, 1]), (0, 0, 0))
+
+    def test_the_avi_reader_gives_size_rate_and_raw_frames(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            video = check_avi.read_avi(self.write_avi(tmp, "a.avi", [blank(5, 4), blank(5, 4)]))
+            frames = list(video.frames)
+        self.assertEqual((video.width, video.height, video.fps), (5, 4, 4.0))
+        self.assertEqual([len(f) for f in frames], [16 * 4, 16 * 4])
+
+    def test_the_avi_reader_refuses_a_file_that_is_not_an_avi(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "x.avi"
+            path.write_bytes(b"not an avi at all")
+            with self.assertRaises(check_avi.AviError):
+                check_avi.read_avi(str(path))
 
     def test_a_composed_frame_is_a_then_b_then_heat_under_a_label_bar(self):
         a = blank(6, 4, (50, 50, 50))

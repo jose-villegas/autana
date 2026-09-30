@@ -1,18 +1,18 @@
 """Lay renders of two revisions side by side and say how they differ.
 
     render_compare.py --out sheet.png [--summary summary.txt] [--clear RRGGBB]
-        [--gain N] --row LABEL A.bmp B.bmp [--row ...]
+        --row LABEL A.bmp B.bmp [--row ...]
     render_compare.py --out video.mp4 --video A.avi B.avi --label-a TEXT
-        --label-b TEXT [--csv frames.csv] [--fps N] [--clear RRGGBB] [--gain N]
+        --label-b TEXT [--csv frames.csv] [--fps N] [--clear RRGGBB]
 
-Either form takes --crops N [--zoom K]: a second picture, <out>.crops.png, of
+Either form takes --crops N: a second picture, <out>.crops.png, of
 the N places the two differ most, each cut with a margin, A above B and
-enlarged K times (default 4) without smoothing. Places with holes come first,
+enlarged ZOOM (4) times without smoothing. Places with holes come first,
 then the strongest; changed pixels near each other are one place. A video
 takes them from its two most different frames.
 
 One row per render: A | B | a greyscale heatmap of the absolute per-pixel
-difference, scaled by --gain so a small colour shift shows. With --clear (the
+difference, scaled by GAIN (8) so a small colour shift shows. With --clear (the
 colour the scene clears to) a pixel that is clear on one side and drawn on the
 other is red in the heatmap and counted as a hole on the side that left it
 clear; a silhouette that moved counts too, so read the count beside the sheet.
@@ -30,7 +30,6 @@ Needs Pillow and numpy, and ffmpeg for --video.
 
 import argparse
 import shutil
-import struct
 import subprocess
 from dataclasses import dataclass
 
@@ -41,6 +40,8 @@ import check_avi
 
 HOLE_RED = (255, 0, 0)
 LABEL_BAR = 22
+GAIN = 8
+ZOOM = 4
 CROP_FRAMES = 2
 CSV_HEADER = "frame,time_ms,changed_pct,mean_abs,holes_a,holes_b"
 
@@ -105,7 +106,7 @@ def measure(a, b, clear):
     )
 
 
-def heatmap(a, b, clear, gain):
+def heatmap(a, b, clear, gain=GAIN):
     """Greyscale |a - b| times gain, holes in red."""
     _same_size(a, b)
     pa, pb = _pixels(a), _pixels(b)
@@ -116,13 +117,15 @@ def heatmap(a, b, clear, gain):
     return Image.fromarray(heat)
 
 
-def sheet(rows, clear, gain):
-    """One picture: each (label, a, b) row as A | B | heatmap, stacked."""
+def sheet(rows, clear, gain=GAIN):
+    """One picture: each (label, a, b) row as A | B | heatmap, stacked, black-padded to the widest."""
     strips = []
     for _label, a, b in rows:
         _same_size(a, b)
         strips.append(np.concatenate([_pixels(a), _pixels(b), np.asarray(heatmap(a, b, clear, gain)).astype(np.int32)], axis=1))
-    return Image.fromarray(np.concatenate(strips, axis=0).astype(np.uint8))
+    widest = max(strip.shape[1] for strip in strips)
+    padded = [np.pad(strip, ((0, 0), (0, widest - strip.shape[1]), (0, 0))) for strip in strips]
+    return Image.fromarray(np.concatenate(padded, axis=0).astype(np.uint8))
 
 
 @dataclass
@@ -251,7 +254,7 @@ def find_clusters(a, b, clear, count=4, margin=8, threshold=8, grow=3, max_side=
     return clusters[:count]
 
 
-def crop_sheet(entries, zoom=4):
+def crop_sheet(entries, zoom=ZOOM):
     """One picture of zoomed crops: per entry a row, per cluster A above B.
 
     entries is [(title, a, b, clusters)]; every crop is labelled with its
@@ -291,30 +294,18 @@ def crops_path(out):
     return out.rsplit(".", 1)[0] + ".crops.png"
 
 
-def read_avi(path):
+def read_video(path):
     """(fps, frames) of a render_video.c AVI; frames yields (h, w, 3) RGB arrays."""
-    with open(path, "rb") as handle:
-        data = handle.read()
-    if data[0:4] != b"RIFF" or data[8:12] != b"AVI ":
-        raise ValueError("%s: not a RIFF AVI file" % path)
-    hdrl_s, hdrl_e = check_avi.find_list(data, 12, len(data), b"hdrl")
-    avih_s, _ = check_avi.find_chunk(data, hdrl_s, hdrl_e, b"avih")
-    width, height = struct.unpack_from("<2I", data, avih_s + 32)
-    strl_s, strl_e = check_avi.find_list(data, hdrl_s, hdrl_e, b"strl")
-    strh_s, _ = check_avi.find_chunk(data, strl_s, strl_e, b"strh")
-    scale, rate = struct.unpack_from("<2I", data, strh_s + 20)
-    movi_s, movi_e = check_avi.find_list(data, 12, len(data), b"movi")
-    stride = (width * 3 + 3) // 4 * 4
+    video = check_avi.read_avi(path)
+    stride = (video.width * 3 + 3) // 4 * 4
 
     def frames():
-        for fourcc, start, end in check_avi.read_chunks(data, movi_s, movi_e):
-            if fourcc != b"00dc" or end - start != stride * height:
-                raise ValueError("%s: not a 24-bit frame chunk" % path)
-            rows = np.frombuffer(data, dtype=np.uint8, count=stride * height, offset=start).reshape(height, stride)
-            bgr = rows[::-1, : width * 3].reshape(height, width, 3)
+        for body in video.frames:
+            rows = np.frombuffer(body, dtype=np.uint8).reshape(video.height, stride)
+            bgr = rows[::-1, : video.width * 3].reshape(video.height, video.width, 3)
             yield np.ascontiguousarray(bgr[:, :, ::-1])
 
-    return rate / scale, frames()
+    return video.fps, frames()
 
 
 def _font():
@@ -385,12 +376,21 @@ def worst_frames(all_stats, count):
     return sorted(order[:count])
 
 
+def write_crops(entries, out, zoom=ZOOM):
+    """Save the crops sheet of entries unless nothing differs; True if written."""
+    if not any(clusters for _t, _a, _b, clusters in entries):
+        print("no differences: no crops written")
+        return False
+    crop_sheet(entries, zoom).save(out)
+    return True
+
+
 def write_video_crops(path_a, path_b, indices, out, clear, count, zoom, dt_ms):
     """A crops sheet of the given frames of two AVIs, one row per frame."""
     wanted = set(indices)
     picked = {}
     for name, path in (("a", path_a), ("b", path_b)):
-        for index, raw in enumerate(read_avi(path)[1]):
+        for index, raw in enumerate(read_video(path)[1]):
             if index in wanted:
                 picked[(name, index)] = Image.fromarray(raw)
     entries = []
@@ -398,10 +398,10 @@ def write_video_crops(path_a, path_b, indices, out, clear, count, zoom, dt_ms):
         a, b = picked[("a", index)], picked[("b", index)]
         title = "frame %d (%.1f s)" % (index, index * dt_ms / 1000.0)
         entries.append((title, a, b, find_clusters(a, b, clear, count)))
-    crop_sheet(entries, zoom).save(out)
+    write_crops(entries, out, zoom)
 
 
-def compare_videos(path_a, path_b, out, csv_path, clear, gain, label_a, label_b, fps=None, crops=0, zoom=4):
+def compare_videos(path_a, path_b, out, csv_path, clear, gain, label_a, label_b, fps=None, crops=0, zoom=ZOOM):
     """Write the side-by-side mp4, the per-frame CSV and, with crops, the crops sheet.
 
     Returns the summary line.
@@ -409,8 +409,8 @@ def compare_videos(path_a, path_b, out, csv_path, clear, gain, label_a, label_b,
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         raise RuntimeError("ffmpeg not found; --video needs it to pack the frames")
-    fps_a, frames_a = read_avi(path_a)
-    fps_b, frames_b = read_avi(path_b)
+    fps_a, frames_a = read_video(path_a)
+    fps_b, frames_b = read_video(path_b)
     if fps_a != fps_b:
         raise ValueError("frame rate %g vs %g: render both with the same --dt" % (fps_a, fps_b))
     dt_ms = 1000.0 / fps_a
@@ -461,7 +461,6 @@ def main():
     parser.add_argument("--out", required=True)
     parser.add_argument("--summary")
     parser.add_argument("--clear", type=parse_rgb)
-    parser.add_argument("--gain", type=int, default=8)
     parser.add_argument("--row", nargs=3, action="append", metavar=("LABEL", "A", "B"))
     parser.add_argument("--video", nargs=2, metavar=("A.avi", "B.avi"))
     parser.add_argument("--csv")
@@ -469,11 +468,10 @@ def main():
     parser.add_argument("--label-a", default="A")
     parser.add_argument("--label-b", default="B")
     parser.add_argument("--crops", type=int, default=0)
-    parser.add_argument("--zoom", type=int, default=4)
     args = parser.parse_args()
 
     if args.video:
-        line = compare_videos(*args.video, args.out, args.csv, args.clear, args.gain, args.label_a, args.label_b, args.fps, args.crops, args.zoom)
+        line = compare_videos(*args.video, args.out, args.csv, args.clear, GAIN, args.label_a, args.label_b, args.fps, args.crops, ZOOM)
         print(line)
         if args.summary:
             with open(args.summary, "a") as handle:
@@ -483,10 +481,10 @@ def main():
         parser.error("--row or --video is required")
 
     rows = [(label, Image.open(a), Image.open(b)) for label, a, b in args.row]
-    sheet(rows, args.clear, args.gain).save(args.out)
+    sheet(rows, args.clear).save(args.out)
     if args.crops:
         entries = [(label, a, b, find_clusters(a, b, args.clear, args.crops)) for label, a, b in rows]
-        crop_sheet(entries, args.zoom).save(crops_path(args.out))
+        write_crops(entries, crops_path(args.out), ZOOM)
     lines = [summary_line(label, measure(a, b, args.clear)) for label, a, b in rows]
     print("\n".join(lines))
     if args.summary:

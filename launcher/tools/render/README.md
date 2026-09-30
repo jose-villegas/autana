@@ -9,7 +9,7 @@
 | [render_diff.py](render_diff.py) | Compares rendered and captured images. |
 | [render_diff.sh](render_diff.sh) | Shell entry point for image comparisons. |
 | [render_compare.py](render_compare.py) | Builds the A, B and difference sheet, the side-by-side video, the zoomed crops and the change numbers. |
-| [render_compare.sh](render_compare.sh) | Renders one scene at two revisions and compares them: `--script S [--clear RRGGBB] [--video [--fps N]] [--crops N [--zoom K]] A B --render LABEL "ARGS"`. |
+| [render_compare.sh](render_compare.sh) | Runs a scene at two revisions and compares the images: `--script S [--clear RRGGBB] [--video [--fps N]] [--crops N] A B [--render LABEL "ARGS"]`. |
 | [render_png.py](render_png.py) | Converts host BMP frames to PNG. |
 | [render_qemu.sh](render_qemu.sh) | Captures a QEMU screen and compares it with a host render. |
 | [render_video.c](render_video.c) | Writes video frames from host render scenes. |

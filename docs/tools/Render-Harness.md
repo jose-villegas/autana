@@ -265,39 +265,33 @@ chrome moves, that file has to move with it.
 
 ```sh
 ./launcher/tools/render/render_compare.sh --script <host-render-script> \
-    --clear RRGGBB -o /tmp/cmp [--video [--fps N]] [--crops N [--zoom K]] <A> <B> \
-    [--sheet poses] --render early "<renderer arguments>" --render late "<renderer arguments>"
+    [-o DIR] [--clear RRGGBB] [--video [--fps N]] [--crops N] <A> <B> \
+    [--render LABEL "<renderer arguments>" ...]
 ```
 
-`A` and `B` are git revisions (each built in a temporary worktree, removed
-afterwards) or existing directories. The script is the scene's own host-render
-script and the arguments are its own, so the tool names no scene. It writes
-one PNG per `--sheet`, a row per render: A, B, then the absolute per-pixel
-difference as a greyscale heatmap (`--gain`, default 8, amplifies it). With
-`--clear`, pixels clear on one side and drawn on the other are red and counted
-as holes on the side that left them clear. `summary.txt` gives per render the
-changed-pixel count and share, the mean absolute difference and the holes.
+```mermaid
+flowchart LR
+    Rev["A and B<br/>revisions or directories"] --> Run["host-render script<br/>run at each"]
+    Run --> Imgs["same-named<br/>BMPs and AVIs"]
+    Imgs --> Sheet["compare.png<br/>A, B, heatmap"]
+    Imgs --> Vid["label.mp4<br/>and frames.csv"]
+    Sheet --> Crops["crops.png<br/>zoomed places"]
+    Vid --> Crops
+    Sheet --> Sum["summary.txt"]
+```
 
-`--video` compares motion, which shows a difference a still can hide. Both
-revisions record every render through the renderer's own `--video` over the
-same frames (put `--frames` and `--dt` in the renderer arguments; a scene
-runs from time zero, so a stretch that starts late still records from the
-start). It writes `<label>.mp4`, one panel per side plus the heatmap on every
-frame, each labelled with the revision's short hash and the frame's time, and
-`<label>.frames.csv` with the changed share, mean difference and holes of
-each frame. The recorded AVIs are the harness's video path; ffmpeg only packs
-the composed frames into H.264, as for the doc GIFs, because an uncompressed
-side-by-side runs to tens of megabytes. `--fps` sets the playback rate
-(default `1000/dt`), so a coarse `--dt` with a higher `--fps` plays a long
-stretch quickly.
+| Part | What it does |
+|---|---|
+| `A`, `B` | Revisions (each built in a temporary worktree, removed afterwards) or existing directories. |
+| `--script` | The scene's own host-render script, so the tool names no scene. By default it runs at both revisions and the images of the same name are compared. |
+| `--render` | Replaces that with ad-hoc renders: the script's `--build-only` builds the renderer, which runs with the arguments given. A revision from before `--build-only` runs its full script instead. |
+| `--clear` | The colour the scene clears to. A pixel clear on one side and drawn on the other is red and counted as a hole on the side that left it clear. |
+| sheet | `compare.png`, a row per render: A, B, then the absolute difference as a greyscale heatmap, amplified 8 times. `summary.txt` gives the resolved short hashes and per render the changed share, mean difference and holes. |
+| `--video` | Records every render's frames on both sides through the renderer's own `--video` (with `--render`, put `--frames` and `--dt` in the arguments; a scene runs from time zero). Writes `<label>.mp4`, labelled with the short hashes and frame time, and `<label>.frames.csv` with per-frame changed share, mean difference and holes. ffmpeg packs the frames into H.264 because an uncompressed side-by-side is tens of megabytes; `--fps` sets playback (default `1000/dt`). |
+| `--crops N` | `compare.crops.png` and `<label>.crops.png`: the `N` places the two differ most, A above B, enlarged 4 times without smoothing. Changed pixels (a channel off by more than 8, or a hole) within 3 px are one place; holes rank first, then total difference; a place over 64 px is cut to its strongest 64 px window. A video uses its two worst frames. Nothing is written where nothing differs. |
 
-`--crops N` adds `<name>.crops.png` beside each sheet and video: the `N` places
-the two differ most, A above B, enlarged `K` times (`--zoom`, default 4) with
-no smoothing. Changed pixels (a channel off by more than 8, or a hole) within
-3 px of each other are one place; places with holes rank first, then by total
-difference; a place larger than 64 px is cut to its strongest 64 px window. A
-video takes them from its two frames with the most holes, then the most
-changed pixels.
+The renderer arguments are split on spaces and never expanded as patterns.
+The tool needs Pillow and numpy (`launcher/tools/render/requirements.txt`).
 
 ---
 
