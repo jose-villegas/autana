@@ -20,9 +20,9 @@ A scene includes `render/r3d.h` and nothing else from render/:
 | `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](Mesh-Import.md)) |
 | `camera_t` | A pinhole camera in model units: eye, look direction, lens, near plane |
 | `viewport_t` | The picture's size and the quarter turn the panel is read at; every camera in render/ takes it |
-| `frame_t` | One mesh drawn at one size into buffers the caller hands it. Its options are fields the caller sets: `clear`, and `doubled` for a picture twice the size |
+| `frame_t` | One mesh drawn at one size into buffers the caller hands it. Its options are fields the caller sets: `clear`, a `destination` picture, and the render `scale`, the destination's size over the frame's |
 | `frame_draw()` | Draws the mesh through a camera, turned for the panel's quarter |
-| `frame_double()` | Doubles what was drawn into `doubled` |
+| `frame_upscale()` | Scales what was drawn up by `scale` into `destination`; the scale is 1 or 2 |
 | `frame_show()` | Development builds: shows the depth instead of the colour, as a [view mode](#view-modes) |
 | `ray_camera_t` | A ray tracer's camera: the direction through each physical pixel |
 
@@ -42,7 +42,7 @@ direction the rasterizer's way, which mirrors the picture.
 |---|---|
 | `r3d.h` | What a scene includes: it brings in the six headers below it |
 | `camera.h` | The camera |
-| `frame.h` | One whole frame on both cores, optionally doubled to twice its size, and the view modes |
+| `frame.h` | One whole frame on both cores, optionally upscaled into a larger picture, and the view modes |
 | `viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
 | `vec3f.h` | The float 3-vector every float camera shares |
 | `ray.h` | The ray camera: the direction through each physical pixel |
@@ -69,11 +69,11 @@ flowchart LR
         Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
         Transform --> Draw["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
     end
-    Draw --> Double["frame_double()<br/><i>to twice the size</i>"]
+    Draw --> Upscale["frame_upscale()<br/><i>by the render scale</i>"]
 ```
 
 A caller fills a camera, then calls `frame_draw()`, and
-`frame_double()` when it set `doubled`. The stages inside are
+`frame_upscale()` when it set `destination`. The stages inside are
 `r3d_pipeline.h`'s, for a suite or tool that schedules them itself.
 
 The stages are split so two cores can share them. Transforming disjoint
@@ -81,8 +81,8 @@ cluster lists writes disjoint vertex ranges, and drawing touches only the
 rows of its own target. `r3d_pipeline_transform()` also records the screen rows
 each cluster spans, so a core drawing half the rows skips a cluster wholly
 outside them. The frame renders at the caller's width and height and
-can double the result into a picture twice each, so rendering at half the
-panel's size quarters the pixels and halves the rows and spans.
+can upscale the result by its render scale into a larger picture, so
+rendering at half the panel's size quarters the pixels and halves the rows and spans.
 
 ### On both cores
 
@@ -107,8 +107,8 @@ sequenceDiagram
     J-->>C0: job_wait()
     C0->>P: gfx_present_wait()
     Note over C0: frame()
-    C0->>J: double the top half into the framebuffer
-    Note over C0: double the bottom half
+    C0->>J: upscale the top half into the framebuffer
+    Note over C0: upscale the bottom half
     J-->>C0: job_wait()
     Note over C0,P: frame N is presented on the next pass
 ```
@@ -117,13 +117,13 @@ sequenceDiagram
 
 Development builds can look at the depth a frame drew instead of its
 colour. `frame_show()` runs after `frame_draw()` and before
-`frame_double()`, and overwrites the frame's colour buffer from its
+`frame_upscale()`, and overwrites the frame's colour buffer from its
 depth buffer, which it reads as the render left it and never writes.
 
 ```mermaid
 flowchart LR
     Render["frame_draw()<br/><i>colour and depth</i>"] --> Show
-    Show["frame_show(mode)<br/><i>colour from depth</i>"] --> Double["frame_double()<br/><i>to twice the size</i>"]
+    Show["frame_show(mode)<br/><i>colour from depth</i>"] --> Upscale["frame_upscale()<br/><i>by the render scale</i>"]
 ```
 
 | Mode | The colour buffer becomes |
@@ -134,9 +134,9 @@ flowchart LR
 
 The ramp is stretched over the range this frame drew, so it shows the most
 detail within a frame and is not comparable between frames. A pixel nothing
-drew takes `frame->clear`, the colour doubling gives it, so it reads as empty
+drew takes `frame->clear`, the colour upscaling gives it, so it reads as empty
 in every view; a tile holding one such pixel is empty. The views are at the
-frame's own size, before doubling. `r3d_span.h` defines the depth encoding
+frame's own size, before upscaling. `r3d_span.h` defines the depth encoding
 they read.
 
 ## Coverage and small triangles

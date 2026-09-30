@@ -470,13 +470,13 @@ replace it, chosen by app kind:
 
 **A measured exception: the lit-mesh frame.** `render/r3d.h`'s frame
 renders at half resolution into colour and depth targets in PSRAM and
-doubles the result into the framebuffer, both cores writing PSRAM in bulk
+upscales the result into the framebuffer, both cores writing PSRAM in bulk
 every frame. It stays there until the span rasterizer draws into the band
 ring; `apps/render_lab/tests/suite_sponza_perf.c`, on a full diagnostics
 build, prints what a frame of each bake costs on both cores before present.
-The doubling belongs to gfx (section 8,
+The upscaling belongs to gfx (section 8,
 decision 1) and moves there when gfx resolves an app's resolution; until
-then `frame_double()` does it inside render/.
+then `frame_upscale()` does it inside render/.
 
 PSRAM's role narrows to bulk and cold data read at load or per frame:
 textures, levels, the retained framebuffer as a read source, never the

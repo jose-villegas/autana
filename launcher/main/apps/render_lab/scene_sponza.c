@@ -9,7 +9,7 @@
  * same flythrough through each.
  *
  * It renders at half the panel's resolution into its own PSRAM target and
- * doubles that into the framebuffer, so it asks for the full-framebuffer
+ * upscales that into the framebuffer, so it asks for the full-framebuffer
  * layout.
  */
 
@@ -42,7 +42,7 @@ static void* scratch;
 static frame_t frame; /* carved from scratch at enter() */
 static frame_stats_t stats;
 static uint32_t elapsed_ms;
-static bool rendered; /* update() drew a frame that frame() has not doubled yet */
+static bool rendered; /* update() drew a frame that frame() has not upscaled yet */
 
 static void
 enter_with(const r3d_lit_mesh_t* mesh) {
@@ -54,7 +54,8 @@ enter_with(const r3d_lit_mesh_t* mesh) {
         .width = SPONZA_RENDER_WIDTH,
         .height = SPONZA_RENDER_HEIGHT,
         .clear = GFX_RGB(SKY_RGB),
-        .doubled = gfx_framebuffer(),
+        .destination = gfx_framebuffer(),
+        .scale = 2,
     };
     const size_t bytes = frame_scratch_bytes(mesh, frame.width, frame.height);
     scratch = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -121,7 +122,7 @@ scene_sponza_frame(uint32_t dt_ms, bool band_mode_active) {
     if (!rendered) {
         render(dt_ms); /* no update() ran since the last frame: the first after entering */
     }
-    frame_double(&frame);
+    frame_upscale(&frame);
     rendered = false;
     gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
 }

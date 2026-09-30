@@ -1528,17 +1528,17 @@ build_wall_and_stack(parts_t* p) {
     }
 }
 
-/* One draw of every visible cluster into a full-height target, doubled,
+/* One draw of every visible cluster into a full-height target, upscaled,
  * with the clear colour wherever nothing was drawn. */
 static void
-reference_frame(const parts_t* p, const r3d_lens_t* view, gfx_color_t* doubled) {
+reference_frame(const parts_t* p, const r3d_lens_t* view, gfx_color_t* upscaled) {
     const r3d_span_target_t full = fixture();
     draw_parts(p, view, &full, false);
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
             const gfx_color_t c = depth[y * W + x] != 0 ? color[y * W + x] : SKY;
             for (int k = 0; k < 4; k++) {
-                doubled[(2 * y + k / 2) * 2 * W + 2 * x + k % 2] = c;
+                upscaled[(2 * y + k / 2) * 2 * W + 2 * x + k % 2] = c;
             }
         }
     }
@@ -1580,20 +1580,20 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     free(scratch);
 }
 
-/* Split between the cores at whatever row balances them, then doubled: the
- * same picture as one full draw doubled, over a colour target left full of
+/* Split between the cores at whatever row balances them, then upscaled: the
+ * same picture as one full draw upscaled, over a colour target left full of
  * stale pixels. */
 static void
 test_the_two_core_frame_matches_one_full_draw(void) {
     parts_t* const p = parts_buffer();
     build_wall_and_stack(p);
-    gfx_color_t* doubled = malloc(sizeof(gfx_color_t) * 4 * W * H);
+    gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
     char* scratch = malloc(frame_scratch_bytes(&p->mesh, W, H));
-    TEST_ASSERT_NOT_NULL(doubled);
+    TEST_ASSERT_NOT_NULL(upscaled);
     TEST_ASSERT_NOT_NULL(want);
     TEST_ASSERT_NOT_NULL(scratch);
-    frame_t frame = {.mesh = &p->mesh, .width = W, .height = H, .clear = SKY, .doubled = doubled};
+    frame_t frame = {.mesh = &p->mesh, .width = W, .height = H, .clear = SKY, .destination = upscaled, .scale = 2};
     frame_use_scratch(&frame, scratch);
 
     static const float eye_heights[] = {-100.0f, 0.0f, 150.0f, 230.0f, 300.0f};
@@ -1604,13 +1604,14 @@ test_the_two_core_frame_matches_one_full_draw(void) {
             frame.color[i] = 0xBEEF;
         }
         frame_draw(&frame, &camera, 0);
-        frame_double(&frame);
+        frame_upscale(&frame);
         reference_frame(p, &view, want);
-        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, doubled, 4 * W * H, "the doubled frame differs from one full draw");
+        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, upscaled, 4 * W * H,
+                                              "the upscaled frame differs from one full draw");
     }
 
-    /* With nothing to double into, the frame clears its own colour target. */
-    frame.doubled = NULL;
+    /* With nothing to upscale into, the frame clears its own colour target. */
+    frame.destination = NULL;
     const camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
     const r3d_lens_t view = look_down_minus_z(150.0f, 400, 1.0f);
     frame_draw(&frame, &camera, 0);
@@ -1622,7 +1623,40 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     }
     free(scratch);
     free(want);
-    free(doubled);
+    free(upscaled);
+}
+
+/* At render scale 1 the destination is the frame at its own size, taking
+ * the clear colour wherever nothing was drawn. */
+static void
+test_a_frame_at_scale_one_copies_into_its_destination(void) {
+    parts_t* const p = parts_buffer();
+    build_wall_and_stack(p);
+    gfx_color_t* destination = malloc(sizeof(gfx_color_t) * W * H);
+    gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
+    char* scratch = malloc(frame_scratch_bytes(&p->mesh, W, H));
+    TEST_ASSERT_NOT_NULL(destination);
+    TEST_ASSERT_NOT_NULL(want);
+    TEST_ASSERT_NOT_NULL(scratch);
+    frame_t frame = {.mesh = &p->mesh, .width = W, .height = H, .clear = SKY, .destination = destination, .scale = 1};
+    frame_use_scratch(&frame, scratch);
+
+    const camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
+    const r3d_lens_t view = look_down_minus_z(150.0f, 400, 1.0f);
+    frame_draw(&frame, &camera, 0);
+    frame_upscale(&frame);
+    reference_frame(p, &view, want);
+    int sky = 0;
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            TEST_ASSERT_EQUAL_HEX16(want[2 * y * 2 * W + 2 * x], destination[y * W + x]);
+            sky += destination[y * W + x] == SKY;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(sky > 0 && sky < W * H, "the view shows both the parts and the clear colour");
+    free(scratch);
+    free(want);
+    free(destination);
 }
 
 /* Views of the depth */
@@ -1872,10 +1906,10 @@ test_the_range_ignores_empty_pixels_and_survives_none_or_one_drawn(void) {
     TEST_ASSERT_EQUAL_HEX16(SKY, color_at(f, 4, 4));
 }
 
-/* The view of pixel i in the doubled picture. */
+/* The view of pixel i in the upscaled picture. */
 static uint16_t
-doubled_at(const uint16_t* doubled, int i) {
-    return doubled[((i / W) * 2 * 2 * W) + ((i % W) * 2)];
+upscaled_at(const uint16_t* upscaled, int i) {
+    return upscaled[((i / W) * 2 * 2 * W) + ((i % W) * 2)];
 }
 
 /* The views are read from the depth the render left and add nothing to it,
@@ -1884,15 +1918,15 @@ static void
 test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
     parts_t* const p = parts_buffer();
     build_wall_and_stack(p);
-    gfx_color_t* doubled = malloc(sizeof(gfx_color_t) * 4 * W * H);
+    gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
     char* scratch = malloc(frame_scratch_bytes(&p->mesh, W, H));
     uint16_t* depth_before = malloc(sizeof(uint16_t) * W * H);
     uint16_t* shaded = malloc(sizeof(uint16_t) * W * H);
-    TEST_ASSERT_NOT_NULL(doubled);
+    TEST_ASSERT_NOT_NULL(upscaled);
     TEST_ASSERT_NOT_NULL(scratch);
     TEST_ASSERT_NOT_NULL(depth_before);
     TEST_ASSERT_NOT_NULL(shaded);
-    frame_t frame = {.mesh = &p->mesh, .width = W, .height = H, .clear = SKY, .doubled = doubled};
+    frame_t frame = {.mesh = &p->mesh, .width = W, .height = H, .clear = SKY, .destination = upscaled, .scale = 2};
     frame_use_scratch(&frame, scratch);
 
     static const float eye_heights[] = {-100.0f, 150.0f, 300.0f};
@@ -1907,20 +1941,20 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(shaded, frame.color, W * H, "the shaded view changed the render");
 
         frame_show(&frame, FRAME_SHOW_DEPTH);
-        frame_double(&frame);
+        frame_upscale(&frame);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(depth_before, frame.depth, W * H, "showing the depth changed it");
         int drawn = 0;
         uint16_t depth_sum = 0;
         for (int i = 0; i < W * H; i++) {
             const uint16_t d = depth_before[i];
-            const uint16_t c = doubled_at(doubled, i);
+            const uint16_t c = upscaled_at(upscaled, i);
             TEST_ASSERT_TRUE_MESSAGE((d == R3D_DEPTH_EMPTY) == (c == SKY),
                                      "empty in the depth but not in the view, or the reverse");
             TEST_ASSERT_TRUE_MESSAGE(d == R3D_DEPTH_EMPTY || is_grey(c), "a drawn pixel is not a grey");
             drawn += d != R3D_DEPTH_EMPTY;
             depth_sum = (uint16_t)(depth_sum + d);
             if (i + 1 < W * H && (i + 1) % W != 0 && d != R3D_DEPTH_EMPTY && depth_before[i + 1] > d) {
-                TEST_ASSERT_TRUE_MESSAGE(level(doubled_at(doubled, i + 1)) >= level(c),
+                TEST_ASSERT_TRUE_MESSAGE(level(upscaled_at(upscaled, i + 1)) >= level(c),
                                          "the grey does not follow the depth");
             }
         }
@@ -1934,7 +1968,7 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
     free(shaded);
     free(depth_before);
     free(scratch);
-    free(doubled);
+    free(upscaled);
 }
 
 static void
@@ -1998,6 +2032,7 @@ run_r3d_lit_suite(void) {
 
     RUN_TEST(test_the_frame_carves_its_scratch_without_overlap);
     RUN_TEST(test_the_two_core_frame_matches_one_full_draw);
+    RUN_TEST(test_a_frame_at_scale_one_copies_into_its_destination);
     RUN_TEST(test_a_tile_holds_its_minimum_depth_not_its_maximum);
     RUN_TEST(test_one_empty_pixel_empties_its_tile_at_any_position_and_only_its_tile);
     RUN_TEST(test_the_partial_tiles_at_the_right_and_bottom_are_reduced_within_the_frame);

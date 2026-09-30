@@ -12,7 +12,7 @@
 #include "gfx/gfx.h"
 #include "render/r3d.h"
 
-/* Half the panel's resolution in each axis, doubled on the way out. */
+/* Half the panel's resolution in each axis, upscaled on the way out. */
 #define SPONZA_RENDER_WIDTH         (GFX_WIDTH / 2)
 #define SPONZA_RENDER_HEIGHT        (GFX_HEIGHT / 2)
 

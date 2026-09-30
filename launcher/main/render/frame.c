@@ -28,16 +28,28 @@ transform_slice(void* ctx) {
                            s->frame->rows);
 }
 
-/* Two panel rows per source row, each pixel written twice as one 32-bit
- * store. A pixel nothing covered (R3D_DEPTH_EMPTY) takes the clear colour
- * here, so the colour buffer itself is never cleared. */
+/* A pixel nothing covered (R3D_DEPTH_EMPTY) takes the clear colour here,
+ * so the colour buffer itself is never cleared. */
 static void
-double_rows(const frame_t* f, int first, int count) {
+copy_rows(const frame_t* f, int first, int count) {
+    for (int y = first; y < first + count; y++) {
+        const size_t row = (size_t)y * (size_t)f->width;
+        for (int x = 0; x < f->width; x++) {
+            f->destination[row + (size_t)x] =
+                f->depth[row + (size_t)x] != R3D_DEPTH_EMPTY ? f->color[row + (size_t)x] : f->clear;
+        }
+    }
+}
+
+/* Two destination rows per source row, each pixel written twice as one
+ * 32-bit store; the clear colour fills in as copy_rows() does. */
+static void
+upscale_rows(const frame_t* f, int first, int count) {
     const int out_width = 2 * f->width;
     for (int y = first; y < first + count; y++) {
         const uint16_t* src = f->color + ((size_t)y * (size_t)f->width);
         const uint16_t* depth = f->depth + ((size_t)y * (size_t)f->width);
-        uint32_t* top = (uint32_t*)(f->doubled + ((size_t)(2 * y) * (size_t)out_width));
+        uint32_t* top = (uint32_t*)(f->destination + ((size_t)(2 * y) * (size_t)out_width));
         uint32_t* bottom = top + f->width;
         for (int x = 0; x < f->width; x++) {
             const uint16_t c = depth[x] != R3D_DEPTH_EMPTY ? src[x] : f->clear;
@@ -57,7 +69,7 @@ draw_slice(void* ctx) {
     uint16_t* color = f->color + offset;
     uint16_t* depth = f->depth + offset;
 
-    if (f->doubled == NULL) {
+    if (f->destination == NULL) {
         for (size_t i = 0; i < pixels; i++) {
             color[i] = f->clear;
         }
@@ -69,9 +81,13 @@ draw_slice(void* ctx) {
 }
 
 static void
-double_slice(void* ctx) {
+upscale_slice(void* ctx) {
     const slice_t* s = ctx;
-    double_rows(s->frame, s->first, s->count);
+    if (s->frame->scale == 1) {
+        copy_rows(s->frame, s->first, s->count);
+    } else {
+        upscale_rows(s->frame, s->first, s->count);
+    }
 }
 
 static void
@@ -157,7 +173,8 @@ frame_draw(const frame_t* frame, const camera_t* camera, int quarter) {
 }
 
 void
-frame_double(const frame_t* frame) {
+frame_upscale(const frame_t* frame) {
+    assert(frame->scale == 1 || frame->scale == 2);
     const int mid = frame->height / 2;
-    run_split(double_slice, (slice_t){frame, NULL, 0, mid, frame->height - mid}, (slice_t){frame, NULL, 0, 0, mid});
+    run_split(upscale_slice, (slice_t){frame, NULL, 0, mid, frame->height - mid}, (slice_t){frame, NULL, 0, 0, mid});
 }

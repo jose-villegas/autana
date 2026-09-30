@@ -1,9 +1,9 @@
 /*
  * frame: one r3d_lit_mesh_t drawn through a camera on both cores, into
- * buffers the caller hands it, optionally doubled into a picture twice its
- * size. On a host, or with core 1 busy, the second half runs inline.
- * Rendering at half the size of the doubled picture and doubling the result
- * quarters the pixels and halves the rows and spans.
+ * buffers the caller hands it, optionally upscaled by a render scale into
+ * a full-size picture. On a host, or with core 1 busy, the second half runs
+ * inline. Rendering at half the size and upscaling the result quarters the
+ * pixels and halves the rows and spans.
  */
 #pragma once
 
@@ -21,11 +21,12 @@ typedef struct {
     const r3d_lit_mesh_t* mesh;
     int width, height;
     uint16_t clear; /* in the pixel format r3d_span.h describes */
-    /* When not NULL, frame_double() writes the finished frame into this
-     * picture, 2 * width by 2 * height, 4-byte aligned; the colour target is
-     * then never cleared, since doubling puts the clear colour wherever
-     * nothing was drawn. */
-    uint16_t* doubled;
+    /* When not NULL, the full-size picture frame_upscale() scales the drawing
+     * up into: scale * width by scale * height, 4-byte aligned. The colour
+     * target is then never cleared, since upscaling puts the clear colour
+     * wherever nothing was drawn. */
+    uint16_t* destination;
+    int scale; /* the render scale, destination size over frame size: 1 or 2 */
 
     /* Carved from the scratch block by frame_use_scratch(). */
     r3d_pipeline_vertex_t* cs; /* mesh->vertex_count entries */
@@ -49,9 +50,9 @@ void frame_use_scratch(frame_t* frame, void* scratch);
 /* Draws the mesh as `camera` sees it, turned for the panel's `quarter`. */
 frame_stats_t frame_draw(const frame_t* frame, const camera_t* camera, int quarter);
 
-/* Doubles the frame frame_draw() last drew into `doubled`, both cores
- * taking half the rows. */
-void frame_double(const frame_t* frame);
+/* Scales the frame frame_draw() last drew up by `scale` into `destination`,
+ * both cores taking half the rows. */
+void frame_upscale(const frame_t* frame);
 
 /* The 8x8 pixel tile FRAME_SHOW_DEPTH_TILES reduces the depth to: the unit
  * a hierarchical depth test would cull by. */
@@ -65,8 +66,8 @@ typedef enum {
 } frame_show_t;
 
 /* Development builds only: a release caller fails at link. Between draw and
- * double, overwrites `frame->color` from `frame->depth`: nearest white,
+ * upscale, overwrites `frame->color` from `frame->depth`: nearest white,
  * farthest black over the drawn range; a tile is empty if any pixel is.
- * Empty pixels take `frame->clear`, as doubling does, so pick one that is
+ * Empty pixels take `frame->clear`, as upscaling does, so pick one that is
  * no grey. */
 void frame_show(const frame_t* frame, frame_show_t mode);

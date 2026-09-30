@@ -1,6 +1,6 @@
 /*
  * Device-only suite: what a frame of each Sponza bake costs, the way
- * scene_sponza.c renders it (half resolution, doubled), at evenly spaced
+ * scene_sponza.c renders it (half resolution, upscaled), at evenly spaced
  * points of the flythrough; and, for the full bake at the flythrough's
  * start, where one core's draw spends its time stage by stage, whether its
  * two halves slow each other on both cores, and what an empty frame costs.
@@ -47,7 +47,8 @@ bench_open(bench_t* b, const r3d_lit_mesh_t* mesh) {
         .mesh = mesh,
         .width = SPONZA_RENDER_WIDTH,
         .height = SPONZA_RENDER_HEIGHT,
-        .doubled = b->panel,
+        .destination = b->panel,
+        .scale = 2,
     };
     b->scratch = heap_caps_malloc(frame_scratch_bytes(mesh, b->frame.width, b->frame.height),
                                   MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -153,7 +154,7 @@ test_sponza_draw_stage_breakdown(void) {
     const camera_t empty = {{0.0F, 20000.0F, 0.0F}, {0.0F, 1.0F, 0.01F}, 1.0F, 1.0F};
     start = esp_timer_get_time();
     const frame_stats_t none = frame_draw(&b.frame, &empty, 0);
-    frame_double(&b.frame);
+    frame_upscale(&b.frame);
     ESP_LOGI(TAG, "stage, both cores: %-20s %7lldus (%d clusters)", "empty frame",
              (long long)(esp_timer_get_time() - start), none.clusters);
 
@@ -175,7 +176,7 @@ report_frame_cost(const char* label, const r3d_lit_mesh_t* mesh) {
         const camera_t camera = sponza_camera_at(t_ms);
         const int64_t start = esp_timer_get_time();
         const frame_stats_t stats = frame_draw(&b.frame, &camera, 0);
-        frame_double(&b.frame);
+        frame_upscale(&b.frame);
         const int64_t us = esp_timer_get_time() - start;
         ESP_LOGI(TAG, "%s t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", label, (unsigned)(t_ms / 1000),
                  stats.clusters, stats.triangles, (long long)us);
