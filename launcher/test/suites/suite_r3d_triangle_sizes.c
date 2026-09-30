@@ -1,6 +1,7 @@
 /*
- * Portable suite: tools/r3d/triangle_sizes.h, the triangle-size histogram
- * and its poses file, on a mesh built inside the test.
+ * Host-only suite: tools/r3d/triangle_sizes.h, the triangle-size histogram
+ * and its poses file, on a mesh built inside the test. No firmware image
+ * compiles the tool.
  */
 
 #include <stdint.h>
@@ -9,6 +10,8 @@
 
 #include "suites.h"
 #include "unity.h"
+
+#ifndef DEVICE_BUILD
 
 #include "render/r3d_lit_pipeline.h"
 #include "triangle_sizes.h"
@@ -174,5 +177,12 @@ run_r3d_triangle_sizes_suite(void) {
     RUN_TEST(test_a_poses_file_gives_its_size_lens_and_poses);
     RUN_TEST(test_a_poses_file_missing_a_part_or_a_number_is_refused);
 }
+
+#else
+
+void
+run_r3d_triangle_sizes_suite(void) {}
+
+#endif
 
 SUITE_REGISTER(run_r3d_triangle_sizes_suite);
