@@ -175,8 +175,9 @@ each one cost a build-flash-capture cycle to find — twice over, for both:
   memory; arena allocations are static storage, so it does not report them as
   process leaks. The device runner records its 8-bit and 32-bit free heap
   before every test. After cleanup, a first-use drop reruns that test and its
-  cleanup, then checks the second run at zero bytes. A `MALLOC_CAP_*` failure
-  therefore means heap loss repeated.
+  cleanup, then checks the second run at zero bytes, so a "leaked ... heap on
+  its second run" failure means heap loss repeated. The audit holds however
+  the test ends, `TEST_PASS()` included.
 
 Those numbers come from `launcher/tools/device/device_profiles/<chip>.sh`, selected
 by `$DEVICE_PROFILE` (default `esp32s3`), each carrying its own provenance.
@@ -599,8 +600,8 @@ it.
 ## Conventions
 
 **Suites do not own the runner.** No suite defines `setUp`/`tearDown` or calls
-`UNITY_BEGIN`/`UNITY_END`, because several share one binary. The runners use
-their one setup/teardown pair for the memory audit. Each suite keeps a
+`UNITY_BEGIN`/`UNITY_END`, because several share one binary. The runners own
+the memory audit. Each suite keeps a
 `fixture()` helper and calls it at the top of every test, so a test never
 inherits state from the one before it.
 

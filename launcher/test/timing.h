@@ -25,7 +25,3 @@
  * line, byte for byte - see timing.c), then logs a separate line with how
  * long it took. */
 void suite_run_test_timed(void (*func)(void), const char* name, int line);
-
-#ifdef DEVICE_BUILD
-void suite_repeat_watched_test(void);
-#endif

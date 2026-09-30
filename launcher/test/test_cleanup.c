@@ -17,8 +17,10 @@ suite_clear_test_cleanup(void) {
 
 void
 suite_run_test_cleanup(void) {
-    if (test_cleanup != NULL) {
-        test_cleanup();
-        suite_clear_test_cleanup();
+    /* Cleared first: a cleanup that fails its own assertion runs once. */
+    void (*const cleanup)(void) = test_cleanup;
+    suite_clear_test_cleanup();
+    if (cleanup != NULL) {
+        cleanup();
     }
 }
