@@ -19,7 +19,10 @@ autana suite run_sand_perf_suite
 ```
 
 runs the sand frame-budget suite alone, on the board already flashed, with
-no rebuild and no reflash. Any other sand suite works the same way -
+no rebuild and no reflash. `--test fire,gas` narrows it to the rows whose
+test name contains `fire` or `gas` - about a minute instead of a dozen,
+and with `--runs` the A/B summary covers those rows alone
+([`autana suite`](../tools/Autana-CLI.md#tests)). Any other sand suite works the same way -
 `run_sand_materials_suite`, `run_sand_combustion_suite`, and so on;
 the sand suites are the ones registered in files under
 `launcher/main/apps/sand/` (`autana suite list` prints each suite's
