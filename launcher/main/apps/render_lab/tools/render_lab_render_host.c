@@ -60,7 +60,7 @@ options(int argc, char** argv) {
         }
     }
     if (!have_scene) {
-        fprintf(stderr, "render_lab_render_host needs --scene <key>\n");
+        (void)fprintf(stderr, "render_lab_render_host needs --scene <key>\n");
     }
     return have_scene;
 }
@@ -74,7 +74,7 @@ static bool
 setup(int quarter) {
     const app_t* registered = app_list();
     if (registered == NULL || registered->enter == NULL || registered->frame == NULL) {
-        fprintf(stderr, "no app registered itself\n");
+        (void)fprintf(stderr, "no app registered itself\n");
         return false;
     }
     render_lab_band_mode = false;
@@ -92,7 +92,7 @@ tile_farthest(const uint16_t* depth, int w, int h, int tx, int ty) {
     uint16_t farthest = UINT16_MAX;
     for (int y = ty * DEPTH_TILE; y < (ty + 1) * DEPTH_TILE && y < h; y++) {
         for (int x = tx * DEPTH_TILE; x < (tx + 1) * DEPTH_TILE && x < w; x++) {
-            const uint16_t d = depth[(size_t)y * w + x];
+            const uint16_t d = depth[((size_t)y * w) + x];
             if (d == DEPTH_EMPTY) {
                 return DEPTH_EMPTY;
             }
@@ -110,7 +110,7 @@ depth_tiles(const uint16_t* depth, int w, int h, uint16_t* out) {
             const uint16_t d = tile_farthest(depth, w, h, tx, ty);
             for (int y = ty * DEPTH_TILE; y < (ty + 1) * DEPTH_TILE && y < h; y++) {
                 for (int x = tx * DEPTH_TILE; x < (tx + 1) * DEPTH_TILE && x < w; x++) {
-                    out[(size_t)y * w + x] = d;
+                    out[((size_t)y * w) + x] = d;
                 }
             }
         }
@@ -162,7 +162,7 @@ depth_shade(uint16_t d, uint16_t lo, uint16_t hi, uint8_t rgb[3]) {
         return;
     }
     const uint32_t span = (uint32_t)hi - lo;
-    const uint8_t grey = span == 0 ? 255 : (uint8_t)(255u * (d - lo) / span);
+    const uint8_t grey = span == 0 ? 255 : (uint8_t)((255U * (d - lo)) / span);
     rgb[0] = rgb[1] = rgb[2] = grey;
 }
 
@@ -176,30 +176,37 @@ depth_write_bmp(const char* path, const uint16_t* depth, int w, int h, uint16_t 
     const int32_t stride = screenshot_bmp_row_stride(out_w);
     uint8_t* body = malloc((size_t)stride * out_h);
     FILE* out = fopen(path, "wb");
-    const bool ok = body != NULL && out != NULL;
+    bool ok = body != NULL && out != NULL;
     if (ok) {
         const ui_transform_t t = ui_transform_quarter_turn(quarter, w, h);
         for (int y = 0; y < out_h; y++) {
-            uint8_t* row = body + (size_t)(out_h - 1 - y) * stride;
+            uint8_t* row = body + ((size_t)(out_h - 1 - y) * stride);
             for (int x = 0; x < out_w; x++) {
                 const mu_Rect src = ui_transform_rect(t, (mu_Rect){x, y, 1, 1});
                 uint8_t rgb[3];
-                depth_shade(depth[(size_t)src.y * w + src.x], lo, hi, rgb);
-                row[x * 3 + 0] = rgb[2];
-                row[x * 3 + 1] = rgb[1];
-                row[x * 3 + 2] = rgb[0];
+                depth_shade(depth[((size_t)src.y * w) + src.x], lo, hi, rgb);
+                row[(x * 3) + 0] = rgb[2];
+                row[(x * 3) + 1] = rgb[1];
+                row[(x * 3) + 2] = rgb[0];
             }
         }
         uint8_t header[SCREENSHOT_BMP_HEADER_SIZE];
         screenshot_bmp_header(header, out_w, out_h);
-        fwrite(header, 1, sizeof header, out);
-        fwrite(body, 1, (size_t)stride * out_h, out);
+        ok = fwrite(header, 1, sizeof header, out) == sizeof header;
+        ok = ok && fwrite(body, 1, (size_t)stride * out_h, out) == (size_t)stride * out_h;
     }
     if (out != NULL) {
-        fclose(out);
+        ok = fclose(out) == 0 && ok;
     }
     free(body);
     return ok;
+}
+
+/* `path` is the --depth stem plus `suffix`; false when it does not fit. */
+static bool
+stem_path(char* path, size_t size, const char* suffix) {
+    const int n = snprintf(path, size, "%s-%s", depth_stem, suffix);
+    return n > 0 && (size_t)n < size;
 }
 
 static bool
@@ -217,22 +224,20 @@ depth_write_all(const r3d_lit_frame_t* lit, int quarter) {
     depth_tiles(lit->depth, w, h, tiles);
 
     char path[1024];
-    snprintf(path, sizeof path, "%s-depth.bmp", depth_stem);
-    bool ok = depth_write_bmp(path, lit->depth, w, h, lo, hi, quarter);
-    snprintf(path, sizeof path, "%s-tiles.bmp", depth_stem);
-    ok = depth_write_bmp(path, tiles, w, h, lo, hi, quarter) && ok;
+    bool ok = stem_path(path, sizeof path, "depth.bmp") && depth_write_bmp(path, lit->depth, w, h, lo, hi, quarter);
+    ok = stem_path(path, sizeof path, "tiles.bmp") && depth_write_bmp(path, tiles, w, h, lo, hi, quarter) && ok;
     free(tiles);
 
-    snprintf(path, sizeof path, "%s-depth.txt", depth_stem);
-    FILE* note = fopen(path, "w");
+    FILE* note = stem_path(path, sizeof path, "depth.txt") ? fopen(path, "w") : NULL;
     if (note == NULL) {
         return false;
     }
-    fprintf(note, "depth %dx%d range %u..%u (65535 nearest, 0 empty, magenta) %s, tiles %dx%d px, holes %d\n", w, h,
-            drawn ? (unsigned)lo : 0U, drawn ? (unsigned)hi : 0U, drawn ? "drawn" : "nothing drawn", DEPTH_TILE,
-            DEPTH_TILE, depth_holes(lit->depth, w, h));
-    fclose(note);
-    return ok;
+    const bool noted =
+        fprintf(note, "depth %dx%d range %u..%u (65535 nearest, 0 empty, magenta) %s, tiles %dx%d px, holes %d\n", w, h,
+                drawn ? (unsigned)lo : 0U, drawn ? (unsigned)hi : 0U, drawn ? "drawn" : "nothing drawn", DEPTH_TILE,
+                DEPTH_TILE, depth_holes(lit->depth, w, h))
+        > 0;
+    return fclose(note) == 0 && noted && ok;
 }
 
 static void
@@ -241,16 +246,16 @@ draw(const render_frame_t* frame) {
     const r3d_lit_frame_t* lit = render_lab_mesh_frame();
     if (report_holes && lit != NULL && frame->index < frame->count) {
         /* The scene's clock has already taken this frame's step. */
-        fprintf(stderr, "holes pose %u ms %d\n", (unsigned)(frame->elapsed_ms + frame->dt_ms),
-                depth_holes(lit->depth, lit->width, lit->height));
+        (void)fprintf(stderr, "holes pose %u ms %d\n", (unsigned)(frame->elapsed_ms + frame->dt_ms),
+                      depth_holes(lit->depth, lit->width, lit->height));
     }
     if (depth_stem == NULL || frame->index != frame->count - 1) {
         return;
     }
     if (lit == NULL) {
-        fprintf(stderr, "--depth: this scene keeps no mesh frame, no depth written\n");
+        (void)fprintf(stderr, "--depth: this scene keeps no mesh frame, no depth written\n");
     } else if (!depth_write_all(lit, frame->quarter)) {
-        fprintf(stderr, "--depth: cannot write %s-*\n", depth_stem);
+        (void)fprintf(stderr, "--depth: cannot write %s-*\n", depth_stem);
     }
 }
 
