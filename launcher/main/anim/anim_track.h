@@ -22,8 +22,8 @@ typedef enum {
 } anim_interp_t;
 
 typedef enum {
-    ANIM_CLAMP, /* before the first key and after the last hold the end value */
-    ANIM_LOOP,  /* time wraps within [first key, last key) */
+    ANIM_CLAMP, /* before the start and after the end hold the end values */
+    ANIM_LOOP,  /* time wraps at the clip's duration */
 } anim_wrap_t;
 
 typedef struct {
@@ -35,18 +35,22 @@ typedef struct {
     uint8_t quaternion;  /* nonzero: xyzw, interpolated as a rotation */
 } anim_track_t;
 
-/* A baked animation lists its tracks under the names the baker gave them, so
- * a caller that does not know them at compile time can walk the list. */
+/* The tracks of one animation, which glTF plays on a single timeline: a
+ * track's keys are in clip seconds, and tracks starting or ending at
+ * different times stay in step. */
 typedef struct {
-    const char* name; /* "node/translation", "node/rotation", "node/scale", or a pointer path */
-    const anim_track_t* track;
-} anim_named_track_t;
+    const anim_track_t* const* tracks;
+    int count;
+    uint32_t duration_ms; /* the last key of any track */
+} anim_clip_t;
 
-/* Seconds from the first key to the last. */
-float anim_track_duration(const anim_track_t* track);
+/* Clip seconds for `t_ms`: wrapped by integer milliseconds so a long run
+ * keeps its resolution, and held at the duration when clamped. */
+float anim_clip_seconds(const anim_clip_t* clip, uint32_t t_ms, anim_wrap_t wrap);
 
-/* Writes `width` floats; `t_ms` is measured from the track's first key. */
-void anim_track_sample(const anim_track_t* track, uint32_t t_ms, anim_wrap_t wrap, float out[ANIM_WIDTH_MAX]);
+/* Writes `width` floats. Before the first key and after the last, the end
+ * value, as glTF defines. */
+void anim_track_sample(const anim_track_t* track, float seconds, float out[ANIM_WIDTH_MAX]);
 
 /* Rotates v by the unit quaternion q (xyzw). */
 void anim_quat_rotate(const float q[4], const float v[3], float out[3]);

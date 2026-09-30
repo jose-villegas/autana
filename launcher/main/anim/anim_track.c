@@ -8,11 +8,6 @@
 /* Below this dot product a slerp's sine is too small to divide by. */
 #define SLERP_NEARLY_PARALLEL 0.9995F
 
-float
-anim_track_duration(const anim_track_t* track) {
-    return track->times[track->count - 1] - track->times[0];
-}
-
 static const float*
 key_value(const anim_track_t* track, int key) {
     const int stride = track->interp == ANIM_CUBIC ? 3 * track->width : track->width;
@@ -116,16 +111,19 @@ segment_at(const anim_track_t* track, float seconds) {
     return lo;
 }
 
-void
-anim_track_sample(const anim_track_t* track, uint32_t t_ms, anim_wrap_t wrap, float out[ANIM_WIDTH_MAX]) {
-    const float first = track->times[0];
-    const float duration = anim_track_duration(track);
-    float local = (float)t_ms * 0.001F;
-    if (wrap == ANIM_LOOP && duration > 0.0F) {
-        local = fmodf(local, duration);
+float
+anim_clip_seconds(const anim_clip_t* clip, uint32_t t_ms, anim_wrap_t wrap) {
+    if (wrap == ANIM_LOOP && clip->duration_ms > 0) {
+        t_ms %= clip->duration_ms;
+    } else if (t_ms > clip->duration_ms) {
+        t_ms = clip->duration_ms;
     }
-    const float seconds = first + local;
-    if (track->count == 1 || seconds <= first) {
+    return (float)t_ms * 0.001F;
+}
+
+void
+anim_track_sample(const anim_track_t* track, float seconds, float out[ANIM_WIDTH_MAX]) {
+    if (track->count == 1 || seconds <= track->times[0]) {
         copy_key(track, 0, out);
     } else if (seconds >= track->times[track->count - 1]) {
         copy_key(track, track->count - 1, out);
