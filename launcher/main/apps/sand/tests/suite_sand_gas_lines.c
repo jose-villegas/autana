@@ -110,6 +110,49 @@ scene_burning_columns(sand_t* s) {
     sand_set(s, 0, 0, CELL_MAKE(MAT_FIRE, 8));
 }
 
+/* Holes a column apart in how far they sit, so one column's scan finds
+ * nothing within sight while its neighbour's finds a hole: a run carried into
+ * the wrong column parts the grids. A row of holes above a packed band gives
+ * a packed row that must still spread, which a skip too eager misses. */
+static void
+scene_staggered_holes(sand_t* s) {
+    for (int y = 0; y < GASLINE_H; y++) {
+        for (int x = 0; x < GASLINE_W; x++) {
+            cell_t c = CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1);
+            if (y >= GASLINE_H / 2 && (y + 7 * x) % (19 + (x % 3) * 6) == 0) {
+                c = CELL_EMPTY;
+            } else if (y == GASLINE_H / 4 && (x % 2) == 0) {
+                c = CELL_EMPTY;
+            } else if ((x % 5) == 3 && y == GASLINE_H / 2 + 5) {
+                c = CELL_MAKE(MAT_STONE, 0);
+            }
+            sand_set(s, x, y, c);
+        }
+    }
+}
+
+/* Gas above and below a stone shelf with one gap, walled so nothing drifts
+ * into it: the shelf holds no gas, so the sweep passes it by, and a column
+ * run carried over it would hide the gap from the gas beside it. */
+static void
+scene_shelf_with_a_gap(sand_t* s) {
+    const int gap_x = GASLINE_W / 2;
+    const int shelf_y = GASLINE_H / 2;
+    for (int y = 0; y < GASLINE_H; y++) {
+        for (int x = 0; x < GASLINE_W; x++) {
+            const bool shelf = y == shelf_y && x != gap_x;
+            const bool wall = (x == gap_x - 1 || x == gap_x + 1) && (y == shelf_y - 1 || y == shelf_y + 1);
+            cell_t c = CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1);
+            if (shelf || wall) {
+                c = CELL_MAKE(MAT_STONE, 0);
+            } else if (y == shelf_y) {
+                c = CELL_EMPTY;
+            }
+            sand_set(s, x, y, c);
+        }
+    }
+}
+
 /* Every cell gas, then one fire: the cascade a lit screen runs. */
 static void
 scene_packed_cascade(sand_t* s) {
@@ -162,6 +205,16 @@ test_burning_columns_spread_the_same_with_the_fast_paths(void) {
 }
 
 static void
+test_staggered_holes_spread_the_same_with_the_fast_paths(void) {
+    expect_fast_paths_match_slow_path(scene_staggered_holes, 23u);
+}
+
+static void
+test_a_gap_in_a_gas_free_shelf_spreads_the_same_with_the_fast_paths(void) {
+    expect_fast_paths_match_slow_path(scene_shelf_with_a_gap, 29u);
+}
+
+static void
 test_a_packed_cascade_spreads_the_same_with_the_fast_paths(void) {
     expect_fast_paths_match_slow_path(scene_packed_cascade, 17u);
 }
@@ -170,6 +223,8 @@ void
 run_sand_gas_lines_suite(void) {
     RUN_TEST(test_pocketed_gas_spreads_the_same_with_the_fast_paths);
     RUN_TEST(test_burning_columns_spread_the_same_with_the_fast_paths);
+    RUN_TEST(test_staggered_holes_spread_the_same_with_the_fast_paths);
+    RUN_TEST(test_a_gap_in_a_gas_free_shelf_spreads_the_same_with_the_fast_paths);
     RUN_TEST(test_a_packed_cascade_spreads_the_same_with_the_fast_paths);
 }
 
