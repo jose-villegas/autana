@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Compare two frames of this panel pixel for pixel - a host render against a
+# Compare two frames of this panel pixel for pixel, a host render against a
 # device capture, or any two of them.
 #
 #   ./launcher/tools/render/render_diff.sh <a> <b> [options]

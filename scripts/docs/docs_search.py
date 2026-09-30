@@ -12,10 +12,10 @@ Options: --top N (3), --more N (5), --budget CHARS (1800), --json, --lexical.
 
 The unit of an answer is a section: a heading and the text up to the next
 heading. The corpus is a plain filesystem walk of the checkout, not a VCS
-index - no git command runs: every *.md under it (except third_party/ and
+index; no git command runs: every *.md under it (except third_party/ and
 launcher/components/), plus any Markdown files or folders the project's
 `docs_extra` setting names (each relative to the checkout unless absolute,
-read in full - no ignore file is consulted), plus the header of
+read in full; no ignore file is consulted), plus the header of
 every script under the tool folders, so "how do I run X" finds the script
 that documents itself. A directory named `.something`, `managed_components`
 or `results`, one that contains `CMakeCache.txt` (a real build tree,
@@ -48,7 +48,7 @@ Section = namedtuple("Section", "path start end title headings level body cites"
 Hit = namedtuple("Hit", "section score coverage similarity")
 
 SKIPPED_PREFIXES = ("third_party/", "launcher/components/")
-# Scripts document themselves from under these - fixed, not read off a VCS index.
+# Scripts document themselves from under these; fixed, not read off a VCS index.
 SCRIPT_ROOTS = ("scripts/", "launcher/tools/", "launcher/test/", "launcher/main/apps/")
 SCRIPT_SUFFIXES = (".py", ".sh", ".mjs")
 # A plan describes code that does not exist yet, and a document from outside
@@ -113,10 +113,10 @@ def tokens(text):
 def pruned(dirpath, root):
     """Directories a walk never enters: a dotfile/dotdir by name, one of
     SKIPPED_PREFIXES, `managed_components`/`results` by name (both can nest
-    at any depth - launcher/managed_components, an app's own tools/results),
+    at any depth, launcher/managed_components, an app's own tools/results),
     a real build tree (marked by CMakeCache.txt, at whatever depth ESP-IDF or
     the editor happened to put it), or a fetched clone with its own `.git`
-    (a submodule checkout, or a tool like emsdk pulled straight from GitHub) -
+    (a submodule checkout, or a tool like emsdk pulled straight from GitHub),
     detected by what the directory itself contains, not by a name that might
     collide with a real source folder (`launcher/tools/build/`, say)."""
     name = dirpath.name
@@ -133,7 +133,7 @@ def pruned(dirpath, root):
 
 def walk_tree(root, *suffixes):
     """root-relative posix paths, walking the whole checkout, ending in one of
-    suffixes - a plain filesystem walk, no VCS index consulted."""
+    suffixes, a plain filesystem walk, no VCS index consulted."""
     root = Path(root)
     found = []
     for dirpath, dirnames, filenames in os.walk(root):
@@ -158,7 +158,7 @@ def label_of(root, file):
 
 
 def extra_files(root):
-    """(label, file) for the Markdown `docs_extra` names - read in full, no ignore
+    """(label, file) for the Markdown `docs_extra` names; read in full, no ignore
     file consulted, since a caller names this folder precisely because it wants it read."""
     files = []
     for entry in extra_entries(root):
@@ -615,7 +615,7 @@ def evaluate(index, depth=3):
 
 
 def repo_root():
-    """This script's own checkout root - scripts/docs/docs_search.py is always two levels down."""
+    """This script's own checkout root; scripts/docs/docs_search.py is always two levels down."""
     return Path(__file__).resolve().parents[2]
 
 

@@ -8,18 +8,18 @@ is worse than the long comment it replaced. Four kinds of citation are
 checked against the tree under `root`:
 
 - `name()` must be declared or called in C code under `root` (vendored
-  components included), or declared by ESP-IDF - for any chip it supports,
-  the check's known limit - or its toolchain's C library
+  components included), or declared by ESP-IDF (for any chip it supports,
+  the check's known limit) or its toolchain's C library
   (idf_vocabulary.outside_vocabulary()), or, when the comment names a `.py`
   file, defined by a Python script.
 - A CONSTANT_NAME must be spelled somewhere other than a comment (see
   code_vocabulary.Vocabulary). Only project families are checked: a name
   whose first word no project #define or Kconfig option starts with
   (ESP_FAIL, CONFIG_PM_ENABLE) is the SDK's.
-- A name pinned to a file - `name() (file.c)`, `NAME, file.h)`,
-  `name()'s own comment, file.c)` - must be spelled in that file's code.
-- A quoted all-caps heading in citing form - `file.h's "HEADING"`,
-  `("HEADING")` - must appear in some other comment.
+- A name pinned to a file, `name() (file.c)`, `NAME, file.h)`,
+  `name()'s own comment, file.c)`, must be spelled in that file's code.
+- A quoted all-caps heading in citing form (`file.h's "HEADING"`,
+  `("HEADING")`) must appear in some other comment.
 
 Only the last is text matching; the rest ask the code. None of them can
 tell whether what a comment SAYS about a real name is still true.

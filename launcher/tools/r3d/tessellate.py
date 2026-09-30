@@ -42,8 +42,8 @@ def split_marked_edges(p, tris, marked):
 
 
 def adaptive_split(p, tris, attrs, brightness, min_edge, tolerance, rounds=12):
-    """Splits an edge where the light changes along it - where its midpoint's
-    brightness is off the mean of its ends by more than `tolerance` - or where
+    """Splits an edge where the light changes along it: where its midpoint's
+    brightness is off the mean of its ends by more than `tolerance`, or where
     it is longer than the smallest limit of the triangles sharing it. Uniformly
     lit areas keep their big triangles; shadow edges get the vertices they
     need. `attrs` holds a row per triangle, its length limit first; each

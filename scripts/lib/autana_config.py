@@ -2,8 +2,8 @@
 
 Per-checkout facts only, read by every autana script that needs one; the
 environment is never a second way to set any of them. Python 3.9 has no
-tomllib, so this reads exactly what the one writer of the file emits - flat
-`key = "..."` or `key = '...'` lines and one-line arrays of such strings - and
+tomllib, so this reads exactly what the one writer of the file emits: flat
+`key = "..."` or `key = '...'` lines and one-line arrays of such strings, and
 refuses anything else by line, as it refuses an unknown key. The syntax is
 TOML's, so tomllib can replace this reader later.
 """

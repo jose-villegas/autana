@@ -1,6 +1,6 @@
 name: Build (Release)
 
-# Compiles the real shipping firmware via Espressif's own CI action - no
+# Compiles the real shipping firmware via Espressif's own CI action; no
 # test code, nothing this can't ship as-is. An on-device run is out of reach:
 # a hosted runner has no USB/serial access to a board. See
 # docs/sand/Architecture.md's "Verifying performance on real hardware".

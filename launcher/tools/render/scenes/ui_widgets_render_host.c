@@ -1,5 +1,5 @@
 /*
- * ui_widgets_render_host - the shell's UI toolkit on one page per view, drawn
+ * ui_widgets_render_host, the shell's UI toolkit on one page per view, drawn
  * by the real code in either orientation: the themed widgets, the dropdown
  * with its list open, microui's own controls in both button styles, and a
  * small settings screen. docs/UI-Toolkit.md shows these images; the pins

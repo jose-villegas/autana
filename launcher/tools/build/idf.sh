@@ -12,14 +12,14 @@
 #
 # ESP-IDF cannot be driven from Git Bash: idf_tools.py refuses outright when
 # MSYSTEM is set, and Git Bash always sets it. The tooling here used to work
-# around that by embedding PowerShell - each script carried its own block of
+# around that by embedding PowerShell, each script carried its own block of
 # `Remove-Item Env:\MSYSTEM`, `Set-Location`, `if ($LASTEXITCODE -ne 0)`, and
 # the actual sequencing logic went with it. Seven such blocks across three
 # scripts, each a small PowerShell program in a file that was otherwise sh.
 #
 # It turns out none of that is necessary. cmd's `set VAR=` deletes a variable
 # where bash can only blank it, and ESP-IDF ships export.bat alongside
-# export.ps1 - so a nine-line .bat shim (idf_shim.bat, beside this file) is
+# export.ps1, so a nine-line .bat shim (idf_shim.bat, beside this file) is
 # enough, and every conditional, loop and error path stays here in sh.
 #
 # Measured before being written, because each step had a plausible-looking
@@ -45,12 +45,12 @@ _IDF_SHIM=""
 #
 # State is kept in _IDF_-prefixed variables. Sourcing a file that declares
 # plain IDF_EXPORT would silently blank a caller's variable of that name
-# before it ever reached idf_init - which is exactly what happened, and cost
+# before it ever reached idf_init, which is exactly what happened, and cost
 # a debugging round: the shim was invoked with an empty export path and cmd
 # failed on `call ""` with nothing useful to say.
 #
 # tools-dir defaults to the calling script's own directory, which is right
-# for everything in launcher/tools/. Pass it explicitly from anywhere else -
+# for everything in launcher/tools/. Pass it explicitly from anywhere else;
 # `$0` is the CALLER's path, not this file's, and POSIX sh has no portable
 # way for a sourced file to find itself.
 idf_init() {
@@ -97,7 +97,7 @@ idf_in() {
     shift
     if idf_needs_shim; then
         # cygpath so cmd gets Windows paths; the arguments themselves are
-        # passed through as ordinary argv and must NOT be pre-quoted - see
+        # passed through as ordinary argv and must NOT be pre-quoted, see
         # idf_shim.bat for why inline quoting corrupts them.
         IDF_SHIM_DIR="$(cygpath -w "$_IDF_IN_DIR")" \
         IDF_SHIM_EXPORT="$_IDF_EXPORT" \

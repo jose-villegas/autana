@@ -1,5 +1,5 @@
 /*
- * post_ui_render_host - the power-on self-test screen, drawn by the REAL
+ * post_ui_render_host, the power-on self-test screen, drawn by the REAL
  * firmware code (post_ui.c + post_layout.c + gfx.c, unmodified) on a host
  * build, so the layout can be judged without a flash cycle.
  *
@@ -10,7 +10,7 @@
  *
  * post.c is deliberately NOT linked: its checks probe real I2C, flash and
  * eFuse. The three functions it would have supplied are defined below over
- * a FIXTURE table - invented sample data, so nothing this tool draws is a
+ * a FIXTURE table; invented sample data, so nothing this tool draws is a
  * reading from any board.
  */
 

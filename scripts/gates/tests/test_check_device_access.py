@@ -44,7 +44,7 @@ class DeviceAccessTest(unittest.TestCase):
 
     def test_the_gate_itself_is_exempt(self):
         # A gate's own source and tests describe and exercise these exact
-        # patterns as data - real string literals, matching the ones that
+        # patterns as data, real string literals, matching the ones that
         # once tripped this check on its own docstring and test fixtures.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
@@ -114,7 +114,7 @@ class DeviceAccessTest(unittest.TestCase):
         self.assertEqual(openers, [])
 
     def test_a_bare_serial_call_with_no_import_is_not_flagged(self):
-        # Some other module's own Serial(...) call - the gate only flags
+        # Some other module's own Serial(...) call; the gate only flags
         # pyserial's, which needs `import serial` in the same file.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

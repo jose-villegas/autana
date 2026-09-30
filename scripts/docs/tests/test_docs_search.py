@@ -1,7 +1,7 @@
 """Tests for scripts/docs: sectioning, ranking, and the vector cache.
 
-Every fixture is a throwaway plain folder - no git repository, no git binary
-involved - and the models are replaced by a fake embedder, so nothing here
+Every fixture is a throwaway plain folder: no git repository, no git binary
+involved, and the models are replaced by a fake embedder, so nothing here
 downloads or starts a server. The last class scores the real documentation
 lexically against eval_questions.tsv.
 
@@ -121,8 +121,8 @@ class Sections(unittest.TestCase):
 
 
 class Corpus(unittest.TestCase):
-    """corpus_files() walks the whole checkout - no VCS index consulted, no
-    ignore file read - pruning only SKIPPED_PREFIXES, managed_components/
+    """corpus_files() walks the whole checkout: no VCS index consulted, no
+    ignore file read, pruning only SKIPPED_PREFIXES, managed_components/
     results by name, a dotdir, a real build tree (CMakeCache.txt) or a
     fetched clone (its own .git), whatever it contains."""
 
@@ -140,7 +140,7 @@ class Corpus(unittest.TestCase):
 
     def test_a_build_named_directory_that_is_not_a_build_tree_is_not_pruned(self):
         """launcher/tools/build/ is a real, tracked source folder that only shares
-        the name a build directory does - only a real build tree's own marker
+        the name a build directory does, only a real build tree's own marker
         file prunes a directory now, never its name."""
         root = make_repo({"launcher/tools/build/build.sh": "#!/bin/sh\n",
                           "launcher/build/README.md": "# Not a build tree either\n"})
@@ -237,7 +237,7 @@ def fake_embed(texts, query=False):
 
 class Extra(unittest.TestCase):
     """corpus_files() walks the whole checkout now, so the project's
-    `docs_extra` only still matters for content outside it - inside
+    `docs_extra` only still matters for content outside it; inside
     self.root is always read."""
 
     def setUp(self):
@@ -289,7 +289,7 @@ class Extra(unittest.TestCase):
         self.assertEqual(self.paths(), {"docs/Flashing.md", (extra / "Extra.md").as_posix()})
 
     def test_a_named_folder_inside_the_checkout_is_read_under_its_checkout_path(self):
-        """`docs_extra` also accepts a checkout-relative path - redundant
+        """`docs_extra` also accepts a checkout-relative path, redundant
         with the default whole-tree walk today, but still resolved the same way."""
         (self.root / "notes").mkdir()
         (self.root / "notes" / "Private.md").write_text(
@@ -320,7 +320,7 @@ class Extra(unittest.TestCase):
 
     def test_a_named_folder_is_read_in_full_no_ignore_file_consulted(self):
         """`docs_extra` is a plain rglob: a folder's own .gitignore, if it has
-        one, is just another file to it - not consulted, unlike the checkout walk."""
+        one, is just another file to it, not consulted, unlike the checkout walk."""
         vault = self.outside({
             ".gitignore": "Scratch.md\n",
             "Bench Notes.md": "# Bench\n\n## Spare board\n\nLoose port.\n",

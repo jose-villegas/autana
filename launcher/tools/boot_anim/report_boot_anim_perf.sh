@@ -1,8 +1,8 @@
 #!/bin/sh
 #
 # One-click boot_anim perf report: build+flash the diagnostics image with the
-# suites compiled in but NOT running at boot, so the shell - and its RUNSUITE
-# listener, see main/util/screenshot.c - comes up in seconds; trigger just
+# suites compiled in but NOT running at boot, so the shell (and its RUNSUITE
+# listener, see main/util/screenshot.c) comes up in seconds; trigger just
 # suite_boot_anim_perf.c via RUNSUITE, capture its output, and write a
 # markdown report of the six-checkpoint breakdown.
 #
@@ -18,9 +18,9 @@
 #                tools/results/boot_anim_perf_<timestamp>.md
 #   --no-restore leave the device on the diagnostics image afterwards.
 #
-# Everything this does beyond the declarations below - which image, deleting
+# Everything this does beyond the declarations below (which image, deleting
 # a build directory's sdkconfig that disagrees, asserting the flags took,
-# capturing, validating, restoring release - is tools/device/device_report.sh.
+# capturing, validating, restoring release) is tools/device/device_report.sh.
 
 set -eu
 

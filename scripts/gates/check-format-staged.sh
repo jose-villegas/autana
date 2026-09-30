@@ -3,13 +3,13 @@
 # Verifies that everything STAGED for the next commit is formatted, and says
 # exactly how to fix it if not. This is the body of the pre-commit hook
 # (scripts/git-hooks/pre-commit), kept as its own script so it can be run by
-# hand and so CI's shell linting covers it - a file named `pre-commit` has no
+# hand and so CI's shell linting covers it; a file named `pre-commit` has no
 # .sh extension and would be linted by nothing.
 #
 #   scripts/gates/check-format-staged.sh
 #
 # It checks the staged CONTENT of each file, not the working copy. A file
-# staged in part - `git add -p`, or a later edit after `git add` - is judged
+# staged in part (`git add -p`, or a later edit after `git add`) is judged
 # by what is actually about to be committed, which is the only reading that
 # matches what CI will see on the pushed commit.
 #

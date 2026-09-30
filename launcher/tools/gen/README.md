@@ -29,7 +29,7 @@ see it first. Commit the raw output; never run the formatter over it.
 `gen_zeta_curve.py` checks its zeta against known values and exits rather
 than print a plausible table of wrong numbers.
 
-**The shipped file is tested independently of the generator** - the rule
+**The shipped file is tested independently of the generator**: the rule
 with teeth, since the file in the repo can be stale, hand-edited, or made by
 an older version of the constants. Test it against the underlying
 mathematics where there is some (`suite_boot_anim.c` checks the curve meets

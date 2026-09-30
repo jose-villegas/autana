@@ -68,7 +68,7 @@ class StyleAuditTest(unittest.TestCase):
 
     def test_real_compound_words_and_a_short_build_id_are_not_flagged(self):
         # autana-cli, autana-screenshot, autana-monitor and autana-device
-        # are all real, tracked, letter-only compounds in this repo - none
+        # are all real, tracked, letter-only compounds in this repo; none
         # of them may start looking like a tracker id.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
@@ -125,7 +125,7 @@ class StyleAuditTest(unittest.TestCase):
 
     def test_an_apps_own_local_header_sharing_a_layer_basename_is_not_rewritten(self):
         # The compiler resolves a quoted include next to the including file
-        # FIRST - apps/foo/fixed.h is found before launcher/main/fixed.h (or
+        # FIRST; apps/foo/fixed.h is found before launcher/main/fixed.h (or
         # any layer/fixed.h) is even tried, so this is never a layer-header
         # reference at all, however many other folders happen to have a
         # file with the same basename.
@@ -140,7 +140,7 @@ class StyleAuditTest(unittest.TestCase):
 
     def test_a_bare_include_that_resolves_nowhere_is_not_flagged(self):
         # Two layers each have a same-named header and neither sits at the
-        # include root itself - the real compiler would not find this
+        # include root itself; the real compiler would not find this
         # include either, so it is a compile error, not this rule's concern.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
@@ -364,7 +364,7 @@ class StyleAuditTest(unittest.TestCase):
 
     def test_a_lazily_continued_list_item_is_not_flagged(self):
         # CommonMark's lazy continuation lets a list item's paragraph carry
-        # on with no indentation at all - the paragraph this "- " sits in
+        # on with no indentation at all; the paragraph this "- " sits in
         # started with its own list marker, so it is a sibling item, not an
         # accident.
         with tempfile.TemporaryDirectory() as temp:

@@ -64,8 +64,8 @@ class NamesRequireADefinitionTest(unittest.TestCase):
     def test_a_python_apostrophe_comment_does_not_eat_the_next_def(self):
         # The C blanker was applied to .py files too: "# don't" has no `#`
         # case, so the apostrophe in "don't" opened a bogus string that
-        # swallowed everything up to the next real quote - including
-        # real_one()'s own definition - as blanked-out "string content".
+        # swallowed everything up to the next real quote, including
+        # real_one()'s own definition, as blanked-out "string content".
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.write(root, "scripts/gates/example.py",

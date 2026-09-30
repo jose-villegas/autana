@@ -1,5 +1,5 @@
 /*
- * sample_tracks - prints what a baked animation's tracks hold every N
+ * sample_tracks: prints what a baked animation's tracks hold every N
  * milliseconds, through the same anim_clip_seconds() and anim_track_sample()
  * the firmware calls. Built by sample_tracks.sh against one baked animation,
  * whose clip ANIM_CLIP and track names ANIM_NAMES it is compiled with.

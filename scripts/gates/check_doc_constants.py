@@ -70,7 +70,7 @@ def add(definitions, name, value):
 
 def source_files(root):
     """C sources under launcher/ that the repository tracks. Anything a build
-    or the component manager writes - managed_components/, build*/ - is not
+    or the component manager writes (managed_components/, build*/) is not
     this project's definition of a constant, and reading it made the verdict
     depend on whether the checkout had ever been built."""
     root = pathlib.Path(root)

@@ -441,7 +441,7 @@ class BuildBudgetSectionTests(unittest.TestCase):
 
     def test_a_zero_row_table_against_a_perf_capture_prints_a_loud_warning(self):
         """The incoming perf_guard/perf_target change makes report_performance.py
-        find zero TEST_ASSERT_LESS_THAN_MESSAGE budgets - an empty table that must
+        find zero TEST_ASSERT_LESS_THAN_MESSAGE budgets, an empty table that must
         read as 'the reporter is out of step', not as 'nothing was measured'."""
         with tempfile.TemporaryDirectory() as directory:
             app_dir = Path(directory) / "launcher" / "main" / "apps" / "sand"

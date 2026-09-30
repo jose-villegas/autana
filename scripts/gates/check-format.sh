@@ -9,7 +9,7 @@
 #   check-format.sh --check <file.c> [file.h ...] # verify only, no writes; exits 1 if not compliant
 #   check-format.sh --which                       # print the clang-format this repo would use
 #
-# Pass files, never directories, and never the whole repository -
+# Pass files, never directories, and never the whole repository,
 # scripts/gates/format-file-list.sh decides which files these rules apply to.
 
 set -euo pipefail
@@ -26,7 +26,7 @@ set -euo pipefail
 # quietly votes on the tree.
 #
 # 19 because it is what the ESP-IDF toolchain bundles (esp-clang), so the
-# common case needs no extra install at all. CI pins the same major - see
+# common case needs no extra install at all. CI pins the same major, see
 # .github/workflows/format.yml.
 PINNED_MAJOR=19
 
@@ -45,7 +45,7 @@ clang_format_major() {
 # then the ESP-IDF-bundled esp-clang (present unless the IDF export script
 # has been sourced in this shell, in which case PATH already found it).
 # Newest esp-clang first, since a machine can carry several IDF versions.
-# $IDF_TOOLS_PATH relocates that root, and Windows spells the binary .exe -
+# $IDF_TOOLS_PATH relocates that root, and Windows spells the binary .exe,
 # without both, this fallback can never fire on an installer-placed toolchain.
 candidate_binaries() {
     if command -v "clang-format-$PINNED_MAJOR" >/dev/null 2>&1; then

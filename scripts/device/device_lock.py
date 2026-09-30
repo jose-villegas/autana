@@ -32,12 +32,12 @@ EXIT_BUSY = autana_config.EXIT_BUSY
 # the next taker removes it instead of waiting for it forever.
 GUARD_STALE_SECONDS = 30
 # The mutex is guard() below (an O_CREAT|O_EXCL file), not an OS byte-range
-# lock - the JSON files are the state it protects, not locks themselves. This
+# lock; the JSON files are the state it protects, not locks themselves. This
 # numbers THAT state's shape, purely as a bump reminder pinned by the golden
 # key-snapshot test in test_device_lock.py: bump it whenever a record's
 # fields change, or a reclaim rule does, in a way an older reader would
 # misinterpret, add that protocol's entry there and keep the old ones. Nothing
-# here ever refuses a record over its value - two installs of different ages
+# here ever refuses a record over its value; two installs of different ages
 # still have to work the same board, so a mismatch is shown as information
 # (status, a wait notice), never a reason to stop. Protocol 2: a person's
 # reservation expires (expires_at) and the last holder is kept (.last.json).
@@ -45,8 +45,8 @@ LOCK_PROTOCOL = 2
 # A person's reservation has no heartbeat, so this is the only thing that
 # frees a forgotten one. Running `hand` again renews it.
 HUMAN_RESERVATION_SECONDS = 3600
-# The fields that decide something - who a record is, whether a lock is live,
-# stale or dead, or a waiter's place in the FIFO - and so must be readable
+# The fields that decide something: who a record is, whether a lock is live,
+# stale or dead, or a waiter's place in the FIFO, and so must be readable
 # off ANY record, of any age or protocol, without guessing: boards() reads
 # board; reclaim_reason()/is_stale() read pid/host/heartbeat_at; tickets()
 # sorts on sequence and _claim() matches on ticket. Everything else (purpose,
@@ -137,8 +137,8 @@ def windows_process_alive(pid, kernel32=None):
     """Never os.kill(pid, 0) on Windows: signal 0 there is CTRL_C_EVENT, so
     CPython calls GenerateConsoleCtrlEvent and treats the pid as a console
     process group. For a process on another console that fails with
-    ERROR_INVALID_PARAMETER - a live holder reads as dead and its lock is
-    taken - and for one sharing the caller's console it delivers Ctrl+C.
+    ERROR_INVALID_PARAMETER: a live holder reads as dead and its lock is
+    taken, and for one sharing the caller's console it delivers Ctrl+C.
     Asks the process table instead: a pid that cannot be opened for any
     reason but access denied is gone, and an opened one is alive until it
     reports an exit code."""
@@ -182,7 +182,7 @@ def purpose_of(kind):
 
 class Held(dict):
     """The lock record a claim wrote, plus the one-shot line for the person
-    who took the board from a dead or stale holder - not part of the record."""
+    who took the board from a dead or stale holder, not part of the record."""
 
     def __init__(self, record, log=""):
         super().__init__(record)
@@ -254,13 +254,13 @@ class LockStore:
 
     def seen_boards(self):
         """Every board this machine has ever found on USB, kept past its own
-        lock, reservation or waiter - only for hand-to-human/take-back to
+        lock, reservation or waiter, only for hand-to-human/take-back to
         recall a board that is now idle and unplugged."""
         return sorted({record["board"] for record in map(self.read_json, self.root.glob("*.seen.json"))
                        if isinstance(record, dict) and isinstance(record.get("board"), str)})
 
     def note_seen(self, board):
-        """Records a board found on USB, once - nothing reads this again
+        """Records a board found on USB, once; nothing reads this again
         until seen_boards() needs it, so a repeat sighting is a no-op."""
         path = self.seen_path(board)
         if not self.read_json(path):
@@ -400,7 +400,7 @@ class LockStore:
                 # Judged from PROTOCOL_CORE_FIELDS alone (pid, host,
                 # heartbeat_at), so this never depends on a protocol match: a
                 # live holder, of any protocol, simply keeps the board until
-                # it is dead or stale - never refused, never a reason to stop.
+                # it is dead or stale: never refused, never a reason to stop.
                 reason = self.reclaim_reason(current, stale_seconds)
                 if not reason:
                     return None, None, ""
@@ -464,7 +464,7 @@ class LockStore:
     def heartbeat(self, board, token):
         """Refuses a lock the next claim() may reclaim: a holder that stalled
         past the stale window has to find out it lost the board, not renew it.
-        `token` is never a foreign lock's - a mismatch (missing or not ours)
+        `token` is never a foreign lock's; a mismatch (missing or not ours)
         just means this is not our lock to touch, protocol notwithstanding."""
         with self.guard(board):
             lock = self.read_json(self.lock_path(board))
@@ -722,7 +722,7 @@ def previous_holder_alive(store, last, scope):
 def previous_holder_text(store, board, scope, now=None):
     """What a command that won the lock prints when the port still will not
     open: who held the board before it and which of that holder's processes are
-    still running, so a person can decide. Nothing here stops anything - a new
+    still running, so a person can decide. Nothing here stops anything: a new
     holder never kills another's processes. `scope` is lock_scope: the
     per-OS process_start, process_name and survivors_extra."""
     last = store.read_json(store.last_path(board))
@@ -751,7 +751,7 @@ def holder_version_details(holder):
 
 
 def holder_version_text(holder):
-    """'(autana <version>, lock protocol <n>)' - the information a differently
+    """'(autana <version>, lock protocol <n>)', the information a differently
     versioned holder's record carries, shown while waiting and in `status`,
     never a reason to refuse it."""
     return f"({holder_version_details(holder)})"

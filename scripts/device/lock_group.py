@@ -74,7 +74,7 @@ def stop(pid, token):
 
 def survivors_extra(record):
     """Pids still carrying a finished holder's token. The holder's own process
-    is not among them - it set the token after it started - so the caller
+    is not among them: it set the token after it started, so the caller
     checks the record's pid itself."""
     token = record.get("token")
     if not token or not has_proc():

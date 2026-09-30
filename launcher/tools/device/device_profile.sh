@@ -9,13 +9,13 @@
 # An empty first argument means "$DEVICE_PROFILE, else esp32s3".
 #
 # WHY THIS EXISTS: a second board (P4, C3, ...) may join the test family, and
-# the numbers that make the host resemble a device - stack size, free heap,
-# icache geometry, the codegen-shaping flags, the QEMU route - are all
+# the numbers that make the host resemble a device (stack size, free heap,
+# icache geometry, the codegen-shaping flags, the QEMU route) are all
 # per-chip. They live in exactly one file per chip so that adding a device
 # is adding a profile plus its first capture, and so that no gate anywhere
 # in the tree carries a chip's number as a literal.
 #
-# THE FORMAT is plain KEY=value lines and # comments, nothing else - no
+# THE FORMAT is plain KEY=value lines and # comments, nothing else, no
 # command substitution, no conditionals, no references to other variables.
 # That is not stylistic: device_profile.py parses the same files, and the
 # moment a profile needs a shell to evaluate it, the Python half either
@@ -30,7 +30,7 @@
 #
 #   device_profile_load [name] [profiles-dir]
 #
-# Name comes from the argument, else $DEVICE_PROFILE, else esp32s3 - so
+# Name comes from the argument, else $DEVICE_PROFILE, else esp32s3, so
 # every existing caller keeps today's behaviour without setting anything.
 #
 # The directory comes from the argument, else $DEVICE_PROFILE_DIR, else the

@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # ui_dropdown() on a host, opened, scrolled and picked from by a scripted
-# finger - see ui_dropdown_render_host.c and docs/tools/Render-Harness.md.
+# finger, see ui_dropdown_render_host.c and docs/tools/Render-Harness.md.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 

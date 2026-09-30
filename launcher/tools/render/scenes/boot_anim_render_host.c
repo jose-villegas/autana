@@ -1,5 +1,5 @@
 /*
- * boot_anim_render_host - one frame of the boot animation, drawn by the
+ * boot_anim_render_host, one frame of the boot animation, drawn by the
  * REAL firmware code (boot_anim.c + gfx.c, unmodified) on a host build.
  *
  *     boot_anim_render_host <now_ms>   > frame.bmp
@@ -13,7 +13,7 @@
  *
  *     boot_anim_render_host.c   (this file)
  *     render_host.c
- *     main/gfx/gfx.c            (host-portable - see its own ESP_PLATFORM
+ *     main/gfx/gfx.c            (host-portable, see its own ESP_PLATFORM
  *                                comment)
  *     main/boot/boot_anim.c     (host-portable for the same reason)
  *

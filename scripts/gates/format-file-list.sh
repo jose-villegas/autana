@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Prints the first-party C and header files the formatting rules apply to -
+# Prints the first-party C and header files the formatting rules apply to,
 # the single definition of that set, so the pre-commit hook and the CI gate
 # cannot disagree about what is checked. docs/C-Style-Guide.md is the prose;
 # this is the file list.
@@ -25,7 +25,7 @@
 #   header that starts being generated tomorrow is excluded the day it
 #   appears, not the day someone remembers to come back here. The cost is
 #   that a generator which forgets the marker is silently held to the style
-#   rules - which is the safe direction to fail.
+#   rules, which is the safe direction to fail.
 #
 # POSIX sh, like the other scripts here: development happens in Git Bash on
 # Windows, and the hook has to run there too.
@@ -58,7 +58,7 @@ qualifies() {
 
     # A path can name a file that no longer exists (a deletion in the commit
     # being checked, or a stale argument). Nothing to format, so drop it
-    # rather than failing - callers pass whole commit file lists.
+    # rather than failing; callers pass whole commit file lists.
     [ -f "$REPO_ROOT/$path" ] || return 1
 
     if head -5 "$REPO_ROOT/$path" | grep -q 'GENERATED FILE'; then

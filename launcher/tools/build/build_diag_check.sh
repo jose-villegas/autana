@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build the DIAGNOSTICS image and run the complexity ratchet - no device,
+# Build the DIAGNOSTICS image and run the complexity ratchet: no device,
 # nothing flashed.
 #
 #   tools/build/build_diag_check.sh
@@ -12,16 +12,16 @@
 # static data is charged against the same internal-heap headroom the shell
 # and its apps need. A suite that costs 10 KiB of .bss is invisible to the
 # host runner (which has a laptop's memory behind it) and to a release
-# build (which links no suites at all) - building this variant surfaces it,
+# build (which links no suites at all), building this variant surfaces it,
 # and doing so here beats finding out from CI.
 #
 # The complexity ratchet (tools/quality/complexity_gate.py) is the other half of
 # what CI's Build (Diagnostics) workflow decides, so a green build alone
-# settles nothing about a pull request - both halves are this one command.
+# settles nothing about a pull request; both halves are this one command.
 # The ratchet runs BEFORE the build: it costs seconds, the build minutes.
 #
 # The ratchet reads launcher/build.diag/compile_commands.json, which this
-# build writes, so it can only run first once a build.diag exists - with no
+# build writes, so it can only run first once a build.diag exists, with no
 # database on disk it runs after the build instead. That database is also
 # the previous build's: a .c file added since then is unknown to it and the
 # ratchet fails naming that file as unmeasured, which a build clears.

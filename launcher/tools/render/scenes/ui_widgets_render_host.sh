@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # The shell's UI toolkit drawn on a host, the images docs/UI-Toolkit.md
-# shows - see ui_widgets_render_host.c and docs/tools/Render-Harness.md.
+# shows, see ui_widgets_render_host.c and docs/tools/Render-Harness.md.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 

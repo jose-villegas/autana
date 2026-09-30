@@ -7,7 +7,7 @@ An app is a folder designed to be deleted whole, so a comment in a lower layer
 naming one is a dangling reference by construction: delete the app and the
 comment survives the code it described. Say what shape of caller needs the
 thing, or state the rule a caller must follow. An app's own files may name
-anything below them - that direction cannot dangle.
+anything below them; that direction cannot dangle.
 
 The engine's documents sit at the same layer as its code, so every line of
 them is held to the same rule: every Markdown file under docs/ except an app's
@@ -17,13 +17,13 @@ the apps they plan for, plus any Markdown file inside a lower layer.
 App names come from the folders themselves, so adding an app extends the check.
 
 A name is all this checks, including a name spelled as part of a compound
-identifier or filename - `app_sand.c`, `sand_ui_step()`, `sand_palette256.h` -
+identifier or filename (`app_sand.c`, `sand_ui_step()`, `sand_palette256.h`),
 not just the bare word, and with an underscore in the folder name spelled any
 way prose spells it: `render_lab`, "Render Lab", `render-lab.png`.
 
-Borrowing an app's VOCABULARY is the same fault one step quieter - "an app's
+Borrowing an app's VOCABULARY is the same fault one step quieter; "an app's
 working grid" names no app but still assumes apps have grids, and gfx has no
-concept of a grain - but no word list can judge it: the dirty tracker really
+concept of a grain, but no word list can judge it: the dirty tracker really
 does have a grid of cells, and a font really does have a glyph cell. That one
 is read, not scripted.
 """

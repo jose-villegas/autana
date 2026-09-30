@@ -6,7 +6,7 @@
 # holds declarations and no procedure of its own.
 #
 # Every report script shares this one procedure rather than carrying its
-# own copy of the build flags and the capture call - a second copy
+# own copy of the build flags and the capture call, a second copy
 # drifting out of sync from this one would surface as a capture that
 # measures nothing rather than as an error. A second copy of this
 # procedure is the bug; do not write one.
@@ -136,7 +136,7 @@ device_report_run() {
     fi
 }
 
-# Build, flash and capture are one call, through `autana` on PATH - never a
+# Build, flash and capture are one call, through `autana` on PATH, never a
 # worktree's own scripts/device/device.py, so every report always runs the
 # one lock code every other autana command does (docs/tools/Device-Lock.md):
 # `autana suite --runs 1 --flash` (report_suite=<name>, one suite via
@@ -160,7 +160,7 @@ device_report_capture() {
 }
 
 # A capture that never finished, crashed, or measured nothing still produces
-# a plausible-looking report if fed straight to a reporter - that has cost
+# a plausible-looking report if fed straight to a reporter; that has cost
 # two full capture cycles and once got mistaken for a fresh result.
 device_report_validate() {
     echo "=== Validating capture ==="
@@ -185,7 +185,7 @@ device_report_report() {
     fi
     # Exit 1 from a reporter means the report itself records a failing test,
     # which is a normal outcome to read rather than a failure of this run.
-    # Anything else - a missing file, a capture the reporter refuses - is
+    # Anything else (a missing file, a capture the reporter refuses) is
     # fatal, and a blanket `|| true` used to swallow it along with the rest.
     if [ "$_dr_status" -eq 1 ] && [ "$report_failures_ok" -eq 1 ]; then
         echo "=== The report records failing tests - read it; this exit code is not the verdict ==="

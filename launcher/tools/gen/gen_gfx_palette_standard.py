@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate main/gfx/gfx_palette_standard_generated.h - the two formulaic
+"""Generate main/gfx/gfx_palette_standard_generated.h: the two formulaic
 256-entry standard palettes (arithmetic, not curated, so a table beats 512
 hand-typed literals): a VGA-style default (16 EGA + a 216-colour 6x6x6
 "web-safe" cube + 24 grays) and a plain 256-level grayscale ramp.
@@ -8,7 +8,7 @@ hand-typed literals): a VGA-style default (16 EGA + a 216-colour 6x6x6
 
 The EGA 16, PICO-8, DawnBringer DB16/DB32 and 16-level grayscale palettes
 are curated, small, and hand-typed directly in gfx_palette_standard.c
-instead - a generator would not make those any more trustworthy than
+instead; a generator would not make those any more trustworthy than
 citing the source next to the literals.
 """
 
@@ -18,7 +18,7 @@ CUBE_LEVELS = [0, 51, 102, 153, 204, 255]
 
 
 def to_rgb565(rgb888):
-    """GFX_RGB565(rgb) (gfx_color.h): truncating, not rounding - two 24-bit
+    """GFX_RGB565(rgb) (gfx_color.h): truncating, not rounding; two 24-bit
     colours this close together can and do collapse to the same RGB565
     value, which is why every dedup below happens in THIS space, not
     24-bit RGB888."""
@@ -42,7 +42,7 @@ def web_safe_cube():
 
 def vga256():
     # 16 EGA + a 216-colour web-safe cube + enough evenly spaced grays to
-    # reach 256, skipping any colour already present - EGA's own black and
+    # reach 256, skipping any colour already present; EGA's own black and
     # white already sit at two of the cube's own corners, so the traditional
     # "16 + 216 + 24" count is only exact once those two are not double-
     # counted, and this fills the resulting gap from the gray ramp instead
@@ -61,8 +61,8 @@ def vga256():
     for rgb in web_safe_cube():
         add(rgb)
 
-    # Grays spaced 8 apart guarantee a new 5-bit (R/B) bucket each step -
-    # the tightest channel RGB565 has - so this never wastes a candidate
+    # Grays spaced 8 apart guarantee a new 5-bit (R/B) bucket each step,
+    # the tightest channel RGB565 has, so this never wastes a candidate
     # the way a step of 1 did once collisions are judged in RGB565 space.
     step = 8
     while len(colours) < 256:

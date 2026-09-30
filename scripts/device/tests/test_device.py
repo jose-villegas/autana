@@ -39,8 +39,8 @@ def mock_store(token="token"):
 
 
 class InterpreterTests(unittest.TestCase):
-    """Any interpreter may start device.py - a report script's `python`, a
-    person at a prompt - and only ESP-IDF's carries pyserial."""
+    """Any interpreter may start device.py: a report script's `python`, a
+    person at a prompt, and only ESP-IDF's carries pyserial."""
 
     MISSING = {"serial": None}
     PRESENT = {"serial": mock.MagicMock()}
@@ -480,7 +480,7 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(status, 1)
 
     def test_send_optional_treats_silence_as_success(self):
-        """TOUCH/IMU answer only when something is wrong - a timeout with
+        """TOUCH/IMU answer only when something is wrong; a timeout with
         nothing seen is that verb's normal happy path, not a failure."""
         connection = FakeConnection([b"I (1) shell: unrelated log line\n"])
         store = mock_store()
@@ -920,7 +920,7 @@ class FlashDefaultPathTests(unittest.TestCase):
             self.assertEqual(entry["commit"], "deadbeef")
 
     def test_builds_then_passes_the_lock_token_to_flash_image_sh(self):
-        # flash_image.sh refuses to flash without the token - write_image()
+        # flash_image.sh refuses to flash without the token; write_image()
         # is the one place that has the token to give it.
         with tempfile.TemporaryDirectory() as directory:
             run = mock.Mock(side_effect=fake_flash.scripts("expected"))
@@ -1007,7 +1007,7 @@ class FlashCommandLineTests(unittest.TestCase):
 
 class ReportCommandTests(unittest.TestCase):
     """The `report` subcommand must work over a file already on disk without
-    ever touching the board - no port lookup, no lock, no serial."""
+    ever touching the board, no port lookup, no lock, no serial."""
 
     def test_never_looks_for_a_port_and_writes_the_report_file(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1033,7 +1033,7 @@ class ReportCommandTests(unittest.TestCase):
 
 class RunSuiteReportGenerationTests(unittest.TestCase):
     """run_suite() must hand its finished capture to device_report so a
-    result is readable without opening the raw log - see device_report.py."""
+    result is readable without opening the raw log, see device_report.py."""
 
     def test_writes_a_report_beside_the_default_path_capture(self):
         connection = FakeConnection([
@@ -1193,7 +1193,7 @@ class TestFilterRunTests(unittest.TestCase):
 
 
 class BatchTests(unittest.TestCase):
-    """A batch flashes once and captures every suite N times under ONE lock -
+    """A batch flashes once and captures every suite N times under ONE lock,
     the property that stops another agent flashing between two captures of
     the same image. No serial port, lock file or build is touched here."""
 
@@ -1343,7 +1343,7 @@ class BatchTests(unittest.TestCase):
 
     def test_run_suite_entries_carry_the_batch_worktree_and_its_commit(self):
         """Each run-suite call must be told the batch's own --worktree and
-        that worktree's HEAD, not the ambient cwd - see device.py's
+        that worktree's HEAD, not the ambient cwd, see device.py's
         run_suite() docstring and the manifest bug this replaced."""
         _, calls, _, _ = self.run_batch(runs=1)
         for suite, out, purpose, unused_held_lock, unused_expected, worktree, commit in calls["run_suite"]:
@@ -1381,7 +1381,7 @@ class BatchTests(unittest.TestCase):
 
     def test_a_single_entry_skips_the_summary_file_and_its_manifest_row(self):
         """One suite, one run: exactly what a bare `run-suite` would leave
-        behind - the summary and its own "batch" manifest row are for
+        behind; the summary and its own "batch" manifest row are for
         telling several captures apart, and a lone capture has nothing to
         tell apart."""
         code, calls, summary, manifest = self.run_batch(
@@ -1449,8 +1449,8 @@ class BatchTests(unittest.TestCase):
 
 
 class ToolchainAddr2LineTests(unittest.TestCase):
-    """toolchain_addr2line() looks under IDF_TOOLS_PATH when set - the same
-    override ESP-IDF's own install script honours - and ~/.espressif
+    """toolchain_addr2line() looks under IDF_TOOLS_PATH when set (the same
+    override ESP-IDF's own install script honours) and ~/.espressif
     otherwise."""
 
     def make_toolchain(self, root):
@@ -1560,8 +1560,8 @@ class FrameWatchLineTests(unittest.TestCase):
 
 
 class FindElfForBuildIdTests(unittest.TestCase):
-    """find_elf_for_build_id() picks the build actually on the board - the
-    one whose own build_id.txt matches - never merely the newest on disk."""
+    """find_elf_for_build_id() picks the build actually on the board: the
+    one whose own build_id.txt matches; never merely the newest on disk."""
 
     def test_no_build_id_finds_nothing(self):
         self.assertIsNone(device.find_elf_for_build_id(Path("C:/wt"), ""))
@@ -2128,7 +2128,7 @@ class SelftestTests(unittest.TestCase):
 
 class ScreenshotCommandTests(unittest.TestCase):
     """device.screenshot() under a faked serial port, driving the real
-    launcher/tools/device/screenshot.py decode - see that module's own tests
+    launcher/tools/device/screenshot.py decode, see that module's own tests
     (launcher/tools/tests/test_screenshot.py) for the decode in isolation."""
 
     def minimal_bmp(self):

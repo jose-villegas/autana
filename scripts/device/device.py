@@ -153,8 +153,8 @@ def board_for_lock(store, named=None, remembered=False):
     presence, so while a holder's reset has the only board off USB a waiter
     still finds it through the lock records; only opening its port needs USB.
     `remembered`, for `hand-to-human`/`take-back` only, falls back further
-    still - to a board merely seen on USB before, with nothing active
-    against it now - since those are the two commands a board dropped off
+    still, to a board merely seen on USB before, with nothing active
+    against it now, since those are the two commands a board dropped off
     USB (and idle) needs."""
     wanted = chosen_board(named)
     if wanted:
@@ -207,7 +207,7 @@ def records_root():
 
     The project's `records` setting names it, for anyone who keeps their
     device history elsewhere. Without one, records land in this checkout's
-    own gitignored .records/device - self-contained, and nothing a commit
+    own gitignored .records/device, self-contained, and nothing a commit
     can pick up by accident."""
     named = autana_config.load().get("records")
     if named:
@@ -216,7 +216,7 @@ def records_root():
 
 
 def slug(text):
-    """Sanitise one manifest field for use inside a filename - collapse any
+    """Sanitise one manifest field for use inside a filename: collapse any
     run of characters unsafe on either Windows or POSIX to a single dash."""
     text = SLUG_UNSAFE.sub("-", text.strip()).strip("-")
     return text or "unknown"
@@ -309,7 +309,7 @@ def open_when_free(seconds=PORT_WAIT_SECONDS, opener=None, sleep=time.sleep,
     the caller closes it.
 
     The lock arbitrates intent; the OS owns the port, and the two disagree
-    whenever a previous holder's reader outlives its lock - a caller that
+    whenever a previous holder's reader outlives its lock: a caller that
     queued fairly then fails on a port it was promised, which reads as a flaky
     board. Waiting is the right answer: this caller already won its turn, a
     straggler drains in seconds, and a port nobody ever frees still reports
@@ -827,7 +827,7 @@ def decode_addresses(addresses, elf):
 
 def find_elf_for_build_id(worktree, build_id):
     """The launcher.elf whose own build_id.txt matches `build_id`, searched
-    across every launcher/build*/ directory - the build actually on the
+    across every launcher/build*/ directory, the build actually on the
     board, not merely the newest one on disk (a `--dev` build built after
     the board was last flashed `--diag`, say, would otherwise decode
     against the wrong symbols). None when `build_id` is empty or nothing
@@ -887,8 +887,8 @@ def stop_process_tree(process):
 
 def run_to_end(command, lost=None, timeout=None, **options):
     """Runs `command` to its end, stopping its whole process tree on any
-    error, on Ctrl+C, or the moment `lost` - a held lock's event, None for a
-    command that holds none - is set."""
+    error, on Ctrl+C, or the moment `lost`, a held lock's event, None for a
+    command that holds none, is set."""
     if os.name != "nt":
         options["start_new_session"] = True
     deadline = None if timeout is None else time.monotonic() + timeout
@@ -1137,8 +1137,8 @@ def build_image(args, board, extra_flags=()):
 
 
 def write_image(built, store, board, held_lock=None):
-    """Writes `built`'s snapshot under the lock - a fresh one, or `held_lock`
-    - and returns its build id, the snapshot's own. The snapshot is gone
+    """Writes `built`'s snapshot under the lock, a fresh one, or `held_lock`,
+    and returns its build id, the snapshot's own. The snapshot is gone
     afterwards, written or not."""
     build_id = None
     error = None
@@ -1164,7 +1164,7 @@ def write_image(built, store, board, held_lock=None):
 
 def test_patterns(values):
     """The patterns of repeated `--test` values, each a comma list. A test's
-    name is a C identifier, so a pattern is one too - the device matches it as
+    name is a C identifier, so a pattern is one too; the device matches it as
     a case-sensitive substring of the name, and refuses one past its limits
     (SUITE_FILTER_MAX and SUITE_FILTER_LEN in launcher/test/suites.h)."""
     patterns = []
@@ -1205,7 +1205,7 @@ def check_test_filter(data, suite, patterns, reason="complete"):
     nothing, is an error and not a result: the first would report every row
     of the suite as if it had been asked for, the second lists the names to
     choose from. With `patterns` given, a capture that never printed the
-    completion line is one too - a filter error when the board went on to
+    completion line is one too: a filter error when the board went on to
     finish, a capture error, which a batch survives, when it was cut short."""
     text = data.decode("utf-8", errors="replace")
     complete = None
@@ -1280,7 +1280,7 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
 def selftest(args, store, board):
     """Build the diagnostics+autorun image, then flash it and, under that
     same lock, reset and capture the boot-time run of every registered suite
-    until SELFTEST_COMPLETE (or a timeout) - the way to run every suite this
+    until SELFTEST_COMPLETE (or a timeout), the way to run every suite this
     worktree registers on the device, and device_report.sh's own
     build+capture step for a report with no single named suite
     (report_test_results.sh and the frame-budget reports). A report scoped
@@ -1408,7 +1408,7 @@ def replies_to(data, reply, until):
 
     A reply is everything from `reply` to the end of its line: the console
     also carries the firmware's own log lines, and a reply can come out
-    behind a log prefix. `until` are the prefixes that end an answer -
+    behind a log prefix. `until` are the prefixes that end an answer;
     autana console forwards a line under the app's own prefix in capitals,
     the same convention every built-in verb's own reply already follows.
     """
@@ -1431,11 +1431,11 @@ def send(args, store, board):
     line. A tuning session is dozens of these, and none of them is evidence.
 
     `args.optional` is for a verb that only answers when something is wrong
-    (TOUCH, IMU): a timeout with nothing seen is success, not "no reply" -
+    (TOUCH, IMU): a timeout with nothing seen is success, not "no reply";
     silence is that verb's normal happy path, so whatever partial match was
     found (possibly nothing) is printed and this returns 0 rather than
     raising. autana console forwards a line the same optional way, with
-    `args.reply` set to the line's own first word in capitals - an app's
+    `args.reply` set to the line's own first word in capitals; an app's
     own command always replies under its own prefix, so this still
     completes as soon as `<PREFIX>_END`/`<PREFIX>_ERR` arrives rather than
     waiting out the window.
@@ -1470,13 +1470,13 @@ def send(args, store, board):
 
 def screenshot(args, store, board):
     """SCREENSHOT, decoded by read_screenshot()/write_capture() in
-    launcher/tools/device/screenshot.py - the one decoder autana's own
+    launcher/tools/device/screenshot.py, the one decoder autana's own
     `screenshot` shares. Under the device lock, so it queues behind
     whatever else already holds the board rather than fighting it for the
     port.
 
     Not a capture: nothing is written under records/, the same reasoning
-    send()'s own docstring gives - a screenshot is a look at the screen, not
+    send()'s own docstring gives; a screenshot is a look at the screen, not
     evidence of a run.
     """
     import screenshot as screenshot_tool
@@ -1524,8 +1524,8 @@ def batch(args, store, board):
     image; without it, every suite runs against whatever is already on the
     board. A capture that errors is recorded and the batch continues; only a
     failed build or flash stops it. One suite run once collapses to exactly
-    what a standalone `run-suite` leaves behind - one capture under its own
-    name, no `batch` summary or manifest row - since there is nothing across
+    what a standalone `run-suite` leaves behind: one capture under its own
+    name, no `batch` summary or manifest row, since there is nothing across
     runs for either to tell apart."""
     extra_flags = ["--perf-scope"] if args.perf_scope else []
     patterns = test_patterns(getattr(args, "test_filter", None))
@@ -1733,7 +1733,7 @@ def main(argv=None):
     selftest_parser.add_argument("--verbose", action="store_true")
     selftest_parser.add_argument("--perf-scope", action="store_true",
                                  help="build the perf-scoped image")
-    # 3000 s leaves headroom over a full run's measured time - see
+    # 3000 s leaves headroom over a full run's measured time, see
     # launcher/tools/quality/report_test_results.sh.
     selftest_parser.add_argument("--max-seconds", type=float, default=3000)
     selftest_parser.add_argument("--idle-seconds", type=float, default=300)
@@ -1787,7 +1787,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     args.purpose = command_label(args.command)
 
-    # Touches no lock and no board - it only reads a capture already on disk,
+    # Touches no lock and no board; it only reads a capture already on disk,
     # so it is handled before board discovery even runs, unlike every command
     # below this.
     if args.command == "report":

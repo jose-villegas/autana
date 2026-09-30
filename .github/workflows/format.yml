@@ -4,7 +4,7 @@ name: Format
 # .clang-format, and every tracked text file against CRLF, on each pull
 # request and each push to main. The pre-commit hook
 # (scripts/install-git-hooks.sh) reports formatting earlier, but cannot
-# enforce it - it is opt-in, skippable with --no-verify, and absent from any
+# enforce it; it is opt-in, skippable with --no-verify, and absent from any
 # commit CI or a merge makes.
 #
 # clang-format is pinned to one exact version, not a minimum: see

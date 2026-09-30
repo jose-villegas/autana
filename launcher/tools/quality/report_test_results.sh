@@ -20,9 +20,9 @@
 # step` line from the tests that run late. A run that only needs the early
 # suites does not have to wait out the whole window.
 #
-# Everything this does beyond the declarations below - which image, deleting
+# Everything this does beyond the declarations below (which image, deleting
 # a build directory's sdkconfig that disagrees, asserting the flags took,
-# capturing, validating, restoring release - is tools/device/device_report.sh.
+# capturing, validating, restoring release) is tools/device/device_report.sh.
 
 set -eu
 

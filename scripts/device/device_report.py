@@ -1,13 +1,13 @@
 """Turns a raw device capture into a markdown report beside it, so a run's
 result is readable without opening the serial log: suite PASS/FAIL counts,
-every failing test's Unity message, any `PERF TARGET` lines, and - when
-exactly one app's `tools/report_performance.py` matches the suite that ran -
+every failing test's Unity message, any `PERF TARGET` lines, and, when
+exactly one app's `tools/report_performance.py` matches the suite that ran,
 that app's own frame-budget table.
 
 Knows no app by name. A reporter is found by convention:
 `launcher/main/apps/*/tools/report_performance.py`, paired with whichever
 `suite_*.c` in that app's tests/ folder registers the suite that ran
-(`SUITE_REGISTER(<suite>)` - the same name device.py's run-suite passed to
+(`SUITE_REGISTER(<suite>)`, the same name device.py's run-suite passed to
 RUNSUITE). Zero matches, more than one, or a reporter that raises all fall
 back to the generic summary with a stated reason; the capture is the
 evidence, the per-app table is a convenience. See device.py's `report`
@@ -24,8 +24,8 @@ from pathlib import Path
 
 
 # `\S*`, not report_performance.py's `\S+`: this project's own Unity result
-# lines carry no filename ahead of the line number - "*:3685:name:PASS", not
-# "file.c:3685:name:PASS" - so a required leading token never matches a real
+# lines carry no filename ahead of the line number: "*:3685:name:PASS", not
+# "file.c:3685:name:PASS", so a required leading token never matches a real
 # capture. Confirmed against 152333_runsuite-run_sand_perf_suite...log:
 # report_performance.py's own RESULT_RE finds zero entries in it.
 RESULT_RE = re.compile(r"^(?P<file>\S*?):\d+:(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
@@ -41,7 +41,7 @@ PERF_SUMMARY_RE = re.compile(r"PERF TARGET SUMMARY:\s*(?P<unmet>\d+)\s*unmet")
 # The first number followed by "us" is the measurement: sizes and counts
 # earlier on the line ("184x224", "10304 grains") are not.
 DEVICE_TIMING_RE = re.compile(r"device_tests: .*?(?<![\w.-])(?P<us>\d+) us\b")
-# "frame time, lava stress: sim 92767 us/frame" - one phase of a frame a test
+# "frame time, lava stress: sim 92767 us/frame", one phase of a frame a test
 # splits into sim, mark, present and total. A phase is never the test's own
 # measurement, which is logged after it; a test logging only the split is
 # measured by its total.
@@ -49,7 +49,7 @@ FRAME_TIME_PHASE_RE = re.compile(
     r"device_tests: frame time, .+?: (?P<phase>sim|mark|present|total) (?P<us>\d+) us/frame")
 
 # The exact header report_performance.py emits for its one frame-budget
-# table - see main()'s `lines.append` there. Matched verbatim rather than
+# table, see main()'s `lines.append` there. Matched verbatim rather than
 # re-derived, so a wording change in that file breaks this loudly (a
 # KeyError-shaped diff) instead of silently miscounting rows.
 BUDGET_TABLE_HEADER = "| Test | Budget (us) | Measured (us) | Headroom | Status |"
@@ -82,7 +82,7 @@ def read_index(index_path):
 
 
 def find_manifest_entry(capture_path, index_path):
-    """The last index.jsonl line naming this exact capture file - last, not
+    """The last index.jsonl line naming this exact capture file; last, not
     first, since re-running a report over the same --out path would else
     always find the earliest run instead of the one that produced today's
     bytes."""
@@ -250,7 +250,7 @@ def batch_summary_markdown(entries, meta):
 
 def looks_like_perf_capture(text):
     """True when the capture is plausibly a performance run, independent of
-    whether any budget was ever declared for it - the signal the empty-table
+    whether any budget was ever declared for it; the signal the empty-table
     warning needs, since an empty table is only alarming when the capture
     itself clearly measured something."""
     return bool(re.search(r"^PERF TARGET ", text, re.MULTILINE)) or "device_tests" in text
@@ -327,7 +327,7 @@ def build_budget_section(worktree, suite, capture_path, capture_text):
     tmp_out = Path(capture_path).with_name(Path(capture_path).name + f".{match['app']}_budget.tmp.md")
     try:
         result = run_reporter(match["reporter"], capture_path, match["source"], tmp_out)
-    except Exception as error:  # subprocess/timeout/OS error - a convenience, never fatal
+    except Exception as error:  # subprocess/timeout/OS error, a convenience, never fatal
         return _unavailable(f"running {match['app']}'s report_performance.py raised: {error}")
 
     if result.returncode != 0:

@@ -1,11 +1,11 @@
 /*
- * render_video - see render_video.h. Every multi-byte field is written
+ * render_video, see render_video.h. Every multi-byte field is written
  * byte-by-byte in little-endian order, the same discipline
  * util/screenshot.h's BMP header uses, for the same reason: a compiler may
  * pad a struct, and RIFF's layout has none.
  *
  * idx1's dwOffset is relative to the 'movi' FourCC itself, not the LIST
- * header before it - the convention most AVI 1.0 readers expect - so the
+ * header before it, the convention most AVI 1.0 readers expect, so the
  * first frame's offset is 4, not 0.
  */
 
@@ -16,7 +16,7 @@
 #include "util/screenshot.h"
 
 /* RIFF+AVI, LIST hdrl (avih, LIST strl (strh, strf)), LIST movi, idx1
- * header - every byte an AVI carries besides frame data and index entries. */
+ * header, every byte an AVI carries besides frame data and index entries. */
 #define RENDER_VIDEO_FIXED_BYTES (12 + 12 + (8 + 56) + 12 + (8 + 56) + (8 + 40) + 12 + 8)
 
 static void

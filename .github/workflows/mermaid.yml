@@ -1,11 +1,11 @@
 name: Mermaid Diagrams
 
-# Renders every ```mermaid block in tracked Markdown through mermaid-cli - the only thing
+# Renders every ```mermaid block in tracked Markdown through mermaid-cli, the only thing
 # that catches a broken diagram, since GitHub fails silently and shows a parse error where
 # the picture should be. docs/tools/Mermaid-Diagrams.md has the full picture; this job just
 # runs the command it documents. Path-filtered, unlike this repo's other workflows, because
 # installing mermaid-cli's bundled Chrome is real per-run cost and nothing outside a .md
-# file or the validator itself can change the result - which is also why it is its own
+# file or the validator itself can change the result, which is also why it is its own
 # workflow: a path filter applies to a whole workflow, never to one job.
 
 on:

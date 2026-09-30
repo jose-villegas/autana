@@ -11,7 +11,7 @@
 #   IMAGE_DIR      a snapshot: flash_args, every file it lists, build_id.txt.
 #   IDF_EXPORT     ESP-IDF's export script, as for build.sh.
 #
-# esptool writes the snapshot directly - never `idf.py flash`, whose target
+# esptool writes the snapshot directly, never `idf.py flash`, whose target
 # rebuilds first and writes whatever the build directory holds by then.
 #
 # This opens the board's serial port, which is why it lives in

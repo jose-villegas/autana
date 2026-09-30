@@ -8,10 +8,10 @@
 # compiler the same way without a hand-copied twin quietly drifting out of
 # sync with the original the way two independent copies of anything here
 # eventually do. The standing idiom for this in the repo is a sourced
-# helper rather than a duplicated block - see tools/build/idf.sh, sourced by both
+# helper rather than a duplicated block, see tools/build/idf.sh, sourced by both
 # build.sh and test/run_qemu_tests.sh.
 #
-# Usage - source this file and call find_cc():
+# Usage: source this file and call find_cc():
 #
 #   . "$TOOLS_DIR/find_cc.sh"
 #   CC_BIN=$(find_cc) || { echo "no compiler found" >&2; exit 1; }

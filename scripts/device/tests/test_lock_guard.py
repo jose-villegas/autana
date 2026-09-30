@@ -717,8 +717,8 @@ class FlashTests(Store):
 
 
 class BuildDirectoryLockTests(Store):
-    """One build directory, one build at a time - whether a flash's build or
-    `autana build` - and the snapshot comes from inside that turn."""
+    """One build directory, one build at a time, whether a flash's build or
+    `autana build`, and the snapshot comes from inside that turn."""
 
     def setUp(self):
         super().setUp()
@@ -1561,7 +1561,7 @@ class BoardChoiceTests(Store):
         self.assertIsNone(self.store.status(BOARD_A)["human"])
 
     def test_ordinary_commands_never_fall_back_to_a_merely_seen_board(self):
-        # boards() - the fallback every command but hand/take-back uses - has
+        # boards(), the fallback every command but hand/take-back uses, has
         # to mean lock/reservation/waiter only: a seen-only board still
         # resolving would send a plain `send`/`flash` into a 600 s port wait
         # instead of failing at once.
@@ -1581,7 +1581,7 @@ class BoardChoiceTests(Store):
             self.assertEqual(device.board_statuses(self.store), [])
 
     def test_hand_off_still_reaches_a_board_merely_seen_before(self):
-        # The idle state - no lock, no reservation, no waiter - is the common
+        # The idle state, no lock, no reservation, no waiter, is the common
         # one, and the one a dropped-USB `hand`/`take-back` needs: nothing
         # left behind by an ordinary flash should erase the board from
         # hand-to-human's own memory of it.

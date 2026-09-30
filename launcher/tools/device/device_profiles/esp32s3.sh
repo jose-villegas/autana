@@ -2,7 +2,7 @@
 #
 # Device profile: Waveshare ESP32-S3-Touch-AMOLED-1.8 (the board this repo
 # is written for). Read the format's own rules in ../device_profile.sh
-# before editing: plain KEY=value, no logic, no command substitution - both
+# before editing: plain KEY=value, no logic, no command substitution, both
 # POSIX sh and device_profile.py parse this file.
 #
 # Every number here carries its provenance in the *_SOURCE field beside it.
@@ -21,7 +21,7 @@ DP_MAIN_TASK_STACK_BYTES=3584
 DP_MAIN_TASK_STACK_SOURCE="ESP-IDF esp32s3 default; not overridden in sdkconfig.defaults"
 
 # Per-function stack-frame ceiling the host checker enforces on test code.
-# Justified in launcher/test/check_stack_usage.py's header - short version:
+# Justified in launcher/test/check_stack_usage.py's header; short version:
 # both historical panics (24 KB and 4 KB frames) are caught with two orders
 # of magnitude of margin, while the largest legitimate fixture frame in the
 # tree today is far below it.
@@ -31,23 +31,23 @@ DP_TEST_FRAME_CEILING_SOURCE="derived from DP_MAIN_TASK_STACK_BYTES; see check_s
 # --- heap ------------------------------------------------------------------
 # Internal heap free after gfx_init() (HEAPMARK). The framebuffer lives in
 # PSRAM on this board (see board.h's BOARD_FRAMEBUFFER_CAPS), so it is not
-# subtracted here - PSRAM is not counted: hot allocations (sand grids and
+# subtracted here; PSRAM is not counted: hot allocations (sand grids and
 # the like) are meant to stay internal.
 DP_FREE_HEAP_BYTES=130635
 DP_FREE_HEAP_SOURCE="HEAPMARK after gfx_init, full-scope diag build 05b7141e2a28, board capture 2026-09-16. PSRAM is not counted: hot allocations are meant to stay internal"
 
 # The largest single block in that free heap. gfx_init() leaves the pool in
-# pieces - a 17 KB gather buffer and two 47 KB strip buffers sit in it - so
+# pieces: a 17 KB gather buffer and two 47 KB strip buffers sit in it, so
 # this, not the total above, is what one contiguous request competes for.
 DP_LARGEST_FREE_BLOCK_BYTES=51200
 DP_LARGEST_FREE_BLOCK_SOURCE="HEAPMARK after gfx_init, full-scope diag build 05b7141e2a28, board capture 2026-09-16"
 
 # One sand grid, for scale: a single contiguous request this size is why
-# fragmentation - not just total bytes - decides whether a fixture runs.
+# fragmentation, not just total bytes, decides whether a fixture runs.
 DP_LARGEST_ALLOC_BYTES=41216
 DP_LARGEST_ALLOC_SOURCE="one sand grid (184x224), unchanged by the port"
 
-# Total PSRAM capacity - not a post-boot free figure the way DP_FREE_HEAP_BYTES
+# Total PSRAM capacity, not a post-boot free figure the way DP_FREE_HEAP_BYTES
 # is. No post-init free-PSRAM measurement is recorded anywhere in this file, so
 # a test that wants realistic PSRAM headroom charges its own buffers (the
 # framebuffer included) against this pool via heap_caps_malloc, same as device.
@@ -64,7 +64,7 @@ DP_SPIRAM_ALWAYSINTERNAL_SOURCE="CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL in launcher
 # register is 18 bits wide (SPI_LL_DMA_MAX_BIT_LEN in ESP-IDF's spi_ll.h), so
 # one spi_transaction_t cannot carry more than this many bytes no matter how
 # many DMA descriptors chain it. Not one of this file's usual three sources
-# (no sdkconfig knob names a SoC register width) - recorded with the fullest
+# (no sdkconfig knob names a SoC register width), recorded with the fullest
 # provenance available: docs/notes/Display-and-Rendering.md's 80 MHz
 # investigation lists "sub-windows under 32 KiB" among the transaction shapes
 # it tried. Not wired to a build gate yet.
@@ -76,7 +76,7 @@ DP_TOOLCHAIN_PREFIX=xtensa-esp32s3-elf
 DP_TOOLCHAIN_SOURCE="ESP-IDF v5.5 tools/tools.json, xtensa-esp-elf esp-14.2.0_20260121"
 
 # ISA-targeting flags. These are for a cross build ONLY and must never be
-# copied onto a host compile - that is the whole distinction this file draws.
+# copied onto a host compile; that is the whole distinction this file draws.
 DP_ARCH_FLAGS="-mlongcalls -fno-builtin-memcpy -fno-builtin-memset -fno-builtin-bzero -mdisable-hardware-atomics"
 DP_ARCH_FLAGS_SOURCE="launcher/build.dev/toolchain/cflags, read from a real S3 build, 2026-09-13"
 

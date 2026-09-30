@@ -14,7 +14,7 @@
 # lives and build output is never searched. Exits 1 if any suite fails;
 # keeps running the rest so one broken suite does not hide another. A
 # missing interpreter skips its language's suites with a warning and still
-# exits 1 - unlike scripts/git-hooks/pre-commit, this script's job is to
+# exits 1; unlike scripts/git-hooks/pre-commit, this script's job is to
 # prove the suites pass, so a language it could not even run is a failure,
 # not something to wave through quietly.
 #

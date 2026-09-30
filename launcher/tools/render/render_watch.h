@@ -1,5 +1,5 @@
 /*
- * render_watch - the frame watch (util/frame_watch.h) over a host render:
+ * render_watch, the frame watch (util/frame_watch.h) over a host render:
  * every scene frame's allocations, frees and stdout writes, judged by the
  * same rule the board uses, so a scene whose steady state allocates or
  * prints fails its render.

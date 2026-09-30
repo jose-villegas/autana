@@ -1,5 +1,5 @@
 /*
- * triangle_sizes - how many of a lit mesh's drawn triangles cover 0, 1, 2-4
+ * triangle_sizes: how many of a lit mesh's drawn triangles cover 0, 1, 2-4
  * or more pixel centres from a view, counted by the top-left rule from the
  * view itself, so any version of the pipeline means the same; and the poses
  * file the triangle_sizes tool reads.

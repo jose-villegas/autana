@@ -1,5 +1,5 @@
 """Regression tests for launcher/tools/device/screenshot.py's shared decode and
-wire-protocol logic - the module scripts/device/device.py's own `screenshot`
+wire-protocol logic, the module scripts/device/device.py's own `screenshot`
 subcommand imports rather than re-implementing (see its own screenshot()
 docstring). No hardware: a FakeConnection stands in for the serial port.
 
@@ -23,7 +23,7 @@ import screenshot  # noqa: E402
 
 def build_bmp(width, height, rows_bgr):
     """A minimal 24bpp BMP: 14-byte file header + 40-byte BITMAPINFOHEADER,
-    bottom-up rows padded to 4 bytes - the same layout
+    bottom-up rows padded to 4 bytes, the same layout
     screenshot_bmp_header() (util/screenshot.h) writes on the device.
     `rows_bgr` is top-down, [(b, g, r), ...] per row; this stores them
     bottom-up as BMP requires."""

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-complexity_gate.py - a ratchet on clang-tidy's own
+complexity_gate.py: a ratchet on clang-tidy's own
 readability-function-cognitive-complexity check, not a fixed threshold.
 
 Measures every first-party .c file under launcher/main/ (the ESP-IDF
@@ -8,14 +8,14 @@ diagnostics build's own compile database, esp-clang targeting Xtensa) and
 every portable file the host test runner compiles, merged into one set
 with no double counting. A .c file under launcher/main/ that neither
 source measures, and that is not on EXCLUDED_MAIN_FILES below with a
-reason, fails the gate by name - coverage cannot silently shrink.
+reason, fails the gate by name: coverage cannot silently shrink.
 
 The gate FAILS when a function scores above FAIL_THRESHOLD and either
 rose above its last committed baseline or has no baseline entry, or when
-clang-tidy reports a parse error anywhere - a partial parse can hide
+clang-tidy reports a parse error anywhere; a partial parse can hide
 functions, so it is never accepted quietly. A rise that stays at or under
 FAIL_THRESHOLD only WARNS (a GitHub annotation in CI). A falling score
-PASSES with a note to lower the baseline - lowering it is always an
+PASSES with a note to lower the baseline; lowering it is always an
 explicit --update-baseline, never automatic. See
 docs/tools/Complexity-Gate.md for the coverage accounting and the
 threshold's reasoning.
@@ -23,11 +23,11 @@ threshold's reasoning.
 USAGE
     complexity_gate.py                    the ratchet (default: --check)
     complexity_gate.py --update-baseline  overwrite the baseline with today's
-                                           scores - a deliberate, human act
+                                           scores, a deliberate, human act
     complexity_gate.py --changed <ref>    scan only files git diff finds
                                            against <ref> (fast, local use)
 
-Needs launcher/build.diag/compile_commands.json - run
+Needs launcher/build.diag/compile_commands.json; run
 launcher/tools/build/build_diag_check.sh first.
 """
 import argparse
@@ -56,20 +56,20 @@ PINNED_MAJOR = "19"
 
 # The project's own documented standard (docs/sand/Sand-Simulation.md,
 # "Broken down further") is Sonar's *default* line of 15, not the 25 the
-# standalone check used - every function in main/ was driven under 15 by
+# standalone check used; every function in main/ was driven under 15 by
 # hand once already. Above it a function may not grow and a new one may not
 # land; at or under it a rise is the reviewer's call, not the gate's.
 FAIL_THRESHOLD = 15
 
 # Below this fraction of the baseline's function count, something broke the
 # scan itself (a flag rejected, a path silently unmatched) rather than the
-# tree actually losing that many functions - the same "quiet zero" failure
+# tree actually losing that many functions, the same "quiet zero" failure
 # mode being replaced, one step less total. Fail loudly instead of trusting
 # a number that different from history.
 MIN_COVERAGE_RATIO = 0.5
 
 # A .c file under launcher/main/ that no source below can give real flags
-# to. Reviewed by hand, not grown casually - each entry needs a reason a
+# to. Reviewed by hand, not grown casually; each entry needs a reason a
 # reader can check.
 EXCLUDED_MAIN_FILES = {
     "main/apps/sand/tools/crossflow_bench.c":
@@ -80,8 +80,8 @@ EXCLUDED_MAIN_FILES = {
 }
 
 # A file only a build VARIANT compiles is in no diagnostics compile database,
-# so it is measured with the command of a sibling in the same folder - the
-# flags it would have had - rather than excused from the gate. The variant's
+# so it is measured with the command of a sibling in the same folder, the
+# flags it would have had, rather than excused from the gate. The variant's
 # own symbol is defined for it, since what such a file calls is often
 # declared only under that symbol.
 VARIANT_ONLY_FILES = {
@@ -128,7 +128,7 @@ BARE_ERROR_RE = re.compile(r"^error: (?P<msg>.+)$")
 def to_native_path(p):
     """Git Bash's `pwd` (what run_tests.sh's paths are built from) prints
     MSYS-style /c/Users/... paths; native clang-tidy.exe wants a drive
-    letter. Rewrites just that leading segment - a no-op on any path that
+    letter. Rewrites just that leading segment; a no-op on any path that
     doesn't start with it, which is every path on a non-Windows host."""
     m = re.match(r"^/([A-Za-z])/(.*)$", p)
     if m and os.name == "nt":
@@ -200,8 +200,8 @@ def resolve_clang_tidy():
 
 def find_xtensa_toolchain_root():
     """The xtensa-esp-elf GCC install esp-clang needs pointed at
-    (--sysroot/--gcc-toolchain) to resolve newlib's platform_include shims
-    - esp-clang carries no libc of its own for this target. Same
+    (--sysroot/--gcc-toolchain) to resolve newlib's platform_include shims:
+    esp-clang carries no libc of its own for this target. Same
     glob-and-take-newest convention as the esp-clang lookup above, under
     the same ESP-IDF tools root."""
     env = os.environ.get("XTENSA_GCC_ROOT")
@@ -215,12 +215,12 @@ def find_xtensa_toolchain_root():
 
 def find_host_toolchain():
     """esp-clang's own default target is a bare riscv32-esp-unknown-elf
-    with no real libc at all - a host file needing <stdio.h> fails
+    with no real libc at all; a host file needing <stdio.h> fails
     exactly like an unfixed Xtensa file did, unless it too is pointed at
     a real toolchain. Asks tools/build/find_cc.sh for the same compiler
     run_tests.sh proved these sources compile with (never a second,
     independently-guessed one), then derives that compiler's own native
-    target and install root from itself - portable to whatever compiler
+    target and install root from itself, portable to whatever compiler
     a given machine's find_cc() resolves to, MinGW or a Linux system gcc
     alike."""
     find_cc_sh = TOOLS_DIR.parent / "build" / "find_cc.sh"
@@ -260,7 +260,7 @@ def run_tests_print(flag):
 def is_vendored(path_str):
     """launcher/components/ (microui, small3dlib, the board support package),
     managed_components/ (registry drivers), and the vendored Unity framework
-    under test/framework/ - third-party code, out of scope for a ratchet on
+    under test/framework/, third-party code, out of scope for a ratchet on
     THIS project's own functions."""
     parts = Path(path_str).parts
     if any(p in VENDORED_DIR_NAMES for p in parts):
@@ -366,7 +366,7 @@ def modified_vendored_functions():
     """Vendored file -> (names whose body differs from the pinned upstream
     copy or that upstream lacks, every function name found in our copy).
     Exits with the init command when a reference submodule is not checked
-    out - a missing reference must never read as "nothing modified"."""
+    out; a missing reference must never read as "nothing modified"."""
     result = {}
     for ours_rel, upstream_rel in VENDORED_REFERENCES.items():
         upstream = REPO_ROOT / upstream_rel
@@ -391,7 +391,7 @@ INCLUDE_RE = re.compile(r'^\s*#\s*include\s*[<"]([^>"]+)[>"]', re.M)
 
 def translation_units_reaching(header, sources):
     """Measured sources that include `header` directly or through a
-    first-party header that does - a header is scored by clang-tidy only
+    first-party header that does; a header is scored by clang-tidy only
     from inside a translation unit that pulls it in."""
     candidates = [p for p in (LAUNCHER_DIR / "main").rglob("*")
                   if p.suffix in (".c", ".h")]
@@ -473,7 +473,7 @@ def scan_vendored(clang_tidy, db_path, sources):
 
 def inline_response_file(cmd):
     """ESP-IDF's generated compile commands hand most flags to the
-    compiler via a GCC-style @"file" response file rather than inline -
+    compiler via a GCC-style @"file" response file rather than inline;
     inlined here so BAD_GCC_FLAGS can be stripped from all of it, not just
     whatever half of the command happens to sit outside the file."""
     m = RESPONSE_FILE_RE.search(cmd)
@@ -489,12 +489,12 @@ def inline_response_file(cmd):
 def build_idf_entries(toolchain_root, vendored=False):
     """launcher/build.diag/compile_commands.json, restricted to this
     project's own main/ and test/ trees (excluding vendored code and
-    apps/*/tools/, which the firmware never links) - or, with `vendored`,
-    to only the vendored .c files in VENDORED_REFERENCES - with the flags esp-idf
+    apps/*/tools/, which the firmware never links), or, with `vendored`,
+    to only the vendored .c files in VENDORED_REFERENCES, with the flags esp-idf
     generated for xtensa-esp32s3-elf-gcc adjusted for esp-clang: the three
     GCC-only flags it does not recognise stripped, and --sysroot/
     --gcc-toolchain added so its `#include_next` chain into newlib
-    resolves. Real device flags otherwise - this is what makes
+    resolves. Real device flags otherwise; this is what makes
     hardware-facing files (app_*.c, gfx.c, ui.c, boot/, board/, the
     input/ drivers) measurable at all."""
     if not IDF_DB_PATH.exists():
@@ -527,7 +527,7 @@ def build_idf_entries(toolchain_root, vendored=False):
             target = str((LAUNCHER_DIR / rel).resolve())
             if sibling not in entries or target in entries:
                 continue
-            # Same folder, so only the file name differs - after either
+            # Same folder, so only the file name differs: after either
             # separator, since a Windows database writes backslashes.
             borrowed, swaps = re.subn(
                 r"(?<=[\\/])" + re.escape(Path(sibling_rel).name) + r"(?!\w)",
@@ -539,13 +539,13 @@ def build_idf_entries(toolchain_root, vendored=False):
     return entries
 
 
-# apps/*/tools/*.c - excluded from the firmware and the host build alike
+# apps/*/tools/*.c, excluded from the firmware and the host build alike
 # by long-standing convention (main/CMakeLists.txt, run_tests.sh), but
 # check_main_coverage()'s own rglob("*.c") below reaches them anyway, so
 # parity means giving them real flags where that is possible at all: each
 # already has its own working
 # host compile line in a report_*.sh beside it (find_cc()'s compiler, this
-# project's own headers) - -I main/apps/<app> is the one addition beyond
+# project's own headers); -I main/apps/<app> is the one addition beyond
 # the host runner's own flags every one of them needs, for its sibling
 # headers (material.h, sand.h, ...).
 TOOLS_FILES_EXTRA_INCLUDE = "apps/sand"
@@ -604,7 +604,7 @@ def build_compile_db():
         "-Wno-unknown-warning-option",
         # A string literal offset by an int ("ABCD" + n) is legitimate,
         # deliberate pointer arithmetic in several suites (see
-        # suite_ui_transform.c) - not the indexing-vs-offset typo this
+        # suite_ui_transform.c), not the indexing-vs-offset typo this
         # check exists to catch.
         "-Wno-string-plus-int",
     ]
@@ -632,7 +632,7 @@ def build_compile_db():
         entry = {"directory": str(LAUNCHER_DIR), "file": path}
         # IDF entries stay a "command" string (built by text surgery on
         # ESP-IDF's own string); host/tools entries are a real argv list
-        # (built here token by token) - "arguments" needs no tokenising on
+        # (built here token by token); "arguments" needs no tokenising on
         # the way back in, which a hand-built string does and a Windows
         # path's own backslashes can trip.
         entry["arguments" if isinstance(cmd, list) else "command"] = cmd
@@ -647,7 +647,7 @@ def build_compile_db():
 
 def check_main_coverage(measured_files):
     """Every .c file under launcher/main/, found by walking the
-    filesystem - independent of any build or database. A gap that is not
+    filesystem: independent of any build or database. A gap that is not
     EXCLUDED_MAIN_FILES, with a reason, is a coverage regression and fails
     the gate by name rather than shrinking quietly."""
     measured = {str(Path(f).resolve()) for f in measured_files}
