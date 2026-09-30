@@ -111,7 +111,7 @@ corrupted; a held frame (`freeze`, see
 fault has to be judged by eye on the device. To tell a software fault from a
 link fault, turn on the dev-only send audit (`gfx_set_send_audit()`): it
 logs whether every changed pixel went out with the right bytes. If it did,
-A/B the link itself - clock, pad drive, PSRAM speed - one build at a time.
+A/B the link itself: clock, pad drive, PSRAM speed; one build at a time.
 
 ## Cost per call
 
@@ -257,8 +257,8 @@ has the PPA, PSRAM and a real SDMMC host.
 
 ## Related
 
-- [`Gfx-and-Presentation.md`](../Gfx-and-Presentation.md) - the mechanisms
+- [`Gfx-and-Presentation.md`](../Gfx-and-Presentation.md): the mechanisms
   these numbers justify
-- [`Board-and-Memory.md`](Board-and-Memory.md) - the SPI2 wiring and the
+- [`Board-and-Memory.md`](Board-and-Memory.md): the SPI2 wiring and the
   internal-RAM budget the bounce slots come out of
-- [`Debugging.md`](Debugging.md) - telling a link fault from a software one
+- [`Debugging.md`](Debugging.md): telling a link fault from a software one
