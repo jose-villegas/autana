@@ -73,7 +73,7 @@ jobs:
 
       # The exclusive-open tests drive the real serial library on a pty.
       - name: pyserial
-        run: pip install pyserial==3.5
+        run: pip install pyserial==3.5 -r launcher/tools/render/requirements.txt
 
       # test_r3d_bake.py skips itself without numpy and scipy, and builds
       # meshoptimizer's library from its submodule with the runner's compiler.
