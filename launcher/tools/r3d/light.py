@@ -128,7 +128,28 @@ def sun_basis(direction):
     return u, np.cross(direction, u)
 
 
-def light(points, normals, double_sided, intersector, args, rng):
+def tangent_frame(n):
+    """Two unit tangents completing each normal in n, fixed by the normal alone."""
+    tu = np.where(np.abs(n[:, 2:3]) < 0.9, [[0.0, 0.0, 1.0]], [[1.0, 0.0, 0.0]])
+    tu = np.cross(n, tu)
+    tu /= np.linalg.norm(tu, axis=1, keepdims=True)
+    return tu, np.cross(n, tu)
+
+
+def sky_directions(count):
+    """One fixed set of cosine-weighted hemisphere directions (z up), shared by
+    every point: a golden-ratio sequence, so any prefix is evenly spread."""
+    i = np.arange(count)
+    r1 = (0.5 + i * 0.7548776662466927) % 1.0
+    a = 2 * math.pi * ((0.5 + i * 0.5698402909980532) % 1.0)
+    r = np.sqrt(r1)
+    return np.stack([r * np.cos(a), r * np.sin(a), np.sqrt(1 - r1)], axis=1)
+
+
+def light(points, normals, double_sided, intersector, args, rng, shared_sky=0):
+    """Sun and sky radiance at each point. With shared_sky > 0 the sun and that
+    many sky directions are the same fixed sets for every point (a flat bake,
+    where neighbouring faces must agree); otherwise rays are drawn at random."""
     sun = np.array(args.sun, dtype=np.float64)
     sun /= np.linalg.norm(sun)
     n = normals.copy()
@@ -141,24 +162,31 @@ def light(points, normals, double_sided, intersector, args, rng):
     u, v = sun_basis(sun)
     radius = math.tan(math.radians(args.sun_disc_deg))
     lit = np.zeros(len(points))
-    for _ in range(args.sun_rays):
-        r, a = math.sqrt(rng.random()) * radius, rng.random() * 2 * math.pi
-        d = sun + u * (r * math.cos(a)) + v * (r * math.sin(a))
-        d /= np.linalg.norm(d)
+    if shared_sky:
+        dirs = sun_directions(args)[1]
+    else:
+        dirs = []
+        for _ in range(args.sun_rays):
+            r, a = math.sqrt(rng.random()) * radius, rng.random() * 2 * math.pi
+            d = sun + u * (r * math.cos(a)) + v * (r * math.sin(a))
+            dirs.append(d / np.linalg.norm(d))
+    for d in dirs:
         lit += ~intersector.intersects_any(origin, np.tile(d, (len(points), 1)))
-    sun_visible = lit / args.sun_rays
+    sun_visible = lit / len(dirs)
 
-    tu = np.where(np.abs(n[:, 2:3]) < 0.9, [[0.0, 0.0, 1.0]], [[1.0, 0.0, 0.0]])
-    tu = np.cross(n, tu)
-    tu /= np.linalg.norm(tu, axis=1, keepdims=True)
-    tv = np.cross(n, tu)
+    tu, tv = tangent_frame(n)
     escaped = np.zeros(len(points))
-    for _ in range(args.sky_rays):
-        r1, r2 = rng.random(len(points)), rng.random(len(points))
-        r, a = np.sqrt(r1)[:, None], (2 * math.pi * r2)[:, None]
-        d = tu * (r * np.cos(a)) + tv * (r * np.sin(a)) + n * np.sqrt(1 - r1)[:, None]
-        escaped += ~intersector.intersects_any(origin, d)
-    sky_visible = escaped / args.sky_rays
+    if shared_sky:
+        for x, y, z in sky_directions(shared_sky):
+            escaped += ~intersector.intersects_any(origin, tu * x + tv * y + n * z)
+        sky_visible = escaped / shared_sky
+    else:
+        for _ in range(args.sky_rays):
+            r1, r2 = rng.random(len(points)), rng.random(len(points))
+            r, a = np.sqrt(r1)[:, None], (2 * math.pi * r2)[:, None]
+            d = tu * (r * np.cos(a)) + tv * (r * np.sin(a)) + n * np.sqrt(1 - r1)[:, None]
+            escaped += ~intersector.intersects_any(origin, d)
+        sky_visible = escaped / args.sky_rays
 
     sun_color = np.array([1.0, 0.92, 0.78]) * args.sun_intensity
     sky_color = np.array([0.55, 0.68, 0.9]) * args.sky_intensity
@@ -170,10 +198,23 @@ def to_srgb8(linear, tonemap_white):
     return np.clip(np.round(255.0 * np.clip(mapped, 0, 1) ** (1 / 2.2)), 0, 255).astype(np.int64)
 
 
-def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_of, intersector, args, rng):
-    """One sRGB colour per triangle, lit and textured at the triangle's centre
-    on its face normal. albedo_of(centres, spacing, material) gives the albedo."""
+def face_samples(count):
+    """Barycentric weights of `count` fixed points spread evenly over a
+    triangle: one per equal-area strip, staggered along it."""
+    i = np.arange(count)
+    r = np.sqrt((i + 0.5) / count)
+    t = (0.5 + i * 0.6180339887498949) % 1.0
+    return np.stack([1 - r, r * (1 - t), r * t], axis=1)
+
+
+def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_of, intersector, args, samples=4,
+                 sky_rays=128):
+    """One sRGB colour per triangle: albedo times light averaged over `samples`
+    fixed points of the triangle, lit on its face normal. Every face shares one
+    set of sun and `sky_rays` sky directions, so equal surroundings give equal
+    colours. albedo_of(points, spacing, material) gives the albedo."""
     out = np.zeros((len(tris), 3), dtype=np.int64)
+    bary = face_samples(samples)
     for m in materials:
         selected = np.nonzero(tri_mat == m)[0]
         if not len(selected):
@@ -182,10 +223,13 @@ def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_o
         a, b, c = positions[faces[:, 0]], positions[faces[:, 1]], positions[faces[:, 2]]
         normals = np.cross(b - a, c - a)
         normals /= np.linalg.norm(normals, axis=1, keepdims=True)
-        centres = (a + b + c) / 3.0
-        albedo = albedo_of(centres, np.sqrt(triangle_areas(positions, faces)), m)
-        radiance = light(centres, normals, np.full(len(faces), m in double_materials), intersector, args, rng)
-        out[selected] = to_srgb8(albedo * radiance, args.tonemap_white)
+        points = np.concatenate([w[0] * a + w[1] * b + w[2] * c for w in bary])
+        spacing = np.tile(np.sqrt(triangle_areas(positions, faces)), samples)
+        albedo = albedo_of(points, spacing, m)
+        double = np.full(len(points), m in double_materials)
+        radiance = light(points, np.tile(normals, (samples, 1)), double, intersector, args, None, sky_rays)
+        colour = (albedo * radiance).reshape(samples, len(faces), 3).mean(axis=0)
+        out[selected] = to_srgb8(colour, args.tonemap_white)
     return out
 
 

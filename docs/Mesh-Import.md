@@ -17,9 +17,11 @@ flowchart LR
 ## The baked mesh
 
 Light is baked either into one sRGB colour per vertex, or, for a flat
-import, one RGB565 colour per triangle lit at its centre
-(`light.face_colours()`), with vertices welded by position alone since colour
-no longer splits them. A flat mesh draws with no colour gradients, and a
+import, one RGB565 colour per triangle (`light.face_colours()`): the light
+and albedo averaged over a few fixed points of the face, every face sharing
+one set of sun and sky directions so neighbours on one surface agree unless
+something really shades one of them. Vertices weld by position alone since
+colour no longer splits them. A flat mesh draws with no colour gradients, and a
 generator turns the option on per scene. The triangles are grouped into
 **clusters**. Each cluster
 owns a contiguous range of vertices and triangles, and its triangles index
