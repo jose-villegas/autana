@@ -29,6 +29,16 @@ typedef struct {
     uint16_t* doubled;
 } r3d_lit_frame_t;
 
+/* The 8x8 pixel tile R3D_LIT_VIEW_DEPTH_TILES reduces the depth to: the unit
+ * a hierarchical depth test would cull by. */
+#define R3D_LIT_TILE 8
+
+typedef enum {
+    R3D_LIT_VIEW_SHADED,     /* the baked colours as drawn */
+    R3D_LIT_VIEW_DEPTH,      /* the depth buffer as a grey ramp */
+    R3D_LIT_VIEW_DEPTH_TILES /* the farthest depth of each R3D_LIT_TILE square */
+} r3d_lit_view_mode_t;
+
 typedef struct {
     int clusters, triangles; /* what survived culling */
 } r3d_lit_stats_t;
@@ -45,3 +55,9 @@ r3d_lit_stats_t r3d_lit_frame_render(const r3d_lit_frame_t* frame, const r3d_lit
 /* Doubles the frame r3d_lit_frame_render() last drew into `doubled`, both cores
  * taking half the rows. */
 void r3d_lit_frame_double(const r3d_lit_frame_t* frame);
+
+/* Development builds only: a release caller fails at link. Between render and double, overwrites
+ * `frame->color` from `frame->depth`: nearest white, farthest black over the
+ * drawn range; a tile is empty if any pixel is. Empty pixels take
+ * `frame->clear`, as doubling does, so pick one that is no grey. */
+void r3d_lit_frame_show(const r3d_lit_frame_t* frame, r3d_lit_view_mode_t mode);

@@ -31,6 +31,8 @@
 #endif
 
 #ifdef DEVICE_BUILD
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "unity.h"
 #include "util/frame_watch.h"
 #endif
@@ -85,6 +87,7 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
     tests_run++;
     UnityDefaultTestRun(run_watched, name, line);
     (void)frame_watch_test_end();
+    const unsigned long stack_free_bytes = (unsigned long)uxTaskGetStackHighWaterMark(NULL);
 #else
     UnityDefaultTestRun(func, name, line);
 #endif
@@ -107,11 +110,18 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
 #ifdef HOST_HEAP_ARENA
            " peak_bytes=%zu"
 #endif
+#ifdef DEVICE_BUILD
+           " stack_free_bytes=%lu"
+#endif
            "\n",
            name, (long long)elapsed_ms
 #ifdef HOST_HEAP_ARENA
            ,
            heap_arena_peak_bytes()
+#endif
+#ifdef DEVICE_BUILD
+               ,
+           stack_free_bytes
 #endif
     );
 }

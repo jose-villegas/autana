@@ -13,10 +13,16 @@ typedef struct {
      * format, RGB565 with its two bytes swapped, so a framebuffer can be a
      * target as it is. */
     uint16_t* color;
-    uint16_t* depth; /* the same shape as `color`; 0 is infinitely far */
+    uint16_t* depth; /* the same shape as `color`; R3D_DEPTH_EMPTY where nothing was drawn */
     int width;       /* pixels per row, and the stride of both buffers */
     int row0, row1;  /* the half-open screen rows this window holds */
 } r3d_span_target_t;
+
+/* The depth encoding: inverse depth scaled to 16 bits, so a larger value is
+ * nearer. A cleared buffer holds R3D_DEPTH_EMPTY, infinitely far, which no
+ * drawn pixel can equal. */
+#define R3D_DEPTH_EMPTY    0
+#define R3D_DEPTH_NEAREST  UINT16_MAX
 
 #define R3D_SUBPIXEL_SHIFT 4
 #define R3D_SUBPIXEL       (1 << R3D_SUBPIXEL_SHIFT)
@@ -49,6 +55,14 @@ r3d_span_snap(float pixels) {
 static inline int
 r3d_span_first_centre(int32_t v) {
     return (v + (R3D_SUBPIXEL / 2) - 1) >> R3D_SUBPIXEL_SHIFT;
+}
+
+/* Channels as 8.8 fixed point (0..0xFF00), packed to the target's pixel
+ * format. */
+static inline uint16_t
+r3d_span_pack(int32_t r, int32_t g, int32_t b) {
+    const uint32_t native = ((uint32_t)r & 0xF800U) | (((uint32_t)g >> 5) & 0x07E0U) | ((uint32_t)b >> 11);
+    return (uint16_t)((native >> 8) | (native << 8));
 }
 
 static inline int32_t

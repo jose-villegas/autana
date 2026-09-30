@@ -6,9 +6,8 @@
 #   ./launcher/tools/render/scenes/boot_anim_render_host.sh [-o <dir>]
 #
 # The milliseconds below are three points the animation is recognisably
-# different at, not measurements. tools/boot_anim/boot_anim_editor_server.py drives
-# the same binary at whatever millisecond its browser asks for; this script
-# is the standing check that the renderer still works at all.
+# different at, not measurements. This script is the standing check that the
+# renderer still works at all; --video renders the whole animation.
 #
 # Everything this does beyond the declarations below is
 # tools/render/render_scene.sh.
@@ -18,9 +17,12 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=boot_anim
 scene_sources="
+main/anim/anim_track.c
 main/gfx/gfx.c
 main/util/tune.c
 main/boot/boot_anim.c
+main/boot/boot_anim_tracks_generated.c
+main/render/r3d_trs.c
 tools/render/scenes/boot_anim_render_host.c
 "
 scene_includes="components/small3dlib/include"

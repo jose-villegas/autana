@@ -1,5 +1,9 @@
 # Mesh Rendering
 
+How the runtime draws a baked lit-mesh: cameras, culling, the rasterizer, the
+two-core frame and the view modes. The mesh's format and how it is made are
+in [Mesh-Import.md](Mesh-Import.md).
+
 `launcher/main/render/` is the engine's 3D layer: cameras, projection, a
 span rasterizer, and a pipeline that draws a mesh whose light was baked
 offline. It sits beside `gfx/`, and the only other things it includes are
@@ -13,47 +17,16 @@ them. The layers are in [Firmware-Architecture.md](Firmware-Architecture.md).
 |---|---|
 | `r3d_camera.h` | A camera description in fixed point (S3L units and turns): the roll that keeps a scene's up on the shell's up, and the fit onto a non-square viewport |
 | `r3d_project.h` | Camera-space near clip and perspective projection, for a caller that composed its own model-view matrix |
-| `r3d_vec3f.h` | The float 3-vector every float camera and path shares |
+| `r3d_vec3f.h` | The float 3-vector every float camera shares |
 | `r3d_ray.h` | A float ray camera: the direction through each physical pixel, on the same viewport a rasterizer uses |
-| `r3d_path.h` | A closed Catmull-Rom camera loop at a steady speed |
+| `r3d_trs.h` | A float translation, quaternion and scale as one small3dlib transform, for an object an animation track moves |
 | `r3d_span.h` | One depth-tested, Gouraud-shaded triangle filled into a window of rows, its coverage exact on 1/16-pixel positions |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex colour, meshlet clusters, a node tree |
 | `r3d_lit_pipeline.h` | The mesh's stages: view, cull, transform, draw |
-| `r3d_lit_frame.h` | One whole frame of those stages on both cores, optionally doubled to twice its size |
+| `r3d_lit_frame.h` | One whole frame of those stages on both cores, optionally doubled to twice its size; in development builds, a view of its depth |
 
-## A lit mesh
-
-Light is baked into one sRGB colour per vertex, so drawing a triangle costs
-no lighting work. The triangles are grouped into **clusters**. Each cluster
-owns a contiguous range of vertices and triangles, and its triangles index
-only its own vertices. The clusters are the leaves of a tree rooted at
-`nodes[0]`, so one box test culls a whole subtree. Positions are `int16`
-ticks, `position_scale` ticks per model unit.
-
-A mesh is const C data, written by a generator using the offline tools in
-[`launcher/tools/r3d/`](../launcher/tools/r3d/README.md). They load a model,
-simplify it, bake its light, cut it into meshlets, and
-check the result against `r3d_lit_mesh.h`'s invariants before writing a byte.
-
-## Meshlets
-
-The clusters are **meshlets**: compact runs of at most 32 triangles from
-meshoptimizer's clusterizer, each of one sidedness and owning the vertices its
-triangles use. The octree above them is built over the meshlets' centres, and
-its leaves hold a few hundred triangles' worth.
-
-Meshlets share more vertices than clusters cut as leaves of an octree of the
-triangles, so a frame transforms fewer. Bigger ones span looser boxes and
-submit more triangles for the same view, and smaller ones cost more clusters
-to walk. The size trades these: 64 lost on the board and 32 won.
-
-Meshlets also change the draw order of the finest level. Where two triangles
-reach the same depth the first drawn wins, so a redrawn frame differs from the
-old clustering's in a fraction of a percent of its pixels, from ties alone:
-the triangles are the same.
-
-Levels of detail built on the meshlets, and what they would save, are in
-[plans/Cluster-LOD.md](plans/Cluster-LOD.md).
+A camera that moves is an [animation track](Animation-Tracks.md), sampled
+by its caller into an eye and a look direction for `r3d_lit_view_look()`.
 
 ## One frame
 
@@ -107,6 +80,32 @@ sequenceDiagram
     J-->>C0: job_wait()
     Note over C0,P: frame N is presented on the next pass
 ```
+
+### View modes
+
+Development builds can look at the depth a frame drew instead of its
+colour. `r3d_lit_frame_show()` runs after `r3d_lit_frame_render()` and before
+`r3d_lit_frame_double()`, and overwrites the frame's colour buffer from its
+depth buffer, which it reads as the render left it and never writes.
+
+```mermaid
+flowchart LR
+    Render["r3d_lit_frame_render()<br/><i>colour and depth</i>"] --> Show
+    Show["r3d_lit_frame_show(mode)<br/><i>colour from depth</i>"] --> Double["r3d_lit_frame_double()<br/><i>to twice the size</i>"]
+```
+
+| Mode | The colour buffer becomes |
+|---|---|
+| `R3D_LIT_VIEW_SHADED` | untouched: the baked colours as drawn |
+| `R3D_LIT_VIEW_DEPTH` | the depth as a grey ramp, nearest white and farthest black |
+| `R3D_LIT_VIEW_DEPTH_TILES` | the same ramp, each `R3D_LIT_TILE` square at its farthest depth: the value a hierarchical depth test would cull against |
+
+The ramp is stretched over the range this frame drew, so it shows the most
+detail within a frame and is not comparable between frames. A pixel nothing
+drew takes `frame->clear`, the colour doubling gives it, so it reads as empty
+in every view; a tile holding one such pixel is empty. The views are at the
+frame's own size, before doubling. `r3d_span.h` defines the depth encoding
+they read.
 
 ## Coverage and small triangles
 

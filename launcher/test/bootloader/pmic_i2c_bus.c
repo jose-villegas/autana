@@ -126,6 +126,17 @@ pmic_bus_saw_delay_us(uint32_t us) {
     return false;
 }
 
+uint32_t
+pmic_bus_longest_delay_us(void) {
+    uint32_t longest = 0;
+    for (int i = 0; i < distinct_delay_count; i++) {
+        if (distinct_delays[i] > longest) {
+            longest = distinct_delays[i];
+        }
+    }
+    return longest;
+}
+
 static void
 append_token(pmic_bus_token_kind_t kind, uint8_t value, bool acked) {
     if (token_count < TOKEN_MAX) {

@@ -103,11 +103,21 @@ class SendCommandBuildingTests(unittest.TestCase):
         command = self.last_send_command()
         self.assertEqual(command[command.index("--wait") + 1], str(autana.SEND_WAIT_S))
 
-    def test_the_short_fail_fast_wait_wins_over_the_global_wait(self):
+    def test_the_global_wait_replaces_the_short_fail_fast_wait(self):
         with mock.patch.dict(autana.os.environ, {autana.WAIT_ENV: "90"}):
             autana.send("TUNE")
         command = self.last_send_command()
-        self.assertEqual(command[command.index("--wait") + 1], str(autana.SEND_WAIT_S))
+        self.assertEqual(command[command.index("--wait") + 1], "90")
+
+    def test_a_busy_board_is_waited_for_under_the_global_wait(self):
+        busy = mock.Mock(stdout=busy_status(), stderr="", returncode=0)
+        with mock.patch.dict(autana.os.environ, {autana.WAIT_ENV: "3600"}), \
+             mock.patch.object(autana.subprocess, "run", return_value=busy) as run:
+            code, unused_replies = autana.send("TUNE")
+        self.assertEqual(code, 0)
+        command = run.call_args[0][0]
+        self.assertIn("send", command)
+        self.assertEqual(command[command.index("--wait") + 1], "3600")
 
 
 class BoardHolderTests(unittest.TestCase):
@@ -329,6 +339,16 @@ class ScreenshotCommandTests(unittest.TestCase):
             code = autana.screenshot([])
         self.assertEqual(code, autana.EXIT_BUSY)
         called.assert_not_called()
+
+    def test_a_busy_board_is_waited_for_under_the_global_wait(self):
+        busy = mock.Mock(stdout=busy_status())
+        with mock.patch.dict(autana.os.environ, {autana.WAIT_ENV: "3600"}), \
+             mock.patch.object(autana.subprocess, "run", return_value=busy), \
+             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            code = autana.screenshot([])
+        self.assertEqual(code, 0)
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--wait") + 1], "3600")
 
     def test_an_unknown_flag_is_named_and_rejected(self):
         status = mock.Mock(stdout="")
