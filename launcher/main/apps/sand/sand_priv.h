@@ -1363,7 +1363,15 @@ void step_impulses(sand_t* s, int dx, int dy);
  * an empty test, against the walk's four and a spilled reload per cell. */
 static inline bool
 span_is_empty(const uint8_t* row, int x0, int x1) {
-    for (int x = x0; x < x1; x++) {
+    int x = x0;
+    for (; x + (int)sizeof(uint32_t) <= x1; x += (int)sizeof(uint32_t)) {
+        uint32_t cells;
+        memcpy(&cells, row + x, sizeof cells);
+        if ((cells & 0xF0F0F0F0u) != 0) {
+            return false;
+        }
+    }
+    for (; x < x1; x++) {
         if (!CELL_IS_EMPTY(row[x])) {
             return false;
         }
