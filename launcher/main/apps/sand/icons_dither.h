@@ -3,7 +3,7 @@
  *
  *     python tools/gen/gen_icons.py main/apps/sand/icons/dither.png main/apps/sand/icons/dither.json > main/apps/sand/icons_dither.h
  *
- * Baked from main/apps/sand/icons/dither.png (4x4 cells), see gfx/icon.h for
+ * Baked from main/apps/sand/icons/dither.png (4x4 cells) - see gfx/icon.h for
  * icon_t's own fields and tools/gen/gen_icons.py for the PNG/SVG decode,
  * validation and packing this table was produced by.
  *===========================================================================*/
