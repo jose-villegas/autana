@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
@@ -487,6 +488,43 @@ test_crossflow_never_gives_to_a_chunk_ranked_later(void) {
     TEST_ASSERT_EQUAL_UINT_MESSAGE(0, late, "cross-flow gave mass to a chunk its own pass had yet to run");
 }
 
+/* Bytes either side of the span are non-empty, so a scan that reads past
+ * either end, or starts on the wrong byte, answers wrongly. The low nibble
+ * of an empty cell is not zero, so a whole-word test has to mask it. */
+static bool
+span_is_empty_reference(const uint8_t* row, int x0, int x1) {
+    for (int x = x0; x < x1; x++) {
+        if (!CELL_IS_EMPTY(row[x])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void
+test_span_is_empty_matches_a_byte_scan_for_every_length_and_alignment(void) {
+    enum { LEN_MAX = 40, ALIGNS = 4, PAD = 8 };
+
+    uint8_t row[PAD + LEN_MAX + PAD] __attribute__((aligned(4)));
+    for (int align = 0; align < ALIGNS; align++) {
+        const int x0 = PAD + align;
+        for (int len = 0; len <= LEN_MAX; len++) {
+            const int x1 = x0 + len;
+            memset(row, 0xFF, sizeof row);
+            memset(row + x0, 0x0F, (size_t)len);
+            TEST_ASSERT_EQUAL(span_is_empty_reference(row, x0, x1), span_is_empty(row, x0, x1));
+            TEST_ASSERT_TRUE(span_is_empty(row, x0, x1));
+            for (int at = x0; at < x1; at++) {
+                const uint8_t held = row[at];
+                row[at] = CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT);
+                TEST_ASSERT_FALSE(span_is_empty_reference(row, x0, x1));
+                TEST_ASSERT_FALSE_MESSAGE(span_is_empty(row, x0, x1), "a non-empty cell went unseen");
+                row[at] = held;
+            }
+        }
+    }
+}
+
 void
 run_sand_crossflow_suite(void) {
     RUN_TEST(test_liquid_density_sort_moves_one_landscape_cell);
@@ -498,6 +536,7 @@ run_sand_crossflow_suite(void) {
     RUN_TEST(test_crossflow_pool_conserves_mass_and_is_deterministic);
     RUN_TEST(test_crossflow_levels_a_line_across_every_border);
     RUN_TEST(test_crossflow_never_gives_to_a_chunk_ranked_later);
+    RUN_TEST(test_span_is_empty_matches_a_byte_scan_for_every_length_and_alignment);
 }
 
 SUITE_REGISTER(run_sand_crossflow_suite);
