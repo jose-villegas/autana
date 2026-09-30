@@ -1676,7 +1676,7 @@ test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget(void) {
                                                  "loses three cells a patch, but a packed screen that has shed an "
                                                  "eighth of itself is not the scene this row means to time");
     }
-    perf_target("packed gas turn", per_step, 134530, 154710);
+    perf_target("packed gas turn", per_step, 108820, 125150);
 }
 
 static void
@@ -1725,7 +1725,7 @@ test_turning_a_half_screen_of_gas_fits_in_the_frame_budget(void) {
                                       "turning the board must move gas, not create or destroy it - decay is "
                                       "off by default, so the cell count is conserved across the turn");
     }
-    perf_target("half-screen gas turn", per_step, 46690, 53700);
+    perf_target("half-screen gas turn", per_step, 40140, 46170);
 }
 
 static void
@@ -2060,7 +2060,7 @@ test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget(void) 
 
     /* A deliberately synthetic worst case, not comparable to the
      * plain-material rows. */
-    perf_target("full-screen gas cascade", elapsed, 203640, 234190);
+    perf_target("full-screen gas cascade", elapsed, 193480, 222510);
 }
 
 static void
@@ -2121,7 +2121,7 @@ test_a_full_screen_of_fire_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_guard("full-screen fire", per_step, 89460);
+    perf_target("full-screen fire", per_step, 67100, 77170);
 }
 
 /* Four liquids of different density painted upside down
@@ -2281,7 +2281,7 @@ test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget(void) {
                                              "at the end of the window - steam condensing into water loses three "
                                              "cells a patch, but losing an appreciable fraction of the board "
                                              "means it decayed into something else");
-    perf_target("smoke and steam", per_step, 91370, 105080);
+    perf_target("smoke and steam", per_step, 84590, 97280);
 }
 
 /* 480 glass compartments (build_thermal_shock_scene(), shared with
