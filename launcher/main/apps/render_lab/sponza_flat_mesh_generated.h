@@ -7,9 +7,9 @@
  * Crytek Sponza (Frank Meinl, Crytek; CC BY 3.0), from the OBJ in
  * McGuire's Computer Graphics Archive, casual-effects.com/data.
  * Simplified, lit by a sun and sky with baked shadows, one sRGB colour
- * per triangle centre. Other settings:
+ * per triangle, area-averaged. Other settings:
  *   --max-edge 900 --sun -0.25 1 0.22
- *   --sun-rays 8 --sky-rays 48
+ *   --sun-rays 8
  */
 #pragma once
 
