@@ -1676,7 +1676,7 @@ test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget(void) {
                                                  "loses three cells a patch, but a packed screen that has shed an "
                                                  "eighth of itself is not the scene this row means to time");
     }
-    perf_target("packed gas turn", per_step, 108840, 125170);
+    perf_target("packed gas turn", per_step, 107810, 123990);
 }
 
 static void
@@ -2060,7 +2060,7 @@ test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget(void) 
 
     /* A deliberately synthetic worst case, not comparable to the
      * plain-material rows. */
-    perf_target("full-screen gas cascade", elapsed, 192630, 221530);
+    perf_target("full-screen gas cascade", elapsed, 191960, 220760);
 }
 
 static void
@@ -2121,7 +2121,7 @@ test_a_full_screen_of_fire_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("full-screen fire", per_step, 68040, 78246);
+    perf_target("full-screen fire", per_step, 67320, 77420);
 }
 
 static void
@@ -2155,7 +2155,7 @@ test_a_packed_landscape_screen_of_gas_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("landscape packed gas", elapsed, 38320, 44070);
+    perf_target("landscape packed gas", elapsed, 37870, 43560);
 }
 
 static void
@@ -2196,7 +2196,7 @@ test_a_full_landscape_screen_of_fire_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("landscape full fire", per_step, 68310, 78560);
+    perf_target("landscape full fire", per_step, 66990, 77040);
 }
 
 static void
@@ -2237,7 +2237,7 @@ test_fire_cascading_through_a_full_landscape_screen_of_gas_fits_in_the_frame_bud
     free(big);
     free(blocks);
 
-    perf_target("landscape gas cascade", elapsed, 189550, 217990);
+    perf_target("landscape gas cascade", elapsed, 189050, 217410);
 }
 
 /* Four liquids of different density painted upside down
