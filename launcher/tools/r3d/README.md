@@ -1,8 +1,8 @@
 # r3d
 
-The offline half of `main/render/`'s r3d renderer: mesh baking. Nothing here runs
-on the board: a generator imports these modules, bakes a model, and writes
-checked-in C data.
+The offline half of `main/render/`'s r3d renderer: the Python modules that bake
+a mesh into checked-in C data, and host tools that pose, preview or measure a
+mesh. Nothing here runs on the board.
 
 | Module | What it does |
 |---|---|
@@ -18,6 +18,8 @@ checked-in C data.
 | [fetch.py](fetch.py) | Downloads a source model once into `.cache/`, checked against a SHA-256. |
 | [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling, linear-blend skinning. Standard library only. |
 | [gltf_preview.py](gltf_preview.py) | Renders any skinned `.glb` with Pillow: a looping GIF of one animation (`--gif NAME`) or the bind pose from four sides (`--sheet`). |
+| [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, and the poses file; host-tested by `suite_r3d_triangle_sizes.c`. |
+| [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
 
 The environment is pinned in [requirements.txt](requirements.txt), and the
 simplifier needs the meshoptimizer submodule and a host C++ compiler (`CXX`,
@@ -32,3 +34,19 @@ tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.tx
 A generator is a script beside the model's consumer: it loads and bakes the
 model with these modules and ends in one `write_lit_mesh()` call. The banner
 of each file it writes records the exact command that produced it.
+
+## Triangle sizes
+
+```sh
+./launcher/tools/r3d/report_triangle_sizes.sh --mesh SOURCE.c:SYMBOL POSES|- [--write DIR | --against DIR]
+```
+
+How many of a baked mesh's drawn triangles cover 0, 1, 2-4 or more pixel
+centres at each pose, which sizes the rasterizer's small-triangle work.
+`--mesh` names the C file a generator wrote and its `r3d_lit_mesh_t`;
+`POSES` is a text file of `size`, `lens` and `pose` lines, its format in
+[`triangle_sizes.h`](triangle_sizes.h), and `-` reads it from standard
+input: a scene prints its poses from its own camera rather than keeping a
+copy that can go stale.
+`--write` keeps each pose's frame and `--against` diffs a later build's
+frames with them, pixel by pixel.
