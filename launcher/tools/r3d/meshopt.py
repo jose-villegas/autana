@@ -17,6 +17,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 SOURCE = HERE.parents[2] / "third_party" / "upstream" / "meshoptimizer" / "src"
 CACHE = HERE / ".cache"
 
+REGULARIZE = 1 << 4
 PERMISSIVE = 1 << 5
 REGULARIZE_LIGHT = 1 << 6
 
@@ -50,7 +51,7 @@ def _library():
     return _lib
 
 
-def simplify_with_update(pos, rgb, tris, target_triangles, colour_weight=1.0, options=REGULARIZE_LIGHT | PERMISSIVE):
+def simplify_with_update(pos, rgb, tris, target_triangles, colour_weight=1.0, options=REGULARIZE | PERMISSIVE):
     """Simplifies to about target_triangles, keeping colour (0..255 per
     channel) as an attribute and moving the surviving vertices and colours to
     where they best preserve the appearance. Returns (pos, rgb, tris, kept):

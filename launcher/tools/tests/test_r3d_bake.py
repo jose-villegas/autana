@@ -24,7 +24,7 @@ try:
     from r3d.meshopt import build_meshlets, simplify_with_update
     from r3d.octree import build_octree, flatten_octree
     from r3d.repair import repair
-    from r3d.simplify import _label_after
+    from r3d.simplify import _label_after, simplify
     from r3d.tessellate import split_marked_edges
 except ImportError:
     np = None
@@ -171,6 +171,43 @@ class ColourSeamTests(unittest.TestCase):
         q = np.arange(6).reshape(2, 3)
         rgb = np.full((2, 3), 50)
         self.assertTrue(np.array_equal(merge_close_colours(q, rgb, 255), rgb))
+
+
+def default_import(**options):
+    """sha256 over the simplified triangles and the C data baked from a small
+    mesh that has crease seams of near colours and a border that a repair
+    would join; `options` go to simplify() and write_lit_mesh() alike."""
+    import hashlib
+
+    p, tris = grid(10)
+    p = p * 3.0 + 0.01 * np.sin(np.arange(len(p)))[:, None]
+    doubled = p[tris].reshape(-1, 3)
+    corner = np.arange(len(doubled)).reshape(-1, 3)
+    rgb = np.stack([100 + 8 * np.sin(doubled[:, 0]), 90 + 9 * np.cos(doubled[:, 1]), 80 + doubled[:, 0] % 3], axis=1)
+    labels = np.arange(len(corner)) % 2
+    sp, sc, st, sl = simplify(doubled, rgb, corner, labels, 80, **options)
+    digest = hashlib.sha256()
+    for array in (sp, sc, st, sl):
+        digest.update(np.ascontiguousarray(array).tobytes())
+    with tempfile.TemporaryDirectory() as out:
+        write_lit_mesh(out, "t", sp, np.rint(sc).astype(np.int64), st, sl % 2, ["GENERATED FILE - do not edit."],
+                       **options)
+        for name in ("t_mesh_generated.c", "t_mesh_generated.h"):
+            digest.update(pathlib.Path(out, name).read_bytes())
+    return digest.hexdigest()
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class ImportOptionTests(unittest.TestCase):
+    # Made by the baker before the watertight option existed, on the fixture above.
+    DEFAULT_DIGEST = "03957ccc92018c54a2d6766dd304794004ecf5638e59c780e51205858d0a0272"
+
+    def test_the_default_import_is_byte_identical_to_the_one_before_the_option(self):
+        self.assertEqual(default_import(), self.DEFAULT_DIGEST)
+        self.assertEqual(default_import(watertight=False), self.DEFAULT_DIGEST)
+
+    def test_the_watertight_option_changes_the_import(self):
+        self.assertNotEqual(default_import(watertight=True), self.DEFAULT_DIGEST)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

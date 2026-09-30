@@ -10,8 +10,8 @@ mesh. Nothing here runs on the board.
 | [geometry.py](geometry.py) | Welding, compaction, vertex and corner normals, closest point on a triangle. |
 | [decimate.py](decimate.py) | Quadric decimation to a triangle budget, falling back to vertex clustering where many small disconnected pieces stall it (the `--simplifier quadric` path). |
 | [tessellate.py](tessellate.py) | Conforming edge splits, and splitting where baked light changes along an edge (the `--simplifier quadric` path). |
-| [repair.py](repair.py) | Joins pieces that touch before simplification: border vertices within a tolerance are welded and border edges are split at another piece's vertices, so a shared edge is one edge and the simplifier cannot open a crack along it. Positions only; vertices are never merged, so colour seams stay. |
-| [simplify.py](simplify.py) | Appearance-preserving simplification: split evenly, repair, one colour-aware pass with reserved budget shares for small props. |
+| [repair.py](repair.py) | The join step of the `watertight` import option: border vertices within a tolerance are welded and border edges are split at another piece's vertices, so a shared edge is one edge and the simplifier cannot open a crack along it. Positions only; vertices are never merged. |
+| [simplify.py](simplify.py) | Appearance-preserving simplification: split evenly, weld across materials, one colour-aware pass with reserved budget shares for small props. `watertight=True` joins touching pieces first and regularizes lightly. |
 | [meshopt.py](meshopt.py) | [meshoptimizer](https://github.com/zeux/meshoptimizer)'s simplifier and meshlet clusterizer through ctypes, built once from the pinned `third_party/upstream/meshoptimizer` submodule into `.cache/`. |
 | [light.py](light.py) | Baked direct light: a sun with soft shadows and sky visibility, albedo from textures, and culling of what no point in a region can see. |
 | [octree.py](octree.py) | Groups weighted items, here meshlets, into an octree whose leaves hold runs of them. |
@@ -39,8 +39,18 @@ rewrites the clusters in seconds, in place, and rewriting its own output is a
 fixed point (the triangles are put in a canonical order first), so the banner's
 one command reproduces the file. Anything before that stage, the model, its
 simplification or its light, needs the generator. The committed meshes have
-been regenerated with the repair stage and the light regularizing option, and
-the generator's output is committed as written.
+been regenerated, and the generator's output is committed as written.
+
+**The `watertight` import option.** Simplifying a model of many separate pieces
+approximates each piece's border on its own, which leaves pixel-sized empty
+spots where surfaces should meet. `watertight` (an argument of `simplify()` and
+of `write_lit_mesh()`, off by default) is one way to import the same mesh: it
+joins pieces that touch within one quantisation step (`repair.py`), simplifies
+with meshoptimizer's light regularizing, and merges the colours of vertices at
+one position that differ by a level or so. It trades fewer such holes for
+about 4% more triangles submitted per frame on the scene it was measured on. A
+generator turns it on by passing it; with it off a bake is what it was before
+the option existed, byte for byte.
 
 A generator is a script beside the model's consumer: it loads and bakes the
 model with these modules and ends in one `write_lit_mesh()` call. The banner

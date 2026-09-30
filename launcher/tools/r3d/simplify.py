@@ -7,7 +7,7 @@ large surfaces a global pass prefers to keep."""
 import numpy as np
 
 from . import log
-from .meshopt import simplify_with_update
+from .meshopt import PERMISSIVE, REGULARIZE, REGULARIZE_LIGHT, simplify_with_update
 from .repair import repair
 from .tessellate import split_marked_edges
 
@@ -52,13 +52,17 @@ def _label_after(tris_in, labels_in, kept, tris_out):
     return np.where(same01 | (corner[:, 0] == corner[:, 2]), corner[:, 0], corner[:, 1])
 
 
-def simplify(pos, rgb, tris, labels, triangles, reserved=(), colour_weight=1.0, join_tolerance=None):
+def simplify(pos, rgb, tris, labels, triangles, reserved=(), colour_weight=1.0, watertight=False, position_scale=8):
     """`reserved` is a list of (label set, share of `triangles`); what is
-    left of the budget goes to every other label. `join_tolerance` first
-    joins pieces that touch within that distance (see repair.py). Returns
-    pos, rgb (0..255 floats), tris and a label per triangle."""
-    if join_tolerance is not None:
-        pos, rgb, tris, labels = repair(pos, rgb, tris, labels, join_tolerance)
+    left of the budget goes to every other label. `watertight` is the import
+    option that first joins pieces touching within one quantisation step
+    (`1 / position_scale`, see repair.py) and simplifies with light
+    regularizing. Returns pos, rgb (0..255 floats), tris and a label per
+    triangle."""
+    options = REGULARIZE | PERMISSIVE
+    if watertight:
+        pos, rgb, tris, labels = repair(pos, rgb, tris, labels, 1.0 / position_scale)
+        options = REGULARIZE_LIGHT | PERMISSIVE
     labels = np.asarray(labels)
     parts, taken = [], np.zeros(len(tris), dtype=bool)
     for group, share in reserved:
@@ -75,7 +79,7 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), colour_weight=1.0, 
         sub = tris[sel]
         used, local = np.unique(sub, return_inverse=True)
         local = local.reshape(-1, 3)
-        p, c, t, kept = simplify_with_update(pos[used], rgb[used], local, budget, colour_weight)
+        p, c, t, kept = simplify_with_update(pos[used], rgb[used], local, budget, colour_weight, options)
         out_pos.append(p)
         out_rgb.append(c)
         out_tris.append(t + base)

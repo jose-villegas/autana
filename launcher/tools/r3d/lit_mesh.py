@@ -91,15 +91,17 @@ def local_vertices(tris):
 
 
 def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, leaf_triangles=LEAF_TRIANGLES,
-                  max_depth=MAX_DEPTH, meshlet_triangles=MESHLET_TRIANGLES):
+                  max_depth=MAX_DEPTH, meshlet_triangles=MESHLET_TRIANGLES, watertight=False):
     """Bakes positions (model units), rgb (0..255 per vertex) and tris
     (counter-clockwise seen from the front, `double` one flag per triangle)
     into a SimpleNamespace holding pos, rgb, tris, clusters, nodes and the
     position_scale. A cluster holds at most meshlet_triangles triangles of one
-    sidedness; an octree leaf holds meshlets to leaf_triangles triangles."""
+    sidedness; an octree leaf holds meshlets to leaf_triangles triangles.
+    `watertight` also merges the colours of vertices sharing a position that
+    differ by at most COLOUR_TOLERANCE levels."""
     q = np.round(np.asarray(positions) * position_scale).astype(np.int64)
     col = np.clip(np.rint(rgb), 0, 255).astype(np.int64)
-    q, col, tris, double = weld_quantised(q, col, np.asarray(tris, dtype=np.int64), double, COLOUR_TOLERANCE)
+    q, col, tris, double = weld_quantised(q, col, np.asarray(tris, dtype=np.int64), double, COLOUR_TOLERANCE if watertight else 0)
     tris, double = canonical_order(tris, double)
 
     entries = []
