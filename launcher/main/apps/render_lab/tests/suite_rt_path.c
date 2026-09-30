@@ -27,7 +27,7 @@
 static rt_cornell_camera_t
 main_camera(int width, int height) {
     rt_cornell_camera_t cam;
-    rt_cornell_camera_init(&cam, (r3d_viewport_t){width, height, 0});
+    rt_cornell_camera_init(&cam, (viewport_t){width, height, 0});
     return cam;
 }
 
@@ -43,7 +43,7 @@ room_point(int width, int height, float fx, float fy, int* x, int* y) {
 }
 
 static float
-luminance(r3d_vec3f_t c) {
+luminance(vec3f_t c) {
     return c.x + c.y + c.z;
 }
 
@@ -52,8 +52,8 @@ luminance(r3d_vec3f_t c) {
 static void
 test_same_pixel_same_sample_index_gives_the_same_colour_twice(void) {
     const rt_cornell_camera_t cam = main_camera(92, 112);
-    const r3d_vec3f_t a = rt_path_sample(&cam, 40, 55, 7);
-    const r3d_vec3f_t b = rt_path_sample(&cam, 40, 55, 7);
+    const vec3f_t a = rt_path_sample(&cam, 40, 55, 7);
+    const vec3f_t b = rt_path_sample(&cam, 40, 55, 7);
 
     TEST_ASSERT_EQUAL_FLOAT(a.x, b.x);
     TEST_ASSERT_EQUAL_FLOAT(a.y, b.y);
@@ -67,8 +67,8 @@ test_a_different_sample_index_is_free_to_disagree(void) {
      * regression to "the same number every time" is exactly what this
      * catches. */
     const rt_cornell_camera_t cam = main_camera(92, 112);
-    const r3d_vec3f_t a = rt_path_sample(&cam, 40, 55, 1);
-    const r3d_vec3f_t b = rt_path_sample(&cam, 40, 55, 2);
+    const vec3f_t a = rt_path_sample(&cam, 40, 55, 1);
+    const vec3f_t b = rt_path_sample(&cam, 40, 55, 2);
 
     TEST_ASSERT_TRUE_MESSAGE(a.x != b.x || a.y != b.y || a.z != b.z,
                              "two different sample indices produced the identical colour");
@@ -78,11 +78,11 @@ test_a_different_sample_index_is_free_to_disagree(void) {
 
 static void
 test_running_mean_is_exact_for_a_constant_sample_stream(void) {
-    const r3d_vec3f_t sample = {0.42f, 0.13f, 0.9f};
+    const vec3f_t sample = {0.42f, 0.13f, 0.9f};
     rt_path_accum_px_t px = {0, 0, 0};
 
     rt_path_accum_add(&px, sample, 1);
-    const r3d_vec3f_t seeded = rt_path_accum_radiance(px);
+    const vec3f_t seeded = rt_path_accum_radiance(px);
     TEST_ASSERT_FLOAT_WITHIN(0.02f, sample.x, seeded.x);
     TEST_ASSERT_FLOAT_WITHIN(0.02f, sample.y, seeded.y);
     TEST_ASSERT_FLOAT_WITHIN(0.02f, sample.z, seeded.z);
@@ -99,9 +99,9 @@ test_running_mean_is_exact_for_a_constant_sample_stream(void) {
 static void
 test_accum_add_never_stores_a_negative_channel(void) {
     rt_path_accum_px_t px = {0, 0, 0};
-    rt_path_accum_add(&px, (r3d_vec3f_t){-1.0f, -0.5f, -100.0f}, 1);
+    rt_path_accum_add(&px, (vec3f_t){-1.0f, -0.5f, -100.0f}, 1);
 
-    const r3d_vec3f_t radiance = rt_path_accum_radiance(px);
+    const vec3f_t radiance = rt_path_accum_radiance(px);
     TEST_ASSERT_TRUE(radiance.x >= 0.0f && radiance.y >= 0.0f && radiance.z >= 0.0f);
 }
 
@@ -110,11 +110,11 @@ test_accum_add_never_stores_a_negative_channel(void) {
 static void
 test_seeding_a_zeroed_pixel_reproduces_the_direct_estimator(void) {
     const rt_cornell_camera_t cam = main_camera(92, 112);
-    const r3d_vec3f_t direct = rt_path_direct_estimate(&cam, 40, 70);
+    const vec3f_t direct = rt_path_direct_estimate(&cam, 40, 70);
 
     rt_path_accum_px_t px = {0, 0, 0};
     rt_path_accum_add(&px, direct, 1);
-    const r3d_vec3f_t radiance = rt_path_accum_radiance(px);
+    const vec3f_t radiance = rt_path_accum_radiance(px);
 
     TEST_ASSERT_FLOAT_WITHIN(0.05f, direct.x, radiance.x);
     TEST_ASSERT_FLOAT_WITHIN(0.05f, direct.y, radiance.y);
@@ -135,17 +135,17 @@ test_no_nan_negative_or_unbounded_channel_over_a_sweep_of_pixels(void) {
 
     for (int y = 3; y < height; y += 7) {
         for (int x = 3; x < width; x += 5) {
-            const r3d_vec3f_t direct = rt_path_direct_estimate(&cam, x, y);
+            const vec3f_t direct = rt_path_direct_estimate(&cam, x, y);
             TEST_ASSERT_TRUE_MESSAGE(is_finite_and_in_range(direct.x) && is_finite_and_in_range(direct.y)
                                          && is_finite_and_in_range(direct.z),
                                      "the direct estimate produced a NaN or a negative channel");
 
-            const r3d_vec3f_t sample = rt_path_sample(&cam, x, y, 3);
+            const vec3f_t sample = rt_path_sample(&cam, x, y, 3);
             TEST_ASSERT_TRUE_MESSAGE(is_finite_and_in_range(sample.x) && is_finite_and_in_range(sample.y)
                                          && is_finite_and_in_range(sample.z),
                                      "a full path sample produced a NaN or a negative channel");
 
-            const r3d_vec3f_t toned = rt_path_tonemap(sample);
+            const vec3f_t toned = rt_path_tonemap(sample);
             TEST_ASSERT_TRUE_MESSAGE(toned.x >= 0.0f && toned.x < 1.0f && toned.y >= 0.0f && toned.y < 1.0f
                                          && toned.z >= 0.0f && toned.z < 1.0f,
                                      "a tone-mapped channel left [0, 1)");
@@ -163,8 +163,8 @@ test_neighbouring_pixels_on_a_flat_wall_differ_only_smoothly_in_the_seed_pass(vo
     int x, y;
     room_point(width, height, 0.0f, 0.35f, &x, &y); /* the back wall, flat and unshadowed */
 
-    const r3d_vec3f_t a = rt_path_direct_estimate(&cam, x, y);
-    const r3d_vec3f_t b = rt_path_direct_estimate(&cam, x + 1, y);
+    const vec3f_t a = rt_path_direct_estimate(&cam, x, y);
+    const vec3f_t b = rt_path_direct_estimate(&cam, x + 1, y);
 
     TEST_ASSERT_FLOAT_WITHIN(0.01f, a.x, b.x);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, a.y, b.y);
@@ -189,19 +189,19 @@ straight_down(float x, float z) {
  * integrator with every indirect bounce switched off - so a caller can
  * compare what the bounce alone added. */
 static void
-mean_with_and_without_bounce(float x, float z, int n, r3d_vec3f_t* full, r3d_vec3f_t* direct_only) {
+mean_with_and_without_bounce(float x, float z, int n, vec3f_t* full, vec3f_t* direct_only) {
     const rt_cornell_camera_t cam = straight_down(x, z);
-    *full = (r3d_vec3f_t){0.0f, 0.0f, 0.0f};
-    *direct_only = (r3d_vec3f_t){0.0f, 0.0f, 0.0f};
+    *full = (vec3f_t){0.0f, 0.0f, 0.0f};
+    *direct_only = (vec3f_t){0.0f, 0.0f, 0.0f};
 
     for (uint32_t i = 1; i <= (uint32_t)n; i++) {
-        const r3d_vec3f_t s = rt_path_sample(&cam, 0, 0, i);
-        const r3d_vec3f_t d = rt_path_sample_direct_only(&cam, 0, 0, i);
-        *full = r3d_vec3f_add(*full, s);
-        *direct_only = r3d_vec3f_add(*direct_only, d);
+        const vec3f_t s = rt_path_sample(&cam, 0, 0, i);
+        const vec3f_t d = rt_path_sample_direct_only(&cam, 0, 0, i);
+        *full = vec3f_add(*full, s);
+        *direct_only = vec3f_add(*direct_only, d);
     }
-    *full = r3d_vec3f_scale(*full, 1.0f / (float)n);
-    *direct_only = r3d_vec3f_scale(*direct_only, 1.0f / (float)n);
+    *full = vec3f_scale(*full, 1.0f / (float)n);
+    *direct_only = vec3f_scale(*direct_only, 1.0f / (float)n);
 }
 
 static void
@@ -210,7 +210,7 @@ test_the_indirect_bounce_tints_the_floor_toward_the_nearest_coloured_wall(void) 
      * (z = 0.2) so neither sits in their shadow - only the wall's own
      * reflected colour should tell the two points apart. */
     const int n = 3000;
-    r3d_vec3f_t full, direct_only;
+    vec3f_t full, direct_only;
 
     mean_with_and_without_bounce(-0.85f, 0.2f, n, &full, &direct_only);
     /* Direct-only lighting has no coloured surface between the light and a
@@ -283,13 +283,13 @@ test_the_mean_of_many_samples_converges_toward_a_reference(void) {
     for (uint32_t n = 1; n <= 400; n++) {
         rt_path_accum_add(&px, rt_path_sample(&cam, x, y, n), n);
     }
-    const r3d_vec3f_t reference = rt_path_accum_radiance(px);
+    const vec3f_t reference = rt_path_accum_radiance(px);
 
     rt_path_accum_px_t early = {0, 0, 0};
     for (uint32_t n = 1; n <= 16; n++) {
         rt_path_accum_add(&early, rt_path_sample(&cam, x, y, n), n);
     }
-    const r3d_vec3f_t at_16 = rt_path_accum_radiance(early);
+    const vec3f_t at_16 = rt_path_accum_radiance(early);
 
     TEST_ASSERT_FLOAT_WITHIN(0.35f, reference.x, at_16.x);
     TEST_ASSERT_FLOAT_WITHIN(0.35f, reference.y, at_16.y);

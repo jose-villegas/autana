@@ -29,9 +29,9 @@ typedef struct {
     int bbox_x0, bbox_y0, bbox_x1, bbox_y1; /* half-open, clipped to the screen; valid if segment_count > 0 */
 } wire_frame_t;
 
-void wire_transform(const wire_mesh_t* mesh, const r3d_view_t* view, wire_frame_t* frame);
+void wire_transform(const wire_mesh_t* mesh, const r3d_line_view_t* view, wire_frame_t* frame);
 
-bool wire_project_edges(const wire_mesh_t* mesh, const r3d_view_t* view, int screen_w, int screen_h,
+bool wire_project_edges(const wire_mesh_t* mesh, const r3d_line_view_t* view, int screen_w, int screen_h,
                         wire_frame_t* frame);
 
 static inline bool

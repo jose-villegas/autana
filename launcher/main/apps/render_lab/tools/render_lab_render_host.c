@@ -122,7 +122,7 @@ setup(int quarter) {
     ui_init();
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
     registered->enter();
-    if (render_lab_view() != R3D_LIT_VIEW_SHADED && !render_lab_scene_shows_views()) {
+    if (render_lab_view() != RASTER_SHOW_SHADED && !render_lab_scene_shows_views()) {
         (void)fprintf(stderr, "--view: the scene %s has no depth to show\n", render_lab_start_scene_key);
         return false;
     }

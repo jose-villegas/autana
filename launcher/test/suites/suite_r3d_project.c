@@ -3,7 +3,7 @@
  * and perspective projection a caller reaches once it has already composed
  * its own model*view matrix. Header-only and free of any particular
  * caller's resolution or unit choice, so every check here builds its own
- * `r3d_view_t` rather than reading one a timeline authored.
+ * `r3d_line_view_t` rather than reading one a timeline authored.
  */
 
 #include <stdbool.h>
@@ -14,12 +14,12 @@
 
 #include "render/r3d_project.h"
 
-static r3d_view_t
+static r3d_line_view_t
 fixture(void) {
-    r3d_view_t v;
+    r3d_line_view_t v;
     S3L_mat4Init(v.matrix);
     v.focal = S3L_F;
-    v.near_z = R3D_NEAR_Z;
+    v.near_z = R3D_LINE_NEAR_Z;
     v.center_x = 184;
     v.center_y = 224;
     v.scale = 184;
@@ -30,7 +30,7 @@ fixture(void) {
 
 static void
 test_to_camera_space_leaves_a_point_unchanged_under_identity(void) {
-    const r3d_view_t view = fixture();
+    const r3d_line_view_t view = fixture();
     const S3L_Vec4 p = {17, -42, 900, S3L_F};
 
     const S3L_Vec4 got = r3d_to_camera_space(p, &view);
@@ -46,7 +46,7 @@ test_to_camera_space_leaves_a_point_unchanged_under_identity(void) {
  * that chain's own fixed-point rounding, which is not what this checks. */
 static void
 test_to_camera_space_applies_the_composed_matrix(void) {
-    r3d_view_t view = fixture();
+    r3d_line_view_t view = fixture();
     S3L_mat4Init(view.matrix);
     view.matrix[0][3] = 10 * S3L_F;
     view.matrix[1][3] = 20 * S3L_F;
@@ -64,7 +64,7 @@ test_to_camera_space_applies_the_composed_matrix(void) {
 
 static void
 test_a_point_on_the_optical_axis_lands_on_center(void) {
-    const r3d_view_t view = fixture();
+    const r3d_line_view_t view = fixture();
     const S3L_Vec4 p = {0, 0, 5 * S3L_F, S3L_F};
     int x, y;
 
@@ -80,7 +80,7 @@ test_a_point_on_the_optical_axis_lands_on_center(void) {
 static void
 check_off_axis_point_matches_the_formula(int center_x, int center_y, int scale, S3L_Unit focal, int expected_x,
                                          int expected_y) {
-    r3d_view_t view = fixture();
+    r3d_line_view_t view = fixture();
     view.center_x = center_x;
     view.center_y = center_y;
     view.scale = scale;
@@ -105,7 +105,7 @@ test_an_off_axis_point_lands_where_the_formula_says(void) {
 
 static void
 test_a_point_exactly_at_near_z_counts_as_behind(void) {
-    const r3d_view_t view = fixture();
+    const r3d_line_view_t view = fixture();
     const S3L_Vec4 p = {0, 0, view.near_z, S3L_F};
     int x = -1, y = -1;
 
@@ -116,7 +116,7 @@ test_a_point_exactly_at_near_z_counts_as_behind(void) {
 
 static void
 test_orthographic_projection_ignores_depth(void) {
-    r3d_view_t view = fixture();
+    r3d_line_view_t view = fixture();
     view.focal = 0;
     const S3L_Vec4 p_near = {100, -50, 2 * S3L_F, S3L_F};
     const S3L_Vec4 p_far = {100, -50, 500 * S3L_F, S3L_F};
@@ -133,7 +133,7 @@ test_orthographic_projection_ignores_depth(void) {
 
 static void
 test_segment_with_both_ends_behind_returns_false(void) {
-    const r3d_view_t view = fixture();
+    const r3d_line_view_t view = fixture();
     const S3L_Vec4 p0 = {0, 0, 0, S3L_F};
     const S3L_Vec4 p1 = {10, 10, view.near_z, S3L_F}; /* AT near_z, not past it */
     int ax, ay, bx, by;
@@ -146,7 +146,7 @@ test_segment_with_both_ends_behind_returns_false(void) {
  * test actually does) rather than a hand copy of its formula. */
 static void
 test_one_end_behind_clips_to_the_near_plane_crossing(void) {
-    r3d_view_t view = fixture();
+    r3d_line_view_t view = fixture();
     view.near_z = 100;
     const S3L_Vec4 p0 = {0, 0, 0, S3L_F};
     const S3L_Vec4 p1 = {200, 100, 200, S3L_F};
@@ -167,7 +167,7 @@ test_one_end_behind_clips_to_the_near_plane_crossing(void) {
 
 static void
 test_both_ends_in_front_matches_projecting_each_point(void) {
-    const r3d_view_t view = fixture();
+    const r3d_line_view_t view = fixture();
     const S3L_Vec4 p0 = {50, -30, 300, S3L_F};
     const S3L_Vec4 p1 = {-80, 60, 500, S3L_F};
     int ax, ay, bx, by;

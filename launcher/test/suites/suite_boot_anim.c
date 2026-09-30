@@ -202,7 +202,7 @@ identity_view(S3L_Unit focal) {
     boot_anim_view_t v;
     S3L_mat4Init(v.matrix);
     v.focal = focal;
-    v.near_z = R3D_NEAR_Z;
+    v.near_z = R3D_LINE_NEAR_Z;
     v.center_x = PANEL_W / 2;
     v.center_y = PANEL_H / 2;
     v.scale = PANEL_W / 2;
@@ -258,7 +258,7 @@ test_a_point_further_from_the_camera_projects_smaller(void) {
  * behind the near plane, rather than projecting it to an ordinary-looking
  * but geometrically nonsense screen position. `im_q12 = 408` sits exactly
  * ON the boundary: under an identity transform
- * BOOT_ANIM_ZETA_TO_S3L(408) = 51 = R3D_NEAR_Z, so this exercises
+ * BOOT_ANIM_ZETA_TO_S3L(408) = 51 = R3D_LINE_NEAR_Z, so this exercises
  * the `<=`, which a `<` typo would still pass anywhere further back. */
 static void
 test_project_point_rejects_a_point_at_the_near_plane(void) {
@@ -282,7 +282,7 @@ static void
 test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
     const boot_anim_view_t view = identity_view(S3L_F);
     const S3L_Vec4 p0 = {100, 200, 0, S3L_F};
-    const S3L_Vec4 p1 = {-100, -200, R3D_NEAR_Z, S3L_F};
+    const S3L_Vec4 p1 = {-100, -200, R3D_LINE_NEAR_Z, S3L_F};
     int ax, ay, bx, by;
 
     const bool ok = r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by);
@@ -302,8 +302,8 @@ test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
 static void
 test_project_segment_cs_clips_asymmetric_coordinates(void) {
     const boot_anim_view_t view = identity_view(S3L_F);
-    const S3L_Vec4 p0 = {-300123, 250009, R3D_NEAR_Z - 86, S3L_F};
-    const S3L_Vec4 p1 = {401777, -180321, R3D_NEAR_Z + 410, S3L_F};
+    const S3L_Vec4 p0 = {-300123, 250009, R3D_LINE_NEAR_Z - 86, S3L_F};
+    const S3L_Vec4 p1 = {401777, -180321, R3D_LINE_NEAR_Z + 410, S3L_F};
 
     int ax, ay, bx, by;
     TEST_ASSERT_TRUE_MESSAGE(r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by),
@@ -312,11 +312,11 @@ test_project_segment_cs_clips_asymmetric_coordinates(void) {
 
     /* Double-precision reference for the clip itself: p0 is BEHIND, so
      * IT is what gets replaced by the near-plane crossing point. */
-    const double frac = (double)(R3D_NEAR_Z - p0.z) / (double)(p1.z - p0.z);
+    const double frac = (double)(R3D_LINE_NEAR_Z - p0.z) / (double)(p1.z - p0.z);
     const double exact_x = p0.x + (p1.x - p0.x) * frac;
     const double exact_y = p0.y + (p1.y - p0.y) * frac;
     int ex, ey;
-    const S3L_Vec4 exact_clip = {(S3L_Unit)exact_x, (S3L_Unit)exact_y, R3D_NEAR_Z, S3L_F};
+    const S3L_Vec4 exact_clip = {(S3L_Unit)exact_x, (S3L_Unit)exact_y, R3D_LINE_NEAR_Z, S3L_F};
     r3d_camera_to_screen(exact_clip, &view, &ex, &ey);
 
     const int tolerance = 20;
@@ -913,7 +913,7 @@ static void
 test_curve_lod_steps_keeps_full_detail_when_the_probe_cannot_project(void) {
     const boot_anim_view_t view = identity_view(S3L_F);
     const S3L_Vec4 a = {40, 40, 0, S3L_F};
-    const S3L_Vec4 c = {41, 40, R3D_NEAR_Z - 1, S3L_F};
+    const S3L_Vec4 c = {41, 40, R3D_LINE_NEAR_Z - 1, S3L_F};
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(BOOT_ANIM_SPLINE_STEPS, boot_anim_curve_lod_steps(a, c, &view),
                                   "a span the probe cannot project at all must default to full "

@@ -30,7 +30,7 @@
 static const char* TAG = "rt_perf";
 
 /* Two orientations, not four: quarter only rolls the physical-to-upright
- * mapping (r3d_ray.h), never the ray count or the tracer's own cost, so 0
+ * mapping (ray.h), never the ray count or the tracer's own cost, so 0
  * and 1 already cover both the swapped and unswapped axis case. */
 #define QUARTER_COUNT 2
 
@@ -139,7 +139,7 @@ run_quarter(int quarter) {
     TEST_ASSERT_NOT_NULL_MESSAGE(buf, "need a private canvas the size of one frame");
 
     rt_cornell_camera_t cam;
-    rt_cornell_camera_init(&cam, (r3d_viewport_t){GFX_WIDTH, GFX_HEIGHT, quarter});
+    rt_cornell_camera_init(&cam, (viewport_t){GFX_WIDTH, GFX_HEIGHT, quarter});
 
     const refine_result_t refine = run_refine_capture(&cam, buf);
     log_refine_result(quarter, &refine);

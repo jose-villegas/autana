@@ -10,10 +10,9 @@
 #include <stdint.h>
 
 #include "gfx/gfx.h"
-#include "render/r3d_lit_pipeline.h"
-#include "render/r3d_vec3f.h"
+#include "render/r3d.h"
 
-/* Half the panel's resolution in each axis, doubled on the way out. */
+/* Half the panel's resolution in each axis, upscaled on the way out. */
 #define SPONZA_RENDER_WIDTH         (GFX_WIDTH / 2)
 #define SPONZA_RENDER_HEIGHT        (GFX_HEIGHT / 2)
 
@@ -30,7 +29,7 @@
 uint32_t sponza_flythrough_period_ms(void);
 
 /* The eye and look direction t_ms into the loop, which wraps at the period. */
-void sponza_flythrough_sample(uint32_t t_ms, r3d_vec3f_t* eye, r3d_vec3f_t* forward);
+void sponza_flythrough_sample(uint32_t t_ms, vec3f_t* eye, vec3f_t* forward);
 
-/* The view t_ms into the loop at the render size, turned for `quarter`. */
-void sponza_view_at(r3d_lit_view_t* view, uint32_t t_ms, int position_scale, int quarter);
+/* The camera t_ms into the loop. */
+camera_t sponza_camera_at(uint32_t t_ms);

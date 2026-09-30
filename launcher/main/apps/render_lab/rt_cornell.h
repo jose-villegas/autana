@@ -11,14 +11,14 @@
 #pragma once
 
 #include "gfx/gfx_color.h"
-#include "render/r3d_ray.h"
+#include "render/r3d.h"
 
-typedef r3d_ray_camera_t rt_cornell_camera_t;
+typedef ray_camera_t rt_cornell_camera_t;
 
 /* Builds the camera once per render. `viewport` is the PHYSICAL canvas and
  * the shell's quarter, read by the caller so this stays a pure function of
  * its arguments. */
-void rt_cornell_camera_init(rt_cornell_camera_t* cam, r3d_viewport_t viewport);
+void rt_cornell_camera_init(rt_cornell_camera_t* cam, viewport_t viewport);
 
 /* One physical pixel, for a caller tracing in an order of its own. */
 gfx_color_t rt_cornell_render_pixel(const rt_cornell_camera_t* cam, int x, int y);
@@ -44,4 +44,4 @@ int rt_cornell_render_lattice_budget(const rt_cornell_camera_t* cam, gfx_color_t
  * shared with rt_path.c so both scenes read the picture off one dithering
  * rule rather than two that could drift apart. `linear` channels above 1.0
  * clamp at the brightest level rather than wrapping. */
-gfx_color_t rt_cornell_dither_quantize(r3d_vec3f_t linear, int x, int y);
+gfx_color_t rt_cornell_dither_quantize(vec3f_t linear, int x, int y);

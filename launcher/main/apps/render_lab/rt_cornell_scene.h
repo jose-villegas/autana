@@ -7,11 +7,11 @@
  */
 #pragma once
 
-#include "render/r3d_ray.h"
+#include "render/r3d.h"
 #include "rt_geometry.h"
 
 extern const rt_scene_t rt_cornell_scene;
 
 /* The light's own position, for shading - distinct from rt_cornell_scene's
  * light quad, which is its emitting SURFACE. */
-extern const r3d_vec3f_t rt_cornell_light_pos;
+extern const vec3f_t rt_cornell_light_pos;

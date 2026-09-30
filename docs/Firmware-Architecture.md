@@ -213,7 +213,7 @@ An app that sets `app_t.update` has the previous frame sent on core 1 while
 `update()` runs on core 0; the split present underneath is in
 [Gfx-and-Presentation.md](Gfx-and-Presentation.md#present-who-runs-it).
 
-`render/r3d_lit_frame.h` uses `update()` this way to draw a mesh on both
+A caller draws a mesh with `raster_draw()` from `update()` this way, on both
 cores: [Mesh-Rendering.md](Mesh-Rendering.md#on-both-cores).
 
 ### Full redraw

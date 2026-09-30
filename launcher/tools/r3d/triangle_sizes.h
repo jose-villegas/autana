@@ -1,6 +1,6 @@
 /*
  * triangle_sizes: how many of a lit mesh's drawn triangles cover 0, 1, 2-4
- * or more pixel centres from a view, counted by the top-left rule from the
+ * or more pixel centres from a lens, counted by the top-left rule from the
  * view itself, so any version of the pipeline means the same; and the poses
  * file the triangle_sizes tool reads.
  */
@@ -11,8 +11,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "render/r3d_lit_pipeline.h"
-#include "render/r3d_vec3f.h"
+#include "render/r3d_pipeline.h"
+#include "render/vec3f.h"
 
 enum { R3D_SIZES_ZERO, R3D_SIZES_ONE, R3D_SIZES_TWO_TO_FOUR, R3D_SIZES_MORE, R3D_SIZES_BINS };
 
@@ -24,7 +24,7 @@ typedef struct {
 } r3d_sizes_t;
 
 /* Adds the triangles of the `count` clusters in `visible` to `out`. */
-void r3d_sizes_count(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const uint16_t* visible, int count,
+void r3d_sizes_count(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* visible, int count,
                      r3d_sizes_t* out);
 
 void r3d_sizes_add(r3d_sizes_t* total, const r3d_sizes_t* s);
@@ -40,8 +40,8 @@ typedef struct {
     int width, height;
     float half_fov_short_tan, near_z;
     int count;
-    r3d_vec3f_t eye[R3D_SIZES_POSES_MAX];
-    r3d_vec3f_t forward[R3D_SIZES_POSES_MAX];
+    vec3f_t eye[R3D_SIZES_POSES_MAX];
+    vec3f_t forward[R3D_SIZES_POSES_MAX];
 } r3d_sizes_poses_t;
 
 /* True when the file was read whole; else false, with what is wrong and on

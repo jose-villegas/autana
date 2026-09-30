@@ -68,7 +68,7 @@ scene_pathtrace_enter(void) {
     accum = app_arena_take(sizeof(*accum) * (size_t)GFX_WIDTH * GFX_HEIGHT, _Alignof(rt_path_accum_px_t));
 
     current_quarter = display_shell_quarter();
-    rt_cornell_camera_init(&camera, (r3d_viewport_t){GFX_WIDTH, GFX_HEIGHT, current_quarter});
+    rt_cornell_camera_init(&camera, (viewport_t){GFX_WIDTH, GFX_HEIGHT, current_quarter});
     restart_render();
 }
 
@@ -93,7 +93,7 @@ scene_pathtrace_frame(uint32_t dt_ms, bool band_mode_active) {
     const int quarter = display_shell_quarter();
     if (quarter != current_quarter) {
         current_quarter = quarter;
-        rt_cornell_camera_init(&camera, (r3d_viewport_t){GFX_WIDTH, GFX_HEIGHT, quarter});
+        rt_cornell_camera_init(&camera, (viewport_t){GFX_WIDTH, GFX_HEIGHT, quarter});
         restart_render();
     }
 
