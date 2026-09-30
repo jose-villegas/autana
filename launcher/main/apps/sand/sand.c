@@ -1212,7 +1212,7 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
         }
         /* Accumulated in a register and stored once per block, same shape as
          * moved_here. BLOCK_HAS_LIQUID keeps it true at O(blocks) per step
-         * instead of O(moves), a skip structure earns its cost only when it
+         * instead of O(moves); a skip structure earns its cost only when it
          * is questioned before it is built. Counted BEFORE the stamped skip:
          * a cell that arrived here this pass is still liquid sitting in this
          * block, and cross-flow looks nowhere the sweep did not mark. */

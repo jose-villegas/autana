@@ -2122,7 +2122,7 @@ try_lava_burst(const burning_cell_t* cell) {
 }
 
 /* try_lava_burst() reads and bumps the shared confined-blast counter and
- * calls sand_explode), a chunk-parallel call queues the candidate
+ * calls sand_explode(); a chunk-parallel call queues the candidate
  * instead and reports "did not burst", the same as a roll that missed;
  * sand_step_reaction_reach() runs the real check afterward, single core. */
 static bool

@@ -193,7 +193,7 @@ test_a_root_column_does_not_spend_the_trees_lift(void) {
 #define BURIED_ROOT_TEST_H   16
 /* A DEEP wet reserve (6 rows), not a single row: since PART 2 of the
  * roots feature, a root on its only reachable water is itself a second
- * consumer of that cell (step_one_rooting_cell()), a single-row reserve
+ * consumer of that cell (step_one_rooting_cell()); a single-row reserve
  * races the root's own slow eating against the tree's growth roll,
  * deterministically losing for this suite's fixed seed, a different
  * failure from the transparency bug under test. Six rows is far more than
@@ -2033,8 +2033,8 @@ test_painted_gunpowder_starts_dry_in_one_of_three_tones(void) {
         const uint8_t code = (uint8_t)(c & 0x07);
         char why[64];
         snprintf(why, sizeof why, "gunpowder code %d", code);
-        /* code >= tones would be a MOISTURE level, see material.h's
-         * moisture codec comment - and a freshly poured grain arriving
+        /* code >= tones would be a MOISTURE level (see material.h's
+         * moisture codec comment), and a freshly poured grain arriving
          * already wet is exactly the bug random_cell()'s own dirt branch
          * exists to avoid, now on gunpowder's picker instead. */
         TEST_ASSERT_TRUE_MESSAGE(code < tones, why);

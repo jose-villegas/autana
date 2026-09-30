@@ -630,7 +630,7 @@ void sand_set_lava_cooloff(sand_t* s, int chance);
  * this radius, not SAND_EXPLODE_CORE_DIVISOR: that divisor is shared by
  * every explosion, so retuning it for one caller would rescale detonate
  * mode and the confined-gas burst too. Smaller than gunpowder's own blast
- * radius (material.h), the material whose whole point is to go off
+ * radius (material.h): the material whose whole point is to go off
  * should own the biggest blast, not a vessel's side effect. */
 #define SAND_LAVA_BURST_RADIUS    12
 

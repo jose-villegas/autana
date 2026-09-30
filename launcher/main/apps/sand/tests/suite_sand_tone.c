@@ -748,7 +748,7 @@ test_cullet_never_dresses_as_beach(void) {
 }
 
 /* Pale is the whole design constraint on the cycle's four anchors (see
- * material.c), a retune wandering toward anything saturated or dark would
+ * material.c); a retune wandering toward anything saturated or dark would
  * still pass every test above while no longer reading as ground glass.
  * Floored against the darkest DUNE shade's own luminance rather than a
  * fixed number: what matters is staying paler than sand ever gets. */

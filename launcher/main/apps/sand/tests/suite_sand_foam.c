@@ -386,7 +386,7 @@ test_foam_never_stalls_between_frames(void) {
     /* Checks NEITHER DEGENERATE (the foaming subset of 8 hash values must be
      * neither all nor none, at any single phase) and NEVER STALLS (no two
      * ADJACENT phases may produce the identical foaming subset, across the
-     * full 8-phase cycle and all three curvatures), the second is the
+     * full 8-phase cycle and all three curvatures); the second is the
      * property XOR actually failed (measured 4-of-8, 6-of-8, 4-of-8 across
      * curvatures, see the mixing site's comment in material.c), and what a
      * future change back to XOR would break again. */

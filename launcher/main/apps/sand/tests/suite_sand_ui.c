@@ -77,7 +77,7 @@ outside_every_tile(int* px, int* py) {
  * `.pressed` (and therefore fired again on every frame the hold's own
  * `.pressed` had already latched true, before `.held` even existed to
  * name the difference). sand_ui_step() never reads input->boot.held at
- * all in SAND_UI_RUNNING, see its own comment - so a hold is
+ * all in SAND_UI_RUNNING, see its own comment, so a hold is
  * structurally unable to change anything here, however long it lasts. */
 static void
 test_a_boot_hold_in_running_changes_nothing_at_all(void) {
@@ -285,7 +285,7 @@ test_selecting_a_tile_while_detonating_resets_to_paint(void) {
     /* microui has already done its own hit-test by the time anything calls
      * this, see sand_ui.h's "WHO HIT-TESTS AND WHO DECIDES" comment, and
      * test_opening_with_no_finger_down_then_tapping_a_tile_selects_that_tile
-     * above for the same pattern - so this drives the entry point a real
+     * above for the same pattern, so this drives the entry point a real
      * tap would resolve to directly, by tile index, rather than synthesizing
      * a touch release at some tile's own pixel centre. */
     const unsigned actions = sand_ui_tile_clicked(&ui, 2);

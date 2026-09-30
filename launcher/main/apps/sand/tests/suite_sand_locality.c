@@ -92,7 +92,7 @@ test_two_separate_active_spots_in_the_same_block_row_do_not_wake_each_other(void
      * harmless 2 KB, but it scales with the tunable (see loc_fixture()'s
      * own comment on SAND_BLOCK_W being worth retuning) and the device's
      * main task stack is only 3.5 KB total (CONFIG_ESP_MAIN_TASK_STACK_
-     * SIZE), a wider block size alone is enough to blow it, with a real
+     * SIZE); a wider block size alone is enough to blow it, with a real
      * stack-protection panic on device that a host run cannot reproduce
      * (the host stack is megabytes). */
     uint8_t* left_before = malloc((size_t)SAND_BLOCK_W * LOC_H);

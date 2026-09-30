@@ -1066,7 +1066,7 @@ static void
 test_fire_spreads_through_a_connected_pocket_in_one_step(void) {
     fixture();
     sand_set_gas_walk(&s, false); /* gas runs before reactions in
-                                     * sand_step(), the walk would scatter
+                                     * sand_step(); the walk would scatter
                                      * this line before reactions ever saw
                                      * it, so the pass is pinned to isolate
                                      * reaction scan order, not gas motion */
@@ -1863,7 +1863,7 @@ test_placing_fire_arms_both_gas_and_fire_passes(void) {
  * smothering itself or drifting away before reactions runs. fire_room()
  * won't do here: it seals all four sides with stone, which works for GAS
  * (density 10, lighter than fire's 15, never completes smothered()'s
- * ALL-of-4) but not WOOD (density 150, denser than fire), a wood
+ * ALL-of-4) but not WOOD (density 150, denser than fire); a wood
  * neighbour on the last open side would complete the smother alone. The
  * cell below fire stays open: gas only rises or spreads sideways, never
  * falls. */
@@ -2198,7 +2198,7 @@ test_burnt_out_fire_can_leave_smoke(void) {
 }
 
 /* Relative luminance of a rendered cell, 0-255. The palette stores
- * panel-ready (byte-swapped) RGB565, see gfx_color.h - so this undoes
+ * panel-ready (byte-swapped) RGB565, see gfx_color.h, so this undoes
  * both before weighting the channels the way an eye does. */
 static int
 cell_luminance(cell_t c) {

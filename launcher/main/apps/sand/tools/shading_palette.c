@@ -2345,7 +2345,7 @@ static uint8_t grids[SCENE_COUNT][GRID_W * GRID_H];
 static gfx_color_t common_fb[PANEL_W * PANEL_H];
 static uint8_t common_grp[PANEL_W * PANEL_H];
 
-/* Sweep, settle every scene, and build both palettes; shared by the normal
+/* Sweep, settle every scene, and build both palettes, shared by the normal
  * report below and run_dither_pattern_compare() (dp_*), which needs the same
  * ega_global/palette/map_index and grids[] but writes no header and no
  * stats.txt. */
@@ -2396,7 +2396,7 @@ common_setup(void) {
  * not part of report_shading_palette.sh's own gate)
  */
 
-/* The single nearest entry, never a blend; what ega_choose() itself starts
+/* The single nearest entry, never a blend, what ega_choose() itself starts
  * from before searching for a better pair. Variant (e)'s own choice. */
 static ega_choice_t
 ega_nearest(const ega_palette_t* pal, uint16_t key) {

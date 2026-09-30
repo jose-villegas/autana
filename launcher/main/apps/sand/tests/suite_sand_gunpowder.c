@@ -409,7 +409,7 @@ static void
 test_a_lit_gunpowder_trail_burns_along_itself(void) {
     fixture();
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL); /* sand_init()'s default
-                                 * is immortal (decay 0), the trail must
+                                 * is immortal (decay 0); the trail must
                                  * actually burn down behind the fuse
                                  * front, not just light up and stay lit */
     for (int x = 0; x < W; x++) {

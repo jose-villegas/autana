@@ -170,7 +170,7 @@ test_a_liquid_rim_still_shows_its_fill(void) {
 
     const gfx_color_t* pal = material_palette();
     /* Flat rim on the "up" side: MATERIAL_EDGE_UP plus its two leaning
-     * diagonals, exactly 3 of 8 neighbours empty (curvature 0), a single
+     * diagonals, exactly 3 of 8 neighbours empty (curvature 0); a single
      * cardinal bit alone is curved (empty count 1) and triggers foam's
      * dither regardless of hash, confounding this test with a mechanism it
      * has nothing to do with. */
@@ -1356,7 +1356,7 @@ test_pouring_onto_a_settled_pool_in_landscape_redirties_a_bounded_column_band(vo
 }
 
 /* Water's interior uses the same plain shade-index shift oil, lava and
- * acid always have (liquid_interior()), the old
+ * acid always have (liquid_interior()); the old
  * fog-blend/wave-table pinned near-maximum haze at any realistic pool
  * depth, and rode over local depth's dominant-axis seam as rigid columns. */
 
