@@ -17,7 +17,7 @@ them. The layers are in [Firmware-Architecture.md](Firmware-Architecture.md).
 | `r3d_ray.h` | A float ray camera: the direction through each physical pixel, on the same viewport a rasterizer uses |
 | `r3d_path.h` | A closed Catmull-Rom camera loop at a steady speed |
 | `r3d_span.h` | One depth-tested, Gouraud-shaded triangle filled into a window of rows, its coverage exact on 1/16-pixel positions |
-| `r3d_lit_mesh.h` | The baked mesh format: per-vertex colour, meshlets, a node tree, coarser levels of detail |
+| `r3d_lit_mesh.h` | The baked mesh format: per-vertex colour, meshlet clusters, a node tree |
 | `r3d_lit_pipeline.h` | The mesh's stages: view, cull, transform, draw |
 | `r3d_lit_frame.h` | One whole frame of those stages on both cores, optionally doubled to twice its size |
 
@@ -32,87 +32,28 @@ ticks, `position_scale` ticks per model unit.
 
 A mesh is const C data, written by a generator using the offline tools in
 [`launcher/tools/r3d/`](../launcher/tools/r3d/README.md). They load a model,
-simplify it, bake its light, cut it into meshlets and levels of detail, and
+simplify it, bake its light, cut it into meshlets, and
 check the result against `r3d_lit_mesh.h`'s invariants before writing a byte.
 
-## The baked hierarchy
+## Meshlets
 
-The clusters are the mesh's finest level, each owning the vertices its
-triangles use, under an octree that is all a renderer needs to draw the whole
-mesh. A bake chooses how they are cut:
+The clusters are **meshlets**: compact runs of at most 32 triangles from
+meshoptimizer's clusterizer, each of one sidedness and owning the vertices its
+triangles use. The octree above them is built over the meshlets' centres, and
+its leaves hold a few hundred triangles' worth.
 
-| Clustering | A cluster is | Octree over |
-|---|---|---|
-| `octree` | one leaf of an octree of the triangles, at most a set number of them | the triangles |
-| `meshlet` | a compact run of a few dozen triangles from meshoptimizer's clusterizer | the meshlets' centres |
+Meshlets share more vertices than clusters cut as leaves of an octree of the
+triangles, so a frame transforms fewer. Bigger ones span looser boxes and
+submit more triangles for the same view, and smaller ones cost more clusters
+to walk. The size trades these: 64 lost on the board and 32 won.
 
-Meshlets share more vertices (fewer vertices per triangle, so less to
-transform) but each spans a looser box than a leaf of the same size, so more
-triangles are submitted for the same view; which wins depends on the size and
-is measured on the board, not assumed. `rebake` with `keep` leaves the
-clusters as they are.
+Meshlets also change the draw order of the finest level. Where two triangles
+reach the same depth the first drawn wins, so a redrawn frame differs from the
+old clustering's in a fraction of a percent of its pixels, from ties alone:
+the triangles are the same.
 
-Every finest cluster also has a normal cone in `r3d_lit_mesh_t.cones`, two
-int8 words a cluster for skipping one that faces away.
-
-A meshlet bake made with `--lod` adds `r3d_lit_mesh_t.lod`, the coarser levels, made
-the way meshoptimizer's `clusterlod` example does. It costs about as much
-flash again as the finest level, so it is opt-in: a mesh baked without it has
-`lod` NULL and carries no level data.
-
-```mermaid
-flowchart LR
-    L0["level 0<br/><i>meshlets of the mesh</i>"] -- "group neighbours,<br/>lock the group's border,<br/>simplify, re-split" --> L1["level 1<br/><i>about half the triangles</i>"]
-    L1 --> L2["level 2"]
-    L2 --> Top["... until one meshlet"]
-```
-
-Groups of neighbouring meshlets are merged and simplified with the group's
-outer border pinned, so a group's border vertices are the same in every level
-that touches it, and with colour as a simplification attribute, so a baked
-shadow edge holds vertices. Vertices are never moved: a coarser cluster holds
-copies of finest vertices, with identical ticks and colour. Each group is a
-node of a DAG, and each cluster records:
-
-| Field | Meaning |
-|---|---|
-| `self` | the sphere and world error, in ticks, of the group that produced it; 0 at level 0 |
-| `parent` | the same for the group it was merged into; `R3D_LIT_LOD_TOP` at the top |
-| `cone` | its normal cone, as in `cones` |
-| `level` | 0 is the finest |
-
-A group's error is at least that of every cluster in it, and every cluster of
-a group shares one sphere and error, so the rule below gives each stretch of
-surface exactly one cluster, and neighbours picked at different levels meet
-along vertices they share.
-
-**The pick.** A cluster is drawn when its own error, projected at its sphere,
-is at most a tolerance in pixels and its parent's is above it. Projected
-error is `error * k / max(distance - radius, near)`, `k` being pixels per unit
-of size at unit depth. Tolerance 0 picks the finest level, and any per-cluster
-distance gives a crack-free mix of levels.
-
-A cluster is back-facing from `eye` when
-`dot(normalize(centre - eye), cone_axis / 127) >= cone_cutoff / 127 + radius / |centre - eye|`,
-centre and radius those of its box.
-
-**Today** the renderer ignores `lod` and `cones` and draws the finest level.
-The host tool `r3d.lod_eval` walks the levels with this rule at each camera
-pose, counts the triangles a level-aware runtime would draw against the
-finest, renders both and diffs the pixels. Its poses come from a scene's own
-generator on standard input:
-
-```sh
-<pose generator> | python -m r3d.lod_eval MESH_mesh_generated.c - --tolerance 1
-```
-
-with lines `size WIDTH HEIGHT`, `lens HALF_FOV_SHORT_TAN NEAR` and
-`pose EYE_X EYE_Y EYE_Z FORWARD_X FORWARD_Y FORWARD_Z`.
-
-Meshlets change the draw order of the finest level. Where two triangles reach
-the same depth the first drawn wins, so a redrawn frame differs from the old
-clustering's in a fraction of a percent of its pixels (0.1-0.45% at one
-scene's flythrough poses), from ties alone: the triangles are the same.
+Levels of detail built on the meshlets, and what they would save, are in
+[plans/Cluster-LOD.md](plans/Cluster-LOD.md).
 
 ## One frame
 

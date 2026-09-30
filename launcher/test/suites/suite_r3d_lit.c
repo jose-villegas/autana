@@ -497,8 +497,16 @@ screen_mesh(screen_mesh_t* m, int vertices, int triangles) {
     m->cluster = (r3d_lit_cluster_t){
         0, (uint16_t)vertices, 0, (uint16_t)triangles, {-32767, -32767, -8}, {32767, 32767, 8}, true};
     m->node = (r3d_lit_node_t){{-32767, -32767, -8}, {32767, 32767, 8}, 0, 1, true};
-    return (r3d_lit_mesh_t){m->positions, m->colors, m->triangles, &m->cluster, &m->node, vertices, triangles, 1, 1, 1,
-                            NULL,         NULL};
+    return (r3d_lit_mesh_t){.positions = m->positions,
+                            .colors = m->colors,
+                            .triangles = m->triangles,
+                            .clusters = &m->cluster,
+                            .nodes = &m->node,
+                            .vertex_count = vertices,
+                            .triangle_count = triangles,
+                            .cluster_count = 1,
+                            .node_count = 1,
+                            .position_scale = 1};
 }
 
 /* Transforms the mesh with cluster rows and draws it as two windows. */
@@ -657,7 +665,16 @@ static const r3d_lit_node_t quad_node = {{-100, -100, 0}, {100, 100, 0}, 0, 1, t
 static r3d_lit_mesh_t
 quad_mesh(const uint16_t (*triangles)[3], bool double_sided, r3d_lit_cluster_t* cluster) {
     *cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {-100, -100, 0}, {100, 100, 0}, double_sided};
-    return (r3d_lit_mesh_t){quad_positions, quad_colors, triangles, cluster, &quad_node, 4, 2, 1, 1, 1, NULL, NULL};
+    return (r3d_lit_mesh_t){.positions = quad_positions,
+                            .colors = quad_colors,
+                            .triangles = triangles,
+                            .clusters = cluster,
+                            .nodes = &quad_node,
+                            .vertex_count = 4,
+                            .triangle_count = 2,
+                            .cluster_count = 1,
+                            .node_count = 1,
+                            .position_scale = 1};
 }
 
 /* The quad faces +z; this camera stands on +z looking back at it. */
@@ -715,8 +732,16 @@ test_a_floor_crossing_the_near_plane_draws_only_below_the_horizon(void) {
     static const uint16_t floor_up[][3] = {{0, 1, 2}, {0, 2, 3}};
     r3d_lit_cluster_t cluster = {0, 4, 0, 2, {-1000, 0, -3000}, {1000, 0, 1000}, false};
     static const r3d_lit_node_t floor_node = {{-1000, 0, -3000}, {1000, 0, 1000}, 0, 1, true};
-    const r3d_lit_mesh_t mesh = {
-        floor_positions, quad_colors, floor_up, &cluster, &floor_node, 4, 2, 1, 1, 1, NULL, NULL};
+    const r3d_lit_mesh_t mesh = {.positions = floor_positions,
+                                 .colors = quad_colors,
+                                 .triangles = floor_up,
+                                 .clusters = &cluster,
+                                 .nodes = &floor_node,
+                                 .vertex_count = 4,
+                                 .triangle_count = 2,
+                                 .cluster_count = 1,
+                                 .node_count = 1,
+                                 .position_scale = 1};
 
     r3d_lit_view_t view;
     r3d_lit_view_look(&view, (r3d_vec3f_t){0, 50, 0}, (r3d_vec3f_t){0, 0, -1}, 0.5f, 1.0f, 1,
@@ -794,7 +819,13 @@ parts_buffer(void) {
 static void
 parts_begin(parts_t* p) {
     memset(p, 0, sizeof *p);
-    p->mesh = (r3d_lit_mesh_t){p->positions, p->colors, p->triangles, p->clusters, &p->node, 0, 0, 0, 1, 1, NULL, NULL};
+    p->mesh = (r3d_lit_mesh_t){.positions = p->positions,
+                               .colors = p->colors,
+                               .triangles = p->triangles,
+                               .clusters = p->clusters,
+                               .nodes = &p->node,
+                               .node_count = 1,
+                               .position_scale = 1};
 }
 
 static void
