@@ -166,7 +166,11 @@ queue_unclaimed_line(const char* line) {
 static void
 console_task(void* arg) {
     (void)arg;
+#if CONFIG_LAUNCHER_SELFTEST
     static char line[READER_LINE_MAX];
+#else
+    char line[READER_LINE_MAX];
+#endif
     int len = 0;
     bool overflowed = false;
 
