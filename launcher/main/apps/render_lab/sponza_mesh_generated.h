@@ -12,7 +12,7 @@
  *   --sun-rays 8 --sky-rays 48 --leaf-triangles 160
  *
  * Rebaked with r3d.rebake: the geometry and colours are the bake's own; the
- * meshlets, coarser levels and octree were rebuilt from them:
+ * meshlets, cones and octree were rebuilt from them:
  *     python -m r3d.rebake sponza_mesh_generated.c --out-dir . --leaf-triangles 320 --max-depth 10 \
  *         --meshlet-triangles 64 --partition-size 8 --colour-weight 1
  */
@@ -25,9 +25,5 @@
 #define SPONZA_CLUSTER_COUNT 293
 #define SPONZA_NODE_COUNT 183
 #define SPONZA_POSITION_SCALE 8
-#define SPONZA_LOD_VERTEX_COUNT 17216
-#define SPONZA_LOD_TRIANGLE_COUNT 17025
-#define SPONZA_LOD_CLUSTER_COUNT 371
-#define SPONZA_LOD_LEVEL_COUNT 9
 
 extern const r3d_lit_mesh_t sponza_mesh;

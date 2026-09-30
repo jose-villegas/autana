@@ -42,8 +42,13 @@ meshoptimizer's clusterizer, each owning the vertices its triangles use. They
 are the mesh's finest level and sit under the octree, which is built over the
 meshlets' centres and is all a renderer needs to draw the whole mesh.
 
-Beside them, `r3d_lit_mesh_t.lod` holds the coarser levels, made the way
-meshoptimizer's `clusterlod` example does:
+Every finest cluster also has a normal cone in `r3d_lit_mesh_t.cones`, two
+int8 words a cluster for skipping one that faces away.
+
+A bake made with `--lod` adds `r3d_lit_mesh_t.lod`, the coarser levels, made
+the way meshoptimizer's `clusterlod` example does. It costs about as much
+flash again as the finest level, so it is opt-in: a mesh baked without it has
+`lod` NULL and carries no level data.
 
 ```mermaid
 flowchart LR
@@ -63,7 +68,7 @@ node of a DAG, and each cluster records:
 |---|---|
 | `self` | the sphere and world error, in ticks, of the group that produced it; 0 at level 0 |
 | `parent` | the same for the group it was merged into; `R3D_LIT_LOD_TOP` at the top |
-| `cone_axis`, `cone_cutoff` | its normal cone, for skipping a cluster facing away |
+| `cone` | its normal cone, as in `cones` |
 | `level` | 0 is the finest |
 
 A group's error is at least that of every cluster in it, and every cluster of
@@ -81,12 +86,23 @@ A cluster is back-facing from `eye` when
 `dot(normalize(centre - eye), cone_axis / 127) >= cone_cutoff / 127 + radius / |centre - eye|`,
 centre and radius those of its box.
 
-**Today** the renderer ignores `lod` and draws the finest level. The host tool
-`r3d.lod_eval` walks the levels with this rule at each of a file's camera
-poses, counts the triangles a level-aware runtime would draw against the
-finest, renders both and diffs the pixels. Its numbers decide whether a
-runtime pick is worth building, and `r3d.rebake` rewrites a baked mesh in the
-current format without lighting it again.
+**Today** the renderer ignores `lod` and `cones` and draws the finest level.
+The host tool `r3d.lod_eval` walks the levels with this rule at each camera
+pose, counts the triangles a level-aware runtime would draw against the
+finest, renders both and diffs the pixels. Its poses come from a scene's own
+generator on standard input:
+
+```sh
+<pose generator> | python -m r3d.lod_eval MESH_mesh_generated.c - --tolerance 1
+```
+
+with lines `size WIDTH HEIGHT`, `lens HALF_FOV_SHORT_TAN NEAR` and
+`pose EYE_X EYE_Y EYE_Z FORWARD_X FORWARD_Y FORWARD_Z`.
+
+Meshlets change the draw order of the finest level. Where two triangles reach
+the same depth the first drawn wins, so a redrawn frame differs from the old
+clustering's in a fraction of a percent of its pixels (0.1-0.45% at one
+scene's flythrough poses), from ties alone: the triangles are the same.
 
 ## One frame
 

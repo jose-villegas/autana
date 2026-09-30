@@ -164,6 +164,7 @@ def main():
     parser.add_argument("--leaf-triangles", type=int, default=320, help="most triangles an octree leaf holds")
     parser.add_argument("--meshlet-triangles", type=int, default=64, help="most triangles a cluster holds")
     parser.add_argument("--partition-size", type=int, default=8, help="clusters merged into one group per level")
+    parser.add_argument("--lod", action="store_true", help="also emit the coarser levels (default: finest only)")
     parser.add_argument("--max-depth", type=int, default=10)
     parser.add_argument("--out-dir", required=True, help="where <name>_mesh_generated.h and .c are written")
     parser.add_argument("--name", default="sponza", help="prefix of the files and of every symbol they define")
@@ -252,7 +253,7 @@ def main():
 
     mesh = write_lit_mesh(args.out_dir, args.name, positions, rgb, tris, tri_double, banner_lines(args),
                           args.leaf_triangles, args.max_depth, POSITION_SCALE,
-                          meshlet_triangles=args.meshlet_triangles, partition_size=args.partition_size)
+                          meshlet_triangles=args.meshlet_triangles, partition_size=args.partition_size, with_lod=args.lod)
     log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, "
         f"{len(mesh.nodes)} nodes, {mesh.lod.cluster_count if mesh.lod else 0} coarser clusters")
 

@@ -90,12 +90,13 @@ def sphere(bounds):
 
 
 def bake_lit_mesh(positions, rgb, tris, double, leaf_triangles, max_depth, position_scale=8, meshlet_triangles=64,
-                  partition_size=8, colour_weight=1.0):
+                  partition_size=8, colour_weight=1.0, with_lod=False):
     """Bakes positions (model units), rgb (0..255 per vertex) and tris
     (counter-clockwise seen from the front, `double` one flag per triangle)
     into a SimpleNamespace holding the finest level (pos, rgb, tris, clusters,
-    nodes), the coarser levels (lod, or None for a mesh too small to have
-    any) and the source vertex each vertex came from."""
+    nodes), a normal cone per finest cluster, and with `with_lod` the coarser
+    levels (lod, else None) and a record per cluster of every level. The
+    hierarchy is always built; it is only kept, and emitted, on request."""
     q = np.round(np.asarray(positions) * position_scale).astype(np.int64)
     col = np.clip(np.rint(rgb), 0, 255).astype(np.int64)
     tris = np.asarray(tris, dtype=np.int64)
@@ -138,9 +139,10 @@ def bake_lit_mesh(positions, rgb, tris, double, leaf_triangles, max_depth, posit
     out.pos, out.rgb, out.tris, out.clusters, out.source = lay_out(q, col, finest)
     node_bounds(nodes, out.clusters)
     out.nodes = nodes
-    out.records = records(finest + coarse)
+    out.cones = [e["cone"] for e in finest]
+    out.records = records(finest + coarse) if with_lod and coarse else []
     lod = None
-    if coarse:
+    if with_lod and coarse:
         lod = SimpleNamespace()
         lod.pos, lod.rgb, lod.tris, lod.clusters, lod.source = lay_out(q, col, coarse)
         lod.level_count = max(e["level"] for e in coarse) + 1
@@ -212,7 +214,13 @@ def validate(pos, rgb, tris, clusters, nodes):
 def validate_lod(mesh):
     """The coarser levels tile their own arrays as the finest do, and every
     cluster's error stays below its parent's."""
-    total = len(mesh.clusters) + (mesh.lod.cluster_count if mesh.lod else 0)
+    assert len(mesh.cones) == len(mesh.clusters), "one cone per finest cluster"
+    for axis, cutoff in mesh.cones:
+        assert -127 <= axis.min() and axis.max() <= 127 and 0 <= cutoff <= CONE_NONE
+    if not mesh.lod:
+        assert not mesh.records, "records without levels"
+        return
+    total = len(mesh.clusters) + mesh.lod.cluster_count
     assert len(mesh.records) == total, "one record per cluster, finest first"
     for r in mesh.records:
         assert r["self"][2] <= r["parent"][2], "a cluster is coarser than its parent"
@@ -220,9 +228,8 @@ def validate_lod(mesh):
             assert np.abs(centre).max() <= INT16_MAX and 0 < radius <= MAX_RADIUS, "a sphere does not fit"
         assert -127 <= r["cone"][0].min() and r["cone"][0].max() <= 127 and 0 <= r["cone"][1] <= CONE_NONE
     assert all(r["level"] == 0 for r in mesh.records[: len(mesh.clusters)])
-    if mesh.lod:
-        assert all(r["level"] > 0 for r in mesh.records[len(mesh.clusters) :])
-        validate(mesh.lod.pos, mesh.lod.rgb, mesh.lod.tris, mesh.lod.clusters, [])
+    assert all(r["level"] > 0 for r in mesh.records[len(mesh.clusters) :])
+    validate(mesh.lod.pos, mesh.lod.rgb, mesh.lod.tris, mesh.lod.clusters, [])
 
 
 def write_lit_mesh(out_dir, name, positions, rgb, tris, double, banner_lines, leaf_triangles, max_depth,
@@ -322,12 +329,17 @@ def emit(out_dir, name, banner_lines, mesh):
             print(f"    {{{triple(n['lo'])}, {triple(n['hi'])}, {n['first']}, {n['count']}, {c_bool(n['leaf'])}}},", file=out)
         print("};", file=out)
         print(file=out)
+        print(f"static const r3d_lit_cone_t {low}_cones[] = {{", file=out)
+        for axis, cutoff in mesh.cones:
+            print(f"    {{{triple(axis)}, {cutoff}}},", file=out)
+        print("};", file=out)
+        print(file=out)
         if lod:
             emit_arrays(out, low, "lod_", lod.pos, lod.rgb, lod.tris, lod.clusters)
             print(f"static const r3d_lit_cluster_lod_t {low}_lod_records[] = {{", file=out)
             for r in mesh.records:
                 axis, cutoff = r["cone"]
-                print(f"    {{{bound(r['self'])}, {bound(r['parent'])}, {triple(axis)}, {cutoff}, {r['level']}}},", file=out)
+                print(f"    {{{bound(r['self'])}, {bound(r['parent'])}, {{{triple(axis)}, {cutoff}}}, {r['level']}}},", file=out)
             print("};", file=out)
             print(file=out)
             print(f"static const r3d_lit_lod_t {low}_lod = {{", file=out)
@@ -339,7 +351,7 @@ def emit(out_dir, name, banner_lines, mesh):
         print(f"const r3d_lit_mesh_t {low}_mesh = {{", file=out)
         print(f"    {low}_positions, {low}_colors, {low}_triangles, {low}_clusters, {low}_nodes,", file=out)
         print(f"    {up}_VERTEX_COUNT, {up}_TRIANGLE_COUNT, {up}_CLUSTER_COUNT, {up}_NODE_COUNT,", file=out)
-        print(f"    {up}_POSITION_SCALE, {'&' + low + '_lod' if lod else 'NULL'},", file=out)
+        print(f"    {up}_POSITION_SCALE, {low}_cones, {'&' + low + '_lod' if lod else 'NULL'},", file=out)
         print("};", file=out)
 
 
@@ -377,6 +389,8 @@ def read_lit_mesh(path):
     mesh.position_scale = int(re.search(rf"{low.upper()}_POSITION_SCALE (\d+)", pathlib.Path(path).with_suffix(".h").read_text()).group(1))
     nodes = np.array(arrays[f"{low}_nodes"], dtype=np.int64).reshape(-1, 9)
     mesh.nodes = [{"lo": r[0:3], "hi": r[3:6], "first": r[6], "count": r[7], "leaf": bool(r[8])} for r in nodes]
+    cones = np.array(arrays.get(f"{low}_cones", []), dtype=np.int64).reshape(-1, 4)
+    mesh.cones = [(r[:3], int(r[3])) for r in cones]
     mesh.records, mesh.lod = [], None
     if f"{low}_lod_records" in arrays:
         lod = read_level(arrays, low, "lod_")

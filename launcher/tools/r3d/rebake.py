@@ -33,6 +33,7 @@ def main(argv=None):
     parser.add_argument("--meshlet-triangles", type=int, default=64)
     parser.add_argument("--partition-size", type=int, default=8, help="meshlets merged into one group")
     parser.add_argument("--colour-weight", type=float, default=1.0)
+    parser.add_argument("--lod", action="store_true", help="also emit the coarser levels (default: finest only)")
     args = parser.parse_args(argv)
 
     path = pathlib.Path(args.mesh)
@@ -47,16 +48,16 @@ def main(argv=None):
     lines += [
         "",
         "Rebaked with r3d.rebake: the geometry and colours are the bake's own; the",
-        "meshlets, coarser levels and octree were rebuilt from them:",
+        "meshlets, cones and octree" + (", and coarser levels," if args.lod else "") + " were rebuilt from them:",
         f"    python -m r3d.rebake {path.name} --out-dir . --leaf-triangles {args.leaf_triangles}"
         f" --max-depth {args.max_depth} \\",
         f"        --meshlet-triangles {args.meshlet_triangles} --partition-size {args.partition_size}"
-        f" --colour-weight {args.colour_weight:g}",
+        f" --colour-weight {args.colour_weight:g}" + (" --lod" if args.lod else ""),
     ]
     baked = write_lit_mesh(args.out_dir, name, pos / mesh.position_scale, rgb, tris, double, lines,
                            args.leaf_triangles, args.max_depth, mesh.position_scale,
                            meshlet_triangles=args.meshlet_triangles, partition_size=args.partition_size,
-                           colour_weight=args.colour_weight)
+                           colour_weight=args.colour_weight, with_lod=args.lod)
     coarse = baked.lod.cluster_count if baked.lod else 0
     log(f"{name}: {len(baked.pos)} vertices, {len(baked.tris)} triangles, {len(baked.clusters)} clusters, "
         f"{len(baked.nodes)} nodes, {coarse} coarser clusters")
