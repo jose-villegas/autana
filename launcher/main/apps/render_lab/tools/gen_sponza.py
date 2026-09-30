@@ -239,7 +239,7 @@ def main():
     if args.simplifier == "meshopt":
         props = [(frozenset(i for i, n in enumerate(names) if n in PROPS), args.props_share)]
         positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, np.concatenate(all_mat),
-                                                 args.triangles, props)
+                                                 args.triangles, props, join_tolerance=1.0 / POSITION_SCALE)
         rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
         tri_double = np.isin(tri_mat, [i for i, n in enumerate(names) if n in DOUBLE_SIDED]).astype(np.int64)
     if args.npz:

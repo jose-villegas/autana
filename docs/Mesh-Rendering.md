@@ -35,8 +35,17 @@ ticks, `position_scale` ticks per model unit.
 
 A mesh is const C data, written by a generator using the offline tools in
 [`launcher/tools/r3d/`](../launcher/tools/r3d/README.md). They load a model,
-simplify it, bake its light, cut it into meshlets, and
+repair and simplify it, bake its light, cut it into meshlets, and
 check the result against `r3d_lit_mesh.h`'s invariants before writing a byte.
+
+Simplifying a model made of many separate pieces approximates each piece's
+border on its own, and a border that erodes leaves a pixel-sized crack where
+another surface should meet it. A repair stage first welds border vertices
+that touch within one quantisation step and splits border edges at the
+vertices that lie on them, so the simplifier sees one shared edge. The
+simplifier also runs with meshoptimizer's light regularizing option. Both
+raise the triangles a frame submits slightly and cut, but do not remove,
+the pixels a frame leaves empty between drawn neighbours.
 
 ## Meshlets
 

@@ -20,8 +20,9 @@ try:
     from r3d.light import merge_matching_colours
     from r3d import lit_mesh, rebake
     from r3d.lit_mesh import MESHLET_TRIANGLES, bake_lit_mesh, read_lit_mesh, validate, weld_quantised, write_lit_mesh
-    from r3d.meshopt import build_meshlets
+    from r3d.meshopt import build_meshlets, simplify_with_update
     from r3d.octree import build_octree, flatten_octree
+    from r3d.repair import repair
     from r3d.simplify import _label_after
     from r3d.tessellate import split_marked_edges
 except ImportError:
@@ -85,6 +86,74 @@ class MergeTests(unittest.TestCase):
         kept = np.array([0, 1, 3, 4])
         tris_out = np.array([[0, 1, 2], [2, 3, 0], [0, 2, 1], [2, 0, 3]])
         self.assertEqual(_label_after(tris_in, labels_in, kept, tris_out).tolist(), [7, 9, 7, 9])
+
+
+def open_edges(p, tris):
+    """The edges a single triangle uses, as pairs of vertex positions."""
+    key = np.round(p / 1e-6).astype(np.int64)
+    _, ids = np.unique(key, axis=0, return_inverse=True)
+    ids = ids.reshape(-1)[tris]
+    edges = np.sort(np.concatenate([ids[:, [0, 1]], ids[:, [1, 2]], ids[:, [2, 0]]]), axis=1)
+    unique, count = np.unique(edges, axis=0, return_counts=True)
+    first = np.zeros(ids.max() + 1, dtype=np.int64)
+    first[ids.reshape(-1)] = tris.reshape(-1)
+    return [(tuple(p[first[a]]), tuple(p[first[b]])) for a, b in unique[count == 1]]
+
+
+def on_seam(edge):
+    return all(abs(v[0]) < 1e-6 for v in edge)
+
+
+def two_pieces(gap=0.0):
+    """A coarse piece left of the line x = 0 and a finer one right of it, `gap`
+    apart: the finer piece has a vertex at every unit of y along the line,
+    the coarse piece only at its ends, so those vertices sit on the coarse
+    piece's edge."""
+    p = [(-4, 0), (0, 0), (0, 4), (-4, 4)] + [(gap, y) for y in range(5)] + [(4 + gap, 0), (4 + gap, 4)]
+    far0, far4 = 9, 10
+    tris = [(0, 1, 2), (0, 2, 3)] + [(4 + k, far0, 5 + k) for k in range(4)] + [(8, far0, far4)]
+    return np.array([(x, y, 0.0) for x, y in p]), np.array(tris)
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class RepairTests(unittest.TestCase):
+    def repaired(self, p, tris, tolerance=0.01):
+        rgb = np.full((len(p), 3), 100.0)
+        return repair(p, rgb, tris, np.arange(len(tris)) % 2, tolerance)
+
+    def test_touching_pieces_share_their_seam_through_simplification(self):
+        p, tris = two_pieces()
+        self.assertTrue(any(on_seam(e) for e in open_edges(p, tris)), "the fixture has no open seam")
+        rp, rgb, rt, _ = self.repaired(p, tris)
+        self.assertFalse(any(on_seam(e) for e in open_edges(rp, rt)), "the seam is still open")
+        sp, _, st, _ = simplify_with_update(rp, rgb, rt, 4)
+        self.assertLess(len(st), len(rt))
+        self.assertFalse(any(on_seam(e) for e in open_edges(sp, st)), "simplification opened the seam")
+
+    def test_repair_keeps_the_area_the_facing_and_every_original_vertex(self):
+        p, tris = two_pieces()
+        rgb = np.array([(10.0 * i, 0.0, 0.0) for i in range(len(p))])
+        rp, rc, rt, _ = repair(p, rgb, tris, np.zeros(len(tris), dtype=int), 0.01)
+        self.assertAlmostEqual(triangle_areas(p, tris).sum(), triangle_areas(rp, rt).sum())
+        self.assertTrue(np.all(z_normals(rp, rt) > 0), "a piece was turned over")
+        self.assertEqual(len(rp), len(rc))
+        self.assertTrue(np.array_equal(rc[: len(p)], rgb), "an original vertex changed colour")
+        self.assertTrue(np.array_equal(rp[: len(p)], p), "an original vertex moved")
+
+    def test_a_gap_wider_than_the_tolerance_is_not_closed(self):
+        p, tris = two_pieces(gap=0.5)
+        rp, _, rt, _ = self.repaired(p, tris, tolerance=0.1)
+        self.assertTrue(np.array_equal(rp, p))
+        self.assertTrue(np.array_equal(rt, tris))
+        self.assertGreater(len(open_edges(rp, rt)), 0)
+
+    def test_a_connected_mesh_is_returned_as_it_came(self):
+        p, tris = grid(4)
+        rp, rgb, rt, labels = self.repaired(p, tris)
+        self.assertTrue(np.array_equal(rp, p))
+        self.assertTrue(np.array_equal(rt, tris))
+        self.assertEqual(len(rgb), len(p))
+        self.assertEqual(len(labels), len(tris))
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

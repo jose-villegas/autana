@@ -8,6 +8,7 @@ import numpy as np
 
 from . import log
 from .meshopt import simplify_with_update
+from .repair import repair
 from .tessellate import split_marked_edges
 
 
@@ -51,10 +52,13 @@ def _label_after(tris_in, labels_in, kept, tris_out):
     return np.where(same01 | (corner[:, 0] == corner[:, 2]), corner[:, 0], corner[:, 1])
 
 
-def simplify(pos, rgb, tris, labels, triangles, reserved=(), colour_weight=1.0):
+def simplify(pos, rgb, tris, labels, triangles, reserved=(), colour_weight=1.0, join_tolerance=None):
     """`reserved` is a list of (label set, share of `triangles`); what is
-    left of the budget goes to every other label. Returns pos, rgb (0..255
-    floats), tris and a label per triangle."""
+    left of the budget goes to every other label. `join_tolerance` first
+    joins pieces that touch within that distance (see repair.py). Returns
+    pos, rgb (0..255 floats), tris and a label per triangle."""
+    if join_tolerance is not None:
+        pos, rgb, tris, labels = repair(pos, rgb, tris, labels, join_tolerance)
     labels = np.asarray(labels)
     parts, taken = [], np.zeros(len(tris), dtype=bool)
     for group, share in reserved:
