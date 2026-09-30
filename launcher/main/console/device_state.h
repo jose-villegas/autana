@@ -27,15 +27,15 @@ typedef struct {
     imu_sample_t imu; /* only meaningful if imu_ready && imu_read_ok */
 } device_state_t;
 
-/* Reads everything above fresh - see device_state.c. Touches hardware, so
- * this is not something to call every frame - fine for an occasional,
+/* Reads everything above fresh; see device_state.c. Touches hardware, so
+ * this is not something to call every frame; fine for an occasional,
  * deliberately-triggered snapshot like console_screenshot_dump()'s. */
 void device_state_read(device_state_t* out);
 
 /* Large enough for every field at its worst-case width (a full int64_t
  * uptime, both heap counters at UINT32_MAX, the IMU's six int16_t axes all
  * at their most negative, touch/button booleans and coordinates) with
- * comfortable headroom - see device_state_format_json() below for the
+ * comfortable headroom; see device_state_format_json() below for the
  * shape being budgeted against. */
 #define DEVICE_STATE_JSON_MAX 512
 
@@ -45,7 +45,7 @@ void device_state_read(device_state_t* out);
  * budgeted shape does not fit.
  *
  * `input` is passed in, not read here: this function has no notion of "the
- * current frame" on its own - see console_screenshot_dump()'s own comment
+ * current frame" on its own; see console_screenshot_dump()'s own comment
  * (console/console_screenshot.h) for why its caller passes the exact
  * input_t the frame being captured was drawn with. */
 static inline void
@@ -57,7 +57,7 @@ device_state_format_json(const device_state_t* state, const input_t* input, char
         snprintf(imu_json, sizeof imu_json, "{\"ready\":true,\"read_failed\":true}");
     } else {
         /* Raw counts, same units imu.h itself leaves them in (4096/g,
-         * 64/dps) - IMU_COUNTS_PER_G/IMU_COUNTS_PER_DPS in imu.h are the
+         * 64/dps); IMU_COUNTS_PER_G/IMU_COUNTS_PER_DPS in imu.h are the
          * conversion for whoever reading the dump wants physical units. */
         snprintf(imu_json, sizeof imu_json,
                  "{\"ready\":true,\"ax\":%d,\"ay\":%d,\"az\":%d,"

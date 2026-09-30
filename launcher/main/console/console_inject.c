@@ -1,12 +1,12 @@
 /*
- * console_inject - TOUCH, IMU, TAP, PRESS, DRAG and BUTTON: a host script
+ * console_inject (TOUCH, IMU, TAP, PRESS, DRAG and BUTTON): a host script
  * standing in for the touch controller, the IMU and the board buttons on a
  * development build.
  *
  * None sets a flag for the frame loop the way SCREENSHOT/RUNSUITE do. A
  * touch or IMU sample is a LEVEL the polling task reads at its own rate
- * until something releases it - the contract touch_inject()/imu_inject()
- * are built for - a gesture is that level played out against the poller's
+ * until something releases it (the contract touch_inject()/imu_inject()
+ * are built for); a gesture is that level played out against the poller's
  * clock until its duration runs out, and a button edge is consumed by the
  * next read. Whatever is injected outranks the hardware while it lasts.
  */

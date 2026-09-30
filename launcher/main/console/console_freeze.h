@@ -1,5 +1,5 @@
 /*
- * console_freeze - FREEZE, RESUME and STEP: holds the frame loop on the
+ * console_freeze (FREEZE, RESUME and STEP): holds the frame loop on the
  * frame the panel already shows, and lets it past one frame at a time.
  *
  * For reading what a single frame actually drew and sent, which a device
@@ -10,9 +10,9 @@
  * borders mark one frame's sends and are gone by the next.
  *
  * The verbs only latch; console_freeze_frame_allowed() is the frame
- * loop's side and the only thing that acts on them - see console.c's own
+ * loop's side and the only thing that acts on them; see console.c's own
  * top comment for why nothing here may draw on the console task.
- * Development builds only - see console.h.
+ * Development builds only; see console.h.
  *
  * An app with update() (app.h) presents the frame it drew on the pass
  * that follows, so a held panel shows one frame behind what gfx last

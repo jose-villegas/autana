@@ -1,6 +1,6 @@
 /*
- * console_buildid - BUILDID, the console's way to ask what firmware is
- * running without waiting on a screenshot. Development builds only - see
+ * console_buildid: BUILDID, the console's way to ask what firmware is
+ * running without waiting on a screenshot. Development builds only; see
  * console.h.
  */
 #include "console/console_verbs.h"
