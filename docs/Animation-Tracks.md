@@ -13,8 +13,8 @@ or any other exporter plays back as it was made.
 ```mermaid
 flowchart LR
     Author["Blender, or any glTF exporter<br/><i>.glb with an animation</i>"] --> Bake["tools/anim/bake_tracks.py"]
-    Bake --> C["*_tracks_generated.c<br/><i>one anim_track_t per channel</i>"]
-    C --> Sample["anim_track_sample()<br/><i>track, t_ms, wrap</i>"]
+    Bake --> C["*_tracks_generated.c<br/><i>a clip of anim_track_t</i>"]
+    C --> Sample["anim_clip_seconds(), anim_track_sample()<br/><i>clip time, then each track</i>"]
     Sample --> Caller["the caller's own object<br/><i>eye, colour, fov, ...</i>"]
 ```
 
@@ -33,22 +33,32 @@ second, exactly as glTF stores them. A track has one interpolation.
 
 A glTF node is animated by up to three tracks, named `node/translation`,
 `node/rotation` and `node/scale`. Anything else is reached by
-`KHR_animation_pointer`, which names a property by path, and a track baked
-from it is named by that path, for example `/cameras/0/perspective/yfov`. The
-runtime treats it like any other track: a scalar of width 1.
+`KHR_animation_pointer`, which names a property by path; a track baked from it
+is named by that path with the object's index replaced by its glTF name, for
+example `lens/perspective/yfov` for `/cameras/0/perspective/yfov`. Objects are
+bound by name, so a re-export that reorders nodes keeps its symbols. A pointer
+to a rotation is a quaternion track like a node's. A channel that never
+changes is baked as one key.
+
+A **clip** is the tracks of one animation, on one timeline as in glTF: a
+track's key times are clip seconds, so tracks that start or end at different
+times stay in step, and the clip's duration is the last key of any of them.
 
 ## Sampling
 
 ```c
 float out[ANIM_WIDTH_MAX];
-anim_track_sample(&track, t_ms, ANIM_LOOP, out);
+const float seconds = anim_clip_seconds(&prefix_clip, t_ms, ANIM_LOOP);
+anim_track_sample(&prefix_node_translation, seconds, out);
 ```
 
-`t_ms` counts from the track's first key. `ANIM_CLAMP` holds the first and
-last values outside the keys; `ANIM_LOOP` wraps at the last key, so a loop
-authors its first key again as its last. `anim_quat_rotate()` turns a vector
-by a sampled rotation, which is how a camera track gives a look direction.
-`anim_track_duration()` is the loop's length.
+`anim_clip_seconds()` wraps `t_ms` at the clip's duration with an integer
+remainder, so a long run keeps its millisecond resolution, and converts to
+seconds once. `ANIM_CLAMP` holds it at the duration instead; a loop authors
+its first key again as its last. `anim_track_sample()` holds a track's first
+value before its first key and its last after its last, as glTF defines.
+`anim_quat_rotate()` turns a vector by a sampled rotation, which is how a
+camera track gives a look direction.
 
 ## Authoring
 
@@ -64,8 +74,9 @@ by a sampled rotation, which is how a camera track gives a look direction.
    ```
 
    That writes `DIR/PREFIX_tracks_generated.{c,h}`: a `const anim_track_t
-   PREFIX_<node>_<path>` per channel and the table `PREFIX_tracks[]` of every
-   track under its name. The command is in the file's banner; the output is
+   PREFIX_<node>_<path>` per channel, the clip `PREFIX_clip`, and
+   `PREFIX_track_names[]`, each track's name in the clip's order. Nothing in
+   the firmware refers to the names, so the linker drops them. The command is in the file's banner; the output is
    checked in and never edited.
 4. Sample what the scene needs, and convert at its own boundary.
 
@@ -79,7 +90,7 @@ sample the track where the property is read:
 
 ```c
 float fov[ANIM_WIDTH_MAX];
-anim_track_sample(&prefix_cameras_0_perspective_yfov, t_ms, ANIM_LOOP, fov);
+anim_track_sample(&prefix_lens_perspective_yfov, seconds, fov);
 ```
 
 Mapping the value onto the object, including any unit or fixed-point
@@ -97,12 +108,13 @@ reads, so the poses are always the animation's own.
 
 ## How it is tested
 
-- `suite_anim_track.c` holds each interpolation, clamp and loop, the
-  quaternion path and the cubic layout to hand-built tracks.
+- `suite_anim_track.c` holds each interpolation, clamp and loop, tracks on one
+  clip timeline, a long run's resolution, the quaternion path and the cubic
+  layout to hand-built tracks.
 - `tools/tests/test_anim_bake.py` builds a glTF of its own with every
   interpolation, a quaternion, a pointer-targeted scalar and a non-zero first
   key, bakes it, samples it in C, and holds every value to the Python sampler
-  in `launcher/tools/r3d/gltf_skin.py`, looping and clamped.
+  in `launcher/tools/gltf/gltf_read.py`, looping and clamped.
 
 ## Rules
 

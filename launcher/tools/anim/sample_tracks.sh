@@ -4,7 +4,7 @@
 # holds every N milliseconds, or a poses file for a camera node.
 #
 # Usage:
-#   launcher/tools/anim/sample_tracks.sh --tracks SOURCE.c:NAME [--every MS] [--until MS] [--clamp]
+#   launcher/tools/anim/sample_tracks.sh --tracks SOURCE.c:NAME [--from MS] [--every MS] [--until MS] [--clamp]
 #   launcher/tools/anim/sample_tracks.sh --tracks SOURCE.c:NAME [--every MS] --poses NODE W H TAN NEAR
 #
 #   --tracks SOURCE.c:NAME  the C file bake_tracks.py wrote and the --name it was given
@@ -47,7 +47,7 @@ mkdir -p "$BUILD_DIR"
 OUT_BIN="$BUILD_DIR/sample_tracks"
 "$CC_BIN" -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2 \
     -I "$MAIN_DIR" -I "$(dirname -- "$tracks_source")" \
-    -DANIM_TRACKS="${tracks_name}_tracks" -DANIM_TRACK_COUNT="${tracks_name}_track_count" \
+    -DANIM_CLIP="${tracks_name}_clip" -DANIM_NAMES="${tracks_name}_track_names" \
     "$SCRIPT_DIR/sample_tracks_main.c" "$tracks_source" "$MAIN_DIR/anim/anim_track.c" \
     -lm -o "$OUT_BIN"
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"
