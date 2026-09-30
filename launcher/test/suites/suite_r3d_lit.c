@@ -1213,6 +1213,7 @@ is_grey(uint16_t px) {
 }
 
 #define LEVEL_MAX 31
+#define WHITE     0xFFFF
 
 /* Every pixel of the tile whose first pixel is (x0, y0), clipped to the frame. */
 static void
@@ -1338,7 +1339,7 @@ test_a_frame_of_one_depth_is_one_grey_and_empty_is_no_grey(void) {
     *depth_at(f, 5, 2) = R3D_DEPTH_EMPTY;
     r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH);
     const uint16_t grey = color_at(f, 0, 0);
-    TEST_ASSERT_TRUE(is_grey(grey));
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(WHITE, grey, "a frame of one depth is not the nearest end of the ramp");
     for (int i = 0; i < 16 * 4; i++) {
         TEST_ASSERT_EQUAL_HEX16(i == (2 * 16) + 5 ? SKY : grey, f->color[i]);
     }
@@ -1379,7 +1380,8 @@ test_the_range_ignores_empty_pixels_and_survives_none_or_one_drawn(void) {
     f = shown_frame(8, 8);
     *depth_at(f, 3, 4) = 4242;
     r3d_lit_frame_show(f, R3D_LIT_VIEW_DEPTH);
-    TEST_ASSERT_TRUE(is_grey(color_at(f, 3, 4)));
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(WHITE, color_at(f, 3, 4),
+                                    "a single drawn pixel is not the nearest end of the ramp");
     TEST_ASSERT_EQUAL_HEX16(SKY, color_at(f, 4, 4));
 }
 

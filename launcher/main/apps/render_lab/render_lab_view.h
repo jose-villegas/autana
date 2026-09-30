@@ -9,17 +9,9 @@
 
 #include "render/r3d_lit_frame.h"
 
-/* Whether the view modes are compiled in: development builds, and the host
- * render, which links the same scenes but cannot compile the panel's
- * development-only code. The definitions below exist only then; a release
- * build names neither. */
-#ifndef RENDER_LAB_VIEWS
-#define RENDER_LAB_VIEWS CONFIG_LAUNCHER_DEVELOPMENT
-#endif
+/* The tunable render_lab.view: as shaded, or as the depth the frame left
+ * (r3d_lit_frame_show()). Constant R3D_LIT_VIEW_SHADED when tunables are. */
+r3d_lit_view_mode_t render_lab_view(void);
 
-/* As shaded, or as the depth the frame left (r3d_lit_frame_show()). Read
- * every frame by any scene whose render_lab_scene_t sets shows_view_modes. */
-extern r3d_lit_view_mode_t render_lab_view_mode;
-
-/* Whether the running scene honours it. */
+/* Whether the running scene honours it (render_lab_scene_t). */
 bool render_lab_scene_shows_views(void);

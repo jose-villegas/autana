@@ -59,6 +59,12 @@ if(CONFIG_LAUNCHER_QEMU)
     list(APPEND app_srcs "gfx/gfx_null_panel.c")
 endif()
 
+# The frame's view modes: a development tool, with nothing calling them in a
+# release build.
+if(CONFIG_LAUNCHER_DEVELOPMENT)
+    list(APPEND app_srcs "render/r3d_lit_frame_show.c")
+endif()
+
 # The console listener: a release image has nobody watching the serial
 # console to type a verb into (see console/console.h), so a release build
 # compiles none of console/*.c - no reader task, no registry, no verbs.
@@ -66,7 +72,6 @@ endif()
 # each actually answers on.
 if(CONFIG_LAUNCHER_DEVELOPMENT)
     list(APPEND app_srcs
-        "render/r3d_lit_frame_show.c"
         "console/console_verbs.c"
         "console/console.c"
         "console/console_buildid.c"

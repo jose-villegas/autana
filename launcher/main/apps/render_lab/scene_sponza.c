@@ -30,6 +30,7 @@
 #include "sponza_flythrough.h"
 #include "sponza_lite_mesh_generated.h"
 #include "sponza_mesh_generated.h"
+#include "util/tune.h"
 
 #define SKY_RGB 0x9CC0E6
 
@@ -92,8 +93,8 @@ render(uint32_t dt_ms) {
     r3d_lit_view_t view;
     sponza_view_at(&view, elapsed_ms, frame.mesh->position_scale, display_shell_quarter());
     stats = r3d_lit_frame_render(&frame, &view);
-#if RENDER_LAB_VIEWS
-    r3d_lit_frame_show(&frame, render_lab_view_mode);
+#if TUNE_ENABLED
+    r3d_lit_frame_show(&frame, render_lab_view());
 #endif
     rendered = true;
 }

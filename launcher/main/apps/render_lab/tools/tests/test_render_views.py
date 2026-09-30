@@ -128,6 +128,15 @@ class RenderViews(unittest.TestCase):
         self.assertIn("no depth to show", run.stderr)
         self.assertFalse(target.exists() and target.stat().st_size > 0)
 
+    def test_a_view_option_with_no_value_is_refused_and_writes_nothing(self):
+        for option in ("--view", "--scene"):
+            with self.subTest(option=option):
+                args = ["--scene", "sponza", "--view"] if option == "--view" else ["--view", "depth", "--scene"]
+                run, target = self.render(*args)
+                self.assertNotEqual(0, run.returncode)
+                self.assertIn("needs a value", run.stderr)
+                self.assertFalse(target.exists() and target.stat().st_size > 0)
+
     def test_an_unknown_view_is_refused(self):
         run, _ = self.render("--scene", "sponza", "--view", "octree")
         self.assertNotEqual(0, run.returncode)

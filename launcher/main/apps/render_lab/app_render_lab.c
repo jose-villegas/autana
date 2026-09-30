@@ -24,6 +24,7 @@
 #include "ui/render_lab_hud_screen.h"
 #include "ui/render_lab_menu_screen.h"
 #include "ui/ui.h"
+#include "util/tune.h"
 
 extern const render_lab_scene_t scene_cube;
 extern const render_lab_scene_t scene_wire_plane;
@@ -81,14 +82,18 @@ bool render_lab_band_mode = true;
  * which a pin cannot rely on across compilers. Read every frame. */
 bool render_lab_show_hud = true;
 
-#if RENDER_LAB_VIEWS
-r3d_lit_view_mode_t render_lab_view_mode = R3D_LIT_VIEW_SHADED;
+TUNE_OWNER(render_lab);
+TUNE(render_lab, view, R3D_LIT_VIEW_SHADED, R3D_LIT_VIEW_SHADED, R3D_LIT_VIEW_DEPTH_TILES);
+
+r3d_lit_view_mode_t
+render_lab_view(void) {
+    return (r3d_lit_view_mode_t)view;
+}
 
 bool
 render_lab_scene_shows_views(void) {
     return current_scene()->shows_view_modes;
 }
-#endif
 
 /* -1 (default) leaves the fps box at its corner inset. Any other value pins
  * the box's own logical x there instead - a test-only hook

@@ -21,6 +21,7 @@
 #include "render_host.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
+#include "util/tune.h"
 
 /* The band ring keeps no retained frame for render_host.c to read back, so
  * setup() asks for the full-framebuffer layout. */
@@ -30,53 +31,77 @@ extern const char* render_lab_start_scene_key;
 
 static int shell_quarter;
 
-/* The value after `name`, or NULL when it is absent. */
-static const char*
-option_value(int argc, char** argv, const char* name) {
-    for (int i = 0; i + 1 < argc; i++) {
-        if (strcmp(argv[i], name) == 0) {
-            return argv[i + 1];
+/* The value after `name` in `out`, NULL when the option is absent; false,
+ * with a message, when it is the last argument and has none. */
+static bool
+option_value(int argc, char** argv, const char* name, const char** out) {
+    *out = NULL;
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], name) != 0) {
+            continue;
         }
+        if (i + 1 >= argc) {
+            (void)fprintf(stderr, "render_lab_render_host: %s needs a value\n", name);
+            return false;
+        }
+        *out = argv[i + 1];
     }
-    return NULL;
+    return true;
 }
 
+static bool tune_set;
+
+static void
+note_reply(const char* line) {
+    tune_set = strncmp(line, "TUNE_OK", 7) == 0;
+    if (!tune_set) {
+        (void)fprintf(stderr, "render_lab_render_host: %s\n", line);
+    }
+}
+
+/* Sets the tunable render_lab.view, the way the console would. */
 static bool
 view_from_name(const char* name) {
-    static const struct {
-        const char* name;
-        r3d_lit_view_mode_t mode;
-    } views[] = {
-        {"shaded", R3D_LIT_VIEW_SHADED},
-        {"depth", R3D_LIT_VIEW_DEPTH},
-        {"tiles", R3D_LIT_VIEW_DEPTH_TILES},
-    };
-
-    for (size_t i = 0; i < sizeof views / sizeof views[0]; i++) {
-        if (strcmp(name, views[i].name) == 0) {
-            render_lab_view_mode = views[i].mode;
-            return true;
+    static const char* const views[] = {"shaded", "depth", "tiles"};
+    for (int i = 0; i < (int)(sizeof views / sizeof views[0]); i++) {
+        if (strcmp(name, views[i]) == 0) {
+            char line[TUNE_NAME_MAX + 16];
+            if (snprintf(line, sizeof line, "SET render_lab.view %d", i) < 0) {
+                return false;
+            }
+            tune_set = false;
+            (void)tune_handle_line(line, note_reply);
+            return tune_set;
         }
     }
     (void)fprintf(stderr, "render_lab_render_host: --view is shaded, depth or tiles, not %s\n", name);
     return false;
 }
 
-/* Which names are valid is app_render_lab.c's own knowledge (each scene's
- * .key, render_lab_scene.h) - this only hands the string through. */
-static bool
-options(int argc, char** argv) {
+static void
+apply_flags(int argc, char** argv) {
     for (int i = 0; i < argc; i++) {
         if (strcmp(argv[i], "--no-hud") == 0) {
             render_lab_show_hud = false;
         }
     }
-    render_lab_start_scene_key = option_value(argc, argv, "--scene");
-    if (render_lab_start_scene_key == NULL) {
-        fprintf(stderr, "render_lab_render_host needs --scene <key>\n");
+}
+
+/* Which names are valid is app_render_lab.c's own knowledge (each scene's
+ * .key, render_lab_scene.h) - this only hands the string through. */
+static bool
+options(int argc, char** argv) {
+    const char* scene;
+    const char* view;
+    if (!option_value(argc, argv, "--scene", &scene) || !option_value(argc, argv, "--view", &view)) {
         return false;
     }
-    const char* view = option_value(argc, argv, "--view");
+    if (scene == NULL) {
+        (void)fprintf(stderr, "render_lab_render_host needs --scene <key>\n");
+        return false;
+    }
+    apply_flags(argc, argv);
+    render_lab_start_scene_key = scene;
     return view == NULL || view_from_name(view);
 }
 
@@ -97,7 +122,7 @@ setup(int quarter) {
     ui_init();
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
     registered->enter();
-    if (render_lab_view_mode != R3D_LIT_VIEW_SHADED && !render_lab_scene_shows_views()) {
+    if (render_lab_view() != R3D_LIT_VIEW_SHADED && !render_lab_scene_shows_views()) {
         (void)fprintf(stderr, "--view: the scene %s has no depth to show\n", render_lab_start_scene_key);
         return false;
     }

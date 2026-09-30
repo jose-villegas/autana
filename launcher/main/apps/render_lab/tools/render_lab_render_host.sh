@@ -54,7 +54,7 @@ $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
         \( -type f -name '*.c' ! -name 'suite_*.c' -print \) | LC_ALL=C sort)
 "
 scene_includes="components/small3dlib/include"
-scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0 -DRENDER_LAB_VIEWS=1"
+scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
 
 # The lit-mesh scene's views (--view shaded|depth|tiles) are r3d_lit_frame_show()
 # over the same frame, so each is unpinned for the reason the shaded one is: its

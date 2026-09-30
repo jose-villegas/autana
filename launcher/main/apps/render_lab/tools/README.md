@@ -35,7 +35,9 @@ the panel's orientation and the size the script declares. The picture is the
 renderer's resolution, half the panel's each way, doubled like the shaded
 one. They are `|nopin`, like the shaded Sponza renders: the camera path is
 float, so which pixels a triangle reaches can differ by compiler.
-`--view` on a scene with no lit mesh, or an unknown name, fails the run.
+`--view` sets the tunable `render_lab.view`, so on a development build
+`autana tune render_lab.view 2` switches the same views live. `--view` on a
+scene with no lit mesh, an unknown name or no value fails the run.
 `tests/test_render_views.py` checks the views against the shaded render.
 
 A pose of the flythrough is `--frames` times `--dt`:

@@ -92,8 +92,13 @@ r3d_lit_frame_show(const r3d_lit_frame_t* frame, r3d_lit_view_mode_t mode) {
     if (mode == R3D_LIT_VIEW_SHADED) {
         return;
     }
-    const depth_range_t range = drawn_range(frame->depth, (size_t)frame->width * (size_t)frame->height);
-    if (mode == R3D_LIT_VIEW_DEPTH) {
+    const size_t count = (size_t)frame->width * (size_t)frame->height;
+    const depth_range_t range = drawn_range(frame->depth, count);
+    if (!range.any) {
+        for (size_t i = 0; i < count; i++) {
+            frame->color[i] = frame->clear;
+        }
+    } else if (mode == R3D_LIT_VIEW_DEPTH) {
         show_depth(frame, &range);
     } else {
         show_tiles(frame, &range);

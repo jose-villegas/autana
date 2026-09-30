@@ -56,7 +56,7 @@ r3d_lit_stats_t r3d_lit_frame_render(const r3d_lit_frame_t* frame, const r3d_lit
  * taking half the rows. */
 void r3d_lit_frame_double(const r3d_lit_frame_t* frame);
 
-/* Development builds only. Between render and double, overwrites
+/* Development builds only: a release caller fails at link. Between render and double, overwrites
  * `frame->color` from `frame->depth`: nearest white, farthest black over the
  * drawn range; a tile is empty if any pixel is. Empty pixels take
  * `frame->clear`, as doubling does, so pick one that is no grey. */
