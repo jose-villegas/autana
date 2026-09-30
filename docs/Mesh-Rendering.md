@@ -135,6 +135,12 @@ and a walked one sharing an edge still meet without a gap or an overlap.
 `suite_r3d_lit.c` holds every triangle to a reference implementation of the
 rule, and a mesh of mixed sizes to one fill per pixel.
 
+A triangle to be walked works out its depth plane first. When every pixel
+of its bounding box already holds depth at least as near as the plane's
+nearest corner, it could write nothing, and it is dropped before its colour
+planes and its rows. The test pays because clusters are drawn roughly
+nearest first, so a triangle behind is usually drawn after what hides it.
+
 ## Memory
 
 The layer allocates nothing, and nothing a frame needs lives at file
