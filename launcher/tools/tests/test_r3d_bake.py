@@ -1,6 +1,7 @@
 """Checks the r3d bake modules on small hand-built meshes: splits stay
 conforming, merges never turn a triangle over, the cluster tree keeps its
-order, and a written mesh passes its own validation. Skipped where the
+order, and a written mesh passes its own validation. The levels of detail
+have their own tests in test_r3d_lod.py. Skipped where the
 pinned environment (tools/r3d/requirements.txt) is not installed."""
 
 import pathlib
@@ -86,12 +87,13 @@ class MergeTests(unittest.TestCase):
 class ClusterTreeTests(unittest.TestCase):
     def setUp(self):
         p, tris = grid(8)
-        self.p, self.tris = p * 10.0, tris
-        self.double = (np.arange(len(tris)) % 5 == 0).astype(np.int64)
+        self.tris = tris
+        self.centres = (p[tris].mean(axis=1)) * 10.0
+        self.weights = np.arange(len(tris)) % 7 + 1
 
-    def test_children_sit_together_and_a_subtree_owns_a_run_of_clusters(self):
-        root = build_octree(self.p, self.tris, 12, 6)
-        clusters, nodes = flatten_octree(root, self.double)
+    def test_children_sit_together_and_a_subtree_owns_a_run_of_items(self):
+        root = build_octree(self.centres, self.weights, 12, 6)
+        order, nodes = flatten_octree(root)
 
         def span(i):
             node = nodes[i]
@@ -99,20 +101,26 @@ class ClusterTreeTests(unittest.TestCase):
                 return node["first"], node["first"] + node["count"]
             parts = [span(c) for c in range(node["first"], node["first"] + node["count"])]
             for (_, end), (start, _) in zip(parts, parts[1:]):
-                self.assertEqual(end, start, "a subtree's clusters are not one run")
+                self.assertEqual(end, start, "a subtree's items are not one run")
             for c in range(node["first"], node["first"] + node["count"]):
                 self.assertGreater(c, i, "a child comes before its parent")
             return parts[0][0], parts[-1][1]
 
-        self.assertEqual(span(0), (0, len(clusters)))
-        members = np.concatenate([m for _, m in clusters])
-        self.assertEqual(sorted(members.tolist()), list(range(len(self.tris))))
+        self.assertEqual(span(0), (0, len(order)))
+        self.assertEqual(sorted(order), list(range(len(self.tris))))
 
-    def test_a_leaf_with_both_kinds_splits_single_sided_first(self):
-        root = build_octree(self.p, self.tris, len(self.tris), 0)
-        clusters, _ = flatten_octree(root, self.double)
-        self.assertEqual([d for d, _ in clusters], [False, True])
-        self.assertTrue(np.all(self.double[clusters[1][1]] == 1))
+    def test_a_leaf_holds_one_item_or_no_more_than_its_weight(self):
+        root = build_octree(self.centres, self.weights, 12, 6)
+        order, nodes = flatten_octree(root)
+        for node in nodes:
+            if node["leaf"]:
+                held = order[node["first"] : node["first"] + node["count"]]
+                self.assertTrue(len(held) == 1 or self.weights[held].sum() <= 12)
+
+    def test_a_depth_of_zero_keeps_everything_in_one_leaf(self):
+        order, nodes = flatten_octree(build_octree(self.centres, self.weights, 1, 0))
+        self.assertEqual(len(nodes), 1)
+        self.assertEqual(nodes[0]["count"], len(order))
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -121,11 +129,10 @@ class LitMeshTests(unittest.TestCase):
         p, tris = grid(6)
         rgb = np.full((len(p), 3), 128)
         with tempfile.TemporaryDirectory() as out:
-            counts = write_lit_mesh(out, "demo", p * 50.0, rgb, tris, np.zeros(len(tris), dtype=np.int64),
-                                    ["test"], 16, 4)
+            mesh = write_lit_mesh(out, "demo", p * 50.0, rgb, tris, np.zeros(len(tris), dtype=np.int64), ["test"], 16, 4)
             header = (pathlib.Path(out) / "demo_mesh_generated.h").read_text()
         self.assertIn(f"#define DEMO_TRIANGLE_COUNT {len(tris)}", header)
-        self.assertEqual(counts[1], len(tris))
+        self.assertEqual(len(mesh.tris), len(tris))
 
     def test_validation_refuses_a_triangle_reaching_outside_its_cluster(self):
         pos = np.zeros((6, 3), dtype=np.int64)

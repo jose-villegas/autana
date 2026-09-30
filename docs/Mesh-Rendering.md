@@ -17,7 +17,7 @@ them. The layers are in [Firmware-Architecture.md](Firmware-Architecture.md).
 | `r3d_ray.h` | A float ray camera: the direction through each physical pixel, on the same viewport a rasterizer uses |
 | `r3d_path.h` | A closed Catmull-Rom camera loop at a steady speed |
 | `r3d_span.h` | One depth-tested, Gouraud-shaded triangle filled into a window of rows, its coverage exact on 1/16-pixel positions |
-| `r3d_lit_mesh.h` | The baked mesh format: per-vertex colour, spatial clusters, a node tree |
+| `r3d_lit_mesh.h` | The baked mesh format: per-vertex colour, meshlets, a node tree, coarser levels of detail |
 | `r3d_lit_pipeline.h` | The mesh's stages: view, cull, transform, draw |
 | `r3d_lit_frame.h` | One whole frame of those stages on both cores, optionally doubled to twice its size |
 
@@ -32,8 +32,61 @@ ticks, `position_scale` ticks per model unit.
 
 A mesh is const C data, written by a generator using the offline tools in
 [`launcher/tools/r3d/`](../launcher/tools/r3d/README.md). They load a model,
-simplify it, bake its light, cluster it by octree and check the result
-against `r3d_lit_mesh.h`'s invariants before writing a byte.
+simplify it, bake its light, cut it into meshlets and levels of detail, and
+check the result against `r3d_lit_mesh.h`'s invariants before writing a byte.
+
+## The baked hierarchy
+
+The clusters are **meshlets**: compact runs of at most 64 triangles from
+meshoptimizer's clusterizer, each owning the vertices its triangles use. They
+are the mesh's finest level and sit under the octree, which is built over the
+meshlets' centres and is all a renderer needs to draw the whole mesh.
+
+Beside them, `r3d_lit_mesh_t.lod` holds the coarser levels, made the way
+meshoptimizer's `clusterlod` example does:
+
+```mermaid
+flowchart LR
+    L0["level 0<br/><i>meshlets of the mesh</i>"] -- "group neighbours,<br/>lock the group's border,<br/>simplify, re-split" --> L1["level 1<br/><i>about half the triangles</i>"]
+    L1 --> L2["level 2"]
+    L2 --> Top["... until one meshlet"]
+```
+
+Groups of neighbouring meshlets are merged and simplified with the group's
+outer border pinned, so a group's border vertices are the same in every level
+that touches it, and with colour as a simplification attribute, so a baked
+shadow edge holds vertices. Vertices are never moved: a coarser cluster holds
+copies of finest vertices, with identical ticks and colour. Each group is a
+node of a DAG, and each cluster records:
+
+| Field | Meaning |
+|---|---|
+| `self` | the sphere and world error, in ticks, of the group that produced it; 0 at level 0 |
+| `parent` | the same for the group it was merged into; `R3D_LIT_LOD_TOP` at the top |
+| `cone_axis`, `cone_cutoff` | its normal cone, for skipping a cluster facing away |
+| `level` | 0 is the finest |
+
+A group's error is at least that of every cluster in it, and every cluster of
+a group shares one sphere and error, so the rule below gives each stretch of
+surface exactly one cluster, and neighbours picked at different levels meet
+along vertices they share.
+
+**The pick.** A cluster is drawn when its own error, projected at its sphere,
+is at most a tolerance in pixels and its parent's is above it. Projected
+error is `error * k / max(distance - radius, near)`, `k` being pixels per unit
+of size at unit depth. Tolerance 0 picks the finest level, and any per-cluster
+distance gives a crack-free mix of levels.
+
+A cluster is back-facing from `eye` when
+`dot(normalize(centre - eye), cone_axis / 127) >= cone_cutoff / 127 + radius / |centre - eye|`,
+centre and radius those of its box.
+
+**Today** the renderer ignores `lod` and draws the finest level. The host tool
+`r3d.lod_eval` walks the levels with this rule at each of a file's camera
+poses, counts the triangles a level-aware runtime would draw against the
+finest, renders both and diffs the pixels. Its numbers decide whether a
+runtime pick is worth building, and `r3d.rebake` rewrites a baked mesh in the
+current format without lighting it again.
 
 ## One frame
 
