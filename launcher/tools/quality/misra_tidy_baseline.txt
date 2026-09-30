@@ -55,7 +55,6 @@ cert-err33-c	main/apps/render_lab/tests/suite_command_list_budget.c	1
 cert-err33-c	main/apps/render_lab/tests/suite_cube_band_perf.c	2
 cert-err33-c	main/apps/render_lab/tests/suite_cube_perf.c	1
 cert-err33-c	main/apps/render_lab/tests/suite_rt_row_split.c	4
-cert-err33-c	main/apps/render_lab/tools/render_lab_render_host.c	2
 cert-err33-c	main/apps/render_lab/ui/render_lab_hud_screen.c	1
 cert-err33-c	main/apps/render_lab/ui/render_lab_menu_screen.c	3
 cert-err33-c	main/apps/sand/app_sand.c	3
