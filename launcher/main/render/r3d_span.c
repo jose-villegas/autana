@@ -221,9 +221,11 @@ fill_row(const r3d_span_target_t* target, const fill_t* f, const int32_t row[ATT
 static inline void
 step_row(const fill_t* f, int32_t row[ATTRIBUTES]) {
     if (!f->flat) {
-        const int attributes = f->face == NULL ? ATTRIBUTES : 1;
-        for (int k = 0; k < attributes; k++) {
-            row[k] += f->g->dy[k];
+        row[0] += f->g->dy[0];
+        if (f->face == NULL) {
+            for (int k = 1; k < ATTRIBUTES; k++) {
+                row[k] += f->g->dy[k];
+            }
         }
     }
 }
@@ -433,13 +435,13 @@ r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, r3d_span_box_t b
 static void
 set_up_planes(const fill_t* f, const r3d_span_vertex_t* const v[3], const plane_t* p, r3d_span_box_t box, int y_anchor,
               gradients_t* g, int32_t row[ATTRIBUTES]) {
-    const int attributes = f->face == NULL ? ATTRIBUTES : 1;
-    if (f->face == NULL) {
-        colour_gradients(p, v[0], v[1], v[2], g);
+    g->in_range = r3d_span_plane_in_range(row[0], g->dx[0], g->dy[0], value_max[0], box);
+    if (f->face != NULL) {
+        return;
     }
-    g->in_range = true;
-    for (int k = 0; k < attributes; k++) {
-        row[k] = k == 0 ? row[0] : first_row_value(g, k, box.y0, y_anchor);
+    colour_gradients(p, v[0], v[1], v[2], g);
+    for (int k = 1; k < ATTRIBUTES; k++) {
+        row[k] = first_row_value(g, k, box.y0, y_anchor);
         g->in_range = g->in_range && r3d_span_plane_in_range(row[k], g->dx[k], g->dy[k], value_max[k], box);
     }
 }
