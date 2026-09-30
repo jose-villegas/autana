@@ -45,8 +45,8 @@ else here.
      (curve still drawing when the fade starts, etc.) is reported back as a
      400 with the generator's own message.
   3. Compile tools/render/scenes/boot_anim_render_host.c + tools/render/render_host.c +
-     main/gfx/gfx.c + main/boot/boot_anim.c + the engine's anim and r3d_trs
-     sources, with the scratch directory
+     the sources tools/render/scenes/boot_anim_render_host.sh declares (run
+     with --build-only), with the scratch directory
      (holding the DRAFT boot_anim_timeline.h from step 2),
      components/small3dlib/include (the camera/space transform math
      boot_anim.h builds on) and components/microui/include (the rect type
@@ -127,6 +127,7 @@ TIMELINE_HEADER = os.path.join(MAIN_DIR, "boot", "boot_anim_timeline.h")
 MOTION_GLB = os.path.join(MAIN_DIR, "boot", "boot_anim_motion.glb")
 TRACKS_STEM = os.path.join(MAIN_DIR, "boot", "boot_anim_tracks_generated")
 BAKER = os.path.join(LAUNCHER_DIR, "tools", "anim", "bake_tracks.py")
+SCENE_SCRIPT = os.path.join(LAUNCHER_DIR, "tools", "render", "scenes", "boot_anim_render_host.sh").replace("\\", "/")
 
 # The photograph half of the same "keep the generated header in sync"
 # story, but with no live payload to compare it against - unlike the
@@ -437,9 +438,9 @@ class Renderer:
         # can be stale.
         shutil.rmtree(self.scratch, ignore_errors=True)
         os.makedirs(os.path.join(self.scratch, "boot"), exist_ok=True)
+        self.build_dir = os.path.join(self.scratch, "build").replace("\\", "/")
         self.binary = os.path.join(
-            self.scratch, "boot_anim_render_host.exe"
-            if os.name == "nt" else "boot_anim_render_host")
+            self.build_dir, "boot_anim_render.exe" if os.name == "nt" else "boot_anim_render")
         self.built_hash = None
         print("scratch dir:", self.scratch, file=sys.stderr)
         if os.name == "nt":
@@ -472,32 +473,18 @@ class Renderer:
         with open(scratch_header, "w", encoding="utf-8", newline="\n") as f:
             f.write(gen.stdout)
 
-        sources = [
-            os.path.join(LAUNCHER_DIR, "tools", "render", "scenes", "boot_anim_render_host.c"),
-            os.path.join(LAUNCHER_DIR, "tools", "render", "render_host.c"),
-            os.path.join(MAIN_DIR, "gfx", "gfx.c"),
-            os.path.join(MAIN_DIR, "boot", "boot_anim.c"),
-            os.path.join(MAIN_DIR, "anim", "anim_track.c"),
-            os.path.join(MAIN_DIR, "render", "r3d_trs.c"),
-            os.path.join(MAIN_DIR, "util", "tune.c"),
-            os.path.join(LAUNCHER_DIR, "tools", "render", "render_video.c"),
-            os.path.join(LAUNCHER_DIR, "tools", "render", "render_watch.c"),
-            TRACKS_STEM.replace(MAIN_DIR, self.scratch) + ".c",
-        ]
-        cmd = [
-            self.cc, "-std=c11", "-Wall", "-Wextra",
-            "-Wno-unused-parameter", "-Wno-unused-function",
-            "-Wno-unused-variable", "-O1",
-            "-I", self.scratch, "-I", MAIN_DIR, "-I", SMALL3DLIB_DIR,
-            "-I", MICROUI_DIR, "-I", os.path.join(LAUNCHER_DIR, "tools", "render"),
-            "-DCONFIG_LAUNCHER_DEVELOPMENT=0", "-I", os.path.join(LAUNCHER_DIR, "test"),
-            "-I", os.path.join(LAUNCHER_DIR, "test", "stubs"),
-            *sources, "-Wl,--wrap=malloc", "-Wl,--wrap=calloc", "-Wl,--wrap=realloc",
-            "-Wl,--wrap=free", "-lm", "-o", self.binary,
-        ]
-        cc_result = subprocess.run(cmd, capture_output=True, text=True)
-        if cc_result.returncode != 0:
-            raise RenderError(500, cc_result.stderr.strip() or
+        # The one owner of how this scene builds is its own script; the
+        # scratch directory shadows main/ with the draft timeline and tracks.
+        bash = find_bash()
+        if bash is None:
+            raise RenderError(500, "no bash.exe found - the scene build is a shell script "
+                              "(see docs/Testing-Guide.md)")
+        build = subprocess.run(
+            [bash, SCENE_SCRIPT, "-o", self.build_dir, "--build-only"],
+            capture_output=True, text=True,
+            env=dict(os.environ, RENDER_SCENE_DRAFT=self.scratch.replace("\\", "/")))
+        if build.returncode != 0:
+            raise RenderError(500, (build.stderr or build.stdout).strip() or
                               "compile failed with no message")
 
         self.built_hash = payload_hash

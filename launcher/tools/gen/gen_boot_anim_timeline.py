@@ -50,7 +50,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d import gltf_skin  # noqa: E402
+from gltf import gltf_read  # noqa: E402
 
 MOTION_ANIMATION = "boot_motion"
 MOTION_NODES = ("camera", "space")
@@ -128,35 +128,37 @@ def check_transform_scale_overflow(space_scale, camera_scale):
 
 
 def load_motion(path):
-    """{node: {"scale": [(x, y, z)...], "last_ms": n}} for the camera and
-    the space, from the glTF animation the firmware bakes."""
-    document, binary = gltf_skin.load_glb(path)
+    """{"scale": {node: [(x, y, z)...]}, "duration": seconds} for the camera
+    and the space, from the glTF animation the firmware bakes."""
+    document, binary = gltf_read.load_glb(path)
     animation = next((a for a in document.get("animations", [])
                       if a.get("name") == MOTION_ANIMATION), None)
     if animation is None:
         fail("%s has no animation named %r" % (path, MOTION_ANIMATION))
-    motion = {n: {"scale": [], "last": 0.0} for n in MOTION_NODES}
-    for channel in gltf_skin.read_animation(document, binary, animation):
+    channels = gltf_read.read_animation(document, binary, animation)
+    scale = {n: [] for n in MOTION_NODES}
+    animated = set()
+    for channel in channels:
         node = document["nodes"][channel["node"]].get("name") if channel["node"] is not None else None
-        if node not in motion:
+        if node not in scale:
             continue
-        motion[node]["last"] = max(motion[node]["last"], channel["times"][-1])
+        animated.add(node)
         if channel["path"] == "scale":
             values = channel["values"]
             if channel["interpolation"] == "CUBICSPLINE":
                 values = values[1::3]
-            motion[node]["scale"] += values
+            scale[node] += values
     for node in MOTION_NODES:
-        if not motion[node]["last"]:
+        if node not in animated:
             fail("%s: the %r node has no animated channel" % (path, node))
-    return motion
+    return {"scale": scale, "duration": gltf_read.animation_duration(channels)}
 
 
 def validate_motion(motion, timing):
-    scales = {n: max((abs(v) for row in motion[n]["scale"] for v in row), default=1.0)
+    scales = {n: max((abs(v) for row in motion["scale"][n] for v in row), default=1.0)
               for n in MOTION_NODES}
     check_transform_scale_overflow(scales["space"], scales["camera"])
-    last_ms = round(max(m["last"] for m in motion.values()) * 1000)
+    last_ms = round(motion["duration"] * 1000)
     if last_ms != timing["total_ms"]:
         warn("the last motion key is at %d, not total_ms (%d) - the camera "
              "and space will hold their last values for the remainder"

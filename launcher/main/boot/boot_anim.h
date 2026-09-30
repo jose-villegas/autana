@@ -87,24 +87,24 @@ typedef struct {
 } boot_anim_timeline_state_t;
 
 static inline S3L_Transform3D
-boot_anim_node_transform(const anim_track_t* move, const anim_track_t* turn, const anim_track_t* size,
-                         uint32_t now_ms) {
+boot_anim_node_transform(const anim_track_t* move, const anim_track_t* turn, const anim_track_t* size, float seconds) {
     float t[ANIM_WIDTH_MAX];
     float q[ANIM_WIDTH_MAX];
     float s[ANIM_WIDTH_MAX];
-    anim_track_sample(move, now_ms, ANIM_CLAMP, t);
-    anim_track_sample(turn, now_ms, ANIM_CLAMP, q);
-    anim_track_sample(size, now_ms, ANIM_CLAMP, s);
+    anim_track_sample(move, seconds, t);
+    anim_track_sample(turn, seconds, q);
+    anim_track_sample(size, seconds, s);
     return r3d_transform_from_trs(t, q, s);
 }
 
 static inline boot_anim_timeline_state_t
 boot_anim_timeline_sample(uint32_t now_ms) {
+    const float seconds = anim_clip_seconds(&boot_anim_clip, now_ms, ANIM_CLAMP);
     boot_anim_timeline_state_t st;
     st.camera = boot_anim_node_transform(&boot_anim_camera_translation, &boot_anim_camera_rotation,
-                                         &boot_anim_camera_scale, now_ms);
+                                         &boot_anim_camera_scale, seconds);
     st.space = boot_anim_node_transform(&boot_anim_space_translation, &boot_anim_space_rotation, &boot_anim_space_scale,
-                                        now_ms);
+                                        seconds);
     return st;
 }
 

@@ -10,13 +10,15 @@ bridge, so the animation can be authored in either.
   keyframes_to_glb()  a glTF with two nodes, "camera" and "space". Position
                       and scale are LINEAR, or CUBICSPLINE where a segment is
                       eased: an ease is a cubic, so the tangents reproduce it
-                      exactly. Rotation is a quaternion track; a segment
-                      whose Euler path is not a slerp gets a key every 20 ms
-                      along the path it had.
-  glb_to_keyframes()  the keyframes at every key time in the file. A cubic
-                      shape other than the three eases reads as linear.
+                      exactly. Rotation is a quaternion track, one key per
+                      keyframe and slerped between them, so a segment
+                      turning about several axes takes the shortest path
+                      rather than the Euler lerp it once had.
+  glb_to_keyframes()  one keyframe per key time in the file, so opening and
+                      saving a file rewrites no key. A cubic shape other than
+                      the three eases reads as linear.
 
-Standard library only; the reader and sampler are r3d/gltf_skin.py's.
+Standard library only; the reader and sampler are tools/gltf/gltf_read.py's.
 """
 
 import math
@@ -25,15 +27,11 @@ import sys
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
-sys.path.insert(0, str(TOOLS / "anim"))
 
-import gltf_write  # noqa: E402
-from r3d import gltf_skin  # noqa: E402
+from gltf import gltf_read, gltf_write  # noqa: E402
 
 ANIMATION = "boot_motion"
 NODES = ("camera", "space")
-DENSE_STEP_MS = 20
-SLERP_TOLERANCE_DEGREES = 0.1
 
 # The slope of an ease's cubic at its start and at its end, per unit of its
 # own duration: linear u, ease_out 1 - (1-u)^2, ease_in u^2.
@@ -118,46 +116,15 @@ def rotation_angle_degrees(a, b):
     return math.degrees(2 * math.acos(dot))
 
 
-def _euler_at(a, b, ease, u):
-    f = ease_value(ease, u)
-    return tuple(x + (y - x) * f for x, y in zip(a, b))
-
-
 def _rotation_keys(keyframes, node):
-    """(seconds, quaternion) keys: each keyframe's, and along any segment the
-    Euler lerp takes a path a slerp between its ends would not."""
+    """(seconds, quaternion) per keyframe, each in the hemisphere of the last
+    so a slerp between them takes the short way."""
     keys = []
-    previous = None
     for k in keyframes:
-        euler = tuple(k[node]["rot"])
-        q = euler_to_quat(*euler)
-        if previous is not None:
-            p_euler, p_q, p_ms = previous
-            ms = k["ms"]
-            # Take the hemisphere a slerp will.
-            if sum(a * b for a, b in zip(p_q, q)) < 0:
-                q = tuple(-c for c in q)
-            if euler != p_euler:
-                worst = 0.0
-                for i in range(1, 8):
-                    u = i / 8
-                    want = euler_to_quat(*_euler_at(p_euler, euler, k["ease"], u))
-                    got = gltf_skin.quat_slerp(p_q, q, u)
-                    worst = max(worst, rotation_angle_degrees(got, want))
-                if worst > SLERP_TOLERANCE_DEGREES:
-                    steps = max(2, math.ceil((ms - p_ms) / DENSE_STEP_MS))
-                    last = p_q
-                    for i in range(1, steps):
-                        u = i / steps
-                        mid = euler_to_quat(*_euler_at(p_euler, euler, k["ease"], u))
-                        if sum(a * b for a, b in zip(last, mid)) < 0:
-                            mid = tuple(-c for c in mid)
-                        keys.append(((p_ms + (ms - p_ms) * u) / 1000.0, mid))
-                        last = mid
-                    if sum(a * b for a, b in zip(last, q)) < 0:
-                        q = tuple(-c for c in q)
+        q = euler_to_quat(*k[node]["rot"])
+        if keys and sum(a * b for a, b in zip(keys[-1][1], q)) < 0:
+            q = tuple(-c for c in q)
         keys.append((k["ms"] / 1000.0, q))
-        previous = (euler, q, k["ms"])
     return keys
 
 
@@ -204,7 +171,7 @@ def keyframes_to_glb(keyframes):
 
 
 def _sample(channel, seconds):
-    return gltf_skin.sample_keys(channel["times"], channel["values"], seconds,
+    return gltf_read.sample_keys(channel["times"], channel["values"], seconds,
                                  channel["interpolation"], channel["path"] == "rotation")
 
 
@@ -238,10 +205,10 @@ def _segment_ease(channels, t0, t1):
 
 def glb_to_keyframes(data):
     """Keyframes, at every key time any channel has."""
-    document, binary = gltf_skin.parse_glb(data)
+    document, binary = gltf_read.parse_glb(data)
     animation = next(a for a in document["animations"] if a.get("name") == ANIMATION)
     by_node = {n: [] for n in NODES}
-    for channel in gltf_skin.read_animation(document, binary, animation):
+    for channel in gltf_read.read_animation(document, binary, animation):
         name = document["nodes"][channel["node"]].get("name")
         if name in by_node:
             by_node[name].append(channel)

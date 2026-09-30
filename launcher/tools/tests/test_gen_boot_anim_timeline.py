@@ -9,9 +9,9 @@ import tempfile
 import unittest
 
 LAUNCHER = pathlib.Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(LAUNCHER / "tools" / "anim"))
+sys.path.insert(0, str(LAUNCHER / "tools"))
 
-import gltf_write  # noqa: E402
+from gltf import gltf_write  # noqa: E402
 
 GENERATOR = LAUNCHER / "tools" / "gen" / "gen_boot_anim_timeline.py"
 BAKER = LAUNCHER / "tools" / "anim" / "bake_tracks.py"

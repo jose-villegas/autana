@@ -11,7 +11,8 @@ TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS / "boot_anim"))
 
 import boot_motion  # noqa: E402
-from r3d import gltf_skin  # noqa: E402
+sys.path.insert(0, str(TOOLS))
+from gltf import gltf_read  # noqa: E402
 
 
 def frame(ms, space_pos, space_rot, ease="linear", scale=1.0):
@@ -31,13 +32,13 @@ KEYFRAMES = [
 
 
 def tracks_of(glb):
-    document, binary = gltf_skin.parse_glb(glb)
-    channels = gltf_skin.read_animation(document, binary, document["animations"][0])
+    document, binary = gltf_read.parse_glb(glb)
+    channels = gltf_read.read_animation(document, binary, document["animations"][0])
     return {(document["nodes"][c["node"]]["name"], c["path"]): c for c in channels}
 
 
 def sample(channel, seconds):
-    return gltf_skin.sample_keys(channel["times"], channel["values"], seconds,
+    return gltf_read.sample_keys(channel["times"], channel["values"], seconds,
                                  channel["interpolation"], channel["path"] == "rotation")
 
 
@@ -60,19 +61,17 @@ class BootMotionTests(unittest.TestCase):
         self.assertEqual(tracks[("camera", "translation")]["interpolation"], "LINEAR")
         self.assertEqual(tracks[("space", "scale")]["interpolation"], "LINEAR")
 
-    def test_a_segment_turning_about_several_axes_follows_the_euler_path(self):
-        tracks = tracks_of(boot_motion.keyframes_to_glb(KEYFRAMES))
-        turn = tracks[("space", "rotation")]
-        self.assertGreater(len([t for t in turn["times"] if 2.0 < t < 2.4]), 5)
-        for u in (0.13, 0.5, 0.77):
-            euler = [a + (b - a) * u for a, b in zip((-135, 27, 90), (-180, -45, 0))]
-            want = boot_motion.euler_to_quat(*euler)
-            got = sample(turn, 1.5 + 0.0 + (2.4 - 2.0) * u + 0.5)
-            self.assertLess(boot_motion.rotation_angle_degrees(got, want), 0.5)
-
-    def test_a_segment_turning_about_one_axis_needs_no_extra_keys(self):
+    def test_a_segment_turning_about_several_axes_is_one_slerp(self):
         turn = tracks_of(boot_motion.keyframes_to_glb(KEYFRAMES))[("space", "rotation")]
-        self.assertEqual([t for t in turn["times"] if 0.7 < t < 1.5], [])
+        self.assertEqual(len(turn["times"]), len(KEYFRAMES))
+        self.assertEqual(turn["interpolation"], "LINEAR")
+
+    def test_opening_and_saving_rewrites_no_key(self):
+        back = boot_motion.glb_to_keyframes(boot_motion.keyframes_to_glb(KEYFRAMES))
+        self.assertEqual(len(back), len(KEYFRAMES))
+        self.assertEqual([k["ms"] for k in back], [k["ms"] for k in KEYFRAMES])
+        again = boot_motion.glb_to_keyframes(boot_motion.keyframes_to_glb(back))
+        self.assertEqual(again, back)
 
     def test_the_keyframes_come_back(self):
         back = boot_motion.glb_to_keyframes(boot_motion.keyframes_to_glb(KEYFRAMES))
