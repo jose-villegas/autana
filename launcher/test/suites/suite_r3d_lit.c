@@ -448,6 +448,22 @@ random_vertex(uint32_t* state, float cx, float cy, float radius, float z_lo, flo
                                b};
 }
 
+/* Anything from half a pixel to thirty across; mostly at depths within a
+ * few steps of each other, one in eight steeply sloped, one in eight at the
+ * far end of the depth range. */
+static void
+random_overlapping_triangle(uint32_t* state, r3d_span_vertex_t v[3]) {
+    const float radius = 0.5f + (float)(next_random(state) % 300u) / 10.0f;
+    const float cx = (float)(next_random(state) % (W + 16u)) - 8.0f;
+    const float cy = (float)(next_random(state) % (H + 16u)) - 8.0f;
+    const uint32_t kind = next_random(state) % 8u;
+    const float z_lo = kind == 0 ? 0.05f : (kind == 1 ? 1e-7f : 0.5f);
+    const float z_span = kind == 0 ? 0.9f : (kind == 1 ? 2e-5f : 0.002f);
+    for (int k = 0; k < 3; k++) {
+        v[k] = random_vertex(state, cx, cy, radius, z_lo, z_span);
+    }
+}
+
 /* Draws into both halves of the rows, as two windows. */
 static void
 draw_in_two_windows(gfx_color_t* to_color, uint16_t* to_depth, const r3d_span_vertex_t v[3]) {
@@ -458,8 +474,7 @@ draw_in_two_windows(gfx_color_t* to_color, uint16_t* to_depth, const r3d_span_ve
     r3d_span_triangle(&bottom, &v[0], &v[1], &v[2]);
 }
 
-/* Overlapping triangles of every size, at depths within a few steps of
- * each other and some steeply sloped: drawn in turn, each pixel holds what
+/* Overlapping triangles drawn in turn: each pixel holds what
  * the nearest triangle there would draw alone, so skipping a triangle whose
  * every pixel is already nearer never loses one it would have won. */
 static void
@@ -476,15 +491,8 @@ test_a_triangle_drawn_over_nearer_depth_writes_exactly_what_it_would_alone(void)
     TEST_ASSERT_NOT_NULL(want_color);
     TEST_ASSERT_NOT_NULL(want_depth);
     for (int i = 0; i < 600; i++) {
-        const float radius = 0.5f + (float)(next_random(&state) % 300u) / 10.0f;
-        const float cx = (float)(next_random(&state) % (W + 16u)) - 8.0f;
-        const float cy = (float)(next_random(&state) % (H + 16u)) - 8.0f;
-        const uint32_t kind = next_random(&state) % 8u;
-        const float z_lo = kind == 0 ? 0.05f : (kind == 1 ? 1e-7f : 0.5f);
-        const float z_span = kind == 0 ? 0.9f : (kind == 1 ? 2e-5f : 0.002f);
-        const r3d_span_vertex_t v[3] = {random_vertex(&state, cx, cy, radius, z_lo, z_span),
-                                        random_vertex(&state, cx, cy, radius, z_lo, z_span),
-                                        random_vertex(&state, cx, cy, radius, z_lo, z_span)};
+        r3d_span_vertex_t v[3];
+        random_overlapping_triangle(&state, v);
         memset(alone_color, 0, sizeof(*alone_color) * W * H);
         memset(alone_depth, 0, sizeof(*alone_depth) * W * H);
         draw_in_two_windows(alone_color, alone_depth, v);
