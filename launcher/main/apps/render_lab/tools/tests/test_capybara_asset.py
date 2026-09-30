@@ -19,6 +19,7 @@ TOOLS = pathlib.Path(__file__).resolve().parents[1]
 ASSET = TOOLS.parent / "assets" / "capybara.glb"
 GENERATOR = TOOLS / "gen_capybara.py"
 sys.path.insert(0, str(TOOLS.parents[3] / "tools"))
+from gltf import gltf_read  # noqa: E402
 from r3d import gltf_skin  # noqa: E402
 
 FPS = 30
@@ -42,7 +43,7 @@ class CapybaraAssetTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.data = ASSET.read_bytes()
-        cls.document, cls.binary = gltf_skin.parse_glb(cls.data)
+        cls.document, cls.binary = gltf_read.parse_glb(cls.data)
         cls.asset = gltf_skin.SkinnedAsset(cls.document, cls.binary)
         cls.rest_world = cls.asset.world_matrices(cls.asset.sample(None, 0.0))
 
@@ -52,8 +53,8 @@ class CapybaraAssetTest(unittest.TestCase):
             self.assertLessEqual(view["byteOffset"] + view["byteLength"], len(self.binary))
         for accessor in self.document["accessors"]:
             view = self.document["bufferViews"][accessor["bufferView"]]
-            _, size = gltf_skin.COMPONENT_FORMATS[accessor["componentType"]]
-            element = size * gltf_skin.TYPE_WIDTHS[accessor["type"]]
+            _, size = gltf_read.COMPONENT_FORMATS[accessor["componentType"]]
+            element = size * gltf_read.TYPE_WIDTHS[accessor["type"]]
             stride = view.get("byteStride", element)
             end = accessor.get("byteOffset", 0) + stride * (accessor["count"] - 1) + element
             self.assertLessEqual(end, view["byteLength"])
@@ -142,11 +143,11 @@ class CapybaraAssetTest(unittest.TestCase):
         for name, animation in self.asset.animations.items():
             for sampler in animation["samplers"]:
                 self.assertEqual(sampler["interpolation"], "LINEAR")
-                times = [t[0] for t in gltf_skin.read_accessor(self.document, self.binary, sampler["input"])]
+                times = [t[0] for t in gltf_read.read_accessor(self.document, self.binary, sampler["input"])]
                 self.assertEqual(times[0], 0.0)
                 for a, b in zip(times, times[1:]):
                     self.assertAlmostEqual(b - a, 1.0 / FPS, delta=1e-4)
-                values = gltf_skin.read_accessor(self.document, self.binary, sampler["output"])
+                values = gltf_read.read_accessor(self.document, self.binary, sampler["output"])
                 self.assertEqual(values[0], values[-1], name)
             for channel in animation["channels"]:
                 self.assertIn(channel["target"]["path"], ("translation", "rotation"))

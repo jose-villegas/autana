@@ -37,7 +37,7 @@ from tracked import tracked_files  # noqa: E402
 
 LOWER = ("launcher/main/boot/", "launcher/main/display/", "launcher/main/gfx/",
          "launcher/main/input/", "launcher/main/render/", "launcher/main/ui/",
-         "launcher/main/util/", "launcher/main/console/", "launcher/test/")
+         "launcher/main/util/", "launcher/main/anim/", "launcher/main/console/", "launcher/test/")
 APPS = "launcher/main/apps"
 
 # The shell's own two files: they switch between apps without knowing one.

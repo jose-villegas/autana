@@ -13,13 +13,15 @@ them. The layers are in [Firmware-Architecture.md](Firmware-Architecture.md).
 |---|---|
 | `r3d_camera.h` | A camera description in fixed point (S3L units and turns): the roll that keeps a scene's up on the shell's up, and the fit onto a non-square viewport |
 | `r3d_project.h` | Camera-space near clip and perspective projection, for a caller that composed its own model-view matrix |
-| `r3d_vec3f.h` | The float 3-vector every float camera and path shares |
+| `r3d_vec3f.h` | The float 3-vector every float camera shares |
 | `r3d_ray.h` | A float ray camera: the direction through each physical pixel, on the same viewport a rasterizer uses |
-| `r3d_path.h` | A closed Catmull-Rom camera loop at a steady speed |
 | `r3d_span.h` | One depth-tested, Gouraud-shaded triangle filled into a window of rows, its coverage exact on 1/16-pixel positions |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex colour, meshlet clusters, a node tree |
 | `r3d_lit_pipeline.h` | The mesh's stages: view, cull, transform, draw |
 | `r3d_lit_frame.h` | One whole frame of those stages on both cores, optionally doubled to twice its size |
+
+A camera that moves is an [animation track](Animation-Tracks.md), sampled
+by its caller into an eye and a look direction for `r3d_lit_view_look()`.
 
 ## A lit mesh
 

@@ -28,6 +28,7 @@ import struct
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), *[os.pardir] * 4, "tools"))
+from gltf import gltf_read  # noqa: E402
 from r3d import gltf_skin  # noqa: E402
 
 FPS = 30
@@ -752,7 +753,7 @@ def main():
     ]
     validate(mesh, animations)
     data = encode(mesh, animations)
-    readback = gltf_skin.SkinnedAsset(*gltf_skin.parse_glb(data))
+    readback = gltf_skin.SkinnedAsset(*gltf_read.parse_glb(data))
     if (len(readback.positions), readback.triangles, sorted(readback.animations)) != (
         len(mesh.positions), mesh.triangles, ["idle", "walk"]
     ):

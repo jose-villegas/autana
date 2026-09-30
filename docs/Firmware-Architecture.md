@@ -67,6 +67,7 @@ flowchart TB
     end
     subgraph R6["utilities"]
         Util["util/<br/><i>fixed point, tween, jobs, tunables</i>"]
+        Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
     end
     subgraph R7["board"]
         Board["board/<br/><i>this board's pins and peripherals</i>"]:::hw
@@ -441,6 +442,8 @@ origin, and later motion stays raw.
   recovery.
 - [Mesh-Rendering.md](Mesh-Rendering.md) - `render/`: cameras, the span
   rasterizer, the baked lit-mesh pipeline.
+- [Animation-Tracks.md](Animation-Tracks.md) - `anim/`: glTF keyed values
+  sampled over time, and how a scene's properties are animated.
 - [Text-and-Fonts.md](Text-and-Fonts.md) - what a font is, the role
   accessor, text at more than one size.
 - [tools/Frame-Cost.md](tools/Frame-Cost.md) - where a frame's time goes, by
