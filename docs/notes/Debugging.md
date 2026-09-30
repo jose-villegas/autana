@@ -1,10 +1,10 @@
 # Debugging
 
-Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8 - see
+Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8; see
 [`README.md`](README.md) for the full set.
 
 What to reach for depends on what is actually wrong. This is organised by
-symptom, not by tool - skim the table, jump to the matching section.
+symptom, not by tool; skim the table, jump to the matching section.
 
 ---
 
@@ -13,12 +13,12 @@ symptom, not by tool - skim the table, jump to the matching section.
 | Symptom | Reach for |
 |---|---|
 | Board is unresponsive / will not flash | [Board won't boot](#board-wont-boot-or-wont-flash) |
-| Logic might be wrong in code you're writing | [Host test suite](#is-the-logic-right---host-test-suite) - sub-second loop |
-| Passes on host, not sure it holds on the real chip | [On-device test suite](#does-it-still-hold-on-the-real-chip---on-device-suite) |
-| Need to see exactly what's on screen right now | [Screenshot + device state](#what-does-the-screen-look-like-right-now---autana-screenshot) |
+| Logic might be wrong in code you're writing | [Host test suite](#is-the-logic-right-host-test-suite); sub-second loop |
+| Passes on host, not sure it holds on the real chip | [On-device test suite](#does-it-still-hold-on-the-real-chip-on-device-suite) |
+| Need to see exactly what's on screen right now | [Screenshot + device state](#what-does-the-screen-look-like-right-now-autana-screenshot) |
 | Need live logs, or a crash to resolve to file:line | [autana monitor](#live-logs-and-crash-backtraces---autana-monitor) |
 | Need to send the board a command | [Sending the board a line](#sending-the-board-a-line) |
-| A render looks wrong - stale pixels, wrong region sent | [gfx debug overlays](#rendering-looks-wrong---gfx-debug-overlays) |
+| A render looks wrong: stale pixels, wrong region sent | [gfx debug overlays](#rendering-looks-wrong---gfx-debug-overlays) |
 | Stray pixels/lines on the glass that a screenshot does not show | [Panel-link faults](Display-and-Rendering.md#panel-link-faults-are-invisible-to-screenshots) |
 | Frame rate / performance seems off | [Performance](#performance-seems-off) |
 | Orientation or the IMU seems wrong | [Orientation and IMU](#orientation-or-the-imu-seems-wrong) |
@@ -28,7 +28,7 @@ symptom, not by tool - skim the table, jump to the matching section.
 
 ## Board won't boot, or won't flash
 
-Not a diagnosis question so much as a recovery one - see
+Not a diagnosis question so much as a recovery one; see
 [`Flashing-and-Toolchain.md`](Flashing-and-Toolchain.md) for the BOOT-button
 recovery sequence and why auto-reset stops working once firmware goes idle.
 
@@ -38,22 +38,22 @@ temperature sensor, the SD card. Silent when everything passes; on a
 **failure** it holds the report on screen for 8 seconds or until touched, so
 a board with a genuinely faulty component says so even with nobody attached
 to a serial console. `post_results()` keeps the full report, so a
-development-only app can show it on demand (`--dev`/`--diag` builds only -
+development-only app can show it on demand (`--dev`/`--diag` builds only;
 see the next sections) without waiting for a failure.
 
-## Is the logic right? - host test suite
+## Is the logic right? Host test suite
 
 ```bash
 ./launcher/test/run_tests.sh
 ```
 
 Under a second, runs on this machine (not the chip), and covers every
-*portable* suite - anything with no hardware dependency. This is the loop for
+*portable* suite; anything with no hardware dependency. This is the loop for
 red-green-refactor; reach for it first for anything that is a question about
 logic rather than about the actual board. See
 [`../Testing-Guide.md`](../Testing-Guide.md).
 
-## Does it still hold on the real chip? - on-device suite
+## Does it still hold on the real chip? On-device suite
 
 ```bash
 autana selftest                                   # build, flash, run every suite
@@ -61,38 +61,38 @@ autana selftest                                   # build, flash, run every suit
 ```
 
 Builds the diagnostics variant, flashes it, and runs *every* registered
-suite - portable ones included - actually compiled by the Xtensa toolchain
+suite; portable ones included; actually compiled by the Xtensa toolchain
 and executed on the chip, which a host run cannot vouch for. Needs a
 `CONFIG_LAUNCHER_SELFTEST` build; see
 [`../Build-Variants.md`](../Build-Variants.md) for what that flag carries
 versus `--dev`.
 
-## What does the screen look like right now? - `autana screenshot`
+## What does the screen look like right now? `autana screenshot`
 
 ```bash
 autana screenshot
 ```
 
 Captures whatever is currently on screen as a lossless `.png`, plus a
-same-named `.json` snapshot of device state at that exact frame - uptime,
+same-named `.json` snapshot of device state at that exact frame; uptime,
 heap (current and low-water mark), CPU clock, on-die temperature,
 orientation, the IMU, and that frame's touch/button state. Good for anything
 where you need to see the actual pixels, or correlate a visual glitch
-against memory/sensor conditions at that instant - see
+against memory/sensor conditions at that instant; see
 `main/console/console_screenshot.c` and `main/console/device_state.h` for the
 mechanism and the full field list.
 
 - The device streams a 24bpp BMP over the wire, decoded to PNG in memory
-  (stdlib `zlib`/`struct`, no Pillow) before anything touches disk - the
+  (stdlib `zlib`/`struct`, no Pillow) before anything touches disk; the
   `.bmp` is never written.
 
-- **Development-only** (`--dev` or `--diag` build) - a release build carries
+- **Development-only** (`--dev` or `--diag` build); a release build carries
   none of it.
 - **Slow by design**: a full 368x448 frame is roughly 650 KB of base64 over
   the serial port ([Flash-and-Captures.md](../tools/Flash-and-Captures.md#screenshots) has the baud),
   taking the better part of a minute. `autana screenshot`
   prints progress every few seconds so this does not read as a hang.
-- **Does not reset the board** - opens the port with DTR/RTS held low so a
+- **Does not reset the board**; opens the port with DTR/RTS held low so a
   capture shows whatever app was already running, not a restarted boot
   animation.
 - Takes the device lock, so it queues behind whatever else already holds
@@ -110,16 +110,16 @@ mechanism and the full field list.
   see "Panel-link faults are invisible to screenshots" in
   [`Display-and-Rendering.md`](Display-and-Rendering.md).
 
-## Live logs and crash backtraces - `autana monitor`
+## Live logs and crash backtraces `autana monitor`
 
 ```bash
 autana monitor
 ```
 
-Decodes any crash address it sees against an ELF's symbols - the build
+Decodes any crash address it sees against an ELF's symbols; the build
 directory whose own `build_id.txt` matches the capture's `BUILD_ID`, or
 `--elf path/to/other.elf` to pin a specific one. Passing the right `.elf`
-matters for more than bookkeeping - it carries the debug symbols that turn
+matters for more than bookkeeping; it carries the debug symbols that turn
 a crash address into a file and line number. See
 [`../tools/Autana-CLI.md`](../tools/Autana-CLI.md).
 
@@ -127,7 +127,7 @@ a crash address into a file and line number. See
 
 **This board's single USB-C port is the ESP32-S3's own native USB-Serial/JTAG
 peripheral**, not an external USB-UART bridge chip. UART0 exists on this
-board too, but only broken out on separate solder pads - nothing a USB cable
+board too, but only broken out on separate solder pads; nothing a USB cable
 ever reaches.
 
 ESP-IDF's own default for a chip with this peripheral assumes the OTHER
@@ -135,8 +135,8 @@ common board design instead: UART0 as the primary console (read AND
 written), USB-Serial-JTAG as a write-only secondary mirror (see
 `esp_system/Kconfig`'s own `ESP_CONSOLE_SECONDARY` help text, which
 describes this exact mismatch and names the fix). Left at that default,
-logging over the one cable this board actually has looks completely normal -
-every line shows up as expected - while anything sent the OTHER direction (a
+logging over the one cable this board actually has looks completely normal;
+every line shows up as expected; while anything sent the OTHER direction (a
 typed idf_monitor command, `autana screenshot`'s trigger, anything) goes
 nowhere: console reads only ever come from the primary channel, and
 USB-Serial-JTAG was only ever the secondary.
@@ -149,7 +149,7 @@ actually wired to. If idf_monitor ever prints
     supports an interactive console and that you have picked the correct
     console for serial communication.
 
-this is the first thing to check - `grep CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+this is the first thing to check; `grep CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
 sdkconfig` should show `=y`. A build directory generated before this was
 fixed has the wrong choice baked into its own `sdkconfig`; delete the
 directory and rebuild rather than expecting `sdkconfig.defaults` alone to
@@ -161,18 +161,18 @@ retroactively fix one that already exists.
 type a verb there (`help` lists them); each line takes the device lock,
 sends, and lets go.
 
-## Rendering looks wrong - gfx debug overlays
+## Rendering looks wrong: gfx debug overlays
 
 `--dev`/`--diag` builds carry two runtime overlays, switched by
 `gfx_set_debug_overlay()` / `gfx_set_leaf_overlay()` (`main/gfx/gfx.h`),
 which a development-only app's toggle page calls:
 
-- **Dirty-region overlay** - draws a border around whatever rectangle
+- **Dirty-region overlay**: draws a border around whatever rectangle
   `gfx_present()` is about to send, so a stale patch of screen (something
   drawn but never marked dirty) or an over-wide send (marked dirty when it
   should not have been) is visible directly rather than inferred from
   symptoms.
-- **Leaf overlay** - outlines, in green, the leaves actually marked dirty
+- **Leaf overlay**: outlines, in green, the leaves actually marked dirty
   this frame. Independent of the dirty-region overlay.
 
 Both are off by default even in a development build, since they draw
@@ -198,11 +198,11 @@ folder.
 Two ways to see raw sensor readings without adding any code:
 
 - **A development-only app's orientation readout** (`--dev`/`--diag`
-  build) - shows the raw accelerometer counts, the derived gx/gy display
+  build); shows the raw accelerometer counts, the derived gx/gy display
   orientation is actually computed from, and the shell's current
   quarter-turn, all at once, so a physical hold can be pinned to an exact
   number.
-- **An `autana screenshot` capture's `.json`** - the `imu` object (raw
+- **An `autana screenshot` capture's `.json`**; the `imu` object (raw
   accelerometer + gyroscope counts) and `orientation_quarter` field are a
   snapshot at one specific frame, useful when the question is "what was the
   board reading at the moment this visual bug happened" rather than a live
@@ -210,19 +210,19 @@ Two ways to see raw sensor readings without adding any code:
 
 ## Suspected memory pressure
 
-- **POST's boot-time check** - fails outright (not just a warning) when the
+- **POST's boot-time check**: fails outright (not just a warning) when the
   largest free DMA-capable block falls below `MIN_LARGEST_DMA_BLOCK` in
   `main/boot/post.c`, and reports that block plus free DMA heap on every
   boot, release included. Both figures come from `MALLOC_CAP_DMA`; reading
   either against `esp_get_free_heap_size()` compares different pools and
   invents a fragmentation gap that is not there (see
   [Board-and-Memory.md](Board-and-Memory.md)).
-- **A dev build's `HEAPMARK` boot lines** - free and largest-contiguous DMA
+- **A dev build's `HEAPMARK` boot lines**: free and largest-contiguous DMA
   at each boot phase, plus one heap block map where the framebuffer lands.
   This is the fastest way to tell a static-footprint problem from an
   allocation-order one, and it is what settled that question in one boot.
-- **An `autana screenshot` capture's `.json`** - `heap_free_bytes` (current) and
-  `heap_min_free_bytes` (the low-water mark since boot - shows a transient
+- **An `autana screenshot` capture's `.json`**; `heap_free_bytes` (current) and
+  `heap_min_free_bytes` (the low-water mark since boot; shows a transient
   allocation that already freed again, which `heap_free_bytes` alone
   cannot).
 
@@ -230,14 +230,14 @@ Two ways to see raw sensor readings without adding any code:
 
 ## Related
 
-- [`../Build-Variants.md`](../Build-Variants.md) - what
+- [`../Build-Variants.md`](../Build-Variants.md); what
   `CONFIG_LAUNCHER_DEVELOPMENT` and `CONFIG_LAUNCHER_SELFTEST` actually
   gate, the three build variants (release/dev/diag), how an app is left out
   of release, and why a self-test runner is narrowed further, to SELFTEST.
-- [`../Testing-Guide.md`](../Testing-Guide.md) - the host and device test
+- [`../Testing-Guide.md`](../Testing-Guide.md); the host and device test
   runners, and runsuite.
-- [`../plans/Settings-App-Plan.md`](../plans/Settings-App-Plan.md) - the
+- [`../plans/Settings-App-Plan.md`](../plans/Settings-App-Plan.md); the
   planned Settings app, and the mismatch it would resolve between the
   SELFTEST flag and the diagnostics build's name.
-- [`Flashing-and-Toolchain.md`](Flashing-and-Toolchain.md) - board recovery,
+- [`Flashing-and-Toolchain.md`](Flashing-and-Toolchain.md); board recovery,
   and the toolchain details `autana monitor`'s crash decoding depends on.
