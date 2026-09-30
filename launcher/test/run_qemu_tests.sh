@@ -15,7 +15,7 @@
 #
 # The first form runs every suite at boot. The second builds the same image
 # without autorun (build.qemu.shell/), which boots into the shell, and asks
-# its console for one suite at a time - seconds each - for a touch to be put
+# its console for one suite at a time (seconds each), for a touch to be put
 # on the screen, and for the screen itself.
 #
 # Needs qemu-xtensa, which ESP-IDF does not install by default:

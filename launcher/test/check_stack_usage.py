@@ -64,7 +64,7 @@ import device_profile  # noqa: E402  (path must be set up first)
 # raising the ceiling to match the worst of them or leaving every one of
 # them permanently red. This is NOT a permission slip: each value is the
 # frame size measured when the entry was recorded, and a function only
-# leaves this list by shrinking its frame below the ceiling - never by
+# leaves this list by shrinking its frame below the ceiling, never by
 # bumping the recorded number to match a regrowth. A function that grows
 # meaningfully past its recorded size fails exactly like a brand-new
 # offender would.
@@ -74,7 +74,7 @@ import device_profile  # noqa: E402  (path must be set up first)
 # measured 1,216 bytes on the Windows MinGW gcc the list was recorded with
 # and 1,456 bytes (+19.7%) on the Linux gcc in CI, for identical source.
 # So a recorded value is compared with STACK_FRAME_TOOLCHAIN_TOLERANCE of
-# headroom rather than exactly - enough to absorb one compiler's opinion of
+# headroom rather than exactly, enough to absorb one compiler's opinion of
 # another's frame, nowhere near enough to hide the class this gate exists
 # for (the three historical offenders were 4 KB, 24 KB and 41 KB against a
 # ~1.5 KB record). The device's own frames, which are what actually matter,
@@ -85,7 +85,7 @@ STACK_FRAME_TOOLCHAIN_TOLERANCE = 0.25
 # this survives being checked out to a different absolute location.
 #
 # A frame that shrinks but stays over the ceiling gets its entry RE-RECORDED
-# at the lower number, which is tightening, not loosening - leaving the old
+# at the lower number, which is tightening, not loosening: leaving the old
 # value there would licence it to grow all the way back. That has already
 # happened once: this list's worst entry was
 # test_a_submerged_obstacle_casts_a_gravity_aligned_shadow at 42,848 bytes,
@@ -234,9 +234,9 @@ def main(argv):
     offenders = [r for r in records if r.bytes > ceiling]
 
     # Split what is over the ceiling into: brand-new (fails), grown past its
-    # recorded debt (fails - the allowlist caps a frame, it does not exempt
+    # recorded debt (fails; the allowlist caps a frame, it does not exempt
     # it from ever growing further), and known debt within its recorded size
-    # (does not fail the build, but is never silent - see the summary line).
+    # (does not fail the build, but is never silent; see the summary line).
     new_offenders = []
     grown_offenders = []
     known_debt = []
