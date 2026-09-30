@@ -38,16 +38,35 @@ A mesh is const C data, written by a generator using the offline tools in
 simplify it, bake its light, cut it into meshlets, and
 check the result against `r3d_lit_mesh.h`'s invariants before writing a byte.
 
+## Sealing seams
+
 Simplifying a model made of many separate pieces approximates each piece's
-border on its own, and a border that erodes leaves a pixel-sized crack where
-another surface should meet it. The `watertight` import option, off by
-default, imports the same mesh differently: it welds border vertices that
-touch within one quantisation step and splits border edges at the vertices
-that lie on them, so the simplifier sees one shared edge, simplifies with
-meshoptimizer's light regularizing, and merges near-equal colours at one
-position. It cuts, but does not remove, the pixels a frame leaves empty
-between drawn neighbours, and costs about 4% more triangles submitted per
-frame on the scene it was measured on.
+border on its own, and a border that erodes leaves a pixel-sized empty spot
+where another surface should meet it. `simplify(seal_seams=True)`, off by
+default, imports the same mesh differently. It acts in the simplifier's stage
+only; the bake after it is unchanged.
+
+```mermaid
+flowchart LR
+    load[Load and light] --> join[Join touching pieces]
+    join --> pass[Simplify pass]
+    pass --> merge[Merge near colours]
+    merge --> bake[Quantise, meshlets, octree]
+    subgraph seal_seams
+        join
+        pass
+        merge
+    end
+```
+
+| Step | What it does |
+|---|---|
+| Join | Welds border vertices within one quantisation step and splits border edges at the vertices lying on them, so a shared edge is one edge. |
+| Pass | Runs meshoptimizer with light regularizing instead of regularizing. |
+| Merge | Gives vertices at one quantised position one colour when they differ by at most one and a half RGB565 steps. |
+
+It cuts the empty spots but does not remove them. The cost is about 4% frame
+time (about 3% more triangles drawn) on the mesh it was measured on.
 
 ## Meshlets
 

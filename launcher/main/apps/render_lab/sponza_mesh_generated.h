@@ -15,10 +15,10 @@
 
 #include "render/r3d_lit_mesh.h"
 
-#define SPONZA_VERTEX_COUNT 17089
+#define SPONZA_VERTEX_COUNT 17288
 #define SPONZA_TRIANGLE_COUNT 17375
-#define SPONZA_CLUSTER_COUNT 609
-#define SPONZA_NODE_COUNT 202
+#define SPONZA_CLUSTER_COUNT 610
+#define SPONZA_NODE_COUNT 210
 #define SPONZA_POSITION_SCALE 8
 
 extern const r3d_lit_mesh_t sponza_mesh;

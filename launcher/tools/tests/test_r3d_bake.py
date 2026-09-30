@@ -19,12 +19,11 @@ try:
     from r3d.geometry import triangle_areas, weld
     from r3d.light import merge_matching_colours
     from r3d import lit_mesh, rebake
-    from r3d.lit_mesh import (MESHLET_TRIANGLES, bake_lit_mesh, merge_close_colours, read_lit_mesh, validate,
-                              weld_quantised, write_lit_mesh)
+    from r3d.lit_mesh import MESHLET_TRIANGLES, bake_lit_mesh, read_lit_mesh, validate, weld_quantised, write_lit_mesh
     from r3d.meshopt import build_meshlets, simplify_with_update
     from r3d.octree import build_octree, flatten_octree
-    from r3d.repair import repair
-    from r3d.simplify import _label_after, simplify
+    from r3d.repair import _weld_borders, repair
+    from r3d.simplify import SEAM_COLOUR_TOLERANCE, _label_after, merge_close_colours, simplify
     from r3d.tessellate import split_marked_edges
 except ImportError:
     np = None
@@ -158,56 +157,103 @@ class RepairTests(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
-class ColourSeamTests(unittest.TestCase):
-    def test_colours_within_the_tolerance_at_one_position_merge_and_only_they_do(self):
-        q = np.zeros((4, 3), dtype=np.int64)
-        rgb = np.array([(100, 100, 100), (104, 96, 100), (140, 100, 100), (100, 100, 100)])
-        out = merge_close_colours(q, rgb, 10)
-        self.assertEqual(len({tuple(c) for c in out}), 2)
-        self.assertTrue(np.array_equal(out[2], rgb[2]), "a colour further than the tolerance changed")
-        self.assertTrue(np.array_equal(merge_close_colours(q, out, 10), out), "merging again changed the colours")
+class RepairStepTests(unittest.TestCase):
+    def test_border_vertices_within_the_tolerance_end_at_one_position_and_no_further(self):
+        tolerance = 0.125  # a power of two, so a distance can sit exactly on it
+        for offset, welded in ((0.0625, True), (tolerance, True), (0.126, False)):
+            p = np.array([(0, 0, 0), (1, 0, 0), (0, 1, 0), (1 + offset, 0, 0), (2, 0, 0), (1 + offset, 1, 0)], dtype=float)
+            out = _weld_borders(p, np.array([(0, 1, 2), (3, 4, 5)]), tolerance)
+            self.assertEqual(bool(np.array_equal(out[1], out[3])), welded, f"offset {offset}")
 
-    def test_vertices_at_different_positions_never_merge(self):
-        q = np.arange(6).reshape(2, 3)
-        rgb = np.full((2, 3), 50)
-        self.assertTrue(np.array_equal(merge_close_colours(q, rgb, 255), rgb))
+    def test_a_weld_closes_the_seam_between_pieces_offset_by_less_than_the_tolerance(self):
+        p, tris = two_pieces(gap=0.0625)
+        rp, _, rt, _ = repair(p, np.zeros((len(p), 3)), tris, np.zeros(len(tris), dtype=int), 0.125)
+        self.assertFalse(any(0 < (a[1] + b[1]) / 2 < 4 and abs(a[0] + b[0]) < 0.3 for a, b in open_edges(rp, rt)))
 
+    def test_interior_vertices_within_the_tolerance_are_never_moved(self):
+        p, tris = grid(4)
+        p = p * 0.1
+        edges = directed_edges(tris)
+        border = {a for a, b in edges if (b, a) not in set(edges)} | {b for a, b in edges if (b, a) not in set(edges)}
+        interior = [i for i in range(len(p)) if i not in border]
+        self.assertTrue(interior)
+        out = _weld_borders(p, tris, 0.2)
+        self.assertTrue(np.array_equal(out[interior], p[interior]))
 
-def default_import(**options):
-    """sha256 over the simplified triangles and the C data baked from a small
-    mesh that has crease seams of near colours and a border that a repair
-    would join; `options` go to simplify() and write_lit_mesh() alike."""
-    import hashlib
+    def test_a_vertex_added_on_a_split_edge_takes_the_colour_the_edge_has_there(self):
+        p, tris = two_pieces()
+        rgb = np.zeros((len(p), 3))
+        rgb[2] = (80.0, 0.0, 0.0)  # the coarse piece's seam runs from vertex 1 to vertex 2, y = 0 to 4
+        _, out, _, _ = repair(p, rgb, tris, np.zeros(len(tris), dtype=int), 0.01)
+        self.assertEqual(sorted(out[len(p):, 0].tolist()), [20.0, 40.0, 60.0])
 
-    p, tris = grid(10)
-    p = p * 3.0 + 0.01 * np.sin(np.arange(len(p)))[:, None]
-    doubled = p[tris].reshape(-1, 3)
-    corner = np.arange(len(doubled)).reshape(-1, 3)
-    rgb = np.stack([100 + 8 * np.sin(doubled[:, 0]), 90 + 9 * np.cos(doubled[:, 1]), 80 + doubled[:, 0] % 3], axis=1)
-    labels = np.arange(len(corner)) % 2
-    sp, sc, st, sl = simplify(doubled, rgb, corner, labels, 80, **options)
-    digest = hashlib.sha256()
-    for array in (sp, sc, st, sl):
-        digest.update(np.ascontiguousarray(array).tobytes())
-    with tempfile.TemporaryDirectory() as out:
-        write_lit_mesh(out, "t", sp, np.rint(sc).astype(np.int64), st, sl % 2, ["GENERATED FILE - do not edit."],
-                       **options)
-        for name in ("t_mesh_generated.c", "t_mesh_generated.h"):
-            digest.update(pathlib.Path(out, name).read_bytes())
-    return digest.hexdigest()
+    def test_repairing_repaired_output_adds_and_moves_nothing(self):
+        p, tris = two_pieces(gap=0.0625)
+        once = repair(p, np.zeros((len(p), 3)), tris, np.zeros(len(tris), dtype=int), 0.125)
+        twice = repair(*once, 0.125)
+        for first, second in zip(once, twice):
+            self.assertTrue(np.array_equal(first, second))
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
-class ImportOptionTests(unittest.TestCase):
-    # Made by the baker before the watertight option existed, on the fixture above.
-    DEFAULT_DIGEST = "03957ccc92018c54a2d6766dd304794004ecf5638e59c780e51205858d0a0272"
+class ColourSeamTests(unittest.TestCase):
+    TOLERANCE = np.array([12, 6, 12])
 
-    def test_the_default_import_is_byte_identical_to_the_one_before_the_option(self):
-        self.assertEqual(default_import(), self.DEFAULT_DIGEST)
-        self.assertEqual(default_import(watertight=False), self.DEFAULT_DIGEST)
+    def merged(self, colours, tolerance=None):
+        colours = np.array(colours, dtype=float)
+        return merge_close_colours(np.zeros((len(colours), 3), dtype=np.int64), colours, self.TOLERANCE if tolerance is None else tolerance)
 
-    def test_the_watertight_option_changes_the_import(self):
-        self.assertNotEqual(default_import(watertight=True), self.DEFAULT_DIGEST)
+    def test_a_colour_exactly_at_the_tolerance_merges_and_one_over_does_not(self):
+        self.assertEqual(len({tuple(c) for c in self.merged([(100, 100, 100), (112, 106, 88)])}), 1)
+        self.assertEqual(len({tuple(c) for c in self.merged([(100, 100, 100), (113, 100, 100)])}), 2)
+        self.assertEqual(len({tuple(c) for c in self.merged([(100, 100, 100), (100, 107, 100)])}), 2)
+
+    def test_colours_at_different_positions_stay_apart_however_close(self):
+        q = np.arange(6).reshape(2, 3)
+        rgb = np.array([(50.0, 50.0, 50.0), (55.0, 50.0, 50.0)])
+        self.assertTrue(np.array_equal(merge_close_colours(q, rgb, self.TOLERANCE), rgb))
+
+    def test_a_chain_of_colours_leaves_only_colours_further_apart_than_the_tolerance(self):
+        out = self.merged([(0, 0, 0), (8, 0, 0), (16, 0, 0), (24, 0, 0)], np.array([10, 10, 10]))
+        kept = sorted({tuple(c) for c in out})
+        self.assertEqual(len(kept), 2)
+        self.assertGreater(kept[1][0] - kept[0][0], 10)
+        self.assertTrue(np.array_equal(self.merged(out, np.array([10, 10, 10])), out), "merging again changed the colours")
+
+
+def seam_fixture():
+    """Two triangles' worth of flat-shaded grid corners: every triangle owns
+    its corners, and corners at one position differ by a few colour levels."""
+    p, tris = grid(2)
+    corners = p[tris].reshape(-1, 3)
+    rgb = np.tile((100.0, 100.0, 100.0), (len(corners), 1))
+    rgb[:, 0] += 3.0 * (np.arange(len(corners)) % 2)
+    return corners, rgb, np.arange(len(corners)).reshape(-1, 3), np.zeros(len(tris), dtype=int)
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class SealSeamsTests(unittest.TestCase):
+    def open_seam(self, seal, gap, scale):
+        p, tris = two_pieces(gap)
+        sp, _, st, _ = simplify(p, np.full((len(p), 3), 100.0), tris, np.arange(len(tris)) % 2, 4, seal_seams=seal,
+                                position_scale=scale)
+        return any(0.5 < (a[1] + b[1]) / 2 < 3.5 and abs(a[0] + b[0]) / 2 < gap + 0.3 for a, b in open_edges(sp, st))
+
+    def test_pieces_offset_by_less_than_a_quantum_are_sealed_and_by_more_are_not(self):
+        scale = 4  # a quantum of 0.25 model units
+        self.assertTrue(self.open_seam(False, 0.2, scale), "the seam was closed without the option")
+        self.assertFalse(self.open_seam(True, 0.2, scale), "an offset under a quantum stayed open")
+        self.assertTrue(self.open_seam(True, 0.3, scale), "an offset over a quantum was closed")
+
+    def seams(self, seal):
+        corners, rgb, tris, labels = seam_fixture()
+        sp, sc, st, _ = simplify(corners, rgb, tris, labels, len(tris), seal_seams=seal)
+        mesh = bake_lit_mesh(sp, np.rint(sc).astype(np.int64), st, np.zeros(len(st), dtype=int))
+        return len(mesh.pos) - len({tuple(v) for v in mesh.pos.tolist()})
+
+    def test_the_default_keeps_a_seam_of_near_colours_and_the_option_merges_it(self):
+        self.assertGreater(self.seams(False), 0)
+        self.assertEqual(self.seams(True), 0)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

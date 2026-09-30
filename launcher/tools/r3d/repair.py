@@ -16,6 +16,8 @@ from scipy.spatial import cKDTree
 
 def _position_ids(pos, tolerance):
     """One id per distinct position, and the position each id stands for."""
+    # A grid a sixteenth of the tolerance keeps only the copies of one point
+    # together; a coarser one would split near vertices by which cell they fall in.
     key = np.round(pos / (tolerance / 16.0)).astype(np.int64)
     _, first, ids = np.unique(key, axis=0, return_index=True, return_inverse=True)
     return first, ids.reshape(-1)

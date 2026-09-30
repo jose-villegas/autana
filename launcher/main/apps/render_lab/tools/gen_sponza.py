@@ -171,8 +171,8 @@ def main():
     parser.add_argument("--triangles", type=int, default=17381, help="meshopt: the triangle budget")
     parser.add_argument("--dense-edge", type=float, default=45.0, help="meshopt: longest edge before baking")
     parser.add_argument("--npz", help="also save the final mesh before clustering, for evaluation")
-    parser.add_argument("--no-repair", action="store_true",
-                        help="meshopt: import the mesh as it is, without the watertight option "
+    parser.add_argument("--no-seal-seams", action="store_true",
+                        help="meshopt: import the mesh as it is, without the seal_seams option "
                         "(joined touching pieces, light regularizing, merged colour seams)")
     parser.add_argument("--props-share", type=float, default=0.3, help="meshopt: budget share held for props")
     args = parser.parse_args()
@@ -239,19 +239,18 @@ def main():
     rgb = np.concatenate(all_rgb)
     tris = np.concatenate(all_tris)
     tri_double = np.concatenate(all_double)
-    watertight = args.simplifier == "meshopt" and not args.no_repair
+    seal_seams = args.simplifier == "meshopt" and not args.no_seal_seams
     if args.simplifier == "meshopt":
         props = [(frozenset(i for i, n in enumerate(names) if n in PROPS), args.props_share)]
         positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, np.concatenate(all_mat),
-                                                 args.triangles, props, watertight=watertight,
-                                                 position_scale=POSITION_SCALE)
+                                                 args.triangles, props, seal_seams=seal_seams)
         rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
         tri_double = np.isin(tri_mat, [i for i, n in enumerate(names) if n in DOUBLE_SIDED]).astype(np.int64)
     if args.npz:
         np.savez_compressed(args.npz, pos=positions, rgb=rgb, tris=tris, double=tri_double)
 
     mesh = write_lit_mesh(args.out_dir, args.name, positions, rgb, tris, tri_double, banner_lines(args),
-                          position_scale=POSITION_SCALE, watertight=watertight)
+                          position_scale=POSITION_SCALE)
     log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, "
         f"{len(mesh.nodes)} nodes")
 
@@ -263,7 +262,7 @@ def banner_lines(args):
         "    python main/apps/render_lab/tools/gen_sponza.py --out-dir main/apps/render_lab \\",
         (f"        --name {args.name} --simplifier meshopt --triangles {args.triangles}"
          f" --props-share {args.props_share:g} --dense-edge {args.dense_edge:g}"
-         + (" --no-repair" if args.no_repair else "")
+         + (" --no-seal-seams" if args.no_seal_seams else "")
          if args.simplifier == "meshopt" else
          f"        --name {args.name} --simplifier quadric --keep {args.keep:g}"
          f" --light-tolerance {args.light_tolerance:g} --min-edge {args.min_edge:g}"),
