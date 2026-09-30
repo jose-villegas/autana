@@ -1,31 +1,31 @@
 """The screenshot wire protocol and decoder: a pure library, imported by
 scripts/device/device.py's own `screenshot` subcommand (autana's `autana
 screenshot`) so there is exactly one decoder to drift out of sync with the
-device. Opening the port is the caller's job - see device.py's own capture,
-which does it under the device lock - so this module never touches one
+device. Opening the port is the caller's job; see device.py's own capture,
+which does it under the device lock; so this module never touches one
 itself.
 
 Sends the trigger word over the console UART (see main/console/console.c)
 and reads the response back out of the same stream idf_monitor would
 otherwise be showing as logs: a SCREENSHOT_BEGIN line announcing the byte
 count, one SCREENSHOT_DATA: line per base64-encoded chunk, one
-SCREENSHOT_STATE: line of plain-text JSON (device state at that same frame
-- sensors, memory, clock; see console_screenshot_dump()'s own comment in
+SCREENSHOT_STATE: line of plain-text JSON (device state at that same frame:
+sensors, memory, clock; see console_screenshot_dump()'s own comment in
 main/console/console_screenshot.c for the field list), and a
-SCREENSHOT_END line - or, in place of all of those, one
+SCREENSHOT_END line; or, in place of all of those, one
 SCREENSHOT_REFUSED: line giving the reason, which ends the run at once
-rather than at the timeout. Anything else on the wire - ordinary
-ESP_LOG output, in particular - is ignored rather than treated as an
+rather than at the timeout. Anything else on the wire, ordinary
+ESP_LOG output in particular, is ignored rather than treated as an
 error, since the device keeps logging normally while it streams.
 
 The device streams its frame as a 24bpp BMP (see screenshot_bmp_header() in
-util/screenshot.h) - the simplest thing to emit from a microcontroller with
-no image library on it - but nothing here ever writes that BMP to disk:
+util/screenshot.h); the simplest thing to emit from a microcontroller with
+no image library on it, but nothing here ever writes that BMP to disk:
 bmp_bytes_to_png() below converts it to PNG entirely in memory, and a
 capture's output gets only the PNG. This is genuinely lossless, not just
-smaller - PNG's compression is DEFLATE, the same as zlib/gzip, so every pixel
+smaller; PNG's compression is DEFLATE, the same as zlib/gzip, so every pixel
 round-trips exactly; this is not JPEG. Standard library only (zlib +
-struct), no Pillow - Pillow is not installed in the ESP-IDF python env this
+struct), no Pillow; Pillow is not installed in the ESP-IDF python env this
 module actually runs under, so depending on it would silently produce no
 image at all. write_capture() also writes a same-named .json beside the
 .png if a SCREENSHOT_STATE: line arrived.
@@ -49,36 +49,36 @@ TRIGGER = b"SCREENSHOT\n"
 
 
 class ScreenshotRefused(RuntimeError):
-    """The device answered with a SCREENSHOT_REFUSED: line - its own message
+    """The device answered with a SCREENSHOT_REFUSED: line: its own message
     is this exception's, e.g. "band mode, and no room in PSRAM..."."""
 
 
 def _png_chunk(tag: bytes, data: bytes) -> bytes:
     """One PNG chunk: 4-byte big-endian length, the 4-byte type, the data,
-    then a big-endian CRC32 over type+data - the whole file is just these
+    then a big-endian CRC32 over type+data; the whole file is just these
     end to end after the fixed 8-byte signature."""
     return (struct.pack(">I", len(data)) + tag + data +
             struct.pack(">I", zlib.crc32(tag + data) & 0xffffffff))
 
 
 def bmp_bytes_to_png(bmp: bytes) -> bytes:
-    """Converts an in-memory 24bpp BMP - the exact bytes screenshot_dump()
-    streams, see screenshot_bmp_header()'s own comment for the byte layout
-    - into an in-memory PNG. No Pillow, no temp file: a minimal PNG is just
+    """Converts an in-memory 24bpp BMP (the exact bytes screenshot_dump()
+    streams, see screenshot_bmp_header()'s own comment for the byte layout)
+    into an in-memory PNG. No Pillow, no temp file: a minimal PNG is just
     the 8-byte signature, an IHDR chunk, one IDAT chunk holding
     zlib.compress() of the raw scanlines (each prefixed with a filter byte;
     0 = "None" is correct and simplest here), and an empty IEND chunk.
 
     Two orderings BMP and PNG disagree on, both handled below: BMP stores
     rows bottom-up (screenshot_bmp_header() always writes a positive
-    biHeight - see its own comment) while PNG wants top-down, and BMP's
+    biHeight; see its own comment) while PNG wants top-down, and BMP's
     pixel order is B,G,R while PNG wants R,G,B. Getting either backwards
-    produces an image that LOOKS like a real screenshot - upside-down, or
-    blue-tinted - which is worse than no image at all.
+    produces an image that LOOKS like a real screenshot; upside-down, or
+    blue-tinted, which is worse than no image at all.
 
     Width/height/row-stride are read out of the BMP header rather than
     assumed, so this keeps working unchanged if the panel resolution ever
-    does - the same "trust what the device announced" reasoning the
+    does; the same "trust what the device announced" reasoning the
     SCREENSHOT_BEGIN size check in read_screenshot() already applies.
     """
     if bmp[0:2] != b"BM":
