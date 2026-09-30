@@ -1777,7 +1777,9 @@ draw_canvas_overlays(void) {
     }
 }
 
-static void
+/* Out of line: its frame is the largest in sand_frame(), and the menu's UI
+ * draw, the deepest path on the main task, must not carry it. */
+static __attribute__((noinline)) void
 draw_sim_frame(const input_t* input) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t t1 = esp_timer_get_time();
@@ -1914,6 +1916,18 @@ sand_app_test_options_reach_start(sand_test_start_action_t action) {
     return ok;
 }
 
+/* Out of line, so the layout is off the stack before the frames draw. */
+static __attribute__((noinline)) input_t
+sand_app_test_start_button_touch(void) {
+    title_screen_layout_t title;
+    title_screen_layout(ui_width(), ui_height(), &title);
+    const mu_Rect start_rect = title.buttons[SAND_TITLE_START];
+    const input_t touch = {.x = start_rect.x + start_rect.w / 2, .y = start_rect.y + start_rect.h / 2};
+    ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", touch.x, touch.y, start_rect.x,
+             start_rect.y, start_rect.w, start_rect.h);
+    return touch;
+}
+
 /* Unlike sand_app_test_survives_indexed_then_menu() above, this runs the
  * START button itself, through a finger's frames: title built, press
  * (hover only), DOWN (the click). The lift lands on a frame with no UI, so
@@ -1925,27 +1939,21 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
     ui_set_transform(ui_transform_identity());
     sand_enter();
 
-    title_screen_layout_t title;
-    title_screen_layout(ui_width(), ui_height(), &title);
-    const mu_Rect start_rect = title.buttons[SAND_TITLE_START];
-    const int cx = start_rect.x + start_rect.w / 2;
-    const int cy = start_rect.y + start_rect.h / 2;
-    ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", cx, cy, start_rect.x, start_rect.y,
-             start_rect.w, start_rect.h);
+    const input_t touch = sand_app_test_start_button_touch();
+    input_t in = {0};
+    sand_frame(0, &in); /* the title on the glass before the finger lands */
 
-    const input_t idle = {0};
-    sand_frame(0, &idle); /* the title on the glass before the finger lands */
+    in = (input_t){.pressed = true, .x = touch.x, .y = touch.y};
+    sand_frame(16, &in); /* hover granted on the frame the finger lands */
 
-    const input_t press = {.pressed = true, .x = cx, .y = cy};
-    sand_frame(16, &press); /* hover granted on the frame the finger lands */
+    in = (input_t){.x = touch.x, .y = touch.y};
+    sand_frame(16, &in); /* the DOWN: the click */
 
-    const input_t hold = {.x = cx, .y = cy};
-    sand_frame(16, &hold); /* the DOWN: the click */
+    in = (input_t){.released = true, .x = touch.x, .y = touch.y};
+    sand_frame(16, &in); /* pending_start applies before this frame's UI: no UI is built */
 
-    const input_t release = {.released = true, .x = cx, .y = cy};
-    sand_frame(16, &release); /* pending_start applies before this frame's UI: no UI is built */
-
-    sand_frame(16, &idle);
+    in = (input_t){0};
+    sand_frame(16, &in);
 
     const bool ok = sand_colour_indexed_active(&colour_state) && ui.screen == SAND_UI_RUNNING;
     ESP_LOGI(TAG, "START tap test: indexed_active=%d screen=%d -> %s", sand_colour_indexed_active(&colour_state),

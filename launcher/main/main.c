@@ -734,7 +734,7 @@ shell_test_stale_exit_is_cleared(void) {
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Report throughput on TIMER, not frames. CONFIG_LAUNCHER_DEVELOPMENT only */
-static void
+static __attribute__((noinline)) void
 report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
     (*frames)++;
 
@@ -820,7 +820,7 @@ check_console_prefix_clashes(void) {
 
 /* Park rather than return on graphics failure - returning from app_main
  * leaves the chip idle and unflashable. */
-static void
+static __attribute__((noinline)) void
 app_boot_init(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const int mark_length = snprintf(build_mark_text, sizeof(build_mark_text), "D%s", build_id_short());
@@ -893,7 +893,7 @@ app_boot_init(void) {
 
 #if CONFIG_LAUNCHER_SELFTEST
 /* See console/console.c for framebuffer contention explanation. */
-static void
+static __attribute__((noinline)) void
 run_pending_selftest_suite(void) {
     const char* request = console_runsuite_take_request();
     if (request == NULL) {
@@ -1067,7 +1067,7 @@ report_gesture_completion(void) {
     fflush(stdout);
 }
 
-static void
+static __attribute__((noinline)) void
 run_dev_frame_extras(input_t* input, const app_t* current) {
     if (gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB) {
         draw_build_mark();
@@ -1096,7 +1096,7 @@ present_unless_deferred(const app_t* current) {
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-static bool
+static __attribute__((noinline)) bool
 run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms) {
     report_gesture_completion();
     if (run_console_navigation(current, input, dt_ms)) {
