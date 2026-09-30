@@ -35,7 +35,9 @@ static r3d_span_probe_t span_probe[2];
 static void
 probe_work(const slice_t* s, int64_t start) {
     if (probe_enabled) {
-        probe.work_us[s->stage][s->core] = esp_timer_get_time() - start;
+        const int64_t end = esp_timer_get_time();
+        probe.work_us[s->stage][s->core] = end - start;
+        probe.idle_us[s->stage][s->core] = end;
     }
 }
 #endif
@@ -143,7 +145,10 @@ run_split(job_fn_t fn, slice_t first_half, slice_t second_half) {
     const bool done = job_wait(JOB_WAIT_MS);
 #ifdef ESP_PLATFORM
     if (probe_enabled) {
-        probe.wait_us[first_half.stage] = esp_timer_get_time() - wait_start;
+        const int64_t joined = esp_timer_get_time();
+        probe.wait_us[first_half.stage] = joined - wait_start;
+        probe.idle_us[first_half.stage][0] = probe.wait_us[first_half.stage];
+        probe.idle_us[first_half.stage][1] = dispatched ? joined - probe.idle_us[first_half.stage][1] : 0;
     }
 #endif
     assert(done); /* the next stage reads what core 1 wrote */

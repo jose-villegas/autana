@@ -47,6 +47,7 @@ typedef struct {
     int64_t cull_us;
     int64_t work_us[3][2];
     int64_t wait_us[3];
+    int64_t idle_us[3][2];
     int64_t inline_us[3];
     unsigned inline_count[3];
     unsigned straddling;
