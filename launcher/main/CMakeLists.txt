@@ -37,6 +37,7 @@ set(app_srcs
     "anim/anim_track.c"
     "render/raster.c"
     "render/r3d_pipeline.c"
+    "render/upscale.c"
     "render/r3d_span.c"
     "render/r3d_trs.c"
     "util/frame_cost.c"
