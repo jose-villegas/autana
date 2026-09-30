@@ -59,7 +59,10 @@ The gate fails loudly rather than passing quietly past a measurement gap:
 a scan that finds zero functions, one that finds fewer than half the
 baseline's function count, an unexcluded gap under `launcher/main/`, or
 any `clang-diagnostic-error` (a partial parse can hide functions) all
-fail the run immediately instead of being reported as clean.
+fail the run immediately instead of being reported as clean. `--changed`
+leaves out a changed file that defines no function, such as a generated
+data table, before it scans, so a change touching only data is clean
+rather than an empty scan; a full scan never leaves a file out.
 
 ## A ratchet with a fail line
 
