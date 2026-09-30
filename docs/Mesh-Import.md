@@ -16,9 +16,12 @@ flowchart LR
 
 ## The baked mesh
 
-Light is baked either into one sRGB colour per vertex, or, for a flat import,
-one RGB565 colour per triangle evaluated at its centre. Flat imports weld
-quantised positions without colour seams. The triangles are grouped into **clusters**. Each cluster
+Light is baked either into one sRGB colour per vertex, or, for a flat
+import, one RGB565 colour per triangle lit at its centre
+(`light.face_colours()`), with vertices welded by position alone since colour
+no longer splits them. A flat mesh draws with no colour gradients, and a
+generator turns the option on per scene. The triangles are grouped into
+**clusters**. Each cluster
 owns a contiguous range of vertices and triangles, and its triangles index
 only its own vertices. The clusters are the leaves of a tree rooted at
 `nodes[0]`, so one box test culls a whole subtree. Positions are `int16`
