@@ -7,12 +7,12 @@ files, each icon declaring its own source.
 
 General-purpose, not system-set-specific: the same generator produces
 an app's own apps/<name>/icons_<name>.h from apps/<name>/icons/<name>.png +
-.json (see docs/tools/Icon-Baker.md, "Ownership") - only the paths
+.json (see docs/tools/Icon-Baker.md, "Ownership"); only the paths
 differ. The emitted prefix (icon_<prefix>_*) is never a flag; it is always
 the manifest's own filename stem, so system.json can only ever produce
 icon_system_*.
 
-STANDARD LIBRARY ONLY - NO PILLOW
+STANDARD LIBRARY ONLY: NO PILLOW
 
 This generator does not import Pillow: nobody should have to install it for icon art alone,
 and icon art has no proportional-advance or antialiasing need that would
@@ -20,7 +20,7 @@ justify the dependency. `read_png()` below
 decodes a PNG by hand:
 walk the chunks, zlib.decompress() the IDAT stream, and unfilter every
 scanline (all five PNG filter types, even though this repo's own bootstrapped
-artwork only ever emits filter 0 - a PNG a paint program exports will not be
+artwork only ever emits filter 0; a PNG a paint program exports will not be
 so tidy, and silently mis-decoding filter 3 would produce an atlas nobody
 drew). Supports 8-bit grayscale/RGB/RGBA/palette and 1/2/4-bit
 grayscale/palette (the depths PNG allows for those color types); 16-bit
@@ -30,8 +30,8 @@ neither is a realistic export for flat pixel-art icons.
 STRICTLY 1BPP: NO THRESHOLD
 
 Every pixel must decode to fully-opaque pure black (ink, "on") or
-fully-opaque pure white (background, "off"). Anything else - a grey
-antialiased edge, partial transparency - is rejected with the offending
+fully-opaque pure white (background, "off"). Anything else, a grey
+antialiased edge, partial transparency, is rejected with the offending
 pixel's coordinates rather than rounded toward whichever side a threshold
 guesses. These are pixel art: an in-between pixel means the artist exported
 wrong, not that the generator should decide for them.
@@ -40,9 +40,9 @@ SVG: GRID EXTRACTION, NOT RASTERIZATION
 
 pixelarticons (https://github.com/halfmage/pixelarticons, MIT) exports each
 icon as a single <path> on an integer 24x24 grid made of nothing but
-M/H/V/h/v/Z - every subpath is an axis-aligned rectangle. That means reading
+M/H/V/h/v/Z; every subpath is an axis-aligned rectangle. That means reading
 one is exact: walk the path data, trace each subpath's corners, and fill the
-pixel grid the rectangles describe - no rasterizer, no sampling, no
+pixel grid the rectangles describe; no rasterizer, no sampling, no
 threshold. `read_svg_icon()` below is exactly as strict about this as
 `read_png()` is about antialiasing: a curve command, a non-integer
 coordinate, a subpath that does not close into an axis-aligned rectangle, or
@@ -51,7 +51,7 @@ the entire reason this source is safe is that it never needs approximating.
 
 THE MANIFEST: ONE SOURCE PER ICON
 
-A JSON object naming the PNG atlas's cell geometry, plus one entry per icon -
+A JSON object naming the PNG atlas's cell geometry, plus one entry per icon:
 each entry declares its OWN "source", "png" or "svg", because a set can mix
 hand-drawn atlas cells with imported SVGs and that provenance is a fact about
 the icon, not the file:
@@ -66,15 +66,15 @@ the icon, not the file:
     }
 
 A "svg" entry's "file" is looked up in <manifest-dir>/<manifest-stem>/ (e.g.
-design/icons/system/close.svg for system.json) - checked-in files, never
+design/icons/system/close.svg for system.json); checked-in files, never
 fetched by this script. "upstream" and "commit" are required for every "svg"
 entry: the icon this tree ships is only as trustworthy as knowing exactly
-which upstream file, at which commit, it came from - see design/icons/
+which upstream file, at which commit, it came from; see design/icons/
 LICENSE-pixelarticons and docs/tools/Icon-Baker.md's "Provenance is a
 first-class requirement" on why (the defaulticon set was rejected when its
 own upstream vanished and its licence became unverifiable).
 
-The PNG's own width/height must be an exact multiple of cell_w/cell_h - the
+The PNG's own width/height must be an exact multiple of cell_w/cell_h; the
 grid's row/column count is derived from that division, not carried
 separately in the manifest, so the two files cannot disagree about it. Only
 "png" entries live in that grid; "svg" entries carry their own size from
@@ -85,7 +85,7 @@ WHAT GETS REJECTED BEFORE ANYTHING IS EMITTED
 
 Like the other generators: every check
 below runs to completion, and the header is only written once none of them
-have called die() - see this file's own main() for the full order. Checked:
+have called die(); see this file's own main() for the full order. Checked:
 every PNG pixel strictly on or off; the PNG's dimensions divide evenly into
 whole cells; every named PNG cell non-empty; every non-empty PNG cell named;
 names unique across the whole manifest and valid C identifiers; every "svg"
@@ -108,14 +108,14 @@ import textwrap
 import zlib
 from pathlib import Path
 
-# icon_t.blocks (gfx/icon.h) is a uint8_t - the real remaining bound now
+# icon_t.blocks (gfx/icon.h) is a uint8_t; the real remaining bound now
 # that ui_draw_icon() (ui.c) streams runs instead of collecting them into a
 # stack buffer. A count above 255 would silently wrap that field rather
 # than fail loudly, so this stays a hard rejection, not a raise-when-
 # convenient number.
 #
 # This is NOT the only budget: microui's command list (MU_COMMANDLIST_SIZE,
-# 8 KiB) is a separate, still-live ceiling a run count does not lift - a
+# 8 KiB) is a separate, still-live ceiling a run count does not lift; a
 # 46-run icon alone is roughly 1.3 KiB of it. Detailed artwork is now
 # possible; it is not free.
 RUN_COUNT_CAP = 255
@@ -130,7 +130,7 @@ def die(msg):
 # --- PNG decoding (stdlib only) ---------------------------------------------
 
 def _paeth(a, b, c):
-    """PaethPredictor(left, above, upper-left) - PNG spec section 9.4,
+    """PaethPredictor(left, above, upper-left); PNG spec section 9.4,
     verbatim: picks whichever of a/b/c is closest to a linear predictor of
     the other two, the filter type most edges in real artwork end up using."""
     p = a + b - c
@@ -143,10 +143,10 @@ def _paeth(a, b, c):
 
 
 def _unfilter(data, height, stride, bpp):
-    """Reverses PNG's per-scanline filtering (spec section 9) - `data` is
+    """Reverses PNG's per-scanline filtering (spec section 9); `data` is
     the raw, already-decompressed IDAT stream: (1 filter-type byte + stride
     data bytes) per row. `bpp` is bytes-per-pixel for filtering purposes
-    (ceil(bitdepth*channels/8), minimum 1 - PNG's own rule, not a guess).
+    (ceil(bitdepth*channels/8), minimum 1; PNG's own rule, not a guess).
     Returns the unfiltered scanlines concatenated, stride bytes each, with
     no filter-type bytes left in them."""
     out = bytearray(height * stride)
