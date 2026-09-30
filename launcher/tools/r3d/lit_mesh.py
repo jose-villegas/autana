@@ -31,27 +31,30 @@ MAX_DEPTH = 10
 POSITION_SCALE = 8
 
 
-def weld_quantised(q, rgb, tris, double):
+def weld_quantised(q, rgb, tris, double, flat=False, return_keep=False):
     """One vertex per position and colour, in order of position then colour,
     the triangles that collapsed dropped and the vertices nothing uses gone.
     A seam, two vertices at one position with different colours, stays a seam."""
-    key = np.concatenate([q, rgb], axis=1)
+    key = q if flat else np.concatenate([q, rgb], axis=1)
     _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
     t = inverse.reshape(-1)[tris]
     keep = (t[:, 0] != t[:, 1]) & (t[:, 1] != t[:, 2]) & (t[:, 0] != t[:, 2])
     t, double = t[keep], np.asarray(double)[keep]
     used, local = np.unique(t, return_inverse=True)
-    return q[first][used], rgb[first][used], local.reshape(-1, 3), double
+    out = q[first][used], rgb[first][used], local.reshape(-1, 3), double
+    return out + (keep,) if return_keep else out
 
 
-def canonical_order(tris, double):
+def canonical_order(tris, double, face_colors=None):
     """The triangles each turned to start at its smallest vertex, which keeps
     its winding, and sorted, so the order says nothing of where they came from."""
     start = np.argmin(tris, axis=1)
     rows = np.arange(len(tris))
     tris = np.stack([tris[rows, (start + k) % 3] for k in range(3)], axis=1)
     order = np.lexsort((tris[:, 2], tris[:, 1], tris[:, 0]))
-    return tris[order], np.asarray(double)[order]
+    if face_colors is None:
+        return tris[order], np.asarray(double)[order]
+    return tris[order], np.asarray(double)[order], np.asarray(face_colors)[order]
 
 
 def local_vertices(tris):
@@ -64,8 +67,22 @@ def local_vertices(tris):
     return unique[order], rank[inverse].reshape(-1, 3)
 
 
+def rgb565(rgb):
+    """sRGB triples rounded to the target's byte-swapped RGB565 pixels."""
+    rgb = np.clip(np.rint(rgb), 0, 255).astype(np.uint16)
+    native = ((rgb[:, 0] << 8) & 0xf800) | ((rgb[:, 1] << 3) & 0x07e0) | (rgb[:, 2] >> 3)
+    return ((native >> 8) | (native << 8)).astype(np.uint16)
+
+
+def rgb_from_565(colors):
+    """The expanded sRGB triples that quantize back to target-format RGB565."""
+    colors = np.asarray(colors, dtype=np.uint16)
+    native = (colors >> 8) | (colors << 8)
+    return np.column_stack(((native >> 8) & 0xf8, (native >> 3) & 0xfc, (native << 3) & 0xf8))
+
+
 def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, leaf_triangles=LEAF_TRIANGLES,
-                  max_depth=MAX_DEPTH, meshlet_triangles=MESHLET_TRIANGLES):
+                  max_depth=MAX_DEPTH, meshlet_triangles=MESHLET_TRIANGLES, flat=False, face_rgb=None):
     """Bakes positions (model units), rgb (0..255 per vertex) and tris
     (counter-clockwise seen from the front, `double` one flag per triangle)
     into a SimpleNamespace holding pos, rgb, tris, clusters, nodes and the
@@ -73,14 +90,25 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
     sidedness; an octree leaf holds meshlets to leaf_triangles triangles."""
     q = np.round(np.asarray(positions) * position_scale).astype(np.int64)
     col = np.clip(np.rint(rgb), 0, 255).astype(np.int64)
-    q, col, tris, double = weld_quantised(q, col, np.asarray(tris, dtype=np.int64), double)
-    tris, double = canonical_order(tris, double)
+    if flat:
+        assert face_rgb is not None and len(face_rgb) == len(tris), "a flat bake needs one face colour per triangle"
+    q, col, tris, double, keep = weld_quantised(q, col, np.asarray(tris, dtype=np.int64), double, flat=flat,
+                                                 return_keep=True)
+    face = rgb565(face_rgb)[keep] if flat else None
+    if flat:
+        tris, double, face = canonical_order(tris, double, face)
+    else:
+        tris, double = canonical_order(tris, double)
 
     entries = []
     for is_double in (0, 1):
-        members = tris[double == is_double]
+        member = double == is_double
+        members = tris[member]
         if len(members):
-            entries += [{"double": is_double, "tris": t} for t in build_meshlets(q, members, meshlet_triangles)]
+            colours = {tuple(sorted(t)): c for t, c in zip(members, face[member])} if flat else None
+            entries += [{"double": is_double, "tris": t,
+                         "face": None if colours is None else np.array([colours[tuple(sorted(x))] for x in t])}
+                        for t in build_meshlets(q, members, meshlet_triangles)]
     for e in entries:
         e["box"] = box_of(q, e["tris"])
     centres = np.array([(lo + hi) / 2.0 for lo, hi in (e["box"] for e in entries)])
@@ -88,10 +116,10 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
     order, nodes = flatten_octree(root)
 
     out = SimpleNamespace(position_scale=position_scale)
-    out.pos, out.rgb, out.tris, out.clusters = lay_out(q, col, [entries[i] for i in order])
+    out.pos, out.rgb, out.tris, out.clusters, out.face_colors = lay_out(q, col, [entries[i] for i in order], flat)
     node_bounds(nodes, out.clusters)
     out.nodes = nodes
-    validate(out.pos, out.rgb, out.tris, out.clusters, out.nodes)
+    validate(out.pos, out.rgb, out.tris, out.clusters, out.nodes, out.face_colors)
     return out
 
 
@@ -100,28 +128,36 @@ def box_of(q, tris):
     return p.min(axis=0), p.max(axis=0)
 
 
-def lay_out(q, col, entries):
+def lay_out(q, col, entries, flat=False):
     """The vertex, colour and triangle arrays of a run of clusters, each
     owning the vertices its triangles use, and the cluster rows over them."""
-    pos, rgb, tris, clusters = [], [], [], []
+    pos, rgb, tris, clusters, face = [], [], [], [], []
     vbase = tbase = 0
     for e in entries:
         used, local = local_vertices(e["tris"])
         pos.append(q[used])
-        rgb.append(col[used])
+        if not flat:
+            rgb.append(col[used])
         tris.append(local + vbase)
+        if flat:
+            face.append(e["face"])
         clusters.append((vbase, len(used), tbase, len(local), e["box"][0], e["box"][1], bool(e["double"])))
         vbase += len(used)
         tbase += len(local)
-    return np.concatenate(pos), np.concatenate(rgb), np.concatenate(tris), clusters
+    return (np.concatenate(pos), None if flat else np.concatenate(rgb), np.concatenate(tris), clusters,
+            np.concatenate(face) if flat else None)
 
 
-def validate(pos, rgb, tris, clusters, nodes):
+def validate(pos, rgb, tris, clusters, nodes, face_colors=None):
     assert len(pos) <= MAX_VERTICES, f"{len(pos)} vertices exceed uint16 indices"
     assert len(tris) <= MAX_TRIANGLES, f"{len(tris)} triangles exceed uint16 offsets"
     assert len(clusters) <= MAX_CLUSTERS, f"{len(clusters)} clusters exceed uint16 offsets"
     assert np.abs(pos).max() <= INT16_MAX, "a position does not fit int16"
-    assert rgb.min() >= 0 and rgb.max() <= 255
+    assert (face_colors is not None) != (rgb is not None)
+    if rgb is not None:
+        assert rgb.min() >= 0 and rgb.max() <= 255
+    else:
+        assert len(face_colors) == len(tris)
     assert tris.min() >= 0 and tris.max() < len(pos)
     assert np.all((tris[:, 0] != tris[:, 1]) & (tris[:, 1] != tris[:, 2]) & (tris[:, 0] != tris[:, 2]))
     next_v = next_t = 0
@@ -202,10 +238,17 @@ def emit(out_dir, name, banner_lines, mesh):
         print(file=out)
         emit_rows(out, f"{low}_positions", "int16_t", mesh.pos.tolist(), 8)
         print(file=out)
-        emit_rows(out, f"{low}_colors", "uint8_t", mesh.rgb.tolist(), 10)
-        print(file=out)
+        if mesh.rgb is not None:
+            emit_rows(out, f"{low}_colors", "uint8_t", mesh.rgb.tolist(), 10)
+            print(file=out)
         emit_rows(out, f"{low}_triangles", "uint16_t", mesh.tris.tolist(), 8)
         print(file=out)
+        if mesh.face_colors is not None:
+            print(f"static const uint16_t {low}_face_colors[] = {{", file=out)
+            for i in range(0, len(mesh.face_colors), 12):
+                print("    " + " ".join(str(int(v)) + "," for v in mesh.face_colors[i : i + 12]), file=out)
+            print("};", file=out)
+            print(file=out)
         print(f"static const r3d_lit_cluster_t {low}_clusters[] = {{", file=out)
         for vbase, vcount, tbase, tcount, lo, hi, double in mesh.clusters:
             print(f"    {{{vbase}, {vcount}, {tbase}, {tcount}, {triple(lo)}, {triple(hi)}, {c_bool(double)}}},", file=out)
@@ -217,9 +260,11 @@ def emit(out_dir, name, banner_lines, mesh):
         print("};", file=out)
         print(file=out)
         print(f"const r3d_lit_mesh_t {low}_mesh = {{", file=out)
-        print(f"    {low}_positions, {low}_colors, {low}_triangles, {low}_clusters, {low}_nodes,", file=out)
+        colors = f"{low}_colors" if mesh.rgb is not None else "NULL"
+        face = f"{low}_face_colors" if mesh.face_colors is not None else "NULL"
+        print(f"    {low}_positions, {colors}, {low}_triangles, {low}_clusters, {low}_nodes,", file=out)
         print(f"    {up}_VERTEX_COUNT, {up}_TRIANGLE_COUNT, {up}_CLUSTER_COUNT, {up}_NODE_COUNT,", file=out)
-        print(f"    {up}_POSITION_SCALE,", file=out)
+        print(f"    {up}_POSITION_SCALE, {face},", file=out)
         print("};", file=out)
 
 
@@ -243,7 +288,8 @@ def read_lit_mesh(path):
     mesh = SimpleNamespace()
     mesh.position_scale = int(re.search(rf"{low.upper()}_POSITION_SCALE (\d+)", path.with_suffix(".h").read_text()).group(1))
     mesh.pos = np.array(arrays[f"{low}_positions"], dtype=np.int64).reshape(-1, 3)
-    mesh.rgb = np.array(arrays[f"{low}_colors"], dtype=np.int64).reshape(-1, 3)
+    mesh.rgb = np.array(arrays[f"{low}_colors"], dtype=np.int64).reshape(-1, 3) if f"{low}_colors" in arrays else None
+    mesh.face_colors = np.array(arrays[f"{low}_face_colors"], dtype=np.uint16) if f"{low}_face_colors" in arrays else None
     mesh.tris = np.array(arrays[f"{low}_triangles"], dtype=np.int64).reshape(-1, 3)
     rows = np.array(arrays[f"{low}_clusters"], dtype=np.int64).reshape(-1, 11)
     mesh.clusters = [(r[0], r[1], r[2], r[3], r[4:7], r[7:10], bool(r[10])) for r in rows]
@@ -258,4 +304,7 @@ def finest_triangles(mesh):
     double = np.zeros(len(mesh.tris), dtype=np.int64)
     for _, _, tbase, tcount, _, _, is_double in mesh.clusters:
         double[tbase : tbase + tcount] = int(is_double)
-    return weld_quantised(mesh.pos, mesh.rgb, mesh.tris, double)
+    if mesh.rgb is not None:
+        return weld_quantised(mesh.pos, mesh.rgb, mesh.tris, double)
+    pos, _, tris, double = weld_quantised(mesh.pos, np.zeros((len(mesh.pos), 3)), mesh.tris, double, flat=True)
+    return pos, rgb_from_565(mesh.face_colors), tris, double

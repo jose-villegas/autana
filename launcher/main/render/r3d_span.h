@@ -82,3 +82,5 @@ extern int r3d_span_stop_after;
 
 void r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c);
+void r3d_span_triangle_flat(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                            const r3d_span_vertex_t* c, uint16_t color);

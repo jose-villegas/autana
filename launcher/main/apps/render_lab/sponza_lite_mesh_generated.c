@@ -3372,5 +3372,5 @@ static const r3d_lit_node_t sponza_lite_nodes[] = {
 const r3d_lit_mesh_t sponza_lite_mesh = {
     sponza_lite_positions, sponza_lite_colors, sponza_lite_triangles, sponza_lite_clusters, sponza_lite_nodes,
     SPONZA_LITE_VERTEX_COUNT, SPONZA_LITE_TRIANGLE_COUNT, SPONZA_LITE_CLUSTER_COUNT, SPONZA_LITE_NODE_COUNT,
-    SPONZA_LITE_POSITION_SCALE,
+    SPONZA_LITE_POSITION_SCALE, 0,
 };

@@ -298,6 +298,17 @@ class ClusterTreeTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class LitMeshTests(unittest.TestCase):
+    def test_a_flat_bake_keeps_one_centre_colour_per_triangle_and_welds_positions(self):
+        p = np.array([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 0), (1, 1, 0)])
+        rgb = np.array([(1, 2, 3), (4, 5, 6), (7, 8, 9), (200, 201, 202), (10, 11, 12)])
+        tris = np.array([(0, 1, 2), (3, 4, 1)])
+        centres = p[tris].mean(axis=1)
+        sampled = np.column_stack((centres[:, 0] * 255, centres[:, 1] * 255, np.zeros(len(centres))))
+        mesh = bake_lit_mesh(p, rgb, tris, np.zeros(len(tris), dtype=int), flat=True, face_rgb=sampled)
+        self.assertEqual(len(mesh.face_colors), len(tris))
+        self.assertEqual(len(mesh.pos), 4)
+        self.assertEqual(mesh.face_colors.tolist(), [0xA052, 0xA0AA])
+
     def test_a_written_mesh_names_its_counts(self):
         p, tris = grid(6)
         rgb = np.full((len(p), 3), 128)
@@ -307,6 +318,20 @@ class LitMeshTests(unittest.TestCase):
             header = (pathlib.Path(out) / "demo_mesh_generated.h").read_text()
         self.assertIn(f"#define DEMO_TRIANGLE_COUNT {len(tris)}", header)
         self.assertEqual(len(mesh.tris), len(tris))
+
+    def test_rebaking_a_flat_mesh_is_a_fixed_point(self):
+        p, tris = grid(2)
+        rgb = np.full((len(p), 3), 128)
+        face_rgb = np.arange(len(tris) * 3).reshape(-1, 3) * 20
+        with tempfile.TemporaryDirectory() as out:
+            write_lit_mesh(out, "demo", p, rgb, tris, np.zeros(len(tris), dtype=int), ["test"], flat=True,
+                           face_rgb=face_rgb)
+            c = pathlib.Path(out) / "demo_mesh_generated.c"
+            rebake.main([str(c)])
+            once = (c.read_text(), c.with_suffix(".h").read_text())
+            rebake.main([str(c)])
+            twice = (c.read_text(), c.with_suffix(".h").read_text())
+        self.assertEqual(once, twice)
 
     def test_validation_refuses_a_triangle_reaching_outside_its_cluster(self):
         pos = np.zeros((6, 3), dtype=np.int64)

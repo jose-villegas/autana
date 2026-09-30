@@ -15,6 +15,8 @@ import os
 import pathlib
 import sys
 
+import numpy as np
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log  # noqa: E402
@@ -73,8 +75,11 @@ def main(argv=None):
     lines = ["GENERATED FILE - do not edit.", "", "    " + command(out_dir / path.name, options), "", INTRO, ""] \
         + provenance(lines)
     pos, rgb, tris, double = finest_triangles(mesh)
-    baked = write_lit_mesh(out_dir, name, pos / mesh.position_scale, rgb, tris, double, lines,
-                           position_scale=mesh.position_scale, **options)
+    flat = mesh.face_colors is not None
+    face_rgb = rgb if flat else None
+    vertex_rgb = np.zeros((len(pos), 3)) if flat else rgb
+    baked = write_lit_mesh(out_dir, name, pos / mesh.position_scale, vertex_rgb, tris, double, lines,
+                           position_scale=mesh.position_scale, flat=flat, face_rgb=face_rgb, **options)
     log(f"{name}: {len(baked.pos)} vertices, {len(baked.tris)} triangles, {len(baked.clusters)} clusters, "
         f"{len(baked.nodes)} nodes")
     return 0

@@ -155,6 +155,19 @@ test_the_nearer_triangle_wins_in_either_order(void) {
 }
 
 static void
+test_a_flat_triangle_keeps_its_face_colour_and_interpolates_depth(void) {
+    const r3d_span_vertex_t a = sv(4, 4, 0.2f, 0, 0, 0), b = sv(52, 4, 0.8f, 0, 0, 0), c = sv(4, 40, 0.5f, 0, 0, 0);
+    const uint16_t face = GFX_RGB(0x12AB34);
+    r3d_span_target_t t = fixture();
+    r3d_span_triangle_flat(&t, &a, &b, &c, face);
+    const int near = 8 * W + 8;
+    const int far = 8 * W + 40;
+    TEST_ASSERT_EQUAL_HEX16(face, color[near]);
+    TEST_ASSERT_EQUAL_HEX16(face, color[far]);
+    TEST_ASSERT_GREATER_THAN_UINT16(depth[near], depth[far]);
+}
+
+static void
 test_a_window_of_rows_matches_the_same_rows_of_a_full_draw(void) {
     const r3d_span_vertex_t a = sv(3.2f, -20.0f, 0.3f, 10, 200, 30), b = sv(70.0f, 12.5f, 0.9f, 250, 20, 90);
     const r3d_span_vertex_t c = sv(-5.0f, 60.0f, 0.6f, 90, 90, 250);
@@ -1837,6 +1850,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_two_triangles_sharing_an_edge_cover_a_square_exactly_once);
     RUN_TEST(test_tiny_and_large_triangles_tile_without_gaps_or_overlap);
     RUN_TEST(test_the_nearer_triangle_wins_in_either_order);
+    RUN_TEST(test_a_flat_triangle_keeps_its_face_colour_and_interpolates_depth);
     RUN_TEST(test_a_window_of_rows_matches_the_same_rows_of_a_full_draw);
     RUN_TEST(test_colours_stay_within_the_vertex_range_even_at_the_edges);
     RUN_TEST(test_an_axis_aligned_square_fills_exactly_the_centres_inside_it);
