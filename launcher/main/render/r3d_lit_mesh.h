@@ -25,6 +25,17 @@ typedef struct {
     bool leaf;
 } r3d_lit_node_t;
 
+/* meshoptimizer's normal cone of a cluster's triangles: `apex` in position
+ * ticks, `axis` and `cutoff` in 1/127ths. The cluster faces away from an eye
+ * when dot(apex - eye, axis) >= cutoff * |apex - eye|, which the bake rounds
+ * so it never holds for a cluster with a visible front face. A cutoff of 127
+ * never culls. */
+typedef struct {
+    float apex[3];
+    int8_t axis[3];
+    int8_t cutoff;
+} r3d_lit_cone_t;
+
 typedef struct {
     const int16_t (*positions)[3]; /* ticks; position_scale ticks per model unit */
     const uint8_t (*colors)[3];
@@ -33,4 +44,5 @@ typedef struct {
     const r3d_lit_node_t* nodes; /* children of a node sit together */
     int vertex_count, triangle_count, cluster_count, node_count;
     int position_scale;
+    const r3d_lit_cone_t* cones; /* one per cluster, or NULL to cull none by facing */
 } r3d_lit_mesh_t;

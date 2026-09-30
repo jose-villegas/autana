@@ -46,6 +46,10 @@ r3d_lit_view_look(r3d_lit_view_t* view, r3d_vec3f_t eye, r3d_vec3f_t forward, fl
     view->snap_cy = (view->center_y * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     view->width = viewport.width;
     view->height = viewport.height;
+    const float to_ticks = (float)position_scale;
+    view->eye[0] = eye.x * to_ticks;
+    view->eye[1] = eye.y * to_ticks;
+    view->eye[2] = eye.z * to_ticks;
 }
 
 static inline r3d_vec3f_t
@@ -61,6 +65,7 @@ to_lens(const r3d_lit_view_t* view, float x, float y, float z) {
 #define PLANE_COUNT    5
 #define ALL_PLANES     ((1u << PLANE_COUNT) - 1u)
 #define WALK_STACK_MAX 256
+#define CONE_NEVER     127
 
 typedef struct {
     float w[4]; /* inside where w . (x, y, z, 1) >= 0, in position ticks */
@@ -151,6 +156,20 @@ push_children(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, const r3d_
     return top;
 }
 
+/* True when every triangle of the cluster faces away from the eye. Squared,
+ * so no root: the test is `a >= cutoff * |d|` for the apex-to-eye offset d,
+ * and it needs a > 0 so an eye at the apex culls nothing. */
+static inline bool
+cone_faces_away(const r3d_lit_cone_t* cone, const float eye[3]) {
+    if (cone->cutoff >= CONE_NEVER) {
+        return false;
+    }
+    const float d[3] = {cone->apex[0] - eye[0], cone->apex[1] - eye[1], cone->apex[2] - eye[2]};
+    const float a = (d[0] * (float)cone->axis[0]) + (d[1] * (float)cone->axis[1]) + (d[2] * (float)cone->axis[2]);
+    const float cutoff = (float)cone->cutoff;
+    return a > 0.0F && a * a >= cutoff * cutoff * ((d[0] * d[0]) + (d[1] * d[1]) + (d[2] * d[2]));
+}
+
 int
 r3d_lit_cull_clusters(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, uint16_t* out) {
     plane_t planes[PLANE_COUNT];
@@ -173,6 +192,9 @@ r3d_lit_cull_clusters(const r3d_lit_mesh_t* mesh, const r3d_lit_view_t* view, ui
         }
         for (int i = 0; i < node->count; i++) {
             const int c = node->first + i;
+            if (mesh->cones != NULL && !mesh->clusters[c].double_sided && cone_faces_away(&mesh->cones[c], view->eye)) {
+                continue;
+            }
             unsigned cluster_mask = mask;
             if (cluster_mask == 0
                 || classify_box(mesh->clusters[c].lo, mesh->clusters[c].hi, planes, &cluster_mask) != BOX_OUTSIDE) {

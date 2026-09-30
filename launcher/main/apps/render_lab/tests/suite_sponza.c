@@ -55,7 +55,10 @@ cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lit_view_t* view) {
 }
 
 static void
-check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* mesh) {
+check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* baked) {
+    r3d_lit_mesh_t frustum_only = *baked;
+    frustum_only.cones = NULL;
+    const r3d_lit_mesh_t* mesh = &frustum_only;
     const uint32_t period = sponza_flythrough_period_ms();
     uint16_t* walked = malloc(sizeof(*walked) * SPONZA_CLUSTER_COUNT);
     uint8_t* kept = malloc(SPONZA_CLUSTER_COUNT);
@@ -223,6 +226,55 @@ test_both_bakes_are_cut_into_meshlets(void) {
     check_the_clusters_are_meshlets(&sponza_lite_mesh);
 }
 
+/* Every cluster the cones drop, and the frustum keeps, has no triangle whose
+ * front the eye sees. Returns how many the cones dropped. */
+static int
+count_clusters_the_cones_drop_rightly(const r3d_lit_mesh_t* mesh, uint16_t* walked, uint8_t* kept) {
+    int dropped = 0;
+    const uint32_t period = sponza_flythrough_period_ms();
+    for (uint32_t t = 0; t < period; t += 1000) {
+        r3d_lit_view_t view;
+        sponza_view_at(&view, t, mesh->position_scale, (int)(t / 1000) & 3);
+        memset(kept, 0, SPONZA_CLUSTER_COUNT);
+        const int count = r3d_lit_cull_clusters(mesh, &view, walked);
+        for (int i = 0; i < count; i++) {
+            kept[walked[i]] = 1;
+        }
+        for (int c = 0; c < mesh->cluster_count; c++) {
+            const r3d_lit_cluster_t* cl = &mesh->clusters[c];
+            if (kept[c] || !cluster_in_view(cl, &view)) {
+                continue;
+            }
+            dropped++;
+            TEST_ASSERT_FALSE_MESSAGE(cl->double_sided, "a double-sided cluster was culled by facing");
+            for (int i = cl->triangle_first; i < cl->triangle_first + cl->triangle_count; i++) {
+                const int16_t* a = mesh->positions[mesh->triangles[i][0]];
+                const int16_t* b = mesh->positions[mesh->triangles[i][1]];
+                const int16_t* d = mesh->positions[mesh->triangles[i][2]];
+                const v3 ab = {(float)(b[0] - a[0]), (float)(b[1] - a[1]), (float)(b[2] - a[2])};
+                const v3 ad = {(float)(d[0] - a[0]), (float)(d[1] - a[1]), (float)(d[2] - a[2])};
+                const v3 n = {(ab.y * ad.z) - (ab.z * ad.y), (ab.z * ad.x) - (ab.x * ad.z),
+                              (ab.x * ad.y) - (ab.y * ad.x)};
+                const v3 to_eye = {view.eye[0] - (float)a[0], view.eye[1] - (float)a[1], view.eye[2] - (float)a[2]};
+                TEST_ASSERT_TRUE_MESSAGE(dot(n, to_eye) <= 0.0F, "a culled cluster has a triangle facing the eye");
+            }
+        }
+    }
+    return dropped;
+}
+
+static void
+test_the_cones_drop_only_clusters_that_face_away(void) {
+    uint16_t* walked = malloc(sizeof(*walked) * SPONZA_CLUSTER_COUNT);
+    uint8_t* kept = malloc(SPONZA_CLUSTER_COUNT);
+    TEST_ASSERT_NOT_NULL(walked);
+    TEST_ASSERT_NOT_NULL(kept);
+    TEST_ASSERT_GREATER_THAN_INT(0, count_clusters_the_cones_drop_rightly(&sponza_mesh, walked, kept));
+    TEST_ASSERT_GREATER_THAN_INT(0, count_clusters_the_cones_drop_rightly(&sponza_lite_mesh, walked, kept));
+    free(kept);
+    free(walked);
+}
+
 static void
 test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(void) {
     check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(&sponza_mesh);
@@ -301,6 +353,7 @@ run_sponza_suite(void) {
     RUN_TEST(test_both_bakes_have_the_structure_the_pipeline_relies_on);
     RUN_TEST(test_both_bakes_are_cut_into_meshlets);
     RUN_TEST(test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps);
+    RUN_TEST(test_the_cones_drop_only_clusters_that_face_away);
     RUN_TEST(test_the_flythrough_moves_smoothly_and_closes_its_loop);
     RUN_TEST(test_the_flythrough_keeps_clear_of_every_triangle);
     RUN_TEST(test_the_flythrough_sees_mostly_building);

@@ -484,7 +484,8 @@ subpixel_view(void) {
                             H,
                             R3D_SNAP_BIAS,
                             R3D_SNAP_BIAS,
-                            0.5f / (float)R3D_SUBPIXEL};
+                            0.5f / (float)R3D_SUBPIXEL,
+                            {0.0f, 0.0f, 0.0f}};
 }
 
 static r3d_lit_mesh_t
@@ -719,6 +720,53 @@ test_a_cluster_behind_the_camera_is_culled(void) {
                       (r3d_viewport_t){W, H, 0});
     uint16_t visible[1];
     TEST_ASSERT_EQUAL_INT(0, r3d_lit_cull_clusters(&mesh, &view, visible));
+}
+
+/* The cone of the quad's front, as the bake writes a flat cluster's: apex on
+ * the plane, axis along the normal, the smallest cutoff its rounding leaves. */
+static const r3d_lit_cone_t quad_cone_front = {{0.0F, 0.0F, 0.0F}, {0, 0, 127}, 1};
+static const r3d_lit_cone_t quad_cone_back = {{0.0F, 0.0F, 0.0F}, {0, 0, -127}, 1};
+
+#define FROM_FRONT ((r3d_vec3f_t){0.0F, 0.0F, 400.0F})
+#define LOOK_BACK  ((r3d_vec3f_t){0.0F, 0.0F, -1.0F})
+#define LOOK_ALONG ((r3d_vec3f_t){1.0F, 0.0F, 0.0F})
+
+static int
+cull_quad_from(const r3d_lit_cone_t* cone, bool double_sided, r3d_vec3f_t eye, r3d_vec3f_t forward) {
+    r3d_lit_cluster_t cluster;
+    r3d_lit_mesh_t mesh = quad_mesh(quad_front, double_sided, &cluster);
+    mesh.cones = cone;
+    r3d_lit_view_t view;
+    r3d_lit_view_look(&view, eye, forward, 1.0F, 1.0F, 1, (r3d_viewport_t){W, H, 0});
+    uint16_t visible[1];
+    return r3d_lit_cull_clusters(&mesh, &view, visible);
+}
+
+static void
+test_a_cluster_whose_normals_face_away_from_the_eye_is_culled(void) {
+    TEST_ASSERT_EQUAL_INT(1, cull_quad_from(&quad_cone_front, false, FROM_FRONT, LOOK_BACK));
+    TEST_ASSERT_EQUAL_INT(0, cull_quad_from(&quad_cone_back, false, FROM_FRONT, LOOK_BACK));
+}
+
+static void
+test_a_cluster_with_no_cones_is_never_culled_by_facing(void) {
+    TEST_ASSERT_EQUAL_INT(1, cull_quad_from(NULL, false, FROM_FRONT, LOOK_BACK));
+}
+
+/* The cone test is a bound, not the facing test itself: an eye level with the
+ * plane, or barely behind it, keeps the cluster, and one clearly behind culls. */
+static void
+test_a_cluster_seen_edge_on_or_barely_from_behind_is_kept(void) {
+    /* the eye sees the front edge-on from the side, in the plane */
+    TEST_ASSERT_EQUAL_INT(1, cull_quad_from(&quad_cone_front, false, (r3d_vec3f_t){-1000.0F, 0.0F, 0.0F}, LOOK_ALONG));
+    TEST_ASSERT_EQUAL_INT(1, cull_quad_from(&quad_cone_front, false, (r3d_vec3f_t){-1000.0F, 0.0F, -1.0F}, LOOK_ALONG));
+    TEST_ASSERT_EQUAL_INT(0,
+                          cull_quad_from(&quad_cone_front, false, (r3d_vec3f_t){-1000.0F, 0.0F, -100.0F}, LOOK_ALONG));
+}
+
+static void
+test_a_double_sided_cluster_is_never_culled_by_facing(void) {
+    TEST_ASSERT_EQUAL_INT(1, cull_quad_from(&quad_cone_back, true, FROM_FRONT, LOOK_BACK));
 }
 
 /* A floor running from behind the camera to far ahead: the near clip keeps
@@ -1182,6 +1230,10 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_triangle_cut_by_the_near_plane_draws_the_whole_quad_left_in_front);
     RUN_TEST(test_colour_along_the_near_cut_is_interpolated_to_the_cut);
     RUN_TEST(test_a_double_sided_triangle_cut_by_the_near_plane_draws_from_behind);
+    RUN_TEST(test_a_cluster_whose_normals_face_away_from_the_eye_is_culled);
+    RUN_TEST(test_a_cluster_with_no_cones_is_never_culled_by_facing);
+    RUN_TEST(test_a_cluster_seen_edge_on_or_barely_from_behind_is_kept);
+    RUN_TEST(test_a_double_sided_cluster_is_never_culled_by_facing);
     RUN_TEST(test_drawing_a_window_with_cluster_rows_matches_a_full_draw);
     RUN_TEST(test_a_triangle_over_any_side_of_the_screen_is_drawn);
 
