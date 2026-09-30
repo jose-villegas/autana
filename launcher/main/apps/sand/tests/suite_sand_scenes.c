@@ -5,7 +5,7 @@
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
- * live in suite_sand_common.{c,h} - see that header.
+ * live in suite_sand_common.{c,h}, see that header.
  */
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
                      * but every file inherited suite_sand.c's own include
@@ -1391,7 +1391,7 @@ build_tree_grove_scene(sand_t* s) {
         }
     }
 
-    /* Four trees across the width - see build_tree_grove_tree()'s own
+    /* Four trees across the width, see build_tree_grove_tree()'s own
      * comment for why each one is built the way it is. */
     for (int t = 0; t < TREE_GROVE_TREES; t++) {
         build_tree_grove_tree(s, t, ground);
@@ -1905,7 +1905,7 @@ test_the_wet_earth_scene_keeps_percolating_across_the_window(void) {
                  "makes only holds if it keeps happening for the whole "
                  "window, not just at the start",
                  q, dirt_gained);
-        /* 20, not the original 50 - see this test's own top comment for
+        /* 20, not the original 50, see this test's own top comment for
          * why PART 2's percolation slowdown moved this specific floor and
          * not the other two. */
         TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(20, dirt_gained, why);
@@ -2257,7 +2257,7 @@ test_the_gas_ignition_vessel_logs_blasts_per_step(void) {
  * the window's activity, 31-60 carry 34.3%, 61-90 carry 15.2%. */
 
 /* THAT CLEARS the same >=15%-per-third bar the thermal shock lattice's
- * own window was chosen against - see that scene's comment
+ * own window was chosen against, see that scene's comment
  * (build_thermal_shock_scene, above) for the precedent this follows. */
 
 /* SMALLER WINDOWS (checked down to 9) balance more evenly on that

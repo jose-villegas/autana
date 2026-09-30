@@ -4,7 +4,7 @@
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
- * live in suite_sand_common.{c,h} - see that header.
+ * live in suite_sand_common.{c,h}, see that header.
  */
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
                      * but every file inherited suite_sand.c's own include
@@ -487,7 +487,7 @@ test_spawned_grains_use_the_full_range_of_shades(void) {
 
 /* emitters */
 
-/* A persistent point source - see sand_add_emitter() in sand.h. Unlike
+/* A persistent point source, see sand_add_emitter() in sand.h. Unlike
  * sand_spawn()/sand_erase() above, an emitter is stepped by sand_step()
  * itself rather than acting the moment it is called, so most of these
  * tests run at least one step before looking at the grid. */

@@ -76,7 +76,7 @@ typedef enum { BRUSH_POUR, BRUSH_SPAWN } brush_mode_t;
  * independent of brush_mode_t above: that says how the SELECTED MATERIAL is
  * applied, this says what the finger does at all. Chosen from the brush
  * screen's segmented control (SAND_UI_BRUSH), one of three first-class
- * modes, each with its own remembered radius - see sand_ui_t.radius_px and
+ * modes, each with its own remembered radius, see sand_ui_t.radius_px and
  * sand_ui_mode_clicked(). */
 typedef enum { SAND_MODE_PAINT, SAND_MODE_ERASE, SAND_MODE_DETONATE } sand_mode_t;
 

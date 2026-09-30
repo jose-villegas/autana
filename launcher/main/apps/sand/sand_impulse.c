@@ -10,7 +10,7 @@
  * it lives here instead.
  *
  * step_impulses() is still called from sand_step(), exactly once, right
- * before finalize_settling() - see that call site's own comment for why it
+ * before finalize_settling(), see that call site's own comment for why it
  * has to run LAST, after every other pass that can move a cell: running
  * last is what turns a plain outward push into a ballistic arc for free,
  * since gravity has already pulled by the time this pass gets a turn. That
@@ -69,7 +69,7 @@ sand_disc_count(int radius) {
 
 /* Forward-declared: the shared implementation behind both sand_impulse()
  * and this file's own annulus seeding lives right next to sand_impulse()
- * itself, further down, not up here next to its other caller - see that
+ * itself, further down, not up here next to its other caller, see that
  * function's own comment for why one body serves both. */
 static void queue_flying_grain(sand_t* s, int x, int y, int dir, int speed, bool allow_dislodge_static, int mat_filter,
                                bool guaranteed_dislodge, int ramp);
@@ -131,7 +131,7 @@ dislodge_density(cell_t cell) {
 /* WALL CANNOT BE THROWN BY DEFAULT, any more than one can be entered -
  * can_impulse_enter() gates the DESTINATION, this gates the SOURCE.
  * `allow_dislodge_static` uses `255 - dislodge_density()` for chance:
- * LOWER density means HIGHER chance - see that helper's own comment
+ * LOWER density means HIGHER chance, see that helper's own comment
  * for why an extended static needs its own override. */
 static bool
 static_source_holds(sand_t* s, cell_t cell, bool allow_dislodge_static, bool guaranteed_dislodge) {
@@ -190,7 +190,7 @@ shatter_if_glass(sand_t* s, size_t at, int x, int y, cell_t cell) {
 static void
 queue_flying_grain(sand_t* s, int x, int y, int dir, int speed, bool allow_dislodge_static, int mat_filter,
                    bool guaranteed_dislodge, int ramp) {
-    /* Disabled, or already full - see sand_impulse()'s own comment in
+    /* Disabled, or already full, see sand_impulse()'s own comment in
      * sand_impulse.h on why both are silent no-ops rather than something a
      * caller has to check for itself first. */
     if (s->impulse_buf == NULL) {
@@ -271,7 +271,7 @@ sand_impulse_dislodge(sand_t* s, int x, int y, int dir, int speed, int ramp) {
 static void
 displace_disc(sand_t* s, int cx, int cy, int radius, int mat_filter, bool guaranteed_dislodge) {
     if (s->impulse_buf == NULL) {
-        return; /* sand_enable_impulses() was never called - see its comment */
+        return; /* sand_enable_impulses() was never called, see its comment */
     }
 
     /* RING ORDER (Chebyshev distance), NOT ROW ORDER: an undersized buffer's
@@ -347,7 +347,7 @@ void
 sand_explode(sand_t* s, int cx, int cy, int radius) {
     s->explosions_this_step++;
     if (s->impulse_buf == NULL) {
-        return; /* sand_enable_impulses() was never called - see its comment */
+        return; /* sand_enable_impulses() was never called, see its comment */
     }
 
     /* FILLS a cavity with fire before queuing any flight entries - see
@@ -881,7 +881,7 @@ queue_cascade_relay(const sand_t* s, const impulse_t* entry, uint8_t mat_id, int
     if (CELL_IS_EMPTY(relay_target) || CELL_MATERIAL(relay_target) != mat_id) {
         return;
     }
-    /* Writes from the BACK of `deferred` - see the array's own comment in
+    /* Writes from the BACK of `deferred`, see the array's own comment in
      * step_impulses() for why this and TRANSFER (which writes from the
      * front, inside impulse_charge_displacement()) never collide: each
      * partition is sized to its own cap, and the two caps sum to exactly
@@ -957,7 +957,7 @@ step_impulses(sand_t* s, int dx, int dy) {
          * FOREVER if its target never opens (a sealed vessel, an
          * undisturbed pile), breaking the one guarantee this design rests
          * on - every entry's lifetime is bounded. The roll's own chance IS
-         * entry.speed - see SAND_IMPULSE_SPEED_RAMP for why one byte
+         * entry.speed, see SAND_IMPULSE_SPEED_RAMP for why one byte
          * carries both "chance this turn's move happens" and "how much
          * flight is left". */
         const bool rolled_move = rng_chance(&s->rng, entry.speed);
@@ -971,7 +971,7 @@ step_impulses(sand_t* s, int dx, int dy) {
 
         /* WATER AND ACID GET THEIR OWN GEOMETRIC DECAY
          * (SAND_SPLASH_SPEED_DECAY_SHIFT) instead of the linear ramp
-         * everything else uses - see that constant's own comment in
+         * everything else uses, see that constant's own comment in
          * sand.h. Interacts with the cascade's own gate; see
          * SAND_CASCADE_MIN_SPEED's comment for why that constant is 1. */
 

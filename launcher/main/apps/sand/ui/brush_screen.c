@@ -38,7 +38,7 @@
 
 /* Panel heights, tuned so the whole stack fits the tighter of the two real
  * canvases (448x368 landscape, 336px of content height after margins) with
- * every tap target still >= UI_TAP_MIN - see brush_screen_layout()'s own
+ * every tap target still >= UI_TAP_MIN, see brush_screen_layout()'s own
  * comment for the sum this must clear. */
 #define HEADER_H           96
 #define MODE_H             112

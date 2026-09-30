@@ -127,9 +127,9 @@ typedef struct {
 } field_doc_t;
 
 #define F(field, grp, knd, vb)  {offsetof(reaction_t, field), #field, (grp), (knd), SCALE_NA, (vb), NULL, NULL}
-/* A genuine per-step rate - see field_scale_t's own comment. */
+/* A genuine per-step rate, see field_scale_t's own comment. */
 #define FRATE(field, grp, vb)   {offsetof(reaction_t, field), #field, (grp), FK_RATE, SCALE_RATE, (vb), NULL, NULL}
-/* A one-shot chance at a single moment, not a rate - see field_scale_t's
+/* A one-shot chance at a single moment, not a rate, see field_scale_t's
  * own comment for why this needs a different ladder from FRATE. Renders
  * through frequency_words[] (the default "how often" vocabulary) unless a
  * row overrides chance_vocab directly - see FCHANCE_VOCAB below. */
@@ -178,7 +178,7 @@ static const field_doc_t field_docs[] = {
     F(needs_air, GRP_IGNITE, FK_FLAG, NULL),
 
     /* GRP_BURN. `residue` is a one-shot chance at the moment a burn-down
-     * finishes, not a per-step rate against a partner - see field_scale_t
+     * finishes, not a per-step rate against a partner, see field_scale_t
      * and emit_burn(). */
     F(burns, GRP_BURN, FK_FLAG, NULL),
     FRATE(burn_decay, GRP_BURN, "burns down"),
@@ -187,7 +187,7 @@ static const field_doc_t field_docs[] = {
     F(quench_to, GRP_BURN, FK_TARGET, NULL),
     FRATE(flare, GRP_BURN, "sets fire to the empty spot next to it"),
     /* Nonzero is a BLAST RADIUS IN CELLS, read only at the final burn step
-     * for gunpowder - see reaction_t.explodes in material.h. Silent for every
+     * for gunpowder, see reaction_t.explodes in material.h. Silent for every
      * material but gunpowder. */
     F(explodes, GRP_BURN, FK_COUNT_MAG, "detonates"),
 
@@ -283,7 +283,7 @@ static const field_doc_t field_docs[] = {
      * KIND_STATIC. Grp_shatter placeholder for assert. */
     F(dislodge_density, GRP_SHATTER, FK_COUNT_MAG, NULL),
 
-    /* Padding, not chemistry - see reaction_t. Listed so every byte of the
+    /* Padding, not chemistry, see reaction_t. Listed so every byte of the
      * struct is still claimed by exactly one row; nothing emits these,
      * since output is driven by the fields a material actually sets. */
     F(stride_pad2, GRP_PADDING, FK_PAD, NULL),
@@ -579,7 +579,7 @@ causes_are_complete(void) {
  * material.h). 6..254 stays silent, reading true unqualified. Exception:
  * sand's heat_chance (16) is silent by this rule but rolls per adjacent
  * heat source, so a held-flame bed converts far slower in practice
- * (~137 steps) - a checked ADVERB_EXCEPTIONS entry below, not a moved
+ * (~137 steps), a checked ADVERB_EXCEPTIONS entry below, not a moved
  * cutoff. */
 #define RATE_SLOW_CUTOFF 5
 
@@ -594,7 +594,7 @@ adverb_for(uint8_t v) {
     if (v <= RATE_SLOW_CUTOFF) {
         return "slowly";
     }
-    return ""; /* silent middle - see this function's own top comment */
+    return ""; /* silent middle, see this function's own top comment */
 }
 
 static int
@@ -617,7 +617,7 @@ adverb(const char* field_name, uint8_t v) {
     /* scale is only meaningful for FK_RATE fields, which is every field
      * that ever reaches adverb() - see field_scale_t's own comment. */
     if (fd->scale == SCALE_CHANCE) {
-        /* 0 is the same flat "never" on every vocabulary - see this
+        /* 0 is the same flat "never" on every vocabulary, see this
          * section's own top comment on why 0/255 are handled once, here,
          * rather than duplicated into every vocabulary array. */
         if (v == 0) {
@@ -673,7 +673,7 @@ static const adverb_exception_t ADVERB_EXCEPTIONS[] = {
      "speed."},
 };
 
-/* Looks up an override for (field_name, cell) - the only two things an
+/* Looks up an override for (field_name, cell), the only two things an
  * emit_*() clause has on hand at the point it would otherwise call
  * adverb() directly. Returns NULL when no override applies, which is the
  * overwhelming common case (one entry in the table above, as of this
@@ -717,7 +717,7 @@ adverb_cell_child(const char* field_name, uint8_t v, uint8_t cell) {
 }
 
 /* Decode TARGET field like place_reacted(). >= (MAT_EXTENDED << 4) is
- * MATX(k), < is material id. Value-based, not field-name-based - see top
+ * MATX(k), < is material id. Value-based, not field-name-based, see top
  * comment for fixed list issues. */
 static const char*
 to_name(uint8_t v) {
@@ -784,7 +784,7 @@ typedef struct {
     uint8_t self_id;  /* the plain material id this row's own material is
                         * (MAT_EXTENDED for every extended material, since
                         * they share that one id and have no plain id of
-                        * their own) - see emit_ignite()'s self check,
+                        * their own), see emit_ignite()'s self check,
                         * which needs this to tell "ignites into itself"
                         * (wood) apart from "ignites into a third thing" */
     uint8_t color_id; /* the raw byte a TARGET field would hold if it
@@ -794,7 +794,7 @@ typedef struct {
                         * extended material) this keeps k, because
                         * material_hex() needs the real swatch cell to
                         * look a colour up, not just which physics row the
-                        * material shares - see material_hex()'s own
+                        * material shares, see material_hex()'s own
                         * comment. */
 } mrow_t;
 
@@ -828,7 +828,7 @@ find_row(const char* name) {
  * representative swatch. */
 static uint8_t
 representative_variant(material_id_t material) {
-    /* A fresh liquid cell is a full one - see random_cell()'s own comment. */
+    /* A fresh liquid cell is a full one, see random_cell()'s own comment. */
     if (material_by_id(material)->kind == KIND_LIQUID) {
         return MASS_MAX;
     }
@@ -1533,7 +1533,7 @@ emit_material_section(const char* name, const reaction_t* r, uint8_t self_id, ui
  * Keyed on the RATE field and branching on the target - never the other
  * way around. Walking `*_to` fields and asking what triggers them would
  * miss every reaction whose target IS its own row (dirt getting wetter)
- * or a third cell entirely (a plant drinking) - see the plan's "The
+ * or a third cell entirely (a plant drinking), see the plan's "The
  * pairwise join is phase 1, not phase 2" section, which is the reason
  * this table exists at all rather than being deferred.
  */
@@ -1878,7 +1878,7 @@ emit_soaks_for(size_t i) {
 }
 
 /* drinks: a THIRD cell changes (dirt at the root), not the subject and not
- * the liquid - see reaction_t.drinks. "dirt", not the old hardcoded "soil"
+ * the liquid, see reaction_t.drinks. "dirt", not the old hardcoded "soil"
  * - see pred_soil()'s own comment. */
 static void
 emit_drinks_for(size_t i) {
@@ -1998,7 +1998,7 @@ typedef struct {
 } list_item_t;
 
 /* Comfortably more than heat_sources's or wetting_liquids's current
- * membership (2 and 1) - see those variables' own top comments: nothing
+ * membership (2 and 1), see those variables' own top comments: nothing
  * here assumes a fixed count, this is just a generous static bound so
  * collect_material_list() needs no allocation. */
 #define LIST_ITEM_MAX 8
@@ -2220,7 +2220,7 @@ emit_anatomy(void) {
     }
 
     /* GRP_BURN - emit_burn(), the `burns` branch: residue, quench_to,
-     * quenching_liquids (derived, not a single field - see emit_burn()'s
+     * quenching_liquids (derived, not a single field, see emit_burn()'s
      * own comment on why "a quenching liquid" was replaced with the real,
      * derived list). */
     {
@@ -2425,7 +2425,7 @@ emit_anatomy(void) {
     }
 
     /* GRP_GROW - emit_grow(), the grows branch. "Wet DIRT", not the old
-     * hardcoded "wet soil" - see pred_soil()'s own comment and this
+     * hardcoded "wet soil", see pred_soil()'s own comment and this
      * file's emit_grow(). Dirt is itself a material name now, so it gets
      * its own MARK_MATERIAL segment rather than folding into the verb
      * phrase the way "wet soil" once did. */
@@ -2489,7 +2489,7 @@ emit_anatomy(void) {
     }
 
     /* GRP_REGROW - emit_regrow(), the sprouts branch: sprouts, sprouts_to.
-     * "Wet DIRT", not the old hardcoded "wet soil" - see the GRP_GROW
+     * "Wet DIRT", not the old hardcoded "wet soil", see the GRP_GROW
      * example just above for the same fix, and pred_soil()'s comment. */
     {
         const mrow_t* row = find_row("Wood");
@@ -2522,7 +2522,7 @@ emit_anatomy(void) {
 
     /* GRP_SHATTER - emit_shatter(): shatters_to, and MARK_CAUSE - one of
      * two per-material clauses that ever print it (emit_spoils() is the
-     * other). Index 0, matching emit_shatter()'s own call - see that
+     * other). Index 0, matching emit_shatter()'s own call, see that
      * function's comment. */
     {
         const mrow_t* row = find_row("Glass");

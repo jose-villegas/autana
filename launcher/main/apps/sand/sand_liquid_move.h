@@ -140,7 +140,7 @@ liquid_may_move(sand_t* s, int x, int y, uint8_t id) {
 }
 
 /* `dest_full` says the caller has already established that nothing this grain
- * can reach has room - see the sweep's own block loop. It sits AFTER the
+ * can reach has room, see the sweep's own block loop. It sits AFTER the
  * viscosity roll so the skip draws the same RNG the long way round would, and
  * the store it skips would have written the grain back unchanged. */
 static inline bool

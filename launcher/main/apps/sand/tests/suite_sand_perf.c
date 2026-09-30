@@ -6,13 +6,13 @@
  * DEVICE_BUILD-only, almost entirely: wall-clock frame-budget assertions
  * are meaningless on a host whose CPU speed bears no relation to the
  * device's, so nearly every test below only compiles into the on-device
- * selftest image, not the host runner - see each test's own #ifdef
+ * selftest image, not the host runner, see each test's own #ifdef
  * DEVICE_BUILD guard and RUN_TEST line.
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
  * live in suite_sand_common.{c,h}; the scene builders these frame-budget
- * tests measure live in suite_sand_scenes.{c,h} - see those headers.
+ * tests measure live in suite_sand_scenes.{c,h}, see those headers.
  */
 #include <inttypes.h>
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
@@ -49,7 +49,7 @@
 /* Sand and dirt in equal amounts under water would soak; this instead pairs
  * sand against water across a settled stone-X divider that never lets the
  * two touch, so the reaction pass stays alive only on the wettable term
- * (MAT_SAND's own soaks!=0) - the case sand_step_reactions()'s soak-only
+ * (MAT_SAND's own soaks!=0), the case sand_step_reactions()'s soak-only
  * skip exists for. Portable, not DEVICE_BUILD-only: the host regression
  * suite for that skip (suite_sand_dirt.c) reruns this same scene, and must
  * see exactly what the frame-budget test below measures. */
@@ -129,7 +129,7 @@ liquid_near_cell_bound(const sand_t* s) {
 /* THE REGRESSION: MAT_SAND soaks, so this scene - a stone
  * wall keeps its sand and water apart - still walked its full grid every
  * step. sand_step_reactions()'s soak-only skip walks only BLOCK_LIQUID_NEAR
- * blocks instead - see its own soak_only comment.
+ * blocks instead, see its own soak_only comment.
  *
  * Runs the SAME scene and steps twice so "far fewer" reads against a
  * measured full-walk count, not a guess; the BLOCK_LIQUID_NEAR bound is likewise
@@ -183,7 +183,7 @@ test_the_soak_only_skip_dispatches_far_fewer_cells_than_a_full_walk(void) {
 }
 
 /* THE FINGERPRINT: this exact scene and step count is also
- * report_fingerprint.sh's device/host equivalence anchor - see its own
+ * report_fingerprint.sh's device/host equivalence anchor, see its own
  * top comment for why 20 flip steps and this hash. Kept here beside the
  * scene it hashes rather than duplicated. */
 #define MIXED_FLIP_20_STEP_HASH 0x6a6aa1cfu
@@ -2121,7 +2121,7 @@ test_a_full_screen_of_fire_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("full-screen fire", per_step, 68750, 79070);
+    perf_target("full-screen fire", per_step, 68040, 78246);
 }
 
 /* Four liquids of different density painted upside down
@@ -2129,7 +2129,7 @@ test_a_full_screen_of_fire_fits_in_the_frame_budget(void) {
  * keeps_reacting_after_settling) so lava, acid, water and oil migrate past
  * each other the whole window instead of settling into inert bands. Also
  * the only benchmark here, besides the gravity-flip test above, running at
- * sand_set_mobility(SAND_MOBILITY_PER_MATERIAL) - the setting app_sand.c
+ * sand_set_mobility(SAND_MOBILITY_PER_MATERIAL), the setting app_sand.c
  * itself uses - so this holds the app's own liquid path to any real
  * ceiling. */
 static void
@@ -2281,7 +2281,7 @@ test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget(void) {
                                              "at the end of the window - steam condensing into water loses three "
                                              "cells a patch, but losing an appreciable fraction of the board "
                                              "means it decayed into something else");
-    perf_target("smoke and steam", per_step, 85970, 98870);
+    perf_target("smoke and steam", per_step, 85040, 97796);
 }
 
 /* 480 glass compartments (build_thermal_shock_scene(), shared with
@@ -2756,7 +2756,7 @@ test_the_filling_basin_scene_fits_in_the_frame_budget(void) {
 
 /* Snow falling onto a bank that has already crusted, over sand and dirt
  * (build_snowfall_scene(), shared with test_the_snowfall_scene_holds_a_
- * crusting_bank_and_a_live_fall). Forced crust - see the builder's own
+ * crusting_bank_and_a_live_fall). Forced crust, see the builder's own
  * declaration for why a scene left at the shipped rate holds no ice at all
  * inside any window this file times. */
 static void
@@ -3321,7 +3321,7 @@ test_present_cost_against_a_falling_sand_scene(void) {
                                          "the present sent no strip, so the row is not timing the bus");
 
     /* Present() is ~94% irreducible bus time (gfx.h;
-     * test_full_present_cost_splits_into_bus_time_and_overhead) - the only
+     * test_full_present_cost_splits_into_bus_time_and_overhead); the only
      * movable thing is HOW MANY strips get sent, shown by the strip-send
      * counts beside the timing. */
     perf_target("present: falling sand", mean_us, 5810, 6690);
@@ -3822,7 +3822,7 @@ test_acid_bubbles_do_not_favour_one_wall(void) {
      * static pool's own exposed surface alone keeps it rolling. */
     enum { POOL_TOP = 15 };
 
-    /* HEAP, not static file scope - see drop_impulse_buf's own comment
+    /* HEAP, not static file scope, see drop_impulse_buf's own comment
      * above for why this file's static test fixtures cannot share the
      * framebuffer's memory budget. */
     uint8_t* bubble_cells = malloc((size_t)BUBBLE_W * BUBBLE_H);
@@ -3849,7 +3849,7 @@ test_acid_bubbles_do_not_favour_one_wall(void) {
     }
 
     /* Freed BEFORE the assertions: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(bubble_cells);
     free(bubble_buf);
@@ -3882,7 +3882,7 @@ static void
 test_acid_bubbles_still_fire_once_the_block_is_asleep(void) {
     enum { POOL_TOP = 15 };
 
-    /* HEAP, not static file scope - see drop_impulse_buf's own comment
+    /* HEAP, not static file scope, see drop_impulse_buf's own comment
      * above for why this file's static test fixtures cannot share the
      * framebuffer's memory budget. sleepy_bubble_blocks stays static -
      * it is a tiny sleep-state bitmap, not one of the buffers that
@@ -3928,7 +3928,7 @@ test_acid_bubbles_still_fire_once_the_block_is_asleep(void) {
     }
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. All reads of sleepy_bubble_cells/sleepy_bubble_buf are done
      * by this point. */
     free(sleepy_bubble_cells);
