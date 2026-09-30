@@ -760,6 +760,13 @@ def changed_files(ref, all_sources):
     return [s for s in all_sources if str(Path(s).resolve()) in changed_abs]
 
 
+def defines_functions(path):
+    """False for a data-only file, such as a generated table: it has nothing
+    to score, so an empty scan of it alone is a clean result."""
+    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    return bool(function_bodies(text))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                   formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -793,8 +800,10 @@ def main():
 
     files = all_sources
     if args.changed:
-        files = changed_files(args.changed, all_sources)
-        print(f"--changed {args.changed}: {len(files)} of those files touched")
+        touched = changed_files(args.changed, all_sources)
+        files = [f for f in touched if defines_functions(f)]
+        print(f"--changed {args.changed}: {len(touched)} of those files "
+              f"touched, {len(touched) - len(files)} define no function")
 
     current, proc = scan(clang_tidy, db_path, files)
 
