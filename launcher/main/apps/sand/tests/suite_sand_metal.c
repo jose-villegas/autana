@@ -4,7 +4,7 @@
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
- * live in suite_sand_common.{c,h} - see that header.
+ * live in suite_sand_common.{c,h}, see that header.
  */
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
                      * but every file inherited suite_sand.c's own include
@@ -44,7 +44,7 @@
  * single dirt cell beside it - the smallest scene that puts lava and
  * dirt in direct contact without the lava draining away to level itself
  * (can_enter() needs a strictly denser neighbour to move into, and both
- * stone and dirt are denser than lava - see MAT_LAVA's own density
+ * stone and dirt are denser than lava, see MAT_LAVA's own density
  * comment in material.c). A floor across the whole width means neither
  * powder cell has anywhere to fall. */
 static void
@@ -245,7 +245,7 @@ test_watered_dirt_steaming_precedes_resolving_when_it_happens(void) {
 
 static void
 test_wet_dirt_can_still_steam_before_spoiling_at_least_sometimes(void) {
-    /* HEAP, not static file scope - see drop_impulse_buf's own comment
+    /* HEAP, not static file scope, see drop_impulse_buf's own comment
      * above for why this file's static test fixtures cannot share the
      * framebuffer's memory budget. */
     uint8_t* steam_cells = malloc((size_t)STEAM_TEST_W * STEAM_TEST_H);
@@ -282,7 +282,7 @@ test_wet_dirt_can_still_steam_before_spoiling_at_least_sometimes(void) {
     }
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(steam_cells);
 
@@ -330,7 +330,7 @@ test_wet_dirt_can_spoil_into_sand_instead_of_smelting(void) {
     }
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(wide_cells);
 
@@ -356,7 +356,7 @@ test_wet_dirt_can_spoil_into_sand_instead_of_smelting(void) {
 
 static void
 test_dry_dirt_smelting_reaches_both_metal_and_stone(void) {
-    /* HEAP, not static file scope - see drop_impulse_buf's own comment
+    /* HEAP, not static file scope, see drop_impulse_buf's own comment
      * above for why this file's static test fixtures cannot share the
      * framebuffer's memory budget. */
     uint8_t* flaw_cells = malloc((size_t)FLAW_TEST_W * FLAW_TEST_H);
@@ -393,7 +393,7 @@ test_dry_dirt_smelting_reaches_both_metal_and_stone(void) {
     }
 
     /* Freed BEFORE the assertions: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. All reads of flaw_cells are done by this point. */
     free(flaw_cells);
 
@@ -544,7 +544,7 @@ test_a_non_conducting_extended_cell_passes_no_heat_beyond_itself(void) {
 /* Regression guard for the wet-dirt branch just added to
  * try_heat_transform(): sand has no `dries` at all, so `r->dries != 0`
  * must gate the new branch out entirely and sand -> glass must be
- * completely unaffected by it - see material.h's own comment on `dries`
+ * completely unaffected by it, see material.h's own comment on `dries`
  * for why that field, and not a new one, is what the branch tests. */
 static void
 test_sand_still_becomes_glass_beside_the_new_dirt_branch(void) {
@@ -628,7 +628,7 @@ steps_to_boil_through(int wall_len, cell_t wall_cell, int budget) {
     }
 
     /* Freed BEFORE returning: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(wide_cells);
     return result;
@@ -668,7 +668,7 @@ static void
 test_the_rod_terminates_at_conduct_reach_not_the_far_wall(void) {
     enum { ROD_W = CONDUCT_REACH_TEST * 2, ROD_H = 6 };
 
-    /* HEAP, not static file scope - see drop_impulse_buf's own comment
+    /* HEAP, not static file scope, see drop_impulse_buf's own comment
      * above for why this file's static test fixtures cannot share the
      * framebuffer's memory budget. */
     uint8_t* rod_cells = malloc((size_t)ROD_W * ROD_H);
@@ -736,7 +736,7 @@ test_the_rod_terminates_at_conduct_reach_not_the_far_wall(void) {
     }
 
     /* Freed BEFORE the assertions: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. All reads of rod_cells (via `rod`) are done by this point -
      * everything below reads only smelted_len and the local flawed[]. */
     free(rod_cells);

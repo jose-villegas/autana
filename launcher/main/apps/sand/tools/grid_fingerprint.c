@@ -703,7 +703,7 @@ typedef struct {
     uint32_t seed;
     int gx;
     int gy;
-    int sleeping; /* 0 for every original row - see the two at the end */
+    int sleeping; /* 0 for every original row, see the two at the end */
     int w;        /* 0 means FP_W - overridden only by the two-core row */
     int h;        /* 0 means FP_H */
     int two_core; /* 1 runs this row's steps through the two-core split -
@@ -722,7 +722,7 @@ static const fp_scene_t SCENES[] = {
     {"gas_land", scene_fire_gas, 31u, 1000, 0, 0, 0, 0, 0},
     {"water_diag", scene_water_pool, 11u, 1000, 1000, 0, 0, 0, 0},
 
-    /* The only row here in which anything grows - see the builder. */
+    /* The only row here in which anything grows, see the builder. */
     {"plant_bed", scene_plant_bed, 11u, 0, 1000, 0, 0, 0, 0},
 
     /* The only row here that puts acid on the board at all. */
@@ -749,19 +749,19 @@ static const fp_scene_t SCENES[] = {
      * that shape lands here and nowhere else in this table. */
     {"pool_land", scene_water_pool, 11u, 1000, 0, 1, 0, 0, 0},
 
-    /* And the one row where a SETTLED-gated rule actually fires - see the
+    /* And the one row where a SETTLED-gated rule actually fires, see the
      * builder for why the rate is forced. */
     {"snow_crust", scene_snow_crust, 71u, 0, 1000, 1, 0, 0, 0},
 
-    /* The gunpowder row - see the builder for what was invisible without it. */
+    /* The gunpowder row, see the builder for what was invisible without it. */
     {"powder_keg", scene_powder_keg, 29u, 0, 1000, 0, 0, 0, 0},
 
-    /* Two pairings the rows above never put in contact - see each builder.
+    /* Two pairings the rows above never put in contact, see each builder.
      * Sleeping ON for the snow row, since seeding is settled-gated. */
     {"snow_earth", scene_snow_earth, 71u, 0, 1000, 1, 0, 0, 0},
     {"plant_ruin", scene_plant_ruin, 67u, 0, 1000, 0, 0, 0, 0},
 
-    /* Five rows a reviewer found this table never reached - see each
+    /* Five rows a reviewer found this table never reached, see each
      * builder for what it puts in front of the mechanism. */
     {"gas_no_walk", scene_gas_no_walk, 83u, 0, 1000, 0, 0, 0, 0},
     {"acid_oil", scene_acid_oil, 89u, 0, 1000, 0, 0, 0, 0},
@@ -771,7 +771,7 @@ static const fp_scene_t SCENES[] = {
      * above is 0 or 1000, so sweep_x_order()'s dx<0 branch has never run. */
     {"gas_land_inv", scene_fire_gas, 31u, -1000, 0, 0, 0, 0, 0},
 
-    /* The only row run through the two-core split - see the builder for
+    /* The only row run through the two-core split, see the builder for
      * why it needs its own board size. */
     {"two_core_big", scene_two_core_big, 101u, 0, 1000, 0, 256, 192, 1},
 };

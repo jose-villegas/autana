@@ -45,14 +45,14 @@
 #define PREVIEW_MODE        SAND_MODE_PAINT
 #define PREVIEW_RADIUS_PX   ((SAND_UI_RADIUS_MIN + SAND_UI_RADIUS_MAX) / 2)
 
-/* app_sand.c's own inline sub-layout inside draw_brush_screen() - see this
+/* app_sand.c's own inline sub-layout inside draw_brush_screen(), see this
  * file's header for why these are mirrored rather than shared. */
 #define SEG_PAD             8
 #define SEG_LABEL_GAP       4
 #define INFO_ICON_PAD       12
 #define SWATCH_CELLS        8
 
-/* microui's default_style (components/microui/src/microui.c) - see this
+/* microui's default_style (components/microui/src/microui.c), see this
  * file's header for why the slider has to carry these rather than ask
  * ui.c for them. */
 #define SLIDER_BASE_COLOR   0x1E1E1E /* MU_COLOR_BASE        30,30,30 */
@@ -116,7 +116,7 @@ draw_icon(ui_transform_t t, mu_Rect box, const icon_t* icon, uint32_t color_rgb)
 
 /* Mirrors ui_text_in() for the logical (x, y), then ui.c's
  * draw_command() MU_COMMAND_TEXT case for turning it into a physical glyph
- * origin - see gfx_text_font() and ui_text_glyph0_origin(). The brush
+ * origin, see gfx_text_font() and ui_text_glyph0_origin(). The brush
  * screen always draws UI_TEXT_PLAIN, so this is the ink pass alone, no
  * halo. */
 static void
@@ -183,7 +183,7 @@ draw_slider(ui_transform_t t, mu_Rect track, int lo, int hi, int value) {
 }
 
 /* Everything draw_brush_screen() (app_sand.c) draws, minus the hit-testing
- * and the microui plumbing around it - see this file's header for exactly
+ * and the microui plumbing around it, see this file's header for exactly
  * what that leaves out. Every rect comes from `lay`, filled by
  * brush_screen_layout() itself - see this file's header, Task C. */
 static void

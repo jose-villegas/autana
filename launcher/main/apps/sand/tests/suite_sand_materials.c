@@ -4,7 +4,7 @@
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
- * live in suite_sand_common.{c,h} - see that header.
+ * live in suite_sand_common.{c,h}, see that header.
  */
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
                      * but every file inherited suite_sand.c's own include
@@ -529,7 +529,7 @@ poured_height(material_id_t m) {
     }
 
     /* Freed BEFORE returning: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(wide_cells);
     return result;
@@ -611,7 +611,7 @@ test_a_large_body_of_water_levels(void) {
     }
 
     /* Freed BEFORE the assertions: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. All reads of wide_cells (via `wide`) are done by this
      * point. */
     free(wide_cells);
@@ -671,7 +671,7 @@ test_a_settled_pool_does_not_flicker(void) {
     }
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. All reads of wide_cells are done by this point. */
     free(wide_cells);
 
@@ -703,7 +703,7 @@ material_variant_sum_in_columns(const sand_t* s, int x0, int x1, int h, material
  * columns, in units of 1/1024 of a cell of depth per cell of x.
  *
  * Grid and block array are malloc()'d and freed here rather than static, so
- * this can be called at several different sizes - see the big-grid tests
+ * this can be called at several different sizes, see the big-grid tests
  * above (e.g. test_the_four_liquid_scene_keeps_reacting_after_settling) for
  * the same shape. */
 static int
@@ -711,7 +711,7 @@ settled_surface_slope_q10(int w, int h, int gx, int gy, int steps) {
     uint8_t* cells = malloc((size_t)w * (size_t)h);
     uint8_t* blocks =
         malloc((size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    /* Free whatever succeeded BEFORE asserting, not after - see 565f72e.
+    /* Free whatever succeeded BEFORE asserting, not after, see 565f72e.
      * TEST_ASSERT_NOT_NULL(blocks) alone would longjmp straight past both
      * frees and leak `cells` for the rest of that boot if the second
      * allocation ever came back NULL, and this helper is called eight
@@ -1072,7 +1072,7 @@ test_pouring_water_over_a_dirt_bed_never_moves_a_dirt_cell(void) {
         POUR_STEPS = 600,
     };
 
-    /* HEAP, not the stack - see drop_impulse_buf's own comment above
+    /* HEAP, not the stack, see drop_impulse_buf's own comment above
      * (test_water_falling_onto_water_also_queues_a_small_displacement)
      * for the stack-protection panic a buffer this size caused on-device
      * the one other time this file put one on the stack instead. */

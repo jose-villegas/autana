@@ -8,7 +8,7 @@
  * that sweep rather than living here as a separate pass.
  *
  * Everything else in a liquid's behaviour is NOT gravity-ward, and so cannot
- * safely live in that sweep at all - see the comment above equalise_liquids()
+ * safely live in that sweep at all, see the comment above equalise_liquids()
  * for why. sand_step_liquids() is the one thing sand_step() calls after its
  * sweep finishes: cross-flow levelling.
  */

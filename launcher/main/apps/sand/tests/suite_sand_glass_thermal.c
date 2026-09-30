@@ -4,7 +4,7 @@
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
- * live in suite_sand_common.{c,h} - see that header.
+ * live in suite_sand_common.{c,h}, see that header.
  */
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
                      * but every file inherited suite_sand.c's own include
@@ -407,7 +407,7 @@ test_glass_looks_different_at_the_shock_threshold(void) {
     for (int v = 1; v < MATERIAL_VARIANTS; v++) {
         const gfx_color_t a = pal[MAT_GLASS * MATERIAL_VARIANTS + v - 1];
         const gfx_color_t b = pal[MAT_GLASS * MATERIAL_VARIANTS + v];
-        /* Stored byte-swapped for the panel - see GFX_RGB in gfx_color.h. */
+        /* Stored byte-swapped for the panel, see GFX_RGB in gfx_color.h. */
         const uint16_t ua = (uint16_t)((a >> 8) | (a << 8));
         const uint16_t ub = (uint16_t)((b >> 8) | (b << 8));
         const int dr = ((ua >> 11) & 0x1F) - ((ub >> 11) & 0x1F);

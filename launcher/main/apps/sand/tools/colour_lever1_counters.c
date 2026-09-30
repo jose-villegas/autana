@@ -56,7 +56,7 @@ step_mixed_flip(sand_t* s, int step_i) {
 }
 
 /* Lever 1's own target case: most of the grid already at rest, one slow
- * trickle the only change - see suite_sand_colour_modes.c's own
+ * trickle the only change, see suite_sand_colour_modes.c's own
  * scene_settled_pour and paint_full_frame_indexed() comments for why the
  * device suite's single bounding box needs a scene shaped like this one to
  * show a win at all, unlike this file's own per-row changed_span_cells(). */

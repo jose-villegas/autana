@@ -1,5 +1,5 @@
 /*
- * Shared benchmark scenes - see suite_sand_scenes.c.
+ * Shared benchmark scenes, see suite_sand_scenes.c.
  *
  * Each of these builds a scene once, both for its own correctness test in
  * suite_sand_scenes.c (does the scene actually keep reacting/boiling/
@@ -50,7 +50,7 @@ _Static_assert(ALL_PAIRS_SPAWN_COUNT == 19, "the tiling's slot count must stay P
 int all_pairs_material_at(int x, int y, int first, int n_mats);
 
 /* Maps a tiling index (0 .. ALL_PAIRS_SPAWN_COUNT - 1) to the cell spec to
- * hand sand_spawn_cell() - see the definition in suite_sand_scenes.c for
+ * hand sand_spawn_cell(), see the definition in suite_sand_scenes.c for
  * the ordering. */
 cell_t all_pairs_spawn_cell(int index);
 
@@ -86,7 +86,7 @@ void build_smoke_and_steam_scene(sand_t* s);
 void build_thermal_shock_scene(sand_t* s);
 void build_boiler_scene(sand_t* s);
 
-/* A small fire on a board that mostly cannot react - see the builder for
+/* A small fire on a board that mostly cannot react, see the builder for
  * why the other reaction scenes cannot answer the same question. */
 void build_campfire_scene(sand_t* s);
 void build_wet_earth_scene(sand_t* s);
@@ -240,7 +240,7 @@ void build_water_over_lava_scene(sand_t* s);
 #define GUNPOWDER_BASIN_IMPULSE_MAX    2048
 
 /* The coverage test's own measured window, reused by the frame-budget
- * test beside it - see either test's comment (suite_sand_scenes.c) for
+ * test beside it, see either test's comment (suite_sand_scenes.c) for
  * why 90 steps, no settling. */
 #define GUNPOWDER_BASIN_MEASURED_STEPS 90
 
@@ -315,7 +315,7 @@ void build_water_slope_flat_scene(sand_t* s);
 void water_slope_water_pour(sand_t* s, int step);
 
 /* Measured: 500 steps of pouring at the high corner puts water the whole way
- * down the slope with the downhill face wet end to end - see the coverage
+ * down the slope with the downhill face wet end to end, see the coverage
  * test in suite_sand_scenes.c. */
 #define WATER_SLOPE_COVER_STEPS 500
 
@@ -340,12 +340,12 @@ void build_water_slope_stone_covered_scene(sand_t* s);
  * individually as the turn happens rather than only the settled ends. */
 void water_slope_gravity_sweep(sand_t* s, int gx0, int gy0, int gx1, int gy1, int steps);
 
-/* `steps` calls at a fixed (gx, gy) - the settle and hold phases either side
+/* `steps` calls at a fixed (gx, gy), the settle and hold phases either side
  * of a sweep. */
 void water_slope_gravity_hold(sand_t* s, int gx, int gy, int steps);
 
 /* The two tilt vectors a device screenshot pair captured mid-pour
- * (app.tilt_x/tilt_y, one capture 5.8s after the other) - a partly diagonal
+ * (app.tilt_x/tilt_y, one capture 5.8s after the other), a partly diagonal
  * gravity change, not an axis-aligned flip, swept over about the same span
  * of steps the capture covered. */
 #define WATER_SLOPE_CAPTURED_TILT1_GX    1534
@@ -355,7 +355,7 @@ void water_slope_gravity_hold(sand_t* s, int gx, int gy, int steps);
 #define WATER_SLOPE_CAPTURED_SWEEP_STEPS 30
 
 /* The sand pile and diagonal water surface a device screenshot actually
- * showed, sampled into a grid - see captured_slope_data.h. Seeds the
+ * showed, sampled into a grid, see captured_slope_data.h. Seeds the
  * scenario from a real board instead of a hand-built approximation of one. */
 void build_captured_water_slope_scene(sand_t* s);
 

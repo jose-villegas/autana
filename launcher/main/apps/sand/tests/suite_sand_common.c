@@ -1,5 +1,5 @@
 /*
- * Shared fixtures and assertion helpers - see suite_sand_common.h. No
+ * Shared fixtures and assertion helpers, see suite_sand_common.h. No
  * SUITE_REGISTER here: this file registers no suite of its own, it just
  * gives every other suite_sand_*.c file the same fixture grid and the same
  * handful of assertion helpers to build on.

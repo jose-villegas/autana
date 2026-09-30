@@ -40,7 +40,7 @@ const material_t materials[MATERIAL_ROWS] = {
                  .repose = 0,
                  .scatter = 0,
 
-                 .mobility = 255, /* VISCOSITY, inverted - see material.h's own
+                 .mobility = 255, /* VISCOSITY, inverted, see material.h's own
                               * comment on the field. Water is the runny
                               * one and moves on every step it can, which
                               * is exactly what every liquid did before
@@ -206,7 +206,7 @@ const material_t materials[MATERIAL_ROWS] = {
                  .kind = KIND_LIQUID,
                  .density = 22, /* Oil floats, fire can't move it, sand sinks. */
 
-                 .mobility = 140, /* VISCOSITY inverted - see material.h. Water
+                 .mobility = 140, /* VISCOSITY inverted, see material.h. Water
                               * spreads in 8 steps, oil in 18. Tune on device. */
 
                  .slip = 255,
@@ -245,7 +245,7 @@ const material_t materials[MATERIAL_ROWS] = {
                  .repose = 0,
                  .scatter = 0,
 
-                 .mobility = 220, /* VISCOSITY, inverted - see material.h. Acid is
+                 .mobility = 220, /* VISCOSITY, inverted, see material.h. Acid is
                               * runny, slower to read as heavier. Tune on
                               * device. */
              }),
@@ -324,7 +324,7 @@ const material_t materials[MATERIAL_ROWS] = {
 };
 
 /*
- * The reaction table - see material.h's own comment on reaction_t for why
+ * The reaction table, see material.h's own comment on reaction_t for why
  * this is a second table rather than more fields on materials[] above.
  *
  * Rows not given here default to all-zero, which reads correctly for every
@@ -657,7 +657,7 @@ const reaction_t extended_reactions[MATERIAL_EXTENDED_CODES] = {
 
             .dislodge_density = 61, /* rank 8 of 8, the bottom of the
                                       * fragility curve (MATX_METAL's own
-                                      * comment) - the most easily
+                                      * comment), the most easily
                                       * dislodged solid on the board, same
                                       * story as dissolvable above */
         },
@@ -684,7 +684,7 @@ const reaction_t extended_reactions[MATERIAL_EXTENDED_CODES] = {
             /* THE FRAGILITY CURVE every solid's toughness sits on:
              * density = 221 - 20*rank, rank 1 (toughest) to 8 (softest).
              * Metal(1)=201, Stone(2)=181, Root(3)=161, Wood(4)=141,
-             * Glass(5)=121, Ice(6)=101, Plant(7)=81, Leaf(8)=61 - see each
+             * Glass(5)=121, Ice(6)=101, Plant(7)=81, Leaf(8)=61, see each
              * material's own density/dislodge_density for its rank. One
              * knob (rank) instead of eight independently-tuned numbers. */
             .dislodge_density = 201,

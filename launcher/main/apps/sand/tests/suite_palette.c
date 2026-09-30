@@ -30,7 +30,7 @@ static void
 test_palette_cols_at_the_two_real_screen_widths(void) {
     /* The whole point of deriving rather than assuming: both real widths
      * this panel is ever drawn at come out to 4, by calculation, not by
-     * reusing a constant that happens to still say 4 - see palette.h's own
+     * reusing a constant that happens to still say 4, see palette.h's own
      * comment on why this is not a coincidence at 368 and IS a coincidence
      * (of PALETTE_TILE's specific value) more generally. */
     TEST_ASSERT_EQUAL_INT_MESSAGE(4, palette_cols(PALETTE_SCREEN_W), "368 / 92 == 4 exactly");
@@ -96,7 +96,7 @@ test_centre_of_every_tile_hits_its_own_index(void) {
 }
 
 /* count = 15, the count BRUSH_COUNT resolves to (app_sand.c's own brushes[]
- * array) - a centred partial last row, 3 full rows of 4 then a row of 3, a
+ * array), a centred partial last row, 3 full rows of 4 then a row of 3, a
  * differently-shaped partial row than 14's own 2-wide one. */
 static void
 test_centre_of_every_tile_hits_its_own_index_at_brush_count(void) {
@@ -160,7 +160,7 @@ test_hit_round_trips_against_tile_rect_for_every_tile_turned(void) {
 
 static void
 test_empty_region_beside_centred_partial_row_misses(void) {
-    /* count=14, cols=4 (derived - see above): last row (row 3) holds 2 of 4
+    /* count=14, cols=4 (derived, see above): last row (row 3) holds 2 of 4
      * tiles, centred - so it occupies [92,276) horizontally (see
      * PALETTE_TILE) and leaves [0,92) and [276,368) of that row empty. A
      * point in either empty strip, at the row's own y, must miss. */

@@ -98,7 +98,7 @@ test_every_icon_content_bbox_is_inside_16x16(void) {
 }
 
 /* Transcribed from the four bitmaps apps/sand/sand_icons.h used to carry
- * (icon_pour_bitmap etc.) before they were baked - see this file's own top
+ * (icon_pour_bitmap etc.) before they were baked, see this file's own top
  * comment for why the comparison is against a hand copy, not the header. */
 static const char* const pour_expected_rows[16] = {
     ".XXXXXXXXXXXXXX.",                                                                                 /* row 0 */

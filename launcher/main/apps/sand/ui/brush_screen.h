@@ -14,7 +14,7 @@
  *
  * This app has three unrelated things called some form of "brush", and this
  * screen only concerns one of them:
- *   - brushes[] (app_sand.c) - the palette's MATERIALS (sand, water, ...).
+ *   - brushes[] (app_sand.c), the palette's MATERIALS (sand, water, ...).
  *   - brush_mode_t (sand_ui.h) - BRUSH_POUR/BRUSH_SPAWN, whether the
  *     selected material pours or emits from a source.
  *   - sand_mode_t (sand_ui.h) - SAND_MODE_PAINT/ERASE/DETONATE, what the

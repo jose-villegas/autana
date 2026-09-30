@@ -4,7 +4,7 @@
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
- * live in suite_sand_common.{c,h} - see that header.
+ * live in suite_sand_common.{c,h}, see that header.
  */
 #include <limits.h>
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
@@ -546,7 +546,7 @@ test_acid_dissolves_dune_sand_but_not_cullet(void) {
 static void
 acid_fizz_fixture(uint8_t* cells) {
     sand_init(&fx.fizz_sim, cells, FIZZ_W, FIZZ_H, 5u);
-    sand_set_evaporates(&fx.fizz_sim, 0); /* isolate fizz - see the tests'
+    sand_set_evaporates(&fx.fizz_sim, 0); /* isolate fizz, see the tests'
                                           * own comments for why */
     for (int y = 4; y < FIZZ_H; y++) {
         for (int x = 0; x < FIZZ_W; x++) {
@@ -583,7 +583,7 @@ test_acid_fizzes_while_it_eats(void) {
     }
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(fizz_cells);
 
@@ -616,7 +616,7 @@ test_the_fizz_rises_out_of_the_acid(void) {
     }
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(fizz_cells);
 
@@ -664,7 +664,7 @@ test_acid_and_water_dilute_each_other(void) {
     }
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(dilute_cells);
 
@@ -694,7 +694,7 @@ test_the_dilution_split_favours_neither_side(void) {
     }
 
     /* Freed BEFORE the assertions: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(dilute_cells);
 
@@ -730,7 +730,7 @@ test_the_dilution_split_favours_neither_side(void) {
 #define SEPARATED_W 4000
 #define SEPARATED_H 2
 
-/* cells is HEAP, not static file scope - see acid_water_dilute_fixture's
+/* cells is HEAP, not static file scope, see acid_water_dilute_fixture's
  * own comment above for why. */
 static void
 acid_water_separated_fixture(uint8_t* cells) {
@@ -757,7 +757,7 @@ test_water_winning_the_dilution_boils_the_water_cell_to_steam(void) {
     int water_wins = 0, water_wins_with_steam = 0;
     for (int x = 0; x < SEPARATED_W; x += 2) {
         if (CELL_MATERIAL(sand_at(&fx.separated_dilute_sim, x, 1)) != MAT_WATER) {
-            continue; /* not a water-wins column - see the sibling test */
+            continue; /* not a water-wins column, see the sibling test */
         }
         water_wins++;
         if (CELL_MATERIAL(sand_at(&fx.separated_dilute_sim, x, 0)) == MAT_STEAM) {
@@ -786,7 +786,7 @@ test_acid_winning_the_dilution_boils_the_acid_cell_to_gas(void) {
     int acid_wins = 0, acid_wins_with_gas = 0;
     for (int x = 0; x < SEPARATED_W; x += 2) {
         if (CELL_MATERIAL(sand_at(&fx.separated_dilute_sim, x, 0)) != MAT_ACID) {
-            continue; /* not an acid-wins column - see the sibling test */
+            continue; /* not an acid-wins column, see the sibling test */
         }
         acid_wins++;
         if (CELL_MATERIAL(sand_at(&fx.separated_dilute_sim, x, 1)) == MAT_GAS) {
@@ -808,7 +808,7 @@ test_acid_winning_the_dilution_boils_the_acid_cell_to_gas(void) {
 #define OIL_DILUTE_W 400
 #define OIL_DILUTE_H 2
 
-/* cells is HEAP, not static file scope - see acid_water_dilute_fixture's
+/* cells is HEAP, not static file scope, see acid_water_dilute_fixture's
  * own comment above for why. */
 static void
 acid_oil_dilute_fixture(uint8_t* cells) {
@@ -964,7 +964,7 @@ test_acid_evaporates_into_gas_when_forced(void) {
 #define DILUTE_POUR_POOL_DEPTH 20
 #define DILUTE_POUR_STEPS      150
 
-/* cells is HEAP, not static file scope - see acid_water_dilute_fixture's
+/* cells is HEAP, not static file scope, see acid_water_dilute_fixture's
  * own comment above for why. Same seed every call, deliberately - an
  * A/B comparison wants the same random inputs on both legs, with only
  * the mass-bias override differing, not seed-to-seed noise on top. */
@@ -1272,7 +1272,7 @@ static void
 test_water_does_not_drill_into_oil_when_tilted(void) {
     /* HEAP, not static file scope - one malloc reused across all `seeds`
      * iterations via memset + a fresh sand_init() each time, freed once
-     * after the loop - see drop_impulse_buf's own comment above for why
+     * after the loop, see drop_impulse_buf's own comment above for why
      * this file's static test fixtures cannot share the framebuffer's
      * memory budget. */
     uint8_t* drag_cells = malloc((size_t)DRAG_W * DRAG_H);
@@ -1294,7 +1294,7 @@ test_water_does_not_drill_into_oil_when_tilted(void) {
     }
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(drag_cells);
 
@@ -1339,7 +1339,7 @@ test_oil_flows_more_slowly_than_water(void) {
     }
 
     /* Freed BEFORE the final assertion: Unity longjmps out of a failure,
-     * so a free() after one never runs - see drop_impulse_buf's own
+     * so a free() after one never runs, see drop_impulse_buf's own
      * comment above. All reads of wide_cells are done by this point. */
     free(wide_cells);
 
@@ -1408,7 +1408,7 @@ test_oil_trapped_under_water_floats_to_the_surface(void) {
                                   "from the other end");
 }
 
-/* can_enter() exception for sand/oil pairing - see sand_priv.h for details. */
+/* can_enter() exception for sand/oil pairing, see sand_priv.h for details. */
 static void
 test_sand_floats_on_oil(void) {
     fixture();
@@ -1936,7 +1936,7 @@ test_stone_conducts_heat_into_water_beyond_it(void) {
     sand_set(&s, 3, 3, FIRE);
     sand_set(&s, 4, 3, STONE);
     /* Floor plus both down-diagonals under the water, not the floor
-     * alone - see test_creating_steam_arms_the_gas_pass's own comment
+     * alone, see test_creating_steam_arms_the_gas_pass's own comment
      * for why a partial-mass WATER cell needs all three blocked. */
     sand_set(&s, 4, 4, STONE);
     sand_set(&s, 5, 4, STONE);
@@ -2013,7 +2013,7 @@ test_a_thick_wall_still_conducts(void) {
     }
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. All reads of wide_cells (via `wide`) are done by this
      * point. */
     free(wide_cells);
@@ -2060,7 +2060,7 @@ test_conduction_stops_at_the_reach_cap(void) {
     const uint8_t result_material = CELL_MATERIAL(sand_at(&cap, water_x, 2));
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(cap_cells);
 
@@ -2140,7 +2140,7 @@ test_boiling_converts_the_cell_nearest_the_heat(void) {
     const uint8_t surface_material = CELL_MATERIAL(sand_at(&wide, x, water_top));
 
     /* Freed BEFORE the assertions: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. All reads of wide_cells (via `wide`) are done by this
      * point. */
     free(wide_cells);
@@ -2156,7 +2156,7 @@ test_boiling_converts_the_cell_nearest_the_heat(void) {
 }
 
 /* reaction_t.boils gates conduct_boil_liquid()'s conversion behind a second
- * roll - see material.h. sand_set_boils(0) disables that conversion, same as
+ * roll, see material.h. sand_set_boils(0) disables that conversion, same as
  * other chance fields. */
 static void
 test_sand_set_boils_zero_disables_conducted_heat_boiling(void) {
@@ -2184,7 +2184,7 @@ test_sand_set_boils_zero_disables_conducted_heat_boiling(void) {
     const uint8_t result_material = CELL_MATERIAL(sand_at(&wide, x, water_y));
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(wide_cells);
 
@@ -2219,7 +2219,7 @@ test_boiled_steam_starts_at_full_life(void) {
     const cell_t c = sand_at(&wide, x, water_y);
 
     /* Freed BEFORE the assertions: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. `c` was read out above, so this is safe. */
     free(wide_cells);
 
@@ -2257,7 +2257,7 @@ test_boiling_acid_produces_gas_not_steam(void) {
     const uint8_t result_material = CELL_MATERIAL(sand_at(&wide, x, acid_y));
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. */
     free(wide_cells);
 
@@ -2333,7 +2333,7 @@ test_the_boiler_end_to_end(void) {
     const long water_after = mass_of(&wide, WIDE_W, WIDE_H, MAT_WATER);
 
     /* Freed BEFORE the assertions: Unity longjmps out of a failure, so a
-     * free() after one never runs - see drop_impulse_buf's own comment
+     * free() after one never runs, see drop_impulse_buf's own comment
      * above. All reads of wide_cells (via `wide`) are done by this
      * point. */
     free(wide_cells);

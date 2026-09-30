@@ -31,7 +31,7 @@
  * largest of any tier: 61 * 6 = 366 and 74 * 6 = 444, a 2 px strip on the
  * right and a 4 px strip on the bottom. That is harmless only because
  * the colour of an empty cell and the menu's background are the same value,
- * 0x0A0C14 - see COL_BACKGROUND - so the untouched strip is indistinguishable
+ * 0x0A0C14, see COL_BACKGROUND, so the untouched strip is indistinguishable
  * from the screen around it. start_sim() still clears the screen explicitly
  * before the first frame rather than leaning on that coincidence alone.
  */
@@ -167,7 +167,7 @@ static sand_paint_frame_t paint_frame = {
  * gfx_invalidate(). */
 static bool indexed_force_full_repaint;
 
-/* Once per start_sim(), not once per frame - see the emitter-marker/mode-
+/* Once per start_sim(), not once per frame, see the emitter-marker/mode-
  * label skip in sand_frame(). */
 static bool overlays_skipped_reason_logged;
 
@@ -202,12 +202,12 @@ static sand_heal_t heal_policy;
 #define POUR_HZ                   60
 #define POUR_STEP_MS              (1000 / POUR_HZ)
 
-/* Default erase brush radius, in px - see POUR_RADIUS_PX's own comment. */
+/* Default erase brush radius, in px, see POUR_RADIUS_PX's own comment. */
 #define ERASE_RADIUS_PX           16
 
 #define ERASE_EMITTER_RADIUS_PX   32
 
-/* Default BOOM brush radius, in px - see POUR_RADIUS_PX's own comment. */
+/* Default BOOM brush radius, in px, see POUR_RADIUS_PX's own comment. */
 #define DETONATE_RADIUS_PX        50
 
 #define APP_IMPULSE_MAX           2048
@@ -243,7 +243,7 @@ static const sand_brush_t brushes[] = {
     SAND_BRUSH_SOLID(CELL_MAKE(MAT_ACID, 0)),  SAND_BRUSH_SOLID(CELL_MAKE(MAT_GLASS, 0)),
     SAND_BRUSH_SOLID(CELL_MAKE(MAT_SNOW, 0)),  SAND_BRUSH_SOLID(CELL_MAKE(MAT_DIRT, 0)),
     SAND_BRUSH_SOLID(MATX(MATX_ICE)),          SAND_BRUSH_SPARSE(MATX(MATX_PLANT), SAND_BRUSH_SHARE_PLANT),
-    SAND_BRUSH_SOLID(GUNPOWDER_CELL(0)), /* dry, tone 0 - see material_brush_color()'s own
+    SAND_BRUSH_SOLID(GUNPOWDER_CELL(0)), /* dry, tone 0, see material_brush_color()'s own
                          * comment (material_palette.h) for why the panel tile itself paints a different code */
 };
 #define BRUSH_COUNT ((int)(sizeof(brushes) / sizeof(brushes[0])))
@@ -563,7 +563,7 @@ sand_app_alloc_selfcheck(size_t* out_largest_free, bool* out_impulses_ok) {
 
 #endif /* CONFIG_LAUNCHER_SELFTEST */
 
-/* Allocated after the grid and the blast buffer - see the ordering note in
+/* Allocated after the grid and the blast buffer, see the ordering note in
  * start_sim(). */
 static bool
 alloc_grid_bookkeeping(void) {
@@ -881,7 +881,7 @@ paint_row(gfx_color_t* fb, uint8_t* index_row, int cy, const uint8_t* row, int w
     }
 }
 
-/* wx0/wx1: the columns actually worth repainting - see draw_dirty_row()'s
+/* wx0/wx1: the columns actually worth repainting, see draw_dirty_row()'s
  * row_paint_span() call.
  * Run detection stays full-row, so row_run_x0/x1/n keeps seeing the row's
  * true shape, not just the part just repainted. `index_image` is NULL for
@@ -1183,7 +1183,7 @@ draw_emitter_markers(void) {
         int ex, ey;
         cell_t ecell;
         if (!sand_emitter_at(&sim, i, &ex, &ey, &ecell)) {
-            continue; /* not expected - see sand_emitter_count()'s contract */
+            continue; /* not expected, see sand_emitter_count()'s contract */
         }
         (void)ecell; /* the marker's colour is fixed, not the material's */
 
@@ -1287,7 +1287,7 @@ draw_brush_screen(const input_t* input) {
 /* Frame */
 
 /* State sand_update() computes for sand_frame() to draw with, on the same
- * pass - see the app.h contract: update() must not touch gfx, so every
+ * pass, see the app.h contract: update() must not touch gfx, so every
  * advance_*() result it needs to hand off is state, not a draw call. */
 static int pending_gx, pending_gy;
 static bool label_dirty_this_frame;
@@ -1561,7 +1561,7 @@ static void
 draw_title(mu_Context* ctx) {
     switch (sand_menu_title_clicked(&menu, title_screen_draw(ctx), current_options())) {
         case SAND_MENU_START:
-            /* Not called here - see pending_start's own comment. */
+            /* Not called here, see pending_start's own comment. */
             pending_start = true;
             break;
         case SAND_MENU_EXIT: shell_request_exit(); break;
@@ -1813,7 +1813,7 @@ draw_sim_frame(const input_t* input) {
 static void
 sand_frame(uint32_t dt_ms, const input_t* input) {
     if (pending_start) {
-        /* Outside any ui_begin()/ui_end() - the same requirement
+        /* Outside any ui_begin()/ui_end(), the same requirement
          * open_overlay_screen()'s own SAND_GFX_EXIT_TO_FULL repaint
          * already meets. */
         pending_start = false;

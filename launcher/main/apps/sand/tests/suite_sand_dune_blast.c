@@ -4,7 +4,7 @@
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
- * live in suite_sand_common.{c,h} - see that header.
+ * live in suite_sand_common.{c,h}, see that header.
  */
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
                      * but every file inherited suite_sand.c's own include
@@ -165,11 +165,11 @@ nearest_footprint_distance(const uint8_t* footprint, int w, int h, int x, int y,
             return r;
         }
     }
-    return cap + 1; /* not found within cap - see this function's own comment */
+    return cap + 1; /* not found within cap, see this function's own comment */
 }
 
 /* The largest Chebyshev distance any two cells on this grid could ever
- * have - see nearest_footprint_distance()'s own comment for why this is
+ * have, see nearest_footprint_distance()'s own comment for why this is
  * the cap it is called with, and why that makes the cap a search bound
  * rather than a correctness one. */
 #define NEAREST_FOOTPRINT_CAP ((REAL_W > REAL_H ? REAL_W : REAL_H) - 1)
@@ -185,7 +185,7 @@ nearest_footprint_distance(const uint8_t* footprint, int w, int h, int x, int y,
 #define DUNE_BLAST_RADIUS     25
 
 /* A FIXED ENTRY COUNT MIRRORING APP_IMPULSE_MAX, not a formula in
- * DUNE_BLAST_RADIUS - see APP_IMPULSE_MAX's own comment in app_sand.c for
+ * DUNE_BLAST_RADIUS, see APP_IMPULSE_MAX's own comment in app_sand.c for
  * why the two split apart: sand_explode() degrades its seeding density
  * to fit whatever buffer it is given, so this buffer need not scale with
  * the disc DUNE_BLAST_RADIUS implies. It DOES need to mirror the app's
@@ -243,7 +243,7 @@ measure_escape(const sand_t* g, const uint8_t* footprint, int w, int h, int cap)
                 continue; /* inside the original dune - not an escape */
             }
             if (CELL_MATERIAL(sand_at(g, x, y)) != MAT_SAND) {
-                continue; /* fire, not a grain - see this test's own comment */
+                continue; /* fire, not a grain, see this test's own comment */
             }
             m.outside++;
             const int d = nearest_footprint_distance(footprint, w, h, x, y, cap);
