@@ -261,6 +261,21 @@ build's corner mark, the swipe-home strip. They are declared per quarter in
 `launcher/tools/render/render_masks.json` and named on the command line. If that
 chrome moves, that file has to move with it.
 
+## Comparing two revisions
+
+```sh
+./launcher/tools/render/render_compare.sh --script <app>/tools/<scene>_render_host.sh     --clear RRGGBB -o /tmp/cmp <A> <B> --sheet poses     --render early "<renderer arguments>" --render late "<renderer arguments>"
+```
+
+`A` and `B` are git revisions (each built in a temporary worktree, removed
+afterwards) or existing directories. The script is the scene's own host-render
+script and the arguments are its own, so the tool names no scene. It writes
+one PNG per `--sheet`, a row per render: A, B, then the absolute per-pixel
+difference as a greyscale heatmap (`--gain`, default 8, amplifies it). With
+`--clear`, pixels clear on one side and drawn on the other are red and counted
+as holes on the side that left them clear. `summary.txt` gives per render the
+changed-pixel count and share, the mean absolute difference and the holes.
+
 ---
 
 ## Related

@@ -25,6 +25,8 @@
 #                   not a declaration) also writes each render's frames to
 #                   <label>.avi beside its .bmp; it never touches the pinned
 #                   hash, which is taken from the .bmp alone.
+#                   --build-only compiles the renderer, prints `built <path>`
+#                   and renders nothing; tools/render/render_compare.sh uses it.
 #   scene_includes  OPTIONAL extra -I directories, relative to launcher/
 #   scene_defines   OPTIONAL extra compiler flags
 #   scene_out_dir   OPTIONAL; the default is results/render/<name> under the
@@ -70,6 +72,10 @@ render_scene_sha256() {
 
 render_scene_run() {
     render_scene_build "$@" || return $?
+    if [ "$_rs_build_only" = 1 ]; then
+        echo "built $_rs_bin"
+        return 0
+    fi
     render_scene_render
 }
 
@@ -113,12 +119,14 @@ render_scene_build() {
 
     _rs_repin=0
     _rs_video=0
+    _rs_build_only=0
     while [ $# -gt 0 ]; do
         case "$1" in
             -o) scene_out_dir="$2"; shift 2 ;;
             --update-baseline) _rs_repin=1; shift ;;
             --video) _rs_video=1; shift ;;
-            *) echo "usage: $0 [-o <dir>] [--update-baseline] [--video]" >&2; return 2 ;;
+            --build-only) _rs_build_only=1; shift ;;
+            *) echo "usage: $0 [-o <dir>] [--update-baseline] [--video] [--build-only]" >&2; return 2 ;;
         esac
     done
 
