@@ -1,5 +1,5 @@
 /*
- * sponza_flythrough - the camera loop through Sponza's atrium: in from the
+ * sponza_flythrough, the camera loop through Sponza's atrium: in from the
  * east arcade at eye height, down the atrium, up past the galleries and
  * back, and the lens and render size it is seen through. Model units are
  * centimetres; y is up. The loop is the glTF camera animation in

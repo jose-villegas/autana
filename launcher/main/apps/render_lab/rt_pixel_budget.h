@@ -1,5 +1,5 @@
 /*
- * rt_pixel_budget - a progressive tracer's per-frame pixel allowance: grows
+ * rt_pixel_budget, a progressive tracer's per-frame pixel allowance: grows
  * by one step while the previous frame finished inside its target, and
  * gives back exactly one step when it didn't. Shrinking by the amount it
  * grows by is what keeps a single over-budget frame cheap: halving costs

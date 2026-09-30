@@ -1,5 +1,5 @@
 /*
- * app_input_lab - measures how precisely the touch panel reports a tap. A
+ * app_input_lab: measures how precisely the touch panel reports a tap. A
  * small magenta square appears on the screen; tap it, and on release the tap
  * is scored against its centre before the next one appears. The running hit
  * rate and offset sit at the top, and every tap is logged to the console as

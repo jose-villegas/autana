@@ -22,7 +22,7 @@ draw_toggle_row(mu_Context* ctx, const char* label, bool* value) {
 
 /* Shows three things, not just the quarter: raw accelerometer counts,
  * derived gx/gy (what display_update() actually decides from), and the
- * shell's current quarter - so a hold reads as "this orientation gives
+ * shell's current quarter, so a hold reads as "this orientation gives
  * these numbers, shell calls it quarter N" in one line, without doing the
  * arithmetic by hand. */
 static void
@@ -48,7 +48,7 @@ draw_orientation_readout(mu_Context* ctx, const toggles_screen_state_t* state) {
 }
 
 #if CONFIG_LAUNCHER_SELFTEST
-/* An ACTION, not a persistent toggle like the checkboxes above - see
+/* An ACTION, not a persistent toggle like the checkboxes above; see
  * app_diagnostics.c's own comment on selftest_pending for why
  * selftest_run() itself never runs from inside this if-block. */
 static void

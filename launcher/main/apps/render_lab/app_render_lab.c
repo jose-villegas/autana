@@ -1,8 +1,8 @@
 /*
- * app_render_lab - the software-rendering testbed launcher app.
+ * app_render_lab: the software-rendering testbed launcher app.
  *
  * Draws into the shared framebuffer when the shell calls frame(), and
- * returns - it owns no frame loop, framebuffer or panel access of its own.
+ * returns; it owns no frame loop, framebuffer or panel access of its own.
  *
  * Owns gfx_mode_enter()/exit(), the layout switch, BOOT handling, the menu,
  * the scene picker and the fps counter. A scene
@@ -48,7 +48,7 @@ static int current_scene_index;
  * rewind to it, so each scene takes from the same spot. */
 static size_t scene_arena_mark;
 
-/* current_scene_index's own re-entry seed, a scene's key - NULL (the cube)
+/* current_scene_index's own re-entry seed, a scene's key, NULL (the cube)
  * by default. Read only at enter(), the same contract render_lab_band_mode
  * below documents. */
 const char* render_lab_start_scene_key;
@@ -77,7 +77,7 @@ current_scene(void) {
  * needs a re-entry to take hold. */
 bool render_lab_band_mode = true;
 
-/* Hides the fps/title overlay draw_fps() builds - on by default. A render
+/* Hides the fps/title overlay draw_fps() builds, on by default. A render
  * host pin needs it off: the fps line is a double formatted with "%.1f",
  * which a pin cannot rely on across compilers. Read every frame. */
 bool render_lab_show_hud = true;
@@ -96,7 +96,7 @@ render_lab_scene_shows_views(void) {
 }
 
 /* -1 (default) leaves the fps box at its corner inset. Any other value pins
- * the box's own logical x there instead - a test-only hook
+ * the box's own logical x there instead, a test-only hook
  * (suite_cube_band_perf.c) for measuring the UI cost of a box whose PANEL
  * row extent (a 90-degree turn maps logical x onto panel rows) starts on a
  * band boundary rather than wherever the inset lands it. */
@@ -123,18 +123,18 @@ static bool menu_open;
 static render_lab_mode_switch_t mode_switch;
 
 /* A scene change can change the layout, and the menu that asks for one runs
- * mid-frame, with a band frame possibly about to begin - so it is taken at
+ * mid-frame, with a band frame possibly about to begin, so it is taken at
  * the top of the next frame, as the layout toggle is. */
 static bool scene_switch_pending;
 
-/* What gfx actually granted at enter() - not simply render_lab_band_mode,
+/* What gfx actually granted at enter(), not simply render_lab_band_mode,
  * which is only the request: gfx falls back to GFX_LAYOUT_FULL_FB if the
  * band ring fails to allocate, and render_lab_frame() has to follow the
  * grant rather than call gfx_band_*() against buffers that were never
  * allocated. */
 static bool band_mode_active;
 
-/* On-screen framerate readout - main.c's own report_fps() only ever reaches
+/* On-screen framerate readout: main.c's own report_fps() only ever reaches
  * a serial console, so this is what lets a scene's own cost be seen with
  * nothing but the board itself. Windowed on dt_ms rather than
  * esp_timer_get_time() like report_fps() does, so this needs nothing beyond
@@ -145,7 +145,7 @@ static uint32_t fps_window_elapsed_ms;
 static double fps_value;
 
 /* Last ui_layout_generation() seen, so render_lab_frame() can tell a shell
- * orientation change happened since last frame - see its own comment for
+ * orientation change happened since last frame; see its own comment for
  * why that forces a full clear rather than a partial one. */
 static uint32_t last_layout_generation;
 
@@ -162,7 +162,7 @@ enter_layout(void) {
         .interlace_y = false,
     };
     band_mode_active = gfx_mode_enter(&mode_request)->layout == GFX_LAYOUT_BANDS;
-    /* The framebuffer is whatever the previous app or layout left in it -
+    /* The framebuffer is whatever the previous app or layout left in it;
      * the first frame after entering, in either mode, has to clear in full.
      * gfx_invalidate() ensures the partial clear cache starts fresh. */
     gfx_invalidate();
@@ -210,11 +210,11 @@ switch_to_next_scene(void) {
     scene_title_remaining_ms = SCENE_TITLE_MS;
 }
 
-/* The persistent HUD: the scene and, over it, the fps line - nothing else
+/* The persistent HUD: the scene and, over it, the fps line; nothing else
  * renders while the menu is closed (see render_lab_frame()). Exposed for
  * performance testing (suite_cube_perf.c), timed as its own phase there.
  * `for_bands` builds the same commands either way; only the finishing
- * call differs - see ui_end_for_bands()'s own comment (ui.h). */
+ * call differs; see ui_end_for_bands()'s own comment (ui.h). */
 void
 draw_fps(const input_t* input, bool for_bands) {
     mu_Context* ctx = ui_context();
@@ -230,7 +230,7 @@ draw_fps(const input_t* input, bool for_bands) {
     render_lab_hud_screen_draw(ctx, &state);
 
     /* UI_NO_BACKGROUND is what lets the spinning scene show through
-     * everywhere this window doesn't itself paint - see app_sand.c's
+     * everywhere this window doesn't itself paint; see app_sand.c's
      * draw_palette() for the precedent. Unlike that panel's frozen sand,
      * the scene keeps moving underneath every frame, which is exactly the
      * case ui_end()'s own comment calls out: it repaints whenever
@@ -245,7 +245,7 @@ draw_fps(const input_t* input, bool for_bands) {
 }
 
 /* The BOOT-opened menu holds the runtime rendering options and the scene
- * picker as centered bezel buttons - the place any future option belongs,
+ * picker as centered bezel buttons, the place any future option belongs,
  * rather than growing the persistent HUD in draw_fps(). See menu_open's
  * own comment for why BOOT opens this instead of flipping a toggle
  * directly. */
@@ -271,7 +271,7 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
     }
     /* A scene with needs_full_framebuffer set overrides the request either
      * way, so toggling it here would only cost a layout re-entry with
-     * nothing for the user to see - the button simply does nothing. */
+     * nothing for the user to see; the button simply does nothing. */
     if (result.band_mode_clicked && !current_scene()->needs_full_framebuffer) {
         render_lab_band_mode = !render_lab_band_mode;
         render_lab_mode_switch_request(&mode_switch);
@@ -397,7 +397,7 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
     }
 
     /* A shell orientation change moves draw_fps()'s overlay to a different
-     * physical region - gfx_invalidate() ensures the next frame performs a
+     * physical region; gfx_invalidate() ensures the next frame performs a
      * full screen wipe rather than a partial one. */
     const uint32_t layout_generation = ui_layout_generation();
     if (layout_generation != last_layout_generation) {

@@ -1,5 +1,5 @@
 /*
- * scene_sponza - Crytek Sponza flown through on a looping camera path, as a
+ * scene_sponza: Crytek Sponza flown through on a looping camera path, as a
  * render_lab scene.
  *
  * All light is baked into vertex colours by tools/gen_sponza.py (a sun with
