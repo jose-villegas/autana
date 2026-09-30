@@ -14,3 +14,13 @@ jobs:
         env:
           HEAD_REF: ${{ github.head_ref }}
         run: scripts/gates/check-branch-name.sh "$HEAD_REF"
+
+  pr-ticket:
+    name: PR ticket
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check PR description names its ticket
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s\n' "$PR_BODY" | scripts/gates/check-pr-ticket.sh
