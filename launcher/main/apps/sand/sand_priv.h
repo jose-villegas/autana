@@ -1357,6 +1357,20 @@ void sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a
  * must run LAST - see sand_impulse.c's own banner. */
 void step_impulses(sand_t* s, int dx, int dy);
 
+/* A block is SAND_BLOCK_H rows tall, so "liquid is near" holds for every row
+ * of a band a pool merely touches, and half of those rows hold nothing at
+ * all. Worth its own scan rather than the walk's: one induction variable and
+ * an empty test, against the walk's four and a spilled reload per cell. */
+static inline bool
+span_is_empty(const uint8_t* row, int x0, int x1) {
+    for (int x = x0; x < x1; x++) {
+        if (!CELL_IS_EMPTY(row[x])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /* try_fall_or_scatter_impl()/try_slide_impl() live here, static inline,
  * same reason as dest_row()/mark_rows(): hottest path, called once per
  * grain per step. Un-static-ing them loses inlining at sand.c's hot site.
