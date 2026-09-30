@@ -11,6 +11,7 @@ actually there. Exits nonzero on the first mismatch. Standard library only.
 """
 import struct
 import sys
+from dataclasses import dataclass
 
 
 class AviError(Exception):
@@ -46,6 +47,43 @@ def find_list(data, start, end, list_type):
         if cc == b"LIST" and data[s : s + 4] == list_type:
             return s + 4, e
     raise AviError(f"no LIST {list_type!r} found")
+
+
+@dataclass
+class Avi:
+    """width and height, frames per second, and each frame's bottom-up 24-bit BGR bytes."""
+
+    width: int
+    height: int
+    fps: float
+    frames: object
+
+
+def read_avi(path):
+    """The Avi in a render_video.c file, its frames read lazily, or AviError.
+
+    Trusts nothing beyond the structure; check_file() is the validator.
+    """
+    with open(path, "rb") as handle:
+        data = handle.read()
+    if data[0:4] != b"RIFF" or data[8:12] != b"AVI ":
+        raise AviError("not a RIFF AVI file")
+    hdrl_s, hdrl_e = find_list(data, 12, len(data), b"hdrl")
+    avih_s, _ = find_chunk(data, hdrl_s, hdrl_e, b"avih")
+    width, height = struct.unpack_from("<2I", data, avih_s + 32)
+    strl_s, strl_e = find_list(data, hdrl_s, hdrl_e, b"strl")
+    strh_s, _ = find_chunk(data, strl_s, strl_e, b"strh")
+    scale, rate = struct.unpack_from("<2I", data, strh_s + 20)
+    movi_s, movi_e = find_list(data, 12, len(data), b"movi")
+    frame_bytes = (width * 3 + 3) // 4 * 4 * height
+
+    def frames():
+        for fourcc, start, end in read_chunks(data, movi_s, movi_e):
+            if fourcc != b"00dc" or end - start != frame_bytes:
+                raise AviError("not a 24-bit frame chunk")
+            yield memoryview(data)[start:end]
+
+    return Avi(width, height, rate / scale, frames())
 
 
 def check_file(path):

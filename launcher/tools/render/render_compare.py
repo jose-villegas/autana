@@ -1,0 +1,496 @@
+"""Lay renders of two revisions side by side and say how they differ.
+
+    render_compare.py --out sheet.png [--summary summary.txt] [--clear RRGGBB]
+        --row LABEL A.bmp B.bmp [--row ...]
+    render_compare.py --out video.mp4 --video A.avi B.avi --label-a TEXT
+        --label-b TEXT [--csv frames.csv] [--fps N] [--clear RRGGBB]
+
+Either form takes --crops N: a second picture, <out>.crops.png, of
+the N places the two differ most, each cut with a margin, A above B and
+enlarged ZOOM (4) times without smoothing. Places with holes come first,
+then the strongest; changed pixels near each other are one place. A video
+takes them from its two most different frames.
+
+One row per render: A | B | a greyscale heatmap of the absolute per-pixel
+difference, scaled by GAIN (8) so a small colour shift shows. With --clear (the
+colour the scene clears to) a pixel that is clear on one side and drawn on the
+other is red in the heatmap and counted as a hole on the side that left it
+clear; a silhouette that moved counts too, so read the count beside the sheet.
+--clear is matched as given and as a 16-bit framebuffer holds it once
+expanded to 24 bits. render_compare.sh drives this.
+
+--video takes the two AVIs a renderer's own --video wrote over the same
+frames and writes one H.264 .mp4 of A | B | heatmap per frame, each panel
+labelled, plus with --csv one line of numbers per frame. The AVIs come from
+the renderer's own encoder; ffmpeg only packs the composed frames, as
+render_doc_images.sh does for its GIFs. --fps defaults to the AVIs' rate.
+
+Needs Pillow and numpy, and ffmpeg for --video.
+"""
+
+import argparse
+import shutil
+import subprocess
+from dataclasses import dataclass
+
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
+import check_avi
+
+HOLE_RED = (255, 0, 0)
+LABEL_BAR = 22
+GAIN = 8
+ZOOM = 4
+CROP_FRAMES = 2
+CSV_HEADER = "frame,time_ms,changed_pct,mean_abs,holes_a,holes_b"
+
+
+@dataclass
+class Stats:
+    changed: int
+    total: int
+    mean_abs: float
+    holes_a: int
+    holes_b: int
+
+
+def parse_rgb(text):
+    """(r, g, b) from RRGGBB hex."""
+    if len(text) != 6:
+        raise ValueError("colour must be RRGGBB, got %r" % text)
+    return tuple(int(text[i : i + 2], 16) for i in (0, 2, 4))
+
+
+def expand_565(rgb):
+    """The 24-bit colour a 16-bit framebuffer shows for rgb."""
+    r, g, b = rgb
+    r5, g6, b5 = r >> 3, g >> 2, b >> 3
+    return (r5 << 3 | r5 >> 2, g6 << 2 | g6 >> 4, b5 << 3 | b5 >> 2)
+
+
+def _pixels(picture):
+    return np.asarray(picture.convert("RGB")).astype(np.int32)
+
+
+def _is_clear(pixels, clear):
+    hit = np.zeros(pixels.shape[:2], dtype=bool)
+    if clear is not None:
+        for colour in {clear, expand_565(clear)}:
+            hit |= (pixels == colour).all(axis=2)
+    return hit
+
+
+def _holes(a, b, clear):
+    clear_a, clear_b = _is_clear(a, clear), _is_clear(b, clear)
+    return clear_a & ~clear_b, clear_b & ~clear_a
+
+
+def _same_size(a, b):
+    if a.size != b.size:
+        raise ValueError("size %dx%d vs %dx%d" % (*a.size, *b.size))
+
+
+def measure(a, b, clear):
+    """Stats for two same-sized images; clear may be None."""
+    _same_size(a, b)
+    pa, pb = _pixels(a), _pixels(b)
+    diff = np.abs(pa - pb)
+    holes_a, holes_b = _holes(pa, pb, clear)
+    return Stats(
+        changed=int((diff.max(axis=2) > 0).sum()),
+        total=diff.shape[0] * diff.shape[1],
+        mean_abs=float(diff.mean()),
+        holes_a=int(holes_a.sum()),
+        holes_b=int(holes_b.sum()),
+    )
+
+
+def heatmap(a, b, clear, gain=GAIN):
+    """Greyscale |a - b| times gain, holes in red."""
+    _same_size(a, b)
+    pa, pb = _pixels(a), _pixels(b)
+    grey = np.clip(np.abs(pa - pb).max(axis=2) * gain, 0, 255).astype(np.uint8)
+    heat = np.stack([grey] * 3, axis=2)
+    holes_a, holes_b = _holes(pa, pb, clear)
+    heat[holes_a | holes_b] = HOLE_RED
+    return Image.fromarray(heat)
+
+
+def sheet(rows, clear, gain=GAIN):
+    """One picture: each (label, a, b) row as A | B | heatmap, stacked, black-padded to the widest."""
+    strips = []
+    for _label, a, b in rows:
+        _same_size(a, b)
+        strips.append(np.concatenate([_pixels(a), _pixels(b), np.asarray(heatmap(a, b, clear, gain)).astype(np.int32)], axis=1))
+    widest = max(strip.shape[1] for strip in strips)
+    padded = [np.pad(strip, ((0, 0), (0, widest - strip.shape[1]), (0, 0))) for strip in strips]
+    return Image.fromarray(np.concatenate(padded, axis=0).astype(np.uint8))
+
+
+@dataclass
+class Cluster:
+    """A group of changed pixels: its rect (x1, y1 exclusive), holes, size and strength."""
+
+    x0: int
+    y0: int
+    x1: int
+    y1: int
+    holes: int
+    size: int
+    strength: int
+
+
+def _grow(mask, radius):
+    """mask with every set pixel widened by radius in each direction."""
+    grown = mask
+    for axis in (0, 1):
+        widened = grown.copy()
+        for step in range(1, radius + 1):
+            lo, hi = [slice(None)] * 2, [slice(None)] * 2
+            lo[axis], hi[axis] = slice(step, None), slice(None, -step)
+            widened[tuple(lo)] |= grown[tuple(hi)]
+            widened[tuple(hi)] |= grown[tuple(lo)]
+        grown = widened
+    return grown
+
+
+def _root(parent, node):
+    while parent[node] != node:
+        parent[node] = parent[parent[node]]
+        node = parent[node]
+    return node
+
+
+def _row_runs(row):
+    """[start, end) of each run of set pixels in one mask row."""
+    edges = np.diff(np.concatenate(([0], row.astype(np.int8), [0])))
+    return list(zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)))
+
+
+def _components(mask):
+    """8-connected labels of mask (0 is background), by joining runs row to row."""
+    labels = np.zeros(mask.shape, dtype=np.int32)
+    parent = [0]
+    previous = []
+    for y in range(mask.shape[0]):
+        current = []
+        above = 0
+        for start, end in _row_runs(mask[y]):
+            while above < len(previous) and previous[above][1] < start:
+                above += 1
+            touching, scan = [], above
+            while scan < len(previous) and previous[scan][0] <= end:
+                touching.append(previous[scan][2])
+                scan += 1
+            if touching:
+                label = _root(parent, touching[0])
+                for other in touching[1:]:
+                    parent[_root(parent, other)] = label
+            else:
+                label = len(parent)
+                parent.append(label)
+            labels[y, start:end] = label
+            current.append((start, end, label))
+        previous = current
+    roots = np.array([_root(parent, node) for node in range(len(parent))], dtype=np.int32)
+    return roots[labels]
+
+
+def _busiest_window(weight, wide, high):
+    """Top-left (x, y) of the wide x high window of weight with the largest sum."""
+    integral = np.pad(weight.cumsum(axis=0).cumsum(axis=1), ((1, 0), (1, 0)))
+    sums = integral[high:, wide:] - integral[:-high, wide:] - integral[high:, :-wide] + integral[:-high, :-wide]
+    y, x = np.unravel_index(int(sums.argmax()), sums.shape)
+    return int(x), int(y)
+
+
+def _rect(xs, ys, weight, margin, max_side):
+    """(x0, y0, x1, y1) around the pixels xs, ys, plus margin, clamped to weight's image.
+
+    A cluster wider or taller than max_side is cut to the max_side window of
+    it that holds the most weight, so one picture-wide cluster still gives a
+    crop that can be looked at.
+    """
+    height, width = weight.shape
+    x0, x1, y0, y1 = int(xs.min()), int(xs.max()) + 1, int(ys.min()), int(ys.max()) + 1
+    if x1 - x0 > max_side or y1 - y0 > max_side:
+        wide, high = min(x1 - x0, max_side), min(y1 - y0, max_side)
+        x0, y0 = _busiest_window(weight, wide, high)
+        x1, y1 = x0 + wide, y0 + high
+    return max(0, x0 - margin), max(0, y0 - margin), min(width, x1 + margin), min(height, y1 + margin)
+
+
+def find_clusters(a, b, clear, count=4, margin=8, threshold=8, grow=3, max_side=64):
+    """The count most telling clusters of changed pixels between a and b.
+
+    A pixel changed if any channel moved by more than threshold, or it is a
+    hole (clear on one side only). Changed pixels within grow of each other
+    are one cluster. Clusters with holes come first, the most holes first,
+    then the rest by total difference. Each rect is the changed pixels'
+    bounding box plus margin, clamped to the image; a cluster larger than
+    max_side is cut to its strongest max_side window.
+    """
+    _same_size(a, b)
+    pa, pb = _pixels(a), _pixels(b)
+    diff = np.abs(pa - pb).max(axis=2)
+    holes_a, holes_b = _holes(pa, pb, clear)
+    holes = holes_a | holes_b
+    changed = (diff > threshold) | holes
+    if not changed.any():
+        return []
+    labels = _components(_grow(changed, grow))
+    ys, xs = np.nonzero(changed)
+    owner = labels[ys, xs]
+    clusters = []
+    for label in np.unique(owner):
+        pick = owner == label
+        cy, cx = ys[pick], xs[pick]
+        weight = np.zeros(diff.shape, dtype=np.int64)
+        weight[cy, cx] = diff[cy, cx] + 255 * holes[cy, cx]
+        x0, y0, x1, y1 = _rect(cx, cy, weight, margin, max_side)
+        clusters.append(Cluster(x0, y0, x1, y1, int(holes[cy, cx].sum()), int(pick.sum()), int(diff[cy, cx].sum())))
+    clusters.sort(key=lambda c: (c.holes, c.strength), reverse=True)
+    return clusters[:count]
+
+
+def crop_sheet(entries, zoom=ZOOM):
+    """One picture of zoomed crops: per entry a row, per cluster A above B.
+
+    entries is [(title, a, b, clusters)]; every crop is labelled with its
+    title and where it was cut. A crop over 512 px is zoomed less so the
+    sheet stays a size a viewer opens.
+    """
+    font, cell_min, gap, bar = _font(), 150, 6, 36
+    rows = []
+    for title, a, b, clusters in entries:
+        cells = []
+        for cluster in clusters:
+            box = (cluster.x0, cluster.y0, cluster.x1, cluster.y1)
+            scale = max(1, min(zoom, 512 // max(cluster.x1 - cluster.x0, cluster.y1 - cluster.y0)))
+            size = ((cluster.x1 - cluster.x0) * scale, (cluster.y1 - cluster.y0) * scale)
+            cells.append((box, [p.convert("RGB").crop(box).resize(size, Image.NEAREST) for p in (a, b)]))
+        if cells:
+            rows.append((title, cells))
+    heights = [bar + 2 * max(c[1][0].size[1] for c in cells) + 2 * gap for _t, cells in rows]
+    widths = [sum(max(c[1][0].size[0], cell_min) + gap for c in cells) for _t, cells in rows]
+    canvas = Image.new("RGB", (max(widths or [cell_min]), max(sum(heights), 1)), (24, 24, 24))
+    draw, top = ImageDraw.Draw(canvas), 0
+    for (title, cells), height in zip(rows, heights):
+        left = 0
+        for box, (crop_a, crop_b) in cells:
+            place = "x%d y%d  %dx%d" % (box[0], box[1], box[2] - box[0], box[3] - box[1])
+            draw.text((left, top), title, fill=(255, 255, 255), font=font)
+            draw.text((left, top + 17), place, fill=(200, 200, 200), font=font)
+            canvas.paste(crop_a, (left, top + bar))
+            canvas.paste(crop_b, (left, top + bar + crop_a.size[1] + gap))
+            left += max(crop_a.size[0], cell_min) + gap
+        top += height
+    return canvas
+
+
+def crops_path(out):
+    """Where the crops sheet for a sheet or video written to out goes."""
+    return out.rsplit(".", 1)[0] + ".crops.png"
+
+
+def read_video(path):
+    """(fps, frames) of a render_video.c AVI; frames yields (h, w, 3) RGB arrays."""
+    video = check_avi.read_avi(path)
+    stride = (video.width * 3 + 3) // 4 * 4
+
+    def frames():
+        for body in video.frames:
+            rows = np.frombuffer(body, dtype=np.uint8).reshape(video.height, stride)
+            bgr = rows[::-1, : video.width * 3].reshape(video.height, video.width, 3)
+            yield np.ascontiguousarray(bgr[:, :, ::-1])
+
+    return video.fps, frames()
+
+
+def _font():
+    try:
+        return ImageFont.load_default(size=14)
+    except TypeError:
+        return ImageFont.load_default()
+
+
+def compose_frame(a, b, clear, gain, label_a, label_b, note=""):
+    """A | B | heatmap under a bar naming each; the heatmap's label carries note."""
+    _same_size(a, b)
+    width, height = a.size
+    canvas = Image.new("RGB", (3 * width, height + LABEL_BAR), (0, 0, 0))
+    for column, picture in enumerate((a, b, heatmap(a, b, clear, gain))):
+        canvas.paste(picture.convert("RGB"), (column * width, LABEL_BAR))
+    draw, font = ImageDraw.Draw(canvas), _font()
+    texts = ("A  " + label_a, "B  " + label_b, ("diff x%d  " % gain + note).strip())
+    for column, text in enumerate(texts):
+        draw.text((column * width + 6, 3), text, fill=(255, 255, 255), font=font)
+    return canvas
+
+
+def frame_line(index, dt_ms, stats):
+    """One CSV row: frame, time, changed share, mean abs diff, holes per side."""
+    return "%d,%d,%.4f,%.4f,%d,%d" % (
+        index,
+        round(index * dt_ms),
+        100.0 * stats.changed / stats.total,
+        stats.mean_abs,
+        stats.holes_a,
+        stats.holes_b,
+    )
+
+
+def video_summary(all_stats, dt_ms):
+    """One line about a whole video: the worst frame and the averages."""
+    shares = [100.0 * s.changed / s.total for s in all_stats]
+    worst = max(range(len(shares)), key=shares.__getitem__)
+    return (
+        "video: %d frames, changed share mean %.2f%% max %.2f%% (frame %d, %.1f s), "
+        "mean abs diff %.3f/255, holes A peak %d, holes B peak %d"
+        % (
+            len(all_stats),
+            sum(shares) / len(shares),
+            shares[worst],
+            worst,
+            worst * dt_ms / 1000.0,
+            sum(s.mean_abs for s in all_stats) / len(all_stats),
+            max(s.holes_a for s in all_stats),
+            max(s.holes_b for s in all_stats),
+        )
+    )
+
+
+def _ffmpeg_command(ffmpeg, size, fps, out):
+    return (
+        [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24"]
+        + ["-s", "%dx%d" % size, "-r", "%g" % fps, "-i", "-"]
+        + ["-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-c:v", "libx264", "-crf", "16", "-preset", "medium"]
+        + ["-pix_fmt", "yuv420p", "-movflags", "+faststart", out]
+    )
+
+
+def worst_frames(all_stats, count):
+    """Indices of the count frames that differ most: holes first, then changed pixels."""
+    order = sorted(range(len(all_stats)), key=lambda i: (all_stats[i].holes_a + all_stats[i].holes_b, all_stats[i].changed), reverse=True)
+    return sorted(order[:count])
+
+
+def write_crops(entries, out, zoom=ZOOM):
+    """Save the crops sheet of entries unless nothing differs; True if written."""
+    if not any(clusters for _t, _a, _b, clusters in entries):
+        print("no differences: no crops written")
+        return False
+    crop_sheet(entries, zoom).save(out)
+    return True
+
+
+def write_video_crops(path_a, path_b, indices, out, clear, count, zoom, dt_ms):
+    """A crops sheet of the given frames of two AVIs, one row per frame."""
+    wanted = set(indices)
+    picked = {}
+    for name, path in (("a", path_a), ("b", path_b)):
+        for index, raw in enumerate(read_video(path)[1]):
+            if index in wanted:
+                picked[(name, index)] = Image.fromarray(raw)
+    entries = []
+    for index in indices:
+        a, b = picked[("a", index)], picked[("b", index)]
+        title = "frame %d (%.1f s)" % (index, index * dt_ms / 1000.0)
+        entries.append((title, a, b, find_clusters(a, b, clear, count)))
+    write_crops(entries, out, zoom)
+
+
+def compare_videos(path_a, path_b, out, csv_path, clear, gain, label_a, label_b, fps=None, crops=0, zoom=ZOOM):
+    """Write the side-by-side mp4, the per-frame CSV and, with crops, the crops sheet.
+
+    Returns the summary line.
+    """
+    fps_a, frames_a = read_video(path_a)
+    fps_b, frames_b = read_video(path_b)
+    if fps_a != fps_b:
+        raise ValueError("frame rate %g vs %g: render both with the same --dt" % (fps_a, fps_b))
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        raise RuntimeError("ffmpeg not found; --video needs it to pack the frames")
+    dt_ms = 1000.0 / fps_a
+    process, lines, all_stats = None, [CSV_HEADER], []
+    try:
+        for index, (raw_a, raw_b) in enumerate(zip(frames_a, frames_b)):
+            a, b = Image.fromarray(raw_a), Image.fromarray(raw_b)
+            stats = measure(a, b, clear)
+            all_stats.append(stats)
+            lines.append(frame_line(index, dt_ms, stats))
+            note = "t %.1f s  changed %.1f%%" % (index * dt_ms / 1000.0, 100.0 * stats.changed / stats.total)
+            picture = compose_frame(a, b, clear, gain, label_a, label_b, note)
+            if process is None:
+                command = _ffmpeg_command(ffmpeg, picture.size, fps or fps_a, out)
+                process = subprocess.Popen(command, stdin=subprocess.PIPE)
+            process.stdin.write(picture.tobytes())
+    finally:
+        if process is not None:
+            process.stdin.close()
+            if process.wait() != 0:
+                raise RuntimeError("ffmpeg failed writing %s" % out)
+    if not all_stats:
+        raise ValueError("no frames to compare")
+    if csv_path:
+        with open(csv_path, "w") as handle:
+            handle.write("\n".join(lines) + "\n")
+    if crops:
+        worst = worst_frames(all_stats, CROP_FRAMES)
+        write_video_crops(path_a, path_b, worst, crops_path(out), clear, crops, zoom, dt_ms)
+    return video_summary(all_stats, dt_ms)
+
+
+def summary_line(label, stats):
+    """One line of numbers for a render."""
+    return "%s: changed %d/%d (%.2f%%), mean abs diff %.3f/255, holes A %d, holes B %d" % (
+        label,
+        stats.changed,
+        stats.total,
+        100.0 * stats.changed / stats.total,
+        stats.mean_abs,
+        stats.holes_a,
+        stats.holes_b,
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--out", required=True)
+    parser.add_argument("--summary")
+    parser.add_argument("--clear", type=parse_rgb)
+    parser.add_argument("--row", nargs=3, action="append", metavar=("LABEL", "A", "B"))
+    parser.add_argument("--video", nargs=2, metavar=("A.avi", "B.avi"))
+    parser.add_argument("--csv")
+    parser.add_argument("--fps", type=float)
+    parser.add_argument("--label-a", default="A")
+    parser.add_argument("--label-b", default="B")
+    parser.add_argument("--crops", type=int, default=0)
+    args = parser.parse_args()
+
+    if args.video:
+        line = compare_videos(*args.video, args.out, args.csv, args.clear, GAIN, args.label_a, args.label_b, args.fps, args.crops, ZOOM)
+        print(line)
+        if args.summary:
+            with open(args.summary, "a") as handle:
+                handle.write(line + "\n")
+        return
+    if not args.row:
+        parser.error("--row or --video is required")
+
+    rows = [(label, Image.open(a), Image.open(b)) for label, a, b in args.row]
+    sheet(rows, args.clear).save(args.out)
+    if args.crops:
+        entries = [(label, a, b, find_clusters(a, b, args.clear, args.crops)) for label, a, b in rows]
+        write_crops(entries, crops_path(args.out), ZOOM)
+    lines = [summary_line(label, measure(a, b, args.clear)) for label, a, b in rows]
+    print("\n".join(lines))
+    if args.summary:
+        with open(args.summary, "a") as handle:
+            handle.write("\n".join(lines) + "\n")
+
+
+if __name__ == "__main__":
+    main()
