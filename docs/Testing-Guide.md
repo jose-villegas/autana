@@ -266,9 +266,10 @@ needed, without paying a rebuild-and-reflash cycle per attempt.
 
 **Narrowing a suite.** `runsuite <suite> <pattern>[,<pattern>...]` limits the
 run to the tests whose name contains a pattern; `autana suite <name> --test
-<pattern>` sends it ([syntax](tools/Autana-CLI.md#tests)). A selftest build's
-console line is long enough for the most patterns `launcher/test/suites.h`
-allows. The choke point is the `RUN_TEST` override (`launcher/test/timing.c`),
+<pattern>` sends it ([syntax](tools/Autana-CLI.md#tests)). In a selftest
+build the console reads a line long enough for the most patterns
+`launcher/test/suites.h` allows, for `runsuite` alone; every other verb is
+still held to `CONSOLE_LINE_MAX`. The choke point is the `RUN_TEST` override (`launcher/test/timing.c`),
 so no suite changes: for every test it reaches it prints
 `SUITE_TEST name=<test> selected=<0|1>` and runs only the selected. The
 patterns live for that one request, so the next `runsuite` runs everything. The

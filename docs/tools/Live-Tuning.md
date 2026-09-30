@@ -98,7 +98,7 @@ TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
   code that reads it is the same in both and release pays nothing.
 - The compiler refuses a value outside its own range and a name over 32
   characters (`<owner>.<what>`; a `SET` line has to fit the console's
-  `CONSOLE_LINE_MAX`, 49 outside a self-test build).
+  `CONSOLE_LINE_MAX`, 49).
 - The registry is a list threaded through the entries, so there is no table
   to outgrow. Two declarations of one name are a mistake: the first keeps the
   name and `TUNE` reports the clash.
