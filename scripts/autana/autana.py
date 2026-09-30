@@ -616,8 +616,8 @@ def suite_list(args):
     return 0
 
 
-SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [seconds] [--runs N] [--flash] "
-              "[--perf-scope] [--verbose] [--out PATH] [--expect-build-id ID] | "
+SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [seconds] [--runs N] [--test PATTERN] "
+              "[--flash] [--perf-scope] [--verbose] [--out PATH] [--expect-build-id ID] | "
               "autana suite list [text]")
 
 
@@ -625,8 +625,10 @@ def suite(args):
     """One or more registered suites, captured under one lock - against the
     image already on the board, or, with `--flash`, built and flashed first.
     The name is each suite's own function, as SUITE_REGISTER() in its source
-    spells it. `seconds` caps the whole run, 600 when omitted - the same
-    idea as `selftest`'s own trailing `seconds`."""
+    spells it. `seconds` caps each capture (1800 when omitted, and a
+    silent board ends one sooner). `--test` (repeatable, or a comma
+    list) narrows the run, on the device, to the tests whose name contains
+    a pattern."""
     if not args:
         sys.exit(SUITE_USAGE)
     if args[0] == "list":
@@ -636,7 +638,7 @@ def suite(args):
         positional.append(rest.pop(0))
     if not positional:
         sys.exit(SUITE_USAGE)
-    seconds = 600.0
+    seconds = None
     if len(positional) > 1:
         try:
             seconds = float(positional[-1])
@@ -659,6 +661,10 @@ def suite(args):
     runs, rest = pop_value(rest, "--runs")
     out, rest = pop_value(rest, "--out")
     expect_build_id, rest = pop_value(rest, "--expect-build-id")
+    tests = []
+    while "--test" in rest:
+        value, rest = pop_value(rest, "--test")
+        tests.append(value)
     reject_unknown("suite", rest)
     if rest:
         sys.exit(SUITE_USAGE)
@@ -668,11 +674,16 @@ def suite(args):
     # directory does, unvalidated, same as project_override()'s other use.
     project = resolve_project() if flash else (project_override() or str(Path.cwd()))
     runs = runs or "1"
-    print(f"autana suite: {', '.join(names)} x{runs}" + (" (flash)" if flash else ""), flush=True)
+    filtered = f" --test {','.join(tests)}" if tests else ""
+    print(f"autana suite: {', '.join(names)} x{runs}{filtered}" + (" (flash)" if flash else ""),
+          flush=True)
     command = device_command(
         "batch", "--worktree", project, "--variant", "diag", "--runs", runs,
-        "--max-seconds", str(seconds),
     )
+    if seconds is not None:
+        command += ["--max-seconds", str(seconds)]
+    for value in tests:
+        command += ["--test", value]
     if not flash:
         command.append("--no-flash")
     for name in names:
@@ -1223,7 +1234,10 @@ COMMAND_GROUPS = (
     ("tests", "Tests", (
         Command("suite", suite, (
             ("suite <name>... [seconds] [--runs N] [--flash] [--verbose]",
-             "run suites under one lock; --flash builds and flashes first"),
+             "run suites under one lock; --flash builds and flashes first; seconds caps a "
+             "capture (1800 when omitted)"),
+            ("suite <name> --test PATTERN[,PATTERN]",
+             "only the tests whose name contains a pattern; --test repeats"),
             ("suite list [text] [--json]", "the suites this project registers"))),
         Command("selftest", selftest, (
             ("selftest [seconds] [--verbose]",

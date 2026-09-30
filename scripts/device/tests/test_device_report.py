@@ -144,7 +144,31 @@ class BatchSummaryTests(unittest.TestCase):
     def test_reports_each_run_and_the_spread(self):
         text = self.summary([(7000, "PASS"), (7700, "PASS"), (7350, "PASS")])
         self.assertIn("| `test_a_full_size_step_fits_in_the_frame_budget` | 7000 | 7700 | 7350 "
-                      "| 7000 | 7700 | 10.0% |", text)
+                      "| 7000 | 7350 | 7700 | 10.0% |", text)
+
+    def test_the_median_of_an_even_number_of_runs_is_the_middle_pair_mean(self):
+        text = self.summary([(7000, "PASS"), (9000, "PASS"), (7100, "PASS"), (8000, "PASS")])
+        self.assertIn("| 7000 | 7550 | 9000 | 28.6% |", text)
+        self.assertIn("| min | median | max | spread |", text)
+
+    def test_an_odd_sum_middle_pair_shows_a_half(self):
+        text = self.summary([(7000, "PASS"), (7001, "PASS")])
+        self.assertIn("| 7000 | 7000.5 | 7001 |", text)
+
+    def test_a_run_with_no_value_for_a_row_is_left_out_of_its_median(self):
+        with tempfile.TemporaryDirectory() as directory:
+            entries = []
+            for run, step in ((1, 7000), (2, None), (3, 7300)):
+                path = Path(directory) / f"run{run}.log"
+                path.write_text("" if step is None else REAL_PERF_RUN.format(step=step, hash="PASS"),
+                                encoding="utf-8")
+                entries.append({"suite": "run_sand_perf_suite", "run": run,
+                                "capture": str(path), "error": None})
+            text = device_report.batch_summary_markdown(entries, {
+                "build_id": "b", "owner": "t", "purpose": "p", "runs": 3, "worktree": "w",
+                "commit": "c"})
+        self.assertIn("| `test_a_full_size_step_fits_in_the_frame_budget` | 7000 | - | 7300 "
+                      "| 7000 | 7150 | 7300 | 4.3% |", text)
 
     def test_a_result_that_changes_between_runs_of_one_image_is_listed(self):
         text = self.summary([(7167, "FAIL"), (10937, "PASS"), (7169, "FAIL")])
@@ -158,6 +182,60 @@ class BatchSummaryTests(unittest.TestCase):
     def test_targets_are_tabulated_per_run(self):
         text = self.summary([(7159, "PASS"), (7169, "PASS")])
         self.assertIn("| full-size step | 7159 | 7169 | 5800 |", text)
+
+
+# A run narrowed to the fire and gas rows: every test of the suite is listed
+# once, the unselected ones ran nothing, and the device summarises what ran.
+FILTERED_RUN = """SUITE_TEST name=test_fire_fits selected=1
+SUITE_TEST name=test_gas_fits selected=1
+SUITE_TEST name=test_water_fits selected=0
+I (100) device_tests: fire: 5000 us
+:1:test_fire_fits:PASS
+I (200) device_tests: gas: 6000 us
+:2:test_gas_fits:FAIL: Expected 6000 to be less than 5800
+PERF TARGET gas: measured 6000 us, goal 5800 us, distance +3.4%
+PERF TARGET SUMMARY: 1 unmet
+RUNSUITE_COMPLETE name=sand found=1 selected=2 unmatched=0
+"""
+
+
+class FilteredRunReportTests(unittest.TestCase):
+    """A narrowed run is a report of the tests that ran: nothing lists the
+    rest as missing, failed or unmet."""
+
+    def batch(self, filtered):
+        with tempfile.TemporaryDirectory() as directory:
+            entries = []
+            for run in (1, 2):
+                path = Path(directory) / f"run{run}.log"
+                path.write_text(FILTERED_RUN, encoding="utf-8")
+                entries.append({"suite": "sand", "run": run, "capture": str(path), "error": None})
+            return device_report.batch_summary_markdown(entries, {
+                "build_id": "b", "owner": "t", "purpose": "p", "runs": 2, "worktree": "w",
+                "commit": "c", "test_filter": ["fire", "gas"] if filtered else []})
+
+    def test_the_batch_summary_has_rows_for_the_tests_that_ran_only(self):
+        text = self.batch(True)
+        self.assertIn("| `test_fire_fits` | 5000 | 5000 | 5000 | 5000 | 5000 | 0.0% |", text)
+        self.assertIn("| `test_gas_fits` |", text)
+        self.assertNotIn("test_water_fits", text)
+        self.assertNotIn("missing", text.lower())
+
+    def test_the_batch_summary_names_the_filter(self):
+        self.assertIn("- Test filter: `fire, gas`", self.batch(True))
+        self.assertNotIn("Test filter", self.batch(False))
+
+    def test_a_single_report_counts_and_summarises_only_what_ran(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture = Path(directory) / "capture.log"
+            capture.write_text(FILTERED_RUN, encoding="utf-8")
+            index = write_index(directory, [{"capture_path": str(capture), "suite": "sand",
+                                             "test_filter": ["fire", "gas"]}])
+            markdown = device_report.build_report_markdown(capture, index)
+        self.assertIn("PASS: 1  FAIL: 1", markdown)
+        self.assertIn("PERF TARGET SUMMARY: 1 unmet", markdown)
+        self.assertIn("- Test filter: `fire, gas`", markdown)
+        self.assertNotIn("test_water_fits", markdown)
 
 
 class LooksLikePerfCaptureTests(unittest.TestCase):

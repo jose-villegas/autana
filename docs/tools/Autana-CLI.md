@@ -83,7 +83,8 @@ suite this project registers, for a full pre-merge pass.
 
 | Command | What it does |
 |---|---|
-| `autana suite <name>... [seconds] [--runs N] [--flash] [--verbose]` | Run one or more registered suites under one lock, `N` times each (1 when omitted), `seconds` capping the whole run (600 s when omitted). Without `--flash`: against the image already on the board - `autana suite <name>` against a non-diagnostics image says so plainly and names the fix (`autana flash diag`). With `--flash`: build and flash the diagnostics image first, so nobody else can flash between two captures. |
+| `autana suite <name>... [seconds] [--runs N] [--flash] [--verbose]` | Run one or more registered suites under one lock, `N` times each (1 when omitted), `seconds` capping each capture (1800 s when omitted; a board that goes silent for 300 s ends one sooner). Without `--flash`: against the image already on the board - `autana suite <name>` against a non-diagnostics image says so plainly and names the fix (`autana flash diag`). With `--flash`: build and flash the diagnostics image first, so nobody else can flash between two captures. |
+| `autana suite <name> --test PATTERN[,PATTERN]` | Only the tests of that suite whose name contains a pattern; `--test` repeats. |
 | `autana suite list [text] [--json]` | The suites this project registers; `[on request]` ones run only by name. |
 | `autana selftest [seconds] [--verbose] [--perf-scope] [--out PATH]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
 
@@ -93,6 +94,20 @@ prints the whole capture; to find something in it, grep the capture instead.
 One suite run once - `autana suite <name>` with no `--runs` or `--flash` -
 still produces exactly one capture and one report, the same as before this
 command absorbed `batch`.
+
+**`--test PATTERN`** runs only the tests of a suite whose name contains
+`PATTERN` (a case-sensitive substring; letters, digits and underscores). Repeat
+the flag or comma-separate to pick several: `--test fire,gas` runs every test
+whose name has `fire` or `gas` in it. The board does the filtering, so a test
+that is not selected does not run, and a filtered capture is minutes instead of
+a full suite's quarter hour. The limits (a pattern's length, how many) are the
+board's, in `launcher/test/suites.h`; it refuses one past them. A pattern that
+matches no test fails after the capture, listing the suite's test names, and
+ends a `--runs` batch there; with a single pattern nothing ran. The report and
+the `--runs` summary cover only the tests that ran - an unselected test is not
+missing, failed or unmet - and name the filter, so an A/B read later knows
+which rows it compares. It needs a diagnostics build whose `RUNSUITE` takes
+patterns (`autana flash diag`), and says so when the board runs an older one.
 
 `autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` still works -
 the old spelling of `autana suite <suite>... --runs N --perf-scope --verbose

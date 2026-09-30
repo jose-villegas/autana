@@ -30,7 +30,7 @@
 typedef void (*suite_fn)(void);
 
 /* Called by the SUITE_REGISTER macros before main(). `on_request` keeps a
- * suite out of suites_run_all() while leaving suites_run_one() able to find
+ * suite out of suites_run_all() while leaving suites_run_request() able to find
  * it: a sweep measured in hours belongs to whoever asks for it by name, not
  * to every boot of every image that carries it. */
 void suite_register(const char* name, suite_fn fn);
@@ -45,14 +45,32 @@ void suite_register_on_request(const char* name, suite_fn fn);
 /* Runs every registered suite, in name order so the output is stable. */
 void suites_run_all(void);
 
-/* Runs exactly one registered suite by its exact name - the string
- * SUITE_REGISTER() stringified its own function name into. For a targeted
- * run: a perf suite's own report can be minutes behind whatever registered
- * ahead of it alphabetically, and usually only one suite's output is wanted.
- *
- * Returns false (nothing run) if no suite matches `name` exactly, so the
- * caller can report that back rather than silently doing nothing. */
-bool suites_run_one(const char* name);
+/* One RUNSUITE request: "<suite>", or "<suite> <pattern>[,<pattern>...]" to
+ * run only the tests whose name contains a pattern (case-sensitive substring).
+ * A pattern holds at most SUITE_FILTER_LEN - 1 characters and a request at
+ * most SUITE_FILTER_MAX of them; one past either is refused, nothing runs.
+ * While filtering, suites_test_runs() prints "SUITE_TEST name=... selected=..."
+ * for every test reached. The patterns live for the call only. */
+#define SUITE_NAME_MAX   38
+#define SUITE_FILTER_MAX 4
+#define SUITE_FILTER_LEN 24
+
+typedef struct {
+    char name[SUITE_NAME_MAX + 1];
+    bool found;    /* a suite of that exact name is registered */
+    bool refused;  /* a pattern was too long, empty, or one too many */
+    int selected;  /* tests that ran */
+    int unmatched; /* patterns that matched no test */
+} suite_run_t;
+
+suite_run_t suites_run_request(const char* request);
+
+/* The completion line a harness waits for - one owner, so the tools that parse
+ * it are pinned to what this prints. */
+void suites_print_run(const suite_run_t* run);
+
+/* Asked by suite_run_test_timed() (timing.c) for each test: true to run it. */
+bool suites_test_runs(const char* test_name);
 
 /* How many suites did NOT fit and were dropped - see suite_register().
  *

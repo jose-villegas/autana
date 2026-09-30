@@ -265,7 +265,7 @@ def append_manifest(entry, root=None):
 
 def record_capture(path, managed, *, started_at, board, owner, purpose, command, commit,
                     suite=None, build_id=None, worktree=None, reason=None, error=None, root=None,
-                    acquired_at=None):
+                    acquired_at=None, test_filter=None):
     """The permanent trail: written for every flash/run-suite/listen call, so
     even a capture left behind in a doomed worktree still has metadata here."""
     path = Path(path)
@@ -275,7 +275,7 @@ def record_capture(path, managed, *, started_at, board, owner, purpose, command,
         capture_bytes = path.stat().st_size
     except OSError:
         capture_bytes = None
-    append_manifest({
+    entry = {
         "started_at": started_at.isoformat(),
         "acquired_at": datetime.fromtimestamp(acquired_at).isoformat() if acquired_at else None,
         "board": board,
@@ -290,7 +290,10 @@ def record_capture(path, managed, *, started_at, board, owner, purpose, command,
         "error": error,
         "capture_path": str(path),
         "capture_bytes": capture_bytes,
-    }, root)
+    }
+    if test_filter:
+        entry["test_filter"] = test_filter
+    append_manifest(entry, root)
     return path
 
 
@@ -595,6 +598,9 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
                 if suite_name:
                     if b"ignoring line: 'RUNSUITE" in text:
                         raise RuntimeError("this build has no test suites - autana flash diag")
+                    if b"console line too long" in text:
+                        raise TestFilterError("the device dropped the request as too long for its "
+                                              "console line: " + text.decode("ascii", "replace"))
                     if (b"no suite named '" + suite_name.encode("ascii") + b"'") in text:
                         raise RuntimeError("no suite named " + suite_name + " on this build")
                     if b"SUITE_DONE" in text or text.startswith(suite_complete):
@@ -1135,12 +1141,80 @@ def write_image(built, store, board, held_lock=None):
     return build_id
 
 
+def test_patterns(values):
+    """The patterns of repeated `--test` values, each a comma list. A test's
+    name is a C identifier, so a pattern is one too - the device matches it as
+    a case-sensitive substring of the name, and refuses one past its limits
+    (SUITE_FILTER_MAX and SUITE_FILTER_LEN in launcher/test/suites.h)."""
+    patterns = []
+    for value in values or []:
+        for pattern in value.split(","):
+            pattern = pattern.strip()
+            if not re.fullmatch(r"\w+", pattern):
+                raise TestFilterError(f"--test {pattern!r}: a pattern is part of a test name - "
+                                      "letters, digits and underscores")
+            if pattern not in patterns:
+                patterns.append(pattern)
+    return patterns
+
+
+def suite_request(suite, patterns):
+    """The console line that runs `suite`, narrowed to `patterns` when given."""
+    return ("\nRUNSUITE " + " ".join([suite, ",".join(patterns)] if patterns else [suite])
+            + "\n").encode("ascii")
+
+
+SUITE_COMPLETE_RE = re.compile(r"RUNSUITE_COMPLETE name=.+? found=(?P<found>\d)"
+                               r"(?: selected=(?P<selected>\d+) unmatched=(?P<unmatched>\d+))?")
+
+
+class TestFilterError(RuntimeError):
+    """The board cannot or will not run the filter asked for. It ends the
+    batch: the next run would meet the same board."""
+
+    __test__ = False
+
+
+class NoTestMatched(TestFilterError):
+    """A --test pattern selected nothing."""
+
+
+def check_test_filter(data, suite, patterns):
+    """A filtered run that did not filter, or had a pattern that matched
+    nothing, is an error and not a result: the first would report every row
+    of the suite as if it had been asked for, the second lists the names to
+    choose from. With `patterns` given, a capture that never printed the
+    completion line is one too."""
+    text = data.decode("utf-8", errors="replace")
+    complete = None
+    for complete in SUITE_COMPLETE_RE.finditer(text):
+        pass
+    refused = re.findall(r"SUITE_FILTER_REFUSED pattern=(\S*)", text)
+    if refused:
+        raise TestFilterError(f"the device refused --test {refused[0]!r}: a pattern is one to "
+                              "SUITE_FILTER_LEN - 1 characters, and there are at most "
+                              "SUITE_FILTER_MAX (launcher/test/suites.h)")
+    if complete is None:
+        if patterns:
+            raise TestFilterError("no RUNSUITE_COMPLETE line arrived: an image that predates --test "
+                                  "drops a request this long, or the capture was cut short")
+        return
+    if complete.group("selected") is None:
+        raise TestFilterError("this image predates --test - autana flash diag")
+    if int(complete.group("unmatched")):
+        names = re.findall(r"SUITE_TEST name=(\S+)", text)
+        raise NoTestMatched(
+            f"a --test pattern matches no test of {suite}. Its tests:\n  "
+            + "\n  ".join(dict.fromkeys(names)))
+
+
 def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
     """`worktree`/`commit` name the checkout the flashed build came from. A
     standalone `run-suite` has no `--worktree` of its own, so it keeps
     recording the ambient cwd; a `batch` call passes its own `--worktree`
     and that worktree's HEAD, since that is what was actually flashed."""
     started_at = now()
+    patterns = getattr(args, "test_filter", None) or []
     output, managed = resolve_capture_path(args.out, "runsuite-" + args.suite, args.owner,
                                            started_at)
     data = b""
@@ -1150,7 +1224,7 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
     try:
         with holding(store, board, args, held_lock, "run-suite") as held:
             with open_when_free(FLASH_PORT_WAIT_SECONDS if held_lock else PORT_WAIT_SECONDS) as connection:
-                connection.write(("\nRUNSUITE " + args.suite + "\n").encode("ascii"))
+                connection.write(suite_request(args.suite, patterns))
                 connection.flush()
                 data, reason = capture(connection, output, args.max_seconds, args.idle_seconds,
                                        args.expect_build_id, args.suite)
@@ -1164,7 +1238,8 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
             build_id=latest_build_id_from_bytes(data) or args.expect_build_id,
             worktree=worktree if worktree is not None else str(Path.cwd()),
             commit=commit if commit is not None else git_commit(), reason=reason, error=error,
-            acquired_at=held.held["acquired_at"] if held else None)
+            acquired_at=held.held["acquired_at"] if held else None,
+            test_filter=patterns or None)
         try:
             report_path = device_report.write_report_for_capture(
                 final_path, records_root() / "index.jsonl")
@@ -1172,6 +1247,8 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
         except Exception as report_error:  # a report is a convenience, never fails the capture
             print("report generation failed (capture is unaffected): " + str(report_error),
                   file=sys.stderr)
+    if patterns:
+        check_test_filter(data, args.suite, patterns)
     failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False))
     return 1 if failed else 0
 
@@ -1427,6 +1504,7 @@ def batch(args, store, board):
     name, no `batch` summary or manifest row - since there is nothing across
     runs for either to tell apart."""
     extra_flags = ["--perf-scope"] if args.perf_scope else []
+    patterns = test_patterns(getattr(args, "test_filter", None))
     if args.out and (len(args.suite) != 1 or args.runs != 1):
         raise RuntimeError("--out only makes sense with exactly one --suite and --runs 1 - "
                            "several captures cannot all land on one path")
@@ -1467,7 +1545,8 @@ def batch(args, store, board):
                 suite_args = argparse.Namespace(
                     owner=args.owner, wait=args.wait, suite=suite_name, out=out, purpose=purpose,
                     max_seconds=args.max_seconds, idle_seconds=args.idle_seconds,
-                    expect_build_id=build_id, verbose=getattr(args, "verbose", False))
+                    expect_build_id=build_id, verbose=getattr(args, "verbose", False),
+                    test_filter=patterns)
                 print(f"batch: {suite_name} run {run}/{args.runs}", flush=True)
                 # A suite FAIL is a result, not a broken run: a perf capture always
                 # carries its budget targets' FAILs, and its duration still counts.
@@ -1476,6 +1555,9 @@ def batch(args, store, board):
                 try:
                     failed = bool(run_suite(suite_args, store, board, held_lock=held,
                                             worktree=worktree, commit=commit))
+                except TestFilterError:
+                    # The same board would answer the same in every remaining run.
+                    raise
                 except RuntimeError as caught:
                     error = str(caught)
                     print("batch: capture error, continuing: " + error, file=sys.stderr)
@@ -1487,12 +1569,14 @@ def batch(args, store, board):
         entry = entries[0]
         return 1 if (entry["error"] or entry["failed"]) else 0
     meta = {"build_id": build_id, "owner": args.owner, "purpose": args.purpose,
-            "runs": args.runs, "worktree": worktree, "commit": commit}
+            "runs": args.runs, "worktree": worktree, "commit": commit,
+            "test_filter": patterns}
     summary_path, _ = resolve_capture_path(None, "batch", args.owner, started_at)
     summary_path = summary_path.with_suffix(".md")
     summary_path.write_text(device_report.batch_summary_markdown(entries, meta),
                             encoding="utf-8")
     append_manifest({"started_at": started_at.isoformat(), "board": board, "owner": args.owner,
+                     **({"test_filter": patterns} if patterns else {}),
                      "acquired_at": datetime.fromtimestamp(held.held["acquired_at"]).isoformat(),
                      "purpose": args.purpose, "command": "batch", "suite": ",".join(args.suite),
                      "build_id": build_id, "worktree": worktree, "commit": meta["commit"],
@@ -1662,6 +1746,9 @@ def main(argv=None):
     batch_parser.add_argument("--perf-scope", action="store_true",
                               help="build the perf-scoped image (needs --flash, the default)")
     batch_parser.add_argument("--max-seconds", type=float, default=1800)
+    batch_parser.add_argument("--test", dest="test_filter", action="append", metavar="PATTERN",
+                              help="run only the tests whose name contains PATTERN; repeat or "
+                                   "comma-separate for several")
     batch_parser.add_argument("--idle-seconds", type=float, default=300)
     batch_parser.add_argument("--out",
                               help="write the one capture here instead of the default path - "

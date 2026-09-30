@@ -15,6 +15,8 @@
  */
 #include "timing.h"
 
+#include "suites.h"
+
 #include <stdint.h>
 #include <stdio.h>
 
@@ -65,6 +67,9 @@ run_watched(void) {
 
 void
 suite_run_test_timed(void (*func)(void), const char* name, int line) {
+    if (!suites_test_runs(name)) {
+        return;
+    }
     suite_clear_test_cleanup();
 #ifdef HOST_HEAP_ARENA
     heap_arena_reset_peak();
