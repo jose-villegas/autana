@@ -67,9 +67,9 @@ gas_lines_teardown(void) {
  * column rather than in a pattern a run could line up with. */
 static unsigned
 gas_line_hash(int x, int y) {
-    unsigned h = (unsigned)x * 73856093u ^ (unsigned)y * 19349663u;
+    unsigned h = ((unsigned)x * 73856093U) ^ ((unsigned)y * 19349663U);
     h ^= h >> 13;
-    return h * 0x5bd1e995u;
+    return h * 0x5bd1e995U;
 }
 
 /* Gas everywhere, with one hole in ~11 cells, a stone in ~37 and smoke in a
@@ -81,9 +81,9 @@ scene_pocketed_gas(sand_t* s) {
             const unsigned h = gas_line_hash(x, y) >> 8;
             const bool edge_row = y < 6 || y >= GASLINE_H - 6;
             cell_t c = CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1);
-            if (!edge_row && h % 11u == 0u) {
+            if (!edge_row && h % 11U == 0U) {
                 c = CELL_EMPTY;
-            } else if (!edge_row && h % 37u == 1u) {
+            } else if (!edge_row && h % 37U == 1U) {
                 c = CELL_MAKE(MAT_STONE, 0);
             } else if (x >= GASLINE_W / 3 && x < GASLINE_W / 2) {
                 c = CELL_MAKE(MAT_SMOKE, 8);
@@ -196,27 +196,27 @@ expect_fast_paths_match_slow_path(gas_line_scene_fn scene, uint32_t seed) {
 
 static void
 test_pocketed_gas_spreads_the_same_with_the_fast_paths(void) {
-    expect_fast_paths_match_slow_path(scene_pocketed_gas, 7u);
+    expect_fast_paths_match_slow_path(scene_pocketed_gas, 7U);
 }
 
 static void
 test_burning_columns_spread_the_same_with_the_fast_paths(void) {
-    expect_fast_paths_match_slow_path(scene_burning_columns, 19u);
+    expect_fast_paths_match_slow_path(scene_burning_columns, 19U);
 }
 
 static void
 test_staggered_holes_spread_the_same_with_the_fast_paths(void) {
-    expect_fast_paths_match_slow_path(scene_staggered_holes, 23u);
+    expect_fast_paths_match_slow_path(scene_staggered_holes, 23U);
 }
 
 static void
 test_a_gap_in_a_gas_free_shelf_spreads_the_same_with_the_fast_paths(void) {
-    expect_fast_paths_match_slow_path(scene_shelf_with_a_gap, 29u);
+    expect_fast_paths_match_slow_path(scene_shelf_with_a_gap, 29U);
 }
 
 static void
 test_a_packed_cascade_spreads_the_same_with_the_fast_paths(void) {
-    expect_fast_paths_match_slow_path(scene_packed_cascade, 17u);
+    expect_fast_paths_match_slow_path(scene_packed_cascade, 17U);
 }
 
 void

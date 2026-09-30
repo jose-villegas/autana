@@ -2132,7 +2132,7 @@ test_a_packed_landscape_screen_of_gas_fits_in_the_frame_budget(void) {
     TEST_ASSERT_NOT_NULL(blocks);
 
     sand_t real;
-    sand_init(&real, big, REAL_W, REAL_H, 31u);
+    sand_init(&real, big, REAL_W, REAL_H, 31U);
     sand_enable_sleeping(&real, blocks);
     board_bookkeeping_open(&real);
 
@@ -2166,7 +2166,7 @@ test_a_full_landscape_screen_of_fire_fits_in_the_frame_budget(void) {
     TEST_ASSERT_NOT_NULL(blocks);
 
     sand_t real;
-    sand_init(&real, big, REAL_W, REAL_H, 19u);
+    sand_init(&real, big, REAL_W, REAL_H, 19U);
     sand_enable_sleeping(&real, blocks);
     board_bookkeeping_open(&real);
 
@@ -2207,7 +2207,7 @@ test_fire_cascading_through_a_full_landscape_screen_of_gas_fits_in_the_frame_bud
     TEST_ASSERT_NOT_NULL(blocks);
 
     sand_t real;
-    sand_init(&real, big, REAL_W, REAL_H, 17u);
+    sand_init(&real, big, REAL_W, REAL_H, 17U);
     sand_enable_sleeping(&real, blocks);
     board_bookkeeping_open(&real);
 
