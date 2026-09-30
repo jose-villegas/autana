@@ -161,6 +161,99 @@ fill_flat_span(const r3d_span_target_t* target, int y, int x_first, int x_last, 
     }
 }
 
+static inline int32_t
+solid_pixels(uint16_t* depth, uint16_t* out, int x_first, int x_end, int32_t z, int32_t dz, uint16_t color) {
+    for (int x = x_first; x < x_end; x++) {
+        const uint16_t zq = (uint16_t)(z >> 8);
+        if (zq > depth[x]) {
+            depth[x] = zq;
+            out[x] = color;
+        }
+        z += dz;
+    }
+    return z;
+}
+
+#if defined(DEVICE_BUILD) && defined(__XTENSA__)
+#define SPAN_BLOCK 8 /* pixels in one 128-bit PIE register */
+
+/* The unsigned depth test in signed lanes: biasing both sides by 0x8000
+ * keeps the order, so the nearer depth is the lane maximum and the write
+ * mask is a signed greater-than. Each depth lane is (z + i dz) >> 8 from
+ * 32-bit lanes, the same integers the scalar loop steps through. */
+static void
+solid_blocks(uint16_t* depth, uint16_t* out, int blocks, int32_t z, int32_t dz, uint16_t color) {
+    static const uint16_t bias = 0x8000U;
+    int32_t lanes[SPAN_BLOCK + 4] __attribute__((aligned(16)));
+    for (int i = 0; i < SPAN_BLOCK; i++) {
+        lanes[i] = z + (dz * i);
+    }
+    lanes[SPAN_BLOCK] = dz * SPAN_BLOCK;
+    int32_t* p = lanes;
+    __asm__ volatile("ee.vld.128.ip q0, %[p], 16\n"
+                     "ee.vld.128.ip q1, %[p], 16\n"
+                     "ee.vldbc.32 q5, %[p]\n"
+                     "ee.vldbc.16 q6, %[c]\n"
+                     "ee.vldbc.16 q7, %[b]\n"
+                     "ssai 8\n"
+                     "loopgtz %[n], 1f\n"
+                     "ee.orq q2, q0, q0\n"
+                     "ee.orq q3, q1, q1\n"
+                     "ee.vsr.32 q2, q2\n"
+                     "ee.vsr.32 q3, q3\n"
+                     "ee.vunzip.16 q2, q3\n"
+                     "ee.vadds.s32 q0, q0, q5\n"
+                     "ee.vadds.s32 q1, q1, q5\n"
+                     "ee.xorq q2, q2, q7\n"
+                     "ee.vld.128.ip q3, %[d], 0\n"
+                     "ee.xorq q3, q3, q7\n"
+                     "ee.vcmp.gt.s16 q4, q2, q3\n"
+                     "ee.vmax.s16 q2, q2, q3\n"
+                     "ee.xorq q2, q2, q7\n"
+                     "ee.vst.128.ip q2, %[d], 16\n"
+                     "ee.vld.128.ip q3, %[o], 0\n"
+                     "ee.andq q2, q6, q4\n"
+                     "ee.notq q4, q4\n"
+                     "ee.andq q3, q3, q4\n"
+                     "ee.orq q3, q3, q2\n"
+                     "ee.vst.128.ip q3, %[o], 16\n"
+                     "1:\n"
+                     : [d] "+r"(depth), [o] "+r"(out), [p] "+r"(p)
+                     : [n] "r"(blocks), [c] "r"(&color), [b] "r"(&bias)
+                     : "sar", "memory");
+}
+
+/* Where the whole 8-pixel blocks of a span start, or false when it has
+ * none. A block is one aligned 128-bit access to both buffers, so their
+ * rows must share an alignment. */
+static inline bool
+span_blocks(const uint16_t* depth, const uint16_t* out, int x_first, int x_last, int* start, int* blocks) {
+    if ((((uintptr_t)depth ^ (uintptr_t)out) & 15U) != 0) {
+        return false;
+    }
+    const int lead = (int)(((0U - (uintptr_t)(depth + x_first)) >> 1) & (SPAN_BLOCK - 1));
+    *start = x_first + lead;
+    *blocks = (x_last + 1 - *start) / SPAN_BLOCK;
+    return *blocks > 0;
+}
+#endif
+
+void
+r3d_span_fill_solid_row(uint16_t* depth, uint16_t* out, int x_first, int x_last, int32_t z, int32_t dz,
+                        uint16_t color) {
+#if defined(DEVICE_BUILD) && defined(__XTENSA__)
+    int start;
+    int blocks;
+    if (span_blocks(depth, out, x_first, x_last, &start, &blocks)) {
+        z = solid_pixels(depth, out, x_first, start, z, dz, color);
+        solid_blocks(depth + start, out + start, blocks, z, dz, color);
+        x_first = start + (blocks * SPAN_BLOCK);
+        z += dz * blocks * SPAN_BLOCK;
+    }
+#endif
+    (void)solid_pixels(depth, out, x_first, x_last + 1, z, dz, color);
+}
+
 /* A face's own colour with the depth plane walked as usual. */
 static void
 fill_solid_span(const r3d_span_target_t* target, const gradients_t* g, const int32_t row[ATTRIBUTES], int y,
@@ -169,16 +262,7 @@ fill_solid_span(const r3d_span_target_t* target, const gradients_t* g, const int
     int32_t dz;
     span_step(g, row, 0, x_first - g->x_origin, x_last - x_first, &z, &dz);
     const int row_offset = (y - target->row0) * target->width;
-    uint16_t* depth = target->depth + row_offset;
-    uint16_t* out = target->color + row_offset;
-    for (int x = x_first; x <= x_last; x++) {
-        const uint16_t zq = (uint16_t)(z >> 8);
-        if (zq > depth[x]) {
-            depth[x] = zq;
-            out[x] = color;
-        }
-        z += dz;
-    }
+    r3d_span_fill_solid_row(target->depth + row_offset, target->color + row_offset, x_first, x_last, z, dz, color);
 }
 
 /* Small enough that a gradient across it is invisible: one colour, one

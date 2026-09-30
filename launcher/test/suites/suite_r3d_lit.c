@@ -294,6 +294,51 @@ next_random(uint32_t* state) {
     return *state >> 8;
 }
 
+/* The span fill against the per-pixel rule it implements, over rows whose
+ * starts, lengths and alignments cover every head, block and tail split,
+ * with depths either side of 0x8000 so an unsigned compare is proven. */
+static void
+test_a_solid_row_writes_exactly_the_nearer_pixels(void) {
+    enum { ROW = 72, PAD = 16 };
+
+    uint8_t* block = malloc((2 * (ROW + PAD) * sizeof(uint16_t)) + 16);
+    TEST_ASSERT_NOT_NULL(block);
+    uint8_t* base = block + ((16U - ((uintptr_t)block & 15U)) & 15U);
+    uint16_t* d = (uint16_t*)base;
+    uint16_t* c = d + ROW + PAD;
+    uint16_t want_d[ROW];
+    uint16_t want_c[ROW];
+    uint32_t state = 17u;
+    for (int trial = 0; trial < 3000; trial++) {
+        const int shift = (int)(next_random(&state) % 3u) * 3; /* 0: both rows aligned alike */
+        uint16_t* cr = c + shift;
+        for (int x = 0; x < ROW; x++) {
+            d[x] = (uint16_t)next_random(&state);
+            cr[x] = (uint16_t)next_random(&state);
+            want_d[x] = d[x];
+            want_c[x] = cr[x];
+        }
+        const int x_first = (int)(next_random(&state) % 24u);
+        const int x_last = x_first + (int)(next_random(&state) % (unsigned)(ROW - 24));
+        const int count = x_last - x_first;
+        const int32_t z0 = (int32_t)(next_random(&state) % 16776961u);
+        const int32_t z1 = (int32_t)(next_random(&state) % 16776961u);
+        const int32_t dz = count > 0 ? (z1 - z0) / count : 0;
+        const uint16_t face = (uint16_t)next_random(&state);
+        int32_t z = z0;
+        for (int x = x_first; x <= x_last; x++, z += dz) {
+            if ((uint16_t)(z >> 8) > want_d[x]) {
+                want_d[x] = (uint16_t)(z >> 8);
+                want_c[x] = face;
+            }
+        }
+        r3d_span_fill_solid_row(d, cr, x_first, x_last, z0, dz, face);
+        TEST_ASSERT_EQUAL_HEX16_ARRAY(want_d, d, ROW);
+        TEST_ASSERT_EQUAL_HEX16_ARRAY(want_c, cr, ROW);
+    }
+    free(block);
+}
+
 /* A subpixel position in [lo, lo + span), landing on a pixel centre or a
  * pixel edge one time in four so the ties are exercised. */
 static int32_t
@@ -1953,6 +1998,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_the_nearer_triangle_wins_in_either_order);
     RUN_TEST(test_a_flat_triangle_keeps_its_face_colour_and_interpolates_depth);
     RUN_TEST(test_a_tiny_solid_triangle_takes_its_face_colour);
+    RUN_TEST(test_a_solid_row_writes_exactly_the_nearer_pixels);
     RUN_TEST(test_a_window_of_rows_matches_the_same_rows_of_a_full_draw);
     RUN_TEST(test_colours_stay_within_the_vertex_range_even_at_the_edges);
     RUN_TEST(test_an_axis_aligned_square_fills_exactly_the_centres_inside_it);
