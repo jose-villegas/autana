@@ -240,7 +240,8 @@ test_the_flythrough_keeps_clear_of_every_triangle(void) {
 static void
 test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
     const uint32_t period = sponza_flythrough_period_ms();
-    r3d_vec3f_t previous, forward;
+    r3d_vec3f_t previous;
+    r3d_vec3f_t forward;
     sponza_flythrough_sample(0, &previous, &forward);
     for (uint32_t t = 10; t <= period + 100; t += 10) {
         r3d_vec3f_t eye;
