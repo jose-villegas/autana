@@ -6,11 +6,10 @@
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
-/* Attributes run in fixed point: depth as 16.8, colour
- * channels as 8.8, whose steepest real step - all 255 levels in one pixel -
- * is far below the clamp. Only a sliver's depth step can reach 2^22; with
- * that bound and at most a screen of steps from the triangle's own corner,
- * every sum stays inside int32. */
+/* Attributes run in fixed point: depth as 16.8, colour channels as 8.8, whose
+ * steepest real step (255 levels in one pixel) is far below the clamp. Only a
+ * sliver's depth step can reach 2^22; with that bound and at most a screen of
+ * steps from the triangle's corner, every sum stays inside int32. */
 #define ATTRIBUTES  4
 #define DEPTH_SCALE 16776960.0f /* 65535 << 8 */
 #define COLOR_SCALE 256.0f

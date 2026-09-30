@@ -56,12 +56,8 @@ r3d_lit_stats_t r3d_lit_frame_render(const r3d_lit_frame_t* frame, const r3d_lit
  * taking half the rows. */
 void r3d_lit_frame_double(const r3d_lit_frame_t* frame);
 
-/* Development builds only. Overwrites `frame->color` with a view of
- * `frame->depth`, which r3d_lit_frame_render() left as it drew it, at the
- * frame's own size and before r3d_lit_frame_double(). Nearest is white and
- * farthest black, stretched over the range this frame drew; a tile is empty
- * when any pixel of it is, and takes the tile's farthest depth otherwise.
- * Empty pixels take `frame->clear`, as doubling gives them, so pick a clear
- * colour that is no grey. R3D_LIT_VIEW_SHADED leaves the colour alone. The
- * struct is not written, so it is const like render's; its buffers are. */
+/* Development builds only. Between render and double, overwrites
+ * `frame->color` from `frame->depth`: nearest white, farthest black over the
+ * drawn range; a tile is empty if any pixel is. Empty pixels take
+ * `frame->clear`, as doubling does, so pick one that is no grey. */
 void r3d_lit_frame_show(const r3d_lit_frame_t* frame, r3d_lit_view_mode_t mode);
