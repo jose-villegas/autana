@@ -7,8 +7,15 @@ large surfaces a global pass prefers to keep."""
 import numpy as np
 
 from . import log
-from .meshopt import simplify_with_update
+from .lit_mesh import POSITION_SCALE
+from .meshopt import PERMISSIVE, REGULARIZE, REGULARIZE_LIGHT, simplify_with_update
+from .repair import repair
 from .tessellate import split_marked_edges
+
+# One RGB565 step on the sRGB channels is (8, 4, 8) levels. A step and a half
+# is what keeps the meshlets sharing their vertices on the meshes measured: one
+# step leaves the larger of them with more vertices than triangles.
+SEAM_COLOUR_TOLERANCE = 1.5 * np.array([8, 4, 8])
 
 
 def densify(p, tris, labels, max_edge, rounds=16):
@@ -51,10 +58,42 @@ def _label_after(tris_in, labels_in, kept, tris_out):
     return np.where(same01 | (corner[:, 0] == corner[:, 2]), corner[:, 0], corner[:, 1])
 
 
-def simplify(pos, rgb, tris, labels, triangles, reserved=(), colour_weight=1.0):
+def merge_close_colours(q, rgb, tolerance):
+    """rgb with each vertex that shares a position (a row of `q`) with an
+    earlier vertex, in colour order, whose colour is within `tolerance` on
+    every channel given that vertex's colour. What stays differs from every
+    other colour at its position by more than the tolerance, so merging
+    again changes nothing."""
+    _, ids, count = np.unique(q, axis=0, return_inverse=True, return_counts=True)
+    order = np.argsort(ids.reshape(-1), kind="stable")
+    bounds = np.concatenate([[0], np.cumsum(count)])
+    out = rgb.copy()
+    for group in np.flatnonzero(count > 1):
+        members = order[bounds[group]:bounds[group + 1]]
+        kept = []
+        for i in members[np.lexsort(rgb[members].T[::-1])]:
+            near = next((c for c in kept if np.all(np.abs(rgb[i] - c) <= tolerance)), None)
+            if near is None:
+                kept.append(rgb[i])
+            else:
+                out[i] = near
+    return out
+
+
+def simplify(pos, rgb, tris, labels, triangles, reserved=(), colour_weight=1.0, seal_seams=False,
+             position_scale=POSITION_SCALE):
     """`reserved` is a list of (label set, share of `triangles`); what is
-    left of the budget goes to every other label. Returns pos, rgb (0..255
-    floats), tris and a label per triangle."""
+    left of the budget goes to every other label. `seal_seams` is the import
+    option that joins pieces touching within one quantisation step
+    (`1 / position_scale`, see repair.py) before the pass, simplifies with
+    light regularizing, and afterwards gives vertices that end at one
+    quantised position and differ by less than a panel colour step one
+    colour. Returns pos, rgb (0..255 floats), tris and a label per
+    triangle."""
+    options = REGULARIZE | PERMISSIVE
+    if seal_seams:
+        pos, rgb, tris, labels = repair(pos, rgb, tris, labels, 1.0 / position_scale)
+        options = REGULARIZE_LIGHT | PERMISSIVE
     labels = np.asarray(labels)
     parts, taken = [], np.zeros(len(tris), dtype=bool)
     for group, share in reserved:
@@ -71,12 +110,16 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), colour_weight=1.0):
         sub = tris[sel]
         used, local = np.unique(sub, return_inverse=True)
         local = local.reshape(-1, 3)
-        p, c, t, kept = simplify_with_update(pos[used], rgb[used], local, budget, colour_weight)
+        p, c, t, kept = simplify_with_update(pos[used], rgb[used], local, budget, colour_weight, options)
         out_pos.append(p)
         out_rgb.append(c)
         out_tris.append(t + base)
         out_labels.append(_label_after(local, labels[sel], kept, t))
         base += len(p)
         log(f"  simplified {len(sub)} -> {len(t)} triangles (budget {budget})")
-    return (np.concatenate(out_pos), np.concatenate(out_rgb), np.concatenate(out_tris),
-            np.concatenate(out_labels))
+    out_pos, out_rgb = np.concatenate(out_pos), np.concatenate(out_rgb)
+    if seal_seams:
+        rounded = np.clip(np.rint(out_rgb), 0, 255)
+        out_rgb = merge_close_colours(np.round(out_pos * position_scale).astype(np.int64), rounded,
+                                      SEAM_COLOUR_TOLERANCE)
+    return out_pos, out_rgb, np.concatenate(out_tris), np.concatenate(out_labels)

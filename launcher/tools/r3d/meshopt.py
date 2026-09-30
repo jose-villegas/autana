@@ -19,6 +19,7 @@ CACHE = HERE / ".cache"
 
 REGULARIZE = 1 << 4
 PERMISSIVE = 1 << 5
+REGULARIZE_LIGHT = 1 << 6
 
 _lib = None
 

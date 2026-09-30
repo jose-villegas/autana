@@ -1,10 +1,6 @@
 /*
  * GENERATED FILE - do not edit.
  *
- *     python launcher/tools/r3d/rebake.py launcher/main/apps/render_lab/sponza_lite_mesh_generated.c
- *
- * Its clusters and octree are rebuilt from the triangles and colours it holds, which were baked by:
- *
  *     python main/apps/render_lab/tools/gen_sponza.py --out-dir main/apps/render_lab \
  *         --name sponza_lite --simplifier meshopt --triangles 8672 --props-share 0.3 --dense-edge 45
  *
@@ -19,9 +15,9 @@
 
 #include "render/r3d_lit_mesh.h"
 
-#define SPONZA_LITE_VERTEX_COUNT 8280
-#define SPONZA_LITE_TRIANGLE_COUNT 8651
-#define SPONZA_LITE_CLUSTER_COUNT 293
+#define SPONZA_LITE_VERTEX_COUNT 8228
+#define SPONZA_LITE_TRIANGLE_COUNT 8670
+#define SPONZA_LITE_CLUSTER_COUNT 294
 #define SPONZA_LITE_NODE_COUNT 111
 #define SPONZA_LITE_POSITION_SCALE 8
 
