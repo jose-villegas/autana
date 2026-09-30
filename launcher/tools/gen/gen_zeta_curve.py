@@ -14,7 +14,7 @@ soft-float library call.
 
 None of that matters, because the curve never changes. It is one fixed
 polyline, so it is computed here, once, in double precision, and shipped in
-.rodata where it is memory-mapped from flash at no cost in RAM; about 1.4
+.rodata where it is memory-mapped from flash at no cost in RAM, about 1.4
 KiB of flash.
 
 HOW ZETA IS EVALUATED
@@ -50,8 +50,8 @@ from math import factorial
 
 # 100, not the 64 that was enough while the climb stopped at t ~ 70: Borwein's
 # error bound degrades with the imaginary part, and extending the climb to
-# t ~ 126 brought the same failure back at the new top; an order of 80 was
-# only good to ~3e-4 by t ~ 124; which the zero check below caught again,
+# t ~ 126 brought the same failure back at the new top (an order of 80 was
+# only good to ~3e-4 by t ~ 124), which the zero check below caught again,
 # being an assertion about a number that should be zero rather than about a
 # number that merely looks plausible. 100 is good to ~3e-9 at the new
 # farthest zero checked (t ~ 124.3), comfortably past this file's 1e-6 bar.
@@ -90,9 +90,9 @@ def zeta(s):
 T_MAX = 126.0       # BOOT_ANIM_T_MAX; int16 Q8 tops out at 32767/256 =
                     # 127.996; stopped short of that rather than at it, so
                     # rounding a sample's own t up never overflows
-T_PER_Z = 9.0 / 35.0  # BOOT_ANIM_T_PX / BOOT_ANIM_Z_PX; unchanged: a
+T_PER_Z = 9.0 / 35.0  # BOOT_ANIM_T_PX / BOOT_ANIM_Z_PX, unchanged: a
                       # property of the projection, not of how far up it climbs
-STEP = 0.14         # target spacing between samples, in plane units; was
+STEP = 0.14         # target spacing between samples, in plane units, was
                     # 0.18; tightened so the table stays at least 3x its
                     # previous length even though most of the extra T_MAX
                     # this climb already had (70) went into this step
@@ -100,8 +100,8 @@ STEP = 0.14         # target spacing between samples, in plane units; was
 Q = 12              # BOOT_ANIM_Q, for re/im
 TQ = 8              # t is stored in Q8: 126 * 256 still fits an int16
 
-# Where phase 1 of the reveal; the part boot_anim.h's boot_anim_pen() paces
-# identically to before this climb was extended; hands off to phase 2. The
+# Where phase 1 of the reveal (the part boot_anim.h's boot_anim_pen() paces
+# identically to before this climb was extended) hands off to phase 2. The
 # original T_MAX: everything up to here is (up to floating-point noise in
 # the arc-length walk below) the same table this file shipped when the climb
 # stopped at 35, so the picture during phase 1 does not change. See

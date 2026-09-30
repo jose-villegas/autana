@@ -11,7 +11,7 @@ from .geometry import compact, snap_to_grid
 
 def decimate(p, tris, target, keep_below=1000):
     """Quadric decimation, then, for a material made of many small
-    disconnected pieces the quadric pass cannot merge; vertex clustering on
+    disconnected pieces the quadric pass cannot merge, vertex clustering on
     the coarsest grid that still meets the target."""
     if len(tris) <= keep_below or target >= len(tris):
         return p, tris

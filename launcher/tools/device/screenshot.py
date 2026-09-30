@@ -1,8 +1,8 @@
 """The screenshot wire protocol and decoder: a pure library, imported by
 scripts/device/device.py's own `screenshot` subcommand (autana's `autana
 screenshot`) so there is exactly one decoder to drift out of sync with the
-device. Opening the port is the caller's job; see device.py's own capture,
-which does it under the device lock; so this module never touches one
+device. Opening the port is the caller's job (see device.py's own capture,
+which does it under the device lock), so this module never touches one
 itself.
 
 Sends the trigger word over the console UART (see main/console/console.c)
@@ -12,14 +12,14 @@ count, one SCREENSHOT_DATA: line per base64-encoded chunk, one
 SCREENSHOT_STATE: line of plain-text JSON (device state at that same frame:
 sensors, memory, clock; see console_screenshot_dump()'s own comment in
 main/console/console_screenshot.c for the field list), and a
-SCREENSHOT_END line; or, in place of all of those, one
+SCREENSHOT_END line, or, in place of all of those, one
 SCREENSHOT_REFUSED: line giving the reason, which ends the run at once
 rather than at the timeout. Anything else on the wire, ordinary
 ESP_LOG output in particular, is ignored rather than treated as an
 error, since the device keeps logging normally while it streams.
 
 The device streams its frame as a 24bpp BMP (see screenshot_bmp_header() in
-util/screenshot.h); the simplest thing to emit from a microcontroller with
+util/screenshot.h), the simplest thing to emit from a microcontroller with
 no image library on it, but nothing here ever writes that BMP to disk:
 bmp_bytes_to_png() below converts it to PNG entirely in memory, and a
 capture's output gets only the PNG. This is genuinely lossless, not just
@@ -49,7 +49,7 @@ TRIGGER = b"SCREENSHOT\n"
 
 
 class ScreenshotRefused(RuntimeError):
-    """The device answered with a SCREENSHOT_REFUSED: line: its own message
+    """The device answered with a SCREENSHOT_REFUSED: line; its own message
     is this exception's, e.g. "band mode, and no room in PSRAM..."."""
 
 
@@ -73,12 +73,12 @@ def bmp_bytes_to_png(bmp: bytes) -> bytes:
     rows bottom-up (screenshot_bmp_header() always writes a positive
     biHeight; see its own comment) while PNG wants top-down, and BMP's
     pixel order is B,G,R while PNG wants R,G,B. Getting either backwards
-    produces an image that LOOKS like a real screenshot; upside-down, or
+    produces an image that LOOKS like a real screenshot: upside-down, or
     blue-tinted, which is worse than no image at all.
 
     Width/height/row-stride are read out of the BMP header rather than
     assumed, so this keeps working unchanged if the panel resolution ever
-    does; the same "trust what the device announced" reasoning the
+    does, the same "trust what the device announced" reasoning the
     SCREENSHOT_BEGIN size check in read_screenshot() already applies.
     """
     if bmp[0:2] != b"BM":

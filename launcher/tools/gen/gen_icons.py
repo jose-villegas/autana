@@ -30,8 +30,8 @@ neither is a realistic export for flat pixel-art icons.
 STRICTLY 1BPP: NO THRESHOLD
 
 Every pixel must decode to fully-opaque pure black (ink, "on") or
-fully-opaque pure white (background, "off"). Anything else, a grey
-antialiased edge, partial transparency, is rejected with the offending
+fully-opaque pure white (background, "off"). Anything else (a grey
+antialiased edge, partial transparency) is rejected with the offending
 pixel's coordinates rather than rounded toward whichever side a threshold
 guesses. These are pixel art: an in-between pixel means the artist exported
 wrong, not that the generator should decide for them.
@@ -42,7 +42,7 @@ pixelarticons (https://github.com/halfmage/pixelarticons, MIT) exports each
 icon as a single <path> on an integer 24x24 grid made of nothing but
 M/H/V/h/v/Z; every subpath is an axis-aligned rectangle. That means reading
 one is exact: walk the path data, trace each subpath's corners, and fill the
-pixel grid the rectangles describe; no rasterizer, no sampling, no
+pixel grid the rectangles describe, no rasterizer, no sampling, no
 threshold. `read_svg_icon()` below is exactly as strict about this as
 `read_png()` is about antialiasing: a curve command, a non-integer
 coordinate, a subpath that does not close into an axis-aligned rectangle, or
@@ -66,7 +66,7 @@ the icon, not the file:
     }
 
 A "svg" entry's "file" is looked up in <manifest-dir>/<manifest-stem>/ (e.g.
-design/icons/system/close.svg for system.json); checked-in files, never
+design/icons/system/close.svg for system.json), checked-in files, never
 fetched by this script. "upstream" and "commit" are required for every "svg"
 entry: the icon this tree ships is only as trustworthy as knowing exactly
 which upstream file, at which commit, it came from; see design/icons/
@@ -130,7 +130,7 @@ def die(msg):
 # --- PNG decoding (stdlib only) ---------------------------------------------
 
 def _paeth(a, b, c):
-    """PaethPredictor(left, above, upper-left); PNG spec section 9.4,
+    """PaethPredictor(left, above, upper-left), PNG spec section 9.4,
     verbatim: picks whichever of a/b/c is closest to a linear predictor of
     the other two, the filter type most edges in real artwork end up using."""
     p = a + b - c
@@ -146,7 +146,7 @@ def _unfilter(data, height, stride, bpp):
     """Reverses PNG's per-scanline filtering (spec section 9); `data` is
     the raw, already-decompressed IDAT stream: (1 filter-type byte + stride
     data bytes) per row. `bpp` is bytes-per-pixel for filtering purposes
-    (ceil(bitdepth*channels/8), minimum 1; PNG's own rule, not a guess).
+    (ceil(bitdepth*channels/8), minimum 1, PNG's own rule, not a guess).
     Returns the unfiltered scanlines concatenated, stride bytes each, with
     no filter-type bytes left in them."""
     out = bytearray(height * stride)

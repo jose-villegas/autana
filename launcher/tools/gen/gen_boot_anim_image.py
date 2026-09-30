@@ -16,12 +16,12 @@ KiB of flash in the app partition.
 
 WHY THE ROTATION HAPPENS HERE AND NOT AT DRAW TIME
 
-design/boot/boot.png is 448x368; exactly boot_anim.h's own
+design/boot/boot.png is 448x368, exactly boot_anim.h's own
 BOOT_ANIM_TITLE_VIEW_W/H, the "landscape" frame the title's own letters are
 already laid out in before being turned a quarter into the panel's native
 368x448 portrait framebuffer. Doing that same turn here, once, means
 boot_anim.c's draw_image() reads this table row-major into a row-major
-framebuffer; the fast case for this chip's cache. Rotating per pixel at
+framebuffer, the fast case for this chip's cache. Rotating per pixel at
 draw time instead would mean a transposed read on one side of that copy,
 every frame the photo is on screen, which is the thrashing case (see
 docs/notes/Board-and-Memory.md's own note on sequential vs. random flash-
@@ -29,8 +29,8 @@ mapped reads).
 
 THE ROTATION ITSELF
 
-Derived from boot_anim.c's title_glyph_origin(); the same mapping the
-title's own letters already go through, not reinvented: that function
+Derived from boot_anim.c's title_glyph_origin() (the same mapping the
+title's own letters already go through), not reinvented: that function
 maps a BOX (a glyph cell) from the "view" frame to the panel; a single
 pixel is a 1x1 box, so its own glyph_h correction drops out and what is
 left is
