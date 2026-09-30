@@ -488,9 +488,11 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
 
     /* The whole triangle's rows, not the window's, decide its path, so any
      * window of rows draws exactly those rows of the whole. */
-    const int rows = r3d_span_first_centre(v2->y) - r3d_span_first_centre(v0->y);
-    const int y_first = clampi(r3d_span_first_centre(v0->y), target->row0, target->row1);
-    const int y_end = clampi(r3d_span_first_centre(v2->y), target->row0, target->row1);
+    const int triangle_y0 = r3d_span_first_centre(v0->y);
+    const int triangle_y1 = r3d_span_first_centre(v2->y);
+    const int rows = triangle_y1 - triangle_y0;
+    const int y_first = clampi(triangle_y0, target->row0, target->row1);
+    const int y_end = clampi(triangle_y1, target->row0, target->row1);
     const int32_t lo_x = r3d_span_min3(a->x, b->x, c->x);
     const int32_t hi_x = r3d_span_max3(a->x, b->x, c->x);
     const int x_first = r3d_span_first_centre(lo_x);
@@ -525,7 +527,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
         return;
     }
 #ifdef ESP_PLATFORM
-    if (target->probe != NULL && y_first < target->probe->split_row && y_end > target->probe->split_row) {
+    if (target->probe != NULL && triangle_y0 < target->probe->split_row && triangle_y1 > target->probe->split_row) {
         target->probe->straddling++;
         target->probe->setup_cycles += esp_cpu_get_cycle_count() - setup_start;
     }
