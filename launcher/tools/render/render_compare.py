@@ -406,13 +406,13 @@ def compare_videos(path_a, path_b, out, csv_path, clear, gain, label_a, label_b,
 
     Returns the summary line.
     """
-    ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg is None:
-        raise RuntimeError("ffmpeg not found; --video needs it to pack the frames")
     fps_a, frames_a = read_video(path_a)
     fps_b, frames_b = read_video(path_b)
     if fps_a != fps_b:
         raise ValueError("frame rate %g vs %g: render both with the same --dt" % (fps_a, fps_b))
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        raise RuntimeError("ffmpeg not found; --video needs it to pack the frames")
     dt_ms = 1000.0 / fps_a
     process, lines, all_stats = None, [CSV_HEADER], []
     try:
