@@ -1,5 +1,6 @@
 """Regression tests for scripts/gates/check_comment_symbols.py."""
 import pathlib
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -156,6 +157,27 @@ class ProblemsTest(unittest.TestCase):
                         " * not CONFIG_LAUNCHER_GONE */\n",
         })
         self.assertEqual(found, ["comment names CONFIG_LAUNCHER_GONE, which does not exist"])
+
+
+class IgnoredFilesTest(unittest.TestCase):
+    def test_a_file_git_ignores_is_not_read(self):
+        # A local tool's venv ships C headers whose comments cite names this
+        # tree never defines; CI never has it, so only what git would commit
+        # is checked.
+        with tempfile.TemporaryDirectory() as temp:
+            base = pathlib.Path(temp)
+            subprocess.run(["git", "init", "-q"], cwd=base, check=True)
+            files = {
+                ".gitignore": "launcher/tools/r3d/.cache/\n",
+                "launcher/main/a.c": "/* ghost_tracked() */\n",
+                "launcher/tools/r3d/.cache/venv/include/numpy.h": "/* import_array() */\n",
+            }
+            for path, text in files.items():
+                (base / path).parent.mkdir(parents=True, exist_ok=True)
+                (base / path).write_text(text, encoding="utf-8")
+            found = check_comment_symbols.problems(str(base / "launcher"), NO_OUTSIDE_NAMES)
+        self.assertEqual([line.split(": ", 1)[1] for line in found],
+                         ["comment names ghost_tracked(), which does not exist"])
 
 
 if __name__ == "__main__":
