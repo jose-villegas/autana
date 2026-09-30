@@ -40,7 +40,7 @@ direction the rasterizer's way, which mirrors the picture.
 
 | File | What it is |
 |---|---|
-| `r3d.h` | What a scene includes: the camera, the frame and the view modes; it brings in the three below |
+| `r3d.h` | What a scene includes: the camera, the frame and the view modes; it brings in the four below |
 | `r3d_viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
 | `r3d_vec3f.h` | The float 3-vector every float camera shares |
 | `r3d_ray.h` | The ray camera: the direction through each physical pixel |
