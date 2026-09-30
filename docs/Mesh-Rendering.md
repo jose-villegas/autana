@@ -138,8 +138,8 @@ rule, and a mesh of mixed sizes to one fill per pixel.
 A triangle to be walked works out its depth plane first. When every pixel
 of its bounding box already holds depth at least as near as the plane's
 nearest corner, it could write nothing, and it is dropped before its colour
-planes and its rows. The clusters are drawn roughly nearest first, so a
-quarter of the triangles that reach this test end there.
+planes and its rows. The test pays because clusters are drawn roughly
+nearest first, so a triangle behind is usually drawn after what hides it.
 
 ## Memory
 

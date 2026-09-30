@@ -9,9 +9,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "esp_heap_caps.h"
 #include "suites.h"
 #include "unity.h"
 
+#include "gfx/gfx.h"
 #include "gfx/gfx_color.h"
 #include "render/r3d_lit_frame.h"
 #include "render/r3d_lit_pipeline.h"
@@ -510,6 +512,249 @@ test_a_triangle_drawn_over_nearer_depth_writes_exactly_what_it_would_alone(void)
     free(alone_depth);
     free(want_color);
     free(want_depth);
+}
+
+/* A dropped triangle is one whose bounding box already holds depth at least
+ * as near as any it would write. The canvas below is any size, allocated
+ * for one test; a split of 0 draws in one window, any other in two windows
+ * meeting at that row. */
+
+typedef struct {
+    gfx_color_t* color;
+    uint16_t* depth;
+    uint16_t* alone; /* depth_alone()'s copy */
+    int w, h;
+} canvas_t;
+
+static canvas_t canvas;
+
+static void
+release_canvas(void) {
+    heap_caps_free(canvas.color);
+    heap_caps_free(canvas.depth);
+    heap_caps_free(canvas.alone);
+    canvas = (canvas_t){0};
+    release_fixture();
+}
+
+static canvas_t*
+canvas_open(int w, int h) {
+    const size_t pixels = (size_t)w * (size_t)h;
+    const uint32_t caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
+    canvas = (canvas_t){heap_caps_malloc(sizeof(gfx_color_t) * pixels, caps),
+                        heap_caps_malloc(sizeof(uint16_t) * pixels, caps),
+                        heap_caps_malloc(sizeof(uint16_t) * pixels, caps), w, h};
+    TEST_ASSERT_NOT_NULL(canvas.color);
+    TEST_ASSERT_NOT_NULL(canvas.depth);
+    TEST_ASSERT_NOT_NULL(canvas.alone);
+    suite_set_test_cleanup(release_canvas);
+    return &canvas;
+}
+
+static void
+canvas_fill(const canvas_t* c, uint16_t z) {
+    for (int p = 0; p < c->w * c->h; p++) {
+        c->depth[p] = z;
+        c->color[p] = 0;
+    }
+}
+
+static void
+canvas_draw(const canvas_t* c, int split, const r3d_span_vertex_t v[3]) {
+    const int first_end = split == 0 ? c->h : split;
+    const r3d_span_target_t top = {c->color, c->depth, c->w, 0, first_end};
+    r3d_span_triangle(&top, &v[0], &v[1], &v[2]);
+    if (split != 0) {
+        const size_t offset = (size_t)split * (size_t)c->w;
+        const r3d_span_target_t bottom = {c->color + offset, c->depth + offset, c->w, split, c->h};
+        r3d_span_triangle(&bottom, &v[0], &v[1], &v[2]);
+    }
+}
+
+/* Draws v on an empty canvas and returns a copy of the depth it left. */
+static const uint16_t*
+depth_alone(const canvas_t* c, int split, const r3d_span_vertex_t v[3]) {
+    canvas_fill(c, R3D_DEPTH_EMPTY);
+    canvas_draw(c, split, v);
+    memcpy(c->alone, c->depth, sizeof(uint16_t) * (size_t)(c->w * c->h));
+    return c->alone;
+}
+
+/* Far outside the screen on both sides, its depth rising steeply across
+ * it: the plane at its far box corners is far past any 32-bit sum. */
+static void
+test_a_guard_band_sliver_draws_its_centres_in_one_window_or_two(void) {
+    const canvas_t* c = canvas_open(GFX_WIDTH, GFX_HEIGHT);
+    const r3d_span_vertex_t v[3] = {sv(-500.0f, 501.0f, 0.5f, 200, 100, 50), sv(501.0f, -500.0f, 0.5f, 200, 100, 50),
+                                    sv(-499.0f, 503.0f, 1.0f, 200, 100, 50)};
+    const int splits[2] = {0, c->h / 2};
+    for (int s = 0; s < 2; s++) {
+        canvas_fill(c, R3D_DEPTH_EMPTY);
+        canvas_draw(c, splits[s], v);
+        int inside = 0;
+        for (int y = 0; y < c->h; y++) {
+            for (int x = 0; x < c->w; x++) {
+                const bool want = reference_inside(&v[0], &v[1], &v[2], x, y);
+                inside += want;
+                TEST_ASSERT_EQUAL_MESSAGE(want, c->depth[(y * c->w) + x] != R3D_DEPTH_EMPTY,
+                                          "the sliver's centres differ from the rule");
+            }
+        }
+        TEST_ASSERT_GREATER_THAN_INT(0, inside);
+    }
+}
+
+/* Over depth one step below the greatest the triangle writes, exactly its
+ * pixels at that depth are drawn; at it or above, nothing changes. A bound
+ * too cautious by any amount passes too: a tie keeps the pixel already
+ * there, so it cannot be seen. */
+static void
+assert_the_bound_is_exact(const canvas_t* c, int split, const r3d_span_vertex_t v[3]) {
+    const uint16_t* alone = depth_alone(c, split, v);
+    uint16_t most = 0;
+    for (int p = 0; p < c->w * c->h; p++) {
+        most = alone[p] > most ? alone[p] : most;
+    }
+    TEST_ASSERT_GREATER_THAN_UINT16(1, most);
+    for (int step = -1; step <= 1; step++) {
+        const uint16_t under = (uint16_t)(most + step);
+        canvas_fill(c, under);
+        canvas_draw(c, split, v);
+        for (int p = 0; p < c->w * c->h; p++) {
+            const uint16_t want = step < 0 && alone[p] == most ? most : under;
+            TEST_ASSERT_EQUAL_HEX16_MESSAGE(want, c->depth[p], "a pixel at the greatest depth was lost or changed");
+        }
+    }
+}
+
+static void
+test_the_bound_is_the_greatest_depth_whichever_way_the_plane_slopes(void) {
+    const canvas_t* c = canvas_open(W, H);
+    const r3d_span_vertex_t nearer_down[3] = {sv(8.3f, 4.2f, 0.3f, 9, 9, 9), sv(56.6f, 4.2f, 0.3f, 9, 9, 9),
+                                              sv(31.7f, 44.1f, 0.8f, 9, 9, 9)};
+    const r3d_span_vertex_t nearer_up[3] = {sv(8.3f, 44.1f, 0.3f, 9, 9, 9), sv(56.6f, 44.1f, 0.3f, 9, 9, 9),
+                                            sv(31.7f, 4.2f, 0.8f, 9, 9, 9)};
+    const r3d_span_vertex_t nearer_right[3] = {sv(4.2f, 6.3f, 0.3f, 9, 9, 9), sv(4.2f, 42.6f, 0.3f, 9, 9, 9),
+                                               sv(60.1f, 24.4f, 0.8f, 9, 9, 9)};
+    const r3d_span_vertex_t nearer_left[3] = {sv(60.1f, 6.3f, 0.3f, 9, 9, 9), sv(60.1f, 42.6f, 0.3f, 9, 9, 9),
+                                              sv(4.2f, 24.4f, 0.8f, 9, 9, 9)};
+    /* Three centres across and two down: one depth for all. */
+    const r3d_span_vertex_t flat[3] = {sv(10.2f, 10.2f, 0.3f, 9, 9, 9), sv(13.1f, 10.4f, 0.5f, 9, 9, 9),
+                                       sv(11.0f, 12.1f, 0.8f, 9, 9, 9)};
+    const r3d_span_vertex_t* const all[] = {nearer_down, nearer_up, nearer_right, nearer_left, flat};
+    for (size_t i = 0; i < sizeof all / sizeof all[0]; i++) {
+        assert_the_bound_is_exact(c, 0, all[i]);
+        assert_the_bound_is_exact(c, c->h / 2, all[i]);
+    }
+}
+
+/* A sliver whose plane, stepped at the clamped slope, goes below zero at
+ * a span's first centre: the clamped start lifts the whole span. */
+static void
+test_a_span_start_clamped_up_from_below_zero_still_bounds_the_span(void) {
+    const canvas_t* c = canvas_open(W, H);
+    const r3d_span_vertex_t v[3] = {sv(57.3446f, 10.1488f, 0.005989f, 9, 9, 9),
+                                    sv(-39.1719f, 20.6818f, 0.001197f, 9, 9, 9),
+                                    sv(57.3209f, 10.2917f, 0.851835f, 9, 9, 9)};
+    assert_the_bound_is_exact(c, 0, v);
+    assert_the_bound_is_exact(c, c->h / 2, v);
+}
+
+/* Every pixel at the nearest depth but one the triangle covers: that one
+ * pixel is enough to draw the triangle. */
+static void
+assert_one_open_pixel_is_drawn(const canvas_t* c, int split, const r3d_span_vertex_t v[3], int p) {
+    canvas_fill(c, R3D_DEPTH_NEAREST);
+    c->depth[p] = R3D_DEPTH_EMPTY;
+    canvas_draw(c, split, v);
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(R3D_DEPTH_EMPTY, c->depth[p], "the one pixel left open was not drawn");
+}
+
+/* The covered pixels farthest in each direction: the box's own edges. */
+static void
+assert_each_extreme_pixel_is_found(const canvas_t* c, int split, const r3d_span_vertex_t v[3]) {
+    const uint16_t* alone = depth_alone(c, split, v);
+    int extreme[4] = {-1, -1, -1, -1}; /* leftmost, rightmost, topmost, bottommost */
+    for (int p = 0; p < c->w * c->h; p++) {
+        if (alone[p] == R3D_DEPTH_EMPTY) {
+            continue;
+        }
+        const int x = p % c->w;
+        extreme[0] = extreme[0] < 0 || x < extreme[0] % c->w ? p : extreme[0];
+        extreme[1] = extreme[1] < 0 || x > extreme[1] % c->w ? p : extreme[1];
+        extreme[2] = extreme[2] < 0 ? p : extreme[2];
+        extreme[3] = p;
+    }
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, extreme[0]);
+    for (int e = 0; e < 4; e++) {
+        assert_one_open_pixel_is_drawn(c, split, v, extreme[e]);
+    }
+}
+
+static void
+test_one_open_pixel_anywhere_in_the_box_draws_the_triangle(void) {
+    const canvas_t* c = canvas_open(W, H);
+    /* Edges on pixel edges, so the box's last row and column are covered. */
+    const r3d_span_vertex_t upper[3] = {sv(4.0f, 4.0f, 0.5f, 9, 9, 9), sv(40.0f, 4.0f, 0.5f, 9, 9, 9),
+                                        sv(40.0f, 30.0f, 0.6f, 9, 9, 9)};
+    const r3d_span_vertex_t lower[3] = {sv(4.0f, 4.0f, 0.5f, 9, 9, 9), sv(4.0f, 30.0f, 0.5f, 9, 9, 9),
+                                        sv(40.0f, 30.0f, 0.6f, 9, 9, 9)};
+    const r3d_span_vertex_t past_both_sides[3] = {sv(-20.0f, 5.0f, 0.5f, 9, 9, 9),
+                                                  sv((float)W + 20.0f, 8.0f, 0.6f, 9, 9, 9),
+                                                  sv(10.0f, (float)H + 10.0f, 0.4f, 9, 9, 9)};
+    const r3d_span_vertex_t guard_band[3] = {sv(-900.0f, -800.0f, 0.5f, 9, 9, 9), sv(900.0f, 10.0f, 0.6f, 9, 9, 9),
+                                             sv(-800.0f, 900.0f, 0.4f, 9, 9, 9)};
+    const r3d_span_vertex_t* const all[] = {upper, lower, past_both_sides, guard_band};
+    for (size_t i = 0; i < sizeof all / sizeof all[0]; i++) {
+        assert_each_extreme_pixel_is_found(c, 0, all[i]);
+        assert_each_extreme_pixel_is_found(c, c->h / 2, all[i]);
+    }
+}
+
+/* One window's rows all hidden say nothing about the other window's. */
+static void
+test_a_triangle_hidden_in_one_window_still_draws_in_the_other(void) {
+    const canvas_t* c = canvas_open(W, H);
+    const int split = c->h / 2;
+    const r3d_span_vertex_t v[3] = {sv(6.3f, 3.1f, 0.5f, 9, 9, 9), sv(58.2f, 9.7f, 0.6f, 9, 9, 9),
+                                    sv(20.4f, 44.9f, 0.4f, 9, 9, 9)};
+    const uint16_t* alone = depth_alone(c, split, v);
+    for (int hidden_top = 0; hidden_top < 2; hidden_top++) {
+        canvas_fill(c, R3D_DEPTH_EMPTY);
+        const int from = hidden_top ? 0 : split * c->w;
+        const int to = hidden_top ? split * c->w : c->w * c->h;
+        for (int p = from; p < to; p++) {
+            c->depth[p] = R3D_DEPTH_NEAREST;
+        }
+        canvas_draw(c, split, v);
+        for (int p = 0; p < c->w * c->h; p++) {
+            const uint16_t want = p >= from && p < to ? R3D_DEPTH_NEAREST : alone[p];
+            TEST_ASSERT_EQUAL_HEX16_MESSAGE(want, c->depth[p], "the open window was not drawn as alone");
+        }
+    }
+}
+
+/* The cheap exit has to be taken, not only be safe: behind a nearer wall,
+ * every triangle that takes the test is dropped, and counted. */
+static void
+test_triangles_behind_a_nearer_wall_are_dropped(void) {
+    const canvas_t* c = canvas_open(W, H);
+    canvas_fill(c, R3D_DEPTH_EMPTY);
+    const r3d_span_vertex_t wall_a[3] = {sv(0.0f, 0.0f, 0.9f, 9, 9, 9), sv((float)W, 0.0f, 0.9f, 9, 9, 9),
+                                         sv((float)W, (float)H, 0.9f, 9, 9, 9)};
+    const r3d_span_vertex_t wall_b[3] = {sv(0.0f, 0.0f, 0.9f, 9, 9, 9), sv((float)W, (float)H, 0.9f, 9, 9, 9),
+                                         sv(0.0f, (float)H, 0.9f, 9, 9, 9)};
+    canvas_draw(c, 0, wall_a);
+    canvas_draw(c, 0, wall_b);
+    const uint32_t before = r3d_span_dropped;
+    const int count = 10;
+    for (int i = 0; i < count; i++) {
+        const float x = 2.3f + (4.9f * (float)i);
+        const r3d_span_vertex_t v[3] = {sv(x, 3.1f, 0.2f, 9, 9, 9), sv(x + 11.2f, 20.6f, 0.4f, 9, 9, 9),
+                                        sv(x + 1.7f, 41.3f, 0.3f, 9, 9, 9)};
+        canvas_draw(c, 0, v);
+    }
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)count, r3d_span_dropped - before);
 }
 
 /* A tall sliver at most two centres wide, cut so one window holds one or
@@ -1557,6 +1802,12 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_every_triangle_covers_exactly_the_centres_the_top_left_rule_gives);
     RUN_TEST(test_a_mesh_of_small_and_large_triangles_fills_every_pixel_exactly_once);
     RUN_TEST(test_a_triangle_drawn_over_nearer_depth_writes_exactly_what_it_would_alone);
+    RUN_TEST(test_a_guard_band_sliver_draws_its_centres_in_one_window_or_two);
+    RUN_TEST(test_the_bound_is_the_greatest_depth_whichever_way_the_plane_slopes);
+    RUN_TEST(test_a_span_start_clamped_up_from_below_zero_still_bounds_the_span);
+    RUN_TEST(test_one_open_pixel_anywhere_in_the_box_draws_the_triangle);
+    RUN_TEST(test_a_triangle_hidden_in_one_window_still_draws_in_the_other);
+    RUN_TEST(test_triangles_behind_a_nearer_wall_are_dropped);
     RUN_TEST(test_a_window_holding_a_few_rows_of_a_tall_sliver_draws_them_as_the_whole_does);
     RUN_TEST(test_a_triangle_with_corners_past_the_snap_range_fills_its_centres);
     RUN_TEST(test_a_triangle_whose_only_centre_is_at_a_window_edge_is_drawn);
