@@ -116,6 +116,31 @@ test_a_cubic_tangent_is_per_second_so_a_longer_segment_covers_the_same_shape(voi
 }
 
 static void
+test_a_cubic_track_passes_through_every_key(void) {
+    /* Three keys, each with its own in and out tangent. */
+    const float values[] = {0.0F, 1.0F, 5.0F, 4.0F, 2.0F, -3.0F, 0.5F, 9.0F, 0.0F};
+    const anim_track_t track = {TIMES, values, 3, 1, ANIM_CUBIC, 0};
+    float out[ANIM_WIDTH_MAX];
+    for (int key = 0; key < 3; key++) {
+        anim_track_sample(&track, (uint32_t)(TIMES[key] * 1000.0F), ANIM_CLAMP, out);
+        TEST_ASSERT_FLOAT_WITHIN(EPSILON, values[(key * 3) + 1], out[0]);
+    }
+}
+
+static void
+test_a_closed_loop_is_continuous_across_its_wrap(void) {
+    /* The last key repeats the first, with matching tangents: no step at the seam. */
+    const float times[] = {0.0F, 1.5F, 3.0F};
+    const float values[] = {2.0F, 0.0F, 2.0F, 2.0F, 6.0F, -2.0F, 2.0F, 0.0F, 2.0F};
+    const anim_track_t track = {times, values, 3, 1, ANIM_CUBIC, 0};
+    float before[ANIM_WIDTH_MAX];
+    float after[ANIM_WIDTH_MAX];
+    anim_track_sample(&track, 2999, ANIM_LOOP, before);
+    anim_track_sample(&track, 3001, ANIM_LOOP, after);
+    TEST_ASSERT_FLOAT_WITHIN(0.02F, before[0], after[0]);
+}
+
+static void
 test_a_quaternion_track_turns_the_short_way_at_constant_speed(void) {
     const float half = sqrtf(0.5F);
     /* Identity to 90 degrees about z, the second key stored negated. */
@@ -163,6 +188,8 @@ suite_anim_track(void) {
     RUN_TEST(test_a_single_key_track_is_that_value_always);
     RUN_TEST(test_a_cubic_track_leaves_and_arrives_at_its_tangents);
     RUN_TEST(test_a_cubic_tangent_is_per_second_so_a_longer_segment_covers_the_same_shape);
+    RUN_TEST(test_a_cubic_track_passes_through_every_key);
+    RUN_TEST(test_a_closed_loop_is_continuous_across_its_wrap);
     RUN_TEST(test_a_quaternion_track_turns_the_short_way_at_constant_speed);
     RUN_TEST(test_rotating_by_a_quaternion_turns_a_vector);
     RUN_TEST(test_a_track_of_any_width_fills_that_many_values);

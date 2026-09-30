@@ -36,7 +36,6 @@ set(app_srcs
     "anim/anim_track.c"
     "render/r3d_lit_frame.c"
     "render/r3d_lit_pipeline.c"
-    "render/r3d_path.c"
     "render/r3d_span.c"
     "util/frame_cost.c"
     "util/frame_watch.c"

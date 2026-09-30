@@ -56,7 +56,7 @@ cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lit_view_t* view) {
 
 static void
 check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* mesh) {
-    const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
+    const uint32_t period = sponza_flythrough_period_ms();
     uint16_t* walked = malloc(sizeof(*walked) * SPONZA_CLUSTER_COUNT);
     uint8_t* kept = malloc(SPONZA_CLUSTER_COUNT);
     TEST_ASSERT_NOT_NULL(walked);
@@ -184,11 +184,11 @@ clearance(const r3d_lit_mesh_t* mesh, v3 p) {
 
 static void
 check_the_flythrough_keeps_clear_of_every_triangle(const r3d_lit_mesh_t* mesh) {
-    const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
+    const uint32_t period = sponza_flythrough_period_ms();
     for (uint32_t t = 0; t < period; t += 100) {
         r3d_vec3f_t eye;
         r3d_vec3f_t forward;
-        r3d_path_sample(&sponza_flythrough, t, &eye, &forward);
+        sponza_flythrough_sample(t, &eye, &forward);
         const float d = clearance(mesh, (v3){eye.x, eye.y, eye.z});
         if (d < SPONZA_FLYTHROUGH_CLEARANCE) {
             char message[96];
@@ -219,6 +219,24 @@ test_the_flythrough_keeps_clear_of_every_triangle(void) {
     check_the_flythrough_keeps_clear_of_every_triangle(&sponza_lite_mesh);
 }
 
+/* At the pace of a slow walk, with the seam between a lap's end and its start
+ * as smooth as anywhere else. */
+static void
+test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
+    const uint32_t period = sponza_flythrough_period_ms();
+    r3d_vec3f_t previous, forward;
+    sponza_flythrough_sample(0, &previous, &forward);
+    for (uint32_t t = 10; t <= period + 100; t += 10) {
+        r3d_vec3f_t eye;
+        sponza_flythrough_sample(t, &eye, &forward);
+        const r3d_vec3f_t step = r3d_vec3f_sub(eye, previous);
+        TEST_ASSERT_TRUE_MESSAGE(r3d_vec3f_dot(step, step) < 2.0F * 2.0F,
+                                 "the eye jumped between two samples 10 ms apart");
+        TEST_ASSERT_FLOAT_WITHIN(0.001F, 1.0F, sqrtf(r3d_vec3f_dot(forward, forward)));
+        previous = eye;
+    }
+}
+
 /* The fraction of the picture covered at `t_ms` into the flythrough. */
 static float
 share_covered_at(const r3d_lit_frame_t* frame, uint32_t t_ms) {
@@ -244,7 +262,7 @@ check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
                                      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     TEST_ASSERT_NOT_NULL(scratch);
     r3d_lit_frame_use_scratch(&frame, scratch);
-    const uint32_t period = r3d_path_period_ms(&sponza_flythrough);
+    const uint32_t period = sponza_flythrough_period_ms();
     float sum = 0.0F;
     int samples = 0;
     for (uint32_t t = 0; t < period; t += SPONZA_POSE_EVERY_MS) {
@@ -265,6 +283,7 @@ static void
 run_sponza_suite(void) {
     RUN_TEST(test_both_bakes_have_the_structure_the_pipeline_relies_on);
     RUN_TEST(test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps);
+    RUN_TEST(test_the_flythrough_moves_smoothly_and_closes_its_loop);
     RUN_TEST(test_the_flythrough_keeps_clear_of_every_triangle);
     RUN_TEST(test_the_flythrough_sees_mostly_building);
 }

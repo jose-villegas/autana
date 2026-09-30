@@ -128,7 +128,6 @@ $MAIN_DIR/util/job.c
 $MAIN_DIR/anim/anim_track.c
 $MAIN_DIR/render/r3d_lit_frame.c
 $MAIN_DIR/render/r3d_lit_pipeline.c
-$MAIN_DIR/render/r3d_path.c
 $MAIN_DIR/render/r3d_span.c
 $MAIN_DIR/util/tune.c
 $MAIN_DIR/console/console_verbs.c
