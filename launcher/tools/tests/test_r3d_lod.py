@@ -73,7 +73,7 @@ def sheet(n, size=800.0):
 def bake(mesh, **options):
     p, rgb, tris, double = mesh
     return bake_lit_mesh(p, rgb, tris, double, leaf_triangles=200, max_depth=8, meshlet_triangles=MESHLET,
-                         partition_size=4, **options)
+                         partition_size=4, with_lod=True, **options)
 
 
 def canonical(pos, tris):
@@ -256,7 +256,7 @@ class MeshTests(unittest.TestCase):
     @per_mesh
     def test_the_c_data_reads_back_as_what_was_baked(self, m, mesh):
         with tempfile.TemporaryDirectory() as out:
-            write_lit_mesh(out, "demo", *m, ["test"], 200, 8, meshlet_triangles=MESHLET, partition_size=4)
+            write_lit_mesh(out, "demo", *m, ["test"], 200, 8, meshlet_triangles=MESHLET, partition_size=4, with_lod=True)
             back = read_lit_mesh(str(pathlib.Path(out) / "demo_mesh_generated.c"))
         self.assertTrue(np.array_equal(back.pos, mesh.pos))
         self.assertTrue(np.array_equal(back.tris, mesh.tris))
@@ -269,11 +269,39 @@ class MeshTests(unittest.TestCase):
     @per_mesh
     def test_rebaking_keeps_the_finest_triangles(self, m, mesh):
         with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
-            write_lit_mesh(first, "demo", *m, ["test"], 200, 8, meshlet_triangles=MESHLET, partition_size=4)
+            write_lit_mesh(first, "demo", *m, ["test"], 200, 8, meshlet_triangles=MESHLET, partition_size=4, with_lod=True)
             rebake([str(pathlib.Path(first) / "demo_mesh_generated.c"), "--out-dir", second,
-                    "--meshlet-triangles", "48", "--partition-size", "6"])
+                    "--meshlet-triangles", "48", "--partition-size", "6", "--lod"])
             back = read_lit_mesh(str(pathlib.Path(second) / "demo_mesh_generated.c"))
         self.assertEqual(canonical(back.pos, back.tris), canonical(mesh.pos, mesh.tris))
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class DefaultTests(unittest.TestCase):
+    """What is emitted when the levels are not asked for."""
+
+    def test_a_mesh_is_finest_only_with_cones_unless_levels_are_asked_for(self):
+        p, rgb, tris, double = sphere(2)
+        with tempfile.TemporaryDirectory() as out:
+            mesh = write_lit_mesh(out, "demo", p, rgb, tris, double, ["test"], 200, 8, meshlet_triangles=MESHLET)
+            text = (pathlib.Path(out) / "demo_mesh_generated.c").read_text()
+            back = read_lit_mesh(str(pathlib.Path(out) / "demo_mesh_generated.c"))
+        self.assertIsNone(mesh.lod)
+        self.assertEqual(mesh.records, [])
+        self.assertNotIn("_lod", text)
+        self.assertIn("demo_cones, NULL,", text)
+        self.assertEqual(len(back.cones), len(back.clusters))
+        self.assertTrue(any(c[1] < 127 for c in back.cones), "no cluster of a sphere has a usable cone")
+        level = lod_eval.Level(back)
+        cam = camera(*next(eyes(back, 1, 4)))
+        self.assertTrue(np.array_equal(lod_eval.pick(level, cam, 1.0), lod_eval.finest(level, cam)))
+
+    def test_a_poses_file_gives_its_size_lens_and_poses(self):
+        size, lens, poses = lod_eval.read_poses("# c\nsize 4 6\nlens 0.5 2\npose 1 2 3 4 5 6 # x\n")
+        self.assertEqual((size, lens, len(poses)), ((4, 6), (0.5, 2.0), 1))
+        self.assertEqual(poses[0][1].tolist(), [4.0, 5.0, 6.0])
+        with self.assertRaises(SystemExit):
+            lod_eval.read_poses("pose 1 2\n")
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -281,7 +309,9 @@ class TreeMeshTests(unittest.TestCase):
     def test_a_baked_mesh_in_the_tree_keeps_its_levels_crack_free(self):
         if not SPONZA.exists():
             self.skipTest("no baked mesh in the tree")
-        mesh = read_lit_mesh(str(SPONZA))
+        with tempfile.TemporaryDirectory() as out:
+            rebake([str(SPONZA), "--out-dir", out, "--lod"])
+            mesh = read_lit_mesh(str(pathlib.Path(out) / SPONZA.name))
         self.assertIsNotNone(mesh.lod, "the baked mesh has no coarser levels")
         level = lod_eval.Level(mesh)
         centre = (mesh.pos.min(axis=0) + mesh.pos.max(axis=0)) / 2.0 / mesh.position_scale

@@ -130,6 +130,11 @@ r3d_lit_mesh_expect_valid(const r3d_lit_mesh_t* mesh) {
         }
     }
     free(reached);
+    if (mesh->cones != NULL) {
+        for (int c = 0; c < mesh->cluster_count; c++) {
+            TEST_ASSERT_TRUE_MESSAGE(mesh->cones[c].cutoff >= 0, "a cone cutoff is negative");
+        }
+    }
     if (mesh->lod != NULL) {
         r3d_lit_mesh_expect_lod(mesh);
     }

@@ -3,10 +3,18 @@ does it: at each pose, picks per cluster the level whose projected error is at
 most a tolerance and whose parent's is above it, counts what that draws
 against the finest level alone, and renders both on the host to diff them.
 
-    python -m r3d.lod_eval MESH_mesh_generated.c POSES.txt [options]
+    python -m r3d.lod_eval MESH_mesh_generated.c POSES [options]
 
-Run from launcher/tools. MESH is any baked mesh; POSES holds one pose per
-line, eye x y z then forward x y z in model units, '#' starting a comment.
+Run from launcher/tools. MESH is any baked mesh; a mesh baked without levels
+reports no saving. POSES is a file, or `-` for standard input so a scene's own
+generator can pipe its poses in. Its lines, '#' starting a comment:
+
+    size WIDTH HEIGHT
+    lens HALF_FOV_SHORT_TAN NEAR
+    pose EYE_X EYE_Y EYE_Z FORWARD_X FORWARD_Y FORWARD_Z    (model units)
+
+`size` and `lens` fall back to the --width, --height, --half-fov-short-tan and
+--near options.
 """
 
 import argparse
@@ -73,8 +81,11 @@ class Level:
         self.parent_c = np.array([r["parent"][0] for r in rec], dtype=np.float64) / scale
         self.parent_r = np.array([r["parent"][1] for r in rec], dtype=np.float64) / scale
         self.parent_e = np.array([r["parent"][2] for r in rec], dtype=np.float64) / scale
-        self.cone_axis = np.array([r["cone"][0] for r in rec], dtype=np.float64) / 127.0
-        self.cone_cutoff = np.array([r["cone"][1] for r in rec], dtype=np.float64) / 127.0
+        cones = [r["cone"] for r in rec]
+        if not mesh.records and len(mesh.cones) == len(rows):
+            cones = mesh.cones
+        self.cone_axis = np.array([c[0] for c in cones], dtype=np.float64) / 127.0
+        self.cone_cutoff = np.array([c[1] for c in cones], dtype=np.float64) / 127.0
 
     def __len__(self):
         return len(self.first)
@@ -210,13 +221,25 @@ def evaluate(level, camera, tolerance=1.0, images=False):
     return out
 
 
-def read_poses(path):
+def read_poses(text):
+    """(size, lens, poses) from a poses file's text: size is (width, height)
+    or None, lens (half_fov_short_tan, near) or None, poses (eye, forward)."""
+    size = lens = None
     poses = []
-    for line in pathlib.Path(path).read_text().splitlines():
-        line = line.split("#")[0].split()
-        if line:
-            poses.append((line[:3], line[3:6]))
-    return [(np.array(e, dtype=float), np.array(f, dtype=float)) for e, f in poses]
+    for line in text.splitlines():
+        word = line.split("#")[0].split()
+        if not word:
+            continue
+        values = [float(v) for v in word[1:]]
+        if word[0] == "size" and len(values) == 2:
+            size = (int(values[0]), int(values[1]))
+        elif word[0] == "lens" and len(values) == 2:
+            lens = tuple(values)
+        elif word[0] == "pose" and len(values) == 6:
+            poses.append((np.array(values[:3]), np.array(values[3:])))
+        else:
+            raise SystemExit(f"not a poses line: {line!r}")
+    return size, lens, poses
 
 
 def save(prefix, result):
@@ -230,7 +253,7 @@ def save(prefix, result):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("mesh")
-    parser.add_argument("poses")
+    parser.add_argument("poses", help="a poses file, or - for standard input")
     parser.add_argument("--width", type=int, default=184)
     parser.add_argument("--height", type=int, default=224)
     parser.add_argument("--half-fov-short-tan", type=float, default=0.62)
@@ -240,13 +263,17 @@ def main(argv=None):
     parser.add_argument("--save", help="write finest | LOD | 4x difference as PNGs with this path prefix")
     args = parser.parse_args(argv)
 
+    text = sys.stdin.read() if args.poses == "-" else pathlib.Path(args.poses).read_text()
+    size, lens, poses = read_poses(text)
+    width, height = size or (args.width, args.height)
+    half_fov, near = lens or (args.half_fov_short_tan, args.near)
     level = Level(read_lit_mesh(args.mesh))
     total = {}
     header = "pose  clusters finest/lod (coarser)   triangles finest/lod (saved)"
     header += "   drawn finest/lod (saved)   pixels differ / >32 / mean" if not args.no_render else ""
     print(header)
-    for n, (eye, forward) in enumerate(read_poses(args.poses)):
-        camera = Camera(eye, forward, args.width, args.height, args.half_fov_short_tan, args.near)
+    for n, (eye, forward) in enumerate(poses):
+        camera = Camera(eye, forward, width, height, half_fov, near)
         r = evaluate(level, camera, args.tolerance, images=not args.no_render)
         line = (f"{n:4d}  {r['clusters_finest']:6d} /{r['clusters_lod']:5d} ({r['clusters_coarser']:4d})"
                 f"   {r['triangles_finest']:9d} /{r['triangles_lod']:6d} ({1 - r['triangles_lod'] / max(r['triangles_finest'], 1):5.1%})")
