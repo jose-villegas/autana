@@ -75,6 +75,13 @@ jobs:
       - name: pyserial
         run: pip install pyserial==3.5
 
+      # test_r3d_bake.py skips itself without numpy and scipy, and builds
+      # meshoptimizer's library from its submodule with the runner's compiler.
+      - name: r3d bake environment
+        run: |
+          pip install -r launcher/tools/r3d/requirements.txt
+          git submodule update --init --depth 1 third_party/upstream/meshoptimizer
+
       # Python and, for check-mermaid.mjs's pure parts, Node;
       # scripts/run-tool-tests.sh owns which suites.
       - name: Tool tests
