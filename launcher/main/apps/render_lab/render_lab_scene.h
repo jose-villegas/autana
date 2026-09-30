@@ -37,6 +37,10 @@ typedef struct {
      * never calls frame_band(), which such a scene may leave NULL. */
     bool needs_full_framebuffer;
 
+    /* True for a scene that draws a lit mesh and gives its frame to
+     * r3d_lit_frame_show() with render_lab_view_mode, in development builds. */
+    bool shows_view_modes;
+
     /* Optional. Runs while the previous frame is still being sent to the
      * panel, so it may only touch the scene's own memory - never gfx or the
      * framebuffer (app.h's update() contract). Not called while the menu is

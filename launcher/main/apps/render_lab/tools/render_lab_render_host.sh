@@ -2,7 +2,7 @@
 #
 # Render this app's scenes on a host, with no board and no flash cycle.
 #
-#   ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh [-o <dir>] [--update-baseline] [--depth]
+#   ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh [-o <dir>] [--update-baseline]
 #
 # Each declared render starts on one scene (--scene) via
 # render_lab_start_scene_key and steps 16 ms frames, full-framebuffer
@@ -34,6 +34,7 @@ main/gfx/gfx.c
 main/util/tune.c
 main/util/job.c
 main/render/r3d_lit_frame.c
+main/render/r3d_lit_frame_show.c
 main/render/r3d_lit_pipeline.c
 main/anim/anim_track.c
 main/render/r3d_span.c
@@ -53,8 +54,13 @@ $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
         \( -type f -name '*.c' ! -name 'suite_*.c' -print \) | LC_ALL=C sort)
 "
 scene_includes="components/small3dlib/include"
-scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
+scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0 -DRENDER_LAB_VIEWS=1"
 
+# The lit-mesh scene's views (--view shaded|depth|tiles) are r3d_lit_frame_show()
+# over the same frame, so each is unpinned for the reason the shaded one is: its
+# camera path is float, so which pixels a triangle reaches is not identical on
+# every compiler. The tests in tools/tests compare the views with each other.
+#
 # The integer scenes with the HUD hidden are pinned. Everything carrying the
 # HUD is not - its fps readout is a double printed with "%.1f" - and neither
 # are the Cornell scenes, which are float throughout.
@@ -90,21 +96,14 @@ cornell-pt-seed|--quarter 1 --scene cornell-pt --frames 2|448x368|nopin
 cornell-pt-accum|--quarter 1 --scene cornell-pt --frames 45|448x368|nopin
 sponza-landscape|--quarter 1 --no-hud --scene sponza --frames 2|448x368|nopin
 sponza-portrait|--quarter 0 --no-hud --scene sponza --frames 2|368x448|nopin
+sponza-flipped|--quarter 3 --no-hud --scene sponza --frames 2|448x368|nopin
+sponza-depth-landscape|--quarter 1 --no-hud --scene sponza --frames 2 --view depth|448x368|nopin
+sponza-depth-portrait|--quarter 0 --no-hud --scene sponza --frames 2 --view depth|368x448|nopin
+sponza-depth-flipped|--quarter 3 --no-hud --scene sponza --frames 2 --view depth|448x368|nopin
+sponza-tiles-landscape|--quarter 1 --no-hud --scene sponza --frames 2 --view tiles|448x368|nopin
+sponza-tiles-portrait|--quarter 0 --no-hud --scene sponza --frames 2 --view tiles|368x448|nopin
+sponza-tiles-flipped|--quarter 3 --no-hud --scene sponza --frames 2 --view tiles|448x368|nopin
 "
-
-# --depth: beside each mesh render, its depth buffer and the 8x8 tile view of
-# it (see render_lab_render_host.c). Consumed here, not by render_scene_run.
-_rl_count=$#
-while [ "$_rl_count" -gt 0 ]; do
-    _rl_arg=$1
-    shift
-    if [ "$_rl_arg" = "--depth" ]; then
-        scene_extra_args="--depth @STEM@"
-    else
-        set -- "$@" "$_rl_arg"
-    fi
-    _rl_count=$((_rl_count - 1))
-done
 
 # shellcheck source=../../../../tools/render/render_scene.sh
 . "$SCRIPT_DIR/../../../../tools/render/render_scene.sh"

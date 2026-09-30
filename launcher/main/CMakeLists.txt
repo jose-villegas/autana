@@ -66,6 +66,7 @@ endif()
 # each actually answers on.
 if(CONFIG_LAUNCHER_DEVELOPMENT)
     list(APPEND app_srcs
+        "render/r3d_lit_frame_show.c"
         "console/console_verbs.c"
         "console/console.c"
         "console/console_buildid.c"
