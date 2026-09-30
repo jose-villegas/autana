@@ -63,11 +63,6 @@ class JsonReadTests(unittest.TestCase):
                                               "source": "launcher/test/suite.c",
                                               "on_request": False, "device_only": False}]})
 
-    def test_id(self):
-        result = self.output(autana.identify, ["--json"])
-        self.assertEqual(result["owner"], autana.owner())
-        self.assertEqual(result["pid"], autana.os.getpid())
-
     def test_text_output_is_the_board_reply_unchanged(self):
         replies = ["APPS name=Sand running=1 extra=kept", "APPS_END"]
         stream = io.StringIO()

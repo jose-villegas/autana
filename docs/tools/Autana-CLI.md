@@ -40,27 +40,15 @@ group below.
 
 `autana help flags` - left off each command's own usage line below to keep
 it readable; a flag works the same wherever the table below says it applies.
-(Not all of "build" - `build` takes `--project` but touches no board.)
 
 | Flag | What it does | Commands |
 |---|---|---|
-| `--wait SECONDS` | Global, goes before the command (`autana --wait 0 monitor 5`; after it, autana says so). Wait this long for the board's lock; 0 fails at once with exit 75. 600 s without it. Covers every step the command runs. | every board command |
-| `--owner NAME` | Global, goes before the command (`autana --owner ci-7 flash`; after it, autana says so). Label this run in the lock as `NAME:<pid>`; without it, `<user>@<host>:<pid>`. Name each CI job. | every board command |
-| `--board SERIAL` | Global, goes before the command (`autana --board 90:70:69:FE:A3:08 monitor 5`). The board's USB serial number; without it, the only board plugged in. | every board command |
+| `--wait SECONDS` | Global; see [Settings](#settings). | every board command |
+| `--owner NAME` | Global; see [Settings](#settings). | every board command |
+| `--board SERIAL` | Global; see [Settings](#settings). | every board command |
 | `--out PATH` | Write the one capture here instead of the default path; with several suites or `--runs` above 1, only makes sense on `suite` when exactly one suite runs once. | selftest, suite, monitor |
 | `--expect-build-id ID` | Refuse to run a suite unless the board, or the image `--flash` just wrote, carries this `BUILD_ID`. `autana flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it - pass that value here to refuse measuring a board that has since been reflashed by someone else. | suite |
 | `--project PATH` | Act on `PATH` instead of the current directory - like `make -C`/`idf.py -C`, no searching parent directories. `PATH` must itself carry `launcher/CMakeLists.txt`; the current directory must too when `--project` is omitted, for every command below except `suite` without `--flash`, which only wants it for its capture's own record. Popped once ahead of any command's own parsing, so it works the same everywhere it applies. | build, flash, selftest, suite, suite list, tune save, docs |
-
-Every board command's lock owner is `"<user>@<host>:<pid>"`, or
-`"<NAME>:<pid>"` when the call starts with `autana --owner NAME` - the pid still
-distinguishes two shells that use the same name, so `autana status`
-does not mistake one for the other's own lock. How long a command
-waits for the board's lock before giving up is set for one call with the
-global option `autana --wait SECONDS <command>` (`autana --wait 0 flash`
-fails at once, exit 75) and is 600 s without it; there is no environment
-setting, so a CI job writes `autana --wait 0 <command>`. Both global options
-go before the command and cover every step it runs; after the command,
-autana says where they belong.
 
 ## Build and flash
 
@@ -95,7 +83,8 @@ suite this project registers, for a full pre-merge pass.
 
 | Command | What it does |
 |---|---|
-| `autana suite <name>... [seconds] [--runs N] [--flash] [--verbose]` | Run one or more registered suites under one lock, `N` times each (1 when omitted), `seconds` capping the whole run (600 s when omitted). Without `--flash`: against the image already on the board - `autana suite <name>` against a non-diagnostics image says so plainly and names the fix (`autana flash diag`). With `--flash`: build and flash the diagnostics image first, so nobody else can flash between two captures. |
+| `autana suite <name>... [seconds] [--runs N] [--flash] [--verbose]` | Run one or more registered suites under one lock, `N` times each (1 when omitted), `seconds` capping each capture (1800 s when omitted; a board that goes silent for 300 s ends one sooner). Without `--flash`: against the image already on the board - `autana suite <name>` against a non-diagnostics image says so plainly and names the fix (`autana flash diag`). With `--flash`: build and flash the diagnostics image first, so nobody else can flash between two captures. |
+| `autana suite <name> --test PATTERN[,PATTERN]` | Only the tests of that suite whose name contains a pattern; `--test` repeats. |
 | `autana suite list [text] [--json]` | The suites this project registers; `[on request]` ones run only by name. |
 | `autana selftest [seconds] [--verbose] [--perf-scope] [--out PATH]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
 
@@ -105,6 +94,20 @@ prints the whole capture; to find something in it, grep the capture instead.
 One suite run once - `autana suite <name>` with no `--runs` or `--flash` -
 still produces exactly one capture and one report, the same as before this
 command absorbed `batch`.
+
+**`--test PATTERN`** runs only the tests of a suite whose name contains
+`PATTERN` (a case-sensitive substring; letters, digits and underscores). Repeat
+the flag or comma-separate to pick several: `--test fire,gas` runs every test
+whose name has `fire` or `gas` in it. The board does the filtering, so a test
+that is not selected does not run, and a filtered capture is minutes instead of
+a full suite's quarter hour. The limits (a pattern's length, how many) are the
+board's, in `launcher/test/suites.h`; it refuses one past them. A pattern that
+matches no test fails after the capture, listing the suite's test names, and
+ends a `--runs` batch there; with a single pattern nothing ran. The report and
+the `--runs` summary cover only the tests that ran - an unselected test is not
+missing, failed or unmet - and name the filter, so an A/B read later knows
+which rows it compares. It needs a diagnostics build whose `RUNSUITE` takes
+patterns (`autana flash diag`), and says so when the board runs an older one.
 
 `autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` still works -
 the old spelling of `autana suite <suite>... --runs N --perf-scope --verbose
@@ -164,16 +167,14 @@ The two raw levels below gesture, `touch` and `imu`, live under
 | Command | What it does |
 |---|---|
 | `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
-| `autana lock id [--json]` | The name this session holds the lock under: `"<user>@<host>:<pid>"`, or `"<NAME>:<pid>"` under `autana --owner NAME`. |
 | `autana lock release [<token>]` | Release the lock a command of this session holds, before it would have. Given a lock's token, or, run from inside the command that holds the lock, without one. |
-| `autana lock hand [--until-back <seconds>] <note...>` | Reserve the board for a person for an hour and emit `human-reserved`; running it again renews the hour, and an unrenewed reservation lapses (`human-expired`). With `--until-back`, wait until `take-back` emits `human-cleared`. |
+| `autana lock hand [--until-back <seconds>] <note...>` | Reserve the board for a person for an hour and emit `human-reserved`; running it again renews the hour, and an unrenewed reservation lapses. Refused while a command holds the board. With `--until-back`, wait until it is taken back or lapses. |
 | `autana lock take-back` | Clear that reservation. |
 
 A board is named by its USB serial number, so the lock follows it across
-COM number changes; with several boards plugged in, `autana --board <serial>`
-picks one. If a command loses the lock it stops with `device lock was
-lost`. A command that finds the board busy and will not wait (`autana --wait 0 <command>`, or its
-wait ran out) exits 75, so a script can retry on the code alone. A separate `flash` and `suite` leave a gap where another session can
+COM number changes. A command that loses the lock stops with `device lock was
+lost`; one that finds the board busy exits 75
+([exit codes](Device-Lock.md#exit-codes-and-json-status)). A separate `flash` and `suite` leave a gap where another session can
 flash; `suite --flash` and `selftest` hold one lock across flash and capture.
 Lock loss is defined in [Device-Lock.md](Device-Lock.md); flash success,
 captures and wait estimates in [Flash-and-Captures.md](Flash-and-Captures.md).
@@ -182,13 +183,8 @@ The lock owner is set as described in [Flags](#flags) above.
 
 `autana lock hand --until-back 30 put the board in download mode` pauses a flash
 script until someone puts the board in download mode and runs `autana lock
-take-back`. With `--until-back`, exit 0 means that reservation was released. Exit 3
-means the wait timed out or was interrupted with Ctrl+C; the reservation
-stays. Exit 4 means the reservation was cleared and a new one made; that
-reservation stays. The caller decides how to proceed after either nonzero result.
-
-`autana id`, `autana release <token>`, `autana hand ...` and `autana
-take-back` still work, each printing the new spelling once before running it.
+take-back`. With `--until-back`, exit 0 means that reservation was released or
+lapsed; the other outcomes are in [exit codes](Device-Lock.md#exit-codes-and-json-status).
 
 ## Debug
 
@@ -225,9 +221,8 @@ before running it.
 
 | Command | Fields |
 |---|---|
-| `status` | `boards`: `board`, `port`, `state` (`unlocked`, `held`, `human`), `holder` (`owner`, `purpose`), `since`, `elapsed_seconds`, `estimated_free`, `expires_at`, `remaining_seconds`, `stale` (`owner`, `purpose`, `reason`), `expired` (`owner`, `purpose`, `expired_at`, `ago_seconds`), `waiting` (`owner`, `purpose`, `estimated_start`). Times are epoch seconds; unknown ones are `null`. See [Device-Lock.md](Device-Lock.md#exit-codes-and-json-status). |
+| `status` | `boards`, one object per board; the fields are in [Device-Lock.md](Device-Lock.md#exit-codes-and-json-status). |
 | `buildid` | `build_id` |
-| `lock id` | `owner`, `pid` |
 | `apps` | `apps`: `name`, `running` |
 | `suite list` | `suites`: `name`, `source`, `on_request`, `device_only` |
 | `tune` | `tunables`: `name`, `value`, `min`, `max`, `default` |
@@ -271,15 +266,19 @@ optional and gitignored, and `autana help config` lists its keys.
 
 | Global option | Sets |
 |---|---|
-| `--wait SECONDS` | How long a board command waits for the lock (600 s without it). |
-| `--owner NAME` | The name this run holds the lock under. |
-| `--board SERIAL` | Which board, when several are plugged in. |
+| `--wait SECONDS` | How long a board command waits for the lock, across every step it runs: 600 s without it, `0` fails at once with exit 75. |
+| `--owner NAME` | The name this run holds the lock under, as `NAME:<pid>`; `<user>@<host>:<pid>` without it. Name each CI job. |
+| `--board SERIAL` | The board's USB serial number; without it, see [Which board](Device-Lock.md#which-board). |
+
+All three go before the command (`autana --wait 0 monitor 5`); after it,
+autana says so. A CI job that should fail rather than queue writes
+`autana --wait 0 <command>`.
 
 | Key | Meaning |
 |---|---|
 | `docs_extra` | A list of extra Markdown files or folders `autana docs` searches, relative to the project. |
 | `records` | Where captures and `index.jsonl` land; `.records/device` in the checkout without it. |
-| `lock_hook` | A shell command run on every device lock event; see [Device-Lock.md](Device-Lock.md#lock-events). It fires only for a command run from a checkout whose file sets it, so a machine-wide hook goes in each checkout's file. |
+| `lock_hook` | A shell command run on every device lock event ([events and environment](Device-Lock.md#lock-events)). |
 
 ```toml
 docs_extra = ["notes/bench.md", "~/Documents/design-notes"]

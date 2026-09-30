@@ -417,7 +417,7 @@ it through the GPIO matrix. An app that redraws only dirty regions shows
 stray pixels and thin lines that persist until the region is re-sent with
 a different layout; a full-frame renderer hides them within a frame. CS
 setup, pad drive, 40 MHz window commands and double sends were each tried
-on device and none made it clean (see "The blit is bus-bound" in
+on device and none made it clean (see "80 MHz is outside the panel's rating" in
 Display-and-Rendering.md). What is planned instead: keep both clocks, as a
 system display setting with a warning for partial-redraw apps, plus an
 opt-in gfx heal that re-sends app-marked regions with a different layout
@@ -1081,7 +1081,7 @@ cheapest path to something that is unmistakably a game.
    height (one command each); Phase 2 still ends with the device sweep
    itself across heights measuring present time, rasterizer time, and RAM
    freed, in the same style as the `GATHER_MAX_PIXELS` and
-   `LEAF_REFINE_MAX_RUNS` sweeps recorded in Display-and-Rendering.md.
+   `LEAF_REFINE_MAX_RUNS` sweeps summarised in Display-and-Rendering.md.
 3. ~~"Parallax" in the platformer~~ **Decided: layered
    parallax scrolling**, not per-pixel parallax mapping.
 4. ~~Own rasterizer vs. deeper small3dlib configuration.~~ **Decided:
@@ -1105,6 +1105,9 @@ cheapest path to something that is unmistakably a game.
    piece is in the tree: `render/r3d_span.h` fills depth-tested Gouraud
    spans into a window of rows, and `render/r3d_lit_pipeline.h` culls,
    transforms and clips a mesh whose light is baked into vertex colours.
+   Its fill rule is the top-left rule on 4 fractional bits, exact in
+   integers and held to a slow reference on the host, with triangles of up
+   to 2 × 2 pixel centres tested centre by centre instead of walked.
 5. **Decided: the platformer is exploratory, with both world
    models kept.** Track B (the sand automaton as the world, fixed-camera
    rooms, levels as blocks of a material, materials and reactions as

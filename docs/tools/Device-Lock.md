@@ -83,7 +83,8 @@ work down this list.
 
    `autana lock hand <note>` means "I am using the board by hand": it reserves
    the board so every command waits or fails until `autana lock take-back`,
-   or until an hour after the last `hand`. Below a holder, `waiting:` lists
+   or until an hour after the last `hand`. It is refused while a command
+   holds the board. Below a holder, `waiting:` lists
    the queue with each estimated start; an estimate is `unknown (no duration
    history)` until that command has run a few times on this machine. A
    `stale` or `expired` line needs nothing from you: the next command takes
@@ -94,26 +95,18 @@ work down this list.
    reservation the notice reads `board reserved by <owner>: <note> - waiting
    (59m left, unless renewed; ...)`.
 
-3. **Do not wait.** For one command that should fail rather than queue,
-   put `--wait 0` (seconds) before it; it covers every step the command
-   runs, such as the flash inside `suite --flash`:
+3. **Do not wait.** For a command that should fail rather than queue, put
+   `--wait 0` before it ([Settings](Autana-CLI.md#settings)):
 
    ```text
    autana --wait 0 flash
    ```
 
-   A CI job that should fail rather than queue writes `autana --wait 0
-   <command>` on every board command; there is no environment setting.
-
-   `--wait` is only accepted before the command (`autana --wait 0 monitor
-   5`); after it, autana says so and does nothing.
-
    ```text
    device: device lock was not acquired: board held by sam@bench:4120 for autana monitor since 2026-09-29 16:42:51; `autana status` shows the queue
    ```
 
-   It exits 75, the same status as a command whose 10-minute wait ran out, so
-   a CI job can retry on the code alone.
+   It exits 75 ([exit codes](#exit-codes-and-json-status)).
 
 4. **Read `stopped process(es)`.** When a command ends and something *it
    started* is still running (an `esptool` or a monitor that outlived its
@@ -194,7 +187,7 @@ minutes.
 | The laptop slept, or the clock jumped | A sleep or forward jump of over 10 minutes makes every lock reclaimable: a waiter takes the board, and the sleeper fails with `device lock was lost` on waking, even with nobody waiting. A jump back only makes a stale lock last longer. The same clock times a reservation's hour. | Up to 10 minutes extra | Re-run the command. |
 | A terminal program has the port | Windows: the open fails and retries. Linux: `screen` and `minicom` ignore the lock and can open it alongside autana's readers, so both may read garbled output. autana ends nothing of yours. | Up to 10 minutes (12 seconds when a command reopens the port right after its own flash) | Close the other program. A message that names no previous-holder process says it was not autana. |
 | The board was unplugged mid-flash | `esptool` fails, `flash` fails naming that half with the first error line and the log's path, and the lock is released. The board may hold a partial image. | Seconds | Plug it in, run `autana flash` again. If it will not boot, [Flashing-and-Toolchain.md](../notes/Flashing-and-Toolchain.md) has download mode and recovery. |
-| Someone forgot `autana lock hand` | Every command is refused with `board reserved by ...` and the time left. A reservation has no heartbeat, so the hour after the last `hand` is the only thing that ends it. It then counts as released and `status` says so; the `human-expired` event fires at the next command or `hand` that finds it, not on the hour. | 1 hour | `autana lock take-back` if it is not yours to keep. |
+| Someone forgot `autana lock hand` | Every command is refused with `board reserved by ...` and the time left. A reservation has no heartbeat, so the hour after the last `hand` is the only thing that ends it. It then counts as released and `status` says so. | 1 hour | `autana lock take-back` if it is not yours to keep. |
 
 ## For a shared rig or CI
 
@@ -218,7 +211,7 @@ cannot help: an older install never looks in the new folder). Per board, with
 
 | File | What it is |
 |---|---|
-| `<serial>.json` | The lock: `owner`, `purpose`, `kind`, `acquired_at`, `heartbeat_at`, `host`, `pid`, `token`, `expected_build_id`, `log`, `protocol`, `autana_version`. The `token` is a random secret naming this one lock; the holder and every process it starts also carry it in their environment, which `autana lock release` uses when given none. `status` never prints it. |
+| `<serial>.json` | The lock: `owner`, `board`, `kind`, `purpose`, `acquired_at`, `heartbeat_at`, `host`, `pid`, `token`, `protocol`, `autana_version`; `purpose` is what `status` shows. The `token` is a random secret naming this one lock; the holder and every process it starts also carry it in their environment, which `autana lock release` uses when given none. `status` never prints it. |
 | `<serial>.queue/` | One ticket per waiting command, in FIFO order; a dead waiter's is discarded. |
 | `<serial>.human.json` | A person's reservation, with `expires_at`. |
 | `<serial>.last.json` | The previous holder, one only: overwritten each time a lock ends, for the message in step 5. |
@@ -238,33 +231,27 @@ alone fall back once more to the only board this machine has ever seen.
 
 ### Exit codes and JSON status
 
-Which board, how long to wait and the lock's owner are the global options
-`--board`, `--wait` and `--owner`; the hook and the records folder are keys of
-`autana.local.toml` (see [Settings](Autana-CLI.md#settings)).
-
 | Exit code | Meaning |
 |---|---|
-| `0` | Success. |
+| `0` | Success. For `lock hand --until-back`: the reservation was taken back or lapsed. |
 | `1` | Any other failure, including `device lock was lost`. |
-| `75` | The board was busy: `device lock was not acquired`, fail-fast or after the wait ran out. Safe to retry. |
-| `3`, `4` | `lock hand --until-back` only: `3` the wait timed out or was interrupted (the reservation stays), `4` the reservation was cleared and a new one made. `0` means it was released or expired. |
-| `130` | A second Ctrl+C on `monitor`. |
+| `75` | The board was busy: `device lock was not acquired`, with `--wait 0` or after the wait ran out. Safe to retry on this code alone. Also `lock hand --until-back` when its wait runs out or the reservation is replaced; the reservation stands. |
+| `130` | Ctrl+C: the second one on `monitor`, or the first on `lock hand --until-back`, which leaves the reservation in place. |
 | `2` | `device.py` itself, for a bad command line. |
 
 `autana status --json` prints `{"boards": [...]}`, one object per board.
-Times are epoch seconds; an estimate without enough history is `null`.
+Times are epoch seconds; an age or a time left is the difference from now. An estimate without enough history is `null`.
 
 | Field | |
 |---|---|
 | `board` | USB serial number |
 | `port` | COM port now, `null` when the board is not on USB |
 | `state` | `unlocked`, `held`, or `human` (a person's reservation) |
-| `holder` | `{"owner", "purpose"}`, the purpose being a reservation's note; `null` when unlocked. A held lock's also carries `protocol` and `autana_version`. |
-| `since`, `elapsed_seconds` | when the holder took the board, and for how long |
+| `holder` | `{"owner", "purpose"}`, the purpose being the command that holds a lock (`autana tune`; `device.py <kind>` for a direct call) and the note for a reservation; `null` when unlocked. A held lock's also carries `protocol` and `autana_version`. |
+| `since` | when the holder took the board |
 | `estimated_free` | when the holder should be done |
-| `expires_at`, `remaining_seconds` | when a reservation lapses, and how long is left; else `null` |
-| `stale` | `{"owner", "purpose", "reason"}` of a lock the next waiter will reclaim, else `null` |
-| `expired` | `{"owner", "purpose", "expired_at", "ago_seconds"}` of a reservation that lapsed and is treated as released, else `null` |
+| `expires_at` | when a reservation lapses; else `null` |
+| `lapsed` | `{"owner", "purpose", "reason", "at"}` of a lock or reservation that lapsed but is still on disk, else `null`. `reason` is `dead process` or `heartbeat expiry` for a lock the next waiter reclaims (`at` is `null`), or `reservation expired` for a reservation treated as released (`at` is when it lapsed). |
 | `waiting` | `[{"owner", "purpose", "estimated_start"}]` in queue order |
 
 ### Lock events
@@ -275,22 +262,21 @@ a hook meant for every command needs the key in every checkout. It runs
 through `cmd.exe` on Windows (`%VAR%`) and `/bin/sh` elsewhere (`$VAR`), with
 `AUTANA_LOCK_EVENT`, `AUTANA_LOCK_BOARD` (the serial number),
 `AUTANA_LOCK_OWNER`, `AUTANA_LOCK_PURPOSE` and `AUTANA_LOCK_NOTE` set. Purpose
-is empty for reservations; note carries the reclaim reason for `lost` and the
-reservation note for the `human-` events. Hooks run in separate processes and
+is the command that holds or wants the lock, empty for reservations; note is the
+reservation note for the `human-` events and `reclaimed from <owner> (<reason>)`
+on an `acquired` that took the lock from a dead or stale holder. Hooks run in separate processes and
 are not ordered across them, so one holder's `released` can arrive after the
 next holder's `acquired`. A hook has a three second timeout; a failed or
 timed out hook is quiet and never changes the lock operation's outcome.
 
 | Event | When |
 |---|---|
-| `acquired` | A ticket takes the lock, including reclaiming a stale lock. |
+| `acquired` | A ticket takes the lock. Taking it from a dead or stale holder sets note to `reclaimed from <owner> (<reason>)`. |
 | `released` | The holder gives up the lock. |
 | `waiting` | A ticket begins a real wait for a held or reserved board; once per ticket. |
 | `gave-up` | A waiting ticket leaves without the lock. |
 | `human-reserved` | A reservation is recorded. Renewing one records nothing new. |
 | `human-cleared` | `lock take-back` cleared a reservation. |
-| `human-expired` | A lapsed reservation was found and treated as released, at the next claim or `hand`, not on the hour; the note is its own. |
-| `lost` | A stale lock is reclaimed; owner and purpose identify its former holder, and note gives the reclaim reason. |
 
 ### One copy of the tools
 
@@ -341,7 +327,7 @@ across holders.
 ### Calling `device.py` from a script
 
 Prefer `autana --owner NAME`. Run `scripts/device/device.py`
-directly only for what `autana` does not offer: a per-call `--purpose`, a
+directly only for what `autana` does not offer: a
 `send` with its own `--reply` and `--until`, or `report`. It runs under
 ESP-IDF's Python (a different interpreter re-runs it under that one). On
 Windows, `flash`, `suite --flash` and `selftest` run `build.sh` and
@@ -349,15 +335,13 @@ Windows, `flash`, `suite --flash` and `selftest` run `build.sh` and
 comes first on `PATH`, which from a native shell is WSL's launcher.
 
 ```sh
-python scripts/device/device.py --owner ci-7 --wait 0 --purpose "gfx suite" run-suite run_gfx_suite --expect-build-id 0123456789ab-dev
+python scripts/device/device.py --owner ci-7 --wait 0 run-suite run_gfx_suite --expect-build-id 0123456789ab-dev
 ```
 
 `--owner` defaults to `unknown`, and `--wait` is the lock wait in
-seconds. `release --token <t>`, `hand-to-human --token <t> --note <n>` and
-`take-back` are what `autana lock` calls. For inspection or emergency recovery
-`scripts/device/device_lock.py --board <serial>` takes `status`, `acquire
---owner ... --purpose ... --wait 60`, `heartbeat --token`, `release --token`,
-`check-token --token`, `human --owner ... --note ...` and `clear-human`.
+seconds. `release --token <t>`, `hand-to-human --note <n>` and `take-back` are
+what `autana lock` calls; `check-token --token <t>` exits 0 when the token is the
+board's live lock, which `flash_image.sh` asks before it opens the port.
 
 ## How it works
 
@@ -380,7 +364,7 @@ loses its watchdog) it says so, and the lock still works as a lock.
 **Heartbeat and reclaim.** A running command renews its lock every 5 seconds:
 its heartbeat. The next waiter reclaims a lock when its holder's process on
 this machine is dead, or when its heartbeat is more than 10 minutes old, and
-logs `reclaimed lock from <owner> for <purpose> (dead process | heartbeat
+logs `reclaimed lock from <owner> for <command> (dead process | heartbeat
 expiry)`. A holder whose heartbeat is refused - its lock was replaced, or it
 went stale while it was paused - has lost the board: a capture stops at its
 next read, the next port open refuses, a flash in progress is ended, and the

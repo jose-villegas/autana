@@ -15,11 +15,11 @@ change as little of the screen as possible per frame.
 
 | Fact | Value | Source |
 |---|---|---|
-| Full-frame present | 9.9 ms at 80 MHz, 17.6 ms at 40 MHz | `docs/notes/Display-and-Rendering.md` |
+| Full-frame present | 9.6 ms at 80 MHz, 17.6 ms at 40 MHz | `docs/notes/Display-and-Rendering.md` |
 | Fixed cost per panel transaction | about 118 us | same |
 | Small moving partial regions at 80 MHz | corrupt pixels; a full-frame send heals them | same |
 | PSRAM read / PSRAM-to-PSRAM copy | 33-58 MB/s / about 22 MB/s | `docs/plans/Autana-Rendering-Roadmap.md` |
-| Dirty strips | save only along rows, so in landscape any slide costs about a full send | `docs/notes/Display-and-Rendering.md` |
+| Dirty cells | a 7 x 4 grid of boxes with no preferred axis: a send covers the changed boxes, in either orientation | `docs/Gfx-and-Presentation.md` |
 | Launcher frame today | about 24.5 ms, presented synchronously (*est* 14 ms draw + 10 ms send) | measured with injected taps |
 | Band ring | frame time becomes the larger of render and send | `docs/plans/Autana-Rendering-Roadmap.md` |
 

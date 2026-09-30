@@ -116,7 +116,7 @@ balanced_split_row(const r3d_lit_frame_t* frame, int visible) {
     uint32_t total = 0;
     for (int i = 0; i < visible; i++) {
         const r3d_lit_rows_t* r = &frame->rows[frame->visible[i]];
-        const float middle = r->crosses_near ? 0.5F * (float)frame->height : 0.5F * (r->y0 + r->y1);
+        const float middle = r->unbounded ? 0.5F * (float)frame->height : 0.5F * (r->y0 + r->y1);
         int row = (int)middle;
         row = row < 0 ? 0 : (row >= frame->height ? frame->height - 1 : row);
         const uint32_t n = frame->mesh->clusters[frame->visible[i]].triangle_count;
