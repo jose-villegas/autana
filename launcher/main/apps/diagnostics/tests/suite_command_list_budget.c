@@ -2,12 +2,12 @@
  * Portable suite: measures the peak bytes the developer-toggles page's
  * command list reaches, driving the REAL toggles_screen_draw() against a
  * real microui (ui_init() + ui_begin(), the same calls app_diagnostics.c
- * makes) rather than a hand-mirrored reconstruction - see
+ * makes) rather than a hand-mirrored reconstruction; see
  * docs/Building-a-Screen.md.
  *
  * CONFIG_LAUNCHER_SELFTEST is never defined on a host build, so this run
  * never reaches the self-test button/result row toggles_screen.c guards on
- * it - see that file's own top comment. A SELFTEST device build's own copy
+ * it; see that file's own top comment. A SELFTEST device build's own copy
  * of this suite measures the fuller page, button and all.
  */
 
@@ -30,7 +30,7 @@
 #define COMMANDLIST_HEADROOM_BYTES 2048
 #define COMMANDLIST_BUDGET         (MU_COMMANDLIST_SIZE - COMMANDLIST_HEADROOM_BYTES)
 
-/* Landscape (448x368 logical) - this project's shipping orientation. */
+/* Landscape (448x368 logical): this project's shipping orientation. */
 static void
 fixture(void) {
     ui_init();
