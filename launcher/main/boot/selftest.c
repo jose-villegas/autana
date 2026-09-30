@@ -38,7 +38,7 @@ static UBaseType_t stack_free_before;
 /* Suites run on the main task. An overflow trips FreeRTOS's canary only at a
  * context switch and resets the chip, so a test that leaves less than an
  * interrupt's saved context plus a log line fails by name instead. */
-#define STACK_RESERVE_BYTES 512u
+#define STACK_RESERVE_BYTES 512U
 
 void
 __wrap_esp_system_console_put_char(char c) {
