@@ -28,3 +28,19 @@ capture. The Gouraud scene rotates when stepped over several frames.
 | `render-lab-cube.png`, `render-lab-cube.gif` | the Gouraud cube; the GIF plays the rotation forward and back |
 | `render-lab-cornell.png` | the ray-traced Cornell box, fully resolved, no HUD |
 | `render-lab-sponza.gif` | the start of the Sponza flythrough |
+
+## The capybara test asset
+
+`gen_capybara.py` writes `../assets/capybara.glb`, a rigged low-poly capybara
+modelled entirely in code: 1336 triangles, 20 joints, and two looping clips at
+30 fps, `idle` (3.5 s) and an in-place `walk` (1 s, no root motion). It is a
+plain glTF 2.0 file, the input a skinned-mesh baker is tested with.
+
+```sh
+python launcher/main/apps/render_lab/tools/gen_capybara.py
+python -m unittest discover -s launcher/main/apps/render_lab/tools/tests
+```
+
+`gltf_skin.py` reads any `.glb` and poses its skin on the CPU, standard library
+only. `gltf_preview.py` renders one with Pillow: a looping GIF of a clip
+(`--gif walk`) or the bind pose from four sides (`--sheet`).
