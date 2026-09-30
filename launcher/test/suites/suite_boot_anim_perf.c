@@ -178,6 +178,129 @@ build_checkpoints(checkpoint_t out[7]) {
     out[6] = (checkpoint_t){"near_end", clamp_below(BOOT_ANIM_MS > 100 ? BOOT_ANIM_MS - 100 : 0, BOOT_ANIM_MS)};
 }
 
+/* What one frozen moment draws with. Sampled, drawn and reported in three
+ * separate frames: suites run on the main task, and the timeline sample and
+ * the nine stats would otherwise stay on its stack under every draw call. */
+typedef struct {
+    uint32_t now_ms;
+    uint8_t ink;
+    uint8_t reveal;
+    bool draw_scene;
+    bool draw_title;
+    boot_anim_view_t view;
+} checkpoint_frame_t;
+
+static __attribute__((noinline)) void
+sample_checkpoint(uint32_t now_ms, checkpoint_frame_t* f) {
+    f->now_ms = now_ms;
+    f->ink = boot_anim_ink(now_ms);
+    f->reveal = boot_anim_image_reveal(now_ms);
+    f->draw_scene = boot_anim_scene_reach(now_ms) > 0;
+    f->draw_title = now_ms >= BOOT_ANIM_TITLE_START_MS;
+    f->view = boot_anim_view(GFX_WIDTH, GFX_HEIGHT, now_ms);
+}
+
+static __attribute__((noinline)) void
+time_frames(const checkpoint_frame_t* f) {
+    for (int i = 0; i < SAMPLES_PER_CHECKPOINT; i++) {
+        int64_t t0, t1;
+        frame_sample_t* s = &samples[i];
+        const int64_t frame_start = esp_timer_get_time();
+
+        t0 = esp_timer_get_time();
+        boot_anim_clear_frame();
+        t1 = esp_timer_get_time();
+        s->clear_us = (int32_t)(t1 - t0);
+
+        if (f->draw_scene) {
+            t0 = esp_timer_get_time();
+            draw_floor(f->now_ms, f->ink, &f->view);
+            t1 = esp_timer_get_time();
+            s->floor_us = (int32_t)(t1 - t0);
+
+            t0 = esp_timer_get_time();
+            draw_axes(f->now_ms, f->ink, &f->view);
+            t1 = esp_timer_get_time();
+            s->axes_us = (int32_t)(t1 - t0);
+
+            t0 = esp_timer_get_time();
+            const int32_t reached = draw_curve(f->now_ms, f->ink, &f->view);
+            t1 = esp_timer_get_time();
+            s->curve_us = (int32_t)(t1 - t0);
+
+            t0 = esp_timer_get_time();
+            draw_zeros(reached, f->ink, &f->view);
+            t1 = esp_timer_get_time();
+            s->zeros_us = (int32_t)(t1 - t0);
+        } else {
+            s->floor_us = 0;
+            s->axes_us = 0;
+            s->curve_us = 0;
+            s->zeros_us = 0;
+        }
+
+        t0 = esp_timer_get_time();
+        draw_image(f->ink, f->reveal);
+        t1 = esp_timer_get_time();
+        s->image_us = (int32_t)(t1 - t0);
+
+        if (f->draw_title) {
+            t0 = esp_timer_get_time();
+            draw_title(f->now_ms, f->ink);
+            t1 = esp_timer_get_time();
+            s->title_us = (int32_t)(t1 - t0);
+        } else {
+            s->title_us = 0;
+        }
+
+        t0 = esp_timer_get_time();
+        gfx_present();
+        t1 = esp_timer_get_time();
+        s->present_us = (int32_t)(t1 - t0);
+
+        s->frame_total_us = (int32_t)(t1 - frame_start);
+    }
+}
+
+typedef struct {
+    const char* label; /* one width, so the columns line up */
+    sample_field_t field;
+    bool spread; /* min/max/med/p95 as well as the average */
+} phase_row_t;
+
+static const phase_row_t PHASE_ROWS[] = {
+    {"Clear:  ", FIELD_CLEAR, false}, {"Floor:  ", FIELD_FLOOR, false},  {"Axes:   ", FIELD_AXES, false},
+    {"Curve:  ", FIELD_CURVE, false}, {"Zeros:  ", FIELD_ZEROS, false},  {"Image:  ", FIELD_IMAGE, true},
+    {"Title:  ", FIELD_TITLE, false}, {"Present:", FIELD_PRESENT, true},
+};
+
+/* One phase's stats live only while its own line prints. */
+static __attribute__((noinline)) void
+log_phase(const phase_row_t* row, int64_t total_avg) {
+    const phase_stats_t s = compute_stats(row->field, SAMPLES_PER_CHECKPOINT);
+    const double share = (double)s.avg / total_avg * 100;
+    if (row->spread) {
+        ESP_LOGI(TAG, "%s min=%lldus max=%lldus avg=%lldus med=%lldus p95=%lldus (%.1f%%)", row->label,
+                 (long long)s.min, (long long)s.max, (long long)s.avg, (long long)s.med, (long long)s.p95, share);
+    } else {
+        ESP_LOGI(TAG, "%s avg=%lldus (%.1f%%)", row->label, (long long)s.avg, share);
+    }
+}
+
+static __attribute__((noinline)) void
+report_checkpoint(const checkpoint_t* cp) {
+    const phase_stats_t total = compute_stats(FIELD_TOTAL, SAMPLES_PER_CHECKPOINT);
+
+    ESP_LOGI(TAG, "=== BOOT_ANIM PERF %s (now_ms=%u, %d samples) ===", cp->label, (unsigned)cp->now_ms,
+             SAMPLES_PER_CHECKPOINT);
+    ESP_LOGI(TAG, "Total:   min=%lldus max=%lldus avg=%lldus med=%lldus p95=%lldus (%.1f/%.1f/%.1f fps)",
+             (long long)total.min, (long long)total.max, (long long)total.avg, (long long)total.med,
+             (long long)total.p95, 1000000.0 / total.avg, 1000000.0 / total.med, 1000000.0 / total.p95);
+    for (size_t i = 0; i < sizeof PHASE_ROWS / sizeof PHASE_ROWS[0]; i++) {
+        log_phase(&PHASE_ROWS[i], total.avg);
+    }
+}
+
 static void
 run_checkpoint(const checkpoint_t* cp) {
     samples = malloc(sizeof(frame_sample_t) * SAMPLES_PER_CHECKPOINT);
@@ -192,100 +315,10 @@ run_checkpoint(const checkpoint_t* cp) {
                           "two failed to allocate");
     }
 
-    const uint32_t now_ms = cp->now_ms;
-    const uint8_t ink = boot_anim_ink(now_ms);
-    const uint8_t reveal = boot_anim_image_reveal(now_ms);
-    const uint8_t scene = boot_anim_scene_reach(now_ms);
-    const boot_anim_view_t view = boot_anim_view(GFX_WIDTH, GFX_HEIGHT, now_ms);
-    const bool draw_scene = scene > 0;
-    const bool draw_title_now = now_ms >= BOOT_ANIM_TITLE_START_MS;
-
-    for (int i = 0; i < SAMPLES_PER_CHECKPOINT; i++) {
-        int64_t t0, t1;
-        frame_sample_t* s = &samples[i];
-        const int64_t frame_start = esp_timer_get_time();
-
-        t0 = esp_timer_get_time();
-        boot_anim_clear_frame();
-        t1 = esp_timer_get_time();
-        s->clear_us = (int32_t)(t1 - t0);
-
-        if (draw_scene) {
-            t0 = esp_timer_get_time();
-            draw_floor(now_ms, ink, &view);
-            t1 = esp_timer_get_time();
-            s->floor_us = (int32_t)(t1 - t0);
-
-            t0 = esp_timer_get_time();
-            draw_axes(now_ms, ink, &view);
-            t1 = esp_timer_get_time();
-            s->axes_us = (int32_t)(t1 - t0);
-
-            t0 = esp_timer_get_time();
-            const int32_t reached = draw_curve(now_ms, ink, &view);
-            t1 = esp_timer_get_time();
-            s->curve_us = (int32_t)(t1 - t0);
-
-            t0 = esp_timer_get_time();
-            draw_zeros(reached, ink, &view);
-            t1 = esp_timer_get_time();
-            s->zeros_us = (int32_t)(t1 - t0);
-        } else {
-            s->floor_us = 0;
-            s->axes_us = 0;
-            s->curve_us = 0;
-            s->zeros_us = 0;
-        }
-
-        t0 = esp_timer_get_time();
-        draw_image(ink, reveal);
-        t1 = esp_timer_get_time();
-        s->image_us = (int32_t)(t1 - t0);
-
-        if (draw_title_now) {
-            t0 = esp_timer_get_time();
-            draw_title(now_ms, ink);
-            t1 = esp_timer_get_time();
-            s->title_us = (int32_t)(t1 - t0);
-        } else {
-            s->title_us = 0;
-        }
-
-        t0 = esp_timer_get_time();
-        gfx_present();
-        t1 = esp_timer_get_time();
-        s->present_us = (int32_t)(t1 - t0);
-
-        s->frame_total_us = (int32_t)(t1 - frame_start);
-    }
-
-    phase_stats_t total = compute_stats(FIELD_TOTAL, SAMPLES_PER_CHECKPOINT);
-    phase_stats_t clear_s = compute_stats(FIELD_CLEAR, SAMPLES_PER_CHECKPOINT);
-    phase_stats_t floor_s = compute_stats(FIELD_FLOOR, SAMPLES_PER_CHECKPOINT);
-    phase_stats_t axes_s = compute_stats(FIELD_AXES, SAMPLES_PER_CHECKPOINT);
-    phase_stats_t curve_s = compute_stats(FIELD_CURVE, SAMPLES_PER_CHECKPOINT);
-    phase_stats_t zeros_s = compute_stats(FIELD_ZEROS, SAMPLES_PER_CHECKPOINT);
-    phase_stats_t image_s = compute_stats(FIELD_IMAGE, SAMPLES_PER_CHECKPOINT);
-    phase_stats_t title_s = compute_stats(FIELD_TITLE, SAMPLES_PER_CHECKPOINT);
-    phase_stats_t pres_s = compute_stats(FIELD_PRESENT, SAMPLES_PER_CHECKPOINT);
-
-    ESP_LOGI(TAG, "=== BOOT_ANIM PERF %s (now_ms=%u, %d samples) ===", cp->label, (unsigned)now_ms,
-             SAMPLES_PER_CHECKPOINT);
-    ESP_LOGI(TAG, "Total:   min=%lldus max=%lldus avg=%lldus med=%lldus p95=%lldus (%.1f/%.1f/%.1f fps)",
-             (long long)total.min, (long long)total.max, (long long)total.avg, (long long)total.med,
-             (long long)total.p95, 1000000.0 / total.avg, 1000000.0 / total.med, 1000000.0 / total.p95);
-    ESP_LOGI(TAG, "Clear:   avg=%lldus (%.1f%%)", (long long)clear_s.avg, (double)clear_s.avg / total.avg * 100);
-    ESP_LOGI(TAG, "Floor:   avg=%lldus (%.1f%%)", (long long)floor_s.avg, (double)floor_s.avg / total.avg * 100);
-    ESP_LOGI(TAG, "Axes:    avg=%lldus (%.1f%%)", (long long)axes_s.avg, (double)axes_s.avg / total.avg * 100);
-    ESP_LOGI(TAG, "Curve:   avg=%lldus (%.1f%%)", (long long)curve_s.avg, (double)curve_s.avg / total.avg * 100);
-    ESP_LOGI(TAG, "Zeros:   avg=%lldus (%.1f%%)", (long long)zeros_s.avg, (double)zeros_s.avg / total.avg * 100);
-    ESP_LOGI(TAG, "Image:   min=%lldus max=%lldus avg=%lldus med=%lldus p95=%lldus (%.1f%%)", (long long)image_s.min,
-             (long long)image_s.max, (long long)image_s.avg, (long long)image_s.med, (long long)image_s.p95,
-             (double)image_s.avg / total.avg * 100);
-    ESP_LOGI(TAG, "Title:   avg=%lldus (%.1f%%)", (long long)title_s.avg, (double)title_s.avg / total.avg * 100);
-    ESP_LOGI(TAG, "Present: min=%lldus max=%lldus avg=%lldus med=%lldus p95=%lldus (%.1f%%)", (long long)pres_s.min,
-             (long long)pres_s.max, (long long)pres_s.avg, (long long)pres_s.med, (long long)pres_s.p95,
-             (double)pres_s.avg / total.avg * 100);
+    checkpoint_frame_t frame;
+    sample_checkpoint(cp->now_ms, &frame);
+    time_frames(&frame);
+    report_checkpoint(cp);
 
     free(samples);
     free(stat_scratch);
