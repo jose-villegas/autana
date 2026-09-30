@@ -1,5 +1,5 @@
 /*
- * Portable suite: touch_probe - where targets may fall, how a tap is scored
+ * Portable suite: touch_probe: where targets may fall, how a tap is scored
  * against one, and the statistics the taps add up to.
  */
 
@@ -250,8 +250,8 @@ test_a_press_already_moved_keeps_where_it_began(void) {
     TEST_ASSERT_EQUAL_INT(55, t->samples[1].x);
 }
 
-/* A lift with no press before it - a finger already down when counting
- * began - is not a tap. */
+/* A lift with no press before it, a finger already down when counting
+ * began, is not a tap. */
 static void
 test_a_release_without_its_press_is_no_tap(void) {
     touch_probe_tap_t* t = fresh_tap();

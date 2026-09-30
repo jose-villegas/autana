@@ -1,5 +1,5 @@
 /*
- * touch_probe - where a finger lands against where it aimed. A target is a
+ * touch_probe: where a finger lands against where it aimed. A target is a
  * square placed at random on the screen; each tap is scored against its
  * centre, and the offsets accumulate into a hit rate, a mean and a spread.
  *
