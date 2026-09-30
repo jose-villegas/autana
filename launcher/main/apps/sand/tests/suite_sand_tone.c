@@ -4,7 +4,7 @@
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
- * live in suite_sand_common.{c,h} - see that header.
+ * live in suite_sand_common.{c,h}, see that header.
  */
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
                      * but every file inherited suite_sand.c's own include
@@ -504,7 +504,7 @@ test_each_material_is_painted_the_way_it_should_be(void) {
             /* hash 1, not 0: hash 0 at the rest phase (0, this file's
              * default) is the one combination that glints cullet
              * (sand_colours() in material_palette.c, CULLET_GLINT_ONE_IN's own
-             * comment) - see this file's own CULLET GLINT tests for that
+             * comment), see this file's own CULLET GLINT tests for that
              * roll on its own terms, checked deliberately rather than by
              * accident here. Wood gets depth 0: nonzero now means "beside a
              * leaf" for MAT_WOOD only, tested separately. */
@@ -656,7 +656,7 @@ static void
 test_cullet_changes_colour_as_the_phase_advances(void) {
     const cell_t c = CELL_MAKE(MAT_SAND, SAND_CULLET_BASE);
 
-    /* hash 1, not 0 - see test_cullet_shades_are_four_distinct_tints just
+    /* hash 1, not 0, see test_cullet_shades_are_four_distinct_tints just
      * above for why 0 is the wrong hash to probe the plain cycle with, and
      * that this stays clear of the glint roll across every phase this loop
      * visits (0..CULLET_CYCLE_LEN) is checked directly in the CULLET GLINT
@@ -725,7 +725,7 @@ test_cullet_never_dresses_as_beach(void) {
     }
 
     /* hash 1, not 0, through the whole phase range this loop covers
-     * (0..CULLET_CYCLE_LEN-1) - see test_cullet_shades_are_four_distinct_
+     * (0..CULLET_CYCLE_LEN-1), see test_cullet_shades_are_four_distinct_
      * tints above for why, and note this checks the PALE colour path only:
      * a glint (the rare pure-white exception, sand_colours() in
      * material_palette.c)
@@ -748,7 +748,7 @@ test_cullet_never_dresses_as_beach(void) {
 }
 
 /* Pale is the whole design constraint on the cycle's four anchors (see
- * material.c) - a retune wandering toward anything saturated or dark would
+ * material.c), a retune wandering toward anything saturated or dark would
  * still pass every test above while no longer reading as ground glass.
  * Floored against the darkest DUNE shade's own luminance rather than a
  * fixed number: what matters is staying paler than sand ever gets. */

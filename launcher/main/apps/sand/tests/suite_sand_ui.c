@@ -2,7 +2,7 @@
  * Portable suite: sand_ui - the falling-sand app's UI state machine.
  *
  * Four of these tests each pin a bug that shipped to hardware because
- * this logic could not be host-tested before - see sand_ui.h's own top
+ * this logic could not be host-tested before, see sand_ui.h's own top
  * comment for the shape they share; several are marked below with the
  * commit that fixed them. The rest exercise the ordinary behaviour a
  * refactor this close to four shipped bugs cannot afford to get wrong
@@ -65,7 +65,7 @@ no_input(void) {
 }
 
 /* An out-of-bounds point, named so the test below reads as "a tap,
- * somewhere" rather than two magic numbers - see its own comment for why
+ * somewhere" rather than two magic numbers, see its own comment for why
  * the exact coordinates don't matter. */
 static void
 outside_every_tile(int* px, int* py) {
@@ -77,7 +77,7 @@ outside_every_tile(int* px, int* py) {
  * `.pressed` (and therefore fired again on every frame the hold's own
  * `.pressed` had already latched true, before `.held` even existed to
  * name the difference). sand_ui_step() never reads input->boot.held at
- * all in SAND_UI_RUNNING - see its own comment - so a hold is
+ * all in SAND_UI_RUNNING, see its own comment - so a hold is
  * structurally unable to change anything here, however long it lasts. */
 static void
 test_a_boot_hold_in_running_changes_nothing_at_all(void) {
@@ -283,7 +283,7 @@ test_selecting_a_tile_while_detonating_resets_to_paint(void) {
     ui.mode = SAND_MODE_DETONATE;
 
     /* microui has already done its own hit-test by the time anything calls
-     * this - see sand_ui.h's "WHO HIT-TESTS AND WHO DECIDES" comment, and
+     * this, see sand_ui.h's "WHO HIT-TESTS AND WHO DECIDES" comment, and
      * test_opening_with_no_finger_down_then_tapping_a_tile_selects_that_tile
      * above for the same pattern - so this drives the entry point a real
      * tap would resolve to directly, by tile index, rather than synthesizing

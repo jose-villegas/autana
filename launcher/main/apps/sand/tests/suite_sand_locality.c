@@ -3,7 +3,7 @@
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
- * live in suite_sand_common.{c,h} - see that header.
+ * live in suite_sand_common.{c,h}, see that header.
  */
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
                      * but every file inherited suite_sand.c's own include
@@ -92,7 +92,7 @@ test_two_separate_active_spots_in_the_same_block_row_do_not_wake_each_other(void
      * harmless 2 KB, but it scales with the tunable (see loc_fixture()'s
      * own comment on SAND_BLOCK_W being worth retuning) and the device's
      * main task stack is only 3.5 KB total (CONFIG_ESP_MAIN_TASK_STACK_
-     * SIZE) - a wider block size alone is enough to blow it, with a real
+     * SIZE), a wider block size alone is enough to blow it, with a real
      * stack-protection panic on device that a host run cannot reproduce
      * (the host stack is megabytes). */
     uint8_t* left_before = malloc((size_t)SAND_BLOCK_W * LOC_H);
@@ -304,7 +304,7 @@ test_liquid_cross_flow_wakes_only_the_blocks_it_touches_by_range(void) {
         sand_set(pool_p, 0, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
         sand_set(pool_p, POOL_W - 1, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
     }
-    /* POOL_WATER_COLS columns wide and POOL_WATER_H tall - see the comment
+    /* POOL_WATER_COLS columns wide and POOL_WATER_H tall, see the comment
      * above POOL_W for why both need to scale with the pool rather than
      * staying a single fixed-height column. */
     for (int x = 1; x <= POOL_WATER_COLS; x++) {
@@ -556,7 +556,7 @@ test_block_indices_stay_in_range_at_the_real_screens_partial_edge_blocks(void) {
 
 /* A closer reproduction of the device test that actually crashed
  * (test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget,
- * DEVICE_BUILD-only so it never runs here) - a centred pile that reaches
+ * DEVICE_BUILD-only so it never runs here), a centred pile that reaches
  * the real bottom edge (y=223, the partial 32-tall last block-row) but
  * not either x edge, fully settled under pure-vertical gravity first,
  * then a single outright reversal - not the gradual eight-direction

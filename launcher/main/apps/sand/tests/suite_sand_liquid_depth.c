@@ -4,7 +4,7 @@
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
- * live in suite_sand_common.{c,h} - see that header.
+ * live in suite_sand_common.{c,h}, see that header.
  */
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
                      * but every file inherited suite_sand.c's own include
@@ -170,7 +170,7 @@ test_a_liquid_rim_still_shows_its_fill(void) {
 
     const gfx_color_t* pal = material_palette();
     /* Flat rim on the "up" side: MATERIAL_EDGE_UP plus its two leaning
-     * diagonals, exactly 3 of 8 neighbours empty (curvature 0) - a single
+     * diagonals, exactly 3 of 8 neighbours empty (curvature 0), a single
      * cardinal bit alone is curved (empty count 1) and triggers foam's
      * dither regardless of hash, confounding this test with a mechanism it
      * has nothing to do with. */
@@ -1105,7 +1105,7 @@ test_the_horizontal_debounce_survives_open_air_beside_the_pool(void) {
 }
 
 /*
- * mark_depth_band() - the pour-staleness half of the same fix. Only the
+ * mark_depth_band(), the pour-staleness half of the same fix. Only the
  * top of a reservoir, where mass actually moves, marks dirty_rows, so
  * water below a pour kept its old shallower shading. Filling a previously
  * EMPTY cell is the only event that can move where a puddle's surface
@@ -1356,7 +1356,7 @@ test_pouring_onto_a_settled_pool_in_landscape_redirties_a_bounded_column_band(vo
 }
 
 /* Water's interior uses the same plain shade-index shift oil, lava and
- * acid always have (liquid_interior()) - the old
+ * acid always have (liquid_interior()), the old
  * fog-blend/wave-table pinned near-maximum haze at any realistic pool
  * depth, and rode over local depth's dominant-axis seam as rigid columns. */
 
@@ -1795,7 +1795,7 @@ enum {
                                genuine boundary request when the walk runs
                                descending (v_reverse == true). 12 rows of
                                interior depth below the top one, comfortably
-                               inside MATERIAL_LIQUID_DEPTH_BAND - see this
+                               inside MATERIAL_LIQUID_DEPTH_BAND, see this
                                section's own comment for why that matters */
 };
 
@@ -2078,7 +2078,7 @@ static int
 band_test_run(void) {
     uint8_t* band_test_cells = malloc((size_t)BAND_TEST_W * BAND_TEST_H);
     bool* band_prev_occupied = malloc((size_t)BAND_TEST_W * BAND_TEST_H * sizeof *band_prev_occupied);
-    /* int8_t, not int - see wake_test_run()'s own comment on the same
+    /* int8_t, not int, see wake_test_run()'s own comment on the same
      * narrowing; the depth values stored here have the same -1..
      * MATERIAL_LIQUID_DEPTH_BAND (24) range. */
     int8_t* band_displayed_depth = malloc((size_t)BAND_TEST_W * BAND_TEST_H * sizeof *band_displayed_depth);
@@ -2413,7 +2413,7 @@ flash_test_count_crossed(void) {
     return crossed;
 }
 
-/* THE TURN ITSELF, with the simulation frozen - see this section's own
+/* THE TURN ITSELF, with the simulation frozen, see this section's own
  * comment for why that is the faithful reading of "with the water settled".
  * Returns the worst count of interior cells crossing a full shade step in
  * any one frame of it. */
@@ -2451,7 +2451,7 @@ test_turning_a_settled_pool_to_landscape_does_not_flash_the_whole_body(void) {
     const int guarded = flash_test_run(true, true);
 
     /* THE SAME RUN WITHOUT THE GUARD, so red-before-green is measured here
-     * rather than asserted in a commit message - see ray_walk_state_t's own
+     * rather than asserted in a commit message, see ray_walk_state_t's own
      * `ignore_chain_break` comment. If this ever stops separating, the
      * scene has drifted and the test is no longer about the bug. */
     const int unguarded = flash_test_run(false, true);
@@ -2519,7 +2519,7 @@ tremor_test_run(bool gate_reset, int* resets, int* changed) {
         /* flash_test_settle() above already succeeded (it asserts on its
          * own failure), so its three buffers are live here and must be
          * freed before this function's own assert longjmps out, or they
-         * leak for the rest of the run - see flash_test_alloc()'s own
+         * leak for the rest of the run, see flash_test_alloc()'s own
          * comment for the same hazard one level down. */
         flash_test_free();
         TEST_ASSERT_TRUE_MESSAGE(false, "tremor test's `before` snapshot must fit in what the "
@@ -2703,7 +2703,7 @@ shadow_test_bearing(const unsigned depth[], int sx, int sy, int gx, int gy, doub
 
 /* Comfortably above this section's own worst measured value (1.2 degrees
  * across the six tilts above), comfortably below the two-walk design's own
- * best case (16.7 degrees, its smallest tilt) - see this section's own top
+ * best case (16.7 degrees, its smallest tilt), see this section's own top
  * comment for the full measured table both designs produce. */
 #define SHADOW_TEST_MAX_BEARING_OFF_BY_DEG 5.0
 
@@ -2812,7 +2812,7 @@ test_a_submerged_obstacle_casts_a_gravity_aligned_shadow(void) {
  * A cell at a fixed true perpendicular depth D must read D whatever
  * gravity's tilt. This walk follows the gravity ray, so its raw count is
  * smaller for the same true depth and must be GROWN by len/component
- * (always >= 256) - the opposite of an axis-aligned walk's shrink by
+ * (always >= 256), the opposite of an axis-aligned walk's shrink by
  * component/len. Reusing that formula here reads a true depth of 10 as 19
  * at the 45-degree tie point. No sand grid: this is a property of the
  * walk's own projection, checked against an idealised planar input.

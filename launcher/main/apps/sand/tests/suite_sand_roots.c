@@ -9,7 +9,7 @@
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
- * live in suite_sand_common.{c,h} - see that header.
+ * live in suite_sand_common.{c,h}, see that header.
  */
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
                      * but every file inherited suite_sand.c's own include
@@ -193,7 +193,7 @@ test_a_root_column_does_not_spend_the_trees_lift(void) {
 #define BURIED_ROOT_TEST_H   16
 /* A DEEP wet reserve (6 rows), not a single row: since PART 2 of the
  * roots feature, a root on its only reachable water is itself a second
- * consumer of that cell (step_one_rooting_cell()) - a single-row reserve
+ * consumer of that cell (step_one_rooting_cell()), a single-row reserve
  * races the root's own slow eating against the tree's growth roll,
  * deterministically losing for this suite's fixed seed, a different
  * failure from the transparency bug under test. Six rows is far more than
@@ -910,7 +910,7 @@ test_roots_grow_toward_the_wet_side_only(void) {
     /* Both dirt candidates are KIND_POWDER - a floor under the whole
      * candidate row, or neither survives long enough to be eaten OR to
      * stay put and prove it was not. Two cells wider than the candidates
-     * themselves - see test_a_root_never_eats_dry_dirt_sand_or_empty_
+     * themselves, see test_a_root_never_eats_dry_dirt_sand_or_empty_
      * space's own comment on why a floor flush with its edge cells is
      * not actually a floor; a powder resting right at the edge still has
      * an open diagonal to slide off into. */
@@ -1763,7 +1763,7 @@ test_every_material_has_a_palette_block(void) {
         TEST_ASSERT_NOT_EQUAL_MESSAGE(0, pal[MATX(k)], why);
     }
 
-    /* And GUNPOWDER's half of the same nibble - see GUNPOWDER_BASE
+    /* And GUNPOWDER's half of the same nibble, see GUNPOWDER_BASE
      * (material.h). Phase 1 leaves these on the shared magenta placeholder
      * (material.c's palette tail already reaches 0xFF), which is enough to
      * satisfy "not black"; Phase 2 gives them real colours. */
@@ -1926,7 +1926,7 @@ test_extended_materials_get_their_own_reactions(void) {
 /* Every ordinary material's row was written ONCE (material.c's TWIN_ROW
  * macro) and has to land in BOTH halves of its row pair - variant 0 hashes
  * to MATERIAL_ROW(id), variant 15 to MATERIAL_ROW(id) + 1 (cell >> 3 turns
- * on the top bit of the low nibble - see MATERIAL_ROWS, material.h) - and
+ * on the top bit of the low nibble, see MATERIAL_ROWS, material.h) - and
  * material_of() must return the identical row either way, or a grain of
  * the same material could quietly behave differently depending on which
  * half of its shade band it happened to be painted into. */
@@ -2033,7 +2033,7 @@ test_painted_gunpowder_starts_dry_in_one_of_three_tones(void) {
         const uint8_t code = (uint8_t)(c & 0x07);
         char why[64];
         snprintf(why, sizeof why, "gunpowder code %d", code);
-        /* code >= tones would be a MOISTURE level - see material.h's
+        /* code >= tones would be a MOISTURE level, see material.h's
          * moisture codec comment - and a freshly poured grain arriving
          * already wet is exactly the bug random_cell()'s own dirt branch
          * exists to avoid, now on gunpowder's picker instead. */

@@ -4,7 +4,7 @@
  *
  * Split out of suite_sand.c, which had grown
  * past 32,000 lines across 500+ tests. Shared fixtures and assertion helpers
- * live in suite_sand_common.{c,h} - see that header.
+ * live in suite_sand_common.{c,h}, see that header.
  */
 #include <math.h> /* not every file in the split still needs atan2()/M_PI,
                      * but every file inherited suite_sand.c's own include
@@ -56,7 +56,7 @@ count_cells_gunpowder(void) {
 /* encoding and appearance */
 
 /* A dry tone travels with the grain exactly the way a sand shade or a
- * dirt tone already does - see test_a_grain_keeps_its_shade_as_it_falls
+ * dirt tone already does, see test_a_grain_keeps_its_shade_as_it_falls
  * and test_a_dry_dirt_grain_keeps_its_tone_as_it_falls, whose pattern
  * this repeats for gunpowder's own three-tone codec. */
 static void
@@ -409,7 +409,7 @@ static void
 test_a_lit_gunpowder_trail_burns_along_itself(void) {
     fixture();
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL); /* sand_init()'s default
-                                 * is immortal (decay 0) - the trail must
+                                 * is immortal (decay 0), the trail must
                                  * actually burn down behind the fuse
                                  * front, not just light up and stay lit */
     for (int x = 0; x < W; x++) {
@@ -768,7 +768,7 @@ test_a_one_wide_lit_trail_never_detonates(void) {
 
 /* Gunpowder carries its own oxidiser, unlike wood or a candle - a fuse
  * buried on every cardinal side by something denser (which WOULD
- * smother an ordinary flame - see smothered(), sand_reactions.c) must
+ * smother an ordinary flame, see smothered(), sand_reactions.c) must
  * keep burning regardless, or nothing inside a real pile could ever
  * reach burn-out at all. Decay forced to 0 (immortal) so this is purely
  * about the smothered() skip, not a race against burn-out timing. */
@@ -836,7 +836,7 @@ test_water_quenches_lit_gunpowder_to_soaked(void) {
 }
 
 /* Without an impulse buffer, sand_explode() is a documented no-op (see
- * its own first line, sand.h) - the same fallback
+ * its own first line, sand.h), the same fallback
  * test_an_open_gas_pocket_still_just_catches_fire pins for a confined
  * gas pocket. Reuses the exact 2x2 shape that DOES detonate with
  * impulses enabled (test_a_lit_two_by_two_of_gunpowder_detonates), so
@@ -1024,7 +1024,7 @@ ignite_trial_row(sand_t* g, uint8_t* cells, int w, int trials, cell_t gp_byte) {
     sand_init(g, cells, w, 2, 7u);
     sand_set_mobility(g, 0);   /* keep fire from rising away before
                                 * reactions gets a turn at it this same
-                                * step - see test_an_open_gas_pocket_
+                                * step, see test_an_open_gas_pocket_
                                 * still_just_catches_fire's own use of
                                 * this for the same reason */
     sand_set_conduction(g, 0); /* the one-cell stone separator conducts
@@ -1470,7 +1470,7 @@ test_a_lit_fuse_is_not_re_placed_by_heat(void) {
     dirty_fixture();
     sand_set_decay(&s, 0);        /* immortal - stays lit for the whole
                                       * budget, itself a heat source too */
-    sand_set_flammability(&s, 0); /* isolate the heat path - see this
+    sand_set_flammability(&s, 0); /* isolate the heat path, see this
                                       * test's own top comment on wood */
     /* sand_set_mobility(0) only holds GAS still (see test_fire_beside_
      * dry_gunpowder_lights_it's own comment) - it says nothing about a
