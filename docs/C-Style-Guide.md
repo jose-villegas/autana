@@ -69,21 +69,21 @@ scripts/gates/check-format.sh path/to/file.c path/to/file.h
 
 ### One formatter version
 
-clang-format 19, exactly - not "19 or newer". `.clang-format` does not define
+clang-format 19, exactly; not "19 or newer". `.clang-format` does not define
 a formatting on its own; a version of clang-format reading it does, and they
 disagree about this config on real files here. Against the reformatted tree,
 19 changes nothing; 20 and 21 reformat files here. So `check-format.sh`
 refuses any other major
 version, CI installs `clang-format==19.1.7`, and 19 is also what ESP-IDF's
-esp-clang bundles - sourcing the IDF export script is usually all it takes.
+esp-clang bundles; sourcing the IDF export script is usually all it takes.
 `CLANG_FORMAT_ANY_VERSION=1` forces a one-off run on another version, at the
 cost of reformatting files you did not touch.
 
 ### Where the rules are checked
 
 Three places, one file list. `scripts/gates/format-file-list.sh` defines which
-files the rules apply to - vendored trees by path, generated files by the
-`GENERATED FILE` marker they carry - so the hook and CI cannot disagree about
+files the rules apply to: vendored trees by path, generated files by the
+`GENERATED FILE` marker they carry; so the hook and CI cannot disagree about
 what is in scope.
 
 ```sh
@@ -97,7 +97,7 @@ commit, so a partially staged file is judged by what is actually being
 committed. It is feedback and not a gate: `--no-verify` skips it, `.git/hooks`
 is not cloned, and it never sees a merge or a commit made by CI. The workflow
 is the gate, and it checks every file in the list on every pull request and
-every push to `main` - so a drift that reaches `main` is a failed build, not
+every push to `main`; a drift that reaches `main` is a failed build, not
 a surprise six months later.
 
 ## Judgment rules
@@ -109,7 +109,7 @@ name are decidable, and everything about whether a comment should exist is
 not.
 
 `scripts/gates/check_style_audit.py`'s HEADING-COMMENT rule warns on a
-one-line `/* */` inside a function body that is only a short label - up
+one-line `/* */` inside a function body that is only a short label: up
 to five plain words, no punctuation. It is a worklist for a reader, not a
 verdict on whether the comment should exist.
 
@@ -123,7 +123,7 @@ shorter prose.
 - **Never the HOW.** The code is the how. Needing to comment parts of a
   function separately means the function is the problem.
 - **The WHAT is usually already in the names.** Drop it.
-- **The WHY only where it is genuinely needed** - a constraint, an external
+- **The WHY only where it is genuinely needed:** a constraint, an external
   fact, a measured number that is the evidence, a decision someone would
   otherwise undo. Most of the time it is not needed.
 - **Never the journey.** git log owns "a first attempt...", "an earlier
@@ -135,13 +135,13 @@ shorter prose.
   comment; the destination is one grep away either way.
   `find_narrative_comments.py --tombstones` fails on these, and CI runs it.
 
-Keep a comment accurate or delete it - an outdated one is worse than none -
-so update it in the same edit that changes the code it describes.
+Keep a comment accurate or delete it; an outdated one is worse than none.
+Update it in the same edit that changes the code it describes.
 
 Shape follows OpenBSD `style(9)`: a one-line `/* ... */`, a `VERY important`
 one-liner in a three-line block, or real sentences filled like a paragraph.
 No headings inside a comment: one needing sections is a document, so put it
-in `docs/`. Nothing draws a `/*====` rule - `style(9)` has three comment
+in `docs/`. Nothing draws a `/*====` rule; `style(9)` has three comment
 shapes and none of them has one, and position is what marks a header.
 
 **300 characters is the aim, 500 the hard ceiling.** A run of consecutive
@@ -150,14 +150,14 @@ between them, counts as one comment for scoring, so chopping one explanation
 into adjacent blocks does not dodge the limit; length is the prose with
 markers and `*` gutters stripped, so re-wrapping never changes the score.
 
-**A file's header - its first comment - answers to height instead: 30 lines
+**A file's header (its first comment) answers to height instead: 30 lines
 the aim, 50 the hard limit**, and 50 is already too long rather than a
 comfortable allowance. It says what the module IS and what was deliberately
 rejected; prose belonging beside the code it describes lives there, where the
 character rule applies to it.
 
 Two further rules a length alone cannot express. **A comment may not cite
-something that does not exist** - a trim that garbles a cited name, or a
+something that does not exist:** a trim that garbles a cited name, or a
 rename the comment never heard about, leaves it pointing at nothing. Cite a
 function or constant by its full name; a family by its prefix and a star
 (`BLOCK_SETTLED_*`), never by a shortened name the tree does not define; a
@@ -168,15 +168,15 @@ comment in a lower layer naming one is a dangling reference by construction,
 and it survives the code it described. Say what shape of caller needs the
 thing ("a checkbox toggle", "a per-tile badge") or state the rule a caller
 must follow. An app's own files may name anything below them; that direction
-cannot dangle. This is the comment half of the layering rule includes obey -
-see [`docs/Firmware-Architecture.md`](Firmware-Architecture.md). The engine's
+cannot dangle. This is the comment half of the layering rule; see
+[`docs/Firmware-Architecture.md`](Firmware-Architecture.md). The engine's
 documents sit at the same layer and answer to the same rule: every Markdown
 file under `docs/` but an app's own folder and `docs/plans/`, whose designs
 name the apps they plan for.
 
 A NAME is all that is scripted. Borrowing an app's vocabulary is the same
-fault one step quieter - "an app's working grid" names no app but still
-assumes apps have grids, and `gfx` has no concept of a grain - and that one
+fault one step quieter: "an app's working grid" names no app but still
+assumes apps have grids, and `gfx` has no concept of a grain; that one
 is read rather than checked, because the dirty tracker really does have a
 grid of cells and a font really does have a glyph cell. State the constraint
 itself instead: how large the block is, or how often the call happens.
@@ -196,7 +196,7 @@ their vocabulary from the tree itself, so neither needs updating when code
 moves. A function the firmware
 calls but does not define resolves when ESP-IDF or its toolchain's C library
 declares it, read from the checkout at `IDF_PATH`. ESP-IDF counts for every
-chip it supports, so a name declared only for another chip passes too - the
+chip it supports, so a name declared only for another chip passes too; that is
 check's known limit. It runs inside the ESP-IDF image, and a run without
 ESP-IDF counts such names rather than failing on them.
 
@@ -265,7 +265,7 @@ implementation-only dependencies in the `.c` file.
 
 A `.c` file includes its own public header first when it has one. Follow it
 with standard-library headers, then ESP-IDF or other external headers, then
-project headers. Keep project includes layer-qualified - `"gfx/gfx.h"`, not
+project headers. Keep project includes layer-qualified: `"gfx/gfx.h"`, not
 `"gfx.h"`, including between two files in the same folder; see
 [`docs/Firmware-Architecture.md`](Firmware-Architecture.md) for why. Do not
 expose a lower layer to a higher-layer type just to avoid passing a small

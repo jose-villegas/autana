@@ -49,8 +49,8 @@ globs the markers and names no app (see
 [Building-an-App.md](Building-an-App.md#an-app-is-a-folder)).
 
 `tools/build/check_release_symbols.sh build/launcher.elf` rejects a release image that
-defines any of the suite, console or self-test symbols it names - including a
-`run_<name>_suite` entry point - or the `app_<name>` of any app carrying a
+defines any of the suite, console or self-test symbols it names (including a
+`run_<name>_suite` entry point) or the `app_<name>` of any app carrying a
 `development_only.cmake`. CI runs it after the release build.
 
 ```sh
@@ -176,8 +176,8 @@ severity, project-wide, with no per-call-site `#if` needed — this project
 just doesn't split that ceiling per build variant yet. See
 [Log-Level-Plan.md](plans/Log-Level-Plan.md).
 
-A FRAME_COST bracket ([`util/frame_cost.h`](tools/Frame-Cost.md)) names a stage of the frame -
-something the shell or a screen does once per frame - and stays in the
+A FRAME_COST bracket ([`util/frame_cost.h`](tools/Frame-Cost.md)) names a stage of the frame:
+something the shell or a screen does once per frame, and stays in the
 source, compiled out of release the same as everything else in this section.
 A bracket put inside a stage to answer one question is scaffolding instead:
 it leaves with the measurement it was for, the same as any switch that turns
