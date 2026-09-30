@@ -141,6 +141,11 @@ nearest corner, it could write nothing, and it is dropped before its colour
 planes and its rows. The test pays because clusters are drawn roughly
 nearest first, so a triangle behind is usually drawn after what hides it.
 
+A pixel centre just outside a triangle extrapolates its planes past the
+vertex range, so each span clamps its ends. A kept triangle whose planes
+stay inside their ranges at every centre of its bounding box, most of them,
+fills its spans without those clamps, which would change nothing there.
+
 ## Memory
 
 The layer allocates nothing, and nothing a frame needs lives at file
