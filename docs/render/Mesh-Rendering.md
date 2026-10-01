@@ -161,7 +161,7 @@ they read.
 
 One Sponza import bakes three meshes, each a render target a scene can pick
 ([Mesh-Import.md](Mesh-Import.md)): the budgets and the face sampling are the
-`[[variants]]` of `launcher/main/apps/render_lab/meshes/sponza.import.toml`.
+`[[variants]]` of the Sponza import file.
 Every row plays the same three seconds of the flythrough, so the rows compare.
 The two views are the [view modes](#view-modes) over the full mesh.
 
