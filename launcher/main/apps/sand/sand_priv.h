@@ -630,6 +630,7 @@ void sand_chunk_pass_set_driver_for_test(sand_chunk_pass_driver_t driver);
 #define BLOCK_SETTLED_NEAREST 0x1
 #define BLOCK_SETTLED_OTHER   0x2
 #define BLOCK_ACTIVE          0x4
+#define BLOCK_WOKEN           0x40
 
 /* THE INVARIANT the skip rests on: every liquid cell sits in a block
  * whose NEAR bit is set. Either the sweep saw it, or it arrived from
@@ -826,11 +827,11 @@ wake_blocks_range(sand_t* s, int bx0, int by0, int bx1, int by1) {
 
     for (int by = lo_y; by <= hi_y; by++) {
         for (int bx = lo_x; bx <= hi_x; bx++) {
-            s->block_state[by * s->block_cols + bx] &= (uint8_t)~(BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER);
+            uint8_t* const state = &s->block_state[by * s->block_cols + bx];
+            *state &= (uint8_t)~(BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER);
+            *state |= BLOCK_WOKEN;
         }
     }
-    s->block_state[by0 * s->block_cols + bx0] |= BLOCK_ACTIVE;
-    s->block_state[by1 * s->block_cols + bx1] |= BLOCK_ACTIVE;
 }
 
 static inline bool
@@ -894,10 +895,11 @@ wake_block_and_neighbors(sand_t* s, int x, int y) {
 
     for (int ny = lo_y; ny <= hi_y; ny++) {
         for (int nx = lo_x; nx <= hi_x; nx++) {
-            s->block_state[ny * s->block_cols + nx] &= (uint8_t)~(BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER);
+            uint8_t* const state = &s->block_state[ny * s->block_cols + nx];
+            *state &= (uint8_t)~(BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER);
+            *state |= BLOCK_WOKEN;
         }
     }
-    s->block_state[by * s->block_cols + bx] |= BLOCK_ACTIVE;
 }
 
 /* Called wherever step_one_soaking_cell() (sand_reactions.c) grants a cell

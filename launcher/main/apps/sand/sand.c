@@ -235,7 +235,7 @@ sand_init(sand_t* s, uint8_t* cells, int w, int h, uint32_t seed) {
 
 /* wake_blocks_range()/wake_block_and_neighbors() and mark_rows()/mark_move()
  * are shared with sand_liquid.c and live in sand_priv.h.
- * BLOCK_SETTLED_NEAREST/OTHER/ACTIVE (block_state) also live there. */
+ * BLOCK_SETTLED_NEAREST/OTHER/ACTIVE/WOKEN (block_state) also live there. */
 
 void
 sand_enable_sleeping(sand_t* s, uint8_t* blocks) {
@@ -347,7 +347,7 @@ merge_lane_blocks(sand_t* s, const uint8_t* lane_blocks) {
     for (int i = 0; i < s->block_cols * s->block_rows; i++) {
         const uint8_t local = lane_blocks[i];
         s->block_state[i] &= (uint8_t)(local | ~(BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER));
-        s->block_state[i] |= local & (BLOCK_ACTIVE | BLOCK_HAS_LIQUID | BLOCK_HAS_MOISTURE);
+        s->block_state[i] |= local & (BLOCK_ACTIVE | BLOCK_WOKEN | BLOCK_HAS_LIQUID | BLOCK_HAS_MOISTURE);
     }
 }
 
@@ -1112,7 +1112,7 @@ try_slide(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, 
 
 /* Sleeping off when block_state missing. Wakes blocks if grid shaken or
  * settle direction changes. Returns dithered direction. Compares NEAREST
- * direction for sleeping. Clears BLOCK_ACTIVE each step for finalisation. */
+ * direction for sleeping. Clears per-step activity and prior wakes. */
 static uint8_t
 compute_settled_bit(sand_t* s, int jostle, int dx, int dy, int load_dx, int load_dy) {
     if (s->block_state == NULL) {
@@ -1128,7 +1128,7 @@ compute_settled_bit(sand_t* s, int jostle, int dx, int dy, int load_dx, int load
         memset(s->block_state, 0, (size_t)n);
     } else {
         for (int i = 0; i < n; i++) {
-            uint8_t v = (uint8_t)(s->block_state[i] & ~BLOCK_ACTIVE);
+            uint8_t v = (uint8_t)(s->block_state[i] & ~(BLOCK_ACTIVE | BLOCK_WOKEN));
             /* BLOCK_HAS_LIQUID is the sweep's own observation, so it is
              * cleared for exactly the blocks the sweep is about to make it
              * afresh. A block it will SKIP keeps last time's answer, which is
@@ -1246,8 +1246,9 @@ step_one_row(const sweep_ctx_t* ctx) {
 }
 
 /* Finalise a step's settling: a block earns the settled bit if no
- * BLOCK_ACTIVE marks exist in the step or its neighbours. Deferred per
- * block, not row, since a block spans SAND_BLOCK_H rows.
+ * BLOCK_ACTIVE mark exists in itself or its neighbours. An external wake
+ * defers only its block's settling. Deferred per block, not row, since a
+ * block spans SAND_BLOCK_H rows.
  *
  * ORDER-INDEPENDENT over [by_from, by_to): every iteration only reads
  * BLOCK_ACTIVE, which nothing here writes, and only writes its own block's
@@ -1258,7 +1259,7 @@ finalize_settling_range(sand_t* s, uint8_t settled_bit, int by_from, int by_to) 
     for (int by = by_from; by < by_to; by++) {
         for (int bx = 0; bx < s->block_cols; bx++) {
             const int i = by * s->block_cols + bx;
-            if (s->block_state[i] & BLOCK_ACTIVE) {
+            if (s->block_state[i] & (BLOCK_ACTIVE | BLOCK_WOKEN)) {
                 continue;
             }
             if (any_neighbor_active(s, bx, by)) {
