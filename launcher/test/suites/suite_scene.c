@@ -276,16 +276,43 @@ test_a_success_clears_what_an_earlier_failure_said(void) {
     TEST_ASSERT_EQUAL_STRING("test_pair", why.what);
 }
 
+/* Takes every PSRAM block that can be had, each linked to the last through its
+ * own first bytes, and returns the chain. */
+static void*
+take_all_psram(void) {
+    void* chain = NULL;
+    size_t size = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+    while (size >= 64) {
+        void** block = heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (block == NULL) {
+            size /= 2;
+            continue;
+        }
+        *block = chain;
+        chain = block;
+    }
+    return chain;
+}
+
+static void
+give_back(void* chain) {
+    while (chain != NULL) {
+        void* next = *(void**)chain;
+        heap_caps_free(chain);
+        chain = next;
+    }
+}
+
 static void
 test_a_load_with_no_memory_left_says_so_and_takes_nothing(void) {
     fixture();
-    void* hog =
-        heap_caps_malloc(heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    TEST_ASSERT_NOT_NULL(hog);
+    void* taken = take_all_psram();
+    TEST_ASSERT_NOT_NULL(taken);
     scene_failure_t why;
-    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_pair", &why));
+    scene_t* scene = scene_load_from(&fx.pack, "test_pair", &why);
+    give_back(taken);
+    TEST_ASSERT_NULL(scene);
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
-    heap_caps_free(hog);
     TEST_ASSERT_NOT_NULL(scene_load_from(&fx.pack, "test_pair", &why));
 }
 
