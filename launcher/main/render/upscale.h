@@ -17,6 +17,7 @@ bool upscale_init(upscale_t* scale, int source_width, int source_height, int des
                   uint16_t* columns, uint16_t* rows);
 
 /* Scales destination rows [first_row, first_row + row_count). When `depth`
- * is present, a zero source depth writes `clear` instead of its colour. */
+ * is present, a zero source depth writes `clear` instead of its colour.
+ * `destination` is 4-byte aligned. */
 void upscale_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
                   uint16_t* destination, int first_row, int row_count);
