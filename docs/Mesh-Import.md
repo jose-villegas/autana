@@ -6,27 +6,32 @@ stages and the format a renderer consumes. Drawing that mesh is
 
 ```mermaid
 flowchart LR
-    Import[Import file] --> Fetch["Fetch and check<br/>the source"]
+    Import["Import file<br/><i>the entry point</i>"] --> Fetch["Fetch and check<br/>the source"]
     Fetch --> Mask["Mask alpha cards<br/><i>opt in</i>"]
-    Mask --> Vis["Region visibility<br/><i>opt in</i>"]
-    Scene[Scene file] --> Vis
-    Vis --> Light["Light per vertex<br/><i>opt in</i>"]
-    Scene --> Light
-    Light --> Simp["Simplify<br/><i>opt in</i>"]
-    Simp --> Face["Light per face<br/><i>flat variants</i>"]
+    Mask --> Vis["Region visibility<br/><i>opt in, needs a scene</i>"]
+    Vis --> Thin["Thin one material<br/><i>opt in</i>"]
+    Thin --> Colour{"process.light?"}
+    Scene["Scene file<br/><i>adds the lights,<br/>camera region, tone map</i>"] -.-> Vis
+    Scene -.-> Lit
+    Colour -- yes --> Lit["Light per vertex<br/><i>needs a scene</i>"]
+    Colour -- no --> Albedo["Albedo, no light"]
+    Lit --> Simp["Simplify<br/><i>opt in</i>"]
+    Albedo --> Simp
+    Simp --> Face["Light per face<br/><i>variants with face_samples</i>"]
     Face --> Write["Write: quantise,<br/>meshlets, octree"]
     Write --> C["Baked C<br/><i>r3d_lit_mesh_t</i>"]
 ```
 
 ## The baked mesh
 
-Light is baked either into one sRGB colour per vertex, or, for a flat
-import, one RGB565 colour per triangle (`light.face_colours()`): the light
-and albedo averaged over a few fixed points of the face, every face sharing
-one set of sun and sky directions so neighbours on one surface agree unless
-something really shades one of them. Vertices weld by position alone since
-colour no longer splits them. A flat mesh draws with no colour gradients, and an
-import turns the option on with `flat = true`. The triangles are grouped into
+A vertex carries one sRGB colour: the baked light times the albedo, or, with no
+light step, the albedo alone. A variant with `face_samples` is flat instead,
+with one RGB565 colour per triangle (`light.face_colours()`): the light and
+albedo averaged over a few fixed points of the face, every face sharing one set
+of sun and sky directions so neighbours on one surface agree unless something
+really shades one of them. Vertices weld by position alone since colour no
+longer splits them, and a flat mesh draws with no colour gradients. The
+triangles are grouped into
 **clusters**. Each cluster
 owns a contiguous range of vertices and triangles, and its triangles index
 only its own vertices. The clusters are the leaves of a tree rooted at
@@ -42,66 +47,66 @@ using the offline tools in
 drive it, in the manner of Unity's `.meta` beside an asset: an **import file**
 describes one mesh asset, and a **scene file** describes a scenario that
 places meshes. Anything specific to one mesh is in its import file; anything
-about the scenario (lights, camera region, exposure) is in the scene file.
+about the scenario (lights, camera region, tone map) is in the scene file.
 [`launcher/tools/r3d/import_settings.py`](../launcher/tools/r3d/import_settings.py)
 reads and checks both with the standard library alone, and every table is
 closed: an unknown key is an error.
 
-Run `python launcher/tools/r3d/mesh_import.py SCENE.scene.toml` from the
-repository root to bake every mesh the scene places, or add `--mesh NAME` for
-one. The generated banner records that exact command. `rebake.py` rewrites a
-generated C mesh's clusters only.
+Run `python launcher/tools/r3d/mesh_import.py PATH` from the repository root,
+with `--mesh NAME` for one mesh. `PATH` is either kind of file. An import file
+with no scene-dependent step bakes alone, and its banner names it; one with
+such a step refuses with "needs a scene". A scene file bakes every mesh it
+places, with its own lights, camera region and tone map, and its banner names
+the scene. `rebake.py` rewrites a generated C mesh's clusters only.
 
 ### Import file
 
 **Rule: an import brings the mesh in as authored, and each `[process.*]` table
-present turns one processing step on.**
+present turns one processing step on.** The steps `process.light` and
+`process.visibility` are scene-dependent: they read the scene's lights or
+camera region. A mesh without a scene-dependent step depends on no scene.
 
 With only `[source]` and `[output]` the importer keeps the source's triangles,
 cuts nothing, simplifies nothing and lights nothing. Its vertex colour is the
-material's albedo (the `Kd` colour times the texture) encoded to sRGB with no
-light and no tone map; the source's own vertex colours are not read.
+material's albedo (the `Kd` colour times the texture), encoded to 8 bits with a
+1/2.2 gamma, not the piecewise sRGB curve, and with no tone map; the source's
+own vertex colours are not read.
 
 | Table | Fields | Meaning |
 |---|---|---|
 | `source` | `url`, `sha256`, `path`, `cache`, `credit` | Download, verify and locate the OBJ in its archive (a zipped OBJ at a URL is the only source kind); `credit` is the attribution line written into every banner. |
 | `output` | `directory`, `name`, `position_scale` | Where the generated files go; `name` is the mesh's symbol prefix (only without `[[variants]]`); `position_scale` overrides the format's default ticks per unit. |
 | `materials` | `double_sided` | The materials whose faces are two-sided. |
-| `process` | `seed` | The seed of the random rays the steps below draw. |
+| `process` | `seed` | The seed of the random rays the steps draw; allowed only with `visibility`, `thin` or `light`. |
 | `process.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. |
-| `process.visibility` | `rounds`, `thin = { material, keep }` | Drops triangles no point of the scene's camera region sees; `thin` keeps only a share of one material's triangles. |
-| `process.light` | `ray_offset`, `colour_merge_step`, `flat_sky_rays` | Bakes the scene's lights into per-vertex colour. `flat_sky_rays` is the one set of sky directions the faces of a variant with `face_samples` share, and is allowed only then. |
+| `process.visibility` | `rounds` | Drops triangles no point of the scene's world-space camera region sees. Scene-dependent. |
+| `process.thin` | `material`, `keep` | Keeps only a share of one material's triangles. |
+| `process.light` | `ray_offset`, `colour_merge_step`, `flat_sky_rays` | Bakes the scene's lights into per-vertex colour. `flat_sky_rays` is the one set of sky directions the faces of a variant with `face_samples` share, and is allowed only then. Scene-dependent. |
 | `process.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges, then simplifies to each variant's `triangles`, reserving `props_share` of the budget for the small `props` materials; `seal_seams` joins touching pieces first. |
-| `[[variants]]` | `name`, `triangles`, `face_samples` | Several meshes from one import, each named. `triangles` is its budget and is required with `process.simplify`. `face_samples`, `{ fixed = N }` or `{ auto = { min, max, area } }` with `area = "median"` for the mesh median, makes the variant flat: one colour per triangle, averaged over that many points, and needs `process.light`. |
+| `[[variants]]` | `name`, `triangles`, `face_samples` | Several meshes from one import, each named. `triangles` is its budget and is required with `process.simplify`. `face_samples`, `{ fixed = N }` or `{ auto = { min, max, area } }` with `area = "median"` for the mesh median, makes the variant flat: one colour per triangle, averaged over that many points, and needs `process.light`. Two variants may not produce the same mesh. |
 
-The steps run in the order of the table, whatever order the file lists them.
+The steps run in the order of the diagram, whatever order the file lists them.
 An import without variants names its one mesh in `output.name` and cannot
 simplify.
 
 ### Scene file
 
-A scene file is a scenario: the meshes it places, the lights that shine on
-them and the view.
+A scene file is a scenario: the meshes it places, and the lights, camera
+region and tone map their scene-dependent steps read.
 
 ```toml
-exposure = 0.35                  # the tone map's white term
+tonemap_white = 0.35             # larger is darker
 
-[camera_region]                  # the box the visibility step samples
+[camera_region]                  # the world-space box the visibility step samples
 min = [-1400.0, 20.0, -620.0]
 max = [1270.0, 1250.0, 550.0]
 
-[spawn]                          # where a viewer starts; optional
-position = [0.0, 170.0, 0.0]
-rotation = [0.0, 90.0, 0.0]
-
-[[mesh_renderers]]               # position, rotation (degrees) and scale are optional
+[[mesh_renderers]]
 mesh = "hall.import.toml"
 variant = "hall"                 # only for an import with variants
 
 [[mesh_renderers]]
 mesh = "statue.import.toml"
-position = [0.0, 0.0, 300.0]
-scale = [2.0, 2.0, 2.0]
 
 [[lights]]
 type = "directional"
@@ -113,14 +118,15 @@ rays = 8
 ```
 
 Each mesh renderer names an import file beside the scene file, which must
-exist, and a transform that defaults to identity. A mesh that lights is baked
-in its own space, so its renderer must have the identity transform. The scene
-must then have `lights` and `exposure`, and `camera_region` for the
-visibility step. Baking reads the lights of the scene that requests it, and
-that scene owns the result: a lit mesh belongs to one scene, so a second scene
-that places it bakes its own variant under another name. A mesh without
-`process.light` does not depend on any scene's lights and may be placed by
-many.
+exist, and the renderers decide which meshes the scene bakes. A scene must
+carry `lights` and `tonemap_white` when a placed mesh has `process.light`, and
+`camera_region` when one has `process.visibility`; it may not carry them
+otherwise. Baking reads the lights of the scene that requests it, so a mesh
+with a scene-dependent step belongs to one scene, and two scenes may not bake
+the same output name; a second scene that places it bakes its own variant under
+another name. A mesh without a scene-dependent step may be placed by many.
+`position`, `rotation` and `scale` on a renderer, and a `spawn` table, are
+reserved for the scene loader and rejected until then.
 
 `light.py`'s `LIGHTS` table pairs each type's fields with the function that
 adds its radiance, so a light's order in the file does not change the result.

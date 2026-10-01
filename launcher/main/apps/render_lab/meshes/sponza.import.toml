@@ -21,7 +21,10 @@ keep_alpha = 0.5
 
 [process.visibility]
 rounds = 160
-thin = { material = "leaf", keep = 0.35 }
+
+[process.thin]
+material = "leaf"
+keep = 0.35
 
 [process.light]
 ray_offset = 0.5

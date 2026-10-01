@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Bake the meshes a scene file places.
+"""Bake meshes from an import file, or from the scene file that places them.
 
-    python launcher/tools/r3d/mesh_import.py SCENE.scene.toml [--mesh NAME]
+    python launcher/tools/r3d/mesh_import.py PATH [--mesh NAME]
 
-Run from the repository root after installing tools/r3d/requirements.txt and
-initializing third_party/upstream/meshoptimizer. Each mesh renderer names an
-import file, which brings the mesh in as authored unless it opts into
-processing steps; the steps that light read this scene's lights, camera region
-and exposure. Every renderer's mesh is baked unless one is named.
+PATH is an .import.toml, which bakes alone unless one of its steps needs a
+scene (light, visibility), or a .scene.toml, which bakes every mesh it places
+with its own lights, camera region and tone map. Run from the repository root
+after installing tools/r3d/requirements.txt and initializing
+third_party/upstream/meshoptimizer. Every mesh is baked unless one is named.
 """
 
 import argparse
@@ -25,9 +25,10 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import log  # noqa: E402
 from r3d.fetch import fetch_zip  # noqa: E402
 from r3d.geometry import compact, corner_normals, weld_keeping  # noqa: E402
-from r3d.import_settings import SettingsError, load_scene  # noqa: E402
+from r3d.import_settings import SettingsError, load_import_settings, load_scene  # noqa: E402
 from r3d.light import (  # noqa: E402
     drop_masked,
+    encode_srgb8,
     face_colours,
     light,
     merge_matching_colours,
@@ -42,9 +43,9 @@ from r3d.simplify import densify, simplify  # noqa: E402
 REPO = pathlib.Path(__file__).resolve().parents[3]
 
 
-def banner_lines(scene, settings, variant):
+def banner_lines(origin, settings, variant):
     return ["GENERATED FILE - do not edit.", "",
-            f"    python launcher/tools/r3d/mesh_import.py {scene.path.relative_to(REPO).as_posix()} --mesh {variant.name}", "",
+            f"    python launcher/tools/r3d/mesh_import.py {origin.relative_to(REPO).as_posix()} --mesh {variant.name}", "",
             *textwrap.wrap(settings.source["credit"], 72)]
 
 
@@ -82,17 +83,18 @@ def shade_lit(src, settings, scene, material, mp, mt, double, intersector, rng):
     vpos, vn, vtris = corner_pos[first], corner_n[first], inverse.reshape(-1, 3)
     albedo = albedo_at(src, vpos, vertex_spacing(vpos, vtris), material)
     radiance = light(vpos, vn, np.full(len(vpos), double), intersector, scene.lights, settings.light.ray_offset, rng)
-    vrgb = to_srgb8(albedo * radiance, scene.exposure)
+    vrgb = to_srgb8(albedo * radiance, scene.tonemap_white)
     return merge_matching_colours(vpos, vrgb, vtris, settings.light.colour_merge_step)
 
 
 def shade_unlit(src, material, mp, mt):
     """The material's albedo, with no light: the colour the source authored."""
-    return mp, to_srgb8(albedo_at(src, mp, vertex_spacing(mp, mt), material), 0.0), mt
+    return mp, encode_srgb8(albedo_at(src, mp, vertex_spacing(mp, mt), material)), mt
 
 
-def bake(scene, renderer):
-    settings, variant = renderer.settings, renderer.variant
+def bake(settings, variant, scene, origin):
+    """Bakes one mesh. `scene` is None for an import that needs none; `origin`
+    is the file the command was run on."""
     rng = np.random.default_rng(settings.seed)
     src = load_source(settings)
     scale = {} if settings.position_scale is None else {"position_scale": settings.position_scale}
@@ -104,16 +106,14 @@ def bake(scene, renderer):
     if settings.visibility or settings.light:
         intersector = RayMeshIntersector(trimesh.Trimesh(src.p, tri_v, process=False))
     double_names = settings.double_sided
+    seen = np.ones(len(tri_v), dtype=bool)
     if settings.visibility:
-        visibility = settings.visibility
         double = np.array([src.names[material] in double_names for material in tri_m])
-        seen = visible_from_region(src.p, tri_v, double, intersector, visibility.rounds, rng, *scene.region)
-        if visibility.thin_material is not None:
-            thin = np.isin(tri_m, [index for index, name in enumerate(src.names) if name == visibility.thin_material])
-            seen &= ~thin | (rng.random(len(tri_v)) < visibility.thin_keep)
-        shown_v, shown_m = tri_v[seen], tri_m[seen]
-    else:
-        shown_v, shown_m = tri_v, tri_m
+        seen = visible_from_region(src.p, tri_v, double, intersector, settings.visibility.rounds, rng, *scene.region)
+    if settings.thin:
+        thin = np.isin(tri_m, [index for index, name in enumerate(src.names) if name == settings.thin.material])
+        seen &= ~thin | (rng.random(len(tri_v)) < settings.thin.keep)
+    shown_v, shown_m = tri_v[seen], tri_m[seen]
     if settings.simplify:
         log("splitting evenly")
         wp, wt = weld_keeping(src.p, shown_v)
@@ -152,28 +152,38 @@ def bake(scene, renderer):
         double_materials = {index for index, name in enumerate(src.names) if name in double_names}
         face_rgb = face_colours(positions, tris, tri_mat, range(len(src.names)), double_materials,
                                 lambda centres, spacing, material: albedo_at(src, centres, spacing, material), intersector,
-                                scene.lights, settings.light.ray_offset, scene.exposure, samples, settings.light.flat_sky_rays,
+                                scene.lights, settings.light.ray_offset, scene.tonemap_white, samples, settings.light.flat_sky_rays,
                                 sample_max, sample_area, sample_min)
     mesh = write_lit_mesh(settings.out_dir, variant.name, positions, None if variant.face_samples else rgb, tris, tri_double,
-                          banner_lines(scene, settings, variant), face_rgb=face_rgb, **scale)
+                          banner_lines(origin, settings, variant), face_rgb=face_rgb, **scale)
     log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, {len(mesh.nodes)} nodes")
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("scene", help="one .scene.toml file")
+    parser.add_argument("path", help="an .import.toml or a .scene.toml file")
     parser.add_argument("--mesh", help="bake only the mesh with this name")
     args = parser.parse_args(argv)
+    path = pathlib.Path(args.path).resolve()
     try:
-        scene = load_scene(args.scene)
-        renderers = [renderer for renderer in scene.renderers if args.mesh in (None, renderer.variant.name)]
-        if not renderers:
+        if path.name.endswith(".scene.toml"):
+            scene = load_scene(path)
+            jobs = [(item.settings, item.variant, scene) for item in scene.renderers]
+        elif path.name.endswith(".import.toml"):
+            settings = load_import_settings(path)
+            if settings.scene_dependent:
+                raise SettingsError(f"{path.name} needs a scene: run the .scene.toml that places it")
+            jobs = [(settings, variant, None) for variant in settings.variants]
+        else:
+            raise SettingsError("PATH must end in .import.toml or .scene.toml")
+        jobs = [job for job in jobs if args.mesh in (None, job[1].name)]
+        if not jobs:
             raise SettingsError(f"no mesh named {args.mesh!r}")
     except SettingsError as error:
         parser.error(str(error))
-    for renderer in renderers:
-        log(f"mesh {renderer.variant.name}")
-        bake(scene, renderer)
+    for settings, variant, scene in jobs:
+        log(f"mesh {variant.name}")
+        bake(settings, variant, scene, path)
     return 0
 
 

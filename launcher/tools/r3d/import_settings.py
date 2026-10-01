@@ -11,6 +11,9 @@ import tomllib
 from types import SimpleNamespace
 
 RESERVED_LIGHTS = ("point", "spot")
+# Placement and spawn have no consumer yet; the scene loader will read them.
+RESERVED_RENDERER_KEYS = ("position", "rotation", "scale")
+RESERVED_SCENE_KEYS = ("spawn",)
 
 # The one declaration of each light type's fields; light.py pairs each with
 # the function that bakes it.
@@ -139,21 +142,18 @@ def load_variant(value, process, where):
 
 def load_process(process):
     """The opt-in steps: a step runs when its table is present."""
-    check_keys(process, (), "process", optional=("seed", "alpha_mask", "visibility", "light", "simplify"))
-    steps = SimpleNamespace(seed=integer(process.get("seed", 0), "process.seed"), alpha_keep=None, visibility=None,
-                            light=None, simplify=None)
+    check_keys(process, (), "process", optional=("seed", "alpha_mask", "visibility", "thin", "light", "simplify"))
+    steps = SimpleNamespace(seed=0, alpha_keep=None, visibility=None, thin=None, light=None, simplify=None)
     if "alpha_mask" in process:
         check_keys(process["alpha_mask"], ("keep_alpha",), "process.alpha_mask")
         steps.alpha_keep = number(process["alpha_mask"]["keep_alpha"], "process.alpha_mask.keep_alpha")
     if "visibility" in process:
-        table = process["visibility"]
-        check_keys(table, ("rounds",), "process.visibility", optional=("thin",))
-        steps.visibility = SimpleNamespace(rounds=count(table["rounds"], "process.visibility.rounds"),
-                                           thin_material=None, thin_keep=None)
-        if "thin" in table:
-            check_keys(table["thin"], ("material", "keep"), "process.visibility.thin")
-            steps.visibility.thin_material = text(table["thin"]["material"], "process.visibility.thin.material")
-            steps.visibility.thin_keep = number(table["thin"]["keep"], "process.visibility.thin.keep")
+        check_keys(process["visibility"], ("rounds",), "process.visibility")
+        steps.visibility = SimpleNamespace(rounds=count(process["visibility"]["rounds"], "process.visibility.rounds"))
+    if "thin" in process:
+        check_keys(process["thin"], ("material", "keep"), "process.thin")
+        steps.thin = SimpleNamespace(material=text(process["thin"]["material"], "process.thin.material"),
+                                     keep=number(process["thin"]["keep"], "process.thin.keep"))
     if "light" in process:
         table = process["light"]
         check_keys(table, ("ray_offset", "colour_merge_step"), "process.light", optional=("flat_sky_rays",))
@@ -169,6 +169,10 @@ def load_process(process):
             props=set(strings(table["props"], "process.simplify.props")),
             props_share=number(table["props_share"], "process.simplify.props_share"),
             seal_seams=boolean(table["seal_seams"], "process.simplify.seal_seams"))
+    if "seed" in process:
+        if not (steps.visibility or steps.thin or steps.light):
+            raise SettingsError("process.seed needs a step that draws random rays: visibility, thin or light")
+        steps.seed = integer(process["seed"], "process.seed")
     return steps
 
 
@@ -185,6 +189,7 @@ def load_import_settings(path):
         text(source[name], f"source.{name}")
     output = values["output"]
     check_keys(output, ("directory",), "output", optional=("name", "position_scale"))
+    directory = text(output["directory"], "output.directory")
     materials = values.get("materials", {})
     check_keys(materials, (), "materials", optional=("double_sided",))
     steps = load_process(values.get("process", {}))
@@ -198,6 +203,12 @@ def load_import_settings(path):
         names = [variant.name for variant in variants]
         if len(set(names)) != len(names):
             raise SettingsError("variants names must be unique")
+        shapes = {}
+        for variant in variants:
+            shape = (variant.triangles, repr(variant.face_samples))
+            if shape in shapes:
+                raise SettingsError(f"variants {shapes[shape]!r} and {variant.name!r} would produce the same mesh")
+            shapes[shape] = variant.name
     else:
         if steps.simplify:
             raise SettingsError("process.simplify needs variants, each with its triangles budget")
@@ -208,15 +219,20 @@ def load_import_settings(path):
     if steps.light and not flat and steps.light.flat_sky_rays is not None:
         raise SettingsError("process.light.flat_sky_rays applies to a variant with face_samples only")
     return SimpleNamespace(
-        path=path, source=source, out_dir=(path.parent / output["directory"]).resolve(),
+        path=path, source=source, out_dir=(path.parent / directory).resolve(),
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
-        alpha_keep=steps.alpha_keep, visibility=steps.visibility, light=steps.light, simplify=steps.simplify,
-        named=("variants" in values), variants=variants)
+        alpha_keep=steps.alpha_keep, visibility=steps.visibility, thin=steps.thin, light=steps.light,
+        simplify=steps.simplify, scene_dependent=bool(steps.light or steps.visibility), named=("variants" in values),
+        variants=variants)
 
 
 def load_renderer(value, base, where):
-    check_keys(value, ("mesh",), where, optional=("variant", "position", "rotation", "scale"))
+    if isinstance(value, dict):
+        for name in RESERVED_RENDERER_KEYS:
+            if name in value:
+                raise SettingsError(f"{where}.{name} is reserved for the scene loader")
+    check_keys(value, ("mesh",), where, optional=("variant",))
     path = (base / text(value["mesh"], f"{where}.mesh")).resolve()
     if not path.is_file():
         raise SettingsError(f"{where}.mesh {value['mesh']!r} is not a file")
@@ -233,23 +249,19 @@ def load_renderer(value, base, where):
         raise SettingsError(f"{where}.variant: {value['mesh']!r} has no variants")
     else:
         variant = settings.variants[0]
-    renderer = SimpleNamespace(
-        settings=settings, variant=variant,
-        position=vector(value["position"], f"{where}.position") if "position" in value else [0.0, 0.0, 0.0],
-        rotation=vector(value["rotation"], f"{where}.rotation") if "rotation" in value else [0.0, 0.0, 0.0],
-        scale=vector(value["scale"], f"{where}.scale") if "scale" in value else [1.0, 1.0, 1.0])
-    identity = renderer.position == [0.0] * 3 and renderer.rotation == [0.0] * 3 and renderer.scale == [1.0] * 3
-    if settings.light and not identity:
-        raise SettingsError(f"{where}: a mesh with process.light is baked where it sits, so its transform must be identity")
-    return renderer
+    return SimpleNamespace(settings=settings, variant=variant)
 
 
 def load_scene(path):
-    """A scenario: the meshes it places, its lights, camera region, spawn and exposure."""
+    """A scenario: the meshes it places, and the lights, camera region and
+    tone map the scene-dependent steps of those meshes read."""
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as source:
         values = tomllib.load(source)
-    check_keys(values, ("mesh_renderers",), "scene", optional=("lights", "camera_region", "spawn", "exposure"))
+    for name in RESERVED_SCENE_KEYS:
+        if name in values:
+            raise SettingsError(f"scene.{name} is reserved for the scene loader")
+    check_keys(values, ("mesh_renderers",), "scene", optional=("lights", "camera_region", "tonemap_white"))
     renderers = values["mesh_renderers"]
     if not isinstance(renderers, list) or not renderers:
         raise SettingsError("scene.mesh_renderers must be a non-empty array of tables")
@@ -257,7 +269,7 @@ def load_scene(path):
                  for index, renderer in enumerate(renderers)]
     names = [renderer.variant.name for renderer in renderers]
     if len(set(names)) != len(names):
-        raise SettingsError("scene.mesh_renderers bake a mesh name twice")
+        raise SettingsError("scene.mesh_renderers place a mesh name twice")
     lights = values.get("lights", [])
     if not isinstance(lights, list):
         raise SettingsError("scene.lights must be an array")
@@ -265,19 +277,16 @@ def load_scene(path):
     if region is not None:
         check_keys(region, ("min", "max"), "scene.camera_region")
         region = (vector(region["min"], "scene.camera_region.min"), vector(region["max"], "scene.camera_region.max"))
-    spawn = values.get("spawn", {})
-    check_keys(spawn, (), "scene.spawn", optional=("position", "rotation"))
     scene = SimpleNamespace(
         path=path, renderers=renderers, region=region,
         lights=[load_light(light, f"scene.lights[{index}]") for index, light in enumerate(lights)],
-        exposure=number(values["exposure"], "scene.exposure") if "exposure" in values else None,
-        spawn=SimpleNamespace(position=vector(spawn["position"], "scene.spawn.position") if "position" in spawn else [0.0] * 3,
-                              rotation=vector(spawn["rotation"], "scene.spawn.rotation") if "rotation" in spawn else [0.0] * 3))
-    for renderer in renderers:
-        if renderer.settings.light and not scene.lights:
-            raise SettingsError("scene.lights is required: a mesh places with process.light")
-        if renderer.settings.light and scene.exposure is None:
-            raise SettingsError("scene.exposure is required: a mesh places with process.light")
-        if renderer.settings.visibility and region is None:
-            raise SettingsError("scene.camera_region is required: a mesh places with process.visibility")
+        tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None)
+    lit = any(renderer.settings.light for renderer in renderers)
+    culled = any(renderer.settings.visibility for renderer in renderers)
+    for name, present, needed in (("lights", bool(scene.lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),
+                                  ("camera_region", region is not None, culled)):
+        if needed and not present:
+            raise SettingsError(f"scene.{name} is required: a placed mesh has a step that reads it")
+        if present and not needed:
+            raise SettingsError(f"scene.{name} is read by no placed mesh")
     return scene
