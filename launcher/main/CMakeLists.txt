@@ -62,7 +62,10 @@ endif()
 # The frame's view modes: a development tool, with nothing calling them in a
 # release build.
 if(CONFIG_LAUNCHER_DEVELOPMENT)
-    list(APPEND app_srcs "render/raster_show.c")
+    list(APPEND app_srcs
+        "render/raster_show.c"
+        "util/perf_region.c"
+    )
 endif()
 
 # The console listener: a release image has nobody watching the serial
@@ -78,6 +81,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/console_freeze.c"
         "console/console_frame_watch.c"
         "console/console_navigation.c"
+        "console/console_perf.c"
         "console/console_tune.c"
         "console/console_screenshot.c"
         "console/device_state.c"
