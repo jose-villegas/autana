@@ -872,9 +872,8 @@ block_or_neighbour_has_liquid(const sand_t* s, int bx, int by) {
 }
 
 /* For touches OUTSIDE the gravity sweep, which leave no moved_here record
- * (sand.c) for the next step to find: the whole 3x3 of blocks wakes, since
- * this runs at interaction rate, not per grain move - see
- * test_undermining_a_sleeping_pile_collapses_it. */
+ * (sand.c) for the next step to find. A one-cell write reaches only cells
+ * sharing its 3x3 cell neighbourhood; larger moves use wake_blocks_range(). */
 static inline void
 wake_block_and_neighbors(sand_t* s, int x, int y) {
     if (s->block_state == NULL) {
@@ -888,10 +887,10 @@ wake_block_and_neighbors(sand_t* s, int x, int y) {
     const int bx = (int)((unsigned)x / SAND_BLOCK_W);
     const int by = (int)((unsigned)y / SAND_BLOCK_H);
 
-    const int lo_x = (bx > 0) ? bx - 1 : bx;
-    const int hi_x = (bx + 1 < s->block_cols) ? bx + 1 : bx;
-    const int lo_y = (by > 0) ? by - 1 : by;
-    const int hi_y = (by + 1 < s->block_rows) ? by + 1 : by;
+    const int lo_x = (x > 0) ? (x - 1) / SAND_BLOCK_W : bx;
+    const int hi_x = (x + 1 < s->w) ? (x + 1) / SAND_BLOCK_W : bx;
+    const int lo_y = (y > 0) ? (y - 1) / SAND_BLOCK_H : by;
+    const int hi_y = (y + 1 < s->h) ? (y + 1) / SAND_BLOCK_H : by;
 
     for (int ny = lo_y; ny <= hi_y; ny++) {
         for (int nx = lo_x; nx <= hi_x; nx++) {
