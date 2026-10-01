@@ -35,7 +35,10 @@ set(app_srcs
     "ui/ui_scroll.c"
     "ui/ui_widgets.c"
     "anim/anim_track.c"
+    "asset/asset_pack.c"
+    "asset/asset_store_flash.c"
     "render/raster.c"
+    "render/r3d_lit_mesh.c"
     "render/r3d_pipeline.c"
     "render/upscale.c"
     "render/r3d_span.c"
@@ -159,7 +162,7 @@ list(APPEND app_srcs ${discovered_apps})
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
 set(app_reqs microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
-             esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash
+             esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag vfs nvs_flash esp_app_format
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300

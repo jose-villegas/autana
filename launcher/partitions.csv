@@ -2,3 +2,6 @@
 nvs,      data, nvs,     ,         0x6000,
 phy_init, data, phy,     ,         0x1000,
 factory,  app,  factory, ,         8M,
+# Content the firmware maps and reads in place; see docs/Asset-Packs.md. 0x40 is
+# the first application data subtype. It ends at the end of the 16 MB flash.
+assets,   data, 0x40,    0x810000, 0x7F0000,

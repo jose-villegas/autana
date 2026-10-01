@@ -37,7 +37,7 @@ from version import __version__  # noqa: E402
 EXIT_BUSY = autana_config.EXIT_BUSY
 EXIT_INTERRUPTED = autana_config.EXIT_INTERRUPTED
 
-VARIANTS = {"rel": "release", "release": "release", "dev": "dev", "diag": "diag"}
+VARIANTS = {"rel": "release", "release": "release", "dev": "dev", "diag": "diag", "assets": "assets"}
 
 # What a directory needs to be an autana project, launcher/CMakeLists.txt,
 # not a .git folder: this tool is not tied to git, and a project built from
@@ -259,7 +259,7 @@ def variant_request(verb, args, flags, project):
     asked = words[0] if words else "dev"
     variant = VARIANTS.get(asked)
     if variant is None or len(words) > 1:
-        sys.exit(f"usage: autana {verb} [rel|dev|diag] "
+        sys.exit(f"usage: autana {verb} [rel|dev|diag|assets] "
                  + " ".join(f"[{flag}]" for flag in flags))
     where = project
     if git_ok("-C", project, "rev-parse", "--is-inside-work-tree"):
@@ -276,6 +276,8 @@ def flash(args):
     _, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope"), project)
     quiet = "--quiet" in seen
     perf_scope = "--perf-scope" in seen
+    if variant == "assets" and perf_scope:
+        sys.exit("autana flash assets: --perf-scope selects a firmware image, and assets writes none")
     command = device_command(
         "flash", "--variant", variant, "--worktree", project,
     )
@@ -1338,11 +1340,11 @@ def debug(args):
 COMMAND_GROUPS = (
     ("build", "Build and flash", (
         Command("build", build, (
-            ("build [rel|dev|diag] [--perf-scope]", "build this project, no board; dev when omitted"),
+            ("build [rel|dev|diag|assets] [--perf-scope]", "build this project, no board; dev when omitted"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
         Command("flash", flash, (
-            ("flash [rel|dev|diag] [--quiet] [--perf-scope]",
-             "build and flash this project; dev when omitted"),)),
+            ("flash [rel|dev|diag|assets] [--quiet] [--perf-scope]",
+             "build and flash this project; dev when omitted; assets writes only the asset pack"),)),
         Command("buildid", buildid, (
             ("buildid [--json]", "the BUILD_ID the board is running"),)),
     )),

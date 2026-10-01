@@ -127,6 +127,10 @@ $MAIN_DIR/boot/boot_anim_tracks_generated.c
 $MAIN_DIR/boot/post_layout.c
 $MAIN_DIR/util/job.c
 $MAIN_DIR/anim/anim_track.c
+$MAIN_DIR/asset/asset_pack.c
+$MAIN_DIR/asset/asset_file.c
+$MAIN_DIR/asset/asset_store_file.c
+$MAIN_DIR/render/r3d_lit_mesh.c
 $MAIN_DIR/render/raster.c
 $MAIN_DIR/render/raster_show.c
 $MAIN_DIR/render/r3d_pipeline.c

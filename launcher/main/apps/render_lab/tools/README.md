@@ -73,7 +73,7 @@ the scene's camera object (`meshes/sponza.scene.toml`):
     --tracks launcher/main/apps/render_lab/flythrough_tracks_generated.c:flythrough \
     --every 5000 --poses camera 184 224 0.62 6 |
     ./launcher/tools/r3d/report_triangle_sizes.sh \
-        --mesh launcher/main/apps/render_lab/sponza_mesh_generated.c:sponza_mesh -
+        --mesh sponza -
 ```
 
 ## The capybara test asset

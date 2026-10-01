@@ -5,9 +5,10 @@
 # format is in triangle_sizes.h).
 #
 # Usage:
-#   launcher/tools/r3d/report_triangle_sizes.sh --mesh SOURCE.c:SYMBOL POSES|- [--write DIR | --against DIR]
+#   launcher/tools/r3d/report_triangle_sizes.sh --mesh NAME POSES|- [--write DIR | --against DIR]
 #
-#   --mesh SOURCE.c:SYMBOL  the baked mesh: the C file that defines it and its r3d_lit_mesh_t symbol
+#   --mesh NAME             the baked mesh: its asset id in the pack, which is launcher/assets/assets.bin
+#                           or the file AUTANA_ASSET_PACK names
 #   POSES                   the poses file: size, lens and one line per pose; - reads standard input
 #   --write DIR             also keep each pose's frame in DIR
 #   --against DIR           also compare each pose's frame with the one kept in DIR, pixel by pixel
@@ -20,20 +21,16 @@ LAUNCHER_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 MAIN_DIR="$LAUNCHER_DIR/main"
 
 usage() {
-    echo "usage: $0 --mesh SOURCE.c:SYMBOL POSES|- [--write DIR | --against DIR]" >&2
+    echo "usage: $0 --mesh NAME POSES|- [--write DIR | --against DIR]" >&2
     exit 2
 }
 
 [ "${1:-}" = --mesh ] && [ $# -ge 3 ] || usage
-case "$2" in
-*.c:?*) ;;
-*) usage ;;
-esac
-mesh_source=${2%:*}
-mesh_symbol=${2##*:}
+mesh_name=$2
 poses=$3
 shift 3
-[ -f "$mesh_source" ] || { echo "no mesh source $mesh_source" >&2; exit 2; }
+pack=${AUTANA_ASSET_PACK:-$LAUNCHER_DIR/assets/assets.bin}
+[ -f "$pack" ] || { echo "no asset pack $pack" >&2; exit 2; }
 [ "$poses" = - ] || [ -f "$poses" ] || { echo "no poses file $poses" >&2; exit 2; }
 mode=""
 dir=""
@@ -55,11 +52,12 @@ mkdir -p "$BUILD_DIR"
 OUT_BIN="$BUILD_DIR/triangle_sizes"
 # The same flags as run_tests.sh; -O2 because it draws every pose.
 "$CC_BIN" -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2 \
-    -I "$MAIN_DIR" -I "$SCRIPT_DIR" -I "$(dirname -- "$mesh_source")" \
-    -DR3D_SIZES_MESH="$mesh_symbol" \
+    -I "$MAIN_DIR" -I "$SCRIPT_DIR" \
+    -DR3D_SIZES_MESH="\"$mesh_name\"" -DR3D_SIZES_PACK="\"$pack\"" \
     "$SCRIPT_DIR/triangle_sizes_main.c" \
     "$SCRIPT_DIR/triangle_sizes.c" \
-    "$mesh_source" \
+    "$MAIN_DIR/asset/asset_pack.c" \
+    "$MAIN_DIR/render/r3d_lit_mesh.c" \
     "$MAIN_DIR/render/r3d_pipeline.c" \
     "$MAIN_DIR/render/r3d_span.c" \
     -lm -o "$OUT_BIN"

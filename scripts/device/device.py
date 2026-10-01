@@ -912,8 +912,11 @@ def run_to_end(command, lost=None, timeout=None, **options):
 
 BUILD_SCRIPT = Path("launcher") / "tools" / "build" / "build.sh"
 FLASH_SCRIPT = Path("scripts") / "device" / "flash_image.sh"
-VARIANT_FLAGS = {"release": [], "dev": ["--dev"], "diag": ["--diag"]}
-BUILD_DIRS = {"release": "build", "dev": "build.dev", "diag": "build.diag"}
+# The asset pack is not built: this checks it and lays out the image the same
+# snapshot-and-write path takes, so `flash assets` is one more variant.
+ASSETS_SCRIPT = Path("scripts") / "device" / "assets_image.py"
+VARIANT_FLAGS = {"release": [], "dev": ["--dev"], "diag": ["--diag"], "assets": []}
+BUILD_DIRS = {"release": "build", "dev": "build.dev", "diag": "build.diag", "assets": "build.assets"}
 BUILD_LOCK = "autana-build.lock"
 BUILD_LOCK_POLL_SECONDS = 0.2
 FLASH_ARGS_FILE = re.compile(r"^0x[0-9a-fA-F]+\s+(\S+)\s*$")
@@ -924,9 +927,18 @@ def flash_commands(bash, worktree, variant, build_flags=()):
     no lock held; `write`, given an image snapshot's folder as its last
     argument, runs flash_image.sh, the only one that opens the port."""
     worktree = Path(worktree)
+    if variant == "assets":
+        return ([sys.executable, (worktree / ASSETS_SCRIPT).as_posix(), "--project", str(worktree),
+                 "--out", str(build_directory(worktree, variant))],
+                [bash, (worktree / FLASH_SCRIPT).as_posix()])
     return ([bash, (worktree / BUILD_SCRIPT).as_posix()] + VARIANT_FLAGS[variant]
             + list(build_flags),
             [bash, (worktree / FLASH_SCRIPT).as_posix()])
+
+
+def build_script(variant):
+    """The script whose presence says a worktree can build `variant`."""
+    return ASSETS_SCRIPT if variant == "assets" else BUILD_SCRIPT
 
 
 def build_directory(worktree, variant):
@@ -1033,8 +1045,8 @@ def build_worktree(worktree, variant, build_flags=()):
     no lock but the build directory's. The build's output goes to this
     process's; returns its exit status."""
     worktree = Path(worktree).resolve()
-    if not (worktree / BUILD_SCRIPT).is_file():
-        raise RuntimeError("build tool not found: " + str(worktree / BUILD_SCRIPT))
+    if not (worktree / build_script(variant)).is_file():
+        raise RuntimeError("build tool not found: " + str(worktree / build_script(variant)))
     build, _ = flash_commands(git_bash(), worktree, variant, build_flags)
     try:
         with build_directory_lock(build_directory(worktree, variant)):
@@ -1079,7 +1091,7 @@ class Built:
         self.args = args
         self.board = board
         self.worktree = Path(args.worktree).resolve()
-        for script in (BUILD_SCRIPT, FLASH_SCRIPT):
+        for script in (build_script(args.variant), FLASH_SCRIPT):
             if not (self.worktree / script).is_file():
                 raise RuntimeError("build tool not found: " + str(self.worktree / script))
         self.started_at = now()
@@ -1695,7 +1707,7 @@ def main(argv=None):
         "check-token", help="exit 0 when --token is the live lock on the board, else 1")
     check_token.add_argument("--token", required=True)
     flash_parser = subparsers.add_parser("flash")
-    flash_parser.add_argument("--variant", choices=("dev", "diag", "release"), required=True)
+    flash_parser.add_argument("--variant", choices=("dev", "diag", "release", "assets"), required=True)
     flash_parser.add_argument("--worktree", required=True)
     flash_parser.add_argument("--out")
     flash_parser.add_argument("--perf-scope", action="store_true",

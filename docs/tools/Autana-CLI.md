@@ -56,9 +56,9 @@ it readable; a flag works the same wherever the table below says it applies.
 
 | Command | What it does |
 |---|---|
-| `autana build [rel\|dev\|diag] [--perf-scope]` | Build this project, no board and no lock; `dev` when omitted. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. |
+| `autana build [rel\|dev\|diag\|assets] [--perf-scope]` | Build this project, no board and no lock; `dev` when omitted. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. |
 | `autana build diag --check` | The diagnostics build plus the complexity ratchet: `launcher/tools/build/build_diag_check.sh`, unchanged; no board. |
-| `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope]` | Build and flash this project; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. |
+| `autana flash [rel\|dev\|diag\|assets] [--quiet] [--perf-scope]` | Build and flash this project; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. `assets` writes only the asset pack to its partition: no build, seconds ([Asset-Packs.md](../Asset-Packs.md#flashing)). |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
 
 `autana build` is the way to build: it runs `launcher/tools/build/build.sh`,

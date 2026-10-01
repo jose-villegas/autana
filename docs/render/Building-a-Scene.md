@@ -10,9 +10,10 @@ flowchart LR
     Model["Source model<br/><i>zipped OBJ</i>"] --> Import["Import file<br/><i>.import.toml</i>"]
     Import --> Scene["Scene file<br/><i>.scene.toml</i>"]
     Scene --> Bake["mesh_import.py"]
-    Bake --> Meshes["Baked meshes<br/><i>_mesh_generated.c</i>"]
+    Bake --> Meshes["Baked meshes<br/><i>name.mesh</i>"]
+    Meshes --> Pack["build_pack.py<br/><i>assets.bin</i>"]
     Bake --> Table["Scene table<br/><i>_scene_generated.c</i>"]
-    Meshes --> Draw["Your scene<br/><i>raster_draw()</i>"]
+    Pack --> Draw["Your scene<br/><i>raster_draw()</i>"]
     Table --> Draw
 ```
 
@@ -23,7 +24,7 @@ C compiler for the [render harness](../tools/Render-Harness.md).
 ## 1. Import a mesh
 
 An import file describes one mesh asset: where its source model is and where the
-generated files go.
+scene table goes. The baked mesh is written beside the import file.
 
 ```toml
 [source]
@@ -31,11 +32,11 @@ url = "https://example.invalid/hall.zip"
 sha256 = "..."                   # the download is checked against it
 path = "hall.obj"                # inside the archive
 cache = "hall"
-credit = "Hall, by A. Modeller, CC BY 4.0."   # written into every banner
+credit = "Hall, by A. Modeller, CC BY 4.0."
 
 [output]
 directory = ".."
-name = "hall"                    # the mesh's symbol prefix: hall_mesh
+name = "hall"                    # the mesh's asset id in the pack
 ```
 
 With only these it imports the mesh as authored: its triangles, with each
@@ -123,22 +124,28 @@ near_z = 6.0
 ```sh
 python launcher/tools/r3d/mesh_import.py path/to/hall.scene.toml
 python launcher/tools/r3d/scene_table.py path/to/hall.scene.toml
+python launcher/tools/r3d/build_pack.py
 ```
 
-The first bakes the lit mesh for each renderer; the second writes the `hall`
-scene table, the const data a scene reads (the `r3d_instance_t` of each mesh
-renderer and the camera). A mesh with no light or visibility step can also be
-baked on its own, from its import file. Generated files are committed as
-written and never reformatted.
+The first bakes the lit mesh for each renderer into `hall.mesh`; the second
+writes the `hall` scene table, the const data a scene reads (the
+`r3d_instance_t` of each mesh renderer, the asset id each names, and the
+camera); the third packs every baked mesh in the tree into
+`launcher/assets/assets.bin`. A mesh with no light or visibility step can also
+be baked on its own, from its import file. Generated files and the pack are
+committed as written and never reformatted. `autana flash assets` puts the pack
+on the board ([Asset-Packs.md](../Asset-Packs.md#flashing)).
 
 ## 6. Draw it
 
 A scene reads the table instead of hard-coding what to draw. The generated
 header declares one `r3d_instance_t` per mesh renderer, named after its object,
-and the camera; a scene gives the raster the instances it wants and a scratch
+and the camera, plus the list of asset ids `r3d_scene_bind()` opens from the pack
+before the first frame; a scene gives the raster the instances it wants and a scratch
 block of PSRAM, and each frame asks the camera where it is at the time so far:
 
 ```c
+#include "asset/asset_store.h"
 #include "hall_scene_generated.h"
 #include "render/r3d.h"
 
@@ -147,6 +154,11 @@ static uint32_t elapsed_ms;
 
 static void
 enter(void) {
+    /* Points each instance at its mesh in the asset pack; a missing id fails here. */
+    const char* failed = NULL;
+    if (r3d_scene_bind(asset_store_pack(), &hall_scene_assets, &failed) != ASSET_OK) {
+        return; /* log `failed` and leave the scene blank */
+    }
     /* One entry per mesh renderer in the scene file. */
     static const r3d_instance_t* const placed[] = {&hall_scene_hall}; /* one entry per mesh renderer you draw */
     static r3d_instance_t instances[sizeof placed / sizeof placed[0]];
@@ -181,4 +193,5 @@ for the [render harness](../tools/Render-Harness.md#declaring-a-scene).
 - A host suite that draws instances at transforms and checks where they appear
   is `launcher/test/suites/suite_r3d_scene.c`; copy its quad meshes to test your
   own placement.
-- After a change to the tools, regenerating the committed meshes must change only their banners: diff them.
+- After a change to the tools, bake again and run `build_pack.py --check`:
+  the committed pack must be what the committed meshes make.

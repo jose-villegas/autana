@@ -35,11 +35,27 @@ static raster_stats_t stats;
 static uint32_t elapsed_ms;
 static bool rendered; /* update() drew the raster, which frame() has not upscaled yet */
 
+/* Points the scene's three instances at their meshes in the asset pack. */
+static bool
+bind_meshes(void) {
+    const char* failed = NULL;
+    const asset_status_t status = sponza_open_meshes(&failed);
+    if (status != ASSET_OK) {
+        ESP_LOGE(TAG, "mesh '%s': %s; the scene stays blank", failed == NULL ? "?" : failed, asset_status_text(status));
+    }
+    return status == ASSET_OK;
+}
+
 /* Draws one of the scene's mesh renderers, where the scene places it. */
 static void
 enter_with(const r3d_instance_t* placed) {
     gfx_set_partial_clear(false);
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
+    elapsed_ms = 0;
+    rendered = false;
+    if (!bind_meshes()) {
+        return;
+    }
 
     raster = (raster_t){
         .instances = placed,
@@ -56,8 +72,6 @@ enter_with(const r3d_instance_t* placed) {
     if (raster.scratch == NULL) {
         ESP_LOGE(TAG, "no %u bytes of PSRAM for the frame: the scene stays blank", (unsigned)bytes);
     }
-    elapsed_ms = 0;
-    rendered = false;
 }
 
 static void

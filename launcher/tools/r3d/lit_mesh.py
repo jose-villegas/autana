@@ -7,9 +7,8 @@ quantized to int16 ticks and the result is checked against the format's
 invariants before a byte is written. A mesh's triangles are put in a canonical
 order first, so the same triangles always bake to the same bytes."""
 
-import os
 import pathlib
-import re
+import struct
 from types import SimpleNamespace
 
 import numpy as np
@@ -23,6 +22,14 @@ MAX_NODES = 65535
 MAX_TRIANGLES = 65535  # uint16 triangle_first
 MAX_CLUSTERS = 65535  # uint16 leaf first cluster
 MAX_NODE_CHILDREN = 255
+
+# The entry's layout, which main/render/r3d_lit_mesh.c checks the C structs
+# against: counts, the position scale, then the offset of each array from the
+# entry's first byte, 0 for an array the mesh has none of.
+TYPE = 1
+BLOB_HEADER = struct.Struct("<11I")
+CLUSTER = struct.Struct("<4H6hBx")
+NODE = struct.Struct("<6hHBB")
 
 # What a bake uses unless asked otherwise, and the only place these are set.
 MESHLET_TRIANGLES = 32
@@ -179,131 +186,77 @@ def validate(pos, rgb, tris, clusters, nodes, face_colors=None):
     assert len(nodes) <= MAX_NODES
 
 
-def write_lit_mesh(out_dir, name, positions, rgb, tris, double, banner_lines, **options):
-    """Writes <name>_mesh_generated.h and .c into out_dir, defining <name>_mesh.
-    positions are model units, rgb 0..255 per vertex (None for a flat mesh),
-    tris counter-clockwise seen from the front, double one flag per triangle;
-    banner_lines open both
-    files, and options, face_rgb among them, go to bake_lit_mesh. Returns the
-    baked mesh."""
+def write_lit_mesh(out_dir, name, positions, rgb, tris, double, **options):
+    """Writes <name>.mesh into out_dir, the pack entry main/render/
+    r3d_lit_mesh.h reads. positions are model units, rgb 0..255 per vertex
+    (None for a flat mesh), tris counter-clockwise seen from the front,
+    double one flag per triangle; options, face_rgb among them, go to
+    bake_lit_mesh. Returns the baked mesh."""
     mesh = bake_lit_mesh(positions, rgb, tris, double, **options)
-    emit(out_dir, name, banner_lines, mesh)
+    (pathlib.Path(out_dir) / f"{name}.mesh").write_bytes(mesh_blob(mesh))
     return mesh
 
 
-def emit_rows(out, name, ctype, rows, per_line):
-    print(f"static const {ctype} {name}[][{len(rows[0])}] = {{", file=out)
-    for i in range(0, len(rows), per_line):
-        chunk = rows[i : i + per_line]
-        print("    " + " ".join("{" + ",".join(str(int(v)) for v in r) + "}," for r in chunk), file=out)
-    print("};", file=out)
+def panel_colour(rgb):
+    """The panel's RGB565 with its bytes swapped, what GFX_RGB(0xRRGGBB) gives."""
+    c = np.asarray(rgb, dtype=np.int64)
+    packed = ((c[:, 0] & 0xF8) << 8) | ((c[:, 1] & 0xFC) << 3) | (c[:, 2] >> 3)
+    return (((packed >> 8) | (packed << 8)) & 0xFFFF).astype("<u2")
 
 
-def banner(lines, out):
-    print("/*", file=out)
-    for line in lines:
-        print((" * " + line).rstrip(), file=out)
-    print(" */", file=out)
+def rgb888(panel):
+    """The 0..255 channels a panel colour stands for, with the low bits
+    refilled from the high ones so panel_colour() returns the same value."""
+    p = np.asarray(panel, dtype=np.int64)
+    p = ((p >> 8) | (p << 8)) & 0xFFFF
+    r, g, b = p >> 11, (p >> 5) & 63, p & 31
+    return np.stack([(r << 3) | (r >> 2), (g << 2) | (g >> 4), (b << 3) | (b >> 2)], axis=1)
 
 
-def triple(v):
-    return "{" + ", ".join(str(int(x)) for x in v) + "}"
-
-
-def c_bool(v):
-    return "true" if v else "false"
-
-
-def emit(out_dir, name, banner_lines, mesh):
-    low, up = name, name.upper()
-    header = f"{low}_mesh_generated.h"
-    with open(os.path.join(out_dir, header), "w", newline="\n") as out:
-        banner(banner_lines, out)
-        print("#pragma once", file=out)
-        print(file=out)
-        print('#include "render/r3d_lit_mesh.h"', file=out)
-        print(file=out)
-        print(f"#define {up}_VERTEX_COUNT {len(mesh.pos)}", file=out)
-        print(f"#define {up}_TRIANGLE_COUNT {len(mesh.tris)}", file=out)
-        print(f"#define {up}_CLUSTER_COUNT {len(mesh.clusters)}", file=out)
-        print(f"#define {up}_NODE_COUNT {len(mesh.nodes)}", file=out)
-        print(f"#define {up}_POSITION_SCALE {mesh.position_scale}", file=out)
-        print(file=out)
-        print(f"extern const r3d_lit_mesh_t {low}_mesh;", file=out)
-
-    with open(os.path.join(out_dir, f"{low}_mesh_generated.c"), "w", newline="\n") as out:
-        banner(banner_lines, out)
-        print(f'#include "{header}"', file=out)
-        if mesh.face_colors is not None:
-            print('#include "gfx/gfx_color.h"', file=out)
-        print(file=out)
-        emit_rows(out, f"{low}_positions", "int16_t", mesh.pos.tolist(), 8)
-        print(file=out)
-        if mesh.rgb is not None:
-            emit_rows(out, f"{low}_colors", "uint8_t", mesh.rgb.tolist(), 10)
-            print(file=out)
-        emit_rows(out, f"{low}_triangles", "uint16_t", mesh.tris.tolist(), 8)
-        print(file=out)
-        if mesh.face_colors is not None:
-            print(f"static const uint16_t {low}_face_colors[] = {{", file=out)
-            for i in range(0, len(mesh.face_colors), 6):
-                print("    " + " ".join(f"GFX_RGB(0x{r:02X}{g:02X}{bl:02X})," for r, g, bl in
-                                        mesh.face_colors[i : i + 6].tolist()), file=out)
-            print("};", file=out)
-            print(file=out)
-        print(f"static const r3d_lit_cluster_t {low}_clusters[] = {{", file=out)
-        for vbase, vcount, tbase, tcount, lo, hi, double in mesh.clusters:
-            print(f"    {{{vbase}, {vcount}, {tbase}, {tcount}, {triple(lo)}, {triple(hi)}, {c_bool(double)}}},", file=out)
-        print("};", file=out)
-        print(file=out)
-        print(f"static const r3d_lit_node_t {low}_nodes[] = {{", file=out)
-        for n in mesh.nodes:
-            print(f"    {{{triple(n['lo'])}, {triple(n['hi'])}, {n['first']}, {n['count']}, {c_bool(n['leaf'])}}},", file=out)
-        print("};", file=out)
-        print(file=out)
-        print(f"const r3d_lit_mesh_t {low}_mesh = {{", file=out)
-        print(f"    .positions = {low}_positions,", file=out)
-        if mesh.rgb is not None:
-            print(f"    .colors = {low}_colors,", file=out)
-        if mesh.face_colors is not None:
-            print(f"    .face_colors = {low}_face_colors,", file=out)
-        print(f"    .triangles = {low}_triangles, .clusters = {low}_clusters, .nodes = {low}_nodes,", file=out)
-        print(f"    .vertex_count = {up}_VERTEX_COUNT, .triangle_count = {up}_TRIANGLE_COUNT,", file=out)
-        print(f"    .cluster_count = {up}_CLUSTER_COUNT, .node_count = {up}_NODE_COUNT,", file=out)
-        print(f"    .position_scale = {up}_POSITION_SCALE,", file=out)
-        print("};", file=out)
-
-
-def parse_arrays(text):
-    """{array name: flat list of its integers} for every `static const`
-    array in generated mesh C, `true`/`false` read as 1/0."""
-    arrays = {}
-    for m in re.finditer(r"static const \w+ (\w+)\[\](?:\[\d+\])? = \{(.*?)\n\};", text, re.DOTALL):
-        body = m.group(2).replace("true", "1").replace("false", "0")
-        arrays[m.group(1)] = [int(x) for x in re.findall(r"-?\d+", body)]
-    return arrays
+def mesh_blob(mesh):
+    """The entry's bytes for a baked mesh: BLOB_HEADER, then each array at an
+    offset from the entry's first byte, in the layouts r3d_lit_mesh.h's
+    structs have."""
+    arrays = [
+        ("positions", np.asarray(mesh.pos, dtype="<i2").tobytes()),
+        ("colors", b"" if mesh.rgb is None else np.asarray(mesh.rgb, dtype="u1").tobytes()),
+        ("triangles", np.asarray(mesh.tris, dtype="<u2").tobytes()),
+        ("clusters", b"".join(CLUSTER.pack(vb, vc, tb, tc, *lo, *hi, int(dbl)) for vb, vc, tb, tc, lo, hi, dbl in mesh.clusters)),
+        ("nodes", b"".join(NODE.pack(*n["lo"], *n["hi"], n["first"], n["count"], int(n["leaf"])) for n in mesh.nodes)),
+        ("face_colors", b"" if mesh.face_colors is None else panel_colour(mesh.face_colors).tobytes()),
+    ]
+    offsets, body, at = {}, b"", BLOB_HEADER.size
+    for key, data in arrays:
+        offsets[key] = at if data else 0
+        body += data + bytes(-len(data) % 4)
+        at += len(data) + (-len(data) % 4)
+    head = BLOB_HEADER.pack(len(mesh.pos), len(mesh.tris), len(mesh.clusters), len(mesh.nodes), mesh.position_scale,
+                            *(offsets[key] for key, _ in arrays))
+    return head + body
 
 
 def read_lit_mesh(path):
-    """Reads a generated <name>_mesh_generated.c back into what bake_lit_mesh
-    returns."""
-    path = pathlib.Path(path)
-    text = path.read_text()
-    low = re.search(r"const r3d_lit_mesh_t (\w+)_mesh = ", text).group(1)
-    arrays = parse_arrays(text)
-    mesh = SimpleNamespace()
-    mesh.position_scale = int(re.search(rf"{low.upper()}_POSITION_SCALE (\d+)", path.with_suffix(".h").read_text()).group(1))
-    mesh.pos = np.array(arrays[f"{low}_positions"], dtype=np.int64).reshape(-1, 3)
-    mesh.rgb = np.array(arrays[f"{low}_colors"], dtype=np.int64).reshape(-1, 3) if f"{low}_colors" in arrays else None
-    faces = re.search(rf"{low}_face_colors\[\] = \{{(.*?)\n\}};", text, re.DOTALL)
-    mesh.face_colors = None if faces is None else np.array(
-        [[int(h[i : i + 2], 16) for i in (0, 2, 4)] for h in re.findall(r"GFX_RGB\(0x([0-9A-Fa-f]{6})\)", faces.group(1))],
-        dtype=np.int64)
-    mesh.tris = np.array(arrays[f"{low}_triangles"], dtype=np.int64).reshape(-1, 3)
-    rows = np.array(arrays[f"{low}_clusters"], dtype=np.int64).reshape(-1, 11)
-    mesh.clusters = [(r[0], r[1], r[2], r[3], r[4:7], r[7:10], bool(r[10])) for r in rows]
-    nodes = np.array(arrays[f"{low}_nodes"], dtype=np.int64).reshape(-1, 9)
-    mesh.nodes = [{"lo": r[0:3], "hi": r[3:6], "first": r[6], "count": r[7], "leaf": bool(r[8])} for r in nodes]
+    """Reads a <name>.mesh back into what bake_lit_mesh returns."""
+    blob = pathlib.Path(path).read_bytes()
+    vertices, triangles, clusters, nodes, scale, *at = BLOB_HEADER.unpack_from(blob)
+    pos_at, col_at, tri_at, cl_at, node_at, face_at = at
+
+    def array(offset, dtype, count):
+        return np.frombuffer(blob, dtype=dtype, count=count, offset=offset).astype(np.int64)
+
+    mesh = SimpleNamespace(position_scale=scale)
+    mesh.pos = array(pos_at, "<i2", vertices * 3).reshape(-1, 3)
+    mesh.rgb = array(col_at, "u1", vertices * 3).reshape(-1, 3) if col_at else None
+    mesh.face_colors = rgb888(array(face_at, "<u2", triangles)) if face_at else None
+    mesh.tris = array(tri_at, "<u2", triangles * 3).reshape(-1, 3)
+    mesh.clusters = []
+    for i in range(clusters):
+        vb, vc, tb, tc, *box, dbl = CLUSTER.unpack_from(blob, cl_at + i * CLUSTER.size)
+        mesh.clusters.append((vb, vc, tb, tc, np.array(box[:3]), np.array(box[3:]), bool(dbl)))
+    mesh.nodes = []
+    for i in range(nodes):
+        *box, first, count, leaf = NODE.unpack_from(blob, node_at + i * NODE.size)
+        mesh.nodes.append({"lo": np.array(box[:3]), "hi": np.array(box[3:]), "first": first, "count": count, "leaf": bool(leaf)})
     return mesh
 
 
