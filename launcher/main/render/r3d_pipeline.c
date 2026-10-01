@@ -267,22 +267,28 @@ r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* cluster
 
 #define DRAW_SPLIT_BUCKETS 64
 
-int
-r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
-                        int count, int height) {
-    int weight[DRAW_SPLIT_BUCKETS + 1] = {0};
+static int
+clamp_draw_split_row(int row, int height) {
+    return row < 0 ? 0 : (row >= height ? height - 1 : row);
+}
+
+static void
+draw_split_histogram(int* weight, const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
+                     int count, int height) {
     for (int i = 0; i < count; i++) {
         const r3d_pipeline_rows_t* r = &rows[clusters[i]];
-        int first = r->unbounded ? 0 : (int)r->y0;
-        int last = r->unbounded ? height - 1 : (int)r->y1;
-        first = first < 0 ? 0 : (first >= height ? height - 1 : first);
-        last = last < 0 ? 0 : (last >= height ? height - 1 : last);
+        const int first = clamp_draw_split_row(r->unbounded ? 0 : (int)r->y0, height);
+        const int last = clamp_draw_split_row(r->unbounded ? height - 1 : (int)r->y1, height);
         const int cost = mesh->clusters[clusters[i]].triangle_count;
         const int bucket_first = first * DRAW_SPLIT_BUCKETS / height;
         const int bucket_last = last * DRAW_SPLIT_BUCKETS / height;
         weight[bucket_first] += cost;
         weight[bucket_last + 1] -= cost;
     }
+}
+
+static int
+draw_split_row(const int* weight, int height) {
     int total = 0;
     int current = 0;
     for (int bucket = 0; bucket < DRAW_SPLIT_BUCKETS; bucket++) {
@@ -300,6 +306,14 @@ r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, co
         }
     }
     return height / 2;
+}
+
+int
+r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
+                        int count, int height) {
+    int weight[DRAW_SPLIT_BUCKETS + 1] = {0};
+    draw_split_histogram(weight, mesh, clusters, rows, count, height);
+    return draw_split_row(weight, height);
 }
 
 typedef struct {
