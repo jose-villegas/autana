@@ -10,14 +10,23 @@
 #include <stdint.h>
 
 #include "render/r3d_project.h"
+#include "util/math/vec2i.h"
 #include "wire_mesh.h"
+
+/* One vertex a frame: its camera-space point, and, while it is in front of
+ * the near plane, the pixel it lands on, so an edge reaching it projects
+ * nothing and the several edges sharing a vertex share one projection. */
+typedef struct {
+    vec3f_t cs;
+    vec2i_t pixel;
+} wire_cs_vertex_t;
 
 typedef struct {
     int16_t x0, y0, x1, y1; /* screen space, narrowed after near and screen clip */
 } wire_segment_t;
 
 typedef struct {
-    vec3f_t* cs_vertices; /* camera space, one transform per vertex per frame */
+    wire_cs_vertex_t* cs_vertices;
     uint16_t cs_capacity;
     wire_segment_t* segments;
     uint16_t segment_capacity;

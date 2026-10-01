@@ -109,7 +109,13 @@ wire_transform(const wire_mesh_t* mesh, const r3d_line_view_t* view, wire_frame_
     assert(mesh->vertex_count <= frame->cs_capacity);
 
     for (uint16_t i = 0; i < mesh->vertex_count; i++) {
-        frame->cs_vertices[i] = r3d_to_camera_space(mesh->vertices[i], view);
+        wire_cs_vertex_t* out = &frame->cs_vertices[i];
+        out->cs = r3d_to_camera_space(mesh->vertices[i], view);
+        if (out->cs.z > view->near_z) {
+            int x, y;
+            r3d_camera_to_screen(out->cs, view, &x, &y);
+            out->pixel = (vec2i_t){x, y};
+        }
     }
 }
 
@@ -120,10 +126,12 @@ wire_project_edges(const wire_mesh_t* mesh, const r3d_line_view_t* view, int scr
 
     for (uint16_t i = 0; i < mesh->edge_count; i++) {
         const wire_edge_t* edge = &mesh->edges[i];
-        int ax, ay, bx, by;
+        const wire_cs_vertex_t* a = &frame->cs_vertices[edge->a];
+        const wire_cs_vertex_t* b = &frame->cs_vertices[edge->b];
+        int ax = a->pixel.x, ay = a->pixel.y, bx = b->pixel.x, by = b->pixel.y;
 
-        if (!r3d_project_segment_cs(frame->cs_vertices[edge->a], frame->cs_vertices[edge->b], view, &ax, &ay, &bx,
-                                    &by)) {
+        const bool both_in_front = a->cs.z > view->near_z && b->cs.z > view->near_z;
+        if (!both_in_front && !r3d_project_segment_cs(a->cs, b->cs, view, &ax, &ay, &bx, &by)) {
             continue;
         }
 

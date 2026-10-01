@@ -41,7 +41,7 @@ static const wire_mesh_t identity_pose_mesh = {identity_pose_vertices, one_edge,
 static void
 test_identity_pose_matches_the_hand_derived_screen_points(void) {
     const r3d_line_view_t view = fixture();
-    vec3f_t cs[2];
+    wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
     wire_frame_t frame = {cs, 2, segments, 1, 0, 0, 0, 0, 0};
 
@@ -76,7 +76,7 @@ test_a_rotated_pose_matches_the_hand_derived_screen_points(void) {
     view.center_y = 80;
     view.scale = 40;
     view.focal = 2.0F;
-    vec3f_t cs[2];
+    wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
     wire_frame_t frame = {cs, 2, segments, 1, 0, 0, 0, 0, 0};
 
@@ -135,20 +135,20 @@ check_grid_is_fully_visible(int n) {
     const int max_edges = 2 * n * (n - 1);
     vec3f_t* vertices = malloc(sizeof(*vertices) * (size_t)vertex_count);
     wire_edge_t* edges = malloc(sizeof(*edges) * (size_t)max_edges);
-    vec3f_t* cs = malloc(sizeof(*cs) * (size_t)(vertex_count + 1));
+    wire_cs_vertex_t* cs = malloc(sizeof(*cs) * (size_t)(vertex_count + 1));
     wire_segment_t* segments = malloc(sizeof(*segments) * (size_t)max_edges);
 
     const int edge_count = build_grid(n, vertices, edges);
     const wire_mesh_t mesh = {vertices, edges, (uint16_t)vertex_count, (uint16_t)edge_count};
 
     const float canary = -12345.0F;
-    cs[vertex_count] = (vec3f_t){canary, canary, canary};
+    cs[vertex_count].cs = (vec3f_t){canary, canary, canary};
     wire_frame_t frame = {cs, (uint16_t)vertex_count, segments, (uint16_t)edge_count, 0, 0, 0, 0, 0};
 
     wire_transform(&mesh, &view, &frame);
-    TEST_ASSERT_EQUAL_FLOAT(canary, cs[vertex_count].x);
-    TEST_ASSERT_EQUAL_FLOAT(canary, cs[vertex_count].y);
-    TEST_ASSERT_EQUAL_FLOAT(canary, cs[vertex_count].z);
+    TEST_ASSERT_EQUAL_FLOAT(canary, cs[vertex_count].cs.x);
+    TEST_ASSERT_EQUAL_FLOAT(canary, cs[vertex_count].cs.y);
+    TEST_ASSERT_EQUAL_FLOAT(canary, cs[vertex_count].cs.z);
 
     TEST_ASSERT_TRUE(wire_project_edges(&mesh, &view, SCREEN_W, SCREEN_H, &frame));
     TEST_ASSERT_EQUAL_INT(edge_count, frame.segment_count);
@@ -181,7 +181,7 @@ test_both_ends_behind_near_plane_drop_the_edge(void) {
     const r3d_line_view_t view = fixture();
     const vec3f_t vertices[2] = {{0, 0, 0}, {10, 10, view.near_z}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
-    vec3f_t cs[2];
+    wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
     wire_frame_t frame = {cs, 2, segments, 1, 0, 0, 0, 0, 0};
 
@@ -196,7 +196,7 @@ test_one_end_behind_clips_to_the_near_plane_crossing(void) {
     view.near_z = 100.0F;
     const vec3f_t vertices[2] = {{0, 0, 0}, {40, 20, 200}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
-    vec3f_t cs[2];
+    wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
     wire_frame_t frame = {cs, 2, segments, 1, 0, 0, 0, 0, 0};
 
@@ -223,7 +223,7 @@ test_an_endpoint_exactly_at_near_z_counts_as_behind(void) {
     const r3d_line_view_t view = fixture();
     const vec3f_t vertices[2] = {{0.01F, 0.01F, view.near_z}, {0, 0, 300}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
-    vec3f_t cs[2];
+    wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
     wire_frame_t frame = {cs, 2, segments, 1, 0, 0, 0, 0, 0};
 
@@ -250,7 +250,7 @@ check_edge_dropped(float x0, float y0, float x1, float y1) {
     const r3d_line_view_t view = fixture();
     const vec3f_t vertices[2] = {{x0, y0, 1.0F}, {x1, y1, 1.0F}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
-    vec3f_t cs[2];
+    wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
     wire_frame_t frame = {cs, 2, segments, 1, 0, 0, 0, 0, 0};
 
@@ -284,7 +284,7 @@ test_an_edge_straddling_the_right_edge_is_kept_and_clipped(void) {
     const r3d_line_view_t view = fixture();
     const vec3f_t vertices[2] = {{0, 0, 1.0F}, {4.0F, 0, 1.0F}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
-    vec3f_t cs[2];
+    wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
     wire_frame_t frame = {cs, 2, segments, 1, 0, 0, 0, 0, 0};
 
@@ -318,7 +318,7 @@ test_a_far_off_endpoint_is_narrowed_within_one_pixel(void) {
     r3d_camera_to_screen(model_far, &view, &fx_screen, &fy_screen);
     r3d_camera_to_screen(model_near, &view, &nx_screen, &ny_screen);
 
-    vec3f_t cs[2];
+    wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
     wire_frame_t frame = {cs, 2, segments, 1, 0, 0, 0, 0, 0};
 
@@ -352,7 +352,7 @@ test_exceeding_capacity_caps_the_count_and_reports_overflow(void) {
     const int edge_count = build_grid(n, vertices, edges);
     const wire_mesh_t mesh = {vertices, edges, (uint16_t)vertex_count, (uint16_t)edge_count};
 
-    vec3f_t cs[4];
+    wire_cs_vertex_t cs[4];
     wire_segment_t segments[3];
     const int16_t canary = -777;
     segments[2].x0 = canary;
@@ -385,7 +385,7 @@ static const wire_mesh_t bbox_mesh = {bbox_vertices, bbox_edges, 4, 2};
 static void
 test_bbox_is_the_union_of_the_emitted_segments(void) {
     const r3d_line_view_t view = fixture();
-    vec3f_t cs[4];
+    wire_cs_vertex_t cs[4];
     wire_segment_t segments[2];
     wire_frame_t frame = {cs, 4, segments, 2, 0, 0, 0, 0, 0};
 
