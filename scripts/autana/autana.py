@@ -1178,6 +1178,7 @@ def console(_args=None):
             elif verb in COMMANDS and verb != "console":
                 run_command(COMMANDS[verb], rest, command_words([verb, *rest]))
             else:
+                refuse_leading_flag(verb)
                 replies = forward(line, verb)
                 print("\n".join(replies) if replies else "sent")
         except SystemExit as stop:
@@ -1472,6 +1473,20 @@ MISPLACED_HINTS = {
 }
 
 
+LEADING_HINTS = {
+    "--project": "--project goes after the command: autana flash diag --project PATH",
+}
+
+
+def refuse_leading_flag(word):
+    """Exit with a message when `word`, the first word of a line, is a flag:
+    no device command starts with a dash, so forwarding it only fails
+    obscurely on the device side."""
+    if word.startswith("-"):
+        name = word.split("=", 1)[0]
+        sys.exit(LEADING_HINTS.get(name) or f"autana: unknown option {name}; 'autana help' lists the commands")
+
+
 def global_options(argv):
     """`argv` without its leading `--wait SECONDS`, `--owner NAME` and
     `--board SERIAL`, in any order. Each is written into WAIT_ENV / OWNER_ENV
@@ -1514,6 +1529,7 @@ def main():
         print(help_text(argv[1:]))
         sys.exit(0)
     if argv[0] not in COMMANDS:
+        refuse_leading_flag(argv[0])
         # A one-shot the same as a forwarded line in a session (forward()'s
         # own docstring); every board operation goes through autana, not
         # only the ones with a command of their own.

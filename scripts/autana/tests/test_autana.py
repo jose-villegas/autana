@@ -1469,6 +1469,31 @@ class OneShotForwardingTests(unittest.TestCase):
         fake.assert_called_once_with([])
         sent.assert_not_called()
 
+    def test_a_leading_project_is_refused_with_where_it_goes(self):
+        with mock.patch.object(autana, "forward") as forwarded:
+            code = self.run_main(["--project", "X", "flash", "diag"])
+        forwarded.assert_not_called()
+        self.assertIn("--project goes after the command", code)
+
+    def test_an_unknown_leading_flag_is_refused_and_not_forwarded(self):
+        with mock.patch.object(autana, "forward") as forwarded:
+            code = self.run_main(["--foo", "bar"])
+        forwarded.assert_not_called()
+        self.assertIn("--foo", code)
+
+    def test_a_console_line_starting_with_a_flag_is_refused_not_forwarded(self):
+        with mock.patch.object(autana, "forward") as forwarded,              mock.patch("builtins.input", side_effect=["--project X flash", EOFError()]),              mock.patch("builtins.print") as printed:
+            autana.console()
+        forwarded.assert_not_called()
+        printed.assert_any_call(autana.LEADING_HINTS["--project"])
+
+    def test_the_global_options_still_reach_version(self):
+        with mock.patch.object(autana, "forward") as forwarded, mock.patch("builtins.print") as printed,              mock.patch.dict(autana.os.environ, {}):
+            code = self.run_main(["--wait", "0", "--version"])
+        forwarded.assert_not_called()
+        printed.assert_any_call(autana.__version__)
+        self.assertEqual(code, 0)
+
 
 class SuiteFlashAndRunsTests(unittest.TestCase):
     """`suite` merged what `batch` used to do on its own: several suites,

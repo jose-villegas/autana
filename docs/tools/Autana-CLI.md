@@ -272,7 +272,8 @@ optional and gitignored, and `autana help config` lists its keys.
 
 All three go before the command (`autana --wait 0 monitor 5`); after it,
 autana says so. A CI job that should fail rather than queue writes
-`autana --wait 0 <command>`.
+`autana --wait 0 <command>`. `--project` is the opposite: it goes after
+the command, and a flag first on the line is refused, never sent to the board.
 
 | Key | Meaning |
 |---|---|
