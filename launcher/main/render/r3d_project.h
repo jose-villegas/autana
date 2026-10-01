@@ -24,11 +24,9 @@
 #define R3D_LINE_NEAR_Z 0.1F
 
 /* Past this a projected offset is off any panel; clamping first keeps the
- * float to int conversion defined for a point at the camera. */
+ * float to int conversion defined for a point at the camera, whose divide
+ * by a zero depth is an infinity or a NaN. */
 #define R3D_PIXEL_LIMIT 1000000.0F
-
-/* The depth a point exactly at the camera plane is moved to before dividing. */
-#define R3D_Z_MIN       (1.0F / 512.0F)
 
 typedef struct {
     mat4_t matrix; /* model * view, composed by the caller */
@@ -54,7 +52,7 @@ static inline void
 r3d_camera_to_screen(vec3_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
     float gain = view->scale;
     if (view->focal != 0.0F) {
-        gain *= view->focal / (p.z == 0.0F ? R3D_Z_MIN : p.z);
+        gain *= view->focal / p.z;
     }
     *screen_x = view->center_x + r3d_pixel_offset(p.x * gain);
     *screen_y = view->center_y - r3d_pixel_offset(p.y * gain);

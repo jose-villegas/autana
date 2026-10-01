@@ -183,6 +183,8 @@ test_look_at_points_local_z_at_the_target_with_up_kept_up(void) {
 
         const vec3_t right = quat_rotate(t.rotation, (vec3_t){1.0F, 0.0F, 0.0F});
         TEST_ASSERT_FLOAT_WITHIN(SLACK, 0.0F, right.y);
+        TEST_ASSERT_TRUE(vec3_dot(right, vec3_cross(up, forward)) > 0.0F);
+        TEST_ASSERT_TRUE(vec3_dot(quat_rotate(t.rotation, up), up) > 0.0F);
     }
 }
 
