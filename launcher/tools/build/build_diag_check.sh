@@ -79,10 +79,16 @@ build_diag() {
     "$REPO_ROOT/tools/autana" build diag --project "$REPO_ROOT"
 }
 
+soft_double_gate() {
+    echo "=== Soft-double routines outside logging ==="
+    "$PYTHON" "$DIR/check_no_soft_double.py" "$DIR/../../build.diag"
+}
+
 if [ -f "$COMPILE_DB" ]; then
     complexity_gate
     build_diag
     suite_static_data_gate
+    soft_double_gate
     exit 0
 fi
 
@@ -90,3 +96,4 @@ echo "=== No build.diag compile database yet - ratchet runs after the build ==="
 build_diag
 complexity_gate
 suite_static_data_gate
+soft_double_gate

@@ -249,13 +249,21 @@ idf_component_register(
 if(NOT CMAKE_SCRIPT_MODE_FILE)
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=vla -Werror=unused-macros)
 
-    # The FPU has no double, so a float promoted to one costs an order of
-    # magnitude: the files that do float maths refuse the promotion.
+    # The FPU has no double: a float promoted to one, or a double constant in
+    # float maths, runs in software at an order of magnitude the cost. Both
+    # are compile errors across the firmware, and the link gate
+    # (tools/build/check_no_soft_double.py) names any soft-double routine the
+    # image still pulls in.
+    target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=double-promotion -Werror=float-conversion)
+
+    # Contracting a * b + c into one fused operation rounds once instead of
+    # twice, so the same float code would give a different pixel than the host
+    # render that pins it: the files that project in float refuse it.
     set_source_files_properties(
         anim/anim_track.c render/raster.c render/r3d_pipeline.c render/r3d_span.c render/r3d_scene.c
         render/upscale.c boot/boot_anim.c apps/render_lab/scene_cube.c apps/render_lab/scene_wire.c
         apps/render_lab/wire_pipeline.c
-        PROPERTIES COMPILE_OPTIONS -Werror=double-promotion)
+        PROPERTIES COMPILE_OPTIONS -ffp-contract=off)
 endif()
 
 if(CONFIG_LAUNCHER_SELFTEST)
