@@ -75,6 +75,11 @@ suite_static_data_gate() {
         "$PYTHON" "$DIR/../quality/suite_static_data_gate.py"
 }
 
+stack_chain_gate() {
+    echo "=== Stack chain budget ==="
+    "$PYTHON" "$DIR/../quality/stack_chain_gate.py" "$DIR/../../build.diag"
+}
+
 build_diag() {
     "$REPO_ROOT/tools/autana" build diag --project "$REPO_ROOT"
 }
@@ -88,6 +93,7 @@ if [ -f "$COMPILE_DB" ]; then
     complexity_gate
     build_diag
     suite_static_data_gate
+    stack_chain_gate
     soft_double_gate
     exit 0
 fi
@@ -96,4 +102,5 @@ echo "=== No build.diag compile database yet - ratchet runs after the build ==="
 build_diag
 complexity_gate
 suite_static_data_gate
+stack_chain_gate
 soft_double_gate
