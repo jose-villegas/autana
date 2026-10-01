@@ -48,7 +48,7 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 
 ## Images in the docs
 
-`doc_images.sh` here makes these in `docs/images/overview/`, run by
+`doc_images.sh` here makes these in `docs/images/overview/` and `docs/images/render/`, run by
 `launcher/tools/render/render_doc_images.sh`; see "Images in these docs" in
 [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harness.md).
 
@@ -57,6 +57,9 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 | `render-lab-cube.png`, `render-lab-cube.gif` | the Gouraud cube; the GIF plays the rotation forward and back |
 | `render-lab-cornell.png` | the ray-traced Cornell box, fully resolved, no HUD |
 | `render-lab-sponza.gif` | the start of the Sponza flythrough |
+| `render/sponza-{full,lite,flat}.gif` | the same three seconds of the flythrough, one GIF per bake |
+| `render/sponza-{depth,tiles}.gif` | those three seconds as the depth and depth-tile views of the full bake |
+| `render/compare-full-{lite,flat}.png`, `.crops.png` | full against lite and smooth against flat at the GIFs' last pose: both renders and their difference, then the places they differ most, enlarged |
 
 ## Sponza poses
 

@@ -5,7 +5,7 @@
 #   ./launcher/tools/render/render_doc_images.sh            # rewrite the images in place
 #   ./launcher/tools/render/render_doc_images.sh --check    # only report which changed
 #
-# Needs a host C compiler, Python with Pillow, and ffmpeg 5.1 or newer. Runs in
+# Needs a host C compiler, Python with Pillow and numpy, and ffmpeg 5.1 or newer. Runs in
 # Git Bash on Windows and on Linux.
 #
 # This makes the launcher and UI toolkit images itself and then runs every
@@ -58,10 +58,10 @@ case "${1:-}" in
     *) echo "usage: $0 [--check]" >&2; exit 2 ;;
 esac
 
-# Windows has a python3 launcher stub that is not Python; ask for Pillow.
+# Windows has a python3 launcher stub that is not Python; ask for Pillow and numpy.
 # shellcheck source=../../../scripts/lib/python.sh
 . "$(dirname "$0")/../../../scripts/lib/python.sh"
-PYTHON=$(find_python PIL) || exit 2
+PYTHON=$(find_python PIL numpy) || exit 2
 export PYTHON
 if ! command -v ffmpeg > /dev/null 2>&1; then
     echo "ffmpeg not found." >&2

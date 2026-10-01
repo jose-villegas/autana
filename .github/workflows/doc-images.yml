@@ -44,9 +44,9 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install Pillow and ffmpeg
+      - name: Install Pillow, numpy and ffmpeg
         run: |
-          pip install pillow==12.3.0
+          pip install pillow==12.3.0 numpy==2.4.6
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg
           ffmpeg -version | head -1
