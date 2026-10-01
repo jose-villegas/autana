@@ -298,6 +298,18 @@ perf_target(const char* name, int64_t measured_us, int64_t goal_us, int64_t ceil
     }
 }
 
+/* The gas rows run on both paths and the app runs one core at lower
+ * qualities, so each path has its own goal and ceiling. */
+static void
+perf_target_by_core(const char* two_core_name, const char* one_core_name, int64_t measured_us, int64_t two_core_goal_us,
+                    int64_t two_core_ceiling_us, int64_t one_core_goal_us, int64_t one_core_ceiling_us) {
+    if (sand_two_core_step_enabled()) {
+        perf_target(two_core_name, measured_us, two_core_goal_us, two_core_ceiling_us);
+    } else {
+        perf_target(one_core_name, measured_us, one_core_goal_us, one_core_ceiling_us);
+    }
+}
+
 /* The worst case: every cell on the screen moving at once. Unrelated code
  * shifting the flash layout can move this row between builds with no work
  * changed, so check the control rows before reading a miss here as a
@@ -1709,7 +1721,7 @@ test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget(void) {
                                                  "loses three cells a patch, but a packed screen that has shed an "
                                                  "eighth of itself is not the scene this row means to time");
     }
-    perf_target("packed gas turn", per_step, 99960, 114950);
+    perf_target_by_core("packed gas turn", "packed gas turn, one core", per_step, 99960, 114950, 110420, 126990);
     free(real);
 }
 
@@ -1760,7 +1772,7 @@ test_turning_a_half_screen_of_gas_fits_in_the_frame_budget(void) {
                                       "turning the board must move gas, not create or destroy it - decay is "
                                       "off by default, so the cell count is conserved across the turn");
     }
-    perf_target("half-screen gas turn", per_step, 34670, 39870);
+    perf_target_by_core("half-screen gas turn", "half-screen gas turn, one core", per_step, 34670, 39870, 34790, 40010);
     free(real);
 }
 
@@ -2083,7 +2095,8 @@ test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget(void) 
 
     /* A deliberately synthetic worst case, not comparable to the
      * plain-material rows. */
-    perf_target("full-screen gas cascade", elapsed, 176900, 203430);
+    perf_target_by_core("full-screen gas cascade", "full-screen gas cascade, one core", elapsed, 176900, 203430, 178400,
+                        205160);
     free(real);
 }
 

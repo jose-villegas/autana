@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include "anim/anim_track.h"
+#include "asset/asset_pack.h"
 #include "render/camera.h"
 #include "render/r3d_instance.h"
 
@@ -23,6 +24,23 @@ typedef struct {
     const r3d_placement_t* placement; /* where it stands without a path; NULL: the origin, looking down -Z */
     const r3d_scene_path_t* path;     /* NULL for a camera that stays put */
 } r3d_scene_camera_t;
+
+/* A mesh the scene draws by its asset id, and the view that names it in an
+ * instance once r3d_scene_bind() has filled it. */
+typedef struct {
+    const char* asset;
+    r3d_lit_mesh_t* mesh;
+} r3d_scene_mesh_t;
+
+typedef struct {
+    const r3d_scene_mesh_t* meshes;
+    int count;
+} r3d_scene_assets_t;
+
+/* Opens every mesh the scene names from `pack`. Stops at the first that is
+ * missing or malformed: returns its status and points `failed` at its id,
+ * the first mesh's id when `pack` is NULL. A NULL `failed` is allowed. */
+asset_status_t r3d_scene_bind(const asset_pack_t* pack, const r3d_scene_assets_t* assets, const char** failed);
 
 /* The loop's length, or 0 for a camera that stays put. */
 uint32_t r3d_scene_camera_period_ms(const r3d_scene_camera_t* camera);

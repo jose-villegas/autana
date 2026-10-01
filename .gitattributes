@@ -12,3 +12,7 @@
 *.otf binary
 *.xcf binary
 *.glb binary
+
+# Asset packs and their entries are binary.
+*.bin binary
+*.mesh binary

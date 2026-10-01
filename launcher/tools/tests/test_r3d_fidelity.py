@@ -93,8 +93,8 @@ class DeclaredVariantTests(unittest.TestCase):
                 scene = mesh_import.load_scene(scene_path)
                 job = scene.renderers[0]
                 geometry = mesh_import.bake_geometry(job.settings, job.variant, scene)
-                written = write_variant(scene_path, job.settings, job.variant, scene, geometry, "", root / "scratch")
-            tracked = (root / "mesh_mesh_generated.c").read_bytes()
+                written = write_variant(job.settings, job.variant, scene, geometry, "", root / "scratch")
+            tracked = (root / "mesh.mesh").read_bytes()
             self.assertEqual(written.read_bytes(), tracked)
             self.assertGreater(len(set(np.unique(geometry.tri_mat))), 0)
 
@@ -110,8 +110,8 @@ class DeclaredVariantTests(unittest.TestCase):
                 scene = mesh_import.load_scene(scene_path)
                 job = scene.renderers[0]
                 geometry = mesh_import.bake_geometry(job.settings, job.variant, scene)
-                declared = write_variant(scene_path, job.settings, job.variant, scene, geometry, "", root / "a")
-                other = write_variant(scene_path, job.settings, job.variant, scene, geometry, "samples=fixed:1,place=centroid",
+                declared = write_variant(job.settings, job.variant, scene, geometry, "", root / "a")
+                other = write_variant(job.settings, job.variant, scene, geometry, "samples=fixed:1,place=centroid",
                                       root / "b")
             self.assertNotEqual(declared.read_bytes(), other.read_bytes())
 

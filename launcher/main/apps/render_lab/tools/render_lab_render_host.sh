@@ -40,6 +40,10 @@ main/render/upscale.c
 main/anim/anim_track.c
 main/render/r3d_span.c
 main/render/r3d_scene.c
+main/render/r3d_lit_mesh.c
+main/asset/asset_pack.c
+main/asset/asset_file.c
+main/asset/asset_store_file.c
 main/ui/ui.c
 main/ui/ui_bridge.c
 main/ui/ui_build.c
@@ -109,6 +113,22 @@ sponza-tiles-landscape|--quarter 1 --no-hud --scene sponza --frames 2 --view til
 sponza-tiles-portrait|--quarter 0 --no-hud --scene sponza --frames 2 --view tiles|368x448|nopin
 sponza-tiles-flipped|--quarter 3 --no-hud --scene sponza --frames 2 --view tiles|448x368|nopin
 "
+
+# The scenes read their meshes from an asset pack, packed here from the baked
+# meshes in the tree. Its path is built into the renderer, which the revision
+# comparison runs on its own, so each build finds the pack beside it.
+# shellcheck source=../../../../../scripts/lib/python.sh
+. "$SCRIPT_DIR/../../../../../scripts/lib/python.sh"
+PYTHON=$(find_python) || exit 1
+pack_dir="$SCRIPT_DIR/results/render/$scene_name"
+mkdir -p "$pack_dir"
+"$PYTHON" "$SCRIPT_DIR/../../../../tools/r3d/build_pack.py" -o "$pack_dir/assets.bin" "$SCRIPT_DIR/../../.." > /dev/null
+if command -v cygpath > /dev/null 2>&1; then
+    pack_path=$(cygpath -m "$pack_dir/assets.bin")
+else
+    pack_path="$pack_dir/assets.bin"
+fi
+scene_defines="$scene_defines -DASSET_PACK_DEFAULT_PATH=\"$pack_path\""
 
 # shellcheck source=../../../../tools/render/render_scene.sh
 . "$SCRIPT_DIR/../../../../tools/render/render_scene.sh"

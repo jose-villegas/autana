@@ -8,16 +8,24 @@
 
 #include "sponza_scene_generated.h"
 
-#include "sponza_flat_mesh_generated.h"
-#include "sponza_lite_mesh_generated.h"
-#include "sponza_mesh_generated.h"
 #include "flythrough_tracks_generated.h"
 
-const r3d_instance_t sponza_scene_atrium = {.mesh = &sponza_mesh, .placement = NULL};
+static r3d_lit_mesh_t sponza_scene_atrium_mesh;
+const r3d_instance_t sponza_scene_atrium = {.mesh = &sponza_scene_atrium_mesh, .placement = NULL};
 
-const r3d_instance_t sponza_scene_atrium_flat = {.mesh = &sponza_flat_mesh, .placement = NULL};
+static r3d_lit_mesh_t sponza_scene_atrium_flat_mesh;
+const r3d_instance_t sponza_scene_atrium_flat = {.mesh = &sponza_scene_atrium_flat_mesh, .placement = NULL};
 
-const r3d_instance_t sponza_scene_atrium_lite = {.mesh = &sponza_lite_mesh, .placement = NULL};
+static r3d_lit_mesh_t sponza_scene_atrium_lite_mesh;
+const r3d_instance_t sponza_scene_atrium_lite = {.mesh = &sponza_scene_atrium_lite_mesh, .placement = NULL};
+
+static const r3d_scene_mesh_t sponza_scene_meshes[] = {
+    {"sponza", &sponza_scene_atrium_mesh},
+    {"sponza_flat", &sponza_scene_atrium_flat_mesh},
+    {"sponza_lite", &sponza_scene_atrium_lite_mesh},
+};
+
+const r3d_scene_assets_t sponza_scene_assets = {.meshes = sponza_scene_meshes, .count = (int)(sizeof sponza_scene_meshes / sizeof sponza_scene_meshes[0])};
 
 static const r3d_scene_path_t sponza_scene_camera_path = {.clip = &flythrough_clip, .translation = &flythrough_camera_translation, .rotation = &flythrough_camera_rotation};
 
