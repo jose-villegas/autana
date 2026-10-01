@@ -200,7 +200,7 @@ test_the_quarter_points_are_exact(void) {
 static boot_anim_view_t
 identity_view(float focal) {
     boot_anim_view_t v;
-    v.matrix = mat4f_identity();
+    v.matrix = boot_anim_unit_scale();
     v.focal = focal;
     v.near_z = R3D_LINE_NEAR_Z;
     v.center_x = PANEL_W / 2;

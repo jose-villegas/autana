@@ -108,9 +108,17 @@ boot_anim_timeline_sample(uint32_t now_ms) {
 /* The spiral: one unit of t climbs 132/512 of a meter. */
 #define BOOT_ANIM_SPIRAL_Q9    132
 
-static inline float
-boot_anim_t_to_meters(int32_t t_q8) {
-    return (float)(t_q8 * BOOT_ANIM_SPIRAL_Q9) * (1.0F / (256.0F * 512.0F));
+/* Meters per integer unit of (re, t, im) as boot_anim_to_camera_space() takes
+ * them: Q12 on the floor's axes, Q8 on the climb. The view matrix carries
+ * this, so a point converts from int to float and nothing else before it is
+ * transformed. */
+static inline mat4f_t
+boot_anim_unit_scale(void) {
+    mat4f_t units = mat4f_identity();
+    units.m[0][0] = 1.0F / (float)BOOT_ANIM_ONE;
+    units.m[1][1] = (float)BOOT_ANIM_SPIRAL_Q9 * (1.0F / (256.0F * 512.0F));
+    units.m[2][2] = 1.0F / (float)BOOT_ANIM_ONE;
+    return units;
 }
 
 /* The general camera-space clip and perspective projection this needs live
@@ -128,15 +136,16 @@ boot_anim_view(int w, int h, uint32_t now_ms) {
      * so r3d_line_camera_view()'s shorter-axis fit is exactly half w; boot's
      * pixels must not move if that inequality ever changes. */
     const viewport_t viewport = {.width = w, .height = h, .quarter = 0};
-    return r3d_line_camera_view(camera, &st.space, viewport);
+    boot_anim_view_t view = r3d_line_camera_view(camera, &st.space, viewport);
+    view.matrix = mat4f_mul(view.matrix, boot_anim_unit_scale());
+    return view;
 }
 
 /* CAMERA space transform; boot_anim_project() refactored for z check. Q12
- * re/im, Q8 t, to meters. */
+ * re/im, Q8 t; the view matrix turns them into meters. */
 static inline vec3f_t
 boot_anim_to_camera_space(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view) {
-    const float per_q12 = 1.0F / (float)BOOT_ANIM_ONE;
-    const vec3f_t p = {(float)re_q12 * per_q12, boot_anim_t_to_meters(t_q8), (float)im_q12 * per_q12};
+    const vec3f_t p = {(float)re_q12, (float)t_q8, (float)im_q12};
 
     return r3d_to_camera_space(p, view);
 }
