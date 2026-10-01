@@ -330,41 +330,45 @@ class LitMeshTests(unittest.TestCase):
         self.assertIsNone(mesh.face_colors)
         self.assertEqual(len(mesh.rgb), len(mesh.pos))
 
-    def test_a_flat_mesh_is_written_with_designated_fields_and_a_smooth_one_never_names_face_colours(self):
+    def test_a_flat_mesh_entry_has_face_colours_and_a_smooth_one_has_vertex_colours_never_both(self):
         p, tris = grid(2)
         double = np.zeros(len(tris), dtype=int)
         with tempfile.TemporaryDirectory() as out:
-            write_lit_mesh(out, "smooth", p, np.full((len(p), 3), 128), tris, double, ["test"])
-            write_lit_mesh(out, "solid", p, None, tris, double, ["test"], face_rgb=np.full((len(tris), 3), 64))
-            smooth = (pathlib.Path(out) / "smooth_mesh_generated.c").read_text()
-            solid = (pathlib.Path(out) / "solid_mesh_generated.c").read_text()
-        self.assertNotIn("face_colors", smooth)
-        self.assertNotIn("NULL", smooth + solid)
-        self.assertIn(".colors = smooth_colors", smooth)
-        self.assertIn(".face_colors = solid_face_colors", solid)
-        self.assertNotIn(".colors", solid)
-        self.assertIn("GFX_RGB(0x404040)", solid)
+            write_lit_mesh(out, "smooth", p, np.full((len(p), 3), 128), tris, double)
+            write_lit_mesh(out, "solid", p, None, tris, double, face_rgb=np.full((len(tris), 3), 64))
+            smooth = (pathlib.Path(out) / "smooth.mesh").read_bytes()
+            solid = (pathlib.Path(out) / "solid.mesh").read_bytes()
+        smooth_at = lit_mesh.BLOB_HEADER.unpack_from(smooth)[5:]
+        solid_at = lit_mesh.BLOB_HEADER.unpack_from(solid)[5:]
+        self.assertEqual((smooth_at[1] != 0, smooth_at[5] != 0), (True, False))
+        self.assertEqual((solid_at[1] != 0, solid_at[5] != 0), (False, True))
+        face = np.frombuffer(solid, dtype="<u2", count=len(tris), offset=solid_at[5])
+        self.assertTrue((face == 0x0842).all(), "0x404040 in the panel's byte-swapped RGB565")
 
-    def test_a_written_mesh_names_its_counts(self):
+    def test_a_written_mesh_names_its_counts_and_keeps_every_array_inside_the_entry(self):
         p, tris = grid(6)
         rgb = np.full((len(p), 3), 128)
         with tempfile.TemporaryDirectory() as out:
-            mesh = write_lit_mesh(out, "demo", p * 50.0, rgb, tris, np.zeros(len(tris), dtype=np.int64), ["test"],
+            mesh = write_lit_mesh(out, "demo", p * 50.0, rgb, tris, np.zeros(len(tris), dtype=np.int64),
                                   leaf_triangles=16, max_depth=4)
-            header = (pathlib.Path(out) / "demo_mesh_generated.h").read_text()
-        self.assertIn(f"#define DEMO_TRIANGLE_COUNT {len(tris)}", header)
-        self.assertEqual(len(mesh.tris), len(tris))
+            blob = (pathlib.Path(out) / "demo.mesh").read_bytes()
+        vertices, triangles, clusters, nodes, scale, *at = lit_mesh.BLOB_HEADER.unpack_from(blob)
+        self.assertEqual((vertices, triangles, clusters, nodes), (len(mesh.pos), len(tris), len(mesh.clusters), len(mesh.nodes)))
+        sizes = (vertices * 6, vertices * 3, triangles * 6, clusters * lit_mesh.CLUSTER.size, nodes * lit_mesh.NODE.size, 0)
+        for offset, size in zip(at, sizes):
+            self.assertEqual(offset % 4, 0)
+            self.assertLessEqual(offset + size, len(blob))
 
     def test_rebaking_a_flat_mesh_is_a_fixed_point(self):
         p, tris = grid(2)
         face_rgb = np.arange(len(tris) * 3).reshape(-1, 3) * 20
         with tempfile.TemporaryDirectory() as out:
-            write_lit_mesh(out, "demo", p, None, tris, np.zeros(len(tris), dtype=int), ["test"], face_rgb=face_rgb)
-            c = pathlib.Path(out) / "demo_mesh_generated.c"
-            rebake.main([str(c)])
-            once = (c.read_text(), c.with_suffix(".h").read_text())
-            rebake.main([str(c)])
-            twice = (c.read_text(), c.with_suffix(".h").read_text())
+            write_lit_mesh(out, "demo", p, None, tris, np.zeros(len(tris), dtype=int), face_rgb=face_rgb)
+            entry = pathlib.Path(out) / "demo.mesh"
+            rebake.main([str(entry)])
+            once = entry.read_bytes()
+            rebake.main([str(entry)])
+            twice = entry.read_bytes()
         self.assertEqual(once, twice)
 
     def test_validation_refuses_a_triangle_reaching_outside_its_cluster(self):
@@ -572,11 +576,11 @@ class MeshletTests(unittest.TestCase):
             self.assertEqual(sum(n["count"] for n in mesh.nodes if n["leaf"]), len(mesh.clusters))
             self.assertLess(len(mesh.nodes), len(mesh.clusters))
 
-    def test_the_c_data_reads_back_as_what_was_baked(self):
+    def test_the_entry_reads_back_as_what_was_baked(self):
         for m, mesh in list(self.each()):
             with tempfile.TemporaryDirectory() as out:
-                write_lit_mesh(out, "demo", *m, ["test"])
-                back = read_lit_mesh(pathlib.Path(out) / "demo_mesh_generated.c")
+                write_lit_mesh(out, "demo", *m)
+                back = read_lit_mesh(pathlib.Path(out) / "demo.mesh")
             self.assertTrue(np.array_equal(back.pos, mesh.pos) and np.array_equal(back.tris, mesh.tris))
             self.assertEqual([(n["first"], n["count"], n["leaf"]) for n in back.nodes],
                              [(n["first"], n["count"], n["leaf"]) for n in mesh.nodes])
@@ -592,21 +596,15 @@ class MeshletTests(unittest.TestCase):
     def test_rebaking_a_mesh_is_a_fixed_point_and_keeps_its_triangles(self):
         for m, mesh in list(self.each()):
             with tempfile.TemporaryDirectory() as out:
-                banner = ["GENERATED FILE - do not edit.", "", "    python gen.py --out-dir .", "", "Some Model (CC BY)"]
-                write_lit_mesh(out, "demo", *m, banner)
-                c = pathlib.Path(out) / "demo_mesh_generated.c"
-                rebake.main([str(c), "--meshlet-triangles", "24"])
-                once = (c.read_text(), c.with_suffix(".h").read_text())
-                rebake.main([str(c), "--meshlet-triangles", "24"])
-                twice = (c.read_text(), c.with_suffix(".h").read_text())
-                back = read_lit_mesh(c)
+                write_lit_mesh(out, "demo", *m)
+                entry = pathlib.Path(out) / "demo.mesh"
+                rebake.main([str(entry), "--meshlet-triangles", "24"])
+                once = entry.read_bytes()
+                rebake.main([str(entry), "--meshlet-triangles", "24"])
+                twice = entry.read_bytes()
+                back = read_lit_mesh(entry)
             self.assertEqual(once, twice)
             self.assertEqual(canonical(back.pos, back.tris), canonical(mesh.pos, mesh.tris))
-            head = once[0][: once[0].index("*/")]
-            self.assertEqual(head.count("python "), 2, "the banner names the rebake command and the original")
-            self.assertIn("python launcher/tools/r3d/rebake.py ", head)
-            self.assertIn("Some Model (CC BY)", head)
-            self.assertIn("--meshlet-triangles 24", head)
 
 if __name__ == "__main__":
     unittest.main()

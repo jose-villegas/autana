@@ -78,8 +78,7 @@ over the full mesh.
 | ![Sponza flythrough, depth](../../../../../docs/images/render/sponza-depth.gif) | `RASTER_SHOW_DEPTH` over the full mesh | as full |
 | ![Sponza flythrough, depth tiles](../../../../../docs/images/render/sponza-tiles.gif) | `RASTER_SHOW_DEPTH_TILES` over the full mesh | as full |
 
-The counts are the macros in `sponza_mesh_generated.h`,
-`sponza_lite_mesh_generated.h` and `sponza_flat_mesh_generated.h`.
+The counts are those of the three baked meshes in `meshes/`.
 `autana suite run_sponza_perf_suite` prints each variant's `both cores: mean`
 line (`test_sponza_frame_cost_along_the_flythrough`). The GIFs are made by the
 doc-images workflow
@@ -116,7 +115,7 @@ the scene's camera object (`meshes/sponza.scene.toml`):
     --tracks launcher/main/apps/render_lab/flythrough_tracks_generated.c:flythrough \
     --every 5000 --poses camera 184 224 0.62 6 |
     ./launcher/tools/r3d/report_triangle_sizes.sh \
-        --mesh launcher/main/apps/render_lab/sponza_mesh_generated.c:sponza_mesh -
+        --mesh sponza -
 ```
 
 ## The capybara test asset
