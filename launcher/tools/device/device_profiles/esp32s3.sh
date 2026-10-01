@@ -29,14 +29,16 @@ DP_TEST_FRAME_CEILING_BYTES=1024
 DP_TEST_FRAME_CEILING_SOURCE="derived from DP_MAIN_TASK_STACK_BYTES; see check_stack_usage.py"
 
 
-# Deepest call chain a root may reach, "function:bytes" pairs, from the
+# Deepest call chain a root may reach, "function:bytes" pairs, summed from the
 # device compiler's own call graph (launcher/tools/quality/stack_chain_gate.py,
 # run on the diagnostics build). The shell's frame loop and every test share
-# the 3,584 bytes above, and a test must end with 512 free; sand_step was
-# measured at 1,216, so the rest is slack for one frame of growth, not for
-# a regression. There is no host budget: the host compiles other frames and
-# picks a different deepest path.
-DP_STACK_CHAIN_BUDGETS_DEVICE="sand_step:1300"
+# the 3,584 bytes above, and a test must end with 512 free. sand_step measures
+# 1,424 (1,760 before its frames were trimmed); the budget leaves room for one
+# frame of growth, not for a regression. The INDIRECT pairs are the chunk
+# passes the scheduler calls through a pointer, which the graph cannot see.
+# There is no host budget: the host compiles other frames.
+DP_STACK_CHAIN_BUDGETS_DEVICE="sand_step:1500"
+DP_STACK_CHAIN_INDIRECT_DEVICE="sand_chunk_pass_run>sweep_one_chunk sand_chunk_pass_run>step_one_gas_chunk sand_chunk_pass_run>equalise_gas_one_chunk sand_chunk_pass_run>equalise_one_chunk sand_chunk_pass_run>react_one_chunk"
 
 # --- heap ------------------------------------------------------------------
 # Internal heap free after gfx_init() (HEAPMARK). The framebuffer lives in

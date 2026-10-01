@@ -173,7 +173,8 @@ def parse_callgraph(ci_paths):
     The .ci files are GCC's -fcallgraph-info=su output, one per translation
     unit. A function is keyed by its bare name, so a call into another unit
     joins that unit's frame. Calls through a function pointer are not in the
-    graph at all.
+    graph at all: the profile names them as DP_STACK_CHAIN_INDIRECT_<TARGET>,
+    "caller>callee" pairs.
     """
     frame = {}
     calls = {}
@@ -243,6 +244,10 @@ def check_chains(su_dir, profile, target, stack_bytes):
               "refusing to pass." % (key, su_dir), file=sys.stderr)
         return 1
     frame, calls = parse_callgraph(sorted(ci_paths))
+    for edge in profile.get("DP_STACK_CHAIN_INDIRECT_" + target.upper(),
+                            "").split():
+        caller, _, callee = edge.partition(">")
+        calls.setdefault(caller, set()).add(callee)
     status = 0
     for root, budget in parse_chain_budgets(spec):
         if root not in frame:
