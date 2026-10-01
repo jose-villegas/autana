@@ -9,50 +9,60 @@
  * carries the whole environment a camera-space point needs (matrix, focal
  * length, near clip, and where the projection plane lands on screen), so a
  * caller with its own scale and its own screen size passes it in rather
- * than this file assuming one.
+ * than this file assuming one. Float, in the caller's own length unit.
  */
 #pragma once
 
+#include <math.h>
 #include <stdbool.h>
-#include <stdint.h>
 
-#include "util/math/matrix4i.h"
+#include "util/math/mat4.h"
+#include "util/math/vec3.h"
 
-/* A small fraction of one VEC4I_ONE unit: a caller with its own physical unit
+/* A small fraction of one model unit: a caller with its own physical unit
  * (a meter, a grid cell) is free to pick a near_z of its own instead. */
-#define R3D_LINE_NEAR_Z (VEC4I_ONE / 10)
+#define R3D_LINE_NEAR_Z 0.1F
+
+/* Past this a projected offset is off any panel; clamping first keeps the
+ * float to int conversion defined for a point at the camera. */
+#define R3D_PIXEL_LIMIT 1000000.0F
+
+/* The depth a point exactly at the camera plane is moved to before dividing. */
+#define R3D_Z_MIN       (1.0F / 512.0F)
 
 typedef struct {
-    matrix4i_t matrix;   /* model * view, composed by the caller */
-    vec4i_unit_t focal;  /* 0 is orthographic */
-    vec4i_unit_t near_z; /* camera-space clip plane, > 0 */
-    int center_x;        /* screen pixel the optical axis lands on */
+    mat4_t matrix; /* model * view, composed by the caller */
+    float focal;   /* projection-plane distance; 0 is orthographic */
+    float near_z;  /* camera-space clip plane, > 0 */
+    int center_x;  /* screen pixel the optical axis lands on */
     int center_y;
-    int scale; /* pixels per projection-plane unit VEC4I_ONE, both axes */
+    float scale; /* pixels per projection-plane unit, both axes */
 } r3d_line_view_t;
 
-static inline vec4i_t
-r3d_to_camera_space(vec4i_t model_point, const r3d_line_view_t* view) {
-    matrix4i_transform_point(&model_point, (vec4i_unit_t(*)[4])view->matrix);
-    return model_point;
+static inline vec3_t
+r3d_to_camera_space(vec3_t model_point, const r3d_line_view_t* view) {
+    return mat4_apply(&view->matrix, model_point);
+}
+
+/* A pixel offset truncated toward zero, so it is symmetric about the centre. */
+static inline int
+r3d_pixel_offset(float offset) {
+    return (int)fmaxf(-R3D_PIXEL_LIMIT, fminf(R3D_PIXEL_LIMIT, offset));
 }
 
 static inline void
-r3d_camera_to_screen(vec4i_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
-    p.z = vec4i_unit_non_zero(p.z);
-    matrix4i_perspective_divide(&p, view->focal);
-
-    /* Only the multiply is 64-bit, not every unit: a near-camera point's
-     * already-divided p.x/p.y can be large enough to overflow a 32-bit
-     * product here even though the final on/off-panel result never does;
-     * gfx.c's clip_line() leans on the same trick. */
-    *screen_x = (int)(view->center_x + ((int64_t)p.x * view->scale) / VEC4I_ONE);
-    *screen_y = (int)(view->center_y - ((int64_t)p.y * view->scale) / VEC4I_ONE);
+r3d_camera_to_screen(vec3_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
+    float gain = view->scale;
+    if (view->focal != 0.0F) {
+        gain *= view->focal / (p.z == 0.0F ? R3D_Z_MIN : p.z);
+    }
+    *screen_x = view->center_x + r3d_pixel_offset(p.x * gain);
+    *screen_y = view->center_y - r3d_pixel_offset(p.y * gain);
 }
 
 /* Draws if point is in front; checks visibility, avoids invalid coordinates. */
 static inline bool
-r3d_project_point_cs(vec4i_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
+r3d_project_point_cs(vec3_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
     if (p.z <= view->near_z) {
         return false;
     }
@@ -63,7 +73,7 @@ r3d_project_point_cs(vec4i_t p, const r3d_line_view_t* view, int* screen_x, int*
 /* Clips to near plane; avoids screen wrap. Returns false if segment is at or
  * behind the plane. */
 static inline bool
-r3d_project_segment_cs(vec4i_t p0, vec4i_t p1, const r3d_line_view_t* view, int* ax, int* ay, int* bx, int* by) {
+r3d_project_segment_cs(vec3_t p0, vec3_t p1, const r3d_line_view_t* view, int* ax, int* ay, int* bx, int* by) {
     const bool front0 = p0.z > view->near_z;
     const bool front1 = p1.z > view->near_z;
 
@@ -74,12 +84,12 @@ r3d_project_segment_cs(vec4i_t p0, vec4i_t p1, const r3d_line_view_t* view, int*
     if (front0 != front1) {
         /* Replace endpoint with crossing point using linear interpolation in
          * camera space. */
-        vec4i_t* behind = front0 ? &p1 : &p0;
-        const vec4i_t* front = front0 ? &p0 : &p1;
-        const int64_t frac_q16 = ((int64_t)(view->near_z - behind->z) << 16) / (front->z - behind->z);
+        vec3_t* behind = front0 ? &p1 : &p0;
+        const vec3_t* front = front0 ? &p0 : &p1;
+        const float frac = (view->near_z - behind->z) / (front->z - behind->z);
 
-        behind->x += (int32_t)(((int64_t)(front->x - behind->x) * frac_q16) >> 16);
-        behind->y += (int32_t)(((int64_t)(front->y - behind->y) * frac_q16) >> 16);
+        behind->x += (front->x - behind->x) * frac;
+        behind->y += (front->y - behind->y) * frac;
         behind->z = view->near_z;
     }
 

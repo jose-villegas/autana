@@ -6,14 +6,14 @@
 #pragma once
 
 #include "render/r3d_lit_mesh.h"
-#include "render/vec3f.h"
+#include "util/math/vec3.h"
 
 /* A point in the mesh's own units goes to the world as m * point + position.
  * The scale baked into m is positive on every axis, so no triangle turns
  * inside out. */
 typedef struct {
     float m[3][3];
-    vec3f_t position;
+    vec3_t position;
 } r3d_placement_t;
 
 typedef struct {

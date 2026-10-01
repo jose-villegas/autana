@@ -1,9 +1,9 @@
 /*
  * r3d_line_camera: the camera for points and segments projected through
- * matrix4i's fixed point (VEC4I_ONE units, angles in turns), and the two
- * things a caller placing one needs: the roll that keeps a scene's up on the
- * shell's up, and the fit onto a non-square viewport. Unlike camera_t
- * its pose carries a roll and composes with a model transform in integers.
+ * r3d_project.h (float, in the scene's own length unit), and the two things
+ * a caller placing one needs: the roll that keeps a scene's up on the
+ * shell's up, and the fit onto a non-square viewport. The pose is a
+ * transform_t, so a caller places it with the transform helpers.
  * Header-only, static inline and ESP-IDF-free, so a host suite can check
  * every line of it. A caller passes its own quarter and viewport in.
  */
@@ -11,39 +11,37 @@
 
 #include "render/r3d_project.h"
 #include "render/viewport.h"
+#include "util/math/transform.h"
 
 typedef struct {
-    matrix4i_transform_t pose;
-    vec4i_unit_t focal; /* 0 is orthographic */
-    vec4i_unit_t near_z;
+    transform_t pose;
+    float focal; /* 0 is orthographic */
+    float near_z;
 } r3d_line_camera_t;
 
 /* A caller drawing in the panel's native frame, rather than through the
- * shell's UI transform, is not turned with the shell; this roll is what
- * keeps its up on the shell's current up. Replaces any roll the pose had. */
+ * shell's UI transform, is not turned with the shell; this roll about the
+ * camera's own forward axis is what keeps its up on the shell's current up.
+ * It adds to the pose's roll, so the pose passed in must have none. */
 static inline r3d_line_camera_t
 r3d_line_camera_upright(r3d_line_camera_t camera, int quarter) {
-    camera.pose.rotation.z = -quarter * (VEC4I_ONE / 4);
+    const quat_t roll = quat_from_axis_angle((vec3_t){0.0F, 0.0F, 1.0F}, (float)quarter * (MATH_PI / 2.0F));
+    transform_rotate(&camera.pose, roll);
     return camera;
 }
 
 /* The scale is fitted to the viewport's SHORTER axis and used for both, so
  * pixels stay square and the longer axis simply sees further. */
 static inline r3d_line_view_t
-r3d_line_camera_view(r3d_line_camera_t camera, matrix4i_transform_t model_transform, viewport_t viewport) {
-    matrix4i_t world_mat, camera_mat;
-    matrix4i_world(model_transform, world_mat);
-    matrix4i_camera(camera.pose, camera_mat);
-    matrix4i_mul(world_mat, camera_mat);
-
+r3d_line_camera_view(r3d_line_camera_t camera, transform_t* model, viewport_t viewport) {
     const int fit = viewport.width < viewport.height ? viewport.width : viewport.height;
 
     r3d_line_view_t view;
-    matrix4i_copy(world_mat, view.matrix);
+    view.matrix = mat4_mul(transform_view(&camera.pose), transform_matrix(model));
     view.focal = camera.focal;
     view.near_z = camera.near_z;
     view.center_x = viewport.width / 2;
     view.center_y = viewport.height / 2;
-    view.scale = fit / 2;
+    view.scale = (float)(fit / 2);
     return view;
 }

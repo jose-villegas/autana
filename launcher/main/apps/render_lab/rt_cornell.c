@@ -26,27 +26,27 @@
 #define LIGHT_INTENSITY           2.0f
 #define SHADOW_BIAS               0.001f
 
-#define CAMERA_POS                ((vec3f_t){0.0f, 1.0f, -2.6f})
-#define CAMERA_FORWARD            ((vec3f_t){0.0f, 0.0f, 1.0f})
-#define CAMERA_RIGHT              ((vec3f_t){1.0f, 0.0f, 0.0f}) /* +X is the green wall's side */
-#define CAMERA_UP                 ((vec3f_t){0.0f, 1.0f, 0.0f})
+#define CAMERA_POS                ((vec3_t){0.0f, 1.0f, -2.6f})
+#define CAMERA_FORWARD            ((vec3_t){0.0f, 0.0f, 1.0f})
+#define CAMERA_RIGHT              ((vec3_t){1.0f, 0.0f, 0.0f}) /* +X is the green wall's side */
+#define CAMERA_UP                 ((vec3_t){0.0f, 1.0f, 0.0f})
 /* The room's open front, 1 unit either side of the axis, just fits the
  * screen's SHORTER axis from CAMERA_POS, so neither box is ever cropped; the
  * longer axis sees a little past the room. */
 #define CAMERA_HALF_FOV_SHORT_TAN (1.04f / 2.6f)
 
-static vec3f_t
-shade_point(vec3f_t point, vec3f_t normal, vec3f_t albedo) {
-    const vec3f_t to_light = vec3f_sub(rt_cornell_light_pos, point);
-    const float dist = sqrtf(vec3f_dot(to_light, to_light));
-    const vec3f_t light_dir = vec3f_scale(to_light, 1.0f / dist);
+static vec3_t
+shade_point(vec3_t point, vec3_t normal, vec3_t albedo) {
+    const vec3_t to_light = vec3_sub(rt_cornell_light_pos, point);
+    const float dist = sqrtf(vec3_dot(to_light, to_light));
+    const vec3_t light_dir = vec3_scale(to_light, 1.0f / dist);
 
-    float diffuse = vec3f_dot(normal, light_dir);
+    float diffuse = vec3_dot(normal, light_dir);
     if (diffuse < 0.0f) {
         diffuse = 0.0f;
     }
     if (diffuse > 0.0f) {
-        const vec3f_t shadow_origin = vec3f_add(point, vec3f_scale(normal, SHADOW_BIAS));
+        const vec3_t shadow_origin = vec3_add(point, vec3_scale(normal, SHADOW_BIAS));
         if (rt_scene_occluded(&rt_cornell_scene, shadow_origin, light_dir, dist - SHADOW_BIAS)) {
             diffuse = 0.0f;
         }
@@ -56,7 +56,7 @@ shade_point(vec3f_t point, vec3f_t normal, vec3f_t albedo) {
     if (brightness > 1.0f) {
         brightness = 1.0f;
     }
-    return vec3f_scale(albedo, brightness);
+    return vec3_scale(albedo, brightness);
 }
 
 /* A smooth wall crosses only a handful of 5-bit levels, which shows as
@@ -77,7 +77,7 @@ quantize_channel(float v, uint32_t max_level, float threshold) {
 }
 
 gfx_color_t
-rt_cornell_dither_quantize(vec3f_t c, int x, int y) {
+rt_cornell_dither_quantize(vec3_t c, int x, int y) {
     const float threshold = ((float)bayer4[y & 3][x & 3] + 0.5f) / 16.0f;
     return gfx_color_rgb565((uint8_t)quantize_channel(c.x, 31, threshold),
                             (uint8_t)quantize_channel(c.y, 63, threshold),
@@ -85,7 +85,7 @@ rt_cornell_dither_quantize(vec3f_t c, int x, int y) {
 }
 
 static gfx_color_t
-trace_primary(vec3f_t origin, vec3f_t dir, int x, int y) {
+trace_primary(vec3_t origin, vec3_t dir, int x, int y) {
     rt_hit_t hit;
     if (!rt_scene_intersect(&rt_cornell_scene, origin, dir, &hit)) {
         return GFX_RGB(0x000000u);

@@ -22,7 +22,6 @@ main/gfx/gfx.c
 main/util/tune.c
 main/boot/boot_anim.c
 main/boot/boot_anim_tracks_generated.c
-main/render/r3d_trs.c
 tools/render/scenes/boot_anim_render_host.c
 "
 scene_renders="

@@ -26,7 +26,7 @@
  * direct look at the fixture; the magnitude is a path tracer's own, chosen
  * against the rendered picture rather than the display colour Whitted
  * shading uses, since the two integrators are not comparable quantities. */
-static const vec3f_t LIGHT_COLOR = {1.0f, 0.965f, 0.878f};
+static const vec3_t LIGHT_COLOR = {1.0f, 0.965f, 0.878f};
 #define LIGHT_RADIANCE    50.0f
 
 #define ACCUM_FIXED_SHIFT 6
@@ -36,9 +36,9 @@ static const vec3f_t LIGHT_COLOR = {1.0f, 0.965f, 0.878f};
 /* Vector helpers rt_path.c alone needs - ray.h stays the shared
  * add/sub/scale/dot/normalize set every ray caller uses. */
 
-static vec3f_t
-vec3_mul(vec3f_t a, vec3f_t b) {
-    return (vec3f_t){a.x * b.x, a.y * b.y, a.z * b.z};
+static vec3_t
+vec3_mul(vec3_t a, vec3_t b) {
+    return (vec3_t){a.x * b.x, a.y * b.y, a.z * b.z};
 }
 
 /* Fixed-point accumulator */
@@ -76,15 +76,15 @@ accum_channel(uint16_t mean_fixed, float sample, uint32_t n) {
 }
 
 void
-rt_path_accum_add(rt_path_accum_px_t* px, vec3f_t sample, uint32_t n) {
+rt_path_accum_add(rt_path_accum_px_t* px, vec3_t sample, uint32_t n) {
     px->r = accum_channel(px->r, sample.x, n);
     px->g = accum_channel(px->g, sample.y, n);
     px->b = accum_channel(px->b, sample.z, n);
 }
 
-vec3f_t
+vec3_t
 rt_path_accum_radiance(rt_path_accum_px_t px) {
-    return (vec3f_t){fixed_to_float(px.r), fixed_to_float(px.g), fixed_to_float(px.b)};
+    return (vec3_t){fixed_to_float(px.r), fixed_to_float(px.g), fixed_to_float(px.b)};
 }
 
 /* Resolve */
@@ -106,14 +106,14 @@ tonemap_channel(float c) {
     return RT_PATH_TONEMAP_KNEE + span * over / (over + span);
 }
 
-vec3f_t
-rt_path_tonemap(vec3f_t linear) {
-    return (vec3f_t){tonemap_channel(linear.x), tonemap_channel(linear.y), tonemap_channel(linear.z)};
+vec3_t
+rt_path_tonemap(vec3_t linear) {
+    return (vec3_t){tonemap_channel(linear.x), tonemap_channel(linear.y), tonemap_channel(linear.z)};
 }
 
 gfx_color_t
-rt_path_resolve_radiance(vec3f_t radiance, int x, int y) {
-    const vec3f_t clamped = {
+rt_path_resolve_radiance(vec3_t radiance, int x, int y) {
+    const vec3_t clamped = {
         radiance.x < 0.0f ? 0.0f : radiance.x,
         radiance.y < 0.0f ? 0.0f : radiance.y,
         radiance.z < 0.0f ? 0.0f : radiance.z,
@@ -160,18 +160,18 @@ rng_next(rt_path_rng_t* rng) {
 /* A point on wall `w` for (u, v) in [0, 1) each, mirroring
  * wall_bounds_ok()'s (rt_geometry.c) own axis convention: the two bounded
  * axes are whichever `normal` is not aligned with, in ascending order. */
-static vec3f_t
+static vec3_t
 wall_point_for_uv(const rt_wall_t* w, float u, float v) {
     const float c1 = w->min1 + u * (w->max1 - w->min1);
     const float c2 = w->min2 + v * (w->max2 - w->min2);
 
     if (w->normal.x != 0.0f) {
-        return (vec3f_t){w->d / w->normal.x, c1, c2};
+        return (vec3_t){w->d / w->normal.x, c1, c2};
     }
     if (w->normal.y != 0.0f) {
-        return (vec3f_t){c1, w->d / w->normal.y, c2};
+        return (vec3_t){c1, w->d / w->normal.y, c2};
     }
-    return (vec3f_t){c1, c2, w->d / w->normal.z};
+    return (vec3_t){c1, c2, w->d / w->normal.z};
 }
 
 static float
@@ -182,7 +182,7 @@ wall_area(const rt_wall_t* w) {
 /* The light quad's own centre - the seed pass's sample point: no RNG, so a
  * flat lit surface reads as one continuous falloff rather than a per-pixel
  * dice roll. */
-static vec3f_t
+static vec3_t
 light_center(void) {
     return wall_point_for_uv(rt_cornell_scene.light, 0.5f, 0.5f);
 }
@@ -193,23 +193,23 @@ light_center(void) {
  * blocked - never a negative contribution. Shared by both callers below:
  * a full path sample and the seed pass differ only in which point on the
  * quad they hand in, never in this maths. */
-static vec3f_t
-direct_light_from_point(vec3f_t light_point, vec3f_t point, vec3f_t normal, vec3f_t albedo) {
+static vec3_t
+direct_light_from_point(vec3_t light_point, vec3_t point, vec3_t normal, vec3_t albedo) {
     const rt_wall_t* light = rt_cornell_scene.light;
-    const vec3f_t to_light = vec3f_sub(light_point, point);
-    const float dist_sq = vec3f_dot(to_light, to_light);
+    const vec3_t to_light = vec3_sub(light_point, point);
+    const float dist_sq = vec3_dot(to_light, to_light);
     const float dist = sqrtf(dist_sq);
-    const vec3f_t light_dir = vec3f_scale(to_light, 1.0f / dist);
+    const vec3_t light_dir = vec3_scale(to_light, 1.0f / dist);
 
-    const float cos_surface = vec3f_dot(normal, light_dir);
-    const float cos_light = -vec3f_dot(light->normal, light_dir);
+    const float cos_surface = vec3_dot(normal, light_dir);
+    const float cos_light = -vec3_dot(light->normal, light_dir);
     if (cos_surface <= 0.0f || cos_light <= 0.0f) {
-        return (vec3f_t){0.0f, 0.0f, 0.0f};
+        return (vec3_t){0.0f, 0.0f, 0.0f};
     }
 
-    const vec3f_t shadow_origin = vec3f_add(point, vec3f_scale(normal, RT_PATH_SHADOW_BIAS));
+    const vec3_t shadow_origin = vec3_add(point, vec3_scale(normal, RT_PATH_SHADOW_BIAS));
     if (rt_scene_occluded(&rt_cornell_scene, shadow_origin, light_dir, dist - RT_PATH_SHADOW_BIAS)) {
-        return (vec3f_t){0.0f, 0.0f, 0.0f};
+        return (vec3_t){0.0f, 0.0f, 0.0f};
     }
 
     /* Lambert (albedo / pi) times the area-light estimator for uniform-area
@@ -218,35 +218,35 @@ direct_light_from_point(vec3f_t light_point, vec3f_t point, vec3f_t normal, vec3
      * rather than folded further, so each factor stays legible on its own. */
     const float geometry = cos_surface * cos_light * wall_area(light) / dist_sq;
     const float weight = geometry / RT_PATH_PI;
-    const vec3f_t emission = vec3f_scale(LIGHT_COLOR, LIGHT_RADIANCE);
-    return vec3f_scale(vec3_mul(albedo, emission), weight);
+    const vec3_t emission = vec3_scale(LIGHT_COLOR, LIGHT_RADIANCE);
+    return vec3_scale(vec3_mul(albedo, emission), weight);
 }
 
 /* A uniformly sampled point on the light quad each call - what a full path
  * sample's own NEE term uses, so the shadow softens and colour bleed
  * arrives as the accumulator averages many of these together. */
-static vec3f_t
-direct_light(rt_path_rng_t* rng, vec3f_t point, vec3f_t normal, vec3f_t albedo) {
+static vec3_t
+direct_light(rt_path_rng_t* rng, vec3_t point, vec3_t normal, vec3_t albedo) {
     const float u = rng_next(rng);
     const float v = rng_next(rng);
-    const vec3f_t light_point = wall_point_for_uv(rt_cornell_scene.light, u, v);
+    const vec3_t light_point = wall_point_for_uv(rt_cornell_scene.light, u, v);
     return direct_light_from_point(light_point, point, normal, albedo);
 }
 
 /* Cosine-weighted hemisphere bounce */
 
 static void
-build_basis(vec3f_t n, vec3f_t* tangent, vec3f_t* bitangent) {
-    const vec3f_t up = fabsf(n.y) < 0.999f ? (vec3f_t){0.0f, 1.0f, 0.0f} : (vec3f_t){1.0f, 0.0f, 0.0f};
-    *tangent = vec3f_normalize(vec3f_cross(up, n));
-    *bitangent = vec3f_cross(n, *tangent);
+build_basis(vec3_t n, vec3_t* tangent, vec3_t* bitangent) {
+    const vec3_t up = fabsf(n.y) < 0.999f ? (vec3_t){0.0f, 1.0f, 0.0f} : (vec3_t){1.0f, 0.0f, 0.0f};
+    *tangent = vec3_normalize(vec3_cross(up, n));
+    *bitangent = vec3_cross(n, *tangent);
 }
 
 /* pdf = cos(theta) / pi, the same as the Lambert BRDF's own cos/pi factor,
  * so a bounce's throughput multiplies by albedo alone - the two cancel. */
-static vec3f_t
-cosine_sample_hemisphere(vec3f_t n, float u1, float u2) {
-    vec3f_t tangent, bitangent;
+static vec3_t
+cosine_sample_hemisphere(vec3_t n, float u1, float u2) {
+    vec3_t tangent, bitangent;
     build_basis(n, &tangent, &bitangent);
 
     const float r = sqrtf(u1);
@@ -255,9 +255,9 @@ cosine_sample_hemisphere(vec3f_t n, float u1, float u2) {
     const float y = r * sinf(phi);
     const float z = sqrtf(1.0f - u1);
 
-    vec3f_t dir = vec3f_scale(tangent, x);
-    dir = vec3f_add(dir, vec3f_scale(bitangent, y));
-    dir = vec3f_add(dir, vec3f_scale(n, z));
+    vec3_t dir = vec3_scale(tangent, x);
+    dir = vec3_add(dir, vec3_scale(bitangent, y));
+    dir = vec3_add(dir, vec3_scale(n, z));
     return dir;
 }
 
@@ -266,10 +266,10 @@ cosine_sample_hemisphere(vec3f_t n, float u1, float u2) {
 /* `max_depth` is 1 for the direct-only reference a bleed test compares a
  * full sample against, RT_PATH_MAX_DEPTH otherwise - both walk the same
  * loop, so there is only one place the shading maths can drift. */
-static vec3f_t
-trace_path(vec3f_t origin, vec3f_t dir, rt_path_rng_t* rng, int max_depth) {
-    vec3f_t radiance = {0.0f, 0.0f, 0.0f};
-    vec3f_t throughput = {1.0f, 1.0f, 1.0f};
+static vec3_t
+trace_path(vec3_t origin, vec3_t dir, rt_path_rng_t* rng, int max_depth) {
+    vec3_t radiance = {0.0f, 0.0f, 0.0f};
+    vec3_t throughput = {1.0f, 1.0f, 1.0f};
 
     for (int depth = 0; depth < max_depth; depth++) {
         rt_hit_t hit;
@@ -282,48 +282,48 @@ trace_path(vec3f_t origin, vec3f_t dir, rt_path_rng_t* rng, int max_depth) {
              * term the previous hit took, and adding it again here would
              * double it. */
             if (depth == 0) {
-                const vec3f_t emission = vec3f_scale(LIGHT_COLOR, LIGHT_RADIANCE);
-                radiance = vec3f_add(radiance, vec3_mul(throughput, emission));
+                const vec3_t emission = vec3_scale(LIGHT_COLOR, LIGHT_RADIANCE);
+                radiance = vec3_add(radiance, vec3_mul(throughput, emission));
             }
             break;
         }
 
-        radiance = vec3f_add(radiance, vec3_mul(throughput, direct_light(rng, hit.point, hit.normal, hit.albedo)));
+        radiance = vec3_add(radiance, vec3_mul(throughput, direct_light(rng, hit.point, hit.normal, hit.albedo)));
 
         const float u1 = rng_next(rng);
         const float u2 = rng_next(rng);
         dir = cosine_sample_hemisphere(hit.normal, u1, u2);
         throughput = vec3_mul(throughput, hit.albedo);
-        origin = vec3f_add(hit.point, vec3f_scale(hit.normal, RT_PATH_SHADOW_BIAS));
+        origin = vec3_add(hit.point, vec3_scale(hit.normal, RT_PATH_SHADOW_BIAS));
     }
     return radiance;
 }
 
-vec3f_t
+vec3_t
 rt_path_direct_estimate(const rt_cornell_camera_t* cam, int x, int y) {
-    const vec3f_t dir = ray_direction(cam, x, y);
+    const vec3_t dir = ray_direction(cam, x, y);
 
     rt_hit_t hit;
     if (!rt_scene_intersect(&rt_cornell_scene, cam->origin, dir, &hit)) {
-        return (vec3f_t){0.0f, 0.0f, 0.0f};
+        return (vec3_t){0.0f, 0.0f, 0.0f};
     }
     if (hit.is_light) {
-        return vec3f_scale(LIGHT_COLOR, LIGHT_RADIANCE);
+        return vec3_scale(LIGHT_COLOR, LIGHT_RADIANCE);
     }
     return direct_light_from_point(light_center(), hit.point, hit.normal, hit.albedo);
 }
 
-vec3f_t
+vec3_t
 rt_path_sample(const rt_cornell_camera_t* cam, int x, int y, uint32_t sample_index) {
     rt_path_rng_t rng = rng_init(x, y, sample_index);
-    const vec3f_t dir = ray_direction(cam, x, y);
+    const vec3_t dir = ray_direction(cam, x, y);
     return trace_path(cam->origin, dir, &rng, RT_PATH_MAX_DEPTH);
 }
 
-vec3f_t
+vec3_t
 rt_path_sample_direct_only(const rt_cornell_camera_t* cam, int x, int y, uint32_t sample_index) {
     rt_path_rng_t rng = rng_init(x, y, sample_index);
-    const vec3f_t dir = ray_direction(cam, x, y);
+    const vec3_t dir = ray_direction(cam, x, y);
     return trace_path(cam->origin, dir, &rng, 1);
 }
 
@@ -344,7 +344,7 @@ fill_block(gfx_color_t* fb, int width, int height, int x, int y, int step, gfx_c
 
 static gfx_color_t
 seed_pixel(const rt_cornell_camera_t* cam, rt_path_accum_px_t* accum, int width, int x, int y) {
-    const vec3f_t direct = rt_path_direct_estimate(cam, x, y);
+    const vec3_t direct = rt_path_direct_estimate(cam, x, y);
     if (accum == NULL) {
         return rt_path_resolve_radiance(direct, x, y);
     }
@@ -411,7 +411,7 @@ void
 rt_path_sweep_rows(const rt_cornell_camera_t* cam, rt_path_target_t target, int y0, int y1, uint32_t n) {
     for (int y = y0; y < y1; y++) {
         for (int x = 0; x < target.width; x++) {
-            const vec3f_t sample = rt_path_sample(cam, x, y, n);
+            const vec3_t sample = rt_path_sample(cam, x, y, n);
             rt_path_accum_px_t* px = &target.accum[(size_t)y * target.width + x];
             rt_path_accum_add(px, sample, n);
             target.fb[(size_t)y * target.width + x] = rt_path_resolve(*px, x, y);

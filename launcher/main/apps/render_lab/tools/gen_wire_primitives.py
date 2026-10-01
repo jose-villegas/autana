@@ -5,11 +5,10 @@ sphere, capsule).
 
     python main/apps/render_lab/tools/gen_wire_primitives.py > main/apps/render_lab/wire_primitives_generated.h
 
-Every coordinate is an integer in VEC4I_ONE (512 = 1.0) fixed point, computed
-here in floating point and rounded once at the end - there is no rasterizer
-or device code in this script, only the geometry. The generator validates
-its own output (indices in range, no duplicate or degenerate edge in either
-direction, every coordinate fits int16, vertex/edge counts within the
+Every coordinate is a float in model units, written to seven decimals - there
+is no rasterizer or device code in this script, only the geometry. The
+generator validates its own output (indices in range, no duplicate or
+degenerate edge in either direction, vertex/edge counts within the
 mesh-wide 1024/2048 hard limits) before emitting anything.
 """
 
@@ -17,18 +16,15 @@ import argparse
 import math
 import sys
 
-VEC4I_ONE = 512
 MAX_VERTICES = 1024
 MAX_EDGES = 2048
-INT16_MIN = -32768
-INT16_MAX = 32767
 
-CUBE_HALF_EXTENT = VEC4I_ONE
+CUBE_HALF_EXTENT = 1.0
 
 
-def fx(value):
-    """Round a float VEC4I_ONE-unit coordinate to its nearest integer tick."""
-    return int(round(value))
+def literal(value):
+    """A C float literal for `value`, to seven decimals; never "-0.0"."""
+    return repr(round(value, 7) + 0.0) + "F"
 
 
 def build_plane(n, size):
@@ -39,7 +35,7 @@ def build_plane(n, size):
         z = -half + row * step
         for col in range(n):
             x = -half + col * step
-            vertices.append((fx(x), 0, fx(z)))
+            vertices.append((x, 0.0, z))
 
     edges = []
     for row in range(n):
@@ -82,7 +78,7 @@ def hemisphere_rings(rings, meridians, radius, span):
         row = []
         for m in range(meridians):
             phi = 2.0 * math.pi * m / meridians
-            row.append((fx(ring_r * math.cos(phi)), fx(y), fx(ring_r * math.sin(phi))))
+            row.append((ring_r * math.cos(phi), y, ring_r * math.sin(phi)))
         ring_vertices.append(row)
     return ring_vertices
 
@@ -109,11 +105,11 @@ def build_sphere(rings, meridians, radius):
     north = 0
     ring_base = 1
     rows = hemisphere_rings(rings, meridians, radius, math.pi)
-    vertices = [(0, fx(radius), 0)]
+    vertices = [(0.0, radius, 0.0)]
     for row in rows:
         vertices += [(x, y, z) for x, y, z in row]
     south = len(vertices)
-    vertices.append((0, -fx(radius), 0))
+    vertices.append((0.0, -radius, 0.0))
 
     edges = ring_edges(ring_base, rings, meridians)
     edges += meridian_edges(north, ring_base, rings, meridians)
@@ -126,15 +122,15 @@ def build_capsule(rings, meridians, radius, cyl_half_len):
 
     top_pole = 0
     top_base = 1
-    vertices = [(0, fx(cyl_half_len + radius), 0)]
+    vertices = [(0.0, cyl_half_len + radius, 0.0)]
     for x, y, z in (v for row in rows for v in row):
-        vertices.append((x, y + fx(cyl_half_len), z))
+        vertices.append((x, y + cyl_half_len, z))
 
     bottom_base = len(vertices)
     for x, y, z in (v for row in rows for v in row):
-        vertices.append((x, -(y + fx(cyl_half_len)), z))
+        vertices.append((x, -(y + cyl_half_len), z))
     bottom_pole = len(vertices)
-    vertices.append((0, -fx(cyl_half_len + radius), 0))
+    vertices.append((0.0, -(cyl_half_len + radius), 0.0))
 
     edges = ring_edges(top_base, rings, meridians)
     edges += meridian_edges(top_pole, top_base, rings, meridians)
@@ -153,11 +149,6 @@ def validate(name, vertices, edges):
     if len(edges) > MAX_EDGES:
         raise ValueError(f"{name}: {len(edges)} edges exceeds the {MAX_EDGES} limit")
 
-    for x, y, z in vertices:
-        for coord in (x, y, z):
-            if coord < INT16_MIN or coord > INT16_MAX:
-                raise ValueError(f"{name}: coordinate {coord} does not fit int16")
-
     seen = set()
     normalized = []
     for a, b in edges:
@@ -174,10 +165,10 @@ def validate(name, vertices, edges):
 
 
 def emit_mesh(f, name, vertices, edges):
-    f.write(f"static const wire_vertex_t {name}_vertices[{len(vertices)}] = {{\n")
+    f.write(f"static const vec3_t {name}_vertices[{len(vertices)}] = {{\n")
     for i in range(0, len(vertices), 4):
         row = vertices[i : i + 4]
-        f.write("    " + " ".join(f"{{{x}, {y}, {z}}}," for x, y, z in row) + "\n")
+        f.write("    " + " ".join(f"{{{literal(x)}, {literal(y)}, {literal(z)}}}," for x, y, z in row) + "\n")
     f.write("};\n\n")
 
     f.write(f"static const wire_edge_t {name}_edges[{len(edges)}] = {{\n")
@@ -196,12 +187,12 @@ def emit_mesh(f, name, vertices, edges):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plane-n", type=int, default=24)
-    parser.add_argument("--plane-size", type=int, default=8 * VEC4I_ONE)
+    parser.add_argument("--plane-size", type=float, default=8.0)
     parser.add_argument("--sphere-rings", type=int, default=16)
     parser.add_argument("--sphere-meridians", type=int, default=24)
     parser.add_argument("--capsule-rings", type=int, default=8)
     parser.add_argument("--capsule-meridians", type=int, default=12)
-    parser.add_argument("--radius", type=int, default=2 * VEC4I_ONE)
+    parser.add_argument("--radius", type=float, default=2.0)
     args = parser.parse_args()
 
     plane_v, plane_e = build_plane(args.plane_n, args.plane_size)
@@ -227,22 +218,22 @@ def main():
         " *\n"
         " * Baked wire_mesh_t tables for the wireframe demo primitives: a\n"
         " * centred XZ plane grid, a cube, a UV sphere and a two-hemisphere\n"
-        " * capsule. Coordinates are 512-per-unit fixed point; density is a bake-time\n"
+        " * capsule. Coordinates are floats in model units; density is a bake-time\n"
         " * knob set by the generator's own arguments, recorded below as the\n"
         " * defines a test can read them back from.\n"
         " */\n"
         "#pragma once\n\n"
         '#include "wire_mesh.h"\n\n'
         f"#define WIRE_PLANE_N {args.plane_n}\n"
-        f"#define WIRE_PLANE_SIZE {args.plane_size}\n"
-        f"#define WIRE_CUBE_HALF_EXTENT {CUBE_HALF_EXTENT}\n"
+        f"#define WIRE_PLANE_SIZE {literal(args.plane_size)}\n"
+        f"#define WIRE_CUBE_HALF_EXTENT {literal(CUBE_HALF_EXTENT)}\n"
         f"#define WIRE_SPHERE_RINGS {args.sphere_rings}\n"
         f"#define WIRE_SPHERE_MERIDIANS {args.sphere_meridians}\n"
-        f"#define WIRE_SPHERE_RADIUS {args.radius}\n"
+        f"#define WIRE_SPHERE_RADIUS {literal(args.radius)}\n"
         f"#define WIRE_CAPSULE_RINGS {args.capsule_rings}\n"
         f"#define WIRE_CAPSULE_MERIDIANS {args.capsule_meridians}\n"
-        f"#define WIRE_CAPSULE_RADIUS {args.radius}\n"
-        f"#define WIRE_CAPSULE_CYLINDER_HALF_LEN {args.radius}\n\n"
+        f"#define WIRE_CAPSULE_RADIUS {literal(args.radius)}\n"
+        f"#define WIRE_CAPSULE_CYLINDER_HALF_LEN {literal(args.radius)}\n\n"
     )
     emit_mesh(f, "wire_plane", plane_v, plane_e)
     emit_mesh(f, "wire_cube", cube_v, cube_e)

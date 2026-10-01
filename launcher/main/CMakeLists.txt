@@ -40,7 +40,6 @@ set(app_srcs
     "render/upscale.c"
     "render/r3d_span.c"
     "render/r3d_scene.c"
-    "render/r3d_trs.c"
     "util/frame_cost.c"
     "util/frame_watch.c"
     "util/build_id.c"

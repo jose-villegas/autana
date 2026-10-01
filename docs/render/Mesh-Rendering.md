@@ -63,7 +63,7 @@ would see the scene mirrored.
 | `r3d_scene.h` | The camera of a baked table: its lens, placement and path, and sampling it at a time; reads `anim/` |
 | `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture, and the view modes |
 | `viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
-| `vec3f.h` | The float 3-vector every float camera shares |
+| `vec3.h` | The float 3-vector every float camera shares |
 | `ray.h` | The ray camera: the direction through each physical pixel |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |

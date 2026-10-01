@@ -173,8 +173,8 @@ static void
 test_the_camera_of_a_baked_placement_looks_down_its_third_column(void) {
     const r3d_placement_t turned = {{{0, 0, 1}, {0, 1, 0}, {-1, 0, 0}}, {5, 6, 7}}; /* a quarter turn about y */
     const r3d_scene_camera_t camera = {1.0F, 1.0F, &turned, NULL};
-    vec3f_t eye;
-    vec3f_t forward;
+    vec3_t eye;
+    vec3_t forward;
     r3d_scene_camera_sample(&camera, 0, &eye, &forward);
     TEST_ASSERT_EQUAL_FLOAT(5.0F, eye.x);
     TEST_ASSERT_EQUAL_FLOAT(-1.0F, forward.x);

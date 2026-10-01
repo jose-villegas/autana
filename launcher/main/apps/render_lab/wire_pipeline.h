@@ -13,15 +13,11 @@
 #include "wire_mesh.h"
 
 typedef struct {
-    int32_t x, y, z; /* camera space, one transform per vertex per frame */
-} wire_cs_vertex_t;
-
-typedef struct {
     int16_t x0, y0, x1, y1; /* screen space, narrowed after near and screen clip */
 } wire_segment_t;
 
 typedef struct {
-    wire_cs_vertex_t* cs_vertices;
+    vec3_t* cs_vertices; /* camera space, one transform per vertex per frame */
     uint16_t cs_capacity;
     wire_segment_t* segments;
     uint16_t segment_capacity;

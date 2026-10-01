@@ -17,12 +17,12 @@
 #define RT_MAX_T   100.0f
 
 bool
-rt_intersect_plane(vec3f_t origin, vec3f_t dir, rt_plane_t plane, float* t) {
-    const float denom = vec3f_dot(dir, plane.normal);
+rt_intersect_plane(vec3_t origin, vec3_t dir, rt_plane_t plane, float* t) {
+    const float denom = vec3_dot(dir, plane.normal);
     if (fabsf(denom) < RT_EPSILON) {
         return false;
     }
-    const float candidate = vec3f_dot(vec3f_sub(plane.point, origin), plane.normal) / denom;
+    const float candidate = vec3_dot(vec3_sub(plane.point, origin), plane.normal) / denom;
     if (candidate <= RT_EPSILON) {
         return false;
     }
@@ -32,18 +32,18 @@ rt_intersect_plane(vec3f_t origin, vec3f_t dir, rt_plane_t plane, float* t) {
 
 /* Rotates `v` from world space into `box`'s own frame (v treated as a
  * direction; the caller subtracts box->center first for a position). */
-static vec3f_t
-box_to_local(vec3f_t v, const rt_box_t* box) {
-    return (vec3f_t){
+static vec3_t
+box_to_local(vec3_t v, const rt_box_t* box) {
+    return (vec3_t){
         v.x * box->cos_yaw + v.z * box->sin_yaw,
         v.y,
         -v.x * box->sin_yaw + v.z * box->cos_yaw,
     };
 }
 
-static vec3f_t
+static vec3_t
 box_normal_to_world(int axis, float sign, const rt_box_t* box) {
-    vec3f_t local = {0.0f, 0.0f, 0.0f};
+    vec3_t local = {0.0f, 0.0f, 0.0f};
     if (axis == 0) {
         local.x = sign;
     } else if (axis == 1) {
@@ -51,7 +51,7 @@ box_normal_to_world(int axis, float sign, const rt_box_t* box) {
     } else {
         local.z = sign;
     }
-    return (vec3f_t){
+    return (vec3_t){
         local.x * box->cos_yaw - local.z * box->sin_yaw,
         local.y,
         local.x * box->sin_yaw + local.z * box->cos_yaw,
@@ -98,7 +98,7 @@ slab_axis(int axis, float o, float d, float half, rt_slab_result_t* out) {
 }
 
 static bool
-box_local_slabs(vec3f_t o, vec3f_t d, vec3f_t half, rt_slab_result_t* out) {
+box_local_slabs(vec3_t o, vec3_t d, vec3_t half, rt_slab_result_t* out) {
     out->t_min = -RT_MAX_T;
     out->t_max = RT_MAX_T;
     out->min_axis = -1;
@@ -114,9 +114,9 @@ box_local_slabs(vec3f_t o, vec3f_t d, vec3f_t half, rt_slab_result_t* out) {
 }
 
 bool
-rt_intersect_box(vec3f_t origin, vec3f_t dir, const rt_box_t* box, float* t_hit, vec3f_t* out_normal) {
-    const vec3f_t local_origin = box_to_local(vec3f_sub(origin, box->center), box);
-    const vec3f_t local_dir = box_to_local(dir, box);
+rt_intersect_box(vec3_t origin, vec3_t dir, const rt_box_t* box, float* t_hit, vec3_t* out_normal) {
+    const vec3_t local_origin = box_to_local(vec3_sub(origin, box->center), box);
+    const vec3_t local_dir = box_to_local(dir, box);
 
     rt_slab_result_t slabs;
     if (!box_local_slabs(local_origin, local_dir, box->half_extent, &slabs)) {
@@ -146,7 +146,7 @@ rt_intersect_box(vec3f_t origin, vec3f_t dir, const rt_box_t* box, float* t_hit,
 }
 
 static bool
-wall_bounds_ok(vec3f_t p, const rt_wall_t* w) {
+wall_bounds_ok(vec3_t p, const rt_wall_t* w) {
     float c1, c2;
     if (w->normal.x != 0.0f) {
         c1 = p.y;
@@ -162,13 +162,13 @@ wall_bounds_ok(vec3f_t p, const rt_wall_t* w) {
 }
 
 static bool
-intersect_wall(vec3f_t origin, vec3f_t dir, const rt_wall_t* w, float* t, vec3f_t* normal) {
-    const rt_plane_t plane = {vec3f_scale(w->normal, w->d), w->normal};
+intersect_wall(vec3_t origin, vec3_t dir, const rt_wall_t* w, float* t, vec3_t* normal) {
+    const rt_plane_t plane = {vec3_scale(w->normal, w->d), w->normal};
     float hit_t;
     if (!rt_intersect_plane(origin, dir, plane, &hit_t)) {
         return false;
     }
-    if (!wall_bounds_ok(vec3f_add(origin, vec3f_scale(dir, hit_t)), w)) {
+    if (!wall_bounds_ok(vec3_add(origin, vec3_scale(dir, hit_t)), w)) {
         return false;
     }
     *t = hit_t;
@@ -177,12 +177,12 @@ intersect_wall(vec3f_t origin, vec3f_t dir, const rt_wall_t* w, float* t, vec3f_
 }
 
 bool
-rt_scene_intersect(const rt_scene_t* scene, vec3f_t origin, vec3f_t dir, rt_hit_t* hit) {
+rt_scene_intersect(const rt_scene_t* scene, vec3_t origin, vec3_t dir, rt_hit_t* hit) {
     bool found = false;
     hit->t = RT_MAX_T;
 
     float t;
-    vec3f_t n;
+    vec3_t n;
     if (scene->light != NULL && intersect_wall(origin, dir, scene->light, &t, &n) && t < hit->t) {
         *hit = (rt_hit_t){t, {0, 0, 0}, n, {0, 0, 0}, true};
         found = true;
@@ -194,7 +194,7 @@ rt_scene_intersect(const rt_scene_t* scene, vec3f_t origin, vec3f_t dir, rt_hit_
         }
     }
     for (int i = 0; i < scene->box_count; i++) {
-        vec3f_t bn;
+        vec3_t bn;
         float bt;
         if (rt_intersect_box(origin, dir, &scene->boxes[i], &bt, &bn) && bt < hit->t) {
             *hit = (rt_hit_t){bt, {0, 0, 0}, bn, scene->box_albedo, false};
@@ -203,16 +203,16 @@ rt_scene_intersect(const rt_scene_t* scene, vec3f_t origin, vec3f_t dir, rt_hit_
     }
 
     if (found) {
-        hit->point = vec3f_add(origin, vec3f_scale(dir, hit->t));
+        hit->point = vec3_add(origin, vec3_scale(dir, hit->t));
     }
     return found;
 }
 
 bool
-rt_scene_occluded(const rt_scene_t* scene, vec3f_t origin, vec3f_t dir, float max_t) {
+rt_scene_occluded(const rt_scene_t* scene, vec3_t origin, vec3_t dir, float max_t) {
     for (int i = 0; i < scene->box_count; i++) {
         float t;
-        vec3f_t n;
+        vec3_t n;
         if (rt_intersect_box(origin, dir, &scene->boxes[i], &t, &n) && t < max_t) {
             return true;
         }
