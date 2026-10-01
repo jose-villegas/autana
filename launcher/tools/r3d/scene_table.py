@@ -37,7 +37,7 @@ def placement(obj):
     """A C initializer for the object's baked placement, or None when it is the identity."""
     if obj.identity:
         return None
-    return "{{" + ", ".join(vec3(row) for row in obj.matrix) + "}, " + vec3(obj.position) + "}"
+    return "{.m = {" + ", ".join(vec3(row) for row in obj.matrix) + "}, .position = " + vec3(obj.position) + "}"
 
 
 def table_symbol(scene):
@@ -75,7 +75,7 @@ def table_source(scene, banner):
     name = table_symbol(scene)
     camera = scene.camera
     path = camera.component.path if camera else None
-    lines = [banner, "", f'#include "{name}_generated.h"', ""]
+    lines = [banner, "", "#include <stddef.h>", "", f'#include "{name}_generated.h"', ""]
     includes = sorted({f"{item.variant.name}_mesh_generated.h" for item in scene.renderers})
     if path:
         includes.append(f"{path.tracks}_tracks_generated.h")
@@ -83,15 +83,17 @@ def table_source(scene, banner):
     for item in scene.renderers:
         obj = item.object
         refer = statics(scene, obj, obj.name, lines)
-        lines += [f"const r3d_instance_t {name}_{obj.name} = {{&{item.variant.name}_mesh, {refer}}};", ""]
+        lines += [f"const r3d_instance_t {name}_{obj.name} = {{.mesh = &{item.variant.name}_mesh, .placement = {refer}}};", ""]
     if camera:
         refer = statics(scene, camera, camera.name, lines)
         component = camera.component
         if path:
-            lines += [f"static const r3d_scene_path_t {name}_{camera.name}_path = {{&{path.tracks}_clip, "
-                      f"&{path.tracks}_{path.node}_translation, &{path.tracks}_{path.node}_rotation}};", ""]
-        lines += [f"const r3d_scene_camera_t {name}_{camera.name} = {{{real(component.half_fov_short_tan)}, "
-                  f"{real(component.near_z)}, {refer}, {'&' + name + '_' + camera.name + '_path' if path else 'NULL'}}};", ""]
+            lines += [f"static const r3d_scene_path_t {name}_{camera.name}_path = {{.clip = &{path.tracks}_clip, "
+                      f".translation = &{path.tracks}_{path.node}_translation, "
+                      f".rotation = &{path.tracks}_{path.node}_rotation}};", ""]
+        lines += [f"const r3d_scene_camera_t {name}_{camera.name} = {{.half_fov_short_tan = {real(component.half_fov_short_tan)}, "
+                  f".near_z = {real(component.near_z)}, .placement = {refer}, "
+                  f".path = {'&' + name + '_' + camera.name + '_path' if path else 'NULL'}}};", ""]
     return "\n".join(lines)
 
 

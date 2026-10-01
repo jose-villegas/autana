@@ -298,11 +298,12 @@ class SceneTests(unittest.TestCase):
             source = written[0].read_text()
             header = written[1].read_text()
             self.assertEqual([item.name for item in written], ["hall_scene_generated.c", "hall_scene_generated.h"])
-        self.assertIn("const r3d_instance_t hall_scene_a = {&a_mesh, NULL};", source)
-        self.assertIn("const r3d_instance_t hall_scene_b = {&b_mesh, &hall_scene_b_placement};", source)
-        self.assertIn("{{{2.0F, 0.0F, 0.0F}, {0.0F, 2.0F, 0.0F}, {0.0F, 0.0F, 2.0F}}, {1.0F, 2.0F, 3.0F}}", source)
-        self.assertIn("&flight_clip, &flight_rig_translation, &flight_rig_rotation", source)
-        self.assertIn("const r3d_scene_camera_t hall_scene_camera = {0.6F, 1.0F, NULL, &hall_scene_camera_path};", source)
+        self.assertIn("const r3d_instance_t hall_scene_a = {.mesh = &a_mesh, .placement = NULL};", source)
+        self.assertIn("const r3d_instance_t hall_scene_b = {.mesh = &b_mesh, .placement = &hall_scene_b_placement};", source)
+        self.assertIn("{.m = {{2.0F, 0.0F, 0.0F}, {0.0F, 2.0F, 0.0F}, {0.0F, 0.0F, 2.0F}}, .position = {1.0F, 2.0F, 3.0F}}", source)
+        self.assertIn(".clip = &flight_clip, .translation = &flight_rig_translation, .rotation = &flight_rig_rotation", source)
+        self.assertIn("const r3d_scene_camera_t hall_scene_camera = {.half_fov_short_tan = 0.6F, .near_z = 1.0F, .placement = NULL, "
+                      ".path = &hall_scene_camera_path};", source)
         self.assertIn("extern const r3d_instance_t hall_scene_a;", header)
         self.assertIn("extern const r3d_scene_camera_t hall_scene_camera;", header)
 
