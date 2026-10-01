@@ -250,6 +250,75 @@ r3d_pipeline_transform(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const
     }
 }
 
+int
+r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count) {
+    int total = 0;
+    for (int i = 0; i < count; i++) {
+        total += mesh->clusters[clusters[i]].vertex_count;
+    }
+    int prefix = 0;
+    for (int i = 0; i < count; i++) {
+        prefix += mesh->clusters[clusters[i]].vertex_count;
+        if (2 * prefix >= total) {
+            return i + 1;
+        }
+    }
+    return count;
+}
+
+#define DRAW_SPLIT_BUCKETS 64
+
+static int
+clamp_row(int row, int lowest, int highest) {
+    return row < lowest ? lowest : (row > highest ? highest : row);
+}
+
+static void
+draw_split_histogram(int* weight, const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
+                     int count, int height) {
+    for (int i = 0; i < count; i++) {
+        const r3d_pipeline_rows_t* r = &rows[clusters[i]];
+        const int first = clamp_row(r->unbounded ? 0 : (int)r->y0, 0, height - 1);
+        const int last = clamp_row(r->unbounded ? height - 1 : (int)r->y1, 0, height - 1);
+        const int cost = mesh->clusters[clusters[i]].triangle_count;
+        const int bucket_first = first * DRAW_SPLIT_BUCKETS / height;
+        const int bucket_last = last * DRAW_SPLIT_BUCKETS / height;
+        weight[bucket_first] += cost;
+        weight[bucket_last + 1] -= cost;
+    }
+}
+
+static int
+draw_split_row(const int* weight, int height) {
+    int total = 0;
+    int current = 0;
+    for (int bucket = 0; bucket < DRAW_SPLIT_BUCKETS; bucket++) {
+        current += weight[bucket];
+        total += current;
+    }
+    if (total == 0) {
+        return height / 2;
+    }
+    current = 0;
+    int prefix = 0;
+    for (int bucket = 0; bucket < DRAW_SPLIT_BUCKETS; bucket++) {
+        current += weight[bucket];
+        prefix += current;
+        if (2 * prefix >= total) {
+            return clamp_row((2 * bucket + 1) * height / (2 * DRAW_SPLIT_BUCKETS), 1, height - 1);
+        }
+    }
+    return height / 2;
+}
+
+int
+r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
+                        int count, int height) {
+    int weight[DRAW_SPLIT_BUCKETS + 1] = {0};
+    draw_split_histogram(weight, mesh, clusters, rows, count, height);
+    return draw_split_row(weight, height);
+}
+
 typedef struct {
     float x, y, z, r, g, b;
 } clip_vertex_t;
