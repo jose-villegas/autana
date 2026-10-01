@@ -10,8 +10,7 @@
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
-#define JOB_WAIT_MS   1000
-#define SPLIT_BUCKETS 64
+#define JOB_WAIT_MS 1000
 
 typedef struct {
     const raster_t* raster;
@@ -75,33 +74,6 @@ raster_scratch_bytes(const raster_t* raster) {
            + (sizeof(uint16_t) * ((size_t)raster->destination_width + (size_t)raster->destination_height));
 }
 
-/* The row splitting the visible triangles in half, counting each cluster
- * at the middle of its rows; the halves are then drawn by one core each. */
-static int
-balanced_split_row(const raster_t* raster, int visible) {
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
-    uint32_t weight[SPLIT_BUCKETS] = {0};
-    uint32_t total = 0;
-    for (int i = 0; i < visible; i++) {
-        const r3d_pipeline_rows_t* r = &b.rows[b.visible[i]];
-        const float middle = r->unbounded ? 0.5F * (float)raster->height : 0.5F * (r->y0 + r->y1);
-        int row = (int)middle;
-        row = row < 0 ? 0 : (row >= raster->height ? raster->height - 1 : row);
-        const uint32_t n = raster->mesh->clusters[b.visible[i]].triangle_count;
-        weight[row * SPLIT_BUCKETS / raster->height] += n;
-        total += n;
-    }
-    uint32_t sum = 0;
-    for (int bucket = 0; bucket < SPLIT_BUCKETS; bucket++) {
-        sum += weight[bucket];
-        if (2 * sum >= total) {
-            const int row = (2 * bucket + 1) * raster->height / (2 * SPLIT_BUCKETS);
-            return row < 1 ? 1 : row;
-        }
-    }
-    return raster->height / 2;
-}
-
 raster_stats_t
 raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
@@ -113,11 +85,11 @@ raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
         stats.triangles += raster->mesh->clusters[b.visible[i]].triangle_count;
     }
 
-    const int half = visible / 2;
+    const int half = r3d_pipeline_transform_split(raster->mesh, b.visible, visible);
     run_split(transform_slice, (slice_t){raster, &lens, visible, 0, half},
               (slice_t){raster, &lens, visible, half, visible - half});
 
-    const int mid = balanced_split_row(raster, visible);
+    const int mid = r3d_pipeline_draw_split(raster->mesh, b.visible, b.rows, visible, raster->height);
     run_split(draw_slice, (slice_t){raster, &lens, visible, mid, raster->height - mid},
               (slice_t){raster, &lens, visible, 0, mid});
     return stats;

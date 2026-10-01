@@ -68,6 +68,15 @@ void r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const
                        const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows,
                        const r3d_span_target_t* target);
 
+/* The length of the shortest prefix of `clusters` holding at least half of
+ * their vertices; 0 when there are none. */
+int r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count);
+
+/* A row between 1 and height - 1 that divides a cheap estimate of raster
+ * work: each visible cluster's triangle count across the buckets it spans. */
+int r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
+                            int count, int height);
+
 /* A raster's scratch block as its parts: the one layout
  * raster_scratch_bytes() sizes, widest alignment first so each part lands
  * aligned after the one before. */
