@@ -1,38 +1,53 @@
-# The Sponza scenario: one light rig and camera region, and the three bakes
-# of the model the render_lab scenes draw one at a time.
+# The Sponza scenario: one light rig and camera, and the three bakes of the
+# model the render_lab scenes draw one at a time.
 tonemap_white = 0.35
 
-[camera_region]
-min = [-1400.0, 20.0, -620.0]
-max = [1270.0, 1250.0, 550.0]
+[sky]
+color = [0.55, 0.68, 0.9]
+intensity = 0.9
+rays = 48
 
-[[mesh_renderers]]
-mesh = "sponza.import.toml"
-variant = "sponza"
+[ambient]
+color = [1.0, 1.0, 1.0]
+intensity = 0.06
 
-[[mesh_renderers]]
-mesh = "sponza.import.toml"
-variant = "sponza_flat"
+[[objects]]
+name = "sun"
+rotation = [18.418610209503857, -48.65222278030633, 0.0]   # toward (-0.25, 1.0, 0.22)
 
-[[mesh_renderers]]
-mesh = "sponza.import.toml"
-variant = "sponza_lite"
-
-[[lights]]
+[objects.light]
 type = "directional"
-direction = [-0.25, 1.0, 0.22]
 color = [1.0, 0.92, 0.78]
 intensity = 3.0
 disc_degrees = 1.2
 rays = 8
 
-[[lights]]
-type = "sky"
-color = [0.55, 0.68, 0.9]
-intensity = 0.9
-rays = 48
+[[objects]]
+name = "camera"
 
-[[lights]]
-type = "ambient"
-color = [1.0, 1.0, 1.0]
-intensity = 0.06
+[objects.camera]
+half_fov_short_tan = 0.62
+near_z = 6.0
+region = { min = [-1400.0, 20.0, -620.0], max = [1270.0, 1250.0, 550.0] }
+path = { tracks = "flythrough", node = "camera" }   # the symbols bake_tracks.py wrote
+
+[[objects]]
+name = "atrium"
+
+[objects.mesh_renderer]
+mesh = "sponza.import.toml"
+variant = "sponza"
+
+[[objects]]
+name = "atrium_flat"
+
+[objects.mesh_renderer]
+mesh = "sponza.import.toml"
+variant = "sponza_flat"
+
+[[objects]]
+name = "atrium_lite"
+
+[objects.mesh_renderer]
+mesh = "sponza.import.toml"
+variant = "sponza_lite"

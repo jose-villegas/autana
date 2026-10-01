@@ -1,9 +1,7 @@
 /*
- * sponza_flythrough, the camera loop through Sponza's atrium: in from the
- * east arcade at eye height, down the atrium, up past the galleries and
- * back, and the lens and render size it is seen through. Model units are
- * centimetres; y is up. The loop is the glTF camera animation in
- * assets/flythrough.glb, baked to flythrough_tracks_generated.c.
+ * sponza_flythrough, the camera loop through Sponza's atrium, and the render
+ * size it is seen at. Model units are centimetres; y is up. The lens and
+ * path are the scene's camera object (sponza_scene_generated.h).
  */
 #pragma once
 
@@ -19,9 +17,6 @@
 /* The camera keeps at least this far from every triangle, so the near
  * plane never cuts into a wall; suite_sponza.c holds the path to it. */
 #define SPONZA_FLYTHROUGH_CLEARANCE 25.0f
-
-#define SPONZA_HALF_FOV_SHORT_TAN   0.62f
-#define SPONZA_NEAR_Z               6.0f
 
 /* The loop is measured at a pose this often, from its start. */
 #define SPONZA_POSE_EVERY_MS        5000

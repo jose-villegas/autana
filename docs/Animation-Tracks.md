@@ -119,7 +119,7 @@ reads, so the poses are always the animation's own.
 
 ## Rules
 
-- **Single precision only**, as in [Mesh-Rendering.md](Mesh-Rendering.md#rules-the-layer-keeps).
+- **Single precision only**, as in [Mesh-Rendering.md](render/Mesh-Rendering.md#rules-the-layer-keeps).
 - **Portable.** No ESP-IDF and no allocation; a host suite runs all of it.
 - **The caller owns the environment.** Time is passed in; nothing reads a
   clock.
