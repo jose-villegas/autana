@@ -21,3 +21,9 @@ bool upscale_init(upscale_t* scale, int source_width, int source_height, int des
  * `destination` is 4-byte aligned. */
 void upscale_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
                   uint16_t* destination, int first_row, int row_count);
+
+#if defined(DEVICE_BUILD) && defined(CONFIG_LAUNCHER_SELFTEST) && CONFIG_LAUNCHER_SELFTEST
+/* Test-only scalar reference for checking the device's PIE path. */
+void upscale_rows_c(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
+                    uint16_t* destination, int first_row, int row_count);
+#endif
