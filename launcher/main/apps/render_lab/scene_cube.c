@@ -282,9 +282,10 @@ scene_cube_enter(void) {
 
     scene.camera.focalLength = CAMERA_FOCAL_LENGTH;
 
+    const size_t depth_bytes = sizeof(*band_depth) * (size_t)GFX_BAND_HEIGHT * GFX_WIDTH;
+    band_depth = heap_caps_malloc(depth_bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (band_depth == NULL) {
-        band_depth = heap_caps_malloc(sizeof(*band_depth) * (size_t)GFX_BAND_HEIGHT * GFX_WIDTH,
-                                      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        band_depth = heap_caps_malloc(depth_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     }
 
     elapsed_ms = 0;
