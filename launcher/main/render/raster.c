@@ -31,7 +31,7 @@ transform_slice(void* ctx) {
 /* A new picture starts from the clear colour, unless upscaling supplies it, and from no depth. */
 static void
 clear_rows(const raster_t* r, uint16_t* color, uint16_t* depth, size_t pixels) {
-    if (r->destination == NULL) {
+    if (!r->upscaled) {
         for (size_t i = 0; i < pixels; i++) {
             color[i] = r->clear;
         }
@@ -138,7 +138,7 @@ raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
 
 void
 raster_upscale(raster_t* raster) {
-    assert(raster->destination != NULL);
+    assert(raster->upscaled && raster->destination != NULL);
     assert(raster->width > 0 && raster->height > 0);
     assert(raster->destination_width >= raster->width && raster->destination_height >= raster->height);
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
