@@ -168,12 +168,24 @@ static void
 test_pie_double_matches_c_for_every_alignment_and_split(void) {
     enum { WIDTH = 16, HEIGHT = 8, DESTINATION_WIDTH = 2 * WIDTH, DESTINATION_HEIGHT = 2 * HEIGHT };
 
-    uint8_t source_storage[sizeof(uint16_t) * WIDTH * HEIGHT + 16] __attribute__((aligned(16)));
-    uint8_t pie_storage[sizeof(uint16_t) * DESTINATION_WIDTH * DESTINATION_HEIGHT + 16] __attribute__((aligned(16)));
-    uint8_t c_storage[sizeof(uint16_t) * DESTINATION_WIDTH * DESTINATION_HEIGHT + 16] __attribute__((aligned(16)));
-    uint16_t columns[DESTINATION_WIDTH], rows[DESTINATION_HEIGHT];
+    enum {
+        SOURCE_BYTES = sizeof(uint16_t) * WIDTH * HEIGHT + 16,
+        DESTINATION_BYTES = sizeof(uint16_t) * DESTINATION_WIDTH * DESTINATION_HEIGHT + 16
+    };
+
+    uint8_t* arena = malloc(((size_t)SOURCE_BYTES + (2 * DESTINATION_BYTES) + 16)
+                            + sizeof(uint16_t) * (DESTINATION_WIDTH + DESTINATION_HEIGHT));
+    TEST_ASSERT_NOT_NULL(arena);
+    uint8_t* source_storage = (uint8_t*)(((uintptr_t)arena + 15) & ~(uintptr_t)15);
+    uint8_t* pie_storage = source_storage + SOURCE_BYTES;
+    uint8_t* c_storage = pie_storage + DESTINATION_BYTES;
+    uint16_t* columns = (uint16_t*)(c_storage + DESTINATION_BYTES);
+    uint16_t* rows = columns + DESTINATION_WIDTH;
     upscale_t scale;
-    TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, DESTINATION_WIDTH, DESTINATION_HEIGHT, columns, rows));
+    if (!upscale_init(&scale, WIDTH, HEIGHT, DESTINATION_WIDTH, DESTINATION_HEIGHT, columns, rows)) {
+        free(arena);
+        TEST_FAIL_MESSAGE("upscale_init failed");
+    }
     uint32_t random = 1;
     for (int source_offset = 0; source_offset < 16; source_offset += 2) {
         for (int destination_offset = 0; destination_offset < 16; destination_offset += 4) {
@@ -191,9 +203,13 @@ test_pie_double_matches_c_for_every_alignment_and_split(void) {
             upscale_rows(&scale, source, NULL, 0, pie, 0, DESTINATION_HEIGHT / 2);
             upscale_rows(&scale, source, NULL, 0, pie, DESTINATION_HEIGHT / 2,
                          DESTINATION_HEIGHT - DESTINATION_HEIGHT / 2);
-            TEST_ASSERT_EQUAL_HEX16_ARRAY(reference, pie, DESTINATION_WIDTH * DESTINATION_HEIGHT);
+            if (memcmp(reference, pie, sizeof(uint16_t) * DESTINATION_WIDTH * DESTINATION_HEIGHT) != 0) {
+                free(arena);
+                TEST_FAIL_MESSAGE("PIE rows differ from the C rows");
+            }
         }
     }
+    free(arena);
 }
 #endif
 
