@@ -95,6 +95,7 @@ raster_cluster_capacity(const raster_t* raster) {
 
 size_t
 raster_scratch_bytes(const raster_t* raster) {
+    assert(raster->instance_count > 0); /* a raster with nothing to draw would clear nothing */
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     return (sizeof(r3d_pipeline_vertex_t) * (size_t)raster_vertex_capacity(raster))
            + ((sizeof(r3d_pipeline_rows_t) + sizeof(uint16_t)) * (size_t)raster_cluster_capacity(raster))
@@ -129,6 +130,7 @@ draw_instance(const raster_t* raster, const r3d_instance_t* instance, const came
 
 raster_stats_t
 raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
+    assert(raster->instance_count > 0);
     raster_stats_t stats = {0, 0};
     for (int i = 0; i < raster->instance_count; i++) {
         draw_instance(raster, &raster->instances[i], camera, quarter, i == 0, &stats);

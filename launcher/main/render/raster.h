@@ -41,11 +41,11 @@ int raster_vertex_capacity(const raster_t* raster);
 int raster_cluster_capacity(const raster_t* raster);
 
 /* Everything a raster works in (per-vertex, per-cluster, colour and depth)
- * as one block, from its mesh and size: the caller obtains it once, from
+ * as one block, from its instances' meshes and size: the caller obtains it once, from
  * any memory, so none of it has to live in internal RAM. */
 size_t raster_scratch_bytes(const raster_t* raster);
 
-/* Draws the mesh as `camera` sees it, turned for the panel's `quarter`. */
+/* Draws every instance as `camera` sees it, turned for the panel's `quarter`. */
 raster_stats_t raster_draw(const raster_t* raster, const camera_t* camera, int quarter);
 
 /* Fills `destination` from what raster_draw() last drew, both cores taking

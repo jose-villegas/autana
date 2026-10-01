@@ -109,11 +109,11 @@ The table holds only what the device reads, as const data from
 [`render/r3d_scene.h`](../../launcher/main/render/r3d_scene.h) and
 [`render/r3d_instance.h`](../../launcher/main/render/r3d_instance.h):
 
-- one `r3d_instance_t` per mesh renderer, named `<scene>_<object>`, so a
+- one `r3d_instance_t` per mesh renderer, named `<scene>_scene_<object>`, so a
   misspelt object fails at link time, with its mesh and its placement baked
   as a 3x3 (rotation times scale) and a position, or no placement for the
   identity;
-- the camera, `r3d_scene_camera_t` named `<scene>_<object>`: its lens, its
+- the camera, `r3d_scene_camera_t` named `<scene>_scene_<object>`: its lens, its
   placement (a fixed camera looks down the placement's -Z column) and the
   symbols of its path.
 

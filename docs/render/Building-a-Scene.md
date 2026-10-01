@@ -115,7 +115,7 @@ name = "camera"
 [objects.camera]
 half_fov_short_tan = 0.62
 near_z = 6.0
-path = { tracks = "flight", node = "camera" }
+# path = { tracks = "flight", node = "camera" }   # only once bake_tracks.py has written flight_tracks_generated.c
 ```
 
 ## 5. Bake
@@ -148,7 +148,7 @@ static uint32_t elapsed_ms;
 static void
 enter(void) {
     /* One entry per mesh renderer in the scene file. */
-    static const r3d_instance_t* const placed[] = {&hall_scene_hall, &hall_scene_statue};
+    static const r3d_instance_t* const placed[] = {&hall_scene_hall}; /* one entry per mesh renderer you draw */
     static r3d_instance_t instances[sizeof placed / sizeof placed[0]];
     for (size_t i = 0; i < sizeof placed / sizeof placed[0]; i++) {
         instances[i] = *placed[i];
