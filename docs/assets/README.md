@@ -63,9 +63,9 @@ reports the first failure:
 | `ASSET_ERR_TYPE` | the entry is not of the type asked for |
 
 A buffer may be larger than the pack, as a partition is. A scene names the
-meshes it draws by asset id; `r3d_scene_bind()` opens each from the pack and
-fails on the first missing or malformed one, returning its id. A scene that
-fails to bind draws nothing and says so on the panel.
+meshes it draws by asset id; `scene_load()` opens each from the pack and
+fails on the first missing or malformed one, naming its id. A scene that
+fails to load draws nothing and says so on the panel.
 
 ## The device
 

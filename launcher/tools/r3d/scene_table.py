@@ -5,13 +5,14 @@
 
 Standard library only, and independent of baking: it reads the scene file and
 its import files and writes <scene>_scene_generated.c and .h beside the meshes.
-The table holds only what the device reads: one const r3d_instance_t per mesh
-renderer, named <scene>_scene_<object>, so a misspelt object fails at link
-time, and the camera's lens, placement and path. A mesh is named by its asset
-id, not linked: <scene>_scene_assets lists each id with the view
-r3d_scene_bind() fills from the pack, and a missing id fails there. Lights, the camera region and
-the tone map are bake settings and stay offline. The placements are baked as a
-3x3 (rotation times scale) and a position, so the device does no trigonometry.
+The table is one const scene_def_t, <scene>_scene, registered by the scene's
+name with SCENE_REGISTER(): the component arrays scene/scene.h instantiates.
+Each object that is a mesh renderer or the camera is an entity, its id a macro
+<SCENE>_SCENE_<OBJECT>, so a misspelt object fails to compile. A mesh is named
+by its asset id, opened from the pack at scene_load(), where a missing id
+fails. Lights, the camera region and the tone map are bake settings and stay
+offline. The transforms are baked as a 3x3 (rotation times scale) and a
+position, so the device does no trigonometry.
 """
 
 import argparse
@@ -63,52 +64,63 @@ def banner_for(scene):
     return "/*\n" + "\n".join((" * " + line).rstrip() for line in lines) + "\n */"
 
 
-def statics(scene, obj, label, lines):
-    """The object's placement as a static, or NULL; returns what refers to it."""
-    text = placement(obj)
-    if text is None:
-        return "NULL"
-    name = f"{table_symbol(scene)}_{label}_placement"
-    lines += [f"static const r3d_placement_t {name} = {text};", ""]
-    return "&" + name
+IDENTITY = "{.m = {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, .position = {0.0F, 0.0F, 0.0F}}"
+
+
+def entities(scene):
+    """The scene's objects that exist at run time, in file order: a camera or a mesh renderer.
+    Lights are baked offline and have no entity."""
+    return [obj for obj in scene.objects if obj.kind in ("mesh_renderer", "camera")]
 
 
 def table_source(scene, banner):
     name = table_symbol(scene)
+    objects = entities(scene)
+    index = {obj.name: i for i, obj in enumerate(objects)}
     camera = scene.camera
     path = camera.component.path if camera else None
     lines = [banner, "", "#include <stddef.h>", "", f'#include "{name}_generated.h"', ""]
     if path:
         lines += [f'#include "{path.tracks}_tracks_generated.h"', ""]
-    for item in scene.renderers:
-        obj = item.object
-        refer = statics(scene, obj, obj.name, lines)
-        lines += [f"static r3d_lit_mesh_t {name}_{obj.name}_mesh;",
-                  f"const r3d_instance_t {name}_{obj.name} = {{.mesh = &{name}_{obj.name}_mesh, .placement = {refer}}};", ""]
-    lines += [f"static const r3d_scene_mesh_t {name}_meshes[] = {{"]
-    lines += [f'    {{"{item.variant.name}", &{name}_{item.object.name}_mesh}},' for item in scene.renderers]
-    lines += ["};", "", f"const r3d_scene_assets_t {name}_assets = {{.meshes = {name}_meshes, "
-              f".count = (int)(sizeof {name}_meshes / sizeof {name}_meshes[0])}};", ""]
+    lines += [f"static const char* const {name}_names[] = {{" + ", ".join(f'"{obj.name}"' for obj in objects) + "};", ""]
+    lines += [f"static const scene_transform_t {name}_transforms[] = {{"]
+    lines += [f"    {placement(obj) or IDENTITY}," for obj in objects]
+    lines += ["};", ""]
+    lines += [f"static const scene_renderer_def_t {name}_renderers[] = {{"]
+    lines += [f'    {{{index[item.object.name]}, "{item.variant.name}"}},' for item in scene.renderers]
+    lines += ["};", ""]
     if camera:
-        refer = statics(scene, camera, camera.name, lines)
-        component = camera.component
         if path:
             lines += [f"static const r3d_scene_path_t {name}_{camera.name}_path = {{.clip = &{path.tracks}_clip, "
                       f".translation = &{path.tracks}_{path.node}_translation, "
                       f".rotation = &{path.tracks}_{path.node}_rotation}};", ""]
-        lines += [f"const r3d_scene_camera_t {name}_{camera.name} = {{.half_fov_short_tan = {real(component.half_fov_short_tan)}, "
-                  f".near_z = {real(component.near_z)}, .placement = {refer}, "
-                  f".path = {'&' + name + '_' + camera.name + '_path' if path else 'NULL'}}};", ""]
+        component = camera.component
+        lines += [f"static const scene_camera_def_t {name}_cameras[] = {{",
+                  f"    {{{index[camera.name]}, {real(component.half_fov_short_tan)}, {real(component.near_z)}, "
+                  f"{'&' + name + '_' + camera.name + '_path' if path else 'NULL'}}},",
+                  "};", ""]
+    lines += [f"const scene_def_t {name} = {{",
+              f'    .name = "{table_scene_name(scene)}",',
+              f"    .entity_count = {len(objects)},",
+              f"    .renderer_count = {len(scene.renderers)},",
+              f"    .camera_count = {1 if camera else 0},",
+              f"    .entity_names = {name}_names,",
+              f"    .transforms = {name}_transforms,",
+              f"    .renderers = {name}_renderers,",
+              f"    .cameras = {name + '_cameras' if camera else 'NULL'},",
+              "};", "", f"SCENE_REGISTER({name})", ""]
     return "\n".join(lines)
+
+
+def table_scene_name(scene):
+    """What scene_load() is given: the scene file's name."""
+    return scene.path.name.removesuffix(".scene.toml")
 
 
 def header_source(scene, banner):
     name = table_symbol(scene)
-    lines = [banner, "", "#pragma once", "", '#include "render/r3d_scene.h"', ""]
-    lines += [f"extern const r3d_instance_t {name}_{item.object.name};" for item in scene.renderers]
-    lines.append(f"extern const r3d_scene_assets_t {name}_assets;")
-    if scene.camera:
-        lines.append(f"extern const r3d_scene_camera_t {name}_{scene.camera.name};")
+    lines = [banner, "", "#pragma once", "", '#include "scene/scene.h"', "", f"extern const scene_def_t {name};", ""]
+    lines += [f"#define {name.upper()}_{obj.name.upper()} ((scene_entity_t){i})" for i, obj in enumerate(entities(scene))]
     return "\n".join(lines) + "\n"
 
 

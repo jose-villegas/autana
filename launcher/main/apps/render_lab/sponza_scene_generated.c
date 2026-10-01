@@ -10,23 +10,36 @@
 
 #include "flythrough_tracks_generated.h"
 
-static r3d_lit_mesh_t sponza_scene_atrium_mesh;
-const r3d_instance_t sponza_scene_atrium = {.mesh = &sponza_scene_atrium_mesh, .placement = NULL};
+static const char* const sponza_scene_names[] = {"camera", "atrium", "atrium_flat", "atrium_lite"};
 
-static r3d_lit_mesh_t sponza_scene_atrium_flat_mesh;
-const r3d_instance_t sponza_scene_atrium_flat = {.mesh = &sponza_scene_atrium_flat_mesh, .placement = NULL};
-
-static r3d_lit_mesh_t sponza_scene_atrium_lite_mesh;
-const r3d_instance_t sponza_scene_atrium_lite = {.mesh = &sponza_scene_atrium_lite_mesh, .placement = NULL};
-
-static const r3d_scene_mesh_t sponza_scene_meshes[] = {
-    {"sponza", &sponza_scene_atrium_mesh},
-    {"sponza_flat", &sponza_scene_atrium_flat_mesh},
-    {"sponza_lite", &sponza_scene_atrium_lite_mesh},
+static const scene_transform_t sponza_scene_transforms[] = {
+    {.m = {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, .position = {0.0F, 0.0F, 0.0F}},
+    {.m = {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, .position = {0.0F, 0.0F, 0.0F}},
+    {.m = {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, .position = {0.0F, 0.0F, 0.0F}},
+    {.m = {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, .position = {0.0F, 0.0F, 0.0F}},
 };
 
-const r3d_scene_assets_t sponza_scene_assets = {.meshes = sponza_scene_meshes, .count = (int)(sizeof sponza_scene_meshes / sizeof sponza_scene_meshes[0])};
+static const scene_renderer_def_t sponza_scene_renderers[] = {
+    {1, "sponza"},
+    {2, "sponza_flat"},
+    {3, "sponza_lite"},
+};
 
 static const r3d_scene_path_t sponza_scene_camera_path = {.clip = &flythrough_clip, .translation = &flythrough_camera_translation, .rotation = &flythrough_camera_rotation};
 
-const r3d_scene_camera_t sponza_scene_camera = {.half_fov_short_tan = 0.62F, .near_z = 6.0F, .placement = NULL, .path = &sponza_scene_camera_path};
+static const scene_camera_def_t sponza_scene_cameras[] = {
+    {0, 0.62F, 6.0F, &sponza_scene_camera_path},
+};
+
+const scene_def_t sponza_scene = {
+    .name = "sponza",
+    .entity_count = 4,
+    .renderer_count = 3,
+    .camera_count = 1,
+    .entity_names = sponza_scene_names,
+    .transforms = sponza_scene_transforms,
+    .renderers = sponza_scene_renderers,
+    .cameras = sponza_scene_cameras,
+};
+
+SCENE_REGISTER(sponza_scene)

@@ -23,7 +23,7 @@
 
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_flythrough.h"
-#include "apps/render_lab/sponza_scene_generated.h"
+#include "asset/asset_store.h"
 #include "gfx/gfx.h"
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
@@ -143,23 +143,29 @@ report_core_contention(const raster_t* raster, const r3d_lens_t* lens, int visib
              (long long)together_bottom.us, (long long)wall);
 }
 
+static r3d_lit_mesh_t meshes[3];
+static const char* const MESH_IDS[3] = {"sponza", "sponza_lite", "sponza_flat"};
+static const char* const MESH_LABELS[3] = {"sponza", "lite", "flat"};
+
 static void
 open_the_meshes(void) {
-    const char* failed = NULL;
-    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, sponza_open_meshes(&failed),
-                                  failed == NULL ? "the meshes did not open" : failed);
+    for (int i = 0; i < 3; i++) {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(asset_store_pack(), MESH_IDS[i], &meshes[i]),
+                                      MESH_IDS[i]);
+    }
 }
 
 void
 test_sponza_draw_stage_breakdown(void) {
     open_the_meshes();
     bench_t b;
-    bench_open(&b, &sponza_scene_atrium);
-    const r3d_lens_t lens = view_at(sponza_scene_atrium.mesh, 0);
+    const r3d_instance_t atrium = {&meshes[0], NULL};
+    bench_open(&b, &atrium);
+    const r3d_lens_t lens = view_at(atrium.mesh, 0);
     const r3d_pipeline_buffers_t parts = r3d_pipeline_carve(&b.raster);
-    const int visible = r3d_pipeline_cull(sponza_scene_atrium.mesh, &lens, parts.visible);
+    const int visible = r3d_pipeline_cull(atrium.mesh, &lens, parts.visible);
     int64_t start = esp_timer_get_time();
-    r3d_pipeline_transform(sponza_scene_atrium.mesh, &lens, parts.visible, visible, parts.cs, parts.rows);
+    r3d_pipeline_transform(atrium.mesh, &lens, parts.visible, visible, parts.cs, parts.rows);
     ESP_LOGI(TAG, "stage, one core: %-22s %7lldus", "transform", (long long)(esp_timer_get_time() - start));
 
     static const char* const names[4] = {"whole draw", "stop after setup", "stop after rows", "stop after span setup"};
@@ -215,9 +221,10 @@ report_frame_cost(const char* label, const r3d_instance_t* instance) {
 void
 test_sponza_frame_cost_along_the_flythrough(void) {
     open_the_meshes();
-    report_frame_cost("sponza", &sponza_scene_atrium);
-    report_frame_cost("lite", &sponza_scene_atrium_lite);
-    report_frame_cost("flat", &sponza_scene_atrium_flat);
+    for (int i = 0; i < 3; i++) {
+        const r3d_instance_t instance = {&meshes[i], NULL};
+        report_frame_cost(MESH_LABELS[i], &instance);
+    }
     TEST_PASS();
 }
 

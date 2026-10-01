@@ -287,7 +287,7 @@ class SceneTests(unittest.TestCase):
         point = '[[objects]]\nname = "p"\n[objects.light]\ntype = "point"\n'
         self.rejects("reserved", self.two_imports, renderer("a.import.toml") + point)
 
-    def test_the_scene_table_has_a_symbol_per_mesh_renderer_and_the_camera_with_its_path(self):
+    def test_the_scene_table_is_one_definition_with_an_entity_per_renderer_and_the_camera(self):
         flight = 'path = { tracks = "flight", node = "rig" }\n'
         placed = renderer("b.import.toml", transform="position = [1.0, 2.0, 3.0]\nscale = [2.0, 2.0, 2.0]\n")
         with tempfile.TemporaryDirectory() as directory:
@@ -298,19 +298,16 @@ class SceneTests(unittest.TestCase):
             source = written[0].read_text()
             header = written[1].read_text()
             self.assertEqual([item.name for item in written], ["hall_scene_generated.c", "hall_scene_generated.h"])
-        self.assertIn("const r3d_instance_t hall_scene_a = {.mesh = &hall_scene_a_mesh, .placement = NULL};", source)
-        self.assertIn("const r3d_instance_t hall_scene_b = {.mesh = &hall_scene_b_mesh, .placement = &hall_scene_b_placement};",
-                      source)
-        self.assertIn('{"a", &hall_scene_a_mesh},', source)
-        self.assertIn('{"b", &hall_scene_b_mesh},', source)
-        self.assertNotIn("_mesh_generated.h", source)
-        self.assertIn("{.m = {{2.0F, 0.0F, 0.0F}, {0.0F, 2.0F, 0.0F}, {0.0F, 0.0F, 2.0F}}, .position = {1.0F, 2.0F, 3.0F}}", source)
+        self.assertIn('.name = "hall",', source)
+        self.assertIn('static const scene_renderer_def_t hall_scene_renderers[] = {\n    {0, "a"},\n    {1, "b"},\n};', source)
+        self.assertIn("{.m = {{2.0F, 0.0F, 0.0F}, {0.0F, 2.0F, 0.0F}, {0.0F, 0.0F, 2.0F}}, .position = {1.0F, 2.0F, 3.0F}},", source)
         self.assertIn(".clip = &flight_clip, .translation = &flight_rig_translation, .rotation = &flight_rig_rotation", source)
-        self.assertIn("const r3d_scene_camera_t hall_scene_camera = {.half_fov_short_tan = 0.6F, .near_z = 1.0F, .placement = NULL, "
-                      ".path = &hall_scene_camera_path};", source)
-        self.assertIn("extern const r3d_instance_t hall_scene_a;", header)
-        self.assertIn("extern const r3d_scene_camera_t hall_scene_camera;", header)
-        self.assertIn("extern const r3d_scene_assets_t hall_scene_assets;", header)
+        self.assertIn("{2, 0.6F, 1.0F, &hall_scene_camera_path},", source)
+        self.assertIn(".entity_count = 3,", source)
+        self.assertIn("SCENE_REGISTER(hall_scene)", source)
+        self.assertIn("extern const scene_def_t hall_scene;", header)
+        self.assertIn("#define HALL_SCENE_B ((scene_entity_t)1)", header)
+        self.assertIn("#define HALL_SCENE_CAMERA ((scene_entity_t)2)", header)
 
     def test_the_scene_table_holds_only_what_the_device_reads(self):
         with tempfile.TemporaryDirectory() as directory:

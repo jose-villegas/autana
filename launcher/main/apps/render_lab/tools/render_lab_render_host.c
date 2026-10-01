@@ -20,6 +20,7 @@
 #include "apps/render_lab/render_lab_view.h"
 #include "gfx/gfx.h"
 #include "render_host.h"
+#include "scene/scene.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
 #include "util/tune.h"
@@ -139,6 +140,9 @@ setup(int quarter) {
 
 static void
 draw(const render_frame_t* frame) {
+    if (scene_has_active_camera()) {
+        scene_shell_compose(frame->dt_ms); /* what the shell does before frame() */
+    }
     app_list()->frame(frame->dt_ms, &frame->input);
 }
 
