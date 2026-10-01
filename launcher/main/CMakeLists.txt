@@ -259,15 +259,6 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     # image still pulls in.
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=double-promotion -Werror=float-conversion)
 
-    # Contracting a * b + c into one fused operation rounds once instead of
-    # twice, so the same float code would give a different pixel than the host
-    # render that pins it: the files that project in float refuse it.
-    set_source_files_properties(
-        anim/anim_track.c render/raster.c render/r3d_pipeline.c render/r3d_span.c render/r3d_scene.c
-        render/upscale.c boot/boot_anim.c apps/render_lab/scene_cube.c apps/render_lab/scene_wire.c
-        apps/render_lab/wire_pipeline.c
-        PROPERTIES COMPILE_OPTIONS -ffp-contract=off)
-
     # The asset pack is a build product: every baked mesh the import and scene
     # files name, packed into one image that flashes to the "assets" partition
     # with the app. `idf.py assets-flash` writes just that region.

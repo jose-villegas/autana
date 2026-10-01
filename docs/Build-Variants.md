@@ -136,10 +136,11 @@ The S3's FPU has no double: every `double` operation is a libgcc call, about
 ten times a float's cost. The `main` component compiles with
 `-Werror=double-promotion` and `-Werror=float-conversion`, so a float widened
 to a double, or a double constant in float maths, does not compile; code that
-needs one on purpose casts it explicitly, on the line that logs it. The files
-that project in float also compile with `-ffp-contract=off`, so a fused
-multiply-add never makes the board round differently from the host render
-that pins the pixels.
+needs one on purpose casts it explicitly, on the line that logs it. The host test
+and render builds compile with `-ffp-contract=off`, so a pinned pixel never
+depends on a fused multiply-add; the firmware keeps the fused operations,
+which are faster, and a board render can differ from the host's in the last
+float bit.
 
 The cast is invisible to the compiler, so the `diag` build checks the
 objects too: `launcher/tools/build/check_no_soft_double.py` lists every

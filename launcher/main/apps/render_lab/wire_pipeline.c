@@ -136,7 +136,9 @@ wire_project_edges(const wire_mesh_t* mesh, const r3d_line_view_t* view, int scr
         }
 
         int64_t x0 = ax, y0 = ay, x1 = bx, y1 = by;
-        if (!clip_to_screen(&x0, &y0, &x1, &y1, screen_w, screen_h)) {
+        const bool inside = (unsigned)ax < (unsigned)screen_w && (unsigned)bx < (unsigned)screen_w
+                            && (unsigned)ay < (unsigned)screen_h && (unsigned)by < (unsigned)screen_h;
+        if (!inside && !clip_to_screen(&x0, &y0, &x1, &y1, screen_w, screen_h)) {
             continue;
         }
         if (frame->segment_count >= frame->segment_capacity) {

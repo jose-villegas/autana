@@ -44,8 +44,9 @@ r3d_to_camera_space(vec3f_t model_point, const r3d_line_view_t* view) {
     return mat4f_apply(&view->matrix, model_point);
 }
 
-/* 1 / z for z > 0, to about one float ulp: a seed from the exponent's own
- * bits and three Newton steps, all multiplies. The S3's FPU has no divide, so
+/* 1 / z for z > 0, to about 1e-5 relative: a seed from the exponent's own
+ * bits and two Newton steps, all multiplies; far below a pixel at any screen
+ * offset. The S3's FPU has no divide, so
  * `/` is a libgcc routine of a hundred cycles or more, and a projected point
  * needs one. Garbage for z <= 0, which no caller projects. */
 static inline float
@@ -55,7 +56,6 @@ r3d_reciprocal(float z) {
     bits = 0x7EF311C7u - bits;
     float y;
     memcpy(&y, &bits, sizeof y);
-    y = y * (2.0F - (z * y));
     y = y * (2.0F - (z * y));
     return y * (2.0F - (z * y));
 }
