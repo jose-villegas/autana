@@ -99,6 +99,44 @@ Each tool and its module, `rebake.py` and when to rebake rather than bake in
 full, and the triangle-size report are in
 [`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md).
 
+## Fidelity against a reference
+
+The source-reference renderer traces the full source mesh at the device render
+size, supersamples each pixel, then evaluates the scene's bake lights per
+sample. It writes a linear `.npy` image and a tone-mapped RGB565-expanded PNG
+for each camera pose. The pose file comes from the scene camera's track, so a
+comparison does not keep a second camera path.
+
+```sh
+launcher/tools/anim/sample_tracks.sh --tracks PATH_tracks_generated.c:PATH --every 5000 --until 40000 \
+    --poses camera 184 224 0.62 6 > poses.txt
+tools/r3d/.cache/venv/Scripts/python tools/r3d/reference_render.py SCENE.scene.toml \
+    --poses poses.txt --out reference --samples 4
+python tools/render/render_compare.py --out compare.png --heatmap-dir heatmaps \
+    --reference-row pose0 host.png reference/000.png
+```
+
+Reference mode reports mean and 95th-percentile CIE76 ΔE over pixels and a
+global SSIM over linear Rec.709 luma. Lower ΔE and higher SSIM are closer to
+the source reference; its heatmap maps zero ΔE to black, then yellow to red by
+ΔE 50. The commands and output forms are in
+[`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md#fidelity-reference).
+
+On the camera-path poses in `sponza.scene.toml`, the current host renders
+score as follows against the four-by-four source reference:
+
+| Variant | Mean ΔE76 | p95 ΔE76 | Luma SSIM |
+|---|---:|---:|---:|
+| Full smooth | 7.0687 | 21.7253 | 0.943939 |
+| Lite smooth | 7.9639 | 25.2697 | 0.922524 |
+| Flat adaptive | 7.6812 | 27.1285 | 0.936582 |
+
+The flat-versus-full-smooth gap is mean ΔE76 5.5400, p95 ΔE76 22.9689 and
+SSIM 0.950007. It is the flat-shading ceiling: face sampling cannot remove
+the colour-gradient difference within a triangle. The flat heatmaps concentrate
+on lit arch edges, high-contrast shadow boundaries and the foreground drapery;
+large interior wall pixels stay comparatively dark.
+
 ## Sealing seams
 
 Simplifying a model made of many separate pieces approximates each piece's
