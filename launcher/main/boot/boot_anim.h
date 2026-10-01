@@ -45,6 +45,7 @@
 #include "render/r3d_line_camera.h"
 #include "render/r3d_trs.h"
 #include "util/math/transform.h"
+#include "util/math/vec2i.h"
 #include "util/math/vec3.h"
 #include "util/trig.h"
 #include "util/tween.h"
@@ -503,10 +504,6 @@ boot_anim_title_wobble(int32_t d_q12) {
     return (int)((amp * trig_sin(phase)) >> 15);
 }
 
-typedef struct {
-    int x, y; /* pixels */
-} boot_anim_title_pos_t;
-
 /* Amplitude under 22, don't hurt legibility. In sequence, staggered phase.
  * See boot_anim_timeline.h. */
 
@@ -530,7 +527,7 @@ boot_anim_title_wave(int i, uint32_t now_ms) {
  * `i * cell_w`: a fixed per-cell reckoning is wrong for a proportional
  * font, where narrow/wide glyphs do not share one width; see
  * test_final_x_matches_the_advance_sum() in suite_boot_anim.c. */
-static inline boot_anim_title_pos_t
+static inline vec2i_t
 boot_anim_title_letter(const gfx_font_t* font, int i, uint32_t now_ms) {
     const uint32_t start = BOOT_ANIM_TITLE_START_MS + (uint32_t)i * BOOT_ANIM_TITLE_STAGGER_MS;
     const uint8_t u8 = tween_ease_out(tween_ramp(now_ms, start, BOOT_ANIM_TITLE_FLIGHT_MS));
@@ -539,7 +536,7 @@ boot_anim_title_letter(const gfx_font_t* font, int i, uint32_t now_ms) {
     const int final_x = BOOT_ANIM_TITLE_VIEW_X + prefix_w + i * BOOT_ANIM_TITLE_GAP;
     const int start_x = final_x - BOOT_ANIM_TITLE_ENTRY_PX;
 
-    boot_anim_title_pos_t p;
+    vec2i_t p;
     p.x = tween_lerp_i32(start_x, final_x, u8);
 
     const int32_t d_q12 = BOOT_ANIM_ONE - tween_lerp_i32(0, BOOT_ANIM_ONE, u8);
