@@ -18,6 +18,12 @@
  */
 
 #include "sand_priv.h"
+#include "util/perf_region.h"
+
+PERF_REGION(sand_sweep_region, "sand.sweep");
+PERF_REGION(sand_liquid_region, "sand.liquid");
+PERF_REGION(sand_gas_region, "sand.gas");
+PERF_REGION(sand_reactions_region, "sand.reactions");
 
 #include <stdlib.h>
 #include <string.h>
@@ -1935,6 +1941,7 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
 #ifdef DEVICE_BUILD
     const int64_t sweep_t0 = esp_timer_get_time();
 #endif
+    PERF_REGION_BEGIN(sweep_mark, sand_sweep_region);
     if (sand_chunk_pass_ready(s, SAND_SPLIT_SWEEP, im_sign(dx), im_sign(dy))) {
         sweep_pass = (sweep_pass_t){
             .lanes = sand_lanes(s),
@@ -1958,6 +1965,7 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
                     settled_bit, is_liquid);
         s->rng_hashed = false;
     }
+    PERF_REGION_END(sweep_mark);
 #ifdef DEVICE_BUILD
     s->pass_us.sweep_us = esp_timer_get_time() - sweep_t0;
 #endif
@@ -1965,7 +1973,9 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     /* Cross-flow for liquids, excluding gravity. See sand_step_liquids() in
      * sand_liquid.c. Runs before finalising block sleep states to ensure
      * BLOCK_ACTIVE reflects entire step. */
+    PERF_REGION_BEGIN(liquid_mark, sand_liquid_region);
     sand_step_liquids(s, &flow, dx, dy);
+    PERF_REGION_END(liquid_mark);
 
     /* Rising gas doesn't join main sweep. Order of sand_step_liquids()
      * doesn't matter; both must finish before finalize_settling(). Checked
@@ -1976,7 +1986,9 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
 #ifdef DEVICE_BUILD
         const int64_t gas_t0 = esp_timer_get_time();
 #endif
+        PERF_REGION_BEGIN(gas_mark, sand_gas_region);
         sand_step_gas(s, gx, gy, dx, dy, slide_a, slide_b, perp_a, perp_b, load_dx, load_dy, x_step, jostle);
+        PERF_REGION_END(gas_mark);
 #ifdef DEVICE_BUILD
         s->pass_us.gas_us = esp_timer_get_time() - gas_t0;
 #endif
@@ -1990,7 +2002,9 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
 #ifdef DEVICE_BUILD
     const int64_t reactions_t0 = esp_timer_get_time();
 #endif
+    PERF_REGION_BEGIN(reactions_mark, sand_reactions_region);
     sand_step_reactions(s);
+    PERF_REGION_END(reactions_mark);
 #ifdef DEVICE_BUILD
     s->pass_us.reactions_us = esp_timer_get_time() - reactions_t0;
 #endif
