@@ -9,7 +9,6 @@ import collections
 import pathlib
 import sys
 import tempfile
-import types
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -442,10 +441,16 @@ def canonical(pos, tris):
     return collections.Counter(out)
 
 
-def lighting_args(**changes):
-    args = dict(sun=[-0.25, 1.0, 0.22], sun_disc_deg=1.2, sun_rays=4, sky_rays=8, sun_intensity=3.0,
-                sky_intensity=0.9, ambient=0.06, tonemap_white=0.35, ray_offset=0.5)
-    return types.SimpleNamespace(**{**args, **changes})
+def lighting_lights(**changes):
+    values = dict(sun=[-0.25, 1.0, 0.22], sun_disc_deg=1.2, sun_rays=4, sky_rays=8, sun_intensity=3.0,
+                  sky_intensity=0.9, ambient=0.06)
+    values.update(changes)
+    return [
+        {"type": "directional", "direction": values["sun"], "color": [1.0, 0.92, 0.78],
+         "intensity": values["sun_intensity"], "disc_degrees": values["sun_disc_deg"], "rays": values["sun_rays"]},
+        {"type": "sky", "color": [0.55, 0.68, 0.9], "intensity": values["sky_intensity"], "rays": values["sky_rays"]},
+        {"type": "ambient", "color": [1.0, 1.0, 1.0], "intensity": values["ambient"]},
+    ]
 
 
 def walled_floors(offsets):
@@ -468,8 +473,8 @@ class FlatLightTests(unittest.TestCase):
     def colours(self, offsets, **kw):
         p, tris, intersector = walled_floors(offsets)
         grey = lambda points, spacing, m: np.full((len(points), 3), 0.3)
-        args = lighting_args(sun=[0.8, 1.0, 0.0], sun_intensity=1.0, sky_intensity=1.0, ambient=0.02)
-        return face_colours(p, tris, np.zeros(len(tris), dtype=int), [0], set(), grey, intersector, args, **kw)
+        lights = lighting_lights(sun=[0.8, 1.0, 0.0], sun_intensity=1.0, sky_intensity=1.0, ambient=0.02)
+        return face_colours(p, tris, np.zeros(len(tris), dtype=int), [0], set(), grey, intersector, lights, 0.5, 0.35, **kw)
 
     def test_coplanar_faces_with_the_same_surroundings_get_the_same_colour(self):
         c = self.colours([0, 64])
@@ -509,7 +514,7 @@ class FlatLightTests(unittest.TestCase):
         normals = np.tile([0.0, 1.0, 0.0], (5, 1))
         normals[4] = [0, -1, 0]
         got = light(points, normals, np.array([False, False, False, False, True]),
-                    RayMeshIntersector(trimesh.util.concatenate([floor, wall])), lighting_args(), np.random.default_rng(7))
+                    RayMeshIntersector(trimesh.util.concatenate([floor, wall])), lighting_lights(), 0.5, np.random.default_rng(7))
         # Recorded from the bake before flat faces shared their sky directions.
         want = [[3.4013203074259875, 3.290614682831909, 3.09012983979227], [3.3394453074259873, 3.214114682831909, 2.98887983979227], [3.277570307425987, 3.137614682831909, 2.88762983979227], [3.2156953074259875, 3.0611146828319087, 2.78637983979227], [3.3394453074259873, 3.214114682831909, 2.98887983979227]]
         np.testing.assert_allclose(got, want, rtol=0, atol=1e-12)

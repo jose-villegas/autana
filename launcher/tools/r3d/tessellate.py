@@ -2,8 +2,6 @@
 
 import numpy as np
 
-from .geometry import vertex_normals
-
 
 def split_marked_edges(p, tris, marked):
     """Conforming split of every edge in `marked` (a set of sorted vertex
@@ -39,42 +37,3 @@ def split_marked_edges(p, tris, marked):
         out += pieces
         parent += [index] * len(pieces)
     return np.array(p), np.array(out, dtype=np.int64), midpoint, np.array(parent, dtype=np.int64)
-
-
-def adaptive_split(p, tris, attrs, brightness, min_edge, tolerance, rounds=12):
-    """Splits an edge where the light changes along it: where its midpoint's
-    brightness is off the mean of its ends by more than `tolerance`, or where
-    it is longer than the smallest limit of the triangles sharing it. Uniformly
-    lit areas keep their big triangles; shadow edges get the vertices they
-    need. `attrs` holds a row per triangle, its length limit first; each
-    piece of a split triangle inherits its row."""
-    known = {}
-    for _ in range(rounds):
-        all_edges = np.sort(np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]]), axis=1)
-        edges, owner = np.unique(all_edges, axis=0, return_inverse=True)
-        edge_limit = np.full(len(edges), np.inf)
-        np.minimum.at(edge_limit, owner.reshape(-1), np.tile(attrs[:, 0], 3))
-        length = np.linalg.norm(p[edges[:, 0]] - p[edges[:, 1]], axis=1)
-        normals = vertex_normals(p, tris)
-        need = [v for v in np.unique(edges) if v not in known]
-        if need:
-            values = brightness(p[need], normals[need])
-            known.update(zip(need, values))
-        long_enough = length > min_edge
-        cand = edges[long_enough]
-        if len(cand) == 0:
-            break
-        mid_n = normals[cand[:, 0]] + normals[cand[:, 1]]
-        mid_n /= np.maximum(np.linalg.norm(mid_n, axis=1, keepdims=True), 1e-12)
-        mid_b = brightness((p[cand[:, 0]] + p[cand[:, 1]]) / 2, mid_n)
-        ends = np.array([(known[a] + known[b]) / 2 for a, b in cand])
-        marked = (np.abs(mid_b - ends) > tolerance) | (length[long_enough] > edge_limit[long_enough])
-        if not np.any(marked):
-            break
-        chosen = cand[marked]
-        p, tris, midpoint, parent = split_marked_edges(p, tris, set(map(tuple, chosen)))
-        attrs = attrs[parent]
-        for (a, b), value in zip(map(tuple, cand), mid_b):
-            if (a, b) in midpoint:
-                known[midpoint[(a, b)]] = value
-    return p, tris, attrs
