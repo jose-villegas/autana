@@ -2,7 +2,7 @@
  * wire_mesh: an edge list a wireframe pipeline projects, not a triangle
  * mesh. An edge shared by two faces appears once, so a solid's cost is its
  * silhouette and creases, never its face count. Model space only, in
- * M4_ONE units.
+ * VEC4I_ONE units.
  */
 #pragma once
 

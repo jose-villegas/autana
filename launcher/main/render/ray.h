@@ -5,7 +5,7 @@
  * viewport's SHORTER axis.
  *
  * Single precision only, for the reason vec3f.h gives. The pose is
- * float rather than M4_ONE units because a caller's numbers need not be
+ * float rather than VEC4I_ONE units because a caller's numbers need not be
  * representable there.
  */
 #pragma once
