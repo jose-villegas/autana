@@ -29,7 +29,7 @@
 #define WIRE_FOCAL_LENGTH    1.0F
 
 static const wire_mesh_t* current_mesh;
-static vec3f_t* cs_vertices;
+static wire_cs_vertex_t* cs_vertices;
 static wire_segment_t* segments;
 static wire_frame_t frame;
 static bool alloc_ok;
