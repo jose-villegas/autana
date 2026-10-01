@@ -10,6 +10,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "build_variant.h"
 #include "render/camera.h"
 #include "render/r3d_lit_mesh.h"
 
@@ -29,6 +30,19 @@ typedef struct {
 typedef struct {
     int clusters, triangles; /* what survived culling */
 } raster_stats_t;
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+typedef struct {
+    int64_t dispatch_us[2];
+    int64_t core1_start_us[2];
+    int64_t core0_work_us[2];
+    int64_t core1_work_us[2];
+    int64_t join_wait_us[2];
+} raster_probe_t;
+
+void raster_probe_enable(bool enabled);
+const raster_probe_t* raster_probe(void);
+#endif
 
 /* Everything a raster works in (per-vertex, per-cluster, colour and depth)
  * as one block, from its mesh and size: the caller obtains it once, from
