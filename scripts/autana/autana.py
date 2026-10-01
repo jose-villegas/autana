@@ -22,6 +22,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import namedtuple
@@ -1056,6 +1057,116 @@ def tune(args):
     return 0
 
 
+PERF_USAGE = "usage: autana perf ? | autana perf off | autana perf <name> [event] [seconds]"
+PERF_DEFAULT_SECONDS = 10.0
+PERF_SEGMENT = re.compile(r"\| (\S+) cyc avg/min/max (\d+)/(\d+)/(\d+) (\S+) avg (\d+) n=(\d+)")
+
+
+def perf_listing(replies):
+    """The `PERFMON_NAME`/`PERFMON_EVENT` lines as two titled lists."""
+    names = [reply.split(" ", 1)[1] for reply in replies if reply.startswith("PERFMON_NAME ")]
+    events = [reply.split(" ", 1)[1] for reply in replies if reply.startswith("PERFMON_EVENT ")]
+    lines = ["names seen so far (a name appears once its bracket has run):"]
+    lines += [f"  {name}" for name in names] or ["  none yet"]
+    lines.append("events (the first, insn, is the default):")
+    lines += [f"  {event}" for event in events]
+    return "\n".join(lines)
+
+
+def perf_segments(text, name):
+    """(event, avg, min, max, event avg, n) for every `| name cyc ...` segment
+    of the report lines in `text` that belongs to `name`."""
+    found = []
+    for match in PERF_SEGMENT.finditer(text):
+        if match.group(1) == name:
+            found.append((match.group(5),) + tuple(int(group) for group in
+                                                  (match.group(2), match.group(3), match.group(4),
+                                                   match.group(6), match.group(7))))
+    return found
+
+
+def perf_summary(name, segments):
+    """One line over every report window: the averages weighted by n, the
+    extremes across windows."""
+    event = segments[0][0]
+    samples = sum(n for *_, n in segments)
+    cycles = sum(avg * n for _, avg, _, _, _, n in segments) / samples
+    counted = sum(avg * n for _, _, _, _, avg, n in segments) / samples
+    summary = (f"{name}: cycles avg {cycles:.0f} min {min(s[2] for s in segments)} "
+               f"max {max(s[3] for s in segments)} | {event} avg {counted:.0f} | n={samples}")
+    if counted:
+        summary += f" | {cycles / counted:.2f} cycles per {event}"
+    return summary
+
+
+def perf_parse(args):
+    """(name, event or None, seconds): the first word after the name that is a
+    number is the window, the other the event."""
+    event = None
+    seconds = None
+    for word in args[1:]:
+        try:
+            value = float(word)
+        except ValueError:
+            if event is not None:
+                sys.exit(PERF_USAGE)
+            event = word
+            continue
+        if seconds is not None or value <= 0:
+            sys.exit(PERF_USAGE)
+        seconds = value
+    return args[0], event, PERF_DEFAULT_SECONDS if seconds is None else seconds
+
+
+def perf_collect(seconds):
+    """The console for `seconds`, as text, from device.py's own listen."""
+    with tempfile.TemporaryDirectory() as folder:
+        capture = Path(folder) / "perf.log"
+        result = subprocess.run(device_command("listen", "--seconds", str(seconds), "--out", str(capture)),
+                                capture_output=True, text=True)
+        if result.returncode != 0:
+            print((result.stderr or result.stdout).strip(), file=sys.stderr)
+            return result.returncode, ""
+        return 0, capture.read_text(encoding="utf-8", errors="replace")
+
+
+def perf(args):
+    """The S3's cycle counter and one event over one frame_cost bracket: `?`
+    lists, `off` disarms, `<name>` arms, listens, disarms and summarises.
+    The board's own PERF verb is the arm; the numbers come from its report."""
+    reject_unknown("perf", args)
+    if not args:
+        sys.exit(PERF_USAGE)
+    if args[0] in ("?", "off"):
+        if len(args) > 1:
+            sys.exit(PERF_USAGE)
+        code, replies = send("PERF " + args[0], reply="PERFMON", until=["PERFMON_END", "PERFMON_ERR", "PERFMON_OK"])
+        if code != 0 or not replies:
+            return code or 1
+        print(perf_listing(replies) if args[0] == "?" else "\n".join(replies))
+        return 0
+    name, event, seconds = perf_parse(args)
+    code, replies = send(f"PERF {name} {event}" if event else f"PERF {name}", reply="PERFMON")
+    if code != 0 or not replies:
+        return code or 1
+    print(replies[-1])
+    if replies[-1].startswith("PERFMON_ERR"):
+        return 1
+    try:
+        code, text = perf_collect(seconds)
+    finally:
+        send("PERF off", reply="PERFMON")
+    if code != 0:
+        return code
+    segments = perf_segments(text, name)
+    if not segments:
+        print(f"autana perf: no samples of {name} in {seconds:g} s - is it running (open its app)?",
+              file=sys.stderr)
+        return 1
+    print(perf_summary(name, segments))
+    return 0
+
+
 def literal(name, value):
     return f"0x{int(value):06X}" if name.endswith("_rgb") else str(int(value))
 
@@ -1239,6 +1350,11 @@ COMMAND_GROUPS = (
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),
             ("screenshot --frames N -o PATH", "N consecutive frames, PATH-00 on, stepped while frozen"),)),
+        Command("perf", perf, (
+            ("perf ?", "the frame_cost names seen and the counter events"),
+            ("perf <name> [event] [seconds]",
+             "cycles and one event over one bracket for N s (10 when omitted), then off"),
+            ("perf off", "disarm the counters"))),
     )),
     ("input", "Drive input", (
         Command("tap", tap, (("tap <x> <y>", "tap a point"),)),

@@ -27,14 +27,12 @@
     X("icache_miss_fetch", XTPERF_CNT_I_MEM, XTPERF_MASK_I_MEM_CACHE_MISSES)                                           \
     X("iram_fetch", XTPERF_CNT_I_MEM, XTPERF_MASK_I_MEM_IRAM)
 
-#define FRAME_COST_EVENT_ROW(name, select, mask)                                                                       \
+#define FRAME_COST_EVENT_CHECK(name, select, mask)                                                                     \
     _Static_assert(sizeof(name) - 1 <= FRAME_COST_EVENT_NAME_MAX, name " is too long an event name");
-FRAME_COST_EVENTS(FRAME_COST_EVENT_ROW)
-#undef FRAME_COST_EVENT_ROW
+FRAME_COST_EVENTS(FRAME_COST_EVENT_CHECK)
 
 #define FRAME_COST_EVENT_ROW(name, select, mask) {name, select, mask},
 static const frame_cost_event_t events[] = {FRAME_COST_EVENTS(FRAME_COST_EVENT_ROW)};
-#undef FRAME_COST_EVENT_ROW
 
 const frame_cost_event_t*
 frame_cost_event_find(const char* name) {

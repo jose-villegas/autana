@@ -40,7 +40,29 @@
 
 #include "sand.h"
 #include "sand_chunk_sched.h"
+#include "util/frame_cost.h"
 #include "util/job.h"
+
+#ifdef DEVICE_BUILD
+#include "esp_timer.h"
+#endif
+
+/* One bracket per sand_step() pass: the name is "sand.<pass>" in the frame
+ * cost report and `<pass>_us` in sand_t.pass_us, so the two cannot drift.
+ * The wall-clock field exists only where DEVICE_BUILD does. */
+#ifdef DEVICE_BUILD
+#define SAND_PASS_BEGIN(pass)                                                                                          \
+    const int64_t pass##_t0 = esp_timer_get_time();                                                                    \
+    FRAME_COST_BEGIN(pass##_mark)
+#define SAND_PASS_END(s, pass)                                                                                         \
+    do {                                                                                                               \
+        FRAME_COST_END(pass##_mark, "sand." #pass);                                                                    \
+        (s)->pass_us.pass##_us = esp_timer_get_time() - pass##_t0;                                                     \
+    } while (0)
+#else
+#define SAND_PASS_BEGIN(pass)  FRAME_COST_BEGIN(pass##_mark)
+#define SAND_PASS_END(s, pass) FRAME_COST_END(pass##_mark, "sand." #pass)
+#endif
 
 #define SAND_CHUNK_SIDE_MIN (2 * SAND_LIQUID_SIGHT + 1)
 

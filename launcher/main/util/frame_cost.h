@@ -4,15 +4,11 @@
  * out as milliseconds per frame and forgotten.
  *
  * Pure here, on a frame_cost_t a test can own. The shared instance and its
- * clock exist only in a development build on the chip; on a host and in
- * release a bracket is nothing, so carrying one costs no clock and no link.
+ * clock exist only in a development build on the chip; elsewhere a bracket
+ * is nothing.
  *
- * Two clock reads per bracket. Around a stage of a frame, never a pixel.
- *
- * One name can also be armed for the S3's two hardware counters (cycles and
- * one event), read only by brackets of that name on the frame core. The
- * counters run free from the arm; a later sampling mode would arm the same
- * way.
+ * Two clock reads per bracket: around a stage, never a pixel. One name can
+ * be armed for the S3's two hardware counters, read by its brackets only.
  */
 #pragma once
 

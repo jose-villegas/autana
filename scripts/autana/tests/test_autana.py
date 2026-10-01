@@ -1147,6 +1147,96 @@ class TuneCommandTests(unittest.TestCase):
             autana.tune(["a", "b", "c"])
 
 
+class PerfCommandTests(unittest.TestCase):
+    """`perf` wraps the board's PERF verb: arm, listen for the report lines,
+    disarm, and print one summary of the `| name cyc ...` segments."""
+
+    REPORT = ("ms/frame avg/worst: sand.sweep 4.1/5.0 | total 4.1 | sand.sweep cyc avg/min/max "
+              "{avg}/{low}/{high} insn avg {event} n={n}\n")
+
+    def collect(self, *windows):
+        text = "".join(self.REPORT.format(avg=a, low=lo, high=hi, event=e, n=n)
+                       for a, lo, hi, e, n in windows)
+        return mock.patch.object(autana, "perf_collect", return_value=(0, text))
+
+    def test_the_listing_names_both_kinds_of_line(self):
+        replies = ["PERFMON_NAME sand.sweep", "PERFMON_NAME present", "PERFMON_EVENT insn",
+                   "PERFMON_EVENT window", "PERFMON_END"]
+        with mock.patch.object(autana, "send", return_value=(0, replies)) as sent, \
+             mock.patch("builtins.print") as printed:
+            code = autana.perf(["?"])
+        self.assertEqual(code, 0)
+        self.assertEqual(sent.call_args.args[0], "PERF ?")
+        text = printed.call_args.args[0]
+        self.assertIn("  sand.sweep", text)
+        self.assertIn("  window", text)
+
+    def test_off_disarms_and_says_so(self):
+        with mock.patch.object(autana, "send", return_value=(0, ["PERFMON_OK off"])) as sent, \
+             mock.patch("builtins.print") as printed:
+            self.assertEqual(autana.perf(["off"]), 0)
+        self.assertEqual(sent.call_args.args[0], "PERF off")
+        printed.assert_called_once_with("PERFMON_OK off")
+
+    def test_a_name_arms_listens_for_ten_seconds_by_default_and_disarms(self):
+        sends = [(0, ["PERFMON_OK sand.sweep insn"]), (0, ["PERFMON_OK off"])]
+        with mock.patch.object(autana, "send", side_effect=sends) as sent, \
+             self.collect((1000, 900, 1200, 400, 5)) as collected, mock.patch("builtins.print") as printed:
+            code = autana.perf(["sand.sweep"])
+        self.assertEqual(code, 0)
+        self.assertEqual([call.args[0] for call in sent.call_args_list], ["PERF sand.sweep", "PERF off"])
+        collected.assert_called_once_with(10.0)
+        self.assertIn("2.50 cycles per insn", printed.call_args.args[0])
+
+    def test_an_event_and_seconds_are_told_apart_in_any_order(self):
+        for words in (["sand.sweep", "window", "3"], ["sand.sweep", "3", "window"]):
+            sends = [(0, ["PERFMON_OK sand.sweep window"]), (0, ["PERFMON_OK off"])]
+            with self.subTest(words=words), mock.patch.object(autana, "send", side_effect=sends) as sent, \
+                 self.collect((100, 90, 120, 50, 2)) as collected, mock.patch("builtins.print"):
+                autana.perf(words)
+            self.assertEqual(sent.call_args_list[0].args[0], "PERF sand.sweep window")
+            collected.assert_called_once_with(3.0)
+
+    def test_windows_are_combined_weighted_by_their_samples(self):
+        with mock.patch.object(autana, "send", side_effect=[(0, ["PERFMON_OK x"]), (0, [])]), \
+             self.collect((1000, 900, 1200, 400, 1), (2000, 800, 3000, 800, 3)), \
+             mock.patch("builtins.print") as printed:
+            autana.perf(["sand.sweep"])
+        summary = printed.call_args.args[0]
+        self.assertIn("cycles avg 1750 min 800 max 3000", summary)
+        self.assertIn("insn avg 700 | n=4", summary)
+
+    def test_the_counters_are_disarmed_even_when_listening_fails(self):
+        sends = [(0, ["PERFMON_OK sand.sweep insn"]), (0, ["PERFMON_OK off"])]
+        with mock.patch.object(autana, "send", side_effect=sends) as sent, \
+             mock.patch.object(autana, "perf_collect", return_value=(3, "")), mock.patch("builtins.print"):
+            self.assertEqual(autana.perf(["sand.sweep"]), 3)
+        self.assertEqual(sent.call_args_list[-1].args[0], "PERF off")
+
+    def test_a_refused_arm_prints_the_reply_and_never_listens(self):
+        with mock.patch.object(autana, "send", return_value=(0, ["PERFMON_ERR unknown name nope"])), \
+             mock.patch.object(autana, "perf_collect") as collected, mock.patch("builtins.print") as printed:
+            self.assertEqual(autana.perf(["nope"]), 1)
+        collected.assert_not_called()
+        printed.assert_called_once_with("PERFMON_ERR unknown name nope")
+
+    def test_no_samples_is_a_failure_that_names_the_bracket(self):
+        with mock.patch.object(autana, "send", side_effect=[(0, ["PERFMON_OK x"]), (0, [])]), \
+             mock.patch.object(autana, "perf_collect", return_value=(0, "quiet\n")), \
+             mock.patch("builtins.print") as printed:
+            self.assertEqual(autana.perf(["sand.sweep"]), 1)
+        self.assertIn("no samples of sand.sweep", printed.call_args.args[0])
+
+    def test_other_names_segments_are_not_counted(self):
+        text = "| present cyc avg/min/max 9/9/9 insn avg 9 n=9 | sand.sweep cyc avg/min/max 4/3/5 insn avg 2 n=1"
+        self.assertEqual(autana.perf_segments(text, "sand.sweep"), [("insn", 4, 3, 5, 2, 1)])
+
+    def test_bad_words_are_a_usage_error(self):
+        for words in ([], ["a", "b", "c"], ["a", "0"], ["a", "5", "6"], ["?", "x"]):
+            with self.subTest(words=words), self.assertRaises(SystemExit):
+                autana.perf(words)
+
+
 class ConsoleRoutingTests(unittest.TestCase):
     """A bare word in the session is only ever an autana command (which
     includes the device console verbs autana now exposes directly) or "not
@@ -1806,6 +1896,7 @@ class BoardOnlyCommandsTests(unittest.TestCase):
             (autana.status, []),
             (autana.buildid, []),
             (autana.tune, ["ridge_trail"]),
+            (autana.perf, ["off"]),
             (autana.tap, ["1", "2"]),
             (autana.press, ["1", "2"]),
             (autana.drag, ["1", "2", "3", "4", "100"]),

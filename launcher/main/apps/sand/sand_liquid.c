@@ -15,10 +15,6 @@
 
 #include "sand_priv.h"
 
-#ifdef DEVICE_BUILD
-#include "esp_timer.h"
-#endif
-
 #include "sand_liquid_move.h"
 #include "util/fixed.h"
 #include "util/intmath.h"
@@ -792,13 +788,9 @@ sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy) {
     run.q_q8 = flow->q_q8;
 
     /* Cross-flow levels both ways. See equalise_liquids(). */
-#ifdef DEVICE_BUILD
-    const int64_t equalise_t0 = esp_timer_get_time();
-#endif
+    SAND_PASS_BEGIN(liquid);
     equalise_liquids(s, &run, SAND_LIQUID_SIGHT, dx, dy);
-#ifdef DEVICE_BUILD
-    s->pass_us.liquid_us = esp_timer_get_time() - equalise_t0;
-#endif
+    SAND_PASS_END(s, liquid);
     s->liquid_flip = !s->liquid_flip;
 
     /* SKIPPED ON ONE BOARD-WIDE FACT. Sorting by density needs two different
@@ -807,12 +799,8 @@ sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy) {
      * liquid scene usually is - therefore pays a popcount, not a pass. */
     const uint16_t liquids_here = s->may_have_materials & liquid_mask();
     if ((liquids_here & (uint16_t)(liquids_here - 1u)) != 0u && (s->step_phase & (LIQUID_SORT_PERIOD - 1u)) == 0u) {
-#ifdef DEVICE_BUILD
-        const int64_t float_t0 = esp_timer_get_time();
-#endif
+        SAND_PASS_BEGIN(float);
         (void)float_lighter_liquids(s, dx, dy);
-#ifdef DEVICE_BUILD
-        s->pass_us.float_us = esp_timer_get_time() - float_t0;
-#endif
+        SAND_PASS_END(s, float);
     }
 }

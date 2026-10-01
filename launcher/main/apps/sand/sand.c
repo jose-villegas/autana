@@ -18,14 +18,9 @@
  */
 
 #include "sand_priv.h"
-#include "util/frame_cost.h"
 
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef DEVICE_BUILD
-#include "esp_timer.h"
-#endif
 
 #include "build_variant.h"
 #include "sand_limits.h"
@@ -1933,10 +1928,7 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     /* Hashed draws (sand_rng_next_at(), sand_priv.h) are armed for exactly
      * this window, never longer - gas and reactions later this step must
      * still draw from the plain sequential stream. */
-#ifdef DEVICE_BUILD
-    const int64_t sweep_t0 = esp_timer_get_time();
-#endif
-    FRAME_COST_BEGIN(sweep_mark);
+    SAND_PASS_BEGIN(sweep);
     if (sand_chunk_pass_ready(s, SAND_SPLIT_SWEEP, im_sign(dx), im_sign(dy))) {
         sweep_pass = (sweep_pass_t){
             .lanes = sand_lanes(s),
@@ -1960,17 +1952,12 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
                     settled_bit, is_liquid);
         s->rng_hashed = false;
     }
-    FRAME_COST_END(sweep_mark, "sand.sweep");
-#ifdef DEVICE_BUILD
-    s->pass_us.sweep_us = esp_timer_get_time() - sweep_t0;
-#endif
+    SAND_PASS_END(s, sweep);
 
     /* Cross-flow for liquids, excluding gravity. See sand_step_liquids() in
      * sand_liquid.c. Runs before finalising block sleep states to ensure
      * BLOCK_ACTIVE reflects entire step. */
-    FRAME_COST_BEGIN(liquid_mark);
     sand_step_liquids(s, &flow, dx, dy);
-    FRAME_COST_END(liquid_mark, "sand.liquid");
 
     /* Rising gas doesn't join main sweep. Order of sand_step_liquids()
      * doesn't matter; both must finish before finalize_settling(). Checked
@@ -1978,15 +1965,9 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
      * skipping avoids marshalling nine arguments if no gas. Flash layout
      * cost. */
     if (s->may_have_gas) {
-#ifdef DEVICE_BUILD
-        const int64_t gas_t0 = esp_timer_get_time();
-#endif
-        FRAME_COST_BEGIN(gas_mark);
+        SAND_PASS_BEGIN(gas);
         sand_step_gas(s, gx, gy, dx, dy, slide_a, slide_b, perp_a, perp_b, load_dx, load_dy, x_step, jostle);
-        FRAME_COST_END(gas_mark, "sand.gas");
-#ifdef DEVICE_BUILD
-        s->pass_us.gas_us = esp_timer_get_time() - gas_t0;
-#endif
+        SAND_PASS_END(s, gas);
     }
 
     /* Same slot for burning cell reactions; ignition/extinguish/burn-out are
@@ -1994,25 +1975,15 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
      * Takes `s` argument, unlike sand_step_gas(). Boiling now happens at heat
      * source. No cost to dodge by checking may_have_burning, internal check
      * suffices. */
-#ifdef DEVICE_BUILD
-    const int64_t reactions_t0 = esp_timer_get_time();
-#endif
-    FRAME_COST_BEGIN(reactions_mark);
+    SAND_PASS_BEGIN(reactions);
     sand_step_reactions(s);
-    FRAME_COST_END(reactions_mark, "sand.reactions");
-#ifdef DEVICE_BUILD
-    s->pass_us.reactions_us = esp_timer_get_time() - reactions_t0;
-#endif
+    SAND_PASS_END(s, reactions);
 
     /* Final step after others to ensure correct position and arc for thrown
      * grains, adding outward half after gravity. */
-#ifdef DEVICE_BUILD
-    const int64_t impulses_t0 = esp_timer_get_time();
-#endif
+    SAND_PASS_BEGIN(impulses);
     step_impulses(s, dx, dy);
-#ifdef DEVICE_BUILD
-    s->pass_us.impulses_us = esp_timer_get_time() - impulses_t0;
-#endif
+    SAND_PASS_END(s, impulses);
 
     finalize_settling(s, settled_bit);
 }

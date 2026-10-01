@@ -34,19 +34,23 @@ brackets compile to nothing.
 ## Hardware counters
 
 One name at a time can also be read against the S3's two performance
-counters, cycles and one event, from the console:
+counters, cycles and one event:
 
 ```
-PERF <name|off|?> [event]
+autana perf ?                           # the names seen so far, and the events
+autana perf <name> [event] [seconds]    # arm, listen (10 s), disarm, summarise
+autana perf off
 ```
 
-`PERF` alone, or `PERF ?`, lists the names seen so far and the events. An
-arm replies `PERFMON_OK <name> <event>`; an unknown name or event, or a
-second request before the frame task took the first, replies `PERFMON_ERR`.
-The event defaults to `insn` (retired instructions). A name is known once its
-bracket has run. The counters start with the arm and run free; a bracket of
-that name reads them at its begin and end, and the next 1.5 s report appends
-the window's samples:
+`autana perf present insn 10` prints one line: cycles avg/min/max, the
+event's average, the number of samples and cycles per event. The event
+defaults to `insn` (retired instructions). A name is known once its bracket
+has run. It is a wrapper over the console's own `PERF <name|off|?> [event]`,
+which replies `PERFMON_OK <name> <event>`, or `PERFMON_ERR` for an unknown
+name or event or a second request before the frame task took the first. The
+counters start with the arm and run free; a bracket of that name reads them
+at its begin and end, and the next 1.5 s report appends the window's samples,
+which `autana perf` sums:
 
 ```
 | stage cyc avg/min/max 112000/108000/179000 insn avg 64000 n=4
