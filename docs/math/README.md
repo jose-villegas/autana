@@ -175,7 +175,7 @@ ten times a float's cost. Rules, all in [Build-Variants.md](../Build-Variants.md
 | Rule | Where |
 |---|---|
 | `-Werror=double-promotion`, `-Werror=float-conversion` | the whole `main` component |
-| `-ffp-contract=off` | the files that project in float, so no fused multiply-add rounds differently from the host render that pins the pixels |
+| `-ffp-contract=off` | the host test and render builds, so a pinned pixel never depends on a fused multiply-add; the firmware keeps the fused operations |
 | soft-double link gate | `launcher/tools/build/check_no_soft_double.py`: a function calling a soft-double routine fails unless it also logs |
 | libm | float needs `sqrtf`, `sinf`, `cosf`, `acosf`, `lroundf`; link it |
 
