@@ -6,7 +6,6 @@ the offline tools are `launcher/tools/r3d/`. There is no GPU and no display
 framework, only a span rasterizer on both cores.
 
 To put a model on screen, start with [Building a Scene](Building-a-Scene.md).
-
 | | |
 |---|---|
 | [Building-a-Scene.md](Building-a-Scene.md) | **Start here**: import a mesh, place it in a scene, light it, add a camera, draw it. |
