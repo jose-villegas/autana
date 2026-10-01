@@ -5,11 +5,17 @@
  * owns a contiguous range of both arrays, and its triangles index only its
  * own vertices. The clusters are the leaves of a tree rooted at nodes[0], so
  * a whole subtree is culled with one box test.
+ *
+ * A mesh is an asset-pack entry (docs/render/Mesh-Import.md): its arrays sit at
+ * offsets inside the entry, and r3d_lit_mesh_t is a view built once from
+ * them, so the renderer reads pointers as it always did and nothing is copied.
  */
 #pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
+
+#include "asset/asset_pack.h"
 
 typedef struct {
     uint16_t vertex_first, vertex_count;
@@ -35,3 +41,14 @@ typedef struct {
     int position_scale;
     const uint16_t* face_colors; /* target-format RGB565, one per triangle, or NULL */
 } r3d_lit_mesh_t;
+
+/* The asset type of a lit mesh entry. */
+#define R3D_LIT_MESH_ASSET ASSET_TYPE('L', 'M', 'S', 'H')
+
+/* Fills `mesh` with pointers into `asset`, which must outlive it, after
+ * checking every array and every cluster and node range against the entry.
+ * On failure `mesh` is zeroed and the status says what was wrong. */
+asset_status_t r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh);
+
+/* The same for the lit mesh entry named `id` in `pack`. */
+asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh);

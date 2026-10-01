@@ -67,6 +67,7 @@ flowchart TB
     end
     subgraph R6["animation"]
         Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
+        Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
     end
     subgraph R7["utilities"]
         Util["util/<br/><i>fixed point, float and fixed maths, tween, jobs, tunables</i>"]
@@ -447,6 +448,8 @@ origin, and later motion stays raw.
   describing a scene of objects.
 - [Animation-Tracks.md](Animation-Tracks.md), `anim/`: glTF keyed values
   sampled over time, and how a scene's properties are animated.
+- [assets/README.md](assets/README.md), `asset/`: the binary pack of content the
+  firmware maps from a flash partition, its format and how it is flashed.
 - [Text-and-Fonts.md](Text-and-Fonts.md): what a font is, the role
   accessor, text at more than one size.
 - [tools/Frame-Cost.md](tools/Frame-Cost.md): where a frame's time goes, by
