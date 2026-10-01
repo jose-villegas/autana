@@ -202,7 +202,7 @@ L^* = 116\,f\!\left(\tfrac{Y}{Y_n}\right) - 16,
 
 for render $R$ and reference $T$ at pixel $p$. Mean ΔE averages
 $\Delta E_{76}(p)$ over the frame's pixels and p95 is its 95th percentile.
-Luma SSIM works on the gamma-encoded luma $y = 0.2126\,r + 0.7152\,g + 0.0722\,b$
+Luma SSIM works on the gamma-encoded luma $y = 0.2126 r + 0.7152 g + 0.0722 b$
 (channels 0 to 1), over every 8 by 8 window $w$ of the frame, with the
 window's means $\mu$, variances $\sigma^2$ and covariance $\sigma_{RT}$:
 
