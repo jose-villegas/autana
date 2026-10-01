@@ -1247,7 +1247,7 @@ class PerfCommandTests(unittest.TestCase):
         self.assertIn("cycles avg 1000", printed.call_args_list[-1].args[0])
 
     def test_a_refused_arm_prints_the_reply_and_never_listens_or_disarms(self):
-        with mock.patch.object(autana, "send", return_value=(0, ["PERFMON_ERR unknown name nope"])) as sent, \
+        with mock.patch.object(autana, "send", return_value=(1, ["PERFMON_ERR unknown name nope"])) as sent, \
              mock.patch.object(autana, "perf_collect") as collected, mock.patch("builtins.print") as printed:
             self.assertEqual(autana.perf(["nope"]), 1)
         collected.assert_not_called()

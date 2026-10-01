@@ -108,7 +108,7 @@ frame_cost_begin(void) {
         owner_task = caller;
     }
     int event_index = -1;
-    if (frame_cost_apply_pending(&shared, caller == owner_task, &event_index)) {
+    if (shared.pending_arm != 0 && frame_cost_apply_pending(&shared, caller == owner_task, &event_index)) {
         program_counters(event_index);
     }
     if (caller != owner_task) {

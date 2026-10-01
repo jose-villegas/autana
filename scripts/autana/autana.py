@@ -1164,11 +1164,10 @@ def perf(args):
         return 0
     name, event, seconds = perf_parse(args)
     code, replies = send(f"PERF {name} {event}" if event else f"PERF {name}", reply="PERFMON")
-    if code != 0 or not replies:
+    if replies:
+        print(perf_text(replies[-1]))
+    if code != 0 or not replies or not replies[-1].startswith("PERFMON_OK"):
         return code or 1
-    print(perf_text(replies[-1]))
-    if not replies[-1].startswith("PERFMON_OK"):
-        return 1
     disarmed = False
     try:
         code, text = perf_collect(seconds)
