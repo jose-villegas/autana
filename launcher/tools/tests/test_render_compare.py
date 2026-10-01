@@ -81,6 +81,30 @@ class ReferenceMetricTest(unittest.TestCase):
         self.assertEqual(render_compare.reference_heatmap(picture, picture).getpixel((0, 0)), (0, 0, 0))
 
 
+class EdgeSplitTest(unittest.TestCase):
+    """A reference with one vertical step, and renders that differ from it in one column."""
+
+    STEP = [[(0, 0, 0)] * 4 + [(255, 255, 255)] * 4 for _ in range(8)]
+
+    def stats_with_error_in(self, column):
+        render = [list(row) for row in self.STEP]
+        for row in render:
+            row[column] = (128, 128, 128)
+        return render_compare.reference_measure(image(render), image(self.STEP))
+
+    def test_error_at_the_step_is_edge_error(self):
+        stats = self.stats_with_error_in(3)
+        self.assertEqual(stats.edge_share, 1.0)
+        self.assertEqual(stats.interior_delta_e, 0.0)
+        self.assertGreater(stats.edge_delta_e, 0.0)
+
+    def test_error_away_from_the_step_is_interior_error(self):
+        stats = self.stats_with_error_in(0)
+        self.assertEqual(stats.edge_share, 0.0)
+        self.assertEqual(stats.edge_delta_e, 0.0)
+        self.assertGreater(stats.interior_delta_e, 0.0)
+
+
 class HeatmapTest(unittest.TestCase):
     def test_grey_is_amplified_and_holes_are_red(self):
         a = image([[CLEAR, (0, 0, 0), (0, 0, 0)]])

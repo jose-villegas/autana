@@ -54,6 +54,9 @@ class ReferenceStats:
     mean_delta_e: float
     p95_delta_e: float
     ssim_luma: float
+    edge_delta_e: float = 0.0
+    interior_delta_e: float = 0.0
+    edge_share: float = 0.0
 
 
 @dataclass
@@ -118,10 +121,35 @@ def luma_ssim(a, b):
     return float((2 * ma * mb + c1) * (2 * cov + c2) / ((ma * ma + mb * mb + c1) * (va + vb + c2)))
 
 
+EDGE_GRADIENT = 0.06
+
+
+def edge_mask(reference):
+    """Pixels on or beside a sharp change of the reference's luma: a lit or
+    shadowed boundary, or a silhouette. The step is in gamma-encoded luma per
+    pixel, and the mask grows one pixel each way."""
+    luma = np.asarray(reference.convert("L"), dtype=float) / 255.0
+    if min(luma.shape) < 2:
+        return np.zeros(luma.shape, dtype=bool)
+    gy, gx = np.gradient(luma)
+    edge = np.pad(np.hypot(gx, gy) > EDGE_GRADIENT, 1)
+    grown = np.zeros(luma.shape, dtype=bool)
+    for dy in (0, 1, 2):
+        for dx in (0, 1, 2):
+            grown |= edge[dy : dy + luma.shape[0], dx : dx + luma.shape[1]]
+    return grown
+
+
 def reference_measure(render, reference):
-    """Mean and p95 CIE76 ΔE, plus luma SSIM, for one reference pair."""
+    """Mean and p95 CIE76 ΔE, luma SSIM, and the ΔE on edge and interior
+    pixels of the reference, for one reference pair."""
     error = delta_e76(render, reference)
-    return ReferenceStats(float(error.mean()), float(np.percentile(error, 95)), luma_ssim(render, reference))
+    edge = edge_mask(reference)
+    on_edge = float(error[edge].mean()) if edge.any() else 0.0
+    inside = float(error[~edge].mean()) if (~edge).any() else 0.0
+    share = float(error[edge].sum() / error.sum()) if error.sum() > 0 else 0.0
+    return ReferenceStats(float(error.mean()), float(np.percentile(error, 95)), luma_ssim(render, reference), on_edge, inside,
+                          share)
 
 
 def reference_heatmap(render, reference):
@@ -517,8 +545,8 @@ def summary_line(label, stats):
 
 def reference_line(label, stats):
     """One reference comparison line, using CIE76 ΔE and global luma SSIM."""
-    return "%s: mean DeltaE76 %.4f, p95 DeltaE76 %.4f, luma SSIM %.6f" % (
-        label, stats.mean_delta_e, stats.p95_delta_e, stats.ssim_luma
+    return "%s: mean DeltaE76 %.4f, p95 DeltaE76 %.4f, luma SSIM %.6f, edge DeltaE76 %.4f, interior DeltaE76 %.4f, edge share %.4f" % (
+        label, stats.mean_delta_e, stats.p95_delta_e, stats.ssim_luma, stats.edge_delta_e, stats.interior_delta_e, stats.edge_share
     )
 
 
@@ -544,6 +572,9 @@ def reference_video(path, reference_dir, scale=1, heatmaps=None):
         sum(item.mean_delta_e for item in values) / len(values),
         sum(item.p95_delta_e for item in values) / len(values),
         sum(item.ssim_luma for item in values) / len(values),
+        sum(item.edge_delta_e for item in values) / len(values),
+        sum(item.interior_delta_e for item in values) / len(values),
+        sum(item.edge_share for item in values) / len(values),
     )
 
 

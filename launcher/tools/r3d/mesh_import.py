@@ -92,9 +92,10 @@ def shade_unlit(src, material, mp, mt):
     return mp, encode_srgb8(albedo_at(src, mp, vertex_spacing(mp, mt), material)), mt
 
 
-def bake(settings, variant, scene, origin):
-    """Bakes one mesh. `scene` is None for an import that needs none; `origin`
-    is the file the command was run on."""
+def bake_geometry(settings, variant, scene):
+    """Everything a mesh needs before its colours are final: the source, its
+    ray intersector and the simplified geometry with the colours a smooth bake
+    keeps. `scene` is None for an import that needs none."""
     rng = np.random.default_rng(settings.seed)
     src = load_source(settings)
     scale = {} if settings.position_scale is None else {"position_scale": settings.position_scale}
@@ -146,15 +147,31 @@ def bake(settings, variant, scene, origin):
                                                  seal_seams=steps.seal_seams, **scale)
         rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
         tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
-    face_rgb = None
-    if variant.face_samples:
-        samples, sample_min, sample_max, sample_area = variant.face_samples
-        double_materials = {index for index, name in enumerate(src.names) if name in double_names}
-        face_rgb = face_colours(positions, tris, tri_mat, range(len(src.names)), double_materials,
-                                lambda centres, spacing, material: albedo_at(src, centres, spacing, material), intersector,
-                                scene.lights, settings.light.ray_offset, scene.tonemap_white, samples, settings.light.flat_sky_rays,
-                                sample_max, sample_area, sample_min)
-    mesh = write_lit_mesh(settings.out_dir, variant.name, positions, None if variant.face_samples else rgb, tris, tri_double,
+    return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
+                           tri_mat=tri_mat, scale=scale)
+
+
+def flat_colours(settings, scene, geometry, face_samples, **knobs):
+    """One colour per triangle of `geometry` for a flat variant's
+    (samples, min, max, area) options. `knobs` are face_colours' own: sky_rays,
+    placement and sun_centre."""
+    src = geometry.src
+    samples, sample_min, sample_max, sample_area = face_samples
+    double_materials = {index for index, name in enumerate(src.names) if name in settings.double_sided}
+    knobs.setdefault("sky_rays", settings.light.flat_sky_rays)
+    return face_colours(geometry.positions, geometry.tris, geometry.tri_mat, range(len(src.names)), double_materials,
+                        lambda centres, spacing, material: albedo_at(src, centres, spacing, material), geometry.intersector,
+                        scene.lights, settings.light.ray_offset, scene.tonemap_white, samples, max_samples=sample_max,
+                        sample_area=sample_area, min_samples=sample_min, **knobs)
+
+
+def bake(settings, variant, scene, origin):
+    """Bakes one mesh. `scene` is None for an import that needs none; `origin`
+    is the file the command was run on."""
+    geometry = bake_geometry(settings, variant, scene)
+    positions, rgb, tris, scale = geometry.positions, geometry.rgb, geometry.tris, geometry.scale
+    face_rgb = flat_colours(settings, scene, geometry, variant.face_samples) if variant.face_samples else None
+    mesh = write_lit_mesh(settings.out_dir, variant.name, positions, None if variant.face_samples else rgb, tris, geometry.tri_double,
                           banner_lines(origin, settings, variant), face_rgb=face_rgb, **scale)
     log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, {len(mesh.nodes)} nodes")
 
