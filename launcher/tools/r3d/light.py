@@ -207,24 +207,25 @@ def face_samples(count):
     return np.stack([1 - r, r * (1 - t), r * t], axis=1)
 
 
-def adaptive_sample_counts(areas, reference, cap):
+def adaptive_sample_counts(areas, reference, cap, floor=1):
     """Samples per face: one for each `reference` of area it covers, rounded,
-    at least 1 and at most `cap`."""
-    return np.clip(np.round(areas / reference), 1, cap).astype(np.int64)
+    at least `floor` and at most `cap`."""
+    return np.clip(np.round(areas / reference), floor, cap).astype(np.int64)
 
 
 def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_of, intersector, args, samples=4,
-                 sky_rays=128, max_samples=16, sample_area=None):
+                 sky_rays=128, max_samples=16, sample_area=None, min_samples=1):
     """One sRGB colour per triangle: albedo times light averaged over fixed
     points of the triangle, lit on its face normal. `samples` is a count per
     face, or "auto" for one point per `sample_area` of face area (the mesh's
-    median face by default) up to `max_samples`. Every face shares one set of
+    median face by default), from `min_samples` to `max_samples`. Every face shares one set of
     sun and `sky_rays` sky directions, so equal surroundings give equal
     colours. albedo_of(points, spacing, material) gives the albedo."""
     out = np.zeros((len(tris), 3), dtype=np.int64)
     areas = triangle_areas(positions, tris)
     if samples == "auto":
-        counts = adaptive_sample_counts(areas, np.median(areas) if sample_area is None else sample_area, max_samples)
+        counts = adaptive_sample_counts(areas, np.median(areas) if sample_area is None else sample_area, max_samples,
+                                         min_samples)
     else:
         counts = np.full(len(tris), samples, dtype=np.int64)
     for m in materials:

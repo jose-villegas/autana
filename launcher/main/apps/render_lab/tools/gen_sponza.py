@@ -183,6 +183,8 @@ def main():
     parser.add_argument("--face-samples", type=samples_arg, default=FACE_SAMPLES,
                         help="flat: points per triangle the light is averaged over, or auto: one per "
                         "--face-sample-area of the triangle's area, up to --face-samples-max")
+    parser.add_argument("--face-samples-min", type=int, default=1,
+                        help="flat, --face-samples auto: the fewest points a triangle gets")
     parser.add_argument("--face-samples-max", type=int, default=FACE_SAMPLES_MAX,
                         help="flat, --face-samples auto: the most points a triangle gets")
     parser.add_argument("--face-sample-area", type=float,
@@ -192,6 +194,8 @@ def main():
                         help="flat: sky directions shared by every face")
     parser.add_argument("--props-share", type=float, default=0.3, help="meshopt: budget share held for props")
     args = parser.parse_args()
+    if not 1 <= args.face_samples_min <= args.face_samples_max:
+        parser.error("--face-samples-min must be at least 1 and at most --face-samples-max")
     rng = np.random.default_rng(args.seed)
 
     root = args.sponza_dir or str(fetch_zip(SPONZA_URL, SPONZA_SHA256, "crytek_sponza"))
@@ -276,7 +280,7 @@ def main():
 
         face_rgb = face_colours(positions, tris, tri_mat, range(len(names)), double_materials, albedo_of, intersector,
                                 args, args.face_samples, args.flat_sky_rays, args.face_samples_max,
-                                args.face_sample_area)
+                                args.face_sample_area, args.face_samples_min)
 
     mesh = write_lit_mesh(args.out_dir, args.name, positions, None if args.flat else rgb, tris, tri_double,
                           banner_lines(args), position_scale=POSITION_SCALE, face_rgb=face_rgb)
@@ -297,6 +301,8 @@ def banner_lines(args):
          f" --props-share {args.props_share:g} --dense-edge {args.dense_edge:g}"
          + (" --flat" if args.flat else "")
          + (f" --face-samples {args.face_samples}" if args.flat and args.face_samples != FACE_SAMPLES else "")
+         + (f" --face-samples-min {args.face_samples_min}"
+            if args.flat and args.face_samples == "auto" and args.face_samples_min != 1 else "")
          + (f" --face-samples-max {args.face_samples_max}"
             if args.flat and args.face_samples == "auto" and args.face_samples_max != FACE_SAMPLES_MAX else "")
          + (f" --face-sample-area {args.face_sample_area:g}"

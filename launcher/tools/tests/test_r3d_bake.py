@@ -486,6 +486,11 @@ class FlatLightTests(unittest.TestCase):
         counts = adaptive_sample_counts(np.array([0.2, 1.0, 1.4, 3.0, 8.0]), 1.0, 16)
         self.assertEqual(counts.tolist(), [1, 1, 1, 3, 8])
 
+    def test_the_adaptive_count_respects_its_minimum(self):
+        self.assertEqual(adaptive_sample_counts(np.array([0.2, 1.0, 5.0]), 1.0, 8, 3).tolist(), [3, 3, 5])
+        small = self.colours([0], samples="auto", sample_area=1e6, min_samples=4)
+        self.assertEqual(small.tolist(), self.colours([0], samples=4).tolist())
+
     def test_the_adaptive_count_is_capped(self):
         self.assertEqual(adaptive_sample_counts(np.array([5.0, 500.0]), 1.0, 6).tolist(), [5, 6])
 
