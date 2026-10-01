@@ -28,7 +28,8 @@ flowchart LR
 A vertex carries one sRGB colour: the baked light times the albedo, or, with no
 light step, the albedo alone. A variant with `face_samples` is flat instead,
 with one RGB565 colour per triangle (`light.face_colours()`): the light and
-albedo averaged over a few fixed points of the face, every face sharing one set
+albedo averaged over the points of the face that `face_samples` sets, a fixed count
+or one chosen per face, every face sharing one set
 of sun and sky directions so neighbours on one surface agree unless something
 really shades one of them. Vertices weld by position alone since colour no
 longer splits them, and a flat mesh draws with no colour gradients. The
@@ -114,7 +115,7 @@ at the full budget and at about half of it, the full render above the lite.
 
 `process.visibility` drops triangles no point of the camera region sees, so
 their share of the budget goes to what is seen. The same import with the step
-off, at a pose near the start of the flythrough, crops where they differ most,
+off, at one camera pose, crops where they differ most,
 off above on: without the cull the budget is spent on hidden surfaces and
 visible ones lose triangles.
 
@@ -125,9 +126,10 @@ import with no light step, the right the baked sun, sky and ambient.
 
 ![Albedo against baked light](images/import-light.png)
 
-The four stills under `images/` are not made by the doc-images workflow: each
-"off" side is a scratch bake of the import with that step removed, which needs
-the bake toolchain and the source model.
+The off/on stills in `images/` are not made by the doc-images workflow: each
+"off" side is a scratch bake of the import with that step's table removed,
+which needs the bake toolchain and the source model, so nothing refreshes them
+when the bake changes.
 
 The scene file that places meshes and carries the lights, the camera and the
 tone map is described in [Scene-Files.md](Scene-Files.md).
