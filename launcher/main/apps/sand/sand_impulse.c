@@ -91,7 +91,9 @@ typedef struct {
 static void
 queue_outward_impulse(disc_walk_t* w, int dx, int dy) {
     sand_t* const s = w->s;
-    const int cx = w->cx, cy = w->cy, mat_filter = w->mat_filter;
+    const int cx = w->cx;
+    const int cy = w->cy;
+    const int mat_filter = w->mat_filter;
     if (dx * dx + dy * dy > w->r2) {
         return;
     }
