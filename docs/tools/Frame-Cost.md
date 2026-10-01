@@ -31,6 +31,34 @@ report flags a further one with ` +N dropped`, and a charge from any task but
 the frame loop's own with ` +N foreign`. On a host and in release the
 brackets compile to nothing.
 
+## Hardware counters
+
+One name at a time can also be read against the S3's two performance
+counters, cycles and one event, from the console:
+
+```
+PERF <name|off|?> [event]
+```
+
+`PERF` alone, or `PERF ?`, lists the names seen so far and the events. An
+arm replies `PERFMON_OK <name> <event>`; an unknown name or event, or a
+second request before the frame task took the first, replies `PERFMON_ERR`.
+The event defaults to `insn` (retired instructions). A name is known once its
+bracket has run. The counters start with the arm and run free; a bracket of
+that name reads them at its begin and end, and the next 1.5 s report appends
+the window's samples:
+
+```
+| stage cyc avg/min/max 112000/108000/179000 insn avg 64000 n=4
+```
+
+The counts follow the same rule as the time: own, exclusive of brackets
+nested inside. They cover the frame task's core only; a pass that waits for
+the other core counts that wait in its cycles. A change of arm takes effect
+at the frame task's next outermost bracket. A name longer than
+`FRAME_COST_NAME_MAX` fails to compile; a name table or an arm that does not
+fit is counted in the report and the listing rather than ignored.
+
 ## Related
 
 - [`../Build-Variants.md`](../Build-Variants.md): development and release instrumentation
