@@ -6,9 +6,9 @@
         [--variant LABEL=SPEC ...]
 
 Each variant re-lights the mesh's simplified geometry, which is baked once,
-writes the result under --work (nothing tracked is touched), builds the
-scene's host renderer with that mesh in place of the tracked one, renders
---render-args with a video, and scores the frames against the reference
+writes the result under --work (nothing tracked is touched), packs it in
+place of the tracked mesh for the scene's host renderer (AUTANA_ASSET_PACK),
+renders --render-args with a video, and scores the frames against the reference
 images from reference_render.py with render_compare.py. Prints one table
 sorted by mean error.
 
@@ -23,6 +23,7 @@ No --variant scores the mesh as its import file declares it.
 """
 
 import argparse
+import os
 import pathlib
 import re
 import subprocess
@@ -35,8 +36,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import log  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene  # noqa: E402
 from r3d.light import triangle_areas  # noqa: E402
+from asset.asset_pack import build_pack  # noqa: E402
+from r3d.build_pack import mesh_files  # noqa: E402
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
-from r3d.mesh_import import REPO, bake_geometry, banner_lines, flat_colours  # noqa: E402
+from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
+from r3d.mesh_import import REPO, bake_geometry, flat_colours  # noqa: E402
 
 LAUNCHER = REPO / "launcher"
 SCORE = re.compile(r"^frames mean: mean DeltaE76 ([\d.]+), p95 DeltaE76 ([\d.]+), luma SSIM ([\d.]+), edge DeltaE76 ([\d.]+), interior DeltaE76 ([\d.]+)",
@@ -80,31 +84,40 @@ def declared_samples(variant, median):
     return samples, low, high, median if samples == "auto" and area is None else area
 
 
-def build_host(script, mesh_source, mesh_file, out_dir):
-    """The scene's host renderer with `mesh_file` built in place of
-    `mesh_source` (relative to launcher/); returns its path."""
-    done = subprocess.run(["sh", script.as_posix(), "--build-only", "-o", out_dir.as_posix(), "--substitute",
-                           f"{mesh_source}={mesh_file.as_posix()}"], capture_output=True, text=True, check=True)
+def build_host(script, out_dir):
+    """The scene's host renderer; returns its path."""
+    done = subprocess.run(["sh", script.as_posix(), "--build-only", "-o", out_dir.as_posix()], capture_output=True, text=True,
+                          check=True)
     return pathlib.Path(done.stdout.split("built ", 1)[1].strip())
 
 
-def write_variant(origin, settings, variant, scene, geometry, spec, out):
+def write_pack(name, mesh_file, out):
+    """The asset pack of every mesh the scene's tree bakes, with `name`'s entry
+    taken from `mesh_file`; returns its path."""
+    entries = mesh_files([LAUNCHER / "main"])
+    entries[name] = mesh_file
+    pack = out / "assets.bin"
+    pack.write_bytes(build_pack([(key, LIT_MESH, entry.read_bytes()) for key, entry in sorted(entries.items())]))
+    return pack
+
+
+def write_variant(settings, variant, scene, geometry, spec, out):
     """Bakes `spec` (see the module docstring) over `geometry` into
-    out/<name>_mesh_generated.{c,h}; returns the .c path."""
+    out/<name>.mesh; returns its path."""
     median = float(np.median(triangle_areas(geometry.positions, geometry.tris)))
     samples, knobs = parse_spec(spec, declared_samples(variant, median), median)
     face_rgb = flat_colours(settings, scene, geometry, samples, **knobs)
     out.mkdir(parents=True, exist_ok=True)
     write_lit_mesh(out, variant.name, geometry.positions, None, geometry.tris, geometry.tri_double,
-                   banner_lines(origin, settings, variant), face_rgb=face_rgb, **geometry.scale)
-    return out / f"{variant.name}_mesh_generated.c"
+                   face_rgb=face_rgb, **geometry.scale)
+    return out / f"{variant.name}.mesh"
 
 
-def score(args, host, work):
-    """(mean, p95, ssim, edge, interior) of the frames `host` renders."""
+def score(args, host, pack, work):
+    """(mean, p95, ssim, edge, interior) of the frames `host` renders from `pack`."""
     video = work / "frames.avi"
     subprocess.run([host.as_posix(), *args.render_args.split(), "-o", (work / "last.bmp").as_posix(), "--video", video.as_posix()],
-                   check=True, capture_output=True)
+                   check=True, capture_output=True, env={**os.environ, "AUTANA_ASSET_PACK": pack.as_posix()})
     compare = LAUNCHER / "tools" / "render" / "render_compare.py"
     done = subprocess.run([sys.executable, compare.as_posix(), "--out", (work / "unused.png").as_posix(), "--reference-video",
                            video.as_posix(), pathlib.Path(args.reference).as_posix(), "--reference-scale", str(args.reference_scale),
@@ -139,16 +152,15 @@ def main(argv=None):
     settings, variant = jobs[0].settings, jobs[0].variant
     log(f"geometry of {variant.name}")
     geometry = bake_geometry(settings, variant, scene)
-    tracked = (settings.out_dir / f"{variant.name}_mesh_generated.c").resolve().relative_to(LAUNCHER).as_posix()
     work = pathlib.Path(args.work).resolve()
+    host = build_host(pathlib.Path(args.script).resolve(), work / "host")
     rows = []
     for item in args.variant or ["declared="]:
         label, _, spec = item.partition("=")
         out = work / label
         log(f"variant {label}")
-        mesh_file = write_variant(path, settings, variant, scene, geometry, spec, out)
-        host = build_host(pathlib.Path(args.script).resolve(), tracked, mesh_file, out / "host")
-        rows.append((label, score(args, host, out)))
+        mesh_file = write_variant(settings, variant, scene, geometry, spec, out)
+        rows.append((label, score(args, host, write_pack(variant.name, mesh_file, out), out)))
         print(f"{label}: mean dE76 {rows[-1][1][0]:.3f}", flush=True)
     print(table(rows))
     (work / "table.md").write_text(table(rows) + "\n")

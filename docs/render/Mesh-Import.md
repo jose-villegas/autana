@@ -20,7 +20,8 @@ flowchart LR
     Albedo --> Simp
     Simp --> Face["Light per face<br/><i>variants with face_samples</i>"]
     Face --> Write["Write: quantise,<br/>meshlets, octree"]
-    Write --> C["Baked C<br/><i>r3d_lit_mesh_t</i>"]
+    Write --> Entry["Pack entry<br/><i>name.mesh</i>"]
+    Entry --> Pack["build_pack.py<br/><i>assets.bin</i>"]
 ```
 
 ## The baked mesh
@@ -54,9 +55,38 @@ a shadow edge lands on whole faces.
 
 ![One fixed face sample against adaptive](images/import-face-samples.png)
 
+### The pack entry
+
+A baked mesh is an entry of type `LMSH` in the [asset pack](../assets/README.md).
+Its header is 11 little-endian words; an array's offset counts from the entry's
+first byte, is a multiple of 4 and is 0 for an array the mesh does not have.
+
+| Word | Holds |
+|---|---|
+| 0 to 3 | vertex, triangle, cluster and node counts |
+| 4 | position scale, ticks per model unit |
+| 5 | positions: `int16[3]` per vertex |
+| 6 | colours: `uint8[3]` per vertex, or 0 for a flat mesh |
+| 7 | triangles: `uint16[3]` per triangle |
+| 8 | clusters: 22 bytes each, the layout of `r3d_lit_cluster_t` |
+| 9 | nodes: 16 bytes each, the layout of `r3d_lit_node_t` |
+| 10 | face colours: `uint16` per triangle in the panel's RGB565, or 0 |
+
+A mesh has vertex colours or face colours, never both. The cluster and node sizes
+are checked against the C structs at compile time. `r3d_lit_mesh_from_asset()`
+fills an `r3d_lit_mesh_t` with pointers into the entry, once, and nothing is
+allocated or copied; the rasterizer reads that struct as it always did. Before
+it does, the function checks that every array lies inside the entry and on a
+4-byte boundary, every cluster's ranges lie inside the mesh, each cluster's
+triangles index only its own vertices, every node's children lie inside the
+cluster or node array, and an inner node's children come after it, so a walk
+down the tree ends. `lit_mesh.py` writes the entry; `r3d_lit_mesh.c` is the one
+reader.
+
 ## The offline tools
 
-A mesh is const C data, written by
+A mesh is an entry of the [asset pack](../assets/README.md): `<name>.mesh`, written
+beside its import file by
 [`launcher/tools/r3d/mesh_import.py`](../../launcher/tools/r3d/mesh_import.py)
 using the offline tools in
 [`launcher/tools/r3d/`](../../launcher/tools/r3d/README.md). Two kinds of file
@@ -70,12 +100,13 @@ closed: an unknown key is an error.
 
 Run `python launcher/tools/r3d/mesh_import.py PATH` from the repository root,
 with `--mesh NAME` for one mesh. `PATH` is either kind of file. An import file
-with no scene-dependent step bakes alone, and its banner names it; one with
-such a step refuses with "needs a scene". A scene file bakes every mesh it
-places, with its own lights, camera region and tone map; its banner names
-the scene. The [scene table](Scene-Files.md#the-scene-table) is written by
-`scene_table.py`, apart from the bake.
-`rebake.py` rewrites a generated C mesh's clusters only.
+with no scene-dependent step bakes alone; one with such a step refuses with
+"needs a scene". A scene file bakes every mesh it places, with its own lights,
+camera region and tone map. The
+[scene table](Scene-Files.md#the-scene-table) is written by `scene_table.py`,
+apart from the bake. `build_pack.py -o PACK` then writes the pack from the `.mesh`
+entries every import and scene file names, and `rebake.py` rewrites one
+`.mesh`'s clusters only.
 
 ### Import file
 
@@ -92,8 +123,8 @@ own vertex colours are not read.
 
 | Table | Fields | Meaning |
 |---|---|---|
-| `source` | `url`, `sha256`, `path`, `cache`, `credit` | Download, verify and locate the OBJ in its archive (a zipped OBJ at a URL is the only source kind); `credit` is the attribution line written into every banner. |
-| `output` | `directory`, `name`, `position_scale` | Where the generated files go; `name` is the mesh's symbol prefix (only without `[[variants]]`); `position_scale` overrides the format's default ticks per unit. |
+| `source` | `url`, `sha256`, `path`, `cache`, `credit` | Download, verify and locate the OBJ in its archive (a zipped OBJ at a URL is the only source kind); `credit` is the attribution line for the source model. |
+| `output` | `directory`, `name`, `position_scale` | Where the scene table goes; `name` is the mesh's asset id (only without `[[variants]]`); `position_scale` overrides the format's default ticks per unit. |
 | `materials` | `double_sided` | The materials whose faces are two-sided. |
 | `process` | `seed` | The seed of the random rays the steps draw; allowed only with `visibility`, `thin` or `light`. |
 | `process.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. |
@@ -105,7 +136,8 @@ own vertex colours are not read.
 
 The steps run in the order of the diagram, whatever order the file lists them.
 An import without variants names its one mesh in `output.name` and cannot
-simplify.
+simplify. A mesh's name is its asset id in the pack, at most 31 characters, and
+no two meshes may share one.
 
 Two variants of one import differ in what `simplify` keeps: the same pose
 at the full budget and at about half of it, the full render above the lite.

@@ -35,7 +35,10 @@ set(app_srcs
     "ui/ui_scroll.c"
     "ui/ui_widgets.c"
     "anim/anim_track.c"
+    "asset/asset_pack.c"
+    "asset/asset_store_flash.c"
     "render/raster.c"
+    "render/r3d_lit_mesh.c"
     "render/r3d_pipeline.c"
     "render/upscale.c"
     "render/r3d_span.c"
@@ -159,7 +162,7 @@ list(APPEND app_srcs ${discovered_apps})
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
 set(app_reqs microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
-             esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash
+             esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag vfs nvs_flash esp_app_format
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300
@@ -249,6 +252,32 @@ idf_component_register(
 
 if(NOT CMAKE_SCRIPT_MODE_FILE)
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=vla -Werror=unused-macros)
+
+    # The asset pack is a build product: every baked mesh the import and scene
+    # files name, packed into one image that flashes to the "assets" partition
+    # with the app. `idf.py assets-flash` writes just that region.
+    idf_build_get_property(python PYTHON)
+    set(asset_pack "${CMAKE_BINARY_DIR}/assets.bin")
+    set(asset_tools "${CMAKE_CURRENT_LIST_DIR}/../tools")
+    launcher_glob(asset_inputs "${CMAKE_CURRENT_LIST_DIR}/apps/*.mesh")
+    launcher_glob(asset_settings "${CMAKE_CURRENT_LIST_DIR}/apps/*.toml")
+    add_custom_command(
+        OUTPUT "${asset_pack}"
+        COMMAND ${python} "${asset_tools}/r3d/build_pack.py" -o "${asset_pack}" "${CMAKE_CURRENT_LIST_DIR}"
+        DEPENDS ${asset_inputs} ${asset_settings} "${asset_tools}/r3d/build_pack.py"
+                "${asset_tools}/r3d/import_settings.py" "${asset_tools}/r3d/mesh_asset.py"
+                "${asset_tools}/asset/asset_pack.py"
+        COMMENT "Packing the asset pack"
+        VERBATIM)
+    add_custom_target(asset_pack_image ALL DEPENDS "${asset_pack}")
+    esptool_py_flash_to_partition(flash "assets" "${asset_pack}")
+    add_dependencies(flash asset_pack_image)
+    partition_table_get_partition_info(asset_offset "--partition-name assets" "offset")
+    idf_component_get_property(flash_main_args esptool_py FLASH_ARGS)
+    idf_component_get_property(flash_sub_args esptool_py FLASH_SUB_ARGS)
+    esptool_py_flash_target(assets-flash "${flash_main_args}" "${flash_sub_args}")
+    esptool_py_flash_target_image(assets-flash assets "${asset_offset}" "${asset_pack}")
+    add_dependencies(assets-flash asset_pack_image)
 endif()
 
 if(CONFIG_LAUNCHER_SELFTEST)

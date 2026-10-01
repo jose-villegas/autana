@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 
+#include "asset/asset_pack.h"
 #include "gfx/gfx.h"
 #include "render/r3d.h"
 
@@ -28,3 +29,8 @@ void sponza_flythrough_sample(uint32_t t_ms, vec3f_t* eye, vec3f_t* forward);
 
 /* The camera t_ms into the loop. */
 camera_t sponza_camera_at(uint32_t t_ms);
+
+/* Opens the scene's three meshes from the asset pack, which the scene's
+ * instances then draw. Returns what r3d_scene_bind() does: the first mesh
+ * that is missing or malformed fails it and `failed` names it. */
+asset_status_t sponza_open_meshes(const char** failed);

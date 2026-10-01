@@ -208,7 +208,7 @@ def load_import_settings(path):
     if steps.light and not flat and steps.light.flat_sky_rays is not None:
         raise SettingsError("process.light.flat_sky_rays applies to a variant with face_samples only")
     return SimpleNamespace(
-        path=path, source=source, out_dir=(path.parent / directory).resolve(),
+        path=path, source=source, out_dir=(path.parent / directory).resolve(), mesh_dir=path.parent,
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, visibility=steps.visibility, thin=steps.thin, light=steps.light,
