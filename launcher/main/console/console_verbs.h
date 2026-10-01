@@ -22,13 +22,17 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "util/perf_region.h"
 #include "util/tune.h"
 
 /* The longest line any registered verb needs today: "SET " (4) + a
  * TUNE_NAME_MAX-long tunable name + " " (1) + an int32_t's longest text
  * ("-2147483648", 11 chars) + a NUL; see console_tune.c's own
  * CONSOLE_VERB(SET, ...) call, which is what this bound is sized for. */
-#define CONSOLE_LINE_MAX (4 + TUNE_NAME_MAX + 1 + 11 + 1)
+#define CONSOLE_TUNE_LINE_MAX (4 + TUNE_NAME_MAX + 1 + 11 + 1)
+#define CONSOLE_PERF_LINE_MAX (4 + 1 + PERF_REGION_NAME_MAX + 1 + PERF_REGION_EVENT_NAME_MAX + 1)
+#define CONSOLE_LINE_MAX                                                                                               \
+    ((CONSOLE_TUNE_LINE_MAX > CONSOLE_PERF_LINE_MAX) ? CONSOLE_TUNE_LINE_MAX : CONSOLE_PERF_LINE_MAX)
 
 /* Assembles one line from a byte stream: true once `line` holds a complete
  * one. A line longer than CONSOLE_LINE_MAX-1 sets `*overflowed` and is

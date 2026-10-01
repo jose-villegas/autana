@@ -255,8 +255,7 @@ test_the_soak_only_skip_hash_survives_ambient_two_core_state(void) {
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "gfx/gfx.h"
-#include "xtensa/xt_perf_consts.h"
-#include "xtensa_perfmon_access.h"
+#include "util/perf_region.h"
 
 static void log_pass_split(const char* name, int steps, int impulse_max, const int64_t totals[6], const int64_t peak[6],
                            int peak_impulses, unsigned cap_hits);
@@ -1767,76 +1766,38 @@ test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget(void) {
     perf_target("mixed-scene gravity flip", per_step, 14660, 16860);
 }
 
-/* select/mask pairs from xtensa/xt_perf_consts.h. "insn" doubles as the
- * retired-instruction reference for the derived cycles-per-insn line below.
- * All confirmed present in this IDF; none were dropped. */
-typedef struct {
-    const char* name;
-    uint16_t select;
-    uint16_t mask;
-} xtperf_event_t;
+static perf_region_entry_t sand_perf_region = {"suite.sand", NULL};
 
-static const xtperf_event_t XTPERF_EVENTS[] = {
-    {"insn", XTPERF_CNT_INSN, XTPERF_MASK_INSN_ALL},
-    {"window", XTPERF_CNT_EXR, XTPERF_MASK_EXR_WINDOW},
-    {"level1_int", XTPERF_CNT_EXR, XTPERF_MASK_EXR_LEVEL1_INT},
-    {"replays", XTPERF_CNT_EXR, XTPERF_MASK_EXR_REPLAYS},
-    {"icache_miss_stall", XTPERF_CNT_I_STALL, XTPERF_MASK_I_STALL_CACHE_MISS},
-    {"iterative_mul", XTPERF_CNT_I_STALL, XTPERF_MASK_I_STALL_ITERATIVE_MUL},
-    {"iterative_div", XTPERF_CNT_I_STALL, XTPERF_MASK_I_STALL_ITERATIVE_DIV},
-    {"d_stall_all", XTPERF_CNT_D_STALL, XTPERF_MASK_D_STALL_ALL},
-    {"bubbles_cti", XTPERF_CNT_BUBBLES, XTPERF_MASK_BUBBLES_CTI},
-    {"bubbles_all", XTPERF_CNT_BUBBLES, XTPERF_MASK_BUBBLES_ALL},
-    {"branch_taken", XTPERF_CNT_INSN, XTPERF_MASK_INSN_BRANCH_TAKEN},
-    {"branch_not_taken", XTPERF_CNT_INSN, XTPERF_MASK_INSN_BRANCH_NOT_TAKEN},
-    {"call", XTPERF_CNT_INSN, (uint16_t)(XTPERF_MASK_INSN_CALL | XTPERF_MASK_INSN_CALLX)},
-    {"icache_miss_fetch", XTPERF_CNT_I_MEM, XTPERF_MASK_I_MEM_CACHE_MISSES},
-    {"iram_fetch", XTPERF_CNT_I_MEM, XTPERF_MASK_I_MEM_IRAM},
-};
-#define XTPERF_EVENT_COUNT (sizeof(XTPERF_EVENTS) / sizeof(XTPERF_EVENTS[0]))
-
-/* Counter 0 is cycles, seeded the way xtensa_perfmon_exec() seeds it (select
- * 0, mask 0xffff). kernelcnt 0 / tracelevel -1 is its own encoding for
- * "no interrupt-level filter" (xtensa_perfmon_config_t: negative tracelevel
- * means the filter is ignored) - every level counts, none excluded, which is
- * what a whole-step instrument needs. */
 static void
-measure_xtperf_event(const char* scene, sand_t* real, int gx, int gy, int gz, int steps, const xtperf_event_t* event,
-                     uint32_t* out_cycles, uint32_t* out_value) {
-    xtensa_perfmon_stop();
-    xtensa_perfmon_init(0, XTPERF_CNT_CYCLES, 0xffff, 0, -1);
-    xtensa_perfmon_init(1, event->select, event->mask, 0, -1);
-    xtensa_perfmon_reset(0);
-    xtensa_perfmon_reset(1);
-    xtensa_perfmon_start();
+measure_xtperf_event(const char* scene, sand_t* real, int gx, int gy, int gz, int steps,
+                     const perf_region_event_t* event, uint32_t* out_cycles, uint32_t* out_value) {
+    perf_region_mark_t mark;
+    TEST_ASSERT_TRUE(perf_region_begin(&mark, &sand_perf_region, event));
 
     for (int i = 0; i < steps; i++) {
         sand_step(real, gx, gy, gz);
     }
 
-    xtensa_perfmon_stop();
-    const uint32_t cycles = xtensa_perfmon_value(0);
-    const uint32_t value = xtensa_perfmon_value(1);
-    const bool cycles_overflowed = xtensa_perfmon_overflow(0) != ESP_OK;
-    const bool value_overflowed = xtensa_perfmon_overflow(1) != ESP_OK;
+    perf_region_counts_t counts;
+    TEST_ASSERT_TRUE(perf_region_end(&mark, &counts));
 
     ESP_LOGI("xtperf", "scene=%s event=%s cycles_per_step=%u value_per_step=%u steps=%d%s%s", scene, event->name,
-             (unsigned)(cycles / (uint32_t)steps), (unsigned)(value / (uint32_t)steps), steps,
-             cycles_overflowed ? " overflow=cycles" : "", value_overflowed ? " overflow=value" : "");
+             (unsigned)(counts.cycles / (uint32_t)steps), (unsigned)(counts.event / (uint32_t)steps), steps,
+             counts.cycles_overflowed ? " overflow=cycles" : "", counts.event_overflowed ? " overflow=value" : "");
 
-    if (event->select == XTPERF_CNT_INSN && event->mask == XTPERF_MASK_INSN_ALL && value != 0) {
-        const uint32_t cpi_x100 = (uint32_t)(((uint64_t)cycles * 100) / value);
+    if (strcmp(event->name, "insn") == 0 && counts.event != 0) {
+        const uint32_t cpi_x100 = (uint32_t)(((uint64_t)counts.cycles * 100) / counts.event);
         ESP_LOGI("xtperf", "scene=%s cycles_per_retired_insn=%u.%02u", scene, (unsigned)(cpi_x100 / 100),
                  (unsigned)(cpi_x100 % 100));
     }
 
-    *out_cycles = cycles;
-    *out_value = value;
+    *out_cycles = counts.cycles;
+    *out_value = counts.event;
 }
 
 static void
 run_xtperf_over_mixed_scene(uint64_t* total_cycles, uint64_t* total_insn) {
-    for (size_t e = 0; e < XTPERF_EVENT_COUNT; e++) {
+    for (int e = 0; e < perf_region_event_count(); e++) {
         uint8_t* big = malloc(REAL_W * REAL_H);
         uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
         TEST_ASSERT_NOT_NULL(big);
@@ -1846,13 +1807,14 @@ run_xtperf_over_mixed_scene(uint64_t* total_cycles, uint64_t* total_insn) {
         build_mixed_gravity_flip_scene(&real, big, blocks);
 
         uint32_t cycles = 0, value = 0;
-        measure_xtperf_event("mixed_flip", &real, 0, -1000, 0, 20, &XTPERF_EVENTS[e], &cycles, &value);
+        const perf_region_event_t* const event = perf_region_event_at(e);
+        measure_xtperf_event("mixed_flip", &real, 0, -1000, 0, 20, event, &cycles, &value);
 
         free(big);
         free(blocks);
 
         *total_cycles += cycles;
-        if (XTPERF_EVENTS[e].select == XTPERF_CNT_INSN && XTPERF_EVENTS[e].mask == XTPERF_MASK_INSN_ALL) {
+        if (strcmp(event->name, "insn") == 0) {
             *total_insn += value;
         }
     }
@@ -1860,7 +1822,7 @@ run_xtperf_over_mixed_scene(uint64_t* total_cycles, uint64_t* total_insn) {
 
 static void
 run_xtperf_over_water_scene(uint64_t* total_cycles, uint64_t* total_insn) {
-    for (size_t e = 0; e < XTPERF_EVENT_COUNT; e++) {
+    for (int e = 0; e < perf_region_event_count(); e++) {
         uint8_t* big = malloc(REAL_W * REAL_H);
         uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
         TEST_ASSERT_NOT_NULL(big);
@@ -1870,13 +1832,14 @@ run_xtperf_over_water_scene(uint64_t* total_cycles, uint64_t* total_insn) {
         build_water_scene(&real, big, blocks);
 
         uint32_t cycles = 0, value = 0;
-        measure_xtperf_event("water", &real, 0, 1000, 0, 20, &XTPERF_EVENTS[e], &cycles, &value);
+        const perf_region_event_t* const event = perf_region_event_at(e);
+        measure_xtperf_event("water", &real, 0, 1000, 0, 20, event, &cycles, &value);
 
         free(big);
         free(blocks);
 
         *total_cycles += cycles;
-        if (XTPERF_EVENTS[e].select == XTPERF_CNT_INSN && XTPERF_EVENTS[e].mask == XTPERF_MASK_INSN_ALL) {
+        if (strcmp(event->name, "insn") == 0) {
             *total_insn += value;
         }
     }
@@ -1884,7 +1847,7 @@ run_xtperf_over_water_scene(uint64_t* total_cycles, uint64_t* total_insn) {
 
 static void
 run_xtperf_over_full_step_scene(uint64_t* total_cycles, uint64_t* total_insn) {
-    for (size_t e = 0; e < XTPERF_EVENT_COUNT; e++) {
+    for (int e = 0; e < perf_region_event_count(); e++) {
         uint8_t* big = malloc(REAL_W * REAL_H);
         TEST_ASSERT_NOT_NULL(big);
 
@@ -1892,12 +1855,13 @@ run_xtperf_over_full_step_scene(uint64_t* total_cycles, uint64_t* total_insn) {
         build_full_size_step_scene(&real, big);
 
         uint32_t cycles = 0, value = 0;
-        measure_xtperf_event("full_step", &real, 0, 1, 0, 10, &XTPERF_EVENTS[e], &cycles, &value);
+        const perf_region_event_t* const event = perf_region_event_at(e);
+        measure_xtperf_event("full_step", &real, 0, 1, 0, 10, event, &cycles, &value);
 
         free(big);
 
         *total_cycles += cycles;
-        if (XTPERF_EVENTS[e].select == XTPERF_CNT_INSN && XTPERF_EVENTS[e].mask == XTPERF_MASK_INSN_ALL) {
+        if (strcmp(event->name, "insn") == 0) {
             *total_insn += value;
         }
     }
