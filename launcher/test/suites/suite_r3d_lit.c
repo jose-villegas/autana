@@ -1590,7 +1590,8 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     build_wall_and_stack(p);
     gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    char* scratch = malloc(raster_scratch_bytes(&(raster_t){.mesh = &p->mesh, .width = W, .height = H}));
+    char* scratch = malloc(raster_scratch_bytes(&(raster_t){
+        .mesh = &p->mesh, .width = W, .height = H, .destination_width = 2 * W, .destination_height = 2 * H}));
     TEST_ASSERT_NOT_NULL(upscaled);
     TEST_ASSERT_NOT_NULL(want);
     TEST_ASSERT_NOT_NULL(scratch);
@@ -1641,7 +1642,8 @@ test_a_destination_of_the_same_size_is_a_copy(void) {
     build_wall_and_stack(p);
     gfx_color_t* destination = malloc(sizeof(gfx_color_t) * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    char* scratch = malloc(raster_scratch_bytes(&(raster_t){.mesh = &p->mesh, .width = W, .height = H}));
+    char* scratch = malloc(raster_scratch_bytes(
+        &(raster_t){.mesh = &p->mesh, .width = W, .height = H, .destination_width = W, .destination_height = H}));
     TEST_ASSERT_NOT_NULL(destination);
     TEST_ASSERT_NOT_NULL(want);
     TEST_ASSERT_NOT_NULL(scratch);
@@ -1669,6 +1671,53 @@ test_a_destination_of_the_same_size_is_a_copy(void) {
     TEST_ASSERT_TRUE_MESSAGE(sky > 0 && sky < W * H, "the view shows both the parts and the clear colour");
     free(scratch);
     free(want);
+    free(destination);
+}
+
+static int
+nearest_source_index(int destination, int destination_size, int source_size) {
+    const int numerator = destination * (source_size - 1);
+    return (numerator + (destination_size - 1) / 2) / (destination_size - 1);
+}
+
+static void
+test_a_fractional_destination_upscales_a_drawn_frame(void) {
+    enum { OUT_W = 3 * W / 2, OUT_H = 3 * H / 2 };
+
+    parts_t* const p = parts_buffer();
+    build_wall_and_stack(p);
+    uint16_t* destination = malloc(sizeof(*destination) * OUT_W * OUT_H);
+    uint16_t* color = malloc(sizeof(*color) * W * H);
+    uint16_t* depth = malloc(sizeof(*depth) * W * H);
+    raster_t raster = {.mesh = &p->mesh,
+                       .width = W,
+                       .height = H,
+                       .clear = SKY,
+                       .destination = destination,
+                       .destination_width = OUT_W,
+                       .destination_height = OUT_H};
+    raster.scratch = malloc(raster_scratch_bytes(&raster));
+    TEST_ASSERT_NOT_NULL(destination);
+    TEST_ASSERT_NOT_NULL(color);
+    TEST_ASSERT_NOT_NULL(depth);
+    TEST_ASSERT_NOT_NULL(raster.scratch);
+
+    const camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
+    raster_draw(&raster, &camera, 0);
+    memcpy(color, r3d_pipeline_carve(&raster).color, sizeof(*color) * W * H);
+    memcpy(depth, r3d_pipeline_carve(&raster).depth, sizeof(*depth) * W * H);
+    raster_upscale(&raster);
+    for (int y = 0; y < OUT_H; y++) {
+        for (int x = 0; x < OUT_W; x++) {
+            const int source_x = nearest_source_index(x, OUT_W, W);
+            const int source_y = nearest_source_index(y, OUT_H, H);
+            const int source = source_y * W + source_x;
+            TEST_ASSERT_EQUAL_HEX16(depth[source] == R3D_DEPTH_EMPTY ? SKY : color[source], destination[y * OUT_W + x]);
+        }
+    }
+    free(raster.scratch);
+    free(depth);
+    free(color);
     free(destination);
 }
 
@@ -1931,7 +1980,8 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
     parts_t* const p = parts_buffer();
     build_wall_and_stack(p);
     gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    char* scratch = malloc(raster_scratch_bytes(&(raster_t){.mesh = &p->mesh, .width = W, .height = H}));
+    char* scratch = malloc(raster_scratch_bytes(&(raster_t){
+        .mesh = &p->mesh, .width = W, .height = H, .destination_width = 2 * W, .destination_height = 2 * H}));
     uint16_t* depth_before = malloc(sizeof(uint16_t) * W * H);
     uint16_t* shaded = malloc(sizeof(uint16_t) * W * H);
     TEST_ASSERT_NOT_NULL(upscaled);
@@ -2053,6 +2103,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_the_frame_carves_its_scratch_without_overlap);
     RUN_TEST(test_the_two_core_frame_matches_one_full_draw);
     RUN_TEST(test_a_destination_of_the_same_size_is_a_copy);
+    RUN_TEST(test_a_fractional_destination_upscales_a_drawn_frame);
     RUN_TEST(test_a_tile_holds_its_minimum_depth_not_its_maximum);
     RUN_TEST(test_one_empty_pixel_empties_its_tile_at_any_position_and_only_its_tile);
     RUN_TEST(test_the_partial_tiles_at_the_right_and_bottom_are_reduced_within_the_frame);

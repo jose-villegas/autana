@@ -12,6 +12,7 @@
 
 #include "render/camera.h"
 #include "render/r3d_lit_mesh.h"
+#include "render/upscale.h"
 
 /* The caller's options; the scratch block holds everything else. */
 typedef struct {
@@ -23,7 +24,8 @@ typedef struct {
      * upscaling puts the clear colour wherever nothing was drawn. */
     uint16_t* destination;
     int destination_width, destination_height;
-    void* scratch; /* raster_scratch_bytes() of it */
+    upscale_t upscale; /* maps retained in `scratch`, rebuilt when size changes */
+    void* scratch;     /* raster_scratch_bytes() of it */
 } raster_t;
 
 typedef struct {
@@ -39,9 +41,8 @@ size_t raster_scratch_bytes(const raster_t* raster);
 raster_stats_t raster_draw(const raster_t* raster, const camera_t* camera, int quarter);
 
 /* Fills `destination` from what raster_draw() last drew, both cores taking
- * half the rows. The destination is the same size (a copy) or twice it each
- * way, and then 4-byte aligned. */
-void raster_upscale(const raster_t* raster);
+ * half the destination rows. The destination is at least the drawn size. */
+void raster_upscale(raster_t* raster);
 
 /* The 8x8 pixel tile RASTER_SHOW_DEPTH_TILES reduces the depth to: the unit
  * a hierarchical depth test would cull by. */

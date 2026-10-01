@@ -21,9 +21,9 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](Mesh-Import.md)) |
 | `camera_t` | A pinhole camera in model units: eye, look direction, lens, near plane |
 | `viewport_t` | The picture's size and the quarter turn the panel is read at; the ray and line cameras take one, and `raster_draw()` builds its own from the size and the quarter |
-| `raster_t` | One mesh drawn at one size into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and a `destination` picture with its own size |
+| `raster_t` | One mesh drawn at one size into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and a destination picture at least as large |
 | `raster_draw()` | Draws the mesh through a camera, turned for the panel's quarter |
-| `raster_upscale()` | Scales what was drawn up into `destination` |
+| `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
 | `raster_show()` | Development builds: shows the depth instead of the colour, as a [view mode](#view-modes) |
 | `ray_camera_t` | A ray tracer's camera: the direction through each physical pixel |
 

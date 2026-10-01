@@ -130,6 +130,7 @@ $MAIN_DIR/anim/anim_track.c
 $MAIN_DIR/render/raster.c
 $MAIN_DIR/render/raster_show.c
 $MAIN_DIR/render/r3d_pipeline.c
+$MAIN_DIR/render/upscale.c
 $MAIN_DIR/render/r3d_span.c
 $MAIN_DIR/render/r3d_trs.c
 $MAIN_DIR/util/tune.c

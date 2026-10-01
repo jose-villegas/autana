@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "render/r3d_pipeline.h"
+#include "render/upscale.h"
 #include "util/job.h"
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
@@ -28,40 +29,6 @@ transform_slice(void* ctx) {
     r3d_pipeline_transform(s->raster->mesh, s->lens, b.visible + s->first, s->count, b.cs, b.rows);
 }
 
-/* A pixel nothing covered (R3D_DEPTH_EMPTY) takes the clear colour here,
- * so the colour buffer itself is never cleared. */
-static void
-copy_rows(const raster_t* r, int first, int count) {
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(r);
-    for (int y = first; y < first + count; y++) {
-        const size_t row = (size_t)y * (size_t)r->width;
-        for (int x = 0; x < r->width; x++) {
-            r->destination[row + (size_t)x] =
-                b.depth[row + (size_t)x] != R3D_DEPTH_EMPTY ? b.color[row + (size_t)x] : r->clear;
-        }
-    }
-}
-
-/* Two destination rows per source row, each pixel written twice as one
- * 32-bit store; the clear colour fills in as copy_rows() does. */
-static void
-spread_rows(const raster_t* r, int first, int count) {
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(r);
-    const int out_width = 2 * r->width;
-    for (int y = first; y < first + count; y++) {
-        const uint16_t* src = b.color + ((size_t)y * (size_t)r->width);
-        const uint16_t* depth = b.depth + ((size_t)y * (size_t)r->width);
-        uint32_t* top = (uint32_t*)(r->destination + ((size_t)(2 * y) * (size_t)out_width));
-        uint32_t* bottom = top + r->width;
-        for (int x = 0; x < r->width; x++) {
-            const uint16_t c = depth[x] != R3D_DEPTH_EMPTY ? src[x] : r->clear;
-            const uint32_t pair = ((uint32_t)c << 16) | c;
-            top[x] = pair;
-            bottom[x] = pair;
-        }
-    }
-}
-
 static void
 draw_slice(void* ctx) {
     const slice_t* s = ctx;
@@ -83,19 +50,11 @@ draw_slice(void* ctx) {
     r3d_pipeline_draw(r->mesh, s->lens, b.visible, s->visible_count, b.cs, b.rows, &target);
 }
 
-static bool
-same_size(const raster_t* r) {
-    return r->destination_width == r->width && r->destination_height == r->height;
-}
-
 static void
 upscale_slice(void* ctx) {
     const slice_t* s = ctx;
-    if (same_size(s->raster)) {
-        copy_rows(s->raster, s->first, s->count);
-    } else {
-        spread_rows(s->raster, s->first, s->count);
-    }
+    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(s->raster);
+    upscale_rows(&s->raster->upscale, b.color, b.depth, s->raster->clear, s->raster->destination, s->first, s->count);
 }
 
 static void
@@ -112,7 +71,8 @@ raster_scratch_bytes(const raster_t* raster) {
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     return (sizeof(r3d_pipeline_vertex_t) * (size_t)raster->mesh->vertex_count)
            + ((sizeof(r3d_pipeline_rows_t) + sizeof(uint16_t)) * (size_t)raster->mesh->cluster_count)
-           + (2 * sizeof(uint16_t) * pixels);
+           + (2 * sizeof(uint16_t) * pixels)
+           + (sizeof(uint16_t) * ((size_t)raster->destination_width + (size_t)raster->destination_height));
 }
 
 /* The row splitting the visible triangles in half, counting each cluster
@@ -164,10 +124,22 @@ raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
 }
 
 void
-raster_upscale(const raster_t* raster) {
+raster_upscale(raster_t* raster) {
     assert(raster->destination != NULL);
-    assert(same_size(raster)
-           || (raster->destination_width == 2 * raster->width && raster->destination_height == 2 * raster->height));
-    const int mid = raster->height / 2;
-    run_split(upscale_slice, (slice_t){raster, NULL, 0, mid, raster->height - mid}, (slice_t){raster, NULL, 0, 0, mid});
+    assert(raster->width > 0 && raster->height > 0);
+    assert(raster->destination_width >= raster->width && raster->destination_height >= raster->height);
+    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+    uint16_t* columns = b.visible + raster->mesh->cluster_count;
+    uint16_t* rows = columns + raster->destination_width;
+    if (raster->upscale.source_width != raster->width || raster->upscale.source_height != raster->height
+        || raster->upscale.destination_width != raster->destination_width
+        || raster->upscale.destination_height != raster->destination_height || raster->upscale.columns != columns
+        || raster->upscale.rows != rows) {
+        const bool initialized = upscale_init(&raster->upscale, raster->width, raster->height,
+                                              raster->destination_width, raster->destination_height, columns, rows);
+        assert(initialized);
+    }
+    const int mid = raster->destination_height / 2;
+    run_split(upscale_slice, (slice_t){raster, NULL, 0, mid, raster->destination_height - mid},
+              (slice_t){raster, NULL, 0, 0, mid});
 }
