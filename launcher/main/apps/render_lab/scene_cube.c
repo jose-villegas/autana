@@ -1,8 +1,8 @@
 /*
  * scene_cube - the Gouraud-shaded rotating RGB cube, as a render_lab scene.
  *
- * small3dlib projects the cube and culls its back faces; render/'s span
- * rasterizer fills it. Its depth plane is one band tall (GFX_BAND_HEIGHT
+ * The cube is projected and its back faces culled in fix3's fixed point;
+ * render/'s span rasterizer fills it. Its depth plane is one band tall (GFX_BAND_HEIGHT
  * rows), reused by every band and strip: a full colour+depth pair is ~1.3 MB
  * on a chip with ~424 KiB of RAM.
  */
@@ -15,41 +15,44 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
+#include "render/fix3.h"
+#include "render/r3d_line_camera.h"
 #include "render/r3d_span.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
 
-/* small3dlib config: must precede its include. It rasterizes nothing here. */
-#define S3L_PIXEL_FUNCTION     cube_unused_pixel
-#define S3L_RESOLUTION_X       GFX_WIDTH
-#define S3L_RESOLUTION_Y       GFX_HEIGHT
-#define S3L_Z_BUFFER           0
-#define S3L_SORT               0
-#define S3L_MAX_TRIANGES_DRAWN 1 /* never drawn; small3dlib still sizes an array off this */
-#include "small3dlib.h"
+/* One unit is FIX3_ONE, and FIX3_ONE is also one full turn as an angle. */
 
-static inline void
-cube_unused_pixel(S3L_PixelInfo* pixel) {
-    (void)pixel;
-}
+#define CUBE_DISTANCE       (3 * FIX3_ONE)
+#define CAMERA_FOCAL_LENGTH (2 * FIX3_ONE)
 
-/* small3dlib is fixed point: S3L_F (512) is 1.0, and is also one full turn
- * when used as an angle. */
-
-#define CUBE_DISTANCE       (3 * S3L_F)
-#define CAMERA_FOCAL_LENGTH (2 * S3L_F)
+/* A triangle with a corner this close or closer is culled, not clipped. */
+#define CUBE_NEAR_Z         (FIX3_ONE / 4)
 
 /* Milliseconds per revolution. Deliberately unequal so it tumbles rather than
  * spinning about one fixed axis. */
 #define SPIN_PERIOD_Y_MS    4000
 #define SPIN_PERIOD_X_MS    7000
 
-static const S3L_Unit cube_vertices[] = {S3L_CUBE_VERTICES(S3L_F)};
-static const S3L_Index cube_triangles[] = {S3L_CUBE_TRIANGLES};
+#define CUBE_VERTEX_COUNT   8
+#define CUBE_TRIANGLE_COUNT 12
+#define CUBE_HALF           (FIX3_ONE / 2)
+
+static const fix3_unit_t cube_vertices[CUBE_VERTEX_COUNT][3] = {
+    {CUBE_HALF, -CUBE_HALF, -CUBE_HALF}, {-CUBE_HALF, -CUBE_HALF, -CUBE_HALF}, {CUBE_HALF, CUBE_HALF, -CUBE_HALF},
+    {-CUBE_HALF, CUBE_HALF, -CUBE_HALF}, {CUBE_HALF, -CUBE_HALF, CUBE_HALF},   {-CUBE_HALF, -CUBE_HALF, CUBE_HALF},
+    {CUBE_HALF, CUBE_HALF, CUBE_HALF},   {-CUBE_HALF, CUBE_HALF, CUBE_HALF},
+};
+
+/* Front, right, back, left, top, bottom: two triangles each. */
+static const uint8_t cube_triangles[CUBE_TRIANGLE_COUNT][3] = {
+    {3, 0, 2}, {1, 0, 3}, {0, 4, 2}, {2, 4, 6}, {4, 5, 6}, {7, 6, 5},
+    {3, 7, 1}, {1, 7, 5}, {6, 3, 2}, {7, 3, 6}, {1, 4, 0}, {5, 4, 1},
+};
 
 /* Each corner is coloured by the sign of its position: +x adds red, +y green,
  * +z blue. Interpolating those across each face gives the gradients. */
-static const uint8_t cube_corner_colors[S3L_CUBE_VERTEX_COUNT][3] = {
+static const uint8_t cube_corner_colors[CUBE_VERTEX_COUNT][3] = {
     {255, 0, 0},     /* 0  right, bottom, front */
     {0, 0, 0},       /* 1  left,  bottom, front */
     {255, 255, 0},   /* 2  right, top,    front */
@@ -60,8 +63,8 @@ static const uint8_t cube_corner_colors[S3L_CUBE_VERTEX_COUNT][3] = {
     {0, 255, 255},   /* 7  left,  top,    back  */
 };
 
-static S3L_Model3D cube;
-static S3L_Scene scene;
+static fix3_transform_t cube_pose;
+static fix3_transform_t camera_pose;
 static uint32_t elapsed_ms;
 
 /* This frame's cube coverage and last frame's: band mode marks both dirty,
@@ -80,14 +83,14 @@ _Static_assert(R3D_DEPTH_EMPTY == 0, "a band's depth is cleared with memset");
 
 /* Inverse depth is the near plane over the camera-space depth, so (0, 1] for
  * everything the near plane keeps. */
-#define CUBE_NEAR_DEPTH ((float)S3L_NEAR)
+#define CUBE_NEAR_DEPTH ((float)CUBE_NEAR_Z)
 
 void
 cube_update_rotation(uint32_t dt_ms) {
     elapsed_ms += dt_ms;
 
-    cube.transform.rotation.y = (S3L_Unit)(((uint64_t)elapsed_ms * S3L_F / SPIN_PERIOD_Y_MS) % S3L_F);
-    cube.transform.rotation.x = (S3L_Unit)(((uint64_t)elapsed_ms * S3L_F / SPIN_PERIOD_X_MS) % S3L_F);
+    cube_pose.rotation.y = (fix3_unit_t)(((uint64_t)elapsed_ms * FIX3_ONE / SPIN_PERIOD_Y_MS) % FIX3_ONE);
+    cube_pose.rotation.x = (fix3_unit_t)(((uint64_t)elapsed_ms * FIX3_ONE / SPIN_PERIOD_X_MS) % FIX3_ONE);
 }
 
 void
@@ -106,13 +109,13 @@ typedef struct {
     int y0, y1;
 } cube_triangle_bin_t;
 
-static cube_triangle_bin_t cube_bin[S3L_CUBE_TRIANGLE_COUNT];
+static cube_triangle_bin_t cube_bin[CUBE_TRIANGLE_COUNT];
 static int cube_bin_count;
 
-/* small3dlib samples a pixel at its integer coordinate; the span rasterizer
+/* A projected vertex is a whole pixel coordinate; the span rasterizer samples
  * at the pixel's centre, half a pixel further. */
 static r3d_span_vertex_t
-cube_span_vertex(S3L_Vec4 projected, S3L_Index corner) {
+cube_span_vertex(fix3_vec4_t projected, int corner) {
     const uint8_t* rgb = cube_corner_colors[corner];
     r3d_span_vertex_t v;
     v.x = (projected.x * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2);
@@ -125,14 +128,14 @@ cube_span_vertex(S3L_Vec4 projected, S3L_Index corner) {
 }
 
 static void
-cube_triangle_bounds(const S3L_Vec4 transformed[6], int* x0, int* x1, int* y0, int* y1) {
+cube_triangle_bounds(const fix3_vec4_t transformed[3], int* x0, int* x1, int* y0, int* y1) {
     *x0 = transformed[0].x;
     *x1 = transformed[0].x;
     *y0 = transformed[0].y;
     *y1 = transformed[0].y;
     for (int i = 1; i < 3; i++) {
-        const S3L_Unit x = transformed[i].x;
-        const S3L_Unit y = transformed[i].y;
+        const fix3_unit_t x = transformed[i].x;
+        const fix3_unit_t y = transformed[i].y;
         if (x < *x0) {
             *x0 = x;
         }
@@ -172,30 +175,58 @@ cube_expand_bbox(const cube_triangle_bin_t* entry, int x0, int x1) {
     }
 }
 
-/* Projects every visible triangle once per frame. Only correct while
- * S3L_NEAR_CROSS_STRATEGY stays 0, so no triangle is split at the near
- * plane (asserted). The depth test resolves overlap, so the bin needs no
- * order; y1 is exclusive, hence the +1 on the inclusive row. */
+/* The vertex in pixels; z and w both keep the camera-space depth. */
+static fix3_vec4_t
+cube_project(int corner, const r3d_line_view_t* view) {
+    const fix3_vec4_t model = {cube_vertices[corner][0], cube_vertices[corner][1], cube_vertices[corner][2], FIX3_ONE};
+    const fix3_vec4_t camera = r3d_to_camera_space(model, view);
+    int x, y;
+    r3d_camera_to_screen(camera, view, &x, &y);
+    return (fix3_vec4_t){x, y, camera.z, camera.z};
+}
+
+/* False for a triangle that touches the near plane, lies wholly off one side
+ * of the screen, or faces away (clockwise on screen). */
+static bool
+cube_triangle_visible(const fix3_vec4_t p[3]) {
+    bool off_left = true;
+    bool off_right = true;
+    bool off_top = true;
+    bool off_bottom = true;
+    for (int i = 0; i < 3; i++) {
+        if (p[i].z <= CUBE_NEAR_Z) {
+            return false;
+        }
+        off_left = off_left && p[i].x < 0;
+        off_right = off_right && p[i].x >= GFX_WIDTH;
+        off_top = off_top && p[i].y < 0;
+        off_bottom = off_bottom && p[i].y > GFX_HEIGHT;
+    }
+    if (off_left || off_right || off_top || off_bottom) {
+        return false;
+    }
+    const int32_t winding = ((p[1].y - p[0].y) * (p[2].x - p[1].x)) - ((p[1].x - p[0].x) * (p[2].y - p[1].y));
+    return winding >= 0;
+}
+
+/* Projects every visible triangle once per frame. A triangle crossing the
+ * near plane is culled whole. The depth test resolves overlap, so the bin
+ * needs no order; y1 is exclusive, hence the +1 on the inclusive row. */
 static void
 cube_bin_triangles(void) {
-    S3L_Mat4 mat_camera, mat_final;
-
-    assert(cube.customTransformMatrix == 0);
-
-    S3L_makeCameraMatrix(scene.camera.transform, mat_camera);
-    S3L_makeWorldMatrix(cube.transform, mat_final);
-    S3L_mat4Xmat4(mat_final, mat_camera);
+    const r3d_line_camera_t camera = {camera_pose, CAMERA_FOCAL_LENGTH, CUBE_NEAR_Z};
+    const r3d_line_view_t view = r3d_line_camera_view(camera, cube_pose, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
 
     cube_bin_count = 0;
     cube_bbox_valid = false;
 
-    for (S3L_Index t = 0; t < S3L_CUBE_TRIANGLE_COUNT; t++) {
-        S3L_Vec4 transformed[6];
+    for (int t = 0; t < CUBE_TRIANGLE_COUNT; t++) {
+        fix3_vec4_t transformed[3];
+        for (int i = 0; i < 3; i++) {
+            transformed[i] = cube_project(cube_triangles[t][i], &view);
+        }
 
-        _S3L_projectTriangle(&cube, t, mat_final, scene.camera.focalLength, transformed);
-        assert(_S3L_projectedTriangleState == 0);
-
-        if (!S3L_triangleIsVisible(transformed[0], transformed[1], transformed[2], cube.config.backfaceCulling)) {
+        if (!cube_triangle_visible(transformed)) {
             continue;
         }
 
@@ -206,7 +237,7 @@ cube_bin_triangles(void) {
 
         cube_triangle_bin_t* entry = &cube_bin[cube_bin_count++];
         for (int i = 0; i < 3; i++) {
-            entry->v[i] = cube_span_vertex(transformed[i], cube_triangles[(t * 3) + i]);
+            entry->v[i] = cube_span_vertex(transformed[i], cube_triangles[t][i]);
             assert(entry->v[i].x > -R3D_SPAN_RANGE && entry->v[i].x < R3D_SPAN_RANGE);
             assert(entry->v[i].y > -R3D_SPAN_RANGE && entry->v[i].y < R3D_SPAN_RANGE);
         }
@@ -273,18 +304,14 @@ cube_rasterize_band(gfx_color_t* buf, int row0, int row1) {
     cube_draw_rows(buf, row0, row1);
 }
 
-/* S3L_sceneInit() resets the camera, so the focal length override comes after
- * it. Enlarge by zooming rather than moving the cube closer: the near plane
+/* Enlarge by zooming rather than moving the cube closer: the near plane
  * would clip the front faces long before it filled the screen, and a clipped
  * triangle is discarded. A box from a previous visit is not "last frame". */
 static void
 scene_cube_enter(void) {
-    S3L_model3DInit(cube_vertices, S3L_CUBE_VERTEX_COUNT, cube_triangles, S3L_CUBE_TRIANGLE_COUNT, &cube);
-    cube.transform.translation.z = CUBE_DISTANCE;
-
-    S3L_sceneInit(&cube, 1, &scene);
-
-    scene.camera.focalLength = CAMERA_FOCAL_LENGTH;
+    fix3_transform_init(&cube_pose);
+    cube_pose.translation.z = CUBE_DISTANCE;
+    fix3_transform_init(&camera_pose);
 
     const size_t depth_bytes = sizeof(*band_depth) * (size_t)GFX_BAND_HEIGHT * GFX_WIDTH;
     band_depth = heap_caps_malloc(depth_bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
