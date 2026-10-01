@@ -115,15 +115,20 @@ sponza-tiles-flipped|--quarter 3 --no-hud --scene sponza --frames 2 --view tiles
 "
 
 # The scenes read their meshes from an asset pack, packed here from the baked
-# meshes in the tree and found by the renderer through AUTANA_ASSET_PACK.
+# meshes in the tree. Its path is built into the renderer, which the revision
+# comparison runs on its own, so each build finds the pack beside it.
 # shellcheck source=../../../../../scripts/lib/python.sh
 . "$SCRIPT_DIR/../../../../../scripts/lib/python.sh"
 PYTHON=$(find_python) || exit 1
 pack_dir="$SCRIPT_DIR/results/render/$scene_name"
 mkdir -p "$pack_dir"
 "$PYTHON" "$SCRIPT_DIR/../../../../tools/r3d/build_pack.py" -o "$pack_dir/assets.bin" "$SCRIPT_DIR/../../.." > /dev/null
-AUTANA_ASSET_PACK="$pack_dir/assets.bin"
-export AUTANA_ASSET_PACK
+if command -v cygpath > /dev/null 2>&1; then
+    pack_path=$(cygpath -m "$pack_dir/assets.bin")
+else
+    pack_path="$pack_dir/assets.bin"
+fi
+scene_defines="$scene_defines -DASSET_PACK_DEFAULT_PATH=\"$pack_path\""
 
 # shellcheck source=../../../../tools/render/render_scene.sh
 . "$SCRIPT_DIR/../../../../tools/render/render_scene.sh"

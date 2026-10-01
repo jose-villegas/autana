@@ -10,6 +10,9 @@ asset_store_pack(void) {
     static int state; /* 0 untried, 1 open, -1 failed */
     if (state == 0) {
         const char* path = getenv("AUTANA_ASSET_PACK");
+#ifdef ASSET_PACK_DEFAULT_PATH
+        path = path != NULL ? path : ASSET_PACK_DEFAULT_PATH;
+#endif
         void* buffer = NULL;
         const asset_status_t status = path == NULL ? ASSET_ERR_NO_PACK : asset_file_open(path, &pack, &buffer);
         state = status == ASSET_OK ? 1 : -1;

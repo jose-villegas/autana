@@ -1,5 +1,8 @@
 #include "sponza_flythrough.h"
 
+#include <stdbool.h>
+#include <stddef.h>
+
 #include "asset/asset_store.h"
 #include "sponza_scene_generated.h"
 
@@ -20,5 +23,16 @@ sponza_camera_at(uint32_t t_ms) {
 
 asset_status_t
 sponza_open_meshes(const char** failed) {
-    return r3d_scene_bind(asset_store_pack(), &sponza_scene_assets, failed);
+    /* Checking the three meshes costs about 11 ms on the board, so it is done
+     * once and every later scene entry reuses the views. */
+    static bool opened;
+    if (opened) {
+        if (failed != NULL) {
+            *failed = NULL;
+        }
+        return ASSET_OK;
+    }
+    const asset_status_t status = r3d_scene_bind(asset_store_pack(), &sponza_scene_assets, failed);
+    opened = status == ASSET_OK;
+    return status;
 }
