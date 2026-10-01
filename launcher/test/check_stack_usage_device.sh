@@ -77,7 +77,6 @@ compile_suite() {
         -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
         -I "$TEST_DIR/stubs" \
         -I "$TEST_DIR/../components/microui/include" \
-        -I "$TEST_DIR/../components/small3dlib/include" \
         -include "$TEST_DIR/timing.h" \
         -fstack-usage -c "$2" -o "$BUILD_DIR/$(basename "$2" .c).o" 2>/dev/null
 }

@@ -5,7 +5,7 @@ sphere, capsule).
 
     python main/apps/render_lab/tools/gen_wire_primitives.py > main/apps/render_lab/wire_primitives_generated.h
 
-Every coordinate is an integer in S3L_F (512 = 1.0) fixed point, computed
+Every coordinate is an integer in FIX3_ONE (512 = 1.0) fixed point, computed
 here in floating point and rounded once at the end - there is no rasterizer
 or device code in this script, only the geometry. The generator validates
 its own output (indices in range, no duplicate or degenerate edge in either
@@ -17,17 +17,17 @@ import argparse
 import math
 import sys
 
-S3L_F = 512
+FIX3_ONE = 512
 MAX_VERTICES = 1024
 MAX_EDGES = 2048
 INT16_MIN = -32768
 INT16_MAX = 32767
 
-CUBE_HALF_EXTENT = S3L_F
+CUBE_HALF_EXTENT = FIX3_ONE
 
 
 def fx(value):
-    """Round a float S3L_F-unit coordinate to its nearest integer tick."""
+    """Round a float FIX3_ONE-unit coordinate to its nearest integer tick."""
     return int(round(value))
 
 
@@ -196,12 +196,12 @@ def emit_mesh(f, name, vertices, edges):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plane-n", type=int, default=24)
-    parser.add_argument("--plane-size", type=int, default=8 * S3L_F)
+    parser.add_argument("--plane-size", type=int, default=8 * FIX3_ONE)
     parser.add_argument("--sphere-rings", type=int, default=16)
     parser.add_argument("--sphere-meridians", type=int, default=24)
     parser.add_argument("--capsule-rings", type=int, default=8)
     parser.add_argument("--capsule-meridians", type=int, default=12)
-    parser.add_argument("--radius", type=int, default=2 * S3L_F)
+    parser.add_argument("--radius", type=int, default=2 * FIX3_ONE)
     args = parser.parse_args()
 
     plane_v, plane_e = build_plane(args.plane_n, args.plane_size)
@@ -227,7 +227,7 @@ def main():
         " *\n"
         " * Baked wire_mesh_t tables for the wireframe demo primitives: a\n"
         " * centred XZ plane grid, a cube, a UV sphere and a two-hemisphere\n"
-        " * capsule. Coordinates are S3L_F fixed point; density is a bake-time\n"
+        " * capsule. Coordinates are 512-per-unit fixed point; density is a bake-time\n"
         " * knob set by the generator's own arguments, recorded below as the\n"
         " * defines a test can read them back from.\n"
         " */\n"

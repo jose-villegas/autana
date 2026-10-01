@@ -25,7 +25,6 @@ main/boot/boot_anim_tracks_generated.c
 main/render/r3d_trs.c
 tools/render/scenes/boot_anim_render_host.c
 "
-scene_includes="components/small3dlib/include"
 scene_renders="
 early|300|368x448
 middle|1500|368x448

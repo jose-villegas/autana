@@ -21,20 +21,20 @@
 static r3d_line_camera_t
 camera_fixture(void) {
     r3d_line_camera_t camera = {0};
-    S3L_transform3DInit(&camera.pose);
-    camera.focal = S3L_F;
+    fix3_transform_init(&camera.pose);
+    camera.focal = FIX3_ONE;
     camera.near_z = R3D_LINE_NEAR_Z;
     return camera;
 }
 
 static void
 test_an_on_axis_point_lands_on_the_viewport_centre(void) {
-    S3L_Transform3D model;
-    S3L_transform3DInit(&model);
+    fix3_transform_t model;
+    fix3_transform_init(&model);
     const viewport_t viewport = {.width = 368, .height = 448, .quarter = 0};
     const r3d_line_view_t view = r3d_line_camera_view(camera_fixture(), model, viewport);
 
-    const S3L_Vec4 p = r3d_to_camera_space((S3L_Vec4){0, 0, 5 * S3L_F, S3L_F}, &view);
+    const fix3_vec4_t p = r3d_to_camera_space((fix3_vec4_t){0, 0, 5 * FIX3_ONE, FIX3_ONE}, &view);
     int x, y;
 
     TEST_ASSERT_TRUE(r3d_project_point_cs(p, &view, &x, &y));
@@ -45,16 +45,16 @@ test_an_on_axis_point_lands_on_the_viewport_centre(void) {
 /* Independent of r3d_line_camera_view()'s own arithmetic: builds the matrix by
  * hand, from a pose and a model. */
 static void
-check_view_matrix_matches_hand_built(S3L_Transform3D camera_pose, S3L_Transform3D model) {
-    const r3d_line_camera_t camera = {.pose = camera_pose, .focal = S3L_F, .near_z = R3D_LINE_NEAR_Z};
+check_view_matrix_matches_hand_built(fix3_transform_t camera_pose, fix3_transform_t model) {
+    const r3d_line_camera_t camera = {.pose = camera_pose, .focal = FIX3_ONE, .near_z = R3D_LINE_NEAR_Z};
     const viewport_t viewport = {.width = 368, .height = 448, .quarter = 0};
 
     const r3d_line_view_t got = r3d_line_camera_view(camera, model, viewport);
 
-    S3L_Mat4 world_mat, camera_mat;
-    S3L_makeWorldMatrix(model, world_mat);
-    S3L_makeCameraMatrix(camera_pose, camera_mat);
-    S3L_mat4Xmat4(world_mat, camera_mat);
+    fix3_mat4_t world_mat, camera_mat;
+    fix3_world_matrix(model, world_mat);
+    fix3_camera_matrix(camera_pose, camera_mat);
+    fix3_mat4_mul(world_mat, camera_mat);
 
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < 4; c++) {
@@ -65,31 +65,31 @@ check_view_matrix_matches_hand_built(S3L_Transform3D camera_pose, S3L_Transform3
 
 static void
 test_view_matrix_matches_the_hand_built_matrix_for_two_unrelated_poses(void) {
-    S3L_Transform3D camera_a;
-    S3L_transform3DInit(&camera_a);
-    camera_a.translation.x = 5 * S3L_F;
-    camera_a.rotation.y = S3L_F / 8;
-    S3L_Transform3D model_a;
-    S3L_transform3DInit(&model_a);
-    model_a.translation.z = 3 * S3L_F;
+    fix3_transform_t camera_a;
+    fix3_transform_init(&camera_a);
+    camera_a.translation.x = 5 * FIX3_ONE;
+    camera_a.rotation.y = FIX3_ONE / 8;
+    fix3_transform_t model_a;
+    fix3_transform_init(&model_a);
+    model_a.translation.z = 3 * FIX3_ONE;
     check_view_matrix_matches_hand_built(camera_a, model_a);
 
-    S3L_Transform3D camera_b;
-    S3L_transform3DInit(&camera_b);
-    camera_b.translation.y = -2 * S3L_F;
-    camera_b.rotation.x = S3L_F / 6;
-    camera_b.rotation.z = S3L_F / 3;
-    S3L_Transform3D model_b;
-    S3L_transform3DInit(&model_b);
-    model_b.rotation.y = S3L_F / 5;
-    model_b.scale.x = model_b.scale.y = model_b.scale.z = 2 * S3L_F;
+    fix3_transform_t camera_b;
+    fix3_transform_init(&camera_b);
+    camera_b.translation.y = -2 * FIX3_ONE;
+    camera_b.rotation.x = FIX3_ONE / 6;
+    camera_b.rotation.z = FIX3_ONE / 3;
+    fix3_transform_t model_b;
+    fix3_transform_init(&model_b);
+    model_b.rotation.y = FIX3_ONE / 5;
+    model_b.scale.x = model_b.scale.y = model_b.scale.z = 2 * FIX3_ONE;
     check_view_matrix_matches_hand_built(camera_b, model_b);
 }
 
 static void
 check_viewport_centre_and_scale(int width, int height, int expect_center_x, int expect_center_y, int expect_scale) {
-    S3L_Transform3D model;
-    S3L_transform3DInit(&model);
+    fix3_transform_t model;
+    fix3_transform_init(&model);
     const viewport_t viewport = {.width = width, .height = height, .quarter = 0};
 
     const r3d_line_view_t view = r3d_line_camera_view(camera_fixture(), model, viewport);
@@ -109,14 +109,14 @@ test_viewport_centre_and_scale_fit_the_shorter_axis(void) {
 
 static void
 check_up_point_moves_toward_the_quarters_own_edge(int quarter, int expect_dx_sign, int expect_dy_sign) {
-    S3L_Transform3D model;
-    S3L_transform3DInit(&model);
+    fix3_transform_t model;
+    fix3_transform_init(&model);
     const r3d_line_camera_t camera = r3d_line_camera_upright(camera_fixture(), quarter);
     const viewport_t viewport = {.width = 368, .height = 448, .quarter = 0};
     const r3d_line_view_t view = r3d_line_camera_view(camera, model, viewport);
 
-    const S3L_Vec4 target = r3d_to_camera_space((S3L_Vec4){0, 0, 5 * S3L_F, S3L_F}, &view);
-    const S3L_Vec4 up = r3d_to_camera_space((S3L_Vec4){0, S3L_F, 5 * S3L_F, S3L_F}, &view);
+    const fix3_vec4_t target = r3d_to_camera_space((fix3_vec4_t){0, 0, 5 * FIX3_ONE, FIX3_ONE}, &view);
+    const fix3_vec4_t up = r3d_to_camera_space((fix3_vec4_t){0, FIX3_ONE, 5 * FIX3_ONE, FIX3_ONE}, &view);
     int tx, ty, ux, uy;
     TEST_ASSERT_TRUE(r3d_project_point_cs(target, &view, &tx, &ty));
     TEST_ASSERT_TRUE(r3d_project_point_cs(up, &view, &ux, &uy));

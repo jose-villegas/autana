@@ -15,7 +15,7 @@ tools/anim/bake_tracks.py; this script only reads it to check it.
 
 `camera_focal`, `grid_step_m` and `wave_height_m`/`wave_wavelength_m`/
 `wave_period_ms` are single settings: `camera_focal` is a lens setting
-(small3dlib's own S3L_Camera.focalLength, see boot_anim.h's "The
+(the camera's focal length, see boot_anim.h's "The
 projection" section for what 0 does to it: an orthographic projection, not
 a second code path to maintain); `grid_step_m` is the spacing between floor
 rings, authored in meters and converted at bake time; `wave_height_m`/
@@ -34,7 +34,7 @@ straight through to #define.
 VALIDATION
 
 Refuses to emit anything that would draw something broken (curve still being
-drawn when the fade starts, a motion scale that overflows small3dlib) the same way
+drawn when the fade starts, a motion scale that overflows the fixed point) the same way
 gen_zeta_curve.py refuses to ship a curve that fails its own zero check.
 Aesthetic-only concerns (a title letter still flying when the fade starts)
 are a warning, not a refusal; unlike a broken curve, that might be exactly
@@ -67,7 +67,7 @@ def warn(msg):
 
 # One space-unit is one meter, see boot_anim.h's own top comment, so this
 # is the SAME conversion boot_anim.c's units() does for the curve/grid's own
-# geometry, not small3dlib's fixed point (S3L_F above). BOOT_ANIM_ONE, not
+# geometry, not fix3's fixed point. BOOT_ANIM_ONE, not
 # imported from boot_anim.h to keep this script standalone.
 BOOT_ANIM_ONE = 4096
 
@@ -82,14 +82,14 @@ def meters_to_q12(v):
 # this script stays standalone. The worst-case LOCAL-SPACE coordinate an
 # authored keyframe's own space/camera transform ever has to multiply;
 # an axis/spoke tail is the longest reach this project draws, and this is
-# its value BEFORE that transform (S3L_vec3Xmat4's own input), not after.
+# its value BEFORE that transform (fix3_vec3_transform()'s own input), not after.
 _FAR_UNITS = 500
-_WORST_CASE_S3L_COORD = (_FAR_UNITS * BOOT_ANIM_ONE) >> 3  # BOOT_ANIM_ZETA_TO_S3L
+_WORST_CASE_FIX3_COORD = (_FAR_UNITS * BOOT_ANIM_ONE) >> 3  # BOOT_ANIM_ZETA_TO_FIX3
 
 # The scale-overflow guard below trades exactness for a real, defensible
 # margin, see its own comment at the call site for the full derivation.
-# Conservative on purpose: small3dlib's own matrix COMPOSITION step
-# (S3L_mat4Xmat4 in small3dlib.h, also plain int32_t) has its own overflow
+# Conservative on purpose: fix3's own matrix COMPOSITION step
+# (fix3_mat4_mul() in fix3.h, also plain int32_t) has its own overflow
 # risk that scales with rotation too, not just this scale product, and is
 # not modeled exactly here, this check catches the dominant, easily-
 # reasoned-about term (the final per-point multiply), not every path to
@@ -98,12 +98,11 @@ _MAX_COMBINED_SCALE = 8
 
 
 def check_transform_scale_overflow(space_scale, camera_scale):
-    """small3dlib's own S3L_vec3Xmat4() (vendored, plain int32_t; this
-    project does not build with S3L_USE_WIDER_TYPES) multiplies a camera-
+    """fix3_vec3_transform() (plain int32_t) multiplies a camera-
     space coordinate by a composed space*camera matrix element that is
-    itself proportional to authored scale*S3L_F. At this project's own
-    largest authored reach (_WORST_CASE_S3L_COORD, from the 500-unit axis/
-    spoke tail), INT32_MAX / (_WORST_CASE_S3L_COORD * S3L_F) is about
+    itself proportional to authored scale*FIX3_ONE. At this project's own
+    largest authored reach (_WORST_CASE_FIX3_COORD, from the 500-unit axis/
+    spoke tail), INT32_MAX / (_WORST_CASE_FIX3_COORD * FIX3_ONE) is about
     16.4; a combined space*camera scale anywhere near that silently wraps
     the point somewhere nonsensical (signed overflow is undefined
     behaviour in C, not guaranteed wraparound, so "wraps" is the observed
@@ -115,7 +114,7 @@ def check_transform_scale_overflow(space_scale, camera_scale):
     if combined > _MAX_COMBINED_SCALE:
         fail("motion: space scale (max %r) * camera scale (max %r) "
              "= %r, over this project's own %r safety margin against "
-             "small3dlib's plain-int32_t point/matrix math silently "
+             "fix3's plain-int32_t point/matrix math silently "
              "overflowing at this project's largest authored reach "
              "(BOOT_ANIM_AXIS_FAR_UNITS/BOOT_ANIM_GRID_SPOKE_FAR_UNITS, "
              "both 500) - see boot_anim.h's own comment on "
@@ -556,9 +555,9 @@ def main():
         w("#define %s %d\n" % (name, timing[key]))
         w("\n" if note else "")
 
-    w("/* small3dlib's S3L_Camera.focalLength - 0 is an orthographic\n")
+    w("/* The camera's focal length - 0 is an orthographic\n")
     w(" * projection (see boot_anim.h's \"The projection\" section), any other\n")
-    w(" * value a perspective one; S3L_F (512) is small3dlib's own \"normal\"\n")
+    w(" * value a perspective one; FIX3_ONE (512) is the \"normal\"\n")
     w(" * lens default. Authored directly in this unit - it is a lens\n")
     w(" * property, not a position or angle, so meters/degrees do not apply. */\n")
     w("#define BOOT_ANIM_CAMERA_FOCAL %d\n\n" % cfg["camera_focal"])
