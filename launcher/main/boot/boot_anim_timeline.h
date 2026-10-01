@@ -118,7 +118,7 @@
 #define BOOT_ANIM_GRID_MAX 64
 /* The camera's focal length - 0 is an orthographic
  * projection (see boot_anim.h's "The projection" section), any other
- * value a perspective one; FIX3_ONE (512) is the "normal"
+ * value a perspective one; M4_ONE (512) is the "normal"
  * lens default. Authored directly in this unit - it is a lens
  * property, not a position or angle, so meters/degrees do not apply. */
 #define BOOT_ANIM_CAMERA_FOCAL 512

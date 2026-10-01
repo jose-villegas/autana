@@ -119,7 +119,7 @@ framebuffer while it holds one. See
 The same rule is why the span rasterizer (`render/r3d_span.h`) owns no
 framebuffer: it fills a caller's window of rows, with a depth plane only as
 tall as that window. A full colour+depth pair would want ~1.3 MB here.
-`render/fix3.h` supplies the fixed-point transform maths the line camera and
+`util/mat4i.h` supplies the fixed-point transform maths the line camera and
 the boot scene share, and no rasterizer.
 
 ### 2. There is exactly one frame loop, and it belongs to the shell

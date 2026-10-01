@@ -16,43 +16,43 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "render/fix3.h"
+#include "util/mat4i.h"
 
-/* A small fraction of one FIX3_ONE unit: a caller with its own physical unit
+/* A small fraction of one M4_ONE unit: a caller with its own physical unit
  * (a meter, a grid cell) is free to pick a near_z of its own instead. */
-#define R3D_LINE_NEAR_Z (FIX3_ONE / 10)
+#define R3D_LINE_NEAR_Z (M4_ONE / 10)
 
 typedef struct {
-    fix3_mat4_t matrix; /* model * view, composed by the caller */
-    fix3_unit_t focal;  /* 0 is orthographic */
-    fix3_unit_t near_z; /* camera-space clip plane, > 0 */
-    int center_x;       /* screen pixel the optical axis lands on */
+    m4_mat_t matrix;  /* model * view, composed by the caller */
+    m4_unit_t focal;  /* 0 is orthographic */
+    m4_unit_t near_z; /* camera-space clip plane, > 0 */
+    int center_x;     /* screen pixel the optical axis lands on */
     int center_y;
-    int scale; /* pixels per projection-plane unit FIX3_ONE, both axes */
+    int scale; /* pixels per projection-plane unit M4_ONE, both axes */
 } r3d_line_view_t;
 
-static inline fix3_vec4_t
-r3d_to_camera_space(fix3_vec4_t model_point, const r3d_line_view_t* view) {
-    fix3_vec3_transform(&model_point, (fix3_unit_t(*)[4])view->matrix);
+static inline m4_vec4_t
+r3d_to_camera_space(m4_vec4_t model_point, const r3d_line_view_t* view) {
+    m4_vec3_transform(&model_point, (m4_unit_t(*)[4])view->matrix);
     return model_point;
 }
 
 static inline void
-r3d_camera_to_screen(fix3_vec4_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
-    p.z = fix3_non_zero(p.z);
-    fix3_perspective_divide(&p, view->focal);
+r3d_camera_to_screen(m4_vec4_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
+    p.z = m4_non_zero(p.z);
+    m4_perspective_divide(&p, view->focal);
 
     /* Only the multiply is 64-bit, not every unit: a near-camera point's
      * already-divided p.x/p.y can be large enough to overflow a 32-bit
      * product here even though the final on/off-panel result never does;
      * gfx.c's clip_line() leans on the same trick. */
-    *screen_x = (int)(view->center_x + ((int64_t)p.x * view->scale) / FIX3_ONE);
-    *screen_y = (int)(view->center_y - ((int64_t)p.y * view->scale) / FIX3_ONE);
+    *screen_x = (int)(view->center_x + ((int64_t)p.x * view->scale) / M4_ONE);
+    *screen_y = (int)(view->center_y - ((int64_t)p.y * view->scale) / M4_ONE);
 }
 
 /* Draws if point is in front; checks visibility, avoids invalid coordinates. */
 static inline bool
-r3d_project_point_cs(fix3_vec4_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
+r3d_project_point_cs(m4_vec4_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
     if (p.z <= view->near_z) {
         return false;
     }
@@ -63,8 +63,7 @@ r3d_project_point_cs(fix3_vec4_t p, const r3d_line_view_t* view, int* screen_x, 
 /* Clips to near plane; avoids screen wrap. Returns false if segment is at or
  * behind the plane. */
 static inline bool
-r3d_project_segment_cs(fix3_vec4_t p0, fix3_vec4_t p1, const r3d_line_view_t* view, int* ax, int* ay, int* bx,
-                       int* by) {
+r3d_project_segment_cs(m4_vec4_t p0, m4_vec4_t p1, const r3d_line_view_t* view, int* ax, int* ay, int* bx, int* by) {
     const bool front0 = p0.z > view->near_z;
     const bool front1 = p1.z > view->near_z;
 
@@ -75,8 +74,8 @@ r3d_project_segment_cs(fix3_vec4_t p0, fix3_vec4_t p1, const r3d_line_view_t* vi
     if (front0 != front1) {
         /* Replace endpoint with crossing point using linear interpolation in
          * camera space. */
-        fix3_vec4_t* behind = front0 ? &p1 : &p0;
-        const fix3_vec4_t* front = front0 ? &p0 : &p1;
+        m4_vec4_t* behind = front0 ? &p1 : &p0;
+        const m4_vec4_t* front = front0 ? &p0 : &p1;
         const int64_t frac_q16 = ((int64_t)(view->near_z - behind->z) << 16) / (front->z - behind->z);
 
         behind->x += (int32_t)(((int64_t)(front->x - behind->x) * frac_q16) >> 16);
