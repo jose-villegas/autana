@@ -198,6 +198,24 @@ test_an_interior_write_wakes_only_its_block(void) {
 }
 
 static void
+test_an_unchanged_block_sleeps_after_a_gas_move(void) {
+    loc_fixture();
+    sand_set_gas_walk(&fx.loc, false);
+
+    const int x = SAND_BLOCK_W + SAND_BLOCK_W / 2;
+    const int y = SAND_BLOCK_H + SAND_BLOCK_H / 2;
+    sand_set(&fx.loc, x, y, STEAM);
+    memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER, (size_t)LOC_BLOCK_COLS * LOC_BLOCK_ROWS);
+
+    sand_step(&fx.loc, 0, 1000, 0);
+    const int awake = count_awake_blocks(&fx.loc);
+
+    loc_free();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, awake,
+                                  "a gas move inside one block must not keep unchanged neighbouring blocks awake");
+}
+
+static void
 test_sideways_tilt_wakes_only_the_disturbed_column(void) {
     loc_fixture();
 
@@ -749,6 +767,7 @@ run_sand_locality_suite(void) {
     RUN_TEST(test_two_separate_active_spots_in_the_same_block_row_do_not_wake_each_other);
     RUN_TEST(test_a_block_wakes_when_disturbed_diagonally);
     RUN_TEST(test_an_interior_write_wakes_only_its_block);
+    RUN_TEST(test_an_unchanged_block_sleeps_after_a_gas_move);
     RUN_TEST(test_sideways_tilt_wakes_only_the_disturbed_column);
     RUN_TEST(test_liquid_cross_flow_wakes_only_the_blocks_it_touches_by_range);
     RUN_TEST(test_sand_pushing_water_up_wakes_the_dry_row_it_lands_in);
