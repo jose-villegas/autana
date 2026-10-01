@@ -35,6 +35,12 @@ struct scene {
     r3d_instance_t* instances; /* one per renderer: what the raster draws this frame */
 };
 
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+/* A suite sets it to make the next scene allocation fail once, so an out of
+ * memory load is shown without emptying the heap. */
+extern bool scene_fail_next_allocation;
+#endif
+
 /* The loaded scenes, in load order. */
 int scene_loaded_count(void);
 scene_t* scene_loaded_at(int index);

@@ -9,6 +9,7 @@
  * green run here is the same set of assertions the board will make.
  */
 
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -52,8 +53,23 @@ run_requests(int argc, char** argv) {
     }
 }
 
+/* A test that corrupts the heap, or trips an assert, ends the process, and
+ * Unity's buffered results go with it. Name the test that was running as a
+ * failure, in Unity's own format, so the break is red by name rather than a
+ * silent crash. */
+static void
+name_the_test_that_aborted(int signal_number) {
+    (void)fflush(stdout);
+    (void)printf("%s:%u:%s:FAIL: the process aborted (an assert, or heap_arena's report above)\n", Unity.TestFile,
+                 (unsigned)Unity.CurrentTestLineNumber, Unity.CurrentTestName == NULL ? "?" : Unity.CurrentTestName);
+    (void)fflush(stdout);
+    (void)signal(signal_number, SIG_DFL);
+    (void)raise(signal_number);
+}
+
 int
 main(int argc, char** argv) {
+    (void)signal(SIGABRT, name_the_test_that_aborted);
     UNITY_BEGIN();
 
     if (argc > 1) {

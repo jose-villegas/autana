@@ -149,7 +149,7 @@ fit_scratch(void) {
 }
 
 static void
-draw_active(int quarter, const scene_target_t* target) {
+draw_active(int quarter, int width, int height) {
     scene_t* scene = active.scene;
     const scene_camera_t* camera = active_camera();
     update_placements(scene);
@@ -159,15 +159,18 @@ draw_active(int quarter, const scene_target_t* target) {
     }
     raster.instances = scene->instances;
     raster.instance_count = count;
-    raster.width = target->width * camera->render_scale_percent / 100;
-    raster.height = target->height * camera->render_scale_percent / 100;
+    raster.width = width * camera->render_scale_percent / 100;
+    raster.height = height * camera->render_scale_percent / 100;
     raster.clear = camera->clear;
-    raster.destination = target->pixels;
-    raster.destination_width = target->width;
-    raster.destination_height = target->height;
+    raster.destination_width = width;
+    raster.destination_height = height;
     if (!fit_scratch()) {
         return;
     }
+    /* Drawing only asks that a destination exist, so as not to paint the clear
+     * colour that upscaling supplies; the scratch is one that cannot be
+     * written. scene_compose() points it at the picture. */
+    raster.destination = scratch;
     const camera_t view = r3d_scene_camera_at(&camera->lens, scene->elapsed_ms);
     stats = raster_draw(&raster, &view, quarter);
 #if TUNE_ENABLED
@@ -177,7 +180,7 @@ draw_active(int quarter, const scene_target_t* target) {
 }
 
 void
-scene_render(uint32_t dt_ms, int quarter, const scene_target_t* target) {
+scene_render(uint32_t dt_ms, int quarter, int width, int height) {
     if (paused) {
         return;
     }
@@ -185,8 +188,8 @@ scene_render(uint32_t dt_ms, int quarter, const scene_target_t* target) {
     for (int i = 0; i < scene_loaded_count(); i++) {
         scene_loaded_at(i)->elapsed_ms += dt_ms;
     }
-    if (active.scene != NULL && target->pixels != NULL) {
-        draw_active(quarter, target);
+    if (active.scene != NULL) {
+        draw_active(quarter, width, height);
     }
 }
 
@@ -196,11 +199,9 @@ scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target) {
         return;
     }
     if (!stepped) {
-        scene_render(dt_ms, quarter, target);
-    } else if (!rendered && active.scene != NULL && target->pixels != NULL) {
-        draw_active(quarter, target); /* scene_render() had no framebuffer to name yet */
+        scene_render(dt_ms, quarter, target->width, target->height);
     }
-    if (rendered) {
+    if (rendered && target->pixels != NULL) {
         raster.destination = target->pixels;
         raster_upscale(&raster);
     }

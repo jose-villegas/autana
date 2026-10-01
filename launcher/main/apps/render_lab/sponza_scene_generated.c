@@ -8,7 +8,7 @@
 
 #include "sponza_scene_generated.h"
 
-#include "scene/scene_shell.h"
+#include "scene/scene.h"
 
 #include "flythrough_tracks_generated.h"
 

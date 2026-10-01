@@ -41,12 +41,12 @@ record_failure(const scene_failure_t* why) {
              asset_status_text(why->asset));
     const bool missing = why->asset == ASSET_ERR_NOT_FOUND || why->asset == ASSET_ERR_NO_PACK;
     const char* shown = "bad asset '%s'";
-    if (why->status == SCENE_ERR_MEMORY) {
-        shown = "no memory for '%s'";
-    } else if (why->status != SCENE_ERR_ASSET) {
-        shown = "no scene '%s'";
-    } else if (missing) {
-        shown = "no asset '%s': flash it";
+    switch (why->status) {
+        case SCENE_ERR_MEMORY: shown = "no memory for '%s'"; break;
+        case SCENE_ERR_FULL: shown = "too many scenes for '%s'"; break;
+        case SCENE_ERR_ASSET: shown = missing ? "no asset '%s': flash it" : "bad asset '%s'"; break;
+        case SCENE_ERR_UNKNOWN:
+        case SCENE_OK: shown = "no scene '%s'"; break;
     }
     if (snprintf(failure, sizeof failure, shown, what) < 0) {
         failure[0] = '\0';

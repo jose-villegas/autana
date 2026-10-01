@@ -28,9 +28,7 @@
 #                   --build-only compiles the renderer, prints `built <path>`
 #                   and renders nothing; tools/render/render_compare.sh uses it.
 #   scene_includes  OPTIONAL extra -I directories, relative to launcher/
-#   scene_defines   OPTIONAL extra compiler flags; -DRENDER_HOST_SCENES makes
-#                   render_host.c compose the active scene before each frame
-#                   (the scene's sources then include scene/*.c)
+#   scene_defines   OPTIONAL extra compiler flags
 #   scene_out_dir   OPTIONAL; the default is results/render/<name> under the
 #                   nearest tools/ folder above the scene script
 #   scene_baseline  OPTIONAL; the default is <name>_render_baseline.txt
@@ -94,6 +92,11 @@ render_scene_build() {
     done
     : "${scene_includes:=}"
     : "${scene_defines:=}"
+    # A scene that carries the scene manager gets its scene composed before
+    # each frame, as the shell does; render_host.c compiles that in on this flag.
+    case "$scene_sources" in
+        *main/scene/scene_shell.c*) scene_defines="$scene_defines -DRENDER_HOST_SCENES" ;;
+    esac
     : "${scene_pin:=1}"
 
     # launcher/, wherever this scene lives: beside tools/render/render_scene.sh, or

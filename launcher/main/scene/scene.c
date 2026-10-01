@@ -9,13 +9,15 @@
 
 #include "asset/asset_store.h"
 #include "scene/scene_internal.h"
-#include "scene/scene_shell.h"
 
 #define DEFS_MAX   16
 #define LOADED_MAX 8
 
 static const scene_def_t* defs[DEFS_MAX];
 static int def_count;
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+bool scene_fail_next_allocation;
+#endif
 static scene_t* loaded[LOADED_MAX];
 static int loaded_count;
 
@@ -66,6 +68,12 @@ layout_for(const scene_def_t* def) {
 static scene_t*
 instantiate(const scene_def_t* def) {
     const layout_t l = layout_for(def);
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+    if (scene_fail_next_allocation) {
+        scene_fail_next_allocation = false;
+        return NULL;
+    }
+#endif
     uint8_t* block = heap_caps_malloc(l.total, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (block == NULL) {
         return NULL;

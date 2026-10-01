@@ -63,7 +63,9 @@ still being sent. `scene_compose()` writes the framebuffer and runs once the
 send is done; if `scene_render()` did not run (the first frame after
 activating), it draws first. An app gets this overlap whenever a camera is
 active, with or without `update()`. With no camera active the loop is the plain
-one. Every frame redraws the whole picture, a static scene included. A camera needs the full-framebuffer layout; in band mode nothing is drawn.
+one. Every frame redraws the whole picture, a static scene included. A camera
+needs the full-framebuffer layout; in band mode the scene is drawn into the
+scratch but there is nothing to upscale it into.
 
 `scene_render()` advances the clock of every loaded scene, then rebuilds the
 placement of each renderer whose entity moved, fills `instances[]` from the
@@ -88,6 +90,5 @@ from one it builds.
 The raster API (`raster_draw()`, `raster_upscale()`) is what host tools and
 tests call. `r3d_scene_camera_at()` samples the active camera's path.
 
-The shell's half of the API (the two frame halves, registering generated
-tables, the unload on exit) is `scene/scene_shell.h`; apps include only
-`scene/scene.h`.
+The shell's half of the API (the two frame halves and the unload on exit) is
+`scene/scene_shell.h`; apps and generated tables include only `scene/scene.h`.

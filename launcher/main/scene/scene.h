@@ -56,6 +56,11 @@ typedef struct {
     const scene_camera_def_t* cameras;     /* camera_count */
 } scene_def_t;
 
+/* Makes a def loadable by name; runs before main(), like APP_REGISTER(). */
+void scene_register(const scene_def_t* def);
+#define SCENE_REGISTER(def)                                                                                            \
+    __attribute__((constructor)) static void def##_register(void) { scene_register(&(def)); }
+
 typedef enum {
     SCENE_OK = 0,
     SCENE_ERR_UNKNOWN, /* no scene has that name */

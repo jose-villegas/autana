@@ -307,6 +307,8 @@ class SceneTests(unittest.TestCase):
                       source)
         self.assertIn(".entity_count = 3,", source)
         self.assertIn("SCENE_REGISTER(hall_scene)", source)
+        self.assertIn('#include "scene/scene.h"', source)
+        self.assertNotIn("scene_shell", source)
         self.assertIn("extern const scene_def_t hall_scene;", header)
         self.assertIn("#define HALL_SCENE_B ((scene_entity_t)1)", header)
         self.assertIn("#define HALL_SCENE_CAMERA ((scene_entity_t)2)", header)

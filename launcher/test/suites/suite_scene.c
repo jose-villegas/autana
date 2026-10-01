@@ -276,44 +276,14 @@ test_a_success_clears_what_an_earlier_failure_said(void) {
     TEST_ASSERT_EQUAL_STRING("test_pair", why.what);
 }
 
-/* Takes every PSRAM block that can be had, each linked to the last through its
- * own first bytes, and returns the chain. */
-static void*
-take_all_psram(void) {
-    void* chain = NULL;
-    size_t size = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
-    while (size >= 64) {
-        void** block = heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-        if (block == NULL) {
-            size /= 2;
-            continue;
-        }
-        *block = chain;
-        chain = block;
-    }
-    return chain;
-}
-
-static void
-give_back(void* chain) {
-    while (chain != NULL) {
-        void* next = *(void**)chain;
-        heap_caps_free(chain);
-        chain = next;
-    }
-}
-
 static void
 test_a_load_with_no_memory_left_says_so_and_takes_nothing(void) {
     fixture();
-    void* taken = take_all_psram();
-    TEST_ASSERT_NOT_NULL(taken);
     scene_failure_t why;
-    scene_t* scene = scene_load_from(&fx.pack, "test_pair", &why);
-    give_back(taken);
-    TEST_ASSERT_NULL(scene);
+    scene_fail_next_allocation = true;
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_pair", &why));
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
-    TEST_ASSERT_NOT_NULL(scene_load_from(&fx.pack, "test_pair", &why));
+    TEST_ASSERT_NOT_NULL(scene_load_from(&fx.pack, "test_pair", &why)); /* the failure was for one load only */
 }
 
 static void
@@ -456,10 +426,10 @@ static void
 test_a_frame_drawn_in_two_steps_is_the_frame_drawn_in_one(void) {
     fixture();
     show("test_flight", NULL);
-    scene_render(500, 0, &fx.target);
+    scene_render(500, 0, SIZE, SIZE);
     scene_compose(500, 0, &fx.target);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.5F));
-    scene_render(250, 0, &fx.target);
+    scene_render(250, 0, SIZE, SIZE);
     scene_compose(250, 0, &fx.target);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-3.75F));
 }
@@ -472,7 +442,7 @@ test_a_paused_scene_neither_advances_nor_draws_until_resumed(void) {
     TEST_ASSERT_FALSE(scene_has_active_camera());
     frame(500);
     TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(-2.5F));
-    scene_render(500, 0, &fx.target); /* the shell's overlapped half counts no time either */
+    scene_render(500, 0, SIZE, SIZE); /* the shell's overlapped half counts no time either */
     scene_set_paused(false);
     frame(500);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.5F)); /* the paused 500 ms did not count */
@@ -524,23 +494,28 @@ test_scene_render_draws_into_scratch_and_leaves_the_framebuffer_alone(void) {
     for (int i = 0; i < SIZE * SIZE; i++) {
         fx.pixels[i] = SENTINEL;
     }
-    scene_render(16, 0, &fx.target);
+    scene_render(16, 0, SIZE, SIZE);
     TEST_ASSERT_EQUAL_INT(4, scene_stats().triangles);
     TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
     scene_compose(16, 0, &fx.target);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
 }
 
-/* The first frame: no framebuffer was known when scene_render() ran, so
- * scene_compose() draws what it could not. */
+/* Band mode has no framebuffer: the scene still draws, and the compose that
+ * follows has nowhere to upscale to and writes nothing. */
 static void
-test_a_render_with_no_framebuffer_is_drawn_by_the_compose_that_follows(void) {
+test_a_compose_with_no_framebuffer_writes_nothing(void) {
     fixture();
     show("test_pair", NULL);
+    for (int i = 0; i < SIZE * SIZE; i++) {
+        fx.pixels[i] = SENTINEL;
+    }
+    scene_render(16, 0, SIZE, SIZE);
     const scene_target_t none = {NULL, SIZE, SIZE};
-    scene_render(16, 0, &none);
-    TEST_ASSERT_EQUAL_INT(0, scene_stats().triangles);
-    frame(16);
+    scene_compose(16, 0, &none);
+    TEST_ASSERT_EQUAL_INT(4, scene_stats().triangles);
+    TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
+    frame(16); /* and the next frame, with a framebuffer again, is whole */
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
 }
 
@@ -651,7 +626,7 @@ run_scene_suite(void) {
     RUN_TEST(test_the_stats_count_what_the_last_draw_kept);
     RUN_TEST(test_leaving_the_app_unloads_every_scene_and_frees_the_scratch);
     RUN_TEST(test_scene_render_draws_into_scratch_and_leaves_the_framebuffer_alone);
-    RUN_TEST(test_a_render_with_no_framebuffer_is_drawn_by_the_compose_that_follows);
+    RUN_TEST(test_a_compose_with_no_framebuffer_writes_nothing);
     RUN_TEST(test_leaving_an_app_while_paused_lifts_the_pause);
     RUN_TEST(test_a_scene_with_two_cameras_is_seen_from_the_one_activated_by_name);
     RUN_TEST(test_a_camera_without_a_path_follows_its_entitys_transform);
