@@ -19,7 +19,7 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 
 | Noun | What it is |
 |---|---|
-| `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](Mesh-Import.md)) |
+| `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](Mesh-Import.md)); a view of arrays that stay in the asset pack ([Mesh-Import.md](Mesh-Import.md#the-baked-mesh)) |
 | `camera_t` | A pinhole camera in model units: eye, look direction, lens, near plane |
 | `viewport_t` | The picture's size and the quarter turn the panel is read at; the ray and line cameras take one, and `raster_draw()` builds its own from the size and the quarter |
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
@@ -64,7 +64,7 @@ would see the scene mirrored.
 | `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture, and the view modes |
 | `viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
 | `ray.h` | The ray camera: the direction through each physical pixel |
-| `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree |
+| `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree, and the view built from a pack entry |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
 | `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions |
 | `r3d_line_camera.h` | A camera for points and segments: a `transformf_t` pose with a roll, and the fit onto a non-square viewport |

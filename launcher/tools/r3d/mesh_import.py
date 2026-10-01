@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Bake meshes from an import file, or from the scene file that places them.
+Each mesh is written as <name>.mesh, a pack entry, into the import's output
+directory; build_pack.py puts them in the pack.
 
     python launcher/tools/r3d/mesh_import.py PATH [--mesh NAME]
 
@@ -13,7 +15,6 @@ third_party/upstream/meshoptimizer. Every mesh is baked unless one is named.
 import argparse
 import pathlib
 import sys
-import textwrap
 from types import SimpleNamespace
 
 import numpy as np
@@ -41,12 +42,6 @@ from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
 from r3d.simplify import densify, simplify  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
-
-
-def banner_lines(origin, settings, variant):
-    return ["GENERATED FILE - do not edit.", "",
-            f"    python launcher/tools/r3d/mesh_import.py {origin.relative_to(REPO).as_posix()} --mesh {variant.name}", "",
-            *textwrap.wrap(settings.source["credit"], 72)]
 
 
 def vertex_spacing(vpos, vtris):
@@ -92,9 +87,8 @@ def shade_unlit(src, material, mp, mt):
     return mp, encode_srgb8(albedo_at(src, mp, vertex_spacing(mp, mt), material)), mt
 
 
-def bake(settings, variant, scene, origin):
-    """Bakes one mesh. `scene` is None for an import that needs none; `origin`
-    is the file the command was run on."""
+def bake(settings, variant, scene):
+    """Bakes one mesh. `scene` is None for an import that needs none."""
     rng = np.random.default_rng(settings.seed)
     src = load_source(settings)
     scale = {} if settings.position_scale is None else {"position_scale": settings.position_scale}
@@ -154,8 +148,8 @@ def bake(settings, variant, scene, origin):
                                 lambda centres, spacing, material: albedo_at(src, centres, spacing, material), intersector,
                                 scene.lights, settings.light.ray_offset, scene.tonemap_white, samples, settings.light.flat_sky_rays,
                                 sample_max, sample_area, sample_min)
-    mesh = write_lit_mesh(settings.out_dir, variant.name, positions, None if variant.face_samples else rgb, tris, tri_double,
-                          banner_lines(origin, settings, variant), face_rgb=face_rgb, **scale)
+    mesh = write_lit_mesh(settings.mesh_dir, variant.name, positions, None if variant.face_samples else rgb, tris, tri_double,
+                          face_rgb=face_rgb, **scale)
     log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, {len(mesh.nodes)} nodes")
 
 
@@ -183,7 +177,7 @@ def main(argv=None):
         parser.error(str(error))
     for settings, variant, scene in jobs:
         log(f"mesh {variant.name}")
-        bake(settings, variant, scene, path)
+        bake(settings, variant, scene)
     return 0
 
 
