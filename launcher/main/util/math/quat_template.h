@@ -16,6 +16,7 @@
         T x, y, z, w;                                                                                                  \
     } P##_t;                                                                                                           \
                                                                                                                        \
+    /* The rotation that does nothing. */                                                                              \
     static inline P##_t P##_identity(void) { return (P##_t){OPS##_zero(), OPS##_zero(), OPS##_zero(), OPS##_one()}; }  \
                                                                                                                        \
     /* `axis` must be unit length. */                                                                                  \
@@ -47,6 +48,7 @@
         return P##_mul(about_y, P##_mul(about_x, about_z));                                                            \
     }                                                                                                                  \
                                                                                                                        \
+    /* Rotates `v` by `q`, which must be unit length. */                                                               \
     static inline V##_t P##_rotate(P##_t q, V##_t v) {                                                                 \
         const V##_t u = {q.x, q.y, q.z};                                                                               \
         const V##_t t = V##_scale(V##_cross(u, v), OPS##_two());                                                       \
@@ -54,6 +56,7 @@
     }
 
 #define MATH_DEFINE_QUAT_NORMALIZE(P, V, T, OPS)                                                                       \
+    /* q / |q|. Precondition: `q` is not zero. */                                                                      \
     static inline P##_t P##_normalize(P##_t q) {                                                                       \
         const T k = OPS##_div(                                                                                         \
             OPS##_one(),                                                                                               \

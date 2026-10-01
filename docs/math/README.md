@@ -1,0 +1,184 @@
+# Math: vectors, rotations, matrices, transforms
+
+`launcher/main/util/math/` is the one maths library of the firmware: header-only,
+static inline, ESP-IDF-free, so a host suite checks every line. Four families
+(vector, quaternion, matrix, transform), each written once as a template
+(`math_template.h` says how) and instantiated per number type. A type's name is
+its family plus a one-letter number-type suffix; there is no bare name.
+
+## Number types
+
+| Suffix | Number type | Range | Precision | Families | For |
+|---|---|---|---|---|---|
+| `f` | float, single precision | about ±3.4e38 | 24-bit mantissa, ~7 digits | `vec2f`, `vec3f`, `quatf`, `mat4f`, `transformf` | the default |
+| `i` | int32 | ±2.1e9 | exact; sums and products wrap | `vec2i`, `vec3i` | grid, pixel and cell coordinates |
+| `s` | int16 | -32768 to 32767 | exact; sums and products saturate | `vec2s`, `vec3s` | compact storage in a low-memory app |
+| `x` | Q16.16 fixed point | ±32768 | 1/65536 (1.5e-5); sine good to ~1e-3; saturates | `vec2x`, `vec3x`, `quatx`, `mat4x`, `transformx` | deterministic maths, or a chip with no FPU |
+
+A dot product of `i` and `s` vectors widens to int64; of `x`, it is a saturating
+Q16.16 sum. `x` divide by zero saturates by the numerator's sign (0 / 0 is 0).
+Fixed-point angles are **turns**, 65536 to a turn, so an eighth of a turn is
+`MATHX_ONE / 8`; float angles are radians (`MATH_PI`, `MATH_TAU`).
+
+## Conventions
+
+| | |
+|---|---|
+| Axes | local +x right, +y up, +z forward; a camera looks down +z. glTF cameras look down -Z: the exporter owns that flip |
+| Rotation sense | right-hand rule: a positive angle about +y turns +z toward +x |
+| Quaternion | `x, y, z, w` with `w` the scalar, unit length, Hamilton product; `mul(a, b)` applies `b` first |
+| Euler | `from_euler` applies Z, then X, then Y about the fixed axes (Unity's order) |
+| Matrix | `m[row][col]`, acting on column vectors; the translation is column 3; `mul(a, b)` applies `b` first |
+| TRS | scale, then rotate, then translate |
+
+```math
+v' = q\,v\,q^{-1} = v + 2w\,(u \times v) + 2\,u \times (u \times v), \qquad u = (q_x, q_y, q_z)
+```
+
+```math
+M = T\,R\,S, \qquad p_{\text{world}} = M\,p_{\text{local}}, \qquad
+V = R^{\mathsf T}\,T(-\text{position})
+```
+
+```math
+\text{pixel}_x = c_x + \operatorname{round}\!\left(\frac{x}{z}\, f\, s\right), \qquad
+\text{pixel}_y = c_y - \operatorname{round}\!\left(\frac{y}{z}\, f\, s\right)
+```
+
+Here `f` is the focal length, `s` the pixels per projection-plane unit and `c`
+the screen centre (`render/r3d_project.h`).
+
+## The transform cache
+
+A `transform` holds position, rotation and scale as the truth and a derived
+model matrix with a `cached` flag.
+
+| Call | Effect |
+|---|---|
+| any setter, `translate`, `rotate`, `look_at` | stores the new value and clears `cached` |
+| `matrix(t)` | rebuilds the matrix only when `cached` is false, then sets it; use for an object read every frame |
+| `compute_matrix(t)` | a fresh matrix from a const transform; never touches the cache; use in read-only code |
+| `view(t)` | the inverse of position and rotation (scale ignored), computed every call |
+
+`TRANSFORMF_IDENTITY` / `TRANSFORMX_IDENTITY` are initializers with the cache
+valid. A zero-initialized transform has `cached` false, so it builds on first
+use (its scale is zero, so the matrix is zero too). Code never edits `matrix`.
+
+## Function reference
+
+`P` stands for the type's prefix: `vec3f`, `vec3x`, ... Every function takes
+and returns small structs by value. Inputs may alias outputs; nothing is
+modified through a pointer except the transform's own `t`.
+
+### vec2 (`f i s x`)
+
+| Function | Purpose |
+|---|---|
+| `P_add(a, b)` | component sum |
+| `P_sub(a, b)` | component difference |
+| `P_scale(a, s)` | every component times the scalar `s` |
+| `P_dot(a, b)` | dot product, in the wide type of the number type |
+| `P_equal(a, b)` | exact component equality |
+
+### vec3 (`f i s x`)
+
+| Function | Purpose |
+|---|---|
+| `P_add(a, b)` | component sum |
+| `P_sub(a, b)` | component difference |
+| `P_scale(a, s)` | every component times the scalar `s` |
+| `P_dot(a, b)` | dot product, in the wide type of the number type |
+| `P_equal(a, b)` | exact component equality |
+| `P_cross(a, b)` | cross product, right-handed |
+| `P_normalize(a)` | unit vector; `f` and `x` only; `a` must not be zero |
+
+### quat (`f x`)
+
+| Function | Purpose |
+|---|---|
+| `P_identity()` | the no-rotation quaternion |
+| `P_from_axis_angle(axis, angle)` | rotation of `angle` about unit `axis` |
+| `P_mul(a, b)` | composition: `b` first, then `a` |
+| `P_from_euler(angles)` | Z, then X, then Y; `angles` is a vec3 of radians (`f`) or turns (`x`) |
+| `P_rotate(q, v)` | rotates the vec3 `v` by unit `q` |
+| `P_normalize(q)` | unit length; `q` must not be zero |
+| `P_from_basis(r, u, f)` | the rotation whose right, up and forward axes are `r`, `u`, `f` |
+| `quatf_slerp(a, b, t)` | shortest-arc interpolation, `t` in 0..1; `f` only |
+
+### mat4 (`f x`)
+
+| Function | Purpose |
+|---|---|
+| `P_identity()` | the identity matrix |
+| `P_mul(a, b)` | matrix product `a * b` |
+| `P_apply(&m, p)` | transforms the point `p`, translation included |
+| `P_from_trs(position, rotation, scale)` | scale, rotate, translate; `rotation` must be unit |
+
+### transform (`f x`)
+
+| Function | Purpose |
+|---|---|
+| `P_set_position(&t, p)` | sets position, clears the cache |
+| `P_set_rotation(&t, q)` | sets rotation (unit), clears the cache |
+| `P_set_scale(&t, s)` | sets scale, clears the cache |
+| `P_translate(&t, delta)` | adds `delta` to the position |
+| `P_rotate(&t, q)` | turns about the transform's own axes: `rotation = rotation * q` |
+| `P_matrix(&t)` | the cached model matrix |
+| `P_compute_matrix(&t)` | a fresh model matrix from a const transform |
+| `P_view(&t)` | the camera's view matrix |
+| `P_look_at(&t, target, up)` | faces `target` with `up` as the sky; neither may be parallel to the line to the target |
+
+### Conversions (`vec_convert.h`)
+
+Always an explicit call named for destination and source, both `vec2` and `vec3`.
+
+| Function | Rule |
+|---|---|
+| `vec3f_from_vec3i(v)`, `vec2f_from_vec2i(v)` | exact |
+| `vec3i_from_vec3f(v)`, `vec2i_from_vec2f(v)` | rounded to nearest, saturated |
+| `vec3f_from_vec3s(v, scale)`, `vec2f_from_vec2s(v, scale)` | `v * scale`: one int16 step is `scale` units |
+| `vec3s_from_vec3f(v, scale)`, `vec2s_from_vec2f(v, scale)` | `v / scale`, rounded, saturated to int16 |
+| `vec3f_from_vec3x(v)`, `vec2f_from_vec2x(v)` | `v / 65536` |
+| `vec3x_from_vec3f(v)`, `vec2x_from_vec2f(v)` | `v * 65536`, rounded, saturated |
+| `vec3i_from_vec3s(v)`, `vec2i_from_vec2s(v)` | exact widening |
+| `vec3s_from_vec3i(v)`, `vec2s_from_vec2i(v)` | saturating narrowing |
+
+Scalar operations live in `mathf.h`, `mathi.h`, `maths.h` and `mathx.h`
+(`mathx_add`, `mathx_mul`, `mathx_div`, `mathx_sqrt`, `mathx_sin_turns`, ...);
+a family names only the ones it uses.
+
+## Examples
+
+```c
+#include "util/math/transformf.h"
+
+transformf_t body = TRANSFORMF_IDENTITY;
+transformf_set_position(&body, (vec3f_t){1.0F, 0.0F, 4.0F});
+transformf_set_rotation(&body, quatf_from_euler((vec3f_t){0.0F, MATH_PI / 2.0F, 0.0F}));
+
+const mat4f_t model = transformf_matrix(&body);          /* built now, kept */
+const vec3f_t world = mat4f_apply(&model, (vec3f_t){0.0F, 0.0F, 1.0F});
+
+transformf_t camera = TRANSFORMF_IDENTITY;
+transformf_look_at(&camera, world, (vec3f_t){0.0F, 1.0F, 0.0F});
+const mat4f_t view = transformf_view(&camera);
+const vec3f_t in_camera = mat4f_apply(&view, world);     /* straight ahead: x = y = 0 */
+
+const quatf_t halfway = quatf_slerp(quatf_identity(), body.rotation, 0.5F);
+```
+
+## The float-precision build rules
+
+The S3's FPU is single precision: a `double` operation is a libgcc call about
+ten times a float's cost. Rules, all in [Build-Variants.md](../Build-Variants.md):
+
+| Rule | Where |
+|---|---|
+| `-Werror=double-promotion`, `-Werror=float-conversion` | the whole `main` component |
+| `-ffp-contract=off` | the files that project in float, so no fused multiply-add rounds differently from the host render that pins the pixels |
+| soft-double link gate | `launcher/tools/build/check_no_soft_double.py`: a function calling a soft-double routine fails unless it also logs |
+| libm | float needs `sqrtf`, `sinf`, `cosf`, `acosf`, `lroundf`; link it |
+
+The raster's lens and per-cluster transform (`render/r3d_pipeline.c`) stay a
+3x4 of their own; the line camera, the boot animation and the animation
+tracks use these types. See [Mesh-Rendering.md](../render/Mesh-Rendering.md).

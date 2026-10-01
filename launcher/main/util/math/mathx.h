@@ -54,7 +54,7 @@ mathx_div(int32_t num, int32_t den) {
     if (den == 0) {
         return num > 0 ? INT32_MAX : (num < 0 ? INT32_MIN : 0);
     }
-    const int64_t n = (int64_t)num << MATHX_SHIFT;
+    const int64_t n = (int64_t)num * MATHX_ONE;
     const int64_t d = den < 0 ? -(int64_t)den : (int64_t)den;
     const int64_t q = ((n < 0 ? -n : n) + (d / 2)) / d;
     return mathx_saturate(((n < 0) != (den < 0)) ? -q : q);
