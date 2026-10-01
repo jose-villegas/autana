@@ -79,18 +79,28 @@ static void queue_flying_grain(sand_t* s, int x, int y, int dir, int speed, bool
  * MEMBERSHIP). `disc_count`/`keep`/`*accum` self-limit via a DDA, not a
  * modulo stride (aliases with the ring's own edge lengths), degrading
  * DENSITY evenly instead of truncating the SHAPE. */
+typedef struct {
+    sand_t* s;
+    int cx, cy;
+    int r2, disc_count, keep, accum;
+    int mat_filter;
+} disc_walk_t;
+
+/* One struct, not eight arguments: past six, the windowed ABI spills them
+ * onto the stack of every frame between here and the blast. */
 static void
-queue_outward_impulse(sand_t* s, int cx, int cy, int dx, int dy, int r2, int disc_count, int keep, int* accum,
-                      int mat_filter) {
-    if (dx * dx + dy * dy > r2) {
+queue_outward_impulse(disc_walk_t* w, int dx, int dy) {
+    sand_t* const s = w->s;
+    const int cx = w->cx, cy = w->cy, mat_filter = w->mat_filter;
+    if (dx * dx + dy * dy > w->r2) {
         return;
     }
 
-    *accum += keep;
-    if (*accum < disc_count) {
+    w->accum += w->keep;
+    if (w->accum < w->disc_count) {
         return;
     }
-    *accum -= disc_count;
+    w->accum -= w->disc_count;
 
     /* (dx, dy) is the vector from the centre to this cell. Using the same
      * quantiser as gravity gives "away from the centre" in one of eight
@@ -291,17 +301,17 @@ displace_disc(sand_t* s, int cx, int cy, int radius, int mat_filter, bool guaran
     const int disc_count = sand_disc_count(radius);
     const int room = s->impulse_max - s->impulse_count;
     const int keep = (disc_count < room) ? disc_count : room;
-    int accum = 0;
+    disc_walk_t walk = {s, cx, cy, r2, disc_count, keep, 0, mat_filter};
 
-    queue_outward_impulse(s, cx, cy, 0, 0, r2, disc_count, keep, &accum, mat_filter);
+    queue_outward_impulse(&walk, 0, 0);
     for (int ring = 1; ring <= radius; ring++) {
         for (int dx = -ring; dx <= ring; dx++) {
-            queue_outward_impulse(s, cx, cy, dx, -ring, r2, disc_count, keep, &accum, mat_filter);
-            queue_outward_impulse(s, cx, cy, dx, ring, r2, disc_count, keep, &accum, mat_filter);
+            queue_outward_impulse(&walk, dx, -ring);
+            queue_outward_impulse(&walk, dx, ring);
         }
         for (int dy = -ring + 1; dy <= ring - 1; dy++) {
-            queue_outward_impulse(s, cx, cy, -ring, dy, r2, disc_count, keep, &accum, mat_filter);
-            queue_outward_impulse(s, cx, cy, ring, dy, r2, disc_count, keep, &accum, mat_filter);
+            queue_outward_impulse(&walk, -ring, dy);
+            queue_outward_impulse(&walk, ring, dy);
         }
     }
 }

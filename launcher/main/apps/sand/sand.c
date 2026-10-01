@@ -1641,10 +1641,9 @@ sand_chunk_share_for_test(sand_chunk_share_t mode) {
     return before;
 }
 
-/* The cells each chunk of `p` would hand a lane, charged whole: a chunk with
- * one block awake is a chunk a lane has to walk. `cost` takes one entry per
- * chunk, so the caller's array is SAND_CHUNKS_MAX long. 16-bit: a chunk is
- * never more cells than the grid, which the assert keeps in range. */
+/* The cells each chunk of `p` would hand a lane, charged whole. `cost` takes
+ * one entry per chunk (SAND_CHUNKS_MAX). 16-bit: chunks partition the grid, so
+ * the costs total at most its cell count and no finish time passes UINT16_MAX. */
 _Static_assert(GRID_W_MAX* GRID_H_MAX <= UINT16_MAX, "a chunk's cell count must fit a 16-bit cost");
 
 static int

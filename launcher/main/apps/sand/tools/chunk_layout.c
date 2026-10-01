@@ -131,7 +131,12 @@ sum_chunk_work(int chunks, uint16_t* cost) {
     long long total = 0;
 
     for (int i = 0; i < chunks; i++) {
-        cost[i] = (uint16_t)(sand_chunk_work[i] > UINT16_MAX ? UINT16_MAX : sand_chunk_work[i]);
+        if (sand_chunk_work[i] > UINT16_MAX) {
+            fprintf(stderr, "chunk_layout: chunk %d did %u cells of work in one step; the makespan takes 16 bits\n", i,
+                    sand_chunk_work[i]);
+            exit(1);
+        }
+        cost[i] = (uint16_t)sand_chunk_work[i];
         total += cost[i];
     }
     return total;

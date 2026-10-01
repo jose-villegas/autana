@@ -85,8 +85,9 @@ bool sand_chunk_step_lane(sand_chunk_sched_t* k, int lane, sand_chunk_fn_t fn, v
 void sand_chunk_run_lane(sand_chunk_sched_t* k, int lane, unsigned spin_limit, sand_chunk_fn_t fn, void* pass);
 
 /* The span two lanes take over this order, given a cost per chunk index: the
- * runner's own rule with a number in place of the work. 16-bit, to keep the
- * frame small, so a span saturates at UINT16_MAX. */
+ * runner's own rule with a number in place of the work. 16-bit to keep the
+ * frame small: a finish time is at most the sum of the costs, so the costs
+ * must total no more than UINT16_MAX. */
 int sand_chunk_makespan(const sand_chunk_order_t* o, int cols, int rows, const uint16_t* cost);
 
 /* Walks the whole order on this thread and runs whatever is not done yet.

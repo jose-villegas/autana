@@ -3867,7 +3867,7 @@ build_landscape_levelling_pool_scene(sand_t* real, uint8_t* big, uint8_t* blocks
 #define PRESENT_COST_MEASURED_STEPS 20
 
 /* The old row-only mirror on a freshly built copy of the scene. */
-static __attribute__((noinline)) int64_t
+static int64_t
 measure_row_present_cost(void (*build)(sand_t*, uint8_t*, uint8_t*), int gx, int gy, int* row_full, int* row_gathered,
                          int* row_partial) {
     uint8_t* row_big = malloc(REAL_W * REAL_H);
@@ -3903,8 +3903,7 @@ measure_row_present_cost(void (*build)(sand_t*, uint8_t*, uint8_t*), int gx, int
     return row_us;
 }
 
-/* Its own frame, so the row half's sand_t is gone before this one's exists. */
-static __attribute__((noinline)) int64_t
+static int64_t
 measure_span_present_cost(void (*build)(sand_t*, uint8_t*, uint8_t*), int gx, int gy, int* span_full,
                           int* span_gathered, int* span_partial, int64_t* pixels_sent) {
     uint8_t* span_big = malloc(REAL_W * REAL_H);

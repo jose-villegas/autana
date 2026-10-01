@@ -199,10 +199,11 @@ to a gate.
 
 **These are approximations, and worth knowing where they end.** The stack
 gate checks test code only, one function at a time, so it bounds the worst
-single frame rather than the deepest path. The deepest path under
-each root the device profile budgets is summed from the diagnostics build's own call graph by
-`launcher/tools/quality/stack_chain_gate.py` (CI and `autana build diag
---check`), against `DP_STACK_CHAIN_BUDGETS_DEVICE` in the device profile.
+single frame rather than the deepest path. The deepest path under each root an
+app declares in its `stack_chain.txt` is summed from the diagnostics build's
+own call graph by `launcher/tools/quality/stack_chain_gate.py` (CI and
+`autana build diag --check`). Calls through a pointer are declared there too,
+and an undeclared one fails the gate.
 Its frames are the host compiler's: the Xtensa frame is half the size at
 the median but up to 1.67x larger in the worst measured case, so
 `check_stack_usage_device.sh`, the same checker over the target

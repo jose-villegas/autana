@@ -1,3 +1,5 @@
+#include <assert.h>
+
 #include "sand_chunk_sched.h"
 
 static int
@@ -218,7 +220,8 @@ sand_chunk_makespan(const sand_chunk_order_t* o, int cols, int rows, const uint1
             }
         }
         const int end = start + cost[idx];
-        finish[pos] = (uint16_t)(end > UINT16_MAX ? UINT16_MAX : end);
+        assert(end <= UINT16_MAX);
+        finish[pos] = (uint16_t)end;
         lane_idle[pos & 1] = finish[pos];
         span = (finish[pos] > span) ? finish[pos] : span;
     }

@@ -1,0 +1,21 @@
+# The deepest call chain the sand step may reach on the main task's stack,
+# checked by launcher/tools/quality/stack_chain_gate.py on the diagnostics
+# build. The chunk passes are called through a pointer, so each caller of one
+# is declared against every pass it can run.
+root sand_step 1500
+
+indirect sand_chunk_step_lane sweep_one_chunk
+indirect sand_chunk_step_lane step_one_gas_chunk
+indirect sand_chunk_step_lane equalise_gas_one_chunk
+indirect sand_chunk_step_lane equalise_one_chunk
+indirect sand_chunk_step_lane react_one_chunk
+indirect sand_chunk_run_lane sweep_one_chunk
+indirect sand_chunk_run_lane step_one_gas_chunk
+indirect sand_chunk_run_lane equalise_gas_one_chunk
+indirect sand_chunk_run_lane equalise_one_chunk
+indirect sand_chunk_run_lane react_one_chunk
+indirect sand_chunk_run_rest sweep_one_chunk
+indirect sand_chunk_run_rest step_one_gas_chunk
+indirect sand_chunk_run_rest equalise_gas_one_chunk
+indirect sand_chunk_run_rest equalise_one_chunk
+indirect sand_chunk_run_rest react_one_chunk
