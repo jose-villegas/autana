@@ -17,8 +17,8 @@
 static r3d_line_view_t
 fixture(void) {
     r3d_line_view_t v;
-    S3L_mat4Init(v.matrix);
-    v.focal = S3L_F;
+    fix3_mat4_init(v.matrix);
+    v.focal = FIX3_ONE;
     v.near_z = R3D_LINE_NEAR_Z;
     v.center_x = 184;
     v.center_y = 224;
@@ -31,33 +31,33 @@ fixture(void) {
 static void
 test_to_camera_space_leaves_a_point_unchanged_under_identity(void) {
     const r3d_line_view_t view = fixture();
-    const S3L_Vec4 p = {17, -42, 900, S3L_F};
+    const fix3_vec4_t p = {17, -42, 900, FIX3_ONE};
 
-    const S3L_Vec4 got = r3d_to_camera_space(p, &view);
+    const fix3_vec4_t got = r3d_to_camera_space(p, &view);
 
     TEST_ASSERT_EQUAL_INT32(p.x, got.x);
     TEST_ASSERT_EQUAL_INT32(p.y, got.y);
     TEST_ASSERT_EQUAL_INT32(p.z, got.z);
 }
 
-/* Translation set directly on the matrix (small3dlib's own m[col][3]
- * convention), not through S3L_makeWorldMatrix's scale/rotate/translate
+/* Translation set directly on the matrix (fix3's own m[col][3]
+ * convention), not through fix3_world_matrix's scale/rotate/translate
  * chain: composing three matrices for one axis-aligned move would fold in
  * that chain's own fixed-point rounding, which is not what this checks. */
 static void
 test_to_camera_space_applies_the_composed_matrix(void) {
     r3d_line_view_t view = fixture();
-    S3L_mat4Init(view.matrix);
-    view.matrix[0][3] = 10 * S3L_F;
-    view.matrix[1][3] = 20 * S3L_F;
-    view.matrix[2][3] = 30 * S3L_F;
-    const S3L_Vec4 p = {1 * S3L_F, 2 * S3L_F, 3 * S3L_F, S3L_F};
+    fix3_mat4_init(view.matrix);
+    view.matrix[0][3] = 10 * FIX3_ONE;
+    view.matrix[1][3] = 20 * FIX3_ONE;
+    view.matrix[2][3] = 30 * FIX3_ONE;
+    const fix3_vec4_t p = {1 * FIX3_ONE, 2 * FIX3_ONE, 3 * FIX3_ONE, FIX3_ONE};
 
-    const S3L_Vec4 got = r3d_to_camera_space(p, &view);
+    const fix3_vec4_t got = r3d_to_camera_space(p, &view);
 
-    TEST_ASSERT_EQUAL_INT32(11 * S3L_F, got.x);
-    TEST_ASSERT_EQUAL_INT32(22 * S3L_F, got.y);
-    TEST_ASSERT_EQUAL_INT32(33 * S3L_F, got.z);
+    TEST_ASSERT_EQUAL_INT32(11 * FIX3_ONE, got.x);
+    TEST_ASSERT_EQUAL_INT32(22 * FIX3_ONE, got.y);
+    TEST_ASSERT_EQUAL_INT32(33 * FIX3_ONE, got.z);
 }
 
 /* The screen mapping and the point clip */
@@ -65,7 +65,7 @@ test_to_camera_space_applies_the_composed_matrix(void) {
 static void
 test_a_point_on_the_optical_axis_lands_on_center(void) {
     const r3d_line_view_t view = fixture();
-    const S3L_Vec4 p = {0, 0, 5 * S3L_F, S3L_F};
+    const fix3_vec4_t p = {0, 0, 5 * FIX3_ONE, FIX3_ONE};
     int x, y;
 
     TEST_ASSERT_TRUE(r3d_project_point_cs(p, &view, &x, &y));
@@ -78,14 +78,14 @@ test_a_point_on_the_optical_axis_lands_on_center(void) {
  * names: two unrelated center/scale/focal settings, so a hardcoded output
  * cannot pass either. */
 static void
-check_off_axis_point_matches_the_formula(int center_x, int center_y, int scale, S3L_Unit focal, int expected_x,
+check_off_axis_point_matches_the_formula(int center_x, int center_y, int scale, fix3_unit_t focal, int expected_x,
                                          int expected_y) {
     r3d_line_view_t view = fixture();
     view.center_x = center_x;
     view.center_y = center_y;
     view.scale = scale;
     view.focal = focal;
-    const S3L_Vec4 p = {2 * S3L_F, -4 * S3L_F, 4 * S3L_F, S3L_F};
+    const fix3_vec4_t p = {2 * FIX3_ONE, -4 * FIX3_ONE, 4 * FIX3_ONE, FIX3_ONE};
     int x, y;
 
     TEST_ASSERT_TRUE(r3d_project_point_cs(p, &view, &x, &y));
@@ -95,18 +95,18 @@ check_off_axis_point_matches_the_formula(int center_x, int center_y, int scale, 
 
 static void
 test_an_off_axis_point_lands_where_the_formula_says(void) {
-    /* focal == S3L_F, z == 4*S3L_F halves x/y; scale == center then applies
+    /* focal == FIX3_ONE, z == 4*FIX3_ONE halves x/y; scale == center then applies
      * that half again. */
-    check_off_axis_point_matches_the_formula(184, 224, 184, S3L_F, 184 + 92, 224 + 184);
-    /* focal == 2*S3L_F cancels the same halving; a different scale/center
+    check_off_axis_point_matches_the_formula(184, 224, 184, FIX3_ONE, 184 + 92, 224 + 184);
+    /* focal == 2*FIX3_ONE cancels the same halving; a different scale/center
      * pair, so this is not the same arithmetic wearing a disguise. */
-    check_off_axis_point_matches_the_formula(50, 80, 40, 2 * S3L_F, 50 + 40, 80 + 80);
+    check_off_axis_point_matches_the_formula(50, 80, 40, 2 * FIX3_ONE, 50 + 40, 80 + 80);
 }
 
 static void
 test_a_point_exactly_at_near_z_counts_as_behind(void) {
     const r3d_line_view_t view = fixture();
-    const S3L_Vec4 p = {0, 0, view.near_z, S3L_F};
+    const fix3_vec4_t p = {0, 0, view.near_z, FIX3_ONE};
     int x = -1, y = -1;
 
     TEST_ASSERT_FALSE(r3d_project_point_cs(p, &view, &x, &y));
@@ -118,8 +118,8 @@ static void
 test_orthographic_projection_ignores_depth(void) {
     r3d_line_view_t view = fixture();
     view.focal = 0;
-    const S3L_Vec4 p_near = {100, -50, 2 * S3L_F, S3L_F};
-    const S3L_Vec4 p_far = {100, -50, 500 * S3L_F, S3L_F};
+    const fix3_vec4_t p_near = {100, -50, 2 * FIX3_ONE, FIX3_ONE};
+    const fix3_vec4_t p_far = {100, -50, 500 * FIX3_ONE, FIX3_ONE};
     int x_near, y_near, x_far, y_far;
 
     TEST_ASSERT_TRUE(r3d_project_point_cs(p_near, &view, &x_near, &y_near));
@@ -134,8 +134,8 @@ test_orthographic_projection_ignores_depth(void) {
 static void
 test_segment_with_both_ends_behind_returns_false(void) {
     const r3d_line_view_t view = fixture();
-    const S3L_Vec4 p0 = {0, 0, 0, S3L_F};
-    const S3L_Vec4 p1 = {10, 10, view.near_z, S3L_F}; /* AT near_z, not past it */
+    const fix3_vec4_t p0 = {0, 0, 0, FIX3_ONE};
+    const fix3_vec4_t p1 = {10, 10, view.near_z, FIX3_ONE}; /* AT near_z, not past it */
     int ax, ay, bx, by;
 
     TEST_ASSERT_FALSE(r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by));
@@ -148,13 +148,13 @@ static void
 test_one_end_behind_clips_to_the_near_plane_crossing(void) {
     r3d_line_view_t view = fixture();
     view.near_z = 100;
-    const S3L_Vec4 p0 = {0, 0, 0, S3L_F};
-    const S3L_Vec4 p1 = {200, 100, 200, S3L_F};
+    const fix3_vec4_t p0 = {0, 0, 0, FIX3_ONE};
+    const fix3_vec4_t p1 = {200, 100, 200, FIX3_ONE};
     int ax, ay, bx, by;
 
     TEST_ASSERT_TRUE(r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by));
 
-    const S3L_Vec4 at_near_z = {(p0.x + p1.x) / 2, (p0.y + p1.y) / 2, view.near_z, S3L_F};
+    const fix3_vec4_t at_near_z = {(p0.x + p1.x) / 2, (p0.y + p1.y) / 2, view.near_z, FIX3_ONE};
     int ex, ey, fx, fy;
     r3d_camera_to_screen(at_near_z, &view, &ex, &ey);
     r3d_camera_to_screen(p1, &view, &fx, &fy);
@@ -168,8 +168,8 @@ test_one_end_behind_clips_to_the_near_plane_crossing(void) {
 static void
 test_both_ends_in_front_matches_projecting_each_point(void) {
     const r3d_line_view_t view = fixture();
-    const S3L_Vec4 p0 = {50, -30, 300, S3L_F};
-    const S3L_Vec4 p1 = {-80, 60, 500, S3L_F};
+    const fix3_vec4_t p0 = {50, -30, 300, FIX3_ONE};
+    const fix3_vec4_t p1 = {-80, 60, 500, FIX3_ONE};
     int ax, ay, bx, by;
 
     TEST_ASSERT_TRUE(r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by));

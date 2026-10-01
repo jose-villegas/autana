@@ -116,9 +116,9 @@
 #define BOOT_ANIM_GRID_WHITEN_MAX 32
 #define BOOT_ANIM_GRID_CEILING_MAX 96
 #define BOOT_ANIM_GRID_MAX 64
-/* small3dlib's S3L_Camera.focalLength - 0 is an orthographic
+/* The camera's focal length - 0 is an orthographic
  * projection (see boot_anim.h's "The projection" section), any other
- * value a perspective one; S3L_F (512) is small3dlib's own "normal"
+ * value a perspective one; FIX3_ONE (512) is the "normal"
  * lens default. Authored directly in this unit - it is a lens
  * property, not a position or angle, so meters/degrees do not apply. */
 #define BOOT_ANIM_CAMERA_FOCAL 512

@@ -5,7 +5,7 @@
  *
  * Baked wire_mesh_t tables for the wireframe demo primitives: a
  * centred XZ plane grid, a cube, a UV sphere and a two-hemisphere
- * capsule. Coordinates are S3L_F fixed point; density is a bake-time
+ * capsule. Coordinates are 512-per-unit fixed point; density is a bake-time
  * knob set by the generator's own arguments, recorded below as the
  * defines a test can read them back from.
  */

@@ -99,8 +99,6 @@ VENDORED_REFERENCES = {
         "third_party/upstream/microui/src/microui.c",
     "launcher/components/microui/include/microui.h":
         "third_party/upstream/microui/src/microui.h",
-    "launcher/components/small3dlib/include/small3dlib.h":
-        "third_party/upstream/small3dlib/small3dlib.h",
 }
 
 # ESP-IDF's GCC-only flags cannot be parsed by esp-clang. ANALYSIS_SCAN
@@ -258,7 +256,7 @@ def run_tests_print(flag):
 
 
 def is_vendored(path_str):
-    """launcher/components/ (microui, small3dlib, the board support package),
+    """launcher/components/ (microui, the board support package),
     managed_components/ (registry drivers), and the vendored Unity framework
     under test/framework/, third-party code, out of scope for a ratchet on
     THIS project's own functions."""
