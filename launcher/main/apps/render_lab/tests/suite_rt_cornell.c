@@ -21,8 +21,8 @@
 static void
 test_plane_hit_reports_the_correct_distance(void) {
     const rt_plane_t plane = {{0.0f, 0.0f, 5.0f}, {0.0f, 0.0f, -1.0f}};
-    const vec3f_t origin = {0.0f, 0.0f, 0.0f};
-    const vec3f_t dir = {0.0f, 0.0f, 1.0f};
+    const vec3_t origin = {0.0f, 0.0f, 0.0f};
+    const vec3_t dir = {0.0f, 0.0f, 1.0f};
     float t;
 
     TEST_ASSERT_TRUE(rt_intersect_plane(origin, dir, plane, &t));
@@ -32,8 +32,8 @@ test_plane_hit_reports_the_correct_distance(void) {
 static void
 test_plane_miss_when_the_ray_is_parallel(void) {
     const rt_plane_t plane = {{0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}};
-    const vec3f_t origin = {0.0f, 0.0f, 0.0f};
-    const vec3f_t dir = {1.0f, 0.0f, 0.0f};
+    const vec3_t origin = {0.0f, 0.0f, 0.0f};
+    const vec3_t dir = {1.0f, 0.0f, 0.0f};
     float t;
 
     TEST_ASSERT_FALSE(rt_intersect_plane(origin, dir, plane, &t));
@@ -42,8 +42,8 @@ test_plane_miss_when_the_ray_is_parallel(void) {
 static void
 test_plane_miss_when_the_crossing_is_behind_the_origin(void) {
     const rt_plane_t plane = {{0.0f, 0.0f, -5.0f}, {0.0f, 0.0f, -1.0f}};
-    const vec3f_t origin = {0.0f, 0.0f, 0.0f};
-    const vec3f_t dir = {0.0f, 0.0f, 1.0f};
+    const vec3_t origin = {0.0f, 0.0f, 0.0f};
+    const vec3_t dir = {0.0f, 0.0f, 1.0f};
     float t;
 
     TEST_ASSERT_FALSE(rt_intersect_plane(origin, dir, plane, &t));
@@ -54,10 +54,10 @@ test_plane_miss_when_the_crossing_is_behind_the_origin(void) {
 static void
 test_box_hit_from_outside_reports_the_entry_face(void) {
     const rt_box_t box = {{0.0f, 0.0f, 5.0f}, {1.0f, 1.0f, 1.0f}, 0.0f, 1.0f};
-    const vec3f_t origin = {0.0f, 0.0f, 0.0f};
-    const vec3f_t dir = {0.0f, 0.0f, 1.0f};
+    const vec3_t origin = {0.0f, 0.0f, 0.0f};
+    const vec3_t dir = {0.0f, 0.0f, 1.0f};
     float t;
-    vec3f_t n;
+    vec3_t n;
 
     TEST_ASSERT_TRUE(rt_intersect_box(origin, dir, &box, &t, &n));
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 4.0f, t);
@@ -67,10 +67,10 @@ test_box_hit_from_outside_reports_the_entry_face(void) {
 static void
 test_box_miss_when_the_ray_passes_beside_it(void) {
     const rt_box_t box = {{0.0f, 0.0f, 5.0f}, {1.0f, 1.0f, 1.0f}, 0.0f, 1.0f};
-    const vec3f_t origin = {5.0f, 0.0f, 0.0f};
-    const vec3f_t dir = {0.0f, 0.0f, 1.0f};
+    const vec3_t origin = {5.0f, 0.0f, 0.0f};
+    const vec3_t dir = {0.0f, 0.0f, 1.0f};
     float t;
-    vec3f_t n;
+    vec3_t n;
 
     TEST_ASSERT_FALSE(rt_intersect_box(origin, dir, &box, &t, &n));
 }
@@ -78,10 +78,10 @@ test_box_miss_when_the_ray_passes_beside_it(void) {
 static void
 test_box_ray_starting_inside_reports_the_exit_face(void) {
     const rt_box_t box = {{0.0f, 0.0f, 5.0f}, {1.0f, 1.0f, 1.0f}, 0.0f, 1.0f};
-    const vec3f_t origin = {0.0f, 0.0f, 5.0f}; /* dead centre, inside */
-    const vec3f_t dir = {0.0f, 0.0f, 1.0f};
+    const vec3_t origin = {0.0f, 0.0f, 5.0f}; /* dead centre, inside */
+    const vec3_t dir = {0.0f, 0.0f, 1.0f};
     float t;
-    vec3f_t n;
+    vec3_t n;
 
     TEST_ASSERT_TRUE(rt_intersect_box(origin, dir, &box, &t, &n));
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, t);
@@ -91,10 +91,10 @@ test_box_ray_starting_inside_reports_the_exit_face(void) {
 static void
 test_box_ray_parallel_to_a_slab_still_hits_through_the_other_axes(void) {
     const rt_box_t box = {{0.0f, 0.0f, 5.0f}, {1.0f, 1.0f, 1.0f}, 0.0f, 1.0f};
-    const vec3f_t origin = {-3.0f, 0.5f, 5.0f}; /* y=0.5 is inside [-1,1]; dir.y == 0 */
-    const vec3f_t dir = {1.0f, 0.0f, 0.0f};
+    const vec3_t origin = {-3.0f, 0.5f, 5.0f}; /* y=0.5 is inside [-1,1]; dir.y == 0 */
+    const vec3_t dir = {1.0f, 0.0f, 0.0f};
     float t;
-    vec3f_t n;
+    vec3_t n;
 
     TEST_ASSERT_TRUE(rt_intersect_box(origin, dir, &box, &t, &n));
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 2.0f, t); /* -3 + 2 == -1, the box's -X face */
@@ -103,10 +103,10 @@ test_box_ray_parallel_to_a_slab_still_hits_through_the_other_axes(void) {
 static void
 test_box_ray_parallel_to_a_slab_and_outside_it_misses(void) {
     const rt_box_t box = {{0.0f, 0.0f, 5.0f}, {1.0f, 1.0f, 1.0f}, 0.0f, 1.0f};
-    const vec3f_t origin = {-3.0f, 5.0f, 5.0f}; /* y=5 is outside [-1,1]; dir.y == 0 */
-    const vec3f_t dir = {1.0f, 0.0f, 0.0f};
+    const vec3_t origin = {-3.0f, 5.0f, 5.0f}; /* y=5 is outside [-1,1]; dir.y == 0 */
+    const vec3_t dir = {1.0f, 0.0f, 0.0f};
     float t;
-    vec3f_t n;
+    vec3_t n;
 
     TEST_ASSERT_FALSE(rt_intersect_box(origin, dir, &box, &t, &n));
 }
@@ -118,10 +118,10 @@ test_a_rotated_box_is_hit_where_the_unrotated_box_would_miss(void) {
     const float sin45 = 0.70710678f, cos45 = 0.70710678f;
     const rt_box_t unrotated = {{0.0f, 0.0f, 5.0f}, {1.0f, 1.0f, 1.0f}, 0.0f, 1.0f};
     const rt_box_t rotated = {{0.0f, 0.0f, 5.0f}, {1.0f, 1.0f, 1.0f}, sin45, cos45};
-    const vec3f_t origin = {1.3f, 0.0f, 0.0f};
-    const vec3f_t dir = {0.0f, 0.0f, 1.0f};
+    const vec3_t origin = {1.3f, 0.0f, 0.0f};
+    const vec3_t dir = {0.0f, 0.0f, 1.0f};
     float t;
-    vec3f_t n;
+    vec3_t n;
 
     TEST_ASSERT_FALSE(rt_intersect_box(origin, dir, &unrotated, &t, &n));
     TEST_ASSERT_TRUE(rt_intersect_box(origin, dir, &rotated, &t, &n));

@@ -8,7 +8,7 @@ sponza_flythrough_period_ms(void) {
 }
 
 void
-sponza_flythrough_sample(uint32_t t_ms, vec3f_t* eye, vec3f_t* forward) {
+sponza_flythrough_sample(uint32_t t_ms, vec3_t* eye, vec3_t* forward) {
     r3d_scene_camera_sample(&sponza_scene_camera, t_ms, eye, forward);
 }
 

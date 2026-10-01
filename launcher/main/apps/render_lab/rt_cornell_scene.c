@@ -18,17 +18,17 @@
 #define LIGHT_HALF_Z   0.24f
 #define LIGHT_CENTER_Z 1.0f
 
-#define WALL_WHITE     ((vec3f_t){0.76f, 0.75f, 0.74f})
-#define WALL_RED       ((vec3f_t){0.63f, 0.065f, 0.05f})
-#define WALL_GREEN     ((vec3f_t){0.14f, 0.45f, 0.091f})
-#define BOX_ALBEDO     ((vec3f_t){0.78f, 0.78f, 0.75f})
+#define WALL_WHITE     ((vec3_t){0.76f, 0.75f, 0.74f})
+#define WALL_RED       ((vec3_t){0.63f, 0.065f, 0.05f})
+#define WALL_GREEN     ((vec3_t){0.14f, 0.45f, 0.091f})
+#define BOX_ALBEDO     ((vec3_t){0.78f, 0.78f, 0.75f})
 
 /* sin/cos of 17 degrees, computed once here rather than by a trig call on
  * every ray/box test. */
 #define BOX_YAW_SIN    0.29237170472f
 #define BOX_YAW_COS    0.95630475596f
 
-const vec3f_t rt_cornell_light_pos = {0.0f, ROOM_HEIGHT - 0.05f, LIGHT_CENTER_Z};
+const vec3_t rt_cornell_light_pos = {0.0f, ROOM_HEIGHT - 0.05f, LIGHT_CENTER_Z};
 
 static const rt_wall_t light_quad = {
     {0.0f, -1.0f, 0.0f},           -ROOM_HEIGHT,       -LIGHT_HALF_X, LIGHT_HALF_X, LIGHT_CENTER_Z - LIGHT_HALF_Z,
