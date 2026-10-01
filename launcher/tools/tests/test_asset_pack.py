@@ -4,7 +4,6 @@ suite, suite_asset_pack.c; this one proves what the tools write is what that
 reads."""
 
 import pathlib
-import re
 import struct
 import sys
 import tempfile
@@ -15,7 +14,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from asset import asset_pack  # noqa: E402
 from asset.asset_pack import PackError, build_pack as make_pack, parse_pack  # noqa: E402
 from r3d import build_pack  # noqa: E402
-from r3d.import_settings import SettingsError  # noqa: E402
+from r3d.import_settings import SettingsError, load_scene  # noqa: E402
+from r3d.scene_table import mesh_ids  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 LIT_MESH = b"LMSH"
@@ -155,13 +155,13 @@ class TreeTests(unittest.TestCase):
 
     def test_every_mesh_a_scene_table_names_is_in_the_committed_pack(self):
         names = parse_pack(build_pack.pack_bytes([build_pack.DEFAULT_SEARCH]))
-        tables = sorted((REPO / "launcher" / "main").rglob("*_scene_generated.c"))
-        self.assertTrue(tables, "no scene table found: the tree test would pass for nothing")
-        for table in tables:
-            ids = re.findall(r'^\s*\{"([^"]+)", &\w+\},$', table.read_text(), re.M)
-            self.assertTrue(ids, f"{table.name} names no mesh")
+        scenes = sorted((REPO / "launcher" / "main").rglob("*.scene.toml"))
+        self.assertTrue(scenes, "no scene file found: the tree test would pass for nothing")
+        for path in scenes:
+            ids = mesh_ids(load_scene(path))
+            self.assertTrue(ids, f"{path.name} names no mesh")
             for mesh in ids:
-                self.assertIn(mesh, names, f"{table.name} names mesh {mesh!r}, which no baked mesh in the tree provides")
+                self.assertIn(mesh, names, f"{path.name} names mesh {mesh!r}, which no baked mesh in the tree provides")
                 self.assertEqual(names[mesh][0], LIT_MESH)
 
 

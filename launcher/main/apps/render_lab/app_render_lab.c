@@ -21,6 +21,7 @@
 #include "render_lab_mode_switch.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
+#include "scene/scene.h"
 #include "ui/render_lab_hud_screen.h"
 #include "ui/render_lab_menu_screen.h"
 #include "ui/ui.h"
@@ -396,6 +397,7 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
      * repaints the scene from scratch. */
     if (input->boot.pressed) {
         menu_open = !menu_open;
+        scene_set_paused(menu_open);
         gfx_invalidate();
 
         if (menu_open) {

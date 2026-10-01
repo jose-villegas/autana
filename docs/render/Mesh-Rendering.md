@@ -23,7 +23,7 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | `camera_t` | A pinhole camera in model units: eye, look direction, lens, near plane |
 | `viewport_t` | The picture's size and the quarter turn the panel is read at; the ray and line cameras take one, and `raster_draw()` builds its own from the size and the quarter |
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
-| `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and a destination picture at least as large |
+| `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
 | `raster_draw()` | Draws every instance through a camera, turned for the panel's quarter |
 | `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the glTF animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
@@ -95,7 +95,7 @@ flowchart LR
 ```
 
 A caller fills a camera, then calls `raster_draw()`, and
-`raster_upscale()` when it set `destination`. The stages inside are
+`raster_upscale()` when it set `upscaled`. The stages inside are
 `r3d_pipeline.h`'s, for a suite or tool that schedules them itself.
 
 The stages are split so two cores can share them. Transforming disjoint

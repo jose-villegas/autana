@@ -40,6 +40,9 @@ main/render/upscale.c
 main/anim/anim_track.c
 main/render/r3d_span.c
 main/render/r3d_scene.c
+main/scene/scene.c
+main/scene/scene_draw.c
+main/scene/scene_shell.c
 main/render/r3d_lit_mesh.c
 main/asset/asset_pack.c
 main/asset/asset_file.c
