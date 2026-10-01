@@ -1,7 +1,6 @@
 /*
  * Portable suite: the asset pack container (asset/asset_pack.h), the lit mesh
- * view built from an entry (render/r3d_lit_mesh.h) and a scene's binding of
- * mesh ids to a pack. Each test builds its own small pack byte by byte, so a
+ * view built from an entry (render/r3d_lit_mesh.h). Each test builds its own small pack byte by byte, so a
  * check never leans on what the committed pack holds; the last tests open
  * that one, which is the file the host reader and the device partition share.
  */
@@ -16,7 +15,6 @@
 #include "asset/asset_pack.h"
 #include "asset/asset_store.h"
 #include "render/r3d_lit_mesh.h"
-#include "render/r3d_scene.h"
 
 #ifndef DEVICE_BUILD
 #include "asset/asset_file.h"
@@ -272,26 +270,6 @@ test_a_cluster_or_node_range_outside_the_mesh_is_refused(void) {
     release(&f);
 }
 
-static r3d_lit_mesh_t scene_mesh;
-static const r3d_scene_mesh_t scene_meshes[] = {{"tri", &scene_mesh}, {"gone", &scene_mesh}};
-static const r3d_scene_assets_t scene_assets = {.meshes = scene_meshes, .count = 2};
-
-static void
-test_a_scene_naming_a_missing_mesh_fails_with_that_id(void) {
-    fixture_t f = fixture();
-    asset_pack_t pack;
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, f.pack, f.total));
-    const char* failed = NULL;
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, r3d_scene_bind(&pack, &scene_assets, &failed));
-    TEST_ASSERT_EQUAL_STRING("gone", failed);
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, r3d_scene_bind(NULL, &scene_assets, &failed));
-    TEST_ASSERT_EQUAL_STRING("tri", failed);
-    const r3d_scene_assets_t only_tri = {.meshes = scene_meshes, .count = 1};
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_scene_bind(&pack, &only_tri, &failed));
-    TEST_ASSERT_NULL(failed);
-    release(&f);
-}
-
 /* What the shipped pack must hold: the file the host reads and the partition
  * the device maps. */
 static void
@@ -414,7 +392,6 @@ suite_asset_pack(void) {
     RUN_TEST(test_a_missing_id_and_a_wrong_type_are_told_apart);
     RUN_TEST(test_a_mesh_array_outside_its_entry_is_refused);
     RUN_TEST(test_a_cluster_or_node_range_outside_the_mesh_is_refused);
-    RUN_TEST(test_a_scene_naming_a_missing_mesh_fails_with_that_id);
     RUN_TEST(test_an_entry_row_is_read_by_its_index_and_an_index_past_the_table_is_not_found);
     RUN_TEST(test_a_base_that_is_not_16_byte_aligned_is_refused);
     RUN_TEST(test_a_header_with_reserved_bytes_in_use_is_refused);

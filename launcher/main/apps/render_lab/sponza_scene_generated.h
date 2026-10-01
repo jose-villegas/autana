@@ -6,10 +6,11 @@
 
 #pragma once
 
-#include "render/r3d_scene.h"
+#include "scene/scene.h"
 
-extern const r3d_instance_t sponza_scene_atrium;
-extern const r3d_instance_t sponza_scene_atrium_flat;
-extern const r3d_instance_t sponza_scene_atrium_lite;
-extern const r3d_scene_assets_t sponza_scene_assets;
-extern const r3d_scene_camera_t sponza_scene_camera;
+extern const scene_def_t sponza_scene;
+
+#define SPONZA_SCENE_CAMERA ((scene_entity_t)0)
+#define SPONZA_SCENE_ATRIUM ((scene_entity_t)1)
+#define SPONZA_SCENE_ATRIUM_FLAT ((scene_entity_t)2)
+#define SPONZA_SCENE_ATRIUM_LITE ((scene_entity_t)3)

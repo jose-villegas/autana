@@ -1,10 +1,11 @@
 /*
  * scene_sponza: Crytek Sponza flown through on a looping camera path.
  *
- * Light is baked into the mesh, so a frame is only cull, transform, clip and
- * fill on both cores. Three scenes share this code, one per bake: full, lite
- * and flat. It renders into its own PSRAM target and upscales into the
- * framebuffer.
+ * The scene manager owns the frame: this loads the scene, shows one of its
+ * three bakes and draws the HUD, while the shell advances the camera and
+ * draws it. Light is baked into the mesh, so a frame is only cull, transform,
+ * clip and fill on both cores. Three scenes share this code, one per bake:
+ * full, lite and flat.
  */
 
 #include <assert.h>
@@ -13,16 +14,13 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "esp_heap_caps.h"
 #include "esp_log.h"
 
-#include "display/display.h"
 #include "gfx/gfx.h"
-#include "render/r3d.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
-#include "sponza_flythrough.h"
+#include "scene/scene.h"
 #include "sponza_scene_generated.h"
 #include "util/tune.h"
 
@@ -30,119 +28,88 @@
 
 static const char* TAG = "sponza";
 
-static raster_t raster; /* holds its scratch from enter() to exit() */
-static raster_stats_t stats;
-static uint32_t elapsed_ms;
-static bool rendered; /* update() drew the raster, which frame() has not upscaled yet */
+static scene_t* sponza;
 
 /* What the panel says in place of the triangle count when the scene could not
- * open its meshes; empty when it could. */
+ * load; empty when it could. */
 static char failure[48];
 
-/* Points the scene's three instances at their meshes in the asset pack. */
-static bool
-bind_meshes(void) {
-    const char* failed = NULL;
-    const asset_status_t status = sponza_open_meshes(&failed);
-    failure[0] = '\0';
-    if (status == ASSET_OK) {
-        return true;
+static void
+record_failure(const scene_failure_t* why) {
+    const char* what = why->what == NULL ? "?" : why->what;
+    ESP_LOGE(TAG, "scene '%s' did not load (%d, asset %s); it stays blank", what, (int)why->status,
+             asset_status_text(why->asset));
+    const bool missing = why->asset == ASSET_ERR_NOT_FOUND || why->asset == ASSET_ERR_NO_PACK;
+    const char* shown = "bad asset '%s'";
+    switch (why->status) {
+        case SCENE_ERR_MEMORY: shown = "no memory for '%s'"; break;
+        case SCENE_ERR_FULL: shown = "too many scenes for '%s'"; break;
+        case SCENE_ERR_ASSET: shown = missing ? "no asset '%s': flash it" : "bad asset '%s'"; break;
+        case SCENE_ERR_UNKNOWN:
+        case SCENE_OK: shown = "no scene '%s'"; break;
     }
-    ESP_LOGE(TAG, "mesh '%s': %s; the scene stays blank", failed == NULL ? "?" : failed, asset_status_text(status));
-    const bool missing = status == ASSET_ERR_NOT_FOUND || status == ASSET_ERR_NO_PACK;
-    if (snprintf(failure, sizeof failure, missing ? "no asset '%s': flash it" : "bad asset '%s'",
-                 failed == NULL ? "?" : failed)
-        < 0) {
+    if (snprintf(failure, sizeof failure, shown, what) < 0) {
         failure[0] = '\0';
     }
-    return false;
 }
 
-/* Draws one of the scene's mesh renderers, where the scene places it. */
+/* Loads the scene and shows `variant`, the one of its three bakes to draw. */
 static void
-enter_with(const r3d_instance_t* placed) {
+enter_with(scene_entity_t variant) {
     gfx_set_partial_clear(false);
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
-    elapsed_ms = 0;
-    rendered = false;
-    if (!bind_meshes()) {
+    failure[0] = '\0';
+    scene_failure_t why;
+    sponza = scene_load("sponza", &why);
+    if (sponza == NULL) {
+        record_failure(&why);
         return;
     }
-
-    raster = (raster_t){
-        .instances = placed,
-        .instance_count = 1,
-        .width = GFX_WIDTH * 100 / render_lab_scale(),
-        .height = GFX_HEIGHT * 100 / render_lab_scale(),
-        .clear = GFX_RGB(SKY_RGB),
-        .destination = gfx_framebuffer(),
-        .destination_width = GFX_WIDTH,
-        .destination_height = GFX_HEIGHT,
-    };
-    const size_t bytes = raster_scratch_bytes(&raster);
-    raster.scratch = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (raster.scratch == NULL) {
-        ESP_LOGE(TAG, "no %u bytes of PSRAM for the frame: the scene stays blank", (unsigned)bytes);
+    const scene_entity_t bakes[] = {SPONZA_SCENE_ATRIUM, SPONZA_SCENE_ATRIUM_FLAT, SPONZA_SCENE_ATRIUM_LITE};
+    for (size_t i = 0; i < sizeof bakes / sizeof bakes[0]; i++) {
+        scene_entity_set_enabled(sponza, bakes[i], bakes[i] == variant);
     }
+    (void)scene_activate(sponza, NULL);
+    scene_set_clear(SKY_RGB);
+    scene_set_render_scale(10000 / render_lab_scale());
+#if TUNE_ENABLED
+    scene_set_debug_view(render_lab_view());
+#endif
 }
 
 static void
 scene_sponza_enter(void) {
-    enter_with(&sponza_scene_atrium);
+    enter_with(SPONZA_SCENE_ATRIUM);
 }
 
 static void
 scene_sponza_lite_enter(void) {
-    enter_with(&sponza_scene_atrium_lite);
+    enter_with(SPONZA_SCENE_ATRIUM_LITE);
 }
 
 static void
 scene_sponza_flat_enter(void) {
-    enter_with(&sponza_scene_atrium_flat);
+    enter_with(SPONZA_SCENE_ATRIUM_FLAT);
 }
 
 static void
 scene_sponza_exit(void) {
-    heap_caps_free(raster.scratch);
-    raster.scratch = NULL;
+    scene_unload(sponza);
+    sponza = NULL;
 }
 
 /* Every frame already redraws the whole screen. */
 static void
 scene_sponza_invalidate(void) {}
 
-/* Everything but the framebuffer: runs while the last frame is still
- * being sent, so it names no gfx call. */
-static void
-render(uint32_t dt_ms) {
-    elapsed_ms += dt_ms;
-    const camera_t camera = sponza_camera_at(elapsed_ms);
-    stats = raster_draw(&raster, &camera, display_shell_quarter());
-#if TUNE_ENABLED
-    raster_show(&raster, render_lab_view());
-#endif
-    rendered = true;
-}
-
-static void
-scene_sponza_update(uint32_t dt_ms) {
-    if (raster.scratch != NULL) {
-        render(dt_ms);
-    }
-}
-
+/* The shell has already drawn the scene into the framebuffer. */
 static void
 scene_sponza_frame(uint32_t dt_ms, bool band_mode_active) {
+    (void)dt_ms;
     assert(!band_mode_active); /* needs_full_framebuffer keeps the app out of band mode for this scene */
-    if (raster.scratch == NULL) {
-        return;
-    }
-    if (!rendered) {
-        render(dt_ms); /* no update() ran since the last frame: the first after entering */
-    }
-    raster_upscale(&raster);
-    rendered = false;
-    gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
+#if TUNE_ENABLED
+    scene_set_debug_view(render_lab_view());
+#endif
 }
 
 static const char*
@@ -151,7 +118,7 @@ sponza_status(void) {
     if (failure[0] != '\0') {
         return failure;
     }
-    if (snprintf(buf, sizeof buf, "%5d tris", stats.triangles) < 0) {
+    if (snprintf(buf, sizeof buf, "%5d tris", scene_stats().triangles) < 0) {
         buf[0] = '\0';
     }
     return buf;
@@ -162,7 +129,7 @@ const render_lab_scene_t scene_sponza = {
     .key = "sponza",
     .enter = scene_sponza_enter,
     .frame = scene_sponza_frame,
-    .update = scene_sponza_update,
+    .update = NULL,
     .frame_band = NULL,
     .exit = scene_sponza_exit,
     .invalidate = scene_sponza_invalidate,
@@ -176,7 +143,7 @@ const render_lab_scene_t scene_sponza_lite = {
     .key = "sponza-lite",
     .enter = scene_sponza_lite_enter,
     .frame = scene_sponza_frame,
-    .update = scene_sponza_update,
+    .update = NULL,
     .frame_band = NULL,
     .exit = scene_sponza_exit,
     .invalidate = scene_sponza_invalidate,
@@ -190,7 +157,7 @@ const render_lab_scene_t scene_sponza_flat = {
     .key = "sponza-flat",
     .enter = scene_sponza_flat_enter,
     .frame = scene_sponza_frame,
-    .update = scene_sponza_update,
+    .update = NULL,
     .frame_band = NULL,
     .exit = scene_sponza_exit,
     .invalidate = scene_sponza_invalidate,
