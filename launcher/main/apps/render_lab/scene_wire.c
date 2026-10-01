@@ -124,7 +124,7 @@ wire_advance_pose(uint32_t dt_ms) {
     camera.pose.translation.y = (current_orbit_distance * WIRE_ELEVATION_SIN) / VEC4I_ONE;
     camera.pose.translation.z = -(current_orbit_distance * WIRE_ELEVATION_COS) / VEC4I_ONE;
     camera.pose.rotation.x = -WIRE_ELEVATION_ANGLE;
-    camera = r3d_line_camera_upright(camera, display_shell_quarter());
+    camera = r3d_line_camera_upright(camera, display_quarter_now());
 
     const viewport_t viewport = {.width = GFX_WIDTH, .height = GFX_HEIGHT, .quarter = 0};
     current_view = r3d_line_camera_view(camera, world, viewport);

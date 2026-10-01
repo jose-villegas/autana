@@ -272,7 +272,7 @@ static int screen_w;
 static int screen_h;
 
 int
-display_shell_quarter(void) {
+display_quarter_now(void) {
     return 0;
 }
 
