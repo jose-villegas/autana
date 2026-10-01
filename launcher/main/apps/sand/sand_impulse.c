@@ -303,7 +303,14 @@ displace_disc(sand_t* s, int cx, int cy, int radius, int mat_filter, bool guaran
     const int disc_count = sand_disc_count(radius);
     const int room = s->impulse_max - s->impulse_count;
     const int keep = (disc_count < room) ? disc_count : room;
-    disc_walk_t walk = {s, cx, cy, r2, disc_count, keep, 0, mat_filter};
+    disc_walk_t walk = {.s = s,
+                        .cx = cx,
+                        .cy = cy,
+                        .r2 = r2,
+                        .disc_count = disc_count,
+                        .keep = keep,
+                        .accum = 0,
+                        .mat_filter = mat_filter};
 
     queue_outward_impulse(&walk, 0, 0);
     for (int ring = 1; ring <= radius; ring++) {

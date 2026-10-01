@@ -2,7 +2,7 @@
 """Fail if an app's deepest call chain outgrew its main-task stack budget.
 
 The shell's frame loop and every test run on the ESP-IDF main task, whose
-stack is 3,584 bytes; a test must end with 512 free, and a frame loop that
+stack is 3,584 bytes; a test must end with the reserve timing.c names free, and a frame loop that
 overflows resets the chip. Neither shows on the host, whose stack is
 megabytes and whose frames differ.
 
@@ -10,7 +10,7 @@ An app opts in with launcher/main/apps/<name>/stack_chain.txt:
 
     # comments
     root     <function> <budget bytes>
-    indirect <caller> <callee>
+    indirect <caller>... : <callee>...
 
 This recompiles that app's sources with the diagnostics image's own compiler
 and flags (build.diag/compile_commands.json) plus -fstack-usage and
@@ -20,11 +20,11 @@ frames GCC reports. Nothing is linked or flashed.
 The call graph cannot see a call through a function pointer, so the app
 declares each one as an `indirect` edge, and the gate is closed on both
 sides: a function reachable from a root that makes a pointer call at a
-source line no declaration covers fails, and so does a declaration whose
-caller or callee is not in the graph. GCC also lists calls it expands late,
-such as library helpers and calls to other layers, with no source location;
-those carry no frame of the app's own and are not followed. A frame that is
-not a fixed size fails the gate too.
+source line no declaration names as a caller fails, and so does a declaration
+whose caller or callee is not in the graph. The gate cannot know a pointer's
+targets, so a new target must be added to the list by hand. GCC also lists
+block copies and zeroing it expands late (memcpy, memset) with no source
+location; those are not followed. A frame that is not a fixed size fails too.
 
     launcher/tools/quality/stack_chain_gate.py [build-dir]
 """
@@ -42,6 +42,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 LAUNCHER = os.path.normpath(os.path.join(HERE, "..", ".."))
 MAIN_DIR = os.path.join(LAUNCHER, "main")
 CHECKER = os.path.join(LAUNCHER, "test", "check_stack_usage.py")
+TIMING = os.path.join(LAUNCHER, "test", "timing.c")
+
+
+def stack_reserve():
+    """The bytes a test must leave free: timing.c's own constant."""
+    with open(TIMING, "r", encoding="utf-8") as fh:
+        m = re.search(r"#define STACK_RESERVE_BYTES (\d+)U", fh.read())
+    if not m:
+        raise SpecError("STACK_RESERVE_BYTES not found in %s" % TIMING)
+    return int(m.group(1))
 
 NODE_RE = re.compile(r'node: \{ title: "([^"]*)" label: "([^"]*)"')
 EDGE_RE = re.compile(r'edge: \{ sourcename: "([^"]*)" targetname: "([^"]*)"( label:)?')
@@ -62,11 +72,16 @@ def read_spec(path):
                 continue
             if words[0] == "root" and len(words) == 3 and words[2].isdigit():
                 roots.append((words[1], int(words[2])))
-            elif words[0] == "indirect" and len(words) == 3:
-                indirect.append((words[1], words[2]))
+            elif words[0] == "indirect" and words.count(":") == 1:
+                split = words.index(":")
+                callers, callees = words[1:split], words[split + 1:]
+                if not callers or not callees:
+                    raise SpecError("%s:%d: 'indirect' needs both sides"
+                                    % (path, no))
+                indirect.extend((a, b) for a in callers for b in callees)
             else:
-                raise SpecError("%s:%d: not 'root F BYTES' or 'indirect A B'"
-                                % (path, no))
+                raise SpecError("%s:%d: not 'root F BYTES' or 'indirect "
+                                "A... : B...'" % (path, no))
     if not roots:
         raise SpecError("%s: no root" % path)
     return roots, indirect
@@ -136,7 +151,7 @@ def reachable(roots, calls):
     return seen
 
 
-def check_app(name, spec_path, ci_paths, stack_bytes):
+def check_app(name, spec_path, ci_paths, stack_bytes, reserve):
     roots, declared = read_spec(spec_path)
     frame, calls, pointer_callers, bad = parse_graph(ci_paths)
     problems = []
@@ -175,10 +190,10 @@ def check_app(name, spec_path, ci_paths, stack_bytes):
                           for n in chain)))
         if total > budget:
             problems.append("%s() chain is %d bytes over its %d-byte budget; "
-                            "the main task has %d and a test must leave 512 "
+                            "the main task has %d and a test must leave %d "
                             "free. Shrink the frames above rather than raise "
                             "the budget" % (root, total - budget, budget,
-                                            stack_bytes))
+                                            stack_bytes, reserve))
     return problems
 
 
@@ -267,7 +282,8 @@ def main(argv):
 
         ci_paths = sorted(glob.glob(os.path.join(out, "*.ci")))
         try:
-            problems = check_app(name, spec, ci_paths, stack_bytes)
+            problems = check_app(name, spec, ci_paths, stack_bytes,
+                                  stack_reserve())
         except SpecError as exc:
             problems = [str(exc)]
         for problem in problems:
