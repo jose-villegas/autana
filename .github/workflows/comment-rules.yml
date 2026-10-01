@@ -8,7 +8,8 @@ name: Comment Rules
 # Alongside it, the tree-wide invariants documentation and tooling must
 # hold: every citation, down to a named section, resolves, constants match
 # source, and nothing outside scripts/device/ opens the board's serial port
-# or names one of the board scripts the tree no longer has.
+# or names one of the board scripts the tree no longer has, and the shell's
+# main.c includes and calls no firmware, only the modules that own it.
 # check_style_audit.py holds the remaining decidable text and include
 # rules, one decorated function each; its docstring says what was left
 # out because a script cannot judge it reliably.
@@ -61,6 +62,9 @@ jobs:
 
       - name: The board is reached only through scripts/device/
         run: python3 scripts/gates/check_device_access.py
+
+      - name: main.c includes and calls no firmware
+        run: python3 scripts/gates/check_shell_firmware.py
 
       - name: No tracker id, personal path, or misdirected include is tracked
         run: python3 scripts/gates/check_style_audit.py
