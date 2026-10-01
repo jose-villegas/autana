@@ -181,7 +181,7 @@ test_both_ends_in_front_matches_projecting_each_point(void) {
     TEST_ASSERT_EQUAL_INT(ey1, by);
 }
 
-/* A point exactly at the camera plane divides by nothing; the pixel is a
+/* A point exactly at the camera plane divides by zero; the pixel is a
  * defined, far-off one, never an undefined float-to-int conversion. */
 static void
 test_a_point_at_the_camera_plane_projects_to_a_far_off_but_defined_pixel(void) {
