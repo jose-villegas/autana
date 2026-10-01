@@ -202,6 +202,27 @@ The fitted lite mesh beats the full mesh at half its triangles. Per shot
 trails path-averaged: each segment trains on eight poses, too few to
 generalise to the poses between them.
 
+```mermaid
+xychart-beta
+    title "Held-out poses: mean ΔE76 (7 poses, 5 to 35 s)"
+    x-axis ["Full", "Flat", "Lite", "Lite fitted, path", "Lite fitted, per shot"]
+    y-axis "Mean ΔE76, held-out" 0 --> 9
+    bar [7.197, 7.872, 8.133, 5.732, 6.270]
+```
+
+The path-averaged fit's loss on its training batches, each point the mean of
+the 51 steps around it: most of the gain is in by step 100 and the curve is
+flat by 300, so the 2000 steps run are many more than it needs. These are
+training numbers, on the poses the fit sees; the table above is held-out.
+
+```mermaid
+xychart-beta
+    title "Training batches: mean ΔE76 against fit step"
+    x-axis "Step" [0, 25, 50, 100, 150, 200, 300, 400, 600, 800, 1000, 1500, 2000]
+    y-axis "Mean ΔE76, training" 4.5 --> 6.5
+    line [6.21, 5.79, 5.27, 5.09, 5.08, 5.06, 5.04, 5.02, 5.00, 5.00, 4.98, 4.93, 4.92]
+```
+
 Two held-out poses, 5 s and 25 s. Left to right, the simplifier's lite mesh,
 the fitted one and their difference; then the places they differ most,
 enlarged, lite above fitted. The fit sharpens the sun's shadow edge on the
