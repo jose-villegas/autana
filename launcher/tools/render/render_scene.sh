@@ -161,8 +161,17 @@ render_scene_build() {
     done
 
     _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c $_rs_tools/render/render_watch.c"
+    # RENDER_SCENE_SUBSTITUTE, space separated <source>=<file> pairs, builds
+    # <file> in place of a listed source: a scratch bake of a mesh, rendered
+    # without touching the tracked one.
     for _rs_src in $scene_sources; do
-        _rs_files="$_rs_files $_rs_launcher/$_rs_src"
+        _rs_pick="$_rs_launcher/$_rs_src"
+        for _rs_sub in ${RENDER_SCENE_SUBSTITUTE:-}; do
+            if [ "${_rs_sub%%=*}" = "$_rs_src" ]; then
+                _rs_pick=${_rs_sub#*=}
+            fi
+        done
+        _rs_files="$_rs_files $_rs_pick"
     done
 
     # -lm LAST, after the sources, because GNU ld resolves left to right and

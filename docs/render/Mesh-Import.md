@@ -161,20 +161,86 @@ the source reference; its heatmap maps zero ΔE to black, then yellow to red by
 ΔE 50. The commands and output forms are in
 [`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md#fidelity-reference).
 
-On the camera-path poses in `sponza.scene.toml`, the current host renders
-score as follows against the four-by-four source reference:
+On the eight camera-path poses of `sponza.scene.toml`, scored against the
+four-by-four source reference, each row's flat bake re-lit from the same
+simplified geometry (`bake_fidelity.py`, below). Edge pixels are those on or
+beside a sharp luma step in the reference, 14% of the frame:
 
-| Variant | Mean ΔE76 | p95 ΔE76 | Luma SSIM |
-|---|---:|---:|---:|
-| Full smooth | 7.0687 | 21.7253 | 0.943939 |
-| Lite smooth | 7.9639 | 25.2697 | 0.922524 |
-| Flat adaptive | 7.6812 | 27.1285 | 0.936582 |
+| Variant | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 | Interior ΔE76 |
+|---|---:|---:|---:|---:|---:|
+| Full smooth | 7.069 | 21.73 | 0.9439 | 14.44 | 5.89 |
+| Lite smooth | 7.964 | 25.27 | 0.9225 | 16.51 | 6.59 |
+| Flat, 1 sample per face | 7.899 | 29.72 | 0.9353 | 17.00 | 6.43 |
+| Flat, 4 samples per face | 7.476 | 24.58 | 0.9428 | 15.66 | 6.16 |
+| Flat, adaptive (`auto` 1 to 16, median area) | 7.681 | 27.13 | 0.9366 | 16.61 | 6.24 |
+| Flat, 16 samples per face | 7.367 | 23.64 | 0.9447 | 15.18 | 6.12 |
 
-The flat-versus-full-smooth gap is mean ΔE76 5.5400, p95 ΔE76 22.9689 and
-SSIM 0.950007. It is the flat-shading ceiling: face sampling cannot remove
-the colour-gradient difference within a triangle. The flat heatmaps concentrate
-on lit arch edges, high-contrast shadow boundaries and the foreground drapery;
-large interior wall pixels stay comparatively dark.
+The flat-versus-full-smooth gap is mean ΔE76 5.540, p95 22.97 and SSIM 0.950.
+It is the flat-shading ceiling: face sampling cannot remove the colour
+gradient across a triangle. The error sits at lit arch edges, high-contrast
+shadow boundaries and the foreground drapery; large interior wall pixels stay
+dark in the heatmaps.
+
+## Sweeping the flat bake
+
+```sh
+tools/r3d/.cache/venv/Scripts/python tools/r3d/bake_fidelity.py SCENE.scene.toml --mesh FLAT_MESH     --script SCENE_HOST_RENDER.sh --render-args "--quarter 0 --no-hud --scene FLAT_SCENE --frames 8 --dt 5000"     --reference reference --work scratch     --variant fixed4=samples=fixed:4 --variant sky64=sky=64,place=centroid
+```
+
+The tool bakes the simplified geometry once, then re-lights it per variant,
+builds the scene's host renderer with that mesh in place of the tracked one
+(`RENDER_SCENE_SUBSTITUTE` in `render_scene.sh`), renders the poses and
+scores them, so nothing tracked changes. A variant is `samples=fixed:N` or
+`auto:MIN:MAX:AREA` (`median*K` for AREA), `sky=N`, `place=stratified|centroid`
+and `sun=disc|centre`. Without `--variant` the mesh is baked as its import file
+declares it, byte for byte the tracked bake.
+
+Sorted by mean ΔE76 against the same reference:
+
+| Variant | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 |
+|---|---:|---:|---:|---:|
+| fixed 16 | 7.367 | 23.64 | 0.9447 | 15.18 |
+| fixed 64 | 7.372 | 23.55 | 0.9448 | 15.15 |
+| fixed 32 | 7.376 | 23.61 | 0.9449 | 15.14 |
+| fixed 8 | 7.417 | 23.90 | 0.9436 | 15.36 |
+| auto 8 to 32, area median/4 | 7.421 | 23.89 | 0.9439 | 15.35 |
+| auto 4 to 16 | 7.463 | 24.56 | 0.9429 | 15.65 |
+| fixed 4, sun centre only | 7.473 | 24.91 | 0.9402 | 15.96 |
+| fixed 4 | 7.476 | 24.58 | 0.9428 | 15.66 |
+| auto 1 to 16, area median/4 | 7.524 | 24.89 | 0.9400 | 15.86 |
+| auto 2 to 16 | 7.561 | 25.61 | 0.9395 | 16.08 |
+| auto 1 to 16, area median/2 | 7.641 | 25.88 | 0.9369 | 16.30 |
+| fixed 2 | 7.651 | 26.40 | 0.9390 | 16.16 |
+| auto 1 to 8 | 7.674 | 27.15 | 0.9366 | 16.61 |
+| sky 512 | 7.676 | 27.12 | 0.9366 | 16.60 |
+| tracked: auto 1 to 16, median, sky 128 | 7.681 | 27.13 | 0.9366 | 16.61 |
+| auto 1 to 32 | 7.681 | 27.13 | 0.9366 | 16.61 |
+| sky 256 | 7.688 | 27.12 | 0.9366 | 16.60 |
+| auto 1 to 4 | 7.694 | 27.25 | 0.9364 | 16.62 |
+| sky 64 | 7.787 | 27.14 | 0.9363 | 16.64 |
+| auto 1 to 16, area 2 x median | 7.803 | 28.92 | 0.9351 | 16.90 |
+| sun centre only | 7.854 | 28.42 | 0.9242 | 17.49 |
+| fixed 1, face centroid (any count) | 7.908 | 29.97 | 0.9338 | 17.07 |
+| sky 32 | 7.942 | 27.18 | 0.9359 | 16.68 |
+| sky 16 | 8.338 | 27.26 | 0.9344 | 16.74 |
+
+What moves the score:
+
+- **Samples per face** is the lever. The score converges at about 16 fixed
+  samples (7.367, SSIM 0.9447); more adds nothing. Raising the minimum helps
+  more than raising the maximum or the area, because most faces are small and
+  the adaptive count gives them one sample.
+- **Sky rays** are saturated at 128; fewer is worse, more is noise.
+- **Centroid placement** is worse than the stratified points, and takes every
+  count to the same colours.
+- **Sun at the centre** does not help: it makes every shadow edge hard, so a
+  face is fully lit or fully shaded where the disc would blend it.
+
+Edge error falls with samples, 16.61 to 15.18, but stays more than twice the
+interior error, 6.12, and the full smooth bake's own edge error is 14.44. The
+rest is structural: a face has one colour, so a boundary through it cannot be
+sampled away, and the simplified geometry misplaces silhouettes before light
+enters.
 
 ## Sealing seams
 
