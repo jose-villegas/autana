@@ -298,14 +298,19 @@ class SceneTests(unittest.TestCase):
             source = written[0].read_text()
             header = written[1].read_text()
             self.assertEqual([item.name for item in written], ["hall_scene_generated.c", "hall_scene_generated.h"])
-        self.assertIn("const r3d_instance_t hall_scene_a = {.mesh = &a_mesh, .placement = NULL};", source)
-        self.assertIn("const r3d_instance_t hall_scene_b = {.mesh = &b_mesh, .placement = &hall_scene_b_placement};", source)
+        self.assertIn("const r3d_instance_t hall_scene_a = {.mesh = &hall_scene_a_mesh, .placement = NULL};", source)
+        self.assertIn("const r3d_instance_t hall_scene_b = {.mesh = &hall_scene_b_mesh, .placement = &hall_scene_b_placement};",
+                      source)
+        self.assertIn('{"a", &hall_scene_a_mesh},', source)
+        self.assertIn('{"b", &hall_scene_b_mesh},', source)
+        self.assertNotIn("_mesh_generated.h", source)
         self.assertIn("{.m = {{2.0F, 0.0F, 0.0F}, {0.0F, 2.0F, 0.0F}, {0.0F, 0.0F, 2.0F}}, .position = {1.0F, 2.0F, 3.0F}}", source)
         self.assertIn(".clip = &flight_clip, .translation = &flight_rig_translation, .rotation = &flight_rig_rotation", source)
         self.assertIn("const r3d_scene_camera_t hall_scene_camera = {.half_fov_short_tan = 0.6F, .near_z = 1.0F, .placement = NULL, "
                       ".path = &hall_scene_camera_path};", source)
         self.assertIn("extern const r3d_instance_t hall_scene_a;", header)
         self.assertIn("extern const r3d_scene_camera_t hall_scene_camera;", header)
+        self.assertIn("extern const r3d_scene_assets_t hall_scene_assets;", header)
 
     def test_the_scene_table_holds_only_what_the_device_reads(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -348,10 +353,10 @@ class SceneTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class AuthoredImportTests(unittest.TestCase):
-    def bake(self, directory, body="", scene=False):
+    def bake(self, directory, body="", scene=False, output=OUTPUT):
         (pathlib.Path(directory) / "m.obj").write_text(CUBE)
         (pathlib.Path(directory) / "m.mtl").write_text("newmtl m\nKd 0.5 0.25 0.125\n")
-        path = write_import(directory, body=body)
+        path = write_import(directory, output=output, body=body)
         if scene:
             path = write_scene(directory, renderer(), name="mesh.scene.toml")
         with mock.patch("r3d.mesh_import.fetch_zip", return_value=pathlib.Path(directory)), \
@@ -365,20 +370,23 @@ class AuthoredImportTests(unittest.TestCase):
             for name in steps:
                 stack.enter_context(mock.patch(f"r3d.mesh_import.{name}", side_effect=AssertionError(name)))
             self.assertEqual(self.bake(directory), 0)
-            mesh = read_lit_mesh(pathlib.Path(directory) / "mesh_mesh_generated.c")
+            mesh = read_lit_mesh(pathlib.Path(directory) / "mesh.mesh")
         self.assertEqual(len(mesh.tris), 12)
         self.assertEqual(len(mesh.pos), 8)
 
     def test_a_scene_run_bakes_the_mesh_it_places(self):
         with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(self.bake(directory, scene=True), 0)
-            self.assertTrue((pathlib.Path(directory) / "mesh_mesh_generated.c").is_file())
+            self.assertTrue((pathlib.Path(directory) / "mesh.mesh").is_file())
 
-    def test_an_import_without_a_scene_dependent_step_bakes_alone_and_its_banner_names_it(self):
+    def test_an_import_writes_its_mesh_beside_the_import_file_not_in_the_output_directory(self):
         with tempfile.TemporaryDirectory() as directory:
-            self.assertEqual(self.bake(directory), 0)
-            banner = (pathlib.Path(directory) / "mesh_mesh_generated.c").read_text()[:400]
-        self.assertIn("mesh_import.py mesh.import.toml --mesh mesh", banner)
+            pathlib.Path(directory, "generated").mkdir()
+            self.assertEqual(self.bake(directory, output='[output]\ndirectory = "generated"\nname = "mesh"\n'), 0)
+            beside = (pathlib.Path(directory) / "mesh.mesh").is_file()
+            elsewhere = list(pathlib.Path(directory, "generated").iterdir())
+        self.assertTrue(beside)
+        self.assertEqual(elsewhere, [])
 
     def test_a_scene_dependent_import_refuses_to_bake_alone(self):
         with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stderr(io.StringIO()) as error:
@@ -389,7 +397,7 @@ class AuthoredImportTests(unittest.TestCase):
     def test_unlit_colour_is_the_material_albedo(self):
         with tempfile.TemporaryDirectory() as directory:
             self.bake(directory)
-            mesh = read_lit_mesh(pathlib.Path(directory) / "mesh_mesh_generated.c")
+            mesh = read_lit_mesh(pathlib.Path(directory) / "mesh.mesh")
         target = 255.0 * np.array([0.5, 0.25, 0.125])
         self.assertTrue((np.abs(mesh.rgb - target) <= 8).all(), mesh.rgb[:2])
 

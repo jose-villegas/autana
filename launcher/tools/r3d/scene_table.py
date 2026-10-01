@@ -7,7 +7,9 @@ Standard library only, and independent of baking: it reads the scene file and
 its import files and writes <scene>_scene_generated.c and .h beside the meshes.
 The table holds only what the device reads: one const r3d_instance_t per mesh
 renderer, named <scene>_scene_<object>, so a misspelt object fails at link
-time, and the camera's lens, placement and path. Lights, the camera region and
+time, and the camera's lens, placement and path. A mesh is named by its asset
+id, not linked: <scene>_scene_assets lists each id with the view
+r3d_scene_bind() fills from the pack, and a missing id fails there. Lights, the camera region and
 the tone map are bake settings and stay offline. The placements are baked as a
 3x3 (rotation times scale) and a position, so the device does no trigonometry.
 """
@@ -76,14 +78,17 @@ def table_source(scene, banner):
     camera = scene.camera
     path = camera.component.path if camera else None
     lines = [banner, "", "#include <stddef.h>", "", f'#include "{name}_generated.h"', ""]
-    includes = sorted({f"{item.variant.name}_mesh_generated.h" for item in scene.renderers})
     if path:
-        includes.append(f"{path.tracks}_tracks_generated.h")
-    lines += [f'#include "{include}"' for include in includes] + [""]
+        lines += [f'#include "{path.tracks}_tracks_generated.h"', ""]
     for item in scene.renderers:
         obj = item.object
         refer = statics(scene, obj, obj.name, lines)
-        lines += [f"const r3d_instance_t {name}_{obj.name} = {{.mesh = &{item.variant.name}_mesh, .placement = {refer}}};", ""]
+        lines += [f"static r3d_lit_mesh_t {name}_{obj.name}_mesh;",
+                  f"const r3d_instance_t {name}_{obj.name} = {{.mesh = &{name}_{obj.name}_mesh, .placement = {refer}}};", ""]
+    lines += [f"static const r3d_scene_mesh_t {name}_meshes[] = {{"]
+    lines += [f'    {{"{item.variant.name}", &{name}_{item.object.name}_mesh}},' for item in scene.renderers]
+    lines += ["};", "", f"const r3d_scene_assets_t {name}_assets = {{.meshes = {name}_meshes, "
+              f".count = (int)(sizeof {name}_meshes / sizeof {name}_meshes[0])}};", ""]
     if camera:
         refer = statics(scene, camera, camera.name, lines)
         component = camera.component
@@ -101,6 +106,7 @@ def header_source(scene, banner):
     name = table_symbol(scene)
     lines = [banner, "", "#pragma once", "", '#include "render/r3d_scene.h"', ""]
     lines += [f"extern const r3d_instance_t {name}_{item.object.name};" for item in scene.renderers]
+    lines.append(f"extern const r3d_scene_assets_t {name}_assets;")
     if scene.camera:
         lines.append(f"extern const r3d_scene_camera_t {name}_{scene.camera.name};")
     return "\n".join(lines) + "\n"

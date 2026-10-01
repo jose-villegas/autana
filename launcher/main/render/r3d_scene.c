@@ -36,3 +36,17 @@ r3d_scene_camera_at(const r3d_scene_camera_t* camera, uint32_t t_ms) {
     r3d_scene_camera_sample(camera, t_ms, &out.eye, &out.forward);
     return out;
 }
+
+asset_status_t
+r3d_scene_bind(const asset_pack_t* pack, const r3d_scene_assets_t* assets, const char** failed) {
+    const char* culprit = NULL;
+    asset_status_t status = ASSET_OK;
+    for (int i = 0; i < assets->count && status == ASSET_OK; i++) {
+        culprit = assets->meshes[i].asset;
+        status = pack == NULL ? ASSET_ERR_NO_PACK : r3d_lit_mesh_open(pack, culprit, assets->meshes[i].mesh);
+    }
+    if (failed != NULL) {
+        *failed = status == ASSET_OK ? NULL : culprit;
+    }
+    return status;
+}
