@@ -101,6 +101,83 @@ surfaces keep their colour.
 Flat shows each face in one colour, so a curtain's fold reads as bands where
 the smooth mesh blends.
 
+## Fidelity against the source
+
+How far each Sponza bake is from the source model lit per pixel, over the eight
+camera-path poses, and which flat-bake settings get closest. What the numbers
+mean is in [Mesh-Import.md](../../../../../docs/render/Mesh-Import.md#fidelity-against-a-reference);
+the commands, working directory `launcher/`, are in
+[the r3d tools README](../../../../tools/r3d/README.md#fidelity-reference).
+`PY` is the venv's interpreter.
+
+```sh
+M=main/apps/render_lab
+H=$M/tools/render_lab_render_host.sh
+tools/anim/sample_tracks.sh --tracks $M/flythrough_tracks_generated.c:flythrough --every 5000 --until 40000     --poses camera 184 224 0.62 6 > poses.txt
+$PY tools/r3d/reference_render.py $M/meshes/sponza.scene.toml --poses poses.txt --skip 1 --out reference --samples 4
+$PY tools/r3d/bake_fidelity.py $M/meshes/sponza.scene.toml --mesh sponza_flat --script $H     --render-args "--quarter 0 --no-hud --scene sponza-flat --frames 8 --dt 5000"     --reference reference --work scratch     --variant declared= --variant fixed1=samples=fixed:1 --variant fixed4=samples=fixed:4     --variant fixed8=samples=fixed:8 --variant fixed16=samples=fixed:16 --variant fixed32=samples=fixed:32     --variant fixed64=samples=fixed:64 --variant fixed2=samples=fixed:2     --variant min2=samples=auto:2:16:median --variant min4=samples=auto:4:16:median     --variant max4=samples=auto:1:4:median --variant max8=samples=auto:1:8:median     --variant max32=samples=auto:1:32:median --variant area0.25=samples=auto:1:16:median*0.25     --variant area0.5=samples=auto:1:16:median*0.5 --variant area2=samples=auto:1:16:median*2     --variant sky16=sky=16 --variant sky32=sky=32 --variant sky64=sky=64 --variant sky256=sky=256     --variant sky512=sky=512 --variant centroid=place=centroid --variant sun-centre=sun=centre     --variant fixed4-sun-centre=samples=fixed:4,sun=centre
+```
+
+It prints the sweep table below. The smooth and lite rows are the committed
+scenes scored the same way: `sh $H -o host` renders each scene's video
+(`render_lab_render --quarter 0 --no-hud --scene sponza --frames 8 --dt 5000
+--video full.avi`, likewise `sponza-lite`) and `render_compare.py --reference-video`
+scores it. The sheet is `--reference-sheet fidelity.png --sheet-frames 2,4` on
+the committed flat render.
+
+| Variant | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 | Interior ΔE76 |
+|---|---:|---:|---:|---:|---:|
+| Full smooth | 7.069 | 21.73 | 0.690 | 14.44 | 5.89 |
+| Lite smooth | 7.964 | 25.27 | 0.647 | 16.51 | 6.59 |
+| Flat, 1 sample per face | 7.899 | 29.72 | 0.640 | 17.00 | 6.43 |
+| Flat, 4 samples per face | 7.476 | 24.58 | 0.653 | 15.66 | 6.16 |
+| Flat, committed (`auto` 1 to 16, median area) | 7.681 | 27.13 | 0.647 | 16.61 | 6.24 |
+| Flat, 16 samples per face | 7.367 | 23.64 | 0.657 | 15.17 | 6.12 |
+
+Flat against full smooth differs by mean ΔE76 5.54, p95 22.97 and SSIM 0.798:
+the gap flat shading leaves between the two bakes.
+
+The flat sweep, sorted by mean ΔE76; `min` and `max` are the `auto` bounds,
+`area` a fraction or multiple of the median face:
+
+| Setting | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 |
+|---|---:|---:|---:|---:|
+| fixed 16 | 7.367 | 23.64 | 0.657 | 15.17 |
+| fixed 64 | 7.372 | 23.55 | 0.658 | 15.15 |
+| fixed 32 | 7.376 | 23.61 | 0.658 | 15.14 |
+| fixed 8 | 7.417 | 23.90 | 0.654 | 15.36 |
+| min 4 | 7.463 | 24.56 | 0.653 | 15.65 |
+| fixed 4, sun centre only | 7.473 | 24.91 | 0.654 | 15.96 |
+| fixed 4 | 7.476 | 24.58 | 0.653 | 15.66 |
+| area 0.25 | 7.524 | 24.89 | 0.651 | 15.86 |
+| min 2 | 7.561 | 25.61 | 0.652 | 16.08 |
+| area 0.5 | 7.641 | 25.88 | 0.648 | 16.30 |
+| fixed 2 | 7.651 | 26.40 | 0.649 | 16.16 |
+| max 8 | 7.674 | 27.15 | 0.647 | 16.61 |
+| sky 512 | 7.676 | 27.12 | 0.647 | 16.60 |
+| committed (min 1, max 16, area 1, sky 128) | 7.681 | 27.13 | 0.647 | 16.61 |
+| max 32 | 7.681 | 27.13 | 0.647 | 16.61 |
+| sky 256 | 7.688 | 27.12 | 0.647 | 16.60 |
+| max 4 | 7.694 | 27.25 | 0.647 | 16.62 |
+| sky 64 | 7.787 | 27.14 | 0.646 | 16.64 |
+| area 2 | 7.803 | 28.92 | 0.643 | 16.90 |
+| sun centre only | 7.855 | 28.42 | 0.643 | 17.49 |
+| centroid placement (any count) | 7.908 | 29.97 | 0.639 | 17.07 |
+| sky 32 | 7.942 | 27.18 | 0.644 | 16.68 |
+| sky 16 | 8.338 | 27.25 | 0.638 | 16.74 |
+
+Sixteen fixed samples per face take the committed bake's mean from 7.681 to
+7.367 and its p95 from 27.13 to 23.64, at no cost at run time: the mesh and its
+frame cost are the same. They hold edge error to 15.17 against the smooth
+bake's 14.44.
+
+One sheet of two poses of the committed flat bake, left to right the reference,
+the bake, the ΔE heatmap and the reference's edge pixels (magenta), with the
+heatmap's scale below. The error sits at lit arch edges, shadow boundaries and
+the foreground drapery. Nothing refreshes the sheet when the bake changes.
+
+![Reference, flat bake, error heatmap and edge pixels](../../../../../docs/images/render/bake-fidelity-sheet.png)
+
 ## Sponza poses
 
 The flythrough is a glTF camera animation, `../assets/flythrough.glb`, baked

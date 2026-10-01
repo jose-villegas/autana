@@ -140,107 +140,54 @@ full, and the triangle-size report are in
 
 ## Fidelity against a reference
 
-The source-reference renderer traces the full source mesh at the device render
-size, supersamples each pixel, then evaluates the scene's bake lights per
-sample. It writes a linear `.npy` image and a tone-mapped RGB565-expanded PNG
-for each camera pose. The pose file comes from the scene camera's track, so a
-comparison does not keep a second camera path.
+How close is a bake to the ground truth, and where is it off? The reference
+renderer lights the full source mesh, per pixel, with the scene's own lights,
+shadows and tone map, at the device render size and supersampled, for the
+poses of the scene's camera path. A host render of any variant, smooth, lite
+or flat, is scored against it:
 
-```sh
-launcher/tools/anim/sample_tracks.sh --tracks PATH_tracks_generated.c:PATH --every 5000 --until 40000 \
-    --poses camera 184 224 0.62 6 > poses.txt
-tools/r3d/.cache/venv/Scripts/python tools/r3d/reference_render.py SCENE.scene.toml \
-    --poses poses.txt --out reference --samples 4
-python tools/render/render_compare.py --out compare.png --heatmap-dir heatmaps \
-    --reference-row pose0 host.png reference/000.png
-```
+| Number | Meaning |
+|---|---|
+| Mean ΔE76 | CIE76 colour difference per pixel, averaged; about 2 is just visible, 20 is a clearly different colour |
+| p95 ΔE76 | The 95th percentile of the pixels' ΔE, averaged over frames: how bad the worst places are |
+| Luma SSIM | Structural similarity over 8x8 windows of luma, 1 for identical: whether shapes and contrast match |
+| Edge and interior ΔE76 | The same ΔE on pixels at a sharp luma step of the reference (a silhouette, a lit or shadowed boundary) and on all others |
 
-Reference mode reports mean and 95th-percentile CIE76 ΔE over pixels and a
-global SSIM over linear Rec.709 luma. Lower ΔE and higher SSIM are closer to
-the source reference; its heatmap maps zero ΔE to black, then yellow to red by
-ΔE 50. The commands and output forms are in
-[`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md#fidelity-reference).
+Heatmaps put each pixel's ΔE on a scale from black (a match) through red
+(about 20) to yellow (50 or more). The sheet beside them shows the reference,
+the render, the heatmap and the edge pixels, and the commands that make all of
+it are in [`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md#fidelity-reference).
+A scene's scores and example sheet live beside its own tools. Nothing
+refreshes them when the bake changes: the reference and the scratch bakes need
+the bake toolchain and the source model.
 
-On the eight camera-path poses of `sponza.scene.toml`, scored against the
-four-by-four source reference, each row's flat bake re-lit from the same
-simplified geometry (`bake_fidelity.py`, below). Edge pixels are those on or
-beside a sharp luma step in the reference, 14% of the frame:
-
-| Variant | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 | Interior ΔE76 |
-|---|---:|---:|---:|---:|---:|
-| Full smooth | 7.069 | 21.73 | 0.9439 | 14.44 | 5.89 |
-| Lite smooth | 7.964 | 25.27 | 0.9225 | 16.51 | 6.59 |
-| Flat, 1 sample per face | 7.899 | 29.72 | 0.9353 | 17.00 | 6.43 |
-| Flat, 4 samples per face | 7.476 | 24.58 | 0.9428 | 15.66 | 6.16 |
-| Flat, adaptive (`auto` 1 to 16, median area) | 7.681 | 27.13 | 0.9366 | 16.61 | 6.24 |
-| Flat, 16 samples per face | 7.367 | 23.64 | 0.9447 | 15.18 | 6.12 |
-
-The flat-versus-full-smooth gap is mean ΔE76 5.540, p95 22.97 and SSIM 0.950.
-It is the flat-shading ceiling: face sampling cannot remove the colour
-gradient across a triangle. The error sits at lit arch edges, high-contrast
-shadow boundaries and the foreground drapery; large interior wall pixels stay
-dark in the heatmaps.
+The ceiling for a flat bake is the smooth bake's own error. Smooth, one colour
+per vertex, is not exact either, and flat adds the colour gradient across each
+triangle, which no face sampling brings back. What face sampling does change is
+how well the one colour represents the face.
 
 ## Sweeping the flat bake
 
-```sh
-tools/r3d/.cache/venv/Scripts/python tools/r3d/bake_fidelity.py SCENE.scene.toml --mesh FLAT_MESH     --script SCENE_HOST_RENDER.sh --render-args "--quarter 0 --no-hud --scene FLAT_SCENE --frames 8 --dt 5000"     --reference reference --work scratch     --variant fixed4=samples=fixed:4 --variant sky64=sky=64,place=centroid
-```
+`bake_fidelity.py` re-lights a flat mesh's simplified geometry with chosen
+settings into a scratch directory, builds the host renderer with that mesh in
+place of the tracked one, and scores it, so a setting is judged by its distance
+to the reference and nothing tracked changes. Its default variant is the bake
+the import file declares, byte for byte. A sweep over a scene found:
 
-The tool bakes the simplified geometry once, then re-lights it per variant,
-builds the scene's host renderer with that mesh in place of the tracked one
-(`RENDER_SCENE_SUBSTITUTE` in `render_scene.sh`), renders the poses and
-scores them, so nothing tracked changes. A variant is `samples=fixed:N` or
-`auto:MIN:MAX:AREA` (`median*K` for AREA), `sky=N`, `place=stratified|centroid`
-and `sun=disc|centre`. Without `--variant` the mesh is baked as its import file
-declares it, byte for byte the tracked bake.
-
-Sorted by mean ΔE76 against the same reference:
-
-| Variant | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 |
-|---|---:|---:|---:|---:|
-| fixed 16 | 7.367 | 23.64 | 0.9447 | 15.18 |
-| fixed 64 | 7.372 | 23.55 | 0.9448 | 15.15 |
-| fixed 32 | 7.376 | 23.61 | 0.9449 | 15.14 |
-| fixed 8 | 7.417 | 23.90 | 0.9436 | 15.36 |
-| auto 8 to 32, area median/4 | 7.421 | 23.89 | 0.9439 | 15.35 |
-| auto 4 to 16 | 7.463 | 24.56 | 0.9429 | 15.65 |
-| fixed 4, sun centre only | 7.473 | 24.91 | 0.9402 | 15.96 |
-| fixed 4 | 7.476 | 24.58 | 0.9428 | 15.66 |
-| auto 1 to 16, area median/4 | 7.524 | 24.89 | 0.9400 | 15.86 |
-| auto 2 to 16 | 7.561 | 25.61 | 0.9395 | 16.08 |
-| auto 1 to 16, area median/2 | 7.641 | 25.88 | 0.9369 | 16.30 |
-| fixed 2 | 7.651 | 26.40 | 0.9390 | 16.16 |
-| auto 1 to 8 | 7.674 | 27.15 | 0.9366 | 16.61 |
-| sky 512 | 7.676 | 27.12 | 0.9366 | 16.60 |
-| tracked: auto 1 to 16, median, sky 128 | 7.681 | 27.13 | 0.9366 | 16.61 |
-| auto 1 to 32 | 7.681 | 27.13 | 0.9366 | 16.61 |
-| sky 256 | 7.688 | 27.12 | 0.9366 | 16.60 |
-| auto 1 to 4 | 7.694 | 27.25 | 0.9364 | 16.62 |
-| sky 64 | 7.787 | 27.14 | 0.9363 | 16.64 |
-| auto 1 to 16, area 2 x median | 7.803 | 28.92 | 0.9351 | 16.90 |
-| sun centre only | 7.854 | 28.42 | 0.9242 | 17.49 |
-| fixed 1, face centroid (any count) | 7.908 | 29.97 | 0.9338 | 17.07 |
-| sky 32 | 7.942 | 27.18 | 0.9359 | 16.68 |
-| sky 16 | 8.338 | 27.26 | 0.9344 | 16.74 |
-
-What moves the score:
-
-- **Samples per face** is the lever. The score converges at about 16 fixed
-  samples (7.367, SSIM 0.9447); more adds nothing. Raising the minimum helps
-  more than raising the maximum or the area, because most faces are small and
-  the adaptive count gives them one sample.
-- **Sky rays** are saturated at 128; fewer is worse, more is noise.
-- **Centroid placement** is worse than the stratified points, and takes every
-  count to the same colours.
-- **Sun at the centre** does not help: it makes every shadow edge hard, so a
-  face is fully lit or fully shaded where the disc would blend it.
-
-Edge error falls with samples, 16.61 to 15.18, but stays more than twice the
-interior error, 6.12, and the full smooth bake's own edge error is 14.44. The
-rest is structural: a face has one colour, so a boundary through it cannot be
-sampled away, and the simplified geometry misplaces silhouettes before light
-enters.
+- **Samples per face** are the lever. The score converges at about 16 fixed
+  samples; more adds nothing. Raising the minimum helps more than raising the
+  maximum or shrinking the area, because most faces are small and the adaptive
+  count gives them one sample.
+- **Sky rays** are saturated at the bake's default; fewer is worse and more is
+  noise.
+- **Centroid placement** loses to the stratified points, and takes every count
+  to the same colours. **A centre-only sun** loses too: it makes every shadow
+  edge hard, where the disc blends it.
+- **Edge error is structural.** Samples lower the error at lit and shadow
+  edges, but it stays more than twice the interior error, and the smooth bake's
+  own edge error is close to the best flat one. A face holds one colour, so a
+  boundary through it cannot be sampled away, and decimation misplaces
+  silhouettes before lighting.
 
 ## Sealing seams
 

@@ -55,23 +55,54 @@ banner names the scene file and the exact command that produced it.
 
 `reference_render.py` takes a scene and the pose file its camera path emits.
 It uses the source mesh after alpha masking, before simplification, and the
-same lights, texture sampling, tone map and RGB565 quantisation as the bake.
+same lights, albedo sampling, tone map and RGB565 quantisation as the bake.
 The .npy output retains the linear, box-filtered image; the PNG is the form a
-host render compares with `render_compare.py`.
+host render compares with `render_compare.py`. What the scores mean is in
+[Mesh-Import.md](../../../docs/render/Mesh-Import.md#fidelity-against-a-reference).
+
+These commands run from `launcher/`; `PY` is the venv's interpreter
+(`tools/r3d/.cache/venv/Scripts/python` on Windows, `.../bin/python` elsewhere).
+`TRACKS` is the scene camera's baked track source, `HOST` the scene's
+host-render script and `SCENE` its scene file.
 
 ```sh
-launcher/tools/anim/sample_tracks.sh --tracks PATH_tracks_generated.c:PATH --every 5000 --until 40000 \
-    --poses camera 184 224 0.62 6 > poses.txt
-tools/r3d/.cache/venv/Scripts/python tools/r3d/reference_render.py SCENE.scene.toml \
-    --poses poses.txt --out reference --samples 4
-python tools/render/render_compare.py --out compare.png --heatmap-dir heatmaps \
-    --reference-row pose0 host.png reference/000.png
+tools/anim/sample_tracks.sh --tracks TRACKS.c:NAME --every 5000 --until 40000     --poses camera 184 224 0.62 6 > poses.txt
+$PY tools/r3d/reference_render.py SCENE.scene.toml --poses poses.txt --skip 1     --out reference --samples 4
 ```
 
-The reference scores are mean and 95th-percentile CIE76 ΔE across every
-pixel, plus global SSIM on linear Rec.709 luma. Lower ΔE and higher SSIM are
-closer to the source reference. The heatmap maps zero ΔE to black, then yellow
-to red by ΔE 50.
+`--every 5000 --until 40000` writes nine poses, times 0 to 40000. A host render
+of `--frames 8 --dt 5000` records its first frame after one step, so
+`--skip 1` leaves the eight poses it shows.
+
+Score a host render's video against the references, with a heatmap per frame
+and a sheet of two frames:
+
+```sh
+$PY tools/render/render_compare.py --out unused.png --reference-video host.avi reference     --reference-scale 2 --heatmap-dir heatmaps --reference-sheet sheet.png --sheet-frames 2,4
+```
+
+The line for each frame, and for the frames' mean, has mean and 95th-percentile
+CIE76 ΔE over its pixels, luma SSIM, and the mean ΔE on edge and on interior
+pixels; the frames-mean line averages each frame's value, p95 included. The
+sheet is, left to right, the reference, the render, the ΔE heatmap and the
+reference's edge pixels in magenta, over the heatmap's colour scale: ΔE 0 is
+black, about 20 red, 50 or more yellow.
+
+`bake_fidelity.py` does the whole loop for flat variants of one mesh, and
+sweeps the flat bake's knobs:
+
+```sh
+$PY tools/r3d/bake_fidelity.py SCENE.scene.toml --mesh FLAT_MESH --script HOST     --render-args "--quarter 0 --no-hud --scene FLAT_SCENE --frames 8 --dt 5000"     --reference reference --work scratch     --variant fixed4=samples=fixed:4 --variant sky64=sky=64,place=centroid
+```
+
+It bakes the simplified geometry once, re-lights it for each variant into
+`scratch/` (nothing tracked is written), builds the host renderer with that
+mesh in place of the tracked one (`--substitute` of the scene script), renders
+the poses and scores them with `render_compare.py`. A variant is
+`samples=fixed:N` or `auto:MIN:MAX:AREA` (`median*K` for AREA), `sky=N`,
+`place=stratified|centroid` and `sun=disc|centre`. Without `--variant` the
+mesh is baked as its import file declares it, byte for byte the tracked bake.
+It prints a table sorted by mean ΔE.
 
 ## Triangle sizes
 

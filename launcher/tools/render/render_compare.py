@@ -76,10 +76,12 @@ def parse_rgb(text):
 
 
 def expand_565(rgb):
-    """The 24-bit colour a 16-bit framebuffer shows for rgb."""
-    r, g, b = rgb
-    r5, g6, b5 = r >> 3, g >> 2, b >> 3
-    return (r5 << 3 | r5 >> 2, g6 << 2 | g6 >> 4, b5 << 3 | b5 >> 2)
+    """The 24-bit colour a 16-bit framebuffer shows for rgb: a tuple of three
+    values, or an integer array with the channels last."""
+    if isinstance(rgb, tuple):
+        return tuple(int(value) for value in expand_565(np.array(rgb)))
+    r5, g6, b5 = rgb[..., 0] >> 3, rgb[..., 1] >> 2, rgb[..., 2] >> 3
+    return np.stack([r5 << 3 | r5 >> 2, g6 << 2 | g6 >> 4, b5 << 3 | b5 >> 2], axis=-1)
 
 
 def _pixels(picture):
@@ -108,20 +110,34 @@ def delta_e76(a, b):
     return np.linalg.norm(_lab(a) - _lab(b), axis=2)
 
 
+SSIM_WINDOW = 8
+
+
+def _box_mean(values, size):
+    """The mean over every size x size window of a 2-D array, by cumulative sums."""
+    total = np.pad(values.cumsum(axis=0).cumsum(axis=1), ((1, 0), (1, 0)))
+    window = total[size:, size:] - total[:-size, size:] - total[size:, :-size] + total[:-size, :-size]
+    return window / (size * size)
+
+
 def luma_ssim(a, b):
-    """Global SSIM on linear Rec.709 luma, stable for a small render frame."""
+    """Structural similarity of the luma of two pictures: the mean over every
+    8 x 8 window (the whole picture when it is smaller) of the usual SSIM
+    map, on Rec.709 luma of the 0..1 encoded colours."""
     _same_size(a, b)
-    pa, pb = _linear_rgb(a), _linear_rgb(b)
-    la = pa @ np.array([0.2126, 0.7152, 0.0722])
-    lb = pb @ np.array([0.2126, 0.7152, 0.0722])
-    ma, mb = la.mean(), lb.mean()
-    va, vb = ((la - ma) ** 2).mean(), ((lb - mb) ** 2).mean()
-    cov = ((la - ma) * (lb - mb)).mean()
+    weights = np.array([0.2126, 0.7152, 0.0722])
+    la = np.asarray(a.convert("RGB"), dtype=float) / 255.0 @ weights
+    lb = np.asarray(b.convert("RGB"), dtype=float) / 255.0 @ weights
+    size = min(SSIM_WINDOW, *la.shape)
+    ma, mb = _box_mean(la, size), _box_mean(lb, size)
+    va, vb = _box_mean(la * la, size) - ma * ma, _box_mean(lb * lb, size) - mb * mb
+    cov = _box_mean(la * lb, size) - ma * mb
     c1, c2 = 0.01**2, 0.03**2
-    return float((2 * ma * mb + c1) * (2 * cov + c2) / ((ma * ma + mb * mb + c1) * (va + vb + c2)))
+    return float(np.mean((2 * ma * mb + c1) * (2 * cov + c2) / ((ma * ma + mb * mb + c1) * (va + vb + c2))))
 
 
 EDGE_GRADIENT = 0.06
+HEAT_FULL_SCALE = 50
 
 
 def edge_mask(reference):
@@ -152,9 +168,47 @@ def reference_measure(render, reference):
                           share)
 
 
+def edge_overlay(reference):
+    """The reference dimmed, with its edge pixels (see edge_mask) in magenta."""
+    pixels = np.asarray(reference.convert("RGB"), dtype=float) * 0.5
+    pixels[edge_mask(reference)] = (255, 0, 255)
+    return Image.fromarray(pixels.astype(np.uint8))
+
+
+def heat_scale(width):
+    """A strip of the reference heatmap's colours from 0 to HEAT_FULL_SCALE dE, with ticks and a caption."""
+    strip = np.tile(np.arange(width) / (width - 1) * HEAT_FULL_SCALE, (14, 1))
+    picture = Image.new("RGB", (width, 70), (24, 24, 24))
+    picture.paste(reference_heatmap_from_error(strip), (0, 0))
+    draw, font = ImageDraw.Draw(picture), _font()
+    for tick in range(0, HEAT_FULL_SCALE + 1, 10):
+        x = round(tick / HEAT_FULL_SCALE * (width - 1))
+        draw.line([(x, 14), (x, 19)], fill=(230, 230, 230))
+        draw.text((min(x, width - 24), 20), str(tick), fill=(230, 230, 230), font=font)
+    draw.text((0, 42), "CIE76 dE per pixel: black matches, red about 20, yellow 50 or more", fill=(230, 230, 230), font=font)
+    return picture
+
+
+def reference_sheet(items, tile=0.6):
+    """Each (label, render, reference) as reference | render | dE heatmap |
+    edge pixels, shrunk by `tile`, with the heatmap's colour scale below."""
+    rows = [(label, reference, render) for label, render, reference in items]
+    picture = sheet(rows, None, panels=lambda reference, render: [reference_heatmap(render, reference), edge_overlay(reference)])
+    picture = picture.resize((round(picture.width * tile), round(picture.height * tile)), Image.Resampling.BOX)
+    out = Image.new("RGB", (picture.width, picture.height + 70))
+    out.paste(picture, (0, 0))
+    out.paste(heat_scale(picture.width), (0, picture.height))
+    return out
+
+
 def reference_heatmap(render, reference):
-    """A perceptual-error heatmap: black is zero, yellow then red is larger ΔE."""
-    error = np.clip(delta_e76(render, reference), 0, 50) / 50.0
+    """A perceptual-error heatmap: black is zero, then red, then yellow at 50."""
+    return reference_heatmap_from_error(delta_e76(render, reference))
+
+
+def reference_heatmap_from_error(error):
+    """The heatmap's colours for a per-pixel ΔE array."""
+    error = np.clip(error, 0, HEAT_FULL_SCALE) / HEAT_FULL_SCALE
     red = np.clip(2 * error, 0, 1)
     green = np.clip(2 * error - 1, 0, 1)
     return Image.fromarray(np.round(np.stack([red, green, np.zeros_like(red)], axis=2) * 255).astype(np.uint8))
@@ -204,12 +258,14 @@ def heatmap(a, b, clear, gain=GAIN):
     return Image.fromarray(heat)
 
 
-def sheet(rows, clear, gain=GAIN):
-    """One picture: each (label, a, b) row as A | B | heatmap, stacked, black-padded to the widest."""
+def sheet(rows, clear, gain=GAIN, panels=None):
+    """One picture: each (label, a, b) row as A | B | heatmap, stacked, black-padded to the widest.
+    panels(a, b), when given, returns the pictures that follow B in place of the heatmap."""
     strips = []
     for _label, a, b in rows:
         _same_size(a, b)
-        strips.append(np.concatenate([_pixels(a), _pixels(b), np.asarray(heatmap(a, b, clear, gain)).astype(np.int32)], axis=1))
+        after = [heatmap(a, b, clear, gain)] if panels is None else panels(a, b)
+        strips.append(np.concatenate([_pixels(a), _pixels(b), *(_pixels(extra) for extra in after)], axis=1))
     widest = max(strip.shape[1] for strip in strips)
     padded = [np.pad(strip, ((0, 0), (0, widest - strip.shape[1]), (0, 0))) for strip in strips]
     return Image.fromarray(np.concatenate(padded, axis=0).astype(np.uint8))
@@ -544,14 +600,17 @@ def summary_line(label, stats):
 
 
 def reference_line(label, stats):
-    """One reference comparison line, using CIE76 ΔE and global luma SSIM."""
+    """One reference comparison line: CIE76 ΔE and windowed luma SSIM. In the
+    frames-mean line, p95 is the mean of the frames' own 95th percentiles."""
     return "%s: mean DeltaE76 %.4f, p95 DeltaE76 %.4f, luma SSIM %.6f, edge DeltaE76 %.4f, interior DeltaE76 %.4f, edge share %.4f" % (
         label, stats.mean_delta_e, stats.p95_delta_e, stats.ssim_luma, stats.edge_delta_e, stats.interior_delta_e, stats.edge_share
     )
 
 
-def reference_video(path, reference_dir, scale=1, heatmaps=None):
-    """Score every AVI frame against ordered reference PNGs and return their mean."""
+def reference_video(path, reference_dir, scale=1, heatmaps=None, keep=None):
+    """Score every AVI frame against ordered reference PNGs and return their
+    mean. `keep`, a dict of frame index to None, is filled with the
+    (render, reference) pairs of those frames."""
     _fps, frames = read_video(path)
     references = sorted(pathlib.Path(reference_dir).glob("*.png"))
     values = []
@@ -566,6 +625,8 @@ def reference_video(path, reference_dir, scale=1, heatmaps=None):
         values.append(stats)
         if heatmaps is not None:
             reference_heatmap(render, reference).save(heatmaps / ("%03d.png" % index))
+        if keep is not None and index in keep:
+            keep[index] = (render, reference)
     if len(values) != len(references):
         raise ValueError("more reference images than video frames")
     return values, ReferenceStats(
@@ -588,6 +649,8 @@ def main():
     parser.add_argument("--reference-video", nargs=2, metavar=("VIDEO", "REFERENCE_DIR"))
     parser.add_argument("--reference-scale", type=int, default=1)
     parser.add_argument("--heatmap-dir")
+    parser.add_argument("--reference-sheet", metavar="PNG", help="with --reference-video, one sheet of --sheet-frames")
+    parser.add_argument("--sheet-frames", default="2,4", help="comma-separated video frame indices for --reference-sheet")
     parser.add_argument("--video", nargs=2, metavar=("A.avi", "B.avi"))
     parser.add_argument("--csv")
     parser.add_argument("--fps", type=float)
@@ -630,9 +693,13 @@ def main():
         heatmaps = None if args.heatmap_dir is None else pathlib.Path(args.heatmap_dir)
         if heatmaps is not None:
             heatmaps.mkdir(parents=True, exist_ok=True)
-        frames, total = reference_video(*args.reference_video, args.reference_scale, heatmaps)
+        keep = {int(index): None for index in args.sheet_frames.split(",")} if args.reference_sheet else None
+        frames, total = reference_video(*args.reference_video, args.reference_scale, heatmaps, keep)
+        if keep is not None:
+            reference_sheet([("frame %d" % index, *pair) for index, pair in keep.items() if pair]).save(args.reference_sheet,
+                                                                                                    optimize=True)
         lines = [reference_line("frame %d" % index, stats) for index, stats in enumerate(frames)]
-        lines.append(reference_line("mean", total))
+        lines.append(reference_line("frames mean", total))
         print("\n".join(lines))
         if args.summary:
             with open(args.summary, "a") as handle:

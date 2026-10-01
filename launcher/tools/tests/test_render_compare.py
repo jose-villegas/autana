@@ -81,10 +81,53 @@ class ReferenceMetricTest(unittest.TestCase):
         self.assertEqual(render_compare.reference_heatmap(picture, picture).getpixel((0, 0)), (0, 0, 0))
 
 
+STEP = [[(0, 0, 0)] * 4 + [(255, 255, 255)] * 4 for _ in range(8)]
+
+
+class SsimTest(unittest.TestCase):
+    def test_the_score_is_the_mean_of_the_ssim_map_over_every_eight_by_eight_window(self):
+        rng = np.random.default_rng(3)
+        a = rng.integers(0, 256, (12, 13, 3), dtype=np.uint8)
+        b = np.clip(a // 2 + rng.integers(0, 90, (12, 13, 3)), 0, 255).astype(np.uint8)
+        luma = lambda pixels: pixels / 255.0 @ np.array([0.2126, 0.7152, 0.0722])
+        la, lb = luma(a.astype(float)), luma(b.astype(float))
+        scores = []
+        for y in range(12 - 7):
+            for x in range(13 - 7):
+                wa, wb = la[y : y + 8, x : x + 8].ravel(), lb[y : y + 8, x : x + 8].ravel()
+                ma, mb = wa.mean(), wb.mean()
+                cov = ((wa - ma) * (wb - mb)).mean()
+                scores.append((2 * ma * mb + 1e-4) * (2 * cov + 9e-4) / ((ma**2 + mb**2 + 1e-4) * (wa.var() + wb.var() + 9e-4)))
+        got = render_compare.luma_ssim(Image.fromarray(a), Image.fromarray(b))
+        self.assertAlmostEqual(got, float(np.mean(scores)), places=9)
+        self.assertEqual(render_compare.luma_ssim(Image.fromarray(a), Image.fromarray(a)), 1.0)
+
+    def test_a_picture_smaller_than_a_window_is_one_window(self):
+        a, b = image([[(0, 0, 0), (255, 255, 255)]] * 2), image([[(255, 255, 255), (0, 0, 0)]] * 2)
+        self.assertLess(render_compare.luma_ssim(a, b), 0.0)
+
+
+class Expand565Test(unittest.TestCase):
+    def test_an_array_expands_like_the_tuple_of_each_pixel(self):
+        pixels = np.array([[[156, 195, 231], [255, 255, 255], [0, 0, 0]]], dtype=np.uint8)
+        got = render_compare.expand_565(pixels)
+        self.assertEqual([tuple(int(v) for v in pixel) for pixel in got[0]],
+                         [render_compare.expand_565(tuple(int(v) for v in pixel)) for pixel in pixels[0]])
+        self.assertEqual(got.dtype, np.uint8)
+
+
+class ReferenceSheetTest(unittest.TestCase):
+    def test_a_sheet_is_reference_render_heatmap_and_edges_over_a_colour_scale(self):
+        reference = image(STEP)
+        sheet = render_compare.reference_sheet([("a", image(STEP), reference)], tile=1.0)
+        self.assertEqual(sheet.width, 4 * 8)
+        self.assertEqual(sheet.height, 8 + 70)
+
+
 class EdgeSplitTest(unittest.TestCase):
     """A reference with one vertical step, and renders that differ from it in one column."""
 
-    STEP = [[(0, 0, 0)] * 4 + [(255, 255, 255)] * 4 for _ in range(8)]
+    STEP = STEP
 
     def stats_with_error_in(self, column):
         render = [list(row) for row in self.STEP]

@@ -23,7 +23,6 @@ No --variant scores the mesh as its import file declares it.
 """
 
 import argparse
-import os
 import pathlib
 import re
 import subprocess
@@ -40,7 +39,7 @@ from r3d.lit_mesh import write_lit_mesh  # noqa: E402
 from r3d.mesh_import import REPO, bake_geometry, banner_lines, flat_colours  # noqa: E402
 
 LAUNCHER = REPO / "launcher"
-SCORE = re.compile(r"^mean: mean DeltaE76 ([\d.]+), p95 DeltaE76 ([\d.]+), luma SSIM ([\d.]+), edge DeltaE76 ([\d.]+), interior DeltaE76 ([\d.]+)",
+SCORE = re.compile(r"^frames mean: mean DeltaE76 ([\d.]+), p95 DeltaE76 ([\d.]+), luma SSIM ([\d.]+), edge DeltaE76 ([\d.]+), interior DeltaE76 ([\d.]+)",
                    re.M)
 
 
@@ -84,10 +83,21 @@ def declared_samples(variant, median):
 def build_host(script, mesh_source, mesh_file, out_dir):
     """The scene's host renderer with `mesh_file` built in place of
     `mesh_source` (relative to launcher/); returns its path."""
-    env = dict(os.environ, RENDER_SCENE_SUBSTITUTE=f"{mesh_source}={mesh_file.as_posix()}")
-    done = subprocess.run(["sh", script.as_posix(), "--build-only", "-o", out_dir.as_posix()], env=env, capture_output=True,
-                          text=True, check=True)
+    done = subprocess.run(["sh", script.as_posix(), "--build-only", "-o", out_dir.as_posix(), "--substitute",
+                           f"{mesh_source}={mesh_file.as_posix()}"], capture_output=True, text=True, check=True)
     return pathlib.Path(done.stdout.split("built ", 1)[1].strip())
+
+
+def write_variant(origin, settings, variant, scene, geometry, spec, out):
+    """Bakes `spec` (see the module docstring) over `geometry` into
+    out/<name>_mesh_generated.{c,h}; returns the .c path."""
+    median = float(np.median(triangle_areas(geometry.positions, geometry.tris)))
+    samples, knobs = parse_spec(spec, declared_samples(variant, median), median)
+    face_rgb = flat_colours(settings, scene, geometry, samples, **knobs)
+    out.mkdir(parents=True, exist_ok=True)
+    write_lit_mesh(out, variant.name, geometry.positions, None, geometry.tris, geometry.tri_double,
+                   banner_lines(origin, settings, variant), face_rgb=face_rgb, **geometry.scale)
+    return out / f"{variant.name}_mesh_generated.c"
 
 
 def score(args, host, work):
@@ -129,20 +139,15 @@ def main(argv=None):
     settings, variant = jobs[0].settings, jobs[0].variant
     log(f"geometry of {variant.name}")
     geometry = bake_geometry(settings, variant, scene)
-    median = float(np.median(triangle_areas(geometry.positions, geometry.tris)))
     tracked = (settings.out_dir / f"{variant.name}_mesh_generated.c").resolve().relative_to(LAUNCHER).as_posix()
     work = pathlib.Path(args.work).resolve()
     rows = []
     for item in args.variant or ["declared="]:
         label, _, spec = item.partition("=")
-        samples, knobs = parse_spec(spec, declared_samples(variant, median), median)
         out = work / label
-        out.mkdir(parents=True, exist_ok=True)
         log(f"variant {label}")
-        face_rgb = flat_colours(settings, scene, geometry, samples, **knobs)
-        write_lit_mesh(out, variant.name, geometry.positions, None, geometry.tris, geometry.tri_double,
-                       banner_lines(path, settings, variant), face_rgb=face_rgb, **geometry.scale)
-        host = build_host(pathlib.Path(args.script).resolve(), tracked, out / f"{variant.name}_mesh_generated.c", out / "host")
+        mesh_file = write_variant(path, settings, variant, scene, geometry, spec, out)
+        host = build_host(pathlib.Path(args.script).resolve(), tracked, mesh_file, out / "host")
         rows.append((label, score(args, host, out)))
         print(f"{label}: mean dE76 {rows[-1][1][0]:.3f}", flush=True)
     print(table(rows))
