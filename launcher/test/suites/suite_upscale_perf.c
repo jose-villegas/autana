@@ -36,7 +36,7 @@ static const scale_case_t cases[] = {
 static void
 upscale_job(void* context) {
     const upscale_job_t* job = context;
-    upscale_rows(job->scale, job->source, job->destination, job->first_row, job->row_count);
+    upscale_rows(job->scale, job->source, NULL, 0, job->destination, job->first_row, job->row_count);
 }
 
 static int
@@ -64,12 +64,12 @@ report_case(const scale_case_t* test_case) {
     }
     upscale_t scale;
     TEST_ASSERT_TRUE(upscale_init(&scale, source_width, source_height, GFX_WIDTH, GFX_HEIGHT, columns, rows));
-    upscale_rows(&scale, source, destination, 0, GFX_HEIGHT);
+    upscale_rows(&scale, source, NULL, 0, destination, 0, GFX_HEIGHT);
 
     int64_t start_us = esp_timer_get_time();
     uint32_t start_cycles = esp_cpu_get_cycle_count();
     for (int i = 0; i < SAMPLES; i++) {
-        upscale_rows(&scale, source, destination, 0, GFX_HEIGHT);
+        upscale_rows(&scale, source, NULL, 0, destination, 0, GFX_HEIGHT);
     }
     const uint32_t one_cycles = esp_cpu_get_cycle_count() - start_cycles;
     const int64_t one_us = esp_timer_get_time() - start_us;

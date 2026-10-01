@@ -8,9 +8,8 @@
  * per bake: the full mesh, a lighter one and the full mesh baked flat, the
  * same flythrough through each.
  *
- * It renders at half the panel's resolution into its own PSRAM target and
- * upscales that into the framebuffer, so it asks for the full-framebuffer
- * layout.
+ * It renders into its own PSRAM target and upscales that into the framebuffer,
+ * so it asks for the full-framebuffer layout.
  */
 
 #include <assert.h>
@@ -50,8 +49,8 @@ enter_with(const r3d_lit_mesh_t* mesh) {
 
     raster = (raster_t){
         .mesh = mesh,
-        .width = SPONZA_RENDER_WIDTH,
-        .height = SPONZA_RENDER_HEIGHT,
+        .width = GFX_WIDTH * 100 / render_lab_scale(),
+        .height = GFX_HEIGHT * 100 / render_lab_scale(),
         .clear = GFX_RGB(SKY_RGB),
         .destination = gfx_framebuffer(),
         .destination_width = GFX_WIDTH,

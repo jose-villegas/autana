@@ -5,7 +5,6 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "render/r3d_lit_frame.h"
 #include "render/upscale.h"
 
 static void
@@ -13,33 +12,27 @@ test_two_times_matches_the_frame_doubling_reference(void) {
     enum { WIDTH = 7, HEIGHT = 5, PIXELS = WIDTH * HEIGHT };
 
     uint16_t* source = malloc(sizeof(*source) * PIXELS);
-    uint16_t* depth = malloc(sizeof(*depth) * PIXELS);
-    uint16_t* reference = malloc(sizeof(*reference) * 4 * PIXELS);
     uint16_t* actual = malloc(sizeof(*actual) * 4 * PIXELS);
     uint16_t* columns = malloc(sizeof(*columns) * 2 * WIDTH);
     uint16_t* rows = malloc(sizeof(*rows) * 2 * HEIGHT);
     TEST_ASSERT_NOT_NULL(source);
-    TEST_ASSERT_NOT_NULL(depth);
-    TEST_ASSERT_NOT_NULL(reference);
     TEST_ASSERT_NOT_NULL(actual);
     TEST_ASSERT_NOT_NULL(columns);
     TEST_ASSERT_NOT_NULL(rows);
     for (int i = 0; i < PIXELS; i++) {
         source[i] = (uint16_t)(0x1200 + i);
-        depth[i] = 1;
     }
-    const r3d_lit_frame_t frame = {
-        .width = WIDTH, .height = HEIGHT, .color = source, .depth = depth, .doubled = reference};
-    r3d_lit_frame_double(&frame);
     upscale_t scale;
     TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, 2 * WIDTH, 2 * HEIGHT, columns, rows));
-    upscale_rows(&scale, source, actual, 0, 2 * HEIGHT);
-    TEST_ASSERT_EQUAL_HEX16_ARRAY(reference, actual, 4 * PIXELS);
+    upscale_rows(&scale, source, NULL, 0, actual, 0, 2 * HEIGHT);
+    for (int y = 0; y < 2 * HEIGHT; y++) {
+        for (int x = 0; x < 2 * WIDTH; x++) {
+            TEST_ASSERT_EQUAL_HEX16(source[(y / 2) * WIDTH + (x / 2)], actual[y * 2 * WIDTH + x]);
+        }
+    }
     free(rows);
     free(columns);
     free(actual);
-    free(reference);
-    free(depth);
     free(source);
 }
 
@@ -62,7 +55,7 @@ test_integer_factors_copy_each_source_pixel_to_its_block(void) {
         TEST_ASSERT_NOT_NULL(rows);
         upscale_t scale;
         TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, out_width, out_height, columns, rows));
-        upscale_rows(&scale, source, actual, 0, out_height);
+        upscale_rows(&scale, source, NULL, 0, actual, 0, out_height);
         for (int y = 0; y < out_height; y++) {
             for (int x = 0; x < out_width; x++) {
                 TEST_ASSERT_EQUAL_UINT16(source[(y / factor) * WIDTH + x / factor], actual[y * out_width + x]);
@@ -110,9 +103,9 @@ test_two_row_ranges_equal_one_whole_upscale(void) {
     }
     upscale_t scale;
     TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, OUT_WIDTH, OUT_HEIGHT, columns, rows));
-    upscale_rows(&scale, source, whole, 0, OUT_HEIGHT);
-    upscale_rows(&scale, source, split, 0, OUT_HEIGHT / 2);
-    upscale_rows(&scale, source, split, OUT_HEIGHT / 2, OUT_HEIGHT - OUT_HEIGHT / 2);
+    upscale_rows(&scale, source, NULL, 0, whole, 0, OUT_HEIGHT);
+    upscale_rows(&scale, source, NULL, 0, split, 0, OUT_HEIGHT / 2);
+    upscale_rows(&scale, source, NULL, 0, split, OUT_HEIGHT / 2, OUT_HEIGHT - OUT_HEIGHT / 2);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(whole, split, OUT_WIDTH * OUT_HEIGHT);
 }
 

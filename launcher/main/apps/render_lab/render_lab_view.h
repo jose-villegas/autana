@@ -13,5 +13,8 @@
  * (raster_show()). Constant RASTER_SHOW_SHADED when tunables are. */
 raster_show_t render_lab_view(void);
 
+/* The tunable render_lab.scale in hundredths: 200 renders at half size. */
+int render_lab_scale(void);
+
 /* Whether the running scene honours it (render_lab_scene_t). */
 bool render_lab_scene_shows_views(void);
