@@ -1095,7 +1095,7 @@ cheapest path to something that is unmistakably a game.
    overdraw between neighbours), near-plane clipping, and the
    perspective-correction cadence, all pixel-exact against a slow
    reference on the host. small3dlib's vector, matrix and projection
-   routines now live in `util/math/matrix4i.h`, and the component is deleted. The first
+   routines are replaced by `util/math/`'s float vector, quaternion, matrix and transform, and the component is deleted. The first
    piece is in the tree: `render/r3d_span.h` fills depth-tested Gouraud
    spans into a window of rows, and `render/r3d_pipeline.h` culls,
    transforms and clips a mesh whose light is baked into vertex colours.

@@ -618,7 +618,7 @@ draw_title(uint32_t now_ms, uint8_t ink) {
         (BOOT_ANIM_TITLE_SHADOW_DX != 0 || BOOT_ANIM_TITLE_SHADOW_DY != 0) && BOOT_ANIM_TITLE_SHADOW_ALPHA != 0;
 
     for (int i = 0; i < BOOT_ANIM_TITLE_LEN; i++) {
-        const boot_anim_title_pos_t p = boot_anim_title_letter(font, i, now_ms);
+        const vec2i_t p = boot_anim_title_letter(font, i, now_ms);
         int px, py;
         title_glyph_origin(p.x, p.y, glyph_w, glyph_h, &px, &py);
 

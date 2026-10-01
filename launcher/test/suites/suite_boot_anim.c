@@ -1371,7 +1371,7 @@ test_a_letter_lands_exactly_on_its_final_position(void) {
     const uint32_t arrived = BOOT_ANIM_TITLE_START_MS + BOOT_ANIM_TITLE_FLIGHT_MS + 1000;
 
     for (int i = 0; i < BOOT_ANIM_TITLE_LEN; i++) {
-        const boot_anim_title_pos_t p = boot_anim_title_letter(TITLE_FONT, i, arrived);
+        const vec2i_t p = boot_anim_title_letter(TITLE_FONT, i, arrived);
         const int expected_y = BOOT_ANIM_TITLE_VIEW_Y + boot_anim_title_wave(i, arrived);
         TEST_ASSERT_EQUAL_INT_MESSAGE(expected_y, p.y,
                                       "a fully arrived letter should sit on the baseline plus "
@@ -1392,7 +1392,7 @@ test_letters_are_staggered_left_to_right(void) {
      * very first letter. */
     int last_x = -100000;
     for (int i = 0; i < BOOT_ANIM_TITLE_LEN; i++) {
-        const boot_anim_title_pos_t here = boot_anim_title_letter(TITLE_FONT, i, never);
+        const vec2i_t here = boot_anim_title_letter(TITLE_FONT, i, never);
         TEST_ASSERT_TRUE_MESSAGE(here.x > last_x, "letters should be laid out left to right in their resting "
                                                   "row, whatever moment they are drawn at");
         last_x = here.x;
@@ -1406,8 +1406,8 @@ test_letters_are_staggered_left_to_right(void) {
              * earlier letter is further along"). */
             const uint32_t mid =
                 BOOT_ANIM_TITLE_START_MS + (uint32_t)i * BOOT_ANIM_TITLE_STAGGER_MS - BOOT_ANIM_TITLE_STAGGER_MS / 2;
-            const boot_anim_title_pos_t at = boot_anim_title_letter(TITLE_FONT, i, mid);
-            const boot_anim_title_pos_t prev_at = boot_anim_title_letter(TITLE_FONT, i - 1, mid);
+            const vec2i_t at = boot_anim_title_letter(TITLE_FONT, i, mid);
+            const vec2i_t prev_at = boot_anim_title_letter(TITLE_FONT, i - 1, mid);
             TEST_ASSERT_TRUE_MESSAGE(prev_at.x >= at.x, "an earlier letter should be at least as far along as a "
                                                         "later one at the same moment");
         }
@@ -1416,7 +1416,7 @@ test_letters_are_staggered_left_to_right(void) {
 
 static void
 test_a_letter_starts_off_panel_to_the_left(void) {
-    const boot_anim_title_pos_t p = boot_anim_title_letter(TITLE_FONT, 0, BOOT_ANIM_TITLE_START_MS);
+    const vec2i_t p = boot_anim_title_letter(TITLE_FONT, 0, BOOT_ANIM_TITLE_START_MS);
     TEST_ASSERT_TRUE_MESSAGE(p.x < 0, "a letter should begin off the left edge of the panel, not merely "
                                       "at it");
 }
@@ -1438,7 +1438,7 @@ test_final_x_matches_the_advance_sum(void) {
                              + BOOT_ANIM_TITLE_FLIGHT_MS + 1000;
 
     for (int i = 0; i < BOOT_ANIM_TITLE_LEN; i++) {
-        const boot_anim_title_pos_t p = boot_anim_title_letter(TITLE_FONT, i, arrived);
+        const vec2i_t p = boot_anim_title_letter(TITLE_FONT, i, arrived);
         const int prefix_w = gfx_font_text_width(TITLE_FONT, BOOT_ANIM_TITLE, i, BOOT_ANIM_TITLE_SCALE);
         const int expected_x = BOOT_ANIM_TITLE_VIEW_X + prefix_w + i * BOOT_ANIM_TITLE_GAP;
         TEST_ASSERT_EQUAL_INT_MESSAGE(expected_x, p.x,
@@ -1467,7 +1467,7 @@ test_the_title_stays_on_the_panel_once_visible(void) {
     for (int i = 0; i < BOOT_ANIM_TITLE_LEN; i++) {
         const uint32_t start = BOOT_ANIM_TITLE_START_MS + (uint32_t)i * BOOT_ANIM_TITLE_STAGGER_MS;
         for (uint32_t t = start; t <= start + BOOT_ANIM_TITLE_FLIGHT_MS; t += 15) {
-            const boot_anim_title_pos_t p = boot_anim_title_letter(TITLE_FONT, i, t);
+            const vec2i_t p = boot_anim_title_letter(TITLE_FONT, i, t);
             if (p.x + cell_w < 0) {
                 continue; /* still off-panel to the left, not visible yet */
             }
