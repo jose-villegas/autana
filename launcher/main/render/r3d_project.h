@@ -30,6 +30,9 @@
  * by a zero depth is an infinity or a NaN. */
 #define R3D_PIXEL_LIMIT 1000000.0F
 
+/* Above the reciprocal's error out to a 1000 pixel offset, far below a pixel. */
+#define R3D_PIXEL_BIAS  0.02F
+
 typedef struct {
     mat4f_t matrix; /* model * view, composed by the caller */
     float focal;    /* projection-plane distance; 0 is orthographic */
@@ -60,9 +63,9 @@ r3d_reciprocal(float z) {
     return y * (2.0F - (z * y));
 }
 
-/* A pixel offset rounded to the nearest whole pixel, ties away from zero, so
- * it is symmetric about the centre and a reciprocal one ulp short of an exact
- * quotient still lands on its pixel.
+/* A pixel offset truncated toward zero, so it is symmetric about the centre.
+ * A small bias first, so a reciprocal a few ulp short of an exact quotient
+ * still lands on its pixel.
  * Plain comparisons, not fminf/fmaxf: those are libm calls on this FPU, and
  * this runs four times per edge. A NaN fails both and lands on the limit. */
 static inline int
@@ -73,7 +76,7 @@ r3d_pixel_offset(float offset) {
     if (!(offset > -R3D_PIXEL_LIMIT)) {
         return -(int)R3D_PIXEL_LIMIT;
     }
-    return (int)(offset + (offset < 0.0F ? -0.5F : 0.5F));
+    return (int)(offset + (offset < 0.0F ? -R3D_PIXEL_BIAS : R3D_PIXEL_BIAS));
 }
 
 static inline void
