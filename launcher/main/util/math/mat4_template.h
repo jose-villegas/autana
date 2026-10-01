@@ -13,6 +13,7 @@
         T m[4][4];                                                                                                     \
     } P##_t;                                                                                                           \
                                                                                                                        \
+    /* The identity matrix. */                                                                                         \
     static inline P##_t P##_identity(void) {                                                                           \
         return (P##_t){{{OPS##_one(), OPS##_zero(), OPS##_zero(), OPS##_zero()},                                       \
                         {OPS##_zero(), OPS##_one(), OPS##_zero(), OPS##_zero()},                                       \
@@ -35,6 +36,7 @@
     }                                                                                                                  \
                                                                                                                        \
     /* A point, translation included. */                                                                               \
+    /* M * p with w = 1: translation included, no perspective divide. `m` is read only. */                             \
     static inline V##_t P##_apply(const P##_t* m, V##_t p) {                                                           \
         return (V##_t){                                                                                                \
             OPS##_add(OPS##_add(OPS##_add(OPS##_mul(m->m[0][0], p.x), OPS##_mul(m->m[0][1], p.y)),                     \
