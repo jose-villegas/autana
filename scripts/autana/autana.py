@@ -1453,25 +1453,37 @@ _GLOBAL_ENV = {"--wait": WAIT_ENV, "--owner": OWNER_ENV, "--board": BOARD_ENV,
 session_flags = {}
 
 
+def project_of(value):
+    """`value` resolved, when it is an autana project."""
+    project = Path(value).resolve() if value.strip() else None
+    return str(project) if project and (project / PROJECT_MARKER).is_file() else None
+
+
+# One validator per flag: what it needs, an example, and a check returning
+# the value to store or None. A board's serial is the six-pair form the lock
+# files key on (device_lock.normalise_board); an owner is a label the lock
+# appends `:pid` to and prints, so it holds no whitespace.
+GLOBAL_CHECKS = {
+    "--wait": ("a non-negative integer number of seconds", "autana --wait 0 monitor 5",
+               lambda v: v if v.isascii() and v.isdigit() else None),
+    "--owner": ("a name without whitespace", "autana --owner ci-7 flash",
+                lambda v: v if v and not re.search(r"\s", v) else None),
+    "--board": ("a board's USB serial number, six hex pairs",
+                "autana --board 90:70:69:FE:A3:08 monitor 5",
+                lambda v: v if re.fullmatch(r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", v) else None),
+    "--project": ("a path to an autana project", "autana flash --project PATH", project_of),
+}
+
+
 def checked_global(flag, value):
-    """`value` as `flag`'s environment value, or exit saying what it needs."""
-    if flag == "--wait" and not (value.isascii() and value.isdigit()):
-        sys.exit("autana --wait needs a non-negative integer number of seconds, "
-                 "e.g. autana --wait 0 monitor 5")
-    if flag == "--board" and not value.strip():
-        sys.exit("autana --board needs a board's USB serial number, "
-                 "e.g. autana --board 90:70:69:FE:A3:08 monitor 5")
-    if flag == "--owner" and not value.strip():
-        sys.exit("autana --owner needs a name, e.g. autana --owner ci-7 flash")
-    if flag == "--project":
-        if not value.strip():
-            sys.exit("autana --project needs a path, e.g. autana flash --project PATH")
-        project = Path(value).resolve()
-        if not (project / PROJECT_MARKER).is_file():
-            sys.exit(f"autana: {project} is not an autana project "
-                     f"(no {PROJECT_MARKER.as_posix()}) - pass --project PATH")
-        return str(project)
-    return value
+    """`value` as `flag`'s environment value, or exit naming the flag, the
+    value and an example."""
+    needs, example, check = GLOBAL_CHECKS[flag]
+    checked = check(value)
+    if checked is None:
+        where = f" (no {PROJECT_MARKER.as_posix()} in {Path(value).resolve()})" if flag == "--project" else ""
+        sys.exit(f"autana {flag} {value!r}: {flag} needs {needs}, e.g. {example}{where}")
+    return checked
 
 
 def pop_globals(words):

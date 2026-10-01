@@ -1342,9 +1342,9 @@ class GlobalOwnerTests(unittest.TestCase):
                          command[command.index("--wait") + 1]))
             return 0
 
-        self.run_main(["--wait", "0", "--owner", "a b", "status"], handler=handler)
-        self.run_main(["--owner", "a b", "--wait", "0", "status"], handler=handler)
-        self.assertEqual(seen, [("a b:4242", "0")] * 2)
+        self.run_main(["--wait", "0", "--owner", "a-b", "status"], handler=handler)
+        self.run_main(["--owner", "a-b", "--wait", "0", "status"], handler=handler)
+        self.assertEqual(seen, [("a-b:4242", "0")] * 2)
 
     def test_a_nested_process_inherits_the_owner(self):
         seen = []
@@ -1433,6 +1433,38 @@ class OneShotForwardingTests(unittest.TestCase):
         sent.assert_not_called()
         printed.assert_any_call(autana.__version__)
         self.assertEqual(code, 0)
+
+
+class GlobalFlagValueTests(unittest.TestCase):
+    """Each global flag checks its own value; a refusal names the flag, the
+    value and an example."""
+
+    GOOD = {"--wait": ["0", "3600"], "--owner": ["ci-7", "a@b"],
+            "--board": ["90:70:69:FE:A3:08", "90:70:69:fe:a3:08"]}
+    BAD = {"--wait": ["-1", "1.5", "abc", ""], "--owner": ["", "two words", "tab\tx"],
+           "--board": ["", "90706 9FEA308", "90:70:69:FE:A3", "90:70:69:FE:A3:0G", "COM3"]}
+
+    def test_good_values_are_kept(self):
+        for flag, values in self.GOOD.items():
+            for value in values:
+                with self.subTest(flag=flag, value=value):
+                    self.assertEqual(autana.pop_globals([flag, value, "x"]), ({flag: value}, ["x"]))
+
+    def test_bad_values_are_refused_naming_flag_value_and_example(self):
+        for flag, values in self.BAD.items():
+            for value in values:
+                with self.subTest(flag=flag, value=value), self.assertRaises(SystemExit) as stop:
+                    autana.pop_globals([flag, value])
+                message = str(stop.exception.code)
+                self.assertIn(repr(value), message)
+                self.assertIn(f"{flag} needs", message)
+                self.assertIn("e.g. autana", message)
+
+    def test_a_project_without_the_marker_is_refused_the_same_way(self):
+        with tempfile.TemporaryDirectory() as directory, self.assertRaises(SystemExit) as stop:
+            autana.pop_globals(["--project", directory])
+        self.assertIn(repr(directory), str(stop.exception.code))
+        self.assertIn("e.g. autana", str(stop.exception.code))
 
 
 class GlobalFlagOrderTests(unittest.TestCase):
