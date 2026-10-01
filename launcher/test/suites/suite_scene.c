@@ -392,6 +392,7 @@ test_a_paused_scene_neither_advances_nor_draws_until_resumed(void) {
     TEST_ASSERT_FALSE(scene_has_active_camera());
     frame(500);
     TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(-2.5F));
+    scene_render(500, 0, &fx.target); /* the shell's overlapped half counts no time either */
     scene_set_paused(false);
     frame(500);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.5F)); /* the paused 500 ms did not count */
