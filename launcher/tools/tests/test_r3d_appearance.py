@@ -61,20 +61,19 @@ def write_start(directory, count=4):
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class AppearanceMeshTests(unittest.TestCase):
     def test_projection_casts_the_reference_pinhole_rays(self):
+        try:
+            from r3d.reference_render import camera_rays
+        except ImportError:
+            self.skipTest("reference_render.py needs trimesh and embreex")
         width, height, lens, near = 184, 224, 0.62, 6.0
         eye, forward = np.array([10.0, 20.0, -5.0]), np.array([0.3, -0.2, 1.0])
         matrix = projection(eye, forward, width, height, lens, near)
-        f = forward / np.linalg.norm(forward)
-        right = np.cross(f, [0.0, 1.0, 0.0])
-        right /= np.linalg.norm(right)
-        up = np.cross(right, f)
-        short = min(width, height)
-        for x, y in ((0.5, 0.5), (91.5, 13.5), (183.5, 223.5)):
-            ray = f + right * (2 * x / width - 1) * lens * width / short + up * (1 - 2 * y / height) * lens * height / short
-            clip = matrix @ np.append(eye + 37.0 * ray, 1.0)
+        _origin, rays = camera_rays(width, height, lens, eye, forward, 1)
+        for x, y in ((0, 0), (91, 13), (183, 223)):
+            clip = matrix @ np.append(eye + 37.0 * rays[y * width + x], 1.0)
             ndc = clip[:3] / clip[3]
-            self.assertAlmostEqual(ndc[0], 2 * x / width - 1, places=9)
-            self.assertAlmostEqual(ndc[1], 1 - 2 * y / height, places=9)
+            self.assertAlmostEqual(ndc[0], 2 * (x + 0.5) / width - 1, places=9)
+            self.assertAlmostEqual(ndc[1], 1 - 2 * (y + 0.5) / height, places=9)
             self.assertTrue(-1.0 < ndc[2] < 1.0)
 
     def test_seam_vertices_share_one_position(self):
@@ -83,6 +82,18 @@ class AppearanceMeshTests(unittest.TestCase):
             self.assertLess(len(points), len(rgb))
             self.assertEqual(len(np.unique(points, axis=0)), len(points))
             self.assertTrue(np.all(point_edges(tris, vertex_point) < len(points)))
+
+    def test_the_written_mesh_holds_the_fitted_positions_and_colours(self):
+        with tempfile.TemporaryDirectory() as directory:
+            mesh = start_mesh(write_start(directory))
+            points, rgb = mesh[0] + [0.25, -0.5, 0.125], 1.0 - mesh[1]
+            write_mesh(pathlib.Path(directory) / "out", "card", points, rgb, mesh, ["test"])
+            back = read_lit_mesh(pathlib.Path(directory) / "out" / "card_mesh_generated.c")
+        q, colours, _tris, _double, _face = finest_triangles(back)
+        written = {(tuple(p), tuple(c)) for p, c in zip(q, colours)}
+        wanted = {(tuple(np.rint(p * back.position_scale).astype(int)), tuple(np.rint(c * 255).astype(int)))
+                  for p, c in zip(points[mesh[5]], rgb)}
+        self.assertEqual(written, wanted)
 
     def test_fitted_mesh_keeps_the_budget_and_closes_seams(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -68,13 +68,14 @@ These commands run from `launcher/`; `PY` is the venv's interpreter
 host-render script and `SCENE` its scene file.
 
 ```sh
-tools/anim/sample_tracks.sh --tracks TRACKS.c:NAME --every 5000 --until 40000     --poses camera 184 224 0.62 6 > poses.txt
-$PY tools/r3d/reference_render.py SCENE.scene.toml --poses poses.txt --skip 1     --out reference --samples 4
+tools/anim/sample_tracks.sh --tracks TRACKS.c:NAME --every 5000 --until 45000     --poses camera 184 224 0.62 6 > poses.txt
+$PY tools/r3d/reference_render.py SCENE.scene.toml --poses poses.txt --skip 1     --out reference --samples 4 --clear RRGGBB
 ```
 
-`--every 5000 --until 40000` writes nine poses, times 0 to 40000. A host render
-of `--frames 8 --dt 5000` records its first frame after one step, so
-`--skip 1` leaves the eight poses it shows.
+`--every 5000 --until 45000` writes nine poses, times 0 to 40000 (`--until`
+is exclusive). A host render of `--frames 8 --dt 5000` records its first frame
+after one step, so `--skip 1` leaves the eight poses it shows. `--clear` is the
+colour the scene clears to, so the sky scores as the host draws it.
 
 Score a host render's video against the references, with a heatmap per frame
 and a sheet of two frames:
@@ -119,7 +120,7 @@ triangles stay as the simplifier left them, so the budget holds.
 |---|---|
 | Start | a smooth `<name>_mesh_generated.c`, welded so the vertices of a colour seam share one position |
 | Fitted | every welded position, and every vertex's sRGB colour |
-| Forward model | nvdiffrast draws what the device draws: Gouraud colours, single-sided faces culled, black where nothing is drawn, at `--scale` times the reference size |
+| Forward model | nvdiffrast draws what the device draws: Gouraud colours, single-sided faces culled, the `--clear` colour where nothing is drawn, at `--scale` times the reference size |
 | Loss | the mean CIE76 ΔE of `render_compare.py` against the nearest-upscaled reference PNG, over a batch of random poses, plus `--laplacian` times the drift of the positions' uniform-Laplacian coordinates from the start's |
 | Schedule | Adam; both learning rates decay tenfold over `--steps` |
 | Output | `write_lit_mesh()`, the writer `mesh_import.py` and `rebake.py` end in, plus a vertex-coloured OBJ |
@@ -130,7 +131,7 @@ one mesh together (the path-averaged mesh); `--per-shot` trains one per
 pair, for a mesh swapped as the camera moves through each segment.
 
 The fit runs on a CUDA GPU in its own environment, not
-[requirements.txt](requirements.txt). The setup it was run with, on WSL 2
+[requirements.txt](requirements.txt). One setup that builds it, on WSL 2
 Debian with the Windows NVIDIA driver, no root, a conda environment for
 the CUDA 12.8 compiler and a GCC that CUDA 12.8 accepts:
 
@@ -153,7 +154,7 @@ repository root, with the reference images of the training poses:
 
 ```sh
 $E/bin/python launcher/tools/r3d/appearance_simplify.py --start MESH_mesh_generated.c \
-    --poses train.txt --reference reference_train --out fitted
+    --poses train.txt --reference reference_train --out fitted --clear RRGGBB
 ```
 
 To score a fitted mesh, build the scene's host renderer with it in place of

@@ -113,8 +113,8 @@ the commands, working directory `launcher/`, are in
 ```sh
 M=main/apps/render_lab
 H=$M/tools/render_lab_render_host.sh
-tools/anim/sample_tracks.sh --tracks $M/flythrough_tracks_generated.c:flythrough --every 5000 --until 40000     --poses camera 184 224 0.62 6 > poses.txt
-$PY tools/r3d/reference_render.py $M/meshes/sponza.scene.toml --poses poses.txt --skip 1 --out reference --samples 4
+tools/anim/sample_tracks.sh --tracks $M/flythrough_tracks_generated.c:flythrough --every 5000 --until 45000     --poses camera 184 224 0.62 6 > poses.txt
+$PY tools/r3d/reference_render.py $M/meshes/sponza.scene.toml --poses poses.txt --skip 1 --out reference --samples 4 --clear 9CC0E6
 $PY tools/r3d/bake_fidelity.py $M/meshes/sponza.scene.toml --mesh sponza_flat --script $H     --render-args "--quarter 0 --no-hud --scene sponza-flat --frames 8 --dt 5000"     --reference reference --work scratch     --variant declared= --variant fixed1=samples=fixed:1 --variant fixed4=samples=fixed:4     --variant fixed8=samples=fixed:8 --variant fixed16=samples=fixed:16 --variant fixed32=samples=fixed:32     --variant fixed64=samples=fixed:64 --variant fixed2=samples=fixed:2     --variant min2=samples=auto:2:16:median --variant min4=samples=auto:4:16:median     --variant max4=samples=auto:1:4:median --variant max8=samples=auto:1:8:median     --variant max32=samples=auto:1:32:median --variant area0.25=samples=auto:1:16:median*0.25     --variant area0.5=samples=auto:1:16:median*0.5 --variant area2=samples=auto:1:16:median*2     --variant sky16=sky=16 --variant sky32=sky=32 --variant sky64=sky=64 --variant sky256=sky=256     --variant sky512=sky=512 --variant centroid=place=centroid --variant sun-centre=sun=centre     --variant fixed4-sun-centre=samples=fixed:4,sun=centre
 ```
 
@@ -184,34 +184,35 @@ the foreground drapery. Nothing refreshes the sheet when the bake changes.
 fits the lite mesh's vertex positions and colours to the reference, its
 triangles unchanged. It trains on the flythrough sampled every second, less
 the times scored, and is scored on the times 5 to 35 s every 5 s, which it
-never saw (`--frames 7 --dt 5000` against the reference of those poses).
-Path-averaged is one mesh trained on every training pose; per shot is one
-mesh per 10 s of the path, each frame scored with its own segment's mesh.
+never saw (`--frames 7 --dt 5000` against the reference of those poses,
+rendered and trained with `--clear 9CC0E6`). Path-averaged is one mesh
+trained on every training pose; per shot is one mesh per 10 s of the path,
+each frame scored with its own segment's mesh. The unfitted rows differ from
+the fidelity table above only because they average seven of its eight poses.
 
 | Mesh | Triangles | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 |
 |---|---:|---:|---:|---:|---:|
-| Full smooth | 17,381 | 10.59 | 33.06 | 0.640 | 15.81 |
-| Flat, committed | 17,381 | 11.26 | 39.41 | 0.595 | 18.22 |
-| Lite, simplifier | 8,670 | 11.52 | 35.99 | 0.598 | 18.00 |
-| Lite, fitted, path-averaged | 8,670 | 9.15 | 26.51 | 0.701 | 12.31 |
-| Lite, fitted, per shot | 8,670 | 9.71 | 29.18 | 0.695 | 13.07 |
+| Full smooth | 17,381 | 7.197 | 22.38 | 0.687 | 14.63 |
+| Flat, committed | 17,381 | 7.872 | 28.35 | 0.642 | 17.02 |
+| Lite, simplifier | 8,670 | 8.133 | 26.25 | 0.643 | 16.83 |
+| Lite, fitted, path-averaged | 8,670 | 5.732 | 15.03 | 0.754 | 10.85 |
+| Lite, fitted, per shot | 8,670 | 6.270 | 17.51 | 0.748 | 11.69 |
 
 The fitted lite mesh beats the full mesh at half its triangles. Per shot
 trails path-averaged: each segment trains on eight poses, too few to
-generalise to the poses between them. At 15 s every mesh scores about
-26 to 28, which lifts every mean in the table equally.
+generalise to the poses between them.
 
 Two held-out poses, 5 s and 25 s. Left to right, the simplifier's lite mesh,
 the fitted one and their difference; then the places they differ most,
-enlarged, lite above fitted. The fit sharpens the sun's shadow edge on the floor and the arches'
-edges, and puts the hangings' colours back.
+enlarged, lite above fitted. The fit sharpens the sun's shadow edge on the
+floor and the arches' edges, and puts the hangings' colours back.
 
 ![Lite against the fitted lite mesh](../../../../../docs/images/render/appearance-lite-fitted.png)
 ![Lite against fitted, enlarged](../../../../../docs/images/render/appearance-lite-fitted.crops.png)
 
 The fitted mesh against the reference at the same poses, and where they
-still differ most: the sky, which the host clears to its sky colour and the
-reference leaves black, and texture detail no vertex colour holds.
+still differ most: the edge of the roof opening against the sky, and
+texture detail no vertex colour holds.
 
 ![Fitted against the reference](../../../../../docs/images/render/appearance-fitted-reference.png)
 ![Fitted against the reference, enlarged](../../../../../docs/images/render/appearance-fitted-reference.crops.png)
