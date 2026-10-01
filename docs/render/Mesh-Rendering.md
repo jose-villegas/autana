@@ -173,8 +173,7 @@ The two views are the [view modes](#view-modes) over the full mesh.
 | ![Sponza flythrough, depth](../images/render/sponza-depth.gif) | `RASTER_SHOW_DEPTH` over the full mesh | as full | as full | not a target |
 | ![Sponza flythrough, depth tiles](../images/render/sponza-tiles.gif) | `RASTER_SHOW_DEPTH_TILES` over the full mesh | as full | as full | not a target |
 
-The counts are in `sponza_mesh_generated.h`, `sponza_lite_mesh_generated.h`
-and `sponza_flat_mesh_generated.h`. The frame is the mean along the whole
+The counts are those of the three baked meshes in `launcher/main/apps/render_lab/meshes/`. The frame is the mean along the whole
 flythrough, half resolution upscaled and no panel transfer, from
 `autana suite run_sponza_perf_suite` (the `frame_cost` test); rerun it to
 refresh the numbers. The GIFs are made by the doc-images
