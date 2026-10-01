@@ -9,6 +9,7 @@
 
 #include "asset/asset_store.h"
 #include "scene/scene_internal.h"
+#include "scene/scene_shell.h"
 
 #define DEFS_MAX   16
 #define LOADED_MAX 8
@@ -17,7 +18,6 @@ static const scene_def_t* defs[DEFS_MAX];
 static int def_count;
 static scene_t* loaded[LOADED_MAX];
 static int loaded_count;
-static scene_failure_t failure;
 
 static const r3d_placement_t IDENTITY = {{{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}},
                                          {0.0F, 0.0F, 0.0F}};
@@ -82,14 +82,8 @@ instantiate(const scene_def_t* def) {
     memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_DIRTY, def->entity_count);
     for (int i = 0; i < def->camera_count; i++) {
         const scene_camera_def_t* c = &def->cameras[i];
-        scene->cameras[i] = (scene_camera_t){
-            .lens = {.half_fov_short_tan = c->half_fov_short_tan,
-                     .near_z = c->near_z,
-                     .placement = &scene->transforms[c->entity],
-                     .path = c->path},
-            .entity = c->entity,
-            .render_scale_percent = 50,
-        };
+        scene->cameras[i] = (scene_camera_t){.lens = c->lens, .entity = c->entity, .render_scale_percent = 50};
+        scene->cameras[i].lens.placement = &scene->transforms[c->entity];
     }
     for (int i = 0; i < def->renderer_count; i++) {
         scene->renderers[i].entity = def->renderers[i].entity;
@@ -98,56 +92,55 @@ instantiate(const scene_def_t* def) {
 }
 
 /* Opens every renderer's mesh; stops at the first that fails. */
-static asset_status_t
-open_meshes(scene_t* scene, const asset_pack_t* pack, const char** failed) {
+static scene_failure_t
+open_meshes(scene_t* scene, const asset_pack_t* pack) {
     for (int i = 0; i < scene->def->renderer_count; i++) {
         const char* asset = scene->def->renderers[i].asset;
-        *failed = asset;
         const asset_status_t status =
             pack == NULL ? ASSET_ERR_NO_PACK : r3d_lit_mesh_open(pack, asset, &scene->renderers[i].mesh);
         if (status != ASSET_OK) {
-            return status;
+            return (scene_failure_t){SCENE_ERR_ASSET, status, asset};
         }
     }
-    return ASSET_OK;
+    return (scene_failure_t){SCENE_OK, ASSET_OK, scene->def->name};
+}
+
+static scene_t*
+fail(scene_failure_t* why, scene_status_t status, const char* what) {
+    if (why != NULL) {
+        *why = (scene_failure_t){status, ASSET_OK, what};
+    }
+    return NULL;
 }
 
 scene_t*
-scene_load_from(const asset_pack_t* pack, const char* name) {
-    failure = (scene_failure_t){ASSET_ERR_NOT_FOUND, name};
+scene_load_from(const asset_pack_t* pack, const char* name, scene_failure_t* why) {
     const scene_def_t* def = find_def(name);
     if (def == NULL) {
-        return NULL;
+        return fail(why, SCENE_ERR_UNKNOWN, name);
     }
     if (loaded_count == LOADED_MAX) {
-        failure.status = ASSET_ERR_BOUNDS;
-        return NULL;
+        return fail(why, SCENE_ERR_FULL, name);
     }
     scene_t* scene = instantiate(def);
     if (scene == NULL) {
-        failure.status = ASSET_ERR_NO_PACK;
-        return NULL;
+        return fail(why, SCENE_ERR_MEMORY, name);
     }
-    const char* failed = NULL;
-    const asset_status_t status = open_meshes(scene, pack, &failed);
-    if (status != ASSET_OK) {
+    const scene_failure_t opened = open_meshes(scene, pack);
+    if (why != NULL) {
+        *why = opened;
+    }
+    if (opened.status != SCENE_OK) {
         heap_caps_free(scene);
-        failure = (scene_failure_t){status, failed};
         return NULL;
     }
-    failure = (scene_failure_t){ASSET_OK, name};
     loaded[loaded_count++] = scene;
     return scene;
 }
 
 scene_t*
-scene_load(const char* name) {
-    return scene_load_from(asset_store_pack(), name);
-}
-
-scene_failure_t
-scene_load_failure(void) {
-    return failure;
+scene_load(const char* name, scene_failure_t* why) {
+    return scene_load_from(asset_store_pack(), name, why);
 }
 
 void

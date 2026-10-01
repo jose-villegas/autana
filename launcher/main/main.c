@@ -33,7 +33,7 @@
 #include "input/imu_rotation.h"
 #include "input/tilt.h"
 #include "input/touch.h"
-#include "scene/scene.h"
+#include "scene/scene_shell.h"
 #include "ui/system_navigation.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
@@ -523,9 +523,7 @@ step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
         gfx_present_wait();
     }
     /* A camera's scene is in the framebuffer by the time frame() draws over it. */
-    if (scene_has_active_camera()) {
-        scene_shell_compose(dt_ms);
-    }
+    scene_shell_compose(dt_ms);
     current->frame(dt_ms, input);
     gfx_band_run(current->draw_band, ui_replay_band);
     frame_ready = true;

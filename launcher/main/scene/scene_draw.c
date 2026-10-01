@@ -71,6 +71,7 @@ scene_draw_release(void) {
     scratch = NULL;
     scratch_bytes = 0;
     raster = (raster_t){0};
+    stats = (raster_stats_t){0, 0};
     paused = false;
 }
 
@@ -200,6 +201,7 @@ scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target) {
         draw_active(quarter, target); /* scene_render() had no framebuffer to name yet */
     }
     if (rendered) {
+        raster.destination = target->pixels;
         raster_upscale(&raster);
     }
     rendered = false;

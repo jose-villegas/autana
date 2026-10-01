@@ -5,6 +5,7 @@
 #pragma once
 
 #include "scene/scene.h"
+#include "scene/scene_shell.h"
 
 #define SCENE_FLAG_ENABLED 1U
 #define SCENE_FLAG_DIRTY   2U

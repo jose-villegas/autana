@@ -14,7 +14,7 @@
  * loaded: the shell unloads whatever is left when it exits.
  *
  * The table a scene is loaded from (scene_def_t) is generated const data,
- * registered by name with SCENE_REGISTER(); docs/render/Building-a-Scene.md.
+ * registered by name; docs/render/Scene-Manager.md says how a frame goes.
  */
 #pragma once
 
@@ -43,8 +43,7 @@ typedef struct {
 
 typedef struct {
     scene_entity_t entity;
-    float half_fov_short_tan, near_z;
-    const r3d_scene_path_t* path; /* NULL for a camera that stays put */
+    r3d_scene_camera_t lens; /* its placement NULL: a scene points it at the entity's transform */
 } scene_camera_def_t;
 
 /* What scene_load() instantiates: array lengths and contents, all const. */
@@ -57,24 +56,27 @@ typedef struct {
     const scene_camera_def_t* cameras;     /* camera_count */
 } scene_def_t;
 
-/* Why a load failed: the pack's status and the scene or asset id it was
- * about. */
+typedef enum {
+    SCENE_OK = 0,
+    SCENE_ERR_UNKNOWN, /* no scene has that name */
+    SCENE_ERR_FULL,    /* as many scenes are loaded as the manager holds */
+    SCENE_ERR_MEMORY,  /* the scene's block could not be allocated */
+    SCENE_ERR_ASSET,   /* a mesh did not open: `asset` says why */
+} scene_status_t;
+
+/* What a load reports: its status, the pack's status when a mesh failed, and
+ * the scene or mesh id it was about. */
 typedef struct {
-    asset_status_t status;
+    scene_status_t status;
+    asset_status_t asset;
     const char* what;
 } scene_failure_t;
 
-/* Makes a def loadable by name; runs before main(), like APP_REGISTER(). */
-void scene_register(const scene_def_t* def);
-#define SCENE_REGISTER(def)                                                                                            \
-    __attribute__((constructor)) static void def##_register(void) { scene_register(&(def)); }
-
 /* Loads the scene `name` beside any already loaded, its meshes opened from
- * `pack` or the build's asset pack. NULL on failure; scene_load_failure()
- * says why. */
-scene_t* scene_load(const char* name);
-scene_t* scene_load_from(const asset_pack_t* pack, const char* name);
-scene_failure_t scene_load_failure(void);
+ * `pack` or the build's asset pack. NULL on failure, and `why`, which may be
+ * NULL, says why; a success sets it to SCENE_OK. */
+scene_t* scene_load(const char* name, scene_failure_t* why);
+scene_t* scene_load_from(const asset_pack_t* pack, const char* name, scene_failure_t* why);
 
 /* Frees the scene. If its camera was the active one, nothing is drawn. */
 void scene_unload(scene_t* scene);
@@ -112,25 +114,3 @@ raster_stats_t scene_stats(void);
 /* Between draw and upscale, shows the frame as `mode` says; development only. */
 void scene_set_debug_view(raster_show_t mode);
 #endif
-
-/*
- * The shell's half. scene_render() advances the clocks and draws into the
- * raster's scratch block, touching no framebuffer, so it may overlap the last
- * frame's send. scene_compose() upscales into the target, drawing first if
- * scene_render() did not run, and so waits for the framebuffer to be free.
- */
-typedef struct {
-    uint16_t* pixels;
-    int width, height;
-} scene_target_t;
-
-bool scene_has_active_camera(void);
-void scene_render(uint32_t dt_ms, int quarter, const scene_target_t* target);
-void scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target);
-
-/* The two above on the panel's framebuffer and orientation, marking it dirty. */
-void scene_shell_render(uint32_t dt_ms);
-void scene_shell_compose(uint32_t dt_ms);
-
-/* An app has exited: unloads every scene and frees the raster's scratch. */
-void scene_unload_all(void);

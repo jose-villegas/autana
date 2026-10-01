@@ -8,6 +8,8 @@
 
 #include "sponza_scene_generated.h"
 
+#include "scene/scene_shell.h"
+
 #include "flythrough_tracks_generated.h"
 
 static const char* const sponza_scene_names[] = {"camera", "atrium", "atrium_flat", "atrium_lite"};
@@ -28,7 +30,7 @@ static const scene_renderer_def_t sponza_scene_renderers[] = {
 static const r3d_scene_path_t sponza_scene_camera_path = {.clip = &flythrough_clip, .translation = &flythrough_camera_translation, .rotation = &flythrough_camera_rotation};
 
 static const scene_camera_def_t sponza_scene_cameras[] = {
-    {0, 0.62F, 6.0F, &sponza_scene_camera_path},
+    {0, {.half_fov_short_tan = 0.62F, .near_z = 6.0F, .placement = NULL, .path = &sponza_scene_camera_path}},
 };
 
 const scene_def_t sponza_scene = {

@@ -29,7 +29,7 @@ read flash in place and cost no RAM.
 
 | Call | Meaning |
 |---|---|
-| `scene_load(name)` | loads the scene beside any already loaded; NULL on failure, and `scene_load_failure()` names the scene or mesh id and the pack's status |
+| `scene_load(name, &why)` | loads the scene beside any already loaded; NULL on failure, and `why` (which may be NULL) says what failed: no such scene, the manager full, no memory, or a mesh the pack could not open, with its id and the pack's status |
 | `scene_unload(scene)` | frees it; its camera, if active, is deactivated |
 | `scene_find(scene, name)` | the entity with that name |
 | `scene_entity_set_transform()` / `_set_enabled()` | move an entity, hide or show a renderer |
@@ -63,7 +63,7 @@ still being sent. `scene_compose()` writes the framebuffer and runs once the
 send is done; if `scene_render()` did not run (the first frame after
 activating), it draws first. An app gets this overlap whenever a camera is
 active, with or without `update()`. With no camera active the loop is the plain
-one. A camera needs the full-framebuffer layout; in band mode nothing is drawn.
+one. Every frame redraws the whole picture, a static scene included. A camera needs the full-framebuffer layout; in band mode nothing is drawn.
 
 `scene_render()` advances the clock of every loaded scene, then rebuilds the
 placement of each renderer whose entity moved, fills `instances[]` from the
@@ -78,12 +78,16 @@ shell calls `scene_unload_all()`, which unloads every scene and frees the
 scratch, so nothing an app loaded outlives it. An app may unload a scene itself
 sooner.
 
-Scenes are not taken from the app arena: it can only be emptied whole, and a
-scene is unloaded alone. Meshes are opened from an `asset_pack_t`;
-`scene_load_from()` takes the pack, so a test can load from one it builds.
+Scenes are not taken from the app arena: it gives memory back only in the
+reverse order it was taken, and scenes unload in any order. Meshes are opened
+from an `asset_pack_t`; `scene_load_from()` takes the pack, so a test can load
+from one it builds.
 
 ## Beneath it
 
-The raster API (`raster_draw()`, `raster_upscale()`) is unchanged and remains
-what host tools and tests call. `r3d_scene_camera_at()` samples the active
-camera's path.
+The raster API (`raster_draw()`, `raster_upscale()`) is what host tools and
+tests call. `r3d_scene_camera_at()` samples the active camera's path.
+
+The shell's half of the API (the two frame halves, registering generated
+tables, the unload on exit) is `scene/scene_shell.h`; apps include only
+`scene/scene.h`.

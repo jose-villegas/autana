@@ -79,7 +79,7 @@ def table_source(scene, banner):
     index = {obj.name: i for i, obj in enumerate(objects)}
     camera = scene.camera
     path = camera.component.path if camera else None
-    lines = [banner, "", "#include <stddef.h>", "", f'#include "{name}_generated.h"', ""]
+    lines = [banner, "", "#include <stddef.h>", "", f'#include "{name}_generated.h"', "", '#include "scene/scene_shell.h"', ""]
     if path:
         lines += [f'#include "{path.tracks}_tracks_generated.h"', ""]
     lines += [f"static const char* const {name}_names[] = {{" + ", ".join(f'"{obj.name}"' for obj in objects) + "};", ""]
@@ -96,8 +96,9 @@ def table_source(scene, banner):
                       f".rotation = &{path.tracks}_{path.node}_rotation}};", ""]
         component = camera.component
         lines += [f"static const scene_camera_def_t {name}_cameras[] = {{",
-                  f"    {{{index[camera.name]}, {real(component.half_fov_short_tan)}, {real(component.near_z)}, "
-                  f"{'&' + name + '_' + camera.name + '_path' if path else 'NULL'}}},",
+                  f"    {{{index[camera.name]}, {{.half_fov_short_tan = {real(component.half_fov_short_tan)}, "
+                  f".near_z = {real(component.near_z)}, .placement = NULL, "
+                  f".path = {'&' + name + '_' + camera.name + '_path' if path else 'NULL'}}}}},",
                   "};", ""]
     lines += [f"const scene_def_t {name} = {{",
               f'    .name = "{table_scene_name(scene)}",',

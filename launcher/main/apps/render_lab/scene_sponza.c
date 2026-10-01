@@ -35,12 +35,20 @@ static scene_t* sponza;
 static char failure[48];
 
 static void
-record_failure(void) {
-    const scene_failure_t why = scene_load_failure();
-    const char* what = why.what == NULL ? "?" : why.what;
-    ESP_LOGE(TAG, "scene '%s': %s; it stays blank", what, asset_status_text(why.status));
-    const bool missing = why.status == ASSET_ERR_NOT_FOUND || why.status == ASSET_ERR_NO_PACK;
-    if (snprintf(failure, sizeof failure, missing ? "no asset '%s': flash it" : "bad asset '%s'", what) < 0) {
+record_failure(const scene_failure_t* why) {
+    const char* what = why->what == NULL ? "?" : why->what;
+    ESP_LOGE(TAG, "scene '%s' did not load (%d, asset %s); it stays blank", what, (int)why->status,
+             asset_status_text(why->asset));
+    const bool missing = why->asset == ASSET_ERR_NOT_FOUND || why->asset == ASSET_ERR_NO_PACK;
+    const char* shown = "bad asset '%s'";
+    if (why->status == SCENE_ERR_MEMORY) {
+        shown = "no memory for '%s'";
+    } else if (why->status != SCENE_ERR_ASSET) {
+        shown = "no scene '%s'";
+    } else if (missing) {
+        shown = "no asset '%s': flash it";
+    }
+    if (snprintf(failure, sizeof failure, shown, what) < 0) {
         failure[0] = '\0';
     }
 }
@@ -51,9 +59,10 @@ enter_with(scene_entity_t variant) {
     gfx_set_partial_clear(false);
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
     failure[0] = '\0';
-    sponza = scene_load("sponza");
+    scene_failure_t why;
+    sponza = scene_load("sponza", &why);
     if (sponza == NULL) {
-        record_failure();
+        record_failure(&why);
         return;
     }
     const scene_entity_t bakes[] = {SPONZA_SCENE_ATRIUM, SPONZA_SCENE_ATRIUM_FLAT, SPONZA_SCENE_ATRIUM_LITE};

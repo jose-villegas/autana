@@ -151,7 +151,8 @@ static scene_t* hall;
 
 static void
 enter(void) {
-    hall = scene_load("hall"); /* NULL when a mesh is missing: scene_load_failure() says which */
+    scene_failure_t why;
+    hall = scene_load("hall", &why); /* NULL when a mesh is missing: `why` names it */
     if (hall != NULL) {
         scene_activate(hall, NULL); /* its first camera */
     }
@@ -164,15 +165,14 @@ frame(uint32_t dt_ms, const input_t* input) {
 ```
 
 Nothing else: the shell unloads what the app loaded when it exits. To move
-something, `scene_entity_set_transform(hall, entity, &where)`; to hide
+something, `scene_entity_set_transform(hall, HALL_SCENE_HALL, &where)`; to hide
 it, `scene_entity_set_enabled()`. Several scenes may be loaded at once, and
 `scene_activate()` on another's camera changes what is drawn. How a frame is
 ordered against the panel send and the storage behind it are in
 [Scene-Manager.md](Scene-Manager.md); how the raster draws each instance is in
 [Mesh-Rendering.md](Mesh-Rendering.md). To see the scene without a board, declare
-it for the [render harness](../tools/Render-Harness.md#declaring-a-scene), whose
-draw callback calls `scene_shell_compose()` before the app's `frame()`, as the
-shell does.
+it for the [render harness](../tools/Render-Harness.md#declaring-a-scene), which
+composes the active scene before the app's `frame()`, as the shell does.
 
 ## Checking it
 

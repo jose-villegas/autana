@@ -28,7 +28,9 @@
 #                   --build-only compiles the renderer, prints `built <path>`
 #                   and renders nothing; tools/render/render_compare.sh uses it.
 #   scene_includes  OPTIONAL extra -I directories, relative to launcher/
-#   scene_defines   OPTIONAL extra compiler flags
+#   scene_defines   OPTIONAL extra compiler flags; -DRENDER_HOST_SCENES makes
+#                   render_host.c compose the active scene before each frame
+#                   (the scene's sources then include scene/*.c)
 #   scene_out_dir   OPTIONAL; the default is results/render/<name> under the
 #                   nearest tools/ folder above the scene script
 #   scene_baseline  OPTIONAL; the default is <name>_render_baseline.txt

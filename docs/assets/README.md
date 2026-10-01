@@ -64,8 +64,9 @@ reports the first failure:
 
 A buffer may be larger than the pack, as a partition is. A scene names the
 meshes it draws by asset id; `scene_load()` opens each from the pack and
-fails on the first missing or malformed one, naming its id. A scene that
-fails to load draws nothing and says so on the panel.
+fails on the first missing or malformed one. A scene that fails to load is
+not drawn, and the load names the id and the pack's status; showing that is up
+to the app.
 
 ## The device
 

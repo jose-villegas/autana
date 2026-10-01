@@ -96,6 +96,11 @@ collect every `.c` in the app folder outside `tools/` and `tests/`,
 excluding `suite_*.c`, and list only the shared engine and host-shim
 sources by hand, so a new source file needs no edit to the script.
 
+A scene that links the scene manager (`scene/*.c`) declares
+`-DRENDER_HOST_SCENES` in `scene_defines`; `render_host.c` then calls
+`scene_shell_compose()` before each `draw()`, as the shell does before an app's
+`frame()`, and it does nothing without an active camera.
+
 Each line of `scene_renders` is `<label>|<arguments>|<width>x<height>`,
 optionally followed by `|nopin`, and the declared size is checked against
 what the binary reports it wrote. That

@@ -3,6 +3,7 @@
 import contextlib
 import io
 import pathlib
+import re
 import sys
 import tempfile
 import tomllib
@@ -302,12 +303,51 @@ class SceneTests(unittest.TestCase):
         self.assertIn('static const scene_renderer_def_t hall_scene_renderers[] = {\n    {0, "a"},\n    {1, "b"},\n};', source)
         self.assertIn("{.m = {{2.0F, 0.0F, 0.0F}, {0.0F, 2.0F, 0.0F}, {0.0F, 0.0F, 2.0F}}, .position = {1.0F, 2.0F, 3.0F}},", source)
         self.assertIn(".clip = &flight_clip, .translation = &flight_rig_translation, .rotation = &flight_rig_rotation", source)
-        self.assertIn("{2, 0.6F, 1.0F, &hall_scene_camera_path},", source)
+        self.assertIn("{2, {.half_fov_short_tan = 0.6F, .near_z = 1.0F, .placement = NULL, .path = &hall_scene_camera_path}},",
+                      source)
         self.assertIn(".entity_count = 3,", source)
         self.assertIn("SCENE_REGISTER(hall_scene)", source)
         self.assertIn("extern const scene_def_t hall_scene;", header)
         self.assertIn("#define HALL_SCENE_B ((scene_entity_t)1)", header)
         self.assertIn("#define HALL_SCENE_CAMERA ((scene_entity_t)2)", header)
+
+    def table_of(self, objects, lit=False):
+        """The generated source and header of a scene, as text; `lit` lights both of its meshes."""
+        body = LIGHT_STEP if lit else ""
+        with tempfile.TemporaryDirectory() as directory:
+            for mesh in ("a", "b"):
+                output = f'[output]\ndirectory = "."\nname = "{mesh}"\n'
+                write_import(directory, f"{mesh}.import.toml", output=output, body=body)
+            head = TONEMAP + AMBIENT if lit else ""
+            scene = load_scene(write_scene(directory, objects, head, name="hall.scene.toml"))
+            source, header = (text for _, text in table_files(scene))
+        return source, header
+
+    def test_names_transforms_renderers_and_macros_share_one_order(self):
+        # A moved mesh between two that stay put, then the camera: any array reversed or shifted is caught.
+        moved = renderer("b.import.toml", transform="position = [1.0, 2.0, 3.0]\n")
+        source, header = self.table_of(renderer("a.import.toml") + moved + camera(region=False))
+        names = re.search(r"hall_scene_names\[\] = \{(.*?)\};", source).group(1).replace('"', "").split(", ")
+        transforms = re.search(r"hall_scene_transforms\[\] = \{\n(.*?)\n\};", source, re.S).group(1).splitlines()
+        indices = [int(i) for i in re.findall(r"^    \{(\d+), \"", source, re.M)]
+        macros = re.findall(r"#define HALL_SCENE_(\w+) \(\(scene_entity_t\)(\d+)\)", header)
+        self.assertEqual(names, ["a", "b", "camera"])
+        self.assertEqual([name.lower() for name, _ in macros], names)
+        self.assertEqual([int(index) for _, index in macros], [0, 1, 2])
+        self.assertEqual(len(transforms), len(names))
+        self.assertEqual([("position = {1.0F, 2.0F, 3.0F}" in line) for line in transforms], [False, True, False])
+        self.assertEqual(indices[:2], [names.index("a"), names.index("b")])
+
+    def test_a_light_has_no_entity_and_the_indices_step_over_it(self):
+        sun = sun_object()
+        source, header = self.table_of(renderer("a.import.toml") + sun + renderer("b.import.toml") + camera(region=False),
+                                       lit=True)
+        self.assertIn('hall_scene_names[] = {"a", "b", "camera"};', source)
+        self.assertIn("{0, \"a\"},", source)
+        self.assertIn("{1, \"b\"},", source)
+        self.assertIn("{2, {.half_fov_short_tan", source)
+        self.assertNotIn("SUN", header)
+        self.assertIn(".entity_count = 3,", source)
 
     def test_the_scene_table_holds_only_what_the_device_reads(self):
         with tempfile.TemporaryDirectory() as directory:

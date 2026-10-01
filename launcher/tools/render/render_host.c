@@ -28,6 +28,10 @@
 #include "ui/ui_transform.h"
 #include "util/screenshot.h"
 
+#ifdef RENDER_HOST_SCENES
+#include "scene/scene_shell.h"
+#endif
+
 #if defined(_WIN32)
 #include <fcntl.h>
 #include <io.h>
@@ -103,6 +107,18 @@ write_bmp(FILE* out, const uint8_t* frame_buf, int out_w, int out_h, render_size
     size->height = out_h;
     size->bytes = (long)SCREENSHOT_BMP_HEADER_SIZE + (long)stride * out_h;
     return true;
+}
+
+/* What the shell does before an app's frame(): put the active camera's scene
+ * in the framebuffer. A scene declares RENDER_HOST_SCENES when it links the
+ * scene manager; without a camera this does nothing. */
+static void
+compose_scenes(uint32_t dt_ms) {
+#ifdef RENDER_HOST_SCENES
+    scene_shell_compose(dt_ms);
+#else
+    (void)dt_ms;
+#endif
 }
 
 /* The declared steps turned into one frame's input_t. `down` holds from
@@ -266,6 +282,7 @@ main(int argc, char** argv) {
         frame.elapsed_ms = (uint32_t)i * dt_ms;
         apply_input(scene, i, &frame.input);
         render_watch_frame_begin();
+        compose_scenes(frame.dt_ms);
         scene->draw(&frame);
         render_watch_frame_end();
 
@@ -283,6 +300,7 @@ main(int argc, char** argv) {
         frame.elapsed_ms = (uint32_t)i * dt_ms;
         apply_input(scene, i, &frame.input);
         render_watch_frame_begin();
+        compose_scenes(frame.dt_ms);
         scene->draw(&frame);
         render_watch_frame_end();
     }

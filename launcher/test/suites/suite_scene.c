@@ -18,6 +18,8 @@
 #include "asset/asset_pack.h"
 #include "gfx/gfx_color.h"
 #include "scene/scene.h"
+#include "scene/scene_internal.h"
+#include "scene/scene_shell.h"
 #include "test_cleanup.h"
 
 #define SIZE       64
@@ -120,7 +122,7 @@ make_pack(uint8_t* pack) {
 static const char* const PAIR_NAMES[] = {"camera", "red", "green"};
 static const scene_transform_t PAIR_TRANSFORMS[] = {AT(0, 0, 10), IDENTITY, AT(4, 0, 0)};
 static const scene_renderer_def_t PAIR_RENDERERS[] = {{1, "red"}, {2, "green"}};
-static const scene_camera_def_t PAIR_CAMERAS[] = {{0, 1.0F, 1.0F, NULL}};
+static const scene_camera_def_t PAIR_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, NULL}}};
 static const scene_def_t PAIR = {"test_pair", 3, 2, 1, PAIR_NAMES, PAIR_TRANSFORMS, PAIR_RENDERERS, PAIR_CAMERAS};
 SCENE_REGISTER(PAIR)
 
@@ -128,7 +130,7 @@ SCENE_REGISTER(PAIR)
 static const char* const SOLO_NAMES[] = {"eye", "blue"};
 static const scene_transform_t SOLO_TRANSFORMS[] = {AT(0, 0, 10), IDENTITY};
 static const scene_renderer_def_t SOLO_RENDERERS[] = {{1, "blue"}};
-static const scene_camera_def_t SOLO_CAMERAS[] = {{0, 1.0F, 1.0F, NULL}};
+static const scene_camera_def_t SOLO_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, NULL}}};
 static const scene_def_t SOLO = {"test_solo", 2, 1, 1, SOLO_NAMES, SOLO_TRANSFORMS, SOLO_RENDERERS, SOLO_CAMERAS};
 SCENE_REGISTER(SOLO)
 
@@ -151,10 +153,18 @@ static const r3d_scene_path_t FLIGHT_PATH = {&FLIGHT_CLIP, &FLIGHT_TRANSLATION, 
 static const char* const FLIGHT_NAMES[] = {"camera", "red"};
 static const scene_transform_t FLIGHT_TRANSFORMS[] = {IDENTITY, IDENTITY};
 static const scene_renderer_def_t FLIGHT_RENDERERS[] = {{1, "red"}};
-static const scene_camera_def_t FLIGHT_CAMERAS[] = {{0, 1.0F, 1.0F, &FLIGHT_PATH}};
+static const scene_camera_def_t FLIGHT_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, &FLIGHT_PATH}}};
 static const scene_def_t FLIGHT = {"test_flight", 2, 1, 1, FLIGHT_NAMES, FLIGHT_TRANSFORMS, FLIGHT_RENDERERS,
                                    FLIGHT_CAMERAS};
 SCENE_REGISTER(FLIGHT)
+
+/* "twin": two cameras, 4 units apart, and a red quad at the origin. */
+static const char* const TWIN_NAMES[] = {"left", "right", "red"};
+static const scene_transform_t TWIN_TRANSFORMS[] = {AT(0, 0, 10), AT(4, 0, 10), IDENTITY};
+static const scene_renderer_def_t TWIN_RENDERERS[] = {{2, "red"}};
+static const scene_camera_def_t TWIN_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, NULL}}, {1, {1.0F, 1.0F, NULL, NULL}}};
+static const scene_def_t TWIN = {"test_twin", 3, 1, 2, TWIN_NAMES, TWIN_TRANSFORMS, TWIN_RENDERERS, TWIN_CAMERAS};
+SCENE_REGISTER(TWIN)
 
 typedef struct {
     uint8_t* bytes;
@@ -190,7 +200,7 @@ fixture(void) {
 
 static scene_t*
 load(const char* name) {
-    scene_t* scene = scene_load_from(&fx.pack, name);
+    scene_t* scene = scene_load_from(&fx.pack, name, NULL);
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, name);
     return scene;
 }
@@ -235,19 +245,60 @@ test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took(void) {
 static void
 test_a_load_that_fails_says_what_it_was_about(void) {
     fixture();
-    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_nothing_of_the_kind"));
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, scene_load_failure().status);
-    TEST_ASSERT_EQUAL_STRING("test_nothing_of_the_kind", scene_load_failure().what);
+    scene_failure_t why;
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_nothing_of_the_kind", &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_UNKNOWN, why.status);
+    TEST_ASSERT_EQUAL_STRING("test_nothing_of_the_kind", why.what);
 
     const size_t before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_broken"));
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, scene_load_failure().status);
-    TEST_ASSERT_EQUAL_STRING("gone", scene_load_failure().what);
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_broken", &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, why.asset);
+    TEST_ASSERT_EQUAL_STRING("gone", why.what);
     TEST_ASSERT_TRUE(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) == before);
 
-    TEST_ASSERT_NULL(scene_load_from(NULL, "test_pair"));
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, scene_load_failure().status);
-    TEST_ASSERT_EQUAL_STRING("red", scene_load_failure().what);
+    TEST_ASSERT_NULL(scene_load_from(NULL, "test_pair", &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, why.asset);
+    TEST_ASSERT_EQUAL_STRING("red", why.what);
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_nothing_of_the_kind", NULL)); /* no one to tell */
+}
+
+static void
+test_a_success_clears_what_an_earlier_failure_said(void) {
+    fixture();
+    scene_failure_t why;
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_broken", &why));
+    TEST_ASSERT_NOT_NULL(scene_load_from(&fx.pack, "test_pair", &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_OK, why.status);
+    TEST_ASSERT_EQUAL_STRING("test_pair", why.what);
+}
+
+static void
+test_a_load_with_no_memory_left_says_so_and_takes_nothing(void) {
+    fixture();
+    void* hog =
+        heap_caps_malloc(heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    TEST_ASSERT_NOT_NULL(hog);
+    scene_failure_t why;
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_pair", &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
+    heap_caps_free(hog);
+    TEST_ASSERT_NOT_NULL(scene_load_from(&fx.pack, "test_pair", &why));
+}
+
+static void
+test_a_full_manager_refuses_another_scene_until_one_is_unloaded(void) {
+    fixture();
+    scene_t* held[8];
+    for (int i = 0; i < 8; i++) {
+        held[i] = load("test_solo");
+    }
+    scene_failure_t why;
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_solo", &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_FULL, why.status);
+    scene_unload(held[3]);
+    TEST_ASSERT_NOT_NULL(scene_load_from(&fx.pack, "test_solo", &why));
 }
 
 static void
@@ -435,10 +486,127 @@ test_leaving_the_app_unloads_every_scene_and_frees_the_scratch(void) {
     TEST_ASSERT_TRUE(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) == before);
 }
 
+/* The draw happens in scene_render(): it touches no framebuffer and leaves
+ * the picture to scene_compose(), but the work is done. */
+static void
+test_scene_render_draws_into_scratch_and_leaves_the_framebuffer_alone(void) {
+    fixture();
+    show("test_pair", NULL);
+    for (int i = 0; i < SIZE * SIZE; i++) {
+        fx.pixels[i] = SENTINEL;
+    }
+    scene_render(16, 0, &fx.target);
+    TEST_ASSERT_EQUAL_INT(4, scene_stats().triangles);
+    TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
+    scene_compose(16, 0, &fx.target);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+}
+
+/* The first frame: no framebuffer was known when scene_render() ran, so
+ * scene_compose() draws what it could not. */
+static void
+test_a_render_with_no_framebuffer_is_drawn_by_the_compose_that_follows(void) {
+    fixture();
+    show("test_pair", NULL);
+    const scene_target_t none = {NULL, SIZE, SIZE};
+    scene_render(16, 0, &none);
+    TEST_ASSERT_EQUAL_INT(0, scene_stats().triangles);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+}
+
+static void
+test_leaving_an_app_while_paused_lifts_the_pause(void) {
+    fixture();
+    show("test_pair", NULL);
+    scene_set_paused(true);
+    scene_unload_all();
+    show("test_pair", NULL);
+    TEST_ASSERT_TRUE(scene_has_active_camera());
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+}
+
+static void
+test_a_scene_with_two_cameras_is_seen_from_the_one_activated_by_name(void) {
+    fixture();
+    scene_t* twin = load("test_twin");
+    TEST_ASSERT_TRUE(scene_activate(twin, "right"));
+    scene_set_render_scale(100);
+    scene_set_clear(CLEAR_RGB);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(0.0F)); /* the quad is 4 units left of this camera */
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-4.0F));
+    TEST_ASSERT_TRUE(scene_activate(twin, "left"));
+    scene_set_render_scale(100);
+    scene_set_clear(CLEAR_RGB);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_TRUE(scene_activate(twin, NULL)); /* the first */
+    TEST_ASSERT_FALSE(scene_activate(twin, "red"));
+}
+
+static void
+test_a_camera_without_a_path_follows_its_entitys_transform(void) {
+    fixture();
+    scene_t* pair = show("test_pair", "camera");
+    const scene_transform_t aside = AT(4, 0, 10);
+    scene_entity_set_transform(pair, scene_find(pair, "camera"), &aside);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(0.0F)); /* the green quad is 4 units right of the origin */
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-4.0F));
+}
+
+static void
+test_the_render_scale_changes_the_picture_and_a_larger_one_grows_the_scratch(void) {
+    fixture();
+    show("test_pair", NULL);
+    scene_set_render_scale(50);
+    frame(16);
+    const size_t small_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    uint16_t* half = malloc(sizeof(*half) * SIZE * SIZE);
+    TEST_ASSERT_NOT_NULL(half);
+    memcpy(half, fx.pixels, sizeof(*half) * SIZE * SIZE);
+    scene_set_render_scale(100);
+    frame(16);
+    TEST_ASSERT_TRUE(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) < small_free);
+    TEST_ASSERT_TRUE(memcmp(half, fx.pixels, sizeof(*half) * SIZE * SIZE) != 0);
+    free(half);
+}
+
+static void
+test_unloading_the_first_of_two_scenes_leaves_the_second_with_its_own_time(void) {
+    fixture();
+    scene_t* pair = load("test_pair");
+    scene_t* flight = show("test_flight", NULL);
+    frame(250);
+    scene_unload(pair);
+    TEST_ASSERT_EQUAL_INT(1, scene_loaded_count());
+    TEST_ASSERT_TRUE(scene_loaded_at(0) == flight);
+    frame(250);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.5F)); /* 500 ms of flight */
+}
+
+static void
+test_a_loaded_scene_that_is_not_active_keeps_its_time(void) {
+    fixture();
+    scene_t* flight = load("test_flight");
+    show("test_pair", NULL);
+    frame(500);
+    TEST_ASSERT_TRUE(scene_activate(flight, NULL));
+    scene_set_render_scale(100);
+    scene_set_clear(CLEAR_RGB);
+    frame(0);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.5F)); /* it flew while another was seen */
+}
+
 void
 run_scene_suite(void) {
     RUN_TEST(test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took);
     RUN_TEST(test_a_load_that_fails_says_what_it_was_about);
+    RUN_TEST(test_a_success_clears_what_an_earlier_failure_said);
+    RUN_TEST(test_a_load_with_no_memory_left_says_so_and_takes_nothing);
+    RUN_TEST(test_a_full_manager_refuses_another_scene_until_one_is_unloaded);
     RUN_TEST(test_an_entity_is_found_by_its_name);
     RUN_TEST(test_the_active_camera_draws_its_scenes_renderers);
     RUN_TEST(test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again);
@@ -453,6 +621,14 @@ run_scene_suite(void) {
     RUN_TEST(test_a_scale_renders_smaller_and_the_picture_is_upscaled_to_the_target);
     RUN_TEST(test_the_stats_count_what_the_last_draw_kept);
     RUN_TEST(test_leaving_the_app_unloads_every_scene_and_frees_the_scratch);
+    RUN_TEST(test_scene_render_draws_into_scratch_and_leaves_the_framebuffer_alone);
+    RUN_TEST(test_a_render_with_no_framebuffer_is_drawn_by_the_compose_that_follows);
+    RUN_TEST(test_leaving_an_app_while_paused_lifts_the_pause);
+    RUN_TEST(test_a_scene_with_two_cameras_is_seen_from_the_one_activated_by_name);
+    RUN_TEST(test_a_camera_without_a_path_follows_its_entitys_transform);
+    RUN_TEST(test_the_render_scale_changes_the_picture_and_a_larger_one_grows_the_scratch);
+    RUN_TEST(test_unloading_the_first_of_two_scenes_leaves_the_second_with_its_own_time);
+    RUN_TEST(test_a_loaded_scene_that_is_not_active_keeps_its_time);
 }
 
 SUITE_REGISTER(run_scene_suite);
