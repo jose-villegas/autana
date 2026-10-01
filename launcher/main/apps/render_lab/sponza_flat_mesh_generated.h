@@ -1,7 +1,7 @@
 /*
  * GENERATED FILE - do not edit.
  *
- *     python launcher/tools/r3d/mesh_import.py launcher/main/apps/render_lab/meshes/sponza.import.toml --variant sponza_flat
+ *     python launcher/tools/r3d/mesh_import.py launcher/main/apps/render_lab/meshes/sponza.scene.toml --mesh sponza_flat
  *
  * Crytek Sponza (Frank Meinl, Crytek; CC BY 3.0), from the OBJ in
  * McGuire's Computer Graphics Archive, casual-effects.com/data.

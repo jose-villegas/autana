@@ -6,13 +6,13 @@ stages and the format a renderer consumes. Drawing that mesh is
 
 ```mermaid
 flowchart LR
-    Settings[Import settings] --> Fetch["Fetch and check<br/>the source"]
-    Fetch --> Mask[Mask alpha cards]
-    Mask --> Vis[Region visibility]
+    Import[Import file] --> Fetch["Fetch and check<br/>the source"]
+    Fetch --> Mask["Mask alpha cards<br/><i>opt in</i>"]
+    Mask --> Vis["Region visibility<br/><i>opt in</i>"]
     Scene[Scene file] --> Vis
-    Vis --> Light["Light<br/>per vertex"]
+    Vis --> Light["Light per vertex<br/><i>opt in</i>"]
     Scene --> Light
-    Light --> Simp["Simplify<br/><i>seal_seams optional</i>"]
+    Light --> Simp["Simplify<br/><i>opt in</i>"]
     Simp --> Face["Light per face<br/><i>flat variants</i>"]
     Face --> Write["Write: quantise,<br/>meshlets, octree"]
     Write --> C["Baked C<br/><i>r3d_lit_mesh_t</i>"]
@@ -36,44 +36,72 @@ ticks, `position_scale` ticks per model unit.
 ## The offline tools
 
 A mesh is const C data, written by
-[`launcher/tools/r3d/mesh_import.py`](../launcher/tools/r3d/mesh_import.py) from one TOML import
-settings file using the offline tools in
-[`launcher/tools/r3d/`](../launcher/tools/r3d/README.md). The importer loads a
-model, bakes its scene light, simplifies it, cuts it into meshlets, and checks
-the result against `r3d_lit_mesh.h`'s invariants before writing a byte.
-[`launcher/tools/r3d/import_settings.py`](../launcher/tools/r3d/import_settings.py) reads and
-checks both file kinds with the standard library alone, and every table is
+[`launcher/tools/r3d/mesh_import.py`](../launcher/tools/r3d/mesh_import.py)
+using the offline tools in
+[`launcher/tools/r3d/`](../launcher/tools/r3d/README.md). Two kinds of file
+drive it, in the manner of Unity's `.meta` beside an asset: an **import file**
+describes one mesh asset, and a **scene file** describes a scenario that
+places meshes. Anything specific to one mesh is in its import file; anything
+about the scenario (lights, camera region, exposure) is in the scene file.
+[`launcher/tools/r3d/import_settings.py`](../launcher/tools/r3d/import_settings.py)
+reads and checks both with the standard library alone, and every table is
 closed: an unknown key is an error.
 
-Run `python launcher/tools/r3d/mesh_import.py SETTINGS.import.toml` from the
-repository root to bake every variant, or add `--variant NAME` for one. The
-generated banner records that exact command. `rebake.py` rewrites a generated
-C mesh's clusters only.
+Run `python launcher/tools/r3d/mesh_import.py SCENE.scene.toml` from the
+repository root to bake every mesh the scene places, or add `--mesh NAME` for
+one. The generated banner records that exact command. `rebake.py` rewrites a
+generated C mesh's clusters only.
 
-### Import settings
+### Import file
 
-One file holds everything the variants of one source share. `[source]`
-currently supports a zipped OBJ at a URL only.
+**Rule: an import brings the mesh in as authored, and each `[process.*]` table
+present turns one processing step on.**
 
-| Key or table | Fields | Meaning |
+With only `[source]` and `[output]` the importer keeps the source's triangles,
+cuts nothing, simplifies nothing and lights nothing. Its vertex colour is the
+material's albedo (the `Kd` colour times the texture) encoded to sRGB with no
+light and no tone map; the source's own vertex colours are not read.
+
+| Table | Fields | Meaning |
 |---|---|---|
-| `scene` | | The scene file, beside this one. |
-| `source` | `url`, `sha256`, `path`, `cache`, `credit` | Download, verify and locate the OBJ in its archive; `credit` is the attribution line written into every banner. |
-| `output` | `directory` | Where the generated files go. |
-| `materials` | `double_sided`, `leaf_material`, `props` | Which materials are two-sided, which cards are thinned by `leaf_keep`, and the small props the simplifier reserves a share for. |
-| `options` | `mask_keep_alpha`, `visibility_rounds`, `leaf_keep`, `seed`, `ray_offset`, `position_scale`, `colour_merge_step`, `dense_edge`, `props_share`, `seal_seams`, `flat_sky_rays` | Bake controls every variant shares. `flat_sky_rays` is the one set of sky directions a flat variant's faces share, in place of the scene's per-point `rays`; it is present only when a variant is flat. |
-| `[[variants]]` | `name`, `flat`, `triangles`, `face_samples` | One generated mesh each: `name` is its symbol prefix, `triangles` its budget, and `face_samples` (flat only) is `{ fixed = N }` or `{ auto = { min, max, area } }` with `area = "median"` for the mesh median. |
+| `source` | `url`, `sha256`, `path`, `cache`, `credit` | Download, verify and locate the OBJ in its archive (a zipped OBJ at a URL is the only source kind); `credit` is the attribution line written into every banner. |
+| `output` | `directory`, `name`, `position_scale` | Where the generated files go; `name` is the mesh's symbol prefix (only without `[[variants]]`); `position_scale` overrides the format's default ticks per unit. |
+| `materials` | `double_sided` | The materials whose faces are two-sided. |
+| `process` | `seed` | The seed of the random rays the steps below draw. |
+| `process.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. |
+| `process.visibility` | `rounds`, `thin = { material, keep }` | Drops triangles no point of the scene's camera region sees; `thin` keeps only a share of one material's triangles. |
+| `process.light` | `ray_offset`, `colour_merge_step`, `flat_sky_rays` | Bakes the scene's lights into per-vertex colour. `flat_sky_rays` is the one set of sky directions the faces of a variant with `face_samples` share, and is allowed only then. |
+| `process.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges, then simplifies to each variant's `triangles`, reserving `props_share` of the budget for the small `props` materials; `seal_seams` joins touching pieces first. |
+| `[[variants]]` | `name`, `triangles`, `face_samples` | Several meshes from one import, each named. `triangles` is its budget and is required with `process.simplify`. `face_samples`, `{ fixed = N }` or `{ auto = { min, max, area } }` with `area = "median"` for the mesh median, makes the variant flat: one colour per triangle, averaged over that many points, and needs `process.light`. |
+
+The steps run in the order of the table, whatever order the file lists them.
+An import without variants names its one mesh in `output.name` and cannot
+simplify.
 
 ### Scene file
 
-The scene file is lighting and view setup, independent of any one mesh.
+A scene file is a scenario: the meshes it places, the lights that shine on
+them and the view.
 
 ```toml
-tonemap_white = 0.35
+exposure = 0.35                  # the tone map's white term
 
-[camera_region]            # the box the visibility cull samples
+[camera_region]                  # the box the visibility step samples
 min = [-1400.0, 20.0, -620.0]
 max = [1270.0, 1250.0, 550.0]
+
+[spawn]                          # where a viewer starts; optional
+position = [0.0, 170.0, 0.0]
+rotation = [0.0, 90.0, 0.0]
+
+[[mesh_renderers]]               # position, rotation (degrees) and scale are optional
+mesh = "hall.import.toml"
+variant = "hall"                 # only for an import with variants
+
+[[mesh_renderers]]
+mesh = "statue.import.toml"
+position = [0.0, 0.0, 300.0]
+scale = [2.0, 2.0, 2.0]
 
 [[lights]]
 type = "directional"
@@ -83,6 +111,16 @@ intensity = 3.0
 disc_degrees = 1.2
 rays = 8
 ```
+
+Each mesh renderer names an import file beside the scene file, which must
+exist, and a transform that defaults to identity. A mesh that lights is baked
+in its own space, so its renderer must have the identity transform. The scene
+must then have `lights` and `exposure`, and `camera_region` for the
+visibility step. Baking reads the lights of the scene that requests it, and
+that scene owns the result: a lit mesh belongs to one scene, so a second scene
+that places it bakes its own variant under another name. A mesh without
+`process.light` does not depend on any scene's lights and may be placed by
+many.
 
 `light.py`'s `LIGHTS` table pairs each type's fields with the function that
 adds its radiance, so a light's order in the file does not change the result.
