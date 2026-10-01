@@ -270,9 +270,9 @@ optional and gitignored, and `autana help config` lists its keys.
 | `--owner NAME` | The name this run holds the lock under, as `NAME:<pid>`; `<user>@<host>:<pid>` without it. Name each CI job. |
 | `--board SERIAL` | The board's USB serial number; without it, see [Which board](Device-Lock.md#which-board). |
 
-All three go before the command (`autana --wait 0 monitor 5`); after it,
-autana says so. A CI job that should fail rather than queue writes
-`autana --wait 0 <command>`.
+The global flags (these three and `--project`) go anywhere on the line:
+`autana flash diag --wait 0` and `autana --wait 0 flash diag` are the same.
+A CI job that should fail rather than queue writes `autana --wait 0 <command>`.
 
 | Key | Meaning |
 |---|---|
