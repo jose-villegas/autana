@@ -37,6 +37,7 @@ DP_TEST_FRAME_CEILING_SOURCE="derived from DP_MAIN_TASK_STACK_BYTES; see check_s
 # frame of growth, not for a regression. The INDIRECT pairs are the chunk
 # passes the scheduler calls through a pointer, which the graph cannot see.
 # There is no host budget: the host compiles other frames.
+DP_STACK_CHAIN_SOURCES_DEVICE="/launcher/main/apps/sand/"
 DP_STACK_CHAIN_BUDGETS_DEVICE="sand_step:1500"
 DP_STACK_CHAIN_INDIRECT_DEVICE="sand_chunk_pass_run>sweep_one_chunk sand_chunk_pass_run>step_one_gas_chunk sand_chunk_pass_run>equalise_gas_one_chunk sand_chunk_pass_run>equalise_one_chunk sand_chunk_pass_run>react_one_chunk"
 

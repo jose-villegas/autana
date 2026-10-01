@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Fail if the sand step's deepest call chain outgrew its stack budget.
+"""Fail if a budgeted function's deepest call chain outgrew its stack budget.
 
 The shell's frame loop and every test run on the ESP-IDF main task, whose
 stack is 3,584 bytes. A test that ends with less than 512 bytes free fails
 by name on the board; a frame loop that gets there resets the chip. Neither
 shows on the host, whose stack is megabytes and whose frames differ.
 
-So this recompiles the sand app's sources with the DIAGNOSTICS image's own
+So this recompiles the sources the profile names (DP_STACK_CHAIN_SOURCES_DEVICE) with the DIAGNOSTICS image's own
 compiler and flags, from build.diag/compile_commands.json, adding
 -fstack-usage and -fcallgraph-info=su, and hands the result to
 check_stack_usage.py --target device, which sums the deepest chain under each
@@ -27,17 +27,16 @@ from concurrent.futures import ThreadPoolExecutor
 HERE = os.path.dirname(os.path.abspath(__file__))
 LAUNCHER = os.path.normpath(os.path.join(HERE, "..", ".."))
 CHECKER = os.path.join(LAUNCHER, "test", "check_stack_usage.py")
-SAND_DIR = "/launcher/main/apps/sand/"
 
 
-def sand_commands(db_path):
-    """(argv, cwd, source) for every sand translation unit in the database."""
+def chain_commands(db_path, dirs):
+    """(argv, cwd, source) for every translation unit under one of dirs."""
     with open(db_path, "r", encoding="utf-8") as fh:
         entries = json.load(fh)
     jobs = []
     for entry in entries:
         source = entry["file"].replace("\\", "/")
-        if SAND_DIR not in source or not source.endswith(".c"):
+        if not any(d in source for d in dirs) or not source.endswith(".c"):
             continue
         argv = []
         tokens = shlex.split(entry["command"], posix=(os.name != "nt"))
@@ -65,14 +64,21 @@ def main(argv):
         print("stack_chain_gate: no %s - build the diagnostics image first"
               % db, file=sys.stderr)
         return 1
+    sys.path.insert(0, os.path.join(LAUNCHER, "tools", "device"))
+    import device_profile
+    dirs = device_profile.load().get("DP_STACK_CHAIN_SOURCES_DEVICE", "").split()
+    if not dirs:
+        print("stack_chain_gate: the profile names no DP_STACK_CHAIN_SOURCES_DEVICE",
+              file=sys.stderr)
+        return 1
     out = os.path.join(build, "stack-chain")
     os.makedirs(out, exist_ok=True)
     for name in os.listdir(out):
         os.remove(os.path.join(out, name))
 
-    jobs = sand_commands(db)
+    jobs = chain_commands(db, dirs)
     if not jobs:
-        print("stack_chain_gate: no sand sources in %s" % db, file=sys.stderr)
+        print("stack_chain_gate: no sources under %s in %s" % (dirs, db), file=sys.stderr)
         return 1
 
     def compile_one(job):

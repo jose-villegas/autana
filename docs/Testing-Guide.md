@@ -200,7 +200,7 @@ to a gate.
 **These are approximations, and worth knowing where they end.** The stack
 gate checks test code only, one function at a time, so it bounds the worst
 single frame rather than the deepest path. The deepest path under
-`sand_step` is summed from the diagnostics build's own call graph by
+each root the device profile budgets is summed from the diagnostics build's own call graph by
 `launcher/tools/quality/stack_chain_gate.py` (CI and `autana build diag
 --check`), against `DP_STACK_CHAIN_BUDGETS_DEVICE` in the device profile.
 Its frames are the host compiler's: the Xtensa frame is half the size at
