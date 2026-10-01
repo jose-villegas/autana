@@ -1,15 +1,10 @@
 /*
- * scene_sponza: Crytek Sponza flown through on a looping camera path, as a
- * render_lab scene.
+ * scene_sponza: Crytek Sponza flown through on a looping camera path.
  *
- * All light is baked into vertex or face colours by tools/gen_sponza.py (a
- * sun with shadows plus sky light), so a frame is only cull, transform, clip
- * and fill: render/raster.h on both cores. Three scenes share this code, one
- * per bake: the full mesh, a lighter one and the full mesh baked flat, the
- * same flythrough through each.
- *
- * It renders into its own PSRAM target and upscales that into the framebuffer,
- * so it asks for the full-framebuffer layout.
+ * Light is baked into the mesh, so a frame is only cull, transform, clip and
+ * fill on both cores. Three scenes share this code, one per bake: full, lite
+ * and flat. It renders into its own PSRAM target and upscales into the
+ * framebuffer.
  */
 
 #include <assert.h>

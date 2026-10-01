@@ -29,30 +29,6 @@ def weld_keeping(p, tris, tolerance=1e-3):
     return p[first], inverse.reshape(-1)[tris]
 
 
-def snap_to_grid(p, tris, cell):
-    key = np.floor(p / cell).astype(np.int64)
-    _, inverse = np.unique(key, axis=0, return_inverse=True)
-    inverse = inverse.reshape(-1)
-    count = np.bincount(inverse)
-    snapped = np.zeros((len(count), 3))
-    np.add.at(snapped, inverse, p)
-    snapped /= count[:, None]
-    t = inverse[tris]
-    t = t[(t[:, 0] != t[:, 1]) & (t[:, 1] != t[:, 2]) & (t[:, 0] != t[:, 2])]
-    rolled = np.where((t[:, 1:2] < t[:, 0:1]) & (t[:, 1:2] < t[:, 2:3]), np.roll(t, -1, axis=1), t)
-    rolled = np.where((rolled[:, 2:3] < rolled[:, 0:1]) & (rolled[:, 2:3] < rolled[:, 1:2]), np.roll(rolled, 1, axis=1), rolled)
-    t = np.unique(rolled, axis=0)
-    return compact(snapped, t)
-
-
-def vertex_normals(p, tris):
-    face = np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]])
-    n = np.zeros_like(p)
-    for k in range(3):
-        np.add.at(n, tris[:, k], face)
-    return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
-
-
 def corner_normals(p, tris, crease_deg=40.0):
     """One normal per triangle corner, smoothed only across neighbours within
     the crease angle, so a column's edge stays sharp."""

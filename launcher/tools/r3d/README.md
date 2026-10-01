@@ -7,15 +7,16 @@ mesh. Nothing here runs on the board.
 | Module | What it does |
 |---|---|
 | [obj.py](obj.py) | Loads a Wavefront OBJ and its MTL, and the textures the MTL names as mip chains. |
-| [geometry.py](geometry.py) | Welding, compaction, vertex and corner normals, closest point on a triangle. |
-| [decimate.py](decimate.py) | Quadric decimation to a triangle budget, falling back to vertex clustering where many small disconnected pieces stall it (the `--simplifier quadric` path). |
-| [tessellate.py](tessellate.py) | Conforming edge splits, and splitting where baked light changes along an edge (the `--simplifier quadric` path). |
+| [geometry.py](geometry.py) | Welding, compaction, corner normals, closest point on a triangle. |
+| [tessellate.py](tessellate.py) | Conforming edge splits, used by the `seal_seams` join. |
 | [repair.py](repair.py) | The join step of the `seal_seams` import option: border vertices within a tolerance are welded and border edges are split at another piece's vertices, so a shared edge is one edge and the simplifier cannot open a crack along it. Positions only; vertices are never merged. |
 | [simplify.py](simplify.py) | Appearance-preserving simplification: split evenly, weld across materials, one colour-aware pass with reserved budget shares for small props. `seal_seams=True` joins touching pieces first, regularizes lightly and merges near colours. |
 | [meshopt.py](meshopt.py) | [meshoptimizer](https://github.com/zeux/meshoptimizer)'s simplifier and meshlet clusterizer through ctypes, built once from the pinned `third_party/upstream/meshoptimizer` submodule into `.cache/`. |
-| [light.py](light.py) | Baked direct light: a sun with soft shadows and sky visibility, albedo from textures, and culling of what no point in a region can see. |
+| [light.py](light.py) | Baked direct light from a scene's typed lights (`LIGHTS`): directional with soft shadows, sky visibility and ambient, albedo from textures, and culling of what no point in a region can see. |
 | [octree.py](octree.py) | Groups weighted items, here meshlets, into an octree whose leaves hold runs of them. |
 | [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under an octree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as C data; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads that data back. |
+| [import_settings.py](import_settings.py) | Reads and validates an import-settings file and its scene file; standard library only, every table closed. |
+| [mesh_import.py](mesh_import.py) | Bakes each variant of one settings file: fetches and checks its source, applies material rules, lights it with the scene file's lights, then writes the generated C mesh. |
 | [rebake.py](rebake.py) | Rewrites a baked mesh's clusters from its own triangles and colours, with no relighting. |
 | [fetch.py](fetch.py) | Downloads a source model once into `.cache/`, checked against a SHA-256. |
 | [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling (LINEAR, STEP, CUBICSPLINE), linear-blend skinning; reads through [`tools/gltf/`](../gltf/gltf_read.py), the reader and reference sampler [`tools/anim/`](../anim/README.md) shares. Standard library only. |
@@ -33,24 +34,20 @@ python -m venv tools/r3d/.cache/venv
 tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.txt   # bin/python on Linux
 ```
 
-**`rebake.py` or a full bake.** Rebake when only the clustering or the data
-format changes: it reads a committed mesh's triangles and colours back and
-rewrites the clusters in seconds, in place, and rewriting its own output is a
-fixed point (the triangles are put in a canonical order first), so the banner's
-one command reproduces the file. Anything before that stage, the model, its
-simplification or its light, needs the generator. The committed meshes have
-been regenerated, and the generator's output is committed as written.
+**`rebake.py` or a full import.** Rebake a generated mesh when only clustering
+or data format changes: it reads its triangles and colours back and rewrites
+the clusters in place. Re-import a settings file when its source,
+simplification or light changes. Both commands are fixed points: the former
+canonicalizes triangle order and the latter uses the settings' fixed seed.
 
 **The `seal_seams` import option.** `simplify(seal_seams=True)`, off by default,
 is another way to import the same mesh, with fewer empty pixel-sized spots at
 the price of frame time; what it does and costs is in
-[Mesh-Import.md](../../../docs/Mesh-Import.md#sealing-seams). A generator
-turns it on by passing it, and a scene's generator can take a flag such as `--no-seal-seams` to turn
-it off.
+[Mesh-Import.md](../../../docs/Mesh-Import.md#sealing-seams). An import turns it on with `seal_seams = true` in its settings.
 
-A generator is a script beside the model's consumer: it loads and bakes the
-model with these modules and ends in one `write_lit_mesh()` call. The banner
-of each file it writes records the exact command that produced it.
+`mesh_import.py` is the shared full-import command. Each mesh settings file
+and its scene file live in the app's `meshes/` folder; the generated banner names
+the settings file and the exact command that produced it.
 
 ## Triangle sizes
 

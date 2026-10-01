@@ -1,0 +1,24 @@
+tonemap_white = 0.35
+
+[camera_region]
+min = [-1400.0, 20.0, -620.0]
+max = [1270.0, 1250.0, 550.0]
+
+[[lights]]
+type = "directional"
+direction = [-0.25, 1.0, 0.22]
+color = [1.0, 0.92, 0.78]
+intensity = 3.0
+disc_degrees = 1.2
+rays = 8
+
+[[lights]]
+type = "sky"
+color = [0.55, 0.68, 0.9]
+intensity = 0.9
+rays = 48
+
+[[lights]]
+type = "ambient"
+color = [1.0, 1.0, 1.0]
+intensity = 0.06
