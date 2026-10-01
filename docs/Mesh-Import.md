@@ -6,13 +6,14 @@ stages and the format a renderer consumes. Drawing that mesh is
 
 ```mermaid
 flowchart LR
-    Import["Import file<br/><i>the entry point</i>"] --> Fetch["Fetch and check<br/>the source"]
+    Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"]
     Fetch --> Mask["Mask alpha cards<br/><i>opt in</i>"]
     Mask --> Vis["Region visibility<br/><i>opt in, needs a scene</i>"]
     Vis --> Thin["Thin one material<br/><i>opt in</i>"]
     Thin --> Colour{"process.light?"}
     Scene["Scene file<br/><i>adds the lights,<br/>camera region, tone map</i>"] -.-> Vis
     Scene -.-> Lit
+    Scene -.-> Face
     Colour -- yes --> Lit["Light per vertex<br/><i>needs a scene</i>"]
     Colour -- no --> Albedo["Albedo, no light"]
     Lit --> Simp["Simplify<br/><i>opt in</i>"]
