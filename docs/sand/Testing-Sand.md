@@ -218,6 +218,14 @@ one quality is minutes on the board, and longer under emulation.
 against the real 184x224 grid. Read each test's own comment in
 `suite_sand_perf.c` for its scene and budget.
 
+## Performance regions
+
+The sand screen registers the performance regions `sand.step`, `sand.sweep`,
+`sand.liquid`, `sand.gas`, `sand.reactions`, `sand.plants` and `sand.draw`.
+On a development image, open the app and run `PERF sand.sweep` on the
+console; each matching pass prints its cycles and event count. The command
+and its events are in [`../tools/Perf-Regions.md`](../tools/Perf-Regions.md).
+
 ## Related
 
 - [`../Testing-Guide.md`](../Testing-Guide.md): the host/device split,

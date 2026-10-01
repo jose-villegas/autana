@@ -7,17 +7,18 @@ named stages. Select one region and one event with the console:
 PERF <region|off> [event]
 ```
 
-`PERF sand.sweep` selects retired instructions by default. `PERF off` stops
+`PERF <region>` selects retired instructions by default. `PERF off` stops
 the next region from starting. A successful selection replies with `PERF_OK`;
 an unknown region or event replies with `PERF_ERR`.
 
-The sand screen registers `sand.step`, `sand.sweep`, `sand.liquid`,
-`sand.gas`, `sand.reactions`, `sand.plants`, and `sand.draw`. Each matching
-pass prints its cycles and selected event count, for example:
+Each matching pass prints its cycles and selected event count, for example:
 
 ```
-PERF sand.sweep cycles=312000 insn=221400
+PERF app.stage cycles=312000 insn=221400
 ```
+
+Regions are registered by the code that brackets them; an app's region
+names are listed in that app's docs.
 
 Event names and their Xtensa select/mask pairs are in
 [`../../launcher/main/util/perf_region.c`](../../launcher/main/util/perf_region.c).
