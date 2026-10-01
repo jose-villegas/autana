@@ -29,9 +29,11 @@ from r3d import log  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
 from r3d.poses import camera_basis, read_poses  # noqa: E402
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
+
+from render_compare import D65_WHITE, GAMMA, SRGB_TO_XYZ  # noqa: E402
+
 FAR = 1.0e5
-SRGB_TO_XYZ = [[0.4124564, 0.3575761, 0.1804375], [0.2126729, 0.7151522, 0.0721750], [0.0193339, 0.1191920, 0.9503041]]
-WHITE = [0.95047, 1.0, 1.08883]
 
 
 def start_mesh(path):
@@ -89,11 +91,11 @@ def load_views(pairs, scale):
 
 
 def lab(srgb):
-    """CIELAB of 0..1 gamma-2.2 colours: render_compare.py's dE space, in torch."""
+    """CIELAB of 0..1 gamma-encoded colours: render_compare.py's dE space, in torch."""
     import torch
 
-    linear = srgb.clamp(1e-6, 1.0) ** 2.2
-    xyz = linear @ torch.tensor(SRGB_TO_XYZ, device=srgb.device).T / torch.tensor(WHITE, device=srgb.device)
+    linear = srgb.clamp(1e-6, 1.0) ** GAMMA
+    xyz = linear @ torch.tensor(SRGB_TO_XYZ, device=srgb.device).T / torch.tensor(D65_WHITE, device=srgb.device)
     delta = 6.0 / 29.0
     f = torch.where(xyz > delta**3, xyz.clamp_min(delta**3) ** (1.0 / 3.0), xyz / (3 * delta**2) + 4.0 / 29.0)
     return torch.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])], dim=-1)
@@ -106,9 +108,10 @@ def delta_e76(a, b):
 
 class Renderer:
     """Draws the mesh as the device does: Gouraud vertex colours, single-sided
-    triangles culled when they face away, black where nothing is drawn."""
+    triangles culled when they face away, `clear` (0..1 RGB) where nothing is
+    drawn."""
 
-    def __init__(self, tris, double, vertex_point, size, device):
+    def __init__(self, tris, double, vertex_point, size, device, clear=(0.0, 0.0, 0.0)):
         import nvdiffrast.torch as dr
         import torch
 
@@ -118,6 +121,7 @@ class Renderer:
         self.double = torch.as_tensor(np.asarray(double, dtype=bool), device=device)
         self.vertex_point = torch.as_tensor(vertex_point, dtype=torch.int64, device=device)
         self.size = size
+        self.clear = torch.as_tensor(clear, dtype=torch.float32, device=device)
 
     def __call__(self, points, colours, clip_matrix):
         import torch
@@ -136,7 +140,7 @@ class Renderer:
         width, height = self.size
         rast, _ = self.dr.rasterize(self.context, clip, tris, resolution=[height, width])
         colour, _ = self.dr.interpolate(colours[None].contiguous(), rast, tris)
-        colour = torch.where(rast[..., 3:] > 0, colour, torch.zeros_like(colour))
+        colour = torch.where(rast[..., 3:] > 0, colour, self.clear.expand_as(colour))
         colour = self.dr.antialias(colour.contiguous(), rast, clip, tris)
         return colour[0].flip(0)
 
@@ -153,19 +157,21 @@ def uniform_laplacian(points, edges):
     return points - total / count.clamp_min(1.0)
 
 
-def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100):
+def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100,
+             clear=(0.0, 0.0, 0.0)):
     """(points, rgb 0..1, per-step mean dE): the start mesh's welded positions
     and vertex colours after `steps` Adam steps of `batch` random views. Both
     learning rates decay tenfold over the run; `laplacian` weights how far the
     positions' differential coordinates may drift from the start's, in units
-    of the mean edge length; position steps are in bounding diagonals."""
+    of the mean edge length; position steps are in bounding diagonals.
+    `clear` is the colour the scene clears to."""
     import torch
 
     points0, rgb0, tris, double, _scale, vertex_point = mesh
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     diagonal = float(np.linalg.norm(points0.max(axis=0) - points0.min(axis=0)))
-    render = Renderer(tris, double, vertex_point, size, device)
+    render = Renderer(tris, double, vertex_point, size, device, clear)
     edges = torch.as_tensor(point_edges(tris, vertex_point), device=device)
     start = torch.as_tensor(points0, dtype=torch.float32, device=device)
     points = start.clone().requires_grad_(True)
@@ -226,10 +232,16 @@ def main(argv=None):
     parser.add_argument("--lr-position", type=float, default=2e-4, help="per step, in bounding diagonals")
     parser.add_argument("--lr-colour", type=float, default=0.01)
     parser.add_argument("--laplacian", type=float, default=10.0)
+    parser.add_argument("--clear", default="000000", help="RRGGBB the scene clears to, as reference_render.py was given")
     args = parser.parse_args(argv)
     if len(args.poses) != len(args.reference):
         parser.error("give one --reference per --poses")
+    if len(args.clear) != 6:
+        parser.error("--clear must be RRGGBB")
+    clear = tuple(int(args.clear[index : index + 2], 16) / 255.0 for index in (0, 2, 4))
     start = pathlib.Path(args.start)
+    if not start.name.endswith("_mesh_generated.c"):
+        parser.error("--start must be a <name>_mesh_generated.c")
     name = start.name[: -len("_mesh_generated.c")]
     mesh = start_mesh(start)
     log(f"start: {len(mesh[2])} triangles, {len(mesh[0])} positions")
@@ -239,7 +251,8 @@ def main(argv=None):
         views, size = load_views(shot, args.scale)
         out = pathlib.Path(args.out) / (f"shot{index}" if args.per_shot else "")
         log(f"{out}: {len(views)} views at {size[0]}x{size[1]}")
-        points, rgb, history = optimise(mesh, views, size, args.steps, args.batch, args.lr_position, args.lr_colour, args.laplacian)
+        points, rgb, history = optimise(mesh, views, size, args.steps, args.batch, args.lr_position, args.lr_colour, args.laplacian,
+                                        clear=clear)
         command = " ".join(["python launcher/tools/r3d/appearance_simplify.py", *(argv if argv is not None else sys.argv[1:])])
         banner = ["GENERATED FILE - do not edit.", "", f"    {command}", "", f"Fitted from {start.name}."]
         count = write_mesh(out, name, points, rgb, mesh, banner)
