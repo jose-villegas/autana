@@ -50,7 +50,6 @@ qualifies() {
     case "$path" in
         launcher/components/esp32_s3_touch_amoled_1_8/* | \
             launcher/components/microui/* | \
-            launcher/components/small3dlib/* | \
             launcher/test/framework/*)
             return 1
             ;;

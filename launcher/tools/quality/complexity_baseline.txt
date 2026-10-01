@@ -735,7 +735,6 @@
 7	launcher/test/suites/suite_tilt.c:122	test_noise_is_attenuated_when_the_board_is_still
 7	launcher/tools/gen/gfx_palette_gen.c:71	gfx_palette_gen_build_index_map
 7	launcher/tools/gen/gfx_palette_gen.c:122	try_dither_pair
-6	launcher/components/small3dlib/include/small3dlib.h:1405	S3L_asin
 6	launcher/main/anim/anim_track.c:80	blend
 6	launcher/main/apps/diagnostics/app_diagnostics.c:143	diagnostics_frame
 6	launcher/main/apps/diagnostics/app_diagnostics.c:87	draw_toggles_page
