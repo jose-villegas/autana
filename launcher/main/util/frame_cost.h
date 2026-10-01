@@ -229,28 +229,36 @@ frame_cost_leave_counted(frame_cost_t* cost, int mark, const char* name, int64_t
     }
     /* What an abandoned level's own children were charged is still time
      * this one did not spend. */
+    frame_cost_level_t* const level = &cost->stack[mark];
     for (int deeper = mark + 1; deeper < cost->depth; deeper++) {
-        cost->stack[mark].inside_us += cost->stack[deeper].inside_us;
-        cost->stack[mark].inside_cycles += cost->stack[deeper].inside_cycles;
-        cost->stack[mark].inside_event += cost->stack[deeper].inside_event;
+        level->inside_us += cost->stack[deeper].inside_us;
+        if (level->counted) {
+            level->inside_cycles += cost->stack[deeper].inside_cycles;
+            level->inside_event += cost->stack[deeper].inside_event;
+        }
     }
-    const frame_cost_level_t level = cost->stack[mark];
     cost->depth = mark;
-    const int64_t elapsed = now_us - level.began_us;
-    frame_cost_slot_t* const slot = frame_cost_add(cost, name, elapsed - level.inside_us);
-    /* Free-running 32-bit counters: a difference is right modulo 2^32. */
-    const uint32_t elapsed_cycles = cycles - level.began_cycles;
-    const uint32_t elapsed_event = event - level.began_event;
-    if (slot != NULL && level.counted && frame_cost_is_armed(cost, name)) {
-        const uint32_t own = elapsed_cycles - level.inside_cycles;
+    const int64_t elapsed = now_us - level->began_us;
+    frame_cost_slot_t* const slot = frame_cost_add(cost, name, elapsed - level->inside_us);
+    if (mark > 0) {
+        cost->stack[mark - 1].inside_us += elapsed;
+    }
+    if (!level->counted) {
+        return;
+    }
+    /* Free-running 32-bit counters: a difference is right modulo 2^32. A
+     * level and its parent began under one arm, so both are counted. */
+    const uint32_t elapsed_cycles = cycles - level->began_cycles;
+    const uint32_t elapsed_event = event - level->began_event;
+    if (slot != NULL && frame_cost_is_armed(cost, name)) {
+        const uint32_t own = elapsed_cycles - level->inside_cycles;
         slot->cycles_min = slot->n == 0 || own < slot->cycles_min ? own : slot->cycles_min;
         slot->cycles_max = own > slot->cycles_max ? own : slot->cycles_max;
         slot->cycles_sum += own;
-        slot->event_sum += elapsed_event - level.inside_event;
+        slot->event_sum += elapsed_event - level->inside_event;
         slot->n++;
     }
     if (mark > 0) {
-        cost->stack[mark - 1].inside_us += elapsed;
         cost->stack[mark - 1].inside_cycles += elapsed_cycles;
         cost->stack[mark - 1].inside_event += elapsed_event;
     }
