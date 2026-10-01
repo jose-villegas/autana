@@ -110,8 +110,8 @@ wire_transform(const wire_mesh_t* mesh, const r3d_line_view_t* view, wire_frame_
 
     for (uint16_t i = 0; i < mesh->vertex_count; i++) {
         const wire_vertex_t* v = &mesh->vertices[i];
-        const fix3_vec4_t model_point = {v->x, v->y, v->z, FIX3_ONE};
-        const fix3_vec4_t cs = r3d_to_camera_space(model_point, view);
+        const vec4i_t model_point = {v->x, v->y, v->z, VEC4I_ONE};
+        const vec4i_t cs = r3d_to_camera_space(model_point, view);
 
         frame->cs_vertices[i].x = cs.x;
         frame->cs_vertices[i].y = cs.y;
@@ -128,8 +128,8 @@ wire_project_edges(const wire_mesh_t* mesh, const r3d_line_view_t* view, int scr
         const wire_edge_t* edge = &mesh->edges[i];
         const wire_cs_vertex_t* a = &frame->cs_vertices[edge->a];
         const wire_cs_vertex_t* b = &frame->cs_vertices[edge->b];
-        const fix3_vec4_t p0 = {a->x, a->y, a->z, FIX3_ONE};
-        const fix3_vec4_t p1 = {b->x, b->y, b->z, FIX3_ONE};
+        const vec4i_t p0 = {a->x, a->y, a->z, VEC4I_ONE};
+        const vec4i_t p1 = {b->x, b->y, b->z, VEC4I_ONE};
         int ax, ay, bx, by;
 
         if (!r3d_project_segment_cs(p0, p1, view, &ax, &ay, &bx, &by)) {

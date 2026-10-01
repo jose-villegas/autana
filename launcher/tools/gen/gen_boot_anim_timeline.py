@@ -67,7 +67,7 @@ def warn(msg):
 
 # One space-unit is one meter, see boot_anim.h's own top comment, so this
 # is the SAME conversion boot_anim.c's units() does for the curve/grid's own
-# geometry, not fix3's fixed point. BOOT_ANIM_ONE, not
+# geometry, not matrix4i's fixed point. BOOT_ANIM_ONE, not
 # imported from boot_anim.h to keep this script standalone.
 BOOT_ANIM_ONE = 4096
 
@@ -82,31 +82,28 @@ def meters_to_q12(v):
 # this script stays standalone. The worst-case LOCAL-SPACE coordinate an
 # authored keyframe's own space/camera transform ever has to multiply;
 # an axis/spoke tail is the longest reach this project draws, and this is
-# its value BEFORE that transform (fix3_vec3_transform()'s own input), not after.
+# its value BEFORE that transform (matrix4i_transform_point()'s own input), not after.
 _FAR_UNITS = 500
-_WORST_CASE_FIX3_COORD = (_FAR_UNITS * BOOT_ANIM_ONE) >> 3  # BOOT_ANIM_ZETA_TO_FIX3
+_WORST_CASE_VEC4I_COORD = (_FAR_UNITS * BOOT_ANIM_ONE) >> 3  # BOOT_ANIM_ZETA_TO_M4
 
 # The scale-overflow guard below trades exactness for a real, defensible
 # margin, see its own comment at the call site for the full derivation.
-# Conservative on purpose: fix3's own matrix COMPOSITION step
-# (fix3_mat4_mul() in fix3.h, also plain int32_t) has its own overflow
+# Conservative on purpose: matrix4i's own matrix COMPOSITION step
+# (matrix4i_mul() in matrix4i.h, also plain int32_t) has its own overflow
 # risk that scales with rotation too, not just this scale product, and is
-# not modeled exactly here, this check catches the dominant, easily-
-# reasoned-about term (the final per-point multiply), not every path to
-# the same failure.
+# not modeled exactly here. This check catches the dominant, easily
+# reasoned term (the final per-point multiply), not every path to the same
+# failure.
 _MAX_COMBINED_SCALE = 8
 
 
 def check_transform_scale_overflow(space_scale, camera_scale):
-    """fix3_vec3_transform() (plain int32_t) multiplies a camera-
-    space coordinate by a composed space*camera matrix element that is
-    itself proportional to authored scale*FIX3_ONE. At this project's own
-    largest authored reach (_WORST_CASE_FIX3_COORD, from the 500-unit axis/
-    spoke tail), INT32_MAX / (_WORST_CASE_FIX3_COORD * FIX3_ONE) is about
-    16.4; a combined space*camera scale anywhere near that silently wraps
-    the point somewhere nonsensical (signed overflow is undefined
-    behaviour in C, not guaranteed wraparound, so "wraps" is the observed
-    behaviour, not a guarantee). _MAX_COMBINED_SCALE leaves real headroom
+    """matrix4i_transform_point() (plain int32_t) multiplies a camera-space
+    coordinate by a composed space*camera matrix element that is itself
+    proportional to authored scale*VEC4I_ONE. At this project's own largest authored reach (_WORST_CASE_VEC4I_COORD, from the
+    500-unit axis/spoke tail), INT32_MAX / (_WORST_CASE_VEC4I_COORD * VEC4I_ONE)
+    is about 16.4; a combined space*camera scale anywhere near that
+    overflows the point somewhere nonsensical. _MAX_COMBINED_SCALE leaves real headroom
     under that, rather than cutting it close against an estimate that does
     not model every step of the composition exactly (see this file's own
     comment above)."""
@@ -114,7 +111,7 @@ def check_transform_scale_overflow(space_scale, camera_scale):
     if combined > _MAX_COMBINED_SCALE:
         fail("motion: space scale (max %r) * camera scale (max %r) "
              "= %r, over this project's own %r safety margin against "
-             "fix3's plain-int32_t point/matrix math silently "
+             "matrix4i's int32_t points and matrices "
              "overflowing at this project's largest authored reach "
              "(BOOT_ANIM_AXIS_FAR_UNITS/BOOT_ANIM_GRID_SPOKE_FAR_UNITS, "
              "both 500) - see boot_anim.h's own comment on "
@@ -557,7 +554,7 @@ def main():
 
     w("/* The camera's focal length - 0 is an orthographic\n")
     w(" * projection (see boot_anim.h's \"The projection\" section), any other\n")
-    w(" * value a perspective one; FIX3_ONE (512) is the \"normal\"\n")
+    w(" * value a perspective one; VEC4I_ONE (512) is the \"normal\"\n")
     w(" * lens default. Authored directly in this unit - it is a lens\n")
     w(" * property, not a position or angle, so meters/degrees do not apply. */\n")
     w("#define BOOT_ANIM_CAMERA_FOCAL %d\n\n" % cfg["camera_focal"])

@@ -15,20 +15,20 @@
  * zeta(1/2 + it) for t from 0 to 126 plotted at height t, touching the t
  * axis at each nontrivial zero in that range (BOOT_ANIM_ZEROS of them).
  *
- * A CAMERA and a SPACE, both animated: two independent fix3
+ * A CAMERA and a SPACE, both animated: two independent matrix4i
  * transforms sampled from the glTF tracks in boot_anim_motion.glb, baked to
  * boot_anim_tracks_generated.c (docs/Animation-Tracks.md). Projection is
  * real perspective, not axonometric. One space-unit is one meter, and the
  * curve and grid's own coordinates ARE that space.
  *
- * The drawing is integers, in more than one scale, because fix3 and the
+ * The drawing is integers, in more than one scale, because matrix4i and the
  * curve table are; the S3's FPU does single-precision floats, and the tracks
  * are sampled with them and converted once per frame. Mixing the scales up is
  * the mistake to watch for:
  *
  *   Q12    a value of zeta. 4096 is 1.0, one unit of the floor grid.
  *   Q8     a height t. 256 is 1.0, and 35 * 256 still fits an int16.
- *   FIX3_ONE  fix3's fixed point (512 = 1.0), meters once
+ *   VEC4I_ONE  matrix4i's fixed point (512 = 1.0), meters once
  *          projected, camera/space transform numbers throughout, and a
  *          full turn of rotation.
  *   Q15    sines and cosines from this file's own trig table, used by the
@@ -44,10 +44,10 @@
 #include "boot/boot_anim_timeline.h"
 #include "boot/boot_anim_tracks_generated.h"
 #include "gfx/gfx_font.h"
-#include "render/fix3.h"
 #include "render/r3d_line_camera.h"
 #include "render/r3d_trs.h"
 #include "util/intmath.h"
+#include "util/math/matrix4i.h"
 #include "util/trig.h"
 #include "util/tween.h"
 
@@ -60,17 +60,17 @@
  *
  * The tracks hold a position in METERS, one space-unit to one, a rotation as
  * a quaternion and a scale as a plain multiplier. r3d_trs_to_transform()
- * turns them into fix3's fixed point (FIX3_ONE per unit, FIX3_ONE per turn,
- * rotation composed Z, THEN X, THEN Y, not X-Y-Z: fix3_transform_t's own
- * comment in fix3.h). Clamps at both ends.
+ * turns them into matrix4i's fixed point (VEC4I_ONE per unit, VEC4I_ONE per turn,
+ * rotation composed Z, THEN X, THEN Y, not X-Y-Z: matrix4i_transform_t's own
+ * comment in matrix4i.h). Clamps at both ends.
  */
 
 typedef struct {
-    fix3_transform_t camera;
-    fix3_transform_t space;
+    matrix4i_transform_t camera;
+    matrix4i_transform_t space;
 } boot_anim_timeline_state_t;
 
-static inline fix3_transform_t
+static inline matrix4i_transform_t
 boot_anim_node_transform(const anim_track_t* move, const anim_track_t* turn, const anim_track_t* size, float seconds) {
     float t[ANIM_WIDTH_MAX];
     float q[ANIM_WIDTH_MAX];
@@ -95,20 +95,20 @@ boot_anim_timeline_sample(uint32_t now_ms) {
 /*
  * The projection
  *
- * Perspective, via fix3: `boot_anim_view_t` is the composed
+ * Perspective, via matrix4i: `boot_anim_view_t` is the composed
  * space-then-camera matrix plus focal length, so a point costs one
  * matrix-vector multiply and one divide, a per-point cost an axonometric
  * projection does not have, accepted for real foreshortening by distance.
  *
- * Orthographic is not a second code path to build: fix3 treats
+ * Orthographic is not a second code path to build: matrix4i treats
  * a focal length of 0 as orthographic, zoom coming from the camera's own
  * scale, so it is BOOT_ANIM_CAMERA_FOCAL set to 0.
  */
 
-#define BOOT_ANIM_T_MAX           126 /* the top of the climb            */
+#define BOOT_ANIM_T_MAX         126 /* the top of the climb            */
 
 /* KEEP: Must match tools/gen/gen_zeta_curve.py's PHASE1_T_MAX. */
-#define BOOT_ANIM_T_MAX_PHASE1    35
+#define BOOT_ANIM_T_MAX_PHASE1  35
 
 /* RINGS is how far the fade reaches, not the floor size: quarter-unit
  * spacing (not whole) so it reads as a dense ripple rather than
@@ -116,16 +116,16 @@ boot_anim_timeline_sample(uint32_t now_ms) {
  * boot_anim_timeline.h, BOOT_ANIM_GRID_STEP_Q12 with it. FADE is its own name for what
  * boot_anim_grid_alpha() means, but must equal RINGS exactly: short of
  * it is a hard edge, past it divides by a count nothing reaches. */
-#define BOOT_ANIM_GRID_FADE       BOOT_ANIM_GRID_RINGS
+#define BOOT_ANIM_GRID_FADE     BOOT_ANIM_GRID_RINGS
 
-#define BOOT_ANIM_ZETA_TO_FIX3(v) ((v) >> 3)
+#define BOOT_ANIM_ZETA_TO_M4(v) ((v) >> 3)
 
 /* Preserved as Q8 multiplier for SPIRAL effect. */
-#define BOOT_ANIM_T_TO_FIX3_Q8    132
+#define BOOT_ANIM_T_TO_VEC4I_Q8 132
 
 static inline int32_t
-boot_anim_t_to_fix3(int32_t t_q8) {
-    return (t_q8 * BOOT_ANIM_T_TO_FIX3_Q8) >> 8;
+boot_anim_t_to_matrix4i(int32_t t_q8) {
+    return (t_q8 * BOOT_ANIM_T_TO_VEC4I_Q8) >> 8;
 }
 
 /* The general camera-space clip and perspective projection this needs live
@@ -147,14 +147,14 @@ boot_anim_view(int w, int h, uint32_t now_ms) {
 }
 
 /* CAMERA space transform; boot_anim_project() refactored for z check. Q12
- * re/im, Q8 t. Uses boot_anim_curve[] as fixed point in fix3. */
-static inline fix3_vec4_t
+ * re/im, Q8 t. Uses boot_anim_curve[] as fixed point in matrix4i. */
+static inline vec4i_t
 boot_anim_to_camera_space(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view) {
-    fix3_vec4_t p;
-    p.x = BOOT_ANIM_ZETA_TO_FIX3(re_q12);
-    p.y = boot_anim_t_to_fix3(t_q8);
-    p.z = BOOT_ANIM_ZETA_TO_FIX3(im_q12);
-    p.w = FIX3_ONE;
+    vec4i_t p;
+    p.x = BOOT_ANIM_ZETA_TO_M4(re_q12);
+    p.y = boot_anim_t_to_matrix4i(t_q8);
+    p.z = BOOT_ANIM_ZETA_TO_M4(im_q12);
+    p.w = VEC4I_ONE;
 
     return r3d_to_camera_space(p, view);
 }
@@ -162,7 +162,7 @@ boot_anim_to_camera_space(int32_t re_q12, int32_t im_q12, int32_t t_q8, const bo
 static inline void
 boot_anim_project(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view, int* screen_x,
                   int* screen_y) {
-    const fix3_vec4_t p = boot_anim_to_camera_space(re_q12, im_q12, t_q8, view);
+    const vec4i_t p = boot_anim_to_camera_space(re_q12, im_q12, t_q8, view);
     r3d_camera_to_screen(p, view, screen_x, screen_y);
 }
 
@@ -170,7 +170,7 @@ boot_anim_project(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_
 static inline bool
 boot_anim_project_point(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view, int* screen_x,
                         int* screen_y) {
-    const fix3_vec4_t p = boot_anim_to_camera_space(re_q12, im_q12, t_q8, view);
+    const vec4i_t p = boot_anim_to_camera_space(re_q12, im_q12, t_q8, view);
     return r3d_project_point_cs(p, view, screen_x, screen_y);
 }
 
@@ -210,7 +210,7 @@ boot_anim_wave_envelope(uint32_t now_ms) {
 
 static inline int32_t
 boot_anim_zeta_to_t_q8(int32_t zeta_q12) {
-    return (int32_t)(((int64_t)zeta_q12 * 32) / BOOT_ANIM_T_TO_FIX3_Q8);
+    return (int32_t)(((int64_t)zeta_q12 * 32) / BOOT_ANIM_T_TO_VEC4I_Q8);
 }
 
 /* Zero amp or wavelength zeroes lift. Period 0 freezes pattern (a static
@@ -294,23 +294,23 @@ boot_anim_spline(boot_anim_pt_t c0, boot_anim_pt_t c1, boot_anim_pt_t c2, int32_
  * pixel). Weighted sum is int64_t, unlike boot_anim_spline()'s 32-bit: a
  * camera-space coordinate has no known-small-range promise a raw
  * curve-table value does. */
-static inline fix3_vec4_t
-boot_anim_spline_cs(fix3_vec4_t c0, fix3_vec4_t c1, fix3_vec4_t c2, int32_t t_q12) {
+static inline vec4i_t
+boot_anim_spline_cs(vec4i_t c0, vec4i_t c1, vec4i_t c2, int32_t t_q12) {
     const int32_t u = BOOT_ANIM_ONE - t_q12;
     const int32_t w0 = (u * u) >> BOOT_ANIM_Q;
     const int32_t w2 = (t_q12 * t_q12) >> BOOT_ANIM_Q;
     const int32_t w1 = 2 * BOOT_ANIM_ONE - w0 - w2;
 
-    fix3_vec4_t p;
-    p.x = (fix3_unit_t)(((int64_t)w0 * c0.x + (int64_t)w1 * c1.x + (int64_t)w2 * c2.x) >> (BOOT_ANIM_Q + 1));
-    p.y = (fix3_unit_t)(((int64_t)w0 * c0.y + (int64_t)w1 * c1.y + (int64_t)w2 * c2.y) >> (BOOT_ANIM_Q + 1));
-    p.z = (fix3_unit_t)(((int64_t)w0 * c0.z + (int64_t)w1 * c1.z + (int64_t)w2 * c2.z) >> (BOOT_ANIM_Q + 1));
-    p.w = FIX3_ONE;
+    vec4i_t p;
+    p.x = (vec4i_unit_t)(((int64_t)w0 * c0.x + (int64_t)w1 * c1.x + (int64_t)w2 * c2.x) >> (BOOT_ANIM_Q + 1));
+    p.y = (vec4i_unit_t)(((int64_t)w0 * c0.y + (int64_t)w1 * c1.y + (int64_t)w2 * c2.y) >> (BOOT_ANIM_Q + 1));
+    p.z = (vec4i_unit_t)(((int64_t)w0 * c0.z + (int64_t)w1 * c1.z + (int64_t)w2 * c2.z) >> (BOOT_ANIM_Q + 1));
+    p.w = VEC4I_ONE;
     return p;
 }
 
 static inline bool
-boot_anim_screen_chord_lt(fix3_vec4_t a, fix3_vec4_t c, const boot_anim_view_t* view, int32_t px) {
+boot_anim_screen_chord_lt(vec4i_t a, vec4i_t c, const boot_anim_view_t* view, int32_t px) {
     if (a.z <= view->near_z || c.z <= view->near_z) {
         return false;
     }
@@ -318,16 +318,16 @@ boot_anim_screen_chord_lt(fix3_vec4_t a, fix3_vec4_t c, const boot_anim_view_t* 
     const int32_t dy = im_abs((int)(a.y - c.y));
     const int64_t m = (int64_t)dx + dy;
     if (view->focal == 0) {
-        return m * (view->scale) < (int64_t)px * FIX3_ONE;
+        return m * (view->scale) < (int64_t)px * VEC4I_ONE;
     }
     const int32_t zmin = a.z < c.z ? a.z : c.z;
-    return m * view->focal * view->scale < (int64_t)px * zmin * FIX3_ONE;
+    return m * view->focal * view->scale < (int64_t)px * zmin * VEC4I_ONE;
 }
 
 /* Do NOT subdivide if span ends within BOOT_ANIM_LOD_CHORD_PX. Uses
  * boot_anim_screen_chord_lt(). */
 static inline int
-boot_anim_curve_lod_steps(fix3_vec4_t a, fix3_vec4_t c, const boot_anim_view_t* view) {
+boot_anim_curve_lod_steps(vec4i_t a, vec4i_t c, const boot_anim_view_t* view) {
     return boot_anim_screen_chord_lt(a, c, view, BOOT_ANIM_LOD_CHORD_PX) ? 1 : BOOT_ANIM_SPLINE_STEPS;
 }
 
