@@ -62,11 +62,11 @@ flowchart TB
     subgraph R5["devices and drawing"]
         Gfx["gfx/<br/><i>the one framebuffer</i>"]:::hw
         Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
-        Display["display/<br/><i>orientation, panel clock</i>"]
+        Display["display/<br/><i>orientation, panel clock, panel start</i>"]
         Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
     end
     subgraph R6["utilities"]
-        Util["util/<br/><i>fixed point, tween, jobs, tunables</i>"]
+        Util["util/<br/><i>fixed point, tween, jobs, tunables, time, settings, memory, log</i>"]
         Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
         Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
     end
@@ -90,6 +90,14 @@ flowchart TB
   and `imu.c` touch hardware; `touch_fsm`, `button_fsm`, `gesture` and
   `tilt` are pure and tested on a laptop. The same split runs through every
   folder, and is what the [Testing-Guide.md](Testing-Guide.md) relies on.
+- **The shell names no firmware.** `main.c` reaches the chip only through
+  modules that own it: `input/input.h` (`input_start`, `input_poll`,
+  `input_read_motion`), `display/display.h` (`display_start`,
+  `display_sample_orientation`, the system panel clock) and
+  `util/{timing,settings,memory,log}.h`. Each module's device half lives in a
+  `*_device.c` beside it and is compiled for the board only, so the files a
+  host builds stay pure. `scripts/gates/check_shell_firmware.py` fails
+  `main.c` on any ESP-IDF, FreeRTOS, NVS, BSP or driver include or call.
 - **Generated sources are checked in** beside the code that uses them, each
   with a banner naming its regenerate command; `grep -rl "GENERATED FILE"`
   lists them, and the rules they follow are in
@@ -154,18 +162,18 @@ order is most of the point:
 
 ```
 post_run_before_display()   the SD card, on its own SDMMC bus
-gfx_init()                  panel up, framebuffer allocated; parks on failure
-load_system_panel_clock()
+display_start()             panel up, framebuffer allocated, saved panel
+                            clock loaded; parks on failure
 post_run_after_display()    the rest of the health check
                             -> a failure holds the screen for 8 s
 selftest_run()              SELFTEST builds with autorun only
-display_init(), ui_launcher_init(), ui_set_transform()
+display_reset_quarter(), ui_launcher_init(), ui_set_transform()
                             the launcher exists, turned the way boot draws
 boot_anim_run()             the startup animation, 5.5 s
 gfx_request_full_redraw()
-touch_start(), buttons_start()
+input_start()               touch, buttons, then the motion sensor; no
+                            sensor: the display stays upright
 console_start()             development builds only
-imu_init()                  no IMU: the display stays upright
 ```
 
 The health checks come first, so a faulty board says so before it does

@@ -9,6 +9,7 @@ set(app_srcs
     "boot/post_layout.c"
     "boot/post_ui.c"
     "display/display.c"
+    "display/display_device.c"
     "display/panel_clock.c"
     "gfx/gfx.c"
     "input/touch.c"
@@ -19,6 +20,7 @@ set(app_srcs
     "input/buttons.c"
     "input/gesture.c"
     "input/imu.c"
+    "input/input_device.c"
     "input/tilt.c"
     "ui/ui.c"
     "ui/system_navigation.c"
@@ -48,6 +50,10 @@ set(app_srcs
     "util/frame_watch.c"
     "util/build_id.c"
     "util/job.c"
+    "util/log_device.c"
+    "util/memory_device.c"
+    "util/settings_device.c"
+    "util/timing_device.c"
     "util/tune.c"
 )
 
