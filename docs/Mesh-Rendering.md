@@ -100,10 +100,10 @@ sequenceDiagram
     participant P as present on core 1
     C0->>P: gfx_present_begin() sends frame N-1
     Note over C0: update(), cull every cluster
-    C0->>J: transform the second half of the visible clusters
-    Note over C0: transform the first half
+    C0->>J: transform the clusters past the midpoint of the vertex work
+    Note over C0: transform the clusters before it
     J-->>C0: job_wait()
-    Note over C0: pick the row that balances the triangles
+    Note over C0: pick the row that halves the estimated draw cost
     C0->>J: clear depth and draw the rows above it
     Note over C0: clear depth and draw the rows below it
     J-->>C0: job_wait()
