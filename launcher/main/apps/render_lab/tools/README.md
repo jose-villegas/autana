@@ -61,6 +61,45 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 | `render/sponza-{depth,tiles}.gif` | those three seconds as the depth and depth-tile views of the full bake |
 | `render/compare-full-{lite,flat}.png`, `.crops.png` | full against lite and smooth against flat at the GIFs' last pose: both renders and their difference, then the places they differ most, enlarged |
 
+## The Sponza variants
+
+One Sponza import bakes three meshes, its `[[variants]]`
+([Mesh-Import.md](../../../../../docs/render/Mesh-Import.md)): the scenes
+`sponza`, `sponza-lite` and `sponza-flat` each draw one. Every row plays the
+same three seconds of the flythrough, so the rows compare. The last two rows
+are the [view modes](../../../../../docs/render/Mesh-Rendering.md#view-modes)
+over the full mesh.
+
+| Variant | What it is | Triangles and vertices |
+|---|---|---|
+| ![Sponza flythrough, smooth](../../../../../docs/images/render/sponza-full.gif) | **Full**: smooth, one colour per vertex, lit and interpolated | `SPONZA_TRIANGLE_COUNT`, `SPONZA_VERTEX_COUNT` |
+| ![Sponza flythrough, lite](../../../../../docs/images/render/sponza-lite.gif) | **Lite**: the same bake simplified to a smaller budget | `SPONZA_LITE_TRIANGLE_COUNT`, `SPONZA_LITE_VERTEX_COUNT` |
+| ![Sponza flythrough, flat](../../../../../docs/images/render/sponza-flat.gif) | **Flat**: the full mesh's triangles, one colour per face, no gradients | `SPONZA_FLAT_TRIANGLE_COUNT`, `SPONZA_FLAT_VERTEX_COUNT` |
+| ![Sponza flythrough, depth](../../../../../docs/images/render/sponza-depth.gif) | `RASTER_SHOW_DEPTH` over the full mesh | as full |
+| ![Sponza flythrough, depth tiles](../../../../../docs/images/render/sponza-tiles.gif) | `RASTER_SHOW_DEPTH_TILES` over the full mesh | as full |
+
+The counts are those of the three baked meshes in `meshes/`.
+`autana suite run_sponza_perf_suite` prints each variant's `both cores: mean`
+line (`test_sponza_frame_cost_along_the_flythrough`). The GIFs are made by the
+doc-images workflow
+([Render-Harness.md](../../../../../docs/tools/Render-Harness.md#images-in-these-docs)).
+
+Where the variants differ, at the pose the GIFs end on: each sheet is the two
+renders and their amplified difference, and the crops below it are the places
+that differ most, the first render above the second, enlarged.
+
+![Full against lite](../../../../../docs/images/render/compare-full-lite.png)
+![Full against lite, the places they differ most](../../../../../docs/images/render/compare-full-lite.crops.png)
+
+Lite spends fewer triangles, so small shapes merge or drop and edges step; the
+surfaces keep their colour.
+
+![Smooth against flat](../../../../../docs/images/render/compare-full-flat.png)
+![Smooth against flat, the places they differ most](../../../../../docs/images/render/compare-full-flat.crops.png)
+
+Flat shows each face in one colour, so a curtain's fold reads as bands where
+the smooth mesh blends.
+
 ## Sponza poses
 
 The flythrough is a glTF camera animation, `../assets/flythrough.glb`, baked
