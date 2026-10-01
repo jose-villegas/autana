@@ -9,7 +9,7 @@ nearest_source(int destination, int destination_size, int source_size) {
         return 0;
     }
     const int numerator = destination * (source_size - 1);
-    return (uint16_t)((numerator + (destination_size - 1) / 2) / (destination_size - 1));
+    return (uint16_t)((numerator + ((destination_size - 1) / 2)) / (destination_size - 1));
 }
 
 bool
@@ -42,14 +42,14 @@ static void
 upscale_integer_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
                      uint16_t* destination, int first_row, int row_count) {
     for (int y = first_row; y < first_row + row_count; y++) {
-        const uint16_t* input = source + (size_t)(y / scale->vertical_factor) * scale->source_width;
+        const uint16_t* input = source + ((size_t)(y / scale->vertical_factor) * scale->source_width);
         const uint16_t* input_depth =
-            depth == NULL ? NULL : depth + (size_t)(y / scale->vertical_factor) * scale->source_width;
-        uint16_t* output = destination + (size_t)y * scale->destination_width;
+            depth == NULL ? NULL : depth + ((size_t)(y / scale->vertical_factor) * scale->source_width);
+        uint16_t* output = destination + ((size_t)y * scale->destination_width);
         for (int x = 0; x < scale->source_width; x++) {
             const uint16_t pixel = input_depth != NULL && input_depth[x] == 0 ? clear : input[x];
             for (int repeat = 0; repeat < scale->horizontal_factor; repeat++) {
-                output[x * scale->horizontal_factor + repeat] = pixel;
+                output[(x * scale->horizontal_factor) + repeat] = pixel;
             }
         }
     }
@@ -65,9 +65,9 @@ upscale_double_rows(const upscale_t* scale, const uint16_t* source, const uint16
         const size_t row = (size_t)(y / 2) * scale->source_width;
         const uint16_t* input = source + row;
         const uint16_t* input_depth = depth == NULL ? NULL : depth + row;
-        uint32_t* top = (uint32_t*)(destination + (size_t)y * scale->destination_width);
+        uint32_t* top = (uint32_t*)(destination + ((size_t)y * scale->destination_width));
         uint32_t* bottom = top + scale->source_width;
-        const bool both = y % 2 == 0 && y + 1 < end;
+        const bool both = (y % 2 == 0) && (y + 1 < end);
         for (int x = 0; x < scale->source_width; x++) {
             const uint16_t pixel = input_depth != NULL && input_depth[x] == 0 ? clear : input[x];
             const uint32_t pair = ((uint32_t)pixel << 16) | pixel;
@@ -84,9 +84,9 @@ static void
 upscale_mapped_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
                     uint16_t* destination, int first_row, int row_count) {
     for (int y = first_row; y < first_row + row_count; y++) {
-        const uint16_t* input = source + (size_t)scale->rows[y] * scale->source_width;
-        const uint16_t* input_depth = depth == NULL ? NULL : depth + (size_t)scale->rows[y] * scale->source_width;
-        uint16_t* output = destination + (size_t)y * scale->destination_width;
+        const uint16_t* input = source + ((size_t)scale->rows[y] * scale->source_width);
+        const uint16_t* input_depth = depth == NULL ? NULL : depth + ((size_t)scale->rows[y] * scale->source_width);
+        uint16_t* output = destination + ((size_t)y * scale->destination_width);
         for (int x = 0; x < scale->destination_width; x++) {
             const int source_x = scale->columns[x];
             output[x] = input_depth != NULL && input_depth[source_x] == 0 ? clear : input[source_x];
