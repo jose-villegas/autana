@@ -217,7 +217,7 @@ steeper than 0.06 a pixel; edge ΔE averages $\Delta E_{76}$ over them and
 interior ΔE over the rest:
 
 ```math
-E = \operatorname{dilate}_1\left\{\, p : \left\lVert \nabla y_T(p) \right\rVert > 0.06 \,\right\}
+E = \mathrm{dilate}_1\left\{\, p : \left\lVert \nabla y_T(p) \right\rVert > 0.06 \,\right\}
 ```
 
 ## Sweeping the flat bake
