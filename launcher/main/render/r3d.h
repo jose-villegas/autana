@@ -11,4 +11,4 @@
 #include "render/raster.h"
 #include "render/ray.h"
 #include "render/viewport.h"
-#include "util/math/vec3.h"
+#include "util/math/vec3f.h"

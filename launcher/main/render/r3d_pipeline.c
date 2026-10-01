@@ -12,25 +12,25 @@
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
 static void
-set_row(float row[4], vec3_t axis, vec3_t eye, float scale, float ticks_to_units) {
+set_row(float row[4], vec3f_t axis, vec3f_t eye, float scale, float ticks_to_units) {
     row[0] = axis.x * scale * ticks_to_units;
     row[1] = axis.y * scale * ticks_to_units;
     row[2] = axis.z * scale * ticks_to_units;
-    row[3] = -vec3_dot(axis, eye) * scale;
+    row[3] = -vec3f_dot(axis, eye) * scale;
 }
 
-static vec3_t
-upright_step(vec3_t right, vec3_t down, int step_right, int step_down) {
-    return vec3_add(vec3_scale(right, (float)step_right), vec3_scale(down, (float)step_down));
+static vec3f_t
+upright_step(vec3f_t right, vec3f_t down, int step_right, int step_down) {
+    return vec3f_add(vec3f_scale(right, (float)step_right), vec3f_scale(down, (float)step_down));
 }
 
 void
 r3d_lens_init(r3d_lens_t* lens, const camera_t* camera, int position_scale, viewport_t viewport) {
-    const vec3_t eye = camera->eye;
+    const vec3f_t eye = camera->eye;
     const float near_z = camera->near_z;
-    const vec3_t f = vec3_normalize(camera->forward);
-    const vec3_t right = vec3_normalize(vec3_cross(f, (vec3_t){0.0F, 1.0F, 0.0F}));
-    const vec3_t down = vec3_cross(f, right);
+    const vec3f_t f = vec3f_normalize(camera->forward);
+    const vec3f_t right = vec3f_normalize(vec3f_cross(f, (vec3f_t){0.0F, 1.0F, 0.0F}));
+    const vec3f_t down = vec3f_cross(f, right);
 
     const int shorter = viewport.width < viewport.height ? viewport.width : viewport.height;
     const float k = (float)shorter / (2.0F * camera->half_fov_short_tan);
@@ -53,7 +53,7 @@ r3d_lens_init(r3d_lens_t* lens, const camera_t* camera, int position_scale, view
 void
 r3d_lens_place(r3d_lens_t* lens, const r3d_placement_t* placement, int position_scale) {
     const float to_ticks = (float)position_scale;
-    const vec3_t p = placement->position;
+    const vec3f_t p = placement->position;
     for (int k = 0; k < 3; k++) {
         const float c0 = lens->m[k][0];
         const float c1 = lens->m[k][1];
@@ -65,10 +65,10 @@ r3d_lens_place(r3d_lens_t* lens, const r3d_placement_t* placement, int position_
     }
 }
 
-static inline vec3_t
+static inline vec3f_t
 to_lens(const r3d_lens_t* lens, float x, float y, float z) {
     const float(*m)[4] = lens->m;
-    return (vec3_t){
+    return (vec3f_t){
         (m[0][0] * x) + (m[0][1] * y) + (m[0][2] * z) + m[0][3],
         (m[1][0] * x) + (m[1][1] * y) + (m[1][2] * z) + m[1][3],
         (m[2][0] * x) + (m[2][1] * y) + (m[2][2] * z) + m[2][3],
@@ -230,7 +230,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
     bool unbounded = false;
     for (int v = c->vertex_first; v < end; v++) {
         const int16_t* p = mesh->positions[v];
-        const vec3_t l = to_lens(lens, (float)p[0], (float)p[1], (float)p[2]);
+        const vec3f_t l = to_lens(lens, (float)p[0], (float)p[1], (float)p[2]);
         r3d_pipeline_vertex_t* out = &cs[v];
         if (l.z <= lens->near_z) {
             out->iz = 0.0F;
@@ -467,7 +467,7 @@ draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
     for (int k = 0; k < 3; k++) {
         const int16_t* p = mesh->positions[tri[k]];
         const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
-        const vec3_t l = to_lens(lens, (float)p[0], (float)p[1], (float)p[2]);
+        const vec3f_t l = to_lens(lens, (float)p[0], (float)p[1], (float)p[2]);
         in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[0], rgb[1], rgb[2]};
     }
     draw_clipped(lens, in, double_sided, face_color, target);

@@ -82,7 +82,7 @@ fi
 # Warnings are errors: a host build catches mistakes the target build misses,
 # and strictness costs nothing in tests.
 # 64-bit pointers and 8-byte alignment make every command bigger on the host.
-BASE_CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -Wno-unused-parameter -g -O1"
+BASE_CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -ffp-contract=off -Wno-unused-parameter -g -O1"
 CFLAGS="$BASE_CFLAGS"
 if [ "$SANITIZE" = 1 ]; then
     # Instrumentation widens the ranges that format-truncation reasons about.

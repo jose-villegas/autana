@@ -24,7 +24,7 @@
 #define WIRE_CAPSULE_RADIUS 2.0F
 #define WIRE_CAPSULE_CYLINDER_HALF_LEN 2.0F
 
-static const vec3_t wire_plane_vertices[576] = {
+static const vec3f_t wire_plane_vertices[576] = {
     {-4.0F, 0.0F, -4.0F}, {-3.6521739F, 0.0F, -4.0F}, {-3.3043478F, 0.0F, -4.0F}, {-2.9565217F, 0.0F, -4.0F},
     {-2.6086957F, 0.0F, -4.0F}, {-2.2608696F, 0.0F, -4.0F}, {-1.9130435F, 0.0F, -4.0F}, {-1.5652174F, 0.0F, -4.0F},
     {-1.2173913F, 0.0F, -4.0F}, {-0.8695652F, 0.0F, -4.0F}, {-0.5217391F, 0.0F, -4.0F}, {-0.173913F, 0.0F, -4.0F},
@@ -316,7 +316,7 @@ static const wire_mesh_t wire_plane_mesh = {
     wire_plane_vertices, wire_plane_edges, 576, 1104,
 };
 
-static const vec3_t wire_cube_vertices[8] = {
+static const vec3f_t wire_cube_vertices[8] = {
     {-1.0F, -1.0F, -1.0F}, {1.0F, -1.0F, -1.0F}, {-1.0F, 1.0F, -1.0F}, {1.0F, 1.0F, -1.0F},
     {-1.0F, -1.0F, 1.0F}, {1.0F, -1.0F, 1.0F}, {-1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F},
 };
@@ -330,7 +330,7 @@ static const wire_mesh_t wire_cube_mesh = {
     wire_cube_vertices, wire_cube_edges, 8, 12,
 };
 
-static const vec3_t wire_sphere_vertices[386] = {
+static const vec3f_t wire_sphere_vertices[386] = {
     {0.0F, 2.0F, 0.0F}, {0.367499F, 1.9659462F, 0.0F}, {0.3549768F, 1.9659462F, 0.0951157F}, {0.3182635F, 1.9659462F, 0.1837495F},
     {0.2598611F, 1.9659462F, 0.2598611F}, {0.1837495F, 1.9659462F, 0.3182635F}, {0.0951157F, 1.9659462F, 0.3549768F}, {0.0F, 1.9659462F, 0.367499F},
     {-0.0951157F, 1.9659462F, 0.3549768F}, {-0.1837495F, 1.9659462F, 0.3182635F}, {-0.2598611F, 1.9659462F, 0.2598611F}, {-0.3182635F, 1.9659462F, 0.1837495F},
@@ -536,7 +536,7 @@ static const wire_mesh_t wire_sphere_mesh = {
     wire_sphere_vertices, wire_sphere_edges, 386, 792,
 };
 
-static const vec3_t wire_capsule_vertices[194] = {
+static const vec3f_t wire_capsule_vertices[194] = {
     {0.0F, 4.0F, 0.0F}, {0.3901806F, 3.9615706F, 0.0F}, {0.3379063F, 3.9615706F, 0.1950903F}, {0.1950903F, 3.9615706F, 0.3379063F},
     {0.0F, 3.9615706F, 0.3901806F}, {-0.1950903F, 3.9615706F, 0.3379063F}, {-0.3379063F, 3.9615706F, 0.1950903F}, {-0.3901806F, 3.9615706F, 0.0F},
     {-0.3379063F, 3.9615706F, -0.1950903F}, {-0.1950903F, 3.9615706F, -0.3379063F}, {0.0F, 3.9615706F, -0.3901806F}, {0.1950903F, 3.9615706F, -0.3379063F},

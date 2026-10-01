@@ -65,15 +65,17 @@ flowchart TB
         Display["display/<br/><i>orientation, panel clock</i>"]
         Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
     end
-    subgraph R6["utilities"]
-        Util["util/<br/><i>fixed point, tween, jobs, tunables</i>"]
+    subgraph R6["animation"]
         Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
     end
-    subgraph R7["board"]
+    subgraph R7["utilities"]
+        Util["util/<br/><i>fixed point, float and fixed maths, tween, jobs, tunables</i>"]
+    end
+    subgraph R8["board"]
         Board["board/<br/><i>this board's pins and peripherals</i>"]:::hw
     end
 
-    R1 --> R3 --> R4 --> R5 --> R6 --> R7
+    R1 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8
     Contract(["app.h: the shell/app contract"]):::contract
     Main -.->|"calls through app.h"| Apps
     Contract -.->|"includes input/input.h"| Input

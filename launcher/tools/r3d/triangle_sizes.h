@@ -12,7 +12,7 @@
 #include <stdio.h>
 
 #include "render/r3d_pipeline.h"
-#include "util/math/vec3.h"
+#include "util/math/vec3f.h"
 
 enum { R3D_SIZES_ZERO, R3D_SIZES_ONE, R3D_SIZES_TWO_TO_FOUR, R3D_SIZES_MORE, R3D_SIZES_BINS };
 
@@ -40,8 +40,8 @@ typedef struct {
     int width, height;
     float half_fov_short_tan, near_z;
     int count;
-    vec3_t eye[R3D_SIZES_POSES_MAX];
-    vec3_t forward[R3D_SIZES_POSES_MAX];
+    vec3f_t eye[R3D_SIZES_POSES_MAX];
+    vec3f_t forward[R3D_SIZES_POSES_MAX];
 } r3d_sizes_poses_t;
 
 /* True when the file was read whole; else false, with what is wrong and on

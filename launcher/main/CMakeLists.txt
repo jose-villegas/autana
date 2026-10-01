@@ -248,6 +248,14 @@ idf_component_register(
 
 if(NOT CMAKE_SCRIPT_MODE_FILE)
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=vla -Werror=unused-macros)
+
+    # The FPU has no double, so a float promoted to one costs an order of
+    # magnitude: the files that do float maths refuse the promotion.
+    set_source_files_properties(
+        anim/anim_track.c render/raster.c render/r3d_pipeline.c render/r3d_span.c render/r3d_scene.c
+        render/upscale.c boot/boot_anim.c apps/render_lab/scene_cube.c apps/render_lab/scene_wire.c
+        apps/render_lab/wire_pipeline.c
+        PROPERTIES COMPILE_OPTIONS -Werror=double-promotion)
 endif()
 
 if(CONFIG_LAUNCHER_SELFTEST)

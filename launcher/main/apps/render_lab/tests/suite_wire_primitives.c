@@ -140,7 +140,7 @@ test_plane_grid_is_centred(void) {
     float min_z = wire_plane_mesh.vertices[0].z, max_z = min_z;
 
     for (uint16_t i = 0; i < wire_plane_mesh.vertex_count; i++) {
-        const vec3_t* v = &wire_plane_mesh.vertices[i];
+        const vec3f_t* v = &wire_plane_mesh.vertices[i];
         TEST_ASSERT_EQUAL_FLOAT(0.0F, v->y);
         if (v->x < min_x) {
             min_x = v->x;
@@ -179,8 +179,8 @@ test_sphere_counts_match_the_defined_density(void) {
 static void
 test_sphere_vertices_sit_at_the_radius(void) {
     for (uint16_t i = 0; i < wire_sphere_mesh.vertex_count; i++) {
-        const vec3_t* v = &wire_sphere_mesh.vertices[i];
-        TEST_ASSERT_FLOAT_WITHIN(1e-4F, WIRE_SPHERE_RADIUS, sqrtf(vec3_dot(*v, *v)));
+        const vec3f_t* v = &wire_sphere_mesh.vertices[i];
+        TEST_ASSERT_FLOAT_WITHIN(1e-4F, WIRE_SPHERE_RADIUS, sqrtf(vec3f_dot(*v, *v)));
     }
 }
 
@@ -195,10 +195,10 @@ test_capsule_counts_match_the_defined_density(void) {
 static void
 test_capsule_vertices_sit_at_the_radius_from_their_hemisphere_centre(void) {
     for (uint16_t i = 0; i < wire_capsule_mesh.vertex_count; i++) {
-        const vec3_t* v = &wire_capsule_mesh.vertices[i];
+        const vec3f_t* v = &wire_capsule_mesh.vertices[i];
         const float centre_y = v->y >= 0.0F ? WIRE_CAPSULE_CYLINDER_HALF_LEN : -WIRE_CAPSULE_CYLINDER_HALF_LEN;
-        const vec3_t from_centre = {v->x, v->y - centre_y, v->z};
-        TEST_ASSERT_FLOAT_WITHIN(1e-4F, WIRE_CAPSULE_RADIUS, sqrtf(vec3_dot(from_centre, from_centre)));
+        const vec3f_t from_centre = {v->x, v->y - centre_y, v->z};
+        TEST_ASSERT_FLOAT_WITHIN(1e-4F, WIRE_CAPSULE_RADIUS, sqrtf(vec3f_dot(from_centre, from_centre)));
     }
 }
 

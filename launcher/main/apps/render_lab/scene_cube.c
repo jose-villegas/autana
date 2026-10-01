@@ -19,7 +19,7 @@
 #include "render/r3d_span.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
-#include "util/math/transform.h"
+#include "util/math/transformf.h"
 #include "util/math/vec2i.h"
 
 #define CUBE_DISTANCE       3.0F
@@ -37,7 +37,7 @@
 #define CUBE_TRIANGLE_COUNT 12
 #define CUBE_HALF           0.5F
 
-static const vec3_t cube_vertices[CUBE_VERTEX_COUNT] = {
+static const vec3f_t cube_vertices[CUBE_VERTEX_COUNT] = {
     {CUBE_HALF, -CUBE_HALF, -CUBE_HALF}, {-CUBE_HALF, -CUBE_HALF, -CUBE_HALF}, {CUBE_HALF, CUBE_HALF, -CUBE_HALF},
     {-CUBE_HALF, CUBE_HALF, -CUBE_HALF}, {CUBE_HALF, -CUBE_HALF, CUBE_HALF},   {-CUBE_HALF, -CUBE_HALF, CUBE_HALF},
     {CUBE_HALF, CUBE_HALF, CUBE_HALF},   {-CUBE_HALF, CUBE_HALF, CUBE_HALF},
@@ -62,8 +62,8 @@ static const uint8_t cube_corner_colors[CUBE_VERTEX_COUNT][3] = {
     {0, 255, 255},   /* 7  left,  top,    back  */
 };
 
-static transform_t cube_pose = TRANSFORM_IDENTITY;
-static transform_t camera_pose = TRANSFORM_IDENTITY;
+static transformf_t cube_pose = TRANSFORMF_IDENTITY;
+static transformf_t camera_pose = TRANSFORMF_IDENTITY;
 static uint32_t elapsed_ms;
 
 /* This frame's cube coverage and last frame's: band mode marks both dirty,
@@ -90,7 +90,7 @@ cube_update_rotation(uint32_t dt_ms) {
 
     const float turn_y = (float)(elapsed_ms % SPIN_PERIOD_Y_MS) / (float)SPIN_PERIOD_Y_MS;
     const float turn_x = (float)(elapsed_ms % SPIN_PERIOD_X_MS) / (float)SPIN_PERIOD_X_MS;
-    transform_set_rotation(&cube_pose, quat_from_euler((vec3_t){-MATH_TAU * turn_x, -MATH_TAU * turn_y, 0.0F}));
+    transformf_set_rotation(&cube_pose, quatf_from_euler((vec3f_t){-MATH_TAU * turn_x, -MATH_TAU * turn_y, 0.0F}));
 }
 
 void
@@ -183,7 +183,7 @@ cube_expand_bbox(const cube_triangle_bin_t* entry, int x0, int x1) {
 /* The vertex in pixels, with its camera-space depth. */
 static cube_projected_t
 cube_project(int corner, const r3d_line_view_t* view) {
-    const vec3_t camera = r3d_to_camera_space(cube_vertices[corner], view);
+    const vec3f_t camera = r3d_to_camera_space(cube_vertices[corner], view);
     int x, y;
     r3d_camera_to_screen(camera, view, &x, &y);
     return (cube_projected_t){{x, y}, camera.z};
@@ -314,9 +314,9 @@ cube_rasterize_band(gfx_color_t* buf, int row0, int row1) {
  * triangle is discarded. A box from a previous visit is not "last frame". */
 static void
 scene_cube_enter(void) {
-    cube_pose = (transform_t)TRANSFORM_IDENTITY;
-    transform_set_position(&cube_pose, (vec3_t){0.0F, 0.0F, CUBE_DISTANCE});
-    camera_pose = (transform_t)TRANSFORM_IDENTITY;
+    cube_pose = (transformf_t)TRANSFORMF_IDENTITY;
+    transformf_set_position(&cube_pose, (vec3f_t){0.0F, 0.0F, CUBE_DISTANCE});
+    camera_pose = (transformf_t)TRANSFORMF_IDENTITY;
 
     const size_t depth_bytes = sizeof(*band_depth) * (size_t)GFX_BAND_HEIGHT * GFX_WIDTH;
     band_depth = heap_caps_malloc(depth_bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);

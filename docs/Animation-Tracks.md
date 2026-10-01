@@ -94,8 +94,9 @@ anim_track_sample(&prefix_lens_perspective_yfov, seconds, fov);
 ```
 
 Mapping the value onto the object, including any unit conversion, belongs to
-the caller. Tracks are float, and `render/r3d_trs.h` turns a sampled
-translation, rotation and scale into a `util/math/transform.h` `transform_t`.
+the caller. Tracks are float, and `anim/anim_transform.h` samples a node's
+translation, rotation and scale tracks into a `util/math/transformf.h`
+`transformf_t`.
 
 ## Looking at a baked animation
 
