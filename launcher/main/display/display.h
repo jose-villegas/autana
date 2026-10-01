@@ -2,9 +2,10 @@
  * display: which way is "up", decided once for the whole shell.
  *
  * Orientation belongs to the physical device, not to any one app's panel, so
- * it is decided here and main.c applies it; every UI surface follows. No IMU,
- * no gfx, no ui: the gravity vector arrives already read, which is what lets
- * this link and run on a host.
+ * it is decided here and the shell applies it; every UI surface follows.
+ * display.c has no IMU, no gfx, no ui: the gravity vector arrives already
+ * read, which is what lets it link and run on a host. The shell's side, at
+ * the foot, is display_device.c.
  *
  * The hysteresis is the module, not a refinement of it. Snapping to whichever
  * of gx/gy is larger puts the boundary at 45 degrees, where a board held near
@@ -17,6 +18,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 /* The cover glass hides roughly this many pixels along every edge of the
  * panel, and more where the corners round off. Anything meant to be read
@@ -42,7 +44,7 @@ typedef struct {
      * state this module keeps. The hysteresis test above is a pure
      * function of (quarter, gx, gy); nothing here accumulates over
      * time or needs a clock, which is also why display_update() takes
-     * no dt: main.c controls how often it is called, and the decision
+     * no dt: the caller controls how often it is called, and the decision
      * itself does not care. */
     int quarter;
 } display_t;
@@ -68,8 +70,8 @@ typedef struct {
 #define DISPLAY_LANDSCAPE_UPSIDE_DOWN 3
 
 /* The orientation the SHELL applies at boot, before the first gravity
- * sample arrives; main.c sets this once, after display_init(), which
- * stays a neutral 0: this is a physical fact about one board, not
+ * sample arrives; display_reset_quarter() sets it once, after display_init(),
+ * which stays a neutral 0: this is a physical fact about one board, not
  * something a device-agnostic module should bake into its reset.
  * DISPLAY_LANDSCAPE, not a bare 1: this board is normally held sideways
  * to its native upright, and the table above confirms that is quarter
@@ -79,8 +81,8 @@ typedef struct {
 void display_init(display_t* d);
 
 /* Feed the current gravity vector, in whatever consistent units the caller's
- * IMU reading uses (screen X/Y axes, not raw sensor axes; see main.c's own
- * mapping). Returns true when d->quarter actually changed, which is main.c's
+ * IMU reading uses (screen X/Y axes, not raw sensor axes; see
+ * imu_gravity_screen_x()). Returns true when d->quarter actually changed, which is the caller's
  * cue to push a new ui_set_transform(). */
 bool display_update(display_t* d, int gx, int gy);
 
@@ -89,12 +91,34 @@ int display_quarter(const display_t* d);
 /* Returns the horizontal inset where a row meets a rounded canvas corner. */
 int display_panel_corner_inset(int radius, int canvas_height, int row);
 
-/* The shell's own orientation: the quarter main.c last set the UI
- * transform to. Declared here but defined in main.c, not display.c:
- * main.c is the only thing that calls display_update() and owns the
- * display_t the decision is made against, the same app.h split between
- * "declared where callers look" and "defined where the instance lives".
- * For an app drawing through the shell's transform: knowing when it
- * changed underneath you, without reading the IMU again or duplicating
- * the hysteresis above. */
-int display_shell_quarter(void);
+/*
+ * The shell's side, defined in display_device.c (device only): the one panel,
+ * its orientation state and its clock. Orientation is sampled here, from the
+ * motion sensor at 10 Hz, and applying a change to the UI is the
+ * caller's.
+ */
+
+/* Brings the panel up and loads the saved panel clock. False when the
+ * graphics cannot start, after printing the DMA heap to say why. */
+bool display_start(void);
+
+/* Puts the shell's orientation at DISPLAY_DEFAULT_QUARTER. */
+void display_reset_quarter(void);
+
+/* Samples the motion sensor when a tenth of a second has passed since the
+ * last sample. True when the quarter changed. */
+bool display_sample_orientation(int64_t now_us);
+
+/* The shell's own orientation, for an app drawing through the shell's
+ * transform: knowing when it changed underneath you, without reading the IMU
+ * again or duplicating the hysteresis above. */
+int display_quarter_now(void);
+
+/* The panel clock the user chose, and the setter that keeps the choice across
+ * a reboot. Unchanged and unsupported rates are ignored. */
+int display_system_panel_clock_hz(void);
+void display_set_system_panel_clock_hz(int hz);
+
+/* Whatever the app that just started or exited did to the panel clock or to
+ * heal, the next context begins from the system value and heal's defaults. */
+void display_restore_system_state(void);

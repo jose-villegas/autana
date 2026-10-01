@@ -100,7 +100,7 @@ draw_toggles_page(const input_t* input) {
         .send_audit_on = gfx_send_audit(),
         .show_orientation = show_orientation,
         .imu_ready = imu_ready(),
-        .shell_quarter = display_shell_quarter(),
+        .shell_quarter = display_quarter_now(),
 #if CONFIG_LAUNCHER_SELFTEST
         .selftest_failures = selftest_failures,
 #endif
@@ -159,7 +159,7 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
          * it, not the board's real orientation, restored here
          * immediately, one frame of latency before draw_toggles_page()
          * ever opens its own frame. */
-        ui_set_transform(ui_transform_quarter_turn(display_shell_quarter(), GFX_WIDTH, GFX_HEIGHT));
+        ui_set_transform(ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT));
     }
 #endif /* CONFIG_LAUNCHER_SELFTEST */
 
@@ -178,7 +178,7 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
     /* Redrawn every frame rather than cached: the shell owns the framebuffer
      * and the previous app may have left anything in it. */
     if (page == 0) {
-        const post_ui_report_t report = {.title = POST_LAYOUT_TITLE, .quarter = display_shell_quarter()};
+        const post_ui_report_t report = {.title = POST_LAYOUT_TITLE, .quarter = display_quarter_now()};
         post_ui_draw_report(&report);
     } else {
         draw_toggles_page(input);

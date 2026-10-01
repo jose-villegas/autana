@@ -117,7 +117,7 @@ static void
 render(uint32_t dt_ms) {
     elapsed_ms += dt_ms;
     const camera_t camera = sponza_camera_at(elapsed_ms);
-    stats = raster_draw(&raster, &camera, display_shell_quarter());
+    stats = raster_draw(&raster, &camera, display_quarter_now());
 #if TUNE_ENABLED
     raster_show(&raster, render_lab_view());
 #endif

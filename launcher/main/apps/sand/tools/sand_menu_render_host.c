@@ -45,7 +45,7 @@ static bool open_dither;
 static ui_transform_t transform;
 
 int
-display_shell_quarter(void) {
+display_quarter_now(void) {
     return 0;
 }
 

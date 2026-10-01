@@ -176,7 +176,7 @@ static void
 update(uint32_t dt_ms) {
     elapsed_ms += dt_ms;
     const camera_t camera = r3d_scene_camera_at(&hall_scene_camera, elapsed_ms);
-    raster_draw(&raster, &camera, display_shell_quarter());
+    raster_draw(&raster, &camera, display_quarter_now());
 }
 ```
 
