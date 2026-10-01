@@ -251,7 +251,7 @@ this chip has no pixel-processing accelerator, no 2D blitter and no GPU.
 Rendering is scalar C in the frame loop on core 0. Core 1 holds the present
 task and the job worker, and a stage that wants more hands splits onto core 1
 through `util/job.h`
-([Mesh-Rendering.md](../Mesh-Rendering.md#on-both-cores)). If graphics
+([Mesh-Rendering.md](../render/Mesh-Rendering.md#on-both-cores)). If graphics
 throughput becomes the requirement, that is a board decision: the ESP32-P4
 has the PPA, PSRAM and a real SDMMC host.
 

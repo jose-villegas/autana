@@ -1544,6 +1544,9 @@ reference_frame(const parts_t* p, const r3d_lens_t* lens, gfx_color_t* upscaled)
     }
 }
 
+/* A raster's one mesh, as the instance it is. */
+#define ONE_MESH(m) .instances = &(const r3d_instance_t){(m), NULL}, .instance_count = 1
+
 typedef struct {
     const char* at;
     size_t size;
@@ -1553,7 +1556,7 @@ static void
 test_the_frame_carves_its_scratch_without_overlap(void) {
     parts_t* const p = parts_buffer();
     build_wall_and_stack(p);
-    raster_t raster = {.mesh = &p->mesh, .width = W, .height = H};
+    raster_t raster = {ONE_MESH(&p->mesh), .width = W, .height = H};
     const size_t bytes = raster_scratch_bytes(&raster);
     char* scratch = malloc(bytes);
     TEST_ASSERT_NOT_NULL(scratch);
@@ -1590,12 +1593,12 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     build_wall_and_stack(p);
     gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    char* scratch = malloc(raster_scratch_bytes(&(raster_t){
-        .mesh = &p->mesh, .width = W, .height = H, .destination_width = 2 * W, .destination_height = 2 * H}));
+    char* scratch = malloc(raster_scratch_bytes(&(raster_t){ONE_MESH(&p->mesh), .width = W, .height = H,
+                                                            .destination_width = 2 * W, .destination_height = 2 * H}));
     TEST_ASSERT_NOT_NULL(upscaled);
     TEST_ASSERT_NOT_NULL(want);
     TEST_ASSERT_NOT_NULL(scratch);
-    raster_t raster = {.mesh = &p->mesh,
+    raster_t raster = {ONE_MESH(&p->mesh),
                        .width = W,
                        .height = H,
                        .clear = SKY,
@@ -1643,11 +1646,11 @@ test_a_destination_of_the_same_size_is_a_copy(void) {
     gfx_color_t* destination = malloc(sizeof(gfx_color_t) * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
     char* scratch = malloc(raster_scratch_bytes(
-        &(raster_t){.mesh = &p->mesh, .width = W, .height = H, .destination_width = W, .destination_height = H}));
+        &(raster_t){ONE_MESH(&p->mesh), .width = W, .height = H, .destination_width = W, .destination_height = H}));
     TEST_ASSERT_NOT_NULL(destination);
     TEST_ASSERT_NOT_NULL(want);
     TEST_ASSERT_NOT_NULL(scratch);
-    raster_t raster = {.mesh = &p->mesh,
+    raster_t raster = {ONE_MESH(&p->mesh),
                        .width = W,
                        .height = H,
                        .clear = SKY,
@@ -1689,7 +1692,7 @@ test_a_fractional_destination_upscales_a_drawn_frame(void) {
     uint16_t* destination = malloc(sizeof(*destination) * OUT_W * OUT_H);
     uint16_t* color = malloc(sizeof(*color) * W * H);
     uint16_t* depth = malloc(sizeof(*depth) * W * H);
-    raster_t raster = {.mesh = &p->mesh,
+    raster_t raster = {ONE_MESH(&p->mesh),
                        .width = W,
                        .height = H,
                        .clear = SKY,
@@ -1724,6 +1727,7 @@ test_a_fractional_destination_upscales_a_drawn_frame(void) {
 /* Views of the depth */
 
 typedef struct {
+    r3d_instance_t instance;
     raster_t raster;
     r3d_lit_mesh_t mesh; /* nothing to draw: its scratch is colour and depth */
 } shown_t;
@@ -1751,7 +1755,9 @@ shown_frame(int width, int height) {
     shown->raster.width = width;
     shown->raster.height = height;
     shown->raster.clear = SKY;
-    shown->raster.mesh = &shown->mesh;
+    shown->instance = (r3d_instance_t){&shown->mesh, NULL};
+    shown->raster.instances = &shown->instance;
+    shown->raster.instance_count = 1;
     shown->raster.scratch = calloc(1, raster_scratch_bytes(&shown->raster));
     TEST_ASSERT_NOT_NULL(shown->raster.scratch);
     memset(r3d_pipeline_carve(&shown->raster).color, 0xA5, count * sizeof(uint16_t));
@@ -1980,15 +1986,15 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
     parts_t* const p = parts_buffer();
     build_wall_and_stack(p);
     gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    char* scratch = malloc(raster_scratch_bytes(&(raster_t){
-        .mesh = &p->mesh, .width = W, .height = H, .destination_width = 2 * W, .destination_height = 2 * H}));
+    char* scratch = malloc(raster_scratch_bytes(&(raster_t){ONE_MESH(&p->mesh), .width = W, .height = H,
+                                                            .destination_width = 2 * W, .destination_height = 2 * H}));
     uint16_t* depth_before = malloc(sizeof(uint16_t) * W * H);
     uint16_t* shaded = malloc(sizeof(uint16_t) * W * H);
     TEST_ASSERT_NOT_NULL(upscaled);
     TEST_ASSERT_NOT_NULL(scratch);
     TEST_ASSERT_NOT_NULL(depth_before);
     TEST_ASSERT_NOT_NULL(shaded);
-    raster_t raster = {.mesh = &p->mesh,
+    raster_t raster = {ONE_MESH(&p->mesh),
                        .width = W,
                        .height = H,
                        .clear = SKY,

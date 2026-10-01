@@ -7,9 +7,10 @@ in [Mesh-Import.md](Mesh-Import.md).
 `launcher/main/render/` is the engine's 3D layer: cameras, projection, a
 span rasterizer, and a pipeline that draws a mesh whose light was baked
 offline. It sits beside `gfx/`, and the only other thing it includes is
-`util/`, so boot and apps both call it. It
+`util/`, so boot and apps both call it. The one exception is `r3d_scene.h`, which
+reads `anim/` tracks for a camera path; the raster and the pipeline do not depend on it. It
 draws into buffers its caller hands it, and a framebuffer is only one of
-them. The layers are in [Firmware-Architecture.md](Firmware-Architecture.md).
+them. The layers are in [Firmware-Architecture.md](../Firmware-Architecture.md).
 
 ## What a scene uses
 
@@ -21,8 +22,10 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](Mesh-Import.md)) |
 | `camera_t` | A pinhole camera in model units: eye, look direction, lens, near plane |
 | `viewport_t` | The picture's size and the quarter turn the panel is read at; the ray and line cameras take one, and `raster_draw()` builds its own from the size and the quarter |
-| `raster_t` | One mesh drawn at one size into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and a destination picture at least as large |
-| `raster_draw()` | Draws the mesh through a camera, turned for the panel's quarter |
+| `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
+| `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and a destination picture at least as large |
+| `raster_draw()` | Draws every instance through a camera, turned for the panel's quarter |
+| `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the glTF animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
 | `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows and a depth plane of the same shape, from `render/r3d_span.h` |
 | `raster_show()` | Development builds: shows the depth instead of the colour, as a [view mode](#view-modes) |
@@ -31,8 +34,19 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 Flat or smooth shading is the mesh's own, not an option: a mesh baked flat
 carries a colour per face and the raster draws what the mesh carries.
 
-A camera that moves is an [animation track](Animation-Tracks.md), sampled
-by its caller into the camera's eye and look direction.
+A camera that moves is an [animation track](../Animation-Tracks.md), sampled
+into the camera's eye and look direction; `r3d_scene_camera_at()` does it for
+a baked camera object.
+
+Several meshes share one picture: the raster draws each instance in turn
+without clearing between, and the depth buffer decides what covers what, so
+the order does not matter. An instance's placement goes into the lens matrix:
+`r3d_lens_place()` composes it with the lens `r3d_lens_init()` built, so
+culling, the vertex transform and near clipping all see the mesh where it
+sits. The importer bakes the placement from a position, a rotation and a scale
+([Scene-Files.md](Scene-Files.md)), so the device does no trigonometry, and an
+instance with no placement skips the composition and is the unplaced lens
+exactly.
 
 The ray tracer keeps its own camera, which holds an explicit right and up.
 `camera_t` has only a look direction, and the rasterizer derives right from
@@ -45,7 +59,9 @@ would see the scene mirrored.
 |---|---|
 | `r3d.h` | What a scene includes: it brings in the headers below it down to the mesh format |
 | `camera.h` | The camera |
-| `raster.h` | One mesh drawn on both cores, optionally upscaled into a destination picture, and the view modes |
+| `r3d_instance.h` | A mesh and its optional baked placement: what the raster draws |
+| `r3d_scene.h` | The camera of a baked table: its lens, placement and path, and sampling it at a time; reads `anim/` |
+| `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture, and the view modes |
 | `viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
 | `vec3f.h` | The float 3-vector every float camera shares |
 | `ray.h` | The ray camera: the direction through each physical pixel |
@@ -67,7 +83,7 @@ suite or host tool include them.
 flowchart LR
     Camera["camera_t<br/><i>eye, forward, lens</i>"] --> Lens
     subgraph Render["raster_draw()"]
-        Lens["r3d_lens_init()<br/><i>for this viewport</i>"] --> Cull
+        Lens["r3d_lens_init()<br/><i>for this viewport</i><br/>r3d_lens_place()<br/><i>per instance</i>"] --> Cull
         Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
         Transform --> Draw["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
     end
@@ -202,6 +218,6 @@ so none of it has to take internal RAM.
 
 ## Related
 
-- [Firmware-Architecture.md](Firmware-Architecture.md): the layers and the frame loop
-- [Gfx-and-Presentation.md](Gfx-and-Presentation.md#present-who-runs-it): the split present `update()` overlaps
-- [Building-an-App.md](Building-an-App.md#app-memory): the app arena, one place a frame's scratch block can come from
+- [Firmware-Architecture.md](../Firmware-Architecture.md): the layers and the frame loop
+- [Gfx-and-Presentation.md](../Gfx-and-Presentation.md#present-who-runs-it): the split present `update()` overlaps
+- [Building-an-App.md](../Building-an-App.md#app-memory): the app arena, one place a frame's scratch block can come from

@@ -75,6 +75,7 @@
 #include "ui/title_screen.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
+#include "util/frame_cost.h"
 
 static const char* TAG = "sand";
 
@@ -1636,17 +1637,19 @@ sand_update(uint32_t dt_ms, const input_t* input) {
     const int64_t t0 = esp_timer_get_time();
 #endif
 
+    FRAME_COST_BEGIN(step_mark);
     run_sim_steps(gx, gy, jostle, flow, dt_ms);
+    FRAME_COST_END(step_mark, "sand.steps");
 
     material_set_gravity(gx, gy);
 
     material_shine_direction(gx, gy, &paint_frame.shine_ux_q8, &paint_frame.shine_uy_q8);
 
+    FRAME_COST_BEGIN(plants_mark);
     material_wood_leaf_wind_axis(gx, gy, &paint_frame.wood_leaf_wind_ux_q8, &paint_frame.wood_leaf_wind_uy_q8);
-
     material_wood_leaf_top5(gx, gy, &wood_leaf_top5_down, paint_frame.wood_leaf_top5);
-
     advance_wood_leaf_wind_sign(dt_ms);
+    FRAME_COST_END(plants_mark, "sand.plants");
 
     sand_paint_update_local_depth_gravity(&paint_row_state, gx, gy, grid_w, grid_h);
 
@@ -1787,6 +1790,7 @@ draw_sim_frame(const input_t* input) {
     (void)input;
 #endif
 
+    FRAME_COST_BEGIN(draw_mark);
     if (label_dirty_this_frame) {
         memset(dirty_rows, 1, (size_t)grid_h);
         /* Full width, not whatever the sim narrowed this step to: the
@@ -1800,6 +1804,7 @@ draw_sim_frame(const input_t* input) {
                     pending_wood_leaf_moved);
     heal_settled_rows();
     draw_canvas_overlays();
+    FRAME_COST_END(draw_mark, "sand.draw");
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t t2 = esp_timer_get_time();
