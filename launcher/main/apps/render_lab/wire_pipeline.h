@@ -17,7 +17,7 @@ typedef struct {
 } wire_segment_t;
 
 typedef struct {
-    vec3_t* cs_vertices; /* camera space, one transform per vertex per frame */
+    vec3f_t* cs_vertices; /* camera space, one transform per vertex per frame */
     uint16_t cs_capacity;
     wire_segment_t* segments;
     uint16_t segment_capacity;

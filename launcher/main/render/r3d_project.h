@@ -16,8 +16,8 @@
 #include <math.h>
 #include <stdbool.h>
 
-#include "util/math/mat4.h"
-#include "util/math/vec3.h"
+#include "util/math/mat4f.h"
+#include "util/math/vec3f.h"
 
 /* A small fraction of one model unit: a caller with its own physical unit
  * (a meter, a grid cell) is free to pick a near_z of its own instead. */
@@ -29,27 +29,35 @@
 #define R3D_PIXEL_LIMIT 1000000.0F
 
 typedef struct {
-    mat4_t matrix; /* model * view, composed by the caller */
-    float focal;   /* projection-plane distance; 0 is orthographic */
-    float near_z;  /* camera-space clip plane, > 0 */
-    int center_x;  /* screen pixel the optical axis lands on */
+    mat4f_t matrix; /* model * view, composed by the caller */
+    float focal;    /* projection-plane distance; 0 is orthographic */
+    float near_z;   /* camera-space clip plane, > 0 */
+    int center_x;   /* screen pixel the optical axis lands on */
     int center_y;
     float scale; /* pixels per projection-plane unit, both axes */
 } r3d_line_view_t;
 
-static inline vec3_t
-r3d_to_camera_space(vec3_t model_point, const r3d_line_view_t* view) {
-    return mat4_apply(&view->matrix, model_point);
+static inline vec3f_t
+r3d_to_camera_space(vec3f_t model_point, const r3d_line_view_t* view) {
+    return mat4f_apply(&view->matrix, model_point);
 }
 
-/* A pixel offset truncated toward zero, so it is symmetric about the centre. */
+/* A pixel offset truncated toward zero, so it is symmetric about the centre.
+ * Plain comparisons, not fminf/fmaxf: those are libm calls on this FPU, and
+ * this runs four times per edge. A NaN fails both and lands on the limit. */
 static inline int
 r3d_pixel_offset(float offset) {
-    return (int)fmaxf(-R3D_PIXEL_LIMIT, fminf(R3D_PIXEL_LIMIT, offset));
+    if (!(offset < R3D_PIXEL_LIMIT)) {
+        return (int)R3D_PIXEL_LIMIT;
+    }
+    if (!(offset > -R3D_PIXEL_LIMIT)) {
+        return -(int)R3D_PIXEL_LIMIT;
+    }
+    return (int)offset;
 }
 
 static inline void
-r3d_camera_to_screen(vec3_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
+r3d_camera_to_screen(vec3f_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
     float gain = view->scale;
     if (view->focal != 0.0F) {
         gain *= view->focal / p.z;
@@ -60,7 +68,7 @@ r3d_camera_to_screen(vec3_t p, const r3d_line_view_t* view, int* screen_x, int* 
 
 /* Draws if point is in front; checks visibility, avoids invalid coordinates. */
 static inline bool
-r3d_project_point_cs(vec3_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
+r3d_project_point_cs(vec3f_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
     if (p.z <= view->near_z) {
         return false;
     }
@@ -71,7 +79,7 @@ r3d_project_point_cs(vec3_t p, const r3d_line_view_t* view, int* screen_x, int* 
 /* Clips to near plane; avoids screen wrap. Returns false if segment is at or
  * behind the plane. */
 static inline bool
-r3d_project_segment_cs(vec3_t p0, vec3_t p1, const r3d_line_view_t* view, int* ax, int* ay, int* bx, int* by) {
+r3d_project_segment_cs(vec3f_t p0, vec3f_t p1, const r3d_line_view_t* view, int* ax, int* ay, int* bx, int* by) {
     const bool front0 = p0.z > view->near_z;
     const bool front1 = p1.z > view->near_z;
 
@@ -82,8 +90,8 @@ r3d_project_segment_cs(vec3_t p0, vec3_t p1, const r3d_line_view_t* view, int* a
     if (front0 != front1) {
         /* Replace endpoint with crossing point using linear interpolation in
          * camera space. */
-        vec3_t* behind = front0 ? &p1 : &p0;
-        const vec3_t* front = front0 ? &p0 : &p1;
+        vec3f_t* behind = front0 ? &p1 : &p0;
+        const vec3f_t* front = front0 ? &p0 : &p1;
         const float frac = (view->near_z - behind->z) / (front->z - behind->z);
 
         behind->x += (front->x - behind->x) * frac;

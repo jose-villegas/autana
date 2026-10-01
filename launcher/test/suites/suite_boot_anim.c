@@ -191,7 +191,7 @@ test_the_quarter_points_are_exact(void) {
  * pre-finale tests meant by "full progress". */
 #define CURVE_DONE_MS 2600
 
-/* A plain identity matrix (mat4_identity()) and an
+/* A plain identity matrix (mat4f_identity()) and an
  * orthographic focal length (0; see boot_anim.h's "The projection" section
  * on why 0 means that), the simplest boot_anim_view_t there is, built
  * directly rather than through boot_anim_view()/the motion tracks, so
@@ -200,7 +200,7 @@ test_the_quarter_points_are_exact(void) {
 static boot_anim_view_t
 identity_view(float focal) {
     boot_anim_view_t v;
-    v.matrix = mat4_identity();
+    v.matrix = mat4f_identity();
     v.focal = focal;
     v.near_z = R3D_LINE_NEAR_Z;
     v.center_x = PANEL_W / 2;
@@ -281,8 +281,8 @@ test_project_point_rejects_a_point_at_the_near_plane(void) {
 static void
 test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
     const boot_anim_view_t view = identity_view(1.0F);
-    const vec3_t p0 = {100, 200, 0};
-    const vec3_t p1 = {-100, -200, R3D_LINE_NEAR_Z};
+    const vec3f_t p0 = {100, 200, 0};
+    const vec3f_t p1 = {-100, -200, R3D_LINE_NEAR_Z};
     int ax, ay, bx, by;
 
     const bool ok = r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by);
@@ -298,8 +298,8 @@ test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
 static void
 test_project_segment_cs_clips_asymmetric_coordinates(void) {
     const boot_anim_view_t view = identity_view(1.0F);
-    const vec3_t p0 = {-300.1F, 250.0F, R3D_LINE_NEAR_Z - 0.168F};
-    const vec3_t p1 = {401.8F, -180.3F, R3D_LINE_NEAR_Z + 0.801F};
+    const vec3f_t p0 = {-300.1F, 250.0F, R3D_LINE_NEAR_Z - 0.168F};
+    const vec3f_t p1 = {401.8F, -180.3F, R3D_LINE_NEAR_Z + 0.801F};
 
     int ax, ay, bx, by;
     TEST_ASSERT_TRUE_MESSAGE(r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by),
@@ -312,7 +312,7 @@ test_project_segment_cs_clips_asymmetric_coordinates(void) {
     const double exact_x = p0.x + (p1.x - p0.x) * frac;
     const double exact_y = p0.y + (p1.y - p0.y) * frac;
     int ex, ey;
-    const vec3_t exact_clip = {(float)exact_x, (float)exact_y, R3D_LINE_NEAR_Z};
+    const vec3f_t exact_clip = {(float)exact_x, (float)exact_y, R3D_LINE_NEAR_Z};
     r3d_camera_to_screen(exact_clip, &view, &ex, &ey);
 
     const int tolerance = 3;
@@ -327,7 +327,7 @@ test_project_segment_cs_clips_asymmetric_coordinates(void) {
      * projecting it directly, independent of whatever the clip branch
      * above did. */
     int fx, fy;
-    vec3_t p1_copy = p1;
+    vec3f_t p1_copy = p1;
     r3d_camera_to_screen(p1_copy, &view, &fx, &fy);
     TEST_ASSERT_EQUAL_INT_MESSAGE(fx, bx,
                                   "the untouched (already in front) endpoint should project "
@@ -806,14 +806,14 @@ test_spline_cs_matches_transforming_the_world_space_spline(void) {
     const boot_anim_pt_t b = pt(2500, -1800, 900);
     const boot_anim_pt_t c = pt(600, 3200, 1600);
 
-    const vec3_t ta = boot_anim_to_camera_space(a.re, a.im, a.t, &view);
-    const vec3_t tb = boot_anim_to_camera_space(b.re, b.im, b.t, &view);
-    const vec3_t tc = boot_anim_to_camera_space(c.re, c.im, c.t, &view);
+    const vec3f_t ta = boot_anim_to_camera_space(a.re, a.im, a.t, &view);
+    const vec3f_t tb = boot_anim_to_camera_space(b.re, b.im, b.t, &view);
+    const vec3f_t tc = boot_anim_to_camera_space(c.re, c.im, c.t, &view);
 
     for (int32_t t = 0; t <= BOOT_ANIM_ONE; t += 197) {
         const boot_anim_pt_t world = boot_anim_spline(a, b, c, t);
-        const vec3_t want = boot_anim_to_camera_space(world.re, world.im, world.t, &view);
-        const vec3_t got = boot_anim_spline_cs(ta, tb, tc, t);
+        const vec3f_t want = boot_anim_to_camera_space(world.re, world.im, world.t, &view);
+        const vec3f_t got = boot_anim_spline_cs(ta, tb, tc, t);
 
         TEST_ASSERT_FLOAT_WITHIN_MESSAGE(0.002F, want.x, got.x,
                                          "transform-then-interpolate must match interpolate-then-"
@@ -836,8 +836,8 @@ test_spline_cs_matches_transforming_the_world_space_spline(void) {
 static void
 test_curve_lod_steps_keeps_full_detail_for_a_wide_chord(void) {
     const boot_anim_view_t view = identity_view(0);
-    const vec3_t a = {-0.2F, 0.0F, 5.0F};
-    const vec3_t c = {0.2F, 0.0F, 5.0F};
+    const vec3f_t a = {-0.2F, 0.0F, 5.0F};
+    const vec3f_t c = {0.2F, 0.0F, 5.0F};
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(BOOT_ANIM_SPLINE_STEPS, boot_anim_curve_lod_steps(a, c, &view),
                                   "a span whose two ends land well apart on screen must keep full "
@@ -852,8 +852,8 @@ test_curve_lod_steps_keeps_full_detail_for_a_wide_chord(void) {
 static void
 test_curve_lod_steps_collapses_a_tiny_chord_to_one_step(void) {
     const boot_anim_view_t view = identity_view(0);
-    const vec3_t a = {0.08F, 0.08F, 5.0F};
-    const vec3_t c = {0.082F, 0.08F, 5.0F};
+    const vec3f_t a = {0.08F, 0.08F, 5.0F};
+    const vec3f_t c = {0.082F, 0.08F, 5.0F};
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, boot_anim_curve_lod_steps(a, c, &view),
                                   "two points landing within a pixel of each other should collapse "
@@ -870,10 +870,10 @@ test_curve_lod_steps_collapses_a_tiny_chord_to_one_step(void) {
 static void
 test_screen_chord_shrinks_with_distance(void) {
     const boot_anim_view_t view = identity_view(1.0F);
-    const vec3_t near_a = {0.0F, 0.0F, 1.0F};
-    const vec3_t near_c = {0.2F, 0.0F, 1.0F};
-    const vec3_t far_a = {0.0F, 0.0F, 100.0F};
-    const vec3_t far_c = {0.2F, 0.0F, 100.0F};
+    const vec3f_t near_a = {0.0F, 0.0F, 1.0F};
+    const vec3f_t near_c = {0.2F, 0.0F, 1.0F};
+    const vec3f_t far_a = {0.0F, 0.0F, 100.0F};
+    const vec3f_t far_c = {0.2F, 0.0F, 100.0F};
 
     TEST_ASSERT_FALSE_MESSAGE(boot_anim_screen_chord_lt(near_a, near_c, &view, 3),
                               "a pair spanning tens of pixels near the camera must not read as "
@@ -905,8 +905,8 @@ test_lod_stride_tiers_by_extent(void) {
 static void
 test_curve_lod_steps_keeps_full_detail_when_the_probe_cannot_project(void) {
     const boot_anim_view_t view = identity_view(1.0F);
-    const vec3_t a = {0.08F, 0.08F, 0.0F};
-    const vec3_t c = {0.082F, 0.08F, R3D_LINE_NEAR_Z - 0.001F};
+    const vec3f_t a = {0.08F, 0.08F, 0.0F};
+    const vec3f_t c = {0.082F, 0.08F, R3D_LINE_NEAR_Z - 0.001F};
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(BOOT_ANIM_SPLINE_STEPS, boot_anim_curve_lod_steps(a, c, &view),
                                   "a span the probe cannot project at all must default to full "

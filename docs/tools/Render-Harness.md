@@ -144,13 +144,14 @@ anyone reads a diff of. A render with no pin yet says `(not pinned)` and
 passes, so a new scene is not blocked on one.
 
 **A pin only holds where the pixels are integer-exact**, since CI renders on
-a different compiler and C library than anyone's desk. The self-test report,
-the home screen are pinned: `gfx.c` does no float maths, and the scroll
+a different compiler and C library than anyone's desk. The self-test report
+and the home screen are pinned: `gfx.c` does no float maths, and the scroll
 view's momentum, the one part of the UI that reaches the maths library, is
 switched off at a zero time constant, so it is linked but never called. The
-boot animation and render_lab's wire and cube scenes project in float
+boot animation and the wire and cube scenes project in float
 (`util/math/`) and are pinned too: their pixels are whole-pixel truncations
-of single-precision sums, built without fast-math or FMA. A render that is not integer-exact ends its line
+of single-precision sums, built without fast-math or FMA. A render that is
+not integer-exact ends its line
 with `|nopin` and is checked for its declared size alone (`scene_pin=0` does
 the same for a whole scene). Anything that formats a `double` for display
 or rasterises in float belongs there. A scene whose pin can fail for a

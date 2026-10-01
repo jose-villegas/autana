@@ -8,14 +8,14 @@
 
 #include <stdint.h>
 
-#include "util/math/vec3.h"
+#include "util/math/vec3f.h"
 
 typedef struct {
     uint16_t a, b;
 } wire_edge_t;
 
 typedef struct {
-    const vec3_t* vertices;
+    const vec3f_t* vertices;
     const wire_edge_t* edges;
     uint16_t vertex_count;
     uint16_t edge_count;

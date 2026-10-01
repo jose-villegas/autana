@@ -165,7 +165,7 @@ def validate(name, vertices, edges):
 
 
 def emit_mesh(f, name, vertices, edges):
-    f.write(f"static const vec3_t {name}_vertices[{len(vertices)}] = {{\n")
+    f.write(f"static const vec3f_t {name}_vertices[{len(vertices)}] = {{\n")
     for i in range(0, len(vertices), 4):
         row = vertices[i : i + 4]
         f.write("    " + " ".join(f"{{{literal(x)}, {literal(y)}, {literal(z)}}}," for x, y, z in row) + "\n")

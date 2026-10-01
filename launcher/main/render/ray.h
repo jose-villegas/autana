@@ -11,16 +11,16 @@
 #include <stdbool.h>
 
 #include "render/viewport.h"
-#include "util/math/vec3.h"
+#include "util/math/vec3f.h"
 
 typedef struct {
-    vec3_t origin, forward, right, up;
+    vec3f_t origin, forward, right, up;
     float half_fov_short_tan;
     viewport_t viewport;
 } ray_camera_t;
 
 static inline void
-ray_camera_init(ray_camera_t* cam, vec3_t origin, vec3_t forward, vec3_t right, vec3_t up, float half_fov_short_tan,
+ray_camera_init(ray_camera_t* cam, vec3f_t origin, vec3f_t forward, vec3f_t right, vec3f_t up, float half_fov_short_tan,
                 viewport_t viewport) {
     cam->origin = origin;
     cam->forward = forward;
@@ -32,7 +32,7 @@ ray_camera_init(ray_camera_t* cam, vec3_t origin, vec3_t forward, vec3_t right, 
 
 /* The normalised direction for physical pixel (px, py): upright mapping,
  * then a lens fit to the upright viewport's SHORTER axis. */
-static inline vec3_t
+static inline vec3f_t
 ray_direction(const ray_camera_t* cam, int px, int py) {
     int ux, uy;
     viewport_physical_to_upright(cam->viewport, px, py, &ux, &uy);
@@ -47,8 +47,8 @@ ray_direction(const ray_camera_t* cam, int px, int py) {
     const float half_w = aspect >= 1.0f ? cam->half_fov_short_tan * aspect : cam->half_fov_short_tan;
     const float half_h = aspect >= 1.0f ? cam->half_fov_short_tan : cam->half_fov_short_tan / aspect;
 
-    vec3_t dir = cam->forward;
-    dir = vec3_add(dir, vec3_scale(cam->right, ndc_x * half_w));
-    dir = vec3_add(dir, vec3_scale(cam->up, ndc_y * half_h));
-    return vec3_normalize(dir);
+    vec3f_t dir = cam->forward;
+    dir = vec3f_add(dir, vec3f_scale(cam->right, ndc_x * half_w));
+    dir = vec3f_add(dir, vec3f_scale(cam->up, ndc_y * half_h));
+    return vec3f_normalize(dir);
 }

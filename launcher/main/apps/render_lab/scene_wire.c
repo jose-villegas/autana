@@ -29,7 +29,7 @@
 #define WIRE_FOCAL_LENGTH    1.0F
 
 static const wire_mesh_t* current_mesh;
-static vec3_t* cs_vertices;
+static vec3f_t* cs_vertices;
 static wire_segment_t* segments;
 static wire_frame_t frame;
 static bool alloc_ok;
@@ -112,13 +112,13 @@ wire_advance_pose(uint32_t dt_ms) {
     elapsed_ms += dt_ms;
 
     const float orbit = (float)(elapsed_ms % WIRE_ORBIT_PERIOD_MS) / (float)WIRE_ORBIT_PERIOD_MS;
-    transform_t world = TRANSFORM_IDENTITY;
-    transform_set_rotation(&world, quat_from_euler((vec3_t){0.0F, -MATH_TAU * orbit, 0.0F}));
+    transformf_t world = TRANSFORMF_IDENTITY;
+    transformf_set_rotation(&world, quatf_from_euler((vec3f_t){0.0F, -MATH_TAU * orbit, 0.0F}));
 
-    r3d_line_camera_t camera = {.pose = TRANSFORM_IDENTITY, .focal = WIRE_FOCAL_LENGTH, .near_z = R3D_LINE_NEAR_Z};
-    transform_set_position(&camera.pose, (vec3_t){0.0F, current_orbit_distance * sinf(WIRE_ELEVATION_ANGLE),
-                                                  -current_orbit_distance * cosf(WIRE_ELEVATION_ANGLE)});
-    transform_set_rotation(&camera.pose, quat_from_euler((vec3_t){WIRE_ELEVATION_ANGLE, 0.0F, 0.0F}));
+    r3d_line_camera_t camera = {.pose = TRANSFORMF_IDENTITY, .focal = WIRE_FOCAL_LENGTH, .near_z = R3D_LINE_NEAR_Z};
+    transformf_set_position(&camera.pose, (vec3f_t){0.0F, current_orbit_distance * sinf(WIRE_ELEVATION_ANGLE),
+                                                    -current_orbit_distance * cosf(WIRE_ELEVATION_ANGLE)});
+    transformf_set_rotation(&camera.pose, quatf_from_euler((vec3f_t){WIRE_ELEVATION_ANGLE, 0.0F, 0.0F}));
     camera = r3d_line_camera_upright(camera, display_shell_quarter());
 
     const viewport_t viewport = {.width = GFX_WIDTH, .height = GFX_HEIGHT, .quarter = 0};

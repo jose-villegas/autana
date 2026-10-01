@@ -190,8 +190,8 @@ static void
 check_the_flythrough_keeps_clear_of_every_triangle(const r3d_lit_mesh_t* mesh) {
     const uint32_t period = sponza_flythrough_period_ms();
     for (uint32_t t = 0; t < period; t += 100) {
-        vec3_t eye;
-        vec3_t forward;
+        vec3f_t eye;
+        vec3f_t forward;
         sponza_flythrough_sample(t, &eye, &forward);
         const float d = clearance(mesh, (v3){eye.x, eye.y, eye.z});
         if (d < SPONZA_FLYTHROUGH_CLEARANCE) {
@@ -248,15 +248,15 @@ test_the_flythrough_keeps_clear_of_every_triangle(void) {
 static void
 test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
     const uint32_t period = sponza_flythrough_period_ms();
-    vec3_t previous;
-    vec3_t forward;
+    vec3f_t previous;
+    vec3f_t forward;
     sponza_flythrough_sample(0, &previous, &forward);
     for (uint32_t t = 10; t <= period + 100; t += 10) {
-        vec3_t eye;
+        vec3f_t eye;
         sponza_flythrough_sample(t, &eye, &forward);
-        const vec3_t step = vec3_sub(eye, previous);
-        TEST_ASSERT_TRUE_MESSAGE(vec3_dot(step, step) < 2.0F * 2.0F, "the eye jumped between two samples 10 ms apart");
-        TEST_ASSERT_FLOAT_WITHIN(0.001F, 1.0F, sqrtf(vec3_dot(forward, forward)));
+        const vec3f_t step = vec3f_sub(eye, previous);
+        TEST_ASSERT_TRUE_MESSAGE(vec3f_dot(step, step) < 2.0F * 2.0F, "the eye jumped between two samples 10 ms apart");
+        TEST_ASSERT_FLOAT_WITHIN(0.001F, 1.0F, sqrtf(vec3f_dot(forward, forward)));
         previous = eye;
     }
 }

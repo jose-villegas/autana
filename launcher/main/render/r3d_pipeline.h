@@ -21,7 +21,7 @@
 #include "render/r3d_span.h"
 #include "render/raster.h"
 #include "render/viewport.h"
-#include "util/math/vec3.h"
+#include "util/math/vec3f.h"
 
 /* A camera made ready for one viewport and one mesh's position scale.
  * Lens space: x and y are already pixels at unit depth, turned for the

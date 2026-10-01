@@ -17,7 +17,7 @@
 static r3d_line_view_t
 fixture(void) {
     r3d_line_view_t v;
-    v.matrix = mat4_identity();
+    v.matrix = mat4f_identity();
     v.focal = 1.0F;
     v.near_z = R3D_LINE_NEAR_Z;
     v.center_x = 184;
@@ -31,9 +31,9 @@ fixture(void) {
 static void
 test_to_camera_space_leaves_a_point_unchanged_under_identity(void) {
     const r3d_line_view_t view = fixture();
-    const vec3_t p = {17.0F, -42.0F, 900.0F};
+    const vec3f_t p = {17.0F, -42.0F, 900.0F};
 
-    const vec3_t got = r3d_to_camera_space(p, &view);
+    const vec3f_t got = r3d_to_camera_space(p, &view);
 
     TEST_ASSERT_EQUAL_FLOAT(p.x, got.x);
     TEST_ASSERT_EQUAL_FLOAT(p.y, got.y);
@@ -46,13 +46,13 @@ test_to_camera_space_leaves_a_point_unchanged_under_identity(void) {
 static void
 test_to_camera_space_applies_the_composed_matrix(void) {
     r3d_line_view_t view = fixture();
-    view.matrix = mat4_identity();
+    view.matrix = mat4f_identity();
     view.matrix.m[0][3] = 10.0F;
     view.matrix.m[1][3] = 20.0F;
     view.matrix.m[2][3] = 30.0F;
-    const vec3_t p = {1.0F, 2.0F, 3.0F};
+    const vec3f_t p = {1.0F, 2.0F, 3.0F};
 
-    const vec3_t got = r3d_to_camera_space(p, &view);
+    const vec3f_t got = r3d_to_camera_space(p, &view);
 
     TEST_ASSERT_EQUAL_FLOAT(11.0F, got.x);
     TEST_ASSERT_EQUAL_FLOAT(22.0F, got.y);
@@ -64,7 +64,7 @@ test_to_camera_space_applies_the_composed_matrix(void) {
 static void
 test_a_point_on_the_optical_axis_lands_on_center(void) {
     const r3d_line_view_t view = fixture();
-    const vec3_t p = {0, 0, 5.0F};
+    const vec3f_t p = {0, 0, 5.0F};
     int x, y;
 
     TEST_ASSERT_TRUE(r3d_project_point_cs(p, &view, &x, &y));
@@ -84,7 +84,7 @@ check_off_axis_point_matches_the_formula(int center_x, int center_y, float scale
     view.center_y = center_y;
     view.scale = scale;
     view.focal = focal;
-    const vec3_t p = {2.0F, -4.0F, 4.0F};
+    const vec3f_t p = {2.0F, -4.0F, 4.0F};
     int x, y;
 
     TEST_ASSERT_TRUE(r3d_project_point_cs(p, &view, &x, &y));
@@ -104,7 +104,7 @@ test_an_off_axis_point_lands_where_the_formula_says(void) {
 static void
 test_a_point_exactly_at_near_z_counts_as_behind(void) {
     const r3d_line_view_t view = fixture();
-    const vec3_t p = {0, 0, view.near_z};
+    const vec3f_t p = {0, 0, view.near_z};
     int x = -1, y = -1;
 
     TEST_ASSERT_FALSE(r3d_project_point_cs(p, &view, &x, &y));
@@ -116,8 +116,8 @@ static void
 test_orthographic_projection_ignores_depth(void) {
     r3d_line_view_t view = fixture();
     view.focal = 0.0F;
-    const vec3_t p_near = {100.0F, -50.0F, 2.0F};
-    const vec3_t p_far = {100.0F, -50.0F, 500.0F};
+    const vec3f_t p_near = {100.0F, -50.0F, 2.0F};
+    const vec3f_t p_far = {100.0F, -50.0F, 500.0F};
     int x_near, y_near, x_far, y_far;
 
     TEST_ASSERT_TRUE(r3d_project_point_cs(p_near, &view, &x_near, &y_near));
@@ -132,8 +132,8 @@ test_orthographic_projection_ignores_depth(void) {
 static void
 test_segment_with_both_ends_behind_returns_false(void) {
     const r3d_line_view_t view = fixture();
-    const vec3_t p0 = {0, 0, 0};
-    const vec3_t p1 = {10, 10, view.near_z}; /* AT near_z, not past it */
+    const vec3f_t p0 = {0, 0, 0};
+    const vec3f_t p1 = {10, 10, view.near_z}; /* AT near_z, not past it */
     int ax, ay, bx, by;
 
     TEST_ASSERT_FALSE(r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by));
@@ -145,13 +145,13 @@ static void
 test_one_end_behind_clips_to_the_near_plane_crossing(void) {
     r3d_line_view_t view = fixture();
     view.near_z = 100.0F;
-    const vec3_t p0 = {0, 0, 0};
-    const vec3_t p1 = {200.0F, 100.0F, 200.0F};
+    const vec3f_t p0 = {0, 0, 0};
+    const vec3f_t p1 = {200.0F, 100.0F, 200.0F};
     int ax, ay, bx, by;
 
     TEST_ASSERT_TRUE(r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by));
 
-    const vec3_t at_near_z = {(p0.x + p1.x) / 2.0F, (p0.y + p1.y) / 2.0F, view.near_z};
+    const vec3f_t at_near_z = {(p0.x + p1.x) / 2.0F, (p0.y + p1.y) / 2.0F, view.near_z};
     int ex, ey, fx, fy;
     r3d_camera_to_screen(at_near_z, &view, &ex, &ey);
     r3d_camera_to_screen(p1, &view, &fx, &fy);
@@ -165,8 +165,8 @@ test_one_end_behind_clips_to_the_near_plane_crossing(void) {
 static void
 test_both_ends_in_front_matches_projecting_each_point(void) {
     const r3d_line_view_t view = fixture();
-    const vec3_t p0 = {50.0F, -30.0F, 300.0F};
-    const vec3_t p1 = {-80.0F, 60.0F, 500.0F};
+    const vec3f_t p0 = {50.0F, -30.0F, 300.0F};
+    const vec3f_t p1 = {-80.0F, 60.0F, 500.0F};
     int ax, ay, bx, by;
 
     TEST_ASSERT_TRUE(r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by));
@@ -186,7 +186,7 @@ test_both_ends_in_front_matches_projecting_each_point(void) {
 static void
 test_a_point_at_the_camera_plane_projects_to_a_far_off_but_defined_pixel(void) {
     const r3d_line_view_t view = fixture();
-    const vec3_t p = {1.0F, 1.0F, 0.0F};
+    const vec3f_t p = {1.0F, 1.0F, 0.0F};
     int x = 0, y = 0;
 
     r3d_camera_to_screen(p, &view, &x, &y);

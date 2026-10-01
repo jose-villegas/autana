@@ -67,37 +67,65 @@ would see the scene mirrored.
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
 | `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions |
-| `r3d_line_camera.h` | A camera for points and segments: a `transform_t` pose with a roll, and the fit onto a non-square viewport |
+| `r3d_line_camera.h` | A camera for points and segments: a `transformf_t` pose with a roll, and the fit onto a non-square viewport |
 | `r3d_project.h` | Camera-space near clip and perspective projection of those points and segments |
-| `r3d_trs.h` | A track's sampled translation, quaternion and scale as a `transform_t`, for an object an animation track moves |
 
-The line camera stays apart from `camera_t`: its pose is a `transform_t`
+The line camera stays apart from `camera_t`: its pose is a `transformf_t`
 that composes with a model transform and carries a roll. Only
 `r3d_pipeline.h` and `r3d_span_internal.h` are internal: render/ and any
 suite or host tool include them.
 
 ## The maths
 
-The float maths in `render/` and the transforms of the line and boot code
-are four types in `util/math/`, header-only and single precision (the FPU
-has no double, so a file using them carries `-Wdouble-promotion` as an
-error itself).
+`util/math/` holds the maths the line camera, the boot animation and the
+animation tracks share: four types, each carrying the suffix of its number
+type (`f` float, `i` int32, `s` int16, `x` Q16.16). The float ones are the
+default; the raster's lens and cluster transform stay a 3x4 of their own.
 
 | Type | Has | Used for |
 |---|---|---|
-| `vec3_t` | `x`, `y`, `z` (float) | points, directions, scale |
-| `quat_t` | `x`, `y`, `z`, `w` | rotations |
-| `mat4_t` | 16 floats in a struct, `m[row][col]`, acting on column vectors | the maths underneath |
-| `transform_t` | `position` (`vec3_t`), `rotation` (`quat_t`), `scale` (`vec3_t`), and a cached `mat4_t` | where a thing is: what most code holds |
+| `vec3f_t` | `x`, `y`, `z` (float) | points, directions, scale |
+| `quatf_t` | `x`, `y`, `z`, `w` | rotations |
+| `mat4f_t` | 16 floats in a struct, `m[row][col]`, acting on column vectors | the maths underneath |
+| `transformf_t` | `position` (`vec3f_t`), `rotation` (`quatf_t`), `scale` (`vec3f_t`), and a cached `mat4f_t` | where a thing is: what most code holds |
 
 As in Unity's Transform, position, rotation and scale are the truth and the
-matrix is derived: `transform_matrix()` (model to parent) rebuilds it only
-after a setter, `transform_translate()`, `transform_rotate()` or
-`transform_look_at()` changed something, and `transform_view()` (parent to
-local, scale ignored) is a camera's view matrix. Local +x is right, +y up and
-+z forward; `quat_from_euler()` applies Z, then X, then Y. `vec2i_t` and
-`vec3i_t` are the integer counterparts of a vector, plain integers for grid,
-pixel and cell coordinates; a transform has none.
+matrix is derived. `transformf_matrix()` (model to parent) builds it once
+and keeps it until a setter, `transformf_translate()`, `transformf_rotate()`
+or `transformf_look_at()` changes something; use it for an object read every
+frame. `transformf_compute_matrix()` returns a fresh matrix from a const
+transform without touching the kept one, for read-only code, and
+`transformf_view()` (parent to local, scale ignored) is a camera's view
+matrix. Local +x is right, +y up and +z forward; `quatf_from_euler()` applies
+Z, then X, then Y.
+
+Each family is written once, as a template header, and instantiated per
+number type (`util/math/math_template.h` says how); the plain names below
+are all a caller reads.
+
+| Number type | Suffix | Types | For |
+|---|---|---|---|
+| float | `f` | `vec2f`, `vec3f`, `quatf`, `mat4f`, `transformf` | the default: everything the FPU does well |
+| int32 | `i` | `vec2i`, `vec3i` | grid, pixel and cell coordinates; add, sub, scale, dot, cross, equal; sums wrap, a dot widens to int64 |
+| int16 | `s` | `vec2s`, `vec3s` | compact storage in a low-memory app; the same integer operations, saturating |
+| Q16.16 fixed point | `x` | `vec2x`, `vec3x`, `quatx`, `mat4x`, `transformx` | deterministic maths, or a chip with no FPU; multiply and divide through `util/fixed.h`, sine through `util/trig.h` |
+
+Fixed point and int16 SATURATE: a result past the type's range comes back as
+its largest or smallest value instead of wrapping, and a fixed-point divide
+by zero saturates by the numerator's sign. Fixed-point angles are turns
+(65536 to a turn), and its sine is good to about 1e-3. `quatx` has no slerp
+and only float has `quatf_slerp`.
+
+A conversion is always an explicit call named for its destination and source
+(`util/math/vec_convert.h`): `vec3f_from_vec3x`, `vec3x_from_vec3f`,
+`vec3f_from_vec3s(v, scale)`, `vec3s_from_vec3f(v, scale)`,
+`vec3i_from_vec3s`, `vec3s_from_vec3i`, `vec3i_from_vec3f` (rounded) and
+`vec3f_from_vec3i`, and the same for `vec2`. An int16 vector carries a
+`scale`, the units one step is worth.
+
+Float needs libm (`sinf`, `cosf`, `sqrtf`, `acosf`, `lroundf`) and is built
+without fast-math or FMA, so a host build and the board agree on every sum of
+products; `sinf` and `cosf` come from each libm.
 
 ## One frame
 

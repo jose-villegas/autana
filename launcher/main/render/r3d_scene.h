@@ -28,7 +28,7 @@ typedef struct {
 uint32_t r3d_scene_camera_period_ms(const r3d_scene_camera_t* camera);
 
 /* The eye and look direction t_ms into the path, which wraps at its period. */
-void r3d_scene_camera_sample(const r3d_scene_camera_t* camera, uint32_t t_ms, vec3_t* eye, vec3_t* forward);
+void r3d_scene_camera_sample(const r3d_scene_camera_t* camera, uint32_t t_ms, vec3f_t* eye, vec3f_t* forward);
 
 /* The camera t_ms into its path. */
 camera_t r3d_scene_camera_at(const r3d_scene_camera_t* camera, uint32_t t_ms);

@@ -1,11 +1,12 @@
 /*
- * vec3i: three plain integers, for a grid, pixel or cell coordinate. Its
- * float counterpart is vec3.h's vec3_t; a transform is float only.
+ * vec3i: a 3-component vector of an int32. The operations are
+ * vec3_template.h's; math_template.h says how they are made.
  */
 #pragma once
 
 #include <stdint.h>
 
-typedef struct {
-    int32_t x, y, z;
-} vec3i_t;
+#include "util/math/mathi.h"
+#include "util/math/vec3_template.h"
+
+MATH_DEFINE_VEC3(vec3i, int32_t, int64_t, mathi)
