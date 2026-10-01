@@ -40,9 +40,37 @@ only its own vertices. The clusters are the leaves of a tree rooted at
 `nodes[0]`, so one box test culls a whole subtree. Positions are `int16`
 ticks, `position_scale` ticks per model unit.
 
+### The pack entry
+
+A baked mesh is an entry of type `LMSH` in the [asset pack](../assets/README.md).
+Its header is 11 little-endian words; an array's offset counts from the entry's
+first byte, is a multiple of 4 and is 0 for an array the mesh does not have.
+
+| Word | Holds |
+|---|---|
+| 0 to 3 | vertex, triangle, cluster and node counts |
+| 4 | position scale, ticks per model unit |
+| 5 | positions: `int16[3]` per vertex |
+| 6 | colours: `uint8[3]` per vertex, or 0 for a flat mesh |
+| 7 | triangles: `uint16[3]` per triangle |
+| 8 | clusters: 22 bytes each, the layout of `r3d_lit_cluster_t` |
+| 9 | nodes: 16 bytes each, the layout of `r3d_lit_node_t` |
+| 10 | face colours: `uint16` per triangle in the panel's RGB565, or 0 |
+
+A mesh has vertex colours or face colours, never both. The cluster and node sizes
+are checked against the C structs at compile time. `r3d_lit_mesh_from_asset()`
+fills an `r3d_lit_mesh_t` with pointers into the entry, once, and nothing is
+allocated or copied; the rasterizer reads that struct as it always did. Before
+it does, the function checks that every array lies inside the entry and on a
+4-byte boundary, every cluster's ranges lie inside the mesh, each cluster's
+triangles index only its own vertices, every node's children lie inside the
+cluster or node array, and an inner node's children come after it, so a walk
+down the tree ends. `lit_mesh.py` writes the entry; `r3d_lit_mesh.c` is the one
+reader.
+
 ## The offline tools
 
-A mesh is an entry of the [asset pack](../Asset-Packs.md): `<name>.mesh`, written
+A mesh is an entry of the [asset pack](../assets/README.md): `<name>.mesh`, written
 beside its import file by
 [`launcher/tools/r3d/mesh_import.py`](../../launcher/tools/r3d/mesh_import.py)
 using the offline tools in
@@ -61,7 +89,7 @@ with no scene-dependent step bakes alone; one with such a step refuses with
 "needs a scene". A scene file bakes every mesh it places, with its own lights,
 camera region and tone map. The
 [scene table](Scene-Files.md#the-scene-table) is written by `scene_table.py`,
-apart from the bake. `build_pack.py` then writes `assets.bin` from the `.mesh`
+apart from the bake. `build_pack.py -o PACK` then writes the pack from the `.mesh`
 entries every import and scene file names, and `rebake.py` rewrites one
 `.mesh`'s clusters only.
 

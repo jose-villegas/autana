@@ -12,7 +12,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "asset/asset_store.h"
 #include "heap_arena.h"
 #include "suites.h"
 #include "unity.h"
@@ -56,11 +55,6 @@ run_requests(int argc, char** argv) {
 int
 main(int argc, char** argv) {
     UNITY_BEGIN();
-
-    /* The shipped pack stays loaded for the run, so no test's heap audit
-     * counts its one read as a leak. A pack that fails to open is reported
-     * by every test that needs it. */
-    (void)asset_store_pack();
 
     if (argc > 1) {
         run_requests(argc, argv);

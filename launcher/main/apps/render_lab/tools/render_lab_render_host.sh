@@ -114,6 +114,17 @@ sponza-tiles-portrait|--quarter 0 --no-hud --scene sponza --frames 2 --view tile
 sponza-tiles-flipped|--quarter 3 --no-hud --scene sponza --frames 2 --view tiles|448x368|nopin
 "
 
+# The scenes read their meshes from an asset pack, packed here from the baked
+# meshes in the tree and found by the renderer through AUTANA_ASSET_PACK.
+# shellcheck source=../../../../../scripts/lib/python.sh
+. "$SCRIPT_DIR/../../../../../scripts/lib/python.sh"
+PYTHON=$(find_python) || exit 1
+pack_dir="$SCRIPT_DIR/results/render/$scene_name"
+mkdir -p "$pack_dir"
+"$PYTHON" "$SCRIPT_DIR/../../../../tools/r3d/build_pack.py" -o "$pack_dir/assets.bin" "$SCRIPT_DIR/../../.." > /dev/null
+AUTANA_ASSET_PACK="$pack_dir/assets.bin"
+export AUTANA_ASSET_PACK
+
 # shellcheck source=../../../../tools/render/render_scene.sh
 . "$SCRIPT_DIR/../../../../tools/render/render_scene.sh"
 render_scene_run "$@"

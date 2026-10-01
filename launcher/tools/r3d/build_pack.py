@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Write the asset pack from every baked mesh the import and scene files name.
 
-    python launcher/tools/r3d/build_pack.py [PATH ...] [-o assets.bin] [--check]
+    python launcher/tools/r3d/build_pack.py -o assets.bin [PATH ...]
 
 Each PATH is an .import.toml, a .scene.toml or a folder searched for both;
 with none, launcher/main is searched. A mesh named by a file is the entry
 <name>.mesh that mesh_import.py wrote beside it, and its pack id is that
 name. Run from the repository root; standard library only, and no model is
-baked. --check compares the pack on disk with the one these entries make and
-exits 1 when they differ, which is how a stale pack is caught.
+baked. The pack is a build product, never committed: the firmware build,
+the host tests and the render scripts each write their own.
 """
 
 import argparse
@@ -17,13 +17,12 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d.asset_pack import PackError, build_pack, parse_pack  # noqa: E402
+from asset.asset_pack import PackError, build_pack, parse_pack  # noqa: E402
 from r3d.import_settings import SettingsError, load_import_settings, load_scene  # noqa: E402
-from r3d.lit_mesh import TYPE as LIT_MESH  # noqa: E402
+from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 DEFAULT_SEARCH = REPO / "launcher" / "main"
-DEFAULT_PACK = REPO / "launcher" / "assets" / "assets.bin"
 SUFFIXES = (".import.toml", ".scene.toml")
 
 
@@ -67,8 +66,7 @@ def pack_bytes(paths):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("paths", nargs="*", help="import files, scene files or folders; launcher/main when omitted")
-    parser.add_argument("-o", "--out", default=str(DEFAULT_PACK), help="the pack to write")
-    parser.add_argument("--check", action="store_true", help="compare, write nothing")
+    parser.add_argument("-o", "--out", required=True, help="the pack to write")
     args = parser.parse_args(argv)
     out = pathlib.Path(args.out)
     try:
@@ -76,13 +74,9 @@ def main(argv=None):
         entries = parse_pack(pack)
     except (SettingsError, PackError) as error:
         parser.error(str(error))
-    if args.check:
-        if not out.is_file() or out.read_bytes() != pack:
-            print(f"{out} is not what the baked meshes make: run build_pack.py", file=sys.stderr)
-            return 1
-        return 0
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(pack)
+    if not out.is_file() or out.read_bytes() != pack:
+        out.write_bytes(pack)
     print(f"wrote {out} ({len(pack)} bytes): " + ", ".join(sorted(entries)))
     return 0
 

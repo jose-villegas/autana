@@ -6,7 +6,7 @@
  * own vertices. The clusters are the leaves of a tree rooted at nodes[0], so
  * a whole subtree is culled with one box test.
  *
- * A mesh is an asset-pack entry (docs/Asset-Packs.md): its arrays sit at
+ * A mesh is an asset-pack entry (docs/render/Mesh-Import.md): its arrays sit at
  * offsets inside the entry, and r3d_lit_mesh_t is a view built once from
  * them, so the renderer reads pointers as it always did and nothing is copied.
  */
@@ -43,7 +43,7 @@ typedef struct {
 } r3d_lit_mesh_t;
 
 /* The asset type of a lit mesh entry. */
-#define R3D_LIT_MESH_ASSET 1u
+#define R3D_LIT_MESH_ASSET ASSET_TYPE('L', 'M', 'S', 'H')
 
 /* Fills `mesh` with pointers into `asset`, which must outlive it, after
  * checking every array and every cluster and node range against the entry.

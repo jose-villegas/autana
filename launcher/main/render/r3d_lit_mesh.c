@@ -25,11 +25,11 @@ enum {
     AT_FACE_COLORS,
 };
 
-#define VERTEX_LIMIT 65535u /* triangles index vertices with 16 bits */
+#define VERTEX_LIMIT 65535U /* triangles index vertices with 16 bits */
 
 static uint32_t
 word(const uint8_t* data, int index) {
-    const uint8_t* at = data + ((size_t)index * 4u);
+    const uint8_t* at = data + ((size_t)index * 4U);
     return (uint32_t)at[0] | ((uint32_t)at[1] << 8) | ((uint32_t)at[2] << 16) | ((uint32_t)at[3] << 24);
 }
 
@@ -37,7 +37,7 @@ word(const uint8_t* data, int index) {
  * do not fit the entry, or sit off a 4-byte boundary the structs need. */
 static const void*
 array_at(const asset_view_t* asset, uint32_t offset, uint32_t count, uint32_t bytes) {
-    if (offset % 4u != 0 || offset < HEADER_WORDS * 4u) {
+    if (offset % 4U != 0 || offset < HEADER_WORDS * 4U) {
         return NULL;
     }
     if ((uint64_t)offset + ((uint64_t)count * bytes) > asset->size) {
@@ -74,6 +74,10 @@ nodes_are_inside(const r3d_lit_mesh_t* mesh) {
         if ((int)node->first + node->count > limit) {
             return false;
         }
+        /* An inner node's children come after it, so a walk down the tree always ends. */
+        if (!node->leaf && (int)node->first <= n) {
+            return false;
+        }
     }
     return true;
 }
@@ -81,7 +85,7 @@ nodes_are_inside(const r3d_lit_mesh_t* mesh) {
 asset_status_t
 r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     *mesh = (r3d_lit_mesh_t){0};
-    if (asset->size < HEADER_WORDS * 4u) {
+    if (asset->size < HEADER_WORDS * 4U) {
         return ASSET_ERR_BOUNDS;
     }
     const uint32_t vertices = word(asset->data, COUNT_VERTEX);

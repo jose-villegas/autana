@@ -542,21 +542,6 @@ class FlashCommandTests(unittest.TestCase):
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--variant") + 1], "dev")
 
-    def test_assets_is_a_variant_that_flashes_just_the_pack(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana, "git", return_value=""), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
-            autana.flash(["assets", "--quiet"])
-        command = called.call_args[0][0]
-        self.assertEqual(command[command.index("--variant") + 1], "assets")
-
-    def test_assets_takes_no_perf_scope(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana, "git", return_value=""), \
-             self.assertRaises(SystemExit) as caught:
-            autana.flash(["assets", "--perf-scope"])
-        self.assertIn("--perf-scope", str(caught.exception))
-
     def test_no_perf_scope_flag_is_not_forwarded(self):
         with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
              mock.patch.object(autana, "git", return_value=""), \

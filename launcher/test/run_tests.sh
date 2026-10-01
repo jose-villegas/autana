@@ -438,6 +438,11 @@ PYTHON=$(find_python) || exit 1
 
 [ "$BUILD_ONLY" != 1 ] || exit 0
 
+# The asset pack the suites read, packed from the baked meshes in the tree.
+AUTANA_ASSET_PACK="$BUILD_DIR/assets.bin"
+export AUTANA_ASSET_PACK
+"$PYTHON" "$TEST_DIR/../tools/r3d/build_pack.py" -o "$AUTANA_ASSET_PACK" "$MAIN_DIR" > /dev/null
+
 if [ "$SANITIZE" = 1 ] && [ "$(uname -s)" = Linux ]; then
     # Control ids are value addresses and must stay stable across frames, as on the device.
     ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0" "$OUT"

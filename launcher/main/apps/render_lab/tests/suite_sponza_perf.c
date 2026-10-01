@@ -221,8 +221,22 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     TEST_PASS();
 }
 
+/* What entering a Sponza scene pays to point its three views at the pack:
+ * the first call also reads the pack's header and checksum, the later ones
+ * only the meshes. */
+void
+test_sponza_mesh_open_cost(void) {
+    for (int pass = 0; pass < 3; pass++) {
+        const int64_t start = esp_timer_get_time();
+        open_the_meshes();
+        ESP_LOGI(TAG, "mesh views, 3 meshes, call %d: %lldus", pass + 1, (long long)(esp_timer_get_time() - start));
+    }
+    TEST_PASS();
+}
+
 void
 run_sponza_perf_suite(void) {
+    RUN_TEST(test_sponza_mesh_open_cost);
     RUN_TEST(test_sponza_draw_stage_breakdown);
     RUN_TEST(test_sponza_frame_cost_along_the_flythrough);
 }

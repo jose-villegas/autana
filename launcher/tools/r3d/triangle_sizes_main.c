@@ -1,8 +1,8 @@
 /*
  * The triangle_sizes tool: a lit mesh's triangles by the pixel centres they
  * cover at each pose of a poses file or standard input, and each pose's rendered frame kept
- * or compared. The mesh is read from an asset pack by report_triangle_sizes.sh,
- * which names the pack as R3D_SIZES_PACK and the mesh as R3D_SIZES_MESH.
+ * or compared. The mesh is read from an asset pack, named on the command line
+ * by report_triangle_sizes.sh.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -10,17 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "asset/asset_pack.h"
+#include "asset/asset_file.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "triangle_sizes.h"
-
-#ifndef R3D_SIZES_MESH
-#error "build with -DR3D_SIZES_MESH=<the mesh's asset id as a string>"
-#endif
-#ifndef R3D_SIZES_PACK
-#error "build with -DR3D_SIZES_PACK=<the pack's path as a string>"
-#endif
 
 typedef struct {
     int width, height;
@@ -143,46 +136,29 @@ render_pose(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int count, const
     r3d_pipeline_draw(mesh, lens, b->visible, count, b->cs, b->rows, &target);
 }
 
-/* The pack's bytes, checked by the same code the firmware runs. */
-static void
-open_pack_or_exit(asset_pack_t* pack) {
-    FILE* file = fopen(R3D_SIZES_PACK, "rb");
-    if (file == NULL || fseek(file, 0, SEEK_END) != 0) {
-        (void)fprintf(stderr, "cannot read the pack %s\n", R3D_SIZES_PACK);
-        exit(1);
-    }
-    const long length = ftell(file);
-    void* bytes = checked_malloc((size_t)length);
-    if (fseek(file, 0, SEEK_SET) != 0 || fread(bytes, 1, (size_t)length, file) != (size_t)length) {
-        (void)fprintf(stderr, "cannot read the pack %s\n", R3D_SIZES_PACK);
-        exit(1);
-    }
-    (void)fclose(file);
-    const asset_status_t status = asset_pack_open(pack, bytes, (size_t)length);
-    if (status != ASSET_OK) {
-        (void)fprintf(stderr, "%s: %s\n", R3D_SIZES_PACK, asset_status_text(status));
-        exit(1);
-    }
-}
-
 int
 main(int argc, char** argv) {
-    const bool flag_known = argc == 4 && (strcmp(argv[2], "--write") == 0 || strcmp(argv[2], "--against") == 0);
-    if (argc != 2 && !flag_known) {
-        (void)fputs("usage: triangle_sizes POSES|- [--write DIR | --against DIR]\n", stderr);
+    const bool flag_known = argc == 6 && (strcmp(argv[4], "--write") == 0 || strcmp(argv[4], "--against") == 0);
+    if (argc != 4 && !flag_known) {
+        (void)fputs("usage: triangle_sizes PACK MESH POSES|- [--write DIR | --against DIR]\n", stderr);
         return 2;
     }
-    const char* dir = argc == 4 ? argv[3] : NULL;
-    const bool compare = argc == 4 && strcmp(argv[2], "--against") == 0;
+    const char* dir = argc == 6 ? argv[5] : NULL;
+    const bool compare = argc == 6 && strcmp(argv[4], "--against") == 0;
     r3d_sizes_poses_t* poses = checked_malloc(sizeof(*poses));
-    read_poses_or_exit(argv[1], poses);
+    read_poses_or_exit(argv[3], poses);
 
     asset_pack_t pack;
-    open_pack_or_exit(&pack);
-    r3d_lit_mesh_t mesh_view;
-    const asset_status_t status = r3d_lit_mesh_open(&pack, R3D_SIZES_MESH, &mesh_view);
+    void* pack_bytes = NULL;
+    asset_status_t status = asset_file_open(argv[1], &pack, &pack_bytes);
     if (status != ASSET_OK) {
-        (void)fprintf(stderr, "mesh %s: %s\n", R3D_SIZES_MESH, asset_status_text(status));
+        (void)fprintf(stderr, "%s: %s\n", argv[1], asset_status_text(status));
+        return 1;
+    }
+    r3d_lit_mesh_t mesh_view;
+    status = r3d_lit_mesh_open(&pack, argv[2], &mesh_view);
+    if (status != ASSET_OK) {
+        (void)fprintf(stderr, "mesh %s: %s\n", argv[2], asset_status_text(status));
         return 1;
     }
     const r3d_lit_mesh_t* mesh = &mesh_view;

@@ -124,17 +124,16 @@ near_z = 6.0
 ```sh
 python launcher/tools/r3d/mesh_import.py path/to/hall.scene.toml
 python launcher/tools/r3d/scene_table.py path/to/hall.scene.toml
-python launcher/tools/r3d/build_pack.py
 ```
 
 The first bakes the lit mesh for each renderer into `hall.mesh`; the second
 writes the `hall` scene table, the const data a scene reads (the
 `r3d_instance_t` of each mesh renderer, the asset id each names, and the
-camera); the third packs every baked mesh in the tree into
-`launcher/assets/assets.bin`. A mesh with no light or visibility step can also
-be baked on its own, from its import file. Generated files and the pack are
-committed as written and never reformatted. `autana flash assets` puts the pack
-on the board ([Asset-Packs.md](../Asset-Packs.md#flashing)).
+camera). A mesh with no light or visibility step can also be baked on its own,
+from its import file. Generated files and the baked `.mesh` are committed as
+written and never reformatted. The firmware build packs every baked mesh in the
+tree into the asset pack and flashes it with the app
+([assets/README.md](../assets/README.md#flashing)).
 
 ## 6. Draw it
 
@@ -193,5 +192,5 @@ for the [render harness](../tools/Render-Harness.md#declaring-a-scene).
 - A host suite that draws instances at transforms and checks where they appear
   is `launcher/test/suites/suite_r3d_scene.c`; copy its quad meshes to test your
   own placement.
-- After a change to the tools, bake again and run `build_pack.py --check`:
-  the committed pack must be what the committed meshes make.
+- After a change to the tools, bake again: the committed `.mesh` entries change
+  only where the change reaches them.

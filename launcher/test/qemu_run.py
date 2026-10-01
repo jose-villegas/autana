@@ -117,17 +117,6 @@ def free_port():
         return probe.getsockname()[1]
 
 
-def asset_pack_arguments():
-    """merge_bin's `offset file` for the committed asset pack, at the offset
-    partitions.csv gives its partition: the firmware maps it as it does on a
-    board, so the image carries it too."""
-    launcher = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-    sys.path.insert(0, os.path.join(launcher, "..", "scripts", "device"))
-    from assets_image import partition_offset  # noqa: E402
-    offset, _ = partition_offset(os.path.join(launcher, "partitions.csv"))
-    return [hex(offset), os.path.join(launcher, "assets", "assets.bin")]
-
-
 def merge_flash(build_dir, out_path, python):
     with open(os.path.join(build_dir, "flasher_args.json")) as fh:
         args = json.load(fh)
@@ -140,7 +129,6 @@ def merge_flash(build_dir, out_path, python):
     for offset, name in sorted(args["flash_files"].items(),
                                key=lambda kv: int(kv[0], 16)):
         cmd += [offset, os.path.join(build_dir, name)]
-    cmd += asset_pack_arguments()
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
 
 

@@ -1,6 +1,7 @@
-"""The asset pack writer (r3d/asset_pack.py), the pack builder and the committed
-pack: what the firmware's asset_pack.c reads. The C side has its own suite,
-suite_asset_pack.c; this one proves what the tools write is what that reads."""
+"""The asset pack writer (asset/asset_pack.py), the pack builder and the meshes
+in the tree: what the firmware's asset_pack.c reads. The C side has its own
+suite, suite_asset_pack.c; this one proves what the tools write is what that
+reads."""
 
 import pathlib
 import re
@@ -11,13 +12,13 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d import asset_pack, build_pack  # noqa: E402
-from r3d.asset_pack import PackError, build_pack as make_pack, parse_pack  # noqa: E402
+from asset import asset_pack  # noqa: E402
+from asset.asset_pack import PackError, build_pack as make_pack, parse_pack  # noqa: E402
+from r3d import build_pack  # noqa: E402
 from r3d.import_settings import SettingsError  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
-PACK = REPO / "launcher" / "assets" / "assets.bin"
-LIT_MESH = 1
+LIT_MESH = b"LMSH"
 SOURCE = ('[source]\nurl = "https://example.invalid/m.zip"\nsha256 = "00"\npath = "m.obj"\ncache = "m"\n'
           'credit = "A model."\n')
 
@@ -31,28 +32,33 @@ def seal(pack):
 
 class RoundTripTests(unittest.TestCase):
     def test_what_is_built_parses_back_with_its_names_types_and_bytes(self):
-        pack = make_pack([("one", LIT_MESH, b"abc"), ("two", 9, bytes(range(40)), 64)])
+        pack = make_pack([("one", LIT_MESH, b"abc"), ("two", b"TEST", bytes(range(40)), 64)])
         entries = parse_pack(pack)
-        self.assertEqual(entries, {"one": (LIT_MESH, b"abc"), "two": (9, bytes(range(40)))})
+        self.assertEqual(entries, {"one": (LIT_MESH, b"abc"), "two": (b"TEST", bytes(range(40)))})
 
     def test_each_entry_starts_on_its_alignment(self):
-        pack = make_pack([("a", 1, b"x"), ("b", 1, b"yy", 64), ("c", 1, b"z", 16)])
+        pack = make_pack([("a", LIT_MESH, b"x"), ("b", LIT_MESH, b"yy", 64), ("c", LIT_MESH, b"z", 16)])
         for index in range(3):
             _, _, offset, _, align = asset_pack.ENTRY.unpack_from(pack, asset_pack.HEADER.size + asset_pack.ENTRY.size * index)
             self.assertEqual(offset % align, 0)
 
     def test_the_same_entries_make_the_same_bytes(self):
-        entries = [("a", 1, b"x"), ("b", 1, b"yy")]
+        entries = [("a", LIT_MESH, b"x"), ("b", LIT_MESH, b"yy")]
         self.assertEqual(make_pack(entries), make_pack(entries))
 
     def test_a_name_that_is_empty_too_long_or_repeated_is_refused(self):
-        for entries in ([("", 1, b"")], [("x" * 32, 1, b"")], [("a", 1, b""), ("a", 1, b"")]):
+        for entries in ([("", LIT_MESH, b"")], [("x" * 32, 1, b"")], [("a", LIT_MESH, b""), ("a", LIT_MESH, b"")]):
             with self.assertRaises(PackError):
                 make_pack(entries)
 
+    def test_a_type_that_is_not_four_bytes_is_refused(self):
+        for kind in (b"LMS", b"LMSHX", 1):
+            with self.assertRaises(PackError):
+                make_pack([("a", kind, b"x")])
+
     def test_an_alignment_that_is_not_a_power_of_two_is_refused(self):
         with self.assertRaises(PackError):
-            make_pack([("a", 1, b"x", 12)])
+            make_pack([("a", LIT_MESH, b"x", 12)])
 
 
 class RejectionTests(unittest.TestCase):
@@ -70,6 +76,18 @@ class RejectionTests(unittest.TestCase):
         struct.pack_into("<I", pack, 4, asset_pack.VERSION + 1)
         with self.assertRaisesRegex(PackError, "version"):
             parse_pack(bytes(pack))
+
+    def test_a_header_with_reserved_bytes_in_use_is_refused(self):
+        pack = bytearray(self.pack())
+        pack[24] = 1
+        with self.assertRaisesRegex(PackError, "reserved"):
+            parse_pack(seal(bytes(pack)))
+
+    def test_an_entry_inside_the_table_is_refused(self):
+        pack = bytearray(self.pack())
+        struct.pack_into("<I", pack, asset_pack.HEADER.size + 36, 64)
+        with self.assertRaisesRegex(PackError, "outside"):
+            parse_pack(seal(bytes(pack)))
 
     def test_a_wrong_magic_or_a_short_file_is_refused(self):
         pack = bytearray(self.pack())
@@ -127,31 +145,23 @@ class BuilderTests(unittest.TestCase):
             with self.assertRaisesRegex(SettingsError, "same"):
                 build_pack.pack_bytes([root])
 
-    def test_check_tells_a_stale_pack_from_a_current_one(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = pathlib.Path(directory)
-            import_file(root, "a.import.toml", "one")
-            (root / "one.mesh").write_bytes(b"1")
-            out = root / "assets.bin"
-            self.assertEqual(build_pack.main([str(root), "-o", str(out)]), 0)
-            self.assertEqual(build_pack.main([str(root), "-o", str(out), "--check"]), 0)
-            (root / "one.mesh").write_bytes(b"2")
-            self.assertEqual(build_pack.main([str(root), "-o", str(out), "--check"]), 1)
 
-
-class CommittedTreeTests(unittest.TestCase):
-    def test_the_committed_pack_is_what_the_committed_meshes_make(self):
-        self.assertEqual(PACK.read_bytes(), build_pack.pack_bytes([build_pack.DEFAULT_SEARCH]))
+class TreeTests(unittest.TestCase):
+    def test_the_meshes_in_the_tree_pack_and_parse(self):
+        names = parse_pack(build_pack.pack_bytes([build_pack.DEFAULT_SEARCH]))
+        self.assertTrue(names)
+        for kind, _ in names.values():
+            self.assertEqual(kind, LIT_MESH)
 
     def test_every_mesh_a_scene_table_names_is_in_the_committed_pack(self):
-        names = parse_pack(PACK.read_bytes())
+        names = parse_pack(build_pack.pack_bytes([build_pack.DEFAULT_SEARCH]))
         tables = sorted((REPO / "launcher" / "main").rglob("*_scene_generated.c"))
         self.assertTrue(tables, "no scene table found: the tree test would pass for nothing")
         for table in tables:
             ids = re.findall(r'^\s*\{"([^"]+)", &\w+\},$', table.read_text(), re.M)
             self.assertTrue(ids, f"{table.name} names no mesh")
             for mesh in ids:
-                self.assertIn(mesh, names, f"{table.name} names mesh {mesh!r}, which the pack lacks")
+                self.assertIn(mesh, names, f"{table.name} names mesh {mesh!r}, which no baked mesh in the tree provides")
                 self.assertEqual(names[mesh][0], LIT_MESH)
 
 

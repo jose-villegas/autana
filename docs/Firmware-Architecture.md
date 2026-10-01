@@ -446,7 +446,7 @@ origin, and later motion stays raw.
   describing a scene of objects.
 - [Animation-Tracks.md](Animation-Tracks.md), `anim/`: glTF keyed values
   sampled over time, and how a scene's properties are animated.
-- [Asset-Packs.md](Asset-Packs.md), `asset/`: the binary pack of content the
+- [assets/README.md](assets/README.md), `asset/`: the binary pack of content the
   firmware maps from a flash partition, its format and how it is flashed.
 - [Text-and-Fonts.md](Text-and-Fonts.md): what a font is, the role
   accessor, text at more than one size.

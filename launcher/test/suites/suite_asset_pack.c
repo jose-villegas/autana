@@ -20,11 +20,11 @@
 
 #ifndef DEVICE_BUILD
 #include "asset/asset_file.h"
-#include "esp_heap_caps.h"
+#include "heap_arena.h"
 #endif
 
 #define BUFFER_BYTES 512
-#define OTHER_TYPE   7u
+#define OTHER_TYPE   7U
 
 static void
 put32(uint8_t* at, uint32_t value) {
@@ -188,7 +188,7 @@ test_an_entry_that_leaves_the_pack_is_refused_even_with_a_good_checksum(void) {
     put32(f.pack + 32 + 40, f.total); /* its size now runs past the end */
     seal(f.pack, f.total);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, asset_pack_open(&pack, f.pack, f.total));
-    put32(f.pack + 32 + 40, 0xFFFFFFF0u); /* a size that wraps when added to the offset */
+    put32(f.pack + 32 + 40, 0xFFFFFFF0U); /* a size that wraps when added to the offset */
     seal(f.pack, f.total);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, asset_pack_open(&pack, f.pack, f.total));
     release(&f);
@@ -299,12 +299,60 @@ test_the_store_opens_the_shipped_pack_and_it_has_meshes(void) {
     const asset_pack_t* pack = asset_store_pack();
     TEST_ASSERT_NOT_NULL_MESSAGE(pack, "the asset pack did not open: see the log above");
     TEST_ASSERT_GREATER_THAN_UINT32(0, pack->count);
+    int meshes = 0;
     for (uint32_t i = 0; i < pack->count; i++) {
-        const char* name = (const char*)pack->base + ASSET_PACK_HEADER_SIZE + (i * ASSET_PACK_ENTRY_SIZE);
+        asset_entry_t entry;
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_entry(pack, i, &entry));
+        if (entry.type != R3D_LIT_MESH_ASSET) {
+            continue; /* another kind of content is not this test's business */
+        }
         r3d_lit_mesh_t mesh;
-        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(pack, name, &mesh), name);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(pack, entry.name, &mesh), entry.name);
         TEST_ASSERT_GREATER_THAN_INT(0, mesh.triangle_count);
+        meshes++;
     }
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, meshes, "the pack holds no lit mesh");
+}
+
+static void
+test_an_entry_row_is_read_by_its_index_and_an_index_past_the_table_is_not_found(void) {
+    fixture_t f = fixture();
+    asset_pack_t pack;
+    asset_entry_t entry;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, f.pack, f.total));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_entry(&pack, 0, &entry));
+    TEST_ASSERT_EQUAL_STRING("tri", entry.name);
+    TEST_ASSERT_EQUAL_UINT32(R3D_LIT_MESH_ASSET, entry.type);
+    TEST_ASSERT_EQUAL_UINT32(f.entry_size, entry.view.size);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, asset_pack_entry(&pack, 1, &entry));
+    TEST_ASSERT_EQUAL_UINT32(f.total, asset_pack_total_size(f.pack, ASSET_PACK_HEADER_SIZE));
+    TEST_ASSERT_EQUAL_UINT32(0, asset_pack_total_size(f.entry, ASSET_PACK_HEADER_SIZE));
+    release(&f);
+}
+
+static void
+test_a_header_with_reserved_bytes_in_use_is_refused(void) {
+    fixture_t f = fixture();
+    asset_pack_t pack;
+    f.pack[24] = 1;
+    seal(f.pack, f.total);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_SIZE, asset_pack_open(&pack, f.pack, f.total));
+    release(&f);
+}
+
+static void
+test_an_inner_node_whose_children_are_not_after_it_is_refused(void) {
+    fixture_t f = fixture();
+    /* The only node is a leaf; making it an inner node over itself would loop a walk. */
+    f.entry[NODES_AT + 15] = 0;
+    f.entry[NODES_AT + 14] = 1;
+    put16(f.entry + NODES_AT + 12, 0);
+    f.total = make_pack(f.pack, f.entry, f.entry_size, R3D_LIT_MESH_ASSET);
+    asset_pack_t pack;
+    r3d_lit_mesh_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, f.pack, f.total));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, r3d_lit_mesh_open(&pack, "tri", &mesh));
+    release(&f);
 }
 
 #ifndef DEVICE_BUILD
@@ -314,10 +362,27 @@ test_the_host_reader_reads_the_shipped_pack_and_refuses_a_missing_file(void) {
     void* buffer = NULL;
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, asset_file_open("no/such/assets.bin", &pack, &buffer));
     TEST_ASSERT_NULL(buffer);
-    const asset_pack_t* shipped = asset_store_pack();
-    TEST_ASSERT_NOT_NULL(shipped);
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, shipped->base, shipped->size));
-    TEST_ASSERT_EQUAL_UINT32(shipped->count, pack.count);
+    const char* path = getenv("AUTANA_ASSET_PACK");
+    TEST_ASSERT_NOT_NULL_MESSAGE(path, "AUTANA_ASSET_PACK names the pack the runner built");
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(path, &pack, &buffer));
+    TEST_ASSERT_GREATER_THAN_UINT32(0, pack.count);
+    asset_file_release(buffer);
+}
+
+static void
+test_the_host_reader_holds_the_pack_outside_the_modelled_heap(void) {
+    asset_pack_t pack;
+    void* buffer = NULL;
+    size_t blocks_before;
+    size_t bytes_before;
+    heap_arena_snapshot(&blocks_before, &bytes_before);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(getenv("AUTANA_ASSET_PACK"), &pack, &buffer));
+    size_t blocks_after;
+    size_t bytes_after;
+    heap_arena_snapshot(&blocks_after, &bytes_after);
+    asset_file_release(buffer);
+    TEST_ASSERT_EQUAL_UINT(bytes_before, bytes_after);
+    TEST_ASSERT_EQUAL_UINT(blocks_before, blocks_after);
 }
 #endif
 
@@ -335,9 +400,13 @@ suite_asset_pack(void) {
     RUN_TEST(test_a_mesh_array_outside_its_entry_is_refused);
     RUN_TEST(test_a_cluster_or_node_range_outside_the_mesh_is_refused);
     RUN_TEST(test_a_scene_naming_a_missing_mesh_fails_with_that_id);
+    RUN_TEST(test_an_entry_row_is_read_by_its_index_and_an_index_past_the_table_is_not_found);
+    RUN_TEST(test_a_header_with_reserved_bytes_in_use_is_refused);
+    RUN_TEST(test_an_inner_node_whose_children_are_not_after_it_is_refused);
     RUN_TEST(test_the_store_opens_the_shipped_pack_and_it_has_meshes);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_the_host_reader_reads_the_shipped_pack_and_refuses_a_missing_file);
+    RUN_TEST(test_the_host_reader_holds_the_pack_outside_the_modelled_heap);
 #endif
 }
 

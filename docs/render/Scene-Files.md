@@ -114,7 +114,7 @@ The table holds only what the device reads, as const data from
   baked as a 3x3 (rotation times scale) and a position, or no placement for the
   identity;
 - `<scene>_scene_assets`, the asset id of each mesh and the view it fills:
-  `r3d_scene_bind()` opens each from the [asset pack](../Asset-Packs.md) before
+  `r3d_scene_bind()` opens each from the [asset pack](../assets/README.md) before
   the instances are drawn, and an id the pack lacks fails there, naming it;
 - the camera, `r3d_scene_camera_t` named `<scene>_scene_<object>`: its lens, its
   placement (a fixed camera looks down the placement's -Z column) and the

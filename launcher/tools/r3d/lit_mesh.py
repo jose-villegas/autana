@@ -8,11 +8,11 @@ invariants before a byte is written. A mesh's triangles are put in a canonical
 order first, so the same triangles always bake to the same bytes."""
 
 import pathlib
-import struct
 from types import SimpleNamespace
 
 import numpy as np
 
+from r3d.mesh_asset import BLOB_HEADER, CLUSTER, NODE, TYPE  # noqa: F401
 from r3d.meshopt import build_meshlets
 from r3d.octree import build_octree, flatten_octree, node_bounds
 
@@ -22,14 +22,6 @@ MAX_NODES = 65535
 MAX_TRIANGLES = 65535  # uint16 triangle_first
 MAX_CLUSTERS = 65535  # uint16 leaf first cluster
 MAX_NODE_CHILDREN = 255
-
-# The entry's layout, which main/render/r3d_lit_mesh.c checks the C structs
-# against: counts, the position scale, then the offset of each array from the
-# entry's first byte, 0 for an array the mesh has none of.
-TYPE = 1
-BLOB_HEADER = struct.Struct("<11I")
-CLUSTER = struct.Struct("<4H6hBx")
-NODE = struct.Struct("<6hHBB")
 
 # What a bake uses unless asked otherwise, and the only place these are set.
 MESHLET_TRIANGLES = 32

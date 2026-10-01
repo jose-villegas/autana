@@ -14,8 +14,8 @@ mesh. Nothing here runs on the board.
 | [meshopt.py](meshopt.py) | [meshoptimizer](https://github.com/zeux/meshoptimizer)'s simplifier and meshlet clusterizer through ctypes, built once from the pinned `third_party/upstream/meshoptimizer` submodule into `.cache/`. |
 | [light.py](light.py) | Baked direct light from a scene's typed lights (`LIGHTS`): directional with soft shadows, sky visibility and ambient, albedo from textures, and culling of what no point in a region can see. |
 | [octree.py](octree.py) | Groups weighted items, here meshlets, into an octree whose leaves hold runs of them. |
-| [asset_pack.py](asset_pack.py) | The one writer of the [asset pack](../../../docs/Asset-Packs.md) container: `build_pack()` and a `parse_pack()` that makes the firmware's checks. Standard library only. |
-| [build_pack.py](build_pack.py) | Writes `launcher/assets/assets.bin` from the `.mesh` entries every import and scene file names; `--check` finds a stale pack. Standard library only. |
+| [build_pack.py](build_pack.py) | Writes the [asset pack](../../../docs/assets/README.md) (`-o PACK`) from the `.mesh` entries every import and scene file names, with the container writer in [`tools/asset/`](../asset/asset_pack.py). Standard library only. |
+| [mesh_asset.py](mesh_asset.py) | The lit mesh entry's type and byte layout, shared by the baker and the pack builder. Standard library only. |
 | [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under an octree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as a `<name>.mesh` pack entry; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads an entry back. |
 | [import_settings.py](import_settings.py) | Reads and validates an import file and a scene file; standard library only, every table closed. |
 | [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: fetches and checks the source, runs the steps the import opts into, lights with the scene's lights, then writes the `.mesh` entry beside the import file. |
@@ -59,7 +59,7 @@ folder.
 
 How many of a baked mesh's drawn triangles cover 0, 1, 2-4 or more pixel
 centres at each pose, which sizes the rasterizer's small-triangle work.
-`--mesh` names the mesh's asset id in `launcher/assets/assets.bin`, or in the pack `AUTANA_ASSET_PACK` names;
+`--mesh` names the mesh's asset id in a pack built from the tree, or in the pack `AUTANA_ASSET_PACK` names;
 `POSES` is a text file of `size`, `lens` and `pose` lines, its format in
 [`triangle_sizes.h`](triangle_sizes.h), and `-` reads it from standard
 input: a scene prints its poses from its own camera rather than keeping a

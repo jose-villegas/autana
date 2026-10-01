@@ -125,7 +125,7 @@ Detected in task "main" at 0x4200b2f8
 ### Flash
 
 `launcher/partitions.csv` gives the flash past the app partition to one data
-partition, `assets`, which holds the [asset pack](../Asset-Packs.md).
+partition, `assets`, which holds the [asset pack](../assets/README.md).
 `esp_partition_mmap()` reads it like an array; mapped reads go
 through the cache, so sequential access is fast and random access thrashes.
 

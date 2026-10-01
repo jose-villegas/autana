@@ -1,9 +1,8 @@
 /*
  * asset_store: the one asset pack this build reads. A device maps the
  * "assets" flash partition and uses it in place; a host reads the file named
- * by AUTANA_ASSET_PACK, else launcher/assets/assets.bin beside the sources.
- * Either way the bytes go to asset_pack_open(), which does not care where
- * they came from.
+ * by AUTANA_ASSET_PACK. Either way the bytes go to asset_pack_open(), which
+ * does not care where they came from.
  */
 #pragma once
 

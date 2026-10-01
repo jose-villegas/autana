@@ -35,15 +35,27 @@ static raster_stats_t stats;
 static uint32_t elapsed_ms;
 static bool rendered; /* update() drew the raster, which frame() has not upscaled yet */
 
+/* What the panel says in place of the triangle count when the scene could not
+ * open its meshes; empty when it could. */
+static char failure[48];
+
 /* Points the scene's three instances at their meshes in the asset pack. */
 static bool
 bind_meshes(void) {
     const char* failed = NULL;
     const asset_status_t status = sponza_open_meshes(&failed);
-    if (status != ASSET_OK) {
-        ESP_LOGE(TAG, "mesh '%s': %s; the scene stays blank", failed == NULL ? "?" : failed, asset_status_text(status));
+    failure[0] = '\0';
+    if (status == ASSET_OK) {
+        return true;
     }
-    return status == ASSET_OK;
+    ESP_LOGE(TAG, "mesh '%s': %s; the scene stays blank", failed == NULL ? "?" : failed, asset_status_text(status));
+    const bool missing = status == ASSET_ERR_NOT_FOUND || status == ASSET_ERR_NO_PACK;
+    if (snprintf(failure, sizeof failure, missing ? "no asset '%s': flash it" : "bad asset '%s'",
+                 failed == NULL ? "?" : failed)
+        < 0) {
+        failure[0] = '\0';
+    }
+    return false;
 }
 
 /* Draws one of the scene's mesh renderers, where the scene places it. */
@@ -135,7 +147,10 @@ scene_sponza_frame(uint32_t dt_ms, bool band_mode_active) {
 
 static const char*
 sponza_status(void) {
-    static char buf[32];
+    static char buf[48];
+    if (failure[0] != '\0') {
+        return failure;
+    }
     if (snprintf(buf, sizeof buf, "%5d tris", stats.triangles) < 0) {
         buf[0] = '\0';
     }
