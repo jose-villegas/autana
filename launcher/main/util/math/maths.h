@@ -1,6 +1,6 @@
 /*
  * maths: int16 scalar operations for the math templates (math_template.h),
- * compact storage for a low-memory app's coordinates. Sums and products
+ * coordinates kept compact where memory is short. Sums and products
  * SATURATE at the int16 range, so a vector never wraps; a dot product widens
  * to int64. There is no division, square root or angle: convert to a float
  * or fixed vector to rotate.

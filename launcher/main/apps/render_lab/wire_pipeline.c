@@ -128,7 +128,10 @@ wire_project_edges(const wire_mesh_t* mesh, const r3d_line_view_t* view, int scr
         const wire_edge_t* edge = &mesh->edges[i];
         const wire_cs_vertex_t* a = &frame->cs_vertices[edge->a];
         const wire_cs_vertex_t* b = &frame->cs_vertices[edge->b];
-        int ax = a->pixel.x, ay = a->pixel.y, bx = b->pixel.x, by = b->pixel.y;
+        int ax = a->pixel.x;
+        int ay = a->pixel.y;
+        int bx = b->pixel.x;
+        int by = b->pixel.y;
 
         const bool both_in_front = a->cs.z > view->near_z && b->cs.z > view->near_z;
         if (!both_in_front && !r3d_project_segment_cs(a->cs, b->cs, view, &ax, &ay, &bx, &by)) {

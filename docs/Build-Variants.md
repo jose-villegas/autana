@@ -136,13 +136,16 @@ The S3's FPU has no double: every `double` operation is a libgcc call, about
 ten times a float's cost. The `main` component compiles with
 `-Werror=double-promotion` and `-Werror=float-conversion`, so a float widened
 to a double, or a double constant in float maths, does not compile; code that
-needs one on purpose casts it explicitly, on the line that logs it. The host test
+needs one on purpose casts it explicitly, in the function that logs it. The host test
 and render builds compile with `-ffp-contract=off`, so a pinned pixel never
 depends on a fused multiply-add; the firmware keeps the fused operations,
-which are faster, and a board render can differ from the host's in the last
-float bit.
+which are faster. The host never fuses and the device does, so a host pixel
+and a device pixel can differ by one at a truncation boundary. The warning
+flags live only in the firmware build, which compiles every portable source;
+the host builds also compile vendored code and tests that use `double` on
+purpose.
 
-The cast is invisible to the compiler, so the `diag` build checks the
+The compiler accepts an explicit cast, so the `diag` build checks the
 objects too: `launcher/tools/build/check_no_soft_double.py` lists every
 function that calls a soft-double routine and fails unless the same function
 also calls a logging or formatting routine (a `%f` argument is a double by

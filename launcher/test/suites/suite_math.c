@@ -112,7 +112,12 @@ test_a_product_of_matrices_applies_the_right_one_first(void) {
 static bool
 rebuilds(transformf_t* t) {
     t->matrix.m[0][3] = SENTINEL;
-    return transformf_matrix(t).m[0][3] != SENTINEL;
+    const bool rebuilt = transformf_matrix(t).m[0][3] != SENTINEL;
+    if (rebuilt) {
+        const mat4f_t want = mat4f_from_trs(t->position, t->rotation, t->scale);
+        assert_mat4(&want, &t->matrix);
+    }
+    return rebuilt;
 }
 
 static void

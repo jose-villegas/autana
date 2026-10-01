@@ -16,7 +16,8 @@ MATH_DEFINE_TRANSFORM(transformx, vec3x, quatx, mat4x, mathx)
 
 /* An initializer: `transformx_t t = TRANSFORMX_IDENTITY;`, or
  * `t = (transformx_t)TRANSFORMX_IDENTITY;`. Zero-initialized does not
- * mean identity: its scale is zero, so it builds a zero matrix. */
+ * mean identity: its scale is zero, so its matrix sends every point to the
+ * origin. */
 #define TRANSFORMX_IDENTITY                                                                                            \
     {.position = {0, 0, 0},                                                                                            \
      .rotation = {0, 0, 0, MATHX_ONE},                                                                                 \

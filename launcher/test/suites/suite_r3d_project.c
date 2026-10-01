@@ -195,6 +195,25 @@ test_a_point_at_the_camera_plane_projects_to_a_far_off_but_defined_pixel(void) {
     TEST_ASSERT_TRUE(y < view.center_y - 10000);
 }
 
+static void
+test_a_nan_offset_and_a_point_at_the_axis_on_the_camera_plane_clamp(void) {
+    TEST_ASSERT_EQUAL_INT((int)R3D_PIXEL_LIMIT, r3d_pixel_offset(NAN));
+    r3d_line_view_t view = fixture();
+    int x = 0, y = 0;
+    r3d_camera_to_screen((vec3f_t){0.0F, 0.0F, 0.0F}, &view, &x, &y); /* 0 * inf is NaN */
+    TEST_ASSERT_EQUAL_INT(view.center_x + (int)R3D_PIXEL_LIMIT, x);
+    TEST_ASSERT_EQUAL_INT(view.center_y - (int)R3D_PIXEL_LIMIT, y);
+}
+
+static void
+test_a_pixel_offset_truncates_toward_zero_on_both_sides(void) {
+    TEST_ASSERT_EQUAL_INT(2, r3d_pixel_offset(2.5F));
+    TEST_ASSERT_EQUAL_INT(-2, r3d_pixel_offset(-2.5F));
+    TEST_ASSERT_EQUAL_INT(0, r3d_pixel_offset(0.9F));
+    TEST_ASSERT_EQUAL_INT(0, r3d_pixel_offset(-0.9F));
+    TEST_ASSERT_EQUAL_INT(3, r3d_pixel_offset(2.99F)); /* the bias catches a quotient a hair short */
+}
+
 void
 run_r3d_project_suite(void) {
     RUN_TEST(test_to_camera_space_leaves_a_point_unchanged_under_identity);
@@ -204,6 +223,8 @@ run_r3d_project_suite(void) {
     RUN_TEST(test_an_off_axis_point_lands_where_the_formula_says);
     RUN_TEST(test_a_point_exactly_at_near_z_counts_as_behind);
     RUN_TEST(test_orthographic_projection_ignores_depth);
+    RUN_TEST(test_a_nan_offset_and_a_point_at_the_axis_on_the_camera_plane_clamp);
+    RUN_TEST(test_a_pixel_offset_truncates_toward_zero_on_both_sides);
     RUN_TEST(test_a_point_at_the_camera_plane_projects_to_a_far_off_but_defined_pixel);
 
     RUN_TEST(test_segment_with_both_ends_behind_returns_false);

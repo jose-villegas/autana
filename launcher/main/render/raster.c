@@ -8,8 +8,6 @@
 #include "render/upscale.h"
 #include "util/job.h"
 
-#pragma GCC diagnostic error "-Wdouble-promotion"
-
 #define JOB_WAIT_MS 1000
 
 typedef struct {

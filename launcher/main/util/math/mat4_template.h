@@ -35,7 +35,6 @@
         return out;                                                                                                    \
     }                                                                                                                  \
                                                                                                                        \
-    /* A point, translation included. */                                                                               \
     /* M * p with w = 1: translation included, no perspective divide. `m` is read only. */                             \
     static inline V##_t P##_apply(const P##_t* m, V##_t p) {                                                           \
         return (V##_t){                                                                                                \
