@@ -126,12 +126,12 @@ the committed flat render.
 
 | Variant | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 | Interior ΔE76 |
 |---|---:|---:|---:|---:|---:|
-| Full smooth | 7.069 | 21.73 | 0.690 | 14.44 | 5.89 |
-| Lite smooth | 7.964 | 25.27 | 0.647 | 16.51 | 6.59 |
-| Flat, 1 sample per face | 7.899 | 29.72 | 0.640 | 17.00 | 6.43 |
-| Flat, 4 samples per face | 7.476 | 24.58 | 0.653 | 15.66 | 6.16 |
-| Flat, committed (`auto` 1 to 16, median area) | 7.681 | 27.13 | 0.647 | 16.61 | 6.24 |
-| Flat, 16 samples per face | 7.367 | 23.64 | 0.657 | 15.17 | 6.12 |
+| Full smooth | 6.654 | 21.46 | 0.696 | 13.64 | 5.53 |
+| Lite smooth | 7.541 | 24.83 | 0.651 | 15.76 | 6.22 |
+| Flat, 1 sample per face | 7.495 | 29.46 | 0.645 | 16.25 | 6.08 |
+| Flat, 4 samples per face | 7.072 | 24.43 | 0.658 | 14.91 | 5.81 |
+| Flat, committed (`auto` 1 to 16, median area) | 7.278 | 26.92 | 0.652 | 15.87 | 5.89 |
+| Flat, 16 samples per face | 6.964 | 23.54 | 0.663 | 14.43 | 5.76 |
 
 Flat against full smooth differs by mean ΔE76 5.54, p95 22.97 and SSIM 0.798:
 the gap flat shading leaves between the two bakes.
@@ -141,34 +141,34 @@ The flat sweep, sorted by mean ΔE76; `min` and `max` are the `auto` bounds,
 
 | Setting | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 |
 |---|---:|---:|---:|---:|
-| fixed 16 | 7.367 | 23.64 | 0.657 | 15.17 |
-| fixed 64 | 7.372 | 23.55 | 0.658 | 15.15 |
-| fixed 32 | 7.376 | 23.61 | 0.658 | 15.14 |
-| fixed 8 | 7.417 | 23.90 | 0.654 | 15.36 |
-| min 4 | 7.463 | 24.56 | 0.653 | 15.65 |
-| fixed 4, sun centre only | 7.473 | 24.91 | 0.654 | 15.96 |
-| fixed 4 | 7.476 | 24.58 | 0.653 | 15.66 |
-| area 0.25 | 7.524 | 24.89 | 0.651 | 15.86 |
-| min 2 | 7.561 | 25.61 | 0.652 | 16.08 |
-| area 0.5 | 7.641 | 25.88 | 0.648 | 16.30 |
-| fixed 2 | 7.651 | 26.40 | 0.649 | 16.16 |
-| max 8 | 7.674 | 27.15 | 0.647 | 16.61 |
-| sky 512 | 7.676 | 27.12 | 0.647 | 16.60 |
-| committed (min 1, max 16, area 1, sky 128) | 7.681 | 27.13 | 0.647 | 16.61 |
-| max 32 | 7.681 | 27.13 | 0.647 | 16.61 |
-| sky 256 | 7.688 | 27.12 | 0.647 | 16.60 |
-| max 4 | 7.694 | 27.25 | 0.647 | 16.62 |
-| sky 64 | 7.787 | 27.14 | 0.646 | 16.64 |
-| area 2 | 7.803 | 28.92 | 0.643 | 16.90 |
-| sun centre only | 7.855 | 28.42 | 0.643 | 17.49 |
-| centroid placement (any count) | 7.908 | 29.97 | 0.639 | 17.07 |
-| sky 32 | 7.942 | 27.18 | 0.644 | 16.68 |
-| sky 16 | 8.338 | 27.25 | 0.638 | 16.74 |
+| fixed 16 | 6.964 | 23.54 | 0.663 | 14.43 |
+| fixed 64 | 6.968 | 23.45 | 0.663 | 14.41 |
+| fixed 32 | 6.973 | 23.51 | 0.663 | 14.39 |
+| fixed 8 | 7.014 | 23.82 | 0.660 | 14.61 |
+| min 4 | 7.060 | 24.41 | 0.659 | 14.90 |
+| fixed 4, sun centre only | 7.070 | 24.73 | 0.659 | 15.21 |
+| fixed 4 | 7.072 | 24.43 | 0.658 | 14.91 |
+| area 0.25 | 7.121 | 24.73 | 0.656 | 15.11 |
+| min 2 | 7.158 | 25.41 | 0.657 | 15.33 |
+| area 0.5 | 7.238 | 25.68 | 0.653 | 15.55 |
+| fixed 2 | 7.248 | 26.21 | 0.654 | 15.41 |
+| max 8 | 7.271 | 26.94 | 0.652 | 15.87 |
+| sky 512 | 7.273 | 26.90 | 0.653 | 15.86 |
+| max 32 | 7.277 | 26.92 | 0.652 | 15.87 |
+| committed (min 1, max 16, area 1, sky 128) | 7.278 | 26.92 | 0.652 | 15.87 |
+| sky 256 | 7.285 | 26.91 | 0.653 | 15.86 |
+| max 4 | 7.290 | 27.02 | 0.652 | 15.88 |
+| sky 64 | 7.383 | 26.95 | 0.651 | 15.90 |
+| area 2 | 7.400 | 28.66 | 0.648 | 16.16 |
+| sun centre only | 7.451 | 28.14 | 0.648 | 16.74 |
+| centroid placement (any count) | 7.505 | 29.70 | 0.644 | 16.33 |
+| sky 32 | 7.539 | 26.96 | 0.650 | 15.94 |
+| sky 16 | 7.935 | 27.05 | 0.644 | 16.00 |
 
-Sixteen fixed samples per face take the committed bake's mean from 7.681 to
-7.367 and its p95 from 27.13 to 23.64, at no cost at run time: the mesh and its
-frame cost are the same. They hold edge error to 15.17 against the smooth
-bake's 14.44.
+Sixteen fixed samples per face take the committed bake's mean from 7.278 to
+6.964 and its p95 from 26.92 to 23.54, at no cost at run time: the mesh and its
+frame cost are the same. They hold edge error to 14.43 against the smooth
+bake's 13.64.
 
 One sheet of two poses of the committed flat bake, left to right the reference,
 the bake, the ΔE heatmap and the reference's edge pixels (magenta), with the

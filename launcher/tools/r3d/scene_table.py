@@ -109,6 +109,8 @@ def header_source(scene, banner):
     lines.append(f"extern const r3d_scene_assets_t {name}_assets;")
     if scene.camera:
         lines.append(f"extern const r3d_scene_camera_t {name}_{scene.camera.name};")
+    if scene.background is not None:
+        lines.append(f"#define {name.upper()}_BACKGROUND_RGB 0x{scene.background:06X}")
     return "\n".join(lines) + "\n"
 
 

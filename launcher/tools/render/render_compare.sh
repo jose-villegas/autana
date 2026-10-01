@@ -40,7 +40,8 @@
 # implies --video: <label>.mp4 is reference | render | dE heatmap | edge pixels
 # per frame, at --fps 30 unless 40, 60 or 80 is given, and summary.txt gets
 # mean and 95th-percentile dE and SSIM per frame. A render's first frame is
-# one --dt in, so the reference skips the pose at time zero. --r3d-python names
+# one --dt in, so the reference skips the pose at time zero. --start N scores
+# from render frame N, for a poses file that begins at pose N. --r3d-python names
 # the interpreter with the r3d requirements; the default is r3d/.cache/venv's.
 #
 # POSIX sh, like the rest of this directory.
@@ -51,7 +52,7 @@ TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_DIR=$(CDPATH= cd -- "$TOOLS_DIR/../../.." && pwd)
 
 usage() {
-    sed -n '3,44p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '3,45p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
 }
 
@@ -79,6 +80,7 @@ crops=0
 reference=""
 poses=""
 samples=4
+first=0
 r3d_python=""
 rev_a=""
 rev_b=""
@@ -107,6 +109,7 @@ while [ $# -gt 0 ]; do
         --crops) crops=${2:?--crops needs a number}; shift 2 ;;
         --reference) reference=${2:?--reference needs a scene file}; video=1; shift 2 ;;
         --poses) poses=${2:?--poses needs a file}; shift 2 ;;
+        --start) first=${2:?--start needs a frame number}; shift 2 ;;
         --samples) samples=${2:?--samples needs a number}; shift 2 ;;
         --r3d-python) r3d_python=${2:?--r3d-python needs a path}; shift 2 ;;
         --fps) fps=${2:?--fps needs a number}; shift 2 ;;
@@ -255,7 +258,7 @@ if [ -n "$reference" ]; then
         echo "== $label reference" >> "$out/summary.txt"
         "$PYTHON" "$(to_native "$TOOLS_DIR/render_compare.py")" --out "$(to_native "$out/$label.unused.png")" \
         --reference-video "$(to_native "$avi")" "$(to_native "$cache")" \
-        --reference-mp4 "$(to_native "$out/$label.mp4")" ${fps:+--fps "$fps"} \
+        --reference-mp4 "$(to_native "$out/$label.mp4")" --reference-first "$first" ${fps:+--fps "$fps"} \
         --summary "$(to_native "$out/summary.txt")"
         echo "video $out/$label.mp4"
     done

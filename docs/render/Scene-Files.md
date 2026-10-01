@@ -9,6 +9,7 @@ and where.
 
 ```toml
 tonemap_white = 0.35             # larger is darker
+background = 0x9CC0E6            # what a pixel no mesh covers shows; optional
 
 [sky]                            # scene settings, not objects
 color = [0.55, 0.68, 0.9]
@@ -88,6 +89,9 @@ A mesh whose import has a scene-dependent step reads the scene:
 - `process.light` reads the lights (at least one directional object, `[sky]`
   or `[ambient]`) and `tonemap_white`;
 - `process.visibility` reads the camera's `region`.
+- `background` is written to the scene table's header as a `<NAME>_BACKGROUND_RGB`
+  define the scene draws with, and `reference_render.py` fills uncovered pixels
+  with it, RGB565-quantised as the panel shows it.
 
 A scene must carry what a placed mesh reads, and may not carry what none
 reads. Baking a mesh reads the lights of the scene that requests it, so a mesh

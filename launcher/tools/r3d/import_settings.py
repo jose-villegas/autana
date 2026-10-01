@@ -83,6 +83,14 @@ def count(value, where):
     return value
 
 
+def background(value):
+    """The colour of a pixel no mesh covers, 0xRRGGBB."""
+    value = integer(value, "scene.background")
+    if not 0 <= value <= 0xFFFFFF:
+        raise SettingsError("scene.background must be 0xRRGGBB")
+    return value
+
+
 def vector(value, where):
     if not isinstance(value, list) or len(value) != 3:
         raise SettingsError(f"{where} must be a three-component array")
@@ -342,7 +350,7 @@ def load_scene(path):
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as source:
         values = tomllib.load(source)
-    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "sky", "ambient"))
+    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "background", "sky", "ambient"))
     objects = values["objects"]
     if not isinstance(objects, list) or not objects:
         raise SettingsError("scene.objects must be a non-empty array of tables")
@@ -368,7 +376,8 @@ def load_scene(path):
         path=path, objects=objects, renderers=[SimpleNamespace(settings=item.component.settings, variant=item.component.variant,
                                                                object=item) for item in renderers],
         camera=cameras[0] if cameras else None, region=region, lights=lights,
-        tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None)
+        tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None,
+        background=background(values["background"]) if "background" in values else None)
     lit = any(item.component.settings.light for item in renderers)
     culled = any(item.component.settings.visibility for item in renderers)
     for name, present, needed in (("lights", bool(lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),

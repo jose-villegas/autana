@@ -13,3 +13,4 @@ extern const r3d_instance_t sponza_scene_atrium_flat;
 extern const r3d_instance_t sponza_scene_atrium_lite;
 extern const r3d_scene_assets_t sponza_scene_assets;
 extern const r3d_scene_camera_t sponza_scene_camera;
+#define SPONZA_SCENE_BACKGROUND_RGB 0x9CC0E6
