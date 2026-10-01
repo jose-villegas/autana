@@ -53,17 +53,15 @@ report_case(const scale_case_t* test_case) {
     uint16_t* source = heap_caps_malloc(source_pixels * sizeof(*source), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     uint16_t* destination =
         heap_caps_malloc(destination_pixels * sizeof(*destination), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    uint16_t* columns = heap_caps_malloc(GFX_WIDTH * sizeof(*columns), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     uint16_t* rows = heap_caps_malloc(GFX_HEIGHT * sizeof(*rows), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     TEST_ASSERT_NOT_NULL(source);
     TEST_ASSERT_NOT_NULL(destination);
-    TEST_ASSERT_NOT_NULL(columns);
     TEST_ASSERT_NOT_NULL(rows);
     for (size_t i = 0; i < source_pixels; i++) {
         source[i] = (uint16_t)i;
     }
     upscale_t scale;
-    TEST_ASSERT_TRUE(upscale_init(&scale, source_width, source_height, GFX_WIDTH, GFX_HEIGHT, columns, rows));
+    TEST_ASSERT_TRUE(upscale_init(&scale, source_width, source_height, GFX_WIDTH, GFX_HEIGHT, rows));
     upscale_rows(&scale, source, NULL, 0, destination, 0, GFX_HEIGHT);
 
     int64_t start_us = esp_timer_get_time();
@@ -93,7 +91,6 @@ report_case(const scale_case_t* test_case) {
              test_case->label, source_width, source_height, (long long)(two_us / SAMPLES),
              (double)two_cycles / SAMPLES / destination_pixels);
     heap_caps_free(rows);
-    heap_caps_free(columns);
     heap_caps_free(destination);
     heap_caps_free(source);
 }
