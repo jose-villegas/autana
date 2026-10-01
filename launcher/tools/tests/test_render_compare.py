@@ -64,6 +64,23 @@ class MeasureTest(unittest.TestCase):
         self.assertEqual(stats.holes_a, 1)
 
 
+class ReferenceMetricTest(unittest.TestCase):
+    def test_identical_images_have_zero_delta_e_and_one_ssim(self):
+        picture = image([[DRAWN, CLEAR], [CLEAR, DRAWN]])
+        stats = render_compare.reference_measure(picture, picture.copy())
+        self.assertEqual((stats.mean_delta_e, stats.p95_delta_e, stats.ssim_luma), (0.0, 0.0, 1.0))
+
+    def test_black_to_white_is_a_hundred_delta_e(self):
+        black, white = image([[(0, 0, 0)]]), image([[(255, 255, 255)]])
+        stats = render_compare.reference_measure(black, white)
+        self.assertAlmostEqual(stats.mean_delta_e, 100.0, places=4)
+        self.assertAlmostEqual(stats.p95_delta_e, 100.0, places=4)
+
+    def test_reference_heatmap_is_black_for_a_match(self):
+        picture = image([[DRAWN]])
+        self.assertEqual(render_compare.reference_heatmap(picture, picture).getpixel((0, 0)), (0, 0, 0))
+
+
 class HeatmapTest(unittest.TestCase):
     def test_grey_is_amplified_and_holes_are_red(self):
         a = image([[CLEAR, (0, 0, 0), (0, 0, 0)]])

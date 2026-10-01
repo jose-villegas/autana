@@ -23,6 +23,7 @@ mesh. Nothing here runs on the board.
 | [gltf_preview.py](gltf_preview.py) | Renders any skinned `.glb` with Pillow: a looping GIF of one animation (`--gif NAME`) or the bind pose from four sides (`--sheet`). |
 | [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, and the poses file; host-tested by `suite_r3d_triangle_sizes.c`. |
 | [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
+| [reference_render.py](reference_render.py) | Traces the undecimated source mesh through the scene's bake lights at supersampled device resolution; writes linear arrays and RGB565-expanded PNGs for fidelity comparisons. |
 
 The environment is pinned in [requirements.txt](requirements.txt), and the
 simplifier needs the meshoptimizer submodule and a host C++ compiler (`CXX`,
@@ -48,6 +49,28 @@ the price of frame time; what it does and costs is in
 `mesh_import.py` is the shared full-import command. Each import file and the
 scene file that places it live in the app's `meshes/` folder; the generated
 banner names the scene file and the exact command that produced it.
+
+## Fidelity reference
+
+`reference_render.py` takes a scene and the pose file its camera path emits.
+It uses the source mesh after alpha masking, before simplification, and the
+same lights, texture sampling, tone map and RGB565 quantisation as the bake.
+The .npy output retains the linear, box-filtered image; the PNG is the form a
+host render compares with `render_compare.py`.
+
+```sh
+launcher/tools/anim/sample_tracks.sh --tracks PATH_tracks_generated.c:PATH --every 5000 --until 40000 \
+    --poses camera 184 224 0.62 6 > poses.txt
+tools/r3d/.cache/venv/Scripts/python tools/r3d/reference_render.py SCENE.scene.toml \
+    --poses poses.txt --out reference --samples 4
+python tools/render/render_compare.py --out compare.png --heatmap-dir heatmaps \
+    --reference-row pose0 host.png reference/000.png
+```
+
+The reference scores are mean and 95th-percentile CIE76 ΔE across every
+pixel, plus global SSIM on linear Rec.709 luma. Lower ΔE and higher SSIM are
+closer to the source reference. The heatmap maps zero ΔE to black, then yellow
+to red by ΔE 50.
 
 ## Triangle sizes
 
