@@ -7,10 +7,6 @@
 #include "render/r3d_pipeline.h"
 #include "util/job.h"
 
-#if CONFIG_LAUNCHER_DEVELOPMENT
-#include "esp_timer.h"
-#endif
-
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
 #define JOB_WAIT_MS   1000
@@ -21,33 +17,15 @@ typedef struct {
     const r3d_lens_t* lens;
     int visible_count;
     int first, count; /* clusters of visible[], or rows */
-    int stage, core;
 } slice_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
 
-#if CONFIG_LAUNCHER_DEVELOPMENT
-static bool probe_enabled;
-static raster_probe_t probe;
-#endif
-
 static void
 transform_slice(void* ctx) {
     const slice_t* s = ctx;
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    const int64_t start = probe_enabled ? esp_timer_get_time() : 0;
-    if (probe_enabled && s->core == 1) {
-        probe.core1_start_us[s->stage] = start;
-    }
-#endif
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(s->raster);
     r3d_pipeline_transform(s->raster->mesh, s->lens, b.visible + s->first, s->count, b.cs, b.rows);
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    if (probe_enabled) {
-        int64_t* work = s->core == 0 ? &probe.core0_work_us[s->stage] : &probe.core1_work_us[s->stage];
-        *work = esp_timer_get_time() - start;
-    }
-#endif
 }
 
 /* A pixel nothing covered (R3D_DEPTH_EMPTY) takes the clear colour here,
@@ -88,12 +66,6 @@ static void
 draw_slice(void* ctx) {
     const slice_t* s = ctx;
     const raster_t* r = s->raster;
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    const int64_t start = probe_enabled ? esp_timer_get_time() : 0;
-    if (probe_enabled && s->core == 1) {
-        probe.core1_start_us[s->stage] = start;
-    }
-#endif
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(r);
     const size_t offset = (size_t)s->first * (size_t)r->width;
     const size_t pixels = (size_t)s->count * (size_t)r->width;
@@ -109,12 +81,6 @@ draw_slice(void* ctx) {
 
     const r3d_span_target_t target = {color, depth, r->width, s->first, s->first + s->count};
     r3d_pipeline_draw(r->mesh, s->lens, b.visible, s->visible_count, b.cs, b.rows, &target);
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    if (probe_enabled) {
-        int64_t* work = s->core == 0 ? &probe.core0_work_us[s->stage] : &probe.core1_work_us[s->stage];
-        *work = esp_timer_get_time() - start;
-    }
-#endif
 }
 
 static bool
@@ -134,37 +100,12 @@ upscale_slice(void* ctx) {
 
 static void
 run_split(job_fn_t fn, slice_t first_half, slice_t second_half) {
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    if (probe_enabled && first_half.stage < 2) {
-        probe.dispatch_us[first_half.stage] = esp_timer_get_time();
-    }
-#endif
     (void)job_run_core1(fn, &second_half, sizeof second_half);
     fn(&first_half);
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    const int64_t wait_start = probe_enabled ? esp_timer_get_time() : 0;
-#endif
     const bool done = job_wait(JOB_WAIT_MS);
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    if (probe_enabled && first_half.stage < 2) {
-        probe.join_wait_us[first_half.stage] = esp_timer_get_time() - wait_start;
-    }
-#endif
     assert(done); /* the next stage reads what core 1 wrote */
     (void)done;
 }
-
-#if CONFIG_LAUNCHER_DEVELOPMENT
-void
-raster_probe_enable(bool enabled) {
-    probe_enabled = enabled;
-}
-
-const raster_probe_t*
-raster_probe(void) {
-    return &probe;
-}
-#endif
 
 size_t
 raster_scratch_bytes(const raster_t* raster) {
@@ -203,11 +144,6 @@ balanced_split_row(const raster_t* raster, int visible) {
 
 raster_stats_t
 raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    if (probe_enabled) {
-        memset(&probe, 0, sizeof probe);
-    }
-#endif
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     r3d_lens_t lens;
     r3d_lens_init(&lens, camera, raster->mesh->position_scale, (viewport_t){raster->width, raster->height, quarter});
@@ -218,12 +154,12 @@ raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
     }
 
     const int half = visible / 2;
-    run_split(transform_slice, (slice_t){raster, &lens, visible, 0, half, 0, 0},
-              (slice_t){raster, &lens, visible, half, visible - half, 0, 1});
+    run_split(transform_slice, (slice_t){raster, &lens, visible, 0, half},
+              (slice_t){raster, &lens, visible, half, visible - half});
 
     const int mid = balanced_split_row(raster, visible);
-    run_split(draw_slice, (slice_t){raster, &lens, visible, mid, raster->height - mid, 1, 0},
-              (slice_t){raster, &lens, visible, 0, mid, 1, 1});
+    run_split(draw_slice, (slice_t){raster, &lens, visible, mid, raster->height - mid},
+              (slice_t){raster, &lens, visible, 0, mid});
     return stats;
 }
 
@@ -233,6 +169,5 @@ raster_upscale(const raster_t* raster) {
     assert(same_size(raster)
            || (raster->destination_width == 2 * raster->width && raster->destination_height == 2 * raster->height));
     const int mid = raster->height / 2;
-    run_split(upscale_slice, (slice_t){raster, NULL, 0, mid, raster->height - mid, 2, 0},
-              (slice_t){raster, NULL, 0, 0, mid, 2, 1});
+    run_split(upscale_slice, (slice_t){raster, NULL, 0, mid, raster->height - mid}, (slice_t){raster, NULL, 0, 0, mid});
 }

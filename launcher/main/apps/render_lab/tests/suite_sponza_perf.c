@@ -178,22 +178,11 @@ report_frame_cost(const char* label, const r3d_lit_mesh_t* mesh) {
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
         const camera_t camera = sponza_camera_at(t_ms);
         const int64_t start = esp_timer_get_time();
-        raster_probe_enable(true);
         const raster_stats_t stats = raster_draw(&b.raster, &camera, 0);
-        raster_probe_enable(false);
-        const raster_probe_t* probe = raster_probe();
         raster_upscale(&b.raster);
         const int64_t us = esp_timer_get_time() - start;
         ESP_LOGI(TAG, "%s t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", label, (unsigned)(t_ms / 1000),
                  stats.clusters, stats.triangles, (long long)us);
-        ESP_LOGI(TAG,
-                 "%s core1 delay transform=%lldus draw=%lldus; work transform=%lldus/%lldus draw=%lldus/%lldus; "
-                 "join=%lldus/%lldus",
-                 label, (long long)(probe->core1_start_us[0] - probe->dispatch_us[0]),
-                 (long long)(probe->core1_start_us[1] - probe->dispatch_us[1]), (long long)probe->core0_work_us[0],
-                 (long long)probe->core1_work_us[0], (long long)probe->core0_work_us[1],
-                 (long long)probe->core1_work_us[1], (long long)probe->join_wait_us[0],
-                 (long long)probe->join_wait_us[1]);
         frame_sum += us;
         worst = us > worst ? us : worst;
         samples++;
