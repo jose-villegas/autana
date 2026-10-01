@@ -365,6 +365,14 @@ class VideoTest(unittest.TestCase):
         self.assertTrue(all(line.startswith(("frame", "frames")) and "mean DeltaE76 0.0000" in line and "luma SSIM 1.000000" in line
                             for line in lines))
 
+    def test_a_reference_video_can_start_at_a_later_frame(self):
+        near, far = Image.new("RGB", (2, 2), DRAWN), Image.new("RGB", (2, 2), CLEAR)
+        with tempfile.TemporaryDirectory() as tmp:
+            video = self.write_avi(tmp, "a.avi", [far, far, near], 250)
+            near.save(Path(tmp) / "000.png")
+            values, total = render_compare.reference_video(video, tmp, first=2)
+        self.assertEqual((len(values), total.mean_delta_e), (1, 0.0))
+
     def test_reference_images_run_past_999_in_frame_order(self):
         with tempfile.TemporaryDirectory() as tmp:
             for name in ("100", "999", "1000", "1001", "099"):

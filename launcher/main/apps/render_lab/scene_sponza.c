@@ -26,8 +26,6 @@
 #include "sponza_scene_generated.h"
 #include "util/tune.h"
 
-#define SKY_RGB 0x9CC0E6
-
 static const char* TAG = "sponza";
 
 static raster_t raster; /* holds its scratch from enter() to exit() */
@@ -74,7 +72,7 @@ enter_with(const r3d_instance_t* placed) {
         .instance_count = 1,
         .width = GFX_WIDTH * 100 / render_lab_scale(),
         .height = GFX_HEIGHT * 100 / render_lab_scale(),
-        .clear = GFX_RGB(SKY_RGB),
+        .clear = GFX_RGB(SPONZA_SCENE_BACKGROUND_RGB),
         .destination = gfx_framebuffer(),
         .destination_width = GFX_WIDTH,
         .destination_height = GFX_HEIGHT,

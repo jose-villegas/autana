@@ -613,16 +613,20 @@ def reference_images(directory):
     return sorted(pathlib.Path(directory).glob("*.png"), key=lambda path: (len(path.stem), path.stem))
 
 
-def reference_video(path, reference_dir, scale=None, heatmaps=None, keep=None, sink=None):
+def reference_video(path, reference_dir, scale=None, heatmaps=None, keep=None, sink=None, first=0):
     """Score every AVI frame against ordered reference PNGs and return their
     mean. `scale` is the render's pixels per reference pixel, found from the
     first frame when None. `keep`, a dict of frame index to None, is filled
     with the (render, reference) pairs of those frames; `sink(fps, index,
-    render, reference)` is called for every frame."""
+    render, reference)` is called for every frame. The first `first` video
+    frames are skipped, for references that cover only a later segment."""
     fps, frames = read_video(path)
     references = reference_images(reference_dir)
     values = []
-    for index, raw in enumerate(frames):
+    for position, raw in enumerate(frames):
+        index = position - first
+        if index < 0:
+            continue
         if index >= len(references):
             raise ValueError("more video frames than reference images")
         render = Image.fromarray(raw)
@@ -682,6 +686,7 @@ def main():
     parser.add_argument("--reference-row", nargs=3, action="append", metavar=("LABEL", "RENDER", "REFERENCE"))
     parser.add_argument("--reference-video", nargs=2, metavar=("VIDEO", "REFERENCE_DIR"))
     parser.add_argument("--reference-scale", type=int, help="render pixels per reference pixel; default from the first frame")
+    parser.add_argument("--reference-first", type=int, default=0, help="video frames to skip before the reference images begin")
     parser.add_argument("--reference-mp4", metavar="MP4", help="with --reference-video, the sheet of every frame as a video")
     parser.add_argument("--heatmap-dir")
     parser.add_argument("--reference-sheet", metavar="PNG", help="with --reference-video, one sheet of --sheet-frames")
@@ -732,7 +737,7 @@ def main():
         video = ReferenceVideoWriter(args.reference_mp4, args.fps) if args.reference_mp4 else None
         try:
             frames, total = reference_video(*args.reference_video, args.reference_scale, heatmaps, keep,
-                                            None if video is None else video.add)
+                                            None if video is None else video.add, args.reference_first)
         finally:
             if video is not None:
                 video.close()
