@@ -8,6 +8,7 @@
 
 #include "util/frame_cost.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -37,19 +38,31 @@ console_verb_perf(const char* args, console_reply_fn reply) {
         list_names_and_events();
         return;
     }
+    const char* status = "PERFMON_OK";
+    const char* detail = name;
+    const char* suffix = "";
     if (fields > 2) {
-        snprintf(line, sizeof line, "PERFMON_ERR usage: PERF <name|off|?> [event]");
+        status = "PERFMON_ERR";
+        detail = "usage: PERF <name|off|?> [event]";
     } else if (strcmp(name, "off") == 0) {
-        snprintf(line, sizeof line, "%s",
-                 frame_cost_request_arm("", FRAME_COST_DEFAULT_EVENT) ? "PERFMON_OK off" : "PERFMON_ERR busy");
+        const bool armed = frame_cost_request_arm("", FRAME_COST_DEFAULT_EVENT);
+        status = armed ? "PERFMON_OK" : "PERFMON_ERR";
+        detail = armed ? "off" : "busy";
     } else if (!frame_cost_name_known(name)) {
-        snprintf(line, sizeof line, "PERFMON_ERR unknown name %s (PERF lists the names seen)", name);
+        status = "PERFMON_ERR unknown name";
+        suffix = " (PERF lists the names seen)";
     } else if (frame_cost_event_find(event) == NULL) {
-        snprintf(line, sizeof line, "PERFMON_ERR unknown event %s", event);
+        status = "PERFMON_ERR unknown event";
+        detail = event;
     } else if (!frame_cost_request_arm(name, event)) {
-        snprintf(line, sizeof line, "PERFMON_ERR busy");
+        status = "PERFMON_ERR";
+        detail = "busy";
     } else {
-        snprintf(line, sizeof line, "PERFMON_OK %s %s", name, event);
+        suffix = event;
+    }
+    const char* gap = (suffix == event) ? " " : "";
+    if (snprintf(line, sizeof line, "%s %s%s%s", status, detail, gap, suffix) < 0) {
+        return;
     }
     reply(line);
 }
