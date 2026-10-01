@@ -39,6 +39,13 @@ only its own vertices. The clusters are the leaves of a tree rooted at
 `nodes[0]`, so one box test culls a whole subtree. Positions are `int16`
 ticks, `position_scale` ticks per model unit.
 
+Smooth against flat, one pose of the same import: the sheet is the two renders
+and their amplified difference, the crops are where they differ most, smooth
+above flat.
+
+![Smooth against flat](../images/render/compare-full-flat.png)
+![Smooth against flat, the places they differ most](../images/render/compare-full-flat.crops.png)
+
 ## The offline tools
 
 A mesh is const C data, written by
@@ -91,6 +98,12 @@ own vertex colours are not read.
 The steps run in the order of the diagram, whatever order the file lists them.
 An import without variants names its one mesh in `output.name` and cannot
 simplify.
+
+Two variants of one import differ in what `simplify` keeps: the same pose
+at the full budget and at about half of it, the full render above the lite.
+
+![Full against lite](../images/render/compare-full-lite.png)
+![Full against lite, the places they differ most](../images/render/compare-full-lite.crops.png)
 
 The scene file that places meshes and carries the lights, the camera and the
 tone map is described in [Scene-Files.md](Scene-Files.md).

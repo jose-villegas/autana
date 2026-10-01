@@ -157,6 +157,45 @@ in every view; a tile holding one such pixel is empty. The views are at the
 raster's own size, before upscaling. `r3d_span.h` defines the depth encoding
 they read.
 
+## The Sponza targets
+
+One Sponza import bakes three meshes, each a render target a scene can pick
+([Mesh-Import.md](Mesh-Import.md)): the budgets and the face sampling are the
+`[[variants]]` of `launcher/main/apps/render_lab/meshes/sponza.import.toml`.
+Every row plays the same three seconds of the flythrough, so the rows compare.
+The two views are the [view modes](#view-modes) over the full mesh.
+
+| Target | What it is | Triangles | Vertices | Board frame |
+|---|---|---|---|---|
+| ![Sponza flythrough, smooth](../images/render/sponza-full.gif) | **Full**: smooth, one colour per vertex, lit and interpolated | 17375 | 17288 | 58.6 ms |
+| ![Sponza flythrough, lite](../images/render/sponza-lite.gif) | **Lite**: the same bake simplified to about half the triangles | 8670 | 8228 | 46.0 ms |
+| ![Sponza flythrough, flat](../images/render/sponza-flat.gif) | **Flat**: the full mesh's triangles, one colour per face, no gradients | 17375 | 15781 | 45.0 ms |
+| ![Sponza flythrough, depth](../images/render/sponza-depth.gif) | `RASTER_SHOW_DEPTH` over the full mesh | as full | as full | not a target |
+| ![Sponza flythrough, depth tiles](../images/render/sponza-tiles.gif) | `RASTER_SHOW_DEPTH_TILES` over the full mesh | as full | as full | not a target |
+
+The counts are in `sponza_mesh_generated.h`, `sponza_lite_mesh_generated.h`
+and `sponza_flat_mesh_generated.h`. The frame is the mean along the whole
+flythrough, half resolution upscaled and no panel transfer, from
+`autana suite run_sponza_perf_suite` (the `frame_cost` test), recorded
+2026-10-01; rerun it for a current number. The GIFs are made by the doc-images
+workflow ([Render-Harness.md](../tools/Render-Harness.md#images-in-these-docs)).
+
+Where the targets differ, at the pose the GIFs end on: each sheet is the two
+renders and their amplified difference, and the crops below it are the places
+that differ most, the first render above the second, enlarged.
+
+![Full against lite](../images/render/compare-full-lite.png)
+![Full against lite, the places they differ most](../images/render/compare-full-lite.crops.png)
+
+Lite spends half the triangles, so small shapes merge or drop and edges step;
+the surfaces keep their colour.
+
+![Smooth against flat](../images/render/compare-full-flat.png)
+![Smooth against flat, the places they differ most](../images/render/compare-full-flat.crops.png)
+
+Flat shows each face in one colour, so a curtain's fold reads as bands where
+the smooth mesh blends.
+
 ## Coverage and small triangles
 
 A pixel belongs to a triangle when its centre is inside by the top-left
