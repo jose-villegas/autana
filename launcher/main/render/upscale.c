@@ -127,7 +127,7 @@ upscale_double_rows_pie(const upscale_t* scale, const uint16_t* source, uint16_t
             bottom[x] = pair;
         }
         pie_double_blocks(input + head, top + head, bottom + head, blocks);
-        for (int x = head + blocks * 8; x < scale->source_width; x++) {
+        for (int x = head + (blocks * 8); x < scale->source_width; x++) {
             const uint32_t pair = ((uint32_t)input[x] << 16) | input[x];
             top[x] = pair;
             bottom[x] = pair;
