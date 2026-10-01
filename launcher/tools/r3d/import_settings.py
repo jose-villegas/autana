@@ -232,6 +232,13 @@ def rotation_matrix(degrees):
     return product(ry, product(rx, rz))
 
 
+def placement_matrix(rotation, scale):
+    """Rotation times scale, the 3x3 a placed mesh's model units go through,
+    as rows. The one place the rotation convention is written down."""
+    matrix = rotation_matrix(rotation)
+    return tuple(tuple(matrix[i][j] * scale[j] for j in range(3)) for i in range(3))
+
+
 def rotate(degrees, vector_):
     matrix = rotation_matrix(degrees)
     return [sum(matrix[i][j] * vector_[j] for j in range(3)) for i in range(3)]
@@ -313,8 +320,13 @@ def load_object(value, base, where):
         position=vector(value["position"], f"{where}.position") if "position" in value else [0.0, 0.0, 0.0],
         rotation=vector(value["rotation"], f"{where}.rotation") if "rotation" in value else [0.0, 0.0, 0.0],
         scale=vector(value["scale"], f"{where}.scale") if "scale" in value else [1.0, 1.0, 1.0])
+    if not all(axis > 0 for axis in obj.scale):
+        raise SettingsError(f"{where}.scale must be positive on every axis")
+    obj.matrix = placement_matrix(obj.rotation, obj.scale)
     obj.identity = obj.position == [0.0] * 3 and obj.rotation == [0.0] * 3 and obj.scale == [1.0] * 3
     spot = f"{where}.{kind}"
+    if kind in ("mesh_renderer", "camera"):
+        identifier(obj.name, f"{where}.name")  # the scene table names a symbol after it
     if kind == "mesh_renderer":
         obj.component = load_renderer(value[kind], base, spot)
     elif kind == "light":

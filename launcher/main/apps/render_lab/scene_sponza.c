@@ -31,22 +31,18 @@
 static const char* TAG = "sponza";
 
 static raster_t raster; /* holds its scratch from enter() to exit() */
-static raster_instance_t instance;
 static raster_stats_t stats;
 static uint32_t elapsed_ms;
 static bool rendered; /* update() drew the raster, which frame() has not upscaled yet */
 
-/* Draws the scene's mesh renderer of this name, where the scene places it. */
+/* Draws one of the scene's mesh renderers, where the scene places it. */
 static void
-enter_with(const char* renderer_name) {
+enter_with(const r3d_instance_t* placed) {
     gfx_set_partial_clear(false);
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
 
-    const r3d_scene_renderer_t* placed = r3d_scene_find_renderer(&sponza_scene, renderer_name);
-    assert(placed != NULL);
-    instance = (raster_instance_t){placed->mesh, placed->transform};
     raster = (raster_t){
-        .instances = &instance,
+        .instances = placed,
         .instance_count = 1,
         .width = GFX_WIDTH * 100 / render_lab_scale(),
         .height = GFX_HEIGHT * 100 / render_lab_scale(),
@@ -66,17 +62,17 @@ enter_with(const char* renderer_name) {
 
 static void
 scene_sponza_enter(void) {
-    enter_with("atrium");
+    enter_with(&sponza_scene_atrium);
 }
 
 static void
 scene_sponza_lite_enter(void) {
-    enter_with("atrium_lite");
+    enter_with(&sponza_scene_atrium_lite);
 }
 
 static void
 scene_sponza_flat_enter(void) {
-    enter_with("atrium_flat");
+    enter_with(&sponza_scene_atrium_flat);
 }
 
 static void

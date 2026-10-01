@@ -16,8 +16,8 @@
 #include <stdint.h>
 
 #include "render/camera.h"
+#include "render/r3d_instance.h"
 #include "render/r3d_lit_mesh.h"
-#include "render/r3d_scene.h"
 #include "render/r3d_span.h"
 #include "render/raster.h"
 #include "render/vec3f.h"
@@ -46,12 +46,10 @@ typedef struct {
 /* Turned for the viewport's quarter as viewport.h maps it. */
 void r3d_lens_init(r3d_lens_t* lens, const camera_t* camera, int position_scale, viewport_t viewport);
 
-/* The same for a mesh placed by `placement`, a transform with positive
- * scale: the lens matrix carries the mesh into the world first, so culling,
- * transform and clipping see it where it sits. NULL, or the identity, is
- * r3d_lens_init() exactly. */
-void r3d_lens_init_placed(r3d_lens_t* lens, const camera_t* camera, const r3d_transform_t* placement,
-                          int position_scale, viewport_t viewport);
+/* Carries the mesh into the world first: the lens matrix is composed with the
+ * placement, so culling, transform and clipping see the mesh where it sits.
+ * Call it after r3d_lens_init(), with the position scale of the mesh drawn. */
+void r3d_lens_place(r3d_lens_t* lens, const r3d_placement_t* placement, int position_scale);
 
 /* Walks the node tree and writes the clusters any part of which may be on
  * screen, roughly nearest first, returning how many. `out` holds

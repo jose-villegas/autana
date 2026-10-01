@@ -2,8 +2,8 @@
 
 A scene file is a scenario: a list of **objects**, each with one transform and
 one component, plus the settings of the light that fills the air and the tone
-map. It is the file the offline importer is run on: it bakes the lit meshes the
-scenario places ([Mesh-Import.md](Mesh-Import.md)) and then writes the
+map. The offline importer is run on it to bake the lit meshes the scenario places
+([Mesh-Import.md](Mesh-Import.md)), and `scene_table.py` writes the
 [scene table](#the-scene-table) a scene reads at run time to know what to draw
 and where.
 
@@ -64,7 +64,7 @@ component table.
 |---|---|
 | `position` | Where the object is, in model units. Default `[0, 0, 0]`. |
 | `rotation` | `[pitch, yaw, roll]` in degrees, right-handed: roll about z, then pitch about x, then yaw about y. Default `[0, 0, 0]`. |
-| `scale` | Per-axis scale. Default `[1, 1, 1]`. |
+| `scale` | Per-axis scale, positive on every axis (the importer rejects zero and negative). Default `[1, 1, 1]`. |
 
 | Component | Fields | What it is |
 |---|---|---|
@@ -73,10 +73,13 @@ component table.
 | `camera` | `half_fov_short_tan`, `near_z`, `region`, `path` | The view: the lens, the box the camera moves within (`region`, a `min` and `max`), and optionally the glTF animation it flies. `path = { tracks, node }` names the tracks `tools/anim/bake_tracks.py` baked under the prefix `tracks`, for the glTF node `node`. Without a path the camera sits at its transform, looking down its own -Z. A scene has at most one camera. |
 
 Sky and ambient light are properties of the scene, not objects, and are the
-two settings tables `[sky]` and `[ambient]`. The lights a bake sees are the
+two settings tables `[sky]` (`color`, `intensity`, `rays`: that many random
+directions per point over the hemisphere) and `[ambient]` (`color`,
+`intensity`: a constant added everywhere). The lights a bake sees are the
 directional light objects in file order, then the sky, then the ambient; the
 order does not change the lit result except in which random rays each light
-draws.
+draws. A double-sided face turns to the side the directional lights, summed by
+intensity, shine on.
 
 ## What the scene must carry
 
@@ -90,19 +93,32 @@ A scene must carry what a placed mesh reads, and may not carry what none
 reads. Baking a mesh reads the lights of the scene that requests it, so a mesh
 with a scene-dependent step belongs to one scene: two scenes may not bake the
 same output name, and a second scene that places it bakes its own variant under
-another name. A mesh with a scene-dependent step is baked where it sits, so
-its object's transform must be identity; a mesh without one may be placed
-anywhere and by many scenes.
+another name. A mesh with a scene-dependent step (`process.light` or
+`process.visibility`) is baked where it sits, so its object's transform must be
+identity; a mesh without one may be placed anywhere and by many scenes.
 
 ## The scene table
 
-Running the importer on a scene file also writes `<scene>_scene_generated.c`
-and `.h`, the const `r3d_scene_t` named `<scene>_scene` from
-[`render/r3d_scene.h`](../../launcher/main/render/r3d_scene.h): one entry per
-mesh renderer (its name, transform and mesh), per directional light and for
-the camera, with the track symbols of its path. The importer's own `--mesh`
-runs write no table. A scene finds an object by name, hands a renderer's mesh
-and transform to a raster as a `raster_instance_t`, and asks
-`r3d_scene_camera_at()` for the camera at a time, so what to draw and where
-lives in the scene file rather than in code. Sky, ambient and the tone map are
-bake settings and are not in the table.
+`python launcher/tools/r3d/scene_table.py SCENE.scene.toml` reads the scene file
+and its import files (it needs no numeric environment and bakes nothing) and
+writes `<scene>_scene_generated.c` and `.h` beside the meshes, which must all
+be written to one output directory. A test fails when the committed table is not
+what its scene file generates.
+
+The table holds only what the device reads, as const data from
+[`render/r3d_scene.h`](../../launcher/main/render/r3d_scene.h) and
+[`render/r3d_instance.h`](../../launcher/main/render/r3d_instance.h):
+
+- one `r3d_instance_t` per mesh renderer, named `<scene>_<object>`, so a
+  misspelt object fails at link time, with its mesh and its placement baked
+  as a 3x3 (rotation times scale) and a position, or no placement for the
+  identity;
+- the camera, `r3d_scene_camera_t` named `<scene>_<object>`: its lens, its
+  placement (a fixed camera looks down the placement's -Z column) and the
+  symbols of its path.
+
+Lights, the camera region, sky, ambient and the tone map are bake settings and
+stay offline. The rotation convention above is written only in the importer, so
+the device does no trigonometry. A scene hands an instance to a raster, and asks
+`r3d_scene_camera_at()` for the camera at a time, so what to draw and where lives
+in the scene file rather than in code.

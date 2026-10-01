@@ -26,6 +26,7 @@
 #include "apps/render_lab/sponza_flythrough.h"
 #include "apps/render_lab/sponza_lite_mesh_generated.h"
 #include "apps/render_lab/sponza_mesh_generated.h"
+#include "apps/render_lab/sponza_scene_generated.h"
 #include "gfx/gfx.h"
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
@@ -53,10 +54,11 @@ typedef struct {
 } bench_t;
 
 static void
-bench_open(bench_t* b, const r3d_lit_mesh_t* mesh) {
+bench_open(bench_t* b, const r3d_instance_t* instance) {
     b->panel = heap_caps_malloc(sizeof(gfx_color_t) * PANEL_PIXELS, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     b->raster = (raster_t){
-        .mesh = mesh,
+        .instances = instance,
+        .instance_count = 1,
         .width = render_width(),
         .height = render_height(),
         .destination = b->panel,
@@ -92,7 +94,7 @@ clear_and_draw(const raster_t* raster, const r3d_lens_t* lens, int visible) {
     }
     memset(b.depth, 0, pixels * sizeof(*b.depth));
     const r3d_span_target_t target = {b.color, b.depth, raster->width, 0, raster->height};
-    r3d_pipeline_draw(raster->mesh, lens, b.visible, visible, b.cs, b.rows, &target);
+    r3d_pipeline_draw(raster->instances[0].mesh, lens, b.visible, visible, b.cs, b.rows, &target);
 }
 
 typedef struct {
@@ -147,7 +149,7 @@ report_core_contention(const raster_t* raster, const r3d_lens_t* lens, int visib
 void
 test_sponza_draw_stage_breakdown(void) {
     bench_t b;
-    bench_open(&b, &sponza_mesh);
+    bench_open(&b, &sponza_scene_atrium);
     const r3d_lens_t lens = view_at(&sponza_mesh, 0);
     const r3d_pipeline_buffers_t parts = r3d_pipeline_carve(&b.raster);
     const int visible = r3d_pipeline_cull(&sponza_mesh, &lens, parts.visible);
@@ -178,9 +180,10 @@ test_sponza_draw_stage_breakdown(void) {
 }
 
 static void
-report_frame_cost(const char* label, const r3d_lit_mesh_t* mesh) {
+report_frame_cost(const char* label, const r3d_instance_t* instance) {
+    const r3d_lit_mesh_t* mesh = instance->mesh;
     bench_t b;
-    bench_open(&b, mesh);
+    bench_open(&b, instance);
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===", label, mesh->triangle_count,
              mesh->vertex_count, mesh->cluster_count, render_width(), render_height());
     const uint32_t period = sponza_flythrough_period_ms();
@@ -206,9 +209,9 @@ report_frame_cost(const char* label, const r3d_lit_mesh_t* mesh) {
 
 void
 test_sponza_frame_cost_along_the_flythrough(void) {
-    report_frame_cost("sponza", &sponza_mesh);
-    report_frame_cost("lite", &sponza_lite_mesh);
-    report_frame_cost("flat", &sponza_flat_mesh);
+    report_frame_cost("sponza", &sponza_scene_atrium);
+    report_frame_cost("lite", &sponza_scene_atrium_lite);
+    report_frame_cost("flat", &sponza_scene_atrium_flat);
     TEST_PASS();
 }
 

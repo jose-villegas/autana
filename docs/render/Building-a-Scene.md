@@ -40,10 +40,18 @@ name = "hall"                    # the mesh's symbol prefix: hall_mesh
 
 With only these it imports the mesh as authored: its triangles, with each
 vertex coloured by its material's albedo and no light. That is enough for a
-mesh that needs no lighting; turn a step on by adding its `[process.*]` table
-when it does (`simplify` to a triangle budget, `light` to bake a sun and sky
-into the colours, `visibility` to drop what the camera can never see). The
-steps, their order and every field are in
+mesh that needs no lighting. This walkthrough lights it, so add the step that
+bakes the scene's light into the colours:
+
+```toml
+[process.light]
+ray_offset = 0.5
+colour_merge_step = 6
+```
+
+Other steps are opt-in the same way: `simplify` to a triangle budget,
+`visibility` to drop what the camera can never see (it needs the camera's
+`region`). The steps, their order and every field are in
 [Mesh-Import.md](Mesh-Import.md#import-file).
 
 ## 2. Place it in a scene
@@ -60,9 +68,9 @@ mesh = "hall.import.toml"
 ```
 
 Add more mesh renderers to place more meshes; give one a `position`, a
-`rotation` in degrees or a `scale` to move it. A mesh that bakes light must sit at
-the identity transform, because its light is baked where it stands
-([Scene-Files.md](Scene-Files.md)).
+`rotation` in degrees or a positive `scale` to move it. A mesh with a light or
+visibility step must sit at the identity transform, because it is baked where
+it stands ([Scene-Files.md](Scene-Files.md)); one without may go anywhere.
 
 ## 3. Light it
 
@@ -96,9 +104,9 @@ rays = 8
 
 ## 4. Add a camera
 
-The camera object has the lens, the box it moves within (what `visibility`
-culls against) and, if it flies a glTF animation, the tracks that
-`tools/anim/bake_tracks.py` baked:
+The camera object has the lens and, if it flies a glTF animation, the tracks
+that `tools/anim/bake_tracks.py` baked. A `region` (the box `visibility` culls
+against) belongs here only when a placed mesh has that step:
 
 ```toml
 [[objects]]
@@ -107,48 +115,56 @@ name = "camera"
 [objects.camera]
 half_fov_short_tan = 0.62
 near_z = 6.0
-region = { min = [-1400.0, 20.0, -620.0], max = [1270.0, 1250.0, 550.0] }
+path = { tracks = "flight", node = "camera" }
 ```
 
 ## 5. Bake
 
 ```sh
 python launcher/tools/r3d/mesh_import.py path/to/hall.scene.toml
+python launcher/tools/r3d/scene_table.py path/to/hall.scene.toml
 ```
 
-writes the lit mesh for each renderer and then the `hall` scene table, the
-const data a scene reads. A mesh with no light or visibility step can also be baked on its
-own, from its import file. Generated files are committed as written and never
-reformatted.
+The first bakes the lit mesh for each renderer; the second writes the `hall`
+scene table, the const data a scene reads (the `r3d_instance_t` of each mesh
+renderer and the camera). A mesh with no light or visibility step can also be
+baked on its own, from its import file. Generated files are committed as
+written and never reformatted.
 
 ## 6. Draw it
 
-A scene reads the table instead of hard-coding what to draw. It builds a
-`raster_instance_t` from each mesh renderer it wants, gives the raster a
-scratch block of PSRAM, and each frame asks the camera object where it is:
+A scene reads the table instead of hard-coding what to draw. The generated
+header declares one `r3d_instance_t` per mesh renderer, named after its object,
+and the camera; a scene gives the raster the instances it wants and a scratch
+block of PSRAM, and each frame asks the camera where it is at the time so far:
 
 ```c
 #include "hall_scene_generated.h"
 #include "render/r3d.h"
 
-static raster_instance_t instances[2];
 static raster_t raster;
+static uint32_t elapsed_ms;
 
 static void
 enter(void) {
-    for (int i = 0; i < hall_scene.renderer_count; i++) {
-        instances[i] = (raster_instance_t){hall_scene.renderers[i].mesh, hall_scene.renderers[i].transform};
+    /* One entry per mesh renderer in the scene file. */
+    static const r3d_instance_t* const placed[] = {&hall_scene_hall, &hall_scene_statue};
+    static r3d_instance_t instances[sizeof placed / sizeof placed[0]];
+    for (size_t i = 0; i < sizeof placed / sizeof placed[0]; i++) {
+        instances[i] = *placed[i];
     }
-    raster = (raster_t){.instances = instances, .instance_count = hall_scene.renderer_count,
+    raster = (raster_t){.instances = instances, .instance_count = (int)(sizeof placed / sizeof placed[0]),
                         .width = 184, .height = 224, .clear = sky_colour,
                         .destination = gfx_framebuffer(), .destination_width = GFX_WIDTH,
                         .destination_height = GFX_HEIGHT};
     raster.scratch = heap_caps_malloc(raster_scratch_bytes(&raster), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    elapsed_ms = 0;
 }
 
 static void
-update(uint32_t elapsed_ms) {
-    const camera_t camera = r3d_scene_camera_at(hall_scene.camera, elapsed_ms);
+update(uint32_t dt_ms) {
+    elapsed_ms += dt_ms;
+    const camera_t camera = r3d_scene_camera_at(&hall_scene_camera, elapsed_ms);
     raster_draw(&raster, &camera, display_shell_quarter());
 }
 ```
@@ -165,4 +181,4 @@ for the [render harness](../tools/Render-Harness.md#declaring-a-scene).
 - A host suite that draws instances at transforms and checks where they appear
   is `launcher/test/suites/suite_r3d_scene.c`; copy its quad meshes to test your
   own placement.
-- Regenerating the committed meshes must change only their banners: diff them.
+- After a change to the tools, regenerating the committed meshes must change only their banners: diff them.

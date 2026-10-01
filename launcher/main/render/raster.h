@@ -1,9 +1,8 @@
 /*
- * raster: one r3d_lit_mesh_t drawn through a camera on both cores into a
+ * raster: r3d_instance_t meshes drawn through a camera on both cores into a
  * scratch block the caller hands it, then upscaled into a destination
- * picture. On a host, or with core 1 busy, the second half runs inline.
- * Rendering at half the destination's size quarters the pixels and halves
- * the rows and spans.
+ * picture. One mesh is a count of one. Rendering at half the destination's
+ * size quarters the pixels and halves the rows and spans.
  */
 #pragma once
 
@@ -11,24 +10,15 @@
 #include <stdint.h>
 
 #include "render/camera.h"
-#include "render/r3d_lit_mesh.h"
-#include "render/r3d_scene.h"
+#include "render/r3d_instance.h"
 #include "render/upscale.h"
-
-/* One mesh drawn at a transform, as a scene places it. */
-typedef struct {
-    const r3d_lit_mesh_t* mesh;
-    r3d_transform_t transform;
-} raster_instance_t;
 
 /* The caller's options; the scratch block holds everything else. */
 typedef struct {
-    const r3d_lit_mesh_t* mesh; /* the one mesh drawn, unless there are instances */
-    /* When instance_count > 0 the raster draws these, each at its transform,
-     * into the one picture, nearer ones covering farther ones whichever is
-     * drawn first, and `mesh` is not used. The scratch block holds room for
-     * the largest of them. */
-    const raster_instance_t* instances;
+    /* What is drawn: each instance in turn into the one picture, nearer ones
+     * covering farther ones whichever is drawn first. One mesh is a count of
+     * one. The scratch block holds room for the largest. */
+    const r3d_instance_t* instances;
     int instance_count;
     int width, height; /* the size drawn at */
     uint16_t clear;    /* in the pixel format r3d_span.h describes */

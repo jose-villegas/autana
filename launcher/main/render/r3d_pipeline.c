@@ -50,69 +50,19 @@ r3d_lens_init(r3d_lens_t* lens, const camera_t* camera, int position_scale, view
     lens->height = viewport.height;
 }
 
-typedef struct {
-    float r[3][3]; /* rows of Ry(yaw) * Rx(pitch) * Rz(roll) */
-    vec3f_t scale, position;
-} placement_t;
-
-static placement_t
-placement_of(const r3d_transform_t* transform) {
-    const float to_radians = 0.017453292519943295F;
-    const float sx = sinf(transform->rotation.x * to_radians);
-    const float cx = cosf(transform->rotation.x * to_radians);
-    const float sy = sinf(transform->rotation.y * to_radians);
-    const float cy = cosf(transform->rotation.y * to_radians);
-    const float sz = sinf(transform->rotation.z * to_radians);
-    const float cz = cosf(transform->rotation.z * to_radians);
-    placement_t p = {.scale = transform->scale, .position = transform->position};
-    /* Ry * (Rx * Rz), multiplied out. */
-    p.r[0][0] = (cy * cz) + (sy * sx * sz);
-    p.r[0][1] = (-cy * sz) + (sy * sx * cz);
-    p.r[0][2] = sy * cx;
-    p.r[1][0] = cx * sz;
-    p.r[1][1] = cx * cz;
-    p.r[1][2] = -sx;
-    p.r[2][0] = (-sy * cz) + (cy * sx * sz);
-    p.r[2][1] = (sy * sz) + (cy * sx * cz);
-    p.r[2][2] = cy * cx;
-    return p;
-}
-
-/* A row of the lens matrix for a placed mesh: the axis pulled back through
- * the placement's rotation and scaled per axis, and the offset taken from
- * the placement's position. */
-static void
-set_row_placed(float row[4], vec3f_t axis, vec3f_t eye, float scale, float ticks_to_units, const placement_t* p) {
-    const float back[3] = {
-        (axis.x * p->r[0][0]) + (axis.y * p->r[1][0]) + (axis.z * p->r[2][0]),
-        (axis.x * p->r[0][1]) + (axis.y * p->r[1][1]) + (axis.z * p->r[2][1]),
-        (axis.x * p->r[0][2]) + (axis.y * p->r[1][2]) + (axis.z * p->r[2][2]),
-    };
-    row[0] = back[0] * p->scale.x * scale * ticks_to_units;
-    row[1] = back[1] * p->scale.y * scale * ticks_to_units;
-    row[2] = back[2] * p->scale.z * scale * ticks_to_units;
-    row[3] = vec3f_dot(axis, vec3f_sub(p->position, eye)) * scale;
-}
-
 void
-r3d_lens_init_placed(r3d_lens_t* lens, const camera_t* camera, const r3d_transform_t* placement, int position_scale,
-                     viewport_t viewport) {
-    r3d_lens_init(lens, camera, position_scale, viewport);
-    if (placement == NULL || r3d_transform_is_identity(placement)) {
-        return;
+r3d_lens_place(r3d_lens_t* lens, const r3d_placement_t* placement, int position_scale) {
+    const float to_ticks = (float)position_scale;
+    const vec3f_t p = placement->position;
+    for (int k = 0; k < 3; k++) {
+        const float c0 = lens->m[k][0];
+        const float c1 = lens->m[k][1];
+        const float c2 = lens->m[k][2];
+        for (int j = 0; j < 3; j++) {
+            lens->m[k][j] = (c0 * placement->m[0][j]) + (c1 * placement->m[1][j]) + (c2 * placement->m[2][j]);
+        }
+        lens->m[k][3] += to_ticks * ((c0 * p.x) + (c1 * p.y) + (c2 * p.z));
     }
-    const placement_t p = placement_of(placement);
-    const vec3f_t eye = camera->eye;
-    const vec3f_t f = vec3f_normalize(camera->forward);
-    const vec3f_t right = vec3f_normalize(vec3f_cross(f, (vec3f_t){0.0F, 1.0F, 0.0F}));
-    const vec3f_t down = vec3f_cross(f, right);
-    const int shorter = viewport.width < viewport.height ? viewport.width : viewport.height;
-    const float k = (float)shorter / (2.0F * camera->half_fov_short_tan);
-    const float ticks_to_units = 1.0F / (float)position_scale;
-    const viewport_quarter_axes_t a = viewport_quarter_axes(viewport.quarter);
-    set_row_placed(lens->m[0], upright_step(right, down, a.x_right, a.x_down), eye, k, ticks_to_units, &p);
-    set_row_placed(lens->m[1], upright_step(right, down, a.y_right, a.y_down), eye, k, ticks_to_units, &p);
-    set_row_placed(lens->m[2], f, eye, 1.0F, ticks_to_units, &p);
 }
 
 static inline vec3f_t

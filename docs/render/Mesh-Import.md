@@ -57,8 +57,9 @@ Run `python launcher/tools/r3d/mesh_import.py PATH` from the repository root,
 with `--mesh NAME` for one mesh. `PATH` is either kind of file. An import file
 with no scene-dependent step bakes alone, and its banner names it; one with
 such a step refuses with "needs a scene". A scene file bakes every mesh it
-places, with its own lights, camera region and tone map, then writes the
-[scene table](Scene-Files.md#the-scene-table); its banner names the scene.
+places, with its own lights, camera region and tone map; its banner names
+the scene. The [scene table](Scene-Files.md#the-scene-table) is written by
+`scene_table.py`, apart from the bake.
 `rebake.py` rewrites a generated C mesh's clusters only.
 
 ### Import file

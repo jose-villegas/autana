@@ -5,7 +5,7 @@
 
 PATH is an .import.toml, which bakes alone unless one of its steps needs a
 scene (light, visibility), or a .scene.toml, which bakes every mesh it places
-with its own lights, camera region and tone map, then writes the scene's table. Run from the repository root
+with its own lights, camera region and tone map. Run from the repository root
 after installing tools/r3d/requirements.txt and initializing
 third_party/upstream/meshoptimizer. Every mesh is baked unless one is named.
 """
@@ -38,7 +38,6 @@ from r3d.light import (  # noqa: E402
 )
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
 from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
-from r3d.scene_table import write_scene_table  # noqa: E402
 from r3d.simplify import densify, simplify  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
@@ -185,10 +184,6 @@ def main(argv=None):
     for settings, variant, scene in jobs:
         log(f"mesh {variant.name}")
         bake(settings, variant, scene, path)
-    if path.name.endswith(".scene.toml") and args.mesh is None:
-        banner = ["GENERATED FILE - do not edit.", "", f"    python launcher/tools/r3d/mesh_import.py {path.relative_to(REPO).as_posix()}"]
-        for written in write_scene_table(scene, banner):
-            log(f"wrote {written.name}")
     return 0
 
 

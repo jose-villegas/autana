@@ -1,38 +1,15 @@
 /*
- * r3d_scene: a scenario's objects as the offline importer bakes them from a
- * scene file: mesh renderers with transforms, directional lights, and a
- * camera with the path it flies. The table is const data a scene reads
- * instead of hard-coding what to draw and where.
+ * r3d_scene: the camera of a baked table: its lens, where it stands and the
+ * glTF animation it flies. The importer writes the table as const data, so
+ * what to draw and from where is data. Reads anim/ tracks; the raster does not.
  */
 #pragma once
 
-#include <stdbool.h>
 #include <stdint.h>
 
 #include "anim/anim_track.h"
 #include "render/camera.h"
-#include "render/r3d_lit_mesh.h"
-#include "render/vec3f.h"
-
-/* Euler angles [pitch, yaw, roll] in degrees, right-handed: roll about z,
- * then pitch about x, then yaw about y. A positive scale on every axis. */
-typedef struct {
-    vec3f_t position, rotation, scale;
-} r3d_transform_t;
-
-typedef struct {
-    const char* name;
-    r3d_transform_t transform;
-    const r3d_lit_mesh_t* mesh;
-} r3d_scene_renderer_t;
-
-/* A directional light: the direction toward it is the transform's +Y axis. */
-typedef struct {
-    const char* name;
-    r3d_transform_t transform;
-    vec3f_t color;
-    float intensity, disc_degrees;
-} r3d_scene_light_t;
+#include "render/r3d_instance.h"
 
 /* A glTF camera animation's two tracks and the clip that plays them. */
 typedef struct {
@@ -42,26 +19,10 @@ typedef struct {
 } r3d_scene_path_t;
 
 typedef struct {
-    const char* name;
-    r3d_transform_t transform; /* the pose when there is no path */
     float half_fov_short_tan, near_z;
-    bool has_region;
-    vec3f_t region_lo, region_hi; /* the box the camera moves within */
-    const r3d_scene_path_t* path; /* NULL for a camera that stays put */
+    const r3d_placement_t* placement; /* where it stands without a path; NULL: the origin, looking down -Z */
+    const r3d_scene_path_t* path;     /* NULL for a camera that stays put */
 } r3d_scene_camera_t;
-
-typedef struct {
-    const r3d_scene_renderer_t* renderers;
-    int renderer_count;
-    const r3d_scene_light_t* lights;
-    int light_count;
-    const r3d_scene_camera_t* camera; /* NULL when the scene has none */
-} r3d_scene_t;
-
-bool r3d_transform_is_identity(const r3d_transform_t* transform);
-
-/* The renderer with this object name, or NULL. */
-const r3d_scene_renderer_t* r3d_scene_find_renderer(const r3d_scene_t* scene, const char* name);
 
 /* The loop's length, or 0 for a camera that stays put. */
 uint32_t r3d_scene_camera_period_ms(const r3d_scene_camera_t* camera);

@@ -77,7 +77,7 @@ run_split(job_fn_t fn, slice_t first_half, slice_t second_half) {
 
 int
 raster_vertex_capacity(const raster_t* raster) {
-    int most = raster->instance_count > 0 ? 0 : raster->mesh->vertex_count;
+    int most = 0;
     for (int i = 0; i < raster->instance_count; i++) {
         most = raster->instances[i].mesh->vertex_count > most ? raster->instances[i].mesh->vertex_count : most;
     }
@@ -86,7 +86,7 @@ raster_vertex_capacity(const raster_t* raster) {
 
 int
 raster_cluster_capacity(const raster_t* raster) {
-    int most = raster->instance_count > 0 ? 0 : raster->mesh->cluster_count;
+    int most = 0;
     for (int i = 0; i < raster->instance_count; i++) {
         most = raster->instances[i].mesh->cluster_count > most ? raster->instances[i].mesh->cluster_count : most;
     }
@@ -103,12 +103,15 @@ raster_scratch_bytes(const raster_t* raster) {
 }
 
 static void
-draw_mesh(const raster_t* raster, const r3d_lit_mesh_t* mesh, const r3d_transform_t* placement, const camera_t* camera,
-          int quarter, bool clear, raster_stats_t* stats) {
+draw_instance(const raster_t* raster, const r3d_instance_t* instance, const camera_t* camera, int quarter, bool clear,
+              raster_stats_t* stats) {
+    const r3d_lit_mesh_t* mesh = instance->mesh;
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     r3d_lens_t lens;
-    r3d_lens_init_placed(&lens, camera, placement, mesh->position_scale,
-                         (viewport_t){raster->width, raster->height, quarter});
+    r3d_lens_init(&lens, camera, mesh->position_scale, (viewport_t){raster->width, raster->height, quarter});
+    if (instance->placement != NULL) {
+        r3d_lens_place(&lens, instance->placement, mesh->position_scale);
+    }
     const int visible = r3d_pipeline_cull(mesh, &lens, b.visible);
     stats->clusters += visible;
     for (int i = 0; i < visible; i++) {
@@ -127,12 +130,8 @@ draw_mesh(const raster_t* raster, const r3d_lit_mesh_t* mesh, const r3d_transfor
 raster_stats_t
 raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
     raster_stats_t stats = {0, 0};
-    if (raster->instance_count == 0) {
-        draw_mesh(raster, raster->mesh, NULL, camera, quarter, true, &stats);
-        return stats;
-    }
     for (int i = 0; i < raster->instance_count; i++) {
-        draw_mesh(raster, raster->instances[i].mesh, &raster->instances[i].transform, camera, quarter, i == 0, &stats);
+        draw_instance(raster, &raster->instances[i], camera, quarter, i == 0, &stats);
     }
     return stats;
 }
