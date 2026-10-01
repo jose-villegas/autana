@@ -37,6 +37,15 @@ fx_round_shift(int64_t v, int shift) {
     return v >= 0 ? (v + half) >> shift : -(((-v) + half) >> shift);
 }
 
+/* fx_round_shift() for a sum that already fits 32 bits, so a 32-bit core
+ * does no 64-bit arithmetic. The caller guarantees |v| + half does not
+ * overflow int32. */
+static inline int32_t
+fx_round_shift32(int32_t v, int shift) {
+    const int32_t half = (int32_t)1 << (shift - 1);
+    return v >= 0 ? (v + half) >> shift : -((-v + half) >> shift);
+}
+
 /* Multiply two fixed-point numbers in Q(*.shift) and shift the product back
  * down by `shift`, flooring toward negative infinity (see this header's top
  * comment on why that is not the same as truncating toward zero). */
