@@ -22,8 +22,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d.geometry import corner_normals
 from r3d.import_settings import load_scene
-from r3d.light import drop_masked, light, to_srgb8
+from r3d.light import albedo_from_uv, drop_masked, light, to_srgb8
 from r3d.mesh_import import load_source
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
+
+from render_compare import expand_565  # noqa: E402
 
 
 def read_poses(path):
@@ -93,12 +97,8 @@ def hit_albedo(source, hits, bary):
     for index in np.unique(material):
         chosen = material == index
         kd = source.materials.get(source.names[index], {}).get("Kd", (1.0, 1.0, 1.0))
-        texture = source.textures[index]
-        if texture is None:
-            out[chosen] = np.array(kd) ** 2.2
-        else:
-            uv = (source.uv[source.tri_t[hits[chosen]]] * bary[chosen, :, None]).sum(axis=1)
-            out[chosen] = texture.sample(uv, np.zeros(len(uv)))[:, :3] * np.array(kd)
+        uv = (source.uv[source.tri_t[hits[chosen]]] * bary[chosen, :, None]).sum(axis=1)
+        out[chosen] = albedo_from_uv(source.textures[index], kd, uv, np.zeros(len(uv)))
     return out
 
 
@@ -118,13 +118,6 @@ def render_linear(source, settings, scene, pose, width, height, lens, samples=4)
                          np.random.default_rng(settings.seed), shared_sky_rays=0)
         linear[rays] = albedo * radiance
     return linear.reshape(height, width, samples * samples, 3).mean(axis=2)
-
-
-def rgb565_picture(linear, tonemap_white):
-    """Tone-map, encode and return the RGB565 values expanded to RGB PNG pixels."""
-    rgb = to_srgb8(linear, tonemap_white).astype(np.uint8)
-    r, g, b = rgb[..., 0] >> 3, rgb[..., 1] >> 2, rgb[..., 2] >> 3
-    return np.stack([r << 3 | r >> 2, g << 2 | g >> 4, b << 3 | b >> 2], axis=2)
 
 
 def parse_rgb(text):
@@ -183,7 +176,7 @@ def main(argv=None):
         if args.clear is not None:
             linear[~linear.any(axis=2)] = (args.clear / 255.0) ** 2.2
         np.save(out / ("%03d.linear.npy" % index), linear)
-        Image.fromarray(rgb565_picture(linear, scene.tonemap_white)).save(out / ("%03d.png" % index))
+        Image.fromarray(expand_565(to_srgb8(linear, scene.tonemap_white).astype(np.uint8))).save(out / ("%03d.png" % index))
     return 0
 
 

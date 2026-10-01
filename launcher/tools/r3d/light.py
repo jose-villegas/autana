@@ -87,11 +87,19 @@ def unshadowed_count(intersector, origin, directions):
     return count
 
 
+def albedo_from_uv(texture, kd, uv, lod):
+    """Linear albedo at texture coordinates: the material colour alone for an
+    untextured material, else the texture sampled at `lod` times the colour."""
+    if texture is None:
+        return np.tile(np.array(kd) ** 2.2, (len(uv), 1))
+    return texture.sample(uv, lod)[:, :3] * np.array(kd)
+
+
 def sample_albedo(points, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd):
     sel = np.nonzero(tri_m == m)[0]
     tex = textures[m]
     if tex is None:
-        return np.tile(np.array(kd) ** 2.2, (len(points), 1))
+        return albedo_from_uv(None, kd, points, None)
     a, b, c = p[tri_v[sel, 0]], p[tri_v[sel, 1]], p[tri_v[sel, 2]]
     tree = cKDTree((a + b + c) / 3)
     k = min(16, len(sel))
@@ -116,7 +124,7 @@ def sample_albedo(points, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd):
     texel_area = 0.5 * np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]) * w * h
     texels_per_unit = np.sqrt(texel_area / np.maximum(world_area, 1e-9))
     lod = np.log2(np.maximum(spacing * texels_per_unit, 1.0))
-    return tex.sample(tuv, lod)[:, :3] * np.array(kd)
+    return albedo_from_uv(tex, kd, tuv, lod)
 
 
 def sun_basis(direction):
