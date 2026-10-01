@@ -222,9 +222,14 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, rng, s
     return radiance
 
 
+def encode_srgb8(linear):
+    """Linear light to 8-bit, with a 1/2.2 gamma (not the piecewise sRGB curve)."""
+    return np.clip(np.round(255.0 * np.clip(linear, 0, 1) ** (1 / 2.2)), 0, 255).astype(np.int64)
+
+
 def to_srgb8(linear, tonemap_white):
-    mapped = linear / (1.0 + linear * tonemap_white)
-    return np.clip(np.round(255.0 * np.clip(mapped, 0, 1) ** (1 / 2.2)), 0, 255).astype(np.int64)
+    """Lit radiance to 8-bit: the tone map, then the gamma."""
+    return encode_srgb8(linear / (1.0 + linear * tonemap_white))
 
 
 def face_samples(count):

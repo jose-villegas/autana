@@ -1,4 +1,4 @@
-"""Reads and checks a mesh's import-settings file and its scene file.
+"""Reads and checks a mesh's import-settings file and a scene file that places meshes.
 
 Standard library only, so a settings error is reported, and tested, without the
 numeric environment the bake itself needs. Every table is closed: a key nobody
@@ -11,6 +11,9 @@ import tomllib
 from types import SimpleNamespace
 
 RESERVED_LIGHTS = ("point", "spot")
+# Placement and spawn have no consumer yet; the scene loader will read them.
+RESERVED_RENDERER_KEYS = ("position", "rotation", "scale")
+RESERVED_SCENE_KEYS = ("spawn",)
 
 # The one declaration of each light type's fields; light.py pairs each with
 # the function that bakes it.
@@ -100,22 +103,6 @@ def load_light(value, where):
     return light
 
 
-def load_scene(path):
-    """The lights, the camera region the visibility cull samples and the tonemap."""
-    with open(path, "rb") as source:
-        scene = tomllib.load(source)
-    check_keys(scene, ("lights", "camera_region", "tonemap_white"), "scene")
-    lights = scene["lights"]
-    if not isinstance(lights, list):
-        raise SettingsError("scene.lights must be an array")
-    region = scene["camera_region"]
-    check_keys(region, ("min", "max"), "scene.camera_region")
-    return SimpleNamespace(
-        lights=[load_light(light, f"scene.lights[{index}]") for index, light in enumerate(lights)],
-        lo=vector(region["min"], "scene.camera_region.min"), hi=vector(region["max"], "scene.camera_region.max"),
-        tonemap_white=number(scene["tonemap_white"], "scene.tonemap_white"))
-
-
 def face_sample_options(value, where):
     """(samples, min, max, area): a count per face, or "auto" from min to max
     with one sample per `area` of face (None for the mesh's median face)."""
@@ -137,61 +124,169 @@ def face_sample_options(value, where):
     return "auto", minimum, maximum, None if area == "median" else float(area)
 
 
-def load_variant(value, where):
-    check_keys(value, ("name", "flat", "triangles"), where, optional=("face_samples",))
-    flat = boolean(value["flat"], f"{where}.flat")
-    variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), flat=flat, face_samples=None,
-                              triangles=count(value["triangles"], f"{where}.triangles"))
-    if flat:
-        if "face_samples" not in value:
-            raise SettingsError(f"{where}.face_samples is required for a flat variant")
+def load_variant(value, process, where):
+    check_keys(value, ("name",), where, optional=("triangles", "face_samples"))
+    variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None, face_samples=None)
+    if process.simplify:
+        if "triangles" not in value:
+            raise SettingsError(f"{where}.triangles is required when process.simplify is present")
+        variant.triangles = count(value["triangles"], f"{where}.triangles")
+    elif "triangles" in value:
+        raise SettingsError(f"{where}.triangles needs process.simplify")
+    if "face_samples" in value:
+        if not process.light:
+            raise SettingsError(f"{where}.face_samples needs process.light")
         variant.face_samples = face_sample_options(value["face_samples"], f"{where}.face_samples")
-    elif "face_samples" in value:
-        raise SettingsError(f"{where}.face_samples applies to a flat variant only")
     return variant
 
 
+def load_process(process):
+    """The opt-in steps: a step runs when its table is present."""
+    check_keys(process, (), "process", optional=("seed", "alpha_mask", "visibility", "thin", "light", "simplify"))
+    steps = SimpleNamespace(seed=0, alpha_keep=None, visibility=None, thin=None, light=None, simplify=None)
+    if "alpha_mask" in process:
+        check_keys(process["alpha_mask"], ("keep_alpha",), "process.alpha_mask")
+        steps.alpha_keep = number(process["alpha_mask"]["keep_alpha"], "process.alpha_mask.keep_alpha")
+    if "visibility" in process:
+        check_keys(process["visibility"], ("rounds",), "process.visibility")
+        steps.visibility = SimpleNamespace(rounds=count(process["visibility"]["rounds"], "process.visibility.rounds"))
+    if "thin" in process:
+        check_keys(process["thin"], ("material", "keep"), "process.thin")
+        steps.thin = SimpleNamespace(material=text(process["thin"]["material"], "process.thin.material"),
+                                     keep=number(process["thin"]["keep"], "process.thin.keep"))
+    if "light" in process:
+        table = process["light"]
+        check_keys(table, ("ray_offset", "colour_merge_step"), "process.light", optional=("flat_sky_rays",))
+        steps.light = SimpleNamespace(
+            ray_offset=number(table["ray_offset"], "process.light.ray_offset"),
+            colour_merge_step=count(table["colour_merge_step"], "process.light.colour_merge_step"),
+            flat_sky_rays=count(table["flat_sky_rays"], "process.light.flat_sky_rays") if "flat_sky_rays" in table else None)
+    if "simplify" in process:
+        table = process["simplify"]
+        check_keys(table, ("dense_edge", "props", "props_share", "seal_seams"), "process.simplify")
+        steps.simplify = SimpleNamespace(
+            dense_edge=number(table["dense_edge"], "process.simplify.dense_edge"),
+            props=set(strings(table["props"], "process.simplify.props")),
+            props_share=number(table["props_share"], "process.simplify.props_share"),
+            seal_seams=boolean(table["seal_seams"], "process.simplify.seal_seams"))
+    if "seed" in process:
+        if not (steps.visibility or steps.thin or steps.light):
+            raise SettingsError("process.seed needs a step that draws random rays: visibility, thin or light")
+        steps.seed = integer(process["seed"], "process.seed")
+    return steps
+
+
 def load_import_settings(path):
+    """One mesh asset: its source, output and opt-in processing. With only
+    those, the mesh is imported as authored."""
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as source:
         values = tomllib.load(source)
-    check_keys(values, ("scene", "source", "output", "materials", "options", "variants"), "settings")
+    check_keys(values, ("source", "output"), "settings", optional=("materials", "process", "variants"))
     source = values["source"]
     check_keys(source, ("url", "sha256", "path", "cache", "credit"), "source")
     for name in source:
         text(source[name], f"source.{name}")
-    check_keys(values["output"], ("directory",), "output")
-    materials = values["materials"]
-    check_keys(materials, ("double_sided", "leaf_material", "props"), "materials")
-    options = values["options"]
-    check_keys(options, ("mask_keep_alpha", "visibility_rounds", "leaf_keep", "seed", "ray_offset", "position_scale",
-                         "colour_merge_step", "dense_edge", "props_share", "seal_seams"), "options",
-               optional=("flat_sky_rays",))
-    variants = values["variants"]
-    if not isinstance(variants, list) or not variants:
-        raise SettingsError("variants must be a non-empty array of tables")
-    variants = [load_variant(variant, f"variants[{index}]") for index, variant in enumerate(variants)]
-    names = [variant.name for variant in variants]
-    if len(set(names)) != len(names):
-        raise SettingsError("variants names must be unique")
-    flat = any(variant.flat for variant in variants)
-    if flat and "flat_sky_rays" not in options:
-        raise SettingsError("options.flat_sky_rays is required when a variant is flat")
-    if not flat and "flat_sky_rays" in options:
-        raise SettingsError("options.flat_sky_rays applies to a flat variant only")
-    scene = load_scene(path.parent / text(values["scene"], "scene"))
+    output = values["output"]
+    check_keys(output, ("directory",), "output", optional=("name", "position_scale"))
+    directory = text(output["directory"], "output.directory")
+    materials = values.get("materials", {})
+    check_keys(materials, (), "materials", optional=("double_sided",))
+    steps = load_process(values.get("process", {}))
+    if "variants" in values:
+        variants = values["variants"]
+        if not isinstance(variants, list) or not variants:
+            raise SettingsError("variants must be a non-empty array of tables")
+        if "name" in output:
+            raise SettingsError("output.name is for an import without variants; each variant names its own mesh")
+        variants = [load_variant(variant, steps, f"variants[{index}]") for index, variant in enumerate(variants)]
+        names = [variant.name for variant in variants]
+        if len(set(names)) != len(names):
+            raise SettingsError("variants names must be unique")
+        shapes = {}
+        for variant in variants:
+            shape = (variant.triangles, repr(variant.face_samples))
+            if shape in shapes:
+                raise SettingsError(f"variants {shapes[shape]!r} and {variant.name!r} would produce the same mesh")
+            shapes[shape] = variant.name
+    else:
+        if steps.simplify:
+            raise SettingsError("process.simplify needs variants, each with its triangles budget")
+        variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None, face_samples=None)]
+    flat = any(variant.face_samples for variant in variants)
+    if flat and steps.light.flat_sky_rays is None:
+        raise SettingsError("process.light.flat_sky_rays is required when a variant has face_samples")
+    if steps.light and not flat and steps.light.flat_sky_rays is not None:
+        raise SettingsError("process.light.flat_sky_rays applies to a variant with face_samples only")
     return SimpleNamespace(
-        path=path, source=source, out_dir=(path.parent / values["output"]["directory"]).resolve(), scene=scene,
-        double_sided=set(strings(materials["double_sided"], "materials.double_sided")),
-        props=set(strings(materials["props"], "materials.props")),
-        leaf_material=text(materials["leaf_material"], "materials.leaf_material"),
-        mask_keep_alpha=number(options["mask_keep_alpha"], "options.mask_keep_alpha"),
-        visibility_rounds=count(options["visibility_rounds"], "options.visibility_rounds"),
-        leaf_keep=number(options["leaf_keep"], "options.leaf_keep"), seed=integer(options["seed"], "options.seed"),
-        ray_offset=number(options["ray_offset"], "options.ray_offset"),
-        position_scale=count(options["position_scale"], "options.position_scale"),
-        colour_merge_step=count(options["colour_merge_step"], "options.colour_merge_step"),
-        flat_sky_rays=count(options["flat_sky_rays"], "options.flat_sky_rays") if flat else None,
-        dense_edge=number(options["dense_edge"], "options.dense_edge"),
-        props_share=number(options["props_share"], "options.props_share"),
-        seal_seams=boolean(options["seal_seams"], "options.seal_seams"), variants=variants)
+        path=path, source=source, out_dir=(path.parent / directory).resolve(),
+        position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
+        double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
+        alpha_keep=steps.alpha_keep, visibility=steps.visibility, thin=steps.thin, light=steps.light,
+        simplify=steps.simplify, scene_dependent=bool(steps.light or steps.visibility), named=("variants" in values),
+        variants=variants)
+
+
+def load_renderer(value, base, where):
+    if isinstance(value, dict):
+        for name in RESERVED_RENDERER_KEYS:
+            if name in value:
+                raise SettingsError(f"{where}.{name} is reserved for the scene loader")
+    check_keys(value, ("mesh",), where, optional=("variant",))
+    path = (base / text(value["mesh"], f"{where}.mesh")).resolve()
+    if not path.is_file():
+        raise SettingsError(f"{where}.mesh {value['mesh']!r} is not a file")
+    settings = load_import_settings(path)
+    if settings.named:
+        wanted = text(value.get("variant"), f"{where}.variant") if "variant" in value else None
+        if wanted is None:
+            raise SettingsError(f"{where}.variant is required: {value['mesh']!r} has variants")
+        match = [variant for variant in settings.variants if variant.name == wanted]
+        if not match:
+            raise SettingsError(f"{where}.variant {wanted!r} is not in {value['mesh']!r}")
+        variant = match[0]
+    elif "variant" in value:
+        raise SettingsError(f"{where}.variant: {value['mesh']!r} has no variants")
+    else:
+        variant = settings.variants[0]
+    return SimpleNamespace(settings=settings, variant=variant)
+
+
+def load_scene(path):
+    """A scenario: the meshes it places, and the lights, camera region and
+    tone map the scene-dependent steps of those meshes read."""
+    path = pathlib.Path(path).resolve()
+    with open(path, "rb") as source:
+        values = tomllib.load(source)
+    for name in RESERVED_SCENE_KEYS:
+        if name in values:
+            raise SettingsError(f"scene.{name} is reserved for the scene loader")
+    check_keys(values, ("mesh_renderers",), "scene", optional=("lights", "camera_region", "tonemap_white"))
+    renderers = values["mesh_renderers"]
+    if not isinstance(renderers, list) or not renderers:
+        raise SettingsError("scene.mesh_renderers must be a non-empty array of tables")
+    renderers = [load_renderer(renderer, path.parent, f"scene.mesh_renderers[{index}]")
+                 for index, renderer in enumerate(renderers)]
+    names = [renderer.variant.name for renderer in renderers]
+    if len(set(names)) != len(names):
+        raise SettingsError("scene.mesh_renderers place a mesh name twice")
+    lights = values.get("lights", [])
+    if not isinstance(lights, list):
+        raise SettingsError("scene.lights must be an array")
+    region = values.get("camera_region")
+    if region is not None:
+        check_keys(region, ("min", "max"), "scene.camera_region")
+        region = (vector(region["min"], "scene.camera_region.min"), vector(region["max"], "scene.camera_region.max"))
+    scene = SimpleNamespace(
+        path=path, renderers=renderers, region=region,
+        lights=[load_light(light, f"scene.lights[{index}]") for index, light in enumerate(lights)],
+        tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None)
+    lit = any(renderer.settings.light for renderer in renderers)
+    culled = any(renderer.settings.visibility for renderer in renderers)
+    for name, present, needed in (("lights", bool(scene.lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),
+                                  ("camera_region", region is not None, culled)):
+        if needed and not present:
+            raise SettingsError(f"scene.{name} is required: a placed mesh has a step that reads it")
+        if present and not needed:
+            raise SettingsError(f"scene.{name} is read by no placed mesh")
+    return scene
