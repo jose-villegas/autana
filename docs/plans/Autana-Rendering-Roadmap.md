@@ -457,16 +457,12 @@ replace it, chosen by app kind:
    sweep: `tools/sweeps/band_height_sweep.sh`, section 8 decision 2),
    rendered and sent in turn, PSRAM never written. **The ring itself is built**: `gfx_mode_enter()`
    grants `GFX_LAYOUT_BANDS`; `gfx_band_run()` (`gfx/gfx_band_run.h`) hands
-   each dirty band to `draw_band` and sends it, and render_lab's cube scene ports onto it by transforming
-   and depth-sorting the scene once per frame, binning each triangle by its
-   own screen-space row range, and per band drawing only the triangles that
-   overlap it, scissored to that band's rows by a small hook added to
-   small3dlib (`S3L_SCISSOR_Y`, `components/small3dlib/include/small3dlib.h`)
-   rather than the scissored span rasterizer this section otherwise assumes.
-   That rasterizer (section 8 decision 4) is a separate piece, begun in
-   `render/r3d_span.h`; a full-screen z-buffer in PSRAM is not recommended for
-   per-pixel access, and a per-band one arrives with the rasterizer, not
-   with the ring alone.
+   each dirty band to `draw_band` and sends it, and render_lab's cube scene ports onto it by projecting
+   the scene once per frame, binning each triangle by its own screen-space
+   row range, and per band drawing only the triangles that overlap it with
+   the span rasterizer (`render/r3d_span.h`, section 8 decision 4) into a
+   band-tall depth plane. A full-screen z-buffer in PSRAM is not recommended
+   for per-pixel access.
 
 **A measured exception: the lit-mesh raster.** `render/raster.h`
 renders at half resolution into colour and depth targets in PSRAM and

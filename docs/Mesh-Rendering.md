@@ -24,6 +24,7 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | `raster_t` | One mesh drawn at one size into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and a destination picture at least as large |
 | `raster_draw()` | Draws the mesh through a camera, turned for the panel's quarter |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
+| `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows and a depth plane of the same shape, from `render/r3d_span.h` |
 | `raster_show()` | Development builds: shows the depth instead of the colour, as a [view mode](#view-modes) |
 | `ray_camera_t` | A ray tracer's camera: the direction through each physical pixel |
 
@@ -50,7 +51,7 @@ would see the scene mirrored.
 | `ray.h` | The ray camera: the direction through each physical pixel |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
-| `r3d_span.h` | Internal: one depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions |
+| `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions |
 | `r3d_line_camera.h` | A camera for points and segments in small3dlib's fixed point (S3L units and turns): a pose with a roll, and the fit onto a non-square viewport |
 | `r3d_project.h` | Camera-space near clip and perspective projection of those points and segments |
 | `r3d_trs.h` | A float translation, quaternion and scale as one small3dlib transform, for an object an animation track moves |
@@ -58,8 +59,8 @@ would see the scene mirrored.
 The line camera stays apart from `camera_t`: its pose composes with a
 model transform in integers and carries a roll, and it brings small3dlib's
 configuration with it, which `r3d.h` must not impose on a scene. Only
-`r3d_pipeline.h` and `r3d_span.h` are internal: render/ and any suite or
-host tool include them.
+`r3d_pipeline.h` and `r3d_span_internal.h` are internal: render/ and any
+suite or host tool include them.
 
 ## One frame
 

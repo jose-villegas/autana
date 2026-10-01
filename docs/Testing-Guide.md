@@ -706,12 +706,11 @@ buffers. Only the DMA send and strip-bounce aliasing need the device, so an
 app's device-only perf suite times a full-redraw renderer's band-mode path
 against its full-framebuffer path on the same scene.
 
-Still untested by an assertion: small3dlib's per-pixel Gouraud shading:
+Still untested by an assertion: the cube's per-pixel Gouraud shading:
 verified by running the firmware and looking at the screen, since an
 animated 3D scene never settles into the fixed picture a render-harness
 pixel diff needs (`docs/tools/Render-Harness.md`). `ui_launcher.c`'s microui
-integration is driven by `suite_ui_launcher.c`, and small3dlib's row scissor
-by `suite_small3dlib_scissor.c`.
+integration is driven by `suite_ui_launcher.c`.
 
 The framework is Unity, the ThrowTheSwitch C library, no relation to the game
 engine. The host runner uses a vendored copy; the device uses the one ESP-IDF

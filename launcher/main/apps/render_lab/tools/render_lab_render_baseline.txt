@@ -1,9 +1,9 @@
 # What the render_lab scene's renders hash to, one per line.
 # Re-pinned deliberately, after looking at the images:
 #     ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh --update-baseline
-gouraud-landscape b4072a84491ea28f2243d06ecd28254fd61ef5dc24c99021835c7bf702b986c4
-gouraud-landscape-panel 20587f17794ce55552787e522d889e4b89a0f252c4fc2c2d10d53d8fc9424d47
-gouraud-portrait 20587f17794ce55552787e522d889e4b89a0f252c4fc2c2d10d53d8fc9424d47
+gouraud-landscape 16b3142ee987507fe0b6e4191b394e78bb1a8e80dcb26abdc5f8d83a7ac1fb6a
+gouraud-landscape-panel edf4a4f0190865133720466a89d3ed589c735b034ba1de058bcb2cd17746b90f
+gouraud-portrait edf4a4f0190865133720466a89d3ed589c735b034ba1de058bcb2cd17746b90f
 plane-landscape 2116c77a44f790e114be2ffbf3bfda612b80abfff246004edeb7eef1004bfeb0
 plane-portrait 6508765a5ff1ead34679be1c28a3e5bb94c1c61b20ea3407cb1c6082ac8d3640
 sphere-landscape 5b4a013dda8be0feca024b5a1c3a7cb3a4cf14918db876258f5c222288bae088
