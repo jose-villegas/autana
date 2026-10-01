@@ -448,14 +448,14 @@ test_one_lane_alone_aborts_and_the_rest_finishes_the_board(void) {
 /* makespan */
 
 static int
-cs_makespan(const cs_case_t* c, const int* cost) {
+cs_makespan(const cs_case_t* c, const uint16_t* cost) {
     return sand_chunk_makespan(&c->order, c->plan.cols, c->plan.rows, cost);
 }
 
 static void
 cs_check_uniform_makespan(const cs_case_t* c, void* ctx) {
     const int n = c->plan.cols * c->plan.rows;
-    int cost[SAND_CHUNKS_MAX];
+    uint16_t cost[SAND_CHUNKS_MAX];
     (void)ctx;
 
     for (int i = 0; i < SAND_CHUNKS_MAX; i++) {
@@ -481,7 +481,7 @@ cs_on_line(const cs_case_t* c, int cx, int cy) {
 }
 
 static int
-cs_cost_one_line(const cs_case_t* c, int* cost) {
+cs_cost_one_line(const cs_case_t* c, uint16_t* cost) {
     int n = 0;
 
     for (int i = 0; i < SAND_CHUNKS_MAX; i++) {
@@ -503,7 +503,7 @@ cs_cost_one_line(const cs_case_t* c, int* cost) {
  * along it this is one chain and the second lane idles. */
 static void
 cs_check_line_makespan(const cs_case_t* c, void* ctx) {
-    int cost[SAND_CHUNKS_MAX];
+    uint16_t cost[SAND_CHUNKS_MAX];
     const int line_cost = CS_LINE_COST * cs_cost_one_line(c, cost);
     (void)ctx;
 
