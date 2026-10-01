@@ -436,9 +436,14 @@ place_cracked(sand_t* s, int x, int y, size_t at, material_id_t into) {
     place_reacted(s, x, y, at, into);
 }
 
+/* Not a local: 512 bytes here sat under the deepest chain on the main task's
+ * stack. Safe shared, since a lane defers a crack (crack_run_or_defer) and
+ * only the serial sweep or the join ever runs one. */
+static uint16_t crack_frontier[CRACK_MAX];
+
 static void
 crack_run(sand_t* s, int x, int y, int w, int h, material_id_t from, material_id_t into) {
-    uint16_t frontier[CRACK_MAX];
+    uint16_t* const frontier = crack_frontier;
     int top = 0, done = 0;
 
     const size_t first = (size_t)y * (size_t)w + (size_t)x;

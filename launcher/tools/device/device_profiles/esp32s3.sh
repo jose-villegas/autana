@@ -28,6 +28,16 @@ DP_MAIN_TASK_STACK_SOURCE="ESP-IDF esp32s3 default; not overridden in sdkconfig.
 DP_TEST_FRAME_CEILING_BYTES=1024
 DP_TEST_FRAME_CEILING_SOURCE="derived from DP_MAIN_TASK_STACK_BYTES; see check_stack_usage.py"
 
+
+# Deepest call chain a root may reach, "function:bytes" pairs, from the
+# device compiler's own call graph (launcher/tools/quality/stack_chain_gate.py,
+# run on the diagnostics build). The shell's frame loop and every test share
+# the 3,584 bytes above, and a test must end with 512 free; sand_step was
+# measured at 1,216, so the rest is slack for one frame of growth, not for
+# a regression. There is no host budget: the host compiles other frames and
+# picks a different deepest path.
+DP_STACK_CHAIN_BUDGETS_DEVICE="sand_step:1300"
+
 # --- heap ------------------------------------------------------------------
 # Internal heap free after gfx_init() (HEAPMARK). The framebuffer lives in
 # PSRAM on this board (see board.h's BOARD_FRAMEBUFFER_CAPS), so it is not

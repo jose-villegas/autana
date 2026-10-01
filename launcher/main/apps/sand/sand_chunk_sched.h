@@ -84,11 +84,10 @@ bool sand_chunk_step_lane(sand_chunk_sched_t* k, int lane, sand_chunk_fn_t fn, v
  * in the order, so two lanes cannot deadlock. */
 void sand_chunk_run_lane(sand_chunk_sched_t* k, int lane, unsigned spin_limit, sand_chunk_fn_t fn, void* pass);
 
-/* The span two lanes stepping this order take, given a cost per chunk index:
- * a chunk starts at the later of its lane going idle and its lower-ranked
- * neighbours finishing. The runner's own rule with a number in place of the
- * work, so a layout can be ranked without running one. */
-int sand_chunk_makespan(const sand_chunk_order_t* o, int cols, int rows, const int* cost);
+/* The span two lanes take over this order, given a cost per chunk index: the
+ * runner's own rule with a number in place of the work. 16-bit, to keep the
+ * frame small, so a span saturates at UINT16_MAX. */
+int sand_chunk_makespan(const sand_chunk_order_t* o, int cols, int rows, const uint16_t* cost);
 
 /* Walks the whole order on this thread and runs whatever is not done yet.
  * Requires that no lane is still running. On an untouched schedule this is

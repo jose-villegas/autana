@@ -52,6 +52,7 @@ The profile is the source of truth for the ceiling and the device stack size
 
 import argparse
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -161,6 +162,107 @@ def parse_su_file(path):
     return records
 
 
+_NODE_RE = re.compile(r'node: \{ title: "([^"]*)" label: "([^"]*)"')
+_EDGE_RE = re.compile(r'edge: \{ sourcename: "([^"]*)" targetname: "([^"]*)"')
+_BYTES_RE = re.compile(r"(\d+) bytes")
+
+
+def parse_callgraph(ci_paths):
+    """Return (frame bytes by function, callee set by function).
+
+    The .ci files are GCC's -fcallgraph-info=su output, one per translation
+    unit. A function is keyed by its bare name, so a call into another unit
+    joins that unit's frame. Calls through a function pointer are not in the
+    graph at all.
+    """
+    frame = {}
+    calls = {}
+    for path in ci_paths:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+        for m in _NODE_RE.finditer(text):
+            name = m.group(1).rsplit(":", 1)[-1]
+            sized = _BYTES_RE.search(m.group(2))
+            if sized:
+                frame[name] = int(sized.group(1))
+            else:
+                frame.setdefault(name, 0)
+        for m in _EDGE_RE.finditer(text):
+            src = m.group(1).rsplit(":", 1)[-1]
+            dst = m.group(2).rsplit(":", 1)[-1]
+            calls.setdefault(src, set()).add(dst)
+    return frame, calls
+
+
+def deepest_chain(root, frame, calls):
+    """The root's deepest call path: (total bytes, [function, ...])."""
+    memo = {}
+
+    def walk(name, path):
+        if name in memo:
+            return memo[name]
+        best = (0, [])
+        for callee in calls.get(name, ()):
+            if callee in path:
+                continue
+            cand = walk(callee, path | {name})
+            if cand[0] > best[0] or (cand[0] == best[0] and cand[1] < best[1]):
+                best = cand
+        result = (frame.get(name, 0) + best[0], [name] + best[1])
+        memo[name] = result
+        return result
+
+    return walk(root, frozenset())
+
+
+def parse_chain_budgets(spec):
+    """'root:bytes root:bytes' -> [(root, bytes)]."""
+    budgets = []
+    for item in spec.split():
+        root, _, nbytes = item.partition(":")
+        budgets.append((root, int(nbytes)))
+    return budgets
+
+
+def check_chains(su_dir, profile, target, stack_bytes):
+    """Fail if a budgeted root's deepest call chain outgrew its budget.
+
+    Returns 0 when every chain fits, 1 otherwise. The budgets are the
+    profile's DP_STACK_CHAIN_BUDGETS_<TARGET>.
+    """
+    key = "DP_STACK_CHAIN_BUDGETS_" + target.upper()
+    spec = profile.get(key, "")
+    if not spec:
+        return 0
+    ci_paths = []
+    for root, _dirs, files in os.walk(su_dir):
+        ci_paths.extend(os.path.join(root, n) for n in files if n.endswith(".ci"))
+    if not ci_paths:
+        print("check_stack_usage: %s is set but no .ci call-graph files were "
+              "found under %r (-fcallgraph-info=su needs GCC 10 or newer); "
+              "refusing to pass." % (key, su_dir), file=sys.stderr)
+        return 1
+    frame, calls = parse_callgraph(sorted(ci_paths))
+    status = 0
+    for root, budget in parse_chain_budgets(spec):
+        if root not in frame:
+            print("check_stack_usage: chain root %s() is in no .ci file" % root,
+                  file=sys.stderr)
+            status = 1
+            continue
+        total, chain = deepest_chain(root, frame, calls)
+        print("check_stack_usage: %s() deepest chain %d bytes of %d (%s)" %
+              (root, total, budget,
+               " > ".join("%s %d" % (n.split("$")[0], frame.get(n, 0)) for n in chain)))
+        if total > budget:
+            print("  OVER BUDGET by %d bytes: the main task's stack has %d "
+                  "bytes and this chain runs on it under the shell's frame "
+                  "loop. Shrink the frames above, or see this file's header "
+                  "before raising %s." % (total - budget, stack_bytes, key))
+            status = 1
+    return status
+
+
 def find_su_files(su_dir):
     found = []
     for root, _dirs, files in os.walk(su_dir):
@@ -192,6 +294,11 @@ def main(argv):
                              "one-off experiments. The profile stays the "
                              "source of truth for normal runs - do not wire "
                              "this into a script that always runs.")
+    parser.add_argument("--target", default="host",
+                        choices=("host", "device"),
+                        help="whose frames the .su and .ci files hold, which "
+                             "picks the profile's chain budgets (default: "
+                             "host)")
     args = parser.parse_args(argv)
 
     try:
@@ -287,7 +394,7 @@ def main(argv):
           "device stack is %d bytes%s" %
           (len(records), len(su_files), largest.bytes, largest.func,
            ceiling, stack_bytes, debt_note))
-    return 0
+    return check_chains(args.su_dir, profile, args.target, stack_bytes)
 
 
 if __name__ == "__main__":

@@ -3763,12 +3763,12 @@ build_landscape_levelling_pool_scene(sand_t* real, uint8_t* big, uint8_t* blocks
     }
 }
 
-/* Runs `build` under both the old row-only mirror and the new column-span
- * one, back to back on two freshly built copies of the same scene, so the
- * before/after numbers this prints come from one run rather than two
- * captures that could drift apart. */
-static void
-report_span_vs_row_present_cost(const char* scene_name, void (*build)(sand_t*, uint8_t*, uint8_t*), int gx, int gy) {
+#define PRESENT_COST_MEASURED_STEPS 20
+
+/* The old row-only mirror on a freshly built copy of the scene. */
+static __attribute__((noinline)) int64_t
+measure_row_present_cost(void (*build)(sand_t*, uint8_t*, uint8_t*), int gx, int gy, int* row_full, int* row_gathered,
+                         int* row_partial) {
     uint8_t* row_big = malloc(REAL_W * REAL_H);
     uint8_t* row_blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
     uint8_t* row_dirty = malloc(REAL_H);
@@ -3782,24 +3782,30 @@ report_span_vs_row_present_cost(const char* scene_name, void (*build)(sand_t*, u
     TEST_ASSERT_NOT_NULL(row_x1);
     TEST_ASSERT_NOT_NULL(row_n);
 
-    sand_t row_sim;
-    build(&row_sim, row_big, row_blocks);
-    sand_track_dirty_rows(&row_sim, row_dirty);
+    sand_t* const row_sim = malloc(sizeof *row_sim);
+    TEST_ASSERT_NOT_NULL(row_sim);
+    build(row_sim, row_big, row_blocks);
+    sand_track_dirty_rows(row_sim, row_dirty);
     seed_row_runs_full_width_for_gfx_test(row_x0, row_x1, row_n, REAL_W, REAL_H);
 
-    int row_full = 0, row_gathered = 0, row_partial = 0;
-    const int measured_steps = 20;
     const int64_t row_us =
-        run_present_against_scene(&row_sim, row_big, REAL_W, REAL_H, row_dirty, row_x0, row_x1, row_n, gx, gy, 0, 20,
-                                  measured_steps, &row_full, &row_gathered, &row_partial, NULL, NULL, NULL);
+        run_present_against_scene(row_sim, row_big, REAL_W, REAL_H, row_dirty, row_x0, row_x1, row_n, gx, gy, 0, 20,
+                                  PRESENT_COST_MEASURED_STEPS, row_full, row_gathered, row_partial, NULL, NULL, NULL);
 
+    free(row_sim);
     free(row_big);
     free(row_blocks);
     free(row_dirty);
     free(row_x0);
     free(row_x1);
     free(row_n);
+    return row_us;
+}
 
+/* Its own frame, so the row half's sand_t is gone before this one's exists. */
+static __attribute__((noinline)) int64_t
+measure_span_present_cost(void (*build)(sand_t*, uint8_t*, uint8_t*), int gx, int gy, int* span_full,
+                          int* span_gathered, int* span_partial, int64_t* pixels_sent) {
     uint8_t* span_big = malloc(REAL_W * REAL_H);
     uint8_t* span_blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
     uint8_t* span_dirty = malloc(REAL_H);
@@ -3817,17 +3823,17 @@ report_span_vs_row_present_cost(const char* scene_name, void (*build)(sand_t*, u
     TEST_ASSERT_NOT_NULL(span_x1);
     TEST_ASSERT_NOT_NULL(span_n);
 
-    sand_t span_sim;
-    build(&span_sim, span_big, span_blocks);
-    sand_track_dirty_rows(&span_sim, span_dirty);
+    sand_t* const span_sim = malloc(sizeof *span_sim);
+    TEST_ASSERT_NOT_NULL(span_sim);
+    build(span_sim, span_big, span_blocks);
+    sand_track_dirty_rows(span_sim, span_dirty);
     seed_row_runs_full_width_for_gfx_test(span_x0, span_x1, span_n, REAL_W, REAL_H);
 
-    int span_full = 0, span_gathered = 0, span_partial = 0;
-    int64_t pixels_sent = 0;
     const int64_t span_us = run_present_against_scene_span(
-        &span_sim, span_big, REAL_W, REAL_H, span_dirty, span_dirty_x0, span_dirty_x1, span_x0, span_x1, span_n, gx, gy,
-        0, 20, measured_steps, &span_full, &span_gathered, &span_partial, &pixels_sent);
+        span_sim, span_big, REAL_W, REAL_H, span_dirty, span_dirty_x0, span_dirty_x1, span_x0, span_x1, span_n, gx, gy,
+        0, 20, PRESENT_COST_MEASURED_STEPS, span_full, span_gathered, span_partial, pixels_sent);
 
+    free(span_sim);
     free(span_big);
     free(span_blocks);
     free(span_dirty);
@@ -3836,6 +3842,20 @@ report_span_vs_row_present_cost(const char* scene_name, void (*build)(sand_t*, u
     free(span_x0);
     free(span_x1);
     free(span_n);
+    return span_us;
+}
+
+/* Runs `build` under both mirrors, back to back, so the before/after numbers
+ * come from one run rather than two captures that could drift apart. */
+static void
+report_span_vs_row_present_cost(const char* scene_name, void (*build)(sand_t*, uint8_t*, uint8_t*), int gx, int gy) {
+    int row_full = 0, row_gathered = 0, row_partial = 0;
+    const int64_t row_us = measure_row_present_cost(build, gx, gy, &row_full, &row_gathered, &row_partial);
+
+    int span_full = 0, span_gathered = 0, span_partial = 0;
+    int64_t pixels_sent = 0;
+    const int64_t span_us =
+        measure_span_present_cost(build, gx, gy, &span_full, &span_gathered, &span_partial, &pixels_sent);
 
     ESP_LOGI("device_tests",
              "present cost, %s, %dx%d: ROW-only %lld us/frame (%d full, %d "
