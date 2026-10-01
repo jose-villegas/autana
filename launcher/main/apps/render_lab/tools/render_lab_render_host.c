@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "app.h"
@@ -59,19 +60,24 @@ note_reply(const char* line) {
     }
 }
 
-/* Sets the tunable render_lab.view, the way the console would. */
+/* Sets one render_lab tunable, the way the console would. */
+static bool
+set_tunable(const char* name, int value) {
+    char line[TUNE_NAME_MAX + 16];
+    if (snprintf(line, sizeof line, "SET render_lab.%s %d", name, value) < 0) {
+        return false;
+    }
+    tune_set = false;
+    (void)tune_handle_line(line, note_reply);
+    return tune_set;
+}
+
 static bool
 view_from_name(const char* name) {
     static const char* const views[] = {"shaded", "depth", "tiles"};
     for (int i = 0; i < (int)(sizeof views / sizeof views[0]); i++) {
         if (strcmp(name, views[i]) == 0) {
-            char line[TUNE_NAME_MAX + 16];
-            if (snprintf(line, sizeof line, "SET render_lab.view %d", i) < 0) {
-                return false;
-            }
-            tune_set = false;
-            (void)tune_handle_line(line, note_reply);
-            return tune_set;
+            return set_tunable("view", i);
         }
     }
     (void)fprintf(stderr, "render_lab_render_host: --view is shaded, depth or tiles, not %s\n", name);
@@ -93,7 +99,9 @@ static bool
 options(int argc, char** argv) {
     const char* scene;
     const char* view;
-    if (!option_value(argc, argv, "--scene", &scene) || !option_value(argc, argv, "--view", &view)) {
+    const char* scale;
+    if (!option_value(argc, argv, "--scene", &scene) || !option_value(argc, argv, "--view", &view)
+        || !option_value(argc, argv, "--scale", &scale)) {
         return false;
     }
     if (scene == NULL) {
@@ -102,7 +110,7 @@ options(int argc, char** argv) {
     }
     apply_flags(argc, argv);
     render_lab_start_scene_key = scene;
-    return view == NULL || view_from_name(view);
+    return (view == NULL || view_from_name(view)) && (scale == NULL || set_tunable("scale", atoi(scale)));
 }
 
 int

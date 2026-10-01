@@ -21,6 +21,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 
+#include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_flat_mesh_generated.h"
 #include "apps/render_lab/sponza_flythrough.h"
 #include "apps/render_lab/sponza_lite_mesh_generated.h"
@@ -34,6 +35,16 @@ static const char* TAG = "sponza_perf";
 
 #define PANEL_PIXELS ((size_t)GFX_WIDTH * GFX_HEIGHT)
 
+static int
+render_width(void) {
+    return GFX_WIDTH * 100 / render_lab_scale();
+}
+
+static int
+render_height(void) {
+    return GFX_HEIGHT * 100 / render_lab_scale();
+}
+
 typedef struct {
     void* scratch;
     gfx_color_t* panel;
@@ -45,8 +56,8 @@ bench_open(bench_t* b, const r3d_lit_mesh_t* mesh) {
     b->panel = heap_caps_malloc(sizeof(gfx_color_t) * PANEL_PIXELS, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     b->raster = (raster_t){
         .mesh = mesh,
-        .width = SPONZA_RENDER_WIDTH,
-        .height = SPONZA_RENDER_HEIGHT,
+        .width = render_width(),
+        .height = render_height(),
         .destination = b->panel,
         .destination_width = GFX_WIDTH,
         .destination_height = GFX_HEIGHT,
@@ -67,7 +78,7 @@ static r3d_lens_t
 view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms) {
     const camera_t camera = sponza_camera_at(t_ms);
     r3d_lens_t lens;
-    r3d_lens_init(&lens, &camera, mesh->position_scale, (viewport_t){SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, 0});
+    r3d_lens_init(&lens, &camera, mesh->position_scale, (viewport_t){render_width(), render_height(), 0});
     return lens;
 }
 
@@ -170,7 +181,7 @@ report_frame_cost(const char* label, const r3d_lit_mesh_t* mesh) {
     bench_t b;
     bench_open(&b, mesh);
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===", label, mesh->triangle_count,
-             mesh->vertex_count, mesh->cluster_count, SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT);
+             mesh->vertex_count, mesh->cluster_count, render_width(), render_height());
     const uint32_t period = sponza_flythrough_period_ms();
     int64_t frame_sum = 0;
     int64_t worst = 0;
