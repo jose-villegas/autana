@@ -1,5 +1,7 @@
 #include "render/r3d_scene.h"
 
+#include <stddef.h>
+
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
 uint32_t

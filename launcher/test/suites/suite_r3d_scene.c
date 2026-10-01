@@ -93,7 +93,8 @@ test_a_mesh_with_no_placement_draws_where_it_is(void) {
 
 static void
 test_two_instances_appear_at_their_own_placements(void) {
-    quad_t red, green;
+    quad_t red;
+    quad_t green;
     make_quad(&red, 255, 0, 0, 0);
     make_quad(&green, 0, 255, 0, 0);
     void* alone;
@@ -152,7 +153,8 @@ test_a_rotation_turns_an_instance_about_its_position(void) {
 
 static void
 test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first(void) {
-    quad_t red, green;
+    quad_t red;
+    quad_t green;
     make_quad(&red, 255, 0, 0, 0);
     make_quad(&green, 0, 255, 0, 0);
     const r3d_placement_t nearer = placed(0.0F, 2.0F, 1.0F);
@@ -171,7 +173,8 @@ static void
 test_the_camera_of_a_baked_placement_looks_down_its_third_column(void) {
     const r3d_placement_t turned = {{{0, 0, 1}, {0, 1, 0}, {-1, 0, 0}}, {5, 6, 7}}; /* a quarter turn about y */
     const r3d_scene_camera_t camera = {1.0F, 1.0F, &turned, NULL};
-    vec3f_t eye, forward;
+    vec3f_t eye;
+    vec3f_t forward;
     r3d_scene_camera_sample(&camera, 0, &eye, &forward);
     TEST_ASSERT_EQUAL_FLOAT(5.0F, eye.x);
     TEST_ASSERT_EQUAL_FLOAT(-1.0F, forward.x);
