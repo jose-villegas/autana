@@ -2,7 +2,7 @@
  * GENERATED FILE - do not edit.
  *
  *     python main/apps/render_lab/tools/gen_sponza.py --out-dir main/apps/render_lab \
- *         --name sponza_flat --simplifier meshopt --triangles 17381 --props-share 0.3 --dense-edge 45 --flat
+ *         --name sponza_flat --simplifier meshopt --triangles 17381 --props-share 0.3 --dense-edge 45 --flat --face-samples auto
  *
  * Crytek Sponza (Frank Meinl, Crytek; CC BY 3.0), from the OBJ in
  * McGuire's Computer Graphics Archive, casual-effects.com/data.
