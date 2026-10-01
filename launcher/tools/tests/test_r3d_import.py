@@ -324,9 +324,9 @@ class SceneTests(unittest.TestCase):
         return source, header
 
     def test_names_transforms_renderers_and_macros_share_one_order(self):
-        # A moved mesh between two that stay put, then the camera: any array reversed or shifted is caught.
-        moved = renderer("b.import.toml", transform="position = [1.0, 2.0, 3.0]\n")
-        source, header = self.table_of(renderer("a.import.toml") + moved + camera(region=False))
+        # The first entity is the only one that moved, so an array reversed or shifted is caught.
+        moved = renderer("a.import.toml", transform="position = [1.0, 2.0, 3.0]\n")
+        source, header = self.table_of(moved + renderer("b.import.toml") + camera(region=False))
         names = re.search(r"hall_scene_names\[\] = \{(.*?)\};", source).group(1).replace('"', "").split(", ")
         transforms = re.search(r"hall_scene_transforms\[\] = \{\n(.*?)\n\};", source, re.S).group(1).splitlines()
         indices = [int(i) for i in re.findall(r"^    \{(\d+), \"", source, re.M)]
@@ -335,7 +335,7 @@ class SceneTests(unittest.TestCase):
         self.assertEqual([name.lower() for name, _ in macros], names)
         self.assertEqual([int(index) for _, index in macros], [0, 1, 2])
         self.assertEqual(len(transforms), len(names))
-        self.assertEqual([("position = {1.0F, 2.0F, 3.0F}" in line) for line in transforms], [False, True, False])
+        self.assertEqual([("position = {1.0F, 2.0F, 3.0F}" in line) for line in transforms], [True, False, False])
         self.assertEqual(indices[:2], [names.index("a"), names.index("b")])
 
     def test_a_light_has_no_entity_and_the_indices_step_over_it(self):
