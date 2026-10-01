@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 #include "render/r3d_pipeline.h"
-#include "render/r3d_span.h"
+#include "render/r3d_span_internal.h"
 #include "render/raster.h"
 
 #define GREY_MAX 255

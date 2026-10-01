@@ -1,4 +1,5 @@
 #include "render/r3d_pipeline.h"
+#include "render/r3d_span_internal.h"
 
 #include <assert.h>
 #include <math.h>

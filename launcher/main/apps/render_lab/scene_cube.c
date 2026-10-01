@@ -1,30 +1,37 @@
 /*
  * scene_cube - the Gouraud-shaded rotating RGB cube, as a render_lab scene.
  *
- * Why small3dlib rather than a conventional rasterizer: it owns no
- * framebuffer (every rasterized pixel comes back through a callback) and with
- * S3L_Z_BUFFER 0 it keeps no depth buffer, resolving visibility by sorting
- * triangles back-to-front. A colour+depth rasterizer would want ~1.3 MB at
- * this resolution, against ~424 KiB of RAM on the whole chip.
+ * small3dlib projects the cube and culls its back faces; render/'s span
+ * rasterizer fills it. Its depth plane is one band tall (GFX_BAND_HEIGHT
+ * rows), reused by every band and strip: a full colour+depth pair is ~1.3 MB
+ * on a chip with ~424 KiB of RAM.
  */
 
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
+#include "esp_heap_caps.h"
+#include "esp_log.h"
 #include "gfx/gfx.h"
+#include "render/r3d_span.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
 
-/* small3dlib config: must precede its include. */
-#define S3L_PIXEL_FUNCTION     shade_pixel
+/* small3dlib config: must precede its include. It rasterizes nothing here. */
+#define S3L_PIXEL_FUNCTION     cube_unused_pixel
 #define S3L_RESOLUTION_X       GFX_WIDTH
 #define S3L_RESOLUTION_Y       GFX_HEIGHT
-#define S3L_Z_BUFFER           0  /* no depth buffer; sorting handles it */
-#define S3L_SORT               1  /* back-to-front (painter's algorithm) */
-#define S3L_MAX_TRIANGES_DRAWN 16 /* the cube has 12 */
-#define S3L_SCISSOR_Y          1  /* band mode scissors S3L_drawTriangle() to one band's rows */
+#define S3L_Z_BUFFER           0
+#define S3L_SORT               0
+#define S3L_MAX_TRIANGES_DRAWN 1 /* never drawn; small3dlib still sizes an array off this */
 #include "small3dlib.h"
+
+static inline void
+cube_unused_pixel(S3L_PixelInfo* pixel) {
+    (void)pixel;
+}
 
 /* small3dlib is fixed point: S3L_F (512) is 1.0, and is also one full turn
  * when used as an angle. */
@@ -57,87 +64,23 @@ static S3L_Model3D cube;
 static S3L_Scene scene;
 static uint32_t elapsed_ms;
 
-/* This frame's drawn-pixel bounds, accumulated by shade_pixel() while
- * render_lab_partial_updates is on, reset to an empty range at the top of
- * cube_rasterize_frame(), widened by every covered pixel small3dlib
- * reports. */
-static int frame_x0, frame_y0, frame_x1, frame_y1;
-
-/* This frame's overall cube coverage (the union of every bin entry's own
- * extent, accumulated by cube_transform_and_bin()) and last frame's,
- * remembered so band mode can mark the union of where the cube WAS and
- * where it IS dirty: a band the cube left still needs erasing even though
- * nothing there overlaps this frame. */
+/* This frame's cube coverage and last frame's: band mode marks both dirty,
+ * because a band the cube left still needs erasing. */
 static int cube_bbox_x0, cube_bbox_y0, cube_bbox_x1, cube_bbox_y1;
 static bool cube_bbox_valid;
 static render_lab_coverage_t last_coverage;
 
-/* Set only while cube_rasterize_band() runs; NULL otherwise, when
- * shade_pixel() writes into gfx_framebuffer() as before. small3dlib
- * rasterizes the whole scene once per band, so this is how the callback
- * keeps only the rows the current band owns. */
-static gfx_color_t* band_target;
-static int band_row0, band_row1;
+/* The span rasterizer's depth plane for one band, GFX_BAND_HEIGHT x
+ * GFX_WIDTH x 2 bytes in internal RAM; NULL when it did not allocate, and
+ * the cube then draws nothing. */
+static uint16_t* band_depth;
+static const char* TAG = "scene_cube";
+_Static_assert(GFX_HEIGHT % GFX_BAND_HEIGHT == 0, "the full-frame strips are whole bands");
+_Static_assert(R3D_DEPTH_EMPTY == 0, "a band's depth is cleared with memset");
 
-static inline uint8_t
-clamp_to_byte(S3L_Unit v) {
-    if (v < 0) {
-        return 0;
-    }
-    if (v > 255) {
-        return 255;
-    }
-    return (uint8_t)v;
-}
-
-/* Called by small3dlib for every pixel a triangle covers: the equivalent
- * of a fragment shader, running on the CPU. pixel->barycentric holds
- * three weights summing to S3L_F that say how close this pixel is to
- * each corner, so averaging corner colours with them produces a smooth
- * gradient: Gouraud shading. Writes straight into the framebuffer rather
- * than through gfx_pixel(): this runs tens of thousands of times per
- * frame, and coordinates are already guaranteed on-screen by the
- * rasterizer. */
-static inline void
-shade_pixel(S3L_PixelInfo* pixel) {
-    const S3L_Index* corners = cube_triangles + pixel->triangleIndex * 3;
-    const uint8_t* a = cube_corner_colors[corners[0]];
-    const uint8_t* b = cube_corner_colors[corners[1]];
-    const uint8_t* c = cube_corner_colors[corners[2]];
-
-    const uint8_t r = clamp_to_byte(S3L_interpolateBarycentric(a[0], b[0], c[0], pixel->barycentric));
-    const uint8_t g = clamp_to_byte(S3L_interpolateBarycentric(a[1], b[1], c[1], pixel->barycentric));
-    const uint8_t bl = clamp_to_byte(S3L_interpolateBarycentric(a[2], b[2], c[2], pixel->barycentric));
-    const gfx_color_t color = gfx_rgb(((uint32_t)r << 16) | ((uint32_t)g << 8) | bl);
-
-    if (band_target != NULL) {
-        if (pixel->y < band_row0 || pixel->y >= band_row1) {
-            return; /* not this band's row; small3dlib drew the whole scene */
-        }
-        band_target[(pixel->y - band_row0) * GFX_WIDTH + pixel->x] = color;
-        return;
-    }
-
-    gfx_framebuffer()[pixel->y * GFX_WIDTH + pixel->x] = color;
-
-    /* Only tracked in render_lab_partial_updates mode; cube_rasterize_frame() is the
-     * sole reader, and there is no reason to pay for it on every one of the
-     * tens of thousands of pixels a frame otherwise covers. */
-    if (render_lab_partial_updates) {
-        if (pixel->x < frame_x0) {
-            frame_x0 = pixel->x;
-        }
-        if (pixel->x + 1 > frame_x1) {
-            frame_x1 = pixel->x + 1;
-        }
-        if (pixel->y < frame_y0) {
-            frame_y0 = pixel->y;
-        }
-        if (pixel->y + 1 > frame_y1) {
-            frame_y1 = pixel->y + 1;
-        }
-    }
-}
+/* Inverse depth is the near plane over the camera-space depth, so (0, 1] for
+ * everything the near plane keeps. */
+#define CUBE_NEAR_DEPTH ((float)S3L_NEAR)
 
 void
 cube_update_rotation(uint32_t dt_ms) {
@@ -155,54 +98,31 @@ cube_clear_frame(void) {
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
 }
 
-/* Exposed (suite_cube_perf.c) so the perf suite can time this without
- * touching small3dlib itself. small3dlib.h defines real, non-static
- * functions when included with S3L_PIXEL_FUNCTION etc. set, so only this
- * translation unit can call S3L_newFrame()/S3L_drawScene() at all; a
- * second #include from suite_cube_perf.c would redefine those symbols and
- * fail to link. */
-void
-cube_rasterize_frame(void) {
-    if (render_lab_partial_updates) {
-        frame_x0 = GFX_WIDTH;
-        frame_y0 = GFX_HEIGHT;
-        frame_x1 = 0;
-        frame_y1 = 0;
-    }
-
-    /* S3L_SCISSOR_Y is on for this whole translation unit (band mode needs
-     * it), so a full-fb frame must reset the range itself rather than trust
-     * whatever band mode's own last band left behind - see
-     * cube_rasterize_band()'s own comment. */
-    S3L_scissorMinY = 0;
-    S3L_scissorMaxY = GFX_HEIGHT;
-
-    S3L_newFrame();       /* resets the triangle sorter */
-    S3L_drawScene(scene); /* calls shade_pixel() for every covered pixel */
-
-    if (render_lab_partial_updates) {
-        /* shade_pixel() wrote straight into gfx_framebuffer(), which gfx
-         * cannot see - this is the one gfx_mark_dirty() call that tells it
-         * what actually changed this frame. */
-        if (frame_x1 > frame_x0 && frame_y1 > frame_y0) {
-            gfx_mark_dirty(frame_x0, frame_y0, frame_x1 - frame_x0, frame_y1 - frame_y0);
-        }
-    }
-}
-
-/* One visible triangle, transformed once per frame; see
- * cube_transform_and_bin(). y0/y1 is its screen-space row extent, so a band
- * can test overlap without touching small3dlib; sort_value is
- * S3L_drawScene()'s own depth key, kept so the bin stays back-to-front. */
+/* One visible triangle, projected once per frame; see cube_bin_triangles().
+ * y0/y1 is its screen-space row extent, so a band can test overlap without
+ * rasterizing. */
 typedef struct {
-    S3L_Vec4 v0, v1, v2;
-    S3L_Index triangle_index;
+    r3d_span_vertex_t v[3];
     int y0, y1;
-    S3L_Unit sort_value;
 } cube_triangle_bin_t;
 
 static cube_triangle_bin_t cube_bin[S3L_CUBE_TRIANGLE_COUNT];
 static int cube_bin_count;
+
+/* small3dlib samples a pixel at its integer coordinate; the span rasterizer
+ * at the pixel's centre, half a pixel further. */
+static r3d_span_vertex_t
+cube_span_vertex(S3L_Vec4 projected, S3L_Index corner) {
+    const uint8_t* rgb = cube_corner_colors[corner];
+    r3d_span_vertex_t v;
+    v.x = (projected.x * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2);
+    v.y = (projected.y * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2);
+    v.z = CUBE_NEAR_DEPTH / (float)projected.w;
+    v.r = (float)rgb[0];
+    v.g = (float)rgb[1];
+    v.b = (float)rgb[2];
+    return v;
+}
 
 static void
 cube_triangle_bounds(const S3L_Vec4 transformed[6], int* x0, int* x1, int* y0, int* y1) {
@@ -226,19 +146,6 @@ cube_triangle_bounds(const S3L_Vec4 transformed[6], int* x0, int* x1, int* y0, i
             *y1 = y;
         }
     }
-}
-
-/* Descending by sort_value, as S3L_drawScene() sorts (S3L_SORT == 1): farther
- * triangles land first and nearer ones draw over them. */
-static void
-cube_insert_triangle(cube_triangle_bin_t entry) {
-    int slot = cube_bin_count;
-    while (slot > 0 && cube_bin[slot - 1].sort_value < entry.sort_value) {
-        cube_bin[slot] = cube_bin[slot - 1];
-        slot--;
-    }
-    cube_bin[slot] = entry;
-    cube_bin_count++;
 }
 
 static void
@@ -265,16 +172,15 @@ cube_expand_bbox(const cube_triangle_bin_t* entry, int x0, int x1) {
     }
 }
 
-/* Transforms and depth-sorts every visible triangle once per frame, so band
- * mode does not re-transform the whole scene once per band. Only correct
- * while S3L_NEAR_CROSS_STRATEGY stays 0: _S3L_projectTriangle() then never
- * splits a triangle across the near plane (asserted below), so one bin
- * entry per source triangle is enough. */
-void
-cube_transform_and_bin(void) {
+/* Projects every visible triangle once per frame. Only correct while
+ * S3L_NEAR_CROSS_STRATEGY stays 0, so no triangle is split at the near
+ * plane (asserted). The depth test resolves overlap, so the bin needs no
+ * order; y1 is exclusive, hence the +1 on the inclusive row. */
+static void
+cube_bin_triangles(void) {
     S3L_Mat4 mat_camera, mat_final;
 
-    assert(cube.customTransformMatrix == 0); /* S3L_sceneInit()'s own default, never set by this scene */
+    assert(cube.customTransformMatrix == 0);
 
     S3L_makeCameraMatrix(scene.camera.transform, mat_camera);
     S3L_makeWorldMatrix(cube.transform, mat_final);
@@ -298,75 +204,103 @@ cube_transform_and_bin(void) {
         x0 = x0 < 0 ? 0 : x0;
         x1 = (x1 + 1 > GFX_WIDTH) ? GFX_WIDTH : x1 + 1;
 
-        cube_triangle_bin_t entry;
-        entry.v0 = transformed[0];
-        entry.v1 = transformed[1];
-        entry.v2 = transformed[2];
-        entry.triangle_index = t;
-        entry.y0 = y0 < 0 ? 0 : y0;
-        entry.y1 = (y1 + 1 > GFX_HEIGHT) ? GFX_HEIGHT : y1 + 1; /* +1: inclusive of the bottom row */
-        entry.sort_value = S3L_zeroClamp(transformed[0].w + transformed[1].w + transformed[2].w) >> 2;
+        cube_triangle_bin_t* entry = &cube_bin[cube_bin_count++];
+        for (int i = 0; i < 3; i++) {
+            entry->v[i] = cube_span_vertex(transformed[i], cube_triangles[(t * 3) + i]);
+            assert(entry->v[i].x > -R3D_SPAN_RANGE && entry->v[i].x < R3D_SPAN_RANGE);
+            assert(entry->v[i].y > -R3D_SPAN_RANGE && entry->v[i].y < R3D_SPAN_RANGE);
+        }
+        entry->y0 = y0 < 0 ? 0 : y0;
+        entry->y1 = (y1 + 1 > GFX_HEIGHT) ? GFX_HEIGHT : y1 + 1;
 
-        cube_insert_triangle(entry);
-        cube_expand_bbox(&entry, x0, x1);
+        cube_expand_bbox(entry, x0, x1);
     }
-
-    /* Marked here, not by each caller: a band the cube left still needs
-     * erasing even though nothing there overlaps this frame's own bbox,
-     * and every band-mode caller of this function needs both boxes marked
-     * the same way. */
-    render_lab_coverage_mark(&last_coverage, cube_bbox_valid, cube_bbox_x0, cube_bbox_y0, cube_bbox_x1, cube_bbox_y1);
 }
 
-/* Draws only the bin's triangles that overlap [row0, row1) into `buf`,
- * scissored to those rows by S3L_SCISSOR_Y (small3dlib.h) - a triangle
- * confined to one band costs nothing in any other band, and even a
- * triangle spanning the whole screen only ever computes one band's worth
- * of rows per call. */
-void
-cube_rasterize_band(gfx_color_t* buf, int row0, int row1) {
-    band_target = buf;
-    band_row0 = row0;
-    band_row1 = row1;
-    S3L_scissorMinY = row0;
-    S3L_scissorMaxY = row1;
-
-    S3L_newFrame();
+/* Draws the bin's triangles that overlap [row0, row1) into `target`, the
+ * first pixel of row0, so a triangle costs only the rows of the band it is
+ * in. A band with no triangle skips even the depth clear. */
+static void
+cube_draw_rows(gfx_color_t* target, int row0, int row1) {
+    if (band_depth == NULL) {
+        return;
+    }
+    assert(row1 - row0 <= GFX_BAND_HEIGHT);
+    const r3d_span_target_t window = {target, band_depth, GFX_WIDTH, row0, row1};
+    bool depth_cleared = false;
     for (int i = 0; i < cube_bin_count; i++) {
         const cube_triangle_bin_t* entry = &cube_bin[i];
         if (entry->y1 <= row0 || entry->y0 >= row1) {
-            continue; /* this band's rows are entirely outside the triangle */
+            continue;
         }
-        S3L_drawTriangle(entry->v0, entry->v1, entry->v2, 0, entry->triangle_index);
+        if (!depth_cleared) {
+            memset(band_depth, 0, sizeof(*band_depth) * (size_t)(row1 - row0) * GFX_WIDTH);
+            depth_cleared = true;
+        }
+        r3d_span_triangle(&window, &entry->v[0], &entry->v[1], &entry->v[2]);
     }
-
-    band_target = NULL;
 }
 
+/* Exposed (suite_cube_perf.c) so the perf suite can time the full-frame
+ * draw as its own phase. The rasterizer writes straight into
+ * gfx_framebuffer(), which gfx cannot see, so the one gfx_mark_dirty() here
+ * is what tells it what changed. */
+void
+cube_rasterize_frame(void) {
+    cube_bin_triangles();
+    for (int row0 = 0; row0 < GFX_HEIGHT; row0 += GFX_BAND_HEIGHT) {
+        cube_draw_rows(gfx_framebuffer() + ((size_t)row0 * GFX_WIDTH), row0, row0 + GFX_BAND_HEIGHT);
+    }
+
+    if (render_lab_partial_updates && cube_bbox_valid && cube_bbox_x1 > cube_bbox_x0 && cube_bbox_y1 > cube_bbox_y0) {
+        gfx_mark_dirty(cube_bbox_x0, cube_bbox_y0, cube_bbox_x1 - cube_bbox_x0, cube_bbox_y1 - cube_bbox_y0);
+    }
+}
+
+/* Band mode's per-frame step: project once, and mark the cube's own
+ * coverage dirty, before cube_rasterize_band() runs per touched band. Marked
+ * here, not by each caller: a band the cube left still needs erasing even
+ * though nothing there overlaps this frame's own bbox. */
+void
+cube_transform_and_bin(void) {
+    cube_bin_triangles();
+
+    render_lab_coverage_mark(&last_coverage, cube_bbox_valid, cube_bbox_x0, cube_bbox_y0, cube_bbox_x1, cube_bbox_y1);
+}
+
+void
+cube_rasterize_band(gfx_color_t* buf, int row0, int row1) {
+    cube_draw_rows(buf, row0, row1);
+}
+
+/* S3L_sceneInit() resets the camera, so the focal length override comes after
+ * it. Enlarge by zooming rather than moving the cube closer: the near plane
+ * would clip the front faces long before it filled the screen, and a clipped
+ * triangle is discarded. A box from a previous visit is not "last frame". */
 static void
 scene_cube_enter(void) {
     S3L_model3DInit(cube_vertices, S3L_CUBE_VERTEX_COUNT, cube_triangles, S3L_CUBE_TRIANGLE_COUNT, &cube);
     cube.transform.translation.z = CUBE_DISTANCE;
 
-    /* S3L_sceneInit() resets the camera to defaults, so the focal length
-     * override has to come after it. */
     S3L_sceneInit(&cube, 1, &scene);
 
-    /* Enlarge by zooming rather than moving the cube closer: at this distance
-     * the near plane (S3L_F/4) would clip the front faces long before the cube
-     * filled the screen, and small3dlib discards triangles that cross it, so
-     * faces would silently vanish. */
     scene.camera.focalLength = CAMERA_FOCAL_LENGTH;
 
+    const size_t depth_bytes = sizeof(*band_depth) * (size_t)GFX_BAND_HEIGHT * GFX_WIDTH;
+    band_depth = heap_caps_malloc(depth_bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (band_depth == NULL) {
+        ESP_LOGE(TAG, "no %u bytes of internal RAM for the depth plane: the scene stays blank", (unsigned)depth_bytes);
+    }
+
     elapsed_ms = 0;
-    last_coverage.valid = false; /* a stale box from a previous visit is not really "last frame" */
+    last_coverage.valid = false;
 }
 
 static void
 scene_cube_frame(uint32_t dt_ms, bool band_mode_active) {
     cube_update_rotation(dt_ms);
     if (band_mode_active) {
-        cube_transform_and_bin(); /* also marks the cube's own coverage dirty; see its own comment */
+        cube_transform_and_bin();
     } else {
         cube_clear_frame();
         cube_rasterize_frame();
@@ -380,7 +314,8 @@ scene_cube_frame_band(gfx_color_t* buf, int row0, int row1) {
 
 static void
 scene_cube_exit(void) {
-    /* Nothing allocated by scene_cube_enter() beyond static storage. */
+    heap_caps_free(band_depth);
+    band_depth = NULL;
 }
 
 static void

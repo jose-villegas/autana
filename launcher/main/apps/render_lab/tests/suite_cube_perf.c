@@ -4,7 +4,7 @@
  * Measures frame budget breakdown for the rotating cube app over 10 seconds:
  * - Total frame time (wall clock)
  * - Simulation/logic time (spinning, small3dlib scene setup)
- * - Rasterization time (small3dlib pixel callback execution)
+ * - Rasterization time (the span rasterizer filling the full frame)
  * - Present time (QSPI DMA transfer)
  * - Reports: min, max, average, median, p95
  *
@@ -39,10 +39,9 @@ extern bool render_lab_partial_updates;
 extern bool render_lab_band_mode;
 static bool saved_band_mode;
 
-/* app_render_lab.c's enter/exit and scene_cube.c's three per-frame phases.
- * NOT S3L_newFrame()/S3L_drawScene() directly: small3dlib.h defines real,
- * non-static functions once configured, so a second #include here would
- * redefine them and fail to link. */
+/* app_render_lab.c's enter/exit and scene_cube.c's three per-frame phases;
+ * the scene's own state is static to it, so a suite reaches it only
+ * through these. */
 extern void render_lab_enter(void);
 extern void render_lab_exit(void);
 extern void cube_update_rotation(uint32_t dt_ms);
@@ -62,7 +61,7 @@ static const char* TAG = "cube_perf";
 typedef struct {
     int32_t frame_total_us; /* wall clock per frame */
     int32_t logic_us;       /* cube logic + scene setup */
-    int32_t rasterize_us;   /* small3dlib S3L_drawScene() */
+    int32_t rasterize_us;   /* cube_rasterize_frame() */
     int32_t hud_us;         /* draw_fps() - zero when with_hud is false */
     int32_t present_us;     /* gfx_present() */
 } frame_sample_t;

@@ -29,6 +29,7 @@
 #include "gfx/gfx.h"
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
+#include "render/r3d_span_internal.h"
 #include "util/job.h"
 
 static const char* TAG = "sponza_perf";
