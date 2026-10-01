@@ -201,6 +201,36 @@ trails path-averaged: each segment trains on eight poses, too few to
 generalise to the poses between them. At 15 s every mesh scores about
 26 to 28, which lifts every mean in the table equally.
 
+Two held-out poses, 5 s and 25 s. Left to right, the simplifier's lite mesh,
+the fitted one and their difference; then the places they differ most,
+enlarged, lite above fitted. The fit sharpens the sun's shadow edge on the floor and the arches'
+edges, and puts the hangings' colours back.
+
+![Lite against the fitted lite mesh](../../../../../docs/images/render/appearance-lite-fitted.png)
+![Lite against fitted, enlarged](../../../../../docs/images/render/appearance-lite-fitted.crops.png)
+
+The fitted mesh against the reference at the same poses, and where they
+still differ most: the sky, which the host clears to its sky colour and the
+reference leaves black, and texture detail no vertex colour holds.
+
+![Fitted against the reference](../../../../../docs/images/render/appearance-fitted-reference.png)
+![Fitted against the reference, enlarged](../../../../../docs/images/render/appearance-fitted-reference.crops.png)
+
+The ΔE heatmap sheets of the same two poses, lite then fitted: reference,
+render, heatmap, edge pixels, over the heatmap's scale.
+
+![Lite against the reference: heatmaps](../../../../../docs/images/render/appearance-heat-lite.png)
+![Fitted against the reference: heatmaps](../../../../../docs/images/render/appearance-heat-fitted.png)
+
+The sheets and crops are `render_compare.py --row ... --crops 3` on frames
+0 and 4 of the scored videos, the reference upscaled twice to the render
+size; the heatmaps are `--reference-video ... --reference-sheet
+--sheet-frames 0,4`. A whole-path video at 30 fps, lite against fitted, is
+`render_compare.py --video` of the two meshes' `--frames 1200 --dt 33`
+renders; it is not committed, and the reference has no frame between the
+scored poses to put beside it. Nothing refreshes these images: the fit
+needs the GPU environment.
+
 ## Sponza poses
 
 The flythrough is a glTF camera animation, `../assets/flythrough.glb`, baked
