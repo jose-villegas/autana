@@ -7,7 +7,7 @@
 #
 # <out-tree> mirrors docs/images/; these images go in its overview/ and render/.
 #
-# Run from the repository root with $PYTHON set to a Python that has Pillow;
+# Run from the repository root with $PYTHON set to a Python that has Pillow and numpy;
 # ffmpeg must be on PATH. Renderer output goes to logs under <work-dir>.
 
 set -eu
@@ -80,3 +80,8 @@ sponza_still flat sponza-flat
     --row "full | lite" "$W/still-full.bmp" "$W/still-lite.bmp" > "$W/compare-full-lite.log"
 "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-flat.png" --crops 3 \
     --row "smooth | flat" "$W/still-full.bmp" "$W/still-flat.bmp" > "$W/compare-full-flat.log"
+# render_compare.py writes no crops where the two renders do not differ; fail
+# here rather than leave the pages linking a missing file.
+for crops in compare-full-lite compare-full-flat; do
+    [ -f "$RENDER/$crops.crops.png" ] || { echo "doc_images.sh: $crops has no crops, the renders do not differ." >&2; exit 1; }
+done
