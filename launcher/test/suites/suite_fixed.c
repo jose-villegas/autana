@@ -200,6 +200,15 @@ test_div_round_takes_the_most_negative_int32(void) {
                                     "2^24 / -2^31 is exactly -2^-7, -65536 in Q23");
 }
 
+static void
+test_round_shift32_agrees_with_the_widened_round(void) {
+    for (int32_t v = -5000; v <= 5000; v++) {
+        TEST_ASSERT_EQUAL_INT32(fx_round_shift(v, 9), fx_round_shift32(v, 9));
+    }
+    TEST_ASSERT_EQUAL_INT32(-2, fx_round_shift32(-768, 9));
+    TEST_ASSERT_EQUAL_INT32(2, fx_round_shift32(768, 9));
+}
+
 void
 suite_fixed(void) {
     RUN_TEST(test_mul_floor_matches_a_hand_written_widened_shift);
@@ -211,6 +220,7 @@ suite_fixed(void) {
     RUN_TEST(test_mul_round_survives_a_32_bit_overflowing_product);
     RUN_TEST(test_the_same_helpers_serve_both_shift_8_and_shift_16);
     RUN_TEST(test_div_round_takes_the_most_negative_int32);
+    RUN_TEST(test_round_shift32_agrees_with_the_widened_round);
 }
 
 SUITE_REGISTER(suite_fixed);

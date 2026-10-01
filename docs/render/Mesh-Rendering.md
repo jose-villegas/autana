@@ -68,10 +68,9 @@ would see the scene mirrored.
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
 | `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions |
-| `fix3.h` | Integer 3D maths, 512 to a unit and a turn: matrices, transforms, a table sine. Integer so a pixel is the same on the board, on x86 and in a pinned host render |
-| `r3d_line_camera.h` | A camera for points and segments in `fix3.h`'s fixed point: a pose with a roll, and the fit onto a non-square viewport |
+| `r3d_line_camera.h` | A camera for points and segments in `util/math/matrix4i.h`'s fixed point (integer 3D maths, 512 to a unit and a turn, built on `util/trig.h` and `util/fixed.h`): a pose with a roll, and the fit onto a non-square viewport |
 | `r3d_project.h` | Camera-space near clip and perspective projection of those points and segments |
-| `r3d_trs.h` | A float translation, quaternion and scale as one `fix3.h` transform, for an object an animation track moves |
+| `r3d_trs.h` | A float translation, quaternion and scale as one `util/math/matrix4i.h` transform, for an object an animation track moves |
 
 The line camera stays apart from `camera_t`: its pose composes with a
 model transform in integers and carries a roll. Only

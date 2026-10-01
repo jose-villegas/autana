@@ -20,8 +20,8 @@
 static r3d_line_view_t
 fixture(void) {
     r3d_line_view_t v;
-    fix3_mat4_init(v.matrix);
-    v.focal = FIX3_ONE;
+    matrix4i_init(v.matrix);
+    v.focal = VEC4I_ONE;
     v.near_z = R3D_LINE_NEAR_Z;
     v.center_x = SCREEN_W / 2;
     v.center_y = SCREEN_H / 2;
@@ -32,8 +32,8 @@ fixture(void) {
 /* Known pose, exact expected segments */
 
 static const wire_vertex_t identity_pose_vertices[2] = {
-    {0, 0, 5 * FIX3_ONE},
-    {2 * FIX3_ONE, -4 * FIX3_ONE, 4 * FIX3_ONE},
+    {0, 0, 5 * VEC4I_ONE},
+    {2 * VEC4I_ONE, -4 * VEC4I_ONE, 4 * VEC4I_ONE},
 };
 static const wire_edge_t one_edge[1] = {{0, 1}};
 static const wire_mesh_t identity_pose_mesh = {identity_pose_vertices, one_edge, 2, 1};
@@ -59,23 +59,23 @@ test_identity_pose_matches_the_hand_derived_screen_points(void) {
  * through the trig table, so the expected output has no rounding of its
  * own to account for. */
 static const wire_vertex_t rotated_pose_vertices[2] = {
-    {5 * FIX3_ONE, 0, 0},
-    {2 * FIX3_ONE, -4 * FIX3_ONE, 4 * FIX3_ONE},
+    {5 * VEC4I_ONE, 0, 0},
+    {2 * VEC4I_ONE, -4 * VEC4I_ONE, 4 * VEC4I_ONE},
 };
 static const wire_mesh_t rotated_pose_mesh = {rotated_pose_vertices, one_edge, 2, 1};
 
 static void
 test_a_rotated_pose_matches_the_hand_derived_screen_points(void) {
     r3d_line_view_t view = fixture();
-    fix3_mat4_init(view.matrix);
+    matrix4i_init(view.matrix);
     view.matrix[0][0] = 0;
-    view.matrix[0][2] = FIX3_ONE;
-    view.matrix[2][0] = FIX3_ONE;
+    view.matrix[0][2] = VEC4I_ONE;
+    view.matrix[2][0] = VEC4I_ONE;
     view.matrix[2][2] = 0;
     view.center_x = 50;
     view.center_y = 80;
     view.scale = 40;
-    view.focal = 2 * FIX3_ONE;
+    view.focal = 2 * VEC4I_ONE;
     wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
     wire_frame_t frame = {cs, 2, segments, 1, 0, 0, 0, 0, 0};
@@ -94,8 +94,8 @@ test_a_rotated_pose_matches_the_hand_derived_screen_points(void) {
 
 static int
 build_grid(int n, wire_vertex_t* vertices, wire_edge_t* edges) {
-    const int step = FIX3_ONE;
-    const int base_z = 20 * FIX3_ONE;
+    const int step = VEC4I_ONE;
+    const int base_z = 20 * VEC4I_ONE;
     const int half = (n - 1) * step / 2;
 
     for (int row = 0; row < n; row++) {
@@ -208,8 +208,8 @@ test_one_end_behind_clips_to_the_near_plane_crossing(void) {
 
     /* near_z sits exactly halfway between the two z's, so the crossing is
      * plain averaging, independent of the pipeline's own Q16 interpolation. */
-    const fix3_vec4_t crossing = {20, 10, view.near_z, FIX3_ONE};
-    const fix3_vec4_t front = {40, 20, 200, FIX3_ONE};
+    const vec4i_t crossing = {20, 10, view.near_z, VEC4I_ONE};
+    const vec4i_t front = {40, 20, 200, VEC4I_ONE};
     int ex, ey, fx, fy;
     r3d_camera_to_screen(crossing, &view, &ex, &ey);
     r3d_camera_to_screen(front, &view, &fx, &fy);
@@ -233,8 +233,8 @@ test_an_endpoint_exactly_at_near_z_counts_as_behind(void) {
     TEST_ASSERT_TRUE(wire_project_edges(&mesh, &view, SCREEN_W, SCREEN_H, &frame));
     TEST_ASSERT_EQUAL_INT(1, frame.segment_count);
 
-    const fix3_vec4_t p0 = {10, 10, view.near_z, FIX3_ONE};
-    const fix3_vec4_t p1 = {0, 0, 300, FIX3_ONE};
+    const vec4i_t p0 = {10, 10, view.near_z, VEC4I_ONE};
+    const vec4i_t p1 = {0, 0, 300, VEC4I_ONE};
     int ex, ey, fx, fy;
     r3d_camera_to_screen(p0, &view, &ex, &ey);
     r3d_camera_to_screen(p1, &view, &fx, &fy);
@@ -250,7 +250,7 @@ test_an_endpoint_exactly_at_near_z_counts_as_behind(void) {
 static void
 check_edge_dropped(int16_t x0, int16_t y0, int16_t x1, int16_t y1) {
     const r3d_line_view_t view = fixture();
-    const wire_vertex_t vertices[2] = {{x0, y0, FIX3_ONE}, {x1, y1, FIX3_ONE}};
+    const wire_vertex_t vertices[2] = {{x0, y0, VEC4I_ONE}, {x1, y1, VEC4I_ONE}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
     wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
@@ -263,28 +263,28 @@ check_edge_dropped(int16_t x0, int16_t y0, int16_t x1, int16_t y1) {
 
 static void
 test_an_edge_fully_left_of_the_screen_is_dropped(void) {
-    check_edge_dropped(-3 * FIX3_ONE, 0, -2 * FIX3_ONE, 0);
+    check_edge_dropped(-3 * VEC4I_ONE, 0, -2 * VEC4I_ONE, 0);
 }
 
 static void
 test_an_edge_fully_right_of_the_screen_is_dropped(void) {
-    check_edge_dropped(3 * FIX3_ONE, 0, 4 * FIX3_ONE, 0);
+    check_edge_dropped(3 * VEC4I_ONE, 0, 4 * VEC4I_ONE, 0);
 }
 
 static void
 test_an_edge_fully_above_the_screen_is_dropped(void) {
-    check_edge_dropped(0, 2 * FIX3_ONE, 0, 3 * FIX3_ONE);
+    check_edge_dropped(0, 2 * VEC4I_ONE, 0, 3 * VEC4I_ONE);
 }
 
 static void
 test_an_edge_fully_below_the_screen_is_dropped(void) {
-    check_edge_dropped(0, -2 * FIX3_ONE, 0, -3 * FIX3_ONE);
+    check_edge_dropped(0, -2 * VEC4I_ONE, 0, -3 * VEC4I_ONE);
 }
 
 static void
 test_an_edge_straddling_the_right_edge_is_kept_and_clipped(void) {
     const r3d_line_view_t view = fixture();
-    const wire_vertex_t vertices[2] = {{0, 0, FIX3_ONE}, {4 * FIX3_ONE, 0, FIX3_ONE}};
+    const wire_vertex_t vertices[2] = {{0, 0, VEC4I_ONE}, {4 * VEC4I_ONE, 0, VEC4I_ONE}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
     wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
@@ -307,15 +307,15 @@ test_an_edge_straddling_the_right_edge_is_kept_and_clipped(void) {
 static void
 test_a_far_off_endpoint_is_narrowed_within_one_pixel(void) {
     r3d_line_view_t view = fixture();
-    fix3_mat4_init(view.matrix);
-    view.matrix[0][0] = 500 * FIX3_ONE;
-    view.matrix[1][1] = 250 * FIX3_ONE;
+    matrix4i_init(view.matrix);
+    view.matrix[0][0] = 500 * VEC4I_ONE;
+    view.matrix[1][1] = 250 * VEC4I_ONE;
 
-    const wire_vertex_t vertices[2] = {{0, 0, 5 * FIX3_ONE}, {FIX3_ONE, FIX3_ONE, 52}};
+    const wire_vertex_t vertices[2] = {{0, 0, 5 * VEC4I_ONE}, {VEC4I_ONE, VEC4I_ONE, 52}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
 
-    const fix3_vec4_t model_far = {500 * FIX3_ONE, 250 * FIX3_ONE, 52, FIX3_ONE};
-    const fix3_vec4_t model_near = {0, 0, 5 * FIX3_ONE, FIX3_ONE};
+    const vec4i_t model_far = {500 * VEC4I_ONE, 250 * VEC4I_ONE, 52, VEC4I_ONE};
+    const vec4i_t model_near = {0, 0, 5 * VEC4I_ONE, VEC4I_ONE};
     int fx_screen, fy_screen, nx_screen, ny_screen;
     r3d_camera_to_screen(model_far, &view, &fx_screen, &fy_screen);
     r3d_camera_to_screen(model_near, &view, &nx_screen, &ny_screen);
@@ -376,10 +376,10 @@ test_exceeding_capacity_caps_the_count_and_reports_overflow(void) {
 /* Bounding box */
 
 static const wire_vertex_t bbox_vertices[4] = {
-    {0, 0, 5 * FIX3_ONE},
-    {2 * FIX3_ONE, 0, 5 * FIX3_ONE},
-    {0, 2 * FIX3_ONE, 5 * FIX3_ONE},
-    {-2 * FIX3_ONE, -2 * FIX3_ONE, 5 * FIX3_ONE},
+    {0, 0, 5 * VEC4I_ONE},
+    {2 * VEC4I_ONE, 0, 5 * VEC4I_ONE},
+    {0, 2 * VEC4I_ONE, 5 * VEC4I_ONE},
+    {-2 * VEC4I_ONE, -2 * VEC4I_ONE, 5 * VEC4I_ONE},
 };
 static const wire_edge_t bbox_edges[2] = {{0, 1}, {2, 3}};
 static const wire_mesh_t bbox_mesh = {bbox_vertices, bbox_edges, 4, 2};

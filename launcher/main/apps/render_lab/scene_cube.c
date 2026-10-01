@@ -1,7 +1,7 @@
 /*
  * scene_cube - the Gouraud-shaded rotating RGB cube, as a render_lab scene.
  *
- * The cube is projected and its back faces culled in fix3's fixed point;
+ * The cube is projected and its back faces culled in matrix4i's fixed point;
  * render/'s span rasterizer fills it. Its depth plane is one band tall (GFX_BAND_HEIGHT
  * rows), reused by every band and strip: a full colour+depth pair is ~1.3 MB
  * on a chip with ~424 KiB of RAM.
@@ -15,19 +15,19 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
-#include "render/fix3.h"
 #include "render/r3d_line_camera.h"
 #include "render/r3d_span.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
+#include "util/math/matrix4i.h"
 
-/* One unit is FIX3_ONE, and FIX3_ONE is also one full turn as an angle. */
+/* One unit is VEC4I_ONE, and VEC4I_ONE is also one full turn as an angle. */
 
-#define CUBE_DISTANCE       (3 * FIX3_ONE)
-#define CAMERA_FOCAL_LENGTH (2 * FIX3_ONE)
+#define CUBE_DISTANCE       (3 * VEC4I_ONE)
+#define CAMERA_FOCAL_LENGTH (2 * VEC4I_ONE)
 
 /* A triangle with a corner this close or closer is culled, not clipped. */
-#define CUBE_NEAR_Z         (FIX3_ONE / 4)
+#define CUBE_NEAR_Z         (VEC4I_ONE / 4)
 
 /* Milliseconds per revolution. Deliberately unequal so it tumbles rather than
  * spinning about one fixed axis. */
@@ -36,9 +36,9 @@
 
 #define CUBE_VERTEX_COUNT   8
 #define CUBE_TRIANGLE_COUNT 12
-#define CUBE_HALF           (FIX3_ONE / 2)
+#define CUBE_HALF           (VEC4I_ONE / 2)
 
-static const fix3_unit_t cube_vertices[CUBE_VERTEX_COUNT][3] = {
+static const vec4i_unit_t cube_vertices[CUBE_VERTEX_COUNT][3] = {
     {CUBE_HALF, -CUBE_HALF, -CUBE_HALF}, {-CUBE_HALF, -CUBE_HALF, -CUBE_HALF}, {CUBE_HALF, CUBE_HALF, -CUBE_HALF},
     {-CUBE_HALF, CUBE_HALF, -CUBE_HALF}, {CUBE_HALF, -CUBE_HALF, CUBE_HALF},   {-CUBE_HALF, -CUBE_HALF, CUBE_HALF},
     {CUBE_HALF, CUBE_HALF, CUBE_HALF},   {-CUBE_HALF, CUBE_HALF, CUBE_HALF},
@@ -63,8 +63,8 @@ static const uint8_t cube_corner_colors[CUBE_VERTEX_COUNT][3] = {
     {0, 255, 255},   /* 7  left,  top,    back  */
 };
 
-static fix3_transform_t cube_pose;
-static fix3_transform_t camera_pose;
+static matrix4i_transform_t cube_pose;
+static matrix4i_transform_t camera_pose;
 static uint32_t elapsed_ms;
 
 /* This frame's cube coverage and last frame's: band mode marks both dirty,
@@ -89,8 +89,8 @@ void
 cube_update_rotation(uint32_t dt_ms) {
     elapsed_ms += dt_ms;
 
-    cube_pose.rotation.y = (fix3_unit_t)(((uint64_t)elapsed_ms * FIX3_ONE / SPIN_PERIOD_Y_MS) % FIX3_ONE);
-    cube_pose.rotation.x = (fix3_unit_t)(((uint64_t)elapsed_ms * FIX3_ONE / SPIN_PERIOD_X_MS) % FIX3_ONE);
+    cube_pose.rotation.y = (vec4i_unit_t)(((uint64_t)elapsed_ms * VEC4I_ONE / SPIN_PERIOD_Y_MS) % VEC4I_ONE);
+    cube_pose.rotation.x = (vec4i_unit_t)(((uint64_t)elapsed_ms * VEC4I_ONE / SPIN_PERIOD_X_MS) % VEC4I_ONE);
 }
 
 void
@@ -115,7 +115,7 @@ static int cube_bin_count;
 /* A projected vertex is a whole pixel coordinate; the span rasterizer samples
  * at the pixel's centre, half a pixel further. */
 static r3d_span_vertex_t
-cube_span_vertex(fix3_vec4_t projected, int corner) {
+cube_span_vertex(vec4i_t projected, int corner) {
     const uint8_t* rgb = cube_corner_colors[corner];
     r3d_span_vertex_t v;
     v.x = (projected.x * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2);
@@ -128,14 +128,14 @@ cube_span_vertex(fix3_vec4_t projected, int corner) {
 }
 
 static void
-cube_triangle_bounds(const fix3_vec4_t transformed[3], int* x0, int* x1, int* y0, int* y1) {
+cube_triangle_bounds(const vec4i_t transformed[3], int* x0, int* x1, int* y0, int* y1) {
     *x0 = transformed[0].x;
     *x1 = transformed[0].x;
     *y0 = transformed[0].y;
     *y1 = transformed[0].y;
     for (int i = 1; i < 3; i++) {
-        const fix3_unit_t x = transformed[i].x;
-        const fix3_unit_t y = transformed[i].y;
+        const vec4i_unit_t x = transformed[i].x;
+        const vec4i_unit_t y = transformed[i].y;
         if (x < *x0) {
             *x0 = x;
         }
@@ -176,19 +176,19 @@ cube_expand_bbox(const cube_triangle_bin_t* entry, int x0, int x1) {
 }
 
 /* The vertex in pixels; z and w both keep the camera-space depth. */
-static fix3_vec4_t
+static vec4i_t
 cube_project(int corner, const r3d_line_view_t* view) {
-    const fix3_vec4_t model = {cube_vertices[corner][0], cube_vertices[corner][1], cube_vertices[corner][2], FIX3_ONE};
-    const fix3_vec4_t camera = r3d_to_camera_space(model, view);
+    const vec4i_t model = {cube_vertices[corner][0], cube_vertices[corner][1], cube_vertices[corner][2], VEC4I_ONE};
+    const vec4i_t camera = r3d_to_camera_space(model, view);
     int x, y;
     r3d_camera_to_screen(camera, view, &x, &y);
-    return (fix3_vec4_t){x, y, camera.z, camera.z};
+    return (vec4i_t){x, y, camera.z, camera.z};
 }
 
 /* False for a triangle that touches the near plane, lies wholly off one side
  * of the screen, or faces away (clockwise on screen). */
 static bool
-cube_triangle_visible(const fix3_vec4_t p[3]) {
+cube_triangle_visible(const vec4i_t p[3]) {
     bool off_left = true;
     bool off_right = true;
     bool off_top = true;
@@ -221,7 +221,7 @@ cube_bin_triangles(void) {
     cube_bbox_valid = false;
 
     for (int t = 0; t < CUBE_TRIANGLE_COUNT; t++) {
-        fix3_vec4_t transformed[3];
+        vec4i_t transformed[3];
         for (int i = 0; i < 3; i++) {
             transformed[i] = cube_project(cube_triangles[t][i], &view);
         }
@@ -309,9 +309,9 @@ cube_rasterize_band(gfx_color_t* buf, int row0, int row1) {
  * triangle is discarded. A box from a previous visit is not "last frame". */
 static void
 scene_cube_enter(void) {
-    fix3_transform_init(&cube_pose);
+    matrix4i_transform_init(&cube_pose);
     cube_pose.translation.z = CUBE_DISTANCE;
-    fix3_transform_init(&camera_pose);
+    matrix4i_transform_init(&camera_pose);
 
     const size_t depth_bytes = sizeof(*band_depth) * (size_t)GFX_BAND_HEIGHT * GFX_WIDTH;
     band_depth = heap_caps_malloc(depth_bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
