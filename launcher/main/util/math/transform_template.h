@@ -13,8 +13,7 @@
  * Code changes a transform only through the setters, which clear `cached`;
  * a zero-initialized transform has `cached` false and so builds on first use.
  *
- * Local +x is right, +y up and +z forward, so a camera looks down +z. (glTF
- * cameras look down -Z; the exporter, not this code, owns that flip.)
+ * Local +x is right, +y up and +z forward, so a camera looks down +z.
  */
 #pragma once
 
@@ -66,8 +65,7 @@
         return t->matrix;                                                                                              \
     }                                                                                                                  \
                                                                                                                        \
-    /* Parent to local: the inverse of the position and rotation, for a camera. \
- * The scale is ignored, as a camera's is. */                                      \
+    /* Parent to local: the inverse of position and rotation; scale is ignored. */                                     \
     static inline M##_t P##_view(const P##_t* t) {                                                                     \
         const V##_t origin = {OPS##_zero(), OPS##_zero(), OPS##_zero()};                                               \
         const V##_t one = {OPS##_one(), OPS##_one(), OPS##_one()};                                                     \
@@ -84,8 +82,8 @@
         return view;                                                                                                   \
     }                                                                                                                  \
                                                                                                                        \
-    /* Turns to face `target` with `up` as the sky. Neither may be parallel to \
- * the line to the target. */                                       \
+    /* Faces `target` with `up` as the sky. `up` must not be parallel to the line to */                                \
+    /* `target`, and `target` must not be the position. */                                                             \
     static inline void P##_look_at(P##_t* t, V##_t target, V##_t up) {                                                 \
         const V##_t forward = V##_normalize(V##_sub(target, t->position));                                             \
         const V##_t right = V##_normalize(V##_cross(up, forward));                                                     \

@@ -1,9 +1,8 @@
 /*
  * quat_template: a rotation as x, y, z, w, unit length, Hamilton product,
  * acting on a vector as q * v * q^-1, for one number type; see
- * math_template.h for the macro arguments. A positive angle about an axis is
- * the right-hand rule's matrix; in the renderer's frame (x right, y up, z
- * forward) that turns +z toward +x about +y. Angles are radians for float and
+ * math_template.h for the macro arguments. The frame is Unity's, with x
+ * right, y up and z forward: a positive angle about +y turns +z toward +x. Angles are radians for float and
  * turns for fixed point. normalize and from_basis need a square root and a
  * divide, so they are a macro of their own.
  */
@@ -39,8 +38,7 @@
         };                                                                                                             \
     }                                                                                                                  \
                                                                                                                        \
-    /* Angles applied Z, then X, then Y about the fixed axes, the order Unity \
- * uses; radians for float, turns for fixed point. */                                        \
+    /* Angles applied Z, then X, then Y about the fixed axes, as Unity does. */                                        \
     static inline P##_t P##_from_euler(V##_t angles) {                                                                 \
         const P##_t about_x = P##_from_axis_angle((V##_t){OPS##_one(), OPS##_zero(), OPS##_zero()}, angles.x);         \
         const P##_t about_y = P##_from_axis_angle((V##_t){OPS##_zero(), OPS##_one(), OPS##_zero()}, angles.y);         \

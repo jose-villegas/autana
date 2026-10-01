@@ -212,8 +212,9 @@ so none of it has to take internal RAM.
 ## Rules the layer keeps
 
 - **Single precision only.** The FPU has no double, and one stray promotion
-  costs an order of magnitude. Each `.c` doing float work turns
-  `-Wdouble-promotion` into an error itself.
+  costs an order of magnitude. The firmware build turns
+  `-Wdouble-promotion` and `-Wfloat-conversion` into errors for the whole
+  `main` component (see [Build-Variants.md](../Build-Variants.md)).
 - **Host-testable.** The headers are ESP-IDF-free, and the portable
   `test/suites/suite_r3d_*.c` suites check them on a laptop.
   `suite_r3d_lit.c` builds its meshes inside the test, never a baked one.

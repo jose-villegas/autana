@@ -218,6 +218,169 @@ test_int32_dot_widens_to_int64(void) {
     TEST_ASSERT_TRUE(vec3i_dot(big, big) == 30000000000LL);
 }
 
+static void
+test_fixed_multiply_and_divide_round_ties_away_from_zero_in_both_signs(void) {
+    TEST_ASSERT_EQUAL_INT32(2, mathx_mul(3, MATHX_ONE / 2)); /* 1.5 units */
+    TEST_ASSERT_EQUAL_INT32(-2, mathx_mul(-3, MATHX_ONE / 2));
+    TEST_ASSERT_EQUAL_INT32(1, mathx_mul(1, MATHX_ONE / 2)); /* 0.5 unit */
+    TEST_ASSERT_EQUAL_INT32(-1, mathx_mul(-1, MATHX_ONE / 2));
+    TEST_ASSERT_EQUAL_INT32(1, mathx_div(1, 2 * MATHX_ONE)); /* 0.5 unit */
+    TEST_ASSERT_EQUAL_INT32(-1, mathx_div(-1, 2 * MATHX_ONE));
+    TEST_ASSERT_EQUAL_INT32(-1, mathx_div(1, -2 * MATHX_ONE));
+    TEST_ASSERT_EQUAL_INT32(0, mathx_div(1, 4 * MATHX_ONE)); /* 0.25 unit rounds down */
+}
+
+static void
+test_fixed_divide_handles_signs_saturation_and_the_most_negative_divisor(void) {
+    TEST_ASSERT_EQUAL_INT32(-3 * MATHX_ONE, mathx_div(-6 * MATHX_ONE, 2 * MATHX_ONE));
+    TEST_ASSERT_EQUAL_INT32(-3 * MATHX_ONE, mathx_div(6 * MATHX_ONE, -2 * MATHX_ONE));
+    TEST_ASSERT_EQUAL_INT32(3 * MATHX_ONE, mathx_div(-6 * MATHX_ONE, -2 * MATHX_ONE));
+    TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathx_div(INT32_MIN, MATHX_ONE / 2));
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_div(INT32_MIN, -MATHX_ONE / 2));
+    TEST_ASSERT_EQUAL_INT32(MATHX_ONE, mathx_div(INT32_MIN, INT32_MIN));
+    TEST_ASSERT_EQUAL_INT32(-2, mathx_div(MATHX_ONE, INT32_MIN));
+}
+
+static void
+test_fixed_square_root_floors_and_survives_the_largest_input(void) {
+    TEST_ASSERT_EQUAL_INT32(92681, mathx_sqrt(2 * MATHX_ONE));
+    const int32_t roots[] = {1, 3, 65535, 1000000, INT32_MAX};
+    for (unsigned i = 0; i < sizeof(roots) / sizeof(roots[0]); i++) {
+        const uint64_t n = (uint64_t)roots[i] << MATHX_SHIFT;
+        const uint64_t r = (uint64_t)mathx_sqrt(roots[i]);
+        TEST_ASSERT_TRUE(r * r <= n);
+        TEST_ASSERT_TRUE((r + 1) * (r + 1) > n);
+    }
+}
+
+static void
+test_int16_negative_edges_and_float_rounding_boundaries(void) {
+    TEST_ASSERT_EQUAL_INT16(INT16_MAX, maths_neg(INT16_MIN));
+    TEST_ASSERT_EQUAL_INT16(INT16_MIN, maths_mul(INT16_MIN, 2));
+    TEST_ASSERT_EQUAL_INT16(INT16_MIN, maths_mul(-200, 200));
+    TEST_ASSERT_EQUAL_INT16(INT16_MIN, vec3s_from_vec3f((vec3f_t){-1.0e9F, 0.0F, 0.0F}, 1.0F).x);
+    TEST_ASSERT_EQUAL_INT32(3, mathf_round_i32(2.5F));
+    TEST_ASSERT_EQUAL_INT32(-3, mathf_round_i32(-2.5F));
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathf_round_i32(MATH_FLOAT_INT_LIMIT));
+    TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathf_round_i32(-MATH_FLOAT_INT_LIMIT));
+    TEST_ASSERT_EQUAL_INT32(2147483392, mathf_round_i32(2147483392.0F));
+}
+
+static void
+test_normalize_by_value_and_repeated_rotation_stay_unit_length(void) {
+    const quatf_t f = quatf_normalize((quatf_t){0.0F, 0.0F, 0.0F, 2.0F});
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, f.w);
+    const quatx_t x = quatx_normalize((quatx_t){0, 0, 0, 2 * MATHX_ONE});
+    TEST_ASSERT_EQUAL_INT32(MATHX_ONE, x.w);
+
+    transformf_t tf = TRANSFORMF_IDENTITY;
+    transformx_t tx = TRANSFORMX_IDENTITY;
+    for (int i = 0; i < 200; i++) {
+        transformf_rotate(&tf, quatf_from_euler((vec3f_t){0.01F, 0.02F, 0.03F}));
+        transformx_rotate(&tx, quatx_from_euler((vec3x_t){MATHX_ONE / 600, MATHX_ONE / 300, MATHX_ONE / 200}));
+    }
+    const quatf_t q = tf.rotation;
+    TEST_ASSERT_FLOAT_WITHIN(1e-4F, 1.0F, (q.x * q.x) + (q.y * q.y) + (q.z * q.z) + (q.w * q.w));
+    const float w = mathx_to_f(tx.rotation.w);
+    const float lengthsq = mathx_to_f(mathx_mul(tx.rotation.x, tx.rotation.x))
+                           + mathx_to_f(mathx_mul(tx.rotation.y, tx.rotation.y))
+                           + mathx_to_f(mathx_mul(tx.rotation.z, tx.rotation.z)) + (w * w);
+    TEST_ASSERT_FLOAT_WITHIN(5e-3F, 1.0F, lengthsq);
+}
+
+static void
+test_slerp_of_equal_and_opposite_quaternions_and_across_its_threshold(void) {
+    const quatf_t a = quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, 0.8F);
+    const quatf_t same = quatf_slerp(a, a, 0.3F);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, 1.0F, fabsf((same.x * a.x) + (same.y * a.y) + (same.z * a.z) + (same.w * a.w)));
+
+    const quatf_t opposite = {-a.x, -a.y, -a.z, -a.w};
+    const quatf_t mid = quatf_slerp(a, opposite, 0.5F);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, 1.0F, fabsf((mid.x * a.x) + (mid.y * a.y) + (mid.z * a.z) + (mid.w * a.w)));
+
+    /* cos(half angle) of 0.9996 and 0.9994 sit either side of the 0.9995
+     * switch to a normalized lerp; both must land on half the angle. */
+    const float cosines[] = {0.9996F, 0.9994F};
+    for (int i = 0; i < 2; i++) {
+        const float angle = 2.0F * acosf(cosines[i]);
+        const quatf_t end = quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, angle);
+        const vec3f_t got = quatf_rotate(quatf_slerp(quatf_identity(), end, 0.5F), (vec3f_t){0.0F, 0.0F, 1.0F});
+        TEST_ASSERT_FLOAT_WITHIN(1e-4F, sinf(angle / 2.0F), got.x);
+        TEST_ASSERT_FLOAT_WITHIN(1e-4F, cosf(angle / 2.0F), got.z);
+    }
+}
+
+static void
+assert_basis_f(vec3f_t r, vec3f_t u, vec3f_t f) {
+    const quatf_t q = quatf_from_basis(r, u, f);
+    const vec3f_t x = quatf_rotate(q, (vec3f_t){1.0F, 0.0F, 0.0F});
+    const vec3f_t y = quatf_rotate(q, (vec3f_t){0.0F, 1.0F, 0.0F});
+    const vec3f_t z = quatf_rotate(q, (vec3f_t){0.0F, 0.0F, 1.0F});
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, r.x, x.x);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, u.y, y.y);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, f.z, z.z);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, r.z, x.z);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, f.x, z.x);
+}
+
+static void
+assert_basis_x(vec3f_t r, vec3f_t u, vec3f_t f) {
+    const quatx_t q = quatx_from_basis(vec3x_from_vec3f(r), vec3x_from_vec3f(u), vec3x_from_vec3f(f));
+    assert_x_near_f(r, quatx_rotate(q, to_x(1.0F, 0.0F, 0.0F)), FIXED_SLACK);
+    assert_x_near_f(u, quatx_rotate(q, to_x(0.0F, 1.0F, 0.0F)), FIXED_SLACK);
+    assert_x_near_f(f, quatx_rotate(q, to_x(0.0F, 0.0F, 1.0F)), FIXED_SLACK);
+}
+
+static void
+test_from_basis_covers_each_dominant_axis_branch_in_float_and_fixed(void) {
+    /* Half turns about x, y and z: the trace is -1, so each takes its own branch. */
+    const vec3f_t rx = {1.0F, 0.0F, 0.0F};
+    const vec3f_t ux = {0.0F, -1.0F, 0.0F};
+    const vec3f_t fx = {0.0F, 0.0F, -1.0F};
+    const vec3f_t ry = {-1.0F, 0.0F, 0.0F};
+    const vec3f_t uy = {0.0F, 1.0F, 0.0F};
+    const vec3f_t fy = {0.0F, 0.0F, -1.0F};
+    const vec3f_t rz = {-1.0F, 0.0F, 0.0F};
+    const vec3f_t uz = {0.0F, -1.0F, 0.0F};
+    const vec3f_t fz = {0.0F, 0.0F, 1.0F};
+    assert_basis_f(rx, ux, fx);
+    assert_basis_f(ry, uy, fy);
+    assert_basis_f(rz, uz, fz);
+    assert_basis_x(rx, ux, fx);
+    assert_basis_x(ry, uy, fy);
+    assert_basis_x(rz, uz, fz);
+}
+
+/* A half turn about the unit axis n: R = 2 n n^T - I, whose diagonal says which branch of
+ * from_basis it takes; an off-axis n keeps the other two diagonal entries apart. */
+static void
+check_half_turn_about(vec3f_t n) {
+    const vec3f_t r = {(2.0F * n.x * n.x) - 1.0F, 2.0F * n.y * n.x, 2.0F * n.z * n.x};
+    const vec3f_t u = {2.0F * n.x * n.y, (2.0F * n.y * n.y) - 1.0F, 2.0F * n.z * n.y};
+    const vec3f_t f = {2.0F * n.x * n.z, 2.0F * n.y * n.z, (2.0F * n.z * n.z) - 1.0F};
+    assert_basis_f(r, u, f);
+    assert_basis_x(r, u, f);
+}
+
+static void
+test_from_basis_picks_the_largest_diagonal_for_off_axis_half_turns(void) {
+    check_half_turn_about((vec3f_t){0.9486833F, 0.1F, 0.3F});
+    check_half_turn_about((vec3f_t){0.1F, 0.9486833F, 0.3F});
+    check_half_turn_about((vec3f_t){0.3F, 0.1F, 0.9486833F});
+}
+
+static void
+test_fixed_angles_negative_and_beyond_a_turn(void) {
+    const vec3x_t y_axis = to_x(0.0F, 1.0F, 0.0F);
+    const vec3x_t z = to_x(0.0F, 0.0F, 1.0F);
+    assert_x_near_f((vec3f_t){-1.0F, 0.0F, 0.0F}, quatx_rotate(quatx_from_axis_angle(y_axis, -MATHX_ONE / 4), z),
+                    FIXED_SLACK);
+    assert_x_near_f((vec3f_t){1.0F, 0.0F, 0.0F},
+                    quatx_rotate(quatx_from_axis_angle(y_axis, MATHX_ONE + (MATHX_ONE / 4)), z), FIXED_SLACK);
+    assert_x_near_f((vec3f_t){1.0F, 0.0F, 0.0F},
+                    quatx_rotate(quatx_from_axis_angle(y_axis, -3 * MATHX_ONE + (MATHX_ONE / 4)), z), FIXED_SLACK);
+}
+
 void
 suite_math_numbers(void) {
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
@@ -230,6 +393,15 @@ suite_math_numbers(void) {
     RUN_TEST(test_fixed_point_overflow_saturates_and_divide_by_zero_follows_the_sign);
     RUN_TEST(test_int16_arithmetic_and_conversion_saturate_at_the_int16_range);
     RUN_TEST(test_int32_dot_widens_to_int64);
+    RUN_TEST(test_fixed_multiply_and_divide_round_ties_away_from_zero_in_both_signs);
+    RUN_TEST(test_fixed_divide_handles_signs_saturation_and_the_most_negative_divisor);
+    RUN_TEST(test_fixed_square_root_floors_and_survives_the_largest_input);
+    RUN_TEST(test_int16_negative_edges_and_float_rounding_boundaries);
+    RUN_TEST(test_normalize_by_value_and_repeated_rotation_stay_unit_length);
+    RUN_TEST(test_slerp_of_equal_and_opposite_quaternions_and_across_its_threshold);
+    RUN_TEST(test_from_basis_covers_each_dominant_axis_branch_in_float_and_fixed);
+    RUN_TEST(test_from_basis_picks_the_largest_diagonal_for_off_axis_half_turns);
+    RUN_TEST(test_fixed_angles_negative_and_beyond_a_turn);
 }
 
 SUITE_REGISTER(suite_math_numbers);

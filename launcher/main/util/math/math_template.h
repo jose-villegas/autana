@@ -15,7 +15,7 @@
  *        it uses, so a type without OPS_div or OPS_sqrt gets no normalize.
  *
  * A reader looks at the instantiation's plain names (vec3f_add, quatx_mul)
- * and the table in docs/render/Mesh-Rendering.md, and can ignore the macros.
+ * and the tables in docs/math/README.md, and can ignore the macros.
  * Header-only, static inline and ESP-IDF-free.
  */
 #pragma once

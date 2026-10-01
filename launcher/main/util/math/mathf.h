@@ -1,9 +1,9 @@
 /*
  * mathf: single-precision float's scalar operations for the math templates
  * (math_template.h). The FPU has no double, so one stray promotion costs an
- * order of magnitude; the build refuses the promotion in the files that do
- * float maths (main/CMakeLists.txt). Angles are radians. Needs libm for
- * sqrtf, sinf and cosf. A `w` operation is the one a dot product sums with.
+ * order of magnitude; the build refuses the promotion across the whole main
+ * component (main/CMakeLists.txt). Angles are radians. Needs libm for sqrtf,
+ * sinf, cosf and acosf. A `w` operation is the one a dot product sums with.
  */
 #pragma once
 

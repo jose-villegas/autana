@@ -25,9 +25,9 @@ main/boot/boot_anim_tracks_generated.c
 tools/render/scenes/boot_anim_render_host.c
 "
 scene_renders="
-early|300|368x448
-middle|1500|368x448
-late|3000|368x448
+early|300|368x448|nopin
+middle|1500|368x448|nopin
+late|3000|368x448|nopin
 "
 
 # shellcheck source=./render_scene.sh

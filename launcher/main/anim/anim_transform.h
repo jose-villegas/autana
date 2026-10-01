@@ -3,8 +3,9 @@
  * into a transformf_t, for an object an animation plays onto.
  *
  * Translation and scale are in model units; the rotation track is a
- * quaternion (xyzw), renormalized because a sample between two keys is a
- * lerp. Header-only, static inline and ESP-IDF-free.
+ * quaternion (xyzw). Samples between keys are already unit (slerp or a
+ * normalized Hermite); the normalize guards a held key that was authored a
+ * hair off unit length. Header-only, static inline and ESP-IDF-free.
  */
 #pragma once
 

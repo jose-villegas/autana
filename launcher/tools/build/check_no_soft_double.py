@@ -59,7 +59,11 @@ def objects(build):
 
 def calls_by_function(objdump, obj):
     """{function: set of called symbols} for one object file."""
-    text = subprocess.run([objdump, "-dr", str(obj)], capture_output=True, text=True, check=True).stdout
+    return parse_calls(subprocess.run([objdump, "-dr", str(obj)], capture_output=True, text=True, check=True).stdout)
+
+
+def parse_calls(text):
+    """{function: set of called symbols} from `objdump -dr` text."""
     calls = {}
     current = None
     for line in text.splitlines():

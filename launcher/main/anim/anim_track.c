@@ -5,8 +5,6 @@
 
 #include "util/math/quatf.h"
 
-#pragma GCC diagnostic error "-Wdouble-promotion"
-
 static const float*
 key_value(const anim_track_t* track, int key) {
     const int stride = track->interp == ANIM_CUBIC ? 3 * track->width : track->width;

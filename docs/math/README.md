@@ -12,7 +12,7 @@ its family plus a one-letter number-type suffix; there is no bare name.
 |---|---|---|---|---|---|
 | `f` | float, single precision | about ±3.4e38 | 24-bit mantissa, ~7 digits | `vec2f`, `vec3f`, `quatf`, `mat4f`, `transformf` | the default |
 | `i` | int32 | ±2.1e9 | exact; sums and products wrap | `vec2i`, `vec3i` | grid, pixel and cell coordinates |
-| `s` | int16 | -32768 to 32767 | exact; sums and products saturate | `vec2s`, `vec3s` | compact storage in a low-memory app |
+| `s` | int16 | -32768 to 32767 | exact; sums and products saturate | `vec2s`, `vec3s` | coordinates kept compact where memory is short |
 | `x` | Q16.16 fixed point | ±32768 | 1/65536 (1.5e-5); sine good to ~1e-3; saturates | `vec2x`, `vec3x`, `quatx`, `mat4x`, `transformx` | deterministic maths, or a chip with no FPU |
 
 A dot product of `i` and `s` vectors widens to int64; of `x`, it is a saturating
@@ -24,8 +24,8 @@ Fixed-point angles are **turns**, 65536 to a turn, so an eighth of a turn is
 
 | | |
 |---|---|
-| Axes | local +x right, +y up, +z forward; a camera looks down +z. glTF cameras look down -Z: the exporter owns that flip |
-| Rotation sense | right-hand rule: a positive angle about +y turns +z toward +x |
+| Axes | local +x right, +y up, +z forward; a camera looks down +z. glTF cameras look down -Z; `render/r3d_scene.c` turns that into this frame |
+| Rotation sense | Unity's left-handed frame: a positive angle about +y turns +z toward +x |
 | Quaternion | `x, y, z, w` with `w` the scalar, unit length, Hamilton product; `mul(a, b)` applies `b` first |
 | Euler | `from_euler` applies Z, then X, then Y about the fixed axes (Unity's order) |
 | Matrix | `m[row][col]`, acting on column vectors; the translation is column 3; `mul(a, b)` applies `b` first |
@@ -41,12 +41,13 @@ V = R^{\mathsf T}\,T(-\text{position})
 ```
 
 ```math
-\text{pixel}_x = c_x + \operatorname{round}\!\left(\frac{x}{z}\, f\, s\right), \qquad
-\text{pixel}_y = c_y - \operatorname{round}\!\left(\frac{y}{z}\, f\, s\right)
+\text{pixel}_x = c_x + \operatorname{trunc}\!\left(\frac{x}{z}\, f\, s\right), \qquad
+\text{pixel}_y = c_y - \operatorname{trunc}\!\left(\frac{y}{z}\, f\, s\right)
 ```
 
-Here `f` is the focal length, `s` the pixels per projection-plane unit and `c`
-the screen centre (`render/r3d_project.h`).
+Here `f` is the focal length (0 is orthographic, no divide), `s` the pixels per
+projection-plane unit and `c` the screen centre; each offset is biased slightly
+away from zero and then truncated toward it (`render/r3d_project.h`).
 
 ## The transform cache
 
@@ -56,13 +57,13 @@ model matrix with a `cached` flag.
 | Call | Effect |
 |---|---|
 | any setter, `translate`, `rotate`, `look_at` | stores the new value and clears `cached` |
-| `matrix(t)` | rebuilds the matrix only when `cached` is false, then sets it; use for an object read every frame |
-| `compute_matrix(t)` | a fresh matrix from a const transform; never touches the cache; use in read-only code |
-| `view(t)` | the inverse of position and rotation (scale ignored), computed every call |
+| `P_matrix(t)` | rebuilds the matrix only when `cached` is false, then sets it; use for an object read every frame |
+| `P_compute_matrix(t)` | a fresh matrix from a const transform; never touches the cache; use in read-only code |
+| `P_view(t)` | the inverse of position and rotation (scale ignored), computed every call |
 
 `TRANSFORMF_IDENTITY` / `TRANSFORMX_IDENTITY` are initializers with the cache
 valid. A zero-initialized transform has `cached` false, so it builds on first
-use (its scale is zero, so the matrix is zero too). Code never edits `matrix`.
+use (its scale is zero, so its matrix sends every point to the origin). Code never edits `matrix`.
 
 ## Function reference
 
@@ -122,11 +123,11 @@ modified through a pointer except the transform's own `t`.
 | `P_set_rotation(&t, q)` | sets rotation (unit), clears the cache |
 | `P_set_scale(&t, s)` | sets scale, clears the cache |
 | `P_translate(&t, delta)` | adds `delta` to the position |
-| `P_rotate(&t, q)` | turns about the transform's own axes: `rotation = rotation * q` |
+| `P_rotate(&t, q)` | turns about the transform's own axes: `rotation = normalize(rotation * q)` |
 | `P_matrix(&t)` | the cached model matrix |
 | `P_compute_matrix(&t)` | a fresh model matrix from a const transform |
 | `P_view(&t)` | the camera's view matrix |
-| `P_look_at(&t, target, up)` | faces `target` with `up` as the sky; neither may be parallel to the line to the target |
+| `P_look_at(&t, target, up)` | faces `target` with `up` as the sky; `up` must not be parallel to the line to `target`, and `target` must not be the position |
 
 ### Conversions (`vec_convert.h`)
 
@@ -142,6 +143,15 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 | `vec3x_from_vec3f(v)`, `vec2x_from_vec2f(v)` | `v * 65536`, rounded, saturated |
 | `vec3i_from_vec3s(v)`, `vec2i_from_vec2s(v)` | exact widening |
 | `vec3s_from_vec3i(v)`, `vec2s_from_vec2i(v)` | saturating narrowing |
+
+The scalar steps behind them, in `vec_convert.h`:
+
+| Function | Rule |
+|---|---|
+| `mathf_round_i32(v)` | float to int32, nearest, ties away from zero, saturated at +-`MATH_FLOAT_INT_LIMIT` |
+| `mathf_round_s(v, scale)` | `v / scale` to int16, rounded and saturated |
+| `mathf_to_x(v)` | float to Q16.16, rounded and saturated |
+| `mathx_to_f(v)` | Q16.16 to float |
 
 Scalar operations live in `mathf.h`, `mathi.h`, `maths.h` and `mathx.h`
 (`mathx_add`, `mathx_mul`, `mathx_div`, `mathx_sqrt`, `mathx_sin_turns`, ...);
@@ -169,16 +179,15 @@ const quatf_t halfway = quatf_slerp(quatf_identity(), body.rotation, 0.5F);
 
 ## The float-precision build rules
 
-The S3's FPU is single precision: a `double` operation is a libgcc call about
-ten times a float's cost. Rules, all in [Build-Variants.md](../Build-Variants.md):
+The S3's FPU is single precision, so a `double` is a software call; the cost
+and the rules are in [Build-Variants.md](../Build-Variants.md):
 
 | Rule | Where |
 |---|---|
 | `-Werror=double-promotion`, `-Werror=float-conversion` | the whole `main` component |
-| `-ffp-contract=off` | the host test and render builds, so a pinned pixel never depends on a fused multiply-add; the firmware keeps the fused operations |
+| `-ffp-contract=off` | the host test and render builds only: the host never fuses a multiply-add and the device does, so a host and a device pixel can differ by one at a truncation boundary |
 | soft-double link gate | `launcher/tools/build/check_no_soft_double.py`: a function calling a soft-double routine fails unless it also logs |
 | libm | float needs `sqrtf`, `sinf`, `cosf`, `acosf`, `lroundf`; link it |
 
 The raster's lens and per-cluster transform (`render/r3d_pipeline.c`) stay a
-3x4 of their own; the line camera, the boot animation and the animation
-tracks use these types. See [Mesh-Rendering.md](../render/Mesh-Rendering.md).
+3x4 of their own.

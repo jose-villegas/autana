@@ -2,8 +2,6 @@
 
 #include <stddef.h>
 
-#pragma GCC diagnostic error "-Wdouble-promotion"
-
 uint32_t
 r3d_scene_camera_period_ms(const r3d_scene_camera_t* camera) {
     return camera->path == NULL ? 0 : camera->path->clip->duration_ms;

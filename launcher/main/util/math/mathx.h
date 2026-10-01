@@ -1,6 +1,6 @@
 /*
- * mathx: Q16.16 fixed-point scalars and the saturating int16 ones the math
- * templates build on (scalar_x.h, scalar_s.h).
+ * mathx: Q16.16 fixed-point scalar operations for the math templates
+ * (math_template.h).
  *
  * Every operation SATURATES: a result outside the type's range comes back as
  * its largest or smallest value instead of wrapping, so an overflow in a
