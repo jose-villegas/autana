@@ -221,7 +221,7 @@ frame_cost_enter(frame_cost_t* cost, int64_t now_us) {
  * discards, uncharged, any deeper one whose own END never ran. A `mark` no
  * longer on the stack (already popped, or FRAME_COST_IGNORE_MARK) charges
  * nothing and reads 0. Returns the bracket's whole elapsed time, nested
- * brackets included, for a caller that wants the wall time too. */
+ * ones included. */
 static inline int64_t
 frame_cost_leave_counted(frame_cost_t* cost, int mark, const char* name, int64_t now_us, uint32_t cycles,
                          uint32_t event) {
