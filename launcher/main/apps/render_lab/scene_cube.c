@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "esp_heap_caps.h"
+#include "esp_log.h"
 #include "gfx/gfx.h"
 #include "render/r3d_span.h"
 #include "render_lab.h"
@@ -69,14 +70,17 @@ static int cube_bbox_x0, cube_bbox_y0, cube_bbox_x1, cube_bbox_y1;
 static bool cube_bbox_valid;
 static render_lab_coverage_t last_coverage;
 
-/* The span rasterizer's depth plane for one band; NULL when it did not
- * allocate, and the cube then draws nothing. */
+/* The span rasterizer's depth plane for one band, GFX_BAND_HEIGHT x
+ * GFX_WIDTH x 2 bytes in internal RAM; NULL when it did not allocate, and
+ * the cube then draws nothing. */
 static uint16_t* band_depth;
+static const char* TAG = "scene_cube";
+_Static_assert(GFX_HEIGHT % GFX_BAND_HEIGHT == 0, "the full-frame strips are whole bands");
 _Static_assert(R3D_DEPTH_EMPTY == 0, "a band's depth is cleared with memset");
 
 /* Inverse depth is the near plane over the camera-space depth, so (0, 1] for
  * everything the near plane keeps. */
-#define CUBE_NEAR_DEPTH ((float)(S3L_F / 4))
+#define CUBE_NEAR_DEPTH ((float)S3L_NEAR)
 
 void
 cube_update_rotation(uint32_t dt_ms) {
@@ -170,8 +174,8 @@ cube_expand_bbox(const cube_triangle_bin_t* entry, int x0, int x1) {
 
 /* Projects every visible triangle once per frame. Only correct while
  * S3L_NEAR_CROSS_STRATEGY stays 0, so no triangle is split at the near
- * plane (asserted). The visible faces of a convex cube never overlap, so the
- * bin needs no order; y1 is exclusive, hence the +1 on the inclusive row. */
+ * plane (asserted). The depth test resolves overlap, so the bin needs no
+ * order; y1 is exclusive, hence the +1 on the inclusive row. */
 static void
 cube_bin_triangles(void) {
     S3L_Mat4 mat_camera, mat_final;
@@ -285,7 +289,7 @@ scene_cube_enter(void) {
     const size_t depth_bytes = sizeof(*band_depth) * (size_t)GFX_BAND_HEIGHT * GFX_WIDTH;
     band_depth = heap_caps_malloc(depth_bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (band_depth == NULL) {
-        band_depth = heap_caps_malloc(depth_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        ESP_LOGE(TAG, "no %u bytes of internal RAM for the depth plane: the scene stays blank", (unsigned)depth_bytes);
     }
 
     elapsed_ms = 0;

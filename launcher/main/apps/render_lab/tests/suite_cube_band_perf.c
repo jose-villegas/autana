@@ -191,6 +191,27 @@ replay_cube_band(int row0, int row1) {
     replay_band_count++;
 }
 
+/* Draws the last binned frame band by band into a buffer of a colour the
+ * cube never produces, and reports whether any pixel changed. */
+static bool
+cube_draws_a_pixel(void) {
+    const gfx_color_t untouched = 0x0001;
+    gfx_color_t* buf = malloc(sizeof(*buf) * GFX_BAND_HEIGHT * GFX_WIDTH);
+    TEST_ASSERT_NOT_NULL(buf);
+    bool drew = false;
+    for (int row0 = 0; row0 < GFX_HEIGHT && !drew; row0 += GFX_BAND_HEIGHT) {
+        for (int i = 0; i < GFX_BAND_HEIGHT * GFX_WIDTH; i++) {
+            buf[i] = untouched;
+        }
+        cube_rasterize_band(buf, row0, row0 + GFX_BAND_HEIGHT);
+        for (int i = 0; i < GFX_BAND_HEIGHT * GFX_WIDTH; i++) {
+            drew = drew || buf[i] != untouched;
+        }
+    }
+    free(buf);
+    return drew;
+}
+
 static void
 full_fb_frame(uint32_t dt_ms) {
     cube_update_rotation(dt_ms);
@@ -248,6 +269,7 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     render_lab_enter();
     capture(band_frame, SAMPLE_MS);
     const gfx_mode_t band_mode = *gfx_mode_current();
+    TEST_ASSERT_TRUE_MESSAGE(cube_draws_a_pixel(), "the cube drew nothing: its depth plane did not allocate");
     render_lab_exit();
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, sample_count, "no band-mode frames captured");
     const int band_n = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES;
