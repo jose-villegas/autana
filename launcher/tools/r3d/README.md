@@ -15,8 +15,8 @@ mesh. Nothing here runs on the board.
 | [light.py](light.py) | Baked direct light from a scene's typed lights (`LIGHTS`): directional with soft shadows, sky visibility and ambient, albedo from textures, and culling of what no point in a region can see. |
 | [octree.py](octree.py) | Groups weighted items, here meshlets, into an octree whose leaves hold runs of them. |
 | [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under an octree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as C data; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads that data back. |
-| [import_settings.py](import_settings.py) | Reads and validates an import-settings file and its scene file; standard library only, every table closed. |
-| [mesh_import.py](mesh_import.py) | Bakes each variant of one settings file: fetches and checks its source, applies material rules, lights it with the scene file's lights, then writes the generated C mesh. |
+| [import_settings.py](import_settings.py) | Reads and validates an import file and a scene file; standard library only, every table closed. |
+| [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: fetches and checks the source, runs the steps the import opts into, lights with the scene's lights, then writes the generated C mesh. |
 | [rebake.py](rebake.py) | Rewrites a baked mesh's clusters from its own triangles and colours, with no relighting. |
 | [fetch.py](fetch.py) | Downloads a source model once into `.cache/`, checked against a SHA-256. |
 | [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling (LINEAR, STEP, CUBICSPLINE), linear-blend skinning; reads through [`tools/gltf/`](../gltf/gltf_read.py), the reader and reference sampler [`tools/anim/`](../anim/README.md) shares. Standard library only. |
@@ -36,18 +36,18 @@ tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.tx
 
 **`rebake.py` or a full import.** Rebake a generated mesh when only clustering
 or data format changes: it reads its triangles and colours back and rewrites
-the clusters in place. Re-import a settings file when its source,
+the clusters in place. Re-import a scene when a mesh's source,
 simplification or light changes. Both commands are fixed points: the former
-canonicalizes triangle order and the latter uses the settings' fixed seed.
+canonicalizes triangle order and the latter uses the import file's fixed seed.
 
 **The `seal_seams` import option.** `simplify(seal_seams=True)`, off by default,
 is another way to import the same mesh, with fewer empty pixel-sized spots at
 the price of frame time; what it does and costs is in
-[Mesh-Import.md](../../../docs/Mesh-Import.md#sealing-seams). An import turns it on with `seal_seams = true` in its settings.
+[Mesh-Import.md](../../../docs/Mesh-Import.md#sealing-seams). An import turns it on with `seal_seams = true` in `[process.simplify]`.
 
-`mesh_import.py` is the shared full-import command. Each mesh settings file
-and its scene file live in the app's `meshes/` folder; the generated banner names
-the settings file and the exact command that produced it.
+`mesh_import.py` is the shared full-import command. Each import file and the
+scene file that places it live in the app's `meshes/` folder; the generated
+banner names the scene file and the exact command that produced it.
 
 ## Triangle sizes
 

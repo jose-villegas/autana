@@ -1,8 +1,22 @@
+# The Sponza scenario: one light rig and camera region, and the three bakes
+# of the model the render_lab scenes draw one at a time.
 tonemap_white = 0.35
 
 [camera_region]
 min = [-1400.0, 20.0, -620.0]
 max = [1270.0, 1250.0, 550.0]
+
+[[mesh_renderers]]
+mesh = "sponza.import.toml"
+variant = "sponza"
+
+[[mesh_renderers]]
+mesh = "sponza.import.toml"
+variant = "sponza_flat"
+
+[[mesh_renderers]]
+mesh = "sponza.import.toml"
+variant = "sponza_lite"
 
 [[lights]]
 type = "directional"
