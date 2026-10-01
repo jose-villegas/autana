@@ -42,14 +42,14 @@ ticks, `position_scale` ticks per model unit.
 ## The offline tools
 
 A mesh is const C data, written by
-[`launcher/tools/r3d/mesh_import.py`](../launcher/tools/r3d/mesh_import.py)
+[`launcher/tools/r3d/mesh_import.py`](../../launcher/tools/r3d/mesh_import.py)
 using the offline tools in
-[`launcher/tools/r3d/`](../launcher/tools/r3d/README.md). Two kinds of file
+[`launcher/tools/r3d/`](../../launcher/tools/r3d/README.md). Two kinds of file
 drive it, in the manner of Unity's `.meta` beside an asset: an **import file**
 describes one mesh asset, and a **scene file** describes a scenario that
-places meshes. Anything specific to one mesh is in its import file; anything
+places meshes ([Scene-Files.md](Scene-Files.md)). Anything specific to one mesh is in its import file; anything
 about the scenario (lights, camera region, tone map) is in the scene file.
-[`launcher/tools/r3d/import_settings.py`](../launcher/tools/r3d/import_settings.py)
+[`launcher/tools/r3d/import_settings.py`](../../launcher/tools/r3d/import_settings.py)
 reads and checks both with the standard library alone, and every table is
 closed: an unknown key is an error.
 
@@ -57,8 +57,10 @@ Run `python launcher/tools/r3d/mesh_import.py PATH` from the repository root,
 with `--mesh NAME` for one mesh. `PATH` is either kind of file. An import file
 with no scene-dependent step bakes alone, and its banner names it; one with
 such a step refuses with "needs a scene". A scene file bakes every mesh it
-places, with its own lights, camera region and tone map, and its banner names
-the scene. `rebake.py` rewrites a generated C mesh's clusters only.
+places, with its own lights, camera region and tone map; its banner names
+the scene. The [scene table](Scene-Files.md#the-scene-table) is written by
+`scene_table.py`, apart from the bake.
+`rebake.py` rewrites a generated C mesh's clusters only.
 
 ### Import file
 
@@ -90,62 +92,12 @@ The steps run in the order of the diagram, whatever order the file lists them.
 An import without variants names its one mesh in `output.name` and cannot
 simplify.
 
-### Scene file
-
-A scene file is a scenario: the meshes it places, and the lights, camera
-region and tone map their scene-dependent steps read.
-
-```toml
-tonemap_white = 0.35             # larger is darker
-
-[camera_region]                  # the world-space box the visibility step samples
-min = [-1400.0, 20.0, -620.0]
-max = [1270.0, 1250.0, 550.0]
-
-[[mesh_renderers]]
-mesh = "hall.import.toml"
-variant = "hall"                 # only for an import with variants
-
-[[mesh_renderers]]
-mesh = "statue.import.toml"
-
-[[lights]]
-type = "directional"
-direction = [-0.25, 1.0, 0.22]
-color = [1.0, 0.92, 0.78]
-intensity = 3.0
-disc_degrees = 1.2
-rays = 8
-```
-
-Each mesh renderer names an import file beside the scene file, which must
-exist, and the renderers decide which meshes the scene bakes. A scene must
-carry `lights` and `tonemap_white` when a placed mesh has `process.light`, and
-`camera_region` when one has `process.visibility`; it may not carry them
-otherwise. Baking reads the lights of the scene that requests it, so a mesh
-with a scene-dependent step belongs to one scene, and two scenes may not bake
-the same output name; a second scene that places it bakes its own variant under
-another name. A mesh without a scene-dependent step may be placed by many.
-`position`, `rotation` and `scale` on a renderer, and a `spawn` table, are
-reserved for the scene loader and rejected until then.
-
-`light.py`'s `LIGHTS` table pairs each type's fields with the function that
-adds its radiance, so a light's order in the file does not change the result.
-A double-sided face turns to the side the directional lights, summed by
-intensity, shine on.
-
-| Type | Fields |
-|---|---|
-| `directional` | `direction` (not zero), `color`, `intensity`, `disc_degrees`, `rays` |
-| `sky` | `color`, `intensity`, `rays` |
-| `ambient` | `color`, `intensity` |
-
-`point` and `spot` are reserved; the importer rejects them until their bake
-paths exist.
+The scene file that places meshes and carries the lights, the camera and the
+tone map is described in [Scene-Files.md](Scene-Files.md).
 
 Each tool and its module, `rebake.py` and when to rebake rather than bake in
 full, and the triangle-size report are in
-[`launcher/tools/r3d/README.md`](../launcher/tools/r3d/README.md).
+[`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md).
 
 ## Sealing seams
 
@@ -195,4 +147,4 @@ old clustering's in a fraction of a percent of its pixels, from ties alone:
 the triangles are the same.
 
 Levels of detail built on the meshlets, and what they would save, are in
-[plans/Cluster-LOD.md](plans/Cluster-LOD.md).
+[plans/Cluster-LOD.md](../plans/Cluster-LOD.md).

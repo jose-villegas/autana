@@ -50,6 +50,21 @@ r3d_lens_init(r3d_lens_t* lens, const camera_t* camera, int position_scale, view
     lens->height = viewport.height;
 }
 
+void
+r3d_lens_place(r3d_lens_t* lens, const r3d_placement_t* placement, int position_scale) {
+    const float to_ticks = (float)position_scale;
+    const vec3f_t p = placement->position;
+    for (int k = 0; k < 3; k++) {
+        const float c0 = lens->m[k][0];
+        const float c1 = lens->m[k][1];
+        const float c2 = lens->m[k][2];
+        for (int j = 0; j < 3; j++) {
+            lens->m[k][j] = (c0 * placement->m[0][j]) + (c1 * placement->m[1][j]) + (c2 * placement->m[2][j]);
+        }
+        lens->m[k][3] += to_ticks * ((c0 * p.x) + (c1 * p.y) + (c2 * p.z));
+    }
+}
+
 static inline vec3f_t
 to_lens(const r3d_lens_t* lens, float x, float y, float z) {
     const float(*m)[4] = lens->m;

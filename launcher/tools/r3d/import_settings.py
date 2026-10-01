@@ -1,4 +1,4 @@
-"""Reads and checks a mesh's import-settings file and a scene file that places meshes.
+"""Reads and checks a mesh's import-settings file and a scene file of objects.
 
 Standard library only, so a settings error is reported, and tested, without the
 numeric environment the bake itself needs. Every table is closed: a key nobody
@@ -7,13 +7,11 @@ reads is an error.
 
 import math
 import pathlib
+import re
 import tomllib
 from types import SimpleNamespace
 
 RESERVED_LIGHTS = ("point", "spot")
-# Placement and spawn have no consumer yet; the scene loader will read them.
-RESERVED_RENDERER_KEYS = ("position", "rotation", "scale")
-RESERVED_SCENE_KEYS = ("spawn",)
 
 # The one declaration of each light type's fields; light.py pairs each with
 # the function that bakes it.
@@ -44,6 +42,13 @@ def check_keys(table, required, where, optional=()):
 def text(value, where):
     if not isinstance(value, str) or not value:
         raise SettingsError(f"{where} must be a non-empty string")
+    return value
+
+
+def identifier(value, where):
+    """A C identifier, since the scene table names symbols by it."""
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value):
+        raise SettingsError(f"{where} must be a C identifier")
     return value
 
 
@@ -85,22 +90,6 @@ def vector(value, where):
 
 
 READERS = {"vector": vector, "number": number, "count": count}
-
-
-def load_light(value, where):
-    kind = value.get("type") if isinstance(value, dict) else None
-    if kind in RESERVED_LIGHTS:
-        raise SettingsError(f"{where}.type {kind!r} is reserved for a later bake")
-    if kind not in LIGHT_FIELDS:
-        raise SettingsError(f"{where}.type must be one of {sorted(LIGHT_FIELDS)}")
-    fields = LIGHT_FIELDS[kind]
-    check_keys(value, ("type", *fields), where)
-    light = {"type": kind}
-    for name, reader in fields.items():
-        light[name] = READERS[reader](value[name], f"{where}.{name}")
-    if "direction" in light and not any(light["direction"]):
-        raise SettingsError(f"{where}.direction must not be zero")
-    return light
 
 
 def face_sample_options(value, where):
@@ -227,66 +216,169 @@ def load_import_settings(path):
         variants=variants)
 
 
-def load_renderer(value, base, where):
-    if isinstance(value, dict):
-        for name in RESERVED_RENDERER_KEYS:
-            if name in value:
-                raise SettingsError(f"{where}.{name} is reserved for the scene loader")
-    check_keys(value, ("mesh",), where, optional=("variant",))
-    path = (base / text(value["mesh"], f"{where}.mesh")).resolve()
+def rotation_matrix(degrees):
+    """Rows of the rotation for Euler angles [pitch, yaw, roll] in degrees:
+    right-handed, applied roll about z first, then pitch about x, then yaw
+    about y."""
+    pitch, yaw, roll = (math.radians(angle) for angle in degrees)
+    sx, cx, sy, cy, sz, cz = math.sin(pitch), math.cos(pitch), math.sin(yaw), math.cos(yaw), math.sin(roll), math.cos(roll)
+    rx = ((1, 0, 0), (0, cx, -sx), (0, sx, cx))
+    ry = ((cy, 0, sy), (0, 1, 0), (-sy, 0, cy))
+    rz = ((cz, -sz, 0), (sz, cz, 0), (0, 0, 1))
+
+    def product(a, b):
+        return tuple(tuple(sum(a[i][k] * b[k][j] for k in range(3)) for j in range(3)) for i in range(3))
+
+    return product(ry, product(rx, rz))
+
+
+def placement_matrix(rotation, scale):
+    """Rotation times scale, the 3x3 a placed mesh's model units go through,
+    as rows. The one place the rotation convention is written down."""
+    matrix = rotation_matrix(rotation)
+    return tuple(tuple(matrix[i][j] * scale[j] for j in range(3)) for i in range(3))
+
+
+def rotate(degrees, vector_):
+    matrix = rotation_matrix(degrees)
+    return [sum(matrix[i][j] * vector_[j] for j in range(3)) for i in range(3)]
+
+
+def load_environment_light(kind, table, where):
+    """Sky and ambient are scene settings, not objects."""
+    fields = LIGHT_FIELDS[kind]
+    check_keys(table, tuple(fields), where)
+    light = {"type": kind}
+    for name, reader in fields.items():
+        light[name] = READERS[reader](table[name], f"{where}.{name}")
+    return light
+
+
+def load_light(component, rotation, where):
+    """A directional light; the direction toward it is the object's +Y axis, turned by its rotation."""
+    kind = component.get("type") if isinstance(component, dict) else None
+    if kind in RESERVED_LIGHTS:
+        raise SettingsError(f"{where}.type {kind!r} is reserved for a later bake")
+    if kind != "directional":
+        raise SettingsError(f"{where}.type must be directional: sky and ambient are scene settings")
+    fields = {name: reader for name, reader in LIGHT_FIELDS[kind].items() if name != "direction"}
+    check_keys(component, ("type", *fields), where)
+    light = {"type": kind, "direction": rotate(rotation, [0.0, 1.0, 0.0])}
+    for name, reader in fields.items():
+        light[name] = READERS[reader](component[name], f"{where}.{name}")
+    return light
+
+
+def load_camera(component, where):
+    check_keys(component, ("half_fov_short_tan", "near_z"), where, optional=("region", "path"))
+    camera = SimpleNamespace(half_fov_short_tan=number(component["half_fov_short_tan"], f"{where}.half_fov_short_tan"),
+                             near_z=number(component["near_z"], f"{where}.near_z"), region=None, path=None)
+    if "region" in component:
+        region = component["region"]
+        check_keys(region, ("min", "max"), f"{where}.region")
+        camera.region = (vector(region["min"], f"{where}.region.min"), vector(region["max"], f"{where}.region.max"))
+    if "path" in component:
+        path = component["path"]
+        check_keys(path, ("tracks", "node"), f"{where}.path")
+        camera.path = SimpleNamespace(tracks=identifier(path["tracks"], f"{where}.path.tracks"),
+                                      node=identifier(path["node"], f"{where}.path.node"))
+    return camera
+
+
+def load_renderer(component, base, where):
+    check_keys(component, ("mesh",), where, optional=("variant",))
+    path = (base / text(component["mesh"], f"{where}.mesh")).resolve()
     if not path.is_file():
-        raise SettingsError(f"{where}.mesh {value['mesh']!r} is not a file")
+        raise SettingsError(f"{where}.mesh {component['mesh']!r} is not a file")
     settings = load_import_settings(path)
     if settings.named:
-        wanted = text(value.get("variant"), f"{where}.variant") if "variant" in value else None
+        wanted = text(component.get("variant"), f"{where}.variant") if "variant" in component else None
         if wanted is None:
-            raise SettingsError(f"{where}.variant is required: {value['mesh']!r} has variants")
+            raise SettingsError(f"{where}.variant is required: {component['mesh']!r} has variants")
         match = [variant for variant in settings.variants if variant.name == wanted]
         if not match:
-            raise SettingsError(f"{where}.variant {wanted!r} is not in {value['mesh']!r}")
+            raise SettingsError(f"{where}.variant {wanted!r} is not in {component['mesh']!r}")
         variant = match[0]
-    elif "variant" in value:
-        raise SettingsError(f"{where}.variant: {value['mesh']!r} has no variants")
+    elif "variant" in component:
+        raise SettingsError(f"{where}.variant: {component['mesh']!r} has no variants")
     else:
         variant = settings.variants[0]
     return SimpleNamespace(settings=settings, variant=variant)
 
 
+COMPONENTS = ("mesh_renderer", "light", "camera")
+
+
+def load_object(value, base, where):
+    check_keys(value, ("name",), where, optional=("position", "rotation", "scale", *COMPONENTS))
+    present = [name for name in COMPONENTS if name in value]
+    if len(present) != 1:
+        raise SettingsError(f"{where} must have exactly one component: {', '.join(COMPONENTS)}")
+    kind = present[0]
+    obj = SimpleNamespace(
+        name=text(value["name"], f"{where}.name"), kind=kind,
+        position=vector(value["position"], f"{where}.position") if "position" in value else [0.0, 0.0, 0.0],
+        rotation=vector(value["rotation"], f"{where}.rotation") if "rotation" in value else [0.0, 0.0, 0.0],
+        scale=vector(value["scale"], f"{where}.scale") if "scale" in value else [1.0, 1.0, 1.0])
+    if not all(axis > 0 for axis in obj.scale):
+        raise SettingsError(f"{where}.scale must be positive on every axis")
+    obj.matrix = placement_matrix(obj.rotation, obj.scale)
+    obj.identity = obj.position == [0.0] * 3 and obj.rotation == [0.0] * 3 and obj.scale == [1.0] * 3
+    spot = f"{where}.{kind}"
+    if kind in ("mesh_renderer", "camera"):
+        identifier(obj.name, f"{where}.name")  # the scene table names a symbol after it
+    if kind == "mesh_renderer":
+        obj.component = load_renderer(value[kind], base, spot)
+    elif kind == "light":
+        obj.component = load_light(value[kind], obj.rotation, spot)
+    else:
+        obj.component = load_camera(value[kind], spot)
+    return obj
+
+
 def load_scene(path):
-    """A scenario: the meshes it places, and the lights, camera region and
-    tone map the scene-dependent steps of those meshes read."""
+    """A scenario: objects (each a transform and one component), the sky and
+    ambient settings, and the tone map the lit meshes use."""
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as source:
         values = tomllib.load(source)
-    for name in RESERVED_SCENE_KEYS:
-        if name in values:
-            raise SettingsError(f"scene.{name} is reserved for the scene loader")
-    check_keys(values, ("mesh_renderers",), "scene", optional=("lights", "camera_region", "tonemap_white"))
-    renderers = values["mesh_renderers"]
-    if not isinstance(renderers, list) or not renderers:
-        raise SettingsError("scene.mesh_renderers must be a non-empty array of tables")
-    renderers = [load_renderer(renderer, path.parent, f"scene.mesh_renderers[{index}]")
-                 for index, renderer in enumerate(renderers)]
-    names = [renderer.variant.name for renderer in renderers]
+    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "sky", "ambient"))
+    objects = values["objects"]
+    if not isinstance(objects, list) or not objects:
+        raise SettingsError("scene.objects must be a non-empty array of tables")
+    objects = [load_object(item, path.parent, f"scene.objects[{index}]") for index, item in enumerate(objects)]
+    names = [item.name for item in objects]
     if len(set(names)) != len(names):
-        raise SettingsError("scene.mesh_renderers place a mesh name twice")
-    lights = values.get("lights", [])
-    if not isinstance(lights, list):
-        raise SettingsError("scene.lights must be an array")
-    region = values.get("camera_region")
-    if region is not None:
-        check_keys(region, ("min", "max"), "scene.camera_region")
-        region = (vector(region["min"], "scene.camera_region.min"), vector(region["max"], "scene.camera_region.max"))
+        raise SettingsError("scene.objects names must be unique")
+    renderers = [item for item in objects if item.kind == "mesh_renderer"]
+    cameras = [item for item in objects if item.kind == "camera"]
+    if not renderers:
+        raise SettingsError("scene.objects needs a mesh_renderer")
+    if len(cameras) > 1:
+        raise SettingsError("scene.objects may have one camera")
+    baked = [item.component.variant.name for item in renderers]
+    if len(set(baked)) != len(baked):
+        raise SettingsError("scene.objects place a mesh name twice")
+    lights = [item.component for item in objects if item.kind == "light"]
+    for name in ("sky", "ambient"):
+        if name in values:
+            lights.append(load_environment_light(name, values[name], f"scene.{name}"))
+    region = cameras[0].component.region if cameras else None
     scene = SimpleNamespace(
-        path=path, renderers=renderers, region=region,
-        lights=[load_light(light, f"scene.lights[{index}]") for index, light in enumerate(lights)],
+        path=path, objects=objects, renderers=[SimpleNamespace(settings=item.component.settings, variant=item.component.variant,
+                                                               object=item) for item in renderers],
+        camera=cameras[0] if cameras else None, region=region, lights=lights,
         tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None)
-    lit = any(renderer.settings.light for renderer in renderers)
-    culled = any(renderer.settings.visibility for renderer in renderers)
-    for name, present, needed in (("lights", bool(scene.lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),
-                                  ("camera_region", region is not None, culled)):
+    lit = any(item.component.settings.light for item in renderers)
+    culled = any(item.component.settings.visibility for item in renderers)
+    for name, present, needed in (("lights", bool(lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),
+                                  ("camera region", region is not None, culled)):
         if needed and not present:
-            raise SettingsError(f"scene.{name} is required: a placed mesh has a step that reads it")
+            raise SettingsError(f"scene {name} is required: a placed mesh has a step that reads it")
         if present and not needed:
-            raise SettingsError(f"scene.{name} is read by no placed mesh")
+            raise SettingsError(f"scene {name} is read by no placed mesh")
+    for item in renderers:
+        if item.component.settings.scene_dependent and not item.identity:
+            raise SettingsError(f"scene.objects {item.name!r}: a mesh with a scene-dependent step is baked where it "
+                                "sits, so its transform must be identity")
     return scene
