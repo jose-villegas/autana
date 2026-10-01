@@ -5,8 +5,9 @@
  *
  * Integer, so the same inputs give the same pixel on the board, on x86 and
  * in a pinned host render. The sine is trig.h's, rescaled to this unit, and
- * every product accumulates in 64 bits and rounds once through fixed.h, so
- * coordinates are bounded by int32 only after the product, not within it.
+ * each sum of products rounds once through fixed.h. Sums are plain int32, so
+ * a caller keeps its coordinates small enough not to overflow (boot_anim.h
+ * states its bound).
  * Header-only, static inline and ESP-IDF-free.
  */
 #pragma once
@@ -90,11 +91,11 @@ m4_mat_mul(m4_mat_t m1, m4_mat_t m2) {
 
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < 4; c++) {
-            int64_t sum = 0;
+            int32_t sum = 0;
             for (int i = 0; i < 4; i++) {
-                sum += (int64_t)a[i][r] * m2[c][i];
+                sum += a[i][r] * m2[c][i];
             }
-            m1[c][r] = (m4_unit_t)fx_round_shift(sum, M4_SHIFT);
+            m1[c][r] = fx_round_shift32(sum, M4_SHIFT);
         }
     }
 }
@@ -102,8 +103,8 @@ m4_mat_mul(m4_mat_t m1, m4_mat_t m2) {
 /* One row of a point times a matrix, translation included, rounded once. */
 static inline m4_unit_t
 m4_row_dot(m4_vec4_t in, m4_mat_t m, int row) {
-    const int64_t sum = ((int64_t)in.x * m[row][0]) + ((int64_t)in.y * m[row][1]) + ((int64_t)in.z * m[row][2]);
-    return (m4_unit_t)fx_round_shift(sum, M4_SHIFT) + m[row][3];
+    const int32_t sum = (in.x * m[row][0]) + (in.y * m[row][1]) + (in.z * m[row][2]);
+    return fx_round_shift32(sum, M4_SHIFT) + m[row][3];
 }
 
 /* Point times matrix, translation included; w comes back M4_ONE. */
@@ -146,8 +147,8 @@ m4_scale_matrix(m4_unit_t x, m4_unit_t y, m4_unit_t z, m4_mat_t m) {
 
 /* A sum of unit-cubed terms, back to one unit. */
 static inline m4_unit_t
-m4_q18(int64_t sum) {
-    return (m4_unit_t)fx_round_shift(sum, 2 * M4_SHIFT);
+m4_q18(int32_t sum) {
+    return fx_round_shift32(sum, 2 * M4_SHIFT);
 }
 
 /* Z, then X, then Y; each angle in turns, negated before its sine. */
@@ -159,7 +160,7 @@ m4_rotation_matrix(m4_unit_t by_x, m4_unit_t by_y, m4_unit_t by_z, m4_mat_t m) {
     const m4_unit_t cx = m4_cos(-by_x);
     const m4_unit_t cy = m4_cos(-by_y);
     const m4_unit_t cz = m4_cos(-by_z);
-    const int64_t s = M4_ONE;
+    const int32_t s = M4_ONE;
 
     m[0][0] = m4_q18((cy * cz * s) + (sy * sx * sz));
     m[1][0] = fx_mul_round(cx, sz, M4_SHIFT);

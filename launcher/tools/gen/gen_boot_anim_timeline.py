@@ -88,19 +88,19 @@ _WORST_CASE_M4_COORD = (_FAR_UNITS * BOOT_ANIM_ONE) >> 3  # BOOT_ANIM_ZETA_TO_M4
 
 # The scale-overflow guard below trades exactness for a real, defensible
 # margin, see its own comment at the call site for the full derivation.
-# Conservative on purpose: the products accumulate in 64 bits, but a
-# transformed point and a composed matrix element are int32_t again, and how
-# far composition scales them with rotation is not modeled exactly here. This
-# check catches the dominant, easily reasoned term (the final point), not
-# every path to the same failure.
+# Conservative on purpose: mat4i's own matrix COMPOSITION step
+# (m4_mat_mul() in mat4i.h, also plain int32_t) has its own overflow
+# risk that scales with rotation too, not just this scale product, and is
+# not modeled exactly here. This check catches the dominant, easily
+# reasoned term (the final per-point multiply), not every path to the same
+# failure.
 _MAX_COMBINED_SCALE = 8
 
 
 def check_transform_scale_overflow(space_scale, camera_scale):
-    """m4_vec3_transform() multiplies a camera-space coordinate by a
-    composed space*camera matrix element that is itself proportional to
-    authored scale*M4_ONE, and the transformed point is an int32_t. At this
-    project's own largest authored reach (_WORST_CASE_M4_COORD, from the
+    """m4_vec3_transform() (plain int32_t) multiplies a camera-space
+    coordinate by a composed space*camera matrix element that is itself
+    proportional to authored scale*M4_ONE. At this project's own largest authored reach (_WORST_CASE_M4_COORD, from the
     500-unit axis/spoke tail), INT32_MAX / (_WORST_CASE_M4_COORD * M4_ONE)
     is about 16.4; a combined space*camera scale anywhere near that
     overflows the point somewhere nonsensical. _MAX_COMBINED_SCALE leaves real headroom
