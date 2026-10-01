@@ -43,27 +43,15 @@
 #include "util/frame_cost.h"
 #include "util/job.h"
 
-#ifdef DEVICE_BUILD
-#include "esp_timer.h"
-#endif
-
 /* One bracket per sand_step() pass: its frame_cost name is "sand.<pass>" and
- * its wall time `pass_us.<pass>_us`, so the two cannot drift. The wall clock
- * is read inside the bracket, so frame_cost's own cost is not in the field;
- * the field exists only where DEVICE_BUILD does and holds the start time
- * until the pass ends, so the bracket costs the stack nothing. */
+ * its wall time lands in `pass_us.<pass>_us`, read off the bracket's own
+ * clock reads, so the two cannot drift and a pass is timed once. The field
+ * exists only where DEVICE_BUILD does. */
+#define SAND_PASS_BEGIN(pass) FRAME_COST_BEGIN(pass##_mark)
 #ifdef DEVICE_BUILD
-#define SAND_PASS_BEGIN(s, pass)                                                                                       \
-    FRAME_COST_BEGIN(pass##_mark);                                                                                     \
-    (s)->pass_us.pass##_us = esp_timer_get_time()
-#define SAND_PASS_END(s, pass)                                                                                         \
-    do {                                                                                                               \
-        (s)->pass_us.pass##_us = esp_timer_get_time() - (s)->pass_us.pass##_us;                                        \
-        FRAME_COST_END(pass##_mark, "sand." #pass);                                                                    \
-    } while (0)
+#define SAND_PASS_END(s, pass) ((s)->pass_us.pass##_us = FRAME_COST_END_US(pass##_mark, "sand." #pass))
 #else
-#define SAND_PASS_BEGIN(s, pass) FRAME_COST_BEGIN(pass##_mark)
-#define SAND_PASS_END(s, pass)   FRAME_COST_END(pass##_mark, "sand." #pass)
+#define SAND_PASS_END(s, pass) FRAME_COST_END(pass##_mark, "sand." #pass)
 #endif
 
 #define SAND_CHUNK_SIDE_MIN (2 * SAND_LIQUID_SIGHT + 1)

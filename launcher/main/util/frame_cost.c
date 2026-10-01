@@ -120,11 +120,11 @@ frame_cost_begin(void) {
                                     counting ? xtensa_perfmon_value(1) : 0);
 }
 
-void
+int64_t
 frame_cost_end(int mark, const char* name) {
     const bool counting = shared.armed_name > 0;
-    frame_cost_leave_counted(&shared, mark, name, esp_timer_get_time(), counting ? xtensa_perfmon_value(0) : 0,
-                             counting ? xtensa_perfmon_value(1) : 0);
+    return frame_cost_leave_counted(&shared, mark, name, esp_timer_get_time(), counting ? xtensa_perfmon_value(0) : 0,
+                                    counting ? xtensa_perfmon_value(1) : 0);
 }
 
 int

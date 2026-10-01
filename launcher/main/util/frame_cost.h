@@ -220,12 +220,13 @@ frame_cost_enter(frame_cost_t* cost, int64_t now_us) {
  * it in turn. Dropping the stack straight to `mark` both pops this level and
  * discards, uncharged, any deeper one whose own END never ran. A `mark` no
  * longer on the stack (already popped, or FRAME_COST_IGNORE_MARK) charges
- * nothing. */
-static inline void
+ * nothing and reads 0. Returns the bracket's whole elapsed time, nested
+ * brackets included, for a caller that wants the wall time too. */
+static inline int64_t
 frame_cost_leave_counted(frame_cost_t* cost, int mark, const char* name, int64_t now_us, uint32_t cycles,
                          uint32_t event) {
     if (mark < 0 || mark >= cost->depth) {
-        return;
+        return 0;
     }
     /* What an abandoned level's own children were charged is still time
      * this one did not spend. */
@@ -244,7 +245,7 @@ frame_cost_leave_counted(frame_cost_t* cost, int mark, const char* name, int64_t
         cost->stack[mark - 1].inside_us += elapsed;
     }
     if (!level->counted) {
-        return;
+        return elapsed;
     }
     /* Free-running 32-bit counters: a difference is right modulo 2^32. A
      * level and its parent began under one arm, so both are counted. */
@@ -262,11 +263,12 @@ frame_cost_leave_counted(frame_cost_t* cost, int mark, const char* name, int64_t
         cost->stack[mark - 1].inside_cycles += elapsed_cycles;
         cost->stack[mark - 1].inside_event += elapsed_event;
     }
+    return elapsed;
 }
 
 static inline void
 frame_cost_leave(frame_cost_t* cost, int mark, const char* name, int64_t now_us) {
-    frame_cost_leave_counted(cost, mark, name, now_us, 0, 0);
+    (void)frame_cost_leave_counted(cost, mark, name, now_us, 0, 0);
 }
 
 /* The " | total T.TT" tail: the sum of every slot's own average, in the same
@@ -374,7 +376,7 @@ frame_cost_report(frame_cost_t* cost, uint32_t frames, char* out, size_t out_siz
 
 #if FRAME_COST_ENABLED
 int frame_cost_begin(void);
-void frame_cost_end(int mark, const char* name);
+int64_t frame_cost_end(int mark, const char* name);
 int frame_cost_take_report(uint32_t frames, char* out, size_t out_size);
 
 int frame_cost_take_counts(char* out, size_t out_size);
@@ -407,8 +409,16 @@ int frame_cost_names_dropped(void);
 #define FRAME_COST_END(mark, name)                                                                                     \
     do {                                                                                                               \
         _Static_assert(sizeof(name) - 1 <= FRAME_COST_NAME_MAX, name " is too long a frame_cost name");                \
-        frame_cost_end((mark), (name));                                                                                \
+        (void)frame_cost_end((mark), (name));                                                                          \
     } while (0)
+
+/* FRAME_COST_END that also yields the bracket's whole elapsed microseconds,
+ * from the clock read it already makes. */
+#define FRAME_COST_END_US(mark, name)                                                                                  \
+    ({                                                                                                                 \
+        _Static_assert(sizeof(name) - 1 <= FRAME_COST_NAME_MAX, name " is too long a frame_cost name");                \
+        frame_cost_end((mark), (name));                                                                                \
+    })
 #else
 #define FRAME_COST_BEGIN(mark)     ((void)0)
 #define FRAME_COST_END(mark, name) ((void)0)

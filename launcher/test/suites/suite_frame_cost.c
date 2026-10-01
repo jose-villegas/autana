@@ -434,6 +434,26 @@ test_a_request_is_applied_between_outermost_brackets_only(void) {
 }
 
 static void
+test_leaving_a_bracket_yields_its_whole_elapsed_time_nested_ones_included(void) {
+    frame_cost_t* const cost = fixture();
+    const int outer = frame_cost_enter(cost, 1000);
+    const int inner = frame_cost_enter(cost, 1200);
+
+    TEST_ASSERT_EQUAL_INT64(300, frame_cost_leave_counted(cost, inner, "stage.inner", 1500, 0, 0));
+    TEST_ASSERT_EQUAL_INT64(900, frame_cost_leave_counted(cost, outer, "stage.outer", 1900, 0, 0));
+    free(cost);
+}
+
+static void
+test_leaving_with_a_mark_that_is_gone_yields_nothing(void) {
+    frame_cost_t* const cost = fixture();
+
+    TEST_ASSERT_EQUAL_INT64(0, frame_cost_leave_counted(cost, FRAME_COST_IGNORE_MARK, "stage.a", 500, 0, 0));
+    TEST_ASSERT_EQUAL_INT64(0, frame_cost_leave_counted(cost, 0, "stage.a", 500, 0, 0));
+    free(cost);
+}
+
+static void
 test_the_newest_request_wins(void) {
     frame_cost_t* const cost = fixture();
     frame_cost_note_name(cost, "stage.a");
@@ -651,6 +671,8 @@ suite_frame_cost(void) {
     RUN_TEST(test_an_armed_inner_bracket_samples_its_own_counts_and_the_outer_loses_them);
     RUN_TEST(test_an_armed_name_nested_in_itself_samples_each_level_exclusively);
     RUN_TEST(test_a_request_is_applied_between_outermost_brackets_only);
+    RUN_TEST(test_leaving_a_bracket_yields_its_whole_elapsed_time_nested_ones_included);
+    RUN_TEST(test_leaving_with_a_mark_that_is_gone_yields_nothing);
     RUN_TEST(test_the_newest_request_wins);
     RUN_TEST(test_an_empty_request_disarms_and_sampling_stops);
     RUN_TEST(test_a_task_that_does_not_own_the_frame_neither_applies_nor_clears_a_request);
