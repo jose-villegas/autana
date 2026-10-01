@@ -1641,11 +1641,13 @@ sand_chunk_share_for_test(sand_chunk_share_t mode) {
     return before;
 }
 
-/* The cells each chunk of `p` would hand a lane, charged whole: a chunk with
- * one block awake is a chunk a lane has to walk. `cost` takes one entry per
- * chunk, so the caller's array is SAND_CHUNKS_MAX long. */
+/* The cells each chunk of `p` would hand a lane, charged whole. `cost` takes
+ * one entry per chunk (SAND_CHUNKS_MAX). 16-bit: chunks partition the grid, so
+ * the costs total at most its cell count and no finish time passes UINT16_MAX. */
+_Static_assert(GRID_W_MAX* GRID_H_MAX <= UINT16_MAX, "a chunk's cell count must fit a 16-bit cost");
+
 static int
-chunk_awake_costs(const sand_t* s, const sand_chunk_plan_t* p, int* cost) {
+chunk_awake_costs(const sand_t* s, const sand_chunk_plan_t* p, uint16_t* cost) {
     int total = 0;
 
     for (int cy = 0; cy < p->rows; cy++) {
@@ -1654,7 +1656,7 @@ chunk_awake_costs(const sand_t* s, const sand_chunk_plan_t* p, int* cost) {
 
             sand_chunk_cells(p, cx, cy, &x0, &x1, &y0, &y1);
             const int awake = blocks_settled_over(s, x0, x1, y0, y1, s->settled_bit) ? 0 : (x1 - x0) * (y1 - y0);
-            cost[cy * p->cols + cx] = awake;
+            cost[cy * p->cols + cx] = (uint16_t)awake;
             total += awake;
         }
     }
@@ -1668,7 +1670,7 @@ chunk_awake_costs(const sand_t* s, const sand_chunk_plan_t* p, int* cost) {
  * row-major, which costs nothing to order and nothing to join. */
 static bool
 chunk_pass_divides(const sand_t* s, const sand_chunk_plan_t* p, int tx, int ty) {
-    int cost[SAND_CHUNKS_MAX];
+    uint16_t cost[SAND_CHUNKS_MAX];
     sand_chunk_order_t order;
 
     const int awake = chunk_awake_costs(s, p, cost);
