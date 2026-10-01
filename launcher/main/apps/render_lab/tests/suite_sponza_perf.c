@@ -58,6 +58,7 @@ bench_open(bench_t* b, const r3d_instance_t* instance) {
         .instance_count = 1,
         .width = render_width(),
         .height = render_height(),
+        .upscaled = true,
         .destination = b->panel,
         .destination_width = GFX_WIDTH,
         .destination_height = GFX_HEIGHT,

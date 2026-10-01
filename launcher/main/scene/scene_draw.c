@@ -162,15 +162,12 @@ draw_active(int quarter, int width, int height) {
     raster.width = width * camera->render_scale_percent / 100;
     raster.height = height * camera->render_scale_percent / 100;
     raster.clear = camera->clear;
+    raster.upscaled = true; /* scene_compose() names the picture */
     raster.destination_width = width;
     raster.destination_height = height;
     if (!fit_scratch()) {
         return;
     }
-    /* Drawing only asks that a destination exist, so as not to paint the clear
-     * colour that upscaling supplies; the scratch is one that cannot be
-     * written. scene_compose() points it at the picture. */
-    raster.destination = scratch;
     const camera_t view = r3d_scene_camera_at(&camera->lens, scene->elapsed_ms);
     stats = raster_draw(&raster, &view, quarter);
 #if TUNE_ENABLED

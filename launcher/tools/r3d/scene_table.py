@@ -67,6 +67,11 @@ def banner_for(scene):
 IDENTITY = "{.m = {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, .position = {0.0F, 0.0F, 0.0F}}"
 
 
+def mesh_ids(scene):
+    """The asset id of each mesh renderer, in the order the table lists them: what scene_load() opens from the pack."""
+    return [item.variant.name for item in scene.renderers]
+
+
 def entities(scene):
     """The scene's objects that exist at run time, in file order: a camera or a mesh renderer.
     Lights are baked offline and have no entity."""
@@ -87,7 +92,7 @@ def table_source(scene, banner):
     lines += [f"    {placement(obj) or IDENTITY}," for obj in objects]
     lines += ["};", ""]
     lines += [f"static const scene_renderer_def_t {name}_renderers[] = {{"]
-    lines += [f'    {{{index[item.object.name]}, "{item.variant.name}"}},' for item in scene.renderers]
+    lines += [f'    {{{index[item.object.name]}, "{mesh}"}},' for item, mesh in zip(scene.renderers, mesh_ids(scene))]
     lines += ["};", ""]
     if camera:
         if path:

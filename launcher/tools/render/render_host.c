@@ -28,9 +28,7 @@
 #include "ui/ui_transform.h"
 #include "util/screenshot.h"
 
-#ifdef RENDER_HOST_SCENES
 #include "scene/scene_shell.h"
-#endif
 
 #if defined(_WIN32)
 #include <fcntl.h>
@@ -109,16 +107,11 @@ write_bmp(FILE* out, const uint8_t* frame_buf, int out_w, int out_h, render_size
     return true;
 }
 
-/* What the shell does before an app's frame(): put the active camera's scene
- * in the framebuffer. A scene declares RENDER_HOST_SCENES when it links the
- * scene manager; without a camera this does nothing. */
-static void
-compose_scenes(uint32_t dt_ms) {
-#ifdef RENDER_HOST_SCENES
-    scene_shell_compose(dt_ms);
-#else
+/* The scene manager's compose where a scene did not link it: nothing to
+ * compose. scene/scene_shell.c's own definition replaces this. */
+__attribute__((weak)) void
+scene_shell_compose(uint32_t dt_ms) {
     (void)dt_ms;
-#endif
 }
 
 /* The declared steps turned into one frame's input_t. `down` holds from
@@ -282,7 +275,7 @@ main(int argc, char** argv) {
         frame.elapsed_ms = (uint32_t)i * dt_ms;
         apply_input(scene, i, &frame.input);
         render_watch_frame_begin();
-        compose_scenes(frame.dt_ms);
+        scene_shell_compose(frame.dt_ms); /* what the shell does before an app's frame() */
         scene->draw(&frame);
         render_watch_frame_end();
 
@@ -300,7 +293,7 @@ main(int argc, char** argv) {
         frame.elapsed_ms = (uint32_t)i * dt_ms;
         apply_input(scene, i, &frame.input);
         render_watch_frame_begin();
-        compose_scenes(frame.dt_ms);
+        scene_shell_compose(frame.dt_ms); /* what the shell does before an app's frame() */
         scene->draw(&frame);
         render_watch_frame_end();
     }

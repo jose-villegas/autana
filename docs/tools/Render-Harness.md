@@ -96,10 +96,10 @@ collect every `.c` in the app folder outside `tools/` and `tests/`,
 excluding `suite_*.c`, and list only the shared engine and host-shim
 sources by hand, so a new source file needs no edit to the script.
 
-A scene whose sources include `main/scene/scene_shell.c` gets the scene
-manager: `render_host.c` calls `scene_shell_compose()` before each `draw()`, as
-the shell does before an app's `frame()`, and it does nothing without an active
-camera.
+`render_host.c` calls `scene_shell_compose()` before each `draw()`, as the
+shell does before an app's `frame()`. A scene whose sources include
+`main/scene/scene_shell.c` gets the real one, which does nothing without an
+active camera; any other scene gets a no-op.
 
 Each line of `scene_renders` is `<label>|<arguments>|<width>x<height>`,
 optionally followed by `|nopin`, and the declared size is checked against

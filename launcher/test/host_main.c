@@ -60,8 +60,9 @@ run_requests(int argc, char** argv) {
 static void
 name_the_test_that_aborted(int signal_number) {
     (void)fflush(stdout);
-    (void)printf("%s:%u:%s:FAIL: the process aborted (an assert, or heap_arena's report above)\n", Unity.TestFile,
-                 (unsigned)Unity.CurrentTestLineNumber, Unity.CurrentTestName == NULL ? "?" : Unity.CurrentTestName);
+    (void)printf("%s:%u:%s:FAIL: the process aborted (an assert, or heap_arena's report above)\n",
+                 Unity.TestFile == NULL ? "?" : Unity.TestFile, (unsigned)Unity.CurrentTestLineNumber,
+                 Unity.CurrentTestName == NULL ? "?" : Unity.CurrentTestName);
     (void)fflush(stdout);
     (void)signal(signal_number, SIG_DFL);
     (void)raise(signal_number);
