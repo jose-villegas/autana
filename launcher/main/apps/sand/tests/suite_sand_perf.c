@@ -255,6 +255,7 @@ test_the_soak_only_skip_hash_survives_ambient_two_core_state(void) {
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "gfx/gfx.h"
+#include "util/frame_cost.h"
 #include "xtensa/xt_perf_consts.h"
 #include "xtensa_perfmon_access.h"
 
@@ -1767,42 +1768,16 @@ test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget(void) {
     perf_target("mixed-scene gravity flip", per_step, 14660, 16860);
 }
 
-/* select/mask pairs from xtensa/xt_perf_consts.h. "insn" doubles as the
- * retired-instruction reference for the derived cycles-per-insn line below.
- * All confirmed present in this IDF; none were dropped. */
-typedef struct {
-    const char* name;
-    uint16_t select;
-    uint16_t mask;
-} xtperf_event_t;
-
-static const xtperf_event_t XTPERF_EVENTS[] = {
-    {"insn", XTPERF_CNT_INSN, XTPERF_MASK_INSN_ALL},
-    {"window", XTPERF_CNT_EXR, XTPERF_MASK_EXR_WINDOW},
-    {"level1_int", XTPERF_CNT_EXR, XTPERF_MASK_EXR_LEVEL1_INT},
-    {"replays", XTPERF_CNT_EXR, XTPERF_MASK_EXR_REPLAYS},
-    {"icache_miss_stall", XTPERF_CNT_I_STALL, XTPERF_MASK_I_STALL_CACHE_MISS},
-    {"iterative_mul", XTPERF_CNT_I_STALL, XTPERF_MASK_I_STALL_ITERATIVE_MUL},
-    {"iterative_div", XTPERF_CNT_I_STALL, XTPERF_MASK_I_STALL_ITERATIVE_DIV},
-    {"d_stall_all", XTPERF_CNT_D_STALL, XTPERF_MASK_D_STALL_ALL},
-    {"bubbles_cti", XTPERF_CNT_BUBBLES, XTPERF_MASK_BUBBLES_CTI},
-    {"bubbles_all", XTPERF_CNT_BUBBLES, XTPERF_MASK_BUBBLES_ALL},
-    {"branch_taken", XTPERF_CNT_INSN, XTPERF_MASK_INSN_BRANCH_TAKEN},
-    {"branch_not_taken", XTPERF_CNT_INSN, XTPERF_MASK_INSN_BRANCH_NOT_TAKEN},
-    {"call", XTPERF_CNT_INSN, (uint16_t)(XTPERF_MASK_INSN_CALL | XTPERF_MASK_INSN_CALLX)},
-    {"icache_miss_fetch", XTPERF_CNT_I_MEM, XTPERF_MASK_I_MEM_CACHE_MISSES},
-    {"iram_fetch", XTPERF_CNT_I_MEM, XTPERF_MASK_I_MEM_IRAM},
-};
-#define XTPERF_EVENT_COUNT (sizeof(XTPERF_EVENTS) / sizeof(XTPERF_EVENTS[0]))
-
 /* Counter 0 is cycles, seeded the way xtensa_perfmon_exec() seeds it (select
  * 0, mask 0xffff). kernelcnt 0 / tracelevel -1 is its own encoding for
  * "no interrupt-level filter" (xtensa_perfmon_config_t: negative tracelevel
  * means the filter is ignored) - every level counts, none excluded, which is
  * what a whole-step instrument needs. */
 static void
-measure_xtperf_event(const char* scene, sand_t* real, int gx, int gy, int gz, int steps, const xtperf_event_t* event,
-                     uint32_t* out_cycles, uint32_t* out_value) {
+measure_xtperf_event(const char* scene, sand_t* real, int gx, int gy, int gz, int steps,
+                     const frame_cost_event_t* event, uint32_t* out_cycles, uint32_t* out_value) {
+    TEST_ASSERT_TRUE_MESSAGE(frame_cost_counters_idle(),
+                             "the counters are armed through frame_cost; disarm them first");
     xtensa_perfmon_stop();
     xtensa_perfmon_init(0, XTPERF_CNT_CYCLES, 0xffff, 0, -1);
     xtensa_perfmon_init(1, event->select, event->mask, 0, -1);
@@ -1824,7 +1799,7 @@ measure_xtperf_event(const char* scene, sand_t* real, int gx, int gy, int gz, in
              (unsigned)(cycles / (uint32_t)steps), (unsigned)(value / (uint32_t)steps), steps,
              cycles_overflowed ? " overflow=cycles" : "", value_overflowed ? " overflow=value" : "");
 
-    if (event->select == XTPERF_CNT_INSN && event->mask == XTPERF_MASK_INSN_ALL && value != 0) {
+    if (strcmp(event->name, FRAME_COST_DEFAULT_EVENT) == 0 && value != 0) {
         const uint32_t cpi_x100 = (uint32_t)(((uint64_t)cycles * 100) / value);
         ESP_LOGI("xtperf", "scene=%s cycles_per_retired_insn=%u.%02u", scene, (unsigned)(cpi_x100 / 100),
                  (unsigned)(cpi_x100 % 100));
@@ -1836,7 +1811,7 @@ measure_xtperf_event(const char* scene, sand_t* real, int gx, int gy, int gz, in
 
 static void
 run_xtperf_over_mixed_scene(uint64_t* total_cycles, uint64_t* total_insn) {
-    for (size_t e = 0; e < XTPERF_EVENT_COUNT; e++) {
+    for (int e = 0; e < frame_cost_event_count(); e++) {
         uint8_t* big = malloc(REAL_W * REAL_H);
         uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
         TEST_ASSERT_NOT_NULL(big);
@@ -1846,13 +1821,13 @@ run_xtperf_over_mixed_scene(uint64_t* total_cycles, uint64_t* total_insn) {
         build_mixed_gravity_flip_scene(&real, big, blocks);
 
         uint32_t cycles = 0, value = 0;
-        measure_xtperf_event("mixed_flip", &real, 0, -1000, 0, 20, &XTPERF_EVENTS[e], &cycles, &value);
+        measure_xtperf_event("mixed_flip", &real, 0, -1000, 0, 20, frame_cost_event_at(e), &cycles, &value);
 
         free(big);
         free(blocks);
 
         *total_cycles += cycles;
-        if (XTPERF_EVENTS[e].select == XTPERF_CNT_INSN && XTPERF_EVENTS[e].mask == XTPERF_MASK_INSN_ALL) {
+        if (strcmp(frame_cost_event_at(e)->name, FRAME_COST_DEFAULT_EVENT) == 0) {
             *total_insn += value;
         }
     }
@@ -1860,7 +1835,7 @@ run_xtperf_over_mixed_scene(uint64_t* total_cycles, uint64_t* total_insn) {
 
 static void
 run_xtperf_over_water_scene(uint64_t* total_cycles, uint64_t* total_insn) {
-    for (size_t e = 0; e < XTPERF_EVENT_COUNT; e++) {
+    for (int e = 0; e < frame_cost_event_count(); e++) {
         uint8_t* big = malloc(REAL_W * REAL_H);
         uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
         TEST_ASSERT_NOT_NULL(big);
@@ -1870,13 +1845,13 @@ run_xtperf_over_water_scene(uint64_t* total_cycles, uint64_t* total_insn) {
         build_water_scene(&real, big, blocks);
 
         uint32_t cycles = 0, value = 0;
-        measure_xtperf_event("water", &real, 0, 1000, 0, 20, &XTPERF_EVENTS[e], &cycles, &value);
+        measure_xtperf_event("water", &real, 0, 1000, 0, 20, frame_cost_event_at(e), &cycles, &value);
 
         free(big);
         free(blocks);
 
         *total_cycles += cycles;
-        if (XTPERF_EVENTS[e].select == XTPERF_CNT_INSN && XTPERF_EVENTS[e].mask == XTPERF_MASK_INSN_ALL) {
+        if (strcmp(frame_cost_event_at(e)->name, FRAME_COST_DEFAULT_EVENT) == 0) {
             *total_insn += value;
         }
     }
@@ -1884,7 +1859,7 @@ run_xtperf_over_water_scene(uint64_t* total_cycles, uint64_t* total_insn) {
 
 static void
 run_xtperf_over_full_step_scene(uint64_t* total_cycles, uint64_t* total_insn) {
-    for (size_t e = 0; e < XTPERF_EVENT_COUNT; e++) {
+    for (int e = 0; e < frame_cost_event_count(); e++) {
         uint8_t* big = malloc(REAL_W * REAL_H);
         TEST_ASSERT_NOT_NULL(big);
 
@@ -1892,12 +1867,12 @@ run_xtperf_over_full_step_scene(uint64_t* total_cycles, uint64_t* total_insn) {
         build_full_size_step_scene(&real, big);
 
         uint32_t cycles = 0, value = 0;
-        measure_xtperf_event("full_step", &real, 0, 1, 0, 10, &XTPERF_EVENTS[e], &cycles, &value);
+        measure_xtperf_event("full_step", &real, 0, 1, 0, 10, frame_cost_event_at(e), &cycles, &value);
 
         free(big);
 
         *total_cycles += cycles;
-        if (XTPERF_EVENTS[e].select == XTPERF_CNT_INSN && XTPERF_EVENTS[e].mask == XTPERF_MASK_INSN_ALL) {
+        if (strcmp(frame_cost_event_at(e)->name, FRAME_COST_DEFAULT_EVENT) == 0) {
             *total_insn += value;
         }
     }
