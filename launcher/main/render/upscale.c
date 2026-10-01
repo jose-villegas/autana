@@ -84,9 +84,7 @@ upscale_double_rows(const upscale_t* scale, const uint16_t* source, const uint16
 #if defined(DEVICE_BUILD) && defined(__XTENSA__)
 static bool
 pie_double_aligned(const uint16_t* input, const uint32_t* output) {
-    const uintptr_t input_words = (uintptr_t)input / sizeof(*input);
-    const uintptr_t output_words = (uintptr_t)output / sizeof(*output);
-    return input_words % 4 == output_words % 4;
+    return ((uintptr_t)input & 15) == 0 && ((uintptr_t)output & 15) == 0;
 }
 
 static void
@@ -94,7 +92,7 @@ pie_double_blocks(const uint16_t* input, uint32_t* top, uint32_t* bottom, int bl
     __asm__ volatile("loopgtz %[blocks], 0f\n"
                      "ee.vld.128.ip q0, %[input], 16\n"
                      "mv.qr q1, q0\n"
-                     "ee.vunzip.16 q0, q1\n"
+                     "ee.vzip.16 q0, q1\n"
                      "ee.vst.128.ip q0, %[top], 16\n"
                      "ee.vst.128.ip q1, %[top], 16\n"
                      "ee.vst.128.ip q0, %[bottom], 16\n"
