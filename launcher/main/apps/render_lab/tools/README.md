@@ -178,6 +178,29 @@ the foreground drapery. Nothing refreshes the sheet when the bake changes.
 
 ![Reference, flat bake, error heatmap and edge pixels](../../../../../docs/images/render/bake-fidelity-sheet.png)
 
+### Appearance fit of the lite mesh
+
+[`appearance_simplify.py`](../../../../tools/r3d/README.md#appearance-fit)
+fits the lite mesh's vertex positions and colours to the reference, its
+triangles unchanged. It trains on the flythrough sampled every second, less
+the times scored, and is scored on the times 5 to 35 s every 5 s, which it
+never saw (`--frames 7 --dt 5000` against the reference of those poses).
+Path-averaged is one mesh trained on every training pose; per shot is one
+mesh per 10 s of the path, each frame scored with its own segment's mesh.
+
+| Mesh | Triangles | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 |
+|---|---:|---:|---:|---:|---:|
+| Full smooth | 17,381 | 10.59 | 33.06 | 0.640 | 15.81 |
+| Flat, committed | 17,381 | 11.26 | 39.41 | 0.595 | 18.22 |
+| Lite, simplifier | 8,670 | 11.52 | 35.99 | 0.598 | 18.00 |
+| Lite, fitted, path-averaged | 8,670 | 9.15 | 26.51 | 0.701 | 12.31 |
+| Lite, fitted, per shot | 8,670 | 9.71 | 29.18 | 0.695 | 13.07 |
+
+The fitted lite mesh beats the full mesh at half its triangles. Per shot
+trails path-averaged: each segment trains on eight poses, too few to
+generalise to the poses between them. At 15 s every mesh scores about
+26 to 28, which lifts every mean in the table equally.
+
 ## Sponza poses
 
 The flythrough is a glTF camera animation, `../assets/flythrough.glb`, baked

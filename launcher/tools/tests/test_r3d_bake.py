@@ -199,7 +199,7 @@ class RepairStepTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ColourSeamTests(unittest.TestCase):
-    TOLERANCE = np.array([12, 6, 12])
+    TOLERANCE = None if np is None else np.array([12, 6, 12])
 
     def merged(self, colours, tolerance=None):
         colours = np.array(colours, dtype=float)
