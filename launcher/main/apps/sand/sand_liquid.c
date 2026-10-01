@@ -788,7 +788,7 @@ sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy) {
     run.q_q8 = flow->q_q8;
 
     /* Cross-flow levels both ways. See equalise_liquids(). */
-    SAND_PASS_BEGIN(liquid);
+    SAND_PASS_BEGIN(s, liquid);
     equalise_liquids(s, &run, SAND_LIQUID_SIGHT, dx, dy);
     SAND_PASS_END(s, liquid);
     s->liquid_flip = !s->liquid_flip;
@@ -799,7 +799,7 @@ sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy) {
      * liquid scene usually is - therefore pays a popcount, not a pass. */
     const uint16_t liquids_here = s->may_have_materials & liquid_mask();
     if ((liquids_here & (uint16_t)(liquids_here - 1u)) != 0u && (s->step_phase & (LIQUID_SORT_PERIOD - 1u)) == 0u) {
-        SAND_PASS_BEGIN(float);
+        SAND_PASS_BEGIN(s, float);
         (void)float_lighter_liquids(s, dx, dy);
         SAND_PASS_END(s, float);
     }

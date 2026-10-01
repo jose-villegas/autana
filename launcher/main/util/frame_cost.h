@@ -7,7 +7,7 @@
  *
  * One name can be armed for the S3's two hardware counters: while armed,
  * every bracket reads them, one name keeps samples. A level is 24 bytes
- * larger and a slot 32; an unarmed bracket adds one load.
+ * larger and a slot 32; an unarmed bracket adds a few loads and branches.
  */
 #pragma once
 
