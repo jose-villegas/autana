@@ -189,6 +189,36 @@ the import file declares, byte for byte. A sweep over a scene found:
   boundary through it cannot be sampled away, and decimation misplaces
   silhouettes before lighting.
 
+## Fitting a mesh to the reference
+
+The simplifier keeps what it can of the source's colour and shape, but it
+never looks at an image. `appearance_simplify.py` does: it takes a smooth
+bake at its triangle budget, draws it with a differentiable rasterizer the
+way the device draws it, and moves the vertices and changes their colours
+until the renders match the reference over the camera path's poses. The
+triangles stay as they were, so the budget and the frame cost hold.
+
+```mermaid
+flowchart LR
+    S[simplified smooth bake] --> F[fit positions and colours]
+    P[camera path poses] --> R[reference renders]
+    R --> F
+    F --> W[write_lit_mesh]
+    W --> H[host render, held-out poses]
+    H --> C[render_compare.py score, sheets, heatmaps]
+```
+
+The fitted colours are a bake in their own right, so the fitted mesh enters
+the import at its last stage, the writer, and is never lit again. One mesh
+fits the whole path, or one mesh fits each segment of it, to be swapped as
+the camera moves; segments see fewer poses each and fit poses between them
+less well. A fit is judged on poses it never trained on, by the same scores
+and pictures as any other bake: a sheet and enlarged crops against the
+simplifier's mesh and against the reference, and the heatmap sheet. A
+scene's example lives beside its own tools; nothing refreshes it, since the
+fit needs a CUDA GPU and its own environment
+([`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md#appearance-fit)).
+
 ## Sealing seams
 
 Simplifying a model made of many separate pieces approximates each piece's
