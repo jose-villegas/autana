@@ -15,6 +15,8 @@
 
 #include <math.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <string.h>
 
 #include "util/math/mat4f.h"
 #include "util/math/vec3f.h"
@@ -42,7 +44,25 @@ r3d_to_camera_space(vec3f_t model_point, const r3d_line_view_t* view) {
     return mat4f_apply(&view->matrix, model_point);
 }
 
-/* A pixel offset truncated toward zero, so it is symmetric about the centre.
+/* 1 / z for z > 0, to about one float ulp: a seed from the exponent's own
+ * bits and three Newton steps, all multiplies. The S3's FPU has no divide, so
+ * `/` is a libgcc routine of a hundred cycles or more, and a projected point
+ * needs one. Garbage for z <= 0, which no caller projects. */
+static inline float
+r3d_reciprocal(float z) {
+    uint32_t bits;
+    memcpy(&bits, &z, sizeof bits);
+    bits = 0x7EF311C7u - bits;
+    float y;
+    memcpy(&y, &bits, sizeof y);
+    y = y * (2.0F - (z * y));
+    y = y * (2.0F - (z * y));
+    return y * (2.0F - (z * y));
+}
+
+/* A pixel offset rounded to the nearest whole pixel, ties away from zero, so
+ * it is symmetric about the centre and a reciprocal one ulp short of an exact
+ * quotient still lands on its pixel.
  * Plain comparisons, not fminf/fmaxf: those are libm calls on this FPU, and
  * this runs four times per edge. A NaN fails both and lands on the limit. */
 static inline int
@@ -53,14 +73,14 @@ r3d_pixel_offset(float offset) {
     if (!(offset > -R3D_PIXEL_LIMIT)) {
         return -(int)R3D_PIXEL_LIMIT;
     }
-    return (int)offset;
+    return (int)(offset + (offset < 0.0F ? -0.5F : 0.5F));
 }
 
 static inline void
 r3d_camera_to_screen(vec3f_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
     float gain = view->scale;
     if (view->focal != 0.0F) {
-        gain *= view->focal / p.z;
+        gain *= view->focal * r3d_reciprocal(p.z);
     }
     *screen_x = view->center_x + r3d_pixel_offset(p.x * gain);
     *screen_y = view->center_y - r3d_pixel_offset(p.y * gain);

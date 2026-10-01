@@ -14,7 +14,7 @@
 #include "microui.h"
 
 typedef struct {
-    double fps_value;
+    float fps_value;
     const char* scene_title;
     uint8_t scene_title_alpha; /* dithered coverage of the title's ink; 0 draws no title at all */
 

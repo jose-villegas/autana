@@ -54,3 +54,4 @@ jobs:
             && python3 launcher/tools/quality/complexity_gate.py
             && python "$IDF_PATH/tools/idf_size.py" --files --format csv launcher/build.diag/launcher.map | python3 launcher/tools/quality/suite_static_data_gate.py
             && python3 launcher/tools/quality/misra_tidy_gate.py
+            && python3 launcher/tools/build/check_no_soft_double.py launcher/build.diag

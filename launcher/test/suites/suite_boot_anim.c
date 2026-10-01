@@ -309,8 +309,8 @@ test_project_segment_cs_clips_asymmetric_coordinates(void) {
     /* Double-precision reference for the clip itself: p0 is BEHIND, so
      * IT is what gets replaced by the near-plane crossing point. */
     const double frac = (double)(R3D_LINE_NEAR_Z - p0.z) / (double)(p1.z - p0.z);
-    const double exact_x = p0.x + (p1.x - p0.x) * frac;
-    const double exact_y = p0.y + (p1.y - p0.y) * frac;
+    const double exact_x = (double)p0.x + (((double)p1.x - (double)p0.x) * frac);
+    const double exact_y = (double)p0.y + (((double)p1.y - (double)p0.y) * frac);
     int ex, ey;
     const vec3f_t exact_clip = {(float)exact_x, (float)exact_y, R3D_LINE_NEAR_Z};
     r3d_camera_to_screen(exact_clip, &view, &ex, &ey);
@@ -373,33 +373,33 @@ test_spoke_reveal_target_advances_evenly_in_screen_space(void) {
      * test_spoke_reveal_target_hits_its_endpoints_exactly() above, and 1/0
      * has no meaningful "screen position" to compare against the next
      * step's here. */
-    double prev_inv = -1.0;
-    double prev_delta = 0.0;
+    float prev_inv = -1.0F;
+    float prev_delta = 0.0F;
     for (int i = 1; i <= steps; i++) {
         const uint8_t reach = (uint8_t)((255 * i) / steps);
         const int32_t target = boot_anim_spoke_reveal_target(near, far, reach);
         TEST_ASSERT_TRUE_MESSAGE(target > 0, "every non-zero reach should produce a positive target");
-        const double inv = 1.0 / (double)target;
-        if (prev_inv >= 0.0) {
-            const double delta = prev_inv - inv;
-            TEST_ASSERT_TRUE_MESSAGE(delta >= 0.0, "1/target should never increase as reach climbs - the "
-                                                   "target itself must be monotonically non-decreasing");
+        const float inv = 1.0F / (float)target;
+        if (prev_inv >= 0.0F) {
+            const float delta = prev_inv - inv;
+            TEST_ASSERT_TRUE_MESSAGE(delta >= 0.0F, "1/target should never increase as reach climbs - the "
+                                                    "target itself must be monotonically non-decreasing");
             if (i > 2) {
                 /* prev_delta == 0 would mean the PRIOR step had zero
                  * shrinkage: a plateau, not something these constants
                  * produce, but an explicit message beats an inf/NaN
                  * ratio silently failing the comparison below for a
                  * reason this test's own output does not explain. */
-                TEST_ASSERT_TRUE_MESSAGE(prev_delta > 0.0, "the previous reach step had zero shrinkage in "
-                                                           "1/target - a plateau these test constants should "
-                                                           "never actually produce");
+                TEST_ASSERT_TRUE_MESSAGE(prev_delta > 0.0F, "the previous reach step had zero shrinkage in "
+                                                            "1/target - a plateau these test constants should "
+                                                            "never actually produce");
                 /* Consecutive per-step shrinkages should stay within 25%
                  * of each other; loose on purpose (a fixed-point
                  * approximation, not exact reciprocal interpolation), but
                  * tight enough to reject a linear-in-radius formula, whose
                  * first step alone covers ~90% of the span. */
-                const double ratio = delta / prev_delta;
-                TEST_ASSERT_TRUE_MESSAGE(ratio > 0.75 && ratio < 1.25,
+                const float ratio = delta / prev_delta;
+                TEST_ASSERT_TRUE_MESSAGE(ratio > 0.75F && ratio < 1.25F,
                                          "consecutive reach steps should shrink 1/target by "
                                          "roughly the same amount - a front-loaded reveal "
                                          "would fail this");
