@@ -176,8 +176,8 @@ The two views are the [view modes](#view-modes) over the full mesh.
 The counts are in `sponza_mesh_generated.h`, `sponza_lite_mesh_generated.h`
 and `sponza_flat_mesh_generated.h`. The frame is the mean along the whole
 flythrough, half resolution upscaled and no panel transfer, from
-`autana suite run_sponza_perf_suite` (the `frame_cost` test), recorded
-2026-10-01; rerun it for a current number. The GIFs are made by the doc-images
+`autana suite run_sponza_perf_suite` (the `frame_cost` test); rerun it to
+refresh the numbers. The GIFs are made by the doc-images
 workflow ([Render-Harness.md](../tools/Render-Harness.md#images-in-these-docs)).
 
 Where the targets differ, at the pose the GIFs end on: each sheet is the two
