@@ -16,6 +16,7 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "render/fix3.h"
+#include "render/r3d_line_camera.h"
 #include "render/r3d_span.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
@@ -174,19 +175,14 @@ cube_expand_bbox(const cube_triangle_bin_t* entry, int x0, int x1) {
     }
 }
 
-/* The vertex in pixels; w keeps the camera-space depth the perspective divide
- * used. A depth behind the near plane is pushed onto it so the divide is safe,
- * and the triangle is culled by cube_triangle_visible(). */
+/* The vertex in pixels; z and w both keep the camera-space depth. */
 static fix3_vec4_t
-cube_project(int corner, fix3_mat4_t matrix) {
-    fix3_vec4_t p = {cube_vertices[corner][0], cube_vertices[corner][1], cube_vertices[corner][2], FIX3_ONE};
-    fix3_vec3_transform(&p, matrix);
-    p.w = p.z;
-    p.z = p.z >= CUBE_NEAR_Z ? p.z : CUBE_NEAR_Z;
-    fix3_perspective_divide(&p, CAMERA_FOCAL_LENGTH);
-    p.x = (GFX_WIDTH / 2) + (p.x * (GFX_WIDTH / 2)) / FIX3_ONE;
-    p.y = (GFX_HEIGHT / 2) - (p.y * (GFX_WIDTH / 2)) / FIX3_ONE;
-    return p;
+cube_project(int corner, const r3d_line_view_t* view) {
+    const fix3_vec4_t model = {cube_vertices[corner][0], cube_vertices[corner][1], cube_vertices[corner][2], FIX3_ONE};
+    const fix3_vec4_t camera = r3d_to_camera_space(model, view);
+    int x, y;
+    r3d_camera_to_screen(camera, view, &x, &y);
+    return (fix3_vec4_t){x, y, camera.z, camera.z};
 }
 
 /* False for a triangle that touches the near plane, lies wholly off one side
@@ -218,11 +214,8 @@ cube_triangle_visible(const fix3_vec4_t p[3]) {
  * needs no order; y1 is exclusive, hence the +1 on the inclusive row. */
 static void
 cube_bin_triangles(void) {
-    fix3_mat4_t mat_camera, mat_final;
-
-    fix3_camera_matrix(camera_pose, mat_camera);
-    fix3_world_matrix(cube_pose, mat_final);
-    fix3_mat4_mul(mat_final, mat_camera);
+    const r3d_line_camera_t camera = {camera_pose, CAMERA_FOCAL_LENGTH, CUBE_NEAR_Z};
+    const r3d_line_view_t view = r3d_line_camera_view(camera, cube_pose, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
 
     cube_bin_count = 0;
     cube_bbox_valid = false;
@@ -230,7 +223,7 @@ cube_bin_triangles(void) {
     for (int t = 0; t < CUBE_TRIANGLE_COUNT; t++) {
         fix3_vec4_t transformed[3];
         for (int i = 0; i < 3; i++) {
-            transformed[i] = cube_project(cube_triangles[t][i], mat_final);
+            transformed[i] = cube_project(cube_triangles[t][i], &view);
         }
 
         if (!cube_triangle_visible(transformed)) {

@@ -953,7 +953,7 @@ sim/        the sand automaton as an instance: any size, several alive, host
             sleeping (today: apps/sand/ minus app_sand.c)
 render/     r2d: tiles, line scroll, sprites, blits, sim-window compositing,
             collision against tiles or a sim grid, colormap lighting
-            r3d: transform/clip (from small3dlib), bin, spans, z
+            r3d: transform/clip, bin, spans, z
             rc:  raycaster
 game/       physics, entities, tilt/shake, level/event tables
 tools/      editors that render through the real C on the host and bake
@@ -1039,8 +1039,6 @@ cheapest path to something that is unmistakably a game.
   Display-and-Rendering.md; the dirty-region grid already shipped gets
   most of that transfer-contiguity property without touching every draw
   call, and the band ring (3.3) gets the same property for free too.
-- **Do not build on small3dlib's per-pixel callback.** Keep its transform
-  half, replace its rasterizer.
 - **Do not put `double`, a 64-bit divide, or a signed divide by a power of
   two in a hot loop.** `double` is software-emulated even with the S3's
   FPU; the divides are the two known traps: the Optimization Playbook's

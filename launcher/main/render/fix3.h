@@ -1,12 +1,16 @@
 /*
- * fix3: the integer 3D maths the line camera, the animation transforms and
- * the boot scene share. Units are 512 to 1.0 and one full turn is 512 as an
- * angle; products are plain int32, so a caller keeps its coordinates small
- * enough not to overflow (boot_anim.h states its bound).
+ * fix3: small3dlib's (drummyfish, CC0) integer transform maths, kept
+ * bit-exact including its quirks, shared by the line camera, the animation
+ * transforms and the boot scene. Units are 512 to 1.0 and one full turn is
+ * 512 as an angle; products are plain int32, so a caller keeps its
+ * coordinates small enough not to overflow (boot_anim.h states its bound).
  *
- * It is integer, not float, because the same inputs must give the same pixel
- * on the board, on x86 and in a pinned host render; an angle is one table
- * lookup, with no libm. Header-only, static inline and ESP-IDF-free.
+ * Integer, so the same inputs give the same pixel on the board, on x86 and
+ * in a pinned host render; an angle is one table lookup, with no libm.
+ *
+ * Two quirks are kept on purpose, and a test pins both: the sine table peaks
+ * at 510, not FIX3_ONE, and fix3_wrap() comes out one short for a negative
+ * input. Header-only, static inline and ESP-IDF-free.
  */
 #pragma once
 
@@ -32,7 +36,7 @@ typedef struct {
 
 #define FIX3_SIN_TABLE_LENGTH 128
 
-/* A quarter turn of sine, FIX3_ONE at the top. */
+/* A quarter turn of sine; the last entry is 510, not FIX3_ONE. */
 static const fix3_unit_t fix3_sin_table[FIX3_SIN_TABLE_LENGTH] = {
     0,   6,   12,  18,  25,  31,  37,  43,  50,  56,  62,  68,  74,  81,  87,  93,  99,  105, 111, 118, 124, 130,
     136, 142, 148, 154, 160, 166, 172, 178, 183, 189, 195, 201, 207, 212, 218, 224, 229, 235, 240, 246, 251, 257,
@@ -47,6 +51,7 @@ fix3_non_zero(fix3_unit_t value) {
     return value + (value == 0);
 }
 
+/* Kept on purpose; pinned renders depend on it. */
 static inline fix3_unit_t
 fix3_wrap(fix3_unit_t value, fix3_unit_t mod) {
     return value >= 0 ? (value % mod) : (mod + (value % mod) - 1);

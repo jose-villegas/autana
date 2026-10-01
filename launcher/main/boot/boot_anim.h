@@ -51,13 +51,9 @@
 #include "util/trig.h"
 #include "util/tween.h"
 
-/* Half of GFX_WIDTH (see gfx.h); the projection plane's unit is this many
- * pixels, and a host compile has no gfx.h to ask. */
-#define BOOT_ANIM_HALF_WIDTH_PX 184
-
-#define BOOT_ANIM_Q             12
-#define BOOT_ANIM_ONE           (1 << BOOT_ANIM_Q) /* 4096 == 1.0 */
-#define BOOT_ANIM_TQ            8                  /* t's own fixed point */
+#define BOOT_ANIM_Q   12
+#define BOOT_ANIM_ONE (1 << BOOT_ANIM_Q) /* 4096 == 1.0 */
+#define BOOT_ANIM_TQ  8                  /* t's own fixed point */
 
 /*
  * The timeline
@@ -322,10 +318,10 @@ boot_anim_screen_chord_lt(fix3_vec4_t a, fix3_vec4_t c, const boot_anim_view_t* 
     const int32_t dy = im_abs((int)(a.y - c.y));
     const int64_t m = (int64_t)dx + dy;
     if (view->focal == 0) {
-        return m * BOOT_ANIM_HALF_WIDTH_PX < (int64_t)px * FIX3_ONE;
+        return m * (view->scale) < (int64_t)px * FIX3_ONE;
     }
     const int32_t zmin = a.z < c.z ? a.z : c.z;
-    return m * view->focal * BOOT_ANIM_HALF_WIDTH_PX < (int64_t)px * zmin * FIX3_ONE;
+    return m * view->focal * view->scale < (int64_t)px * zmin * FIX3_ONE;
 }
 
 /* Do NOT subdivide if span ends within BOOT_ANIM_LOD_CHORD_PX. Uses
