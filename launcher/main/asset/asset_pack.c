@@ -1,6 +1,6 @@
 #include "asset/asset_pack.h"
 
-#include <assert.h>
+#include <stdint.h>
 #include <string.h>
 
 /* The header's byte offsets within a pack, and an entry's within its row. */
@@ -90,7 +90,9 @@ asset_pack_open(asset_pack_t* pack, const void* base, size_t size) {
     if (bytes == NULL || size == 0) {
         return ASSET_ERR_NO_PACK;
     }
-    assert((uintptr_t)base % BASE_ALIGN == 0); /* entries are aligned within the pack, so the pack must be too */
+    if ((uintptr_t)base % BASE_ALIGN != 0) {
+        return ASSET_ERR_BOUNDS; /* entries are aligned within the pack, so the pack must be too */
+    }
     if (size < ASSET_PACK_HEADER_SIZE) {
         return ASSET_ERR_TRUNCATED;
     }

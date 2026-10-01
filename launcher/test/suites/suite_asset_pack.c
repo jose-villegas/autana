@@ -331,6 +331,21 @@ test_an_entry_row_is_read_by_its_index_and_an_index_past_the_table_is_not_found(
 }
 
 static void
+test_a_base_that_is_not_16_byte_aligned_is_refused(void) {
+    fixture_t f = fixture();
+    uint8_t* shifted = malloc(BUFFER_BYTES + 16);
+    TEST_ASSERT_NOT_NULL(shifted);
+    uint8_t* aligned = shifted + (16 - ((uintptr_t)shifted % 16)) % 16;
+    memcpy(aligned + 8, f.pack, f.total);
+    asset_pack_t pack;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, asset_pack_open(&pack, aligned + 8, f.total));
+    memcpy(aligned, f.pack, f.total);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, aligned, f.total));
+    free(shifted);
+    release(&f);
+}
+
+static void
 test_a_header_with_reserved_bytes_in_use_is_refused(void) {
     fixture_t f = fixture();
     asset_pack_t pack;
@@ -401,6 +416,7 @@ suite_asset_pack(void) {
     RUN_TEST(test_a_cluster_or_node_range_outside_the_mesh_is_refused);
     RUN_TEST(test_a_scene_naming_a_missing_mesh_fails_with_that_id);
     RUN_TEST(test_an_entry_row_is_read_by_its_index_and_an_index_past_the_table_is_not_found);
+    RUN_TEST(test_a_base_that_is_not_16_byte_aligned_is_refused);
     RUN_TEST(test_a_header_with_reserved_bytes_in_use_is_refused);
     RUN_TEST(test_an_inner_node_whose_children_are_not_after_it_is_refused);
     RUN_TEST(test_the_store_opens_the_shipped_pack_and_it_has_meshes);

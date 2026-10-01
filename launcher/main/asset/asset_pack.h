@@ -67,8 +67,8 @@ uint32_t asset_crc32(const void* data, size_t size);
 uint32_t asset_pack_total_size(const void* head, size_t available);
 
 /* Checks the header, the checksum and every entry's range and alignment,
- * then fills `pack`. `base` must be 16-byte aligned, which a partition
- * mapping and aligned_alloc() both give. A buffer may be larger than the pack. */
+ * then fills `pack`. `base` must be 16-byte aligned (ASSET_ERR_BOUNDS when it is
+ * not), which a partition mapping and aligned_alloc() both give. A buffer may be larger than the pack. */
 asset_status_t asset_pack_open(asset_pack_t* pack, const void* base, size_t size);
 
 /* Entry `index` of the table, the one place a row's offset becomes bytes. */
