@@ -351,6 +351,24 @@ test_counts_nest_like_time_the_outer_bracket_keeps_only_its_own(void) {
 }
 
 static void
+test_a_report_of_every_slot_still_carries_its_total_and_counts(void) {
+    static const char* const names[FRAME_COST_SLOTS] = {"ui.build",  "ridge.layers",   "ridge.paint",   "ui.paint",
+                                                        "present",   "frame.rest",     "sand.steps",    "sand.plants",
+                                                        "sand.draw", "sand.reactions", "sand.impulses", "sand.liquid"};
+    frame_cost_t* const cost = fixture();
+    char line[FRAME_COST_REPORT_MAX];
+    TEST_ASSERT_TRUE(frame_cost_arm(cost, "sand.liquid", "insn"));
+    for (int i = 0; i < FRAME_COST_SLOTS; i++) {
+        leave_counted(cost, names[i], 0, 123456, 0, 654321);
+    }
+
+    TEST_ASSERT_GREATER_THAN_INT(0, frame_cost_report(cost, 1, line, sizeof line));
+    TEST_ASSERT_NOT_NULL(strstr(line, " | total "));
+    TEST_ASSERT_NOT_NULL(strstr(line, " | sand.liquid cyc avg/min/max "));
+    free(cost);
+}
+
+static void
 test_the_report_carries_the_armed_slots_counts_and_forgets_them(void) {
     frame_cost_t* const cost = fixture();
     char line[200];
@@ -414,6 +432,7 @@ suite_frame_cost(void) {
     RUN_TEST(test_a_report_forgets_so_the_next_window_starts_clean);
     RUN_TEST(test_with_no_frames_the_charge_survives_to_the_next_report);
     RUN_TEST(test_a_zero_size_buffer_is_left_alone);
+    RUN_TEST(test_a_report_of_every_slot_still_carries_its_total_and_counts);
     RUN_TEST(test_more_names_than_slots_are_dropped_and_charged_to_nobody);
     RUN_TEST(test_a_dropped_name_is_flagged_in_the_report_and_gone_next_window);
     RUN_TEST(test_a_line_too_short_ends_on_a_whole_slot);

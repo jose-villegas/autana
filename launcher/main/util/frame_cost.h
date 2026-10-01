@@ -24,6 +24,10 @@
  * against, across windows. */
 #define FRAME_COST_NAMES          32
 
+/* A buffer that holds a report of every slot with long names, the total and
+ * an armed slot's counts; a smaller one loses the tail without a word. */
+#define FRAME_COST_REPORT_MAX     512
+
 /* Longest bracket name; FRAME_COST_END() refuses a longer one at compile
  * time, since a counter arm must be able to carry it on one console line. */
 #define FRAME_COST_NAME_MAX       24
