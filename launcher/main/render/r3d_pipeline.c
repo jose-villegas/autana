@@ -58,9 +58,12 @@ typedef struct {
 static placement_t
 placement_of(const r3d_transform_t* transform) {
     const float to_radians = 0.017453292519943295F;
-    const float sx = sinf(transform->rotation.x * to_radians), cx = cosf(transform->rotation.x * to_radians);
-    const float sy = sinf(transform->rotation.y * to_radians), cy = cosf(transform->rotation.y * to_radians);
-    const float sz = sinf(transform->rotation.z * to_radians), cz = cosf(transform->rotation.z * to_radians);
+    const float sx = sinf(transform->rotation.x * to_radians);
+    const float cx = cosf(transform->rotation.x * to_radians);
+    const float sy = sinf(transform->rotation.y * to_radians);
+    const float cy = cosf(transform->rotation.y * to_radians);
+    const float sz = sinf(transform->rotation.z * to_radians);
+    const float cz = cosf(transform->rotation.z * to_radians);
     placement_t p = {.scale = transform->scale, .position = transform->position};
     /* Ry * (Rx * Rz), multiplied out. */
     p.r[0][0] = (cy * cz) + (sy * sx * sz);

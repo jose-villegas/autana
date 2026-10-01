@@ -30,6 +30,17 @@ transform_slice(void* ctx) {
     r3d_pipeline_transform(s->mesh, s->lens, b.visible + s->first, s->count, b.cs, b.rows);
 }
 
+/* A new picture starts from the clear colour, unless upscaling supplies it, and from no depth. */
+static void
+clear_rows(const raster_t* r, uint16_t* color, uint16_t* depth, size_t pixels) {
+    if (r->destination == NULL) {
+        for (size_t i = 0; i < pixels; i++) {
+            color[i] = r->clear;
+        }
+    }
+    memset(depth, 0, pixels * sizeof(*depth));
+}
+
 static void
 draw_slice(void* ctx) {
     const slice_t* s = ctx;
@@ -40,13 +51,8 @@ draw_slice(void* ctx) {
     uint16_t* color = b.color + offset;
     uint16_t* depth = b.depth + offset;
 
-    if (s->clear && r->destination == NULL) {
-        for (size_t i = 0; i < pixels; i++) {
-            color[i] = r->clear;
-        }
-    }
     if (s->clear) {
-        memset(depth, 0, pixels * sizeof(*depth));
+        clear_rows(r, color, depth, pixels);
     }
 
     const r3d_span_target_t target = {color, depth, r->width, s->first, s->first + s->count};
