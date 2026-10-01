@@ -458,109 +458,70 @@ class DeviceCommandTests(unittest.TestCase):
         self.assertEqual(command[command.index("--wait") + 1], "5")
 
 
+def make_project(root):
+    marker = Path(root) / autana.PROJECT_MARKER
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.touch()
+    return Path(root)
+
+
 class ProjectResolutionTests(unittest.TestCase):
-    """resolve_project(), no git, no worktree, no upward search: this
-    invocation's own --project (project_override(), set by run_command())
-    used as-is, or the current directory itself, like `make -C`. Either way
-    the directory named must carry PROJECT_MARKER."""
+    """resolve_project(), no git, no worktree, no upward search: the
+    project the environment names, or the current directory itself, like
+    `make -C`. Either way it must carry PROJECT_MARKER."""
 
-    def make_project(self, root):
-        marker = Path(root) / autana.PROJECT_MARKER
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.touch()
-
-    def test_no_override_uses_the_current_directory(self):
+    def test_no_project_uses_the_current_directory(self):
         with tempfile.TemporaryDirectory() as directory:
-            self.make_project(directory)
-            with mock.patch.object(autana, "_project_arg", None), \
+            make_project(directory)
+            with mock.patch.dict(autana.os.environ), \
                  mock.patch.object(autana.Path, "cwd", return_value=Path(directory)):
+                autana.os.environ.pop(autana.PROJECT_ENV, None)
                 self.assertEqual(autana.resolve_project(), str(Path(directory).resolve()))
 
     def test_an_explicit_project_is_used_as_is(self):
         with tempfile.TemporaryDirectory() as directory:
-            self.make_project(directory)
-            with mock.patch.object(autana, "_project_arg", directory):
+            make_project(directory)
+            with mock.patch.dict(autana.os.environ, {autana.PROJECT_ENV: directory}):
                 self.assertEqual(autana.resolve_project(), str(Path(directory).resolve()))
 
     def test_a_subfolder_given_explicitly_is_not_searched_upward(self):
         with tempfile.TemporaryDirectory() as directory:
-            self.make_project(directory)
+            make_project(directory)
             sub = Path(directory) / "sub"
             sub.mkdir()
-            with mock.patch.object(autana, "_project_arg", str(sub)), \
+            with mock.patch.dict(autana.os.environ, {autana.PROJECT_ENV: str(sub)}), \
                  self.assertRaises(SystemExit) as caught:
                 autana.resolve_project()
             self.assertIn("--project", str(caught.exception))
 
     def test_the_current_directory_not_a_project_is_refused_naming_project(self):
         with tempfile.TemporaryDirectory() as directory:
-            with mock.patch.object(autana, "_project_arg", None), \
+            with mock.patch.dict(autana.os.environ), \
                  mock.patch.object(autana.Path, "cwd", return_value=Path(directory)), \
                  self.assertRaises(SystemExit) as caught:
+                autana.os.environ.pop(autana.PROJECT_ENV, None)
                 autana.resolve_project()
             self.assertIn("--project", str(caught.exception))
-
-    def test_a_cwd_that_is_a_subfolder_of_a_project_is_also_refused(self):
-        """No upward search of a subfolder either, whether it got there via
-        an explicit --project or because that is where this process runs."""
-        with tempfile.TemporaryDirectory() as directory:
-            self.make_project(directory)
-            sub = Path(directory) / "sub"
-            sub.mkdir()
-            with mock.patch.object(autana, "_project_arg", None), \
-                 mock.patch.object(autana.Path, "cwd", return_value=sub), \
-                 self.assertRaises(SystemExit) as caught:
-                autana.resolve_project()
-            self.assertIn("--project", str(caught.exception))
-
-
-class ProjectOverrideTests(unittest.TestCase):
-    """project_override(); the unvalidated form resolve_project() is built
-    on, for a command that wants a path for metadata only (suite without
-    --flash) and has no reason to require PROJECT_MARKER there."""
-
-    def test_none_when_no_project_was_given(self):
-        with mock.patch.object(autana, "_project_arg", None):
-            self.assertIsNone(autana.project_override())
-
-    def test_the_raw_value_when_one_was_given(self):
-        with mock.patch.object(autana, "_project_arg", "C:/wherever"):
-            self.assertEqual(autana.project_override(), "C:/wherever")
 
 
 class RunCommandTests(unittest.TestCase):
-    """run_command() is the one place `--project` is popped, ahead of any
-    command's own parsing, and reset once that command returns."""
+    """run_command() applies the global flags for one call and restores the
+    environment after it."""
 
-    def test_project_is_popped_before_the_handler_sees_its_args(self):
+    def test_the_flags_hold_for_the_call_only(self):
         seen = {}
 
         def handler(args):
             seen["args"] = args
-            seen["override"] = autana.project_override()
+            seen["wait"] = autana.os.environ.get(autana.WAIT_ENV)
             return 0
 
-        autana.run_command(handler, ["dev", "--quiet", "--project", "C:/there"])
-        self.assertEqual(seen["args"], ["dev", "--quiet"])
-        self.assertEqual(seen["override"], "C:/there")
-
-    def test_no_project_flag_leaves_the_override_unset(self):
-        def handler(args):
-            self.assertIsNone(autana.project_override())
-            return 0
-
-        autana.run_command(handler, ["dev"])
-
-    def test_the_override_does_not_leak_to_a_later_call(self):
-        def first(args):
-            return 0
-
-        def second(args):
-            self.assertIsNone(autana.project_override())
-            return 0
-
-        autana.run_command(first, ["dev", "--project", "C:/there"])
-        autana.run_command(second, ["dev"])
+        with mock.patch.dict(autana.os.environ):
+            autana.os.environ.pop(autana.WAIT_ENV, None)
+            autana.run_command(handler, ["dev", "--quiet"], flags={"--wait": "7"})
+            after = autana.os.environ.get(autana.WAIT_ENV)
+        self.assertEqual(seen, {"args": ["dev", "--quiet"], "wait": "7"})
+        self.assertIsNone(after)
 
 
 class FlashCommandTests(unittest.TestCase):
@@ -611,7 +572,7 @@ class FlashCommandTests(unittest.TestCase):
             marker.touch()
             with mock.patch.object(autana, "git", return_value=""), \
                  mock.patch.object(autana.subprocess, "call", return_value=0) as called:
-                autana.run_command(autana.flash, ["diag", "--quiet", "--project", directory])
+                autana.run_command(autana.flash, ["diag", "--quiet"], flags={"--project": directory})
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--worktree") + 1], str(Path(directory).resolve()))
 
@@ -672,7 +633,7 @@ class BuildCommandTests(unittest.TestCase):
             with mock.patch.object(autana, "git", return_value=""), \
                  mock.patch.object(device, "build_worktree", return_value=0) as built, \
                  mock.patch("builtins.print"):
-                autana.run_command(autana.build, ["dev", "--project", directory])
+                autana.run_command(autana.build, ["dev"], flags={"--project": directory})
             built.assert_called_once_with(str(Path(directory).resolve()), "dev", [])
 
     def test_diag_check_runs_the_diag_check_script(self):
@@ -895,7 +856,7 @@ class SelftestCommandTests(unittest.TestCase):
             marker.parent.mkdir(parents=True, exist_ok=True)
             marker.touch()
             with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
-                autana.run_command(autana.selftest, ["--project", directory])
+                autana.run_command(autana.selftest, [], flags={"--project": directory})
             command = called.call_args[0][0]
             self.assertEqual(command[command.index("--worktree") + 1], str(Path(directory).resolve()))
 
@@ -982,7 +943,7 @@ class BatchCommandTests(unittest.TestCase):
             marker.parent.mkdir(parents=True, exist_ok=True)
             marker.touch()
             with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
-                autana.run_command(autana.batch, ["run_sand_perf_suite", "--project", directory])
+                autana.run_command(autana.batch, ["run_sand_perf_suite"], flags={"--project": directory})
             command = called.call_args[0][0]
             self.assertEqual(command[command.index("--worktree") + 1], str(Path(directory).resolve()))
 
@@ -1322,15 +1283,6 @@ class GlobalWaitTests(unittest.TestCase):
         self.run_main(["--wait", "0", "status"], {"AUTANA_DEVICE_WAIT": "90"}, handler)
         self.assertEqual(seen, ["0"])
 
-    def test_wait_after_the_command_is_rejected_with_the_hint(self):
-        for argv in (["status", "--wait", "0"], ["monitor", "5", "--wait", "0"],
-                     ["flash", "--wait=0"], ["lock", "hand", "--wait", "5", "note"]):
-            with self.subTest(argv=argv):
-                code, _ = None, None
-                with self.assertRaises(SystemExit) as stop,                      mock.patch.object(autana.sys, "argv", ["autana", *argv]):
-                    autana.main()
-                self.assertIn("--wait goes before the command: autana --wait 0 monitor 5",
-                              str(stop.exception.code))
 
     def test_an_invalid_value_is_rejected(self):
         for value in ("-1", "abc", "1.5", ""):
@@ -1415,14 +1367,6 @@ class GlobalOwnerTests(unittest.TestCase):
             seen = self.owner_seen_by_device_step(["status"])
         self.assertNotIn("ci-7", seen)
 
-    def test_owner_after_the_command_is_rejected_with_the_hint(self):
-        for argv in (["status", "--owner", "x"], ["flash", "--owner=x"]):
-            with self.subTest(argv=argv):
-                with self.assertRaises(SystemExit) as stop, \
-                     mock.patch.object(autana.sys, "argv", ["autana", *argv]):
-                    autana.main()
-                self.assertIn("--owner goes before the command: autana --owner ci-7 flash",
-                              str(stop.exception.code))
 
     def test_an_empty_owner_is_rejected(self):
         for value in ("", "  "):
@@ -1469,30 +1413,81 @@ class OneShotForwardingTests(unittest.TestCase):
         fake.assert_called_once_with([])
         sent.assert_not_called()
 
-    def test_a_leading_project_is_refused_with_where_it_goes(self):
-        with mock.patch.object(autana, "forward") as forwarded:
-            code = self.run_main(["--project", "X", "flash", "diag"])
-        forwarded.assert_not_called()
-        self.assertIn("--project goes after the command", code)
-
-    def test_an_unknown_leading_flag_is_refused_and_not_forwarded(self):
-        with mock.patch.object(autana, "forward") as forwarded:
+    def test_a_leading_dash_verb_is_refused_without_calling_the_device(self):
+        with mock.patch.object(autana, "send") as sent:
             code = self.run_main(["--foo", "bar"])
-        forwarded.assert_not_called()
-        self.assertIn("--foo", code)
+        sent.assert_not_called()
+        self.assertIn("unknown option --foo", code)
 
-    def test_a_console_line_starting_with_a_flag_is_refused_not_forwarded(self):
-        with mock.patch.object(autana, "forward") as forwarded,              mock.patch("builtins.input", side_effect=["--project X flash", EOFError()]),              mock.patch("builtins.print") as printed:
+    def test_a_leading_dash_console_line_is_refused_without_calling_the_device(self):
+        with mock.patch.object(autana, "send") as sent, \
+             mock.patch("builtins.input", side_effect=["--foo bar", EOFError()]), \
+             mock.patch("builtins.print") as printed:
             autana.console()
-        forwarded.assert_not_called()
-        printed.assert_any_call(autana.LEADING_HINTS["--project"])
+        sent.assert_not_called()
+        printed.assert_any_call("autana: unknown option --foo; 'autana help' lists the commands")
 
     def test_the_global_options_still_reach_version(self):
-        with mock.patch.object(autana, "forward") as forwarded, mock.patch("builtins.print") as printed,              mock.patch.dict(autana.os.environ, {}):
+        with mock.patch.object(autana, "send") as sent, mock.patch("builtins.print") as printed:
             code = self.run_main(["--wait", "0", "--version"])
-        forwarded.assert_not_called()
+        sent.assert_not_called()
         printed.assert_any_call(autana.__version__)
         self.assertEqual(code, 0)
+
+
+class GlobalFlagOrderTests(unittest.TestCase):
+    """The global flags are one parser's: where they stand on the line does
+    not change what a command receives."""
+
+    def run_main(self, argv):
+        seen = {}
+
+        def handler(args):
+            seen["args"] = args
+            seen["env"] = {name: autana.os.environ.get(name) for name in (
+                autana.WAIT_ENV, autana.OWNER_ENV, autana.BOARD_ENV, autana.PROJECT_ENV)}
+            return 0
+
+        with mock.patch.dict(autana.COMMANDS, {"status": handler}), \
+             mock.patch.object(autana.sys, "argv", ["autana", *argv]):
+            with self.assertRaises(SystemExit):
+                autana.main()
+        return seen
+
+    def test_the_same_line_in_every_order_gives_the_same_call(self):
+        with tempfile.TemporaryDirectory() as directory:
+            make_project(directory)
+            project, wait = ["--project", directory], ["--wait", "5"]
+            orders = {
+                "first": [*project, *wait, "status", "-v"],
+                "between": ["status", *project, "-v", *wait],
+                "last": ["status", "-v", *wait, *project],
+                "equals": [f"--wait=5", "status", f"--project={directory}", "-v"],
+            }
+            with mock.patch.dict(autana.os.environ):
+                results = {name: self.run_main(argv) for name, argv in orders.items()}
+        first = results["first"]
+        self.assertEqual(first["args"], ["-v"])
+        self.assertEqual(first["env"][autana.WAIT_ENV], "5")
+        self.assertEqual(first["env"][autana.PROJECT_ENV], str(Path(directory).resolve()))
+        for name, result in results.items():
+            self.assertEqual(result, first, name)
+
+    def test_the_flags_are_gone_after_the_command(self):
+        with tempfile.TemporaryDirectory() as directory:
+            make_project(directory)
+            with mock.patch.dict(autana.os.environ):
+                autana.os.environ.pop(autana.WAIT_ENV, None)
+                seen = self.run_main(["status", "--wait", "5", "--project", directory])
+                self.assertEqual(seen["env"][autana.WAIT_ENV], "5")
+                self.assertNotIn(autana.WAIT_ENV, autana.os.environ)
+
+    def test_a_project_that_is_not_one_exits_naming_its_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(autana.sys, "argv", ["autana", "status", "--project", directory]), \
+                 self.assertRaises(SystemExit) as stop:
+                autana.main()
+        self.assertIn(str(Path(directory).resolve()), str(stop.exception.code))
 
 
 class SuiteFlashAndRunsTests(unittest.TestCase):
@@ -1526,14 +1521,14 @@ class SuiteFlashAndRunsTests(unittest.TestCase):
 
     def test_project_without_flash_is_accepted_but_not_resolved(self):
         """`suite` without `--flash` builds nothing, so its `--project` (if
-        any) is metadata only, project_override(), not resolve_project(),
+        any) is metadata only, not resolve_project(),
         and never validated against PROJECT_MARKER."""
         with mock.patch.object(autana, "resolve_project",
                                side_effect=AssertionError("should not validate")), \
              mock.patch.object(autana.subprocess, "call", return_value=0) as called:
-            autana.run_command(autana.suite, ["run_gfx_suite", "--project", "C:/anywhere"])
+            autana.run_command(autana.suite, ["run_gfx_suite"], flags={"--project": "/anywhere"})
         command = called.call_args[0][0]
-        self.assertEqual(command[command.index("--worktree") + 1], "C:/anywhere")
+        self.assertEqual(command[command.index("--worktree") + 1], "/anywhere")
 
     def test_project_with_flash_is_resolved_and_used(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1541,7 +1536,7 @@ class SuiteFlashAndRunsTests(unittest.TestCase):
             marker.parent.mkdir(parents=True, exist_ok=True)
             marker.touch()
             with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
-                autana.run_command(autana.suite, ["run_gfx_suite", "--flash", "--project", directory])
+                autana.run_command(autana.suite, ["run_gfx_suite", "--flash"], flags={"--project": directory})
             command = called.call_args[0][0]
             self.assertEqual(command[command.index("--worktree") + 1], str(Path(directory).resolve()))
 
@@ -1835,11 +1830,6 @@ class GlobalBoardTests(unittest.TestCase):
                 autana.os.environ.get(autana.BOARD_ENV)) or 0)
         self.assertEqual(seen, [None])
 
-    def test_board_after_the_command_is_rejected_with_the_hint(self):
-        with self.assertRaises(SystemExit) as stop, \
-             mock.patch.object(autana.sys, "argv", ["autana", "status", "--board", "x"]):
-            autana.main()
-        self.assertIn("--board goes before the command", str(stop.exception.code))
 
     def test_an_empty_board_is_rejected(self):
         code, handler = self.run_main(["--board", " ", "status"])
@@ -1861,6 +1851,7 @@ class ProjectSettingsTests(unittest.TestCase):
     def test_children_are_told_which_project_the_command_acts_on(self):
         seen = []
         with isolation.project() as project:
+            make_project(project)
             self.run_main(["status", "--project", str(project)], lambda args: seen.append(
                 autana.os.environ[autana.PROJECT_ENV]) or 0)
         self.assertEqual(seen, [str(project.resolve())])
@@ -1868,6 +1859,7 @@ class ProjectSettingsTests(unittest.TestCase):
     def test_a_child_autana_reads_its_own_checkouts_settings_not_an_outer_ones(self):
         seen = []
         with isolation.project() as outer, isolation.project() as inner:
+            make_project(inner)
             with mock.patch.dict(autana.os.environ, {autana.PROJECT_ENV: str(outer)}):
                 self.run_main(["status", "--project", str(inner)], lambda args: seen.append(
                     autana.os.environ[autana.PROJECT_ENV]) or 0)
@@ -1883,6 +1875,7 @@ class ProjectSettingsTests(unittest.TestCase):
     def test_an_unknown_key_stops_the_command_naming_the_file_and_the_key(self):
         handler = mock.Mock(return_value=0)
         with isolation.project() as project:
+            make_project(project)
             (project / "autana.local.toml").write_text("recods = 'x'\n")
             code = self.run_main(["status", "--project", str(project)], handler)
         self.assertIn("autana.local.toml", str(code))

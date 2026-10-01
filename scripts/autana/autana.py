@@ -74,28 +74,12 @@ def git_ok(*args):
         return False
 
 
-# This invocation's own --project, popped once by run_command() ahead of
-# any command's own parsing (main()'s one-shot dispatch, and each line of a
-# console session), so every command that reads it, not just the ones that
-# build or flash, shares one flag instead of parsing it for itself. Reset
-# around each dispatched call, so a console session's next line starts over.
-_project_arg = None
-
-
-def project_override():
-    """This invocation's own --project, unresolved and unvalidated, for a
-    command that only wants a path for metadata (`suite` without --flash)
-    and has no reason to require PROJECT_MARKER there. A command that
-    actually reads the project wants resolve_project() instead."""
-    return _project_arg
-
-
 def resolve_project():
     """This invocation's own --project, or its cwd when none was given,
     like `make -C`/`idf.py -C`, never a search of parent directories.
     Either way the directory itself must carry PROJECT_MARKER; failing that
     names --project, never git."""
-    project = Path(_project_arg).resolve() if _project_arg is not None else Path.cwd()
+    project = Path(os.environ.get(PROJECT_ENV) or Path.cwd()).resolve()
     if not (project / PROJECT_MARKER).is_file():
         sys.exit(f"autana: {project} is not an autana project "
                  f"(no {PROJECT_MARKER.as_posix()}) - pass --project PATH")
@@ -127,32 +111,19 @@ def command_words(words):
     return words[0]
 
 
-def run_command(handler, args, name=None):
-    """Pop `--project` once, ahead of `handler`'s own parsing, and let
-    resolve_project()/project_override() read it for the length of this
-    call. The one place main() and console() both dispatch through."""
-    global _project_arg
-    value, args = pop_value(args, "--project")
-    previous, _project_arg = _project_arg, value
-    inherited = os.environ.get(PROJECT_ENV)
-    try:
-        # The project is derived here exactly as resolve_project() does, so
-        # the settings a child device.py reads are the ones of the checkout
-        # this command acts on, whatever an outer autana left in the variable.
-        project = Path(value).resolve() if value else Path.cwd()
-        os.environ[PROJECT_ENV] = str(project)
+def run_command(handler, args, name=None, flags=None):
+    """The one place main() and console() dispatch a command through: the
+    global `flags` (pop_globals()) hold for this call only, then the
+    environment is as it was."""
+    flags = {**session_flags, **(flags or {})}
+    flags.setdefault("--project", str(Path.cwd()))
+    with applied(flags):
         try:
-            autana_config.load(project)
+            autana_config.load(Path(flags["--project"]))
         except autana_config.ConfigError as error:
             sys.exit(f"autana: {error}")
         with command_named(name) if name else contextlib.nullcontext():
             return handler(args)
-    finally:
-        _project_arg = previous
-        if inherited is None:
-            os.environ.pop(PROJECT_ENV, None)
-        else:
-            os.environ[PROJECT_ENV] = inherited
 
 
 def pop_value(args, flag):
@@ -671,8 +642,8 @@ def suite(args):
     # Only --flash reads the project; it is what gets built. Without it,
     # `suite` is board-only: the capture still names a project (device.py's
     # own --worktree is metadata, not something it builds), but any
-    # directory does, unvalidated, same as project_override()'s other use.
-    project = resolve_project() if flash else (project_override() or str(Path.cwd()))
+    # directory does, unvalidated.
+    project = resolve_project() if flash else autana_config.project_dir().as_posix()
     runs = runs or "1"
     filtered = f" --test {','.join(tests)}" if tests else ""
     print(f"autana suite: {', '.join(names)} x{runs}{filtered}" + (" (flash)" if flash else ""),
@@ -1146,6 +1117,8 @@ def forward(line, verb):
     arrives rather than waiting out send()'s own window; a raw verb with
     no dedicated autana command of its own (runsuite, today) falls back to
     that window, since nothing then completes early."""
+    if verb.startswith("-"):
+        sys.exit(f"autana: unknown option {verb.split('=', 1)[0]}; 'autana help' lists the commands")
     reply = verb.upper()
     with command_named(f"console {verb}"):
         _, replies = send(line, reply=reply, until=[reply + "_END", reply + "_ERR"], optional=True)
@@ -1168,7 +1141,13 @@ def console(_args=None):
             return 0
         if not line:
             continue
-        words = shlex.split(line)
+        try:
+            flags, words = pop_globals(shlex.split(line))
+        except SystemExit as stop:
+            print(stop.code)
+            continue
+        if not words:
+            continue
         verb, rest = words[0], words[1:]
         if verb in ("quit", "exit", "q"):
             return 0
@@ -1176,10 +1155,10 @@ def console(_args=None):
             if verb == "help":
                 print(help_text(rest, prefix=""))
             elif verb in COMMANDS and verb != "console":
-                run_command(COMMANDS[verb], rest, command_words([verb, *rest]))
+                run_command(COMMANDS[verb], rest, command_words([verb, *rest]), flags)
             else:
-                refuse_leading_flag(verb)
-                replies = forward(line, verb)
+                with applied({**session_flags, **flags}):
+                    replies = forward(" ".join(words), verb)
                 print("\n".join(replies) if replies else "sent")
         except SystemExit as stop:
             # a command's own refusal ends that command, not the session
@@ -1350,8 +1329,8 @@ BOARD_FLAGS = (
 
 def board_flags_text(prefix=""):
     width = max(len(flag) for flag, _, _ in BOARD_FLAGS)
-    lines = ["--wait, --owner and --board are global: they go before the command, and "
-             "docs/tools/Autana-CLI.md#settings has their defaults.",
+    lines = ["--wait, --owner, --board and --project are global: they go anywhere on the "
+             "line, and docs/tools/Autana-CLI.md#settings has their defaults.",
              "",
              "Flags (on top of each command's own usage above)"]
     for flag, summary, commands in BOARD_FLAGS:
@@ -1466,61 +1445,74 @@ def install_completion():
     readline.parse_and_bind("tab: complete")
 
 
-MISPLACED_HINTS = {
-    "--wait": "--wait goes before the command: autana --wait 0 monitor 5",
-    "--owner": "--owner goes before the command: autana --owner ci-7 flash",
-    "--board": "--board goes before the command: autana --board 90:70:69:FE:A3:08 monitor 5",
-}
+GLOBALS = ("--wait", "--owner", "--board", "--project")
+_GLOBAL_ENV = {"--wait": WAIT_ENV, "--owner": OWNER_ENV, "--board": BOARD_ENV,
+               "--project": PROJECT_ENV}
+
+# Flags typed before a bare `autana`: they hold for the whole console session.
+session_flags = {}
 
 
-LEADING_HINTS = {
-    "--project": "--project goes after the command: autana flash diag --project PATH",
-}
+def checked_global(flag, value):
+    """`value` as `flag`'s environment value, or exit saying what it needs."""
+    if flag == "--wait" and not (value.isascii() and value.isdigit()):
+        sys.exit("autana --wait needs a non-negative integer number of seconds, "
+                 "e.g. autana --wait 0 monitor 5")
+    if flag == "--board" and not value.strip():
+        sys.exit("autana --board needs a board's USB serial number, "
+                 "e.g. autana --board 90:70:69:FE:A3:08 monitor 5")
+    if flag == "--owner" and not value.strip():
+        sys.exit("autana --owner needs a name, e.g. autana --owner ci-7 flash")
+    if flag == "--project":
+        if not value.strip():
+            sys.exit("autana --project needs a path, e.g. autana flash --project PATH")
+        project = Path(value).resolve()
+        if not (project / PROJECT_MARKER).is_file():
+            sys.exit(f"autana: {project} is not an autana project "
+                     f"(no {PROJECT_MARKER.as_posix()}) - pass --project PATH")
+        return str(project)
+    return value
 
 
-def refuse_leading_flag(word):
-    """Exit with a message when `word`, the first word of a line, is a flag:
-    no device command starts with a dash, so forwarding it only fails
-    obscurely on the device side."""
-    if word.startswith("-"):
-        name = word.split("=", 1)[0]
-        sys.exit(LEADING_HINTS.get(name) or f"autana: unknown option {name}; 'autana help' lists the commands")
+def pop_globals(words):
+    """(flags, rest): every GLOBALS flag in `words`, as `--flag V` or
+    `--flag=V` wherever it stands, validated, and the words left over. The
+    one parser, so the order of the flags never matters."""
+    flags, rest = {}, []
+    queue = list(words)
+    while queue:
+        word = queue.pop(0)
+        flag, equals, value = word.partition("=")
+        if flag not in GLOBALS:
+            rest.append(word)
+            continue
+        if not equals:
+            value = queue.pop(0) if queue else ""
+        flags[flag] = checked_global(flag, value)
+    return flags, rest
 
 
-def global_options(argv):
-    """`argv` without its leading `--wait SECONDS`, `--owner NAME` and
-    `--board SERIAL`, in any order. Each is written into WAIT_ENV / OWNER_ENV
-    / BOARD_ENV, what device_command(), owner() and every child process read,
-    so it covers this call and each step nested in it. Any of them
-    anywhere after the command is refused, because a command would otherwise
-    report it as an unknown flag without saying where it belongs."""
-    while argv[:1] in (["--wait"], ["--owner"], ["--board"]):
-        flag, value = argv[0], (argv[1] if len(argv) > 1 else "")
-        if flag == "--wait":
-            if not (value.isascii() and value.isdigit()):
-                sys.exit("autana --wait needs a non-negative integer number of seconds, "
-                         "e.g. autana --wait 0 monitor 5")
-            os.environ[WAIT_ENV] = value
-        elif flag == "--board":
-            if not value.strip():
-                sys.exit("autana --board needs a board's USB serial number, "
-                         "e.g. autana --board 90:70:69:FE:A3:08 monitor 5")
-            os.environ[BOARD_ENV] = value
-        else:
-            if not value.strip():
-                sys.exit("autana --owner needs a name, e.g. autana --owner ci-7 flash")
-            os.environ[OWNER_ENV] = value
-        argv = argv[2:]
-    for arg in argv[1:]:
-        for flag, hint in MISPLACED_HINTS.items():
-            if arg == flag or arg.startswith(flag + "="):
-                sys.exit(hint)
-    return argv
+@contextlib.contextmanager
+def applied(flags):
+    """`flags` written into the environment device_command(), owner() and
+    every child process read, restored on the way out."""
+    previous = {_GLOBAL_ENV[flag]: os.environ.get(_GLOBAL_ENV[flag]) for flag in flags}
+    for flag, value in flags.items():
+        os.environ[_GLOBAL_ENV[flag]] = value
+    try:
+        yield
+    finally:
+        for name, old in previous.items():
+            if old is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = old
 
 
 def main():
-    argv = global_options(sys.argv[1:])
+    flags, argv = pop_globals(sys.argv[1:])
     if not argv:
+        session_flags.update(flags)
         sys.exit(console())
     if argv[0] in ("--version", "-V"):
         print(__version__)
@@ -1529,14 +1521,11 @@ def main():
         print(help_text(argv[1:]))
         sys.exit(0)
     if argv[0] not in COMMANDS:
-        refuse_leading_flag(argv[0])
-        # A one-shot the same as a forwarded line in a session (forward()'s
-        # own docstring); every board operation goes through autana, not
-        # only the ones with a command of their own.
-        replies = forward(" ".join(argv), argv[0])
+        with applied(flags):
+            replies = forward(" ".join(argv), argv[0])
         print("\n".join(replies) if replies else "sent")
         sys.exit(0)
-    sys.exit(run_command(COMMANDS[argv[0]], argv[1:], command_words(argv)))
+    sys.exit(run_command(COMMANDS[argv[0]], argv[1:], command_words(argv), flags))
 
 
 if __name__ == "__main__":
