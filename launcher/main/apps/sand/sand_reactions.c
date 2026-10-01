@@ -21,6 +21,8 @@
  * enough that attenuation rather than the cap is what limits depth.
  */
 
+#include <assert.h>
+
 #include "reaction_doc.h"
 #include "sand_limits.h"
 #include "sand_priv.h"
@@ -443,6 +445,7 @@ static uint16_t crack_frontier[CRACK_MAX];
 
 static void
 crack_run(sand_t* s, int x, int y, int w, int h, material_id_t from, material_id_t into) {
+    assert(react_deferred_of(s) == NULL); /* a lane on core 1 would share the frontier */
     uint16_t* const frontier = crack_frontier;
     int top = 0, done = 0;
 
