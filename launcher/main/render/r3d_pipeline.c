@@ -249,6 +249,59 @@ r3d_pipeline_transform(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const
     }
 }
 
+int
+r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count) {
+    int total = 0;
+    for (int i = 0; i < count; i++) {
+        total += mesh->clusters[clusters[i]].vertex_count;
+    }
+    int prefix = 0;
+    for (int i = 0; i < count; i++) {
+        prefix += mesh->clusters[clusters[i]].vertex_count;
+        if (2 * prefix >= total) {
+            return i + 1;
+        }
+    }
+    return count;
+}
+
+#define DRAW_SPLIT_BUCKETS 64
+
+int
+r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
+                        int count, int height) {
+    int weight[DRAW_SPLIT_BUCKETS + 1] = {0};
+    for (int i = 0; i < count; i++) {
+        const r3d_pipeline_rows_t* r = &rows[clusters[i]];
+        int first = r->unbounded ? 0 : (int)r->y0;
+        int last = r->unbounded ? height - 1 : (int)r->y1;
+        first = first < 0 ? 0 : (first >= height ? height - 1 : first);
+        last = last < 0 ? 0 : (last >= height ? height - 1 : last);
+        const int cost = mesh->clusters[clusters[i]].triangle_count;
+        const int bucket_first = first * DRAW_SPLIT_BUCKETS / height;
+        const int bucket_last = last * DRAW_SPLIT_BUCKETS / height;
+        weight[bucket_first] += cost;
+        weight[bucket_last + 1] -= cost;
+    }
+    int total = 0;
+    int current = 0;
+    for (int bucket = 0; bucket < DRAW_SPLIT_BUCKETS; bucket++) {
+        current += weight[bucket];
+        total += current;
+    }
+    current = 0;
+    int prefix = 0;
+    for (int bucket = 0; bucket < DRAW_SPLIT_BUCKETS; bucket++) {
+        current += weight[bucket];
+        prefix += current;
+        if (2 * prefix >= total) {
+            const int row = (2 * bucket + 1) * height / (2 * DRAW_SPLIT_BUCKETS);
+            return row < 1 ? 1 : (row >= height ? height - 1 : row);
+        }
+    }
+    return height / 2;
+}
+
 typedef struct {
     float x, y, z, r, g, b;
 } clip_vertex_t;

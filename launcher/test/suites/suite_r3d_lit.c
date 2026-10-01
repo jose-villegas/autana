@@ -2001,6 +2001,25 @@ release_fixture(void) {
     color = NULL;
 }
 
+static void
+test_a_cost_weighted_transform_split_beats_half_the_clusters(void) {
+    const r3d_lit_cluster_t clusters[] = {
+        {.vertex_count = 1}, {.vertex_count = 1}, {.vertex_count = 10}, {.vertex_count = 10}};
+    const r3d_lit_mesh_t mesh = {.clusters = clusters};
+    const uint16_t visible[] = {0, 1, 2, 3};
+    const int split = r3d_pipeline_transform_split(&mesh, visible, 4);
+    int first = 0;
+    int second = 0;
+    for (int i = 0; i < split; i++) {
+        first += clusters[visible[i]].vertex_count;
+    }
+    for (int i = split; i < 4; i++) {
+        second += clusters[visible[i]].vertex_count;
+    }
+    TEST_ASSERT_EQUAL_INT(3, split);
+    TEST_ASSERT_TRUE(abs(first - second) < abs(2 - 20));
+}
+
 #undef RUN_TEST
 #define RUN_TEST(func)                                                                                                 \
     do {                                                                                                               \
@@ -2060,6 +2079,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_frame_of_one_depth_is_one_grey_and_empty_is_no_grey);
     RUN_TEST(test_the_range_ignores_empty_pixels_and_survives_none_or_one_drawn);
     RUN_TEST(test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone);
+    RUN_TEST(test_a_cost_weighted_transform_split_beats_half_the_clusters);
 }
 
 #undef RUN_TEST
