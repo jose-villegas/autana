@@ -198,8 +198,13 @@ measured is the literal `unmeasured`, and both loaders refuse to hand one
 to a gate.
 
 **These are approximations, and worth knowing where they end.** The stack
-gate checks test code only, one function at a time: it does not sum a call
-chain, so it bounds the worst single frame rather than the deepest path.
+gate checks test code only, one function at a time, so it bounds the worst
+single frame rather than the deepest path. The deepest path under each root an
+app declares in its `stack_chain.txt` is summed from the diagnostics build's
+own call graph by `launcher/tools/quality/stack_chain_gate.py` (CI and
+`autana build diag --check`). Calls through a pointer are declared there too,
+and a caller that makes a pointer call without being declared fails the
+gate; a new target of a declared pointer must still be added by hand.
 Its frames are the host compiler's: the Xtensa frame is half the size at
 the median but up to 1.67x larger in the worst measured case, so
 `check_stack_usage_device.sh`, the same checker over the target

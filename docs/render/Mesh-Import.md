@@ -28,7 +28,8 @@ flowchart LR
 A vertex carries one sRGB colour: the baked light times the albedo, or, with no
 light step, the albedo alone. A variant with `face_samples` is flat instead,
 with one RGB565 colour per triangle (`light.face_colours()`): the light and
-albedo averaged over a few fixed points of the face, every face sharing one set
+albedo averaged over the points of the face that `face_samples` sets, a fixed count
+or one chosen per face, every face sharing one set
 of sun and sky directions so neighbours on one surface agree unless something
 really shades one of them. Vertices weld by position alone since colour no
 longer splits them, and a flat mesh draws with no colour gradients. The
@@ -38,6 +39,20 @@ owns a contiguous range of vertices and triangles, and its triangles index
 only its own vertices. The clusters are the leaves of a tree rooted at
 `nodes[0]`, so one box test culls a whole subtree. Positions are `int16`
 ticks, `position_scale` ticks per model unit.
+
+Smooth against flat, one pose of the same import: the sheet is the two renders
+and their amplified difference, the crops are where they differ most, smooth
+above flat.
+
+![Smooth against flat](../images/render/compare-full-flat.png)
+![Smooth against flat, the places they differ most](../images/render/compare-full-flat.crops.png)
+
+`face_samples` sets how many points of a face are lit and averaged: one fixed
+point against the adaptive count, the flat mesh at one pose, crops where they
+differ most, fixed above adaptive. One point lights a face from one place, so
+a shadow edge lands on whole faces.
+
+![One fixed face sample against adaptive](images/import-face-samples.png)
 
 ## The offline tools
 
@@ -92,6 +107,30 @@ The steps run in the order of the diagram, whatever order the file lists them.
 An import without variants names its one mesh in `output.name` and cannot
 simplify.
 
+Two variants of one import differ in what `simplify` keeps: the same pose
+at the full budget and at about half of it, the full render above the lite.
+
+![Full against lite](../images/render/compare-full-lite.png)
+![Full against lite, the places they differ most](../images/render/compare-full-lite.crops.png)
+
+`process.visibility` drops triangles no point of the camera region sees, so
+their share of the budget goes to what is seen. The same import with the step
+off, at one camera pose, crops where they differ most,
+off above on: without the cull the budget is spent on hidden surfaces and
+visible ones lose triangles.
+
+![Visibility cull off against on](images/import-visibility.png)
+
+`process.light` turns the albedo into light: the left render is the same
+import with no light step, the right the baked sun, sky and ambient.
+
+![Albedo against baked light](images/import-light.png)
+
+The off/on stills in `images/` are not made by the doc-images workflow: each
+"off" side is a scratch bake of the import with that step's table removed,
+which needs the bake toolchain and the source model, so nothing refreshes them
+when the bake changes.
+
 The scene file that places meshes and carries the lights, the camera and the
 tone map is described in [Scene-Files.md](Scene-Files.md).
 
@@ -128,6 +167,11 @@ flowchart LR
 
 It cuts the empty spots but does not remove them. The cost is about 4% frame
 time (about 3% more triangles drawn) on the mesh it was measured on.
+
+The same import with `seal_seams` off against on, at a pose where it shows,
+off above on: a pixel-sized hole that shows the sky is sealed.
+
+![seal_seams off against on](images/import-seal-seams.png)
 
 ## Meshlets
 

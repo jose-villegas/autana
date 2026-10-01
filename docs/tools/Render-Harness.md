@@ -30,7 +30,7 @@ repository root. It makes the launcher's and the UI toolkit's images itself and 
 ./launcher/tools/render/render_doc_images.sh --check   # report which would change
 ```
 
-It needs a host C compiler, Python with Pillow and ffmpeg 5.1 or newer.
+It needs a host C compiler, Python with Pillow and numpy, and ffmpeg 5.1 or newer.
 `--check` renders into `launcher/tools/results/doc_images/out/`
 and compares decoded pixels with `compare_images.py`, never bytes: another
 ffmpeg or Pillow writes different GIF bytes for the same frames. It prints
@@ -43,8 +43,8 @@ requests".
 | Image | Shows |
 |---|---|
 | `overview/launcher-home.png` | the launcher listing the release build's apps, read from the app folders |
-| `overview/launcher-home.gif` |
-| `ui/*.png` | the UI toolkit's gallery views, portrait and landscape (`ui_widgets_render_host.sh`) | the same, rocking the board either way |
+| `overview/launcher-home.gif` | the same, rocking the board either way |
+| `ui/*.png` | the UI toolkit's gallery views, portrait and landscape (`ui_widgets_render_host.sh`) |
 
 The rest belong to apps, and each app's `tools/README.md` says what its
 images show.
