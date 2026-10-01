@@ -14,9 +14,11 @@
 
 typedef struct {
     const raster_t* raster;
+    const r3d_lit_mesh_t* mesh;
     const r3d_lens_t* lens;
     int visible_count;
     int first, count; /* clusters of visible[], or rows */
+    bool clear;       /* the first mesh of a picture clears it; later ones draw over it */
 } slice_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
@@ -25,7 +27,7 @@ static void
 transform_slice(void* ctx) {
     const slice_t* s = ctx;
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(s->raster);
-    r3d_pipeline_transform(s->raster->mesh, s->lens, b.visible + s->first, s->count, b.cs, b.rows);
+    r3d_pipeline_transform(s->mesh, s->lens, b.visible + s->first, s->count, b.cs, b.rows);
 }
 
 static void
@@ -38,15 +40,17 @@ draw_slice(void* ctx) {
     uint16_t* color = b.color + offset;
     uint16_t* depth = b.depth + offset;
 
-    if (r->destination == NULL) {
+    if (s->clear && r->destination == NULL) {
         for (size_t i = 0; i < pixels; i++) {
             color[i] = r->clear;
         }
     }
-    memset(depth, 0, pixels * sizeof(*depth));
+    if (s->clear) {
+        memset(depth, 0, pixels * sizeof(*depth));
+    }
 
     const r3d_span_target_t target = {color, depth, r->width, s->first, s->first + s->count};
-    r3d_pipeline_draw(r->mesh, s->lens, b.visible, s->visible_count, b.cs, b.rows, &target);
+    r3d_pipeline_draw(s->mesh, s->lens, b.visible, s->visible_count, b.cs, b.rows, &target);
 }
 
 static void
@@ -65,33 +69,65 @@ run_split(job_fn_t fn, slice_t first_half, slice_t second_half) {
     (void)done;
 }
 
+int
+raster_vertex_capacity(const raster_t* raster) {
+    int most = raster->instance_count > 0 ? 0 : raster->mesh->vertex_count;
+    for (int i = 0; i < raster->instance_count; i++) {
+        most = raster->instances[i].mesh->vertex_count > most ? raster->instances[i].mesh->vertex_count : most;
+    }
+    return most;
+}
+
+int
+raster_cluster_capacity(const raster_t* raster) {
+    int most = raster->instance_count > 0 ? 0 : raster->mesh->cluster_count;
+    for (int i = 0; i < raster->instance_count; i++) {
+        most = raster->instances[i].mesh->cluster_count > most ? raster->instances[i].mesh->cluster_count : most;
+    }
+    return most;
+}
+
 size_t
 raster_scratch_bytes(const raster_t* raster) {
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
-    return (sizeof(r3d_pipeline_vertex_t) * (size_t)raster->mesh->vertex_count)
-           + ((sizeof(r3d_pipeline_rows_t) + sizeof(uint16_t)) * (size_t)raster->mesh->cluster_count)
+    return (sizeof(r3d_pipeline_vertex_t) * (size_t)raster_vertex_capacity(raster))
+           + ((sizeof(r3d_pipeline_rows_t) + sizeof(uint16_t)) * (size_t)raster_cluster_capacity(raster))
            + (2 * sizeof(uint16_t) * pixels)
            + (sizeof(uint16_t) * ((size_t)raster->destination_width + (size_t)raster->destination_height));
 }
 
-raster_stats_t
-raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
+static void
+draw_mesh(const raster_t* raster, const r3d_lit_mesh_t* mesh, const r3d_transform_t* placement, const camera_t* camera,
+          int quarter, bool clear, raster_stats_t* stats) {
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     r3d_lens_t lens;
-    r3d_lens_init(&lens, camera, raster->mesh->position_scale, (viewport_t){raster->width, raster->height, quarter});
-    const int visible = r3d_pipeline_cull(raster->mesh, &lens, b.visible);
-    raster_stats_t stats = {visible, 0};
+    r3d_lens_init_placed(&lens, camera, placement, mesh->position_scale,
+                         (viewport_t){raster->width, raster->height, quarter});
+    const int visible = r3d_pipeline_cull(mesh, &lens, b.visible);
+    stats->clusters += visible;
     for (int i = 0; i < visible; i++) {
-        stats.triangles += raster->mesh->clusters[b.visible[i]].triangle_count;
+        stats->triangles += mesh->clusters[b.visible[i]].triangle_count;
     }
 
-    const int half = r3d_pipeline_transform_split(raster->mesh, b.visible, visible);
-    run_split(transform_slice, (slice_t){raster, &lens, visible, 0, half},
-              (slice_t){raster, &lens, visible, half, visible - half});
+    const int half = r3d_pipeline_transform_split(mesh, b.visible, visible);
+    run_split(transform_slice, (slice_t){raster, mesh, &lens, visible, 0, half, clear},
+              (slice_t){raster, mesh, &lens, visible, half, visible - half, clear});
 
-    const int mid = r3d_pipeline_draw_split(raster->mesh, b.visible, b.rows, visible, raster->height);
-    run_split(draw_slice, (slice_t){raster, &lens, visible, mid, raster->height - mid},
-              (slice_t){raster, &lens, visible, 0, mid});
+    const int mid = r3d_pipeline_draw_split(mesh, b.visible, b.rows, visible, raster->height);
+    run_split(draw_slice, (slice_t){raster, mesh, &lens, visible, mid, raster->height - mid, clear},
+              (slice_t){raster, mesh, &lens, visible, 0, mid, clear});
+}
+
+raster_stats_t
+raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
+    raster_stats_t stats = {0, 0};
+    if (raster->instance_count == 0) {
+        draw_mesh(raster, raster->mesh, NULL, camera, quarter, true, &stats);
+        return stats;
+    }
+    for (int i = 0; i < raster->instance_count; i++) {
+        draw_mesh(raster, raster->instances[i].mesh, &raster->instances[i].transform, camera, quarter, i == 0, &stats);
+    }
     return stats;
 }
 
@@ -101,7 +137,7 @@ raster_upscale(raster_t* raster) {
     assert(raster->width > 0 && raster->height > 0);
     assert(raster->destination_width >= raster->width && raster->destination_height >= raster->height);
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
-    uint16_t* columns = b.visible + raster->mesh->cluster_count;
+    uint16_t* columns = b.visible + raster_cluster_capacity(raster);
     uint16_t* rows = columns + raster->destination_width;
     if (raster->upscale.source_width != raster->width || raster->upscale.source_height != raster->height
         || raster->upscale.destination_width != raster->destination_width
@@ -112,6 +148,6 @@ raster_upscale(raster_t* raster) {
         assert(initialized);
     }
     const int mid = raster->destination_height / 2;
-    run_split(upscale_slice, (slice_t){raster, NULL, 0, mid, raster->destination_height - mid},
-              (slice_t){raster, NULL, 0, 0, mid});
+    run_split(upscale_slice, (slice_t){raster, NULL, NULL, 0, mid, raster->destination_height - mid, false},
+              (slice_t){raster, NULL, NULL, 0, 0, mid, false});
 }

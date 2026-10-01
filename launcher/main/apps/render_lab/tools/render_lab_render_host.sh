@@ -39,6 +39,7 @@ main/render/r3d_pipeline.c
 main/render/upscale.c
 main/anim/anim_track.c
 main/render/r3d_span.c
+main/render/r3d_scene.c
 main/ui/ui.c
 main/ui/ui_bridge.c
 main/ui/ui_build.c

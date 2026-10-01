@@ -12,11 +12,24 @@
 
 #include "render/camera.h"
 #include "render/r3d_lit_mesh.h"
+#include "render/r3d_scene.h"
 #include "render/upscale.h"
+
+/* One mesh drawn at a transform, as a scene places it. */
+typedef struct {
+    const r3d_lit_mesh_t* mesh;
+    r3d_transform_t transform;
+} raster_instance_t;
 
 /* The caller's options; the scratch block holds everything else. */
 typedef struct {
-    const r3d_lit_mesh_t* mesh;
+    const r3d_lit_mesh_t* mesh; /* the one mesh drawn, unless there are instances */
+    /* When instance_count > 0 the raster draws these, each at its transform,
+     * into the one picture, nearer ones covering farther ones whichever is
+     * drawn first, and `mesh` is not used. The scratch block holds room for
+     * the largest of them. */
+    const raster_instance_t* instances;
+    int instance_count;
     int width, height; /* the size drawn at */
     uint16_t clear;    /* in the pixel format r3d_span.h describes */
     /* When not NULL, the picture raster_upscale() fills, destination_width
@@ -31,6 +44,11 @@ typedef struct {
 typedef struct {
     int clusters, triangles; /* what survived culling */
 } raster_stats_t;
+
+/* The most vertices and clusters any mesh the raster draws has: what its
+ * scratch block holds room for. */
+int raster_vertex_capacity(const raster_t* raster);
+int raster_cluster_capacity(const raster_t* raster);
 
 /* Everything a raster works in (per-vertex, per-cluster, colour and depth)
  * as one block, from its mesh and size: the caller obtains it once, from

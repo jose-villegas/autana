@@ -63,6 +63,7 @@ The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a
 | If you want to... | Read |
 |---|---|
 | Change a game or add one | [Building an App](docs/Building-an-App.md), [Building a Screen](docs/Building-a-Screen.md) |
+| Draw 3D, import a mesh or set up a scene | [3D rendering and scenes](docs/render/README.md), [Building a Scene](docs/render/Building-a-Scene.md) |
 | Understand the frame loop and drawing path | [Firmware Architecture](docs/Firmware-Architecture.md), [Graphics and Presentation](docs/Gfx-and-Presentation.md) |
 | Follow the sand simulation | [Sand docs](docs/sand/README.md), [Simulation](docs/sand/Sand-Simulation.md) |
 | Run or add tests | [Testing Guide](docs/Testing-Guide.md) |

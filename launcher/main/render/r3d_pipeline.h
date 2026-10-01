@@ -17,6 +17,7 @@
 
 #include "render/camera.h"
 #include "render/r3d_lit_mesh.h"
+#include "render/r3d_scene.h"
 #include "render/r3d_span.h"
 #include "render/raster.h"
 #include "render/vec3f.h"
@@ -44,6 +45,13 @@ typedef struct {
 
 /* Turned for the viewport's quarter as viewport.h maps it. */
 void r3d_lens_init(r3d_lens_t* lens, const camera_t* camera, int position_scale, viewport_t viewport);
+
+/* The same for a mesh placed by `placement`, a transform with positive
+ * scale: the lens matrix carries the mesh into the world first, so culling,
+ * transform and clipping see it where it sits. NULL, or the identity, is
+ * r3d_lens_init() exactly. */
+void r3d_lens_init_placed(r3d_lens_t* lens, const camera_t* camera, const r3d_transform_t* placement,
+                          int position_scale, viewport_t viewport);
 
 /* Walks the node tree and writes the clusters any part of which may be on
  * screen, roughly nearest first, returning how many. `out` holds
@@ -94,9 +102,9 @@ r3d_pipeline_carve(const raster_t* raster) {
     char* p = raster->scratch;
     r3d_pipeline_buffers_t b;
     b.cs = (r3d_pipeline_vertex_t*)p;
-    p += sizeof(r3d_pipeline_vertex_t) * (size_t)raster->mesh->vertex_count;
+    p += sizeof(r3d_pipeline_vertex_t) * (size_t)raster_vertex_capacity(raster);
     b.rows = (r3d_pipeline_rows_t*)p;
-    p += sizeof(r3d_pipeline_rows_t) * (size_t)raster->mesh->cluster_count;
+    p += sizeof(r3d_pipeline_rows_t) * (size_t)raster_cluster_capacity(raster);
     b.color = (uint16_t*)p;
     p += sizeof(uint16_t) * pixels;
     b.depth = (uint16_t*)p;

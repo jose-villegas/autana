@@ -22,10 +22,8 @@
 #include "render_lab.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
-#include "sponza_flat_mesh_generated.h"
 #include "sponza_flythrough.h"
-#include "sponza_lite_mesh_generated.h"
-#include "sponza_mesh_generated.h"
+#include "sponza_scene_generated.h"
 #include "util/tune.h"
 
 #define SKY_RGB 0x9CC0E6
@@ -33,17 +31,23 @@
 static const char* TAG = "sponza";
 
 static raster_t raster; /* holds its scratch from enter() to exit() */
+static raster_instance_t instance;
 static raster_stats_t stats;
 static uint32_t elapsed_ms;
 static bool rendered; /* update() drew the raster, which frame() has not upscaled yet */
 
+/* Draws the scene's mesh renderer of this name, where the scene places it. */
 static void
-enter_with(const r3d_lit_mesh_t* mesh) {
+enter_with(const char* renderer_name) {
     gfx_set_partial_clear(false);
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
 
+    const r3d_scene_renderer_t* placed = r3d_scene_find_renderer(&sponza_scene, renderer_name);
+    assert(placed != NULL);
+    instance = (raster_instance_t){placed->mesh, placed->transform};
     raster = (raster_t){
-        .mesh = mesh,
+        .instances = &instance,
+        .instance_count = 1,
         .width = GFX_WIDTH * 100 / render_lab_scale(),
         .height = GFX_HEIGHT * 100 / render_lab_scale(),
         .clear = GFX_RGB(SKY_RGB),
@@ -62,17 +66,17 @@ enter_with(const r3d_lit_mesh_t* mesh) {
 
 static void
 scene_sponza_enter(void) {
-    enter_with(&sponza_mesh);
+    enter_with("atrium");
 }
 
 static void
 scene_sponza_lite_enter(void) {
-    enter_with(&sponza_lite_mesh);
+    enter_with("atrium_lite");
 }
 
 static void
 scene_sponza_flat_enter(void) {
-    enter_with(&sponza_flat_mesh);
+    enter_with("atrium_flat");
 }
 
 static void

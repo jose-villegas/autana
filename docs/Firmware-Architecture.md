@@ -214,7 +214,7 @@ An app that sets `app_t.update` has the previous frame sent on core 1 while
 [Gfx-and-Presentation.md](Gfx-and-Presentation.md#present-who-runs-it).
 
 A caller draws a mesh with `raster_draw()` from `update()` this way, on both
-cores: [Mesh-Rendering.md](Mesh-Rendering.md#on-both-cores).
+cores: [Mesh-Rendering.md](render/Mesh-Rendering.md#on-both-cores).
 
 ### Full redraw
 
@@ -440,10 +440,9 @@ origin, and later motion stays raw.
   budget, panel and touch behaviour
   ([Input-and-Sensors.md](notes/Input-and-Sensors.md)), flashing and
   recovery.
-- [Mesh-Rendering.md](Mesh-Rendering.md), `render/`: cameras, the span
-  rasterizer, the two-core frame.
-- [Mesh-Import.md](Mesh-Import.md): how a source mesh becomes a baked
-  lit-mesh: simplify, light, meshlets, the format.
+- [render/README.md](render/README.md), `render/`: drawing a baked mesh (cameras,
+  the span rasterizer, the two-core frame), making one from a source model, and
+  describing a scene of objects.
 - [Animation-Tracks.md](Animation-Tracks.md), `anim/`: glTF keyed values
   sampled over time, and how a scene's properties are animated.
 - [Text-and-Fonts.md](Text-and-Fonts.md): what a font is, the role

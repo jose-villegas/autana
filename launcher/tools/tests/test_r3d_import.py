@@ -12,6 +12,7 @@ from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d.import_settings import LIGHT_FIELDS, SettingsError, load_import_settings, load_scene  # noqa: E402
+from r3d.scene_table import write_scene_table  # noqa: E402
 
 try:
     import numpy as np
@@ -26,7 +27,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 SOURCE = '[source]\nurl = "https://example.invalid/m.zip"\nsha256 = "abc"\npath = "m.obj"\ncache = "m"\ncredit = "c"\n'
 OUTPUT = '[output]\ndirectory = "."\nname = "mesh"\n'
-LIGHTS_TOML = '[[lights]]\ntype = "ambient"\ncolor = [1.0, 1.0, 1.0]\nintensity = 0.1\n'
+AMBIENT = '[ambient]\ncolor = [1.0, 1.0, 1.0]\nintensity = 0.1\n'
+TONEMAP = 'tonemap_white = 0.3\n'
 THIN_STEP = '[process.thin]\nmaterial = "m"\nkeep = 0.5\n'
 VISIBILITY_STEP = "[process.visibility]\nrounds = 2\n"
 LIGHT_STEP = "[process.light]\nray_offset = 0.5\ncolour_merge_step = 6\n"
@@ -42,14 +44,25 @@ def write_import(directory, name="mesh.import.toml", source=SOURCE, output=OUTPU
     return path
 
 
-def write_scene(directory, renderers, body="", name="scene.toml"):
+def write_scene(directory, objects, head="", name="scene.toml"):
     path = pathlib.Path(directory) / name
-    path.write_text(renderers + body)
+    path.write_text(head + objects)
     return path
 
 
-def renderer(mesh="mesh.import.toml", extra=""):
-    return f'[[mesh_renderers]]\nmesh = "{mesh}"\n{extra}'
+def renderer(mesh="mesh.import.toml", extra="", transform="", name=None):
+    name = name or mesh.split(".")[0]
+    return f'[[objects]]\nname = "{name}"\n{transform}[objects.mesh_renderer]\nmesh = "{mesh}"\n{extra}'
+
+
+def sun_object(rotation="[0.0, 0.0, 0.0]", extra=""):
+    return (f'[[objects]]\nname = "sun"\nrotation = {rotation}\n[objects.light]\ntype = "directional"\n'
+            f"color = [1.0, 1.0, 1.0]\nintensity = 1.0\ndisc_degrees = 1.0\nrays = 1\n{extra}")
+
+
+def camera(extra="", region=True):
+    box = "region = { min = [0.0, 0.0, 0.0], max = [1.0, 1.0, 1.0] }\n" if region else ""
+    return f'[[objects]]\nname = "camera"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.0\n{box}{extra}'
 
 
 def tree_scenes():
@@ -162,10 +175,10 @@ class SettingsTests(unittest.TestCase):
 
 
 class SceneTests(unittest.TestCase):
-    def rejects(self, pattern, setup, scene_body):
+    def rejects(self, pattern, setup, objects, head=""):
         with tempfile.TemporaryDirectory() as directory:
             setup(directory)
-            path = write_scene(directory, scene_body)
+            path = write_scene(directory, objects, head)
             with self.assertRaisesRegex(SettingsError, pattern):
                 load_scene(path)
 
@@ -173,26 +186,35 @@ class SceneTests(unittest.TestCase):
         write_import(directory, "a.import.toml", output='[output]\ndirectory = "."\nname = "a"\n')
         write_import(directory, "b.import.toml", output='[output]\ndirectory = "."\nname = "b"\n')
 
+    def lit_import(self, directory):
+        write_import(directory, body=LIGHT_STEP)
+
     def test_a_scene_with_two_mesh_renderers_validates(self):
         with tempfile.TemporaryDirectory() as directory:
             self.two_imports(directory)
-            scene = load_scene(write_scene(directory, renderer("a.import.toml") + renderer("b.import.toml")))
+            scene = load_scene(write_scene(directory, renderer("a.import.toml")
+                                           + renderer("b.import.toml", transform="position = [1.0, 2.0, 3.0]\nscale = [2.0, 2.0, 2.0]\n")))
         self.assertEqual([item.variant.name for item in scene.renderers], ["a", "b"])
+        self.assertEqual(scene.objects[0].position, [0.0, 0.0, 0.0])
+        self.assertEqual(scene.objects[1].position, [1.0, 2.0, 3.0])
+        self.assertEqual(scene.objects[1].scale, [2.0, 2.0, 2.0])
 
-    def test_placement_and_spawn_are_reserved_for_the_scene_loader(self):
-        for key in ("position", "rotation", "scale"):
-            self.rejects("reserved for the scene loader", self.two_imports, renderer("a.import.toml", f"{key} = [1.0, 0.0, 0.0]\n"))
-        self.rejects("reserved for the scene loader", self.two_imports, renderer("a.import.toml") + "[spawn]\nposition = [0.0, 0.0, 0.0]\n")
+    def test_an_object_has_exactly_one_component(self):
+        self.rejects("exactly one component", self.two_imports, '[[objects]]\nname = "empty"\n' + renderer("a.import.toml"))
+        both = renderer("a.import.toml") + '[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.0\n'
+        self.rejects("exactly one component", self.two_imports, both)
 
     def test_a_renderer_naming_a_missing_import_file_is_rejected(self):
         self.rejects("not a file", self.two_imports, renderer("a.import.toml") + renderer("gone.import.toml"))
 
     def test_a_scene_without_renderers_or_with_an_unknown_key_is_rejected(self):
-        self.rejects("mesh_renderers", self.two_imports, "tonemap_white = 0.3\n")
-        self.rejects("typo", self.two_imports, renderer("a.import.toml") + "typo = 1\n")
+        self.rejects("objects", self.two_imports, "", TONEMAP)
+        self.rejects("mesh_renderer", self.two_imports, camera(region=False))
+        self.rejects("typo", self.two_imports, renderer("a.import.toml"), "typo = 1\n")
 
-    def test_a_mesh_name_is_baked_once_per_scene(self):
-        self.rejects("twice", self.two_imports, renderer("a.import.toml") + renderer("a.import.toml"))
+    def test_object_names_and_baked_mesh_names_are_unique(self):
+        self.rejects("names must be unique", self.two_imports, renderer("a.import.toml") + renderer("b.import.toml", name="a"))
+        self.rejects("twice", self.two_imports, renderer("a.import.toml") + renderer("a.import.toml", name="again"))
 
     def test_a_variant_is_chosen_from_the_import_that_has_them(self):
         def setup(directory):
@@ -203,32 +225,92 @@ class SceneTests(unittest.TestCase):
         self.rejects("has no variants", self.two_imports, renderer("a.import.toml", 'variant = "a"\n'))
 
     def test_a_scene_dependent_step_needs_what_it_reads_from_the_scene(self):
-        def lit(directory):
-            write_import(directory, body=LIGHT_STEP)
-
         def culled(directory):
             write_import(directory, body=VISIBILITY_STEP)
 
-        self.rejects("lights is required", lit, renderer())
-        self.rejects("tonemap_white is required", lit, renderer() + LIGHTS_TOML)
-        self.rejects("camera_region is required", culled, renderer())
+        self.rejects("lights is required", self.lit_import, renderer())
+        self.rejects("tonemap_white is required", self.lit_import, renderer(), AMBIENT)
+        self.rejects("camera region is required", culled, renderer() + camera(region=False))
 
     def test_scene_settings_no_placed_mesh_reads_are_rejected(self):
-        region = "[camera_region]\nmin = [0.0, 0.0, 0.0]\nmax = [1.0, 1.0, 1.0]\n"
-        self.rejects("lights is read by no placed mesh", self.two_imports, renderer("a.import.toml") + LIGHTS_TOML)
-        self.rejects("tonemap_white is read by no placed mesh", self.two_imports, "tonemap_white = 0.3\n" + renderer("a.import.toml"))
-        self.rejects("camera_region is read by no placed mesh", self.two_imports, region + renderer("a.import.toml"))
+        self.rejects("lights is read by no placed mesh", self.two_imports, renderer("a.import.toml"), AMBIENT)
+        self.rejects("lights is read by no placed mesh", self.two_imports, renderer("a.import.toml") + sun_object())
+        self.rejects("tonemap_white is read by no placed mesh", self.two_imports, renderer("a.import.toml"), TONEMAP)
+        self.rejects("camera region is read by no placed mesh", self.two_imports, renderer("a.import.toml") + camera())
 
-    def test_a_zero_light_direction_is_rejected(self):
-        lights = ('[[lights]]\ntype = "directional"\ndirection = [0.0, 0.0, 0.0]\ncolor = [1.0, 1.0, 1.0]\n'
-                  "intensity = 1.0\ndisc_degrees = 1.0\nrays = 1\n")
-        self.rejects("zero", self.two_imports, renderer("a.import.toml") + lights)
+    def test_a_scene_dependent_mesh_is_baked_where_it_sits(self):
+        placed = renderer(transform="position = [1.0, 0.0, 0.0]\n")
+        self.rejects("identity", self.lit_import, placed, TONEMAP + AMBIENT)
+        with tempfile.TemporaryDirectory() as directory:
+            self.two_imports(directory)
+            load_scene(write_scene(directory, renderer("a.import.toml", transform="position = [1.0, 0.0, 0.0]\n")))
 
-    def test_an_unknown_key_is_rejected_in_a_light(self):
-        self.rejects("typo", self.two_imports, renderer("a.import.toml") + LIGHTS_TOML + "typo = 1\n")
+    def test_a_directional_lights_direction_comes_from_its_rotation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.lit_import(directory)
+            overhead = load_scene(write_scene(directory, renderer() + sun_object(), TONEMAP + AMBIENT)).lights[0]["direction"]
+            turned = load_scene(write_scene(directory, renderer() + sun_object("[90.0, 90.0, 0.0]"), TONEMAP + AMBIENT)).lights[0]["direction"]
+        for got, want in ((overhead, [0.0, 1.0, 0.0]), (turned, [1.0, 0.0, 0.0])):
+            self.assertTrue(all(abs(a - b) < 1e-12 for a, b in zip(got, want)), got)
+
+    def test_the_lights_are_the_directional_objects_then_the_sky_then_the_ambient(self):
+        sky = '[sky]\ncolor = [0.5, 0.5, 0.5]\nintensity = 1.0\nrays = 2\n'
+        with tempfile.TemporaryDirectory() as directory:
+            self.lit_import(directory)
+            scene = load_scene(write_scene(directory, renderer() + sun_object(), TONEMAP + AMBIENT + sky))
+        self.assertEqual([light["type"] for light in scene.lights], ["directional", "sky", "ambient"])
+
+    def test_a_camera_carries_its_lens_and_region_and_a_scene_has_one(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_import(directory, body=VISIBILITY_STEP)
+            scene = load_scene(write_scene(directory, renderer() + camera()))
+        self.assertEqual(scene.camera.component.near_z, 1.0)
+        self.assertEqual(scene.region[1], [1.0, 1.0, 1.0])
+        self.rejects("one camera", self.two_imports, renderer("a.import.toml") + camera(region=False)
+                     + camera(region=False).replace('"camera"', '"other"'))
+        self.rejects("half_fov_short_tan", self.two_imports, renderer("a.import.toml")
+                     + '[[objects]]\nname = "c"\n[objects.camera]\nnear_z = 1.0\n')
+        self.rejects("C identifier", self.two_imports, renderer("a.import.toml")
+                     + camera(region=False, extra='path = { tracks = "no-good", node = "camera" }\n'))
+
+    def test_an_unknown_key_is_rejected_in_a_light_and_in_the_sky(self):
+        self.rejects("typo", self.two_imports, renderer("a.import.toml") + sun_object(extra="typo = 1\n"))
+        self.rejects("typo", self.lit_import, renderer(), TONEMAP + AMBIENT + "[sky]\ncolor = [1.0, 1.0, 1.0]\n"
+                     "intensity = 1.0\nrays = 1\ntypo = 1\n")
 
     def test_a_reserved_light_type_is_rejected(self):
-        self.rejects("reserved", self.two_imports, renderer("a.import.toml") + '[[lights]]\ntype = "point"\n')
+        point = '[[objects]]\nname = "p"\n[objects.light]\ntype = "point"\n'
+        self.rejects("reserved", self.two_imports, renderer("a.import.toml") + point)
+
+    def test_the_scene_table_names_each_mesh_light_and_the_camera_with_its_path(self):
+        flight = 'path = { tracks = "flight", node = "rig" }\n'
+        placed = renderer("b.import.toml", transform="position = [1.0, 2.0, 3.0]\n")
+        with tempfile.TemporaryDirectory() as directory:
+            self.two_imports(directory)
+            path = write_scene(directory, renderer("a.import.toml") + placed + camera(region=False, extra=flight),
+                               name="hall.scene.toml")
+            scene = load_scene(path)
+            source_path, header_path = write_scene_table(scene, ["GENERATED FILE - do not edit."])
+            source = source_path.read_text()
+            self.assertEqual(source_path.name, "hall_scene_generated.c")
+            self.assertEqual(header_path.name, "hall_scene_generated.h")
+        self.assertIn('{"a", {{0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 0.0F}, {1.0F, 1.0F, 1.0F}}, &a_mesh}', source)
+        self.assertIn('{"b", {{1.0F, 2.0F, 3.0F},', source)
+        self.assertIn("&flight_clip, &flight_rig_translation, &flight_rig_rotation", source)
+        self.assertIn("const r3d_scene_t hall_scene = {", source)
+
+    def test_a_scene_table_needs_its_meshes_in_one_output_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_import(directory, "a.import.toml", output='[output]\ndirectory = "."\nname = "a"\n')
+            pathlib.Path(directory, "other").mkdir()
+            write_import(directory, "b.import.toml", output='[output]\ndirectory = "other"\nname = "b"\n')
+            scene = load_scene(write_scene(directory, renderer("a.import.toml") + renderer("b.import.toml")))
+            with self.assertRaisesRegex(ValueError, "one output directory"):
+                write_scene_table(scene, ["x"])
+
+    def test_sky_and_ambient_are_not_light_objects(self):
+        sky = '[[objects]]\nname = "s"\n[objects.light]\ntype = "sky"\n'
+        self.rejects("scene settings", self.two_imports, renderer("a.import.toml") + sky)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
