@@ -76,6 +76,7 @@ POSITION_SCALE = 8  # int16 ticks per model unit
 DOUBLE_SIDED = {"fabric_a", "fabric_c", "fabric_d", "fabric_e", "fabric_f", "fabric_g", "leaf", "chain", "Material__57"}
 MASK_KEEP_ALPHA = 0.5
 FACE_SAMPLES = 4
+FACE_SAMPLES_MAX = 16
 FLAT_SKY_RAYS = 128
 # (share of triangles kept by decimation relative to --keep, longest edge
 # relative to --max-edge): the floor carries the sharpest shadows, the roof
@@ -179,8 +180,14 @@ def main():
                         "(joined touching pieces, light regularizing, merged colour seams)")
     parser.add_argument("--flat", action="store_true",
                         help="bake one RGB565 colour per triangle and weld positions only")
-    parser.add_argument("--face-samples", type=int, default=FACE_SAMPLES,
-                        help="flat: points per triangle the light is averaged over")
+    parser.add_argument("--face-samples", type=samples_arg, default=FACE_SAMPLES,
+                        help="flat: points per triangle the light is averaged over, or auto: one per "
+                        "--face-sample-area of the triangle's area, up to --face-samples-max")
+    parser.add_argument("--face-samples-max", type=int, default=FACE_SAMPLES_MAX,
+                        help="flat, --face-samples auto: the most points a triangle gets")
+    parser.add_argument("--face-sample-area", type=float,
+                        help="flat, --face-samples auto: area that earns one point, model units squared "
+                        "(the median triangle's when omitted)")
     parser.add_argument("--flat-sky-rays", type=int, default=FLAT_SKY_RAYS,
                         help="flat: sky directions shared by every face")
     parser.add_argument("--props-share", type=float, default=0.3, help="meshopt: budget share held for props")
@@ -268,12 +275,17 @@ def main():
             return sample_albedo(centres, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd)
 
         face_rgb = face_colours(positions, tris, tri_mat, range(len(names)), double_materials, albedo_of, intersector,
-                                args, args.face_samples, args.flat_sky_rays)
+                                args, args.face_samples, args.flat_sky_rays, args.face_samples_max,
+                                args.face_sample_area)
 
     mesh = write_lit_mesh(args.out_dir, args.name, positions, None if args.flat else rgb, tris, tri_double,
                           banner_lines(args), position_scale=POSITION_SCALE, face_rgb=face_rgb)
     log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, "
         f"{len(mesh.nodes)} nodes")
+
+
+def samples_arg(text):
+    return text if text == "auto" else int(text)
 
 
 def banner_lines(args):
@@ -285,6 +297,10 @@ def banner_lines(args):
          f" --props-share {args.props_share:g} --dense-edge {args.dense_edge:g}"
          + (" --flat" if args.flat else "")
          + (f" --face-samples {args.face_samples}" if args.flat and args.face_samples != FACE_SAMPLES else "")
+         + (f" --face-samples-max {args.face_samples_max}"
+            if args.flat and args.face_samples == "auto" and args.face_samples_max != FACE_SAMPLES_MAX else "")
+         + (f" --face-sample-area {args.face_sample_area:g}"
+            if args.flat and args.face_samples == "auto" and args.face_sample_area else "")
          + (f" --flat-sky-rays {args.flat_sky_rays}" if args.flat and args.flat_sky_rays != FLAT_SKY_RAYS else "")
          + (" --no-seal-seams" if args.no_seal_seams else "")
          if args.simplifier == "meshopt" else

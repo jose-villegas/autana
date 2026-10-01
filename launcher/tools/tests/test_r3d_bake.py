@@ -20,7 +20,7 @@ try:
     from trimesh.ray.ray_pyembree import RayMeshIntersector
 
     from r3d.geometry import triangle_areas, weld
-    from r3d.light import face_colours, light, merge_matching_colours
+    from r3d.light import adaptive_sample_counts, face_colours, light, merge_matching_colours
     from r3d import lit_mesh, rebake
     from r3d.lit_mesh import MESHLET_TRIANGLES, bake_lit_mesh, read_lit_mesh, validate, weld_quantised, write_lit_mesh
     from r3d.meshopt import build_meshlets, simplify_with_update
@@ -481,6 +481,20 @@ class FlatLightTests(unittest.TestCase):
         error = {n: np.abs(self.colours([0], samples=n) - reference).mean() for n in (1, 8, 64)}
         self.assertLess(error[64], error[8])
         self.assertLess(error[8], error[1])
+
+    def test_small_faces_get_one_sample_and_large_faces_more(self):
+        counts = adaptive_sample_counts(np.array([0.2, 1.0, 1.4, 3.0, 8.0]), 1.0, 16)
+        self.assertEqual(counts.tolist(), [1, 1, 1, 3, 8])
+
+    def test_the_adaptive_count_is_capped(self):
+        self.assertEqual(adaptive_sample_counts(np.array([5.0, 500.0]), 1.0, 6).tolist(), [5, 6])
+
+    def test_auto_samples_follow_the_face_area_and_stop_at_the_cap(self):
+        # Two equal floor triangles: auto takes one sample each at the median area, and at a tiny
+        # reference takes the cap, which the fixed count of the same size reproduces exactly.
+        self.assertEqual(self.colours([0], samples="auto").tolist(), self.colours([0], samples=1).tolist())
+        capped = self.colours([0], samples="auto", sample_area=1e-6, max_samples=3)
+        self.assertEqual(capped.tolist(), self.colours([0], samples=3).tolist())
 
     def test_a_smooth_bake_draws_its_rays_as_before(self):
         floor = trimesh.Trimesh([(0, 0, 0), (0, 0, 8), (8, 0, 8), (8, 0, 0)], [(0, 1, 2), (0, 2, 3)], process=False)

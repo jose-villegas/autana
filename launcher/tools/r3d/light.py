@@ -207,29 +207,41 @@ def face_samples(count):
     return np.stack([1 - r, r * (1 - t), r * t], axis=1)
 
 
+def adaptive_sample_counts(areas, reference, cap):
+    """Samples per face: one for each `reference` of area it covers, rounded,
+    at least 1 and at most `cap`."""
+    return np.clip(np.round(areas / reference), 1, cap).astype(np.int64)
+
+
 def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_of, intersector, args, samples=4,
-                 sky_rays=128):
-    """One sRGB colour per triangle: albedo times light averaged over `samples`
-    fixed points of the triangle, lit on its face normal. Every face shares one
-    set of sun and `sky_rays` sky directions, so equal surroundings give equal
+                 sky_rays=128, max_samples=16, sample_area=None):
+    """One sRGB colour per triangle: albedo times light averaged over fixed
+    points of the triangle, lit on its face normal. `samples` is a count per
+    face, or "auto" for one point per `sample_area` of face area (the mesh's
+    median face by default) up to `max_samples`. Every face shares one set of
+    sun and `sky_rays` sky directions, so equal surroundings give equal
     colours. albedo_of(points, spacing, material) gives the albedo."""
     out = np.zeros((len(tris), 3), dtype=np.int64)
-    bary = face_samples(samples)
+    areas = triangle_areas(positions, tris)
+    if samples == "auto":
+        counts = adaptive_sample_counts(areas, np.median(areas) if sample_area is None else sample_area, max_samples)
+    else:
+        counts = np.full(len(tris), samples, dtype=np.int64)
     for m in materials:
-        selected = np.nonzero(tri_mat == m)[0]
-        if not len(selected):
-            continue
-        faces = tris[selected]
-        a, b, c = positions[faces[:, 0]], positions[faces[:, 1]], positions[faces[:, 2]]
-        normals = np.cross(b - a, c - a)
-        normals /= np.linalg.norm(normals, axis=1, keepdims=True)
-        points = np.concatenate([w[0] * a + w[1] * b + w[2] * c for w in bary])
-        spacing = np.tile(np.sqrt(triangle_areas(positions, faces)), samples)
-        albedo = albedo_of(points, spacing, m)
-        double = np.full(len(points), m in double_materials)
-        radiance = light(points, np.tile(normals, (samples, 1)), double, intersector, args, None, sky_rays)
-        colour = (albedo * radiance).reshape(samples, len(faces), 3).mean(axis=0)
-        out[selected] = to_srgb8(colour, args.tonemap_white)
+        for k in np.unique(counts[tri_mat == m]):
+            selected = np.nonzero((tri_mat == m) & (counts == k))[0]
+            faces = tris[selected]
+            a, b, c = positions[faces[:, 0]], positions[faces[:, 1]], positions[faces[:, 2]]
+            normals = np.cross(b - a, c - a)
+            normals /= np.linalg.norm(normals, axis=1, keepdims=True)
+            points = np.concatenate([w[0] * a + w[1] * b + w[2] * c for w in face_samples(k)])
+            spacing = np.tile(np.sqrt(areas[selected]), k)
+            albedo = albedo_of(points, spacing, m)
+            double = np.full(len(points), m in double_materials)
+            tiled = np.tile(normals, (k, 1))
+            radiance = light(points, tiled, double, intersector, args, None, sky_rays)
+            colour = (albedo * radiance).reshape(k, len(faces), 3).mean(axis=0)
+            out[selected] = to_srgb8(colour, args.tonemap_white)
     return out
 
 
