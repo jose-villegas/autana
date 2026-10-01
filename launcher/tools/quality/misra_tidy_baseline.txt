@@ -256,7 +256,6 @@ readability-uppercase-literal-suffix	main/apps/render_lab/rt_geometry.c	9
 readability-uppercase-literal-suffix	main/apps/render_lab/rt_path.c	52
 readability-uppercase-literal-suffix	main/apps/render_lab/tests/suite_rt_cornell.c	166
 readability-uppercase-literal-suffix	main/apps/render_lab/tests/suite_rt_path.c	84
-readability-uppercase-literal-suffix	main/apps/sand/app_sand.c	11
 readability-uppercase-literal-suffix	main/apps/sand/material_palette.c	31
 readability-uppercase-literal-suffix	main/apps/sand/sand.c	6
 readability-uppercase-literal-suffix	main/apps/sand/sand_chunk_sched.c	2
@@ -311,5 +310,4 @@ readability-uppercase-literal-suffix	main/input/buttons.c	2
 readability-uppercase-literal-suffix	main/input/tilt.c	1
 readability-uppercase-literal-suffix	main/input/touch.c	8
 readability-uppercase-literal-suffix	main/ui/ui.c	4
-readability-uppercase-literal-suffix	main/ui/ui_ridge.c	4
 readability-uppercase-literal-suffix	main/ui/ui_scroll.c	1

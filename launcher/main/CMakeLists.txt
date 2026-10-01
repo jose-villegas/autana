@@ -80,6 +80,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/console_freeze.c"
         "console/console_frame_watch.c"
         "console/console_navigation.c"
+        "console/console_perf.c"
         "console/console_tune.c"
         "console/console_screenshot.c"
         "console/device_state.c"

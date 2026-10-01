@@ -17,6 +17,7 @@
 #include "console/console_inject_parse.h"
 #include "console/console_latch.h"
 #include "console/console_navigation_parse.h"
+#include "console/console_perf_parse.h"
 #include "console/console_verbs.h"
 
 #define REPLIES_MAX 8
@@ -582,6 +583,147 @@ test_an_app_name_accepts_a_case_folded_prefix(void) {
     TEST_ASSERT_FALSE(console_app_name_matches("Star Chart", ""));
 }
 
+static const char* const PERF_NAMES[] = {"stage.a", "stage.b"};
+static const char* const PERF_EVENTS[] = {"insn", "window"};
+static int perf_posted_name;
+static int perf_posted_event;
+static int perf_posts;
+static int perf_dropped;
+static char perf_lines[6][112];
+static int perf_line_count;
+
+static void
+perf_collect(const char* line) {
+    if (perf_line_count < 6) {
+        snprintf(perf_lines[perf_line_count], sizeof perf_lines[0], "%s", line);
+    }
+    perf_line_count++;
+}
+
+static int
+perf_name_index(const char* name) {
+    for (int i = 0; i < 2; i++) {
+        if (strcmp(PERF_NAMES[i], name) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static int
+perf_event_index(const char* event) {
+    for (int i = 0; i < 2; i++) {
+        if (strcmp(PERF_EVENTS[i], event) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static const char*
+perf_name_at(int index) {
+    return index >= 0 && index < 2 ? PERF_NAMES[index] : NULL;
+}
+
+static const char*
+perf_event_at(int index) {
+    return index >= 0 && index < 2 ? PERF_EVENTS[index] : NULL;
+}
+
+static int
+perf_names_dropped(void) {
+    return perf_dropped;
+}
+
+static void
+perf_post(int name_index, int event_index) {
+    perf_posted_name = name_index;
+    perf_posted_event = event_index;
+    perf_posts++;
+}
+
+static void
+perf_run(const char* args) {
+    static const console_perf_ops_t ops = {perf_name_index, perf_event_index,   perf_name_at,
+                                           perf_event_at,   perf_names_dropped, perf_post};
+    perf_line_count = 0;
+    perf_posts = 0;
+    perf_dropped = 0;
+    console_perf_dispatch(args, &ops, perf_collect);
+}
+
+static void
+test_perf_with_no_words_or_a_question_mark_lists_names_and_events(void) {
+    const char* const forms[] = {"", "?", "  ?  "};
+    for (int i = 0; i < 3; i++) {
+        perf_run(forms[i]);
+        TEST_ASSERT_EQUAL_INT(5, perf_line_count);
+        TEST_ASSERT_EQUAL_STRING("PERFMON_NAME stage.a", perf_lines[0]);
+        TEST_ASSERT_EQUAL_STRING("PERFMON_EVENT window", perf_lines[3]);
+        TEST_ASSERT_EQUAL_STRING("PERFMON_END", perf_lines[4]);
+        TEST_ASSERT_EQUAL_INT(0, perf_posts);
+    }
+}
+
+static void
+test_perf_listing_reports_names_that_did_not_fit(void) {
+    perf_dropped = 3;
+    static const console_perf_ops_t ops = {perf_name_index, perf_event_index,   perf_name_at,
+                                           perf_event_at,   perf_names_dropped, perf_post};
+    perf_line_count = 0;
+    console_perf_dispatch("?", &ops, perf_collect);
+    TEST_ASSERT_EQUAL_STRING("PERFMON_NAMES_DROPPED 3", perf_lines[2]);
+}
+
+static void
+test_perf_off_disarms(void) {
+    perf_run("off");
+    TEST_ASSERT_EQUAL_INT(1, perf_posts);
+    TEST_ASSERT_EQUAL_INT(-1, perf_posted_name);
+    TEST_ASSERT_EQUAL_STRING("PERFMON_OK off", perf_lines[0]);
+}
+
+static void
+test_perf_arms_a_known_name_with_the_first_event_unless_one_is_named(void) {
+    perf_run("stage.b");
+    TEST_ASSERT_EQUAL_INT(1, perf_posted_name);
+    TEST_ASSERT_EQUAL_INT(0, perf_posted_event);
+    TEST_ASSERT_EQUAL_STRING("PERFMON_OK stage.b insn", perf_lines[0]);
+
+    perf_run("stage.a window");
+    TEST_ASSERT_EQUAL_INT(0, perf_posted_name);
+    TEST_ASSERT_EQUAL_INT(1, perf_posted_event);
+    TEST_ASSERT_EQUAL_STRING("PERFMON_OK stage.a window", perf_lines[0]);
+}
+
+static void
+test_perf_refuses_an_unknown_name_or_event_and_posts_nothing(void) {
+    perf_run("nope");
+    TEST_ASSERT_EQUAL_STRING("PERFMON_ERR unknown name nope", perf_lines[0]);
+    perf_run("stage.a nope");
+    TEST_ASSERT_EQUAL_STRING("PERFMON_ERR unknown event nope", perf_lines[0]);
+    TEST_ASSERT_EQUAL_INT(0, perf_posts);
+}
+
+static void
+test_perf_with_a_third_word_is_a_usage_error(void) {
+    perf_run("stage.a insn extra");
+    TEST_ASSERT_EQUAL_INT(1, perf_line_count);
+    TEST_ASSERT_EQUAL_STRING("PERFMON_ERR usage: PERF <name|off|?> [event]", perf_lines[0]);
+    TEST_ASSERT_EQUAL_INT(0, perf_posts);
+}
+
+static void
+test_perf_keeps_a_long_word_whole_rather_than_splitting_it_into_name_and_event(void) {
+    perf_run("a_name_far_longer_than_twenty_four_chars");
+    TEST_ASSERT_EQUAL_INT(1, perf_line_count);
+    TEST_ASSERT_NOT_NULL(strstr(perf_lines[0], "unknown name a_name_far_longer_than_twenty_four"));
+
+    perf_run("stage.a an_event_name_far_longer_than_seventeen");
+    TEST_ASSERT_NOT_NULL(strstr(perf_lines[0], "unknown event an_event_name_far_longer"));
+    TEST_ASSERT_EQUAL_INT(0, perf_posts);
+}
+
 void
 suite_console(void) {
     RUN_TEST(test_exact_name_matches);
@@ -621,6 +763,13 @@ suite_console(void) {
     RUN_TEST(test_a_bad_gesture_line_changes_nothing);
     RUN_TEST(test_a_button_line_carries_its_kind);
     RUN_TEST(test_an_app_name_accepts_a_case_folded_prefix);
+    RUN_TEST(test_perf_with_no_words_or_a_question_mark_lists_names_and_events);
+    RUN_TEST(test_perf_listing_reports_names_that_did_not_fit);
+    RUN_TEST(test_perf_off_disarms);
+    RUN_TEST(test_perf_arms_a_known_name_with_the_first_event_unless_one_is_named);
+    RUN_TEST(test_perf_refuses_an_unknown_name_or_event_and_posts_nothing);
+    RUN_TEST(test_perf_with_a_third_word_is_a_usage_error);
+    RUN_TEST(test_perf_keeps_a_long_word_whole_rather_than_splitting_it_into_name_and_event);
 }
 
 SUITE_REGISTER(suite_console)
