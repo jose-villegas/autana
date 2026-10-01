@@ -19,7 +19,7 @@
 
 #include "anim/anim_track.h"
 
-#define POSES_MAX 64
+#define POSES_MAX 4096
 
 extern const anim_clip_t ANIM_CLIP;
 extern const char* const ANIM_NAMES[];
