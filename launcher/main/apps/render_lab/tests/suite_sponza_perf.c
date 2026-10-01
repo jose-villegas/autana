@@ -114,7 +114,7 @@ draw_half(half_job_t* j) {
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(f);
     memset(b.depth + offset, 0, (size_t)(j->row1 - j->row0) * (size_t)f->width * sizeof(uint16_t));
     const r3d_span_target_t target = {b.color + offset, b.depth + offset, f->width, j->row0, j->row1};
-    r3d_pipeline_draw(f->mesh, j->lens, b.visible, j->visible, b.cs, b.rows, &target);
+    r3d_pipeline_draw(f->instances[0].mesh, j->lens, b.visible, j->visible, b.cs, b.rows, &target);
     j->us = esp_timer_get_time() - start;
 }
 
