@@ -7,7 +7,7 @@ the data format costs.
 from the repository root. The mesh is rewritten in place unless --out-dir says
 otherwise, and rewriting what was written is a fixed point: the same
 triangles always give the same bytes. Anything before that stage, the model,
-its simplification or its light, needs the generator that baked it.
+its simplification or its light, needs the import settings that baked it.
 """
 
 import argparse

@@ -1,12 +1,14 @@
 """Baked direct light: a sun with soft shadows and sky visibility, cast against the full-detail mesh, plus albedo sampled from textures and region visibility culling."""
 
 import math
+from types import SimpleNamespace
 
 import numpy as np
 from scipy.spatial import cKDTree
 
 from . import log
 from .geometry import closest_point_on_triangles, triangle_areas
+from .import_settings import LIGHT_FIELDS
 
 
 def drop_masked(p, uv, tri_v, tri_t, tri_m, textures, keep_alpha=0.5):
@@ -60,15 +62,15 @@ def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi):
     return seen
 
 
-def sun_directions(args):
+def sun_directions(light):
     """One fixed set of directions over the sun's disc, shared by every point,
     so two points agree exactly unless something really shadows one of them."""
-    sun = np.array(args.sun, dtype=np.float64)
+    sun = np.array(light["direction"], dtype=np.float64)
     sun /= np.linalg.norm(sun)
     u, v = sun_basis(sun)
-    radius = math.tan(math.radians(args.sun_disc_deg))
+    radius = math.tan(math.radians(light["disc_degrees"]))
     dirs = [sun]
-    rings = max(1, args.sun_rays - 1)
+    rings = max(1, light["rays"] - 1)
     for i in range(rings):
         a = 2 * math.pi * i / rings
         d = sun + u * (0.7 * radius * math.cos(a)) + v * (0.7 * radius * math.sin(a))
@@ -76,17 +78,13 @@ def sun_directions(args):
     return sun, dirs
 
 
-def sun_exposure(points, normals, intersector, args):
-    """Sun visibility weighted by how squarely the surface faces the sun:
-    what a shadow edge changes, and what Gouraud shading cannot carry."""
-    sun, dirs = sun_directions(args)
-    facing = normals @ sun
-    side = np.where(facing >= 0, 1.0, -1.0)[:, None]
-    origin = points + normals * side * args.ray_offset
-    lit = np.zeros(len(points))
-    for d in dirs:
-        lit += ~intersector.intersects_any(origin, np.tile(d, (len(points), 1)))
-    return np.abs(facing) * lit / len(dirs)
+def unshadowed_count(intersector, origin, directions):
+    """How many of the directions reach the sky from each origin; a direction
+    is one vector for every origin or one per origin."""
+    count = np.zeros(len(origin))
+    for direction in directions:
+        count += ~intersector.intersects_any(origin, np.ascontiguousarray(np.broadcast_to(direction, origin.shape)))
+    return count
 
 
 def sample_albedo(points, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd):
@@ -146,51 +144,82 @@ def sky_directions(count):
     return np.stack([r * np.cos(a), r * np.sin(a), np.sqrt(1 - r1)], axis=1)
 
 
-def light(points, normals, double_sided, intersector, args, rng, shared_sky=0):
-    """Sun and sky radiance at each point. With shared_sky > 0 the sun and that
-    many sky directions are the same fixed sets for every point (a flat bake,
-    where neighbouring faces must agree); otherwise rays are drawn at random."""
-    sun = np.array(args.sun, dtype=np.float64)
+def bake_directional(light, ctx):
+    sun = np.array(light["direction"], dtype=np.float64)
     sun /= np.linalg.norm(sun)
-    n = normals.copy()
-    facing = n @ sun
-    flip = double_sided & (facing < 0)
-    n[flip] = -n[flip]
-    cos_sun = np.maximum(n @ sun, 0.0)
-    origin = points + n * args.ray_offset
-
-    u, v = sun_basis(sun)
-    radius = math.tan(math.radians(args.sun_disc_deg))
-    lit = np.zeros(len(points))
-    if shared_sky:
-        dirs = sun_directions(args)[1]
+    cos_sun = np.maximum(ctx.normals @ sun, 0.0)
+    if ctx.shared:
+        directions = sun_directions(light)[1]
     else:
-        dirs = []
-        for _ in range(args.sun_rays):
-            r, a = math.sqrt(rng.random()) * radius, rng.random() * 2 * math.pi
-            d = sun + u * (r * math.cos(a)) + v * (r * math.sin(a))
-            dirs.append(d / np.linalg.norm(d))
-    for d in dirs:
-        lit += ~intersector.intersects_any(origin, np.tile(d, (len(points), 1)))
-    sun_visible = lit / len(dirs)
+        u, v = sun_basis(sun)
+        radius = math.tan(math.radians(light["disc_degrees"]))
+        directions = []
+        for _ in range(light["rays"]):
+            r, angle = math.sqrt(ctx.rng.random()) * radius, ctx.rng.random() * 2 * math.pi
+            direction = sun + u * (r * math.cos(angle)) + v * (r * math.sin(angle))
+            directions.append(direction / np.linalg.norm(direction))
+    lit = unshadowed_count(ctx.intersector, ctx.origin, directions)
+    return (cos_sun * lit / len(directions))[:, None] * np.array(light["color"]) * light["intensity"]
 
+
+def bake_sky(light, ctx):
+    n = ctx.normals
     tu, tv = tangent_frame(n)
-    escaped = np.zeros(len(points))
-    if shared_sky:
-        for x, y, z in sky_directions(shared_sky):
-            escaped += ~intersector.intersects_any(origin, tu * x + tv * y + n * z)
-        sky_visible = escaped / shared_sky
+    rays = ctx.shared_sky_rays if ctx.shared else light["rays"]
+    if ctx.shared:
+        directions = [tu * x + tv * y + n * z for x, y, z in sky_directions(rays)]
     else:
-        for _ in range(args.sky_rays):
-            r1, r2 = rng.random(len(points)), rng.random(len(points))
-            r, a = np.sqrt(r1)[:, None], (2 * math.pi * r2)[:, None]
-            d = tu * (r * np.cos(a)) + tv * (r * np.sin(a)) + n * np.sqrt(1 - r1)[:, None]
-            escaped += ~intersector.intersects_any(origin, d)
-        sky_visible = escaped / args.sky_rays
+        directions = []
+        for _ in range(rays):
+            r1, r2 = ctx.rng.random(len(n)), ctx.rng.random(len(n))
+            r, angle = np.sqrt(r1)[:, None], (2 * math.pi * r2)[:, None]
+            directions.append(tu * (r * np.cos(angle)) + tv * (r * np.sin(angle)) + n * np.sqrt(1 - r1)[:, None])
+    visible = unshadowed_count(ctx.intersector, ctx.origin, directions) / rays
+    return visible[:, None] * np.array(light["color"]) * light["intensity"]
 
-    sun_color = np.array([1.0, 0.92, 0.78]) * args.sun_intensity
-    sky_color = np.array([0.55, 0.68, 0.9]) * args.sky_intensity
-    return (cos_sun * sun_visible)[:, None] * sun_color + sky_visible[:, None] * sky_color + args.ambient
+
+def bake_ambient(light, ctx):
+    return np.array(light["color"]) * light["intensity"]
+
+
+# The one table of what a scene light is: its fields, declared in
+# import_settings.py, and what it adds to a point's radiance.
+BAKERS = {"directional": bake_directional, "sky": bake_sky, "ambient": bake_ambient}
+LIGHTS = {kind: (LIGHT_FIELDS[kind], bake) for kind, bake in BAKERS.items()}
+assert set(LIGHTS) == set(LIGHT_FIELDS)
+
+
+def face_towards_light(normals, double_sided, lights):
+    """Double-sided surfaces turn to the side the directional lights, summed,
+    shine on. One orientation for every light, so their order cannot matter."""
+    toward = np.zeros(3)
+    for light in lights:
+        if light["type"] == "directional":
+            direction = np.array(light["direction"], dtype=np.float64)
+            toward += light["intensity"] * direction / np.linalg.norm(direction)
+    flip = double_sided & (normals @ toward < 0)
+    return np.where(flip[:, None], -normals, normals)
+
+
+def light(points, normals, double_sided, intersector, lights, ray_offset, rng, shared_sky_rays=0):
+    """Radiance from the scene lights at each point.
+
+    With shared_sky_rays > 0 every point uses the same directional samples and
+    that many sky directions (a flat bake); otherwise rays are drawn at random
+    and each sky light uses its own `rays`. Point and spot lights are reserved
+    and not baked yet.
+
+    The lights share one rng, so their order in the list changes which random
+    rays each draws: equal on average, not byte for byte. A flat bake draws
+    none and is exactly order independent.
+    """
+    n = face_towards_light(normals, double_sided, lights)
+    ctx = SimpleNamespace(normals=n, origin=points + n * ray_offset, intersector=intersector, rng=rng,
+                          shared=bool(shared_sky_rays), shared_sky_rays=shared_sky_rays)
+    radiance = np.zeros((len(points), 3))
+    for scene_light in lights:
+        radiance += LIGHTS[scene_light["type"]][1](scene_light, ctx)
+    return radiance
 
 
 def to_srgb8(linear, tonemap_white):
@@ -213,8 +242,8 @@ def adaptive_sample_counts(areas, reference, cap, floor=1):
     return np.clip(np.round(areas / reference), floor, cap).astype(np.int64)
 
 
-def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_of, intersector, args, samples=4,
-                 sky_rays=128, max_samples=16, sample_area=None, min_samples=1):
+def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_of, intersector, lights, ray_offset,
+                 tonemap_white, samples=4, sky_rays=128, max_samples=16, sample_area=None, min_samples=1):
     """One sRGB colour per triangle: albedo times light averaged over fixed
     points of the triangle, lit on its face normal. `samples` is a count per
     face, or "auto" for one point per `sample_area` of face area (the mesh's
@@ -240,9 +269,9 @@ def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_o
             albedo = albedo_of(points, spacing, m)
             double = np.full(len(points), m in double_materials)
             tiled = np.tile(normals, (k, 1))
-            radiance = light(points, tiled, double, intersector, args, None, sky_rays)
+            radiance = light(points, tiled, double, intersector, lights, ray_offset, None, sky_rays)
             colour = (albedo * radiance).reshape(k, len(faces), 3).mean(axis=0)
-            out[selected] = to_srgb8(colour, args.tonemap_white)
+            out[selected] = to_srgb8(colour, tonemap_white)
     return out
 
 

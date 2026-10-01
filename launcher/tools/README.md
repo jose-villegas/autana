@@ -6,7 +6,7 @@ Host tooling for building, generating, rendering, inspecting, and checking the f
 |---|---|
 | [build/](build/README.md) | ESP-IDF build wrappers and host tool discovery. |
 | [gen/](gen/README.md) | Generators for checked-in C data. |
-| [r3d/](r3d/README.md) | Offline mesh baking for the r3d renderer: decimation, baked light, cluster trees. |
+| [r3d/](r3d/README.md) | Offline mesh baking for the r3d renderer: simplification, baked light, cluster trees. |
 | [gltf/](gltf/) | Shared glTF 2.0 reader, sampler and writer. |
 | [anim/](anim/README.md) | Bakes a glTF animation into C tracks and samples baked tracks on a host. |
 | [render/](render/README.md) | Host render harness, image comparison, and [scenes](render/scenes/README.md). |

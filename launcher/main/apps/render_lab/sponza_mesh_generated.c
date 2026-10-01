@@ -1,15 +1,10 @@
 /*
  * GENERATED FILE - do not edit.
  *
- *     python main/apps/render_lab/tools/gen_sponza.py --out-dir main/apps/render_lab \
- *         --name sponza --simplifier meshopt --triangles 17381 --props-share 0.3 --dense-edge 45
+ *     python launcher/tools/r3d/mesh_import.py launcher/main/apps/render_lab/meshes/sponza.import.toml --variant sponza
  *
  * Crytek Sponza (Frank Meinl, Crytek; CC BY 3.0), from the OBJ in
  * McGuire's Computer Graphics Archive, casual-effects.com/data.
- * Simplified, lit by a sun and sky with baked shadows, one sRGB colour
- * per vertex. Other settings:
- *   --max-edge 900 --sun -0.25 1 0.22
- *   --sun-rays 8 --sky-rays 48
  */
 #include "sponza_mesh_generated.h"
 

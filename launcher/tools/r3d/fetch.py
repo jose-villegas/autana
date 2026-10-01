@@ -4,6 +4,7 @@ downloaded is ever committed."""
 
 import hashlib
 import pathlib
+import shutil
 import urllib.request
 import zipfile
 
@@ -28,7 +29,9 @@ def fetch_zip(url, sha256, name):
     if not archive.exists():
         log(f"downloading {url}")
         partial = archive.with_suffix(".part")
-        urllib.request.urlretrieve(url, partial)
+        request = urllib.request.Request(url, headers={"User-Agent": "autana-r3d-importer/1"})
+        with urllib.request.urlopen(request) as response, open(partial, "wb") as destination:
+            shutil.copyfileobj(response, destination)
         partial.replace(archive)
     actual = _sha256(archive)
     if actual != sha256:

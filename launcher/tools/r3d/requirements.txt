@@ -1,5 +1,4 @@
 embreex==4.4.0
-fast_simplification==0.2.0
 numpy==2.4.6
 pillow==12.3.0
 scipy==1.17.1
