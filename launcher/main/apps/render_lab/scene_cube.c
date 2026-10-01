@@ -1,10 +1,10 @@
 /*
  * scene_cube - the Gouraud-shaded rotating RGB cube, as a render_lab scene.
  *
- * small3dlib only projects the cube and culls its back faces; render/'s span
- * rasterizer fills it. That rasterizer wants a depth plane, kept one band
- * tall (GFX_BAND_HEIGHT rows) and reused by every band and strip, against
- * ~1.3 MB for a full-frame colour+depth pair on a chip with ~424 KiB of RAM.
+ * small3dlib projects the cube and culls its back faces; render/'s span
+ * rasterizer fills it. Its depth plane is one band tall (GFX_BAND_HEIGHT
+ * rows), reused by every band and strip: a full colour+depth pair is ~1.3 MB
+ * on a chip with ~424 KiB of RAM.
  */
 
 #include <assert.h>
@@ -63,11 +63,8 @@ static S3L_Model3D cube;
 static S3L_Scene scene;
 static uint32_t elapsed_ms;
 
-/* This frame's overall cube coverage (the union of every bin entry's own
- * extent, accumulated by cube_bin_triangles()) and last frame's, remembered
- * so band mode can mark the union of where the cube WAS and where it IS
- * dirty: a band the cube left still needs erasing even though nothing there
- * overlaps this frame. */
+/* This frame's cube coverage and last frame's: band mode marks both dirty,
+ * because a band the cube left still needs erasing. */
 static int cube_bbox_x0, cube_bbox_y0, cube_bbox_x1, cube_bbox_y1;
 static bool cube_bbox_valid;
 static render_lab_coverage_t last_coverage;
@@ -171,13 +168,10 @@ cube_expand_bbox(const cube_triangle_bin_t* entry, int x0, int x1) {
     }
 }
 
-/* Projects every visible triangle once per frame, so neither band mode nor
- * the full-frame strips re-project the scene. Only correct while
- * S3L_NEAR_CROSS_STRATEGY stays 0: _S3L_projectTriangle() then never splits
- * a triangle across the near plane (asserted below), so one bin entry per
- * source triangle is enough. The visible faces of a convex cube never
- * overlap, so the bin needs no order, and its bottom row is inclusive, hence
- * the +1 on y1. */
+/* Projects every visible triangle once per frame. Only correct while
+ * S3L_NEAR_CROSS_STRATEGY stays 0, so no triangle is split at the near
+ * plane (asserted). The visible faces of a convex cube never overlap, so the
+ * bin needs no order; y1 is exclusive, hence the +1 on the inclusive row. */
 static void
 cube_bin_triangles(void) {
     S3L_Mat4 mat_camera, mat_final;
@@ -220,10 +214,8 @@ cube_bin_triangles(void) {
 }
 
 /* Draws the bin's triangles that overlap [row0, row1) into `target`, the
- * first pixel of row0. A triangle confined to one band costs nothing in any
- * other band, and even one spanning the whole screen only ever computes one
- * band's worth of rows per call; a band with no triangle skips even the
- * depth clear. */
+ * first pixel of row0, so a triangle costs only the rows of the band it is
+ * in. A band with no triangle skips even the depth clear. */
 static void
 cube_draw_rows(gfx_color_t* target, int row0, int row1) {
     if (band_depth == NULL) {
