@@ -220,13 +220,13 @@ against the real 184x224 grid. Read each test's own comment in
 
 ## Performance counters
 
-The sand screen brackets `sand.steps` (all the steps of one frame),
-`sand.sweep`, `sand.liquid`, `sand.gas`, `sand.reactions` (the passes of one
-step, named as in `pass_us`), `sand.plants` and `sand.draw`. On a development
-image, open the app and send `PERF sand.sweep`; the shell's 1.5 s report then
-carries that pass's cycles and event count. Counts are per bracket, so
-`sand.steps` includes only what the pass brackets inside it do not claim. The
-command is in [`../tools/Frame-Cost.md`](../tools/Frame-Cost.md#hardware-counters).
+Every pass of a step (`sweep`, `liquid`, `float`, `gas`, `reactions`,
+`impulses`) is a `frame_cost` bracket named `sand.<pass>`, next to
+`sand.steps`, `sand.plants` and `sand.draw`. On a development image, open the
+app and run `autana perf sand.sweep`; a bare `autana perf` lists the names
+the board has seen. Counts cover the frame core only, so a pass that waits
+for the other core counts the wait. Details and the arm handoff are in
+[`../tools/Frame-Cost.md`](../tools/Frame-Cost.md#hardware-counters).
 
 ## Related
 

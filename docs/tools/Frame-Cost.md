@@ -37,7 +37,7 @@ One name at a time can also be read against the S3's two performance
 counters, cycles and one event:
 
 ```
-autana perf ?                           # the names seen so far, and the events
+autana perf                             # the names seen so far, and the events
 autana perf <name> [event] [seconds]    # arm, listen (10 s), disarm, summarise
 autana perf off
 ```
@@ -45,23 +45,52 @@ autana perf off
 `autana perf present insn 10` prints one line: cycles avg/min/max, the
 event's average, the number of samples and cycles per event. The event
 defaults to `insn` (retired instructions). A name is known once its bracket
-has run. It is a wrapper over the console's own `PERF <name|off|?> [event]`,
+has run. The command wraps the console's own `PERF <name|off|?> [event]`,
 which replies `PERFMON_OK <name> <event>`, or `PERFMON_ERR` for an unknown
-name or event or a second request before the frame task took the first. The
-counters start with the arm and run free; a bracket of that name reads them
-at its begin and end, and the next 1.5 s report appends the window's samples,
-which `autana perf` sums:
+name or event or too many words. The newest request wins.
+
+The counters start with the arm and run free. While one name is armed every
+bracket reads them, and only that name's brackets keep a sample. The shell
+prints the window's samples on a line of their own, ahead of the time line,
+and `autana perf` sums them:
 
 ```
-| stage cyc avg/min/max 112000/108000/179000 insn avg 64000 n=4
+perf: stage cyc avg/min/max 112000/108000/179000 insn avg 64000 n=4
 ```
 
 The counts follow the same rule as the time: own, exclusive of brackets
 nested inside. They cover the frame task's core only; a pass that waits for
-the other core counts that wait in its cycles. A change of arm takes effect
-at the frame task's next outermost bracket. A name longer than
-`FRAME_COST_NAME_MAX` fails to compile; a name table or an arm that does not
-fit is counted in the report and the listing rather than ignored.
+the other core counts that wait in its cycles. A change of arm drops the
+samples of the old one, so a count is never labelled with another event. A
+name longer than `FRAME_COST_NAME_MAX` fails to compile in a development
+build; a name table that does not fit is counted in the listing rather than
+ignored.
+
+The console task posts the request and the frame loop, which runs in
+`app_main` on CPU0, applies it between outermost brackets, so no bracket
+begins under one configuration and ends under another:
+
+```mermaid
+sequenceDiagram
+    participant Tool as autana perf
+    participant Console as console task
+    participant Pending as pending request
+    participant Frame as frame task
+    participant PM as PM0 and PM1
+    Tool->>Console: PERF name event
+    Console->>Pending: post name and event index
+    Console-->>Tool: PERFMON_OK name event
+    Note over Frame: its next outermost bracket begins
+    Frame->>Pending: take the newest request
+    Frame->>PM: program cycles and the event, start
+    loop each bracket while armed
+        Frame->>PM: read at begin and at end
+    end
+    Frame-->>Tool: perf: line with the window's samples
+    Tool->>Console: PERF off
+    Console->>Pending: post off
+    Frame->>PM: stop, at the next outermost bracket
+```
 
 ## Related
 

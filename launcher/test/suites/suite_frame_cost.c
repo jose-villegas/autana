@@ -279,14 +279,25 @@ leave_counted(frame_cost_t* cost, const char* name, uint32_t cycles_from, uint32
     frame_cost_leave_counted(cost, mark, name, 1000, cycles_to, event_to);
 }
 
+/* Arms `name`, noting it first as a bracket's first END would, the way the
+ * console's request and the frame task's apply do. */
+static void
+arm(frame_cost_t* cost, const char* name, int event_index) {
+    frame_cost_note_name(cost, name);
+    frame_cost_post_arm(cost, frame_cost_name_index(cost, name), event_index);
+    int applied = -2;
+    TEST_ASSERT_TRUE(frame_cost_apply_pending(cost, true, &applied));
+    TEST_ASSERT_EQUAL_INT(event_index, applied);
+}
+
 static void
 test_an_armed_name_accumulates_its_count_sum_extremes_and_event(void) {
     frame_cost_t* const cost = fixture();
-    TEST_ASSERT_TRUE(frame_cost_arm(cost, "sweep", "insn"));
+    arm(cost, "stage.a", 0);
 
-    leave_counted(cost, "sweep", 0, 300, 0, 100);
-    leave_counted(cost, "sweep", 1000, 1100, 500, 560);
-    leave_counted(cost, "sweep", 2000, 2700, 900, 1040);
+    leave_counted(cost, "stage.a", 0, 300, 0, 100);
+    leave_counted(cost, "stage.a", 1000, 1100, 500, 560);
+    leave_counted(cost, "stage.a", 2000, 2700, 900, 1040);
 
     const frame_cost_slot_t* slot = &cost->slots[0];
     TEST_ASSERT_EQUAL_UINT32(3, slot->n);
@@ -300,9 +311,9 @@ test_an_armed_name_accumulates_its_count_sum_extremes_and_event(void) {
 static void
 test_counters_that_wrap_between_a_begin_and_an_end_still_difference_right(void) {
     frame_cost_t* const cost = fixture();
-    TEST_ASSERT_TRUE(frame_cost_arm(cost, "sweep", "insn"));
+    arm(cost, "stage.a", 0);
 
-    leave_counted(cost, "sweep", 0xFFFFFF00u, 0x00000100u, 0xFFFFFFF0u, 0x00000010u);
+    leave_counted(cost, "stage.a", 0xFFFFFF00u, 0x00000100u, 0xFFFFFFF0u, 0x00000010u);
 
     TEST_ASSERT_EQUAL_UINT64(0x200, cost->slots[0].cycles_sum);
     TEST_ASSERT_EQUAL_UINT64(0x20, cost->slots[0].event_sum);
@@ -312,10 +323,10 @@ test_counters_that_wrap_between_a_begin_and_an_end_still_difference_right(void) 
 static void
 test_only_the_armed_name_takes_counter_samples(void) {
     frame_cost_t* const cost = fixture();
-    TEST_ASSERT_TRUE(frame_cost_arm(cost, "sweep", "insn"));
+    arm(cost, "stage.a", 0);
 
-    leave_counted(cost, "draw", 0, 500, 0, 50);
-    leave_counted(cost, "sweep", 0, 200, 0, 20);
+    leave_counted(cost, "stage.b", 0, 500, 0, 50);
+    leave_counted(cost, "stage.a", 0, 200, 0, 20);
 
     TEST_ASSERT_EQUAL_UINT32(0, cost->slots[0].n);
     TEST_ASSERT_EQUAL_UINT32(1, cost->slots[1].n);
@@ -325,9 +336,12 @@ test_only_the_armed_name_takes_counter_samples(void) {
 static void
 test_a_bracket_begun_before_the_arm_takes_no_sample(void) {
     frame_cost_t* const cost = fixture();
+    frame_cost_note_name(cost, "stage.a");
     const int mark = frame_cost_enter_counted(cost, 0, 0, 0);
-    TEST_ASSERT_TRUE(frame_cost_arm(cost, "sweep", "insn"));
-    frame_cost_leave_counted(cost, mark, "sweep", 1000, 900, 90);
+    frame_cost_post_arm(cost, 0, 0);
+    int event = 0;
+    TEST_ASSERT_FALSE(frame_cost_apply_pending(cost, true, &event));
+    frame_cost_leave_counted(cost, mark, "stage.a", 1000, 900, 90);
 
     TEST_ASSERT_EQUAL_UINT32(0, cost->slots[0].n);
     free(cost);
@@ -336,52 +350,248 @@ test_a_bracket_begun_before_the_arm_takes_no_sample(void) {
 static void
 test_counts_nest_like_time_the_outer_bracket_keeps_only_its_own(void) {
     frame_cost_t* const cost = fixture();
-    TEST_ASSERT_TRUE(frame_cost_arm(cost, "outer", "insn"));
+    arm(cost, "stage.outer", 0);
 
     const int outer = frame_cost_enter_counted(cost, 0, 0, 0);
     const int inner = frame_cost_enter_counted(cost, 100, 400, 40);
-    frame_cost_leave_counted(cost, inner, "inner", 300, 900, 90);
-    frame_cost_leave_counted(cost, outer, "outer", 500, 1000, 100);
+    frame_cost_leave_counted(cost, inner, "stage.inner", 300, 900, 90);
+    frame_cost_leave_counted(cost, outer, "stage.outer", 500, 1000, 100);
 
     const frame_cost_slot_t* outer_slot = &cost->slots[1];
-    TEST_ASSERT_EQUAL_STRING("outer", outer_slot->name);
+    TEST_ASSERT_EQUAL_STRING("stage.outer", outer_slot->name);
     TEST_ASSERT_EQUAL_UINT64(500, outer_slot->cycles_sum);
     TEST_ASSERT_EQUAL_UINT64(50, outer_slot->event_sum);
     free(cost);
 }
 
 static void
-test_a_report_of_every_slot_still_carries_its_total_and_counts(void) {
-    static const char* const names[FRAME_COST_SLOTS] = {"ui.build",  "ridge.layers",   "ridge.paint",   "ui.paint",
-                                                        "present",   "frame.rest",     "sand.steps",    "sand.plants",
-                                                        "sand.draw", "sand.reactions", "sand.impulses", "sand.liquid"};
+test_what_ran_inside_an_abandoned_bracket_is_taken_out_of_the_armed_outer_counts(void) {
     frame_cost_t* const cost = fixture();
-    char line[FRAME_COST_REPORT_MAX];
-    TEST_ASSERT_TRUE(frame_cost_arm(cost, "sand.liquid", "insn"));
-    for (int i = 0; i < FRAME_COST_SLOTS; i++) {
-        leave_counted(cost, names[i], 0, 123456, 0, 654321);
-    }
+    arm(cost, "stage.outer", 0);
 
-    TEST_ASSERT_GREATER_THAN_INT(0, frame_cost_report(cost, 1, line, sizeof line));
-    TEST_ASSERT_NOT_NULL(strstr(line, " | total "));
-    TEST_ASSERT_NOT_NULL(strstr(line, " | sand.liquid cyc avg/min/max "));
+    const int outer = frame_cost_enter_counted(cost, 0, 0, 0);
+    (void)frame_cost_enter_counted(cost, 100, 100, 10);
+    const int inner = frame_cost_enter_counted(cost, 150, 200, 20);
+    frame_cost_leave_counted(cost, inner, "stage.inner", 250, 500, 60);
+    frame_cost_leave_counted(cost, outer, "stage.outer", 500, 1000, 100);
+
+    const frame_cost_slot_t* outer_slot = &cost->slots[1];
+    TEST_ASSERT_EQUAL_UINT64(700, outer_slot->cycles_sum);
+    TEST_ASSERT_EQUAL_UINT64(60, outer_slot->event_sum);
     free(cost);
 }
 
 static void
-test_the_report_carries_the_armed_slots_counts_and_forgets_them(void) {
+test_an_armed_inner_bracket_samples_its_own_counts_and_the_outer_loses_them(void) {
     frame_cost_t* const cost = fixture();
-    char line[200];
-    TEST_ASSERT_TRUE(frame_cost_arm(cost, "sweep", "insn"));
-    leave_counted(cost, "sweep", 0, 300, 0, 100);
-    leave_counted(cost, "sweep", 0, 100, 0, 60);
+    arm(cost, "stage.inner", 0);
 
-    frame_cost_report(cost, 1, line, sizeof line);
-    TEST_ASSERT_NOT_NULL(strstr(line, " | sweep cyc avg/min/max 200/100/300 insn avg 80 n=2"));
+    const int outer = frame_cost_enter_counted(cost, 0, 0, 0);
+    const int inner = frame_cost_enter_counted(cost, 100, 400, 40);
+    frame_cost_leave_counted(cost, inner, "stage.inner", 300, 900, 90);
+    frame_cost_leave_counted(cost, outer, "stage.outer", 500, 1000, 100);
 
-    leave_counted(cost, "draw", 0, 100, 0, 10);
+    TEST_ASSERT_EQUAL_STRING("stage.inner", cost->slots[0].name);
+    TEST_ASSERT_EQUAL_UINT64(500, cost->slots[0].cycles_sum);
+    TEST_ASSERT_EQUAL_UINT32(0, cost->slots[1].n);
+    free(cost);
+}
+
+static void
+test_an_armed_name_nested_in_itself_samples_each_level_exclusively(void) {
+    frame_cost_t* const cost = fixture();
+    arm(cost, "stage.a", 0);
+
+    const int outer = frame_cost_enter_counted(cost, 0, 0, 0);
+    const int inner = frame_cost_enter_counted(cost, 100, 200, 20);
+    frame_cost_leave_counted(cost, inner, "stage.a", 200, 500, 50);
+    frame_cost_leave_counted(cost, outer, "stage.a", 500, 1000, 100);
+
+    TEST_ASSERT_EQUAL_UINT32(2, cost->slots[0].n);
+    TEST_ASSERT_EQUAL_UINT64(1000, cost->slots[0].cycles_sum);
+    TEST_ASSERT_EQUAL_UINT32(300, cost->slots[0].cycles_min);
+    TEST_ASSERT_EQUAL_UINT32(700, cost->slots[0].cycles_max);
+    free(cost);
+}
+
+static void
+test_a_request_is_applied_between_outermost_brackets_only(void) {
+    frame_cost_t* const cost = fixture();
+    frame_cost_note_name(cost, "stage.a");
+    int event = -2;
+
+    const int outer = frame_cost_enter_counted(cost, 0, 0, 0);
+    frame_cost_post_arm(cost, 0, 3);
+    TEST_ASSERT_FALSE(frame_cost_apply_pending(cost, true, &event));
+    TEST_ASSERT_EQUAL_INT(0, cost->armed_name);
+    frame_cost_leave_counted(cost, outer, "stage.x", 10, 0, 0);
+
+    TEST_ASSERT_TRUE(frame_cost_apply_pending(cost, true, &event));
+    TEST_ASSERT_EQUAL_INT(3, event);
+    TEST_ASSERT_EQUAL_INT(1, cost->armed_name);
+    TEST_ASSERT_FALSE_MESSAGE(frame_cost_apply_pending(cost, true, &event), "a request is applied once");
+    free(cost);
+}
+
+static void
+test_the_newest_request_wins(void) {
+    frame_cost_t* const cost = fixture();
+    frame_cost_note_name(cost, "stage.a");
+    frame_cost_note_name(cost, "stage.b");
+    int event = -2;
+
+    frame_cost_post_arm(cost, 0, 1);
+    frame_cost_post_arm(cost, 1, 2);
+    TEST_ASSERT_TRUE(frame_cost_apply_pending(cost, true, &event));
+
+    TEST_ASSERT_EQUAL_INT(2, cost->armed_name);
+    TEST_ASSERT_EQUAL_INT(2, event);
+    free(cost);
+}
+
+static void
+test_an_empty_request_disarms_and_sampling_stops(void) {
+    frame_cost_t* const cost = fixture();
+    arm(cost, "stage.a", 0);
+    leave_counted(cost, "stage.a", 0, 100, 0, 10);
+    int event = 0;
+
+    frame_cost_post_arm(cost, -1, 0);
+    TEST_ASSERT_TRUE(frame_cost_apply_pending(cost, true, &event));
+    TEST_ASSERT_EQUAL_INT(-1, event);
+    leave_counted(cost, "stage.a", 0, 100, 0, 10);
+
+    TEST_ASSERT_EQUAL_UINT32(0, cost->slots[0].n);
+    free(cost);
+}
+
+static void
+test_a_task_that_does_not_own_the_frame_neither_applies_nor_clears_a_request(void) {
+    frame_cost_t* const cost = fixture();
+    frame_cost_note_name(cost, "stage.a");
+    frame_cost_post_arm(cost, 0, 4);
+    int event = -2;
+
+    TEST_ASSERT_FALSE(frame_cost_apply_pending(cost, false, &event));
+    TEST_ASSERT_EQUAL_INT(0, cost->armed_name);
+    TEST_ASSERT_TRUE(frame_cost_apply_pending(cost, true, &event));
+    TEST_ASSERT_EQUAL_INT(4, event);
+    free(cost);
+}
+
+static void
+test_a_change_of_arm_drops_the_samples_it_would_have_mislabelled(void) {
+    frame_cost_t* const cost = fixture();
+    char line[FRAME_COST_COUNTS_MAX];
+    arm(cost, "stage.a", 0);
+    leave_counted(cost, "stage.a", 0, 100, 0, 10);
+    TEST_ASSERT_GREATER_THAN_INT(0, frame_cost_counts_line(cost, "insn", line, sizeof line));
+
+    arm(cost, "stage.a", 1);
+
+    TEST_ASSERT_EQUAL_UINT32(0, cost->slots[0].n);
+    TEST_ASSERT_EQUAL_INT(0, frame_cost_counts_line(cost, "window", line, sizeof line));
+    free(cost);
+}
+
+static void
+test_a_disarm_drops_the_samples_too(void) {
+    frame_cost_t* const cost = fixture();
+    char line[FRAME_COST_COUNTS_MAX];
+    arm(cost, "stage.a", 0);
+    leave_counted(cost, "stage.a", 0, 100, 0, 10);
+    int event = 0;
+
+    frame_cost_post_arm(cost, -1, 0);
+    TEST_ASSERT_TRUE(frame_cost_apply_pending(cost, true, &event));
+
+    TEST_ASSERT_EQUAL_UINT32(0, cost->slots[0].n);
+    TEST_ASSERT_EQUAL_INT(0, frame_cost_counts_line(cost, "insn", line, sizeof line));
+    free(cost);
+}
+
+static void
+test_an_armed_name_with_no_free_slot_is_dropped_once_not_twice(void) {
+    static const char* const names[FRAME_COST_SLOTS] = {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"};
+    frame_cost_t* const cost = fixture();
+    for (int i = 0; i < FRAME_COST_SLOTS; i++) {
+        frame_cost_add(cost, names[i], 1);
+    }
+    arm(cost, "m", 0);
+
+    leave_counted(cost, "m", 0, 100, 0, 10);
+
+    TEST_ASSERT_EQUAL_INT(1, cost->dropped);
+    free(cost);
+}
+
+static void
+test_a_name_is_looked_up_for_the_table_once_a_window_not_at_every_end(void) {
+    char names[FRAME_COST_NAMES][8];
+    frame_cost_t* const cost = fixture();
+    for (int i = 0; i < FRAME_COST_NAMES; i++) {
+        snprintf(names[i], sizeof names[i], "n%d", i);
+        frame_cost_note_name(cost, names[i]);
+    }
+
+    for (int i = 0; i < 50; i++) {
+        frame_cost_add(cost, "late", 10);
+    }
+
+    TEST_ASSERT_EQUAL_INT(1, cost->names_dropped);
+    free(cost);
+}
+
+static void
+test_the_counts_line_carries_the_armed_slot_and_the_time_line_does_not(void) {
+    frame_cost_t* const cost = fixture();
+    char counts[FRAME_COST_COUNTS_MAX];
+    char line[FRAME_COST_REPORT_MAX];
+    arm(cost, "stage.a", 0);
+    leave_counted(cost, "stage.a", 0, 300, 0, 100);
+    leave_counted(cost, "stage.a", 0, 100, 0, 60);
+
+    TEST_ASSERT_GREATER_THAN_INT(0, frame_cost_counts_line(cost, "insn", counts, sizeof counts));
+    TEST_ASSERT_EQUAL_STRING("perf: stage.a cyc avg/min/max 200/100/300 insn avg 80 n=2", counts);
     frame_cost_report(cost, 1, line, sizeof line);
     TEST_ASSERT_NULL(strstr(line, "cyc"));
+
+    leave_counted(cost, "stage.b", 0, 100, 0, 10);
+    TEST_ASSERT_EQUAL_INT(0, frame_cost_counts_line(cost, "insn", counts, sizeof counts));
+    free(cost);
+}
+
+static void
+test_a_longest_name_and_largest_counts_fit_their_buffers(void) {
+    char name[FRAME_COST_NAME_MAX + 1];
+    memset(name, 'n', FRAME_COST_NAME_MAX);
+    name[FRAME_COST_NAME_MAX] = '\0';
+    frame_cost_t* const cost = fixture();
+    char counts[FRAME_COST_COUNTS_MAX];
+    arm(cost, name, 0);
+    leave_counted(cost, name, 0, 0xfffffff0u, 0, 0xfffffff0u);
+
+    TEST_ASSERT_GREATER_THAN_INT(0, frame_cost_counts_line(cost, "icache_miss_stall", counts, sizeof counts));
+    TEST_ASSERT_NOT_NULL(strstr(counts, " n=1"));
+    free(cost);
+}
+
+static void
+test_every_slot_with_the_longest_name_still_reports_its_total_and_drops(void) {
+    frame_cost_t* const cost = fixture();
+    char* const line = malloc(FRAME_COST_REPORT_MAX);
+    TEST_ASSERT_NOT_NULL(line);
+    char names[FRAME_COST_SLOTS + 1][FRAME_COST_NAME_MAX + 1];
+    for (int i = 0; i <= FRAME_COST_SLOTS; i++) {
+        memset(names[i], 'a' + i, FRAME_COST_NAME_MAX);
+        names[i][FRAME_COST_NAME_MAX] = '\0';
+        frame_cost_add(cost, names[i], 9999999999LL);
+    }
+
+    TEST_ASSERT_GREATER_THAN_INT(0, frame_cost_report(cost, 1, line, FRAME_COST_REPORT_MAX));
+    TEST_ASSERT_NOT_NULL(strstr(line, " | total "));
+    TEST_ASSERT_NOT_NULL(strstr(line, " +1 dropped"));
+    free(line);
     free(cost);
 }
 
@@ -389,12 +599,12 @@ static void
 test_a_name_is_remembered_across_windows_and_found_by_its_text(void) {
     frame_cost_t* const cost = fixture();
     char line[64];
-    char spelled_again[] = "sweep";
-    frame_cost_add(cost, "sweep", 100);
+    char spelled_again[] = "stage.a";
+    frame_cost_add(cost, "stage.a", 100);
     frame_cost_report(cost, 1, line, sizeof line);
 
-    TEST_ASSERT_TRUE(frame_cost_name_seen(cost, spelled_again));
-    TEST_ASSERT_FALSE(frame_cost_name_seen(cost, "swee"));
+    TEST_ASSERT_EQUAL_INT(0, frame_cost_name_index(cost, spelled_again));
+    TEST_ASSERT_EQUAL_INT(-1, frame_cost_name_index(cost, "stage."));
     TEST_ASSERT_EQUAL_INT(1, cost->name_count);
     free(cost);
 }
@@ -409,19 +619,7 @@ test_more_names_than_the_memory_holds_are_counted_not_lost_silently(void) {
     }
     TEST_ASSERT_EQUAL_INT(FRAME_COST_NAMES, cost->name_count);
     TEST_ASSERT_EQUAL_INT(2, cost->names_dropped);
-    TEST_ASSERT_FALSE(frame_cost_name_seen(cost, names[FRAME_COST_NAMES]));
-    free(cost);
-}
-
-static void
-test_an_arm_that_does_not_fit_is_refused_and_changes_nothing(void) {
-    frame_cost_t* const cost = fixture();
-    TEST_ASSERT_TRUE(frame_cost_arm(cost, "sweep", "insn"));
-
-    TEST_ASSERT_FALSE(frame_cost_arm(cost, "a_name_far_longer_than_the_limit", "insn"));
-    TEST_ASSERT_FALSE(frame_cost_arm(cost, "draw", "an_event_name_far_too_long"));
-    TEST_ASSERT_EQUAL_STRING("sweep", cost->armed);
-    TEST_ASSERT_EQUAL_STRING("insn", cost->event);
+    TEST_ASSERT_EQUAL_INT(-1, frame_cost_name_index(cost, names[FRAME_COST_NAMES]));
     free(cost);
 }
 
@@ -432,7 +630,6 @@ suite_frame_cost(void) {
     RUN_TEST(test_a_report_forgets_so_the_next_window_starts_clean);
     RUN_TEST(test_with_no_frames_the_charge_survives_to_the_next_report);
     RUN_TEST(test_a_zero_size_buffer_is_left_alone);
-    RUN_TEST(test_a_report_of_every_slot_still_carries_its_total_and_counts);
     RUN_TEST(test_more_names_than_slots_are_dropped_and_charged_to_nobody);
     RUN_TEST(test_a_dropped_name_is_flagged_in_the_report_and_gone_next_window);
     RUN_TEST(test_a_line_too_short_ends_on_a_whole_slot);
@@ -450,10 +647,22 @@ suite_frame_cost(void) {
     RUN_TEST(test_only_the_armed_name_takes_counter_samples);
     RUN_TEST(test_a_bracket_begun_before_the_arm_takes_no_sample);
     RUN_TEST(test_counts_nest_like_time_the_outer_bracket_keeps_only_its_own);
-    RUN_TEST(test_the_report_carries_the_armed_slots_counts_and_forgets_them);
+    RUN_TEST(test_what_ran_inside_an_abandoned_bracket_is_taken_out_of_the_armed_outer_counts);
+    RUN_TEST(test_an_armed_inner_bracket_samples_its_own_counts_and_the_outer_loses_them);
+    RUN_TEST(test_an_armed_name_nested_in_itself_samples_each_level_exclusively);
+    RUN_TEST(test_a_request_is_applied_between_outermost_brackets_only);
+    RUN_TEST(test_the_newest_request_wins);
+    RUN_TEST(test_an_empty_request_disarms_and_sampling_stops);
+    RUN_TEST(test_a_task_that_does_not_own_the_frame_neither_applies_nor_clears_a_request);
+    RUN_TEST(test_a_change_of_arm_drops_the_samples_it_would_have_mislabelled);
+    RUN_TEST(test_a_disarm_drops_the_samples_too);
+    RUN_TEST(test_an_armed_name_with_no_free_slot_is_dropped_once_not_twice);
+    RUN_TEST(test_a_name_is_looked_up_for_the_table_once_a_window_not_at_every_end);
+    RUN_TEST(test_the_counts_line_carries_the_armed_slot_and_the_time_line_does_not);
+    RUN_TEST(test_a_longest_name_and_largest_counts_fit_their_buffers);
+    RUN_TEST(test_every_slot_with_the_longest_name_still_reports_its_total_and_drops);
     RUN_TEST(test_a_name_is_remembered_across_windows_and_found_by_its_text);
     RUN_TEST(test_more_names_than_the_memory_holds_are_counted_not_lost_silently);
-    RUN_TEST(test_an_arm_that_does_not_fit_is_refused_and_changes_nothing);
 }
 
 SUITE_REGISTER(suite_frame_cost);

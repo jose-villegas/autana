@@ -34,14 +34,14 @@ FRAME_COST_EVENTS(FRAME_COST_EVENT_CHECK)
 #define FRAME_COST_EVENT_ROW(name, select, mask) {name, select, mask},
 static const frame_cost_event_t events[] = {FRAME_COST_EVENTS(FRAME_COST_EVENT_ROW)};
 
-const frame_cost_event_t*
-frame_cost_event_find(const char* name) {
+int
+frame_cost_event_index(const char* name) {
     for (size_t i = 0; i < sizeof events / sizeof events[0]; i++) {
         if (strcmp(events[i].name, name) == 0) {
-            return &events[i];
+            return (int)i;
         }
     }
-    return NULL;
+    return -1;
 }
 
 int
@@ -57,29 +57,20 @@ frame_cost_event_at(int index) {
 static frame_cost_t shared;
 static TaskHandle_t owner_task;
 static int foreign_task_calls;
-static int arm_refused;
 
-/* The request from the console, written name and event first and `pending`
- * last; the frame task consumes it. */
-static char pending_name[FRAME_COST_NAME_MAX + 1];
-static char pending_event[FRAME_COST_EVENT_NAME_MAX + 1];
-static volatile bool pending;
+int
+frame_cost_shared_name_index(const char* name) {
+    return frame_cost_name_index(&shared, name);
+}
 
-bool
-frame_cost_request_arm(const char* name, const char* event) {
-    if (pending || strlen(name) > FRAME_COST_NAME_MAX || frame_cost_event_find(event) == NULL) {
-        return false;
-    }
-    strcpy(pending_name, name);
-    strcpy(pending_event, event);
-    __sync_synchronize();
-    pending = true;
-    return true;
+void
+frame_cost_shared_post_arm(int name_index, int event_index) {
+    frame_cost_post_arm(&shared, name_index, event_index);
 }
 
 bool
-frame_cost_name_known(const char* name) {
-    return frame_cost_name_seen(&shared, name);
+frame_cost_counters_idle(void) {
+    return shared.armed_name == 0 && shared.pending_arm == 0;
 }
 
 const char*
@@ -92,25 +83,20 @@ frame_cost_names_dropped(void) {
     return shared.names_dropped;
 }
 
-/* Counters live on the core that reads them, so the frame task configures
- * them itself. Applied between outermost brackets only: a bracket must
- * begin and end under one configuration. */
+/* Counters live on the core that reads them, so the frame task programs
+ * them itself, when frame_cost_apply_pending() lets it. */
 static void
-apply_pending_arm(void) {
+program_counters(int event_index) {
     xtensa_perfmon_stop();
-    const frame_cost_event_t* const event = frame_cost_event_find(pending_event);
-    if (pending_name[0] == '\0' || event == NULL) {
-        (void)frame_cost_arm(&shared, "", FRAME_COST_DEFAULT_EVENT);
-    } else if (frame_cost_arm(&shared, pending_name, pending_event)) {
-        xtensa_perfmon_init(0, XTPERF_CNT_CYCLES, 0xffff, 0, -1);
-        xtensa_perfmon_init(1, event->select, event->mask, 0, -1);
-        xtensa_perfmon_reset(0);
-        xtensa_perfmon_reset(1);
-        xtensa_perfmon_start();
-    } else {
-        arm_refused++;
+    if (event_index < 0) {
+        return;
     }
-    pending = false;
+    const frame_cost_event_t* const event = &events[event_index];
+    xtensa_perfmon_init(0, XTPERF_CNT_CYCLES, 0xffff, 0, -1);
+    xtensa_perfmon_init(1, event->select, event->mask, 0, -1);
+    xtensa_perfmon_reset(0);
+    xtensa_perfmon_reset(1);
+    xtensa_perfmon_start();
 }
 
 /* The frame loop's own task claims ownership on its first bracket; a begin
@@ -121,47 +107,44 @@ frame_cost_begin(void) {
     if (owner_task == NULL) {
         owner_task = caller;
     }
+    int event_index = -1;
+    if (frame_cost_apply_pending(&shared, caller == owner_task, &event_index)) {
+        program_counters(event_index);
+    }
     if (caller != owner_task) {
         foreign_task_calls++;
         return FRAME_COST_IGNORE_MARK;
     }
-    if (pending && shared.depth == 0) {
-        apply_pending_arm();
-    }
-    const bool counting = shared.armed[0] != '\0';
+    const bool counting = shared.armed_name > 0;
     return frame_cost_enter_counted(&shared, esp_timer_get_time(), counting ? xtensa_perfmon_value(0) : 0,
                                     counting ? xtensa_perfmon_value(1) : 0);
 }
 
 void
 frame_cost_end(int mark, const char* name) {
-    const bool counting = shared.armed[0] != '\0';
+    const bool counting = shared.armed_name > 0;
     frame_cost_leave_counted(&shared, mark, name, esp_timer_get_time(), counting ? xtensa_perfmon_value(0) : 0,
                              counting ? xtensa_perfmon_value(1) : 0);
 }
 
-static int
-append_counter(char* out, size_t out_size, int length, const char* what, int* count) {
-    if (*count == 0) {
-        return length;
-    }
-    const int wrote = snprintf(out + length, out_size - (size_t)length, " +%d %s", *count, what);
-    *count = 0;
-    if (wrote < 0 || (size_t)(length + wrote) >= out_size) {
-        out[length] = '\0';
-        return length;
-    }
-    return length + wrote;
+int
+frame_cost_take_counts(char* out, size_t out_size) {
+    return frame_cost_counts_line(&shared, events[shared.armed_event].name, out, out_size);
 }
 
 int
 frame_cost_take_report(uint32_t frames, char* out, size_t out_size) {
     int length = frame_cost_report(&shared, frames, out, out_size);
-    if (frames == 0 || out_size == 0) {
+    if (frames == 0 || out_size == 0 || foreign_task_calls == 0) {
         return length;
     }
-    length = append_counter(out, out_size, length, "arm refused", &arm_refused);
-    return append_counter(out, out_size, length, "foreign", &foreign_task_calls);
+    const int wrote = snprintf(out + length, out_size - (size_t)length, " +%d foreign", foreign_task_calls);
+    foreign_task_calls = 0;
+    if (wrote < 0 || (size_t)(length + wrote) >= out_size) {
+        out[length] = '\0';
+        return length;
+    }
+    return length + wrote;
 }
 
 #endif

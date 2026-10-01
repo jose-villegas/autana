@@ -47,17 +47,19 @@
 #include "esp_timer.h"
 #endif
 
-/* One bracket per sand_step() pass: the name is "sand.<pass>" in the frame
- * cost report and `<pass>_us` in sand_t.pass_us, so the two cannot drift.
- * The wall-clock field exists only where DEVICE_BUILD does. */
+/* One bracket per sand_step() pass: its frame_cost name is "sand.<pass>" and
+ * its wall time `pass_us.<pass>_us`, so the two cannot drift. The wall clock
+ * is read inside the bracket, so frame_cost's own cost is not in the field;
+ * the field exists only where DEVICE_BUILD does. */
 #ifdef DEVICE_BUILD
 #define SAND_PASS_BEGIN(pass)                                                                                          \
-    const int64_t pass##_t0 = esp_timer_get_time();                                                                    \
-    FRAME_COST_BEGIN(pass##_mark)
+    FRAME_COST_BEGIN(pass##_mark);                                                                                     \
+    const int64_t pass##_t0 = esp_timer_get_time()
 #define SAND_PASS_END(s, pass)                                                                                         \
     do {                                                                                                               \
+        const int64_t pass##_t1 = esp_timer_get_time();                                                                \
         FRAME_COST_END(pass##_mark, "sand." #pass);                                                                    \
-        (s)->pass_us.pass##_us = esp_timer_get_time() - pass##_t0;                                                     \
+        (s)->pass_us.pass##_us = pass##_t1 - pass##_t0;                                                                \
     } while (0)
 #else
 #define SAND_PASS_BEGIN(pass)  FRAME_COST_BEGIN(pass##_mark)

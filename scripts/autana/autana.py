@@ -1057,25 +1057,34 @@ def tune(args):
     return 0
 
 
-PERF_USAGE = "usage: autana perf ? | autana perf off | autana perf <name> [event] [seconds]"
+PERF_USAGE = "usage: autana perf [?] | autana perf off | autana perf <name> [event] [seconds]"
 PERF_DEFAULT_SECONDS = 10.0
-PERF_SEGMENT = re.compile(r"\| (\S+) cyc avg/min/max (\d+)/(\d+)/(\d+) (\S+) avg (\d+) n=(\d+)")
+PERF_SEGMENT = re.compile(r"perf: (\S+) cyc avg/min/max (\d+)/(\d+)/(\d+) (\S+) avg (\d+) n=(\d+)")
+
+
+def perf_text(reply):
+    """A board reply without its `PERFMON_` prefix, the way `tune` drops its own."""
+    return reply.removeprefix("PERFMON_")
 
 
 def perf_listing(replies):
-    """The `PERFMON_NAME`/`PERFMON_EVENT` lines as two titled lists."""
-    names = [reply.split(" ", 1)[1] for reply in replies if reply.startswith("PERFMON_NAME ")]
-    events = [reply.split(" ", 1)[1] for reply in replies if reply.startswith("PERFMON_EVENT ")]
+    """The `PERFMON_NAME`/`PERFMON_EVENT` lines as two titled lists, and the
+    names the board had no room to remember."""
+    def words(prefix):
+        return [reply.split(" ", 1)[1] for reply in replies if reply.startswith(prefix + " ")]
+
     lines = ["names seen so far (a name appears once its bracket has run):"]
-    lines += [f"  {name}" for name in names] or ["  none yet"]
+    lines += [f"  {name}" for name in words("PERFMON_NAME")] or ["  none yet"]
+    for dropped in words("PERFMON_NAMES_DROPPED"):
+        lines.append(f"  ({dropped} more did not fit the board's name table)")
     lines.append("events (the first, insn, is the default):")
-    lines += [f"  {event}" for event in events]
+    lines += [f"  {event}" for event in words("PERFMON_EVENT")]
     return "\n".join(lines)
 
 
 def perf_segments(text, name):
-    """(event, avg, min, max, event avg, n) for every `| name cyc ...` segment
-    of the report lines in `text` that belongs to `name`."""
+    """(event, avg, min, max, event avg, n) for every `perf:` line of `text`
+    that belongs to `name`."""
     found = []
     for match in PERF_SEGMENT.finditer(text):
         if match.group(1) == name:
@@ -1100,22 +1109,18 @@ def perf_summary(name, segments):
 
 
 def perf_parse(args):
-    """(name, event or None, seconds): the first word after the name that is a
-    number is the window, the other the event."""
-    event = None
-    seconds = None
-    for word in args[1:]:
+    """(name, event or None, seconds), positional like the usage line."""
+    if len(args) > 3:
+        sys.exit(PERF_USAGE)
+    seconds = PERF_DEFAULT_SECONDS
+    if len(args) == 3:
         try:
-            value = float(word)
+            seconds = float(args[2])
         except ValueError:
-            if event is not None:
-                sys.exit(PERF_USAGE)
-            event = word
-            continue
-        if seconds is not None or value <= 0:
             sys.exit(PERF_USAGE)
-        seconds = value
-    return args[0], event, PERF_DEFAULT_SECONDS if seconds is None else seconds
+        if seconds <= 0:
+            sys.exit(PERF_USAGE)
+    return args[0], args[1] if len(args) > 1 else None, seconds
 
 
 def perf_collect(seconds):
@@ -1130,32 +1135,45 @@ def perf_collect(seconds):
         return 0, capture.read_text(encoding="utf-8", errors="replace")
 
 
+def perf_disarm():
+    """True when the board confirmed `off`; says so on stderr when it did not."""
+    code, replies = send("PERF off", reply="PERFMON")
+    if code == 0 and replies and replies[-1].startswith("PERFMON_OK"):
+        return True
+    print("autana perf: the counters may still be armed - " + (perf_text(replies[-1]) if replies else "no reply"),
+          file=sys.stderr)
+    return False
+
+
 def perf(args):
-    """The S3's cycle counter and one event over one frame_cost bracket: `?`
-    lists, `off` disarms, `<name>` arms, listens, disarms and summarises.
-    The board's own PERF verb is the arm; the numbers come from its report."""
+    """The S3's cycle counter and one event over one frame_cost bracket: bare
+    or `?` lists, `off` disarms, `<name>` arms, listens, disarms and
+    summarises. The board's own PERF verb is the arm; the numbers come from
+    its `perf:` line."""
     reject_unknown("perf", args)
-    if not args:
-        sys.exit(PERF_USAGE)
-    if args[0] in ("?", "off"):
-        if len(args) > 1:
-            sys.exit(PERF_USAGE)
-        code, replies = send("PERF " + args[0], reply="PERFMON", until=["PERFMON_END", "PERFMON_ERR", "PERFMON_OK"])
+    if not args or args == ["?"]:
+        code, replies = send("PERF ?", reply="PERFMON", until=["PERFMON_END", "PERFMON_ERR"])
         if code != 0 or not replies:
             return code or 1
-        print(perf_listing(replies) if args[0] == "?" else "\n".join(replies))
+        print(perf_listing(replies))
+        return 0
+    if args == ["off"]:
+        if not perf_disarm():
+            return 1
+        print("counters off")
         return 0
     name, event, seconds = perf_parse(args)
     code, replies = send(f"PERF {name} {event}" if event else f"PERF {name}", reply="PERFMON")
     if code != 0 or not replies:
         return code or 1
-    print(replies[-1])
-    if replies[-1].startswith("PERFMON_ERR"):
+    print(perf_text(replies[-1]))
+    if not replies[-1].startswith("PERFMON_OK"):
         return 1
+    disarmed = False
     try:
         code, text = perf_collect(seconds)
     finally:
-        send("PERF off", reply="PERFMON")
+        disarmed = perf_disarm()
     if code != 0:
         return code
     segments = perf_segments(text, name)
@@ -1164,7 +1182,7 @@ def perf(args):
               file=sys.stderr)
         return 1
     print(perf_summary(name, segments))
-    return 0
+    return 0 if disarmed else 1
 
 
 def literal(name, value):
@@ -1351,9 +1369,9 @@ COMMAND_GROUPS = (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),
             ("screenshot --frames N -o PATH", "N consecutive frames, PATH-00 on, stepped while frozen"),)),
         Command("perf", perf, (
-            ("perf ?", "the frame_cost names seen and the counter events"),
+            ("perf", "the frame_cost names seen and the counter events"),
             ("perf <name> [event] [seconds]",
-             "cycles and one event over one bracket for N s (10 when omitted), then off"),
+             "cycles and one event over one bracket for `seconds` s (10 when omitted), then off"),
             ("perf off", "disarm the counters"))),
     )),
     ("input", "Drive input", (

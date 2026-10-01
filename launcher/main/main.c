@@ -757,6 +757,11 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
         ESP_LOGI(TAG, "%.1f fps, %.1f drawn/s, touch %.1f points/s %.1f moved/s", (double)*frames * per_s,
                  (double)drawn * per_s, (double)points * per_s, (double)moved * per_s);
         static char cost[FRAME_COST_REPORT_MAX];
+        static char counts[FRAME_COST_COUNTS_MAX];
+        /* Before the report, which forgets the window the counts come from. */
+        if (frame_cost_take_counts(counts, sizeof counts) > 0) {
+            ESP_LOGI(TAG, "%s", counts);
+        }
         if (frame_cost_take_report(*frames, cost, sizeof cost) > 0) {
             ESP_LOGI(TAG, "ms/frame avg/worst: %s", cost);
         }

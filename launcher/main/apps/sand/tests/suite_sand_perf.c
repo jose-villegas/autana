@@ -1776,6 +1776,8 @@ test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget(void) {
 static void
 measure_xtperf_event(const char* scene, sand_t* real, int gx, int gy, int gz, int steps,
                      const frame_cost_event_t* event, uint32_t* out_cycles, uint32_t* out_value) {
+    TEST_ASSERT_TRUE_MESSAGE(frame_cost_counters_idle(),
+                             "the counters are armed through frame_cost; disarm them first");
     xtensa_perfmon_stop();
     xtensa_perfmon_init(0, XTPERF_CNT_CYCLES, 0xffff, 0, -1);
     xtensa_perfmon_init(1, event->select, event->mask, 0, -1);

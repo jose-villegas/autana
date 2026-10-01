@@ -16,3 +16,4 @@ docs/Build-Variants.md	2026-09-27	PR #442 round 2: reviewed against the developm
 docs/Mesh-Rendering.md	2026-09-28	PR #444 round 2: reviewed against launcher/main/render/ and launcher/tools/r3d/
 docs/tools/Docs-Search.md	2026-09-28	PR #445 round 2: reviewed against scripts/docs/docs_search.py
 docs/Mesh-Import.md	2026-09-30	split out of Mesh-Rendering.md: moved text, checked against launcher/tools/r3d/
+docs/tools/Frame-Cost.md	2026-10-01	reviewed against launcher/main/util/frame_cost.h, frame_cost.c, console_perf_parse.h and scripts/autana/autana.py
