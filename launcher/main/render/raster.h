@@ -24,7 +24,7 @@ typedef struct {
      * upscaling puts the clear colour wherever nothing was drawn. */
     uint16_t* destination;
     int destination_width, destination_height;
-    upscale_t upscale; /* maps retained in `scratch`, rebuilt when size changes */
+    upscale_t upscale; /* row map retained in `scratch`, rebuilt when size changes */
     void* scratch;     /* raster_scratch_bytes() of it */
 } raster_t;
 

@@ -14,9 +14,9 @@ nearest_source(int destination, int destination_size, int source_size) {
 
 bool
 upscale_init(upscale_t* scale, int source_width, int source_height, int destination_width, int destination_height,
-             uint16_t* columns, uint16_t* rows) {
-    if (scale == NULL || columns == NULL || rows == NULL || source_width < 1 || source_height < 1
-        || destination_width < source_width || destination_height < source_height) {
+             uint16_t* rows) {
+    if (scale == NULL || rows == NULL || source_width < 1 || source_height < 1 || destination_width < source_width
+        || destination_height < source_height) {
         return false;
     }
     scale->source_width = source_width;
@@ -27,11 +27,7 @@ upscale_init(upscale_t* scale, int source_width, int source_height, int destinat
     scale->vertical_factor = destination_height / source_height;
     scale->integer = destination_width % source_width == 0 && destination_height % source_height == 0
                      && scale->horizontal_factor == scale->vertical_factor;
-    scale->columns = columns;
     scale->rows = rows;
-    for (int x = 0; x < destination_width; x++) {
-        columns[x] = nearest_source(x, destination_width, source_width);
-    }
     for (int y = 0; y < destination_height; y++) {
         rows[y] = nearest_source(y, destination_height, source_height);
     }
@@ -81,15 +77,30 @@ upscale_double_rows(const upscale_t* scale, const uint16_t* source, const uint16
 }
 
 static void
-upscale_mapped_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
-                    uint16_t* destination, int first_row, int row_count) {
+upscale_fractional_step(int numerator, int denominator, int* error, int* source_x) {
+    *error += numerator;
+    if (*error >= denominator) {
+        (*source_x)++;
+        *error -= denominator;
+    }
+}
+
+static void
+upscale_fractional_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
+                        uint16_t* destination, int first_row, int row_count) {
+    const int numerator = scale->source_width - 1;
+    const int denominator = scale->destination_width - 1;
     for (int y = first_row; y < first_row + row_count; y++) {
         const uint16_t* input = source + ((size_t)scale->rows[y] * scale->source_width);
         const uint16_t* input_depth = depth == NULL ? NULL : depth + ((size_t)scale->rows[y] * scale->source_width);
         uint16_t* output = destination + ((size_t)y * scale->destination_width);
+        int source_x = 0;
+        int error = denominator / 2;
         for (int x = 0; x < scale->destination_width; x++) {
-            const int source_x = scale->columns[x];
             output[x] = input_depth != NULL && input_depth[source_x] == 0 ? clear : input[source_x];
+            if (x + 1 < scale->destination_width) {
+                upscale_fractional_step(numerator, denominator, &error, &source_x);
+            }
         }
     }
 }
@@ -108,6 +119,6 @@ upscale_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* dep
     } else if (scale->integer) {
         upscale_integer_rows(scale, source, depth, clear, destination, first_row, row_count);
     } else {
-        upscale_mapped_rows(scale, source, depth, clear, destination, first_row, row_count);
+        upscale_fractional_rows(scale, source, depth, clear, destination, first_row, row_count);
     }
 }

@@ -8,13 +8,12 @@ typedef struct {
     int destination_width, destination_height;
     int horizontal_factor, vertical_factor;
     bool integer;
-    uint16_t* columns;
     uint16_t* rows;
 } upscale_t;
 
-/* Builds maps for one source and destination size. The caller retains map storage. */
+/* Builds a row map for one source and destination size. The caller retains map storage. */
 bool upscale_init(upscale_t* scale, int source_width, int source_height, int destination_width, int destination_height,
-                  uint16_t* columns, uint16_t* rows);
+                  uint16_t* rows);
 
 /* Scales destination rows [first_row, first_row + row_count). When `depth`
  * is present, a zero source depth writes `clear` instead of its colour.

@@ -70,8 +70,7 @@ raster_scratch_bytes(const raster_t* raster) {
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     return (sizeof(r3d_pipeline_vertex_t) * (size_t)raster->mesh->vertex_count)
            + ((sizeof(r3d_pipeline_rows_t) + sizeof(uint16_t)) * (size_t)raster->mesh->cluster_count)
-           + (2 * sizeof(uint16_t) * pixels)
-           + (sizeof(uint16_t) * ((size_t)raster->destination_width + (size_t)raster->destination_height));
+           + (2 * sizeof(uint16_t) * pixels) + (sizeof(uint16_t) * (size_t)raster->destination_height);
 }
 
 raster_stats_t
@@ -101,14 +100,12 @@ raster_upscale(raster_t* raster) {
     assert(raster->width > 0 && raster->height > 0);
     assert(raster->destination_width >= raster->width && raster->destination_height >= raster->height);
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
-    uint16_t* columns = b.visible + raster->mesh->cluster_count;
-    uint16_t* rows = columns + raster->destination_width;
+    uint16_t* rows = b.visible + raster->mesh->cluster_count;
     if (raster->upscale.source_width != raster->width || raster->upscale.source_height != raster->height
         || raster->upscale.destination_width != raster->destination_width
-        || raster->upscale.destination_height != raster->destination_height || raster->upscale.columns != columns
-        || raster->upscale.rows != rows) {
+        || raster->upscale.destination_height != raster->destination_height || raster->upscale.rows != rows) {
         const bool initialized = upscale_init(&raster->upscale, raster->width, raster->height,
-                                              raster->destination_width, raster->destination_height, columns, rows);
+                                              raster->destination_width, raster->destination_height, rows);
         assert(initialized);
     }
     const int mid = raster->destination_height / 2;
