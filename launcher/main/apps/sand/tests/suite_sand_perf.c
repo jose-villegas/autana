@@ -1721,7 +1721,7 @@ test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget(void) {
                                                  "loses three cells a patch, but a packed screen that has shed an "
                                                  "eighth of itself is not the scene this row means to time");
     }
-    perf_target_by_core("packed gas turn", "packed gas turn, one core", per_step, 99960, 114950, 999999, 999999);
+    perf_target_by_core("packed gas turn", "packed gas turn, one core", per_step, 99960, 114950, 110420, 126990);
     free(real);
 }
 
@@ -1772,8 +1772,7 @@ test_turning_a_half_screen_of_gas_fits_in_the_frame_budget(void) {
                                       "turning the board must move gas, not create or destroy it - decay is "
                                       "off by default, so the cell count is conserved across the turn");
     }
-    perf_target_by_core("half-screen gas turn", "half-screen gas turn, one core", per_step, 34670, 39870, 999999,
-                        999999);
+    perf_target_by_core("half-screen gas turn", "half-screen gas turn, one core", per_step, 34670, 39870, 34790, 40010);
     free(real);
 }
 
@@ -2096,8 +2095,8 @@ test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget(void) 
 
     /* A deliberately synthetic worst case, not comparable to the
      * plain-material rows. */
-    perf_target_by_core("full-screen gas cascade", "full-screen gas cascade, one core", elapsed, 176900, 203430, 999999,
-                        999999);
+    perf_target_by_core("full-screen gas cascade", "full-screen gas cascade, one core", elapsed, 176900, 203430, 178400,
+                        205160);
     free(real);
 }
 
