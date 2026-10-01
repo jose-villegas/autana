@@ -297,7 +297,7 @@ perf_target(const char* name, int64_t measured_us, int64_t goal_us, int64_t ceil
  * shifting the flash layout can move this row between builds with no work
  * changed, so check the control rows before reading a miss here as a
  * regression. */
-#define FULL_STEP_BUDGET_US 7370
+#define FULL_STEP_BUDGET_US 7290
 
 /* Goal = worst of a 5-run board capture + 1% (layout drift between images
  * moves rows by tenths of a percent), rounded up to 10 us; a change must beat
@@ -345,7 +345,7 @@ test_a_full_size_step_fits_in_the_frame_budget(void) {
     board_bookkeeping_close();
     free(big);
 
-    perf_target("full-size step", per_step, FULL_STEP_BUDGET_US, 8480);
+    perf_target("full-size step", per_step, FULL_STEP_BUDGET_US, 8380);
 }
 
 /* A frame-budget fixture that asks for two cores and measures one reads as a
@@ -429,7 +429,7 @@ test_a_screen_of_water_fits_in_the_frame_budget(void) {
      * reason a tilted pool levels at all). This is the transient cost of a
      * screen-wide collapse - water at rest is 45 us; if this cost becomes
      * sustained, argue the budget down instead of up. */
-    perf_target("screen-wide water collapse", per_step, 18500, 21280);
+    perf_target("screen-wide water collapse", per_step, 18480, 21250);
 }
 
 #ifdef DEVICE_BUILD
@@ -1361,7 +1361,7 @@ test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget(void) {
      * never runs here at all - s->impulse_count is 0 for all 390 steps - and
      * a host pass map puts ~48% of the cost in cross-flow, ~1% reactions,
      * ~1.5% gas. */
-    perf_target("settled pool landscape turn", per_step, 7920, 9110);
+    perf_target("settled pool landscape turn", per_step, 7670, 8820);
 }
 
 /* Tilt shape uses exponential moving average with tau interpolating between
@@ -1587,7 +1587,7 @@ test_a_growing_plant_bed_fits_in_the_frame_budget(void) {
     free(blocks);
 
     /* Soak/dry is 28% of this step. */
-    perf_target("growing plant bed", per_step, 46770, 53790);
+    perf_target("growing plant bed", per_step, 45950, 52840);
 }
 
 static void
@@ -1626,7 +1626,7 @@ test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
     free(blocks);
 
     /* Perf-scoped, with the block at 16x32. */
-    perf_target("campfire on sand", per_step, 26610, 30610);
+    perf_target("campfire on sand", per_step, 26100, 30010);
 }
 
 /* A tilted board is a different path, not a rotation of the same one:
@@ -1676,7 +1676,7 @@ test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget(void) {
                                                  "loses three cells a patch, but a packed screen that has shed an "
                                                  "eighth of itself is not the scene this row means to time");
     }
-    perf_target("packed gas turn", per_step, 107810, 123990);
+    perf_target("packed gas turn", per_step, 99960, 114950);
 }
 
 static void
@@ -1725,7 +1725,7 @@ test_turning_a_half_screen_of_gas_fits_in_the_frame_budget(void) {
                                       "turning the board must move gas, not create or destroy it - decay is "
                                       "off by default, so the cell count is conserved across the turn");
     }
-    perf_target("half-screen gas turn", per_step, 41130, 47300);
+    perf_target("half-screen gas turn", per_step, 34670, 39870);
 }
 
 static void
@@ -2011,7 +2011,7 @@ test_a_gravity_flip_on_every_material_at_once_stays_sane(void) {
     free(blocks);
     free(impulses);
 
-    perf_target("all-material gravity flip", per_step, 85060, 97820);
+    perf_target("all-material gravity flip", per_step, 82430, 94790);
 }
 
 static void
@@ -2060,7 +2060,7 @@ test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget(void) 
 
     /* A deliberately synthetic worst case, not comparable to the
      * plain-material rows. */
-    perf_target("full-screen gas cascade", elapsed, 191960, 220760);
+    perf_target("full-screen gas cascade", elapsed, 176900, 203430);
 }
 
 static void
@@ -2237,7 +2237,7 @@ test_fire_cascading_through_a_full_landscape_screen_of_gas_fits_in_the_frame_bud
     free(big);
     free(blocks);
 
-    perf_target("landscape gas cascade", elapsed, 189050, 217410);
+    perf_target("landscape gas cascade", elapsed, 174170, 200300);
 }
 
 /* Four liquids of different density painted upside down
@@ -2289,7 +2289,7 @@ test_four_liquids_reacting_at_once_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("four reacting liquids", per_step, 68960, 79310);
+    perf_target("four reacting liquids", per_step, 65380, 75190);
 }
 
 static void
@@ -2346,7 +2346,7 @@ test_the_lava_stress_scene_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("lava stress", per_step, 102220, 117560);
+    perf_target("lava stress", per_step, 99770, 114740);
 }
 
 static void
@@ -2397,7 +2397,7 @@ test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget(void) {
                                              "at the end of the window - steam condensing into water loses three "
                                              "cells a patch, but losing an appreciable fraction of the board "
                                              "means it decayed into something else");
-    perf_target("smoke and steam", per_step, 85040, 97796);
+    perf_target("smoke and steam", per_step, 79750, 91710);
 }
 
 /* 480 glass compartments (build_thermal_shock_scene(), shared with
@@ -2444,7 +2444,7 @@ test_the_thermal_shock_scene_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("thermal shock", per_step, 86770, 99790);
+    perf_target("thermal shock", per_step, 84950, 97690);
 }
 
 static void
@@ -2483,7 +2483,7 @@ test_the_boiler_scene_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("boiler", per_step, 24180, 27810);
+    perf_target("boiler", per_step, 22940, 26380);
 }
 
 /* Sand and dirt poured in equal amounts, water dropped over both until
@@ -2531,7 +2531,7 @@ test_the_wet_earth_scene_fits_in_the_frame_budget(void) {
     free(blocks);
 
     /* Perf-scoped, with the block at 16x32. */
-    perf_target("wet earth", per_step, 33060, 38020);
+    perf_target("wet earth", per_step, 32710, 37620);
 }
 
 /* The water-over-lava scene from this file's own section above, run as a
@@ -2577,7 +2577,7 @@ test_the_water_over_lava_scene_fits_in_the_frame_budget(void) {
     free(blocks);
     free(impulses);
 
-    perf_target("water over lava", per_step, 139930, 160920);
+    perf_target("water over lava", per_step, 133910, 154000);
 }
 
 static void
@@ -2712,7 +2712,7 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
     free(blocks);
     free(impulses);
 
-    perf_target("gunpowder basin", per_step, 30470, 35050);
+    perf_target("gunpowder basin", per_step, 29610, 34050);
 }
 
 /*
@@ -2725,18 +2725,18 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
  */
 
 /* Perf-scoped goals for the three plant-scene rows. */
-#define PLANT_RUIN_BUDGET_US    65290
-#define FILLING_BASIN_BUDGET_US 15760
-#define SNOWFALL_BUDGET_US      36150
+#define PLANT_RUIN_BUDGET_US    62480
+#define FILLING_BASIN_BUDGET_US 15740
+#define SNOWFALL_BUDGET_US      35240
 
 /* Perf-scoped; among the dearest scenes in the suite. */
-#define PLANT_POUR_BUDGET_US    68660
+#define PLANT_POUR_BUDGET_US    68460
 
 /* What is left after a landed plant stopped arming the reaction pass (see
  * may_have_faller/faller_may_move in sand.h) is the sweep's own block scan. */
 #define PLANT_IDLE_BUDGET_US    140
 
-#define MATURE_TREE_BUDGET_US   22160
+#define MATURE_TREE_BUDGET_US   21770
 
 /* A grown plant bed with acid eating down to its roots on one side of a wall
  * and lava burning its canopy on the other (build_plant_ruin_scene(), shared
@@ -2804,7 +2804,7 @@ test_the_plant_ruin_scene_fits_in_the_frame_budget(void) {
     /* THE INTERACTION IS THE FINDING: the same bed, grown the same way, is
      * 68,076 us a step while it is merely drinking rain and 83,173 once acid
      * and lava arrive - 22% for the pours alone. */
-    perf_target("plant ruin", per_step, PLANT_RUIN_BUDGET_US, 75090);
+    perf_target("plant ruin", per_step, PLANT_RUIN_BUDGET_US, 71850);
 }
 
 /* Water running down a ramp into a pool (build_filling_basin_scene(), shared
@@ -2867,7 +2867,7 @@ test_the_filling_basin_scene_fits_in_the_frame_budget(void) {
      * A third more for the same board of water, purely for settling rather
      * than dropping into vacuum - so the row the water work is tuned on is
      * the cheaper of the two cases by 33%. */
-    perf_target("filling basin", per_step, FILLING_BASIN_BUDGET_US, 18130);
+    perf_target("filling basin", per_step, FILLING_BASIN_BUDGET_US, 18100);
 }
 
 /* Snow falling onto a bank that has already crusted, over sand and dirt
@@ -2925,7 +2925,7 @@ test_the_snowfall_scene_fits_in_the_frame_budget(void) {
 
     /* 63,371 us a step from a material that had no scene at all: about what
      * a growing plant bed costs, and dearer than a campfire. */
-    perf_target("snowfall", per_step, SNOWFALL_BUDGET_US, 41580);
+    perf_target("snowfall", per_step, SNOWFALL_BUDGET_US, 40530);
 }
 
 /* The plant brush poured onto damp earth (build_plant_pour_scene()), which no
@@ -2977,7 +2977,7 @@ test_pouring_the_plant_brush_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("plant pour", per_step, PLANT_POUR_BUDGET_US, 78960);
+    perf_target("plant pour", per_step, PLANT_POUR_BUDGET_US, 78730);
 }
 
 /* The same heap once it has stopped: the state a poured garden spends almost
@@ -3062,15 +3062,15 @@ test_a_finished_tree_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("finished tree", per_step, MATURE_TREE_BUDGET_US, 25490);
+    perf_target("finished tree", per_step, MATURE_TREE_BUDGET_US, 25040);
 }
 
 /* Every row above holds the board portrait, and the block shape behind the
  * settled-block skip was swept against exactly those rows. The board is
  * played LANDSCAPE, down grid +X - geometry in
  * suite_sand_scenes.h. Perf-scoped at block 16x32. */
-#define LANDSCAPE_WATER_BUDGET_US      24610
-#define LANDSCAPE_DEEP_WATER_BUDGET_US 26250
+#define LANDSCAPE_WATER_BUDGET_US      24090
+#define LANDSCAPE_DEEP_WATER_BUDGET_US 25490
 #define LANDSCAPE_SAND_BUDGET_US       6920
 
 static int64_t
@@ -3139,7 +3139,7 @@ test_pouring_water_into_a_landscape_sand_bed_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("landscape water", per_step, LANDSCAPE_WATER_BUDGET_US, 28310);
+    perf_target("landscape water", per_step, LANDSCAPE_WATER_BUDGET_US, 27700);
 }
 
 /* The same pour onto a bed holding 65% of the board rather than 40%: a
@@ -3173,7 +3173,7 @@ test_pouring_water_into_a_deep_landscape_bed_fits_in_the_frame_budget(void) {
     free(big);
     free(blocks);
 
-    perf_target("deep landscape water", per_step, LANDSCAPE_DEEP_WATER_BUDGET_US, 30190);
+    perf_target("deep landscape water", per_step, LANDSCAPE_DEEP_WATER_BUDGET_US, 29310);
 }
 
 /* The liquid-free landscape row. Without it a geometry change that moved
