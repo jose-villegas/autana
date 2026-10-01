@@ -25,11 +25,11 @@
 #define WIRE_ORBIT_PERIOD_MS 12000
 
 /* Elevation of the camera above the mesh's own horizon, as sin/cos in
- * S3L_F units and as a small3dlib angle (S3L_F is one turn): 30 degrees. */
-#define WIRE_ELEVATION_SIN   (S3L_F / 2)
+ * FIX3_ONE units and as a fix3 angle (FIX3_ONE is one turn): 30 degrees. */
+#define WIRE_ELEVATION_SIN   (FIX3_ONE / 2)
 #define WIRE_ELEVATION_COS   443
-#define WIRE_ELEVATION_ANGLE (S3L_F / 12)
-#define WIRE_FOCAL_LENGTH    (S3L_F)
+#define WIRE_ELEVATION_ANGLE (FIX3_ONE / 12)
+#define WIRE_FOCAL_LENGTH    (FIX3_ONE)
 
 static const wire_mesh_t* current_mesh;
 static wire_cs_vertex_t* cs_vertices;
@@ -40,16 +40,16 @@ static bool need_failure_clear; /* one full-screen dirty mark to erase a prior s
 
 static uint32_t elapsed_ms;
 static r3d_line_view_t current_view;
-static S3L_Unit current_orbit_distance;
+static fix3_unit_t current_orbit_distance;
 
 static render_lab_coverage_t last_coverage;
 
 /* `orbit_distance` is chosen per mesh (the one-line wrappers below) so a
  * primitive four times another's size still fills most of the screen -
- * S3L_F itself has no notion of a mesh's physical extent to derive this
+ * FIX3_ONE itself has no notion of a mesh's physical extent to derive this
  * from automatically. */
 static void
-wire_enter(const wire_mesh_t* mesh, S3L_Unit orbit_distance) {
+wire_enter(const wire_mesh_t* mesh, fix3_unit_t orbit_distance) {
     current_mesh = mesh;
     current_orbit_distance = orbit_distance;
     elapsed_ms = 0;
@@ -89,22 +89,22 @@ wire_exit(void) {
  * plane. */
 static void
 scene_wire_plane_enter(void) {
-    wire_enter(&wire_plane_mesh, 8 * S3L_F);
+    wire_enter(&wire_plane_mesh, 8 * FIX3_ONE);
 }
 
 static void
 scene_wire_cube_enter(void) {
-    wire_enter(&wire_cube_mesh, 7 * S3L_F / 2);
+    wire_enter(&wire_cube_mesh, 7 * FIX3_ONE / 2);
 }
 
 static void
 scene_wire_sphere_enter(void) {
-    wire_enter(&wire_sphere_mesh, 4 * S3L_F);
+    wire_enter(&wire_sphere_mesh, 4 * FIX3_ONE);
 }
 
 static void
 scene_wire_capsule_enter(void) {
-    wire_enter(&wire_capsule_mesh, 7 * S3L_F);
+    wire_enter(&wire_capsule_mesh, 7 * FIX3_ONE);
 }
 
 /* The mesh spins about its own vertical axis under a fixed camera, so the
@@ -115,14 +115,14 @@ void
 wire_advance_pose(uint32_t dt_ms) {
     elapsed_ms += dt_ms;
 
-    S3L_Transform3D world;
-    S3L_transform3DInit(&world);
-    world.rotation.y = (S3L_Unit)(((uint64_t)elapsed_ms * S3L_F / WIRE_ORBIT_PERIOD_MS) % S3L_F);
+    fix3_transform_t world;
+    fix3_transform_init(&world);
+    world.rotation.y = (fix3_unit_t)(((uint64_t)elapsed_ms * FIX3_ONE / WIRE_ORBIT_PERIOD_MS) % FIX3_ONE);
 
     r3d_line_camera_t camera = {.focal = WIRE_FOCAL_LENGTH, .near_z = R3D_LINE_NEAR_Z};
-    S3L_transform3DInit(&camera.pose);
-    camera.pose.translation.y = (current_orbit_distance * WIRE_ELEVATION_SIN) / S3L_F;
-    camera.pose.translation.z = -(current_orbit_distance * WIRE_ELEVATION_COS) / S3L_F;
+    fix3_transform_init(&camera.pose);
+    camera.pose.translation.y = (current_orbit_distance * WIRE_ELEVATION_SIN) / FIX3_ONE;
+    camera.pose.translation.z = -(current_orbit_distance * WIRE_ELEVATION_COS) / FIX3_ONE;
     camera.pose.rotation.x = -WIRE_ELEVATION_ANGLE;
     camera = r3d_line_camera_upright(camera, display_shell_quarter());
 

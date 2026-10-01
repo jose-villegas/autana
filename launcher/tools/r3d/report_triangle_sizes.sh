@@ -56,7 +56,6 @@ OUT_BIN="$BUILD_DIR/triangle_sizes"
 # The same flags as run_tests.sh; -O2 because it draws every pose.
 "$CC_BIN" -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2 \
     -I "$MAIN_DIR" -I "$SCRIPT_DIR" -I "$(dirname -- "$mesh_source")" \
-    -I "$LAUNCHER_DIR/components/small3dlib/include" \
     -DR3D_SIZES_MESH="$mesh_symbol" \
     "$SCRIPT_DIR/triangle_sizes_main.c" \
     "$SCRIPT_DIR/triangle_sizes.c" \

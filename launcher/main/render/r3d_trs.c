@@ -7,44 +7,44 @@
 #define TURN_RADIANS 6.28318530718F
 #define HALF_TURN    3.14159265359F
 
-static S3L_Unit
+static fix3_unit_t
 to_units(float value) {
-    return (S3L_Unit)lroundf(value * (float)S3L_F);
+    return (fix3_unit_t)lroundf(value * (float)FIX3_ONE);
 }
 
-/* small3dlib negates each angle before taking its sine. */
-static S3L_Unit
+/* fix3 negates each angle before taking its sine. */
+static fix3_unit_t
 angle_to_units(float radians) {
     return to_units(-radians / TURN_RADIANS);
 }
 
-static S3L_Vec4
+static fix3_vec4_t
 euler_units(float ax, float ay, float az) {
-    return (S3L_Vec4){angle_to_units(ax), angle_to_units(ay), angle_to_units(az), 0};
+    return (fix3_vec4_t){angle_to_units(ax), angle_to_units(ay), angle_to_units(az), 0};
 }
 
-/* The largest gap, in S3L_F units, between small3dlib's matrix for these
+/* The largest gap, in FIX3_ONE units, between fix3's matrix for these
  * angles and the true one. */
 static float
-matrix_error(S3L_Vec4 units, const float exact[3][3]) {
-    S3L_Mat4 m;
-    S3L_makeRotationMatrixZXY(units.x, units.y, units.z, m);
+matrix_error(fix3_vec4_t units, const float exact[3][3]) {
+    fix3_mat4_t m;
+    fix3_rotation_matrix(units.x, units.y, units.z, m);
     float worst = 0.0F;
     for (int r = 0; r < 3; r++) {
         for (int c = 0; c < 3; c++) {
-            worst = fmaxf(worst, fabsf((float)m[r][c] - (exact[r][c] * (float)S3L_F)));
+            worst = fmaxf(worst, fabsf((float)m[r][c] - (exact[r][c] * (float)FIX3_ONE)));
         }
     }
     return worst;
 }
 
-/* small3dlib's matrix M (M(row, column), acting on column vectors) has
+/* fix3's matrix M (M(row, column), acting on column vectors) has
  * M(1,2) = -sin(x'), M(1,0) : M(1,1) = sin(z') : cos(z') and M(0,2) : M(2,2) =
  * sin(y') : cos(y'), a primed angle being the negated one. The quaternion's
  * matrix gives those entries back. A rotation has two such triples, and
- * small3dlib's integer sines and truncated products round each differently,
+ * fix3's integer sines and truncated products round each differently,
  * so the one whose matrix lands nearer the true rotation is taken. */
-static S3L_Vec4
+static fix3_vec4_t
 rotation_units(const float q[4]) {
     const float x = q[0];
     const float y = q[1];
@@ -58,16 +58,16 @@ rotation_units(const float q[4]) {
     const float ax = asinf(fminf(1.0F, fmaxf(-1.0F, -exact[1][2])));
     const float ay = atan2f(exact[0][2], exact[2][2]);
     const float az = atan2f(exact[1][0], exact[1][1]);
-    const S3L_Vec4 principal = euler_units(ax, ay, az);
-    const S3L_Vec4 other = euler_units(HALF_TURN - ax, ay + HALF_TURN, az + HALF_TURN);
+    const fix3_vec4_t principal = euler_units(ax, ay, az);
+    const fix3_vec4_t other = euler_units(HALF_TURN - ax, ay + HALF_TURN, az + HALF_TURN);
     return matrix_error(other, exact) < matrix_error(principal, exact) ? other : principal;
 }
 
-S3L_Transform3D
+fix3_transform_t
 r3d_trs_to_transform(const float translation[3], const float rotation[4], const float scale[3]) {
-    S3L_Transform3D t;
-    t.translation = (S3L_Vec4){to_units(translation[0]), to_units(translation[1]), to_units(translation[2]), 0};
-    t.scale = (S3L_Vec4){to_units(scale[0]), to_units(scale[1]), to_units(scale[2]), 0};
+    fix3_transform_t t;
+    t.translation = (fix3_vec4_t){to_units(translation[0]), to_units(translation[1]), to_units(translation[2]), 0};
+    t.scale = (fix3_vec4_t){to_units(scale[0]), to_units(scale[1]), to_units(scale[2]), 0};
     t.rotation = rotation_units(rotation);
     return t;
 }

@@ -16,59 +16,43 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#ifndef SMALL3DLIB_H
-#define S3L_PIXEL_FUNCTION     r3d_unused_pixel
-#define S3L_RESOLUTION_X       368 /* unused: no rasterizer runs here */
-#define S3L_RESOLUTION_Y       448
-#define S3L_Z_BUFFER           0 /* no rasterizer, no depth buffer to keep */
-#define S3L_SORT               0 /* no rasterizer, nothing to sort */
-#define S3L_MAX_TRIANGES_DRAWN 1 /* never called; small3dlib still sizes an internal array off this */
-#include "small3dlib.h"
+#include "render/fix3.h"
 
-static inline void
-r3d_unused_pixel(S3L_PixelInfo* pixel) {
-    (void)pixel;
-}
-#endif
-
-/* A small fraction of one S3L_F unit: a caller with its own physical unit
+/* A small fraction of one FIX3_ONE unit: a caller with its own physical unit
  * (a meter, a grid cell) is free to pick a near_z of its own instead. */
-#define R3D_LINE_NEAR_Z (S3L_F / 10)
+#define R3D_LINE_NEAR_Z (FIX3_ONE / 10)
 
 typedef struct {
-    S3L_Mat4 matrix; /* model * view, composed by the caller */
-    S3L_Unit focal;  /* 0 is orthographic, as small3dlib defines it */
-    S3L_Unit near_z; /* camera-space clip plane, > 0 */
-    int center_x;    /* screen pixel the optical axis lands on */
+    fix3_mat4_t matrix; /* model * view, composed by the caller */
+    fix3_unit_t focal;  /* 0 is orthographic */
+    fix3_unit_t near_z; /* camera-space clip plane, > 0 */
+    int center_x;       /* screen pixel the optical axis lands on */
     int center_y;
-    int scale; /* pixels per projection-plane unit S3L_F, both axes */
+    int scale; /* pixels per projection-plane unit FIX3_ONE, both axes */
 } r3d_line_view_t;
 
-static inline S3L_Vec4
-r3d_to_camera_space(S3L_Vec4 model_point, const r3d_line_view_t* view) {
-    S3L_vec3Xmat4(&model_point, (S3L_Unit(*)[4])view->matrix);
+static inline fix3_vec4_t
+r3d_to_camera_space(fix3_vec4_t model_point, const r3d_line_view_t* view) {
+    fix3_vec3_transform(&model_point, (fix3_unit_t(*)[4])view->matrix);
     return model_point;
 }
 
 static inline void
-r3d_camera_to_screen(S3L_Vec4 p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
-    p.z = S3L_nonZero(p.z);
-    S3L_perspectiveDivide(&p, view->focal);
+r3d_camera_to_screen(fix3_vec4_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
+    p.z = fix3_non_zero(p.z);
+    fix3_perspective_divide(&p, view->focal);
 
-    /* NOT S3L_mapProjectionPlaneToScreen(): its S3L_ScreenCoord defaults
-     * to int16_t, and S3L_USE_WIDER_TYPES would widen S3L_Unit itself to
-     * int64_t everywhere, a real cost with no native 64-bit ALU. This
-     * repeats its formula but with just the multiply done in int64_t: a
-     * near-camera point's already-divided p.x/p.y can be large enough to
-     * overflow a 32-bit product here even though the final on/off-panel
-     * result never does; gfx.c's clip_line() leans on the same trick. */
-    *screen_x = (int)(view->center_x + ((int64_t)p.x * view->scale) / S3L_F);
-    *screen_y = (int)(view->center_y - ((int64_t)p.y * view->scale) / S3L_F);
+    /* Only the multiply is 64-bit, not every unit: a near-camera point's
+     * already-divided p.x/p.y can be large enough to overflow a 32-bit
+     * product here even though the final on/off-panel result never does;
+     * gfx.c's clip_line() leans on the same trick. */
+    *screen_x = (int)(view->center_x + ((int64_t)p.x * view->scale) / FIX3_ONE);
+    *screen_y = (int)(view->center_y - ((int64_t)p.y * view->scale) / FIX3_ONE);
 }
 
 /* Draws if point is in front; checks visibility, avoids invalid coordinates. */
 static inline bool
-r3d_project_point_cs(S3L_Vec4 p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
+r3d_project_point_cs(fix3_vec4_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
     if (p.z <= view->near_z) {
         return false;
     }
@@ -79,7 +63,8 @@ r3d_project_point_cs(S3L_Vec4 p, const r3d_line_view_t* view, int* screen_x, int
 /* Clips to near plane; avoids screen wrap. Returns false if segment is at or
  * behind the plane. */
 static inline bool
-r3d_project_segment_cs(S3L_Vec4 p0, S3L_Vec4 p1, const r3d_line_view_t* view, int* ax, int* ay, int* bx, int* by) {
+r3d_project_segment_cs(fix3_vec4_t p0, fix3_vec4_t p1, const r3d_line_view_t* view, int* ax, int* ay, int* bx,
+                       int* by) {
     const bool front0 = p0.z > view->near_z;
     const bool front1 = p1.z > view->near_z;
 
@@ -90,8 +75,8 @@ r3d_project_segment_cs(S3L_Vec4 p0, S3L_Vec4 p1, const r3d_line_view_t* view, in
     if (front0 != front1) {
         /* Replace endpoint with crossing point using linear interpolation in
          * camera space. */
-        S3L_Vec4* behind = front0 ? &p1 : &p0;
-        const S3L_Vec4* front = front0 ? &p0 : &p1;
+        fix3_vec4_t* behind = front0 ? &p1 : &p0;
+        const fix3_vec4_t* front = front0 ? &p0 : &p1;
         const int64_t frac_q16 = ((int64_t)(view->near_z - behind->z) << 16) / (front->z - behind->z);
 
         behind->x += (int32_t)(((int64_t)(front->x - behind->x) * frac_q16) >> 16);

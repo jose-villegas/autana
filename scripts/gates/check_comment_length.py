@@ -36,7 +36,7 @@ import re
 import subprocess
 import sys
 
-# Vendored upstream (microui, small3dlib) and machine-written headers: neither
+# Vendored upstream (microui) and machine-written headers: neither
 # is ours to rewrite, and the generators' banner comments would dominate the
 # report.
 EXCLUDED = (

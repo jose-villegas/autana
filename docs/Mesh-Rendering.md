@@ -6,8 +6,8 @@ in [Mesh-Import.md](Mesh-Import.md).
 
 `launcher/main/render/` is the engine's 3D layer: cameras, projection, a
 span rasterizer, and a pipeline that draws a mesh whose light was baked
-offline. It sits beside `gfx/`, and the only other things it includes are
-`util/` and the vendored small3dlib, so boot and apps both call it. It
+offline. It sits beside `gfx/`, and the only other thing it includes is
+`util/`, so boot and apps both call it. It
 draws into buffers its caller hands it, and a framebuffer is only one of
 them. The layers are in [Firmware-Architecture.md](Firmware-Architecture.md).
 
@@ -52,13 +52,13 @@ would see the scene mirrored.
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
 | `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions |
-| `r3d_line_camera.h` | A camera for points and segments in small3dlib's fixed point (S3L units and turns): a pose with a roll, and the fit onto a non-square viewport |
+| `fix3.h` | Integer 3D maths, 512 to a unit and a turn: matrices, transforms, a table sine. Integer so a pixel is the same on the board, on x86 and in a pinned host render |
+| `r3d_line_camera.h` | A camera for points and segments in `fix3.h`'s fixed point: a pose with a roll, and the fit onto a non-square viewport |
 | `r3d_project.h` | Camera-space near clip and perspective projection of those points and segments |
-| `r3d_trs.h` | A float translation, quaternion and scale as one small3dlib transform, for an object an animation track moves |
+| `r3d_trs.h` | A float translation, quaternion and scale as one `fix3.h` transform, for an object an animation track moves |
 
 The line camera stays apart from `camera_t`: its pose composes with a
-model transform in integers and carries a roll, and it brings small3dlib's
-configuration with it, which `r3d.h` must not impose on a scene. Only
+model transform in integers and carries a roll. Only
 `r3d_pipeline.h` and `r3d_span_internal.h` are internal: render/ and any
 suite or host tool include them.
 

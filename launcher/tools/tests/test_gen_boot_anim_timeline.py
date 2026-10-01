@@ -86,7 +86,7 @@ class TimelineGeneratorTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("keyframes no longer live in the timeline", result.stderr)
 
-    def test_a_motion_scale_that_would_overflow_small3dlib_is_refused(self):
+    def test_a_motion_scale_that_would_overflow_the_fixed_point_is_refused(self):
         result = self.generate(motion=motion_glb(space_scale=9.0))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("safety margin", result.stderr)

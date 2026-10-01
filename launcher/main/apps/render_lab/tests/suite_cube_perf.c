@@ -3,7 +3,7 @@
  *
  * Measures frame budget breakdown for the rotating cube app over 10 seconds:
  * - Total frame time (wall clock)
- * - Simulation/logic time (spinning, small3dlib scene setup)
+ * - Simulation/logic time (spinning, scene setup)
  * - Rasterization time (the span rasterizer filling the full frame)
  * - Present time (QSPI DMA transfer)
  * - Reports: min, max, average, median, p95

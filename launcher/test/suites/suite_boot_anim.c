@@ -191,16 +191,16 @@ test_the_quarter_points_are_exact(void) {
  * pre-finale tests meant by "full progress". */
 #define CURVE_DONE_MS 2600
 
-/* A plain identity matrix (small3dlib's own S3L_mat4Init()) and an
+/* A plain identity matrix (fix3_mat4_init()) and an
  * orthographic focal length (0; see boot_anim.h's "The projection" section
  * on why 0 means that), the simplest boot_anim_view_t there is, built
  * directly rather than through boot_anim_view()/the motion tracks, so
  * these tests can check boot_anim_project()'s own arithmetic in isolation
  * from whatever the CURRENT seed motion happens to say. */
 static boot_anim_view_t
-identity_view(S3L_Unit focal) {
+identity_view(fix3_unit_t focal) {
     boot_anim_view_t v;
-    S3L_mat4Init(v.matrix);
+    fix3_mat4_init(v.matrix);
     v.focal = focal;
     v.near_z = R3D_LINE_NEAR_Z;
     v.center_x = PANEL_W / 2;
@@ -212,7 +212,7 @@ identity_view(S3L_Unit focal) {
 /* The space's own local origin (0,0,0) has to land at the screen's centre
  * under an identity transform and an orthographic projection: no camera
  * offset, no rotation, no depth-dependent scale to reason about, just
- * small3dlib's own S3L_mapProjectionPlaneToScreen() centring a (0,0) point.
+ * the projection centring a (0,0) point.
  * The most basic thing boot_anim_project() has to get right. */
 static void
 test_identity_transform_leaves_the_origin_at_screen_centre(void) {
@@ -235,7 +235,7 @@ test_identity_transform_leaves_the_origin_at_screen_centre(void) {
  * depth, re is the offset compared at two depths. */
 static void
 test_a_point_further_from_the_camera_projects_smaller(void) {
-    const boot_anim_view_t view = identity_view(S3L_F);
+    const boot_anim_view_t view = identity_view(FIX3_ONE);
     const int32_t re = 2 * BOOT_ANIM_ONE;
     const int32_t near_im = 1 * BOOT_ANIM_ONE;
     const int32_t far_im = 4 * BOOT_ANIM_ONE;
@@ -258,11 +258,11 @@ test_a_point_further_from_the_camera_projects_smaller(void) {
  * behind the near plane, rather than projecting it to an ordinary-looking
  * but geometrically nonsense screen position. `im_q12 = 408` sits exactly
  * ON the boundary: under an identity transform
- * BOOT_ANIM_ZETA_TO_S3L(408) = 51 = R3D_LINE_NEAR_Z, so this exercises
+ * BOOT_ANIM_ZETA_TO_FIX3(408) = 51 = R3D_LINE_NEAR_Z, so this exercises
  * the `<=`, which a `<` typo would still pass anywhere further back. */
 static void
 test_project_point_rejects_a_point_at_the_near_plane(void) {
-    const boot_anim_view_t view = identity_view(S3L_F);
+    const boot_anim_view_t view = identity_view(FIX3_ONE);
     int x = -1, y = -1;
 
     const bool ok = boot_anim_project_point(0, 408, 0, &view, &x, &y);
@@ -280,9 +280,9 @@ test_project_point_rejects_a_point_at_the_near_plane(void) {
  * outright rather than clip against itself. */
 static void
 test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
-    const boot_anim_view_t view = identity_view(S3L_F);
-    const S3L_Vec4 p0 = {100, 200, 0, S3L_F};
-    const S3L_Vec4 p1 = {-100, -200, R3D_LINE_NEAR_Z, S3L_F};
+    const boot_anim_view_t view = identity_view(FIX3_ONE);
+    const fix3_vec4_t p0 = {100, 200, 0, FIX3_ONE};
+    const fix3_vec4_t p1 = {-100, -200, R3D_LINE_NEAR_Z, FIX3_ONE};
     int ax, ay, bx, by;
 
     const bool ok = r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by);
@@ -298,12 +298,12 @@ test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
  *
  *   clip fraction = 86/496 = 0.17338...
  *   tolerance (20px) contains the Q16 error (7px, 0px) while rejecting
- *   S3L_F(512)'s result for the same inputs (3831px, 2352px off). */
+ *   FIX3_ONE(512)'s result for the same inputs (3831px, 2352px off). */
 static void
 test_project_segment_cs_clips_asymmetric_coordinates(void) {
-    const boot_anim_view_t view = identity_view(S3L_F);
-    const S3L_Vec4 p0 = {-300123, 250009, R3D_LINE_NEAR_Z - 86, S3L_F};
-    const S3L_Vec4 p1 = {401777, -180321, R3D_LINE_NEAR_Z + 410, S3L_F};
+    const boot_anim_view_t view = identity_view(FIX3_ONE);
+    const fix3_vec4_t p0 = {-300123, 250009, R3D_LINE_NEAR_Z - 86, FIX3_ONE};
+    const fix3_vec4_t p1 = {401777, -180321, R3D_LINE_NEAR_Z + 410, FIX3_ONE};
 
     int ax, ay, bx, by;
     TEST_ASSERT_TRUE_MESSAGE(r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by),
@@ -316,24 +316,24 @@ test_project_segment_cs_clips_asymmetric_coordinates(void) {
     const double exact_x = p0.x + (p1.x - p0.x) * frac;
     const double exact_y = p0.y + (p1.y - p0.y) * frac;
     int ex, ey;
-    const S3L_Vec4 exact_clip = {(S3L_Unit)exact_x, (S3L_Unit)exact_y, R3D_LINE_NEAR_Z, S3L_F};
+    const fix3_vec4_t exact_clip = {(fix3_unit_t)exact_x, (fix3_unit_t)exact_y, R3D_LINE_NEAR_Z, FIX3_ONE};
     r3d_camera_to_screen(exact_clip, &view, &ex, &ey);
 
     const int tolerance = 20;
     TEST_ASSERT_INT_WITHIN_MESSAGE(tolerance, ex, ax,
                                    "the clipped endpoint's screen x should be close to a "
                                    "double-precision reference - a wide miss here is exactly the "
-                                   "S3L_F-precision rounding this test guards against");
+                                   "FIX3_ONE-precision rounding this test guards against");
     TEST_ASSERT_INT_WITHIN_MESSAGE(tolerance, ey, ay,
                                    "the clipped endpoint's screen y should be close to a "
                                    "double-precision reference - a wide miss here is exactly the "
-                                   "S3L_F-precision rounding this test guards against");
+                                   "FIX3_ONE-precision rounding this test guards against");
 
     /* p1 was already in front: not clipped at all, so it must match
      * projecting it directly, independent of whatever the clip branch
      * above did. */
     int fx, fy;
-    S3L_Vec4 p1_copy = p1;
+    fix3_vec4_t p1_copy = p1;
     r3d_camera_to_screen(p1_copy, &view, &fx, &fy);
     TEST_ASSERT_EQUAL_INT_MESSAGE(fx, bx,
                                   "the untouched (already in front) endpoint should project "
@@ -417,16 +417,16 @@ test_spoke_reveal_target_advances_evenly_in_screen_space(void) {
 }
 
 /* "Scale renders as 1,1,1 for default values", the exact ask this table
- * exists to satisfy: an untouched space's scale has to read back as S3L_F (small3dlib's
+ * exists to satisfy: an untouched space's scale has to read back as FIX3_ONE (fix3's
  * own 1.0), on every axis, not some other number that happens to look
  * right today. */
 static void
 test_an_untouched_scale_reads_back_as_identity(void) {
     const boot_anim_timeline_state_t st = boot_anim_timeline_sample(0);
 
-    TEST_ASSERT_EQUAL_INT32_MESSAGE(S3L_F, st.space.scale.x, "an unscaled space's scale.x should read back as 1.0");
-    TEST_ASSERT_EQUAL_INT32_MESSAGE(S3L_F, st.space.scale.y, "an unscaled space's scale.y should read back as 1.0");
-    TEST_ASSERT_EQUAL_INT32_MESSAGE(S3L_F, st.space.scale.z, "an unscaled space's scale.z should read back as 1.0");
+    TEST_ASSERT_EQUAL_INT32_MESSAGE(FIX3_ONE, st.space.scale.x, "an unscaled space's scale.x should read back as 1.0");
+    TEST_ASSERT_EQUAL_INT32_MESSAGE(FIX3_ONE, st.space.scale.y, "an unscaled space's scale.y should read back as 1.0");
+    TEST_ASSERT_EQUAL_INT32_MESSAGE(FIX3_ONE, st.space.scale.z, "an unscaled space's scale.z should read back as 1.0");
 }
 
 /*
@@ -813,14 +813,14 @@ test_spline_cs_matches_transforming_the_world_space_spline(void) {
     const boot_anim_pt_t b = pt(2500, -1800, 900);
     const boot_anim_pt_t c = pt(600, 3200, 1600);
 
-    const S3L_Vec4 ta = boot_anim_to_camera_space(a.re, a.im, a.t, &view);
-    const S3L_Vec4 tb = boot_anim_to_camera_space(b.re, b.im, b.t, &view);
-    const S3L_Vec4 tc = boot_anim_to_camera_space(c.re, c.im, c.t, &view);
+    const fix3_vec4_t ta = boot_anim_to_camera_space(a.re, a.im, a.t, &view);
+    const fix3_vec4_t tb = boot_anim_to_camera_space(b.re, b.im, b.t, &view);
+    const fix3_vec4_t tc = boot_anim_to_camera_space(c.re, c.im, c.t, &view);
 
     for (int32_t t = 0; t <= BOOT_ANIM_ONE; t += 197) {
         const boot_anim_pt_t world = boot_anim_spline(a, b, c, t);
-        const S3L_Vec4 want = boot_anim_to_camera_space(world.re, world.im, world.t, &view);
-        const S3L_Vec4 got = boot_anim_spline_cs(ta, tb, tc, t);
+        const fix3_vec4_t want = boot_anim_to_camera_space(world.re, world.im, world.t, &view);
+        const fix3_vec4_t got = boot_anim_spline_cs(ta, tb, tc, t);
 
         TEST_ASSERT_INT32_WITHIN_MESSAGE(2, want.x, got.x,
                                          "transform-then-interpolate must match interpolate-then-"
@@ -843,8 +843,8 @@ test_spline_cs_matches_transforming_the_world_space_spline(void) {
 static void
 test_curve_lod_steps_keeps_full_detail_for_a_wide_chord(void) {
     const boot_anim_view_t view = identity_view(0);
-    const S3L_Vec4 a = {-100, 0, 5 * S3L_F, S3L_F};
-    const S3L_Vec4 c = {100, 0, 5 * S3L_F, S3L_F};
+    const fix3_vec4_t a = {-100, 0, 5 * FIX3_ONE, FIX3_ONE};
+    const fix3_vec4_t c = {100, 0, 5 * FIX3_ONE, FIX3_ONE};
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(BOOT_ANIM_SPLINE_STEPS, boot_anim_curve_lod_steps(a, c, &view),
                                   "a span whose two ends land well apart on screen must keep full "
@@ -859,8 +859,8 @@ test_curve_lod_steps_keeps_full_detail_for_a_wide_chord(void) {
 static void
 test_curve_lod_steps_collapses_a_tiny_chord_to_one_step(void) {
     const boot_anim_view_t view = identity_view(0);
-    const S3L_Vec4 a = {40, 40, 5 * S3L_F, S3L_F};
-    const S3L_Vec4 c = {41, 40, 5 * S3L_F, S3L_F};
+    const fix3_vec4_t a = {40, 40, 5 * FIX3_ONE, FIX3_ONE};
+    const fix3_vec4_t c = {41, 40, 5 * FIX3_ONE, FIX3_ONE};
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, boot_anim_curve_lod_steps(a, c, &view),
                                   "two points landing within a pixel of each other should collapse "
@@ -871,16 +871,16 @@ test_curve_lod_steps_collapses_a_tiny_chord_to_one_step(void) {
  * real: the perspective cross-multiplication has to agree with what the
  * projection would say; the SAME camera-space pair reads as a wide chord
  * near the camera and a tiny one far from it, because apparent size falls
- * off with z. dx=100 S3L units with focal=S3L_F: at z of one unit it spans
+ * off with z. dx=100 fixed-point units with focal=FIX3_ONE: at z of one unit it spans
  * ~36 screen px (well over the 3px bar); pushed a hundred units out it
  * spans well under one. */
 static void
 test_screen_chord_shrinks_with_distance(void) {
-    const boot_anim_view_t view = identity_view(S3L_F);
-    const S3L_Vec4 near_a = {0, 0, S3L_F, S3L_F};
-    const S3L_Vec4 near_c = {100, 0, S3L_F, S3L_F};
-    const S3L_Vec4 far_a = {0, 0, 100 * S3L_F, S3L_F};
-    const S3L_Vec4 far_c = {100, 0, 100 * S3L_F, S3L_F};
+    const boot_anim_view_t view = identity_view(FIX3_ONE);
+    const fix3_vec4_t near_a = {0, 0, FIX3_ONE, FIX3_ONE};
+    const fix3_vec4_t near_c = {100, 0, FIX3_ONE, FIX3_ONE};
+    const fix3_vec4_t far_a = {0, 0, 100 * FIX3_ONE, FIX3_ONE};
+    const fix3_vec4_t far_c = {100, 0, 100 * FIX3_ONE, FIX3_ONE};
 
     TEST_ASSERT_FALSE_MESSAGE(boot_anim_screen_chord_lt(near_a, near_c, &view, 3),
                               "a pair spanning tens of pixels near the camera must not read as "
@@ -911,9 +911,9 @@ test_lod_stride_tiers_by_extent(void) {
  * guess low. */
 static void
 test_curve_lod_steps_keeps_full_detail_when_the_probe_cannot_project(void) {
-    const boot_anim_view_t view = identity_view(S3L_F);
-    const S3L_Vec4 a = {40, 40, 0, S3L_F};
-    const S3L_Vec4 c = {41, 40, R3D_LINE_NEAR_Z - 1, S3L_F};
+    const boot_anim_view_t view = identity_view(FIX3_ONE);
+    const fix3_vec4_t a = {40, 40, 0, FIX3_ONE};
+    const fix3_vec4_t c = {41, 40, R3D_LINE_NEAR_Z - 1, FIX3_ONE};
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(BOOT_ANIM_SPLINE_STEPS, boot_anim_curve_lod_steps(a, c, &view),
                                   "a span the probe cannot project at all must default to full "

@@ -206,7 +206,6 @@ case "${1:-}" in
         printf '%s\n' -std=c11 -Wall -Wextra -Wno-unused-parameter -g -O1 \
             -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
             -I "$TEST_DIR/../components/microui/include" \
-            -I "$TEST_DIR/../components/small3dlib/include" \
             -I "$TEST_DIR/../tools/gen" -I "$TEST_DIR/../tools/r3d" $HEAP_ARENA_DEFINES \
             -include "$TEST_DIR/timing.h"
         exit 0
@@ -276,8 +275,7 @@ fi
 #
 # components/microui/include is on the path for ui_style.h's sake, which needs
 # mu_Rect and mu_Color; microui.c itself is linked for the one suite that
-# drives the real widget code. small3dlib is all `static inline`, so its
-# headers are safe beside boot_anim.c's math.
+# drives the real widget code.
 #
 # --wrap routes the suite's own allocations into heap_arena.c's device-sized
 # arena, so a fixture that asks for more than the board has fails HERE
@@ -325,7 +323,7 @@ TEST_N=$(native "$TEST_DIR")
 LAUNCHER_N=$(native "$(CDPATH= cd -- "$TEST_DIR/.." && pwd)")
 BUILD_N=$(native "$BUILD_DIR")
 COMMON_INC="-I $MAIN_N -I $TEST_N -I $TEST_N/framework -I $TEST_N/stubs"
-TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/components/small3dlib/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
+TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
 LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm"
 
 # The source lists, one native path per line. Test code (test/'s own
