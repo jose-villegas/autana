@@ -45,6 +45,11 @@ GAIN = 8
 ZOOM = 4
 CROP_FRAMES = 2
 CSV_HEADER = "frame,time_ms,changed_pct,mean_abs,holes_a,holes_b"
+# The colour space every ΔE here is measured in: gamma-2.2 RGB, linear sRGB
+# primaries to XYZ, and the D65 white CIELAB is relative to.
+GAMMA = 2.2
+SRGB_TO_XYZ = ((0.4124564, 0.3575761, 0.1804375), (0.2126729, 0.7151522, 0.0721750), (0.0193339, 0.1191920, 0.9503041))
+D65_WHITE = (0.95047, 1.0, 1.08883)
 
 
 @dataclass
@@ -90,15 +95,14 @@ def _pixels(picture):
 
 def _linear_rgb(picture):
     rgb = np.asarray(picture.convert("RGB"), dtype=float) / 255.0
-    return rgb ** 2.2
+    return rgb**GAMMA
 
 
 def _lab(picture):
     """CIELAB (D65) from this project's gamma-encoded RGB images."""
     rgb = _linear_rgb(picture)
-    xyz = rgb @ np.array([[0.4124564, 0.3575761, 0.1804375], [0.2126729, 0.7151522, 0.0721750],
-                          [0.0193339, 0.1191920, 0.9503041]]).T
-    scaled = xyz / np.array([0.95047, 1.0, 1.08883])
+    xyz = rgb @ np.array(SRGB_TO_XYZ).T
+    scaled = xyz / np.array(D65_WHITE)
     delta = 6 / 29
     f = np.where(scaled > delta**3, np.cbrt(scaled), scaled / (3 * delta**2) + 4 / 29)
     return np.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])], axis=2)

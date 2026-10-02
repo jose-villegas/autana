@@ -38,7 +38,7 @@ def sun_scene(direction):
     return settings, scene
 
 
-LOOK_DOWN = np.array([0.0, 0.0, 1.0, 0.0, 0.0, -1.0])
+LOOK_DOWN = None if np is None else np.array([0.0, 0.0, 1.0, 0.0, 0.0, -1.0])
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
