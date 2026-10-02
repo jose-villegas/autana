@@ -136,12 +136,12 @@ test_plane_edges_join_grid_neighbours_one_step_apart(void) {
 
 static void
 test_plane_grid_is_centred(void) {
-    int min_x = wire_plane_mesh.vertices[0].x, max_x = min_x;
-    int min_z = wire_plane_mesh.vertices[0].z, max_z = min_z;
+    float min_x = wire_plane_mesh.vertices[0].x, max_x = min_x;
+    float min_z = wire_plane_mesh.vertices[0].z, max_z = min_z;
 
     for (uint16_t i = 0; i < wire_plane_mesh.vertex_count; i++) {
-        const wire_vertex_t* v = &wire_plane_mesh.vertices[i];
-        TEST_ASSERT_EQUAL_INT(0, v->y);
+        const vec3f_t* v = &wire_plane_mesh.vertices[i];
+        TEST_ASSERT_EQUAL_FLOAT(0.0F, v->y);
         if (v->x < min_x) {
             min_x = v->x;
         }
@@ -156,8 +156,8 @@ test_plane_grid_is_centred(void) {
         }
     }
 
-    TEST_ASSERT_EQUAL_INT(0, min_x + max_x);
-    TEST_ASSERT_EQUAL_INT(0, min_z + max_z);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, 0.0F, min_x + max_x);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, 0.0F, min_z + max_z);
 }
 
 /* Cube */
@@ -176,16 +176,11 @@ test_sphere_counts_match_the_defined_density(void) {
     TEST_ASSERT_EQUAL_INT(WIRE_SPHERE_MERIDIANS * (2 * WIRE_SPHERE_RINGS + 1), wire_sphere_mesh.edge_count);
 }
 
-/* Unity's double asserts are excluded in this build (see unity_internals.h,
- * UNITY_INCLUDE_DOUBLE never defined here), so the reference is computed in
- * plain double and compared as an int, the same pattern suite_boot_anim.c
- * uses for its own double-precision reference. */
 static void
 test_sphere_vertices_sit_at_the_radius(void) {
     for (uint16_t i = 0; i < wire_sphere_mesh.vertex_count; i++) {
-        const wire_vertex_t* v = &wire_sphere_mesh.vertices[i];
-        const double distance = sqrt((double)v->x * v->x + (double)v->y * v->y + (double)v->z * v->z);
-        TEST_ASSERT_INT_WITHIN(1, WIRE_SPHERE_RADIUS, (int)(distance + 0.5));
+        const vec3f_t* v = &wire_sphere_mesh.vertices[i];
+        TEST_ASSERT_FLOAT_WITHIN(1e-4F, WIRE_SPHERE_RADIUS, sqrtf(vec3f_dot(*v, *v)));
     }
 }
 
@@ -200,11 +195,10 @@ test_capsule_counts_match_the_defined_density(void) {
 static void
 test_capsule_vertices_sit_at_the_radius_from_their_hemisphere_centre(void) {
     for (uint16_t i = 0; i < wire_capsule_mesh.vertex_count; i++) {
-        const wire_vertex_t* v = &wire_capsule_mesh.vertices[i];
-        const double centre_y = v->y >= 0 ? WIRE_CAPSULE_CYLINDER_HALF_LEN : -WIRE_CAPSULE_CYLINDER_HALF_LEN;
-        const double dy = v->y - centre_y;
-        const double distance = sqrt((double)v->x * v->x + dy * dy + (double)v->z * v->z);
-        TEST_ASSERT_INT_WITHIN(1, WIRE_CAPSULE_RADIUS, (int)(distance + 0.5));
+        const vec3f_t* v = &wire_capsule_mesh.vertices[i];
+        const float centre_y = v->y >= 0.0F ? WIRE_CAPSULE_CYLINDER_HALF_LEN : -WIRE_CAPSULE_CYLINDER_HALF_LEN;
+        const vec3f_t from_centre = {v->x, v->y - centre_y, v->z};
+        TEST_ASSERT_FLOAT_WITHIN(1e-4F, WIRE_CAPSULE_RADIUS, sqrtf(vec3f_dot(from_centre, from_centre)));
     }
 }
 

@@ -54,7 +54,7 @@ test_hud_screen_command_list_fits_budget(void) {
      * the widest status a wire scene reports (wire_primitives_generated.h's
      * own 1024/2048 mesh-wide caps). */
     const render_lab_hud_screen_state_t state = {
-        .fps_value = 999.9,
+        .fps_value = 999.9F,
         .fps_box_x_override = -1,
         .scene_title = "Wire Capsule",
         .scene_title_alpha = 255,

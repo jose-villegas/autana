@@ -24,12 +24,9 @@
 
 #define WIRE_ORBIT_PERIOD_MS 12000
 
-/* Elevation of the camera above the mesh's own horizon, as sin/cos in
- * VEC4I_ONE units and as a matrix4i angle (VEC4I_ONE is one turn): 30 degrees. */
-#define WIRE_ELEVATION_SIN   (VEC4I_ONE / 2)
-#define WIRE_ELEVATION_COS   443
-#define WIRE_ELEVATION_ANGLE (VEC4I_ONE / 12)
-#define WIRE_FOCAL_LENGTH    (VEC4I_ONE)
+/* Elevation of the camera above the mesh's own horizon: 30 degrees. */
+#define WIRE_ELEVATION_ANGLE (MATH_PI / 6.0F)
+#define WIRE_FOCAL_LENGTH    1.0F
 
 static const wire_mesh_t* current_mesh;
 static wire_cs_vertex_t* cs_vertices;
@@ -40,16 +37,15 @@ static bool need_failure_clear; /* one full-screen dirty mark to erase a prior s
 
 static uint32_t elapsed_ms;
 static r3d_line_view_t current_view;
-static vec4i_unit_t current_orbit_distance;
+static float current_orbit_distance;
 
 static render_lab_coverage_t last_coverage;
 
 /* `orbit_distance` is chosen per mesh (the one-line wrappers below) so a
- * primitive four times another's size still fills most of the screen -
- * VEC4I_ONE itself has no notion of a mesh's physical extent to derive this
- * from automatically. */
+ * primitive four times another's size still fills most of the screen - the
+ * mesh carries no notion of its own extent to derive this from. */
 static void
-wire_enter(const wire_mesh_t* mesh, vec4i_unit_t orbit_distance) {
+wire_enter(const wire_mesh_t* mesh, float orbit_distance) {
     current_mesh = mesh;
     current_orbit_distance = orbit_distance;
     elapsed_ms = 0;
@@ -89,22 +85,22 @@ wire_exit(void) {
  * plane. */
 static void
 scene_wire_plane_enter(void) {
-    wire_enter(&wire_plane_mesh, 8 * VEC4I_ONE);
+    wire_enter(&wire_plane_mesh, 8.0F);
 }
 
 static void
 scene_wire_cube_enter(void) {
-    wire_enter(&wire_cube_mesh, 7 * VEC4I_ONE / 2);
+    wire_enter(&wire_cube_mesh, 3.5F);
 }
 
 static void
 scene_wire_sphere_enter(void) {
-    wire_enter(&wire_sphere_mesh, 4 * VEC4I_ONE);
+    wire_enter(&wire_sphere_mesh, 4.0F);
 }
 
 static void
 scene_wire_capsule_enter(void) {
-    wire_enter(&wire_capsule_mesh, 7 * VEC4I_ONE);
+    wire_enter(&wire_capsule_mesh, 7.0F);
 }
 
 /* The mesh spins about its own vertical axis under a fixed camera, so the
@@ -115,19 +111,18 @@ void
 wire_advance_pose(uint32_t dt_ms) {
     elapsed_ms += dt_ms;
 
-    matrix4i_transform_t world;
-    matrix4i_transform_init(&world);
-    world.rotation.y = (vec4i_unit_t)(((uint64_t)elapsed_ms * VEC4I_ONE / WIRE_ORBIT_PERIOD_MS) % VEC4I_ONE);
+    const float orbit = (float)(elapsed_ms % WIRE_ORBIT_PERIOD_MS) / (float)WIRE_ORBIT_PERIOD_MS;
+    transformf_t world = TRANSFORMF_IDENTITY;
+    transformf_set_rotation(&world, quatf_from_euler((vec3f_t){0.0F, -MATH_TAU * orbit, 0.0F}));
 
-    r3d_line_camera_t camera = {.focal = WIRE_FOCAL_LENGTH, .near_z = R3D_LINE_NEAR_Z};
-    matrix4i_transform_init(&camera.pose);
-    camera.pose.translation.y = (current_orbit_distance * WIRE_ELEVATION_SIN) / VEC4I_ONE;
-    camera.pose.translation.z = -(current_orbit_distance * WIRE_ELEVATION_COS) / VEC4I_ONE;
-    camera.pose.rotation.x = -WIRE_ELEVATION_ANGLE;
+    r3d_line_camera_t camera = {.pose = TRANSFORMF_IDENTITY, .focal = WIRE_FOCAL_LENGTH, .near_z = R3D_LINE_NEAR_Z};
+    transformf_set_position(&camera.pose, (vec3f_t){0.0F, current_orbit_distance * sinf(WIRE_ELEVATION_ANGLE),
+                                                    -current_orbit_distance * cosf(WIRE_ELEVATION_ANGLE)});
+    transformf_set_rotation(&camera.pose, quatf_from_euler((vec3f_t){WIRE_ELEVATION_ANGLE, 0.0F, 0.0F}));
     camera = r3d_line_camera_upright(camera, display_shell_quarter());
 
     const viewport_t viewport = {.width = GFX_WIDTH, .height = GFX_HEIGHT, .quarter = 0};
-    current_view = r3d_line_camera_view(camera, world, viewport);
+    current_view = r3d_line_camera_view(camera, &world, viewport);
 }
 
 /* Exposed for suite_wire_perf.c to time separately - the vertex stage. */

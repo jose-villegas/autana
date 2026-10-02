@@ -7,8 +7,6 @@
  * into software emulation an order of magnitude slower. Both pragmas below
  * make that a compile error rather than a hope.
  */
-#pragma GCC diagnostic error "-Wdouble-promotion"
-#pragma GCC diagnostic error "-Wfloat-conversion"
 
 #include "rt_cornell.h"
 

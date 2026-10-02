@@ -82,7 +82,7 @@ fi
 # Warnings are errors: a host build catches mistakes the target build misses,
 # and strictness costs nothing in tests.
 # 64-bit pointers and 8-byte alignment make every command bigger on the host.
-BASE_CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -Wno-unused-parameter -g -O1"
+BASE_CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -ffp-contract=off -Wno-unused-parameter -g -O1"
 CFLAGS="$BASE_CFLAGS"
 if [ "$SANITIZE" = 1 ]; then
     # Instrumentation widens the ranges that format-truncation reasons about.
@@ -137,7 +137,6 @@ $MAIN_DIR/render/r3d_pipeline.c
 $MAIN_DIR/render/upscale.c
 $MAIN_DIR/render/r3d_span.c
 $MAIN_DIR/render/r3d_scene.c
-$MAIN_DIR/render/r3d_trs.c
 $MAIN_DIR/scene/scene.c
 $MAIN_DIR/scene/scene_draw.c
 $MAIN_DIR/util/tune.c

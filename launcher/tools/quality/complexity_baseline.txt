@@ -447,7 +447,6 @@
 9	launcher/test/suites/suite_r3d_lit.c:1534	reference_frame
 9	launcher/test/suites/suite_r3d_lit.c:309	reference_inside
 9	launcher/test/suites/suite_r3d_lit.c:340	test_every_triangle_covers_exactly_the_centres_the_top_left_rule_gives
-9	launcher/test/suites/suite_r3d_trs.c:43	quaternion_of
 8	launcher/main/apps/input_lab/app_input_lab.c:297	input_lab_frame
 8	launcher/main/apps/render_lab/rt_path.c:270	trace_path
 8	launcher/main/apps/render_lab/tests/suite_sponza.c:170	clearance
@@ -994,7 +993,6 @@
 6	launcher/test/suites/suite_r3d_lit.c:512	test_a_triangle_drawn_over_nearer_depth_writes_exactly_what_it_would_alone
 6	launcher/test/suites/suite_r3d_lit.c:1857	test_the_partial_tiles_at_the_right_and_bottom_are_reduced_within_the_frame
 6	launcher/test/suites/suite_r3d_lit.c:1588	test_the_two_core_frame_matches_one_full_draw
-6	launcher/test/suites/suite_r3d_trs.c:103	test_a_rotation_read_back_builds_the_matrix_it_came_from
 6	launcher/test/suites/suite_ridge_motion.c:56	test_a_breath_starts_rigid_swells_and_comes_back_rigid
 6	launcher/test/suites/suite_ridge_perf.c:158	pixels_unlike_a_full_paint_counting
 6	launcher/test/suites/suite_touch_fsm.c:168	test_a_full_tap_produces_exactly_one_press_and_one_release
@@ -1878,7 +1876,6 @@
 3	launcher/main/render/r3d_span.c:436	set_up_planes
 3	launcher/main/render/r3d_span.c:356	small_edge
 3	launcher/main/render/r3d_span.c:314	sort_by_y
-3	launcher/main/render/r3d_trs.c:29	matrix_error
 3	launcher/main/render/raster.c:32	draw_slice
 3	launcher/main/render/raster_show.c:92	show_tiles
 3	launcher/main/ui/ui.c:209	paint_canvas
@@ -1956,7 +1953,6 @@
 3	launcher/test/suites/suite_r3d_lit.c:1231	test_face_colours_survive_a_triangle_clipped_by_the_near_plane
 3	launcher/test/suites/suite_r3d_lit.c:1553	test_the_frame_carves_its_scratch_without_overlap
 3	launcher/test/suites/suite_r3d_lit.c:64	test_two_triangles_sharing_an_edge_cover_a_square_exactly_once
-3	launcher/test/suites/suite_r3d_trs.c:28	assert_same_rotation
 3	launcher/test/suites/suite_ridge_curve.c:50	band_sum
 3	launcher/test/suites/suite_ridge_curve.c:93	test_every_height_is_inside_the_frame_and_near_its_neighbour
 3	launcher/test/suites/suite_ridge_curve.c:104	test_the_summit_is_on_the_right_and_the_slopes_fall_to_both_sides

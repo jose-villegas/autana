@@ -43,7 +43,6 @@ set(app_srcs
     "render/upscale.c"
     "render/r3d_span.c"
     "render/r3d_scene.c"
-    "render/r3d_trs.c"
     "scene/scene.c"
     "scene/scene_draw.c"
     "scene/scene_shell.c"
@@ -255,6 +254,13 @@ idf_component_register(
 
 if(NOT CMAKE_SCRIPT_MODE_FILE)
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=vla -Werror=unused-macros)
+
+    # The FPU has no double: a float promoted to one, or a double constant in
+    # float maths, runs in software at an order of magnitude the cost. Both
+    # are compile errors across the firmware, and the link gate
+    # (tools/build/check_no_soft_double.py) names any soft-double routine the
+    # image still pulls in.
+    target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=double-promotion -Werror=float-conversion)
 
     # The asset pack is a build product: every baked mesh the import and scene
     # files name, packed into one image that flashes to the "assets" partition
