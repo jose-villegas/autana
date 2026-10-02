@@ -98,6 +98,7 @@ seal(uint8_t* pack, uint32_t total) {
 
 typedef struct {
     uint8_t* pack;
+    uint8_t* raw;
     uint8_t* entry;
     uint32_t total;
     uint32_t entry_size;
@@ -105,8 +106,10 @@ typedef struct {
 
 static fixture_t
 fixture(void) {
-    fixture_t f = {.pack = malloc(BUFFER_BYTES), .entry = malloc(128)};
-    TEST_ASSERT_NOT_NULL(f.pack);
+    /* The reader requires a 16-byte base; the device's malloc only gives 8. */
+    fixture_t f = {.raw = malloc(BUFFER_BYTES + 16), .entry = malloc(128)};
+    TEST_ASSERT_NOT_NULL(f.raw);
+    f.pack = f.raw + (16 - ((uintptr_t)f.raw % 16)) % 16;
     TEST_ASSERT_NOT_NULL(f.entry);
     f.entry_size = make_mesh_entry(f.entry);
     f.total = make_pack(f.pack, f.entry, f.entry_size, R3D_LIT_MESH_ASSET);
@@ -116,7 +119,7 @@ fixture(void) {
 static void
 release(fixture_t* f) {
     free(f->entry);
-    free(f->pack);
+    free(f->raw);
 }
 
 static void
