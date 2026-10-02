@@ -5,11 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "esp_heap_caps.h"
-
 #include "asset/asset_store.h"
 #include "gfx/gfx_color.h"
 #include "scene/scene_internal.h"
+#include "util/memory.h"
 
 #define DEFS_MAX   16
 #define LOADED_MAX 8
@@ -75,7 +74,7 @@ instantiate(const scene_def_t* def) {
         return NULL;
     }
 #endif
-    uint8_t* block = heap_caps_malloc(l.total, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    uint8_t* block = memory_alloc(l.total, MEMORY_PSRAM);
     if (block == NULL) {
         return NULL;
     }
@@ -141,7 +140,7 @@ scene_load_from(const asset_pack_t* pack, const char* name, scene_failure_t* why
         *why = opened;
     }
     if (opened.status != SCENE_OK) {
-        heap_caps_free(scene);
+        memory_free(scene);
         return NULL;
     }
     loaded[loaded_count++] = scene;
@@ -166,7 +165,7 @@ scene_unload(scene_t* scene) {
         loaded_count--;
         memmove(&loaded[i], &loaded[i + 1], sizeof loaded[0] * (size_t)(loaded_count - i));
         loaded[loaded_count] = NULL;
-        heap_caps_free(scene);
+        memory_free(scene);
         return;
     }
 }
