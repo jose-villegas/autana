@@ -10,13 +10,12 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "esp_heap_caps.h"
-
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "render/r3d_line_camera.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
+#include "util/memory.h"
 #include "wire_pipeline.h"
 #include "wire_primitives_generated.h"
 
@@ -51,14 +50,14 @@ wire_enter(const wire_mesh_t* mesh, float orbit_distance) {
     elapsed_ms = 0;
     last_coverage.valid = false;
 
-    cs_vertices = heap_caps_malloc(sizeof(*cs_vertices) * mesh->vertex_count, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    segments = heap_caps_malloc(sizeof(*segments) * mesh->edge_count, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    cs_vertices = memory_alloc(sizeof(*cs_vertices) * mesh->vertex_count, MEMORY_INTERNAL);
+    segments = memory_alloc(sizeof(*segments) * mesh->edge_count, MEMORY_INTERNAL);
     alloc_ok = (cs_vertices != NULL && segments != NULL);
     need_failure_clear = !alloc_ok;
 
     if (!alloc_ok) {
-        heap_caps_free(cs_vertices);
-        heap_caps_free(segments);
+        memory_free(cs_vertices);
+        memory_free(segments);
         cs_vertices = NULL;
         segments = NULL;
         return;
@@ -73,8 +72,8 @@ wire_enter(const wire_mesh_t* mesh, float orbit_distance) {
 
 static void
 wire_exit(void) {
-    heap_caps_free(cs_vertices);
-    heap_caps_free(segments);
+    memory_free(cs_vertices);
+    memory_free(segments);
     cs_vertices = NULL;
     segments = NULL;
     current_mesh = NULL;
