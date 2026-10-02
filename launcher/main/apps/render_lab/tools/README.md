@@ -238,21 +238,21 @@ the fitted one and their difference; then the places they differ most,
 enlarged, lite above fitted. The fit sharpens the sun's shadow edge on the
 floor and the arches' edges, and puts the hangings' colours back.
 
-![Lite against the fitted lite mesh](../../../../../docs/images/render/appearance-lite-fitted.png)
-![Lite against fitted, enlarged](../../../../../docs/images/render/appearance-lite-fitted.crops.png)
+![Lite against the fitted lite mesh](../../../../../docs/render/images/appearance-lite-fitted.png)
+![Lite against fitted, enlarged](../../../../../docs/render/images/appearance-lite-fitted.crops.png)
 
 The fitted mesh against the reference at the same poses, and where they
 still differ most: the edge of the roof opening against the sky, and
 texture detail no vertex colour holds.
 
-![Fitted against the reference](../../../../../docs/images/render/appearance-fitted-reference.png)
-![Fitted against the reference, enlarged](../../../../../docs/images/render/appearance-fitted-reference.crops.png)
+![Fitted against the reference](../../../../../docs/render/images/appearance-fitted-reference.png)
+![Fitted against the reference, enlarged](../../../../../docs/render/images/appearance-fitted-reference.crops.png)
 
 The ΔE heatmap sheets of the same two poses, lite then fitted: reference,
 render, heatmap, edge pixels, over the heatmap's scale.
 
-![Lite against the reference: heatmaps](../../../../../docs/images/render/appearance-heat-lite.png)
-![Fitted against the reference: heatmaps](../../../../../docs/images/render/appearance-heat-fitted.png)
+![Lite against the reference: heatmaps](../../../../../docs/render/images/appearance-heat-lite.png)
+![Fitted against the reference: heatmaps](../../../../../docs/render/images/appearance-heat-fitted.png)
 
 The sheets and crops are `render_compare.py --row ... --crops 3` on frames
 0 and 4 of the scored videos, the reference upscaled twice to the render
