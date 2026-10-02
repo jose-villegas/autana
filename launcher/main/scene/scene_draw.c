@@ -2,10 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "esp_heap_caps.h"
-
 #include "gfx/gfx_color.h"
 #include "scene/scene_internal.h"
+#include "util/memory.h"
 #include "util/tune.h"
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
@@ -67,7 +66,7 @@ scene_draw_forget(const scene_t* scene) {
 void
 scene_draw_release(void) {
     scene_deactivate();
-    heap_caps_free(scratch);
+    memory_free(scratch);
     scratch = NULL;
     scratch_bytes = 0;
     raster = (raster_t){0};
@@ -133,8 +132,8 @@ static bool
 fit_scratch(void) {
     const size_t needed = raster_scratch_bytes(&raster);
     if (needed > scratch_bytes) {
-        heap_caps_free(scratch);
-        scratch = heap_caps_malloc(needed, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        memory_free(scratch);
+        scratch = memory_alloc(needed, MEMORY_PSRAM);
         scratch_bytes = scratch == NULL ? 0 : needed;
     }
     raster.scratch = scratch;

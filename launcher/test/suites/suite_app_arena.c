@@ -6,7 +6,7 @@
 #include "app_arena.h"
 
 #if defined(HOST_HEAP_ARENA) || defined(DEVICE_BUILD)
-#include "esp_heap_caps.h"
+#include "util/memory.h"
 #endif
 #ifdef HOST_HEAP_ARENA
 #include <stdlib.h>
@@ -180,8 +180,8 @@ static void
 test_the_psram_heap_offers_only_what_the_arena_leaves(void) {
     const size_t heap_bytes = heap_arena_psram_heap_bytes(getenv("HOST_HEAP_ARENA_PSRAM_BYTES"));
 
-    TEST_ASSERT_LESS_OR_EQUAL_UINT(heap_bytes, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-    TEST_ASSERT_NULL(heap_caps_malloc(heap_bytes + 1, MALLOC_CAP_SPIRAM));
+    TEST_ASSERT_LESS_OR_EQUAL_UINT(heap_bytes, memory_free_bytes(MEMORY_PSRAM));
+    TEST_ASSERT_NULL(memory_alloc(heap_bytes + 1, MEMORY_PSRAM));
 }
 
 static void
@@ -195,7 +195,7 @@ test_the_arena_is_reserved_whichever_source_gives_the_psram_size(void) {
 static void
 test_the_psram_heap_starts_past_the_block(void) {
     const size_t psram = esp_psram_get_size();
-    const size_t heap = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+    const size_t heap = memory_total_bytes(MEMORY_PSRAM);
     TEST_ASSERT_LESS_OR_EQUAL_UINT(psram - APP_ARENA_BYTES, heap);
     TEST_ASSERT_GREATER_OR_EQUAL_UINT(psram / 2, heap); /* the block does not take the heap's share */
 }

@@ -19,11 +19,11 @@
 #include <stdio.h>
 
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "unity.h"
 
 #include "suites.h"
 #include "test_harness.h"
+#include "util/timing.h"
 
 static const char* TAG = "selftest";
 
@@ -47,7 +47,7 @@ tearDown(void) {
 
 int
 selftest_run(void) {
-    const int64_t started = esp_timer_get_time();
+    const int64_t started = timing_now_us();
 
     ESP_LOGI(TAG, "running self test");
 
@@ -59,7 +59,7 @@ selftest_run(void) {
     suite_report_frame_watch();
 
     int failures = UNITY_END();
-    const int64_t elapsed_ms = (esp_timer_get_time() - started) / 1000;
+    const int64_t elapsed_ms = (timing_now_us() - started) / 1000;
 
     /* A suite that did not fit is a test that did not run. Folded into the
      * count so the sentinel below (and every harness that reads it) sees a

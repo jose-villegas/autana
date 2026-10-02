@@ -17,10 +17,9 @@
 #include <string.h>
 
 #include "app.h"
-#include "board/board.h"
-#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
+#include "util/memory.h"
 
 extern app_t app_sand;
 extern int sand_app_enter_running_for_test(void);
@@ -61,7 +60,7 @@ test_full_redraw_repaints_a_stale_rect_and_sends_every_strip(void) {
     gfx_present();
 
     const size_t fb_bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-    gfx_color_t* reference = heap_caps_malloc(fb_bytes, BOARD_FRAMEBUFFER_CAPS);
+    gfx_color_t* reference = memory_alloc(fb_bytes, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL_MESSAGE(reference, "could not allocate a framebuffer-sized reference copy");
     memcpy(reference, gfx_framebuffer(), fb_bytes);
 
@@ -87,7 +86,7 @@ test_full_redraw_repaints_a_stale_rect_and_sends_every_strip(void) {
 
     const int mismatch = memcmp(reference, gfx_framebuffer(), fb_bytes) != 0;
     ESP_LOGI(TAG, "framebuffer matches the clean reference: %s", mismatch ? "NO" : "yes");
-    free(reference);
+    memory_free(reference);
     TEST_ASSERT_FALSE_MESSAGE(mismatch, "a full redraw must repaint every stale pixel, the palette-panel-ghost "
                                         "and black-cutout class of bug");
 

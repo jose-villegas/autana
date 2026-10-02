@@ -111,9 +111,9 @@ yet the ratchet has no database to read and runs after that build instead;
 the database is also the previous build's, so a `.c` file added since then
 fails the ratchet as unmeasured until a build catches the database up.
 
-A file only a build variant compiles (`gfx/gfx_null_panel.c`, which exists
-for `CONFIG_LAUNCHER_QEMU` alone) is in no diagnostics build's database at all.
-`VARIANT_ONLY_FILES` names a sibling in the same folder whose compile command
+A file only a build variant compiles (`gfx/gfx_null_panel_device.c`, which
+exists for `CONFIG_LAUNCHER_QEMU` alone) is in no diagnostics build's database
+at all. `VARIANT_ONLY_FILES` names a sibling in the same folder whose compile command
 it borrows, and the variant's own symbol, which is defined for it: what such
 a file calls is often declared only under that symbol, and an undeclared
 function is a parse error the gate never accepts. So such a file is measured

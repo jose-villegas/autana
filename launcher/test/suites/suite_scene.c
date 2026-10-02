@@ -13,8 +13,6 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "esp_heap_caps.h"
-
 #include "asset/asset_pack.h"
 #include "gfx/gfx_color.h"
 #include "scene/scene.h"
@@ -22,6 +20,7 @@
 #include "scene/scene_shell.h"
 #include "test_alloc.h"
 #include "test_cleanup.h"
+#include "util/memory.h"
 
 #define SIZE       64
 #define CENTER     (SIZE / 2)
@@ -243,11 +242,11 @@ static const uint16_t CLEAR = GFX_RGB(CLEAR_RGB);
 static void
 test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took(void) {
     fixture();
-    const size_t before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    const size_t before = memory_free_bytes(MEMORY_PSRAM);
     scene_t* scene = load("test_pair");
-    TEST_ASSERT_TRUE(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) < before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) < before);
     scene_unload(scene);
-    TEST_ASSERT_TRUE(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) == before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before);
 }
 
 static void
@@ -268,12 +267,12 @@ test_a_load_that_fails_says_what_it_was_about(void) {
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_UNKNOWN, why.status);
     TEST_ASSERT_EQUAL_STRING("test_nothing_of_the_kind", why.what);
 
-    const size_t before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    const size_t before = memory_free_bytes(MEMORY_PSRAM);
     TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_broken", &why));
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, why.asset);
     TEST_ASSERT_EQUAL_STRING("gone", why.what);
-    TEST_ASSERT_TRUE(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) == before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before);
 
     TEST_ASSERT_NULL(scene_load_from(NULL, "test_pair", &why));
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
@@ -488,14 +487,14 @@ test_the_stats_count_what_the_last_draw_kept(void) {
 static void
 test_leaving_the_app_unloads_every_scene_and_frees_the_scratch(void) {
     fixture();
-    const size_t before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    const size_t before = memory_free_bytes(MEMORY_PSRAM);
     show("test_pair", NULL);
     load("test_solo");
     frame(16);
-    TEST_ASSERT_TRUE(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) < before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) < before);
     scene_unload_all();
     TEST_ASSERT_FALSE(scene_has_active_camera());
-    TEST_ASSERT_TRUE(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) == before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before);
 }
 
 /* The draw happens in scene_render(): it touches no framebuffer and leaves
@@ -578,13 +577,13 @@ test_the_render_scale_changes_the_picture_and_a_larger_one_grows_the_scratch(voi
     show("test_pair", NULL);
     scene_set_render_scale(50);
     frame(16);
-    const size_t small_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    const size_t small_free = memory_free_bytes(MEMORY_PSRAM);
     uint16_t* half = malloc(sizeof(*half) * SIZE * SIZE);
     TEST_ASSERT_NOT_NULL(half);
     memcpy(half, fx.pixels, sizeof(*half) * SIZE * SIZE);
     scene_set_render_scale(100);
     frame(16);
-    TEST_ASSERT_TRUE(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) < small_free);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) < small_free);
     TEST_ASSERT_TRUE(memcmp(half, fx.pixels, sizeof(*half) * SIZE * SIZE) != 0);
     free(half);
 }

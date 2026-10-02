@@ -20,7 +20,6 @@
 #include <stdlib.h>
 
 #include "esp_log.h"
-#include "esp_timer.h"
 
 #include "app.h"
 #include "apps/input_lab/touch_probe.h"
@@ -30,6 +29,7 @@
 #include "ui/ui_style.h"
 #include "ui/ui_transform.h"
 #include "ui/ui_widgets.h"
+#include "util/timing.h"
 #include "util/tune.h"
 
 static const char* TAG = "input_lab";
@@ -114,7 +114,7 @@ start_round(void) {
 
 static void
 input_lab_enter(void) {
-    rng = (uint32_t)esp_timer_get_time() | 1u;
+    rng = (uint32_t)timing_now_us() | 1u;
     panel_max_x = -1;
     mode = MODE_RANDOM;
     tap = (touch_probe_tap_t){0};
