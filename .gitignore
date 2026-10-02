@@ -2,6 +2,9 @@
 __pycache__/
 *.pyc
 
+### Node: npm ci --prefix scripts/gates
+node_modules/
+
 ### C
 # Object files
 *.o

@@ -19,4 +19,5 @@ The rest of this index explains the repository's checks and tools in depth.
 | [Frame-Cost.md](Frame-Cost.md) | Measuring named stages of the frame loop and reading their console report. |
 | [Render-Harness.md](Render-Harness.md) | Rendering real firmware screens on a host: declaring a scene, what its pixels are pinned to, video output, the QEMU backend, and diffing against a device capture. |
 | [Mermaid-Diagrams.md](Mermaid-Diagrams.md) | Validating ```` ```mermaid ```` diagrams with mermaid-cli: the command, the pre-commit step, and CI. |
+| [Math-Formulas.md](Math-Formulas.md) | Writing maths GitHub renders, and validating every formula with GitHub's MathJax configuration: the command, the pre-commit step, and CI. |
 | [Icon-Baker.md](Icon-Baker.md) | `gen_icons.py`: baking icons from a PNG atlas or SVG source into a generated header, what it rejects, and how the shipped artifact is tested. |
