@@ -78,9 +78,9 @@ sponza_still full sponza
 sponza_still lite sponza-lite
 sponza_still flat sponza-flat
 "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-lite.png" --crops 3 \
-    --row "full | lite" "$W/still-full.bmp" "$W/still-lite.bmp" > "$W/compare-full-lite.log"
+    --label-a full --label-b lite --row "full | lite" "$W/still-full.bmp" "$W/still-lite.bmp" > "$W/compare-full-lite.log"
 "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-flat.png" --crops 3 \
-    --row "smooth | flat" "$W/still-full.bmp" "$W/still-flat.bmp" > "$W/compare-full-flat.log"
+    --label-a smooth --label-b flat --row "smooth | flat" "$W/still-full.bmp" "$W/still-flat.bmp" > "$W/compare-full-flat.log"
 # render_compare.py writes no crops where the two renders do not differ; fail
 # here rather than leave the pages linking a missing file.
 for crops in compare-full-lite compare-full-flat; do
@@ -102,7 +102,7 @@ REFERENCE=$(sh launcher/tools/render/render_compare.sh --reference-frames \
     -o "$W/fidelity-flat.bmp" --video "$W/fidelity-flat.avi" 2> "$W/fidelity-flat.log"
 "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.png" \
     --reference-video "$W/fidelity-flat.avi" "$REFERENCE" --reference-scale 2 \
-    --reference-sheet "$RENDER/bake-fidelity-sheet.png" --sheet-frames 2,4 > "$W/fidelity-compare.log"
+    --reference-sheet "$RENDER/bake-fidelity-sheet.png" --sheet-frames 2,4 --label-a "flat bake" > "$W/fidelity-compare.log"
 
 # The smooth bake with indirect light against the reference with the same
 # light, and bakes of the same import that differ only in what the scene says
@@ -146,8 +146,17 @@ cp "$W/indirect-compare.png" "$RENDER/bake-indirect-compare.png"
 cp "$W/indirect-compare.crops.png" "$RENDER/bake-indirect-crops.png"
 
 # The look controls: the physical bake, indirect intensity 2 and 3, and an
-# albedo boost of 2, last pose, beside the same reference.
+# albedo boost of 2, last pose, beside the physical reference and, under it,
+# each look's own reference: the scene's [indirect] table reaches the reference
+# too, so the error against it is the bake's alone.
+look_reference() {
+    sh launcher/tools/render/render_compare.sh --reference-frames \
+        --reference "$W/indirect-$1/sponza.scene.toml" --poses "$W/fidelity-poses.txt" 2> "$W/indirect-$1/reference.log"
+}
 "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/bake-indirect-look.png" \
     --reference-bakes "$REFERENCE" --reference-scale 2 --sheet-frames 4 \
     --bake "intensity 1" "$W/indirect-smooth.avi" --bake "intensity 2" "$W/indirect-intensity-2.avi" \
-    --bake "intensity 3" "$W/indirect-intensity-3.avi" --bake "albedo boost 2" "$W/indirect-boost-2.avi" > "$W/indirect-look.log"
+    --bake "intensity 3" "$W/indirect-intensity-3.avi" --bake "albedo boost 2" "$W/indirect-boost-2.avi" \
+    --bake-reference "intensity 1" "$REFERENCE" --bake-reference "intensity 2" "$(look_reference intensity-2)" \
+    --bake-reference "intensity 3" "$(look_reference intensity-3)" --bake-reference "albedo boost 2" "$(look_reference boost-2)" \
+    > "$W/indirect-look.log"

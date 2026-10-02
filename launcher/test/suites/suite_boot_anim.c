@@ -186,14 +186,14 @@ test_the_quarter_points_are_exact(void) {
     TEST_ASSERT_EQUAL_INT(32767, trig_cos(0));
 }
 
-/* A moment safely after the curve finishes (pen saturates at 2500ms) but
- * before the finale starts (2700ms); the view here is what the old,
- * pre-finale tests meant by "full progress". */
+/* A moment after the curve finishes (pen saturates at 2500ms) and before
+ * the finale starts (2700ms): the view at full progress. */
 #define CURVE_DONE_MS 2600
 
-/* A plain identity matrix (mat4f_identity()) and an
- * orthographic focal length (0; see boot_anim.h's "The projection" section
- * on why 0 means that), the simplest boot_anim_view_t there is, built
+/* A plain identity matrix (mat4f_identity()) and an orthographic focal length:
+ * 0 is an orthographic projection (r3d_line_view_x_t's `focal`,
+ * render/r3d_project_x.h), not a second code path. The simplest
+ * boot_anim_view_t there is, built
  * directly rather than through boot_anim_view()/the motion tracks, so
  * these tests can check boot_anim_project()'s own arithmetic in isolation
  * from whatever the CURRENT seed motion happens to say. */
@@ -521,8 +521,8 @@ test_wave_height_is_zero_when_the_wavelength_is_not_positive(void) {
  * wavelength further out should read back the identical height. This is
  * the structural fact that actually lets several rings show the ripple's
  * own crests/troughs at once, all from the one formula, rather than
- * needing a moving front to explain which rings are "lit" yet (see
- * boot_anim.h's "The wave" section). */
+ * needing a moving front to explain which rings are "lit" yet; see
+ * boot_anim_wave_height(). */
 static void
 test_wave_height_is_periodic_in_radius(void) {
     const int32_t wavelength = 3 * BOOT_ANIM_ONE;
