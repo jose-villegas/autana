@@ -186,9 +186,8 @@ test_the_quarter_points_are_exact(void) {
     TEST_ASSERT_EQUAL_INT(32767, trig_cos(0));
 }
 
-/* A moment safely after the curve finishes (pen saturates at 2500ms) but
- * before the finale starts (2700ms); the view here is what the old,
- * pre-finale tests meant by "full progress". */
+/* A moment after the curve finishes (pen saturates at 2500ms) and before
+ * the finale starts (2700ms): the view at full progress. */
 #define CURVE_DONE_MS 2600
 
 /* A plain identity matrix (mat4f_identity()) and an orthographic focal length:
