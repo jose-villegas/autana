@@ -24,8 +24,8 @@ except ImportError:
 
 from test_r3d_import import AMBIENT, CUBE, TONEMAP, renderer, sun_object, write_import, write_scene  # noqa: E402
 
-FLAT_STEP = "[process.light]\nray_offset = 0.5\ncolour_merge_step = 6\nflat_sky_rays = 16\n"
-FLAT_VARIANT = '[[variants]]\nname = "mesh"\nface_samples = { auto = { min = 1, max = 8, area = 8.0 } }\n'
+FLAT_STEP = "[lighting]\nlight = { ray_offset = 0.5, colour_merge_step = 6, flat_sky_rays = 16 }\n"
+FLAT_VARIANT = '[[variants]]\nname = "mesh"\nshading = { flat = { auto = { min = 1, max = 8, area = 8.0 } } }\n'
 # A small triangle, and a roof over half of the cube's top face, so samples within one face disagree.
 SMALL_FACE = ("v 20 0 0\nv 21 0 0\nv 20 1 0\nf 9 10 11\n"
               "v -1 12 -1\nv 4 12 -1\nv 4 12 9\nv -1 12 9\nf 12 13 14\nf 12 14 15\n")
