@@ -94,8 +94,12 @@ jobs:
           pip install -r launcher/tools/r3d/requirements.txt
           git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 
-      # Python and, for check-mermaid.mjs's pure parts, Node;
-      # scripts/run-tool-tests.sh owns which suites.
+      # test_check_math.mjs renders through GitHub's MathJax.
+      - name: check-math.mjs dependencies
+        run: npm install -g mathjax-full@3.2.0 markdown-it@14.1.0
+
+      # Python and, for check-mermaid.mjs's pure parts and check-math.mjs,
+      # Node; scripts/run-tool-tests.sh owns which suites.
       - name: Tool tests
         if: ${{ !cancelled() }}
         run: sh scripts/run-tool-tests.sh

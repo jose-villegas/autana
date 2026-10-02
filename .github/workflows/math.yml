@@ -1,0 +1,39 @@
+name: Math Formulas
+
+# Renders every formula in tracked Markdown the way GitHub does, with its MathJax
+# configuration and its Markdown-first parsing, because GitHub shows a broken formula
+# as raw text or a red box and never fails a check. docs/tools/Math-Formulas.md has the
+# full picture; this job just runs the command it documents. Path-filtered like the
+# Mermaid workflow: nothing outside a .md file or the validator can change the result.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.md'
+      - 'scripts/gates/check-math.mjs'
+      - '.github/workflows/math.yml'
+  pull_request:
+    paths:
+      - '**/*.md'
+      - 'scripts/gates/check-math.mjs'
+      - '.github/workflows/math.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check-math:
+    name: Math formulas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The versions check-math.mjs pins: GitHub's MathJax, and the Markdown parser.
+      - name: Install mathjax-full and markdown-it
+        run: npm install -g mathjax-full@3.2.0 markdown-it@14.1.0
+
+      - name: Validate every formula
+        run: node scripts/gates/check-math.mjs
