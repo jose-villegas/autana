@@ -76,7 +76,8 @@ one is drawn.
 ## Ownership
 
 A scene belongs to the app running when it was loaded. When an app exits the
-shell calls `scene_unload_all()`, which unloads every scene and frees the
+shell runs its systems' `app_exit` phase, which for scenes is
+`scene_unload_all()`: it unloads every scene and frees the
 scratch, so nothing an app loaded outlives it. An app may unload a scene itself
 sooner.
 
@@ -92,3 +93,6 @@ tests call. `r3d_scene_camera_at()` samples the active camera's path.
 
 The shell's half of the API (the two frame halves and the unload on exit) is
 `scene/scene_shell.h`; apps and generated tables include only `scene/scene.h`.
+The shell does not call it by name: `shell/shell_scene.c` registers it as the
+engine system `scene`, at `SHELL_ORDER_SCENE`
+([Firmware-Architecture.md](../Firmware-Architecture.md#engine-systems)).

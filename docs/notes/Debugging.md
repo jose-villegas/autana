@@ -183,7 +183,7 @@ always the latest present's sends, not an accumulation.
 ## Performance seems off
 
 A development build logs frames per second on a fixed timer (`report_fps()`
-in `main/main.c`); `autana monitor` shows it.
+in `main/shell/shell.c`); `autana monitor` shows it.
 
 For anything deeper than an fps number, an app carries its own: rolling
 averages gated on `CONFIG_LAUNCHER_DEVELOPMENT` and logged periodically, or

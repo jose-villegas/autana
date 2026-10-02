@@ -11,7 +11,7 @@ home when the app exits. Each frame has one owner per step:
 
 | Step | Owner | Job |
 |---|---|---|
-| Read touch and motion | shell (`main.c`) | Make one `input_t` for the frame. |
+| Read touch and motion | shell (`shell/`) | Make one `input_t` for the frame. |
 | Update and draw | current app, or a system screen | Draw into the shared framebuffer, or regenerate dirty band rows, then return. |
 | Present | shell and `gfx/` | Send changed pixels to the panel. |
 
@@ -25,7 +25,7 @@ and means something different by each:
 
 | | |
 |---|---|
-| **shell** | the frame loop and the app switching: `main.c`, whose log tag is literally `shell` |
+| **shell** | the frame loop and the app switching: `shell/`, whose log tag is literally `shell`; `main.c` starts the board and calls `shell_run()` |
 | **launcher** | the home screen the shell draws when no app is running: `ui/ui_launcher.c` |
 | **boot** | what runs once before the loop exists and never again: `boot/` |
 
@@ -190,6 +190,8 @@ display_load_panel_clock()  the saved panel clock, applied
 post_run_after_display()    the rest of the health check
                             -> a failure holds the screen for 8 s
 selftest_run()              SELFTEST builds with autorun only
+shell_init()                the shell's own state; development builds stop
+                            here on two console prefixes that clash
 display_reset_quarter(), ui_launcher_init(), ui_set_transform()
                             the launcher exists, turned the way boot draws
 boot_anim_run()             the startup animation, 5.5 s
@@ -197,6 +199,7 @@ gfx_request_full_redraw()
 input_start()               touch, buttons, then the motion sensor; no
                             sensor: the display stays upright
 console_start()             development builds only
+shell_run()                 the frame loop, which never returns
 ```
 
 The health checks come first, so a faulty board says so before it does
@@ -205,7 +208,8 @@ there is nothing for a tap to reach.
 
 The launcher is built before the animation because the animation ends *in*
 it: for its last 700 ms each frame starts from the home screen, painted by
-the shell through `boot_anim_set_ending_backdrop()`, and the photograph
+the shell (`shell_paint_home_under_boot()`) through
+`boot_anim_set_ending_backdrop()`, and the photograph
 dithers away over it. `boot/` takes a painter rather than calling the
 launcher because it knows nothing above itself. What the animation draws is
 described in `boot/boot_anim.h`.
@@ -252,6 +256,31 @@ active the shell draws it in the same overlap window and upscales it into the
 framebuffer before `frame()`, whether or not the app has an `update()`
 ([Scene-Manager.md](render/Scene-Manager.md#each-frame)).
 
+### Engine systems
+
+Engine machinery the loop drives every pass, the scene manager first, is a
+**system**: a `shell_system_t` (`shell/shell_system.h`) of phase callbacks,
+registered with `SHELL_SYSTEM_REGISTER()` the way an app is. The loop never
+names a system; it calls each phase over all of them, lowest `order` first,
+and skips a system whose callback for that phase is NULL.
+
+| Phase | When the loop calls it |
+|---|---|
+| `update(dt_ms)` | after the app's `update()`, while the last frame is still being sent; touches no framebuffer |
+| `compose(dt_ms)` | once the send is done, before the app's `frame()` draws over it |
+| `overlay()` | after the pass has drawn, before it is presented; full-framebuffer layout only |
+| `invalidate()` | wherever a full redraw is answered, after the app or launcher has dropped its own cache |
+| `app_exit()` | right after the app's `exit()` |
+| `overlaps_present()` | a query, not a phase: true makes the app's frame present a pass late, so `update` has a send to overlap |
+
+`update` and `compose` run only on a pass that overlaps the present: the app
+has an `update()`, or a system's `overlaps_present()` says so. Every `order`
+is a `SHELL_ORDER_*` constant in that one header, so a new system is placed
+against the others rather than guessed; ties run by name. A system's own
+folder sits below the shell and cannot include its header, so it is
+registered from a file in `shell/`: `shell/shell_scene.c` registers the scene
+manager at `SHELL_ORDER_SCENE`.
+
 ### Full redraw
 
 `gfx_request_full_redraw()` marks everything dirty and latches a pending
@@ -259,7 +288,7 @@ flag ([Gfx-and-Presentation.md](Gfx-and-Presentation.md#repaint-controls)).
 gfx has no idea what anyone caches above it, so the shell answers the flag
 at the top of a pass, before anything draws: a running app gets its
 `invalidate()`, the launcher gets `ui_invalidate()`, and Control Center
-repaints its dimmed backdrop. Clearing the flag before the draw rather than
+repaints its dimmed backdrop; the systems' `invalidate` phase follows each. Clearing the flag before the draw rather than
 after is what lets a request made inside that very `frame()` reach the next
 pass. The app's side is in
 [Building-an-App.md](Building-an-App.md#full-redraw).
@@ -379,7 +408,8 @@ blend fill reads the pixel it writes, so a scrim repeated per repaint walks
 the frozen backdrop toward black. It is applied **once per repaint of what is
 underneath**: when the panel opens, and again whenever the backdrop itself
 is redrawn (a full-redraw request, a turn). The shell's own Control Center is
-the reference implementation: `paint_control_center_backdrop()` in `main.c`.
+the reference implementation: `paint_control_center_backdrop()` in
+`shell/shell_apps.c`.
 `suite_gfx_color.c` pins the arithmetic; the recipe for an app is in
 [Building-a-Screen.md](Building-a-Screen.md#a-panel-over-a-paused-app).
 
