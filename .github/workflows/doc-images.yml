@@ -44,12 +44,21 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install Pillow, numpy and ffmpeg
+      # The fidelity sheet traces the source model: trimesh, embreex and scipy.
+      - name: Install Pillow, the r3d requirements and ffmpeg
         run: |
-          pip install pillow==12.3.0 numpy==2.4.6
+          pip install -r launcher/tools/r3d/requirements.txt
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg
           ffmpeg -version | head -1
+
+      # The importer checks the archive's SHA-256 whether it was fetched or
+      # restored; a changed import file is a new key.
+      - name: Cache the Sponza source model
+        uses: actions/cache@v4
+        with:
+          path: launcher/tools/r3d/.cache/crytek_sponza.zip
+          key: sponza-source-${{ hashFiles('launcher/main/apps/render_lab/meshes/sponza.import.toml') }}
 
       # Exit 1 means an image changed or is an orphan; an orphan or any exit
       # above 1 fails the job.

@@ -58,6 +58,9 @@ typedef struct {
     asset_view_t view;
 } asset_entry_t;
 
+/* The alignment a pack's base address must have. */
+#define ASSET_PACK_BASE_ALIGN 16U
+
 /* CRC-32 (zlib's), which is the checksum a pack carries over its bytes after the header. */
 uint32_t asset_crc32(const void* data, size_t size);
 
@@ -67,7 +70,7 @@ uint32_t asset_crc32(const void* data, size_t size);
 uint32_t asset_pack_total_size(const void* head, size_t available);
 
 /* Checks the header, the checksum and every entry's range and alignment,
- * then fills `pack`. `base` must be 16-byte aligned (ASSET_ERR_BOUNDS when it is
+ * then fills `pack`. `base` must be ASSET_PACK_BASE_ALIGN-aligned (ASSET_ERR_BOUNDS when it is
  * not), which a partition mapping and aligned_alloc() both give. A buffer may be larger than the pack. */
 asset_status_t asset_pack_open(asset_pack_t* pack, const void* base, size_t size);
 
