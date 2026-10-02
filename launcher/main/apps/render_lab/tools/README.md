@@ -458,9 +458,9 @@ held-out poses against the reference as it is now rendered, edges blended
 with the camera's background, it is at mean ΔE76 4.89 (p95 13.18) against
 lite's 7.69 and full's 6.76. Its sheet against lite is in
 [The Sponza variants](#the-sponza-variants). Against the
-reference, where they still differ most:
+reference at the bake fidelity sheet's last pose, where they still differ most:
 
-![The chosen mesh against the reference, enlarged](../../../../../docs/render/images/appearance-chosen-reference.crops.png)
+![The chosen mesh against the reference, enlarged](../../../../../docs/images/render/appearance-chosen-reference.crops.png)
 
 Each stage on its own, before above after, at the two held-out poses where
 the pair differs most, enlarged where it differs most:
@@ -481,13 +481,14 @@ the pair differs most, enlarged where it differs most:
 ![Cost term](../../../../../docs/render/images/appearance-stage-cost.crops.png)
 ![Path culling](../../../../../docs/render/images/appearance-stage-path-full.crops.png)
 
-Its ΔE heatmap sheet at 25 s:
+Its ΔE heatmap sheet at the bake fidelity sheet's two poses:
 
-![The chosen mesh: heatmaps](../../../../../docs/render/images/appearance-chosen-heat.png)
+![The chosen mesh: heatmaps](../../../../../docs/images/render/appearance-chosen-heat.png)
 
-The images here are made from the fitted meshes in a scratch directory and
-nothing refreshes them: the fits need the GPU environment and the cost
-weights a board capture. A 30 fps video of the whole path, the committed lite
+`doc_images.sh` makes the two images of the committed fitted mesh against
+the reference. The stage images are made from fitted meshes in a scratch
+directory and nothing refreshes them: the fits need the GPU environment and
+the cost weights a board capture. A 30 fps video of the whole path, the committed lite
 against the chosen mesh, is `render_compare.py --video` of their
 `--frames 1200 --dt 33` renders and is not committed.
 
