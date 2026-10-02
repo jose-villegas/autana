@@ -11,6 +11,14 @@
 # (the fidelity sheet also needs launcher/tools/r3d/requirements.txt, found by find_r3d_python);
 # ffmpeg must be on PATH. Renderer output goes to logs under <work-dir>.
 
+# The appearance-* images other than appearance-chosen-heat and
+# appearance-chosen-reference are written by the fit's GPU run and committed
+# as they came out: appearance-pareto, appearance-path-culled,
+# appearance-normal-heat, appearance-lite-fitted, appearance-fitted-reference,
+# appearance-heat-lite, appearance-heat-fitted, and the per-stage crops
+# appearance-stage-fit, appearance-stage-normal, appearance-stage-path-start,
+# appearance-stage-prune, appearance-stage-cost and appearance-stage-path-full.
+
 set -eu
 
 OUT=$1/overview
