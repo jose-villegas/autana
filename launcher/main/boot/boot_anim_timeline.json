@@ -41,7 +41,7 @@
         "title_wave_fade_ms": 1500,
         "title_scale": 5
     },
-    "camera_focal": 512,
+    "camera_focal": 1.0,
     "grid_step_m": 0.1,
     "wave_height_m": 1.25,
     "wave_wavelength_m": 5,

@@ -12,7 +12,7 @@
 #include <stdio.h>
 
 #include "render/r3d_pipeline.h"
-#include "render/vec3f.h"
+#include "util/math/vec3f.h"
 
 enum { R3D_SIZES_ZERO, R3D_SIZES_ONE, R3D_SIZES_TWO_TO_FOUR, R3D_SIZES_MORE, R3D_SIZES_BINS };
 

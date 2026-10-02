@@ -66,16 +66,18 @@ flowchart TB
         Display["display/<br/><i>orientation, panel clock</i>"]
         Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
     end
-    subgraph R6["utilities"]
-        Util["util/<br/><i>fixed point, tween, jobs, tunables</i>"]
+    subgraph R6["animation"]
         Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
         Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
     end
-    subgraph R7["board"]
+    subgraph R7["utilities"]
+        Util["util/<br/><i>fixed point, float and fixed maths, tween, jobs, tunables</i>"]
+    end
+    subgraph R8["board"]
         Board["board/<br/><i>this board's pins and peripherals</i>"]:::hw
     end
 
-    R1 --> R3 --> R4 --> R5 --> R6 --> R7
+    R1 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8
     Contract(["app.h: the shell/app contract"]):::contract
     Main -.->|"calls through app.h"| Apps
     Contract -.->|"includes input/input.h"| Input
@@ -121,8 +123,8 @@ framebuffer while it holds one. See
 The same rule is why the span rasterizer (`render/r3d_span.h`) owns no
 framebuffer: it fills a caller's window of rows, with a depth plane only as
 tall as that window. A full colour+depth pair would want ~1.3 MB here.
-`util/math/matrix4i.h` supplies the fixed-point transform maths the line camera and
-the boot scene share, and no rasterizer.
+`util/math/` supplies the float vector, quaternion, matrix and transform maths
+the line camera and the boot scene share, and no rasterizer.
 
 ### 2. There is exactly one frame loop, and it belongs to the shell
 

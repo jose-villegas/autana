@@ -44,7 +44,7 @@ test_starts_with_nothing_pressed(void) {
 void
 test_first_contact_reports_a_press(void) {
     fixture();
-    touch_fsm_update(&fsm, true, 100, 200, MS(0));
+    touch_fsm_update(&fsm, true, (vec2i_t){100, 200}, MS(0));
 
     input_t in;
     touch_fsm_take(&fsm, &in);
@@ -58,7 +58,7 @@ test_first_contact_reports_a_press(void) {
 void
 test_press_is_reported_only_once(void) {
     fixture();
-    touch_fsm_update(&fsm, true, 100, 200, MS(0));
+    touch_fsm_update(&fsm, true, (vec2i_t){100, 200}, MS(0));
 
     input_t first, second;
     touch_fsm_take(&fsm, &first);
@@ -71,11 +71,11 @@ test_press_is_reported_only_once(void) {
 void
 test_holding_does_not_repeat_the_press(void) {
     fixture();
-    touch_fsm_update(&fsm, true, 100, 200, MS(0));
+    touch_fsm_update(&fsm, true, (vec2i_t){100, 200}, MS(0));
     input_t in;
     touch_fsm_take(&fsm, &in);
 
-    touch_fsm_update(&fsm, true, 100, 200, MS(10));
+    touch_fsm_update(&fsm, true, (vec2i_t){100, 200}, MS(10));
     touch_fsm_take(&fsm, &in);
 
     TEST_ASSERT_FALSE(in.pressed);
@@ -85,9 +85,9 @@ test_holding_does_not_repeat_the_press(void) {
 void
 test_press_position_is_where_the_touch_began(void) {
     fixture();
-    touch_fsm_update(&fsm, true, 50, 400, MS(0));
-    touch_fsm_update(&fsm, true, 55, 300, MS(20));
-    touch_fsm_update(&fsm, true, 60, 200, MS(40));
+    touch_fsm_update(&fsm, true, (vec2i_t){50, 400}, MS(0));
+    touch_fsm_update(&fsm, true, (vec2i_t){55, 300}, MS(20));
+    touch_fsm_update(&fsm, true, (vec2i_t){60, 200}, MS(40));
 
     input_t in;
     touch_fsm_take(&fsm, &in);
@@ -103,11 +103,11 @@ test_press_position_is_where_the_touch_began(void) {
 void
 test_release_is_reported_after_the_quiet_period(void) {
     fixture();
-    touch_fsm_update(&fsm, true, 10, 10, MS(0));
+    touch_fsm_update(&fsm, true, (vec2i_t){10, 10}, MS(0));
     input_t in;
     touch_fsm_take(&fsm, &in);
 
-    touch_fsm_update(&fsm, false, 0, 0, MS(0) + TOUCH_RELEASE_QUIET_US + 1);
+    touch_fsm_update(&fsm, false, (vec2i_t){0, 0}, MS(0) + TOUCH_RELEASE_QUIET_US + 1);
     touch_fsm_take(&fsm, &in);
 
     TEST_ASSERT_TRUE(in.released);
@@ -119,11 +119,11 @@ test_brief_dropout_is_not_a_release(void) {
     fixture();
     /* The exact failure that made a held finger flicker: the controller goes
      * quiet for a few milliseconds mid-touch. That must not look like a lift. */
-    touch_fsm_update(&fsm, true, 10, 10, MS(0));
+    touch_fsm_update(&fsm, true, (vec2i_t){10, 10}, MS(0));
     input_t in;
     touch_fsm_take(&fsm, &in);
 
-    touch_fsm_update(&fsm, false, 0, 0, MS(10));
+    touch_fsm_update(&fsm, false, (vec2i_t){0, 0}, MS(10));
     touch_fsm_take(&fsm, &in);
 
     TEST_ASSERT_FALSE_MESSAGE(in.released, "a short gap is not a release");
@@ -133,12 +133,12 @@ test_brief_dropout_is_not_a_release(void) {
 void
 test_contact_resuming_after_a_dropout_does_not_re_press(void) {
     fixture();
-    touch_fsm_update(&fsm, true, 10, 10, MS(0));
+    touch_fsm_update(&fsm, true, (vec2i_t){10, 10}, MS(0));
     input_t in;
     touch_fsm_take(&fsm, &in);
 
-    touch_fsm_update(&fsm, false, 0, 0, MS(10));  /* dropout */
-    touch_fsm_update(&fsm, true, 12, 12, MS(20)); /* back again */
+    touch_fsm_update(&fsm, false, (vec2i_t){0, 0}, MS(10));  /* dropout */
+    touch_fsm_update(&fsm, true, (vec2i_t){12, 12}, MS(20)); /* back again */
     touch_fsm_take(&fsm, &in);
 
     TEST_ASSERT_FALSE_MESSAGE(in.pressed, "a dropout mid-touch must not produce a second press");
@@ -151,12 +151,12 @@ test_quiet_period_is_measured_from_the_last_contact(void) {
     fixture();
     /* Contact keeps arriving, each time restarting the clock, so the total
      * elapsed time far exceeds the quiet period without ever releasing. */
-    touch_fsm_update(&fsm, true, 10, 10, MS(0));
+    touch_fsm_update(&fsm, true, (vec2i_t){10, 10}, MS(0));
     input_t in;
     touch_fsm_take(&fsm, &in);
 
     for (int t = 10; t <= 500; t += 10) {
-        touch_fsm_update(&fsm, true, 10, 10, MS(t));
+        touch_fsm_update(&fsm, true, (vec2i_t){10, 10}, MS(t));
     }
     touch_fsm_take(&fsm, &in);
 
@@ -170,10 +170,10 @@ test_a_full_tap_produces_exactly_one_press_and_one_release(void) {
     int presses = 0, releases = 0;
     input_t in;
 
-    touch_fsm_update(&fsm, true, 80, 90, MS(0));
-    touch_fsm_update(&fsm, true, 80, 90, MS(20));
+    touch_fsm_update(&fsm, true, (vec2i_t){80, 90}, MS(0));
+    touch_fsm_update(&fsm, true, (vec2i_t){80, 90}, MS(20));
     for (int t = 40; t <= 400; t += 10) {
-        touch_fsm_update(&fsm, false, 0, 0, MS(t));
+        touch_fsm_update(&fsm, false, (vec2i_t){0, 0}, MS(t));
     }
 
     /* Drain everything the sequence produced. */

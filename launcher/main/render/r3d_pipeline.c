@@ -9,8 +9,6 @@
 
 #include "render/viewport.h"
 
-#pragma GCC diagnostic error "-Wdouble-promotion"
-
 static void
 set_row(float row[4], vec3f_t axis, vec3f_t eye, float scale, float ticks_to_units) {
     row[0] = axis.x * scale * ticks_to_units;

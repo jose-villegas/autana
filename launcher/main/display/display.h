@@ -18,6 +18,8 @@
 
 #include <stdbool.h>
 
+#include "util/math/vec2i.h"
+
 /* The cover glass hides roughly this many pixels along every edge of the
  * panel, and more where the corners round off. Anything meant to be read
  * insets by at least this much. Measured on the board. */
@@ -82,7 +84,7 @@ void display_init(display_t* d);
  * IMU reading uses (screen X/Y axes, not raw sensor axes; see main.c's own
  * mapping). Returns true when d->quarter actually changed, which is main.c's
  * cue to push a new ui_set_transform(). */
-bool display_update(display_t* d, int gx, int gy);
+bool display_update(display_t* d, vec2i_t gravity);
 
 int display_quarter(const display_t* d);
 

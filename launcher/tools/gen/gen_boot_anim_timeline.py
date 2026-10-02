@@ -34,7 +34,7 @@ straight through to #define.
 VALIDATION
 
 Refuses to emit anything that would draw something broken (curve still being
-drawn when the fade starts, a motion scale that overflows the fixed point) the same way
+drawn when the fade starts, a motion that ends off the timeline) the same way
 gen_zeta_curve.py refuses to ship a curve that fails its own zero check.
 Aesthetic-only concerns (a title letter still flying when the fade starts)
 are a warning, not a refusal; unlike a broken curve, that might be exactly
@@ -67,7 +67,7 @@ def warn(msg):
 
 # One space-unit is one meter, see boot_anim.h's own top comment, so this
 # is the SAME conversion boot_anim.c's units() does for the curve/grid's own
-# geometry, not matrix4i's fixed point. BOOT_ANIM_ONE, not
+# geometry, not the camera's float meters. BOOT_ANIM_ONE, not
 # imported from boot_anim.h to keep this script standalone.
 BOOT_ANIM_ONE = 4096
 
@@ -76,81 +76,27 @@ def meters_to_q12(v):
     return round(v * BOOT_ANIM_ONE)
 
 
-# Mirrors BOOT_ANIM_AXIS_FAR_UNITS/BOOT_ANIM_GRID_SPOKE_FAR_UNITS in
-# boot_anim.h (both 500, by design, see that constant's own comment),
-# duplicated here rather than imported, same reason BOOT_ANIM_ONE above is:
-# this script stays standalone. The worst-case LOCAL-SPACE coordinate an
-# authored keyframe's own space/camera transform ever has to multiply;
-# an axis/spoke tail is the longest reach this project draws, and this is
-# its value BEFORE that transform (matrix4i_transform_point()'s own input), not after.
-_FAR_UNITS = 500
-_WORST_CASE_VEC4I_COORD = (_FAR_UNITS * BOOT_ANIM_ONE) >> 3  # BOOT_ANIM_ZETA_TO_M4
-
-# The scale-overflow guard below trades exactness for a real, defensible
-# margin, see its own comment at the call site for the full derivation.
-# Conservative on purpose: matrix4i's own matrix COMPOSITION step
-# (matrix4i_mul() in matrix4i.h, also plain int32_t) has its own overflow
-# risk that scales with rotation too, not just this scale product, and is
-# not modeled exactly here. This check catches the dominant, easily
-# reasoned term (the final per-point multiply), not every path to the same
-# failure.
-_MAX_COMBINED_SCALE = 8
-
-
-def check_transform_scale_overflow(space_scale, camera_scale):
-    """matrix4i_transform_point() (plain int32_t) multiplies a camera-space
-    coordinate by a composed space*camera matrix element that is itself
-    proportional to authored scale*VEC4I_ONE. At this project's own largest authored reach (_WORST_CASE_VEC4I_COORD, from the
-    500-unit axis/spoke tail), INT32_MAX / (_WORST_CASE_VEC4I_COORD * VEC4I_ONE)
-    is about 16.4; a combined space*camera scale anywhere near that
-    overflows the point somewhere nonsensical. _MAX_COMBINED_SCALE leaves real headroom
-    under that, rather than cutting it close against an estimate that does
-    not model every step of the composition exactly (see this file's own
-    comment above)."""
-    combined = space_scale * camera_scale
-    if combined > _MAX_COMBINED_SCALE:
-        fail("motion: space scale (max %r) * camera scale (max %r) "
-             "= %r, over this project's own %r safety margin against "
-             "matrix4i's int32_t points and matrices "
-             "overflowing at this project's largest authored reach "
-             "(BOOT_ANIM_AXIS_FAR_UNITS/BOOT_ANIM_GRID_SPOKE_FAR_UNITS, "
-             "both 500) - see boot_anim.h's own comment on "
-             "BOOT_ANIM_AXIS_FAR_UNITS for the full mechanism" %
-             (space_scale, camera_scale, combined,
-              _MAX_COMBINED_SCALE))
-
-
 def load_motion(path):
-    """{"scale": {node: [(x, y, z)...]}, "duration": seconds} for the camera
-    and the space, from the glTF animation the firmware bakes."""
+    """{"duration": seconds} of the glTF animation the firmware bakes for the
+    camera and the space."""
     document, binary = gltf_read.load_glb(path)
     animation = next((a for a in document.get("animations", [])
                       if a.get("name") == MOTION_ANIMATION), None)
     if animation is None:
         fail("%s has no animation named %r" % (path, MOTION_ANIMATION))
     channels = gltf_read.read_animation(document, binary, animation)
-    scale = {n: [] for n in MOTION_NODES}
     animated = set()
     for channel in channels:
         node = document["nodes"][channel["node"]].get("name") if channel["node"] is not None else None
-        if node not in scale:
-            continue
-        animated.add(node)
-        if channel["path"] == "scale":
-            values = channel["values"]
-            if channel["interpolation"] == "CUBICSPLINE":
-                values = values[1::3]
-            scale[node] += values
+        if node in MOTION_NODES:
+            animated.add(node)
     for node in MOTION_NODES:
         if node not in animated:
             fail("%s: the %r node has no animated channel" % (path, node))
-    return {"scale": scale, "duration": gltf_read.animation_duration(channels)}
+    return {"duration": gltf_read.animation_duration(channels)}
 
 
 def validate_motion(motion, timing):
-    scales = {n: max((abs(v) for row in motion["scale"][n] for v in row), default=1.0)
-              for n in MOTION_NODES}
-    check_transform_scale_overflow(scales["space"], scales["camera"])
     last_ms = round(motion["duration"] * 1000)
     if last_ms != timing["total_ms"]:
         warn("the last motion key is at %d, not total_ms (%d) - the camera "
@@ -554,10 +500,10 @@ def main():
 
     w("/* The camera's focal length - 0 is an orthographic\n")
     w(" * projection (see boot_anim.h's \"The projection\" section), any other\n")
-    w(" * value a perspective one; VEC4I_ONE (512) is the \"normal\"\n")
-    w(" * lens default. Authored directly in this unit - it is a lens\n")
-    w(" * property, not a position or angle, so meters/degrees do not apply. */\n")
-    w("#define BOOT_ANIM_CAMERA_FOCAL %d\n\n" % cfg["camera_focal"])
+    w(" * value a perspective one; 1.0 is the \"normal\" lens default.\n")
+    w(" * Authored directly as a float - it is a lens property, not a\n")
+    w(" * position or angle, so meters/degrees do not apply. */\n")
+    w("#define BOOT_ANIM_CAMERA_FOCAL %sF\n\n" % repr(float(cfg["camera_focal"])))
 
     w("/* The floor's ring spacing - see BOOT_ANIM_GRID_RINGS's own comment\n")
     w(" * in boot_anim.h. Authored in meters (grid_step_m in the JSON), like\n")
