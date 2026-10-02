@@ -4,8 +4,8 @@
  * Orientation belongs to the physical device, not to any one app's panel, so
  * it is decided here and the shell applies it; every UI surface follows.
  * display.c has no IMU, no gfx, no ui: the gravity vector arrives already
- * read, which is what lets it link and run on a host. The shell's side, at
- * the foot, is display_device.c.
+ * read, which is what lets it link and run on a host. The shell's side is
+ * display_shell.h.
  *
  * The hysteresis is the module, not a refinement of it. Snapping to whichever
  * of gx/gy is larger puts the boundary at 45 degrees, where a board held near
@@ -18,9 +18,6 @@
 #pragma once
 
 #include <stdbool.h>
-#include <stdint.h>
-
-#include "input/imu_sample.h"
 
 /* The cover glass hides roughly this many pixels along every edge of the
  * panel, and more where the corners round off. Anything meant to be read
@@ -90,49 +87,14 @@ bool display_update(display_t* d, int gx, int gy);
 
 int display_quarter(const display_t* d);
 
-/* The shell's orientation sampler: the quarter and when it may next read the
- * motion sensor, so the cadence is as testable as the decision. 10 Hz is
- * enough for reorientation without lag. */
-#define DISPLAY_SAMPLE_MS 100
-
-typedef bool (*display_motion_reader_t)(imu_sample_t* out);
-
-typedef struct {
-    display_t display;
-    int64_t next_sample_us;
-} display_orientation_t;
-
-/* Starts at DISPLAY_DEFAULT_QUARTER, due to sample at once. */
-void display_orientation_init(display_orientation_t* o);
-
-/* Reads motion through `read` when DISPLAY_SAMPLE_MS has passed since the last
- * attempt, a failed read included, and feeds display_update(). True only when
- * the quarter changed. */
-bool display_orientation_sample(display_orientation_t* o, int64_t now_us, display_motion_reader_t read);
-
 /* Returns the horizontal inset where a row meets a rounded canvas corner. */
 int display_panel_corner_inset(int radius, int canvas_height, int row);
 
 /*
  * The shell's side, defined in display_device.c (device only): the one panel,
- * its orientation state and its clock. Orientation is sampled here, from the
- * motion sensor at 10 Hz, and applying a change to the UI is the
- * caller's.
+ * its orientation state and its clock. What only the shell calls is in
+ * display_shell.h.
  */
-
-/* Brings the panel up. False when the graphics cannot start; a development
- * build prints the DMA heap to say why. */
-bool display_start(void);
-
-/* Loads the saved panel clock and applies it. After display_start(). */
-void display_load_panel_clock(void);
-
-/* Puts the shell's orientation at DISPLAY_DEFAULT_QUARTER. */
-void display_reset_quarter(void);
-
-/* Samples the motion sensor at DISPLAY_SAMPLE_MS. True when the quarter
- * changed. */
-bool display_sample_orientation(int64_t now_us);
 
 /* The shell's own orientation, for an app drawing through the shell's
  * transform: knowing when it changed underneath you, without reading the IMU

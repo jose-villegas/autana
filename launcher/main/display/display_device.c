@@ -5,12 +5,13 @@
  */
 
 #include "display/display.h"
+#include "display/display_shell.h"
 
 #include "build_variant.h"
 #include "display/panel_clock.h"
+#include "esp_log.h"
 #include "gfx/gfx.h"
 #include "input/input_shell.h"
-#include "util/log.h"
 #include "util/memory.h"
 #include "util/settings.h"
 
@@ -71,7 +72,7 @@ display_set_system_panel_clock_hz(int hz) {
     }
     gfx_set_panel_clock_hz(hz);
     if (!settings_write_i32(PANEL_CLOCK_SETTINGS_SPACE, PANEL_CLOCK_SETTINGS_KEY, hz)) {
-        log_warn(TAG, "could not save the panel clock choice");
+        ESP_LOGW(TAG, "could not save the panel clock choice");
     }
 }
 

@@ -11,6 +11,7 @@
  */
 
 #include "display/display.h"
+#include "display/display_shell.h"
 
 #include <math.h>
 #include <stdint.h>
