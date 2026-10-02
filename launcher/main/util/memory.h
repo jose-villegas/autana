@@ -48,7 +48,7 @@ size_t memory_total_bytes(memory_kind_t kind);
 void memory_dump(memory_kind_t kind);
 
 #if MEMORY_HEAP_CAPS
-static inline uint32_t
+static inline __attribute__((always_inline)) uint32_t
 memory_caps(memory_kind_t kind) {
     switch (kind) {
         case MEMORY_INTERNAL: return MALLOC_CAP_INTERNAL;
