@@ -2,10 +2,15 @@
  * memory: the heap by kind, so a caller above the drivers can place a buffer,
  * or measure what it kept or lost, without naming the allocator.
  *
- * memory.c maps each kind to the heap's capabilities. The heap underneath is
- * ESP-IDF's on the board, test/heap_arena.c's device-sized model in the host
- * tests, and test/heap_plain.c's plain malloc() in a host render, which has
- * no budget to report.
+ * Each kind maps to heap capabilities. The heap underneath is ESP-IDF's on
+ * the board and test/heap_arena.c's device-sized model in the host tests
+ * (HOST_HEAP_ARENA). Any other host build, a render or the editor, gets the C
+ * library's malloc(), which has no budget: there every size query answers
+ * SIZE_MAX and means nothing.
+ *
+ * Allocating and freeing are inline: a heap watch names the first frame
+ * outside the allocator as the call site, so a frame of this module's own
+ * would make every caller one site.
  *
  * Rejected: a cap mask in the interface. A caller names what the buffer is
  * for; which capability bits mean that on this chip is this module's call.
@@ -13,12 +18,21 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
+
+#if defined(ESP_PLATFORM) || defined(HOST_HEAP_ARENA)
+#include "esp_heap_caps.h"
+#define MEMORY_HEAP_CAPS 1
+#else
+#include <stdlib.h>
+#define MEMORY_HEAP_CAPS 0
+#endif
 
 typedef enum {
     MEMORY_INTERNAL, /* on-chip RAM */
     MEMORY_8BIT,     /* anything a byte access reaches, internal or external */
-    MEMORY_DMA,      /* what the panel and bus transfers can read from */
-    MEMORY_PSRAM,    /* external RAM: large and slow, and no DMA reaches it */
+    MEMORY_DMA,      /* what the heap hands out as DMA-capable: internal only */
+    MEMORY_PSRAM,    /* external RAM: large and slow */
 } memory_kind_t;
 
 size_t memory_free_bytes(memory_kind_t kind);
@@ -33,10 +47,39 @@ size_t memory_total_bytes(memory_kind_t kind);
 /* Prints every region of this kind and its blocks to the console. */
 void memory_dump(memory_kind_t kind);
 
+#if MEMORY_HEAP_CAPS
+static inline uint32_t
+memory_caps(memory_kind_t kind) {
+    switch (kind) {
+        case MEMORY_INTERNAL: return MALLOC_CAP_INTERNAL;
+        case MEMORY_8BIT: return MALLOC_CAP_8BIT;
+        case MEMORY_DMA: return MALLOC_CAP_DMA;
+        case MEMORY_PSRAM: return MALLOC_CAP_SPIRAM;
+    }
+    return MALLOC_CAP_8BIT;
+}
+#endif
+
 /* A byte-addressable block of this kind, or NULL when none is that large. A
  * request for one kind never falls back to another: running out where the
  * buffer was meant to live is the failure a caller has to see. */
-void* memory_alloc(size_t bytes, memory_kind_t kind);
+static inline __attribute__((always_inline)) void*
+memory_alloc(size_t bytes, memory_kind_t kind) {
+#if MEMORY_HEAP_CAPS
+    /* Internal RAM also holds word-only regions, which a byte store faults in. */
+    return heap_caps_malloc(bytes, memory_caps(kind) | MALLOC_CAP_8BIT);
+#else
+    (void)kind;
+    return malloc(bytes);
+#endif
+}
 
 /* Returns a block from memory_alloc(); NULL is a no-op. */
-void memory_free(void* block);
+static inline __attribute__((always_inline)) void
+memory_free(void* block) {
+#if MEMORY_HEAP_CAPS
+    heap_caps_free(block);
+#else
+    free(block);
+#endif
+}
