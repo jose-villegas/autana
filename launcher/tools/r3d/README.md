@@ -192,6 +192,28 @@ in landscape so the fit holds the panel either way up. `fit` prunes to
 bit-identical, the GPU's sums being unordered, so the recipe pins the mesh
 that was committed.
 
+### Budget sweep
+
+`fitted_variant.py sweep` remakes and scores a fitted recipe at several
+triangle budgets and cost weights, one GPU fit at a time:
+
+```sh
+$E/bin/python launcher/tools/r3d/fitted_variant.py sweep SCENE.scene.toml --variant NAME \
+    --budgets 4000,6000,8672 --cost-weights 0,0.1 --out scratch/sweep
+```
+
+Each point prepares its own start and references, fits the recipe with only
+its budget and cost weight changed, scores the held-out references, and
+predicts the held-out path's device-pixel frame time with
+`board_cost_weights.txt`. `--board-ms` accepts optional board readings in
+budget then cost-weight order. `--smoke` uses a few fit steps per point.
+Finished point records let a later invocation resume without rerunning them.
+The output directory contains `sweep.csv` and `pareto.png`.
+
+The front joins points for which no other point is no slower and no less
+accurate. Its knee is the front point with the greatest perpendicular distance
+from the chord between the front's end points after both axes are normalized.
+
 ## Cost-aware fit
 
 These stages spend a triangle budget where the camera looks, fit geometry

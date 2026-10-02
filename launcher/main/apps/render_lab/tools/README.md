@@ -465,6 +465,8 @@ the upscale, is 21 ms, and at 4,000 triangles the frame is still 35 ms.
 
 ![Held-out error against predicted frame time](../../../../../docs/render/images/appearance-pareto.png)
 
+`fitted_variant.py sweep` makes this Pareto image from the fitted variant's recipe.
+
 ```mermaid
 xychart-beta
     title "Held-out mean ΔE76 against predicted ms, path start fitted"
