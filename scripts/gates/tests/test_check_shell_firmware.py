@@ -83,8 +83,8 @@ class ProblemsTest(unittest.TestCase):
 
 
 class ShellFolderTest(unittest.TestCase):
-    """The shell is main.c and everything under launcher/main/shell/, held to
-    the same rule: what main.c may not name, no file of the shell may."""
+    """main.c and everything under launcher/main/shell/ are held to one rule:
+    what main.c may not name, no file under shell/ may."""
 
     def problems(self, files):
         with tempfile.TemporaryDirectory() as temp:

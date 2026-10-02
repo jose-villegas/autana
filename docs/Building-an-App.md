@@ -112,7 +112,7 @@ app only ever sees the `Running` state; it leaves by home swipe
 (`home_gesture`), PWR long-press (no `home_gesture`), or its own call to
 `shell_request_exit()`.
 
-What the shell does on each transition, in order: `step_launcher()` on
+What the shell does on each transition, in order: `shell_start_app()` on
 launch, `shell_leave_app()` on leave (`shell/shell_apps.c`):
 
 | Launch | Leave |
@@ -133,8 +133,8 @@ never sees the input that closed it.
 `shell_run()` reads input and clamps `dt_ms`, `shell_step_app()` decides
 between leaving and stepping, `step_running_app()` picks one of the two shapes
 below and `shell_present_unless_deferred()` presents for the first. The
-engine systems' phases (Firmware-Architecture.md,
-[Engine systems](Firmware-Architecture.md#engine-systems)) run at the points
+engine systems' phases
+([Engine systems](Firmware-Architecture.md#engine-systems)) run at the points
 marked.
 
 Without `update()`: the shell presents synchronously after `frame()`.
@@ -149,7 +149,7 @@ sequenceDiagram
     alt band mode: GFX_LAYOUT_BANDS
         S->>G: queue the home hint, home_gesture only
     end
-    S->>A: invalidate() if a full redraw is pending
+    S->>A: invalidate() if a full redraw is pending, then the systems' invalidate phase
     S->>A: frame(dt_ms, input)
     A->>G: gfx_* draws
     alt band mode: GFX_LAYOUT_BANDS
@@ -183,6 +183,8 @@ sequenceDiagram
     S->>A: frame(dt_ms, input)
     alt band mode: GFX_LAYOUT_BANDS
         S->>G: gfx_band_run(draw_band, ui_replay_band)
+    else full-framebuffer mode
+        S->>S: the systems' overlay phase
     end
     Note over S,P: shell_present_unless_deferred() leaves this frame to the next pass's gfx_present_begin()
 ```

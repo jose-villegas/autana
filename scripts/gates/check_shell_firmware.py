@@ -4,12 +4,12 @@ anything but its owner or a driver calls the vendor clock or heap.
 
     python scripts/gates/check_shell_firmware.py
 
-The shell is launcher/main/main.c, which starts the platform, and every file
-under launcher/main/shell/, which runs the frame loop. The chip's vendor
-code (ESP-IDF, FreeRTOS, NVS, the board support package) sits behind a
-module of this firmware's own (input/, display/, util/timing.h,
-util/settings.h, util/memory.h). A vendor call left in the shell is a second
-place that knows the chip, so this fails on
+The rule holds launcher/main/main.c, which starts the platform, and every
+file under launcher/main/shell/, which runs the frame loop, to one standard.
+The chip's vendor code (ESP-IDF, FreeRTOS, NVS, the board support package)
+sits behind a module of this firmware's own (input/, display/,
+util/timing.h, util/settings.h, util/memory.h). A vendor call left in the
+shell is a second place that knows the chip, so this fails on
 
   - an include of an esp_*, nvs*, freertos/, bsp/, driver/, hal/, soc/ or
     rom/ header, and

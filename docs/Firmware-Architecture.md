@@ -25,7 +25,7 @@ and means something different by each:
 
 | | |
 |---|---|
-| **shell** | the frame loop and the app switching: `shell/`, whose log tag is literally `shell`; `main.c` starts the board and calls `shell_run()` |
+| **shell** | the frame loop and the app switching: `shell/`, whose log tag, shared with `main.c`'s boot lines, is `shell`; `main.c` starts the board and calls `shell_run()` |
 | **launcher** | the home screen the shell draws when no app is running: `ui/ui_launcher.c` |
 | **boot** | what runs once before the loop exists and never again: `boot/` |
 
@@ -38,10 +38,10 @@ screen.
 
 Each row may include anything in a row below it, and the root headers
 (`app.h`, `app_arena.h`, `build_variant.h`), never a row
-above or a folder beside it in the same row. The top row is the two callers:
-`main.c` starts the board and hands over to the shell, and the shell reaches
-an app only through the callbacks `app.h` declares. Folders that touch hardware are
-marked. `ls launcher/main/<folder>` is the inventory; this is the shape.
+above or a folder beside it in the same row. The top row is the two callers,
+and neither includes the other: `main.c` starts the board and calls
+`shell_run()`, and the apps. The shell reaches an app only through the
+callbacks `app.h` declares. Folders that touch hardware are marked. `ls launcher/main/<folder>` is the inventory; this is the shape.
 
 ```mermaid
 flowchart TB
@@ -179,13 +179,13 @@ become a goal.
 
 ## Startup
 
-`app_boot_init()` in `main.c` runs a fixed order before the loop, and the
-order is most of the point:
+`app_main()` in `main.c` runs a fixed order, then hands over to the loop, and
+the order is most of the point:
 
 ```
 post_run_before_display()   the SD card, on its own SDMMC bus
-display_start()             panel up, framebuffer allocated; on failure the
-                            shell logs and sleeps in a loop, never returns
+display_start()             panel up, framebuffer allocated; on failure
+                            main.c logs and sleeps in a loop, never returns
 display_load_panel_clock()  the saved panel clock, applied
 post_run_after_display()    the rest of the health check
                             -> a failure holds the screen for 8 s
@@ -258,7 +258,7 @@ framebuffer before `frame()`, whether or not the app has an `update()`
 
 ### Engine systems
 
-Engine machinery the loop drives every pass, the scene manager first, is a
+Engine machinery the loop drives every pass is a
 **system**: a `shell_system_t` (`shell/shell_system.h`) of phase callbacks,
 registered with `SHELL_SYSTEM_REGISTER()` the way an app is. The loop never
 names a system; it calls each phase over all of them, lowest `order` first,
@@ -288,10 +288,10 @@ flag ([Gfx-and-Presentation.md](Gfx-and-Presentation.md#repaint-controls)).
 gfx has no idea what anyone caches above it, so the shell answers the flag
 at the top of a pass, before anything draws: a running app gets its
 `invalidate()`, the launcher gets `ui_invalidate()`, and Control Center
-repaints its dimmed backdrop; the systems' `invalidate` phase follows each. Clearing the flag before the draw rather than
-after is what lets a request made inside that very `frame()` reach the next
-pass. The app's side is in
-[Building-an-App.md](Building-an-App.md#full-redraw).
+repaints its dimmed backdrop; each path also runs the systems' `invalidate`
+phase. Clearing the flag before the draw rather than after is what lets a
+request made inside that very `frame()` reach the next pass. The app's side
+is in [Building-an-App.md](Building-an-App.md#full-redraw).
 
 ### The frame watch: no allocating or logging in steady state
 

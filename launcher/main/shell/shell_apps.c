@@ -153,7 +153,7 @@ shell_paint_home_under_boot(void) {
 }
 
 /* True once frame() has drawn a frame for the current app that update()'s
- * caller has not yet begun presenting; see shell_step_app(). Reset whenever the
+ * caller has not yet begun presenting; see step_running_app(). Reset whenever the
  * running app changes, so a freshly entered one always primes first. */
 static bool frame_ready;
 static bool exit_requested;
@@ -318,12 +318,12 @@ overlaps_present(const app_t* current) {
     return current->update != NULL || shell_systems_overlap_present();
 }
 
-/* An app with update(): overlap it with sending the frame drawn last pass
- * (gfx_present_begin()/gfx_present_wait(), gfx.h), skipped while priming
- * (frame_ready false), since nothing is queued yet. THIS pass's frame()
- * output is presented the same way, deferred to
- * shell_present_unless_deferred() next pass. Every frame also gives gfx_band_run()
- * its callback; it does nothing outside GFX_LAYOUT_BANDS. */
+/* A pass that overlaps the present (overlaps_present()): send the frame drawn
+ * last pass (gfx_present_begin()/gfx_present_wait(), gfx.h), skipped while
+ * priming (frame_ready false), since nothing is queued yet. THIS pass's
+ * frame() output is presented the same way, deferred to
+ * shell_present_unless_deferred() next pass. Every frame also gives
+ * gfx_band_run() its callback; it does nothing outside GFX_LAYOUT_BANDS. */
 static void
 step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
     if (!overlaps_present(current)) {
@@ -570,10 +570,6 @@ shell_test_stale_exit_is_cleared(void) {
 }
 #endif
 
-/* An app with update() manages its own present begin/wait inside shell_step_app(),
- * deferring the frame just drawn to next pass's begin; see its own
- * comment. Everything else (the launcher included) keeps presenting here,
- * synchronously, exactly as before. */
 void
 shell_present_unless_deferred(const app_t* current) {
     if (current == NULL || !overlaps_present(current)) {

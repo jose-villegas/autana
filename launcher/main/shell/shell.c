@@ -1,14 +1,6 @@
 /*
- * The shell: boots the device, runs the frame loop, and switches between the
- * launcher and whichever app is running.
- *
- * There is exactly one frame loop on the device. It lives here, not in the
- * apps, so that switching is instant and no app can wedge the system by
- * failing to yield.
- *
- * Note this task must never return. Once firmware goes idle on this board the
- * chip stops responding to reset signalling and can only be recovered with the
- * BOOT button; see docs/notes/Flashing-and-Toolchain.md.
+ * The frame loop, the one on the device: it lives here, not in the apps, so
+ * switching is instant and no app can wedge the system by failing to yield.
  */
 
 #include <ctype.h>
