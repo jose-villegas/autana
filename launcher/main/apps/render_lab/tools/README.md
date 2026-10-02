@@ -60,8 +60,8 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 | `render/sponza-{full,lite,flat}.gif` | the same three seconds of the flythrough, one GIF per bake |
 | `render/sponza-{depth,tiles}.gif` | those three seconds as the depth and depth-tile views of the full bake |
 | `render/bake-fidelity-sheet.png` | the flat bake against the source model at two poses, with the error heatmap (see Fidelity against the source) |
-| `render/bake-indirect-compare.png`, `render/bake-indirect-crops.png` | the smooth bake without and with indirect light, from a bake of the import made without that field, at one pose and where the flythrough differs most (see Indirect light) |
-| `render/bake-indirect-sheet.png` | the smooth bake against the source model at two poses, with the error heatmap |
+| `render/bake-indirect-compare.png`, `render/bake-indirect-crops.png` | the reference beside the smooth bake without and with indirect light (from a bake of the import made without that field), each with its error heatmap against the reference at two poses, then the places the two bakes differ most with the reference above them (see Indirect light) |
+| `render/bake-indirect-look.png` | the reference beside the indirect bake at intensity 1, 2 and 3 and at an albedo boost of 2, each with its error heatmap (see Indirect look) |
 | `render/compare-full-{lite,flat}.png`, `.crops.png` | full against lite and smooth against flat at the GIFs' last pose: both renders and their difference, then the places they differ most, enlarged |
 
 ## The Sponza variants
@@ -211,44 +211,67 @@ The second bounce already adds under 1%. Two are baked because the share is a
 mean over all triangles and is larger in the shadowed places the bounces light.
 Zero bounces writes the bytes the bake wrote before `indirect` existed.
 
-How far each bake is from the source lit per pixel, over the same eight poses
-as above, against the reference with indirect light and against one with
-direct light only. Mean Î”E76, p95 Î”E76 and luma SSIM; the direct-light bakes
-are the same import with `indirect` removed:
+How far each bake is from the source lit per pixel with the same bounces, over
+the same eight poses as above. Mean ΔE76, p95 ΔE76 and luma SSIM; the
+direct-light bakes are the same import with `indirect` removed:
 
-| Bake | Against the indirect reference | Against the direct-only reference |
-|---|---|---|
-| Full smooth, direct light | 8.507, 21.96, 0.680 | 6.190, 20.91, 0.720 |
-| Full smooth, two bounces | 6.645, 21.03, 0.684 | 7.993, 21.53, 0.692 |
-| Lite smooth, direct light | 9.489, 26.65, 0.629 | 7.354, 26.03, 0.669 |
-| Lite smooth, two bounces | 7.801, 25.19, 0.638 | 8.710, 25.14, 0.651 |
-| Flat, direct light | 9.294, 28.99, 0.634 | 7.041, 28.06, 0.670 |
-| Flat, two bounces | 7.680, 26.17, 0.623 | 8.544, 26.25, 0.632 |
+| Bake | Against the indirect reference |
+|---|---|
+| Full smooth, direct light | 8.507, 21.96, 0.680 |
+| Full smooth, two bounces | 6.645, 21.03, 0.684 |
+| Lite smooth, direct light | 9.489, 26.65, 0.629 |
+| Lite smooth, two bounces | 7.801, 25.19, 0.638 |
+| Flat, direct light | 9.294, 28.99, 0.634 |
+| Flat, two bounces | 7.680, 26.17, 0.623 |
 
-A bake is closest to the reference that has its own kind of light, and the
-indirect bake is 1.6 to 1.9 Î”E nearer its reference than the direct bake is to
-it. The like-for-like score is 0.4 to 0.6 Î”E above the direct one: the
-reference resolves bounce detail finer than a triangle.
+The indirect reference is the ground truth for a bake that carries bounce
+light, and the two-bounce bakes are 1.6 to 1.9 ΔE nearer to it than the direct
+bakes. The reference resolves bounce detail finer than a triangle, which is the
+error that remains.
 
-The smooth bake without and with indirect light at one pose, and the
-difference; then the places the two differ most along the flythrough, without
-above: a banner's colour on the column beside it, and the lit ceiling.
+The reference, the smooth bake with direct light only and the smooth bake with
+two bounces at two poses, each bake with its ΔE heatmap against the reference
+and the reference's edge pixels beside them. The error stays at silhouettes and
+shadow edges; the bounces take the mean down by about a fifth.
 
-![Indirect light off and on, smooth](../../../../../docs/images/render/bake-indirect-compare.png)
+![Reference, direct-light bake and two-bounce bake, with error heatmaps](../../../../../docs/images/render/bake-indirect-compare.png)
+
+The places the two bakes differ most, the reference above them: a banner's
+colour on the column beside it, and the lit ceiling.
 
 ![Where bounce light changes the picture](../../../../../docs/images/render/bake-indirect-crops.png)
 
-The two-bounce smooth bake against its reference at two poses: the reference,
-the bake, the Î”E heatmap and the reference's edge pixels. The error stays at
-silhouettes and shadow edges, as for the direct bake.
-
-![Reference, two-bounce bake, error heatmap and edge pixels](../../../../../docs/images/render/bake-indirect-sheet.png)
-
-`doc_images.sh` regenerates the three images, baking the import without
-`indirect` for the "off" side. The bounce table and the scores come from
+`doc_images.sh` regenerates the images, baking the import without `indirect`
+for the direct-light side. The bounce table and the scores come from
 `mesh_import.py meshes/sponza.scene.toml` at each bounce count and the
 `reference_render.py` commands above, once for the import with `indirect` and
 once without.
+
+### Indirect look
+
+The scene's `[indirect]` table, described in
+[Scene-Files.md](../../../../../docs/render/Scene-Files.md#indirect-look), sets
+`intensity` (a multiplier on the gathered bounce light) and `albedo_boost` (a
+multiplier on the reflectance bounces use, held below 1). The committed scene
+leaves both at the physical 1.0. The sheet bakes the same import at intensity 2
+and 3 and at an albedo boost of 2, and puts each beside the reference, which is
+the physical one, at the last pose:
+
+![Reference beside intensity 1, 2, 3 and albedo boost 2, with error heatmaps](../../../../../docs/images/render/bake-indirect-look.png)
+
+Over five poses against that reference, mean ΔE76, p95 ΔE76 and luma SSIM:
+
+| Look | Mean ΔE76 | p95 ΔE76 | SSIM |
+|---|---:|---:|---:|
+| Direct light only | 8.76 | 23.14 | 0.675 |
+| Intensity 1 | 6.80 | 22.14 | 0.679 |
+| Intensity 2 | 7.60 | 22.45 | 0.667 |
+| Intensity 3 | 9.25 | 23.63 | 0.648 |
+| Albedo boost 2 | 8.36 | 23.03 | 0.656 |
+
+Values above 1 trade fidelity to the physical reference for look: intensity 2
+already costs 0.8 ΔE and intensity 3 lands further from the reference than
+direct light alone.
 
 ## Sponza poses
 

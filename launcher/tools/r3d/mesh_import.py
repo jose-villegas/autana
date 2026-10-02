@@ -78,13 +78,14 @@ def indirect_cache_for(src, settings, scene, intersector):
     variant and the reference see the same source, lights and settings."""
     if not settings.light or settings.light.indirect is None:
         return None
-    key = (str(settings.path), repr(vars(settings.light.indirect)), repr(scene.lights), settings.light.ray_offset)
+    key = (str(settings.path), repr(vars(settings.light.indirect)), repr(scene.lights), settings.light.ray_offset,
+           repr(vars(scene.indirect)))
     if key not in INDIRECT_CACHES:
         double = {index for index, name in enumerate(src.names) if name in settings.double_sided}
         INDIRECT_CACHES[key] = build_indirect_cache(
             src.p, src.tri_v, src.tri_m, range(len(src.names)), double,
             lambda centres, spacing, material: albedo_at(src, centres, spacing, material), intersector, scene.lights,
-            settings.light.ray_offset, settings.light.indirect)
+            settings.light.ray_offset, settings.light.indirect, scene.indirect.intensity, scene.indirect.albedo_boost)
     return INDIRECT_CACHES[key]
 
 

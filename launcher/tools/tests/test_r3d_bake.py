@@ -20,7 +20,7 @@ try:
     from trimesh.ray.ray_pyembree import RayMeshIntersector
 
     from r3d.geometry import triangle_areas, weld
-    from r3d.light import (IndirectCache, adaptive_sample_counts, build_indirect_cache, face_colours, gather_indirect, light,
+    from r3d.light import (ALBEDO_CEILING, IndirectCache, adaptive_sample_counts, boosted_albedo, build_indirect_cache, face_colours, gather_indirect, light,
                            merge_matching_colours, to_srgb8)
     from r3d import lit_mesh, rebake
     from r3d.lit_mesh import MESHLET_TRIANGLES, bake_lit_mesh, read_lit_mesh, validate, weld_quantised, write_lit_mesh
@@ -201,7 +201,7 @@ class RepairStepTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ColourSeamTests(unittest.TestCase):
-    TOLERANCE = np.array([12, 6, 12])
+    TOLERANCE = None if np is None else np.array([12, 6, 12])
 
     def merged(self, colours, tolerance=None):
         colours = np.array(colours, dtype=float)
@@ -547,10 +547,11 @@ class IndirectLightTests(unittest.TestCase):
     ONE_FLOOR_LIGHT = [{"type": "directional", "direction": [-0.6, 1.0, 0.0], "color": [1, 1, 1], "intensity": 1.0,
                         "disc_degrees": 0.5, "rays": 4}]
 
-    def cache(self, p, tris, tri_mat, intersector, albedo, lights, bounces, rays=128, cache_samples=1, double=()):
+    def cache(self, p, tris, tri_mat, intersector, albedo, lights, bounces, rays=128, cache_samples=1, double=(), **look):
         return build_indirect_cache(p, tris, tri_mat, sorted(set(tri_mat.tolist())), set(double),
                                     lambda points, spacing, material: np.tile(albedo[material], (len(points), 1)),
-                                    intersector, lights, 0.01, SimpleNamespace(bounces=bounces, rays=rays, cache_samples=cache_samples))
+                                    intersector, lights, 0.01, SimpleNamespace(bounces=bounces, rays=rays, cache_samples=cache_samples),
+                                    **look)
 
     def test_a_closed_diffuse_box_follows_the_bounce_series(self):
         p, tris = box_inside(10.0)
@@ -562,6 +563,37 @@ class IndirectLightTests(unittest.TestCase):
                                cache_samples=cache_samples)
             got = gather_indirect(inside, np.tile([0.0, 1.0, 0.0], (2, 1)), intersector, cache)
             np.testing.assert_allclose(got, np.full((2, 3), sum(a**k for k in range(1, bounces + 1))), rtol=1e-9)
+
+    def boxed(self, albedo, bounces=2, **look):
+        p, tris = box_inside(10.0)
+        intersector = RayMeshIntersector(trimesh.Trimesh(p, tris, process=False))
+        lights = [{"type": "ambient", "color": [1, 1, 1], "intensity": 1.0}]
+        cache = self.cache(p, tris, np.zeros(len(tris), dtype=int), intersector, {0: np.full(3, albedo)}, lights, bounces, **look)
+        inside = np.array([[1.0, 2.0, -3.0], [-4.0, 0.5, 4.0]])
+        return gather_indirect(inside, np.tile([0.0, 1.0, 0.0], (2, 1)), intersector, cache)
+
+    def test_the_intensity_scales_the_gathered_light_linearly_and_not_the_bounces_inside_it(self):
+        base = self.boxed(0.5)
+        for intensity in (0.0, 0.5, 2.0, 3.0):
+            np.testing.assert_allclose(self.boxed(0.5, intensity=intensity), base * intensity, rtol=1e-12, atol=0.0)
+        np.testing.assert_allclose(self.boxed(0.5, intensity=2.0), np.full((2, 3), 2 * (0.5 + 0.25)), rtol=1e-9)
+
+    def test_the_albedo_boost_multiplies_the_reflectance_and_holds_it_below_one(self):
+        np.testing.assert_allclose(self.boxed(0.2, albedo_boost=2.0), np.full((2, 3), 0.4 + 0.16), rtol=1e-9)
+        got = self.boxed(0.8, bounces=3, albedo_boost=2.0)
+        np.testing.assert_allclose(got, np.full((2, 3), sum(ALBEDO_CEILING**k for k in (1, 2, 3))), rtol=1e-9)
+        self.assertLess(ALBEDO_CEILING, 1.0)
+        self.assertEqual(boosted_albedo(np.array([0.5, 0.2, 0.995]), 3.0).tolist(), [ALBEDO_CEILING, 0.6000000000000001, 0.995])
+
+    def test_the_default_look_changes_no_byte(self):
+        albedo = np.array([[0.0, 0.3, 0.995], [0.5, 1.0, 0.02]])
+        self.assertEqual(boosted_albedo(albedo, 1.0).tobytes(), albedo.tobytes())
+        self.assertEqual(self.boxed(0.7, intensity=1.0, albedo_boost=1.0).tobytes(), self.boxed(0.7).tobytes())
+        p, tris, tri_mat, intersector = bleed_scene()
+        tint = {0: np.array([0.8, 0.8, 0.8]), 1: np.array([0.9, 0.05, 1.0])}
+        plain = self.cache(p, tris, tri_mat, intersector, tint, self.ONE_FLOOR_LIGHT, 3)
+        explicit = self.cache(p, tris, tri_mat, intersector, tint, self.ONE_FLOOR_LIGHT, 3, intensity=1.0, albedo_boost=1.0)
+        self.assertEqual(plain.radiance.tobytes(), explicit.radiance.tobytes())
 
     def test_colour_bleed_rises_toward_the_coloured_wall_and_only_with_indirect(self):
         p, tris, tri_mat, intersector = bleed_scene()

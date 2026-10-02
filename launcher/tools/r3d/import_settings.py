@@ -360,13 +360,25 @@ def load_object(value, base, where):
     return obj
 
 
+def load_indirect_look(table):
+    """The scene's `[indirect]` look controls; each defaults to the physical 1.0."""
+    check_keys(table, (), "scene.indirect", optional=("intensity", "albedo_boost"))
+    look = SimpleNamespace(intensity=number(table.get("intensity", 1.0), "scene.indirect.intensity"),
+                           albedo_boost=number(table.get("albedo_boost", 1.0), "scene.indirect.albedo_boost"))
+    if look.intensity < 0:
+        raise SettingsError("scene.indirect.intensity must not be negative")
+    if look.albedo_boost <= 0:
+        raise SettingsError("scene.indirect.albedo_boost must be positive")
+    return look
+
+
 def load_scene(path):
     """A scenario: objects (each a transform and one component), the sky and
     ambient settings, and the tone map the lit meshes use."""
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as source:
         values = tomllib.load(source)
-    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "sky", "ambient"))
+    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "sky", "ambient", "indirect"))
     objects = values["objects"]
     if not isinstance(objects, list) or not objects:
         raise SettingsError("scene.objects must be a non-empty array of tables")
@@ -392,9 +404,13 @@ def load_scene(path):
         path=path, objects=objects, renderers=[SimpleNamespace(settings=item.component.settings, variant=item.component.variant,
                                                                object=item) for item in renderers],
         camera=cameras[0] if cameras else None, region=region, lights=lights,
-        tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None)
+        tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None,
+        indirect=load_indirect_look(values.get("indirect", {})))
     lit = any(item.component.settings.light for item in renderers)
     culled = any(item.component.settings.visibility for item in renderers)
+    bounced = any(item.component.settings.light and item.component.settings.light.indirect for item in renderers)
+    if "indirect" in values and not bounced:
+        raise SettingsError("scene indirect settings is read by no placed mesh")
     for name, present, needed in (("lights", bool(lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),
                                   ("camera region", region is not None, culled)):
         if needed and not present:

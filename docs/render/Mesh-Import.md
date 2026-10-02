@@ -179,7 +179,9 @@ frame cost and mesh size do not change; only the bake takes longer.
 
 All three are required when `indirect` is present; `rays` and `cache_samples`
 are at least 1 and `bounces` at least 0. The reference renderer reads the
-same settings, so a fidelity score compares like with like.
+same settings, so a fidelity score compares like with like. How strong the
+bounce light looks is not an import setting: the scene's `[indirect]` table
+carries `intensity` and `albedo_boost` ([Scene-Files.md](Scene-Files.md#indirect-look)).
 
 The bake keeps one outgoing radiance per triangle of the full-detail source
 mesh. With albedo $a(t)$, direct irradiance $E_0(t)$ at the triangle, and
@@ -218,13 +220,25 @@ merging into one vertex. A double-sided surface gathers on the side the direct
 light shines on, and a ray that reaches a one-sided triangle from behind finds
 no light, so light does not pass through shells.
 
+The scene's `intensity` $g$ multiplies the gathered term and its `albedo_boost`
+$\beta$ replaces every albedo a bounce reflects with
+$\min(\beta a, \max(a, 0.99))$, so reflectance stays below 1 and a boost of 1
+changes nothing:
+
+```math
+L(x) = a(x)\,\bigl(E_{\mathrm{direct}}(x) + g\,E_{\mathrm{ind}}(x)\bigr)
+```
+
+Neither is physical above 1: they brighten and tint the bounces past what the
+reference renders, so fidelity to a physical reference falls as they rise.
+
 The cache and the gathers cost one bundle of rays per source triangle and
 bounce, plus one per baked point. The limit is the light's resolution: it is
 the vertex or face spacing of the baked mesh, so bounce detail smaller than a
 triangle is lost, and a coloured surface tints only the triangles it reaches.
 A scene's bounce sweep, scores and images live beside its own tools.
 
-![Direct light only, with two bounces, and the difference](../images/render/bake-indirect-compare.png)
+![The reference beside the direct-light and two-bounce bakes, each with its error heatmap](../images/render/bake-indirect-compare.png)
 
 The scene file that places meshes and carries the lights, the camera and the
 tone map is described in [Scene-Files.md](Scene-Files.md).

@@ -241,8 +241,9 @@ class IndirectCache:
     each triangle's normal and sidedness so a ray that reaches a one-sided
     triangle from behind finds no light."""
 
-    def __init__(self, radiance, rays, ray_offset, normals=None, two_sided=None):
+    def __init__(self, radiance, rays, ray_offset, normals=None, two_sided=None, intensity=1.0):
         self.radiance = radiance
+        self.intensity = intensity
         self.rays = rays
         self.ray_offset = ray_offset
         self.normals = normals
@@ -277,12 +278,24 @@ def gather_indirect(points, normals, intersector, cache, groups=None):
             behind = np.einsum("ij,ij->i", direction[indices], cache.normals[faces]) > 0
             found[behind & ~cache.two_sided[faces]] = 0.0
         out[indices] += found
-    return out / cache.rays
+    return out / cache.rays * cache.intensity
+
+
+ALBEDO_CEILING = 0.99
+
+
+def boosted_albedo(albedo, boost):
+    """The reflectance bounces use: albedo times boost, held below ALBEDO_CEILING
+    but never lowered below the albedo itself, so a boost of 1 changes nothing."""
+    return np.minimum(albedo * boost, np.maximum(albedo, ALBEDO_CEILING))
 
 
 def build_indirect_cache(points, tris, tri_mat, materials, double_materials, albedo_of, intersector, lights, ray_offset,
-                         indirect):
-    """Bake full-detail outgoing radiance once, then gather each later bounce."""
+                         indirect, intensity=1.0, albedo_boost=1.0):
+    """Bake full-detail outgoing radiance once, then gather each later bounce.
+
+    `intensity` scales the light the finished cache gathers, not the bounces
+    inside it; `albedo_boost` scales the reflectance every bounce uses."""
     if indirect is None or indirect.bounces == 0:
         return None
     a, b, c = points[tris[:, 0]], points[tris[:, 1]], points[tris[:, 2]]
@@ -297,6 +310,7 @@ def build_indirect_cache(points, tris, tri_mat, materials, double_materials, alb
         selected = np.nonzero(sample_materials == material)[0]
         if len(selected):
             albedo[selected] = albedo_of(sample_points[selected], np.tile(np.sqrt(area), indirect.cache_samples)[selected], material)
+    albedo = boosted_albedo(albedo, albedo_boost)
     double = np.isin(tri_mat, list(double_materials))
     sky_rays = max([item["rays"] for item in lights if item["type"] == "sky"], default=1)
     direct = light(sample_points, np.tile(normals, (indirect.cache_samples, 1)), np.tile(double, indirect.cache_samples),
@@ -307,7 +321,7 @@ def build_indirect_cache(points, tris, tri_mat, materials, double_materials, alb
     for _ in range(indirect.bounces - 1):
         previous = IndirectCache(np.asarray(radiance[-1:]), indirect.rays, ray_offset, normals, double)
         radiance.append(albedo * gather_indirect(centres, lit_side, intersector, previous))
-    return IndirectCache(np.asarray(radiance), indirect.rays, ray_offset, normals, double)
+    return IndirectCache(np.asarray(radiance), indirect.rays, ray_offset, normals, double, intensity)
 
 
 def encode_srgb8(linear):
