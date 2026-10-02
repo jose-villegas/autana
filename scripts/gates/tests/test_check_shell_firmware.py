@@ -82,6 +82,40 @@ class ProblemsTest(unittest.TestCase):
         self.assertIn("not found", found[0])
 
 
+class ShellFolderTest(unittest.TestCase):
+    """The shell is main.c and everything under launcher/main/shell/, held to
+    the same rule: what main.c may not name, no file of the shell may."""
+
+    def problems(self, files):
+        with tempfile.TemporaryDirectory() as temp:
+            write_main(temp, '#include "shell/shell.h"\nvoid app_main(void) { shell_run(); }\n')
+            for rel, text in files.items():
+                write_file(temp, rel, text)
+            return check_shell_firmware.problems(temp)
+
+    def test_a_vendor_include_or_name_anywhere_in_the_shell_folder_fails(self):
+        cases = (
+            ("launcher/main/shell/shell.c", '#include "esp_timer.h"\n', ["includes esp_timer.h"]),
+            ("launcher/main/shell/shell.h", '#include "freertos/task.h"\n', ["includes freertos/task.h"]),
+            ("launcher/main/shell/shell_apps.c", "void f(void) { vTaskDelay(1); }\n", ["uses vTaskDelay"]),
+            ("launcher/main/shell/deeper/x.c", "int x = ESP_OK;\n", ["uses ESP_OK"]),
+        )
+        for rel, text, reasons in cases:
+            with self.subTest(rel=rel):
+                self.assertEqual(self.problems({rel: text}), [f"{rel}:1: {reason}" for reason in reasons])
+
+    def test_logging_and_the_shells_own_modules_pass_and_other_layers_are_not_the_shell(self):
+        cases = (
+            ("launcher/main/shell/shell.c",
+             '#include "esp_log.h"\n#include "util/timing.h"\nvoid f(void) { ESP_LOGI("t", "x"); timing_yield(); }\n'),
+            ("launcher/main/ui/ui.c", "void f(void) { vTaskDelay(1); }\n"),
+            ("launcher/main/shellish.c", '#include "esp_timer.h"\n'),
+        )
+        for rel, text in cases:
+            with self.subTest(rel=rel):
+                self.assertEqual(self.problems({rel: text}), [])
+
+
 def write_file(root, rel, text):
     path = pathlib.Path(root) / rel
     path.parent.mkdir(parents=True, exist_ok=True)
