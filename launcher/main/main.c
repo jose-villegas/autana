@@ -31,10 +31,12 @@
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
 #include "input/gesture.h"
+#include "input/imu.h"
 #include "input/imu_rotation.h"
 #include "input/input.h"
 #include "input/input_shell.h"
 #include "input/tilt.h"
+#include "input/touch.h"
 #include "scene/scene_shell.h"
 #include "ui/system_navigation.h"
 #include "ui/ui.h"
@@ -385,7 +387,7 @@ static tilt_t launcher_tilt;
 static void
 feed_launcher_gravity(uint32_t dt_ms) {
     imu_sample_t sample;
-    if (!input_read_motion(&sample)) {
+    if (!imu_read(&sample)) {
         return;
     }
     tilt_update(&launcher_tilt, imu_gravity_screen_x(&sample), imu_gravity_screen_y(&sample), sample.az,
@@ -685,7 +687,7 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
     const int64_t since = now_us - *window_start;
     if (since >= 1500000) {
         uint32_t points = 0, moved = 0;
-        input_take_touch_sample_counts(&points, &moved);
+        touch_take_sample_counts(&points, &moved);
         const double per_s = 1000000.0 / (double)since;
         ESP_LOGI(TAG, "%.1f fps, %.1f drawn/s, touch %.1f points/s %.1f moved/s", (double)*frames * per_s,
                  (double)drawn * per_s, (double)points * per_s, (double)moved * per_s);
@@ -976,11 +978,11 @@ run_console_navigation(const app_t** current, input_t* input, uint32_t dt_ms) {
 
 static void
 report_gesture_completion(void) {
-    const char* verb = input_gesture_name(input_take_gesture_completion());
-    if (verb == NULL) {
+    touch_gesture_completion_t completion;
+    if (!touch_gesture_take_completion(&completion)) {
         return;
     }
-    printf("%s_OK\n", verb);
+    printf("%s_OK\n", touch_gesture_name(completion));
     fflush(stdout);
 }
 

@@ -33,6 +33,10 @@ void display_orientation_init(display_orientation_t* o);
  * the quarter changed. */
 bool display_orientation_sample(display_orientation_t* o, int64_t now_us, display_motion_reader_t read);
 
+/* Where the system panel clock is kept across reboots, in the settings store. */
+#define DISPLAY_PANEL_CLOCK_SETTINGS_SPACE "shell"
+#define DISPLAY_PANEL_CLOCK_SETTINGS_KEY   "panel_hz"
+
 /* Brings the panel up. False when the graphics cannot start; a development
  * build prints the DMA heap to say why. */
 bool display_start(void);

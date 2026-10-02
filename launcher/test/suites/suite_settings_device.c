@@ -12,14 +12,13 @@
 #include <stdint.h>
 
 #include "display/display.h"
+#include "display/display_shell.h"
 #include "display/panel_clock.h"
 #include "gfx/gfx.h"
 #include "unity.h"
 #include "util/settings.h"
 
 #define TEST_SPACE     "test_settings"
-#define SHELL_SPACE    "shell"
-#define CLOCK_KEY      "panel_hz"
 #define SENTINEL       12345
 #define UNSUPPORTED_HZ 1234567
 
@@ -49,7 +48,7 @@ other_rate(int hz) {
 static int32_t
 stored_rate(void) {
     int32_t value = 0;
-    TEST_ASSERT_TRUE(settings_read_i32(SHELL_SPACE, CLOCK_KEY, &value));
+    TEST_ASSERT_TRUE(settings_read_i32(DISPLAY_PANEL_CLOCK_SETTINGS_SPACE, DISPLAY_PANEL_CLOCK_SETTINGS_KEY, &value));
     return value;
 }
 
@@ -63,7 +62,8 @@ test_a_supported_rate_is_applied_and_persisted(void) {
 
 static void
 test_an_unchanged_rate_writes_nothing(void) {
-    TEST_ASSERT_TRUE(settings_write_i32(SHELL_SPACE, CLOCK_KEY, SENTINEL));
+    TEST_ASSERT_TRUE(
+        settings_write_i32(DISPLAY_PANEL_CLOCK_SETTINGS_SPACE, DISPLAY_PANEL_CLOCK_SETTINGS_KEY, SENTINEL));
     display_set_system_panel_clock_hz(display_system_panel_clock_hz());
     TEST_ASSERT_EQUAL_INT32(SENTINEL, stored_rate());
 }
@@ -71,7 +71,8 @@ test_an_unchanged_rate_writes_nothing(void) {
 static void
 test_an_unsupported_rate_changes_and_writes_nothing(void) {
     const int before = display_system_panel_clock_hz();
-    TEST_ASSERT_TRUE(settings_write_i32(SHELL_SPACE, CLOCK_KEY, SENTINEL));
+    TEST_ASSERT_TRUE(
+        settings_write_i32(DISPLAY_PANEL_CLOCK_SETTINGS_SPACE, DISPLAY_PANEL_CLOCK_SETTINGS_KEY, SENTINEL));
     display_set_system_panel_clock_hz(UNSUPPORTED_HZ);
     TEST_ASSERT_EQUAL_INT(before, display_system_panel_clock_hz());
     TEST_ASSERT_EQUAL_INT32(SENTINEL, stored_rate());
@@ -95,13 +96,15 @@ run_settings_device_suite(void) {
 
     const int original_hz = display_system_panel_clock_hz();
     int32_t original_raw = 0;
-    const bool had_raw = settings_read_i32(SHELL_SPACE, CLOCK_KEY, &original_raw);
+    const bool had_raw =
+        settings_read_i32(DISPLAY_PANEL_CLOCK_SETTINGS_SPACE, DISPLAY_PANEL_CLOCK_SETTINGS_KEY, &original_raw);
     RUN_TEST(test_a_supported_rate_is_applied_and_persisted);
     RUN_TEST(test_an_unchanged_rate_writes_nothing);
     RUN_TEST(test_an_unsupported_rate_changes_and_writes_nothing);
     RUN_TEST(test_restoring_returns_the_panel_to_the_system_rate);
     display_set_system_panel_clock_hz(original_hz);
-    settings_write_i32(SHELL_SPACE, CLOCK_KEY, had_raw ? original_raw : original_hz);
+    settings_write_i32(DISPLAY_PANEL_CLOCK_SETTINGS_SPACE, DISPLAY_PANEL_CLOCK_SETTINGS_KEY,
+                       had_raw ? original_raw : original_hz);
 #endif
 }
 

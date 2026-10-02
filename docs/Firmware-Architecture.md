@@ -93,15 +93,16 @@ flowchart TB
   and `imu.c` touch hardware; `touch_fsm`, `button_fsm`, `gesture` and
   `tilt` are pure and tested on a laptop. The same split runs through every
   folder, and is what the [Testing-Guide.md](Testing-Guide.md) relies on.
-- **The shell names no firmware.** `main.c` reaches the chip only through
-  modules that own it: `input/input_shell.h` (`input_start`, `input_poll`,
-  `input_read_motion`), `display/display_shell.h` (`display_start`,
+- **The shell names no vendor firmware.** `main.c` reaches the chip's vendor
+  code only through modules that own it: `input/input_shell.h` (`input_start`,
+  `input_poll`), `display/display_shell.h` (`display_start`,
   `display_sample_orientation`), `display/display.h` (the system panel clock)
-  and `util/{timing,settings,memory}.h`. Each module's device half lives in a
+  and `util/{timing,settings,memory}.h`; it calls this firmware's own drivers
+  (`imu_read`, `touch_read`) directly. Each module's device half lives in a
   `*_device.c` beside it and is compiled for the board only, so the files a
   host builds stay pure. `scripts/gates/check_shell_firmware.py` fails
-  `main.c` on any ESP-IDF, FreeRTOS, NVS, BSP or driver include or call,
-  logging (`esp_log.h`, `ESP_LOGE/W/I`) excepted.
+  `main.c` on any ESP-IDF, FreeRTOS, NVS or BSP include or call, logging
+  (`esp_log.h`, `ESP_LOG[A-Z]`) excepted.
 - **Generated sources are checked in** beside the code that uses them, each
   with a banner naming its regenerate command; `grep -rl "GENERATED FILE"`
   lists them, and the rules they follow are in
@@ -166,8 +167,9 @@ order is most of the point:
 
 ```
 post_run_before_display()   the SD card, on its own SDMMC bus
-display_start()             panel up, framebuffer allocated, saved panel
-                            clock loaded; parks on failure
+display_start()             panel up, framebuffer allocated; on failure the
+                            shell logs and sleeps in a loop, never returns
+display_load_panel_clock()  the saved panel clock, applied
 post_run_after_display()    the rest of the health check
                             -> a failure holds the screen for 8 s
 selftest_run()              SELFTEST builds with autorun only
