@@ -1313,7 +1313,7 @@ read_gravity_input(uint32_t dt_ms, imu_sample_t* sample, int* gx, int* gy, int* 
     *jostle = 0;
     *rotation = 0;
 
-    if (!imu_ready() || !imu_read(sample)) {
+    if (!imu_read(sample)) {
         return;
     }
 

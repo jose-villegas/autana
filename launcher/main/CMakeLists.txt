@@ -21,7 +21,7 @@ set(app_srcs
     "input/gesture.c"
     "input/imu.c"
     "input/input_device.c"
-    "input/input_gesture_name.c"
+    "input/touch_gesture.c"
     "input/tilt.c"
     "ui/ui.c"
     "ui/system_navigation.c"
