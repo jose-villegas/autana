@@ -48,8 +48,8 @@ V = R^{\mathsf T}\,T(-\text{position})
 ```
 
 ```math
-\text{pixel}_x = c_x + \operatorname{trunc}\!\left(\frac{x}{z}\, f\, s\right), \qquad
-\text{pixel}_y = c_y - \operatorname{trunc}\!\left(\frac{y}{z}\, f\, s\right)
+\text{pixel}_x = c_x + \mathrm{trunc}\!\left(\frac{x}{z}\, f\, s\right), \qquad
+\text{pixel}_y = c_y - \mathrm{trunc}\!\left(\frac{y}{z}\, f\, s\right)
 ```
 
 Here `f` is the focal length (0 is orthographic, no divide), `s` the pixels per
