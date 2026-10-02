@@ -151,13 +151,13 @@ polar_point(int32_t radius, uint16_t turn, int32_t* re, int32_t* im) {
 
 /* step == steps closes loop back to step 0, no gap on last edge. */
 static void
-grid_circle_point(int32_t radius, int32_t t, int steps, int step, const boot_anim_view_t* view, vec3x_t* cs,
-                  bool* front, int* sx, int* sy) {
+grid_circle_point(int32_t radius, const boot_anim_plane_t* plane, int steps, int step, const boot_anim_view_t* view,
+                  vec3x_t* cs, bool* front, int* sx, int* sy) {
     const int i = (step == steps) ? 0 : step;
     const uint16_t turn = (uint16_t)(((uint32_t)i * 65536u) / (uint32_t)steps);
     int32_t re, im;
     polar_point(radius, turn, &re, &im);
-    *cs = boot_anim_to_camera_space(re, im, t, view);
+    *cs = boot_anim_plane_point(plane, re, im);
     *front = cs->z > view->near_z;
     *sx = 0;
     *sy = 0;
@@ -182,7 +182,8 @@ draw_grid_circle_segment(bool prev_front, bool front, int prev_sx, int prev_sy, 
 }
 
 static void
-draw_grid_circle(int32_t radius, int32_t t, gfx_color_t c, int steps, const boot_anim_view_t* view) {
+draw_grid_circle(int32_t radius, const boot_anim_plane_t* plane, gfx_color_t c, int steps,
+                 const boot_anim_view_t* view) {
     vec3x_t prev_cs;
     bool prev_front = false;
     int prev_sx = 0, prev_sy = 0;
@@ -192,7 +193,7 @@ draw_grid_circle(int32_t radius, int32_t t, gfx_color_t c, int steps, const boot
         vec3x_t cs;
         bool front;
         int sx, sy;
-        grid_circle_point(radius, t, steps, step, view, &cs, &front, &sx, &sy);
+        grid_circle_point(radius, plane, steps, step, view, &cs, &front, &sx, &sy);
 
         if (have_prev) {
             draw_grid_circle_segment(prev_front, front, prev_sx, prev_sy, sx, sy, prev_cs, cs, c, view);
@@ -224,13 +225,14 @@ draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool da
 
     const int32_t target = boot_anim_spoke_reveal_target(near, far, reach);
     const int32_t near_target = target < near ? target : near;
+    const boot_anim_plane_t floor_plane = boot_anim_plane(0, view);
     const int max_step = near > 0 ? (int)(((int64_t)BOOT_ANIM_GRID_SPOKE_STEPS * near_target) / near) : 0;
 
     for (int step = 0; step <= max_step; step++) {
         const int32_t radius = (near * step) / BOOT_ANIM_GRID_SPOKE_STEPS;
         int32_t re, im;
         polar_point(radius, turn, &re, &im);
-        const vec3x_t cs = boot_anim_to_camera_space(re, im, 0, view);
+        const vec3x_t cs = boot_anim_plane_point(&floor_plane, re, im);
 
         /* Groups of BOOT_ANIM_GRID_SPOKE_DASH_STEPS alternate on and off to
          * form a visible dash. */
@@ -249,7 +251,7 @@ draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool da
     if (have_prev && last_radius < target) {
         int32_t re, im;
         polar_point(target, turn, &re, &im);
-        const vec3x_t cs = boot_anim_to_camera_space(re, im, 0, view);
+        const vec3x_t cs = boot_anim_plane_point(&floor_plane, re, im);
         int ax, ay, bx, by;
         if (r3d_project_segment_cs_x(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
             gfx_line_ex(ax, ay, bx, by, c, 0u);
@@ -282,17 +284,18 @@ draw_floor_ring(int ring, uint32_t now_ms, int32_t amp_q12, int dissolve_level, 
     const int32_t t =
         boot_anim_wave_height(d, now_ms, amp_q12, BOOT_ANIM_WAVE_WAVELENGTH_Q12, BOOT_ANIM_WAVE_PERIOD_MS);
 
+    const boot_anim_plane_t plane = boot_anim_plane(t, view);
     int32_t rim_re, rim_im;
     polar_point(d, 0, &rim_re, &rim_im);
-    const vec3x_t rim_a = boot_anim_to_camera_space(rim_re, rim_im, t, view);
+    const vec3x_t rim_a = boot_anim_plane_point(&plane, rim_re, rim_im);
     polar_point(d, 32768, &rim_re, &rim_im);
-    const vec3x_t rim_b = boot_anim_to_camera_space(rim_re, rim_im, t, view);
+    const vec3x_t rim_b = boot_anim_plane_point(&plane, rim_re, rim_im);
 
     const int steps = floor_ring_steps(rim_a, rim_b, dissolve_level, view);
     const bool tiny = boot_anim_screen_chord_lt(rim_a, rim_b, view, 16);
     const gfx_color_t c =
         lit_whitened(boot_anim_hue_rgb(boot_anim_grid_hue(now_ms, ring)), boot_anim_grid_whiten(now_ms), alpha);
-    draw_grid_circle(d, t, c, steps, view);
+    draw_grid_circle(d, &plane, c, steps, view);
     return tiny;
 }
 

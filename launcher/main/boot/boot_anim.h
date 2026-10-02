@@ -140,6 +140,38 @@ boot_anim_to_camera_space(int32_t re_q12, int32_t im_q12, int32_t t_q8, const bo
     return r3d_to_camera_space_x(p, view);
 }
 
+/* The camera-space image of the floor plane at one height: a point of it is
+ * `origin` plus its re and im steps, so a ring of points at one height costs
+ * two products a component instead of three, and no translation add. Rounds
+ * half up and does not saturate: it is for the floor's bounded coordinates. */
+typedef struct {
+    vec3x_t origin;
+    vec3x_t re_step; /* per Q16 unit of re */
+    vec3x_t im_step; /* per Q16 unit of im */
+} boot_anim_plane_t;
+
+static inline boot_anim_plane_t
+boot_anim_plane(int32_t t_q8, const boot_anim_view_t* view) {
+    const mat4x_t* m = &view->matrix;
+    boot_anim_plane_t plane;
+    plane.origin = boot_anim_to_camera_space(0, 0, t_q8, view);
+    plane.re_step = (vec3x_t){m->m[0][0], m->m[1][0], m->m[2][0]};
+    plane.im_step = (vec3x_t){m->m[0][2], m->m[1][2], m->m[2][2]};
+    return plane;
+}
+
+static inline vec3x_t
+boot_anim_plane_point(const boot_anim_plane_t* plane, int32_t re_q12, int32_t im_q12) {
+    return (vec3x_t){
+        plane->origin.x
+            + (int32_t)((((int64_t)plane->re_step.x * re_q12) + ((int64_t)plane->im_step.x * im_q12) + 2048) >> 12),
+        plane->origin.y
+            + (int32_t)((((int64_t)plane->re_step.y * re_q12) + ((int64_t)plane->im_step.y * im_q12) + 2048) >> 12),
+        plane->origin.z
+            + (int32_t)((((int64_t)plane->re_step.z * re_q12) + ((int64_t)plane->im_step.z * im_q12) + 2048) >> 12),
+    };
+}
+
 static inline void
 boot_anim_project(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view, int* screen_x,
                   int* screen_y) {

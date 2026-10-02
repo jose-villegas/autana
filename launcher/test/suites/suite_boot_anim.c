@@ -832,6 +832,25 @@ test_spline_cs_matches_transforming_the_world_space_spline(void) {
     }
 }
 
+/* A floor point through the plane helper is the full transform's result, within
+ * the half-unit rounding of a Q16.16 sum, on a real rotated, translated view. */
+static void
+test_plane_points_match_the_full_camera_space_transform(void) {
+    const boot_anim_view_t view = boot_anim_view(PANEL_W, PANEL_H, CURVE_DONE_MS);
+    for (int32_t t = -300; t <= 900; t += 300) {
+        const boot_anim_plane_t plane = boot_anim_plane(t, &view);
+        for (int32_t re = -9000; re <= 9000; re += 4500) {
+            for (int32_t im = -9000; im <= 9000; im += 3000) {
+                const vec3x_t want = boot_anim_to_camera_space(re, im, t, &view);
+                const vec3x_t got = boot_anim_plane_point(&plane, re, im);
+                TEST_ASSERT_INT32_WITHIN(3, want.x, got.x);
+                TEST_ASSERT_INT32_WITHIN(3, want.y, got.y);
+                TEST_ASSERT_INT32_WITHIN(3, want.z, got.z);
+            }
+        }
+    }
+}
+
 /* Basic level of detail */
 
 /* Two points far enough apart on screen that boot_anim_curve_lod_steps()
@@ -1570,6 +1589,7 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_a_span_never_leaves_its_control_points_behind);
     RUN_TEST(test_a_span_climbs_steadily_when_its_points_do);
     RUN_TEST(test_spline_cs_matches_transforming_the_world_space_spline);
+    RUN_TEST(test_plane_points_match_the_full_camera_space_transform);
     RUN_TEST(test_curve_lod_steps_keeps_full_detail_for_a_wide_chord);
     RUN_TEST(test_curve_lod_steps_collapses_a_tiny_chord_to_one_step);
     RUN_TEST(test_curve_lod_steps_keeps_full_detail_when_the_probe_cannot_project);
