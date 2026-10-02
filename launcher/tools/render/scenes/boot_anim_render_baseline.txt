@@ -2,5 +2,5 @@
 # Re-pinned deliberately, after looking at the images:
 #     ./launcher/tools/render/scenes/boot_anim_render_host.sh --update-baseline
 early 323243eb964bd7a552031671ff2ce22e45c53634dd667eb8a3675fef73c23959
-middle 76ea4995405d169c8bc11c4e31f11079c4ea5882a5273198e0748a853a70a317
-late 24920dae1ca35bc695f8547d6a251164fdb9bade3703836590fdd6ec41a5cec7
+middle ca97a6e0607fe305389aa367b05971d6efbd8c23456233a2fab3726d8bc02260
+late ce1b58d335d16f5e7634e59b9ee5cbcaf4d3cd8e0b6b9bb8b358b4abdf623cbd

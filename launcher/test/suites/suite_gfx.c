@@ -137,17 +137,17 @@ void
 test_an_injected_touch_reaches_the_input_state(void) {
     fixture();
     touch_start();
-    touch_inject(false, 0, 0);
+    touch_inject(false, (vec2i_t){0, 0});
     (void)input_after_polls();
 
-    touch_inject(true, 120, 300);
+    touch_inject(true, (vec2i_t){120, 300});
     const input_t held = input_after_polls();
     TEST_ASSERT_TRUE_MESSAGE(held.pressed, "the press edge never arrived");
     TEST_ASSERT_TRUE(held.down);
     TEST_ASSERT_EQUAL_INT(120, held.x);
     TEST_ASSERT_EQUAL_INT(300, held.y);
 
-    touch_inject(false, 120, 300);
+    touch_inject(false, (vec2i_t){120, 300});
     const input_t lifted = input_after_polls();
     TEST_ASSERT_TRUE_MESSAGE(lifted.released, "the release edge never arrived");
     TEST_ASSERT_FALSE(lifted.down);

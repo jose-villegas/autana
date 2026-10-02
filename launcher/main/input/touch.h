@@ -9,6 +9,8 @@
  */
 #pragma once
 
+#include "util/math/vec2i.h"
+
 #include <stdint.h>
 
 #include "build_variant.h"
@@ -27,7 +29,7 @@ void touch_start(void);
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* What is injected outranks the controller: a level until an up reaches the
  * polling task, a gesture until its `ms` has elapsed. */
-void touch_inject(bool down, int x, int y);
+void touch_inject(bool down, vec2i_t point);
 void touch_gesture_start(int x0, int y0, int x1, int y1, uint32_t ms, touch_gesture_completion_t completion);
 bool touch_gesture_take_completion(touch_gesture_completion_t* completion);
 #endif

@@ -32,7 +32,7 @@
 static void
 settle(display_t* d, int gx, int gy) {
     for (int i = 0; i < 4; i++) {
-        if (!display_update(d, gx, gy)) {
+        if (!display_update(d, (vec2i_t){gx, gy})) {
             return;
         }
     }
@@ -85,7 +85,7 @@ test_a_slow_sweep_through_a_boundary_flips_exactly_once(void) {
     const int gy = STRONG;
     int changes = 0;
     for (int gx = 0; gx <= 2 * STRONG; gx += 5) {
-        if (display_update(&d, gx, gy)) {
+        if (display_update(&d, (vec2i_t){gx, gy})) {
             changes++;
         }
     }
@@ -105,7 +105,7 @@ test_parked_on_the_old_boundary_does_not_oscillate(void) {
      * inside this module's 30..60 degree hysteresis band either way, so it
      * must never be enough to switch. */
     for (int i = 0; i < 20; i++) {
-        TEST_ASSERT_FALSE_MESSAGE(display_update(&d, STRONG, STRONG),
+        TEST_ASSERT_FALSE_MESSAGE(display_update(&d, (vec2i_t){STRONG, STRONG}),
                                   "a vector held exactly on the old boundary must not flip");
     }
     TEST_ASSERT_EQUAL_INT(0, display_quarter(&d));
@@ -119,7 +119,7 @@ test_parked_on_the_boundary_from_the_other_side_does_not_oscillate(void) {
     TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
 
     for (int i = 0; i < 20; i++) {
-        TEST_ASSERT_FALSE_MESSAGE(display_update(&d, STRONG, STRONG),
+        TEST_ASSERT_FALSE_MESSAGE(display_update(&d, (vec2i_t){STRONG, STRONG}),
                                   "the same parked vector must not flip quarter 3 back either");
     }
     TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
@@ -137,13 +137,15 @@ test_returning_partway_does_not_flip_until_the_inner_threshold(void) {
     /* Tilting back toward "down is down", but only a little: angle from the
      * x axis is arctan(700/1000) =~ 35 degrees, short of the 60-degree
      * threshold this module needs to leave quarter 3. Must hold. */
-    TEST_ASSERT_FALSE_MESSAGE(display_update(&d, 1000, 700), "a partial return must not flip the orientation yet");
+    TEST_ASSERT_FALSE_MESSAGE(display_update(&d, (vec2i_t){1000, 700}),
+                              "a partial return must not flip the orientation yet");
     TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
 
     /* Further still: angle from the x axis is now arctan(1000/500) =~ 63
      * degrees, past the threshold (equivalently, ~27 degrees from "down is
      * down", inside the 30-degree inner band); now it must flip. */
-    TEST_ASSERT_TRUE_MESSAGE(display_update(&d, 500, 1000), "a return well past the inner threshold must flip back");
+    TEST_ASSERT_TRUE_MESSAGE(display_update(&d, (vec2i_t){500, 1000}),
+                             "a return well past the inner threshold must flip back");
     TEST_ASSERT_EQUAL_INT(0, display_quarter(&d));
 }
 
@@ -154,13 +156,13 @@ test_update_reports_true_only_on_an_actual_change(void) {
     display_t d;
     display_init(&d); /* already quarter 0 */
 
-    TEST_ASSERT_FALSE_MESSAGE(display_update(&d, 0, STRONG),
+    TEST_ASSERT_FALSE_MESSAGE(display_update(&d, (vec2i_t){0, STRONG}),
                               "feeding the orientation the module already reports must not claim a change");
 
-    TEST_ASSERT_TRUE_MESSAGE(display_update(&d, STRONG, 0), "a genuine switch must report true");
+    TEST_ASSERT_TRUE_MESSAGE(display_update(&d, (vec2i_t){STRONG, 0}), "a genuine switch must report true");
     TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
 
-    TEST_ASSERT_FALSE_MESSAGE(display_update(&d, STRONG, 0),
+    TEST_ASSERT_FALSE_MESSAGE(display_update(&d, (vec2i_t){STRONG, 0}),
                               "holding the same tilt steady after the switch must not report true again");
     TEST_ASSERT_EQUAL_INT(3, display_quarter(&d));
 }

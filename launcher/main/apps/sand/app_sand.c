@@ -1319,7 +1319,8 @@ read_gravity_input(uint32_t dt_ms, imu_sample_t* sample, int* gx, int* gy, int* 
 
     *rotation = imu_rotation_level(sample);
 
-    tilt_update(&tilt, imu_gravity_screen_x(sample), imu_gravity_screen_y(sample), sample->az, *rotation, dt_ms);
+    const vec2i_t gravity = imu_gravity_screen(sample);
+    tilt_update(&tilt, gravity.x, gravity.y, sample->az, *rotation, dt_ms);
 
     *gx = tilt_x(&tilt);
     *gy = tilt_y(&tilt);

@@ -113,8 +113,9 @@ draw_toggles_page(const input_t* input) {
             state.accel_ax = sample.ax;
             state.accel_ay = sample.ay;
             state.accel_az = sample.az;
-            state.gravity_gx = imu_gravity_screen_x(&sample);
-            state.gravity_gy = imu_gravity_screen_y(&sample);
+            const vec2i_t gravity = imu_gravity_screen(&sample);
+            state.gravity_gx = gravity.x;
+            state.gravity_gy = gravity.y;
         }
     }
 

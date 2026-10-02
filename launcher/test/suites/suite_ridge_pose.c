@@ -62,40 +62,40 @@ test_column_under_tracks_the_pose_axis(void) {
 
 /* A pose `degrees` off straight down, toward the side. */
 static ridge_vector_t
-off_down_by(double degrees) {
-    const double radians = degrees * 3.14159265358979 / 180.0;
-    return (ridge_vector_t){(int32_t)lround(sin(radians) * RIDGE_POSE_ONE),
-                            (int32_t)lround(cos(radians) * RIDGE_POSE_ONE)};
+off_down_by(float degrees) {
+    const float radians = degrees * 3.14159265F / 180.0F;
+    return (ridge_vector_t){(int32_t)lroundf(sinf(radians) * (float)RIDGE_POSE_ONE),
+                            (int32_t)lroundf(cosf(radians) * (float)RIDGE_POSE_ONE)};
 }
 
 static void
 test_strips_pick_the_plain_diagonal_before_the_first_paint(void) {
-    TEST_ASSERT_TRUE(ridge_pose_strips_by_column(off_down_by(44.9), false, false));
-    TEST_ASSERT_TRUE(ridge_pose_strips_by_column(off_down_by(44.9), false, true));
-    TEST_ASSERT_FALSE(ridge_pose_strips_by_column(off_down_by(45.1), false, false));
-    TEST_ASSERT_FALSE(ridge_pose_strips_by_column(off_down_by(45.1), false, true));
+    TEST_ASSERT_TRUE(ridge_pose_strips_by_column(off_down_by(44.9F), false, false));
+    TEST_ASSERT_TRUE(ridge_pose_strips_by_column(off_down_by(44.9F), false, true));
+    TEST_ASSERT_FALSE(ridge_pose_strips_by_column(off_down_by(45.1F), false, false));
+    TEST_ASSERT_FALSE(ridge_pose_strips_by_column(off_down_by(45.1F), false, true));
     TEST_ASSERT_TRUE(ridge_pose_strips_by_column((ridge_vector_t){RIDGE_POSE_ONE, RIDGE_POSE_ONE}, false, false));
 }
 
 static void
 test_columns_hold_until_two_degrees_past_the_diagonal(void) {
-    TEST_ASSERT_TRUE(ridge_pose_strips_by_column(off_down_by(46.9), true, true));
-    TEST_ASSERT_FALSE(ridge_pose_strips_by_column(off_down_by(47.1), true, true));
-    TEST_ASSERT_TRUE(ridge_pose_strips_by_column(off_down_by(46.0), true, true));
+    TEST_ASSERT_TRUE(ridge_pose_strips_by_column(off_down_by(46.9F), true, true));
+    TEST_ASSERT_FALSE(ridge_pose_strips_by_column(off_down_by(47.1F), true, true));
+    TEST_ASSERT_TRUE(ridge_pose_strips_by_column(off_down_by(46.0F), true, true));
 }
 
 static void
 test_rows_hold_until_two_degrees_past_the_diagonal(void) {
-    TEST_ASSERT_FALSE(ridge_pose_strips_by_column(off_down_by(43.1), true, false));
-    TEST_ASSERT_TRUE(ridge_pose_strips_by_column(off_down_by(42.9), true, false));
-    TEST_ASSERT_FALSE(ridge_pose_strips_by_column(off_down_by(44.0), true, false));
+    TEST_ASSERT_FALSE(ridge_pose_strips_by_column(off_down_by(43.1F), true, false));
+    TEST_ASSERT_TRUE(ridge_pose_strips_by_column(off_down_by(42.9F), true, false));
+    TEST_ASSERT_FALSE(ridge_pose_strips_by_column(off_down_by(44.0F), true, false));
 }
 
 static void
 test_strips_ignore_which_way_the_pose_leans(void) {
     for (int sign_x = -1; sign_x <= 1; sign_x += 2) {
         for (int sign_y = -1; sign_y <= 1; sign_y += 2) {
-            const ridge_vector_t lean = off_down_by(46.0);
+            const ridge_vector_t lean = off_down_by(46.0F);
             const ridge_vector_t pose = {sign_x * lean.down_x, sign_y * lean.down_y};
             TEST_ASSERT_TRUE(ridge_pose_strips_by_column(pose, true, true));
             TEST_ASSERT_FALSE(ridge_pose_strips_by_column(pose, true, false));
