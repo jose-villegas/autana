@@ -45,9 +45,8 @@ mesh that needs no lighting. This walkthrough lights it, so add the step that
 bakes the scene's light into the colours:
 
 ```toml
-[process.light]
-ray_offset = 0.5
-colour_merge_step = 6
+[lighting]
+light = { ray_offset = 0.5, colour_merge_step = 6 }
 ```
 
 Other steps are opt-in the same way: `simplify` to a triangle budget,
@@ -75,7 +74,7 @@ it stands ([Scene-Files.md](Scene-Files.md)); one without may go anywhere.
 
 ## 3. Light it
 
-Light is baked, so it is part of the scene file and the mesh's `process.light`
+Light is baked, so it is part of the scene file and the mesh's `lighting.light`
 step reads it. A directional sun is an object whose rotation points it; sky and
 ambient are scene settings; `tonemap_white` sets how bright the result is.
 
