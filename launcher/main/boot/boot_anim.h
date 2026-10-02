@@ -135,32 +135,15 @@ boot_anim_view(int w, int h, uint32_t now_ms) {
  * 66 Q16 digits. */
 static inline vec3x_t
 boot_anim_to_camera_space(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view) {
-    const mat4x_t* m = &view->matrix;
-    const int32_t t_q16 = t_q8 * (BOOT_ANIM_SPIRAL_Q9 / 2);
+    const vec3x_t p = {re_q12 * 16, t_q8 * (BOOT_ANIM_SPIRAL_Q9 / 2), im_q12 * 16};
 
-    /* mat4x_apply() saturates and rounds ties away from zero, which costs a
-     * branch a component; this is the same product with one half-up rounding
-     * of the exact sum, on coordinates the floor and curve keep bounded. */
-    return (vec3x_t){
-        m->m[0][3]
-            + (int32_t)((((int64_t)m->m[0][0] * re_q12 * 16) + ((int64_t)m->m[0][1] * t_q16)
-                         + ((int64_t)m->m[0][2] * im_q12 * 16) + 32768)
-                        >> 16),
-        m->m[1][3]
-            + (int32_t)((((int64_t)m->m[1][0] * re_q12 * 16) + ((int64_t)m->m[1][1] * t_q16)
-                         + ((int64_t)m->m[1][2] * im_q12 * 16) + 32768)
-                        >> 16),
-        m->m[2][3]
-            + (int32_t)((((int64_t)m->m[2][0] * re_q12 * 16) + ((int64_t)m->m[2][1] * t_q16)
-                         + ((int64_t)m->m[2][2] * im_q12 * 16) + 32768)
-                        >> 16),
-    };
+    return mat4x_apply(&view->matrix, p);
 }
 
 /* The camera-space image of the floor plane at one height: a point of it is
  * `origin` plus its re and im steps, so a ring of points at one height costs
- * two products a component instead of three, and no translation add. Rounds
- * half up and does not saturate: it is for the floor's bounded coordinates. */
+ * two products a component instead of three, and no translation add; see
+ * mathx_dot2c() for its rounding. */
 typedef struct {
     vec3x_t origin;
     vec3x_t re_step; /* per Q16 unit of re */
@@ -179,13 +162,12 @@ boot_anim_plane(int32_t t_q8, const boot_anim_view_t* view) {
 
 static inline vec3x_t
 boot_anim_plane_point(const boot_anim_plane_t* plane, int32_t re_q12, int32_t im_q12) {
+    const int32_t re = re_q12 * 16;
+    const int32_t im = im_q12 * 16;
     return (vec3x_t){
-        plane->origin.x
-            + (int32_t)((((int64_t)plane->re_step.x * re_q12) + ((int64_t)plane->im_step.x * im_q12) + 2048) >> 12),
-        plane->origin.y
-            + (int32_t)((((int64_t)plane->re_step.y * re_q12) + ((int64_t)plane->im_step.y * im_q12) + 2048) >> 12),
-        plane->origin.z
-            + (int32_t)((((int64_t)plane->re_step.z * re_q12) + ((int64_t)plane->im_step.z * im_q12) + 2048) >> 12),
+        mathx_dot2c(plane->re_step.x, re, plane->im_step.x, im, plane->origin.x),
+        mathx_dot2c(plane->re_step.y, re, plane->im_step.y, im, plane->origin.y),
+        mathx_dot2c(plane->re_step.z, re, plane->im_step.z, im, plane->origin.z),
     };
 }
 

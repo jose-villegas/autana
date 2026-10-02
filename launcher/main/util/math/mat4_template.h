@@ -38,9 +38,9 @@
     /* M * p with w = 1: translation included, no perspective divide. `m` is read only. */                             \
     static inline V##_t P##_apply(const P##_t* m, V##_t p) {                                                           \
         return (V##_t){                                                                                                \
-            OPS##_add(OPS##_dot3(m->m[0][0], p.x, m->m[0][1], p.y, m->m[0][2], p.z), m->m[0][3]),                      \
-            OPS##_add(OPS##_dot3(m->m[1][0], p.x, m->m[1][1], p.y, m->m[1][2], p.z), m->m[1][3]),                      \
-            OPS##_add(OPS##_dot3(m->m[2][0], p.x, m->m[2][1], p.y, m->m[2][2], p.z), m->m[2][3]),                      \
+            OPS##_dot3c(m->m[0][0], p.x, m->m[0][1], p.y, m->m[0][2], p.z, m->m[0][3]),                                \
+            OPS##_dot3c(m->m[1][0], p.x, m->m[1][1], p.y, m->m[1][2], p.z, m->m[1][3]),                                \
+            OPS##_dot3c(m->m[2][0], p.x, m->m[2][1], p.y, m->m[2][2], p.z, m->m[2][3]),                                \
         };                                                                                                             \
     }                                                                                                                  \
                                                                                                                        \
