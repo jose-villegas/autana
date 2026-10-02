@@ -255,6 +255,25 @@ class SceneTests(unittest.TestCase):
         self.rejects("tonemap_white is read by no placed mesh", self.two_imports, renderer("a.import.toml"), TONEMAP)
         self.rejects("camera region is read by no placed mesh", self.two_imports, renderer("a.import.toml") + camera())
 
+    def test_the_indirect_look_defaults_to_physical_and_is_validated_strictly(self):
+        def bounced(directory):
+            write_import(directory, body=LIGHT_STEP + "indirect = { bounces = 1, rays = 8, cache_samples = 1 }\n")
+
+        head = TONEMAP + AMBIENT
+        tuned_table = "[indirect]\nintensity = 2.5\nalbedo_boost = 1.5\n"
+        with tempfile.TemporaryDirectory() as directory:
+            bounced(directory)
+            plain = load_scene(write_scene(directory, renderer(), head))
+            tuned = load_scene(write_scene(directory, renderer(), head + tuned_table))
+        self.assertEqual((plain.indirect.intensity, plain.indirect.albedo_boost), (1.0, 1.0))
+        self.assertEqual((tuned.indirect.intensity, tuned.indirect.albedo_boost), (2.5, 1.5))
+        for pattern, table in (("scene.indirect.intensity must not be negative", "intensity = -1\n"),
+                               ("scene.indirect.albedo_boost must be positive", "albedo_boost = 0\n"),
+                               ("scene.indirect.intensity must be a number", 'intensity = "2"\n'),
+                               ("scene.indirect.gain is not a known setting", "gain = 2\n")):
+            self.rejects(pattern, bounced, renderer(), head + "[indirect]\n" + table)
+        self.rejects("indirect settings is read by no placed mesh", self.lit_import, renderer(), head + tuned_table)
+
     def test_a_scene_dependent_mesh_is_baked_where_it_sits(self):
         placed = renderer(transform="position = [1.0, 0.0, 0.0]\n")
         self.rejects("identity", self.lit_import, placed, TONEMAP + AMBIENT)
