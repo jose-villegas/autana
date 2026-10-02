@@ -44,8 +44,8 @@ shrinks or grows with it:
 ULTRA's 41,216-byte grid is the largest single allocation the sand app
 makes.
 
-The 322 KiB framebuffer lives entirely in PSRAM (`BOARD_FRAMEBUFFER_CAPS`,
-`board.h`), so it does not compete with the sand grid, or anything else,
+The 322 KiB framebuffer lives entirely in PSRAM (`MEMORY_PSRAM`,
+`util/memory.h`), so it does not compete with the sand grid, or anything else,
 for internal SRAM.
 
 The encoding stays one byte: a second byte at ULTRA would fit the internal

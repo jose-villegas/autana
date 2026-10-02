@@ -70,7 +70,7 @@ flowchart LR
     FB -->|"copied per strip"| DMA
 ```
 
-In full-framebuffer mode (`BOARD_FRAMEBUFFER_CAPS`, `board.h`) the
+In full-framebuffer mode (`MEMORY_PSRAM`, `util/memory.h`) the
 framebuffer is in PSRAM; band and indexed modes free it. How it reaches the
 panel is in [Gfx-and-Presentation.md](../Gfx-and-Presentation.md).
 `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps every allocation up to 64 KB

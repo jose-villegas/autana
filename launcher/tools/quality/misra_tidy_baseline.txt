@@ -236,7 +236,7 @@ readability-math-missing-parentheses	main/boot/post_layout.c	1
 readability-math-missing-parentheses	main/boot/post_ui.c	2
 readability-math-missing-parentheses	main/console/console_screenshot.c	4
 readability-math-missing-parentheses	main/gfx/gfx.c	41
-readability-math-missing-parentheses	main/gfx/gfx_null_panel.c	1
+readability-math-missing-parentheses	main/gfx/gfx_null_panel_device.c	1
 readability-math-missing-parentheses	main/input/tilt.c	10
 readability-math-missing-parentheses	main/input/touch_calib.c	10
 readability-math-missing-parentheses	main/ui/ui.c	2

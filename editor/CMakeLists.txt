@@ -54,7 +54,9 @@ add_library(editor_runtime STATIC
     ${LAUNCHER_DIR}/main/ui/ui_ridge.c
     ${LAUNCHER_DIR}/main/ui/ui_scroll.c
     ${LAUNCHER_DIR}/main/ui/ui_widgets.c
+    ${LAUNCHER_DIR}/main/util/memory.c
     ${LAUNCHER_DIR}/main/util/tune.c
+    ${LAUNCHER_DIR}/test/heap_plain.c
     ${LAUNCHER_DIR}/components/microui/src/microui.c
 )
 target_include_directories(editor_runtime
@@ -63,6 +65,8 @@ target_include_directories(editor_runtime
         runtime/host
         ${LAUNCHER_DIR}/main
         ${LAUNCHER_DIR}/components/microui/include
+        ${LAUNCHER_DIR}/test
+        ${LAUNCHER_DIR}/test/stubs
 )
 # ui_scroll.c's momentum uses expf(); only MinGW links libm unasked.
 if(NOT WIN32)

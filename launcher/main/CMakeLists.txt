@@ -69,7 +69,7 @@ function(launcher_glob output pattern)
 endfunction()
 
 if(CONFIG_LAUNCHER_QEMU)
-    list(APPEND app_srcs "gfx/gfx_null_panel.c")
+    list(APPEND app_srcs "gfx/gfx_null_panel_device.c")
 endif()
 
 # The frame's view modes: a development tool, with nothing calling them in a

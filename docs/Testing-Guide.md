@@ -182,8 +182,7 @@ each one cost a build-flash-capture cycle to find, twice over, for both:
 Those numbers come from `launcher/tools/device/device_profiles/<chip>.sh`, selected
 by `$DEVICE_PROFILE` (default `esp32s3`), each carrying its own provenance.
 
-The framebuffer lives in PSRAM
-(`BOARD_FRAMEBUFFER_CAPS = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT`), not
+The framebuffer lives in PSRAM (`MEMORY_PSRAM`, `util/memory.h`), not
 internal DRAM, so it does not compete with an app's large internal
 allocations for internal-heap contiguity the way it would on a board
 without PSRAM.
@@ -383,7 +382,7 @@ follow: such an image resets silently in the second-stage bootloader. It
 moves the console to UART0, the port QEMU exposes. And it sets
 `CONFIG_LAUNCHER_QEMU`: no panel, I/O expander or touch controller exists
 there, so board identification fails, and with that option `gfx.c` gives an
-unidentified board a null panel (`gfx_null_panel.c`). It keeps the one
+unidentified board a null panel (`gfx_null_panel_device.c`). It keeps the one
 property of the link the code above depends on: a strip occupies the bus
 for its own transfer time at the current panel clock, one strip after
 another, and only then counts as sent. The framebuffer, the present task and
