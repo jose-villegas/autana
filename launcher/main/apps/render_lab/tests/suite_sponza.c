@@ -16,6 +16,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "apps/render_lab/meshes/sponza_scene_generated.h"
 #include "apps/render_lab/sponza_flythrough.h"
 #include "asset/asset_store.h"
 #include "r3d_lit_mesh_expect.h"
@@ -39,9 +40,9 @@ open_the_mesh(const char* id, r3d_lit_mesh_t* mesh) {
 
 static void
 open_the_meshes(void) {
-    open_the_mesh("sponza", &mesh_full);
-    open_the_mesh("sponza_lite", &mesh_lite);
-    open_the_mesh("sponza_flat", &mesh_flat);
+    open_the_mesh(sponza_scene.renderers[0].asset, &mesh_full);
+    open_the_mesh(sponza_scene.renderers[2].asset, &mesh_lite);
+    open_the_mesh(sponza_scene.renderers[1].asset, &mesh_flat);
 }
 
 /* The flat reference: every cluster's eight corners against each plane. */

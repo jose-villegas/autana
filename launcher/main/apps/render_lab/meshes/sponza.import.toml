@@ -25,10 +25,6 @@ name = "sponza"
 triangles = 17381
 
 [[variants]]
-name = "sponza_flat"
-triangles = 17381
-
-[[variants]]
 name = "sponza_lite"
 triangles = 8672
 

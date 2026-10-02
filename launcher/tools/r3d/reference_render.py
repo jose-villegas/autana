@@ -21,7 +21,7 @@ from trimesh.ray.ray_pyembree import RayMeshIntersector
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d.geometry import corner_normals
-from r3d.import_settings import load_scene, variant_settings
+from r3d.import_settings import load_scene
 from r3d.light import albedo_from_uv, drop_masked, light, to_srgb8
 from r3d.mesh_import import indirect_cache_for, load_source
 from r3d.poses import camera_rays, read_poses
@@ -60,12 +60,12 @@ def hit_albedo(source, hits, bary):
     return out
 
 
-def render_linear(source, settings, scene, pose, width, height, lens, samples=4):
+def render_linear(source, settings, renderer, scene, pose, width, height, lens, samples=4):
     """Return a linear RGB source render, supersampled then box filtered."""
-    return trace(source, settings, scene, pose, width, height, lens, samples)[0]
+    return trace(source, settings, renderer, scene, pose, width, height, lens, samples)[0]
 
 
-def trace(source, settings, scene, pose, width, height, lens, samples=4):
+def trace(source, settings, renderer, scene, pose, width, height, lens, samples=4):
     """(linear RGB, share of each pixel's subpixels that hit the mesh, the
     world-space shading normal per pixel turned toward the eye, averaged over
     the pixel's rays and zero where they all miss)."""
@@ -82,7 +82,7 @@ def trace(source, settings, scene, pose, width, height, lens, samples=4):
         material = source.tri_m[faces]
         albedo = hit_albedo(source, faces, bary)
         double = np.isin(material, [source.names.index(name) for name in settings.double_sided])
-        radiance = light(locations, normal, double, source.intersector, scene.lights, settings.light.ray_offset,
+        radiance = light(locations, normal, double, source.intersector, scene.lights, scene.bake.ray_offset,
                          np.random.default_rng(settings.seed), shared_sky_rays=0, indirect=source.indirect_cache)
         linear[rays] = albedo * radiance
         shading[rays] = normal * np.where((normal * direction[rays]).sum(axis=1) > 0, -1.0, 1.0)[:, None]
@@ -105,27 +105,29 @@ def device_picture(linear, covered, tonemap_white, background):
 def source_for(scene, import_path=None, variant=None):
     """Load one placed source at full detail, applying alpha masking, lit as
     `variant` (a variant name) is baked when one is given."""
-    renderer = scene.renderers[0]
+    job = scene.renderers[0]
     if import_path is not None:
         wanted = pathlib.Path(import_path).resolve()
         matches = [item for item in scene.renderers if item.settings.path == wanted]
         if not matches:
             raise ValueError("the import is not placed by the scene")
-        renderer = matches[0]
-    settings = renderer.settings
+        job = matches[0]
+    settings = job.settings
     if variant is not None:
-        named = [item.variant for item in scene.renderers if item.settings.path == settings.path and item.variant.name == variant]
+        named = [item for item in scene.renderers
+                 if item.settings.path == settings.path and item.renderer.variant.name == variant]
         if not named:
             raise ValueError(f"the scene places no variant {variant}")
-        settings = variant_settings(settings, named[0])
+        job = named[0]
+        settings = job.settings
     source = load_source(settings)
     if settings.alpha_keep is not None:
         source.tri_v, source.tri_t, source.tri_m = drop_masked(source.p, source.uv, source.tri_v, source.tri_t,
                                                                  source.tri_m, source.textures, settings.alpha_keep)
     source.corner_normals = corner_normals(source.p, source.tri_v)
     source.intersector = RayMeshIntersector(trimesh.Trimesh(source.p, source.tri_v, process=False))
-    source.indirect_cache = indirect_cache_for(source, settings, scene, source.intersector)
-    return source, settings
+    source.indirect_cache = indirect_cache_for(source, settings, job.renderer, scene, source.intersector)
+    return source, settings, job.renderer
 
 
 def main(argv=None):
@@ -151,11 +153,11 @@ def main(argv=None):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     try:
-        source, settings = source_for(scene, args.import_path, args.variant)
+        source, settings, renderer = source_for(scene, args.import_path, args.variant)
     except ValueError as error:
         parser.error(str(error))
     for index, pose in enumerate(poses):
-        linear, covered, normal = trace(source, settings, scene, pose, width, height, lens, args.samples)
+        linear, covered, normal = trace(source, settings, renderer, scene, pose, width, height, lens, args.samples)
         np.save(out / ("%04d.linear.npy" % index), linear)
         if args.normals:
             np.save(out / ("%04d.normal.npy" % index), normal.astype(np.float32))

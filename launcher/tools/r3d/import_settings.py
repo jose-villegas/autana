@@ -11,6 +11,8 @@ import re
 import tomllib
 from types import SimpleNamespace
 
+from asset.asset_pack import NAME_BYTES
+
 RESERVED_LIGHTS = ("point", "spot")
 
 # The one declaration of each light type's fields; light.py pairs each with
@@ -172,14 +174,6 @@ def load_variant(value, steps, where):
     return variant
 
 
-def variant_settings(settings, variant):
-    """The settings `variant` is baked with: the import's, without indirect
-    light when the variant opts out of it."""
-    if variant is None or getattr(variant, "indirect", True) or not settings.light:
-        return settings
-    return SimpleNamespace(**{**vars(settings), "light": SimpleNamespace(**{**vars(settings.light), "indirect": None})})
-
-
 VISIBILITY_SOURCES = ("camera_region", "camera_path")
 
 
@@ -284,6 +278,9 @@ def load_import_settings(path):
         names = [variant.name for variant in variants]
         if len(set(names)) != len(names):
             raise SettingsError("variants names must be unique")
+        budgets = [variant.triangles for variant in variants]
+        if len(set(budgets)) != len(budgets):
+            raise SettingsError("variants with the same triangle budget would produce the same mesh")
     else:
         if steps.simplify:
             raise SettingsError("geometry.simplify needs variants, each with its triangles budget")
@@ -292,8 +289,7 @@ def load_import_settings(path):
         path=path, source=source, out_dir=(path.parent / directory).resolve(), mesh_dir=path.parent,
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
-        alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, light=None, visibility=None,
-        named=("variants" in values),
+        alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
         variants=variants)
 
 
@@ -504,28 +500,28 @@ def load_scene(path):
                 raise SettingsError("scene.bake.flat_sky_rays is required for shading = { flat = ... }")
             if not component.indirect and bake.indirect is None:
                 raise SettingsError("objects.mesh_renderer.indirect = false needs scene.bake.indirect")
-            settings = SimpleNamespace(**{**vars(component.settings), "light": bake})
-            variant = SimpleNamespace(**{**vars(component.variant), "face_samples": component.face_samples,
-                                         "visibility": component.visibility, "fit": component.fit,
-                                         "indirect": component.indirect})
+            asset_name = f"{scene_name}.{item.name}"
+            asset_path = path.parent / f"{asset_name}.mesh"
         else:
-            settings, variant = component.settings, component.variant
-        asset_name = f"{scene_name}.{component.variant.name}"
-        jobs.append(SimpleNamespace(settings=settings, variant=variant, object=item, bake=bake if component.bake else None,
-                                    visibility=component.visibility, asset_name=asset_name,
-                                    asset_path=path.parent / f"{asset_name}.mesh"))
-    assets = [item.asset_name for item in jobs]
-    if len(set(assets)) != len(assets):
-        raise SettingsError("scene.objects place one variant twice")
+            asset_name = component.variant.name
+            asset_path = component.settings.mesh_dir / f"{asset_name}.mesh"
+        try:
+            too_long = len(asset_name.encode("ascii")) >= NAME_BYTES
+        except UnicodeEncodeError:
+            too_long = True
+        if too_long:
+            raise SettingsError(f"scene.objects {item.name!r}: asset name {asset_name!r} exceeds the pack's {NAME_BYTES - 1}-byte limit")
+        jobs.append(SimpleNamespace(settings=component.settings, renderer=component, object=item, asset_name=asset_name,
+                                    asset_path=asset_path))
     scene = SimpleNamespace(
         path=path, objects=objects, renderers=jobs, bake=bake,
         camera=cameras[0] if cameras else None, region=region, lights=lights,
         tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None,
         indirect=load_indirect_look(values.get("indirect", {})))
-    lit = any(item.bake for item in jobs)
-    sources = {item.visibility.source for item in jobs if item.visibility}
+    lit = any(item.renderer.bake for item in jobs)
+    sources = {item.renderer.visibility.source for item in jobs if item.renderer.visibility}
     camera_path = cameras[0].component.path if cameras else None
-    bounced = bool(bake and bake.indirect and any(item.variant.indirect for item in jobs if item.bake))
+    bounced = bool(bake and bake.indirect and any(item.renderer.indirect for item in jobs if item.renderer.bake))
     if "indirect" in values and not bounced:
         raise SettingsError("scene indirect settings is read by no placed mesh")
     for name, present, needed in (("lights", bool(lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),
@@ -537,7 +533,7 @@ def load_scene(path):
     if "camera_path" in sources and camera_path is None:
         raise SettingsError("scene camera path is required: a placed mesh keeps what the camera path sees")
     for item in jobs:
-        if item.bake and not item.object.identity:
+        if item.renderer.bake and not item.object.identity:
             raise SettingsError(f"scene.objects {item.object.name!r}: a mesh with a scene-dependent step is baked where it "
                                 "sits, so its transform must be identity")
     return scene

@@ -121,19 +121,15 @@ REFERENCE=$(sh launcher/tools/render/render_compare.sh --reference-frames \
 R3D_PYTHON=$(find_r3d_python "$PWD")
 "$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 5 --dt 5000 \
     -o "$W/indirect-smooth.bmp" --video "$W/indirect-smooth.avi" 2> "$W/indirect-smooth.log"
-# variant_bake NAME BOUNCES SCENE-TABLE: bounces is `keep`, or `none` to take the
-# import's indirect field out; the table goes before the scene's first object.
+# variant_bake NAME BOUNCES SCENE-TABLE: bounces is `keep`, or `none` to take
+# the scene bake's indirect cache out; the table goes before the first object.
 variant_bake() {
     mkdir -p "$W/indirect-$1"
-    if [ "$2" = none ]; then
-        sed -e '/^indirect = false$/d' -e 's/, indirect = {[^}]*}//' "$M/meshes/sponza.import.toml" > "$W/indirect-$1/sponza.import.toml"
-    else
-        cp "$M/meshes/sponza.import.toml" "$W/indirect-$1/sponza.import.toml"
-    fi
-    awk -v table="$3" '/^\[\[objects\]\]/ && !done { if (table != "") print table "\n"; done = 1 } { print }' \
+    awk -v table="$3" -v direct="$2" '/^\[\[objects\]\]/ && !done { if (table != "") print table "\n"; done = 1 }
+        direct == "none" && /^indirect = \{/ { next } { print }' \
         "$M/meshes/sponza.scene.toml" > "$W/indirect-$1/sponza.scene.toml"
     "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$W/indirect-$1/sponza.scene.toml" --mesh sponza > "$W/indirect-$1/bake.log" 2>&1
-    "$R3D_PYTHON" launcher/tools/r3d/build_pack.py -o "$W/indirect-$1/assets.bin" --replace "sponza=$W/indirect-$1/sponza.mesh" \
+    "$R3D_PYTHON" launcher/tools/r3d/build_pack.py -o "$W/indirect-$1/assets.bin" --replace "sponza.atrium=$W/indirect-$1/sponza.atrium.mesh" \
         > "$W/indirect-$1/pack.log"
     AUTANA_ASSET_PACK="$W/indirect-$1/assets.bin" "$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 5 --dt 5000 \
         -o "$W/indirect-$1/frame.bmp" --video "$W/indirect-$1.avi" 2> "$W/indirect-$1/render.log"

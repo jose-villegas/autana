@@ -77,7 +77,7 @@ component table.
 
 | Component | Fields | What it is |
 |---|---|---|
-| `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene file, and `variant` chooses its geometry variant. `bake = true` makes this renderer contribute to and receive the scene bake; without it the imported albedo is drawn. `shading` is `"smooth"` or `{ flat = ... }`; `visibility`, `fit` and `indirect = false` apply to this renderer's bake. |
+| `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene file, and `variant` chooses its geometry variant. `bake = true` traces this renderer against its own source using this scene's settings; without it the shared imported albedo mesh is drawn. `shading` is `"smooth"` or `{ flat = ... }`; `visibility`, `fit` and `indirect = false` apply to this renderer's bake. |
 | `light` | `type`, `color`, `intensity`, `disc_degrees`, `rays` | A directional light. The direction toward it is the object's +Y axis turned by its rotation, so a rotation of zero is a sun straight overhead. Position and scale do not matter. `point` and `spot` are reserved and rejected until their bake paths exist. |
 | `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view: the lens, the box the camera moves within (`region`, a `min` and `max`), and optionally the glTF animation it flies. `path = { tracks, node }` names the tracks `tools/anim/bake_tracks.py` baked under the prefix `tracks`, for the glTF node `node`. `background` (0xRRGGBB, default black) is the colour a pixel no mesh covers shows, in the panel's RGB565 and in the source reference. Without a path the camera sits at its transform, looking down its own -Z. A scene has at most one camera. |
 
@@ -89,6 +89,32 @@ directional light objects in file order, then the sky, then the ambient; the
 order does not change the lit result except in which random rays each light
 draws. A double-sided face turns to the side the directional lights, summed by
 intensity, shine on.
+
+## Bake options
+
+`[bake]` supplies `ray_offset` and `colour_merge_step`; `flat_sky_rays` is
+required by a flat renderer, and `indirect = { bounces, rays, cache_samples }`
+enables the scene's bounce-light cache. All three indirect fields are required;
+`bounces` is non-negative and the sample counts are positive. `indirect = false`
+on a renderer omits that cache from its bake and fit reference.
+
+| Renderer option | Keys | Meaning |
+|---|---|---|
+| `[bake]` | `ray_offset`, `colour_merge_step`; `flat_sky_rays`, `indirect = { bounces, rays, cache_samples }` | Scene-wide tracing settings. Flat renderers require `flat_sky_rays`; indirect is the cache recipe. |
+| `visibility` | `source = "camera_region"`, `rounds` | Keeps triangles visible from any point in the camera's region. |
+| `visibility` | `source = "camera_path"`, `every_ms`, `size`; `samples`, `margin` | Keeps triangles first seen from sampled camera-path views. The measured path retains 116,917 of 245,465 source triangles rather than 211,004 for the region, reducing the full mesh from 58.6 to 50.1 ms with no lite holes and 4–8 pixels in each of three full frames. |
+| `shading` | `"smooth"` or `flat = { fixed = N }` / `flat = { auto = { min, max, area } }` | Smooth stores vertex colour; flat stores one averaged RGB565 colour per face. |
+| `fit` | `budget`, pose spacing, optimiser settings and hashes | Records the smooth appearance-fit recipe for this renderer. |
+
+Camera-path visibility uses a square view as wide as the longer panel side, so
+both orientations are covered. Its margin and pose spacing cover geometry that
+enters between samples.
+
+![Triangles the camera path never sees](images/appearance-path-culled.png)
+![Culled lite against uncut, largest differences](images/appearance-path-culled.crops.png)
+
+![Albedo against baked light](images/import-light.png)
+![One fixed face sample against adaptive](images/import-face-samples.png)
 
 ## Indirect look
 
@@ -118,8 +144,9 @@ A renderer with `bake = true` reads the scene:
   `camera_path` source.
 
 A scene must carry what a baked renderer reads, and may not carry what none
-reads. A scene output is `<scene>.<variant>.mesh`, beside the scene file, so
-the same import can have independent bakes in several scenes. A baked renderer
+reads. A baked scene output is `<scene>.<object>.mesh`, beside the scene file,
+so the same import can have independent bakes in several scenes. An albedo
+renderer uses `<variant>.mesh` beside its import and shares it across scenes. A baked renderer
 is baked where it sits, so its object's transform must be identity; an
 albedo-only renderer may be placed anywhere and by many scenes.
 

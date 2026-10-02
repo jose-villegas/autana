@@ -78,9 +78,9 @@ def parse_spec(spec, declared, median):
     return samples, knobs
 
 
-def declared_samples(variant, median):
-    """The import file's own face_samples, its area resolved to a number."""
-    samples, low, high, area = variant.face_samples
+def declared_samples(renderer, median):
+    """The renderer's face samples, with its area resolved to a number."""
+    samples, low, high, area = renderer.face_samples
     return samples, low, high, median if samples == "auto" and area is None else area
 
 
@@ -101,16 +101,16 @@ def write_pack(name, mesh_file, out):
     return pack
 
 
-def write_variant(settings, variant, scene, geometry, spec, out):
+def write_variant(settings, renderer, scene, geometry, spec, out):
     """Bakes `spec` (see the module docstring) over `geometry` into
     out/<name>.mesh; returns its path."""
     median = float(np.median(triangle_areas(geometry.positions, geometry.tris)))
-    samples, knobs = parse_spec(spec, declared_samples(variant, median), median)
-    face_rgb = flat_colours(settings, scene, geometry, samples, **knobs)
+    samples, knobs = parse_spec(spec, declared_samples(renderer, median), median)
+    face_rgb = flat_colours(settings, renderer, scene, geometry, samples, **knobs)
     out.mkdir(parents=True, exist_ok=True)
-    write_lit_mesh(out, variant.name, geometry.positions, None, geometry.tris, geometry.tri_double,
+    write_lit_mesh(out, renderer.variant.name, geometry.positions, None, geometry.tris, geometry.tri_double,
                    face_rgb=face_rgb, **geometry.scale)
-    return out / f"{variant.name}.mesh"
+    return out / f"{renderer.variant.name}.mesh"
 
 
 def score(args, host, pack, work):
@@ -146,13 +146,14 @@ def main(argv=None):
     args = parser.parse_args(argv)
     path = pathlib.Path(args.scene).resolve()
     scene = load_scene(path)
-    jobs = [item for item in scene.renderers if item.variant.name == args.mesh and item.variant.face_samples]
+    jobs = [item for item in scene.renderers if item.renderer.variant.name == args.mesh and item.renderer.face_samples]
     if not jobs:
         parser.error(f"{args.mesh!r} is not a flat mesh of {path.name}")
     job = jobs[0]
-    settings, variant = job.settings, job.variant
+    settings, renderer = job.settings, job.renderer
+    variant = renderer.variant
     log(f"geometry of {variant.name}")
-    geometry = bake_geometry(settings, variant, scene)
+    geometry = bake_geometry(settings, renderer, scene)
     work = pathlib.Path(args.work).resolve()
     host = build_host(pathlib.Path(args.script).resolve(), work / "host")
     rows = []
@@ -160,7 +161,7 @@ def main(argv=None):
         label, _, spec = item.partition("=")
         out = work / label
         log(f"variant {label}")
-        mesh_file = write_variant(settings, variant, scene, geometry, spec, out)
+        mesh_file = write_variant(settings, renderer, scene, geometry, spec, out)
         rows.append((label, score(args, host, write_pack(job.asset_name, mesh_file, out), out)))
         print(f"{label}: mean dE76 {rows[-1][1][0]:.3f}", flush=True)
     print(table(rows))

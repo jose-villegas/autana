@@ -48,11 +48,8 @@ def table_symbol(scene):
 
 
 def out_directory(scene):
-    """Where the table goes: in the generated-source directory the imports share."""
-    directories = {item.settings.out_dir for item in scene.renderers}
-    if len(directories) != 1:
-        raise ValueError("a scene's meshes must name one generated-source directory")
-    return directories.pop()
+    """Where the table goes: beside its owning scene file."""
+    return scene.path.parent
 
 
 def banner_for(scene):

@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Bake meshes from an import file, or from the scene file that places them.
-Each mesh is written as <name>.mesh, a pack entry, into the import's output
-directory; build_pack.py puts them in the pack.
+"""Bake an albedo import or a scene renderer's mesh.
+
+An import writes its named mesh beside the import file. A scene writes each
+baked renderer as <scene>.<object>.mesh beside the scene file; build_pack.py
+puts both kinds of mesh in the pack.
 
     python launcher/tools/r3d/mesh_import.py PATH [--mesh NAME]
 
-PATH is an .import.toml, which bakes alone unless one of its steps needs a
-scene (light, visibility), or a .scene.toml, which bakes every mesh it places
-with its own lights, camera region and tone map. Run from the repository root
-after installing tools/r3d/requirements.txt and initializing
-third_party/upstream/meshoptimizer. Every mesh is baked unless one is named.
+PATH is an .import.toml, which imports albedo geometry alone, or a
+.scene.toml, which bakes each renderer marked `bake = true` with its lights,
+camera region and tone map. Run from the repository root after installing
+tools/r3d/requirements.txt and initializing third_party/upstream/meshoptimizer.
+Every mesh is baked unless one is named.
 """
 
 import argparse
@@ -26,7 +28,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import log  # noqa: E402
 from r3d.fetch import fetch_zip  # noqa: E402
 from r3d.geometry import compact, corner_normals, weld_keeping  # noqa: E402
-from r3d.import_settings import SettingsError, load_import_settings, load_scene, variant_settings  # noqa: E402
+from r3d.import_settings import SettingsError, load_import_settings, load_scene  # noqa: E402
 from r3d.light import (  # noqa: E402
     drop_masked,
     build_indirect_cache,
@@ -75,23 +77,23 @@ def albedo_at(src, points, spacing, material):
 INDIRECT_CACHES = {}
 
 
-def indirect_cache_for(src, settings, scene, intersector):
+def indirect_cache_for(src, settings, renderer, scene, intersector):
     """The indirect light cache of an import's source, built once per run: every
     variant and the reference see the same source, lights and settings."""
-    if not settings.light or settings.light.indirect is None:
+    if not renderer.bake or not scene.bake.indirect or not renderer.indirect:
         return None
-    key = (str(settings.path), repr(vars(settings.light.indirect)), repr(scene.lights), settings.light.ray_offset,
+    key = (str(settings.path), repr(vars(scene.bake.indirect)), repr(scene.lights), scene.bake.ray_offset,
            repr(vars(scene.indirect)))
     if key not in INDIRECT_CACHES:
         double = {index for index, name in enumerate(src.names) if name in settings.double_sided}
         INDIRECT_CACHES[key] = build_indirect_cache(
             src.p, src.tri_v, src.tri_m, range(len(src.names)), double,
             lambda centres, spacing, material: albedo_at(src, centres, spacing, material), intersector, scene.lights,
-            settings.light.ray_offset, settings.light.indirect, scene.indirect.intensity, scene.indirect.albedo_boost)
+            scene.bake.ray_offset, scene.bake.indirect, scene.indirect.intensity, scene.indirect.albedo_boost)
     return INDIRECT_CACHES[key]
 
 
-def shade_lit(src, settings, scene, material, mp, mt, double, intersector, rng, indirect_cache):
+def shade_lit(src, settings, renderer, scene, material, mp, mt, double, intersector, rng, indirect_cache):
     """Vertices split along creases and lit on their own normals, near colours merged."""
     normals = corner_normals(mp, mt)
     corner_pos, corner_n = mp[mt].reshape(-1, 3), normals.reshape(-1, 3)
@@ -100,10 +102,10 @@ def shade_lit(src, settings, scene, material, mp, mt, double, intersector, rng, 
     vpos, vn, vtris = corner_pos[first], corner_n[first], inverse.reshape(-1, 3)
     albedo = albedo_at(src, vpos, vertex_spacing(vpos, vtris), material)
     welded = np.unique(np.round(vpos * 16).astype(np.int64), axis=0, return_inverse=True)[1].reshape(-1)
-    radiance = light(vpos, vn, np.full(len(vpos), double), intersector, scene.lights, settings.light.ray_offset, rng,
+    radiance = light(vpos, vn, np.full(len(vpos), double), intersector, scene.lights, scene.bake.ray_offset, rng,
                      indirect=indirect_cache, indirect_groups=welded)
     vrgb = to_srgb8(albedo * radiance, scene.tonemap_white)
-    return merge_matching_colours(vpos, vrgb, vtris, settings.light.colour_merge_step)
+    return merge_matching_colours(vpos, vrgb, vtris, scene.bake.colour_merge_step)
 
 
 def shade_unlit(src, material, mp, mt):
@@ -131,11 +133,10 @@ def visible_triangles(settings, visibility, scene, p, tri_v, double, intersector
     return visible_from_region(p, tri_v, double, intersector, visibility.rounds, rng, *scene.region)
 
 
-def bake_geometry(settings, variant, scene):
+def bake_geometry(settings, renderer, scene):
     """Everything a mesh needs before its colours are final: the source, its
     ray intersector and the simplified geometry with the colours a smooth bake
     keeps. `scene` is None for an import that needs none."""
-    settings = variant_settings(settings, variant)
     rng = np.random.default_rng(settings.seed)
     src = load_source(settings)
     scale = {} if settings.position_scale is None else {"position_scale": settings.position_scale}
@@ -144,10 +145,10 @@ def bake_geometry(settings, variant, scene):
         tri_v, tri_t, tri_m = drop_masked(src.p, src.uv, tri_v, tri_t, tri_m, src.textures, settings.alpha_keep)
         src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
     intersector = None
-    visibility = variant.visibility or settings.visibility
-    if visibility or settings.light:
+    visibility = renderer.visibility
+    if visibility or renderer.bake:
         intersector = RayMeshIntersector(trimesh.Trimesh(src.p, tri_v, process=False))
-    indirect_cache = indirect_cache_for(src, settings, scene, intersector)
+    indirect_cache = indirect_cache_for(src, settings, renderer, scene, intersector) if renderer.bake else None
     double_names = settings.double_sided
     seen = np.ones(len(tri_v), dtype=bool)
     if visibility:
@@ -169,8 +170,8 @@ def bake_geometry(settings, variant, scene):
     base = 0
     for material, mp, mt in parts:
         double = src.names[material] in double_names
-        if settings.light:
-            vpos, vrgb, vtris = shade_lit(src, settings, scene, material, mp, mt, double, intersector, rng, indirect_cache)
+        if renderer.bake:
+            vpos, vrgb, vtris = shade_lit(src, settings, renderer, scene, material, mp, mt, double, intersector, rng, indirect_cache)
         else:
             vpos, vrgb, vtris = shade_unlit(src, material, mp, mt)
         all_pos.append(vpos)
@@ -185,7 +186,7 @@ def bake_geometry(settings, variant, scene):
     if settings.simplify:
         steps = settings.simplify
         props = [(frozenset(index for index, name in enumerate(src.names) if name in steps.props), steps.props_share)]
-        positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, variant.triangles, props,
+        positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, renderer.variant.triangles, props,
                                                  seal_seams=steps.seal_seams, **scale)
         rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
         tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
@@ -193,21 +194,21 @@ def bake_geometry(settings, variant, scene):
                            tri_mat=tri_mat, scale=scale, indirect_cache=indirect_cache)
 
 
-def flat_colours(settings, scene, geometry, face_samples, **knobs):
+def flat_colours(settings, renderer, scene, geometry, face_samples, **knobs):
     """One colour per triangle of `geometry` for a flat variant's
     (samples, min, max, area) options. `knobs` are face_colours' own: sky_rays,
     placement and sun_centre."""
     src = geometry.src
     samples, sample_min, sample_max, sample_area = face_samples
     double_materials = {index for index, name in enumerate(src.names) if name in settings.double_sided}
-    knobs.setdefault("sky_rays", settings.light.flat_sky_rays)
+    knobs.setdefault("sky_rays", scene.bake.flat_sky_rays)
     return face_colours(geometry.positions, geometry.tris, geometry.tri_mat, range(len(src.names)), double_materials,
                         lambda centres, spacing, material: albedo_at(src, centres, spacing, material), geometry.intersector,
-                        scene.lights, settings.light.ray_offset, scene.tonemap_white, samples, max_samples=sample_max,
+                        scene.lights, scene.bake.ray_offset, scene.tonemap_white, samples, max_samples=sample_max,
                         sample_area=sample_area, min_samples=sample_min, indirect_cache=geometry.indirect_cache, **knobs)
 
 
-def check_fitted(settings, variant, scene, target):
+def check_fitted(settings, renderer, scene, target):
     """A fitted variant is made offline by fitted_variant.py on a GPU; the bake
     only checks that the recipe and the committed mesh are the ones the fit
     recorded."""
@@ -216,25 +217,25 @@ def check_fitted(settings, variant, scene, target):
     from r3d.fitted_variant import recipe_digest
 
     again = "rerun fitted_variant.py prepare|fit and record the hashes it prints"
-    if recipe_digest(settings, variant, scene) != variant.fit.recipe_sha256:
-        raise SystemExit(f"{variant.name}: recipe changed since the fit; {again}")
+    if recipe_digest(settings, renderer, scene) != renderer.fit.recipe_sha256:
+        raise SystemExit(f"{renderer.variant.name}: recipe changed since the fit; {again}")
     if not target.exists():
         raise SystemExit(f"{target.name} is missing; {again} (it needs a CUDA GPU)")
     digest = hashlib.sha256(target.read_bytes()).hexdigest()
-    if digest != variant.fit.sha256:
-        raise SystemExit(f"{target.name} has SHA-256 {digest}, not the {variant.fit.sha256} the fit recorded; {again}")
+    if digest != renderer.fit.sha256:
+        raise SystemExit(f"{target.name} has SHA-256 {digest}, not the {renderer.fit.sha256} the fit recorded; {again}")
     log(f"{target.name} matches its fit recipe")
 
 
-def bake(settings, variant, scene, asset_name=None, out_dir=None):
+def bake(settings, renderer, scene, asset_name=None, out_dir=None):
     """Bakes one mesh. `scene` is None for an import that needs none."""
-    if variant.fit:
-        check_fitted(settings, variant, scene, (out_dir or settings.mesh_dir) / f"{asset_name or variant.name}.mesh")
+    if renderer.fit:
+        check_fitted(settings, renderer, scene, (out_dir or settings.mesh_dir) / f"{asset_name or renderer.variant.name}.mesh")
         return
-    geometry = bake_geometry(settings, variant, scene)
+    geometry = bake_geometry(settings, renderer, scene)
     positions, rgb, tris, scale = geometry.positions, geometry.rgb, geometry.tris, geometry.scale
-    face_rgb = flat_colours(settings, scene, geometry, variant.face_samples) if variant.face_samples else None
-    mesh = write_lit_mesh(out_dir or settings.mesh_dir, asset_name or variant.name, positions, None if variant.face_samples else rgb, tris, geometry.tri_double,
+    face_rgb = flat_colours(settings, renderer, scene, geometry, renderer.face_samples) if renderer.face_samples else None
+    mesh = write_lit_mesh(out_dir or settings.mesh_dir, asset_name or renderer.variant.name, positions, None if renderer.face_samples else rgb, tris, geometry.tri_double,
                           face_rgb=face_rgb, **scale)
     log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, {len(mesh.nodes)} nodes")
 
@@ -248,20 +249,21 @@ def main(argv=None):
     try:
         if path.name.endswith(".scene.toml"):
             scene = load_scene(path)
-            jobs = [(item.settings, item.variant, scene, item.asset_name, item.asset_path.parent) for item in scene.renderers]
+            jobs = [(item.settings, item.renderer, scene, item.asset_name, item.asset_path.parent) for item in scene.renderers]
         elif path.name.endswith(".import.toml"):
             settings = load_import_settings(path)
-            jobs = [(settings, variant, None, variant.name, settings.mesh_dir) for variant in settings.variants]
+            jobs = [(settings, SimpleNamespace(variant=variant, bake=None, face_samples=None, visibility=None, fit=None,
+                                               indirect=True), None, variant.name, settings.mesh_dir) for variant in settings.variants]
         else:
             raise SettingsError("PATH must end in .import.toml or .scene.toml")
-        jobs = [job for job in jobs if args.mesh in (None, job[1].name, job[3])]
+        jobs = [job for job in jobs if args.mesh in (None, job[1].variant.name, job[3])]
         if not jobs:
             raise SettingsError(f"no mesh named {args.mesh!r}")
     except SettingsError as error:
         parser.error(str(error))
-    for settings, variant, scene, asset_name, out_dir in jobs:
+    for settings, renderer, scene, asset_name, out_dir in jobs:
         log(f"mesh {asset_name}")
-        bake(settings, variant, scene, asset_name, out_dir)
+        bake(settings, renderer, scene, asset_name, out_dir)
     return 0
 
 
