@@ -177,6 +177,67 @@ the foreground drapery. Nothing refreshes the sheet when the bake changes.
 
 ![Reference, flat bake, error heatmap and edge pixels](../../../../../docs/images/render/bake-fidelity-sheet.png)
 
+## Indirect light
+
+The Sponza import bakes two bounces: `indirect = { bounces = 2, rays = 64,
+cache_samples = 1 }` in `meshes/sponza.import.toml`, described in
+[Mesh-Import.md](../../../../../docs/render/Mesh-Import.md#indirect-light). It
+lifts the shadowed arcade ceilings and the sides of the columns the sun does
+not reach, and tints a column next to a banner with the banner's colour. The
+three meshes keep their triangle budgets and cost the same to draw.
+
+Each bounce adds less than the one before. The mean outgoing radiance of the
+262 267 source triangles, as a share of the direct light, and the bake time of
+the three variants together, bounces 0 to 3:
+
+| Bounces | Radiance added by this bounce | Bake time, three variants | Full mesh vertices / triangles |
+|---:|---:|---:|---:|
+| 0 | none | 2 min 37 s | 17 288 / 17 375 |
+| 1 | 8.0% | 3 min 53 s | 17 383 / 17 378 |
+| 2 | 1.7% | 4 min 27 s | 17 309 / 17 370 |
+| 3 | 0.46% | 4 min 49 s | 17 463 / 17 376 |
+
+The third bounce adds under 1%, so two bounces are baked; a fourth would add
+0.13%. Zero bounces writes the bytes the bake wrote before `indirect` existed.
+
+How far each bake is from the source lit per pixel, over the same eight poses
+as above, against the reference with indirect light and against one with
+direct light only. Mean ΔE76, p95 ΔE76 and luma SSIM:
+
+| Bake | Against the indirect reference | Against the direct-only reference |
+|---|---|---|
+| Full smooth, direct light | 8.892, 22.37, 0.660 | 6.654, 21.46, 0.696 |
+| Full smooth, two bounces | 6.982, 21.75, 0.668 | 8.501, 22.09, 0.678 |
+| Lite smooth, direct light | 9.756, 25.67, 0.616 | 7.541, 24.83, 0.651 |
+| Lite smooth, two bounces | 8.068, 24.66, 0.619 | 9.248, 24.88, 0.634 |
+| Flat, direct light | 9.516, 27.98, 0.621 | 7.278, 26.92, 0.652 |
+| Flat, two bounces | 7.626, 24.74, 0.620 | 8.991, 25.03, 0.628 |
+
+A bake is closest to the reference that has its own kind of light, and the
+indirect bake is 1.7 to 1.9 ΔE nearer its reference than the direct bake is
+to it. The like-for-like score is 0.3 to 0.5 ΔE above the direct one: the reference resolves bounce detail finer than a triangle.
+
+Direct light only above, two bounces below, and their difference, one row per
+bake at one pose; then the places the two differ most along the flythrough,
+direct above indirect: a banner's green on the column beside it, and the lit
+ceiling.
+
+![Direct light and two bounces, smooth and flat](../../../../../docs/images/render/bake-indirect-compare.png)
+
+![Where bounce light changes the picture](../../../../../docs/images/render/bake-indirect-crops.png)
+
+The two-bounce smooth bake against its reference at two poses: the reference,
+the bake, the ΔE heatmap and the reference's edge pixels. The error stays at
+silhouettes and shadow edges, as for the direct bake.
+
+![Reference, two-bounce bake, error heatmap and edge pixels](../../../../../docs/images/render/bake-indirect-sheet.png)
+
+Nothing refreshes these numbers or images when the bake changes. They come
+from `mesh_import.py meshes/sponza.scene.toml` at each bounce count, the
+`reference_render.py` commands above with `render_compare.sh --reference` on
+each bake's revision, and `render_compare.sh --crops 6 --video --fps 30` for
+the pair of revisions.
+
 ## Sponza poses
 
 The flythrough is a glTF camera animation, `../assets/flythrough.glb`, baked

@@ -158,45 +158,69 @@ import with no light step, the right the baked sun, sky and ambient.
 
 ![Albedo against baked light](images/import-light.png)
 
-### Indirect light
-
-`process.light.indirect = { bounces = K, rays = R, cache_samples = S }`
-adds diffuse bounce light. `bounces = 0` makes no cache and produces the
-same bytes as a light bake without `indirect`. `rays` is the cosine-weighted
-hemisphere-ray count for each cache and final gather; `cache_samples` is the
-number of fixed samples averaged into each full-detail source triangle's
-direct radiance. All three fields are required when `indirect` is present;
-`rays` and `cache_samples` are positive and `bounces` is non-negative.
-
-The cache holds one outgoing radiance per source triangle. With albedo
-`a(t)`, direct irradiance `E_0(t)`, and the triangle `h_i` first hit by a
-cosine-weighted hemisphere ray, its recursion and final gather are:
-
-```math
-L_0(t) = a(t) E_0(t), \qquad
-E_k(t) = \frac{1}{R} \sum_{i=1}^{R} L_{k-1}(h_i), \qquad
-L_k(t) = a(t) E_k(t)
-```
-
-```math
-E_{\mathrm{ind}}(x) = \frac{1}{R} \sum_{i=1}^{R} \sum_{k=0}^{K-1} L_k(h_i)
-```
-
-Misses add no indirect radiance because the sky baker already supplies sky
-light. The final gather adds `E_ind` to direct irradiance before albedo,
-tone mapping and encoding, for both smooth vertices and flat face samples.
-Flat samples share their gather directions, so matching surroundings receive
-matching colours.
-
-The cache and final gathers scale with triangles, bounces and rays, so they
-increase import time only. Runtime mesh size and frame cost do not change.
-Light resolution remains the baked vertex or face spacing: bounce detail
-smaller than one triangle cannot survive the lit-mesh representation.
-
 The off/on stills in `images/` are not made by the doc-images workflow: each
 "off" side is a scratch bake of the import with that step's table removed,
 which needs the bake toolchain and the source model, so nothing refreshes them
 when the bake changes.
+
+### Indirect light
+
+`process.light.indirect = { bounces = K, rays = R, cache_samples = S }` bakes
+diffuse bounce light into the same vertex or face colours as the direct light:
+sun light that reaches a surface by way of another one, and a coloured
+surface tinting its neighbours. The renderer reads one colour as before, so
+frame cost and mesh size do not change; only the bake takes longer.
+
+| Field | Meaning |
+|---|---|
+| `bounces` | How many times light bounces; 0 turns it off and gives the same bytes as a light step with no `indirect` |
+| `rays` | Cosine-weighted hemisphere rays for each gather |
+| `cache_samples` | Points averaged into each source triangle's direct radiance |
+
+All three are required when `indirect` is present; `rays` and `cache_samples`
+are at least 1 and `bounces` at least 0. The reference renderer reads the
+same settings, so a fidelity score compares like with like.
+
+The bake keeps one outgoing radiance per triangle of the full-detail source
+mesh. With albedo $a(t)$, direct irradiance $E_0(t)$ at the triangle, and
+$h_i$ the first triangle hit by the $i$-th of $R$ cosine-weighted rays from
+it, bounce $k$ gathers the previous bounce's radiance:
+
+```math
+L_0(t) = a(t)\,E_0(t), \qquad
+E_k(t) = \frac{1}{R} \sum_{i=1}^{R} L_{k-1}(h_i), \qquad
+L_k(t) = a(t)\,E_k(t)
+```
+
+A baked point $x$, a smooth vertex or a flat face sample, gathers the same way
+into the cache and adds the sum of the bounces to its direct irradiance, before
+the albedo, the tone map and the encode:
+
+```math
+E_{\mathrm{ind}}(x) = \frac{1}{R} \sum_{i=1}^{R} \sum_{k=0}^{K-1} L_k(h_i),
+\qquad
+L(x) = a(x)\,\bigl(E_{\mathrm{direct}}(x) + E_{\mathrm{ind}}(x)\bigr)
+```
+
+A ray that hits nothing adds nothing, because the sky light already counts the
+sky; a ray that an occluder stops takes the occluder's radiance. With every
+albedo at most $\rho < 1$, $L_k \le \rho^k L_0$, so the series converges and
+bounce $k$ adds less than the one before. Pick $K$ where the next bounce adds
+under about 1% of the direct light.
+
+Every point and every cache triangle uses the same $R$ directions, laid out
+in its own tangent frame, and nothing is drawn at random. Equal surroundings
+give equal colours, which is also what lets two sides of a crease merge into
+one vertex, and a rebake gives the same bytes. A double-sided surface gathers
+on the side the direct light shines on.
+
+The cache and the gathers cost one bundle of rays per source triangle and
+bounce, plus one per baked point. The limit is the light's resolution: it is
+the vertex or face spacing of the baked mesh, so bounce detail smaller than a
+triangle is lost, and a coloured surface tints only the triangles it reaches.
+A scene's bounce sweep, scores and images live beside its own tools.
+
+![Direct light only, with two bounces, and the difference](../images/render/bake-indirect-compare.png)
 
 The scene file that places meshes and carries the lights, the camera and the
 tone map is described in [Scene-Files.md](Scene-Files.md).
