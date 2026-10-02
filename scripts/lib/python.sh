@@ -23,3 +23,19 @@ for name in sys.argv[1:]:
     echo "no Python 3${*:+ with $*} found on PATH (tried python3, python, py)." >&2
     return 1
 }
+
+# find_r3d_python <repo-root> prints the interpreter that has the r3d tools'
+# requirements: the venv under launcher/tools/r3d/.cache when there is one,
+# else the first find_python with trimesh, embreex and scipy.
+#
+#   R3D_PYTHON=$(find_r3d_python "$ROOT") || exit 2
+
+find_r3d_python() {
+    for _fr_candidate in Scripts/python bin/python; do
+        if [ -x "$1/launcher/tools/r3d/.cache/venv/$_fr_candidate" ]; then
+            printf '%s\n' "$1/launcher/tools/r3d/.cache/venv/$_fr_candidate"
+            return 0
+        fi
+    done
+    find_python trimesh embreex scipy
+}
