@@ -27,8 +27,6 @@
 #                   hash, which is taken from the .bmp alone.
 #                   --build-only compiles the renderer, prints `built <path>`
 #                   and renders nothing; tools/render/render_compare.sh uses it.
-#                   --substitute SRC=FILE (repeatable) builds FILE in place of
-#                   the listed source SRC; a SRC that matches none fails.
 #   scene_includes  OPTIONAL extra -I directories, relative to launcher/
 #   scene_defines   OPTIONAL extra compiler flags
 #   scene_out_dir   OPTIONAL; the default is results/render/<name> under the
@@ -122,15 +120,13 @@ render_scene_build() {
     _rs_repin=0
     _rs_video=0
     _rs_build_only=0
-    _rs_subs=""
     while [ $# -gt 0 ]; do
         case "$1" in
             -o) scene_out_dir="$2"; shift 2 ;;
             --update-baseline) _rs_repin=1; shift ;;
             --video) _rs_video=1; shift ;;
             --build-only) _rs_build_only=1; shift ;;
-            --substitute) _rs_subs="$_rs_subs $2"; shift 2 ;;
-            *) echo "usage: $0 [-o <dir>] [--update-baseline] [--video] [--build-only] [--substitute SRC=FILE]..." >&2; return 2 ;;
+            *) echo "usage: $0 [-o <dir>] [--update-baseline] [--video] [--build-only]" >&2; return 2 ;;
         esac
     done
 
@@ -165,26 +161,8 @@ render_scene_build() {
     done
 
     _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c $_rs_tools/render/render_watch.c"
-    # --substitute SRC=FILE builds FILE in place of the listed source SRC: a
-    # scratch bake of a mesh, rendered without touching the tracked one.
-    for _rs_sub in $_rs_subs; do
-        _rs_found=0
-        for _rs_src in $scene_sources; do
-            [ "${_rs_sub%%=*}" = "$_rs_src" ] && _rs_found=1
-        done
-        if [ "$_rs_found" = 0 ]; then
-            echo "ERROR: --substitute ${_rs_sub%%=*} matches no source of $scene_name" >&2
-            return 1
-        fi
-    done
     for _rs_src in $scene_sources; do
-        _rs_pick="$_rs_launcher/$_rs_src"
-        for _rs_sub in $_rs_subs; do
-            if [ "${_rs_sub%%=*}" = "$_rs_src" ]; then
-                _rs_pick=${_rs_sub#*=}
-            fi
-        done
-        _rs_files="$_rs_files $_rs_pick"
+        _rs_files="$_rs_files $_rs_launcher/$_rs_src"
     done
 
     # -lm LAST, after the sources, because GNU ld resolves left to right and

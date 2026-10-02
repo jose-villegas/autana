@@ -1,7 +1,6 @@
 /*
- * r3d_scene: the camera of a baked table: its lens, where it stands and the
- * glTF animation it flies. The importer writes the table as const data, so
- * what to draw and from where is data. Reads anim/ tracks; the raster does not.
+ * r3d_scene: a baked camera: its lens, where it stands and the glTF animation
+ * it flies, sampled at a time. Reads anim/ tracks; the raster does not.
  */
 #pragma once
 

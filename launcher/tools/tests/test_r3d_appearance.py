@@ -54,8 +54,8 @@ def grid(count, z=0.0):
 
 def write_start(directory, count=4):
     positions, rgb, tris = grid(count)
-    write_lit_mesh(directory, "card", positions, rgb, tris, np.zeros(len(tris), dtype=int), ["test"], position_scale=64)
-    return pathlib.Path(directory) / "card_mesh_generated.c"
+    write_lit_mesh(directory, "card", positions, rgb, tris, np.zeros(len(tris), dtype=int), position_scale=64)
+    return pathlib.Path(directory) / "card.mesh"
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -87,8 +87,8 @@ class AppearanceMeshTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             mesh = start_mesh(write_start(directory))
             points, rgb = mesh[0] + [0.25, -0.5, 0.125], 1.0 - mesh[1]
-            write_mesh(pathlib.Path(directory) / "out", "card", points, rgb, mesh, ["test"])
-            back = read_lit_mesh(pathlib.Path(directory) / "out" / "card_mesh_generated.c")
+            write_mesh(pathlib.Path(directory) / "out", "card", points, rgb, mesh)
+            back = read_lit_mesh(pathlib.Path(directory) / "out" / "card.mesh")
         q, colours, _tris, _double, _face = finest_triangles(back)
         written = {(tuple(p), tuple(c)) for p, c in zip(q, colours)}
         wanted = {(tuple(np.rint(p * back.position_scale).astype(int)), tuple(np.rint(c * 255).astype(int)))
@@ -99,9 +99,9 @@ class AppearanceMeshTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             mesh = start_mesh(write_start(directory))
             points, rgb = mesh[0] + np.random.default_rng(3).normal(0.0, 0.05, mesh[0].shape), mesh[1][::-1].copy()
-            count = write_mesh(pathlib.Path(directory) / "out", "card", points, rgb, mesh, ["test"])
+            count = write_mesh(pathlib.Path(directory) / "out", "card", points, rgb, mesh)
             self.assertLessEqual(count, len(mesh[2]))
-            back = read_lit_mesh(pathlib.Path(directory) / "out" / "card_mesh_generated.c")
+            back = read_lit_mesh(pathlib.Path(directory) / "out" / "card.mesh")
             q, _rgb, tris, _double, _face = finest_triangles(back)
             self.assertLessEqual(len(tris), len(mesh[2]))
             corners = q[tris]

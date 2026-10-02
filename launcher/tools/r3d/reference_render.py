@@ -79,10 +79,17 @@ def hit_albedo(source, hits, bary):
 
 def render_linear(source, settings, scene, pose, width, height, lens, samples=4):
     """Return a linear RGB source render, supersampled then box filtered."""
+    return trace(source, settings, scene, pose, width, height, lens, samples)[0]
+
+
+def trace(source, settings, scene, pose, width, height, lens, samples=4):
+    """(linear RGB, share of each pixel's subpixels that hit the mesh)."""
     eye, forward = pose[:3], pose[3:]
     origin, direction = camera_rays(width, height, lens, eye, forward, samples)
     locations, rays, faces = source.intersector.intersects_location(origin, direction, multiple_hits=False)
     linear = np.zeros((len(origin), 3), dtype=float)
+    covered = np.zeros(len(origin))
+    covered[rays] = 1.0
     if len(rays):
         bary = hit_barycentrics(source, faces, locations)
         normal = hit_normals(source, faces, bary)
@@ -92,14 +99,18 @@ def render_linear(source, settings, scene, pose, width, height, lens, samples=4)
         radiance = light(locations, normal, double, source.intersector, scene.lights, settings.light.ray_offset,
                          np.random.default_rng(settings.seed), shared_sky_rays=0)
         linear[rays] = albedo * radiance
-    return linear.reshape(height, width, samples * samples, 3).mean(axis=2)
+    return (linear.reshape(height, width, samples * samples, 3).mean(axis=2),
+            covered.reshape(height, width, samples * samples).mean(axis=2))
 
 
-def parse_rgb(text):
-    """An RGB clear colour from a six-digit hex string."""
-    if len(text) != 6:
-        raise ValueError("clear colour must be RRGGBB")
-    return np.array([int(text[index : index + 2], 16) for index in (0, 2, 4)], dtype=np.uint8)
+def device_picture(linear, covered, tonemap_white, background):
+    """The 8-bit picture the device shows: the tone-mapped mesh over the scene's
+    background colour in proportion to what each pixel leaves uncovered, then
+    RGB565-quantised."""
+    lit = to_srgb8(linear, tonemap_white).astype(float)
+    colour = np.array([background >> 16, (background >> 8) & 255, background & 255], dtype=float)
+    lit = lit * covered[..., None] + colour * (1.0 - covered[..., None])
+    return expand_565(np.round(lit).astype(np.uint8))
 
 
 def source_for(scene, import_path=None):
@@ -129,7 +140,6 @@ def main(argv=None):
     parser.add_argument("--out", required=True)
     parser.add_argument("--samples", type=int, default=4)
     parser.add_argument("--skip", type=int, default=0, help="ignore this many leading poses")
-    parser.add_argument("--clear", type=parse_rgb, help="RGB clear colour for rays that miss")
     args = parser.parse_args(argv)
     if args.samples < 1 or args.skip < 0:
         parser.error("--samples must be positive and --skip cannot be negative")
@@ -147,11 +157,10 @@ def main(argv=None):
     except ValueError as error:
         parser.error(str(error))
     for index, pose in enumerate(poses):
-        linear = render_linear(source, settings, scene, pose, width, height, lens, args.samples)
-        if args.clear is not None:
-            linear[~linear.any(axis=2)] = (args.clear / 255.0) ** 2.2
-        np.save(out / ("%03d.linear.npy" % index), linear)
-        Image.fromarray(expand_565(to_srgb8(linear, scene.tonemap_white).astype(np.uint8))).save(out / ("%03d.png" % index))
+        linear, covered = trace(source, settings, scene, pose, width, height, lens, args.samples)
+        np.save(out / ("%04d.linear.npy" % index), linear)
+        picture = device_picture(linear, covered, scene.tonemap_white, scene.camera.component.background)
+        Image.fromarray(picture).save(out / ("%04d.png" % index))
     return 0
 
 

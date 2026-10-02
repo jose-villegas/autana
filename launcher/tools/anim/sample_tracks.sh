@@ -11,7 +11,7 @@
 #
 # The poses go to report_triangle_sizes.sh on a pipe, so they are always
 # the animation's own:
-#   sample_tracks.sh --tracks A.c:NAME --poses camera 184 224 0.62 6 | report_triangle_sizes.sh --mesh M.c:SYM -
+#   sample_tracks.sh --tracks A.c:NAME --poses camera 184 224 0.62 6 | report_triangle_sizes.sh --mesh NAME -
 
 set -eu
 

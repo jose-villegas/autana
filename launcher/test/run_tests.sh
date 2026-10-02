@@ -127,6 +127,10 @@ $MAIN_DIR/boot/boot_anim_tracks_generated.c
 $MAIN_DIR/boot/post_layout.c
 $MAIN_DIR/util/job.c
 $MAIN_DIR/anim/anim_track.c
+$MAIN_DIR/asset/asset_pack.c
+$MAIN_DIR/asset/asset_file.c
+$MAIN_DIR/asset/asset_store_file.c
+$MAIN_DIR/render/r3d_lit_mesh.c
 $MAIN_DIR/render/raster.c
 $MAIN_DIR/render/raster_show.c
 $MAIN_DIR/render/r3d_pipeline.c
@@ -134,6 +138,8 @@ $MAIN_DIR/render/upscale.c
 $MAIN_DIR/render/r3d_span.c
 $MAIN_DIR/render/r3d_scene.c
 $MAIN_DIR/render/r3d_trs.c
+$MAIN_DIR/scene/scene.c
+$MAIN_DIR/scene/scene_draw.c
 $MAIN_DIR/util/tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/display/panel_clock.c
@@ -433,6 +439,11 @@ PYTHON=$(find_python) || exit 1
 "$PYTHON" "$TEST_DIR/check_stack_usage.py" "$SU_DIR"
 
 [ "$BUILD_ONLY" != 1 ] || exit 0
+
+# The asset pack the suites read, packed from the baked meshes in the tree.
+AUTANA_ASSET_PACK="$BUILD_DIR/assets.bin"
+export AUTANA_ASSET_PACK
+"$PYTHON" "$TEST_DIR/../tools/r3d/build_pack.py" -o "$AUTANA_ASSET_PACK" "$MAIN_DIR" > /dev/null
 
 if [ "$SANITIZE" = 1 ] && [ "$(uname -s)" = Linux ]; then
     # Control ids are value addresses and must stay stable across frames, as on the device.

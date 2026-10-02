@@ -83,6 +83,14 @@ def count(value, where):
     return value
 
 
+def colour_rgb(value, where):
+    """A colour as 0xRRGGBB."""
+    value = integer(value, where)
+    if not 0 <= value <= 0xFFFFFF:
+        raise SettingsError(f"{where} must be 0xRRGGBB")
+    return value
+
+
 def vector(value, where):
     if not isinstance(value, list) or len(value) != 3:
         raise SettingsError(f"{where} must be a three-component array")
@@ -208,7 +216,7 @@ def load_import_settings(path):
     if steps.light and not flat and steps.light.flat_sky_rays is not None:
         raise SettingsError("process.light.flat_sky_rays applies to a variant with face_samples only")
     return SimpleNamespace(
-        path=path, source=source, out_dir=(path.parent / directory).resolve(),
+        path=path, source=source, out_dir=(path.parent / directory).resolve(), mesh_dir=path.parent,
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, visibility=steps.visibility, thin=steps.thin, light=steps.light,
@@ -270,9 +278,10 @@ def load_light(component, rotation, where):
 
 
 def load_camera(component, where):
-    check_keys(component, ("half_fov_short_tan", "near_z"), where, optional=("region", "path"))
+    check_keys(component, ("half_fov_short_tan", "near_z"), where, optional=("region", "path", "background"))
     camera = SimpleNamespace(half_fov_short_tan=number(component["half_fov_short_tan"], f"{where}.half_fov_short_tan"),
-                             near_z=number(component["near_z"], f"{where}.near_z"), region=None, path=None)
+                             near_z=number(component["near_z"], f"{where}.near_z"), region=None, path=None,
+                             background=colour_rgb(component.get("background", 0), f"{where}.background"))
     if "region" in component:
         region = component["region"]
         check_keys(region, ("min", "max"), f"{where}.region")

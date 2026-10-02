@@ -10,9 +10,10 @@ flowchart LR
     Model["Source model<br/><i>zipped OBJ</i>"] --> Import["Import file<br/><i>.import.toml</i>"]
     Import --> Scene["Scene file<br/><i>.scene.toml</i>"]
     Scene --> Bake["mesh_import.py"]
-    Bake --> Meshes["Baked meshes<br/><i>_mesh_generated.c</i>"]
+    Bake --> Meshes["Baked meshes<br/><i>name.mesh</i>"]
+    Meshes --> Pack["build_pack.py<br/><i>assets.bin</i>"]
     Bake --> Table["Scene table<br/><i>_scene_generated.c</i>"]
-    Meshes --> Draw["Your scene<br/><i>raster_draw()</i>"]
+    Pack --> Draw["Your app<br/><i>scene_load(), scene_activate()</i>"]
     Table --> Draw
 ```
 
@@ -23,7 +24,7 @@ C compiler for the [render harness](../tools/Render-Harness.md).
 ## 1. Import a mesh
 
 An import file describes one mesh asset: where its source model is and where the
-generated files go.
+scene table goes. The baked mesh is written beside the import file.
 
 ```toml
 [source]
@@ -31,11 +32,11 @@ url = "https://example.invalid/hall.zip"
 sha256 = "..."                   # the download is checked against it
 path = "hall.obj"                # inside the archive
 cache = "hall"
-credit = "Hall, by A. Modeller, CC BY 4.0."   # written into every banner
+credit = "Hall, by A. Modeller, CC BY 4.0."
 
 [output]
 directory = ".."
-name = "hall"                    # the mesh's symbol prefix: hall_mesh
+name = "hall"                    # the mesh's asset id in the pack
 ```
 
 With only these it imports the mesh as authored: its triangles, with each
@@ -125,54 +126,53 @@ python launcher/tools/r3d/mesh_import.py path/to/hall.scene.toml
 python launcher/tools/r3d/scene_table.py path/to/hall.scene.toml
 ```
 
-The first bakes the lit mesh for each renderer; the second writes the `hall`
-scene table, the const data a scene reads (the `r3d_instance_t` of each mesh
-renderer and the camera). A mesh with no light or visibility step can also be
-baked on its own, from its import file. Generated files are committed as
-written and never reformatted.
+The first bakes the lit mesh for each renderer into `hall.mesh`; the second
+writes the `hall` scene table, one const `scene_def_t` the scene manager loads
+by name: an entity for each mesh renderer and the camera, with its transform,
+the asset id each mesh renderer names, and the camera's lens and path. A mesh
+with no light or visibility step can also be baked on its own, from its import
+file. Generated files and the baked `.mesh` are committed as written and never
+reformatted. The firmware build packs every baked mesh in the tree into the
+asset pack and flashes it with the app ([assets/README.md](../assets/README.md#flashing)).
 
 ## 6. Draw it
 
-A scene reads the table instead of hard-coding what to draw. The generated
-header declares one `r3d_instance_t` per mesh renderer, named after its object,
-and the camera; a scene gives the raster the instances it wants and a scratch
-block of PSRAM, and each frame asks the camera where it is at the time so far:
+An app loads the scene by name and activates its camera. The shell advances
+every loaded scene and draws through the active camera each frame, so the app
+never calls draw; `frame()` runs after the scene is in the framebuffer and
+draws over it. The generated header names each entity, so a misspelt one fails to
+compile:
 
 ```c
 #include "hall_scene_generated.h"
-#include "render/r3d.h"
+#include "scene/scene.h"
 
-static raster_t raster;
-static uint32_t elapsed_ms;
+static scene_t* hall;
 
 static void
 enter(void) {
-    /* One entry per mesh renderer in the scene file. */
-    static const r3d_instance_t* const placed[] = {&hall_scene_hall}; /* one entry per mesh renderer you draw */
-    static r3d_instance_t instances[sizeof placed / sizeof placed[0]];
-    for (size_t i = 0; i < sizeof placed / sizeof placed[0]; i++) {
-        instances[i] = *placed[i];
+    scene_failure_t why;
+    hall = scene_load("hall", &why); /* NULL when a mesh is missing: `why` names it */
+    if (hall != NULL) {
+        scene_activate(hall, NULL); /* its first camera */
     }
-    raster = (raster_t){.instances = instances, .instance_count = (int)(sizeof placed / sizeof placed[0]),
-                        .width = 184, .height = 224, .clear = sky_colour,
-                        .destination = gfx_framebuffer(), .destination_width = GFX_WIDTH,
-                        .destination_height = GFX_HEIGHT};
-    raster.scratch = heap_caps_malloc(raster_scratch_bytes(&raster), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    elapsed_ms = 0;
 }
 
 static void
-update(uint32_t dt_ms) {
-    elapsed_ms += dt_ms;
-    const camera_t camera = r3d_scene_camera_at(&hall_scene_camera, elapsed_ms);
-    raster_draw(&raster, &camera, display_shell_quarter());
+frame(uint32_t dt_ms, const input_t* input) {
+    draw_hud();
 }
 ```
 
-then `raster_upscale()` in the frame callback. How a frame is cut across the two
-cores and what `raster_draw()` does with each instance is in
-[Mesh-Rendering.md](Mesh-Rendering.md). To see the scene without a board, declare it
-for the [render harness](../tools/Render-Harness.md#declaring-a-scene).
+Nothing else: the shell unloads what the app loaded when it exits. To move
+something, `scene_entity_set_transform(hall, HALL_SCENE_HALL, &where)`; to hide
+it, `scene_entity_set_enabled()`. Several scenes may be loaded at once, and
+`scene_activate()` on another's camera changes what is drawn. How a frame is
+ordered against the panel send and the storage behind it are in
+[Scene-Manager.md](Scene-Manager.md); how the raster draws each instance is in
+[Mesh-Rendering.md](Mesh-Rendering.md). To see the scene without a board, declare
+it for the [render harness](../tools/Render-Harness.md#declaring-a-scene), which
+composes the active scene before the app's `frame()`, as the shell does.
 
 ## Checking it
 
@@ -181,4 +181,5 @@ for the [render harness](../tools/Render-Harness.md#declaring-a-scene).
 - A host suite that draws instances at transforms and checks where they appear
   is `launcher/test/suites/suite_r3d_scene.c`; copy its quad meshes to test your
   own placement.
-- After a change to the tools, regenerating the committed meshes must change only their banners: diff them.
+- After a change to the tools, bake again: the committed `.mesh` entries change
+  only where the change reaches them.

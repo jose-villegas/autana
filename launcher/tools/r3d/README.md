@@ -1,7 +1,7 @@
 # r3d
 
 The offline half of `main/render/`'s r3d renderer: the Python modules that bake
-a mesh into checked-in C data, and host tools that pose, preview or measure a
+a mesh into asset-pack entries, and host tools that pose, preview or measure a
 mesh. Nothing here runs on the board.
 
 | Module | What it does |
@@ -14,10 +14,12 @@ mesh. Nothing here runs on the board.
 | [meshopt.py](meshopt.py) | [meshoptimizer](https://github.com/zeux/meshoptimizer)'s simplifier and meshlet clusterizer through ctypes, built once from the pinned `third_party/upstream/meshoptimizer` submodule into `.cache/`. |
 | [light.py](light.py) | Baked direct light from a scene's typed lights (`LIGHTS`): directional with soft shadows, sky visibility and ambient, albedo from textures, and culling of what no point in a region can see. |
 | [octree.py](octree.py) | Groups weighted items, here meshlets, into an octree whose leaves hold runs of them. |
-| [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under an octree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as C data; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads that data back. |
+| [build_pack.py](build_pack.py) | Writes the [asset pack](../../../docs/assets/README.md) (`-o PACK`) from the `.mesh` entries every import and scene file names, with the container writer in [`tools/asset/`](../asset/asset_pack.py). Standard library only. |
+| [mesh_asset.py](mesh_asset.py) | The lit mesh entry's type and byte layout, shared by the baker and the pack builder. Standard library only. |
+| [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under an octree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as a `<name>.mesh` pack entry; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads an entry back. |
 | [import_settings.py](import_settings.py) | Reads and validates an import file and a scene file; standard library only, every table closed. |
-| [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: fetches and checks the source, runs the steps the import opts into, lights with the scene's lights, then writes the generated C mesh. |
-| [rebake.py](rebake.py) | Rewrites a baked mesh's clusters from its own triangles and colours, with no relighting. |
+| [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: fetches and checks the source, runs the steps the import opts into, lights with the scene's lights, then writes the `.mesh` entry beside the import file. |
+| [rebake.py](rebake.py) | Rewrites a baked `.mesh`'s clusters from its own triangles and colours, with no relighting. |
 | [fetch.py](fetch.py) | Downloads a source model once into `.cache/`, checked against a SHA-256. |
 | [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling (LINEAR, STEP, CUBICSPLINE), linear-blend skinning; reads through [`tools/gltf/`](../gltf/gltf_read.py), the reader and reference sampler [`tools/anim/`](../anim/README.md) shares. Standard library only. |
 | [gltf_preview.py](gltf_preview.py) | Renders any skinned `.glb` with Pillow: a looping GIF of one animation (`--gif NAME`) or the bind pose from four sides (`--sheet`). |
@@ -38,9 +40,9 @@ python -m venv tools/r3d/.cache/venv
 tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.txt   # bin/python on Linux
 ```
 
-**`rebake.py` or a full import.** Rebake a generated mesh when only clustering
+**`rebake.py` or a full import.** Rebake a `.mesh` when only clustering
 or data format changes: it reads its triangles and colours back and rewrites
-the clusters in place. Re-import a scene when a mesh's source,
+the clusters in place. Run `build_pack.py` after either. Re-import a scene when a mesh's source,
 simplification or light changes. Both commands are fixed points: the former
 canonicalizes triangle order and the latter uses the import file's fixed seed.
 
@@ -49,9 +51,9 @@ is another way to import the same mesh, with fewer empty pixel-sized spots at
 the price of frame time; what it does and costs is in
 [Mesh-Import.md](../../../docs/render/Mesh-Import.md#sealing-seams). An import turns it on with `seal_seams = true` in `[process.simplify]`.
 
-`mesh_import.py` is the shared full-import command. Each import file and the
-scene file that places it live in the app's `meshes/` folder; the generated
-banner names the scene file and the exact command that produced it.
+`mesh_import.py` is the shared full-import command. Each import file, the
+scene file that places it and the `.mesh` it bakes live in the app's `meshes/`
+folder.
 
 ## Fidelity reference
 
@@ -69,13 +71,13 @@ host-render script and `SCENE` its scene file.
 
 ```sh
 tools/anim/sample_tracks.sh --tracks TRACKS.c:NAME --every 5000 --until 45000     --poses camera 184 224 0.62 6 > poses.txt
-$PY tools/r3d/reference_render.py SCENE.scene.toml --poses poses.txt --skip 1     --out reference --samples 4 --clear RRGGBB
+$PY tools/r3d/reference_render.py SCENE.scene.toml --poses poses.txt --skip 1     --out reference --samples 4
 ```
 
-`--every 5000 --until 45000` writes nine poses, times 0 to 40000 (`--until`
-is exclusive). A host render of `--frames 8 --dt 5000` records its first frame
-after one step, so `--skip 1` leaves the eight poses it shows. `--clear` is the
-colour the scene clears to, so the sky scores as the host draws it.
+`--every 5000 --until 45000` writes nine poses, times 0 to 40000. A host render
+of `--frames 8 --dt 5000` shows eight of them; why the first is skipped is in
+the header of
+[`render_compare.sh`](../render/render_compare.sh).
 
 Score a host render's video against the references, with a heatmap per frame
 and a sheet of two frames:
@@ -99,8 +101,8 @@ $PY tools/r3d/bake_fidelity.py SCENE.scene.toml --mesh FLAT_MESH --script HOST  
 ```
 
 It bakes the simplified geometry once, re-lights it for each variant into
-`scratch/` (nothing tracked is written), builds the host renderer with that
-mesh in place of the tracked one (`--substitute` of the scene script), renders
+`scratch/` (nothing tracked is written), packs that mesh in place of the
+tracked one for the host renderer (`AUTANA_ASSET_PACK`), renders
 the poses and scores them with `render_compare.py`. A variant is
 `samples=fixed:N` or `auto:MIN:MAX:AREA` (`median*K` for AREA), `sky=N`,
 `place=stratified|centroid` and `sun=disc|centre`. Without `--variant` the
@@ -118,9 +120,9 @@ triangles stay as the simplifier left them, so the budget holds.
 
 | | |
 |---|---|
-| Start | a smooth `<name>_mesh_generated.c`, welded so the vertices of a colour seam share one position |
+| Start | a smooth `NAME.mesh`, welded so the vertices of a colour seam share one position |
 | Fitted | every welded position, and every vertex's sRGB colour |
-| Forward model | nvdiffrast draws what the device draws: Gouraud colours, single-sided faces culled, the `--clear` colour where nothing is drawn, at `--scale` times the reference size |
+| Forward model | nvdiffrast draws what the device draws: Gouraud colours, single-sided faces culled, the `--scene` camera's background where nothing is drawn, at `--scale` times the reference size |
 | Loss | the mean CIE76 ΔE of `render_compare.py` against the nearest-upscaled reference PNG, over a batch of random poses, plus `--laplacian` times the drift of the positions' uniform-Laplacian coordinates from the start's |
 | Schedule | Adam; both learning rates decay tenfold over `--steps` |
 | Output | `write_lit_mesh()`, the writer `mesh_import.py` and `rebake.py` end in, plus a vertex-coloured OBJ |
@@ -153,13 +155,13 @@ names the GPU's compute capability (12.0 is Blackwell). Then, from the
 repository root, with the reference images of the training poses:
 
 ```sh
-$E/bin/python launcher/tools/r3d/appearance_simplify.py --start MESH_mesh_generated.c \
-    --poses train.txt --reference reference_train --out fitted --clear RRGGBB
+$E/bin/python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \
+    --poses train.txt --reference reference_train --out fitted
 ```
 
-To score a fitted mesh, build the scene's host renderer with it in place of
-the tracked mesh (`--build-only --substitute TRACKED.c=fitted/MESH_mesh_generated.c`
-of the host-render script) and score its video of poses the fit never saw
+To score a fitted mesh, pack it in place of the tracked one, as
+`bake_fidelity.py`'s `write_pack` does, run the scene's host renderer on that
+pack (`AUTANA_ASSET_PACK`) over poses the fit never saw, and score the video
 with `render_compare.py --reference-video`, as in
 [Fidelity reference](#fidelity-reference). `test_r3d_appearance.py` runs
 the fit itself only where CUDA, PyTorch and nvdiffrast import.
@@ -167,12 +169,12 @@ the fit itself only where CUDA, PyTorch and nvdiffrast import.
 ## Triangle sizes
 
 ```sh
-./launcher/tools/r3d/report_triangle_sizes.sh --mesh SOURCE.c:SYMBOL POSES|- [--write DIR | --against DIR]
+./launcher/tools/r3d/report_triangle_sizes.sh --mesh NAME POSES|- [--write DIR | --against DIR]
 ```
 
 How many of a baked mesh's drawn triangles cover 0, 1, 2-4 or more pixel
 centres at each pose, which sizes the rasterizer's small-triangle work.
-`--mesh` names the C file a generator wrote and its `r3d_lit_mesh_t`;
+`--mesh` names the mesh's asset id in a pack built from the tree, or in the pack `AUTANA_ASSET_PACK` names;
 `POSES` is a text file of `size`, `lens` and `pose` lines, its format in
 [`triangle_sizes.h`](triangle_sizes.h), and `-` reads it from standard
 input: a scene prints its poses from its own camera rather than keeping a
