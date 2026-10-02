@@ -15,7 +15,6 @@ enum {
     ENTRY_OFFSET = 36,
     ENTRY_SIZE = 40,
     ENTRY_ALIGN = 44,
-    BASE_ALIGN = 16,
 };
 
 static uint32_t
@@ -90,7 +89,7 @@ asset_pack_open(asset_pack_t* pack, const void* base, size_t size) {
     if (bytes == NULL || size == 0) {
         return ASSET_ERR_NO_PACK;
     }
-    if ((uintptr_t)base % BASE_ALIGN != 0) {
+    if ((uintptr_t)base % ASSET_PACK_BASE_ALIGN != 0) {
         return ASSET_ERR_BOUNDS; /* entries are aligned within the pack, so the pack must be too */
     }
     if (size < ASSET_PACK_HEADER_SIZE) {

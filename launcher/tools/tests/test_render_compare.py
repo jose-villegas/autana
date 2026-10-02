@@ -2,10 +2,15 @@
 
     python -m unittest discover -s launcher/tools/tests
 """
+import io
+import contextlib
+import shutil
 import struct
+import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 import numpy as np
@@ -62,6 +67,90 @@ class MeasureTest(unittest.TestCase):
         b = image([[DRAWN, DRAWN]])
         stats = render_compare.measure(a, b, render_compare.parse_rgb("9CC0E6"))
         self.assertEqual(stats.holes_a, 1)
+
+
+class ReferenceMetricTest(unittest.TestCase):
+    def test_identical_images_have_zero_delta_e_and_one_ssim(self):
+        picture = image([[DRAWN, CLEAR], [CLEAR, DRAWN]])
+        stats = render_compare.reference_measure(picture, picture.copy())
+        self.assertEqual((stats.mean_delta_e, stats.p95_delta_e, stats.ssim_luma), (0.0, 0.0, 1.0))
+
+    def test_black_to_white_is_a_hundred_delta_e(self):
+        black, white = image([[(0, 0, 0)]]), image([[(255, 255, 255)]])
+        stats = render_compare.reference_measure(black, white)
+        self.assertAlmostEqual(stats.mean_delta_e, 100.0, places=4)
+        self.assertAlmostEqual(stats.p95_delta_e, 100.0, places=4)
+
+    def test_reference_heatmap_is_black_for_a_match(self):
+        picture = image([[DRAWN]])
+        self.assertEqual(render_compare.reference_heatmap(picture, picture).getpixel((0, 0)), (0, 0, 0))
+
+
+STEP = [[(0, 0, 0)] * 4 + [(255, 255, 255)] * 4 for _ in range(8)]
+
+
+class SsimTest(unittest.TestCase):
+    def test_the_score_is_the_mean_of_the_ssim_map_over_every_eight_by_eight_window(self):
+        rng = np.random.default_rng(3)
+        a = rng.integers(0, 256, (12, 13, 3), dtype=np.uint8)
+        b = np.clip(a // 2 + rng.integers(0, 90, (12, 13, 3)), 0, 255).astype(np.uint8)
+        luma = lambda pixels: pixels / 255.0 @ np.array([0.2126, 0.7152, 0.0722])
+        la, lb = luma(a.astype(float)), luma(b.astype(float))
+        scores = []
+        for y in range(12 - 7):
+            for x in range(13 - 7):
+                wa, wb = la[y : y + 8, x : x + 8].ravel(), lb[y : y + 8, x : x + 8].ravel()
+                ma, mb = wa.mean(), wb.mean()
+                cov = ((wa - ma) * (wb - mb)).mean()
+                scores.append((2 * ma * mb + 1e-4) * (2 * cov + 9e-4) / ((ma**2 + mb**2 + 1e-4) * (wa.var() + wb.var() + 9e-4)))
+        got = render_compare.luma_ssim(Image.fromarray(a), Image.fromarray(b))
+        self.assertAlmostEqual(got, float(np.mean(scores)), places=9)
+        self.assertEqual(render_compare.luma_ssim(Image.fromarray(a), Image.fromarray(a)), 1.0)
+
+    def test_a_picture_smaller_than_a_window_is_one_window(self):
+        a, b = image([[(0, 0, 0), (255, 255, 255)]] * 2), image([[(255, 255, 255), (0, 0, 0)]] * 2)
+        self.assertLess(render_compare.luma_ssim(a, b), 0.0)
+
+
+class Expand565Test(unittest.TestCase):
+    def test_an_array_expands_like_the_tuple_of_each_pixel(self):
+        pixels = np.array([[[156, 195, 231], [255, 255, 255], [0, 0, 0]]], dtype=np.uint8)
+        got = render_compare.expand_565(pixels)
+        self.assertEqual([tuple(int(v) for v in pixel) for pixel in got[0]],
+                         [render_compare.expand_565(tuple(int(v) for v in pixel)) for pixel in pixels[0]])
+        self.assertEqual(got.dtype, np.uint8)
+
+
+class ReferenceSheetTest(unittest.TestCase):
+    def test_a_sheet_is_reference_render_heatmap_and_edges_over_a_colour_scale(self):
+        reference = image(STEP)
+        sheet = render_compare.reference_sheet([("a", image(STEP), reference)], tile=1.0)
+        self.assertEqual(sheet.width, 4 * 8)
+        self.assertEqual(sheet.height, 8 + 70)
+
+
+class EdgeSplitTest(unittest.TestCase):
+    """A reference with one vertical step, and renders that differ from it in one column."""
+
+    STEP = STEP
+
+    def stats_with_error_in(self, column):
+        render = [list(row) for row in self.STEP]
+        for row in render:
+            row[column] = (128, 128, 128)
+        return render_compare.reference_measure(image(render), image(self.STEP))
+
+    def test_error_at_the_step_is_edge_error(self):
+        stats = self.stats_with_error_in(3)
+        self.assertEqual(stats.edge_share, 1.0)
+        self.assertEqual(stats.interior_delta_e, 0.0)
+        self.assertGreater(stats.edge_delta_e, 0.0)
+
+    def test_error_away_from_the_step_is_interior_error(self):
+        stats = self.stats_with_error_in(0)
+        self.assertEqual(stats.edge_share, 0.0)
+        self.assertEqual(stats.edge_delta_e, 0.0)
+        self.assertGreater(stats.interior_delta_e, 0.0)
 
 
 class HeatmapTest(unittest.TestCase):
@@ -246,6 +335,44 @@ class VideoTest(unittest.TestCase):
         path.write_bytes(avi_bytes(frames[0].size[0], frames[0].size[1], frames, dt_ms))
         return str(path)
 
+    def test_a_reference_video_scores_each_frame_at_the_scale_it_finds_and_hands_it_to_the_sink(self):
+        render = Image.new("RGB", (4, 4), DRAWN)
+        reference = Image.new("RGB", (2, 2), DRAWN)
+        seen = []
+        with tempfile.TemporaryDirectory() as tmp:
+            video = self.write_avi(tmp, "a.avi", [render, render], 250)
+            for index in range(2):
+                reference.save(Path(tmp) / ("%04d.png" % index))
+            values, total = render_compare.reference_video(video, tmp, sink=lambda *item: seen.append(item[:2] + (item[3].size,)))
+        self.assertEqual(seen, [(4.0, 0, (4, 4)), (4.0, 1, (4, 4))])
+        self.assertEqual((len(values), total.mean_delta_e), (2, 0.0))
+
+    def test_main_writes_one_reference_line_per_frame_and_their_mean_to_the_summary(self):
+        render = Image.new("RGB", (4, 4), DRAWN)
+        with tempfile.TemporaryDirectory() as tmp:
+            video = self.write_avi(tmp, "a.avi", [render, render], 250)
+            references = Path(tmp) / "reference"
+            references.mkdir()
+            for index in range(2):
+                Image.new("RGB", (2, 2), DRAWN).save(references / ("%04d.png" % index))
+            summary = Path(tmp) / "summary.txt"
+            argv = ["render_compare.py", "--out", str(Path(tmp) / "x.png"), "--reference-video", video, str(references),
+                    "--summary", str(summary)]
+            with unittest.mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()):
+                render_compare.main()
+            lines = summary.read_text().splitlines()
+        self.assertEqual([line.split(":")[0] for line in lines], ["frame 0", "frame 1", "frames mean"])
+        self.assertTrue(all(line.startswith(("frame", "frames")) and "mean DeltaE76 0.0000" in line and "luma SSIM 1.000000" in line
+                            for line in lines))
+
+    def test_a_reference_video_can_start_at_a_later_frame(self):
+        near, far = Image.new("RGB", (2, 2), DRAWN), Image.new("RGB", (2, 2), CLEAR)
+        with tempfile.TemporaryDirectory() as tmp:
+            video = self.write_avi(tmp, "a.avi", [far, far, near], 250)
+            near.save(Path(tmp) / "000.png")
+            values, total = render_compare.reference_video(video, tmp, first=2)
+        self.assertEqual((len(values), total.mean_delta_e), (1, 0.0))
+
     def test_read_video_gives_top_down_rgb_frames_and_the_rate(self):
         frame = with_pixels(blank(5, 4), [(1, 0)], DRAWN)
         with tempfile.TemporaryDirectory() as tmp:
@@ -305,6 +432,33 @@ class VideoTest(unittest.TestCase):
             two = self.write_avi(tmp, "b.avi", [blank(4, 4)], 200)
             with self.assertRaises(ValueError):
                 render_compare.compare_videos(one, two, str(Path(tmp) / "o.mp4"), None, None, 8, "a", "b")
+
+
+@unittest.skipIf(shutil.which("sh") is None, "needs a POSIX shell")
+class ReferenceModeArgumentsTest(unittest.TestCase):
+    SCRIPT = Path(__file__).resolve().parents[1] / "render" / "render_compare.sh"
+
+    def run_sh(self, *args):
+        return subprocess.run(["sh", str(self.SCRIPT), *args], capture_output=True, text=True)
+
+    def test_reference_needs_poses_and_a_render(self):
+        for args in (["--script", "s.sh", "--reference", "x.scene.toml", "HEAD", "--render", "p", "--frames 2"],
+                     ["--script", "s.sh", "--reference", "x.scene.toml", "--poses", "p.txt", "HEAD"]):
+            result = self.run_sh(*args)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("--reference SCENE.scene.toml --poses FILE", result.stderr)
+
+    def test_reference_refuses_a_second_revision(self):
+        result = self.run_sh("--script", "s.sh", "--reference", "x", "--poses", "p", "HEAD", "HEAD", "--render", "p", "--frames 2")
+        self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_reference_frame_rate_is_30_40_60_or_80(self):
+        base = ["--script", "s.sh", "--reference", "x", "--poses", "p", "--render", "p", "--frames 2"]
+        refused = self.run_sh(*base, "--fps", "50", "HEAD")
+        self.assertEqual(refused.returncode, 2)
+        self.assertIn("30, 40, 60 or 80", refused.stderr)
+        for fps in ("30", "40", "60", "80"):
+            self.assertNotIn("30, 40, 60 or 80", self.run_sh(*base, "--fps", fps, "HEAD").stderr)
 
 
 if __name__ == "__main__":

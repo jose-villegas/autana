@@ -31,6 +31,23 @@
 # the two revisions differ most, A above B, enlarged. A video's come from its
 # two worst frames. Nothing is written where the two do not differ.
 #
+# --reference SCENE.scene.toml --poses FILE --render LABEL "ARGS" compares
+# <A> against the scene's source reference instead of a <B>: the reference
+# frames come from r3d/reference_render.py at the poses in FILE, the camera
+# path sampled at the renderer's --dt (tools/anim/sample_tracks.sh --every DT),
+# and are cached under r3d/.cache/reference by a hash of the scene, its import
+# files (which pin the source model's sha256), the r3d sources, the poses and N
+# (--samples N is the supersampling, default 4). It
+# implies --video: <label>.mp4 is reference | render | dE heatmap | edge pixels
+# per frame, at --fps 30 unless 40, 60 or 80 is given, and summary.txt gets
+# mean and 95th-percentile dE and SSIM per frame. A render's first frame is
+# one --dt in, so the reference skips the pose at time zero. --start N scores
+# from render frame N, for a poses file that begins at pose N. --r3d-python names
+# the interpreter with the r3d requirements; the default is r3d/.cache/venv's.
+#
+# --reference-frames with --reference and --poses alone makes (or finds) that
+# cache and prints its directory, for a caller that scores the frames itself.
+#
 # POSIX sh, like the rest of this directory.
 
 set -eu
@@ -39,9 +56,12 @@ TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_DIR=$(CDPATH= cd -- "$TOOLS_DIR/../../.." && pwd)
 
 usage() {
-    sed -n '3,32p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '3,49p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
 }
+
+# shellcheck source=../../../scripts/lib/python.sh
+. "$TOOLS_DIR/../../../scripts/lib/python.sh"
 
 if ! PYTHON=$(command -v python3 || command -v python); then
     echo "No Python found; render_compare.py needs one (Pillow and numpy)." >&2
@@ -54,7 +74,7 @@ to_native() {
     if command -v cygpath > /dev/null 2>&1; then
         cygpath -w "$1"
     else
-        printf '%s' "$1"
+        printf '%s\n' "$1"
     fi
 }
 
@@ -64,6 +84,12 @@ clear_arg=""
 video=0
 fps=""
 crops=0
+reference=""
+poses=""
+samples=4
+first=0
+frames_only=0
+r3d_python=""
 rev_a=""
 rev_b=""
 work=$(mktemp -d)
@@ -89,6 +115,12 @@ while [ $# -gt 0 ]; do
         --clear) clear_arg=${2:?--clear needs RRGGBB}; shift 2 ;;
         --video) video=1; shift ;;
         --crops) crops=${2:?--crops needs a number}; shift 2 ;;
+        --reference) reference=${2:?--reference needs a scene file}; video=1; shift 2 ;;
+        --poses) poses=${2:?--poses needs a file}; shift 2 ;;
+        --start) first=${2:?--start needs a frame number}; shift 2 ;;
+        --reference-frames) frames_only=1; shift ;;
+        --samples) samples=${2:?--samples needs a number}; shift 2 ;;
+        --r3d-python) r3d_python=${2:?--r3d-python needs a path}; shift 2 ;;
         --fps) fps=${2:?--fps needs a number}; shift 2 ;;
         --render)
             [ $# -ge 3 ] || usage
@@ -106,7 +138,19 @@ while [ $# -gt 0 ]; do
             ;;
     esac
 done
-[ -n "$script" ] && [ -n "$rev_b" ] || usage
+if [ "$frames_only" = 1 ]; then
+    [ -n "$reference" ] && [ -n "$poses" ] || usage
+    out=$work
+elif [ -n "$reference" ]; then
+    [ -n "$script" ] && [ -n "$rev_a" ] && [ -n "$poses" ] && [ -z "$rev_b" ] && [ -s "$renders" ] || usage
+    [ -n "$fps" ] || fps=30
+    case "$fps" in
+        30|40|60|80) ;;
+        *) echo "--fps with --reference is 30, 40, 60 or 80, not $fps." >&2; exit 2 ;;
+    esac
+else
+    [ -n "$script" ] && [ -n "$rev_b" ] || usage
+fi
 if [ "$video" = 1 ] && ! command -v ffmpeg > /dev/null 2>&1; then
     echo "--video needs ffmpeg on PATH." >&2
     exit 1
@@ -187,10 +231,53 @@ render_side() {
     done < "$renders"
 }
 
+# The reference frames for $poses, made once per scene, poses and sampling.
+reference_frames() {
+    scene_dir=$(dirname "$reference")
+    key=$("$PYTHON" -c 'import hashlib, pathlib, sys
+digest = hashlib.sha256()
+for path in sys.argv[1:-1]:
+    digest.update(pathlib.Path(path).read_bytes())
+digest.update(sys.argv[-1].encode())
+print(digest.hexdigest()[:16])' "$(to_native "$reference")" "$(to_native "$poses")" \
+        $(for f in "$scene_dir"/*.import.toml "$TOOLS_DIR/../r3d"/*.py "$TOOLS_DIR/render_compare.py"; do to_native "$f"; done)         "$samples")
+    cache="$REPO_DIR/launcher/tools/r3d/.cache/reference/$key"
+    if [ ! -f "$cache/done" ]; then
+        [ -n "$r3d_python" ] || r3d_python=$(find_r3d_python "$REPO_DIR") || exit 1
+        mkdir -p "$cache"
+        "$r3d_python" "$(to_native "$TOOLS_DIR/../r3d/reference_render.py")" "$(to_native "$reference")" \
+        --poses "$(to_native "$poses")" --skip 1 --out "$(to_native "$cache")" --samples "$samples" >&2 || exit 1
+        : > "$cache/done"
+    fi
+    echo "$cache"
+}
+
+if [ "$frames_only" = 1 ]; then
+    reference_frames
+    exit 0
+fi
+
 label_a=$(short_name "$rev_a")
-label_b=$(short_name "$rev_b")
-printf 'a: %s\nb: %s\n' "$label_a" "$label_b" > "$out/summary.txt"
+label_b=""
+[ -n "$rev_b" ] && label_b=$(short_name "$rev_b")
+printf 'a: %s\nb: %s\n' "$label_a" "${label_b:-the source reference}" > "$out/summary.txt"
 render_side a "$rev_a"
+if [ -n "$reference" ]; then
+    cache=$(reference_frames)
+    for avi in "$out/a"/*.avi; do
+        [ -f "$avi" ] || continue
+        label=$(basename "$avi" .avi)
+        echo "== $label reference" >> "$out/summary.txt"
+        "$PYTHON" "$(to_native "$TOOLS_DIR/render_compare.py")" --out "$(to_native "$out/$label.unused.png")" \
+        --reference-video "$(to_native "$avi")" "$(to_native "$cache")" \
+        --reference-mp4 "$(to_native "$out/$label.mp4")" --reference-first "$first" ${fps:+--fps "$fps"} \
+        --summary "$(to_native "$out/summary.txt")"
+        echo "video $out/$label.mp4"
+    done
+    rm -f "$out/a"/*.avi "$out"/*.unused.png
+    echo "summary $out/summary.txt"
+    exit 0
+fi
 render_side b "$rev_b"
 
 # What to compare: the --render labels, or else the images both sides wrote.

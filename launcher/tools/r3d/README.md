@@ -25,6 +25,8 @@ mesh. Nothing here runs on the board.
 | [gltf_preview.py](gltf_preview.py) | Renders any skinned `.glb` with Pillow: a looping GIF of one animation (`--gif NAME`) or the bind pose from four sides (`--sheet`). |
 | [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, and the poses file; host-tested by `suite_r3d_triangle_sizes.c`. |
 | [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
+| [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement, sun and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [Sweeping the flat bake](../../../docs/render/Mesh-Import.md#sweeping-the-flat-bake). |
+| [reference_render.py](reference_render.py) | Traces the undecimated source mesh through the scene's bake lights at supersampled device resolution; writes linear arrays and RGB565-expanded PNGs for fidelity comparisons. |
 
 The environment is pinned in [requirements.txt](requirements.txt), and the
 simplifier needs the meshoptimizer submodule and a host C++ compiler (`CXX`,
@@ -50,6 +52,60 @@ the price of frame time; what it does and costs is in
 `mesh_import.py` is the shared full-import command. Each import file, the
 scene file that places it and the `.mesh` it bakes live in the app's `meshes/`
 folder.
+
+## Fidelity reference
+
+`reference_render.py` takes a scene and the pose file its camera path emits.
+It uses the source mesh after alpha masking, before simplification, and the
+same lights, albedo sampling, tone map and RGB565 quantisation as the bake.
+The .npy output retains the linear, box-filtered image; the PNG is the form a
+host render compares with `render_compare.py`. What the scores mean is in
+[Mesh-Import.md](../../../docs/render/Mesh-Import.md#fidelity-against-a-reference).
+
+These commands run from `launcher/`; `PY` is the venv's interpreter
+(`tools/r3d/.cache/venv/Scripts/python` on Windows, `.../bin/python` elsewhere).
+`TRACKS` is the scene camera's baked track source, `HOST` the scene's
+host-render script and `SCENE` its scene file.
+
+```sh
+tools/anim/sample_tracks.sh --tracks TRACKS.c:NAME --every 5000 --until 45000     --poses camera 184 224 0.62 6 > poses.txt
+$PY tools/r3d/reference_render.py SCENE.scene.toml --poses poses.txt --skip 1     --out reference --samples 4
+```
+
+`--every 5000 --until 45000` writes nine poses, times 0 to 40000. A host render
+of `--frames 8 --dt 5000` shows eight of them; why the first is skipped is in
+the header of
+[`render_compare.sh`](../render/render_compare.sh).
+
+Score a host render's video against the references, with a heatmap per frame
+and a sheet of two frames:
+
+```sh
+$PY tools/render/render_compare.py --out unused.png --reference-video host.avi reference     --reference-scale 2 --heatmap-dir heatmaps --reference-sheet sheet.png --sheet-frames 2,4
+```
+
+The line for each frame, and for the frames' mean, has mean and 95th-percentile
+CIE76 ΔE over its pixels, luma SSIM, and the mean ΔE on edge and on interior
+pixels; the frames-mean line averages each frame's value, p95 included. The
+sheet is, left to right, the reference, the render, the ΔE heatmap and the
+reference's edge pixels in magenta, over the heatmap's colour scale: ΔE 0 is
+black, about 20 red, 50 or more yellow.
+
+`bake_fidelity.py` does the whole loop for flat variants of one mesh, and
+sweeps the flat bake's knobs:
+
+```sh
+$PY tools/r3d/bake_fidelity.py SCENE.scene.toml --mesh FLAT_MESH --script HOST     --render-args "--quarter 0 --no-hud --scene FLAT_SCENE --frames 8 --dt 5000"     --reference reference --work scratch     --variant fixed4=samples=fixed:4 --variant sky64=sky=64,place=centroid
+```
+
+It bakes the simplified geometry once, re-lights it for each variant into
+`scratch/` (nothing tracked is written), packs that mesh in place of the
+tracked one for the host renderer (`AUTANA_ASSET_PACK`), renders
+the poses and scores them with `render_compare.py`. A variant is
+`samples=fixed:N` or `auto:MIN:MAX:AREA` (`median*K` for AREA), `sky=N`,
+`place=stratified|centroid` and `sun=disc|centre`. Without `--variant` the
+mesh is baked as its import file declares it, byte for byte the tracked bake.
+It prints a table sorted by mean ΔE.
 
 ## Triangle sizes
 

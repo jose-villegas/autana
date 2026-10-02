@@ -31,10 +31,15 @@ repository root. It makes the launcher's and the UI toolkit's images itself and 
 ```
 
 It needs a host C compiler, Python with Pillow and numpy, and ffmpeg 5.1 or newer.
+An app's `tools/doc_images.sh` may also need the packages in
+`launcher/tools/r3d/requirements.txt` and the source model that the import fetches,
+SHA-256 checked, into `launcher/tools/r3d/.cache`; the workflow caches it.
 `--check` renders into `launcher/tools/results/doc_images/out/`
 and compares decoded pixels with `compare_images.py`, never bytes: another
 ffmpeg or Pillow writes different GIF bytes for the same frames. It prints
-`same` or `changed` per image, and `orphan` for a file nothing makes. The
+`same` or `changed` per image, and `orphan` for a file nothing makes.
+`--orphans` renders nothing and reports an image whose name no script
+mentions; the Comment Rules workflow runs it on every pull request. The
 `doc-images` workflow runs it on pushes to main that touch `launcher/` or
 `docs/images/`, and opens one pull request when an image changed. It needs the
 repository setting Actions > "Allow GitHub Actions to create and approve pull
@@ -296,6 +301,15 @@ flowchart LR
 | `--crops N` | `compare.crops.png` and `<label>.crops.png`: the `N` places the two differ most, A above B, enlarged 4 times without smoothing. Changed pixels (a channel off by more than 8, or a hole) within 3 px are one place; holes rank first, then total difference; a place over 64 px is cut to its strongest 64 px window. A video uses its two worst frames. Nothing is written where nothing differs. |
 
 The renderer arguments are split on spaces and never expanded as patterns.
+
+`--reference SCENE.scene.toml --poses FILE` (with one `A` and a `--render`) scores
+a whole camera path against the scene's source model instead of a second
+revision: `reference_render.py` draws the poses, `FILE` sampled at the renderer's
+`--dt` by `tools/anim/sample_tracks.sh --every`, once per scene, poses and
+`--samples`, and the render's frames are scored against them. It writes
+`<label>.mp4` (reference, render, error heatmap, edge pixels) at `--fps`
+30, 40, 60 or 80, and one reference line per frame in `summary.txt`. The
+header of `render_compare.sh` has the details.
 The tool needs Pillow and numpy (`launcher/tools/render/requirements.txt`).
 
 ---
