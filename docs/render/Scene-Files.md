@@ -36,6 +36,7 @@ name = "camera"
 [objects.camera]
 half_fov_short_tan = 0.62
 near_z = 6.0
+background = 0x9CC0E6
 region = { min = [-1400.0, 20.0, -620.0], max = [1270.0, 1250.0, 550.0] }
 path = { tracks = "flight", node = "camera" }
 
@@ -70,7 +71,7 @@ component table.
 |---|---|---|
 | `mesh_renderer` | `mesh`, `variant` | Draws a mesh asset: `mesh` names an import file beside the scene file, which must exist, and `variant` picks one of its variants (required exactly when the import has them). |
 | `light` | `type`, `color`, `intensity`, `disc_degrees`, `rays` | A directional light. The direction toward it is the object's +Y axis turned by its rotation, so a rotation of zero is a sun straight overhead. Position and scale do not matter. `point` and `spot` are reserved and rejected until their bake paths exist. |
-| `camera` | `half_fov_short_tan`, `near_z`, `region`, `path` | The view: the lens, the box the camera moves within (`region`, a `min` and `max`), and optionally the glTF animation it flies. `path = { tracks, node }` names the tracks `tools/anim/bake_tracks.py` baked under the prefix `tracks`, for the glTF node `node`. Without a path the camera sits at its transform, looking down its own -Z. A scene has at most one camera. |
+| `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view: the lens, the box the camera moves within (`region`, a `min` and `max`), and optionally the glTF animation it flies. `path = { tracks, node }` names the tracks `tools/anim/bake_tracks.py` baked under the prefix `tracks`, for the glTF node `node`. `background` (0xRRGGBB, default black) is the colour a pixel no mesh covers shows, in the panel's RGB565 and in the source reference. Without a path the camera sits at its transform, looking down its own -Z. A scene has at most one camera. |
 
 Sky and ambient light are properties of the scene, not objects, and are the
 two settings tables `[sky]` (`color`, `intensity`, `rays`: that many random
@@ -102,24 +103,24 @@ identity; a mesh without one may be placed anywhere and by many scenes.
 
 `python launcher/tools/r3d/scene_table.py SCENE.scene.toml` reads the scene file
 and its import files (it needs no numeric environment and bakes nothing) and
-writes `<scene>_scene_generated.c` and `.h` beside the meshes, which must all
-be written to one output directory. A test fails when the committed table is not
+writes `<scene>_scene_generated.c` and `.h` into the output directory its import
+files name, which must be the same for all of them. A test fails when the committed table is not
 what its scene file generates.
 
-The table holds only what the device reads, as const data from
-[`render/r3d_scene.h`](../../launcher/main/render/r3d_scene.h) and
-[`render/r3d_instance.h`](../../launcher/main/render/r3d_instance.h):
+The table holds only what the device reads: one const `scene_def_t` named
+`<scene>_scene`, registered by the scene's name with `SCENE_REGISTER()` so that
+`scene_load()` finds it ([Scene-Manager.md](Scene-Manager.md)):
 
-- one `r3d_instance_t` per mesh renderer, named `<scene>_scene_<object>`, so a
-  misspelt object fails at link time, with its mesh and its placement baked
-  as a 3x3 (rotation times scale) and a position, or no placement for the
-  identity;
-- the camera, `r3d_scene_camera_t` named `<scene>_scene_<object>`: its lens, its
-  placement (a fixed camera looks down the placement's -Z column) and the
-  symbols of its path.
+- an entity for each mesh renderer and the camera, in file order; the header
+  names each `<SCENE>_SCENE_<OBJECT>`, so a misspelt object fails to compile;
+- each entity's transform, baked as a 3x3 (rotation times scale) and a
+  position, the identity written out;
+- each mesh renderer's asset id: `scene_load()` opens it from the
+  [asset pack](../assets/README.md), and an id the pack lacks fails the load,
+  naming it;
+- the camera's lens, its background colour and the symbols of its path.
 
 Lights, the camera region, sky, ambient and the tone map are bake settings and
 stay offline. The rotation convention above is written only in the importer, so
-the device does no trigonometry. A scene hands an instance to a raster, and asks
-`r3d_scene_camera_at()` for the camera at a time, so what to draw and where lives
-in the scene file rather than in code.
+the device does no trigonometry, and what to draw and where lives in the scene
+file rather than in code.

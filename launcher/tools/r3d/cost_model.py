@@ -2,9 +2,9 @@
 """A linear model of what a baked mesh costs to draw from a pose, its
 weights fitted to board frame times.
 
-    python launcher/tools/r3d/cost_model.py features MESH_mesh_generated.c --poses POSES
+    python launcher/tools/r3d/cost_model.py features NAME.mesh --poses POSES
     python launcher/tools/r3d/cost_model.py fit WEIGHTS
-    python launcher/tools/r3d/cost_model.py predict MESH_mesh_generated.c --poses POSES --weights WEIGHTS
+    python launcher/tools/r3d/cost_model.py predict NAME.mesh --poses POSES --weights WEIGHTS
 
 WEIGHTS is a weights file such as board_cost_weights.txt: a `feature` row
 naming the columns, a `weight` row, and the `frame LABEL POSE MS feature...`

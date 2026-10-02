@@ -2,10 +2,15 @@
 
     python -m unittest discover -s launcher/tools/tests
 """
+import io
+import contextlib
+import shutil
 import struct
+import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 import numpy as np
@@ -330,6 +335,44 @@ class VideoTest(unittest.TestCase):
         path.write_bytes(avi_bytes(frames[0].size[0], frames[0].size[1], frames, dt_ms))
         return str(path)
 
+    def test_a_reference_video_scores_each_frame_at_the_scale_it_finds_and_hands_it_to_the_sink(self):
+        render = Image.new("RGB", (4, 4), DRAWN)
+        reference = Image.new("RGB", (2, 2), DRAWN)
+        seen = []
+        with tempfile.TemporaryDirectory() as tmp:
+            video = self.write_avi(tmp, "a.avi", [render, render], 250)
+            for index in range(2):
+                reference.save(Path(tmp) / ("%04d.png" % index))
+            values, total = render_compare.reference_video(video, tmp, sink=lambda *item: seen.append(item[:2] + (item[3].size,)))
+        self.assertEqual(seen, [(4.0, 0, (4, 4)), (4.0, 1, (4, 4))])
+        self.assertEqual((len(values), total.mean_delta_e), (2, 0.0))
+
+    def test_main_writes_one_reference_line_per_frame_and_their_mean_to_the_summary(self):
+        render = Image.new("RGB", (4, 4), DRAWN)
+        with tempfile.TemporaryDirectory() as tmp:
+            video = self.write_avi(tmp, "a.avi", [render, render], 250)
+            references = Path(tmp) / "reference"
+            references.mkdir()
+            for index in range(2):
+                Image.new("RGB", (2, 2), DRAWN).save(references / ("%04d.png" % index))
+            summary = Path(tmp) / "summary.txt"
+            argv = ["render_compare.py", "--out", str(Path(tmp) / "x.png"), "--reference-video", video, str(references),
+                    "--summary", str(summary)]
+            with unittest.mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()):
+                render_compare.main()
+            lines = summary.read_text().splitlines()
+        self.assertEqual([line.split(":")[0] for line in lines], ["frame 0", "frame 1", "frames mean"])
+        self.assertTrue(all(line.startswith(("frame", "frames")) and "mean DeltaE76 0.0000" in line and "luma SSIM 1.000000" in line
+                            for line in lines))
+
+    def test_a_reference_video_can_start_at_a_later_frame(self):
+        near, far = Image.new("RGB", (2, 2), DRAWN), Image.new("RGB", (2, 2), CLEAR)
+        with tempfile.TemporaryDirectory() as tmp:
+            video = self.write_avi(tmp, "a.avi", [far, far, near], 250)
+            near.save(Path(tmp) / "000.png")
+            values, total = render_compare.reference_video(video, tmp, first=2)
+        self.assertEqual((len(values), total.mean_delta_e), (1, 0.0))
+
     def test_read_video_gives_top_down_rgb_frames_and_the_rate(self):
         frame = with_pixels(blank(5, 4), [(1, 0)], DRAWN)
         with tempfile.TemporaryDirectory() as tmp:
@@ -389,6 +432,33 @@ class VideoTest(unittest.TestCase):
             two = self.write_avi(tmp, "b.avi", [blank(4, 4)], 200)
             with self.assertRaises(ValueError):
                 render_compare.compare_videos(one, two, str(Path(tmp) / "o.mp4"), None, None, 8, "a", "b")
+
+
+@unittest.skipIf(shutil.which("sh") is None, "needs a POSIX shell")
+class ReferenceModeArgumentsTest(unittest.TestCase):
+    SCRIPT = Path(__file__).resolve().parents[1] / "render" / "render_compare.sh"
+
+    def run_sh(self, *args):
+        return subprocess.run(["sh", str(self.SCRIPT), *args], capture_output=True, text=True)
+
+    def test_reference_needs_poses_and_a_render(self):
+        for args in (["--script", "s.sh", "--reference", "x.scene.toml", "HEAD", "--render", "p", "--frames 2"],
+                     ["--script", "s.sh", "--reference", "x.scene.toml", "--poses", "p.txt", "HEAD"]):
+            result = self.run_sh(*args)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("--reference SCENE.scene.toml --poses FILE", result.stderr)
+
+    def test_reference_refuses_a_second_revision(self):
+        result = self.run_sh("--script", "s.sh", "--reference", "x", "--poses", "p", "HEAD", "HEAD", "--render", "p", "--frames 2")
+        self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_reference_frame_rate_is_30_40_60_or_80(self):
+        base = ["--script", "s.sh", "--reference", "x", "--poses", "p", "--render", "p", "--frames 2"]
+        refused = self.run_sh(*base, "--fps", "50", "HEAD")
+        self.assertEqual(refused.returncode, 2)
+        self.assertIn("30, 40, 60 or 80", refused.stderr)
+        for fps in ("30", "40", "60", "80"):
+            self.assertNotIn("30, 40, 60 or 80", self.run_sh(*base, "--fps", fps, "HEAD").stderr)
 
 
 if __name__ == "__main__":

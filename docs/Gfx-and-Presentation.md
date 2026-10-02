@@ -149,7 +149,7 @@ sequenceDiagram
     participant P as present task (core 1)
     participant Q as QSPI / panel
     C->>P: gfx_present_begin()
-    Note over C: free to run app update() -<br/>no gfx_* calls
+    Note over C: free to run app update() and<br/>scene_render() - no gfx_* calls
     P->>P: panel_clock_apply()
     loop each dirty strip
         P->>Q: esp_lcd_panel_draw_bitmap()

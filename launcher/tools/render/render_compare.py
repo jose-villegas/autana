@@ -620,24 +620,34 @@ def reference_line(label, stats):
     )
 
 
-def reference_video(path, reference_dir, scale=1, heatmaps=None, keep=None):
+def reference_video(path, reference_dir, scale=None, heatmaps=None, keep=None, sink=None, first=0):
     """Score every AVI frame against ordered reference PNGs and return their
-    mean. `keep`, a dict of frame index to None, is filled with the
-    (render, reference) pairs of those frames."""
-    _fps, frames = read_video(path)
+    mean. `scale` is the render's pixels per reference pixel, found from the
+    first frame when None. `keep`, a dict of frame index to None, is filled
+    with the (render, reference) pairs of those frames; `sink(fps, index,
+    render, reference)` is called for every frame. The first `first` video
+    frames are skipped, for references that cover only a later segment."""
+    fps, frames = read_video(path)
     references = sorted(pathlib.Path(reference_dir).glob("*.png"))
     values = []
-    for index, raw in enumerate(frames):
+    for position, raw in enumerate(frames):
+        index = position - first
+        if index < 0:
+            continue
         if index >= len(references):
             raise ValueError("more video frames than reference images")
         render = Image.fromarray(raw)
         reference = Image.open(references[index])
+        if scale is None:
+            scale = render.width // reference.width
         if scale != 1:
             reference = reference.resize((reference.width * scale, reference.height * scale), Image.Resampling.NEAREST)
         stats = reference_measure(render, reference)
+        if sink is not None:
+            sink(fps, index, render, reference)
         values.append(stats)
         if heatmaps is not None:
-            reference_heatmap(render, reference).save(heatmaps / ("%03d.png" % index))
+            reference_heatmap(render, reference).save(heatmaps / ("%04d.png" % index))
         if keep is not None and index in keep:
             keep[index] = (render, reference)
     if len(values) != len(references):
@@ -652,6 +662,28 @@ def reference_video(path, reference_dir, scale=1, heatmaps=None, keep=None):
     )
 
 
+class ReferenceVideoWriter:
+    """Packs reference_sheet's one-frame sheets into an mp4 through ffmpeg."""
+
+    def __init__(self, out, fps=None):
+        self.out, self.fps, self.process = out, fps, None
+
+    def add(self, fps, index, render, reference):
+        ffmpeg = shutil.which("ffmpeg")
+        if ffmpeg is None:
+            raise RuntimeError("ffmpeg not found; --reference-mp4 needs it to pack the frames")
+        picture = reference_sheet([("frame %d" % index, render, reference)], tile=1.0)
+        if self.process is None:
+            self.process = subprocess.Popen(_ffmpeg_command(ffmpeg, picture.size, self.fps or fps, self.out), stdin=subprocess.PIPE)
+        self.process.stdin.write(picture.tobytes())
+
+    def close(self):
+        if self.process is not None:
+            self.process.stdin.close()
+            if self.process.wait() != 0:
+                raise RuntimeError("ffmpeg failed writing %s" % self.out)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out", required=True)
@@ -660,7 +692,9 @@ def main():
     parser.add_argument("--row", nargs=3, action="append", metavar=("LABEL", "A", "B"))
     parser.add_argument("--reference-row", nargs=3, action="append", metavar=("LABEL", "RENDER", "REFERENCE"))
     parser.add_argument("--reference-video", nargs=2, metavar=("VIDEO", "REFERENCE_DIR"))
-    parser.add_argument("--reference-scale", type=int, default=1)
+    parser.add_argument("--reference-scale", type=int, help="render pixels per reference pixel; default from the first frame")
+    parser.add_argument("--reference-first", type=int, default=0, help="video frames to skip before the reference images begin")
+    parser.add_argument("--reference-mp4", metavar="MP4", help="with --reference-video, the sheet of every frame as a video")
     parser.add_argument("--heatmap-dir")
     parser.add_argument("--reference-sheet", metavar="PNG", help="with --reference-video, one sheet of --sheet-frames")
     parser.add_argument("--sheet-frames", default="2,4", help="comma-separated video frame indices for --reference-sheet")
@@ -701,13 +735,19 @@ def main():
             return
 
     if args.reference_video:
-        if args.reference_scale < 1:
+        if args.reference_scale is not None and args.reference_scale < 1:
             parser.error("--reference-scale must be positive")
         heatmaps = None if args.heatmap_dir is None else pathlib.Path(args.heatmap_dir)
         if heatmaps is not None:
             heatmaps.mkdir(parents=True, exist_ok=True)
         keep = {int(index): None for index in args.sheet_frames.split(",")} if args.reference_sheet else None
-        frames, total = reference_video(*args.reference_video, args.reference_scale, heatmaps, keep)
+        video = ReferenceVideoWriter(args.reference_mp4, args.fps) if args.reference_mp4 else None
+        try:
+            frames, total = reference_video(*args.reference_video, args.reference_scale, heatmaps, keep,
+                                            None if video is None else video.add, args.reference_first)
+        finally:
+            if video is not None:
+                video.close()
         if keep is not None:
             reference_sheet([("frame %d" % index, *pair) for index, pair in keep.items() if pair]).save(args.reference_sheet,
                                                                                                     optimize=True)
