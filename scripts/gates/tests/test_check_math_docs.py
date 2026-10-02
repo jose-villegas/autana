@@ -138,6 +138,11 @@ class Swizzles(unittest.TestCase):
             problems = swizzle_problems(page_extra="`%sv)`\n" % name)
             self.assertTrue(any(name in p for p in problems), why)
 
+    def test_a_function_is_valid_only_under_a_prefix_of_its_own_family(self):
+        self.assertEqual([], swizzle_problems(page_extra="`vec3f_from_xy(xy, z)` `P_from_xy(xy, z)`\n"))
+        problems = swizzle_problems(page_extra="`vec2f_from_xy(xy, z)`\n")
+        self.assertTrue(any("vec2f_from_xy(" in p for p in problems), problems)
+
     def test_a_component_count_that_disagrees_with_the_struct_fails(self):
         self.assertTrue(any("vec2 has 2" in p for p in swizzle_problems(vec2_n=3)))
 

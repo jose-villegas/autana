@@ -22,7 +22,8 @@ hand:
     (`quatf_slerp`, `vec3f_from_vec3x`, `mathf_to_x`, ...) and each
     `TRANSFORM<S>_IDENTITY` initializer must be named on the page;
   * the other way round: every `name(` the page puts in backticks must exist,
-    as a family function under a prefix or as a function a header defines.
+    as `P_` or a prefix of that function's own family, or as a function a
+    header defines.
 """
 
 import argparse
@@ -63,9 +64,9 @@ def split_args(text):
 
 def instantiations(root):
     """What the headers' calls of template macros add beyond each family's own
-    template: the `P##_name(` functions of a template outside the families,
-    by family; the swizzle pattern each family section must name; every
-    swizzle name; and problems."""
+    template: each prefix's family; the `P##_name(` functions of a template
+    outside the families, by family; the swizzle pattern each family section
+    must name; every swizzle name; and problems."""
     family_templates = {f + "_template.h" for f in FAMILIES}
     macros = {}
     fields = {}
@@ -110,13 +111,13 @@ def instantiations(root):
                 continue
             patterns[family].add("P_%s(" % "".join("<c%d>" % i for i in range(1, int(length) + 1)))
             names.update(prefix + "_" + "".join(t) for t in itertools.product(letters, repeat=int(length)))
-    return functions, patterns, names, problems
+    return family_of, functions, patterns, names, problems
 
 
 def check(root):
     root = pathlib.Path(root)
     page = read(root / PAGE)
-    functions, patterns, swizzle_names, problems = instantiations(root)
+    family_of, functions, patterns, swizzle_names, problems = instantiations(root)
 
     for family in FAMILIES:
         template = root / MATH / (family + "_template.h")
@@ -134,7 +135,6 @@ def check(root):
                 problems.append("%s: the %s section lacks `%s`" % (PAGE, family, entry))
     family_functions = set().union(*functions.values())
 
-    prefixes = set()
     defined = set()
     for header in sorted((root / MATH).glob("*.h")):
         text = read(header)
@@ -144,14 +144,14 @@ def check(root):
         if header.name.startswith("math"):
             continue
         for prefix in DEFINE_CALL.findall(text):
-            prefixes.add(prefix)
             if "`%s`" % prefix not in page:
                 problems.append("%s: the page does not name the type `%s`" % (PAGE, prefix))
         for name in HAND_WRITTEN.findall(text) + IDENTITY.findall(text):
             if name not in page:
                 problems.append("%s: the page does not name %s (%s)" % (PAGE, name, header.name))
 
-    valid = set(defined) | swizzle_names | {"%s_%s" % (p, f) for p in prefixes | {"P"} for f in family_functions}
+    valid = set(defined) | swizzle_names | {"P_%s" % f for f in family_functions}
+    valid |= {"%s_%s" % (p, f) for p, family in family_of.items() for f in functions[family]}
     for name in sorted(set(PAGE_CALL.findall(FENCE.sub("", page)))):
         if name not in valid:
             problems.append("%s names %s(, which no header defines" % (PAGE, name))
