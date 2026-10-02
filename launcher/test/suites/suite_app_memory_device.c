@@ -3,8 +3,9 @@
 #ifdef DEVICE_BUILD
 
 #include "app.h"
-#include "esp_heap_caps.h"
 #include "unity.h"
+
+#include "util/memory.h"
 
 static void
 warm_apps(void) {
@@ -19,12 +20,12 @@ test_every_app_returns_heap_memory(void) {
     warm_apps();
 
     for (const app_t* app = app_list(); app != NULL; app = app->next) {
-        const size_t internal_before = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-        const size_t eight_bit_before = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+        const size_t internal_before = memory_free_bytes(MEMORY_INTERNAL);
+        const size_t eight_bit_before = memory_free_bytes(MEMORY_8BIT);
         app->enter();
         app->exit();
-        const size_t internal_after = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-        const size_t eight_bit_after = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+        const size_t internal_after = memory_free_bytes(MEMORY_INTERNAL);
+        const size_t eight_bit_after = memory_free_bytes(MEMORY_8BIT);
         TEST_ASSERT_EQUAL_UINT_MESSAGE(internal_before, internal_after, app->name);
         TEST_ASSERT_EQUAL_UINT_MESSAGE(eight_bit_before, eight_bit_after, app->name);
     }

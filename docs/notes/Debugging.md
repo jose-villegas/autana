@@ -213,7 +213,7 @@ Two ways to see raw sensor readings without adding any code:
 - **POST's boot-time check**: fails outright (not just a warning) when the
   largest free DMA-capable block falls below `MIN_LARGEST_DMA_BLOCK` in
   `main/boot/post.c`, and reports that block plus free DMA heap on every
-  boot, release included. Both figures come from `MALLOC_CAP_DMA`; reading
+  boot, release included. Both figures come from `MEMORY_DMA`; reading
   either against `esp_get_free_heap_size()` compares different pools and
   invents a fragmentation gap that is not there (see
   [Board-and-Memory.md](Board-and-Memory.md)).

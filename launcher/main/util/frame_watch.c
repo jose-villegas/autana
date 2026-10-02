@@ -6,9 +6,10 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_memory_utils.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
+#include "util/timing.h"
 
 #if !CONFIG_HEAP_USE_HOOKS
 #error "a development build watches the heap through CONFIG_HEAP_USE_HOOKS - see sdkconfig.defaults.dev"
@@ -218,7 +219,7 @@ frame_watch_presented(void) {
     }
     drain();
     frame_watch_close_frame(&watch);
-    const int64_t now_us = esp_timer_get_time();
+    const int64_t now_us = timing_now_us();
     for (int i = 0; i < FRAME_WATCH_SITES; i++) {
         if (frame_watch_take_due(&watch.sites[i], now_us)) {
             warn(&watch.sites[i]);

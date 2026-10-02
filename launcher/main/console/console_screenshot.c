@@ -15,9 +15,9 @@
 #include "console/device_state.h"
 #include "util/frame_watch.h"
 #include "util/json_splice.h"
+#include "util/memory.h"
 #include "util/screenshot.h"
 
-#include "esp_heap_caps.h"
 #include "esp_log.h"
 
 #include "gfx/gfx.h"
@@ -143,8 +143,7 @@ alloc_row_buffers(size_t pixels_bytes, size_t row_bytes, size_t row_b64_bytes) {
     }
     char reason[96];
     snprintf(reason, sizeof reason, "could not allocate %u bytes of row buffers; largest free block is %u",
-             (unsigned)(pixels_bytes + row_bytes + row_b64_bytes),
-             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+             (unsigned)(pixels_bytes + row_bytes + row_b64_bytes), (unsigned)memory_largest_block(MEMORY_8BIT));
     refuse(reason);
     return false;
 }

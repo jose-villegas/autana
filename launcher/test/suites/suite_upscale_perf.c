@@ -7,13 +7,13 @@
 #include "unity.h"
 
 #include "esp_cpu.h"
-#include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 
 #include "gfx/gfx.h"
 #include "render/upscale.h"
 #include "util/job.h"
+#include "util/memory.h"
+#include "util/timing.h"
 
 #define SAMPLES 100
 
@@ -50,11 +50,10 @@ report_case(const scale_case_t* test_case) {
     const int source_height = scaled_size(GFX_HEIGHT, test_case);
     const size_t source_pixels = (size_t)source_width * source_height;
     const size_t destination_pixels = (size_t)GFX_WIDTH * GFX_HEIGHT;
-    uint16_t* source = heap_caps_malloc(source_pixels * sizeof(*source), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    uint16_t* destination =
-        heap_caps_malloc(destination_pixels * sizeof(*destination), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    uint16_t* columns = heap_caps_malloc(GFX_WIDTH * sizeof(*columns), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    uint16_t* rows = heap_caps_malloc(GFX_HEIGHT * sizeof(*rows), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint16_t* source = memory_alloc(source_pixels * sizeof(*source), MEMORY_PSRAM);
+    uint16_t* destination = memory_alloc(destination_pixels * sizeof(*destination), MEMORY_PSRAM);
+    uint16_t* columns = memory_alloc(GFX_WIDTH * sizeof(*columns), MEMORY_INTERNAL);
+    uint16_t* rows = memory_alloc(GFX_HEIGHT * sizeof(*rows), MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(source);
     TEST_ASSERT_NOT_NULL(destination);
     TEST_ASSERT_NOT_NULL(columns);
@@ -66,20 +65,20 @@ report_case(const scale_case_t* test_case) {
     TEST_ASSERT_TRUE(upscale_init(&scale, source_width, source_height, GFX_WIDTH, GFX_HEIGHT, columns, rows));
     upscale_rows(&scale, source, NULL, 0, destination, 0, GFX_HEIGHT);
 
-    int64_t start_us = esp_timer_get_time();
+    int64_t start_us = timing_now_us();
     uint32_t start_cycles = esp_cpu_get_cycle_count();
     for (int i = 0; i < SAMPLES; i++) {
         upscale_rows(&scale, source, NULL, 0, destination, 0, GFX_HEIGHT);
     }
     const uint32_t one_cycles = esp_cpu_get_cycle_count() - start_cycles;
-    const int64_t one_us = esp_timer_get_time() - start_us;
+    const int64_t one_us = timing_now_us() - start_us;
     ESP_LOGI("upscale_perf", "scale %s source %dx%d one core: %lld us/frame %.2f cycles/destination pixel",
              test_case->label, source_width, source_height, (long long)(one_us / SAMPLES),
              (double)one_cycles / SAMPLES / destination_pixels);
 
     const int middle = GFX_HEIGHT / 2;
     const upscale_job_t top = {&scale, source, destination, 0, middle};
-    start_us = esp_timer_get_time();
+    start_us = timing_now_us();
     start_cycles = esp_cpu_get_cycle_count();
     for (int i = 0; i < SAMPLES; i++) {
         const upscale_job_t bottom = {&scale, source, destination, middle, GFX_HEIGHT - middle};
@@ -88,14 +87,14 @@ report_case(const scale_case_t* test_case) {
         TEST_ASSERT_TRUE(job_wait(1000));
     }
     const uint32_t two_cycles = esp_cpu_get_cycle_count() - start_cycles;
-    const int64_t two_us = esp_timer_get_time() - start_us;
+    const int64_t two_us = timing_now_us() - start_us;
     ESP_LOGI("upscale_perf", "scale %s source %dx%d two cores: %lld us/frame %.2f cycles/destination pixel",
              test_case->label, source_width, source_height, (long long)(two_us / SAMPLES),
              (double)two_cycles / SAMPLES / destination_pixels);
-    heap_caps_free(rows);
-    heap_caps_free(columns);
-    heap_caps_free(destination);
-    heap_caps_free(source);
+    memory_free(rows);
+    memory_free(columns);
+    memory_free(destination);
+    memory_free(source);
 }
 
 static void
