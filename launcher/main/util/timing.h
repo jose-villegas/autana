@@ -3,11 +3,11 @@
  * time without naming the scheduler. The pause is timing_device.c's, on the
  * board only.
  *
- * The clock is read in the hottest loops there are (a frame's cost stages,
- * per-strip transfer timing), so it is inline: on the board a read is the one
- * call to the high-resolution timer it would be without this header. A host
- * has no such timer and reads the C library's wall clock instead, which is
- * enough for a test's elapsed time and nothing finer.
+ * The clock is read on a frame's hottest paths (frame_cost's stages), so it
+ * is inline: on the board a read is the one call to the high-resolution
+ * timer it would be without this header. A host reads standard C's wall
+ * clock, which no platform library is needed for; it is enough for a test's
+ * elapsed time, but it can step, so only the board's clock is monotonic.
  */
 #pragma once
 
@@ -19,7 +19,8 @@
 #include <time.h>
 #endif
 
-/* Microseconds since boot, monotonic. On a host, since the epoch. */
+/* Microseconds since boot, monotonic. On a host, wall-clock microseconds
+ * since the epoch. */
 static inline __attribute__((always_inline)) int64_t
 timing_now_us(void) {
 #ifdef ESP_PLATFORM

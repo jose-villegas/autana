@@ -8,7 +8,7 @@
  * MILLISECONDS IN, Q0 (0..255) OUT
  *
  * tween_ramp() takes plain uint32_t milliseconds rather than a fixed-point
- * time, because callers have a wall-clock timestamp already
+ * time, because callers have a timestamp already
  * (timing_now_us(), scaled to ms) and nothing here needs sub-millisecond
  * precision. The OUTPUT fraction is Q0 (a uint8_t, 0..255 standing for
  * 0.0..1.0), deliberately coarser than the Q12/Q16.16 this tree uses
