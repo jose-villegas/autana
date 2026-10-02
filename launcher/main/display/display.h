@@ -50,16 +50,8 @@ typedef struct {
     int quarter;
 } display_t;
 
-/* Starts upright (quarter 0). There is no "unknown" orientation to
- * represent: a board that has not been read yet is assumed held the most
- * common way, and the first real reading corrects it if that guess was
- * wrong, the same as any other update. */
-
-/* WHAT EACH QUARTER IS, MEASURED NOT DERIVED: which orientation a turn
- * corresponds to is not visible from source, depends on how the case
- * is held versus how the panel's rows/columns are wired, so it was
- * measured, by holding the board each way with a development build's
- * show-orientation overlay on and reading it off the panel.
+/* Quarter names are board-wiring facts, measured with the orientation
+ * overlay rather than derived from source.
  *
  *     0   Portrait               (USB connector to the right)
  *     1   Landscape              (USB connector at the top)
@@ -70,21 +62,15 @@ typedef struct {
 #define DISPLAY_PORTRAIT_UPSIDE_DOWN  2
 #define DISPLAY_LANDSCAPE_UPSIDE_DOWN 3
 
-/* The orientation the SHELL applies at boot, before the first gravity
- * sample arrives; display_reset_quarter() sets it once, after display_init(),
- * which stays a neutral 0: this is a physical fact about one board, not
- * something a device-agnostic module should bake into its reset.
- * DISPLAY_LANDSCAPE, not a bare 1: this board is normally held sideways
- * to its native upright, and the table above confirms that is quarter
- * 1, independent of which edge USB sits on. */
+/* The shell starts landscape because that is this board's normal held
+ * orientation. display_init() remains neutral; display_reset_quarter()
+ * applies this physical-board choice. */
 #define DISPLAY_DEFAULT_QUARTER       DISPLAY_LANDSCAPE
 
 void display_init(display_t* d);
 
-/* Feed the current gravity vector, in whatever consistent units the caller's
- * IMU reading uses (screen X/Y axes, not raw sensor axes; see
- * imu_gravity_screen()). Returns true when d->quarter actually changed, which is the caller's
- * cue to push a new ui_set_transform(). */
+/* Feed gravity in consistent screen-axis units. True means quarter changed,
+ * so the caller must update its UI transform. */
 bool display_update(display_t* d, vec2i_t gravity);
 
 int display_quarter(const display_t* d);
