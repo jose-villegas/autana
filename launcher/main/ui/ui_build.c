@@ -364,7 +364,7 @@ feed_input(const input_t* input) {
     ui_to_logical(input->x, input->y, &logical.x, &logical.y);
     if (logical.pressed) {
         const mu_Vec2 aim = ui_snap_point(snap_rects, snap_rect_count, mu_vec2(logical.x, logical.y), reach);
-        ui_pointer_aim(&ui_pointer_state, aim.x, aim.y);
+        ui_pointer_aim(&ui_pointer_state, (vec2i_t){aim.x, aim.y});
     }
     ui_bridge_feed(&ui_ctx, &ui_pointer_state, &logical);
 }

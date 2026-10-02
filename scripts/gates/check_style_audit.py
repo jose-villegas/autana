@@ -298,8 +298,8 @@ def _fix_include_layer(root, path, text):
 # include of input/ is never checked; a system header such as
 # "driver/temperature_sensor.h" never resolves to a layer.
 
-LAYER_TIER = {"apps": 0, "boot": 1, "ui": 2, "console": 2, "scene": 2, "gfx": 3, "render": 3,
-             "display": 3, "input": 3, "util": 4, "anim": 4, "asset": 4, "board": 5}
+LAYER_TIER = {"apps": 0, "boot": 1, "ui": 2, "console": 2, "scene": 2, "display": 3, "gfx": 4, "render": 4,
+             "input": 4, "anim": 5, "asset": 5, "util": 6, "board": 7}
 LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps")
 
 INCLUDE_DIRECTION_EXCEPTIONS = {}

@@ -130,6 +130,27 @@ A perf-scoped build is **not a gate**: it drops behaviour coverage on purpose.
 Never take a merge decision from one, and never diff its numbers against an
 unscoped capture's: different scope, different layout.
 
+## Float maths is single precision, and the build holds it there
+
+The S3's FPU has no double: every `double` operation is a libgcc call, about
+ten times a float's cost. The `main` component compiles with
+`-Werror=double-promotion` and `-Werror=float-conversion`, so a float widened
+to a double, or a double constant in float maths, does not compile; code that
+needs one on purpose casts it explicitly, in the function that logs it. The host test
+and render builds compile with `-ffp-contract=off`, so a pinned pixel never
+depends on a fused multiply-add; the firmware keeps the fused operations,
+which are faster. The host never fuses and the device does, so a host pixel
+and a device pixel can differ by one at a truncation boundary. The warning
+flags live only in the firmware build, which compiles every portable source;
+the host builds also compile vendored code and tests that use `double` on
+purpose.
+
+The compiler accepts an explicit cast, so the `diag` build checks the
+objects too: `launcher/tools/build/check_no_soft_double.py` lists every
+function that calls a soft-double routine and fails unless the same function
+also calls a logging or formatting routine (a `%f` argument is a double by
+the language). It runs in `build_diag_check.sh` and in CI's diag build job.
+
 ## Development-only instrumentation is its own flag, not SELFTEST
 
 `CONFIG_LAUNCHER_SELFTEST` answers "does this build carry the test suites."

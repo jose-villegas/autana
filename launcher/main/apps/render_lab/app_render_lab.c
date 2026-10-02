@@ -153,7 +153,7 @@ static bool band_mode_active;
 #define FPS_WINDOW_MS 500
 static uint32_t fps_frame_count;
 static uint32_t fps_window_elapsed_ms;
-static double fps_value;
+static float fps_value;
 
 /* Last ui_layout_generation() seen, so render_lab_frame() can tell a shell
  * orientation change happened since last frame; see its own comment for
@@ -189,7 +189,7 @@ render_lab_enter(void) {
 
     fps_frame_count = 0;
     fps_window_elapsed_ms = 0;
-    fps_value = 0.0;
+    fps_value = 0.0F;
 
     /* Always re-enter on the scene view, menu closed (never left open from a
      * previous visit, the same reason app_diagnostics.c resets `page` to 0
@@ -329,7 +329,7 @@ update_fps_counter(uint32_t dt_ms) {
     fps_frame_count++;
     fps_window_elapsed_ms += dt_ms;
     if (fps_window_elapsed_ms >= FPS_WINDOW_MS) {
-        fps_value = (double)fps_frame_count * 1000.0 / (double)fps_window_elapsed_ms;
+        fps_value = (float)fps_frame_count * 1000.0F / (float)fps_window_elapsed_ms;
         fps_frame_count = 0;
         fps_window_elapsed_ms = 0;
     }

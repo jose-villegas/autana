@@ -9,6 +9,7 @@ set(app_srcs
     "boot/post_layout.c"
     "boot/post_ui.c"
     "display/display.c"
+    "display/display_device.c"
     "display/panel_clock.c"
     "gfx/gfx.c"
     "input/touch.c"
@@ -19,6 +20,7 @@ set(app_srcs
     "input/buttons.c"
     "input/gesture.c"
     "input/imu.c"
+    "input/input_device.c"
     "input/tilt.c"
     "ui/ui.c"
     "ui/system_navigation.c"
@@ -43,7 +45,6 @@ set(app_srcs
     "render/upscale.c"
     "render/r3d_span.c"
     "render/r3d_scene.c"
-    "render/r3d_trs.c"
     "scene/scene.c"
     "scene/scene_draw.c"
     "scene/scene_shell.c"
@@ -51,6 +52,10 @@ set(app_srcs
     "util/frame_watch.c"
     "util/build_id.c"
     "util/job.c"
+    "util/memory_device.c"
+    "util/settings_device.c"
+    "util/settings_policy.c"
+    "util/timing_device.c"
     "util/tune.c"
 )
 
@@ -99,6 +104,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
     list(APPEND app_srcs
         "console/console_inject.c"
         "input/touch_inject_fsm.c"
+        "input/touch_gesture.c"
     )
 endif()
 
@@ -255,6 +261,13 @@ idf_component_register(
 
 if(NOT CMAKE_SCRIPT_MODE_FILE)
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=vla -Werror=unused-macros)
+
+    # The FPU has no double: a float promoted to one, or a double constant in
+    # float maths, runs in software at an order of magnitude the cost. Both
+    # are compile errors across the firmware, and the link gate
+    # (tools/build/check_no_soft_double.py) names any soft-double routine the
+    # image still pulls in.
+    target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=double-promotion -Werror=float-conversion)
 
     # The asset pack is a build product: every baked mesh the import and scene
     # files name, packed into one image that flashes to the "assets" partition

@@ -60,22 +60,26 @@ flowchart TB
         Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
         Scene["scene/<br/><i>scenes loaded by name, the active camera</i>"]
     end
-    subgraph R5["devices and drawing"]
+    subgraph R5["the shell's panel"]
+        Display["display/<br/><i>orientation, panel clock, panel start</i>"]:::hw
+    end
+    subgraph R6["devices and drawing"]
         Gfx["gfx/<br/><i>the one framebuffer</i>"]:::hw
         Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
-        Display["display/<br/><i>orientation, panel clock</i>"]
         Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
     end
-    subgraph R6["utilities"]
-        Util["util/<br/><i>fixed point, tween, jobs, tunables</i>"]
+    subgraph R7["animation and content"]
         Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
         Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
     end
-    subgraph R7["board"]
+    subgraph R8["utilities"]
+        Util["util/<br/><i>fixed point, float and fixed maths, tween, jobs, tunables, time, settings, memory</i>"]
+    end
+    subgraph R9["board"]
         Board["board/<br/><i>this board's pins and peripherals</i>"]:::hw
     end
 
-    R1 --> R3 --> R4 --> R5 --> R6 --> R7
+    R1 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9
     Contract(["app.h: the shell/app contract"]):::contract
     Main -.->|"calls through app.h"| Apps
     Contract -.->|"includes input/input.h"| Input
@@ -91,6 +95,16 @@ flowchart TB
   and `imu.c` touch hardware; `touch_fsm`, `button_fsm`, `gesture` and
   `tilt` are pure and tested on a laptop. The same split runs through every
   folder, and is what the [Testing-Guide.md](Testing-Guide.md) relies on.
+- **The shell names no vendor firmware.** `main.c` reaches the chip's vendor
+  code only through modules that own it: `input/input_shell.h` (`input_start`,
+  `input_poll`), `display/display_shell.h` (`display_start`,
+  `display_sample_orientation`), `display/display.h` (the system panel clock)
+  and `util/{timing,settings,memory}.h`; it calls this firmware's own drivers
+  (`imu_read`, `touch_read`) directly. Each module's device half lives in a
+  `*_device.c` beside it and is compiled for the board only, so the files a
+  host builds stay pure. `scripts/gates/check_shell_firmware.py` fails
+  `main.c` on any ESP-IDF, FreeRTOS, NVS or BSP include or call, logging
+  (`esp_log.h`, `ESP_LOG[A-Z]`) excepted.
 - **Generated sources are checked in** beside the code that uses them, each
   with a banner naming its regenerate command; `grep -rl "GENERATED FILE"`
   lists them, and the rules they follow are in
@@ -121,8 +135,8 @@ framebuffer while it holds one. See
 The same rule is why the span rasterizer (`render/r3d_span.h`) owns no
 framebuffer: it fills a caller's window of rows, with a depth plane only as
 tall as that window. A full colour+depth pair would want ~1.3 MB here.
-`util/math/matrix4i.h` supplies the fixed-point transform maths the line camera and
-the boot scene share, and no rasterizer.
+`util/math/` supplies the float vector, quaternion, matrix and transform maths
+the line camera and the boot scene share, and no rasterizer.
 
 ### 2. There is exactly one frame loop, and it belongs to the shell
 
@@ -155,18 +169,19 @@ order is most of the point:
 
 ```
 post_run_before_display()   the SD card, on its own SDMMC bus
-gfx_init()                  panel up, framebuffer allocated; parks on failure
-load_system_panel_clock()
+display_start()             panel up, framebuffer allocated; on failure the
+                            shell logs and sleeps in a loop, never returns
+display_load_panel_clock()  the saved panel clock, applied
 post_run_after_display()    the rest of the health check
                             -> a failure holds the screen for 8 s
 selftest_run()              SELFTEST builds with autorun only
-display_init(), ui_launcher_init(), ui_set_transform()
+display_reset_quarter(), ui_launcher_init(), ui_set_transform()
                             the launcher exists, turned the way boot draws
 boot_anim_run()             the startup animation, 5.5 s
 gfx_request_full_redraw()
-touch_start(), buttons_start()
+input_start()               touch, buttons, then the motion sensor; no
+                            sensor: the display stays upright
 console_start()             development builds only
-imu_init()                  no IMU: the display stays upright
 ```
 
 The health checks come first, so a faulty board says so before it does

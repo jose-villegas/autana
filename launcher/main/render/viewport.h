@@ -1,8 +1,7 @@
 /*
  * viewport: the picture a camera is drawn into, and how the panel's own
- * axes lie in it once the shell reads the panel at a quarter turn. The ray
- * and line cameras take one; raster_draw() builds its own from its size
- * and the quarter. Header-only and ESP-IDF-free.
+ * axes lie in it once the shell reads the panel at a quarter turn.
+ * Header-only and ESP-IDF-free.
  */
 #pragma once
 
@@ -11,7 +10,7 @@
 typedef struct {
     int width;
     int height;
-    int quarter; /* 0..3, as display_shell_quarter() numbers a turn */
+    int quarter; /* 0..3, as display_quarter_now() numbers a turn */
 } viewport_t;
 
 /* How the panel's own axes lie in the upright picture once it is read at

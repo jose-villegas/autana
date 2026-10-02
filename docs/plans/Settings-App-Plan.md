@@ -113,7 +113,7 @@ occasion to relitigate what belongs where.
   (default) halves the bus time of a full frame (8.2 against 16.5 ms) but is
   outside the panel's 50 MHz rating, so an app that redraws only dirty regions
   can show stray pixels or thin lines until the region changes; an app
-  redrawing whole frames is safe. `shell_set_system_panel_clock_hz()` chooses
+  redrawing whole frames is safe. `display_set_system_panel_clock_hz()` chooses
   80 or 40 and the shell keeps it in NVS, so a release build (no Diagnostics)
   still boots at whatever was last chosen. Every app starts at it; an app may
   force another rate for itself, and the shell restores the system value on

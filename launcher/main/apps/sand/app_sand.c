@@ -1313,13 +1313,14 @@ read_gravity_input(uint32_t dt_ms, imu_sample_t* sample, int* gx, int* gy, int* 
     *jostle = 0;
     *rotation = 0;
 
-    if (!imu_ready() || !imu_read(sample)) {
+    if (!imu_read(sample)) {
         return;
     }
 
     *rotation = imu_rotation_level(sample);
 
-    tilt_update(&tilt, imu_gravity_screen_x(sample), imu_gravity_screen_y(sample), sample->az, *rotation, dt_ms);
+    const vec2i_t gravity = imu_gravity_screen(sample);
+    tilt_update(&tilt, gravity.x, gravity.y, sample->az, *rotation, dt_ms);
 
     *gx = tilt_x(&tilt);
     *gy = tilt_y(&tilt);
@@ -1745,7 +1746,7 @@ open_overlay_screen(void) {
  * sim is paused, so no wake ticks. */
 static void
 refresh_overlay_backdrop(bool just_opened) {
-    const int quarter = display_shell_quarter();
+    const int quarter = display_quarter_now();
 
     if (just_opened) {
         ui_invalidate();
@@ -1917,7 +1918,7 @@ sand_app_test_options_reach_start(sand_test_start_action_t action) {
                     && cell == qualities[expected_quality].cell;
     sand_exit();
     adopt_options(&saved);
-    ui_set_transform(ui_transform_quarter_turn(display_shell_quarter(), GFX_WIDTH, GFX_HEIGHT));
+    ui_set_transform(ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT));
     return ok;
 }
 

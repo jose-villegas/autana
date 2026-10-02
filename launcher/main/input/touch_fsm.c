@@ -8,7 +8,9 @@ touch_fsm_init(touch_fsm_t* fsm) {
 }
 
 void
-touch_fsm_update(touch_fsm_t* fsm, bool have_point, int x, int y, int64_t now_us) {
+touch_fsm_update(touch_fsm_t* fsm, bool have_point, vec2i_t point, int64_t now_us) {
+    const int x = point.x;
+    const int y = point.y;
     if (have_point) {
         if (!fsm->down) {
             /* First contact: latch a press and remember where it began, so a

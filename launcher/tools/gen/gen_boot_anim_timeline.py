@@ -14,15 +14,13 @@ any glTF tool and baked to main/boot/boot_anim_tracks_generated.c by
 tools/anim/bake_tracks.py; this script only reads it to check it.
 
 `camera_focal`, `grid_step_m` and `wave_height_m`/`wave_wavelength_m`/
-`wave_period_ms` are single settings: `camera_focal` is a lens setting
-(the camera's focal length, see boot_anim.h's "The
-projection" section for what 0 does to it: an orthographic projection, not
-a second code path to maintain); `grid_step_m` is the spacing between floor
-rings, authored in meters and converted at bake time; `wave_height_m`/
+`wave_period_ms` are single settings: `camera_focal` is a lens setting (0 is
+an orthographic projection (r3d_line_view_x_t's `focal`, render/r3d_project_x.h),
+not a second code path); `grid_step_m` is the spacing between floor rings,
+authored in meters and converted at bake time; `wave_height_m`/
 `wave_wavelength_m`/`wave_period_ms` are the ripple's own peak amplitude,
 its crest-to-crest distance, and how long one full cycle takes to pass a
-fixed point (see boot_anim.h's "The wave" section, a genuine radial sine,
-height(r, t) = amplitude * sin(2*pi*r/wavelength - 2*pi*t/period)).
+fixed point; see boot_anim_wave_height().
 `grid_rings` (how many rings the floor draws before fading out) lives in
 `timing` instead, a plain count with nothing to convert.
 
@@ -34,7 +32,7 @@ straight through to #define.
 VALIDATION
 
 Refuses to emit anything that would draw something broken (curve still being
-drawn when the fade starts, a motion scale that overflows the fixed point) the same way
+drawn when the fade starts, a motion that ends off the timeline) the same way
 gen_zeta_curve.py refuses to ship a curve that fails its own zero check.
 Aesthetic-only concerns (a title letter still flying when the fade starts)
 are a warning, not a refusal; unlike a broken curve, that might be exactly
@@ -67,7 +65,7 @@ def warn(msg):
 
 # One space-unit is one meter, see boot_anim.h's own top comment, so this
 # is the SAME conversion boot_anim.c's units() does for the curve/grid's own
-# geometry, not matrix4i's fixed point. BOOT_ANIM_ONE, not
+# geometry, not the camera's float meters. BOOT_ANIM_ONE, not
 # imported from boot_anim.h to keep this script standalone.
 BOOT_ANIM_ONE = 4096
 
@@ -76,81 +74,27 @@ def meters_to_q12(v):
     return round(v * BOOT_ANIM_ONE)
 
 
-# Mirrors BOOT_ANIM_AXIS_FAR_UNITS/BOOT_ANIM_GRID_SPOKE_FAR_UNITS in
-# boot_anim.h (both 500, by design, see that constant's own comment),
-# duplicated here rather than imported, same reason BOOT_ANIM_ONE above is:
-# this script stays standalone. The worst-case LOCAL-SPACE coordinate an
-# authored keyframe's own space/camera transform ever has to multiply;
-# an axis/spoke tail is the longest reach this project draws, and this is
-# its value BEFORE that transform (matrix4i_transform_point()'s own input), not after.
-_FAR_UNITS = 500
-_WORST_CASE_VEC4I_COORD = (_FAR_UNITS * BOOT_ANIM_ONE) >> 3  # BOOT_ANIM_ZETA_TO_M4
-
-# The scale-overflow guard below trades exactness for a real, defensible
-# margin, see its own comment at the call site for the full derivation.
-# Conservative on purpose: matrix4i's own matrix COMPOSITION step
-# (matrix4i_mul() in matrix4i.h, also plain int32_t) has its own overflow
-# risk that scales with rotation too, not just this scale product, and is
-# not modeled exactly here. This check catches the dominant, easily
-# reasoned term (the final per-point multiply), not every path to the same
-# failure.
-_MAX_COMBINED_SCALE = 8
-
-
-def check_transform_scale_overflow(space_scale, camera_scale):
-    """matrix4i_transform_point() (plain int32_t) multiplies a camera-space
-    coordinate by a composed space*camera matrix element that is itself
-    proportional to authored scale*VEC4I_ONE. At this project's own largest authored reach (_WORST_CASE_VEC4I_COORD, from the
-    500-unit axis/spoke tail), INT32_MAX / (_WORST_CASE_VEC4I_COORD * VEC4I_ONE)
-    is about 16.4; a combined space*camera scale anywhere near that
-    overflows the point somewhere nonsensical. _MAX_COMBINED_SCALE leaves real headroom
-    under that, rather than cutting it close against an estimate that does
-    not model every step of the composition exactly (see this file's own
-    comment above)."""
-    combined = space_scale * camera_scale
-    if combined > _MAX_COMBINED_SCALE:
-        fail("motion: space scale (max %r) * camera scale (max %r) "
-             "= %r, over this project's own %r safety margin against "
-             "matrix4i's int32_t points and matrices "
-             "overflowing at this project's largest authored reach "
-             "(BOOT_ANIM_AXIS_FAR_UNITS/BOOT_ANIM_GRID_SPOKE_FAR_UNITS, "
-             "both 500) - see boot_anim.h's own comment on "
-             "BOOT_ANIM_AXIS_FAR_UNITS for the full mechanism" %
-             (space_scale, camera_scale, combined,
-              _MAX_COMBINED_SCALE))
-
-
 def load_motion(path):
-    """{"scale": {node: [(x, y, z)...]}, "duration": seconds} for the camera
-    and the space, from the glTF animation the firmware bakes."""
+    """{"duration": seconds} of the glTF animation the firmware bakes for the
+    camera and the space."""
     document, binary = gltf_read.load_glb(path)
     animation = next((a for a in document.get("animations", [])
                       if a.get("name") == MOTION_ANIMATION), None)
     if animation is None:
         fail("%s has no animation named %r" % (path, MOTION_ANIMATION))
     channels = gltf_read.read_animation(document, binary, animation)
-    scale = {n: [] for n in MOTION_NODES}
     animated = set()
     for channel in channels:
         node = document["nodes"][channel["node"]].get("name") if channel["node"] is not None else None
-        if node not in scale:
-            continue
-        animated.add(node)
-        if channel["path"] == "scale":
-            values = channel["values"]
-            if channel["interpolation"] == "CUBICSPLINE":
-                values = values[1::3]
-            scale[node] += values
+        if node in MOTION_NODES:
+            animated.add(node)
     for node in MOTION_NODES:
         if node not in animated:
             fail("%s: the %r node has no animated channel" % (path, node))
-    return {"scale": scale, "duration": gltf_read.animation_duration(channels)}
+    return {"duration": gltf_read.animation_duration(channels)}
 
 
 def validate_motion(motion, timing):
-    scales = {n: max((abs(v) for row in motion["scale"][n] for v in row), default=1.0)
-              for n in MOTION_NODES}
-    check_transform_scale_overflow(scales["space"], scales["camera"])
     last_ms = round(motion["duration"] * 1000)
     if last_ms != timing["total_ms"]:
         warn("the last motion key is at %d, not total_ms (%d) - the camera "
@@ -222,8 +166,8 @@ def validate(cfg):
     # width. 448/8/5/3/6 mirror BOOT_ANIM_TITLE_VIEW_W/the glyph cell/gap/
     # BOOT_ANIM_TITLE_LEN in boot_anim.h, the same "named here" convention
     # as _title_view_h above. No trailing gap after the LAST glyph, which
-    # is why this is LEN cells minus one gap, not LEN cells outright, see
-    # boot_anim.h's own comment on this section for the same subtraction.
+    # is why this is LEN cells minus one gap, not LEN cells outright; see
+    # boot_anim_title_letter() in boot_anim.h for the same subtraction.
     _title_view_w = 448
     _title_cell_w = 8 * 5 + 3
     _title_word_w = 6 * _title_cell_w - 3
@@ -375,7 +319,7 @@ TIMING_ORDER = [
     ("title_amplitude_px", "BOOT_ANIM_TITLE_AMPLITUDE_PX",
      "peak wobble swing right at the start"),
     ("title_wave_amplitude_px", "BOOT_ANIM_TITLE_WAVE_AMPLITUDE_PX",
-     "the small idle wave once a letter has landed"),
+     "the small idle wave once a letter has landed - keep under 22 px or it hurts legibility"),
     ("title_wave_period_ms", "BOOT_ANIM_TITLE_WAVE_PERIOD_MS", None),
     ("title_wave_stagger_ms", "BOOT_ANIM_TITLE_WAVE_STAGGER_MS", None),
     ("title_scale", "BOOT_ANIM_TITLE_SCALE",
@@ -386,12 +330,10 @@ TIMING_ORDER = [
     ("title_wave_fade_ms", "BOOT_ANIM_TITLE_WAVE_FADE_MS",
      "how long that calming takes, from full swing to none"),
     ("title_height_px", "BOOT_ANIM_TITLE_VIEW_Y",
-     "how far down the viewer's frame the title's own centre lands - "
-     "see boot_anim.h's own comment on this section for the frame it is in"),
+     "the title's centre in the viewer's frame; see the comment above "
+     "BOOT_ANIM_TITLE_VIEW_W in boot_anim.h"),
     ("title_x_px", "BOOT_ANIM_TITLE_VIEW_X",
-     "how far into the viewer's frame the title's own left edge starts - "
-     "see boot_anim.h's own comment on this section for where the default "
-     "came from"),
+     "how far into the viewer's frame the title's own left edge starts"),
     ("title_shadow_dx", "BOOT_ANIM_TITLE_SHADOW_DX",
      "drop shadow offset, pixels right (negative is left) - 0/0 disables it"),
     ("title_shadow_dy", "BOOT_ANIM_TITLE_SHADOW_DY",
@@ -440,16 +382,8 @@ def main():
     # uses; an old timeline should not suddenly grow a ripple its author
     # never asked for.
     cfg.setdefault("wave_height_m", 0)
-    # wave_wavelength_m/wave_period_ms replace an EARLIER version's
-    # wave_decay_m/wave_start_ms/wave_end_ms/wave_ease outright, a genuine
-    # radial sine now, not a travelling front with a decaying trail behind
-    # it (see boot_anim.h's own comment on why), so this is not a faithful
-    # reproduction of the old shape for anyone who already had a nonzero
-    # wave_height_m under that model, the same honest caveat the
-    # front-based rewrite before THIS one already carried (the two are not
-    # the same picture). Three ring-spacings and three seconds are simply
-    # reasonable starting points, not a
-    # migration.
+    # The wave is a radial sine (see boot_anim_wave_height()); three
+    # ring-spacings and three seconds are starting points.
     cfg.setdefault("wave_wavelength_m", 3 * cfg.get("grid_step_m", 1))
     cfg.setdefault("wave_period_ms", 3000)
     # wave_in_ms/wave_out_ms are newer again: starting to lerp in a
@@ -552,12 +486,13 @@ def main():
         w("#define %s %d\n" % (name, timing[key]))
         w("\n" if note else "")
 
-    w("/* The camera's focal length - 0 is an orthographic\n")
-    w(" * projection (see boot_anim.h's \"The projection\" section), any other\n")
-    w(" * value a perspective one; VEC4I_ONE (512) is the \"normal\"\n")
-    w(" * lens default. Authored directly in this unit - it is a lens\n")
-    w(" * property, not a position or angle, so meters/degrees do not apply. */\n")
-    w("#define BOOT_ANIM_CAMERA_FOCAL %d\n\n" % cfg["camera_focal"])
+    w("/* The camera's focal length - 0 is an orthographic projection\n")
+    w(" * (r3d_line_view_x_t's `focal`, render/r3d_project_x.h), not a second\n")
+    w(" * code path; any other value a perspective one; 1.0 is the \"normal\" lens\n")
+    w(" * default.\n")
+    w(" * Authored directly as a float - it is a lens property, not a\n")
+    w(" * position or angle, so meters/degrees do not apply. */\n")
+    w("#define BOOT_ANIM_CAMERA_FOCAL %sF\n\n" % repr(float(cfg["camera_focal"])))
 
     w("/* The floor's ring spacing - see BOOT_ANIM_GRID_RINGS's own comment\n")
     w(" * in boot_anim.h. Authored in meters (grid_step_m in the JSON), like\n")
@@ -565,15 +500,13 @@ def main():
     w(" * boot_anim.c does. */\n")
     w("#define BOOT_ANIM_GRID_STEP_Q12 %d\n\n" % meters_to_q12(cfg["grid_step_m"]))
 
-    w("/* The wave's own peak amplitude - see boot_anim.h's \"The wave\"\n")
-    w(" * section. Authored in meters (wave_height_m in the JSON), the same\n")
-    w(" * as grid_step_m just above; 0 (the default for a file baked before\n")
-    w(" * this existed - see this script's own backward-compatibility\n")
-    w(" * comment) turns the ripple off outright, not just down. */\n")
+    w("/* The wave's own peak amplitude; see boot_anim_wave_height(). Authored\n")
+    w(" * in meters (wave_height_m in the JSON), the same as grid_step_m just\n")
+    w(" * above; 0 turns the ripple off outright, not just down. */\n")
     w("#define BOOT_ANIM_WAVE_HEIGHT_Q12 %d\n\n" % meters_to_q12(cfg["wave_height_m"]))
 
-    w("/* The wave's own crest-to-crest distance - see boot_anim.h's \"The\n")
-    w(" * wave\" section. Also meters, also authored (wave_wavelength_m in\n")
+    w("/* The wave's own crest-to-crest distance; see boot_anim_wave_height().\n")
+    w(" * Also meters, also authored (wave_wavelength_m in\n")
     w(" * the JSON). */\n")
     w("#define BOOT_ANIM_WAVE_WAVELENGTH_Q12 %d\n\n" %
       meters_to_q12(cfg["wave_wavelength_m"]))

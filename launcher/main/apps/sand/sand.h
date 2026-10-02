@@ -430,7 +430,7 @@ bool sand_emitter_at(const sand_t* s, int i, int* x, int* y, cell_t* cell);
 /* SHARED DEFERRED ARRAY SIZE (step_impulses(), sand_impulse.c) - Holds CASCADE (max
  * once per water/acid entry) and TRANSFER (max once per HOP, up to
  * SAND_IMPULSE_CELLS_PER_STEP_DIVISOR). Single counter gates both, causing
- * starvation. Reserve for RELAY avoids this. Revisit reserve if needed. */
+ * starvation. Reserve for RELAY avoids this. */
 #define SAND_CASCADE_MAX_PER_STEP          64
 /* RESERVATION, not split: transfer fires once per hop, relay once per
  * liquid entry, so half-and-half would shrink whichever mechanism runs

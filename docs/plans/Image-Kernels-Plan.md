@@ -1,4 +1,4 @@
-# Image kernels on the ESP32-S3: research
+# Image kernels on the ESP32-S3
 
 **Status**: literature and precedent for real-time blur and edge detection
 over the framebuffer.
@@ -213,5 +213,5 @@ building on it.
 
 ## Related
 
-- [`../plans/Autana-Rendering-Roadmap.md`](../plans/Autana-Rendering-Roadmap.md): the
+- [`Autana-Rendering-Roadmap.md`](Autana-Rendering-Roadmap.md): the
   cycle budget and the frame architecture over the one framebuffer.

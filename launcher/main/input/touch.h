@@ -9,10 +9,13 @@
  */
 #pragma once
 
+#include "util/math/vec2i.h"
+
 #include <stdint.h>
 
 #include "build_variant.h"
 #include "input/input.h"
+#include "input/touch_gesture.h"
 
 /* Fast enough that a brief tap is sampled several times, cheap enough to be
  * irrelevant next to rendering (one small I2C read per poll, and only when
@@ -24,16 +27,9 @@
 void touch_start(void);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-typedef enum {
-    TOUCH_GESTURE_NONE,
-    TOUCH_GESTURE_TAP,
-    TOUCH_GESTURE_PRESS,
-    TOUCH_GESTURE_DRAG,
-} touch_gesture_completion_t;
-
 /* What is injected outranks the controller: a level until an up reaches the
  * polling task, a gesture until its `ms` has elapsed. */
-void touch_inject(bool down, int x, int y);
+void touch_inject(bool down, vec2i_t point);
 void touch_gesture_start(int x0, int y0, int x1, int y1, uint32_t ms, touch_gesture_completion_t completion);
 bool touch_gesture_take_completion(touch_gesture_completion_t* completion);
 #endif

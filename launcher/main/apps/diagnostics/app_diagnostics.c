@@ -96,11 +96,11 @@ draw_toggles_page(const input_t* input) {
         .overlay_on = gfx_debug_overlay(),
         .leaf_on = gfx_debug_leaf_overlay(),
         .interlace_on = gfx_interlace_enabled(),
-        .fast_clock = shell_system_panel_clock_hz() == GFX_PANEL_CLOCK_FAST_HZ,
+        .fast_clock = display_system_panel_clock_hz() == GFX_PANEL_CLOCK_FAST_HZ,
         .send_audit_on = gfx_send_audit(),
         .show_orientation = show_orientation,
         .imu_ready = imu_ready(),
-        .shell_quarter = display_shell_quarter(),
+        .shell_quarter = display_quarter_now(),
 #if CONFIG_LAUNCHER_SELFTEST
         .selftest_failures = selftest_failures,
 #endif
@@ -113,8 +113,9 @@ draw_toggles_page(const input_t* input) {
             state.accel_ax = sample.ax;
             state.accel_ay = sample.ay;
             state.accel_az = sample.az;
-            state.gravity_gx = imu_gravity_screen_x(&sample);
-            state.gravity_gy = imu_gravity_screen_y(&sample);
+            const vec2i_t gravity = imu_gravity_screen(&sample);
+            state.gravity_gx = gravity.x;
+            state.gravity_gy = gravity.y;
         }
     }
 
@@ -123,7 +124,7 @@ draw_toggles_page(const input_t* input) {
     gfx_set_debug_overlay(result.overlay_on);
     gfx_set_leaf_overlay(result.leaf_on);
     gfx_set_interlace(result.interlace_on);
-    shell_set_system_panel_clock_hz(result.fast_clock ? GFX_PANEL_CLOCK_FAST_HZ : GFX_PANEL_CLOCK_SLOW_HZ);
+    display_set_system_panel_clock_hz(result.fast_clock ? GFX_PANEL_CLOCK_FAST_HZ : GFX_PANEL_CLOCK_SLOW_HZ);
     gfx_set_send_audit(result.send_audit_on);
     show_orientation = result.show_orientation;
 #if CONFIG_LAUNCHER_SELFTEST
@@ -159,7 +160,7 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
          * it, not the board's real orientation, restored here
          * immediately, one frame of latency before draw_toggles_page()
          * ever opens its own frame. */
-        ui_set_transform(ui_transform_quarter_turn(display_shell_quarter(), GFX_WIDTH, GFX_HEIGHT));
+        ui_set_transform(ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT));
     }
 #endif /* CONFIG_LAUNCHER_SELFTEST */
 
@@ -178,7 +179,7 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
     /* Redrawn every frame rather than cached: the shell owns the framebuffer
      * and the previous app may have left anything in it. */
     if (page == 0) {
-        const post_ui_report_t report = {.title = POST_LAYOUT_TITLE, .quarter = display_shell_quarter()};
+        const post_ui_report_t report = {.title = POST_LAYOUT_TITLE, .quarter = display_quarter_now()};
         post_ui_draw_report(&report);
     } else {
         draw_toggles_page(input);

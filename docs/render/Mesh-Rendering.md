@@ -63,19 +63,23 @@ would see the scene mirrored.
 | `r3d_scene.h` | The camera of a baked table: its lens, placement and path, and sampling it at a time; reads `anim/` |
 | `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture, and the view modes |
 | `viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
-| `vec3f.h` | The float 3-vector every float camera shares |
 | `ray.h` | The ray camera: the direction through each physical pixel |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree, and the view built from a pack entry |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
 | `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions |
-| `r3d_line_camera.h` | A camera for points and segments in `util/math/matrix4i.h`'s fixed point (integer 3D maths, 512 to a unit and a turn, built on `util/trig.h` and `util/fixed.h`): a pose with a roll, and the fit onto a non-square viewport |
+| `r3d_line_camera.h` | A camera for points and segments: a `transformf_t` pose with a roll, and the fit onto a non-square viewport |
 | `r3d_project.h` | Camera-space near clip and perspective projection of those points and segments |
-| `r3d_trs.h` | A float translation, quaternion and scale as one `util/math/matrix4i.h` transform, for an object an animation track moves |
 
-The line camera stays apart from `camera_t`: its pose composes with a
-model transform in integers and carries a roll. Only
+The line camera stays apart from `camera_t`: its pose is a `transformf_t`
+that composes with a model transform and carries a roll. Only
 `r3d_pipeline.h` and `r3d_span_internal.h` are internal: render/ and any
 suite or host tool include them.
+
+## The maths
+
+The types the line camera, the boot animation and the animation tracks share
+are `util/math/`'s, documented in [../math/README.md](../math/README.md); the
+raster's lens and cluster transform stay a 3x4 of their own.
 
 ## One frame
 
@@ -208,8 +212,9 @@ so none of it has to take internal RAM.
 ## Rules the layer keeps
 
 - **Single precision only.** The FPU has no double, and one stray promotion
-  costs an order of magnitude. Each `.c` doing float work turns
-  `-Wdouble-promotion` into an error itself.
+  costs an order of magnitude. The firmware build turns
+  `-Wdouble-promotion` and `-Wfloat-conversion` into errors for the whole
+  `main` component (see [Build-Variants.md](../Build-Variants.md)).
 - **Host-testable.** The headers are ESP-IDF-free, and the portable
   `test/suites/suite_r3d_*.c` suites check them on a laptop.
   `suite_r3d_lit.c` builds its meshes inside the test, never a baked one.

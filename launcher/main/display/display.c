@@ -11,6 +11,7 @@
  */
 
 #include "display/display.h"
+#include "display/display_shell.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -34,7 +35,7 @@ display_init(display_t* d) {
      * board is actually held. DISPLAY_DEFAULT_QUARTER (display.h) is a
      * physical fact about THIS shell's board, not something a
      * device-agnostic module should bake into its own idea of "reset";
-     * main.c applies it explicitly, once, right after this call. */
+     * display_orientation_init() applies it, right after this call. */
     d->quarter = 0;
 }
 
@@ -79,9 +80,9 @@ neighbor_quarter(int q, int perp) {
 }
 
 bool
-display_update(display_t* d, int gx, int gy) {
+display_update(display_t* d, vec2i_t gravity) {
     int aligned, perp;
-    split_gravity(d->quarter, gx, gy, &aligned, &perp);
+    split_gravity(d->quarter, gravity.x, gravity.y, &aligned, &perp);
 
     const int perp_abs = (perp < 0) ? -perp : perp;
 
@@ -106,4 +107,25 @@ display_update(display_t* d, int gx, int gy) {
 int
 display_quarter(const display_t* d) {
     return d->quarter;
+}
+
+void
+display_orientation_init(display_orientation_t* o) {
+    display_init(&o->display);
+    o->display.quarter = DISPLAY_DEFAULT_QUARTER;
+    o->next_sample_us = 0;
+}
+
+bool
+display_orientation_sample(display_orientation_t* o, int64_t now_us, display_motion_reader_t read) {
+    if (now_us < o->next_sample_us) {
+        return false;
+    }
+    o->next_sample_us = now_us + (int64_t)DISPLAY_SAMPLE_MS * 1000;
+
+    imu_sample_t sample;
+    if (!read(&sample)) {
+        return false;
+    }
+    return display_update(&o->display, imu_gravity_screen(&sample));
 }
