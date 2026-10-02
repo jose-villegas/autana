@@ -35,15 +35,6 @@ lives with that app's documents instead:
   `autana monitor`, the gfx debug overlays, and the USB-Serial-JTAG console
   quirk that breaks typing into idf_monitor if you don't know to look for it.
 
-## Not verified on a board
-
-- **[Image-Kernels-Research.md](Image-Kernels-Research.md)**: literature
-  and precedent for real-time blur and edge detection on this hardware:
-  packed-RGB565 tricks, running-sum and repeated-box blurs, luminance and
-  palette representations, ESP-DSP's SIMD, and a ranked list of first
-  experiments. Every cost in it is an estimate; nothing has run on the
-  board.
-
 ## Related
 
 - [`../Firmware-Architecture.md`](../Firmware-Architecture.md): how the
