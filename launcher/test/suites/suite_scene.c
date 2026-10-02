@@ -20,6 +20,7 @@
 #include "scene/scene.h"
 #include "scene/scene_internal.h"
 #include "scene/scene_shell.h"
+#include "test_alloc.h"
 #include "test_cleanup.h"
 
 #define SIZE       64
@@ -174,8 +175,8 @@ static const scene_def_t TWIN = {"test_twin", 3, 1, 2, TWIN_NAMES, TWIN_TRANSFOR
 SCENE_REGISTER(TWIN)
 
 typedef struct {
-    void* raw;      /* what malloc gave */
-    uint8_t* bytes; /* 16-byte aligned inside it, as a pack must be */
+    void* raw;      /* what the aligned allocation gave */
+    uint8_t* bytes; /* aligned inside it, as a pack must be */
     uint16_t* pixels;
     asset_pack_t pack;
     scene_target_t target;
@@ -186,7 +187,7 @@ static fixture_t fx;
 static void
 release_fixture(void) {
     scene_unload_all();
-    free(fx.raw);
+    test_free_aligned(fx.raw);
     free(fx.pixels);
     fx = (fixture_t){0};
 }
@@ -196,10 +197,9 @@ release_fixture(void) {
 static void
 fixture(void) {
     scene_unload_all();
-    fx.raw = malloc(PACK_MAX + 16);
+    fx.bytes = test_alloc_aligned(PACK_MAX, ASSET_PACK_BASE_ALIGN, &fx.raw);
     fx.pixels = malloc(sizeof(*fx.pixels) * SIZE * SIZE);
-    TEST_ASSERT_NOT_NULL(fx.raw);
-    fx.bytes = (uint8_t*)(((uintptr_t)fx.raw + 15U) & ~(uintptr_t)15U);
+    TEST_ASSERT_NOT_NULL(fx.bytes);
     TEST_ASSERT_NOT_NULL(fx.pixels);
     suite_set_test_cleanup(release_fixture);
     const uint32_t total = make_pack(fx.bytes);
