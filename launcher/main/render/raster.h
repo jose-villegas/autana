@@ -6,6 +6,7 @@
  */
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -22,9 +23,12 @@ typedef struct {
     int instance_count;
     int width, height; /* the size drawn at */
     uint16_t clear;    /* in the pixel format r3d_span.h describes */
-    /* When not NULL, the picture raster_upscale() fills, destination_width
-     * by destination_height. The colour target is then never cleared, since
-     * upscaling puts the clear colour wherever nothing was drawn. */
+    /* The picture is upscaled into `destination`, destination_width by
+     * destination_height. The colour target is then never cleared, since
+     * upscaling puts the clear colour wherever nothing was drawn. Drawing does
+     * not touch `destination`, so it may be set after raster_draw(), before
+     * raster_upscale(). */
+    bool upscaled;
     uint16_t* destination;
     int destination_width, destination_height;
     upscale_t upscale; /* maps retained in `scratch`, rebuilt when size changes */
