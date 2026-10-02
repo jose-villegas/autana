@@ -34,10 +34,12 @@ from r3d.light import (  # noqa: E402
     merge_matching_colours,
     sample_albedo,
     to_srgb8,
+    visible_from_path,
     visible_from_region,
 )
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
 from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
+from r3d.poses import sample_camera_path  # noqa: E402
 from r3d.simplify import densify, simplify  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
@@ -92,10 +94,35 @@ def shade_unlit(src, material, mp, mt):
     return mp, encode_srgb8(albedo_at(src, mp, vertex_spacing(mp, mt), material)), mt
 
 
+def camera_path_poses(settings, scene):
+    """The scene camera's path sampled as the visibility step asks."""
+    camera, visibility = scene.camera.component, settings.visibility
+    tracks = settings.out_dir / f"{camera.path.tracks}_tracks_generated.c"
+    width, height = visibility.size
+    return sample_camera_path(tracks, camera.path.tracks, camera.path.node, visibility.every_ms, width, height,
+                              camera.half_fov_short_tan, camera.near_z)
+
+
+def visible_triangles(settings, scene, p, tri_v, double, intersector, rng):
+    """Which source triangles the camera can see, by the visibility step's source."""
+    visibility = settings.visibility
+    if visibility.source == "camera_path":
+        width, height, lens, near, poses = camera_path_poses(settings, scene)
+        return visible_from_path(p, tri_v, double, intersector, poses, width, height, lens, near, visibility.samples,
+                                 visibility.margin)
+    return visible_from_region(p, tri_v, double, intersector, visibility.rounds, rng, *scene.region)
+
+
 def bake_geometry(settings, variant, scene):
     """Everything a mesh needs before its colours are final: the source, its
     ray intersector and the simplified geometry with the colours a smooth bake
     keeps. `scene` is None for an import that needs none."""
+    return simplified(settings, dense_geometry(settings, scene), variant.triangles)
+
+
+def dense_geometry(settings, scene):
+    """The source after culling, split evenly and lit, before simplification:
+    what every budget of one import shares."""
     rng = np.random.default_rng(settings.seed)
     src = load_source(settings)
     scale = {} if settings.position_scale is None else {"position_scale": settings.position_scale}
@@ -110,7 +137,7 @@ def bake_geometry(settings, variant, scene):
     seen = np.ones(len(tri_v), dtype=bool)
     if settings.visibility:
         double = np.array([src.names[material] in double_names for material in tri_m])
-        seen = visible_from_region(src.p, tri_v, double, intersector, settings.visibility.rounds, rng, *scene.region)
+        seen = visible_triangles(settings, scene, src.p, tri_v, double, intersector, rng)
     if settings.thin:
         thin = np.isin(tri_m, [index for index, name in enumerate(src.names) if name == settings.thin.material])
         seen &= ~thin | (rng.random(len(tri_v)) < settings.thin.keep)
@@ -140,15 +167,22 @@ def bake_geometry(settings, variant, scene):
         log(f"  {src.names[material]}: {len(vpos)} vertices")
     positions, rgb, tris = np.concatenate(all_pos), np.concatenate(all_rgb), np.concatenate(all_tris)
     tri_double, tri_mat = np.concatenate(all_double), np.concatenate(all_mat)
-    if settings.simplify:
-        steps = settings.simplify
-        props = [(frozenset(index for index, name in enumerate(src.names) if name in steps.props), steps.props_share)]
-        positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, variant.triangles, props,
-                                                 seal_seams=steps.seal_seams, **scale)
-        rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
-        tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
     return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
                            tri_mat=tri_mat, scale=scale)
+
+
+def simplified(settings, dense, triangles):
+    """`dense` simplified to `triangles`, when the import simplifies."""
+    if not settings.simplify:
+        return dense
+    src, steps = dense.src, settings.simplify
+    props = [(frozenset(index for index, name in enumerate(src.names) if name in steps.props), steps.props_share)]
+    positions, rgb, tris, tri_mat = simplify(dense.positions, dense.rgb.astype(np.float64), dense.tris, dense.tri_mat, triangles,
+                                             props, seal_seams=steps.seal_seams, **dense.scale)
+    rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
+    tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in settings.double_sided]).astype(np.int64)
+    return SimpleNamespace(src=src, intersector=dense.intersector, positions=positions, rgb=rgb, tris=tris,
+                           tri_double=tri_double, tri_mat=tri_mat, scale=dense.scale)
 
 
 def flat_colours(settings, scene, geometry, face_samples, **knobs):

@@ -51,7 +51,7 @@ colour_merge_step = 6
 
 Other steps are opt-in the same way: `simplify` to a triangle budget,
 `visibility` to drop what the camera can never see (it needs the camera's
-`region`). The steps, their order and every field are in
+`region`, or its `path` with `source = "camera_path"`). The steps, their order and every field are in
 [Mesh-Import.md](Mesh-Import.md#import-file).
 
 ## 2. Place it in a scene
@@ -105,7 +105,7 @@ rays = 8
 ## 4. Add a camera
 
 The camera object has the lens and, if it flies a glTF animation, the tracks
-that `tools/anim/bake_tracks.py` baked. A `region` (the box `visibility` culls
+that `tools/anim/bake_tracks.py` baked. A `region` (the box region `visibility` culls
 against) belongs here only when a placed mesh has that step:
 
 ```toml

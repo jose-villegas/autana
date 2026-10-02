@@ -253,6 +253,187 @@ renders; it is not committed, and the reference has no frame between the
 scored poses to put beside it. Nothing refreshes these images: the fit
 needs the GPU environment.
 
+### Cost-aware fit along the camera path
+
+What [the cost-aware fit](../../../../tools/r3d/README.md#cost-aware-fit)
+does to the Sponza bakes. Every held-out number below is on the same seven
+poses (5 to 35 s), which no fit trained on. The training numbers are labelled
+as such.
+
+**Path visibility.** The source after alpha masking has 245,465 triangles.
+The region box keeps 211,004; the camera path, sampled every 100 ms with
+3 by 3 rays a pixel and an 8-pixel margin, keeps 116,917. Run on the
+committed bakes, the same rule keeps the share of each mesh below.
+
+```mermaid
+xychart-beta
+    title "Triangles the camera path sees (committed bakes)"
+    x-axis ["Full, 17,375", "Lite, 8,670"]
+    y-axis "Share kept, %" 0 --> 100
+    bar [60.9, 65.9]
+```
+
+Culling the committed full mesh to the 10,573 triangles the path sees leaves
+its held-out mean ΔE76 at 7.196 (7.197 unculled). Over the whole path at
+30 fps, 1200 frames between the 100 ms samples, `render_compare.py --video
+--clear 9CC0E6` counts no hole pixel in the culled lite mesh and at most 8 in
+3 frames of the culled full one, single pixels where a sliver slips between
+the rays. The culled triangles, magenta, from outside and from above with the
+roofs cut away:
+
+![Triangles the camera path never sees](../../../../../docs/images/render/appearance-path-culled.png)
+
+The places the culled lite mesh differs most from the uncut one over the whole
+path, uncut above: coincident faces trading places, no hole.
+
+![Culled lite against uncut, largest differences](../../../../../docs/images/render/appearance-path-culled.crops.png)
+
+**Budget against error.** Unfitted and fitted, from the import's region cull
+and from the path cull (the path start simplified to 1.15 times the budget
+and pruned back to it):
+
+```mermaid
+xychart-beta
+    title "Held-out mean ΔE76 against triangle budget"
+    x-axis "Triangles" ["4,000", "6,000", "8,672", "12,000", "17,381"]
+    y-axis "Mean ΔE76, held-out" 4 --> 10.5
+    line [9.946, 8.723, 8.133, 7.676, 7.197]
+    line [8.452, 7.898, 7.284, 6.880, 6.414]
+    line [6.541, 6.073, 5.745, 5.522, 5.279]
+    line [5.844, 5.490, 5.220, 5.029, 4.881]
+```
+
+Top to bottom: region start, path start, region start fitted, path start
+fitted. The same meshes' geometry, as the mean angle between their normals
+and the source's over the pixels both cover:
+
+```mermaid
+xychart-beta
+    title "Held-out normal error against triangle budget"
+    x-axis "Triangles" ["4,000", "6,000", "8,672", "12,000", "17,381"]
+    y-axis "Mean normal angle, degrees, held-out" 10 --> 36
+    line [32.2, 28.3, 26.2, 23.8, 21.1]
+    line [34.5, 29.9, 28.2, 25.5, 22.8]
+    line [21.3, 19.3, 17.6, 16.1, 14.6]
+    line [21.8, 20.0, 18.6, 17.5, 16.5]
+```
+
+Top to bottom: region start fitted, region start, path start fitted, path
+start. Fitting on colour alone moves geometry away from the source, by about
+1 to 2 degrees; the normal term below takes it back.
+
+| Mesh | Triangles | Mean ΔE76 | p95 ΔE76 | Normal error | Predicted ms |
+|---|---:|---:|---:|---:|---:|
+| Full, committed | 17,375 | 7.197 | 22.38 | 21.1° | 58.5 |
+| Full, fitted (region start) | 17,375 | 5.279 | 13.29 | 22.8° | 59.2 |
+| Full budget, path start, fitted | 17,381 | 4.881 | 11.77 | 16.5° | 59.4 |
+| Lite, committed | 8,670 | 8.133 | 26.25 | 26.2° | 46.2 |
+| Lite, fitted (region start, round one) | 8,670 | 5.745 | 15.03 | 28.2° | 46.7 |
+| Lite budget, path start, fitted | 8,672 | 5.220 | 12.76 | 18.6° | 46.4 |
+| Lite budget, path start, fitted with the normal term 1 | 8,672 | 5.232 | 12.94 | 14.8° | 46.7 |
+
+Fitting helps at the full budget as much as at lite's (7.20 to 5.28, and to
+4.88 from the path start). The curve flattens past 8,672: the last 8,700
+triangles buy 0.34 ΔE.
+
+**Normal term.** At the lite budget from the path start, sweeping the normal
+weight $\lambda_n$:
+
+| $\lambda_n$ | 0 | 0.1 | 0.3 | 1 |
+|---|---:|---:|---:|---:|
+| Held-out mean ΔE76 | 5.220 | 5.247 | 5.268 | 5.232 |
+| Held-out normal error | 18.6° | 17.1° | 16.3° | 14.8° |
+
+ΔE stays within 0.05 while the normal error drops 3.8 degrees, so the
+chosen mesh uses $\lambda_n = 1$. Normal-angle heatmaps at 5 and 25 s, left to
+right the committed lite, the colour-only fit and the fit with the normal
+term, on the ΔE heatmaps' colours with degrees for ΔE:
+
+![Normal angle heatmaps](../../../../../docs/images/render/appearance-normal-heat.png)
+
+**Warm starts.** Splitting the fitted 4,000-triangle mesh's worst triangles up
+to 8,672 and 12,000 and fitting again gives 5.223 at 8,035 triangles and 5.153
+at 10,382 (the splits leave triangles no pose shows, which pruning drops);
+from the path start the same budgets give 5.220 and 5.029. The plateau does
+not move.
+
+**Cost.** The cost model fitted to the board, 16 frames of the committed full
+and lite bakes, five runs each:
+
+| Term | Weight |
+|---|---:|
+| Constant | 21.41 ms |
+| Per submitted triangle | 0 |
+| Per drawn triangle | 1.135 µs |
+| Per triangle row | 0.514 µs |
+| Per covered pixel | 0.0275 µs |
+| Per cluster in view | 22.7 µs |
+
+In sample it is off by 1.02 ms on average (R² 0.983); fitted on one bake it
+predicts the other's mean within 3.0 ms (full) and 0.8 ms (lite). On six meshes it was not fitted to, measured the same way
+(`run_sponza_perf_suite --perf-scope`, five runs, each mesh built into one
+of the suite's three slots), it is within 1.3 ms:
+
+| Mesh | Triangles | Predicted ms | Measured ms |
+|---|---:|---:|---:|
+| Full, culled to the path | 10,573 | 50.7 | 50.1 |
+| Lite, culled to the path | 5,714 | 42.3 | 41.7 |
+| Lite, fitted (region start) | 8,670 | 46.7 | 48.0 |
+| Path start fitted, 4,000 | 4,000 | 38.0 | 37.0 |
+| Path start fitted with the cost term, 8,672 | 8,672 | 42.0 | 41.0 |
+| Chosen: path start fitted with the normal term, 8,672 | 8,672 | 46.7 | 46.3 |
+
+The Pareto curve, held-out ΔE against predicted board time, with the 30 and
+60 fps budgets: neither is reached, because the constant alone, the clear and
+the upscale, is 21 ms, and at 4,000 triangles the frame is still 35 ms.
+
+![Held-out error against predicted frame time](../../../../../docs/images/render/appearance-pareto.png)
+
+```mermaid
+xychart-beta
+    title "Held-out mean ΔE76 against predicted ms, path start fitted"
+    x-axis "Predicted board ms" ["38.0", "42.1", "46.4", "51.6", "59.4"]
+    y-axis "Mean ΔE76, held-out" 4.5 --> 6.5
+    line [5.844, 5.490, 5.220, 5.029, 4.881]
+```
+
+The x-axis is spaced evenly, not to scale; the picture above is to scale.
+The cost term (0.1 ΔE per ms) moves a mesh 4 to 7 ms left for 0.2 to 0.6 ΔE,
+which a smaller budget does as cheaply: at 8,672 it gives 5.628 at 42.0 ms,
+and the plain fit at 6,000 gives 5.490 at 42.1 ms. Its weight sweep at
+8,672:
+
+| Cost weight | 0 | 0.02 | 0.1 | 0.5 |
+|---|---:|---:|---:|---:|
+| Held-out mean ΔE76 | 5.220 | 5.262 | 5.628 | 7.887 |
+| Predicted ms | 46.4 | 45.1 | 42.0 | 36.2 |
+
+The knee is the fitted path start at 8,672 triangles; the chosen mesh is that
+point with the normal term.
+
+On the board, against the committed lite mesh's 46.05 ms: the chosen mesh
+draws in 46.29 ms (+0.5%) for 36% less held-out ΔE (8.13 to 5.23) and 11.4
+degrees less normal error. The cost-term fit at the same budget draws in
+41.0 ms (−11%) at ΔE 5.63, and the full mesh culled to the path in 50.1 ms
+against the full's 58.6 (−14.5%) at the same ΔE.
+
+The chosen mesh against the committed lite at 5 and 25 s, then where they
+differ most, lite above; and against the reference:
+
+![Committed lite against the chosen mesh](../../../../../docs/images/render/appearance-chosen-lite.png)
+![Committed lite against the chosen mesh, enlarged](../../../../../docs/images/render/appearance-chosen-lite.crops.png)
+![The chosen mesh against the reference, enlarged](../../../../../docs/images/render/appearance-chosen-reference.crops.png)
+
+Its ΔE heatmap sheet at 25 s:
+
+![The chosen mesh: heatmaps](../../../../../docs/images/render/appearance-chosen-heat.png)
+
+The images here are made from the fitted meshes in a scratch directory and
+nothing refreshes them: the fits need the GPU environment and the cost
+weights a board capture. A 30 fps video of the whole path, the committed lite
+against the chosen mesh, is `render_compare.py --video` of their
+`--frames 1200 --dt 33` renders and is not committed.
+
 ## Sponza poses
 
 The flythrough is a glTF camera animation, `../assets/flythrough.glb`, baked

@@ -36,3 +36,39 @@ def camera_basis(forward):
     right = np.cross(forward, [0.0, 1.0, 0.0])
     right /= np.linalg.norm(right)
     return right, np.cross(right, forward), forward
+
+
+def camera_rays(width, height, lens, eye, forward, samples, margin=0):
+    """One pinhole ray per subpixel, ordered in pixel-sized groups; `margin`
+    widens the view by that many pixels on each side."""
+    right, up, forward = camera_basis(forward)
+    x, y = np.meshgrid(np.arange(-margin, width + margin), np.arange(-margin, height + margin))
+    offsets = (np.arange(samples) + 0.5) / samples
+    ox, oy = np.meshgrid(offsets, offsets)
+    x = (x[..., None] + ox.ravel()).reshape(-1)
+    y = (y[..., None] + oy.ravel()).reshape(-1)
+    short = min(width, height)
+    horizontal = lens * width / short
+    vertical = lens * height / short
+    direction = forward + right * ((2 * x / width - 1) * horizontal)[:, None]
+    direction += up * ((1 - 2 * y / height) * vertical)[:, None]
+    direction /= np.linalg.norm(direction, axis=1, keepdims=True)
+    return np.repeat(np.asarray(eye, dtype=float)[None, :], len(direction), axis=0), direction
+
+
+SAMPLE_TRACKS = pathlib.Path(__file__).resolve().parents[1] / "anim" / "sample_tracks.sh"
+
+
+def sample_camera_path(tracks_source, tracks_name, node, every_ms, width, height, lens, near):
+    """The poses of a baked camera track, every `every_ms` over its clip, as
+    read_poses returns them; built and run by tools/anim/sample_tracks.sh."""
+    import subprocess
+    import tempfile
+
+    done = subprocess.run(["sh", SAMPLE_TRACKS.as_posix(), "--tracks", f"{pathlib.Path(tracks_source).as_posix()}:{tracks_name}",
+                           "--every", str(every_ms), "--poses", node, str(width), str(height), repr(lens), repr(near)],
+                          capture_output=True, text=True, check=True)
+    with tempfile.TemporaryDirectory() as directory:
+        path = pathlib.Path(directory) / "poses.txt"
+        path.write_text(done.stdout)
+        return read_poses(path)

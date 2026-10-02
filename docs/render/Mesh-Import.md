@@ -8,10 +8,10 @@ stages and the format a renderer consumes. Drawing that mesh is
 flowchart LR
     Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"]
     Fetch --> Mask["Mask alpha cards<br/><i>opt in</i>"]
-    Mask --> Vis["Region visibility<br/><i>opt in, needs a scene</i>"]
+    Mask --> Vis["Camera visibility<br/><i>opt in, needs a scene</i>"]
     Vis --> Thin["Thin one material<br/><i>opt in</i>"]
     Thin --> Colour{"process.light?"}
-    Scene["Scene file<br/><i>adds the lights,<br/>camera region, tone map</i>"] -.-> Vis
+    Scene["Scene file<br/><i>adds the lights, camera<br/>region or path, tone map</i>"] -.-> Vis
     Scene -.-> Lit
     Scene -.-> Face
     Colour -- yes --> Lit["Light per vertex<br/><i>needs a scene</i>"]
@@ -82,7 +82,7 @@ the scene. The [scene table](Scene-Files.md#the-scene-table) is written by
 **Rule: an import brings the mesh in as authored, and each `[process.*]` table
 present turns one processing step on.** The steps `process.light` and
 `process.visibility` are scene-dependent: they read the scene's lights or
-camera region. A mesh without a scene-dependent step depends on no scene.
+camera. A mesh without a scene-dependent step depends on no scene.
 
 With only `[source]` and `[output]` the importer keeps the source's triangles,
 cuts nothing, simplifies nothing and lights nothing. Its vertex colour is the
@@ -97,7 +97,7 @@ own vertex colours are not read.
 | `materials` | `double_sided` | The materials whose faces are two-sided. |
 | `process` | `seed` | The seed of the random rays the steps draw; allowed only with `visibility`, `thin` or `light`. |
 | `process.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. |
-| `process.visibility` | `rounds` | Drops triangles no point of the scene's world-space camera region sees. Scene-dependent. |
+| `process.visibility` | `source`, `rounds`; `every_ms`, `size`, `samples`, `margin` | Drops triangles the camera never sees. `source = "camera_region"`, the default, keeps what any point of the scene camera's `region` box sees in `rounds` random tries; `"camera_path"` keeps what any pose of the camera's path sees, sampled every `every_ms` at `size` pixels with `samples` squared rays a pixel, the view widened by `margin` pixels. Scene-dependent. |
 | `process.thin` | `material`, `keep` | Keeps only a share of one material's triangles. |
 | `process.light` | `ray_offset`, `colour_merge_step`, `flat_sky_rays` | Bakes the scene's lights into per-vertex colour. `flat_sky_rays` is the one set of sky directions the faces of a variant with `face_samples` share, and is allowed only then. Scene-dependent. |
 | `process.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges, then simplifies to each variant's `triangles`, reserving `props_share` of the budget for the small `props` materials; `seal_seams` joins touching pieces first. |
@@ -113,8 +113,27 @@ at the full budget and at about half of it, the full render above the lite.
 ![Full against lite](../images/render/compare-full-lite.png)
 ![Full against lite, the places they differ most](../images/render/compare-full-lite.crops.png)
 
-`process.visibility` drops triangles no point of the camera region sees, so
-their share of the budget goes to what is seen. The same import with the step
+`process.visibility` drops triangles the camera never sees, so their share
+of the budget goes to what is seen. A region box keeps whatever any point in
+it could see. A camera path keeps only what the path's own views show: from
+every pose $v$ sampled along it, $s^2$ rays a pixel over the view widened by
+$m$ pixels on each side, each starting at the near plane, and a triangle $t$
+is kept if it is the first face some ray $r$ would draw:
+
+```math
+\mathrm{keep}(t) \iff \exists\, v,\ \exists\, r \in \mathrm{rays}(v, s, m):\;
+t = \underset{u \,\in\, \mathrm{hits}(r),\ \mathrm{drawn}(u, r)}{\mathrm{arg\,min}}\ d_r(u)
+\qquad
+\mathrm{drawn}(u, r) \iff \mathrm{double}(u) \,\lor\, n_u \cdot \hat{r} < 0
+```
+
+A ray passes through a single-sided face seen from behind, as the rasterizer
+culls it; when that face has a twin over the same three corners wound the
+other way, the twin is what the ray sees. Faces within a small distance of
+the first drawn one are kept too, since the depth test, not the ray, picks
+among coincident faces. The margin and the pose spacing cover what enters
+the view between two samples. A walkable area, a nav mesh at eye height, is
+a planned third source. The same import with the step
 off, at one camera pose, crops where they differ most,
 off above on: without the cull the budget is spent on hidden surfaces and
 visible ones lose triangles.
@@ -300,6 +319,65 @@ and $\lambda$ the `--laplacian` weight. Adam takes the steps, both learning
 rates decay as $\eta_k = \eta_0 \cdot 0.1^{k/K}$ over $K$ steps, and the
 colours are clamped to $[0, 1]$ after each. Where nothing is drawn the
 renderer shows the scene's clear colour, as the device and the reference do.
+
+## Spending the budget where it shows and costs least
+
+Three stages make the fit aware of where the camera looks and what a frame
+costs.
+
+```mermaid
+flowchart LR
+    V[path visibility<br/>on the source] --> S[simplify to more<br/>than the budget]
+    S --> P[prune to the budget<br/>what shows least goes]
+    P --> F[fit: dE plus<br/>predicted cost]
+    F --> W[write_lit_mesh]
+```
+
+**Pruning.** Every pose of a dense pose set draws the mesh and counts, per
+triangle, the pixels it shows, $a_t$, summed over the poses. Triangles with
+$a_t = 0$ go first, then those with the smallest $a_t$, down to the budget.
+Simplifying to more than the budget and pruning back puts the triangles
+where some pose shows them.
+
+**The cost model.** A frame's time from one pose is linear in what the
+renderer does: a constant, the triangles of the clusters in view $S$ (fetched,
+transformed and tested), the drawn triangles $D$ (in front of the eye, facing
+it or double-sided, on screen), their screen rows $\rho_t$, the pixels they
+cover before the depth test $\alpha_t$ (overdraw counted) and the clusters
+in view $K$:
+
+```math
+\hat{T}(v) = w_0 + w_S\,S_v + w_D\,D_v + w_\rho \sum_{t \in D_v} \rho_t + w_\alpha \sum_{t \in D_v} \alpha_t + w_K\,K_v
+```
+
+The weights are non-negative least squares over board frame times of meshes
+with different triangle counts and overdraw, at the poses the board times;
+`cost_model.py` fits and applies them.
+
+**The cost term.** $D$, $\rho$ and $\alpha$ follow the vertex positions,
+so the fit can trade appearance against predicted time with a weight
+$\mu$ in dE per millisecond:
+
+```math
+\min_{P,\,C}\; \mathcal{E}_{\Delta E}(P, C) + \lambda\,\mathcal{E}_{\mathcal{L}}(P) + \mu\,\frac{1}{|B|}\sum_{v \in B}\hat{T}_v(P)
++ \lambda_n\,\frac{1}{|B|}\sum_{v \in B}\frac{1}{|\Omega_v^{\cap}|}\sum_{p \in \Omega_v^{\cap}}\left\lVert \hat{n}_v(P)_p - n^{\mathrm{ref}}_{v,p} \right\rVert_1
+```
+
+**The normal term.** Colour alone can be matched by geometry that is wrong
+and shows it from another view. The reference renderer also writes the
+source's shading normal per pixel, turned toward the eye, and the fit draws
+its own: area-weighted vertex normals $\hat{n}$, interpolated and turned the
+same way. $\Omega_v^{\cap}$ is the pixels both cover, so coverage itself
+stays the colour term's business, through the scene's clear colour. The
+error reported beside ΔE is the mean angle between the two normals:
+
+```math
+\theta = \frac{1}{|\Omega^{\cap}|}\sum_{p \in \Omega^{\cap}} \arccos\!\left(\hat{n}_p \cdot n^{\mathrm{ref}}_p\right)
+```
+
+Sweeping the budget and $\mu$ gives held-out dE against predicted
+milliseconds; the meshes no other is better than on both form the Pareto
+front, and its knee is where more triangles stop buying visible error.
 
 ## Sealing seams
 

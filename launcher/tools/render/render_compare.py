@@ -179,8 +179,8 @@ def edge_overlay(reference):
     return Image.fromarray(pixels.astype(np.uint8))
 
 
-def heat_scale(width):
-    """A strip of the reference heatmap's colours from 0 to HEAT_FULL_SCALE dE, with ticks and a caption."""
+def heat_scale(width, caption="CIE76 dE per pixel: black matches, red about 20, yellow 50 or more"):
+    """A strip of the reference heatmap's colours from 0 to HEAT_FULL_SCALE, with ticks and a caption."""
     strip = np.tile(np.arange(width) / (width - 1) * HEAT_FULL_SCALE, (14, 1))
     picture = Image.new("RGB", (width, 70), (24, 24, 24))
     picture.paste(reference_heatmap_from_error(strip), (0, 0))
@@ -189,7 +189,7 @@ def heat_scale(width):
         x = round(tick / HEAT_FULL_SCALE * (width - 1))
         draw.line([(x, 14), (x, 19)], fill=(230, 230, 230))
         draw.text((min(x, width - 24), 20), str(tick), fill=(230, 230, 230), font=font)
-    draw.text((0, 42), "CIE76 dE per pixel: black matches, red about 20, yellow 50 or more", fill=(230, 230, 230), font=font)
+    draw.text((0, 42), caption, fill=(230, 230, 230), font=font)
     return picture
 
 
