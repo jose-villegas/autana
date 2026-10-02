@@ -4,7 +4,7 @@
  * a viewport_t, upright for its quarter, with the lens fitted to the
  * viewport's SHORTER axis.
  *
- * Single precision only, for the reason vec3.h gives.
+ * Single precision avoids software double precision on the target FPU.
  */
 #pragma once
 
