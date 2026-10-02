@@ -183,7 +183,7 @@ def bind_sheet(asset, size):
     positions, _ = asset.skin(asset.sample(None, 0.0))
     for view in VIEWS:
         tile = render(asset, make_camera(asset, view, size), positions, size)
-        ImageDraw.Draw(tile).text((6, 4), view, fill=(40, 40, 40))
+        ImageDraw.Draw(tile).text((6, 4), view, fill=(40, 40, 40), stroke_width=1, stroke_fill=(255, 255, 255))
         tiles.append(tile)
     sheet = Image.new("RGB", (size[0] * 2, size[1] * 2))
     for index, tile in enumerate(tiles):
