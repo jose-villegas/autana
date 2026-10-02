@@ -35,6 +35,15 @@ TONEMAP = 'tonemap_white = 0.3\n'
 SIMPLIFY = '[geometry]\nsimplify = { dense_edge = 1.0, props = [], props_share = 0.3, seal_seams = true }\n'
 VARIANT = '[[variants]]\nname = "mesh"\ntriangles = 10\n'
 BAKE = '[bake]\nray_offset = 0.5\ncolour_merge_step = 6\n'
+HEAD = TONEMAP + AMBIENT + BAKE
+PLAIN_VARIANT = '[[variants]]\nname = "mesh"\n'
+VARIANT_OUTPUT = '[output]\ndirectory = "."\n'
+FIT = ('fit = { budget = 8, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 20, '
+       'batch = 4, laplacian = 10.0, normal_weight = 1.0, sha256 = "ab", recipe_sha256 = "cd" }\n')
+INDIRECT = 'indirect = { bounces = 2, rays = 8, cache_samples = 1 }\n'
+THIN = '[geometry]\nthin = { material = "m", keep = 0.5 }\n'
+REGION = 'visibility = { source = "camera_region", rounds = 2 }\n'
+PATH = 'visibility = { source = "camera_path", every_ms = 100, size = [8, 6], margin = 2 }\n'
 CUBE = ("v 0 0 0\nv 8 0 0\nv 8 8 0\nv 0 8 0\nv 0 0 8\nv 8 0 8\nv 8 8 8\nv 0 8 8\nusemtl m\n"
         "f 1 4 3 2\nf 5 6 7 8\nf 1 2 6 5\nf 2 3 7 6\nf 3 4 8 7\nf 4 1 5 8\n")
 
@@ -108,7 +117,434 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(vars(settings.variants[0]), {"name": "mesh", "triangles": 10})
 
 
+    def test_basic_settings_turn_no_step_on(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = load_import_settings(write_import(directory))
+        self.assertEqual([variant.name for variant in settings.variants], ["mesh"])
+        self.assertEqual((settings.alpha_keep, settings.thin, settings.simplify), (None,) * 3)
+
+    def test_a_present_step_table_turns_the_step_on(self):
+        body = '[process]\nseed = 2\n[geometry]\nalpha_mask = { keep_alpha = 0.5 }\nthin = { material = "m", keep = 0.5 }\n'
+        with tempfile.TemporaryDirectory() as directory:
+            settings = load_import_settings(write_import(directory, body=body))
+        self.assertEqual((settings.alpha_keep, settings.thin.keep, settings.seed), (0.5, 0.5, 2))
+
+    def test_the_output_directory_is_type_checked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(SettingsError, "output.directory"):
+                load_import_settings(write_import(directory, output='[output]\ndirectory = 3\nname = "mesh"\n'))
+
+    def test_the_committed_settings_and_scenes_load(self):
+        scenes = tree_scenes()
+        self.assertTrue(scenes)
+        for path in scenes:
+            self.assertTrue(load_scene(path).renderers, path.name)
+
+    def test_an_unknown_key_is_rejected_in_a_group(self):
+        self.rejects("process.typo", "[process.typo]\nx = 1\n")
+        self.rejects("geometry.typo", "[geometry]\ntypo = 1\n")
+
+    def test_an_unknown_key_is_rejected_in_each_nested_group(self):
+        self.rejects("geometry.alpha_mask.typo", "[geometry]\nalpha_mask = { keep_alpha = 0.5, typo = 1 }\n")
+        self.rejects("geometry.thin.typo", '[geometry]\nthin = { material = "m", keep = 0.5, typo = 1 }\n')
+        self.rejects("geometry.simplify.typo", SIMPLIFY.replace(" }", ", typo = 1 }") + VARIANT)
+
+    def test_a_source_without_a_sha_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(SettingsError, "sha256"):
+                load_import_settings(write_import(directory, source=SOURCE.replace('sha256 = "abc"\n', "")))
+
+    def test_an_unknown_key_is_rejected_in_a_table(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(SettingsError, "typo"):
+                load_import_settings(write_import(directory, source=SOURCE + "typo = 1\n"))
+
+    def test_a_flag_and_a_count_are_type_checked(self):
+        self.rejects("true or false", SIMPLIFY.replace("seal_seams = true", 'seal_seams = "no"') + VARIANT)
+        self.rejects("must be an integer", SIMPLIFY + VARIANT.replace("= 10", "= 1.5"))
+
+    def test_simplify_needs_a_budget_per_variant_and_a_budget_needs_simplify(self):
+        self.rejects("needs variants", SIMPLIFY)
+        self.rejects("triangles is required", SIMPLIFY + PLAIN_VARIANT)
+        self.rejects("needs geometry.simplify", VARIANT)
+
+    def test_the_legacy_process_layout_names_each_options_new_home(self):
+        self.rejects(r"\[process.light\] moved to scene \[bake\]", "[process.light]\nray_offset = 0.5\n")
+        self.rejects(r"\[process.visibility\] moved to objects\.mesh_renderer\.visibility", "[process.visibility]\nrounds = 2\n")
+
+    def test_the_tools_name_no_scene(self):
+        banned = set()
+        for path in ROOT.glob("launcher/main/apps/**/meshes/*.import.toml"):
+            values = tomllib.loads(path.read_text())
+            banned.update(variant["name"].lower() for variant in values.get("variants", []))
+            if "name" in values["output"]:
+                banned.add(values["output"]["name"].lower())
+        banned.update(path.name.removesuffix(".scene.toml").lower()
+                      for path in ROOT.glob("launcher/main/apps/**/meshes/*.scene.toml"))
+        self.assertTrue(banned)
+        for path in sorted((ROOT / "launcher/tools/r3d").rglob("*")):
+            if path.suffix in (".py", ".md", ".txt") and ".cache" not in path.parts:
+                content = path.read_text().lower()
+                for name in banned:
+                    self.assertNotIn(name, content, path.name)
+
+
 class SceneTests(unittest.TestCase):
+    def rejects(self, pattern, setup, objects, head=""):
+        with tempfile.TemporaryDirectory() as directory:
+            setup(directory)
+            path = write_scene(directory, objects, head)
+            with self.assertRaisesRegex(SettingsError, pattern):
+                load_scene(path)
+
+    def two_imports(self, directory):
+        write_import(directory, "a.import.toml", output='[output]\ndirectory = "."\nname = "a"\n')
+        write_import(directory, "b.import.toml", output='[output]\ndirectory = "."\nname = "b"\n')
+
+    def plain_import(self, directory):
+        write_import(directory)
+
+    def lit(self, extra="", head=HEAD, body="", output=OUTPUT, objects=""):
+        """Rejects/loads one baked renderer of a mesh import with `body`, lit by one sun."""
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        write_import(directory.name, output=output, body=body)
+        return write_scene(directory.name, renderer(extra="bake = true\n" + extra) + sun_object() + objects, head)
+
+    def lit_rejects(self, pattern, extra="", **kwargs):
+        with self.assertRaisesRegex(SettingsError, pattern):
+            load_scene(self.lit(extra, **kwargs))
+
+    def test_a_scene_with_two_mesh_renderers_validates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.two_imports(directory)
+            scene = load_scene(write_scene(directory, renderer("a.import.toml")
+                                           + renderer("b.import.toml", transform="position = [1.0, 2.0, 3.0]\nscale = [2.0, 2.0, 2.0]\n")))
+        self.assertEqual([item.renderer.variant.name for item in scene.renderers], ["a", "b"])
+        self.assertEqual(scene.objects[0].position, [0.0, 0.0, 0.0])
+        self.assertEqual(scene.objects[1].position, [1.0, 2.0, 3.0])
+        self.assertEqual(scene.objects[1].scale, [2.0, 2.0, 2.0])
+
+    def test_an_object_has_exactly_one_component(self):
+        self.rejects("exactly one component", self.two_imports, '[[objects]]\nname = "empty"\n' + renderer("a.import.toml"))
+        both = renderer("a.import.toml") + '[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.0\n'
+        self.rejects("exactly one component", self.two_imports, both)
+
+    def test_a_renderer_naming_a_missing_import_file_is_rejected(self):
+        self.rejects("not a file", self.two_imports, renderer("a.import.toml") + renderer("gone.import.toml"))
+
+    def test_a_scene_without_renderers_or_with_an_unknown_key_is_rejected(self):
+        self.rejects("objects", self.two_imports, "", TONEMAP)
+        self.rejects("mesh_renderer", self.two_imports, camera(region=False))
+        self.rejects("typo", self.two_imports, renderer("a.import.toml"), "typo = 1\n")
+
+    def test_object_names_are_unique(self):
+        self.rejects("names must be unique", self.two_imports, renderer("a.import.toml") + renderer("b.import.toml", name="a"))
+
+    def test_a_variant_is_chosen_from_the_import_that_has_them(self):
+        def setup(directory):
+            write_import(directory, output=VARIANT_OUTPUT, body=PLAIN_VARIANT)
+
+        self.rejects("variant is required", setup, renderer())
+        self.rejects("not in", setup, renderer(extra='variant = "other"\n'))
+        self.rejects("has no variants", self.two_imports, renderer("a.import.toml", 'variant = "a"\n'))
+
+    def test_a_baked_renderer_needs_what_it_reads_from_the_scene(self):
+        self.lit_rejects("tonemap_white is required", head=AMBIENT + BAKE)
+        self.lit_rejects("camera region is required", REGION, objects=camera(region=False))
+
+    def test_scene_settings_no_placed_mesh_reads_are_rejected(self):
+        self.rejects("lights is read by no placed mesh", self.two_imports, renderer("a.import.toml"), AMBIENT)
+        self.rejects("lights is read by no placed mesh", self.two_imports, renderer("a.import.toml") + sun_object())
+        self.rejects("tonemap_white is read by no placed mesh", self.two_imports, renderer("a.import.toml"), TONEMAP)
+        self.rejects("camera region is read by no placed mesh", self.two_imports, renderer("a.import.toml") + camera())
+
+    def test_visibility_reads_its_source(self):
+        scene = load_scene(self.lit(REGION + PATH.replace("visibility = ", "#"), objects=camera()))
+        region = scene.renderers[0].renderer.visibility
+        self.assertEqual((region.source, region.rounds), ("camera_region", 2))
+        scene = load_scene(self.lit(PATH, head=HEAD, objects=camera(path=True, region=False)))
+        path = scene.renderers[0].renderer.visibility
+        self.assertEqual((path.source, path.every_ms, path.size, path.samples, path.margin), ("camera_path", 100, (8, 6), 3, 2))
+        self.lit_rejects("visibility.source", 'visibility = { source = "navmesh", rounds = 2 }\n')
+        self.lit_rejects("visibility", 'visibility = { source = "camera_path", rounds = 2 }\n')
+        self.lit_rejects("margin cannot be negative", PATH.replace("margin = 2", "margin = -1"))
+
+    def test_path_visibility_needs_the_camera_path_not_its_region(self):
+        self.lit_rejects("camera path is required", PATH, objects=camera(region=False))
+        self.lit_rejects("camera region is read by no placed mesh", PATH, objects=camera(path=True))
+
+    def test_each_renderer_of_one_import_has_its_own_visibility(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_import(directory)
+            scene = load_scene(write_scene(
+                directory, renderer(extra="bake = true\n" + REGION) + renderer(extra="bake = true\n", name="other")
+                + sun_object() + camera(), HEAD))
+        self.assertEqual([item.renderer.visibility is not None for item in scene.renderers], [True, False])
+
+    def test_a_fit_recipe_reads_and_needs_a_bake_and_room_to_prune(self):
+        extra = 'variant = "mesh"\n' + FIT
+        scene = load_scene(self.lit(extra, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT))
+        fit = scene.renderers[0].renderer.fit
+        self.assertEqual((fit.budget, fit.normal_weight, fit.sha256), (8, 1.0, "ab"))
+        options = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT}
+        self.lit_rejects("cannot exceed", extra.replace("budget = 8", "budget = 11"), **options)
+        self.lit_rejects("fit", extra.replace("steps = 20, ", ""), **options)
+        with tempfile.TemporaryDirectory() as directory:
+            write_import(directory, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT)
+            with self.assertRaisesRegex(SettingsError, "bake = true is required"):
+                load_scene(write_scene(directory, renderer(extra=extra)))
+
+    def test_indirect_light_needs_complete_nonnegative_settings(self):
+        base = "colour_merge_step = 6"
+        for pattern, bounced in (("bake.indirect.bounces", "{ bounces = -1, rays = 8, cache_samples = 1 }"),
+                                 ("bake.indirect.rays", "{ bounces = 1, rays = 0, cache_samples = 1 }"),
+                                 ("bake.indirect.cache_samples", "{ bounces = 1, rays = 8, cache_samples = 0 }"),
+                                 ("bake.indirect.cache_samples is required", "{ bounces = 1, rays = 8 }")):
+            with self.subTest(pattern=pattern):
+                self.lit_rejects(pattern, head=TONEMAP + AMBIENT + BAKE + f"indirect = {bounced}\n")
+        scene = load_scene(self.lit(head=HEAD + INDIRECT))
+        self.assertEqual((scene.bake.indirect.bounces, scene.bake.indirect.rays, scene.bake.indirect.cache_samples), (2, 8, 1))
+        self.assertTrue(base in BAKE)
+
+    def test_a_renderer_can_leave_the_indirect_light_out(self):
+        head = HEAD + INDIRECT
+        self.lit_rejects("indirect can only be false", "indirect = true\n", head=head)
+        self.lit_rejects("needs scene.bake.indirect", "indirect = false\n")
+        scene = load_scene(self.lit("indirect = false\n", head=head))
+        self.assertFalse(scene.renderers[0].renderer.indirect)
+        self.assertEqual(scene.bake.indirect.bounces, 2)
+
+    def test_shading_defaults_to_smooth_and_flat_keeps_its_samples(self):
+        flat = "shading = { flat = { fixed = 4 } }\n"
+        head = HEAD.replace("colour_merge_step = 6", "colour_merge_step = 6\nflat_sky_rays = 8")
+        smooth = load_scene(self.lit()).renderers[0].renderer
+        explicit = load_scene(self.lit('shading = "smooth"\n')).renderers[0].renderer
+        shaded = load_scene(self.lit(flat, head=head)).renderers[0].renderer
+        self.assertIsNone(smooth.face_samples)
+        self.assertIsNone(explicit.face_samples)
+        self.assertEqual(shaded.face_samples, (4, 1, 4, None))
+        self.lit_rejects("flat_sky_rays is required", flat)
+
+    def test_auto_samples_with_a_minimum_over_its_maximum_are_rejected(self):
+        shading = 'shading = { flat = { auto = { min = 3, max = 2, area = "median" } } }\n'
+        self.lit_rejects("min", shading, head=HEAD.replace("colour_merge_step = 6", "colour_merge_step = 6\nflat_sky_rays = 8"))
+
+    def test_the_indirect_look_defaults_to_physical_and_is_validated_strictly(self):
+        bounced = HEAD + INDIRECT
+        tuned_table = "[indirect]\nintensity = 2.5\nalbedo_boost = 1.5\n"
+        plain = load_scene(self.lit(head=bounced))
+        tuned = load_scene(self.lit(head=bounced + tuned_table))
+        self.assertEqual((plain.indirect.intensity, plain.indirect.albedo_boost), (1.0, 1.0))
+        self.assertEqual((tuned.indirect.intensity, tuned.indirect.albedo_boost), (2.5, 1.5))
+        for pattern, table in (("scene.indirect.intensity must not be negative", "intensity = -1\n"),
+                               ("scene.indirect.albedo_boost must be positive", "albedo_boost = 0\n"),
+                               ("scene.indirect.intensity must be a number", 'intensity = "2"\n'),
+                               ("scene.indirect.gain is not a known setting", "gain = 2\n")):
+            self.lit_rejects(pattern, head=bounced + "[indirect]\n" + table)
+        self.lit_rejects("indirect settings is read by no placed mesh", head=HEAD + tuned_table)
+
+    def test_a_baked_mesh_is_baked_where_it_sits(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        write_import(directory.name)
+        placed = renderer(extra="bake = true\n", transform="position = [1.0, 0.0, 0.0]\n") + sun_object()
+        with self.assertRaisesRegex(SettingsError, "identity"):
+            load_scene(write_scene(directory.name, placed, HEAD))
+        self.two_imports(directory.name)
+        load_scene(write_scene(directory.name, renderer("a.import.toml", transform="position = [1.0, 0.0, 0.0]\n")))
+
+    def test_a_directional_lights_direction_comes_from_its_rotation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_import(directory)
+            objects = renderer(extra="bake = true\n")
+            overhead = load_scene(write_scene(directory, objects + sun_object(), HEAD)).lights[0]["direction"]
+            turned = load_scene(write_scene(directory, objects + sun_object("[90.0, 90.0, 0.0]"), HEAD)).lights[0]["direction"]
+        for got, want in ((overhead, [0.0, 1.0, 0.0]), (turned, [1.0, 0.0, 0.0])):
+            self.assertTrue(all(abs(a - b) < 1e-12 for a, b in zip(got, want)), got)
+
+    def test_the_lights_are_the_directional_objects_then_the_sky_then_the_ambient(self):
+        sky = '[sky]\ncolor = [0.5, 0.5, 0.5]\nintensity = 1.0\nrays = 2\n'
+        scene = load_scene(self.lit(head=HEAD + sky))
+        self.assertEqual([item["type"] for item in scene.lights], ["directional", "sky", "ambient"])
+
+    def test_a_camera_carries_its_lens_and_region_and_a_scene_has_one(self):
+        scene = load_scene(self.lit(REGION, objects=camera()))
+        self.assertEqual(scene.camera.component.near_z, 1.0)
+        self.assertEqual(scene.region[1], [1.0, 1.0, 1.0])
+        self.rejects("one camera", self.two_imports, renderer("a.import.toml") + camera(region=False)
+                     + camera(region=False).replace('"camera"', '"other"'))
+        self.rejects("half_fov_short_tan", self.two_imports, renderer("a.import.toml")
+                     + '[[objects]]\nname = "c"\n[objects.camera]\nnear_z = 1.0\n')
+        self.rejects("C identifier", self.two_imports, renderer("a.import.toml")
+                     + camera(region=False).replace("near_z = 1.0\n", 'near_z = 1.0\npath = { tracks = "no-good", node = "camera" }\n'))
+
+    def test_an_unknown_key_is_rejected_in_a_light_and_in_the_sky(self):
+        self.rejects("typo", self.two_imports, renderer("a.import.toml") + sun_object().replace("rays = 1\n", "rays = 1\ntypo = 1\n"))
+        self.lit_rejects("typo", head=HEAD + "[sky]\ncolor = [1.0, 1.0, 1.0]\nintensity = 1.0\nrays = 1\ntypo = 1\n")
+
+    def test_a_reserved_light_type_is_rejected(self):
+        point = '[[objects]]\nname = "p"\n[objects.light]\ntype = "point"\n'
+        self.rejects("reserved", self.two_imports, renderer("a.import.toml") + point)
+
+    def test_sky_and_ambient_are_not_light_objects(self):
+        sky = '[[objects]]\nname = "s"\n[objects.light]\ntype = "sky"\n'
+        self.rejects("scene settings", self.two_imports, renderer("a.import.toml") + sky)
+
+    def test_the_scene_table_is_one_definition_with_an_entity_per_renderer_and_the_camera(self):
+        flight = 'path = { tracks = "flight", node = "rig" }\n'
+        placed = renderer("b.import.toml", transform="position = [1.0, 2.0, 3.0]\nscale = [2.0, 2.0, 2.0]\n")
+        with tempfile.TemporaryDirectory() as directory:
+            self.two_imports(directory)
+            path = write_scene(directory, renderer("a.import.toml") + placed + camera(region=False).replace(
+                "near_z = 1.0\n", "near_z = 1.0\n" + flight), name="hall.scene.toml")
+            written = write_scene_table(load_scene(path))
+            source = written[0].read_text()
+            header = written[1].read_text()
+            self.assertEqual([item.name for item in written], ["hall_scene_generated.c", "hall_scene_generated.h"])
+        self.assertIn('.name = "hall",', source)
+        self.assertIn('static const scene_renderer_def_t hall_scene_renderers[] = {\n    {0, "a"},\n    {1, "b"},\n};', source)
+        self.assertIn("{.m = {{2.0F, 0.0F, 0.0F}, {0.0F, 2.0F, 0.0F}, {0.0F, 0.0F, 2.0F}}, .position = {1.0F, 2.0F, 3.0F}},", source)
+        self.assertIn(".clip = &flight_clip, .translation = &flight_rig_translation, .rotation = &flight_rig_rotation", source)
+        self.assertIn("{2, {.half_fov_short_tan = 0.6F, .near_z = 1.0F, .placement = NULL, .path = &hall_scene_camera_path}, 0x000000},",
+                      source)
+        self.assertIn(".entity_count = 3,", source)
+        self.assertIn("SCENE_REGISTER(hall_scene)", source)
+        self.assertIn('#include "scene/scene.h"', source)
+        self.assertNotIn("scene_shell", source)
+        self.assertIn("extern const scene_def_t hall_scene;", header)
+        self.assertIn("#define HALL_SCENE_B ((scene_entity_t)1)", header)
+        self.assertIn("#define HALL_SCENE_CAMERA ((scene_entity_t)2)", header)
+
+    def test_a_camera_background_reaches_its_table_entry_and_defaults_to_black(self):
+        for extra, wanted in (("background = 0x336699" + chr(10), "0x336699"), ("", "0x000000")):
+            with tempfile.TemporaryDirectory() as directory:
+                self.two_imports(directory)
+                path = write_scene(directory, renderer("a.import.toml")
+                                   + camera(region=False).replace("near_z = 1.0\n", "near_z = 1.0\n" + extra), name="hall.scene.toml")
+                source = write_scene_table(load_scene(path))[0].read_text()
+            self.assertIn(".placement = NULL, .path = NULL}, " + wanted + "},", source)
+
+    def table_of(self, objects, lit=False):
+        """The generated source and header of a scene, as text; `lit` bakes both of its meshes."""
+        with tempfile.TemporaryDirectory() as directory:
+            for mesh in ("a", "b"):
+                write_import(directory, f"{mesh}.import.toml", output=f'[output]\ndirectory = "."\nname = "{mesh}"\n')
+            scene = load_scene(write_scene(directory, objects, HEAD if lit else "", name="hall.scene.toml"))
+            source, header = (text for _, text in table_files(scene))
+        return source, header
+
+    def test_names_transforms_renderers_and_macros_share_one_order(self):
+        # The first entity is the only one that moved, so an array reversed or shifted is caught.
+        moved = renderer("a.import.toml", transform="position = [1.0, 2.0, 3.0]\n")
+        source, header = self.table_of(moved + renderer("b.import.toml") + camera(region=False))
+        names = re.search(r"hall_scene_names\[\] = \{(.*?)\};", source).group(1).replace('"', "").split(", ")
+        transforms = re.search(r"hall_scene_transforms\[\] = \{\n(.*?)\n\};", source, re.S).group(1).splitlines()
+        indices = [int(i) for i in re.findall(r"^    \{(\d+), \"", source, re.M)]
+        macros = re.findall(r"#define HALL_SCENE_(\w+) \(\(scene_entity_t\)(\d+)\)", header)
+        self.assertEqual(names, ["a", "b", "camera"])
+        self.assertEqual([name.lower() for name, _ in macros], names)
+        self.assertEqual([int(index) for _, index in macros], [0, 1, 2])
+        self.assertEqual(len(transforms), len(names))
+        self.assertEqual([("position = {1.0F, 2.0F, 3.0F}" in line) for line in transforms], [True, False, False])
+        self.assertEqual(indices[:2], [names.index("a"), names.index("b")])
+
+    def test_a_light_has_no_entity_and_the_indices_step_over_it(self):
+        objects = (renderer("a.import.toml", extra="bake = true\n") + sun_object() + renderer("b.import.toml", extra="bake = true\n")
+                   + camera(region=False))
+        source, header = self.table_of(objects, lit=True)
+        self.assertIn('hall_scene_names[] = {"a", "b", "camera"};', source)
+        self.assertIn('{0, "hall.a"},', source)
+        self.assertIn('{1, "hall.b"},', source)
+        self.assertIn("{2, {.half_fov_short_tan", source)
+        self.assertNotIn("SUN", header)
+        self.assertIn(".entity_count = 3,", source)
+
+    def test_the_scene_table_holds_only_what_the_device_reads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_import(directory)
+            scene = load_scene(write_scene(directory, renderer(extra="bake = true\n" + REGION) + sun_object() + camera(), HEAD,
+                                           name="hall.scene.toml"))
+            source = "".join(text for _, text in table_files(scene))
+        self.assertNotIn("sun", source)
+        self.assertNotIn("region", source)
+        self.assertNotIn("1.0F, 1.0F, 1.0F}}", source.replace("{{{1.0F", "x"))
+
+    def test_a_placement_is_baked_as_rotation_times_scale(self):
+        quarter = "rotation = [0.0, 90.0, 0.0]\nscale = [1.0, 2.0, 3.0]\n"
+        with tempfile.TemporaryDirectory() as directory:
+            self.two_imports(directory)
+            scene = load_scene(write_scene(directory, renderer("a.import.toml", transform=quarter)))
+        want = ((0.0, 0.0, 3.0), (0.0, 2.0, 0.0), (-1.0, 0.0, 0.0))
+        for row, expected in zip(scene.objects[0].matrix, want):
+            self.assertTrue(all(abs(a - b) < 1e-12 for a, b in zip(row, expected)), scene.objects[0].matrix)
+
+    def test_a_scale_must_be_positive_and_a_symbol_name_an_identifier(self):
+        self.rejects("positive", self.two_imports, renderer("a.import.toml", transform="scale = [1.0, -1.0, 1.0]\n"))
+        self.rejects("positive", self.two_imports, renderer("a.import.toml", transform="scale = [0.0, 1.0, 1.0]\n"))
+        self.rejects("C identifier", self.two_imports, renderer("a.import.toml", name="not a symbol"))
+
+    def test_a_scene_table_names_the_tracks_header_relative_to_the_scene(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "generated").mkdir()
+            write_import(root, output='[output]\ndirectory = "generated"\nname = "mesh"\n')
+            scene = load_scene(write_scene(
+                root, renderer() + camera(region=False).replace("near_z = 1.0\n", 'near_z = 1.0\npath = { tracks = "fly", node = "rig" }\n'),
+                name="hall.scene.toml"))
+            source = table_files(scene)[0][1]
+        self.assertIn('#include "generated/fly_tracks_generated.h"', source)
+
+    def test_asset_names_of_two_renderers_of_one_scene_must_differ(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_import(directory)
+            with self.assertRaisesRegex(SettingsError, "twice|names must be unique"):
+                load_scene(write_scene(directory, renderer() + renderer(name="mesh")))
+
+    def test_a_scene_run_is_stamped_by_what_it_places(self):
+        from r3d.fitted_variant import recipe_digest
+
+        extra = 'variant = "mesh"\n' + FIT
+        fly = camera(path=True, region=False)
+
+        def digest(head=HEAD, fit=extra, tracks="tracks", simplify=SIMPLIFY):
+            with tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                (root / "fly_tracks_generated.c").write_text(tracks)
+                write_import(root, output=VARIANT_OUTPUT, body=simplify + VARIANT)
+                scene = load_scene(write_scene(root, renderer(extra="bake = true\n" + PATH + fit) + sun_object() + fly, head))
+                job = scene.renderers[0]
+                return recipe_digest(job.settings, job.renderer, scene)
+
+        first = digest()
+        self.assertEqual(digest(fit=extra.replace('sha256 = "ab"', 'sha256 = "ef"')), first, "the recorded hashes are not the recipe")
+        self.assertNotEqual(digest(fit=extra.replace("steps = 20", "steps = 21")), first)
+        self.assertNotEqual(digest(head=HEAD.replace("ray_offset = 0.5", "ray_offset = 0.6")), first)
+        self.assertNotEqual(digest(tracks="other tracks"), first)
+        self.assertNotEqual(digest(simplify=SIMPLIFY.replace("dense_edge = 1.0", "dense_edge = 2.0")), first)
+        self.assertNotEqual(digest(head=HEAD.replace("intensity = 0.1", "intensity = 0.2")), first, "the scene's lights are the recipe")
+        self.assertNotEqual(digest(head=HEAD.replace("tonemap_white = 0.3", "tonemap_white = 0.4")), first)
+        self.assertNotEqual(digest(head=HEAD + INDIRECT + "[indirect]\nintensity = 2.0\n"), digest(head=HEAD + INDIRECT))
+
+    def test_the_recipe_digest_drops_indirect_for_an_opted_out_renderer(self):
+        from r3d.fitted_variant import recipe_digest
+
+        def digest(bounces, opted_out=True):
+            out = "indirect = false\n" if opted_out else ""
+            with tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                (root / "fly_tracks_generated.c").write_text("tracks")
+                write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT)
+                head = HEAD + INDIRECT.replace("bounces = 2", f"bounces = {bounces}")
+                scene = load_scene(write_scene(
+                    root, renderer(extra='variant = "mesh"\nbake = true\n' + out + PATH + FIT) + sun_object()
+                    + camera(path=True, region=False), head))
+                job = scene.renderers[0]
+                return recipe_digest(job.settings, job.renderer, scene)
+
+        self.assertEqual(digest(2), digest(3))
+        self.assertNotEqual(digest(2, opted_out=False), digest(3, opted_out=False))
+
     def test_a_scene_renderer_owns_its_bake_settings(self):
         with tempfile.TemporaryDirectory() as directory:
             write_import(directory, output='[output]\ndirectory = "."\n', body=SIMPLIFY + VARIANT)
@@ -228,12 +664,13 @@ class SceneTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class AuthoredImportTests(unittest.TestCase):
-    def bake(self, directory, scene=False):
+    def bake(self, directory, scene=None, output=OUTPUT, head="", name="mesh.scene.toml"):
+        """Runs the importer on an import, or on the scene whose objects are `scene`."""
         root = pathlib.Path(directory)
         (root / "m.obj").write_text(CUBE)
         (root / "m.mtl").write_text("newmtl m\nKd 0.5 0.25 0.125\n")
-        import_path = write_import(root)
-        path = write_scene(root, renderer(), name="mesh.scene.toml") if scene else import_path
+        import_path = write_import(root, output=output)
+        path = write_scene(root, scene, head, name=name) if scene else import_path
         with mock.patch("r3d.mesh_import.fetch_zip", return_value=root):
             return mesh_import.main([str(path)])
 
@@ -247,14 +684,54 @@ class AuthoredImportTests(unittest.TestCase):
 
     def test_an_unbaked_renderer_runs_the_same_albedo_bake(self):
         with tempfile.TemporaryDirectory() as directory:
-            self.assertEqual(self.bake(directory, scene=True), 0)
+            self.assertEqual(self.bake(directory, renderer()), 0)
             mesh = read_lit_mesh(pathlib.Path(directory) / "mesh.mesh")
         self.assertEqual(len(mesh.tris), 12)
+
+    def test_an_albedo_bake_runs_no_step(self):
+        steps = ("drop_masked", "visible_from_region", "light", "simplify", "densify", "face_colours",
+                 "merge_matching_colours")
+        for scene in (None, renderer()):
+            with self.subTest(scene=bool(scene)), tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
+                for name in steps:
+                    stack.enter_context(mock.patch(f"r3d.mesh_import.{name}", side_effect=AssertionError(name)))
+                self.assertEqual(self.bake(directory, scene), 0)
+                mesh = read_lit_mesh(pathlib.Path(directory) / "mesh.mesh")
+            self.assertEqual((len(mesh.tris), len(mesh.pos)), (12, 8))
+
+    def test_an_import_writes_its_mesh_beside_the_import_file_not_in_the_output_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pathlib.Path(directory, "generated").mkdir()
+            self.assertEqual(self.bake(directory, output='[output]\ndirectory = "generated"\nname = "mesh"\n'), 0)
+            beside = (pathlib.Path(directory) / "mesh.mesh").is_file()
+            elsewhere = list(pathlib.Path(directory, "generated").iterdir())
+        self.assertTrue(beside)
+        self.assertEqual(elsewhere, [])
+
+    def test_a_baked_renderer_writes_its_mesh_beside_the_scene_named_by_scene_and_object(self):
+        objects = renderer(extra="bake = true\n") + sun_object()
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(self.bake(directory, objects, head=HEAD, name="hall.scene.toml"), 0)
+            written = sorted(item.name for item in pathlib.Path(directory).glob("*.mesh"))
+            lit = read_lit_mesh(pathlib.Path(directory) / "hall.mesh.mesh")
+        self.assertEqual(written, ["hall.mesh.mesh"])
+        target = 255.0 * np.array([0.5, 0.25, 0.125])
+        self.assertFalse((np.abs(lit.rgb - target) <= 8).all(), "a lit mesh is not its albedo")
 
 
 class ClearIntersector:
     def intersects_any(self, origins, directions):
         return np.zeros(len(origins), dtype=bool)
+
+
+def sun(direction, color, intensity):
+    return {"type": "directional", "direction": direction, "color": color, "intensity": intensity,
+            "disc_degrees": 0, "rays": 1}
+
+
+def radiance(lights, normal, double_sided):
+    return light(np.array([[0.0, 0.0, 0.0]]), np.array([normal]), np.array([double_sided]), ClearIntersector(),
+                 lights, 0.5, np.random.default_rng(1))
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -270,6 +747,24 @@ class LightListTests(unittest.TestCase):
         first = light(*args, lights, 0.5, np.random.default_rng(1))
         np.testing.assert_allclose(first, [[2.0, 3.0, 0.0]])
         np.testing.assert_allclose(light(*args, lights[::-1], 0.5, np.random.default_rng(1)), first)
+
+    def test_a_double_sided_face_turns_to_the_light(self):
+        got = radiance([sun([0, 1, 0], [1, 1, 1], 1)], [0.0, -1.0, 0.0], True)
+        np.testing.assert_allclose(got, [[1.0, 1.0, 1.0]])
+
+    def test_the_order_of_every_light_type_does_not_change_the_radiance(self):
+        lights = [sun([0, 1, 0], [1, 0, 0], 2), sun([1, 0.1, 0], [0, 1, 0], 1),
+                  {"type": "sky", "color": [0, 0, 1], "intensity": 1, "rays": 1},
+                  {"type": "ambient", "color": [1, 1, 1], "intensity": 0.1}]
+        for normal in ([0.0, -1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 1.0, 0.0]):
+            for double_sided in (False, True):
+                forward = radiance(lights, normal, double_sided)
+                np.testing.assert_allclose(radiance(lights[::-1], normal, double_sided), forward)
+
+    def test_the_unlit_encoder_is_the_tone_mapped_one_without_a_tone_map(self):
+        linear = np.array([0.0, 0.1, 0.5, 1.0, 2.0])
+        np.testing.assert_array_equal(encode_srgb8(linear), to_srgb8(linear, 0.0))
+        self.assertEqual(encode_srgb8(np.array([0.5]))[0], round(255 * 0.5 ** (1 / 2.2)))
 
     def test_the_light_reader_and_bakers_agree(self):
         self.assertEqual(set(LIGHTS), set(LIGHT_FIELDS))
@@ -296,6 +791,34 @@ class DigestTests(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
+class BakeStepTests(unittest.TestCase):
+    def test_the_bake_culls_with_the_renderers_visibility_only(self):
+        own = SimpleNamespace(source="camera_path")
+        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=None, double_sided=set())
+        source = SimpleNamespace(p=np.zeros((3, 3)), uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]),
+                                 names=["m"], textures=[None], materials={})
+        seen = []
+        with mock.patch.object(mesh_import, "load_source", return_value=source),                 mock.patch.object(mesh_import, "RayMeshIntersector"), mock.patch.object(mesh_import.trimesh, "Trimesh"),                 mock.patch.object(mesh_import, "visible_triangles", side_effect=lambda s, v, *rest: seen.append(v) or np.array([True])),                 mock.patch.object(mesh_import, "shade_unlit", return_value=(np.zeros((3, 3)), np.zeros((3, 3)), np.array([[0, 1, 2]]))):
+            for visibility in (own, None):
+                mesh_import.bake_geometry(settings, SimpleNamespace(visibility=visibility, bake=False, variant=SimpleNamespace(triangles=None)), None)
+        self.assertEqual(seen, [own])
+
+    def test_check_fitted_names_what_changed_and_what_to_do(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = pathlib.Path(directory) / "m.mesh"
+            target.write_bytes(b"mesh")
+            renderer_ = SimpleNamespace(variant=SimpleNamespace(name="m"), fit=SimpleNamespace(sha256="0", recipe_sha256="r"))
+            with mock.patch("r3d.fitted_variant.recipe_digest", return_value="other"):
+                with self.assertRaisesRegex(SystemExit, "recipe changed since the fit; rerun fitted_variant.py prepare[|]fit"):
+                    mesh_import.check_fitted(None, renderer_, None, target)
+            with mock.patch("r3d.fitted_variant.recipe_digest", return_value="r"):
+                with self.assertRaisesRegex(SystemExit, "not the 0 the fit recorded; rerun fitted_variant.py"):
+                    mesh_import.check_fitted(None, renderer_, None, target)
+                with self.assertRaisesRegex(SystemExit, "gone.mesh is missing"):
+                    mesh_import.check_fitted(None, renderer_, None, target.with_name("gone.mesh"))
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
 class FittedStampTests(unittest.TestCase):
     def test_each_fitted_scene_output_matches_its_stamp(self):
         from r3d.fitted_variant import recipe_digest
@@ -306,6 +829,8 @@ class FittedStampTests(unittest.TestCase):
             for job in scene.renderers:
                 if job.renderer.fit:
                     found += 1
+                    self.assertEqual(hashlib.sha256(job.asset_path.read_bytes()).hexdigest(), job.renderer.fit.sha256,
+                                     job.asset_path.name)
                     self.assertEqual(recipe_digest(job.settings, job.renderer, scene), job.renderer.fit.recipe_sha256,
                                      job.asset_path.name)
         self.assertGreater(found, 0)
