@@ -1,148 +1,97 @@
-/*=============================================================================
- * GENERATED FILE - do not edit.
- *
- *     python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h
- *
- * The boot animation's timing constants and settings, edited as
- * main/boot/boot_anim_timeline.json and turned into this header by
- * this script. Its camera and space move by
- * boot_anim_tracks_generated.c instead.
- *===========================================================================*/
+/* GENERATED FILE - do not edit. Run tools/gen/gen_boot_anim_timeline.py. */
 #pragma once
 
 #include <stdint.h>
 
-/* how long the whole animation runs, start to black */
 #define BOOT_ANIM_MS 5500
 
-/* the axes grow out of the origin */
 #define BOOT_ANIM_AXES_MS 450
 
 #define BOOT_ANIM_GRID_START_MS 320
-/* each ring waits for the one inside */
 #define BOOT_ANIM_GRID_RING_MS 16
 
-/* how many rings the floor draws before fading out */
 #define BOOT_ANIM_GRID_RINGS 128
 
-/* radial guide lines from the origin to the floor's own edge - 0 hides them */
+/* Zero hides radial guide lines. */
 #define BOOT_ANIM_GRID_SPOKES 4
 
-/* draws each spoke as alternating dashes instead of a solid line - 0 solid, 1 dashed */
+/* Zero draws solid spokes; one draws dashed spokes. */
 #define BOOT_ANIM_GRID_SPOKE_DASH 1
 
-/* spokes start drawing outward from the origin */
 #define BOOT_ANIM_GRID_SPOKE_START_MS 2300
 
-/* how long a spoke takes to reach the floor's own edge - 0 draws the full length instantly */
+/* Zero draws the full spoke length immediately. */
 #define BOOT_ANIM_GRID_SPOKE_DRAW_MS 800
 
 #define BOOT_ANIM_GRID_FADE_MS 128
-/* the ripple is muted before this, then lerps up to full strength */
 #define BOOT_ANIM_WAVE_IN_MS 750
 
-/* the ripple is at full strength until this, then lerps back to muted */
 #define BOOT_ANIM_WAVE_OUT_MS 5500
 
 #define BOOT_ANIM_PEN_START_MS 520
-/* how long the curve takes to draw */
 #define BOOT_ANIM_PEN_MS 1980
 
-/* when the curve reaches the table's true end - independent of fade_start_ms, so it can keep drawing well past phase 1 */
 #define BOOT_ANIM_PEN_FINISH_MS 4800
 
-/* the title arrives after the curve, not during it */
 #define BOOT_ANIM_TITLE_START_MS 2450
 
-/* each letter starts this much after the one before it */
 #define BOOT_ANIM_TITLE_STAGGER_MS 170
 
-/* how long ONE letter's flight is */
 #define BOOT_ANIM_TITLE_FLIGHT_MS 500
 
-/* how far off-panel a letter starts */
 #define BOOT_ANIM_TITLE_ENTRY_PX 420
 
-/* wobble oscillations packed into the early part of the flight */
 #define BOOT_ANIM_TITLE_TURNS_PHASE 92000
 
-/* peak wobble swing right at the start */
 #define BOOT_ANIM_TITLE_AMPLITUDE_PX 15
 
-/* the small idle wave once a letter has landed */
 #define BOOT_ANIM_TITLE_WAVE_AMPLITUDE_PX 12
 
 #define BOOT_ANIM_TITLE_WAVE_PERIOD_MS 900
 #define BOOT_ANIM_TITLE_WAVE_STAGGER_MS 75
-/* integer pixel multiplier for the 8x8 title font */
 #define BOOT_ANIM_TITLE_SCALE 5
 
-/* when the idle wave starts calming back to stillness - at or past total_ms it never does, which is the default */
 #define BOOT_ANIM_TITLE_WAVE_OUT_MS 3200
 
-/* how long that calming takes, from full swing to none */
 #define BOOT_ANIM_TITLE_WAVE_FADE_MS 1500
 
-/* how far down the viewer's frame the title's own centre lands - see boot_anim.h's own comment on this section for the frame it is in */
 #define BOOT_ANIM_TITLE_VIEW_Y 40
 
-/* how far into the viewer's frame the title's own left edge starts - see boot_anim.h's own comment on this section for where the default came from */
 #define BOOT_ANIM_TITLE_VIEW_X 95
 
-/* drop shadow offset, pixels right (negative is left) - 0/0 disables it */
+/* A zero offset disables the shadow. */
 #define BOOT_ANIM_TITLE_SHADOW_DX 5
 
-/* drop shadow offset, pixels down (negative is up) */
 #define BOOT_ANIM_TITLE_SHADOW_DY 5
 
-/* shadow density, 0..255 - 0 invisible, 255 solid, between is a dithered fake transparency (see gfx_fill_rect_dither() in gfx.c) */
+/* Shadow opacity ranges from 0 (invisible) to 255 (solid). */
 #define BOOT_ANIM_TITLE_SHADOW_ALPHA 128
 
-/* the photograph starts crossing in as the function crosses out */
 #define BOOT_ANIM_IMAGE_START_MS 3500
 
-/* how long that one shared crossfade takes - 0 cuts straight to the photo */
+/* Zero makes the photograph transition immediate. */
 #define BOOT_ANIM_IMAGE_FADE_MS 800
 
-/* dissolve into the launcher */
 #define BOOT_ANIM_FADE_START_MS 4800
 
-/* one whole hue-wheel turn takes this long */
 #define BOOT_ANIM_GRID_HUE_MS 700
 
-/* wheel positions per ring outward */
 #define BOOT_ANIM_GRID_HUE_SPREAD 64
 
 #define BOOT_ANIM_GRID_WHITEN_MAX 32
 #define BOOT_ANIM_GRID_CEILING_MAX 96
 #define BOOT_ANIM_GRID_MAX 64
-/* The camera's focal length - 0 is an orthographic
- * projection (see boot_anim.h's "The projection" section), any other
- * value a perspective one; 1.0 is the "normal" lens default.
- * Authored directly as a float - it is a lens property, not a
- * position or angle, so meters/degrees do not apply. */
+/* Zero is orthographic; other values are perspective focal lengths. */
 #define BOOT_ANIM_CAMERA_FOCAL 1.0F
 
-/* The floor's ring spacing - see BOOT_ANIM_GRID_RINGS's own comment
- * in boot_anim.h. Authored in meters (grid_step_m in the JSON), like
- * a transform's own pos, and converted here the same way units() in
- * boot_anim.c does. */
+/* Floor-ring spacing in Q12 metres. */
 #define BOOT_ANIM_GRID_STEP_Q12 410
 
-/* The wave's own peak amplitude - see boot_anim.h's "The wave"
- * section. Authored in meters (wave_height_m in the JSON), the same
- * as grid_step_m just above; 0 (the default for a file baked before
- * this existed - see this script's own backward-compatibility
- * comment) turns the ripple off outright, not just down. */
+/* Peak wave amplitude in Q12 metres; zero disables the ripple. */
 #define BOOT_ANIM_WAVE_HEIGHT_Q12 5120
 
-/* The wave's own crest-to-crest distance - see boot_anim.h's "The
- * wave" section. Also meters, also authored (wave_wavelength_m in
- * the JSON). */
+/* Crest-to-crest distance in Q12 metres. */
 #define BOOT_ANIM_WAVE_WAVELENGTH_Q12 20480
 
-/* How long one full cycle takes to pass a fixed point - milliseconds,
- * authored (wave_period_ms in the JSON), the same "how long one
- * cycle takes" unit title_wave_period_ms already is for the title's
- * own wobble. */
+/* Wave period in milliseconds. */
 #define BOOT_ANIM_WAVE_PERIOD_MS 800
