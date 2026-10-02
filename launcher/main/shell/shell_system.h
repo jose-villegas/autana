@@ -28,7 +28,8 @@ typedef struct shell_system {
     /* Into the framebuffer, before the app's frame() draws over it. Runs only
      * on a pass that overlaps the present. */
     void (*compose)(uint32_t dt_ms);
-    /* Over whatever the pass drew, before it is presented. */
+    /* Over whatever the pass drew, before it is presented; full-framebuffer
+     * layout only, since band mode has no framebuffer to draw into. */
     void (*overlay)(void);
     /* A full redraw was asked for: drop anything cached beyond the
      * framebuffer. */
