@@ -15,6 +15,7 @@
 #include "asset/asset_pack.h"
 #include "asset/asset_store.h"
 #include "render/r3d_lit_mesh.h"
+#include "test_alloc.h"
 
 #ifndef DEVICE_BUILD
 #include "asset/asset_file.h"
@@ -98,6 +99,7 @@ seal(uint8_t* pack, uint32_t total) {
 
 typedef struct {
     uint8_t* pack;
+    void* raw;
     uint8_t* entry;
     uint32_t total;
     uint32_t entry_size;
@@ -105,7 +107,8 @@ typedef struct {
 
 static fixture_t
 fixture(void) {
-    fixture_t f = {.pack = malloc(BUFFER_BYTES), .entry = malloc(128)};
+    fixture_t f = {.entry = malloc(128)};
+    f.pack = test_alloc_aligned(BUFFER_BYTES, ASSET_PACK_BASE_ALIGN, &f.raw);
     TEST_ASSERT_NOT_NULL(f.pack);
     TEST_ASSERT_NOT_NULL(f.entry);
     f.entry_size = make_mesh_entry(f.entry);
@@ -116,7 +119,7 @@ fixture(void) {
 static void
 release(fixture_t* f) {
     free(f->entry);
-    free(f->pack);
+    test_free_aligned(f->raw);
 }
 
 static void
@@ -311,15 +314,15 @@ test_an_entry_row_is_read_by_its_index_and_an_index_past_the_table_is_not_found(
 static void
 test_a_base_that_is_not_16_byte_aligned_is_refused(void) {
     fixture_t f = fixture();
-    uint8_t* shifted = malloc(BUFFER_BYTES + 16);
-    TEST_ASSERT_NOT_NULL(shifted);
-    uint8_t* aligned = shifted + (16 - ((uintptr_t)shifted % 16)) % 16;
+    void* raw;
+    uint8_t* aligned = test_alloc_aligned(BUFFER_BYTES + 16, ASSET_PACK_BASE_ALIGN, &raw);
+    TEST_ASSERT_NOT_NULL(aligned);
     memcpy(aligned + 8, f.pack, f.total);
     asset_pack_t pack;
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, asset_pack_open(&pack, aligned + 8, f.total));
     memcpy(aligned, f.pack, f.total);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, aligned, f.total));
-    free(shifted);
+    test_free_aligned(raw);
     release(&f);
 }
 
