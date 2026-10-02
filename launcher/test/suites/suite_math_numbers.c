@@ -9,6 +9,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "suites.h"
 #include "unity.h"
@@ -394,6 +395,95 @@ test_fixed_matrix_apply_matches_float(void) {
     assert_x_near_f(mat4f_apply(&mf, p), mat4x_apply(&mx, vec3x_from_vec3f(p)), 1e-3F);
 }
 
+/* A swizzle family as rows of name and function, built by the template's own
+ * iterator. The source holds 10, 20 and 30, so the letters in a name alone say
+ * what the result holds; the row count catches an iterator that skips one. */
+#define SWIZZLE_ROW2(D, S, a, b)    {#a #b, S##_##a##b},
+#define SWIZZLE_ROW3(D, S, a, b, c) {#a #b #c, S##_##a##b##c},
+#define SWIZZLE_GOT2(r)             {(int)(r).x, (int)(r).y}
+#define SWIZZLE_GOT3(r)             {(int)(r).x, (int)(r).y, (int)(r).z}
+
+#define SWIZZLE_CHECK(D, S, N, K, ...)                                                                                 \
+    static void check_##S##_to_##D(void) {                                                                             \
+        const S##_t v = {__VA_ARGS__};                                                                                 \
+        const struct {                                                                                                 \
+            const char* name;                                                                                          \
+            D##_t (*fn)(S##_t);                                                                                        \
+        } rows[] = {MATH_SWIZZLE_EACH##K(N, SWIZZLE_ROW##K, D, S)};                                                    \
+        const int count = (int)(sizeof rows / sizeof rows[0]);                                                         \
+        TEST_ASSERT_EQUAL_INT(K == 2 ? N * N : N * N * N, count);                                                      \
+        for (int i = 0; i < count; i++) {                                                                              \
+            const D##_t r = rows[i].fn(v);                                                                             \
+            const int got[] = SWIZZLE_GOT##K(r);                                                                       \
+            for (int c = 0; c < K; c++) {                                                                              \
+                TEST_ASSERT_EQUAL_INT_MESSAGE(10 * (rows[i].name[c] - 'w'), got[c], rows[i].name);                     \
+            }                                                                                                          \
+            for (int j = 0; j < i; j++) {                                                                              \
+                TEST_ASSERT_NOT_EQUAL_INT_MESSAGE(0, strcmp(rows[i].name, rows[j].name), rows[i].name);                \
+            }                                                                                                          \
+        }                                                                                                              \
+    }
+
+SWIZZLE_CHECK(vec2f, vec2f, 2, 2, 10.0F, 20.0F)
+SWIZZLE_CHECK(vec2i, vec2i, 2, 2, 10, 20)
+SWIZZLE_CHECK(vec2s, vec2s, 2, 2, 10, 20)
+SWIZZLE_CHECK(vec2x, vec2x, 2, 2, 10, 20)
+SWIZZLE_CHECK(vec3f, vec3f, 3, 3, 10.0F, 20.0F, 30.0F)
+SWIZZLE_CHECK(vec3i, vec3i, 3, 3, 10, 20, 30)
+SWIZZLE_CHECK(vec3s, vec3s, 3, 3, 10, 20, 30)
+SWIZZLE_CHECK(vec3x, vec3x, 3, 3, 10, 20, 30)
+SWIZZLE_CHECK(vec2f, vec3f, 3, 2, 10.0F, 20.0F, 30.0F)
+SWIZZLE_CHECK(vec2i, vec3i, 3, 2, 10, 20, 30)
+SWIZZLE_CHECK(vec2s, vec3s, 3, 2, 10, 20, 30)
+SWIZZLE_CHECK(vec2x, vec3x, 3, 2, 10, 20, 30)
+SWIZZLE_CHECK(vec3f, vec2f, 2, 3, 10.0F, 20.0F)
+SWIZZLE_CHECK(vec3i, vec2i, 2, 3, 10, 20)
+SWIZZLE_CHECK(vec3s, vec2s, 2, 3, 10, 20)
+SWIZZLE_CHECK(vec3x, vec2x, 2, 3, 10, 20)
+
+static void
+test_every_swizzle_family_moves_the_named_components_for_every_number_type(void) {
+    void (*const families[])(void) = {
+        check_vec2f_to_vec2f, check_vec2i_to_vec2i, check_vec2s_to_vec2s, check_vec2x_to_vec2x,
+        check_vec3f_to_vec3f, check_vec3i_to_vec3i, check_vec3s_to_vec3s, check_vec3x_to_vec3x,
+        check_vec3f_to_vec2f, check_vec3i_to_vec2i, check_vec3s_to_vec2s, check_vec3x_to_vec2x,
+        check_vec2f_to_vec3f, check_vec2i_to_vec3i, check_vec2s_to_vec3s, check_vec2x_to_vec3x,
+    };
+    for (size_t i = 0; i < sizeof families / sizeof families[0]; i++) {
+        families[i]();
+    }
+}
+
+static void
+test_a_cross_dimension_swizzle_returns_the_other_vector_type(void) {
+    const vec3f_t p = {1.5F, -2.0F, 4.0F};
+    const vec2f_t ground = vec3f_xz(p);
+    TEST_ASSERT_TRUE(_Generic(vec3f_xz(p), vec2f_t: true, default: false));
+    TEST_ASSERT_TRUE(_Generic(vec2x_yxy((vec2x_t){0, 0}), vec3x_t: true, default: false));
+    TEST_ASSERT_TRUE(vec2f_equal((vec2f_t){1.5F, 4.0F}, ground));
+    TEST_ASSERT_TRUE(vec3s_equal((vec3s_t){-7, 3, -7}, vec2s_yxy((vec2s_t){3, -7})));
+}
+
+static void
+test_a_vec3_from_a_vec2_and_z_keeps_every_component_for_every_number_type(void) {
+    const struct {
+        const char* type;
+        bool built;
+    } rows[] = {
+        {"f", vec3f_equal((vec3f_t){1.5F, -2.0F, 3.0F}, vec3f_from_xy((vec2f_t){1.5F, -2.0F}, 3.0F))},
+        {"i", vec3i_equal((vec3i_t){INT32_MIN, -2, INT32_MAX}, vec3i_from_xy((vec2i_t){INT32_MIN, -2}, INT32_MAX))},
+        {"s", vec3s_equal((vec3s_t){INT16_MIN, -2, INT16_MAX}, vec3s_from_xy((vec2s_t){INT16_MIN, -2}, INT16_MAX))},
+        {"x",
+         vec3x_equal(to_x(1.5F, -2.0F, 3.0F), vec3x_from_xy(vec2x_from_vec2f((vec2f_t){1.5F, -2.0F}), 3 * MATHX_ONE))},
+        {"f round trip",
+         vec3f_equal((vec3f_t){1.0F, 2.0F, 3.0F}, vec3f_from_xy(vec3f_xy((vec3f_t){1.0F, 2.0F, 3.0F}), 3.0F))},
+    };
+
+    for (size_t i = 0; i < sizeof rows / sizeof rows[0]; i++) {
+        TEST_ASSERT_TRUE_MESSAGE(rows[i].built, rows[i].type);
+    }
+}
+
 void
 suite_math_numbers(void) {
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
@@ -417,6 +507,9 @@ suite_math_numbers(void) {
     RUN_TEST(test_slerp_of_equal_and_opposite_quaternions_and_across_its_threshold);
     RUN_TEST(test_from_basis_picks_the_largest_diagonal_for_off_axis_half_turns);
     RUN_TEST(test_fixed_angles_negative_and_beyond_a_turn);
+    RUN_TEST(test_every_swizzle_family_moves_the_named_components_for_every_number_type);
+    RUN_TEST(test_a_cross_dimension_swizzle_returns_the_other_vector_type);
+    RUN_TEST(test_a_vec3_from_a_vec2_and_z_keeps_every_component_for_every_number_type);
 }
 
 SUITE_REGISTER(suite_math_numbers);
