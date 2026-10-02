@@ -27,9 +27,7 @@
 
 #include "unity.h"
 
-#include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 
 #include "board/board.h"
 #include "freertos/FreeRTOS.h"
@@ -40,6 +38,8 @@
 #include "gfx/gfx_test.h"
 #include "input/touch.h"
 #include "input/touch_fsm.h"
+#include "util/memory.h"
+#include "util/timing.h"
 
 static const char* TAG = "device_tests";
 
@@ -772,9 +772,9 @@ test_present_completes(void) {
      * timeout, which is the correct outcome. */
     gfx_clear(gfx_rgb(0x001020));
 
-    const int64_t started = esp_timer_get_time();
+    const int64_t started = timing_now_us();
     gfx_present();
-    const int64_t elapsed_us = esp_timer_get_time() - started;
+    const int64_t elapsed_us = timing_now_us() - started;
 
     ESP_LOGI(TAG, "gfx_present() took %lld us", (long long)elapsed_us);
 
@@ -813,9 +813,9 @@ test_repeated_presents_stay_in_sync(void) {
 
 static int64_t
 time_present(void) {
-    const int64_t start = esp_timer_get_time();
+    const int64_t start = timing_now_us();
     gfx_present();
-    return esp_timer_get_time() - start;
+    return timing_now_us() - start;
 }
 
 static void
@@ -857,9 +857,9 @@ test_full_present_cost_splits_into_bus_time_and_overhead(void) {
     gfx_clear(gfx_rgb(0x102030)); /* marks the whole screen dirty */
     const int64_t present_us = time_present();
 
-    const int64_t raw_start = esp_timer_get_time();
+    const int64_t raw_start = timing_now_us();
     gfx_present_raw_full_frame_for_test();
-    const int64_t raw_us = esp_timer_get_time() - raw_start;
+    const int64_t raw_us = timing_now_us() - raw_start;
 
     const int64_t overhead_us = present_us - raw_us;
 
@@ -1311,9 +1311,9 @@ memtp_best_us(void (*op)(void*, void*, size_t), void* a, void* b, size_t bytes, 
     for (int i = 0; i < MEMTP_REPS; i++) {
         void* window_a = a_step ? (uint8_t*)a + (size_t)i * a_step : a;
         void* window_b = b_step ? (uint8_t*)b + (size_t)i * b_step : b;
-        const int64_t t0 = esp_timer_get_time();
+        const int64_t t0 = timing_now_us();
         op(window_a, window_b, bytes);
-        const int64_t dt = esp_timer_get_time() - t0;
+        const int64_t dt = timing_now_us() - t0;
         best = dt < best ? dt : best;
     }
     return best;
@@ -1379,10 +1379,10 @@ test_memory_throughput_psram_against_internal(void) {
     const size_t frame = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
     const size_t psram_step = (frame - sample) / (MEMTP_REPS - 1);
 
-    uint8_t* int_a = heap_caps_malloc(sample, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    uint8_t* int_b = heap_caps_malloc(sample, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    uint8_t* ps_a = heap_caps_malloc(frame, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    uint8_t* ps_b = heap_caps_malloc(frame, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    uint8_t* int_a = memory_alloc(sample, MEMORY_INTERNAL);
+    uint8_t* int_b = memory_alloc(sample, MEMORY_INTERNAL);
+    uint8_t* ps_a = memory_alloc(frame, MEMORY_PSRAM);
+    uint8_t* ps_b = memory_alloc(frame, MEMORY_PSRAM);
     const bool ok = int_a && int_b && ps_a && ps_b;
 
     if (ok) {
@@ -1409,10 +1409,10 @@ test_memory_throughput_psram_against_internal(void) {
         memtp_log("copy-rows", "psram>psram", frame, memtp_best_us(memtp_op_copy_rows, ps_b, ps_a, frame, 0, 0));
     }
 
-    heap_caps_free(int_a);
-    heap_caps_free(int_b);
-    heap_caps_free(ps_a);
-    heap_caps_free(ps_b);
+    memory_free(int_a);
+    memory_free(int_b);
+    memory_free(ps_a);
+    memory_free(ps_b);
     TEST_ASSERT_TRUE_MESSAGE(ok, "could not allocate the throughput buffers");
 }
 
@@ -1443,19 +1443,19 @@ test_present_overlap_against_serial(void) {
 
     gfx_set_present_async(true);
     gfx_mark_all_dirty();
-    const int64_t overlap_start = esp_timer_get_time();
+    const int64_t overlap_start = timing_now_us();
     gfx_present_begin();
     run_overlap_busy_work();
     gfx_present_wait();
-    const int64_t overlap_us = esp_timer_get_time() - overlap_start;
+    const int64_t overlap_us = timing_now_us() - overlap_start;
 
     gfx_set_present_async(false);
     gfx_mark_all_dirty();
-    const int64_t serial_start = esp_timer_get_time();
+    const int64_t serial_start = timing_now_us();
     gfx_present_begin();
     run_overlap_busy_work();
     gfx_present_wait();
-    const int64_t serial_us = esp_timer_get_time() - serial_start;
+    const int64_t serial_us = timing_now_us() - serial_start;
 
     gfx_set_present_async(was_async);
 
