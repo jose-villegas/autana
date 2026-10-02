@@ -59,7 +59,7 @@ the step does not run.
 | Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
 |---|---|---|---|---|---|
 | `[visibility]`: `camera_region` | `rounds`; `source` | Culls what the camera's region can see. | `source = "camera_region"`. | Seconds to minutes / fewer triangles. | [Import file](#import-file) |
-| `[visibility]`: `camera_path` | `source`, `every_ms`, `size`; `samples`, `margin` | Culls what camera-path poses can see. On the measured scene it keeps 116,917 of 245,465 source triangles, compared with the region's 211,004; it cuts the full mesh from 58.6 to 50.1 ms (−14.5%), with 0 hole pixels for culled lite and 4 to 8 px in each of 3 frames for culled full along the path. The full results live in that scene's tools README. | `samples` 3, `margin` 0. | Minutes / fewer triangles, about 15% less frame time on the full mesh. | [Import file](#import-file) |
+| `[visibility]`: `camera_path` | `source`, `every_ms`, `size`; `samples`, `margin` | Culls what camera-path poses can see. On the measured scene it keeps 116,917 of 245,465 source triangles, compared with the region's 211,004; it cuts the full mesh from 58.6 to 50.1 ms (−14.5%), with 0 hole pixels for culled lite and 4 to 8 px in each of 3 frames for culled full along the path. | `samples` 3, `margin` 0. | Minutes / fewer triangles, about 15% less frame time on the full mesh. | [Import file](#import-file) |
 | `variants.visibility` | The keys of `[visibility]` | Overrides the import's visibility for one variant. | Inherits `[visibility]`. | As `[visibility]`. | [Import file](#import-file) |
 
 ### Lighting
@@ -83,7 +83,7 @@ keep the front's knee unless its frame cost misses the target. Each point is a
 mesh, placed by held-out $`\Delta E`$ against predicted frame time; meshes no
 other mesh beats on both axes form the front. On the measured scene the knee
 is about 8.7k triangles, where the full budget's last 8.7k triangles buy about
-0.34 $`\Delta E`$. The appearance-fit results live in that scene's tools README.
+0.34 $`\Delta E`$.
 
 ![Held-out error against predicted frame time](images/appearance-pareto.png)
 
@@ -467,7 +467,7 @@ under it. The crop sheet shows the places where simplifier and fit differ
 most, with the reference above each crop.
 
 ![Simplifier against the reference](../images/render/appearance-lite-reference.png)
-![Fitted mesh against the reference](../images/render/appearance-fit-reference.png)
+![Fitted mesh against the reference](../images/render/appearance-chosen-heat.png)
 ![Simplifier and fitted mesh, largest differences](../images/render/appearance-lite-fitted-reference.crops.png)
 
 ```mermaid
@@ -490,8 +490,8 @@ simplifier's mesh and against the reference, and the heatmap sheet. A
 scene's example lives beside its own tools; nothing refreshes it, since the
 fit needs a CUDA GPU and its own environment
 ([`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md#appearance-fit)).
-What a fit achieves on a scene, held-out error against board time, is measured in
-that scene's tools README.
+What a fit achieves on a scene, held-out error against board time, is measured
+in that scene's tools README.
 
 ### The fit's objective
 
@@ -554,8 +554,7 @@ at once, up to a larger budget, and is fitted again. *When:* to grow a fit
 instead of starting a finer one from the simplifier. *Cost:* one more fit.
 On the measured scene, refining reaches $`\Delta E`$ 5.223 at 8,035 triangles
 and 5.153 at 10,382, against the path start fitted at the 8,672 and 12,000
-budgets, which reaches 5.220 and 5.029, so it does not move the plateau. The
-appearance-fit results live in that scene's tools README.
+budgets, which reach 5.220 and 5.029, so it does not move the plateau.
 
 **The normal term.** *What:* colour alone can be matched by geometry that is
 wrong and shows it from another view. The reference renderer also writes the
@@ -566,17 +565,16 @@ colour term's business, through the scene's clear colour. *When:* always; it
 leaves ΔE where it was and brings the normals back toward the source. *Cost:*
 a second drawing per view. The error reported beside ΔE is the mean angle:
 
-On the measured scene, $`\lambda_n`$ 0 / 0.1 / 0.3 / 1 gives $`\Delta E`$
-5.220 / 5.247 / 5.268 / 5.232 and normal error 18.6 / 17.1 / 16.3 / 14.8°.
-$`\lambda_n = 1`$ recovers geometry within 0.05 $`\Delta E`$. The heatmap
-shows the normal error that it removes; the appearance-fit results live in
-that scene's tools README.
-
-![Normal angle heatmaps](images/appearance-normal-heat.png)
-
 ```math
 \theta = \frac{1}{|\Omega^{\cap}|}\sum_{p \in \Omega^{\cap}} \arccos\!\left(\hat{n}_p \cdot n^{\mathrm{ref}}_p\right)
 ```
+
+On the measured scene, $`\lambda_n`$ 0 / 0.1 / 0.3 / 1 gives $`\Delta E`$
+5.220 / 5.247 / 5.268 / 5.232 and normal error 18.6 / 17.1 / 16.3 / 14.8°.
+$`\lambda_n = 1`$ recovers geometry within 0.05 $`\Delta E`$. The heatmap
+shows the normal error that it removes.
+
+![Normal angle heatmaps](images/appearance-normal-heat.png)
 
 **The cost model.** A frame's time from pose $v$ is linear in what the
 renderer does: a constant, the triangles of the clusters in view $`N_{s,v}`$
@@ -598,8 +596,7 @@ On the measured scene it is 21.4 ms + 1.14 $`\mu\mathrm{s}`$ per drawn
 triangle + 0.51 $`\mu\mathrm{s}`$ per row + 0.028 $`\mu\mathrm{s}`$ per pixel
 + 22.7 $`\mu\mathrm{s}`$ per cluster. Its $`R^2`$ is 0.983 and it predicts six
 meshes outside its fit within 1.3 ms. The 21.4 ms constant leaves too little
-time for a 30 fps frame and exceeds a 60 fps frame before drawing; the
-appearance-fit results live in that scene's tools README.
+time for a 30 fps frame and exceeds a 60 fps frame before drawing.
 
 **The cost term.** *What:* $`D_v`$, $`\rho_t`$ and $`\alpha_t`$ follow the vertex
 positions, so the fit can trade appearance against predicted time with a
@@ -608,8 +605,7 @@ option; on the meshes it was tried on, a smaller budget bought the same time
 for less error. *Cost:* the fit runs about three times longer.
 
 On the measured scene its weight trades 0.2–0.6 $`\Delta E`$ for 4–7 ms, no
-better than a smaller budget. The appearance-fit results live in that scene's
-tools README.
+better than a smaller budget.
 
 The whole objective, with $\lambda$, $`\lambda_n`$ and $\kappa$ the weights of
 the Laplacian, normal and cost terms:

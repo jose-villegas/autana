@@ -59,7 +59,7 @@ def canonical(value):
         return None
     if isinstance(value, SimpleNamespace):
         return {name: canonical(item) for name, item in sorted(vars(value).items())
-                if not isinstance(item, pathlib.Path)}
+                if name != "seed_given" and not isinstance(item, pathlib.Path)}
     if isinstance(value, dict):
         return {name: canonical(item) for name, item in sorted(value.items())}
     if isinstance(value, (list, tuple)):
