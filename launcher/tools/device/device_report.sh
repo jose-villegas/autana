@@ -164,13 +164,13 @@ device_report_capture() {
         # Unquoted on purpose: a caller declares zero or more flags in one string.
         # shellcheck disable=SC2086
         set -- "$@" $report_build_flags
-        autana ${_dr_board:+--board "$_dr_board"} --owner "$_dr_owner" suite "$@"
+        autana ${_dr_board:+--board "$_dr_board"} --owner "$_dr_owner" --wait 3600 suite "$@"
     else
         set -- "$report_timeout" --out "$_dr_raw" --project "$report_project"
         echo "=== Building and capturing the self-test run ==="
         # shellcheck disable=SC2086
         set -- "$@" $report_build_flags
-        autana ${_dr_board:+--board "$_dr_board"} --owner "$_dr_owner" selftest "$@"
+        autana ${_dr_board:+--board "$_dr_board"} --owner "$_dr_owner" --wait 3600 selftest "$@"
     fi
 }
 
@@ -215,7 +215,7 @@ device_report_finish() {
     _dr_final=$?
     if [ "$_dr_do_restore" -eq 1 ]; then
         echo "=== Restoring the release firmware ==="
-        autana ${_dr_board:+--board "$_dr_board"} --owner "$_dr_owner" flash release --quiet \
+        autana ${_dr_board:+--board "$_dr_board"} --owner "$_dr_owner" --wait 3600 flash release --quiet \
             --project "$_dr_worktree" \
             || echo "WARNING: could not restore the release firmware - the device may still be on build.diag"
     else

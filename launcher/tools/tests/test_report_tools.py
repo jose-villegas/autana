@@ -160,7 +160,7 @@ class DeviceReportArgumentsTest(unittest.TestCase):
         [call] = self.device_calls()
         argv = call.split()
         self.assertEqual(argv[:3], ["--owner", "device_report", "t"])
-        self.assertEqual(argv[3], "selftest")
+        self.assertEqual(argv[3:6], ["--wait", "3600", "selftest"])
         self.assertIn("--out", argv)
         self.assertIn("--project", argv)
         # #454 removed these from every command; a leftover here means
@@ -173,7 +173,7 @@ class DeviceReportArgumentsTest(unittest.TestCase):
         [call] = self.device_calls()
         argv = call.split()
         self.assertEqual(argv[:3], ["--owner", "device_report", "t"])
-        self.assertEqual(argv[3], "suite")
+        self.assertEqual(argv[3:6], ["--wait", "3600", "suite"])
         self.assertIn("run_gfx_suite", argv)
         self.assertIn("--runs", argv)
         self.assertIn("--flash", argv)
