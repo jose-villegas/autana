@@ -1,46 +1,41 @@
 #!/usr/bin/env node
-// Validates every formula in the repo's tracked Markdown the way GitHub renders it:
-// ```math fences, $$...$$, $...$ and $`...`$. GitHub shows a broken formula as raw
-// text or a red error box, never a failed check; this is the only thing that catches it.
+// Validates every formula in the repo's tracked Markdown for GitHub, which shows a broken
+// formula as raw text or a red box and never fails a check. It enforces the forms that
+// Markdown leaves alone, and renders each formula with GitHub's MathJax configuration.
 //
 //   node scripts/gates/check-math.mjs                 # every git-tracked *.md
 //   node scripts/gates/check-math.mjs path/to/file.md # one file or directory
-//   node scripts/gates/check-math.mjs --verbose       # also list the formulas that passed
-//   node scripts/gates/check-math.mjs --stdin <label> # one file's content from stdin,
-//                                                      # reported under <label>
+//   node scripts/gates/check-math.mjs --verbose       # also list the files that passed
+//   node scripts/gates/check-math.mjs --stdin <label> # one file's content from stdin
 //
-// Two halves, both copied from GitHub rather than guessed:
-//
-// Finding the formulas. GitHub parses the Markdown first and looks for `$` only in the
-// text it produced, so backslash escapes are already gone (`\{` reaches MathJax as `{`)
-// and a `_` or `*` pair that became emphasis splits a formula into plain text. Text
-// inside emphasis, <b>, a link or code is never searched. The delimiter rules below were
-// measured by rendering probe files in a secret gist's file view (the same renderer as a
-// repository file) and are pinned by scripts/gates/tests/test_check_math.mjs.
+// Finding formulas. GitHub parses the Markdown first and looks for `$` only in the text
+// that comes out, outside emphasis, <b>, links, code and footnotes. Those delimiter rules
+// were measured by rendering probe files in a secret gist's file view (the renderer of a
+// repository file; `gh api markdown` renders a comment instead) and are pinned by
+// tests/test_check_math.mjs. Rather than predict every rewrite, the gate refuses what
+// Markdown can rewrite: `_`, `*` or a backslash escape inside `$...$`, and `$$`.
 //
 // Rendering. GitHub's <math-renderer> element, chunk-lazy-element-math-renderer-*.js on
-// github.githubassets.com, runs MathJax 3.2.0 with AllPackages minus REMOVED_PACKAGES,
-// maxMacros 1000, refuses any expression naming a REFUSED_MACROS entry ("The following
-// macros are not allowed: ..."), and refuses expressions past BRACE_LIMIT_* opening
-// braces. To refresh: open a repository .md file with a formula on github.com, find that
-// chunk in the network panel, and copy its `h=[...]` list, its `packages:{"[-]":[...]}`
-// and its brace limits here. noundefined is dropped on top, so an undefined macro, which
-// GitHub paints red, fails here instead of passing.
+// github.githubassets.com, runs MathJax 3.2.0 with AllPackages minus REMOVED_PACKAGES and
+// MAX_MACROS, refuses any formula naming a REFUSED_MACROS entry ("The following macros
+// are not allowed: ..."), and stops past the BRACE_LIMIT_* opening braces. To refresh:
+// open a repository .md file with a formula on github.com, find that chunk in the
+// network panel, and copy its `h=[...]`, `packages:{"[-]":[...]}`, `maxMacros` and brace
+// limits here. noundefined is dropped on top, so an undefined macro, which GitHub
+// paints red, fails here.
 //
-// Requires mathjax-full@3.2.0 and markdown-it@14.1.0, installed globally or beside this
-// script; see docs/tools/Math-Formulas.md.
+// Dependencies are pinned in package.json beside this script: npm ci --prefix scripts/gates.
+// See docs/tools/Math-Formulas.md.
 
-import { execFile, execSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { join, relative, resolve } from 'node:path';
+import { relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const execFileAsync = promisify(execFile);
-
-export const MATHJAX_VERSION = '3.2.0';
-export const MARKDOWN_IT_VERSION = '14.1.0';
 
 export const REFUSED_MACROS = [
   'DeclareMathOperator', 'DeclarePairedDelimiters', 'renewtagform', 'newtagform', 'colorbox',
@@ -48,6 +43,7 @@ export const REFUSED_MACROS = [
   'definecolor', 'mathchoice', 'unicode', 'mmlToken',
 ];
 export const REMOVED_PACKAGES = ['noerrors', 'bbox', 'html', 'require', 'newcommand', 'action', 'colortbl'];
+export const MAX_MACROS = 1000;
 export const BRACE_LIMIT_FORMULA = 1000;
 export const BRACE_LIMIT_PAGE = 2000;
 
@@ -55,53 +51,55 @@ export const BRACE_LIMIT_PAGE = 2000;
 const SKIPPED_TAGS = new Set(['em', 'b', 'a', 'code', 'pre']);
 const WHITESPACE = /\s/;
 const OPENER_PRECEDER = /[\s(]/;
-const CLOSER_FORBIDDEN_FOLLOWER = /[A-Za-z0-9_`]/;
+const GITHUB_RULES = { opener: OPENER_PRECEDER, closerForbidden: /[A-Za-z0-9_`]/ };
+// Reading the source, Markdown's own `*`, `_`, `~`, `[` and `>` may sit against a `$`
+// that GitHub, after removing them, accepts.
+const WRITTEN_RULES = { opener: /[\s(*_~[>]/, closerForbidden: /[A-Za-z0-9`]/ };
+const FOOTNOTE_DEFINITION = /^\s{0,3}\[\^[^\]]+\]:/;
+
+export const INSTALL_HINT = 'npm ci --prefix scripts/gates';
 
 // ---------------------------------------------------------------------------------------
-// Dependencies: beside this script first, then npm's global root, which is where CI and
-// a developer's `npm install -g` put them.
+// Dependencies, from scripts/gates/node_modules, at the versions package.json pins.
 
 let deps = null;
 
-function globalNodeModules() {
-  try {
-    return execSync('npm root -g', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-  } catch {
-    return null;
-  }
+export function pinnedVersions() {
+  const manifest = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+  return manifest.dependencies;
 }
 
-export function loadDependencies() {
-  if (deps) {
-    return deps;
-  }
-  const roots = [fileURLToPath(import.meta.url)];
-  const globalRoot = globalNodeModules();
-  if (globalRoot) {
-    roots.push(join(globalRoot, 'noop.js'));
-  }
-  for (const root of roots) {
-    const require = createRequire(root);
+// null when the pinned versions are installed, else what is wrong.
+export function dependencyProblem(pins = pinnedVersions()) {
+  const require = createRequire(fileURLToPath(import.meta.url));
+  for (const [name, wanted] of Object.entries(pins)) {
+    let found;
     try {
-      const MarkdownIt = require('markdown-it');
-      const version = require('mathjax-full/package.json').version;
-      deps = { MarkdownIt, require, version };
-      return deps;
+      found = require(`${name}/package.json`).version;
     } catch {
-      // try the next root
+      return `${name} is not installed`;
+    }
+    if (found !== wanted) {
+      return `${name} ${found} is installed; package.json pins ${wanted}`;
     }
   }
   return null;
 }
 
-export const INSTALL_HINT = `npm install -g mathjax-full@${MATHJAX_VERSION} markdown-it@${MARKDOWN_IT_VERSION}`;
+export function loadDependencies() {
+  if (!deps) {
+    const require = createRequire(fileURLToPath(import.meta.url));
+    deps = { MarkdownIt: require('markdown-it'), require };
+  }
+  return deps;
+}
 
 // ---------------------------------------------------------------------------------------
 // Finding the formulas.
 
 // `$` and `$$` delimiters in one run of text that GitHub sees as a single text node.
 // Returns [{ start, end, delimiter, content }] with offsets into `text`.
-export function scanDollars(text) {
+export function scanDollars(text, rules = GITHUB_RULES) {
   const found = [];
   let i = 0;
   while (i < text.length) {
@@ -112,7 +110,7 @@ export function scanDollars(text) {
     const width = text[i + 1] === '$' ? 2 : 1;
     const before = i > 0 ? text[i - 1] : '';
     const first = text[i + width];
-    if ((before && !OPENER_PRECEDER.test(before)) || first === undefined || WHITESPACE.test(first) || first === '$') {
+    if ((before && !rules.opener.test(before)) || first === undefined || WHITESPACE.test(first) || first === '$') {
       i += width;
       continue;
     }
@@ -120,13 +118,8 @@ export function scanDollars(text) {
     if (close === -1) {
       break;
     }
-    if (isCloser(text, close, width)) {
-      found.push({
-        start: i,
-        end: close + width,
-        delimiter: '$'.repeat(width),
-        content: text.slice(i + width, close),
-      });
+    if (isCloser(text, close, width, rules)) {
+      found.push({ start: i, end: close + width, delimiter: '$'.repeat(width), content: text.slice(i + width, close) });
       i = close + width;
     } else {
       i += width;
@@ -135,12 +128,12 @@ export function scanDollars(text) {
   return found;
 }
 
-function isCloser(text, at, width) {
+function isCloser(text, at, width, rules) {
   if (width === 2 && text[at + 1] !== '$') {
     return false;
   }
   const after = text[at + width];
-  if (after !== undefined && CLOSER_FORBIDDEN_FOLLOWER.test(after)) {
+  if (after !== undefined && rules.closerForbidden.test(after)) {
     return false;
   }
   // A single `$` with a space on both sides is a literal dollar, never a delimiter.
@@ -157,41 +150,13 @@ function lineOf(text, offset) {
   return line;
 }
 
-// A paragraph that is nothing but `$$ ... $$` is display maths even with whitespace
-// after the opener, which inline `$$` refuses. GitHub writes such a paragraph back out
-// after parsing it: escapes resolved, emphasis as `_`.
-const DISPLAY_PARAGRAPH = /^\$\$([\s\S]*?)\$\$$/;
-
-function displayParagraph(children) {
-  const text = children
-    .map((t) => {
-      if (t.type === 'softbreak' || t.type === 'hardbreak') {
-        return '\n';
-      }
-      if (t.type === 'em_open' || t.type === 'em_close') {
-        return '_';
-      }
-      if (t.type === 'code_inline') {
-        return `${t.markup}${t.content}${t.markup}`;
-      }
-      return t.type === 'text' || t.type === 'html_inline' ? t.content : t.markup || '';
-    })
-    .join('');
-  const match = DISPLAY_PARAGRAPH.exec(text);
-  return match && !match[1].includes('$$') ? text : null;
-}
-
-// GitHub doubles a backslash that ends a line of display maths, so `x\` reaches MathJax
+// GitHub doubles a backslash that ends a line of a math fence, so `x\` reaches MathJax
 // as `x\\`, a line break.
 export function displayLines(text) {
   return text.replace(/\\$/gm, '\\\\');
 }
 
-function inlineFormulas(children, baseLine, isWholeParagraph) {
-  const whole = isWholeParagraph ? displayParagraph(children) : null;
-  if (whole) {
-    return [{ line: baseLine, delimiter: '$$', source: displayLines(whole), display: true }];
-  }
+function inlineFormulas(children, baseLine) {
   const formulas = [];
   const runs = [];
   let run = null;
@@ -208,12 +173,12 @@ function inlineFormulas(children, baseLine, isWholeParagraph) {
   // $`...`$: a run ending in `$`, the code span, and a text starting with `$`.
   const codeForm = (token, next) => {
     if (!run || !run.text.endsWith('$') || !next || next.type !== 'text' || !next.content.startsWith('$')) {
-      return false;
+      return;
     }
     const at = run.text.length - 1;
     const before = at > 0 ? run.text[at - 1] : '';
     if (before && !OPENER_PRECEDER.test(before)) {
-      return false;
+      return;
     }
     formulas.push({
       line: baseLine + run.line + lineOf(run.text, at),
@@ -223,12 +188,11 @@ function inlineFormulas(children, baseLine, isWholeParagraph) {
     });
     run.text = run.text.slice(0, at);
     next.content = next.content.slice(1);
-    return true;
   };
 
   const visit = (token, next) => {
-    if (token.type === 'em_open' || token.type === 'link_open' || token.type === 'em_close' || token.type === 'link_close') {
-      skipDepth = Math.max(0, skipDepth + (token.nesting > 0 ? 1 : -1));
+    if (['em_open', 'em_close', 'link_open', 'link_close'].includes(token.type)) {
+      skipDepth = Math.max(0, skipDepth + token.nesting);
     } else if (token.type === 'html_inline') {
       const tag = token.content.match(/^<(\/?)([A-Za-z][\w-]*)/);
       if (tag && SKIPPED_TAGS.has(tag[2].toLowerCase()) && !/\/>$/.test(token.content)) {
@@ -247,7 +211,8 @@ function inlineFormulas(children, baseLine, isWholeParagraph) {
   for (let k = 0; k < children.length; k++) {
     const token = children[k];
     visit(token, children[k + 1]);
-    lineInBlock += token.type === 'softbreak' || token.type === 'hardbreak' ? 1 : lineOf(token.content || '', (token.content || '').length);
+    const content = token.content || '';
+    lineInBlock += token.type === 'softbreak' || token.type === 'hardbreak' ? 1 : lineOf(content, content.length);
   }
   endRun();
 
@@ -321,58 +286,52 @@ function markdownParser() {
   return markdown;
 }
 
-const FOOTNOTE_DEFINITION = /^\[\^[^\]]+\]:/;
-
-// Every formula GitHub would hand to MathJax, in document order:
-// [{ line, delimiter, source, display }], `source` being the element's text with its
-// delimiters, exactly what <math-renderer> receives. `blocks` are the top-level blocks
-// whose source Markdown may change: [{ first, last }] as 1-based inclusive lines.
+// Every formula GitHub hands to MathJax, in document order: [{ line, delimiter, source,
+// display }], `source` being what <math-renderer> receives. `blocks` are the paragraphs,
+// headings and table rows Markdown parses, as 1-based inclusive line ranges; `opaque` are
+// the lines of code and HTML blocks.
 export function extractFormulas(text) {
   const tokens = markdownParser().parse(text, {});
   const formulas = [];
-  const blocks = [];
+  const blocks = new Map();
+  const opaque = [];
   let line = 0;
-  let paragraphOpen = false;
   let footnote = false;
 
   for (const token of tokens) {
     if (token.map) {
       line = token.map[0] + 1;
-      if (token.level === 0 && token.nesting >= 0 && !['fence', 'code_block', 'html_block'].includes(token.type)) {
-        blocks.push({ first: token.map[0] + 1, last: token.map[1] });
+      if (['paragraph_open', 'heading_open', 'tr_open'].includes(token.type)) {
+        blocks.set(token.map[0], { first: token.map[0] + 1, last: token.map[1] });
+      } else if (['fence', 'code_block', 'html_block'].includes(token.type)) {
+        opaque.push({ first: token.map[0] + 1, last: token.map[1] });
       }
     }
     if (token.type === 'fence' && token.info.trim().split(/\s+/)[0] === 'math') {
-      formulas.push({ line: line + 1, delimiter: '```math', source: `$$${displayLines(token.content).trim()}$$`, display: true });
+      const source = `$$${displayLines(token.content).trim()}$$`;
+      formulas.push({ line: line + 1, delimiter: '```math', source, display: true });
     } else if (token.type === 'html_block') {
       formulas.push(...htmlBlockFormulas(token.content, line));
     } else if (token.type === 'paragraph_open') {
-      paragraphOpen = true;
       footnote = false;
-    } else if (token.type === 'paragraph_close') {
-      paragraphOpen = false;
     } else if (token.type === 'inline') {
       // GitHub renders footnote text after it has looked for maths.
-      if (paragraphOpen && FOOTNOTE_DEFINITION.test(token.content)) {
-        footnote = true;
-      }
+      footnote = footnote || FOOTNOTE_DEFINITION.test(token.content);
       if (!footnote) {
-        formulas.push(...inlineFormulas(token.children || [], line, paragraphOpen));
+        formulas.push(...inlineFormulas(token.children || [], line));
       }
     }
   }
   formulas.sort((a, b) => a.line - b.line);
-  return { formulas, blocks };
+  return { formulas, blocks: [...blocks.values()], opaque };
 }
 
-// The formulas as written in a block's source, before Markdown touches it, by the same
-// delimiter rules: [{ line, content, codeForm }]. Code spans are blanked unless they sit
-// between `$` and `$`.
+// The formulas as written in some Markdown source, before Markdown touches it, by
+// GitHub's delimiter rules: [{ line, delimiter, content, codeForm }]. Code spans are
+// blanked unless they sit between `$` and `$`.
 export function writtenFormulas(source, firstLine) {
-  const blanked = source.replace(/(`+)([^`][\s\S]*?)\1(?!`)/g, (span, _ticks, _body, offset) =>
-    source[offset - 1] === '$' && source[offset + span.length] === '$' ? span : span.replace(/[^\n]/g, ' '),
-  );
-  return scanDollars(blanked).map((hit) => ({
+  const blanked = blankCodeSpans(source);
+  return scanDollars(blanked, WRITTEN_RULES).map((hit) => ({
     line: firstLine + lineOf(blanked, hit.start),
     delimiter: hit.delimiter,
     content: hit.content,
@@ -380,72 +339,72 @@ export function writtenFormulas(source, firstLine) {
   }));
 }
 
-// A backslash escape Markdown consumes before MathJax runs, so `\,` reaches it as `,`,
-// `\{` as `{` and `\\` as `\`. `\_` and `\*` are left out: their Markdown meaning, a
-// literal `_` or `*`, is the TeX the author wanted.
-export function consumedEscape(content) {
-  for (let k = 0; k < content.length - 1; k++) {
-    if (content[k] !== '\\') {
-      continue;
-    }
-    const next = content[k + 1];
-    if (/[!-/:-@[-`{-~]/.test(next) && next !== '_' && next !== '*') {
-      return `\\${next}`;
-    }
-    k++;
-  }
-  return null;
+function blankCodeSpans(source) {
+  return source.replace(/(`+)([^`][\s\S]*?)\1(?!`)/g, (span, _ticks, _body, offset) =>
+    source[offset - 1] === '$' && source[offset + span.length] === '$' ? span : span.replace(/[^\n]/g, ' '),
+  );
 }
 
-// What Markdown did to the formulas as written: a formula that never reached MathJax
-// (its `_` or `*` became emphasis, or an escape broke a delimiter) or one whose
-// backslash Markdown ate.
-export function markdownDamage(text, formulas, blocks) {
+// What Markdown could rewrite inside `$...$`: emphasis markers, and a backslash before
+// ASCII punctuation, which is an escape (`\,` reaches MathJax as `,`). null when none.
+export function markdownHazard(content) {
+  const marker = content.match(/[_*]/);
+  if (marker) {
+    return `\`${marker[0]}\` can pair up as Markdown emphasis`;
+  }
+  const escape = content.match(/\\[!-/:-@[-`{-~]/);
+  return escape ? `Markdown reads \`${escape[0]}\` as an escape and hands MathJax \`${escape[0][1]}\`` : null;
+}
+
+const USE_CODE_FORM = 'Write it as $`...`$, which Markdown leaves alone.';
+const USE_FENCE = 'Write display maths as a ```math fence and inline maths as $`...`$.';
+
+// The forms Markdown can rewrite, refused as written, and formulas GitHub never hands to
+// MathJax because they sit in emphasis, a link, <b> or a footnote.
+export function writingProblems(text, formulas, blocks, opaque) {
   const lines = text.split(/\r?\n/);
   const reached = new Map();
   for (const f of formulas) {
     reached.set(f.line, (reached.get(f.line) || 0) + 1);
   }
   const problems = [];
+  const report = (line, delimiter, source, message) => problems.push({ line, delimiter, source, message });
+
   for (const block of blocks) {
     const source = lines.slice(block.first - 1, block.last).join('\n');
-    const display = formulas.find((f) => f.delimiter === '$$' && f.display && f.line === block.first);
-    const changed = display && display.source !== source.trim();
-    if (changed) {
-      problems.push({
-        line: block.first,
-        delimiter: '$$',
-        source: source.trim(),
-        message:
-          'Markdown changes this $$ block before MathJax sees it (escapes such as `\\\\` or `\\{`, ' +
-          'or `*` read as emphasis). Write it as a ```math fence, which Markdown leaves alone.',
-      });
+    const blanked = blankCodeSpans(source);
+    const display = blanked.search(/(?<![\\$])\$\$(?!\$)/);
+    if (display !== -1) {
+      const line = block.first + lineOf(blanked, display);
+      report(line, '$$', lines[line - 1].trim(), `GitHub's $$ depends on the Markdown around it. ${USE_FENCE}`);
+      continue;
     }
     for (const written of writtenFormulas(source, block.first)) {
-      const shown = `${written.delimiter}${written.content}${written.delimiter}`;
-      if (reached.get(written.line)) {
+      const shown = `$${written.content}$`;
+      const wasReached = reached.get(written.line) > 0;
+      if (wasReached) {
         reached.set(written.line, reached.get(written.line) - 1);
-      } else {
-        problems.push({
-          line: written.line,
-          delimiter: written.delimiter,
-          source: shown,
-          message:
-            'GitHub shows this as plain text: Markdown read a `_` or `*` in it as emphasis, or it sits in ' +
-            'emphasis, a link or after an escaped `$`. Write it as $`...`$, which Markdown leaves alone.',
-        });
-        continue;
       }
-      const escape = written.codeForm || changed ? null : consumedEscape(written.content);
-      if (escape) {
-        problems.push({
-          line: written.line,
-          delimiter: written.delimiter,
-          source: shown,
-          message:
-            `Markdown turns \`${escape}\` into \`${escape.slice(1)}\` before MathJax sees it. ` +
-            'Write the formula as $`...`$, which Markdown leaves alone.',
-        });
+      const hazard = written.codeForm ? null : markdownHazard(written.content);
+      if (hazard) {
+        report(written.line, '$', shown, `${hazard}. ${USE_CODE_FORM}`);
+      } else if (!wasReached) {
+        report(written.line, '$', shown, 'GitHub shows this as text: it sits in emphasis, a link, <b> or a footnote.');
+      }
+    }
+  }
+
+  // A one-line footnote definition parses as a link reference here, so no block holds it.
+  const covered = new Set();
+  for (const range of [...blocks, ...opaque]) {
+    for (let n = range.first; n <= range.last; n++) {
+      covered.add(n);
+    }
+  }
+  for (let n = 1; n <= lines.length; n++) {
+    if (!covered.has(n) && FOOTNOTE_DEFINITION.test(lines[n - 1])) {
+      for (const written of writtenFormulas(lines[n - 1], n)) {
+        report(n, '$', `$${written.content}$`, 'GitHub renders footnotes after maths, so this stays text.');
       }
     }
   }
@@ -468,8 +427,8 @@ export function braceCount(source) {
 
 // The element re-reads its text as HTML before MathJax sees it: entities decode, and a
 // `<` that opens a tag swallows the rest, up to the next `>`. Inline formulas survive
-// because GitHub escapes them twice; ```math and $$ blocks are escaped once, so there
-// `a<b` reaches MathJax as `a`. Returns { tex, swallowed }.
+// because GitHub escapes them twice; a ```math fence is escaped once, so there `a<b`
+// reaches MathJax as `a`. Returns { tex, swallowed }.
 export function rereadAsHtml(source) {
   let swallowed = null;
   const text = source.replace(/<!--[\s\S]*?(?:-->|$)|<[/]?[A-Za-z][^>]*(?:>|$)|<[!?][^>]*(?:>|$)/g, (tag) => {
@@ -508,7 +467,7 @@ function texConverter() {
   RegisterHTMLHandler(liteAdaptor());
   const tex = new TeX({
     packages: packagesInUse(),
-    maxMacros: 1000,
+    maxMacros: MAX_MACROS,
     formatError: (_jax, error) => {
       throw error;
     },
@@ -545,7 +504,7 @@ export function renderError(formula, pageBraces = 0) {
 
 // Every problem in one Markdown document: [{ line, delimiter, source, message }].
 export function checkDocument(text) {
-  const { formulas, blocks } = extractFormulas(text);
+  const { formulas, blocks, opaque } = extractFormulas(text);
   const problems = [];
   let pageBraces = 0;
   for (const formula of formulas) {
@@ -555,7 +514,7 @@ export function checkDocument(text) {
       problems.push({ ...formula, message });
     }
   }
-  problems.push(...markdownDamage(text, formulas, blocks));
+  problems.push(...writingProblems(text, formulas, blocks, opaque));
   return { formulas, problems: problems.sort((a, b) => a.line - b.line) };
 }
 
@@ -594,16 +553,10 @@ async function main() {
     return;
   }
 
-  const loaded = loadDependencies();
-  if (!loaded) {
-    console.error('mathjax-full and markdown-it not found - cannot validate formulas.');
-    console.error(`Install them with:  ${INSTALL_HINT}`);
-    process.exitCode = 1;
-    return;
-  }
-  if (loaded.version !== MATHJAX_VERSION) {
-    console.error(`mathjax-full ${loaded.version} found; GitHub runs ${MATHJAX_VERSION}.`);
-    console.error(`Install the matching one with:  ${INSTALL_HINT}`);
+  const missing = dependencyProblem();
+  if (missing) {
+    console.error(`${missing} - cannot validate formulas.`);
+    console.error(`Install the pinned versions with:  ${INSTALL_HINT}`);
     process.exitCode = 1;
     return;
   }
@@ -633,13 +586,13 @@ async function main() {
     const { formulas, problems } = checkDocument(text);
     total += formulas.length;
     failed += problems.length;
-    if (verbose && formulas.length) {
-      console.log(`  PASS  ${label}: ${formulas.length - problems.length} formula(s)`);
+    if (verbose && formulas.length && !problems.length) {
+      console.log(`  PASS  ${label}: ${formulas.length} formula(s)`);
     }
-    for (const problem of problems) {
-      console.log(`  FAIL  ${label}:${problem.line} (${problem.delimiter})`);
-      console.log(`        ${decodeEntities(problem.source).split('\n').join('\n        ')}`);
-      console.log(`        ${problem.message}`);
+    for (const p of problems) {
+      console.log(`  FAIL  ${label}:${p.line} (${p.delimiter})`);
+      console.log(`        ${decodeEntities(p.source).split('\n').join('\n        ')}`);
+      console.log(`        ${p.message}`);
       console.log('');
     }
   }

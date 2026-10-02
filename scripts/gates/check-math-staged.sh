@@ -9,8 +9,9 @@
 # does: `git show ":$file"` piped into check-math.mjs's --stdin mode, one file
 # at a time.
 #
-# A missing node, mathjax-full or markdown-it skips this check with a warning
-# instead of blocking the commit; CI is what gates a formula.
+# A missing node, or dependencies not installed at their pinned versions,
+# skips this check with a warning instead of blocking the commit; CI is what
+# gates a formula.
 
 set -eu
 
@@ -39,8 +40,8 @@ if ! node --version >/dev/null 2>&1; then
     exit 0
 fi
 
-if ! node -e "import('./scripts/gates/check-math.mjs').then((m) => process.exit(m.loadDependencies() ? 0 : 1))" >/dev/null 2>&1; then
-    echo "pre-commit: math validation skipped, mathjax-full or markdown-it not installed" >&2
+if ! node -e "import('./scripts/gates/check-math.mjs').then((m) => process.exit(m.dependencyProblem() ? 1 : 0))" >/dev/null 2>&1; then
+    echo "pre-commit: math validation skipped, run npm ci --prefix scripts/gates" >&2
     exit 0
 fi
 
