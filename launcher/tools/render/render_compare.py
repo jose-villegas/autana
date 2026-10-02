@@ -7,6 +7,12 @@
     render_compare.py --out sheet.png --reference-bakes REFERENCE_DIR
         --bake LABEL A.avi [--bake LABEL B.avi ...] [--sheet-frames 2,4]
 
+    render_compare.py --out angles.png --angle-column LABEL DIR [--angle-column ...]
+
+--angle-column writes one sheet of normal-angle heatmaps, a column per DIR of
+NNNN.angle.npy files (appearance_simplify.py --score --angle-dir), a row per
+file.
+
 Either form takes --crops N: a second picture, <out>.crops.png, of
 the N places the two differ most, each cut with a margin, A above B and
 enlarged ZOOM (4) times without smoothing. Places with holes come first,
@@ -111,14 +117,23 @@ def _linear_rgb(picture):
     return rgb**GAMMA
 
 
+def lab(xp, rgb, floor=0.0):
+    """CIELAB (D65) of gamma-encoded 0..1 colours, channels last, with `xp`
+    NumPy or PyTorch. `floor` clamps the colours first, which keeps a
+    gradient finite at black."""
+    if floor:
+        rgb = xp.clip(rgb, floor, 1.0)
+    as_array = np.asarray if xp is np else (lambda values: xp.as_tensor(values, dtype=rgb.dtype, device=rgb.device))
+    scaled = rgb**GAMMA @ as_array(SRGB_TO_XYZ).T / as_array(D65_WHITE)
+    delta = 6 / 29
+    cube_root = np.cbrt(scaled) if xp is np else xp.clip(scaled, delta**3, None) ** (1.0 / 3.0)
+    f = xp.where(scaled > delta**3, cube_root, scaled / (3 * delta**2) + 4 / 29)
+    return xp.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])], -1)
+
+
 def _lab(picture):
     """CIELAB (D65) from this project's gamma-encoded RGB images."""
-    rgb = _linear_rgb(picture)
-    xyz = rgb @ np.array(SRGB_TO_XYZ).T
-    scaled = xyz / np.array(D65_WHITE)
-    delta = 6 / 29
-    f = np.where(scaled > delta**3, np.cbrt(scaled), scaled / (3 * delta**2) + 4 / 29)
-    return np.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])], axis=2)
+    return lab(np, np.asarray(picture.convert("RGB"), dtype=float) / 255.0)
 
 
 def delta_e76(a, b):
@@ -192,8 +207,8 @@ def edge_overlay(reference):
     return Image.fromarray(pixels.astype(np.uint8))
 
 
-def heat_scale(width):
-    """A strip of the reference heatmap's colours from 0 to HEAT_FULL_SCALE dE, with ticks and a caption."""
+def heat_scale(width, caption="CIE76 dE per pixel: black matches, red about 20, yellow 50 or more"):
+    """A strip of the reference heatmap's colours from 0 to HEAT_FULL_SCALE, with ticks and a caption."""
     strip = np.tile(np.arange(width) / (width - 1) * HEAT_FULL_SCALE, (14, 1))
     picture = Image.new("RGB", (width, 70), (24, 24, 24))
     picture.paste(reference_heatmap_from_error(strip), (0, 0))
@@ -202,7 +217,7 @@ def heat_scale(width):
         x = round(tick / HEAT_FULL_SCALE * (width - 1))
         draw.line([(x, 14), (x, 19)], fill=(230, 230, 230))
         outlined_text(draw, (min(x, width - 24), 20), str(tick), (230, 230, 230), font)
-    outlined_text(draw, (0, 42), "CIE76 dE per pixel: black matches, red about 20, yellow 50 or more", (230, 230, 230), font)
+    outlined_text(draw, (0, 42), caption, (230, 230, 230), font)
     return picture
 
 
@@ -266,6 +281,28 @@ def reference_bake_sheet(frames, tile=0.8):
         offset += row.height
     picture.paste(heat_scale(rows[0].width), (0, offset))
     return picture
+
+
+def angle_sheet(columns, tile=0.6):
+    """Each (label, directory of NNNN.angle.npy) as a column of normal-angle
+    heatmaps, one row per file, on the dE heatmap's colours with degrees in
+    place of dE. A panel's label carries its mean angle over the pixels both
+    meshes cover; uncovered pixels are black."""
+    names = sorted(path.name for path in pathlib.Path(columns[0][1]).glob("*.angle.npy"))
+    strips = []
+    for name in names:
+        pictures = []
+        for label, directory in columns:
+            angle = np.load(pathlib.Path(directory) / name)
+            heat = reference_heatmap_from_error(np.nan_to_num(angle, nan=0.0))
+            pictures.append(captioned(_scaled(heat, tile), "%s: %.1f deg" % (label, np.nanmean(angle))))
+        strips.append(np.concatenate([_pixels(picture) for picture in pictures], axis=1))
+    picture = Image.fromarray(np.concatenate(strips, axis=0).astype(np.uint8))
+    out = Image.new("RGB", (picture.width, picture.height + 70))
+    out.paste(picture, (0, 0))
+    out.paste(heat_scale(picture.width, "normal angle per pixel, degrees: black matches, red about 20, yellow 50 or more"),
+              (0, picture.height))
+    return out
 
 
 def reference_heatmap(render, reference):
@@ -831,6 +868,8 @@ def main():
     parser.add_argument("--bake", nargs=2, action="append", metavar=("LABEL", "VIDEO"))
     parser.add_argument("--bake-reference", nargs=2, action="append", metavar=("LABEL", "REFERENCE_DIR"),
                         help="the reference made with that --bake's own settings, scored and shown beside the common one")
+    parser.add_argument("--angle-column", nargs=2, action="append", metavar=("LABEL", "DIR"),
+                        help="a column of the --out normal-angle sheet: appearance_simplify.py --score --angle-dir's output")
     parser.add_argument("--heatmap-dir")
     parser.add_argument("--reference-sheet", metavar="PNG", help="with --reference-video, one sheet of --sheet-frames")
     parser.add_argument("--sheet-frames", default="2,4", help="comma-separated video frame indices for --reference-sheet")
@@ -846,6 +885,9 @@ def main():
         parser.error("--label-a and --label-b are required: every panel is labelled")
     if (args.reference_sheet or args.reference_mp4) and not args.label_a:
         parser.error("--label-a, naming the render, is required with --reference-sheet or --reference-mp4")
+    if args.angle_column:
+        angle_sheet(args.angle_column).save(args.out, optimize=True)
+        return
     if args.video:
         line = compare_videos(*args.video, args.out, args.csv, args.clear, GAIN, args.label_a, args.label_b, args.fps, args.crops, ZOOM)
         print(line)

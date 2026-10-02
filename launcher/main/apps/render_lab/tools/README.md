@@ -57,18 +57,23 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 | `render-lab-cube.png`, `render-lab-cube.gif` | the Gouraud cube; the GIF plays the rotation forward and back |
 | `render-lab-cornell.png` | the ray-traced Cornell box, fully resolved, no HUD |
 | `render-lab-sponza.gif` | the start of the Sponza flythrough |
-| `render/sponza-{full,lite,flat}.gif` | the same three seconds of the flythrough, one GIF per bake |
+| `render/sponza-{full,lite,flat,fitted,fitted-full}.gif` | the same three seconds of the flythrough, one GIF per bake |
 | `render/sponza-{depth,tiles}.gif` | those three seconds as the depth and depth-tile views of the full bake |
 | `render/bake-fidelity-sheet.png` | the flat bake against the source model at two poses, with the error heatmap (see Fidelity against the source) |
 | `render/bake-indirect-compare.png`, `render/bake-indirect-crops.png` | the reference beside the smooth bake without and with indirect light (from a bake of the import made without that field), each with its error heatmap against the reference at two poses, then the places the two bakes differ most with the reference above them (see Indirect light) |
 | `render/bake-indirect-look.png` | the reference beside the indirect bake at intensity 1, 2 and 3 and at an albedo boost of 2, each with its error heatmap, then each look's own reference and the error against it (see Indirect look) |
 | `render/compare-full-{lite,flat}.png`, `.crops.png` | full against lite and smooth against flat at the GIFs' last pose: both renders and their difference, then the places they differ most, enlarged |
+| `render/compare-lite-fitted.png`, `.crops.png` | lite against the fitted mesh at that pose, the same way |
+| `render/compare-full-fitted-full.png`, `.crops.png` | full against the fitted full mesh, the same way |
+| `render/appearance-{chosen,fitted-full}-heat.png`, `-reference.crops.png` | each fitted mesh against the reference: its heatmap sheet and the places it differs most (fitted full also its `-reference.png` sheet) |
 
 ## The Sponza variants
 
-One Sponza import bakes three meshes, its `[[variants]]`
-([Mesh-Import.md](../../../../../docs/render/Mesh-Import.md)): the scenes
-`sponza`, `sponza-lite` and `sponza-flat` each draw one. Every row plays the
+The Sponza import makes five meshes, its `[[variants]]`
+([Mesh-Import.md](../../../../../docs/render/Mesh-Import.md)): it bakes three,
+and records the recipes of two more, culled to the camera's path, that the
+appearance fit makes offline at lite's and full's budgets. The scenes `sponza`,
+`sponza-lite`, `sponza-flat`, `sponza-fitted` and `sponza-fitted-full` each draw one. Every row plays the
 same three seconds of the flythrough, so the rows compare. The last two rows
 are the [view modes](../../../../../docs/render/Mesh-Rendering.md#view-modes)
 over the full mesh.
@@ -78,10 +83,12 @@ over the full mesh.
 | ![Sponza flythrough, smooth](../../../../../docs/images/render/sponza-full.gif) | **Full**: smooth, one colour per vertex, lit and interpolated | `SPONZA_TRIANGLE_COUNT`, `SPONZA_VERTEX_COUNT` |
 | ![Sponza flythrough, lite](../../../../../docs/images/render/sponza-lite.gif) | **Lite**: the same bake simplified to a smaller budget | `SPONZA_LITE_TRIANGLE_COUNT`, `SPONZA_LITE_VERTEX_COUNT` |
 | ![Sponza flythrough, flat](../../../../../docs/images/render/sponza-flat.gif) | **Flat**: the full mesh's triangles, one colour per face, no gradients | `SPONZA_FLAT_TRIANGLE_COUNT`, `SPONZA_FLAT_VERTEX_COUNT` |
+| ![Sponza flythrough, fitted](../../../../../docs/images/render/sponza-fitted.gif) | **Fitted**: lite's budget spent on what the flythrough draws, its vertices and colours fitted to the reference | the `sponza_fitted` entry's counts |
+| ![Sponza flythrough, fitted full](../../../../../docs/images/render/sponza-fitted-full.gif) | **Fitted full**: the same recipe at full's budget | the `sponza_fitted_full` entry's counts |
 | ![Sponza flythrough, depth](../../../../../docs/images/render/sponza-depth.gif) | `RASTER_SHOW_DEPTH` over the full mesh | as full |
 | ![Sponza flythrough, depth tiles](../../../../../docs/images/render/sponza-tiles.gif) | `RASTER_SHOW_DEPTH_TILES` over the full mesh | as full |
 
-The counts are those of the three baked meshes in `meshes/`.
+The counts are those of the five meshes in `meshes/`.
 `autana suite run_sponza_perf_suite` prints each variant's `both cores: mean`
 line (`test_sponza_frame_cost_along_the_flythrough`). The GIFs are made by the
 doc-images workflow
@@ -102,6 +109,19 @@ surfaces keep their colour.
 
 Flat shows each face in one colour, so a curtain's fold reads as bands where
 the smooth mesh blends.
+
+![Lite against fitted](../../../../../docs/images/render/compare-lite-fitted.png)
+![Lite against fitted, the places they differ most](../../../../../docs/images/render/compare-lite-fitted.crops.png)
+
+The fitted mesh has lite's budget, moved off what the flythrough never draws
+and fitted to the reference: arches, shadow edges and the banners' colours
+come back.
+
+![Full against fitted full](../../../../../docs/images/render/compare-full-fitted-full.png)
+![Full against fitted full, the places they differ most](../../../../../docs/images/render/compare-full-fitted-full.crops.png)
+
+The fitted full mesh is the same recipe at full's budget, so the same edges
+and colours come back on full's finer geometry.
 
 ## Fidelity against the source
 
@@ -182,6 +202,43 @@ the foreground drapery. `doc_images.sh` regenerates the sheet.
 
 ![Reference, flat bake, error heatmap and edge pixels](../../../../../docs/images/render/bake-fidelity-sheet.png)
 
+### Outcome of the appearance fit
+
+What the fitted and culled Sponza meshes achieve against the committed ones,
+on seven held-out poses no fit trained on, board time from
+`run_sponza_perf_suite --perf-scope`, five runs each. ΔE is lower-is-better.
+
+| Mesh | Triangles | Held-out ΔE76 | Board ms | Against | ΔE change | ms change |
+|---|---:|---:|---:|---|---:|---:|
+| Lite, committed | 8,670 | 7.69 | 45.98 | | | |
+| **Fitted lite** (`sponza-fitted`) | 8,672 | 4.93 | 46.07 | lite | **−36%** | +0.2% |
+| Full, committed | 17,375 | 6.76 | 58.5 | | | |
+| **Fitted full** (`sponza-fitted-full`) | 17,381 | 4.50 | 61.25 | full | **−33%** | +4.7% |
+| **Full culled to the camera path** | 10,573 | unchanged (7.196 to 7.196)\* | 50.1 | full | 0% | **−14.5%** |
+| Fitted lite with the cost term ($`\mu = 0.1`$) | 8,672 | 5.63\* | 41.0\* | fitted lite | +7.6% | −11% |
+
+\* Scored earlier, on the same seven poses against a reference that did not
+yet blend edges with the camera's background: lite was 8.13 there, not 7.69, so
+only the change columns compare with the other rows, not the absolute ΔE. Full
+culled was timed against full's 58.6 ms in that run (50.1 against 58.6).
+
+Board builds: fitted lite 27117d209f43-diag against lite 45.98, full 58.51;
+fitted full 3fe602bd20ed-diag against full 58.49, fitted lite 46.74, lite
+45.98, flat 45.01; the cost-term and culled rows f0c7832ae9ae, a32452c07094 and
+e5657d970e9c-diag.
+
+- Fitting is the quality win at the same cost: the same triangles and time
+  for about 36% less ΔE.
+- Path culling is the speed win: dropping what the camera path never sees takes
+  the full mesh from 58.6 to 50.1 ms, ΔE unchanged and no holes along the path.
+- The cost term buys −11% in time at a cost in ΔE, no better than a smaller
+  triangle budget.
+- Fitted full cuts full's ΔE by a third (6.76 to 4.50) for +4.7%
+  (58.49 to 61.25 ms); against fitted lite it buys 0.39 ΔE for 14.5 ms more, so
+  lite stays the knee.
+- Neither 30 fps (33.3 ms) nor 60 fps is reachable on this scene: the fixed
+  cost alone is about 21 ms, and even 4,000 triangles draw in 37 ms.
+
 ### Appearance fit of the lite mesh
 
 [`appearance_simplify.py`](../../../../tools/r3d/README.md#appearance-fit)
@@ -196,11 +253,11 @@ the fidelity table above only because they average seven of its eight poses.
 
 | Mesh | Triangles | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 |
 |---|---:|---:|---:|---:|---:|
-| Full smooth | 17,381 | 7.197 | 22.38 | 0.687 | 14.63 |
-| Flat, committed | 17,381 | 7.872 | 28.35 | 0.642 | 17.02 |
+| Full smooth | 17,375 | 7.197 | 22.38 | 0.687 | 14.63 |
+| Flat, committed | 17,375 | 7.872 | 28.35 | 0.642 | 17.02 |
 | Lite, simplifier | 8,670 | 8.133 | 26.25 | 0.643 | 16.83 |
-| Lite, fitted, path-averaged | 8,670 | 5.732 | 15.03 | 0.754 | 10.85 |
-| Lite, fitted, per shot | 8,670 | 6.270 | 17.51 | 0.748 | 11.69 |
+| Lite, fitted, path-averaged (round one) | 8,670 | 5.732 | 15.03 | 0.754 | 10.85 |
+| Lite, fitted, per shot (round one) | 8,670 | 6.270 | 17.51 | 0.748 | 11.69 |
 
 The fitted lite mesh beats the full mesh at half its triangles. Per shot
 trails path-averaged: each segment trains on eight poses, too few to
@@ -256,6 +313,246 @@ size; the heatmaps are `--reference-video ... --reference-sheet
 renders; it is not committed, and the reference has no frame between the
 scored poses to put beside it. Nothing refreshes these images: the fit
 needs the GPU environment.
+
+### Cost-aware fit along the camera path
+
+What [the cost-aware fit](../../../../tools/r3d/README.md#cost-aware-fit)
+does to the Sponza bakes. Every held-out number below is on the same seven
+poses (5 to 35 s), which no fit trained on. The training numbers are labelled
+as such.
+
+**Path visibility.** The source after alpha masking has 245,465 triangles.
+The region box keeps 211,004; the camera path, sampled every 100 ms with
+3 by 3 rays a pixel and an 8-pixel margin, keeps 116,917. Run on the
+committed bakes, the same rule keeps the share of each mesh below.
+
+```mermaid
+xychart-beta
+    title "Triangles the camera path sees (committed bakes)"
+    x-axis ["Full, 17,375", "Lite, 8,670"]
+    y-axis "Share kept, %" 0 --> 100
+    bar [60.9, 65.9]
+```
+
+Culling the committed full mesh to the 10,573 triangles the path sees leaves
+its held-out mean ΔE76 at 7.196 (7.197 unculled). Over the whole path at
+30 fps, 1200 frames between the 100 ms samples, `render_compare.py --video
+--clear 9CC0E6` counts no hole pixel in the culled lite mesh. The culled full
+one has a known limit: frames 838, 869 and 1146 (27.7, 28.7 and 37.8 s) show
+4, 8 and 4 hole pixels, one or two device pixels each, where a sliver thinner
+than the 3 by 3 rays a pixel slips between them. These counts trace the
+portrait view alone, which a landscape panel outsees at its sides. The
+shipped rule traces a square view as wide as the long side; on the committed
+full mesh, against the portrait view widened by a 28-pixel margin instead:
+
+| Path view | Kept of 17,375 | Hole pixels, portrait | Hole pixels, landscape |
+|---|---:|---:|---:|
+| Portrait, 28-pixel margin | 10,892 | 8, in 2 frames | 0 |
+| Square, 8-pixel margin | 10,796 | 8, in 2 frames | 0 |
+
+A fitted mesh changes its geometry, so its holes are counted against the
+source instead: device pixels it leaves as background where a ray through
+the pixel centre meets the source at least two pixels inside its silhouette,
+over the whole path at 30 fps. Every simplified mesh leaves some, where its
+edges fall short of the source's:
+
+| Mesh | Hole pixels, portrait | Hole pixels, landscape |
+|---|---:|---:|
+| Full | 1,401 | 1,262 |
+| Lite | 10,572 | 7,902 |
+| Fitted's start, culled and simplified | 9,055 | 7,863 |
+| Fitted, portrait references only | 6,237 | 12,594 |
+| Fitted, both orientations (committed) | 4,436 | 5,218 |
+
+Trained on portrait views alone, the fit pulled edges in where only a
+landscape panel sees them; the committed mesh trains on both.
+
+The culled triangles, magenta, from outside and from above with the roofs
+cut away:
+
+![Triangles the camera path never sees](../../../../../docs/render/images/appearance-path-culled.png)
+
+The places the culled lite mesh differs most from the uncut one over the whole
+path, uncut above: coincident faces trading places, no hole.
+
+![Culled lite against uncut, largest differences](../../../../../docs/render/images/appearance-path-culled.crops.png)
+
+**Budget against error.** Unfitted and fitted, from the import's region cull
+and from the path cull (the path start simplified to 1.15 times the budget
+and pruned back to it):
+
+```mermaid
+xychart-beta
+    title "Held-out mean ΔE76 against triangle budget"
+    x-axis "Triangles" ["4,000", "6,000", "8,672", "12,000", "17,381"]
+    y-axis "Mean ΔE76, held-out" 4 --> 10.5
+    line [9.946, 8.723, 8.133, 7.676, 7.197]
+    line [8.452, 7.898, 7.284, 6.880, 6.414]
+    line [6.541, 6.073, 5.732, 5.522, 5.279]
+    line [5.844, 5.490, 5.220, 5.029, 4.881]
+```
+
+Top to bottom: region start, path start, region start fitted, path start
+fitted. The same meshes' geometry, as the mean angle between their normals
+and the source's over the pixels both cover:
+
+```mermaid
+xychart-beta
+    title "Held-out normal error against triangle budget"
+    x-axis "Triangles" ["4,000", "6,000", "8,672", "12,000", "17,381"]
+    y-axis "Mean normal angle, degrees, held-out" 10 --> 36
+    line [32.2, 28.3, 26.2, 23.8, 21.1]
+    line [34.5, 29.9, 28.8, 25.5, 22.8]
+    line [21.3, 19.3, 17.6, 16.1, 14.6]
+    line [21.8, 20.0, 18.6, 17.5, 16.5]
+```
+
+Top to bottom: region start fitted, region start, path start fitted, path
+start. Fitting on colour alone moves geometry away from the source, by about
+1 to 2 degrees; the normal term below takes it back.
+
+| Mesh | Triangles | Mean ΔE76 | p95 ΔE76 | Normal error | Predicted ms |
+|---|---:|---:|---:|---:|---:|
+| Full, committed | 17,375 | 7.197 | 22.38 | 21.1° | 58.5 |
+| Full, fitted (region start) | 17,375 | 5.279 | 13.29 | 22.8° | 59.2 |
+| Full budget, path start, fitted | 17,381 | 4.881 | 11.77 | 16.5° | 59.4 |
+| Lite, committed | 8,670 | 8.133 | 26.25 | 26.2° | 46.2 |
+| Lite, fitted (region start, round one) | 8,670 | 5.732 | 15.03 | 28.8° | 46.8 |
+| Lite budget, path start, fitted | 8,672 | 5.220 | 12.76 | 18.6° | 46.4 |
+| Lite budget, path start, fitted with the normal term 1 | 8,672 | 5.232 | 12.94 | 14.8° | 46.7 |
+
+Fitting helps at the full budget as much as at lite's (7.20 to 5.28, and to
+4.88 from the path start). The curve flattens past 8,672: the last 8,700
+triangles buy 0.34 ΔE.
+
+**Normal term.** At the lite budget from the path start, sweeping the normal
+weight $`\lambda_n`$:
+
+| $`\lambda_n`$ | 0 | 0.1 | 0.3 | 1 |
+|---|---:|---:|---:|---:|
+| Held-out mean ΔE76 | 5.220 | 5.247 | 5.268 | 5.232 |
+| Held-out normal error | 18.6° | 17.1° | 16.3° | 14.8° |
+
+ΔE stays within 0.05 while the normal error drops 3.8 degrees, so the
+chosen mesh uses $`\lambda_n = 1`$. Normal-angle heatmaps at 5 and 25 s, left to
+right the committed lite, the colour-only fit and the fit with the normal
+term, on the ΔE heatmaps' colours with degrees for ΔE:
+
+![Normal angle heatmaps](../../../../../docs/render/images/appearance-normal-heat.png)
+
+**Warm starts.** Splitting the fitted 4,000-triangle mesh's worst triangles up
+to 8,672 and 12,000 and fitting again gives 5.223 at 8,035 triangles and 5.153
+at 10,382 (the splits leave triangles no pose shows, which pruning drops);
+from the path start the same budgets give 5.220 and 5.029. The plateau does
+not move.
+
+**Cost.** The cost model's weights and the 16 board frames of the committed
+full and lite bakes they were fitted to, five runs each, are
+[`board_cost_weights.txt`](../../../../tools/r3d/board_cost_weights.txt).
+In sample it is off by 1.02 ms on average (R² 0.983); fitted on one bake it
+predicts the other's mean within 3.0 ms (full) and 0.8 ms (lite). On six meshes it was not fitted to, measured the same way
+(`run_sponza_perf_suite --perf-scope`, five runs, each mesh built into one
+of the suite's three slots), it is within 1.3 ms:
+
+| Mesh | Triangles | Predicted ms | Measured ms |
+|---|---:|---:|---:|
+| Full, culled to the path | 10,573 | 50.7 | 50.1 |
+| Lite, culled to the path | 5,714 | 42.3 | 41.7 |
+| Lite, fitted (region start) | 8,670 | 46.7 | 48.0 |
+| Path start fitted, 4,000 | 4,000 | 38.0 | 37.0 |
+| Path start fitted with the cost term, 8,672 | 8,672 | 42.0 | 41.0 |
+| Chosen: path start fitted with the normal term, 8,672 | 8,672 | 46.7 | 46.3 |
+
+The Pareto curve, held-out ΔE against predicted board time, with the 30 and
+60 fps budgets: neither is reached, because the constant alone, the clear and
+the upscale, is 21 ms, and at 4,000 triangles the frame is still 35 ms.
+
+![Held-out error against predicted frame time](../../../../../docs/render/images/appearance-pareto.png)
+
+```mermaid
+xychart-beta
+    title "Held-out mean ΔE76 against predicted ms, path start fitted"
+    x-axis "Predicted board ms" ["38.0", "42.1", "46.4", "51.6", "59.4"]
+    y-axis "Mean ΔE76, held-out" 4.5 --> 6.5
+    line [5.844, 5.490, 5.220, 5.029, 4.881]
+```
+
+The x-axis is spaced evenly, not to scale; the picture above is to scale.
+The cost term (0.1 ΔE per ms) moves a mesh 4 to 7 ms left for 0.2 to 0.6 ΔE,
+which a smaller budget does as cheaply: at 8,672 it gives 5.628 at 42.0 ms,
+and the plain fit at 6,000 gives 5.490 at 42.1 ms. Its weight sweep at
+8,672:
+
+| Cost weight | 0 | 0.02 | 0.1 | 0.5 |
+|---|---:|---:|---:|---:|
+| Held-out mean ΔE76 | 5.220 | 5.262 | 5.628 | 7.887 |
+| Predicted ms | 46.4 | 45.1 | 42.0 | 36.2 |
+
+The knee is the fitted path start at 8,672 triangles; the chosen mesh is that
+point with the normal term.
+
+On the board, against the committed lite mesh's 46.05 ms: the chosen mesh
+draws in 46.29 ms (+0.5%) for 36% less held-out ΔE (8.13 to 5.23) and 11.4
+degrees less normal error. The cost-term fit at the same budget draws in
+41.0 ms (−11%) at ΔE 5.63, and the full mesh culled to the path in 50.1 ms
+against the full's 58.6 (−14.5%) at the same ΔE.
+
+The committed `sponza-fitted` target, measured in the same image as the
+others (`run_sponza_perf_suite --perf-scope`, five runs), draws in 46.75 ms
+against lite's 46.00 (+1.6%), full's 58.52 and flat's 44.97.
+
+The chosen recipe is committed as the `sponza-fitted` target, refitted by
+`fitted_variant.py` from its entry in `meshes/sponza.import.toml`, its path
+cull and pruning poses covering the panel held either way up. Scored on the same seven
+held-out poses against the reference as it is now rendered, edges blended
+with the camera's background, it is at mean ΔE76 4.89 (p95 13.18) against
+lite's 7.69 and full's 6.76. Its sheet against lite is in
+[The Sponza variants](#the-sponza-variants). Against the
+reference at the bake fidelity sheet's last pose, where they still differ most:
+
+![The chosen mesh against the reference, enlarged](../../../../../docs/images/render/appearance-chosen-reference.crops.png)
+
+Each stage on its own, before above after, at the two held-out poses where
+the pair differs most, enlarged where it differs most:
+
+| Stage | Before | After | Where it shows |
+|---|---|---|---|
+| Fit | committed lite | path start fitted | arches' edges, the floor's shadow edge, the banners' colours |
+| Normal term | fitted | fitted with the normal term | column edges and banner folds turned back toward the source |
+| Path visibility | region start | path start | the floor's sun patch and the red banner's folds, given the budget hidden faces had |
+| Pruning | path start, nothing pruned | 1.15 times the budget pruned back | the arch outline and the column beside the vase |
+| Cost term | fitted | fitted with the cost term | coarser arch facets, and a banner corner pulled in far enough to open a hole |
+| Path culling | committed full | full culled to the path | nothing but coincident faces trading places |
+
+![Fit](../../../../../docs/render/images/appearance-stage-fit.crops.png)
+![Normal term](../../../../../docs/render/images/appearance-stage-normal.crops.png)
+![Path visibility](../../../../../docs/render/images/appearance-stage-path-start.crops.png)
+![Pruning](../../../../../docs/render/images/appearance-stage-prune.crops.png)
+![Cost term](../../../../../docs/render/images/appearance-stage-cost.crops.png)
+![Path culling](../../../../../docs/render/images/appearance-stage-path-full.crops.png)
+
+Its ΔE heatmap sheet at the bake fidelity sheet's two poses:
+
+![The chosen mesh: heatmaps](../../../../../docs/images/render/appearance-chosen-heat.png)
+
+**Fitted full.** The chosen recipe at full's 17,381 triangles is committed as
+the `sponza-fitted-full` target, refitted the same way from its own entry in
+`meshes/sponza.import.toml`. On the same seven held-out poses it is at mean
+ΔE76 4.50 (p95 11.47), against full's 6.76 and the fitted lite mesh's 4.89.
+On the board, in the same image (`run_sponza_perf_suite --perf-scope`, five
+runs), it draws in 61.25 ms against full's 58.49 (+4.7%): a third less error
+than full for under 3 ms, and 0.39 ΔE better than fitted lite for 14.5 ms more.
+
+![Fitted full against the reference](../../../../../docs/images/render/appearance-fitted-full-reference.png)
+![Fitted full against the reference, enlarged](../../../../../docs/images/render/appearance-fitted-full-reference.crops.png)
+![Fitted full: heatmaps](../../../../../docs/images/render/appearance-fitted-full-heat.png)
+
+`doc_images.sh` makes the images of the committed fitted meshes against
+the reference. The stage images are made from fitted meshes in a scratch
+directory and nothing refreshes them: the fits need the GPU environment and
+the cost weights a board capture. A 30 fps video of the whole path, the committed lite
+against the chosen mesh, is `render_compare.py --video` of their
+`--frames 1200 --dt 33` renders and is not committed.
 
 ## Indirect light
 

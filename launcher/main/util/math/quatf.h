@@ -12,9 +12,10 @@
 MATH_DEFINE_QUAT(quatf, vec3f, float, mathf)
 MATH_DEFINE_QUAT_NORMALIZE(quatf, vec3f, float, mathf)
 
-/* The shorter way round, so q and -q give the same path. Nearly parallel
- * inputs fall back to a normalized lerp, where the sine in the divisor
- * vanishes. */
+/* slerp = a sin((1 - t) O) / sin O + b sin(t O) / sin O, with cos O = a . b.
+ * b is negated when a . b < 0, the shorter way round, so q and -q give the
+ * same path. Nearly parallel inputs fall back to a normalized lerp, where the
+ * sine in the divisor vanishes. */
 static inline quatf_t
 quatf_slerp(quatf_t a, quatf_t b, float t) {
     float cosine = (a.x * b.x) + (a.y * b.y) + (a.z * b.z) + (a.w * b.w);
