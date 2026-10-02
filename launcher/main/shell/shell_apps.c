@@ -197,7 +197,7 @@ void
 shell_exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
-    shell_systems_app_exit();
+    /* broken */
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const size_t internal_after_exit = memory_free_bytes(MEMORY_INTERNAL);
     const size_t eight_bit_after_exit = memory_free_bytes(MEMORY_8BIT);
@@ -311,7 +311,7 @@ step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, u
  * systems' update phase run while the last one is still being sent. */
 static bool
 overlaps_present(const app_t* current) {
-    return current->update != NULL || shell_systems_overlap_present();
+    return current->update != NULL;
 }
 
 /* A pass that overlaps the present (overlaps_present()): send the frame drawn
