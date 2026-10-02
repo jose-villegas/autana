@@ -9,12 +9,11 @@
 #include "test_cleanup.h"
 #include "unity.h"
 
-#include "esp_heap_caps.h"
-
 #include "gfx/gfx.h"
 #include "gfx/gfx_test.h"
 #include "ridge_arms.h"
 #include "ui/ui_ridge.h"
+#include "util/memory.h"
 #include "util/tune.h"
 
 #define FB_PIXELS          ((size_t)GFX_WIDTH * GFX_HEIGHT)
@@ -71,11 +70,11 @@ prime(void) {
 static void
 rig_open(rig_t* rig) {
     *rig = (rig_t){.audit = {.first_unsent_frame = -1, .first_unlike_frame = -1}};
-    rig->before = heap_caps_malloc(FB_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    rig->reference = heap_caps_malloc(FB_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    rig->before = memory_alloc(FB_BYTES, MEMORY_PSRAM);
+    rig->reference = memory_alloc(FB_BYTES, MEMORY_PSRAM);
     if (rig->before == NULL || rig->reference == NULL) {
-        heap_caps_free(rig->before);
-        heap_caps_free(rig->reference);
+        memory_free(rig->before);
+        memory_free(rig->reference);
         TEST_FAIL_MESSAGE("no room for the frame copies");
     }
     memcpy(rig->before, gfx_framebuffer(), FB_BYTES);
@@ -83,8 +82,8 @@ rig_open(rig_t* rig) {
 
 static audit_t
 rig_close(rig_t* rig) {
-    heap_caps_free(rig->before);
-    heap_caps_free(rig->reference);
+    memory_free(rig->before);
+    memory_free(rig->reference);
     return rig->audit;
 }
 

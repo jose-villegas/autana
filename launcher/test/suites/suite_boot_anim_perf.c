@@ -29,11 +29,11 @@
 #include "unity.h"
 
 #include "esp_log.h"
-#include "esp_timer.h"
 
 #include "boot/boot_anim.h"
 #include "boot/boot_anim_timeline.h"
 #include "gfx/gfx.h"
+#include "util/timing.h"
 
 /* boot_anim.c's own draw_* functions, exposed specifically for this suite;
  * see boot_anim.c's own comment above draw_floor() for why they are
@@ -205,32 +205,32 @@ time_frames(const checkpoint_frame_t* f) {
     for (int i = 0; i < SAMPLES_PER_CHECKPOINT; i++) {
         int64_t t0, t1;
         frame_sample_t* s = &samples[i];
-        const int64_t frame_start = esp_timer_get_time();
+        const int64_t frame_start = timing_now_us();
 
-        t0 = esp_timer_get_time();
+        t0 = timing_now_us();
         boot_anim_clear_frame();
-        t1 = esp_timer_get_time();
+        t1 = timing_now_us();
         s->clear_us = (int32_t)(t1 - t0);
 
         if (f->draw_scene) {
-            t0 = esp_timer_get_time();
+            t0 = timing_now_us();
             draw_floor(f->now_ms, f->ink, &f->view);
-            t1 = esp_timer_get_time();
+            t1 = timing_now_us();
             s->floor_us = (int32_t)(t1 - t0);
 
-            t0 = esp_timer_get_time();
+            t0 = timing_now_us();
             draw_axes(f->now_ms, f->ink, &f->view);
-            t1 = esp_timer_get_time();
+            t1 = timing_now_us();
             s->axes_us = (int32_t)(t1 - t0);
 
-            t0 = esp_timer_get_time();
+            t0 = timing_now_us();
             const int32_t reached = draw_curve(f->now_ms, f->ink, &f->view);
-            t1 = esp_timer_get_time();
+            t1 = timing_now_us();
             s->curve_us = (int32_t)(t1 - t0);
 
-            t0 = esp_timer_get_time();
+            t0 = timing_now_us();
             draw_zeros(reached, f->ink, &f->view);
-            t1 = esp_timer_get_time();
+            t1 = timing_now_us();
             s->zeros_us = (int32_t)(t1 - t0);
         } else {
             s->floor_us = 0;
@@ -239,23 +239,23 @@ time_frames(const checkpoint_frame_t* f) {
             s->zeros_us = 0;
         }
 
-        t0 = esp_timer_get_time();
+        t0 = timing_now_us();
         draw_image(f->ink, f->reveal);
-        t1 = esp_timer_get_time();
+        t1 = timing_now_us();
         s->image_us = (int32_t)(t1 - t0);
 
         if (f->draw_title) {
-            t0 = esp_timer_get_time();
+            t0 = timing_now_us();
             draw_title(f->now_ms, f->ink);
-            t1 = esp_timer_get_time();
+            t1 = timing_now_us();
             s->title_us = (int32_t)(t1 - t0);
         } else {
             s->title_us = 0;
         }
 
-        t0 = esp_timer_get_time();
+        t0 = timing_now_us();
         gfx_present();
-        t1 = esp_timer_get_time();
+        t1 = timing_now_us();
         s->present_us = (int32_t)(t1 - t0);
 
         s->frame_total_us = (int32_t)(t1 - frame_start);

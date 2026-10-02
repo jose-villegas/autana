@@ -4,14 +4,14 @@
 #include "console/device_state.h"
 
 #include "esp_system.h"
-#include "esp_timer.h"
 
 #include "board/board.h"
 #include "display/display.h"
+#include "util/timing.h"
 
 void
 device_state_read(device_state_t* out) {
-    out->uptime_us = esp_timer_get_time();
+    out->uptime_us = timing_now_us();
     out->heap_free_bytes = (uint32_t)esp_get_free_heap_size();
     out->heap_min_free_bytes = (uint32_t)esp_get_minimum_free_heap_size();
 

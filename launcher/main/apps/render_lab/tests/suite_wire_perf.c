@@ -18,15 +18,15 @@
 
 #include "unity.h"
 
-#include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_band_run.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
+#include "util/memory.h"
+#include "util/timing.h"
 
 /* app_render_lab.c's own lifecycle and toggles. */
 extern bool render_lab_band_mode;
@@ -79,10 +79,10 @@ static wire_totals_t* band_totals;
 
 static void
 draw_wire_band(int row0, int row1, gfx_color_t* buf) {
-    const int64_t started = esp_timer_get_time();
+    const int64_t started = timing_now_us();
     render_lab_clear_band(buf, row1 - row0);
     wire_draw_band(buf, row0, row1);
-    band_totals->draw_us += esp_timer_get_time() - started;
+    band_totals->draw_us += timing_now_us() - started;
 }
 
 static void
@@ -92,46 +92,46 @@ replay_wire_band(int row0, int row1) {
 
 static void
 run_full_fb_frame(wire_totals_t* t, uint32_t dt_ms) {
-    const int64_t frame_start = esp_timer_get_time();
+    const int64_t frame_start = timing_now_us();
 
     wire_advance_pose(dt_ms);
 
-    int64_t t0 = esp_timer_get_time();
+    int64_t t0 = timing_now_us();
     wire_do_transform();
-    t->transform_us += esp_timer_get_time() - t0;
+    t->transform_us += timing_now_us() - t0;
 
-    t0 = esp_timer_get_time();
+    t0 = timing_now_us();
     wire_do_project();
-    t->project_us += esp_timer_get_time() - t0;
+    t->project_us += timing_now_us() - t0;
 
     t->segments += wire_segment_count();
     t->pixels += wire_line_pixel_estimate();
 
-    t0 = esp_timer_get_time();
+    t0 = timing_now_us();
     wire_draw_full();
-    t->draw_us += esp_timer_get_time() - t0;
+    t->draw_us += timing_now_us() - t0;
 
     draw_fps(&null_input, false);
     gfx_present();
 
-    t->frame_us += esp_timer_get_time() - frame_start;
+    t->frame_us += timing_now_us() - frame_start;
     t->frames++;
 }
 
 /* wire_mark_bbox_dirty() must run once per frame, before gfx_band_run(). */
 static void
 run_band_frame(wire_totals_t* t, uint32_t dt_ms) {
-    const int64_t frame_start = esp_timer_get_time();
+    const int64_t frame_start = timing_now_us();
 
     wire_advance_pose(dt_ms);
 
-    int64_t t0 = esp_timer_get_time();
+    int64_t t0 = timing_now_us();
     wire_do_transform();
-    t->transform_us += esp_timer_get_time() - t0;
+    t->transform_us += timing_now_us() - t0;
 
-    t0 = esp_timer_get_time();
+    t0 = timing_now_us();
     wire_do_project();
-    t->project_us += esp_timer_get_time() - t0;
+    t->project_us += timing_now_us() - t0;
 
     wire_mark_bbox_dirty();
     t->segments += wire_segment_count();
@@ -143,7 +143,7 @@ run_band_frame(wire_totals_t* t, uint32_t dt_ms) {
     gfx_band_run(draw_wire_band, replay_wire_band);
     band_totals = NULL;
 
-    t->frame_us += esp_timer_get_time() - frame_start;
+    t->frame_us += timing_now_us() - frame_start;
     t->frames++;
 }
 
@@ -152,11 +152,11 @@ run_band_frame(wire_totals_t* t, uint32_t dt_ms) {
 static wire_totals_t
 capture(void (*run_frame)(wire_totals_t*, uint32_t)) {
     wire_totals_t t = {0};
-    const int64_t start = esp_timer_get_time();
+    const int64_t start = timing_now_us();
     int64_t next_due = start;
 
-    while (esp_timer_get_time() - start < SAMPLE_MS * 1000) {
-        const int64_t frame_start = esp_timer_get_time();
+    while (timing_now_us() - start < SAMPLE_MS * 1000) {
+        const int64_t frame_start = timing_now_us();
         int64_t dt_ms = (frame_start - next_due) / 1000;
 
         if (dt_ms < 0) {
@@ -203,7 +203,7 @@ assert_row_sane(const wire_totals_t* t) {
 
 static void
 run_combo(const char* scene_key, bool band_mode, const char* orient_name, int quarter) {
-    const size_t free_before = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    const size_t free_before = memory_free_bytes(MEMORY_INTERNAL);
 
     render_lab_start_scene_key = scene_key;
     render_lab_band_mode = band_mode;
@@ -216,7 +216,7 @@ run_combo(const char* scene_key, bool band_mode, const char* orient_name, int qu
     const wire_totals_t t = capture(band_mode ? run_band_frame : run_full_fb_frame);
 
     render_lab_exit();
-    const size_t free_after = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    const size_t free_after = memory_free_bytes(MEMORY_INTERNAL);
 
     log_row(scene_key, band_mode ? "band" : "full_fb", orient_name, &t, vertex_count, edge_count);
     assert_row_sane(&t);

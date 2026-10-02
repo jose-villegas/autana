@@ -210,6 +210,12 @@ heap_arena_psram_heap_bytes(const char* override) {
     return arena_pool_heap_bytes(&s_psram, override, &origin);
 }
 
+size_t
+heap_arena_internal_heap_bytes(const char* override) {
+    const char* origin;
+    return arena_pool_heap_bytes(&s_internal, override, &origin);
+}
+
 /* Reads a pool's cap, so a one-off experiment can widen or narrow either
  * cap without a rebuild. Prints the effective cap and where it came from
  * exactly once per pool, since a gate whose cap is silently different from
@@ -518,12 +524,11 @@ __wrap_realloc(void* ptr, size_t size) {
     return grown;
 }
 
-/* heap_caps_* models the board's two pools (board.h's BOARD_FRAMEBUFFER_CAPS,
- * the sdkconfig's CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL). An explicit
- * MALLOC_CAP_SPIRAM/_INTERNAL/_DMA request never spills into the other pool
- * on failure: that spill is the device-only failure this exists to catch.
- * A bare MALLOC_CAP_8BIT/_DEFAULT is the one path with a fallback, since
- * ALWAYSINTERNAL is itself a fallback rule on the device. */
+/* heap_caps_* models the board's internal and PSRAM pools. An explicit
+ * MALLOC_CAP_SPIRAM/_INTERNAL/_DMA request never spills into the other pool:
+ * that spill is the device-only failure this exists to catch. A bare
+ * MALLOC_CAP_8BIT/_DEFAULT may, as CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL does
+ * on the device. */
 
 static int
 caps_matches_internal(uint32_t caps) {
@@ -629,6 +634,38 @@ heap_caps_get_largest_free_block(uint32_t caps) {
         }
     }
     return best;
+}
+
+size_t
+heap_caps_get_total_size(uint32_t caps) {
+    size_t total = 0;
+    if (caps_matches_internal(caps)) {
+        arena_pool_init_once(&s_internal);
+        total += s_internal.cap;
+    }
+    if (caps_matches_psram(caps)) {
+        arena_pool_init_once(&s_psram);
+        total += s_psram.cap;
+    }
+    return total;
+}
+
+static void
+arena_pool_dump(arena_pool_t* p) {
+    size_t total_free, largest_free, free_blocks;
+    arena_pool_scan(p, &total_free, &largest_free, &free_blocks);
+    printf("heap_arena: %s pool cap %zu, %zu free in %zu block(s), largest %zu, %zu in use in %zu block(s)\n", p->label,
+           p->cap, total_free, free_blocks, largest_free, p->cur_bytes, p->cur_blocks);
+}
+
+void
+heap_caps_dump(uint32_t caps) {
+    if (caps_matches_internal(caps)) {
+        arena_pool_dump(&s_internal);
+    }
+    if (caps_matches_psram(caps)) {
+        arena_pool_dump(&s_psram);
+    }
 }
 
 #endif /* HOST_HEAP_ARENA */
