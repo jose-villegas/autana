@@ -183,6 +183,8 @@ become a goal.
 the order is most of the point:
 
 ```
+shell_init()                the shell's own state, which the self-tests
+                            step before the loop runs
 post_run_before_display()   the SD card, on its own SDMMC bus
 display_start()             panel up, framebuffer allocated; on failure
                             main.c logs and sleeps in a loop, never returns
@@ -190,8 +192,9 @@ display_load_panel_clock()  the saved panel clock, applied
 post_run_after_display()    the rest of the health check
                             -> a failure holds the screen for 8 s
 selftest_run()              SELFTEST builds with autorun only
-shell_init()                the shell's own state; development builds stop
-                            here on two console prefixes that clash
+shell_check_console_prefixes()
+                            development builds stop here on two console
+                            prefixes that clash
 display_reset_quarter(), ui_launcher_init(), ui_set_transform()
                             the launcher exists, turned the way boot draws
 boot_anim_run()             the startup animation, 5.5 s
