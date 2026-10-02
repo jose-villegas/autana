@@ -129,6 +129,25 @@ class ReferenceSheetTest(unittest.TestCase):
         self.assertEqual(sheet.height, render_compare.LABEL_BAR + 8 + 70)
 
 
+class OutlinedTextTest(unittest.TestCase):
+    """Labels must read over any panel, so light text carries a dark outline and the fill survives it."""
+
+    def draw_on(self, background, fill):
+        from PIL import ImageDraw
+
+        panel = Image.new("RGB", (120, 30), background)
+        render_compare.outlined_text(ImageDraw.Draw(panel), (6, 6), "label", fill, render_compare._font())
+        return np.asarray(panel)
+
+    def test_light_text_on_a_white_panel_leaves_a_dark_outline(self):
+        pixels = self.draw_on((255, 255, 255), (255, 255, 255))
+        self.assertGreater((pixels.max(axis=2) < 64).sum(), 20)
+
+    def test_light_text_on_a_black_panel_still_shows_its_fill(self):
+        pixels = self.draw_on((0, 0, 0), (255, 255, 255))
+        self.assertGreater((pixels.min(axis=2) > 192).sum(), 20)
+
+
 class EdgeSplitTest(unittest.TestCase):
     """A reference with one vertical step, and renders that differ from it in one column."""
 
