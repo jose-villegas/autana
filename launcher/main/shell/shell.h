@@ -5,9 +5,13 @@
  */
 #pragma once
 
-/* What the loop needs settled before the launcher is built. Development
- * builds also stop here, loudly, on two console prefixes that clash. */
+/* The shell's own state, settled first thing at boot: the self-tests step
+ * the launcher and enter apps before the loop ever runs. */
 void shell_init(void);
+
+/* Development builds stop here, loudly, on two console prefixes that clash.
+ * Called after the self-tests, so a clash never hides their report. */
+void shell_check_console_prefixes(void);
 
 /* The home screen as its first frame will draw it, untouched and whole; the
  * boot animation dissolves into it. */
