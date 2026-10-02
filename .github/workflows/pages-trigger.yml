@@ -1,0 +1,20 @@
+name: Pages
+
+# The Pages site is built by feature/web-pages's own workflow, which merges
+# the latest main before it builds. GitHub runs a branch's workflows only for
+# pushes to that branch, so a push to main calls it here, at that branch;
+# without this the site would keep showing an older main.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  pages:
+    uses: jose-villegas/autana/.github/workflows/pages.yml@feature/web-pages
+    secrets: inherit
