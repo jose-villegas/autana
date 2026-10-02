@@ -50,6 +50,9 @@ jobs:
       - name: No comment records where code moved
         run: python3 scripts/gates/find_narrative_comments.py --tombstones
 
+      - name: No comment records a frame-rate experiment
+        run: python3 scripts/gates/find_narrative_comments.py --perf-stories
+
       - name: Documentation constants match source
         run: python3 scripts/gates/check_doc_constants.py
 

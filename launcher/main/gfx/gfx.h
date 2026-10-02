@@ -162,10 +162,7 @@ void gfx_pixel(int x, int y, gfx_color_t color);
 /* A line from (x0, y0) to (x1, y1), both endpoints included. Coordinates
  * may be anywhere, on screen or not: a line is shortened to its visible
  * part before anything is drawn, so one running far off the panel costs
- * almost nothing. Exists because the startup animation plots a curve, and
- * a curve is a few hundred short segments; see boot_anim.c. Nothing
- * before it needed a line at all, which is why this is the newest
- * primitive in the file. */
+ * almost nothing. */
 void gfx_line(int x0, int y0, int x1, int y1, gfx_color_t color);
 
 /*
@@ -173,11 +170,6 @@ void gfx_line(int x0, int y0, int x1, int y1, gfx_color_t color);
  * first pixel), so flags on one function rather than a family of
  * "add"/"open" name variants inviting another.
  *
- * A smooth-line flag doing Xiaolin Wu antialiasing cost 6.7 fps to be nearly
- * invisible: antialiasing redistributes light WITHIN a pixel, while what
- * reads as a lit curve on this panel is a falloff several pixels ACROSS.
- * The thing to come back with is a wide-support filter in the manner of
- * Gupta & Sproull, not that.
  */
 
 /* Add to what is already in the framebuffer instead of replacing it, so two
