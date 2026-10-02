@@ -10,8 +10,8 @@ from types import SimpleNamespace
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 try:
-    from r3d.fitted_variant import either_way, poses_text, split_poses
-    from r3d.poses import parse_poses
+    from r3d.fitted_variant import poses_text, split_poses
+    from r3d.poses import either_way, parse_poses
 except ImportError:
     parse_poses = None
 

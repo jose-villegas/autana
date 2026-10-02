@@ -40,7 +40,7 @@ from r3d.light import (  # noqa: E402
 )
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
 from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
-from r3d.poses import sample_camera_path  # noqa: E402
+from r3d.poses import either_way, sample_camera_path, tracks_file  # noqa: E402
 from r3d.simplify import densify, simplify  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
@@ -89,20 +89,21 @@ def shade_unlit(src, material, mp, mt):
     return mp, encode_srgb8(albedo_at(src, mp, vertex_spacing(mp, mt), material)), mt
 
 
-def camera_path_poses(settings, scene):
-    """The scene camera's path sampled as the visibility step asks."""
-    camera, visibility = scene.camera.component, settings.visibility
-    tracks = settings.out_dir / f"{camera.path.tracks}_tracks_generated.c"
+def camera_path_poses(settings, scene, visibility, every_ms=None, either_way_up=True):
+    """The scene camera's path sampled every `every_ms` (the visibility
+    step's own when None) at the step's size, through a square view that
+    covers the panel held either way up unless `either_way_up` is False."""
+    camera = scene.camera.component
     width, height = visibility.size
-    return sample_camera_path(tracks, camera.path.tracks, camera.path.node, visibility.every_ms, width, height,
-                              camera.half_fov_short_tan, camera.near_z)
+    poses = sample_camera_path(tracks_file(settings, scene), camera.path.tracks, camera.path.node,
+                               every_ms or visibility.every_ms, width, height, camera.half_fov_short_tan, camera.near_z)
+    return either_way(*poses) if either_way_up else poses
 
 
-def visible_triangles(settings, scene, p, tri_v, double, intersector, rng):
-    """Which source triangles the camera can see, by the visibility step's source."""
-    visibility = settings.visibility
+def visible_triangles(settings, visibility, scene, p, tri_v, double, intersector, rng):
+    """Which source triangles the camera can see, by `visibility`'s source."""
     if visibility.source == "camera_path":
-        width, height, lens, near, poses = camera_path_poses(settings, scene)
+        width, height, lens, near, poses = camera_path_poses(settings, scene, visibility)
         return visible_from_path(p, tri_v, double, intersector, poses, width, height, lens, near, visibility.samples,
                                  visibility.margin)
     return visible_from_region(p, tri_v, double, intersector, visibility.rounds, rng, *scene.region)
@@ -120,13 +121,14 @@ def bake_geometry(settings, variant, scene):
         tri_v, tri_t, tri_m = drop_masked(src.p, src.uv, tri_v, tri_t, tri_m, src.textures, settings.alpha_keep)
         src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
     intersector = None
-    if settings.visibility or settings.light:
+    visibility = variant.visibility or settings.visibility
+    if visibility or settings.light:
         intersector = RayMeshIntersector(trimesh.Trimesh(src.p, tri_v, process=False))
     double_names = settings.double_sided
     seen = np.ones(len(tri_v), dtype=bool)
-    if settings.visibility:
+    if visibility:
         double = np.array([src.names[material] in double_names for material in tri_m])
-        seen = visible_triangles(settings, scene, src.p, tri_v, double, intersector, rng)
+        seen = visible_triangles(settings, visibility, scene, src.p, tri_v, double, intersector, rng)
     if settings.thin:
         thin = np.isin(tri_m, [index for index, name in enumerate(src.names) if name == settings.thin.material])
         seen &= ~thin | (rng.random(len(tri_v)) < settings.thin.keep)
@@ -181,24 +183,30 @@ def flat_colours(settings, scene, geometry, face_samples, **knobs):
                         sample_area=sample_area, min_samples=sample_min, **knobs)
 
 
-def check_fitted(settings, variant):
+def check_fitted(settings, variant, scene):
     """A fitted variant is made offline by fitted_variant.py on a GPU; the bake
-    only checks that the committed mesh is the one its recipe records."""
+    only checks that the recipe and the committed mesh are the ones the fit
+    recorded."""
     import hashlib
 
+    from r3d.fitted_variant import recipe_digest
+
+    again = "rerun fitted_variant.py prepare|fit and record the hashes it prints"
+    if recipe_digest(settings, variant, scene) != variant.fit.recipe_sha256:
+        raise SystemExit(f"{variant.name}: recipe changed since the fit; {again}")
     path = settings.mesh_dir / f"{variant.name}.mesh"
     if not path.exists():
-        raise SystemExit(f"{path.name} is missing: make it with fitted_variant.py (it needs a CUDA GPU)")
+        raise SystemExit(f"{path.name} is missing; {again} (it needs a CUDA GPU)")
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     if digest != variant.fit.sha256:
-        raise SystemExit(f"{path.name} has SHA-256 {digest}, its recipe records {variant.fit.sha256}")
+        raise SystemExit(f"{path.name} has SHA-256 {digest}, not the {variant.fit.sha256} the fit recorded; {again}")
     log(f"{path.name} matches its fit recipe")
 
 
 def bake(settings, variant, scene):
     """Bakes one mesh. `scene` is None for an import that needs none."""
     if variant.fit:
-        check_fitted(settings, variant)
+        check_fitted(settings, variant, scene)
         return
     geometry = bake_geometry(settings, variant, scene)
     positions, rgb, tris, scale = geometry.positions, geometry.rgb, geometry.tris, geometry.scale

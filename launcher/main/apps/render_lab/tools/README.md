@@ -64,10 +64,10 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 
 ## The Sponza variants
 
-Two Sponza imports make four meshes, their `[[variants]]`
-([Mesh-Import.md](../../../../../docs/render/Mesh-Import.md)): `sponza.import.toml`
-bakes three, and `sponza_fitted.import.toml` records the recipe of a fourth that
-the appearance fit makes offline. The scenes `sponza`, `sponza-lite`,
+The Sponza import makes four meshes, its `[[variants]]`
+([Mesh-Import.md](../../../../../docs/render/Mesh-Import.md)): it bakes three,
+and records the recipe of a fourth, culled to the camera's path, that the
+appearance fit makes offline. The scenes `sponza`, `sponza-lite`,
 `sponza-flat` and `sponza-fitted` each draw one. Every row plays the
 same three seconds of the flythrough, so the rows compare. The last two rows
 are the [view modes](../../../../../docs/render/Mesh-Rendering.md#view-modes)
@@ -289,15 +289,25 @@ its held-out mean ΔE76 at 7.196 (7.197 unculled). Over the whole path at
 --clear 9CC0E6` counts no hole pixel in the culled lite mesh. The culled full
 one has a known limit: frames 838, 869 and 1146 (27.7, 28.7 and 37.8 s) show
 4, 8 and 4 hole pixels, one or two device pixels each, where a sliver thinner
-than the 3 by 3 rays a pixel slips between them. The culled triangles,
-magenta, from outside and from above with the roofs cut away:
+than the 3 by 3 rays a pixel slips between them. These counts trace the
+portrait view alone, which a landscape panel outsees at its sides. The
+shipped rule traces a square view as wide as the long side; on the committed
+full mesh, against the portrait view widened by a 28-pixel margin instead:
 
-![Triangles the camera path never sees](../../../../../docs/images/render/appearance-path-culled.png)
+| Path view | Kept of 17,375 | Hole pixels, portrait | Hole pixels, landscape |
+|---|---:|---:|---:|
+| Portrait, 28-pixel margin | 10,892 | 8, in 2 frames | 0 |
+| Square, 8-pixel margin | 10,796 | 8, in 2 frames | 0 |
+
+The culled triangles, magenta, from outside and from above with the roofs
+cut away:
+
+![Triangles the camera path never sees](../../../../../docs/render/images/appearance-path-culled.png)
 
 The places the culled lite mesh differs most from the uncut one over the whole
 path, uncut above: coincident faces trading places, no hole.
 
-![Culled lite against uncut, largest differences](../../../../../docs/images/render/appearance-path-culled.crops.png)
+![Culled lite against uncut, largest differences](../../../../../docs/render/images/appearance-path-culled.crops.png)
 
 **Budget against error.** Unfitted and fitted, from the import's region cull
 and from the path cull (the path start simplified to 1.15 times the budget
@@ -360,7 +370,7 @@ chosen mesh uses $\lambda_n = 1$. Normal-angle heatmaps at 5 and 25 s, left to
 right the committed lite, the colour-only fit and the fit with the normal
 term, on the ΔE heatmaps' colours with degrees for ΔE:
 
-![Normal angle heatmaps](../../../../../docs/images/render/appearance-normal-heat.png)
+![Normal angle heatmaps](../../../../../docs/render/images/appearance-normal-heat.png)
 
 **Warm starts.** Splitting the fitted 4,000-triangle mesh's worst triangles up
 to 8,672 and 12,000 and fitting again gives 5.223 at 8,035 triangles and 5.153
@@ -389,7 +399,7 @@ The Pareto curve, held-out ΔE against predicted board time, with the 30 and
 60 fps budgets: neither is reached, because the constant alone, the clear and
 the upscale, is 21 ms, and at 4,000 triangles the frame is still 35 ms.
 
-![Held-out error against predicted frame time](../../../../../docs/images/render/appearance-pareto.png)
+![Held-out error against predicted frame time](../../../../../docs/render/images/appearance-pareto.png)
 
 ```mermaid
 xychart-beta
@@ -420,20 +430,19 @@ degrees less normal error. The cost-term fit at the same budget draws in
 against the full's 58.6 (−14.5%) at the same ΔE.
 
 The committed `sponza-fitted` target, measured in the same image as the
-others (`run_sponza_perf_suite --perf-scope`, five runs), draws in 46.07 ms
-against lite's 45.98 (+0.2%), full's 58.51 and flat's 44.99.
+others (`run_sponza_perf_suite --perf-scope`, five runs), draws in 46.18 ms
+against lite's 45.99 (+0.4%), full's 58.52 and flat's 44.98.
 
 The chosen recipe is committed as the `sponza-fitted` target, refitted by
-`fitted_variant.py` from `meshes/sponza_fitted.import.toml`, with the
-pruning poses widened to the landscape view and the path margin at 28
-pixels so the panel can be held either way up. Scored on the same seven
+`fitted_variant.py` from its entry in `meshes/sponza.import.toml`, its path
+cull and pruning poses covering the panel held either way up. Scored on the same seven
 held-out poses against the reference as it is now rendered, edges blended
-with the camera's background, it is at mean ΔE76 4.93 (p95 13.37) against
+with the camera's background, it is at mean ΔE76 4.91 (p95 13.23) against
 lite's 7.69 and full's 6.76. Its sheet against lite is in
 [The Sponza variants](#the-sponza-variants). Against the
 reference, where they still differ most:
 
-![The chosen mesh against the reference, enlarged](../../../../../docs/images/render/appearance-chosen-reference.crops.png)
+![The chosen mesh against the reference, enlarged](../../../../../docs/render/images/appearance-chosen-reference.crops.png)
 
 Each stage on its own, before above after, at the two held-out poses where
 the pair differs most, enlarged where it differs most:
@@ -447,16 +456,16 @@ the pair differs most, enlarged where it differs most:
 | Cost term | fitted | fitted with the cost term | coarser arch facets, and a banner corner pulled in far enough to open a hole |
 | Path culling | committed full | full culled to the path | nothing but coincident faces trading places |
 
-![Fit](../../../../../docs/images/render/appearance-stage-fit.crops.png)
-![Normal term](../../../../../docs/images/render/appearance-stage-normal.crops.png)
-![Path visibility](../../../../../docs/images/render/appearance-stage-path-start.crops.png)
-![Pruning](../../../../../docs/images/render/appearance-stage-prune.crops.png)
-![Cost term](../../../../../docs/images/render/appearance-stage-cost.crops.png)
-![Path culling](../../../../../docs/images/render/appearance-stage-path-full.crops.png)
+![Fit](../../../../../docs/render/images/appearance-stage-fit.crops.png)
+![Normal term](../../../../../docs/render/images/appearance-stage-normal.crops.png)
+![Path visibility](../../../../../docs/render/images/appearance-stage-path-start.crops.png)
+![Pruning](../../../../../docs/render/images/appearance-stage-prune.crops.png)
+![Cost term](../../../../../docs/render/images/appearance-stage-cost.crops.png)
+![Path culling](../../../../../docs/render/images/appearance-stage-path-full.crops.png)
 
 Its ΔE heatmap sheet at 25 s:
 
-![The chosen mesh: heatmaps](../../../../../docs/images/render/appearance-chosen-heat.png)
+![The chosen mesh: heatmaps](../../../../../docs/render/images/appearance-chosen-heat.png)
 
 The images here are made from the fitted meshes in a scratch directory and
 nothing refreshes them: the fits need the GPU environment and the cost

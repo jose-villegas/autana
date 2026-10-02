@@ -45,7 +45,8 @@ triangles on one desktop; frame costs were measured on the board on one mesh.
 | `process.simplify` `seal_seams` | Joins touching pieces before simplifying | required with `simplify` | seconds / about 4% frame time | [Sealing seams](#sealing-seams) |
 | `[[variants]]` `triangles` | One mesh per budget | one mesh | seconds each / set by the budget | [Import file](#import-file) |
 | `[[variants]]` `face_samples` | Flat: one colour per triangle | smooth | minutes / cheaper than smooth | [The baked mesh](#the-baked-mesh) |
-| `[[variants]]` `fit` | A variant the appearance fit makes offline from the one the import bakes at `triangles`; the table is its recipe and the SHA-256 of the mesh it made | not fitted | a CUDA GPU, minutes / unchanged at its budget | [Fitting a mesh to the reference](#fitting-a-mesh-to-the-reference) |
+| `[[variants]]` `visibility` | The variant's own visibility step, in place of the import's: `process.visibility`'s keys | the import's | as `process.visibility` | [Import file](#import-file) |
+| `[[variants]]` `fit` | A variant the appearance fit makes offline from the one the import bakes at `triangles`; the table is its recipe, with the SHA-256 of the recipe and of the mesh it made | not fitted | a CUDA GPU, minutes / unchanged at its budget | [Fitting a mesh to the reference](#fitting-a-mesh-to-the-reference) |
 
 ## The baked mesh
 
@@ -155,7 +156,7 @@ own vertex colours are not read.
 | `process.thin` | `material`, `keep` | Keeps only a share of one material's triangles. |
 | `process.light` | `ray_offset`, `colour_merge_step`, `flat_sky_rays` | Bakes the scene's lights into per-vertex colour. `flat_sky_rays` is the one set of sky directions the faces of a variant with `face_samples` share, and is allowed only then. Scene-dependent. |
 | `process.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges, then simplifies to each variant's `triangles`, reserving `props_share` of the budget for the small `props` materials; `seal_seams` joins touching pieces first. |
-| `[[variants]]` | `name`, `triangles`, `face_samples` | Several meshes from one import, each named. `triangles` is its budget and is required with `process.simplify`. `face_samples`, `{ fixed = N }` or `{ auto = { min, max, area } }` with `area = "median"` for the mesh median, makes the variant flat: one colour per triangle, averaged over that many points, and needs `process.light`. Two variants may not produce the same mesh. |
+| `[[variants]]` | `name`, `triangles`, `face_samples`, `visibility`, `fit` | Several meshes from one import, each named. `triangles` is its budget and is required with `process.simplify`. `face_samples`, `{ fixed = N }` or `{ auto = { min, max, area } }` with `area = "median"` for the mesh median, makes the variant flat: one colour per triangle, averaged over that many points, and needs `process.light`. `visibility`, with `process.visibility`'s keys, culls this variant in place of the import's step. `fit`, with `budget`, `train_every_ms`, `held_out_every_ms`, `coverage_every_ms`, `steps`, `batch`, `laplacian`, `normal_weight`, `sha256` and `recipe_sha256`, is the recipe of a smooth variant the appearance fit makes offline ([Fitting a mesh to the reference](#fitting-a-mesh-to-the-reference)). Two variants may not produce the same mesh. |
 
 The steps run in the order of the diagram, whatever order the file lists them.
 An import without variants names its one mesh in `output.name` and cannot
@@ -187,8 +188,9 @@ culls it; when that face has a twin over the same three corners wound the
 other way, the twin is what the ray sees. Faces within a small distance of
 the first drawn one are kept too, since the depth test, not the ray, picks
 among coincident faces. The margin and the pose spacing cover what enters
-the view between two samples, and the margin also covers a view the panel's
-other orientation widens: `size` is one orientation's. The same import with the step
+the view between two samples. `size` is one orientation's; the path is
+traced through a square view as wide as its long side, which covers the
+panel held either way up. The same import with the step
 off, at one camera pose, crops where they differ most,
 off above on: without the cull the budget is spent on hidden surfaces and
 visible ones lose triangles.
