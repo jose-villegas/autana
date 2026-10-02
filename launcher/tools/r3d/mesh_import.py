@@ -26,7 +26,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import log  # noqa: E402
 from r3d.fetch import fetch_zip  # noqa: E402
 from r3d.geometry import compact, corner_normals, weld_keeping  # noqa: E402
-from r3d.import_settings import SettingsError, load_import_settings, load_scene  # noqa: E402
+from r3d.import_settings import SettingsError, load_import_settings, load_scene, variant_settings  # noqa: E402
 from r3d.light import (  # noqa: E402
     drop_masked,
     build_indirect_cache,
@@ -135,6 +135,7 @@ def bake_geometry(settings, variant, scene):
     """Everything a mesh needs before its colours are final: the source, its
     ray intersector and the simplified geometry with the colours a smooth bake
     keeps. `scene` is None for an import that needs none."""
+    settings = variant_settings(settings, variant)
     rng = np.random.default_rng(settings.seed)
     src = load_source(settings)
     scale = {} if settings.position_scale is None else {"position_scale": settings.position_scale}
