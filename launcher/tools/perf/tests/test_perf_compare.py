@@ -2,7 +2,10 @@
 
     python -m unittest discover -s launcher/tools/perf/tests
 """
+import os
 import pathlib
+import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -10,6 +13,7 @@ import unittest
 
 PERF = pathlib.Path(__file__).resolve().parents[1]
 FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
+AUTANA_PROXY = PERF / "bin" / "autana"
 sys.path.insert(0, str(PERF))
 
 import perf_compare  # noqa: E402
@@ -55,6 +59,17 @@ class PerfCompareTest(unittest.TestCase):
         self.assertIn("`before-diag`", summary)
         self.assertIn("| `hot` | 2000 | 2010 | +10 | no change |", summary)
         self.assertIn("| `hot` | ? | 2000 | ? | measured |", aggregate)
+
+    def test_proxy_normalizes_a_historical_owner_and_adds_a_wait(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fake = pathlib.Path(directory) / "fake-autana.sh"
+            fake.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\"\n", encoding="utf-8")
+            fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
+            env = dict(os.environ, PERF_COMPARE_AUTANA=str(fake))
+            done = subprocess.run(["sh", str(AUTANA_PROXY), "--owner", "old report", "selftest"],
+                                  env=env, capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(done.stdout.splitlines(), ["--wait", "3600", "--owner", "old-report", "selftest"])
 
 
 if __name__ == "__main__":

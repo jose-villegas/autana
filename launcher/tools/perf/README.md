@@ -21,3 +21,7 @@ launcher/tools/perf/perf_compare.sh --runs 3 A B -- \
 The second form reads `both cores: mean` capture lines as name-and-number
 rows. Use `--no-restore` only when another capture will restore the board;
 the default flashes `origin/main`'s release image after the comparison.
+
+Every report invocation queues for the board for up to an hour. The proxy also
+normalizes old report scripts' whitespace-containing lock-owner names for the
+current `autana` command.
