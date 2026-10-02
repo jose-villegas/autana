@@ -42,19 +42,16 @@ triangles = 8672
 # Fitted offline on a GPU by tools/r3d/fitted_variant.py: the import bakes the
 # start at `triangles`, culled to what the camera's path draws, and the fit
 # prunes it to `budget` and matches the reference renders of the flythrough.
-# The two hashes pin the recipe and the mesh it made. Both fitted variants
-# exclude indirect light.
+# The two hashes pin the recipe and the mesh it made.
 [[variants]]
 name = "sponza_fitted"
-indirect = false
 triangles = 9973
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
-fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "44dabf0a7e258912556be8b24593d843629f456cabcba9d64b36336812338afb", recipe_sha256 = "ebd4db5aeaa752edc447d5e72d8c85e9a00a019ad3ce5546bbf67d55daa4755c" }
+fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "e7b2620a9905817c9ad11ee1977a502e0900b41d8ef876df9b4744569deb2511", recipe_sha256 = "00e9d912af516663894cf0b6aa1d83b77ab5d02f5e454f93d5170caf9c2b4405" }
 
 # The same recipe at the full mesh's budget.
 [[variants]]
 name = "sponza_fitted_full"
-indirect = false
 triangles = 19988
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
-fit = { budget = 17381, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "8578cfe1a678859310603ad53a77b11eda4b03cc75fe760377fa10fb92c460d5", recipe_sha256 = "adc952777b30181958533c39a3479da4b2b433ed6fb76bd0509b449f0ab1e652" }
+fit = { budget = 17381, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "a8f6268cbb5ae48ef6c68945391dbdd1275dd5e24f84fecaeed991d6c8c69c29", recipe_sha256 = "29af66584765e71607ebbf2710dd5ed0ef5c77fe47be0418d11e952b610d3f0a" }
