@@ -20,6 +20,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "input/imu_sample.h"
+
 /* The cover glass hides roughly this many pixels along every edge of the
  * panel, and more where the corners round off. Anything meant to be read
  * insets by at least this much. Measured on the board. */
@@ -88,6 +90,26 @@ bool display_update(display_t* d, int gx, int gy);
 
 int display_quarter(const display_t* d);
 
+/* The shell's orientation sampler: the quarter and when it may next read the
+ * motion sensor, so the cadence is as testable as the decision. 10 Hz is
+ * enough for reorientation without lag. */
+#define DISPLAY_SAMPLE_MS 100
+
+typedef bool (*display_motion_reader_t)(imu_sample_t* out);
+
+typedef struct {
+    display_t display;
+    int64_t next_sample_us;
+} display_orientation_t;
+
+/* Starts at DISPLAY_DEFAULT_QUARTER, due to sample at once. */
+void display_orientation_init(display_orientation_t* o);
+
+/* Reads motion through `read` when DISPLAY_SAMPLE_MS has passed since the last
+ * attempt, a failed read included, and feeds display_update(). True only when
+ * the quarter changed. */
+bool display_orientation_sample(display_orientation_t* o, int64_t now_us, display_motion_reader_t read);
+
 /* Returns the horizontal inset where a row meets a rounded canvas corner. */
 int display_panel_corner_inset(int radius, int canvas_height, int row);
 
@@ -98,15 +120,18 @@ int display_panel_corner_inset(int radius, int canvas_height, int row);
  * caller's.
  */
 
-/* Brings the panel up and loads the saved panel clock. False when the
- * graphics cannot start, after printing the DMA heap to say why. */
+/* Brings the panel up. False when the graphics cannot start; a development
+ * build prints the DMA heap to say why. */
 bool display_start(void);
+
+/* Loads the saved panel clock and applies it. After display_start(). */
+void display_load_panel_clock(void);
 
 /* Puts the shell's orientation at DISPLAY_DEFAULT_QUARTER. */
 void display_reset_quarter(void);
 
-/* Samples the motion sensor when a tenth of a second has passed since the
- * last sample. True when the quarter changed. */
+/* Samples the motion sensor at DISPLAY_SAMPLE_MS. True when the quarter
+ * changed. */
 bool display_sample_orientation(int64_t now_us);
 
 /* The shell's own orientation, for an app drawing through the shell's
@@ -114,8 +139,12 @@ bool display_sample_orientation(int64_t now_us);
  * again or duplicating the hysteresis above. */
 int display_quarter_now(void);
 
-/* The panel clock the user chose, and the setter that keeps the choice across
- * a reboot. Unchanged and unsupported rates are ignored. */
+/* The panel clock. Every app starts at the system value, the user's choice
+ * kept across reboots. An app wanting another rate sets it with
+ * gfx_set_panel_clock_hz(); the shell puts the system value back, and gfx
+ * heal back to its defaults, whenever an app starts or exits, so no app
+ * restores either. The setter keeps the choice across a reboot; unchanged and
+ * unsupported rates are ignored. */
 int display_system_panel_clock_hz(void);
 void display_set_system_panel_clock_hz(int hz);
 

@@ -32,6 +32,7 @@
 #include "input/gesture.h"
 #include "input/imu_rotation.h"
 #include "input/input.h"
+#include "input/input_shell.h"
 #include "input/tilt.h"
 #include "scene/scene_shell.h"
 #include "ui/system_navigation.h"
@@ -122,16 +123,6 @@ draw_build_mark(void) {
     }
 }
 #endif
-
-void
-shell_set_system_panel_clock_hz(int hz) {
-    display_set_system_panel_clock_hz(hz);
-}
-
-int
-shell_system_panel_clock_hz(void) {
-    return display_system_panel_clock_hz();
-}
 
 /* Content-driven, not a fixed physical reference: the exit gesture lives
  * on whichever PHYSICAL edge the content's logical bottom maps to,
@@ -788,6 +779,7 @@ app_boot_init(void) {
     }
 
     heap_mark("after gfx_init");
+    display_load_panel_clock();
 
     if (!post_run_after_display()) {
         show_post_failures();
@@ -982,7 +974,7 @@ run_console_navigation(const app_t** current, input_t* input, uint32_t dt_ms) {
 
 static void
 report_gesture_completion(void) {
-    const char* verb = input_take_gesture_completion_name();
+    const char* verb = input_gesture_name(input_take_gesture_completion());
     if (verb == NULL) {
         return;
     }

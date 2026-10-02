@@ -94,7 +94,7 @@ flowchart TB
   `tilt` are pure and tested on a laptop. The same split runs through every
   folder, and is what the [Testing-Guide.md](Testing-Guide.md) relies on.
 - **The shell names no firmware.** `main.c` reaches the chip only through
-  modules that own it: `input/input.h` (`input_start`, `input_poll`,
+  modules that own it: `input/input_shell.h` (`input_start`, `input_poll`,
   `input_read_motion`), `display/display.h` (`display_start`,
   `display_sample_orientation`, the system panel clock) and
   `util/{timing,settings,memory,log}.h`. Each module's device half lives in a

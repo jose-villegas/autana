@@ -96,7 +96,7 @@ draw_toggles_page(const input_t* input) {
         .overlay_on = gfx_debug_overlay(),
         .leaf_on = gfx_debug_leaf_overlay(),
         .interlace_on = gfx_interlace_enabled(),
-        .fast_clock = shell_system_panel_clock_hz() == GFX_PANEL_CLOCK_FAST_HZ,
+        .fast_clock = display_system_panel_clock_hz() == GFX_PANEL_CLOCK_FAST_HZ,
         .send_audit_on = gfx_send_audit(),
         .show_orientation = show_orientation,
         .imu_ready = imu_ready(),
@@ -123,7 +123,7 @@ draw_toggles_page(const input_t* input) {
     gfx_set_debug_overlay(result.overlay_on);
     gfx_set_leaf_overlay(result.leaf_on);
     gfx_set_interlace(result.interlace_on);
-    shell_set_system_panel_clock_hz(result.fast_clock ? GFX_PANEL_CLOCK_FAST_HZ : GFX_PANEL_CLOCK_SLOW_HZ);
+    display_set_system_panel_clock_hz(result.fast_clock ? GFX_PANEL_CLOCK_FAST_HZ : GFX_PANEL_CLOCK_SLOW_HZ);
     gfx_set_send_audit(result.send_audit_on);
     show_orientation = result.show_orientation;
 #if CONFIG_LAUNCHER_SELFTEST

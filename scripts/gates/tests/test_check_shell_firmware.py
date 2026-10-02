@@ -1,5 +1,6 @@
 """Regression tests for scripts/gates/check_shell_firmware.py."""
 import pathlib
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -36,8 +37,9 @@ class ProblemsTest(unittest.TestCase):
             root = pathlib.Path(temp)
             inputs = root / "launcher/main/input"
             inputs.mkdir(parents=True)
-            for name, text in zip(("touch.h", "buttons.h", "imu.h"), headers):
-                (inputs / name).write_text(text, encoding="utf-8")
+            for name, text in zip(("touch", "buttons", "imu"), headers):
+                (inputs / f"{name}.h").write_text(text, encoding="utf-8")
+                (inputs / f"{name}.c").write_text('#include "esp_log.h"\n', encoding="utf-8")
             if main_c is not None:
                 (root / "launcher/main/main.c").write_text(main_c, encoding="utf-8")
             return check_shell_firmware.problems(str(root))
@@ -108,14 +110,94 @@ class ProblemsTest(unittest.TestCase):
         self.assertEqual(len(found), 1)
         self.assertIn("not found", found[0])
 
-    def test_a_missing_driver_header_is_a_problem_not_a_pass(self):
+    def test_no_driver_header_at_all_is_a_problem_not_a_pass(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            (root / "launcher/main").mkdir(parents=True)
+            (root / "launcher/main/input").mkdir(parents=True)
             (root / "launcher/main/main.c").write_text("int x;\n", encoding="utf-8")
             found = check_shell_firmware.problems(str(root))
         self.assertEqual(len(found), 1)
-        self.assertIn("not found", found[0])
+        self.assertIn("no driver header", found[0])
+
+
+class DriverDiscoveryTest(unittest.TestCase):
+    def tree(self, files):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = pathlib.Path(temp.name)
+        for path, text in files.items():
+            (root / path).parent.mkdir(parents=True, exist_ok=True)
+            (root / path).write_text(text, encoding="utf-8")
+        return root
+
+    def test_a_header_beside_a_source_that_includes_firmware_is_a_driver(self):
+        root = self.tree({
+            "launcher/main/input/radio.c": '/* x */\n#include "esp_now.h"\n',
+            "launcher/main/input/radio.h": "void radio_send(void);\n",
+            "launcher/main/input/pure.c": '#include "input/pure.h"\n',
+            "launcher/main/input/pure.h": "void pure_step(void);\n",
+            "launcher/main/main.c": "void f(void) { radio_send(); pure_step(); }\n"})
+        self.assertEqual(check_shell_firmware.driver_headers(root), ["launcher/main/input/radio.h"])
+        self.assertEqual(check_shell_firmware.problems(root), ["launcher/main/main.c:1: uses radio_send"])
+
+    def test_a_firmware_include_inside_a_comment_does_not_make_a_driver(self):
+        root = self.tree({
+            "launcher/main/input/pure.c": '/* #include "esp_log.h" */\n',
+            "launcher/main/input/pure.h": "void pure_step(void);\n"})
+        self.assertEqual(check_shell_firmware.driver_headers(root), [])
+
+    def test_a_declaration_ending_in_an_attribute_is_read(self):
+        root = self.tree({
+            "launcher/main/input/radio.c": '#include "esp_now.h"\n',
+            "launcher/main/input/radio.h":
+                "void radio_log(const char* f, ...) __attribute__((format(printf, 1, 2)));\n",
+            "launcher/main/main.c": 'void f(void) { radio_log("x"); }\n'})
+        self.assertEqual(check_shell_firmware.problems(root), ["launcher/main/main.c:1: uses radio_log"])
+
+
+class CommandLineTest(unittest.TestCase):
+    def run_gate(self, main_c, *arguments):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            (root / "launcher/main/input").mkdir(parents=True)
+            (root / "launcher/main/input/touch.c").write_text('#include "esp_log.h"\n', encoding="utf-8")
+            (root / "launcher/main/input/touch.h").write_text(TOUCH_H, encoding="utf-8")
+            (root / "launcher/main/main.c").write_text(main_c, encoding="utf-8")
+            script = pathlib.Path(check_shell_firmware.__file__)
+            return subprocess.run([sys.executable, str(script), *arguments], cwd=root, capture_output=True,
+                                  text=True)
+
+    def test_a_clean_main_exits_zero(self):
+        result = self.run_gate("int x;\n")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("0 firmware use(s)", result.stdout)
+
+    def test_a_main_that_touches_firmware_exits_one_and_names_the_line(self):
+        result = self.run_gate("void f(void) { touch_start(); }\n")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("launcher/main/main.c:1: uses touch_start", result.stdout)
+
+    def test_an_argument_exits_two(self):
+        self.assertEqual(self.run_gate("int x;\n", "main.c").returncode, 2)
+
+
+class RealMainTest(unittest.TestCase):
+    def test_main_before_its_wiring_moved_still_fails(self):
+        """The gate against the file it was written for: a real main.c with
+        every kind of firmware use in it."""
+        fixture = pathlib.Path(__file__).parent / "fixtures" / "main_before_wiring.c.txt"
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            inputs = root / "launcher/main/input"
+            inputs.mkdir(parents=True)
+            for name, text in (("touch", TOUCH_H), ("buttons", BUTTONS_H), ("imu", IMU_H)):
+                (inputs / f"{name}.h").write_text(text, encoding="utf-8")
+                (inputs / f"{name}.c").write_text('#include "esp_log.h"\n', encoding="utf-8")
+            (root / "launcher/main/main.c").write_text(fixture.read_text(encoding="utf-8"), encoding="utf-8")
+            found = check_shell_firmware.problems(str(root))
+        self.assertGreater(len(found), 50)
+        self.assertTrue(any("includes esp_log.h" in line for line in found))
+        self.assertTrue(any("uses nvs_flash_init" in line for line in found))
 
 
 if __name__ == "__main__":

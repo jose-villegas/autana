@@ -6,17 +6,15 @@
 
 #include "display/display.h"
 
+#include "build_variant.h"
 #include "display/panel_clock.h"
 #include "gfx/gfx.h"
-#include "input/input.h"
+#include "input/input_shell.h"
 #include "util/log.h"
 #include "util/memory.h"
 #include "util/settings.h"
 
 static const char* TAG = "display";
-
-/* 10 Hz: sufficient for reorientation without lag. */
-#define DISPLAY_SAMPLE_MS          100
 
 #define PANEL_CLOCK_SETTINGS_SPACE "shell"
 #define PANEL_CLOCK_SETTINGS_KEY   "panel_hz"
@@ -24,51 +22,41 @@ static const char* TAG = "display";
 _Static_assert(PANEL_CLOCK_SLOW_HZ == GFX_PANEL_CLOCK_SLOW_HZ && PANEL_CLOCK_FAST_HZ == GFX_PANEL_CLOCK_FAST_HZ,
                "panel_clock.h's rates must match gfx.h's");
 
-static display_t shell_display;
-static int64_t next_sample_us;
+static display_orientation_t shell_orientation;
 static panel_clock_t shell_panel_clock;
 
-static void
-load_system_panel_clock(void) {
+bool
+display_start(void) {
+    if (!gfx_init()) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        memory_dump(MEMORY_DMA);
+#endif
+        return false;
+    }
+    return true;
+}
+
+void
+display_load_panel_clock(void) {
     int32_t saved = 0;
     const bool found = settings_read_i32(PANEL_CLOCK_SETTINGS_SPACE, PANEL_CLOCK_SETTINGS_KEY, &saved);
     panel_clock_init(&shell_panel_clock, found, saved, GFX_QSPI_HZ);
     gfx_set_panel_clock_hz(panel_clock_system_hz(&shell_panel_clock));
 }
 
-bool
-display_start(void) {
-    if (!gfx_init()) {
-        memory_dump(MEMORY_DMA);
-        return false;
-    }
-    load_system_panel_clock();
-    return true;
-}
-
 void
 display_reset_quarter(void) {
-    display_init(&shell_display);
-    shell_display.quarter = DISPLAY_DEFAULT_QUARTER;
+    display_orientation_init(&shell_orientation);
 }
 
 bool
 display_sample_orientation(int64_t now_us) {
-    if (now_us < next_sample_us) {
-        return false;
-    }
-    next_sample_us = now_us + (int64_t)DISPLAY_SAMPLE_MS * 1000;
-
-    imu_sample_t sample;
-    if (!input_read_motion(&sample)) {
-        return false;
-    }
-    return display_update(&shell_display, imu_gravity_screen_x(&sample), imu_gravity_screen_y(&sample));
+    return display_orientation_sample(&shell_orientation, now_us, input_read_motion);
 }
 
 int
 display_quarter_now(void) {
-    return display_quarter(&shell_display);
+    return display_quarter(&shell_orientation.display);
 }
 
 int
