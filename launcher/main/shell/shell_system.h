@@ -58,8 +58,7 @@ void shell_systems_invalidate(void);
 void shell_systems_app_exit(void);
 bool shell_systems_overlap_present(void);
 
-#ifndef ESP_PLATFORM
-/* Host-only: makes `head` the list and returns the one it replaced, so a
- * test registers its own systems and puts the real ones back. */
+/* For tests: makes `head` the list and returns the one it replaced, so a
+ * test registers its own systems and puts the real ones back. Unguarded, as
+ * the shell names no platform; the firmware never calls it. */
 shell_system_t* shell_system_swap_for_test(shell_system_t* head);
-#endif
