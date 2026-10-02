@@ -61,6 +61,7 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 | `render/sponza-{depth,tiles}.gif` | those three seconds as the depth and depth-tile views of the full bake |
 | `render/bake-fidelity-sheet.png` | the flat bake against the source model at two poses, with the error heatmap (see Fidelity against the source) |
 | `render/bake-indirect-compare.png`, `render/bake-indirect-crops.png` | the reference beside the smooth bake without and with indirect light (from a bake of the import made without that field), each with its error heatmap against the reference at two poses, then the places the two bakes differ most with the reference above them (see Indirect light) |
+| `render/appearance-indirect-{lite,full}.png`, `render/appearance-indirect-{lite,full}.crops.png` | the indirect reference beside the same-budget GI bake, the fitted mesh made without GI, and the fitted mesh made against GI, each with its error heatmap, then their largest differences (see Fitted variants against indirect light) |
 | `render/bake-indirect-look.png` | the reference beside the indirect bake at intensity 1, 2 and 3 and at an albedo boost of 2, each with its error heatmap, then each look's own reference and the error against it (see Indirect look) |
 | `render/compare-full-{lite,flat}.png`, `.crops.png` | full against lite and smooth against flat at the GIFs' last pose: both renders and their difference, then the places they differ most, enlarged |
 | `render/compare-lite-fitted.png`, `.crops.png` | lite against the fitted mesh at that pose, the same way |
@@ -614,6 +615,41 @@ colour on the column beside it, and the lit ceiling.
 for the direct-light side. It renders the source reference with and without
 the import's indirect field before `render_compare.py` makes the sheets and
 crops.
+
+### Fitted variants against indirect light
+
+Each fitted variant trains on the indirect reference. These held-out poses
+compare the new fitted mesh, its direct-light predecessor, the smooth GI bake
+at the same budget and a direct-light bake. Mean and p95 ΔE76 are lower-is-
+better; luma SSIM is higher-is-better. Normal angle is measured over pixels
+where the mesh and source both cover the view.
+
+| Budget | Mesh | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Normal angle |
+|---|---|---:|---:|---:|---:|
+| Lite | GI bake | 23.851 | 68.364 | 0.3893 | 25.858° |
+| Lite | Fitted without GI | 24.683 | 69.460 | 0.3748 | 14.841° |
+| Lite | Fitted against GI | 24.729 | 69.524 | 0.3693 | 14.765° |
+| Lite | Direct-light bake | 24.293 | 69.122 | 0.3892 | 25.720° |
+| Full | GI bake | 24.080 | 68.590 | 0.3778 | 20.834° |
+| Full | Fitted without GI | 24.756 | 69.716 | 0.3700 | 13.010° |
+| Full | Fitted against GI | 24.823 | 69.655 | 0.3623 | 12.617° |
+| Full | Direct-light bake | 24.671 | 69.693 | 0.3787 | 21.150° |
+
+The GI bakes are closer in colour on these poses. Fitting against GI lowers
+the fitted meshes' normal-angle error relative to the direct-light fits.
+
+The sheets put the reference, GI bake, fitted mesh without GI and fitted mesh
+against GI beside their ΔE heatmaps. The crops show the places where the GI
+bake and GI fit differ most, with the reference above them.
+
+![Lite fitted variants against the indirect reference](../../../../../docs/images/render/appearance-indirect-lite.png)
+![Lite fitted variants, largest differences](../../../../../docs/images/render/appearance-indirect-lite.crops.png)
+![Full fitted variants against the indirect reference](../../../../../docs/images/render/appearance-indirect-full.png)
+![Full fitted variants, largest differences](../../../../../docs/images/render/appearance-indirect-full.crops.png)
+
+Measure both new fitted variants on the board against their direct-light
+predecessors. Their triangle budgets are unchanged, so a material frame-time
+change is not expected.
 
 ### Indirect look
 
