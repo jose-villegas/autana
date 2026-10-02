@@ -24,41 +24,16 @@ from r3d.geometry import corner_normals
 from r3d.import_settings import load_scene
 from r3d.light import albedo_from_uv, drop_masked, light, to_srgb8
 from r3d.mesh_import import load_source
+from r3d.poses import camera_basis, read_poses
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
 from render_compare import expand_565  # noqa: E402
 
 
-def read_poses(path):
-    """Read a track sampler pose file as (width, height, lens, near, poses)."""
-    width = height = None
-    lens = near = None
-    poses = []
-    for line in pathlib.Path(path).read_text().splitlines():
-        fields = line.split()
-        if not fields:
-            continue
-        if fields[0] == "size" and len(fields) == 3:
-            width, height = map(int, fields[1:])
-        elif fields[0] == "lens" and len(fields) == 3:
-            lens, near = map(float, fields[1:])
-        elif fields[0] == "pose" and len(fields) == 7:
-            poses.append(np.array([float(value) for value in fields[1:]], dtype=float))
-        else:
-            raise ValueError("invalid pose line: " + line)
-    if width is None or lens is None or not poses:
-        raise ValueError("poses need size, lens and at least one pose")
-    return width, height, lens, near, poses
-
-
 def camera_rays(width, height, lens, eye, forward, samples):
     """One pinhole ray per subpixel, ordered in pixel-sized groups."""
-    forward = np.asarray(forward, dtype=float)
-    forward /= np.linalg.norm(forward)
-    right = np.cross(forward, [0.0, 1.0, 0.0])
-    right /= np.linalg.norm(right)
-    up = np.cross(right, forward)
+    right, up, forward = camera_basis(forward)
     x, y = np.meshgrid(np.arange(width), np.arange(height))
     offsets = (np.arange(samples) + 0.5) / samples
     ox, oy = np.meshgrid(offsets, offsets)
