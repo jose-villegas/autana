@@ -92,7 +92,7 @@ console_freeze_frame_allowed(void) {
             default: break;
         }
         /* On its own line for a harness, the same reason
-         * RUNSUITE_COMPLETE prints one (main.c). */
+         * RUNSUITE_COMPLETE prints one (shell/shell.c). */
         printf("\nFREEZE_STATE frozen=%d steps=%d\n", frozen ? 1 : 0, credit);
         fflush(stdout);
         ESP_LOGI(TAG, "frozen=%d steps=%d", frozen ? 1 : 0, credit);

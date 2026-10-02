@@ -1,8 +1,8 @@
 /*
  * Specification for the home gesture: a swipe from whichever screen edge is
  * currently carrying it, toward the centre, which is how an app is closed.
- * Which edge that is depends on the shell's orientation (see main.c's
- * exit_edge_for_quarter()); this module only judges a swipe against
+ * Which edge that is depends on the shell's orientation (see
+ * shell_exit_edge_for_quarter()); this module only judges a swipe against
  * whichever edge it is told, one of the four in gesture_edge_t.
  *
  * This has to be forgiving enough to trigger reliably with a fingertip, and

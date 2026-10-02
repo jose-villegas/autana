@@ -8,8 +8,8 @@
 /* Reads and clears whether the SCREENSHOT verb has been seen since the
  * last call, the same "read and consume once per frame" contract
  * buttons_read() already uses (see input/buttons.h), and for the same
- * reason: main.c's loop is the only place that should act on a request,
- * and only once per request, however many frames it takes main.c to get
+ * reason: the shell's loop is the only place that should act on a request,
+ * and only once per request, however many frames it takes the shell to get
  * back around to checking. */
 bool console_screenshot_take_request(void);
 

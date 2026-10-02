@@ -750,7 +750,7 @@ gfx_full_redraw_pending(void) {
 
 /* Ends the window gfx_request_full_redraw() opened. The shell calls this
  * once it has read the flag and decided whether to invoke an app's
- * invalidate(), before that pass's frame() runs; see main.c's
+ * invalidate(), before that pass's frame() runs; see shell/shell_apps.c's
  * apply_pending_full_redraw(). */
 void
 gfx_full_redraw_clear_pending(void) {
