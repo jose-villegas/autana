@@ -54,9 +54,11 @@ triangles = 8672
 # Fitted offline on a GPU by tools/r3d/fitted_variant.py: the import bakes the
 # start at `triangles`, culled to what the camera's path draws, and the fit
 # prunes it to `budget` and matches the reference renders of the flythrough.
-# The two hashes pin the recipe and the mesh it made.
+# The two hashes pin the recipe and the mesh it made. Both fitted variants
+# are lit without the indirect bounces: they were fitted before them.
 [[variants]]
 name = "sponza_fitted"
+indirect = false
 triangles = 9973
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
 fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "44dabf0a7e258912556be8b24593d843629f456cabcba9d64b36336812338afb", recipe_sha256 = "fbde8773baa81a4b87eb8f9e80942ab21af9764b499291a61aeebc61d54ce8c4" }
@@ -64,6 +66,7 @@ fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage
 # The same recipe at the full mesh's budget.
 [[variants]]
 name = "sponza_fitted_full"
+indirect = false
 triangles = 19988
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
 fit = { budget = 17381, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "8578cfe1a678859310603ad53a77b11eda4b03cc75fe760377fa10fb92c460d5", recipe_sha256 = "637a09db4ee8b19d65e3a3255bf5c43729d0e83b6f5e7b54b469976d1a14e35f" }

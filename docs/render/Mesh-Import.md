@@ -46,6 +46,7 @@ triangles on one desktop; frame costs were measured on the board on one mesh.
 | `[[variants]]` `triangles` | One mesh per budget | one mesh | seconds each / set by the budget | [Import file](#import-file) |
 | `[[variants]]` `face_samples` | Flat: one colour per triangle | smooth | minutes / cheaper than smooth | [The baked mesh](#the-baked-mesh) |
 | `[[variants]]` `visibility` | The variant's own visibility step, in place of the import's: `process.visibility`'s keys | the import's | as `process.visibility` | [Import file](#import-file) |
+| `[[variants]]` `indirect = false` | Bakes this variant, and the reference a fit of it trains on, without the import's `process.light.indirect`; only `false` is accepted, and only when the import has `indirect` | the import's | saves the bounce gather for that variant / none | [Indirect light](#indirect-light) |
 | `[[variants]]` `fit` | A variant the appearance fit makes offline from the one the import bakes at `triangles`; the table is its recipe, with the SHA-256 of the recipe and of the mesh it made | not fitted | a CUDA GPU, minutes / unchanged at its budget | [Fitting a mesh to the reference](#fitting-a-mesh-to-the-reference) |
 
 ## The baked mesh
@@ -240,6 +241,9 @@ are at least 1 and `bounces` at least 0. The reference renderer reads the
 same settings, so a fidelity score compares like with like. How strong the
 bounce light looks is not an import setting: the scene's `[indirect]` table
 carries `intensity` and `albedo_boost` ([Scene-Files.md](Scene-Files.md#indirect-look)).
+
+A variant with `indirect = false` is baked without bounces, so a mesh fitted
+before the import gained them keeps the recipe it was fitted from.
 
 The bake keeps one outgoing radiance per triangle of the full-detail source
 mesh. With albedo $a(t)$, direct irradiance $`E_0(t)`$ at the triangle, and

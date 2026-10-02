@@ -13,7 +13,7 @@ from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d.import_settings import LIGHT_FIELDS, SettingsError, load_import_settings, load_scene  # noqa: E402
+from r3d.import_settings import LIGHT_FIELDS, SettingsError, load_import_settings, load_scene, variant_settings  # noqa: E402
 from r3d.scene_table import table_files, write_scene_table  # noqa: E402
 
 try:
@@ -226,6 +226,19 @@ class SettingsTests(unittest.TestCase):
                 directory, body=LIGHT_STEP + "indirect = { bounces = 2, rays = 8, cache_samples = 1 }\n"))
         self.assertEqual((settings.light.indirect.bounces, settings.light.indirect.rays, settings.light.indirect.cache_samples),
                          (2, 8, 1))
+
+    def test_a_variant_can_leave_the_indirect_light_out(self):
+        bounced = LIGHT_STEP + "indirect = { bounces = 2, rays = 8, cache_samples = 1 }\n"
+        output = '[output]\ndirectory = "."\n'
+        self.rejects("indirect can only be false", body=bounced + VARIANT + "indirect = true\n", output=output)
+        self.rejects("needs process.light.indirect", body=LIGHT_STEP + VARIANT + "indirect = false\n", output=output)
+        with tempfile.TemporaryDirectory() as directory:
+            settings = load_import_settings(write_import(
+                directory, body=bounced + VARIANT + "indirect = false\n" + VARIANT.replace("mesh", "lit"), output=output))
+        dark, lit = settings.variants
+        self.assertIsNone(variant_settings(settings, dark).light.indirect)
+        self.assertEqual(variant_settings(settings, lit).light.indirect.bounces, 2)
+        self.assertEqual(settings.light.indirect.bounces, 2, "the import's own settings are left alone")
 
     def test_variants_that_would_produce_the_same_mesh_are_rejected(self):
         variants = VARIANT + "triangles = 10\n" + VARIANT.replace("mesh", "other") + "triangles = 10\n"

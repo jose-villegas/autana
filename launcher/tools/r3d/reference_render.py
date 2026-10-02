@@ -21,7 +21,7 @@ from trimesh.ray.ray_pyembree import RayMeshIntersector
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d.geometry import corner_normals
-from r3d.import_settings import load_scene
+from r3d.import_settings import load_scene, variant_settings
 from r3d.light import albedo_from_uv, drop_masked, light, to_srgb8
 from r3d.mesh_import import indirect_cache_for, load_source
 from r3d.poses import camera_rays, read_poses
@@ -102,8 +102,9 @@ def device_picture(linear, covered, tonemap_white, background):
     return expand_565(np.round(lit).astype(np.uint8))
 
 
-def source_for(scene, import_path=None):
-    """Load one placed source at full detail, applying alpha masking."""
+def source_for(scene, import_path=None, variant=None):
+    """Load one placed source at full detail, applying alpha masking, lit as
+    `variant` (a variant name) is baked when one is given."""
     renderer = scene.renderers[0]
     if import_path is not None:
         wanted = pathlib.Path(import_path).resolve()
@@ -112,6 +113,11 @@ def source_for(scene, import_path=None):
             raise ValueError("the import is not placed by the scene")
         renderer = matches[0]
     settings = renderer.settings
+    if variant is not None:
+        named = [item.variant for item in scene.renderers if item.settings.path == settings.path and item.variant.name == variant]
+        if not named:
+            raise ValueError(f"the scene places no variant {variant}")
+        settings = variant_settings(settings, named[0])
     source = load_source(settings)
     if settings.alpha_keep is not None:
         source.tri_v, source.tri_t, source.tri_m = drop_masked(source.p, source.uv, source.tri_v, source.tri_t,
@@ -126,6 +132,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("scene")
     parser.add_argument("--import", dest="import_path", help="placed .import.toml source, when the scene has several")
+    parser.add_argument("--variant", help="light as this placed variant is baked (its own indirect setting)")
     parser.add_argument("--poses", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--samples", type=int, default=4)
@@ -144,7 +151,7 @@ def main(argv=None):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     try:
-        source, settings = source_for(scene, args.import_path)
+        source, settings = source_for(scene, args.import_path, args.variant)
     except ValueError as error:
         parser.error(str(error))
     for index, pose in enumerate(poses):

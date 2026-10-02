@@ -155,9 +155,15 @@ def load_fit(value, variant, where):
 
 
 def load_variant(value, process, where):
-    check_keys(value, ("name",), where, optional=("triangles", "face_samples", "visibility", "fit"))
+    check_keys(value, ("name",), where, optional=("triangles", "face_samples", "visibility", "fit", "indirect"))
     variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None, face_samples=None, visibility=None,
-                              fit=None)
+                              fit=None, indirect=True)
+    if "indirect" in value:
+        if boolean(value["indirect"], f"{where}.indirect"):
+            raise SettingsError(f"{where}.indirect can only be false: indirect light comes from process.light.indirect")
+        if not process.light or process.light.indirect is None:
+            raise SettingsError(f"{where}.indirect = false needs process.light.indirect to turn off")
+        variant.indirect = False
     if process.simplify:
         if "triangles" not in value:
             raise SettingsError(f"{where}.triangles is required when process.simplify is present")
@@ -175,6 +181,14 @@ def load_variant(value, process, where):
             raise SettingsError(f"{where}.fit needs a smooth variant of a lit import")
         variant.fit = load_fit(value["fit"], variant, f"{where}.fit")
     return variant
+
+
+def variant_settings(settings, variant):
+    """The settings `variant` is baked with: the import's, without indirect
+    light when the variant opts out of it."""
+    if variant is None or getattr(variant, "indirect", True) or not settings.light:
+        return settings
+    return SimpleNamespace(**{**vars(settings), "light": SimpleNamespace(**{**vars(settings.light), "indirect": None})})
 
 
 VISIBILITY_SOURCES = ("camera_region", "camera_path")
@@ -277,7 +291,7 @@ def load_import_settings(path):
             raise SettingsError("variants names must be unique")
         shapes = {}
         for variant in variants:
-            shape = (variant.triangles, repr(variant.face_samples), repr(variant.visibility), repr(variant.fit))
+            shape = (variant.triangles, repr(variant.face_samples), repr(variant.visibility), repr(variant.fit), variant.indirect)
             if shape in shapes:
                 raise SettingsError(f"variants {shapes[shape]!r} and {variant.name!r} would produce the same mesh")
             shapes[shape] = variant.name
