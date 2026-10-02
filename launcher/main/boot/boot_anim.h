@@ -2,23 +2,22 @@
  * boot_anim: CPU-portable maths and timing for the startup animation: the
  * zeta function rising along its critical line.
  *
- * The curve, floor and timeline use integers. Camera tracks use float
- * transforms, then the per-point projection uses Q16.16. No BSP, driver, or
- * framebuffer dependency reaches this header, so host tests cover its output.
+ * The curve, floor and timeline are integers. The camera and space tracks are
+ * float transforms composed once a frame; each point then projects in integers
+ * (render/r3d_project_x.h). One space unit is one metre, so perspective
+ * foreshortens by distance.
  *
  * What is drawn: a floor gridded with the complex plane zeta's VALUE lives
  * in, t straight up for the height up the critical line, and
  * zeta(1/2 + it) for t from 0 to 126 plotted at height t, touching the t
  * axis at each nontrivial zero in that range (BOOT_ANIM_ZEROS of them).
  *
- * Independent camera and space tracks produce transformf_t values. One space
- * unit is one metre, so perspective supplies distance foreshortening.
- *
  * The curve table, floor and title use separate fixed-point scales:
  *
  *   Q12    a value of zeta. 4096 is 1.0, one unit of the floor grid.
  *   Q8     a height t. 256 is 1.0, and 35 * 256 still fits an int16.
- *   Q16.16 metres, in camera space.
+ *   Q16.16 metres, where a point enters the view matrix; camera space is 1/512
+ *          m (R3D_X_UNIT_ONE).
  *   Q15    sines and cosines from this file's own trig table, used by the
  *          title's wobble/wave, not by the camera.
  */
@@ -64,7 +63,7 @@ boot_anim_timeline_sample(uint32_t now_ms) {
 
 #define BOOT_ANIM_T_MAX        126 /* the top of the climb            */
 
-/* Must match the curve generator's phase-one limit. */
+/* Must match PHASE1_T_MAX in tools/gen/gen_zeta_curve.py. */
 #define BOOT_ANIM_T_MAX_PHASE1 35
 
 /* RINGS is how far the fade reaches, not the floor size: quarter-unit
@@ -99,8 +98,8 @@ boot_anim_view(int w, int h, uint32_t now_ms) {
     return out;
 }
 
-/* Q12 re/im and Q8 t convert exactly to Q16.16 metres in 1/512-metre
- * camera-space units. */
+/* Q12 re/im and Q8 t convert exactly to Q16.16 metres; the view's Q9 matrix
+ * lands them in camera space in 1/512 m. */
 static inline vec3x_t
 boot_anim_to_camera_space(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view) {
     /* Inside +-2^17 (32 m) on the floor's axes and +-2^15 on t the transform is
@@ -153,7 +152,7 @@ boot_anim_project(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_
     r3d_camera_to_screen_x(p, view, screen_x, screen_y);
 }
 
-/* Draws if point is in front; checks visibility, avoids invalid coordinates. */
+/* False when the point is behind the near plane. */
 static inline bool
 boot_anim_project_point(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view, int* screen_x,
                         int* screen_y) {
@@ -171,7 +170,7 @@ boot_anim_project_segment(int32_t re0, int32_t im0, int32_t t0, int32_t re1, int
 #define BOOT_ANIM_WAVE_ENVELOPE_RAMP_MS 500
 
 /* BOOT_ANIM_WAVE_IN_MS, BOOT_ANIM_WAVE_ENVELOPE_RAMP_MS,
- * BOOT_ANIM_WAVE_OUT_MS define shape. Q0 scales strength. Timing independent. */
+ * BOOT_ANIM_WAVE_OUT_MS define shape. */
 static inline uint8_t
 boot_anim_wave_envelope(uint32_t now_ms) {
     const uint8_t in = tween_ramp(now_ms, BOOT_ANIM_WAVE_IN_MS, BOOT_ANIM_WAVE_ENVELOPE_RAMP_MS);
@@ -185,8 +184,11 @@ boot_anim_zeta_to_t_q8(int32_t zeta_q12) {
     return (int32_t)(((int64_t)zeta_q12 * 32) / BOOT_ANIM_SPIRAL_Q9);
 }
 
-/* Zero amplitude or wavelength removes lift. A zero period freezes the
- * ripple instead of dividing by zero. */
+/* A radial sine is periodic in r, so every ring's crest falls out of one
+ * formula with no record of which rings are lit.
+ *
+ * Zero amplitude or wavelength removes lift. A zero period freezes the ripple
+ * instead of dividing by zero. */
 static inline int32_t
 boot_anim_wave_height(int32_t r_q12, uint32_t now_ms, int32_t amp_q12, int32_t wavelength_q12, uint32_t period_ms) {
     if (amp_q12 == 0 || wavelength_q12 <= 0) {
@@ -308,7 +310,7 @@ boot_anim_sample(int i) {
 
 /* The curve table's points, which the generator keeps well inside the narrow
  * transform's inputs (test_the_curve_table_stays_inside_the_narrow_range()):
- * no range test a call, only the view's own flag. */
+ * no per-call range test, only the view's own flag. */
 static inline vec3x_t
 boot_anim_key_to_camera_space(const boot_anim_pt_t* key, const boot_anim_view_t* view) {
     if (view->units_ok) {
@@ -362,15 +364,15 @@ boot_anim_curve_stride(const boot_anim_view_t* view) {
 
 /* Every phase uses milliseconds since power-up, so timing is frame-rate
  * independent. */
+
 /* A FRACTION, not a pixel count: arms have different lengths. */
 static inline uint8_t
 boot_anim_axis_reach(uint32_t now_ms) {
     return tween_ease_out(tween_ramp(now_ms, 0, BOOT_ANIM_AXES_MS));
 }
 
-/* Ring fades multiply IN and OUT: depth cue on a projection with no
- * real perspective. Floor is backdrop: full strength competes with the
- * curve and wins, so BOOT_ANIM_GRID_MAX (generated) stays low, not
+/* Ring fades multiply IN and OUT as a depth cue. Floor is backdrop: full
+ * strength competes with the curve and wins, so BOOT_ANIM_GRID_MAX (generated) stays low, not
  * forever (see boot_anim_grid_climb() below), since that holds only
  * while the curve is full-size. One clock drives opacity and whitening
  * together: hue alone fixes muddiness, not peak brightness. Climbs from
@@ -667,8 +669,9 @@ boot_anim_finale_reach(uint32_t now_ms) {
     return tween_ease_out(tween_ramp(now_ms, BOOT_ANIM_FADE_START_MS, BOOT_ANIM_MS - BOOT_ANIM_FADE_START_MS));
 }
 
-/* Axes extend beyond the panel and rely on clipping; grid rings remain finite
- * wave data. */
+/* Axes run past the panel and rely on clipping. Equal to
+ * BOOT_ANIM_GRID_SPOKE_FAR_UNITS but deliberately not shared: both need only
+ * clear the panel. */
 #define BOOT_ANIM_AXIS_FAR_UNITS 500
 
 /* Host render tests call this directly and read the firmware framebuffer. */
