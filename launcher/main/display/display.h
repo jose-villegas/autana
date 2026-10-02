@@ -90,12 +90,6 @@ int display_quarter(const display_t* d);
 /* Returns the horizontal inset where a row meets a rounded canvas corner. */
 int display_panel_corner_inset(int radius, int canvas_height, int row);
 
-/*
- * The shell's side, defined in display_device.c (device only): the one panel,
- * its orientation state and its clock. What only the shell calls is in
- * display_shell.h.
- */
-
 /* The shell's own orientation, for an app drawing through the shell's
  * transform: knowing when it changed underneath you, without reading the IMU
  * again or duplicating the hysteresis above. */
