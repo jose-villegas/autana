@@ -270,7 +270,7 @@ if [ -n "$reference" ]; then
         echo "== $label reference" >> "$out/summary.txt"
         "$PYTHON" "$(to_native "$TOOLS_DIR/render_compare.py")" --out "$(to_native "$out/$label.unused.png")" \
         --reference-video "$(to_native "$avi")" "$(to_native "$cache")" \
-        --reference-mp4 "$(to_native "$out/$label.mp4")" --reference-first "$first" ${fps:+--fps "$fps"} \
+        --label-a "$label_a" --reference-mp4 "$(to_native "$out/$label.mp4")" --reference-first "$first" ${fps:+--fps "$fps"} \
         --summary "$(to_native "$out/summary.txt")"
         echo "video $out/$label.mp4"
     done
@@ -300,7 +300,8 @@ while IFS= read -r label; do
     set -- "$@" --row "$label" "$(to_native "$out/a/$label.bmp")" "$(to_native "$out/b/$label.bmp")"
 done < "$labels"
 "$PYTHON" "$(to_native "$TOOLS_DIR/render_compare.py")" \
-    --out "$(to_native "$out/compare.png")" --summary "$(to_native "$out/summary.txt")" "$@"
+    --out "$(to_native "$out/compare.png")" --summary "$(to_native "$out/summary.txt")" \
+    --label-a "$label_a" --label-b "$label_b" "$@"
 echo "sheet $out/compare.png"
 
 if [ "$video" = 1 ]; then

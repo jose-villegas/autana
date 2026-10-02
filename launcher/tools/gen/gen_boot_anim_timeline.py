@@ -14,15 +14,13 @@ any glTF tool and baked to main/boot/boot_anim_tracks_generated.c by
 tools/anim/bake_tracks.py; this script only reads it to check it.
 
 `camera_focal`, `grid_step_m` and `wave_height_m`/`wave_wavelength_m`/
-`wave_period_ms` are single settings: `camera_focal` is a lens setting
-(the camera's focal length, see boot_anim.h's "The
-projection" section for what 0 does to it: an orthographic projection, not
-a second code path to maintain); `grid_step_m` is the spacing between floor
-rings, authored in meters and converted at bake time; `wave_height_m`/
+`wave_period_ms` are single settings: `camera_focal` is a lens setting (0 is
+an orthographic projection (r3d_line_view_x_t's `focal`, render/r3d_project_x.h),
+not a second code path); `grid_step_m` is the spacing between floor rings,
+authored in meters and converted at bake time; `wave_height_m`/
 `wave_wavelength_m`/`wave_period_ms` are the ripple's own peak amplitude,
 its crest-to-crest distance, and how long one full cycle takes to pass a
-fixed point (see boot_anim.h's "The wave" section, a genuine radial sine,
-height(r, t) = amplitude * sin(2*pi*r/wavelength - 2*pi*t/period)).
+fixed point; see boot_anim_wave_height().
 `grid_rings` (how many rings the floor draws before fading out) lives in
 `timing` instead, a plain count with nothing to convert.
 
@@ -168,8 +166,8 @@ def validate(cfg):
     # width. 448/8/5/3/6 mirror BOOT_ANIM_TITLE_VIEW_W/the glyph cell/gap/
     # BOOT_ANIM_TITLE_LEN in boot_anim.h, the same "named here" convention
     # as _title_view_h above. No trailing gap after the LAST glyph, which
-    # is why this is LEN cells minus one gap, not LEN cells outright, see
-    # boot_anim.h's own comment on this section for the same subtraction.
+    # is why this is LEN cells minus one gap, not LEN cells outright; see
+    # boot_anim_title_letter() in boot_anim.h for the same subtraction.
     _title_view_w = 448
     _title_cell_w = 8 * 5 + 3
     _title_word_w = 6 * _title_cell_w - 3
@@ -321,7 +319,7 @@ TIMING_ORDER = [
     ("title_amplitude_px", "BOOT_ANIM_TITLE_AMPLITUDE_PX",
      "peak wobble swing right at the start"),
     ("title_wave_amplitude_px", "BOOT_ANIM_TITLE_WAVE_AMPLITUDE_PX",
-     "the small idle wave once a letter has landed"),
+     "the small idle wave once a letter has landed - keep under 22 px or it hurts legibility"),
     ("title_wave_period_ms", "BOOT_ANIM_TITLE_WAVE_PERIOD_MS", None),
     ("title_wave_stagger_ms", "BOOT_ANIM_TITLE_WAVE_STAGGER_MS", None),
     ("title_scale", "BOOT_ANIM_TITLE_SCALE",
@@ -332,12 +330,10 @@ TIMING_ORDER = [
     ("title_wave_fade_ms", "BOOT_ANIM_TITLE_WAVE_FADE_MS",
      "how long that calming takes, from full swing to none"),
     ("title_height_px", "BOOT_ANIM_TITLE_VIEW_Y",
-     "how far down the viewer's frame the title's own centre lands - "
-     "see boot_anim.h's own comment on this section for the frame it is in"),
+     "the title's centre in the viewer's frame; see the comment above "
+     "BOOT_ANIM_TITLE_VIEW_W in boot_anim.h"),
     ("title_x_px", "BOOT_ANIM_TITLE_VIEW_X",
-     "how far into the viewer's frame the title's own left edge starts - "
-     "see boot_anim.h's own comment on this section for where the default "
-     "came from"),
+     "how far into the viewer's frame the title's own left edge starts"),
     ("title_shadow_dx", "BOOT_ANIM_TITLE_SHADOW_DX",
      "drop shadow offset, pixels right (negative is left) - 0/0 disables it"),
     ("title_shadow_dy", "BOOT_ANIM_TITLE_SHADOW_DY",
@@ -386,16 +382,8 @@ def main():
     # uses; an old timeline should not suddenly grow a ripple its author
     # never asked for.
     cfg.setdefault("wave_height_m", 0)
-    # wave_wavelength_m/wave_period_ms replace an EARLIER version's
-    # wave_decay_m/wave_start_ms/wave_end_ms/wave_ease outright, a genuine
-    # radial sine now, not a travelling front with a decaying trail behind
-    # it (see boot_anim.h's own comment on why), so this is not a faithful
-    # reproduction of the old shape for anyone who already had a nonzero
-    # wave_height_m under that model, the same honest caveat the
-    # front-based rewrite before THIS one already carried (the two are not
-    # the same picture). Three ring-spacings and three seconds are simply
-    # reasonable starting points, not a
-    # migration.
+    # The wave is a radial sine (see boot_anim_wave_height()); three
+    # ring-spacings and three seconds are starting points.
     cfg.setdefault("wave_wavelength_m", 3 * cfg.get("grid_step_m", 1))
     cfg.setdefault("wave_period_ms", 3000)
     # wave_in_ms/wave_out_ms are newer again: starting to lerp in a
@@ -498,9 +486,10 @@ def main():
         w("#define %s %d\n" % (name, timing[key]))
         w("\n" if note else "")
 
-    w("/* The camera's focal length - 0 is an orthographic\n")
-    w(" * projection (see boot_anim.h's \"The projection\" section), any other\n")
-    w(" * value a perspective one; 1.0 is the \"normal\" lens default.\n")
+    w("/* The camera's focal length - 0 is an orthographic projection\n")
+    w(" * (r3d_line_view_x_t's `focal`, render/r3d_project_x.h), not a second\n")
+    w(" * code path; any other value a perspective one; 1.0 is the \"normal\" lens\n")
+    w(" * default.\n")
     w(" * Authored directly as a float - it is a lens property, not a\n")
     w(" * position or angle, so meters/degrees do not apply. */\n")
     w("#define BOOT_ANIM_CAMERA_FOCAL %sF\n\n" % repr(float(cfg["camera_focal"])))
@@ -511,15 +500,13 @@ def main():
     w(" * boot_anim.c does. */\n")
     w("#define BOOT_ANIM_GRID_STEP_Q12 %d\n\n" % meters_to_q12(cfg["grid_step_m"]))
 
-    w("/* The wave's own peak amplitude - see boot_anim.h's \"The wave\"\n")
-    w(" * section. Authored in meters (wave_height_m in the JSON), the same\n")
-    w(" * as grid_step_m just above; 0 (the default for a file baked before\n")
-    w(" * this existed - see this script's own backward-compatibility\n")
-    w(" * comment) turns the ripple off outright, not just down. */\n")
+    w("/* The wave's own peak amplitude; see boot_anim_wave_height(). Authored\n")
+    w(" * in meters (wave_height_m in the JSON), the same as grid_step_m just\n")
+    w(" * above; 0 turns the ripple off outright, not just down. */\n")
     w("#define BOOT_ANIM_WAVE_HEIGHT_Q12 %d\n\n" % meters_to_q12(cfg["wave_height_m"]))
 
-    w("/* The wave's own crest-to-crest distance - see boot_anim.h's \"The\n")
-    w(" * wave\" section. Also meters, also authored (wave_wavelength_m in\n")
+    w("/* The wave's own crest-to-crest distance; see boot_anim_wave_height().\n")
+    w(" * Also meters, also authored (wave_wavelength_m in\n")
     w(" * the JSON). */\n")
     w("#define BOOT_ANIM_WAVE_WAVELENGTH_Q12 %d\n\n" %
       meters_to_q12(cfg["wave_wavelength_m"]))

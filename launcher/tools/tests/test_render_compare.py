@@ -127,20 +127,29 @@ class Expand565Test(unittest.TestCase):
 class ReferenceSheetTest(unittest.TestCase):
     def test_a_sheet_is_reference_render_heatmap_and_edges_over_a_colour_scale(self):
         reference = image(STEP)
-        sheet = render_compare.reference_sheet([("a", image(STEP), reference)], tile=1.0)
+        sheet = render_compare.reference_sheet([("a", image(STEP), reference)], "render", tile=1.0)
         self.assertEqual(sheet.width, 4 * 8)
-        self.assertEqual(sheet.height, 8 + 70)
+        self.assertEqual(sheet.height, render_compare.LABEL_BAR + 8 + 70)
 
 
 class ReferenceBakeSheetTest(unittest.TestCase):
     def test_a_frame_is_the_reference_then_each_bake_over_edges_then_each_heatmap(self):
         reference, near, far = image(STEP), image(STEP), Image.new("RGB", (8, 8), DRAWN)
-        sheet = render_compare.reference_bake_sheet([("frame 0", reference, [("near", near), ("far", far)])], tile=1.0)
+        sheet = render_compare.reference_bake_sheet([("frame 0", reference, [("near", near, None), ("far", far, None)])], tile=1.0)
         self.assertEqual(sheet.width, 3 * reference.width)
         self.assertEqual(sheet.height, 2 * (reference.height + render_compare.LABEL_BAR) + 70)
         heat = np.asarray(sheet)[render_compare.LABEL_BAR + reference.height + render_compare.LABEL_BAR:][:reference.height]
         self.assertEqual(int(heat[:, reference.width:2 * reference.width].max()), 0)
         self.assertGreater(int(heat[:, 2 * reference.width:].max()), 0)
+
+
+class OwnReferenceSheetTest(unittest.TestCase):
+    def test_a_bake_with_its_own_reference_gets_a_reference_row_and_a_heatmap_row_against_it(self):
+        reference, own = image(STEP), Image.new("RGB", (8, 8), DRAWN)
+        without = render_compare.reference_bake_sheet([("f", reference, [("a", own, None)])], tile=1.0)
+        with_own = render_compare.reference_bake_sheet([("f", reference, [("a", own, own)])], tile=1.0)
+        self.assertEqual(with_own.height - without.height, 2 * (8 + render_compare.LABEL_BAR))
+        self.assertEqual(int(np.asarray(with_own)[-70 - 8:-70, 8:].max()), 0, "a bake matches its own reference")
 
 
 class EdgeSplitTest(unittest.TestCase):
@@ -185,18 +194,38 @@ class HeatmapTest(unittest.TestCase):
 class SheetTest(unittest.TestCase):
     def test_row_is_a_then_b_then_heat_and_rows_stack(self):
         a = image([[DRAWN, DRAWN]])
-        sheet = render_compare.sheet([("one", a, a), ("two", a, a)], CLEAR, gain=8)
-        self.assertEqual(sheet.size, (6, 2))
+        sheet = render_compare.sheet([("one", a, a), ("two", a, a)], CLEAR, "a", "b", gain=8)
+        self.assertEqual(sheet.size, (6, 2 * (1 + render_compare.LABEL_BAR)))
+
+    def test_each_panel_sits_under_a_label_bar_of_its_own(self):
+        wide = blank(120, 4)
+        pixels = np.asarray(render_compare.sheet([("r", wide, wide)], None, "aaaa", "bbbb"))
+        bar = render_compare.LABEL_BAR
+        for column in range(3):
+            self.assertTrue(pixels[:bar, column * 120 : (column + 1) * 120].any(), "panel %d has no label" % column)
+
+    def test_the_labels_come_from_the_caller(self):
+        wide = blank(120, 4)
+        bar = render_compare.LABEL_BAR
+        one = np.asarray(render_compare.sheet([("r", wide, wide)], None, "smooth", "flat"))[:bar, :240]
+        two = np.asarray(render_compare.sheet([("r", wide, wide)], None, "lite", "fitted"))[:bar, :240]
+        self.assertFalse((one == two).all())
+
+    def test_a_sheet_without_labels_is_refused(self):
+        a = image([[DRAWN]])
+        for labels in (("", "b"), ("a", ""), (None, None)):
+            with self.assertRaises(ValueError):
+                render_compare.sheet([("x", a, a)], None, *labels)
 
     def test_rows_of_different_widths_are_padded_to_the_widest(self):
         narrow, wide = image([[DRAWN, DRAWN]]), image([[DRAWN, DRAWN, DRAWN, DRAWN]])
-        sheet = render_compare.sheet([("n", narrow, narrow), ("w", wide, wide)], CLEAR)
-        self.assertEqual(sheet.size, (12, 2))
-        self.assertEqual(sheet.getpixel((8, 0)), (0, 0, 0))
+        sheet = render_compare.sheet([("n", narrow, narrow), ("w", wide, wide)], CLEAR, "a", "b")
+        self.assertEqual(sheet.size, (12, 2 * (1 + render_compare.LABEL_BAR)))
+        self.assertEqual(sheet.getpixel((8, render_compare.LABEL_BAR)), (0, 0, 0))
 
     def test_size_mismatch_is_refused(self):
         with self.assertRaises(ValueError):
-            render_compare.sheet([("x", image([[DRAWN]]), image([[DRAWN, DRAWN]]))], None, gain=8)
+            render_compare.sheet([("x", image([[DRAWN]]), image([[DRAWN, DRAWN]]))], None, "a", "b", gain=8)
 
 
 def blank(width, height, colour=(0, 0, 0)):
@@ -288,31 +317,29 @@ class CropSheetTest(unittest.TestCase):
         a = blank(40, 30)
         b = with_pixels(a, [(20, 15)], DRAWN)
         clusters = render_compare.find_clusters(a, b, None, margin=2, grow=0)
-        pixels = np.asarray(render_compare.crop_sheet([("t", [a, b], clusters)], zoom=4))
+        pixels = np.asarray(render_compare.crop_sheet([("t", [a, b], clusters)], ["a", "b"], zoom=4))
         self.assertEqual(int((pixels == DRAWN).all(axis=2).sum()), 16)
 
     def test_a_crop_over_the_size_cap_is_zoomed_less(self):
         a = blank(400, 300)
         b = with_pixels(a, blob(0, 0, 3) + blob(397, 297, 3), DRAWN)
         clusters = render_compare.find_clusters(a, b, None, margin=0, grow=0, threshold=0)
-        pixels = np.asarray(render_compare.crop_sheet([("t", [a, b], clusters[:1])], zoom=4))
+        pixels = np.asarray(render_compare.crop_sheet([("t", [a, b], clusters[:1])], ["a", "b"], zoom=4))
         self.assertLessEqual(pixels.shape[1], 512 + 100)
 
     def test_every_picture_of_an_entry_is_stacked_in_the_cell(self):
         a = blank(40, 30)
         b = with_pixels(a, [(20, 15)], DRAWN)
         clusters = render_compare.find_clusters(a, b, None, margin=2, grow=0)
-        two = render_compare.crop_sheet([("t", [a, b], clusters)], zoom=4)
-        three = render_compare.crop_sheet([("t", [a, b, b], clusters)], zoom=4, names=["x", "y", "z"])
+        two = render_compare.crop_sheet([("t", [a, b], clusters)], ["x", "y"], zoom=4)
+        three = render_compare.crop_sheet([("t", [a, b, b], clusters)], ["x", "y", "z"], zoom=4)
         self.assertGreater(three.height, two.height)
-        plain = render_compare.crop_sheet([("t", [a, b, b], clusters)], zoom=4)
-        self.assertNotEqual(np.asarray(plain).tobytes(), np.asarray(three).tobytes(), "the names are drawn on the crops")
 
     def test_no_difference_writes_no_crops_file(self):
         same = blank(20, 20)
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "x.crops.png"
-            self.assertFalse(render_compare.write_crops([("t", [same, same], [])], str(target)))
+            self.assertFalse(render_compare.write_crops([("t", [same, same], [])], str(target), ["a", "b"]))
             self.assertFalse(target.exists())
 
     def test_a_difference_writes_the_crops_file(self):
@@ -321,11 +348,27 @@ class CropSheetTest(unittest.TestCase):
         entries = [("t", [a, b], render_compare.find_clusters(a, b, None))]
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "x.crops.png"
-            self.assertTrue(render_compare.write_crops(entries, str(target)))
+            self.assertTrue(render_compare.write_crops(entries, str(target), ["a", "b"]))
             self.assertTrue(target.exists())
 
+    def test_each_crop_sits_under_a_label_bar_naming_its_side(self):
+        a = blank(40, 30)
+        b = with_pixels(a, [(20, 15)], DRAWN)
+        clusters = render_compare.find_clusters(a, b, None, margin=2, grow=0)
+        bar = render_compare.LABEL_BAR
+        picture = render_compare.crop_sheet([("t", [a, b], clusters)], ["smooth", "flat"], zoom=4)
+        crop = clusters[0].y1 - clusters[0].y0
+        self.assertEqual(picture.height, 36 + 2 * (bar + 4 * crop) + 2 * 6)
+        pixels = np.asarray(picture)
+        self.assertTrue((pixels[36 : 36 + bar, :150] != 24).any())
+        self.assertTrue((pixels[36 + bar + 4 * crop + 6 : 36 + 2 * bar + 4 * crop + 6, :150] != 24).any())
+
+    def test_a_crops_sheet_without_labels_is_refused(self):
+        with self.assertRaises(ValueError):
+            render_compare.crop_sheet([("t", [blank(4, 4), blank(4, 4)], [])], ["a", ""])
+
     def test_no_clusters_still_gives_a_picture(self):
-        self.assertGreater(render_compare.crop_sheet([("t", [blank(4, 4), blank(4, 4)], [])]).size[0], 0)
+        self.assertGreater(render_compare.crop_sheet([("t", [blank(4, 4), blank(4, 4)], [])], ["a", "b"]).size[0], 0)
 
 
 def avi_bytes(width, height, frames, dt_ms):
@@ -452,6 +495,29 @@ class VideoTest(unittest.TestCase):
         for column in range(3):
             panel = pixels[:bar, column * 200 : (column + 1) * 200]
             self.assertTrue(panel.any(), "panel %d has no label" % column)
+
+    def test_a_still_without_both_labels_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for labels in ([], ["--label-a", "x"], ["--label-b", "y"]):
+                path = Path(tmp) / "a.png"
+                blank(4, 4).save(path)
+                argv = ["render_compare.py", "--out", str(Path(tmp) / "s.png"), *labels, "--row", "r", str(path), str(path)]
+                with unittest.mock.patch.object(sys, "argv", argv), contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit) as refused:
+                        render_compare.main()
+                self.assertEqual(refused.exception.code, 2)
+                self.assertFalse((Path(tmp) / "s.png").exists())
+
+    def test_a_labelled_still_is_written_with_its_label_bar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "a.png"
+            blank(4, 4).save(path)
+            argv = ["render_compare.py", "--out", str(Path(tmp) / "s.png"), "--label-a", "x", "--label-b", "y",
+                    "--row", "r", str(path), str(path)]
+            with unittest.mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()):
+                render_compare.main()
+            with Image.open(Path(tmp) / "s.png") as shot:
+                self.assertEqual(shot.size, (12, 4 + render_compare.LABEL_BAR))
 
     def test_frame_line_gives_time_share_and_holes(self):
         stats = render_compare.Stats(changed=5, total=20, mean_abs=1.5, holes_a=2, holes_b=3)

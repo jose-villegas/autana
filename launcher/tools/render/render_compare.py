@@ -1,7 +1,7 @@
 """Lay renders of two revisions side by side and say how they differ.
 
-    render_compare.py --out sheet.png [--summary summary.txt] [--clear RRGGBB]
-        --row LABEL A.bmp B.bmp [--row ...]
+    render_compare.py --out sheet.png --label-a TEXT --label-b TEXT
+        [--summary summary.txt] [--clear RRGGBB] --row LABEL A.bmp B.bmp [--row ...]
     render_compare.py --out video.mp4 --video A.avi B.avi --label-a TEXT
         --label-b TEXT [--csv frames.csv] [--fps N] [--clear RRGGBB]
     render_compare.py --out sheet.png --reference-bakes REFERENCE_DIR
@@ -15,12 +15,17 @@ takes them from its two most different frames.
 
 --reference-bakes puts the ground truth in the comparison: per --sheet-frames
 frame one row of the reference then each bake, and under it each bake's CIE76 dE
-heatmap against the reference with its mean and p95. With --crops N the crops
+heatmap against the reference with its mean and p95; a --bake-reference adds the reference made with
+that bake's own settings and the heatmap against it. With --crops N the crops
 sheet shows the places the first and last bake differ most, the reference above
 every bake.
 
 One row per render: A | B | a greyscale heatmap of the absolute per-pixel
-difference, scaled by GAIN (8) so a small colour shift shows. With --clear (the
+difference, scaled by GAIN (8) so a small colour shift shows. Every panel of a
+sheet, crops sheet, reference sheet or video sits under a LABEL_BAR naming it:
+--label-a and --label-b for A and B ("difference xN", "dE76" for the
+others), and a still without them is refused. With --reference-video,
+--label-a names the render and the other panel is "reference". With --clear (the
 colour the scene clears to) a pixel that is clear on one side and drawn on the
 other is red in the heatmap and counted as a hole on the side that left it
 clear; a silhouette that moved counts too, so read the count beside the sheet.
@@ -201,46 +206,55 @@ def heat_scale(width):
     return picture
 
 
-def reference_sheet(items, tile=0.6):
-    """Each (label, render, reference) as reference | render | dE heatmap |
-    edge pixels, shrunk by `tile`, with the heatmap's colour scale below."""
-    rows = [(label, reference, render) for label, render, reference in items]
-    picture = sheet(rows, None, panels=lambda reference, render: [reference_heatmap(render, reference), edge_overlay(reference)])
-    picture = picture.resize((round(picture.width * tile), round(picture.height * tile)), Image.Resampling.BOX)
+def reference_sheet(items, label, tile=0.6):
+    """Each (row title, render, reference) as reference | render | dE heatmap |
+    edge pixels, shrunk by `tile`, each under its label (`label` names the
+    render), with the heatmap's colour scale below."""
+    rows = [(title, reference, render) for title, render, reference in items]
+
+    def others(reference, render):
+        return [("dE76", reference_heatmap(render, reference)), ("reference edges", edge_overlay(reference))]
+
+    picture = _compose(list(zip(rows, _panel_rows(rows, None, GAIN, others))), "reference", label, tile)
     out = Image.new("RGB", (picture.width, picture.height + 70))
     out.paste(picture, (0, 0))
     out.paste(heat_scale(picture.width), (0, picture.height))
     return out
 
 
-def labelled(picture, text, font):
-    """The picture under a LABEL_BAR strip carrying text."""
-    out = Image.new("RGB", (picture.width, picture.height + LABEL_BAR))
-    out.paste(picture.convert("RGB"), (0, LABEL_BAR))
-    ImageDraw.Draw(out).text((3, 3), text, fill=(255, 255, 255), font=font)
-    return out
-
-
 def reference_bake_sheet(frames, tile=0.8):
     """One sheet of every frame's reference beside each bake. `frames` is
-    [(title, reference, [(label, render)])]: per frame a row of the reference
-    then the bakes, and under it the reference's edge pixels then each bake's
-    dE heatmap, captioned with its mean and p95, over the heatmap's colour scale."""
-    font, rows = _font(), []
+    [(title, reference, [(label, render, own)])]: per frame a row of the
+    reference then the bakes, and under it the reference's edge pixels then
+    each bake's dE heatmap, captioned with its mean and p95, over the heatmap's
+    colour scale. A bake with its own reference (`own`, rendered with the
+    bake's own settings) gets two more rows: that reference, then the heatmap
+    against it."""
+    rows = []
     for title, reference, bakes in frames:
         size = (round(reference.width * tile), round(reference.height * tile))
 
         def shrink(picture):
             return picture.convert("RGB").resize(size, Image.Resampling.BOX)
 
-        top = [labelled(shrink(reference), "reference  " + title, font)]
-        under = [labelled(shrink(edge_overlay(reference)), "reference edge pixels", font)]
-        for label, render in bakes:
-            error = delta_e76(render, reference)
-            top.append(labelled(shrink(render), label, font))
-            under.append(labelled(shrink(reference_heatmap_from_error(error)),
-                                  "dE mean %.2f  p95 %.1f" % (error.mean(), np.percentile(error, 95)), font))
-        for cells in (top, under):
+        def caption(render, against):
+            error = delta_e76(render, against)
+            return "dE mean %.2f  p95 %.1f" % (error.mean(), np.percentile(error, 95)), error
+
+        top = [captioned(shrink(reference), "reference  " + title)]
+        under = [captioned(shrink(edge_overlay(reference)), "reference edge pixels")]
+        own_top = [captioned(Image.new("RGB", size), "own reference of each bake")]
+        own_under = [captioned(Image.new("RGB", size), "dE against its own")]
+        for label, render, own in bakes:
+            text, error = caption(render, reference)
+            top.append(captioned(shrink(render), label))
+            under.append(captioned(shrink(reference_heatmap_from_error(error)), text))
+            if own is not None:
+                text, error = caption(render, own)
+                own_top.append(captioned(shrink(own), "reference for " + label))
+                own_under.append(captioned(shrink(reference_heatmap_from_error(error)), text))
+        sections = [top, under] + ([own_top, own_under] if len(own_top) > 1 else [])
+        for cells in sections:
             row = Image.new("RGB", (sum(cell.width for cell in cells), cells[0].height))
             for column, cell in enumerate(cells):
                 row.paste(cell, (column * cells[0].width, 0))
@@ -311,17 +325,42 @@ def heatmap(a, b, clear, gain=GAIN):
     return Image.fromarray(heat)
 
 
-def sheet(rows, clear, gain=GAIN, panels=None):
-    """One picture: each (label, a, b) row as A | B | heatmap, stacked, black-padded to the widest.
-    panels(a, b), when given, returns the pictures that follow B in place of the heatmap."""
-    strips = []
-    for _label, a, b in rows:
+def _panel_rows(rows, clear, gain, panels):
+    """Per (title, a, b) row, [(label, picture)] for the panels after B: the
+    heatmap unless panels(a, b) names others."""
+    out = []
+    for _title, a, b in rows:
         _same_size(a, b)
-        after = [heatmap(a, b, clear, gain)] if panels is None else panels(a, b)
-        strips.append(np.concatenate([_pixels(a), _pixels(b), *(_pixels(extra) for extra in after)], axis=1))
+        out.append([("difference x%d" % gain, heatmap(a, b, clear, gain))] if panels is None else panels(a, b))
+    return out
+
+
+def _compose(rows, label_a, label_b, tile=1.0):
+    """The panel rows as A | B | the rest, each panel under its label bar,
+    stacked, black-padded to the widest. Pictures are shrunk by tile before
+    they are labelled so the text stays full size."""
+    if not label_a or not label_b:
+        raise ValueError("a sheet needs a label for each of A and B")
+    strips = []
+    for (_title, a, b), after in rows:
+        named = [(label_a, a), (label_b, b), *after]
+        pictures = [captioned(_scaled(picture, tile), text) for text, picture in named]
+        strips.append(np.concatenate([_pixels(picture) for picture in pictures], axis=1))
     widest = max(strip.shape[1] for strip in strips)
     padded = [np.pad(strip, ((0, 0), (0, widest - strip.shape[1]), (0, 0))) for strip in strips]
     return Image.fromarray(np.concatenate(padded, axis=0).astype(np.uint8))
+
+
+def _scaled(picture, tile):
+    if tile == 1.0:
+        return picture
+    return picture.resize((round(picture.width * tile), round(picture.height * tile)), Image.Resampling.BOX)
+
+
+def sheet(rows, clear, label_a, label_b, gain=GAIN):
+    """One picture: each (title, a, b) row as A | B | heatmap, each panel under
+    a label bar, stacked, black-padded to the widest."""
+    return _compose(list(zip(rows, _panel_rows(rows, clear, gain, None))), label_a, label_b)
 
 
 @dataclass
@@ -450,14 +489,17 @@ def find_clusters(a, b, clear, count=4, margin=8, threshold=8, grow=3, max_side=
     return clusters[:count]
 
 
-def crop_sheet(entries, zoom=ZOOM, names=None):
+def crop_sheet(entries, labels, zoom=ZOOM):
     """One picture of zoomed crops: per entry a row, per cluster the entry's
     pictures stacked top to bottom.
 
-    entries is [(title, pictures, clusters)]; every crop is labelled with its
-    title and where it was cut, and with `names`, one per picture, when given.
-    A crop over 512 px is zoomed less so the sheet stays a size a viewer opens.
+    entries is [(title, pictures, clusters)]; every cluster is headed with its
+    title and where it was cut, and each crop sits under a bar naming its
+    picture, `labels` holding one per picture. A crop over 512 px is zoomed
+    less so the sheet stays a size a viewer opens.
     """
+    if not labels or not all(labels) or any(len(pictures) != len(labels) for _t, pictures, _c in entries):
+        raise ValueError("a crops sheet needs a label for each picture")
     font, cell_min, gap, bar = _font(), 150, 6, 36
     rows = []
     for title, pictures, clusters in entries:
@@ -469,7 +511,7 @@ def crop_sheet(entries, zoom=ZOOM, names=None):
             cells.append((box, [p.convert("RGB").crop(box).resize(size, Image.NEAREST) for p in pictures]))
         if cells:
             rows.append((title, cells))
-    heights = [bar + len(cells[0][1]) * (max(c[1][0].size[1] for c in cells) + gap) for _t, cells in rows]
+    heights = [bar + len(cells[0][1]) * (LABEL_BAR + max(c[1][0].size[1] for c in cells) + gap) for _t, cells in rows]
     widths = [sum(max(c[1][0].size[0], cell_min) + gap for c in cells) for _t, cells in rows]
     canvas = Image.new("RGB", (max(widths or [cell_min]), max(sum(heights), 1)), (24, 24, 24))
     draw, top = ImageDraw.Draw(canvas), 0
@@ -479,14 +521,13 @@ def crop_sheet(entries, zoom=ZOOM, names=None):
             place = "x%d y%d  %dx%d" % (box[0], box[1], box[2] - box[0], box[3] - box[1])
             draw.text((left, top), title, fill=(255, 255, 255), font=font)
             draw.text((left, top + 17), place, fill=(200, 200, 200), font=font)
+            width = max(crops[0].size[0], cell_min)
             below = top + bar
-            for index, crop in enumerate(crops):
-                canvas.paste(crop, (left, below))
-                if names:
-                    draw.text((left + 2, below + 1), names[index], fill=(255, 255, 255), font=font, stroke_width=1,
-                              stroke_fill=(0, 0, 0))
-                below += crop.size[1] + gap
-            left += max(crops[0].size[0], cell_min) + gap
+            for crop, label in zip(crops, labels):
+                captioned_crop = captioned(crop, label, width)
+                canvas.paste(captioned_crop, (left, below))
+                below += captioned_crop.size[1] + gap
+            left += width + gap
         top += height
     return canvas
 
@@ -517,18 +558,24 @@ def _font():
         return ImageFont.load_default()
 
 
+def captioned(picture, text, width=0):
+    """picture under a LABEL_BAR holding text, on a canvas at least width wide.
+
+    The default font has no Greek or multiplication sign, so labels are ASCII.
+    """
+    picture = picture.convert("RGB")
+    canvas = Image.new("RGB", (max(picture.width, width), picture.height + LABEL_BAR), (0, 0, 0))
+    canvas.paste(picture, (0, LABEL_BAR))
+    ImageDraw.Draw(canvas).text((6, 3), text, fill=(255, 255, 255), font=_font())
+    return canvas
+
+
 def compose_frame(a, b, clear, gain, label_a, label_b, note=""):
     """A | B | heatmap under a bar naming each; the heatmap's label carries note."""
     _same_size(a, b)
-    width, height = a.size
-    canvas = Image.new("RGB", (3 * width, height + LABEL_BAR), (0, 0, 0))
-    for column, picture in enumerate((a, b, heatmap(a, b, clear, gain))):
-        canvas.paste(picture.convert("RGB"), (column * width, LABEL_BAR))
-    draw, font = ImageDraw.Draw(canvas), _font()
     texts = ("A  " + label_a, "B  " + label_b, ("diff x%d  " % gain + note).strip())
-    for column, text in enumerate(texts):
-        draw.text((column * width + 6, 3), text, fill=(255, 255, 255), font=font)
-    return canvas
+    panels = (a, b, heatmap(a, b, clear, gain))
+    return Image.fromarray(np.concatenate([_pixels(captioned(p, t)) for p, t in zip(panels, texts)], axis=1).astype(np.uint8))
 
 
 def frame_line(index, dt_ms, stats):
@@ -578,16 +625,16 @@ def worst_frames(all_stats, count):
     return sorted(order[:count])
 
 
-def write_crops(entries, out, zoom=ZOOM, names=None):
+def write_crops(entries, out, labels, zoom=ZOOM):
     """Save the crops sheet of entries unless nothing differs; True if written."""
     if not any(clusters for _t, _pictures, clusters in entries):
         print("no differences: no crops written")
         return False
-    crop_sheet(entries, zoom, names).save(out)
+    crop_sheet(entries, labels, zoom).save(out)
     return True
 
 
-def write_video_crops(path_a, path_b, indices, out, clear, count, zoom, dt_ms):
+def write_video_crops(path_a, path_b, indices, out, clear, count, zoom, dt_ms, label_a, label_b):
     """A crops sheet of the given frames of two AVIs, one row per frame."""
     wanted = set(indices)
     picked = {}
@@ -600,7 +647,7 @@ def write_video_crops(path_a, path_b, indices, out, clear, count, zoom, dt_ms):
         a, b = picked[("a", index)], picked[("b", index)]
         title = "frame %d (%.1f s)" % (index, index * dt_ms / 1000.0)
         entries.append((title, [a, b], find_clusters(a, b, clear, count)))
-    write_crops(entries, out, zoom)
+    write_crops(entries, out, [label_a, label_b], zoom)
 
 
 def compare_videos(path_a, path_b, out, csv_path, clear, gain, label_a, label_b, fps=None, crops=0, zoom=ZOOM):
@@ -641,7 +688,7 @@ def compare_videos(path_a, path_b, out, csv_path, clear, gain, label_a, label_b,
             handle.write("\n".join(lines) + "\n")
     if crops:
         worst = worst_frames(all_stats, CROP_FRAMES)
-        write_video_crops(path_a, path_b, worst, crops_path(out), clear, crops, zoom, dt_ms)
+        write_video_crops(path_a, path_b, worst, crops_path(out), clear, crops, zoom, dt_ms, label_a, label_b)
     return video_summary(all_stats, dt_ms)
 
 
@@ -693,7 +740,7 @@ def reference_video(path, reference_dir, scale=None, heatmaps=None, keep=None, s
             sink(fps, index, render, reference)
         values.append(stats)
         if heatmaps is not None:
-            reference_heatmap(render, reference).save(heatmaps / ("%04d.png" % index))
+            captioned(reference_heatmap(render, reference), "dE76").save(heatmaps / ("%04d.png" % index))
         if keep is not None and index in keep:
             keep[index] = (render, reference)
     if len(values) != len(references):
@@ -708,40 +755,49 @@ def reference_video(path, reference_dir, scale=None, heatmaps=None, keep=None, s
     )
 
 
-def write_reference_bake_sheet(reference_dir, bakes, scale, frame_indices, out, crops=0):
+def write_reference_bake_sheet(reference_dir, bakes, scale, frame_indices, out, crops=0, own=None):
     """Score each (label, AVI) bake against the reference frames, write the
     sheet of `frame_indices` beside the reference (and, with crops, the places
-    the first and last bake differ most), and return a score line per bake."""
-    kept, lines = {}, []
+    the first and last bake differ most), and return a score line per bake.
+    `own` maps a bake's label to the reference directory made with that
+    bake's own settings; it is scored and shown as well."""
+    own = own or {}
+    kept, kept_own, lines = {}, {}, []
     for label, path in bakes:
         keep = {index: None for index in frame_indices}
         _frames, total = reference_video(path, reference_dir, scale, None, keep)
         kept[label] = keep
         lines.append(reference_line(label, total))
+        if label in own:
+            keep = {index: None for index in frame_indices}
+            _frames, total = reference_video(path, own[label], scale, None, keep)
+            kept_own[label] = keep
+            lines.append(reference_line(label + " (own reference)", total))
     first = bakes[0][0]
-    frames = [("frame %d" % index, kept[first][index][1], [(label, kept[label][index][0]) for label, _path in bakes])
+    frames = [("frame %d" % index, kept[first][index][1],
+               [(label, kept[label][index][0], kept_own[label][index][1] if label in kept_own else None) for label, _path in bakes])
               for index in frame_indices]
     reference_bake_sheet(frames).save(out, optimize=True)
     if crops:
         entries = []
         for title, reference, renders in frames:
             clusters = find_clusters(renders[0][1], renders[-1][1], None, crops)
-            entries.append((title, [reference] + [render for _label, render in renders], clusters))
-        write_crops(entries, crops_path(out), ZOOM, ["reference"] + [label for label, _path in bakes])
+            entries.append((title, [reference] + [render for _label, render, _own in renders], clusters))
+        write_crops(entries, crops_path(out), ["reference"] + [label for label, _path in bakes], ZOOM)
     return lines
 
 
 class ReferenceVideoWriter:
     """Packs reference_sheet's one-frame sheets into an mp4 through ffmpeg."""
 
-    def __init__(self, out, fps=None):
-        self.out, self.fps, self.process = out, fps, None
+    def __init__(self, out, label, fps=None):
+        self.out, self.label, self.fps, self.process = out, label, fps, None
 
     def add(self, fps, index, render, reference):
         ffmpeg = shutil.which("ffmpeg")
         if ffmpeg is None:
             raise RuntimeError("ffmpeg not found; --reference-mp4 needs it to pack the frames")
-        picture = reference_sheet([("frame %d" % index, render, reference)], tile=1.0)
+        picture = reference_sheet([("frame %d" % index, render, reference)], self.label, tile=1.0)
         if self.process is None:
             self.process = subprocess.Popen(_ffmpeg_command(ffmpeg, picture.size, self.fps or fps, self.out), stdin=subprocess.PIPE)
         self.process.stdin.write(picture.tobytes())
@@ -767,17 +823,23 @@ def main():
     parser.add_argument("--reference-bakes", metavar="REFERENCE_DIR",
                         help="the reference PNGs the --bake videos are scored against; --out is then their sheet")
     parser.add_argument("--bake", nargs=2, action="append", metavar=("LABEL", "VIDEO"))
+    parser.add_argument("--bake-reference", nargs=2, action="append", metavar=("LABEL", "REFERENCE_DIR"),
+                        help="the reference made with that --bake's own settings, scored and shown beside the common one")
     parser.add_argument("--heatmap-dir")
     parser.add_argument("--reference-sheet", metavar="PNG", help="with --reference-video, one sheet of --sheet-frames")
     parser.add_argument("--sheet-frames", default="2,4", help="comma-separated video frame indices for --reference-sheet")
     parser.add_argument("--video", nargs=2, metavar=("A.avi", "B.avi"))
     parser.add_argument("--csv")
     parser.add_argument("--fps", type=float)
-    parser.add_argument("--label-a", default="A")
-    parser.add_argument("--label-b", default="B")
+    parser.add_argument("--label-a", help="what A shows; required with --row, --video and the reference sheet or mp4")
+    parser.add_argument("--label-b", help="what B shows; required with --row and --video")
     parser.add_argument("--crops", type=int, default=0)
     args = parser.parse_args()
 
+    if (args.row or args.video) and not (args.label_a and args.label_b):
+        parser.error("--label-a and --label-b are required: every panel is labelled")
+    if (args.reference_sheet or args.reference_mp4) and not args.label_a:
+        parser.error("--label-a, naming the render, is required with --reference-sheet or --reference-mp4")
     if args.video:
         line = compare_videos(*args.video, args.out, args.csv, args.clear, GAIN, args.label_a, args.label_b, args.fps, args.crops, ZOOM)
         print(line)
@@ -789,7 +851,8 @@ def main():
         if not args.bake:
             parser.error("--reference-bakes needs at least one --bake")
         indices = [int(index) for index in args.sheet_frames.split(",")]
-        lines = write_reference_bake_sheet(args.reference_bakes, args.bake, args.reference_scale, indices, args.out, args.crops)
+        lines = write_reference_bake_sheet(args.reference_bakes, args.bake, args.reference_scale, indices, args.out, args.crops,
+                                            dict(args.bake_reference or []))
         print("\n".join(lines))
         if args.summary:
             with open(args.summary, "a") as handle:
@@ -808,7 +871,7 @@ def main():
             stats = reference_measure(render, reference)
             lines.append(reference_line(label, stats))
             if heatmaps is not None:
-                reference_heatmap(render, reference).save(heatmaps / (label + ".png"))
+                captioned(reference_heatmap(render, reference), "dE76").save(heatmaps / (label + ".png"))
         print("\n".join(lines))
         if args.summary:
             with open(args.summary, "a") as handle:
@@ -823,7 +886,7 @@ def main():
         if heatmaps is not None:
             heatmaps.mkdir(parents=True, exist_ok=True)
         keep = {int(index): None for index in args.sheet_frames.split(",")} if args.reference_sheet else None
-        video = ReferenceVideoWriter(args.reference_mp4, args.fps) if args.reference_mp4 else None
+        video = ReferenceVideoWriter(args.reference_mp4, args.label_a, args.fps) if args.reference_mp4 else None
         try:
             frames, total = reference_video(*args.reference_video, args.reference_scale, heatmaps, keep,
                                             None if video is None else video.add, args.reference_first)
@@ -831,8 +894,8 @@ def main():
             if video is not None:
                 video.close()
         if keep is not None:
-            reference_sheet([("frame %d" % index, *pair) for index, pair in keep.items() if pair]).save(args.reference_sheet,
-                                                                                                    optimize=True)
+            sheet_rows = [("frame %d" % index, *pair) for index, pair in keep.items() if pair]
+            reference_sheet(sheet_rows, args.label_a).save(args.reference_sheet, optimize=True)
         lines = [reference_line("frame %d" % index, stats) for index, stats in enumerate(frames)]
         lines.append(reference_line("frames mean", total))
         print("\n".join(lines))
@@ -843,10 +906,10 @@ def main():
             return
 
     rows = [(label, Image.open(a), Image.open(b)) for label, a, b in args.row]
-    sheet(rows, args.clear).save(args.out)
+    sheet(rows, args.clear, args.label_a, args.label_b).save(args.out)
     if args.crops:
         entries = [(label, [a, b], find_clusters(a, b, args.clear, args.crops)) for label, a, b in rows]
-        write_crops(entries, crops_path(args.out), ZOOM)
+        write_crops(entries, crops_path(args.out), [args.label_a, args.label_b], ZOOM)
     lines = [summary_line(label, measure(a, b, args.clear)) for label, a, b in rows]
     print("\n".join(lines))
     if args.summary:

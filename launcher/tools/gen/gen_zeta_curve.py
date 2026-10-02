@@ -100,12 +100,8 @@ STEP = 0.14         # target spacing between samples, in plane units, was
 Q = 12              # BOOT_ANIM_Q, for re/im
 TQ = 8              # t is stored in Q8: 126 * 256 still fits an int16
 
-# Where phase 1 of the reveal (the part boot_anim.h's boot_anim_pen() paces
-# identically to before this climb was extended) hands off to phase 2. The
-# original T_MAX: everything up to here is (up to floating-point noise in
-# the arc-length walk below) the same table this file shipped when the climb
-# stopped at 35, so the picture during phase 1 does not change. See
-# boot_anim_pen()'s own comment for what happens at this handoff.
+# Where phase 1 of the reveal hands off to phase 2; boot_anim_pen() paces
+# phase 1, and its comment covers the handoff.
 PHASE1_T_MAX = 35.0
 
 # The imaginary parts of the first nontrivial zeros of zeta, from the
