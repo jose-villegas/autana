@@ -31,8 +31,8 @@ repository root. It makes the launcher's and the UI toolkit's images itself and 
 ```
 
 It needs a host C compiler, Python with Pillow and numpy, and ffmpeg 5.1 or newer.
-The render lab's fidelity sheet also needs the packages in
-`launcher/tools/r3d/requirements.txt` and the source model that import fetches,
+An app's `tools/doc_images.sh` may also need the packages in
+`launcher/tools/r3d/requirements.txt` and the source model that the import fetches,
 SHA-256 checked, into `launcher/tools/r3d/.cache`; the workflow caches it.
 `--check` renders into `launcher/tools/results/doc_images/out/`
 and compares decoded pixels with `compare_images.py`, never bytes: another
