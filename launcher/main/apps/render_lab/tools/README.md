@@ -57,19 +57,21 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 | `render-lab-cube.png`, `render-lab-cube.gif` | the Gouraud cube; the GIF plays the rotation forward and back |
 | `render-lab-cornell.png` | the ray-traced Cornell box, fully resolved, no HUD |
 | `render-lab-sponza.gif` | the start of the Sponza flythrough |
-| `render/sponza-{full,lite,flat,fitted}.gif` | the same three seconds of the flythrough, one GIF per bake |
+| `render/sponza-{full,lite,flat,fitted,fitted-full}.gif` | the same three seconds of the flythrough, one GIF per bake |
 | `render/sponza-{depth,tiles}.gif` | those three seconds as the depth and depth-tile views of the full bake |
 | `render/bake-fidelity-sheet.png` | the flat bake against the source model at two poses, with the error heatmap (see Fidelity against the source) |
 | `render/compare-full-{lite,flat}.png`, `.crops.png` | full against lite and smooth against flat at the GIFs' last pose: both renders and their difference, then the places they differ most, enlarged |
 | `render/compare-lite-fitted.png`, `.crops.png` | lite against the fitted mesh at that pose, the same way |
+| `render/compare-full-fitted-full.png`, `.crops.png` | full against the fitted full mesh, the same way |
+| `render/appearance-{chosen,fitted-full}-heat.png`, `-reference.crops.png` | each fitted mesh against the reference: its heatmap sheet and the places it differs most (fitted full also its `-reference.png` sheet) |
 
 ## The Sponza variants
 
-The Sponza import makes four meshes, its `[[variants]]`
+The Sponza import makes five meshes, its `[[variants]]`
 ([Mesh-Import.md](../../../../../docs/render/Mesh-Import.md)): it bakes three,
-and records the recipe of a fourth, culled to the camera's path, that the
-appearance fit makes offline. The scenes `sponza`, `sponza-lite`,
-`sponza-flat` and `sponza-fitted` each draw one. Every row plays the
+and records the recipes of two more, culled to the camera's path, that the
+appearance fit makes offline at lite's and full's budgets. The scenes `sponza`,
+`sponza-lite`, `sponza-flat`, `sponza-fitted` and `sponza-fitted-full` each draw one. Every row plays the
 same three seconds of the flythrough, so the rows compare. The last two rows
 are the [view modes](../../../../../docs/render/Mesh-Rendering.md#view-modes)
 over the full mesh.
@@ -80,10 +82,11 @@ over the full mesh.
 | ![Sponza flythrough, lite](../../../../../docs/images/render/sponza-lite.gif) | **Lite**: the same bake simplified to a smaller budget | `SPONZA_LITE_TRIANGLE_COUNT`, `SPONZA_LITE_VERTEX_COUNT` |
 | ![Sponza flythrough, flat](../../../../../docs/images/render/sponza-flat.gif) | **Flat**: the full mesh's triangles, one colour per face, no gradients | `SPONZA_FLAT_TRIANGLE_COUNT`, `SPONZA_FLAT_VERTEX_COUNT` |
 | ![Sponza flythrough, fitted](../../../../../docs/images/render/sponza-fitted.gif) | **Fitted**: lite's budget spent on what the flythrough draws, its vertices and colours fitted to the reference | the `sponza_fitted` entry's counts |
+| ![Sponza flythrough, fitted full](../../../../../docs/images/render/sponza-fitted-full.gif) | **Fitted full**: the same recipe at full's budget | the `sponza_fitted_full` entry's counts |
 | ![Sponza flythrough, depth](../../../../../docs/images/render/sponza-depth.gif) | `RASTER_SHOW_DEPTH` over the full mesh | as full |
 | ![Sponza flythrough, depth tiles](../../../../../docs/images/render/sponza-tiles.gif) | `RASTER_SHOW_DEPTH_TILES` over the full mesh | as full |
 
-The counts are those of the four meshes in `meshes/`.
+The counts are those of the five meshes in `meshes/`.
 `autana suite run_sponza_perf_suite` prints each variant's `both cores: mean`
 line (`test_sponza_frame_cost_along_the_flythrough`). The GIFs are made by the
 doc-images workflow
@@ -111,6 +114,12 @@ the smooth mesh blends.
 The fitted mesh has lite's budget, moved off what the flythrough never draws
 and fitted to the reference: arches, shadow edges and the banners' colours
 come back.
+
+![Full against fitted full](../../../../../docs/images/render/compare-full-fitted-full.png)
+![Full against fitted full, the places they differ most](../../../../../docs/images/render/compare-full-fitted-full.crops.png)
+
+The fitted full mesh is the same recipe at full's budget, so the same edges
+and colours come back on full's finer geometry.
 
 ## Fidelity against the source
 
@@ -485,7 +494,19 @@ Its ΔE heatmap sheet at the bake fidelity sheet's two poses:
 
 ![The chosen mesh: heatmaps](../../../../../docs/images/render/appearance-chosen-heat.png)
 
-`doc_images.sh` makes the two images of the committed fitted mesh against
+**Fitted full.** The chosen recipe at full's 17,381 triangles is committed as
+the `sponza-fitted-full` target, refitted the same way from its own entry in
+`meshes/sponza.import.toml`. On the same seven held-out poses it is at mean
+ΔE76 4.50 (p95 11.47), against full's 6.76 and the fitted lite mesh's 4.89.
+On the board, in the same image (`run_sponza_perf_suite --perf-scope`, five
+runs), it draws in 61.25 ms against full's 58.49 (+4.7%): a third less error
+than full for under 3 ms, and 0.39 ΔE better than fitted lite for 14.5 ms more.
+
+![Fitted full against the reference](../../../../../docs/images/render/appearance-fitted-full-reference.png)
+![Fitted full against the reference, enlarged](../../../../../docs/images/render/appearance-fitted-full-reference.crops.png)
+![Fitted full: heatmaps](../../../../../docs/images/render/appearance-fitted-full-heat.png)
+
+`doc_images.sh` makes the images of the committed fitted meshes against
 the reference. The stage images are made from fitted meshes in a scratch
 directory and nothing refreshes them: the fits need the GPU environment and
 the cost weights a board capture. A 30 fps video of the whole path, the committed lite
