@@ -96,7 +96,7 @@ jobs:
 
       # test_check_math.mjs renders through GitHub's MathJax.
       - name: check-math.mjs dependencies
-        run: npm install -g mathjax-full@3.2.0 markdown-it@14.1.0
+        run: npm ci --prefix scripts/gates
 
       # Python and, for check-mermaid.mjs's pure parts and check-math.mjs,
       # Node; scripts/run-tool-tests.sh owns which suites.
