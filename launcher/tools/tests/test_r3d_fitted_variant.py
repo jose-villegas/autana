@@ -10,6 +10,7 @@ import unittest.mock
 from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
 try:
     from r3d import fitted_variant
@@ -23,6 +24,12 @@ try:
     from r3d import lit_mesh, mesh_import, reference_render
 except ImportError:
     lit_mesh = mesh_import = reference_render = None
+
+try:
+    from PIL import Image
+    import render_compare
+except ImportError:
+    Image = render_compare = None
 
 
 @unittest.skipIf(parse_poses is None, "needs NumPy")
@@ -51,17 +58,46 @@ class SweepTests(unittest.TestCase):
     def test_mesh_names_map_to_the_host_scene_keys(self):
         self.assertEqual(fitted_variant.host_scene_key("tiny_fitted"), "tiny-fitted")
 
-    def test_held_out_score_starts_after_the_training_pose(self):
+    @unittest.skipIf(Image is None, "needs the synthetic render scorer")
+    def test_held_out_score_keeps_each_mesh_and_pose_with_its_reference(self):
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
-            (work / "held_out.txt").write_text(poses_text(2, 3, 0.5, 1.0, [[0, 0, 0, 0, 0, -1]]))
+            references = work / "reference_held_out"
+            references.mkdir()
+            (work / "held_out.txt").write_text(poses_text(2, 3, 0.5, 1.0, [[0, 0, 0, 0, 0, -1], [1, 0, 0, 0, 0, -1]]))
             variant = SimpleNamespace(name="tiny_fitted", fit=SimpleNamespace(held_out_every_ms=5))
-            with unittest.mock.patch("r3d.bake_fidelity.write_pack", return_value=work / "assets.bin"), \
-                 unittest.mock.patch("r3d.bake_fidelity.score", return_value=(0.0, 0.0)) as score:
-                self.assertEqual(fitted_variant.held_out_score(variant, work / "tiny.mesh", work, work / "host"), (0.0, 0.0))
-        args = score.call_args.args[0]
-        self.assertIn("--scene tiny-fitted --frames 1 --dt 5", args.render_args)
-        self.assertFalse(hasattr(args, "reference_first"))
+            meshes = [work / name for name in ("source.mesh", "first.mesh", "second.mesh")]
+            for value, mesh in enumerate(meshes):
+                mesh.write_text(str(value))
+            for pose in (1, 2):
+                self._synthetic_picture(0, pose).save(references / ("%04d.png" % (pose - 1)))
+            with unittest.mock.patch.object(fitted_variant, "_score_mesh", side_effect=self._synthetic_score):
+                aligned = fitted_variant.held_out_score(variant, meshes[0], work, work / "host")
+                first = fitted_variant.held_out_score(variant, meshes[1], work, work / "host")
+                second = fitted_variant.held_out_score(variant, meshes[2], work, work / "host")
+                one_pose_late = self._synthetic_score(
+                    SimpleNamespace(render_args="--scene tiny-fitted --frames 3 --dt 5", reference=references,
+                                    reference_first=1), variant.name, meshes[0], work / "late", work / "host")
+        self.assertLess(aligned[0], 0.01)
+        self.assertNotAlmostEqual(first[0], second[0], places=3)
+        self.assertGreater(one_pose_late[0], aligned[0] + 8.0)
+
+    @staticmethod
+    def _synthetic_picture(mesh, pose):
+        return Image.new("RGB", (4, 4), (30 + mesh * 50 + pose * 25, 60 + mesh * 40 + pose * 15, 90 + mesh * 30 + pose * 10))
+
+    @classmethod
+    def _synthetic_score(cls, args, _name, pack, _work, _host):
+        fields = args.render_args.split()
+        frames = int(fields[fields.index("--frames") + 1])
+        mesh = int(pathlib.Path(pack).read_text())
+        rendered = [cls._synthetic_picture(mesh, pose) for pose in range(1, frames + 1)]
+        rendered = rendered[getattr(args, "reference_first", 0):]
+        references = [Image.open(path) for path in sorted(pathlib.Path(args.reference).glob("*.png"))]
+        if len(rendered) != len(references):
+            raise ValueError("render and reference frame counts differ")
+        values = [render_compare.reference_measure(render, reference).mean_delta_e for render, reference in zip(rendered, references)]
+        return sum(values) / len(values), max(values), 1.0, 0.0, 0.0
 
     def test_board_cost_uses_the_native_held_out_render_size(self):
         with tempfile.TemporaryDirectory() as directory:
