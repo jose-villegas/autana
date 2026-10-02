@@ -126,7 +126,7 @@ R3D_PYTHON=$(find_r3d_python "$PWD")
 variant_bake() {
     mkdir -p "$W/indirect-$1"
     if [ "$2" = none ]; then
-        grep -v '^indirect = ' "$M/meshes/sponza.import.toml" > "$W/indirect-$1/sponza.import.toml"
+        sed -e '/^indirect = false$/d' -e 's/, indirect = {[^}]*}//' "$M/meshes/sponza.import.toml" > "$W/indirect-$1/sponza.import.toml"
     else
         cp "$M/meshes/sponza.import.toml" "$W/indirect-$1/sponza.import.toml"
     fi
@@ -172,25 +172,42 @@ look_reference() {
 # Each fitted target against the same reference: its heatmap sheet at the
 # same two poses, and its last frame beside the reference, enlarged where they
 # differ most.
-#   against_reference <scene> <heatmap image> <reference image> <label> <sheet too: yes|no>
+#   against_reference <scene> <heatmap image> <reference image> <label> [--sheet] [--crops]
 "$PYTHON" -c 'import pathlib, sys; from PIL import Image
 frame = sorted(pathlib.Path(sys.argv[1]).glob("*.png"))[4]
 picture = Image.open(frame).convert("RGB")
 picture.resize((picture.width * 2, picture.height * 2), Image.Resampling.NEAREST).save(sys.argv[2])' \
     "$REFERENCE" "$W/fidelity-reference-4.png"
 against_reference() {
-    "$W/render_lab_render" --quarter 0 --no-hud --scene "$1" --frames 5 --dt 5000 \
-        -o "$W/fidelity-$1.bmp" --video "$W/fidelity-$1.avi" 2> "$W/fidelity-$1.log"
-    "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$1-unused.png" \
-        --reference-video "$W/fidelity-$1.avi" "$REFERENCE" --reference-scale 2 \
-        --reference-sheet "$RENDER/$2.png" --sheet-frames 2,4 --label-a "$4" > "$W/$1-compare.log"
-    "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$3.png" --crops 3 \
-        --label-a "$4" --label-b reference --row "$4 | reference" "$W/fidelity-$1.bmp" "$W/fidelity-reference-4.png" > "$W/$1-reference.log"
-    cp "$W/$3.crops.png" "$RENDER/" || {
-        echo "doc_images.sh: $1 matches the reference, no crops." >&2
-        exit 1
-    }
-    [ "$5" = no ] || cp "$W/$3.png" "$RENDER/"
+    scene=$1 heat=$2 reference=$3 label=$4
+    shift 4
+    sheet=no crops=no
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --sheet) sheet=yes ;;
+            --crops) crops=yes ;;
+            *) echo "doc_images.sh: against_reference unknown option $1" >&2; exit 2 ;;
+        esac
+        shift
+    done
+    "$W/render_lab_render" --quarter 0 --no-hud --scene "$scene" --frames 5 --dt 5000 \
+        -o "$W/fidelity-$scene.bmp" --video "$W/fidelity-$scene.avi" 2> "$W/fidelity-$scene.log"
+    "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$scene-unused.png" \
+        --reference-video "$W/fidelity-$scene.avi" "$REFERENCE" --reference-scale 2 \
+        --reference-sheet "$RENDER/$heat.png" --sheet-frames 2,4 --label-a "$label" > "$W/$scene-compare.log"
+    if [ "$crops" = yes ]; then
+        "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$reference.png" --crops 3 \
+            --label-a "$label" --label-b reference --row "$label | reference" "$W/fidelity-$scene.bmp" "$W/fidelity-reference-4.png" > "$W/$scene-reference.log"
+        cp "$W/$reference.crops.png" "$RENDER/" || {
+            echo "doc_images.sh: $scene matches the reference, no crops." >&2
+            exit 1
+        }
+    fi
+    [ "$sheet" = no ] || cp "$W/$reference.png" "$RENDER/"
 }
-against_reference sponza-fitted appearance-chosen-heat appearance-chosen-reference fitted no
-against_reference sponza-fitted-full appearance-fitted-full-heat appearance-fitted-full-reference "fitted full" yes
+against_reference sponza-fitted appearance-chosen-heat appearance-chosen-reference fitted --crops
+against_reference sponza-fitted-full appearance-fitted-full-heat appearance-fitted-full-reference "fitted full" --sheet --crops
+against_reference sponza-lite appearance-lite-reference appearance-lite-reference-row simplifier
+"$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/appearance-lite-fitted-reference.crops.png" --crops 3 \
+    --label-a simplifier --label-b fitted --reference-crops "$W/fidelity-reference-4.png" \
+    "$W/fidelity-sponza-lite.bmp" "$W/fidelity-sponza-fitted.bmp" > "$W/appearance-lite-fitted-reference.log"

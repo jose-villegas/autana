@@ -40,6 +40,10 @@ class ProblemsTest(unittest.TestCase):
         self.assertEqual(len(found), 4)
         self.assertTrue(all(f.endswith("names render_lab") for f in found))
 
+    def test_a_url_encoded_app_name_fails(self):
+        found = self.problems({"docs/Gfx.md": "[tools](../render%5Flab/README.md)\n"})
+        self.assertEqual(found, ["docs/Gfx.md:1: document names render_lab"])
+
     def test_an_apps_own_docs_folder_and_plans_may_name_it(self):
         self.assertEqual(self.problems({
             "docs/sand/Simulation.md": "Sand and render_lab.\n",
