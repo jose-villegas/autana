@@ -469,6 +469,12 @@ the upscale, is 21 ms, and at 4,000 triangles the frame is still 35 ms.
 
 ![Held-out error against predicted frame time](../../../../../docs/render/images/appearance-pareto.png)
 
+`fitted_variant.py sweep` makes this Pareto image from the fitted variant's recipe.
+
+The two-point smoke sweep is plotted below.
+
+![Smoke sweep: held-out error against predicted frame time](../../../../../docs/render/images/budget-sweep-smoke-pareto.png)
+
 ```mermaid
 xychart-beta
     title "Held-out mean ΔE76 against predicted ms, path start fitted"
@@ -556,8 +562,8 @@ against the chosen mesh, is `render_compare.py --video` of their
 
 ## Indirect light
 
-The Sponza import bakes two bounces: `indirect = { bounces = 2, rays = 64,
-cache_samples = 1 }` in `meshes/sponza.import.toml`, described in
+The Sponza import's `lighting.light.indirect = { bounces = 2, rays = 64,
+cache_samples = 1 }` is described in
 [Mesh-Import.md](../../../../../docs/render/Mesh-Import.md#indirect-light). It
 lifts the shadowed arcade ceilings and the sides of the columns the sun does
 not reach, and tints a column next to a banner with the banner's colour. The

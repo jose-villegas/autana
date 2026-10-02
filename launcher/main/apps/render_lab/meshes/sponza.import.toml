@@ -12,31 +12,19 @@ position_scale = 8
 [materials]
 double_sided = ["fabric_a", "fabric_c", "fabric_d", "fabric_e", "fabric_f", "fabric_g", "leaf", "chain", "Material__57"]
 
-# Each table below turns one processing step on; they run in this order.
 [process]
 seed = 1
 
-[process.alpha_mask]
-keep_alpha = 0.5
+[geometry]
+alpha_mask = { keep_alpha = 0.5 }
+thin = { material = "leaf", keep = 0.35 }
+simplify = { dense_edge = 45.0, props = ["vase", "vase_round", "vase_hanging", "flagpole", "chain", "leaf", "Material__57", "Material__298", "Material__25", "Material__47"], props_share = 0.3, seal_seams = true }
 
-[process.visibility]
+[visibility]
 rounds = 160
 
-[process.thin]
-material = "leaf"
-keep = 0.35
-
-[process.light]
-ray_offset = 0.5
-colour_merge_step = 6
-flat_sky_rays = 128
-indirect = { bounces = 2, rays = 64, cache_samples = 1 }
-
-[process.simplify]
-dense_edge = 45.0
-props = ["vase", "vase_round", "vase_hanging", "flagpole", "chain", "leaf", "Material__57", "Material__298", "Material__25", "Material__47"]
-props_share = 0.3
-seal_seams = true
+[lighting]
+light = { ray_offset = 0.5, colour_merge_step = 6, flat_sky_rays = 128, indirect = { bounces = 2, rays = 64, cache_samples = 1 } }
 
 [[variants]]
 name = "sponza"
@@ -45,7 +33,7 @@ triangles = 17381
 [[variants]]
 name = "sponza_flat"
 triangles = 17381
-face_samples = { auto = { min = 1, max = 16, area = "median" } }
+shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
 
 [[variants]]
 name = "sponza_lite"
@@ -55,13 +43,13 @@ triangles = 8672
 # start at `triangles`, culled to what the camera's path draws, and the fit
 # prunes it to `budget` and matches the reference renders of the flythrough.
 # The two hashes pin the recipe and the mesh it made. Both fitted variants
-# are lit without the indirect bounces: they were fitted before them.
+# exclude indirect light.
 [[variants]]
 name = "sponza_fitted"
 indirect = false
 triangles = 9973
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
-fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "44dabf0a7e258912556be8b24593d843629f456cabcba9d64b36336812338afb", recipe_sha256 = "fbde8773baa81a4b87eb8f9e80942ab21af9764b499291a61aeebc61d54ce8c4" }
+fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "44dabf0a7e258912556be8b24593d843629f456cabcba9d64b36336812338afb", recipe_sha256 = "ebd4db5aeaa752edc447d5e72d8c85e9a00a019ad3ce5546bbf67d55daa4755c" }
 
 # The same recipe at the full mesh's budget.
 [[variants]]
@@ -69,4 +57,4 @@ name = "sponza_fitted_full"
 indirect = false
 triangles = 19988
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
-fit = { budget = 17381, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "8578cfe1a678859310603ad53a77b11eda4b03cc75fe760377fa10fb92c460d5", recipe_sha256 = "637a09db4ee8b19d65e3a3255bf5c43729d0e83b6f5e7b54b469976d1a14e35f" }
+fit = { budget = 17381, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "8578cfe1a678859310603ad53a77b11eda4b03cc75fe760377fa10fb92c460d5", recipe_sha256 = "adc952777b30181958533c39a3479da4b2b433ed6fb76bd0509b449f0ab1e652" }
