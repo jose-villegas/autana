@@ -130,41 +130,37 @@ boot_anim_view(int w, int h, uint32_t now_ms) {
 }
 
 /* CAMERA space transform; boot_anim_project() refactored for z check. Q12
- * re/im and Q8 t convert exactly to Q16.16 meters: a Q12 value is 16 times
- * its Q16 digits, and one Q8 unit of t climbs 132/512 / 256 meters, which is
- * 66 Q16 digits. */
+ * re/im and Q8 t convert exactly to Q16.16 meters (a Q12 value is 16 times its
+ * Q16 digits, and one Q8 unit of t climbs 66 of them), and the result is in
+ * 1/512 m, r3d_project_x.h's unit. */
 static inline vec3x_t
 boot_anim_to_camera_space(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view) {
     const mat4x_t* m = &view->matrix;
-    const int32_t t_q16 = t_q8 * (BOOT_ANIM_SPIRAL_Q9 / 2);
+    const int64_t re = (int64_t)re_q12 * 16;
+    const int64_t im = (int64_t)im_q12 * 16;
+    const int64_t t = (int64_t)t_q8 * (BOOT_ANIM_SPIRAL_Q9 / 2);
+    const int64_t half = (int64_t)1 << 22;
 
-    /* mat4x_apply() saturates and rounds ties away from zero, which costs a
-     * branch a component; this is the same product with one half-up rounding
-     * of the exact sum, on coordinates the floor and curve keep bounded. */
+    /* The matrix and the point are Q16, so a product is Q32; the translation is lifted to it. */
     return (vec3x_t){
-        m->m[0][3]
-            + (int32_t)((((int64_t)m->m[0][0] * re_q12 * 16) + ((int64_t)m->m[0][1] * t_q16)
-                         + ((int64_t)m->m[0][2] * im_q12 * 16) + 32768)
-                        >> 16),
-        m->m[1][3]
-            + (int32_t)((((int64_t)m->m[1][0] * re_q12 * 16) + ((int64_t)m->m[1][1] * t_q16)
-                         + ((int64_t)m->m[1][2] * im_q12 * 16) + 32768)
-                        >> 16),
-        m->m[2][3]
-            + (int32_t)((((int64_t)m->m[2][0] * re_q12 * 16) + ((int64_t)m->m[2][1] * t_q16)
-                         + ((int64_t)m->m[2][2] * im_q12 * 16) + 32768)
-                        >> 16),
+        (int32_t)(((m->m[0][0] * re) + (m->m[0][1] * t) + (m->m[0][2] * im) + ((int64_t)m->m[0][3] << 16) + half)
+                  >> 23),
+        (int32_t)(((m->m[1][0] * re) + (m->m[1][1] * t) + (m->m[1][2] * im) + ((int64_t)m->m[1][3] << 16) + half)
+                  >> 23),
+        (int32_t)(((m->m[2][0] * re) + (m->m[2][1] * t) + (m->m[2][2] * im) + ((int64_t)m->m[2][3] << 16) + half)
+                  >> 23),
     };
 }
 
 /* The camera-space image of the floor plane at one height: a point of it is
  * `origin` plus its re and im steps, so a ring of points at one height costs
- * two products a component instead of three, and no translation add. Rounds
- * half up and does not saturate: it is for the floor's bounded coordinates. */
+ * two products a component instead of three, and no translation add. All in
+ * 1/512 m; rounds half up and does not saturate: it is for the floor's
+ * bounded coordinates. */
 typedef struct {
     vec3x_t origin;
-    vec3x_t re_step; /* per Q16 unit of re */
-    vec3x_t im_step; /* per Q16 unit of im */
+    vec3x_t re_step; /* Q16 matrix column for re */
+    vec3x_t im_step; /* Q16 matrix column for im */
 } boot_anim_plane_t;
 
 static inline boot_anim_plane_t
@@ -181,11 +177,14 @@ static inline vec3x_t
 boot_anim_plane_point(const boot_anim_plane_t* plane, int32_t re_q12, int32_t im_q12) {
     return (vec3x_t){
         plane->origin.x
-            + (int32_t)((((int64_t)plane->re_step.x * re_q12) + ((int64_t)plane->im_step.x * im_q12) + 2048) >> 12),
+            + (int32_t)((((int64_t)plane->re_step.x * re_q12) + ((int64_t)plane->im_step.x * im_q12) + (1 << 18))
+                        >> 19),
         plane->origin.y
-            + (int32_t)((((int64_t)plane->re_step.y * re_q12) + ((int64_t)plane->im_step.y * im_q12) + 2048) >> 12),
+            + (int32_t)((((int64_t)plane->re_step.y * re_q12) + ((int64_t)plane->im_step.y * im_q12) + (1 << 18))
+                        >> 19),
         plane->origin.z
-            + (int32_t)((((int64_t)plane->re_step.z * re_q12) + ((int64_t)plane->im_step.z * im_q12) + 2048) >> 12),
+            + (int32_t)((((int64_t)plane->re_step.z * re_q12) + ((int64_t)plane->im_step.z * im_q12) + (1 << 18))
+                        >> 19),
     };
 }
 
@@ -346,7 +345,7 @@ boot_anim_screen_chord_lt(vec3x_t a, vec3x_t c, const boot_anim_view_t* view, in
     }
     const int64_t m = (int64_t)im_abs(a.x - c.x) + im_abs(a.y - c.y);
     if (view->focal == 0) {
-        return m * view->scale < (int64_t)px * MATHX_ONE;
+        return m * view->scale < (int64_t)px * R3D_X_UNIT_ONE;
     }
     const int32_t zmin = a.z < c.z ? a.z : c.z;
     return m * view->focal * view->scale < (int64_t)px * zmin * R3D_X_UNIT_ONE;

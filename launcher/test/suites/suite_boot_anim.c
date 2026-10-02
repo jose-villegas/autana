@@ -202,17 +202,17 @@ identity_view(float focal) {
     boot_anim_view_t v;
     v.matrix = mat4x_identity();
     v.focal = (int32_t)(focal * (float)R3D_X_UNIT_ONE);
-    v.near_z = mathf_to_x(R3D_LINE_NEAR_Z);
+    v.near_z = mathf_round_i32(R3D_LINE_NEAR_Z * (float)R3D_X_UNIT_ONE);
     v.center_x = PANEL_W / 2;
     v.center_y = PANEL_H / 2;
     v.scale = PANEL_W / 2;
     return v;
 }
 
-/* Meters, as a Q16.16 camera-space point. */
+/* Meters, as a camera-space point in 1/512 m. */
 static vec3x_t
 vx(float x, float y, float z) {
-    return vec3x_from_vec3f((vec3f_t){x, y, z});
+    return (vec3x_t){mathf_round_i32(x * 512.0F), mathf_round_i32(y * 512.0F), mathf_round_i32(z * 512.0F)};
 }
 
 /* The space's own local origin (0,0,0) has to land at the screen's centre
@@ -268,7 +268,7 @@ test_a_point_further_from_the_camera_projects_smaller(void) {
 static void
 test_project_point_rejects_a_point_at_the_near_plane(void) {
     boot_anim_view_t view = identity_view(1.0F);
-    view.near_z = MATHX_ONE / 8;
+    view.near_z = 64; /* 0.125 m */
     int x = -1, y = -1;
 
     const bool ok = boot_anim_project_point(0, 512, 0, &view, &x, &y);
@@ -288,7 +288,7 @@ static void
 test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
     const boot_anim_view_t view = identity_view(1.0F);
     const vec3x_t p0 = {100, 200, 0};
-    const vec3x_t p1 = {-100, -200, mathf_to_x(R3D_LINE_NEAR_Z)};
+    const vec3x_t p1 = {-100, -200, view.near_z};
     int ax, ay, bx, by;
 
     const bool ok = r3d_project_segment_cs_x(p0, p1, &view, &ax, &ay, &bx, &by);
@@ -820,13 +820,13 @@ test_spline_cs_matches_transforming_the_world_space_spline(void) {
         const vec3x_t want = boot_anim_to_camera_space(world.re, world.im, world.t, &view);
         const vec3x_t got = boot_anim_spline_cs(ta, tb, tc, t);
 
-        TEST_ASSERT_INT32_WITHIN_MESSAGE(140, want.x, got.x,
+        TEST_ASSERT_INT32_WITHIN_MESSAGE(2, want.x, got.x,
                                          "transform-then-interpolate must match interpolate-then-"
                                          "transform, up to the curve table's Q12 rounding");
-        TEST_ASSERT_INT32_WITHIN_MESSAGE(140, want.y, got.y,
+        TEST_ASSERT_INT32_WITHIN_MESSAGE(2, want.y, got.y,
                                          "transform-then-interpolate must match interpolate-then-"
                                          "transform, up to the curve table's Q12 rounding");
-        TEST_ASSERT_INT32_WITHIN_MESSAGE(140, want.z, got.z,
+        TEST_ASSERT_INT32_WITHIN_MESSAGE(2, want.z, got.z,
                                          "transform-then-interpolate must match interpolate-then-"
                                          "transform, up to the curve table's Q12 rounding");
     }
@@ -843,9 +843,9 @@ test_plane_points_match_the_full_camera_space_transform(void) {
             for (int32_t im = -9000; im <= 9000; im += 3000) {
                 const vec3x_t want = boot_anim_to_camera_space(re, im, t, &view);
                 const vec3x_t got = boot_anim_plane_point(&plane, re, im);
-                TEST_ASSERT_INT32_WITHIN(3, want.x, got.x);
-                TEST_ASSERT_INT32_WITHIN(3, want.y, got.y);
-                TEST_ASSERT_INT32_WITHIN(3, want.z, got.z);
+                TEST_ASSERT_INT32_WITHIN(1, want.x, got.x);
+                TEST_ASSERT_INT32_WITHIN(1, want.y, got.y);
+                TEST_ASSERT_INT32_WITHIN(1, want.z, got.z);
             }
         }
     }
