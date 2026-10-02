@@ -4,6 +4,7 @@
 #
 #   ./launcher/tools/render/render_doc_images.sh            # rewrite the images in place
 #   ./launcher/tools/render/render_doc_images.sh --check    # only report which changed
+#   ./launcher/tools/render/render_doc_images.sh --orphans  # only report images no script names
 #
 # Needs a host C compiler, Python with Pillow and numpy, and ffmpeg 5.1 or newer. Runs in
 # Git Bash on Windows and on Linux.
@@ -51,11 +52,34 @@ finish() {
 }
 trap finish EXIT
 
+# The one orphan report: --check prints it for an image no run made, --orphans
+# for an image no script names.
+orphan() {
+    echo "orphan $1: no script makes it"
+}
+
 CHECK=0
 case "${1:-}" in
     "") ;;
     --check) CHECK=1 ;;
-    *) echo "usage: $0 [--check]" >&2; exit 2 ;;
+    --orphans)
+        # Cheap enough for a pull request: nothing is rendered. An image is
+        # claimed when its name up to the first dot appears in the script that
+        # makes the launcher images, the scene scripts, or an app's doc_images.sh.
+        comparing=1
+        status=0
+        for image in $(cd "$IMAGES" && find . -type f | sed 's|^\./||' | LC_ALL=C sort); do
+            stem=$(basename "$image")
+            stem=${stem%%.*}
+            if ! grep -qF -- "$stem" "$TOOLS_DIR/render_doc_images.sh" "$TOOLS_DIR"/scenes/*.sh \
+                launcher/main/apps/*/tools/doc_images.sh; then
+                orphan "$image"
+                status=1
+            fi
+        done
+        exit $status
+        ;;
+    *) echo "usage: $0 [--check|--orphans]" >&2; exit 2 ;;
 esac
 
 # Windows has a python3 launcher stub that is not Python; ask for Pillow and numpy.
@@ -141,7 +165,7 @@ for name in $made_list; do
 done
 for name in $kept_list; do
     if [ ! -f "$OUT/$name" ]; then
-        echo "orphan $name: no script makes it"
+        orphan "$name"
         status=1
     fi
 done
