@@ -77,8 +77,6 @@ ui_fp_div(ui_fp_t num, ui_fp_t den) {
     return (ui_fp_t)fx_div_round(num, den, UI_FP_SHIFT);
 }
 
-/* Construction */
-
 static inline ui_transform_t
 ui_transform_identity(void) {
     return (ui_transform_t){UI_FP_ONE, 0, 0, UI_FP_ONE, 0, 0};
@@ -156,8 +154,6 @@ ui_transform_quarter_turns(ui_transform_t t) {
     }
     return t.a < 0 ? 2 : 0;
 }
-
-/* Application */
 
 static inline void
 ui_transform_point(ui_transform_t t, int x, int y, int* ox, int* oy) {

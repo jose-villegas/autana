@@ -1,8 +1,6 @@
 /*
  * sand_impulse - the public API for grains, chunks and splashes in flight:
- * explosions, thrown debris, splash pushback. Split out of sand.h for the
- * same reason sand_impulse.c is split out of sand.c, see that file's own
- * banner.
+ * explosions, thrown debris and splash pushback.
  *
  * Included FROM sand.h, not instead of it - a caller anywhere else in the
  * app keeps doing `#include "sand.h"` and sees this API without change.
@@ -84,11 +82,10 @@ void sand_impulse_dislodge(sand_t* s, int x, int y, int dir, int speed, int ramp
 #define SAND_IMPULSE_BOUNCE_MIN_SPEED       32
 
 /* TRANSFER - what a struck cell inherits from the mover displacing it, so
- * struck material can fly clear of a bank. Direction: backward cone
- * (dir+3/4/5) - along the mover's own heading was tried first and just
- * drove struck material deeper in. Constant: ARRIVAL speed in 256ths, not
- * a divisor - below 256 keeps a strike from minting energy; 213 is a
- * device figure. */
+ * struck material can fly clear of a bank. Direction is a backward cone
+ * (dir+3/4/5), so it does not drive struck material deeper in. Constant:
+ * ARRIVAL speed in 256ths, not a divisor - below 256 keeps a strike from
+ * minting energy; 213 is a device figure. */
 #define SAND_IMPULSE_TRANSFER_KEEP          213
 
 /* Below this post-drag speed, a mover does not queue a transfer at all -

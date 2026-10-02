@@ -51,8 +51,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Cells */
-
 typedef uint8_t cell_t;
 
 /* A liquid cell holds 1-15; zero is not a very empty cell, it is no cell at
@@ -109,8 +107,6 @@ typedef uint8_t cell_t;
 #define MASS_MAX                   15
 
 #define MATERIAL_LIQUID_DEPTH_BAND 24
-
-/* Materials */
 
 typedef enum {
     MAT_EMPTY = 0,
