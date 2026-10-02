@@ -24,8 +24,6 @@
 #include "sponza_scene_generated.h"
 #include "util/tune.h"
 
-#define SKY_RGB 0x9CC0E6
-
 static const char* TAG = "sponza";
 
 static scene_t* sponza;
@@ -70,7 +68,6 @@ enter_with(scene_entity_t variant) {
         scene_entity_set_enabled(sponza, bakes[i], bakes[i] == variant);
     }
     (void)scene_activate(sponza, NULL);
-    scene_set_clear(SKY_RGB);
     scene_set_render_scale(10000 / render_lab_scale());
 #if TUNE_ENABLED
     scene_set_debug_view(render_lab_view());
