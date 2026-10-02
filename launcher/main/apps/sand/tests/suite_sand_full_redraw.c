@@ -86,7 +86,7 @@ test_full_redraw_repaints_a_stale_rect_and_sends_every_strip(void) {
 
     const int mismatch = memcmp(reference, gfx_framebuffer(), fb_bytes) != 0;
     ESP_LOGI(TAG, "framebuffer matches the clean reference: %s", mismatch ? "NO" : "yes");
-    free(reference);
+    memory_free(reference);
     TEST_ASSERT_FALSE_MESSAGE(mismatch, "a full redraw must repaint every stale pixel, the palette-panel-ghost "
                                         "and black-cutout class of bug");
 
