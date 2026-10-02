@@ -50,11 +50,10 @@ gfx_color_rgb565(uint8_t r5, uint8_t g6, uint8_t b5) {
 /* v / 255, without a divide. EXACT, not approximate, for every v these
  * callers can produce: the largest numerator gfx_color_mix() builds is
  * 63*255 + 63*255 + 127 = 32257, and this identity was checked against
- * integer division across 0..32257, not spot tested. Not claimed to hold
- * outside that range, which is why it is static and lives next to its one
- * caller instead of in intmath.h. Not / 255: gfx_color_mix() runs per pixel
- * and calls this three times; as hardware divides those were its dominant
- * cost. */
+ * integer division across 0..32257. Not claimed to hold outside that range,
+ * which is why it is static and lives next to its one caller instead of in
+ * intmath.h. Not / 255: gfx_color_mix() runs per pixel and calls this three
+ * times; as hardware divides those were its dominant cost. */
 static inline uint32_t
 div255(uint32_t v) {
     return (v + (v >> 8) + 1) >> 8;
