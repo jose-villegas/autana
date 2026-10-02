@@ -23,6 +23,29 @@ flowchart LR
     Write --> C["Baked C<br/><i>r3d_lit_mesh_t</i>"]
 ```
 
+## Import options
+
+Every option an import file or the fit after it has, what it changes and
+what it costs. A `[process.*]` table turns its step on; without it the step
+does not run. Bake times are for a source of about a quarter of a million
+triangles on one desktop; frame costs were measured on the board on one mesh.
+
+| Option | What it does | Default | Cost (bake / frame) | Section |
+|---|---|---|---|---|
+| `output.position_scale` | Ticks per model unit of the `int16` positions | 8 | none / none | [The baked mesh](#the-baked-mesh) |
+| `materials.double_sided` | Draws these materials' faces from both sides | none | none / draws back faces too | [Import file](#import-file) |
+| `process.seed` | Seeds every random ray the steps draw | 0 | none / none | [Import file](#import-file) |
+| `process.alpha_mask` `keep_alpha` | Drops alpha-tested triangles that are mostly transparent | off | seconds / fewer triangles | [Import file](#import-file) |
+| `process.visibility`, `source = "camera_region"`, `rounds` | Keeps what any point of the camera's region box sees | off | seconds to minutes / fewer triangles | [Import file](#import-file) |
+| `process.visibility`, `source = "camera_path"`, `every_ms`, `size`, `samples`, `margin` | Keeps what any pose of the camera's path draws | off; `samples` 3, `margin` 0 | minutes / fewer triangles, about 15% less frame time on the full mesh | [Import file](#import-file) |
+| `process.thin` `material`, `keep` | Keeps only a share of one material's triangles | off | none / fewer triangles | [Import file](#import-file) |
+| `process.light` `ray_offset`, `colour_merge_step`, `flat_sky_rays` | Bakes the scene's sun, sky and ambient into the colours | off: albedo | minutes / none | [Import file](#import-file) |
+| `process.simplify` `dense_edge`, `props`, `props_share` | Splits long edges, then simplifies each variant to its budget | off: the source's triangles | seconds / set by the budget | [Import file](#import-file) |
+| `process.simplify` `seal_seams` | Joins touching pieces before simplifying | required with `simplify` | seconds / about 4% frame time | [Sealing seams](#sealing-seams) |
+| `[[variants]]` `triangles` | One mesh per budget | one mesh | seconds each / set by the budget | [Import file](#import-file) |
+| `[[variants]]` `face_samples` | Flat: one colour per triangle | smooth | minutes / cheaper than smooth | [The baked mesh](#the-baked-mesh) |
+| Appearance fit | Moves vertices and colours until renders match the reference | not run | a CUDA GPU, minutes / unchanged at its budget | [Fitting a mesh to the reference](#fitting-a-mesh-to-the-reference) |
+
 ## The baked mesh
 
 A vertex carries one sRGB colour: the baked light times the albedo, or, with no
@@ -132,8 +155,7 @@ culls it; when that face has a twin over the same three corners wound the
 other way, the twin is what the ray sees. Faces within a small distance of
 the first drawn one are kept too, since the depth test, not the ray, picks
 among coincident faces. The margin and the pose spacing cover what enters
-the view between two samples. A walkable area, a nav mesh at eye height, is
-a planned third source. The same import with the step
+the view between two samples. The same import with the step
 off, at one camera pose, crops where they differ most,
 off above on: without the cull the budget is spent on hidden surfaces and
 visible ones lose triangles.
@@ -144,6 +166,20 @@ visible ones lose triangles.
 import with no light step, the right the baked sun, sky and ambient.
 
 ![Albedo against baked light](images/import-light.png)
+
+`process.alpha_mask` drops the triangles of alpha-tested cards, leaves and
+chains, whose texture is mostly transparent where they lie, since the
+rasterizer draws no alpha test. Use it on any source with cut-out cards. Off
+above on, the two poses where the meshes differ most; the step also changes
+what the simplifier keeps elsewhere, so not every difference is a card.
+
+![alpha_mask off against on](images/import-alpha-mask.png)
+
+`process.thin` keeps a random share of one material's triangles, for a
+material, such as foliage, that spends budget out of proportion to what it
+shows. Off above on:
+
+![thin off against on](images/import-thin.png)
 
 The off/on stills in `images/` are not made by the doc-images workflow: each
 "off" side is a scratch bake of the import with that step's table removed,
@@ -271,6 +307,12 @@ way the device draws it, and moves the vertices and changes their colours
 until the renders match the reference over the camera path's poses. The
 triangles stay as they were, so the budget and the frame cost hold.
 
+**When to use it:** a mesh seen along a known set of views, at a budget
+where the simplifier's colours and silhouettes visibly drift from the
+source. **What it costs:** a CUDA GPU and minutes per mesh, nothing at run
+time. A scene's crop sheets for every stage, before above after, live in that
+scene's tools README beside its scores.
+
 ```mermaid
 flowchart LR
     S[simplified smooth bake] --> F[fit positions and colours]
@@ -319,63 +361,84 @@ and $\lambda$ the `--laplacian` weight. Adam takes the steps, both learning
 rates decay as $\eta_k = \eta_0 \cdot 0.1^{k/K}$ over $K$ steps, and the
 colours are clamped to $[0, 1]$ after each. Where nothing is drawn the
 renderer shows the scene's clear colour, as the device and the reference do.
+$\mathcal{E}_{\Delta E}$ below names the first term and
+$\mathcal{E}_{\mathcal{L}}$ the second.
 
 ## Spending the budget where it shows and costs least
 
-Three stages make the fit aware of where the camera looks and what a frame
-costs.
+The fit can also choose where the triangles go and weigh what they cost.
+Each stage is optional and runs in this order:
 
 ```mermaid
 flowchart LR
     V[path visibility<br/>on the source] --> S[simplify to more<br/>than the budget]
-    S --> P[prune to the budget<br/>what shows least goes]
-    P --> F[fit: dE plus<br/>predicted cost]
+    S --> P[prune to the budget]
+    P --> R[refine a coarse fit<br/>optional]
+    R --> F[fit: ΔE, Laplacian,<br/>normals, cost]
     F --> W[write_lit_mesh]
 ```
 
-**Pruning.** Every pose of a dense pose set draws the mesh and counts, per
-triangle, the pixels it shows, $a_t$, summed over the poses. Triangles with
-$a_t = 0$ go first, then those with the smallest $a_t$, down to the budget.
-Simplifying to more than the budget and pruning back puts the triangles
-where some pose shows them.
+**Path visibility** is the import's `camera_path` source above. *What:* only
+surfaces some pose draws get budget. *When:* a mesh seen from a known path.
+*Cost:* minutes of ray casting per import; it cuts a mesh's triangles, not its
+pixels, so a culled mesh looks the same and draws faster.
 
-**The cost model.** A frame's time from one pose is linear in what the
-renderer does: a constant, the triangles of the clusters in view $S$ (fetched,
-transformed and tested), the drawn triangles $D$ (in front of the eye, facing
-it or double-sided, on screen), their screen rows $\rho_t$, the pixels they
-cover before the depth test $\alpha_t$ (overdraw counted) and the clusters
-in view $K$:
+**Pruning.** *What:* every pose of a dense pose set draws the mesh and counts
+the pixels $a_t$ each triangle shows; triangles with $a_t = 0$ go first, then
+those with the smallest $a_t$, down to the budget. Simplifying to more than
+the budget and pruning back puts the triangles where a pose shows them.
+*When:* always with a path. *Cost:* seconds.
 
-```math
-\hat{T}(v) = w_0 + w_S\,S_v + w_D\,D_v + w_\rho \sum_{t \in D_v} \rho_t + w_\alpha \sum_{t \in D_v} \alpha_t + w_K\,K_v
-```
+**Warm start.** *What:* a fitted coarse mesh gets its worst triangles, by ΔE
+summed over the pixels they show, split along their longest edge, both sides
+at once, up to a larger budget, and is fitted again. *When:* to grow a fit
+instead of starting a finer one from the simplifier. *Cost:* one more fit.
 
-The weights are non-negative least squares over board frame times of meshes
-with different triangle counts and overdraw, at the poses the board times;
-`cost_model.py` fits and applies them.
-
-**The cost term.** $D$, $\rho$ and $\alpha$ follow the vertex positions,
-so the fit can trade appearance against predicted time with a weight
-$\mu$ in dE per millisecond:
-
-```math
-\min_{P,\,C}\; \mathcal{E}_{\Delta E}(P, C) + \lambda\,\mathcal{E}_{\mathcal{L}}(P) + \mu\,\frac{1}{|B|}\sum_{v \in B}\hat{T}_v(P)
-+ \lambda_n\,\frac{1}{|B|}\sum_{v \in B}\frac{1}{|\Omega_v^{\cap}|}\sum_{p \in \Omega_v^{\cap}}\left\lVert \hat{n}_v(P)_p - n^{\mathrm{ref}}_{v,p} \right\rVert_1
-```
-
-**The normal term.** Colour alone can be matched by geometry that is wrong
-and shows it from another view. The reference renderer also writes the
+**The normal term.** *What:* colour alone can be matched by geometry that is
+wrong and shows it from another view. The reference renderer also writes the
 source's shading normal per pixel, turned toward the eye, and the fit draws
 its own: area-weighted vertex normals $\hat{n}$, interpolated and turned the
-same way. $\Omega_v^{\cap}$ is the pixels both cover, so coverage itself
-stays the colour term's business, through the scene's clear colour. The
-error reported beside ΔE is the mean angle between the two normals:
+same way. $\Omega_v^{\cap}$ is the pixels both cover, so coverage stays the
+colour term's business, through the scene's clear colour. *When:* always; it
+leaves ΔE where it was and brings the normals back toward the source. *Cost:*
+a second drawing per view. The error reported beside ΔE is the mean angle:
 
 ```math
 \theta = \frac{1}{|\Omega^{\cap}|}\sum_{p \in \Omega^{\cap}} \arccos\!\left(\hat{n}_p \cdot n^{\mathrm{ref}}_p\right)
 ```
 
-Sweeping the budget and $\mu$ gives held-out dE against predicted
+**The cost model.** A frame's time from pose $v$ is linear in what the
+renderer does: a constant, the triangles of the clusters in view $N_{s,v}$
+(fetched, transformed and tested), the drawn triangles $D_v$ (in front of the
+eye, facing it or double-sided, on screen), their screen rows $\rho_t$, the
+pixels they cover before the depth test $\alpha_t$ (overdraw counted) and the
+clusters in view $N_{c,v}$:
+
+```math
+\hat{t}_v = w_0 + w_s\,N_{s,v} + w_d\,|D_v| + w_\rho \sum_{t \in D_v} \rho_t + w_\alpha \sum_{t \in D_v} \alpha_t + w_c\,N_{c,v}
+```
+
+The weights are non-negative least squares over board frame times of meshes
+with different triangle counts and overdraw, at the poses the board times.
+`cost_model.py` fits and applies them, and keeps them, with the frames they
+were fitted to, in a weights file beside it.
+
+**The cost term.** *What:* $D_v$, $\rho_t$ and $\alpha_t$ follow the vertex
+positions, so the fit can trade appearance against predicted time with a
+weight $\kappa$ in ΔE per millisecond. *When:* when a smaller budget is not an
+option; on the meshes it was tried on, a smaller budget bought the same time
+for less error. *Cost:* the fit runs about three times longer.
+
+The whole objective, with $\lambda$, $\lambda_n$ and $\kappa$ the weights of
+the Laplacian, normal and cost terms:
+
+```math
+\min_{P,\,C}\; \mathcal{E}_{\Delta E}(P, C) + \lambda\,\mathcal{E}_{\mathcal{L}}(P)
++ \lambda_n\,\frac{1}{|B|}\sum_{v \in B}\frac{1}{|\Omega_v^{\cap}|}\sum_{p \in \Omega_v^{\cap}}\left\lVert \hat{n}_v(P)_p - n^{\mathrm{ref}}_{v,p} \right\rVert_1
++ \kappa\,\frac{1}{|B|}\sum_{v \in B}\hat{t}_v(P)
+```
+
+Sweeping the budget and $\kappa$ gives held-out ΔE against predicted
 milliseconds; the meshes no other is better than on both form the Pareto
 front, and its knee is where more triangles stop buying visible error.
 
@@ -383,8 +446,9 @@ front, and its knee is where more triangles stop buying visible error.
 
 Simplifying a model made of many separate pieces approximates each piece's
 border on its own, and a border that erodes leaves a pixel-sized empty spot
-where another surface should meet it. `simplify(seal_seams=True)`, off by
-default, imports the same mesh differently. It acts in the simplifier's stage
+where another surface should meet it. `seal_seams = true` in
+`[process.simplify]`, where the key is required, imports the same mesh
+differently; `false` simplifies the pieces as they are. It acts in the simplifier's stage
 only; the bake after it is unchanged.
 
 ```mermaid

@@ -117,12 +117,6 @@ def bake_geometry(settings, variant, scene):
     """Everything a mesh needs before its colours are final: the source, its
     ray intersector and the simplified geometry with the colours a smooth bake
     keeps. `scene` is None for an import that needs none."""
-    return simplified(settings, dense_geometry(settings, scene), variant.triangles)
-
-
-def dense_geometry(settings, scene):
-    """The source after culling, split evenly and lit, before simplification:
-    what every budget of one import shares."""
     rng = np.random.default_rng(settings.seed)
     src = load_source(settings)
     scale = {} if settings.position_scale is None else {"position_scale": settings.position_scale}
@@ -167,22 +161,15 @@ def dense_geometry(settings, scene):
         log(f"  {src.names[material]}: {len(vpos)} vertices")
     positions, rgb, tris = np.concatenate(all_pos), np.concatenate(all_rgb), np.concatenate(all_tris)
     tri_double, tri_mat = np.concatenate(all_double), np.concatenate(all_mat)
+    if settings.simplify:
+        steps = settings.simplify
+        props = [(frozenset(index for index, name in enumerate(src.names) if name in steps.props), steps.props_share)]
+        positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, variant.triangles, props,
+                                                 seal_seams=steps.seal_seams, **scale)
+        rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
+        tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
     return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
                            tri_mat=tri_mat, scale=scale)
-
-
-def simplified(settings, dense, triangles):
-    """`dense` simplified to `triangles`, when the import simplifies."""
-    if not settings.simplify:
-        return dense
-    src, steps = dense.src, settings.simplify
-    props = [(frozenset(index for index, name in enumerate(src.names) if name in steps.props), steps.props_share)]
-    positions, rgb, tris, tri_mat = simplify(dense.positions, dense.rgb.astype(np.float64), dense.tris, dense.tri_mat, triangles,
-                                             props, seal_seams=steps.seal_seams, **dense.scale)
-    rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
-    tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in settings.double_sided]).astype(np.int64)
-    return SimpleNamespace(src=src, intersector=dense.intersector, positions=positions, rgb=rgb, tris=tris,
-                           tri_double=tri_double, tri_mat=tri_mat, scale=dense.scale)
 
 
 def flat_colours(settings, scene, geometry, face_samples, **knobs):

@@ -27,11 +27,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
+from r3d.cost_model import load as load_cost  # noqa: E402
 from r3d.poses import camera_basis, read_poses  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
-from render_compare import D65_WHITE, GAMMA, SRGB_TO_XYZ  # noqa: E402
+from render_compare import lab  # noqa: E402
 
 FAR = 1.0e5
 
@@ -103,20 +104,23 @@ def load_views(pairs, scale):
     return views, size
 
 
-def lab(srgb):
-    """CIELAB of 0..1 gamma-encoded colours: render_compare.py's dE space, in torch."""
+def delta_e76(a, b):
+    """Per-pixel CIE76 dE in torch; the floor and the epsilon keep the
+    gradient finite at black and at zero."""
     import torch
 
-    linear = srgb.clamp(1e-6, 1.0) ** GAMMA
-    xyz = linear @ torch.tensor(SRGB_TO_XYZ, device=srgb.device).T / torch.tensor(D65_WHITE, device=srgb.device)
-    delta = 6.0 / 29.0
-    f = torch.where(xyz > delta**3, xyz.clamp_min(delta**3) ** (1.0 / 3.0), xyz / (3 * delta**2) + 4.0 / 29.0)
-    return torch.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])], dim=-1)
+    return ((lab(torch, a, 1e-6) - lab(torch, b, 1e-6)) ** 2).sum(dim=-1).add(1e-6).sqrt()
 
 
-def delta_e76(a, b):
-    """Per-pixel CIE76 dE; the epsilon keeps the gradient finite at zero."""
-    return ((lab(a) - lab(b)) ** 2).sum(dim=-1).add(1e-6).sqrt()
+def vertex_normals(points, tris, vertex_point):
+    """Per vertex, the unit area-weighted normal of the triangles around its
+    welded position, in torch, differentiable in `points`."""
+    import torch
+
+    corners = points[vertex_point][tris]
+    face = torch.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0], dim=1)
+    around = torch.zeros_like(points).index_add_(0, vertex_point[tris].reshape(-1), face.repeat_interleave(3, dim=0))
+    return torch.nn.functional.normalize(around, dim=1)[vertex_point]
 
 
 class Renderer:
@@ -175,11 +179,7 @@ class Renderer:
         tris = self.tris[self.facing(clip)].contiguous()
         width, height = self.size
         rast, _ = self.dr.rasterize(self.context, clip[None].contiguous(), tris, resolution=[height, width])
-        corners = points[self.vertex_point][self.tris.long()]
-        face = torch.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0], dim=1)
-        point_normal = torch.zeros_like(points).index_add_(0, self.vertex_point[self.tris.long()].reshape(-1),
-                                                           face.repeat_interleave(3, dim=0))
-        vertex = torch.nn.functional.normalize(point_normal, dim=1)[self.vertex_point]
+        vertex = vertex_normals(points, self.tris.long(), self.vertex_point)
         attributes = torch.cat([vertex, points[self.vertex_point]], dim=1)[None].contiguous()
         values, _ = self.dr.interpolate(attributes, rast, tris)
         normal = torch.nn.functional.normalize(values[0, ..., :3], dim=-1)
@@ -243,10 +243,10 @@ def uniform_laplacian(points, edges):
 def predicted_ms(xp, cost, clip, tris, double, size, scale):
     """cost_model's milliseconds for one view, less the constant and the
     cluster terms, which moving vertices cannot change."""
-    from r3d.cost_model import triangle_terms
+    from r3d.cost_model import triangle_terms, variable_ms
 
     drawn, rows, pixels = triangle_terms(xp, clip, tris, double, size[0] // scale, size[1] // scale)
-    return cost[2] * drawn.sum() + cost[3] * rows.sum() + cost[4] * pixels.sum()
+    return variable_ms(cost, drawn, rows, pixels)
 
 
 def normal_l1(render, points, view, clip):
@@ -423,7 +423,7 @@ def main(argv=None):
     parser.add_argument("--clear", default="000000", help="RRGGBB the scene clears to, as reference_render.py was given")
     parser.add_argument("--budget", type=int, help="prune to this many triangles, those that show least first")
     parser.add_argument("--coverage-poses", help="a denser poses file to count shown pixels over; the training poses otherwise")
-    parser.add_argument("--cost-model", help="cost_model.py weights, one number per feature, fitted to the board")
+    parser.add_argument("--cost-model", help="a cost_model.py weights file, such as board_cost_weights.txt")
     parser.add_argument("--cost-weight", type=float, default=0.0, help="dE76 per predicted millisecond")
     parser.add_argument("--normal-weight", type=float, default=0.0, help="weight of the L1 normal term")
     parser.add_argument("--refine-to", type=int, help="first split the start's worst triangles up to this many")
@@ -458,7 +458,7 @@ def main(argv=None):
             pruned = prune(fitted, shown, args.budget)
             log(f"pruned {len(fitted[2]) - len(pruned[2])} triangles: {np.count_nonzero(shown == 0)} never shown")
             fitted = pruned
-        cost = None if args.cost_model is None else np.loadtxt(args.cost_model)
+        cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
         points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
                                         args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,
                                         scale=args.scale, normal_weight=args.normal_weight)

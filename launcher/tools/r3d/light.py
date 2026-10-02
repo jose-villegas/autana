@@ -62,19 +62,29 @@ def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi):
     return seen
 
 
-def back_to_back(p, tri_v):
-    """For each triangle, another over the same three positions wound the
-    other way, or -1: the two faces of a thin wall, which a ray tracer meets
-    as one."""
+def coincident_faces(p, tri_v):
+    """(twin, group) per triangle: twin is a face over the same three
+    positions wound the other way, or -1, the two sides of a thin wall that a
+    ray tracer meets as one; faces over the same positions wound the same way
+    share a group, and one being seen means all are, since only the depth
+    test picks between them."""
     corners = np.round(p[tri_v] * 1024).astype(np.int64)
-    keys = {}
     twin = np.full(len(tri_v), -1)
+    group = np.arange(len(tri_v))
+    first = {}
     for index, corner in enumerate(corners):
-        key = tuple(sorted(map(tuple, corner)))
-        other = keys.setdefault(key, index)
-        if other != index:
-            twin[index], twin[other] = other, index
-    return twin
+        rows = [tuple(row) for row in corner]
+        order = sorted(range(3), key=lambda k: rows[k])
+        winding = (order[0], order[1], order[2]) in ((0, 1, 2), (1, 2, 0), (2, 0, 1))
+        key = tuple(sorted(rows))
+        same = first.setdefault((key, winding), index)
+        group[index] = same
+        other = first.get((key, not winding), -1)
+        if other >= 0:
+            twin[index] = other
+            if twin[other] < 0:
+                twin[other] = index
+    return twin, group
 
 
 def visible_from_path(p, tri_v, double, intersector, poses, width, height, lens, near, samples, margin, tie=1e-2):
@@ -90,7 +100,7 @@ def visible_from_path(p, tri_v, double, intersector, poses, width, height, lens,
     normal = np.cross(b - a, c - a)
     normal /= np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-12)
     double = np.asarray(double, dtype=bool)
-    twin = back_to_back(p, tri_v)
+    twin, group = coincident_faces(p, tri_v)
     seen = np.zeros(len(tri_v), dtype=bool)
     for pose in poses:
         origin, direction = camera_rays(width, height, lens, pose[:3], pose[3:], samples, margin)
@@ -105,6 +115,9 @@ def visible_from_path(p, tri_v, double, intersector, poses, width, height, lens,
         nearest = np.full(len(origin), np.inf)
         np.minimum.at(nearest, ray[shown >= 0], distance[shown >= 0])
         seen[shown[(shown >= 0) & (distance <= nearest[ray] + tie)]] = True
+    reached = np.zeros(len(tri_v), dtype=bool)
+    reached[group[seen]] = True
+    seen = reached[group]
     log(f"visible from the camera path: {np.count_nonzero(seen)} of {len(tri_v)} triangles")
     return seen
 

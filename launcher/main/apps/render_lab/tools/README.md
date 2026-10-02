@@ -192,11 +192,11 @@ the fidelity table above only because they average seven of its eight poses.
 
 | Mesh | Triangles | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 |
 |---|---:|---:|---:|---:|---:|
-| Full smooth | 17,381 | 7.197 | 22.38 | 0.687 | 14.63 |
-| Flat, committed | 17,381 | 7.872 | 28.35 | 0.642 | 17.02 |
+| Full smooth | 17,375 | 7.197 | 22.38 | 0.687 | 14.63 |
+| Flat, committed | 17,375 | 7.872 | 28.35 | 0.642 | 17.02 |
 | Lite, simplifier | 8,670 | 8.133 | 26.25 | 0.643 | 16.83 |
-| Lite, fitted, path-averaged | 8,670 | 5.732 | 15.03 | 0.754 | 10.85 |
-| Lite, fitted, per shot | 8,670 | 6.270 | 17.51 | 0.748 | 11.69 |
+| Lite, fitted, path-averaged (round one) | 8,670 | 5.732 | 15.03 | 0.754 | 10.85 |
+| Lite, fitted, per shot (round one) | 8,670 | 6.270 | 17.51 | 0.748 | 11.69 |
 
 The fitted lite mesh beats the full mesh at half its triangles. Per shot
 trails path-averaged: each segment trains on eight poses, too few to
@@ -300,7 +300,7 @@ xychart-beta
     y-axis "Mean ΔE76, held-out" 4 --> 10.5
     line [9.946, 8.723, 8.133, 7.676, 7.197]
     line [8.452, 7.898, 7.284, 6.880, 6.414]
-    line [6.541, 6.073, 5.745, 5.522, 5.279]
+    line [6.541, 6.073, 5.732, 5.522, 5.279]
     line [5.844, 5.490, 5.220, 5.029, 4.881]
 ```
 
@@ -314,7 +314,7 @@ xychart-beta
     x-axis "Triangles" ["4,000", "6,000", "8,672", "12,000", "17,381"]
     y-axis "Mean normal angle, degrees, held-out" 10 --> 36
     line [32.2, 28.3, 26.2, 23.8, 21.1]
-    line [34.5, 29.9, 28.2, 25.5, 22.8]
+    line [34.5, 29.9, 28.8, 25.5, 22.8]
     line [21.3, 19.3, 17.6, 16.1, 14.6]
     line [21.8, 20.0, 18.6, 17.5, 16.5]
 ```
@@ -329,7 +329,7 @@ start. Fitting on colour alone moves geometry away from the source, by about
 | Full, fitted (region start) | 17,375 | 5.279 | 13.29 | 22.8° | 59.2 |
 | Full budget, path start, fitted | 17,381 | 4.881 | 11.77 | 16.5° | 59.4 |
 | Lite, committed | 8,670 | 8.133 | 26.25 | 26.2° | 46.2 |
-| Lite, fitted (region start, round one) | 8,670 | 5.745 | 15.03 | 28.2° | 46.7 |
+| Lite, fitted (region start, round one) | 8,670 | 5.732 | 15.03 | 28.8° | 46.8 |
 | Lite budget, path start, fitted | 8,672 | 5.220 | 12.76 | 18.6° | 46.4 |
 | Lite budget, path start, fitted with the normal term 1 | 8,672 | 5.232 | 12.94 | 14.8° | 46.7 |
 
@@ -358,18 +358,9 @@ at 10,382 (the splits leave triangles no pose shows, which pruning drops);
 from the path start the same budgets give 5.220 and 5.029. The plateau does
 not move.
 
-**Cost.** The cost model fitted to the board, 16 frames of the committed full
-and lite bakes, five runs each:
-
-| Term | Weight |
-|---|---:|
-| Constant | 21.41 ms |
-| Per submitted triangle | 0 |
-| Per drawn triangle | 1.135 µs |
-| Per triangle row | 0.514 µs |
-| Per covered pixel | 0.0275 µs |
-| Per cluster in view | 22.7 µs |
-
+**Cost.** The cost model's weights and the 16 board frames of the committed
+full and lite bakes they were fitted to, five runs each, are
+[`board_cost_weights.txt`](../../../../tools/r3d/board_cost_weights.txt).
 In sample it is off by 1.02 ms on average (R² 0.983); fitted on one bake it
 predicts the other's mean within 3.0 ms (full) and 0.8 ms (lite). On six meshes it was not fitted to, measured the same way
 (`run_sponza_perf_suite --perf-scope`, five runs, each mesh built into one
@@ -424,6 +415,25 @@ differ most, lite above; and against the reference:
 ![Committed lite against the chosen mesh](../../../../../docs/images/render/appearance-chosen-lite.png)
 ![Committed lite against the chosen mesh, enlarged](../../../../../docs/images/render/appearance-chosen-lite.crops.png)
 ![The chosen mesh against the reference, enlarged](../../../../../docs/images/render/appearance-chosen-reference.crops.png)
+
+Each stage on its own, before above after, at the two held-out poses where
+the pair differs most, enlarged where it differs most:
+
+| Stage | Before | After | Where it shows |
+|---|---|---|---|
+| Fit | committed lite | path start fitted | arches' edges, the floor's shadow edge, the banners' colours |
+| Normal term | fitted | fitted with the normal term | column edges and banner folds turned back toward the source |
+| Path visibility | region start | path start | the floor's sun patch and the red banner's folds, given the budget hidden faces had |
+| Pruning | path start, nothing pruned | 1.15 times the budget pruned back | the arch outline and the column beside the vase |
+| Cost term | fitted | fitted with the cost term | coarser arch facets, and a banner corner pulled in far enough to open a hole |
+| Path culling | committed full | full culled to the path | nothing but coincident faces trading places |
+
+![Fit](../../../../../docs/images/render/appearance-stage-fit.crops.png)
+![Normal term](../../../../../docs/images/render/appearance-stage-normal.crops.png)
+![Path visibility](../../../../../docs/images/render/appearance-stage-path-start.crops.png)
+![Pruning](../../../../../docs/images/render/appearance-stage-prune.crops.png)
+![Cost term](../../../../../docs/images/render/appearance-stage-cost.crops.png)
+![Path culling](../../../../../docs/images/render/appearance-stage-path-full.crops.png)
 
 Its ΔE heatmap sheet at 25 s:
 
