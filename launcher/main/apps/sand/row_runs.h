@@ -5,8 +5,6 @@
  * Pure logic, no grid type and no gfx dependency: a row is just a byte
  * array and a width, so this is testable on a host.
  *
- * WHY THIS EXISTS
- *
  * A caller that only ever reports one min/max span per row - "material
  * occupies somewhere between x0 and x1" - loses information the moment two
  * genuinely separate blobs share a row: the gap between them gets reported
@@ -15,8 +13,6 @@
  * in the first place. Reporting up to ROW_MAX_RUNS separate runs instead
  * lets a consumer that CAN use the extra precision - gfx.c's per-cell
  * tracking and its own contiguous-run merging - actually benefit from it.
- *
- * THE RECONCILIATION PROBLEM
  *
  * A single previous/current min/max union is enough to guarantee a cell
  * that just emptied still gets sent once, clearing its stale pixels.
@@ -30,8 +26,8 @@
 
 /* Fixed cap on how many separate runs one row tracks, for both detection
  * and reconciliation - a row can never grow arbitrarily many small sends.
- * A tunable needing real device measurement, same status GATHER_MAX_PIXELS
- * and LEAF_REFINE_MAX_RUNS in gfx.c had before their defaults were kept. */
+ * Changing it needs device measurement, as do GATHER_MAX_PIXELS and
+ * LEAF_REFINE_MAX_RUNS in gfx.c. */
 #define ROW_MAX_RUNS 2
 
 /* Collects `row`'s contiguous non-`empty` bytes into up to ROW_MAX_RUNS

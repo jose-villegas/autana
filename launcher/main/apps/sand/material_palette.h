@@ -71,8 +71,7 @@ typedef enum {
 /* Test `(mask & MATERIAL_EDGE_CARDINAL) != 0` for "is this cell an edge at
  * all", never `mask != 0`: once the diagonal bits exist, a cell with every
  * cardinal neighbour occupied but one diagonal empty would newly read as an
- * edge, and glass/stone would start outlining cells they used to paint as
- * solid interior. */
+ * edge, and glass/stone would start outlining solid interiors. */
 
 /* `depth` means something per material: a liquid's INTERIOR reads local
  * depth, 0 at the boundary up to 255 (see sand_paint_row_n() and

@@ -194,23 +194,14 @@ void build_dry_plant_heap_scene(sand_t* s);
 
 #define PLANT_IDLE_SETTLE_STEPS  200
 
-/* The schedule is chosen so every stage is still doing work in the timed
- * window. Measured over candidate 20-step windows: a bed settled 400 steps
- * produces ZERO leaves - its canopy has saturated, so the row times a
- * reject rather than the stage. At 230 plants, leaves and roots are all
- * still being produced. Both pours must precede the window, and pouring
- * earlier is worse: at 80 and 160 the canopy stalls at 137 leaves and never
- * moves again. */
+/* This schedule keeps plants, leaves and roots active in the timed window.
+ * Both pours precede that window. */
 #define PLANT_BED_SETTLE_STEPS   230
 #define PLANT_BED_RAIN_A         100
 #define PLANT_BED_RAIN_B         170
 
-/* THE SAME BED, FINISHED: no second pour, and left until the trees have both
- * stopped growing and drunk the ground dry - the state a garden spends the
- * rest of its life in, and the one every row above stops short of. Measured
- * on this bed and seed: structure stops changing at 759, the last damp cell
- * evaporates at 1,644. Block-shape sensitive: re-measure after a
- * SAND_BLOCK_W/H change. */
+/* The finished bed has no second pour and settles until tree growth and soil
+ * moisture stop changing. */
 #define MATURE_TREE_SETTLE_STEPS 1800
 
 /* Fresh soil laid over the canopy and rained on - the one thing a finished
@@ -221,17 +212,12 @@ void mature_tree_replant(sand_t* s);
 
 #define MATURE_TREE_REPLANT_STEPS 400
 
-/* Same real device impulse budget the vent-spam scene this replaced used -
- * the app's own buffer is sized APP_IMPULSE_MAX (2048), and this scene
- * should be fighting the same memory ceiling a real device pour actually
- * has, not a looser one a differently-sized test buffer would hide. */
+/* Match APP_IMPULSE_MAX so this scene reaches the device memory ceiling. */
 #define WATER_LAVA_IMPULSE_MAX    2048
 void build_water_over_lava_scene(sand_t* s);
 
-/* A block, not a single cell: fire is KIND_GAS, so under the random walk a
- * lone spark drifts away before it can light anything and the pile never
- * detonates at all - checked, still zero bursts over a window 6.7x
- * longer. */
+/* A block, not a single cell: fire is KIND_GAS, so a lone spark drifts away
+ * before it can light the pile. */
 #define GUNPOWDER_BASIN_SPARK          2
 
 /* Same reasoning as WATER_LAVA_IMPULSE_MAX above - the app's own fixed,
@@ -280,21 +266,14 @@ void build_landscape_deep_bed_scene(sand_t* s);
 void landscape_water_pour(sand_t* s, int step);
 void landscape_sand_pour(sand_t* s, int step);
 
-/* Measured: the bed reaches its share in these many steps at eight stamps
- * apiece, and every block is asleep by the end of the settle. A dragged
- * brush this fast lays the same bed a single-stamp drag does - front column
- * 95 against 96 over five times the steps. Block-shape sensitive: the
- * shallow bed's last grain stops at 158, the deep at 151. */
+/* Eight stamps per step build the shallow and deep beds before settling. */
 #define LANDSCAPE_BED_STAMPS     8
 #define LANDSCAPE_BED_STEPS      300
 #define LANDSCAPE_DEEP_BED_STEPS 490
 #define LANDSCAPE_SETTLE_STEPS   170
 
-/* The window times a pour ALREADY RUNNING, the reason the filling basin
- * primes too: measured from first contact the cost climbs the whole way -
- * 105 us over 60 steps against 172 over 150, on the same board - because
- * the water is still reaching fresh bed. Past 150 steps of pour it is flat
- * within 2% whatever window follows. */
+/* The window times an already-running pour. The filling basin primes so the
+ * timed rows measure sustained flow rather than first contact. */
 #define LANDSCAPE_PRIME_STEPS    150
 #define LANDSCAPE_MEASURED_STEPS 90
 #define LANDSCAPE_POUR_STAMPS    2
@@ -314,9 +293,7 @@ void build_water_slope_stone_scene(sand_t* s);
 void build_water_slope_flat_scene(sand_t* s);
 void water_slope_water_pour(sand_t* s, int step);
 
-/* Measured: 500 steps of pouring at the high corner puts water the whole way
- * down the slope with the downhill face wet end to end, see the coverage
- * test in suite_sand_scenes.c. */
+/* This pour covers the slope from its high corner to the downhill face. */
 #define WATER_SLOPE_COVER_STEPS 500
 
 void build_water_slope_covered_scene(sand_t* s);
@@ -372,12 +349,7 @@ void build_captured_water_slope_scene(sand_t* s);
  * water back into the ground from the moment it lands. */
 #define SUBMERGED_PILE_SETTLE_STEPS      40
 
-/* Measured with soaking on (SAND_SOAK_PER_MATERIAL, matching app_sand.c's
- * own real-app config): a freshly covered pile this size takes on the
- * order of 4,000-4,400 further steps to fully absorb its water and reach
- * true sleep - two orders of magnitude past the 60-90 step windows the
- * gravity-flip rows use, which is why those rows never see it happen at
- * all. Comfortable margin over that. */
+/* Soaking keeps full settling well beyond the gravity-flip windows. */
 #define SUBMERGED_PILE_FULL_SETTLE_STEPS 6000
 
 void build_submerged_pile_scene(sand_t* s);
