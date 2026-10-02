@@ -28,6 +28,10 @@ SIGNS = re.compile(
     r"this (?:used|was) |earlier|first version|second version|"
     r"now that|since the fix|after the fix)", re.I)
 
+# A frame-rate delta records an experiment, not a constraint that code must
+# obey. It tends to survive after the rendering path it described has changed.
+PERF_STORY = re.compile(r"\b(?:cost|costs|lost)\s+\d+(?:\.\d+)?\s+fps\b", re.I)
+
 # A comment recording where code went ("moved to sand_priv.h", "now lives in
 # x.c") describes a layout the reader never saw. Narrow enough to fail on:
 # naming a destination file is what makes it a tombstone.
@@ -63,12 +67,23 @@ def tombstones(root):
                 yield p.as_posix(), c.line
 
 
+def perf_stories(root):
+    for p in committable(root):
+        if p.suffix not in (".c", ".h") or any(s in p.parts for s in SKIP):
+            continue
+        text = p.read_text(encoding="utf-8", errors="replace")
+        for c in scan(p.as_posix(), text):
+            if PERF_STORY.search(" ".join(c.text.split())):
+                yield p.as_posix(), c.line
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("root", nargs="?", default="launcher")
     ap.add_argument("--min-chars", type=int, default=300)
     ap.add_argument("--json")
     ap.add_argument("--tombstones", action="store_true")
+    ap.add_argument("--perf-stories", action="store_true")
     args = ap.parse_args()
 
     if args.tombstones:
@@ -76,6 +91,13 @@ def main():
         for path, line in found:
             print(f"{path}:{line}: comment records where code moved; state the constraint or delete it")
         print(f"{len(found)} tombstone comment{'' if len(found) == 1 else 's'}")
+        return 1 if found else 0
+
+    if args.perf_stories:
+        found = list(perf_stories(args.root))
+        for path, line in found:
+            print(f"{path}:{line}: comment records a frame-rate experiment; state the constraint or delete it")
+        print(f"{len(found)} frame-rate story comment{'' if len(found) == 1 else 's'}")
         return 1 if found else 0
 
     rows = sorted(find(args.root, args.min_chars), key=lambda r: -r["chars"])
