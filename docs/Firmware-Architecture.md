@@ -98,17 +98,18 @@ flowchart TB
   and `imu.c` touch hardware; `touch_fsm`, `button_fsm`, `gesture` and
   `tilt` are pure and tested on a laptop. The same split runs through every
   folder, and is what the [Testing-Guide.md](Testing-Guide.md) relies on.
-- **The shell names no vendor firmware.** `main.c` reaches the chip's vendor
-  code only through modules that own it: `input/input_shell.h` (`input_start`,
-  `input_poll`), `display/display_shell.h` (`display_start`,
-  `display_sample_orientation`), `display/display.h` (the system panel clock)
-  and `util/{timing,settings,memory}.h`; it calls this firmware's own drivers
+- **The shell names no vendor firmware.** `main.c` and `shell/` reach the
+  chip's vendor code only through modules that own it:
+  `input/input_shell.h` (`input_start`, `input_poll`),
+  `display/display_shell.h` (`display_start`, `display_sample_orientation`),
+  `display/display.h` (the system panel clock) and
+  `util/{timing,settings,memory}.h`; they call this firmware's own drivers
   (`imu_read`, `touch_read`) directly. A module's device half, where it has
   one, lives in a `*_device.c` beside it and is compiled for the board only,
   so the files a host builds stay pure.
-  `scripts/gates/check_shell_firmware.py` fails `main.c` on any ESP-IDF,
-  FreeRTOS, NVS or BSP include or call, logging (`esp_log.h`,
-  `ESP_LOG[A-Z]`) excepted.
+  `scripts/gates/check_shell_firmware.py` fails `main.c` and any file
+  under `shell/` on an ESP-IDF, FreeRTOS, NVS or BSP include or call,
+  logging (`esp_log.h`, `ESP_LOG[A-Z]`) excepted.
 - **The vendor timer and heap have one owner each.** Code above the drivers
   reads time with `timing_now_us()` (`util/timing.h`, inlined to the
   hardware timer's own call) and places or measures memory by kind with
