@@ -192,6 +192,25 @@ class SettingsTests(unittest.TestCase):
             self.assertNotEqual(digest(body.replace("ray_offset = 0.5", "ray_offset = 0.6")), first)
             self.assertNotEqual(digest(body, tracks="other tracks"), first)
 
+    def test_the_recipe_digest_ignores_equivalent_toml_layouts(self):
+        from r3d.fitted_variant import recipe_digest
+
+        fit = ('fit = { budget = 8, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 20, '
+               'batch = 4, laplacian = 10.0, normal_weight = 1.0, sha256 = "ab", recipe_sha256 = "cd" }\n')
+        first = (LIGHT_STEP + '[geometry]\nsimplify = { dense_edge = 1.0, props = ["a", "b"], props_share = 0.3, seal_seams = true }\n'
+                 + VISIBILITY_STEP + VARIANT + 'triangles = 10\n' + fit)
+        second = ('[visibility]\nrounds = 2\n' + LIGHT_STEP + '[geometry]\nsimplify = { seal_seams = true, props_share = 0.3, '
+                  'props = ["b", "a"], dense_edge = 1.0 }\n' + VARIANT + 'triangles = 10\n' + fit)
+        scene_ = SimpleNamespace(camera=SimpleNamespace(component=SimpleNamespace(path=SimpleNamespace(tracks="fly"))))
+        with tempfile.TemporaryDirectory() as directory:
+            (pathlib.Path(directory) / "fly_tracks_generated.c").write_text("tracks")
+            output = '[output]\ndirectory = "."\n'
+            settings = [load_import_settings(write_import(directory, f"{index}.import.toml", output=output, body=body))
+                        for index, body in enumerate((first, second, second.replace("dense_edge = 1.0", "dense_edge = 2.0")))]
+            digests = [recipe_digest(item, item.variants[0], scene_) for item in settings]
+        self.assertEqual(*digests)
+        self.assertNotEqual(digests[0], digests[2])
+
     def test_each_committed_fitted_mesh_is_the_one_its_recipe_records(self):
         if np is None:
             self.skipTest("the r3d environment is not installed")
@@ -244,6 +263,9 @@ class SettingsTests(unittest.TestCase):
 
     def test_an_unknown_key_is_rejected_in_a_group(self):
         self.rejects("process.typo", body="[process.typo]\nx = 1\n")
+        self.rejects("geometry.typo", body="[geometry]\ntypo = 1\n")
+        self.rejects("visibility.typo", body="[visibility]\nrounds = 2\ntypo = 1\n")
+        self.rejects("lighting.typo", body="[lighting]\ntypo = 1\n")
         self.rejects("lighting.light.typo", body=LIGHT_STEP.replace(" }", ", typo = 1 }"))
 
     def test_auto_samples_with_a_minimum_over_its_maximum_are_rejected(self):
@@ -272,7 +294,7 @@ class SettingsTests(unittest.TestCase):
             smooth = load_import_settings(write_import(directory)).variants[0]
             shaded = load_import_settings(write_import(directory, body=LIGHT_STEP.replace(" }", ", flat_sky_rays = 8 }")
                                                                   + VARIANT + flat, output='[output]\ndirectory = "."\n')).variants[0]
-        self.assertEqual(smooth.shading, "smooth")
+        self.assertFalse(hasattr(smooth, "shading"))
         self.assertEqual(shaded.face_samples, (4, 1, 4, None))
         self.rejects("needs lighting.light", body=VARIANT + flat, output='[output]\ndirectory = "."\n')
         self.rejects("flat_sky_rays is required", body=LIGHT_STEP + VARIANT + flat, output='[output]\ndirectory = "."\n')
@@ -281,7 +303,7 @@ class SettingsTests(unittest.TestCase):
 
     def test_the_legacy_layout_names_each_options_new_home(self):
         self.rejects(r"\[process.light\] moved to \[lighting\] light", body='[process.light]\nray_offset = 0.5\ncolour_merge_step = 6\n')
-        self.rejects(r"face_samples moved to shading = \{ flat = \.\.\. \}", body=VARIANT + "face_samples = { fixed = 4 }\n",
+        self.rejects(r"variants\[0\]\.face_samples moved to shading = \{ flat = \.\.\. \}", body=VARIANT + "face_samples = { fixed = 4 }\n",
                      output='[output]\ndirectory = "."\n')
 
     def test_the_tools_name_no_scene(self):

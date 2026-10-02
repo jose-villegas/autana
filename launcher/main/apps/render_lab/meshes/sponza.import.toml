@@ -21,7 +21,6 @@ thin = { material = "leaf", keep = 0.35 }
 simplify = { dense_edge = 45.0, props = ["vase", "vase_round", "vase_hanging", "flagpole", "chain", "leaf", "Material__57", "Material__298", "Material__25", "Material__47"], props_share = 0.3, seal_seams = true }
 
 [visibility]
-source = "camera_region"
 rounds = 160
 
 [lighting]
@@ -48,11 +47,11 @@ triangles = 8672
 name = "sponza_fitted"
 triangles = 9973
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
-fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "44dabf0a7e258912556be8b24593d843629f456cabcba9d64b36336812338afb", recipe_sha256 = "fbde8773baa81a4b87eb8f9e80942ab21af9764b499291a61aeebc61d54ce8c4" }
+fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "44dabf0a7e258912556be8b24593d843629f456cabcba9d64b36336812338afb", recipe_sha256 = "bbdf5372e27b0b3eb1c3a8c4f1c213b4d628f41b9fbe9abf1a8343995047d077" }
 
 # The same recipe at the full mesh's budget.
 [[variants]]
 name = "sponza_fitted_full"
 triangles = 19988
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
-fit = { budget = 17381, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "8578cfe1a678859310603ad53a77b11eda4b03cc75fe760377fa10fb92c460d5", recipe_sha256 = "637a09db4ee8b19d65e3a3255bf5c43729d0e83b6f5e7b54b469976d1a14e35f" }
+fit = { budget = 17381, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "8578cfe1a678859310603ad53a77b11eda4b03cc75fe760377fa10fb92c460d5", recipe_sha256 = "1c51b6a0b583b318ead321f1f7b4d93b0541fdcde80b07eec4c4e2b185131d21" }

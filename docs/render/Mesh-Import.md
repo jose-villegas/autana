@@ -26,51 +26,54 @@ flowchart LR
 
 ## Import options
 
-Every table below opts its step in; without it the step does not run. The
-importer, not the order in the file, fixes the diagram's run order.
+Every table below opts its step in; without it the step does not run.
 
 ### Source, output and materials
 
-| Option | What it does | Default | Cost (bake / frame) |
-|---|---|---|---|
-| `source` | Downloads, verifies and locates the OBJ; `credit` records its attribution. | Required. | Download / none. |
-| `output` | Names the output directory, single-mesh name and position scale. | `name` and `position_scale` optional. | Write / none. |
-| `materials.double_sided` | Draws listed material faces from both sides. | `[]`. | None / more triangles. |
+| Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
+|---|---|---|---|---|---|
+| `[source]` | `url`, `sha256`, `path`, `cache`, `credit` | Downloads, verifies and locates the OBJ; `credit` records its attribution. | Required. | Download / none. | [Import file](#import-file) |
+| `[output]` | `directory`; `name`, `position_scale` | Names the output directory, single-mesh name and position scale. | `name` optional; `position_scale` 8. | Write / none. | [The baked mesh](#the-baked-mesh) |
+| `[materials]` | `double_sided` | Draws listed material faces from both sides. | `[]`. | None / more faces drawn. | [The baked mesh](#the-baked-mesh) |
 
 ### Process
 
-| Option | What it does | Default | Cost (bake / frame) |
-|---|---|---|---|
-| `process.seed` | Seeds every random visibility and lighting ray. | `0`; only with a random step. | None / none. |
+| Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
+|---|---|---|---|---|---|
+| `[process]` | `seed` | Seeds visibility rays, thin's random choice and lighting rays. | `0`; only with visibility, thin or light. | None / none. | [Import file](#import-file) |
 
 ### Geometry
 
-| Option | What it does | Default | Cost (bake / frame) |
-|---|---|---|---|
-| `geometry.alpha_mask` | Drops alpha-tested triangles that are mostly transparent. | Off. | Texture sampling / fewer triangles. |
-| `geometry.thin` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. |
-| `geometry.simplify` | Splits long edges and simplifies each variant to its budget; it reserves `props` and can seal seams. | Off. | Seconds / fewer triangles. |
+| Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
+|---|---|---|---|---|---|
+| `[geometry]` | `alpha_mask`, `thin`, `simplify` | Holds optional geometry steps. | All off. | Varies / varies. | [Import file](#import-file) |
+| `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Texture sampling / fewer triangles. | [Import file](#import-file) |
+| `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [Import file](#import-file) |
+| `geometry.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges and simplifies each variant to its budget; reserves `props` and can seal seams. | Off. | Seconds / fewer triangles; `seal_seams` costs about 4% frame time. | [Sealing seams](#sealing-seams) |
 
 ### Visibility
 
-| Option | What it does | Default | Cost (bake / frame) |
-|---|---|---|---|
-| `visibility` | Culls what the camera cannot see; `camera_region` uses `rounds`, while `camera_path` uses `every_ms`, `size`, `samples` and `margin`. | Off; path `samples` 3, `margin` 0. | Ray tracing / fewer triangles. |
-| `variants.visibility` | Overrides the import's visibility for one variant. | Inherits `visibility`. | Ray tracing / fewer triangles. |
+| Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
+|---|---|---|---|---|---|
+| `[visibility]`, `variants.visibility`: `camera_region` | `rounds`; `source` | Culls what the camera's region can see. | `source = "camera_region"`. | Ray tracing / fewer triangles. | [Import file](#import-file) |
+| `[visibility]`, `variants.visibility`: `camera_path` | `every_ms`, `size`; `source`, `samples`, `margin` | Culls what camera-path poses can see. | `samples` 3, `margin` 0. | Ray tracing / about 15% less frame time on the full mesh. | [Import file](#import-file) |
+| `variants.visibility` | `source`, `rounds`, `every_ms`, `size`, `samples`, `margin` | Overrides the import's visibility for one variant. | Inherits `[visibility]`. | Ray tracing / varies. | [Import file](#import-file) |
 
 ### Lighting
 
-| Option | What it does | Default | Cost (bake / frame) |
-|---|---|---|---|
-| `lighting.light` | Bakes the scene's light into vertex colour; `flat_sky_rays` is shared by flat faces. | Off: albedo. | Ray tracing / none. |
+| Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
+|---|---|---|---|---|---|
+| `[lighting]` | `light` | Holds the optional light bake. | Off: albedo. | Ray tracing / none. | [Import file](#import-file) |
+| `lighting.light` | `ray_offset`, `colour_merge_step`; `flat_sky_rays` | Bakes the scene's light into vertex colour; flat faces share `flat_sky_rays`. | Off; `flat_sky_rays` is required with flat shading and refused otherwise. | Ray tracing / none. | [The baked mesh](#the-baked-mesh) |
 
 ### Variants
 
-| Option | What it does | Default | Cost (bake / frame) |
-|---|---|---|---|
-| `[[variants]].triangles` | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / fewer triangles. |
-| `[[variants]].shading` | `smooth`, or `{ flat = { fixed = N } }` or `{ flat = { auto = { min, max, area } } }`; flat stores one colour per triangle. | `smooth`. | Minutes / cheaper rasterisation. |
-| `[[variants]].fit` | Records a smooth appearance-fit recipe and its hashes. | Off. | CUDA GPU / unchanged. |
+| Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
+|---|---|---|---|---|---|
+| `[[variants]]` | `name`; `triangles`, `shading`, `visibility`, `fit` | Names a separately baked mesh. | One or more only when simplification is on. | Varies / varies. | [Import file](#import-file) |
+| `[[variants]].triangles` | `triangles` | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / fewer triangles. | [Import file](#import-file) |
+| `[[variants]].shading` | `flat`; `fixed` or `auto`; `min`, `max`, `area` | `smooth`, or flat shading with fixed or automatic face samples; flat stores one colour per triangle. | `smooth`; automatic `area = "median"`. | Minutes / cheaper rasterisation. | [The baked mesh](#the-baked-mesh) |
+| `[[variants]].fit` | `budget`, `train_every_ms`, `held_out_every_ms`, `coverage_every_ms`, `steps`, `batch`, `laplacian`, `normal_weight`, `sha256`, `recipe_sha256` | Records a smooth appearance-fit recipe and its hashes. | Off. | CUDA GPU / unchanged. | [Fitting a mesh to the reference](#fitting-a-mesh-to-the-reference) |
 
 ## The baked mesh
 
@@ -500,7 +503,7 @@ front, and its knee is where more triangles stop buying visible error.
 Simplifying a model made of many separate pieces approximates each piece's
 border on its own, and a border that erodes leaves a pixel-sized empty spot
 where another surface should meet it. `seal_seams = true` in
-`[geometry]`, where the key is required, imports the same mesh
+`[geometry.simplify]`, where the key is required, imports the same mesh
 differently; `false` simplifies the pieces as they are. It acts in the simplifier's stage
 only; the bake after it is unchanged.
 
