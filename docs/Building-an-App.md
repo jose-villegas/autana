@@ -149,7 +149,7 @@ sequenceDiagram
     alt band mode: GFX_LAYOUT_BANDS
         S->>G: queue the home hint, home_gesture only
     end
-    S->>A: invalidate() if a full redraw is pending, then the systems' invalidate phase
+    S->>A: invalidate() if a full redraw is pending
     S->>A: frame(dt_ms, input)
     A->>G: gfx_* draws
     alt band mode: GFX_LAYOUT_BANDS
@@ -157,7 +157,6 @@ sequenceDiagram
     end
     alt full-framebuffer mode
         S->>G: draw the home hint strip, home_gesture only
-        S->>S: the systems' overlay phase
     end
     S->>G: gfx_present()
 ```
@@ -183,8 +182,6 @@ sequenceDiagram
     S->>A: frame(dt_ms, input)
     alt band mode: GFX_LAYOUT_BANDS
         S->>G: gfx_band_run(draw_band, ui_replay_band)
-    else full-framebuffer mode
-        S->>S: the systems' overlay phase
     end
     Note over S,P: shell_present_unless_deferred() leaves this frame to the next pass's gfx_present_begin()
 ```
@@ -280,7 +277,7 @@ An app that minds a stray pixel at 80 MHz opts into heal: `gfx_heal_mark()`,
 
 `gfx_request_full_redraw()` marks everything dirty and latches a flag. At the
 top of the next pass `apply_pending_full_redraw()` clears the flag and calls
-`invalidate()`, then the systems' invalidate phase. A
+`invalidate()`. A
 request made inside `frame()` is served the following pass. The shell requests
 one on launch, leave, an orientation change, a screenshot and a self-test run.
 Implement `invalidate()` only for a cache gfx cannot see: per-row runs of
