@@ -147,24 +147,34 @@ def load_fit(value, variant, where):
     return fit
 
 
-def load_variant(value, process, where):
-    check_keys(value, ("name",), where, optional=("triangles", "face_samples", "visibility", "fit"))
-    variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None, face_samples=None, visibility=None,
-                              fit=None)
-    if process.simplify:
+def load_variant(value, steps, where):
+    if isinstance(value, dict) and "face_samples" in value:
+        raise SettingsError("face_samples moved to shading = { flat = ... }")
+    check_keys(value, ("name",), where, optional=("triangles", "shading", "visibility", "fit"))
+    variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None, shading="smooth", face_samples=None,
+                              visibility=None, fit=None)
+    if steps.simplify:
         if "triangles" not in value:
-            raise SettingsError(f"{where}.triangles is required when process.simplify is present")
+            raise SettingsError(f"{where}.triangles is required when geometry.simplify is present")
         variant.triangles = count(value["triangles"], f"{where}.triangles")
     elif "triangles" in value:
-        raise SettingsError(f"{where}.triangles needs process.simplify")
-    if "face_samples" in value:
-        if not process.light:
-            raise SettingsError(f"{where}.face_samples needs process.light")
-        variant.face_samples = face_sample_options(value["face_samples"], f"{where}.face_samples")
+        raise SettingsError(f"{where}.triangles needs geometry.simplify")
+    if "shading" in value:
+        shading = value["shading"]
+        if shading == "smooth":
+            pass
+        elif isinstance(shading, dict):
+            check_keys(shading, ("flat",), f"{where}.shading")
+            if not steps.light:
+                raise SettingsError(f"{where}.shading needs lighting.light")
+            variant.shading = "flat"
+            variant.face_samples = face_sample_options(shading["flat"], f"{where}.shading.flat")
+        else:
+            raise SettingsError(f"{where}.shading must be smooth or {{ flat = ... }}")
     if "visibility" in value:
         variant.visibility = load_visibility(value["visibility"], f"{where}.visibility")
     if "fit" in value:
-        if variant.face_samples or not process.light:
+        if variant.face_samples or not steps.light:
             raise SettingsError(f"{where}.fit needs a smooth variant of a lit import")
         variant.fit = load_fit(value["fit"], variant, f"{where}.fit")
     return variant
@@ -173,7 +183,7 @@ def load_variant(value, process, where):
 VISIBILITY_SOURCES = ("camera_region", "camera_path")
 
 
-def load_visibility(table, where="process.visibility"):
+def load_visibility(table, where="visibility"):
     """Where the camera can be, so what it can see. `camera_region` keeps
     what any point of the scene camera's region box sees (`rounds` random
     tries per triangle); `camera_path` keeps what any pose of the scene
@@ -198,39 +208,60 @@ def load_visibility(table, where="process.visibility"):
                            samples=count(table.get("samples", 3), f"{where}.samples"), margin=margin)
 
 
+LEGACY_PROCESS_HOMES = {
+    "alpha_mask": "[geometry] alpha_mask",
+    "visibility": "[visibility]",
+    "thin": "[geometry] thin",
+    "light": "[lighting] light",
+    "simplify": "[geometry] simplify",
+}
+
+
 def load_process(process):
-    """The opt-in steps: a step runs when its table is present."""
-    check_keys(process, (), "process", optional=("seed", "alpha_mask", "visibility", "thin", "light", "simplify"))
-    steps = SimpleNamespace(seed=0, alpha_keep=None, visibility=None, thin=None, light=None, simplify=None)
-    if "alpha_mask" in process:
-        check_keys(process["alpha_mask"], ("keep_alpha",), "process.alpha_mask")
-        steps.alpha_keep = number(process["alpha_mask"]["keep_alpha"], "process.alpha_mask.keep_alpha")
-    if "visibility" in process:
-        steps.visibility = load_visibility(process["visibility"])
-    if "thin" in process:
-        check_keys(process["thin"], ("material", "keep"), "process.thin")
-        steps.thin = SimpleNamespace(material=text(process["thin"]["material"], "process.thin.material"),
-                                     keep=number(process["thin"]["keep"], "process.thin.keep"))
-    if "light" in process:
-        table = process["light"]
-        check_keys(table, ("ray_offset", "colour_merge_step"), "process.light", optional=("flat_sky_rays",))
-        steps.light = SimpleNamespace(
-            ray_offset=number(table["ray_offset"], "process.light.ray_offset"),
-            colour_merge_step=count(table["colour_merge_step"], "process.light.colour_merge_step"),
-            flat_sky_rays=count(table["flat_sky_rays"], "process.light.flat_sky_rays") if "flat_sky_rays" in table else None)
-    if "simplify" in process:
-        table = process["simplify"]
-        check_keys(table, ("dense_edge", "props", "props_share", "seal_seams"), "process.simplify")
-        steps.simplify = SimpleNamespace(
-            dense_edge=number(table["dense_edge"], "process.simplify.dense_edge"),
-            props=set(strings(table["props"], "process.simplify.props")),
-            props_share=number(table["props_share"], "process.simplify.props_share"),
-            seal_seams=boolean(table["seal_seams"], "process.simplify.seal_seams"))
-    if "seed" in process:
-        if not (steps.visibility or steps.thin or steps.light):
-            raise SettingsError("process.seed needs a step that draws random rays: visibility, thin or light")
-        steps.seed = integer(process["seed"], "process.seed")
-    return steps
+    """The seed shared by every random import step."""
+    if isinstance(process, dict):
+        for name, home in LEGACY_PROCESS_HOMES.items():
+            if name in process:
+                raise SettingsError(f"[process.{name}] moved to {home}")
+    check_keys(process, (), "process", optional=("seed",))
+    return SimpleNamespace(seed=integer(process["seed"], "process.seed") if "seed" in process else 0)
+
+
+def load_geometry(table):
+    """The optional steps that decide which source triangles remain."""
+    check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify"))
+    geometry = SimpleNamespace(alpha_keep=None, thin=None, simplify=None)
+    if "alpha_mask" in table:
+        alpha_mask = table["alpha_mask"]
+        check_keys(alpha_mask, ("keep_alpha",), "geometry.alpha_mask")
+        geometry.alpha_keep = number(alpha_mask["keep_alpha"], "geometry.alpha_mask.keep_alpha")
+    if "thin" in table:
+        thin = table["thin"]
+        check_keys(thin, ("material", "keep"), "geometry.thin")
+        geometry.thin = SimpleNamespace(material=text(thin["material"], "geometry.thin.material"),
+                                        keep=number(thin["keep"], "geometry.thin.keep"))
+    if "simplify" in table:
+        simplify = table["simplify"]
+        check_keys(simplify, ("dense_edge", "props", "props_share", "seal_seams"), "geometry.simplify")
+        geometry.simplify = SimpleNamespace(
+            dense_edge=number(simplify["dense_edge"], "geometry.simplify.dense_edge"),
+            props=set(strings(simplify["props"], "geometry.simplify.props")),
+            props_share=number(simplify["props_share"], "geometry.simplify.props_share"),
+            seal_seams=boolean(simplify["seal_seams"], "geometry.simplify.seal_seams"))
+    return geometry
+
+
+def load_lighting(table):
+    """The optional step that bakes the scene's light into the mesh."""
+    check_keys(table, (), "lighting", optional=("light",))
+    if "light" not in table:
+        return None
+    light = table["light"]
+    check_keys(light, ("ray_offset", "colour_merge_step"), "lighting.light", optional=("flat_sky_rays",))
+    return SimpleNamespace(
+        ray_offset=number(light["ray_offset"], "lighting.light.ray_offset"),
+        colour_merge_step=count(light["colour_merge_step"], "lighting.light.colour_merge_step"),
+        flat_sky_rays=count(light["flat_sky_rays"], "lighting.light.flat_sky_rays") if "flat_sky_rays" in light else None)
 
 
 def load_import_settings(path):
@@ -239,7 +270,7 @@ def load_import_settings(path):
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as source:
         values = tomllib.load(source)
-    check_keys(values, ("source", "output"), "settings", optional=("materials", "process", "variants"))
+    check_keys(values, ("source", "output"), "settings", optional=("materials", "process", "geometry", "visibility", "lighting", "variants"))
     source = values["source"]
     check_keys(source, ("url", "sha256", "path", "cache", "credit"), "source")
     for name in source:
@@ -249,7 +280,14 @@ def load_import_settings(path):
     directory = text(output["directory"], "output.directory")
     materials = values.get("materials", {})
     check_keys(materials, (), "materials", optional=("double_sided",))
-    steps = load_process(values.get("process", {}))
+    process = load_process(values.get("process", {}))
+    geometry = load_geometry(values.get("geometry", {}))
+    visibility = load_visibility(values["visibility"]) if "visibility" in values else None
+    light = load_lighting(values.get("lighting", {}))
+    steps = SimpleNamespace(seed=process.seed, alpha_keep=geometry.alpha_keep, visibility=visibility, thin=geometry.thin,
+                            light=light, simplify=geometry.simplify)
+    if "seed" in values.get("process", {}) and not (steps.visibility or steps.thin or steps.light):
+        raise SettingsError("process.seed needs a step that draws random rays: visibility, thin or light")
     if "variants" in values:
         variants = values["variants"]
         if not isinstance(variants, list) or not variants:
@@ -268,14 +306,16 @@ def load_import_settings(path):
             shapes[shape] = variant.name
     else:
         if steps.simplify:
-            raise SettingsError("process.simplify needs variants, each with its triangles budget")
+            raise SettingsError("geometry.simplify needs variants, each with its triangles budget")
         variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None, face_samples=None,
-                                    visibility=None, fit=None)]
+                                    shading="smooth", visibility=None, fit=None)]
     flat = any(variant.face_samples for variant in variants)
+    if flat and not steps.light:
+        raise SettingsError("shading = { flat = ... } needs lighting.light")
     if flat and steps.light.flat_sky_rays is None:
-        raise SettingsError("process.light.flat_sky_rays is required when a variant has face_samples")
+        raise SettingsError("lighting.light.flat_sky_rays is required when a variant has shading = { flat = ... }")
     if steps.light and not flat and steps.light.flat_sky_rays is not None:
-        raise SettingsError("process.light.flat_sky_rays applies to a variant with face_samples only")
+        raise SettingsError("lighting.light.flat_sky_rays applies to a variant with shading = { flat = ... } only")
     return SimpleNamespace(
         path=path, source=source, out_dir=(path.parent / directory).resolve(), mesh_dir=path.parent,
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,

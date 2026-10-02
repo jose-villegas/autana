@@ -60,7 +60,24 @@ def recipe_digest(settings, variant, scene):
 
     with open(settings.path, "rb") as source:
         values = tomllib.load(source)
+    geometry = values.pop("geometry", {})
+    visibility = values.pop("visibility", None)
+    lighting = values.pop("lighting", {})
+    process = values.setdefault("process", {})
+    for name in ("alpha_mask", "thin", "simplify"):
+        if name in geometry:
+            process[name] = geometry[name]
+    if visibility is not None:
+        process["visibility"] = dict(visibility)
+        if process["visibility"].get("source") == "camera_region":
+            del process["visibility"]["source"]
+    if "light" in lighting:
+        process["light"] = lighting["light"]
     entry = [dict(item) for item in values.pop("variants", []) if item.get("name") == variant.name][0]
+    if "shading" in entry:
+        shading = entry.pop("shading")
+        if isinstance(shading, dict):
+            entry["face_samples"] = shading["flat"]
     entry["fit"] = {key: value for key, value in entry["fit"].items() if key not in ("sha256", "recipe_sha256")}
     tracks = hashlib.sha256(tracks_file(settings, scene).read_bytes()).hexdigest()
     return hashlib.sha256(json.dumps([values, entry, tracks], sort_keys=True).encode()).hexdigest()
