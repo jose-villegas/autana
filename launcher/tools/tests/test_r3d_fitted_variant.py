@@ -125,6 +125,9 @@ class SweepTests(unittest.TestCase):
                 fitted_variant.sweep_references("scene", "data", job, work)
                 fitted_variant.sweep_references("scene", "data", job, work)
         self.assertEqual(render.call_count, 3)
+        for call in render.call_args_list:
+            argv = call.args[0]
+            self.assertEqual(argv[argv.index("--object") + 1], "tiny", "each reference names its object")
 
     def test_the_front_and_knee_keep_the_best_tradeoffs(self):
         points = [

@@ -32,7 +32,6 @@ triangles = 8672
 name = "sponza_fitted"
 triangles = 9973
 
-# The same recipe at the full mesh's budget.
 [[variants]]
 name = "sponza_fitted_full"
 triangles = 19988
