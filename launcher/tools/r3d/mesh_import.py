@@ -32,7 +32,6 @@ from r3d.light import (  # noqa: E402
     build_indirect_cache,
     encode_srgb8,
     face_colours,
-    gather_indirect,
     light,
     merge_matching_colours,
     sample_albedo,
@@ -71,6 +70,24 @@ def albedo_at(src, points, spacing, material):
     return sample_albedo(points, spacing, material, src.p, src.uv, src.tri_v, src.tri_t, src.tri_m, src.textures, kd)
 
 
+INDIRECT_CACHES = {}
+
+
+def indirect_cache_for(src, settings, scene, intersector):
+    """The indirect light cache of an import's source, built once per run: every
+    variant and the reference see the same source, lights and settings."""
+    if not settings.light or settings.light.indirect is None:
+        return None
+    key = (str(settings.path), repr(vars(settings.light.indirect)), repr(scene.lights), settings.light.ray_offset)
+    if key not in INDIRECT_CACHES:
+        double = {index for index, name in enumerate(src.names) if name in settings.double_sided}
+        INDIRECT_CACHES[key] = build_indirect_cache(
+            src.p, src.tri_v, src.tri_m, range(len(src.names)), double,
+            lambda centres, spacing, material: albedo_at(src, centres, spacing, material), intersector, scene.lights,
+            settings.light.ray_offset, settings.light.indirect)
+    return INDIRECT_CACHES[key]
+
+
 def shade_lit(src, settings, scene, material, mp, mt, double, intersector, rng, indirect_cache):
     """Vertices split along creases and lit on their own normals, near colours merged."""
     normals = corner_normals(mp, mt)
@@ -79,9 +96,9 @@ def shade_lit(src, settings, scene, material, mp, mt, double, intersector, rng, 
     _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
     vpos, vn, vtris = corner_pos[first], corner_n[first], inverse.reshape(-1, 3)
     albedo = albedo_at(src, vpos, vertex_spacing(vpos, vtris), material)
-    radiance = light(vpos, vn, np.full(len(vpos), double), intersector, scene.lights, settings.light.ray_offset, rng)
-    radiance += gather_indirect(vpos, vn, intersector, indirect_cache, double_sided=np.full(len(vpos), double),
-                                lights=scene.lights)
+    welded = np.unique(np.round(vpos * 16).astype(np.int64), axis=0, return_inverse=True)[1].reshape(-1)
+    radiance = light(vpos, vn, np.full(len(vpos), double), intersector, scene.lights, settings.light.ray_offset, rng,
+                     indirect=indirect_cache, indirect_groups=welded)
     vrgb = to_srgb8(albedo * radiance, scene.tonemap_white)
     return merge_matching_colours(vpos, vrgb, vtris, settings.light.colour_merge_step)
 
@@ -105,11 +122,7 @@ def bake_geometry(settings, variant, scene):
     intersector = None
     if settings.visibility or settings.light:
         intersector = RayMeshIntersector(trimesh.Trimesh(src.p, tri_v, process=False))
-    indirect_cache = build_indirect_cache(
-        src.p, tri_v, tri_m, range(len(src.names)),
-        {index for index, name in enumerate(src.names) if name in settings.double_sided},
-        lambda centres, spacing, material: albedo_at(src, centres, spacing, material), intersector, scene.lights,
-        settings.light.ray_offset, settings.light.indirect) if settings.light else None
+    indirect_cache = indirect_cache_for(src, settings, scene, intersector)
     double_names = settings.double_sided
     seen = np.ones(len(tri_v), dtype=bool)
     if settings.visibility:
