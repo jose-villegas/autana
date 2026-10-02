@@ -18,13 +18,15 @@ runs_before(const shell_system_t* a, const shell_system_t* b) {
 
 void
 shell_system_register(shell_system_t* system) {
+    for (const shell_system_t* other = systems_head; other != NULL; other = other->next) {
+        assert(strcmp(other->name, system->name) != 0 && "two systems share a name");
+    }
     system->next = NULL;
 
     shell_system_t** link = &systems_head;
     while (*link != NULL && runs_before(*link, system)) {
         link = &(*link)->next;
     }
-    assert((*link == NULL || strcmp((*link)->name, system->name) != 0) && "two systems share a name");
     system->next = *link;
     *link = system;
 }
@@ -43,24 +45,6 @@ shell_systems_compose(uint32_t dt_ms) {
     for (const shell_system_t* system = systems_head; system != NULL; system = system->next) {
         if (system->compose != NULL) {
             system->compose(dt_ms);
-        }
-    }
-}
-
-void
-shell_systems_overlay(void) {
-    for (const shell_system_t* system = systems_head; system != NULL; system = system->next) {
-        if (system->overlay != NULL) {
-            system->overlay();
-        }
-    }
-}
-
-void
-shell_systems_invalidate(void) {
-    for (const shell_system_t* system = systems_head; system != NULL; system = system->next) {
-        if (system->invalidate != NULL) {
-            system->invalidate();
         }
     }
 }
