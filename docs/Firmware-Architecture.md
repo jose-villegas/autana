@@ -276,7 +276,7 @@ has an `update()`, or a system's `overlaps_present()` says so. Every `order`
 is a `SHELL_ORDER_*` constant in that one header, so a new system is placed
 against the others rather than guessed; ties run by name. A system's own
 folder sits below the shell and cannot include its header, so it is
-registered from a file in `shell/`: `shell/shell_scene.c` registers the scene
+registered from a file in `shell/`: `shell/scene_system.c` registers the scene
 manager at `SHELL_ORDER_SCENE`.
 
 ### Full redraw
