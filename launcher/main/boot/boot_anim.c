@@ -538,8 +538,8 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
 
     boot_anim_pt_t s0 = boot_anim_sample(-stride);
     boot_anim_pt_t s1 = boot_anim_sample(0);
-    vec3x_t ta = boot_anim_to_camera_space(s0.re, s0.im, s0.t, view);
-    vec3x_t tb = boot_anim_to_camera_space(s1.re, s1.im, s1.t, view);
+    vec3x_t ta = boot_anim_key_to_camera_space(&s0, view);
+    vec3x_t tb = boot_anim_key_to_camera_space(&s1, view);
     curve_segment_t segment = {.prev_cs = tb, .prev_front = tb.z > view->near_z};
     if (segment.prev_front) {
         r3d_camera_to_screen_x(segment.prev_cs, view, &segment.prev_sx, &segment.prev_sy);
@@ -549,7 +549,7 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
 
     for (int i = 0; i <= last && i < BOOT_ANIM_CURVE_POINTS; i += stride) {
         const boot_anim_pt_t s2 = boot_anim_sample(i + stride);
-        const vec3x_t tc = boot_anim_to_camera_space(s2.re, s2.im, s2.t, view);
+        const vec3x_t tc = boot_anim_key_to_camera_space(&s2, view);
 
         /* Interpolate colour across spans, not per sample. */
         const int32_t a1 = ((i + stride) * BOOT_ANIM_ONE + phase1_span / 2) / phase1_span;

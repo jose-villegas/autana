@@ -370,6 +370,17 @@ boot_anim_sample(int i) {
     return p;
 }
 
+/* The curve table's points, which the generator keeps well inside the narrow
+ * transform's inputs (test_the_curve_table_stays_inside_the_narrow_range()):
+ * no range test a call, only the view's own flag. */
+static inline vec3x_t
+boot_anim_key_to_camera_space(const boot_anim_pt_t* key, const boot_anim_view_t* view) {
+    if (view->units_ok) {
+        return r3d_to_camera_space_units(view, key->re, key->t, key->im);
+    }
+    return boot_anim_to_camera_space(key->re, key->im, key->t, view);
+}
+
 static inline int
 boot_anim_lod_stride_for_extent(int32_t manhattan_px) {
     if (manhattan_px < BOOT_ANIM_LOD_STRIDE4_PX) {
