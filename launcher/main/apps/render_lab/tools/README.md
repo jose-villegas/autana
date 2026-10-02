@@ -69,8 +69,8 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 
 ## The Sponza variants
 
-The Sponza import makes five meshes, its `[[variants]]`
-([Mesh-Import.md](../../../../../docs/render/Mesh-Import.md)): it bakes three,
+The Sponza scene places five renderers over the import's variants
+([Scene-Files.md](../../../../../docs/render/Scene-Files.md)): it bakes three,
 and records the recipes of two more, culled to the camera's path, that the
 appearance fit makes offline at lite's and full's budgets. The scenes `sponza`,
 `sponza-lite`, `sponza-flat`, `sponza-fitted` and `sponza-fitted-full` each draw one. Every row plays the
@@ -377,7 +377,7 @@ path, uncut above: coincident faces trading places, no hole.
 
 ![Culled lite against uncut, largest differences](../../../../../docs/render/images/appearance-path-culled.crops.png)
 
-**Budget against error.** Unfitted and fitted, from the import's region cull
+**Budget against error.** Unfitted and fitted, from a renderer's region cull
 and from the path cull (the path start simplified to 1.15 times the budget
 and pruned back to it):
 
