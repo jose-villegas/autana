@@ -1,12 +1,12 @@
 #!/bin/sh
 #
 # Proves the clock read and the heap calls in util/timing.h and util/memory.h
-# vanish into their callers on the board: built as the board builds them
-# (ESP_PLATFORM, the IDF headers stood in for by stubs/), a caller's object
-# names esp_timer_get_time, heap_caps_malloc and heap_caps_free and defines
-# no timing_now_us, memory_alloc or memory_free. A frame of the module's own
-# would cost the clock a call in its hottest loops, and would make every
-# allocation one call site to a heap watch.
+# vanish into their callers, built as the board builds them (ESP_PLATFORM,
+# the IDF headers stood in for by stubs/) and as a host render does (the C
+# library's heap): a caller's object names the underlying calls itself and
+# defines no timing_now_us, memory_alloc or memory_free. A frame of the
+# module's own would cost the clock a call in its hottest loops, and would
+# make every allocation one call site to a heap watch.
 #
 # Checked at -O0 as well as -O2, since only always_inline holds at -O0. The
 # host compiler stands in for the board's; that the attribute holds there
@@ -44,20 +44,29 @@ caller(void) {
 SRC
 
 status=0
-for opt in -O0 -O2; do
-    "$CC_BIN" -std=c11 -Wall -Wextra -Werror -DESP_PLATFORM $opt -I "$MAIN_DIR" -I "$HERE/stubs" \
-        -c "$work/caller.c" -o "$work/caller.o"
-    symbols=$(nm "$work/caller.o")
-    for wanted in esp_timer_get_time heap_caps_malloc heap_caps_free; do
-        if ! printf '%s\n' "$symbols" | grep -Eq "^ +U _?$wanted\$"; then
-            echo "  FAIL $opt: the caller does not call $wanted itself"
-            status=1
-        fi
-    done
-    for wrapper in timing_now_us memory_alloc memory_free; do
-        if printf '%s\n' "$symbols" | grep -Eq " _?$wrapper\$"; then
-            echo "  FAIL $opt: $wrapper is a function of its own, not inlined"
-            status=1
+# platform|extra flags|what the caller must call itself
+for build in "board|-DESP_PLATFORM|esp_timer_get_time heap_caps_malloc heap_caps_free" \
+    "render||timespec_get malloc free"; do
+    name=${build%%|*}
+    rest=${build#*|}
+    defines=${rest%%|*}
+    wanted_list=${rest#*|}
+    for opt in -O0 -O2; do
+        # shellcheck disable=SC2086
+        "$CC_BIN" -std=c11 -Wall -Wextra -Werror $defines $opt -I "$MAIN_DIR" -I "$HERE/stubs" \
+            -c "$work/caller.c" -o "$work/caller.o"
+        symbols=$(nm "$work/caller.o")
+        for wanted in $wanted_list; do
+            if ! printf '%s\n' "$symbols" | grep -Eq "^ +U _?$wanted\$"; then
+                echo "  FAIL $name $opt: the caller does not call $wanted itself"
+                status=1
+            fi
+        done
+        if printf '%s\n' "$symbols" | grep -Eq "^[0-9a-f]+ [tT] "; then
+            for wrapper in $(printf '%s\n' "$symbols" | awk '$2 ~ /^[tT]$/ && $3 != "caller" { print $3 }'); do
+                echo "  FAIL $name $opt: $wrapper is a function of its own, not inlined"
+                status=1
+            done
         fi
     done
 done

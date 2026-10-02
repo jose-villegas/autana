@@ -177,9 +177,30 @@ test_a_kinds_total_is_its_pools_capacity_while_a_block_is_held(void) {
     }
 }
 
+/* A hole between two held blocks is free space no single block can reach:
+ * the largest block answers for one allocation, not for the sum. */
+static void
+test_the_largest_block_is_less_than_free_space_once_a_pool_has_a_hole(void) {
+    for (size_t i = 0; i < sizeof SEPARATE_POOLS / sizeof SEPARATE_POOLS[0]; i++) {
+        const memory_kind_t kind = SEPARATE_POOLS[i].kind;
+        void* before = memory_alloc(4096, kind);
+        void* hole = memory_alloc(4096, kind);
+        void* after = memory_alloc(4096, kind);
+        TEST_ASSERT_NOT_NULL_MESSAGE(after, SEPARATE_POOLS[i].name);
+
+        memory_free(hole);
+        TEST_ASSERT_LESS_OR_EQUAL_size_t_MESSAGE(memory_free_bytes(kind) - 4096, memory_largest_block(kind),
+                                                 SEPARATE_POOLS[i].name);
+
+        memory_free(before);
+        memory_free(after);
+    }
+}
+
 void
 suite_memory(void) {
     RUN_TEST(test_a_small_block_of_every_kind_is_writable_and_comes_back);
+    RUN_TEST(test_the_largest_block_is_less_than_free_space_once_a_pool_has_a_hole);
     RUN_TEST(test_a_request_past_its_kinds_budget_fails_and_spares_the_other_pool);
     RUN_TEST(test_a_block_of_one_kind_leaves_the_other_pools_budget_alone);
     RUN_TEST(test_every_kind_reports_a_total_no_smaller_than_its_free_space_or_largest_block);
