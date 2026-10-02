@@ -20,9 +20,9 @@ distance(int a, int b) {
 }
 
 void
-ui_pointer_aim(ui_pointer_t* p, int x, int y) {
-    p->aim_x = x;
-    p->aim_y = y;
+ui_pointer_aim(ui_pointer_t* p, vec2i_t point) {
+    p->aim_x = point.x;
+    p->aim_y = point.y;
     p->aimed = true;
 }
 
