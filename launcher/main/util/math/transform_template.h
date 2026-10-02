@@ -29,6 +29,7 @@
         bool cached;                                                                                                   \
     } P##_t;                                                                                                           \
                                                                                                                        \
+    /* position = p, cached = false; likewise rotation and scale. */                                                   \
     static inline void P##_set_position(P##_t* t, V##_t position) {                                                    \
         t->position = position;                                                                                        \
         t->cached = false;                                                                                             \
@@ -44,19 +45,20 @@
         t->cached = false;                                                                                             \
     }                                                                                                                  \
                                                                                                                        \
-    /* Moves by `delta` in the parent's frame. */                                                                      \
+    /* position = position + delta, in the parent's frame. */                                                          \
     static inline void P##_translate(P##_t* t, V##_t delta) { P##_set_position(t, V##_add(t->position, delta)); }      \
                                                                                                                        \
-    /* Turns by `delta` about the transform's own axes, as Unity's Rotate does. */                                     \
+    /* rotation = normalize(rotation * delta): about the transform's own axes, as Unity's Rotate does. */              \
     static inline void P##_rotate(P##_t* t, Q##_t delta) {                                                             \
         P##_set_rotation(t, Q##_normalize(Q##_mul(t->rotation, delta)));                                               \
     }                                                                                                                  \
                                                                                                                        \
-    /* Model to parent: scale, then rotate, then translate. */                                                         \
+    /* M = T(position) * R(rotation) * S(scale), model to parent. */                                                   \
     static inline M##_t P##_compute_matrix(const P##_t* t) {                                                           \
         return M##_from_trs(t->position, t->rotation, t->scale);                                                       \
     }                                                                                                                  \
                                                                                                                        \
+    /* M as compute_matrix, rebuilt only while `cached` is false. */                                                   \
     static inline M##_t P##_matrix(P##_t* t) {                                                                         \
         if (!t->cached) {                                                                                              \
             t->matrix = P##_compute_matrix(t);                                                                         \
@@ -65,7 +67,8 @@
         return t->matrix;                                                                                              \
     }                                                                                                                  \
                                                                                                                        \
-    /* Parent to local: the inverse of position and rotation; scale is ignored. */                                     \
+    /* V = R^T * T(-position): rotation part R^T, column 3 = -(R^T * position). The inverse */                         \
+    /* of position and rotation, parent to local; scale is ignored. */                                                 \
     static inline M##_t P##_view(const P##_t* t) {                                                                     \
         const V##_t origin = {OPS##_zero(), OPS##_zero(), OPS##_zero()};                                               \
         const V##_t one = {OPS##_one(), OPS##_one(), OPS##_one()};                                                     \
@@ -82,7 +85,8 @@
         return view;                                                                                                   \
     }                                                                                                                  \
                                                                                                                        \
-    /* Faces `target` with `up` as the sky. `up` must not be parallel to the line to */                                \
+    /* f = normalize(target - position), r = normalize(up x f), u = f x r, */                                          \
+    /* rotation = from_basis(r, u, f). `up` must not be parallel to the line to */                                     \
     /* `target`, and `target` must not be the position. */                                                             \
     static inline void P##_look_at(P##_t* t, V##_t target, V##_t up) {                                                 \
         const V##_t forward = V##_normalize(V##_sub(target, t->position));                                             \
