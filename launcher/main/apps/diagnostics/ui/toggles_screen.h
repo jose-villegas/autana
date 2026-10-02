@@ -2,7 +2,7 @@
  * toggles_screen: the developer-toggles page's microui drawing.
  *
  * app_diagnostics.c owns every gfx/shell/IMU getter and setter this page
- * touches (gfx_debug_overlay(), shell_system_panel_clock_hz(), imu_read(),
+ * touches (gfx_debug_overlay(), display_system_panel_clock_hz(), imu_read(),
  * ...) and the one persisted toggle (show_orientation); this file only
  * turns a snapshot of them into mu_checkbox()/mu_text() rows and reports
  * which value changed, the split docs/Building-a-Screen.md asks every

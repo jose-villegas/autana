@@ -3,7 +3,7 @@
  * Device only; the host builds input_t without it.
  */
 
-#include "input/input.h"
+#include "input/input_shell.h"
 
 #include "esp_log.h"
 
@@ -39,12 +39,18 @@ input_take_touch_sample_counts(uint32_t* points, uint32_t* moved) {
     touch_take_sample_counts(points, moved);
 }
 
-const char*
-input_take_gesture_completion_name(void) {
+input_gesture_t
+input_take_gesture_completion(void) {
     touch_gesture_completion_t completion;
     if (!touch_gesture_take_completion(&completion)) {
-        return NULL;
+        return INPUT_GESTURE_NONE;
     }
-    return completion == TOUCH_GESTURE_TAP ? "TAP" : completion == TOUCH_GESTURE_PRESS ? "PRESS" : "DRAG";
+    switch (completion) {
+        case TOUCH_GESTURE_TAP: return INPUT_GESTURE_TAP;
+        case TOUCH_GESTURE_PRESS: return INPUT_GESTURE_PRESS;
+        case TOUCH_GESTURE_DRAG: return INPUT_GESTURE_DRAG;
+        case TOUCH_GESTURE_NONE: break;
+    }
+    return INPUT_GESTURE_NONE;
 }
 #endif

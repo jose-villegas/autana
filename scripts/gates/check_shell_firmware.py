@@ -10,11 +10,14 @@ device half in a *_device.c file. A firmware call left in main.c is a second
 place that knows the chip, so this fails on
 
   - an include of an ESP-IDF, FreeRTOS, NVS, BSP, driver, HAL or SoC header,
-    or of a driver header under input/ (touch.h, buttons.h, imu.h), and
+    or of a driver header under input/, and
   - any use of a name those pull in: the ESP-IDF, NVS, heap, BSP and FreeRTOS
-    prefixes below, and every function, type and macro the three input driver
-    headers declare, read from the headers themselves so a new driver call is
-    covered the day it is added.
+    prefixes below, and every function, type and macro a driver header
+    declares.
+
+A driver header is the header beside an input/*.c that itself includes a
+firmware header (touch.h, buttons.h, imu.h today), found by looking, so a
+new driver is covered the day it is added.
 
 Comments and string literals are not code. There is no exemption list: a
 reason for main.c to touch the firmware is a missing module, so add one.
@@ -24,7 +27,7 @@ import re
 import sys
 
 MAIN = "launcher/main/main.c"
-DRIVER_HEADERS = ("launcher/main/input/touch.h", "launcher/main/input/buttons.h", "launcher/main/input/imu.h")
+INPUT_DIR = "launcher/main/input"
 
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s*[<"]([^>"]+)[>"]')
 FIRMWARE_INCLUDE_RE = re.compile(r"^(esp_|nvs|freertos/|bsp/|driver/|hal/|soc/|rom/)")
@@ -41,7 +44,8 @@ COMMENT_RE = re.compile(r"/\*.*?\*/|//[^\n]*", re.DOTALL)
 COMMENT_OR_STRING_RE = re.compile(
     COMMENT_RE.pattern + r"""|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'""", re.DOTALL)
 DEFINE_RE = re.compile(r"^\s*#\s*define\s+([A-Za-z_]\w*)", re.MULTILINE)
-FUNCTION_RE = re.compile(r"\b([A-Za-z_]\w*)\s*\([^;{}()]*(?:\([^()]*\)[^;{}()]*)*\)\s*[;{]")
+FUNCTION_RE = re.compile(
+    r"\b([A-Za-z_]\w*)\s*\([^;{}()]*(?:\([^()]*\)[^;{}()]*)*\)\s*(?:__attribute__\s*\(\(.*?\)\)\s*)*[;{]")
 TYPEDEF_NAME_RE = re.compile(r"\}\s*([A-Za-z_]\w*)\s*;|\btypedef\b[^;{}]*?\b([A-Za-z_]\w*)\s*;")
 ENUM_CONSTANT_RE = re.compile(r"^\s*([A-Z][A-Z0-9_]*)\s*(?:=[^,\n]*)?(?:,|$)", re.MULTILINE)
 
@@ -55,11 +59,25 @@ def strip_comments_and_strings(text):
     return COMMENT_OR_STRING_RE.sub(blank, text)
 
 
-def driver_names(root):
+def driver_headers(root):
+    """The headers (repo-relative) beside the input/*.c files that include a
+    firmware header."""
+    found = []
+    for source in sorted((root / INPUT_DIR).glob("*.c")):
+        text = COMMENT_RE.sub(blank, source.read_text(encoding="utf-8", errors="replace"))
+        includes = (INCLUDE_RE.match(line) for line in text.splitlines())
+        if any(m and FIRMWARE_INCLUDE_RE.match(m.group(1)) for m in includes):
+            header = source.with_suffix(".h")
+            if header.is_file():
+                found.append(f"{INPUT_DIR}/{header.name}")
+    return found
+
+
+def driver_names(root, headers):
     """Every function, type, macro and enum constant the driver headers
     declare."""
     names = set()
-    for header in DRIVER_HEADERS:
+    for header in headers:
         text = strip_comments_and_strings((root / header).read_text(encoding="utf-8", errors="replace"))
         names.update(DEFINE_RE.findall(text))
         names.update(name for name in (m.group(1) for m in FUNCTION_RE.finditer(text)) if name not in C_WORDS)
@@ -75,10 +93,10 @@ def problems(root="."):
     main = root / MAIN
     if not main.is_file():
         return [f"{MAIN}: not found, so nothing was checked"]
-    for header in DRIVER_HEADERS:
-        if not (root / header).is_file():
-            return [f"{header}: not found, so its names cannot be checked"]
-    names = driver_names(root)
+    headers = driver_headers(root)
+    if not headers:
+        return [f"{INPUT_DIR}: no driver header found, so no driver name can be checked"]
+    names = driver_names(root, headers)
     found = []
     text = main.read_text(encoding="utf-8", errors="replace")
     without_comments = COMMENT_RE.sub(blank, text).splitlines()
@@ -87,7 +105,7 @@ def problems(root="."):
         include = INCLUDE_RE.match(without_comments[number - 1])
         if include:
             header = include.group(1)
-            if FIRMWARE_INCLUDE_RE.match(header) or f"launcher/main/{header}" in DRIVER_HEADERS:
+            if FIRMWARE_INCLUDE_RE.match(header) or f"launcher/main/{header}" in headers:
                 found.append(f"{MAIN}:{number}: includes {header}")
             continue
         for identifier in dict.fromkeys(IDENTIFIER_RE.findall(line)):

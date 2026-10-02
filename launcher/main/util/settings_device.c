@@ -5,18 +5,19 @@
 #include "esp_log.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "util/settings_policy.h"
 
 static const char* TAG = "settings";
 
 static bool
 store_ready(void) {
-    esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        err = nvs_flash_erase();
-        if (err == ESP_OK) {
-            err = nvs_flash_init();
-        }
-    }
+    static const settings_store_ops_t ops = {
+        .init = nvs_flash_init,
+        .erase = nvs_flash_erase,
+        .stale_full = ESP_ERR_NVS_NO_FREE_PAGES,
+        .stale_format = ESP_ERR_NVS_NEW_VERSION_FOUND,
+    };
+    const esp_err_t err = settings_store_start(&ops);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "NVS unavailable, settings are not kept: %s", esp_err_to_name(err));
     }

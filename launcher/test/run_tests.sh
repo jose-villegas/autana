@@ -120,12 +120,15 @@ $MAIN_DIR/input/touch_calib.c
 $MAIN_DIR/input/touch_point.c
 $MAIN_DIR/input/touch_inject_fsm.c
 $MAIN_DIR/input/gesture.c
+$MAIN_DIR/input/input_gesture_name.c
 $MAIN_DIR/input/tilt.c
 $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/boot_anim_tracks_generated.c
 $MAIN_DIR/boot/post_layout.c
 $MAIN_DIR/util/job.c
+$MAIN_DIR/util/log_device.c
+$MAIN_DIR/util/settings_policy.c
 $MAIN_DIR/anim/anim_track.c
 $MAIN_DIR/asset/asset_pack.c
 $MAIN_DIR/asset/asset_file.c

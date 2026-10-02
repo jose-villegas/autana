@@ -21,6 +21,7 @@ set(app_srcs
     "input/gesture.c"
     "input/imu.c"
     "input/input_device.c"
+    "input/input_gesture_name.c"
     "input/tilt.c"
     "ui/ui.c"
     "ui/system_navigation.c"
@@ -56,6 +57,7 @@ set(app_srcs
     "util/log_device.c"
     "util/memory_device.c"
     "util/settings_device.c"
+    "util/settings_policy.c"
     "util/timing_device.c"
     "util/tune.c"
 )
