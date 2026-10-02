@@ -200,13 +200,19 @@ test_the_quarter_points_are_exact(void) {
 static boot_anim_view_t
 identity_view(float focal) {
     boot_anim_view_t v;
-    v.matrix = boot_anim_unit_scale();
-    v.focal = focal;
-    v.near_z = R3D_LINE_NEAR_Z;
+    v.matrix = mat4x_identity();
+    v.focal = (int32_t)(focal * (float)R3D_X_UNIT_ONE);
+    v.near_z = mathf_to_x(R3D_LINE_NEAR_Z);
     v.center_x = PANEL_W / 2;
     v.center_y = PANEL_H / 2;
-    v.scale = (float)(PANEL_W / 2);
+    v.scale = PANEL_W / 2;
     return v;
+}
+
+/* Meters, as a Q16.16 camera-space point. */
+static vec3x_t
+vx(float x, float y, float z) {
+    return vec3x_from_vec3f((vec3f_t){x, y, z});
 }
 
 /* The space's own local origin (0,0,0) has to land at the screen's centre
@@ -262,7 +268,7 @@ test_a_point_further_from_the_camera_projects_smaller(void) {
 static void
 test_project_point_rejects_a_point_at_the_near_plane(void) {
     boot_anim_view_t view = identity_view(1.0F);
-    view.near_z = 0.125F;
+    view.near_z = MATHX_ONE / 8;
     int x = -1, y = -1;
 
     const bool ok = boot_anim_project_point(0, 512, 0, &view, &x, &y);
@@ -273,7 +279,7 @@ test_project_point_rejects_a_point_at_the_near_plane(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(-1, y, "a rejected point's output y must be left untouched");
 }
 
-/* The OTHER early-out in r3d_project_segment_cs() besides the clip itself
+/* The OTHER early-out in r3d_project_segment_cs_x() besides the clip itself
  * (see test_project_segment_cs_clips_asymmetric_coordinates below for that
  * branch): a segment with BOTH endpoints at or behind the near plane has
  * nothing in front of the camera to draw at all, and must return false
@@ -281,41 +287,41 @@ test_project_point_rejects_a_point_at_the_near_plane(void) {
 static void
 test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
     const boot_anim_view_t view = identity_view(1.0F);
-    const vec3f_t p0 = {100, 200, 0};
-    const vec3f_t p1 = {-100, -200, R3D_LINE_NEAR_Z};
+    const vec3x_t p0 = {100, 200, 0};
+    const vec3x_t p1 = {-100, -200, mathf_to_x(R3D_LINE_NEAR_Z)};
     int ax, ay, bx, by;
 
-    const bool ok = r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by);
+    const bool ok = r3d_project_segment_cs_x(p0, p1, &view, &ax, &ay, &bx, &by);
 
     TEST_ASSERT_FALSE_MESSAGE(ok, "a segment with both endpoints at or behind the near plane "
                                   "should be rejected entirely, not clipped against itself");
 }
 
-/* r3d_project_segment_cs()'s near-plane clip at asymmetric coordinates
+/* r3d_project_segment_cs_x()'s near-plane clip at asymmetric coordinates
  * far outside the panel, where the clipped endpoint lands thousands of
  * pixels out. Verified against an independent double-precision reference,
  * not the function under test. */
 static void
 test_project_segment_cs_clips_asymmetric_coordinates(void) {
     const boot_anim_view_t view = identity_view(1.0F);
-    const vec3f_t p0 = {-300.1F, 250.0F, R3D_LINE_NEAR_Z - 0.168F};
-    const vec3f_t p1 = {401.8F, -180.3F, R3D_LINE_NEAR_Z + 0.801F};
+    const vec3x_t p0 = vx(-3.1F, 2.5F, R3D_LINE_NEAR_Z - 0.168F);
+    const vec3x_t p1 = vx(4.0F, -1.8F, R3D_LINE_NEAR_Z + 0.801F);
 
     int ax, ay, bx, by;
-    TEST_ASSERT_TRUE_MESSAGE(r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by),
+    TEST_ASSERT_TRUE_MESSAGE(r3d_project_segment_cs_x(p0, p1, &view, &ax, &ay, &bx, &by),
                              "a segment with one endpoint in front of the near plane should "
                              "always project");
 
     /* Double-precision reference for the clip itself: p0 is BEHIND, so
      * IT is what gets replaced by the near-plane crossing point. */
-    const double frac = (double)(R3D_LINE_NEAR_Z - p0.z) / (double)(p1.z - p0.z);
+    const double frac = (double)(view.near_z - p0.z) / (double)(p1.z - p0.z);
     const double exact_x = (double)p0.x + (((double)p1.x - (double)p0.x) * frac);
     const double exact_y = (double)p0.y + (((double)p1.y - (double)p0.y) * frac);
     int ex, ey;
-    const vec3f_t exact_clip = {(float)exact_x, (float)exact_y, R3D_LINE_NEAR_Z};
-    r3d_camera_to_screen(exact_clip, &view, &ex, &ey);
+    const vec3x_t exact_clip = {(int32_t)exact_x, (int32_t)exact_y, view.near_z};
+    r3d_camera_to_screen_x(exact_clip, &view, &ex, &ey);
 
-    const int tolerance = 3;
+    const int tolerance = 6;
     TEST_ASSERT_INT_WITHIN_MESSAGE(tolerance, ex, ax,
                                    "the clipped endpoint's screen x should be close to a "
                                    "double-precision reference");
@@ -327,8 +333,7 @@ test_project_segment_cs_clips_asymmetric_coordinates(void) {
      * projecting it directly, independent of whatever the clip branch
      * above did. */
     int fx, fy;
-    vec3f_t p1_copy = p1;
-    r3d_camera_to_screen(p1_copy, &view, &fx, &fy);
+    r3d_camera_to_screen_x(p1, &view, &fx, &fy);
     TEST_ASSERT_EQUAL_INT_MESSAGE(fx, bx,
                                   "the untouched (already in front) endpoint should project "
                                   "identically whether reached through the clipping path or not");
@@ -358,7 +363,7 @@ test_spoke_reveal_target_hits_its_endpoints_exactly(void) {
  * advancing in roughly equal steps as `reach` does is the algebraic
  * property that guarantees it, since screen position is itself roughly
  * proportional to 1/target under a perspective projection (see
- * r3d_camera_to_screen()).
+ * r3d_camera_to_screen_x()).
  *
  * Bounded as a difference-of-differences rather than by exact equality:
  * the reach-to-r0 knot and integer rounding both perturb it. */
@@ -806,22 +811,22 @@ test_spline_cs_matches_transforming_the_world_space_spline(void) {
     const boot_anim_pt_t b = pt(2500, -1800, 900);
     const boot_anim_pt_t c = pt(600, 3200, 1600);
 
-    const vec3f_t ta = boot_anim_to_camera_space(a.re, a.im, a.t, &view);
-    const vec3f_t tb = boot_anim_to_camera_space(b.re, b.im, b.t, &view);
-    const vec3f_t tc = boot_anim_to_camera_space(c.re, c.im, c.t, &view);
+    const vec3x_t ta = boot_anim_to_camera_space(a.re, a.im, a.t, &view);
+    const vec3x_t tb = boot_anim_to_camera_space(b.re, b.im, b.t, &view);
+    const vec3x_t tc = boot_anim_to_camera_space(c.re, c.im, c.t, &view);
 
     for (int32_t t = 0; t <= BOOT_ANIM_ONE; t += 197) {
         const boot_anim_pt_t world = boot_anim_spline(a, b, c, t);
-        const vec3f_t want = boot_anim_to_camera_space(world.re, world.im, world.t, &view);
-        const vec3f_t got = boot_anim_spline_cs(ta, tb, tc, t);
+        const vec3x_t want = boot_anim_to_camera_space(world.re, world.im, world.t, &view);
+        const vec3x_t got = boot_anim_spline_cs(ta, tb, tc, t);
 
-        TEST_ASSERT_FLOAT_WITHIN_MESSAGE(0.002F, want.x, got.x,
+        TEST_ASSERT_INT32_WITHIN_MESSAGE(140, want.x, got.x,
                                          "transform-then-interpolate must match interpolate-then-"
                                          "transform, up to the curve table's Q12 rounding");
-        TEST_ASSERT_FLOAT_WITHIN_MESSAGE(0.002F, want.y, got.y,
+        TEST_ASSERT_INT32_WITHIN_MESSAGE(140, want.y, got.y,
                                          "transform-then-interpolate must match interpolate-then-"
                                          "transform, up to the curve table's Q12 rounding");
-        TEST_ASSERT_FLOAT_WITHIN_MESSAGE(0.002F, want.z, got.z,
+        TEST_ASSERT_INT32_WITHIN_MESSAGE(140, want.z, got.z,
                                          "transform-then-interpolate must match interpolate-then-"
                                          "transform, up to the curve table's Q12 rounding");
     }
@@ -836,8 +841,8 @@ test_spline_cs_matches_transforming_the_world_space_spline(void) {
 static void
 test_curve_lod_steps_keeps_full_detail_for_a_wide_chord(void) {
     const boot_anim_view_t view = identity_view(0);
-    const vec3f_t a = {-0.2F, 0.0F, 5.0F};
-    const vec3f_t c = {0.2F, 0.0F, 5.0F};
+    const vec3x_t a = vx(-0.2F, 0.0F, 5.0F);
+    const vec3x_t c = vx(0.2F, 0.0F, 5.0F);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(BOOT_ANIM_SPLINE_STEPS, boot_anim_curve_lod_steps(a, c, &view),
                                   "a span whose two ends land well apart on screen must keep full "
@@ -852,8 +857,8 @@ test_curve_lod_steps_keeps_full_detail_for_a_wide_chord(void) {
 static void
 test_curve_lod_steps_collapses_a_tiny_chord_to_one_step(void) {
     const boot_anim_view_t view = identity_view(0);
-    const vec3f_t a = {0.08F, 0.08F, 5.0F};
-    const vec3f_t c = {0.082F, 0.08F, 5.0F};
+    const vec3x_t a = vx(0.08F, 0.08F, 5.0F);
+    const vec3x_t c = vx(0.082F, 0.08F, 5.0F);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, boot_anim_curve_lod_steps(a, c, &view),
                                   "two points landing within a pixel of each other should collapse "
@@ -870,10 +875,10 @@ test_curve_lod_steps_collapses_a_tiny_chord_to_one_step(void) {
 static void
 test_screen_chord_shrinks_with_distance(void) {
     const boot_anim_view_t view = identity_view(1.0F);
-    const vec3f_t near_a = {0.0F, 0.0F, 1.0F};
-    const vec3f_t near_c = {0.2F, 0.0F, 1.0F};
-    const vec3f_t far_a = {0.0F, 0.0F, 100.0F};
-    const vec3f_t far_c = {0.2F, 0.0F, 100.0F};
+    const vec3x_t near_a = vx(0.0F, 0.0F, 1.0F);
+    const vec3x_t near_c = vx(0.2F, 0.0F, 1.0F);
+    const vec3x_t far_a = vx(0.0F, 0.0F, 100.0F);
+    const vec3x_t far_c = vx(0.2F, 0.0F, 100.0F);
 
     TEST_ASSERT_FALSE_MESSAGE(boot_anim_screen_chord_lt(near_a, near_c, &view, 3),
                               "a pair spanning tens of pixels near the camera must not read as "
@@ -905,8 +910,8 @@ test_lod_stride_tiers_by_extent(void) {
 static void
 test_curve_lod_steps_keeps_full_detail_when_the_probe_cannot_project(void) {
     const boot_anim_view_t view = identity_view(1.0F);
-    const vec3f_t a = {0.08F, 0.08F, 0.0F};
-    const vec3f_t c = {0.082F, 0.08F, R3D_LINE_NEAR_Z - 0.001F};
+    const vec3x_t a = vx(0.08F, 0.08F, 0.0F);
+    const vec3x_t c = vx(0.082F, 0.08F, R3D_LINE_NEAR_Z - 0.001F);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(BOOT_ANIM_SPLINE_STEPS, boot_anim_curve_lod_steps(a, c, &view),
                                   "a span the probe cannot project at all must default to full "
