@@ -55,5 +55,4 @@ board_temp_sensor_status_t board_temp_sensor_read_celsius(float* out_celsius);
 #define BOARD_TOUCH_CST_I2C_ADDR   0x15
 #define BOARD_TOUCH_FT_NAME        "FT3168"
 #define BOARD_PANEL_X_GAP          0x10
-
 #define BOARD_I2C_PIN_DESC         "port 0, SDA 15, SCL 14"
