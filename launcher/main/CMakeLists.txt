@@ -52,7 +52,7 @@ set(app_srcs
     "util/frame_watch.c"
     "util/build_id.c"
     "util/job.c"
-    "util/memory_device.c"
+    "util/memory.c"
     "util/settings_device.c"
     "util/settings_policy.c"
     "util/timing_device.c"
@@ -69,7 +69,7 @@ function(launcher_glob output pattern)
 endfunction()
 
 if(CONFIG_LAUNCHER_QEMU)
-    list(APPEND app_srcs "gfx/gfx_null_panel.c")
+    list(APPEND app_srcs "gfx/gfx_null_panel_device.c")
 endif()
 
 # The frame's view modes: a development tool, with nothing calling them in a
