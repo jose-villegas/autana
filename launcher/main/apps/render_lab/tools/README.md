@@ -556,8 +556,8 @@ against the chosen mesh, is `render_compare.py --video` of their
 
 ## Indirect light
 
-The Sponza import bakes two bounces: `indirect = { bounces = 2, rays = 64,
-cache_samples = 1 }` in `meshes/sponza.import.toml`, described in
+The Sponza import's `lighting.light.indirect = { bounces = 2, rays = 64,
+cache_samples = 1 }` is described in
 [Mesh-Import.md](../../../../../docs/render/Mesh-Import.md#indirect-light). It
 lifts the shadowed arcade ceilings and the sides of the columns the sun does
 not reach, and tints a column next to a banner with the banner's colour. The

@@ -16,9 +16,11 @@ SHA-256, which the variant's `fit` table then records.
 
 import argparse
 import hashlib
+import json
 import pathlib
 import shutil
 import sys
+from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -50,22 +52,38 @@ def split_poses(fit, poses):
     return training, held_out
 
 
-def recipe_digest(settings, variant, scene):
-    """SHA-256 over what a fit is made from: the import's settings, the
-    variant without the hashes it records, and the camera's baked tracks."""
-    import json
-    import tomllib
+def canonical(value):
+    """A JSON-ready form of parsed settings, independent of parser layout.
+    The digest hashes parser fields, so an explicit default differs from an omitted one; the stamp test catches it."""
+    if isinstance(value, pathlib.Path):
+        return None
+    if isinstance(value, SimpleNamespace):
+        return {name: canonical(item) for name, item in sorted(vars(value).items())
+                if name != "seed_given" and not isinstance(item, pathlib.Path)}
+    if isinstance(value, dict):
+        return {name: canonical(item) for name, item in sorted(value.items())}
+    if isinstance(value, (list, tuple)):
+        return [canonical(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return sorted(canonical(item) for item in value)
+    return value
 
+
+def recipe_digest(settings, variant, scene):
+    """SHA-256 over parsed import settings, the fit variant and its tracks."""
+    from r3d.import_settings import variant_settings
     from r3d.poses import tracks_file
 
-    with open(settings.path, "rb") as source:
-        values = tomllib.load(source)
-    entry = [dict(item) for item in values.pop("variants", []) if item.get("name") == variant.name][0]
-    entry["fit"] = {key: value for key, value in entry["fit"].items() if key not in ("sha256", "recipe_sha256")}
-    if entry.pop("indirect", True) is False:
-        values.get("process", {}).get("light", {}).pop("indirect", None)
+    settings = variant_settings(settings, variant)
+    settings = SimpleNamespace(**vars(settings))
+    del settings.variants
+    fit = SimpleNamespace(**vars(variant.fit))
+    del fit.sha256
+    del fit.recipe_sha256
+    entry = SimpleNamespace(**vars(variant))
+    entry.fit = fit
     tracks = hashlib.sha256(tracks_file(settings, scene).read_bytes()).hexdigest()
-    return hashlib.sha256(json.dumps([values, entry, tracks], sort_keys=True).encode()).hexdigest()
+    return hashlib.sha256(json.dumps([canonical(settings), canonical(entry), tracks], sort_keys=True).encode()).hexdigest()
 
 
 def prepare(scene_path, scene, settings, variant, work):
