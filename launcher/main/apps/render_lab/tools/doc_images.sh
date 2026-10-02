@@ -103,3 +103,39 @@ REFERENCE=$(sh launcher/tools/render/render_compare.sh --reference-frames \
 "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.png" \
     --reference-video "$W/fidelity-flat.avi" "$REFERENCE" --reference-scale 2 \
     --reference-sheet "$RENDER/bake-fidelity-sheet.png" --sheet-frames 2,4 > "$W/fidelity-compare.log"
+
+# The same poses, smooth: the bake with two bounces of indirect light against
+# the source model with the same bounces.
+"$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 5 --dt 5000 \
+    -o "$W/indirect-smooth.bmp" --video "$W/indirect-smooth.avi" 2> "$W/indirect-smooth.log"
+"$PYTHON" launcher/tools/render/render_compare.py --out "$W/indirect-unused.png" \
+    --reference-video "$W/indirect-smooth.avi" "$REFERENCE" --reference-scale 2 \
+    --reference-sheet "$RENDER/bake-indirect-sheet.png" --sheet-frames 2,4 > "$W/indirect-sheet.log"
+
+# Indirect light off against on. The committed bakes carry two bounces, so the
+# off side is a bake of the same import with that field removed, made here in
+# the work directory and packed in place of the committed mesh. It is lit by
+# the same scene: the sheet is one pose, the crops are where the flythrough
+# differs most.
+. scripts/lib/python.sh
+R3D_PYTHON=$(find_r3d_python "$PWD")
+OFF="$W/indirect-off"
+mkdir -p "$OFF"
+grep -v '^indirect = ' "$M/meshes/sponza.import.toml" > "$OFF/sponza.import.toml"
+cp "$M/meshes/sponza.scene.toml" "$OFF/sponza.scene.toml"
+"$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$OFF/sponza.scene.toml" --mesh sponza > "$W/indirect-off-bake.log" 2>&1
+"$R3D_PYTHON" launcher/tools/r3d/build_pack.py -o "$OFF/assets.bin" --replace "sponza=$OFF/sponza.mesh" > "$W/indirect-off-pack.log"
+off_render() {
+    AUTANA_ASSET_PACK="$OFF/assets.bin" "$W/render_lab_render" --quarter 0 --no-hud --scene sponza -o "$W/indirect-off.bmp" "$@" 2>> "$W/indirect-off.log"
+}
+off_render --frames 4 --dt 5000
+"$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 4 --dt 5000 -o "$W/indirect-on.bmp" 2> "$W/indirect-on.log"
+"$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/bake-indirect-compare.png" \
+    --row "indirect off | on" "$W/indirect-off.bmp" "$W/indirect-on.bmp" > "$W/indirect-compare.log"
+off_render --frames 40 --dt 1000 --video "$W/indirect-off.avi"
+"$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 40 --dt 1000 -o "$W/indirect-on.bmp" \
+    --video "$W/indirect-on.avi" 2> "$W/indirect-on.log"
+"$PYTHON" launcher/tools/render/render_compare.py --out "$W/indirect-flythrough.mp4" --crops 6 \
+    --video "$W/indirect-off.avi" "$W/indirect-on.avi" --label-a "indirect off" --label-b "indirect on" > "$W/indirect-flythrough.log"
+[ -f "$W/indirect-flythrough.crops.png" ] || { echo "doc_images.sh: indirect light has no crops, the bakes do not differ." >&2; exit 1; }
+cp "$W/indirect-flythrough.crops.png" "$RENDER/bake-indirect-crops.png"
