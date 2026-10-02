@@ -10,28 +10,24 @@
 #include "gfx/gfx_target.h"
 #include "util/frame_watch.h"
 #include "util/intmath.h"
+#include "util/memory.h"
+#include "util/timing.h"
 #include "util/tune.h"
 
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef HOST_HEAP_ARENA
-#include "esp_heap_caps.h"
-#endif
-
 #ifdef ESP_PLATFORM
 #include "board/board.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
-#include "esp_heap_caps.h"
 #include "esp_lcd_co5300.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_sh8601.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -238,8 +234,7 @@ static struct {
 } clip;
 
 #ifdef ESP_PLATFORM
-/* Overlay save/restore scratch (see overlay_cell_save()), allocated
- * MALLOC_CAP_DMA. */
+/* Overlay save/restore scratch (see overlay_cell_save()), MEMORY_DMA. */
 static gfx_color_t* gather_buf;
 
 /* The panel controller takes a window only on even edges: an odd start or
@@ -547,8 +542,7 @@ gfx_init(void) {
         return false;
     }
 
-    StackType_t* const present_stack =
-        heap_caps_malloc(PRESENT_TASK_STACK_BYTES, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    StackType_t* const present_stack = memory_alloc(PRESENT_TASK_STACK_BYTES, MEMORY_INTERNAL);
     if (present_stack == NULL) {
         ESP_LOGE(TAG, "Could not allocate the present task's %u byte stack", (unsigned)PRESENT_TASK_STACK_BYTES);
         return false;
@@ -573,25 +567,23 @@ gfx_init(void) {
     /* Framebuffer state post SD probe & panel bring-up; paired with HEAPMARK
      * in main.c. See heap_mark() comment. */
     ESP_LOGI(TAG, "HEAPMARK %-18s free %6u largest %6u", "before framebuffer",
-             (unsigned)heap_caps_get_free_size(BOARD_FRAMEBUFFER_CAPS),
-             (unsigned)heap_caps_get_largest_free_block(BOARD_FRAMEBUFFER_CAPS));
+             (unsigned)memory_free_bytes(MEMORY_PSRAM), (unsigned)memory_largest_block(MEMORY_PSRAM));
 #endif
 
     /* PSRAM: the internal pool has no room for it. It never goes to the
      * panel directly; see strip_bounce. */
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-    fb = heap_caps_malloc(bytes, BOARD_FRAMEBUFFER_CAPS);
+    fb = memory_alloc(bytes, MEMORY_PSRAM);
     if (fb == NULL) {
         ESP_LOGE(TAG,
                  "Could not allocate %u byte framebuffer "
-                 "(largest free %s block is %u bytes)",
-                 (unsigned)bytes, BOARD_FRAMEBUFFER_POOL_NAME,
-                 (unsigned)heap_caps_get_largest_free_block(BOARD_FRAMEBUFFER_CAPS));
+                 "(largest free PSRAM block is %u bytes)",
+                 (unsigned)bytes, (unsigned)memory_largest_block(MEMORY_PSRAM));
         return false;
     }
 
     const size_t gather_bytes = (size_t)GATHER_WINDOW_MAX_PIXELS * sizeof(gfx_color_t);
-    gather_buf = heap_caps_malloc(gather_bytes, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+    gather_buf = memory_alloc(gather_bytes, MEMORY_DMA);
     if (gather_buf == NULL) {
         ESP_LOGE(TAG, "Could not allocate %u byte gather buffer", (unsigned)gather_bytes);
         return false;
@@ -599,7 +591,7 @@ gfx_init(void) {
 
     const size_t strip_bytes = (size_t)GFX_WIDTH * STRIP_HEIGHT * sizeof(gfx_color_t);
     for (int i = 0; i < STRIP_BOUNCE_SLOTS; i++) {
-        strip_bounce[i] = heap_caps_malloc(strip_bytes, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+        strip_bounce[i] = memory_alloc(strip_bytes, MEMORY_DMA);
         if (strip_bounce[i] == NULL) {
             ESP_LOGE(TAG, "Could not allocate %u byte strip buffer", (unsigned)strip_bytes);
             return false;
@@ -616,11 +608,10 @@ gfx_init(void) {
     gfx_mark_all_dirty();
 
     ESP_LOGI(TAG,
-             "%dx%d framebuffer at %p, %u bytes in %s; heap free %u, "
-             "largest %s block %u",
-             GFX_WIDTH, GFX_HEIGHT, (void*)fb, (unsigned)bytes, BOARD_FRAMEBUFFER_POOL_NAME,
-             (unsigned)esp_get_free_heap_size(), BOARD_FRAMEBUFFER_POOL_NAME,
-             (unsigned)heap_caps_get_largest_free_block(BOARD_FRAMEBUFFER_CAPS));
+             "%dx%d framebuffer at %p, %u bytes in PSRAM; heap free %u, "
+             "largest PSRAM block %u",
+             GFX_WIDTH, GFX_HEIGHT, (void*)fb, (unsigned)bytes, (unsigned)memory_free_bytes(MEMORY_8BIT),
+             (unsigned)memory_largest_block(MEMORY_PSRAM));
     return true;
 #else
     if (!alloc_full_framebuffer()) {
@@ -1699,11 +1690,11 @@ gfx_set_send_audit(bool on) {
         return;
     }
     if (!on) {
-        heap_caps_free(send_shadow);
+        memory_free(send_shadow);
         send_shadow = NULL;
         return;
     }
-    send_shadow = heap_caps_malloc((size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t), BOARD_FRAMEBUFFER_CAPS);
+    send_shadow = memory_alloc((size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t), MEMORY_PSRAM);
     if (send_shadow == NULL) {
         ESP_LOGE(TAG, "send audit: no room for the shadow framebuffer - staying off");
         return;
@@ -1767,7 +1758,7 @@ send_audit_scan_row(int y) {
 
 static void
 send_audit_log_if_due(void) {
-    const int64_t now = esp_timer_get_time();
+    const int64_t now = timing_now_us();
     if (now < send_audit_log_at_us || (send_audit_uncovered_px == 0 && send_audit_copy_fault_px == 0)) {
         return;
     }
@@ -2470,31 +2461,11 @@ gfx_present_async_enabled(void) {
 
 /* Mode and the band ring */
 
-static void*
-fb_bytes_alloc(size_t bytes) {
-#ifdef ESP_PLATFORM
-    return heap_caps_malloc(bytes, BOARD_FRAMEBUFFER_CAPS);
-#elif defined(HOST_HEAP_ARENA)
-    return heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-#else
-    return malloc(bytes);
-#endif
-}
-
-static void
-fb_bytes_free(void* p) {
-#if defined(ESP_PLATFORM) || defined(HOST_HEAP_ARENA)
-    heap_caps_free(p);
-#else
-    free(p);
-#endif
-}
-
 #ifdef ESP_PLATFORM
 static bool
 alloc_full_framebuffer(void) {
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-    fb = fb_bytes_alloc(bytes);
+    fb = memory_alloc(bytes, MEMORY_PSRAM);
     if (fb == NULL) {
         ESP_LOGE(TAG, "Could not reallocate the %u byte framebuffer leaving band mode", (unsigned)bytes);
         return false;
@@ -2504,7 +2475,7 @@ alloc_full_framebuffer(void) {
 
 static void
 free_full_framebuffer(void) {
-    fb_bytes_free(fb);
+    memory_free(fb);
     fb = NULL;
 }
 
@@ -2520,7 +2491,7 @@ alloc_band_buffers(int band_height) {
 static bool
 alloc_indexed_image(int grid_w, int grid_h) {
     const size_t bytes = (size_t)grid_w * (size_t)grid_h;
-    indexed_image = heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    indexed_image = memory_alloc(bytes, MEMORY_INTERNAL);
     if (indexed_image == NULL) {
         ESP_LOGE(TAG, "Could not allocate %u byte index image", (unsigned)bytes);
         return false;
@@ -2530,20 +2501,20 @@ alloc_indexed_image(int grid_w, int grid_h) {
 
 static void
 free_indexed_image(void) {
-    heap_caps_free(indexed_image);
+    memory_free(indexed_image);
     indexed_image = NULL;
 }
 #else
 static bool
 alloc_full_framebuffer(void) {
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-    fb = fb_bytes_alloc(bytes);
+    fb = memory_alloc(bytes, MEMORY_PSRAM);
     return fb != NULL;
 }
 
 static void
 free_full_framebuffer(void) {
-    fb_bytes_free(fb);
+    memory_free(fb);
     fb = NULL;
 }
 
@@ -2577,7 +2548,7 @@ free_indexed_image(void) {
 static bool
 alloc_band_snapshot(void) {
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-    band_snapshot = fb_bytes_alloc(bytes);
+    band_snapshot = memory_alloc(bytes, MEMORY_PSRAM);
     band_snapshot_bands = 0;
     band_snapshot_filling = false;
     band_snapshot_complete = false;
@@ -2586,7 +2557,7 @@ alloc_band_snapshot(void) {
 
 static void
 free_band_snapshot(void) {
-    fb_bytes_free(band_snapshot);
+    memory_free(band_snapshot);
     band_snapshot = NULL;
     band_snapshot_filling = false;
     band_snapshot_complete = false;

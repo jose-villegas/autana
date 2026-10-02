@@ -82,6 +82,111 @@ class ProblemsTest(unittest.TestCase):
         self.assertIn("not found", found[0])
 
 
+def write_file(root, rel, text):
+    path = pathlib.Path(root) / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+CLOCK_READ = "long f(void) { return esp_timer_get_time(); }\n"
+HEAP_CALL = "void* f(void) { return heap_caps_malloc(8, MALLOC_CAP_DMA); }\n"
+
+
+class OwnerProblemsTest(unittest.TestCase):
+    def problems(self, files):
+        with tempfile.TemporaryDirectory() as temp:
+            for rel, text in files.items():
+                write_file(temp, rel, text)
+            return check_shell_firmware.owner_problems(temp)
+
+    def test_a_clock_or_heap_call_outside_its_owner_fails_wherever_the_firmware_or_a_suite_has_it(self):
+        cases = (
+            ("launcher/main/gfx/gfx.c", CLOCK_READ, ["uses esp_timer_get_time; only util/timing and a driver may"]),
+            ("launcher/main/util/job.c", HEAP_CALL, ["uses heap_caps_malloc; only util/memory and a driver may",
+                                                     "uses MALLOC_CAP_DMA; only util/memory and a driver may"]),
+            ("launcher/main/apps/x/tests/suite_x.c", CLOCK_READ,
+             ["uses esp_timer_get_time; only util/timing and a driver may"]),
+            ("launcher/test/suites/suite_y.c", HEAP_CALL, ["uses heap_caps_malloc; only util/memory and a driver may",
+                                                          "uses MALLOC_CAP_DMA; only util/memory and a driver may"]),
+            ("launcher/tools/render/render_host.c", CLOCK_READ,
+             ["uses esp_timer_get_time; only util/timing and a driver may"]),
+            ("launcher/main/ui/ui.h", "#define NOW() esp_timer_get_time()\n",
+             ["uses esp_timer_get_time; only util/timing and a driver may"]),
+            ("launcher/test/suites/suite_z_device.c", HEAP_CALL,
+             ["uses heap_caps_malloc; only util/memory and a driver may",
+              "uses MALLOC_CAP_DMA; only util/memory and a driver may"]),
+            ("launcher/main/apps/x/tests/suite_x_device.c", CLOCK_READ,
+             ["uses esp_timer_get_time; only util/timing and a driver may"]),
+            ("launcher/tools/render/render_device.c", CLOCK_READ,
+             ["uses esp_timer_get_time; only util/timing and a driver may"]),
+            ("launcher/main/apps/board/board.c", CLOCK_READ,
+             ["uses esp_timer_get_time; only util/timing and a driver may"]),
+        )
+        for rel, text, reasons in cases:
+            with self.subTest(rel=rel):
+                self.assertEqual(self.problems({rel: text}), [f"{rel}:1: {reason}" for reason in reasons])
+
+    def test_each_owner_and_every_driver_may_call_what_it_owns(self):
+        cases = (
+            ("launcher/main/util/timing.h", CLOCK_READ),
+            ("launcher/main/util/timing_wheel.h", CLOCK_READ),
+            ("launcher/main/util/memory.c", HEAP_CALL),
+            ("launcher/main/util/memory_extra.c", HEAP_CALL),
+            ("launcher/main/gfx/gfx_null_panel_device.c", CLOCK_READ + HEAP_CALL),
+            ("launcher/main/input/input_device.c", CLOCK_READ),
+            ("launcher/main/board/board.h", "#define FB_CAPS (MALLOC_CAP_SPIRAM)\n"),
+        )
+        for rel, text in cases:
+            with self.subTest(rel=rel):
+                self.assertEqual(self.problems({rel: text}), [])
+
+    def test_an_owner_owns_only_its_own_vendor_names(self):
+        cases = (
+            ("launcher/main/util/timing.h", HEAP_CALL, "heap_caps_malloc; only util/memory"),
+            ("launcher/main/util/memory.c", CLOCK_READ, "esp_timer_get_time; only util/timing"),
+        )
+        for rel, text, reason in cases:
+            with self.subTest(rel=rel):
+                found = self.problems({rel: text})
+                self.assertTrue(found and found[0].startswith(f"{rel}:1: uses {reason}"), found)
+
+    def test_a_name_only_resembling_an_owners_is_not_the_owner(self):
+        clock = ["uses esp_timer_get_time; only util/timing and a driver may"]
+        heap = ["uses heap_caps_malloc; only util/memory and a driver may",
+                "uses MALLOC_CAP_DMA; only util/memory and a driver may"]
+        cases = (
+            ("launcher/main/util/memorize.c", HEAP_CALL, heap),
+            ("launcher/main/util/timings.c", CLOCK_READ, clock),
+            ("launcher/main/gfx/timing.c", CLOCK_READ, clock),
+            ("launcher/main/util/math/timing.c", CLOCK_READ, clock),
+            ("launcher/main/util/memory/memory.c", HEAP_CALL, heap),
+            ("launcher/main/input/touch_device.h", CLOCK_READ, clock),
+        )
+        for rel, text, reasons in cases:
+            with self.subTest(rel=rel):
+                self.assertEqual(self.problems({rel: text}), [f"{rel}:1: {reason}" for reason in reasons])
+
+    def test_a_name_used_twice_on_a_line_is_reported_once(self):
+        rel = "launcher/main/gfx/gfx.c"
+        self.assertEqual(self.problems({rel: "long d = esp_timer_get_time() - esp_timer_get_time();\n"}),
+                         [f"{rel}:1: uses esp_timer_get_time; only util/timing and a driver may"])
+
+    def test_the_host_platform_beneath_the_suites_and_vendored_code_are_not_checked(self):
+        for rel in ("launcher/test/heap_arena.c", "launcher/test/timing.c", "launcher/test/stubs/esp_heap_caps.h",
+                    "launcher/components/microui/src/microui.c", "editor/runtime/runtime.c",
+                    "launcher/main/util/notes.md"):
+            with self.subTest(rel=rel):
+                self.assertEqual(self.problems({rel: CLOCK_READ + HEAP_CALL}), [])
+
+    def test_a_comment_or_string_naming_the_clock_or_heap_is_not_a_call(self):
+        self.assertEqual(self.problems({"launcher/main/gfx/gfx.c": (
+            '/* esp_timer_get_time() */\n// heap_caps_malloc(8, MALLOC_CAP_DMA)\n'
+            'const char* s = "heap_caps_get_free_size";\n')}), [])
+
+    def test_main_c_is_left_to_the_shell_rule_so_a_line_is_reported_once(self):
+        self.assertEqual(self.problems({"launcher/main/main.c": CLOCK_READ}), [])
+
+
 class CommandLineTest(unittest.TestCase):
     def run_gate(self, main_c, *arguments):
         with tempfile.TemporaryDirectory() as temp:
@@ -102,6 +207,16 @@ class CommandLineTest(unittest.TestCase):
 
     def test_an_argument_exits_two(self):
         self.assertEqual(self.run_gate("int x;\n", "main.c").returncode, 2)
+
+    def test_a_clock_read_outside_its_owner_exits_one_with_a_clean_main(self):
+        with tempfile.TemporaryDirectory() as temp:
+            write_main(temp, "int x;\n")
+            write_file(temp, "launcher/main/gfx/gfx.c", CLOCK_READ)
+            script = pathlib.Path(check_shell_firmware.__file__)
+            result = subprocess.run([sys.executable, str(script)], cwd=temp, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("launcher/main/gfx/gfx.c:1: uses esp_timer_get_time", result.stdout)
+        self.assertIn("1 clock or heap use(s) outside util/timing, util/memory and the drivers", result.stdout)
 
 
 SYNTHETIC_MAIN = """#include "esp_timer.h"

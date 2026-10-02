@@ -71,7 +71,7 @@ jobs:
       - name: The board is reached only through scripts/device/
         run: python3 scripts/gates/check_device_access.py
 
-      - name: main.c includes and calls no firmware
+      - name: main.c includes and calls no firmware, and the clock and heap have one owner each
         run: python3 scripts/gates/check_shell_firmware.py
 
       - name: No tracker id, personal path, or misdirected include is tracked

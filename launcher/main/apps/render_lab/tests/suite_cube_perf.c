@@ -20,13 +20,12 @@
 
 #include "unity.h"
 
-#include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 
 #include "app.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
+#include "util/timing.h"
 
 /* scene_cube.c's own toggle - each test sets this explicitly (see
  * run_perf_capture()'s with_partial parameter) rather than trusting
@@ -232,15 +231,15 @@ run_perf_capture(const char* label, bool with_hud, bool with_partial, bool with_
     render_lab_partial_updates = with_partial;
     gfx_set_interlace(with_interlace);
 
-    int64_t test_start = esp_timer_get_time();
+    int64_t test_start = timing_now_us();
     int64_t next_frame_due = test_start;
 
     /* Run at natural frame rate (no vTaskDelay) for the full SAMPLE_SECONDS -
      * no frame-count cap here, since samples[] is a ring buffer (see its own
      * comment) rather than a fixed capture, so there is nothing left that
      * needs one. */
-    while (esp_timer_get_time() - test_start < SAMPLE_MS * 1000) {
-        int64_t frame_start = esp_timer_get_time();
+    while (timing_now_us() - test_start < SAMPLE_MS * 1000) {
+        int64_t frame_start = timing_now_us();
         int64_t dt_ms = (frame_start - next_frame_due) / 1000;
         if (dt_ms < 0) {
             dt_ms = 1;
@@ -251,15 +250,15 @@ run_perf_capture(const char* label, bool with_hud, bool with_partial, bool with_
         next_frame_due += dt_ms * 1000;
 
         /* LOGIC PHASE */
-        int64_t logic_start = esp_timer_get_time();
+        int64_t logic_start = timing_now_us();
         cube_update_rotation((uint32_t)dt_ms);
         cube_clear_frame();
-        int64_t logic_end = esp_timer_get_time();
+        int64_t logic_end = timing_now_us();
 
         /* RASTERIZE PHASE */
-        int64_t raster_start = esp_timer_get_time();
+        int64_t raster_start = timing_now_us();
         cube_rasterize_frame();
-        int64_t raster_end = esp_timer_get_time();
+        int64_t raster_end = timing_now_us();
 
         /* HUD PHASE */
         /*
@@ -268,16 +267,16 @@ run_perf_capture(const char* label, bool with_hud, bool with_partial, bool with_
          * out. Skipped entirely when with_hud is false, so hud_us reads as
          * ~0 rather than the cost of a no-op draw_fps() call.
          */
-        int64_t hud_start = esp_timer_get_time();
+        int64_t hud_start = timing_now_us();
         if (with_hud) {
             draw_fps(&null_input, false);
         }
-        int64_t hud_end = esp_timer_get_time();
+        int64_t hud_end = timing_now_us();
 
         /* PRESENT PHASE */
-        int64_t present_start = esp_timer_get_time();
+        int64_t present_start = timing_now_us();
         gfx_present();
-        int64_t present_end = esp_timer_get_time();
+        int64_t present_end = timing_now_us();
 
         int64_t frame_end = present_end;
 

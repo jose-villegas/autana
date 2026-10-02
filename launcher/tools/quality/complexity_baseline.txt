@@ -1172,7 +1172,7 @@
 5	launcher/main/gfx/gfx.c:891	gfx_pixel
 5	launcher/main/gfx/gfx.c:500	present_task_fn
 5	launcher/main/gfx/gfx.c:1786	send_audit_check
-5	launcher/main/gfx/gfx_null_panel.c:60	null_panel_draw_bitmap
+5	launcher/main/gfx/gfx_null_panel_device.c:60	null_panel_draw_bitmap
 5	launcher/main/input/buttons.c:248	buttons_inject
 5	launcher/main/input/touch.c:92	poll_injected
 5	launcher/main/input/touch.c:180	poll_once
@@ -1877,7 +1877,7 @@
 3	launcher/main/gfx/gfx.c:441	panel_clock_apply
 3	launcher/main/gfx/gfx.c:1769	send_audit_log_if_due
 3	launcher/main/gfx/gfx.c:1946	send_indexed_rows
-3	launcher/main/gfx/gfx_null_panel.c:95	gfx_null_panel_open
+3	launcher/main/gfx/gfx_null_panel_device.c:95	gfx_null_panel_open
 3	launcher/main/gfx/gfx_palette_standard.c:61	gfx_palette_standard_find
 3	launcher/main/input/buttons.c:176	poll_once
 3	launcher/main/input/gesture.c:4	gesture_is_edge_swipe
@@ -2304,7 +2304,7 @@
 2	launcher/main/gfx/gfx.c:2041	send_full_row
 2	launcher/main/gfx/gfx.c:2063	send_partial_band
 2	launcher/main/gfx/gfx.c:2081	send_run
-2	launcher/main/gfx/gfx_null_panel.c:35	strip_left_the_bus
+2	launcher/main/gfx/gfx_null_panel_device.c:35	strip_left_the_bus
 2	launcher/main/input/buttons.c:150	pmu_take_events
 2	launcher/main/input/tilt.c:182	tilt_strength
 2	launcher/main/main.c:305	exit_app
