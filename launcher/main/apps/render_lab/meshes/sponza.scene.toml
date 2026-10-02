@@ -1,4 +1,4 @@
-# The Sponza scenario: one light rig and camera, and the three bakes of the
+# The Sponza scenario: one light rig and camera, and the five bakes of the
 # model the render_lab scenes draw one at a time.
 tonemap_white = 0.35
 
@@ -52,3 +52,17 @@ name = "atrium_lite"
 [objects.mesh_renderer]
 mesh = "sponza.import.toml"
 variant = "sponza_lite"
+
+[[objects]]
+name = "atrium_fitted"
+
+[objects.mesh_renderer]
+mesh = "sponza.import.toml"
+variant = "sponza_fitted"
+
+[[objects]]
+name = "atrium_fitted_full"
+
+[objects.mesh_renderer]
+mesh = "sponza.import.toml"
+variant = "sponza_fitted_full"

@@ -1,4 +1,4 @@
-"""Checks the source-reference renderer on a one-triangle lit mesh."""
+"""Checks the source-reference renderer on a one-triangle lit mesh: its light, its pixels and its normal buffer."""
 
 import pathlib
 import sys
@@ -60,10 +60,17 @@ class ReferenceRenderTest(unittest.TestCase):
         picture = render_linear(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 2, 2, 1.0, 2)
         np.testing.assert_allclose(picture[..., 0], [[0.25, 0.0], [0.0, 0.0]], atol=1e-12, rtol=0)
 
+    def test_the_normal_buffer_faces_the_eye_and_is_zero_where_rays_miss(self):
+        # Wound to face away from the eye at z = 1: the buffer still turns its normal toward the eye.
+        source = plane_source([[-0.5, 0.5, 0.0], [-0.5, 2.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.5, 0.0]])
+        _linear, _covered, normal = trace(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 2, 2, 1.0, 2)
+        np.testing.assert_allclose(normal[0, 0], [0.0, 0.0, 1.0], atol=1e-12, rtol=0)
+        np.testing.assert_allclose(normal[1], 0.0, atol=1e-12, rtol=0)
+
     def test_a_pose_at_empty_sky_is_the_scene_background_as_the_device_shows_it(self):
         source = plane_source([[-2.0, -2.0, 0.0], [2.0, -2.0, 0.0], [2.0, 2.0, 0.0], [-2.0, 2.0, 0.0]])
         away = np.array([0.0, 0.0, 1.0, 0.0, 0.0, 1.0])
-        linear, covered = trace(source, *sun_scene([0.0, 0.0, 1.0]), away, 3, 3, 1.0, 2)
+        linear, covered, _normal = trace(source, *sun_scene([0.0, 0.0, 1.0]), away, 3, 3, 1.0, 2)
         picture = device_picture(linear, covered, 0.35, 0x9CC0E6)
         shown = expand_565(np.full((3, 3, 3), (0x9C, 0xC0, 0xE6), dtype=np.uint8))
         np.testing.assert_array_equal(picture, shown)

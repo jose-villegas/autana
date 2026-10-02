@@ -66,6 +66,8 @@ sponza_gif() {
 sponza_gif sponza-full --scene sponza
 sponza_gif sponza-lite --scene sponza-lite
 sponza_gif sponza-flat --scene sponza-flat
+sponza_gif sponza-fitted --scene sponza-fitted
+sponza_gif sponza-fitted-full --scene sponza-fitted-full
 sponza_gif sponza-depth --scene sponza --view depth
 sponza_gif sponza-tiles --scene sponza --view tiles
 
@@ -77,13 +79,19 @@ sponza_still() {
 sponza_still full sponza
 sponza_still lite sponza-lite
 sponza_still flat sponza-flat
+sponza_still fitted sponza-fitted
+sponza_still fitted-full sponza-fitted-full
 "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-lite.png" --crops 3 \
     --label-a full --label-b lite --row "full | lite" "$W/still-full.bmp" "$W/still-lite.bmp" > "$W/compare-full-lite.log"
 "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-flat.png" --crops 3 \
     --label-a smooth --label-b flat --row "smooth | flat" "$W/still-full.bmp" "$W/still-flat.bmp" > "$W/compare-full-flat.log"
+"$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-lite-fitted.png" --crops 3 \
+    --label-a lite --label-b fitted --row "lite | fitted" "$W/still-lite.bmp" "$W/still-fitted.bmp" > "$W/compare-lite-fitted.log"
+"$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-fitted-full.png" --crops 3 \
+    --label-a full --label-b "fitted full" --row "full | fitted full" "$W/still-full.bmp" "$W/still-fitted-full.bmp" > "$W/compare-full-fitted-full.log"
 # render_compare.py writes no crops where the two renders do not differ; fail
 # here rather than leave the pages linking a missing file.
-for crops in compare-full-lite compare-full-flat; do
+for crops in compare-full-lite compare-full-flat compare-lite-fitted compare-full-fitted-full; do
     [ -f "$RENDER/$crops.crops.png" ] || { echo "doc_images.sh: $crops has no crops, the renders do not differ." >&2; exit 1; }
 done
 
@@ -103,3 +111,29 @@ REFERENCE=$(sh launcher/tools/render/render_compare.sh --reference-frames \
 "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.png" \
     --reference-video "$W/fidelity-flat.avi" "$REFERENCE" --reference-scale 2 \
     --reference-sheet "$RENDER/bake-fidelity-sheet.png" --sheet-frames 2,4 --label-a "flat bake" > "$W/fidelity-compare.log"
+
+# Each fitted target against the same reference: its heatmap sheet at the
+# same two poses, and its last frame beside the reference, enlarged where they
+# differ most.
+#   against_reference <scene> <heatmap image> <reference image> <label> <sheet too: yes|no>
+"$PYTHON" -c 'import pathlib, sys; from PIL import Image
+frame = sorted(pathlib.Path(sys.argv[1]).glob("*.png"))[4]
+picture = Image.open(frame).convert("RGB")
+picture.resize((picture.width * 2, picture.height * 2), Image.Resampling.NEAREST).save(sys.argv[2])' \
+    "$REFERENCE" "$W/fidelity-reference-4.png"
+against_reference() {
+    "$W/render_lab_render" --quarter 0 --no-hud --scene "$1" --frames 5 --dt 5000 \
+        -o "$W/fidelity-$1.bmp" --video "$W/fidelity-$1.avi" 2> "$W/fidelity-$1.log"
+    "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$1-unused.png" \
+        --reference-video "$W/fidelity-$1.avi" "$REFERENCE" --reference-scale 2 \
+        --reference-sheet "$RENDER/$2.png" --sheet-frames 2,4 --label-a "$4" > "$W/$1-compare.log"
+    "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$3.png" --crops 3 \
+        --label-a "$4" --label-b reference --row "$4 | reference" "$W/fidelity-$1.bmp" "$W/fidelity-reference-4.png" > "$W/$1-reference.log"
+    cp "$W/$3.crops.png" "$RENDER/" || {
+        echo "doc_images.sh: $1 matches the reference, no crops." >&2
+        exit 1
+    }
+    [ "$5" = no ] || cp "$W/$3.png" "$RENDER/"
+}
+against_reference sponza-fitted appearance-chosen-heat appearance-chosen-reference fitted no
+against_reference sponza-fitted-full appearance-fitted-full-heat appearance-fitted-full-reference "fitted full" yes

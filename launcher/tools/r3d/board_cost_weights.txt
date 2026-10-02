@@ -1,0 +1,22 @@
+# Board frame time of a baked mesh from one pose (render/r3d_pipeline.c drawing at the frame-cost suite's
+# render size, both cores, before present), as cost_model.py's linear model: its weights and the frames
+# they were fitted to, each the median over five runs of the perf-scoped frame-cost suite. Refit with
+#     python launcher/tools/r3d/cost_model.py fit launcher/tools/r3d/board_cost_weights.txt
+feature constant submitted drawn rows pixels clusters
+weight 21.4075635 0 0.00113548902 0.000513677603 2.75025544e-05 0.0227259884
+frame full 0 70.968 1 14116 8538 54151.4 110801 496
+frame full 1 63.374 1 10270 5938 42923.1 105497 361
+frame full 2 50.183 1 7000 3551 33243.9 108026 241
+frame full 3 47.659 1 6721 2307 30273.7 105367 228
+frame full 4 61.966 1 9339 5371 41683.2 114966 324
+frame full 5 45.676 1 5381 3086 28867.2 101309 183
+frame full 6 57.353 1 8999 5241 38810.5 93797.8 318
+frame full 7 71.550 1 13243 8237 53019.8 107004 466
+frame lite 0 53.663 1 7312 4261 38897.1 104418 249
+frame lite 1 47.263 1 5536 2951 30466.6 100352 189
+frame lite 2 41.130 1 3955 1861 24241.8 103818 134
+frame lite 3 39.014 1 3718 1155 22496.2 101808 127
+frame lite 4 48.696 1 5371 2800 30096.6 108318 182
+frame lite 5 38.901 1 3319 1670 21321.6 97585.7 111
+frame lite 6 46.503 1 4858 2629 27481.2 89058.3 165
+frame lite 7 53.216 1 6957 4105 38141.7 101094 236
