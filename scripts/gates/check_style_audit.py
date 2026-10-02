@@ -299,7 +299,7 @@ def _fix_include_layer(root, path, text):
 # "driver/temperature_sensor.h" never resolves to a layer.
 
 LAYER_TIER = {"apps": 0, "boot": 1, "ui": 2, "console": 2, "scene": 2, "display": 3, "gfx": 4, "render": 4,
-             "input": 4, "util": 5, "anim": 5, "asset": 5, "board": 6}
+             "input": 4, "anim": 5, "asset": 5, "util": 6, "board": 7}
 LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps")
 
 INCLUDE_DIRECTION_EXCEPTIONS = {}

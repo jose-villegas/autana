@@ -151,48 +151,49 @@ polar_point(int32_t radius, uint16_t turn, int32_t* re, int32_t* im) {
 
 /* step == steps closes loop back to step 0, no gap on last edge. */
 static void
-grid_circle_point(int32_t radius, int32_t t, int steps, int step, const boot_anim_view_t* view, vec4i_t* cs,
-                  bool* front, int* sx, int* sy) {
+grid_circle_point(int32_t radius, const boot_anim_plane_t* plane, int steps, int step, const boot_anim_view_t* view,
+                  vec3x_t* cs, bool* front, int* sx, int* sy) {
     const int i = (step == steps) ? 0 : step;
     const uint16_t turn = (uint16_t)(((uint32_t)i * 65536u) / (uint32_t)steps);
     int32_t re, im;
     polar_point(radius, turn, &re, &im);
-    *cs = boot_anim_to_camera_space(re, im, t, view);
+    *cs = boot_anim_plane_point(plane, re, im);
     *front = cs->z > view->near_z;
     *sx = 0;
     *sy = 0;
     if (*front) {
-        r3d_camera_to_screen(*cs, view, sx, sy);
+        r3d_camera_to_screen_x(*cs, view, sx, sy);
     }
 }
 
 static void
-draw_grid_circle_segment(bool prev_front, bool front, int prev_sx, int prev_sy, int sx, int sy, vec4i_t prev_cs,
-                         vec4i_t cs, gfx_color_t c, const boot_anim_view_t* view) {
+draw_grid_circle_segment(bool prev_front, bool front, int prev_sx, int prev_sy, int sx, int sy, vec3x_t prev_cs,
+                         vec3x_t cs, gfx_color_t c, const boot_anim_view_t* view) {
     if (prev_front && front) {
         gfx_line_ex(prev_sx, prev_sy, sx, sy, c, 0u);
         return;
     }
     if (prev_front != front) {
         int ax, ay, bx, by;
-        if (r3d_project_segment_cs(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
+        if (r3d_project_segment_cs_x(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
             gfx_line_ex(ax, ay, bx, by, c, 0u);
         }
     }
 }
 
 static void
-draw_grid_circle(int32_t radius, int32_t t, gfx_color_t c, int steps, const boot_anim_view_t* view) {
-    vec4i_t prev_cs;
+draw_grid_circle(int32_t radius, const boot_anim_plane_t* plane, gfx_color_t c, int steps,
+                 const boot_anim_view_t* view) {
+    vec3x_t prev_cs;
     bool prev_front = false;
     int prev_sx = 0, prev_sy = 0;
     bool have_prev = false;
 
     for (int step = 0; step <= steps; step++) {
-        vec4i_t cs;
+        vec3x_t cs;
         bool front;
         int sx, sy;
-        grid_circle_point(radius, t, steps, step, view, &cs, &front, &sx, &sy);
+        grid_circle_point(radius, plane, steps, step, view, &cs, &front, &sx, &sy);
 
         if (have_prev) {
             draw_grid_circle_segment(prev_front, front, prev_sx, prev_sy, sx, sy, prev_cs, cs, c, view);
@@ -218,26 +219,27 @@ draw_grid_circle(int32_t radius, int32_t t, gfx_color_t c, int steps, const boot
 static void
 draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool dash, uint8_t reach,
                 const boot_anim_view_t* view) {
-    vec4i_t prev_cs;
+    vec3x_t prev_cs;
     bool have_prev = false;
     int32_t last_radius = 0;
 
     const int32_t target = boot_anim_spoke_reveal_target(near, far, reach);
     const int32_t near_target = target < near ? target : near;
+    const boot_anim_plane_t floor_plane = boot_anim_plane(0, view);
     const int max_step = near > 0 ? (int)(((int64_t)BOOT_ANIM_GRID_SPOKE_STEPS * near_target) / near) : 0;
 
     for (int step = 0; step <= max_step; step++) {
         const int32_t radius = (near * step) / BOOT_ANIM_GRID_SPOKE_STEPS;
         int32_t re, im;
         polar_point(radius, turn, &re, &im);
-        const vec4i_t cs = boot_anim_to_camera_space(re, im, 0, view);
+        const vec3x_t cs = boot_anim_plane_point(&floor_plane, re, im);
 
         /* Groups of BOOT_ANIM_GRID_SPOKE_DASH_STEPS alternate on and off to
          * form a visible dash. */
         const bool draw_segment = !dash || ((step / BOOT_ANIM_GRID_SPOKE_DASH_STEPS) % 2) == 1;
         if (have_prev && draw_segment) {
             int ax, ay, bx, by;
-            if (r3d_project_segment_cs(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
+            if (r3d_project_segment_cs_x(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
                 gfx_line_ex(ax, ay, bx, by, c, 0u);
             }
         }
@@ -249,16 +251,16 @@ draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool da
     if (have_prev && last_radius < target) {
         int32_t re, im;
         polar_point(target, turn, &re, &im);
-        const vec4i_t cs = boot_anim_to_camera_space(re, im, 0, view);
+        const vec3x_t cs = boot_anim_plane_point(&floor_plane, re, im);
         int ax, ay, bx, by;
-        if (r3d_project_segment_cs(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
+        if (r3d_project_segment_cs_x(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
             gfx_line_ex(ax, ay, bx, by, c, 0u);
         }
     }
 }
 
 static int
-floor_ring_steps(vec4i_t rim_a, vec4i_t rim_b, int dissolve_level, const boot_anim_view_t* view) {
+floor_ring_steps(vec3x_t rim_a, vec3x_t rim_b, int dissolve_level, const boot_anim_view_t* view) {
     int steps = BOOT_ANIM_GRID_CIRCLE_STEPS;
     if (boot_anim_screen_chord_lt(rim_a, rim_b, view, 32)) {
         steps = 4;
@@ -282,17 +284,18 @@ draw_floor_ring(int ring, uint32_t now_ms, int32_t amp_q12, int dissolve_level, 
     const int32_t t =
         boot_anim_wave_height(d, now_ms, amp_q12, BOOT_ANIM_WAVE_WAVELENGTH_Q12, BOOT_ANIM_WAVE_PERIOD_MS);
 
+    const boot_anim_plane_t plane = boot_anim_plane(t, view);
     int32_t rim_re, rim_im;
     polar_point(d, 0, &rim_re, &rim_im);
-    const vec4i_t rim_a = boot_anim_to_camera_space(rim_re, rim_im, t, view);
+    const vec3x_t rim_a = boot_anim_plane_point(&plane, rim_re, rim_im);
     polar_point(d, 32768, &rim_re, &rim_im);
-    const vec4i_t rim_b = boot_anim_to_camera_space(rim_re, rim_im, t, view);
+    const vec3x_t rim_b = boot_anim_plane_point(&plane, rim_re, rim_im);
 
     const int steps = floor_ring_steps(rim_a, rim_b, dissolve_level, view);
     const bool tiny = boot_anim_screen_chord_lt(rim_a, rim_b, view, 16);
     const gfx_color_t c =
         lit_whitened(boot_anim_hue_rgb(boot_anim_grid_hue(now_ms, ring)), boot_anim_grid_whiten(now_ms), alpha);
-    draw_grid_circle(d, t, c, steps, view);
+    draw_grid_circle(d, &plane, c, steps, view);
     return tiny;
 }
 
@@ -470,27 +473,27 @@ draw_heads(int32_t colour_pen, uint8_t ink, const boot_anim_view_t* view) {
 }
 
 typedef struct {
-    vec4i_t prev_cs;
+    vec3x_t prev_cs;
     bool prev_front;
     int prev_sx, prev_sy;
     bool joined;
 } curve_segment_t;
 
 static void
-draw_curve_segment(curve_segment_t* segment, vec4i_t next_cs, gfx_color_t color, int width,
+draw_curve_segment(curve_segment_t* segment, vec3x_t next_cs, gfx_color_t color, int width,
                    const boot_anim_view_t* view) {
     const bool next_front = next_cs.z > view->near_z;
 
     if (segment->prev_front && next_front) {
         int nsx, nsy;
-        r3d_camera_to_screen(next_cs, view, &nsx, &nsy);
+        r3d_camera_to_screen_x(next_cs, view, &nsx, &nsy);
         draw_stroke(segment->prev_sx, segment->prev_sy, nsx, nsy, color, width, segment->joined);
         segment->joined = true;
         segment->prev_sx = nsx;
         segment->prev_sy = nsy;
     } else if (segment->prev_front != next_front) {
         int ax, ay, bx, by;
-        if (r3d_project_segment_cs(segment->prev_cs, next_cs, view, &ax, &ay, &bx, &by)) {
+        if (r3d_project_segment_cs_x(segment->prev_cs, next_cs, view, &ax, &ay, &bx, &by)) {
             draw_stroke(ax, ay, bx, by, color, width, segment->joined);
             segment->joined = true;
             if (next_front) {
@@ -535,18 +538,18 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
 
     boot_anim_pt_t s0 = boot_anim_sample(-stride);
     boot_anim_pt_t s1 = boot_anim_sample(0);
-    vec4i_t ta = boot_anim_to_camera_space(s0.re, s0.im, s0.t, view);
-    vec4i_t tb = boot_anim_to_camera_space(s1.re, s1.im, s1.t, view);
+    vec3x_t ta = boot_anim_key_to_camera_space(&s0, view);
+    vec3x_t tb = boot_anim_key_to_camera_space(&s1, view);
     curve_segment_t segment = {.prev_cs = tb, .prev_front = tb.z > view->near_z};
     if (segment.prev_front) {
-        r3d_camera_to_screen(segment.prev_cs, view, &segment.prev_sx, &segment.prev_sy);
+        r3d_camera_to_screen_x(segment.prev_cs, view, &segment.prev_sx, &segment.prev_sy);
     }
 
     int32_t a0 = 0;
 
     for (int i = 0; i <= last && i < BOOT_ANIM_CURVE_POINTS; i += stride) {
         const boot_anim_pt_t s2 = boot_anim_sample(i + stride);
-        const vec4i_t tc = boot_anim_to_camera_space(s2.re, s2.im, s2.t, view);
+        const vec3x_t tc = boot_anim_key_to_camera_space(&s2, view);
 
         /* Interpolate colour across spans, not per sample. */
         const int32_t a1 = ((i + stride) * BOOT_ANIM_ONE + phase1_span / 2) / phase1_span;
@@ -568,7 +571,7 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
         for (int step = 1; step <= steps; step++) {
             const int32_t t = (limit * step) / steps;
 
-            const vec4i_t next_cs = boot_anim_spline_cs(ta, tb, tc, t);
+            const vec3x_t next_cs = boot_anim_spline_cs(ta, tb, tc, t);
             draw_curve_segment(&segment, next_cs, span_c, s.width, view);
         }
 
@@ -618,7 +621,7 @@ draw_title(uint32_t now_ms, uint8_t ink) {
         (BOOT_ANIM_TITLE_SHADOW_DX != 0 || BOOT_ANIM_TITLE_SHADOW_DY != 0) && BOOT_ANIM_TITLE_SHADOW_ALPHA != 0;
 
     for (int i = 0; i < BOOT_ANIM_TITLE_LEN; i++) {
-        const boot_anim_title_pos_t p = boot_anim_title_letter(font, i, now_ms);
+        const vec2i_t p = boot_anim_title_letter(font, i, now_ms);
         int px, py;
         title_glyph_origin(p.x, p.y, glyph_w, glyph_h, &px, &py);
 

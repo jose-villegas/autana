@@ -175,8 +175,8 @@ readability-math-missing-parentheses	main/apps/render_lab/tests/suite_rt_cornell
 readability-math-missing-parentheses	main/apps/render_lab/tests/suite_rt_path.c	4
 readability-math-missing-parentheses	main/apps/render_lab/tests/suite_rt_perf.c	2
 readability-math-missing-parentheses	main/apps/render_lab/tests/suite_rt_row_split.c	1
-readability-math-missing-parentheses	main/apps/render_lab/tests/suite_wire_pipeline.c	12
-readability-math-missing-parentheses	main/apps/render_lab/tests/suite_wire_primitives.c	8
+readability-math-missing-parentheses	main/apps/render_lab/tests/suite_wire_pipeline.c	7
+readability-math-missing-parentheses	main/apps/render_lab/tests/suite_wire_primitives.c	2
 readability-math-missing-parentheses	main/apps/render_lab/ui/render_lab_menu_screen.c	2
 readability-math-missing-parentheses	main/apps/sand/app_sand.c	11
 readability-math-missing-parentheses	main/apps/sand/material_palette.c	15

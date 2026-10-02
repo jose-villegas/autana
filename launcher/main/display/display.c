@@ -80,9 +80,9 @@ neighbor_quarter(int q, int perp) {
 }
 
 bool
-display_update(display_t* d, int gx, int gy) {
+display_update(display_t* d, vec2i_t gravity) {
     int aligned, perp;
-    split_gravity(d->quarter, gx, gy, &aligned, &perp);
+    split_gravity(d->quarter, gravity.x, gravity.y, &aligned, &perp);
 
     const int perp_abs = (perp < 0) ? -perp : perp;
 
@@ -127,5 +127,5 @@ display_orientation_sample(display_orientation_t* o, int64_t now_us, display_mot
     if (!read(&sample)) {
         return false;
     }
-    return display_update(&o->display, imu_gravity_screen_x(&sample), imu_gravity_screen_y(&sample));
+    return display_update(&o->display, imu_gravity_screen(&sample));
 }

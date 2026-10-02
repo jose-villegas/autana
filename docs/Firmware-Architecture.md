@@ -69,7 +69,7 @@ flowchart TB
         Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
     end
     subgraph R7["utilities"]
-        Util["util/<br/><i>fixed point, tween, jobs, tunables, time, settings, memory</i>"]
+        Util["util/<br/><i>fixed point, float and fixed maths, tween, jobs, tunables, time, settings, memory</i>"]
         Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
         Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
     end
@@ -133,8 +133,8 @@ framebuffer while it holds one. See
 The same rule is why the span rasterizer (`render/r3d_span.h`) owns no
 framebuffer: it fills a caller's window of rows, with a depth plane only as
 tall as that window. A full colour+depth pair would want ~1.3 MB here.
-`util/math/matrix4i.h` supplies the fixed-point transform maths the line camera and
-the boot scene share, and no rasterizer.
+`util/math/` supplies the float vector, quaternion, matrix and transform maths
+the line camera and the boot scene share, and no rasterizer.
 
 ### 2. There is exactly one frame loop, and it belongs to the shell
 
