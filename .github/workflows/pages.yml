@@ -7,7 +7,7 @@ name: Pages
 # The browser build lives on feature/web-pages, but the site has to show
 # main's source: the build merges the latest main into the branch first, in
 # the runner only, and fails rather than publish if that merge conflicts.
-# A push to the branch runs it, and main's pages-trigger.yml starts it on
+# A push to the branch runs it, and main's pages-trigger.yml calls it on
 # every push to main.
 #
 # The explorer's generator lives in the private development repository,
@@ -18,11 +18,8 @@ name: Pages
 on:
   push:
     branches: [feature/web-pages]
+  workflow_call:
   workflow_dispatch:
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -61,6 +58,9 @@ jobs:
 
   deploy:
     name: Publish to Pages
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     needs: build
     runs-on: ubuntu-24.04
     permissions:
