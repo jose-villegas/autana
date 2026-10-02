@@ -69,6 +69,12 @@ mathf_half_cos(float angle) {
     return cosf(angle * 0.5F);
 }
 
+/* a0 * b0 + a1 * b1 + a2 * b2, summed left to right. */
+static inline float
+mathf_dot3(float a0, float b0, float a1, float b1, float a2, float b2) {
+    return (a0 * b0) + (a1 * b1) + (a2 * b2);
+}
+
 static inline float
 mathf_wadd(float a, float b) {
     return a + b;

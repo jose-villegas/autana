@@ -86,6 +86,15 @@ mathx_cos_turns(int32_t turns) {
     return trig_cos((uint16_t)turns) * 2;
 }
 
+/* a0 * b0 + a1 * b1 + a2 * b2 with one rounding of the exact sum, and one
+ * saturation, instead of one per product: faster and more exact than three
+ * mathx_mul calls added. */
+static inline int32_t
+mathx_dot3(int32_t a0, int32_t b0, int32_t a1, int32_t b1, int32_t a2, int32_t b2) {
+    const int64_t sum = ((int64_t)a0 * b0) + ((int64_t)a1 * b1) + ((int64_t)a2 * b2);
+    return mathx_saturate(fx_round_shift(sum, MATHX_SHIFT));
+}
+
 static inline int32_t
 mathx_zero(void) {
     return 0;

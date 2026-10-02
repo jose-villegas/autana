@@ -381,6 +381,30 @@ test_fixed_angles_negative_and_beyond_a_turn(void) {
                     quatx_rotate(quatx_from_axis_angle(y_axis, -3 * MATHX_ONE + (MATHX_ONE / 4)), z), FIXED_SLACK);
 }
 
+static void
+test_fixed_dot3_rounds_the_sum_once_and_saturates(void) {
+    const int32_t half = MATHX_ONE / 2;
+    /* Three products of 0.5 unit each: rounded one by one they are 3, as a sum 1.5 rounds to 2. */
+    TEST_ASSERT_EQUAL_INT32(2, mathx_dot3(1, half, 1, half, 1, half));
+    TEST_ASSERT_EQUAL_INT32(-2, mathx_dot3(-1, half, -1, half, -1, half));
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_dot3(INT32_MAX, MATHX_ONE, INT32_MAX, MATHX_ONE, 0, 0));
+    TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathx_dot3(INT32_MIN, MATHX_ONE, INT32_MIN, MATHX_ONE, 0, 0));
+}
+
+static void
+test_fixed_matrix_apply_matches_float(void) {
+    const mat4f_t mf = mat4f_from_trs((vec3f_t){1.0F, -2.0F, 3.0F}, quatf_from_euler((vec3f_t){0.4F, -0.3F, 0.2F}),
+                                      (vec3f_t){2.0F, 1.0F, 0.5F});
+    mat4x_t mx;
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            mx.m[r][c] = mathf_to_x(mf.m[r][c]);
+        }
+    }
+    const vec3f_t p = {0.5F, 1.5F, -1.0F};
+    assert_x_near_f(mat4f_apply(&mf, p), mat4x_apply(&mx, vec3x_from_vec3f(p)), 1e-3F);
+}
+
 void
 suite_math_numbers(void) {
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
@@ -393,6 +417,8 @@ suite_math_numbers(void) {
     RUN_TEST(test_fixed_point_overflow_saturates_and_divide_by_zero_follows_the_sign);
     RUN_TEST(test_int16_arithmetic_and_conversion_saturate_at_the_int16_range);
     RUN_TEST(test_int32_dot_widens_to_int64);
+    RUN_TEST(test_fixed_dot3_rounds_the_sum_once_and_saturates);
+    RUN_TEST(test_fixed_matrix_apply_matches_float);
     RUN_TEST(test_fixed_multiply_and_divide_round_ties_away_from_zero_in_both_signs);
     RUN_TEST(test_fixed_divide_handles_signs_saturation_and_the_most_negative_divisor);
     RUN_TEST(test_fixed_square_root_floors_and_survives_the_largest_input);

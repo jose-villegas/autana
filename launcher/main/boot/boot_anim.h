@@ -45,6 +45,8 @@
 #include "boot/boot_anim_tracks_generated.h"
 #include "gfx/gfx_font.h"
 #include "render/r3d_line_camera.h"
+#include "render/r3d_project_x.h"
+#include "util/intmath.h"
 #include "util/math/transformf.h"
 #include "util/math/vec2i.h"
 #include "util/math/vec3f.h"
@@ -108,24 +110,11 @@ boot_anim_timeline_sample(uint32_t now_ms) {
 /* The spiral: one unit of t climbs 132/512 of a meter. */
 #define BOOT_ANIM_SPIRAL_Q9    132
 
-/* Meters per integer unit of (re, t, im) as boot_anim_to_camera_space() takes
- * them: Q12 on the floor's axes, Q8 on the climb. The view matrix carries
- * this, so a point converts from int to float and nothing else before it is
- * transformed. */
-static inline mat4f_t
-boot_anim_unit_scale(void) {
-    mat4f_t units = mat4f_identity();
-    units.m[0][0] = 1.0F / (float)BOOT_ANIM_ONE;
-    units.m[1][1] = (float)BOOT_ANIM_SPIRAL_Q9 * (1.0F / (256.0F * 512.0F));
-    units.m[2][2] = 1.0F / (float)BOOT_ANIM_ONE;
-    return units;
-}
-
 /* The general camera-space clip and perspective projection this needs live
  * in render/r3d_project.h, shared with a caller drawing something other
  * than this timeline; boot_anim_view_t is the r3d_line_view_t that environment
  * takes, plus whatever boot_anim_view() below fills it with each frame. */
-typedef r3d_line_view_t boot_anim_view_t;
+typedef r3d_line_view_x_t boot_anim_view_t;
 
 static inline boot_anim_view_t
 boot_anim_view(int w, int h, uint32_t now_ms) {
@@ -136,42 +125,43 @@ boot_anim_view(int w, int h, uint32_t now_ms) {
      * so r3d_line_camera_view()'s shorter-axis fit is exactly half w; boot's
      * pixels must not move if that inequality ever changes. */
     const viewport_t viewport = {.width = w, .height = h, .quarter = 0};
-    boot_anim_view_t view = r3d_line_camera_view(camera, &st.space, viewport);
-    view.matrix = mat4f_mul(view.matrix, boot_anim_unit_scale());
-    return view;
+    const r3d_line_view_t view = r3d_line_camera_view(camera, &st.space, viewport);
+    return r3d_line_view_to_x(&view);
 }
 
 /* CAMERA space transform; boot_anim_project() refactored for z check. Q12
- * re/im, Q8 t; the view matrix turns them into meters. */
-static inline vec3f_t
+ * re/im and Q8 t convert exactly to Q16.16 meters: a Q12 value is 16 times
+ * its Q16 digits, and one Q8 unit of t climbs 132/512 / 256 meters, which is
+ * 66 Q16 digits. */
+static inline vec3x_t
 boot_anim_to_camera_space(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view) {
-    const vec3f_t p = {(float)re_q12, (float)t_q8, (float)im_q12};
+    const vec3x_t p = {re_q12 * 16, t_q8 * (BOOT_ANIM_SPIRAL_Q9 / 2), im_q12 * 16};
 
-    return r3d_to_camera_space(p, view);
+    return r3d_to_camera_space_x(p, view);
 }
 
 static inline void
 boot_anim_project(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view, int* screen_x,
                   int* screen_y) {
-    const vec3f_t p = boot_anim_to_camera_space(re_q12, im_q12, t_q8, view);
-    r3d_camera_to_screen(p, view, screen_x, screen_y);
+    const vec3x_t p = boot_anim_to_camera_space(re_q12, im_q12, t_q8, view);
+    r3d_camera_to_screen_x(p, view, screen_x, screen_y);
 }
 
 /* Draws if point is in front; checks visibility, avoids invalid coordinates. */
 static inline bool
 boot_anim_project_point(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view, int* screen_x,
                         int* screen_y) {
-    const vec3f_t p = boot_anim_to_camera_space(re_q12, im_q12, t_q8, view);
-    return r3d_project_point_cs(p, view, screen_x, screen_y);
+    const vec3x_t p = boot_anim_to_camera_space(re_q12, im_q12, t_q8, view);
+    return r3d_project_point_cs_x(p, view, screen_x, screen_y);
 }
 
-/* See r3d_project_segment_cs() for clipping. draw_curve() keeps points in
+/* See r3d_project_segment_cs_x() for clipping. draw_curve() keeps points in
  * camera space. */
 static inline bool
 boot_anim_project_segment(int32_t re0, int32_t im0, int32_t t0, int32_t re1, int32_t im1, int32_t t1,
                           const boot_anim_view_t* view, int* ax, int* ay, int* bx, int* by) {
-    return r3d_project_segment_cs(boot_anim_to_camera_space(re0, im0, t0, view),
-                                  boot_anim_to_camera_space(re1, im1, t1, view), view, ax, ay, bx, by);
+    return r3d_project_segment_cs_x(boot_anim_to_camera_space(re0, im0, t0, view),
+                                    boot_anim_to_camera_space(re1, im1, t1, view), view, ax, ay, bx, by);
 }
 
 /*
@@ -282,34 +272,41 @@ boot_anim_spline(boot_anim_pt_t c0, boot_anim_pt_t c1, boot_anim_pt_t c2, int32_
  * approximate: boot_anim_to_camera_space() is an affine map and this
  * spline's weights sum to a constant, so it commutes with this
  * combination exactly. */
-static inline vec3f_t
-boot_anim_spline_cs(vec3f_t c0, vec3f_t c1, vec3f_t c2, int32_t t_q12) {
+static inline vec3x_t
+boot_anim_spline_cs(vec3x_t c0, vec3x_t c1, vec3x_t c2, int32_t t_q12) {
     const int32_t u = BOOT_ANIM_ONE - t_q12;
     const int32_t w0 = (u * u) >> BOOT_ANIM_Q;
     const int32_t w2 = (t_q12 * t_q12) >> BOOT_ANIM_Q;
     const int32_t w1 = 2 * BOOT_ANIM_ONE - w0 - w2;
-    const float per_weight = 1.0F / (float)(2 * BOOT_ANIM_ONE);
 
-    return vec3f_add(vec3f_add(vec3f_scale(c0, (float)w0 * per_weight), vec3f_scale(c1, (float)w1 * per_weight)),
-                     vec3f_scale(c2, (float)w2 * per_weight));
+    /* int64: a camera-space coordinate has no known-small-range promise a raw
+     * curve-table value does. */
+    return (vec3x_t){
+        (int32_t)((((int64_t)w0 * c0.x) + ((int64_t)w1 * c1.x) + ((int64_t)w2 * c2.x)) >> (BOOT_ANIM_Q + 1)),
+        (int32_t)((((int64_t)w0 * c0.y) + ((int64_t)w1 * c1.y) + ((int64_t)w2 * c2.y)) >> (BOOT_ANIM_Q + 1)),
+        (int32_t)((((int64_t)w0 * c0.z) + ((int64_t)w1 * c1.z) + ((int64_t)w2 * c2.z)) >> (BOOT_ANIM_Q + 1)),
+    };
 }
 
+/* The chord's screen extent against `px`: the Manhattan length m of the two
+ * points, scaled as the projection scales it, compared without a divide. */
 static inline bool
-boot_anim_screen_chord_lt(vec3f_t a, vec3f_t c, const boot_anim_view_t* view, int32_t px) {
+boot_anim_screen_chord_lt(vec3x_t a, vec3x_t c, const boot_anim_view_t* view, int32_t px) {
     if (a.z <= view->near_z || c.z <= view->near_z) {
         return false;
     }
-    const float m = fabsf(a.x - c.x) + fabsf(a.y - c.y);
-    if (view->focal == 0.0F) {
-        return m * view->scale < (float)px;
+    const int64_t m = (int64_t)im_abs(a.x - c.x) + im_abs(a.y - c.y);
+    if (view->focal == 0) {
+        return m * view->scale < (int64_t)px * MATHX_ONE;
     }
-    return m * view->focal * view->scale < (float)px * (a.z < c.z ? a.z : c.z);
+    const int32_t zmin = a.z < c.z ? a.z : c.z;
+    return m * view->focal * view->scale < (int64_t)px * zmin * R3D_X_UNIT_ONE;
 }
 
 /* Do NOT subdivide if span ends within BOOT_ANIM_LOD_CHORD_PX. Uses
  * boot_anim_screen_chord_lt(). */
 static inline int
-boot_anim_curve_lod_steps(vec3f_t a, vec3f_t c, const boot_anim_view_t* view) {
+boot_anim_curve_lod_steps(vec3x_t a, vec3x_t c, const boot_anim_view_t* view) {
     return boot_anim_screen_chord_lt(a, c, view, BOOT_ANIM_LOD_CHORD_PX) ? 1 : BOOT_ANIM_SPLINE_STEPS;
 }
 
