@@ -44,8 +44,8 @@ shrinks or grows with it:
 ULTRA's 41,216-byte grid is the largest single allocation the sand app
 makes.
 
-The 322 KiB framebuffer lives entirely in PSRAM (`BOARD_FRAMEBUFFER_CAPS`,
-`board.h`), so it does not compete with the sand grid, or anything else,
+The 322 KiB framebuffer lives entirely in PSRAM (`MEMORY_PSRAM`,
+`util/memory.h`), so it does not compete with the sand grid, or anything else,
 for internal SRAM.
 
 The encoding stays one byte: a second byte at ULTRA would fit the internal
@@ -1074,7 +1074,7 @@ below it before the tree it belongs to can use any.
 
 ## Performance discipline
 
-Every number below came from `esp_timer_get_time()` on real hardware, via
+Every number below came from `timing_now_us()` on real hardware, via
 the device-only tests in `suite_sand_perf.c` (`#ifdef DEVICE_BUILD`), not
 estimated. A captured budget is a fact about one build on one board at one
 point in time; `docs/sand/Testing-Sand.md` is where the last full capture

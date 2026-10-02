@@ -148,7 +148,7 @@ static bool band_mode_active;
 /* On-screen framerate readout: main.c's own report_fps() only ever reaches
  * a serial console, so this is what lets a scene's own cost be seen with
  * nothing but the board itself. Windowed on dt_ms rather than
- * esp_timer_get_time() like report_fps() does, so this needs nothing beyond
+ * timing_now_us() like report_fps() does, so this needs nothing beyond
  * what render_lab_frame() is already handed. */
 #define FPS_WINDOW_MS 500
 static uint32_t fps_frame_count;

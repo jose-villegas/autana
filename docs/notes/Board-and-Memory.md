@@ -70,7 +70,7 @@ flowchart LR
     FB -->|"copied per strip"| DMA
 ```
 
-In full-framebuffer mode (`BOARD_FRAMEBUFFER_CAPS`, `board.h`) the
+In full-framebuffer mode (`MEMORY_PSRAM`, `util/memory.h`) the
 framebuffer is in PSRAM; band and indexed modes free it. How it reaches the
 panel is in [Gfx-and-Presentation.md](../Gfx-and-Presentation.md).
 `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps every allocation up to 64 KB
@@ -103,7 +103,8 @@ just `build/`. The checklist is in
 shares your production memory budget". Watch the heap figures above and a
 development build's `HEAPMARK` lines.
 
-Compare free and largest from the same pool, `heap_caps_*(MALLOC_CAP_DMA)`:
+Compare free and largest from the same pool, `memory_free_bytes()` and
+`memory_largest_block()` with `MEMORY_DMA`:
 `esp_get_free_heap_size()` adds a separate region and invents a fragmentation
 gap (see `check_memory()` in `launcher/main/boot/post.c`).
 

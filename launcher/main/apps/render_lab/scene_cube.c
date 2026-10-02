@@ -12,7 +12,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "render/r3d_line_camera.h"
@@ -21,6 +20,7 @@
 #include "render_lab_scene.h"
 #include "util/math/transformf.h"
 #include "util/math/vec2i.h"
+#include "util/memory.h"
 
 #define CUBE_DISTANCE       3.0F
 #define CAMERA_FOCAL_LENGTH 2.0F
@@ -319,7 +319,7 @@ scene_cube_enter(void) {
     camera_pose = (transformf_t)TRANSFORMF_IDENTITY;
 
     const size_t depth_bytes = sizeof(*band_depth) * (size_t)GFX_BAND_HEIGHT * GFX_WIDTH;
-    band_depth = heap_caps_malloc(depth_bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    band_depth = memory_alloc(depth_bytes, MEMORY_INTERNAL);
     if (band_depth == NULL) {
         ESP_LOGE(TAG, "no %u bytes of internal RAM for the depth plane: the scene stays blank", (unsigned)depth_bytes);
     }
@@ -346,7 +346,7 @@ scene_cube_frame_band(gfx_color_t* buf, int row0, int row1) {
 
 static void
 scene_cube_exit(void) {
-    heap_caps_free(band_depth);
+    memory_free(band_depth);
     band_depth = NULL;
 }
 

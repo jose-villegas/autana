@@ -15,15 +15,9 @@
 #include "ui/ridge_pose.h"
 #include "ui/ridge_theme.h"
 #include "util/frame_cost.h"
+#include "util/memory.h"
 #include "util/spring_line.h"
 #include "util/tune.h"
-
-#if defined(ESP_PLATFORM)
-#include "esp_heap_caps.h"
-#define RIDGE_ALLOC(bytes) heap_caps_malloc((bytes), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
-#else
-#define RIDGE_ALLOC(bytes) malloc(bytes)
-#endif
 
 TUNE_OWNER(ridge);
 TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
@@ -1124,7 +1118,7 @@ allocate_once(void) {
         return;
     }
     allocation_tried = true;
-    ridge = RIDGE_ALLOC(sizeof *ridge);
+    ridge = memory_alloc(sizeof *ridge, MEMORY_PSRAM);
     if (ridge == NULL) {
         return;
     }
