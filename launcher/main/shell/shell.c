@@ -308,14 +308,14 @@ run_console_navigation(const app_t** current, input_t* input, uint32_t dt_ms) {
     if (!console_navigation_take_request(&navigation, name, sizeof name)) {
         return false;
     }
-    const gesture_edge_t exit_edge = exit_edge_for_quarter(display_quarter_now());
+    const gesture_edge_t exit_edge = shell_exit_edge_for_quarter(display_quarter_now());
     if (navigation == CONSOLE_NAVIGATION_APPS) {
         console_list_apps(*current);
         return false;
     }
     if (navigation == CONSOLE_NAVIGATION_HOME) {
         if (*current != NULL) {
-            leave_app(current, input, exit_edge, dt_ms);
+            shell_leave_app(current, input, exit_edge, dt_ms);
             printf("HOME_OK\n");
             fflush(stdout);
             return true;
@@ -337,9 +337,9 @@ run_console_navigation(const app_t** current, input_t* input, uint32_t dt_ms) {
         return false;
     }
     if (*current != NULL) {
-        exit_app(current);
+        shell_exit_app(current);
     }
-    start_app(current, next);
+    shell_start_app(current, next);
     printf("OPEN_OK name=%s\n", next->name);
     fflush(stdout);
     return false;
@@ -376,7 +376,7 @@ run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms)
     report_gesture_completion();
     if (run_console_navigation(current, input, dt_ms)) {
         run_dev_frame_extras(input, *current);
-        present_unless_deferred(*current);
+        shell_present_unless_deferred(*current);
         return true;
     }
     /* The caller samples input before this runs on purpose: a held device
@@ -444,13 +444,13 @@ shell_run(void) {
         }
 #endif
 
-        step_app(&current, &input, dt_ms);
+        shell_step_app(&current, &input, dt_ms);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
         run_dev_frame_extras(&input, current);
 #endif
 
-        present_unless_deferred(current);
+        shell_present_unless_deferred(current);
 #if CONFIG_LAUNCHER_DEVELOPMENT
         report_fps(now_us, &fps_window_start, &frames);
 #endif
