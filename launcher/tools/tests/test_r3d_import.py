@@ -31,6 +31,8 @@ AMBIENT = '[ambient]\ncolor = [1.0, 1.0, 1.0]\nintensity = 0.1\n'
 TONEMAP = 'tonemap_white = 0.3\n'
 THIN_STEP = '[process.thin]\nmaterial = "m"\nkeep = 0.5\n'
 VISIBILITY_STEP = "[process.visibility]\nrounds = 2\n"
+PATH_VISIBILITY_STEP = '[process.visibility]\nsource = "camera_path"\nevery_ms = 100\nsize = [8, 6]\nmargin = 2\n'
+CAMERA_PATH = 'path = { tracks = "fly", node = "camera" }\n'
 LIGHT_STEP = "[process.light]\nray_offset = 0.5\ncolour_merge_step = 6\n"
 SIMPLIFY_STEP = '[process.simplify]\ndense_edge = 1.0\nprops = []\nprops_share = 0.3\nseal_seams = true\n'
 VARIANT = '[[variants]]\nname = "mesh"\n'
@@ -98,6 +100,16 @@ class SettingsTests(unittest.TestCase):
         for body in (VISIBILITY_STEP, LIGHT_STEP):
             with tempfile.TemporaryDirectory() as directory:
                 self.assertTrue(load_import_settings(write_import(directory, body=body)).scene_dependent)
+
+    def test_visibility_reads_its_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            region = load_import_settings(write_import(directory, body=VISIBILITY_STEP)).visibility
+            path = load_import_settings(write_import(directory, body=PATH_VISIBILITY_STEP)).visibility
+        self.assertEqual((region.source, region.rounds), ("camera_region", 2))
+        self.assertEqual((path.source, path.every_ms, path.size, path.samples, path.margin), ("camera_path", 100, (8, 6), 3, 2))
+        self.rejects("process.visibility.source", body='[process.visibility]\nsource = "navmesh"\nrounds = 2\n')
+        self.rejects("process.visibility", body='[process.visibility]\nsource = "camera_path"\nrounds = 2\n')
+        self.rejects("margin cannot be negative", body=PATH_VISIBILITY_STEP.replace("margin = 2", "margin = -1"))
 
     def test_a_seed_needs_a_step_that_draws_random_rays(self):
         self.rejects("process.seed", body="[process]\nseed = 3\n")
@@ -236,6 +248,17 @@ class SceneTests(unittest.TestCase):
         self.rejects("lights is required", self.lit_import, renderer())
         self.rejects("tonemap_white is required", self.lit_import, renderer(), AMBIENT)
         self.rejects("camera region is required", culled, renderer() + camera(region=False))
+
+    def test_path_visibility_needs_the_camera_path_not_its_region(self):
+        def culled(directory):
+            write_import(directory, body=PATH_VISIBILITY_STEP)
+
+        self.rejects("camera path is required", culled, renderer() + camera(region=False))
+        self.rejects("camera region is read by no placed mesh", culled, renderer() + camera(CAMERA_PATH))
+        with tempfile.TemporaryDirectory() as directory:
+            culled(directory)
+            scene = load_scene(write_scene(directory, renderer() + camera(CAMERA_PATH, region=False)))
+        self.assertEqual(scene.camera.component.path.tracks, "fly")
 
     def test_scene_settings_no_placed_mesh_reads_are_rejected(self):
         self.rejects("lights is read by no placed mesh", self.two_imports, renderer("a.import.toml"), AMBIENT)

@@ -129,6 +129,35 @@ def load_variant(value, process, where):
     return variant
 
 
+VISIBILITY_SOURCES = ("camera_region", "camera_path")
+
+
+def load_visibility(table):
+    """Where the camera can be, so what it can see. `camera_region` keeps
+    what any point of the scene camera's region box sees (`rounds` random
+    tries per triangle); `camera_path` keeps what any pose of the scene
+    camera's path sees at `size` pixels, sampled every `every_ms`, with
+    `samples` squared rays per pixel and the view widened by `margin`
+    pixels on each side."""
+    where = "process.visibility"
+    source = text(table.get("source", "camera_region"), f"{where}.source")
+    if source not in VISIBILITY_SOURCES:
+        raise SettingsError(f"{where}.source must be one of {', '.join(VISIBILITY_SOURCES)}")
+    if source == "camera_region":
+        check_keys(table, ("rounds",), where, optional=("source",))
+        return SimpleNamespace(source=source, rounds=count(table["rounds"], f"{where}.rounds"))
+    check_keys(table, ("every_ms", "size"), where, optional=("source", "samples", "margin"))
+    size = table["size"]
+    if not isinstance(size, list) or len(size) != 2:
+        raise SettingsError(f"{where}.size must be [width, height]")
+    margin = integer(table.get("margin", 0), f"{where}.margin")
+    if margin < 0:
+        raise SettingsError(f"{where}.margin cannot be negative")
+    return SimpleNamespace(source=source, every_ms=count(table["every_ms"], f"{where}.every_ms"),
+                           size=(count(size[0], f"{where}.size"), count(size[1], f"{where}.size")),
+                           samples=count(table.get("samples", 3), f"{where}.samples"), margin=margin)
+
+
 def load_process(process):
     """The opt-in steps: a step runs when its table is present."""
     check_keys(process, (), "process", optional=("seed", "alpha_mask", "visibility", "thin", "light", "simplify"))
@@ -137,8 +166,7 @@ def load_process(process):
         check_keys(process["alpha_mask"], ("keep_alpha",), "process.alpha_mask")
         steps.alpha_keep = number(process["alpha_mask"]["keep_alpha"], "process.alpha_mask.keep_alpha")
     if "visibility" in process:
-        check_keys(process["visibility"], ("rounds",), "process.visibility")
-        steps.visibility = SimpleNamespace(rounds=count(process["visibility"]["rounds"], "process.visibility.rounds"))
+        steps.visibility = load_visibility(process["visibility"])
     if "thin" in process:
         check_keys(process["thin"], ("material", "keep"), "process.thin")
         steps.thin = SimpleNamespace(material=text(process["thin"]["material"], "process.thin.material"),
@@ -370,13 +398,16 @@ def load_scene(path):
         camera=cameras[0] if cameras else None, region=region, lights=lights,
         tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None)
     lit = any(item.component.settings.light for item in renderers)
-    culled = any(item.component.settings.visibility for item in renderers)
+    sources = {item.component.settings.visibility.source for item in renderers if item.component.settings.visibility}
+    camera_path = cameras[0].component.path if cameras else None
     for name, present, needed in (("lights", bool(lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),
-                                  ("camera region", region is not None, culled)):
+                                  ("camera region", region is not None, "camera_region" in sources)):
         if needed and not present:
             raise SettingsError(f"scene {name} is required: a placed mesh has a step that reads it")
         if present and not needed:
             raise SettingsError(f"scene {name} is read by no placed mesh")
+    if "camera_path" in sources and camera_path is None:
+        raise SettingsError("scene camera path is required: a placed mesh keeps what the camera path sees")
     for item in renderers:
         if item.component.settings.scene_dependent and not item.identity:
             raise SettingsError(f"scene.objects {item.name!r}: a mesh with a scene-dependent step is baked where it "
