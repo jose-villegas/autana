@@ -86,17 +86,17 @@ intensity, shine on.
 
 A mesh whose import has a scene-dependent step reads the scene:
 
-- `process.light` reads the lights (at least one directional object, `[sky]`
+- `lighting.light` reads the lights (at least one directional object, `[sky]`
   or `[ambient]`) and `tonemap_white`;
-- `process.visibility` reads the camera's `region`, or its `path` for the
+- `visibility` reads the camera's `region`, or its `path` for the
   `camera_path` source.
 
 A scene must carry what a placed mesh reads, and may not carry what none
 reads. Baking a mesh reads the lights of the scene that requests it, so a mesh
 with a scene-dependent step belongs to one scene: two scenes may not bake the
 same output name, and a second scene that places it bakes its own variant under
-another name. A mesh with a scene-dependent step (`process.light` or
-`process.visibility`) is baked where it sits, so its object's transform must be
+another name. A mesh with a scene-dependent step (`lighting.light` or
+`visibility`) is baked where it sits, so its object's transform must be
 identity; a mesh without one may be placed anywhere and by many scenes.
 
 ## The scene table
