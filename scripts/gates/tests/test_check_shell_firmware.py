@@ -39,7 +39,7 @@ class ProblemsTest(unittest.TestCase):
             inputs.mkdir(parents=True)
             for name, text in zip(("touch", "buttons", "imu"), headers):
                 (inputs / f"{name}.h").write_text(text, encoding="utf-8")
-                (inputs / f"{name}.c").write_text('#include "esp_log.h"\n', encoding="utf-8")
+                (inputs / f"{name}.c").write_text('#include "esp_timer.h"\n', encoding="utf-8")
             if main_c is not None:
                 (root / "launcher/main/main.c").write_text(main_c, encoding="utf-8")
             return check_shell_firmware.problems(str(root))
@@ -50,14 +50,20 @@ class ProblemsTest(unittest.TestCase):
             "void f(input_t* in) { input_poll(in); timing_yield(); }\n"), [])
 
     def test_each_firmware_include_fails(self):
-        for header in ("esp_log.h", "esp_timer.h", "nvs_flash.h", "nvs.h", "freertos/task.h", "bsp/esp-bsp.h",
+        for header in ("esp_timer.h", "esp_err.h", "nvs_flash.h", "nvs.h", "freertos/task.h", "bsp/esp-bsp.h",
                        "driver/gpio.h", "input/touch.h", "input/buttons.h", "input/imu.h"):
             with self.subTest(header=header):
                 found = self.problems(f'#include "{header}"\n')
                 self.assertEqual(found, [f"launcher/main/main.c:1: includes {header}"])
 
     def test_an_angle_bracket_include_fails_too(self):
-        self.assertEqual(self.problems("#include <esp_log.h>\n"), ["launcher/main/main.c:1: includes esp_log.h"])
+        self.assertEqual(self.problems("#include <esp_timer.h>\n"), ["launcher/main/main.c:1: includes esp_timer.h"])
+
+    def test_logging_is_not_firmware_but_the_timer_beside_it_is(self):
+        logging = '#include "esp_log.h"\nvoid f(void) { ESP_LOGI(T, "x"); ESP_LOGW(T, "x"); ESP_LOGE(T, "x"); }\n'
+        self.assertEqual(self.problems(logging), [])
+        self.assertEqual(self.problems("long f(void) { return esp_timer_get_time(); }\n"),
+                         ["launcher/main/main.c:1: uses esp_timer_get_time"])
 
     def test_an_include_inside_a_conditional_fails(self):
         found = self.problems('#if CONFIG_X\n#include "esp_heap_caps.h"\n#endif\n')
@@ -67,7 +73,7 @@ class ProblemsTest(unittest.TestCase):
         self.assertEqual(self.problems('#include "input/imu_sample.h"\n#include "input/input.h"\n'), [])
 
     def test_a_firmware_prefix_call_fails(self):
-        for call in ("ESP_LOGI(TAG, 1)", "heap_caps_get_free_size(MALLOC_CAP_DMA)", "nvs_flash_init()",
+        for call in ("ESP_LOGD(TAG, 1)", "heap_caps_get_free_size(MALLOC_CAP_DMA)", "nvs_flash_init()",
                      "vTaskDelay(1)", "xTaskCreate(f)", "bsp_display_start()", "esp_timer_get_time()"):
             with self.subTest(call=call):
                 found = self.problems(f"void f(void) {{ {call}; }}\n")
@@ -142,7 +148,7 @@ class DriverDiscoveryTest(unittest.TestCase):
 
     def test_a_firmware_include_inside_a_comment_does_not_make_a_driver(self):
         root = self.tree({
-            "launcher/main/input/pure.c": '/* #include "esp_log.h" */\n',
+            "launcher/main/input/pure.c": '/* #include "esp_timer.h" */\n',
             "launcher/main/input/pure.h": "void pure_step(void);\n"})
         self.assertEqual(check_shell_firmware.driver_headers(root), [])
 
@@ -160,7 +166,7 @@ class CommandLineTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             (root / "launcher/main/input").mkdir(parents=True)
-            (root / "launcher/main/input/touch.c").write_text('#include "esp_log.h"\n', encoding="utf-8")
+            (root / "launcher/main/input/touch.c").write_text('#include "esp_timer.h"\n', encoding="utf-8")
             (root / "launcher/main/input/touch.h").write_text(TOUCH_H, encoding="utf-8")
             (root / "launcher/main/main.c").write_text(main_c, encoding="utf-8")
             script = pathlib.Path(check_shell_firmware.__file__)
@@ -181,23 +187,39 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(self.run_gate("int x;\n", "main.c").returncode, 2)
 
 
-class RealMainTest(unittest.TestCase):
-    def test_main_before_its_wiring_moved_still_fails(self):
-        """The gate against the file it was written for: a real main.c with
-        every kind of firmware use in it."""
-        fixture = pathlib.Path(__file__).parent / "fixtures" / "main_before_wiring.c.txt"
+SYNTHETIC_MAIN = """#include "esp_timer.h"
+#include "freertos/task.h"
+#include "input/touch.h"
+#include "esp_log.h"
+
+static const char* TAG = "shell";
+
+void
+app_main(void) {
+    nvs_flash_init();
+    void* p = heap_caps_malloc(8, MALLOC_CAP_DMA);
+    vTaskDelay(1);
+    touch_start();
+    ESP_LOGI(TAG, "logging is fine");
+}
+"""
+
+
+class SyntheticMainTest(unittest.TestCase):
+    def test_each_kind_of_violation_is_caught_and_logging_is_not(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             inputs = root / "launcher/main/input"
             inputs.mkdir(parents=True)
-            for name, text in (("touch", TOUCH_H), ("buttons", BUTTONS_H), ("imu", IMU_H)):
-                (inputs / f"{name}.h").write_text(text, encoding="utf-8")
-                (inputs / f"{name}.c").write_text('#include "esp_log.h"\n', encoding="utf-8")
-            (root / "launcher/main/main.c").write_text(fixture.read_text(encoding="utf-8"), encoding="utf-8")
+            (inputs / "touch.h").write_text(TOUCH_H, encoding="utf-8")
+            (inputs / "touch.c").write_text('#include "esp_timer.h"\n', encoding="utf-8")
+            (root / "launcher/main/main.c").write_text(SYNTHETIC_MAIN, encoding="utf-8")
             found = check_shell_firmware.problems(str(root))
-        self.assertGreater(len(found), 50)
-        self.assertTrue(any("includes esp_log.h" in line for line in found))
-        self.assertTrue(any("uses nvs_flash_init" in line for line in found))
+        for expected in ("includes esp_timer.h", "includes freertos/task.h", "includes input/touch.h",
+                         "uses nvs_flash_init", "uses heap_caps_malloc", "uses MALLOC_CAP_DMA", "uses vTaskDelay",
+                         "uses touch_start"):
+            self.assertTrue(any(line.endswith(expected) for line in found), expected)
+        self.assertFalse(any("esp_log" in line or "ESP_LOGI" in line for line in found))
 
 
 if __name__ == "__main__":

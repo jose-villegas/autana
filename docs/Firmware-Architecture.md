@@ -69,7 +69,7 @@ flowchart TB
         Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
     end
     subgraph R7["utilities"]
-        Util["util/<br/><i>fixed point, tween, jobs, tunables, time, settings, memory, log</i>"]
+        Util["util/<br/><i>fixed point, tween, jobs, tunables, time, settings, memory</i>"]
         Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
         Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
     end
@@ -95,12 +95,13 @@ flowchart TB
   folder, and is what the [Testing-Guide.md](Testing-Guide.md) relies on.
 - **The shell names no firmware.** `main.c` reaches the chip only through
   modules that own it: `input/input_shell.h` (`input_start`, `input_poll`,
-  `input_read_motion`), `display/display.h` (`display_start`,
-  `display_sample_orientation`, the system panel clock) and
-  `util/{timing,settings,memory,log}.h`. Each module's device half lives in a
+  `input_read_motion`), `display/display_shell.h` (`display_start`,
+  `display_sample_orientation`), `display/display.h` (the system panel clock)
+  and `util/{timing,settings,memory}.h`. Each module's device half lives in a
   `*_device.c` beside it and is compiled for the board only, so the files a
   host builds stay pure. `scripts/gates/check_shell_firmware.py` fails
-  `main.c` on any ESP-IDF, FreeRTOS, NVS, BSP or driver include or call.
+  `main.c` on any ESP-IDF, FreeRTOS, NVS, BSP or driver include or call,
+  logging (`esp_log.h`, `ESP_LOGE/W/I`) excepted.
 - **Generated sources are checked in** beside the code that uses them, each
   with a banner naming its regenerate command; `grep -rl "GENERATED FILE"`
   lists them, and the rules they follow are in

@@ -27,6 +27,7 @@
 #include "boot/post_ui.h"
 #include "build_variant.h"
 #include "display/display.h"
+#include "display/display_shell.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
 #include "input/gesture.h"
@@ -44,7 +45,6 @@
 #include "util/build_id.h"
 #include "util/frame_cost.h"
 #include "util/frame_watch.h"
-#include "util/log.h"
 #include "util/memory.h"
 #include "util/timing.h"
 
@@ -64,6 +64,8 @@
 #include "suites.h"
 #endif
 
+#include "esp_log.h"
+
 static const char* TAG = "shell";
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -78,7 +80,7 @@ static size_t app_8bit_free_before_enter;
  * loses it. */
 static void
 heap_mark(const char* where) {
-    log_info(TAG, "HEAPMARK %-18s free %6u largest %6u", where, (unsigned)memory_free_bytes(MEMORY_DMA),
+    ESP_LOGI(TAG, "HEAPMARK %-18s free %6u largest %6u", where, (unsigned)memory_free_bytes(MEMORY_DMA),
              (unsigned)memory_largest_block(MEMORY_DMA));
 }
 #else
@@ -228,7 +230,7 @@ queue_home_hint(gesture_edge_t edge) {
  * scrolling to launcher. */
 static void
 show_post_failures(void) {
-    log_error(TAG, "POST failed - showing report");
+    ESP_LOGE(TAG, "POST failed - showing report");
 
     /* No gravity reading has arrived this early, so the report is drawn at
      * the orientation the board is normally held at rather than at the
@@ -299,18 +301,18 @@ static int control_center_backdrop_quarter;
 
 static void
 exit_app(const app_t** current) {
-    log_info(TAG, "Leaving %s", (*current)->name);
+    ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
     scene_unload_all();
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const size_t internal_after_exit = memory_free_bytes(MEMORY_INTERNAL);
     const size_t eight_bit_after_exit = memory_free_bytes(MEMORY_8BIT);
     if (internal_after_exit < app_internal_free_before_enter) {
-        log_warn(TAG, "App %s kept %u internal heap bytes (other tasks can move this)", (*current)->name,
+        ESP_LOGW(TAG, "App %s kept %u internal heap bytes (other tasks can move this)", (*current)->name,
                  (unsigned)(app_internal_free_before_enter - internal_after_exit));
     }
     if (eight_bit_after_exit < app_8bit_free_before_enter) {
-        log_warn(TAG, "App %s kept %u 8-bit heap bytes (other tasks can move this)", (*current)->name,
+        ESP_LOGW(TAG, "App %s kept %u 8-bit heap bytes (other tasks can move this)", (*current)->name,
                  (unsigned)(app_8bit_free_before_enter - eight_bit_after_exit));
     }
 #endif
@@ -340,7 +342,7 @@ leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint3
 static void
 start_app(const app_t** current, const app_t* next) {
     *current = next;
-    log_info(TAG, "Starting %s", (*current)->name);
+    ESP_LOGI(TAG, "Starting %s", (*current)->name);
     system_navigation_init(&system_navigation);
     gfx_request_full_redraw();
     display_restore_system_state();
@@ -685,16 +687,16 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
         uint32_t points = 0, moved = 0;
         input_take_touch_sample_counts(&points, &moved);
         const double per_s = 1000000.0 / (double)since;
-        log_info(TAG, "%.1f fps, %.1f drawn/s, touch %.1f points/s %.1f moved/s", (double)*frames * per_s,
+        ESP_LOGI(TAG, "%.1f fps, %.1f drawn/s, touch %.1f points/s %.1f moved/s", (double)*frames * per_s,
                  (double)drawn * per_s, (double)points * per_s, (double)moved * per_s);
         static char cost[FRAME_COST_REPORT_MAX];
         static char counts[FRAME_COST_COUNTS_MAX];
         /* Before the report, which forgets the window the counts come from. */
         if (frame_cost_take_counts(counts, sizeof counts) > 0) {
-            log_info(TAG, "%s", counts);
+            ESP_LOGI(TAG, "%s", counts);
         }
         if (frame_cost_take_report(*frames, cost, sizeof cost) > 0) {
-            log_info(TAG, "ms/frame avg/worst: %s", cost);
+            ESP_LOGI(TAG, "ms/frame avg/worst: %s", cost);
         }
         *frames = 0;
         drawn = 0;
@@ -720,7 +722,7 @@ check_console_prefix_clashes(void) {
 
     const char** app_prefixes = malloc((size_t)app_count * sizeof(*app_prefixes));
     if (app_prefixes == NULL) {
-        log_error(TAG, "cannot check console prefixes: out of memory");
+        ESP_LOGE(TAG, "cannot check console prefixes: out of memory");
         while (1) {
             timing_sleep_ms(1000);
         }
@@ -738,12 +740,12 @@ check_console_prefix_clashes(void) {
     free(app_prefixes);
     switch (clash) {
         case CONSOLE_CLASH_NONE: return;
-        case CONSOLE_CLASH_SPACE: log_error(TAG, "console prefix '%s' contains a space", from); break;
+        case CONSOLE_CLASH_SPACE: ESP_LOGE(TAG, "console prefix '%s' contains a space", from); break;
         case CONSOLE_CLASH_LENGTH:
-            log_error(TAG, "console prefix '%s' plus a space does not fit CONSOLE_LINE_MAX", from);
+            ESP_LOGE(TAG, "console prefix '%s' plus a space does not fit CONSOLE_LINE_MAX", from);
             break;
         case CONSOLE_CLASH_VERB:
-        case CONSOLE_CLASH_APP: log_error(TAG, "console prefix '%s' clashes with '%s'", from, other); break;
+        case CONSOLE_CLASH_APP: ESP_LOGE(TAG, "console prefix '%s' clashes with '%s'", from, other); break;
     }
     while (1) {
         timing_sleep_ms(1000);
@@ -772,7 +774,7 @@ app_boot_init(void) {
     heap_mark("after sd probe");
 
     if (!display_start()) {
-        log_error(TAG, "Graphics failed to start; nothing more to do");
+        ESP_LOGE(TAG, "Graphics failed to start; nothing more to do");
         while (1) {
             timing_sleep_ms(1000);
         }
@@ -791,7 +793,7 @@ app_boot_init(void) {
 
 #if CONFIG_LAUNCHER_SELFTEST && CONFIG_LAUNCHER_SELFTEST_AUTORUN
     if (selftest_run() != 0) {
-        log_error(TAG, "self test reported failures");
+        ESP_LOGE(TAG, "self test reported failures");
     }
 #endif
 
@@ -828,7 +830,7 @@ run_pending_selftest_suite(void) {
     }
     const suite_run_t run = suites_run_request(request);
     if (!run.found) {
-        log_error(TAG, "no suite named '%s' is registered", run.name);
+        ESP_LOGE(TAG, "no suite named '%s' is registered", run.name);
     }
     suite_report_frame_watch();
     /* On its own line, so a harness knows the suite ended without having to
@@ -897,7 +899,7 @@ offer_console_line(const app_t* current) {
         return;
     }
 
-    log_info(TAG, "ignoring line: '%s'", line);
+    ESP_LOGI(TAG, "ignoring line: '%s'", line);
 }
 
 static void
@@ -1052,7 +1054,7 @@ app_main_loop(void) {
     for (const app_t* app = app_list(); app != NULL; app = app->next) {
         app_count++;
     }
-    log_info(TAG, "Ready, %d app%s registered", app_count, app_count == 1 ? "" : "s");
+    ESP_LOGI(TAG, "Ready, %d app%s registered", app_count, app_count == 1 ? "" : "s");
     /* Again, for a host that lost the port: after a PMIC cold restart, USB
      * Serial/JTAG enumerates only about 0.7 s into the new boot, after
      * app_boot_init()'s print. */

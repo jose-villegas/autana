@@ -5,9 +5,9 @@
 
 main.c is the shell: it starts the platform and runs the frame loop, and
 everything hardware-facing sits behind a module of its own (input/, display/,
-util/timing.h, util/settings.h, util/memory.h, util/log.h), each with a
-device half in a *_device.c file. A firmware call left in main.c is a second
-place that knows the chip, so this fails on
+util/timing.h, util/settings.h, util/memory.h), each with a device half in
+a *_device.c file. A firmware call left in main.c is a second place that
+knows the chip, so this fails on
 
   - an include of an ESP-IDF, FreeRTOS, NVS, BSP, driver, HAL or SoC header,
     or of a driver header under input/, and
@@ -19,8 +19,10 @@ A driver header is the header beside an input/*.c that itself includes a
 firmware header (touch.h, buttons.h, imu.h today), found by looking, so a
 new driver is covered the day it is added.
 
-Comments and string literals are not code. There is no exemption list: a
-reason for main.c to touch the firmware is a missing module, so add one.
+Logging is not firmware: esp_log.h and ESP_LOGE/W/I are carved out by the
+patterns themselves, not by a list. Comments and string literals are not
+code. There is no exemption list: a reason for main.c to touch the firmware
+is a missing module, so add one.
 """
 import pathlib
 import re
@@ -30,9 +32,9 @@ MAIN = "launcher/main/main.c"
 INPUT_DIR = "launcher/main/input"
 
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s*[<"]([^>"]+)[>"]')
-FIRMWARE_INCLUDE_RE = re.compile(r"^(esp_|nvs|freertos/|bsp/|driver/|hal/|soc/|rom/)")
+FIRMWARE_INCLUDE_RE = re.compile(r"^(esp_(?!log\.h$)|nvs|freertos/|bsp/|driver/|hal/|soc/|rom/)")
 FIRMWARE_NAME_RE = re.compile(
-    r"^(esp_|ESP_|nvs_|NVS_|heap_caps_|MALLOC_CAP_|bsp_|BSP_|vTask|xTask|xQueue|xSemaphore|xEvent|"
+    r"^(esp_|ESP_(?!LOG[EWI]$)|nvs_|NVS_|heap_caps_|MALLOC_CAP_|bsp_|BSP_|vTask|xTask|xQueue|xSemaphore|xEvent|"
     r"portMAX_DELAY$|pdMS_TO_TICKS$|pdTRUE$|pdFALSE$|pdPASS$)")
 
 IDENTIFIER_RE = re.compile(r"[A-Za-z_]\w*")
