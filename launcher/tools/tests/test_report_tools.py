@@ -159,8 +159,8 @@ class DeviceReportArgumentsTest(unittest.TestCase):
         self.run_report("out.md")
         [call] = self.device_calls()
         argv = call.split()
-        self.assertEqual(argv[:3], ["--owner", "device_report", "t"])
-        self.assertEqual(argv[3:6], ["--wait", "3600", "selftest"])
+        self.assertEqual(argv[:2], ["--owner", "device_report-t"])
+        self.assertEqual(argv[2:5], ["--wait", "3600", "selftest"])
         self.assertIn("--out", argv)
         self.assertIn("--project", argv)
         # #454 removed these from every command; a leftover here means
@@ -172,8 +172,8 @@ class DeviceReportArgumentsTest(unittest.TestCase):
         self.run_report("out.md", suite="run_gfx_suite")
         [call] = self.device_calls()
         argv = call.split()
-        self.assertEqual(argv[:3], ["--owner", "device_report", "t"])
-        self.assertEqual(argv[3:6], ["--wait", "3600", "suite"])
+        self.assertEqual(argv[:2], ["--owner", "device_report-t"])
+        self.assertEqual(argv[2:5], ["--wait", "3600", "suite"])
         self.assertIn("run_gfx_suite", argv)
         self.assertIn("--runs", argv)
         self.assertIn("--flash", argv)
@@ -183,7 +183,7 @@ class DeviceReportArgumentsTest(unittest.TestCase):
 
     def test_the_lock_owner_names_this_report_without_an_owner_flag(self):
         """Every autana call device_report_run makes starts with the global
-        `--owner "device_report <name>"`."""
+        `--owner device_report-<name>`."""
         env = dict(os.environ)
         script = (
             'report_name=owner-probe; report_dir="$1"; report_timeout=1; report_suite=""\n'
@@ -206,7 +206,7 @@ class DeviceReportArgumentsTest(unittest.TestCase):
                 cwd=directory, stdin=subprocess.DEVNULL, capture_output=True, text=True,
                 timeout=60, env=env)
             self.assertTrue(owner_file.read_text().startswith(
-                "--owner device_report owner-probe "))
+                "--owner device_report-owner-probe "))
 
     def test_anything_but_one_report_path_is_refused_before_any_device_call(self):
         for arguments in (("SERIAL1", "out.md"), ("SERIAL1",), ("--board",),
