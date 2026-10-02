@@ -13,6 +13,10 @@ set -eu
 TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 LAUNCHER_DIR=$(CDPATH= cd -- "$TOOLS_DIR/../.." && pwd)
 REPO_DIR=$(CDPATH= cd -- "$LAUNCHER_DIR/.." && pwd)
+PERF_COMPARE_AUTANA=$(command -v autana)
+export PERF_COMPARE_AUTANA
+PATH="$TOOLS_DIR/bin:$PATH"
+export PATH
 
 # shellcheck source=../revision_worktree.sh
 . "$LAUNCHER_DIR/tools/revision_worktree.sh"
