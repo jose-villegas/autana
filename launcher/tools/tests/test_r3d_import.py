@@ -13,7 +13,7 @@ from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d.import_settings import LIGHT_FIELDS, SettingsError, load_import_settings, load_scene  # noqa: E402
+from r3d.import_settings import LIGHT_FIELDS, SettingsError, load_import_settings, load_scene, variant_settings  # noqa: E402
 from r3d.scene_table import table_files, write_scene_table  # noqa: E402
 
 try:
@@ -216,6 +216,30 @@ class SettingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             load_import_settings(write_import(directory, body="[process]\nseed = 3\n" + VISIBILITY_STEP))
 
+    def test_indirect_light_needs_complete_nonnegative_settings(self):
+        self.rejects("process.light.indirect.bounces", body=LIGHT_STEP + "indirect = { bounces = -1, rays = 8, cache_samples = 1 }\n")
+        self.rejects("process.light.indirect.rays", body=LIGHT_STEP + "indirect = { bounces = 1, rays = 0, cache_samples = 1 }\n")
+        self.rejects("process.light.indirect.cache_samples", body=LIGHT_STEP + "indirect = { bounces = 1, rays = 8, cache_samples = 0 }\n")
+        self.rejects("process.light.indirect.cache_samples is required", body=LIGHT_STEP + "indirect = { bounces = 1, rays = 8 }\n")
+        with tempfile.TemporaryDirectory() as directory:
+            settings = load_import_settings(write_import(
+                directory, body=LIGHT_STEP + "indirect = { bounces = 2, rays = 8, cache_samples = 1 }\n"))
+        self.assertEqual((settings.light.indirect.bounces, settings.light.indirect.rays, settings.light.indirect.cache_samples),
+                         (2, 8, 1))
+
+    def test_a_variant_can_leave_the_indirect_light_out(self):
+        bounced = LIGHT_STEP + "indirect = { bounces = 2, rays = 8, cache_samples = 1 }\n"
+        output = '[output]\ndirectory = "."\n'
+        self.rejects("indirect can only be false", body=bounced + VARIANT + "indirect = true\n", output=output)
+        self.rejects("needs process.light.indirect", body=LIGHT_STEP + VARIANT + "indirect = false\n", output=output)
+        with tempfile.TemporaryDirectory() as directory:
+            settings = load_import_settings(write_import(
+                directory, body=bounced + VARIANT + "indirect = false\n" + VARIANT.replace("mesh", "lit"), output=output))
+        dark, lit = settings.variants
+        self.assertIsNone(variant_settings(settings, dark).light.indirect)
+        self.assertEqual(variant_settings(settings, lit).light.indirect.bounces, 2)
+        self.assertEqual(settings.light.indirect.bounces, 2, "the import's own settings are left alone")
+
     def test_variants_that_would_produce_the_same_mesh_are_rejected(self):
         variants = VARIANT + "triangles = 10\n" + VARIANT.replace("mesh", "other") + "triangles = 10\n"
         self.rejects("same mesh", body=SIMPLIFY_STEP + variants, output='[output]\ndirectory = "."\n')
@@ -364,6 +388,25 @@ class SceneTests(unittest.TestCase):
         self.rejects("lights is read by no placed mesh", self.two_imports, renderer("a.import.toml") + sun_object())
         self.rejects("tonemap_white is read by no placed mesh", self.two_imports, renderer("a.import.toml"), TONEMAP)
         self.rejects("camera region is read by no placed mesh", self.two_imports, renderer("a.import.toml") + camera())
+
+    def test_the_indirect_look_defaults_to_physical_and_is_validated_strictly(self):
+        def bounced(directory):
+            write_import(directory, body=LIGHT_STEP + "indirect = { bounces = 1, rays = 8, cache_samples = 1 }\n")
+
+        head = TONEMAP + AMBIENT
+        tuned_table = "[indirect]\nintensity = 2.5\nalbedo_boost = 1.5\n"
+        with tempfile.TemporaryDirectory() as directory:
+            bounced(directory)
+            plain = load_scene(write_scene(directory, renderer(), head))
+            tuned = load_scene(write_scene(directory, renderer(), head + tuned_table))
+        self.assertEqual((plain.indirect.intensity, plain.indirect.albedo_boost), (1.0, 1.0))
+        self.assertEqual((tuned.indirect.intensity, tuned.indirect.albedo_boost), (2.5, 1.5))
+        for pattern, table in (("scene.indirect.intensity must not be negative", "intensity = -1\n"),
+                               ("scene.indirect.albedo_boost must be positive", "albedo_boost = 0\n"),
+                               ("scene.indirect.intensity must be a number", 'intensity = "2"\n'),
+                               ("scene.indirect.gain is not a known setting", "gain = 2\n")):
+            self.rejects(pattern, bounced, renderer(), head + "[indirect]\n" + table)
+        self.rejects("indirect settings is read by no placed mesh", self.lit_import, renderer(), head + tuned_table)
 
     def test_a_scene_dependent_mesh_is_baked_where_it_sits(self):
         placed = renderer(transform="position = [1.0, 0.0, 0.0]\n")

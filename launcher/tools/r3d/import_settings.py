@@ -83,6 +83,13 @@ def count(value, where):
     return value
 
 
+def nonnegative_count(value, where):
+    value = integer(value, where)
+    if value < 0:
+        raise SettingsError(f"{where} must not be negative")
+    return value
+
+
 def colour_rgb(value, where):
     """A colour as 0xRRGGBB."""
     value = integer(value, where)
@@ -148,9 +155,15 @@ def load_fit(value, variant, where):
 
 
 def load_variant(value, process, where):
-    check_keys(value, ("name",), where, optional=("triangles", "face_samples", "visibility", "fit"))
+    check_keys(value, ("name",), where, optional=("triangles", "face_samples", "visibility", "fit", "indirect"))
     variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None, face_samples=None, visibility=None,
-                              fit=None)
+                              fit=None, indirect=True)
+    if "indirect" in value:
+        if boolean(value["indirect"], f"{where}.indirect"):
+            raise SettingsError(f"{where}.indirect can only be false: indirect light comes from process.light.indirect")
+        if not process.light or process.light.indirect is None:
+            raise SettingsError(f"{where}.indirect = false needs process.light.indirect to turn off")
+        variant.indirect = False
     if process.simplify:
         if "triangles" not in value:
             raise SettingsError(f"{where}.triangles is required when process.simplify is present")
@@ -168,6 +181,14 @@ def load_variant(value, process, where):
             raise SettingsError(f"{where}.fit needs a smooth variant of a lit import")
         variant.fit = load_fit(value["fit"], variant, f"{where}.fit")
     return variant
+
+
+def variant_settings(settings, variant):
+    """The settings `variant` is baked with: the import's, without indirect
+    light when the variant opts out of it."""
+    if variant is None or getattr(variant, "indirect", True) or not settings.light:
+        return settings
+    return SimpleNamespace(**{**vars(settings), "light": SimpleNamespace(**{**vars(settings.light), "indirect": None})})
 
 
 VISIBILITY_SOURCES = ("camera_region", "camera_path")
@@ -213,11 +234,19 @@ def load_process(process):
                                      keep=number(process["thin"]["keep"], "process.thin.keep"))
     if "light" in process:
         table = process["light"]
-        check_keys(table, ("ray_offset", "colour_merge_step"), "process.light", optional=("flat_sky_rays",))
+        check_keys(table, ("ray_offset", "colour_merge_step"), "process.light", optional=("flat_sky_rays", "indirect"))
         steps.light = SimpleNamespace(
             ray_offset=number(table["ray_offset"], "process.light.ray_offset"),
             colour_merge_step=count(table["colour_merge_step"], "process.light.colour_merge_step"),
-            flat_sky_rays=count(table["flat_sky_rays"], "process.light.flat_sky_rays") if "flat_sky_rays" in table else None)
+            flat_sky_rays=count(table["flat_sky_rays"], "process.light.flat_sky_rays") if "flat_sky_rays" in table else None,
+            indirect=None)
+        if "indirect" in table:
+            indirect = table["indirect"]
+            check_keys(indirect, ("bounces", "rays", "cache_samples"), "process.light.indirect")
+            steps.light.indirect = SimpleNamespace(
+                bounces=nonnegative_count(indirect["bounces"], "process.light.indirect.bounces"),
+                rays=count(indirect["rays"], "process.light.indirect.rays"),
+                cache_samples=count(indirect["cache_samples"], "process.light.indirect.cache_samples"))
     if "simplify" in process:
         table = process["simplify"]
         check_keys(table, ("dense_edge", "props", "props_share", "seal_seams"), "process.simplify")
@@ -262,7 +291,7 @@ def load_import_settings(path):
             raise SettingsError("variants names must be unique")
         shapes = {}
         for variant in variants:
-            shape = (variant.triangles, repr(variant.face_samples), repr(variant.visibility), repr(variant.fit))
+            shape = (variant.triangles, repr(variant.face_samples), repr(variant.visibility), repr(variant.fit), variant.indirect)
             if shape in shapes:
                 raise SettingsError(f"variants {shapes[shape]!r} and {variant.name!r} would produce the same mesh")
             shapes[shape] = variant.name
@@ -406,13 +435,25 @@ def load_object(value, base, where):
     return obj
 
 
+def load_indirect_look(table):
+    """The scene's `[indirect]` look controls; each defaults to the physical 1.0."""
+    check_keys(table, (), "scene.indirect", optional=("intensity", "albedo_boost"))
+    look = SimpleNamespace(intensity=number(table.get("intensity", 1.0), "scene.indirect.intensity"),
+                           albedo_boost=number(table.get("albedo_boost", 1.0), "scene.indirect.albedo_boost"))
+    if look.intensity < 0:
+        raise SettingsError("scene.indirect.intensity must not be negative")
+    if look.albedo_boost <= 0:
+        raise SettingsError("scene.indirect.albedo_boost must be positive")
+    return look
+
+
 def load_scene(path):
     """A scenario: objects (each a transform and one component), the sky and
     ambient settings, and the tone map the lit meshes use."""
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as source:
         values = tomllib.load(source)
-    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "sky", "ambient"))
+    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "sky", "ambient", "indirect"))
     objects = values["objects"]
     if not isinstance(objects, list) or not objects:
         raise SettingsError("scene.objects must be a non-empty array of tables")
@@ -438,11 +479,15 @@ def load_scene(path):
         path=path, objects=objects, renderers=[SimpleNamespace(settings=item.component.settings, variant=item.component.variant,
                                                                object=item) for item in renderers],
         camera=cameras[0] if cameras else None, region=region, lights=lights,
-        tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None)
+        tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None,
+        indirect=load_indirect_look(values.get("indirect", {})))
     lit = any(item.component.settings.light for item in renderers)
     sources = {visibility.source for visibility in (item.component.variant.visibility or item.component.settings.visibility
                                                     for item in renderers) if visibility}
     camera_path = cameras[0].component.path if cameras else None
+    bounced = any(item.component.settings.light and item.component.settings.light.indirect for item in renderers)
+    if "indirect" in values and not bounced:
+        raise SettingsError("scene indirect settings is read by no placed mesh")
     for name, present, needed in (("lights", bool(lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),
                                   ("camera region", region is not None, "camera_region" in sources)):
         if needed and not present:

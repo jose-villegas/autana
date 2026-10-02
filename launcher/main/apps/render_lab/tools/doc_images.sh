@@ -112,6 +112,63 @@ REFERENCE=$(sh launcher/tools/render/render_compare.sh --reference-frames \
     --reference-video "$W/fidelity-flat.avi" "$REFERENCE" --reference-scale 2 \
     --reference-sheet "$RENDER/bake-fidelity-sheet.png" --sheet-frames 2,4 --label-a "flat bake" > "$W/fidelity-compare.log"
 
+# The smooth bake with indirect light against the reference with the same
+# light, and bakes of the same import that differ only in what the scene says
+# about indirect light, each rendered at the same five poses. Each bake's
+# directory holds copies of the import and the scene, packed in place of the
+# committed mesh, so nothing committed changes.
+. scripts/lib/python.sh
+R3D_PYTHON=$(find_r3d_python "$PWD")
+"$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 5 --dt 5000 \
+    -o "$W/indirect-smooth.bmp" --video "$W/indirect-smooth.avi" 2> "$W/indirect-smooth.log"
+# variant_bake NAME BOUNCES SCENE-TABLE: bounces is `keep`, or `none` to take the
+# import's indirect field out; the table goes before the scene's first object.
+variant_bake() {
+    mkdir -p "$W/indirect-$1"
+    if [ "$2" = none ]; then
+        grep -v '^indirect = ' "$M/meshes/sponza.import.toml" > "$W/indirect-$1/sponza.import.toml"
+    else
+        cp "$M/meshes/sponza.import.toml" "$W/indirect-$1/sponza.import.toml"
+    fi
+    awk -v table="$3" '/^\[\[objects\]\]/ && !done { if (table != "") print table "\n"; done = 1 } { print }' \
+        "$M/meshes/sponza.scene.toml" > "$W/indirect-$1/sponza.scene.toml"
+    "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$W/indirect-$1/sponza.scene.toml" --mesh sponza > "$W/indirect-$1/bake.log" 2>&1
+    "$R3D_PYTHON" launcher/tools/r3d/build_pack.py -o "$W/indirect-$1/assets.bin" --replace "sponza=$W/indirect-$1/sponza.mesh" \
+        > "$W/indirect-$1/pack.log"
+    AUTANA_ASSET_PACK="$W/indirect-$1/assets.bin" "$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 5 --dt 5000 \
+        -o "$W/indirect-$1/frame.bmp" --video "$W/indirect-$1.avi" 2> "$W/indirect-$1/render.log"
+}
+variant_bake direct none ''
+variant_bake intensity-2 keep '[indirect]\nintensity = 2.0'
+variant_bake intensity-3 keep '[indirect]\nintensity = 3.0'
+variant_bake boost-2 keep '[indirect]\nalbedo_boost = 2.0'
+
+# Reference, direct-only bake and two-bounce bake at two poses, with each
+# bake's dE heatmap against the reference, then the places the two bakes differ
+# most with the reference above them.
+"$PYTHON" launcher/tools/render/render_compare.py --out "$W/indirect-compare.png" --crops 4 \
+    --reference-bakes "$REFERENCE" --reference-scale 2 --sheet-frames 2,4 \
+    --bake "direct light only" "$W/indirect-direct.avi" --bake "two bounces" "$W/indirect-smooth.avi" > "$W/indirect-compare.log"
+[ -f "$W/indirect-compare.crops.png" ] || { echo "doc_images.sh: indirect light has no crops, the bakes do not differ." >&2; exit 1; }
+cp "$W/indirect-compare.png" "$RENDER/bake-indirect-compare.png"
+cp "$W/indirect-compare.crops.png" "$RENDER/bake-indirect-crops.png"
+
+# The look controls: the physical bake, indirect intensity 2 and 3, and an
+# albedo boost of 2, last pose, beside the physical reference and, under it,
+# each look's own reference: the scene's [indirect] table reaches the reference
+# too, so the error against it is the bake's alone.
+look_reference() {
+    sh launcher/tools/render/render_compare.sh --reference-frames \
+        --reference "$W/indirect-$1/sponza.scene.toml" --poses "$W/fidelity-poses.txt" 2> "$W/indirect-$1/reference.log"
+}
+"$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/bake-indirect-look.png" \
+    --reference-bakes "$REFERENCE" --reference-scale 2 --sheet-frames 4 \
+    --bake "intensity 1" "$W/indirect-smooth.avi" --bake "intensity 2" "$W/indirect-intensity-2.avi" \
+    --bake "intensity 3" "$W/indirect-intensity-3.avi" --bake "albedo boost 2" "$W/indirect-boost-2.avi" \
+    --bake-reference "intensity 1" "$REFERENCE" --bake-reference "intensity 2" "$(look_reference intensity-2)" \
+    --bake-reference "intensity 3" "$(look_reference intensity-3)" --bake-reference "albedo boost 2" "$(look_reference boost-2)" \
+    > "$W/indirect-look.log"
+
 # Each fitted target against the same reference: its heatmap sheet at the
 # same two poses, and its last frame beside the reference, enlarged where they
 # differ most.

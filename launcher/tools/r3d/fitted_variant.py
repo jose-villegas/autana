@@ -62,6 +62,8 @@ def recipe_digest(settings, variant, scene):
         values = tomllib.load(source)
     entry = [dict(item) for item in values.pop("variants", []) if item.get("name") == variant.name][0]
     entry["fit"] = {key: value for key, value in entry["fit"].items() if key not in ("sha256", "recipe_sha256")}
+    if entry.pop("indirect", True) is False:
+        values.get("process", {}).get("light", {}).pop("indirect", None)
     tracks = hashlib.sha256(tracks_file(settings, scene).read_bytes()).hexdigest()
     return hashlib.sha256(json.dumps([values, entry, tracks], sort_keys=True).encode()).hexdigest()
 
@@ -84,8 +86,8 @@ def prepare(scene_path, scene, settings, variant, work):
     (work / "train_landscape.txt").write_text(poses_text(h, w, lens, near, training))
     (work / "coverage.txt").write_text(poses_text(*camera_path_poses(settings, scene, visibility, fit.coverage_every_ms)))
     for poses, reference in (("train.txt", "reference"), ("train_landscape.txt", "reference_landscape")):
-        reference_main([str(scene_path), "--import", str(settings.path), "--poses", str(work / poses), "--out",
-                        str(work / reference), "--normals"])
+        reference_main([str(scene_path), "--import", str(settings.path), "--variant", variant.name, "--poses",
+                        str(work / poses), "--out", str(work / reference), "--normals"])
     log(f"prepared {variant.name}: start of {len(geometry.tris)} triangles, {len(training)} training poses")
 
 
