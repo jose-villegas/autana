@@ -48,6 +48,7 @@ set(app_srcs
     "scene/scene.c"
     "scene/scene_draw.c"
     "scene/scene_shell.c"
+    "shell/shell.c"
     "util/frame_cost.c"
     "util/frame_watch.c"
     "util/build_id.c"
