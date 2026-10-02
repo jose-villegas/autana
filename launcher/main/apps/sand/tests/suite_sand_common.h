@@ -3,11 +3,8 @@
  * (suite_sand_*.c). Pure test infrastructure, not a suite of its own - no
  * SUITE_REGISTER here, nothing here is a test_* function.
  *
- * suite_sand.c grew past 32,000 lines before being split by topic into the
- * suite_sand_*.c files beside this one; this header is what lets them stay
- * separate translation units while still sharing the one fixture grid, the
- * one material-shorthand macros, and the handful of assertion helpers that
- * almost every test in the split calls.
+ * The suite_sand_*.c files use this header to share fixture grids, material
+ * shorthand macros and assertion helpers across translation units.
  *
  * Naming this suite_sand_common.h (not e.g. sand_test_support.h) matters:
  * launcher/main/CMakeLists.txt filters anything matching suite_*.c out of
@@ -72,9 +69,7 @@ extern sand_t wide;
 
 /* The real screen size. Must match app_sand.c - duplicated rather than
  * shared because sand.h has no business knowing the screen size (see the
- * note at the top of sand.h). Used throughout the scenes/perf/blast
- * portion of the split, well beyond the "on the real grid" section it was
- * first written for. */
+ * note at the top of sand.h). */
 #define REAL_W             184
 #define REAL_H             224
 
@@ -87,10 +82,8 @@ extern sand_t wide;
 #define CAP_W              (CONDUCT_REACH_TEST + 16)
 #define CAP_H              8
 
-/* Material shorthand. Variants are chosen deliberately, not just "8" -
- * see each one's own comment in suite_sand_common.c for what a careless
- * value there broke historically (stone/glass temperature, wood's burn
- * state, and so on). */
+/* Material shorthand. Variants cover the relevant temperature and burn
+ * states. */
 #define WATER              CELL_MAKE(MAT_WATER, 8)
 #define STONE              CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT)
 #define SAND               CELL_MAKE(MAT_SAND, 8)
@@ -197,11 +190,8 @@ bool region_has_root(const sand_t* g, int x0, int x1, int y0, int y1);
  * readout every landscape/water-slope sleeping test in the split polls. */
 int count_awake_blocks(const sand_t* g);
 
-/* A timed test must PIN sand_two_core_step_enabled() rather than trust
- * whatever an earlier suite or test left it at - see
- * test_the_soak_only_skip_matches_the_full_walks_grid_exactly's own history.
- * two_core_scope_begin() sets the mode and remembers what it replaced;
- * two_core_scope_end() puts that back. */
+/* Timed tests pin the shared two-core mode. two_core_scope_begin() restores
+ * the prior mode through two_core_scope_end(). */
 typedef struct {
     bool before;
 } two_core_scope_t;

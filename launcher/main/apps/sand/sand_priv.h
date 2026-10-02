@@ -2,35 +2,10 @@
  * sand_priv - internals shared across sand.c, sand_liquid.c, sand_gas.c,
  * sand_reactions.c, sand_plants.c and sand_impulse.c.
  *
- * Not a public header: nothing outside this module includes it, and nothing
- * in it is part of sand.h's API. It exists only because splitting the liquid
- * logic into its own file left a few things - marking a row dirty, finding
- * the row a move would land in - needed on both sides of that split.
- *
- * dest_row() and mark_rows() stay `static inline` here rather than becoming
- * ordinary functions defined once and declared extern: both sit on the
- * hottest path in the simulation - called per row, and per move,
- * respectively - and a call across translation units is not guaranteed to
- * inline the way a call within the same file is. A header of small inline
- * functions gives each .c file its own inlinable copy, which is what lets the
- * file split without also risking a performance regression for it, see the
- * frame-budget tests in suite_sand_perf.c, which is exactly what would catch it if
- * this ever stopped being true.
- *
- * THE CRITERION FOR WHAT ELSE LIVES HERE: not purity (this header is
- * app-internal and portable either way, so nothing structurally stops a
- * `static` helper from moving here) but whether a test needs to call it
- * directly. blocker_normal(), reflect_off_normal() and impulse_drag_of() are
- * here because the sand test suite (suite_sand_*.c) cannot reach a function
- * `static` inside a .c file, only one declared where it can include it.
- * can_impulse_enter(), can_impulse_enter_gravity_ward() and
- * impulse_gravity_candidates() stay `static` in sand_impulse.c, next to
- * step_impulses(), because nothing has yet needed to drive one in isolation
- * - despite being equally pure, and despite a documented history of their
- * own two call sites disagreeing about what they compute (see
- * impulse_gravity_candidates()'s own comment in sand_impulse.c),
- * exactly what a direct test would have caught sooner. Move a
- * helper here when something actually needs to test it directly.
+ * Not a public header: nothing in it is part of sand.h's API. Shared hot-path
+ * helpers stay `static inline` so every implementation file can inline them.
+ * Other helpers belong here only when several implementation files or the
+ * test suite need direct access; otherwise they stay `static` in their owner.
  */
 #pragma once
 
@@ -246,11 +221,8 @@ typedef enum {
     SAND_SPLIT_SLOTS,
 } sand_split_slot_t;
 
-/* Which passes the shipped step splits. Cross-flow is out: measured on the
- * board its split runs 0.87-1.27 of its own serial walk, mostly over 1.0, at
- * every layout, where the gravity sweep runs 0.65-0.80. The split path stays
- * - the per-row setup it repeats per chunk is the next thing to go, and that
- * may turn the number round. */
+/* Cross-flow stays serial because its per-chunk setup does not repay a
+ * second-core dispatch. */
 typedef enum {
     SAND_SPLIT_SWEEP = 1u << SAND_SPLIT_SLOT_SWEEP,
     SAND_SPLIT_CROSSFLOW = 1u << SAND_SPLIT_SLOT_CROSSFLOW,
@@ -277,19 +249,13 @@ extern unsigned sand_split_passes;
 /* Returns the mask it replaced, so a caller can put that back. */
 unsigned sand_split_passes_for_test(unsigned mask);
 
-/* Below this many awake cells, a pass gives a second core less than the four
- * passes of prepare, merge, dispatch and join cost to reach it: a settled
- * ULTRA board steps in 95 us on one core and 148 split, HIGH 56 and 110,
- * NORMAL 39 and 109. Whole chunks are charged, so this is a little over one
- * chunk of the widest cut any quality ships. */
+/* Below this many awake cells, prepare, merge, dispatch and join cost more
+ * than a second core saves. */
 #define SAND_CHUNK_SPLIT_MIN_AWAKE_CELLS    1600
 
-/* And the awake chunks have to divide: the span two lanes model must come
- * this far under walking them one after another, because walking a board as
- * chunks costs 1.09 to 1.28 of the row-major sweep before either lane has
- * done anything (QEMU --icount, ULTRA, every cut and scene measured). Under
- * this share, halving the work still pays for that; over it, a pour into a
- * settled board or a single falling column pays it for nothing. */
+/* The awake chunks also need balanced spans. Otherwise a pour into a settled
+ * board or a single falling column pays for a second core without halving
+ * the work. */
 #define SAND_CHUNK_SPLIT_SPAN_SHARE_PERCENT 75
 
 /* Whether this pass can split on this board: the pass is one that ships
@@ -1127,10 +1093,8 @@ latch_content_flags(sand_t* s, cell_t cell) {
     if (mat->kind == KIND_GAS) {
         s->may_have_gas = true;
     }
-    /* One OR, and deliberately no predicate: what this material IMPLIES is
-     * decided in sand_step_reactions() where build_reaction_tables()' table
-     * exists. Duplicating those predicates here is what this replaced, and it
-     * had already drifted into two copies. */
+    /* One OR, and deliberately no predicate: build_reaction_tables() owns
+     * what each material implies. */
     s->may_have_materials |= (uint16_t)(1u << CELL_MATERIAL(cell));
     if (cell_is_burning(cell)) {
         s->may_have_burning = true;
@@ -1650,9 +1614,7 @@ typedef struct {
     uint8_t flags;
 } burn_plan_t;
 
-/* A power-of-two stride keeps the dispatch loop's index a shift; the byte
- * array of stages this replaced indexed for free, and a multiply would hand
- * that saving straight back. */
+/* A power-of-two stride keeps the dispatch loop's index a shift. */
 _Static_assert(sizeof(burn_plan_t) == 4, "burn_plan_t must stay four bytes");
 
 /* Declared rather than left static so a suite can check the shipped plan
