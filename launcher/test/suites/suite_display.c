@@ -11,8 +11,11 @@
  * change.
  */
 
+#include <stdlib.h>
 #include "display/display.h"
+
 #include "suites.h"
+#include "test_cleanup.h"
 #include "unity.h"
 
 /* A magnitude comfortably past every threshold this module uses, so a vector
@@ -163,30 +166,43 @@ test_update_reports_true_only_on_an_actual_change(void) {
 
 /* the shell's sampler: cadence and reporting, with a scripted sensor */
 
-static imu_sample_t scripted_sample;
-static bool scripted_read_ok;
-static int scripted_reads;
+typedef struct {
+    imu_sample_t sample;
+    bool read_ok;
+    int reads;
+} scripted_t;
+
+/* Allocated per test: a static would be internal RAM the device image keeps. */
+static scripted_t* scripted;
 
 static bool
 scripted_motion(imu_sample_t* out) {
-    scripted_reads++;
-    if (!scripted_read_ok) {
+    scripted->reads++;
+    if (!scripted->read_ok) {
         return false;
     }
-    *out = scripted_sample;
+    *out = scripted->sample;
     return true;
 }
 
 static void
 script_gravity(int gx, int gy) {
-    scripted_sample = (imu_sample_t){.ax = (int16_t)gy, .ay = (int16_t)-gx};
+    scripted->sample = (imu_sample_t){.ax = (int16_t)gy, .ay = (int16_t)-gx};
+}
+
+static void
+end_scripted_sampler(void) {
+    free(scripted);
+    scripted = NULL;
 }
 
 static void
 begin_scripted_sampler(display_orientation_t* o) {
+    scripted = calloc(1, sizeof *scripted);
+    TEST_ASSERT_NOT_NULL(scripted);
+    suite_set_test_cleanup(end_scripted_sampler);
     display_orientation_init(o);
-    scripted_read_ok = true;
-    scripted_reads = 0;
+    scripted->read_ok = true;
     script_gravity(-STRONG, 0);
 }
 
@@ -196,7 +212,7 @@ test_the_sampler_starts_landscape_and_the_first_call_samples(void) {
     begin_scripted_sampler(&o);
     TEST_ASSERT_EQUAL_INT(DISPLAY_DEFAULT_QUARTER, display_quarter(&o.display));
     TEST_ASSERT_FALSE(display_orientation_sample(&o, 0, scripted_motion));
-    TEST_ASSERT_EQUAL_INT(1, scripted_reads);
+    TEST_ASSERT_EQUAL_INT(1, scripted->reads);
 }
 
 void
@@ -206,22 +222,22 @@ test_the_sampler_waits_for_its_deadline_and_samples_exactly_at_it(void) {
     display_orientation_sample(&o, 0, scripted_motion);
 
     display_orientation_sample(&o, DISPLAY_SAMPLE_MS * 1000 - 1, scripted_motion);
-    TEST_ASSERT_EQUAL_INT(1, scripted_reads);
+    TEST_ASSERT_EQUAL_INT(1, scripted->reads);
     display_orientation_sample(&o, DISPLAY_SAMPLE_MS * 1000, scripted_motion);
-    TEST_ASSERT_EQUAL_INT(2, scripted_reads);
+    TEST_ASSERT_EQUAL_INT(2, scripted->reads);
 }
 
 void
 test_a_failed_read_still_moves_the_deadline(void) {
     display_orientation_t o;
     begin_scripted_sampler(&o);
-    scripted_read_ok = false;
+    scripted->read_ok = false;
 
     TEST_ASSERT_FALSE(display_orientation_sample(&o, 0, scripted_motion));
     TEST_ASSERT_FALSE(display_orientation_sample(&o, DISPLAY_SAMPLE_MS * 500, scripted_motion));
-    TEST_ASSERT_EQUAL_INT(1, scripted_reads);
+    TEST_ASSERT_EQUAL_INT(1, scripted->reads);
     display_orientation_sample(&o, DISPLAY_SAMPLE_MS * 1000, scripted_motion);
-    TEST_ASSERT_EQUAL_INT(2, scripted_reads);
+    TEST_ASSERT_EQUAL_INT(2, scripted->reads);
 }
 
 void

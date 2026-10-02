@@ -7,7 +7,7 @@
 #include "nvs_flash.h"
 #include "util/settings_policy.h"
 
-static const char* TAG = "settings";
+static const char TAG[] = "settings";
 
 static bool
 store_ready(void) {

@@ -127,7 +127,6 @@ $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/boot_anim_tracks_generated.c
 $MAIN_DIR/boot/post_layout.c
 $MAIN_DIR/util/job.c
-$MAIN_DIR/util/log_device.c
 $MAIN_DIR/util/settings_policy.c
 $MAIN_DIR/anim/anim_track.c
 $MAIN_DIR/asset/asset_pack.c
