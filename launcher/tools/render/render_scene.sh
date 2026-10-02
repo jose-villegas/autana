@@ -161,9 +161,6 @@ render_scene_build() {
     done
 
     _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c $_rs_tools/render/render_watch.c"
-    # gfx.c places its buffers through memory.h, over the plain heap: a render
-    # needs them to exist, not to fit the board's budget.
-    _rs_files="$_rs_files $_rs_launcher/main/util/memory.c $_rs_launcher/test/heap_plain.c"
     for _rs_src in $scene_sources; do
         _rs_files="$_rs_files $_rs_launcher/$_rs_src"
     done
