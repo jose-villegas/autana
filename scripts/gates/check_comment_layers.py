@@ -57,12 +57,12 @@ def app_names(root="."):
 def name_pattern(names):
     # Boundaries exclude only [A-Za-z0-9], not underscore, so a name inside a
     # compound identifier like `app_sand.c` or `sand_ui_step` still matches.
-    spelled = [re.escape(n).replace("_", r"(?:\s+|[_-])?") for n in names]
+    spelled = [re.escape(n).replace("_", r"(?:\s+|[_-]|%5[fF]|%2[dD])?") for n in names]
     return re.compile(r"(?<![A-Za-z0-9])(" + "|".join(spelled) + r")(?![A-Za-z0-9])", re.I)
 
 
 def canonical(hit, names):
-    flat = re.sub(r"[\s_-]+", "", hit.lower())
+    flat = re.sub(r"[\s_-]+|%5f|%2d", "", hit.lower())
     return next(n for n in names if n.replace("_", "") == flat)
 
 

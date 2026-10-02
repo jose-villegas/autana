@@ -51,7 +51,7 @@ canonicalizes triangle order and the latter uses the import file's fixed seed.
 **The `seal_seams` import option.** `simplify(seal_seams=True)`, off by default,
 is another way to import the same mesh, with fewer empty pixel-sized spots at
 the price of frame time; what it does and costs is in
-[Mesh-Import.md](../../../docs/render/Mesh-Import.md#sealing-seams). An import turns it on with `seal_seams = true` in `[process.simplify]`.
+[Mesh-Import.md](../../../docs/render/Mesh-Import.md#sealing-seams). An import turns it on with `seal_seams = true` in `[geometry.simplify]`.
 
 `mesh_import.py` is the shared full-import command. Each import file, the
 scene file that places it and the `.mesh` it bakes live in the app's `meshes/`
@@ -192,6 +192,29 @@ in landscape so the fit holds the panel either way up. `fit` prunes to
 bit-identical, the GPU's sums being unordered, so the recipe pins the mesh
 that was committed.
 
+### Budget sweep
+
+`fitted_variant.py sweep` remakes and scores a fitted recipe at several
+triangle budgets and cost weights, one GPU fit at a time:
+
+```sh
+$E/bin/python launcher/tools/r3d/fitted_variant.py sweep SCENE.scene.toml --variant NAME \
+    --budgets 4000,6000,8672 --cost-weights 0,0.1 --out scratch/sweep
+```
+
+The sweep prepares one shared start and reference set for the scene, variant
+lighting and poses, then each point fits the recipe with only its budget and
+cost weight changed, scores the held-out references, and predicts the
+held-out path's board-render frame time with
+`board_cost_weights.txt`. `--board-ms` accepts optional board readings in
+budget then cost-weight order. `--smoke` uses a few fit steps per point.
+Finished point records let a later invocation resume without rerunning them.
+The output directory contains `sweep.csv` and `pareto.png`.
+
+The front joins points for which no other point is no slower and no less
+accurate. Its knee is the front point with the greatest perpendicular distance
+from the chord between the front's end points after both axes are normalized.
+
 ## Cost-aware fit
 
 These stages spend a triangle budget where the camera looks, fit geometry
@@ -199,7 +222,7 @@ as well as colour, and weigh appearance against frame time.
 
 | Stage | What it does | Where |
 |---|---|---|
-| Path visibility | The import's `process.visibility` with `source = "camera_path"` keeps only source triangles a ray from some pose of the camera's path lands on, before lighting and simplification, so the budget goes to surfaces the path shows | `light.visible_from_path`, [Mesh-Import.md](../../../docs/render/Mesh-Import.md#import-file) |
+| Path visibility | The import's `visibility` with `source = "camera_path"` keeps only source triangles a ray from some pose of the camera's path lands on, before lighting and simplification, so the budget goes to surfaces the path shows | `light.visible_from_path`, [Mesh-Import.md](../../../docs/render/Mesh-Import.md#import-file) |
 | Pruning | `--budget N` draws every pose of `--coverage-poses` (the training poses when omitted) and counts the pixels each triangle shows; triangles no pose shows go first, then those showing fewest, down to N. Simplifying to more than N and pruning back puts the triangles where they show | `appearance_simplify.coverage`, `prune` |
 | Cost term | `--cost-model board_cost_weights.txt --cost-weight L` adds L dE76 per predicted millisecond to the loss: the model's drawn-triangle, row and pixel terms, differentiable in the vertex positions | `appearance_simplify.predicted_ms`, `cost_model.triangle_terms` |
 | Normal term | `--normal-weight L` adds L times the mean L1 distance between the mesh's interpolated vertex normals and the reference's normal buffer (`reference_render.py --normals`, `NNNN.normal.npy` beside each image) where both cover a pixel; `--score` fits nothing and prints the start's mean normal angle, and with `--angle-dir` writes each pose's per-pixel angle for `render_compare.py --angle-column` | `appearance_simplify.normal_l1`, `normal_error` |
