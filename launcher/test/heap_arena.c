@@ -518,12 +518,11 @@ __wrap_realloc(void* ptr, size_t size) {
     return grown;
 }
 
-/* heap_caps_* models the board's two pools (board.h's BOARD_FRAMEBUFFER_CAPS,
- * the sdkconfig's CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL). An explicit
- * MALLOC_CAP_SPIRAM/_INTERNAL/_DMA request never spills into the other pool
- * on failure: that spill is the device-only failure this exists to catch.
- * A bare MALLOC_CAP_8BIT/_DEFAULT is the one path with a fallback, since
- * ALWAYSINTERNAL is itself a fallback rule on the device. */
+/* heap_caps_* models the board's internal and PSRAM pools. An explicit
+ * MALLOC_CAP_SPIRAM/_INTERNAL/_DMA request never spills into the other pool:
+ * that spill is the device-only failure this exists to catch. A bare
+ * MALLOC_CAP_8BIT/_DEFAULT may, as CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL does
+ * on the device. */
 
 static int
 caps_matches_internal(uint32_t caps) {

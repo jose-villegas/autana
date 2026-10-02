@@ -117,7 +117,7 @@ flowchart TB
 ### 1. There is exactly one framebuffer
 
 368 × 448 × 2 bytes = **322 KiB**, allocated in PSRAM
-(`BOARD_FRAMEBUFFER_CAPS` in `board.h`), so it does not count against the
+(`MEMORY_PSRAM` in `util/memory.h`), so it does not count against the
 internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)). There
 is room in PSRAM for a second one and no time for it: a per-frame catch-up
 copy between two PSRAM buffers measured 6-15 ms, a large share of a frame,
