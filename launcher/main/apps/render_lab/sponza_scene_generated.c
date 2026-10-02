@@ -30,7 +30,7 @@ static const scene_renderer_def_t sponza_scene_renderers[] = {
 static const r3d_scene_path_t sponza_scene_camera_path = {.clip = &flythrough_clip, .translation = &flythrough_camera_translation, .rotation = &flythrough_camera_rotation};
 
 static const scene_camera_def_t sponza_scene_cameras[] = {
-    {0, {.half_fov_short_tan = 0.62F, .near_z = 6.0F, .placement = NULL, .path = &sponza_scene_camera_path}},
+    {0, {.half_fov_short_tan = 0.62F, .near_z = 6.0F, .placement = NULL, .path = &sponza_scene_camera_path}, 0x9CC0E6},
 };
 
 const scene_def_t sponza_scene = {
@@ -42,8 +42,6 @@ const scene_def_t sponza_scene = {
     .transforms = sponza_scene_transforms,
     .renderers = sponza_scene_renderers,
     .cameras = sponza_scene_cameras,
-    .background_rgb = 0x9CC0E6,
-    .has_background = true,
 };
 
 SCENE_REGISTER(sponza_scene)

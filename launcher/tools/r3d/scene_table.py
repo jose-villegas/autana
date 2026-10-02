@@ -103,7 +103,8 @@ def table_source(scene, banner):
         lines += [f"static const scene_camera_def_t {name}_cameras[] = {{",
                   f"    {{{index[camera.name]}, {{.half_fov_short_tan = {real(component.half_fov_short_tan)}, "
                   f".near_z = {real(component.near_z)}, .placement = NULL, "
-                  f".path = {'&' + name + '_' + camera.name + '_path' if path else 'NULL'}}}}},",
+                  f".path = {'&' + name + '_' + camera.name + '_path' if path else 'NULL'}}}, "
+                  f"0x{component.background:06X}}},",
                   "};", ""]
     lines += [f"const scene_def_t {name} = {{",
               f'    .name = "{table_scene_name(scene)}",',
@@ -114,8 +115,6 @@ def table_source(scene, banner):
               f"    .transforms = {name}_transforms,",
               f"    .renderers = {name}_renderers,",
               f"    .cameras = {name + '_cameras' if camera else 'NULL'},",
-              *([f"    .background_rgb = 0x{scene.background:06X},", "    .has_background = true,"]
-                if scene.background is not None else []),
               "};", "", f"SCENE_REGISTER({name})", ""]
     return "\n".join(lines)
 

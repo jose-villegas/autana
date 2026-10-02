@@ -83,11 +83,11 @@ def count(value, where):
     return value
 
 
-def background(value):
-    """The colour of a pixel no mesh covers, 0xRRGGBB."""
-    value = integer(value, "scene.background")
+def colour_rgb(value, where):
+    """A colour as 0xRRGGBB."""
+    value = integer(value, where)
     if not 0 <= value <= 0xFFFFFF:
-        raise SettingsError("scene.background must be 0xRRGGBB")
+        raise SettingsError(f"{where} must be 0xRRGGBB")
     return value
 
 
@@ -278,9 +278,10 @@ def load_light(component, rotation, where):
 
 
 def load_camera(component, where):
-    check_keys(component, ("half_fov_short_tan", "near_z"), where, optional=("region", "path"))
+    check_keys(component, ("half_fov_short_tan", "near_z"), where, optional=("region", "path", "background"))
     camera = SimpleNamespace(half_fov_short_tan=number(component["half_fov_short_tan"], f"{where}.half_fov_short_tan"),
-                             near_z=number(component["near_z"], f"{where}.near_z"), region=None, path=None)
+                             near_z=number(component["near_z"], f"{where}.near_z"), region=None, path=None,
+                             background=colour_rgb(component.get("background", 0), f"{where}.background"))
     if "region" in component:
         region = component["region"]
         check_keys(region, ("min", "max"), f"{where}.region")
@@ -350,7 +351,7 @@ def load_scene(path):
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as source:
         values = tomllib.load(source)
-    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "background", "sky", "ambient"))
+    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "sky", "ambient"))
     objects = values["objects"]
     if not isinstance(objects, list) or not objects:
         raise SettingsError("scene.objects must be a non-empty array of tables")
@@ -376,8 +377,7 @@ def load_scene(path):
         path=path, objects=objects, renderers=[SimpleNamespace(settings=item.component.settings, variant=item.component.variant,
                                                                object=item) for item in renderers],
         camera=cameras[0] if cameras else None, region=region, lights=lights,
-        tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None,
-        background=background(values["background"]) if "background" in values else None)
+        tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None)
     lit = any(item.component.settings.light for item in renderers)
     culled = any(item.component.settings.visibility for item in renderers)
     for name, present, needed in (("lights", bool(lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),

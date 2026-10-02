@@ -133,9 +133,8 @@ def device_picture(linear, covered, tonemap_white, background):
     background colour in proportion to what each pixel leaves uncovered, then
     RGB565-quantised."""
     lit = to_srgb8(linear, tonemap_white).astype(float)
-    if background is not None:
-        colour = np.array([background >> 16, (background >> 8) & 255, background & 255], dtype=float)
-        lit = lit * covered[..., None] + colour * (1.0 - covered[..., None])
+    colour = np.array([background >> 16, (background >> 8) & 255, background & 255], dtype=float)
+    lit = lit * covered[..., None] + colour * (1.0 - covered[..., None])
     return expand_565(np.round(lit).astype(np.uint8))
 
 
@@ -184,8 +183,9 @@ def main(argv=None):
         parser.error(str(error))
     for index, pose in enumerate(poses):
         linear, covered = trace(source, settings, scene, pose, width, height, lens, args.samples)
-        np.save(out / ("%03d.linear.npy" % index), linear)
-        Image.fromarray(device_picture(linear, covered, scene.tonemap_white, scene.background)).save(out / ("%03d.png" % index))
+        np.save(out / ("%04d.linear.npy" % index), linear)
+        picture = device_picture(linear, covered, scene.tonemap_white, scene.camera.component.background)
+        Image.fromarray(picture).save(out / ("%04d.png" % index))
     return 0
 
 
