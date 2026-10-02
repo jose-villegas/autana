@@ -8,10 +8,15 @@ import numpy as np
 
 def read_poses(path):
     """Read a track sampler pose file as (width, height, lens, near, poses)."""
+    return parse_poses(pathlib.Path(path).read_text())
+
+
+def parse_poses(text):
+    """read_poses for the file's text."""
     width = height = None
     lens = near = None
     poses = []
-    for line in pathlib.Path(path).read_text().splitlines():
+    for line in text.splitlines():
         fields = line.split()
         if not fields:
             continue
@@ -63,12 +68,8 @@ def sample_camera_path(tracks_source, tracks_name, node, every_ms, width, height
     """The poses of a baked camera track, every `every_ms` over its clip, as
     read_poses returns them; built and run by tools/anim/sample_tracks.sh."""
     import subprocess
-    import tempfile
 
     done = subprocess.run(["sh", SAMPLE_TRACKS.as_posix(), "--tracks", f"{pathlib.Path(tracks_source).as_posix()}:{tracks_name}",
                            "--every", str(every_ms), "--poses", node, str(width), str(height), repr(lens), repr(near)],
                           capture_output=True, text=True, check=True)
-    with tempfile.TemporaryDirectory() as directory:
-        path = pathlib.Path(directory) / "poses.txt"
-        path.write_text(done.stdout)
-        return read_poses(path)
+    return parse_poses(done.stdout)

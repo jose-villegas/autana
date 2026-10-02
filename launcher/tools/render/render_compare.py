@@ -98,14 +98,23 @@ def _linear_rgb(picture):
     return rgb**GAMMA
 
 
+def lab(xp, rgb, floor=0.0):
+    """CIELAB (D65) of gamma-encoded 0..1 colours, channels last, with `xp`
+    NumPy or PyTorch. `floor` clamps the colours first, which keeps a
+    gradient finite at black."""
+    if floor:
+        rgb = xp.clip(rgb, floor, 1.0)
+    as_array = np.asarray if xp is np else (lambda values: xp.as_tensor(values, dtype=rgb.dtype, device=rgb.device))
+    scaled = rgb**GAMMA @ as_array(SRGB_TO_XYZ).T / as_array(D65_WHITE)
+    delta = 6 / 29
+    cube_root = np.cbrt(scaled) if xp is np else xp.clip(scaled, delta**3, None) ** (1.0 / 3.0)
+    f = xp.where(scaled > delta**3, cube_root, scaled / (3 * delta**2) + 4 / 29)
+    return xp.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])], -1)
+
+
 def _lab(picture):
     """CIELAB (D65) from this project's gamma-encoded RGB images."""
-    rgb = _linear_rgb(picture)
-    xyz = rgb @ np.array(SRGB_TO_XYZ).T
-    scaled = xyz / np.array(D65_WHITE)
-    delta = 6 / 29
-    f = np.where(scaled > delta**3, np.cbrt(scaled), scaled / (3 * delta**2) + 4 / 29)
-    return np.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])], axis=2)
+    return lab(np, np.asarray(picture.convert("RGB"), dtype=float) / 255.0)
 
 
 def delta_e76(a, b):

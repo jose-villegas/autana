@@ -3,11 +3,13 @@
 weights fitted to board frame times.
 
     python launcher/tools/r3d/cost_model.py features MESH_mesh_generated.c --poses POSES
-    python launcher/tools/r3d/cost_model.py fit TABLE
+    python launcher/tools/r3d/cost_model.py fit WEIGHTS
     python launcher/tools/r3d/cost_model.py predict MESH_mesh_generated.c --poses POSES --weights WEIGHTS
 
-TABLE has one `ms feature...` row per measured frame, and fit prints the
-WEIGHTS predict reads. POSES are at the board's render size.
+WEIGHTS is a weights file such as board_cost_weights.txt: a `feature` row
+naming the columns, a `weight` row, and the `frame LABEL POSE MS feature...`
+rows the weights were fitted to. fit refits the frames and prints the weight
+row. POSES are at the board's render size.
 
     ms = constant + per_submitted * triangles of the clusters in view
          + per_drawn * drawn triangles + per_row * triangle rows
@@ -86,7 +88,37 @@ def fit(rows, ms):
 
 
 def predict(weights, rows):
+    """Milliseconds per feature row; `weights` a dict by FEATURES name or a
+    sequence in FEATURES order."""
+    if isinstance(weights, dict):
+        weights = [weights[name] for name in FEATURES]
     return np.asarray(rows, dtype=float) @ np.asarray(weights, dtype=float)
+
+
+def variable_ms(weights, drawn, rows, pixels):
+    """The part of the prediction moving vertices can change: the drawn
+    triangles, their rows and their pixels, from triangle_terms' arrays,
+    NumPy or PyTorch."""
+    return weights["drawn"] * drawn.sum() + weights["rows"] * rows.sum() + weights["pixels"] * pixels.sum()
+
+
+def load(path):
+    """(weights by FEATURES name, frame rows, their ms, their labels) from a
+    weights file; the file must name FEATURES, in order."""
+    weights, rows, ms, labels = None, [], [], []
+    for line in pathlib.Path(path).read_text().splitlines():
+        fields = line.split()
+        if not fields or fields[0].startswith("#"):
+            continue
+        if fields[0] == "feature" and tuple(fields[1:]) != FEATURES:
+            raise ValueError(f"{path} names {fields[1:]}, not {list(FEATURES)}")
+        elif fields[0] == "weight":
+            weights = dict(zip(FEATURES, map(float, fields[1:])))
+        elif fields[0] == "frame":
+            labels.append((fields[1], int(fields[2])))
+            ms.append(float(fields[3]))
+            rows.append([float(value) for value in fields[4:]])
+    return weights, np.array(rows), np.array(ms), labels
 
 
 def mesh_rows(path, poses_path):
@@ -116,13 +148,13 @@ def main(argv=None):
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=("features", "fit", "predict"))
-    parser.add_argument("path", help="a generated mesh, or for fit the table")
+    parser.add_argument("path", help="a generated mesh, or for fit the weights file")
     parser.add_argument("--poses", help="a sample_tracks.sh poses file at the board's render size")
-    parser.add_argument("--weights", help="the weights fit printed")
+    parser.add_argument("--weights", help="a weights file")
     args = parser.parse_args(argv)
     if args.command == "fit":
-        table = np.loadtxt(args.path, ndmin=2)
-        print(" ".join("%.9g" % value for value in fit(table[:, 1:], table[:, 0])))
+        _weights, rows, ms, _labels = load(args.path)
+        print("weight " + " ".join("%.9g" % value for value in fit(rows, ms)))
         return 0
     if args.poses is None:
         parser.error("features and predict need --poses")
@@ -131,7 +163,7 @@ def main(argv=None):
         for row in rows:
             print(" ".join("%.6g" % value for value in row))
         return 0
-    ms = predict(np.loadtxt(args.weights), rows)
+    ms = predict(load(args.weights)[0], rows)
     for index, value in enumerate(ms):
         print("pose %d: %.3f ms" % (index, value))
     print("mean: %.3f ms" % ms.mean())
