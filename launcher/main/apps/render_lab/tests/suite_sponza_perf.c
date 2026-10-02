@@ -144,10 +144,11 @@ report_core_contention(const raster_t* raster, const r3d_lens_t* lens, int visib
              (long long)together_bottom.us, (long long)wall);
 }
 
-#define MESH_COUNT 4
+#define MESH_COUNT 5
 static r3d_lit_mesh_t meshes[MESH_COUNT];
-static const char* const MESH_IDS[MESH_COUNT] = {"sponza", "sponza_lite", "sponza_flat", "sponza_fitted"};
-static const char* const MESH_LABELS[MESH_COUNT] = {"sponza", "lite", "flat", "fitted"};
+static const char* const MESH_IDS[MESH_COUNT] = {"sponza", "sponza_lite", "sponza_flat", "sponza_fitted",
+                                                 "sponza_fitted_full"};
+static const char* const MESH_LABELS[MESH_COUNT] = {"sponza", "lite", "flat", "fitted", "fitted-full"};
 
 static void
 open_the_meshes(void) {
