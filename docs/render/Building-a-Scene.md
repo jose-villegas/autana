@@ -101,7 +101,7 @@ rays = 8
 ## 4. Add a camera
 
 The camera object has the lens and, if it flies a glTF animation, the tracks
-that `tools/anim/bake_tracks.py` baked. A `region` (the box region `visibility` culls
+that `tools/anim/bake_tracks.py` baked into the scene file's folder. A `region` (the box region `visibility` culls
 against) belongs here only when a placed mesh has that step:
 
 ```toml

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Render an undecimated import source with the scene's bake lighting.
 
-    python launcher/tools/r3d/reference_render.py SCENE.scene.toml --poses poses.txt --out DIR
+    python launcher/tools/r3d/reference_render.py SCENE.scene.toml [--object NAME] --poses poses.txt --out DIR
 
 The poses file is the ``size``, ``lens`` and ``pose`` format emitted by
 tools/anim/sample_tracks.sh.  Each pose writes a floating-point .npy image and
 an RGB565-expanded PNG.  The renderer deliberately has no scene knowledge:
-the scene supplies the source import, lights, camera lens and pose path.
+the scene supplies the object's source, lights, camera lens and pose path.
 """
 
 import argparse
@@ -60,15 +60,16 @@ def hit_albedo(source, hits, bary):
     return out
 
 
-def render_linear(source, settings, renderer, scene, pose, width, height, lens, samples=4):
+def render_linear(source, job, scene, pose, width, height, lens, samples=4):
     """Return a linear RGB source render, supersampled then box filtered."""
-    return trace(source, settings, renderer, scene, pose, width, height, lens, samples)[0]
+    return trace(source, job, scene, pose, width, height, lens, samples)[0]
 
 
-def trace(source, settings, renderer, scene, pose, width, height, lens, samples=4):
+def trace(source, job, scene, pose, width, height, lens, samples=4):
     """(linear RGB, share of each pixel's subpixels that hit the mesh, the
     world-space shading normal per pixel turned toward the eye, averaged over
     the pixel's rays and zero where they all miss)."""
+    settings = job.settings
     eye, forward = pose[:3], pose[3:]
     origin, direction = camera_rays(width, height, lens, eye, forward, samples)
     locations, rays, faces = source.intersector.intersects_location(origin, direction, multiple_hits=False)
@@ -82,7 +83,7 @@ def trace(source, settings, renderer, scene, pose, width, height, lens, samples=
         material = source.tri_m[faces]
         albedo = hit_albedo(source, faces, bary)
         double = np.isin(material, [source.names.index(name) for name in settings.double_sided])
-        radiance = light(locations, normal, double, source.intersector, scene.lights, scene.bake.ray_offset,
+        radiance = light(locations, normal, double, source.intersector, scene.lights, job.bake.ray_offset,
                          np.random.default_rng(settings.seed), shared_sky_rays=0, indirect=source.indirect_cache)
         linear[rays] = albedo * radiance
         shading[rays] = normal * np.where((normal * direction[rays]).sum(axis=1) > 0, -1.0, 1.0)[:, None]
@@ -102,39 +103,29 @@ def device_picture(linear, covered, tonemap_white, background):
     return expand_565(np.round(lit).astype(np.uint8))
 
 
-def source_for(scene, import_path=None, variant=None):
-    """Load one placed source at full detail, applying alpha masking, lit as
-    `variant` (a variant name) is baked when one is given."""
-    job = scene.renderers[0]
-    if import_path is not None:
-        wanted = pathlib.Path(import_path).resolve()
-        matches = [item for item in scene.renderers if item.settings.path == wanted]
-        if not matches:
-            raise ValueError("the import is not placed by the scene")
-        job = matches[0]
+def source_for(scene, name=None):
+    """The full-detail source of the scene object `name` (the first mesh renderer
+    when None), alpha-masked and lit as that renderer is baked; returns it with
+    the object's job."""
+    named = [item for item in scene.renderers if name in (None, item.object.name)]
+    if not named:
+        raise ValueError(f"the scene places no mesh renderer named {name!r}")
+    job = named[0]
     settings = job.settings
-    if variant is not None:
-        named = [item for item in scene.renderers
-                 if item.settings.path == settings.path and item.renderer.variant.name == variant]
-        if not named:
-            raise ValueError(f"the scene places no variant {variant}")
-        job = named[0]
-        settings = job.settings
     source = load_source(settings)
     if settings.alpha_keep is not None:
         source.tri_v, source.tri_t, source.tri_m = drop_masked(source.p, source.uv, source.tri_v, source.tri_t,
                                                                  source.tri_m, source.textures, settings.alpha_keep)
     source.corner_normals = corner_normals(source.p, source.tri_v)
     source.intersector = RayMeshIntersector(trimesh.Trimesh(source.p, source.tri_v, process=False))
-    source.indirect_cache = indirect_cache_for(source, settings, job.renderer, scene, source.intersector)
-    return source, settings, job.renderer
+    source.indirect_cache = indirect_cache_for(source, job, scene, source.intersector)
+    return source, job
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("scene")
-    parser.add_argument("--import", dest="import_path", help="placed .import.toml source, when the scene has several")
-    parser.add_argument("--variant", help="light as this placed variant is baked (its own indirect setting)")
+    parser.add_argument("--object", help="the scene's mesh renderer to render, lit as it is baked (default: the first)")
     parser.add_argument("--poses", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--samples", type=int, default=4)
@@ -153,11 +144,11 @@ def main(argv=None):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     try:
-        source, settings, renderer = source_for(scene, args.import_path, args.variant)
+        source, job = source_for(scene, args.object)
     except ValueError as error:
         parser.error(str(error))
     for index, pose in enumerate(poses):
-        linear, covered, normal = trace(source, settings, renderer, scene, pose, width, height, lens, args.samples)
+        linear, covered, normal = trace(source, job, scene, pose, width, height, lens, args.samples)
         np.save(out / ("%04d.linear.npy" % index), linear)
         if args.normals:
             np.save(out / ("%04d.normal.npy" % index), normal.astype(np.float32))

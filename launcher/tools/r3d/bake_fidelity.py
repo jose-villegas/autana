@@ -101,12 +101,13 @@ def write_pack(name, mesh_file, out):
     return pack
 
 
-def write_variant(settings, renderer, scene, geometry, spec, out):
+def write_variant(job, scene, geometry, spec, out):
     """Bakes `spec` (see the module docstring) over `geometry` into
     out/<name>.mesh; returns its path."""
+    renderer = job.renderer
     median = float(np.median(triangle_areas(geometry.positions, geometry.tris)))
     samples, knobs = parse_spec(spec, declared_samples(renderer, median), median)
-    face_rgb = flat_colours(settings, renderer, scene, geometry, samples, **knobs)
+    face_rgb = flat_colours(job, scene, geometry, samples, **knobs)
     out.mkdir(parents=True, exist_ok=True)
     write_lit_mesh(out, renderer.variant.name, geometry.positions, None, geometry.tris, geometry.tri_double,
                    face_rgb=face_rgb, **geometry.scale)
@@ -150,10 +151,9 @@ def main(argv=None):
     if not jobs:
         parser.error(f"{args.mesh!r} is not a flat mesh of {path.name}")
     job = jobs[0]
-    settings, renderer = job.settings, job.renderer
-    variant = renderer.variant
+    variant = job.renderer.variant
     log(f"geometry of {variant.name}")
-    geometry = bake_geometry(settings, renderer, scene)
+    geometry = bake_geometry(job, scene)
     work = pathlib.Path(args.work).resolve()
     host = build_host(pathlib.Path(args.script).resolve(), work / "host")
     rows = []
@@ -161,7 +161,7 @@ def main(argv=None):
         label, _, spec = item.partition("=")
         out = work / label
         log(f"variant {label}")
-        mesh_file = write_variant(settings, renderer, scene, geometry, spec, out)
+        mesh_file = write_variant(job, scene, geometry, spec, out)
         rows.append((label, score(args, host, write_pack(job.asset_name, mesh_file, out), out)))
         print(f"{label}: mean dE76 {rows[-1][1][0]:.3f}", flush=True)
     print(table(rows))

@@ -10,7 +10,7 @@
 
 #include "scene/scene.h"
 
-#include "../flythrough_tracks_generated.h"
+#include "flythrough_tracks_generated.h"
 
 static const char* const sponza_scene_names[] = {"camera", "atrium", "atrium_flat", "atrium_lite", "atrium_fitted", "atrium_fitted_full"};
 

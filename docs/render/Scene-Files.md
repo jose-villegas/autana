@@ -79,7 +79,7 @@ component table.
 |---|---|---|
 | `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene file, and `variant` chooses its geometry variant. `bake = true` traces this renderer against its own source using this scene's settings; without it the shared imported albedo mesh is drawn. `shading` is `"smooth"` or `{ flat = ... }`; `visibility`, `fit` and `indirect = false` apply to this renderer's bake. |
 | `light` | `type`, `color`, `intensity`, `disc_degrees`, `rays` | A directional light. The direction toward it is the object's +Y axis turned by its rotation, so a rotation of zero is a sun straight overhead. Position and scale do not matter. `point` and `spot` are reserved and rejected until their bake paths exist. |
-| `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view: the lens, the box the camera moves within (`region`, a `min` and `max`), and optionally the glTF animation it flies. `path = { tracks, node }` names the tracks `tools/anim/bake_tracks.py` baked under the prefix `tracks`, for the glTF node `node`. `background` (0xRRGGBB, default black) is the colour a pixel no mesh covers shows, in the panel's RGB565 and in the source reference. Without a path the camera sits at its transform, looking down its own -Z. A scene has at most one camera. |
+| `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view: the lens, the box the camera moves within (`region`, a `min` and `max`), and optionally the glTF animation it flies. `path = { tracks, node }` names the tracks `tools/anim/bake_tracks.py` baked under the prefix `tracks`, for the glTF node `node`; the generated `<tracks>_tracks_generated.{c,h}` sit beside the scene file. `background` (0xRRGGBB, default black) is the colour a pixel no mesh covers shows, in the panel's RGB565 and in the source reference. Without a path the camera sits at its transform, looking down its own -Z. A scene has at most one camera. |
 
 Sky and ambient light are properties of the scene, not objects, and are the
 two settings tables `[sky]` (`color`, `intensity`, `rays`: that many random
@@ -146,7 +146,7 @@ A renderer with `bake = true` reads the scene:
 A scene must carry what a baked renderer reads, and may not carry what none
 reads. A baked scene output is `<scene>.<object>.mesh`, beside the scene file,
 so the same import can have independent bakes in several scenes. An albedo
-renderer uses `<variant>.mesh` beside its import and shares it across scenes. A baked renderer
+renderer uses `<variant>.mesh` beside its import and shares it across scenes. An import is packed only through the scenes that place it. A baked renderer
 is baked where it sits, so its object's transform must be identity; an
 albedo-only renderer may be placed anywhere and by many scenes.
 

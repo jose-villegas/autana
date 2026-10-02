@@ -80,23 +80,21 @@ def canonical(value):
     return value
 
 
-def recipe_digest(settings, renderer, scene):
+def recipe_digest(job, scene):
     """SHA-256 over the parsed effective recipe and its camera tracks."""
     from r3d.poses import tracks_file
 
-    tracks = hashlib.sha256(tracks_file(settings, scene).read_bytes()).hexdigest()
-    settings = SimpleNamespace(**{name: value for name, value in vars(settings).items()
+    renderer = job.renderer
+    tracks = hashlib.sha256(tracks_file(scene).read_bytes()).hexdigest()
+    settings = SimpleNamespace(**{name: value for name, value in vars(job.settings).items()
                                   if name not in ("path", "out_dir", "mesh_dir", "named", "variants")})
     fit = SimpleNamespace(**vars(renderer.fit))
     del fit.sha256
     del fit.recipe_sha256
     entry = SimpleNamespace(**{name: value for name, value in vars(renderer).items() if name != "settings"})
     entry.fit = fit
-    bake = SimpleNamespace(**vars(scene.bake))
-    look = scene.indirect
-    if not renderer.indirect:
-        bake.indirect, look = None, None
-    scene_recipe = SimpleNamespace(lights=scene.lights, tonemap_white=scene.tonemap_white, bake=bake, indirect=look)
+    look = scene.indirect if job.bake.indirect else None
+    scene_recipe = SimpleNamespace(lights=scene.lights, tonemap_white=scene.tonemap_white, bake=job.bake, indirect=look)
     return hashlib.sha256(json.dumps([canonical(settings), canonical(entry), canonical(scene_recipe), tracks], sort_keys=True).encode()).hexdigest()
 
 
@@ -105,22 +103,22 @@ def prepare(scene_path, scene, job, work):
     from r3d.mesh_import import bake_geometry, camera_path_poses
     from r3d.reference_render import main as reference_main
 
-    settings, renderer = job.settings, job.renderer
+    renderer = job.renderer
     variant, fit, visibility = renderer.variant, renderer.fit, renderer.visibility
     if visibility is None or visibility.source != "camera_path":
         raise SettingsError(f"{variant.name} needs camera_path visibility: its poses come from the path")
     work.mkdir(parents=True, exist_ok=True)
-    geometry = bake_geometry(settings, renderer, scene)
+    geometry = bake_geometry(job, scene)
     write_lit_mesh(work, variant.name, geometry.positions, geometry.rgb, geometry.tris, geometry.tri_double, **geometry.scale)
-    w, h, lens, near, poses = camera_path_poses(settings, scene, visibility, fit.train_every_ms, either_way_up=False)
+    w, h, lens, near, poses = camera_path_poses(scene, visibility, fit.train_every_ms, either_way_up=False)
     training, held_out = split_poses(fit, poses)
     (work / "train.txt").write_text(poses_text(w, h, lens, near, training))
     (work / "held_out.txt").write_text(poses_text(w, h, lens, near, held_out))
     (work / "train_landscape.txt").write_text(poses_text(h, w, lens, near, training))
-    (work / "coverage.txt").write_text(poses_text(*camera_path_poses(settings, scene, visibility, fit.coverage_every_ms)))
+    (work / "coverage.txt").write_text(poses_text(*camera_path_poses(scene, visibility, fit.coverage_every_ms)))
     for poses, reference in (("train.txt", "reference"), ("train_landscape.txt", "reference_landscape"),
                              ("held_out.txt", "reference_held_out")):
-        reference_main([str(scene_path), "--import", str(settings.path), "--variant", variant.name, "--poses",
+        reference_main([str(scene_path), "--object", job.object.name, "--poses",
                         str(work / poses), "--out", str(work / reference), "--normals"])
     log(f"prepared {variant.name}: start of {len(geometry.tris)} triangles, {len(training)} training poses")
 
@@ -130,9 +128,9 @@ def reference_digest(scene_path, job, scene):
     from r3d.poses import tracks_file
 
     digest = hashlib.sha256()
-    for path in (scene_path, job.settings.path, tracks_file(job.settings, scene)):
+    for path in (scene_path, job.settings.path, tracks_file(scene)):
         digest.update(pathlib.Path(path).read_bytes())
-    digest.update(job.renderer.variant.name.encode())
+    digest.update(job.object.name.encode())
     return digest.hexdigest()
 
 
@@ -149,7 +147,7 @@ def sweep_references(scene_path, scene, job, work):
 def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False, target=None, inputs=None):
     from r3d.appearance_simplify import main as fit_main
 
-    settings, renderer = job.settings, job.renderer
+    renderer = job.renderer
     variant, recipe = renderer.variant, renderer.fit
     inputs = pathlib.Path(work) if inputs is None else pathlib.Path(inputs)
     start = inputs / f"{variant.name}.mesh"
@@ -169,7 +167,7 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     shutil.copyfile(out / f"{variant.name}.mesh", target)
     if committed:
         print(f"{target.name}: sha256 = \"{hashlib.sha256(target.read_bytes()).hexdigest()}\", "
-              f"recipe_sha256 = \"{recipe_digest(settings, renderer, scene)}\"")
+              f"recipe_sha256 = \"{recipe_digest(job, scene)}\"")
     return target
 
 
