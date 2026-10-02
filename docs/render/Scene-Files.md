@@ -36,6 +36,7 @@ name = "camera"
 [objects.camera]
 half_fov_short_tan = 0.62
 near_z = 6.0
+background = 0x9CC0E6
 region = { min = [-1400.0, 20.0, -620.0], max = [1270.0, 1250.0, 550.0] }
 path = { tracks = "flight", node = "camera" }
 
@@ -70,7 +71,7 @@ component table.
 |---|---|---|
 | `mesh_renderer` | `mesh`, `variant` | Draws a mesh asset: `mesh` names an import file beside the scene file, which must exist, and `variant` picks one of its variants (required exactly when the import has them). |
 | `light` | `type`, `color`, `intensity`, `disc_degrees`, `rays` | A directional light. The direction toward it is the object's +Y axis turned by its rotation, so a rotation of zero is a sun straight overhead. Position and scale do not matter. `point` and `spot` are reserved and rejected until their bake paths exist. |
-| `camera` | `half_fov_short_tan`, `near_z`, `region`, `path` | The view: the lens, the box the camera moves within (`region`, a `min` and `max`), and optionally the glTF animation it flies. `path = { tracks, node }` names the tracks `tools/anim/bake_tracks.py` baked under the prefix `tracks`, for the glTF node `node`. Without a path the camera sits at its transform, looking down its own -Z. A scene has at most one camera. |
+| `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view: the lens, the box the camera moves within (`region`, a `min` and `max`), and optionally the glTF animation it flies. `path = { tracks, node }` names the tracks `tools/anim/bake_tracks.py` baked under the prefix `tracks`, for the glTF node `node`. `background` (0xRRGGBB, default black) is the colour a pixel no mesh covers shows, in the panel's RGB565 and in the source reference. Without a path the camera sits at its transform, looking down its own -Z. A scene has at most one camera. |
 
 Sky and ambient light are properties of the scene, not objects, and are the
 two settings tables `[sky]` (`color`, `intensity`, `rays`: that many random
@@ -116,7 +117,7 @@ The table holds only what the device reads: one const `scene_def_t` named
 - each mesh renderer's asset id: `scene_load()` opens it from the
   [asset pack](../assets/README.md), and an id the pack lacks fails the load,
   naming it;
-- the camera's lens and the symbols of its path.
+- the camera's lens, its background colour and the symbols of its path.
 
 Lights, the camera region, sky, ambient and the tone map are bake settings and
 stay offline. The rotation convention above is written only in the importer, so

@@ -87,11 +87,19 @@ def unshadowed_count(intersector, origin, directions):
     return count
 
 
+def albedo_from_uv(texture, kd, uv, lod):
+    """Linear albedo at texture coordinates: the material colour alone for an
+    untextured material, else the texture sampled at `lod` times the colour."""
+    if texture is None:
+        return np.tile(np.array(kd) ** 2.2, (len(uv), 1))
+    return texture.sample(uv, lod)[:, :3] * np.array(kd)
+
+
 def sample_albedo(points, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd):
     sel = np.nonzero(tri_m == m)[0]
     tex = textures[m]
     if tex is None:
-        return np.tile(np.array(kd) ** 2.2, (len(points), 1))
+        return albedo_from_uv(None, kd, points, None)
     a, b, c = p[tri_v[sel, 0]], p[tri_v[sel, 1]], p[tri_v[sel, 2]]
     tree = cKDTree((a + b + c) / 3)
     k = min(16, len(sel))
@@ -116,7 +124,7 @@ def sample_albedo(points, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd):
     texel_area = 0.5 * np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]) * w * h
     texels_per_unit = np.sqrt(texel_area / np.maximum(world_area, 1e-9))
     lod = np.log2(np.maximum(spacing * texels_per_unit, 1.0))
-    return tex.sample(tuv, lod)[:, :3] * np.array(kd)
+    return albedo_from_uv(tex, kd, tuv, lod)
 
 
 def sun_basis(direction):
@@ -149,7 +157,7 @@ def bake_directional(light, ctx):
     sun /= np.linalg.norm(sun)
     cos_sun = np.maximum(ctx.normals @ sun, 0.0)
     if ctx.shared:
-        directions = sun_directions(light)[1]
+        directions = [sun] if ctx.sun_centre else sun_directions(light)[1]
     else:
         u, v = sun_basis(sun)
         radius = math.tan(math.radians(light["disc_degrees"]))
@@ -201,12 +209,13 @@ def face_towards_light(normals, double_sided, lights):
     return np.where(flip[:, None], -normals, normals)
 
 
-def light(points, normals, double_sided, intersector, lights, ray_offset, rng, shared_sky_rays=0):
+def light(points, normals, double_sided, intersector, lights, ray_offset, rng, shared_sky_rays=0, sun_centre=False):
     """Radiance from the scene lights at each point.
 
     With shared_sky_rays > 0 every point uses the same directional samples and
     that many sky directions (a flat bake); otherwise rays are drawn at random
-    and each sky light uses its own `rays`. Point and spot lights are reserved
+    and each sky light uses its own `rays`. `sun_centre` lights a flat bake from
+    the middle of the sun's disc only, a hard shadow edge. Point and spot lights are reserved
     and not baked yet.
 
     The lights share one rng, so their order in the list changes which random
@@ -215,7 +224,8 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, rng, s
     """
     n = face_towards_light(normals, double_sided, lights)
     ctx = SimpleNamespace(normals=n, origin=points + n * ray_offset, intersector=intersector, rng=rng,
-                          shared=bool(shared_sky_rays), shared_sky_rays=shared_sky_rays)
+                          shared=bool(shared_sky_rays), shared_sky_rays=shared_sky_rays,
+                          sun_centre=sun_centre)
     radiance = np.zeros((len(points), 3))
     for scene_light in lights:
         radiance += LIGHTS[scene_light["type"]][1](scene_light, ctx)
@@ -232,10 +242,13 @@ def to_srgb8(linear, tonemap_white):
     return encode_srgb8(linear / (1.0 + linear * tonemap_white))
 
 
-def face_samples(count):
-    """Barycentric weights of `count` fixed points spread evenly over a
-    triangle: one per equal-area strip, staggered along it."""
+def face_samples(count, placement="stratified"):
+    """Barycentric weights of `count` fixed points over a triangle: one per
+    equal-area strip, staggered along it, or with placement "centroid" all at
+    the centroid."""
     i = np.arange(count)
+    if placement == "centroid":
+        return np.full((count, 3), 1.0 / 3.0)
     r = np.sqrt((i + 0.5) / count)
     t = (0.5 + i * 0.6180339887498949) % 1.0
     return np.stack([1 - r, r * (1 - t), r * t], axis=1)
@@ -248,7 +261,8 @@ def adaptive_sample_counts(areas, reference, cap, floor=1):
 
 
 def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_of, intersector, lights, ray_offset,
-                 tonemap_white, samples=4, sky_rays=128, max_samples=16, sample_area=None, min_samples=1):
+                 tonemap_white, samples=4, sky_rays=128, max_samples=16, sample_area=None, min_samples=1,
+                 placement="stratified", sun_centre=False):
     """One sRGB colour per triangle: albedo times light averaged over fixed
     points of the triangle, lit on its face normal. `samples` is a count per
     face, or "auto" for one point per `sample_area` of face area (the mesh's
@@ -269,12 +283,12 @@ def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_o
             a, b, c = positions[faces[:, 0]], positions[faces[:, 1]], positions[faces[:, 2]]
             normals = np.cross(b - a, c - a)
             normals /= np.linalg.norm(normals, axis=1, keepdims=True)
-            points = np.concatenate([w[0] * a + w[1] * b + w[2] * c for w in face_samples(k)])
+            points = np.concatenate([w[0] * a + w[1] * b + w[2] * c for w in face_samples(k, placement)])
             spacing = np.tile(np.sqrt(areas[selected]), k)
             albedo = albedo_of(points, spacing, m)
             double = np.full(len(points), m in double_materials)
             tiled = np.tile(normals, (k, 1))
-            radiance = light(points, tiled, double, intersector, lights, ray_offset, None, sky_rays)
+            radiance = light(points, tiled, double, intersector, lights, ray_offset, None, sky_rays, sun_centre)
             colour = (albedo * radiance).reshape(k, len(faces), 3).mean(axis=0)
             out[selected] = to_srgb8(colour, tonemap_white)
     return out
