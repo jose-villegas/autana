@@ -6,6 +6,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -17,6 +18,11 @@ try:
 except ImportError:
     fitted_variant = None
     parse_poses = None
+
+try:
+    from r3d import lit_mesh, mesh_import, reference_render
+except ImportError:
+    lit_mesh = mesh_import = reference_render = None
 
 
 @unittest.skipIf(parse_poses is None, "needs NumPy")
@@ -42,6 +48,34 @@ class FittedVariantTests(unittest.TestCase):
 
 @unittest.skipIf(fitted_variant is None, "needs the r3d environment")
 class SweepTests(unittest.TestCase):
+    def test_mesh_names_map_to_the_host_scene_keys(self):
+        self.assertEqual(fitted_variant.host_scene_key("tiny_fitted"), "tiny-fitted")
+
+    def test_board_cost_uses_the_native_held_out_render_size(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            (work / "held_out.txt").write_text(poses_text(2, 3, 0.5, 1.0, [[0, 0, 0, 0, 0, -1]]))
+            path = fitted_variant.board_poses(work)
+            self.assertEqual(parse_poses(path.read_text())[:2], (2, 3))
+
+    @unittest.skipIf(reference_render is None, "needs the r3d renderer")
+    def test_a_sweep_reuses_one_prepared_reference_set(self):
+        geometry = SimpleNamespace(positions=[], rgb=[], tris=[0], tri_double=[], scale={})
+        poses = (2, 3, 0.5, 1.0, [[0, 0, 0, 0, 0, -1], [1, 0, 0, 0, 0, -1]])
+        variant = SimpleNamespace(name="tiny_fitted", fit=SimpleNamespace(train_every_ms=1, held_out_every_ms=2,
+                                                                            coverage_every_ms=1), visibility=SimpleNamespace(
+                                                                                source="camera_path"))
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            with unittest.mock.patch.object(fitted_variant, "reference_digest", return_value="same"), \
+                 unittest.mock.patch.object(mesh_import, "bake_geometry", return_value=geometry), \
+                 unittest.mock.patch.object(mesh_import, "camera_path_poses", return_value=poses), \
+                 unittest.mock.patch.object(lit_mesh, "write_lit_mesh"), \
+                 unittest.mock.patch.object(reference_render, "main") as render:
+                fitted_variant.sweep_references("scene", "data", SimpleNamespace(path="settings"), variant, work)
+                fitted_variant.sweep_references("scene", "data", SimpleNamespace(path="settings"), variant, work)
+        self.assertEqual(render.call_count, 3)
+
     def test_the_front_and_knee_keep_the_best_tradeoffs(self):
         points = [
             {"predicted_ms": 2.0, "mean_delta_e": 6.0},

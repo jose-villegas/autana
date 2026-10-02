@@ -202,9 +202,10 @@ $E/bin/python launcher/tools/r3d/fitted_variant.py sweep SCENE.scene.toml --vari
     --budgets 4000,6000,8672 --cost-weights 0,0.1 --out scratch/sweep
 ```
 
-Each point prepares its own start and references, fits the recipe with only
-its budget and cost weight changed, scores the held-out references, and
-predicts the held-out path's device-pixel frame time with
+The sweep prepares one shared start and reference set for the scene, variant
+lighting and poses, then each point fits the recipe with only its budget and
+cost weight changed, scores the held-out references, and predicts the
+held-out path's board-render frame time with
 `board_cost_weights.txt`. `--board-ms` accepts optional board readings in
 budget then cost-weight order. `--smoke` uses a few fit steps per point.
 Finished point records let a later invocation resume without rerunning them.

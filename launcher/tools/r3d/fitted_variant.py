@@ -57,6 +57,11 @@ def split_poses(fit, poses):
     return training, held_out
 
 
+def host_scene_key(variant_name):
+    """The host renderer's scene key for a generated mesh identifier."""
+    return variant_name.replace("_", "-")
+
+
 def recipe_digest(settings, variant, scene):
     """SHA-256 over what a fit is made from: the import's settings, the
     variant without the hashes it records, and the camera's baked tracks."""
@@ -99,17 +104,39 @@ def prepare(scene_path, scene, settings, variant, work):
     log(f"prepared {variant.name}: start of {len(geometry.tris)} triangles, {len(training)} training poses")
 
 
-def fit(scene_path, scene, settings, variant, work, budget=None, cost_weight=0.0, smoke=False, target=None):
+def reference_digest(scene_path, settings, variant, scene):
+    """The source and lighting inputs that determine a sweep's references."""
+    from r3d.poses import tracks_file
+
+    digest = hashlib.sha256()
+    for path in (scene_path, settings.path, tracks_file(settings, scene)):
+        digest.update(pathlib.Path(path).read_bytes())
+    digest.update(variant.name.encode())
+    return digest.hexdigest()
+
+
+def sweep_references(scene_path, scene, settings, variant, work):
+    """Prepare one reusable reference set for a sweep's unchanged inputs."""
+    marker = pathlib.Path(work) / "references.json"
+    digest = reference_digest(scene_path, settings, variant, scene)
+    if marker.is_file() and json.loads(marker.read_text()).get("digest") == digest:
+        return
+    prepare(scene_path, scene, settings, variant, work)
+    marker.write_text(json.dumps({"digest": digest}, sort_keys=True) + "\n")
+
+
+def fit(scene_path, scene, settings, variant, work, budget=None, cost_weight=0.0, smoke=False, target=None, inputs=None):
     from r3d.appearance_simplify import main as fit_main
 
     recipe = variant.fit
-    start = work / f"{variant.name}.mesh"
+    inputs = pathlib.Path(work) if inputs is None else pathlib.Path(inputs)
+    start = inputs / f"{variant.name}.mesh"
     out = work / "fitted"
     steps = min(recipe.steps, 8) if smoke else recipe.steps
-    command = ["--scene", str(scene_path), "--start", str(start), "--poses", str(work / "train.txt"), "--reference",
-              str(work / "reference"), "--poses", str(work / "train_landscape.txt"), "--reference",
-              str(work / "reference_landscape"), "--out", str(out), "--budget", str(recipe.budget if budget is None else budget),
-              "--coverage-poses", str(work / "coverage.txt"), "--steps", str(steps), "--batch", str(recipe.batch), "--laplacian",
+    command = ["--scene", str(scene_path), "--start", str(start), "--poses", str(inputs / "train.txt"), "--reference",
+              str(inputs / "reference"), "--poses", str(inputs / "train_landscape.txt"), "--reference",
+              str(inputs / "reference_landscape"), "--out", str(out), "--budget", str(recipe.budget if budget is None else budget),
+              "--coverage-poses", str(inputs / "coverage.txt"), "--steps", str(steps), "--batch", str(recipe.batch), "--laplacian",
               str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight)]
     if cost_weight:
         command += ["--cost-model", str(pathlib.Path(__file__).with_name("board_cost_weights.txt")), "--cost-weight", str(cost_weight)]
@@ -184,30 +211,26 @@ def sweep_rows(out, points):
     return [json.loads((pathlib.Path(out) / point_name(point) / "result.json").read_text()) for point in points]
 
 
-def held_out_score(variant, mesh_path, work, host):
+def held_out_score(variant, mesh_path, work, host, inputs=None):
     """Mean and p95 DeltaE76 from the host renderer against held-out references."""
     from types import SimpleNamespace
 
     from r3d.bake_fidelity import score, write_pack
     from r3d.poses import read_poses
 
-    _width, _height, _lens, _near, poses = read_poses(work / "held_out.txt")
+    inputs = pathlib.Path(work) if inputs is None else pathlib.Path(inputs)
+    _width, _height, _lens, _near, poses = read_poses(inputs / "held_out.txt")
     score_dir = work / "score"
     score_dir.mkdir(exist_ok=True)
-    args = SimpleNamespace(render_args=f"--quarter 0 --no-hud --scene {variant.name} --frames {len(poses)} "
-                                       f"--dt {variant.fit.held_out_every_ms}", reference=work / "reference_held_out",
+    args = SimpleNamespace(render_args=f"--quarter 0 --no-hud --scene {host_scene_key(variant.name)} --frames {len(poses)} "
+                                       f"--dt {variant.fit.held_out_every_ms}", reference=inputs / "reference_held_out",
                            reference_scale=BOARD_SCALE)
     return score(args, host, write_pack(variant.name, mesh_path, score_dir), score_dir)[:2]
 
 
 def board_poses(work):
-    """The held-out camera path at the fit renderer's device-pixel scale."""
-    from r3d.poses import read_poses
-
-    width, height, lens, near, poses = read_poses(work / "held_out.txt")
-    path = work / "board_held_out.txt"
-    path.write_text(poses_text(width * BOARD_SCALE, height * BOARD_SCALE, lens, near, poses))
-    return path
+    """The held-out camera path at the board renderer's native size."""
+    return pathlib.Path(work) / "held_out.txt"
 
 
 def plot_pareto(path, rows):
@@ -266,6 +289,8 @@ def sweep_main(argv):
     if args.board_ms is not None and len(args.board_ms) != len(points):
         parser.error("--board-ms needs one value per budget and cost-weight point")
     out = pathlib.Path(args.out).resolve()
+    reference_work = out / "references"
+    sweep_references(scene_path, scene, settings, variant, reference_work)
     host = None
 
     def run_point(point, point_dir):
@@ -276,15 +301,14 @@ def sweep_main(argv):
 
             host = build_host(REPO / "launcher/main/apps/render_lab/tools/render_lab_render_host.sh", out / "host")
         work = point_dir / "work"
-        prepare(scene_path, scene, settings, variant, work)
         mesh = fit(scene_path, scene, settings, variant, work, budget=point["budget"], cost_weight=point["cost_weight"],
-                   smoke=args.smoke, target=point_dir / f"{variant.name}.mesh")
-        mean, p95 = held_out_score(variant, mesh, work, host)
+                   smoke=args.smoke, target=point_dir / f"{variant.name}.mesh", inputs=reference_work)
+        mean, p95 = held_out_score(variant, mesh, work, host, inputs=reference_work)
         from r3d.cost_model import load, mesh_rows, predict
         from r3d.lit_mesh import finest_triangles, read_lit_mesh
 
         weights, _rows, _ms, _labels = load(pathlib.Path(__file__).with_name("board_cost_weights.txt"))
-        predicted = float(predict(weights, mesh_rows(mesh, board_poses(work))).mean())
+        predicted = float(predict(weights, mesh_rows(mesh, board_poses(reference_work))).mean())
         triangles = len(finest_triangles(read_lit_mesh(mesh))[2])
         return {"triangles": triangles, "mean_delta_e": mean, "p95_delta_e": p95, "predicted_ms": predicted}
 
