@@ -80,61 +80,71 @@ modified through a pointer except the transform's own `t`.
 
 ### vec2 (`f i s x`)
 
-| Function | Purpose |
-|---|---|
-| `P_add(a, b)` | component sum |
-| `P_sub(a, b)` | component difference |
-| `P_scale(a, s)` | every component times the scalar `s` |
-| `P_dot(a, b)` | dot product, in the wide type of the number type |
-| `P_equal(a, b)` | exact component equality |
+| Function | Purpose | Formula |
+|---|---|---|
+| `P_add(a, b)` | component sum | $`a + b = (a_x + b_x,\ a_y + b_y)`$ |
+| `P_sub(a, b)` | component difference | $`a - b = (a_x - b_x,\ a_y - b_y)`$ |
+| `P_scale(a, s)` | every component times the scalar `s` | $`s\,a = (s\,a_x,\ s\,a_y)`$ |
+| `P_dot(a, b)` | dot product, in the wide type of the number type | $`a \cdot b = a_x b_x + a_y b_y`$ |
+| `P_equal(a, b)` | exact component equality | $`a_x = b_x \land a_y = b_y`$ |
+| `P_<c1><c2>(v)` | swizzle, each `c` one of `x y`: `vec2f_yx(v)` swaps | $`(v_{c_1},\ v_{c_2})`$ |
+| `P_<c1><c2><c3>(v)` | swizzle to the vec3 of the same number type, each `c` one of `x y` | $`(v_{c_1},\ v_{c_2},\ v_{c_3})`$ |
 
 ### vec3 (`f i s x`)
 
-| Function | Purpose |
-|---|---|
-| `P_add(a, b)` | component sum |
-| `P_sub(a, b)` | component difference |
-| `P_scale(a, s)` | every component times the scalar `s` |
-| `P_dot(a, b)` | dot product, in the wide type of the number type |
-| `P_equal(a, b)` | exact component equality |
-| `P_cross(a, b)` | cross product, right-handed |
-| `P_normalize(a)` | unit vector; `f` and `x` only; `a` must not be zero |
+| Function | Purpose | Formula |
+|---|---|---|
+| `P_add(a, b)` | component sum | $`a + b = (a_x + b_x,\ a_y + b_y,\ a_z + b_z)`$ |
+| `P_sub(a, b)` | component difference | $`a - b = (a_x - b_x,\ a_y - b_y,\ a_z - b_z)`$ |
+| `P_scale(a, s)` | every component times the scalar `s` | $`s\,a = (s\,a_x,\ s\,a_y,\ s\,a_z)`$ |
+| `P_dot(a, b)` | dot product, in the wide type of the number type | $`a \cdot b = a_x b_x + a_y b_y + a_z b_z`$ |
+| `P_equal(a, b)` | exact component equality | $`a_x = b_x \land a_y = b_y \land a_z = b_z`$ |
+| `P_cross(a, b)` | cross product, right-handed | $`a \times b = (a_y b_z - a_z b_y,\ a_z b_x - a_x b_z,\ a_x b_y - a_y b_x)`$ |
+| `P_normalize(a)` | unit vector; `f` and `x` only; `a` must not be zero | $`\hat a = \frac{a}{\sqrt{a \cdot a}}`$ |
+| `P_<c1><c2><c3>(v)` | swizzle, each `c` one of `x y z`: `vec3f_zyx(v)` reverses | $`(v_{c_1},\ v_{c_2},\ v_{c_3})`$ |
+| `P_<c1><c2>(v)` | swizzle to the vec2 of the same number type, each `c` one of `x y z` | $`(v_{c_1},\ v_{c_2})`$ |
+| `P_from_xy(xy, z)` | the vec3 of a vec2 and a `z` | $`(\mathit{xy}_x,\ \mathit{xy}_y,\ z)`$ |
+
+A swizzle copies components and does no arithmetic. One that changes dimension
+returns the other vector type of the same number type, so `vec3f_xz(v)` is a
+`vec2f_t` and `vec2f_xyx(v)` a `vec3f_t`: each vec3 header instantiates
+`vec_swizzle_template.h` after including its vec2.
 
 ### quat (`f x`)
 
-| Function | Purpose |
-|---|---|
-| `P_identity()` | the no-rotation quaternion |
-| `P_from_axis_angle(axis, angle)` | rotation of `angle` about unit `axis` |
-| `P_mul(a, b)` | composition: `b` first, then `a` |
-| `P_from_euler(angles)` | Z, then X, then Y; `angles` is a vec3 of radians (`f`) or turns (`x`) |
-| `P_rotate(q, v)` | rotates the vec3 `v` by unit `q` |
-| `P_normalize(q)` | unit length; `q` must not be zero |
-| `P_from_basis(r, u, f)` | the rotation whose right, up and forward axes are `r`, `u`, `f` |
-| `quatf_slerp(a, b, t)` | shortest-arc interpolation, `t` in 0..1; `f` only |
+| Function | Purpose | Formula |
+|---|---|---|
+| `P_identity()` | the no-rotation quaternion | $`(0,\ 0,\ 0,\ 1)`$ |
+| `P_from_axis_angle(axis, angle)` | rotation of `angle` about unit `axis` | $`\left(\mathit{axis}\,\sin\tfrac{\mathit{angle}}{2},\ \cos\tfrac{\mathit{angle}}{2}\right)`$ |
+| `P_mul(a, b)` | composition: `b` first, then `a` | $`a\,b = (a_w \vec b + b_w \vec a + \vec a \times \vec b,\ a_w b_w - \vec a \cdot \vec b)`$, with $`\vec a = (a_x, a_y, a_z)`$ |
+| `P_from_euler(angles)` | Z, then X, then Y; `angles` is a vec3 of radians (`f`) or turns (`x`) | $`q_y\,q_x\,q_z`$, with $`q_k`$ the rotation by $`\mathit{angles}_k`$ about axis $`k`$ |
+| `P_rotate(q, v)` | rotates the vec3 `v` by unit `q` | $`v + 2 q_w\,(u \times v) + 2\,u \times (u \times v)`$, with $`u = (q_x, q_y, q_z)`$ |
+| `P_normalize(q)` | unit length; `q` must not be zero | $`\frac{q}{\sqrt{q_x^2 + q_y^2 + q_z^2 + q_w^2}}`$ |
+| `P_from_basis(r, u, f)` | the rotation whose right, up and forward axes are `r`, `u`, `f`; when the trace is not positive, `s` comes from the largest diagonal entry instead | $`s = 2\sqrt{1 + r_x + u_y + f_z},\ \left(\frac{u_z - f_y}{s},\ \frac{f_x - r_z}{s},\ \frac{r_y - u_x}{s},\ \frac{s}{4}\right)`$ |
+| `quatf_slerp(a, b, t)` | shortest-arc interpolation, `t` in 0..1; `f` only; `b` is negated first when $`a \cdot b < 0`$ | $`\frac{\sin((1 - t)\,\Omega)}{\sin\Omega}\,a + \frac{\sin(t\,\Omega)}{\sin\Omega}\,b`$, with $`\cos\Omega = a \cdot b`$ |
 
 ### mat4 (`f x`)
 
-| Function | Purpose |
-|---|---|
-| `P_identity()` | the identity matrix |
-| `P_mul(a, b)` | matrix product `a * b` |
-| `P_apply(&m, p)` | transforms the point `p`, translation included |
-| `P_from_trs(position, rotation, scale)` | scale, rotate, translate; `rotation` must be unit |
+| Function | Purpose | Formula |
+|---|---|---|
+| `P_identity()` | the identity matrix | $`I`$ |
+| `P_mul(a, b)` | matrix product `a * b` | $`(a\,b)_{rc} = \sum_{k=0}^{3} a_{rk}\,b_{kc}`$ |
+| `P_apply(&m, p)` | transforms the point `p`, translation included | $`p'_r = m_{r0}\,p_x + m_{r1}\,p_y + m_{r2}\,p_z + m_{r3}`$, for $`r = 0, 1, 2`$ |
+| `P_from_trs(position, rotation, scale)` | scale, rotate, translate; `rotation` must be unit | $`T\,R\,S = \begin{pmatrix} R\,\mathrm{diag}(\mathit{scale}) & \mathit{position} \\ 0 & 1 \end{pmatrix}`$ |
 
 ### transform (`f x`)
 
-| Function | Purpose |
-|---|---|
-| `P_set_position(&t, p)` | sets position, clears the cache |
-| `P_set_rotation(&t, q)` | sets rotation (unit), clears the cache |
-| `P_set_scale(&t, s)` | sets scale, clears the cache |
-| `P_translate(&t, delta)` | adds `delta` to the position |
-| `P_rotate(&t, q)` | turns about the transform's own axes: `rotation = normalize(rotation * q)` |
-| `P_matrix(&t)` | the cached model matrix |
-| `P_compute_matrix(&t)` | a fresh model matrix from a const transform |
-| `P_view(&t)` | the camera's view matrix |
-| `P_look_at(&t, target, up)` | faces `target` with `up` as the sky; `up` must not be parallel to the line to `target`, and `target` must not be the position |
+| Function | Purpose | Formula |
+|---|---|---|
+| `P_set_position(&t, p)` | sets position, clears the cache | $`\mathit{position} \leftarrow p`$ |
+| `P_set_rotation(&t, q)` | sets rotation (unit), clears the cache | $`\mathit{rotation} \leftarrow q`$ |
+| `P_set_scale(&t, s)` | sets scale, clears the cache | $`\mathit{scale} \leftarrow s`$ |
+| `P_translate(&t, delta)` | adds `delta` to the position | $`\mathit{position} \leftarrow \mathit{position} + \mathit{delta}`$ |
+| `P_rotate(&t, q)` | turns about the transform's own axes | $`\mathit{rotation} \leftarrow \mathrm{normalize}(\mathit{rotation}\;q)`$ |
+| `P_matrix(&t)` | the cached model matrix | $`M = T\,R\,S`$ |
+| `P_compute_matrix(&t)` | a fresh model matrix from a const transform | $`M = T\,R\,S`$ |
+| `P_view(&t)` | the camera's view matrix | $`V = R^{\mathsf T}\,T(-\mathit{position})`$ |
+| `P_look_at(&t, target, up)` | faces `target` with `up` as the sky; `up` must not be parallel to the line to `target`, and `target` must not be the position | $`f = \frac{\mathit{target} - \mathit{position}}{\lVert \mathit{target} - \mathit{position} \rVert},\ r = \frac{\mathit{up} \times f}{\lVert \mathit{up} \times f \rVert},\ u = f \times r`$, then $`\mathit{rotation} = \mathrm{from\_basis}(r, u, f)`$ |
 
 ### Conversions (`vec_convert.h`)
 

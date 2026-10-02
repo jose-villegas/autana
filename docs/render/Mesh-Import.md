@@ -389,6 +389,8 @@ simplifier's mesh and against the reference, and the heatmap sheet. A
 scene's example lives beside its own tools; nothing refreshes it, since the
 fit needs a CUDA GPU and its own environment
 ([`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md#appearance-fit)).
+What a fit achieves on a scene, held-out error against board time, is measured in
+that scene's tools README.
 
 ### The fit's objective
 

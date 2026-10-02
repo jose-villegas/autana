@@ -251,14 +251,19 @@ def predicted_ms(xp, cost, clip, tris, double, size, scale):
     return variable_ms(cost, drawn, rows, pixels)
 
 
+def normal_pairs(render, points, view, clip):
+    """(the mesh's normals, the reference's, the pixels both cover) in `view`."""
+    matrix, _target, reference, eye = view
+    normal, covered = render.normals(points, matrix, eye, clip)
+    return normal, reference, covered & (reference.abs().sum(-1) > 0)
+
+
 def normal_l1(render, points, view, clip):
     """Mean L1 distance between the mesh's and the reference's normals over
     the pixels both cover, and the angles there in degrees."""
     import torch
 
-    matrix, _target, reference, eye = view
-    normal, covered = render.normals(points, matrix, eye, clip)
-    both = covered & (reference.abs().sum(-1) > 0)
+    normal, reference, both = normal_pairs(render, points, view, clip)
     if not bool(both.any()):
         return normal.sum() * 0, normal.new_zeros(0)
     distance = (normal - reference).abs().sum(-1)[both].mean()
@@ -266,9 +271,11 @@ def normal_l1(render, points, view, clip):
     return distance, torch.rad2deg(torch.acos(cosine.detach()))
 
 
-def normal_error(mesh, views, size, device="cuda"):
+def normal_error(mesh, views, size, device="cuda", angle_dir=None):
     """Mean angular error in degrees between the mesh's normals and the
-    reference's, over the pixels both cover in every view."""
+    reference's, over the pixels both cover in every view. With `angle_dir`,
+    each view's per-pixel angle is also written there as NNNN.angle.npy, NaN
+    where the mesh or the reference shows nothing."""
     import torch
 
     points0, _rgb, tris, double, _scale, vertex_point = mesh
@@ -276,10 +283,16 @@ def normal_error(mesh, views, size, device="cuda"):
     points = torch.as_tensor(points0, dtype=torch.float32, device=device)
     angles = []
     with torch.no_grad():
-        for matrix, target, reference, eye in views:
+        for index, (matrix, target, reference, eye) in enumerate(views):
             view = (torch.as_tensor(matrix, dtype=torch.float32, device=device), None,
                     torch.as_tensor(reference, device=device), eye)
             angles.append(normal_l1(render, points, view, None)[1])
+            if angle_dir is not None:
+                normal, reference, both = normal_pairs(render, points, view, None)
+                cosine = (normal * reference).sum(-1).clamp(-1.0, 1.0)
+                degrees = torch.where(both, torch.rad2deg(torch.acos(cosine)), torch.full_like(cosine, float("nan")))
+                pathlib.Path(angle_dir).mkdir(parents=True, exist_ok=True)
+                np.save(pathlib.Path(angle_dir) / f"{index:04d}.angle.npy", degrees.cpu().numpy())
     return float(torch.cat(angles).mean())
 
 
@@ -441,6 +454,7 @@ def main(argv=None):
     parser.add_argument("--normal-weight", type=float, default=0.0, help="weight of the L1 normal term")
     parser.add_argument("--refine-to", type=int, help="first split the start's worst triangles up to this many")
     parser.add_argument("--score", action="store_true", help="fit nothing: print the start's mean normal error on the poses")
+    parser.add_argument("--angle-dir", help="with --score, also write each pose's per-pixel normal angle there, for render_compare.py --angle-sheet")
     args = parser.parse_args(argv)
     if len(args.poses) != len(args.reference):
         parser.error("give one --reference per --poses")
@@ -462,7 +476,7 @@ def main(argv=None):
         out = pathlib.Path(args.out) / (f"shot{index}" if args.per_shot else "")
         log(f"{out}: {len(views)} views at {size[0]}x{size[1]}")
         if args.score:
-            print(f"normal error: {normal_error(mesh, views, size):.3f} degrees")
+            print(f"normal error: {normal_error(mesh, views, size, angle_dir=args.angle_dir):.3f} degrees")
             continue
         fitted = mesh
         if args.refine_to is not None:

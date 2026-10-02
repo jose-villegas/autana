@@ -198,6 +198,43 @@ the foreground drapery. `doc_images.sh` regenerates the sheet.
 
 ![Reference, flat bake, error heatmap and edge pixels](../../../../../docs/images/render/bake-fidelity-sheet.png)
 
+### Outcome of the appearance fit
+
+What the fitted and culled Sponza meshes achieve against the committed ones,
+on seven held-out poses no fit trained on, board time from
+`run_sponza_perf_suite --perf-scope`, five runs each. ΔE is lower-is-better.
+
+| Mesh | Triangles | Held-out ΔE76 | Board ms | Against | ΔE change | ms change |
+|---|---:|---:|---:|---|---:|---:|
+| Lite, committed | 8,670 | 7.69 | 45.98 | | | |
+| **Fitted lite** (`sponza-fitted`) | 8,672 | 4.93 | 46.07 | lite | **−36%** | +0.2% |
+| Full, committed | 17,375 | 6.76 | 58.5 | | | |
+| **Fitted full** (`sponza-fitted-full`) | 17,381 | 4.50 | 61.25 | full | **−33%** | +4.7% |
+| **Full culled to the camera path** | 10,573 | unchanged (7.196 to 7.196)\* | 50.1 | full | 0% | **−14.5%** |
+| Fitted lite with the cost term ($`\mu = 0.1`$) | 8,672 | 5.63\* | 41.0\* | fitted lite | +7.6% | −11% |
+
+\* Scored earlier, on the same seven poses against a reference that did not
+yet blend edges with the camera's background: lite was 8.13 there, not 7.69, so
+only the change columns compare with the other rows, not the absolute ΔE. Full
+culled was timed against full's 58.6 ms in that run (50.1 against 58.6).
+
+Board builds: fitted lite 27117d209f43-diag against lite 45.98, full 58.51;
+fitted full 3fe602bd20ed-diag against full 58.49, fitted lite 46.74, lite
+45.98, flat 45.01; the cost-term and culled rows f0c7832ae9ae, a32452c07094 and
+e5657d970e9c-diag.
+
+- Fitting is the quality win at the same cost: the same triangles and time
+  for about 36% less ΔE.
+- Path culling is the speed win: dropping what the camera path never sees takes
+  the full mesh from 58.6 to 50.1 ms, ΔE unchanged and no holes along the path.
+- The cost term buys −11% in time at a cost in ΔE, no better than a smaller
+  triangle budget.
+- Fitted full cuts full's ΔE by a third (6.76 to 4.50) for +4.7%
+  (58.49 to 61.25 ms); against fitted lite it buys 0.39 ΔE for 14.5 ms more, so
+  lite stays the knee.
+- Neither 30 fps (33.3 ms) nor 60 fps is reachable on this scene: the fixed
+  cost alone is about 21 ms, and even 4,000 triangles draw in 37 ms.
+
 ### Appearance fit of the lite mesh
 
 [`appearance_simplify.py`](../../../../tools/r3d/README.md#appearance-fit)
