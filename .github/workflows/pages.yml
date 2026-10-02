@@ -4,8 +4,9 @@ name: Pages
 # the C4 architecture explorer under /architecture/. A Pages deploy replaces
 # the whole site, so everything on it is built here, in one artifact.
 #
-# A pull request builds the site without deploying it, so a change that
-# breaks the browser build fails there rather than on main.
+# A push to main or to feature/architecture-pages publishes it; the browser
+# build lives on that branch, so the branch publishes without merging. A pull
+# request builds the site without deploying it.
 #
 # The explorer's generator lives in the private development repository,
 # checked out as .dev the way a local checkout holds it. Needs the
@@ -14,7 +15,7 @@ name: Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/architecture-pages]
   pull_request:
   workflow_dispatch:
 
