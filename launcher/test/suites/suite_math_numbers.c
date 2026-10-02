@@ -382,13 +382,15 @@ test_fixed_angles_negative_and_beyond_a_turn(void) {
 }
 
 static void
-test_fixed_dot3_rounds_the_sum_once_and_saturates(void) {
+test_fixed_dot_fast_paths_floor_each_term_and_add_the_constant(void) {
     const int32_t half = MATHX_ONE / 2;
-    /* Three products of 0.5 unit each: rounded one by one they are 3, as a sum 1.5 rounds to 2. */
-    TEST_ASSERT_EQUAL_INT32(2, mathx_dot3(1, half, 1, half, 1, half));
-    TEST_ASSERT_EQUAL_INT32(-2, mathx_dot3(-1, half, -1, half, -1, half));
-    TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_dot3(INT32_MAX, MATHX_ONE, INT32_MAX, MATHX_ONE, 0, 0));
-    TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathx_dot3(INT32_MIN, MATHX_ONE, INT32_MIN, MATHX_ONE, 0, 0));
+    /* A half unit of Q16.16 per term floors to zero, and a negative one to -1. */
+    TEST_ASSERT_EQUAL_INT32(7, mathx_dot3c(1, half, 1, half, 1, half, 7));
+    TEST_ASSERT_EQUAL_INT32(4, mathx_dot3c(-1, half, -1, half, -1, half, 7));
+    TEST_ASSERT_EQUAL_INT32(5 * MATHX_ONE, mathx_dot2c(2 * MATHX_ONE, MATHX_ONE, MATHX_ONE, 3 * MATHX_ONE, 0));
+    TEST_ASSERT_EQUAL_INT32(MATHX_ONE + 9, mathx_dot2c(MATHX_ONE, MATHX_ONE, 0, 0, 9));
+    /* The sum wraps rather than saturating: its contract is bounded coordinates. */
+    TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathx_dot2c(0, 0, 0, 0, INT32_MIN));
 }
 
 static void
@@ -417,7 +419,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_fixed_point_overflow_saturates_and_divide_by_zero_follows_the_sign);
     RUN_TEST(test_int16_arithmetic_and_conversion_saturate_at_the_int16_range);
     RUN_TEST(test_int32_dot_widens_to_int64);
-    RUN_TEST(test_fixed_dot3_rounds_the_sum_once_and_saturates);
+    RUN_TEST(test_fixed_dot_fast_paths_floor_each_term_and_add_the_constant);
     RUN_TEST(test_fixed_matrix_apply_matches_float);
     RUN_TEST(test_fixed_multiply_and_divide_round_ties_away_from_zero_in_both_signs);
     RUN_TEST(test_fixed_divide_handles_signs_saturation_and_the_most_negative_divisor);

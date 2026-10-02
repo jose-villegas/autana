@@ -19,7 +19,9 @@ and read the macros in `*_template.h` only to change an algorithm.
 | `x` | Q16.16 fixed point | ±32768 | 1/65536 (1.5e-5); sine good to ~1e-3; saturates | `vec2x`, `vec3x`, `quatx`, `mat4x`, `transformx` | deterministic maths, or a chip with no FPU |
 
 A dot product of `i` and `s` vectors widens to int64; of `x`, it is a saturating
-Q16.16 sum. `x` divide by zero saturates by the numerator's sign (0 / 0 is 0).
+Q16.16 sum. `mat4x_apply` is the exception to saturation: it floors each product
+and wraps the sum (`mathx_dot3c`), which is a multiply and a shift a term
+instead of a 64-bit sum, for coordinates kept inside +-32768. `x` divide by zero saturates by the numerator's sign (0 / 0 is 0).
 Fixed-point angles are **turns**, 65536 to a turn, so an eighth of a turn is
 `MATHX_ONE / 8`; float angles are radians (`MATH_PI`, `MATH_TAU`).
 

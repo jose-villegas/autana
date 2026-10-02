@@ -2,7 +2,7 @@
  * mathx: Q16.16 fixed-point scalar operations for the math templates
  * (math_template.h).
  *
- * Every operation SATURATES: a result outside the type's range comes back as
+ * Every operation SATURATES, except the dot2c and dot3c fast paths below: a result outside the type's range comes back as
  * its largest or smallest value instead of wrapping, so an overflow in a
  * transform shows as a clamped coordinate, never a wild one. A divide by zero
  * saturates by the numerator's sign (0 / 0 is 0). Products round to nearest,
@@ -86,13 +86,21 @@ mathx_cos_turns(int32_t turns) {
     return trig_cos((uint16_t)turns) * 2;
 }
 
-/* a0 * b0 + a1 * b1 + a2 * b2 with one rounding of the exact sum, and one
- * saturation, instead of one per product: faster and more exact than three
- * mathx_mul calls added. */
+/* The dot products a matrix transform sums, as a fast path: each product is
+ * floored to Q16.16 (a multiply and a funnel shift, no 64-bit sum, no sign
+ * branch) and the 32-bit sum WRAPS, unlike mathx_add. Each term is off by
+ * under one unit, so a sum by under three. For coordinates the caller keeps
+ * inside +-32768, which a camera and a floor are. */
 static inline int32_t
-mathx_dot3(int32_t a0, int32_t b0, int32_t a1, int32_t b1, int32_t a2, int32_t b2) {
-    const int64_t sum = ((int64_t)a0 * b0) + ((int64_t)a1 * b1) + ((int64_t)a2 * b2);
-    return mathx_saturate(fx_round_shift(sum, MATHX_SHIFT));
+mathx_dot2c(int32_t a0, int32_t b0, int32_t a1, int32_t b1, int32_t c) {
+    return (int32_t)((uint32_t)fx_mul_floor(a0, b0, MATHX_SHIFT) + (uint32_t)fx_mul_floor(a1, b1, MATHX_SHIFT)
+                     + (uint32_t)c);
+}
+
+static inline int32_t
+mathx_dot3c(int32_t a0, int32_t b0, int32_t a1, int32_t b1, int32_t a2, int32_t b2, int32_t c) {
+    return (int32_t)((uint32_t)fx_mul_floor(a0, b0, MATHX_SHIFT) + (uint32_t)fx_mul_floor(a1, b1, MATHX_SHIFT)
+                     + (uint32_t)fx_mul_floor(a2, b2, MATHX_SHIFT) + (uint32_t)c);
 }
 
 static inline int32_t
