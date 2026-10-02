@@ -525,45 +525,77 @@ class FlatLightTests(unittest.TestCase):
         np.testing.assert_allclose(got, want, rtol=0, atol=1e-12)
 
 
-class CacheIntersector:
-    """A deterministic nearest-hit intersector for cache unit tests."""
+def box_inside(size):
+    """A closed box whose triangles wind to face inward."""
+    box = trimesh.creation.box(extents=(size, size, size))
+    return np.array(box.vertices), np.array(box.faces)[:, [0, 2, 1]]
 
-    def __init__(self, faces):
-        self.faces = np.asarray(faces)
 
-    def intersects_location(self, origin, direction, multiple_hits=False):
-        return np.zeros_like(origin), np.arange(len(origin)), np.resize(self.faces, len(origin))
+def bleed_scene():
+    """A white floor with a saturated wall on it; material 0 is the floor."""
+    floor = trimesh.Trimesh([(0, 0, 0), (0, 0, 40), (40, 0, 40), (40, 0, 0)], [(0, 1, 2), (0, 2, 3)], process=False)
+    wall = trimesh.creation.box(extents=(1, 10, 40))
+    wall.apply_translation((40.5, 5, 20))
+    mesh = trimesh.util.concatenate([floor, wall])
+    tri_mat = np.array([0] * len(floor.faces) + [1] * len(wall.faces))
+    return np.array(mesh.vertices), np.array(mesh.faces), tri_mat, RayMeshIntersector(mesh)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class IndirectLightTests(unittest.TestCase):
+    ONE_FLOOR_LIGHT = [{"type": "directional", "direction": [0.6, 1.0, 0.0], "color": [1, 1, 1], "intensity": 1.0,
+                        "disc_degrees": 0.5, "rays": 4}]
+
+    def cache(self, p, tris, tri_mat, intersector, albedo, lights, bounces, rays=128):
+        return build_indirect_cache(p, tris, tri_mat, sorted(set(tri_mat.tolist())), set(),
+                                    lambda points, spacing, material: np.tile(albedo[material], (len(points), 1)),
+                                    intersector, lights, 0.01, SimpleNamespace(bounces=bounces, rays=rays, cache_samples=1),
+                                    np.random.default_rng(3))
+
     def test_a_closed_diffuse_box_follows_the_bounce_series(self):
-        p = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=float)
-        tris = np.array([[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
-        indirect = SimpleNamespace(bounces=3, rays=64, cache_samples=1)
-        cache = build_indirect_cache(p, tris, np.zeros(len(tris), dtype=int), [0], set(),
-                                     lambda points, spacing, material: np.full((len(points), 3), 0.5),
-                                     CacheIntersector([1, 2, 3, 0]),
-                                     [{"type": "ambient", "color": [1, 1, 1], "intensity": 1}], 0.01, indirect,
-                                     np.random.default_rng(3))
-        np.testing.assert_allclose(cache.radiance.sum(axis=0), np.full((4, 3), 0.875), atol=1e-12, rtol=0)
+        p, tris = box_inside(10.0)
+        intersector = RayMeshIntersector(trimesh.Trimesh(p, tris, process=False))
+        lights = [{"type": "ambient", "color": [1, 1, 1], "intensity": 1.0}]
+        a, inside = 0.5, np.array([[1.0, 2.0, -3.0], [-4.0, 0.5, 4.0]])
+        for bounces in (1, 2, 3):
+            cache = self.cache(p, tris, np.zeros(len(tris), dtype=int), intersector, {0: np.full(3, a)}, lights, bounces)
+            got = gather_indirect(inside, np.tile([0.0, 1.0, 0.0], (2, 1)), intersector, cache, np.random.default_rng(5))
+            np.testing.assert_allclose(got, np.full((2, 3), sum(a**k for k in range(1, bounces + 1))), rtol=1e-9)
 
-    def test_colour_bleed_rises_near_the_coloured_surface(self):
-        cache = IndirectCache(np.array([[[0.8, 0.1, 0.1], [0.4, 0.4, 0.4]]]), 1, 0.01)
-        points = np.array([[0, 0, 0], [1, 0, 0]], dtype=float)
-        normal = np.tile([0.0, 0.0, 1.0], (2, 1))
-        direct = np.ones((2, 3))
-        indirect = gather_indirect(points, normal, CacheIntersector([0, 1]), cache, shared=True)
-        ratio = (direct + indirect)[:, 0] / (direct + indirect)[:, 1]
-        self.assertGreater(ratio[0], ratio[1])
-        self.assertAlmostEqual(ratio[1], 1.0)
-        np.testing.assert_array_equal(direct[:, 0] / direct[:, 1], [1.0, 1.0])
+    def test_colour_bleed_rises_toward_the_coloured_wall_and_only_with_indirect(self):
+        p, tris, tri_mat, intersector = bleed_scene()
+        albedo = {0: np.array([0.8, 0.8, 0.8]), 1: np.array([0.9, 0.05, 0.05])}
+        cache = self.cache(p, tris, tri_mat, intersector, albedo, self.ONE_FLOOR_LIGHT, 2)
+        points = np.array([[39.0, 0.0, 20.0], [20.0, 0.0, 20.0], [2.0, 0.0, 20.0]])
+        up = np.tile([0.0, 1.0, 0.0], (3, 1))
+        direct = light(points, up, np.zeros(3, dtype=bool), intersector, self.ONE_FLOOR_LIGHT, 0.01, np.random.default_rng(1))
+        total = direct + gather_indirect(points, up, intersector, cache, np.random.default_rng(2))
+        ratio = lambda radiance: (albedo[0] * radiance)[:, 0] / (albedo[0] * radiance)[:, 1]
+        np.testing.assert_allclose(ratio(direct), 1.0)
+        self.assertGreater(ratio(total)[0], 1.05)
+        self.assertGreater(ratio(total)[0], ratio(total)[1])
+        self.assertLess(abs(ratio(total)[2] - 1.0), 0.02)
 
-    def test_a_closer_hit_supplies_the_gathered_radiance(self):
-        cache = IndirectCache(np.array([[[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]]), 1, 0.01)
-        got = gather_indirect(np.array([[0.0, 0.0, 0.0]]), np.array([[0.0, 0.0, 1.0]]),
-                              CacheIntersector([0]), cache, shared=True)
-        np.testing.assert_array_equal(got, [[1.0, 0.0, 0.0]])
+    def test_a_blocked_ray_takes_the_nearer_surfaces_radiance(self):
+        big = 1000.0
+        quad = lambda y: [(-big, y, -big), (big, y, -big), (big, y, big), (-big, y, big)]
+        p = np.array(quad(1.0) + quad(3.0))
+        tris = np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]])
+        intersector = RayMeshIntersector(trimesh.Trimesh(p, tris, process=False))
+        cache = IndirectCache(np.array([[[1.0, 0.0, 0.0]] * 2 + [[0.0, 0.0, 1.0]] * 2]), 16, 0.01)
+        got = gather_indirect(np.zeros((1, 3)), np.array([[0.0, 1.0, 0.0]]), intersector, cache, np.random.default_rng(4))
+        self.assertEqual(got.tolist(), [[1.0, 0.0, 0.0]])
+
+    def test_a_miss_adds_nothing(self):
+        p = np.array([(-100.0, -1.0, -100.0), (100.0, -1.0, -100.0), (100.0, -1.0, 100.0)])
+        intersector = RayMeshIntersector(trimesh.Trimesh(p, [[0, 1, 2]], process=False))
+        cache = IndirectCache(np.ones((1, 1, 3)), 8, 0.01)
+        got = gather_indirect(np.zeros((1, 3)), np.array([[0.0, 1.0, 0.0]]), intersector, cache, np.random.default_rng(1))
+        self.assertEqual(got.tolist(), [[0.0, 0.0, 0.0]])
+
+    def test_without_a_cache_the_gather_is_exactly_zero(self):
+        got = gather_indirect(np.zeros((3, 3)), np.tile([0.0, 1.0, 0.0], (3, 1)), None, None, np.random.default_rng(1))
+        self.assertEqual(got.tolist(), np.zeros((3, 3)).tolist())
 
     def test_zero_bounces_is_byte_identical_to_no_cache(self):
         p, tris, intersector = walled_floors([0])
@@ -575,6 +607,16 @@ class IndirectLightTests(unittest.TestCase):
         self.assertIsNone(cache)
         self.assertEqual(direct.tolist(), face_colours(p, tris, np.zeros(len(tris), dtype=int), [0], set(), grey,
                                                        intersector, lights, 0.5, 0.35, indirect_cache=cache).tolist())
+
+    def test_equal_surroundings_get_equal_colours_with_indirect_light(self):
+        p, tris, intersector = walled_floors([0, 64])
+        grey = lambda points, spacing, material: np.full((len(points), 3), 0.3)
+        lights = lighting_lights(sun=[0.8, 1.0, 0.0], sun_intensity=1.0, sky_intensity=1.0, ambient=0.02)
+        mat = np.zeros(len(tris), dtype=int)
+        cache = build_indirect_cache(p, tris, mat, [0], set(), grey, intersector, lights, 0.5,
+                                     SimpleNamespace(bounces=2, rays=32, cache_samples=1), np.random.default_rng(1))
+        c = face_colours(p, tris, mat, [0], set(), grey, intersector, lights, 0.5, 0.35, indirect_cache=cache).tolist()
+        self.assertEqual(c[:2], c[2:])
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

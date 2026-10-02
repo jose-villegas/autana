@@ -256,11 +256,14 @@ class IndirectCache:
         self.ray_offset = ray_offset
 
 
-def gather_indirect(points, normals, intersector, cache, rng=None, shared=False):
+def gather_indirect(points, normals, intersector, cache, rng=None, shared=False, double_sided=None, lights=None):
     """Estimate irradiance from the cache with cosine-weighted hemisphere rays.
-    A miss has no indirect contribution because the sky light is direct."""
+    A miss has no indirect contribution because the sky light is direct. A
+    double-sided point gathers on the side the direct light shines on."""
     if cache is None:
         return np.zeros((len(points), 3))
+    if double_sided is not None:
+        normals = face_towards_light(normals, double_sided, lights)
     origin = points + normals * cache.ray_offset
     out = np.zeros((len(points), 3))
     for direction in hemisphere_directions(normals, cache.rays, rng, shared):
@@ -292,7 +295,8 @@ def build_indirect_cache(points, tris, tri_mat, materials, double_materials, alb
     radiance = [(albedo * direct).reshape(indirect.cache_samples, len(tris), 3).mean(axis=0)]
     for _ in range(indirect.bounces - 1):
         irradiance = gather_indirect(centres, normals, intersector,
-                                     IndirectCache(np.asarray(radiance[-1:]), indirect.rays, ray_offset), rng)
+                                     IndirectCache(np.asarray(radiance[-1:]), indirect.rays, ray_offset), rng,
+                                     double_sided=double, lights=lights)
         radiance.append(albedo * irradiance)
     return IndirectCache(np.asarray(radiance), indirect.rays, ray_offset)
 
@@ -354,7 +358,7 @@ def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_o
             double = np.full(len(points), m in double_materials)
             tiled = np.tile(normals, (k, 1))
             radiance = light(points, tiled, double, intersector, lights, ray_offset, None, sky_rays, sun_centre)
-            radiance += gather_indirect(points, tiled, intersector, indirect_cache, shared=True)
+            radiance += gather_indirect(points, tiled, intersector, indirect_cache, shared=True, double_sided=double, lights=lights)
             colour = (albedo * radiance).reshape(k, len(faces), 3).mean(axis=0)
             out[selected] = to_srgb8(colour, tonemap_white)
     return out

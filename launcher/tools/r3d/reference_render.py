@@ -124,7 +124,7 @@ def trace(source, settings, scene, pose, width, height, lens, samples=4):
         radiance = light(locations, normal, double, source.intersector, scene.lights, settings.light.ray_offset,
                          np.random.default_rng(settings.seed), shared_sky_rays=0)
         radiance += gather_indirect(locations, normal, source.intersector, getattr(source, "indirect_cache", None),
-                                    np.random.default_rng(settings.seed))
+                                    np.random.default_rng(settings.seed), double_sided=double, lights=scene.lights)
         linear[rays] = albedo * radiance
     return (linear.reshape(height, width, samples * samples, 3).mean(axis=2),
             covered.reshape(height, width, samples * samples).mean(axis=2))
