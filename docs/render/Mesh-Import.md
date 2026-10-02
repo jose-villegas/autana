@@ -43,9 +43,10 @@ Keys before `;` are required; after it, optional.
 |---|---|---|---|---|---|
 | `[process]` | ; `seed` | Seeds visibility rays, thin's random choice and lighting rays. | `0`; only with visibility, thin or light. | None / none. | [Import file](#import-file) |
 
-### Geometry
+Every table in Geometry, Visibility and Lighting opts its step in; without it
+the step does not run.
 
-Every table below opts its step in; without it the step does not run.
+### Geometry
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
 |---|---|---|---|---|---|
@@ -55,29 +56,26 @@ Every table below opts its step in; without it the step does not run.
 
 ### Visibility
 
-Every table below opts its step in; without it the step does not run.
-
 | Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
 |---|---|---|---|---|---|
 | `[visibility]`: `camera_region` | `rounds`; `source` | Culls what the camera's region can see. | `source = "camera_region"`. | Seconds to minutes / fewer triangles. | [Import file](#import-file) |
-| `[visibility]`: `camera_path` | `every_ms`, `size`; `source`, `samples`, `margin` | Culls what camera-path poses can see. On the measured scene it keeps 116,917 of 245,465 source triangles, compared with the region's 211,004; it cuts the full mesh from 58.6 to 50.1 ms (−14.5%), with 0 hole pixels for culled lite and at most 8 px in 3 frames for culled full along the path. [Full results](../../launcher/main/apps/render%5Flab/tools/README.md#cost-aware-fit-along-the-camera-path). | `samples` 3, `margin` 0. | Minutes / fewer triangles, about 15% less frame time on the full mesh. | [Import file](#import-file) |
+| `[visibility]`: `camera_path` | `source`, `every_ms`, `size`; `samples`, `margin` | Culls what camera-path poses can see. On the measured scene it keeps 116,917 of 245,465 source triangles, compared with the region's 211,004; it cuts the full mesh from 58.6 to 50.1 ms (−14.5%), with 0 hole pixels for culled lite and 4 to 8 px in each of 3 frames for culled full along the path. The full results live in that scene's tools README. | `samples` 3, `margin` 0. | Minutes / fewer triangles, about 15% less frame time on the full mesh. | [Import file](#import-file) |
 | `variants.visibility` | The keys of `[visibility]` | Overrides the import's visibility for one variant. | Inherits `[visibility]`. | As `[visibility]`. | [Import file](#import-file) |
 
 ### Lighting
 
-Every table below opts its step in; without it the step does not run.
-
 | Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
 |---|---|---|---|---|---|
-| `lighting.light` | `ray_offset`, `colour_merge_step`; `flat_sky_rays` | Bakes the scene's light into vertex colour; flat faces share `flat_sky_rays`. | Off: albedo; `flat_sky_rays` is required with flat shading and refused otherwise. | Minutes / none. | [The baked mesh](#the-baked-mesh) |
+| `lighting.light` | `ray_offset`, `colour_merge_step`; `flat_sky_rays`, `indirect = { bounces, rays, cache_samples }` | Bakes the scene's light into vertex colour; flat faces share `flat_sky_rays`, while `indirect` adds bounce light. | Off: albedo; `flat_sky_rays` is required with flat shading and refused otherwise. | Minutes / none. | [The baked mesh](#the-baked-mesh) |
 
 ### Variants
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
 |---|---|---|---|---|---|
-| `[[variants]]` | `name`; `triangles`, `shading`, `visibility`, `fit` | Names a separately baked mesh. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [Import file](#import-file) |
+| `[[variants]]` | `name`; `triangles`, `shading`, `visibility`, `indirect`, `fit` | Names a separately baked mesh. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [Import file](#import-file) |
 | `[[variants]].triangles` | — | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / set by the budget. | [Import file](#import-file) |
 | `[[variants]].shading` | ; `flat = { fixed = N }` or `flat = { auto = { min, max, area } }` | `smooth`, or flat shading with fixed or automatic face samples; flat stores one colour per triangle. `area`: a number, or `"median"` for the mesh's median face. | `smooth`. | Minutes / cheaper rasterisation. | [The baked mesh](#the-baked-mesh) |
+| `[[variants]].indirect` | ; `false` | Omits `lighting.light.indirect` from this variant's bake and fit reference. | Inherits `lighting.light.indirect`. | Saves bounce gathering / none. | [Indirect light](#indirect-light) |
 | `[[variants]].fit` | `budget`, `train_every_ms`, `held_out_every_ms`, `coverage_every_ms`, `steps`, `batch`, `laplacian`, `normal_weight`, `sha256`, `recipe_sha256` | Records a smooth appearance-fit recipe and its hashes. | Off. | a CUDA GPU, minutes / unchanged at its budget. | [Fitting a mesh to the reference](#fitting-a-mesh-to-the-reference) |
 
 Choose a triangle budget from held-out error against predicted frame time:
@@ -85,8 +83,7 @@ keep the front's knee unless its frame cost misses the target. Each point is a
 mesh, placed by held-out $`\Delta E`$ against predicted frame time; meshes no
 other mesh beats on both axes form the front. On the measured scene the knee
 is about 8.7k triangles, where the full budget's last 8.7k triangles buy about
-0.34 $`\Delta E`$. [The appearance-fit results](../../launcher/main/apps/render%5Flab/tools/README.md#cost-aware-fit-along-the-camera-path)
-give the full table.
+0.34 $`\Delta E`$. The appearance-fit results live in that scene's tools README.
 
 ![Held-out error against predicted frame time](images/appearance-pareto.png)
 
@@ -187,12 +184,6 @@ material's albedo (the `Kd` colour times the texture), encoded to 8 bits with a
 1/2.2 gamma, not the piecewise sRGB curve, and with no tone map; the source's
 own vertex colours are not read.
 
-The options above define the closed schema. `variants` has one or more named
-entries; an import without it names its mesh in `output.name`. The steps run in
-the order of the diagram, whatever order the file lists them.
-An import without variants cannot simplify. A mesh's name is its asset id in
-the pack, at most 31 characters, and no two meshes may share one.
-
 Two variants of one import differ in what `simplify` keeps: the same pose
 at the full budget and at about half of it, the full render above the lite.
 
@@ -258,6 +249,86 @@ The off/on stills in `images/` are not made by the doc-images workflow: each
 which needs the bake toolchain and the source model, so nothing refreshes them
 when the bake changes.
 
+### Indirect light
+
+`lighting.light.indirect = { bounces = K, rays = R, cache_samples = S }` bakes
+diffuse bounce light into the same vertex or face colours as the direct light:
+sun light that reaches a surface by way of another one, and a coloured
+surface tinting its neighbours. The renderer reads one colour as before, so
+frame cost and mesh size do not change; only the bake takes longer.
+
+| Field | Meaning |
+|---|---|
+| `bounces` | How many times light bounces; 0 turns it off and gives the same bytes as a light step with no `indirect` |
+| `rays` | Cosine-weighted hemisphere rays for each gather |
+| `cache_samples` | Points averaged into each source triangle's direct radiance |
+
+All three are required when `indirect` is present; `rays` and `cache_samples`
+are at least 1 and `bounces` at least 0. The reference renderer reads the
+same settings, so a fidelity score compares like with like. How strong the
+bounce light looks is not an import setting: the scene's `[indirect]` table
+carries `intensity` and `albedo_boost` ([Scene-Files.md](Scene-Files.md#indirect-look)).
+
+A variant with `indirect = false` is baked without bounces, and its fit
+reference omits them too.
+
+The bake keeps one outgoing radiance per triangle of the full-detail source
+mesh. With albedo $a(t)$, direct irradiance $`E_0(t)`$ at the triangle, and
+$`h_i`$ the first triangle hit by the $i$-th of $R$ cosine-weighted rays from
+it, bounce $k$ gathers the previous bounce's radiance:
+
+```math
+L_0(t) = a(t)\,E_0(t), \qquad
+E_k(t) = \frac{1}{R} \sum_{i=1}^{R} L_{k-1}(h_i), \qquad
+L_k(t) = a(t)\,E_k(t)
+```
+
+A baked point $x$, a smooth vertex or a flat face sample, gathers the same way
+into the cache and adds the sum of the bounces to its direct irradiance, before
+the albedo, the tone map and the encode:
+
+```math
+E_{\mathrm{ind}}(x) = \frac{1}{R} \sum_{i=1}^{R} \sum_{k=0}^{K-1} L_k(h_i),
+\qquad
+L(x) = a(x)\,\bigl(E_{\mathrm{direct}}(x) + E_{\mathrm{ind}}(x)\bigr)
+```
+
+A ray that hits nothing adds nothing, because the sky light already counts the
+sky; a ray that an occluder stops takes the occluder's radiance. With every
+albedo at most $\rho \lt 1$, $`\max_t L_k \le \rho^k \max_t L_0`$, so the series converges and
+bounce $k$ adds less than the one before. Pick $K$ where the next bounce adds
+under about 1% of the direct light.
+
+Every point and every cache triangle uses the same $R$ directions, laid out
+in its own tangent frame, and nothing is drawn at random. Equal surroundings
+give equal colours and a rebake gives the same bytes. A smooth bake gathers
+once for the vertex copies a crease splits at one position, on their mean
+normal, and gives every copy that indirect term: indirect light changes slowly
+where direct light does not, and copies that differ only in it would stop
+merging into one vertex. A double-sided surface gathers on the side the direct
+light shines on, and a ray that reaches a one-sided triangle from behind finds
+no light, so light does not pass through shells.
+
+The scene's `intensity` $g$ multiplies the gathered term and its `albedo_boost`
+$\beta$ replaces every albedo a bounce reflects with
+$\min(\beta a, \max(a, 0.99))$, so reflectance stays below 1 and a boost of 1
+changes nothing:
+
+```math
+L(x) = a(x)\,\bigl(E_{\mathrm{direct}}(x) + g\,E_{\mathrm{ind}}(x)\bigr)
+```
+
+Neither is physical above 1: they brighten and tint the bounces past what the
+reference renders, so fidelity to a physical reference falls as they rise.
+
+The cache and the gathers cost one bundle of rays per source triangle and
+bounce, plus one per baked point. The limit is the light's resolution: it is
+the vertex or face spacing of the baked mesh, so bounce detail smaller than a
+triangle is lost, and a coloured surface tints only the triangles it reaches.
+A scene's bounce sweep, scores and images live beside its own tools.
+
+![The reference beside the direct-light and two-bounce bakes, each with its error heatmap](../images/render/bake-indirect-compare.png)
+
 The scene file that places meshes and carries the lights, the camera and the
 tone map is described in [Scene-Files.md](Scene-Files.md).
 
@@ -284,9 +355,8 @@ Heatmaps put each pixel's ΔE on a scale from black (a match) through red
 (about 20) to yellow (50 or more). The sheet beside them shows the reference,
 the render, the heatmap and the edge pixels, and the commands that make all of
 it are in [`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md#fidelity-reference).
-A scene's scores and example sheet live beside its own tools. Nothing
-refreshes them when the bake changes: the reference and the scratch bakes need
-the bake toolchain and the source model.
+A scene's scores live beside its own tools, and its example sheets are
+regenerated with the other doc images.
 
 The ceiling for a flat bake is the smooth bake's own error. Smooth, one colour
 per vertex, is not exact either, and flat adds the colour gradient across each
@@ -483,9 +553,9 @@ summed over the pixels they show, split along their longest edge, both sides
 at once, up to a larger budget, and is fitted again. *When:* to grow a fit
 instead of starting a finer one from the simplifier. *Cost:* one more fit.
 On the measured scene, refining reaches $`\Delta E`$ 5.223 at 8,035 triangles
-and 5.153 at 10,382, against 5.220 and 5.029 from QEM, so it does not move the
-plateau. [The appearance-fit results](../../launcher/main/apps/render%5Flab/tools/README.md#cost-aware-fit-along-the-camera-path)
-give the full table.
+and 5.153 at 10,382, against the path start fitted at the 8,672 and 12,000
+budgets, which reaches 5.220 and 5.029, so it does not move the plateau. The
+appearance-fit results live in that scene's tools README.
 
 **The normal term.** *What:* colour alone can be matched by geometry that is
 wrong and shows it from another view. The reference renderer also writes the
@@ -498,9 +568,9 @@ a second drawing per view. The error reported beside ΔE is the mean angle:
 
 On the measured scene, $`\lambda_n`$ 0 / 0.1 / 0.3 / 1 gives $`\Delta E`$
 5.220 / 5.247 / 5.268 / 5.232 and normal error 18.6 / 17.1 / 16.3 / 14.8°.
-$`\lambda_n = 1`$ recovers geometry at no $`\Delta E`$ cost. The heatmap
-shows the normal error that it removes; [the appearance-fit results](../../launcher/main/apps/render%5Flab/tools/README.md#cost-aware-fit-along-the-camera-path)
-give the full table.
+$`\lambda_n = 1`$ recovers geometry within 0.05 $`\Delta E`$. The heatmap
+shows the normal error that it removes; the appearance-fit results live in
+that scene's tools README.
 
 ![Normal angle heatmaps](images/appearance-normal-heat.png)
 
@@ -528,9 +598,8 @@ On the measured scene it is 21.4 ms + 1.14 $`\mu\mathrm{s}`$ per drawn
 triangle + 0.51 $`\mu\mathrm{s}`$ per row + 0.028 $`\mu\mathrm{s}`$ per pixel
 + 22.7 $`\mu\mathrm{s}`$ per cluster. Its $`R^2`$ is 0.983 and it predicts six
 meshes outside its fit within 1.3 ms. The 21.4 ms constant leaves too little
-time for a 30 fps frame and exceeds a 60 fps frame before drawing; [the
-appearance-fit results](../../launcher/main/apps/render%5Flab/tools/README.md#cost-aware-fit-along-the-camera-path)
-give the full table.
+time for a 30 fps frame and exceeds a 60 fps frame before drawing; the
+appearance-fit results live in that scene's tools README.
 
 **The cost term.** *What:* $`D_v`$, $`\rho_t`$ and $`\alpha_t`$ follow the vertex
 positions, so the fit can trade appearance against predicted time with a
@@ -539,8 +608,8 @@ option; on the meshes it was tried on, a smaller budget bought the same time
 for less error. *Cost:* the fit runs about three times longer.
 
 On the measured scene its weight trades 0.2–0.6 $`\Delta E`$ for 4–7 ms, no
-better than a smaller budget. [The appearance-fit results](../../launcher/main/apps/render%5Flab/tools/README.md#cost-aware-fit-along-the-camera-path)
-give the full table.
+better than a smaller budget. The appearance-fit results live in that scene's
+tools README.
 
 The whole objective, with $\lambda$, $`\lambda_n`$ and $\kappa$ the weights of
 the Laplacian, normal and cost terms:

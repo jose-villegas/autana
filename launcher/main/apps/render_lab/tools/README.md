@@ -60,6 +60,8 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 | `render/sponza-{full,lite,flat,fitted,fitted-full}.gif` | the same three seconds of the flythrough, one GIF per bake |
 | `render/sponza-{depth,tiles}.gif` | those three seconds as the depth and depth-tile views of the full bake |
 | `render/bake-fidelity-sheet.png` | the flat bake against the source model at two poses, with the error heatmap (see Fidelity against the source) |
+| `render/bake-indirect-compare.png`, `render/bake-indirect-crops.png` | the reference beside the smooth bake without and with indirect light (from a bake of the import made without that field), each with its error heatmap against the reference at two poses, then the places the two bakes differ most with the reference above them (see Indirect light) |
+| `render/bake-indirect-look.png` | the reference beside the indirect bake at intensity 1, 2 and 3 and at an albedo boost of 2, each with its error heatmap, then each look's own reference and the error against it (see Indirect look) |
 | `render/compare-full-{lite,flat}.png`, `.crops.png` | full against lite and smooth against flat at the GIFs' last pose: both renders and their difference, then the places they differ most, enlarged |
 | `render/compare-lite-fitted.png`, `.crops.png` | lite against the fitted mesh at that pose, the same way |
 | `render/compare-full-fitted-full.png`, `.crops.png` | full against the fitted full mesh, the same way |
@@ -128,7 +130,9 @@ camera-path poses, and which flat-bake settings get closest. What the numbers
 mean is in [Mesh-Import.md](../../../../../docs/render/Mesh-Import.md#fidelity-against-a-reference);
 the commands, working directory `launcher/`, are in
 [the r3d tools README](../../../../tools/r3d/README.md#fidelity-reference).
-`PY` is the venv's interpreter.
+`PY` is the venv's interpreter. The tables here were measured on bakes with
+direct light only (scene ambient 0.06), before indirect light; the current
+bakes' scores are under Indirect light below.
 
 ```sh
 M=main/apps/render_lab
@@ -145,7 +149,7 @@ scenes scored the same way: `sh $H -o host` renders each scene's video
 scores it. The sheet is `--reference-sheet fidelity.png --sheet-frames 2,4` on
 the committed flat render.
 
-| Variant | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 | Interior ΔE76 |
+| Variant, direct light | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 | Interior ΔE76 |
 |---|---:|---:|---:|---:|---:|
 | Full smooth | 6.654 | 21.46 | 0.696 | 13.64 | 5.53 |
 | Lite smooth | 7.541 | 24.83 | 0.651 | 15.76 | 6.22 |
@@ -549,6 +553,98 @@ directory and nothing refreshes them: the fits need the GPU environment and
 the cost weights a board capture. A 30 fps video of the whole path, the committed lite
 against the chosen mesh, is `render_compare.py --video` of their
 `--frames 1200 --dt 33` renders and is not committed.
+
+## Indirect light
+
+The Sponza import's `lighting.light.indirect = { bounces = 2, rays = 64,
+cache_samples = 1 }` is described in
+[Mesh-Import.md](../../../../../docs/render/Mesh-Import.md#indirect-light). It
+lifts the shadowed arcade ceilings and the sides of the columns the sun does
+not reach, and tints a column next to a banner with the banner's colour. The
+three meshes keep their triangle budgets and cost the same to draw. The scene's
+ambient light is 0.03.
+
+The cache is validated in linear light by the closed diffuse furnace and
+red-wall Cornell fixtures in
+[`test_r3d_bake.py`](../../../../tools/tests/test_r3d_bake.py). The furnace
+holds the finite bounce series, while the Cornell floor receives a stronger red
+term next to its red wall. A Sponza cache measurement must use its
+alpha-masked source and linear radiance, not source triangle counts or encoded
+vertex colours.
+
+The atrium's sunlit floor beneath a curtain is direct-light dominated. Its
+small coloured indirect term can disappear through the tone map and RGB565
+quantization even when the cache contains substantial bounce light elsewhere.
+On a shaded column the indirect term can exceed direct light, but both terms
+remain close to black. The source reference resolves those local changes more
+finely than the vertex-colour mesh, so a per-pixel reference is the comparison
+for a suspected colour-bleed loss.
+
+How far each bake is from the source lit per pixel with the same bounces, over
+the same eight poses as above. Mean ΔE76, p95 ΔE76 and luma SSIM; the
+direct-light bakes are the same import with `indirect` removed:
+
+| Bake | Against the indirect reference |
+|---|---|
+| Full smooth, direct light | 8.507, 21.96, 0.680 |
+| Full smooth, two bounces | 6.645, 21.03, 0.684 |
+| Lite smooth, direct light | 9.489, 26.65, 0.629 |
+| Lite smooth, two bounces | 7.801, 25.19, 0.638 |
+| Flat, direct light | 9.294, 28.99, 0.634 |
+| Flat, two bounces | 7.680, 26.17, 0.623 |
+
+The indirect reference is the ground truth for a bake that carries bounce
+light, and the two-bounce bakes are 1.6 to 1.9 ΔE nearer to it than the direct
+bakes. The reference resolves bounce detail finer than a triangle, which is the
+error that remains.
+
+The reference, the smooth bake with direct light only and the smooth bake with
+two bounces at two poses, each bake with its ΔE heatmap against the reference
+and the reference's edge pixels beside them. The error stays at silhouettes and
+shadow edges; the bounces take the mean down by about a fifth.
+
+![Reference, direct-light bake and two-bounce bake, with error heatmaps](../../../../../docs/images/render/bake-indirect-compare.png)
+
+The places the two bakes differ most, the reference above them: a banner's
+colour on the column beside it, and the lit ceiling.
+
+![Where bounce light changes the picture](../../../../../docs/images/render/bake-indirect-crops.png)
+
+`doc_images.sh` regenerates the images, baking the import without `indirect`
+for the direct-light side. It renders the source reference with and without
+the import's indirect field before `render_compare.py` makes the sheets and
+crops.
+
+### Indirect look
+
+The scene's `[indirect]` table, described in
+[Scene-Files.md](../../../../../docs/render/Scene-Files.md#indirect-look), sets
+`intensity` (a multiplier on the gathered bounce light) and `albedo_boost` (a
+multiplier on the reflectance bounces use, held below 1). The committed scene
+leaves both at the physical 1.0. The reference reads the same table, so each
+look has two references: the physical one and one made with the look's own
+settings. The sheet bakes the same import at intensity 2 and 3 and at an albedo
+boost of 2 and shows, at the last pose, the physical reference above the bakes
+with their heatmaps against it, then each look's own reference with the
+heatmap against that:
+
+![Physical reference and each look's own, with the bakes and their error heatmaps](../../../../../docs/images/render/bake-indirect-look.png)
+
+Over five poses, mean ΔE76 against the physical reference and against the
+look's own, then p95 and luma SSIM against the physical one:
+
+| Look | Mean ΔE76, physical | Mean ΔE76, own | p95, physical | SSIM, physical |
+|---|---:|---:|---:|---:|
+| Direct light only | 8.76 | | 23.14 | 0.675 |
+| Intensity 1 | 6.80 | 6.80 | 22.14 | 0.679 |
+| Intensity 2 | 7.60 | 7.25 | 22.45 | 0.667 |
+| Intensity 3 | 9.25 | 7.64 | 23.63 | 0.648 |
+| Albedo boost 2 | 8.36 | 7.45 | 23.03 | 0.656 |
+
+The error against the physical reference is the look plus the bake; against the
+look's own reference it is the bake alone, so the gap between the two columns is
+what the look itself costs: most of intensity 3's rise from 6.80 to 9.25 is that
+gap (1.6), the bake adding the other 0.8.
 
 ## Sponza poses
 

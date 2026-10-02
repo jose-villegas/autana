@@ -13,8 +13,11 @@ import unittest
 import unittest.mock
 from pathlib import Path
 
-import numpy as np
-from PIL import Image
+try:
+    import numpy as np
+    from PIL import Image
+except ImportError:
+    raise unittest.SkipTest("Pillow and numpy are not installed")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "render"))
 
@@ -153,6 +156,33 @@ class ReferenceCropTest(unittest.TestCase):
         fitted.putpixel((1, 1), (120, 120, 120))
         sheet = render_compare.reference_crop_sheet(reference, lite, fitted, 1, "reference", "simplifier", "fitted")
         self.assertGreater(sheet.height, 3 * render_compare.LABEL_BAR)
+
+
+class ReferenceBakeSheetTest(unittest.TestCase):
+    def test_a_frame_is_the_reference_then_each_bake_over_edges_then_each_heatmap(self):
+        reference, near, far = image(STEP), image(STEP), Image.new("RGB", (8, 8), DRAWN)
+        sheet = render_compare.reference_bake_sheet([("frame 0", reference, [("near", near, None), ("far", far, None)])], tile=1.0)
+        self.assertEqual(sheet.width, 3 * reference.width)
+        self.assertEqual(sheet.height, 2 * (reference.height + render_compare.LABEL_BAR) + 70)
+        heat = np.asarray(sheet)[render_compare.LABEL_BAR + reference.height + render_compare.LABEL_BAR:][:reference.height]
+        self.assertEqual(int(heat[:, reference.width:2 * reference.width].max()), 0)
+        self.assertGreater(int(heat[:, 2 * reference.width:].max()), 0)
+
+
+class OwnReferenceSheetTest(unittest.TestCase):
+    def test_a_bake_with_its_own_reference_gets_a_reference_row_and_a_heatmap_row_against_it(self):
+        reference, own = image(STEP), Image.new("RGB", (8, 8), DRAWN)
+        without = render_compare.reference_bake_sheet([("f", reference, [("a", own, None)])], tile=1.0)
+        with_own = render_compare.reference_bake_sheet([("f", reference, [("a", own, own)])], tile=1.0)
+        self.assertEqual(with_own.height - without.height, 2 * (8 + render_compare.LABEL_BAR))
+        self.assertEqual(int(np.asarray(with_own)[-70 - 8:-70, 8:].max()), 0, "a bake matches its own reference")
+
+    def test_own_reference_rows_leave_the_reference_column_as_the_sheet_background(self):
+        reference, own = image(STEP), Image.new("RGB", (8, 8), DRAWN)
+        sheet = render_compare.reference_bake_sheet([("f", reference, [("intensity 1", own, own)])], tile=1.0)
+        panel_height = reference.height + render_compare.LABEL_BAR
+        pixels = np.asarray(sheet)
+        self.assertFalse(pixels[2 * panel_height:4 * panel_height, :reference.width].any())
 
 
 class OutlinedTextTest(unittest.TestCase):
@@ -339,30 +369,38 @@ class CropSheetTest(unittest.TestCase):
         a = blank(40, 30)
         b = with_pixels(a, [(20, 15)], DRAWN)
         clusters = render_compare.find_clusters(a, b, None, margin=2, grow=0)
-        pixels = np.asarray(render_compare.crop_sheet([("t", a, b, clusters)], "a", "b", zoom=4))
+        pixels = np.asarray(render_compare.crop_sheet([("t", [a, b], clusters)], ["a", "b"], zoom=4))
         self.assertEqual(int((pixels == DRAWN).all(axis=2).sum()), 16)
 
     def test_a_crop_over_the_size_cap_is_zoomed_less(self):
         a = blank(400, 300)
         b = with_pixels(a, blob(0, 0, 3) + blob(397, 297, 3), DRAWN)
         clusters = render_compare.find_clusters(a, b, None, margin=0, grow=0, threshold=0)
-        pixels = np.asarray(render_compare.crop_sheet([("t", a, b, clusters[:1])], "a", "b", zoom=4))
+        pixels = np.asarray(render_compare.crop_sheet([("t", [a, b], clusters[:1])], ["a", "b"], zoom=4))
         self.assertLessEqual(pixels.shape[1], 512 + 100)
+
+    def test_every_picture_of_an_entry_is_stacked_in_the_cell(self):
+        a = blank(40, 30)
+        b = with_pixels(a, [(20, 15)], DRAWN)
+        clusters = render_compare.find_clusters(a, b, None, margin=2, grow=0)
+        two = render_compare.crop_sheet([("t", [a, b], clusters)], ["x", "y"], zoom=4)
+        three = render_compare.crop_sheet([("t", [a, b, b], clusters)], ["x", "y", "z"], zoom=4)
+        self.assertGreater(three.height, two.height)
 
     def test_no_difference_writes_no_crops_file(self):
         same = blank(20, 20)
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "x.crops.png"
-            self.assertFalse(render_compare.write_crops([("t", same, same, [])], str(target), "a", "b"))
+            self.assertFalse(render_compare.write_crops([("t", [same, same], [])], str(target), ["a", "b"]))
             self.assertFalse(target.exists())
 
     def test_a_difference_writes_the_crops_file(self):
         a = blank(20, 20)
         b = with_pixels(a, blob(5, 5), DRAWN)
-        entries = [("t", a, b, render_compare.find_clusters(a, b, None))]
+        entries = [("t", [a, b], render_compare.find_clusters(a, b, None))]
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "x.crops.png"
-            self.assertTrue(render_compare.write_crops(entries, str(target), "a", "b"))
+            self.assertTrue(render_compare.write_crops(entries, str(target), ["a", "b"]))
             self.assertTrue(target.exists())
 
     def test_each_crop_sits_under_a_label_bar_naming_its_side(self):
@@ -370,7 +408,7 @@ class CropSheetTest(unittest.TestCase):
         b = with_pixels(a, [(20, 15)], DRAWN)
         clusters = render_compare.find_clusters(a, b, None, margin=2, grow=0)
         bar = render_compare.LABEL_BAR
-        picture = render_compare.crop_sheet([("t", a, b, clusters)], "smooth", "flat", zoom=4)
+        picture = render_compare.crop_sheet([("t", [a, b], clusters)], ["smooth", "flat"], zoom=4)
         crop = clusters[0].y1 - clusters[0].y0
         self.assertEqual(picture.height, 36 + 2 * (bar + 4 * crop) + 2 * 6)
         pixels = np.asarray(picture)
@@ -379,10 +417,10 @@ class CropSheetTest(unittest.TestCase):
 
     def test_a_crops_sheet_without_labels_is_refused(self):
         with self.assertRaises(ValueError):
-            render_compare.crop_sheet([("t", blank(4, 4), blank(4, 4), [])], "a", "")
+            render_compare.crop_sheet([("t", [blank(4, 4), blank(4, 4)], [])], ["a", ""])
 
     def test_no_clusters_still_gives_a_picture(self):
-        self.assertGreater(render_compare.crop_sheet([("t", blank(4, 4), blank(4, 4), [])], "a", "b").size[0], 0)
+        self.assertGreater(render_compare.crop_sheet([("t", [blank(4, 4), blank(4, 4)], [])], ["a", "b"]).size[0], 0)
 
 
 def avi_bytes(width, height, frames, dt_ms):
@@ -445,6 +483,21 @@ class VideoTest(unittest.TestCase):
         self.assertEqual([line.split(":")[0] for line in lines], ["frame 0", "frame 1", "frames mean"])
         self.assertTrue(all(line.startswith(("frame", "frames")) and "mean DeltaE76 0.0000" in line and "luma SSIM 1.000000" in line
                             for line in lines))
+
+    def test_bakes_are_scored_against_the_reference_and_laid_beside_it(self):
+        reference, near, far = Image.new("RGB", (2, 2), DRAWN), Image.new("RGB", (4, 4), DRAWN), Image.new("RGB", (4, 4), CLEAR)
+        with tempfile.TemporaryDirectory() as tmp:
+            for index in range(2):
+                reference.save(Path(tmp) / ("%04d.png" % index))
+            bakes = [("near", self.write_avi(tmp, "n.avi", [near, near])), ("far", self.write_avi(tmp, "f.avi", [far, far]))]
+            sheet = Path(tmp) / "sheet.png"
+            lines = render_compare.write_reference_bake_sheet(tmp, bakes, None, [1], str(sheet), crops=1)
+            with Image.open(sheet) as picture:
+                self.assertEqual(picture.width, 3 * round(4 * 0.8))
+            self.assertTrue(Path(tmp, "sheet.crops.png").exists())
+        self.assertEqual([line.split(":")[0] for line in lines], ["near", "far"])
+        self.assertIn("mean DeltaE76 0.0000", lines[0])
+        self.assertNotIn("mean DeltaE76 0.0000", lines[1])
 
     def test_a_reference_video_can_start_at_a_later_frame(self):
         near, far = Image.new("RGB", (2, 2), DRAWN), Image.new("RGB", (2, 2), CLEAR)

@@ -82,12 +82,30 @@ order does not change the lit result except in which random rays each light
 draws. A double-sided face turns to the side the directional lights, summed by
 intensity, shine on.
 
+## Indirect look
+
+`[indirect]` sets how the baked bounce light looks, in the scene because it is
+a fact about the lighting like the lights and `tonemap_white`; how many
+bounces and rays the bake spends stays in the import
+([Mesh-Import.md](Mesh-Import.md#indirect-light)). Both keys are optional and
+default to the physically correct 1.0, which bakes the same bytes as no table.
+
+| Key | Meaning |
+|---|---|
+| `intensity` | A multiplier on the gathered bounce light, at least 0. Above 1 brightens what bounces. |
+| `albedo_boost` | A multiplier on the reflectance every bounce uses, above 0, held below 0.99 and never below the surface's own albedo. Above 1 carries more of a surface's colour to its neighbours. |
+
+The reference renderer reads the same table, so a scene's reference carries
+its look; values above 1 trade fidelity to a physical reference for look. The
+table is read by no mesh unless a placed import has `indirect`, and is rejected
+then.
+
 ## What the scene must carry
 
 A mesh whose import has a scene-dependent step reads the scene:
 
 - `lighting.light` reads the lights (at least one directional object, `[sky]`
-  or `[ambient]`) and `tonemap_white`;
+  or `[ambient]`), `tonemap_white`, and the optional `[indirect]` table;
 - `visibility` reads the camera's `region`, or its `path` for the
   `camera_path` source.
 
