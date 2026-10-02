@@ -211,11 +211,16 @@ def sweep_rows(out, points):
     return [json.loads((pathlib.Path(out) / point_name(point) / "result.json").read_text()) for point in points]
 
 
+def _score_mesh(args, name, mesh_path, score_dir, host):
+    """Score a packed mesh through the host renderer."""
+    from r3d.bake_fidelity import score, write_pack
+
+    return score(args, host, write_pack(name, mesh_path, score_dir), score_dir)[:2]
+
+
 def held_out_score(variant, mesh_path, work, host, inputs=None):
     """Mean and p95 DeltaE76 from the host renderer against held-out references."""
     from types import SimpleNamespace
-
-    from r3d.bake_fidelity import score, write_pack
     from r3d.poses import read_poses
 
     inputs = pathlib.Path(work) if inputs is None else pathlib.Path(inputs)
@@ -225,7 +230,7 @@ def held_out_score(variant, mesh_path, work, host, inputs=None):
     args = SimpleNamespace(render_args=f"--quarter 0 --no-hud --scene {host_scene_key(variant.name)} --frames {len(poses)} "
                                        f"--dt {variant.fit.held_out_every_ms}", reference=inputs / "reference_held_out",
                            reference_scale=BOARD_SCALE)
-    return score(args, host, write_pack(variant.name, mesh_path, score_dir), score_dir)[:2]
+    return _score_mesh(args, variant.name, mesh_path, score_dir, host)
 
 
 def board_poses(work):

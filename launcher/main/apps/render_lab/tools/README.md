@@ -471,6 +471,10 @@ the upscale, is 21 ms, and at 4,000 triangles the frame is still 35 ms.
 
 `fitted_variant.py sweep` makes this Pareto image from the fitted variant's recipe.
 
+The two-point smoke sweep is plotted below.
+
+![Smoke sweep: held-out error against predicted frame time](../../../../../docs/render/images/budget-sweep-smoke-pareto.png)
+
 ```mermaid
 xychart-beta
     title "Held-out mean ΔE76 against predicted ms, path start fitted"
