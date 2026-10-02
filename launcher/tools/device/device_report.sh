@@ -124,7 +124,7 @@ device_report_run() {
     # shellcheck source=../../../scripts/lib/python.sh
     . "$_dr_worktree/scripts/lib/python.sh"
     PYTHON=$(find_python) || return 1
-    _dr_owner="device_report $report_name"
+    _dr_owner="device_report-$report_name"
     command -v autana > /dev/null 2>&1 || {
         echo "ERROR: autana not on PATH - see scripts/add-tools-to-path.sh" >&2
         return 1
