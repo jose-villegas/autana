@@ -7,7 +7,7 @@
 # way a hand-transcribed copy can.
 #
 # Usage:
-#   main/apps/sand/tools/report_performance.sh [--no-restore] [--perf-scope] \
+#   main/apps/sand/tools/report_performance.sh [--no-restore] [--perf-scope] [--project PATH] \
 #       [--baseline REPORT.md] [OUT.md]
 #
 #   --board SERIAL
@@ -27,6 +27,9 @@
 #   --baseline REPORT.md
 #                after generating the report, run compare_reports.py
 #                --verdict against this earlier report and print its verdict.
+#   --project PATH
+#                project whose diagnostics image is built and captured, and
+#                whose frame-budget sources are parsed.
 #
 # Everything this does beyond the declarations below - which image, deleting
 # a build directory's sdkconfig that disagrees, asserting the flags took,
@@ -39,6 +42,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 LAUNCHER_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../../.." && pwd)
 
 report_name=performance
+report_project=""
 # The app's own results dir: deleting main/apps/sand/ takes its scratch
 # output with it too.
 report_dir="$SCRIPT_DIR/results"
@@ -87,8 +91,8 @@ done
 # a present costs as much as a step.
 report_generate() {
     "$PYTHON" "$SCRIPT_DIR/report_performance.py" "$1" "$2" \
-        --source "$LAUNCHER_DIR/main/apps/sand/tests/suite_sand_perf.c" \
-        --source "$LAUNCHER_DIR/test/suites/suite_gfx.c"
+        --source "$report_project/launcher/main/apps/sand/tests/suite_sand_perf.c" \
+        --source "$report_project/launcher/test/suites/suite_gfx.c"
 }
 
 # The measured (not budget) column of one row of report_performance.py's

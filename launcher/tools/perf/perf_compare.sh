@@ -3,10 +3,11 @@
 # Compare repeated device performance reports at two revisions.
 #
 # Usage:
-#   launcher/tools/perf/perf_compare.sh [-o DIR] [--runs N] [--no-restore] A B -- COMMAND ...
+#   launcher/tools/perf/perf_compare.sh [-o DIR] [--runs N] [--timeout SECONDS] [--no-restore] A B -- COMMAND ...
 #
-# COMMAND runs in each detached checkout. Its report path is appended. Put
-# --out last when COMMAND writes a raw capture; report scripts accept OUT.md.
+# COMMAND runs from this tree. Each detached checkout is supplied through
+# --project, followed by its report path. Put --out last when COMMAND writes
+# a raw capture; report scripts accept OUT.md.
 
 set -eu
 
@@ -14,9 +15,6 @@ TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 LAUNCHER_DIR=$(CDPATH= cd -- "$TOOLS_DIR/../.." && pwd)
 REPO_DIR=$(CDPATH= cd -- "$LAUNCHER_DIR/.." && pwd)
 PERF_COMPARE_AUTANA=$(command -v autana)
-export PERF_COMPARE_AUTANA
-PATH="$TOOLS_DIR/bin:$PATH"
-export PATH
 
 # shellcheck source=../revision_worktree.sh
 . "$LAUNCHER_DIR/tools/revision_worktree.sh"
@@ -28,11 +26,13 @@ usage() {
 
 out=""
 runs=3
+capture_timeout=1800
 restore=1
 while [ $# -gt 0 ]; do
     case "$1" in
         -o) out=${2:?-o needs a directory}; shift 2 ;;
         --runs) runs=${2:?--runs needs a number}; shift 2 ;;
+        --timeout) capture_timeout=${2:?--timeout needs seconds}; shift 2 ;;
         --no-restore) restore=0; shift ;;
         --) shift; break ;;
         -h|--help) usage ;;
@@ -48,6 +48,12 @@ shift 2
 [ $# -gt 0 ] || usage
 case "$runs" in *[!0-9]*|'') usage ;; esac
 [ "$runs" -gt 0 ] || usage
+case "$capture_timeout" in *[!0-9]*|'') usage ;; esac
+[ "$capture_timeout" -gt 0 ] || usage
+command -v timeout > /dev/null 2>&1 || {
+    echo "timeout is required for performance captures" >&2
+    exit 1
+}
 [ -n "$out" ] || out=$(mktemp -d)
 mkdir -p "$out/a" "$out/b"
 out=$(CDPATH= cd -- "$out" && pwd)
@@ -76,24 +82,63 @@ capture_side() {
     _pcs_run=1
     while [ "$_pcs_run" -le "$runs" ]; do
         _pcs_report="$out/$_pcs_side/run_$_pcs_run.md"
-        (cd "$_pcs_tree" && autana status) > "$out/$_pcs_side/run_${_pcs_run}_status_before.txt" 2>&1
-        (cd "$_pcs_tree" && autana buildid) > "$out/$_pcs_side/run_${_pcs_run}_buildid_before.txt" 2>&1 || true
-        (cd "$_pcs_tree" && "$@" "$_pcs_report") > "$out/$_pcs_side/run_${_pcs_run}.log" 2>&1
-        (cd "$_pcs_tree" && autana status) > "$out/$_pcs_side/run_${_pcs_run}_status_after.txt" 2>&1
-        (cd "$_pcs_tree" && autana buildid) > "$out/$_pcs_side/run_${_pcs_run}_buildid_after.txt" 2>&1
+        "$PERF_COMPARE_AUTANA" status > "$out/$_pcs_side/run_${_pcs_run}_status_before.txt" 2>&1 || true
+        "$PERF_COMPARE_AUTANA" buildid > "$out/$_pcs_side/run_${_pcs_run}_buildid_before.txt" 2>&1 || true
+        if timeout "$capture_timeout" "$@" --project "$_pcs_tree" "$_pcs_report" < /dev/null \
+            > "$out/$_pcs_side/run_${_pcs_run}.log" 2>&1; then
+            _pcs_status=0
+        else
+            _pcs_status=$?
+        fi
+        "$PERF_COMPARE_AUTANA" status > "$out/$_pcs_side/run_${_pcs_run}_status_after.txt" 2>&1 || true
+        "$PERF_COMPARE_AUTANA" buildid > "$out/$_pcs_side/run_${_pcs_run}_buildid_after.txt" 2>&1 || true
+        if [ "$_pcs_status" -ne 0 ]; then
+            capture_failures=$((capture_failures + 1))
+            consecutive_failures=$((consecutive_failures + 1))
+            if [ "$_pcs_status" -eq 124 ]; then
+                _pcs_reason="timed out after ${capture_timeout}s"
+            else
+                _pcs_reason="failed with exit $_pcs_status"
+            fi
+            printf '%s\n' "$_pcs_reason" > "$out/$_pcs_side/run_${_pcs_run}.status"
+            echo "capture failed: $_pcs_side run $_pcs_run $_pcs_reason" >&2
+            if [ "$consecutive_failures" -ge 2 ]; then
+                echo "ERROR: stopping after two consecutive capture failures" >&2
+                return 1
+            fi
+            _pcs_run=$((_pcs_run + 1))
+            continue
+        fi
         _pcs_build=$(tr -d '\r\n' < "$out/$_pcs_side/run_${_pcs_run}_buildid_after.txt")
         case "$_pcs_build" in *"$_pcs_short"*) ;; *)
-            echo "build id $_pcs_build does not identify $_pcs_short" >&2
-            return 1
+            capture_failures=$((capture_failures + 1))
+            consecutive_failures=$((consecutive_failures + 1))
+            printf '%s\n' "build id $_pcs_build does not identify $_pcs_short" \
+                > "$out/$_pcs_side/run_${_pcs_run}.status"
+            echo "capture failed: $_pcs_side run $_pcs_run build id $_pcs_build does not identify $_pcs_short" >&2
+            if [ "$consecutive_failures" -ge 2 ]; then
+                echo "ERROR: stopping after two consecutive capture failures" >&2
+                return 1
+            fi
+            _pcs_run=$((_pcs_run + 1))
+            continue
         esac
+        printf '%s\n' "captured $_pcs_build" > "$out/$_pcs_side/run_${_pcs_run}.status"
         printf '%s\n' "$_pcs_report" >> "$out/$_pcs_side/reports.list"
         printf '%s\n' "$_pcs_build" >> "$out/$_pcs_side/buildids.list"
+        consecutive_failures=0
         _pcs_run=$((_pcs_run + 1))
     done
 }
 
-capture_side a "$rev_a" "$@"
-capture_side b "$rev_b" "$@"
+capture_failures=0
+consecutive_failures=0
+capture_side a "$rev_a" "$@" || exit 1
+capture_side b "$rev_b" "$@" || exit 1
+[ "$capture_failures" -eq 0 ] || {
+    echo "ERROR: one or more captures failed; no comparison summary was written" >&2
+    exit 1
+}
 
 set -- --out "$out/summary.md" --label-a "$(short_name "$rev_a")" --label-b "$(short_name "$rev_b")"
 while IFS= read -r item; do set -- "$@" --build-a "$item"; done < "$out/a/buildids.list"
@@ -114,6 +159,6 @@ fi
 
 if [ "$restore" -eq 1 ]; then
     restore_tree=$(revision_worktree_checkout origin/main restore)
-    (cd "$restore_tree" && autana flash rel)
+    "$PERF_COMPARE_AUTANA" flash rel --project "$restore_tree" < /dev/null
 fi
 echo "summary $out/summary.md"
