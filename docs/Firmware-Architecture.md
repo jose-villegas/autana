@@ -60,22 +60,24 @@ flowchart TB
         Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
         Scene["scene/<br/><i>scenes loaded by name, the active camera</i>"]
     end
-    subgraph R5["devices and drawing"]
+    subgraph R5["the shell's panel"]
+        Display["display/<br/><i>orientation, panel clock, panel start</i>"]:::hw
+    end
+    subgraph R6["devices and drawing"]
         Gfx["gfx/<br/><i>the one framebuffer</i>"]:::hw
         Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
-        Display["display/<br/><i>orientation, panel clock, panel start</i>"]
         Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
     end
-    subgraph R6["utilities"]
+    subgraph R7["utilities"]
         Util["util/<br/><i>fixed point, tween, jobs, tunables, time, settings, memory, log</i>"]
         Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
         Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
     end
-    subgraph R7["board"]
+    subgraph R8["board"]
         Board["board/<br/><i>this board's pins and peripherals</i>"]:::hw
     end
 
-    R1 --> R3 --> R4 --> R5 --> R6 --> R7
+    R1 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8
     Contract(["app.h: the shell/app contract"]):::contract
     Main -.->|"calls through app.h"| Apps
     Contract -.->|"includes input/input.h"| Input
