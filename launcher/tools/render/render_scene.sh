@@ -174,7 +174,7 @@ render_scene_build() {
     # line the same way. The --wrap pairs hand every scene allocation to
     # render_watch.c.
     # shellcheck disable=SC2086
-    "$_rs_cc" -std=c11 -Wall -Wextra -Wno-unused-parameter -Wno-unused-function \
+    "$_rs_cc" -std=c11 -Wall -Wextra -ffp-contract=off -Wno-unused-parameter -Wno-unused-function \
         -Wno-unused-variable -O1 -g $_rs_flags $scene_defines $_rs_files -o "$_rs_bin" \
         -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm || return 1
 }

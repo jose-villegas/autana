@@ -85,7 +85,7 @@ Score a host render's video against the references, with a heatmap per frame
 and a sheet of two frames:
 
 ```sh
-$PY tools/render/render_compare.py --out unused.png --reference-video host.avi reference     --reference-scale 2 --heatmap-dir heatmaps --reference-sheet sheet.png --sheet-frames 2,4
+$PY tools/render/render_compare.py --out unused.png --reference-video host.avi reference     --reference-scale 2 --heatmap-dir heatmaps --reference-sheet sheet.png --sheet-frames 2,4 --label-a "flat bake"
 ```
 
 The line for each frame, and for the frames' mean, has mean and 95th-percentile
@@ -93,7 +93,8 @@ CIE76 ΔE over its pixels, luma SSIM, and the mean ΔE on edge and on interior
 pixels; the frames-mean line averages each frame's value, p95 included. The
 sheet is, left to right, the reference, the render, the ΔE heatmap and the
 reference's edge pixels in magenta, over the heatmap's colour scale: ΔE 0 is
-black, about 20 red, 50 or more yellow.
+black, about 20 red, 50 or more yellow. Each panel is labelled; `--label-a`
+names the render and is required with `--reference-sheet`.
 
 `bake_fidelity.py` does the whole loop for flat variants of one mesh, and
 sweeps the flat bake's knobs:

@@ -1,11 +1,8 @@
 /*
- * render_lab_hud_screen: the fps readout in the top-left corner, a scene's
- * status under it, and the scene's name while it is newly entered.
+ * render_lab_hud_screen: microui drawing for the fps readout, scene status,
+ * and a scene title.
  *
- * app_render_lab.c owns the fps clock, the title's lifetime and the
- * perf-test x override this reads; this file only turns them into
- * mu_text()/mu_draw_rect() calls, the split docs/Building-a-Screen.md asks
- * every screen to keep.
+ * The caller owns the timing and supplies every value this screen draws.
  */
 #pragma once
 
@@ -14,7 +11,7 @@
 #include "microui.h"
 
 typedef struct {
-    double fps_value;
+    float fps_value;
     const char* scene_title;
     uint8_t scene_title_alpha; /* dithered coverage of the title's ink; 0 draws no title at all */
 
@@ -22,13 +19,9 @@ typedef struct {
      * say. NULL for none. */
     const char* status;
 
-    /* -1 leaves the box at the corner inset - see
-     * render_lab_hud_screen_draw()'s own comment (render_lab_hud_screen.c)
-     * for why a perf test wants to move it instead. */
+    /* -1 uses the corner inset. */
     int fps_box_x_override;
 } render_lab_hud_screen_state_t;
 
-/* Draws the HUD. Caller brackets this with
- * ui_begin()/ui_end*() - see app_render_lab.c's draw_fps(), which picks
- * ui_end() vs ui_end_for_bands() by render path, not this file's concern. */
+/* Caller brackets drawing with the appropriate ui_begin()/ui_end() pair. */
 void render_lab_hud_screen_draw(mu_Context* ctx, const render_lab_hud_screen_state_t* state);

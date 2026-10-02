@@ -1,16 +1,12 @@
 /*
  * imu_rotation: pure interpretation of the gyroscope's own rotation rate.
  *
- * Split out of imu.c the way touch.c/touch_fsm.c and buttons.c/button_fsm.c
- * already split hardware from interpretation: this side touches no I2C and
- * is pure integer arithmetic, so it belongs on a host. Header-only, not a
- * matching .c, because main/CMakeLists.txt lists its sources by hand rather
- * than globbing them: the same reason gfx_dirty.h stays header-only; see
- * its own file comment.
+ * It touches no I2C and uses only integer arithmetic, so host tests can
+ * exercise it. Header-only and ESP-IDF-free.
  */
 #pragma once
 
-#include "input/imu.h"
+#include "input/imu_sample.h"
 
 /* How fast the board is TURNING, 0-255 from the gyroscope's total rotation
  * rate, saturating rather than wrapping. Named for what it measures because

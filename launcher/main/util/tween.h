@@ -1,15 +1,6 @@
 /*
  * tween: timeline ramps, easing and lerps, in one place.
  *
- * Pulled out of boot_anim.h, where every one of these was hand-rolled first:
- * a millisecond ramp to a 0..255 fraction, an ease-out curve applied to one,
- * and an "a plus (b minus a) times a fraction over 255" lerp repeated at
- * something like a dozen call sites. boot_anim.c is a one-shot five-second
- * sequence, but it will not stay the only thing in this tree animating a
- * value over time (an app's own intro or a transition is the same problem
- * again), so this is where that vocabulary lives now, not copied a second
- * time into the next place that needs it.
- *
  * `static inline`, like fixed.h next to it: nothing here is expensive enough
  * on its own to need a cross-file call, and some of these run once per point
  * drawn in an animation.
@@ -17,7 +8,7 @@
  * MILLISECONDS IN, Q0 (0..255) OUT
  *
  * tween_ramp() takes plain uint32_t milliseconds rather than a fixed-point
- * time, because every caller so far has a wall-clock timestamp already
+ * time, because callers have a wall-clock timestamp already
  * (esp_timer_get_time(), scaled to ms) and nothing here needs sub-millisecond
  * precision. The OUTPUT fraction is Q0 (a uint8_t, 0..255 standing for
  * 0.0..1.0), deliberately coarser than the Q12/Q16.16 this tree uses

@@ -69,9 +69,9 @@ scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
 # camera path is float, so which pixels a triangle reaches is not identical on
 # every compiler. The tests in tools/tests compare the views with each other.
 #
-# The cube scenes with the HUD hidden are pinned: triangle coverage is
-# integer, and the floats appear only in per-triangle setup before 8.8 fixed
-# point, built without fast-math or FMA. Everything carrying the
+# The cube and wire scenes with the HUD hidden are pinned: triangle and line
+# coverage is integer, and the floats appear only in projection, truncated to
+# whole pixels, built without fast-math or FMA. Everything carrying the
 # HUD is not - its fps readout is a double printed with "%.1f" - and neither
 # are the Cornell scenes, which are float throughout.
 scene_renders="

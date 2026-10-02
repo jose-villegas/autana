@@ -93,10 +93,10 @@ float fov[ANIM_WIDTH_MAX];
 anim_track_sample(&prefix_lens_perspective_yfov, seconds, fov);
 ```
 
-Mapping the value onto the object, including any unit or fixed-point
-conversion, belongs to the caller. Tracks are float; a fixed-point caller
-converts after sampling, and `render/r3d_trs.h` does it for an object drawn
-in `util/math/matrix4i.h`'s fixed point.
+Mapping the value onto the object, including any unit conversion, belongs to
+the caller. Tracks are float, and `anim/anim_transform.h` samples a node's
+translation, rotation and scale tracks into a `util/math/transformf.h`
+`transformf_t`.
 
 ## Looking at a baked animation
 

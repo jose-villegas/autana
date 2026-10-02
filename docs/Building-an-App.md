@@ -118,8 +118,8 @@ launch, `leave_app()` on leave:
 | Launch | Leave |
 |---|---|
 | `gfx_request_full_redraw()` | `exit()` |
-| `restore_system_display_state()` | `app_arena_rewind(0)` |
-| `enter()` | `restore_system_display_state()` |
+| `display_restore_system_state()` | `app_arena_rewind(0)` |
+| `enter()` | `display_restore_system_state()` |
 | next pass: `invalidate()`, then the first `frame()` | `gfx_request_full_redraw()` |
 | | launcher drawn and presented the same pass |
 
@@ -258,8 +258,8 @@ the internal or 8-bit heap has less free after `exit()` than it had before `ente
 
 ### What the shell resets for you
 
-On every launch and leave, `restore_system_display_state()`: the panel clock goes back to the system value
-(`shell_system_panel_clock_hz()`, the user's 80 or 40 MHz choice, kept in NVS)
+On every launch and leave, `display_restore_system_state()`: the panel clock goes back to the system value
+(`display_system_panel_clock_hz()`, the user's 80 or 40 MHz choice, kept in NVS)
 and gfx heal goes back to its defaults. The gfx mode is **not** reset; that is
 `exit()`'s job.
 
