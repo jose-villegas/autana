@@ -5,6 +5,12 @@
     render_compare.py --out video.mp4 --video A.avi B.avi --label-a TEXT
         --label-b TEXT [--csv frames.csv] [--fps N] [--clear RRGGBB]
 
+    render_compare.py --out angles.png --angle-column LABEL DIR [--angle-column ...]
+
+--angle-column writes one sheet of normal-angle heatmaps, a column per DIR of
+NNNN.angle.npy files (appearance_simplify.py --score --angle-dir), a row per
+file.
+
 Either form takes --crops N: a second picture, <out>.crops.png, of
 the N places the two differ most, each cut with a margin, A above B and
 enlarged ZOOM (4) times without smoothing. Places with holes come first,
@@ -219,6 +225,28 @@ def reference_sheet(items, label, tile=0.6):
     out = Image.new("RGB", (picture.width, picture.height + 70))
     out.paste(picture, (0, 0))
     out.paste(heat_scale(picture.width), (0, picture.height))
+    return out
+
+
+def angle_sheet(columns, tile=0.6):
+    """Each (label, directory of NNNN.angle.npy) as a column of normal-angle
+    heatmaps, one row per file, on the dE heatmap's colours with degrees in
+    place of dE. A panel's label carries its mean angle over the pixels both
+    meshes cover; uncovered pixels are black."""
+    names = sorted(path.name for path in pathlib.Path(columns[0][1]).glob("*.angle.npy"))
+    strips = []
+    for name in names:
+        pictures = []
+        for label, directory in columns:
+            angle = np.load(pathlib.Path(directory) / name)
+            heat = reference_heatmap_from_error(np.nan_to_num(angle, nan=0.0))
+            pictures.append(captioned(_scaled(heat, tile), "%s: %.1f deg" % (label, np.nanmean(angle))))
+        strips.append(np.concatenate([_pixels(picture) for picture in pictures], axis=1))
+    picture = Image.fromarray(np.concatenate(strips, axis=0).astype(np.uint8))
+    out = Image.new("RGB", (picture.width, picture.height + 70))
+    out.paste(picture, (0, 0))
+    out.paste(heat_scale(picture.width, "normal angle per pixel, degrees: black matches, red about 20, yellow 50 or more"),
+              (0, picture.height))
     return out
 
 
@@ -745,6 +773,8 @@ def main():
     parser.add_argument("--reference-scale", type=int, help="render pixels per reference pixel; default from the first frame")
     parser.add_argument("--reference-first", type=int, default=0, help="video frames to skip before the reference images begin")
     parser.add_argument("--reference-mp4", metavar="MP4", help="with --reference-video, the sheet of every frame as a video")
+    parser.add_argument("--angle-column", nargs=2, action="append", metavar=("LABEL", "DIR"),
+                        help="a column of the --out normal-angle sheet: appearance_simplify.py --score --angle-dir's output")
     parser.add_argument("--heatmap-dir")
     parser.add_argument("--reference-sheet", metavar="PNG", help="with --reference-video, one sheet of --sheet-frames")
     parser.add_argument("--sheet-frames", default="2,4", help="comma-separated video frame indices for --reference-sheet")
@@ -760,6 +790,9 @@ def main():
         parser.error("--label-a and --label-b are required: every panel is labelled")
     if (args.reference_sheet or args.reference_mp4) and not args.label_a:
         parser.error("--label-a, naming the render, is required with --reference-sheet or --reference-mp4")
+    if args.angle_column:
+        angle_sheet(args.angle_column).save(args.out, optimize=True)
+        return
     if args.video:
         line = compare_videos(*args.video, args.out, args.csv, args.clear, GAIN, args.label_a, args.label_b, args.fps, args.crops, ZOOM)
         print(line)
