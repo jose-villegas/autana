@@ -1,4 +1,4 @@
-/* memory_device: memory.h over the capability-aware heap. */
+/* memory: memory.h's kinds as heap capabilities. */
 
 #include "util/memory.h"
 
@@ -12,6 +12,7 @@ capabilities(memory_kind_t kind) {
         case MEMORY_INTERNAL: return MALLOC_CAP_INTERNAL;
         case MEMORY_8BIT: return MALLOC_CAP_8BIT;
         case MEMORY_DMA: return MALLOC_CAP_DMA;
+        case MEMORY_PSRAM: return MALLOC_CAP_SPIRAM;
     }
     return MALLOC_CAP_INTERNAL;
 }
@@ -26,7 +27,23 @@ memory_largest_block(memory_kind_t kind) {
     return heap_caps_get_largest_free_block(capabilities(kind));
 }
 
+size_t
+memory_total_bytes(memory_kind_t kind) {
+    return heap_caps_get_total_size(capabilities(kind));
+}
+
 void
 memory_dump(memory_kind_t kind) {
     heap_caps_dump(capabilities(kind));
+}
+
+/* Internal RAM also holds word-only regions, which a byte store faults in. */
+void*
+memory_alloc(size_t bytes, memory_kind_t kind) {
+    return heap_caps_malloc(bytes, capabilities(kind) | MALLOC_CAP_8BIT);
+}
+
+void
+memory_free(void* block) {
+    heap_caps_free(block);
 }
