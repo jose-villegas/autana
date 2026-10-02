@@ -40,9 +40,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 
 #include "app.h"
 #include "apps/sand/app_sand_test.h"
@@ -80,6 +78,8 @@
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
 #include "util/frame_cost.h"
+#include "util/memory.h"
+#include "util/timing.h"
 
 static const char* TAG = "sand";
 
@@ -212,7 +212,7 @@ _Static_assert((unsigned long)APP_IMPULSE_MAX * sizeof(impulse_t) <= SAND_IMPULS
                "call actually needs - see SAND_IMPULSE_BUDGET_BYTES's own comment "
                "for that incident. Shrink APP_IMPULSE_MAX, or raise "
                "SAND_IMPULSE_BUDGET_BYTES only after a fresh device capture of "
-               "heap_caps_get_largest_free_block() at the point impulse_buf is "
+               "memory_largest_block() at the point impulse_buf is "
                "allocated - never from arithmetic alone.");
 
 /* brush_mode_t per brush - sand_init() does not reset this, so a brush can
@@ -416,7 +416,7 @@ sand_enter(void) {
     idle_awake_total = 0;
     pour_awake_cells_total = 0;
     idle_awake_cells_total = 0;
-    split_log_at_us = esp_timer_get_time() + 2000000;
+    split_log_at_us = timing_now_us() + 2000000;
 #endif
     /* Every path back to the menu leaves indexed mode first - the menu has
      * no indexed draw path and would touch a framebuffer that does not
@@ -488,7 +488,7 @@ sand_app_alloc_selfcheck(size_t* out_largest_free, bool* out_impulses_ok) {
         *out_impulses_ok = (t_imp != NULL);
     }
     if (out_largest_free) {
-        *out_largest_free = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+        *out_largest_free = memory_largest_block(MEMORY_8BIT);
     }
 
     free(t_lanes);
@@ -617,7 +617,7 @@ start_sim(void) {
                      "(%u bytes) - detonate will be a no-op this "
                      "session; largest free block is %u",
                      APP_IMPULSE_MAX, (unsigned)((size_t)APP_IMPULSE_MAX * sizeof(*impulse_buf)),
-                     (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+                     (unsigned)memory_largest_block(MEMORY_8BIT));
         }
     }
     const bool bookkeeping_ok = alloc_grid_bookkeeping();
@@ -625,8 +625,7 @@ start_sim(void) {
         ESP_LOGE(TAG,
                  "Could not allocate a %d x %d grid (%d bytes); "
                  "largest free block is %u",
-                 GRID_W_MAX, GRID_H_MAX, GRID_W_MAX * GRID_H_MAX,
-                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+                 GRID_W_MAX, GRID_H_MAX, GRID_W_MAX * GRID_H_MAX, (unsigned)memory_largest_block(MEMORY_8BIT));
         free_sim_buffers();
         failed = true;
         ui.screen = SAND_UI_RUNNING;
@@ -635,7 +634,7 @@ start_sim(void) {
 
     seed_row_runs_full_width();
 
-    sand_init(&sim, grid, grid_w, grid_h, (uint32_t)esp_timer_get_time());
+    sand_init(&sim, grid, grid_w, grid_h, (uint32_t)timing_now_us());
     sand_set_scatter(&sim, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&sim, SAND_DECAY_PER_MATERIAL);
     sand_set_evaporates(&sim, SAND_EVAPORATES_PER_MATERIAL);
@@ -1442,7 +1441,7 @@ sand_update(uint32_t dt_ms, const input_t* input) {
     log_direction_change(gx, gy, jostle, &sample);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    const int64_t t0 = esp_timer_get_time();
+    const int64_t t0 = timing_now_us();
 #endif
 
     FRAME_COST_BEGIN(step_mark);
@@ -1464,7 +1463,7 @@ sand_update(uint32_t dt_ms, const input_t* input) {
     sand_paint_clock_foam(&paint_clock, dt_ms);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    pending_step_us = esp_timer_get_time() - t0;
+    pending_step_us = timing_now_us() - t0;
     count_awake(&pending_awake_blocks, &pending_awake_cells);
 #endif
 
@@ -1592,7 +1591,7 @@ draw_canvas_overlays(void) {
 static __attribute__((noinline)) void
 draw_sim_frame(const input_t* input) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    const int64_t t1 = esp_timer_get_time();
+    const int64_t t1 = timing_now_us();
 #else
     (void)input;
 #endif
@@ -1614,7 +1613,7 @@ draw_sim_frame(const input_t* input) {
     FRAME_COST_END(draw_mark, "sand.draw");
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    const int64_t t2 = esp_timer_get_time();
+    const int64_t t2 = timing_now_us();
     step_us_total += pending_step_us;
     draw_us_total += t2 - t1;
     frames++;

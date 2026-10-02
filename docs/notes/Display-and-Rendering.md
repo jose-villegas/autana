@@ -178,7 +178,7 @@ Two hazards on the gather path, and what stops each:
 
 | Failure | Guard |
 |---|---|
-| A source buffer the DMA cannot read cleanly reads back subtly wrong, with no error | the bounce slots are allocated `MALLOC_CAP_DMA` |
+| A source buffer the DMA cannot read cleanly reads back subtly wrong, with no error | the bounce slots are allocated `MEMORY_DMA` |
 | A slot rewritten while its transfer is still queued | two slots, and `esp_lcd` sends a window's address commands only after the previous transfer has drained: once `esp_lcd_panel_draw_bitmap()` returns, the transfer before it is off the bus and its slot is free again |
 
 Geometry, who must mark and the marking cost are in

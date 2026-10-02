@@ -19,13 +19,13 @@
 
 #include "unity.h"
 
-#include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 
 #include "apps/render_lab/rt_cornell.h"
 #include "apps/render_lab/rt_refine.h"
 #include "gfx/gfx.h"
+#include "util/memory.h"
+#include "util/timing.h"
 
 static const char* TAG = "rt_perf";
 
@@ -64,7 +64,7 @@ run_refine_capture(const rt_cornell_camera_t* cam, gfx_color_t* buf) {
     int step = RT_REFINE_FIRST_STEP;
 
     for (int pass = 0; pass < RT_REFINE_PASSES; pass++) {
-        const int64_t pass_start = esp_timer_get_time();
+        const int64_t pass_start = timing_now_us();
         int64_t traced = 0;
 
         for (int y = 0; y < GFX_HEIGHT; y += step) {
@@ -77,7 +77,7 @@ run_refine_capture(const rt_cornell_camera_t* cam, gfx_color_t* buf) {
             }
         }
 
-        r.pass_us[pass] = esp_timer_get_time() - pass_start;
+        r.pass_us[pass] = timing_now_us() - pass_start;
         r.pass_pixels[pass] = traced;
         r.total_us += r.pass_us[pass];
         r.total_pixels += traced;
@@ -91,12 +91,12 @@ run_refine_capture(const rt_cornell_camera_t* cam, gfx_color_t* buf) {
  * fill_block(), so this is the tracer's cost with nothing else added. */
 static int64_t
 run_row_reference(const rt_cornell_camera_t* cam, gfx_color_t* buf) {
-    const int64_t start = esp_timer_get_time();
+    const int64_t start = timing_now_us();
 
     for (int y = 0; y < GFX_HEIGHT; y++) {
         rt_cornell_render_row(cam, y, buf + (size_t)y * GFX_WIDTH);
     }
-    return esp_timer_get_time() - start;
+    return timing_now_us() - start;
 }
 
 static void
@@ -133,9 +133,8 @@ assert_every_pixel_traced_once(const refine_result_t* r) {
 
 static void
 run_quarter(int quarter) {
-    const size_t free_before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-    gfx_color_t* buf =
-        heap_caps_malloc(sizeof(*buf) * (size_t)GFX_WIDTH * GFX_HEIGHT, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    const size_t free_before = memory_free_bytes(MEMORY_PSRAM);
+    gfx_color_t* buf = memory_alloc(sizeof(*buf) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL_MESSAGE(buf, "need a private canvas the size of one frame");
 
     rt_cornell_camera_t cam;
@@ -148,8 +147,8 @@ run_quarter(int quarter) {
     const int64_t row_us = run_row_reference(&cam, buf);
     log_row_reference(quarter, row_us);
 
-    heap_caps_free(buf);
-    const size_t free_after = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    memory_free(buf);
+    const size_t free_after = memory_free_bytes(MEMORY_PSRAM);
     TEST_ASSERT_EQUAL_INT_MESSAGE((int)free_before, (int)free_after, "the private canvas was not fully freed");
 }
 

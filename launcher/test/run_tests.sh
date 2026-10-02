@@ -127,6 +127,7 @@ $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/boot_anim_tracks_generated.c
 $MAIN_DIR/boot/post_layout.c
 $MAIN_DIR/util/job.c
+$MAIN_DIR/util/memory.c
 $MAIN_DIR/util/settings_policy.c
 $MAIN_DIR/anim/anim_track.c
 $MAIN_DIR/asset/asset_pack.c
@@ -254,6 +255,7 @@ fi
 # does not build is caught here rather than on the board.
 if [ "$BUILD_ONLY" != 1 ]; then
     "$TEST_DIR/check_app_sources.sh"
+    "$TEST_DIR/check_inline_owners.sh"
 
     # The bootloader hook lives outside SOURCES too: a separate header world
     # entirely, so it gets its own standalone binary rather than joining the

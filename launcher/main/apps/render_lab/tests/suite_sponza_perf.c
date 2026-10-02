@@ -17,9 +17,7 @@
 
 #include "unity.h"
 
-#include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_flythrough.h"
@@ -29,6 +27,8 @@
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
 #include "util/job.h"
+#include "util/memory.h"
+#include "util/timing.h"
 
 static const char* TAG = "sponza_perf";
 
@@ -52,7 +52,7 @@ typedef struct {
 
 static void
 bench_open(bench_t* b, const r3d_instance_t* instance) {
-    b->panel = heap_caps_malloc(sizeof(gfx_color_t) * PANEL_PIXELS, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    b->panel = memory_alloc(sizeof(gfx_color_t) * PANEL_PIXELS, MEMORY_PSRAM);
     b->raster = (raster_t){
         .instances = instance,
         .instance_count = 1,
@@ -63,7 +63,7 @@ bench_open(bench_t* b, const r3d_instance_t* instance) {
         .destination_width = GFX_WIDTH,
         .destination_height = GFX_HEIGHT,
     };
-    b->scratch = heap_caps_malloc(raster_scratch_bytes(&b->raster), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    b->scratch = memory_alloc(raster_scratch_bytes(&b->raster), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(b->scratch);
     TEST_ASSERT_NOT_NULL(b->panel);
     b->raster.scratch = b->scratch;
@@ -71,8 +71,8 @@ bench_open(bench_t* b, const r3d_instance_t* instance) {
 
 static void
 bench_close(bench_t* b) {
-    heap_caps_free(b->scratch);
-    heap_caps_free(b->panel);
+    memory_free(b->scratch);
+    memory_free(b->panel);
 }
 
 static r3d_lens_t
@@ -108,12 +108,12 @@ static void
 draw_half(half_job_t* j) {
     const raster_t* f = j->raster;
     const size_t offset = (size_t)j->row0 * (size_t)f->width;
-    const int64_t start = esp_timer_get_time();
+    const int64_t start = timing_now_us();
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(f);
     memset(b.depth + offset, 0, (size_t)(j->row1 - j->row0) * (size_t)f->width * sizeof(uint16_t));
     const r3d_span_target_t target = {b.color + offset, b.depth + offset, f->width, j->row0, j->row1};
     r3d_pipeline_draw(f->instances[0].mesh, j->lens, b.visible, j->visible, b.cs, b.rows, &target);
-    j->us = esp_timer_get_time() - start;
+    j->us = timing_now_us() - start;
 }
 
 static void
@@ -135,11 +135,11 @@ report_core_contention(const raster_t* raster, const r3d_lens_t* lens, int visib
     ESP_LOGI(TAG, "contention: alone  top %6lldus  bottom %6lldus", (long long)top.us, (long long)bottom.us);
     half_job_t together_top = top;
     half_job_t together_bottom = bottom;
-    const int64_t start = esp_timer_get_time();
+    const int64_t start = timing_now_us();
     (void)job_run_core1(draw_half_on_core1, &together_top, sizeof together_top);
     draw_half(&together_bottom);
     TEST_ASSERT_TRUE(job_wait(1000));
-    const int64_t wall = esp_timer_get_time() - start;
+    const int64_t wall = timing_now_us() - start;
     ESP_LOGI(TAG, "contention: at once top %6lldus  bottom %6lldus  wall %6lldus", (long long)core1_result.us,
              (long long)together_bottom.us, (long long)wall);
 }
@@ -167,27 +167,27 @@ test_sponza_draw_stage_breakdown(void) {
     const r3d_lens_t lens = view_at(atrium.mesh, 0);
     const r3d_pipeline_buffers_t parts = r3d_pipeline_carve(&b.raster);
     const int visible = r3d_pipeline_cull(atrium.mesh, &lens, parts.visible);
-    int64_t start = esp_timer_get_time();
+    int64_t start = timing_now_us();
     r3d_pipeline_transform(atrium.mesh, &lens, parts.visible, visible, parts.cs, parts.rows);
-    ESP_LOGI(TAG, "stage, one core: %-22s %7lldus", "transform", (long long)(esp_timer_get_time() - start));
+    ESP_LOGI(TAG, "stage, one core: %-22s %7lldus", "transform", (long long)(timing_now_us() - start));
 
     static const char* const names[4] = {"whole draw", "stop after setup", "stop after rows", "stop after span setup"};
     for (int stop = 0; stop <= 3; stop++) {
         r3d_span_stop_after = stop;
-        start = esp_timer_get_time();
+        start = timing_now_us();
         clear_and_draw(&b.raster, &lens, visible);
-        ESP_LOGI(TAG, "stage, one core: %-22s %7lldus", names[stop], (long long)(esp_timer_get_time() - start));
+        ESP_LOGI(TAG, "stage, one core: %-22s %7lldus", names[stop], (long long)(timing_now_us() - start));
     }
     r3d_span_stop_after = 0;
     report_core_contention(&b.raster, &lens, visible);
 
     /* A view of nothing but sky: what a frame costs before any geometry. */
     const camera_t empty = {{0.0F, 20000.0F, 0.0F}, {0.0F, 1.0F, 0.01F}, 1.0F, 1.0F};
-    start = esp_timer_get_time();
+    start = timing_now_us();
     const raster_stats_t none = raster_draw(&b.raster, &empty, 0);
     raster_upscale(&b.raster);
-    ESP_LOGI(TAG, "stage, both cores: %-20s %7lldus (%d clusters)", "empty frame",
-             (long long)(esp_timer_get_time() - start), none.clusters);
+    ESP_LOGI(TAG, "stage, both cores: %-20s %7lldus (%d clusters)", "empty frame", (long long)(timing_now_us() - start),
+             none.clusters);
 
     bench_close(&b);
     TEST_PASS();
@@ -206,10 +206,10 @@ report_frame_cost(const char* label, const r3d_instance_t* instance) {
     int samples = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
         const camera_t camera = sponza_camera_at(t_ms);
-        const int64_t start = esp_timer_get_time();
+        const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(&b.raster, &camera, 0);
         raster_upscale(&b.raster);
-        const int64_t us = esp_timer_get_time() - start;
+        const int64_t us = timing_now_us() - start;
         ESP_LOGI(TAG, "%s t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", label, (unsigned)(t_ms / 1000),
                  stats.clusters, stats.triangles, (long long)us);
         frame_sum += us;

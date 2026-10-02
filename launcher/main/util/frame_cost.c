@@ -3,11 +3,12 @@
 #if FRAME_COST_ENABLED
 
 #include "esp_cpu.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "xtensa/xt_perf_consts.h"
 #include "xtensa_perfmon_access.h"
+
+#include "util/timing.h"
 
 /* select/mask pairs from xtensa/xt_perf_consts.h. */
 #define FRAME_COST_EVENTS(X)                                                                                           \
@@ -116,14 +117,14 @@ frame_cost_begin(void) {
         return FRAME_COST_IGNORE_MARK;
     }
     const bool counting = shared.armed_name > 0;
-    return frame_cost_enter_counted(&shared, esp_timer_get_time(), counting ? xtensa_perfmon_value(0) : 0,
+    return frame_cost_enter_counted(&shared, timing_now_us(), counting ? xtensa_perfmon_value(0) : 0,
                                     counting ? xtensa_perfmon_value(1) : 0);
 }
 
 int64_t
 frame_cost_end(int mark, const char* name) {
     const bool counting = shared.armed_name > 0;
-    return frame_cost_leave_counted(&shared, mark, name, esp_timer_get_time(), counting ? xtensa_perfmon_value(0) : 0,
+    return frame_cost_leave_counted(&shared, mark, name, timing_now_us(), counting ? xtensa_perfmon_value(0) : 0,
                                     counting ? xtensa_perfmon_value(1) : 0);
 }
 

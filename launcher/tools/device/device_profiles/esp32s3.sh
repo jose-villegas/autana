@@ -30,7 +30,7 @@ DP_TEST_FRAME_CEILING_SOURCE="derived from DP_MAIN_TASK_STACK_BYTES; see check_s
 
 # --- heap ------------------------------------------------------------------
 # Internal heap free after gfx_init() (HEAPMARK). The framebuffer lives in
-# PSRAM on this board (see board.h's BOARD_FRAMEBUFFER_CAPS), so it is not
+# PSRAM on this board (gfx_init() allocates it as MEMORY_PSRAM), so it is not
 # subtracted here; PSRAM is not counted: hot allocations (sand grids and
 # the like) are meant to stay internal.
 DP_FREE_HEAP_BYTES=130635

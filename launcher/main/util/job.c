@@ -7,11 +7,11 @@
 
 #include "build_variant.h"
 #include "util/frame_watch.h"
+#include "util/memory.h"
+#include "util/timing.h"
 
 #ifdef ESP_PLATFORM
-#include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -76,7 +76,7 @@ job_bring_up(void) {
         return false;
     }
 
-    job_stack = heap_caps_malloc(JOB_CORE1_STACK_BYTES, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    job_stack = memory_alloc(JOB_CORE1_STACK_BYTES, MEMORY_INTERNAL);
     if (job_stack == NULL) {
         job_unavailable = true;
         return false;
@@ -157,7 +157,7 @@ job_wait(unsigned timeout_ms) {
     }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    const int64_t start_us = esp_timer_get_time();
+    const int64_t start_us = timing_now_us();
 #endif
     if (xSemaphoreTake(job_done_sem, job_timeout_ticks(timeout_ms)) == pdTRUE) {
         job_active = false;
@@ -167,7 +167,7 @@ job_wait(unsigned timeout_ms) {
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (!job_timeout_logged) {
-        const int64_t elapsed_us = esp_timer_get_time() - start_us;
+        const int64_t elapsed_us = timing_now_us() - start_us;
         ESP_LOGE(TAG, "core-1 job %p timed out after %lld us", (void*)job_fn, (long long)elapsed_us);
         job_timeout_logged = true;
     }
