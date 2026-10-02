@@ -119,6 +119,15 @@ class PerfCompareTest(unittest.TestCase):
         self.assertEqual(calls, 2)
         self.assertIn("two consecutive capture failures", done.stderr)
 
+    def test_no_script_pauses_for_enter_without_a_terminal(self):
+        tools = PERF.parent
+        for script in (tools / "build" / "build.sh", tools / "device" / "device_report.sh"):
+            lines = script.read_text(encoding="utf-8").splitlines()
+            for number, line in enumerate(lines):
+                if "read -r" in line and ("Press Enter" in line or "dismissed" in line):
+                    window = " ".join(lines[max(0, number - 3):number + 1])
+                    self.assertIn("[ -t 0 ]", window, f"{script.name}:{number + 1} reads without a terminal check")
+
     def test_a_markdown_table_uses_its_measured_column(self):
         rows = perf_compare.parse_report(FIXTURES / "sand_a.md")
         self.assertEqual(rows["hot"], 2000)
