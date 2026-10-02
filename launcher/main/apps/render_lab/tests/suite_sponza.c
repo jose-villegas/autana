@@ -19,21 +19,30 @@
 #include "esp_heap_caps.h"
 
 #include "apps/render_lab/sponza_flythrough.h"
-#include "apps/render_lab/sponza_scene_generated.h"
+#include "asset/asset_store.h"
 #include "r3d_lit_mesh_expect.h"
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
 
-/* The three bakes, once the pack has been opened. */
-#define MESH_FULL (sponza_scene_atrium.mesh)
-#define MESH_LITE (sponza_scene_atrium_lite.mesh)
-#define MESH_FLAT (sponza_scene_atrium_flat.mesh)
+/* The three bakes, opened once from the build's asset pack. */
+#define MESH_FULL (&mesh_full)
+#define MESH_LITE (&mesh_lite)
+#define MESH_FLAT (&mesh_flat)
+
+static r3d_lit_mesh_t mesh_full;
+static r3d_lit_mesh_t mesh_lite;
+static r3d_lit_mesh_t mesh_flat;
+
+static void
+open_the_mesh(const char* id, r3d_lit_mesh_t* mesh) {
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(asset_store_pack(), id, mesh), id);
+}
 
 static void
 open_the_meshes(void) {
-    const char* failed = NULL;
-    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, sponza_open_meshes(&failed),
-                                  failed == NULL ? "the meshes did not open" : failed);
+    open_the_mesh("sponza", &mesh_full);
+    open_the_mesh("sponza_lite", &mesh_lite);
+    open_the_mesh("sponza_flat", &mesh_flat);
 }
 
 /* The flat reference: every cluster's eight corners against each plane. */
