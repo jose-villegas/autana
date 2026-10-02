@@ -511,6 +511,38 @@ def crop_sheet(entries, label_a, label_b, zoom=ZOOM):
     return canvas
 
 
+def reference_crop_sheet(reference, a, b, count, label_reference, label_a, label_b, zoom=ZOOM):
+    """Crops where a and b differ, with their reference above each pair."""
+    _same_size(reference, a)
+    _same_size(reference, b)
+    clusters = find_clusters(a, b, None, count)
+    if not clusters:
+        raise ValueError("reference crops need images that differ")
+    font, cell_min, gap, bar = _font(), 150, 6, 36
+    cells = []
+    for cluster in clusters:
+        box = (cluster.x0, cluster.y0, cluster.x1, cluster.y1)
+        scale = max(1, min(zoom, 512 // max(cluster.x1 - cluster.x0, cluster.y1 - cluster.y0)))
+        size = ((cluster.x1 - cluster.x0) * scale, (cluster.y1 - cluster.y0) * scale)
+        cells.append((box, [picture.convert("RGB").crop(box).resize(size, Image.NEAREST) for picture in (reference, a, b)]))
+    height = bar + 3 * (LABEL_BAR + max(cell[1][0].size[1] for cell in cells)) + 2 * gap
+    width = sum(max(cell[1][0].size[0], cell_min) + gap for cell in cells)
+    canvas = Image.new("RGB", (width, height), (24, 24, 24))
+    draw, left = ImageDraw.Draw(canvas), 0
+    for box, crops in cells:
+        place = "x%d y%d  %dx%d" % (box[0], box[1], box[2] - box[0], box[3] - box[1])
+        outlined_text(draw, (left, 0), "largest difference", (255, 255, 255), font)
+        outlined_text(draw, (left, 17), place, (200, 200, 200), font)
+        width = max(crops[0].size[0], cell_min)
+        top = bar
+        for crop, label in zip(crops, (label_reference, label_a, label_b)):
+            panel = captioned(crop, label, width)
+            canvas.paste(panel, (left, top))
+            top += panel.size[1] + gap
+        left += width + gap
+    return canvas
+
+
 def crops_path(out):
     """Where the crops sheet for a sheet or video written to out goes."""
     return out.rsplit(".", 1)[0] + ".crops.png"
@@ -769,6 +801,7 @@ def main():
     parser.add_argument("--clear", type=parse_rgb)
     parser.add_argument("--row", nargs=3, action="append", metavar=("LABEL", "A", "B"))
     parser.add_argument("--reference-row", nargs=3, action="append", metavar=("LABEL", "RENDER", "REFERENCE"))
+    parser.add_argument("--reference-crops", nargs=3, metavar=("REFERENCE", "A", "B"))
     parser.add_argument("--reference-video", nargs=2, metavar=("VIDEO", "REFERENCE_DIR"))
     parser.add_argument("--reference-scale", type=int, help="render pixels per reference pixel; default from the first frame")
     parser.add_argument("--reference-first", type=int, default=0, help="video frames to skip before the reference images begin")
@@ -786,7 +819,7 @@ def main():
     parser.add_argument("--crops", type=int, default=0)
     args = parser.parse_args()
 
-    if (args.row or args.video) and not (args.label_a and args.label_b):
+    if (args.row or args.video or args.reference_crops) and not (args.label_a and args.label_b):
         parser.error("--label-a and --label-b are required: every panel is labelled")
     if (args.reference_sheet or args.reference_mp4) and not args.label_a:
         parser.error("--label-a, naming the render, is required with --reference-sheet or --reference-mp4")
@@ -800,8 +833,13 @@ def main():
             with open(args.summary, "a") as handle:
                 handle.write(line + "\n")
         return
-    if not args.row and not args.reference_row and not args.reference_video:
+    if not args.row and not args.reference_row and not args.reference_video and not args.reference_crops:
         parser.error("--row, --reference-row or --video is required")
+
+    if args.reference_crops:
+        reference, a, b = (Image.open(path) for path in args.reference_crops)
+        reference_crop_sheet(reference, a, b, args.crops, "reference", args.label_a, args.label_b).save(args.out, optimize=True)
+        return
 
     if args.reference_row:
         heatmaps = None if args.heatmap_dir is None else pathlib.Path(args.heatmap_dir)

@@ -14,6 +14,7 @@ import pathlib
 import re
 import subprocess
 import sys
+from urllib.parse import unquote
 
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*$")
@@ -64,7 +65,7 @@ def link_targets(root, doc):
     path = root / doc
     for line in blank_fences(path.read_text(encoding="utf-8", errors="replace").splitlines()):
         for target in LINK.findall(line):
-            target = target.split("#", 1)[0]
+            target = unquote(target.split("#", 1)[0])
             if not target or "://" in target or target.startswith("mailto:"):
                 continue
             resolved = (path.parent / target).resolve()
@@ -137,6 +138,7 @@ def anchor_links(root):
                 if "://" in target or target.startswith("mailto:"):
                     continue
                 file_part, sep, fragment = target.partition("#")
+                file_part = unquote(file_part)
                 if not sep or not fragment:
                     continue
                 resolved = (path.parent / file_part).resolve() if file_part else path.resolve()

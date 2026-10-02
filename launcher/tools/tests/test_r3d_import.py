@@ -268,6 +268,13 @@ class SettingsTests(unittest.TestCase):
         self.rejects("lighting.typo", body="[lighting]\ntypo = 1\n")
         self.rejects("lighting.light.typo", body=LIGHT_STEP.replace(" }", ", typo = 1 }"))
 
+    def test_an_unknown_key_is_rejected_in_each_nested_group(self):
+        self.rejects("geometry.alpha_mask.typo", body="[geometry]\nalpha_mask = { keep_alpha = 0.5, typo = 1 }\n")
+        self.rejects("geometry.thin.typo", body="[geometry]\nthin = { material = \"m\", keep = 0.5, typo = 1 }\n")
+        self.rejects("geometry.simplify.typo", body=SIMPLIFY_STEP.replace(" }", ", typo = 1 }"))
+        self.rejects("variants\\[0\\].shading.typo", body=LIGHT_STEP.replace(" }", ", flat_sky_rays = 8 }") + VARIANT
+                     + 'shading = { flat = { fixed = 4 }, typo = 1 }\n', output='[output]\ndirectory = "."\n')
+
     def test_auto_samples_with_a_minimum_over_its_maximum_are_rejected(self):
         variants = VARIANT + 'shading = { flat = { auto = { min = 3, max = 2, area = "median" } } }\n'
         self.rejects("min", output='[output]\ndirectory = "."\n', body=LIGHT_STEP.replace(" }", ", flat_sky_rays = 8 }") + variants)
@@ -294,9 +301,10 @@ class SettingsTests(unittest.TestCase):
             smooth = load_import_settings(write_import(directory)).variants[0]
             shaded = load_import_settings(write_import(directory, body=LIGHT_STEP.replace(" }", ", flat_sky_rays = 8 }")
                                                                   + VARIANT + flat, output='[output]\ndirectory = "."\n')).variants[0]
-        self.assertFalse(hasattr(smooth, "shading"))
+        self.assertIsNone(smooth.face_samples)
         self.assertEqual(shaded.face_samples, (4, 1, 4, None))
-        self.rejects("needs lighting.light", body=VARIANT + flat, output='[output]\ndirectory = "."\n')
+        self.rejects(r"shading = \{ flat = \.\.\. \} needs lighting\.light", body=VARIANT + flat,
+                     output='[output]\ndirectory = "."\n')
         self.rejects("flat_sky_rays is required", body=LIGHT_STEP + VARIANT + flat, output='[output]\ndirectory = "."\n')
         self.rejects("flat_sky_rays applies", body=LIGHT_STEP.replace(" }", ", flat_sky_rays = 8 }") + VARIANT,
                      output='[output]\ndirectory = "."\n')

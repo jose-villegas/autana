@@ -137,3 +137,8 @@ against_reference() {
 }
 against_reference sponza-fitted appearance-chosen-heat appearance-chosen-reference fitted no
 against_reference sponza-fitted-full appearance-fitted-full-heat appearance-fitted-full-reference "fitted full" yes
+against_reference sponza-lite appearance-lite-reference appearance-lite-reference simplifier yes
+against_reference sponza-fitted appearance-fit-reference appearance-fit-reference fitted yes
+"$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/appearance-lite-fitted-reference.crops.png" --crops 3 \
+    --label-a simplifier --label-b fitted --reference-crops "$W/fidelity-reference-4.png" \
+    "$W/fidelity-sponza-lite.bmp" "$W/fidelity-sponza-fitted.bmp" > "$W/appearance-lite-fitted-reference.log"
