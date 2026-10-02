@@ -81,5 +81,66 @@ class CheckMathDocs(unittest.TestCase):
         self.assertEqual([], problems_for(page_extra="```c\nvec2f_gone(1);\n```\n"))
 
 
+SWIZZLE_TEMPLATE = (
+    "#define MATH_DEFINE_SWIZZLE2(D, S, N) MATH_SWIZZLE_EACH2(N, MATH_SWIZZLE2, D, S)\n"
+    "#define MATH_DEFINE_VEC_SWIZZLE(P, V, T) \\\n"
+    "    MATH_DEFINE_SWIZZLE2(V, P, 3) \\\n"
+    "    static inline P##_t P##_from_xy(V##_t xy, T z) { return (P##_t){xy.x, xy.y, z}; }\n"
+)
+COMPLETE = {"vec2": "| `P_<c1><c2>(v)` |\n", "vec3": "| `P_<c1><c2>(v)` | `P_from_xy(xy, z)` |\n"}
+
+
+def swizzle_problems(sections=None, page_extra="", vec2_n=2):
+    """vec2f with its own swizzles; vec3f with swizzles onto vec2f, and from_xy."""
+    sections = COMPLETE if sections is None else sections
+    with tempfile.TemporaryDirectory() as d:
+        root = pathlib.Path(d)
+        make_tree(root)
+        math = root / "launcher/main/util/math"
+        (math / "vec_swizzle_template.h").write_text(SWIZZLE_TEMPLATE)
+        for family, fields, call in (
+            ("vec2", "x, y", "    MATH_DEFINE_SWIZZLE2(P, P, %d)\n" % vec2_n),
+            ("vec3", "x, y, z", ""),
+        ):
+            (math / (family + "_template.h")).write_text(
+                "#define MATH_DEFINE_%s(P, T) \\\n    typedef struct { \\\n        T %s; \\\n    } P##_t; \\\n"
+                % (family.upper(), fields)
+                + FUNCTION.rstrip("\n")
+                + (" \\\n" + call if call else "\n")
+            )
+        (math / "vec3f.h").write_text("MATH_DEFINE_VEC3(vec3f, float)\nMATH_DEFINE_VEC_SWIZZLE(vec3f, vec2f, float)\n")
+        page = "".join(
+            "### %s\n\n| `P_add(` |\n%s\n" % (f, sections.get(f, "")) for f in check_math_docs.FAMILIES
+        )
+        (root / "docs/math/README.md").write_text(page + "`vec2f` `vec3f`\n" + page_extra)
+        return check_math_docs.check(d)
+
+
+class Swizzles(unittest.TestCase):
+    """A swizzle family is read from the templates: its length from the
+    MATH_DEFINE_SWIZZLE<k> call, its letters from the source's struct."""
+
+    def test_a_page_with_every_swizzle_pattern_passes(self):
+        self.assertEqual([], swizzle_problems())
+
+    def test_a_swizzle_pattern_missing_from_its_source_section_fails(self):
+        problems = swizzle_problems(sections={"vec3": COMPLETE["vec3"]})
+        self.assertEqual(["docs/math/README.md: the vec2 section lacks `P_<c1><c2>(`"], problems)
+
+    def test_a_cross_template_function_belongs_to_its_first_argument_family(self):
+        problems = swizzle_problems(sections={"vec2": COMPLETE["vec2"], "vec3": "| `P_<c1><c2>(v)` |\n"})
+        self.assertEqual(["docs/math/README.md: the vec3 section lacks `P_from_xy(`"], problems)
+
+    def test_only_the_swizzles_the_templates_make_may_be_named(self):
+        self.assertEqual([], swizzle_problems(page_extra="`vec3f_zx(v)` `vec2f_yy(v)` `vec3f_from_xy(xy, z)`\n"))
+        rows = (("a letter the source lacks", "vec2f_yz("), ("a length no call makes", "vec2f_xyx("))
+        for why, name in rows:
+            problems = swizzle_problems(page_extra="`%sv)`\n" % name)
+            self.assertTrue(any(name in p for p in problems), why)
+
+    def test_a_component_count_that_disagrees_with_the_struct_fails(self):
+        self.assertTrue(any("vec2 has 2" in p for p in swizzle_problems(vec2_n=3)))
+
+
 if __name__ == "__main__":
     unittest.main()
