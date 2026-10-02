@@ -103,8 +103,7 @@ typedef struct {
 } rt_path_target_t;
 
 /* The rows this call touched, half-open, for the caller's own dirty mark.
- * y1 == y0 when nothing was traced (a finished fallback render has nothing
- * left to do). */
+ * y1 == y0 when a fallback render has completed. */
 typedef struct {
     int y0, y1;
 } rt_path_span_t;
