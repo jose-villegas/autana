@@ -144,13 +144,15 @@ report_core_contention(const raster_t* raster, const r3d_lens_t* lens, int visib
              (long long)together_bottom.us, (long long)wall);
 }
 
-static r3d_lit_mesh_t meshes[3];
-static const char* const MESH_IDS[3] = {"sponza", "sponza_lite", "sponza_flat"};
-static const char* const MESH_LABELS[3] = {"sponza", "lite", "flat"};
+#define MESH_COUNT 5
+static r3d_lit_mesh_t meshes[MESH_COUNT];
+static const char* const MESH_IDS[MESH_COUNT] = {"sponza", "sponza_lite", "sponza_flat", "sponza_fitted",
+                                                 "sponza_fitted_full"};
+static const char* const MESH_LABELS[MESH_COUNT] = {"sponza", "lite", "flat", "fitted", "fitted-full"};
 
 static void
 open_the_meshes(void) {
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < MESH_COUNT; i++) {
         TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(asset_store_pack(), MESH_IDS[i], &meshes[i]),
                                       MESH_IDS[i]);
     }
@@ -222,7 +224,7 @@ report_frame_cost(const char* label, const r3d_instance_t* instance) {
 void
 test_sponza_frame_cost_along_the_flythrough(void) {
     open_the_meshes();
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < MESH_COUNT; i++) {
         const r3d_instance_t instance = {&meshes[i], NULL};
         report_frame_cost(MESH_LABELS[i], &instance);
     }

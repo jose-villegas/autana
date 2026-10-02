@@ -121,9 +121,36 @@ def face_sample_options(value, where):
     return "auto", minimum, maximum, None if area == "median" else float(area)
 
 
+FIT_KEYS = ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch", "laplacian",
+            "normal_weight", "sha256", "recipe_sha256")
+
+
+def load_fit(value, variant, where):
+    """The recipe of a variant the appearance fit makes offline from the mesh
+    the import bakes at `triangles`: the budget it prunes to, the camera-path
+    poses it trains on (every `train_every_ms`, less the multiples of
+    `held_out_every_ms`), the denser poses its pruning counts over, its
+    optimiser settings, the SHA-256 of the mesh it made, and the SHA-256 of
+    the recipe it was made from (fitted_variant.recipe_digest)."""
+    check_keys(value, FIT_KEYS, where)
+    if variant.triangles is None:
+        raise SettingsError(f"{where} needs the variant's triangles, the budget its start is simplified to")
+    fit = SimpleNamespace(**{key: value[key] for key in FIT_KEYS})
+    for key in ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
+        setattr(fit, key, count(value[key], f"{where}.{key}"))
+    fit.laplacian = number(value["laplacian"], f"{where}.laplacian")
+    fit.normal_weight = number(value["normal_weight"], f"{where}.normal_weight")
+    fit.sha256 = text(value["sha256"], f"{where}.sha256")
+    fit.recipe_sha256 = text(value["recipe_sha256"], f"{where}.recipe_sha256")
+    if fit.budget > variant.triangles:
+        raise SettingsError(f"{where}.budget cannot exceed the variant's triangles")
+    return fit
+
+
 def load_variant(value, process, where):
-    check_keys(value, ("name",), where, optional=("triangles", "face_samples"))
-    variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None, face_samples=None)
+    check_keys(value, ("name",), where, optional=("triangles", "face_samples", "visibility", "fit"))
+    variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None, face_samples=None, visibility=None,
+                              fit=None)
     if process.simplify:
         if "triangles" not in value:
             raise SettingsError(f"{where}.triangles is required when process.simplify is present")
@@ -134,7 +161,41 @@ def load_variant(value, process, where):
         if not process.light:
             raise SettingsError(f"{where}.face_samples needs process.light")
         variant.face_samples = face_sample_options(value["face_samples"], f"{where}.face_samples")
+    if "visibility" in value:
+        variant.visibility = load_visibility(value["visibility"], f"{where}.visibility")
+    if "fit" in value:
+        if variant.face_samples or not process.light:
+            raise SettingsError(f"{where}.fit needs a smooth variant of a lit import")
+        variant.fit = load_fit(value["fit"], variant, f"{where}.fit")
     return variant
+
+
+VISIBILITY_SOURCES = ("camera_region", "camera_path")
+
+
+def load_visibility(table, where="process.visibility"):
+    """Where the camera can be, so what it can see. `camera_region` keeps
+    what any point of the scene camera's region box sees (`rounds` random
+    tries per triangle); `camera_path` keeps what any pose of the scene
+    camera's path sees at `size` pixels, sampled every `every_ms`, with
+    `samples` squared rays per pixel and the view widened by `margin`
+    pixels on each side. A variant's own table overrides the import's."""
+    source = text(table.get("source", "camera_region"), f"{where}.source")
+    if source not in VISIBILITY_SOURCES:
+        raise SettingsError(f"{where}.source must be one of {', '.join(VISIBILITY_SOURCES)}")
+    if source == "camera_region":
+        check_keys(table, ("rounds",), where, optional=("source",))
+        return SimpleNamespace(source=source, rounds=count(table["rounds"], f"{where}.rounds"))
+    check_keys(table, ("every_ms", "size"), where, optional=("source", "samples", "margin"))
+    size = table["size"]
+    if not isinstance(size, list) or len(size) != 2:
+        raise SettingsError(f"{where}.size must be [width, height]")
+    margin = integer(table.get("margin", 0), f"{where}.margin")
+    if margin < 0:
+        raise SettingsError(f"{where}.margin cannot be negative")
+    return SimpleNamespace(source=source, every_ms=count(table["every_ms"], f"{where}.every_ms"),
+                           size=(count(size[0], f"{where}.size"), count(size[1], f"{where}.size")),
+                           samples=count(table.get("samples", 3), f"{where}.samples"), margin=margin)
 
 
 def load_process(process):
@@ -145,8 +206,7 @@ def load_process(process):
         check_keys(process["alpha_mask"], ("keep_alpha",), "process.alpha_mask")
         steps.alpha_keep = number(process["alpha_mask"]["keep_alpha"], "process.alpha_mask.keep_alpha")
     if "visibility" in process:
-        check_keys(process["visibility"], ("rounds",), "process.visibility")
-        steps.visibility = SimpleNamespace(rounds=count(process["visibility"]["rounds"], "process.visibility.rounds"))
+        steps.visibility = load_visibility(process["visibility"])
     if "thin" in process:
         check_keys(process["thin"], ("material", "keep"), "process.thin")
         steps.thin = SimpleNamespace(material=text(process["thin"]["material"], "process.thin.material"),
@@ -202,14 +262,15 @@ def load_import_settings(path):
             raise SettingsError("variants names must be unique")
         shapes = {}
         for variant in variants:
-            shape = (variant.triangles, repr(variant.face_samples))
+            shape = (variant.triangles, repr(variant.face_samples), repr(variant.visibility), repr(variant.fit))
             if shape in shapes:
                 raise SettingsError(f"variants {shapes[shape]!r} and {variant.name!r} would produce the same mesh")
             shapes[shape] = variant.name
     else:
         if steps.simplify:
             raise SettingsError("process.simplify needs variants, each with its triangles budget")
-        variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None, face_samples=None)]
+        variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None, face_samples=None,
+                                    visibility=None, fit=None)]
     flat = any(variant.face_samples for variant in variants)
     if flat and steps.light.flat_sky_rays is None:
         raise SettingsError("process.light.flat_sky_rays is required when a variant has face_samples")
@@ -220,7 +281,7 @@ def load_import_settings(path):
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, visibility=steps.visibility, thin=steps.thin, light=steps.light,
-        simplify=steps.simplify, scene_dependent=bool(steps.light or steps.visibility), named=("variants" in values),
+        simplify=steps.simplify, scene_dependent=bool(steps.light or steps.visibility or any(variant.visibility for variant in variants)), named=("variants" in values),
         variants=variants)
 
 
@@ -379,13 +440,17 @@ def load_scene(path):
         camera=cameras[0] if cameras else None, region=region, lights=lights,
         tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None)
     lit = any(item.component.settings.light for item in renderers)
-    culled = any(item.component.settings.visibility for item in renderers)
+    sources = {visibility.source for visibility in (item.component.variant.visibility or item.component.settings.visibility
+                                                    for item in renderers) if visibility}
+    camera_path = cameras[0].component.path if cameras else None
     for name, present, needed in (("lights", bool(lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),
-                                  ("camera region", region is not None, culled)):
+                                  ("camera region", region is not None, "camera_region" in sources)):
         if needed and not present:
             raise SettingsError(f"scene {name} is required: a placed mesh has a step that reads it")
         if present and not needed:
             raise SettingsError(f"scene {name} is read by no placed mesh")
+    if "camera_path" in sources and camera_path is None:
+        raise SettingsError("scene camera path is required: a placed mesh keeps what the camera path sees")
     for item in renderers:
         if item.component.settings.scene_dependent and not item.identity:
             raise SettingsError(f"scene.objects {item.name!r}: a mesh with a scene-dependent step is baked where it "

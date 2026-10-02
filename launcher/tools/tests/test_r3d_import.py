@@ -8,6 +8,7 @@ import sys
 import tempfile
 import tomllib
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -32,6 +33,8 @@ AMBIENT = '[ambient]\ncolor = [1.0, 1.0, 1.0]\nintensity = 0.1\n'
 TONEMAP = 'tonemap_white = 0.3\n'
 THIN_STEP = '[process.thin]\nmaterial = "m"\nkeep = 0.5\n'
 VISIBILITY_STEP = "[process.visibility]\nrounds = 2\n"
+PATH_VISIBILITY_STEP = '[process.visibility]\nsource = "camera_path"\nevery_ms = 100\nsize = [8, 6]\nmargin = 2\n'
+CAMERA_PATH = 'path = { tracks = "fly", node = "camera" }\n'
 LIGHT_STEP = "[process.light]\nray_offset = 0.5\ncolour_merge_step = 6\n"
 SIMPLIFY_STEP = '[process.simplify]\ndense_edge = 1.0\nprops = []\nprops_share = 0.3\nseal_seams = true\n'
 VARIANT = '[[variants]]\nname = "mesh"\n'
@@ -99,6 +102,113 @@ class SettingsTests(unittest.TestCase):
         for body in (VISIBILITY_STEP, LIGHT_STEP):
             with tempfile.TemporaryDirectory() as directory:
                 self.assertTrue(load_import_settings(write_import(directory, body=body)).scene_dependent)
+
+    def test_visibility_reads_its_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            region = load_import_settings(write_import(directory, body=VISIBILITY_STEP)).visibility
+            path = load_import_settings(write_import(directory, body=PATH_VISIBILITY_STEP)).visibility
+        self.assertEqual((region.source, region.rounds), ("camera_region", 2))
+        self.assertEqual((path.source, path.every_ms, path.size, path.samples, path.margin), ("camera_path", 100, (8, 6), 3, 2))
+        self.rejects("process.visibility.source", body='[process.visibility]\nsource = "navmesh"\nrounds = 2\n')
+        self.rejects("process.visibility", body='[process.visibility]\nsource = "camera_path"\nrounds = 2\n')
+        self.rejects("margin cannot be negative", body=PATH_VISIBILITY_STEP.replace("margin = 2", "margin = -1"))
+
+    def test_a_fit_recipe_reads_and_needs_a_lit_smooth_variant_with_room_to_prune(self):
+        fit = ('fit = { budget = 8, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 20, '
+               'batch = 4, laplacian = 10.0, normal_weight = 1.0, sha256 = "ab", recipe_sha256 = "cd" }\n')
+        body = LIGHT_STEP + SIMPLIFY_STEP + VARIANT + "triangles = 10\n" + fit
+        with tempfile.TemporaryDirectory() as directory:
+            variant = load_import_settings(write_import(directory, body=body, output='[output]\ndirectory = "."\n')).variants[0]
+        self.assertEqual((variant.fit.budget, variant.fit.normal_weight, variant.fit.sha256), (8, 1.0, "ab"))
+        self.rejects("cannot exceed", body=body.replace("budget = 8", "budget = 11"), output='[output]\ndirectory = "."\n')
+        self.rejects("smooth variant of a lit import", body=body.replace(LIGHT_STEP, ""), output='[output]\ndirectory = "."\n')
+        self.rejects("fit", body=body.replace("steps = 20, ", ""), output='[output]\ndirectory = "."\n')
+
+    def test_a_variant_visibility_table_overrides_the_imports(self):
+        body = VISIBILITY_STEP + SIMPLIFY_STEP + VARIANT + "triangles = 10\n" + VARIANT.replace('"mesh"', '"pathed"')
+        body += 'triangles = 10\nvisibility = { source = "camera_path", every_ms = 50, size = [8, 6] }\n'
+        with tempfile.TemporaryDirectory() as directory:
+            settings = load_import_settings(write_import(directory, body=body, output='[output]\ndirectory = "."\n'))
+        plain, pathed = settings.variants
+        self.assertIsNone(plain.visibility)
+        self.assertEqual((pathed.visibility.source, pathed.visibility.every_ms, pathed.visibility.margin), ("camera_path", 50, 0))
+        self.assertEqual(settings.visibility.source, "camera_region")
+        self.rejects("variants\\[1\\].visibility", body=body.replace("every_ms = 50, ", ""), output='[output]\ndirectory = "."\n')
+
+    def test_the_bake_culls_with_the_variants_visibility_when_it_has_one(self):
+        if np is None:
+            self.skipTest("the r3d environment is not installed")
+        own = SimpleNamespace(source="camera_path")
+        shared = SimpleNamespace(source="camera_region")
+        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, visibility=shared, light=None, thin=None,
+                                   simplify=None, double_sided=set())
+        source = SimpleNamespace(p=np.zeros((3, 3)), uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]),
+                                 names=["m"], textures=[None], materials={})
+        seen = []
+        with mock.patch.object(mesh_import, "load_source", return_value=source), \
+                mock.patch.object(mesh_import, "RayMeshIntersector"), mock.patch.object(mesh_import.trimesh, "Trimesh"), \
+                mock.patch.object(mesh_import, "visible_triangles", side_effect=lambda s, v, *rest: seen.append(v) or np.array([True])), \
+                mock.patch.object(mesh_import, "shade_unlit", return_value=(np.zeros((3, 3)), np.zeros((3, 3)), np.array([[0, 1, 2]]))):
+            mesh_import.bake_geometry(settings, SimpleNamespace(visibility=own, triangles=None), None)
+            mesh_import.bake_geometry(settings, SimpleNamespace(visibility=None, triangles=None), None)
+        self.assertEqual(seen, [own, shared])
+
+    def test_check_fitted_names_what_changed_and_what_to_do(self):
+        if np is None:
+            self.skipTest("the r3d environment is not installed")
+        with tempfile.TemporaryDirectory() as directory:
+            settings = SimpleNamespace(mesh_dir=pathlib.Path(directory))
+            (settings.mesh_dir / "m.mesh").write_bytes(b"mesh")
+            fit = SimpleNamespace(sha256="0", recipe_sha256="r")
+            variant = SimpleNamespace(name="m", fit=fit)
+            with mock.patch("r3d.fitted_variant.recipe_digest", return_value="other"):
+                with self.assertRaisesRegex(SystemExit, "recipe changed since the fit; rerun fitted_variant.py prepare\\|fit"):
+                    mesh_import.check_fitted(settings, variant, None)
+            with mock.patch("r3d.fitted_variant.recipe_digest", return_value="r"):
+                with self.assertRaisesRegex(SystemExit, "not the 0 the fit recorded; rerun fitted_variant.py"):
+                    mesh_import.check_fitted(settings, variant, None)
+
+    def test_the_recipe_digest_follows_the_import_the_variant_and_the_tracks(self):
+        if np is None:
+            self.skipTest("the r3d environment is not installed")
+        from r3d.fitted_variant import recipe_digest
+
+        fit = ('fit = { budget = 8, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 20, '
+               'batch = 4, laplacian = 10.0, normal_weight = 1.0, sha256 = "ab", recipe_sha256 = "cd" }\n')
+        body = LIGHT_STEP + SIMPLIFY_STEP + VARIANT + "triangles = 10\n" + fit
+        scene_ = SimpleNamespace(camera=SimpleNamespace(component=SimpleNamespace(path=SimpleNamespace(tracks="fly"))))
+        with tempfile.TemporaryDirectory() as directory:
+            (pathlib.Path(directory) / "fly_tracks_generated.c").write_text("tracks")
+            output = '[output]\ndirectory = "."\n'
+
+            def digest(body_, tracks="tracks"):
+                (pathlib.Path(directory) / "fly_tracks_generated.c").write_text(tracks)
+                settings = load_import_settings(write_import(directory, body=body_, output=output))
+                return recipe_digest(settings, settings.variants[0], scene_)
+
+            first = digest(body)
+            self.assertEqual(digest(body.replace('sha256 = "ab"', 'sha256 = "ef"')), first, "the recorded hashes are not the recipe")
+            self.assertNotEqual(digest(body.replace("steps = 20", "steps = 21")), first)
+            self.assertNotEqual(digest(body.replace("ray_offset = 0.5", "ray_offset = 0.6")), first)
+            self.assertNotEqual(digest(body, tracks="other tracks"), first)
+
+    def test_each_committed_fitted_mesh_is_the_one_its_recipe_records(self):
+        if np is None:
+            self.skipTest("the r3d environment is not installed")
+        import hashlib
+
+        from r3d.fitted_variant import recipe_digest
+
+        found = 0
+        for path in tree_scenes():
+            scene = load_scene(path)
+            for item in scene.renderers:
+                if item.variant.fit:
+                    found += 1
+                    mesh = item.settings.mesh_dir / f"{item.variant.name}.mesh"
+                    self.assertEqual(hashlib.sha256(mesh.read_bytes()).hexdigest(), item.variant.fit.sha256, mesh.name)
+                    self.assertEqual(recipe_digest(item.settings, item.variant, scene), item.variant.fit.recipe_sha256, mesh.name)
+        self.assertGreater(found, 0, "no fitted variant: the check checks nothing")
 
     def test_a_seed_needs_a_step_that_draws_random_rays(self):
         self.rejects("process.seed", body="[process]\nseed = 3\n")
@@ -237,6 +347,17 @@ class SceneTests(unittest.TestCase):
         self.rejects("lights is required", self.lit_import, renderer())
         self.rejects("tonemap_white is required", self.lit_import, renderer(), AMBIENT)
         self.rejects("camera region is required", culled, renderer() + camera(region=False))
+
+    def test_path_visibility_needs_the_camera_path_not_its_region(self):
+        def culled(directory):
+            write_import(directory, body=PATH_VISIBILITY_STEP)
+
+        self.rejects("camera path is required", culled, renderer() + camera(region=False))
+        self.rejects("camera region is read by no placed mesh", culled, renderer() + camera(CAMERA_PATH))
+        with tempfile.TemporaryDirectory() as directory:
+            culled(directory)
+            scene = load_scene(write_scene(directory, renderer() + camera(CAMERA_PATH, region=False)))
+        self.assertEqual(scene.camera.component.path.tracks, "fly")
 
     def test_scene_settings_no_placed_mesh_reads_are_rejected(self):
         self.rejects("lights is read by no placed mesh", self.two_imports, renderer("a.import.toml"), AMBIENT)
