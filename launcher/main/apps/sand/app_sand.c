@@ -59,12 +59,15 @@
 #include "palette.h"
 #include "row_runs.h"
 #include "sand.h"
+#include "sand_brushes.h"
 #include "sand_colour_state.h"
+#include "sand_dither_tables.h"
 #include "sand_heal.h"
 #include "sand_limits.h"
 #include "sand_menu.h"
 #include "sand_mode_swatches.h"
 #include "sand_paint.h"
+#include "sand_paint_clock.h"
 #include "sand_paint_row.h"
 #include "sand_palette256.h"
 #include "sand_swatch.h"
@@ -149,14 +152,12 @@ static bool dither_classes_ready;
 
 /* Indexed repaint dispatch is selected when entering indexed mode. */
 static sand_paint_row_state_t paint_row_state;
-static sand_paint_frame_t paint_frame = {
-    .shine_ux_q8 = 181,
-    .shine_uy_q8 = 181,
-    .wood_leaf_wind_ux_q8 = 256,
-    .wood_leaf_wind_sign = 1,
-    .wood_leaf_top5 = {{0, -1}, {-1, -1}, {1, -1}, {-1, 0}, {1, 0}},
-    .repaint_kind = GFX_INDEXED_REPAINT_RAW,
-};
+static sand_paint_frame_t paint_frame = SAND_PAINT_FRAME_INIT;
+static sand_paint_clock_t paint_clock = SAND_PAINT_CLOCK_INIT;
+
+/* The 5 gravity-relative directions material_wood_near_leaf() checks -
+ * see material_wood_leaf_top5(). Recomputed once a frame, not per cell. */
+static int wood_leaf_top5_down;
 
 /* Set whenever the PANEL, not just the simulation, needs every visited
  * cell resent regardless of whether its own index moved -
@@ -229,38 +230,16 @@ _Static_assert((unsigned long)APP_IMPULSE_MAX * sizeof(impulse_t) <= SAND_IMPULS
                "heap_caps_get_largest_free_block() at the point impulse_buf is "
                "allocated - never from arithmetic alone.");
 
-/* Selected from the palette panel, not cycled - a cycle's cost grows with
- * material count, a panel's doesn't. PAINT/ERASE/DETONATE is the brush
- * screen's segmented control, for the same reason: a HOLD's 600ms tax is
- * too slow for a control used this often. Only paintable materials get a
- * tile - burning wood is a STATE, not a material (reaction_t.burn_decay).
- * Whole CELLS, not ids: an extended material isn't nameable by id alone
- * (MATX() in material.h). */
-static const sand_brush_t brushes[] = {
-    SAND_BRUSH_SOLID(CELL_MAKE(MAT_SAND, 0)),  SAND_BRUSH_SOLID(CELL_MAKE(MAT_WATER, 0)),
-    SAND_BRUSH_SOLID(CELL_MAKE(MAT_STONE, 0)), SAND_BRUSH_SOLID(CELL_MAKE(MAT_GAS, 0)),
-    SAND_BRUSH_SOLID(CELL_MAKE(MAT_FIRE, 0)),  SAND_BRUSH_SOLID(CELL_MAKE(MAT_WOOD, 0)),
-    SAND_BRUSH_SOLID(CELL_MAKE(MAT_OIL, 0)),   SAND_BRUSH_SOLID(CELL_MAKE(MAT_LAVA, 0)),
-    SAND_BRUSH_SOLID(CELL_MAKE(MAT_ACID, 0)),  SAND_BRUSH_SOLID(CELL_MAKE(MAT_GLASS, 0)),
-    SAND_BRUSH_SOLID(CELL_MAKE(MAT_SNOW, 0)),  SAND_BRUSH_SOLID(CELL_MAKE(MAT_DIRT, 0)),
-    SAND_BRUSH_SOLID(MATX(MATX_ICE)),          SAND_BRUSH_SPARSE(MATX(MATX_PLANT), SAND_BRUSH_SHARE_PLANT),
-    SAND_BRUSH_SOLID(GUNPOWDER_CELL(0)), /* dry, tone 0, see material_brush_color()'s own
-                         * comment (material_palette.h) for why the panel tile itself paints a different code */
-};
-#define BRUSH_COUNT ((int)(sizeof(brushes) / sizeof(brushes[0])))
-
-_Static_assert(PALETTE_FITS(BRUSH_COUNT), "the palette panel for BRUSH_COUNT brushes is taller than the "
-                                          "screen at some orientation - see palette_cols()/PALETTE_TILE "
-                                          "in palette.h");
-
 /* brush_mode_t per brush - sand_init() does not reset this, so a brush can
  * still show Water as its source with no tap present. */
-static uint8_t brush_mode[BRUSH_COUNT];
+static uint8_t brush_mode[SAND_BRUSH_COUNT];
 
+/* PAINT/ERASE/DETONATE is the brush screen's segmented control, not a
+ * cycle: a HOLD's 600ms tax is too slow for a control used this often. */
 static sand_ui_t ui = {
-    .brushes = brushes,
+    .brushes = sand_brushes,
     .modes = brush_mode,
-    .brush_count = BRUSH_COUNT,
+    .brush_count = SAND_BRUSH_COUNT,
     /* The three values PAINT/ERASE/DETONATE already used before each mode
      * had a slider of its own, so the brush screen opens on what the app
      * has always done rather than on a fresh set of numbers. */
@@ -347,20 +326,6 @@ static uint32_t sim_accumulator_q8;
 static uint32_t pour_accumulator_ms;
 
 /* Setup */
-
-/* dither_mode's own generated table - sand_palette256.h ships one per
- * GFX_DITHER_* (report_shading_palette.sh). */
-static const gfx_color_t*
-sand_dither_table_for(gfx_dither_mode_t mode) {
-    switch (mode) {
-        case GFX_DITHER_NONE: return sand_dither_none_lut;
-        case GFX_DITHER_CELL_CHECKER: return sand_dither_cell_checker;
-        case GFX_DITHER_CELL_BAYER2: return sand_dither_cell_bayer2;
-        case GFX_DITHER_PIXEL_CHECKER2: return sand_dither_pixel_checker2;
-        case GFX_DITHER_PIXEL_BAYER4:
-        default: return sand_palette16_dither_rgb;
-    }
-}
 
 /* Actually issues the gfx_mode_enter() call SAND_GFX_ENTER_INDEXED asks
  * for, sized to the grid start_sim() computed. Rolls the state back via
@@ -745,7 +710,7 @@ sand_app_enter_running_for_test(void) {
     const int previous_mode = color_mode;
     color_mode = SAND_COLOR_FULL;
     start_sim();
-    sand_spawn_cell(&sim, grid_w / 2, grid_h / 2, 3, brushes[0].cell);
+    sand_spawn_cell(&sim, grid_w / 2, grid_h / 2, 3, sand_brushes[0].cell);
     return previous_mode;
 }
 
@@ -759,7 +724,7 @@ sand_app_restore_colour_mode_for_test(int mode) {
  * a fresh sand_enter() - and reports whether indexed mode survived it. Only
  * a boolean crosses back to the caller; the assertion belongs to the test.
  * Restores the mode that was selected before this test. */
-/* Test-only: which of brushes[] a pour spawns. */
+/* Test-only: which of sand_brushes[] a pour spawns. */
 void
 sand_app_select_brush_for_test(int brush) {
     ui.brush = brush;
@@ -800,55 +765,6 @@ sand_exit(void) {
 }
 
 /* Drawing */
-
-#define SHINE_STEP_MS 40
-#define SHINE_STEP_PX 2
-
-static uint32_t shine_elapsed_ms;
-
-/* The 5 gravity-relative directions material_wood_near_leaf() checks -
- * see material_wood_leaf_top5(). Recomputed once a frame, not per cell. */
-static int wood_leaf_top5_down;
-
-/* A sweep that always travels the same way still reads as one shine, even
- * with gusts dropping out - real wind swings direction. Interval jittered
- * (material_grain_hash of the flip count, not a real RNG) so the swings
- * are not metronomic. */
-#define WOOD_LEAF_WIND_FLIP_BASE_MS   1200u
-#define WOOD_LEAF_WIND_FLIP_JITTER_MS 1800u
-
-static uint32_t wood_leaf_wind_flip_elapsed_ms;
-static uint32_t wood_leaf_wind_flip_due_ms = WOOD_LEAF_WIND_FLIP_BASE_MS;
-static unsigned wood_leaf_wind_flip_count;
-
-#define FOAM_PHASE_MS 90
-
-static uint32_t foam_elapsed_ms;
-
-#define CULLET_PHASE_MS 250
-
-static uint32_t cullet_elapsed_ms;
-
-/* time_ms itself runs continuously for a smooth blend, but redraw cadence
- * is separately throttled by WOOD_LEAF_WAKE_MS - dirtying every wood-near-
- * leaf row every frame defeated the dirty-row system for a whole tree, the
- * same reasoning LOCAL_DEPTH_WAKE_MS already applies to liquid depth. */
-#define WOOD_LEAF_WAKE_MS 40
-
-static uint32_t wood_leaf_wake_elapsed_ms;
-
-#define GLASS_PHASE_SHIFT 7
-
-static int glass_last_phase;
-
-/* A pool's INTERIOR - the bulk of its rows - is unaffected: a row with
- * any interior cell is already gated in, rim or not. Widening the gate
- * can only ADD the handful of edge-only rows a tighter condition would
- * skip; it cannot double the marked-row count the way gating on "any
- * liquid" from scratch would if the array gated on nothing at all. */
-#define LOCAL_DEPTH_WAKE_MS 120
-
-static uint32_t local_depth_wake_elapsed_ms;
 
 static void
 paint_row(gfx_color_t* fb, uint8_t* index_row, int cy, const uint8_t* row, int wx0, int wx1, bool force_full) {
@@ -911,93 +827,6 @@ draw_one_row(gfx_color_t* fb, uint8_t* index_image, int cy, uint16_t* cur_x0, ui
         cur_x1[i] = (uint16_t)run_x1[i];
     }
     return n;
-}
-
-/* Advances the travelling shine, and says whether it moved. */
-static bool
-advance_shine(uint32_t dt_ms) {
-    shine_elapsed_ms += dt_ms;
-    if (shine_elapsed_ms < SHINE_STEP_MS) {
-        return false;
-    }
-    const uint32_t steps = shine_elapsed_ms / SHINE_STEP_MS;
-    shine_elapsed_ms -= steps * SHINE_STEP_MS;
-    paint_frame.shine_offset =
-        (int)(((unsigned)paint_frame.shine_offset + steps * SHINE_STEP_PX) & (SAND_PAINT_SHINE_PERIOD - 1));
-    return true;
-}
-
-static unsigned cullet_phase_index;
-
-static bool
-advance_cullet(uint32_t dt_ms) {
-    cullet_elapsed_ms += dt_ms;
-    if (cullet_elapsed_ms < CULLET_PHASE_MS) {
-        return false;
-    }
-    const uint32_t steps = cullet_elapsed_ms / CULLET_PHASE_MS;
-    cullet_elapsed_ms -= steps * CULLET_PHASE_MS;
-    cullet_phase_index += steps;
-    material_set_cullet_phase(cullet_phase_index);
-    return true;
-}
-
-static bool
-advance_wood_leaf_phase(uint32_t dt_ms) {
-    paint_frame.wood_leaf_time_ms += dt_ms;
-    wood_leaf_wake_elapsed_ms += dt_ms;
-    if (wood_leaf_wake_elapsed_ms < WOOD_LEAF_WAKE_MS) {
-        return false;
-    }
-    const uint32_t steps = wood_leaf_wake_elapsed_ms / WOOD_LEAF_WAKE_MS;
-    wood_leaf_wake_elapsed_ms -= steps * WOOD_LEAF_WAKE_MS;
-    return true;
-}
-
-static void
-advance_wood_leaf_wind_sign(uint32_t dt_ms) {
-    wood_leaf_wind_flip_elapsed_ms += dt_ms;
-    if (wood_leaf_wind_flip_elapsed_ms < wood_leaf_wind_flip_due_ms) {
-        return;
-    }
-    wood_leaf_wind_flip_elapsed_ms -= wood_leaf_wind_flip_due_ms;
-    paint_frame.wood_leaf_wind_sign = -paint_frame.wood_leaf_wind_sign;
-    wood_leaf_wind_flip_count++;
-    wood_leaf_wind_flip_due_ms =
-        WOOD_LEAF_WIND_FLIP_BASE_MS
-        + material_grain_hash((int)wood_leaf_wind_flip_count, 0) % WOOD_LEAF_WIND_FLIP_JITTER_MS;
-}
-
-static bool
-advance_local_depth_wake(uint32_t dt_ms) {
-    local_depth_wake_elapsed_ms += dt_ms;
-    if (local_depth_wake_elapsed_ms < LOCAL_DEPTH_WAKE_MS) {
-        return false;
-    }
-    const uint32_t steps = local_depth_wake_elapsed_ms / LOCAL_DEPTH_WAKE_MS;
-    local_depth_wake_elapsed_ms -= steps * LOCAL_DEPTH_WAKE_MS;
-    return true;
-}
-
-static int
-gravity_bearing_q16(int gx, int gy) {
-    const int64_t ax = gx < 0 ? -(int64_t)gx : (int64_t)gx;
-    const int64_t ay = gy < 0 ? -(int64_t)gy : (int64_t)gy;
-    const int64_t denom = ax + ay;
-    if (denom == 0) {
-        return 0; /* flat or free fall: no bearing to report */
-    }
-    const int64_t p_q16 = ((int64_t)gx << 16) / denom; /* -65536..65536 */
-    return (int)(gy < 0 ? (p_q16 - 65536) : (65536 - p_q16));
-}
-
-static bool
-advance_glass_phase(int gx, int gy) {
-    const int phase = gravity_bearing_q16(gx, gy) >> GLASS_PHASE_SHIFT;
-    const bool changed = phase != glass_last_phase;
-    glass_last_phase = phase;
-    material_set_glass_phase(phase);
-    return changed;
 }
 
 /* One row per bit here; unlike dirty_rows[] this scratch never survives
@@ -1223,10 +1052,10 @@ draw_mode_label(int gx, int gy) {
     } else if (ui.mode == SAND_MODE_ERASE) {
         text = "ERASE";
     } else if (ui.modes[ui.brush] == BRUSH_SPAWN) {
-        snprintf(text_buf, sizeof text_buf, "%s SOURCE", material_name(brushes[ui.brush].cell));
+        snprintf(text_buf, sizeof text_buf, "%s SOURCE", material_name(sand_brushes[ui.brush].cell));
         text = text_buf;
     } else {
-        text = material_name(brushes[ui.brush].cell);
+        text = material_name(sand_brushes[ui.brush].cell);
     }
     const int len = (int)strlen(text);
     const int span = len * 8 * LABEL_SCALE;
@@ -1249,7 +1078,7 @@ draw_mode_label(int gx, int gy) {
     } else if (ui.mode == SAND_MODE_ERASE) {
         ink = gfx_rgb(0xFF8A5C);
     } else {
-        ink = material_brush_color(brushes[ui.brush].cell);
+        ink = material_brush_color(sand_brushes[ui.brush].cell);
     }
 
     gfx_text_turned(x, y, text, ink, LABEL_SCALE, turn);
@@ -1348,7 +1177,7 @@ handle_spawn_emitter_input(const input_t* input) {
     }
     const int cx = input->x / cell;
     const int cy = input->y / cell;
-    if (!sand_add_emitter(&sim, cx, cy, brushes[ui.brush].cell)) {
+    if (!sand_add_emitter(&sim, cx, cy, sand_brushes[ui.brush].cell)) {
         ESP_LOGW(TAG, "emitter list full (%d) - tap ignored", SAND_MAX_EMITTERS);
     }
 }
@@ -1363,8 +1192,8 @@ apply_pour_step(int cx, int cy) {
         sand_remove_emitters(&sim, cx, cy, (ERASE_EMITTER_RADIUS_PX + cell / 2) / cell);
         return;
     }
-    sand_spawn_cell_share(&sim, cx, cy, (sand_ui_radius(&ui) + cell / 2) / cell, brushes[ui.brush].cell,
-                          brushes[ui.brush].share_pct);
+    sand_spawn_cell_share(&sim, cx, cy, (sand_ui_radius(&ui) + cell / 2) / cell, sand_brushes[ui.brush].cell,
+                          sand_brushes[ui.brush].share_pct);
 }
 
 static void
@@ -1649,13 +1478,12 @@ sand_update(uint32_t dt_ms, const input_t* input) {
     FRAME_COST_BEGIN(plants_mark);
     material_wood_leaf_wind_axis(gx, gy, &paint_frame.wood_leaf_wind_ux_q8, &paint_frame.wood_leaf_wind_uy_q8);
     material_wood_leaf_top5(gx, gy, &wood_leaf_top5_down, paint_frame.wood_leaf_top5);
-    advance_wood_leaf_wind_sign(dt_ms);
+    sand_paint_clock_wind(&paint_clock, &paint_frame, dt_ms);
     FRAME_COST_END(plants_mark, "sand.plants");
 
     sand_paint_update_local_depth_gravity(&paint_row_state, gx, gy, grid_w, grid_h);
 
-    foam_elapsed_ms += dt_ms;
-    material_set_foam_phase(foam_elapsed_ms / FOAM_PHASE_MS);
+    sand_paint_clock_foam(&paint_clock, dt_ms);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     pending_step_us = esp_timer_get_time() - t0;
@@ -1664,13 +1492,13 @@ sand_update(uint32_t dt_ms, const input_t* input) {
 
     /* Local-depth wake, cullet cycle, shine, and the wood-leaf swing each
      * have their own clock tick and row array. Driven by dt_ms, not frame
-     * count. Glass's wake uses gravity_bearing_q16(). State only - each
+     * count. Glass's wake uses sand_paint_gravity_bearing_q16(). State only - each
      * result feeds draw_sim_frame()'s draw_dirty_rows() call. */
-    pending_shine_moved = advance_shine(dt_ms);
-    pending_local_depth_woke = advance_local_depth_wake(dt_ms);
-    pending_cullet_moved = advance_cullet(dt_ms);
-    pending_glass_moved = advance_glass_phase(gx, gy);
-    pending_wood_leaf_moved = advance_wood_leaf_phase(dt_ms);
+    pending_shine_moved = sand_paint_clock_shine(&paint_clock, &paint_frame, dt_ms);
+    pending_local_depth_woke = sand_paint_clock_local_depth(&paint_clock, dt_ms);
+    pending_cullet_moved = sand_paint_clock_cullet(&paint_clock, dt_ms);
+    pending_glass_moved = sand_paint_clock_glass(&paint_clock, gx, gy);
+    pending_wood_leaf_moved = sand_paint_clock_wood_leaf(&paint_clock, &paint_frame, dt_ms);
 
     pending_gx = gx;
     pending_gy = gy;

@@ -30,6 +30,7 @@
 #include "apps/sand/material.h"
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand.h"
+#include "apps/sand/sand_dither_tables.h"
 #include "apps/sand/sand_palette256.h"
 #include "gfx/gfx.h"
 
@@ -250,18 +251,6 @@ diff_bounding_box(const uint8_t* grid, int* out_x0, int* out_y0, int* out_x1, in
     return any;
 }
 
-static const gfx_color_t*
-dither_table_for(gfx_dither_mode_t mode) {
-    switch (mode) {
-        case GFX_DITHER_NONE: return sand_dither_none_lut;
-        case GFX_DITHER_CELL_CHECKER: return sand_dither_cell_checker;
-        case GFX_DITHER_CELL_BAYER2: return sand_dither_cell_bayer2;
-        case GFX_DITHER_PIXEL_CHECKER2: return sand_dither_pixel_checker2;
-        case GFX_DITHER_PIXEL_BAYER4:
-        default: return sand_palette16_dither_rgb;
-    }
-}
-
 /* Enters GFX_LAYOUT_INDEXED and resolves the repaint kind/class/cell
  * table for `mode`/`dither_mode`, mirroring app_sand.c's own
  * apply_gfx_enter_indexed() - resolved once here, never re-derived per
@@ -285,7 +274,7 @@ measure_mode_enter_indexed(colour_mode_t mode, gfx_dither_mode_t dither_mode, ui
     if (mode != CM_MODE_16) {
         return GFX_INDEXED_REPAINT_RAW;
     }
-    gfx_indexed_set_dither(dither_mode, dither_table_for(dither_mode));
+    gfx_indexed_set_dither(dither_mode, sand_dither_table_for(dither_mode));
     switch (dither_mode) {
         case GFX_DITHER_NONE:
             gfx_indexed_classify(sand_dither_none_lut, 1, none_class);
