@@ -33,6 +33,7 @@
 #include "input/imu_rotation.h"
 #include "input/tilt.h"
 #include "input/touch.h"
+#include "scene/scene_shell.h"
 #include "ui/system_navigation.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
@@ -383,6 +384,7 @@ static void
 exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
+    scene_unload_all();
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const size_t internal_after_exit = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
     const size_t eight_bit_after_exit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
@@ -492,6 +494,13 @@ step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, u
     start_app(current, chosen);
 }
 
+/* Whether the app's frame is presented a pass late, so that update() and the
+ * scene's draw run while the last one is still being sent. */
+static bool
+overlaps_present(const app_t* current) {
+    return current->update != NULL || scene_has_active_camera();
+}
+
 /* An app with update(): overlap it with sending the frame drawn last pass
  * (gfx_present_begin()/gfx_present_wait(), gfx.h), skipped while priming
  * (frame_ready false), since nothing is queued yet. THIS pass's frame()
@@ -500,16 +509,21 @@ step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, u
  * its callback; it does nothing outside GFX_LAYOUT_BANDS. */
 static void
 step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
-    if (current->update == NULL) {
+    if (!overlaps_present(current)) {
         current->frame(dt_ms, input);
         gfx_band_run(current->draw_band, ui_replay_band);
         return;
     }
     if (frame_ready) {
         gfx_present_begin();
-        current->update(dt_ms, input);
+        if (current->update != NULL) {
+            current->update(dt_ms, input);
+        }
+        scene_shell_render(dt_ms);
         gfx_present_wait();
     }
+    /* A camera's scene is in the framebuffer by the time frame() draws over it. */
+    scene_shell_compose(dt_ms);
     current->frame(dt_ms, input);
     gfx_band_run(current->draw_band, ui_replay_band);
     frame_ready = true;
@@ -1093,7 +1107,7 @@ run_dev_frame_extras(input_t* input, const app_t* current) {
  * synchronously, exactly as before. */
 static void
 present_unless_deferred(const app_t* current) {
-    if (current == NULL || current->update == NULL) {
+    if (current == NULL || !overlaps_present(current)) {
         FRAME_COST_BEGIN(began);
         gfx_present();
         FRAME_COST_END(began, "present");
