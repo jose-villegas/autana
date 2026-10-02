@@ -210,6 +210,12 @@ heap_arena_psram_heap_bytes(const char* override) {
     return arena_pool_heap_bytes(&s_psram, override, &origin);
 }
 
+size_t
+heap_arena_internal_heap_bytes(const char* override) {
+    const char* origin;
+    return arena_pool_heap_bytes(&s_internal, override, &origin);
+}
+
 /* Reads a pool's cap, so a one-off experiment can widen or narrow either
  * cap without a rebuild. Prints the effective cap and where it came from
  * exactly once per pool, since a gate whose cap is silently different from
