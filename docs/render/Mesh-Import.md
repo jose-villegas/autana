@@ -170,6 +170,57 @@ Each tool and its module, `rebake.py` and when to rebake rather than bake in
 full, and the triangle-size report are in
 [`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md).
 
+## Fidelity against a reference
+
+How close is a bake to the ground truth, and where is it off? The reference
+renderer lights the full source mesh, per pixel, with the scene's own lights,
+shadows and tone map, at the device render size and supersampled, for the
+poses of the scene's camera path. A host render of any variant, smooth, lite
+or flat, is scored against it:
+
+| Number | Meaning |
+|---|---|
+| Mean ΔE76 | CIE76 colour difference per pixel, averaged; about 2 is just visible, 20 is a clearly different colour |
+| p95 ΔE76 | The 95th percentile of the pixels' ΔE, averaged over frames: how bad the worst places are |
+| Luma SSIM | Structural similarity over 8x8 windows of luma, 1 for identical: whether shapes and contrast match |
+| Edge and interior ΔE76 | The same ΔE on pixels at a sharp luma step of the reference (a silhouette, a lit or shadowed boundary) and on all others |
+
+Heatmaps put each pixel's ΔE on a scale from black (a match) through red
+(about 20) to yellow (50 or more). The sheet beside them shows the reference,
+the render, the heatmap and the edge pixels, and the commands that make all of
+it are in [`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md#fidelity-reference).
+A scene's scores and example sheet live beside its own tools. Nothing
+refreshes them when the bake changes: the reference and the scratch bakes need
+the bake toolchain and the source model.
+
+The ceiling for a flat bake is the smooth bake's own error. Smooth, one colour
+per vertex, is not exact either, and flat adds the colour gradient across each
+triangle, which no face sampling brings back. What face sampling does change is
+how well the one colour represents the face.
+
+## Sweeping the flat bake
+
+`bake_fidelity.py` re-lights a flat mesh's simplified geometry with chosen
+settings into a scratch directory, builds the host renderer with that mesh in
+place of the tracked one, and scores it, so a setting is judged by its distance
+to the reference and nothing tracked changes. Its default variant is the bake
+the import file declares, byte for byte. A sweep over a scene found:
+
+- **Samples per face** are the lever. The score converges at about 16 fixed
+  samples; more adds nothing. Raising the minimum helps more than raising the
+  maximum or shrinking the area, because most faces are small and the adaptive
+  count gives them one sample.
+- **Sky rays** are saturated at the bake's default; fewer is worse and more is
+  noise.
+- **Centroid placement** loses to the stratified points, and takes every count
+  to the same colours. **A centre-only sun** loses too: it makes every shadow
+  edge hard, where the disc blends it.
+- **Edge error is structural.** Samples lower the error at lit and shadow
+  edges, but it stays more than twice the interior error, and the smooth bake's
+  own edge error is close to the best flat one. A face holds one colour, so a
+  boundary through it cannot be sampled away, and decimation misplaces
+  silhouettes before lighting.
+
 ## Sealing seams
 
 Simplifying a model made of many separate pieces approximates each piece's
