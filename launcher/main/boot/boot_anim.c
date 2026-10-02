@@ -38,6 +38,7 @@
 #include "gfx/gfx_font_roles.h"
 #include "util/fixed.h"
 #include "util/intmath.h"
+#include "util/timing.h"
 
 /* See gen_boot_anim_image.py; launcher/tools/gen/README.md. Also what
  * draw_image()'s own memcpy fast path below depends on being true. */
@@ -51,7 +52,6 @@ _Static_assert(sizeof(boot_anim_image) == (size_t)GFX_WIDTH * GFX_HEIGHT * sizeo
 
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -731,7 +731,7 @@ report_fps_windowed(int64_t now_us, uint32_t now_ms, int64_t* window_start, uint
 #ifdef ESP_PLATFORM
 void
 boot_anim_run(void) {
-    const int64_t started_us = esp_timer_get_time();
+    const int64_t started_us = timing_now_us();
     uint32_t frames = 0;
 #if CONFIG_LAUNCHER_DEVELOPMENT
     int64_t fps_window_start = started_us;
@@ -739,7 +739,7 @@ boot_anim_run(void) {
 #endif
 
     for (;;) {
-        const int64_t now_us = esp_timer_get_time();
+        const int64_t now_us = timing_now_us();
         const int64_t elapsed_us = now_us - started_us;
         const uint32_t now_ms = (uint32_t)(elapsed_us / 1000);
         if (now_ms >= BOOT_ANIM_MS) {

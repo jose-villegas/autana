@@ -16,13 +16,12 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "esp_heap_caps.h"
-
 #include "apps/render_lab/sponza_flythrough.h"
 #include "asset/asset_store.h"
 #include "r3d_lit_mesh_expect.h"
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
+#include "util/memory.h"
 
 /* The three bakes, opened once from the build's asset pack. */
 #define MESH_FULL (&mesh_full)
@@ -302,7 +301,7 @@ check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
     const r3d_instance_t instance = {mesh, NULL};
     raster_t raster = {
         .instances = &instance, .instance_count = 1, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
-    void* scratch = heap_caps_malloc(raster_scratch_bytes(&raster), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    void* scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(scratch);
     raster.scratch = scratch;
     const uint32_t period = sponza_flythrough_period_ms();
@@ -312,7 +311,7 @@ check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
         sum += share_covered_at(&raster, t);
         samples++;
     }
-    heap_caps_free(scratch);
+    memory_free(scratch);
     TEST_ASSERT_GREATER_THAN_FLOAT_MESSAGE(0.85F, sum / (float)samples, "the flythrough sees mostly sky");
 }
 

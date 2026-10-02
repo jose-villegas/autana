@@ -236,13 +236,13 @@ anywhere taxes the same pool, and neither a clean compile nor a clean host
 run says whether the largest contiguous block a device-only allocation
 needs still exists after the addition. Diff `.bss`/`.data` size for
 **every** build variant, not just release; trust
-`heap_caps_get_largest_free_block()` over "total free heap." This class
+`memory_largest_block()` over "total free heap." This class
 must be caught by inspecting the map file's largest contiguous block before a
 firmware image is accepted.
 
 When checking memory live rather than at link time, compare
-`heap_caps_get_largest_free_block(MALLOC_CAP_DMA)` only against
-`heap_caps_get_free_size(MALLOC_CAP_DMA)`, never against
+`memory_largest_block(MEMORY_DMA)` only against
+`memory_free_bytes(MEMORY_DMA)`, never against
 `esp_get_free_heap_size()`: that sums a second, physically separate DMA
 region no large allocation can ever use, manufacturing a "fragmentation"
 gap that was actually 12 bytes.

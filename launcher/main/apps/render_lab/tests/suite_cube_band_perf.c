@@ -23,13 +23,13 @@
 #include "unity.h"
 
 #include "esp_log.h"
-#include "esp_timer.h"
 
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_band_run.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
+#include "util/timing.h"
 
 /* app_render_lab.c's own toggle and lifecycle, exposed the same way
  * suite_cube_perf.c already relies on. */
@@ -128,11 +128,11 @@ assert_band_frame_did_real_work(stats_t frame, int touched, int64_t raster_us) {
 static void
 capture(void (*run_frame)(uint32_t dt_ms), int64_t duration_ms) {
     sample_count = 0;
-    int64_t start = esp_timer_get_time();
+    int64_t start = timing_now_us();
     int64_t next_due = start;
 
-    while (esp_timer_get_time() - start < duration_ms * 1000) {
-        int64_t frame_start = esp_timer_get_time();
+    while (timing_now_us() - start < duration_ms * 1000) {
+        int64_t frame_start = timing_now_us();
         int64_t dt_ms = (frame_start - next_due) / 1000;
         if (dt_ms < 0) {
             dt_ms = 1;
@@ -145,7 +145,7 @@ capture(void (*run_frame)(uint32_t dt_ms), int64_t duration_ms) {
         run_frame((uint32_t)dt_ms);
 
         const int idx = sample_count % MAX_SAMPLES;
-        samples[idx] = (int32_t)(esp_timer_get_time() - frame_start);
+        samples[idx] = (int32_t)(timing_now_us() - frame_start);
         sample_count++;
     }
 }
@@ -178,16 +178,16 @@ draw_cube_band(int row0, int row1, gfx_color_t* buf) {
     for (int i = 0; i < GFX_WIDTH * (row1 - row0); i++) {
         buf[i] = bg;
     }
-    const int64_t raster_start = esp_timer_get_time();
+    const int64_t raster_start = timing_now_us();
     cube_rasterize_band(buf, row0, row1);
-    raster_us_accum += esp_timer_get_time() - raster_start;
+    raster_us_accum += timing_now_us() - raster_start;
 }
 
 static void
 replay_cube_band(int row0, int row1) {
-    const int64_t replay_start = esp_timer_get_time();
+    const int64_t replay_start = timing_now_us();
     ui_replay_band(row0, row1);
-    replay_us_accum += esp_timer_get_time() - replay_start;
+    replay_us_accum += timing_now_us() - replay_start;
     replay_band_count++;
 }
 
@@ -218,9 +218,9 @@ full_fb_frame(uint32_t dt_ms) {
     cube_clear_frame();
     cube_rasterize_frame();
     if (run_fps_on) {
-        const int64_t build_start = esp_timer_get_time();
+        const int64_t build_start = timing_now_us();
         draw_fps(&null_input, false);
-        ui_build_us_accum += esp_timer_get_time() - build_start;
+        ui_build_us_accum += timing_now_us() - build_start;
     }
     gfx_present();
 }
@@ -232,9 +232,9 @@ band_frame(uint32_t dt_ms) {
     cube_update_rotation(dt_ms);
     cube_transform_and_bin();
     if (run_fps_on) {
-        const int64_t build_start = esp_timer_get_time();
+        const int64_t build_start = timing_now_us();
         draw_fps(&null_input, true);
-        ui_build_us_accum += esp_timer_get_time() - build_start;
+        ui_build_us_accum += timing_now_us() - build_start;
     }
 
     gfx_band_run(draw_cube_band, run_fps_on ? replay_cube_band : NULL);

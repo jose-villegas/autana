@@ -23,15 +23,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 
 #include "apps/sand/material.h"
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_palette256.h"
 #include "gfx/gfx.h"
+#include "util/memory.h"
+#include "util/timing.h"
 
 static const char* const TAG = "device_tests";
 
@@ -326,7 +326,7 @@ measure_mode_frame(sand_t* sim, uint8_t* grid, int i, const colour_scene_t* scen
     int dx0, dy0, dx1, dy1;
     const bool changed = diff_bounding_box(grid, &dx0, &dy0, &dx1, &dy1);
 
-    const int64_t t0 = esp_timer_get_time();
+    const int64_t t0 = timing_now_us();
     if (indexed) {
         /* Lever 1's own narrower box - some cells diff_bounding_box()
          * above already called changed dither to the SAME 16-colour
@@ -345,11 +345,11 @@ measure_mode_frame(sand_t* sim, uint8_t* grid, int i, const colour_scene_t* scen
             *cells_marked_total += (int64_t)(dx1 - dx0) * (dy1 - dy0);
         }
     }
-    const int64_t t1 = esp_timer_get_time();
+    const int64_t t1 = timing_now_us();
 
     gfx_present_begin();
     gfx_present_wait();
-    const int64_t t2 = esp_timer_get_time();
+    const int64_t t2 = timing_now_us();
 
     *draw_total += t1 - t0;
     *present_total += t2 - t1;
@@ -360,7 +360,7 @@ measure_mode_frame(sand_t* sim, uint8_t* grid, int i, const colour_scene_t* scen
 static void
 measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t dither_mode, mode_result_t* out) {
     uint8_t* grid = malloc((size_t)CM_GRID_W * CM_GRID_H);
-    prev_grid = heap_caps_malloc((size_t)CM_GRID_W * CM_GRID_H, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    prev_grid = memory_alloc((size_t)CM_GRID_W * CM_GRID_H, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(grid);
     TEST_ASSERT_NOT_NULL(prev_grid);
     prev_grid_valid = false;
@@ -398,7 +398,7 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t 
         gfx_mode_exit();
     }
     free(grid);
-    heap_caps_free(prev_grid);
+    memory_free(prev_grid);
     prev_grid = NULL;
 }
 
