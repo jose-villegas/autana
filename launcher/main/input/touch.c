@@ -5,16 +5,16 @@
 #include "input/touch_point.h"
 
 #include "build_variant.h"
+#include "util/memory.h"
+#include "util/timing.h"
 #include "util/tune.h"
 
 #include "bsp/esp-bsp.h"
 #include "bsp/touch.h"
 #include "driver/gpio.h"
 #include "esp_attr.h"
-#include "esp_heap_caps.h"
 #include "esp_lcd_touch.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -180,7 +180,7 @@ static void
 poll_once(void) {
     bool have_point = false;
     int x = 0, y = 0;
-    const int64_t now_us = esp_timer_get_time();
+    const int64_t now_us = timing_now_us();
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const bool injected = poll_injected(now_us, &have_point, &x, &y);
@@ -263,7 +263,7 @@ touch_start(void) {
         ESP_LOGE(TAG,
                  "Could not start the touch task (largest free block "
                  "is %u bytes); input will not work",
-                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+                 (unsigned)memory_largest_block(MEMORY_8BIT));
     }
 }
 

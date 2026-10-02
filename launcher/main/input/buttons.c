@@ -1,12 +1,12 @@
 #include "input/buttons.h"
 #include "input/button_fsm.h"
+#include "util/timing.h"
 
 #include "board/board.h"
 #include "bsp/esp-bsp.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -179,7 +179,7 @@ poll_once(void) {
     if (pmu_ready) {
         pmu_take_events(&short_press, &long_press);
     }
-    const int64_t now_us = esp_timer_get_time();
+    const int64_t now_us = timing_now_us();
 
     portENTER_CRITICAL(&lock);
     button_fsm_update(&boot_fsm, boot_down, now_us);
@@ -248,7 +248,7 @@ void
 buttons_inject(buttons_inject_button_t button, bool held) {
     portENTER_CRITICAL(&lock);
     if (button == BUTTONS_INJECT_BOOT) {
-        const int64_t now_us = esp_timer_get_time();
+        const int64_t now_us = timing_now_us();
         button_fsm_update(&boot_fsm, true, now_us);
         button_fsm_update(&boot_fsm, true, now_us + BUTTON_DEBOUNCE_US);
         if (held) {
