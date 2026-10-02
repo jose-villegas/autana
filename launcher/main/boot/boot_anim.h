@@ -15,11 +15,11 @@
  * The curve table, floor and title use separate fixed-point scales:
  *
  *   Q12    a value of zeta. 4096 is 1.0, one unit of the floor grid.
- *   Q8     a height t. 256 is 1.0, and 35 * 256 still fits an int16.
+ *   Q8     a height t. 256 is 1.0, and 126 * 256 still fits an int16.
  *   Q16.16 metres, where a point enters the view matrix; camera space is 1/512
  *          m (R3D_X_UNIT_ONE).
- *   Q15    sines and cosines from this file's own trig table, used by the
- *          title's wobble/wave, not by the camera.
+ *   Q15    sines and cosines from util/trig.h, used by the title's
+ *          wobble/wave and the floor ripple, not by the camera.
  */
 #pragma once
 
@@ -152,7 +152,7 @@ boot_anim_project(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_
     r3d_camera_to_screen_x(p, view, screen_x, screen_y);
 }
 
-/* False when the point is behind the near plane. */
+/* False when the point is at or behind the near plane. */
 static inline bool
 boot_anim_project_point(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view, int* screen_x,
                         int* screen_y) {
@@ -169,8 +169,6 @@ boot_anim_project_segment(int32_t re0, int32_t im0, int32_t t0, int32_t re1, int
 
 #define BOOT_ANIM_WAVE_ENVELOPE_RAMP_MS 500
 
-/* BOOT_ANIM_WAVE_IN_MS, BOOT_ANIM_WAVE_ENVELOPE_RAMP_MS,
- * BOOT_ANIM_WAVE_OUT_MS define shape. */
 static inline uint8_t
 boot_anim_wave_envelope(uint32_t now_ms) {
     const uint8_t in = tween_ramp(now_ms, BOOT_ANIM_WAVE_IN_MS, BOOT_ANIM_WAVE_ENVELOPE_RAMP_MS);
@@ -362,8 +360,8 @@ boot_anim_curve_stride(const boot_anim_view_t* view) {
     return boot_anim_lod_stride_for_extent((max_x - min_x) + (max_y - min_y));
 }
 
-/* Every phase uses milliseconds since power-up, so timing is frame-rate
- * independent. */
+/* Every phase takes milliseconds since the animation started, so timing is
+ * frame-rate independent. */
 
 /* A FRACTION, not a pixel count: arms have different lengths. */
 static inline uint8_t
@@ -371,13 +369,12 @@ boot_anim_axis_reach(uint32_t now_ms) {
     return tween_ease_out(tween_ramp(now_ms, 0, BOOT_ANIM_AXES_MS));
 }
 
-/* Ring fades multiply IN and OUT as a depth cue. Floor is backdrop: full
- * strength competes with the curve and wins, so BOOT_ANIM_GRID_MAX (generated) stays low, not
- * forever (see boot_anim_grid_climb() below), since that holds only
- * while the curve is full-size. One clock drives opacity and whitening
- * together: hue alone fixes muddiness, not peak brightness. Climbs from
- * the floor's appearance to BOOT_ANIM_MS, linear so it reads as steadily
- * adding up. */
+/* A ring's alpha is its arrival ramp times a falloff by ring index, a depth
+ * cue. The floor is backdrop: at full strength it outshines the curve, so its
+ * ceiling starts at BOOT_ANIM_GRID_MAX (generated) and climbs linearly to
+ * BOOT_ANIM_GRID_CEILING_MAX by BOOT_ANIM_MS, steadily adding up. One clock
+ * drives opacity and whitening together: hue alone fixes muddiness, not peak
+ * brightness. */
 static inline uint8_t
 boot_anim_grid_climb(uint32_t now_ms) {
     return tween_ramp(now_ms, BOOT_ANIM_GRID_START_MS, BOOT_ANIM_MS - BOOT_ANIM_GRID_START_MS);
