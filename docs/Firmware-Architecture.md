@@ -105,6 +105,16 @@ flowchart TB
   host builds stay pure. `scripts/gates/check_shell_firmware.py` fails
   `main.c` on any ESP-IDF, FreeRTOS, NVS or BSP include or call, logging
   (`esp_log.h`, `ESP_LOG[A-Z]`) excepted.
+- **The clock and the heap have one owner each.** Code above the drivers
+  reads time with `timing_now_us()` (`util/timing.h`, inlined to the
+  hardware timer's own call) and places or measures memory by kind with
+  `util/memory.h`: `MEMORY_INTERNAL`, `MEMORY_8BIT`, `MEMORY_DMA`,
+  `MEMORY_PSRAM`. `util/memory.c` maps a kind to heap capabilities on every
+  platform; beneath it is ESP-IDF's heap on the board, `test/heap_arena.c`'s
+  device-sized model in the host tests and `test/heap_plain.c` in a host
+  render. The same gate fails any `esp_timer_*`, `heap_caps_*` or
+  `MALLOC_CAP_*` name outside those two modules, a `*_device.c` file and
+  `board/`.
 - **Generated sources are checked in** beside the code that uses them, each
   with a banner naming its regenerate command; `grep -rl "GENERATED FILE"`
   lists them, and the rules they follow are in
