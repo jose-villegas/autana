@@ -100,21 +100,20 @@ flowchart TB
   `input_poll`), `display/display_shell.h` (`display_start`,
   `display_sample_orientation`), `display/display.h` (the system panel clock)
   and `util/{timing,settings,memory}.h`; it calls this firmware's own drivers
-  (`imu_read`, `touch_read`) directly. Each module's device half lives in a
-  `*_device.c` beside it and is compiled for the board only, so the files a
-  host builds stay pure. `scripts/gates/check_shell_firmware.py` fails
+  (`imu_read`, `touch_read`) directly. A module's device half, where it has
+  one, lives in a `*_device.c` beside it and is compiled for the board only,
+  so the files a host builds stay pure. `scripts/gates/check_shell_firmware.py` fails
   `main.c` on any ESP-IDF, FreeRTOS, NVS or BSP include or call, logging
   (`esp_log.h`, `ESP_LOG[A-Z]`) excepted.
-- **The clock and the heap have one owner each.** Code above the drivers
+- **The vendor timer and heap have one owner each.** Code above the drivers
   reads time with `timing_now_us()` (`util/timing.h`, inlined to the
   hardware timer's own call) and places or measures memory by kind with
-  `util/memory.h`: `MEMORY_INTERNAL`, `MEMORY_8BIT`, `MEMORY_DMA`,
-  `MEMORY_PSRAM`. `util/memory.c` maps a kind to heap capabilities on every
-  platform; beneath it is ESP-IDF's heap on the board, `test/heap_arena.c`'s
-  device-sized model in the host tests and `test/heap_plain.c` in a host
-  render. The same gate fails any `esp_timer_*`, `heap_caps_*` or
-  `MALLOC_CAP_*` name outside those two modules, a `*_device.c` file and
-  `board/`.
+  `util/memory.h` (`MEMORY_INTERNAL`, `MEMORY_8BIT`, `MEMORY_DMA`,
+  `MEMORY_PSRAM`), whose header says which heap is beneath it on each
+  platform. In the firmware, its suites and its tools the same gate fails
+  any `esp_timer_*`, `heap_caps_*` or `MALLOC_CAP_*` name outside those two
+  modules, `board/` and a driver's `*_device.c`; `launcher/test/` outside
+  `suites/` stands in for the vendor code on a host and is not checked.
 - **Generated sources are checked in** beside the code that uses them, each
   with a banner naming its regenerate command; `grep -rl "GENERATED FILE"`
   lists them, and the rules they follow are in
