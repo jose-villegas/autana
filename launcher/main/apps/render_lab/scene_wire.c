@@ -119,7 +119,7 @@ wire_advance_pose(uint32_t dt_ms) {
     transformf_set_position(&camera.pose, (vec3f_t){0.0F, current_orbit_distance * sinf(WIRE_ELEVATION_ANGLE),
                                                     -current_orbit_distance * cosf(WIRE_ELEVATION_ANGLE)});
     transformf_set_rotation(&camera.pose, quatf_from_euler((vec3f_t){WIRE_ELEVATION_ANGLE, 0.0F, 0.0F}));
-    camera = r3d_line_camera_upright(camera, display_shell_quarter());
+    camera = r3d_line_camera_upright(camera, display_quarter_now());
 
     const viewport_t viewport = {.width = GFX_WIDTH, .height = GFX_HEIGHT, .quarter = 0};
     current_view = r3d_line_camera_view(camera, &world, viewport);

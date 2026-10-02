@@ -11,6 +11,7 @@
  */
 
 #include "display/display.h"
+#include "display/display_shell.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -106,4 +107,25 @@ display_update(display_t* d, vec2i_t gravity) {
 int
 display_quarter(const display_t* d) {
     return d->quarter;
+}
+
+void
+display_orientation_init(display_orientation_t* o) {
+    display_init(&o->display);
+    o->display.quarter = DISPLAY_DEFAULT_QUARTER;
+    o->next_sample_us = 0;
+}
+
+bool
+display_orientation_sample(display_orientation_t* o, int64_t now_us, display_motion_reader_t read) {
+    if (now_us < o->next_sample_us) {
+        return false;
+    }
+    o->next_sample_us = now_us + (int64_t)DISPLAY_SAMPLE_MS * 1000;
+
+    imu_sample_t sample;
+    if (!read(&sample)) {
+        return false;
+    }
+    return display_update(&o->display, imu_gravity_screen(&sample));
 }

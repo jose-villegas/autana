@@ -5,7 +5,7 @@
 
 void
 scene_shell_render(uint32_t dt_ms) {
-    scene_render(dt_ms, display_shell_quarter(), GFX_WIDTH, GFX_HEIGHT);
+    scene_render(dt_ms, display_quarter_now(), GFX_WIDTH, GFX_HEIGHT);
 }
 
 void
@@ -15,7 +15,7 @@ scene_shell_compose(uint32_t dt_ms) {
     }
     /* NULL in band mode, which no scene can be upscaled into. */
     const scene_target_t target = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT};
-    scene_compose(dt_ms, display_shell_quarter(), &target);
+    scene_compose(dt_ms, display_quarter_now(), &target);
     if (target.pixels != NULL) {
         gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
     }

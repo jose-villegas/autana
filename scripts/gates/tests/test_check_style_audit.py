@@ -255,6 +255,20 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(len(findings), 1)
 
+    def test_display_may_include_gfx_and_input_but_not_the_other_way(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.layer_tree(root)
+            self.write(root, "launcher/main/display/display.h", "#pragma once\n")
+            self.write(root, "launcher/main/gfx/gfx.h", "#pragma once\n")
+            self.write(root, "launcher/main/input/input.h", "#pragma once\n")
+            self.write(root, "launcher/main/display/display_device.c",
+                       '#include "gfx/gfx.h"\n#include "input/input.h"\n')
+            self.write(root, "launcher/main/gfx/gfx.c", '#include "display/display.h"\n')
+            self.commit(root, "launcher")
+            findings = self.rule_hits(root, "INCLUDE-DIRECTION")
+        self.assertEqual([f.path for f in findings], ["launcher/main/gfx/gfx.c"])
+
     def test_a_folder_this_table_does_not_know_about_fails_loudly(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

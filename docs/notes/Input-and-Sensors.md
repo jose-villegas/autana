@@ -107,7 +107,7 @@ tell you, and the obvious guess is wrong here:
 
 Mapping X to X and Y to Y makes anything steered by gravity fall sideways.
 Determined by tilting the board and watching which way it went; the mapping is
-`imu_gravity_screen()` in `input/imu.h`.
+`imu_gravity_screen()` in `input/imu_sample.h`.
 
 One more distinction that is easy to get wrong: the **accelerometer** senses
 gravity, so it is what tilting changes and what tells you which way is down.

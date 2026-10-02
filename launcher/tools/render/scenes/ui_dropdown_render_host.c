@@ -42,7 +42,7 @@ static ui_dropdown_item_t items[ITEM_COUNT];
 static int selected = 2;
 
 int
-display_shell_quarter(void) {
+display_quarter_now(void) {
     return 0;
 }
 
