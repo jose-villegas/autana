@@ -84,11 +84,9 @@ shell_systems_overlap_present(void) {
     return false;
 }
 
-#ifndef ESP_PLATFORM
 shell_system_t*
 shell_system_swap_for_test(shell_system_t* head) {
     shell_system_t* previous = systems_head;
     systems_head = head;
     return previous;
 }
-#endif
