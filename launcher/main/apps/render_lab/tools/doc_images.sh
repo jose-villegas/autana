@@ -8,7 +8,7 @@
 # <out-tree> mirrors docs/images/; these images go in its overview/ and render/.
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow and numpy
-# (the fidelity sheet also wants launcher/tools/r3d/requirements.txt, in the r3d venv or $PYTHON);
+# (the fidelity sheet also needs launcher/tools/r3d/requirements.txt, found by find_r3d_python);
 # ffmpeg must be on PATH. Renderer output goes to logs under <work-dir>.
 
 set -eu
@@ -91,17 +91,15 @@ done
 # model lit per pixel. Poses at 0 to 25000 ms every 5000 give render frames 0 to 4,
 # and the sheet shows frames 2 and 4. The source model is fetched once, SHA-256
 # checked, into launcher/tools/r3d/.cache.
-R3D_PYTHON=$PYTHON
-for candidate in Scripts/python bin/python; do
-    [ -x "launcher/tools/r3d/.cache/venv/$candidate" ] && R3D_PYTHON=launcher/tools/r3d/.cache/venv/$candidate
-done
 M=launcher/main/apps/render_lab
 sh launcher/tools/anim/sample_tracks.sh --tracks "$M/flythrough_tracks_generated.c:flythrough" \
     --every 5000 --until 30000 --poses camera 184 224 0.62 6 > "$W/fidelity-poses.txt"
-"$R3D_PYTHON" launcher/tools/r3d/reference_render.py "$M/meshes/sponza.scene.toml" \
-    --poses "$W/fidelity-poses.txt" --skip 1 --out "$W/fidelity-reference" --samples 4 > "$W/fidelity-reference.log" 2>&1
+# render_compare.sh keeps the traced frames in r3d/.cache/reference by a hash of
+# their inputs, so only a change to the scene, tracer or poses traces again.
+REFERENCE=$(sh launcher/tools/render/render_compare.sh --reference-frames \
+    --reference "$M/meshes/sponza.scene.toml" --poses "$W/fidelity-poses.txt" 2> "$W/fidelity-reference.log")
 "$W/render_lab_render" --quarter 0 --no-hud --scene sponza-flat --frames 5 --dt 5000 \
     -o "$W/fidelity-flat.bmp" --video "$W/fidelity-flat.avi" 2> "$W/fidelity-flat.log"
 "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.png" \
-    --reference-video "$W/fidelity-flat.avi" "$W/fidelity-reference" --reference-scale 2 \
+    --reference-video "$W/fidelity-flat.avi" "$REFERENCE" --reference-scale 2 \
     --reference-sheet "$RENDER/bake-fidelity-sheet.png" --sheet-frames 2,4 > "$W/fidelity-compare.log"
