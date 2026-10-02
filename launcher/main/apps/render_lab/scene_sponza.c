@@ -2,10 +2,10 @@
  * scene_sponza: Crytek Sponza flown through on a looping camera path.
  *
  * The scene manager owns the frame: this loads the scene, shows one of its
- * four bakes and draws the HUD, while the shell advances the camera and
+ * five bakes and draws the HUD, while the shell advances the camera and
  * draws it. Light is baked into the mesh, so a frame is only cull, transform,
- * clip and fill on both cores. Four scenes share this code, one per bake:
- * full, lite, flat and fitted.
+ * clip and fill on both cores. Five scenes share this code, one per bake:
+ * full, lite, flat, fitted and fitted full.
  */
 
 #include <assert.h>
@@ -51,7 +51,7 @@ record_failure(const scene_failure_t* why) {
     }
 }
 
-/* Loads the scene and shows `variant`, the one of its four bakes to draw. */
+/* Loads the scene and shows `variant`, the one of its five bakes to draw. */
 static void
 enter_with(scene_entity_t variant) {
     gfx_set_partial_clear(false);
@@ -64,7 +64,7 @@ enter_with(scene_entity_t variant) {
         return;
     }
     const scene_entity_t bakes[] = {SPONZA_SCENE_ATRIUM, SPONZA_SCENE_ATRIUM_FLAT, SPONZA_SCENE_ATRIUM_LITE,
-                                    SPONZA_SCENE_ATRIUM_FITTED};
+                                    SPONZA_SCENE_ATRIUM_FITTED, SPONZA_SCENE_ATRIUM_FITTED_FULL};
     for (size_t i = 0; i < sizeof bakes / sizeof bakes[0]; i++) {
         scene_entity_set_enabled(sponza, bakes[i], bakes[i] == variant);
     }
@@ -93,6 +93,11 @@ scene_sponza_flat_enter(void) {
 static void
 scene_sponza_fitted_enter(void) {
     enter_with(SPONZA_SCENE_ATRIUM_FITTED);
+}
+
+static void
+scene_sponza_fitted_full_enter(void) {
+    enter_with(SPONZA_SCENE_ATRIUM_FITTED_FULL);
 }
 
 static void
@@ -173,6 +178,20 @@ const render_lab_scene_t scene_sponza_fitted = {
     .name = "Sponza Fitted",
     .key = "sponza-fitted",
     .enter = scene_sponza_fitted_enter,
+    .frame = scene_sponza_frame,
+    .update = NULL,
+    .frame_band = NULL,
+    .exit = scene_sponza_exit,
+    .invalidate = scene_sponza_invalidate,
+    .status = sponza_status,
+    .needs_full_framebuffer = true,
+    .shows_view_modes = true,
+};
+
+const render_lab_scene_t scene_sponza_fitted_full = {
+    .name = "Sponza Fitted Full",
+    .key = "sponza-fitted-full",
+    .enter = scene_sponza_fitted_full_enter,
     .frame = scene_sponza_frame,
     .update = NULL,
     .frame_band = NULL,

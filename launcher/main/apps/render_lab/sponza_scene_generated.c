@@ -12,9 +12,10 @@
 
 #include "flythrough_tracks_generated.h"
 
-static const char* const sponza_scene_names[] = {"camera", "atrium", "atrium_flat", "atrium_lite", "atrium_fitted"};
+static const char* const sponza_scene_names[] = {"camera", "atrium", "atrium_flat", "atrium_lite", "atrium_fitted", "atrium_fitted_full"};
 
 static const scene_transform_t sponza_scene_transforms[] = {
+    {.m = {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, .position = {0.0F, 0.0F, 0.0F}},
     {.m = {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, .position = {0.0F, 0.0F, 0.0F}},
     {.m = {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, .position = {0.0F, 0.0F, 0.0F}},
     {.m = {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, .position = {0.0F, 0.0F, 0.0F}},
@@ -27,6 +28,7 @@ static const scene_renderer_def_t sponza_scene_renderers[] = {
     {2, "sponza_flat"},
     {3, "sponza_lite"},
     {4, "sponza_fitted"},
+    {5, "sponza_fitted_full"},
 };
 
 static const r3d_scene_path_t sponza_scene_camera_path = {.clip = &flythrough_clip, .translation = &flythrough_camera_translation, .rotation = &flythrough_camera_rotation};
@@ -37,8 +39,8 @@ static const scene_camera_def_t sponza_scene_cameras[] = {
 
 const scene_def_t sponza_scene = {
     .name = "sponza",
-    .entity_count = 5,
-    .renderer_count = 4,
+    .entity_count = 6,
+    .renderer_count = 5,
     .camera_count = 1,
     .entity_names = sponza_scene_names,
     .transforms = sponza_scene_transforms,
