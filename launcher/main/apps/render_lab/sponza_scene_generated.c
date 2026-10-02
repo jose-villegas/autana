@@ -8,17 +8,40 @@
 
 #include "sponza_scene_generated.h"
 
-#include "sponza_flat_mesh_generated.h"
-#include "sponza_lite_mesh_generated.h"
-#include "sponza_mesh_generated.h"
+#include "scene/scene.h"
+
 #include "flythrough_tracks_generated.h"
 
-const r3d_instance_t sponza_scene_atrium = {.mesh = &sponza_mesh, .placement = NULL};
+static const char* const sponza_scene_names[] = {"camera", "atrium", "atrium_flat", "atrium_lite"};
 
-const r3d_instance_t sponza_scene_atrium_flat = {.mesh = &sponza_flat_mesh, .placement = NULL};
+static const scene_transform_t sponza_scene_transforms[] = {
+    {.m = {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, .position = {0.0F, 0.0F, 0.0F}},
+    {.m = {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, .position = {0.0F, 0.0F, 0.0F}},
+    {.m = {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, .position = {0.0F, 0.0F, 0.0F}},
+    {.m = {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, .position = {0.0F, 0.0F, 0.0F}},
+};
 
-const r3d_instance_t sponza_scene_atrium_lite = {.mesh = &sponza_lite_mesh, .placement = NULL};
+static const scene_renderer_def_t sponza_scene_renderers[] = {
+    {1, "sponza"},
+    {2, "sponza_flat"},
+    {3, "sponza_lite"},
+};
 
 static const r3d_scene_path_t sponza_scene_camera_path = {.clip = &flythrough_clip, .translation = &flythrough_camera_translation, .rotation = &flythrough_camera_rotation};
 
-const r3d_scene_camera_t sponza_scene_camera = {.half_fov_short_tan = 0.62F, .near_z = 6.0F, .placement = NULL, .path = &sponza_scene_camera_path};
+static const scene_camera_def_t sponza_scene_cameras[] = {
+    {0, {.half_fov_short_tan = 0.62F, .near_z = 6.0F, .placement = NULL, .path = &sponza_scene_camera_path}, 0x9CC0E6},
+};
+
+const scene_def_t sponza_scene = {
+    .name = "sponza",
+    .entity_count = 4,
+    .renderer_count = 3,
+    .camera_count = 1,
+    .entity_names = sponza_scene_names,
+    .transforms = sponza_scene_transforms,
+    .renderers = sponza_scene_renderers,
+    .cameras = sponza_scene_cameras,
+};
+
+SCENE_REGISTER(sponza_scene)

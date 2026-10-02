@@ -78,8 +78,7 @@ over the full mesh.
 | ![Sponza flythrough, depth](../../../../../docs/images/render/sponza-depth.gif) | `RASTER_SHOW_DEPTH` over the full mesh | as full |
 | ![Sponza flythrough, depth tiles](../../../../../docs/images/render/sponza-tiles.gif) | `RASTER_SHOW_DEPTH_TILES` over the full mesh | as full |
 
-The counts are the macros in `sponza_mesh_generated.h`,
-`sponza_lite_mesh_generated.h` and `sponza_flat_mesh_generated.h`.
+The counts are those of the three baked meshes in `meshes/`.
 `autana suite run_sponza_perf_suite` prints each variant's `both cores: mean`
 line (`test_sponza_frame_cost_along_the_flythrough`). The GIFs are made by the
 doc-images workflow
@@ -114,7 +113,7 @@ the commands, working directory `launcher/`, are in
 M=main/apps/render_lab
 H=$M/tools/render_lab_render_host.sh
 tools/anim/sample_tracks.sh --tracks $M/flythrough_tracks_generated.c:flythrough --every 5000 --until 45000     --poses camera 184 224 0.62 6 > poses.txt
-$PY tools/r3d/reference_render.py $M/meshes/sponza.scene.toml --poses poses.txt --skip 1 --out reference --samples 4 --clear 9CC0E6
+$PY tools/r3d/reference_render.py $M/meshes/sponza.scene.toml --poses poses.txt --skip 1 --out reference --samples 4
 $PY tools/r3d/bake_fidelity.py $M/meshes/sponza.scene.toml --mesh sponza_flat --script $H     --render-args "--quarter 0 --no-hud --scene sponza-flat --frames 8 --dt 5000"     --reference reference --work scratch     --variant declared= --variant fixed1=samples=fixed:1 --variant fixed4=samples=fixed:4     --variant fixed8=samples=fixed:8 --variant fixed16=samples=fixed:16 --variant fixed32=samples=fixed:32     --variant fixed64=samples=fixed:64 --variant fixed2=samples=fixed:2     --variant min2=samples=auto:2:16:median --variant min4=samples=auto:4:16:median     --variant max4=samples=auto:1:4:median --variant max8=samples=auto:1:8:median     --variant max32=samples=auto:1:32:median --variant area0.25=samples=auto:1:16:median*0.25     --variant area0.5=samples=auto:1:16:median*0.5 --variant area2=samples=auto:1:16:median*2     --variant sky16=sky=16 --variant sky32=sky=32 --variant sky64=sky=64 --variant sky256=sky=256     --variant sky512=sky=512 --variant centroid=place=centroid --variant sun-centre=sun=centre     --variant fixed4-sun-centre=samples=fixed:4,sun=centre
 ```
 
@@ -127,12 +126,12 @@ the committed flat render.
 
 | Variant | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 | Interior ΔE76 |
 |---|---:|---:|---:|---:|---:|
-| Full smooth | 7.069 | 21.73 | 0.690 | 14.44 | 5.89 |
-| Lite smooth | 7.964 | 25.27 | 0.647 | 16.51 | 6.59 |
-| Flat, 1 sample per face | 7.899 | 29.72 | 0.640 | 17.00 | 6.43 |
-| Flat, 4 samples per face | 7.476 | 24.58 | 0.653 | 15.66 | 6.16 |
-| Flat, committed (`auto` 1 to 16, median area) | 7.681 | 27.13 | 0.647 | 16.61 | 6.24 |
-| Flat, 16 samples per face | 7.367 | 23.64 | 0.657 | 15.17 | 6.12 |
+| Full smooth | 6.654 | 21.46 | 0.696 | 13.64 | 5.53 |
+| Lite smooth | 7.541 | 24.83 | 0.651 | 15.76 | 6.22 |
+| Flat, 1 sample per face | 7.495 | 29.46 | 0.645 | 16.25 | 6.08 |
+| Flat, 4 samples per face | 7.072 | 24.43 | 0.658 | 14.91 | 5.81 |
+| Flat, committed (`auto` 1 to 16, median area) | 7.278 | 26.92 | 0.652 | 15.87 | 5.89 |
+| Flat, 16 samples per face | 6.964 | 23.54 | 0.663 | 14.43 | 5.76 |
 
 Flat against full smooth differs by mean ΔE76 5.54, p95 22.97 and SSIM 0.798:
 the gap flat shading leaves between the two bakes.
@@ -142,34 +141,34 @@ The flat sweep, sorted by mean ΔE76; `min` and `max` are the `auto` bounds,
 
 | Setting | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 |
 |---|---:|---:|---:|---:|
-| fixed 16 | 7.367 | 23.64 | 0.657 | 15.17 |
-| fixed 64 | 7.372 | 23.55 | 0.658 | 15.15 |
-| fixed 32 | 7.376 | 23.61 | 0.658 | 15.14 |
-| fixed 8 | 7.417 | 23.90 | 0.654 | 15.36 |
-| min 4 | 7.463 | 24.56 | 0.653 | 15.65 |
-| fixed 4, sun centre only | 7.473 | 24.91 | 0.654 | 15.96 |
-| fixed 4 | 7.476 | 24.58 | 0.653 | 15.66 |
-| area 0.25 | 7.524 | 24.89 | 0.651 | 15.86 |
-| min 2 | 7.561 | 25.61 | 0.652 | 16.08 |
-| area 0.5 | 7.641 | 25.88 | 0.648 | 16.30 |
-| fixed 2 | 7.651 | 26.40 | 0.649 | 16.16 |
-| max 8 | 7.674 | 27.15 | 0.647 | 16.61 |
-| sky 512 | 7.676 | 27.12 | 0.647 | 16.60 |
-| committed (min 1, max 16, area 1, sky 128) | 7.681 | 27.13 | 0.647 | 16.61 |
-| max 32 | 7.681 | 27.13 | 0.647 | 16.61 |
-| sky 256 | 7.688 | 27.12 | 0.647 | 16.60 |
-| max 4 | 7.694 | 27.25 | 0.647 | 16.62 |
-| sky 64 | 7.787 | 27.14 | 0.646 | 16.64 |
-| area 2 | 7.803 | 28.92 | 0.643 | 16.90 |
-| sun centre only | 7.855 | 28.42 | 0.643 | 17.49 |
-| centroid placement (any count) | 7.908 | 29.97 | 0.639 | 17.07 |
-| sky 32 | 7.942 | 27.18 | 0.644 | 16.68 |
-| sky 16 | 8.338 | 27.25 | 0.638 | 16.74 |
+| fixed 16 | 6.964 | 23.54 | 0.663 | 14.43 |
+| fixed 64 | 6.968 | 23.45 | 0.663 | 14.41 |
+| fixed 32 | 6.973 | 23.51 | 0.663 | 14.39 |
+| fixed 8 | 7.014 | 23.82 | 0.660 | 14.61 |
+| min 4 | 7.060 | 24.41 | 0.659 | 14.90 |
+| fixed 4, sun centre only | 7.070 | 24.73 | 0.659 | 15.21 |
+| fixed 4 | 7.072 | 24.43 | 0.658 | 14.91 |
+| area 0.25 | 7.121 | 24.73 | 0.656 | 15.11 |
+| min 2 | 7.158 | 25.41 | 0.657 | 15.33 |
+| area 0.5 | 7.238 | 25.68 | 0.653 | 15.55 |
+| fixed 2 | 7.248 | 26.21 | 0.654 | 15.41 |
+| max 8 | 7.271 | 26.94 | 0.652 | 15.87 |
+| sky 512 | 7.273 | 26.90 | 0.653 | 15.86 |
+| max 32 | 7.277 | 26.92 | 0.652 | 15.87 |
+| committed (min 1, max 16, area 1, sky 128) | 7.278 | 26.92 | 0.652 | 15.87 |
+| sky 256 | 7.285 | 26.91 | 0.653 | 15.86 |
+| max 4 | 7.290 | 27.02 | 0.652 | 15.88 |
+| sky 64 | 7.383 | 26.95 | 0.651 | 15.90 |
+| area 2 | 7.400 | 28.66 | 0.648 | 16.16 |
+| sun centre only | 7.451 | 28.14 | 0.648 | 16.74 |
+| centroid placement (any count) | 7.505 | 29.70 | 0.644 | 16.33 |
+| sky 32 | 7.539 | 26.96 | 0.650 | 15.94 |
+| sky 16 | 7.935 | 27.05 | 0.644 | 16.00 |
 
-Sixteen fixed samples per face take the committed bake's mean from 7.681 to
-7.367 and its p95 from 27.13 to 23.64, at no cost at run time: the mesh and its
-frame cost are the same. They hold edge error to 15.17 against the smooth
-bake's 14.44.
+Sixteen fixed samples per face take the committed bake's mean from 7.278 to
+6.964 and its p95 from 26.92 to 23.54, at no cost at run time: the mesh and its
+frame cost are the same. They hold edge error to 14.43 against the smooth
+bake's 13.64.
 
 One sheet of two poses of the committed flat bake, left to right the reference,
 the bake, the ΔE heatmap and the reference's edge pixels (magenta), with the
@@ -185,7 +184,7 @@ fits the lite mesh's vertex positions and colours to the reference, its
 triangles unchanged. It trains on the flythrough sampled every second, less
 the times scored, and is scored on the times 5 to 35 s every 5 s, which it
 never saw (`--frames 7 --dt 5000` against the reference of those poses,
-rendered and trained with `--clear 9CC0E6`). Path-averaged is one mesh
+with the scene camera's background where nothing is drawn). Path-averaged is one mesh
 trained on every training pose; per shot is one mesh per 10 s of the path,
 each frame scored with its own segment's mesh. The unfitted rows differ from
 the fidelity table above only because they average seven of its eight poses.
@@ -268,7 +267,7 @@ the scene's camera object (`meshes/sponza.scene.toml`):
     --tracks launcher/main/apps/render_lab/flythrough_tracks_generated.c:flythrough \
     --every 5000 --poses camera 184 224 0.62 6 |
     ./launcher/tools/r3d/report_triangle_sizes.sh \
-        --mesh launcher/main/apps/render_lab/sponza_mesh_generated.c:sponza_mesh -
+        --mesh sponza -
 ```
 
 ## The capybara test asset

@@ -2327,9 +2327,10 @@ test_a_split_fluid_step_allocates_nothing(void) {
     static const int perp_b[] = {-1, 0};
     const xflow_t flow = {.ax = {1, 0}, .dg = {1, 0}};
 
-    size_t outstanding = 0;
-    heap_arena_snapshot(NULL, &outstanding);
+    /* The peak counts the internal heap alone, so the baseline is the peak's
+     * own starting point, whatever PSRAM a suite holds. */
     heap_arena_reset_peak();
+    const size_t outstanding = heap_arena_peak_bytes();
 
     sand_set_two_core_step(true);
     sand_step_liquids(&s, &flow, 0, 1);

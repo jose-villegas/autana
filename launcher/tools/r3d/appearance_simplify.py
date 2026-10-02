@@ -3,15 +3,16 @@
 renders along a camera path, keeping its triangles (appearance-driven
 simplification, Hasselgren et al. 2021).
 
-    python launcher/tools/r3d/appearance_simplify.py --start MESH_mesh_generated.c \\
+    python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \\
         --poses POSES.txt --reference DIR [--poses ... --reference ...] --out DIR [--per-shot]
 
---start is a generated smooth mesh, usually the simplifier's output at the
+--start is a baked smooth mesh, usually the simplifier's output at the
 triangle budget. Each --poses file (tools/anim/sample_tracks.sh) pairs with
-the --reference directory reference_render.py wrote for it. All pairs train
-one mesh; with --per-shot each pair trains its own. A mesh is written as
-<name>_mesh_generated.{c,h} by the same writer as mesh_import.py, under
-DIR, or DIR/shot<k>, and as a vertex-coloured OBJ beside it.
+the --reference directory reference_render.py wrote for it; --scene is the
+scene they were rendered from, whose camera background shows where nothing
+is drawn. All pairs train one mesh; with --per-shot each pair trains its
+own. A mesh is written as NAME.mesh by the same writer as mesh_import.py,
+under DIR, or DIR/shot<k>, and as a vertex-coloured OBJ beside it.
 
 The optimiser needs PyTorch with CUDA and nvdiffrast; see the README.
 """
@@ -26,6 +27,7 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log  # noqa: E402
+from r3d.import_settings import load_scene  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
 from r3d.poses import camera_basis, read_poses  # noqa: E402
 
@@ -200,8 +202,8 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history
 
 
-def write_mesh(out_dir, name, points, rgb, mesh, banner):
-    """The fitted mesh as <name>_mesh_generated.{c,h} and <name>.obj; returns
+def write_mesh(out_dir, name, points, rgb, mesh):
+    """The fitted mesh as <name>.mesh and <name>.obj; returns
     the baked mesh's triangle count."""
     from r3d.lit_mesh import write_lit_mesh
 
@@ -210,7 +212,7 @@ def write_mesh(out_dir, name, points, rgb, mesh, banner):
     colours = np.clip(np.rint(rgb * 255.0), 0, 255)
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    baked = write_lit_mesh(out_dir, name, positions, colours, tris, double, banner, position_scale=scale)
+    baked = write_lit_mesh(out_dir, name, positions, colours, tris, double, position_scale=scale)
     with open(out_dir / f"{name}.obj", "w", newline="\n") as obj:
         for p, c in zip(positions, rgb):
             obj.write("v %.4f %.4f %.4f %.4f %.4f %.4f\n" % (*p, *c))
@@ -221,7 +223,8 @@ def write_mesh(out_dir, name, points, rgb, mesh, banner):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--start", required=True, help="a smooth <name>_mesh_generated.c to start from")
+    parser.add_argument("--scene", required=True, help="the scene file the references were rendered from")
+    parser.add_argument("--start", required=True, help="a smooth NAME.mesh to start from")
     parser.add_argument("--poses", action="append", required=True, help="a sample_tracks.sh poses file")
     parser.add_argument("--reference", action="append", required=True, help="reference_render.py output for the poses")
     parser.add_argument("--out", required=True)
@@ -232,17 +235,18 @@ def main(argv=None):
     parser.add_argument("--lr-position", type=float, default=2e-4, help="per step, in bounding diagonals")
     parser.add_argument("--lr-colour", type=float, default=0.01)
     parser.add_argument("--laplacian", type=float, default=10.0)
-    parser.add_argument("--clear", default="000000", help="RRGGBB the scene clears to, as reference_render.py was given")
     args = parser.parse_args(argv)
     if len(args.poses) != len(args.reference):
         parser.error("give one --reference per --poses")
-    if len(args.clear) != 6:
-        parser.error("--clear must be RRGGBB")
-    clear = tuple(int(args.clear[index : index + 2], 16) / 255.0 for index in (0, 2, 4))
+    scene = load_scene(args.scene)
+    if scene.camera is None:
+        parser.error("--scene needs a camera")
+    background = scene.camera.component.background
+    clear = tuple(((background >> shift) & 255) / 255.0 for shift in (16, 8, 0))
     start = pathlib.Path(args.start)
-    if not start.name.endswith("_mesh_generated.c"):
-        parser.error("--start must be a <name>_mesh_generated.c")
-    name = start.name[: -len("_mesh_generated.c")]
+    if start.suffix != ".mesh":
+        parser.error("--start must be a NAME.mesh")
+    name = start.stem
     mesh = start_mesh(start)
     log(f"start: {len(mesh[2])} triangles, {len(mesh[0])} positions")
     pairs = list(zip(args.poses, args.reference))
@@ -253,9 +257,7 @@ def main(argv=None):
         log(f"{out}: {len(views)} views at {size[0]}x{size[1]}")
         points, rgb, history = optimise(mesh, views, size, args.steps, args.batch, args.lr_position, args.lr_colour, args.laplacian,
                                         clear=clear)
-        command = " ".join(["python launcher/tools/r3d/appearance_simplify.py", *(argv if argv is not None else sys.argv[1:])])
-        banner = ["GENERATED FILE - do not edit.", "", f"    {command}", "", f"Fitted from {start.name}."]
-        count = write_mesh(out, name, points, rgb, mesh, banner)
+        count = write_mesh(out, name, points, rgb, mesh)
         np.savetxt(out / "loss.txt", np.array(history), fmt="%.4f")
         print(f"{out}: {count} triangles, mean dE76 {np.mean(history[:20]):.3f} -> {np.mean(history[-20:]):.3f}")
     return 0
