@@ -1602,6 +1602,7 @@ test_the_two_core_frame_matches_one_full_draw(void) {
                        .width = W,
                        .height = H,
                        .clear = SKY,
+                       .upscaled = true,
                        .destination = upscaled,
                        .destination_width = 2 * W,
                        .destination_height = 2 * H};
@@ -1622,7 +1623,7 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     }
 
     /* With nothing to upscale into, the raster clears its own colour target. */
-    raster.destination = NULL;
+    raster.upscaled = false;
     const camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
     const r3d_lens_t lens = look_down_minus_z(150.0f, 400, 1.0f);
     raster_draw(&raster, &camera, 0);
@@ -1654,6 +1655,7 @@ test_a_destination_of_the_same_size_is_a_copy(void) {
                        .width = W,
                        .height = H,
                        .clear = SKY,
+                       .upscaled = true,
                        .destination = destination,
                        .destination_width = W,
                        .destination_height = H};
@@ -1696,6 +1698,7 @@ test_a_fractional_destination_upscales_a_drawn_frame(void) {
                        .width = W,
                        .height = H,
                        .clear = SKY,
+                       .upscaled = true,
                        .destination = destination,
                        .destination_width = OUT_W,
                        .destination_height = OUT_H};
@@ -1998,6 +2001,7 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
                        .width = W,
                        .height = H,
                        .clear = SKY,
+                       .upscaled = true,
                        .destination = upscaled,
                        .destination_width = 2 * W,
                        .destination_height = 2 * H};

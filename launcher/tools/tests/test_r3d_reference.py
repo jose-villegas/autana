@@ -6,6 +6,7 @@ import unittest
 from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
 try:
     import numpy as np
@@ -13,7 +14,8 @@ try:
     from trimesh.ray.ray_pyembree import RayMeshIntersector
 
     from r3d.geometry import corner_normals
-    from r3d.reference_render import render_linear
+    from r3d.reference_render import device_picture, render_linear, trace
+    from render_compare import expand_565
 except ImportError:
     np = None
 
@@ -61,10 +63,22 @@ class ReferenceRenderTest(unittest.TestCase):
     def test_the_normal_buffer_faces_the_eye_and_is_zero_where_rays_miss(self):
         # Wound to face away from the eye at z = 1: the buffer still turns its normal toward the eye.
         source = plane_source([[-0.5, 0.5, 0.0], [-0.5, 2.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.5, 0.0]])
-        _picture, normal = render_linear(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 2, 2, 1.0, 2, normals=True)
+        _linear, _covered, normal = trace(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 2, 2, 1.0, 2)
         np.testing.assert_allclose(normal[0, 0], [0.0, 0.0, 1.0], atol=1e-12, rtol=0)
         np.testing.assert_allclose(normal[1], 0.0, atol=1e-12, rtol=0)
 
+    def test_a_pose_at_empty_sky_is_the_scene_background_as_the_device_shows_it(self):
+        source = plane_source([[-2.0, -2.0, 0.0], [2.0, -2.0, 0.0], [2.0, 2.0, 0.0], [-2.0, 2.0, 0.0]])
+        away = np.array([0.0, 0.0, 1.0, 0.0, 0.0, 1.0])
+        linear, covered, _normal = trace(source, *sun_scene([0.0, 0.0, 1.0]), away, 3, 3, 1.0, 2)
+        picture = device_picture(linear, covered, 0.35, 0x9CC0E6)
+        shown = expand_565(np.full((3, 3, 3), (0x9C, 0xC0, 0xE6), dtype=np.uint8))
+        np.testing.assert_array_equal(picture, shown)
+
+    def test_a_half_covered_pixel_blends_the_mesh_with_the_background(self):
+        linear, covered = np.full((1, 1, 3), 1.0), np.full((1, 1), 0.5)
+        picture = device_picture(linear, covered, 0.0, 0x000000)
+        np.testing.assert_array_equal(picture, expand_565(np.full((1, 1, 3), 128, dtype=np.uint8)))
 
 
 if __name__ == "__main__":

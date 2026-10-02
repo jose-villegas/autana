@@ -1,7 +1,7 @@
 /*
  * sponza_flythrough, the camera loop through Sponza's atrium, and the render
  * size it is seen at. Model units are centimetres; y is up. The lens and
- * path are the scene's camera object (sponza_scene_generated.h).
+ * path are the scene's camera entity (sponza_scene_generated.h).
  */
 #pragma once
 
