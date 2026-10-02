@@ -562,26 +562,23 @@ cache_samples = 1 }` in `meshes/sponza.import.toml`, described in
 lifts the shadowed arcade ceilings and the sides of the columns the sun does
 not reach, and tints a column next to a banner with the banner's colour. The
 three meshes keep their triangle budgets and cost the same to draw. The scene's
-ambient light, which stood in for bounce light, is 0.03. Smooth bakes against
-their own references scored mean ΔE 7.03, 6.64 and 6.25, p95 21.83, 21.03 and
-22.63, and SSIM 0.663, 0.684 and 0.641 at ambient 0.06, 0.03 and 0; 0.03 has the
-best SSIM and p95, and a mean between the two.
+ambient light is 0.03.
 
-Each bounce adds less than the one before. The mean outgoing radiance of the
-262 267 source triangles as a share of the direct light, the bake time of the
-three variants together, and the full mesh's vertices per triangle, bounces 0
-to 3:
+The cache is validated in linear light by the closed diffuse furnace and
+red-wall Cornell fixtures in
+[`test_r3d_bake.py`](../../../../tools/tests/test_r3d_bake.py). The furnace
+holds the finite bounce series, while the Cornell floor receives a stronger red
+term next to its red wall. A Sponza cache measurement must use its
+alpha-masked source and linear radiance, not source triangle counts or encoded
+vertex colours.
 
-| Bounces | Radiance added by this bounce | Bake time, three variants | Full mesh vertices / triangles |
-|---:|---:|---:|---:|
-| 0 | none | 2 min 35 s | 17 146 / 17 375 = 0.987 |
-| 1 | 2.7% | 3 min 25 s | 17 087 / 17 376 = 0.983 |
-| 2 | 0.58% | 3 min 41 s | 17 198 / 17 381 = 0.990 |
-| 3 | 0.15% | 3 min 52 s | 17 140 / 17 378 = 0.986 |
-
-The second bounce already adds under 1%. Two are baked because the share is a
-mean over all triangles and is larger in the shadowed places the bounces light.
-Zero bounces writes the bytes the bake wrote before `indirect` existed.
+The atrium's sunlit floor beneath a curtain is direct-light dominated. Its
+small coloured indirect term can disappear through the tone map and RGB565
+quantization even when the cache contains substantial bounce light elsewhere.
+On a shaded column the indirect term can exceed direct light, but both terms
+remain close to black. The source reference resolves those local changes more
+finely than the vertex-colour mesh, so a per-pixel reference is the comparison
+for a suspected colour-bleed loss.
 
 How far each bake is from the source lit per pixel with the same bounces, over
 the same eight poses as above. Mean ΔE76, p95 ΔE76 and luma SSIM; the
@@ -614,10 +611,9 @@ colour on the column beside it, and the lit ceiling.
 ![Where bounce light changes the picture](../../../../../docs/images/render/bake-indirect-crops.png)
 
 `doc_images.sh` regenerates the images, baking the import without `indirect`
-for the direct-light side. The bounce table and the scores come from
-`mesh_import.py meshes/sponza.scene.toml` at each bounce count and the
-`reference_render.py` commands above, once for the import with `indirect` and
-once without.
+for the direct-light side. It renders the source reference with and without
+the import's indirect field before `render_compare.py` makes the sheets and
+crops.
 
 ### Indirect look
 
