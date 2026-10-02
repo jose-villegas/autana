@@ -78,9 +78,9 @@ sponza_still full sponza
 sponza_still lite sponza-lite
 sponza_still flat sponza-flat
 "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-lite.png" --crops 3 \
-    --row "full | lite" "$W/still-full.bmp" "$W/still-lite.bmp" > "$W/compare-full-lite.log"
+    --label-a full --label-b lite --row "full | lite" "$W/still-full.bmp" "$W/still-lite.bmp" > "$W/compare-full-lite.log"
 "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-flat.png" --crops 3 \
-    --row "smooth | flat" "$W/still-full.bmp" "$W/still-flat.bmp" > "$W/compare-full-flat.log"
+    --label-a smooth --label-b flat --row "smooth | flat" "$W/still-full.bmp" "$W/still-flat.bmp" > "$W/compare-full-flat.log"
 # render_compare.py writes no crops where the two renders do not differ; fail
 # here rather than leave the pages linking a missing file.
 for crops in compare-full-lite compare-full-flat; do
@@ -102,4 +102,4 @@ REFERENCE=$(sh launcher/tools/render/render_compare.sh --reference-frames \
     -o "$W/fidelity-flat.bmp" --video "$W/fidelity-flat.avi" 2> "$W/fidelity-flat.log"
 "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.png" \
     --reference-video "$W/fidelity-flat.avi" "$REFERENCE" --reference-scale 2 \
-    --reference-sheet "$RENDER/bake-fidelity-sheet.png" --sheet-frames 2,4 > "$W/fidelity-compare.log"
+    --reference-sheet "$RENDER/bake-fidelity-sheet.png" --sheet-frames 2,4 --label-a "flat bake" > "$W/fidelity-compare.log"
