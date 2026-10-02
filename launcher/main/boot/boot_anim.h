@@ -136,21 +136,18 @@ boot_anim_view(int w, int h, uint32_t now_ms) {
 static inline vec3x_t
 boot_anim_to_camera_space(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view) {
     const mat4x_t* m = &view->matrix;
-    const int32_t re = re_q12 * 16;
-    const int32_t im = im_q12 * 16;
-    const int32_t t = t_q8 * (BOOT_ANIM_SPIRAL_Q9 / 2);
+    const int64_t re = (int64_t)re_q12 * 16;
+    const int64_t im = (int64_t)im_q12 * 16;
+    const int64_t t = (int64_t)t_q8 * (BOOT_ANIM_SPIRAL_Q9 / 2);
     const int64_t half = (int64_t)1 << 22;
 
-    /* The matrix and the point are Q16, so a product is Q32; the translation is lifted to it. Each product widens an int32 pair: a 64 x 64 multiply is a libgcc call here. */
+    /* The matrix and the point are Q16, so a product is Q32; the translation is lifted to it. */
     return (vec3x_t){
-        (int32_t)((((int64_t)m->m[0][0] * re) + ((int64_t)m->m[0][1] * t) + ((int64_t)m->m[0][2] * im)
-                   + ((int64_t)m->m[0][3] << 16) + half)
+        (int32_t)(((m->m[0][0] * re) + (m->m[0][1] * t) + (m->m[0][2] * im) + ((int64_t)m->m[0][3] << 16) + half)
                   >> 23),
-        (int32_t)((((int64_t)m->m[1][0] * re) + ((int64_t)m->m[1][1] * t) + ((int64_t)m->m[1][2] * im)
-                   + ((int64_t)m->m[1][3] << 16) + half)
+        (int32_t)(((m->m[1][0] * re) + (m->m[1][1] * t) + (m->m[1][2] * im) + ((int64_t)m->m[1][3] << 16) + half)
                   >> 23),
-        (int32_t)((((int64_t)m->m[2][0] * re) + ((int64_t)m->m[2][1] * t) + ((int64_t)m->m[2][2] * im)
-                   + ((int64_t)m->m[2][3] << 16) + half)
+        (int32_t)(((m->m[2][0] * re) + (m->m[2][1] * t) + (m->m[2][2] * im) + ((int64_t)m->m[2][3] << 16) + half)
                   >> 23),
     };
 }
