@@ -4,7 +4,7 @@
  * Wraps Unity's own dispatcher (UnityDefaultTestRun) from outside: the timer
  * starts before it and stops after it returns, so nothing here runs inside
  * setUp(), the test body, or tearDown(). That matters because a handful of
- * tests time their own subject with esp_timer_get_time() around a narrower
+ * tests time their own subject with timing_now_us() around a narrower
  * window (one call of the thing under test, say); this must never be what
  * widens that window.
  *
@@ -21,7 +21,7 @@
 #include <stdio.h>
 
 #ifdef DEVICE_BUILD
-#include "esp_timer.h"
+#include "util/timing.h"
 #else
 #include <time.h>
 #endif
@@ -143,7 +143,7 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
     heap_arena_reset_peak();
 #endif
 #ifdef DEVICE_BUILD
-    const int64_t started = esp_timer_get_time();
+    const int64_t started = timing_now_us();
 #else
     const clock_t started = clock();
 #endif
@@ -158,7 +158,7 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
 #endif
 
 #ifdef DEVICE_BUILD
-    const int64_t elapsed_ms = (esp_timer_get_time() - started) / 1000;
+    const int64_t elapsed_ms = (timing_now_us() - started) / 1000;
 #else
     const long elapsed_ms = (clock() - started) * 1000L / CLOCKS_PER_SEC;
 #endif
