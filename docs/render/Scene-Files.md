@@ -107,7 +107,8 @@ A mesh whose import has a scene-dependent step reads the scene:
 - `process.light` reads the lights (at least one directional object, `[sky]`
   or `[ambient]`) and `tonemap_white`;
 - `process.light.indirect` reads the optional `[indirect]` table;
-- `process.visibility` reads the camera's `region`.
+- `process.visibility` reads the camera's `region`, or its `path` for the
+  `camera_path` source.
 
 A scene must carry what a placed mesh reads, and may not carry what none
 reads. Baking a mesh reads the lights of the scene that requests it, so a mesh

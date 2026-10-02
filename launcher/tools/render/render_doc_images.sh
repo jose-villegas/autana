@@ -1,6 +1,8 @@
 #!/bin/sh
 #
 # Regenerate every image under docs/images/ from the firmware's own host renders.
+# An image no script here can make (a GPU fit, a board photo) lives under
+# docs/<topic>/images/ instead and is refreshed by hand.
 #
 #   ./launcher/tools/render/render_doc_images.sh            # rewrite the images in place
 #   ./launcher/tools/render/render_doc_images.sh --check    # only report which changed

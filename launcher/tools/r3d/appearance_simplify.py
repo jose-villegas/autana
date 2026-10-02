@@ -29,11 +29,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import log  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
+from r3d.cost_model import load as load_cost  # noqa: E402
 from r3d.poses import camera_basis, read_poses  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
-from render_compare import D65_WHITE, GAMMA, SRGB_TO_XYZ  # noqa: E402
+from render_compare import lab  # noqa: E402
 
 FAR = 1.0e5
 
@@ -72,9 +73,18 @@ def projection(eye, forward, width, height, lens, near):
     return np.concatenate([rows, offsets[:, None]], axis=1)
 
 
+def pose_views(poses_path, scale):
+    """[(clip matrix, None, None, eye)] for every pose of a poses file: views
+    with no target, for counting what each triangle shows."""
+    width, height, lens, near, poses = read_poses(poses_path)
+    return [(projection(pose[:3], pose[3:], width, height, lens, near), None, None, pose[:3]) for pose in poses]
+
+
 def load_views(pairs, scale):
-    """[(clip matrix, target sRGB image 0..1 at render size)] for every pose
-    of every (poses file, reference directory) pair, and the render size."""
+    """[(clip matrix, target sRGB image 0..1, target normals or None, eye)],
+    images at render size, for every pose of every (poses file, reference
+    directory) pair, and the render size. The normals are the reference's
+    NNNN.normal.npy, when it wrote them."""
     from PIL import Image
 
     views = []
@@ -88,24 +98,31 @@ def load_views(pairs, scale):
         for pose, image in zip(poses, images):
             target = np.asarray(Image.open(image).convert("RGB"), dtype=np.float32) / 255.0
             target = target.repeat(scale, axis=0).repeat(scale, axis=1)
-            views.append((projection(pose[:3], pose[3:], width, height, lens, near), target))
+            normal_path = image.with_name(image.stem + ".normal.npy")
+            normal = None
+            if normal_path.exists():
+                normal = np.load(normal_path).astype(np.float32).repeat(scale, axis=0).repeat(scale, axis=1)
+            views.append((projection(pose[:3], pose[3:], width, height, lens, near), target, normal, pose[:3]))
     return views, size
 
 
-def lab(srgb):
-    """CIELAB of 0..1 gamma-encoded colours: render_compare.py's dE space, in torch."""
+def delta_e76(a, b):
+    """Per-pixel CIE76 dE in torch; the floor and the epsilon keep the
+    gradient finite at black and at zero."""
     import torch
 
-    linear = srgb.clamp(1e-6, 1.0) ** GAMMA
-    xyz = linear @ torch.tensor(SRGB_TO_XYZ, device=srgb.device).T / torch.tensor(D65_WHITE, device=srgb.device)
-    delta = 6.0 / 29.0
-    f = torch.where(xyz > delta**3, xyz.clamp_min(delta**3) ** (1.0 / 3.0), xyz / (3 * delta**2) + 4.0 / 29.0)
-    return torch.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])], dim=-1)
+    return ((lab(torch, a, 1e-6) - lab(torch, b, 1e-6)) ** 2).sum(dim=-1).add(1e-6).sqrt()
 
 
-def delta_e76(a, b):
-    """Per-pixel CIE76 dE; the epsilon keeps the gradient finite at zero."""
-    return ((lab(a) - lab(b)) ** 2).sum(dim=-1).add(1e-6).sqrt()
+def vertex_normals(points, tris, vertex_point):
+    """Per vertex, the unit area-weighted normal of the triangles around its
+    welded position, in torch, differentiable in `points`."""
+    import torch
+
+    corners = points[vertex_point][tris]
+    face = torch.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0], dim=1)
+    around = torch.zeros_like(points).index_add_(0, vertex_point[tris].reshape(-1), face.repeat_interleave(3, dim=0))
+    return torch.nn.functional.normalize(around, dim=1)[vertex_point]
 
 
 class Renderer:
@@ -125,19 +142,58 @@ class Renderer:
         self.size = size
         self.clear = torch.as_tensor(clear, dtype=torch.float32, device=device)
 
-    def __call__(self, points, colours, clip_matrix):
+    def clip(self, points, clip_matrix):
+        """Clip-space positions of every vertex, y up."""
         import torch
 
         positions = points[self.vertex_point]
-        homogeneous = torch.cat([positions, torch.ones_like(positions[:, :1])], dim=1)
-        clip = homogeneous @ clip_matrix.T
+        return torch.cat([positions, torch.ones_like(positions[:, :1])], dim=1) @ clip_matrix.T
+
+    def facing(self, clip):
+        """Which triangles the device would draw: double-sided, front-facing,
+        or crossing the eye plane, where facing is not yet known."""
+        import torch
+
         with torch.no_grad():
             corners = clip[self.tris.long()]
             w = corners[..., 3]
             xy = corners[..., :2] / w.clamp_min(1e-6)[..., None]
             area = (xy[:, 1, 0] - xy[:, 0, 0]) * (xy[:, 2, 1] - xy[:, 0, 1]) - (xy[:, 2, 0] - xy[:, 0, 0]) * (xy[:, 1, 1] - xy[:, 0, 1])
-            keep = self.double | (area > 0) | (w <= 0).any(dim=1)
-        tris = self.tris[keep].contiguous()
+            return self.double | (area > 0) | (w <= 0).any(dim=1)
+
+    def visible_ids(self, points, clip_matrix):
+        """The triangle each pixel shows, -1 where none."""
+        import torch
+
+        clip = self.clip(points, clip_matrix)
+        keep = torch.nonzero(self.facing(clip))[:, 0]
+        width, height = self.size
+        rast, _ = self.dr.rasterize(self.context, clip[None].contiguous(), self.tris[keep].contiguous(), resolution=[height, width])
+        local = rast[0, ..., 3].long() - 1
+        return torch.where(local >= 0, keep[local.clamp_min(0)], local)
+
+    def normals(self, points, clip_matrix, eye, clip=None):
+        """(per-pixel world normal turned toward `eye`, covered mask): the
+        mesh's area-weighted vertex normals, interpolated."""
+        import torch
+
+        clip = self.clip(points, clip_matrix) if clip is None else clip
+        tris = self.tris[self.facing(clip)].contiguous()
+        width, height = self.size
+        rast, _ = self.dr.rasterize(self.context, clip[None].contiguous(), tris, resolution=[height, width])
+        vertex = vertex_normals(points, self.tris.long(), self.vertex_point)
+        attributes = torch.cat([vertex, points[self.vertex_point]], dim=1)[None].contiguous()
+        values, _ = self.dr.interpolate(attributes, rast, tris)
+        normal = torch.nn.functional.normalize(values[0, ..., :3], dim=-1)
+        towards = torch.as_tensor(eye, dtype=normal.dtype, device=normal.device) - values[0, ..., 3:]
+        normal = torch.where((normal * towards).sum(-1, keepdim=True) < 0, -normal, normal)
+        return normal.flip(0), (rast[0, ..., 3] > 0).flip(0)
+
+    def __call__(self, points, colours, clip_matrix, clip=None):
+        import torch
+
+        clip = self.clip(points, clip_matrix) if clip is None else clip
+        tris = self.tris[self.facing(clip)].contiguous()
         clip = clip[None].contiguous()
         width, height = self.size
         rast, _ = self.dr.rasterize(self.context, clip, tris, resolution=[height, width])
@@ -145,6 +201,33 @@ class Renderer:
         colour = torch.where(rast[..., 3:] > 0, colour, self.clear.expand_as(colour))
         colour = self.dr.antialias(colour.contiguous(), rast, clip, tris)
         return colour[0].flip(0)
+
+
+def coverage(mesh, views, size, device="cuda"):
+    """Per triangle, the pixels it shows summed over every view: zero for a
+    triangle no view sees, small for a sliver or a speck."""
+    import torch
+
+    points0, _rgb, tris, double, _scale, vertex_point = mesh
+    render = Renderer(tris, double, vertex_point, size, device)
+    points = torch.as_tensor(points0, dtype=torch.float32, device=device)
+    total = torch.zeros(len(tris), dtype=torch.int64, device=device)
+    with torch.no_grad():
+        for matrix, *_rest in views:
+            ids = render.visible_ids(points, torch.as_tensor(matrix, dtype=torch.float32, device=device))
+            ids = ids[ids >= 0]
+            total += torch.bincount(ids, minlength=len(tris))
+    return total.cpu().numpy()
+
+
+def prune(mesh, shown, budget):
+    """The mesh without the triangles that show least, down to `budget`:
+    every triangle no view shows goes first, then those showing fewest
+    pixels."""
+    points0, rgb0, tris, double, scale, vertex_point = mesh
+    order = np.argsort(-np.asarray(shown), kind="stable")
+    keep = np.sort(order[: min(budget, int(np.count_nonzero(shown)))])
+    return points0, rgb0, tris[keep], np.asarray(double)[keep], scale, vertex_point
 
 
 def uniform_laplacian(points, edges):
@@ -159,29 +242,147 @@ def uniform_laplacian(points, edges):
     return points - total / count.clamp_min(1.0)
 
 
+def predicted_ms(xp, cost, clip, tris, double, size, scale):
+    """cost_model's milliseconds for one view, less the constant and the
+    cluster terms, which moving vertices cannot change."""
+    from r3d.cost_model import triangle_terms, variable_ms
+
+    drawn, rows, pixels = triangle_terms(xp, clip, tris, double, size[0] // scale, size[1] // scale)
+    return variable_ms(cost, drawn, rows, pixels)
+
+
+def normal_pairs(render, points, view, clip):
+    """(the mesh's normals, the reference's, the pixels both cover) in `view`."""
+    matrix, _target, reference, eye = view
+    normal, covered = render.normals(points, matrix, eye, clip)
+    return normal, reference, covered & (reference.abs().sum(-1) > 0)
+
+
+def normal_l1(render, points, view, clip):
+    """Mean L1 distance between the mesh's and the reference's normals over
+    the pixels both cover, and the angles there in degrees."""
+    import torch
+
+    normal, reference, both = normal_pairs(render, points, view, clip)
+    if not bool(both.any()):
+        return normal.sum() * 0, normal.new_zeros(0)
+    distance = (normal - reference).abs().sum(-1)[both].mean()
+    cosine = (normal * reference).sum(-1)[both].clamp(-1.0, 1.0)
+    return distance, torch.rad2deg(torch.acos(cosine.detach()))
+
+
+def normal_error(mesh, views, size, device="cuda", angle_dir=None):
+    """Mean angular error in degrees between the mesh's normals and the
+    reference's, over the pixels both cover in every view. With `angle_dir`,
+    each view's per-pixel angle is also written there as NNNN.angle.npy, NaN
+    where the mesh or the reference shows nothing."""
+    import torch
+
+    points0, _rgb, tris, double, _scale, vertex_point = mesh
+    render = Renderer(tris, double, vertex_point, size, device)
+    points = torch.as_tensor(points0, dtype=torch.float32, device=device)
+    angles = []
+    with torch.no_grad():
+        for index, (matrix, target, reference, eye) in enumerate(views):
+            view = (torch.as_tensor(matrix, dtype=torch.float32, device=device), None,
+                    torch.as_tensor(reference, device=device), eye)
+            angles.append(normal_l1(render, points, view, None)[1])
+            if angle_dir is not None:
+                normal, reference, both = normal_pairs(render, points, view, None)
+                cosine = (normal * reference).sum(-1).clamp(-1.0, 1.0)
+                degrees = torch.where(both, torch.rad2deg(torch.acos(cosine)), torch.full_like(cosine, float("nan")))
+                pathlib.Path(angle_dir).mkdir(parents=True, exist_ok=True)
+                np.save(pathlib.Path(angle_dir) / f"{index:04d}.angle.npy", degrees.cpu().numpy())
+    return float(torch.cat(angles).mean())
+
+
+def triangle_error(mesh, views, size, clear, device="cuda"):
+    """Per triangle, the dE76 summed over the pixels it shows in every view."""
+    import torch
+
+    points0, rgb0, tris, double, _scale, vertex_point = mesh
+    render = Renderer(tris, double, vertex_point, size, device, clear)
+    points = torch.as_tensor(points0, dtype=torch.float32, device=device)
+    colours = torch.as_tensor(rgb0, dtype=torch.float32, device=device)
+    total = torch.zeros(len(tris), device=device)
+    with torch.no_grad():
+        for matrix, target, *_rest in views:
+            matrix = torch.as_tensor(matrix, dtype=torch.float32, device=device)
+            error = delta_e76(render(points, colours, matrix), torch.as_tensor(target, device=device))
+            ids = render.visible_ids(points, matrix).flip(0)
+            shown = ids >= 0
+            total.index_add_(0, ids[shown], error[shown])
+    return total.cpu().numpy()
+
+
+def refine(mesh, error, budget):
+    """The mesh with the longest edge of its worst triangles split, both
+    sides of the edge at once, until it holds about `budget` triangles: a
+    fitted coarse mesh warm-starts a finer one where its error is."""
+    from r3d.tessellate import split_marked_edges
+
+    points, rgb, tris, double, scale, vertex_point = mesh
+    positions = points[vertex_point]
+    while len(tris) < budget:
+        corners = vertex_point[tris]
+        lengths = np.stack([np.linalg.norm(points[corners[:, k]] - points[corners[:, (k + 1) % 3]], axis=1) for k in range(3)], axis=1)
+        longest = lengths.argmax(axis=1)
+        marked_points = set()
+        for index in np.argsort(-error)[: max(1, (budget - len(tris)) // 2)]:
+            a, b = corners[index, longest[index]], corners[index, (longest[index] + 1) % 3]
+            marked_points.add((min(a, b), max(a, b)))
+        marked = set()
+        for t in tris:
+            for k in range(3):
+                a, b = t[k], t[(k + 1) % 3]
+                pa, pb = vertex_point[a], vertex_point[b]
+                if (min(pa, pb), max(pa, pb)) in marked_points:
+                    marked.add((min(a, b), max(a, b)))
+        positions, tris, midpoint, parent = split_marked_edges(positions, tris, marked)
+        colours = np.concatenate([rgb, np.zeros((len(positions) - len(rgb), 3))])
+        for (a, b), m in midpoint.items():
+            colours[m] = (rgb[a] + rgb[b]) / 2
+        rgb, double, error = colours, np.asarray(double)[parent], error[parent] / 2
+        points, vertex_point = np.unique(positions, axis=0, return_inverse=True)
+        vertex_point = vertex_point.reshape(-1)
+    return points, rgb, tris, double, scale, vertex_point
+
+
 def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100,
-             clear=(0.0, 0.0, 0.0)):
-    """(points, rgb 0..1, per-step mean dE): the start mesh's welded positions
-    and vertex colours after `steps` Adam steps of `batch` random views. Both
-    learning rates decay tenfold over the run; `laplacian` weights how far the
-    positions' differential coordinates may drift from the start's, in units
-    of the mean edge length; position steps are in bounding diagonals.
-    `clear` is the colour the scene clears to."""
+             clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0):
+    """(points, rgb 0..1, per-step mean dE) after `steps` Adam steps of
+    `batch` random views; the learning rates decay tenfold over the run and
+    position steps are in bounding diagonals. The loss adds `laplacian` times
+    the drift of the uniform-Laplacian coordinates (in mean edge lengths),
+    `cost_weight` times cost_model's predicted ms at 1 / `scale` of the
+    render size, and `normal_weight` times the L1 normal distance."""
     import torch
 
     points0, rgb0, tris, double, _scale, vertex_point = mesh
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     diagonal = float(np.linalg.norm(points0.max(axis=0) - points0.min(axis=0)))
-    render = Renderer(tris, double, vertex_point, size, device, clear)
+    renderers = {}
+
+    def renderer_for(index):
+        """The renderer at view `index`'s size: a reference of either
+        orientation trains the same mesh."""
+        height, width = targets[index].shape[:2]
+        if (width, height) not in renderers:
+            renderers[width, height] = Renderer(tris, double, vertex_point, (width, height), device, clear)
+        return renderers[width, height]
+
     edges = torch.as_tensor(point_edges(tris, vertex_point), device=device)
     start = torch.as_tensor(points0, dtype=torch.float32, device=device)
     points = start.clone().requires_grad_(True)
     colours = torch.as_tensor(rgb0, dtype=torch.float32, device=device).requires_grad_(True)
     rest = uniform_laplacian(start, edges)
     edge_length = float((start[edges[:, 0]] - start[edges[:, 1]]).norm(dim=1).mean())
-    matrices = [torch.as_tensor(m, dtype=torch.float32, device=device) for m, _ in views]
-    targets = [torch.as_tensor(t, device=device) for _, t in views]
+    matrices = [torch.as_tensor(view[0], dtype=torch.float32, device=device) for view in views]
+    targets = [torch.as_tensor(view[1], device=device) for view in views]
+    normals = [None if len(view) < 3 or view[2] is None else torch.as_tensor(view[2], device=device) for view in views]
+    if normal_weight and any(normal is None for normal in normals):
+        raise ValueError("a normal term needs the reference's normal buffers: reference_render.py --normals")
     adam = torch.optim.Adam([{"params": [points], "lr": lr_position * diagonal}, {"params": [colours], "lr": lr_colour}])
     schedule = torch.optim.lr_scheduler.LambdaLR(adam, lambda step: 0.1 ** (step / max(steps, 1)))
     history = []
@@ -189,16 +390,27 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     for step in range(steps):
         chosen = rng.choice(len(views), size=min(batch, len(views)), replace=False)
         adam.zero_grad()
-        error = sum(delta_e76(render(points, colours, matrices[i]), targets[i]).mean() for i in chosen) / len(chosen)
+        error, predicted = 0.0, 0.0
+        for i in chosen:
+            render = renderer_for(i)
+            clip = render.clip(points, matrices[i])
+            error = error + delta_e76(render(points, colours, matrices[i], clip), targets[i]).mean() / len(chosen)
+            if cost is not None:
+                predicted = predicted + predicted_ms(torch, cost, clip, render.tris.long(), render.double, render.size,
+                                                     scale) / len(chosen)
+            if normal_weight:
+                distance, _angles = normal_l1(render, points, (matrices[i], None, normals[i], views[i][3]), clip)
+                error = error + normal_weight * distance / len(chosen)
         drift = ((uniform_laplacian(points, edges) - rest) / edge_length).pow(2).sum(dim=1).mean()
-        (error + laplacian * drift).backward()
+        (error + laplacian * drift + cost_weight * predicted).backward()
         adam.step()
         schedule.step()
         with torch.no_grad():
             colours.clamp_(0.0, 1.0)
         history.append(float(error))
         if report and (step % report == 0 or step == steps - 1):
-            log(f"step {step}: mean dE76 {history[-1]:.3f}, drift {float(drift):.3e}, {time.time() - started:.1f} s")
+            log(f"step {step}: mean dE76 {history[-1]:.3f}, predicted {float(predicted):.2f} ms, drift {float(drift):.3e}, "
+                f"{time.time() - started:.1f} s")
     return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history
 
 
@@ -235,6 +447,14 @@ def main(argv=None):
     parser.add_argument("--lr-position", type=float, default=2e-4, help="per step, in bounding diagonals")
     parser.add_argument("--lr-colour", type=float, default=0.01)
     parser.add_argument("--laplacian", type=float, default=10.0)
+    parser.add_argument("--budget", type=int, help="prune to this many triangles, those that show least first")
+    parser.add_argument("--coverage-poses", help="a denser poses file to count shown pixels over; the training poses otherwise")
+    parser.add_argument("--cost-model", help="a cost_model.py weights file, such as board_cost_weights.txt")
+    parser.add_argument("--cost-weight", type=float, default=0.0, help="dE76 per predicted millisecond")
+    parser.add_argument("--normal-weight", type=float, default=0.0, help="weight of the L1 normal term")
+    parser.add_argument("--refine-to", type=int, help="first split the start's worst triangles up to this many")
+    parser.add_argument("--score", action="store_true", help="fit nothing: print the start's mean normal error on the poses")
+    parser.add_argument("--angle-dir", help="with --score, also write each pose's per-pixel normal angle there, for render_compare.py --angle-sheet")
     args = parser.parse_args(argv)
     if len(args.poses) != len(args.reference):
         parser.error("give one --reference per --poses")
@@ -255,9 +475,23 @@ def main(argv=None):
         views, size = load_views(shot, args.scale)
         out = pathlib.Path(args.out) / (f"shot{index}" if args.per_shot else "")
         log(f"{out}: {len(views)} views at {size[0]}x{size[1]}")
-        points, rgb, history = optimise(mesh, views, size, args.steps, args.batch, args.lr_position, args.lr_colour, args.laplacian,
-                                        clear=clear)
-        count = write_mesh(out, name, points, rgb, mesh)
+        if args.score:
+            print(f"normal error: {normal_error(mesh, views, size, angle_dir=args.angle_dir):.3f} degrees")
+            continue
+        fitted = mesh
+        if args.refine_to is not None:
+            fitted = refine(mesh, triangle_error(mesh, views, size, clear), args.refine_to)
+            log(f"refined {len(mesh[2])} -> {len(fitted[2])} triangles")
+        if args.budget is not None:
+            shown = coverage(fitted, pose_views(args.coverage_poses, args.scale) if args.coverage_poses else views, size)
+            pruned = prune(fitted, shown, args.budget)
+            log(f"pruned {len(fitted[2]) - len(pruned[2])} triangles: {np.count_nonzero(shown == 0)} never shown")
+            fitted = pruned
+        cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
+        points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
+                                        args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,
+                                        scale=args.scale, normal_weight=args.normal_weight)
+        count = write_mesh(out, name, points, rgb, fitted)
         np.savetxt(out / "loss.txt", np.array(history), fmt="%.4f")
         print(f"{out}: {count} triangles, mean dE76 {np.mean(history[:20]):.3f} -> {np.mean(history[-20:]):.3f}")
     return 0

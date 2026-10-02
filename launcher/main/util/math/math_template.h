@@ -13,6 +13,8 @@
  *        static inline functions OPS_add, OPS_mul, OPS_one and the rest in
  *        mathf.h, mathi.h, maths.h and mathx.h. A family names only the ones
  *        it uses, so a type without OPS_div or OPS_sqrt gets no normalize.
+ *   D, S, N   a swizzle's result and source vector types, and the source's
+ *        component count (vec_swizzle_template.h)
  *
  * A reader looks at the instantiation's plain names (vec3f_add, quatx_mul)
  * and the tables in docs/math/README.md, and can ignore the macros.

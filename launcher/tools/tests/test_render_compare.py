@@ -35,6 +35,21 @@ def image(rows):
     return picture
 
 
+class AngleSheetTest(unittest.TestCase):
+    def test_each_panel_is_labelled_and_the_scale_sits_below(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, value in (("a", 10.0), ("b", 30.0)):
+                (Path(tmp) / name).mkdir()
+                angle = np.full((20, 40), value, dtype=np.float32)
+                angle[0, 0] = np.nan
+                np.save(Path(tmp) / name / "0000.angle.npy", angle)
+            picture = render_compare.angle_sheet([("one", Path(tmp) / "a"), ("two", Path(tmp) / "b")], tile=1.0)
+        self.assertEqual(picture.size, (80, 20 + render_compare.LABEL_BAR + 70))
+        pixels = np.asarray(picture)
+        self.assertEqual(tuple(pixels[render_compare.LABEL_BAR, 0]), (0, 0, 0))
+        self.assertGreater(int(pixels[render_compare.LABEL_BAR + 10, 60, 0]), int(pixels[render_compare.LABEL_BAR + 10, 20, 0]))
+
+
 class MeasureTest(unittest.TestCase):
     def test_identical_images_differ_nowhere(self):
         a = image([[DRAWN, CLEAR], [CLEAR, DRAWN]])
