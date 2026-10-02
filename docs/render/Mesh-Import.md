@@ -233,10 +233,10 @@ L^* = 116\,f\!\left(\tfrac{Y}{Y_n}\right) - 16,
 ```
 
 for render $R$ and reference $T$ at pixel $p$. Mean ΔE averages
-$\Delta E_{76}(p)$ over the frame's pixels and p95 is its 95th percentile.
+$`\Delta E_{76}(p)`$ over the frame's pixels and p95 is its 95th percentile.
 Luma SSIM works on the gamma-encoded luma $y = 0.2126 r + 0.7152 g + 0.0722 b$
 (channels 0 to 1), over every 8 by 8 window $w$ of the frame, with the
-window's means $\mu$, variances $\sigma^2$ and covariance $\sigma_{RT}$:
+window's means $\mu$, variances $\sigma^2$ and covariance $`\sigma_{RT}`$:
 
 ```math
 \mathrm{SSIM} = \frac{1}{|W|}\sum_{w \in W}
@@ -245,7 +245,7 @@ window's means $\mu$, variances $\sigma^2$ and covariance $\sigma_{RT}$:
 ```
 
 The edge pixels are those within one pixel of a step in the reference's luma
-steeper than 0.06 a pixel; edge ΔE averages $\Delta E_{76}$ over them and
+steeper than 0.06 a pixel; edge ΔE averages $`\Delta E_{76}`$ over them and
 interior ΔE over the rest:
 
 ```math
@@ -310,7 +310,7 @@ fit needs a CUDA GPU and its own environment
 The fit draws the mesh with a differentiable rasterizer $\mathcal{R}$
 (nvdiffrast) as the device does, and moves the welded positions $P$ and
 vertex colours $C$ to minimise, over a random batch $B$ of training poses
-each step, the mean ΔE above against the reference $T_v$ of pose $v$, plus
+each step, the mean ΔE above against the reference $`T_v`$ of pose $v$, plus
 a regulariser that keeps the mesh's local shape:
 
 ```math
@@ -329,7 +329,7 @@ a regulariser that keeps the mesh's local shape:
 $\Omega$ is the frame's pixels, $P^0$ the start positions, $N(i)$ the
 positions sharing an edge with $i$, $\bar{e}$ the start's mean edge length
 and $\lambda$ the `--laplacian` weight. Adam takes the steps, both learning
-rates decay as $\eta_k = \eta_0 \cdot 0.1^{k/K}$ over $K$ steps, and the
+rates decay as $`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps, and the
 colours are clamped to $[0, 1]$ after each. Where nothing is drawn the
 renderer shows the scene's clear colour, as the device and the reference do.
 
