@@ -9,7 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "esp_heap_caps.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -19,6 +18,7 @@
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
 #include "render/ray.h"
+#include "util/memory.h"
 
 #define W 64
 #define H 48
@@ -559,9 +559,9 @@ static canvas_t canvas;
 
 static void
 release_canvas(void) {
-    heap_caps_free(canvas.color);
-    heap_caps_free(canvas.depth);
-    heap_caps_free(canvas.alone);
+    memory_free(canvas.color);
+    memory_free(canvas.depth);
+    memory_free(canvas.alone);
     canvas = (canvas_t){0};
     release_fixture();
 }
@@ -569,10 +569,9 @@ release_canvas(void) {
 static canvas_t*
 canvas_open(int w, int h) {
     const size_t pixels = (size_t)w * (size_t)h;
-    const uint32_t caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
-    canvas = (canvas_t){heap_caps_malloc(sizeof(gfx_color_t) * pixels, caps),
-                        heap_caps_malloc(sizeof(uint16_t) * pixels, caps),
-                        heap_caps_malloc(sizeof(uint16_t) * pixels, caps), w, h};
+    canvas = (canvas_t){memory_alloc(sizeof(gfx_color_t) * pixels, MEMORY_PSRAM),
+                        memory_alloc(sizeof(uint16_t) * pixels, MEMORY_PSRAM),
+                        memory_alloc(sizeof(uint16_t) * pixels, MEMORY_PSRAM), w, h};
     TEST_ASSERT_NOT_NULL(canvas.color);
     TEST_ASSERT_NOT_NULL(canvas.depth);
     TEST_ASSERT_NOT_NULL(canvas.alone);
