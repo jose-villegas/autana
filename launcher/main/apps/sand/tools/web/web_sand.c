@@ -267,7 +267,7 @@ cell_at(int x_px, int y_px, int* cx, int* cy) {
 
 static int
 radius_cells(int px) {
-    return (px + cell_px / 2) / cell_px;
+    return (px + (cell_px / 2)) / cell_px;
 }
 
 /* Pours or erases at a fixed rate while the pointer is held, catching up at most SAND_MAX_CATCHUP steps. */
@@ -301,7 +301,8 @@ web_input(int mode, int down, int pressed, int source, int x_px, int y_px, uint3
     if (!ready) {
         return;
     }
-    int cx, cy;
+    int cx;
+    int cy;
     cell_at(x_px, y_px, &cx, &cy);
 
     if (mode == WEB_MODE_DETONATE) {
@@ -353,7 +354,7 @@ expand_index_image(void) {
         .table = color_mode == WEB_COLOR_16 ? sand_dither_table_for(dither_mode) : sand_palette256_lut,
     };
     for (int y = 0; y < grid_h * cell_px; y++) {
-        gfx_indexed_expand_panel_row(&frame, y, panel + (size_t)y * GFX_WIDTH, grid_w * cell_px);
+        gfx_indexed_expand_panel_row(&frame, y, panel + ((size_t)y * GFX_WIDTH), grid_w * cell_px);
     }
 }
 
@@ -362,11 +363,11 @@ copy_out(void) {
     const int sw = screen_w();
     const int sh = screen_h();
     for (int y = 0; y < sh; y++) {
-        uint8_t* out = pixels + (size_t)y * sw * 4;
+        uint8_t* out = pixels + ((size_t)y * sw * 4);
         for (int x = 0; x < sw; x++) {
             const int px = landscape ? GFX_WIDTH - 1 - y : x;
             const int py = landscape ? x : y;
-            const uint32_t rgb = gfx_color_rgb888(panel[(size_t)py * GFX_WIDTH + px]);
+            const uint32_t rgb = gfx_color_rgb888(panel[((size_t)py * GFX_WIDTH) + px]);
             out[0] = (uint8_t)(rgb >> 16);
             out[1] = (uint8_t)(rgb >> 8);
             out[2] = (uint8_t)rgb;
@@ -385,8 +386,8 @@ web_render(void) {
     const bool indexed = color_mode != WEB_COLOR_FULL;
     sand_paint_update_local_depth_gravity(&paint_state, gravity_x, gravity_y, grid_w, grid_h);
     for (int cy = 0; cy < grid_h; cy++) {
-        sand_paint_row_n(&paint_state, &paint_frame, panel, indexed ? index_image + (size_t)cy * grid_w : NULL, cy,
-                         grid + (size_t)cy * grid_w, cell_px, grid_w, grid_h, 0, grid_w, true);
+        sand_paint_row_n(&paint_state, &paint_frame, panel, indexed ? index_image + ((size_t)cy * grid_w) : NULL, cy,
+                         grid + ((size_t)cy * grid_w), cell_px, grid_w, grid_h, 0, grid_w, true);
     }
     if (indexed) {
         expand_index_image();
