@@ -258,21 +258,25 @@ def reference_bake_sheet(frames, tile=0.8):
 
         top = [captioned(shrink(reference), "reference  " + title)]
         under = [captioned(shrink(edge_overlay(reference)), "reference edge pixels")]
-        own_top = [captioned(Image.new("RGB", size), "own reference of each bake")]
-        own_under = [captioned(Image.new("RGB", size), "dE against its own")]
+        own_top = [None]
+        own_under = [None]
         for label, render, own in bakes:
             text, error = caption(render, reference)
             top.append(captioned(shrink(render), label))
             under.append(captioned(shrink(reference_heatmap_from_error(error)), text))
             if own is not None:
                 text, error = caption(render, own)
-                own_top.append(captioned(shrink(own), "reference for " + label))
-                own_under.append(captioned(shrink(reference_heatmap_from_error(error)), text))
-        sections = [top, under] + ([own_top, own_under] if len(own_top) > 1 else [])
+                own_top.append(captioned(shrink(own), "own reference: " + label))
+                own_under.append(captioned(shrink(reference_heatmap_from_error(error)), "dE vs own: " + label))
+            else:
+                own_top.append(None)
+                own_under.append(None)
+        sections = [top, under] + ([own_top, own_under] if any(cell is not None for cell in own_top) else [])
         for cells in sections:
-            row = Image.new("RGB", (sum(cell.width for cell in cells), cells[0].height))
+            row = Image.new("RGB", (sum(cell.width for cell in top), top[0].height))
             for column, cell in enumerate(cells):
-                row.paste(cell, (column * cells[0].width, 0))
+                if cell is not None:
+                    row.paste(cell, (column * top[0].width, 0))
             rows.append(row)
     picture = Image.new("RGB", (rows[0].width, sum(row.height for row in rows) + 70))
     offset = 0
