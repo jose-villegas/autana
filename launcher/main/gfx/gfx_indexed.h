@@ -114,8 +114,6 @@ gfx_indexed_classify(const gfx_color_t* table, int phases, uint8_t out_class[GFX
     }
 }
 
-/* gfx_indexed_classify() at GFX_DITHER_PIXEL_BAYER4's own width, kept
- * under its historical name for every existing caller. */
 static inline void
 gfx_indexed_dither16_classify(const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES],
                               uint8_t out_class[GFX_INDEXED_PALETTE_SIZE]) {

@@ -1,11 +1,9 @@
 /*
  * gfx_color: what a pixel is, separately from how the panel works.
  *
- * Split out of gfx.h because this part is pure arithmetic and nothing else:
- * no BSP, no drivers, no hardware headers. That lets code which only needs to
- * describe colours (a table of named colours, say) be compiled and tested
- * on a host,
- * while gfx.h keeps everything that genuinely needs the board.
+ * Pure arithmetic: no BSP, drivers or hardware headers. Code which only
+ * describes colours (a table of named colours, say) can therefore be compiled
+ * and tested on a host.
  *
  * The macros matter for more than tidiness. A colour table built from them is
  * a compile-time constant, so it lands in .rodata and is memory-mapped from
@@ -52,11 +50,10 @@ gfx_color_rgb565(uint8_t r5, uint8_t g6, uint8_t b5) {
 /* v / 255, without a divide. EXACT, not approximate, for every v these
  * callers can produce: the largest numerator gfx_color_mix() builds is
  * 63*255 + 63*255 + 127 = 32257, and this identity was checked against
- * integer division across the whole of 0..32257, not spot tested. Not
- * claimed to hold outside that range, which is why it is static and
- * lives next to its one caller instead of in intmath.h. Worth having: a
- * divide is the slowest integer instruction on this chip, and
- * gfx_color_mix() is hot. */
+ * integer division across 0..32257. Not claimed to hold outside that range,
+ * which is why it is static and lives next to its one caller instead of in
+ * intmath.h. Not / 255: gfx_color_mix() runs per pixel and calls this three
+ * times; as hardware divides those were its dominant cost. */
 static inline uint32_t
 div255(uint32_t v) {
     return (v + (v >> 8) + 1) >> 8;
@@ -103,11 +100,7 @@ gfx_color_mix(gfx_color_t a, gfx_color_t b, uint8_t t) {
     /* (channel * (255 - t) + channel * t) / 255, rounded rather than
      * truncated so t=255 lands exactly on `b` and t=0 exactly on `a`.
      * The divide is done as div255(), not an approximation, an exact
-     * identity over the range these numerators can reach. This function
-     * is on the per-pixel path of every antialiased line, and three
-     * hardware divides per pixel was measurably the most expensive thing
-     * in the startup animation: turning smoothing on cost 6.7 fps, most
-     * of that here rather than in the extra pixels. */
+     * identity over the range these numerators can reach. */
     const uint8_t mr = (uint8_t)div255(ar * (255 - t) + br * t + 127);
     const uint8_t mg = (uint8_t)div255(ag * (255 - t) + bg * t + 127);
     const uint8_t mb = (uint8_t)div255(ab * (255 - t) + bb * t + 127);
@@ -154,12 +147,8 @@ gfx_dither_level(uint8_t alpha) {
 
 /* Whether an ordered (Bayer) dither at `alpha` (0 nothing, 255 everything,
  * 16 graduated levels between; see gfx_fill_rect_dither()'s own comment
- * in gfx.c) covers absolute panel pixel (x, y). Pulled out of
- * gfx_fill_rect_dither() so a caller with its own pixel loop can reuse
- * the identical table and rounding rule rather than keeping a second
- * copy that could drift out of phase with it. static inline: meant to
- * inline into a hot per-pixel loop the same way gfx_color_mix() above
- * does. */
+ * in gfx.c) covers absolute panel pixel (x, y). Callers with their own pixel
+ * loops share this table and rounding rule rather than drifting out of phase. */
 static inline bool
 gfx_dither_covers(int x, int y, uint8_t alpha) {
     return gfx_dither_level(alpha) > gfx_dither4x4[y & 3][x & 3];
