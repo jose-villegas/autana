@@ -14,6 +14,7 @@
 
 set -eu
 
+# shellcheck disable=SC1007
 REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$REPO_ROOT"
 
