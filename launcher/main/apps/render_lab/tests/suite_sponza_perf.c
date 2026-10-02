@@ -19,6 +19,7 @@
 
 #include "esp_log.h"
 
+#include "apps/render_lab/meshes/sponza_scene_generated.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_flythrough.h"
 #include "asset/asset_store.h"
@@ -146,15 +147,13 @@ report_core_contention(const raster_t* raster, const r3d_lens_t* lens, int visib
 
 #define MESH_COUNT 5
 static r3d_lit_mesh_t meshes[MESH_COUNT];
-static const char* const MESH_IDS[MESH_COUNT] = {"sponza", "sponza_lite", "sponza_flat", "sponza_fitted",
-                                                 "sponza_fitted_full"};
-static const char* const MESH_LABELS[MESH_COUNT] = {"sponza", "lite", "flat", "fitted", "fitted-full"};
+static const char* const MESH_LABELS[MESH_COUNT] = {"sponza", "flat", "lite", "fitted", "fitted-full"};
 
 static void
 open_the_meshes(void) {
     for (int i = 0; i < MESH_COUNT; i++) {
-        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(asset_store_pack(), MESH_IDS[i], &meshes[i]),
-                                      MESH_IDS[i]);
+        const char* asset = sponza_scene.renderers[i].asset;
+        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(asset_store_pack(), asset, &meshes[i]), asset);
     }
 }
 
