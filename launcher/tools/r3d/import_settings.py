@@ -121,9 +121,33 @@ def face_sample_options(value, where):
     return "auto", minimum, maximum, None if area == "median" else float(area)
 
 
+FIT_KEYS = ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch", "laplacian",
+            "normal_weight", "sha256")
+
+
+def load_fit(value, variant, where):
+    """The recipe of a variant the appearance fit makes offline from the mesh
+    the import bakes at `triangles`: the budget it prunes to, the camera-path
+    poses it trains on (every `train_every_ms`, less the multiples of
+    `held_out_every_ms`), the denser poses its pruning counts over, its
+    optimiser settings, and the SHA-256 of the mesh it made."""
+    check_keys(value, FIT_KEYS, where)
+    if variant.triangles is None:
+        raise SettingsError(f"{where} needs the variant's triangles, the budget its start is simplified to")
+    fit = SimpleNamespace(**{key: value[key] for key in FIT_KEYS})
+    for key in ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
+        setattr(fit, key, count(value[key], f"{where}.{key}"))
+    fit.laplacian = number(value["laplacian"], f"{where}.laplacian")
+    fit.normal_weight = number(value["normal_weight"], f"{where}.normal_weight")
+    fit.sha256 = text(value["sha256"], f"{where}.sha256")
+    if fit.budget > variant.triangles:
+        raise SettingsError(f"{where}.budget cannot exceed the variant's triangles")
+    return fit
+
+
 def load_variant(value, process, where):
-    check_keys(value, ("name",), where, optional=("triangles", "face_samples"))
-    variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None, face_samples=None)
+    check_keys(value, ("name",), where, optional=("triangles", "face_samples", "fit"))
+    variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None, face_samples=None, fit=None)
     if process.simplify:
         if "triangles" not in value:
             raise SettingsError(f"{where}.triangles is required when process.simplify is present")
@@ -134,6 +158,10 @@ def load_variant(value, process, where):
         if not process.light:
             raise SettingsError(f"{where}.face_samples needs process.light")
         variant.face_samples = face_sample_options(value["face_samples"], f"{where}.face_samples")
+    if "fit" in value:
+        if variant.face_samples or not process.light:
+            raise SettingsError(f"{where}.fit needs a smooth variant of a lit import")
+        variant.fit = load_fit(value["fit"], variant, f"{where}.fit")
     return variant
 
 
@@ -230,14 +258,14 @@ def load_import_settings(path):
             raise SettingsError("variants names must be unique")
         shapes = {}
         for variant in variants:
-            shape = (variant.triangles, repr(variant.face_samples))
+            shape = (variant.triangles, repr(variant.face_samples), repr(variant.fit))
             if shape in shapes:
                 raise SettingsError(f"variants {shapes[shape]!r} and {variant.name!r} would produce the same mesh")
             shapes[shape] = variant.name
     else:
         if steps.simplify:
             raise SettingsError("process.simplify needs variants, each with its triangles budget")
-        variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None, face_samples=None)]
+        variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None, face_samples=None, fit=None)]
     flat = any(variant.face_samples for variant in variants)
     if flat and steps.light.flat_sky_rays is None:
         raise SettingsError("process.light.flat_sky_rays is required when a variant has face_samples")

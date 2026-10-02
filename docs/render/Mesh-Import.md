@@ -45,7 +45,7 @@ triangles on one desktop; frame costs were measured on the board on one mesh.
 | `process.simplify` `seal_seams` | Joins touching pieces before simplifying | required with `simplify` | seconds / about 4% frame time | [Sealing seams](#sealing-seams) |
 | `[[variants]]` `triangles` | One mesh per budget | one mesh | seconds each / set by the budget | [Import file](#import-file) |
 | `[[variants]]` `face_samples` | Flat: one colour per triangle | smooth | minutes / cheaper than smooth | [The baked mesh](#the-baked-mesh) |
-| Appearance fit | Moves vertices and colours until renders match the reference | not run | a CUDA GPU, minutes / unchanged at its budget | [Fitting a mesh to the reference](#fitting-a-mesh-to-the-reference) |
+| `[[variants]]` `fit` | A variant the appearance fit makes offline from the one the import bakes at `triangles`; the table is its recipe and the SHA-256 of the mesh it made | not fitted | a CUDA GPU, minutes / unchanged at its budget | [Fitting a mesh to the reference](#fitting-a-mesh-to-the-reference) |
 
 ## The baked mesh
 
@@ -187,7 +187,8 @@ culls it; when that face has a twin over the same three corners wound the
 other way, the twin is what the ray sees. Faces within a small distance of
 the first drawn one are kept too, since the depth test, not the ray, picks
 among coincident faces. The margin and the pose spacing cover what enters
-the view between two samples. The same import with the step
+the view between two samples, and the margin also covers a view the panel's
+other orientation widens: `size` is one orientation's. The same import with the step
 off, at one camera pose, crops where they differ most,
 off above on: without the cull the budget is spent on hidden surfaces and
 visible ones lose triangles.
@@ -338,6 +339,12 @@ bake at its triangle budget, draws it with a differentiable rasterizer the
 way the device draws it, and moves the vertices and changes their colours
 until the renders match the reference over the camera path's poses. The
 triangles stay as they were, so the budget and the frame cost hold.
+
+A variant with a `fit` table records the recipe: the budget it prunes to,
+the poses it trains on, holds out and counts pixels over, its optimiser
+settings, and the SHA-256 of the mesh it made. The bake does not run the fit,
+which needs a GPU: it checks that the committed mesh is the one the recipe
+records. `fitted_variant.py` remakes it, in two steps, one per environment.
 
 **When to use it:** a mesh seen along a known set of views, at a budget
 where the simplifier's colours and silhouettes visibly drift from the
