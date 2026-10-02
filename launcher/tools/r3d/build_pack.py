@@ -42,16 +42,22 @@ def input_files(paths):
 def mesh_files(paths):
     """{mesh name: its .mesh file} for every mesh the files name."""
     meshes = {}
-    for path in input_files(paths):
+    files = input_files(paths)
+    placed = set()
+    for path in files:
         if path.name.endswith(".scene.toml"):
-            sources = [(item.settings, item.variant) for item in load_scene(path).renderers]
-        else:
+            scene = load_scene(path)
+            placed.update(item.settings.path for item in scene.renderers)
+            for item in scene.renderers:
+                if meshes.setdefault(item.asset_name, item.asset_path) != item.asset_path:
+                    raise SettingsError(f"two scenes write a mesh named {item.asset_name!r}")
+    for path in files:
+        if path.name.endswith(".import.toml") and path.resolve() not in placed:
             settings = load_import_settings(path)
-            sources = [(settings, variant) for variant in settings.variants]
-        for settings, variant in sources:
-            entry = settings.mesh_dir / f"{variant.name}.mesh"
-            if meshes.setdefault(variant.name, entry) != entry:
-                raise SettingsError(f"two import files write a mesh named {variant.name!r}")
+            sources = [(variant.name, settings.mesh_dir / f"{variant.name}.mesh") for variant in settings.variants]
+            for name, entry in sources:
+                if meshes.setdefault(name, entry) != entry:
+                    raise SettingsError(f"two inputs write a mesh named {name!r}")
     return meshes
 
 

@@ -19,6 +19,12 @@ rays = 48
 color = [1.0, 1.0, 1.0]
 intensity = 0.06
 
+[bake]
+ray_offset = 0.5
+colour_merge_step = 6
+flat_sky_rays = 128
+indirect = { bounces = 2, rays = 64, cache_samples = 1 }
+
 [[objects]]
 name = "sun"
 rotation = [18.4, -48.7, 0.0]    # pitch, yaw, roll in degrees
@@ -46,6 +52,8 @@ name = "hall"
 [objects.mesh_renderer]
 mesh = "hall.import.toml"
 variant = "hall"                 # only for an import with variants
+bake = true
+visibility = { source = "camera_region", rounds = 160 }
 
 [[objects]]
 name = "statue"
@@ -69,7 +77,7 @@ component table.
 
 | Component | Fields | What it is |
 |---|---|---|
-| `mesh_renderer` | `mesh`, `variant` | Draws a mesh asset: `mesh` names an import file beside the scene file, which must exist, and `variant` picks one of its variants (required exactly when the import has them). |
+| `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene file, and `variant` chooses its geometry variant. `bake = true` makes this renderer contribute to and receive the scene bake; without it the imported albedo is drawn. `shading` is `"smooth"` or `{ flat = ... }`; `visibility`, `fit` and `indirect = false` apply to this renderer's bake. |
 | `light` | `type`, `color`, `intensity`, `disc_degrees`, `rays` | A directional light. The direction toward it is the object's +Y axis turned by its rotation, so a rotation of zero is a sun straight overhead. Position and scale do not matter. `point` and `spot` are reserved and rejected until their bake paths exist. |
 | `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view: the lens, the box the camera moves within (`region`, a `min` and `max`), and optionally the glTF animation it flies. `path = { tracks, node }` names the tracks `tools/anim/bake_tracks.py` baked under the prefix `tracks`, for the glTF node `node`. `background` (0xRRGGBB, default black) is the colour a pixel no mesh covers shows, in the panel's RGB565 and in the source reference. Without a path the camera sits at its transform, looking down its own -Z. A scene has at most one camera. |
 
@@ -84,11 +92,11 @@ intensity, shine on.
 
 ## Indirect look
 
-`[indirect]` sets how the baked bounce light looks, in the scene because it is
-a fact about the lighting like the lights and `tonemap_white`; how many
-bounces and rays the bake spends stays in the import
-([Mesh-Import.md](Mesh-Import.md#indirect-light)). Both keys are optional and
-default to the physically correct 1.0, which bakes the same bytes as no table.
+`[indirect]` sets how the baked bounce light looks. `[bake]` supplies the
+direct-light and cache settings: `ray_offset`, `colour_merge_step`, optional
+`flat_sky_rays`, and optional `indirect = { bounces, rays, cache_samples }`.
+Both tables are scene settings because the lights and camera determine their
+output.
 
 | Key | Meaning |
 |---|---|
@@ -102,28 +110,25 @@ then.
 
 ## What the scene must carry
 
-A mesh whose import has a scene-dependent step reads the scene:
+A renderer with `bake = true` reads the scene:
 
-- `lighting.light` reads the lights (at least one directional object, `[sky]`
-  or `[ambient]`), `tonemap_white`, and, with `indirect`, the `[indirect]` table;
-- `visibility` reads the camera's `region`, or its `path` for the
+- `[bake]` reads the lights (at least one directional object, `[sky]` or
+  `[ambient]`), `tonemap_white`, and its `[indirect]` look;
+- renderer `visibility` reads the camera's `region`, or its `path` for the
   `camera_path` source.
 
-A scene must carry what a placed mesh reads, and may not carry what none
-reads. Baking a mesh reads the lights of the scene that requests it, so a mesh
-with a scene-dependent step belongs to one scene: two scenes may not bake the
-same output name, and a second scene that places it bakes its own variant under
-another name. A mesh with a scene-dependent step (`lighting.light` or
-`visibility`) is baked where it sits, so its object's transform must be
-identity; a mesh without one may be placed anywhere and by many scenes.
+A scene must carry what a baked renderer reads, and may not carry what none
+reads. A scene output is `<scene>.<variant>.mesh`, beside the scene file, so
+the same import can have independent bakes in several scenes. A baked renderer
+is baked where it sits, so its object's transform must be identity; an
+albedo-only renderer may be placed anywhere and by many scenes.
 
 ## The scene table
 
 `python launcher/tools/r3d/scene_table.py SCENE.scene.toml` reads the scene file
 and its import files (it needs no numeric environment and bakes nothing) and
-writes `<scene>_scene_generated.c` and `.h` into the output directory its import
-files name, which must be the same for all of them. A test fails when the committed table is not
-what its scene file generates.
+writes `<scene>_scene_generated.c` and `.h` beside the scene file. A test fails
+when the committed table is not what its scene file generates.
 
 The table holds only what the device reads: one const `scene_def_t` named
 `<scene>_scene`, registered by the scene's name with `SCENE_REGISTER()` so that

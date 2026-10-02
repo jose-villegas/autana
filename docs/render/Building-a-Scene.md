@@ -23,8 +23,8 @@ C compiler for the [render harness](../tools/Render-Harness.md).
 
 ## 1. Import a mesh
 
-An import file describes one mesh asset: where its source model is and where the
-scene table goes. The baked mesh is written beside the import file.
+An import file describes geometry: its source model and the output directory
+for a plain albedo import.
 
 ```toml
 [source]
@@ -40,19 +40,9 @@ name = "hall"                    # the mesh's asset id in the pack
 ```
 
 With only these it imports the mesh as authored: its triangles, with each
-vertex coloured by its material's albedo and no light. That is enough for a
-mesh that needs no lighting. This walkthrough lights it, so add the step that
-bakes the scene's light into the colours:
-
-```toml
-[lighting]
-light = { ray_offset = 0.5, colour_merge_step = 6 }
-```
-
-Other steps are opt-in the same way: `simplify` to a triangle budget,
-`visibility` to drop what the camera can never see (it needs the camera's
-`region`, or its `path` with `source = "camera_path"`). The steps, their order and every field are in
-[Mesh-Import.md](Mesh-Import.md#import-file).
+vertex coloured by its material's albedo and no light. Geometry options such as
+`simplify`, `thin` and `alpha_mask` stay with this file. The scene owns light,
+camera visibility, fit and its baked output.
 
 ## 2. Place it in a scene
 
@@ -65,17 +55,19 @@ name = "hall"
 
 [objects.mesh_renderer]
 mesh = "hall.import.toml"
+bake = true
+visibility = { source = "camera_region", rounds = 160 }
 ```
 
 Add more mesh renderers to place more meshes; give one a `position`, a
-`rotation` in degrees or a positive `scale` to move it. A mesh with a light or
-visibility step must sit at the identity transform, because it is baked where
-it stands ([Scene-Files.md](Scene-Files.md)); one without may go anywhere.
+`rotation` in degrees or a positive `scale` to move it. A renderer with
+`bake = true` must sit at the identity transform, because it is baked where it
+stands ([Scene-Files.md](Scene-Files.md)); one without it may go anywhere.
 
 ## 3. Light it
 
-Light is baked, so it is part of the scene file and the mesh's `lighting.light`
-step reads it. A directional sun is an object whose rotation points it; sky and
+Light is baked, so it is part of the scene file and `[bake]` reads it. A
+directional sun is an object whose rotation points it; sky and
 ambient are scene settings; `tonemap_white` sets how bright the result is.
 
 ```toml
@@ -89,6 +81,10 @@ rays = 48
 [ambient]
 color = [1.0, 1.0, 1.0]
 intensity = 0.06
+
+[bake]
+ray_offset = 0.5
+colour_merge_step = 6
 
 [[objects]]
 name = "sun"
@@ -125,12 +121,10 @@ python launcher/tools/r3d/mesh_import.py path/to/hall.scene.toml
 python launcher/tools/r3d/scene_table.py path/to/hall.scene.toml
 ```
 
-The first bakes the lit mesh for each renderer into `hall.mesh`; the second
+The first writes `<scene>.<variant>.mesh` for each baked renderer; the second
 writes the `hall` scene table, one const `scene_def_t` the scene manager loads
-by name: an entity for each mesh renderer and the camera, with its transform,
-the asset id each mesh renderer names, and the camera's lens and path. A mesh
-with no light or visibility step can also be baked on its own, from its import
-file. Generated files and the baked `.mesh` are committed as written and never
+by name. A mesh without `bake = true` can also be imported on its own.
+Generated files and baked `.mesh` entries are committed as written and never
 reformatted. The firmware build packs every baked mesh in the tree into the
 asset pack and flashes it with the app ([assets/README.md](../assets/README.md#flashing)).
 

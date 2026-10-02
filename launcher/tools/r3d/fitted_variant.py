@@ -29,11 +29,11 @@ from r3d.import_settings import SettingsError, load_scene  # noqa: E402
 
 
 def placed_variant(scene, name):
-    """(settings, variant) of the fitted variant `name` the scene places."""
-    jobs = [item for item in scene.renderers if item.variant.name == name and item.variant.fit]
+    """The fitted renderer named by its variant or scene output."""
+    jobs = [item for item in scene.renderers if name in (item.variant.name, item.asset_name) and item.variant.fit]
     if not jobs:
         raise SettingsError(f"the scene places no fitted variant {name!r}")
-    return jobs[0].settings, jobs[0].variant
+    return jobs[0]
 
 
 def poses_text(width, height, lens, near, poses):
@@ -70,28 +70,32 @@ def canonical(value):
 
 
 def recipe_digest(settings, variant, scene):
-    """SHA-256 over parsed import settings, the fit variant and its tracks."""
+    """SHA-256 over the parsed effective recipe and its camera tracks."""
     from r3d.import_settings import variant_settings
     from r3d.poses import tracks_file
 
     settings = variant_settings(settings, variant)
-    settings = SimpleNamespace(**vars(settings))
-    del settings.variants
+    tracks = hashlib.sha256(tracks_file(settings, scene).read_bytes()).hexdigest()
+    visibility = getattr(variant, "visibility", None) or getattr(settings, "visibility", None)
+    settings = SimpleNamespace(**{name: value for name, value in vars(settings).items()
+                                  if name not in ("path", "out_dir", "mesh_dir", "named", "variants", "visibility")})
     fit = SimpleNamespace(**vars(variant.fit))
     del fit.sha256
     del fit.recipe_sha256
     entry = SimpleNamespace(**vars(variant))
     entry.fit = fit
-    tracks = hashlib.sha256(tracks_file(settings, scene).read_bytes()).hexdigest()
-    return hashlib.sha256(json.dumps([canonical(settings), canonical(entry), tracks], sort_keys=True).encode()).hexdigest()
+    entry.visibility = visibility
+    scene_recipe = SimpleNamespace(lights=scene.lights, tonemap_white=scene.tonemap_white, indirect=scene.indirect)
+    return hashlib.sha256(json.dumps([canonical(settings), canonical(entry), canonical(scene_recipe), tracks], sort_keys=True).encode()).hexdigest()
 
 
-def prepare(scene_path, scene, settings, variant, work):
+def prepare(scene_path, scene, job, work):
     from r3d.lit_mesh import write_lit_mesh
     from r3d.mesh_import import bake_geometry, camera_path_poses
     from r3d.reference_render import main as reference_main
 
-    fit, visibility = variant.fit, variant.visibility or settings.visibility
+    settings, variant = job.settings, job.variant
+    fit, visibility = variant.fit, variant.visibility
     if visibility is None or visibility.source != "camera_path":
         raise SettingsError(f"{variant.name} needs camera_path visibility: its poses come from the path")
     work.mkdir(parents=True, exist_ok=True)
@@ -109,9 +113,10 @@ def prepare(scene_path, scene, settings, variant, work):
     log(f"prepared {variant.name}: start of {len(geometry.tris)} triangles, {len(training)} training poses")
 
 
-def fit(scene_path, scene, settings, variant, work):
+def fit(scene_path, scene, job, work):
     from r3d.appearance_simplify import main as fit_main
 
+    settings, variant = job.settings, job.variant
     recipe = variant.fit
     start = work / f"{variant.name}.mesh"
     out = work / "fitted"
@@ -120,7 +125,7 @@ def fit(scene_path, scene, settings, variant, work):
               str(work / "reference_landscape"), "--out", str(out), "--budget", str(recipe.budget), "--coverage-poses",
               str(work / "coverage.txt"), "--steps", str(recipe.steps), "--batch", str(recipe.batch), "--laplacian",
               str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight)])
-    target = settings.mesh_dir / f"{variant.name}.mesh"
+    target = job.asset_path
     shutil.copyfile(out / f"{variant.name}.mesh", target)
     print(f"{target.name}: sha256 = \"{hashlib.sha256(target.read_bytes()).hexdigest()}\", "
           f"recipe_sha256 = \"{recipe_digest(settings, variant, scene)}\"")
@@ -136,14 +141,14 @@ def main(argv=None):
     scene_path = pathlib.Path(args.scene).resolve()
     try:
         scene = load_scene(scene_path)
-        settings, variant = placed_variant(scene, args.mesh)
+        job = placed_variant(scene, args.mesh)
     except SettingsError as error:
         parser.error(str(error))
     work = pathlib.Path(args.work).resolve()
     if args.step == "prepare":
-        prepare(scene_path, scene, settings, variant, work)
+        prepare(scene_path, scene, job, work)
     else:
-        fit(scene_path, scene, settings, variant, work)
+        fit(scene_path, scene, job, work)
     return 0
 
 

@@ -207,7 +207,7 @@ def flat_colours(settings, scene, geometry, face_samples, **knobs):
                         sample_area=sample_area, min_samples=sample_min, indirect_cache=geometry.indirect_cache, **knobs)
 
 
-def check_fitted(settings, variant, scene):
+def check_fitted(settings, variant, scene, target):
     """A fitted variant is made offline by fitted_variant.py on a GPU; the bake
     only checks that the recipe and the committed mesh are the ones the fit
     recorded."""
@@ -218,24 +218,23 @@ def check_fitted(settings, variant, scene):
     again = "rerun fitted_variant.py prepare|fit and record the hashes it prints"
     if recipe_digest(settings, variant, scene) != variant.fit.recipe_sha256:
         raise SystemExit(f"{variant.name}: recipe changed since the fit; {again}")
-    path = settings.mesh_dir / f"{variant.name}.mesh"
-    if not path.exists():
-        raise SystemExit(f"{path.name} is missing; {again} (it needs a CUDA GPU)")
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    if not target.exists():
+        raise SystemExit(f"{target.name} is missing; {again} (it needs a CUDA GPU)")
+    digest = hashlib.sha256(target.read_bytes()).hexdigest()
     if digest != variant.fit.sha256:
-        raise SystemExit(f"{path.name} has SHA-256 {digest}, not the {variant.fit.sha256} the fit recorded; {again}")
-    log(f"{path.name} matches its fit recipe")
+        raise SystemExit(f"{target.name} has SHA-256 {digest}, not the {variant.fit.sha256} the fit recorded; {again}")
+    log(f"{target.name} matches its fit recipe")
 
 
-def bake(settings, variant, scene):
+def bake(settings, variant, scene, asset_name=None, out_dir=None):
     """Bakes one mesh. `scene` is None for an import that needs none."""
     if variant.fit:
-        check_fitted(settings, variant, scene)
+        check_fitted(settings, variant, scene, (out_dir or settings.mesh_dir) / f"{asset_name or variant.name}.mesh")
         return
     geometry = bake_geometry(settings, variant, scene)
     positions, rgb, tris, scale = geometry.positions, geometry.rgb, geometry.tris, geometry.scale
     face_rgb = flat_colours(settings, scene, geometry, variant.face_samples) if variant.face_samples else None
-    mesh = write_lit_mesh(settings.mesh_dir, variant.name, positions, None if variant.face_samples else rgb, tris, geometry.tri_double,
+    mesh = write_lit_mesh(out_dir or settings.mesh_dir, asset_name or variant.name, positions, None if variant.face_samples else rgb, tris, geometry.tri_double,
                           face_rgb=face_rgb, **scale)
     log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, {len(mesh.nodes)} nodes")
 
@@ -249,22 +248,20 @@ def main(argv=None):
     try:
         if path.name.endswith(".scene.toml"):
             scene = load_scene(path)
-            jobs = [(item.settings, item.variant, scene) for item in scene.renderers]
+            jobs = [(item.settings, item.variant, scene, item.asset_name, item.asset_path.parent) for item in scene.renderers]
         elif path.name.endswith(".import.toml"):
             settings = load_import_settings(path)
-            if settings.scene_dependent:
-                raise SettingsError(f"{path.name} needs a scene: run the .scene.toml that places it")
-            jobs = [(settings, variant, None) for variant in settings.variants]
+            jobs = [(settings, variant, None, variant.name, settings.mesh_dir) for variant in settings.variants]
         else:
             raise SettingsError("PATH must end in .import.toml or .scene.toml")
-        jobs = [job for job in jobs if args.mesh in (None, job[1].name)]
+        jobs = [job for job in jobs if args.mesh in (None, job[1].name, job[3])]
         if not jobs:
             raise SettingsError(f"no mesh named {args.mesh!r}")
     except SettingsError as error:
         parser.error(str(error))
-    for settings, variant, scene in jobs:
-        log(f"mesh {variant.name}")
-        bake(settings, variant, scene)
+    for settings, variant, scene, asset_name, out_dir in jobs:
+        log(f"mesh {asset_name}")
+        bake(settings, variant, scene, asset_name, out_dir)
     return 0
 
 
