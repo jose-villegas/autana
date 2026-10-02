@@ -57,15 +57,18 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 | `render-lab-cube.png`, `render-lab-cube.gif` | the Gouraud cube; the GIF plays the rotation forward and back |
 | `render-lab-cornell.png` | the ray-traced Cornell box, fully resolved, no HUD |
 | `render-lab-sponza.gif` | the start of the Sponza flythrough |
-| `render/sponza-{full,lite,flat}.gif` | the same three seconds of the flythrough, one GIF per bake |
+| `render/sponza-{full,lite,flat,fitted}.gif` | the same three seconds of the flythrough, one GIF per bake |
 | `render/sponza-{depth,tiles}.gif` | those three seconds as the depth and depth-tile views of the full bake |
 | `render/compare-full-{lite,flat}.png`, `.crops.png` | full against lite and smooth against flat at the GIFs' last pose: both renders and their difference, then the places they differ most, enlarged |
+| `render/compare-lite-fitted.png`, `.crops.png` | lite against the fitted mesh at that pose, the same way |
 
 ## The Sponza variants
 
-One Sponza import bakes three meshes, its `[[variants]]`
-([Mesh-Import.md](../../../../../docs/render/Mesh-Import.md)): the scenes
-`sponza`, `sponza-lite` and `sponza-flat` each draw one. Every row plays the
+Two Sponza imports make four meshes, their `[[variants]]`
+([Mesh-Import.md](../../../../../docs/render/Mesh-Import.md)): `sponza.import.toml`
+bakes three, and `sponza_fitted.import.toml` records the recipe of a fourth that
+the appearance fit makes offline. The scenes `sponza`, `sponza-lite`,
+`sponza-flat` and `sponza-fitted` each draw one. Every row plays the
 same three seconds of the flythrough, so the rows compare. The last two rows
 are the [view modes](../../../../../docs/render/Mesh-Rendering.md#view-modes)
 over the full mesh.
@@ -75,10 +78,11 @@ over the full mesh.
 | ![Sponza flythrough, smooth](../../../../../docs/images/render/sponza-full.gif) | **Full**: smooth, one colour per vertex, lit and interpolated | `SPONZA_TRIANGLE_COUNT`, `SPONZA_VERTEX_COUNT` |
 | ![Sponza flythrough, lite](../../../../../docs/images/render/sponza-lite.gif) | **Lite**: the same bake simplified to a smaller budget | `SPONZA_LITE_TRIANGLE_COUNT`, `SPONZA_LITE_VERTEX_COUNT` |
 | ![Sponza flythrough, flat](../../../../../docs/images/render/sponza-flat.gif) | **Flat**: the full mesh's triangles, one colour per face, no gradients | `SPONZA_FLAT_TRIANGLE_COUNT`, `SPONZA_FLAT_VERTEX_COUNT` |
+| ![Sponza flythrough, fitted](../../../../../docs/images/render/sponza-fitted.gif) | **Fitted**: lite's budget spent on what the flythrough draws, its vertices and colours fitted to the reference | the `sponza_fitted` entry's counts |
 | ![Sponza flythrough, depth](../../../../../docs/images/render/sponza-depth.gif) | `RASTER_SHOW_DEPTH` over the full mesh | as full |
 | ![Sponza flythrough, depth tiles](../../../../../docs/images/render/sponza-tiles.gif) | `RASTER_SHOW_DEPTH_TILES` over the full mesh | as full |
 
-The counts are those of the three baked meshes in `meshes/`.
+The counts are those of the four meshes in `meshes/`.
 `autana suite run_sponza_perf_suite` prints each variant's `both cores: mean`
 line (`test_sponza_frame_cost_along_the_flythrough`). The GIFs are made by the
 doc-images workflow
@@ -99,6 +103,13 @@ surfaces keep their colour.
 
 Flat shows each face in one colour, so a curtain's fold reads as bands where
 the smooth mesh blends.
+
+![Lite against fitted](../../../../../docs/images/render/compare-lite-fitted.png)
+![Lite against fitted, the places they differ most](../../../../../docs/images/render/compare-lite-fitted.crops.png)
+
+The fitted mesh has lite's budget, moved off what the flythrough never draws
+and fitted to the reference: arches, shadow edges and the banners' colours
+come back.
 
 ## Fidelity against the source
 
@@ -408,11 +419,20 @@ degrees less normal error. The cost-term fit at the same budget draws in
 41.0 ms (−11%) at ΔE 5.63, and the full mesh culled to the path in 50.1 ms
 against the full's 58.6 (−14.5%) at the same ΔE.
 
-The chosen mesh against the committed lite at 5 and 25 s, then where they
-differ most, lite above; and against the reference:
+The committed `sponza-fitted` target, measured in the same image as the
+others (`run_sponza_perf_suite --perf-scope`, five runs), draws in 46.07 ms
+against lite's 45.98 (+0.2%), full's 58.51 and flat's 44.99.
 
-![Committed lite against the chosen mesh](../../../../../docs/images/render/appearance-chosen-lite.png)
-![Committed lite against the chosen mesh, enlarged](../../../../../docs/images/render/appearance-chosen-lite.crops.png)
+The chosen recipe is committed as the `sponza-fitted` target, refitted by
+`fitted_variant.py` from `meshes/sponza_fitted.import.toml`, with the
+pruning poses widened to the landscape view and the path margin at 28
+pixels so the panel can be held either way up. Scored on the same seven
+held-out poses against the reference as it is now rendered, edges blended
+with the camera's background, it is at mean ΔE76 4.93 (p95 13.37) against
+lite's 7.69 and full's 6.76. Its sheet against lite is in
+[The Sponza variants](#the-sponza-variants). Against the
+reference, where they still differ most:
+
 ![The chosen mesh against the reference, enlarged](../../../../../docs/images/render/appearance-chosen-reference.crops.png)
 
 Each stage on its own, before above after, at the two held-out poses where

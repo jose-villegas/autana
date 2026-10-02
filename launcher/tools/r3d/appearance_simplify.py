@@ -84,7 +84,7 @@ def load_views(pairs, scale):
     """[(clip matrix, target sRGB image 0..1, target normals or None, eye)],
     images at render size, for every pose of every (poses file, reference
     directory) pair, and the render size. The normals are the reference's
-    NNN.normal.npy, when it wrote them."""
+    NNNN.normal.npy, when it wrote them."""
     from PIL import Image
 
     views = []

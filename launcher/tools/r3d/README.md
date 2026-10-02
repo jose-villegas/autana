@@ -28,6 +28,7 @@ mesh. Nothing here runs on the board.
 | [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement, sun and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [Sweeping the flat bake](../../../docs/render/Mesh-Import.md#sweeping-the-flat-bake). |
 | [appearance_simplify.py](appearance_simplify.py) | Fits a smooth mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
 | [poses.py](poses.py) | Reads the camera poses file `tools/anim/sample_tracks.sh` writes, samples a scene camera's path through it, and casts a pose's pinhole rays. |
+| [fitted_variant.py](fitted_variant.py) | Remakes a `[[variants]]` entry's fitted mesh from the `fit` recipe its import records; see [A fitted variant](#a-fitted-variant). |
 | [cost_model.py](cost_model.py), [board_cost_weights.txt](board_cost_weights.txt) | A linear model of a mesh's frame time from a pose (submitted and drawn triangles, rows, pixels with overdraw, clusters in view), and its weights with the board frames they were fitted to; see [Cost-aware fit](#cost-aware-fit). |
 | [reference_render.py](reference_render.py) | Traces the undecimated source mesh through the scene's bake lights at supersampled device resolution; writes linear arrays and RGB565-expanded PNGs for fidelity comparisons. |
 
@@ -167,6 +168,27 @@ with `render_compare.py --reference-video`, as in
 [Fidelity reference](#fidelity-reference). `test_r3d_appearance.py` runs
 the fit itself only where CUDA, PyTorch and nvdiffrast import.
 
+### A fitted variant
+
+A `[[variants]]` entry with a `fit` table is made by the fit, not the bake:
+`mesh_import.py` checks the committed `NAME.mesh` against the recipe's
+`sha256` and stops there. `fitted_variant.py` remakes it from the recipe, the
+first step in this environment, the second in the GPU one:
+
+```sh
+$PY tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch prepare   # start, poses, references
+$E/bin/python launcher/tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch fit
+```
+
+`prepare` bakes the start (the import's steps at the variant's `triangles`),
+samples the camera's path every `train_every_ms`, holds out the multiples of
+`held_out_every_ms`, samples it again every `coverage_every_ms` for pruning,
+and renders the training references with their normals. `fit` prunes to
+`budget`, fits with `steps`, `batch`, `laplacian` and `normal_weight`, writes
+`NAME.mesh` beside the import and prints the SHA-256 to record. A refit is not
+bit-identical, the GPU's sums being unordered, so the recipe pins the mesh
+that was committed.
+
 ## Cost-aware fit
 
 These stages spend a triangle budget where the camera looks, fit geometry
@@ -177,7 +199,7 @@ as well as colour, and weigh appearance against frame time.
 | Path visibility | The import's `process.visibility` with `source = "camera_path"` keeps only source triangles a ray from some pose of the camera's path lands on, before lighting and simplification, so the budget goes to surfaces the path shows | `light.visible_from_path`, [Mesh-Import.md](../../../docs/render/Mesh-Import.md#import-file) |
 | Pruning | `--budget N` draws every pose of `--coverage-poses` (the training poses when omitted) and counts the pixels each triangle shows; triangles no pose shows go first, then those showing fewest, down to N. Simplifying to more than N and pruning back puts the triangles where they show | `appearance_simplify.coverage`, `prune` |
 | Cost term | `--cost-model board_cost_weights.txt --cost-weight L` adds L dE76 per predicted millisecond to the loss: the model's drawn-triangle, row and pixel terms, differentiable in the vertex positions | `appearance_simplify.predicted_ms`, `cost_model.triangle_terms` |
-| Normal term | `--normal-weight L` adds L times the mean L1 distance between the mesh's interpolated vertex normals and the reference's normal buffer (`reference_render.py --normals`, `NNN.normal.npy` beside each image) where both cover a pixel; `--score` fits nothing and prints the start's mean normal angle | `appearance_simplify.normal_l1`, `normal_error` |
+| Normal term | `--normal-weight L` adds L times the mean L1 distance between the mesh's interpolated vertex normals and the reference's normal buffer (`reference_render.py --normals`, `NNNN.normal.npy` beside each image) where both cover a pixel; `--score` fits nothing and prints the start's mean normal angle | `appearance_simplify.normal_l1`, `normal_error` |
 | Warm start | `--refine-to N` splits the longest edge of the start's worst triangles, by dE summed over the pixels they show, both sides of an edge at once, until N; a fitted coarse mesh then starts a finer fit | `appearance_simplify.refine`, `tessellate.split_marked_edges` |
 
 The cost model's weights come from board frame times of meshes with

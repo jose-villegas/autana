@@ -112,6 +112,29 @@ class SettingsTests(unittest.TestCase):
         self.rejects("process.visibility", body='[process.visibility]\nsource = "camera_path"\nrounds = 2\n')
         self.rejects("margin cannot be negative", body=PATH_VISIBILITY_STEP.replace("margin = 2", "margin = -1"))
 
+    def test_a_fit_recipe_reads_and_needs_a_lit_smooth_variant_with_room_to_prune(self):
+        fit = ('fit = { budget = 8, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 20, '
+               'batch = 4, laplacian = 10.0, normal_weight = 1.0, sha256 = "ab" }\n')
+        body = LIGHT_STEP + SIMPLIFY_STEP + VARIANT + "triangles = 10\n" + fit
+        with tempfile.TemporaryDirectory() as directory:
+            variant = load_import_settings(write_import(directory, body=body, output='[output]\ndirectory = "."\n')).variants[0]
+        self.assertEqual((variant.fit.budget, variant.fit.normal_weight, variant.fit.sha256), (8, 1.0, "ab"))
+        self.rejects("cannot exceed", body=body.replace("budget = 8", "budget = 11"), output='[output]\ndirectory = "."\n')
+        self.rejects("smooth variant of a lit import", body=body.replace(LIGHT_STEP, ""), output='[output]\ndirectory = "."\n')
+        self.rejects("fit", body=body.replace("steps = 20, ", ""), output='[output]\ndirectory = "."\n')
+
+    def test_each_committed_fitted_mesh_is_the_one_its_recipe_records(self):
+        import hashlib
+
+        found = 0
+        for path in tree_scenes():
+            for item in load_scene(path).renderers:
+                if item.variant.fit:
+                    found += 1
+                    mesh = item.settings.mesh_dir / f"{item.variant.name}.mesh"
+                    self.assertEqual(hashlib.sha256(mesh.read_bytes()).hexdigest(), item.variant.fit.sha256, mesh.name)
+        self.assertGreater(found, 0, "no fitted variant: the check checks nothing")
+
     def test_a_seed_needs_a_step_that_draws_random_rays(self):
         self.rejects("process.seed", body="[process]\nseed = 3\n")
         self.rejects("process.seed", body="[process]\nseed = 3\n[process.alpha_mask]\nkeep_alpha = 0.5\n")

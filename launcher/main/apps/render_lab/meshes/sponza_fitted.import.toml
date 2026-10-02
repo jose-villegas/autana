@@ -1,0 +1,51 @@
+[source]
+url = "https://casual-effects.com/g3d/data10/common/model/crytek_sponza/sponza.zip"
+sha256 = "da005cbee0be2df2abc8513f3ceb61bcb6f69aac112babcd9c00169a27c2770c"
+path = "sponza.obj"
+cache = "crytek_sponza"
+credit = "Crytek Sponza (Frank Meinl, Crytek; CC BY 3.0), from the OBJ in McGuire's Computer Graphics Archive, casual-effects.com/data."
+
+[output]
+directory = ".."
+position_scale = 8
+
+[materials]
+double_sided = ["fabric_a", "fabric_c", "fabric_d", "fabric_e", "fabric_f", "fabric_g", "leaf", "chain", "Material__57"]
+
+# sponza.import.toml's steps, with the camera's path in place of its region,
+# so the budget goes only to what the flythrough draws. The margin, 20 of its
+# 28 pixels, widens the portrait view to the landscape one's wider sides.
+[process]
+seed = 1
+
+[process.alpha_mask]
+keep_alpha = 0.5
+
+[process.visibility]
+source = "camera_path"
+every_ms = 100
+size = [184, 224]
+samples = 3
+margin = 28
+
+[process.thin]
+material = "leaf"
+keep = 0.35
+
+[process.light]
+ray_offset = 0.5
+colour_merge_step = 6
+
+[process.simplify]
+dense_edge = 45.0
+props = ["vase", "vase_round", "vase_hanging", "flagpole", "chain", "leaf", "Material__57", "Material__298", "Material__25", "Material__47"]
+props_share = 0.3
+seal_seams = true
+
+# Fitted offline on a GPU by tools/r3d/fitted_variant.py: the import bakes the
+# start at `triangles`, and the fit prunes it to `budget` and matches the
+# reference renders of the flythrough; sha256 pins the mesh it made.
+[[variants]]
+name = "sponza_fitted"
+triangles = 9973
+fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "31c122a478c097c927db0ef34feee3d3545b69c5a53400c079ec74b98c83da36" }

@@ -65,6 +65,7 @@ sponza_gif() {
 sponza_gif sponza-full --scene sponza
 sponza_gif sponza-lite --scene sponza-lite
 sponza_gif sponza-flat --scene sponza-flat
+sponza_gif sponza-fitted --scene sponza-fitted
 sponza_gif sponza-depth --scene sponza --view depth
 sponza_gif sponza-tiles --scene sponza --view tiles
 
@@ -76,12 +77,15 @@ sponza_still() {
 sponza_still full sponza
 sponza_still lite sponza-lite
 sponza_still flat sponza-flat
+sponza_still fitted sponza-fitted
 "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-lite.png" --crops 3 \
     --row "full | lite" "$W/still-full.bmp" "$W/still-lite.bmp" > "$W/compare-full-lite.log"
 "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-flat.png" --crops 3 \
     --row "smooth | flat" "$W/still-full.bmp" "$W/still-flat.bmp" > "$W/compare-full-flat.log"
+"$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-lite-fitted.png" --crops 3 \
+    --row "lite | fitted" "$W/still-lite.bmp" "$W/still-fitted.bmp" > "$W/compare-lite-fitted.log"
 # render_compare.py writes no crops where the two renders do not differ; fail
 # here rather than leave the pages linking a missing file.
-for crops in compare-full-lite compare-full-flat; do
+for crops in compare-full-lite compare-full-flat compare-lite-fitted; do
     [ -f "$RENDER/$crops.crops.png" ] || { echo "doc_images.sh: $crops has no crops, the renders do not differ." >&2; exit 1; }
 done

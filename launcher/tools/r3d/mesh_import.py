@@ -181,8 +181,25 @@ def flat_colours(settings, scene, geometry, face_samples, **knobs):
                         sample_area=sample_area, min_samples=sample_min, **knobs)
 
 
+def check_fitted(settings, variant):
+    """A fitted variant is made offline by fitted_variant.py on a GPU; the bake
+    only checks that the committed mesh is the one its recipe records."""
+    import hashlib
+
+    path = settings.mesh_dir / f"{variant.name}.mesh"
+    if not path.exists():
+        raise SystemExit(f"{path.name} is missing: make it with fitted_variant.py (it needs a CUDA GPU)")
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    if digest != variant.fit.sha256:
+        raise SystemExit(f"{path.name} has SHA-256 {digest}, its recipe records {variant.fit.sha256}")
+    log(f"{path.name} matches its fit recipe")
+
+
 def bake(settings, variant, scene):
     """Bakes one mesh. `scene` is None for an import that needs none."""
+    if variant.fit:
+        check_fitted(settings, variant)
+        return
     geometry = bake_geometry(settings, variant, scene)
     positions, rgb, tris, scale = geometry.positions, geometry.rgb, geometry.tris, geometry.scale
     face_rgb = flat_colours(settings, scene, geometry, variant.face_samples) if variant.face_samples else None
