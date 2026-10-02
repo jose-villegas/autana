@@ -102,9 +102,10 @@ flowchart TB
   and `util/{timing,settings,memory}.h`; it calls this firmware's own drivers
   (`imu_read`, `touch_read`) directly. A module's device half, where it has
   one, lives in a `*_device.c` beside it and is compiled for the board only,
-  so the files a host builds stay pure. `scripts/gates/check_shell_firmware.py` fails
-  `main.c` on any ESP-IDF, FreeRTOS, NVS or BSP include or call, logging
-  (`esp_log.h`, `ESP_LOG[A-Z]`) excepted.
+  so the files a host builds stay pure.
+  `scripts/gates/check_shell_firmware.py` fails `main.c` on any ESP-IDF,
+  FreeRTOS, NVS or BSP include or call, logging (`esp_log.h`,
+  `ESP_LOG[A-Z]`) excepted.
 - **The vendor timer and heap have one owner each.** Code above the drivers
   reads time with `timing_now_us()` (`util/timing.h`, inlined to the
   hardware timer's own call) and places or measures memory by kind with
@@ -113,7 +114,8 @@ flowchart TB
   platform. In the firmware, its suites and its tools the same gate fails
   any `esp_timer_*`, `heap_caps_*` or `MALLOC_CAP_*` name outside those two
   modules, `board/` and a driver's `*_device.c`; `launcher/test/` outside
-  `suites/` stands in for the vendor code on a host and is not checked.
+  `suites/` (the host heap model, the stubs, and the harness both platforms
+  build) is not checked.
 - **Generated sources are checked in** beside the code that uses them, each
   with a banner naming its regenerate command; `grep -rl "GENERATED FILE"`
   lists them, and the rules they follow are in
