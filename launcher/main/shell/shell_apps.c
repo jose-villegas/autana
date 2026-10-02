@@ -188,7 +188,6 @@ apply_pending_full_redraw(const app_t* app) {
     } else {
         ui_invalidate();
     }
-    shell_systems_invalidate();
 }
 
 static system_navigation_t system_navigation;
@@ -267,9 +266,6 @@ static void
 step_control_center(const input_t* input, uint32_t dt_ms) {
     const bool redraw_requested = gfx_full_redraw_pending();
     gfx_full_redraw_clear_pending();
-    if (redraw_requested) {
-        shell_systems_invalidate();
-    }
     if (redraw_requested || control_center_backdrop_quarter != display_quarter_now()) {
         paint_control_center_backdrop(dt_ms);
     }

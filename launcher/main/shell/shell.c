@@ -21,7 +21,6 @@
 #include "input/touch.h"
 #include "shell/shell.h"
 #include "shell/shell_apps.h"
-#include "shell/shell_system.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
 #include "util/build_id.h"
@@ -438,10 +437,6 @@ shell_run(void) {
 #endif
 
         shell_step_app(&current, &input, dt_ms);
-        /* Band mode has no framebuffer for an overlay to draw into. */
-        if (gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB) {
-            shell_systems_overlay();
-        }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
         run_dev_frame_extras(&input, current);

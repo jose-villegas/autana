@@ -258,18 +258,16 @@ framebuffer before `frame()`, whether or not the app has an `update()`
 
 ### Engine systems
 
-Engine machinery the loop drives every pass is a
-**system**: a `shell_system_t` (`shell/shell_system.h`) of phase callbacks,
-registered with `SHELL_SYSTEM_REGISTER()` the way an app is. The loop never
-names a system; it calls each phase over all of them, lowest `order` first,
-and skips a system whose callback for that phase is NULL.
+Engine machinery the loop drives every pass is a **system**: a
+`shell_system_t` (`shell/shell_system.h`) of phase callbacks, registered with
+`SHELL_SYSTEM_REGISTER()` the way an app is. The loop never names a system;
+it calls each phase over all of them, lowest `order` first, and skips a
+system whose callback for that phase is NULL.
 
 | Phase | When the loop calls it |
 |---|---|
 | `update(dt_ms)` | after the app's `update()`, while the last frame is still being sent; touches no framebuffer |
 | `compose(dt_ms)` | once the send is done, before the app's `frame()` draws over it |
-| `overlay()` | after the pass has drawn, before it is presented; full-framebuffer layout only |
-| `invalidate()` | wherever a full redraw is answered, after the app or launcher has dropped its own cache |
 | `app_exit()` | right after the app's `exit()` |
 | `overlaps_present()` | a query, not a phase: true makes the app's frame present a pass late, so `update` has a send to overlap |
 
@@ -288,10 +286,10 @@ flag ([Gfx-and-Presentation.md](Gfx-and-Presentation.md#repaint-controls)).
 gfx has no idea what anyone caches above it, so the shell answers the flag
 at the top of a pass, before anything draws: a running app gets its
 `invalidate()`, the launcher gets `ui_invalidate()`, and Control Center
-repaints its dimmed backdrop; each path also runs the systems' `invalidate`
-phase. Clearing the flag before the draw rather than after is what lets a
-request made inside that very `frame()` reach the next pass. The app's side
-is in [Building-an-App.md](Building-an-App.md#full-redraw).
+repaints its dimmed backdrop. Clearing the flag before the draw rather than
+after is what lets a request made inside that very `frame()` reach the next
+pass. The app's side is in
+[Building-an-App.md](Building-an-App.md#full-redraw).
 
 ### The frame watch: no allocating or logging in steady state
 
