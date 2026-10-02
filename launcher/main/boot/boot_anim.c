@@ -510,13 +510,6 @@ draw_curve_segment(curve_segment_t* segment, vec3x_t next_cs, gfx_color_t color,
     segment->prev_front = next_front;
 }
 
-/* One out-of-line copy of the key transform: draw_curve() needs it at three
- * sites, and three inlined copies are code the instruction cache pays for. */
-__attribute__((noinline)) static vec3x_t
-curve_point_cs(const boot_anim_pt_t* p, const boot_anim_view_t* view) {
-    return boot_anim_to_camera_space(p->re, p->im, p->t, view);
-}
-
 /* Re-colours within half the curve's length of the head. No second
  * framebuffer available. */
 int32_t
@@ -545,8 +538,8 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
 
     boot_anim_pt_t s0 = boot_anim_sample(-stride);
     boot_anim_pt_t s1 = boot_anim_sample(0);
-    vec3x_t ta = curve_point_cs(&s0, view);
-    vec3x_t tb = curve_point_cs(&s1, view);
+    vec3x_t ta = boot_anim_to_camera_space(s0.re, s0.im, s0.t, view);
+    vec3x_t tb = boot_anim_to_camera_space(s1.re, s1.im, s1.t, view);
     curve_segment_t segment = {.prev_cs = tb, .prev_front = tb.z > view->near_z};
     if (segment.prev_front) {
         r3d_camera_to_screen_x(segment.prev_cs, view, &segment.prev_sx, &segment.prev_sy);
@@ -556,7 +549,7 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
 
     for (int i = 0; i <= last && i < BOOT_ANIM_CURVE_POINTS; i += stride) {
         const boot_anim_pt_t s2 = boot_anim_sample(i + stride);
-        const vec3x_t tc = curve_point_cs(&s2, view);
+        const vec3x_t tc = boot_anim_to_camera_space(s2.re, s2.im, s2.t, view);
 
         /* Interpolate colour across spans, not per sample. */
         const int32_t a1 = ((i + stride) * BOOT_ANIM_ONE + phase1_span / 2) / phase1_span;
