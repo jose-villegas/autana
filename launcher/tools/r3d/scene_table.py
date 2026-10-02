@@ -16,6 +16,7 @@ position, so the device does no trigonometry.
 """
 
 import argparse
+import os
 import pathlib
 import sys
 
@@ -45,6 +46,12 @@ def placement(obj):
 
 def table_symbol(scene):
     return scene.path.name.removesuffix(".scene.toml") + "_scene"
+
+
+def tracks_header(scene, tracks):
+    """The camera-track header relative to the scene table's source file."""
+    target = scene.renderers[0].settings.out_dir / f"{tracks}_tracks_generated.h"
+    return pathlib.Path(os.path.relpath(target, scene.path.parent)).as_posix()
 
 
 def out_directory(scene):
@@ -83,7 +90,7 @@ def table_source(scene, banner):
     path = camera.component.path if camera else None
     lines = [banner, "", "#include <stddef.h>", "", f'#include "{name}_generated.h"', "", '#include "scene/scene.h"', ""]
     if path:
-        lines += [f'#include "{path.tracks}_tracks_generated.h"', ""]
+        lines += [f'#include "{tracks_header(scene, path.tracks)}"', ""]
     lines += [f"static const char* const {name}_names[] = {{" + ", ".join(f'"{obj.name}"' for obj in objects) + "};", ""]
     lines += [f"static const scene_transform_t {name}_transforms[] = {{"]
     lines += [f"    {placement(obj) or IDENTITY}," for obj in objects]
