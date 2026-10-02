@@ -103,6 +103,17 @@ mathx_dot3c(int32_t a0, int32_t b0, int32_t a1, int32_t b1, int32_t a2, int32_t 
                      + (uint32_t)fx_mul_floor(a2, b2, MATHX_SHIFT) + (uint32_t)c);
 }
 
+/* a0 * b0 + a1 * b1 + a2 * b2 + c, then an arithmetic shift right by `shift`:
+ * plain 32-bit products and sum, a multiply and an add each, for operands
+ * whose whole sum fits in an int32. The caller proves that range; nothing
+ * here saturates. */
+static inline int32_t
+mathx_dot3_narrow(int32_t a0, int32_t b0, int32_t a1, int32_t b1, int32_t a2, int32_t b2, int32_t c, int shift) {
+    const uint32_t sum =
+        ((uint32_t)a0 * (uint32_t)b0) + ((uint32_t)a1 * (uint32_t)b1) + ((uint32_t)a2 * (uint32_t)b2) + (uint32_t)c;
+    return (int32_t)sum >> shift;
+}
+
 static inline int32_t
 mathx_zero(void) {
     return 0;

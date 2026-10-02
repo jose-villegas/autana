@@ -126,7 +126,13 @@ boot_anim_view(int w, int h, uint32_t now_ms) {
      * pixels must not move if that inequality ever changes. */
     const viewport_t viewport = {.width = w, .height = h, .quarter = 0};
     const r3d_line_view_t view = r3d_line_camera_view(camera, &st.space, viewport);
-    return r3d_line_view_to_x(&view);
+    r3d_line_view_x_t out = r3d_line_view_to_x(&view);
+    /* Meters per raw unit of (re, t, im): Q12, Q8 climbing 132/512 m a unit, Q12. */
+    const float meters_per_unit[3] = {1.0F / (float)BOOT_ANIM_ONE,
+                                      (float)BOOT_ANIM_SPIRAL_Q9 / (256.0F * (float)R3D_X_UNIT_ONE),
+                                      1.0F / (float)BOOT_ANIM_ONE};
+    r3d_line_view_x_set_inputs(&out, &view, meters_per_unit);
+    return out;
 }
 
 /* CAMERA space transform; boot_anim_project() refactored for z check. Q12
@@ -135,6 +141,13 @@ boot_anim_view(int w, int h, uint32_t now_ms) {
  * 1/512 m, r3d_project_x.h's unit. */
 static inline vec3x_t
 boot_anim_to_camera_space(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view) {
+    /* Inside +-2^17 (32 m) on the floor's axes and +-2^15 on t the transform is
+     * three 32-bit products; the long axes and a wild view take the 64-bit one. */
+    const bool near = (uint32_t)(re_q12 + (1 << 17)) < (1u << 18) && (uint32_t)(im_q12 + (1 << 17)) < (1u << 18)
+                      && (uint32_t)(t_q8 + (1 << 15)) < (1u << 16);
+    if (near && view->units_ok) {
+        return r3d_to_camera_space_units(view, re_q12, t_q8, im_q12);
+    }
     const vec3x_t p = {re_q12 * 16, t_q8 * (BOOT_ANIM_SPIRAL_Q9 / 2), im_q12 * 16};
 
     return mat4x_apply(&view->matrix, p);
