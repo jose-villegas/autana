@@ -222,9 +222,9 @@ def held_out_score(variant, mesh_path, work, host, inputs=None):
     _width, _height, _lens, _near, poses = read_poses(inputs / "held_out.txt")
     score_dir = work / "score"
     score_dir.mkdir(exist_ok=True)
-    args = SimpleNamespace(render_args=f"--quarter 0 --no-hud --scene {host_scene_key(variant.name)} --frames {len(poses)} "
+    args = SimpleNamespace(render_args=f"--quarter 0 --no-hud --scene {host_scene_key(variant.name)} --frames {len(poses) + 1} "
                                        f"--dt {variant.fit.held_out_every_ms}", reference=inputs / "reference_held_out",
-                           reference_scale=BOARD_SCALE)
+                           reference_scale=BOARD_SCALE, reference_first=1)
     return score(args, host, write_pack(variant.name, mesh_path, score_dir), score_dir)[:2]
 
 

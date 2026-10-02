@@ -51,6 +51,18 @@ class SweepTests(unittest.TestCase):
     def test_mesh_names_map_to_the_host_scene_keys(self):
         self.assertEqual(fitted_variant.host_scene_key("tiny_fitted"), "tiny-fitted")
 
+    def test_held_out_score_starts_after_the_training_pose(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            (work / "held_out.txt").write_text(poses_text(2, 3, 0.5, 1.0, [[0, 0, 0, 0, 0, -1]]))
+            variant = SimpleNamespace(name="tiny_fitted", fit=SimpleNamespace(held_out_every_ms=5))
+            with unittest.mock.patch("r3d.bake_fidelity.write_pack", return_value=work / "assets.bin"), \
+                 unittest.mock.patch("r3d.bake_fidelity.score", return_value=(0.0, 0.0)) as score:
+                self.assertEqual(fitted_variant.held_out_score(variant, work / "tiny.mesh", work, work / "host"), (0.0, 0.0))
+        args = score.call_args.args[0]
+        self.assertIn("--scene tiny-fitted --frames 2 --dt 5", args.render_args)
+        self.assertEqual(args.reference_first, 1)
+
     def test_board_cost_uses_the_native_held_out_render_size(self):
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
