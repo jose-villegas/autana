@@ -17,9 +17,9 @@
 #include "input/imu_rotation.h"
 #include "input/input.h"
 #include "input/tilt.h"
-#include "scene/scene_shell.h"
 #include "shell/shell.h"
 #include "shell/shell_apps.h"
+#include "shell/shell_system.h"
 #include "ui/system_navigation.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
@@ -188,6 +188,7 @@ apply_pending_full_redraw(const app_t* app) {
     } else {
         ui_invalidate();
     }
+    shell_systems_invalidate();
 }
 
 static system_navigation_t system_navigation;
@@ -197,7 +198,7 @@ void
 shell_exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
-    scene_unload_all();
+    shell_systems_app_exit();
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const size_t internal_after_exit = memory_free_bytes(MEMORY_INTERNAL);
     const size_t eight_bit_after_exit = memory_free_bytes(MEMORY_8BIT);
@@ -266,6 +267,9 @@ static void
 step_control_center(const input_t* input, uint32_t dt_ms) {
     const bool redraw_requested = gfx_full_redraw_pending();
     gfx_full_redraw_clear_pending();
+    if (redraw_requested) {
+        shell_systems_invalidate();
+    }
     if (redraw_requested || control_center_backdrop_quarter != display_quarter_now()) {
         paint_control_center_backdrop(dt_ms);
     }
@@ -308,10 +312,10 @@ step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, u
 }
 
 /* Whether the app's frame is presented a pass late, so that update() and the
- * scene's draw run while the last one is still being sent. */
+ * systems' update phase run while the last one is still being sent. */
 static bool
 overlaps_present(const app_t* current) {
-    return current->update != NULL || scene_has_active_camera();
+    return current->update != NULL || shell_systems_overlap_present();
 }
 
 /* An app with update(): overlap it with sending the frame drawn last pass
@@ -332,11 +336,12 @@ step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
         if (current->update != NULL) {
             current->update(dt_ms, input);
         }
-        scene_shell_render(dt_ms);
+        shell_systems_update(dt_ms);
         gfx_present_wait();
     }
-    /* A camera's scene is in the framebuffer by the time frame() draws over it. */
-    scene_shell_compose(dt_ms);
+    /* What the systems compose is in the framebuffer by the time frame()
+     * draws over it. */
+    shell_systems_compose(dt_ms);
     current->frame(dt_ms, input);
     gfx_band_run(current->draw_band, ui_replay_band);
     frame_ready = true;
