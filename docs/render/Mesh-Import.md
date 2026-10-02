@@ -26,7 +26,8 @@ flowchart LR
 
 ## Import options
 
-Every table below opts its step in; without it the step does not run.
+Bake times are for a source of about a quarter of a million triangles on one desktop; frame costs were measured on the board on one mesh.
+Keys before `;` are required; after it, optional.
 
 ### Source, output and materials
 
@@ -34,46 +35,60 @@ Every table below opts its step in; without it the step does not run.
 |---|---|---|---|---|---|
 | `[source]` | `url`, `sha256`, `path`, `cache`, `credit` | Downloads, verifies and locates the OBJ; `credit` records its attribution. | Required. | Download / none. | [Import file](#import-file) |
 | `[output]` | `directory`; `name`, `position_scale` | Names the output directory, single-mesh name and position scale. | `name` optional; `position_scale` 8. | Write / none. | [The baked mesh](#the-baked-mesh) |
-| `[materials]` | `double_sided` | Draws listed material faces from both sides. | `[]`. | None / more faces drawn. | [The baked mesh](#the-baked-mesh) |
+| `[materials]` | ; `double_sided` | Draws listed material faces from both sides. | `[]`. | None / more faces drawn. | [The baked mesh](#the-baked-mesh) |
 
 ### Process
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
 |---|---|---|---|---|---|
-| `[process]` | `seed` | Seeds visibility rays, thin's random choice and lighting rays. | `0`; only with visibility, thin or light. | None / none. | [Import file](#import-file) |
+| `[process]` | ; `seed` | Seeds visibility rays, thin's random choice and lighting rays. | `0`; only with visibility, thin or light. | None / none. | [Import file](#import-file) |
 
 ### Geometry
 
+Every table below opts its step in; without it the step does not run.
+
 | Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
 |---|---|---|---|---|---|
-| `[geometry]` | `alpha_mask`, `thin`, `simplify` | Holds optional geometry steps. | All off. | Varies / varies. | [Import file](#import-file) |
-| `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Texture sampling / fewer triangles. | [Import file](#import-file) |
+| `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [Import file](#import-file) |
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [Import file](#import-file) |
-| `geometry.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges and simplifies each variant to its budget; reserves `props` and can seal seams. | Off. | Seconds / fewer triangles; `seal_seams` costs about 4% frame time. | [Sealing seams](#sealing-seams) |
+| `geometry.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges and simplifies each variant to its budget; reserves `props` and can seal seams. | Off. | Seconds / set by the budget; `seal_seams` costs about 4% frame time. | [Sealing seams](#sealing-seams) |
 
 ### Visibility
 
+Every table below opts its step in; without it the step does not run.
+
 | Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
 |---|---|---|---|---|---|
-| `[visibility]`, `variants.visibility`: `camera_region` | `rounds`; `source` | Culls what the camera's region can see. | `source = "camera_region"`. | Ray tracing / fewer triangles. | [Import file](#import-file) |
-| `[visibility]`, `variants.visibility`: `camera_path` | `every_ms`, `size`; `source`, `samples`, `margin` | Culls what camera-path poses can see. | `samples` 3, `margin` 0. | Ray tracing / about 15% less frame time on the full mesh. | [Import file](#import-file) |
-| `variants.visibility` | `source`, `rounds`, `every_ms`, `size`, `samples`, `margin` | Overrides the import's visibility for one variant. | Inherits `[visibility]`. | Ray tracing / varies. | [Import file](#import-file) |
+| `[visibility]`: `camera_region` | `rounds`; `source` | Culls what the camera's region can see. | `source = "camera_region"`. | Seconds to minutes / fewer triangles. | [Import file](#import-file) |
+| `[visibility]`: `camera_path` | `every_ms`, `size`; `source`, `samples`, `margin` | Culls what camera-path poses can see. On the measured scene it keeps 116,917 of 245,465 source triangles, compared with the region's 211,004; it cuts the full mesh from 58.6 to 50.1 ms (−14.5%), with 0 hole pixels for culled lite and at most 8 px in 3 frames for culled full along the path. [Full results](../../launcher/main/apps/render%5Flab/tools/README.md#cost-aware-fit-along-the-camera-path). | `samples` 3, `margin` 0. | Minutes / fewer triangles, about 15% less frame time on the full mesh. | [Import file](#import-file) |
+| `variants.visibility` | The keys of `[visibility]` | Overrides the import's visibility for one variant. | Inherits `[visibility]`. | As `[visibility]`. | [Import file](#import-file) |
 
 ### Lighting
 
+Every table below opts its step in; without it the step does not run.
+
 | Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
 |---|---|---|---|---|---|
-| `[lighting]` | `light` | Holds the optional light bake. | Off: albedo. | Ray tracing / none. | [Import file](#import-file) |
-| `lighting.light` | `ray_offset`, `colour_merge_step`; `flat_sky_rays` | Bakes the scene's light into vertex colour; flat faces share `flat_sky_rays`. | Off; `flat_sky_rays` is required with flat shading and refused otherwise. | Ray tracing / none. | [The baked mesh](#the-baked-mesh) |
+| `lighting.light` | `ray_offset`, `colour_merge_step`; `flat_sky_rays` | Bakes the scene's light into vertex colour; flat faces share `flat_sky_rays`. | Off: albedo; `flat_sky_rays` is required with flat shading and refused otherwise. | Minutes / none. | [The baked mesh](#the-baked-mesh) |
 
 ### Variants
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
 |---|---|---|---|---|---|
-| `[[variants]]` | `name`; `triangles`, `shading`, `visibility`, `fit` | Names a separately baked mesh. | One or more only when simplification is on. | Varies / varies. | [Import file](#import-file) |
-| `[[variants]].triangles` | `triangles` | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / fewer triangles. | [Import file](#import-file) |
-| `[[variants]].shading` | `flat`; `fixed` or `auto`; `min`, `max`, `area` | `smooth`, or flat shading with fixed or automatic face samples; flat stores one colour per triangle. | `smooth`; automatic `area = "median"`. | Minutes / cheaper rasterisation. | [The baked mesh](#the-baked-mesh) |
-| `[[variants]].fit` | `budget`, `train_every_ms`, `held_out_every_ms`, `coverage_every_ms`, `steps`, `batch`, `laplacian`, `normal_weight`, `sha256`, `recipe_sha256` | Records a smooth appearance-fit recipe and its hashes. | Off. | CUDA GPU / unchanged. | [Fitting a mesh to the reference](#fitting-a-mesh-to-the-reference) |
+| `[[variants]]` | `name`; `triangles`, `shading`, `visibility`, `fit` | Names a separately baked mesh. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [Import file](#import-file) |
+| `[[variants]].triangles` | — | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / set by the budget. | [Import file](#import-file) |
+| `[[variants]].shading` | ; `flat = { fixed = N }` or `flat = { auto = { min, max, area } }` | `smooth`, or flat shading with fixed or automatic face samples; flat stores one colour per triangle. `area`: a number, or `"median"` for the mesh's median face. | `smooth`. | Minutes / cheaper rasterisation. | [The baked mesh](#the-baked-mesh) |
+| `[[variants]].fit` | `budget`, `train_every_ms`, `held_out_every_ms`, `coverage_every_ms`, `steps`, `batch`, `laplacian`, `normal_weight`, `sha256`, `recipe_sha256` | Records a smooth appearance-fit recipe and its hashes. | Off. | a CUDA GPU, minutes / unchanged at its budget. | [Fitting a mesh to the reference](#fitting-a-mesh-to-the-reference) |
+
+Choose a triangle budget from held-out error against predicted frame time:
+keep the front's knee unless its frame cost misses the target. Each point is a
+mesh, placed by held-out $`\Delta E`$ against predicted frame time; meshes no
+other mesh beats on both axes form the front. On the measured scene the knee
+is about 8.7k triangles, where the full budget's last 8.7k triangles buy about
+0.34 $`\Delta E`$. [The appearance-fit results](../../launcher/main/apps/render%5Flab/tools/README.md#cost-aware-fit-along-the-camera-path)
+give the full table.
+
+![Held-out error against predicted frame time](images/appearance-pareto.png)
 
 ## The baked mesh
 
@@ -211,6 +226,13 @@ off above on: without the cull the budget is spent on hidden surfaces and
 visible ones lose triangles.
 
 ![Visibility cull off against on](images/import-visibility.png)
+
+The culled triangles are magenta in the first image; the second compares the
+culled lite mesh with the uncut one, where the largest differences are not
+holes.
+
+![Triangles the camera path never sees](images/appearance-path-culled.png)
+![Culled lite against uncut, largest differences](images/appearance-path-culled.crops.png)
 
 `lighting.light` turns the albedo into light: the left render is the same
 import with no light step, the right the baked sun, sky and ambient.
@@ -369,6 +391,15 @@ source. **What it costs:** a CUDA GPU and minutes per mesh, nothing at run
 time. A scene's crop sheets for every stage, before above after, live in that
 scene's tools README beside its scores.
 
+At the same held-out poses, the two reference sheets put the reference first,
+then the simplifier or the fitted mesh, with each mesh's $`\Delta E`$ heatmap
+under it. The crop sheet shows the places where simplifier and fit differ
+most, with the reference above each crop.
+
+![Simplifier against the reference](../images/render/appearance-lite-reference.png)
+![Fitted mesh against the reference](../images/render/appearance-fit-reference.png)
+![Simplifier and fitted mesh, largest differences](../images/render/appearance-lite-fitted-reference.crops.png)
+
 ```mermaid
 flowchart LR
     S[simplified smooth bake] --> F[fit positions and colours]
@@ -451,6 +482,10 @@ the budget and pruning back puts the triangles where a pose shows them.
 summed over the pixels they show, split along their longest edge, both sides
 at once, up to a larger budget, and is fitted again. *When:* to grow a fit
 instead of starting a finer one from the simplifier. *Cost:* one more fit.
+On the measured scene, refining reaches $`\Delta E`$ 5.223 at 8,035 triangles
+and 5.153 at 10,382, against 5.220 and 5.029 from QEM, so it does not move the
+plateau. [The appearance-fit results](../../launcher/main/apps/render%5Flab/tools/README.md#cost-aware-fit-along-the-camera-path)
+give the full table.
 
 **The normal term.** *What:* colour alone can be matched by geometry that is
 wrong and shows it from another view. The reference renderer also writes the
@@ -460,6 +495,14 @@ same way. $`\Omega_v^{\cap}`$ is the pixels both cover, so coverage stays the
 colour term's business, through the scene's clear colour. *When:* always; it
 leaves ΔE where it was and brings the normals back toward the source. *Cost:*
 a second drawing per view. The error reported beside ΔE is the mean angle:
+
+On the measured scene, $`\lambda_n`$ 0 / 0.1 / 0.3 / 1 gives $`\Delta E`$
+5.220 / 5.247 / 5.268 / 5.232 and normal error 18.6 / 17.1 / 16.3 / 14.8°.
+$`\lambda_n = 1`$ recovers geometry at no $`\Delta E`$ cost. The heatmap
+shows the normal error that it removes; [the appearance-fit results](../../launcher/main/apps/render%5Flab/tools/README.md#cost-aware-fit-along-the-camera-path)
+give the full table.
+
+![Normal angle heatmaps](images/appearance-normal-heat.png)
 
 ```math
 \theta = \frac{1}{|\Omega^{\cap}|}\sum_{p \in \Omega^{\cap}} \arccos\!\left(\hat{n}_p \cdot n^{\mathrm{ref}}_p\right)
@@ -481,11 +524,23 @@ with different triangle counts and overdraw, at the poses the board times.
 `cost_model.py` fits and applies them, and keeps them, with the frames they
 were fitted to, in a weights file beside it.
 
+On the measured scene it is 21.4 ms + 1.14 $`\mu\mathrm{s}`$ per drawn
+triangle + 0.51 $`\mu\mathrm{s}`$ per row + 0.028 $`\mu\mathrm{s}`$ per pixel
++ 22.7 $`\mu\mathrm{s}`$ per cluster. Its $`R^2`$ is 0.983 and it predicts six
+meshes outside its fit within 1.3 ms. The 21.4 ms constant leaves too little
+time for a 30 fps frame and exceeds a 60 fps frame before drawing; [the
+appearance-fit results](../../launcher/main/apps/render%5Flab/tools/README.md#cost-aware-fit-along-the-camera-path)
+give the full table.
+
 **The cost term.** *What:* $`D_v`$, $`\rho_t`$ and $`\alpha_t`$ follow the vertex
 positions, so the fit can trade appearance against predicted time with a
 weight $\kappa$ in ΔE per millisecond. *When:* when a smaller budget is not an
 option; on the meshes it was tried on, a smaller budget bought the same time
 for less error. *Cost:* the fit runs about three times longer.
+
+On the measured scene its weight trades 0.2–0.6 $`\Delta E`$ for 4–7 ms, no
+better than a smaller budget. [The appearance-fit results](../../launcher/main/apps/render%5Flab/tools/README.md#cost-aware-fit-along-the-camera-path)
+give the full table.
 
 The whole objective, with $\lambda$, $`\lambda_n`$ and $\kappa$ the weights of
 the Laplacian, normal and cost terms:

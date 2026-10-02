@@ -164,8 +164,6 @@ def load_variant(value, steps, where):
             pass
         elif isinstance(shading, dict):
             check_keys(shading, ("flat",), f"{where}.shading")
-            if not steps.light:
-                raise SettingsError(f"{where}.shading needs lighting.light")
             variant.face_samples = face_sample_options(shading["flat"], f"{where}.shading.flat")
         else:
             raise SettingsError(f"{where}.shading must be smooth or {{ flat = ... }}")

@@ -53,7 +53,8 @@ def split_poses(fit, poses):
 
 
 def canonical(value):
-    """A JSON-ready form of parsed settings, independent of parser layout."""
+    """A JSON-ready form of parsed settings, independent of parser layout.
+    The digest hashes parser fields, so an explicit default differs from an omitted one; the stamp test catches it."""
     if isinstance(value, pathlib.Path):
         return None
     if isinstance(value, SimpleNamespace):
