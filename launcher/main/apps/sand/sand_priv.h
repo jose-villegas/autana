@@ -221,8 +221,10 @@ typedef enum {
     SAND_SPLIT_SLOTS,
 } sand_split_slot_t;
 
-/* Cross-flow stays serial because its per-chunk setup does not repay a
- * second-core dispatch. */
+/* Cross-flow is left out: on the board its split runs 0.87-1.27 of its own
+ * serial walk, where the gravity sweep runs 0.65-0.80. Its split path stays,
+ * driven by suite_sand_crossflow.c, so shipping it is one bit in
+ * SAND_SPLIT_PASSES_SHIPPED. */
 typedef enum {
     SAND_SPLIT_SWEEP = 1u << SAND_SPLIT_SLOT_SWEEP,
     SAND_SPLIT_CROSSFLOW = 1u << SAND_SPLIT_SLOT_CROSSFLOW,
@@ -250,12 +252,15 @@ extern unsigned sand_split_passes;
 unsigned sand_split_passes_for_test(unsigned mask);
 
 /* Below this many awake cells, prepare, merge, dispatch and join cost more
- * than a second core saves. */
+ * than a second core saves. Whole chunks are charged, so this is a little over
+ * one chunk of the widest cut any quality ships. */
 #define SAND_CHUNK_SPLIT_MIN_AWAKE_CELLS    1600
 
-/* The awake chunks also need balanced spans. Otherwise a pour into a settled
- * board or a single falling column pays for a second core without halving
- * the work. */
+/* The span two lanes model must come under this share of walking the chunks
+ * one after another, because walking a board as chunks already costs 1.09-1.28
+ * of the row-major sweep (QEMU --icount, ULTRA). Over it, a pour into a
+ * settled board or a single falling column pays for a second core without
+ * halving the work. */
 #define SAND_CHUNK_SPLIT_SPAN_SHARE_PERCENT 75
 
 /* Whether this pass can split on this board: the pass is one that ships
