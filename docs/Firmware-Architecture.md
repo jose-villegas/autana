@@ -68,16 +68,18 @@ flowchart TB
         Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
         Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
     end
-    subgraph R7["utilities"]
-        Util["util/<br/><i>fixed point, float and fixed maths, tween, jobs, tunables, time, settings, memory</i>"]
+    subgraph R7["animation and content"]
         Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
         Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
     end
-    subgraph R8["board"]
+    subgraph R8["utilities"]
+        Util["util/<br/><i>fixed point, float and fixed maths, tween, jobs, tunables, time, settings, memory</i>"]
+    end
+    subgraph R9["board"]
         Board["board/<br/><i>this board's pins and peripherals</i>"]:::hw
     end
 
-    R1 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8
+    R1 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9
     Contract(["app.h: the shell/app contract"]):::contract
     Main -.->|"calls through app.h"| Apps
     Contract -.->|"includes input/input.h"| Input

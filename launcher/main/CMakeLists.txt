@@ -21,7 +21,6 @@ set(app_srcs
     "input/gesture.c"
     "input/imu.c"
     "input/input_device.c"
-    "input/touch_gesture.c"
     "input/tilt.c"
     "ui/ui.c"
     "ui/system_navigation.c"
@@ -105,6 +104,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
     list(APPEND app_srcs
         "console/console_inject.c"
         "input/touch_inject_fsm.c"
+        "input/touch_gesture.c"
     )
 endif()
 
