@@ -13,7 +13,7 @@
         T m[4][4];                                                                                                     \
     } P##_t;                                                                                                           \
                                                                                                                        \
-    /* The identity matrix. */                                                                                         \
+    /* identity: m[r][c] = (r == c ? 1 : 0) */                                                                         \
     static inline P##_t P##_identity(void) {                                                                           \
         return (P##_t){{{OPS##_one(), OPS##_zero(), OPS##_zero(), OPS##_zero()},                                       \
                         {OPS##_zero(), OPS##_one(), OPS##_zero(), OPS##_zero()},                                       \
@@ -21,7 +21,7 @@
                         {OPS##_zero(), OPS##_zero(), OPS##_zero(), OPS##_one()}}};                                     \
     }                                                                                                                  \
                                                                                                                        \
-    /* a * b. */                                                                                                       \
+    /* (a * b)[r][c] = a[r][0]*b[0][c] + a[r][1]*b[1][c] + a[r][2]*b[2][c] + a[r][3]*b[3][c] */                        \
     static inline P##_t P##_mul(P##_t a, P##_t b) {                                                                    \
         P##_t out;                                                                                                     \
         for (int r = 0; r < 4; r++) {                                                                                  \
@@ -35,7 +35,8 @@
         return out;                                                                                                    \
     }                                                                                                                  \
                                                                                                                        \
-    /* M * p with w = 1: translation included, no perspective divide. `m` is read only. */                             \
+    /* M * p with w = 1, no perspective divide: for r in 0..2, */                                                      \
+    /*   p'[r] = m[r][0]*px + m[r][1]*py + m[r][2]*pz + m[r][3]. `m` is read only. */                                  \
     static inline V##_t P##_apply(const P##_t* m, V##_t p) {                                                           \
         return (V##_t){                                                                                                \
             OPS##_dot3c(m->m[0][0], p.x, m->m[0][1], p.y, m->m[0][2], p.z, m->m[0][3]),                                \
@@ -44,7 +45,11 @@
         };                                                                                                             \
     }                                                                                                                  \
                                                                                                                        \
-    /* Scale, then rotate, then translate. `rotation` must be unit length. */                                          \
+    /* M = T * R * S, scale then rotate then translate; `rotation` must be unit length. */                             \
+    /* Column c of R is scaled by scale.c and the position is column 3, with R = */                                    \
+    /*   1 - 2(yy + zz)   2(xy - zw)       2(xz + yw) */                                                               \
+    /*   2(xy + zw)       1 - 2(xx + zz)   2(yz - xw) */                                                               \
+    /*   2(xz - yw)       2(yz + xw)       1 - 2(xx + yy) */                                                           \
     static inline P##_t P##_from_trs(V##_t position, Q##_t rotation, V##_t scale) {                                    \
         const T x = rotation.x;                                                                                        \
         const T y = rotation.y;                                                                                        \

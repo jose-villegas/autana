@@ -15,16 +15,20 @@
         T x, y, z, w;                                                                                                  \
     } P##_t;                                                                                                           \
                                                                                                                        \
-    /* The rotation that does nothing. */                                                                              \
+    /* identity = (0, 0, 0, 1), the rotation that does nothing. */                                                     \
     static inline P##_t P##_identity(void) { return (P##_t){OPS##_zero(), OPS##_zero(), OPS##_zero(), OPS##_one()}; }  \
                                                                                                                        \
-    /* `axis` must be unit length. */                                                                                  \
+    /* q = (axis * sin(angle/2), cos(angle/2)); `axis` must be unit length. */                                         \
     static inline P##_t P##_from_axis_angle(V##_t axis, T angle) {                                                     \
         const T s = OPS##_half_sin(angle);                                                                             \
         return (P##_t){OPS##_mul(axis.x, s), OPS##_mul(axis.y, s), OPS##_mul(axis.z, s), OPS##_half_cos(angle)};       \
     }                                                                                                                  \
                                                                                                                        \
-    /* a * b: b is applied first, then a. */                                                                           \
+    /* a * b, b applied first: */                                                                                      \
+    /*   x = aw*bx + ax*bw + ay*bz - az*by */                                                                          \
+    /*   y = aw*by - ax*bz + ay*bw + az*bx */                                                                          \
+    /*   z = aw*bz + ax*by - ay*bx + az*bw */                                                                          \
+    /*   w = aw*bw - ax*bx - ay*by - az*bz */                                                                          \
     static inline P##_t P##_mul(P##_t a, P##_t b) {                                                                    \
         return (P##_t){                                                                                                \
             OPS##_sub(OPS##_add(OPS##_add(OPS##_mul(a.w, b.x), OPS##_mul(a.x, b.w)), OPS##_mul(a.y, b.z)),             \
@@ -38,7 +42,8 @@
         };                                                                                                             \
     }                                                                                                                  \
                                                                                                                        \
-    /* Angles applied Z, then X, then Y about the fixed axes, as Unity does. */                                        \
+    /* q = qy * qx * qz, each from_axis_angle about its axis: Z, then X, then Y */                                     \
+    /* about the fixed axes, as Unity does. */                                                                         \
     static inline P##_t P##_from_euler(V##_t angles) {                                                                 \
         const P##_t about_x = P##_from_axis_angle((V##_t){OPS##_one(), OPS##_zero(), OPS##_zero()}, angles.x);         \
         const P##_t about_y = P##_from_axis_angle((V##_t){OPS##_zero(), OPS##_one(), OPS##_zero()}, angles.y);         \
@@ -46,7 +51,8 @@
         return P##_mul(about_y, P##_mul(about_x, about_z));                                                            \
     }                                                                                                                  \
                                                                                                                        \
-    /* Rotates `v` by `q`, which must be unit length. */                                                               \
+    /* With u = (qx, qy, qz) and t = 2 (u x v): v' = v + qw*t + u x t, which is q v q^-1 */                            \
+    /* expanded for a unit `q`. */                                                                                     \
     static inline V##_t P##_rotate(P##_t q, V##_t v) {                                                                 \
         const V##_t u = {q.x, q.y, q.z};                                                                               \
         const V##_t t = V##_scale(V##_cross(u, v), OPS##_two());                                                       \
@@ -54,7 +60,7 @@
     }
 
 #define MATH_DEFINE_QUAT_NORMALIZE(P, V, T, OPS)                                                                       \
-    /* q / |q|. Precondition: `q` is not zero. */                                                                      \
+    /* normalize = q * (1 / sqrt(qx*qx + qy*qy + qz*qz + qw*qw)). Precondition: `q` is not zero. */                    \
     static inline P##_t P##_normalize(P##_t q) {                                                                       \
         const T k = OPS##_div(                                                                                         \
             OPS##_one(),                                                                                               \
@@ -63,7 +69,10 @@
         return (P##_t){OPS##_mul(q.x, k), OPS##_mul(q.y, k), OPS##_mul(q.z, k), OPS##_mul(q.w, k)};                    \
     }                                                                                                                  \
                                                                                                                        \
-    /* The rotation whose right, up and forward axes are the columns r, u and f. */                                    \
+    /* Axes r, u, f as columns. If rx + uy + fz > 0: s = 2 sqrt(1 + rx + uy + fz), */                                  \
+    /*   q = ((uz - fy)/s, (fx - rz)/s, (ry - ux)/s, s/4). */                                                          \
+    /* Else s is from the largest diagonal, e.g. s = 2 sqrt(1 + rx - uy - fz), */                                      \
+    /*   q = (s/4, (ux + ry)/s, (fx + rz)/s, (uz - fy)/s): a small s loses precision. */                               \
     static inline P##_t P##_from_basis(V##_t r, V##_t u, V##_t f) {                                                    \
         const T trace = OPS##_add(OPS##_add(r.x, u.y), f.z);                                                           \
         T s;                                                                                                           \
