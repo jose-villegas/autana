@@ -276,10 +276,11 @@ xychart-beta
 Culling the committed full mesh to the 10,573 triangles the path sees leaves
 its held-out mean ΔE76 at 7.196 (7.197 unculled). Over the whole path at
 30 fps, 1200 frames between the 100 ms samples, `render_compare.py --video
---clear 9CC0E6` counts no hole pixel in the culled lite mesh and at most 8 in
-3 frames of the culled full one, single pixels where a sliver slips between
-the rays. The culled triangles, magenta, from outside and from above with the
-roofs cut away:
+--clear 9CC0E6` counts no hole pixel in the culled lite mesh. The culled full
+one has a known limit: frames 838, 869 and 1146 (27.7, 28.7 and 37.8 s) show
+4, 8 and 4 hole pixels, one or two device pixels each, where a sliver thinner
+than the 3 by 3 rays a pixel slips between them. The culled triangles,
+magenta, from outside and from above with the roofs cut away:
 
 ![Triangles the camera path never sees](../../../../../docs/images/render/appearance-path-culled.png)
 
