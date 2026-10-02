@@ -255,6 +255,7 @@ fi
 # does not build is caught here rather than on the board.
 if [ "$BUILD_ONLY" != 1 ]; then
     "$TEST_DIR/check_app_sources.sh"
+    "$TEST_DIR/check_inline_owners.sh"
 
     # The bootloader hook lives outside SOURCES too: a separate header world
     # entirely, so it gets its own standalone binary rather than joining the

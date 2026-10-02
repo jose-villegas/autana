@@ -1,16 +1,57 @@
 /*
- * Host-only: memory.h over heap_arena.c's two modeled pools. On the board the
- * same calls reach ESP-IDF's heap, whose budget a test cannot pin.
+ * memory.h's kinds. On a host, over heap_arena.c's two modeled pools: their
+ * budgets are known, so a request past one can be shown to fail. On the board,
+ * where the budget cannot be pinned, that each kind's block lands in the
+ * memory the kind names.
  */
 
 #include "suites.h"
 
-#ifndef DEVICE_BUILD
-
+#include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "unity.h"
+
 #include "util/memory.h"
+
+#ifdef DEVICE_BUILD
+#include "esp_memory_utils.h"
+
+static void
+test_each_kinds_block_lands_in_the_memory_it_names(void) {
+    static const struct {
+        memory_kind_t kind;
+        bool external;
+        bool dma;
+        const char* name;
+    } PLACEMENT[] = {
+        {MEMORY_INTERNAL, false, false, "internal"},
+        {MEMORY_DMA, false, true, "dma"},
+        {MEMORY_PSRAM, true, false, "psram"},
+    };
+
+    for (size_t i = 0; i < sizeof PLACEMENT / sizeof PLACEMENT[0]; i++) {
+        unsigned char* block = memory_alloc(64, PLACEMENT[i].kind);
+        TEST_ASSERT_NOT_NULL_MESSAGE(block, PLACEMENT[i].name);
+        block[63] = 0xA5;
+        TEST_ASSERT_EQUAL_MESSAGE(PLACEMENT[i].external, esp_ptr_external_ram(block), PLACEMENT[i].name);
+        TEST_ASSERT_EQUAL_MESSAGE(!PLACEMENT[i].external, esp_ptr_internal(block), PLACEMENT[i].name);
+        if (PLACEMENT[i].dma) {
+            TEST_ASSERT_TRUE_MESSAGE(esp_ptr_dma_capable(block), PLACEMENT[i].name);
+        }
+        memory_free(block);
+    }
+}
+
+void
+suite_memory(void) {
+    RUN_TEST(test_each_kinds_block_lands_in_the_memory_it_names);
+}
+
+#else
+
+#include "heap_arena.h"
 
 #define SMALL_BYTES 64
 
@@ -105,19 +146,46 @@ test_freeing_null_and_dumping_change_nothing(void) {
     }
 }
 
+/* A total is capacity, not free space: holding a block moves one, not the
+ * other. */
+static void
+test_a_kinds_total_is_its_pools_capacity_while_a_block_is_held(void) {
+    const size_t internal = heap_arena_internal_heap_bytes(getenv("HOST_HEAP_ARENA_BYTES"));
+    const size_t psram = heap_arena_psram_heap_bytes(getenv("HOST_HEAP_ARENA_PSRAM_BYTES"));
+
+    const struct {
+        memory_kind_t kind;
+        size_t capacity;
+        const char* name;
+    } TOTALS[] = {
+        {MEMORY_INTERNAL, internal, "internal"},
+        {MEMORY_DMA, internal, "dma"},
+        {MEMORY_PSRAM, psram, "psram"},
+        {MEMORY_8BIT, internal + psram, "8bit"},
+    };
+
+    for (size_t i = 0; i < sizeof TOTALS / sizeof TOTALS[0]; i++) {
+        const size_t free_before = memory_free_bytes(TOTALS[i].kind);
+        TEST_ASSERT_EQUAL_size_t_MESSAGE(TOTALS[i].capacity, memory_total_bytes(TOTALS[i].kind), TOTALS[i].name);
+
+        void* block = memory_alloc(4096, TOTALS[i].kind);
+        TEST_ASSERT_NOT_NULL_MESSAGE(block, TOTALS[i].name);
+        TEST_ASSERT_LESS_THAN_size_t_MESSAGE(free_before, memory_free_bytes(TOTALS[i].kind), TOTALS[i].name);
+        TEST_ASSERT_EQUAL_size_t_MESSAGE(TOTALS[i].capacity, memory_total_bytes(TOTALS[i].kind), TOTALS[i].name);
+
+        memory_free(block);
+    }
+}
+
 void
 suite_memory(void) {
     RUN_TEST(test_a_small_block_of_every_kind_is_writable_and_comes_back);
     RUN_TEST(test_a_request_past_its_kinds_budget_fails_and_spares_the_other_pool);
     RUN_TEST(test_a_block_of_one_kind_leaves_the_other_pools_budget_alone);
     RUN_TEST(test_every_kind_reports_a_total_no_smaller_than_its_free_space_or_largest_block);
+    RUN_TEST(test_a_kinds_total_is_its_pools_capacity_while_a_block_is_held);
     RUN_TEST(test_freeing_null_and_dumping_change_nothing);
 }
-
-#else
-
-void
-suite_memory(void) {}
 
 #endif
 

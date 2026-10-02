@@ -106,7 +106,7 @@ test_framebuffer_fits_with_headroom_to_spare(void) {
     /* The framebuffer is 322 KiB of roughly 424 KiB. If this margin ever
      * vanishes, allocations elsewhere start failing in confusing ways, so it
      * is worth asserting rather than discovering later. */
-    const size_t free_heap = esp_get_free_heap_size();
+    const size_t free_heap = memory_free_bytes(MEMORY_8BIT);
     ESP_LOGI(TAG, "free heap after framebuffer: %u bytes", (unsigned)free_heap);
     TEST_ASSERT_GREATER_THAN_UINT32(40 * 1024, free_heap);
 }
