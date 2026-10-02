@@ -8,10 +8,10 @@ puts both kinds of mesh in the pack.
     python launcher/tools/r3d/mesh_import.py PATH [--mesh NAME]
 
 PATH is an .import.toml, which imports albedo geometry alone, or a
-.scene.toml, which bakes each renderer marked `bake = true` with its lights,
-camera region and tone map. Run from the repository root after installing
-tools/r3d/requirements.txt and initializing third_party/upstream/meshoptimizer.
-Every mesh is baked unless one is named.
+.scene.toml, which writes each placed renderer; renderers marked `bake = true`
+use its lights, camera region and tone map. Run from the repository root after
+installing tools/r3d/requirements.txt and initializing
+third_party/upstream/meshoptimizer. Every mesh is written unless one is named.
 """
 
 import argparse
