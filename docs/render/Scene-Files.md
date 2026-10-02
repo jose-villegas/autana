@@ -105,7 +105,7 @@ then.
 A mesh whose import has a scene-dependent step reads the scene:
 
 - `lighting.light` reads the lights (at least one directional object, `[sky]`
-  or `[ambient]`), `tonemap_white`, and the optional `[indirect]` table;
+  or `[ambient]`), `tonemap_white`, and, with `indirect`, the `[indirect]` table;
 - `visibility` reads the camera's `region`, or its `path` for the
   `camera_path` source.
 

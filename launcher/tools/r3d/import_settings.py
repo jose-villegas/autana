@@ -238,9 +238,6 @@ LEGACY_PROCESS_HOMES = {
 def load_process(process, steps):
     """The seed shared by every random import step."""
     if isinstance(process, dict):
-        light = process.get("light")
-        if isinstance(light, dict) and "indirect" in light:
-            raise SettingsError("[process.light.indirect] moved to [lighting] light.indirect")
         for name, home in LEGACY_PROCESS_HOMES.items():
             if name in process:
                 raise SettingsError(f"[process.{name}] moved to {home}")

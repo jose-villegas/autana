@@ -71,7 +71,7 @@ def camera(extra="", region=True):
 
 def tree_scenes():
     """Every scene file in the tree."""
-    return sorted(path for path in (ROOT / "launcher").rglob("*.scene.toml") if "build" not in path.parts)
+    return sorted(path for path in (ROOT / "launcher").rglob("*.scene.toml") if not {"build", "results"} & set(path.parts))
 
 
 class SettingsTests(unittest.TestCase):
@@ -354,7 +354,7 @@ class SettingsTests(unittest.TestCase):
 
     def test_the_legacy_layout_names_each_options_new_home(self):
         self.rejects(r"\[process.light\] moved to \[lighting\] light", body='[process.light]\nray_offset = 0.5\ncolour_merge_step = 6\n')
-        self.rejects(r"\[process.light.indirect\] moved to \[lighting\] light.indirect",
+        self.rejects(r"\[process.light\] moved to \[lighting\] light",
                      body='[process.light]\nindirect = { bounces = 2, rays = 8, cache_samples = 1 }\n')
         self.rejects(r"variants\[0\]\.face_samples moved to shading = \{ flat = \.\.\. \}", body=VARIANT + "face_samples = { fixed = 4 }\n",
                      output='[output]\ndirectory = "."\n')
