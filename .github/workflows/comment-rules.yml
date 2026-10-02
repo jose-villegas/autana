@@ -59,6 +59,11 @@ jobs:
       - name: Every document is reachable, and every anchor link resolves
         run: python3 scripts/gates/check_doc_index.py
 
+      # The Doc Images job runs only on main, so an image no script makes
+      # would otherwise pass here and fail it there.
+      - name: Every image under docs/images/ is made by a script
+        run: sh launcher/tools/render/render_doc_images.sh --orphans
+
       - name: The board is reached only through scripts/device/
         run: python3 scripts/gates/check_device_access.py
 
