@@ -349,7 +349,16 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     diagonal = float(np.linalg.norm(points0.max(axis=0) - points0.min(axis=0)))
-    render = Renderer(tris, double, vertex_point, size, device, clear)
+    renderers = {}
+
+    def renderer_for(index):
+        """The renderer at view `index`'s size: a reference of either
+        orientation trains the same mesh."""
+        height, width = targets[index].shape[:2]
+        if (width, height) not in renderers:
+            renderers[width, height] = Renderer(tris, double, vertex_point, (width, height), device, clear)
+        return renderers[width, height]
+
     edges = torch.as_tensor(point_edges(tris, vertex_point), device=device)
     start = torch.as_tensor(points0, dtype=torch.float32, device=device)
     points = start.clone().requires_grad_(True)
@@ -370,10 +379,12 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         adam.zero_grad()
         error, predicted = 0.0, 0.0
         for i in chosen:
+            render = renderer_for(i)
             clip = render.clip(points, matrices[i])
             error = error + delta_e76(render(points, colours, matrices[i], clip), targets[i]).mean() / len(chosen)
             if cost is not None:
-                predicted = predicted + predicted_ms(torch, cost, clip, render.tris.long(), render.double, size, scale) / len(chosen)
+                predicted = predicted + predicted_ms(torch, cost, clip, render.tris.long(), render.double, render.size,
+                                                     scale) / len(chosen)
             if normal_weight:
                 distance, _angles = normal_l1(render, points, (matrices[i], None, normals[i], views[i][3]), clip)
                 error = error + normal_weight * distance / len(chosen)

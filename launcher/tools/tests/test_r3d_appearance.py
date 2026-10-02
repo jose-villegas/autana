@@ -264,6 +264,24 @@ class AppearanceFitTests(unittest.TestCase):
                                               lr_colour=0.05, laplacian=0.0, report=0)
             self.assertLess(np.mean(history[-10:]), 0.5 * np.mean(history[:3]))
 
+    def test_views_of_both_orientations_train_one_mesh_each_at_its_own_size(self):
+        from r3d.appearance_simplify import Renderer, optimise
+
+        with tempfile.TemporaryDirectory() as directory:
+            mesh = start_mesh(write_start(directory))
+        moved = torch.as_tensor(mesh[0] * [1.3, 0.8, 1.0], dtype=torch.float32, device="cuda")
+        colours = torch.as_tensor(mesh[1][::-1].copy(), dtype=torch.float32, device="cuda")
+        views = []
+        for width, height in ((24, 20), (20, 24)):
+            matrix = projection([0.2, -0.1, 3.0], [0.0, 0.0, -1.0], width, height, 0.62, 0.5)
+            truth = Renderer(mesh[2], mesh[3], mesh[5], (2 * width, 2 * height), "cuda")
+            target = truth(moved, colours, torch.as_tensor(matrix, dtype=torch.float32, device="cuda")).detach().cpu().numpy()
+            self.assertEqual(target.shape[:2], (2 * height, 2 * width))
+            views.append((matrix, target))
+        _points, _rgb, history = optimise(mesh, views, None, steps=150, batch=2, lr_position=0.01, lr_colour=0.05,
+                                          laplacian=0.0, report=0)
+        self.assertLess(np.mean(history[-10:]), 0.5 * np.mean(history[:3]))
+
     def test_the_normal_term_turns_the_surface_toward_the_reference_normals(self):
         from r3d.appearance_simplify import Renderer, normal_error, optimise
 
