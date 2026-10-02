@@ -374,6 +374,13 @@ test_fixed_dot_fast_paths_floor_each_term_and_add_the_constant(void) {
 }
 
 static void
+test_the_narrow_dot_is_a_plain_32_bit_sum_then_a_floor_shift(void) {
+    TEST_ASSERT_EQUAL_INT32((12 + 30 + 56 + 100) >> 2, mathx_dot3_narrow(3, 4, 5, 6, 7, 8, 100, 2));
+    TEST_ASSERT_EQUAL_INT32(-1, mathx_dot3_narrow(-1, 1, 0, 0, 0, 0, 0, 3)); /* floors toward -infinity */
+    TEST_ASSERT_EQUAL_INT32(1 << 29, mathx_dot3_narrow(1 << 14, 1 << 15, 0, 0, 0, 0, 0, 0));
+}
+
+static void
 test_fixed_matrix_apply_matches_float(void) {
     const mat4f_t mf = mat4f_from_trs((vec3f_t){1.0F, -2.0F, 3.0F}, quatf_from_euler((vec3f_t){0.4F, -0.3F, 0.2F}),
                                       (vec3f_t){2.0F, 1.0F, 0.5F});
@@ -401,6 +408,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_int32_dot_widens_to_int64);
     RUN_TEST(test_fixed_dot_fast_paths_floor_each_term_and_add_the_constant);
     RUN_TEST(test_fixed_matrix_apply_matches_float);
+    RUN_TEST(test_the_narrow_dot_is_a_plain_32_bit_sum_then_a_floor_shift);
     RUN_TEST(test_fixed_multiply_and_divide_round_ties_away_from_zero_in_both_signs);
     RUN_TEST(test_fixed_divide_handles_signs_saturation_and_the_most_negative_divisor);
     RUN_TEST(test_fixed_square_root_floors_and_survives_the_largest_input);

@@ -209,6 +209,7 @@ identity_view(float focal) {
     v.center_x = PANEL_W / 2;
     v.center_y = PANEL_H / 2;
     v.scale = PANEL_W / 2;
+    v.units_ok = false;
     return v;
 }
 
@@ -836,7 +837,7 @@ test_spline_cs_matches_transforming_the_world_space_spline(void) {
 }
 
 /* A floor point through the plane helper is the full transform's result, within
- * the half-unit rounding of a Q16.16 sum, on a real rotated, translated view. */
+ * a few 1/512 m (the plane's steps carry the Q9 matrix, the full transform's t axis more bits), on a real rotated, translated view. */
 static void
 test_plane_points_match_the_full_camera_space_transform(void) {
     const boot_anim_view_t view = boot_anim_view(PANEL_W, PANEL_H, CURVE_DONE_MS);
@@ -846,9 +847,31 @@ test_plane_points_match_the_full_camera_space_transform(void) {
             for (int32_t im = -9000; im <= 9000; im += 3000) {
                 const vec3x_t want = boot_anim_to_camera_space(re, im, t, &view);
                 const vec3x_t got = boot_anim_plane_point(&plane, re, im);
-                TEST_ASSERT_INT32_WITHIN(1, want.x, got.x);
-                TEST_ASSERT_INT32_WITHIN(1, want.y, got.y);
-                TEST_ASSERT_INT32_WITHIN(1, want.z, got.z);
+                TEST_ASSERT_INT32_WITHIN(3, want.x, got.x);
+                TEST_ASSERT_INT32_WITHIN(3, want.y, got.y);
+                TEST_ASSERT_INT32_WITHIN(3, want.z, got.z);
+            }
+        }
+    }
+}
+
+/* The narrow transform (three 32-bit products) against the 64-bit one over the
+ * seed's whole motion: near inputs through either agree within the wide path's Q9 matrix error (about 1/1000 of the distance), and
+ * the seed's views are inside the narrow path's range. */
+static void
+test_the_narrow_camera_transform_agrees_with_the_wide_one_across_the_motion(void) {
+    for (uint32_t ms = 0; ms <= BOOT_ANIM_MS; ms += 250) {
+        const boot_anim_view_t view = boot_anim_view(PANEL_W, PANEL_H, ms);
+        TEST_ASSERT_TRUE_MESSAGE(view.units_ok, "a seed view fell outside the narrow transform's range");
+        for (int32_t re = -50000; re <= 50000; re += 25000) {
+            for (int32_t t = -30000; t <= 30000; t += 15000) {
+                const int32_t im = (re / 2) + 7;
+                const vec3x_t narrow = r3d_to_camera_space_units(&view, re, t, im);
+                const vec3x_t wide =
+                    mat4x_apply(&view.matrix, (vec3x_t){re * 16, t * (BOOT_ANIM_SPIRAL_Q9 / 2), im * 16});
+                TEST_ASSERT_INT32_WITHIN(24, wide.x, narrow.x);
+                TEST_ASSERT_INT32_WITHIN(24, wide.y, narrow.y);
+                TEST_ASSERT_INT32_WITHIN(24, wide.z, narrow.z);
             }
         }
     }
@@ -1593,6 +1616,7 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_a_span_climbs_steadily_when_its_points_do);
     RUN_TEST(test_spline_cs_matches_transforming_the_world_space_spline);
     RUN_TEST(test_plane_points_match_the_full_camera_space_transform);
+    RUN_TEST(test_the_narrow_camera_transform_agrees_with_the_wide_one_across_the_motion);
     RUN_TEST(test_curve_lod_steps_keeps_full_detail_for_a_wide_chord);
     RUN_TEST(test_curve_lod_steps_collapses_a_tiny_chord_to_one_step);
     RUN_TEST(test_curve_lod_steps_keeps_full_detail_when_the_probe_cannot_project);
