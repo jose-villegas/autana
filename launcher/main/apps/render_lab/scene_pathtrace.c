@@ -67,7 +67,7 @@ scene_pathtrace_enter(void) {
 
     accum = app_arena_take(sizeof(*accum) * (size_t)GFX_WIDTH * GFX_HEIGHT, _Alignof(rt_path_accum_px_t));
 
-    current_quarter = display_shell_quarter();
+    current_quarter = display_quarter_now();
     rt_cornell_camera_init(&camera, (viewport_t){GFX_WIDTH, GFX_HEIGHT, current_quarter});
     restart_render();
 }
@@ -90,7 +90,7 @@ static void
 scene_pathtrace_frame(uint32_t dt_ms, bool band_mode_active) {
     assert(!band_mode_active); /* needs_full_framebuffer keeps the app out of band mode for this scene */
 
-    const int quarter = display_shell_quarter();
+    const int quarter = display_quarter_now();
     if (quarter != current_quarter) {
         current_quarter = quarter;
         rt_cornell_camera_init(&camera, (viewport_t){GFX_WIDTH, GFX_HEIGHT, quarter});

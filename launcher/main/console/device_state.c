@@ -25,7 +25,7 @@ device_state_read(device_state_t* out) {
 
     out->temp_ok = board_temp_sensor_read_celsius(&out->temp_c) == BOARD_TEMP_SENSOR_OK;
 
-    out->quarter = display_shell_quarter();
+    out->quarter = display_quarter_now();
 
     out->imu_ready = imu_ready();
     out->imu_read_ok = out->imu_ready && imu_read(&out->imu);

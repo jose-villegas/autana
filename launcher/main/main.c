@@ -13,7 +13,10 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "app.h"
@@ -24,13 +27,14 @@
 #include "boot/post_ui.h"
 #include "build_variant.h"
 #include "display/display.h"
-#include "display/panel_clock.h"
+#include "display/display_shell.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
-#include "input/buttons.h"
 #include "input/gesture.h"
 #include "input/imu.h"
 #include "input/imu_rotation.h"
+#include "input/input.h"
+#include "input/input_shell.h"
 #include "input/tilt.h"
 #include "input/touch.h"
 #include "scene/scene_shell.h"
@@ -43,6 +47,8 @@
 #include "util/build_id.h"
 #include "util/frame_cost.h"
 #include "util/frame_watch.h"
+#include "util/memory.h"
+#include "util/timing.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "console/console.h"
@@ -60,19 +66,11 @@
 #include "suites.h"
 #endif
 
-#include "bsp/esp-bsp.h"
 #include "esp_log.h"
-#include "esp_timer.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "nvs.h"
-#include "nvs_flash.h"
 
 static const char* TAG = "shell";
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-#include "esp_heap_caps.h"
-
 static size_t app_internal_free_before_enter;
 static size_t app_8bit_free_before_enter;
 
@@ -84,23 +82,20 @@ static size_t app_8bit_free_before_enter;
  * loses it. */
 static void
 heap_mark(const char* where) {
-    ESP_LOGI(TAG, "HEAPMARK %-18s free %6u largest %6u", where, (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
-             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+    ESP_LOGI(TAG, "HEAPMARK %-18s free %6u largest %6u", where, (unsigned)memory_free_bytes(MEMORY_DMA),
+             (unsigned)memory_largest_block(MEMORY_DMA));
 }
 #else
 #define heap_mark(where) ((void)0)
 #endif
 
-#define HOME_HINT_WIDTH   120
-#define HOME_HINT_HEIGHT  4
-#define HOME_HINT_MARGIN  10
-#define HOME_HINT_RGB     0x4A5268
-
-/* 10 Hz: sufficient for reorientation without lag. */
-#define DISPLAY_SAMPLE_MS 100
+#define HOME_HINT_WIDTH  120
+#define HOME_HINT_HEIGHT 4
+#define HOME_HINT_MARGIN 10
+#define HOME_HINT_RGB    0x4A5268
 
 /* A stall must not reach an app as one long step. */
-#define FRAME_DT_MAX_MS   250
+#define FRAME_DT_MAX_MS  250
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #define BUILD_MARK_GLYPH        8
@@ -116,7 +111,7 @@ static char build_mark_text[BUILD_MARK_CHARS + 1];
  * the framebuffer the way the UI's own text is. */
 static void
 draw_build_mark(void) {
-    const int quarter = display_shell_quarter();
+    const int quarter = display_quarter_now();
     const int screen_w = (quarter % 2 == 0) ? GFX_WIDTH : GFX_HEIGHT;
     const int screen_h = (quarter % 2 == 0) ? GFX_HEIGHT : GFX_WIDTH;
     const mu_Rect upright =
@@ -132,80 +127,6 @@ draw_build_mark(void) {
     }
 }
 #endif
-
-/* panel clock */
-
-_Static_assert(PANEL_CLOCK_SLOW_HZ == GFX_PANEL_CLOCK_SLOW_HZ && PANEL_CLOCK_FAST_HZ == GFX_PANEL_CLOCK_FAST_HZ,
-               "panel_clock.h's rates must match gfx.h's");
-
-#define PANEL_CLOCK_NVS_NAMESPACE "shell"
-#define PANEL_CLOCK_NVS_KEY       "panel_hz"
-
-static panel_clock_t shell_panel_clock;
-
-static bool
-nvs_ready(void) {
-    esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        err = nvs_flash_erase();
-        if (err == ESP_OK) {
-            err = nvs_flash_init();
-        }
-    }
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "NVS unavailable, settings are not kept: %s", esp_err_to_name(err));
-    }
-    return err == ESP_OK;
-}
-
-static void
-load_system_panel_clock(void) {
-    int32_t saved = 0;
-    bool found = false;
-    nvs_handle_t h;
-    if (nvs_ready() && nvs_open(PANEL_CLOCK_NVS_NAMESPACE, NVS_READONLY, &h) == ESP_OK) {
-        found = nvs_get_i32(h, PANEL_CLOCK_NVS_KEY, &saved) == ESP_OK;
-        nvs_close(h);
-    }
-    panel_clock_init(&shell_panel_clock, found, saved, GFX_QSPI_HZ);
-    gfx_set_panel_clock_hz(panel_clock_system_hz(&shell_panel_clock));
-}
-
-/* Whatever the app that just started or exited did to the clock or to heal,
- * the next context begins from the system value and heal's defaults. */
-static void
-restore_system_display_state(void) {
-    gfx_set_panel_clock_hz(panel_clock_for_switch(&shell_panel_clock));
-    gfx_heal_restore_defaults();
-}
-
-void
-shell_set_system_panel_clock_hz(int hz) {
-    if (hz == panel_clock_system_hz(&shell_panel_clock) || !panel_clock_set_system(&shell_panel_clock, hz)) {
-        return;
-    }
-    gfx_set_panel_clock_hz(hz);
-    nvs_handle_t h;
-    if (!nvs_ready() || nvs_open(PANEL_CLOCK_NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) {
-        return;
-    }
-    if (nvs_set_i32(h, PANEL_CLOCK_NVS_KEY, hz) != ESP_OK || nvs_commit(h) != ESP_OK) {
-        ESP_LOGW(TAG, "could not save the panel clock choice");
-    }
-    nvs_close(h);
-}
-
-int
-shell_system_panel_clock_hz(void) {
-    return panel_clock_system_hz(&shell_panel_clock);
-}
-
-static display_t shell_display;
-
-int
-display_shell_quarter(void) {
-    return display_quarter(&shell_display);
-}
 
 /* Content-driven, not a fixed physical reference: the exit gesture lives
  * on whichever PHYSICAL edge the content's logical bottom maps to,
@@ -326,7 +247,7 @@ show_post_failures(void) {
     gfx_present();
 
     /* Long timeout for manual action, short for unattended use. */
-    vTaskDelay(pdMS_TO_TICKS(8000));
+    timing_sleep_ms(8000);
 }
 
 /* What the boot animation dissolves into: the home screen as its first frame
@@ -386,8 +307,8 @@ exit_app(const app_t** current) {
     (*current)->exit();
     scene_unload_all();
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    const size_t internal_after_exit = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-    const size_t eight_bit_after_exit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    const size_t internal_after_exit = memory_free_bytes(MEMORY_INTERNAL);
+    const size_t eight_bit_after_exit = memory_free_bytes(MEMORY_8BIT);
     if (internal_after_exit < app_internal_free_before_enter) {
         ESP_LOGW(TAG, "App %s kept %u internal heap bytes (other tasks can move this)", (*current)->name,
                  (unsigned)(app_internal_free_before_enter - internal_after_exit));
@@ -398,7 +319,7 @@ exit_app(const app_t** current) {
     }
 #endif
     app_arena_rewind(0);
-    restore_system_display_state();
+    display_restore_system_state();
     ui_invalidate();
     frame_watch_restart();
     *current = NULL;
@@ -426,11 +347,11 @@ start_app(const app_t** current, const app_t* next) {
     ESP_LOGI(TAG, "Starting %s", (*current)->name);
     system_navigation_init(&system_navigation);
     gfx_request_full_redraw();
-    restore_system_display_state();
+    display_restore_system_state();
     exit_requested = false;
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    app_internal_free_before_enter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-    app_8bit_free_before_enter = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    app_internal_free_before_enter = memory_free_bytes(MEMORY_INTERNAL);
+    app_8bit_free_before_enter = memory_free_bytes(MEMORY_8BIT);
 #endif
     (*current)->enter();
     frame_ready = false;
@@ -446,14 +367,14 @@ paint_control_center_backdrop(uint32_t dt_ms) {
     ui_launcher_frame(NULL, dt_ms);
     ui_control_center_dim_backdrop();
     ui_invalidate();
-    control_center_backdrop_quarter = display_shell_quarter();
+    control_center_backdrop_quarter = display_quarter_now();
 }
 
 static void
 step_control_center(const input_t* input, uint32_t dt_ms) {
     const bool redraw_requested = gfx_full_redraw_pending();
     gfx_full_redraw_clear_pending();
-    if (redraw_requested || control_center_backdrop_quarter != display_shell_quarter()) {
+    if (redraw_requested || control_center_backdrop_quarter != display_quarter_now()) {
         paint_control_center_backdrop(dt_ms);
     }
     ui_control_center_frame(input);
@@ -466,7 +387,7 @@ static tilt_t launcher_tilt;
 static void
 feed_launcher_gravity(uint32_t dt_ms) {
     imu_sample_t sample;
-    if (!imu_ready() || !imu_read(&sample)) {
+    if (!imu_read(&sample)) {
         return;
     }
     const vec2i_t gravity = imu_gravity_screen(&sample);
@@ -531,7 +452,7 @@ step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
 
 static void
 step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
-    const gesture_edge_t exit_edge = exit_edge_for_quarter(display_shell_quarter());
+    const gesture_edge_t exit_edge = exit_edge_for_quarter(display_quarter_now());
 
     if (*current == NULL) {
         step_launcher(current, input, exit_edge, dt_ms);
@@ -787,13 +708,6 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
 #endif
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-static void
-park_forever(void) {
-    while (1) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-}
-
 /* Two lines can never both be reached once a verb and an app's prefix, or
  * two apps' own prefixes, read the same: loud here, at boot, rather than
  * silently losing one of them to whichever an unclaimed line happens to
@@ -811,7 +725,9 @@ check_console_prefix_clashes(void) {
     const char** app_prefixes = malloc((size_t)app_count * sizeof(*app_prefixes));
     if (app_prefixes == NULL) {
         ESP_LOGE(TAG, "cannot check console prefixes: out of memory");
-        park_forever();
+        while (1) {
+            timing_sleep_ms(1000);
+        }
     }
     int i = 0;
     for (const app_t* app = app_list(); app != NULL; app = app->next) {
@@ -833,7 +749,9 @@ check_console_prefix_clashes(void) {
         case CONSOLE_CLASH_VERB:
         case CONSOLE_CLASH_APP: ESP_LOGE(TAG, "console prefix '%s' clashes with '%s'", from, other); break;
     }
-    park_forever();
+    while (1) {
+        timing_sleep_ms(1000);
+    }
 }
 #endif
 
@@ -857,22 +775,22 @@ app_boot_init(void) {
     post_run_before_display();
     heap_mark("after sd probe");
 
-    if (!gfx_init()) {
+    if (!display_start()) {
         ESP_LOGE(TAG, "Graphics failed to start; nothing more to do");
         while (1) {
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            timing_sleep_ms(1000);
         }
     }
 
     heap_mark("after gfx_init");
-    load_system_panel_clock();
+    display_load_panel_clock();
 
     if (!post_run_after_display()) {
         show_post_failures();
     }
     heap_mark("after post");
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    heap_caps_dump(MALLOC_CAP_DMA);
+    memory_dump(MEMORY_DMA);
 #endif
 
 #if CONFIG_LAUNCHER_SELFTEST && CONFIG_LAUNCHER_SELFTEST_AUTORUN
@@ -888,25 +806,19 @@ app_boot_init(void) {
      * animation can dissolve into it. ui_init() resets the transform to
      * identity, so DISPLAY_DEFAULT_QUARTER is applied here or the board
      * would start upright and visibly turn into place. */
-    display_init(&shell_display);
-    shell_display.quarter = DISPLAY_DEFAULT_QUARTER;
+    display_reset_quarter();
     ui_launcher_init();
-    ui_set_transform(ui_transform_quarter_turn(display_quarter(&shell_display), GFX_WIDTH, GFX_HEIGHT));
+    ui_set_transform(ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT));
 
     boot_anim_set_ending_backdrop(paint_launcher_under_boot);
     boot_anim_run();
     gfx_request_full_redraw();
     heap_mark("after boot anim");
 
-    touch_start();
-    buttons_start();
+    input_start();
 #if CONFIG_LAUNCHER_DEVELOPMENT
     console_start();
 #endif
-
-    if (!imu_init()) {
-        ESP_LOGW(TAG, "No IMU - display orientation stays upright");
-    }
     heap_mark("shell ready");
 }
 
@@ -936,18 +848,9 @@ run_pending_selftest_suite(void) {
 #endif
 
 static void
-sample_display_orientation(int64_t now_us, int64_t* next_sample_us) {
-    if (now_us < *next_sample_us) {
-        return;
-    }
-    *next_sample_us = now_us + (int64_t)DISPLAY_SAMPLE_MS * 1000;
-
-    imu_sample_t sample;
-    if (!imu_ready() || !imu_read(&sample)) {
-        return;
-    }
-    if (display_update(&shell_display, imu_gravity_screen(&sample))) {
-        ui_set_transform(ui_transform_quarter_turn(display_quarter(&shell_display), GFX_WIDTH, GFX_HEIGHT));
+apply_display_orientation(int64_t now_us) {
+    if (display_sample_orientation(now_us)) {
+        ui_set_transform(ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT));
         gfx_request_full_redraw();
     }
 }
@@ -1036,7 +939,7 @@ run_console_navigation(const app_t** current, input_t* input, uint32_t dt_ms) {
     if (!console_navigation_take_request(&navigation, name, sizeof name)) {
         return false;
     }
-    const gesture_edge_t exit_edge = exit_edge_for_quarter(display_shell_quarter());
+    const gesture_edge_t exit_edge = exit_edge_for_quarter(display_quarter_now());
     if (navigation == CONSOLE_NAVIGATION_APPS) {
         console_list_apps(*current);
         return false;
@@ -1079,8 +982,7 @@ report_gesture_completion(void) {
     if (!touch_gesture_take_completion(&completion)) {
         return;
     }
-    const char* verb = completion == TOUCH_GESTURE_TAP ? "TAP" : completion == TOUCH_GESTURE_PRESS ? "PRESS" : "DRAG";
-    printf("%s_OK\n", verb);
+    printf("%s_OK\n", touch_gesture_name(completion));
     fflush(stdout);
 }
 
@@ -1144,12 +1046,11 @@ static void
 app_main_loop(void) {
     const app_t* current = NULL; /* NULL means the launcher is showing */
     input_t input = {0};
-    int64_t previous_us = esp_timer_get_time();
+    int64_t previous_us = timing_now_us();
 #if CONFIG_LAUNCHER_DEVELOPMENT
     int64_t fps_window_start = previous_us;
     uint32_t frames = 0;
 #endif
-    int64_t next_display_sample_us = previous_us;
 
     int app_count = 0;
     for (const app_t* app = app_list(); app != NULL; app = app->next) {
@@ -1164,7 +1065,7 @@ app_main_loop(void) {
     frame_watch_start();
 
     while (1) {
-        const int64_t now_us = esp_timer_get_time();
+        const int64_t now_us = timing_now_us();
         uint32_t dt_ms = (uint32_t)((now_us - previous_us) / 1000);
         previous_us = now_us;
         if (dt_ms > FRAME_DT_MAX_MS) {
@@ -1176,14 +1077,13 @@ app_main_loop(void) {
         run_pending_selftest_suite();
 #endif
 
-        touch_read(&input);
-        buttons_read(&input.boot, &input.power);
-        sample_display_orientation(now_us, &next_display_sample_us);
+        input_poll(&input);
+        apply_display_orientation(now_us);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
         if (run_development_pre_frame(&current, &input, dt_ms)) {
             FRAME_COST_END(rest_began, "frame.rest");
-            vTaskDelay(1);
+            timing_yield();
             continue;
         }
 #endif
@@ -1201,7 +1101,7 @@ app_main_loop(void) {
         FRAME_COST_END(rest_began, "frame.rest");
 
         /* Yield so the idle task can feed the watchdog. */
-        vTaskDelay(1);
+        timing_yield();
     }
 }
 

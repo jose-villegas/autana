@@ -11,7 +11,7 @@
 typedef struct {
     int width;
     int height;
-    int quarter; /* 0..3, as display_shell_quarter() numbers a turn */
+    int quarter; /* 0..3, as display_quarter_now() numbers a turn */
 } viewport_t;
 
 /* How the panel's own axes lie in the upright picture once it is read at

@@ -1,0 +1,135 @@
+"""Regression tests for scripts/gates/check_shell_firmware.py."""
+import pathlib
+import subprocess
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
+import check_shell_firmware  # noqa: E402
+
+
+def write_main(root, main_c):
+    (pathlib.Path(root) / "launcher/main").mkdir(parents=True, exist_ok=True)
+    (pathlib.Path(root) / "launcher/main/main.c").write_text(main_c, encoding="utf-8")
+
+
+class ProblemsTest(unittest.TestCase):
+    def problems(self, main_c):
+        with tempfile.TemporaryDirectory() as temp:
+            if main_c is not None:
+                write_main(temp, main_c)
+            return check_shell_firmware.problems(temp)
+
+    def test_a_shell_that_goes_through_the_modules_passes(self):
+        self.assertEqual(self.problems(
+            '#include "input/input_shell.h"\n#include "util/timing.h"\n'
+            "void f(input_t* in) { input_poll(in); timing_yield(); }\n"), [])
+
+    def test_this_firmwares_own_driver_headers_and_calls_are_not_vendor_code(self):
+        self.assertEqual(self.problems(
+            '#include "input/touch.h"\n#include "input/imu.h"\n#include "input/buttons.h"\n'
+            "void f(imu_sample_t* s) { touch_start(); imu_read(s); buttons_start(); }\n"), [])
+
+    def test_each_vendor_include_fails(self):
+        for header in ("esp_timer.h", "esp_err.h", "esp_heap_caps.h", "nvs_flash.h", "nvs.h", "freertos/task.h",
+                       "bsp/esp-bsp.h", "driver/gpio.h", "hal/gpio_ll.h", "soc/soc.h", "rom/ets_sys.h"):
+            with self.subTest(header=header):
+                self.assertEqual(self.problems(f'#include "{header}"\n'),
+                                 [f"launcher/main/main.c:1: includes {header}"])
+
+    def test_an_angle_bracket_include_fails_too(self):
+        self.assertEqual(self.problems("#include <esp_timer.h>\n"), ["launcher/main/main.c:1: includes esp_timer.h"])
+
+    def test_an_include_inside_a_conditional_fails(self):
+        found = self.problems('#if CONFIG_X\n#include "esp_heap_caps.h"\n#endif\n')
+        self.assertEqual(found, ["launcher/main/main.c:2: includes esp_heap_caps.h"])
+
+    def test_logging_is_not_firmware_but_the_timer_beside_it_is(self):
+        logging = ('#include "esp_log.h"\nvoid f(void) { ESP_LOGI(T, "x"); ESP_LOGW(T, "x"); ESP_LOGE(T, "x"); '
+                   'ESP_LOGD(T, "x"); ESP_LOGV(T, "x"); }\n')
+        self.assertEqual(self.problems(logging), [])
+        self.assertEqual(self.problems("long f(void) { return esp_timer_get_time(); }\n"),
+                         ["launcher/main/main.c:1: uses esp_timer_get_time"])
+
+    def test_a_vendor_name_fails(self):
+        for name in ("esp_err_to_name", "ESP_ERROR_CHECK", "nvs_flash_init", "NVS_READONLY", "heap_caps_malloc",
+                     "MALLOC_CAP_DMA", "bsp_display_start", "vTaskDelay", "xTaskCreate", "xQueueSend",
+                     "uxTaskGetStackHighWaterMark", "ulTaskNotifyTake", "pvPortMalloc", "portMAX_DELAY",
+                     "configTICK_RATE_HZ", "pdMS_TO_TICKS", "TaskHandle_t", "SemaphoreHandle_t", "TickType_t"):
+            with self.subTest(name=name):
+                self.assertEqual(self.problems(f"int x = {name};\n"), [f"launcher/main/main.c:1: uses {name}"])
+
+    def test_this_firmwares_own_names_that_resemble_vendor_ones_pass(self):
+        self.assertEqual(self.problems("int x = vec_len(a) + value_of(b) + extent + pdf_pages + config_load();\n"), [])
+
+    def test_a_comment_or_string_naming_vendor_code_is_not_code(self):
+        self.assertEqual(self.problems(
+            '/* esp_timer_get_time() and vTaskDelay */\n// nvs_flash_init\nconst char* s = "esp_err_t";\n'), [])
+
+    def test_a_comment_spanning_lines_keeps_later_line_numbers(self):
+        self.assertEqual(self.problems("/* one\ntwo */\nint x = vTaskDelay;\n"),
+                         ["launcher/main/main.c:3: uses vTaskDelay"])
+
+    def test_a_name_is_reported_once_per_line(self):
+        self.assertEqual(self.problems("void f(void) { vTaskDelay(1); vTaskDelay(2); }\n"),
+                         ["launcher/main/main.c:1: uses vTaskDelay"])
+
+    def test_a_missing_main_is_a_problem_not_a_pass(self):
+        found = self.problems(None)
+        self.assertEqual(len(found), 1)
+        self.assertIn("not found", found[0])
+
+
+class CommandLineTest(unittest.TestCase):
+    def run_gate(self, main_c, *arguments):
+        with tempfile.TemporaryDirectory() as temp:
+            write_main(temp, main_c)
+            script = pathlib.Path(check_shell_firmware.__file__)
+            return subprocess.run([sys.executable, str(script), *arguments], cwd=temp, capture_output=True,
+                                  text=True)
+
+    def test_a_clean_main_exits_zero(self):
+        result = self.run_gate("int x;\n")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("0 vendor firmware use(s)", result.stdout)
+
+    def test_a_main_that_touches_vendor_code_exits_one_and_names_the_line(self):
+        result = self.run_gate('#include "esp_timer.h"\n')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("launcher/main/main.c:1: includes esp_timer.h", result.stdout)
+
+    def test_an_argument_exits_two(self):
+        self.assertEqual(self.run_gate("int x;\n", "main.c").returncode, 2)
+
+
+SYNTHETIC_MAIN = """#include "esp_timer.h"
+#include "freertos/task.h"
+#include "esp_log.h"
+
+static const char* TAG = "shell";
+
+void
+app_main(void) {
+    nvs_flash_init();
+    void* p = heap_caps_malloc(8, MALLOC_CAP_DMA);
+    vTaskDelay(1);
+    ESP_LOGI(TAG, "logging is fine");
+}
+"""
+
+
+class SyntheticMainTest(unittest.TestCase):
+    def test_each_kind_of_violation_is_caught_and_logging_is_not(self):
+        with tempfile.TemporaryDirectory() as temp:
+            write_main(temp, SYNTHETIC_MAIN)
+            found = check_shell_firmware.problems(temp)
+        for expected in ("includes esp_timer.h", "includes freertos/task.h", "uses nvs_flash_init",
+                         "uses heap_caps_malloc", "uses MALLOC_CAP_DMA", "uses vTaskDelay"):
+            self.assertTrue(any(line.endswith(expected) for line in found), expected)
+        self.assertFalse(any("esp_log" in line or "ESP_LOGI" in line for line in found))
+
+
+if __name__ == "__main__":
+    unittest.main()

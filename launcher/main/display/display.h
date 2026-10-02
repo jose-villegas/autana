@@ -2,9 +2,10 @@
  * display: which way is "up", decided once for the whole shell.
  *
  * Orientation belongs to the physical device, not to any one app's panel, so
- * it is decided here and main.c applies it; every UI surface follows. No IMU,
- * no gfx, no ui: the gravity vector arrives already read, which is what lets
- * this link and run on a host.
+ * it is decided here and the shell applies it; every UI surface follows.
+ * display.c has no IMU, no gfx, no ui: the gravity vector arrives already
+ * read, which is what lets it link and run on a host. The shell's side is
+ * display_shell.h.
  *
  * The hysteresis is the module, not a refinement of it. Snapping to whichever
  * of gx/gy is larger puts the boundary at 45 degrees, where a board held near
@@ -44,7 +45,7 @@ typedef struct {
      * state this module keeps. The hysteresis test above is a pure
      * function of (quarter, gx, gy); nothing here accumulates over
      * time or needs a clock, which is also why display_update() takes
-     * no dt: main.c controls how often it is called, and the decision
+     * no dt: the caller controls how often it is called, and the decision
      * itself does not care. */
     int quarter;
 } display_t;
@@ -70,8 +71,8 @@ typedef struct {
 #define DISPLAY_LANDSCAPE_UPSIDE_DOWN 3
 
 /* The orientation the SHELL applies at boot, before the first gravity
- * sample arrives; main.c sets this once, after display_init(), which
- * stays a neutral 0: this is a physical fact about one board, not
+ * sample arrives; display_reset_quarter() sets it once, after display_init(),
+ * which stays a neutral 0: this is a physical fact about one board, not
  * something a device-agnostic module should bake into its reset.
  * DISPLAY_LANDSCAPE, not a bare 1: this board is normally held sideways
  * to its native upright, and the table above confirms that is quarter
@@ -81,8 +82,8 @@ typedef struct {
 void display_init(display_t* d);
 
 /* Feed the current gravity vector, in whatever consistent units the caller's
- * IMU reading uses (screen X/Y axes, not raw sensor axes; see main.c's own
- * mapping). Returns true when d->quarter actually changed, which is main.c's
+ * IMU reading uses (screen X/Y axes, not raw sensor axes; see
+ * imu_gravity_screen()). Returns true when d->quarter actually changed, which is the caller's
  * cue to push a new ui_set_transform(). */
 bool display_update(display_t* d, vec2i_t gravity);
 
@@ -91,12 +92,20 @@ int display_quarter(const display_t* d);
 /* Returns the horizontal inset where a row meets a rounded canvas corner. */
 int display_panel_corner_inset(int radius, int canvas_height, int row);
 
-/* The shell's own orientation: the quarter main.c last set the UI
- * transform to. Declared here but defined in main.c, not display.c:
- * main.c is the only thing that calls display_update() and owns the
- * display_t the decision is made against, the same app.h split between
- * "declared where callers look" and "defined where the instance lives".
- * For an app drawing through the shell's transform: knowing when it
- * changed underneath you, without reading the IMU again or duplicating
- * the hysteresis above. */
-int display_shell_quarter(void);
+/* The shell's own orientation, for an app drawing through the shell's
+ * transform: knowing when it changed underneath you, without reading the IMU
+ * again or duplicating the hysteresis above. */
+int display_quarter_now(void);
+
+/* The panel clock. Every app starts at the system value, the user's choice
+ * kept across reboots. An app wanting another rate sets it with
+ * gfx_set_panel_clock_hz(); the shell puts the system value back, and gfx
+ * heal back to its defaults, whenever an app starts or exits, so no app
+ * restores either. The setter keeps the choice across a reboot; unchanged and
+ * unsupported rates are ignored. */
+int display_system_panel_clock_hz(void);
+void display_set_system_panel_clock_hz(int hz);
+
+/* Whatever the app that just started or exited did to the panel clock or to
+ * heal, the next context begins from the system value and heal's defaults. */
+void display_restore_system_state(void);
