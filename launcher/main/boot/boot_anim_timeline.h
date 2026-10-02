@@ -118,10 +118,10 @@
 #define BOOT_ANIM_GRID_MAX 64
 /* The camera's focal length - 0 is an orthographic
  * projection (see boot_anim.h's "The projection" section), any other
- * value a perspective one; VEC4I_ONE (512) is the "normal"
- * lens default. Authored directly in this unit - it is a lens
- * property, not a position or angle, so meters/degrees do not apply. */
-#define BOOT_ANIM_CAMERA_FOCAL 512
+ * value a perspective one; 1.0 is the "normal" lens default.
+ * Authored directly as a float - it is a lens property, not a
+ * position or angle, so meters/degrees do not apply. */
+#define BOOT_ANIM_CAMERA_FOCAL 1.0F
 
 /* The floor's ring spacing - see BOOT_ANIM_GRID_RINGS's own comment
  * in boot_anim.h. Authored in meters (grid_step_m in the JSON), like

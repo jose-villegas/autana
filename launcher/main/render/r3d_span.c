@@ -5,8 +5,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#pragma GCC diagnostic error "-Wdouble-promotion"
-
 /* Attributes run in fixed point: depth as 16.8, colour channels as 8.8, whose
  * steepest real step (255 levels in one pixel) is far below the clamp. Only a
  * sliver's depth step can reach 2^22; with that bound and at most a screen of

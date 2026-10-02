@@ -7,7 +7,7 @@
  * app_*.c is excluded from the host test runner as hardware-facing, but it
  * asks nothing of the board, so this links the real app_registry.c - its
  * own APP_REGISTER() constructor lands the one app that runs here - and
- * only display_shell_quarter() below stands in for the shell itself.
+ * only display_quarter_now() below stands in for the shell itself.
  */
 
 #include <stdbool.h>
@@ -114,7 +114,7 @@ options(int argc, char** argv) {
 }
 
 int
-display_shell_quarter(void) {
+display_quarter_now(void) {
     return shell_quarter;
 }
 

@@ -219,7 +219,7 @@ check_temperature(void) {
     switch (status) {
         case BOARD_TEMP_SENSOR_INSTALL_FAILED: snprintf(detail, sizeof(detail), "install failed"); break;
         case BOARD_TEMP_SENSOR_READ_FAILED: snprintf(detail, sizeof(detail), "read failed"); break;
-        case BOARD_TEMP_SENSOR_OK: snprintf(detail, sizeof(detail), "%.1f C", celsius); break;
+        case BOARD_TEMP_SENSOR_OK: snprintf(detail, sizeof(detail), "%.1f C", (double)celsius); break;
     }
 
     /* A plausible reading also rules out a sensor stuck at a fixed value. */

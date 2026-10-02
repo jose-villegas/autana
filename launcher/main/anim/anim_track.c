@@ -3,10 +3,7 @@
 #include <math.h>
 #include <stdbool.h>
 
-#pragma GCC diagnostic error "-Wdouble-promotion"
-
-/* Below this dot product a slerp's sine is too small to divide by. */
-#define SLERP_NEARLY_PARALLEL 0.9995F
+#include "util/math/quatf.h"
 
 static const float*
 key_value(const anim_track_t* track, int key) {
@@ -20,35 +17,17 @@ key_tangent(const anim_track_t* track, int key, bool out_tangent) {
     return key_value(track, key) + (out_tangent ? track->width : -(int)track->width);
 }
 
-static void
-normalize(float* q, int width) {
-    float sum = 0.0F;
-    for (int i = 0; i < width; i++) {
-        sum += q[i] * q[i];
-    }
-    const float inverse = 1.0F / sqrtf(sum);
-    for (int i = 0; i < width; i++) {
-        q[i] *= inverse;
-    }
+static quatf_t
+load_quat(const float* v) {
+    return (quatf_t){v[0], v[1], v[2], v[3]};
 }
 
 static void
-slerp(const float* a, const float* b, float s, float* out) {
-    float dot = (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]) + (a[3] * b[3]);
-    const float sign = dot < 0.0F ? -1.0F : 1.0F;
-    dot *= sign;
-    float wa = 1.0F - s;
-    float wb = s;
-    if (dot <= SLERP_NEARLY_PARALLEL) {
-        const float theta = acosf(dot);
-        const float sine = sinf(theta);
-        wa = sinf((1.0F - s) * theta) / sine;
-        wb = sinf(s * theta) / sine;
-    }
-    for (int i = 0; i < 4; i++) {
-        out[i] = (wa * a[i]) + (wb * sign * b[i]);
-    }
-    normalize(out, 4);
+store_quat(quatf_t q, float* out) {
+    out[0] = q.x;
+    out[1] = q.y;
+    out[2] = q.z;
+    out[3] = q.w;
 }
 
 static void
@@ -64,7 +43,7 @@ hermite(const anim_track_t* track, int lo, float s, float dt, float* out) {
                  + (((-2.0F * s3) + (3.0F * s2)) * p1[i]) + ((s3 - s2) * dt * m1[i]);
     }
     if (track->quaternion) {
-        normalize(out, 4);
+        store_quat(quatf_normalize(load_quat(out)), out);
     }
 }
 
@@ -85,7 +64,7 @@ blend(const anim_track_t* track, int lo, float seconds, float* out) {
     } else if (track->interp == ANIM_CUBIC) {
         hermite(track, lo, s, dt, out);
     } else if (track->quaternion) {
-        slerp(key_value(track, lo), key_value(track, lo + 1), s, out);
+        store_quat(quatf_slerp(load_quat(key_value(track, lo)), load_quat(key_value(track, lo + 1)), s), out);
     } else {
         const float* a = key_value(track, lo);
         const float* b = key_value(track, lo + 1);
@@ -134,11 +113,8 @@ anim_track_sample(const anim_track_t* track, float seconds, float out[ANIM_WIDTH
 
 void
 anim_quat_rotate(const float q[4], const float v[3], float out[3]) {
-    /* v + 2w(u x v) + 2 u x (u x v), with u the vector part. */
-    const float tx = 2.0F * ((q[1] * v[2]) - (q[2] * v[1]));
-    const float ty = 2.0F * ((q[2] * v[0]) - (q[0] * v[2]));
-    const float tz = 2.0F * ((q[0] * v[1]) - (q[1] * v[0]));
-    out[0] = v[0] + (q[3] * tx) + ((q[1] * tz) - (q[2] * ty));
-    out[1] = v[1] + (q[3] * ty) + ((q[2] * tx) - (q[0] * tz));
-    out[2] = v[2] + (q[3] * tz) + ((q[0] * ty) - (q[1] * tx));
+    const vec3f_t r = quatf_rotate(load_quat(q), (vec3f_t){v[0], v[1], v[2]});
+    out[0] = r.x;
+    out[1] = r.y;
+    out[2] = r.z;
 }

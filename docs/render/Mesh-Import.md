@@ -274,6 +274,60 @@ per vertex, is not exact either, and flat adds the colour gradient across each
 triangle, which no face sampling brings back. What face sampling does change is
 how well the one colour represents the face.
 
+### The scores, exactly
+
+A pixel's 8-bit colour $c$ is decoded with the display gamma $\gamma = 2.2$,
+taken to CIE XYZ through the linear sRGB primaries, and to CIELAB relative to
+the D65 white. The constants live in `render_compare.py`, which both the
+scoring and the fit's loss read.
+
+```math
+\ell = \left(\frac{c}{255}\right)^{\gamma},
+\qquad
+\begin{pmatrix}X\\Y\\Z\end{pmatrix} =
+\begin{pmatrix}
+0.4124564 & 0.3575761 & 0.1804375\\
+0.2126729 & 0.7151522 & 0.0721750\\
+0.0193339 & 0.1191920 & 0.9503041
+\end{pmatrix}\ell
+```
+
+```math
+f(t) = \begin{cases} t^{1/3} & t > \delta^3\\[2pt] \dfrac{t}{3\delta^2} + \dfrac{4}{29} & \text{otherwise}\end{cases},
+\qquad \delta = \frac{6}{29},
+\qquad (X_n, Y_n, Z_n) = (0.95047,\ 1,\ 1.08883)
+```
+
+```math
+L^* = 116\,f\!\left(\tfrac{Y}{Y_n}\right) - 16,
+\qquad a^* = 500\left(f\!\left(\tfrac{X}{X_n}\right) - f\!\left(\tfrac{Y}{Y_n}\right)\right),
+\qquad b^* = 200\left(f\!\left(\tfrac{Y}{Y_n}\right) - f\!\left(\tfrac{Z}{Z_n}\right)\right)
+```
+
+```math
+\Delta E_{76}(p) = \left\lVert \mathrm{Lab}(R_p) - \mathrm{Lab}(T_p) \right\rVert_2
+```
+
+for render $R$ and reference $T$ at pixel $p$. Mean ΔE averages
+$\Delta E_{76}(p)$ over the frame's pixels and p95 is its 95th percentile.
+Luma SSIM works on the gamma-encoded luma $y = 0.2126 r + 0.7152 g + 0.0722 b$
+(channels 0 to 1), over every 8 by 8 window $w$ of the frame, with the
+window's means $\mu$, variances $\sigma^2$ and covariance $\sigma_{RT}$:
+
+```math
+\mathrm{SSIM} = \frac{1}{|W|}\sum_{w \in W}
+\frac{(2\mu_R\mu_T + C_1)(2\sigma_{RT} + C_2)}{(\mu_R^2 + \mu_T^2 + C_1)(\sigma_R^2 + \sigma_T^2 + C_2)},
+\qquad C_1 = 0.01^2,\quad C_2 = 0.03^2
+```
+
+The edge pixels are those within one pixel of a step in the reference's luma
+steeper than 0.06 a pixel; edge ΔE averages $\Delta E_{76}$ over them and
+interior ΔE over the rest:
+
+```math
+E = \mathrm{dilate}_1\left\{\, p : \left\lVert \nabla y_T(p) \right\rVert > 0.06 \,\right\}
+```
+
 ## Sweeping the flat bake
 
 `bake_fidelity.py` re-lights a flat mesh's simplified geometry with chosen
@@ -296,6 +350,64 @@ the import file declares, byte for byte. A sweep over a scene found:
   own edge error is close to the best flat one. A face holds one colour, so a
   boundary through it cannot be sampled away, and decimation misplaces
   silhouettes before lighting.
+
+## Fitting a mesh to the reference
+
+The simplifier keeps what it can of the source's colour and shape, but it
+never looks at an image. `appearance_simplify.py` does: it takes a smooth
+bake at its triangle budget, draws it with a differentiable rasterizer the
+way the device draws it, and moves the vertices and changes their colours
+until the renders match the reference over the camera path's poses. The
+triangles stay as they were, so the budget and the frame cost hold.
+
+```mermaid
+flowchart LR
+    S[simplified smooth bake] --> F[fit positions and colours]
+    P[camera path poses] --> R[reference renders]
+    R --> F
+    F --> W[write_lit_mesh]
+    W --> H[host render, held-out poses]
+    H --> C[render_compare.py score, sheets, heatmaps]
+```
+
+The fitted colours are a bake in their own right, so the fitted mesh enters
+the import at its last stage, the writer, and is never lit again. One mesh
+fits the whole path, or one mesh fits each segment of it, to be swapped as
+the camera moves; segments see fewer poses each and fit poses between them
+less well. A fit is judged on poses it never trained on, by the same scores
+and pictures as any other bake: a sheet and enlarged crops against the
+simplifier's mesh and against the reference, and the heatmap sheet. A
+scene's example lives beside its own tools; nothing refreshes it, since the
+fit needs a CUDA GPU and its own environment
+([`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md#appearance-fit)).
+
+### The fit's objective
+
+The fit draws the mesh with a differentiable rasterizer $\mathcal{R}$
+(nvdiffrast) as the device does, and moves the welded positions $P$ and
+vertex colours $C$ to minimise, over a random batch $B$ of training poses
+each step, the mean ΔE above against the reference $T_v$ of pose $v$, plus
+a regulariser that keeps the mesh's local shape:
+
+```math
+\min_{P,\,C}\;
+\frac{1}{|B|}\sum_{v \in B}\frac{1}{|\Omega|}\sum_{p \in \Omega}
+\Delta E_{76}\!\left(\mathcal{R}_v(P, C)_p,\; T_{v,p}\right)
+\;+\;
+\lambda\,\frac{1}{|V|}\sum_{i \in V}
+\left\lVert \frac{\mathcal{L}(P)_i - \mathcal{L}(P^0)_i}{\bar{e}} \right\rVert^2
+```
+
+```math
+\mathcal{L}(P)_i = P_i - \frac{1}{|N(i)|}\sum_{j \in N(i)} P_j
+```
+
+$\Omega$ is the frame's pixels, $P^0$ the start positions, $N(i)$ the
+positions sharing an edge with $i$, $\bar{e}$ the start's mean edge length
+and $\lambda$ the `--laplacian` weight. Adam takes the steps, both learning
+rates decay as $\eta_k = \eta_0 \cdot 0.1^{k/K}$ over $K$ steps, and the
+colours are clamped to $[0, 1]$ after each. Where nothing is drawn the
+renderer shows the scene's clear colour, as the device and the reference do.
 
 ## Sealing seams
 

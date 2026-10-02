@@ -6,6 +6,8 @@
  */
 #pragma once
 
+#include "util/math/vec2i.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -59,7 +61,7 @@ typedef struct {
 
 /* Aim the next synthesized press at a control without moving its raw drag
  * origin. */
-void ui_pointer_aim(ui_pointer_t* p, int x, int y);
+void ui_pointer_aim(ui_pointer_t* p, vec2i_t point);
 
 /* Feed one frame's input_t; get back 0-UI_POINTER_MAX_EVENTS events in `out`,
  * in playback order. Returns the count written, or 0 if `max` can't hold the

@@ -109,13 +109,13 @@ wire_transform(const wire_mesh_t* mesh, const r3d_line_view_t* view, wire_frame_
     assert(mesh->vertex_count <= frame->cs_capacity);
 
     for (uint16_t i = 0; i < mesh->vertex_count; i++) {
-        const wire_vertex_t* v = &mesh->vertices[i];
-        const vec4i_t model_point = {v->x, v->y, v->z, VEC4I_ONE};
-        const vec4i_t cs = r3d_to_camera_space(model_point, view);
-
-        frame->cs_vertices[i].x = cs.x;
-        frame->cs_vertices[i].y = cs.y;
-        frame->cs_vertices[i].z = cs.z;
+        wire_cs_vertex_t* out = &frame->cs_vertices[i];
+        out->cs = r3d_to_camera_space(mesh->vertices[i], view);
+        if (out->cs.z > view->near_z) {
+            int x, y;
+            r3d_camera_to_screen(out->cs, view, &x, &y);
+            out->pixel = (vec2i_t){x, y};
+        }
     }
 }
 
@@ -128,16 +128,20 @@ wire_project_edges(const wire_mesh_t* mesh, const r3d_line_view_t* view, int scr
         const wire_edge_t* edge = &mesh->edges[i];
         const wire_cs_vertex_t* a = &frame->cs_vertices[edge->a];
         const wire_cs_vertex_t* b = &frame->cs_vertices[edge->b];
-        const vec4i_t p0 = {a->x, a->y, a->z, VEC4I_ONE};
-        const vec4i_t p1 = {b->x, b->y, b->z, VEC4I_ONE};
-        int ax, ay, bx, by;
+        int ax = a->pixel.x;
+        int ay = a->pixel.y;
+        int bx = b->pixel.x;
+        int by = b->pixel.y;
 
-        if (!r3d_project_segment_cs(p0, p1, view, &ax, &ay, &bx, &by)) {
+        const bool both_in_front = a->cs.z > view->near_z && b->cs.z > view->near_z;
+        if (!both_in_front && !r3d_project_segment_cs(a->cs, b->cs, view, &ax, &ay, &bx, &by)) {
             continue;
         }
 
         int64_t x0 = ax, y0 = ay, x1 = bx, y1 = by;
-        if (!clip_to_screen(&x0, &y0, &x1, &y1, screen_w, screen_h)) {
+        const bool inside = (unsigned)ax < (unsigned)screen_w && (unsigned)bx < (unsigned)screen_w
+                            && (unsigned)ay < (unsigned)screen_h && (unsigned)by < (unsigned)screen_h;
+        if (!inside && !clip_to_screen(&x0, &y0, &x1, &y1, screen_w, screen_h)) {
             continue;
         }
         if (frame->segment_count >= frame->segment_capacity) {

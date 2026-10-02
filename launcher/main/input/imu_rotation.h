@@ -10,7 +10,7 @@
  */
 #pragma once
 
-#include "input/imu.h"
+#include "input/imu_sample.h"
 
 /* How fast the board is TURNING, 0-255 from the gyroscope's total rotation
  * rate, saturating rather than wrapping. Named for what it measures because

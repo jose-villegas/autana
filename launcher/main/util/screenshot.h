@@ -12,11 +12,6 @@
 
 #include <stdint.h>
 
-/*
- * BMP encoding: see console_screenshot.c's write loop for how these two
- * are used together to build one row at a time.
- */
-
 /* BITMAPFILEHEADER (14 bytes) + BITMAPINFOHEADER (40 bytes), with no pixel
  * data; see screenshot_bmp_header() below. */
 #define SCREENSHOT_BMP_HEADER_SIZE 54
