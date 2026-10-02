@@ -299,7 +299,7 @@ test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
 
 /* r3d_project_segment_cs_x()'s near-plane clip at asymmetric coordinates
  * far outside the panel, where the clipped endpoint lands thousands of
- * pixels out. Verified against an independent double-precision reference,
+ * pixels out. Verified against an independent 64-bit integer reference,
  * not the function under test. */
 static void
 test_project_segment_cs_clips_asymmetric_coordinates(void) {
@@ -314,20 +314,20 @@ test_project_segment_cs_clips_asymmetric_coordinates(void) {
 
     /* Double-precision reference for the clip itself: p0 is BEHIND, so
      * IT is what gets replaced by the near-plane crossing point. */
-    const double frac = (double)(view.near_z - p0.z) / (double)(p1.z - p0.z);
-    const double exact_x = (double)p0.x + (((double)p1.x - (double)p0.x) * frac);
-    const double exact_y = (double)p0.y + (((double)p1.y - (double)p0.y) * frac);
+    const int64_t span = (int64_t)p1.z - p0.z;
+    const int64_t reach = (int64_t)view.near_z - p0.z;
     int ex, ey;
-    const vec3x_t exact_clip = {(int32_t)exact_x, (int32_t)exact_y, view.near_z};
+    const vec3x_t exact_clip = {(int32_t)(p0.x + ((((int64_t)p1.x - p0.x) * reach) / span)),
+                                (int32_t)(p0.y + ((((int64_t)p1.y - p0.y) * reach) / span)), view.near_z};
     r3d_camera_to_screen_x(exact_clip, &view, &ex, &ey);
 
     const int tolerance = 6;
     TEST_ASSERT_INT_WITHIN_MESSAGE(tolerance, ex, ax,
                                    "the clipped endpoint's screen x should be close to a "
-                                   "double-precision reference");
+                                   "integer reference");
     TEST_ASSERT_INT_WITHIN_MESSAGE(tolerance, ey, ay,
                                    "the clipped endpoint's screen y should be close to a "
-                                   "double-precision reference");
+                                   "integer reference");
 
     /* p1 was already in front: not clipped at all, so it must match
      * projecting it directly, independent of whatever the clip branch
