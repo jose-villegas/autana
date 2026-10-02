@@ -54,13 +54,12 @@ r3d_line_view_to_x(const r3d_line_view_t* view) {
     return out;
 }
 
-/* Fills the narrow form of the transform: entry [r][c] is the matrix entry
- * times the meters one raw unit of input c is worth, in 1/512 m with 12 more
- * bits, so r3d_to_camera_space_units() is three 32-bit products and a shift,
- * as an integer line projection has always been. `units_ok` says the entries
- * are small enough (a scale of about 8 and a camera within 64 m) that inputs
- * inside +-2^17 on axes 0 and 2 and +-2^15 on axis 1 cannot overflow;
- * the caller checks the inputs and falls back to mat4x_apply() otherwise. */
+/* Fills the narrow form: entry [r][c] is the matrix entry times the meters
+ * one raw unit of input c is worth, in 1/512 m with 12 more bits, so
+ * r3d_to_camera_space_units() is three 32-bit products and a shift. `units_ok`
+ * says no entry is too big (scale up to about 8, camera within 64 m) for inputs
+ * inside +-2^17 on axes 0 and 2 and +-2^15 on axis 1 to overflow; the caller
+ * checks the inputs, else uses mat4x_apply(). */
 static inline void
 r3d_line_view_x_set_inputs(r3d_line_view_x_t* out, const r3d_line_view_t* view, const float meters_per_unit[3]) {
     const float scale = (float)R3D_X_UNIT_ONE * (float)(1 << R3D_X_INPUT_SHIFT);
