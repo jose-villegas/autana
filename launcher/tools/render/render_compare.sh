@@ -45,6 +45,9 @@
 # from render frame N, for a poses file that begins at pose N. --r3d-python names
 # the interpreter with the r3d requirements; the default is r3d/.cache/venv's.
 #
+# --reference-frames with --reference and --poses alone makes (or finds) that
+# cache and prints its directory, for a caller that scores the frames itself.
+#
 # POSIX sh, like the rest of this directory.
 
 set -eu
@@ -53,9 +56,12 @@ TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_DIR=$(CDPATH= cd -- "$TOOLS_DIR/../../.." && pwd)
 
 usage() {
-    sed -n '3,46p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '3,49p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
 }
+
+# shellcheck source=../../../scripts/lib/python.sh
+. "$TOOLS_DIR/../../../scripts/lib/python.sh"
 
 if ! PYTHON=$(command -v python3 || command -v python); then
     echo "No Python found; render_compare.py needs one (Pillow and numpy)." >&2
@@ -68,7 +74,7 @@ to_native() {
     if command -v cygpath > /dev/null 2>&1; then
         cygpath -w "$1"
     else
-        printf '%s' "$1"
+        printf '%s\n' "$1"
     fi
 }
 
@@ -82,6 +88,7 @@ reference=""
 poses=""
 samples=4
 first=0
+frames_only=0
 r3d_python=""
 rev_a=""
 rev_b=""
@@ -111,6 +118,7 @@ while [ $# -gt 0 ]; do
         --reference) reference=${2:?--reference needs a scene file}; video=1; shift 2 ;;
         --poses) poses=${2:?--poses needs a file}; shift 2 ;;
         --start) first=${2:?--start needs a frame number}; shift 2 ;;
+        --reference-frames) frames_only=1; shift ;;
         --samples) samples=${2:?--samples needs a number}; shift 2 ;;
         --r3d-python) r3d_python=${2:?--r3d-python needs a path}; shift 2 ;;
         --fps) fps=${2:?--fps needs a number}; shift 2 ;;
@@ -130,7 +138,10 @@ while [ $# -gt 0 ]; do
             ;;
     esac
 done
-if [ -n "$reference" ]; then
+if [ "$frames_only" = 1 ]; then
+    [ -n "$reference" ] && [ -n "$poses" ] || usage
+    out=$work
+elif [ -n "$reference" ]; then
     [ -n "$script" ] && [ -n "$rev_a" ] && [ -n "$poses" ] && [ -z "$rev_b" ] && [ -s "$renders" ] || usage
     [ -n "$fps" ] || fps=30
     case "$fps" in
@@ -232,12 +243,7 @@ print(digest.hexdigest()[:16])' "$(to_native "$reference")" "$(to_native "$poses
         $(for f in "$scene_dir"/*.import.toml "$TOOLS_DIR/../r3d"/*.py "$TOOLS_DIR/render_compare.py"; do to_native "$f"; done)         "$samples")
     cache="$REPO_DIR/launcher/tools/r3d/.cache/reference/$key"
     if [ ! -f "$cache/done" ]; then
-        if [ -z "$r3d_python" ]; then
-            for candidate in Scripts/python bin/python; do
-                [ -x "$REPO_DIR/launcher/tools/r3d/.cache/venv/$candidate" ] && r3d_python="$REPO_DIR/launcher/tools/r3d/.cache/venv/$candidate"
-            done
-        fi
-        [ -n "$r3d_python" ] || { echo "no r3d interpreter: pass --r3d-python" >&2; exit 1; }
+        [ -n "$r3d_python" ] || r3d_python=$(find_r3d_python "$REPO_DIR") || exit 1
         mkdir -p "$cache"
         "$r3d_python" "$(to_native "$TOOLS_DIR/../r3d/reference_render.py")" "$(to_native "$reference")" \
         --poses "$(to_native "$poses")" --skip 1 --out "$(to_native "$cache")" --samples "$samples" >&2 || exit 1
@@ -245,6 +251,11 @@ print(digest.hexdigest()[:16])' "$(to_native "$reference")" "$(to_native "$poses
     fi
     echo "$cache"
 }
+
+if [ "$frames_only" = 1 ]; then
+    reference_frames
+    exit 0
+fi
 
 label_a=$(short_name "$rev_a")
 label_b=""
