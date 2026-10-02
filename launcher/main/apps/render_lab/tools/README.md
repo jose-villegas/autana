@@ -588,7 +588,7 @@ for a suspected colour-bleed loss.
 
 How far each bake is from the source lit per pixel with the same bounces, over
 the same eight poses as above. Mean ΔE76, p95 ΔE76 and luma SSIM; the
-direct-light bakes are the same import with `indirect` removed:
+direct-light bakes are the same scene with `[bake] indirect` removed:
 
 | Bake | Against the indirect reference |
 |---|---|
@@ -616,10 +616,57 @@ colour on the column beside it, and the lit ceiling.
 
 ![Where bounce light changes the picture](../../../../../docs/images/render/bake-indirect-crops.png)
 
-`doc_images.sh` regenerates the images, baking the import without `indirect`
+`doc_images.sh` regenerates the images, baking the scene without `[bake] indirect`
 for the direct-light side. It renders the source reference with and without
-the import's indirect field before `render_compare.py` makes the sheets and
+the scene's `[bake] indirect` before `render_compare.py` makes the sheets and
 crops.
+
+### Fitted variants against indirect light
+
+Each fitted variant trains on the indirect reference. The table scores four
+meshes per budget on the seven held-out poses, which the fit never saw,
+against that reference: the smooth GI bake at the budget, the same bake made
+with direct light only, the previous fitted mesh (fitted against direct light)
+and the new one (fitted against GI). Mean and p95 ΔE76 are lower-is-better;
+luma SSIM is higher-is-better. Normal angle is measured over pixels where the
+mesh and source both cover the view.
+
+| Budget | Mesh | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Normal angle |
+|---|---|---:|---:|---:|---:|
+| Lite | GI bake | 7.956 | 25.94 | 0.6326 | 25.858° |
+| Lite | Direct-light bake | 9.695 | 27.62 | 0.6245 | 25.720° |
+| Lite | Fitted against direct light | 5.552 | 13.78 | 0.7773 | 14.841° |
+| Lite | Fitted against GI | 4.945 | 13.17 | 0.7843 | 14.765° |
+| Full | GI bake | 6.780 | 21.75 | 0.6796 | 20.834° |
+| Full | Direct-light bake | 8.674 | 22.65 | 0.6751 | 21.150° |
+| Full | Fitted against direct light | 5.192 | 12.22 | 0.8072 | 13.010° |
+| Full | Fitted against GI | 4.516 | 11.52 | 0.8167 | 12.617° |
+
+- GI bake against direct-light bake: the bounce light is worth 1.7 to 1.9 ΔE
+  at the same triangle count, with the geometry unchanged.
+- Fitted against GI against the GI bake: fitting takes the mean down by about
+  3 ΔE and the normal error by 11 degrees at both budgets, which is the larger
+  part of the gain.
+- Fitted against GI against fitted against direct light: 0.6 to 0.7 ΔE better
+  at both budgets, with p95 and SSIM also better and the normal angle within
+  0.4 degrees.
+- Held-out against training: the fit's training ΔE was 4.83 (lite) and 4.35
+  (full), so held-out is 0.11 and 0.17 worse; the fits generalise to unseen
+  poses and need no retrain.
+
+The sheets show the reference, the GI bake, the previous fitted mesh and the
+new one beside their ΔE heatmaps at two held-out poses; the crops show the
+places where the three meshes differ most, with the reference above them.
+
+![Lite meshes against the indirect reference](../../../../../docs/render/images/appearance-indirect-lite.png)
+![Lite meshes, largest differences](../../../../../docs/render/images/appearance-indirect-lite.crops.png)
+![Full meshes against the indirect reference](../../../../../docs/render/images/appearance-indirect-full.png)
+![Full meshes, largest differences](../../../../../docs/render/images/appearance-indirect-full.crops.png)
+
+The previous fitted meshes cannot be remade by a script, so these images live
+under `docs/render/images/`. Measure both new fitted variants on the board
+against their predecessors. Their triangle budgets are unchanged, so a
+material frame-time change is not expected.
 
 ### Indirect look
 

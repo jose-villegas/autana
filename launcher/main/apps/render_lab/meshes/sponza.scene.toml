@@ -73,9 +73,8 @@ name = "atrium_fitted"
 mesh = "sponza.import.toml"
 variant = "sponza_fitted"
 bake = true
-indirect = false
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
-fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "44dabf0a7e258912556be8b24593d843629f456cabcba9d64b36336812338afb", recipe_sha256 = "ab4612fe4e44e2bf8ab1ce91686eae8f3df6f0a7ad773a023bfad1a85d3e4e90" }
+fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "e7b2620a9905817c9ad11ee1977a502e0900b41d8ef876df9b4744569deb2511", recipe_sha256 = "4b1533e592b99c88cda770d806be4607580ba4a1e97ef52fb565c9824ab7adca" }
 
 [[objects]]
 name = "atrium_fitted_full"
@@ -84,6 +83,5 @@ name = "atrium_fitted_full"
 mesh = "sponza.import.toml"
 variant = "sponza_fitted_full"
 bake = true
-indirect = false
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
-fit = { budget = 17381, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "8578cfe1a678859310603ad53a77b11eda4b03cc75fe760377fa10fb92c460d5", recipe_sha256 = "ff16256dc66a96511635276003ba1a28c0200f853b66cc49968994212b37438a" }
+fit = { budget = 17381, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "a8f6268cbb5ae48ef6c68945391dbdd1275dd5e24f84fecaeed991d6c8c69c29", recipe_sha256 = "7daec3f033f7ebff0a165ebf36694921b2b27fb5eddcb4eb28c76675bd2a0b73" }
