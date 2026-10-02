@@ -59,6 +59,7 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 | `render-lab-sponza.gif` | the start of the Sponza flythrough |
 | `render/sponza-{full,lite,flat}.gif` | the same three seconds of the flythrough, one GIF per bake |
 | `render/sponza-{depth,tiles}.gif` | those three seconds as the depth and depth-tile views of the full bake |
+| `render/bake-fidelity-sheet.png` | the flat bake against the source model at two poses, with the error heatmap (see Fidelity against the source) |
 | `render/compare-full-{lite,flat}.png`, `.crops.png` | full against lite and smooth against flat at the GIFs' last pose: both renders and their difference, then the places they differ most, enlarged |
 
 ## The Sponza variants
@@ -173,7 +174,7 @@ bake's 13.64.
 One sheet of two poses of the committed flat bake, left to right the reference,
 the bake, the ΔE heatmap and the reference's edge pixels (magenta), with the
 heatmap's scale below. The error sits at lit arch edges, shadow boundaries and
-the foreground drapery. Nothing refreshes the sheet when the bake changes.
+the foreground drapery. `doc_images.sh` regenerates the sheet.
 
 ![Reference, flat bake, error heatmap and edge pixels](../../../../../docs/images/render/bake-fidelity-sheet.png)
 
