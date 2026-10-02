@@ -269,7 +269,8 @@ def face_towards_light(normals, double_sided, lights):
     return np.where(flip[:, None], -normals, normals)
 
 
-def light(points, normals, double_sided, intersector, lights, ray_offset, rng, shared_sky_rays=0, sun_centre=False):
+def light(points, normals, double_sided, intersector, lights, ray_offset, rng, shared_sky_rays=0, sun_centre=False,
+          indirect=None, indirect_groups=None):
     """Radiance from the scene lights at each point.
 
     With shared_sky_rays > 0 every point uses the same directional samples and
@@ -281,6 +282,9 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, rng, s
     The lights share one rng, so their order in the list changes which random
     rays each draws: equal on average, not byte for byte. A flat bake draws
     none and is exactly order independent.
+
+    `indirect` is an IndirectCache whose gathered light is added to the
+    direct light; `indirect_groups` is gather_indirect's `groups`.
     """
     n = face_towards_light(normals, double_sided, lights)
     ctx = SimpleNamespace(normals=n, origin=points + n * ray_offset, intersector=intersector, rng=rng,
@@ -289,7 +293,95 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, rng, s
     radiance = np.zeros((len(points), 3))
     for scene_light in lights:
         radiance += LIGHTS[scene_light["type"]][1](scene_light, ctx)
-    return radiance
+    return radiance + gather_indirect(points, n, intersector, indirect, indirect_groups)
+
+
+class IndirectCache:
+    """Full-detail triangle radiance for a finite diffuse bounce series, with
+    each triangle's normal and sidedness so a ray that reaches a one-sided
+    triangle from behind finds no light."""
+
+    def __init__(self, radiance, rays, ray_offset, normals=None, two_sided=None, intensity=1.0):
+        self.radiance = radiance
+        self.intensity = intensity
+        self.rays = rays
+        self.ray_offset = ray_offset
+        self.normals = normals
+        self.two_sided = two_sided
+
+
+def gather_indirect(points, normals, intersector, cache, groups=None):
+    """Estimate irradiance from the cache with cosine-weighted hemisphere rays.
+    Every point uses the same set of directions in its own frame, so equal
+    surroundings give equal light and nothing is random. A miss adds nothing,
+    because the sky light is direct.
+
+    `groups` gives points that share one position the same result: the light
+    is gathered once on their mean normal, since indirect light changes slowly
+    where direct light does not."""
+    if cache is None:
+        return np.zeros((len(points), 3))
+    if groups is not None:
+        _, first = np.unique(groups, return_index=True)
+        total = np.stack([np.bincount(groups, weights=normals[:, axis]) for axis in range(3)], axis=1)
+        length = np.linalg.norm(total, axis=1, keepdims=True)
+        mean = np.where(length > 1e-6, total / np.maximum(length, 1e-12), normals[first])
+        return gather_indirect(points[first], mean, intersector, cache)[groups]
+    origin = points + normals * cache.ray_offset
+    out = np.zeros((len(points), 3))
+    tu, tv = tangent_frame(normals)
+    for x, y, z in sky_directions(cache.rays):
+        direction = tu * x + tv * y + normals * z
+        locations, indices, faces = intersector.intersects_location(origin, direction, multiple_hits=False)
+        found = cache.radiance[:, faces].sum(axis=0)
+        if cache.normals is not None:
+            behind = np.einsum("ij,ij->i", direction[indices], cache.normals[faces]) > 0
+            found[behind & ~cache.two_sided[faces]] = 0.0
+        out[indices] += found
+    return out / cache.rays * cache.intensity
+
+
+ALBEDO_CEILING = 0.99
+
+
+def boosted_albedo(albedo, boost):
+    """The reflectance bounces use: albedo times boost, held below ALBEDO_CEILING
+    but never lowered below the albedo itself, so a boost of 1 changes nothing."""
+    return np.minimum(albedo * boost, np.maximum(albedo, ALBEDO_CEILING))
+
+
+def build_indirect_cache(points, tris, tri_mat, materials, double_materials, albedo_of, intersector, lights, ray_offset,
+                         indirect, intensity=1.0, albedo_boost=1.0):
+    """Bake full-detail outgoing radiance once, then gather each later bounce.
+
+    `intensity` scales the light the finished cache gathers, not the bounces
+    inside it; `albedo_boost` scales the reflectance every bounce uses."""
+    if indirect is None or indirect.bounces == 0:
+        return None
+    a, b, c = points[tris[:, 0]], points[tris[:, 1]], points[tris[:, 2]]
+    normals = np.cross(b - a, c - a)
+    normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-12)
+    area = triangle_areas(points, tris)
+    centres = (a + b + c) / 3
+    sample_points = np.concatenate([w[0] * a + w[1] * b + w[2] * c for w in face_samples(indirect.cache_samples)])
+    sample_materials = np.tile(tri_mat, indirect.cache_samples)
+    albedo = np.zeros((len(sample_points), 3))
+    for material in materials:
+        selected = np.nonzero(sample_materials == material)[0]
+        if len(selected):
+            albedo[selected] = albedo_of(sample_points[selected], np.tile(np.sqrt(area), indirect.cache_samples)[selected], material)
+    albedo = boosted_albedo(albedo, albedo_boost)
+    double = np.isin(tri_mat, list(double_materials))
+    sky_rays = max([item["rays"] for item in lights if item["type"] == "sky"], default=1)
+    direct = light(sample_points, np.tile(normals, (indirect.cache_samples, 1)), np.tile(double, indirect.cache_samples),
+                   intersector, lights, ray_offset, None, sky_rays)
+    radiance = [(albedo * direct).reshape(indirect.cache_samples, len(tris), 3).mean(axis=0)]
+    albedo = albedo.reshape(indirect.cache_samples, len(tris), 3).mean(axis=0)
+    lit_side = face_towards_light(normals, double, lights)
+    for _ in range(indirect.bounces - 1):
+        previous = IndirectCache(np.asarray(radiance[-1:]), indirect.rays, ray_offset, normals, double)
+        radiance.append(albedo * gather_indirect(centres, lit_side, intersector, previous))
+    return IndirectCache(np.asarray(radiance), indirect.rays, ray_offset, normals, double, intensity)
 
 
 def encode_srgb8(linear):
@@ -322,7 +414,7 @@ def adaptive_sample_counts(areas, reference, cap, floor=1):
 
 def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_of, intersector, lights, ray_offset,
                  tonemap_white, samples=4, sky_rays=128, max_samples=16, sample_area=None, min_samples=1,
-                 placement="stratified", sun_centre=False):
+                 placement="stratified", sun_centre=False, indirect_cache=None):
     """One sRGB colour per triangle: albedo times light averaged over fixed
     points of the triangle, lit on its face normal. `samples` is a count per
     face, or "auto" for one point per `sample_area` of face area (the mesh's
@@ -348,7 +440,8 @@ def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_o
             albedo = albedo_of(points, spacing, m)
             double = np.full(len(points), m in double_materials)
             tiled = np.tile(normals, (k, 1))
-            radiance = light(points, tiled, double, intersector, lights, ray_offset, None, sky_rays, sun_centre)
+            radiance = light(points, tiled, double, intersector, lights, ray_offset, None, sky_rays, sun_centre,
+                             indirect_cache)
             colour = (albedo * radiance).reshape(k, len(faces), 3).mean(axis=0)
             out[selected] = to_srgb8(colour, tonemap_white)
     return out
