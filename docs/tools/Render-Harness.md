@@ -37,7 +37,9 @@ SHA-256 checked, into `launcher/tools/r3d/.cache`; the workflow caches it.
 `--check` renders into `launcher/tools/results/doc_images/out/`
 and compares decoded pixels with `compare_images.py`, never bytes: another
 ffmpeg or Pillow writes different GIF bytes for the same frames. It prints
-`same` or `changed` per image, and `orphan` for a file nothing makes. The
+`same` or `changed` per image, and `orphan` for a file nothing makes.
+`--orphans` renders nothing and reports an image whose name no script
+mentions; the Comment Rules workflow runs it on every pull request. The
 `doc-images` workflow runs it on pushes to main that touch `launcher/` or
 `docs/images/`, and opens one pull request when an image changed. It needs the
 repository setting Actions > "Allow GitHub Actions to create and approve pull
