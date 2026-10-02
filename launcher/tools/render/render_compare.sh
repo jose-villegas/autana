@@ -74,7 +74,7 @@ to_native() {
     if command -v cygpath > /dev/null 2>&1; then
         cygpath -w "$1"
     else
-        printf '%s' "$1"
+        printf '%s\n' "$1"
     fi
 }
 
