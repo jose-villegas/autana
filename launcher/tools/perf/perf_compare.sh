@@ -46,6 +46,7 @@ case "$runs" in *[!0-9]*|'') usage ;; esac
 [ "$runs" -gt 0 ] || usage
 [ -n "$out" ] || out=$(mktemp -d)
 mkdir -p "$out/a" "$out/b"
+out=$(CDPATH= cd -- "$out" && pwd)
 
 work=$(mktemp -d)
 revision_worktree_setup "$REPO_DIR" "$work"
