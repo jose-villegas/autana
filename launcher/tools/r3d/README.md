@@ -184,7 +184,8 @@ $E/bin/python launcher/tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME 
 `prepare` bakes the start (the import's steps at the variant's `triangles`),
 samples the camera's path every `train_every_ms`, holds out the multiples of
 `held_out_every_ms`, samples it again every `coverage_every_ms` for pruning,
-and renders the training references with their normals. `fit` prunes to
+and renders the training references with their normals, in portrait and
+in landscape so the fit holds the panel either way up. `fit` prunes to
 `budget`, fits with `steps`, `batch`, `laplacian` and `normal_weight`, writes
 `NAME.mesh` beside the import and prints the two SHA-256s to record. A refit is not
 bit-identical, the GPU's sums being unordered, so the recipe pins the mesh

@@ -58,4 +58,4 @@ triangles = 8672
 name = "sponza_fitted"
 triangles = 9973
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
-fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "e2263b6945444a54a76d55fd394ca1a3b8f316a7a955d2cc66f56c5f176a30ec", recipe_sha256 = "fbde8773baa81a4b87eb8f9e80942ab21af9764b499291a61aeebc61d54ce8c4" }
+fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "44dabf0a7e258912556be8b24593d843629f456cabcba9d64b36336812338afb", recipe_sha256 = "fbde8773baa81a4b87eb8f9e80942ab21af9764b499291a61aeebc61d54ce8c4" }

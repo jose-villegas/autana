@@ -81,9 +81,11 @@ def prepare(scene_path, scene, settings, variant, work):
     training, held_out = split_poses(fit, poses)
     (work / "train.txt").write_text(poses_text(w, h, lens, near, training))
     (work / "held_out.txt").write_text(poses_text(w, h, lens, near, held_out))
+    (work / "train_landscape.txt").write_text(poses_text(h, w, lens, near, training))
     (work / "coverage.txt").write_text(poses_text(*camera_path_poses(settings, scene, visibility, fit.coverage_every_ms)))
-    reference_main([str(scene_path), "--import", str(settings.path), "--poses", str(work / "train.txt"),
-                    "--out", str(work / "reference"), "--normals"])
+    for poses, reference in (("train.txt", "reference"), ("train_landscape.txt", "reference_landscape")):
+        reference_main([str(scene_path), "--import", str(settings.path), "--poses", str(work / poses), "--out",
+                        str(work / reference), "--normals"])
     log(f"prepared {variant.name}: start of {len(geometry.tris)} triangles, {len(training)} training poses")
 
 
@@ -94,7 +96,8 @@ def fit(scene_path, scene, settings, variant, work):
     start = work / f"{variant.name}.mesh"
     out = work / "fitted"
     fit_main(["--scene", str(scene_path), "--start", str(start), "--poses", str(work / "train.txt"), "--reference",
-              str(work / "reference"), "--out", str(out), "--budget", str(recipe.budget), "--coverage-poses",
+              str(work / "reference"), "--poses", str(work / "train_landscape.txt"), "--reference",
+              str(work / "reference_landscape"), "--out", str(out), "--budget", str(recipe.budget), "--coverage-poses",
               str(work / "coverage.txt"), "--steps", str(recipe.steps), "--batch", str(recipe.batch), "--laplacian",
               str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight)])
     target = settings.mesh_dir / f"{variant.name}.mesh"

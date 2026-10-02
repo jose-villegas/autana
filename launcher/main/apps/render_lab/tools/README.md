@@ -299,6 +299,23 @@ full mesh, against the portrait view widened by a 28-pixel margin instead:
 | Portrait, 28-pixel margin | 10,892 | 8, in 2 frames | 0 |
 | Square, 8-pixel margin | 10,796 | 8, in 2 frames | 0 |
 
+A fitted mesh changes its geometry, so its holes are counted against the
+source instead: device pixels it leaves as background where a ray through
+the pixel centre meets the source at least two pixels inside its silhouette,
+over the whole path at 30 fps. Every simplified mesh leaves some, where its
+edges fall short of the source's:
+
+| Mesh | Hole pixels, portrait | Hole pixels, landscape |
+|---|---:|---:|
+| Full | 1,401 | 1,262 |
+| Lite | 10,572 | 7,902 |
+| Fitted's start, culled and simplified | 9,055 | 7,863 |
+| Fitted, portrait references only | 6,237 | 12,594 |
+| Fitted, both orientations (committed) | 4,436 | 5,218 |
+
+Trained on portrait views alone, the fit pulled edges in where only a
+landscape panel sees them; the committed mesh trains on both.
+
 The culled triangles, magenta, from outside and from above with the roofs
 cut away:
 
@@ -430,14 +447,14 @@ degrees less normal error. The cost-term fit at the same budget draws in
 against the full's 58.6 (−14.5%) at the same ΔE.
 
 The committed `sponza-fitted` target, measured in the same image as the
-others (`run_sponza_perf_suite --perf-scope`, five runs), draws in 46.18 ms
-against lite's 45.99 (+0.4%), full's 58.52 and flat's 44.98.
+others (`run_sponza_perf_suite --perf-scope`, five runs), draws in 46.75 ms
+against lite's 46.00 (+1.6%), full's 58.52 and flat's 44.97.
 
 The chosen recipe is committed as the `sponza-fitted` target, refitted by
 `fitted_variant.py` from its entry in `meshes/sponza.import.toml`, its path
 cull and pruning poses covering the panel held either way up. Scored on the same seven
 held-out poses against the reference as it is now rendered, edges blended
-with the camera's background, it is at mean ΔE76 4.91 (p95 13.23) against
+with the camera's background, it is at mean ΔE76 4.89 (p95 13.18) against
 lite's 7.69 and full's 6.76. Its sheet against lite is in
 [The Sponza variants](#the-sponza-variants). Against the
 reference, where they still differ most:
