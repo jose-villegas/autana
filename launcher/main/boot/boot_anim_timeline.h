@@ -69,7 +69,7 @@
 /* peak wobble swing right at the start */
 #define BOOT_ANIM_TITLE_AMPLITUDE_PX 15
 
-/* the small idle wave once a letter has landed */
+/* the small idle wave once a letter has landed - keep under 22 px or it hurts legibility */
 #define BOOT_ANIM_TITLE_WAVE_AMPLITUDE_PX 12
 
 #define BOOT_ANIM_TITLE_WAVE_PERIOD_MS 900
@@ -83,10 +83,10 @@
 /* how long that calming takes, from full swing to none */
 #define BOOT_ANIM_TITLE_WAVE_FADE_MS 1500
 
-/* how far down the viewer's frame the title's own centre lands - see boot_anim.h's own comment on this section for the frame it is in */
+/* the title's centre in the viewer's frame; see the comment above BOOT_ANIM_TITLE_VIEW_W in boot_anim.h */
 #define BOOT_ANIM_TITLE_VIEW_Y 40
 
-/* how far into the viewer's frame the title's own left edge starts - see boot_anim.h's own comment on this section for where the default came from */
+/* how far into the viewer's frame the title's own left edge starts */
 #define BOOT_ANIM_TITLE_VIEW_X 95
 
 /* drop shadow offset, pixels right (negative is left) - 0/0 disables it */
@@ -116,9 +116,10 @@
 #define BOOT_ANIM_GRID_WHITEN_MAX 32
 #define BOOT_ANIM_GRID_CEILING_MAX 96
 #define BOOT_ANIM_GRID_MAX 64
-/* The camera's focal length - 0 is an orthographic
- * projection (see boot_anim.h's "The projection" section), any other
- * value a perspective one; 1.0 is the "normal" lens default.
+/* The camera's focal length - 0 is an orthographic projection
+ * (r3d_line_view_x_t's `focal`, render/r3d_project_x.h), not a second
+ * code path; any other value a perspective one; 1.0 is the "normal" lens
+ * default.
  * Authored directly as a float - it is a lens property, not a
  * position or angle, so meters/degrees do not apply. */
 #define BOOT_ANIM_CAMERA_FOCAL 1.0F
@@ -129,15 +130,13 @@
  * boot_anim.c does. */
 #define BOOT_ANIM_GRID_STEP_Q12 410
 
-/* The wave's own peak amplitude - see boot_anim.h's "The wave"
- * section. Authored in meters (wave_height_m in the JSON), the same
- * as grid_step_m just above; 0 (the default for a file baked before
- * this existed - see this script's own backward-compatibility
- * comment) turns the ripple off outright, not just down. */
+/* The wave's own peak amplitude; see boot_anim_wave_height(). Authored
+ * in meters (wave_height_m in the JSON), the same as grid_step_m just
+ * above; 0 turns the ripple off outright, not just down. */
 #define BOOT_ANIM_WAVE_HEIGHT_Q12 5120
 
-/* The wave's own crest-to-crest distance - see boot_anim.h's "The
- * wave" section. Also meters, also authored (wave_wavelength_m in
+/* The wave's own crest-to-crest distance; see boot_anim_wave_height().
+ * Also meters, also authored (wave_wavelength_m in
  * the JSON). */
 #define BOOT_ANIM_WAVE_WAVELENGTH_Q12 20480
 
