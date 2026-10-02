@@ -2,11 +2,11 @@
  * memory: the heap by kind, so a caller above the drivers can place a buffer,
  * or measure what it kept or lost, without naming the allocator.
  *
- * Each kind maps to heap capabilities. The heap underneath is ESP-IDF's on
- * the board and test/heap_arena.c's device-sized model in the host tests
- * (HOST_HEAP_ARENA). Any other host build, a render or the editor, gets the C
- * library's malloc(), which has no budget: there every size query answers
- * SIZE_MAX and means nothing.
+ * On the board and in the host tests each kind maps to heap capabilities:
+ * ESP-IDF's heap on the board, test/heap_arena.c's device-sized model
+ * (HOST_HEAP_ARENA) on a host. Any other host build, a render or the editor,
+ * allocates from the C library's malloc(), which has no budget, so it has no
+ * size queries either: memory.c is not built there.
  *
  * Allocating and freeing are inline: a heap watch names the first frame
  * outside the allocator as the call site, so a frame of this module's own
@@ -66,7 +66,8 @@ memory_caps(memory_kind_t kind) {
 static inline __attribute__((always_inline)) void*
 memory_alloc(size_t bytes, memory_kind_t kind) {
 #if MEMORY_HEAP_CAPS
-    /* Internal RAM also holds word-only regions, which a byte store faults in. */
+    /* Internal RAM also holds word-only regions, which a byte store faults
+     * in. */
     return heap_caps_malloc(bytes, memory_caps(kind) | MALLOC_CAP_8BIT);
 #else
     (void)kind;
