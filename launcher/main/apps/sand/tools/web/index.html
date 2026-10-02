@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Sand</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="canvas" width="448" height="368"></canvas>
+    <div id="loading">Loading&hellip;</div>
+  </div>
+
+  <div id="panel">
+    <div id="palette"></div>
+
+    <div class="row" id="modes">
+      <button class="mode" data-mode="0">Paint</button>
+      <button class="mode" data-mode="1">Erase</button>
+      <button class="mode" data-mode="2">Detonate</button>
+    </div>
+
+    <div class="row">
+      <label id="brush-size-label">
+        <span id="brush-size-caption">Pour size</span>
+        <input type="range" id="brush-size" min="2" max="64" step="1" value="10">
+        <span id="brush-size-value">10 px</span>
+      </label>
+    </div>
+
+    <div class="row">
+      <label id="source-label">
+        <input type="checkbox" id="source-toggle">
+        Source (persistent tap)
+      </label>
+    </div>
+
+    <div id="tilt-block">
+      <div id="tilt-pad">
+        <div id="tilt-handle"></div>
+      </div>
+      <div id="tilt-hint">Drag to tilt &middot; double-click to reset</div>
+    </div>
+
+    <div class="row">
+      <button id="clear-btn">Clear</button>
+      <button id="orientation-btn">Portrait</button>
+      <button id="tilt-btn" hidden>Use device tilt</button>
+    </div>
+
+    <div class="row">
+      <label>
+        Quality
+        <select id="quality">
+          <option value="2" selected>ULTRA</option>
+          <option value="3">HIGH</option>
+          <option value="4">NORMAL</option>
+          <option value="6">LOW</option>
+          <option value="8">VERY LOW</option>
+        </select>
+      </label>
+      <button id="fullscreen-btn" hidden>Fullscreen</button>
+    </div>
+
+    <div class="row">
+      <label>
+        Sim speed
+        <select id="sim-speed">
+          <option value="0.5">0.5&times;</option>
+          <option value="1" selected>1&times;</option>
+          <option value="2">2&times;</option>
+          <option value="4">4&times;</option>
+          <option value="8">8&times;</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="row">
+      <label>
+        Colour
+        <select id="color-mode">
+          <option value="0" selected>Full</option>
+          <option value="1">256</option>
+          <option value="2">16</option>
+        </select>
+      </label>
+      <label>
+        Dither
+        <select id="dither-mode">
+          <option value="0">None</option>
+          <option value="1">Cell checker</option>
+          <option value="2" selected>Cell Bayer2</option>
+          <option value="3">Pixel checker2</option>
+          <option value="4">Pixel Bayer4</option>
+        </select>
+      </label>
+    </div>
+  </div>
+</div>
+
+<script src="sand.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
