@@ -385,15 +385,15 @@ Fitting helps at the full budget as much as at lite's (7.20 to 5.28, and to
 triangles buy 0.34 ΔE.
 
 **Normal term.** At the lite budget from the path start, sweeping the normal
-weight $\lambda_n$:
+weight $`\lambda_n`$:
 
-| $\lambda_n$ | 0 | 0.1 | 0.3 | 1 |
+| $`\lambda_n`$ | 0 | 0.1 | 0.3 | 1 |
 |---|---:|---:|---:|---:|
 | Held-out mean ΔE76 | 5.220 | 5.247 | 5.268 | 5.232 |
 | Held-out normal error | 18.6° | 17.1° | 16.3° | 14.8° |
 
 ΔE stays within 0.05 while the normal error drops 3.8 degrees, so the
-chosen mesh uses $\lambda_n = 1$. Normal-angle heatmaps at 5 and 25 s, left to
+chosen mesh uses $`\lambda_n = 1`$. Normal-angle heatmaps at 5 and 25 s, left to
 right the committed lite, the colour-only fit and the fit with the normal
 term, on the ΔE heatmaps' colours with degrees for ΔE:
 
