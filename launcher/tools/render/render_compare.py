@@ -29,6 +29,7 @@ Needs Pillow and numpy, and ffmpeg for --video.
 """
 
 import argparse
+import pathlib
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -44,6 +45,18 @@ GAIN = 8
 ZOOM = 4
 CROP_FRAMES = 2
 CSV_HEADER = "frame,time_ms,changed_pct,mean_abs,holes_a,holes_b"
+
+
+@dataclass
+class ReferenceStats:
+    """Perceptual error of a host render against an offline reference."""
+
+    mean_delta_e: float
+    p95_delta_e: float
+    ssim_luma: float
+    edge_delta_e: float = 0.0
+    interior_delta_e: float = 0.0
+    edge_share: float = 0.0
 
 
 @dataclass
@@ -63,14 +76,142 @@ def parse_rgb(text):
 
 
 def expand_565(rgb):
-    """The 24-bit colour a 16-bit framebuffer shows for rgb."""
-    r, g, b = rgb
-    r5, g6, b5 = r >> 3, g >> 2, b >> 3
-    return (r5 << 3 | r5 >> 2, g6 << 2 | g6 >> 4, b5 << 3 | b5 >> 2)
+    """The 24-bit colour a 16-bit framebuffer shows for rgb: a tuple of three
+    values, or an integer array with the channels last."""
+    if isinstance(rgb, tuple):
+        return tuple(int(value) for value in expand_565(np.array(rgb)))
+    r5, g6, b5 = rgb[..., 0] >> 3, rgb[..., 1] >> 2, rgb[..., 2] >> 3
+    return np.stack([r5 << 3 | r5 >> 2, g6 << 2 | g6 >> 4, b5 << 3 | b5 >> 2], axis=-1)
 
 
 def _pixels(picture):
     return np.asarray(picture.convert("RGB")).astype(np.int32)
+
+
+def _linear_rgb(picture):
+    rgb = np.asarray(picture.convert("RGB"), dtype=float) / 255.0
+    return rgb ** 2.2
+
+
+def _lab(picture):
+    """CIELAB (D65) from this project's gamma-encoded RGB images."""
+    rgb = _linear_rgb(picture)
+    xyz = rgb @ np.array([[0.4124564, 0.3575761, 0.1804375], [0.2126729, 0.7151522, 0.0721750],
+                          [0.0193339, 0.1191920, 0.9503041]]).T
+    scaled = xyz / np.array([0.95047, 1.0, 1.08883])
+    delta = 6 / 29
+    f = np.where(scaled > delta**3, np.cbrt(scaled), scaled / (3 * delta**2) + 4 / 29)
+    return np.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])], axis=2)
+
+
+def delta_e76(a, b):
+    """Per-pixel CIE76 ΔE for two equal-sized RGB pictures."""
+    _same_size(a, b)
+    return np.linalg.norm(_lab(a) - _lab(b), axis=2)
+
+
+SSIM_WINDOW = 8
+
+
+def _box_mean(values, size):
+    """The mean over every size x size window of a 2-D array, by cumulative sums."""
+    total = np.pad(values.cumsum(axis=0).cumsum(axis=1), ((1, 0), (1, 0)))
+    window = total[size:, size:] - total[:-size, size:] - total[size:, :-size] + total[:-size, :-size]
+    return window / (size * size)
+
+
+def luma_ssim(a, b):
+    """Structural similarity of the luma of two pictures: the mean over every
+    8 x 8 window (the whole picture when it is smaller) of the usual SSIM
+    map, on Rec.709 luma of the 0..1 encoded colours."""
+    _same_size(a, b)
+    weights = np.array([0.2126, 0.7152, 0.0722])
+    la = np.asarray(a.convert("RGB"), dtype=float) / 255.0 @ weights
+    lb = np.asarray(b.convert("RGB"), dtype=float) / 255.0 @ weights
+    size = min(SSIM_WINDOW, *la.shape)
+    ma, mb = _box_mean(la, size), _box_mean(lb, size)
+    va, vb = _box_mean(la * la, size) - ma * ma, _box_mean(lb * lb, size) - mb * mb
+    cov = _box_mean(la * lb, size) - ma * mb
+    c1, c2 = 0.01**2, 0.03**2
+    return float(np.mean((2 * ma * mb + c1) * (2 * cov + c2) / ((ma * ma + mb * mb + c1) * (va + vb + c2))))
+
+
+EDGE_GRADIENT = 0.06
+HEAT_FULL_SCALE = 50
+
+
+def edge_mask(reference):
+    """Pixels on or beside a sharp change of the reference's luma: a lit or
+    shadowed boundary, or a silhouette. The step is in gamma-encoded luma per
+    pixel, and the mask grows one pixel each way."""
+    luma = np.asarray(reference.convert("L"), dtype=float) / 255.0
+    if min(luma.shape) < 2:
+        return np.zeros(luma.shape, dtype=bool)
+    gy, gx = np.gradient(luma)
+    edge = np.pad(np.hypot(gx, gy) > EDGE_GRADIENT, 1)
+    grown = np.zeros(luma.shape, dtype=bool)
+    for dy in (0, 1, 2):
+        for dx in (0, 1, 2):
+            grown |= edge[dy : dy + luma.shape[0], dx : dx + luma.shape[1]]
+    return grown
+
+
+def reference_measure(render, reference):
+    """Mean and p95 CIE76 ΔE, luma SSIM, and the ΔE on edge and interior
+    pixels of the reference, for one reference pair."""
+    error = delta_e76(render, reference)
+    edge = edge_mask(reference)
+    on_edge = float(error[edge].mean()) if edge.any() else 0.0
+    inside = float(error[~edge].mean()) if (~edge).any() else 0.0
+    share = float(error[edge].sum() / error.sum()) if error.sum() > 0 else 0.0
+    return ReferenceStats(float(error.mean()), float(np.percentile(error, 95)), luma_ssim(render, reference), on_edge, inside,
+                          share)
+
+
+def edge_overlay(reference):
+    """The reference dimmed, with its edge pixels (see edge_mask) in magenta."""
+    pixels = np.asarray(reference.convert("RGB"), dtype=float) * 0.5
+    pixels[edge_mask(reference)] = (255, 0, 255)
+    return Image.fromarray(pixels.astype(np.uint8))
+
+
+def heat_scale(width):
+    """A strip of the reference heatmap's colours from 0 to HEAT_FULL_SCALE dE, with ticks and a caption."""
+    strip = np.tile(np.arange(width) / (width - 1) * HEAT_FULL_SCALE, (14, 1))
+    picture = Image.new("RGB", (width, 70), (24, 24, 24))
+    picture.paste(reference_heatmap_from_error(strip), (0, 0))
+    draw, font = ImageDraw.Draw(picture), _font()
+    for tick in range(0, HEAT_FULL_SCALE + 1, 10):
+        x = round(tick / HEAT_FULL_SCALE * (width - 1))
+        draw.line([(x, 14), (x, 19)], fill=(230, 230, 230))
+        draw.text((min(x, width - 24), 20), str(tick), fill=(230, 230, 230), font=font)
+    draw.text((0, 42), "CIE76 dE per pixel: black matches, red about 20, yellow 50 or more", fill=(230, 230, 230), font=font)
+    return picture
+
+
+def reference_sheet(items, tile=0.6):
+    """Each (label, render, reference) as reference | render | dE heatmap |
+    edge pixels, shrunk by `tile`, with the heatmap's colour scale below."""
+    rows = [(label, reference, render) for label, render, reference in items]
+    picture = sheet(rows, None, panels=lambda reference, render: [reference_heatmap(render, reference), edge_overlay(reference)])
+    picture = picture.resize((round(picture.width * tile), round(picture.height * tile)), Image.Resampling.BOX)
+    out = Image.new("RGB", (picture.width, picture.height + 70))
+    out.paste(picture, (0, 0))
+    out.paste(heat_scale(picture.width), (0, picture.height))
+    return out
+
+
+def reference_heatmap(render, reference):
+    """A perceptual-error heatmap: black is zero, then red, then yellow at 50."""
+    return reference_heatmap_from_error(delta_e76(render, reference))
+
+
+def reference_heatmap_from_error(error):
+    """The heatmap's colours for a per-pixel ΔE array."""
+    error = np.clip(error, 0, HEAT_FULL_SCALE) / HEAT_FULL_SCALE
+    red = np.clip(2 * error, 0, 1)
+    green = np.clip(2 * error - 1, 0, 1)
+    return Image.fromarray(np.round(np.stack([red, green, np.zeros_like(red)], axis=2) * 255).astype(np.uint8))
 
 
 def _is_clear(pixels, clear):
@@ -117,12 +258,14 @@ def heatmap(a, b, clear, gain=GAIN):
     return Image.fromarray(heat)
 
 
-def sheet(rows, clear, gain=GAIN):
-    """One picture: each (label, a, b) row as A | B | heatmap, stacked, black-padded to the widest."""
+def sheet(rows, clear, gain=GAIN, panels=None):
+    """One picture: each (label, a, b) row as A | B | heatmap, stacked, black-padded to the widest.
+    panels(a, b), when given, returns the pictures that follow B in place of the heatmap."""
     strips = []
     for _label, a, b in rows:
         _same_size(a, b)
-        strips.append(np.concatenate([_pixels(a), _pixels(b), np.asarray(heatmap(a, b, clear, gain)).astype(np.int32)], axis=1))
+        after = [heatmap(a, b, clear, gain)] if panels is None else panels(a, b)
+        strips.append(np.concatenate([_pixels(a), _pixels(b), *(_pixels(extra) for extra in after)], axis=1))
     widest = max(strip.shape[1] for strip in strips)
     padded = [np.pad(strip, ((0, 0), (0, widest - strip.shape[1]), (0, 0))) for strip in strips]
     return Image.fromarray(np.concatenate(padded, axis=0).astype(np.uint8))
@@ -456,12 +599,92 @@ def summary_line(label, stats):
     )
 
 
+def reference_line(label, stats):
+    """One reference comparison line: CIE76 ΔE and windowed luma SSIM. In the
+    frames-mean line, p95 is the mean of the frames' own 95th percentiles."""
+    return "%s: mean DeltaE76 %.4f, p95 DeltaE76 %.4f, luma SSIM %.6f, edge DeltaE76 %.4f, interior DeltaE76 %.4f, edge share %.4f" % (
+        label, stats.mean_delta_e, stats.p95_delta_e, stats.ssim_luma, stats.edge_delta_e, stats.interior_delta_e, stats.edge_share
+    )
+
+
+def reference_video(path, reference_dir, scale=None, heatmaps=None, keep=None, sink=None, first=0):
+    """Score every AVI frame against ordered reference PNGs and return their
+    mean. `scale` is the render's pixels per reference pixel, found from the
+    first frame when None. `keep`, a dict of frame index to None, is filled
+    with the (render, reference) pairs of those frames; `sink(fps, index,
+    render, reference)` is called for every frame. The first `first` video
+    frames are skipped, for references that cover only a later segment."""
+    fps, frames = read_video(path)
+    references = sorted(pathlib.Path(reference_dir).glob("*.png"))
+    values = []
+    for position, raw in enumerate(frames):
+        index = position - first
+        if index < 0:
+            continue
+        if index >= len(references):
+            raise ValueError("more video frames than reference images")
+        render = Image.fromarray(raw)
+        reference = Image.open(references[index])
+        if scale is None:
+            scale = render.width // reference.width
+        if scale != 1:
+            reference = reference.resize((reference.width * scale, reference.height * scale), Image.Resampling.NEAREST)
+        stats = reference_measure(render, reference)
+        if sink is not None:
+            sink(fps, index, render, reference)
+        values.append(stats)
+        if heatmaps is not None:
+            reference_heatmap(render, reference).save(heatmaps / ("%04d.png" % index))
+        if keep is not None and index in keep:
+            keep[index] = (render, reference)
+    if len(values) != len(references):
+        raise ValueError("more reference images than video frames")
+    return values, ReferenceStats(
+        sum(item.mean_delta_e for item in values) / len(values),
+        sum(item.p95_delta_e for item in values) / len(values),
+        sum(item.ssim_luma for item in values) / len(values),
+        sum(item.edge_delta_e for item in values) / len(values),
+        sum(item.interior_delta_e for item in values) / len(values),
+        sum(item.edge_share for item in values) / len(values),
+    )
+
+
+class ReferenceVideoWriter:
+    """Packs reference_sheet's one-frame sheets into an mp4 through ffmpeg."""
+
+    def __init__(self, out, fps=None):
+        self.out, self.fps, self.process = out, fps, None
+
+    def add(self, fps, index, render, reference):
+        ffmpeg = shutil.which("ffmpeg")
+        if ffmpeg is None:
+            raise RuntimeError("ffmpeg not found; --reference-mp4 needs it to pack the frames")
+        picture = reference_sheet([("frame %d" % index, render, reference)], tile=1.0)
+        if self.process is None:
+            self.process = subprocess.Popen(_ffmpeg_command(ffmpeg, picture.size, self.fps or fps, self.out), stdin=subprocess.PIPE)
+        self.process.stdin.write(picture.tobytes())
+
+    def close(self):
+        if self.process is not None:
+            self.process.stdin.close()
+            if self.process.wait() != 0:
+                raise RuntimeError("ffmpeg failed writing %s" % self.out)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out", required=True)
     parser.add_argument("--summary")
     parser.add_argument("--clear", type=parse_rgb)
     parser.add_argument("--row", nargs=3, action="append", metavar=("LABEL", "A", "B"))
+    parser.add_argument("--reference-row", nargs=3, action="append", metavar=("LABEL", "RENDER", "REFERENCE"))
+    parser.add_argument("--reference-video", nargs=2, metavar=("VIDEO", "REFERENCE_DIR"))
+    parser.add_argument("--reference-scale", type=int, help="render pixels per reference pixel; default from the first frame")
+    parser.add_argument("--reference-first", type=int, default=0, help="video frames to skip before the reference images begin")
+    parser.add_argument("--reference-mp4", metavar="MP4", help="with --reference-video, the sheet of every frame as a video")
+    parser.add_argument("--heatmap-dir")
+    parser.add_argument("--reference-sheet", metavar="PNG", help="with --reference-video, one sheet of --sheet-frames")
+    parser.add_argument("--sheet-frames", default="2,4", help="comma-separated video frame indices for --reference-sheet")
     parser.add_argument("--video", nargs=2, metavar=("A.avi", "B.avi"))
     parser.add_argument("--csv")
     parser.add_argument("--fps", type=float)
@@ -477,8 +700,52 @@ def main():
             with open(args.summary, "a") as handle:
                 handle.write(line + "\n")
         return
-    if not args.row:
-        parser.error("--row or --video is required")
+    if not args.row and not args.reference_row and not args.reference_video:
+        parser.error("--row, --reference-row or --video is required")
+
+    if args.reference_row:
+        heatmaps = None if args.heatmap_dir is None else pathlib.Path(args.heatmap_dir)
+        if heatmaps is not None:
+            heatmaps.mkdir(parents=True, exist_ok=True)
+        lines = []
+        for label, render_path, reference_path in args.reference_row:
+            render, reference = Image.open(render_path), Image.open(reference_path)
+            stats = reference_measure(render, reference)
+            lines.append(reference_line(label, stats))
+            if heatmaps is not None:
+                reference_heatmap(render, reference).save(heatmaps / (label + ".png"))
+        print("\n".join(lines))
+        if args.summary:
+            with open(args.summary, "a") as handle:
+                handle.write("\n".join(lines) + "\n")
+        if not args.row:
+            return
+
+    if args.reference_video:
+        if args.reference_scale is not None and args.reference_scale < 1:
+            parser.error("--reference-scale must be positive")
+        heatmaps = None if args.heatmap_dir is None else pathlib.Path(args.heatmap_dir)
+        if heatmaps is not None:
+            heatmaps.mkdir(parents=True, exist_ok=True)
+        keep = {int(index): None for index in args.sheet_frames.split(",")} if args.reference_sheet else None
+        video = ReferenceVideoWriter(args.reference_mp4, args.fps) if args.reference_mp4 else None
+        try:
+            frames, total = reference_video(*args.reference_video, args.reference_scale, heatmaps, keep,
+                                            None if video is None else video.add, args.reference_first)
+        finally:
+            if video is not None:
+                video.close()
+        if keep is not None:
+            reference_sheet([("frame %d" % index, *pair) for index, pair in keep.items() if pair]).save(args.reference_sheet,
+                                                                                                    optimize=True)
+        lines = [reference_line("frame %d" % index, stats) for index, stats in enumerate(frames)]
+        lines.append(reference_line("frames mean", total))
+        print("\n".join(lines))
+        if args.summary:
+            with open(args.summary, "a") as handle:
+                handle.write("\n".join(lines) + "\n")
+        if not args.row:
+            return
 
     rows = [(label, Image.open(a), Image.open(b)) for label, a, b in args.row]
     sheet(rows, args.clear).save(args.out)

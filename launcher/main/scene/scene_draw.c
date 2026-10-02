@@ -88,13 +88,6 @@ scene_set_render_scale(int percent) {
     }
 }
 
-void
-scene_set_clear(uint32_t rgb) {
-    if (active.scene != NULL) {
-        active_camera()->clear = GFX_RGB(rgb);
-    }
-}
-
 raster_stats_t
 scene_stats(void) {
     return stats;
