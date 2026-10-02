@@ -543,23 +543,23 @@ def bleed_scene():
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class IndirectLightTests(unittest.TestCase):
-    ONE_FLOOR_LIGHT = [{"type": "directional", "direction": [0.6, 1.0, 0.0], "color": [1, 1, 1], "intensity": 1.0,
+    ONE_FLOOR_LIGHT = [{"type": "directional", "direction": [-0.6, 1.0, 0.0], "color": [1, 1, 1], "intensity": 1.0,
                         "disc_degrees": 0.5, "rays": 4}]
 
-    def cache(self, p, tris, tri_mat, intersector, albedo, lights, bounces, rays=128):
+    def cache(self, p, tris, tri_mat, intersector, albedo, lights, bounces, rays=128, cache_samples=1):
         return build_indirect_cache(p, tris, tri_mat, sorted(set(tri_mat.tolist())), set(),
                                     lambda points, spacing, material: np.tile(albedo[material], (len(points), 1)),
-                                    intersector, lights, 0.01, SimpleNamespace(bounces=bounces, rays=rays, cache_samples=1),
-                                    np.random.default_rng(3))
+                                    intersector, lights, 0.01, SimpleNamespace(bounces=bounces, rays=rays, cache_samples=cache_samples))
 
     def test_a_closed_diffuse_box_follows_the_bounce_series(self):
         p, tris = box_inside(10.0)
         intersector = RayMeshIntersector(trimesh.Trimesh(p, tris, process=False))
         lights = [{"type": "ambient", "color": [1, 1, 1], "intensity": 1.0}]
         a, inside = 0.5, np.array([[1.0, 2.0, -3.0], [-4.0, 0.5, 4.0]])
-        for bounces in (1, 2, 3):
-            cache = self.cache(p, tris, np.zeros(len(tris), dtype=int), intersector, {0: np.full(3, a)}, lights, bounces)
-            got = gather_indirect(inside, np.tile([0.0, 1.0, 0.0], (2, 1)), intersector, cache, np.random.default_rng(5))
+        for bounces, cache_samples in ((1, 1), (2, 1), (3, 1), (3, 4)):
+            cache = self.cache(p, tris, np.zeros(len(tris), dtype=int), intersector, {0: np.full(3, a)}, lights, bounces,
+                               cache_samples=cache_samples)
+            got = gather_indirect(inside, np.tile([0.0, 1.0, 0.0], (2, 1)), intersector, cache)
             np.testing.assert_allclose(got, np.full((2, 3), sum(a**k for k in range(1, bounces + 1))), rtol=1e-9)
 
     def test_colour_bleed_rises_toward_the_coloured_wall_and_only_with_indirect(self):
@@ -569,7 +569,7 @@ class IndirectLightTests(unittest.TestCase):
         points = np.array([[39.0, 0.0, 20.0], [20.0, 0.0, 20.0], [2.0, 0.0, 20.0]])
         up = np.tile([0.0, 1.0, 0.0], (3, 1))
         direct = light(points, up, np.zeros(3, dtype=bool), intersector, self.ONE_FLOOR_LIGHT, 0.01, np.random.default_rng(1))
-        total = direct + gather_indirect(points, up, intersector, cache, np.random.default_rng(2))
+        total = direct + gather_indirect(points, up, intersector, cache)
         ratio = lambda radiance: (albedo[0] * radiance)[:, 0] / (albedo[0] * radiance)[:, 1]
         np.testing.assert_allclose(ratio(direct), 1.0)
         self.assertGreater(ratio(total)[0], 1.05)
@@ -583,18 +583,18 @@ class IndirectLightTests(unittest.TestCase):
         tris = np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]])
         intersector = RayMeshIntersector(trimesh.Trimesh(p, tris, process=False))
         cache = IndirectCache(np.array([[[1.0, 0.0, 0.0]] * 2 + [[0.0, 0.0, 1.0]] * 2]), 16, 0.01)
-        got = gather_indirect(np.zeros((1, 3)), np.array([[0.0, 1.0, 0.0]]), intersector, cache, np.random.default_rng(4))
+        got = gather_indirect(np.zeros((1, 3)), np.array([[0.0, 1.0, 0.0]]), intersector, cache)
         self.assertEqual(got.tolist(), [[1.0, 0.0, 0.0]])
 
     def test_a_miss_adds_nothing(self):
         p = np.array([(-100.0, -1.0, -100.0), (100.0, -1.0, -100.0), (100.0, -1.0, 100.0)])
         intersector = RayMeshIntersector(trimesh.Trimesh(p, [[0, 1, 2]], process=False))
         cache = IndirectCache(np.ones((1, 1, 3)), 8, 0.01)
-        got = gather_indirect(np.zeros((1, 3)), np.array([[0.0, 1.0, 0.0]]), intersector, cache, np.random.default_rng(1))
+        got = gather_indirect(np.zeros((1, 3)), np.array([[0.0, 1.0, 0.0]]), intersector, cache)
         self.assertEqual(got.tolist(), [[0.0, 0.0, 0.0]])
 
     def test_without_a_cache_the_gather_is_exactly_zero(self):
-        got = gather_indirect(np.zeros((3, 3)), np.tile([0.0, 1.0, 0.0], (3, 1)), None, None, np.random.default_rng(1))
+        got = gather_indirect(np.zeros((3, 3)), np.tile([0.0, 1.0, 0.0], (3, 1)), None, None)
         self.assertEqual(got.tolist(), np.zeros((3, 3)).tolist())
 
     def test_zero_bounces_is_byte_identical_to_no_cache(self):
@@ -603,7 +603,7 @@ class IndirectLightTests(unittest.TestCase):
         lights = lighting_lights(sun=[0.8, 1.0, 0.0], sun_intensity=1.0, sky_intensity=1.0, ambient=0.02)
         direct = face_colours(p, tris, np.zeros(len(tris), dtype=int), [0], set(), grey, intersector, lights, 0.5, 0.35)
         cache = build_indirect_cache(p, tris, np.zeros(len(tris), dtype=int), [0], set(), grey, intersector, lights, 0.5,
-                                     SimpleNamespace(bounces=0, rays=1, cache_samples=1), np.random.default_rng(1))
+                                     SimpleNamespace(bounces=0, rays=1, cache_samples=1))
         self.assertIsNone(cache)
         self.assertEqual(direct.tolist(), face_colours(p, tris, np.zeros(len(tris), dtype=int), [0], set(), grey,
                                                        intersector, lights, 0.5, 0.35, indirect_cache=cache).tolist())
@@ -613,8 +613,9 @@ class IndirectLightTests(unittest.TestCase):
         grey = lambda points, spacing, material: np.full((len(points), 3), 0.3)
         lights = lighting_lights(sun=[0.8, 1.0, 0.0], sun_intensity=1.0, sky_intensity=1.0, ambient=0.02)
         mat = np.zeros(len(tris), dtype=int)
-        cache = build_indirect_cache(p, tris, mat, [0], set(), grey, intersector, lights, 0.5,
-                                     SimpleNamespace(bounces=2, rays=32, cache_samples=1), np.random.default_rng(1))
+        every = intersector.mesh
+        cache = build_indirect_cache(np.array(every.vertices), np.array(every.faces), np.zeros(len(every.faces), dtype=int), [0],
+                                     set(), grey, intersector, lights, 0.5, SimpleNamespace(bounces=2, rays=32, cache_samples=1))
         c = face_colours(p, tris, mat, [0], set(), grey, intersector, lights, 0.5, 0.35, indirect_cache=cache).tolist()
         self.assertEqual(c[:2], c[2:])
 
