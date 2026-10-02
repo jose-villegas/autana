@@ -56,9 +56,8 @@ suite_timing(void) {
 #else
 
 /* Spinning keeps wall and processor time close, and the window is long enough
- * that a millisecond or nanosecond clock lands a thousand times outside the
- * bounds; a loaded machine only stretches the wall side, so the upper bound is
- * loose. */
+ * that a millisecond or nanosecond clock lands far outside the bounds; a
+ * loaded machine only stretches the wall side, so the upper bound is loose. */
 #define SPIN_US     50000
 #define SPIN_US_MAX (SPIN_US * 100)
 
