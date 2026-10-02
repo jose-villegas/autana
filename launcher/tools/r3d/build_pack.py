@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Write the asset pack from every baked mesh the import and scene files name.
 
-    python launcher/tools/r3d/build_pack.py -o assets.bin [PATH ...]
+    python launcher/tools/r3d/build_pack.py -o assets.bin [PATH ...] [--replace NAME=FILE ...]
 
 Each PATH is an .import.toml, a .scene.toml or a folder searched for both;
 with none, launcher/main is searched. A mesh named by a file is the entry
@@ -55,8 +55,13 @@ def mesh_files(paths):
     return meshes
 
 
-def pack_bytes(paths):
+def pack_bytes(paths, replace=()):
     meshes = mesh_files(paths)
+    for item in replace:
+        name, _, file = item.partition("=")
+        if name not in meshes:
+            raise SettingsError(f"--replace {name}: no such mesh")
+        meshes[name] = pathlib.Path(file)
     missing = [str(entry) for entry in meshes.values() if not entry.is_file()]
     if missing:
         raise SettingsError("no baked mesh at " + ", ".join(missing) + "; run mesh_import.py first")
@@ -67,10 +72,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("paths", nargs="*", help="import files, scene files or folders; launcher/main when omitted")
     parser.add_argument("-o", "--out", required=True, help="the pack to write")
+    parser.add_argument("--replace", action="append", default=[], metavar="NAME=FILE",
+                        help="take mesh NAME from FILE: a scratch bake beside the committed ones")
     args = parser.parse_args(argv)
     out = pathlib.Path(args.out)
     try:
-        pack = pack_bytes(args.paths or [DEFAULT_SEARCH])
+        pack = pack_bytes(args.paths or [DEFAULT_SEARCH], args.replace)
         entries = parse_pack(pack)
     except (SettingsError, PackError) as error:
         parser.error(str(error))

@@ -9,7 +9,7 @@ rays = 48
 
 [ambient]
 color = [1.0, 1.0, 1.0]
-intensity = 0.06
+intensity = 0.03
 
 [[objects]]
 name = "sun"
