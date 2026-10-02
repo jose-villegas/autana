@@ -469,8 +469,8 @@ feed_launcher_gravity(uint32_t dt_ms) {
     if (!imu_ready() || !imu_read(&sample)) {
         return;
     }
-    tilt_update(&launcher_tilt, imu_gravity_screen_x(&sample), imu_gravity_screen_y(&sample), sample.az,
-                imu_rotation_level(&sample), dt_ms);
+    const vec2i_t gravity = imu_gravity_screen(&sample);
+    tilt_update(&launcher_tilt, gravity.x, gravity.y, sample.az, imu_rotation_level(&sample), dt_ms);
     ui_ridge_set_gravity(tilt_x(&launcher_tilt), tilt_y(&launcher_tilt), tilt_strength(&launcher_tilt),
                          tilt_shake(&launcher_tilt));
 }
@@ -946,9 +946,7 @@ sample_display_orientation(int64_t now_us, int64_t* next_sample_us) {
     if (!imu_ready() || !imu_read(&sample)) {
         return;
     }
-    const int gx = imu_gravity_screen_x(&sample);
-    const int gy = imu_gravity_screen_y(&sample);
-    if (display_update(&shell_display, gx, gy)) {
+    if (display_update(&shell_display, imu_gravity_screen(&sample))) {
         ui_set_transform(ui_transform_quarter_turn(display_quarter(&shell_display), GFX_WIDTH, GFX_HEIGHT));
         gfx_request_full_redraw();
     }

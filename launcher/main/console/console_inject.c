@@ -29,7 +29,7 @@ console_verb_touch(const char* args, console_reply_fn reply) {
     bool down = false;
     int x = 0, y = 0;
     if (console_touch_parse(args, &down, &x, &y)) {
-        touch_inject(down, x, y);
+        touch_inject(down, (vec2i_t){x, y});
     } else {
         ESP_LOGW(TAG, "TOUCH wants <down|up> <x> <y>: '%s'", args);
     }

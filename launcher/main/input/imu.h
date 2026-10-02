@@ -22,6 +22,7 @@
 #include <stdint.h>
 
 #include "build_variant.h"
+#include "util/math/vec2i.h"
 
 /* Raw sensor counts, in the chip's own axes.
  *
@@ -59,12 +60,7 @@ void imu_inject_release(void);
  * from tilting the board: held upright the sensor reads about +1 g on its
  * X axis and roughly zero on Y, so the chip's X runs down the screen and its
  * Y runs across it pointing left, hence the negation. */
-static inline int
-imu_gravity_screen_x(const imu_sample_t* s) {
-    return -s->ay;
-}
-
-static inline int
-imu_gravity_screen_y(const imu_sample_t* s) {
-    return s->ax;
+static inline vec2i_t
+imu_gravity_screen(const imu_sample_t* s) {
+    return (vec2i_t){-s->ay, s->ax};
 }
