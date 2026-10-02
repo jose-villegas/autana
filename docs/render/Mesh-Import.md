@@ -252,9 +252,8 @@ Heatmaps put each pixel's ΔE on a scale from black (a match) through red
 (about 20) to yellow (50 or more). The sheet beside them shows the reference,
 the render, the heatmap and the edge pixels, and the commands that make all of
 it are in [`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md#fidelity-reference).
-A scene's scores and example sheet live beside its own tools. Nothing
-refreshes them when the bake changes: the reference and the scratch bakes need
-the bake toolchain and the source model.
+A scene's scores live beside its own tools, and its example sheets are
+regenerated with the other doc images.
 
 The ceiling for a flat bake is the smooth bake's own error. Smooth, one colour
 per vertex, is not exact either, and flat adds the colour gradient across each

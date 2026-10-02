@@ -60,6 +60,8 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 | `render/sponza-{full,lite,flat}.gif` | the same three seconds of the flythrough, one GIF per bake |
 | `render/sponza-{depth,tiles}.gif` | those three seconds as the depth and depth-tile views of the full bake |
 | `render/bake-fidelity-sheet.png` | the flat bake against the source model at two poses, with the error heatmap (see Fidelity against the source) |
+| `render/bake-indirect-compare.png`, `render/bake-indirect-crops.png` | the smooth bake without and with indirect light, from a bake of the import made without that field, at one pose and where the flythrough differs most (see Indirect light) |
+| `render/bake-indirect-sheet.png` | the smooth bake against the source model at two poses, with the error heatmap |
 | `render/compare-full-{lite,flat}.png`, `.crops.png` | full against lite and smooth against flat at the GIFs' last pose: both renders and their difference, then the places they differ most, enlarged |
 
 ## The Sponza variants
@@ -108,7 +110,9 @@ camera-path poses, and which flat-bake settings get closest. What the numbers
 mean is in [Mesh-Import.md](../../../../../docs/render/Mesh-Import.md#fidelity-against-a-reference);
 the commands, working directory `launcher/`, are in
 [the r3d tools README](../../../../tools/r3d/README.md#fidelity-reference).
-`PY` is the venv's interpreter.
+`PY` is the venv's interpreter. The tables here were measured on bakes with
+direct light only (scene ambient 0.06), before indirect light; the current
+bakes' scores are under Indirect light below.
 
 ```sh
 M=main/apps/render_lab
@@ -125,7 +129,7 @@ scenes scored the same way: `sh $H -o host` renders each scene's video
 scores it. The sheet is `--reference-sheet fidelity.png --sheet-frames 2,4` on
 the committed flat render.
 
-| Variant | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 | Interior ΔE76 |
+| Variant, direct light | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 | Interior ΔE76 |
 |---|---:|---:|---:|---:|---:|
 | Full smooth | 6.654 | 21.46 | 0.696 | 13.64 | 5.53 |
 | Lite smooth | 7.541 | 24.83 | 0.651 | 15.76 | 6.22 |
@@ -185,59 +189,66 @@ cache_samples = 1 }` in `meshes/sponza.import.toml`, described in
 [Mesh-Import.md](../../../../../docs/render/Mesh-Import.md#indirect-light). It
 lifts the shadowed arcade ceilings and the sides of the columns the sun does
 not reach, and tints a column next to a banner with the banner's colour. The
-three meshes keep their triangle budgets and cost the same to draw.
+three meshes keep their triangle budgets and cost the same to draw. The scene's
+ambient light, which stood in for bounce light, is 0.03. Smooth bakes against
+their own references scored mean ΔE 7.03, 6.64 and 6.25, p95 21.83, 21.03 and
+22.63, and SSIM 0.663, 0.684 and 0.641 at ambient 0.06, 0.03 and 0; 0.03 has the
+best SSIM and p95, and a mean between the two.
 
 Each bounce adds less than the one before. The mean outgoing radiance of the
-262 267 source triangles, as a share of the direct light, and the bake time of
-the three variants together, bounces 0 to 3:
+262 267 source triangles as a share of the direct light, the bake time of the
+three variants together, and the full mesh's vertices per triangle, bounces 0
+to 3:
 
 | Bounces | Radiance added by this bounce | Bake time, three variants | Full mesh vertices / triangles |
 |---:|---:|---:|---:|
-| 0 | none | 2 min 37 s | 17 288 / 17 375 |
-| 1 | 8.0% | 3 min 53 s | 17 383 / 17 378 |
-| 2 | 1.7% | 4 min 27 s | 17 309 / 17 370 |
-| 3 | 0.46% | 4 min 49 s | 17 463 / 17 376 |
+| 0 | none | 2 min 35 s | 17 146 / 17 375 = 0.987 |
+| 1 | 2.7% | 3 min 25 s | 17 087 / 17 376 = 0.983 |
+| 2 | 0.58% | 3 min 41 s | 17 198 / 17 381 = 0.990 |
+| 3 | 0.15% | 3 min 52 s | 17 140 / 17 378 = 0.986 |
 
-The third bounce adds under 1%, so two bounces are baked; a fourth would add
-0.13%. Zero bounces writes the bytes the bake wrote before `indirect` existed.
+The second bounce already adds under 1%. Two are baked because the share is a
+mean over all triangles and is larger in the shadowed places the bounces light.
+Zero bounces writes the bytes the bake wrote before `indirect` existed.
 
 How far each bake is from the source lit per pixel, over the same eight poses
 as above, against the reference with indirect light and against one with
-direct light only. Mean ΔE76, p95 ΔE76 and luma SSIM:
+direct light only. Mean Î”E76, p95 Î”E76 and luma SSIM; the direct-light bakes
+are the same import with `indirect` removed:
 
 | Bake | Against the indirect reference | Against the direct-only reference |
 |---|---|---|
-| Full smooth, direct light | 8.892, 22.37, 0.660 | 6.654, 21.46, 0.696 |
-| Full smooth, two bounces | 6.982, 21.75, 0.668 | 8.501, 22.09, 0.678 |
-| Lite smooth, direct light | 9.756, 25.67, 0.616 | 7.541, 24.83, 0.651 |
-| Lite smooth, two bounces | 8.068, 24.66, 0.619 | 9.248, 24.88, 0.634 |
-| Flat, direct light | 9.516, 27.98, 0.621 | 7.278, 26.92, 0.652 |
-| Flat, two bounces | 7.626, 24.74, 0.620 | 8.991, 25.03, 0.628 |
+| Full smooth, direct light | 8.507, 21.96, 0.680 | 6.190, 20.91, 0.720 |
+| Full smooth, two bounces | 6.645, 21.03, 0.684 | 7.993, 21.53, 0.692 |
+| Lite smooth, direct light | 9.489, 26.65, 0.629 | 7.354, 26.03, 0.669 |
+| Lite smooth, two bounces | 7.801, 25.19, 0.638 | 8.710, 25.14, 0.651 |
+| Flat, direct light | 9.294, 28.99, 0.634 | 7.041, 28.06, 0.670 |
+| Flat, two bounces | 7.680, 26.17, 0.623 | 8.544, 26.25, 0.632 |
 
 A bake is closest to the reference that has its own kind of light, and the
-indirect bake is 1.7 to 1.9 ΔE nearer its reference than the direct bake is
-to it. The like-for-like score is 0.3 to 0.5 ΔE above the direct one: the reference resolves bounce detail finer than a triangle.
+indirect bake is 1.6 to 1.9 Î”E nearer its reference than the direct bake is to
+it. The like-for-like score is 0.4 to 0.6 Î”E above the direct one: the
+reference resolves bounce detail finer than a triangle.
 
-Direct light only above, two bounces below, and their difference, one row per
-bake at one pose; then the places the two differ most along the flythrough,
-direct above indirect: a banner's green on the column beside it, and the lit
-ceiling.
+The smooth bake without and with indirect light at one pose, and the
+difference; then the places the two differ most along the flythrough, without
+above: a banner's colour on the column beside it, and the lit ceiling.
 
-![Direct light and two bounces, smooth and flat](../../../../../docs/images/render/bake-indirect-compare.png)
+![Indirect light off and on, smooth](../../../../../docs/images/render/bake-indirect-compare.png)
 
 ![Where bounce light changes the picture](../../../../../docs/images/render/bake-indirect-crops.png)
 
 The two-bounce smooth bake against its reference at two poses: the reference,
-the bake, the ΔE heatmap and the reference's edge pixels. The error stays at
+the bake, the Î”E heatmap and the reference's edge pixels. The error stays at
 silhouettes and shadow edges, as for the direct bake.
 
 ![Reference, two-bounce bake, error heatmap and edge pixels](../../../../../docs/images/render/bake-indirect-sheet.png)
 
-Nothing refreshes these numbers or images when the bake changes. They come
-from `mesh_import.py meshes/sponza.scene.toml` at each bounce count, the
-`reference_render.py` commands above with `render_compare.sh --reference` on
-each bake's revision, and `render_compare.sh --crops 6 --video --fps 30` for
-the pair of revisions.
+`doc_images.sh` regenerates the three images, baking the import without
+`indirect` for the "off" side. The bounce table and the scores come from
+`mesh_import.py meshes/sponza.scene.toml` at each bounce count and the
+`reference_render.py` commands above, once for the import with `indirect` and
+once without.
 
 ## Sponza poses
 
