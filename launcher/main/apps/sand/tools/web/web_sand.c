@@ -16,12 +16,18 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* A host compile (the complexity gate measures this file) has no Emscripten. */
+#ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#else
+#define EMSCRIPTEN_KEEPALIVE
+#endif
 
 #include "apps/sand/material.h"
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_brushes.h"
+#include "apps/sand/sand_controls.h"
 #include "apps/sand/sand_dither_tables.h"
 #include "apps/sand/sand_limits.h"
 #include "apps/sand/sand_paint_clock.h"
@@ -32,27 +38,13 @@
 #include "input/tilt.h"
 
 /* The scale JS sends gravity in: one g, matching the IMU's own counts. */
-#define WEB_COUNTS_PER_G        4096
-
-/* app_sand.c's brush radii and step rates; a brush keeps its on-screen size at every cell size. */
-#define POUR_RADIUS_PX          10
-#define ERASE_RADIUS_PX         16
-#define ERASE_EMITTER_RADIUS_PX 32
-#define DETONATE_RADIUS_PX      50
-#define SHAKE_DEADZONE          40
-#define SIM_HZ                  60
-#define SIM_STEP_MS             (1000 / SIM_HZ)
-#define SIM_MAX_CATCHUP         2
-#define POUR_HZ                 60
-#define POUR_STEP_MS            (1000 / POUR_HZ)
+#define WEB_COUNTS_PER_G  4096
 
 /* sand_ui.h's PAINT/ERASE/DETONATE as plain ints, the form that crosses the wasm boundary. */
-#define WEB_MODE_PAINT          0
-#define WEB_MODE_ERASE          1
-#define WEB_MODE_DETONATE       2
-#define WEB_MODE_COUNT          3
-#define WEB_RADIUS_MIN          2
-#define WEB_RADIUS_MAX          64
+#define WEB_MODE_PAINT    0
+#define WEB_MODE_ERASE    1
+#define WEB_MODE_DETONATE 2
+#define WEB_MODE_COUNT    3
 
 typedef enum {
     WEB_COLOR_FULL,
@@ -84,9 +76,9 @@ static int gravity_x, gravity_y = WEB_COUNTS_PER_G;
 
 /* One radius per mode, kept across a quality or orientation change: those rebuild the grid, not the brush. */
 static int radius_px[WEB_MODE_COUNT] = {
-    [WEB_MODE_PAINT] = POUR_RADIUS_PX,
-    [WEB_MODE_ERASE] = ERASE_RADIUS_PX,
-    [WEB_MODE_DETONATE] = DETONATE_RADIUS_PX,
+    [WEB_MODE_PAINT] = SAND_POUR_RADIUS_PX,
+    [WEB_MODE_ERASE] = SAND_ERASE_RADIUS_PX,
+    [WEB_MODE_DETONATE] = SAND_DETONATE_RADIUS_PX,
 };
 
 static uint32_t sim_accumulator_q8;
@@ -164,7 +156,8 @@ web_set_radius(int mode, int px) {
     if (mode < 0 || mode >= WEB_MODE_COUNT) {
         return 0;
     }
-    radius_px[mode] = px < WEB_RADIUS_MIN ? WEB_RADIUS_MIN : (px > WEB_RADIUS_MAX ? WEB_RADIUS_MAX : px);
+    radius_px[mode] =
+        px < SAND_UI_RADIUS_MIN ? SAND_UI_RADIUS_MIN : (px > SAND_UI_RADIUS_MAX ? SAND_UI_RADIUS_MAX : px);
     return radius_px[mode];
 }
 
@@ -228,7 +221,7 @@ web_step(uint32_t dt_ms, int ax, int ay, int az) {
     gravity_x = gx;
     gravity_y = gy;
     const int shake = tilt_shake(&tilt);
-    const int jostle = shake > SHAKE_DEADZONE ? shake : 0;
+    const int jostle = shake > SAND_SHAKE_DEADZONE ? shake : 0;
 
     material_set_gravity(gx, gy);
     material_shine_direction(gx, gy, &paint_frame.shine_ux_q8, &paint_frame.shine_uy_q8);
@@ -249,14 +242,14 @@ web_step(uint32_t dt_ms, int ax, int ay, int az) {
      * deliberate 4x is not clipped back to two steps as if it were lag. */
     const uint32_t flow_q8 = ((uint32_t)tilt_strength(&tilt) * (uint32_t)sim_speed_q8) >> 8;
     sim_accumulator_q8 += dt_ms * flow_q8;
-    int steps_cap = (int)(((uint32_t)SIM_MAX_CATCHUP * (uint32_t)sim_speed_q8) / 256);
+    int steps_cap = (int)(((uint32_t)SAND_MAX_CATCHUP * (uint32_t)sim_speed_q8) / 256);
     steps_cap = steps_cap < 1 ? 1 : steps_cap;
-    int steps = (int)(sim_accumulator_q8 / (SIM_STEP_MS * 256));
+    int steps = (int)(sim_accumulator_q8 / (SAND_STEP_MS * 256));
     if (steps > steps_cap) {
         steps = steps_cap;
         sim_accumulator_q8 = 0;
     } else {
-        sim_accumulator_q8 -= (uint32_t)steps * SIM_STEP_MS * 256;
+        sim_accumulator_q8 -= (uint32_t)steps * SAND_STEP_MS * 256;
     }
     for (int i = 0; i < steps; i++) {
         sand_step(&sim, gx, gy, jostle);
@@ -275,6 +268,28 @@ cell_at(int x_px, int y_px, int* cx, int* cy) {
 static int
 radius_cells(int px) {
     return (px + cell_px / 2) / cell_px;
+}
+
+/* Pours or erases at a fixed rate while the pointer is held, catching up at most SAND_MAX_CATCHUP steps. */
+static void
+pour(int mode, int cx, int cy, uint32_t dt_ms) {
+    pour_accumulator_ms += dt_ms;
+    int applications = (int)(pour_accumulator_ms / SAND_POUR_STEP_MS);
+    if (applications > SAND_MAX_CATCHUP) {
+        applications = SAND_MAX_CATCHUP;
+        pour_accumulator_ms = 0;
+    } else {
+        pour_accumulator_ms -= (uint32_t)applications * SAND_POUR_STEP_MS;
+    }
+    for (int i = 0; i < applications; i++) {
+        if (mode == WEB_MODE_ERASE) {
+            sand_erase(&sim, cx, cy, radius_cells(radius_px[WEB_MODE_ERASE]));
+            sand_remove_emitters(&sim, cx, cy, radius_cells(SAND_ERASE_EMITTER_RADIUS_PX));
+        } else {
+            sand_spawn_cell_share(&sim, cx, cy, radius_cells(radius_px[WEB_MODE_PAINT]), sand_brushes[brush_index].cell,
+                                  sand_brushes[brush_index].share_pct);
+        }
+    }
 }
 
 /* One call per frame, like app_sand.c's handle_pour_input(): `pressed` is
@@ -306,24 +321,7 @@ web_input(int mode, int down, int pressed, int source, int x_px, int y_px, uint3
         }
         return;
     }
-
-    pour_accumulator_ms += dt_ms;
-    int applications = (int)(pour_accumulator_ms / POUR_STEP_MS);
-    if (applications > SIM_MAX_CATCHUP) {
-        applications = SIM_MAX_CATCHUP;
-        pour_accumulator_ms = 0;
-    } else {
-        pour_accumulator_ms -= (uint32_t)applications * POUR_STEP_MS;
-    }
-    for (int i = 0; i < applications; i++) {
-        if (mode == WEB_MODE_ERASE) {
-            sand_erase(&sim, cx, cy, radius_cells(radius_px[WEB_MODE_ERASE]));
-            sand_remove_emitters(&sim, cx, cy, radius_cells(ERASE_EMITTER_RADIUS_PX));
-        } else {
-            sand_spawn_cell_share(&sim, cx, cy, radius_cells(radius_px[WEB_MODE_PAINT]), sand_brushes[brush_index].cell,
-                                  sand_brushes[brush_index].share_pct);
-        }
-    }
+    pour(mode, cx, cy, dt_ms);
 }
 
 EMSCRIPTEN_KEEPALIVE
