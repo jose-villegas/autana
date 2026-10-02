@@ -22,8 +22,8 @@ gesture_edge_t shell_exit_edge_for_quarter(int quarter);
  * next pass, after a full redraw. */
 void shell_start_app(const app_t** current, const app_t* next);
 
-/* The app's exit(), its scenes unloaded and the arena emptied; `*current`
- * becomes NULL. */
+/* The app's exit(), then the systems' app_exit phase and the arena emptied;
+ * `*current` becomes NULL. */
 void shell_exit_app(const app_t** current);
 
 /* shell_exit_app(), then the launcher drawn in the same pass, so the frame
