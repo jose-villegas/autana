@@ -192,8 +192,8 @@ def heat_scale(width):
     for tick in range(0, HEAT_FULL_SCALE + 1, 10):
         x = round(tick / HEAT_FULL_SCALE * (width - 1))
         draw.line([(x, 14), (x, 19)], fill=(230, 230, 230))
-        draw.text((min(x, width - 24), 20), str(tick), fill=(230, 230, 230), font=font)
-    draw.text((0, 42), "CIE76 dE per pixel: black matches, red about 20, yellow 50 or more", fill=(230, 230, 230), font=font)
+        outlined_text(draw, (min(x, width - 24), 20), str(tick), (230, 230, 230), font)
+    outlined_text(draw, (0, 42), "CIE76 dE per pixel: black matches, red about 20, yellow 50 or more", (230, 230, 230), font)
     return picture
 
 
@@ -463,8 +463,8 @@ def crop_sheet(entries, label_a, label_b, zoom=ZOOM):
         left = 0
         for box, (crop_a, crop_b) in cells:
             place = "x%d y%d  %dx%d" % (box[0], box[1], box[2] - box[0], box[3] - box[1])
-            draw.text((left, top), title, fill=(255, 255, 255), font=font)
-            draw.text((left, top + 17), place, fill=(200, 200, 200), font=font)
+            outlined_text(draw, (left, top), title, (255, 255, 255), font)
+            outlined_text(draw, (left, top + 17), place, (200, 200, 200), font)
             width = max(crop_a.size[0], cell_min)
             below = captioned(crop_a, label_a, width)
             canvas.paste(below, (left, top + bar))
@@ -500,6 +500,12 @@ def _font():
         return ImageFont.load_default()
 
 
+def outlined_text(draw, xy, text, fill, font):
+    """Draw text ringed in the opposite shade of its fill, so a label reads over any panel."""
+    light = 0.299 * fill[0] + 0.587 * fill[1] + 0.114 * fill[2] >= 128
+    draw.text(xy, text, fill=fill, font=font, stroke_width=1, stroke_fill=(0, 0, 0) if light else (255, 255, 255))
+
+
 def captioned(picture, text, width=0):
     """picture under a LABEL_BAR holding text, on a canvas at least width wide.
 
@@ -508,7 +514,7 @@ def captioned(picture, text, width=0):
     picture = picture.convert("RGB")
     canvas = Image.new("RGB", (max(picture.width, width), picture.height + LABEL_BAR), (0, 0, 0))
     canvas.paste(picture, (0, LABEL_BAR))
-    ImageDraw.Draw(canvas).text((6, 3), text, fill=(255, 255, 255), font=_font())
+    outlined_text(ImageDraw.Draw(canvas), (6, 3), text, (255, 255, 255), _font())
     return canvas
 
 
