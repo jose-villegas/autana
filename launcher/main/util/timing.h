@@ -6,8 +6,8 @@
  * The clock is read on a frame's hottest paths (frame_cost's stages), so it
  * is inline: on the board a read is the one call to the high-resolution
  * timer it would be without this header. A host reads standard C's wall
- * clock, which no platform library is needed for; it is enough for a test's
- * elapsed time, but it can step, so only the board's clock is monotonic.
+ * clock: enough for a test's elapsed time, but it can step, so only the
+ * board's clock is monotonic.
  */
 #pragma once
 
