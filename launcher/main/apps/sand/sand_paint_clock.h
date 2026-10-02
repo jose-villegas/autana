@@ -130,7 +130,7 @@ sand_paint_gravity_bearing_q16(int gx, int gy) {
     if (denom == 0) {
         return 0;
     }
-    const int64_t p_q16 = ((int64_t)gx << 16) / denom;
+    const int64_t p_q16 = (int64_t)gx * 65536 / denom; /* a multiply: gx may be negative */
     return (int)(gy < 0 ? (p_q16 - 65536) : (65536 - p_q16));
 }
 
