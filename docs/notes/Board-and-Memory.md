@@ -103,7 +103,7 @@ just `build/`. The checklist is in
 shares your production memory budget". Watch the heap figures above and a
 development build's `HEAPMARK` lines.
 
-Compare free and largest from the same pool, `heap_caps_*(MALLOC_CAP_DMA)`:
+Compare free and largest from the same pool, `memory_*(MEMORY_DMA)`:
 `esp_get_free_heap_size()` adds a separate region and invents a fragmentation
 gap (see `check_memory()` in `launcher/main/boot/post.c`).
 

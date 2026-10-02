@@ -1074,7 +1074,7 @@ below it before the tree it belongs to can use any.
 
 ## Performance discipline
 
-Every number below came from `esp_timer_get_time()` on real hardware, via
+Every number below came from `timing_now_us()` on real hardware, via
 the device-only tests in `suite_sand_perf.c` (`#ifdef DEVICE_BUILD`), not
 estimated. A captured budget is a fact about one build on one board at one
 point in time; `docs/sand/Testing-Sand.md` is where the last full capture

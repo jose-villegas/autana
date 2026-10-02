@@ -542,7 +542,7 @@ Two techniques carry almost all of it.
 ### Pass time in, never read a clock
 
 `touch_fsm_update()` takes `now_us` as an argument rather than calling
-`esp_timer_get_time()`:
+`timing_now_us()`:
 
 ```c
 void touch_fsm_update(touch_fsm_t *fsm, bool have_point,
