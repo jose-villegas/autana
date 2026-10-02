@@ -7,8 +7,8 @@ or when anything but its owner or a driver calls the vendor clock or heap.
 main.c is the shell: it starts the platform and runs the frame loop, and the
 chip's vendor code (ESP-IDF, FreeRTOS, NVS, the board support package) sits
 behind a module of this firmware's own (input/, display/, util/timing.h,
-util/settings.h, util/memory.h). A vendor call left in main.c is a second place that knows the chip, so
-this fails on
+util/settings.h, util/memory.h). A vendor call left in main.c is a second
+place that knows the chip, so this fails on
 
   - an include of an esp_*, nvs*, freertos/, bsp/, driver/, hal/, soc/ or
     rom/ header, and
@@ -21,12 +21,14 @@ patterns themselves, not by a list. Comments and string literals are not
 code. There is no exemption list: a reason for main.c to touch the vendor
 code is a missing module, so add one.
 
-The clock and the heap have owners: esp_timer_* belongs to util/timing, and
-heap_caps_* and MALLOC_CAP_* to util/memory. In the firmware, its suites and
-its tools, a name of either is code only in its owner's own files
-(util/timing.* and util/timing_*.*, the same for memory) or in a driver: a
-*_device.c file or anything under board/. The host platform the suites run
-on (launcher/test/ outside suites/) stands in for the vendor code, so it is
+The vendor timer and heap have owners: esp_timer_* belongs to util/timing,
+and heap_caps_* and MALLOC_CAP_* to util/memory. In the firmware, its suites
+and its tools, a name of either is code only in its owner's own files
+(util/timing.* and util/timing_*.*, the same for memory) or in a driver:
+anything under board/, or a *_device.c in launcher/main/ outside a tests/
+folder, where the name means a suite that runs on the board. launcher/test/
+outside suites/ (the host heap model, the stubs, the harness the board also
+builds) stands in for the vendor code or measures from beneath it, so it is
 not checked; nor is main.c, which the rule above holds to more.
 """
 import pathlib
@@ -83,8 +85,11 @@ UTIL = "launcher/main/util/"
 
 
 def may_use(rel, prefix):
-    """True when `rel` owns names with `prefix`, or is a driver."""
-    if rel.startswith("launcher/main/board/") or rel.endswith("_device.c"):
+    """True when `rel` owns names with `prefix`, or is a driver. A suite's
+    *_device.c is a test that runs on the board, not a driver."""
+    if rel.startswith("launcher/main/board/"):
+        return True
+    if rel.startswith("launcher/main/") and rel.endswith("_device.c") and "/tests/" not in rel:
         return True
     if not rel.startswith(UTIL) or "/" in rel[len(UTIL):]:
         return False
