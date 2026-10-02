@@ -877,6 +877,18 @@ test_the_narrow_camera_transform_agrees_with_the_wide_one_across_the_motion(void
     }
 }
 
+/* boot_anim_key_to_camera_space() takes no range test: the curve table must stay
+ * inside the narrow transform's inputs. */
+static void
+test_the_curve_table_stays_inside_the_narrow_range(void) {
+    for (int i = 0; i < BOOT_ANIM_CURVE_POINTS; i++) {
+        const boot_anim_pt_t p = boot_anim_sample(i);
+        TEST_ASSERT_TRUE(p.re > -(1 << 17) && p.re < (1 << 17));
+        TEST_ASSERT_TRUE(p.im > -(1 << 17) && p.im < (1 << 17));
+        TEST_ASSERT_TRUE(p.t > -(1 << 15) && p.t < (1 << 15));
+    }
+}
+
 /* Basic level of detail */
 
 /* Two points far enough apart on screen that boot_anim_curve_lod_steps()
@@ -1616,6 +1628,7 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_a_span_climbs_steadily_when_its_points_do);
     RUN_TEST(test_spline_cs_matches_transforming_the_world_space_spline);
     RUN_TEST(test_plane_points_match_the_full_camera_space_transform);
+    RUN_TEST(test_the_curve_table_stays_inside_the_narrow_range);
     RUN_TEST(test_the_narrow_camera_transform_agrees_with_the_wide_one_across_the_motion);
     RUN_TEST(test_curve_lod_steps_keeps_full_detail_for_a_wide_chord);
     RUN_TEST(test_curve_lod_steps_collapses_a_tiny_chord_to_one_step);
