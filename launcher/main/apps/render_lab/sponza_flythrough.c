@@ -2,7 +2,7 @@
 
 #include <stddef.h>
 
-#include "sponza_scene_generated.h"
+#include "meshes/sponza_scene_generated.h"
 
 /* The scene's camera lens and path, sampled without loading the scene. */
 #define FLYTHROUGH (&sponza_scene.cameras[0].lens)
