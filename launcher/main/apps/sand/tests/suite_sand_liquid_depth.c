@@ -26,6 +26,7 @@
 
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand.h"
+#include "apps/sand/sand_paint_clock.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
 #include "util/intmath.h"
@@ -1530,19 +1531,6 @@ wake_test_frame_gravity(rng_t* wobble, int f, int* gx, int* gy) {
     *gy = 950 + (int)rng_below(wobble, 11) - 5;
 }
 
-/* advance_local_depth_wake(), mirrored: whether the wake tick fires this
- * frame - shared by every reproduction in this file that needs the same
- * carried-remainder tick (wake_test_run(), band_test_run()). */
-static bool
-local_depth_wake_tick(uint32_t* elapsed_ms, uint32_t dt_ms, uint32_t wake_ms) {
-    *elapsed_ms += dt_ms;
-    if (*elapsed_ms < wake_ms) {
-        return false;
-    }
-    *elapsed_ms -= (*elapsed_ms / wake_ms) * wake_ms;
-    return true;
-}
-
 /* Marks every row of a w x h grid whose occupancy changed since
  * `prev_occupied` - shared by every reproduction in this file that tracks
  * occupancy this way (wake_test_run(), band_test_run()). */
@@ -1731,7 +1719,7 @@ wake_test_run(int steps) {
         unsigned ax, ay, scale_q8;
         ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
 
-        const bool wake_fired = local_depth_wake_tick(&wake_elapsed_ms, WAKE_TEST_DT_MS, WAKE_TEST_WAKE_MS);
+        const bool wake_fired = sand_paint_clock_periods(&wake_elapsed_ms, WAKE_TEST_DT_MS, WAKE_TEST_WAKE_MS) != 0;
 
         bool row_dirty[WAKE_TEST_H] = {0};
         local_depth_mark_occupancy_dirty(&fx.wake_test_grid, WAKE_TEST_W, WAKE_TEST_H, wake_prev_occupied, row_dirty);
@@ -2124,7 +2112,7 @@ band_test_run(void) {
         unsigned ax, ay, scale_q8;
         ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
 
-        const bool wake_fired = local_depth_wake_tick(&wake_elapsed_ms, BAND_TEST_DT_MS, BAND_TEST_WAKE_MS);
+        const bool wake_fired = sand_paint_clock_periods(&wake_elapsed_ms, BAND_TEST_DT_MS, BAND_TEST_WAKE_MS) != 0;
 
         bool row_dirty[BAND_TEST_H] = {0};
         local_depth_mark_occupancy_dirty(&fx.band_test_grid, BAND_TEST_W, BAND_TEST_H, band_prev_occupied, row_dirty);
@@ -2387,7 +2375,8 @@ flash_test_settle(bool guard_chain, bool gate_reset) {
         sand_step(&fx.flash_test_grid, -12, FLASH_TEST_G, 0);
         flash_test_frame_reset(-12, FLASH_TEST_G, FLASH_TEST_W, FLASH_TEST_H, gate_reset, fx_ray, &flash_vdom_prev,
                                &flash_vrev_prev, &flash_hrev_prev, &fired);
-        const bool wake_fired = local_depth_wake_tick(&flash_wake_elapsed_ms, FLASH_TEST_DT_MS, FLASH_TEST_WAKE_MS);
+        const bool wake_fired =
+            sand_paint_clock_periods(&flash_wake_elapsed_ms, FLASH_TEST_DT_MS, FLASH_TEST_WAKE_MS) != 0;
         flash_test_paint(-12, FLASH_TEST_G, wake_fired);
     }
 }
@@ -2430,7 +2419,7 @@ flash_test_run(bool guard_chain, bool gate_reset) {
 
         flash_test_frame_reset(gx, gy, FLASH_TEST_W, FLASH_TEST_H, gate_reset, fx_ray, &flash_vdom_prev,
                                &flash_vrev_prev, &flash_hrev_prev, &fired);
-        const bool wake_fired = local_depth_wake_tick(&wake_elapsed_ms, FLASH_TEST_DT_MS, FLASH_TEST_WAKE_MS);
+        const bool wake_fired = sand_paint_clock_periods(&wake_elapsed_ms, FLASH_TEST_DT_MS, FLASH_TEST_WAKE_MS) != 0;
         flash_test_paint(gx, gy, wake_fired);
 
         const int crossed = flash_test_count_crossed();
@@ -2541,7 +2530,7 @@ tremor_test_run(bool gate_reset, int* resets, int* changed) {
         flash_test_frame_reset(gx, gy, FLASH_TEST_W, FLASH_TEST_H, gate_reset, fx_ray, &flash_vdom_prev,
                                &flash_vrev_prev, &flash_hrev_prev, &fired);
         fires += fired ? 1 : 0;
-        const bool wake_fired = local_depth_wake_tick(&wake_elapsed_ms, FLASH_TEST_DT_MS, FLASH_TEST_WAKE_MS);
+        const bool wake_fired = sand_paint_clock_periods(&wake_elapsed_ms, FLASH_TEST_DT_MS, FLASH_TEST_WAKE_MS) != 0;
         flash_test_paint(gx, gy, wake_fired);
     }
 

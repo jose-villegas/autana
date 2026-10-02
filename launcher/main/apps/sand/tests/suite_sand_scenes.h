@@ -12,6 +12,7 @@
 #pragma once
 
 #include "apps/sand/sand.h"
+#include "apps/sand/sand_controls.h"
 
 /* How much of the mixed all-pairs scene is left empty, so a gravity flip
  * has somewhere to launch into. */
@@ -244,10 +245,10 @@ void build_gas_ignition_vessel_scene(sand_t* s);
  * into a different shape - built for that, not transposed. */
 #define LANDSCAPE_GX               1000
 
-/* The app's own brush - POUR_RADIUS_PX 10 at 2 px per cell - dragged along
+/* The app's own brush - SAND_POUR_RADIUS_PX at 2 px per cell - dragged along
  * the landscape ceiling, column 0. The stream is about ten cells across,
  * which is what leaves the settled-block skip anything to keep. */
-#define LANDSCAPE_POUR_RADIUS      5
+#define LANDSCAPE_POUR_RADIUS      ((SAND_POUR_RADIUS_PX + 1) / 2)
 
 /* How much of the board the bed holds before anything is poured onto it.
  * Both shares come from the interaction arena's landscape sweep, which

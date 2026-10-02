@@ -169,7 +169,7 @@ slide and the material never slides. `sand_gas.c` builds its own
 question that has cost the most rework, twice, in the same shape. A rule
 specified as reaching exactly one conductor cell is unbuildable through
 the real brush: a hand drag is never one cell thick
-(`POUR_RADIUS_PX`/`ERASE_RADIUS_PX` in `app_sand.c`, 10/16 px, ~5 cells
+(`SAND_POUR_RADIUS_PX`/`SAND_ERASE_RADIUS_PX` in `sand_controls.h`, 10/16 px, ~5 cells
 radius at the finest 2 px/cell zoom). The fix that generalises: an
 *attenuating* walk (crossing `d` cells succeeds at `(conducts/256)^d`)
 instead of a hard "exactly N", so thickness costs time rather than being

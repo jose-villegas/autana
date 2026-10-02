@@ -333,7 +333,7 @@ material:
 |---|---|---|
 | Liquid rim | `liquid_spec[mask]` (`material_set_gravity()`) | a 16-entry table by cardinal mask, precomputed once a frame, read by index per rim cell |
 | Metal (`MATERIAL_HATCHED`) | `material_shine_direction()` | a Q8 unit vector (minus gravity, turned 45 degrees) computed once a frame, walked per pixel (or sampled once per cell in indexed mode) to place the shine band |
-| Glass (`MATERIAL_SPECKLED`) | `glass_phase` (`advance_glass_phase()`, gravity's own bearing angle, quantised) | a single phase added to `hash` before the live `LERP8` blend, a shimmer, not a band |
+| Glass (`MATERIAL_SPECKLED`) | `glass_phase` (`sand_paint_clock_glass()`, gravity's own bearing angle, quantised) | a single phase added to `hash` before the live `LERP8` blend, a shimmer, not a band |
 
 All three read the same frame's gravity; none of them share code, because
 each solves a differently-shaped problem (a per-mask table, a swept

@@ -61,6 +61,7 @@
 #include "sand.h"
 #include "sand_brushes.h"
 #include "sand_colour_state.h"
+#include "sand_controls.h"
 #include "sand_dither_tables.h"
 #include "sand_heal.h"
 #include "sand_limits.h"
@@ -196,22 +197,6 @@ static int cell, grid_w, grid_h, block_cols, block_rows;
 #define SAND_HEAL_BUDGET_PIXELS (GFX_WIDTH * 64)
 static sand_heal_t heal_policy;
 
-/* Default pour brush radius, in px - seeds sand_ui_t.radius_px; the value
- * actually in force is whatever the brush screen's slider last set (see
- * sand_ui_radius()). */
-#define POUR_RADIUS_PX            10
-
-#define POUR_HZ                   60
-#define POUR_STEP_MS              (1000 / POUR_HZ)
-
-/* Default erase brush radius, in px, see POUR_RADIUS_PX's own comment. */
-#define ERASE_RADIUS_PX           16
-
-#define ERASE_EMITTER_RADIUS_PX   32
-
-/* Default BOOM brush radius, in px, see POUR_RADIUS_PX's own comment. */
-#define DETONATE_RADIUS_PX        50
-
 #define APP_IMPULSE_MAX           2048
 
 #define SAND_IMPULSE_BUDGET_BYTES 12288
@@ -243,24 +228,17 @@ static sand_ui_t ui = {
     /* The three values PAINT/ERASE/DETONATE already used before each mode
      * had a slider of its own, so the brush screen opens on what the app
      * has always done rather than on a fresh set of numbers. */
-    .radius_px = {[SAND_MODE_PAINT] = POUR_RADIUS_PX,
-                  [SAND_MODE_ERASE] = ERASE_RADIUS_PX,
-                  [SAND_MODE_DETONATE] = DETONATE_RADIUS_PX},
+    .radius_px = {[SAND_MODE_PAINT] = SAND_POUR_RADIUS_PX,
+                  [SAND_MODE_ERASE] = SAND_ERASE_RADIUS_PX,
+                  [SAND_MODE_DETONATE] = SAND_DETONATE_RADIUS_PX},
 };
 
 /* Duration mode label stays after significant change, balancing readability
  * and non-obtrusiveness. */
-#define LABEL_MS        1800
+#define LABEL_MS     1800
 
-#define LABEL_MARGIN    18
-#define LABEL_SCALE     2
-
-#define SHAKE_DEADZONE  40
-
-#define SIM_HZ          60
-#define SIM_STEP_MS     (1000 / SIM_HZ)
-
-#define SIM_MAX_CATCHUP 2
+#define LABEL_MARGIN 18
+#define LABEL_SCALE  2
 
 static uint8_t* grid;
 static uint8_t* dirty_rows;    /* GRID_H_MAX bytes: which rows changed -
@@ -1156,7 +1134,7 @@ read_gravity_input(uint32_t dt_ms, imu_sample_t* sample, int* gx, int* gy, int* 
     *flow = tilt_strength(&tilt);
 
     const int shake = tilt_shake(&tilt);
-    *jostle = shake > SHAKE_DEADZONE ? shake : 0;
+    *jostle = shake > SAND_SHAKE_DEADZONE ? shake : 0;
 }
 
 static void
@@ -1187,9 +1165,9 @@ apply_pour_step(int cx, int cy) {
     if (ui.mode == SAND_MODE_ERASE) {
         sand_erase(&sim, cx, cy, (sand_ui_radius(&ui) + cell / 2) / cell);
         /* Wider than the sweep above on purpose - see
-         * ERASE_EMITTER_RADIUS_PX's own comment for why a point target
+         * SAND_ERASE_EMITTER_RADIUS_PX's own comment for why a point target
          * needs more aiming tolerance than an area sweep does. */
-        sand_remove_emitters(&sim, cx, cy, (ERASE_EMITTER_RADIUS_PX + cell / 2) / cell);
+        sand_remove_emitters(&sim, cx, cy, (SAND_ERASE_EMITTER_RADIUS_PX + cell / 2) / cell);
         return;
     }
     sand_spawn_cell_share(&sim, cx, cy, (sand_ui_radius(&ui) + cell / 2) / cell, sand_brushes[ui.brush].cell,
@@ -1215,12 +1193,12 @@ handle_pour_input(const input_t* input, uint32_t dt_ms) {
 
     pour_accumulator_ms += dt_ms;
 
-    int applications = (int)(pour_accumulator_ms / POUR_STEP_MS);
-    if (applications > SIM_MAX_CATCHUP) {
-        applications = SIM_MAX_CATCHUP;
+    int applications = (int)(pour_accumulator_ms / SAND_POUR_STEP_MS);
+    if (applications > SAND_MAX_CATCHUP) {
+        applications = SAND_MAX_CATCHUP;
         pour_accumulator_ms = 0;
     } else {
-        pour_accumulator_ms -= (uint32_t)applications * POUR_STEP_MS;
+        pour_accumulator_ms -= (uint32_t)applications * SAND_POUR_STEP_MS;
     }
 
     const int cx = input->x / cell;
@@ -1253,12 +1231,12 @@ log_direction_change(int gx, int gy, int jostle, const imu_sample_t* sample) {
 static void
 run_sim_steps(int gx, int gy, int jostle, int flow, uint32_t dt_ms) {
     sim_accumulator_q8 += dt_ms * (uint32_t)flow;
-    int steps = (int)(sim_accumulator_q8 / (SIM_STEP_MS * 256));
-    if (steps > SIM_MAX_CATCHUP) {
-        steps = SIM_MAX_CATCHUP;
+    int steps = (int)(sim_accumulator_q8 / (SAND_STEP_MS * 256));
+    if (steps > SAND_MAX_CATCHUP) {
+        steps = SAND_MAX_CATCHUP;
         sim_accumulator_q8 = 0; /* give up on the backlog */
     } else {
-        sim_accumulator_q8 -= (uint32_t)steps * SIM_STEP_MS * 256;
+        sim_accumulator_q8 -= (uint32_t)steps * SAND_STEP_MS * 256;
     }
 
     for (int i = 0; i < steps; i++) {
