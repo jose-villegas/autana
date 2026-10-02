@@ -1705,7 +1705,7 @@ close_overlay_screen(void) {
     /* Restores UI_TEXT_PLAIN so the palette's outline style doesn't leak
      * into the next UI drawn (text style stays in force until changed -
      * ui.h); the brush screen only ever used PLAIN, so this is a no-op
-     * on that path. main.c owns the transform for the whole shell,
+     * on that path. shell/shell.c owns the transform for the whole shell,
      * sampling real orientation on its own schedule - an app must not
      * touch it; resetting it here would fight the shell the moment the
      * board is actually held sideways. */

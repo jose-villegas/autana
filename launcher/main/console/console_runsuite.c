@@ -3,7 +3,7 @@
  * named self-test suite instead of the whole boot-time run, narrowed to the
  * tests whose name contains a pattern when any are given.
  * CONFIG_LAUNCHER_SELFTEST only: the verb itself only sets a latch;
- * main.c's frame loop is what actually calls suites_run_request(), for the
+ * the shell's frame loop is what actually calls suites_run_request(), for the
  * same reason SCREENSHOT does not draw from this task either (see console.c's
  * own top comment).
  */

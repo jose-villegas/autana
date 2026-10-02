@@ -8,7 +8,7 @@
  * Which edge carries the home gesture is also a parameter, not a constant:
  * this module has no idea the board rotates, where the USB connector is, or
  * which edge the shell currently wants: that mapping is a piece of
- * shell-integration knowledge that belongs in main.c, not here. All this
+ * shell-integration knowledge that belongs in the shell, not here. All this
  * module knows is "an edge", expressed as one of the four values below.
  */
 #pragma once
@@ -18,7 +18,7 @@
 #include "input/input.h"
 
 /* Which physical edge of the screen the home gesture currently lives on.
- * The caller decides this (see main.c's exit_edge_for_quarter()) by
+ * The caller decides this (see shell_exit_edge_for_quarter()) by
  * working out which edge is opposite the USB connector for the board's
  * current orientation. */
 typedef enum {

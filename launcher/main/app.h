@@ -33,7 +33,7 @@ typedef struct {
  * sanctioned way to fill one: two macros because the assert below is a
  * declaration, which cannot sit inside app_t's own constant initializer.
  * A clash and an over-long prefix are both checked at boot instead
- * (console_find_clash(), main.c); this app.h stays clear of console/, so
+ * (console_find_clash(), shell/shell.c); this app.h stays clear of console/, so
  * an app pulls in only what it names. */
 #define APP_CONSOLE(prefix, handler)                                                                                   \
     _Static_assert(sizeof(prefix) > 1, "APP_CONSOLE needs a non-empty prefix");                                        \
@@ -85,7 +85,7 @@ typedef struct app {
      * already was. An app with no such cache needs no implementation. */
     void (*invalidate)(void);
 
-    /* Opt-in, not opt-out: false unless an app sets it. main.c only
+    /* Opt-in, not opt-out: false unless an app sets it. The shell only
      * tracks the edge-swipe-home gesture and draws its hint strip while
      * an app with this true is running; an app that leaves it unset
      * gets neither, and is responsible for its own way back to the

@@ -16,7 +16,7 @@ ui_scroll_view_default(void) {
 #define UI_SCROLL_MOMENTUM_STOP_PX_PER_MS 0.002f
 
 /* One in-flight coast at a time, matching the shell's own one-window-at-a-
- * time model (main.c: one app, one screen, drawn once per frame). Keyed by
+ * time model (one app, one screen, drawn once per frame). Keyed by
  * container identity so switching screens (a different mu_Container*)
  * starts clean rather than inheriting a stale velocity. */
 static const mu_Container* momentum_cnt;
