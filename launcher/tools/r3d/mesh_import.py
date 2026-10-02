@@ -80,7 +80,7 @@ def shade_lit(src, settings, scene, material, mp, mt, double, intersector, rng, 
     vpos, vn, vtris = corner_pos[first], corner_n[first], inverse.reshape(-1, 3)
     albedo = albedo_at(src, vpos, vertex_spacing(vpos, vtris), material)
     radiance = light(vpos, vn, np.full(len(vpos), double), intersector, scene.lights, settings.light.ray_offset, rng)
-    radiance += gather_indirect(vpos, vn, intersector, indirect_cache, shared=True, double_sided=np.full(len(vpos), double),
+    radiance += gather_indirect(vpos, vn, intersector, indirect_cache, double_sided=np.full(len(vpos), double),
                                 lights=scene.lights)
     vrgb = to_srgb8(albedo * radiance, scene.tonemap_white)
     return merge_matching_colours(vpos, vrgb, vtris, settings.light.colour_merge_step)
@@ -109,7 +109,7 @@ def bake_geometry(settings, variant, scene):
         src.p, tri_v, tri_m, range(len(src.names)),
         {index for index, name in enumerate(src.names) if name in settings.double_sided},
         lambda centres, spacing, material: albedo_at(src, centres, spacing, material), intersector, scene.lights,
-        settings.light.ray_offset, settings.light.indirect, rng) if settings.light else None
+        settings.light.ray_offset, settings.light.indirect) if settings.light else None
     double_names = settings.double_sided
     seen = np.ones(len(tri_v), dtype=bool)
     if settings.visibility:
