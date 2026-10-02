@@ -56,7 +56,7 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 |---|---|
 | `render-lab-cube.png`, `render-lab-cube.gif` | the Gouraud cube; the GIF plays the rotation forward and back |
 | `render-lab-cornell.png` | the ray-traced Cornell box, fully resolved, no HUD |
-| `render-lab-sponza.gif` | the start of the Sponza flythrough |
+| `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
 | `render/sponza-{full,lite,flat,fitted,fitted-full}.gif` | the same three seconds of the flythrough, one GIF per bake |
 | `render/sponza-{depth,tiles}.gif` | those three seconds as the depth and depth-tile views of the full bake |
 | `render/bake-fidelity-sheet.png` | the flat bake against the source model at two poses, with the error heatmap (see Fidelity against the source) |
@@ -468,6 +468,12 @@ The Pareto curve, held-out ΔE against predicted board time, with the 30 and
 the upscale, is 21 ms, and at 4,000 triangles the frame is still 35 ms.
 
 ![Held-out error against predicted frame time](../../../../../docs/render/images/appearance-pareto.png)
+
+`fitted_variant.py sweep` makes this Pareto image from the fitted variant's recipe.
+
+The two-point smoke sweep is plotted below.
+
+![Smoke sweep: held-out error against predicted frame time](../../../../../docs/render/images/budget-sweep-smoke-pareto.png)
 
 ```mermaid
 xychart-beta
