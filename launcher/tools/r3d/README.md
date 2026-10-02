@@ -51,7 +51,7 @@ canonicalizes triangle order and the latter uses the import file's fixed seed.
 **The `seal_seams` import option.** `simplify(seal_seams=True)`, off by default,
 is another way to import the same mesh, with fewer empty pixel-sized spots at
 the price of frame time; what it does and costs is in
-[Mesh-Import.md](../../../docs/render/Mesh-Import.md#sealing-seams). An import turns it on with `seal_seams = true` in `[geometry]`.
+[Mesh-Import.md](../../../docs/render/Mesh-Import.md#sealing-seams). An import turns it on with `seal_seams = true` in `[geometry.simplify]`.
 
 `mesh_import.py` is the shared full-import command. Each import file, the
 scene file that places it and the `.mesh` it bakes live in the app's `meshes/`
