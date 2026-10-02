@@ -11,7 +11,7 @@
 #include "input/imu.h"
 #include "input/touch.h"
 
-static const char* TAG = "input";
+static const char TAG[] = "input";
 
 void
 input_start(void) {

@@ -14,7 +14,7 @@
 #include "util/memory.h"
 #include "util/settings.h"
 
-static const char* TAG = "display";
+static const char TAG[] = "display";
 
 #define PANEL_CLOCK_SETTINGS_SPACE "shell"
 #define PANEL_CLOCK_SETTINGS_KEY   "panel_hz"
