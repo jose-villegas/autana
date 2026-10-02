@@ -8,26 +8,26 @@
 #include "driver/i2c_master.h"
 #include "esp_chip_info.h"
 #include "esp_flash.h"
-#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_psram.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 #include "board/board.h"
 #include "gfx/gfx.h"
+#include "util/memory.h"
+#include "util/timing.h"
 
 static const char* TAG = "post";
 
 /* Below this the board is starved and later contiguous allocations
  * start failing confusingly, worth catching here where the message is
- * clear. Checked against heap_caps_get_largest_free_block(MALLOC_CAP_DMA),
- * not total free heap. DELIBERATELY WELL BELOW what an
- * app's largest buffer needs, and this is not the check that guards that:
- * pegging it there would false-alarm a healthy development image only a
- * kilobyte or so above it, and the fit is checked precisely elsewhere. */
+ * clear. Checked against memory_largest_block(MEMORY_DMA), not total free
+ * heap. DELIBERATELY WELL BELOW what an app's largest buffer needs, and
+ * this is not the check that guards that: pegging it there would
+ * false-alarm a healthy development image only a kilobyte or so above it,
+ * and the fit is checked precisely elsewhere. */
 #define MIN_LARGEST_DMA_BLOCK (32 * 1024)
 
 #define EXPECTED_FLASH_BYTES  (16 * 1024 * 1024)
@@ -115,7 +115,7 @@ post_run_before_display(void) {
  * or removed after POST ran. */
 static void
 check_sdcard_live(void) {
-    const int64_t t0 = esp_timer_get_time();
+    const int64_t t0 = timing_now_us();
 
     const esp_err_t err = bsp_sdcard_mount();
     char card[40] = "no card";
@@ -127,7 +127,7 @@ check_sdcard_live(void) {
 
     /* SD has its own bus here, so there is nothing to hand back and forth;
      * only the mount/unmount cost is worth timing. */
-    const int64_t t_end = esp_timer_get_time();
+    const int64_t t_end = timing_now_us();
     ESP_LOGI(TAG, "sd round trip: card %lld us", (long long)(t_end - t0));
 
     /* Matches post_result_t::detail's size exactly, like every other check in
@@ -168,11 +168,11 @@ check_memory(void) {
      * is meaningless: esp_get_free_heap_size() sums a second, physically
      * separate ~11 KiB DMA region (the ROM-stack area) that is never
      * contiguous with the main heap, so comparing it against
-     * heap_caps_get_largest_free_block()'s single-region answer invents
-     * a "fragmentation" gap that was never real. Both sides here are
-     * MALLOC_CAP_DMA. */
-    const size_t free_dma = heap_caps_get_free_size(MALLOC_CAP_DMA);
-    const size_t largest_dma = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
+     * memory_largest_block()'s single-region answer invents a
+     * "fragmentation" gap that was never real. Both sides here are
+     * MEMORY_DMA. */
+    const size_t free_dma = memory_free_bytes(MEMORY_DMA);
+    const size_t largest_dma = memory_largest_block(MEMORY_DMA);
 
     char detail[96];
     snprintf(detail, sizeof(detail), "%u KiB free, DMA block %u KiB", (unsigned)(free_dma / 1024),

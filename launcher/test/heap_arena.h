@@ -27,4 +27,7 @@ void heap_arena_reset_peak(void);
  * would carry it, or the device profile's size when NULL. */
 size_t heap_arena_psram_heap_bytes(const char* override);
 
+/* The internal heap, the same way. */
+size_t heap_arena_internal_heap_bytes(const char* override);
+
 #endif /* HOST_HEAP_ARENA */

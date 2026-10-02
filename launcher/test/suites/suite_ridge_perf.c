@@ -8,13 +8,13 @@
 
 #include "unity.h"
 
-#include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 
 #include "gfx/gfx.h"
 #include "ridge_arms.h"
 #include "ui/ui_ridge.h"
+#include "util/memory.h"
+#include "util/timing.h"
 #include "util/tune.h"
 
 static const char* TAG = "ridge_perf";
@@ -56,21 +56,21 @@ run_arm(arm_t arm) {
     }
     gfx_reset_strip_send_counts();
 
-    const int64_t began = esp_timer_get_time();
-    while (esp_timer_get_time() - began < (int64_t)ARM_MS * 1000) {
+    const int64_t began = timing_now_us();
+    while (timing_now_us() - began < (int64_t)ARM_MS * 1000) {
         input_t input;
         ridge_arm_drive(arm, result.frames, &input);
 
-        int64_t phase = esp_timer_get_time();
+        int64_t phase = timing_now_us();
         ui_ridge_step(&input, FRAME_DT_MS);
-        result.step_us += esp_timer_get_time() - phase;
+        result.step_us += timing_now_us() - phase;
 
-        phase = esp_timer_get_time();
+        phase = timing_now_us();
         gfx_present();
-        result.present_us += esp_timer_get_time() - phase;
+        result.present_us += timing_now_us() - phase;
         result.frames++;
     }
-    result.elapsed_us = esp_timer_get_time() - began;
+    result.elapsed_us = timing_now_us() - began;
     result.bytes = gfx_get_bytes_sent();
     result.heal_bytes = gfx_get_heal_bytes_sent();
     gfx_get_strip_send_counts(&result.full_bands, &result.gathered, &result.partial_bands);
@@ -132,7 +132,7 @@ note_unlike(unlike_t* unlike, size_t at, gfx_color_t repainted, gfx_color_t full
 static int
 unlike_a_full_paint_now(void) {
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-    gfx_color_t* const repainted = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
+    gfx_color_t* const repainted = memory_alloc(bytes, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(repainted);
     memcpy(repainted, gfx_framebuffer(), bytes);
     ui_ridge_paint();
@@ -145,7 +145,7 @@ unlike_a_full_paint_now(void) {
     if (unlike.count) {
         ESP_LOGI(TAG, "unlike box x %d..%d y %d..%d", unlike.x0, unlike.x1, unlike.y0, unlike.y1);
     }
-    heap_caps_free(repainted);
+    memory_free(repainted);
     return unlike.count;
 }
 
