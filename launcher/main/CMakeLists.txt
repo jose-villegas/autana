@@ -52,7 +52,7 @@ set(app_srcs
     "util/frame_watch.c"
     "util/build_id.c"
     "util/job.c"
-    "util/memory_device.c"
+    "util/memory.c"
     "util/settings_device.c"
     "util/settings_policy.c"
     "util/timing_device.c"

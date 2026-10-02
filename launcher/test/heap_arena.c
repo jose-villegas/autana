@@ -631,4 +631,36 @@ heap_caps_get_largest_free_block(uint32_t caps) {
     return best;
 }
 
+size_t
+heap_caps_get_total_size(uint32_t caps) {
+    size_t total = 0;
+    if (caps_matches_internal(caps)) {
+        arena_pool_init_once(&s_internal);
+        total += s_internal.cap;
+    }
+    if (caps_matches_psram(caps)) {
+        arena_pool_init_once(&s_psram);
+        total += s_psram.cap;
+    }
+    return total;
+}
+
+static void
+arena_pool_dump(arena_pool_t* p) {
+    size_t total_free, largest_free, free_blocks;
+    arena_pool_scan(p, &total_free, &largest_free, &free_blocks);
+    printf("heap_arena: %s pool cap %zu, %zu free in %zu block(s), largest %zu, %zu in use in %zu block(s)\n", p->label,
+           p->cap, total_free, free_blocks, largest_free, p->cur_bytes, p->cur_blocks);
+}
+
+void
+heap_caps_dump(uint32_t caps) {
+    if (caps_matches_internal(caps)) {
+        arena_pool_dump(&s_internal);
+    }
+    if (caps_matches_psram(caps)) {
+        arena_pool_dump(&s_psram);
+    }
+}
+
 #endif /* HOST_HEAP_ARENA */
