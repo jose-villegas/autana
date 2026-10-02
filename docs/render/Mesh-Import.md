@@ -46,6 +46,7 @@ triangles on one desktop; frame costs were measured on the board on one mesh.
 | `[[variants]]` `triangles` | One mesh per budget | one mesh | seconds each / set by the budget | [Import file](#import-file) |
 | `[[variants]]` `face_samples` | Flat: one colour per triangle | smooth | minutes / cheaper than smooth | [The baked mesh](#the-baked-mesh) |
 | `[[variants]]` `visibility` | The variant's own visibility step, in place of the import's: `process.visibility`'s keys | the import's | as `process.visibility` | [Import file](#import-file) |
+| `[[variants]]` `indirect = false` | Bakes this variant, and the reference a fit of it trains on, without the import's `process.light.indirect`; only `false` is accepted, and only when the import has `indirect` | the import's | saves the bounce gather for that variant / none | [Indirect light](#indirect-light) |
 | `[[variants]]` `fit` | A variant the appearance fit makes offline from the one the import bakes at `triangles`; the table is its recipe, with the SHA-256 of the recipe and of the mesh it made | not fitted | a CUDA GPU, minutes / unchanged at its budget | [Fitting a mesh to the reference](#fitting-a-mesh-to-the-reference) |
 
 ## The baked mesh
@@ -154,7 +155,7 @@ own vertex colours are not read.
 | `process.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. |
 | `process.visibility` | `source`, `rounds`; `every_ms`, `size`, `samples`, `margin` | Drops triangles the camera never sees. `source = "camera_region"`, the default, keeps what any point of the scene camera's `region` box sees in `rounds` random tries; `"camera_path"` keeps what any pose of the camera's path sees, sampled every `every_ms` at `size` pixels with `samples` squared rays a pixel, the view widened by `margin` pixels. Scene-dependent. |
 | `process.thin` | `material`, `keep` | Keeps only a share of one material's triangles. |
-| `process.light` | `ray_offset`, `colour_merge_step`, `flat_sky_rays` | Bakes the scene's lights into per-vertex colour. `flat_sky_rays` is the one set of sky directions the faces of a variant with `face_samples` share, and is allowed only then. Scene-dependent. |
+| `process.light` | `ray_offset`, `colour_merge_step`, `flat_sky_rays`, `indirect` | Bakes the scene's lights into per-vertex colour. `flat_sky_rays` is the one set of sky directions the faces of a variant with `face_samples` share, and is allowed only then. `indirect` opt-in bounce light is described below. Scene-dependent. |
 | `process.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges, then simplifies to each variant's `triangles`, reserving `props_share` of the budget for the small `props` materials; `seal_seams` joins touching pieces first. |
 | `[[variants]]` | `name`, `triangles`, `face_samples`, `visibility`, `fit` | Several meshes from one import, each named. `triangles` is its budget and is required with `process.simplify`. `face_samples`, `{ fixed = N }` or `{ auto = { min, max, area } }` with `area = "median"` for the mesh median, makes the variant flat: one colour per triangle, averaged over that many points, and needs `process.light`. `visibility`, with `process.visibility`'s keys, culls this variant in place of the import's step. `fit`, with `budget`, `train_every_ms`, `held_out_every_ms`, `coverage_every_ms`, `steps`, `batch`, `laplacian`, `normal_weight`, `sha256` and `recipe_sha256`, is the recipe of a smooth variant the appearance fit makes offline ([Fitting a mesh to the reference](#fitting-a-mesh-to-the-reference)). Two variants may not produce the same mesh. |
 
@@ -221,6 +222,86 @@ The off/on stills in `images/` are not made by the doc-images workflow: each
 which needs the bake toolchain and the source model, so nothing refreshes them
 when the bake changes.
 
+### Indirect light
+
+`process.light.indirect = { bounces = K, rays = R, cache_samples = S }` bakes
+diffuse bounce light into the same vertex or face colours as the direct light:
+sun light that reaches a surface by way of another one, and a coloured
+surface tinting its neighbours. The renderer reads one colour as before, so
+frame cost and mesh size do not change; only the bake takes longer.
+
+| Field | Meaning |
+|---|---|
+| `bounces` | How many times light bounces; 0 turns it off and gives the same bytes as a light step with no `indirect` |
+| `rays` | Cosine-weighted hemisphere rays for each gather |
+| `cache_samples` | Points averaged into each source triangle's direct radiance |
+
+All three are required when `indirect` is present; `rays` and `cache_samples`
+are at least 1 and `bounces` at least 0. The reference renderer reads the
+same settings, so a fidelity score compares like with like. How strong the
+bounce light looks is not an import setting: the scene's `[indirect]` table
+carries `intensity` and `albedo_boost` ([Scene-Files.md](Scene-Files.md#indirect-look)).
+
+A variant with `indirect = false` is baked without bounces, so a mesh fitted
+before the import gained them keeps the recipe it was fitted from.
+
+The bake keeps one outgoing radiance per triangle of the full-detail source
+mesh. With albedo $a(t)$, direct irradiance $`E_0(t)`$ at the triangle, and
+$`h_i`$ the first triangle hit by the $i$-th of $R$ cosine-weighted rays from
+it, bounce $k$ gathers the previous bounce's radiance:
+
+```math
+L_0(t) = a(t)\,E_0(t), \qquad
+E_k(t) = \frac{1}{R} \sum_{i=1}^{R} L_{k-1}(h_i), \qquad
+L_k(t) = a(t)\,E_k(t)
+```
+
+A baked point $x$, a smooth vertex or a flat face sample, gathers the same way
+into the cache and adds the sum of the bounces to its direct irradiance, before
+the albedo, the tone map and the encode:
+
+```math
+E_{\mathrm{ind}}(x) = \frac{1}{R} \sum_{i=1}^{R} \sum_{k=0}^{K-1} L_k(h_i),
+\qquad
+L(x) = a(x)\,\bigl(E_{\mathrm{direct}}(x) + E_{\mathrm{ind}}(x)\bigr)
+```
+
+A ray that hits nothing adds nothing, because the sky light already counts the
+sky; a ray that an occluder stops takes the occluder's radiance. With every
+albedo at most $\rho \lt 1$, $`\max_t L_k \le \rho^k \max_t L_0`$, so the series converges and
+bounce $k$ adds less than the one before. Pick $K$ where the next bounce adds
+under about 1% of the direct light.
+
+Every point and every cache triangle uses the same $R$ directions, laid out
+in its own tangent frame, and nothing is drawn at random. Equal surroundings
+give equal colours and a rebake gives the same bytes. A smooth bake gathers
+once for the vertex copies a crease splits at one position, on their mean
+normal, and gives every copy that indirect term: indirect light changes slowly
+where direct light does not, and copies that differ only in it would stop
+merging into one vertex. A double-sided surface gathers on the side the direct
+light shines on, and a ray that reaches a one-sided triangle from behind finds
+no light, so light does not pass through shells.
+
+The scene's `intensity` $g$ multiplies the gathered term and its `albedo_boost`
+$\beta$ replaces every albedo a bounce reflects with
+$\min(\beta a, \max(a, 0.99))$, so reflectance stays below 1 and a boost of 1
+changes nothing:
+
+```math
+L(x) = a(x)\,\bigl(E_{\mathrm{direct}}(x) + g\,E_{\mathrm{ind}}(x)\bigr)
+```
+
+Neither is physical above 1: they brighten and tint the bounces past what the
+reference renders, so fidelity to a physical reference falls as they rise.
+
+The cache and the gathers cost one bundle of rays per source triangle and
+bounce, plus one per baked point. The limit is the light's resolution: it is
+the vertex or face spacing of the baked mesh, so bounce detail smaller than a
+triangle is lost, and a coloured surface tints only the triangles it reaches.
+A scene's bounce sweep, scores and images live beside its own tools.
+
+![The reference beside the direct-light and two-bounce bakes, each with its error heatmap](../images/render/bake-indirect-compare.png)
+
 The scene file that places meshes and carries the lights, the camera and the
 tone map is described in [Scene-Files.md](Scene-Files.md).
 
@@ -247,9 +328,8 @@ Heatmaps put each pixel's ΔE on a scale from black (a match) through red
 (about 20) to yellow (50 or more). The sheet beside them shows the reference,
 the render, the heatmap and the edge pixels, and the commands that make all of
 it are in [`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md#fidelity-reference).
-A scene's scores and example sheet live beside its own tools. Nothing
-refreshes them when the bake changes: the reference and the scratch bakes need
-the bake toolchain and the source model.
+A scene's scores live beside its own tools, and its example sheets are
+regenerated with the other doc images.
 
 The ceiling for a flat bake is the smooth bake's own error. Smooth, one colour
 per vertex, is not exact either, and flat adds the colour gradient across each
