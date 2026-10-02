@@ -149,7 +149,8 @@ def main(argv=None):
     jobs = [item for item in scene.renderers if item.variant.name == args.mesh and item.variant.face_samples]
     if not jobs:
         parser.error(f"{args.mesh!r} is not a flat mesh of {path.name}")
-    settings, variant = jobs[0].settings, jobs[0].variant
+    job = jobs[0]
+    settings, variant = job.settings, job.variant
     log(f"geometry of {variant.name}")
     geometry = bake_geometry(settings, variant, scene)
     work = pathlib.Path(args.work).resolve()
@@ -160,7 +161,7 @@ def main(argv=None):
         out = work / label
         log(f"variant {label}")
         mesh_file = write_variant(settings, variant, scene, geometry, spec, out)
-        rows.append((label, score(args, host, write_pack(variant.name, mesh_file, out), out)))
+        rows.append((label, score(args, host, write_pack(job.asset_name, mesh_file, out), out)))
         print(f"{label}: mean dE76 {rows[-1][1][0]:.3f}", flush=True)
     print(table(rows))
     (work / "table.md").write_text(table(rows) + "\n")

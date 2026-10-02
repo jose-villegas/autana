@@ -48,10 +48,10 @@ def table_symbol(scene):
 
 
 def out_directory(scene):
-    """Where the table goes: with the meshes it names, which must share one folder."""
+    """Where the table goes: in the generated-source directory the imports share."""
     directories = {item.settings.out_dir for item in scene.renderers}
     if len(directories) != 1:
-        raise ValueError("a scene's meshes must be written to one output directory")
+        raise ValueError("a scene's meshes must name one generated-source directory")
     return directories.pop()
 
 
@@ -69,7 +69,7 @@ IDENTITY = "{.m = {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, 
 
 def mesh_ids(scene):
     """The asset id of each mesh renderer, in the order the table lists them: what scene_load() opens from the pack."""
-    return [item.variant.name for item in scene.renderers]
+    return [item.asset_name for item in scene.renderers]
 
 
 def entities(scene):

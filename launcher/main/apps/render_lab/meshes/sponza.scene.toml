@@ -11,6 +11,12 @@ rays = 48
 color = [1.0, 1.0, 1.0]
 intensity = 0.03
 
+[bake]
+ray_offset = 0.5
+colour_merge_step = 6
+flat_sky_rays = 128
+indirect = { bounces = 2, rays = 64, cache_samples = 1 }
+
 [[objects]]
 name = "sun"
 rotation = [18.418610209503857, -48.65222278030633, 0.0]   # toward (-0.25, 1.0, 0.22)
@@ -38,6 +44,8 @@ name = "atrium"
 [objects.mesh_renderer]
 mesh = "sponza.import.toml"
 variant = "sponza"
+bake = true
+visibility = { source = "camera_region", rounds = 160 }
 
 [[objects]]
 name = "atrium_flat"
@@ -45,6 +53,9 @@ name = "atrium_flat"
 [objects.mesh_renderer]
 mesh = "sponza.import.toml"
 variant = "sponza_flat"
+bake = true
+shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
+visibility = { source = "camera_region", rounds = 160 }
 
 [[objects]]
 name = "atrium_lite"
@@ -52,6 +63,8 @@ name = "atrium_lite"
 [objects.mesh_renderer]
 mesh = "sponza.import.toml"
 variant = "sponza_lite"
+bake = true
+visibility = { source = "camera_region", rounds = 160 }
 
 [[objects]]
 name = "atrium_fitted"
@@ -59,6 +72,10 @@ name = "atrium_fitted"
 [objects.mesh_renderer]
 mesh = "sponza.import.toml"
 variant = "sponza_fitted"
+bake = true
+indirect = false
+visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
+fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "44dabf0a7e258912556be8b24593d843629f456cabcba9d64b36336812338afb", recipe_sha256 = "44c74a718421c124aa5ca7313e587bfbbcf8df2d1a85ba19ce00c5c0bfc691e2" }
 
 [[objects]]
 name = "atrium_fitted_full"
@@ -66,3 +83,7 @@ name = "atrium_fitted_full"
 [objects.mesh_renderer]
 mesh = "sponza.import.toml"
 variant = "sponza_fitted_full"
+bake = true
+indirect = false
+visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
+fit = { budget = 17381, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "8578cfe1a678859310603ad53a77b11eda4b03cc75fe760377fa10fb92c460d5", recipe_sha256 = "eb9b7174f5f9aef4fc45babb31ce79f740dd5803230121da72db0a24240d33d6" }
