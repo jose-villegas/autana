@@ -107,3 +107,23 @@ REFERENCE=$(sh launcher/tools/render/render_compare.sh --reference-frames \
 "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.png" \
     --reference-video "$W/fidelity-flat.avi" "$REFERENCE" --reference-scale 2 \
     --reference-sheet "$RENDER/bake-fidelity-sheet.png" --sheet-frames 2,4 > "$W/fidelity-compare.log"
+
+# The fitted target against the same reference: its heatmap sheet at the same
+# two poses, and its last frame beside the reference, enlarged where they
+# differ most.
+"$W/render_lab_render" --quarter 0 --no-hud --scene sponza-fitted --frames 5 --dt 5000 \
+    -o "$W/fidelity-fitted.bmp" --video "$W/fidelity-fitted.avi" 2> "$W/fidelity-fitted.log"
+"$PYTHON" launcher/tools/render/render_compare.py --out "$W/fitted-unused.png" \
+    --reference-video "$W/fidelity-fitted.avi" "$REFERENCE" --reference-scale 2 \
+    --reference-sheet "$RENDER/appearance-chosen-heat.png" --sheet-frames 2,4 > "$W/fitted-compare.log"
+"$PYTHON" -c 'import pathlib, sys; from PIL import Image
+frame = sorted(pathlib.Path(sys.argv[1]).glob("*.png"))[4]
+picture = Image.open(frame).convert("RGB")
+picture.resize((picture.width * 2, picture.height * 2), Image.Resampling.NEAREST).save(sys.argv[2])' \
+    "$REFERENCE" "$W/fidelity-reference-4.png"
+"$PYTHON" launcher/tools/render/render_compare.py --out "$W/appearance-chosen-reference.png" --crops 3 \
+    --row "fitted | reference" "$W/fidelity-fitted.bmp" "$W/fidelity-reference-4.png" > "$W/fitted-reference.log"
+cp "$W/appearance-chosen-reference.crops.png" "$RENDER/" || {
+    echo "doc_images.sh: the fitted target matches the reference, no crops." >&2
+    exit 1
+}
