@@ -60,8 +60,8 @@ class SweepTests(unittest.TestCase):
                  unittest.mock.patch("r3d.bake_fidelity.score", return_value=(0.0, 0.0)) as score:
                 self.assertEqual(fitted_variant.held_out_score(variant, work / "tiny.mesh", work, work / "host"), (0.0, 0.0))
         args = score.call_args.args[0]
-        self.assertIn("--scene tiny-fitted --frames 2 --dt 5", args.render_args)
-        self.assertEqual(args.reference_first, 1)
+        self.assertIn("--scene tiny-fitted --frames 1 --dt 5", args.render_args)
+        self.assertFalse(hasattr(args, "reference_first"))
 
     def test_board_cost_uses_the_native_held_out_render_size(self):
         with tempfile.TemporaryDirectory() as directory:

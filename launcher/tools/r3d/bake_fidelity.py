@@ -119,12 +119,9 @@ def score(args, host, pack, work):
     subprocess.run([host.as_posix(), *args.render_args.split(), "-o", (work / "last.bmp").as_posix(), "--video", video.as_posix()],
                    check=True, capture_output=True, env={**os.environ, "AUTANA_ASSET_PACK": pack.as_posix()})
     compare = LAUNCHER / "tools" / "render" / "render_compare.py"
-    command = [sys.executable, compare.as_posix(), "--out", (work / "unused.png").as_posix(), "--reference-video",
-               video.as_posix(), pathlib.Path(args.reference).as_posix(), "--reference-scale", str(args.reference_scale),
-               "--heatmap-dir", (work / "heatmaps").as_posix()]
-    if getattr(args, "reference_first", 0):
-        command += ["--reference-first", str(args.reference_first)]
-    done = subprocess.run(command, check=True, capture_output=True, text=True)
+    done = subprocess.run([sys.executable, compare.as_posix(), "--out", (work / "unused.png").as_posix(), "--reference-video",
+                           video.as_posix(), pathlib.Path(args.reference).as_posix(), "--reference-scale", str(args.reference_scale),
+                           "--heatmap-dir", (work / "heatmaps").as_posix()], check=True, capture_output=True, text=True)
     (work / "score.txt").write_text(done.stdout)
     return tuple(float(value) for value in SCORE.search(done.stdout).groups())
 
