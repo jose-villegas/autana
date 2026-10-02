@@ -10,8 +10,8 @@ variant's `triangles`), samples the scene camera's path for training,
 held-out and pruning poses, and renders the training references with their
 normals into DIR. `fit`, in the GPU environment of appearance_simplify.py,
 prunes the start to the recipe's budget, fits it with the recipe's settings
-and writes NAME.mesh beside the import, printing the SHA-256 the recipe then
-records.
+and writes NAME.mesh beside the import, printing the mesh's and the recipe's
+SHA-256, which the variant's `fit` table then records.
 """
 
 import argparse
@@ -50,41 +50,44 @@ def split_poses(fit, poses):
     return training, held_out
 
 
-def either_way(width, height, lens, near, poses):
-    """The poses as a square view as wide as the long side, so what pruning
-    counts covers the panel held either way up."""
-    side = max(width, height)
-    return side, side, lens * side / min(width, height), near, poses
+def recipe_digest(settings, variant, scene):
+    """SHA-256 over what a fit is made from: the import's settings, the
+    variant without the hashes it records, and the camera's baked tracks."""
+    import json
+    import tomllib
+
+    from r3d.poses import tracks_file
+
+    with open(settings.path, "rb") as source:
+        values = tomllib.load(source)
+    entry = [dict(item) for item in values.pop("variants", []) if item.get("name") == variant.name][0]
+    entry["fit"] = {key: value for key, value in entry["fit"].items() if key not in ("sha256", "recipe_sha256")}
+    tracks = hashlib.sha256(tracks_file(settings, scene).read_bytes()).hexdigest()
+    return hashlib.sha256(json.dumps([values, entry, tracks], sort_keys=True).encode()).hexdigest()
 
 
 def prepare(scene_path, scene, settings, variant, work):
     from r3d.lit_mesh import write_lit_mesh
-    from r3d.mesh_import import bake_geometry
-    from r3d.poses import sample_camera_path
+    from r3d.mesh_import import bake_geometry, camera_path_poses
     from r3d.reference_render import main as reference_main
 
-    fit, camera = variant.fit, scene.camera.component
+    fit, visibility = variant.fit, variant.visibility or settings.visibility
+    if visibility is None or visibility.source != "camera_path":
+        raise SettingsError(f"{variant.name} needs camera_path visibility: its poses come from the path")
     work.mkdir(parents=True, exist_ok=True)
     geometry = bake_geometry(settings, variant, scene)
     write_lit_mesh(work, variant.name, geometry.positions, geometry.rgb, geometry.tris, geometry.tri_double, **geometry.scale)
-    tracks = settings.out_dir / f"{camera.path.tracks}_tracks_generated.c"
-    width, height = settings.visibility.size if settings.visibility and settings.visibility.source == "camera_path" else (184, 224)
-
-    def sampled(every_ms):
-        return sample_camera_path(tracks, camera.path.tracks, camera.path.node, every_ms, width, height, camera.half_fov_short_tan,
-                                  camera.near_z)
-
-    w, h, lens, near, poses = sampled(fit.train_every_ms)
+    w, h, lens, near, poses = camera_path_poses(settings, scene, visibility, fit.train_every_ms, either_way_up=False)
     training, held_out = split_poses(fit, poses)
     (work / "train.txt").write_text(poses_text(w, h, lens, near, training))
     (work / "held_out.txt").write_text(poses_text(w, h, lens, near, held_out))
-    (work / "coverage.txt").write_text(poses_text(*either_way(*sampled(fit.coverage_every_ms))))
+    (work / "coverage.txt").write_text(poses_text(*camera_path_poses(settings, scene, visibility, fit.coverage_every_ms)))
     reference_main([str(scene_path), "--import", str(settings.path), "--poses", str(work / "train.txt"),
                     "--out", str(work / "reference"), "--normals"])
     log(f"prepared {variant.name}: start of {len(geometry.tris)} triangles, {len(training)} training poses")
 
 
-def fit(scene_path, settings, variant, work):
+def fit(scene_path, scene, settings, variant, work):
     from r3d.appearance_simplify import main as fit_main
 
     recipe = variant.fit
@@ -96,7 +99,8 @@ def fit(scene_path, settings, variant, work):
               str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight)])
     target = settings.mesh_dir / f"{variant.name}.mesh"
     shutil.copyfile(out / f"{variant.name}.mesh", target)
-    print(f"{target.name}: sha256 = \"{hashlib.sha256(target.read_bytes()).hexdigest()}\"")
+    print(f"{target.name}: sha256 = \"{hashlib.sha256(target.read_bytes()).hexdigest()}\", "
+          f"recipe_sha256 = \"{recipe_digest(settings, variant, scene)}\"")
 
 
 def main(argv=None):
@@ -116,7 +120,7 @@ def main(argv=None):
     if args.step == "prepare":
         prepare(scene_path, scene, settings, variant, work)
     else:
-        fit(scene_path, settings, variant, work)
+        fit(scene_path, scene, settings, variant, work)
     return 0
 
 

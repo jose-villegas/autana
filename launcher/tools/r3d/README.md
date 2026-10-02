@@ -171,8 +171,9 @@ the fit itself only where CUDA, PyTorch and nvdiffrast import.
 ### A fitted variant
 
 A `[[variants]]` entry with a `fit` table is made by the fit, not the bake:
-`mesh_import.py` checks the committed `NAME.mesh` against the recipe's
-`sha256` and stops there. `fitted_variant.py` remakes it from the recipe, the
+`mesh_import.py` checks that the recipe still hashes to its `recipe_sha256`
+(the import's settings, the variant and the camera's tracks) and the
+committed `NAME.mesh` to its `sha256`, and stops there. `fitted_variant.py` remakes it from the recipe, the
 first step in this environment, the second in the GPU one:
 
 ```sh
@@ -185,7 +186,7 @@ samples the camera's path every `train_every_ms`, holds out the multiples of
 `held_out_every_ms`, samples it again every `coverage_every_ms` for pruning,
 and renders the training references with their normals. `fit` prunes to
 `budget`, fits with `steps`, `batch`, `laplacian` and `normal_weight`, writes
-`NAME.mesh` beside the import and prints the SHA-256 to record. A refit is not
+`NAME.mesh` beside the import and prints the two SHA-256s to record. A refit is not
 bit-identical, the GPU's sums being unordered, so the recipe pins the mesh
 that was committed.
 

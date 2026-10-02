@@ -61,6 +61,19 @@ def camera_rays(width, height, lens, eye, forward, samples, margin=0):
     return np.repeat(np.asarray(eye, dtype=float)[None, :], len(direction), axis=0), direction
 
 
+def either_way(width, height, lens, near, poses):
+    """Poses as a square view as wide as the long side, which covers the
+    panel held either way up."""
+    side = max(width, height)
+    return side, side, lens * side / min(width, height), near, poses
+
+
+def tracks_file(settings, scene):
+    """The C file of the scene camera's baked tracks, beside the import's
+    output."""
+    return settings.out_dir / f"{scene.camera.component.path.tracks}_tracks_generated.c"
+
+
 SAMPLE_TRACKS = pathlib.Path(__file__).resolve().parents[1] / "anim" / "sample_tracks.sh"
 
 

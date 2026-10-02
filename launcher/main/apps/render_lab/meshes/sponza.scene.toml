@@ -57,5 +57,5 @@ variant = "sponza_lite"
 name = "atrium_fitted"
 
 [objects.mesh_renderer]
-mesh = "sponza_fitted.import.toml"
+mesh = "sponza.import.toml"
 variant = "sponza_fitted"
