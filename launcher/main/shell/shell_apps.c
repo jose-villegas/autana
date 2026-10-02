@@ -564,6 +564,106 @@ shell_test_stale_exit_is_cleared(void) {
     exit_requested = false;
     return first_frame;
 }
+
+static int shell_test_system_updates;
+static int shell_test_system_composes;
+static int shell_test_system_exits;
+static int shell_test_app_exits_at_system_exit;
+static bool shell_test_system_overlaps;
+
+static void
+shell_test_system_update(uint32_t dt_ms) {
+    (void)dt_ms;
+    shell_test_system_updates++;
+}
+
+static void
+shell_test_system_compose(uint32_t dt_ms) {
+    (void)dt_ms;
+    shell_test_system_composes++;
+}
+
+static void
+shell_test_system_app_exit(void) {
+    shell_test_system_exits++;
+    shell_test_app_exits_at_system_exit = shell_test_exits;
+}
+
+static bool
+shell_test_system_overlap(void) {
+    return shell_test_system_overlaps;
+}
+
+static shell_system_t shell_test_system;
+
+/* The registered systems stood aside for one test system, so what the test
+ * sees depends on the shell alone; returns the real list to put back. */
+static shell_system_t*
+shell_test_swap_in_system(void) {
+    shell_test_system = (shell_system_t){
+        .name = "shell test",
+        .order = SHELL_ORDER_SCENE,
+        .update = shell_test_system_update,
+        .compose = shell_test_system_compose,
+        .app_exit = shell_test_system_app_exit,
+        .overlaps_present = shell_test_system_overlap,
+    };
+    shell_system_t* const real = shell_system_swap_for_test(NULL);
+    shell_system_register(&shell_test_system);
+    return real;
+}
+
+bool
+shell_test_a_system_asking_for_overlap_takes_the_overlap_path(void) {
+    /* Three passes of an app with no update(): the first only primes. */
+    static const struct {
+        bool overlaps;
+        int updates;
+        int composes;
+    } cases[] = {
+        {true, 2, 3},
+        {false, 0, 0},
+    };
+
+    shell_system_t* const real = shell_test_swap_in_system();
+    bool as_asked = true;
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        const app_t* current = NULL;
+        input_t input = {0};
+        shell_test_system_overlaps = cases[i].overlaps;
+        shell_test_system_updates = 0;
+        shell_test_system_composes = 0;
+        shell_start_app(&current, &shell_test_app);
+        for (int pass = 0; pass < 3; pass++) {
+            shell_step_app(&current, &input, 16);
+            shell_present_unless_deferred(current);
+        }
+        as_asked = as_asked && shell_test_system_updates == cases[i].updates
+                   && shell_test_system_composes == cases[i].composes;
+        if (current != NULL) {
+            shell_exit_app(&current);
+        }
+    }
+    shell_system_swap_for_test(real);
+    exit_requested = false;
+    return as_asked;
+}
+
+bool
+shell_test_leaving_runs_the_systems_app_exit_after_the_apps_exit(void) {
+    shell_system_t* const real = shell_test_swap_in_system();
+    shell_test_system_exits = 0;
+    shell_test_app_exits_at_system_exit = -1;
+    const app_t* current = NULL;
+    shell_start_app(&current, &shell_test_app);
+    const bool none_while_running = shell_test_system_exits == 0;
+    shell_exit_app(&current);
+    const bool once_after_the_app =
+        shell_test_system_exits == 1 && shell_test_exits == 1 && shell_test_app_exits_at_system_exit == 1;
+    shell_system_swap_for_test(real);
+    exit_requested = false;
+    return none_while_running && once_after_the_app;
+}
 #endif
 
 void
