@@ -204,15 +204,19 @@ L(x) = a(x)\,\bigl(E_{\mathrm{direct}}(x) + E_{\mathrm{ind}}(x)\bigr)
 
 A ray that hits nothing adds nothing, because the sky light already counts the
 sky; a ray that an occluder stops takes the occluder's radiance. With every
-albedo at most $\rho < 1$, $L_k \le \rho^k L_0$, so the series converges and
+albedo at most $\rho \lt 1$, $\max_t L_k \le \rho^k \max_t L_0$, so the series converges and
 bounce $k$ adds less than the one before. Pick $K$ where the next bounce adds
 under about 1% of the direct light.
 
 Every point and every cache triangle uses the same $R$ directions, laid out
 in its own tangent frame, and nothing is drawn at random. Equal surroundings
-give equal colours, which is also what lets two sides of a crease merge into
-one vertex, and a rebake gives the same bytes. A double-sided surface gathers
-on the side the direct light shines on.
+give equal colours and a rebake gives the same bytes. A smooth bake gathers
+once for the vertex copies a crease splits at one position, on their mean
+normal, and gives every copy that indirect term: indirect light changes slowly
+where direct light does not, and copies that differ only in it would stop
+merging into one vertex. A double-sided surface gathers on the side the direct
+light shines on, and a ray that reaches a one-sided triangle from behind finds
+no light, so light does not pass through shells.
 
 The cache and the gathers cost one bundle of rays per source triangle and
 bounce, plus one per baked point. The limit is the light's resolution: it is
