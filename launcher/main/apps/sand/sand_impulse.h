@@ -85,8 +85,7 @@ void sand_impulse_dislodge(sand_t* s, int x, int y, int dir, int speed, int ramp
  * struck material can fly clear of a bank. Direction is a backward cone
  * (dir+3/4/5), so it does not drive struck material deeper in. Constant:
  * ARRIVAL speed in 256ths, not a divisor - below 256 keeps a strike from
- * minting energy; 213 is a
- * device figure. */
+ * minting energy; 213 is a device figure. */
 #define SAND_IMPULSE_TRANSFER_KEEP          213
 
 /* Below this post-drag speed, a mover does not queue a transfer at all -

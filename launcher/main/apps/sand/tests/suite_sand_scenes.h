@@ -194,8 +194,9 @@ void build_dry_plant_heap_scene(sand_t* s);
 
 #define PLANT_IDLE_SETTLE_STEPS  200
 
-/* This schedule keeps plants, leaves and roots active in the timed window.
- * Both pours precede that window. */
+/* This schedule keeps plants, leaves and roots active in the timed window,
+ * and both pours precede it. A bed settled 400 steps has a saturated canopy
+ * and grows no leaves; pouring at 80 and 160 stalls it at 137 leaves. */
 #define PLANT_BED_SETTLE_STEPS   230
 #define PLANT_BED_RAIN_A         100
 #define PLANT_BED_RAIN_B         170
@@ -211,8 +212,6 @@ void build_dry_plant_heap_scene(sand_t* s);
  * plant_bed_rain() is. */
 void mature_tree_replant(sand_t* s);
 
-/* Settled 400 steps the canopy saturates and produces no leaves; pouring
- * earlier (80 and 160) stalls it at 137 leaves. */
 #define MATURE_TREE_REPLANT_STEPS 400
 
 /* Match APP_IMPULSE_MAX so this scene reaches the device memory ceiling. */
@@ -300,8 +299,8 @@ void build_water_slope_stone_scene(sand_t* s);
 void build_water_slope_flat_scene(sand_t* s);
 void water_slope_water_pour(sand_t* s, int step);
 
-/* This pour covers the slope from its high corner to the downhill face. The
- * water-slope cover row in suite_sand_perf.c exercises this constant. */
+/* This pour covers the slope from its high corner to the downhill face;
+ * test_pouring_water_over_the_slope_reaches_the_floor checks it. */
 #define WATER_SLOPE_COVER_STEPS 500
 
 void build_water_slope_covered_scene(sand_t* s);
