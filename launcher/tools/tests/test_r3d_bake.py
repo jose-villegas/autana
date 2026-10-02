@@ -10,6 +10,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -19,7 +20,7 @@ try:
     from trimesh.ray.ray_pyembree import RayMeshIntersector
 
     from r3d.geometry import triangle_areas, weld
-    from r3d.light import adaptive_sample_counts, face_colours, light, merge_matching_colours
+    from r3d.light import IndirectCache, adaptive_sample_counts, build_indirect_cache, face_colours, gather_indirect, light, merge_matching_colours
     from r3d import lit_mesh, rebake
     from r3d.lit_mesh import MESHLET_TRIANGLES, bake_lit_mesh, read_lit_mesh, validate, weld_quantised, write_lit_mesh
     from r3d.meshopt import build_meshlets, simplify_with_update
@@ -522,6 +523,58 @@ class FlatLightTests(unittest.TestCase):
         # Recorded from the bake before flat faces shared their sky directions.
         want = [[3.4013203074259875, 3.290614682831909, 3.09012983979227], [3.3394453074259873, 3.214114682831909, 2.98887983979227], [3.277570307425987, 3.137614682831909, 2.88762983979227], [3.2156953074259875, 3.0611146828319087, 2.78637983979227], [3.3394453074259873, 3.214114682831909, 2.98887983979227]]
         np.testing.assert_allclose(got, want, rtol=0, atol=1e-12)
+
+
+class CacheIntersector:
+    """A deterministic nearest-hit intersector for cache unit tests."""
+
+    def __init__(self, faces):
+        self.faces = np.asarray(faces)
+
+    def intersects_location(self, origin, direction, multiple_hits=False):
+        return np.zeros_like(origin), np.arange(len(origin)), np.resize(self.faces, len(origin))
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class IndirectLightTests(unittest.TestCase):
+    def test_a_closed_diffuse_box_follows_the_bounce_series(self):
+        p = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=float)
+        tris = np.array([[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
+        indirect = SimpleNamespace(bounces=3, rays=64, cache_samples=1)
+        cache = build_indirect_cache(p, tris, np.zeros(len(tris), dtype=int), [0], set(),
+                                     lambda points, spacing, material: np.full((len(points), 3), 0.5),
+                                     CacheIntersector([1, 2, 3, 0]),
+                                     [{"type": "ambient", "color": [1, 1, 1], "intensity": 1}], 0.01, indirect,
+                                     np.random.default_rng(3))
+        np.testing.assert_allclose(cache.radiance.sum(axis=0), np.full((4, 3), 0.875), atol=1e-12, rtol=0)
+
+    def test_colour_bleed_rises_near_the_coloured_surface(self):
+        cache = IndirectCache(np.array([[[0.8, 0.1, 0.1], [0.4, 0.4, 0.4]]]), 1, 0.01)
+        points = np.array([[0, 0, 0], [1, 0, 0]], dtype=float)
+        normal = np.tile([0.0, 0.0, 1.0], (2, 1))
+        direct = np.ones((2, 3))
+        indirect = gather_indirect(points, normal, CacheIntersector([0, 1]), cache, shared=True)
+        ratio = (direct + indirect)[:, 0] / (direct + indirect)[:, 1]
+        self.assertGreater(ratio[0], ratio[1])
+        self.assertAlmostEqual(ratio[1], 1.0)
+        np.testing.assert_array_equal(direct[:, 0] / direct[:, 1], [1.0, 1.0])
+
+    def test_a_closer_hit_supplies_the_gathered_radiance(self):
+        cache = IndirectCache(np.array([[[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]]), 1, 0.01)
+        got = gather_indirect(np.array([[0.0, 0.0, 0.0]]), np.array([[0.0, 0.0, 1.0]]),
+                              CacheIntersector([0]), cache, shared=True)
+        np.testing.assert_array_equal(got, [[1.0, 0.0, 0.0]])
+
+    def test_zero_bounces_is_byte_identical_to_no_cache(self):
+        p, tris, intersector = walled_floors([0])
+        grey = lambda points, spacing, material: np.full((len(points), 3), 0.3)
+        lights = lighting_lights(sun=[0.8, 1.0, 0.0], sun_intensity=1.0, sky_intensity=1.0, ambient=0.02)
+        direct = face_colours(p, tris, np.zeros(len(tris), dtype=int), [0], set(), grey, intersector, lights, 0.5, 0.35)
+        cache = build_indirect_cache(p, tris, np.zeros(len(tris), dtype=int), [0], set(), grey, intersector, lights, 0.5,
+                                     SimpleNamespace(bounces=0, rays=1, cache_samples=1), np.random.default_rng(1))
+        self.assertIsNone(cache)
+        self.assertEqual(direct.tolist(), face_colours(p, tris, np.zeros(len(tris), dtype=int), [0], set(), grey,
+                                                       intersector, lights, 0.5, 0.35, indirect_cache=cache).tolist())
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

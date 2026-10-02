@@ -28,8 +28,9 @@ keep = 0.35
 
 [process.light]
 ray_offset = 0.5
-colour_merge_step = 6
+colour_merge_step = 8
 flat_sky_rays = 128
+indirect = { bounces = 2, rays = 64, cache_samples = 1 }
 
 [process.simplify]
 dense_edge = 45.0
