@@ -147,7 +147,8 @@ re-derived from `sdkconfig.defaults` just because the defaults changed.
 from, so change the defaults and rebuild through `autana build` (which runs
 `tools/build/build.sh`) rather than trusting a directory left over from before.
 
-The frame loop ends in `vTaskDelay(1)` (`main.c`), so frame time is work
+The frame loop ends in `timing_yield()`, a `vTaskDelay(1)`
+(`shell/shell.c`), so frame time is work
 rounded up to a whole tick - compare microseconds of work, not an fps
 figure, which quantises around any small change.
 
