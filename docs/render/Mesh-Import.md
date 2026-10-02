@@ -402,8 +402,8 @@ and $\lambda$ the `--laplacian` weight. Adam takes the steps, both learning
 rates decay as $\eta_k = \eta_0 \cdot 0.1^{k/K}$ over $K$ steps, and the
 colours are clamped to $[0, 1]$ after each. Where nothing is drawn the
 renderer shows the scene's clear colour, as the device and the reference do.
-$\mathcal{E}_{\Delta E}$ below names the first term and
-$\mathcal{E}_{\mathcal{L}}$ the second.
+$`\mathcal{E}_{\Delta E}`$ below names the first term and
+$`\mathcal{E}_{\mathcal{L}}`$ the second.
 
 ## Spending the budget where it shows and costs least
 
