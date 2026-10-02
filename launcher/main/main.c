@@ -78,6 +78,7 @@ static __attribute__((noinline)) void
 app_boot_init(void) {
     printf("BUILD_ID=%s\n", build_id());
     fflush(stdout);
+    shell_init();
     heap_mark("boot");
 
     /* Test SD card during panel use. */
@@ -108,7 +109,7 @@ app_boot_init(void) {
     }
 #endif
 
-    shell_init();
+    shell_check_console_prefixes();
     /* The launcher has to exist, turned the way boot draws, before the
      * animation can dissolve into it. ui_init() resets the transform to
      * identity, so DISPLAY_DEFAULT_QUARTER is applied here or the board
