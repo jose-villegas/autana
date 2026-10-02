@@ -7,8 +7,8 @@
  * overflow into a bounded coordinate. A divide by zero saturates by the
  * numerator's sign (0 / 0 is 0). Other products round to nearest, ties away
  * from zero. Angles are Q16.16 turns whose low 16 bits are util/trig.h phases;
- * sin and cos of +-1.0 come back as +-65534. Header-only, static inline and
- * ESP-IDF-free.
+ * a sine or cosine of +-1.0 comes back as +-65534. Header-only, static
+ * inline and ESP-IDF-free.
  */
 #pragma once
 

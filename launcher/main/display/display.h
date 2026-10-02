@@ -67,8 +67,8 @@ typedef struct {
  * applies this physical-board choice. */
 #define DISPLAY_DEFAULT_QUARTER       DISPLAY_LANDSCAPE
 
-/* Starts at quarter 0. There is no "unknown" orientation: the first reading
- * corrects a wrong guess like any other update. */
+/* Starts at quarter 0. There is no "unknown" orientation: readings correct a
+ * wrong guess like any other change. */
 void display_init(display_t* d);
 
 /* Feed gravity in consistent screen-axis units. True means quarter changed,
