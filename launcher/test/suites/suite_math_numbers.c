@@ -331,26 +331,6 @@ assert_basis_x(vec3f_t r, vec3f_t u, vec3f_t f) {
     assert_x_near_f(f, quatx_rotate(q, to_x(0.0F, 0.0F, 1.0F)), FIXED_SLACK);
 }
 
-static void
-test_from_basis_covers_each_dominant_axis_branch_in_float_and_fixed(void) {
-    /* Half turns about x, y and z: the trace is -1, so each takes its own branch. */
-    const vec3f_t rx = {1.0F, 0.0F, 0.0F};
-    const vec3f_t ux = {0.0F, -1.0F, 0.0F};
-    const vec3f_t fx = {0.0F, 0.0F, -1.0F};
-    const vec3f_t ry = {-1.0F, 0.0F, 0.0F};
-    const vec3f_t uy = {0.0F, 1.0F, 0.0F};
-    const vec3f_t fy = {0.0F, 0.0F, -1.0F};
-    const vec3f_t rz = {-1.0F, 0.0F, 0.0F};
-    const vec3f_t uz = {0.0F, -1.0F, 0.0F};
-    const vec3f_t fz = {0.0F, 0.0F, 1.0F};
-    assert_basis_f(rx, ux, fx);
-    assert_basis_f(ry, uy, fy);
-    assert_basis_f(rz, uz, fz);
-    assert_basis_x(rx, ux, fx);
-    assert_basis_x(ry, uy, fy);
-    assert_basis_x(rz, uz, fz);
-}
-
 /* A half turn about the unit axis n: R = 2 n n^T - I, whose diagonal says which branch of
  * from_basis it takes; an off-axis n keeps the other two diagonal entries apart. */
 static void
@@ -427,7 +407,6 @@ suite_math_numbers(void) {
     RUN_TEST(test_int16_negative_edges_and_float_rounding_boundaries);
     RUN_TEST(test_normalize_by_value_and_repeated_rotation_stay_unit_length);
     RUN_TEST(test_slerp_of_equal_and_opposite_quaternions_and_across_its_threshold);
-    RUN_TEST(test_from_basis_covers_each_dominant_axis_branch_in_float_and_fixed);
     RUN_TEST(test_from_basis_picks_the_largest_diagonal_for_off_axis_half_turns);
     RUN_TEST(test_fixed_angles_negative_and_beyond_a_turn);
 }
