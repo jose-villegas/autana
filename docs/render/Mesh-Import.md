@@ -291,10 +291,10 @@ L^* = 116\,f\!\left(\tfrac{Y}{Y_n}\right) - 16,
 ```
 
 for render $R$ and reference $T$ at pixel $p$. Mean ΔE averages
-$\Delta E_{76}(p)$ over the frame's pixels and p95 is its 95th percentile.
+$`\Delta E_{76}(p)`$ over the frame's pixels and p95 is its 95th percentile.
 Luma SSIM works on the gamma-encoded luma $y = 0.2126 r + 0.7152 g + 0.0722 b$
 (channels 0 to 1), over every 8 by 8 window $w$ of the frame, with the
-window's means $\mu$, variances $\sigma^2$ and covariance $\sigma_{RT}$:
+window's means $\mu$, variances $\sigma^2$ and covariance $`\sigma_{RT}`$:
 
 ```math
 \mathrm{SSIM} = \frac{1}{|W|}\sum_{w \in W}
@@ -303,7 +303,7 @@ window's means $\mu$, variances $\sigma^2$ and covariance $\sigma_{RT}$:
 ```
 
 The edge pixels are those within one pixel of a step in the reference's luma
-steeper than 0.06 a pixel; edge ΔE averages $\Delta E_{76}$ over them and
+steeper than 0.06 a pixel; edge ΔE averages $`\Delta E_{76}`$ over them and
 interior ΔE over the rest:
 
 ```math
@@ -380,7 +380,7 @@ fit needs a CUDA GPU and its own environment
 The fit draws the mesh with a differentiable rasterizer $\mathcal{R}$
 (nvdiffrast) as the device does, and moves the welded positions $P$ and
 vertex colours $C$ to minimise, over a random batch $B$ of training poses
-each step, the mean ΔE above against the reference $T_v$ of pose $v$, plus
+each step, the mean ΔE above against the reference $`T_v`$ of pose $v$, plus
 a regulariser that keeps the mesh's local shape:
 
 ```math
@@ -399,7 +399,7 @@ a regulariser that keeps the mesh's local shape:
 $\Omega$ is the frame's pixels, $P^0$ the start positions, $N(i)$ the
 positions sharing an edge with $i$, $\bar{e}$ the start's mean edge length
 and $\lambda$ the `--laplacian` weight. Adam takes the steps, both learning
-rates decay as $\eta_k = \eta_0 \cdot 0.1^{k/K}$ over $K$ steps, and the
+rates decay as $`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps, and the
 colours are clamped to $[0, 1]$ after each. Where nothing is drawn the
 renderer shows the scene's clear colour, as the device and the reference do.
 $`\mathcal{E}_{\Delta E}`$ below names the first term and
@@ -425,8 +425,8 @@ surfaces some pose draws get budget. *When:* a mesh seen from a known path.
 pixels, so a culled mesh looks the same and draws faster.
 
 **Pruning.** *What:* every pose of a dense pose set draws the mesh and counts
-the pixels $a_t$ each triangle shows; triangles with $a_t = 0$ go first, then
-those with the smallest $a_t$, down to the budget. Simplifying to more than
+the pixels $`a_t`$ each triangle shows; triangles with $`a_t = 0`$ go first, then
+those with the smallest $`a_t`$, down to the budget. Simplifying to more than
 the budget and pruning back puts the triangles where a pose shows them.
 *When:* always with a path. *Cost:* seconds.
 
@@ -439,7 +439,7 @@ instead of starting a finer one from the simplifier. *Cost:* one more fit.
 wrong and shows it from another view. The reference renderer also writes the
 source's shading normal per pixel, turned toward the eye, and the fit draws
 its own: area-weighted vertex normals $\hat{n}$, interpolated and turned the
-same way. $\Omega_v^{\cap}$ is the pixels both cover, so coverage stays the
+same way. $`\Omega_v^{\cap}`$ is the pixels both cover, so coverage stays the
 colour term's business, through the scene's clear colour. *When:* always; it
 leaves ΔE where it was and brings the normals back toward the source. *Cost:*
 a second drawing per view. The error reported beside ΔE is the mean angle:
@@ -449,11 +449,11 @@ a second drawing per view. The error reported beside ΔE is the mean angle:
 ```
 
 **The cost model.** A frame's time from pose $v$ is linear in what the
-renderer does: a constant, the triangles of the clusters in view $N_{s,v}$
-(fetched, transformed and tested), the drawn triangles $D_v$ (in front of the
-eye, facing it or double-sided, on screen), their screen rows $\rho_t$, the
-pixels they cover before the depth test $\alpha_t$ (overdraw counted) and the
-clusters in view $N_{c,v}$:
+renderer does: a constant, the triangles of the clusters in view $`N_{s,v}`$
+(fetched, transformed and tested), the drawn triangles $`D_v`$ (in front of the
+eye, facing it or double-sided, on screen), their screen rows $`\rho_t`$, the
+pixels they cover before the depth test $`\alpha_t`$ (overdraw counted) and the
+clusters in view $`N_{c,v}`$:
 
 ```math
 \hat{t}_v = w_0 + w_s\,N_{s,v} + w_d\,|D_v| + w_\rho \sum_{t \in D_v} \rho_t + w_\alpha \sum_{t \in D_v} \alpha_t + w_c\,N_{c,v}
@@ -464,13 +464,13 @@ with different triangle counts and overdraw, at the poses the board times.
 `cost_model.py` fits and applies them, and keeps them, with the frames they
 were fitted to, in a weights file beside it.
 
-**The cost term.** *What:* $D_v$, $\rho_t$ and $\alpha_t$ follow the vertex
+**The cost term.** *What:* $`D_v`$, $`\rho_t`$ and $`\alpha_t`$ follow the vertex
 positions, so the fit can trade appearance against predicted time with a
 weight $\kappa$ in ΔE per millisecond. *When:* when a smaller budget is not an
 option; on the meshes it was tried on, a smaller budget bought the same time
 for less error. *Cost:* the fit runs about three times longer.
 
-The whole objective, with $\lambda$, $\lambda_n$ and $\kappa$ the weights of
+The whole objective, with $\lambda$, $`\lambda_n`$ and $\kappa$ the weights of
 the Laplacian, normal and cost terms:
 
 ```math
