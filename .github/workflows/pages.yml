@@ -4,9 +4,11 @@ name: Pages
 # the C4 architecture explorer under /architecture/. A Pages deploy replaces
 # the whole site, so everything on it is built here, in one artifact.
 #
-# A push to main or to feature/web-pages publishes it; the browser
-# build lives on that branch, so the branch publishes without merging. A pull
-# request builds the site without deploying it.
+# The browser build lives on feature/web-pages, but the site has to show
+# main's source: the build merges the latest main into the branch first, in
+# the runner only, and fails rather than publish if that merge conflicts.
+# A push to the branch runs it, and main's pages-trigger.yml starts it on
+# every push to main.
 #
 # The explorer's generator lives in the private development repository,
 # checked out as .dev the way a local checkout holds it. Needs the
@@ -15,13 +17,12 @@ name: Pages
 
 on:
   push:
-    branches: [main, feature/web-pages]
-  pull_request:
+    branches: [feature/web-pages]
   workflow_dispatch:
 
 concurrency:
-  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: pages
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -32,6 +33,14 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: feature/web-pages
+          fetch-depth: 0
+      - name: Bring in main
+        run: |
+          git config user.name "Pages build"
+          git config user.email "pages-build@users.noreply.github.com"
+          git merge --no-edit origin/main
       - uses: actions/checkout@v4
         with:
           repository: jose-villegas/autana-dev
@@ -52,7 +61,6 @@ jobs:
 
   deploy:
     name: Publish to Pages
-    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-24.04
     permissions:
