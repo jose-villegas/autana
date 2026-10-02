@@ -91,10 +91,8 @@ instantiate(const scene_def_t* def) {
     memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_DIRTY, def->entity_count);
     for (int i = 0; i < def->camera_count; i++) {
         const scene_camera_def_t* c = &def->cameras[i];
-        scene->cameras[i] = (scene_camera_t){.lens = c->lens, .entity = c->entity, .render_scale_percent = 50};
-        if (def->has_background) {
-            scene->cameras[i].clear = GFX_RGB(def->background_rgb);
-        }
+        scene->cameras[i] = (scene_camera_t){
+            .lens = c->lens, .entity = c->entity, .render_scale_percent = 50, .clear = GFX_RGB(c->clear_rgb)};
         scene->cameras[i].lens.placement = &scene->transforms[c->entity];
     }
     for (int i = 0; i < def->renderer_count; i++) {

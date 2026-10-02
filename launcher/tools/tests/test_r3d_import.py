@@ -303,7 +303,7 @@ class SceneTests(unittest.TestCase):
         self.assertIn('static const scene_renderer_def_t hall_scene_renderers[] = {\n    {0, "a"},\n    {1, "b"},\n};', source)
         self.assertIn("{.m = {{2.0F, 0.0F, 0.0F}, {0.0F, 2.0F, 0.0F}, {0.0F, 0.0F, 2.0F}}, .position = {1.0F, 2.0F, 3.0F}},", source)
         self.assertIn(".clip = &flight_clip, .translation = &flight_rig_translation, .rotation = &flight_rig_rotation", source)
-        self.assertIn("{2, {.half_fov_short_tan = 0.6F, .near_z = 1.0F, .placement = NULL, .path = &hall_scene_camera_path}},",
+        self.assertIn("{2, {.half_fov_short_tan = 0.6F, .near_z = 1.0F, .placement = NULL, .path = &hall_scene_camera_path}, 0x000000},",
                       source)
         self.assertIn(".entity_count = 3,", source)
         self.assertIn("SCENE_REGISTER(hall_scene)", source)
@@ -312,6 +312,14 @@ class SceneTests(unittest.TestCase):
         self.assertIn("extern const scene_def_t hall_scene;", header)
         self.assertIn("#define HALL_SCENE_B ((scene_entity_t)1)", header)
         self.assertIn("#define HALL_SCENE_CAMERA ((scene_entity_t)2)", header)
+
+    def test_a_camera_background_reaches_its_table_entry_and_defaults_to_black(self):
+        for extra, wanted in (("background = 0x336699" + chr(10), "0x336699"), ("", "0x000000")):
+            with tempfile.TemporaryDirectory() as directory:
+                self.two_imports(directory)
+                path = write_scene(directory, renderer("a.import.toml") + camera(region=False, extra=extra), name="hall.scene.toml")
+                source = write_scene_table(load_scene(path))[0].read_text()
+            self.assertIn(".placement = NULL, .path = NULL}, " + wanted + "},", source)
 
     def table_of(self, objects, lit=False):
         """The generated source and header of a scene, as text; `lit` lights both of its meshes."""

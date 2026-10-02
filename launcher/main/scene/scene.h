@@ -44,6 +44,7 @@ typedef struct {
 typedef struct {
     scene_entity_t entity;
     r3d_scene_camera_t lens; /* its placement NULL: a scene points it at the entity's transform */
+    uint32_t clear_rgb;      /* 0xRRGGBB: what no mesh covers, 0 black */
 } scene_camera_def_t;
 
 /* What scene_load() instantiates: array lengths and contents, all const. */
@@ -54,8 +55,6 @@ typedef struct {
     const scene_transform_t* transforms;   /* entity_count */
     const scene_renderer_def_t* renderers; /* renderer_count */
     const scene_camera_def_t* cameras;     /* camera_count */
-    uint32_t background_rgb;               /* 0xRRGGBB: what no mesh covers, when has_background */
-    bool has_background;
 } scene_def_t;
 
 /* Makes a def loadable by name; runs before main(), like APP_REGISTER(). */
@@ -110,9 +109,8 @@ void scene_deactivate(void);
 void scene_set_paused(bool paused);
 
 /* Settings of the active camera. The scale is the share of the destination's
- * size it renders at, upscaled on the way out. */
+ * size it renders at, upscaled on the way out; the camera's def holds its clear colour. */
 void scene_set_render_scale(int percent);
-void scene_set_clear(uint32_t rgb);
 
 /* What the last draw kept after culling. */
 raster_stats_t scene_stats(void);

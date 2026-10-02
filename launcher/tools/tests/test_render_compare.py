@@ -342,7 +342,7 @@ class VideoTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             video = self.write_avi(tmp, "a.avi", [render, render], 250)
             for index in range(2):
-                reference.save(Path(tmp) / ("%03d.png" % index))
+                reference.save(Path(tmp) / ("%04d.png" % index))
             values, total = render_compare.reference_video(video, tmp, sink=lambda *item: seen.append(item[:2] + (item[3].size,)))
         self.assertEqual(seen, [(4.0, 0, (4, 4)), (4.0, 1, (4, 4))])
         self.assertEqual((len(values), total.mean_delta_e), (2, 0.0))
@@ -354,7 +354,7 @@ class VideoTest(unittest.TestCase):
             references = Path(tmp) / "reference"
             references.mkdir()
             for index in range(2):
-                Image.new("RGB", (2, 2), DRAWN).save(references / ("%03d.png" % index))
+                Image.new("RGB", (2, 2), DRAWN).save(references / ("%04d.png" % index))
             summary = Path(tmp) / "summary.txt"
             argv = ["render_compare.py", "--out", str(Path(tmp) / "x.png"), "--reference-video", video, str(references),
                     "--summary", str(summary)]
@@ -372,13 +372,6 @@ class VideoTest(unittest.TestCase):
             near.save(Path(tmp) / "000.png")
             values, total = render_compare.reference_video(video, tmp, first=2)
         self.assertEqual((len(values), total.mean_delta_e), (1, 0.0))
-
-    def test_reference_images_run_past_999_in_frame_order(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            for name in ("100", "999", "1000", "1001", "099"):
-                Image.new("RGB", (1, 1)).save(Path(tmp) / (name + ".png"))
-            names = [path.stem for path in render_compare.reference_images(tmp)]
-        self.assertEqual(names, ["099", "100", "999", "1000", "1001"])
 
     def test_read_video_gives_top_down_rgb_frames_and_the_rate(self):
         frame = with_pixels(blank(5, 4), [(1, 0)], DRAWN)

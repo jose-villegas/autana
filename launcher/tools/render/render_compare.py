@@ -607,12 +607,6 @@ def reference_line(label, stats):
     )
 
 
-def reference_images(directory):
-    """The reference PNGs in frame order: reference_render pads indices to
-    three digits, so 1000.png sorts after 999.png only by number."""
-    return sorted(pathlib.Path(directory).glob("*.png"), key=lambda path: (len(path.stem), path.stem))
-
-
 def reference_video(path, reference_dir, scale=None, heatmaps=None, keep=None, sink=None, first=0):
     """Score every AVI frame against ordered reference PNGs and return their
     mean. `scale` is the render's pixels per reference pixel, found from the
@@ -621,7 +615,7 @@ def reference_video(path, reference_dir, scale=None, heatmaps=None, keep=None, s
     render, reference)` is called for every frame. The first `first` video
     frames are skipped, for references that cover only a later segment."""
     fps, frames = read_video(path)
-    references = reference_images(reference_dir)
+    references = sorted(pathlib.Path(reference_dir).glob("*.png"))
     values = []
     for position, raw in enumerate(frames):
         index = position - first
@@ -640,7 +634,7 @@ def reference_video(path, reference_dir, scale=None, heatmaps=None, keep=None, s
             sink(fps, index, render, reference)
         values.append(stats)
         if heatmaps is not None:
-            reference_heatmap(render, reference).save(heatmaps / ("%03d.png" % index))
+            reference_heatmap(render, reference).save(heatmaps / ("%04d.png" % index))
         if keep is not None and index in keep:
             keep[index] = (render, reference)
     if len(values) != len(references):

@@ -68,13 +68,14 @@ These commands run from `launcher/`; `PY` is the venv's interpreter
 host-render script and `SCENE` its scene file.
 
 ```sh
-tools/anim/sample_tracks.sh --tracks TRACKS.c:NAME --every 5000 --until 40000     --poses camera 184 224 0.62 6 > poses.txt
+tools/anim/sample_tracks.sh --tracks TRACKS.c:NAME --every 5000 --until 45000     --poses camera 184 224 0.62 6 > poses.txt
 $PY tools/r3d/reference_render.py SCENE.scene.toml --poses poses.txt --skip 1     --out reference --samples 4
 ```
 
-`--every 5000 --until 40000` writes nine poses, times 0 to 40000. A host render
-of `--frames 8 --dt 5000` records its first frame after one step, so
-`--skip 1` leaves the eight poses it shows.
+`--every 5000 --until 45000` writes nine poses, times 0 to 40000. A host render
+of `--frames 8 --dt 5000` shows eight of them; why the first is skipped is in
+the header of
+[`render_compare.sh`](../render/render_compare.sh).
 
 Score a host render's video against the references, with a heatmap per frame
 and a sheet of two frames:

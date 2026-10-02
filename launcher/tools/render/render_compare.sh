@@ -36,7 +36,8 @@
 # frames come from r3d/reference_render.py at the poses in FILE, the camera
 # path sampled at the renderer's --dt (tools/anim/sample_tracks.sh --every DT),
 # and are cached under r3d/.cache/reference by a hash of the scene, its import
-# files, the poses and N (--samples N is the supersampling, default 4). It
+# files (which pin the source model's sha256), the r3d sources, the poses and N
+# (--samples N is the supersampling, default 4). It
 # implies --video: <label>.mp4 is reference | render | dE heatmap | edge pixels
 # per frame, at --fps 30 unless 40, 60 or 80 is given, and summary.txt gets
 # mean and 95th-percentile dE and SSIM per frame. A render's first frame is
@@ -52,7 +53,7 @@ TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_DIR=$(CDPATH= cd -- "$TOOLS_DIR/../../.." && pwd)
 
 usage() {
-    sed -n '3,45p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '3,46p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
 }
 
@@ -228,7 +229,7 @@ for path in sys.argv[1:-1]:
     digest.update(pathlib.Path(path).read_bytes())
 digest.update(sys.argv[-1].encode())
 print(digest.hexdigest()[:16])' "$(to_native "$reference")" "$(to_native "$poses")" \
-        $(for f in "$scene_dir"/*.import.toml; do to_native "$f"; done) "$samples")
+        $(for f in "$scene_dir"/*.import.toml "$TOOLS_DIR/../r3d"/*.py "$TOOLS_DIR/render_compare.py"; do to_native "$f"; done)         "$samples")
     cache="$REPO_DIR/launcher/tools/r3d/.cache/reference/$key"
     if [ ! -f "$cache/done" ]; then
         if [ -z "$r3d_python" ]; then
