@@ -130,7 +130,7 @@ own vertex colours are not read.
 | `process.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. |
 | `process.visibility` | `rounds` | Drops triangles no point of the scene's world-space camera region sees. Scene-dependent. |
 | `process.thin` | `material`, `keep` | Keeps only a share of one material's triangles. |
-| `process.light` | `ray_offset`, `colour_merge_step`, `flat_sky_rays` | Bakes the scene's lights into per-vertex colour. `flat_sky_rays` is the one set of sky directions the faces of a variant with `face_samples` share, and is allowed only then. Scene-dependent. |
+| `process.light` | `ray_offset`, `colour_merge_step`, `flat_sky_rays`, `indirect` | Bakes the scene's lights into per-vertex colour. `flat_sky_rays` is the one set of sky directions the faces of a variant with `face_samples` share, and is allowed only then. `indirect` opt-in bounce light is described below. Scene-dependent. |
 | `process.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges, then simplifies to each variant's `triangles`, reserving `props_share` of the budget for the small `props` materials; `seal_seams` joins touching pieces first. |
 | `[[variants]]` | `name`, `triangles`, `face_samples` | Several meshes from one import, each named. `triangles` is its budget and is required with `process.simplify`. `face_samples`, `{ fixed = N }` or `{ auto = { min, max, area } }` with `area = "median"` for the mesh median, makes the variant flat: one colour per triangle, averaged over that many points, and needs `process.light`. Two variants may not produce the same mesh. |
 
@@ -157,6 +157,41 @@ visible ones lose triangles.
 import with no light step, the right the baked sun, sky and ambient.
 
 ![Albedo against baked light](images/import-light.png)
+
+### Indirect light
+
+`process.light.indirect = { bounces = K, rays = R, cache_samples = S }`
+adds diffuse bounce light. `bounces = 0` makes no cache and produces the
+same bytes as a light bake without `indirect`. `rays` is the cosine-weighted
+hemisphere-ray count for each cache and final gather; `cache_samples` is the
+number of fixed samples averaged into each full-detail source triangle's
+direct radiance. All three fields are required when `indirect` is present;
+`rays` and `cache_samples` are positive and `bounces` is non-negative.
+
+The cache holds one outgoing radiance per source triangle. With albedo
+`a(t)`, direct irradiance `E_0(t)`, and the triangle `h_i` first hit by a
+cosine-weighted hemisphere ray, its recursion and final gather are:
+
+```math
+L_0(t) = a(t) E_0(t), \qquad
+E_k(t) = \frac{1}{R} \sum_{i=1}^{R} L_{k-1}(h_i), \qquad
+L_k(t) = a(t) E_k(t)
+```
+
+```math
+E_{\mathrm{ind}}(x) = \frac{1}{R} \sum_{i=1}^{R} \sum_{k=0}^{K-1} L_k(h_i)
+```
+
+Misses add no indirect radiance because the sky baker already supplies sky
+light. The final gather adds `E_ind` to direct irradiance before albedo,
+tone mapping and encoding, for both smooth vertices and flat face samples.
+Flat samples share their gather directions, so matching surroundings receive
+matching colours.
+
+The cache and final gathers scale with triangles, bounces and rays, so they
+increase import time only. Runtime mesh size and frame cost do not change.
+Light resolution remains the baked vertex or face spacing: bounce detail
+smaller than one triangle cannot survive the lit-mesh representation.
 
 The off/on stills in `images/` are not made by the doc-images workflow: each
 "off" side is a scratch bake of the import with that step's table removed,

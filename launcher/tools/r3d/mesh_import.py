@@ -29,8 +29,10 @@ from r3d.geometry import compact, corner_normals, weld_keeping  # noqa: E402
 from r3d.import_settings import SettingsError, load_import_settings, load_scene  # noqa: E402
 from r3d.light import (  # noqa: E402
     drop_masked,
+    build_indirect_cache,
     encode_srgb8,
     face_colours,
+    gather_indirect,
     light,
     merge_matching_colours,
     sample_albedo,
@@ -69,7 +71,7 @@ def albedo_at(src, points, spacing, material):
     return sample_albedo(points, spacing, material, src.p, src.uv, src.tri_v, src.tri_t, src.tri_m, src.textures, kd)
 
 
-def shade_lit(src, settings, scene, material, mp, mt, double, intersector, rng):
+def shade_lit(src, settings, scene, material, mp, mt, double, intersector, rng, indirect_cache):
     """Vertices split along creases and lit on their own normals, near colours merged."""
     normals = corner_normals(mp, mt)
     corner_pos, corner_n = mp[mt].reshape(-1, 3), normals.reshape(-1, 3)
@@ -78,6 +80,7 @@ def shade_lit(src, settings, scene, material, mp, mt, double, intersector, rng):
     vpos, vn, vtris = corner_pos[first], corner_n[first], inverse.reshape(-1, 3)
     albedo = albedo_at(src, vpos, vertex_spacing(vpos, vtris), material)
     radiance = light(vpos, vn, np.full(len(vpos), double), intersector, scene.lights, settings.light.ray_offset, rng)
+    radiance += gather_indirect(vpos, vn, intersector, indirect_cache, rng)
     vrgb = to_srgb8(albedo * radiance, scene.tonemap_white)
     return merge_matching_colours(vpos, vrgb, vtris, settings.light.colour_merge_step)
 
@@ -101,6 +104,11 @@ def bake_geometry(settings, variant, scene):
     intersector = None
     if settings.visibility or settings.light:
         intersector = RayMeshIntersector(trimesh.Trimesh(src.p, tri_v, process=False))
+    indirect_cache = build_indirect_cache(
+        src.p, tri_v, tri_m, range(len(src.names)),
+        {index for index, name in enumerate(src.names) if name in settings.double_sided},
+        lambda centres, spacing, material: albedo_at(src, centres, spacing, material), intersector, scene.lights,
+        settings.light.ray_offset, settings.light.indirect, rng) if settings.light else None
     double_names = settings.double_sided
     seen = np.ones(len(tri_v), dtype=bool)
     if settings.visibility:
@@ -123,7 +131,7 @@ def bake_geometry(settings, variant, scene):
     for material, mp, mt in parts:
         double = src.names[material] in double_names
         if settings.light:
-            vpos, vrgb, vtris = shade_lit(src, settings, scene, material, mp, mt, double, intersector, rng)
+            vpos, vrgb, vtris = shade_lit(src, settings, scene, material, mp, mt, double, intersector, rng, indirect_cache)
         else:
             vpos, vrgb, vtris = shade_unlit(src, material, mp, mt)
         all_pos.append(vpos)
@@ -143,7 +151,7 @@ def bake_geometry(settings, variant, scene):
         rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
         tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
     return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
-                           tri_mat=tri_mat, scale=scale)
+                           tri_mat=tri_mat, scale=scale, indirect_cache=indirect_cache)
 
 
 def flat_colours(settings, scene, geometry, face_samples, **knobs):
@@ -157,7 +165,7 @@ def flat_colours(settings, scene, geometry, face_samples, **knobs):
     return face_colours(geometry.positions, geometry.tris, geometry.tri_mat, range(len(src.names)), double_materials,
                         lambda centres, spacing, material: albedo_at(src, centres, spacing, material), geometry.intersector,
                         scene.lights, settings.light.ray_offset, scene.tonemap_white, samples, max_samples=sample_max,
-                        sample_area=sample_area, min_samples=sample_min, **knobs)
+                        sample_area=sample_area, min_samples=sample_min, indirect_cache=geometry.indirect_cache, **knobs)
 
 
 def bake(settings, variant, scene):

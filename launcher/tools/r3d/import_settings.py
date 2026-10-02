@@ -83,6 +83,13 @@ def count(value, where):
     return value
 
 
+def nonnegative_count(value, where):
+    value = integer(value, where)
+    if value < 0:
+        raise SettingsError(f"{where} must not be negative")
+    return value
+
+
 def colour_rgb(value, where):
     """A colour as 0xRRGGBB."""
     value = integer(value, where)
@@ -153,11 +160,19 @@ def load_process(process):
                                      keep=number(process["thin"]["keep"], "process.thin.keep"))
     if "light" in process:
         table = process["light"]
-        check_keys(table, ("ray_offset", "colour_merge_step"), "process.light", optional=("flat_sky_rays",))
+        check_keys(table, ("ray_offset", "colour_merge_step"), "process.light", optional=("flat_sky_rays", "indirect"))
         steps.light = SimpleNamespace(
             ray_offset=number(table["ray_offset"], "process.light.ray_offset"),
             colour_merge_step=count(table["colour_merge_step"], "process.light.colour_merge_step"),
-            flat_sky_rays=count(table["flat_sky_rays"], "process.light.flat_sky_rays") if "flat_sky_rays" in table else None)
+            flat_sky_rays=count(table["flat_sky_rays"], "process.light.flat_sky_rays") if "flat_sky_rays" in table else None,
+            indirect=None)
+        if "indirect" in table:
+            indirect = table["indirect"]
+            check_keys(indirect, ("bounces", "rays", "cache_samples"), "process.light.indirect")
+            steps.light.indirect = SimpleNamespace(
+                bounces=nonnegative_count(indirect["bounces"], "process.light.indirect.bounces"),
+                rays=count(indirect["rays"], "process.light.indirect.rays"),
+                cache_samples=count(indirect["cache_samples"], "process.light.indirect.cache_samples"))
     if "simplify" in process:
         table = process["simplify"]
         check_keys(table, ("dense_edge", "props", "props_share", "seal_seams"), "process.simplify")

@@ -22,7 +22,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d.geometry import corner_normals
 from r3d.import_settings import load_scene
-from r3d.light import albedo_from_uv, drop_masked, light, to_srgb8
+from r3d.light import albedo_from_uv, build_indirect_cache, drop_masked, gather_indirect, light, sample_albedo, to_srgb8
 from r3d.mesh_import import load_source
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
@@ -123,6 +123,8 @@ def trace(source, settings, scene, pose, width, height, lens, samples=4):
         double = np.isin(material, [source.names.index(name) for name in settings.double_sided])
         radiance = light(locations, normal, double, source.intersector, scene.lights, settings.light.ray_offset,
                          np.random.default_rng(settings.seed), shared_sky_rays=0)
+        radiance += gather_indirect(locations, normal, source.intersector, getattr(source, "indirect_cache", None),
+                                    np.random.default_rng(settings.seed))
         linear[rays] = albedo * radiance
     return (linear.reshape(height, width, samples * samples, 3).mean(axis=2),
             covered.reshape(height, width, samples * samples).mean(axis=2))
@@ -154,6 +156,14 @@ def source_for(scene, import_path=None):
                                                                  source.tri_m, source.textures, settings.alpha_keep)
     source.corner_normals = corner_normals(source.p, source.tri_v)
     source.intersector = RayMeshIntersector(trimesh.Trimesh(source.p, source.tri_v, process=False))
+    source.indirect_cache = build_indirect_cache(
+        source.p, source.tri_v, source.tri_m, range(len(source.names)),
+        {index for index, name in enumerate(source.names) if name in settings.double_sided},
+        lambda centres, spacing, material: sample_albedo(
+            centres, spacing, material, source.p, source.uv, source.tri_v, source.tri_t, source.tri_m, source.textures,
+            source.materials.get(source.names[material], {}).get("Kd", (1, 1, 1))),
+        source.intersector, scene.lights, settings.light.ray_offset, getattr(settings.light, "indirect", None),
+        np.random.default_rng(settings.seed))
     return source, settings
 
 

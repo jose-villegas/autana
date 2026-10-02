@@ -232,6 +232,71 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, rng, s
     return radiance
 
 
+def hemisphere_directions(normals, rays, rng=None, shared=False):
+    """Cosine-weighted directions above each normal, shared when a flat bake
+    needs equal samples for equal surroundings."""
+    tu, tv = tangent_frame(normals)
+    if shared:
+        local = sky_directions(rays)
+        return [tu * x + tv * y + normals * z for x, y, z in local]
+    directions = []
+    for _ in range(rays):
+        r1, r2 = rng.random(len(normals)), rng.random(len(normals))
+        r, angle = np.sqrt(r1)[:, None], (2 * math.pi * r2)[:, None]
+        directions.append(tu * (r * np.cos(angle)) + tv * (r * np.sin(angle)) + normals * np.sqrt(1 - r1)[:, None])
+    return directions
+
+
+class IndirectCache:
+    """Full-detail triangle radiance for a finite diffuse bounce series."""
+
+    def __init__(self, radiance, rays, ray_offset):
+        self.radiance = radiance
+        self.rays = rays
+        self.ray_offset = ray_offset
+
+
+def gather_indirect(points, normals, intersector, cache, rng=None, shared=False):
+    """Estimate irradiance from the cache with cosine-weighted hemisphere rays.
+    A miss has no indirect contribution because the sky light is direct."""
+    if cache is None:
+        return np.zeros((len(points), 3))
+    origin = points + normals * cache.ray_offset
+    out = np.zeros((len(points), 3))
+    for direction in hemisphere_directions(normals, cache.rays, rng, shared):
+        locations, indices, faces = intersector.intersects_location(origin, direction, multiple_hits=False)
+        out[indices] += cache.radiance[:, faces].sum(axis=0)
+    return out / cache.rays
+
+
+def build_indirect_cache(points, tris, tri_mat, materials, double_materials, albedo_of, intersector, lights, ray_offset,
+                         indirect, rng):
+    """Bake full-detail outgoing radiance once, then gather each later bounce."""
+    if indirect is None or indirect.bounces == 0:
+        return None
+    a, b, c = points[tris[:, 0]], points[tris[:, 1]], points[tris[:, 2]]
+    normals = np.cross(b - a, c - a)
+    normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-12)
+    area = triangle_areas(points, tris)
+    centres = (a + b + c) / 3
+    sample_points = np.concatenate([w[0] * a + w[1] * b + w[2] * c for w in face_samples(indirect.cache_samples)])
+    sample_materials = np.tile(tri_mat, indirect.cache_samples)
+    albedo = np.zeros((len(sample_points), 3))
+    for material in materials:
+        selected = np.nonzero(sample_materials == material)[0]
+        if len(selected):
+            albedo[selected] = albedo_of(sample_points[selected], np.tile(np.sqrt(area), indirect.cache_samples)[selected], material)
+    double = np.isin(tri_mat, list(double_materials))
+    direct = light(sample_points, np.tile(normals, (indirect.cache_samples, 1)), np.tile(double, indirect.cache_samples),
+                   intersector, lights, ray_offset, rng)
+    radiance = [(albedo * direct).reshape(indirect.cache_samples, len(tris), 3).mean(axis=0)]
+    for _ in range(indirect.bounces - 1):
+        irradiance = gather_indirect(centres, normals, intersector,
+                                     IndirectCache(np.asarray(radiance[-1:]), indirect.rays, ray_offset), rng)
+        radiance.append(albedo * irradiance)
+    return IndirectCache(np.asarray(radiance), indirect.rays, ray_offset)
+
+
 def encode_srgb8(linear):
     """Linear light to 8-bit, with a 1/2.2 gamma (not the piecewise sRGB curve)."""
     return np.clip(np.round(255.0 * np.clip(linear, 0, 1) ** (1 / 2.2)), 0, 255).astype(np.int64)
@@ -262,7 +327,7 @@ def adaptive_sample_counts(areas, reference, cap, floor=1):
 
 def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_of, intersector, lights, ray_offset,
                  tonemap_white, samples=4, sky_rays=128, max_samples=16, sample_area=None, min_samples=1,
-                 placement="stratified", sun_centre=False):
+                 placement="stratified", sun_centre=False, indirect_cache=None):
     """One sRGB colour per triangle: albedo times light averaged over fixed
     points of the triangle, lit on its face normal. `samples` is a count per
     face, or "auto" for one point per `sample_area` of face area (the mesh's
@@ -289,6 +354,7 @@ def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_o
             double = np.full(len(points), m in double_materials)
             tiled = np.tile(normals, (k, 1))
             radiance = light(points, tiled, double, intersector, lights, ray_offset, None, sky_rays, sun_centre)
+            radiance += gather_indirect(points, tiled, intersector, indirect_cache, shared=True)
             colour = (albedo * radiance).reshape(k, len(faces), 3).mean(axis=0)
             out[selected] = to_srgb8(colour, tonemap_white)
     return out

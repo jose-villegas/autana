@@ -106,6 +106,17 @@ class SettingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             load_import_settings(write_import(directory, body="[process]\nseed = 3\n" + VISIBILITY_STEP))
 
+    def test_indirect_light_needs_complete_nonnegative_settings(self):
+        self.rejects("process.light.indirect.bounces", body=LIGHT_STEP + "indirect = { bounces = -1, rays = 8, cache_samples = 1 }\n")
+        self.rejects("process.light.indirect.rays", body=LIGHT_STEP + "indirect = { bounces = 1, rays = 0, cache_samples = 1 }\n")
+        self.rejects("process.light.indirect.cache_samples", body=LIGHT_STEP + "indirect = { bounces = 1, rays = 8, cache_samples = 0 }\n")
+        self.rejects("process.light.indirect.cache_samples is required", body=LIGHT_STEP + "indirect = { bounces = 1, rays = 8 }\n")
+        with tempfile.TemporaryDirectory() as directory:
+            settings = load_import_settings(write_import(
+                directory, body=LIGHT_STEP + "indirect = { bounces = 2, rays = 8, cache_samples = 1 }\n"))
+        self.assertEqual((settings.light.indirect.bounces, settings.light.indirect.rays, settings.light.indirect.cache_samples),
+                         (2, 8, 1))
+
     def test_variants_that_would_produce_the_same_mesh_are_rejected(self):
         variants = VARIANT + "triangles = 10\n" + VARIANT.replace("mesh", "other") + "triangles = 10\n"
         self.rejects("same mesh", body=SIMPLIFY_STEP + variants, output='[output]\ndirectory = "."\n')
