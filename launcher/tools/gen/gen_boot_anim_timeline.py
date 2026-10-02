@@ -382,16 +382,8 @@ def main():
     # uses; an old timeline should not suddenly grow a ripple its author
     # never asked for.
     cfg.setdefault("wave_height_m", 0)
-    # wave_wavelength_m/wave_period_ms replace an EARLIER version's
-    # wave_decay_m/wave_start_ms/wave_end_ms/wave_ease outright, a genuine
-    # radial sine now, not a travelling front with a decaying trail behind
-    # it (see boot_anim.h's own comment on why), so this is not a faithful
-    # reproduction of the old shape for anyone who already had a nonzero
-    # wave_height_m under that model, the same honest caveat the
-    # front-based rewrite before THIS one already carried (the two are not
-    # the same picture). Three ring-spacings and three seconds are simply
-    # reasonable starting points, not a
-    # migration.
+    # The wave is a radial sine (see boot_anim_wave_height()); three
+    # ring-spacings and three seconds are starting points.
     cfg.setdefault("wave_wavelength_m", 3 * cfg.get("grid_step_m", 1))
     cfg.setdefault("wave_period_ms", 3000)
     # wave_in_ms/wave_out_ms are newer again: starting to lerp in a
