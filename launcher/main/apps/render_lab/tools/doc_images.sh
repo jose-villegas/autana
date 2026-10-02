@@ -7,7 +7,8 @@
 #
 # <out-tree> mirrors docs/images/; these images go in its overview/ and render/.
 #
-# Run from the repository root with $PYTHON set to a Python that has Pillow and numpy;
+# Run from the repository root with $PYTHON set to a Python that has Pillow and numpy
+# (the fidelity sheet also wants launcher/tools/r3d/requirements.txt, in the r3d venv or $PYTHON);
 # ffmpeg must be on PATH. Renderer output goes to logs under <work-dir>.
 
 set -eu
@@ -85,3 +86,22 @@ sponza_still flat sponza-flat
 for crops in compare-full-lite compare-full-flat; do
     [ -f "$RENDER/$crops.crops.png" ] || { echo "doc_images.sh: $crops has no crops, the renders do not differ." >&2; exit 1; }
 done
+
+# The fidelity sheet: two poses of the committed flat bake against the source
+# model lit per pixel. Poses at 0 to 25000 ms every 5000 give render frames 0 to 4,
+# and the sheet shows frames 2 and 4. The source model is fetched once, SHA-256
+# checked, into launcher/tools/r3d/.cache.
+R3D_PYTHON=$PYTHON
+for candidate in Scripts/python bin/python; do
+    [ -x "launcher/tools/r3d/.cache/venv/$candidate" ] && R3D_PYTHON=launcher/tools/r3d/.cache/venv/$candidate
+done
+M=launcher/main/apps/render_lab
+sh launcher/tools/anim/sample_tracks.sh --tracks "$M/flythrough_tracks_generated.c:flythrough" \
+    --every 5000 --until 30000 --poses camera 184 224 0.62 6 > "$W/fidelity-poses.txt"
+"$R3D_PYTHON" launcher/tools/r3d/reference_render.py "$M/meshes/sponza.scene.toml" \
+    --poses "$W/fidelity-poses.txt" --skip 1 --out "$W/fidelity-reference" --samples 4 > "$W/fidelity-reference.log" 2>&1
+"$W/render_lab_render" --quarter 0 --no-hud --scene sponza-flat --frames 5 --dt 5000 \
+    -o "$W/fidelity-flat.bmp" --video "$W/fidelity-flat.avi" 2> "$W/fidelity-flat.log"
+"$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.png" \
+    --reference-video "$W/fidelity-flat.avi" "$W/fidelity-reference" --reference-scale 2 \
+    --reference-sheet "$RENDER/bake-fidelity-sheet.png" --sheet-frames 2,4 > "$W/fidelity-compare.log"
