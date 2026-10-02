@@ -239,21 +239,21 @@ the fitted one and their difference; then the places they differ most,
 enlarged, lite above fitted. The fit sharpens the sun's shadow edge on the
 floor and the arches' edges, and puts the hangings' colours back.
 
-![Lite against the fitted lite mesh](../../../../../docs/images/render/appearance-lite-fitted.png)
-![Lite against fitted, enlarged](../../../../../docs/images/render/appearance-lite-fitted.crops.png)
+![Lite against the fitted lite mesh](../../../../../docs/render/images/appearance-lite-fitted.png)
+![Lite against fitted, enlarged](../../../../../docs/render/images/appearance-lite-fitted.crops.png)
 
 The fitted mesh against the reference at the same poses, and where they
 still differ most: the edge of the roof opening against the sky, and
 texture detail no vertex colour holds.
 
-![Fitted against the reference](../../../../../docs/images/render/appearance-fitted-reference.png)
-![Fitted against the reference, enlarged](../../../../../docs/images/render/appearance-fitted-reference.crops.png)
+![Fitted against the reference](../../../../../docs/render/images/appearance-fitted-reference.png)
+![Fitted against the reference, enlarged](../../../../../docs/render/images/appearance-fitted-reference.crops.png)
 
 The ΔE heatmap sheets of the same two poses, lite then fitted: reference,
 render, heatmap, edge pixels, over the heatmap's scale.
 
-![Lite against the reference: heatmaps](../../../../../docs/images/render/appearance-heat-lite.png)
-![Fitted against the reference: heatmaps](../../../../../docs/images/render/appearance-heat-fitted.png)
+![Lite against the reference: heatmaps](../../../../../docs/render/images/appearance-heat-lite.png)
+![Fitted against the reference: heatmaps](../../../../../docs/render/images/appearance-heat-fitted.png)
 
 The sheets and crops are `render_compare.py --row ... --crops 3` on frames
 0 and 4 of the scored videos, the reference upscaled twice to the render
@@ -320,12 +320,12 @@ landscape panel sees them; the committed mesh trains on both.
 The culled triangles, magenta, from outside and from above with the roofs
 cut away:
 
-![Triangles the camera path never sees](../../../../../docs/images/render/appearance-path-culled.png)
+![Triangles the camera path never sees](../../../../../docs/render/images/appearance-path-culled.png)
 
 The places the culled lite mesh differs most from the uncut one over the whole
 path, uncut above: coincident faces trading places, no hole.
 
-![Culled lite against uncut, largest differences](../../../../../docs/images/render/appearance-path-culled.crops.png)
+![Culled lite against uncut, largest differences](../../../../../docs/render/images/appearance-path-culled.crops.png)
 
 **Budget against error.** Unfitted and fitted, from the import's region cull
 and from the path cull (the path start simplified to 1.15 times the budget
@@ -388,7 +388,7 @@ chosen mesh uses $\lambda_n = 1$. Normal-angle heatmaps at 5 and 25 s, left to
 right the committed lite, the colour-only fit and the fit with the normal
 term, on the ΔE heatmaps' colours with degrees for ΔE:
 
-![Normal angle heatmaps](../../../../../docs/images/render/appearance-normal-heat.png)
+![Normal angle heatmaps](../../../../../docs/render/images/appearance-normal-heat.png)
 
 **Warm starts.** Splitting the fitted 4,000-triangle mesh's worst triangles up
 to 8,672 and 12,000 and fitting again gives 5.223 at 8,035 triangles and 5.153
@@ -417,7 +417,7 @@ The Pareto curve, held-out ΔE against predicted board time, with the 30 and
 60 fps budgets: neither is reached, because the constant alone, the clear and
 the upscale, is 21 ms, and at 4,000 triangles the frame is still 35 ms.
 
-![Held-out error against predicted frame time](../../../../../docs/images/render/appearance-pareto.png)
+![Held-out error against predicted frame time](../../../../../docs/render/images/appearance-pareto.png)
 
 ```mermaid
 xychart-beta
@@ -474,12 +474,12 @@ the pair differs most, enlarged where it differs most:
 | Cost term | fitted | fitted with the cost term | coarser arch facets, and a banner corner pulled in far enough to open a hole |
 | Path culling | committed full | full culled to the path | nothing but coincident faces trading places |
 
-![Fit](../../../../../docs/images/render/appearance-stage-fit.crops.png)
-![Normal term](../../../../../docs/images/render/appearance-stage-normal.crops.png)
-![Path visibility](../../../../../docs/images/render/appearance-stage-path-start.crops.png)
-![Pruning](../../../../../docs/images/render/appearance-stage-prune.crops.png)
-![Cost term](../../../../../docs/images/render/appearance-stage-cost.crops.png)
-![Path culling](../../../../../docs/images/render/appearance-stage-path-full.crops.png)
+![Fit](../../../../../docs/render/images/appearance-stage-fit.crops.png)
+![Normal term](../../../../../docs/render/images/appearance-stage-normal.crops.png)
+![Path visibility](../../../../../docs/render/images/appearance-stage-path-start.crops.png)
+![Pruning](../../../../../docs/render/images/appearance-stage-prune.crops.png)
+![Cost term](../../../../../docs/render/images/appearance-stage-cost.crops.png)
+![Path culling](../../../../../docs/render/images/appearance-stage-path-full.crops.png)
 
 Its ΔE heatmap sheet at the bake fidelity sheet's two poses:
 
