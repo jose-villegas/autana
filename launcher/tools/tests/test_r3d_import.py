@@ -31,12 +31,12 @@ SOURCE = '[source]\nurl = "https://example.invalid/m.zip"\nsha256 = "abc"\npath 
 OUTPUT = '[output]\ndirectory = "."\nname = "mesh"\n'
 AMBIENT = '[ambient]\ncolor = [1.0, 1.0, 1.0]\nintensity = 0.1\n'
 TONEMAP = 'tonemap_white = 0.3\n'
-THIN_STEP = '[process.thin]\nmaterial = "m"\nkeep = 0.5\n'
-VISIBILITY_STEP = "[process.visibility]\nrounds = 2\n"
-PATH_VISIBILITY_STEP = '[process.visibility]\nsource = "camera_path"\nevery_ms = 100\nsize = [8, 6]\nmargin = 2\n'
+THIN_STEP = '[geometry]\nthin = { material = "m", keep = 0.5 }\n'
+VISIBILITY_STEP = '[visibility]\nsource = "camera_region"\nrounds = 2\n'
+PATH_VISIBILITY_STEP = '[visibility]\nsource = "camera_path"\nevery_ms = 100\nsize = [8, 6]\nmargin = 2\n'
 CAMERA_PATH = 'path = { tracks = "fly", node = "camera" }\n'
-LIGHT_STEP = "[process.light]\nray_offset = 0.5\ncolour_merge_step = 6\n"
-SIMPLIFY_STEP = '[process.simplify]\ndense_edge = 1.0\nprops = []\nprops_share = 0.3\nseal_seams = true\n'
+LIGHT_STEP = "[lighting]\nlight = { ray_offset = 0.5, colour_merge_step = 6 }\n"
+SIMPLIFY_STEP = '[geometry]\nsimplify = { dense_edge = 1.0, props = [], props_share = 0.3, seal_seams = true }\n'
 VARIANT = '[[variants]]\nname = "mesh"\n'
 CUBE = ("v 0 0 0\nv 8 0 0\nv 8 8 0\nv 0 8 0\nv 0 0 8\nv 8 0 8\nv 8 8 8\nv 0 8 8\nusemtl m\n"
         "f 1 4 3 2\nf 5 6 7 8\nf 1 2 6 5\nf 2 3 7 6\nf 3 4 8 7\nf 4 1 5 8\n")
@@ -88,7 +88,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual((settings.alpha_keep, settings.visibility, settings.light, settings.simplify), (None,) * 4)
 
     def test_a_present_step_table_turns_the_step_on(self):
-        body = "[process.alpha_mask]\nkeep_alpha = 0.5\n[process.visibility]\nrounds = 4\n" + THIN_STEP + LIGHT_STEP
+        body = '[geometry]\nalpha_mask = { keep_alpha = 0.5 }\nthin = { material = "m", keep = 0.5 }\n[visibility]\nsource = "camera_region"\nrounds = 4\n' + LIGHT_STEP
         with tempfile.TemporaryDirectory() as directory:
             settings = load_import_settings(write_import(directory, body=body))
         self.assertEqual((settings.alpha_keep, settings.visibility.rounds, settings.thin.keep, settings.light.ray_offset),
@@ -97,7 +97,7 @@ class SettingsTests(unittest.TestCase):
 
     def test_only_light_and_visibility_make_an_import_scene_dependent(self):
         with tempfile.TemporaryDirectory() as directory:
-            settings = load_import_settings(write_import(directory, body=THIN_STEP + "[process.alpha_mask]\nkeep_alpha = 0.5\n"))
+            settings = load_import_settings(write_import(directory, body=THIN_STEP + "alpha_mask = { keep_alpha = 0.5 }\n"))
         self.assertFalse(settings.scene_dependent)
         for body in (VISIBILITY_STEP, LIGHT_STEP):
             with tempfile.TemporaryDirectory() as directory:
@@ -109,8 +109,8 @@ class SettingsTests(unittest.TestCase):
             path = load_import_settings(write_import(directory, body=PATH_VISIBILITY_STEP)).visibility
         self.assertEqual((region.source, region.rounds), ("camera_region", 2))
         self.assertEqual((path.source, path.every_ms, path.size, path.samples, path.margin), ("camera_path", 100, (8, 6), 3, 2))
-        self.rejects("process.visibility.source", body='[process.visibility]\nsource = "navmesh"\nrounds = 2\n')
-        self.rejects("process.visibility", body='[process.visibility]\nsource = "camera_path"\nrounds = 2\n')
+        self.rejects("visibility.source", body='[visibility]\nsource = "navmesh"\nrounds = 2\n')
+        self.rejects("visibility", body='[visibility]\nsource = "camera_path"\nrounds = 2\n')
         self.rejects("margin cannot be negative", body=PATH_VISIBILITY_STEP.replace("margin = 2", "margin = -1"))
 
     def test_a_fit_recipe_reads_and_needs_a_lit_smooth_variant_with_room_to_prune(self):
@@ -212,7 +212,7 @@ class SettingsTests(unittest.TestCase):
 
     def test_a_seed_needs_a_step_that_draws_random_rays(self):
         self.rejects("process.seed", body="[process]\nseed = 3\n")
-        self.rejects("process.seed", body="[process]\nseed = 3\n[process.alpha_mask]\nkeep_alpha = 0.5\n")
+        self.rejects("process.seed", body="[process]\nseed = 3\n[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n")
         with tempfile.TemporaryDirectory() as directory:
             load_import_settings(write_import(directory, body="[process]\nseed = 3\n" + VISIBILITY_STEP))
 
@@ -242,13 +242,13 @@ class SettingsTests(unittest.TestCase):
                     self.assertNotIn(item.variant.name, owner, f"{path.name} and {owner.get(item.variant.name)}")
                     owner[item.variant.name] = path.name
 
-    def test_an_unknown_process_key_is_rejected(self):
+    def test_an_unknown_key_is_rejected_in_a_group(self):
         self.rejects("process.typo", body="[process.typo]\nx = 1\n")
-        self.rejects("process.light.typo", body=LIGHT_STEP + "typo = 1\n")
+        self.rejects("lighting.light.typo", body=LIGHT_STEP.replace(" }", ", typo = 1 }"))
 
     def test_auto_samples_with_a_minimum_over_its_maximum_are_rejected(self):
-        variants = VARIANT + 'face_samples = { auto = { min = 3, max = 2, area = "median" } }\n'
-        self.rejects("min", output='[output]\ndirectory = "."\n', body=LIGHT_STEP + "flat_sky_rays = 8\n" + variants)
+        variants = VARIANT + 'shading = { flat = { auto = { min = 3, max = 2, area = "median" } } }\n'
+        self.rejects("min", output='[output]\ndirectory = "."\n', body=LIGHT_STEP.replace(" }", ", flat_sky_rays = 8 }") + variants)
 
     def test_a_source_without_a_sha_is_rejected(self):
         self.rejects("sha256", source=SOURCE.replace('sha256 = "abc"\n', ""))
@@ -264,13 +264,24 @@ class SettingsTests(unittest.TestCase):
     def test_simplify_needs_a_budget_per_variant_and_a_budget_needs_simplify(self):
         self.rejects("needs variants", body=SIMPLIFY_STEP)
         self.rejects("triangles is required", body=SIMPLIFY_STEP + VARIANT, output='[output]\ndirectory = "."\n')
-        self.rejects("needs process.simplify", body=VARIANT + "triangles = 10\n", output='[output]\ndirectory = "."\n')
+        self.rejects("needs geometry.simplify", body=VARIANT + "triangles = 10\n", output='[output]\ndirectory = "."\n')
 
-    def test_face_samples_need_the_light_step_and_its_sky_rays(self):
-        samples = "face_samples = { fixed = 4 }\n"
-        self.rejects("needs process.light", body=VARIANT + samples, output='[output]\ndirectory = "."\n')
-        self.rejects("flat_sky_rays is required", body=LIGHT_STEP + VARIANT + samples, output='[output]\ndirectory = "."\n')
-        self.rejects("flat_sky_rays applies", body=LIGHT_STEP + "flat_sky_rays = 8\n" + VARIANT,
+    def test_shading_defaults_to_smooth_and_flat_keeps_its_samples(self):
+        flat = "shading = { flat = { fixed = 4 } }\n"
+        with tempfile.TemporaryDirectory() as directory:
+            smooth = load_import_settings(write_import(directory)).variants[0]
+            shaded = load_import_settings(write_import(directory, body=LIGHT_STEP.replace(" }", ", flat_sky_rays = 8 }")
+                                                                  + VARIANT + flat, output='[output]\ndirectory = "."\n')).variants[0]
+        self.assertEqual(smooth.shading, "smooth")
+        self.assertEqual(shaded.face_samples, (4, 1, 4, None))
+        self.rejects("needs lighting.light", body=VARIANT + flat, output='[output]\ndirectory = "."\n')
+        self.rejects("flat_sky_rays is required", body=LIGHT_STEP + VARIANT + flat, output='[output]\ndirectory = "."\n')
+        self.rejects("flat_sky_rays applies", body=LIGHT_STEP.replace(" }", ", flat_sky_rays = 8 }") + VARIANT,
+                     output='[output]\ndirectory = "."\n')
+
+    def test_the_legacy_layout_names_each_options_new_home(self):
+        self.rejects(r"\[process.light\] moved to \[lighting\] light", body='[process.light]\nray_offset = 0.5\ncolour_merge_step = 6\n')
+        self.rejects(r"face_samples moved to shading = \{ flat = \.\.\. \}", body=VARIANT + "face_samples = { fixed = 4 }\n",
                      output='[output]\ndirectory = "."\n')
 
     def test_the_tools_name_no_scene(self):
