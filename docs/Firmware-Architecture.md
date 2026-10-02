@@ -58,6 +58,7 @@ flowchart TB
     subgraph R4["services"]
         Ui["ui/<br/><i>microui, launcher, Control Center</i>"]
         Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
+        Scene["scene/<br/><i>scenes loaded by name, the active camera</i>"]
     end
     subgraph R5["devices and drawing"]
         Gfx["gfx/<br/><i>the one framebuffer</i>"]:::hw
@@ -223,7 +224,11 @@ An app that sets `app_t.update` has the previous frame sent on core 1 while
 [Gfx-and-Presentation.md](Gfx-and-Presentation.md#present-who-runs-it).
 
 A caller draws a mesh with `raster_draw()` from `update()` this way, on both
-cores: [Mesh-Rendering.md](render/Mesh-Rendering.md#on-both-cores).
+cores: [Mesh-Rendering.md](render/Mesh-Rendering.md#on-both-cores). An app that
+loads a scene and activates its camera needs none of that: while a camera is
+active the shell draws it in the same overlap window and upscales it into the
+framebuffer before `frame()`, whether or not the app has an `update()`
+([Scene-Manager.md](render/Scene-Manager.md#each-frame)).
 
 ### Full redraw
 
