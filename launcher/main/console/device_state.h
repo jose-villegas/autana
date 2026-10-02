@@ -12,7 +12,7 @@
 #include "input/input.h"
 
 typedef struct {
-    int64_t uptime_us; /* esp_timer_get_time() */
+    int64_t uptime_us; /* timing_now_us() */
     uint32_t heap_free_bytes;
     uint32_t heap_min_free_bytes; /* low-water mark since boot */
     int cpu_freq_mhz;
