@@ -34,11 +34,10 @@ def plane_source(corners):
 
 def sun_scene(direction):
     settings = SimpleNamespace(double_sided=set(), seed=1)
-    renderer = SimpleNamespace(bake=True)
-    scene = SimpleNamespace(bake=SimpleNamespace(ray_offset=0.01),
-                            lights=[{"type": "directional", "direction": direction, "color": [1.0, 1.0, 1.0], "intensity": 1.0,
+    job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.01))
+    scene = SimpleNamespace(lights=[{"type": "directional", "direction": direction, "color": [1.0, 1.0, 1.0], "intensity": 1.0,
                                      "disc_degrees": 0.0, "rays": 1}])
-    return settings, renderer, scene
+    return job, scene
 
 
 LOOK_DOWN = None if np is None else np.array([0.0, 0.0, 1.0, 0.0, 0.0, -1.0])

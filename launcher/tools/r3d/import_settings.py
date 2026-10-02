@@ -183,7 +183,7 @@ def load_visibility(table, where="visibility"):
     tries per triangle); `camera_path` keeps what any pose of the scene
     camera's path sees at `size` pixels, sampled every `every_ms`, with
     `samples` squared rays per pixel and the view widened by `margin`
-    pixels on each side. A variant's own table overrides the import's."""
+    pixels on each side. Each mesh renderer carries its own."""
     source = text(table.get("source", "camera_region"), f"{where}.source")
     if source not in VISIBILITY_SOURCES:
         raise SettingsError(f"{where}.source must be one of {', '.join(VISIBILITY_SOURCES)}")
@@ -405,6 +405,23 @@ def load_renderer(component, base, where):
                            fit=fit, indirect=indirect)
 
 
+def make_job(settings, renderer, obj, asset_name, asset_path, bake):
+    """One mesh to write: its import, the renderer that decides its look, the scene object it belongs to
+    (None for a bare import), where it is written and the scene bake settings it is traced with (None for albedo)."""
+    return SimpleNamespace(settings=settings, renderer=renderer, object=obj, asset_name=asset_name, asset_path=asset_path,
+                           bake=bake)
+
+
+def albedo_jobs(settings):
+    """The jobs of a bare import: each variant's authored albedo, written beside the import file."""
+    jobs = []
+    for variant in settings.variants:
+        renderer = SimpleNamespace(settings=settings, variant=variant, bake=False, face_samples=None, visibility=None,
+                                   fit=None, indirect=True)
+        jobs.append(make_job(settings, renderer, None, variant.name, settings.mesh_dir / f"{variant.name}.mesh", None))
+    return jobs
+
+
 COMPONENTS = ("mesh_renderer", "light", "camera")
 
 
@@ -495,11 +512,16 @@ def load_scene(path):
     scene_name = path.name.removesuffix(".scene.toml").removesuffix(".toml")
     for item in renderers:
         component = item.component
+        effective = None
         if component.bake:
             if component.face_samples and bake.flat_sky_rays is None:
                 raise SettingsError("scene.bake.flat_sky_rays is required for shading = { flat = ... }")
             if not component.indirect and bake.indirect is None:
                 raise SettingsError("objects.mesh_renderer.indirect = false needs scene.bake.indirect")
+            effective = SimpleNamespace(
+                ray_offset=bake.ray_offset, colour_merge_step=bake.colour_merge_step,
+                flat_sky_rays=bake.flat_sky_rays if component.face_samples else None,
+                indirect=bake.indirect if component.indirect else None)
             asset_name = f"{scene_name}.{item.name}"
             asset_path = path.parent / f"{asset_name}.mesh"
         else:
@@ -511,8 +533,7 @@ def load_scene(path):
             too_long = True
         if too_long:
             raise SettingsError(f"scene.objects {item.name!r}: asset name {asset_name!r} exceeds the pack's {NAME_BYTES - 1}-byte limit")
-        jobs.append(SimpleNamespace(settings=component.settings, renderer=component, object=item, asset_name=asset_name,
-                                    asset_path=asset_path))
+        jobs.append(make_job(component.settings, component, item, asset_name, asset_path, effective))
     scene = SimpleNamespace(
         path=path, objects=objects, renderers=jobs, bake=bake,
         camera=cameras[0] if cameras else None, region=region, lights=lights,
@@ -534,6 +555,6 @@ def load_scene(path):
         raise SettingsError("scene camera path is required: a placed mesh keeps what the camera path sees")
     for item in jobs:
         if item.renderer.bake and not item.object.identity:
-            raise SettingsError(f"scene.objects {item.object.name!r}: a mesh with a scene-dependent step is baked where it "
+            raise SettingsError(f"scene.objects {item.object.name!r}: a baked renderer is traced where it "
                                 "sits, so its transform must be identity")
     return scene

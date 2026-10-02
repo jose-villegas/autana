@@ -114,7 +114,7 @@ class SweepTests(unittest.TestCase):
         renderer = SimpleNamespace(variant=SimpleNamespace(name="tiny_fitted"),
                                    fit=SimpleNamespace(train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1),
                                    visibility=SimpleNamespace(source="camera_path"))
-        job = SimpleNamespace(settings=SimpleNamespace(path="settings"), renderer=renderer)
+        job = SimpleNamespace(settings=SimpleNamespace(path="settings"), renderer=renderer, object=SimpleNamespace(name="tiny"))
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
             with unittest.mock.patch.object(fitted_variant, "reference_digest", return_value="same"), \

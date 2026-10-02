@@ -8,19 +8,22 @@ stages and the format a renderer consumes. Drawing that mesh is
 flowchart LR
     subgraph Import_lane["Import lane: geometry"]
     Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"]
-    Fetch --> Mask["Mask alpha cards<br/><i>opt in</i>"]
-    Mask --> Thin["Thin one material<br/><i>opt in</i>"]
-    Thin --> Simp["Simplify<br/><i>opt in</i>"]
+    Mask["Mask alpha cards<br/><i>opt in</i>"]
+    Thin["Thin one material<br/><i>opt in</i>"]
+    Dense["Split long edges<br/><i>with simplify</i>"]
+    Simp["Simplify to the budget<br/><i>opt in</i>"]
     end
-    subgraph Scene_lane["Scene lane: visibility and light"]
-    Scene["Scene file"] --> Vis["Camera visibility<br/><i>per renderer</i>"]
-    Vis --> Lit["Light per vertex<br/><i>per renderer</i>"]
-    Lit --> Face["Light per face<br/><i>flat renderer</i>"]
+    subgraph Scene_lane["Scene lane: renderer options"]
+    Vis["Cull by camera visibility<br/><i>opt in</i>"]
+    Lit["Light per vertex<br/><i>bake = true</i>"]
+    Albedo["Albedo, no light<br/><i>no bake</i>"]
+    Face["Light per face<br/><i>flat shading</i>"]
     end
-    Simp --> Vis
-    Simp --> Albedo["Albedo, no light"]
-    Albedo --> Write["Write: quantise,<br/>meshlets, octree"]
-    Face --> Write
+    Fetch --> Mask --> Vis --> Thin --> Dense
+    Dense --> Lit --> Simp
+    Dense --> Albedo --> Simp
+    Simp --> Face --> Write["Write: quantise,<br/>meshlets, octree"]
+    Simp --> Write
     Write --> Entry["Pack entry<br/><i>name.mesh</i>"]
     Entry --> Pack["build_pack.py<br/><i>assets.bin</i>"]
 ```
@@ -73,7 +76,7 @@ is about 8.7k triangles, where the full budget's last 8.7k triangles buy about
 ## The baked mesh
 
 A vertex carries one sRGB colour: the baked light times the albedo, or, with no
-light step, the albedo alone. A variant with `shading = { flat = ... }` is flat instead,
+bake, the albedo alone. A renderer with `shading = { flat = ... }` is flat instead,
 with one RGB565 colour per triangle (`light.face_colours()`): the light and
 albedo averaged over the points of the face that `shading.flat` sets, a fixed count
 or one chosen per face, every face sharing one set
@@ -432,7 +435,7 @@ way the device draws it, and moves the vertices and changes their colours
 until the renders match the reference over the camera path's poses. The
 triangles stay as they were, so the budget and the frame cost hold.
 
-A variant with a `fit` table records the recipe: the budget it prunes to,
+A renderer with a `fit` table records the recipe: the budget it prunes to,
 the poses it trains on, holds out and counts pixels over, its optimiser
 settings, and the SHA-256 of the mesh it made. The bake does not run the fit,
 which needs a GPU: it checks that the committed mesh is the one the recipe
@@ -520,7 +523,7 @@ flowchart LR
     F --> W[write_lit_mesh]
 ```
 
-**Path visibility** is the import's `camera_path` source above. *What:* only
+**Path visibility** is a renderer's `camera_path` source above. *What:* only
 surfaces some pose draws get budget. *When:* a mesh seen from a known path.
 *Cost:* minutes of ray casting per import; it cuts a mesh's triangles, not its
 pixels, so a culled mesh looks the same and draws faster.

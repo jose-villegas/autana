@@ -14,7 +14,7 @@ from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d.import_settings import LIGHT_FIELDS, SettingsError, load_import_settings, load_scene
+from r3d.import_settings import LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
 from r3d.scene_table import table_files, write_scene_table
 
 try:
@@ -484,7 +484,7 @@ class SceneTests(unittest.TestCase):
         self.rejects("positive", self.two_imports, renderer("a.import.toml", transform="scale = [0.0, 1.0, 1.0]\n"))
         self.rejects("C identifier", self.two_imports, renderer("a.import.toml", name="not a symbol"))
 
-    def test_a_scene_table_names_the_tracks_header_relative_to_the_scene(self):
+    def test_a_scene_table_includes_its_tracks_header_from_beside_the_scene(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             (root / "generated").mkdir()
@@ -493,12 +493,12 @@ class SceneTests(unittest.TestCase):
                 root, renderer() + camera(region=False).replace("near_z = 1.0\n", 'near_z = 1.0\npath = { tracks = "fly", node = "rig" }\n'),
                 name="hall.scene.toml"))
             source = table_files(scene)[0][1]
-        self.assertIn('#include "generated/fly_tracks_generated.h"', source)
+        self.assertIn('#include "fly_tracks_generated.h"', source)
 
-    def test_asset_names_of_two_renderers_of_one_scene_must_differ(self):
+    def test_two_objects_of_one_scene_cannot_share_a_name(self):
         with tempfile.TemporaryDirectory() as directory:
             write_import(directory)
-            with self.assertRaisesRegex(SettingsError, "twice|names must be unique"):
+            with self.assertRaisesRegex(SettingsError, "names must be unique"):
                 load_scene(write_scene(directory, renderer() + renderer(name="mesh")))
 
     def test_a_scene_run_is_stamped_by_what_it_places(self):
@@ -514,13 +514,15 @@ class SceneTests(unittest.TestCase):
                 write_import(root, output=VARIANT_OUTPUT, body=simplify + VARIANT)
                 scene = load_scene(write_scene(root, renderer(extra="bake = true\n" + PATH + fit) + sun_object() + fly, head))
                 job = scene.renderers[0]
-                return recipe_digest(job.settings, job.renderer, scene)
+                return recipe_digest(job, scene)
 
         first = digest()
         self.assertEqual(digest(fit=extra.replace('sha256 = "ab"', 'sha256 = "ef"')), first, "the recorded hashes are not the recipe")
         self.assertNotEqual(digest(fit=extra.replace("steps = 20", "steps = 21")), first)
         self.assertNotEqual(digest(head=HEAD.replace("ray_offset = 0.5", "ray_offset = 0.6")), first)
         self.assertNotEqual(digest(tracks="other tracks"), first)
+        self.assertEqual(digest(head=HEAD.replace("colour_merge_step = 6", "colour_merge_step = 6\nflat_sky_rays = 8")), first,
+                         "a smooth renderer does not read flat_sky_rays")
         self.assertNotEqual(digest(simplify=SIMPLIFY.replace("dense_edge = 1.0", "dense_edge = 2.0")), first)
         self.assertNotEqual(digest(head=HEAD.replace("intensity = 0.1", "intensity = 0.2")), first, "the scene's lights are the recipe")
         self.assertNotEqual(digest(head=HEAD.replace("tonemap_white = 0.3", "tonemap_white = 0.4")), first)
@@ -540,7 +542,7 @@ class SceneTests(unittest.TestCase):
                     root, renderer(extra='variant = "mesh"\nbake = true\n' + out + PATH + FIT) + sun_object()
                     + camera(path=True, region=False), head))
                 job = scene.renderers[0]
-                return recipe_digest(job.settings, job.renderer, scene)
+                return recipe_digest(job, scene)
 
         self.assertEqual(digest(2), digest(3))
         self.assertNotEqual(digest(2, opted_out=False), digest(3, opted_out=False))
@@ -785,8 +787,8 @@ class DigestTests(unittest.TestCase):
             alternate = (TONEMAP + AMBIENT + '[bake]\ncolour_merge_step = 6\nray_offset = 0.5\n')
             second = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), alternate,
                                             "other.scene.toml"))
-            first_digest = recipe_digest(first.renderers[0].settings, first.renderers[0].renderer, first)
-            second_digest = recipe_digest(second.renderers[0].settings, second.renderers[0].renderer, second)
+            first_digest = recipe_digest(first.renderers[0], first)
+            second_digest = recipe_digest(second.renderers[0], second)
         self.assertEqual(first_digest, second_digest)
 
 
@@ -798,9 +800,15 @@ class BakeStepTests(unittest.TestCase):
         source = SimpleNamespace(p=np.zeros((3, 3)), uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]),
                                  names=["m"], textures=[None], materials={})
         seen = []
-        with mock.patch.object(mesh_import, "load_source", return_value=source),                 mock.patch.object(mesh_import, "RayMeshIntersector"), mock.patch.object(mesh_import.trimesh, "Trimesh"),                 mock.patch.object(mesh_import, "visible_triangles", side_effect=lambda s, v, *rest: seen.append(v) or np.array([True])),                 mock.patch.object(mesh_import, "shade_unlit", return_value=(np.zeros((3, 3)), np.zeros((3, 3)), np.array([[0, 1, 2]]))):
+        with mock.patch.object(mesh_import, "load_source", return_value=source), \
+                mock.patch.object(mesh_import, "RayMeshIntersector"), \
+                mock.patch.object(mesh_import.trimesh, "Trimesh"), \
+                mock.patch.object(mesh_import, "visible_triangles", side_effect=lambda v, *rest: seen.append(v) or np.array([True])), \
+                mock.patch.object(mesh_import, "shade_unlit",
+                                  return_value=(np.zeros((3, 3)), np.zeros((3, 3)), np.array([[0, 1, 2]]))):
             for visibility in (own, None):
-                mesh_import.bake_geometry(settings, SimpleNamespace(visibility=visibility, bake=False, variant=SimpleNamespace(triangles=None)), None)
+                renderer_ = SimpleNamespace(visibility=visibility, variant=SimpleNamespace(triangles=None))
+                mesh_import.bake_geometry(SimpleNamespace(settings=settings, renderer=renderer_, bake=None), None)
         self.assertEqual(seen, [own])
 
     def test_check_fitted_names_what_changed_and_what_to_do(self):
@@ -808,14 +816,70 @@ class BakeStepTests(unittest.TestCase):
             target = pathlib.Path(directory) / "m.mesh"
             target.write_bytes(b"mesh")
             renderer_ = SimpleNamespace(variant=SimpleNamespace(name="m"), fit=SimpleNamespace(sha256="0", recipe_sha256="r"))
+            job = SimpleNamespace(renderer=renderer_, asset_path=target)
             with mock.patch("r3d.fitted_variant.recipe_digest", return_value="other"):
                 with self.assertRaisesRegex(SystemExit, "recipe changed since the fit; rerun fitted_variant.py prepare[|]fit"):
-                    mesh_import.check_fitted(None, renderer_, None, target)
+                    mesh_import.check_fitted(job, None)
             with mock.patch("r3d.fitted_variant.recipe_digest", return_value="r"):
                 with self.assertRaisesRegex(SystemExit, "not the 0 the fit recorded; rerun fitted_variant.py"):
-                    mesh_import.check_fitted(None, renderer_, None, target)
+                    mesh_import.check_fitted(job, None)
+                job.asset_path = target.with_name("gone.mesh")
                 with self.assertRaisesRegex(SystemExit, "gone.mesh is missing"):
-                    mesh_import.check_fitted(None, renderer_, None, target.with_name("gone.mesh"))
+                    mesh_import.check_fitted(job, None)
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class ReferenceObjectTests(unittest.TestCase):
+    def test_a_reference_is_lit_as_its_own_object_is_baked(self):
+        from r3d import reference_render
+
+        bounced = HEAD + INDIRECT
+        objects = (renderer(extra="bake = true\n", name="bounced") + renderer(extra="bake = true\nindirect = false\n", name="dark")
+                   + sun_object())
+        with tempfile.TemporaryDirectory() as directory:
+            write_import(directory)
+            scene = load_scene(write_scene(directory, objects, bounced))
+            source = SimpleNamespace(p=np.zeros((3, 3)), uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]),
+                                     names=["m"], textures=[None], materials={})
+            built = []
+            with mock.patch.object(reference_render, "load_source", return_value=source), \
+                    mock.patch.object(reference_render, "RayMeshIntersector"), \
+                    mock.patch.object(reference_render.trimesh, "Trimesh"), \
+                    mock.patch.object(mesh_import, "build_indirect_cache", side_effect=lambda *args: built.append(args) or "cache"):
+                _, dark = reference_render.source_for(scene, "dark")
+                lit, bounced_job = reference_render.source_for(scene, "bounced")
+                with self.assertRaisesRegex(ValueError, "no mesh renderer named"):
+                    reference_render.source_for(scene, "sun")
+        self.assertEqual(dark.object.name, "dark")
+        self.assertEqual((len(built), lit.indirect_cache), (1, "cache"))
+        self.assertEqual(bounced_job.bake.indirect.bounces, 2)
+
+
+class JobTests(unittest.TestCase):
+    def test_a_job_carries_the_scene_bake_its_renderer_uses(self):
+        smooth = 'bake = true\nvariant = "mesh"\n'
+        head = HEAD.replace("colour_merge_step = 6", "colour_merge_step = 6\nflat_sky_rays = 8") + INDIRECT
+        flat = "shading = { flat = { fixed = 4 } }\n"
+        with tempfile.TemporaryDirectory() as directory:
+            write_import(directory)
+            objects = (renderer(extra="bake = true\n", name="full") + renderer(extra="bake = true\nindirect = false\n", name="dark")
+                       + renderer(extra="bake = true\n" + flat, name="flat") + renderer(name="plain") + sun_object())
+            scene = load_scene(write_scene(directory, objects, head))
+        full, dark, flat_job, plain = scene.renderers
+        self.assertEqual((full.bake.indirect.bounces, full.bake.flat_sky_rays), (2, None))
+        self.assertEqual((dark.bake.indirect, dark.bake.flat_sky_rays), (None, None))
+        self.assertEqual(flat_job.bake.flat_sky_rays, 8)
+        self.assertIsNone(plain.bake)
+        self.assertEqual((full.bake.ray_offset, full.bake.colour_merge_step), (0.5, 6))
+
+    def test_a_bare_import_has_an_albedo_job_per_variant(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = load_import_settings(write_import(directory, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT))
+            jobs = albedo_jobs(settings)
+        self.assertEqual([(job.asset_name, job.bake, job.object, job.renderer.bake) for job in jobs],
+                         [("mesh", None, None, False)])
+        self.assertEqual(jobs[0].asset_path, settings.mesh_dir / "mesh.mesh")
+        self.assertEqual(set(vars(jobs[0])), {"settings", "renderer", "object", "asset_name", "asset_path", "bake"})
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -831,7 +895,7 @@ class FittedStampTests(unittest.TestCase):
                     found += 1
                     self.assertEqual(hashlib.sha256(job.asset_path.read_bytes()).hexdigest(), job.renderer.fit.sha256,
                                      job.asset_path.name)
-                    self.assertEqual(recipe_digest(job.settings, job.renderer, scene), job.renderer.fit.recipe_sha256,
+                    self.assertEqual(recipe_digest(job, scene), job.renderer.fit.recipe_sha256,
                                      job.asset_path.name)
         self.assertGreater(found, 0)
 

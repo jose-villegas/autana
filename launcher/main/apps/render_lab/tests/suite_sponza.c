@@ -38,11 +38,23 @@ open_the_mesh(const char* id, r3d_lit_mesh_t* mesh) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(asset_store_pack(), id, mesh), id);
 }
 
+/* The pack id the scene gives the mesh its `entity` draws. */
+static const char*
+asset_of(scene_entity_t entity) {
+    for (uint16_t i = 0; i < sponza_scene.renderer_count; i++) {
+        if (sponza_scene.renderers[i].entity == entity) {
+            return sponza_scene.renderers[i].asset;
+        }
+    }
+    TEST_FAIL_MESSAGE(sponza_scene.entity_names[entity]);
+    return NULL;
+}
+
 static void
 open_the_meshes(void) {
-    open_the_mesh(sponza_scene.renderers[0].asset, &mesh_full);
-    open_the_mesh(sponza_scene.renderers[2].asset, &mesh_lite);
-    open_the_mesh(sponza_scene.renderers[1].asset, &mesh_flat);
+    open_the_mesh(asset_of(SPONZA_SCENE_ATRIUM), &mesh_full);
+    open_the_mesh(asset_of(SPONZA_SCENE_ATRIUM_LITE), &mesh_lite);
+    open_the_mesh(asset_of(SPONZA_SCENE_ATRIUM_FLAT), &mesh_flat);
 }
 
 /* The flat reference: every cluster's eight corners against each plane. */
