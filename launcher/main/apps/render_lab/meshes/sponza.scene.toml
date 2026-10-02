@@ -28,6 +28,7 @@ name = "camera"
 [objects.camera]
 half_fov_short_tan = 0.62
 near_z = 6.0
+background = 0x9CC0E6
 region = { min = [-1400.0, 20.0, -620.0], max = [1270.0, 1250.0, 550.0] }
 path = { tracks = "flythrough", node = "camera" }   # the symbols bake_tracks.py wrote
 

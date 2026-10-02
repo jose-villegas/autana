@@ -35,7 +35,7 @@ read flash in place and cost no RAM.
 | `scene_entity_set_transform()` / `_set_enabled()` | move an entity, hide or show a renderer |
 | `scene_activate(scene, camera)` | makes that camera (NULL: the first) the one active camera |
 | `scene_deactivate()` / `scene_set_paused()` | stop drawing, or hold the scene in place for an app that draws its own full screen |
-| `scene_set_render_scale()` / `scene_set_clear()` | the active camera's render size as a share of the screen, and its clear colour |
+| `scene_set_render_scale()` | the active camera's render size as a share of the screen |
 | `scene_stats()` | triangles and clusters the last draw kept |
 
 Exactly one camera is active engine-wide, and it draws the enabled renderers of

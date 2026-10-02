@@ -122,7 +122,7 @@ make_pack(uint8_t* pack) {
 static const char* const PAIR_NAMES[] = {"camera", "red", "green"};
 static const scene_transform_t PAIR_TRANSFORMS[] = {AT(0, 0, 10), IDENTITY, AT(4, 0, 0)};
 static const scene_renderer_def_t PAIR_RENDERERS[] = {{1, "red"}, {2, "green"}};
-static const scene_camera_def_t PAIR_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, NULL}}};
+static const scene_camera_def_t PAIR_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, NULL}, CLEAR_RGB}};
 static const scene_def_t PAIR = {"test_pair", 3, 2, 1, PAIR_NAMES, PAIR_TRANSFORMS, PAIR_RENDERERS, PAIR_CAMERAS};
 SCENE_REGISTER(PAIR)
 
@@ -130,9 +130,15 @@ SCENE_REGISTER(PAIR)
 static const char* const SOLO_NAMES[] = {"eye", "blue"};
 static const scene_transform_t SOLO_TRANSFORMS[] = {AT(0, 0, 10), IDENTITY};
 static const scene_renderer_def_t SOLO_RENDERERS[] = {{1, "blue"}};
-static const scene_camera_def_t SOLO_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, NULL}}};
+static const scene_camera_def_t SOLO_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, NULL}, CLEAR_RGB}};
 static const scene_def_t SOLO = {"test_solo", 2, 1, 1, SOLO_NAMES, SOLO_TRANSFORMS, SOLO_RENDERERS, SOLO_CAMERAS};
 SCENE_REGISTER(SOLO)
+
+/* "sky": the same as solo, its camera clearing to a colour of its own. */
+#define SKY_RGB 0x996633
+static const scene_camera_def_t SKY_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, NULL}, SKY_RGB}};
+static const scene_def_t SKY = {"test_sky", 2, 1, 1, SOLO_NAMES, SOLO_TRANSFORMS, SOLO_RENDERERS, SKY_CAMERAS};
+SCENE_REGISTER(SKY)
 
 /* "broken": names a mesh the pack does not hold. */
 static const char* const BROKEN_NAMES[] = {"red", "gone"};
@@ -153,7 +159,7 @@ static const r3d_scene_path_t FLIGHT_PATH = {&FLIGHT_CLIP, &FLIGHT_TRANSLATION, 
 static const char* const FLIGHT_NAMES[] = {"camera", "red"};
 static const scene_transform_t FLIGHT_TRANSFORMS[] = {IDENTITY, IDENTITY};
 static const scene_renderer_def_t FLIGHT_RENDERERS[] = {{1, "red"}};
-static const scene_camera_def_t FLIGHT_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, &FLIGHT_PATH}}};
+static const scene_camera_def_t FLIGHT_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, &FLIGHT_PATH}, CLEAR_RGB}};
 static const scene_def_t FLIGHT = {"test_flight", 2, 1, 1, FLIGHT_NAMES, FLIGHT_TRANSFORMS, FLIGHT_RENDERERS,
                                    FLIGHT_CAMERAS};
 SCENE_REGISTER(FLIGHT)
@@ -162,7 +168,8 @@ SCENE_REGISTER(FLIGHT)
 static const char* const TWIN_NAMES[] = {"left", "right", "red"};
 static const scene_transform_t TWIN_TRANSFORMS[] = {AT(0, 0, 10), AT(4, 0, 10), IDENTITY};
 static const scene_renderer_def_t TWIN_RENDERERS[] = {{2, "red"}};
-static const scene_camera_def_t TWIN_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, NULL}}, {1, {1.0F, 1.0F, NULL, NULL}}};
+static const scene_camera_def_t TWIN_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, NULL}, CLEAR_RGB},
+                                                  {1, {1.0F, 1.0F, NULL, NULL}, CLEAR_RGB}};
 static const scene_def_t TWIN = {"test_twin", 3, 1, 2, TWIN_NAMES, TWIN_TRANSFORMS, TWIN_RENDERERS, TWIN_CAMERAS};
 SCENE_REGISTER(TWIN)
 
@@ -207,13 +214,12 @@ load(const char* name) {
     return scene;
 }
 
-/* Loads, activates the camera at full size and clears to CLEAR_RGB. */
+/* Loads and activates the camera at full size; every def's camera clears to CLEAR_RGB. */
 static scene_t*
 show(const char* name, const char* camera) {
     scene_t* scene = load(name);
     TEST_ASSERT_TRUE(scene_activate(scene, camera));
     scene_set_render_scale(100);
-    scene_set_clear(CLEAR_RGB);
     return scene;
 }
 
@@ -242,6 +248,16 @@ test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took(void) {
     TEST_ASSERT_TRUE(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) < before);
     scene_unload(scene);
     TEST_ASSERT_TRUE(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) == before);
+}
+
+static void
+test_a_camera_clears_to_the_colour_its_def_gives(void) {
+    fixture();
+    scene_t* scene = load("test_sky");
+    TEST_ASSERT_TRUE(scene_activate(scene, NULL));
+    scene_set_render_scale(100);
+    frame(0);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(SKY_RGB), pixel(-8.0F));
 }
 
 static void
@@ -370,14 +386,12 @@ test_two_scenes_are_held_at_once_and_the_active_camera_decides_which_is_seen(voi
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
     TEST_ASSERT_TRUE(scene_activate(solo, "eye"));
     scene_set_render_scale(100);
-    scene_set_clear(CLEAR_RGB);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), pixel(0.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(4.0F)); /* the other scene's quads are not drawn */
     scene_entity_set_enabled(pair, scene_find(pair, "red"), false);
     TEST_ASSERT_TRUE(scene_activate(pair, NULL));
     scene_set_render_scale(100);
-    scene_set_clear(CLEAR_RGB);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(0.0F)); /* each scene kept its own state */
 }
@@ -392,7 +406,6 @@ test_unloading_the_active_scene_stops_drawing_and_leaves_the_other_alone(void) {
     TEST_ASSERT_FALSE(scene_has_active_camera());
     TEST_ASSERT_TRUE(scene_activate(solo, NULL));
     scene_set_render_scale(100);
-    scene_set_clear(CLEAR_RGB);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), pixel(0.0F));
 }
@@ -537,13 +550,11 @@ test_a_scene_with_two_cameras_is_seen_from_the_one_activated_by_name(void) {
     scene_t* twin = load("test_twin");
     TEST_ASSERT_TRUE(scene_activate(twin, "right"));
     scene_set_render_scale(100);
-    scene_set_clear(CLEAR_RGB);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(0.0F)); /* the quad is 4 units left of this camera */
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-4.0F));
     TEST_ASSERT_TRUE(scene_activate(twin, "left"));
     scene_set_render_scale(100);
-    scene_set_clear(CLEAR_RGB);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
     TEST_ASSERT_TRUE(scene_activate(twin, NULL)); /* the first */
@@ -599,7 +610,6 @@ test_a_loaded_scene_that_is_not_active_keeps_its_time(void) {
     frame(500);
     TEST_ASSERT_TRUE(scene_activate(flight, NULL));
     scene_set_render_scale(100);
-    scene_set_clear(CLEAR_RGB);
     frame(0);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.5F)); /* it flew while another was seen */
 }
@@ -607,6 +617,7 @@ test_a_loaded_scene_that_is_not_active_keeps_its_time(void) {
 void
 run_scene_suite(void) {
     RUN_TEST(test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took);
+    RUN_TEST(test_a_camera_clears_to_the_colour_its_def_gives);
     RUN_TEST(test_a_load_that_fails_says_what_it_was_about);
     RUN_TEST(test_a_success_clears_what_an_earlier_failure_said);
     RUN_TEST(test_a_load_with_no_memory_left_says_so_and_takes_nothing);

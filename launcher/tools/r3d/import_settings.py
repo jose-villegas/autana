@@ -83,6 +83,14 @@ def count(value, where):
     return value
 
 
+def colour_rgb(value, where):
+    """A colour as 0xRRGGBB."""
+    value = integer(value, where)
+    if not 0 <= value <= 0xFFFFFF:
+        raise SettingsError(f"{where} must be 0xRRGGBB")
+    return value
+
+
 def vector(value, where):
     if not isinstance(value, list) or len(value) != 3:
         raise SettingsError(f"{where} must be a three-component array")
@@ -270,9 +278,10 @@ def load_light(component, rotation, where):
 
 
 def load_camera(component, where):
-    check_keys(component, ("half_fov_short_tan", "near_z"), where, optional=("region", "path"))
+    check_keys(component, ("half_fov_short_tan", "near_z"), where, optional=("region", "path", "background"))
     camera = SimpleNamespace(half_fov_short_tan=number(component["half_fov_short_tan"], f"{where}.half_fov_short_tan"),
-                             near_z=number(component["near_z"], f"{where}.near_z"), region=None, path=None)
+                             near_z=number(component["near_z"], f"{where}.near_z"), region=None, path=None,
+                             background=colour_rgb(component.get("background", 0), f"{where}.background"))
     if "region" in component:
         region = component["region"]
         check_keys(region, ("min", "max"), f"{where}.region")
