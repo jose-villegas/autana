@@ -2,12 +2,13 @@
  * mathx: Q16.16 fixed-point scalar operations for the math templates
  * (math_template.h).
  *
- * Operations saturate except the mathx_dot2c() and mathx_dot3c() fast paths:
- * saturation turns overflow into a bounded coordinate. A divide by zero
- * saturates by the numerator's sign (0 / 0 is 0). Products round to nearest,
- * ties away from zero. Angles are Q16.16 turns, so their low 16 bits are
- * util/trig.h phases.
- * Header-only, static inline and ESP-IDF-free.
+ * Operations saturate, except the mathx_dot2c(), mathx_dot3c() and
+ * mathx_dot3_narrow() fast paths, which wrap and floor; saturation turns
+ * overflow into a bounded coordinate. A divide by zero saturates by the
+ * numerator's sign (0 / 0 is 0). Other products round to nearest, ties away
+ * from zero. Angles are Q16.16 turns whose low 16 bits are util/trig.h phases;
+ * sin and cos of +-1.0 come back as +-65534. Header-only, static inline and
+ * ESP-IDF-free.
  */
 #pragma once
 
