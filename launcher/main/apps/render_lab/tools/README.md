@@ -61,7 +61,6 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 | `render/sponza-{depth,tiles}.gif` | those three seconds as the depth and depth-tile views of the full bake |
 | `render/bake-fidelity-sheet.png` | the flat bake against the source model at two poses, with the error heatmap (see Fidelity against the source) |
 | `render/bake-indirect-compare.png`, `render/bake-indirect-crops.png` | the reference beside the smooth bake without and with indirect light (from a bake of the import made without that field), each with its error heatmap against the reference at two poses, then the places the two bakes differ most with the reference above them (see Indirect light) |
-| `render/appearance-indirect-{lite,full}.png`, `render/appearance-indirect-{lite,full}.crops.png` | the indirect reference beside the same-budget GI bake, the fitted mesh made without GI, and the fitted mesh made against GI, each with its error heatmap, then their largest differences (see Fitted variants against indirect light) |
 | `render/bake-indirect-look.png` | the reference beside the indirect bake at intensity 1, 2 and 3 and at an albedo boost of 2, each with its error heatmap, then each look's own reference and the error against it (see Indirect look) |
 | `render/compare-full-{lite,flat}.png`, `.crops.png` | full against lite and smooth against flat at the GIFs' last pose: both renders and their difference, then the places they differ most, enlarged |
 | `render/compare-lite-fitted.png`, `.crops.png` | lite against the fitted mesh at that pose, the same way |
@@ -624,38 +623,50 @@ crops.
 
 ### Fitted variants against indirect light
 
-Each fitted variant trains on the indirect reference. These held-out poses
-compare the new fitted mesh, its direct-light predecessor, the smooth GI bake
-at the same budget and a direct-light bake. Mean and p95 ΔE76 are lower-is-
-better; luma SSIM is higher-is-better. Normal angle is measured over pixels
-where the mesh and source both cover the view.
+Each fitted variant trains on the indirect reference. The table scores four
+meshes per budget on the seven held-out poses, which the fit never saw,
+against that reference: the smooth GI bake at the budget, the same bake made
+with direct light only, the previous fitted mesh (fitted against direct light)
+and the new one (fitted against GI). Mean and p95 ΔE76 are lower-is-better;
+luma SSIM is higher-is-better. Normal angle is measured over pixels where the
+mesh and source both cover the view.
 
 | Budget | Mesh | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Normal angle |
 |---|---|---:|---:|---:|---:|
-| Lite | GI bake | 23.851 | 68.364 | 0.3893 | 25.858° |
-| Lite | Fitted without GI | 24.683 | 69.460 | 0.3748 | 14.841° |
-| Lite | Fitted against GI | 24.729 | 69.524 | 0.3693 | 14.765° |
-| Lite | Direct-light bake | 24.293 | 69.122 | 0.3892 | 25.720° |
-| Full | GI bake | 24.080 | 68.590 | 0.3778 | 20.834° |
-| Full | Fitted without GI | 24.756 | 69.716 | 0.3700 | 13.010° |
-| Full | Fitted against GI | 24.823 | 69.655 | 0.3623 | 12.617° |
-| Full | Direct-light bake | 24.671 | 69.693 | 0.3787 | 21.150° |
+| Lite | GI bake | 7.956 | 25.94 | 0.6326 | 25.858° |
+| Lite | Direct-light bake | 9.695 | 27.62 | 0.6245 | 25.720° |
+| Lite | Fitted against direct light | 5.552 | 13.78 | 0.7773 | 14.841° |
+| Lite | Fitted against GI | 4.945 | 13.17 | 0.7843 | 14.765° |
+| Full | GI bake | 6.780 | 21.75 | 0.6796 | 20.834° |
+| Full | Direct-light bake | 8.674 | 22.65 | 0.6751 | 21.150° |
+| Full | Fitted against direct light | 5.192 | 12.22 | 0.8072 | 13.010° |
+| Full | Fitted against GI | 4.516 | 11.52 | 0.8167 | 12.617° |
 
-The GI bakes are closer in colour on these poses. Fitting against GI lowers
-the fitted meshes' normal-angle error relative to the direct-light fits.
+- GI bake against direct-light bake: the bounce light is worth 1.7 to 1.9 ΔE
+  at the same triangle count, with the geometry unchanged.
+- Fitted against GI against the GI bake: fitting takes the mean down by about
+  3 ΔE and the normal error by 11 degrees at both budgets, which is the larger
+  part of the gain.
+- Fitted against GI against fitted against direct light: 0.6 to 0.7 ΔE better
+  at both budgets, with p95 and SSIM also better and the normal angle within
+  0.4 degrees.
+- Held-out against training: the fit's training ΔE was 4.83 (lite) and 4.35
+  (full), so held-out is 0.11 and 0.17 worse; the fits generalise to unseen
+  poses and need no retrain.
 
-The sheets put the reference, GI bake, fitted mesh without GI and fitted mesh
-against GI beside their ΔE heatmaps. The crops show the places where the GI
-bake and GI fit differ most, with the reference above them.
+The sheets show the reference, the GI bake, the previous fitted mesh and the
+new one beside their ΔE heatmaps at two held-out poses; the crops show the
+places where the three meshes differ most, with the reference above them.
 
-![Lite fitted variants against the indirect reference](../../../../../docs/images/render/appearance-indirect-lite.png)
-![Lite fitted variants, largest differences](../../../../../docs/images/render/appearance-indirect-lite.crops.png)
-![Full fitted variants against the indirect reference](../../../../../docs/images/render/appearance-indirect-full.png)
-![Full fitted variants, largest differences](../../../../../docs/images/render/appearance-indirect-full.crops.png)
+![Lite meshes against the indirect reference](../../../../../docs/render/images/appearance-indirect-lite.png)
+![Lite meshes, largest differences](../../../../../docs/render/images/appearance-indirect-lite.crops.png)
+![Full meshes against the indirect reference](../../../../../docs/render/images/appearance-indirect-full.png)
+![Full meshes, largest differences](../../../../../docs/render/images/appearance-indirect-full.crops.png)
 
-Measure both new fitted variants on the board against their direct-light
-predecessors. Their triangle budgets are unchanged, so a material frame-time
-change is not expected.
+The previous fitted meshes cannot be remade by a script, so these images live
+under `docs/render/images/`. Measure both new fitted variants on the board
+against their predecessors. Their triangle budgets are unchanged, so a
+material frame-time change is not expected.
 
 ### Indirect look
 
