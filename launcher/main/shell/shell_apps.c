@@ -51,7 +51,7 @@ static size_t app_8bit_free_before_enter;
  * logical canvas's bottom edge through the same transform pipeline the
  * exhaustive sweep already proved exact. */
 gesture_edge_t
-exit_edge_for_quarter(int quarter) {
+shell_exit_edge_for_quarter(int quarter) {
     static const gesture_edge_t edge_for_quarter[4] = {
         GESTURE_EDGE_BOTTOM, /* quarter 0: Portrait */
         GESTURE_EDGE_LEFT,   /* quarter 1: Landscape */
@@ -153,7 +153,7 @@ shell_paint_home_under_boot(void) {
 }
 
 /* True once frame() has drawn a frame for the current app that update()'s
- * caller has not yet begun presenting; see step_app(). Reset whenever the
+ * caller has not yet begun presenting; see shell_step_app(). Reset whenever the
  * running app changes, so a freshly entered one always primes first. */
 static bool frame_ready;
 static bool exit_requested;
@@ -194,7 +194,7 @@ static system_navigation_t system_navigation;
 static int control_center_backdrop_quarter;
 
 void
-exit_app(const app_t** current) {
+shell_exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
     scene_unload_all();
@@ -220,8 +220,8 @@ exit_app(const app_t** current) {
 }
 
 void
-leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint32_t dt_ms) {
-    exit_app(current);
+shell_leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint32_t dt_ms) {
+    shell_exit_app(current);
     apply_pending_full_redraw(NULL);
     /* Draw it immediately, so the frame presented below is the home screen
      * rather than the app's last one. */
@@ -234,7 +234,7 @@ leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint3
 }
 
 void
-start_app(const app_t** current, const app_t* next) {
+shell_start_app(const app_t** current, const app_t* next) {
     *current = next;
     ESP_LOGI(TAG, "Starting %s", (*current)->name);
     system_navigation_init(&system_navigation);
@@ -304,7 +304,7 @@ step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, u
         draw_home_hint(exit_edge);
         return;
     }
-    start_app(current, chosen);
+    shell_start_app(current, chosen);
 }
 
 /* Whether the app's frame is presented a pass late, so that update() and the
@@ -318,7 +318,7 @@ overlaps_present(const app_t* current) {
  * (gfx_present_begin()/gfx_present_wait(), gfx.h), skipped while priming
  * (frame_ready false), since nothing is queued yet. THIS pass's frame()
  * output is presented the same way, deferred to
- * present_unless_deferred() next pass. Every frame also gives gfx_band_run()
+ * shell_present_unless_deferred() next pass. Every frame also gives gfx_band_run()
  * its callback; it does nothing outside GFX_LAYOUT_BANDS. */
 static void
 step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
@@ -343,8 +343,8 @@ step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
 }
 
 void
-step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
-    const gesture_edge_t exit_edge = exit_edge_for_quarter(display_quarter_now());
+shell_step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
+    const gesture_edge_t exit_edge = shell_exit_edge_for_quarter(display_quarter_now());
 
     if (*current == NULL) {
         step_launcher(current, input, exit_edge, dt_ms);
@@ -353,14 +353,14 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
 
     if (exit_requested) {
         exit_requested = false;
-        leave_app(current, input, exit_edge, dt_ms);
+        shell_leave_app(current, input, exit_edge, dt_ms);
         return;
     }
 
     /* See app_t.home_gesture. Unset apps get no swipe detection or hint
      * strip. */
     if ((*current)->home_gesture && gesture_is_home_swipe(input, exit_edge, GFX_WIDTH, GFX_HEIGHT)) {
-        leave_app(current, input, exit_edge, dt_ms);
+        shell_leave_app(current, input, exit_edge, dt_ms);
         return;
     }
 
@@ -371,7 +371,7 @@ step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
      * not the same edge read twice. Checked before frame() runs, so the app
      * never sees the hold that just exited it. */
     if (!(*current)->home_gesture && input->power.held) {
-        leave_app(current, input, exit_edge, dt_ms);
+        shell_leave_app(current, input, exit_edge, dt_ms);
         return;
     }
 
@@ -489,14 +489,14 @@ bool
 shell_test_band_update_frame_and_present(void) {
     const app_t* current = NULL;
     input_t input = {0};
-    start_app(&current, &shell_test_band_app);
-    step_app(&current, &input, 16);
-    present_unless_deferred(current);
+    shell_start_app(&current, &shell_test_band_app);
+    shell_step_app(&current, &input, 16);
+    shell_present_unless_deferred(current);
 
     frame_watch_test_begin();
     for (int i = 0; i <= FRAME_WATCH_WARMUP; i++) {
-        step_app(&current, &input, 16);
-        present_unless_deferred(current);
+        shell_step_app(&current, &input, 16);
+        shell_present_unless_deferred(current);
     }
     const frame_watch_verdict_t verdict = frame_watch_test_end();
 
@@ -506,7 +506,7 @@ shell_test_band_update_frame_and_present(void) {
                          && shell_test_frames == passes + 1
                          && shell_test_band_draws == (passes + 1) * (mode->height / mode->band_height);
     if (current != NULL) {
-        exit_app(&current);
+        shell_exit_app(&current);
     }
     return stepped && verdict.frames == 1;
 }
@@ -515,20 +515,20 @@ bool
 shell_test_requested_exit(void) {
     const app_t* current = NULL;
     input_t input = {0};
-    start_app(&current, &shell_test_app);
-    step_app(&current, &input, 16);
+    shell_start_app(&current, &shell_test_app);
+    shell_step_app(&current, &input, 16);
     const bool ordinary =
         current == &shell_test_app && shell_test_enters == 1 && shell_test_frames == 1 && shell_test_exits == 0;
 
     shell_request_exit();
-    step_app(&current, &input, 16);
+    shell_step_app(&current, &input, 16);
     const bool left = current == NULL && shell_test_frames == 1 && shell_test_exits == 1;
     if (current == NULL) {
-        step_app(&current, &input, 16);
+        shell_step_app(&current, &input, 16);
     }
     const bool launcher_next = current == NULL && shell_test_frames == 1 && shell_test_exits == 1;
     if (current != NULL) {
-        exit_app(&current);
+        shell_exit_app(&current);
     }
     exit_requested = false;
     return ordinary && left && launcher_next;
@@ -537,13 +537,13 @@ shell_test_requested_exit(void) {
 bool
 shell_test_leaving_empties_the_arena_after_exit(void) {
     const app_t* current = NULL;
-    start_app(&current, &shell_test_app);
-    exit_app(&current);
+    shell_start_app(&current, &shell_test_app);
+    shell_exit_app(&current);
     const bool kept_through_exit = shell_test_arena_at_exit == SHELL_TEST_ARENA_TAKE;
     const bool emptied = app_arena_mark() == 0;
-    start_app(&current, &shell_test_app);
+    shell_start_app(&current, &shell_test_app);
     const bool next_visit_empty = shell_test_arena_at_enter == 0 && shell_test_enters == 2;
-    exit_app(&current);
+    shell_exit_app(&current);
     exit_requested = false;
     return kept_through_exit && emptied && next_visit_empty;
 }
@@ -553,24 +553,24 @@ shell_test_stale_exit_is_cleared(void) {
     const app_t* current = NULL;
     input_t input = {0};
     shell_request_exit();
-    start_app(&current, &shell_test_app);
-    step_app(&current, &input, 16);
+    shell_start_app(&current, &shell_test_app);
+    shell_step_app(&current, &input, 16);
     const bool first_frame =
         current == &shell_test_app && shell_test_enters == 1 && shell_test_frames == 1 && shell_test_exits == 0;
     if (current != NULL) {
-        exit_app(&current);
+        shell_exit_app(&current);
     }
     exit_requested = false;
     return first_frame;
 }
 #endif
 
-/* An app with update() manages its own present begin/wait inside step_app(),
+/* An app with update() manages its own present begin/wait inside shell_step_app(),
  * deferring the frame just drawn to next pass's begin; see its own
  * comment. Everything else (the launcher included) keeps presenting here,
  * synchronously, exactly as before. */
 void
-present_unless_deferred(const app_t* current) {
+shell_present_unless_deferred(const app_t* current) {
     if (current == NULL || !overlaps_present(current)) {
         FRAME_COST_BEGIN(began);
         gfx_present();
