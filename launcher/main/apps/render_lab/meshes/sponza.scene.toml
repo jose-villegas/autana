@@ -75,7 +75,7 @@ variant = "sponza_fitted"
 bake = true
 indirect = false
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
-fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "44dabf0a7e258912556be8b24593d843629f456cabcba9d64b36336812338afb", recipe_sha256 = "bcfbbb7b2fe61e9dc6809b0e9febb27bf44e829f6ba6b93a82271216742507b2" }
+fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "44dabf0a7e258912556be8b24593d843629f456cabcba9d64b36336812338afb", recipe_sha256 = "c3e4d854e464e738bf68190dcb8f5162320df04be54c888165146508056dfd09" }
 
 [[objects]]
 name = "atrium_fitted_full"
@@ -86,4 +86,4 @@ variant = "sponza_fitted_full"
 bake = true
 indirect = false
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
-fit = { budget = 17381, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "8578cfe1a678859310603ad53a77b11eda4b03cc75fe760377fa10fb92c460d5", recipe_sha256 = "493d82cdea6ec9f5281a5cedaa46000c8c15c7c8ed84d0965883a8b86e7d5b1c" }
+fit = { budget = 17381, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "8578cfe1a678859310603ad53a77b11eda4b03cc75fe760377fa10fb92c460d5", recipe_sha256 = "96c2d393e4c4594e185fb4b69511ec87e708aa4dbd37fd31166fc899b8265460" }

@@ -136,7 +136,7 @@ def table(rows):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("scene")
-    parser.add_argument("--mesh", required=True, help="the flat variant to re-bake")
+    parser.add_argument("--mesh", required=True, help="the scene object, a flat renderer, to re-bake")
     parser.add_argument("--script", required=True, help="the scene's host-render script")
     parser.add_argument("--render-args", required=True, help="the host renderer's arguments, without -o and --video")
     parser.add_argument("--reference", required=True, help="reference_render.py's output directory")
@@ -146,7 +146,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     path = pathlib.Path(args.scene).resolve()
     scene = load_scene(path)
-    jobs = [item for item in scene.renderers if item.renderer.variant.name == args.mesh and item.renderer.face_samples]
+    jobs = [item for item in scene.renderers if item.object.name == args.mesh and item.renderer.face_samples]
     if not jobs:
         parser.error(f"{args.mesh!r} is not a flat mesh of {path.name}")
     job = jobs[0]

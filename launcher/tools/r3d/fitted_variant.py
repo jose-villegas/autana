@@ -79,9 +79,13 @@ def recipe_digest(settings, renderer, scene):
     fit = SimpleNamespace(**vars(renderer.fit))
     del fit.sha256
     del fit.recipe_sha256
-    entry = SimpleNamespace(**vars(renderer))
+    entry = SimpleNamespace(**{name: value for name, value in vars(renderer).items() if name != "settings"})
     entry.fit = fit
-    scene_recipe = SimpleNamespace(lights=scene.lights, tonemap_white=scene.tonemap_white, indirect=scene.indirect)
+    bake = SimpleNamespace(**vars(scene.bake))
+    look = scene.indirect
+    if not renderer.indirect:
+        bake.indirect, look = None, None
+    scene_recipe = SimpleNamespace(lights=scene.lights, tonemap_white=scene.tonemap_white, bake=bake, indirect=look)
     return hashlib.sha256(json.dumps([canonical(settings), canonical(entry), canonical(scene_recipe), tracks], sort_keys=True).encode()).hexdigest()
 
 

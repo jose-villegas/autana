@@ -128,7 +128,7 @@ variant_bake() {
     awk -v table="$3" -v direct="$2" '/^\[\[objects\]\]/ && !done { if (table != "") print table "\n"; done = 1 }
         direct == "none" && /^indirect = \{/ { next } { print }' \
         "$M/meshes/sponza.scene.toml" > "$W/indirect-$1/sponza.scene.toml"
-    "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$W/indirect-$1/sponza.scene.toml" --mesh sponza > "$W/indirect-$1/bake.log" 2>&1
+    "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$W/indirect-$1/sponza.scene.toml" --mesh sponza.atrium > "$W/indirect-$1/bake.log" 2>&1
     "$R3D_PYTHON" launcher/tools/r3d/build_pack.py -o "$W/indirect-$1/assets.bin" --replace "sponza.atrium=$W/indirect-$1/sponza.atrium.mesh" \
         > "$W/indirect-$1/pack.log"
     AUTANA_ASSET_PACK="$W/indirect-$1/assets.bin" "$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 5 --dt 5000 \
