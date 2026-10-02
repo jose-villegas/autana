@@ -166,6 +166,13 @@ class OwnReferenceSheetTest(unittest.TestCase):
         self.assertEqual(with_own.height - without.height, 2 * (8 + render_compare.LABEL_BAR))
         self.assertEqual(int(np.asarray(with_own)[-70 - 8:-70, 8:].max()), 0, "a bake matches its own reference")
 
+    def test_own_reference_rows_leave_the_reference_column_as_the_sheet_background(self):
+        reference, own = image(STEP), Image.new("RGB", (8, 8), DRAWN)
+        sheet = render_compare.reference_bake_sheet([("f", reference, [("intensity 1", own, own)])], tile=1.0)
+        panel_height = reference.height + render_compare.LABEL_BAR
+        pixels = np.asarray(sheet)
+        self.assertFalse(pixels[2 * panel_height:4 * panel_height, :reference.width].any())
+
 
 class OutlinedTextTest(unittest.TestCase):
     """Labels must read over any panel, so light text carries a dark outline and the fill survives it."""
