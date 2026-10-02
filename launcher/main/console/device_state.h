@@ -20,7 +20,7 @@ typedef struct {
     bool temp_ok; /* false if the sensor did not answer */
     float temp_c; /* only meaningful if temp_ok */
 
-    int quarter; /* display_shell_quarter() */
+    int quarter; /* display_quarter_now() */
 
     bool imu_ready;   /* false: chip absent/never initialised */
     bool imu_read_ok; /* only meaningful if imu_ready */

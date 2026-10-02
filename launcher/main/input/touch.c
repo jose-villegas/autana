@@ -122,12 +122,12 @@ poll_injected(int64_t now_us, bool* have_point, int* x, int* y) {
 }
 
 void
-touch_inject(bool down, int x, int y) {
+touch_inject(bool down, vec2i_t point) {
     portENTER_CRITICAL(&lock);
     injected_gesture.active = false;
     injected_down = down;
-    injected_x = x;
-    injected_y = y;
+    injected_x = point.x;
+    injected_y = point.y;
     injected_release = !down;
     portEXIT_CRITICAL(&lock);
 }
@@ -197,7 +197,7 @@ poll_once(void) {
 #endif
 
     portENTER_CRITICAL(&lock);
-    touch_fsm_update(&fsm, have_point, x, y, now_us);
+    touch_fsm_update(&fsm, have_point, (vec2i_t){x, y}, now_us);
     was_touching = have_point;
 
 #if CONFIG_LAUNCHER_DEVELOPMENT

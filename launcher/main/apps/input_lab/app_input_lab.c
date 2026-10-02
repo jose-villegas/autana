@@ -109,7 +109,7 @@ start_round(void) {
     panel_min_x = panel_min_y = 1 << 20;
     panel_max_x = panel_max_y = -1;
     place_target();
-    ESP_LOGI(TAG, "round %s screen %dx%d quarter %d", MODE_NAMES[mode], screen_w, screen_h, display_shell_quarter());
+    ESP_LOGI(TAG, "round %s screen %dx%d quarter %d", MODE_NAMES[mode], screen_w, screen_h, display_quarter_now());
 }
 
 static void
@@ -124,7 +124,7 @@ input_lab_enter(void) {
 
 static ui_transform_t
 shell_transform(void) {
-    return ui_transform_quarter_turn(display_shell_quarter(), GFX_WIDTH, GFX_HEIGHT);
+    return ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT);
 }
 
 static void
@@ -180,7 +180,7 @@ finish_tap(int release_x, int release_y) {
     ESP_LOGI(TAG,
              "probe %d %s q%d aim %d,%d aim_panel %d,%d first %d,%d settled %d,%d release %d,%d panel_first %d,%d "
              "panel_settled %d,%d panel_release %d,%d held %d idle %d samples %d %s cal %d",
-             stats.taps, MODE_NAMES[mode], display_shell_quarter(), aim_x, aim_y, aim_panel_x, aim_panel_y, fx, fy, sx,
+             stats.taps, MODE_NAMES[mode], display_quarter_now(), aim_x, aim_y, aim_panel_x, aim_panel_y, fx, fy, sx,
              sy, rx, ry, first.x, first.y, settled_x, settled_y, release_x, release_y, tap.held_ms,
              tap.idle_before_press, tap.count, last_hit ? "HIT" : "miss", calibration_on());
     advance_target();
@@ -195,7 +195,7 @@ track_touch(uint32_t dt_ms, const input_t* input) {
         return;
     }
     if (mode == MODE_BEZEL) {
-        ESP_LOGI(TAG, "bezel radius %d quarter %d", bezel_radius, display_shell_quarter());
+        ESP_LOGI(TAG, "bezel radius %d quarter %d", bezel_radius, display_quarter_now());
     } else {
         finish_tap(input->x, input->y);
     }

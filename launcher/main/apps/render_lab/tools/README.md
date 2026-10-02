@@ -182,6 +182,81 @@ the foreground drapery. `doc_images.sh` regenerates the sheet.
 
 ![Reference, flat bake, error heatmap and edge pixels](../../../../../docs/images/render/bake-fidelity-sheet.png)
 
+### Appearance fit of the lite mesh
+
+[`appearance_simplify.py`](../../../../tools/r3d/README.md#appearance-fit)
+fits the lite mesh's vertex positions and colours to the reference, its
+triangles unchanged. It trains on the flythrough sampled every second, less
+the times scored, and is scored on the times 5 to 35 s every 5 s, which it
+never saw (`--frames 7 --dt 5000` against the reference of those poses,
+with the scene camera's background where nothing is drawn). Path-averaged is one mesh
+trained on every training pose; per shot is one mesh per 10 s of the path,
+each frame scored with its own segment's mesh. The unfitted rows differ from
+the fidelity table above only because they average seven of its eight poses.
+
+| Mesh | Triangles | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 |
+|---|---:|---:|---:|---:|---:|
+| Full smooth | 17,381 | 7.197 | 22.38 | 0.687 | 14.63 |
+| Flat, committed | 17,381 | 7.872 | 28.35 | 0.642 | 17.02 |
+| Lite, simplifier | 8,670 | 8.133 | 26.25 | 0.643 | 16.83 |
+| Lite, fitted, path-averaged | 8,670 | 5.732 | 15.03 | 0.754 | 10.85 |
+| Lite, fitted, per shot | 8,670 | 6.270 | 17.51 | 0.748 | 11.69 |
+
+The fitted lite mesh beats the full mesh at half its triangles. Per shot
+trails path-averaged: each segment trains on eight poses, too few to
+generalise to the poses between them.
+
+```mermaid
+xychart-beta
+    title "Held-out poses: mean ΔE76 (7 poses, 5 to 35 s)"
+    x-axis ["Full", "Flat", "Lite", "Lite fitted, path", "Lite fitted, per shot"]
+    y-axis "Mean ΔE76, held-out" 0 --> 9
+    bar [7.197, 7.872, 8.133, 5.732, 6.270]
+```
+
+The path-averaged fit's loss on its training batches, each point the mean of
+the 51 steps around it: most of the gain is in by step 100 and the curve is
+flat by 300, so the 2000 steps run are many more than it needs. These are
+training numbers, on the poses the fit sees; the table above is held-out.
+
+```mermaid
+xychart-beta
+    title "Training batches: mean ΔE76 against fit step"
+    x-axis "Step" [0, 25, 50, 100, 150, 200, 300, 400, 600, 800, 1000, 1500, 2000]
+    y-axis "Mean ΔE76, training" 4.5 --> 6.5
+    line [6.21, 5.79, 5.27, 5.09, 5.08, 5.06, 5.04, 5.02, 5.00, 5.00, 4.98, 4.93, 4.92]
+```
+
+Two held-out poses, 5 s and 25 s. Left to right, the simplifier's lite mesh,
+the fitted one and their difference; then the places they differ most,
+enlarged, lite above fitted. The fit sharpens the sun's shadow edge on the
+floor and the arches' edges, and puts the hangings' colours back.
+
+![Lite against the fitted lite mesh](../../../../../docs/render/images/appearance-lite-fitted.png)
+![Lite against fitted, enlarged](../../../../../docs/render/images/appearance-lite-fitted.crops.png)
+
+The fitted mesh against the reference at the same poses, and where they
+still differ most: the edge of the roof opening against the sky, and
+texture detail no vertex colour holds.
+
+![Fitted against the reference](../../../../../docs/render/images/appearance-fitted-reference.png)
+![Fitted against the reference, enlarged](../../../../../docs/render/images/appearance-fitted-reference.crops.png)
+
+The ΔE heatmap sheets of the same two poses, lite then fitted: reference,
+render, heatmap, edge pixels, over the heatmap's scale.
+
+![Lite against the reference: heatmaps](../../../../../docs/render/images/appearance-heat-lite.png)
+![Fitted against the reference: heatmaps](../../../../../docs/render/images/appearance-heat-fitted.png)
+
+The sheets and crops are `render_compare.py --row ... --crops 3` on frames
+0 and 4 of the scored videos, the reference upscaled twice to the render
+size; the heatmaps are `--reference-video ... --reference-sheet
+--sheet-frames 0,4`. A whole-path video at 30 fps, lite against fitted, is
+`render_compare.py --video` of the two meshes' `--frames 1200 --dt 33`
+renders; it is not committed, and the reference has no frame between the
+scored poses to put beside it. Nothing refreshes these images: the fit
+needs the GPU environment.
+
 ## Indirect light
 
 The Sponza import bakes two bounces: `indirect = { bounces = 2, rays = 64,

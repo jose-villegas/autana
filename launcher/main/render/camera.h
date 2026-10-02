@@ -4,7 +4,7 @@
  */
 #pragma once
 
-#include "render/vec3f.h"
+#include "util/math/vec3f.h"
 
 /* A pinhole camera. Its lens is fitted to the shorter axis of the upright
  * picture; `forward` need not be normalised but must not be vertical. */

@@ -4,16 +4,14 @@
  * a viewport_t, upright for its quarter, with the lens fitted to the
  * viewport's SHORTER axis.
  *
- * Single precision only, for the reason vec3f.h gives. The pose is
- * float rather than VEC4I_ONE units because a caller's numbers need not be
- * representable there.
+ * Single precision only, for the reason vec3.h gives.
  */
 #pragma once
 
 #include <stdbool.h>
 
-#include "render/vec3f.h"
 #include "render/viewport.h"
+#include "util/math/vec3f.h"
 
 typedef struct {
     vec3f_t origin, forward, right, up;
