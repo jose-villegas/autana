@@ -200,8 +200,9 @@ void build_dry_plant_heap_scene(sand_t* s);
 #define PLANT_BED_RAIN_A         100
 #define PLANT_BED_RAIN_B         170
 
-/* The finished bed has no second pour and settles until tree growth and soil
- * moisture stop changing. */
+/* No second pour; left until the trees stop growing and drink the ground dry.
+ * On this bed and seed, structure stops changing at 759 steps and the last
+ * damp cell dries at 1,644. Re-measure after a SAND_BLOCK_W/H change. */
 #define MATURE_TREE_SETTLE_STEPS 1800
 
 /* Fresh soil laid over the canopy and rained on - the one thing a finished
@@ -210,6 +211,8 @@ void build_dry_plant_heap_scene(sand_t* s);
  * plant_bed_rain() is. */
 void mature_tree_replant(sand_t* s);
 
+/* Settled 400 steps the canopy saturates and produces no leaves; pouring
+ * earlier (80 and 160) stalls it at 137 leaves. */
 #define MATURE_TREE_REPLANT_STEPS 400
 
 /* Match APP_IMPULSE_MAX so this scene reaches the device memory ceiling. */
@@ -266,14 +269,18 @@ void build_landscape_deep_bed_scene(sand_t* s);
 void landscape_water_pour(sand_t* s, int step);
 void landscape_sand_pour(sand_t* s, int step);
 
-/* Eight stamps per step build the shallow and deep beds before settling. */
+/* At eight stamps per step the beds reach their share in these step counts,
+ * and every block is asleep by the end of the settle. On this seed the
+ * shallow bed's last grain stops at 158 and the deep at 151; re-measure after
+ * a SAND_BLOCK_W/H change. */
 #define LANDSCAPE_BED_STAMPS     8
 #define LANDSCAPE_BED_STEPS      300
 #define LANDSCAPE_DEEP_BED_STEPS 490
 #define LANDSCAPE_SETTLE_STEPS   170
 
 /* The window times an already-running pour. The filling basin primes so the
- * timed rows measure sustained flow rather than first contact. */
+ * timed rows measure sustained flow rather than first contact. Past 150 steps
+ * of pour the cost is flat within 2% whatever window follows. */
 #define LANDSCAPE_PRIME_STEPS    150
 #define LANDSCAPE_MEASURED_STEPS 90
 #define LANDSCAPE_POUR_STAMPS    2
@@ -293,7 +300,8 @@ void build_water_slope_stone_scene(sand_t* s);
 void build_water_slope_flat_scene(sand_t* s);
 void water_slope_water_pour(sand_t* s, int step);
 
-/* This pour covers the slope from its high corner to the downhill face. */
+/* This pour covers the slope from its high corner to the downhill face. The
+ * water-slope cover row in suite_sand_perf.c exercises this constant. */
 #define WATER_SLOPE_COVER_STEPS 500
 
 void build_water_slope_covered_scene(sand_t* s);
@@ -349,7 +357,9 @@ void build_captured_water_slope_scene(sand_t* s);
  * water back into the ground from the moment it lands. */
 #define SUBMERGED_PILE_SETTLE_STEPS      40
 
-/* Soaking keeps full settling well beyond the gravity-flip windows. */
+/* With soaking on, as in app_sand.c, a freshly covered pile takes about
+ * 4,000-4,400 steps to absorb its water and sleep, far past the gravity-flip
+ * rows' 60-90 step windows; 6000 leaves margin. */
 #define SUBMERGED_PILE_FULL_SETTLE_STEPS 6000
 
 void build_submerged_pile_scene(sand_t* s);

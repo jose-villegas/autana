@@ -169,7 +169,10 @@ void gfx_line(int x0, int y0, int x1, int y1, gfx_color_t color);
  * Two independent choices (how it composites, and whether it owns its
  * first pixel), so flags on one function rather than a family of
  * "add"/"open" name variants inviting another.
- *
+ * No antialiasing flag: Wu-style antialiasing redistributes light within a
+ * pixel, while what reads as a lit curve on this panel is a falloff several
+ * pixels across. A wide-support filter in the manner of Gupta & Sproull is
+ * what would help.
  */
 
 /* Add to what is already in the framebuffer instead of replacing it, so two

@@ -27,7 +27,7 @@
 /* Fixed cap on how many separate runs one row tracks, for both detection
  * and reconciliation - a row can never grow arbitrarily many small sends.
  * Changing it needs device measurement, as do GATHER_MAX_PIXELS and
- * LEAF_REFINE_MAX_RUNS in gfx.c. */
+ * LEAF_REFINE_MAX_RUNS in gfx/gfx_dirty.h. */
 #define ROW_MAX_RUNS 2
 
 /* Collects `row`'s contiguous non-`empty` bytes into up to ROW_MAX_RUNS

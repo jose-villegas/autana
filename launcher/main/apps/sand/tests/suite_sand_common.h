@@ -82,8 +82,7 @@ extern sand_t wide;
 #define CAP_W              (CONDUCT_REACH_TEST + 16)
 #define CAP_H              8
 
-/* Material shorthand. Variants cover the relevant temperature and burn
- * states. */
+/* Material shorthand. */
 #define WATER              CELL_MAKE(MAT_WATER, 8)
 #define STONE              CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT)
 #define SAND               CELL_MAKE(MAT_SAND, 8)
@@ -190,8 +189,9 @@ bool region_has_root(const sand_t* g, int x0, int x1, int y0, int y1);
  * readout every landscape/water-slope sleeping test in the split polls. */
 int count_awake_blocks(const sand_t* g);
 
-/* Timed tests pin the shared two-core mode. two_core_scope_begin() restores
- * the prior mode through two_core_scope_end(). */
+/* A timed test pins the two-core mode rather than inherit an earlier test's:
+ * two_core_scope_begin() sets it and remembers the old mode,
+ * two_core_scope_end() puts that back. */
 typedef struct {
     bool before;
 } two_core_scope_t;
