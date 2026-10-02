@@ -34,7 +34,7 @@
 #
 # and then calls device_report_run with the arguments every report takes:
 #
-#   [--board SERIAL] [--no-restore] [OUT.md]
+#   [--board SERIAL] [--project PATH] [--no-restore] [OUT.md]
 #
 # The board is --board's, else the only one plugged in, as for every autana
 # command.
@@ -45,6 +45,7 @@ device_report_arguments() {
     _dr_restore=1
     _dr_out=""
     _dr_board=""
+    _dr_project=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --no-restore) _dr_restore=0; shift ;;
@@ -54,6 +55,12 @@ device_report_arguments() {
                     return 1
                 fi
                 _dr_board="$2"; shift 2 ;;
+            --project)
+                if [ $# -lt 2 ]; then
+                    echo "ERROR: --project needs a project path" >&2
+                    return 1
+                fi
+                _dr_project="$2"; shift 2 ;;
             -*) echo "ERROR: unknown flag: $1 - name a board with --board" >&2; return 1 ;;
             *)
                 case "$1" in
@@ -106,6 +113,14 @@ device_report_run() {
     fi
     _dr_tools="$_dr_launcher/tools"
     _dr_worktree="$(cd "$_dr_launcher/.." && pwd)"
+    if [ -z "$_dr_project" ]; then
+        _dr_project="$_dr_worktree"
+    fi
+    if [ ! -f "$_dr_project/launcher/CMakeLists.txt" ]; then
+        echo "ERROR: --project must contain launcher/CMakeLists.txt: $_dr_project" >&2
+        return 1
+    fi
+    report_project="$(cd "$_dr_project" && pwd)"
     # shellcheck source=../../../scripts/lib/python.sh
     . "$_dr_worktree/scripts/lib/python.sh"
     PYTHON=$(find_python) || return 1
@@ -144,14 +159,14 @@ device_report_run() {
 device_report_capture() {
     if [ -n "$report_suite" ]; then
         set -- "$report_suite" "$report_timeout" --runs 1 --flash --out "$_dr_raw" \
-               --project "$_dr_worktree"
+               --project "$report_project"
         echo "=== Building and capturing RUNSUITE $report_suite ==="
         # Unquoted on purpose: a caller declares zero or more flags in one string.
         # shellcheck disable=SC2086
         set -- "$@" $report_build_flags
         autana ${_dr_board:+--board "$_dr_board"} --owner "$_dr_owner" suite "$@"
     else
-        set -- "$report_timeout" --out "$_dr_raw" --project "$_dr_worktree"
+        set -- "$report_timeout" --out "$_dr_raw" --project "$report_project"
         echo "=== Building and capturing the self-test run ==="
         # shellcheck disable=SC2086
         set -- "$@" $report_build_flags

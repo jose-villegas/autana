@@ -13,13 +13,112 @@ import unittest
 
 PERF = pathlib.Path(__file__).resolve().parents[1]
 FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
-AUTANA_PROXY = PERF / "bin" / "autana"
 sys.path.insert(0, str(PERF))
 
 import perf_compare  # noqa: E402
 
 
 class PerfCompareTest(unittest.TestCase):
+    def make_revision_tree(self, directory, name):
+        tree = pathlib.Path(directory) / name
+        tree.mkdir()
+        (tree / "firmware.txt").write_text(name, encoding="utf-8")
+        subprocess.run(["git", "init", "-q", str(tree)], check=True)
+        subprocess.run(["git", "-C", str(tree), "add", "firmware.txt"], check=True)
+        subprocess.run(["git", "-C", str(tree), "-c", "user.name=test",
+                        "-c", "user.email=test@example.invalid", "commit", "-qm", name], check=True)
+        return tree
+
+    def write_compare_fixtures(self, directory):
+        root = pathlib.Path(directory)
+        fake_bin = root / "bin"
+        fake_bin.mkdir()
+        state = root / "project"
+        calls = root / "calls"
+        autana = fake_bin / "autana"
+        autana.write_text(
+            "#!/bin/sh\n"
+            "case \"$1\" in\n"
+            "  status) echo unlocked ;;\n"
+            "  buildid) git -C \"$(cat \"$PERF_TEST_PROJECT\")\" rev-parse --short=8 HEAD ;;\n"
+            "  *) exit 9 ;;\n"
+            "esac\n", encoding="utf-8")
+        report = root / "report.sh"
+        report.write_text(
+            "#!/bin/sh\n"
+            "set -eu\n"
+            "project=\n"
+            "out=\n"
+            "while [ $# -gt 0 ]; do\n"
+            "  case \"$1\" in\n"
+            "    --project) project=$2; shift 2 ;;\n"
+            "    *.md) out=$1; shift ;;\n"
+            "    *) shift ;;\n"
+            "  esac\n"
+            "done\n"
+            "[ -n \"$project\" ]\n"
+            "printf '%s\\n' \"$project\" > \"$PERF_TEST_PROJECT\"\n"
+            "printf '%s:%s\\n' \"$PWD\" \"$project\" >> \"$PERF_TEST_CALLS\"\n"
+            "count=0\n"
+            "[ -f \"$PERF_TEST_COUNT\" ] && count=$(cat \"$PERF_TEST_COUNT\")\n"
+            "count=$((count + 1))\n"
+            "printf '%s\\n' \"$count\" > \"$PERF_TEST_COUNT\"\n"
+            "case \"${PERF_TEST_MODE:-ok}\" in\n"
+            "  fail-once) [ \"$count\" -eq 1 ] && exit 7 ;;\n"
+            "  timeout) sleep 2 ;;\n"
+            "esac\n"
+            "read -r ignored || true\n"
+            "printf '| Test | Measured (us) |\\n|---|---:|\\n| `row` | 10 |\\n' > \"$out\"\n",
+            encoding="utf-8")
+        for path in (autana, report):
+            path.chmod(path.stat().st_mode | stat.S_IXUSR)
+        return fake_bin, report, state, calls, root / "count"
+
+    def run_compare_fixture(self, directory, mode="ok", runs=1, timeout=5):
+        tree_a = self.make_revision_tree(directory, "before")
+        tree_b = self.make_revision_tree(directory, "after")
+        fake_bin, report, state, calls, count = self.write_compare_fixtures(directory)
+        out = pathlib.Path(directory) / "out"
+        env = dict(os.environ, PATH=f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+                   PERF_TEST_PROJECT=str(state), PERF_TEST_CALLS=str(calls),
+                   PERF_TEST_COUNT=str(count), PERF_TEST_MODE=mode)
+        done = subprocess.run(
+            ["sh", str(PERF / "perf_compare.sh"), "-o", str(out), "--no-restore", "--runs", str(runs),
+             "--timeout", str(timeout), str(tree_a), str(tree_b), "--", "sh", str(report)],
+            cwd=PERF.parent, env=env, capture_output=True, text=True, timeout=15)
+        return done, tree_a, tree_b, out, calls, count
+
+    def shell_path(self, path):
+        return subprocess.check_output(["cygpath", "-u", str(path)], text=True).strip()
+
+    def test_shell_uses_current_reporter_with_project_and_closed_stdin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            done, tree_a, tree_b, out, calls, _ = self.run_compare_fixture(directory)
+            recorded = calls.read_text(encoding="utf-8").splitlines()
+            summary_exists = (out / "summary.md").is_file()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(recorded, [
+            f"{self.shell_path(PERF.parent)}:{self.shell_path(tree_a)}",
+            f"{self.shell_path(PERF.parent)}:{self.shell_path(tree_b)}",
+        ])
+        self.assertTrue(summary_exists)
+
+    def test_shell_continues_after_one_failed_capture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            done, _, _, _, _, count = self.run_compare_fixture(directory, mode="fail-once", runs=2)
+            calls = int(count.read_text(encoding="utf-8"))
+        self.assertNotEqual(done.returncode, 0)
+        self.assertEqual(calls, 4)
+        self.assertIn("capture failed", done.stderr)
+
+    def test_shell_stops_after_two_capture_timeouts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            done, _, _, _, _, count = self.run_compare_fixture(directory, mode="timeout", runs=3, timeout=1)
+            calls = int(count.read_text(encoding="utf-8"))
+        self.assertNotEqual(done.returncode, 0)
+        self.assertEqual(calls, 2)
+        self.assertIn("two consecutive capture failures", done.stderr)
+
     def test_a_markdown_table_uses_its_measured_column(self):
         rows = perf_compare.parse_report(FIXTURES / "sand_a.md")
         self.assertEqual(rows["hot"], 2000)
@@ -59,18 +158,6 @@ class PerfCompareTest(unittest.TestCase):
         self.assertIn("`before-diag`", summary)
         self.assertIn("| `hot` | 2000 | 2010 | +10 | no change |", summary)
         self.assertIn("| `hot` | ? | 2000 | ? | measured |", aggregate)
-
-    def test_proxy_normalizes_a_historical_owner_and_adds_a_wait(self):
-        with tempfile.TemporaryDirectory() as directory:
-            fake = pathlib.Path(directory) / "fake-autana.sh"
-            fake.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\"\n", encoding="utf-8")
-            fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
-            env = dict(os.environ, PERF_COMPARE_AUTANA=str(fake))
-            done = subprocess.run(["sh", str(AUTANA_PROXY), "--owner", "old report", "selftest"],
-                                  env=env, capture_output=True, text=True)
-        self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(done.stdout.splitlines(), ["--wait", "3600", "--owner", "old-report", "selftest"])
-
 
 if __name__ == "__main__":
     unittest.main()
