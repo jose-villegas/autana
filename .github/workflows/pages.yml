@@ -1,0 +1,65 @@
+name: Pages
+
+# Builds the GitHub Pages site: the sand app's browser build at the root and
+# the C4 architecture explorer under /architecture/. A Pages deploy replaces
+# the whole site, so everything on it is built here, in one artifact.
+#
+# A pull request builds the site without deploying it, so a change that
+# breaks the browser build fails there rather than on main.
+#
+# The explorer's generator lives in the private development repository,
+# checked out as .dev the way a local checkout holds it. Needs the
+# repository setting Pages > Source set to "GitHub Actions", and a secret
+# AUTANA_DEV_TOKEN that can read jose-villegas/autana-dev.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: jose-villegas/autana-dev
+          token: ${{ secrets.AUTANA_DEV_TOKEN }}
+          path: .dev
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+      - name: Sand, in the browser
+        run: sh launcher/main/apps/sand/tools/web/build_web.sh _site
+      - name: Test the explorer's generator
+        run: python3 .dev/launcher/tools/architecture/test_build.py
+      - name: Architecture explorer
+        run: python3 .dev/launcher/tools/architecture/build.py -o _site/architecture
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Publish to Pages
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
