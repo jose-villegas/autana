@@ -71,8 +71,10 @@ def canonical(value):
 
 def recipe_digest(settings, variant, scene):
     """SHA-256 over parsed import settings, the fit variant and its tracks."""
+    from r3d.import_settings import variant_settings
     from r3d.poses import tracks_file
 
+    settings = variant_settings(settings, variant)
     settings = SimpleNamespace(**vars(settings))
     del settings.variants
     fit = SimpleNamespace(**vars(variant.fit))
@@ -102,8 +104,8 @@ def prepare(scene_path, scene, settings, variant, work):
     (work / "train_landscape.txt").write_text(poses_text(h, w, lens, near, training))
     (work / "coverage.txt").write_text(poses_text(*camera_path_poses(settings, scene, visibility, fit.coverage_every_ms)))
     for poses, reference in (("train.txt", "reference"), ("train_landscape.txt", "reference_landscape")):
-        reference_main([str(scene_path), "--import", str(settings.path), "--poses", str(work / poses), "--out",
-                        str(work / reference), "--normals"])
+        reference_main([str(scene_path), "--import", str(settings.path), "--variant", variant.name, "--poses",
+                        str(work / poses), "--out", str(work / reference), "--normals"])
     log(f"prepared {variant.name}: start of {len(geometry.tris)} triangles, {len(training)} training poses")
 
 

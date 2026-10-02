@@ -24,7 +24,7 @@ simplify = { dense_edge = 45.0, props = ["vase", "vase_round", "vase_hanging", "
 rounds = 160
 
 [lighting]
-light = { ray_offset = 0.5, colour_merge_step = 6, flat_sky_rays = 128 }
+light = { ray_offset = 0.5, colour_merge_step = 6, flat_sky_rays = 128, indirect = { bounces = 2, rays = 64, cache_samples = 1 } }
 
 [[variants]]
 name = "sponza"
@@ -42,16 +42,19 @@ triangles = 8672
 # Fitted offline on a GPU by tools/r3d/fitted_variant.py: the import bakes the
 # start at `triangles`, culled to what the camera's path draws, and the fit
 # prunes it to `budget` and matches the reference renders of the flythrough.
-# The two hashes pin the recipe and the mesh it made.
+# The two hashes pin the recipe and the mesh it made. Both fitted variants
+# exclude indirect light.
 [[variants]]
 name = "sponza_fitted"
+indirect = false
 triangles = 9973
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
-fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "44dabf0a7e258912556be8b24593d843629f456cabcba9d64b36336812338afb", recipe_sha256 = "bbdf5372e27b0b3eb1c3a8c4f1c213b4d628f41b9fbe9abf1a8343995047d077" }
+fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "44dabf0a7e258912556be8b24593d843629f456cabcba9d64b36336812338afb", recipe_sha256 = "ebd4db5aeaa752edc447d5e72d8c85e9a00a019ad3ce5546bbf67d55daa4755c" }
 
 # The same recipe at the full mesh's budget.
 [[variants]]
 name = "sponza_fitted_full"
+indirect = false
 triangles = 19988
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
-fit = { budget = 17381, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "8578cfe1a678859310603ad53a77b11eda4b03cc75fe760377fa10fb92c460d5", recipe_sha256 = "1c51b6a0b583b318ead321f1f7b4d93b0541fdcde80b07eec4c4e2b185131d21" }
+fit = { budget = 17381, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "8578cfe1a678859310603ad53a77b11eda4b03cc75fe760377fa10fb92c460d5", recipe_sha256 = "adc952777b30181958533c39a3479da4b2b433ed6fb76bd0509b449f0ab1e652" }

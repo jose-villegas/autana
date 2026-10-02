@@ -129,6 +129,17 @@ class BuilderTests(unittest.TestCase):
             entries = parse_pack(build_pack.pack_bytes([root]))
         self.assertEqual({name: data for name, (_, data) in entries.items()}, {"one": b"1", "two": b"22", "three": b"333"})
 
+    def test_a_replaced_mesh_comes_from_its_own_file_and_must_exist(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            import_file(root / "a", "a.import.toml", "one")
+            (root / "a" / "one.mesh").write_bytes(b"1")
+            (root / "scratch.mesh").write_bytes(b"9")
+            entries = parse_pack(build_pack.pack_bytes([root / "a"], [f"one={root / 'scratch.mesh'}"]))
+            self.assertEqual({name: data for name, (_, data) in entries.items()}, {"one": b"9"})
+            with self.assertRaisesRegex(SettingsError, "no such mesh"):
+                build_pack.pack_bytes([root / "a"], ["other=x.mesh"])
+
     def test_a_mesh_never_baked_names_the_command_to_run(self):
         with tempfile.TemporaryDirectory() as directory:
             import_file(directory, "a.import.toml", "one")

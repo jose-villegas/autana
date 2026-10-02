@@ -27,6 +27,7 @@ def plane_source(corners):
         tri_m=np.array([0, 0]), names=["plane"], materials={"plane": {"Kd": (1.0, 1.0, 1.0)}}, textures=[None],
     )
     source.corner_normals = corner_normals(source.p, source.tri_v)
+    source.indirect_cache = None
     source.intersector = RayMeshIntersector(trimesh.Trimesh(source.p, source.tri_v, process=False))
     return source
 
