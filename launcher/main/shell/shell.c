@@ -178,6 +178,10 @@ shell_init(void) {
     }
 #endif
     shell_apps_init();
+}
+
+void
+shell_check_console_prefixes(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     check_console_prefix_clashes();
 #endif
