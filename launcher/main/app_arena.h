@@ -8,8 +8,9 @@
  * it scope a shorter lifetime inside one visit.
  *
  * Rejected: per-app memory_alloc()/memory_free(). Each call site is one more
- * dynamic allocation to justify, a missed memory_free() leaks across visits, and a
- * fragmented PSRAM heap can refuse a re-entry that worked the first time.
+ * dynamic allocation to justify, a missed memory_free() leaks across visits,
+ * and a fragmented PSRAM heap can refuse a re-entry that worked the first
+ * time.
  *
  * Called from the frame loop only; not safe from another task or core.
  */
