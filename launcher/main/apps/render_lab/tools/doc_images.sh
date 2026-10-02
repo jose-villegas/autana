@@ -41,8 +41,8 @@ ffmpeg -hide_banner -loglevel error -y -i "$W/cube-motion.avi" -i "$W/cube-palet
     -filter_complex "[0:v]fps=12,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0[v];[v][1:v]paletteuse=dither=bayer" \
     -loop 0 "$OUT/render-lab-cube.gif"
 
-# The start of the flythrough.
-"$W/render_lab_render" --quarter 1 --no-hud --scene sponza --frames 90 --dt 100 \
+# The start of the flythrough, on the fitted full mesh.
+"$W/render_lab_render" --quarter 1 --no-hud --scene sponza-fitted-full --frames 90 --dt 100 \
     -o "$W/sponza-motion.bmp" --video "$W/sponza-motion.avi" 2> "$W/sponza.log"
 ffmpeg -hide_banner -loglevel error -y -t 6 -i "$W/sponza-motion.avi" \
     -vf "fps=8,palettegen=stats_mode=diff" "$W/sponza-palette.png"
