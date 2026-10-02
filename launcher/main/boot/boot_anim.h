@@ -130,9 +130,9 @@ boot_anim_view(int w, int h, uint32_t now_ms) {
 }
 
 /* CAMERA space transform; boot_anim_project() refactored for z check. Q12
- * re/im and Q8 t convert exactly to Q16.16 meters: a Q12 value is 16 times
- * its Q16 digits, and one Q8 unit of t climbs 132/512 / 256 meters, which is
- * 66 Q16 digits. */
+ * re/im and Q8 t convert exactly to Q16.16 meters (a Q12 value is 16 times its
+ * Q16 digits, and one Q8 unit of t climbs 66 of them), and the result is in
+ * 1/512 m, r3d_project_x.h's unit. */
 static inline vec3x_t
 boot_anim_to_camera_space(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view) {
     const vec3x_t p = {re_q12 * 16, t_q8 * (BOOT_ANIM_SPIRAL_Q9 / 2), im_q12 * 16};
@@ -143,11 +143,11 @@ boot_anim_to_camera_space(int32_t re_q12, int32_t im_q12, int32_t t_q8, const bo
 /* The camera-space image of the floor plane at one height: a point of it is
  * `origin` plus its re and im steps, so a ring of points at one height costs
  * two products a component instead of three, and no translation add; see
- * mathx_dot2c() for its rounding. */
+ * mathx_dot2c() for its rounding. All in 1/512 m. */
 typedef struct {
     vec3x_t origin;
-    vec3x_t re_step; /* per Q16 unit of re */
-    vec3x_t im_step; /* per Q16 unit of im */
+    vec3x_t re_step; /* the view matrix's re column, Q9 */
+    vec3x_t im_step; /* its im column */
 } boot_anim_plane_t;
 
 static inline boot_anim_plane_t
@@ -328,7 +328,7 @@ boot_anim_screen_chord_lt(vec3x_t a, vec3x_t c, const boot_anim_view_t* view, in
     }
     const int64_t m = (int64_t)im_abs(a.x - c.x) + im_abs(a.y - c.y);
     if (view->focal == 0) {
-        return m * view->scale < (int64_t)px * MATHX_ONE;
+        return m * view->scale < (int64_t)px * R3D_X_UNIT_ONE;
     }
     const int32_t zmin = a.z < c.z ? a.z : c.z;
     return m * view->focal * view->scale < (int64_t)px * zmin * R3D_X_UNIT_ONE;

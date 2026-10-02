@@ -215,6 +215,12 @@ test_a_pixel_offset_truncates_toward_zero_on_both_sides(void) {
     TEST_ASSERT_EQUAL_INT(3, r3d_pixel_offset(2.99F)); /* the bias catches a quotient a hair short */
 }
 
+/* Meters as the fixed projection's camera-space point, 1/512 m. */
+static vec3x_t
+q9(vec3f_t p) {
+    return (vec3x_t){mathf_round_i32(p.x * 512.0F), mathf_round_i32(p.y * 512.0F), mathf_round_i32(p.z * 512.0F)};
+}
+
 static void
 test_the_fixed_projection_lands_within_two_pixels_of_the_float_one(void) {
     const r3d_line_view_t view = fixture();
@@ -225,7 +231,7 @@ test_the_fixed_projection_lands_within_two_pixels_of_the_float_one(void) {
                 const vec3f_t p = {(float)xi * 0.7F, (float)yi * 0.9F, (float)zi * 4.5F};
                 int fx, fy, qx, qy;
                 r3d_camera_to_screen(p, &view, &fx, &fy);
-                r3d_camera_to_screen_x(vec3x_from_vec3f(p), &view_x, &qx, &qy);
+                r3d_camera_to_screen_x(q9(p), &view_x, &qx, &qy);
                 TEST_ASSERT_INT_WITHIN(2, fx, qx);
                 TEST_ASSERT_INT_WITHIN(2, fy, qy);
             }
@@ -238,16 +244,14 @@ test_the_fixed_segment_clip_and_point_test_follow_the_near_plane(void) {
     const r3d_line_view_x_t view = r3d_line_view_to_x(&(r3d_line_view_t){
         .matrix = mat4f_identity(), .focal = 1.0F, .near_z = 1.0F, .center_x = 100, .center_y = 100, .scale = 50.0F});
     int ax, ay, bx, by;
-    TEST_ASSERT_FALSE(r3d_project_point_cs_x(vec3x_from_vec3f((vec3f_t){0.0F, 0.0F, 1.0F}), &view, &ax, &ay));
-    TEST_ASSERT_TRUE(r3d_project_point_cs_x(vec3x_from_vec3f((vec3f_t){0.0F, 0.0F, 2.0F}), &view, &ax, &ay));
+    TEST_ASSERT_FALSE(r3d_project_point_cs_x(q9((vec3f_t){0.0F, 0.0F, 1.0F}), &view, &ax, &ay));
+    TEST_ASSERT_TRUE(r3d_project_point_cs_x(q9((vec3f_t){0.0F, 0.0F, 2.0F}), &view, &ax, &ay));
     TEST_ASSERT_EQUAL_INT(100, ax);
-    TEST_ASSERT_FALSE(r3d_project_segment_cs_x(vec3x_from_vec3f((vec3f_t){0.0F, 0.0F, 0.5F}),
-                                               vec3x_from_vec3f((vec3f_t){0.0F, 0.0F, 1.0F}), &view, &ax, &ay, &bx,
-                                               &by));
+    TEST_ASSERT_FALSE(r3d_project_segment_cs_x(q9((vec3f_t){0.0F, 0.0F, 0.5F}), q9((vec3f_t){0.0F, 0.0F, 1.0F}), &view,
+                                               &ax, &ay, &bx, &by));
     /* One end behind: it is replaced by the crossing at z = 1, where x = 4 / 3. */
-    TEST_ASSERT_TRUE(r3d_project_segment_cs_x(vec3x_from_vec3f((vec3f_t){4.0F, 0.0F, 3.0F}),
-                                              vec3x_from_vec3f((vec3f_t){0.0F, 0.0F, 0.0F}), &view, &ax, &ay, &bx,
-                                              &by));
+    TEST_ASSERT_TRUE(r3d_project_segment_cs_x(q9((vec3f_t){4.0F, 0.0F, 3.0F}), q9((vec3f_t){0.0F, 0.0F, 0.0F}), &view,
+                                              &ax, &ay, &bx, &by));
     TEST_ASSERT_INT_WITHIN(1, 100 + (int)(4.0F / 3.0F * 50.0F), ax);
     TEST_ASSERT_INT_WITHIN(2, 100 + (int)(4.0F / 3.0F * 50.0F), bx);
 }
