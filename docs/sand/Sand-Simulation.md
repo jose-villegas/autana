@@ -1131,8 +1131,8 @@ data cache, separate from the instruction cache the sweep's own code runs
 from, so the two do not evict each other. A cache miss on
 a cold line is still a real cost inside the tightest loop in the project,
 which is what the bitmask above avoids paying per cell. See
-[Optimization-Playbook.md](../notes/Optimization-Playbook.md#know-what-kind-of-memory-you-actually-have)
-for the cache sizes and the general lesson.
+[Board-and-Memory.md](../notes/Board-and-Memory.md#cache-is-carved-from-the-same-pool)
+for cache configuration and memory placement.
 
 ## Two cores: chunk-parallel passes, and what stays serial
 

@@ -10,7 +10,7 @@ lighting, and a platformer with parallax and 2D lighting.
 
 Every number below that is not marked *estimate* or *unmeasured* is
 measured, and its source is named. The house rule from
-[Optimization-Playbook.md](../notes/Optimization-Playbook.md) applies to this
+[Debugging.md](../notes/Debugging.md#performance-seems-off) applies to this
 document too: a plausible explanation of where time goes is not a measured
 one, and every phase ends with a number, not a feeling.
 
@@ -323,7 +323,7 @@ detail behind every row.
 | Core | 2 × Xtensa LX7, 240 MHz | for retained apps, core 1 runs `gfx_present()` (read-only) while core 0 runs the next update; full-redraw renderers split rendering and sending the band ring across both (decision B) |
 | FPU | single-precision hardware; `double` is software-emulated | float32 is fine per vertex/object; `double` stays banned on the device (decision A) |
 | SIMD | PIE 128-bit (16×8 / 8×16 lanes), inline asm only | any vector path sits behind a scalar reference implementation with a test asserting identical output (decision A) |
-| Integer mul/div | hardware, pipelined 32-bit mul and div; **64-bit div is a library call** | `__divdi3` and signed `/ 2^n` stay banned in hot loops (see the Optimization Playbook's "A 64-bit divide on a 32-bit core is a library call" and "Division by a power of two is not automatically a shift") |
+| Integer mul/div | hardware, pipelined 32-bit mul and div; **64-bit div is a library call** | `__divdi3` and signed `/ 2^n` stay banned in hot loops (see [Arithmetic in hot loops](../notes/Flashing-and-Toolchain.md#arithmetic-in-hot-loops)) |
 | Internal RAM | 512 KB SRAM: ~296 KiB main heap region + 21 KiB + 32 KiB DRAM at boot; free heap and largest block after `gfx_init()` (framebuffer excluded: it lives in PSRAM) are `DP_FREE_HEAP_BYTES`/`DP_LARGEST_FREE_BLOCK_BYTES` (Board-and-Memory.md) | stacks, the DMA gather and strip buffers, and hot per-step buffers (sand's grids, via `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536`) live here; the band ring's buffers will too |
 | PSRAM | 8 MB octal @ 80 MHz (120 MHz experimental); `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps allocations up to 64 KB internal and routes larger ones here; memcpy out ~58 MB/s, in ~47, PSRAM to PSRAM ~22 | under decision B this is read-only bulk/cold storage: the one retained framebuffer, textures and levels; it is never the target of a full-screen write or copy; headroom is a non-issue |
 | Data cache | 32 KB, 32-byte line, 8-way; 64 KB measured no gain | every PSRAM access (CPU render writes and DMA present reads alike) goes through this cache; see 3.3 |
@@ -362,16 +362,11 @@ The two numbers to carry in your head for the S3:
   the reason decision B avoids bulk PSRAM writes rather than trying to
   make them cheap.
 
-What the move to PSRAM costs the sand campaign's existing findings (which
-of them transfer to a chip with a data cache and which were written on the
-premise that there is none) split cleanly: the algorithmic skips
-transfer, and the old SRAM-mask-style wins plausibly do not, because a
-data cache now sits between the CPU and where the grids live (see
-[`notes/Optimization-Playbook.md`](../notes/Optimization-Playbook.md), "Know
-what kind of memory you actually have," and
-[`notes/Board-and-Memory.md`](../notes/Board-and-Memory.md), "Cache is
-carved from the same pool"). The cost/benefit case for taking on the S3 at
-all is retired now that the port has happened.
+A hot loop's cost depends on where its working data lives. Algorithmic
+skips reduce work, while memory-access changes must be assessed against the
+actual placement and cache traffic. See
+[Cache is carved from the same pool](../notes/Board-and-Memory.md#cache-is-carved-from-the-same-pool)
+for the configured memory tiers; time the resulting image on the device.
 
 ---
 
@@ -1041,14 +1036,13 @@ cheapest path to something that is unmistakably a game.
   call, and the band ring (3.3) gets the same property for free too.
 - **Do not put `double`, a 64-bit divide, or a signed divide by a power of
   two in a hot loop.** `double` is software-emulated even with the S3's
-  FPU; the divides are the two known traps: the Optimization Playbook's
-  "A 64-bit divide on a 32-bit core is a library call" and "Division by a
-  power of two is not automatically a shift". float32 is fine per vertex
+  FPU; see [Arithmetic in hot loops](../notes/Flashing-and-Toolchain.md#arithmetic-in-hot-loops)
+  for software division and signed rounding costs. float32 is fine per vertex
   or per object: it does not belong in a per-pixel/per-cell loop or
   anywhere that must stay bit-exact with the host (decision A).
-- **Do not trust a host win on a work-quantity change**: the Optimization
-  Playbook's "A host-validated win is a hypothesis until the target
-  measures it"; host numbers are for code shape.
+- **Measure work-quantity changes on the device**: see
+  [Performance seems off](../notes/Debugging.md#performance-seems-off).
+  Host timings do not establish target cost.
 
 ---
 
@@ -1153,10 +1147,10 @@ what is making it:
 
 - [Firmware-Architecture.md](../Firmware-Architecture.md): the three rules
   the framebuffer modes have to respect.
-- [notes/Display-and-Rendering.md](../notes/Display-and-Rendering.md): every
-  bus and dirty-tracking number cited above, and the parked ideas.
-- [notes/Optimization-Playbook.md](../notes/Optimization-Playbook.md): the
-  code-shape rules a new renderer will hit.
+- [notes/Display-and-Rendering.md](../notes/Display-and-Rendering.md): panel
+  constraints and device tests for send costs.
+- [notes/Flashing-and-Toolchain.md](../notes/Flashing-and-Toolchain.md#verify-compiler-decisions):
+  compiler decisions and arithmetic costs.
 - [notes/Board-and-Memory.md](../notes/Board-and-Memory.md): the memory
   budget the retained framebuffer and the band ring are designed against.
 - [Settings-App-Plan.md](Settings-App-Plan.md): the
