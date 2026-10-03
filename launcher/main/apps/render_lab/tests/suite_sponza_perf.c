@@ -68,6 +68,9 @@ bench_open(bench_t* b, const r3d_instance_t* instance) {
     TEST_ASSERT_NOT_NULL(b->scratch);
     TEST_ASSERT_NOT_NULL(b->panel);
     b->raster.scratch = b->scratch;
+    ESP_LOGI(TAG, "heap after setup: internal free %u largest %u, psram free %u largest %u",
+             (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL),
+             (unsigned)memory_free_bytes(MEMORY_PSRAM), (unsigned)memory_largest_block(MEMORY_PSRAM));
 }
 
 static void
