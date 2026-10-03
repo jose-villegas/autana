@@ -479,18 +479,31 @@ fill_box_planes(const r3d_span_target_t* target, const fill_t* f, box_edges_t ed
     }
 }
 
+/* Out of line: inlined into the triangle's entry, the box fills crowd the
+ * registers of the walk every larger triangle takes. */
+static __attribute__((noinline)) void
+fill_box(const r3d_span_target_t* target, const fill_t* f, const r3d_span_vertex_t* const v[3], bool positive,
+         r3d_span_box_t box, int32_t row[ATTRIBUTES]) {
+    const box_edges_t edges = box_edges(v[0], v[1], v[2], positive, box);
+    if (f->flat) {
+        fill_box_flat(target, edges, box, f->flat_z, f->flat_color);
+    } else {
+        fill_box_planes(target, f, edges, box, row);
+    }
+}
+
 static void
-fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-           const r3d_span_vertex_t* c, bool positive, r3d_span_box_t box, const uint16_t* face) {
-    fill_t f;
-    set_flat(&f, a, b, c);
+fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3], bool positive, r3d_span_box_t box,
+           const uint16_t* face) {
+    fill_t f = {true, face, 0, 0, NULL};
+    set_flat(&f, v[0], v[1], v[2]);
     if (face != NULL) {
         f.flat_color = *face;
     }
     if (r3d_span_stop_after != 0) {
         return;
     }
-    fill_box_flat(target, box_edges(a, b, c, positive, box), box, f.flat_z, f.flat_color);
+    fill_box(target, &f, v, positive, box, NULL);
 }
 
 /* A span runs from its clamped start to its end, both values of the plane
@@ -582,13 +595,14 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
         return; /* no pixel centre inside this window */
     }
     const int32_t area2 = r3d_span_area2(a, b, c);
+    const r3d_span_vertex_t* const v[3] = {a, b, c};
     if (area2 == 0) {
         return;
     }
     const int columns = extent.centres.x1 - extent.centres.x0;
     const int rows = extent.centres.y1 - extent.centres.y0;
     if (columns <= SMALL_MAX_SIDE && rows <= SMALL_MAX_SIDE) {
-        fill_small(target, a, b, c, area2 > 0, box, face);
+        fill_small(target, v, area2 > 0, box, face);
         return;
     }
 
@@ -599,19 +613,14 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     gradients_t g = {0};
     int32_t row[ATTRIBUTES] = {0};
     f.g = &g;
-    if (!set_up_fill(target, (const r3d_span_vertex_t* const[3]){a, b, c}, box, y_anchor, &f, &g, row)) {
+    if (!set_up_fill(target, v, box, y_anchor, &f, &g, row)) {
         return;
     }
     if (columns <= BOX_MAX_SIDE && rows <= BOX_MAX_SIDE && (f.flat || g.in_range)) {
         if (r3d_span_stop_after != 0) {
             return;
         }
-        const box_edges_t edges = box_edges(a, b, c, area2 > 0, box);
-        if (f.flat) {
-            fill_box_flat(target, edges, box, f.flat_z, f.flat_color);
-        } else {
-            fill_box_planes(target, &f, edges, box, row);
-        }
+        fill_box(target, &f, v, area2 > 0, box, row);
         return;
     }
     if (r3d_span_stop_after == 1) {
