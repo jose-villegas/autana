@@ -192,6 +192,9 @@ def open_serial():
     connection.port = port
     connection.baudrate = BAUD
     connection.timeout = 0.2
+    # A board that stops reading its console would otherwise block a write
+    # in the OS forever, holding the lock with it.
+    connection.write_timeout = 5.0
     connection.dtr = False
     connection.rts = False
     connection.open()

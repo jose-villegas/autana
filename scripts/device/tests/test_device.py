@@ -70,6 +70,24 @@ class InterpreterTests(unittest.TestCase):
         call.assert_not_called()
 
 
+class OpenSerialTests(unittest.TestCase):
+    """A board that stops reading its console (a half-written image, a
+    wedged app) must fail the command, not hold the lock forever: pyserial
+    with no write timeout blocks in the OS write with no limit."""
+
+    def opened(self):
+        serial = mock.MagicMock()
+        with mock.patch.dict(sys.modules, {"serial": serial}),                 mock.patch.object(device, "locked_port", return_value="COM5"):
+            device.open_serial()
+        return serial.Serial.return_value
+
+    def test_writes_are_bounded_like_reads(self):
+        connection = self.opened()
+        self.assertIsInstance(connection.write_timeout, (int, float))
+        self.assertGreater(connection.write_timeout, 0)
+        connection.open.assert_called_once_with()
+
+
 class HookIsolationTests(unittest.TestCase):
     def test_suite_child_reservation_does_not_run_inherited_hook(self):
         if os.environ.get("_AUTANA_HOOK_SUITE_CHILD"):
