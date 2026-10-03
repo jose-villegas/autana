@@ -124,8 +124,8 @@ reference renderer reads the same settings. A renderer can opt out with
 `albedo_boost` is greater than 0 and replaces bounce reflectance with
 $`\min(\beta a, \max(a, 0.99))`$. The bake stores the result in the same vertex
 or face colours as direct light. The reference renderer reads the same table,
-so a scene's reference carries its look; values above 1 trade fidelity to a
-physical reference for look.
+so a scene's reference carries its look; `intensity` or `albedo_boost` above 1
+trades fidelity to a physical reference for look.
 
 ![The reference beside the direct-light and bounce bakes, each with its error heatmap](../images/render/bake-indirect-compare.png)
 
@@ -196,7 +196,8 @@ may be placed anywhere, by many scenes.
 
 #### visibility: camera_region
 
-`rounds`; `source = "camera_region"` (optional, defaults to `"camera_region"`).
+`source` defaults to `"camera_region"`; `rounds` is how many random tries each
+triangle gets.
 The region source casts from points in the camera's `region`. Use it when the
 camera may occupy the box without a defined path. The image is the same import
 with the cull off above on, cropped where they differ most: without the cull
@@ -213,10 +214,6 @@ kept if the first face some ray would draw is it. Here $`d_r(u)`$ is ray $r$'s
 distance to face $u$, `double(u)` says that face is double-sided, and
 $`\hat r`$ is the ray direction:
 
-The views are square, as wide as the longer panel side, so the panel held
-either way up is covered; `margin` and the pose spacing cover geometry that
-enters between samples.
-
 ```math
 \mathrm{keep}(t) \iff \exists\, v,\ \exists\, r \in \mathrm{rays}(v, s, m):\;
 t = \underset{u \in \mathrm{hits}(r),\ \mathrm{drawn}(u, r)}{\mathrm{arg\,min}}\ d_r(u)
@@ -227,6 +224,10 @@ t = \underset{u \in \mathrm{hits}(r),\ \mathrm{drawn}(u, r)}{\mathrm{arg\,min}}\
 A single-sided face seen from behind does not stop a ray; its twin wound the
 other way is what the ray sees. Faces within a small distance of the first
 drawn face are kept too, since the depth test picks among coincident faces.
+
+The views are square, as wide as the longer side of `size`, so the panel held
+either way up is covered; `margin` and the pose spacing cover geometry that
+enters between samples.
 
 ![Triangles the camera path never sees](images/appearance-path-culled.png)
 ![Culled lite against uncut, largest differences](images/appearance-path-culled.crops.png)
@@ -301,9 +302,9 @@ the scene tools README.
 
 #### fit.poses
 
-`train_every_ms` samples the camera path for fitting; poses at multiples of
-`held_out_every_ms` (time 0 aside) are held out of training and used only for
-scoring.
+`train_every_ms` samples the camera path for fitting; of those samples, poses
+at multiples of `held_out_every_ms` (time 0 aside) are held out of training and
+used only for scoring.
 
 #### fit.optimise
 
@@ -331,15 +332,15 @@ term $`\mathcal{E}_{\Delta E}`$, the Laplacian term
 $`\mathcal{E}_{\mathcal{L}}`$, the normal term $`\mathcal{E}_n`$, and the cost
 term $`\mathcal{E}_c`$:
 
-`steps` is $`K`$, `batch` is $`|B|`$, `laplacian` is $`\lambda`$ and
-`normal_weight` is $`\lambda_n`$.
-
 ```math
 \min_{P,\,C}\; \mathcal{E}_{\Delta E}(P, C)
 + \lambda\,\mathcal{E}_{\mathcal{L}}(P)
 + \lambda_n\,\mathcal{E}_n(P)
 + \kappa\,\mathcal{E}_c(P)
 ```
+
+`steps` is $`K`$, `batch` is $`|B|`$, `laplacian` is $`\lambda`$ and
+`normal_weight` is $`\lambda_n`$.
 
 ```math
 \mathcal{L}(P)_i = P_i - \frac{1}{|N(i)|}\sum_{j \in N(i)} P_j
@@ -444,7 +445,8 @@ directional lights, summed by intensity, shine on.
 
 #### camera
 
-`path = { tracks, node }` names the tracks
+`region = { min, max }` is the box the camera may occupy; region visibility
+casts from points inside it. `path = { tracks, node }` names the tracks
 [`tools/anim/bake_tracks.py`](../Animation-Tracks.md) baked under the prefix
 `tracks` for the glTF node `node`; the generated `<tracks>_tracks_generated.{c,h}`
 sit beside the scene file. `background` (0xRRGGBB, default black) is the colour

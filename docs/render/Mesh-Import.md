@@ -40,29 +40,6 @@ Keys before `;` are required; after it, optional.
 | `[output]` | `directory`; `name`, `position_scale` | Names the output directory, single-mesh name and position scale. | `name` required without `[[variants]]`, rejected with them; `position_scale` 8. | Write / none. | [output](#output) |
 | `[materials]` | ; `double_sided` | Draws listed material faces from both sides. | `[]`. | None / more faces drawn. | [materials](#materials) |
 
-### Process options
-
-| Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
-|---|---|---|---|---|---|
-| `[process]` | ; `seed` | Seeds thin's random choice. | `0`; only with thin. | None / none. | [process](#process) |
-
-### Geometry
-
-Every Geometry table opts its step in; without it the step does not run.
-
-| Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
-|---|---|---|---|---|---|
-| `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [alpha_mask](#alpha_mask) |
-| `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
-| `geometry.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges and simplifies each variant to its budget; reserves `props` and can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
-
-### Geometry variants
-
-| Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
-|---|---|---|---|---|---|
-| `[[variants]]` | `name`; `triangles` | Names a geometry budget. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [variants](#variants) |
-| `[[variants]].triangles` | — | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / set by the budget. | [variants triangles](#variants-triangles) |
-
 #### source
 
 `[source]` identifies and verifies the source OBJ. `cache` names its cached
@@ -77,9 +54,25 @@ number of quantisation ticks per model unit.
 
 `[materials].double_sided` lists materials whose faces draw from both sides.
 
+### Process options
+
+| Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
+|---|---|---|---|---|---|
+| `[process]` | ; `seed` | Seeds thin's random choice. | `0`; only with thin. | None / none. | [process](#process) |
+
 #### process
 
 `[process].seed` makes `thin` choose the same triangles on every import.
+
+### Geometry
+
+Every Geometry table opts its step in; without it the step does not run.
+
+| Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
+|---|---|---|---|---|---|
+| `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [alpha_mask](#alpha_mask) |
+| `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
+| `geometry.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges and simplifies each variant to its budget; reserves `props` and can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 
 #### alpha_mask
 
@@ -135,6 +128,13 @@ The same import with `seal_seams` off against on, at a pose where it shows,
 off above on: a pixel-sized hole that shows the sky is sealed.
 
 ![seal_seams off against on](images/import-seal-seams.png)
+
+### Geometry variants
+
+| Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
+|---|---|---|---|---|---|
+| `[[variants]]` | `name`; `triangles` | Names a geometry budget. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [variants](#variants) |
+| `[[variants]].triangles` | — | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / set by the budget. | [variants triangles](#variants-triangles) |
 
 #### variants
 
