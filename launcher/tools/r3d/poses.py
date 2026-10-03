@@ -68,10 +68,9 @@ def either_way(width, height, lens, near, poses):
     return side, side, lens * side / min(width, height), near, poses
 
 
-def tracks_file(settings, scene):
-    """The C file of the scene camera's baked tracks, beside the import's
-    output."""
-    return settings.out_dir / f"{scene.camera.component.path.tracks}_tracks_generated.c"
+def tracks_file(scene):
+    """The C file of the scene camera's baked tracks, beside the scene file."""
+    return scene.path.parent / f"{scene.camera.component.path.tracks}_tracks_generated.c"
 
 
 SAMPLE_TRACKS = pathlib.Path(__file__).resolve().parents[1] / "anim" / "sample_tracks.sh"

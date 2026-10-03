@@ -24,11 +24,11 @@ static const scene_transform_t sponza_scene_transforms[] = {
 };
 
 static const scene_renderer_def_t sponza_scene_renderers[] = {
-    {1, "sponza"},
-    {2, "sponza_flat"},
-    {3, "sponza_lite"},
-    {4, "sponza_fitted"},
-    {5, "sponza_fitted_full"},
+    {1, "sponza.atrium"},
+    {2, "sponza.atrium_flat"},
+    {3, "sponza.atrium_lite"},
+    {4, "sponza.atrium_fitted"},
+    {5, "sponza.atrium_fitted_full"},
 };
 
 static const r3d_scene_path_t sponza_scene_camera_path = {.clip = &flythrough_clip, .translation = &flythrough_camera_translation, .rotation = &flythrough_camera_rotation};
