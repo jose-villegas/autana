@@ -4,7 +4,7 @@
     python launcher/tools/r3d/scene_table.py SCENE.scene.toml
 
 Standard library only, and independent of baking: it reads the scene file and
-its import files and writes <scene>_scene_generated.c and .h beside the meshes.
+its import files and writes <scene>_scene_generated.c and .h beside the scene file.
 The table is one const scene_def_t, <scene>_scene, registered by the scene's
 name with SCENE_REGISTER(): the component arrays scene/scene.h instantiates.
 Each object that is a mesh renderer or the camera is an entity, its id a macro
