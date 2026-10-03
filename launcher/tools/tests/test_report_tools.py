@@ -72,6 +72,15 @@ class ValidateCaptureTest(CaptureFixture):
         failures, _ = validate_capture.validate(self.capture(BOOT), require_complete=False)
         self.assertEqual(failures, [])
 
+    def test_a_runsuite_capture_starts_after_the_boot_so_it_has_no_banner(self):
+        # autana suite --flash waits for the console, then sends RUNSUITE.
+        failures, _ = validate_capture.validate(self.capture(RESULT), require_complete=False)
+        self.assertEqual(failures, [])
+
+    def test_a_whole_run_without_a_banner_is_rejected(self):
+        failures, _ = validate_capture.validate(self.capture(RESULT + COMPLETE))
+        self.assertTrue(any("no boot banner" in f for f in failures), failures)
+
     def test_a_crash_loop_is_rejected(self):
         failures, _ = validate_capture.validate(self.capture(BOOT + BOOT + RESULT + COMPLETE))
         self.assertTrue(any("boot banners" in f for f in failures), failures)

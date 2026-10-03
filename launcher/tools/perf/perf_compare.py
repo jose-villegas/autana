@@ -135,6 +135,8 @@ def main():
     controls = write_summary(args.out, args.label_a, args.label_b, args.build_a,
                              args.build_b, args.a, args.b)
     if controls:
+        for side in ("a", "b"):
+            (args.out.parent / side).mkdir(exist_ok=True)
         write_aggregate(args.out.parent / "a" / "worst.md",
                         [parse_report(report) for report in args.a])
         write_aggregate(args.out.parent / "b" / "worst.md",
