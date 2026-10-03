@@ -145,7 +145,7 @@ static bool scene_switch_pending;
  * allocated. */
 static bool band_mode_active;
 
-/* On-screen framerate readout: main.c's own report_fps() only ever reaches
+/* On-screen framerate readout: the shell's own report_fps() only ever reaches
  * a serial console, so this is what lets a scene's own cost be seen with
  * nothing but the board itself. Windowed on dt_ms rather than
  * timing_now_us() like report_fps() does, so this needs nothing beyond
@@ -306,7 +306,7 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
 
 /* fps_value only actually changes once a window closes, so it reads as a
  * settled average rather than jittering with every frame's own dt_ms -
- * same reason report_fps() in main.c windows instead of reporting per
+ * same reason report_fps() in shell/shell.c windows instead of reporting per
  * frame. Shared by both render paths so the readout means the same thing
  * in either mode. */
 /* No scene erases the title's box, so the frame it expires on is redrawn in

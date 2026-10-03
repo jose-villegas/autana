@@ -259,7 +259,7 @@ autana suite run_gfx_suite
 autana suite run_ui_suite
 ```
 
-Both commands only set a flag; `main.c`'s frame loop does the actual work at
+Both commands only set a flag; the shell's frame loop does the actual work at
 a frame boundary, since there is no lock on the framebuffer and a second
 task drawing to it while the render loop runs would corrupt the panel. When
 the suite returns the shell prints
@@ -578,7 +578,7 @@ flowchart LR
     subgraph hw["Hardware-coupled"]
         direction TB
         HW1["touch.c<br/><i>I2C, FreeRTOS task</i>"]
-        HW4["main.c<br/><i>frame loop</i>"]
+        HW4["shell/shell.c<br/><i>frame loop</i>"]
     end
 
     subgraph pure["Pure logic: host AND device"]

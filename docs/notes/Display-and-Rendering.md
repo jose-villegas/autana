@@ -104,7 +104,7 @@ y; Waveshare's BSP rounds the same way. That is a separate fault from the
 ### Panel-link faults are invisible to screenshots
 
 `autana screenshot` reads the framebuffer, not the glass. While the frame
-loop runs, `main.c` requests a full redraw right after a capture, which
+loop runs, the shell requests a full redraw right after a capture, which
 re-sends every region in a different layout and heals whatever the link
 corrupted; a held frame (`freeze`, see
 [`Autana-CLI.md`](../tools/Autana-CLI.md)) is not redrawn. Either way a link

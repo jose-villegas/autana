@@ -3,7 +3,7 @@
  * (gfx_read_panel_row()) as base64 between marker lines that
  * tools/device/screenshot.py reads back out of the console stream idf_monitor
  * already uses. The verb itself only sets a latch; console_screenshot_dump()
- * does the actual streaming, called from main.c's frame loop; see
+ * does the actual streaming, called from the shell's frame loop; see
  * console.c's own top comment for why nothing here may draw on this task.
  * Development builds only; see console.h.
  */
