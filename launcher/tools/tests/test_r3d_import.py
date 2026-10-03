@@ -38,8 +38,12 @@ BAKE = '[bake]\nray_offset = 0.5\ncolour_merge_step = 6\n'
 HEAD = TONEMAP + AMBIENT + BAKE
 PLAIN_VARIANT = '[[variants]]\nname = "mesh"\n'
 VARIANT_OUTPUT = '[output]\ndirectory = "."\n'
-FIT = ('fit = { budget = 8, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 20, '
-       'batch = 4, laplacian = 10.0, normal_weight = 1.0, sha256 = "ab", recipe_sha256 = "cd" }\n')
+FLAT_FIT = ('fit = { budget = 8, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 20, '
+            'batch = 4, laplacian = 10.0, normal_weight = 1.0, sha256 = "ab", recipe_sha256 = "cd" }\n')
+FIT = ('[objects.mesh_renderer.fit.prune]\nbudget = 8\ncoverage_every_ms = 100\n'
+       '[objects.mesh_renderer.fit.poses]\ntrain_every_ms = 1000\nheld_out_every_ms = 5000\n'
+       '[objects.mesh_renderer.fit.optimise]\nsteps = 20\nbatch = 4\nlaplacian = 10.0\nnormal_weight = 1.0\n'
+       '[objects.mesh_renderer.fit.hashes]\nsha256 = "ab"\nrecipe_sha256 = "cd"\n')
 INDIRECT = 'indirect = { bounces = 2, rays = 8, cache_samples = 1 }\n'
 THIN = '[geometry]\nthin = { material = "m", keep = 0.5 }\n'
 REGION = 'visibility = { source = "camera_region", rounds = 2 }\n'
@@ -289,7 +293,9 @@ class SceneTests(unittest.TestCase):
         self.assertEqual((fit.budget, fit.normal_weight, fit.sha256), (8, 1.0, "ab"))
         options = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT}
         self.lit_rejects("cannot exceed", extra.replace("budget = 8", "budget = 11"), **options)
-        self.lit_rejects("fit", extra.replace("steps = 20, ", ""), **options)
+        self.lit_rejects("fit", extra.replace("steps = 20\n", ""), **options)
+        self.lit_rejects("fit.prune.typo", extra.replace("budget = 8", "budget = 8\ntypo = 1"), **options)
+        self.lit_rejects(r"fit\.budget moved to .*fit\.prune\.budget", 'variant = "mesh"\n' + FLAT_FIT, **options)
         with tempfile.TemporaryDirectory() as directory:
             write_import(directory, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT)
             with self.assertRaisesRegex(SettingsError, "bake = true is required"):
@@ -776,8 +782,7 @@ class DigestTests(unittest.TestCase):
     def test_the_recipe_digest_ignores_equivalent_toml_layouts(self):
         from r3d.fitted_variant import recipe_digest
 
-        fit = ('fit = { budget = 8, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 20, '
-               'batch = 4, laplacian = 10.0, normal_weight = 1.0, sha256 = "ab", recipe_sha256 = "cd" }\n')
+        fit = FIT
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             (root / "fly_tracks_generated.c").write_text("tracks")
@@ -790,6 +795,18 @@ class DigestTests(unittest.TestCase):
             first_digest = recipe_digest(first.renderers[0], first)
             second_digest = recipe_digest(second.renderers[0], second)
         self.assertEqual(first_digest, second_digest)
+
+
+class FitLayoutTests(unittest.TestCase):
+    def test_checked_in_fit_recipes_match_their_recorded_digest(self):
+        from r3d.fitted_variant import recipe_digest
+
+        for path in tree_scenes():
+            scene = load_scene(path)
+            for job in scene.renderers:
+                if job.renderer.fit:
+                    self.assertEqual(recipe_digest(job, scene), job.renderer.fit.recipe_sha256,
+                                     job.asset_path.name)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -894,8 +911,6 @@ class FittedStampTests(unittest.TestCase):
                 if job.renderer.fit:
                     found += 1
                     self.assertEqual(hashlib.sha256(job.asset_path.read_bytes()).hexdigest(), job.renderer.fit.sha256,
-                                     job.asset_path.name)
-                    self.assertEqual(recipe_digest(job, scene), job.renderer.fit.recipe_sha256,
                                      job.asset_path.name)
         self.assertGreater(found, 0)
 
