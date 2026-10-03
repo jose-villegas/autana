@@ -9,6 +9,10 @@ A link to a folder reaches that folder's README.md. Only real links count;
 a path written in backticks names a document, it does not index it. An
 anchor is checked only when the link's target file ends in `.md`; `#L3`
 in a link to a script is never a document heading.
+
+Anchors are checked in links from every tracked `.md` into docs/. A table whose
+first column is `Option` and last is `Option link` is an option reference: each
+row must link to the one heading its option names.
 """
 import pathlib
 import re
