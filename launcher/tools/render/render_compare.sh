@@ -95,14 +95,12 @@ rev_b=""
 work=$(mktemp -d)
 renders="$work/renders.tsv"
 : > "$renders"
-created="$work/worktrees.txt"
-: > "$created"
+# shellcheck source=../revision_worktree.sh
+. "$TOOLS_DIR/../revision_worktree.sh"
+revision_worktree_setup "$REPO_DIR" "$work"
 
 cleanup() {
-    while IFS= read -r tree; do
-        [ -n "$tree" ] || continue
-        git -C "$REPO_DIR" worktree remove --force "$tree" > /dev/null 2>&1 || true
-    done < "$created"
+    revision_worktree_cleanup
     rm -rf "$work"
 }
 trap cleanup EXIT
@@ -169,18 +167,7 @@ short_name() {
 
 # Prints the checkout directory for a revision or directory.
 checkout() {
-    if [ -d "$1" ]; then
-        (CDPATH= cd -- "$1" && pwd)
-        return
-    fi
-    git -C "$REPO_DIR" rev-parse --verify --quiet "$1^{commit}" > /dev/null || {
-        echo "not a revision or directory: $1" >&2
-        return 1
-    }
-    tree="$work/tree_$2"
-    git -C "$REPO_DIR" worktree add --detach "$tree" "$1" > /dev/null 2>&1 || return 1
-    echo "$tree" >> "$created"
-    echo "$tree"
+    revision_worktree_checkout "$1" "$2"
 }
 
 # Runs the scene script at a checkout, or builds its renderer and runs that

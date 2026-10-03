@@ -126,7 +126,7 @@ quiet_finish() {
     if [ "$status" -ne 0 ]; then
         echo
         echo "=== FAILED (exit $status) ==="
-        read -r -p "Press Enter to close..." _ || true
+        if [ -t 0 ]; then read -r -p "Press Enter to close..." _ || true; fi
     fi
     exit "$status"
 }
