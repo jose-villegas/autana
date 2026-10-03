@@ -32,8 +32,8 @@ CONFIG_FREERTOS_HZ=1000
 #
 # This is a rendering device with no debugger attached: every frame is spent in
 # rasterising, cellular automata and pixel loops, which are exactly what an
-# optimiser helps and exactly what -Og leaves on the table. Measured effect is
-# in docs/notes/Flashing-and-Toolchain.md.
+# optimiser helps and exactly what -Og leaves on the table.
+# See docs/notes/Flashing-and-Toolchain.md.
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 
 # Allocations up to 64 KB try internal RAM before PSRAM (IDF default 16 KB),

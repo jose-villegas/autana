@@ -6,8 +6,10 @@ layer owns sensor polling, calibration and edge delivery.
 ## Touch input
 
 `launcher/main/input/touch.c` handles both board revisions through the BSP.
-An idle controller can NACK register reads, so do not poll blindly. GPIO 21
-is active-low data-ready, not a finger-down level. The CST820 pulses it;
+An idle controller can NACK register reads, logging `i2c transaction failed`
+and `FT5x06 ... I2C read error!`; use these as console search terms. Do not
+poll blindly. GPIO 21 is active-low data-ready, not a finger-down level.
+The CST820 pulses it;
 the interrupt handler latches the report and wakes the polling task. A held
 contact continues to be read even without another pulse.
 

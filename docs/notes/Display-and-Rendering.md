@@ -27,16 +27,18 @@ driver defaults alone do not supply the board's panel settings.
 
 ## The panel link
 
-### The blit is bus-bound
+### Transfer payload
 
 A full frame sends the panel dimensions times two bytes over four QSPI lanes.
 CPU optimisation cannot reduce that payload's bus time; dirty regions and
 partial bands reduce bytes sent. Rendering and DMA can overlap, so timing an
 isolated band does not predict the cost of a pipelined frame.
 
-`GFX_QSPI_HZ` in `launcher/main/gfx/gfx.h` selects the configured clock. The
-SPI divider provides 40 or 80 MHz for these choices; requesting an
-intermediate value does not provide an intermediate panel clock.
+`CONFIG_LAUNCHER_GFX_QSPI_80MHZ` sets the boot clock, `GFX_QSPI_HZ`, in
+`launcher/main/gfx/gfx.h`. The shell may change it at run time through
+`gfx_set_panel_clock_hz()`. The SPI divider provides 40 or 80 MHz for these
+choices; requesting an intermediate value does not provide an intermediate
+panel clock.
 
 ### 80 MHz is outside the panel's rating
 
@@ -55,14 +57,15 @@ glass. The development-only `gfx_set_send_audit()` checks whether changed
 pixels were sent with the correct bytes; a clean audit does not prove the
 panel received them correctly.
 
-## Cost per call
+## Transaction setup
 
 A panel transaction has setup cost as well as payload cost. Sending one row
 per call can cost more than a larger merged transfer. Gather and run-merging
-thresholds in `gfx.h` are fitted for 40 MHz; remeasure on the device before
-changing the clock or those thresholds.
+thresholds `GATHER_MAX_PIXELS` and `LEAF_REFINE_MAX_RUNS` in
+`launcher/main/gfx/gfx_dirty.h` are fitted for 40 MHz; remeasure on the
+device before changing the clock or those thresholds.
 
-## Dirty tracking, measured
+## Dirty-region costs
 
 The device tests in `launcher/test/suites/suite_gfx.c` time full bands,
 narrow changes, short wide changes and separated marks against each other.
@@ -78,6 +81,8 @@ reused. Preserve that lifetime when changing the send path.
 ## Tearing and the TE line
 
 Both panel init tables enable tearing-effect output with `0x35 0x00`.
+The panel drives TE on FPC pin 2, GPIO13 (the schematic's LCD_TE net);
+firmware does not configure that pin.
 Firmware does not synchronize presentation to TE; a present starts when the
 frame loop reaches it. A write can tear when it crosses the panel's scan.
 Waiting for TE alone would not make a transfer tear-free: render and send
