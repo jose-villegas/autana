@@ -85,11 +85,30 @@ An appearance-fit recipe is grouped below its renderer's `fit` table.
 
 | Group | Key | Meaning |
 |---|---|---|
-| `target` | `budget`, `coverage_every_ms` | Triangle budget and camera-path sampling interval used to choose triangles. |
-| `train` | `train_every_ms` | Camera-path interval for training poses. |
-| `score` | `held_out_every_ms` | Interval selecting held-out poses from the training samples. |
-| `optimise` | `steps`, `batch`, `laplacian`, `normal_weight` | Optimiser iteration count, batch size and loss weights. |
-| `output` | `sha256`, `recipe_sha256` | Hashes of the fitted mesh and its effective recipe. |
+| `fit.prune` | `budget`, `coverage_every_ms` | Triangle budget and camera-path sampling interval for pruning. |
+| `fit.poses` | `train_every_ms`, `held_out_every_ms` | Camera-path training poses and the multiples held out for scoring. |
+| `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight` | Optimiser iteration count, batch size and loss weights. |
+| `fit.hashes` | `sha256`, `recipe_sha256` | Hashes of the fitted mesh and its effective recipe. |
+
+```toml
+[objects.mesh_renderer.fit.prune]
+budget = 8672
+coverage_every_ms = 100
+
+[objects.mesh_renderer.fit.poses]
+train_every_ms = 1000
+held_out_every_ms = 5000
+
+[objects.mesh_renderer.fit.optimise]
+steps = 2000
+batch = 8
+laplacian = 10.0
+normal_weight = 1.0
+
+[objects.mesh_renderer.fit.hashes]
+sha256 = "..."
+recipe_sha256 = "..."
+```
 
 Sky and ambient light are properties of the scene, not objects, and are the
 two settings tables `[sky]` (`color`, `intensity`, `rays`: that many random

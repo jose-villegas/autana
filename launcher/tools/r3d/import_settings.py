@@ -131,22 +131,20 @@ def face_sample_options(value, where):
 
 
 FIT_GROUPS = {
-    "target": ("budget", "coverage_every_ms"),
-    "train": ("train_every_ms",),
-    "score": ("held_out_every_ms",),
+    "prune": ("budget", "coverage_every_ms"),
+    "poses": ("train_every_ms", "held_out_every_ms"),
     "optimise": ("steps", "batch", "laplacian", "normal_weight"),
-    "output": ("sha256", "recipe_sha256"),
+    "hashes": ("sha256", "recipe_sha256"),
 }
 FIT_KEYS = tuple(key for keys in FIT_GROUPS.values() for key in keys)
 
 
 def load_fit(value, variant, where):
-    """The recipe of a variant the appearance fit makes offline from the mesh
-    the import bakes at `triangles`: the budget it prunes to, the camera-path
-    poses it trains on (every `train_every_ms`, less the multiples of
-    `held_out_every_ms`), the denser poses its pruning counts over, its
-    optimiser settings, the SHA-256 of the mesh it made, and the SHA-256 of
-    the recipe it was made from (fitted_variant.recipe_digest)."""
+    """The grouped recipe of a variant the appearance fit makes offline from
+    the mesh the import bakes at `triangles`: `prune` names the budget and
+    coverage poses, `poses` names training and held-out camera-path poses,
+    `optimise` holds settings, and `hashes` records the mesh and recipe
+    SHA-256s (fitted_variant.recipe_digest)."""
     for group, keys in FIT_GROUPS.items():
         for key in keys:
             if key in value:

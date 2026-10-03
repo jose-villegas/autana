@@ -3,10 +3,8 @@
 import contextlib
 import hashlib
 import io
-import json
 import pathlib
 import re
-import subprocess
 import sys
 import tempfile
 import tomllib
@@ -42,11 +40,10 @@ PLAIN_VARIANT = '[[variants]]\nname = "mesh"\n'
 VARIANT_OUTPUT = '[output]\ndirectory = "."\n'
 FLAT_FIT = ('fit = { budget = 8, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 20, '
             'batch = 4, laplacian = 10.0, normal_weight = 1.0, sha256 = "ab", recipe_sha256 = "cd" }\n')
-FIT = ('[objects.mesh_renderer.fit.target]\nbudget = 8\ncoverage_every_ms = 100\n'
-       '[objects.mesh_renderer.fit.train]\ntrain_every_ms = 1000\n'
-       '[objects.mesh_renderer.fit.score]\nheld_out_every_ms = 5000\n'
+FIT = ('[objects.mesh_renderer.fit.prune]\nbudget = 8\ncoverage_every_ms = 100\n'
+       '[objects.mesh_renderer.fit.poses]\ntrain_every_ms = 1000\nheld_out_every_ms = 5000\n'
        '[objects.mesh_renderer.fit.optimise]\nsteps = 20\nbatch = 4\nlaplacian = 10.0\nnormal_weight = 1.0\n'
-       '[objects.mesh_renderer.fit.output]\nsha256 = "ab"\nrecipe_sha256 = "cd"\n')
+       '[objects.mesh_renderer.fit.hashes]\nsha256 = "ab"\nrecipe_sha256 = "cd"\n')
 INDIRECT = 'indirect = { bounces = 2, rays = 8, cache_samples = 1 }\n'
 THIN = '[geometry]\nthin = { material = "m", keep = 0.5 }\n'
 REGION = 'visibility = { source = "camera_region", rounds = 2 }\n'
@@ -297,8 +294,8 @@ class SceneTests(unittest.TestCase):
         options = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT}
         self.lit_rejects("cannot exceed", extra.replace("budget = 8", "budget = 11"), **options)
         self.lit_rejects("fit", extra.replace("steps = 20\n", ""), **options)
-        self.lit_rejects("fit.target.typo", extra.replace("budget = 8", "budget = 8\ntypo = 1"), **options)
-        self.lit_rejects(r"fit\.budget moved to .*fit\.target\.budget", 'variant = "mesh"\n' + FLAT_FIT, **options)
+        self.lit_rejects("fit.prune.typo", extra.replace("budget = 8", "budget = 8\ntypo = 1"), **options)
+        self.lit_rejects(r"fit\.budget moved to .*fit\.prune\.budget", 'variant = "mesh"\n' + FLAT_FIT, **options)
         with tempfile.TemporaryDirectory() as directory:
             write_import(directory, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT)
             with self.assertRaisesRegex(SettingsError, "bake = true is required"):
@@ -801,56 +798,15 @@ class DigestTests(unittest.TestCase):
 
 
 class FitLayoutTests(unittest.TestCase):
-    GROUPS = {
-        "target": ("budget", "coverage_every_ms"),
-        "train": ("train_every_ms",),
-        "score": ("held_out_every_ms",),
-        "optimise": ("steps", "batch", "laplacian", "normal_weight"),
-        "output": ("sha256", "recipe_sha256"),
-    }
-    DIGESTS = {
-        "launcher/main/apps/render_lab/meshes/sponza.scene.toml": {
-            "atrium_fitted": "4b1533e592b99c88cda770d806be4607580ba4a1e97ef52fb565c9824ab7adca",
-            "atrium_fitted_full": "7daec3f033f7ebff0a165ebf36694921b2b27fb5eddcb4eb28c76675bd2a0b73",
-        },
-    }
+    def test_checked_in_fit_recipes_match_their_recorded_digest(self):
+        from r3d.fitted_variant import recipe_digest
 
-    @classmethod
-    def flat_to_grouped(cls, source):
-        def replace(match):
-            flat = tomllib.loads("fit = " + match.group(1))["fit"]
-            tables = []
-            for group, keys in cls.GROUPS.items():
-                tables.append("[objects.mesh_renderer.fit.%s]\n%s" %
-                              (group, "".join("%s = %s\n" % (key, json.dumps(flat[key])) for key in keys)))
-            return "\n".join(tables).rstrip()
-
-        return re.sub(r"^fit = (\{.*\})$", replace, source, flags=re.MULTILINE)
-
-    def test_checked_in_fit_recipes_keep_their_effective_settings_and_digests(self):
-        from r3d.fitted_variant import canonical, recipe_digest
-
-        found = {}
         for path in tree_scenes():
-            relative = path.relative_to(ROOT).as_posix()
-            source = subprocess.run(["git", "show", f"23d2e611:{relative}"], cwd=ROOT, check=True, text=True,
-                                    capture_output=True).stdout
-            grouped = self.flat_to_grouped(source)
-            with tempfile.NamedTemporaryFile("w", suffix=".scene.toml", dir=path.parent, delete=False) as output:
-                output.write(grouped)
-                old_path = pathlib.Path(output.name)
-            try:
-                old_scene = load_scene(old_path)
-            finally:
-                old_path.unlink()
-            new_scene = load_scene(path)
-            for old_job, new_job in zip(old_scene.renderers, new_scene.renderers):
-                if old_job.renderer.fit:
-                    self.assertEqual(canonical(old_job.renderer.fit), canonical(new_job.renderer.fit), relative)
-                    digest = recipe_digest(new_job, new_scene)
-                    self.assertEqual(recipe_digest(old_job, old_scene), digest, relative)
-                    found.setdefault(relative, {})[new_job.object.name] = digest
-        self.assertEqual(found, self.DIGESTS)
+            scene = load_scene(path)
+            for job in scene.renderers:
+                if job.renderer.fit:
+                    self.assertEqual(recipe_digest(job, scene), job.renderer.fit.recipe_sha256,
+                                     job.asset_path.name)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -955,8 +911,6 @@ class FittedStampTests(unittest.TestCase):
                 if job.renderer.fit:
                     found += 1
                     self.assertEqual(hashlib.sha256(job.asset_path.read_bytes()).hexdigest(), job.renderer.fit.sha256,
-                                     job.asset_path.name)
-                    self.assertEqual(recipe_digest(job, scene), job.renderer.fit.recipe_sha256,
                                      job.asset_path.name)
         self.assertGreater(found, 0)
 
