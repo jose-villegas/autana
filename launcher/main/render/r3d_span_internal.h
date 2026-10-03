@@ -80,18 +80,19 @@ typedef struct {
     bool flat;              /* one colour and one depth stand in for its planes */
 } r3d_span_extent_t;
 
+/* The same from the subpixel bounds, for a caller that already has them. */
 static inline r3d_span_extent_t
-r3d_span_extent(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
-    const int32_t lo_x = r3d_span_min3(a->x, b->x, c->x);
-    const int32_t hi_x = r3d_span_max3(a->x, b->x, c->x);
-    const r3d_span_box_t centres = {
-        r3d_span_first_centre(lo_x),
-        r3d_span_first_centre(hi_x),
-        r3d_span_first_centre(r3d_span_min3(a->y, b->y, c->y)),
-        r3d_span_first_centre(r3d_span_max3(a->y, b->y, c->y)),
-    };
+r3d_span_extent_of(int32_t lo_x, int32_t hi_x, int32_t lo_y, int32_t hi_y) {
+    const r3d_span_box_t centres = {r3d_span_first_centre(lo_x), r3d_span_first_centre(hi_x),
+                                    r3d_span_first_centre(lo_y), r3d_span_first_centre(hi_y)};
     return (r3d_span_extent_t){centres, centres.y1 - centres.y0 <= R3D_SPAN_FLAT_MAX_ROWS
                                             && hi_x - lo_x <= R3D_SPAN_FLAT_MAX_WIDTH};
+}
+
+static inline r3d_span_extent_t
+r3d_span_extent(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
+    return r3d_span_extent_of(r3d_span_min3(a->x, b->x, c->x), r3d_span_max3(a->x, b->x, c->x),
+                              r3d_span_min3(a->y, b->y, c->y), r3d_span_max3(a->y, b->y, c->y));
 }
 
 /* Twice the signed area of a-b-c; each product is under 2^30. */
