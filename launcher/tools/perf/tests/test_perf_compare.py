@@ -40,7 +40,9 @@ class PerfCompareTest(unittest.TestCase):
             "#!/bin/sh\n"
             "case \"$1\" in\n"
             "  status) echo unlocked ;;\n"
-            "  buildid) cat \"$(cat \"$PERF_TEST_PROJECT\")/launcher/build.diag/build_id.txt\" ;;\n"
+            "  buildid) if [ -n \"${PERF_TEST_BUSY:-}\" ]; then\n"
+            "      echo 'the board is busy - held by device_report-performance:75040'\n"
+            "    else cat \"$(cat \"$PERF_TEST_PROJECT\")/launcher/build.diag/build_id.txt\"; fi ;;\n"
             "  *) exit 9 ;;\n"
             "esac\n", encoding="utf-8")
         report = root / "report.sh"
@@ -110,7 +112,9 @@ class PerfCompareTest(unittest.TestCase):
             "[ -n \"$project\" ] && [ -n \"$out\" ]\n"
             "printf '%s\n' \"$project\" > \"$PERF_TEST_PROJECT\"\n"
             "mkdir -p \"$project/launcher/build.diag\"\n"
-            "printf 'BUILD_ID=%s-diag\n' \"$(git -C \"$project\" hash-object firmware.txt | cut -c 1-12)\" > \"$project/launcher/build.diag/build_id.txt\"\n"
+            "build=$(git -C \"$project\" hash-object firmware.txt | cut -c 1-12)-diag\n"
+            "printf '%s\n' \"$build\" > \"$project/launcher/build.diag/build_id.txt\"\n"
+            "echo \"booted BUILD_ID=$build to its console\"\n"
             "cp \"$PERF_TEST_FIXTURE\" \"$out\"\n"
             "printf '# Device Capture Report\n\nPASS: 2  FAIL: 0\n' > \"${out%.*}.md\"\n",
             encoding="utf-8")
@@ -137,12 +141,35 @@ class PerfCompareTest(unittest.TestCase):
         self.assertIn("| `fitted-full` | 38000 | 38000 | +0 | no change |", summary)
         self.assertIn("| `sponza` | 51000 | 51000 | +0 | no change |", summary)
 
+    def test_the_build_id_comes_from_the_boot_the_capture_logged_under_its_lock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tree_a = self.make_revision_tree(directory, "before")
+            tree_b = self.make_revision_tree(directory, "after")
+            fake_bin, _, state, _, _ = self.write_compare_fixtures(directory)
+            command = self.write_capture_command(directory)
+            out = pathlib.Path(directory) / "out"
+            env = dict(os.environ, PATH=f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+                       PERF_TEST_PROJECT=str(state), PERF_TEST_BUSY="1",
+                       PERF_TEST_FIXTURE=str(FIXTURES / "sponza_capture.txt"))
+            done = subprocess.run(
+                ["sh", str(PERF / "perf_compare.sh"), "-o", str(out), "--no-restore", "--runs", "2",
+                 str(tree_a), str(tree_b), "--", "sh", str(command), "--out", "@CAPTURE@"],
+                cwd=PERF.parent, env=env, capture_output=True, text=True, timeout=30)
+            expected = (tree_a / "launcher" / "build.diag" / "build_id.txt").read_text(encoding="utf-8").strip()
+            status = (out / "a" / "run_1.status").read_text(encoding="utf-8").strip()
+            buildid_after = (out / "a" / "run_1_buildid_after.txt").read_text(encoding="utf-8")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(status, f"captured {expected}")
+        self.assertIn("the board is busy", buildid_after)
+
     def test_real_suite_lines_give_one_row_per_variant(self):
         rows = perf_compare.parse_report(FIXTURES / "sponza_capture.txt")
         self.assertEqual(rows, {"sponza": 51000, "lite": 42000, "flat": 39000,
                                 "fitted": 41000, "fitted-full": 38000})
 
     def shell_path(self, path):
+        if os.name != "nt":
+            return str(path)
         return subprocess.check_output(["cygpath", "-u", str(path)], text=True).strip()
 
     def test_shell_uses_current_reporter_with_project_and_closed_stdin(self):
