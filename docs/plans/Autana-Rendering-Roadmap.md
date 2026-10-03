@@ -628,15 +628,18 @@ into per-span, per-triangle, or bake-time work:
 
 ### 3.5 Code shape, the levers this repo already knows
 
-All from the playbook and the sand campaign, restated because a new
-renderer will hit every one of them: verify inlining with `objdump`, never
-trust the attribute (an automated check for this is worth adding); keep
-the hot loop under the 16 KB icache (32 KB if Phase 1's icache experiment
-lands) and pin it with `aligned(32)`; no 64-bit divides, no signed
-divides by powers of two; a unity build for cross-file inlining if the
-rasterizer spans files; host numbers predict code-shape changes well and
-work-quantity changes badly; and the RTOS tick and input tasks are a
-small, measurable tax. Take the bulk memory an app needs at `enter()`, from
+A new renderer needs the same code-shape rules:
+[verify inlining with `objdump`](../notes/Flashing-and-Toolchain.md#verify-compiler-decisions),
+never trust the attribute; keep the hot loop within the
+[configured instruction cache](../notes/Board-and-Memory.md#cache-is-carved-from-the-same-pool)
+and follow the [render alignment and entry-offset rules](../notes/Flashing-and-Toolchain.md#verify-compiler-decisions);
+[check divide widths and signed rounding](../notes/Flashing-and-Toolchain.md#arithmetic-in-hot-loops);
+consider a unity build for cross-file inlining if the rasterizer spans files;
+and [measure the final device image](../notes/Debugging.md#performance-seems-off),
+because host numbers predict code-shape changes well and work-quantity changes
+badly. The [RTOS tick](../notes/Flashing-and-Toolchain.md#the-build-flag-and-the-frame-tick)
+and input tasks are a small, measurable tax. Take the bulk memory an app needs
+at `enter()`, from
 the shell's [app arena](../Building-an-App.md#app-memory), and nothing more
 during the visit: the usual MCU advice to allocate at startup and never
 again, applied to each visit.
