@@ -36,7 +36,6 @@ class OptionLinkTest(unittest.TestCase):
             doc.write_text(text, encoding="utf-8")
             subprocess.run(["git", "init", "-q"], cwd=root, check=True)
             subprocess.run(["git", "add", "docs"], cwd=root, check=True)
-            subprocess.run(["git", "commit", "-qm", "fixture"], cwd=root, check=True)
             return check_doc_index.check_option_links(root)
 
     def test_option_rows_require_their_own_unambiguous_heading(self):
