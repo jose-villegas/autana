@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "render/code_layout.h"
 #include "render/r3d_pipeline.h"
 #include "render/upscale.h"
 #include "util/job.h"
@@ -126,8 +127,7 @@ draw_instance(const raster_t* raster, const r3d_instance_t* instance, const came
               (slice_t){raster, mesh, &lens, visible, 0, mid, clear});
 }
 
-raster_stats_t
-raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
+RENDER_ENTRY_OFFSET(4) raster_stats_t raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
     assert(raster->instance_count > 0);
     raster_stats_t stats = {0, 0};
     for (int i = 0; i < raster->instance_count; i++) {
@@ -136,8 +136,7 @@ raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
     return stats;
 }
 
-void
-raster_upscale(raster_t* raster) {
+RENDER_ENTRY_OFFSET(12) void raster_upscale(raster_t* raster) {
     assert(raster->upscaled && raster->destination != NULL);
     assert(raster->width > 0 && raster->height > 0);
     assert(raster->destination_width >= raster->width && raster->destination_height >= raster->height);

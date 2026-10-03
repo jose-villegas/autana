@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "render/code_layout.h"
 #include "render/viewport.h"
 
 static void
@@ -507,6 +508,8 @@ draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_c
         }
     }
 }
+
+RENDER_ENTRY_OFFSET(4)
 
 void
 r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
