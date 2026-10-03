@@ -661,11 +661,6 @@ gfx_set_partial_clear(bool on) {
     partial_clear_on = on;
 }
 
-bool
-gfx_partial_clear_enabled(void) {
-    return partial_clear_on;
-}
-
 void
 gfx_set_interlace(bool on) {
     GFX_PRESENT_GUARD();
@@ -2998,29 +2993,6 @@ gfx_indexed_set_dither(gfx_dither_mode_t mode, const gfx_color_t* table) {
         case GFX_DITHER_MODE_COUNT: break;
     }
     indexed_dither_mode = mode;
-}
-
-unsigned
-gfx_present_guard_trip_count(void) {
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-    return gfx_present_guard_trips;
-#else
-    return 0;
-#endif
-}
-
-bool
-gfx_present_in_flight(void) {
-    return gfx_present_guard_in_flight;
-}
-
-unsigned
-gfx_fb_guard_trip_count(void) {
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-    return gfx_fb_guard_trips;
-#else
-    return 0;
-#endif
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT

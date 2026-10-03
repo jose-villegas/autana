@@ -1,7 +1,7 @@
 /*
  * GENERATED FILE - do not edit.
  *
- *     python tools/anim/bake_tracks.py main/apps/render_lab/assets/flythrough.glb --animation flythrough --name flythrough --out-dir main/apps/render_lab
+ *     python tools/anim/bake_tracks.py main/apps/render_lab/assets/flythrough.glb --animation flythrough --name flythrough --out-dir main/apps/render_lab/meshes
  *
  * Animation 'flythrough' of the glTF, baked as authored.
  */
