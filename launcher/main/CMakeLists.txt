@@ -234,6 +234,17 @@ if(CONFIG_LAUNCHER_SELFTEST)
         COMPILE_OPTIONS "-include;${CMAKE_CURRENT_LIST_DIR}/../test/timing.h")
 endif()
 
+# The software rasteriser's per-pixel loops run from flash through the
+# instruction cache, so where each function starts inside a cache line moves
+# the frame time by a fraction of a percent whenever unrelated code ahead of
+# it in the link grows or shrinks. Starting every function on a cache line
+# makes the render time independent of link order.
+if(NOT CMAKE_SCRIPT_MODE_FILE)
+    set_source_files_properties(
+        "render/raster.c" "render/r3d_pipeline.c" "render/upscale.c" "render/r3d_span.c"
+        PROPERTIES COMPILE_OPTIONS "-falign-functions=64")
+endif()
+
 set(app_private_include_dirs "")
 if(CONFIG_LAUNCHER_SELFTEST)
     list(APPEND app_private_include_dirs "../test")
