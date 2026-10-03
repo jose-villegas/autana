@@ -79,6 +79,17 @@ table. A pin is not free: re-pinning at a coarser line size can cost more
 than it recovers once the surrounding hot path has grown large enough
 that where it starts no longer decides most of its own traffic.
 
+`render/` is pinned whole: `launcher/main/CMakeLists.txt` compiles every
+file in it with `-falign-functions` at the configured instruction-cache line,
+so code growing ahead of it cannot shift it. Alignment alone fixes which
+timing a function gets, not that it is the fastest one; the hottest functions
+also carry `RENDER_ENTRY_OFFSET` (`render/code_layout.h`), never-executed
+`nop.n` ahead of the entry that put their loops at the offsets that ran
+fastest. `launcher/tools/render/code_layout.py` prints those offsets.
+`-falign-loops` cannot do this on Xtensa: GCC aligns the label after a
+zero-overhead `loop`, the assembler fills the gap with zeros, and the CPU
+executes them as an IllegalInstruction.
+
 Not every hot path draws this ticket. A separate, bus-bound call boundary
 measured across five different padding-induced addresses moved by at
 most a point and a fraction: fixed per-transfer cost is far less
