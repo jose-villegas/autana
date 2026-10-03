@@ -154,6 +154,31 @@ class DeviceReportArgumentsTest(unittest.TestCase):
     def device_calls(self):
         return self.calls.read_text().splitlines() if self.calls.exists() else []
 
+    def run_failed_capture_report(self, capture_text):
+        capture = self.dir / "capture-source.txt"
+        capture.write_text(capture_text, encoding="utf-8")
+        out = self.dir / "out.md"
+        out.unlink(missing_ok=True)
+        script = (
+            'report_name=t; report_dir="$1"; report_timeout=1; report_suite=run_perf\n'
+            'report_sentinel="timing row"; report_capture_failures_ok=1\n'
+            'report_generate() { cp "$1" "$2"; }\n'
+            '. "$2"\n'
+            'capture_source="$3"\n'
+            'autana() { while [ "$#" -gt 0 ]; do '
+            'if [ "$1" = --out ]; then cp "$capture_source" "$2"; '
+            'case "$(cat "$capture_source")" in *"timing row"*) ended=complete ;; *) ended=max_seconds ;; esac; '
+            'printf "%s\\n" "- Ended: $ended" > "${2%.*}.md"; break; fi; shift; done; return 1; }\n'
+            'shift 3\n'
+            'device_report_run "$@"\n')
+        done = subprocess.run(
+            [self.bash, "-c", script, str(TOOLS / "quality" / "report_test_results.sh"),
+             self.dir.as_posix(), (TOOLS / "device" / "device_report.sh").as_posix(),
+             capture.as_posix(), "--no-restore", out.as_posix()],
+            cwd=self.dir, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+            timeout=60)
+        return done, out
+
     def test_the_board_is_the_global_board_option_as_for_every_command(self):
         self.run_report("out.md", board="SERIAL1")
         [call] = self.device_calls()
@@ -189,6 +214,16 @@ class DeviceReportArgumentsTest(unittest.TestCase):
         self.assertIn("--project", argv)
         self.assertNotIn("--worktree", argv)
         self.assertNotIn("--purpose", argv)
+
+    def test_a_budget_failure_is_reported_but_a_cut_short_capture_is_not(self):
+        done, out = self.run_failed_capture_report("timing row\nsuite.c:1:test_budget:FAIL\n")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(out.read_text(encoding="utf-8"),
+                         "timing row\nsuite.c:1:test_budget:FAIL\n")
+
+        done, out = self.run_failed_capture_report("suite.c:1:test_budget:FAIL\n")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertFalse(out.exists())
 
     def test_the_lock_owner_names_this_report_without_an_owner_flag(self):
         """Every autana call device_report_run makes starts with the global
