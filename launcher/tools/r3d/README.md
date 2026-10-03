@@ -18,7 +18,7 @@ mesh. Nothing here runs on the board.
 | [mesh_asset.py](mesh_asset.py) | The lit mesh entry's type and byte layout, shared by the baker and the pack builder. Standard library only. |
 | [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under an octree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as a `<name>.mesh` pack entry; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads an entry back. |
 | [import_settings.py](import_settings.py) | Reads and validates an import file and a scene file; standard library only, every table closed. |
-| [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: fetches and checks the source, runs the steps the import opts into, lights with the scene's lights, then writes the `.mesh` entry beside the import file. |
+| [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: fetches and checks the source, runs the steps the import opts into, lights with the scene's lights, then writes each `.mesh` entry beside the scene file (a bare import's beside the import file). |
 | [rebake.py](rebake.py) | Rewrites a baked `.mesh`'s clusters from its own triangles and colours, with no relighting. |
 | [fetch.py](fetch.py) | Downloads a source model once into `.cache/`, checked against a SHA-256. |
 | [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling (LINEAR, STEP, CUBICSPLINE), linear-blend skinning; reads through [`tools/gltf/`](../gltf/gltf_read.py), the reader and reference sampler [`tools/anim/`](../anim/README.md) shares. Standard library only. |
@@ -28,7 +28,7 @@ mesh. Nothing here runs on the board.
 | [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement, sun and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [Sweeping the flat bake](../../../docs/render/Mesh-Import.md#sweeping-the-flat-bake). |
 | [appearance_simplify.py](appearance_simplify.py) | Fits a smooth mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
 | [poses.py](poses.py) | Reads the camera poses file `tools/anim/sample_tracks.sh` writes, samples a scene camera's path through it, and casts a pose's pinhole rays. |
-| [fitted_variant.py](fitted_variant.py) | Remakes a `[[variants]]` entry's fitted mesh from the `fit` recipe its import records; see [A fitted variant](#a-fitted-variant). |
+| [fitted_variant.py](fitted_variant.py) | Remakes a scene renderer's fitted mesh from the `fit` recipe it records; see [A fitted variant](#a-fitted-variant). |
 | [cost_model.py](cost_model.py), [board_cost_weights.txt](board_cost_weights.txt) | A linear model of a mesh's frame time from a pose (submitted and drawn triangles, rows, pixels with overdraw, clusters in view), and its weights with the board frames they were fitted to; see [Cost-aware fit](#cost-aware-fit). |
 | [reference_render.py](reference_render.py) | Traces the undecimated source mesh through the scene's bake lights at supersampled device resolution; writes linear arrays and RGB565-expanded PNGs for fidelity comparisons. |
 
@@ -171,9 +171,10 @@ the fit itself only where CUDA, PyTorch and nvdiffrast import.
 
 ### A fitted variant
 
-A `[[variants]]` entry with a `fit` table is made by the fit, not the bake:
+A scene renderer with a `fit` table is made by the fit, not the bake:
 `mesh_import.py` checks that the recipe still hashes to its `recipe_sha256`
-(the import's settings, the variant and the camera's tracks) and the
+(the import's settings, the renderer with its effective bake, the scene's
+lights, tone map and indirect look, and the camera's tracks) and the
 committed `NAME.mesh` to its `sha256`, and stops there. `fitted_variant.py` remakes it from the recipe, the
 first step in this environment, the second in the GPU one:
 
@@ -182,13 +183,14 @@ $PY tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch prep
 $E/bin/python launcher/tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch fit
 ```
 
-`prepare` bakes the start (the import's steps at the variant's `triangles`),
+`prepare` bakes the start (the import's geometry steps at the variant's
+`triangles`, lit by the scene's bake),
 samples the camera's path every `train_every_ms`, holds out the multiples of
 `held_out_every_ms`, samples it again every `coverage_every_ms` for pruning,
 and renders the training references with their normals, in portrait and
 in landscape so the fit holds the panel either way up. `fit` prunes to
 `budget`, fits with `steps`, `batch`, `laplacian` and `normal_weight`, writes
-`NAME.mesh` beside the import and prints the two SHA-256s to record. A refit is not
+the renderer's mesh beside the scene and prints the two SHA-256s to record. A refit is not
 bit-identical, the GPU's sums being unordered, so the recipe pins the mesh
 that was committed.
 

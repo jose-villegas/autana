@@ -69,8 +69,8 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 
 ## The Sponza variants
 
-The Sponza import makes five meshes, its `[[variants]]`
-([Mesh-Import.md](../../../../../docs/render/Mesh-Import.md)): it bakes three,
+The Sponza scene places five renderers over the import's variants
+([Scene-Files.md](../../../../../docs/render/Scene-Files.md)): it bakes three,
 and records the recipes of two more, culled to the camera's path, that the
 appearance fit makes offline at lite's and full's budgets. The scenes `sponza`,
 `sponza-lite`, `sponza-flat`, `sponza-fitted` and `sponza-fitted-full` each draw one. Every row plays the
@@ -83,8 +83,8 @@ over the full mesh.
 | ![Sponza flythrough, smooth](../../../../../docs/images/render/sponza-full.gif) | **Full**: smooth, one colour per vertex, lit and interpolated | `SPONZA_TRIANGLE_COUNT`, `SPONZA_VERTEX_COUNT` |
 | ![Sponza flythrough, lite](../../../../../docs/images/render/sponza-lite.gif) | **Lite**: the same bake simplified to a smaller budget | `SPONZA_LITE_TRIANGLE_COUNT`, `SPONZA_LITE_VERTEX_COUNT` |
 | ![Sponza flythrough, flat](../../../../../docs/images/render/sponza-flat.gif) | **Flat**: the full mesh's triangles, one colour per face, no gradients | `SPONZA_FLAT_TRIANGLE_COUNT`, `SPONZA_FLAT_VERTEX_COUNT` |
-| ![Sponza flythrough, fitted](../../../../../docs/images/render/sponza-fitted.gif) | **Fitted**: lite's budget spent on what the flythrough draws, its vertices and colours fitted to the reference | the `sponza_fitted` entry's counts |
-| ![Sponza flythrough, fitted full](../../../../../docs/images/render/sponza-fitted-full.gif) | **Fitted full**: the same recipe at full's budget | the `sponza_fitted_full` entry's counts |
+| ![Sponza flythrough, fitted](../../../../../docs/images/render/sponza-fitted.gif) | **Fitted**: lite's budget spent on what the flythrough draws, its vertices and colours fitted to the reference | the `sponza.atrium_fitted` entry's counts |
+| ![Sponza flythrough, fitted full](../../../../../docs/images/render/sponza-fitted-full.gif) | **Fitted full**: the same recipe at full's budget | the `sponza.atrium_fitted_full` entry's counts |
 | ![Sponza flythrough, depth](../../../../../docs/images/render/sponza-depth.gif) | `RASTER_SHOW_DEPTH` over the full mesh | as full |
 | ![Sponza flythrough, depth tiles](../../../../../docs/images/render/sponza-tiles.gif) | `RASTER_SHOW_DEPTH_TILES` over the full mesh | as full |
 
@@ -137,9 +137,9 @@ bakes' scores are under Indirect light below.
 ```sh
 M=main/apps/render_lab
 H=$M/tools/render_lab_render_host.sh
-tools/anim/sample_tracks.sh --tracks $M/flythrough_tracks_generated.c:flythrough --every 5000 --until 45000     --poses camera 184 224 0.62 6 > poses.txt
+tools/anim/sample_tracks.sh --tracks $M/meshes/flythrough_tracks_generated.c:flythrough --every 5000 --until 45000     --poses camera 184 224 0.62 6 > poses.txt
 $PY tools/r3d/reference_render.py $M/meshes/sponza.scene.toml --poses poses.txt --skip 1 --out reference --samples 4
-$PY tools/r3d/bake_fidelity.py $M/meshes/sponza.scene.toml --mesh sponza_flat --script $H     --render-args "--quarter 0 --no-hud --scene sponza-flat --frames 8 --dt 5000"     --reference reference --work scratch     --variant declared= --variant fixed1=samples=fixed:1 --variant fixed4=samples=fixed:4     --variant fixed8=samples=fixed:8 --variant fixed16=samples=fixed:16 --variant fixed32=samples=fixed:32     --variant fixed64=samples=fixed:64 --variant fixed2=samples=fixed:2     --variant min2=samples=auto:2:16:median --variant min4=samples=auto:4:16:median     --variant max4=samples=auto:1:4:median --variant max8=samples=auto:1:8:median     --variant max32=samples=auto:1:32:median --variant area0.25=samples=auto:1:16:median*0.25     --variant area0.5=samples=auto:1:16:median*0.5 --variant area2=samples=auto:1:16:median*2     --variant sky16=sky=16 --variant sky32=sky=32 --variant sky64=sky=64 --variant sky256=sky=256     --variant sky512=sky=512 --variant centroid=place=centroid --variant sun-centre=sun=centre     --variant fixed4-sun-centre=samples=fixed:4,sun=centre
+$PY tools/r3d/bake_fidelity.py $M/meshes/sponza.scene.toml --mesh atrium_flat --script $H     --render-args "--quarter 0 --no-hud --scene sponza-flat --frames 8 --dt 5000"     --reference reference --work scratch     --variant declared= --variant fixed1=samples=fixed:1 --variant fixed4=samples=fixed:4     --variant fixed8=samples=fixed:8 --variant fixed16=samples=fixed:16 --variant fixed32=samples=fixed:32     --variant fixed64=samples=fixed:64 --variant fixed2=samples=fixed:2     --variant min2=samples=auto:2:16:median --variant min4=samples=auto:4:16:median     --variant max4=samples=auto:1:4:median --variant max8=samples=auto:1:8:median     --variant max32=samples=auto:1:32:median --variant area0.25=samples=auto:1:16:median*0.25     --variant area0.5=samples=auto:1:16:median*0.5 --variant area2=samples=auto:1:16:median*2     --variant sky16=sky=16 --variant sky32=sky=32 --variant sky64=sky=64 --variant sky256=sky=256     --variant sky512=sky=512 --variant centroid=place=centroid --variant sun-centre=sun=centre     --variant fixed4-sun-centre=samples=fixed:4,sun=centre
 ```
 
 It prints the sweep table below. The smooth and lite rows are the committed
@@ -377,7 +377,7 @@ path, uncut above: coincident faces trading places, no hole.
 
 ![Culled lite against uncut, largest differences](../../../../../docs/render/images/appearance-path-culled.crops.png)
 
-**Budget against error.** Unfitted and fitted, from the import's region cull
+**Budget against error.** Unfitted and fitted, from a renderer's region cull
 and from the path cull (the path start simplified to 1.15 times the budget
 and pruned back to it):
 
@@ -562,7 +562,7 @@ against the chosen mesh, is `render_compare.py --video` of their
 
 ## Indirect light
 
-The Sponza import's `lighting.light.indirect = { bounces = 2, rays = 64,
+The Sponza scene's `[bake] indirect = { bounces = 2, rays = 64,
 cache_samples = 1 }` is described in
 [Mesh-Import.md](../../../../../docs/render/Mesh-Import.md#indirect-light). It
 lifts the shadowed arcade ceilings and the sides of the columns the sun does
@@ -588,7 +588,7 @@ for a suspected colour-bleed loss.
 
 How far each bake is from the source lit per pixel with the same bounces, over
 the same eight poses as above. Mean ΔE76, p95 ΔE76 and luma SSIM; the
-direct-light bakes are the same import with `indirect` removed:
+direct-light bakes are the same scene with `[bake] indirect` removed:
 
 | Bake | Against the indirect reference |
 |---|---|
@@ -616,9 +616,9 @@ colour on the column beside it, and the lit ceiling.
 
 ![Where bounce light changes the picture](../../../../../docs/images/render/bake-indirect-crops.png)
 
-`doc_images.sh` regenerates the images, baking the import without `indirect`
+`doc_images.sh` regenerates the images, baking the scene without `[bake] indirect`
 for the direct-light side. It renders the source reference with and without
-the import's indirect field before `render_compare.py` makes the sheets and
+the scene's `[bake] indirect` before `render_compare.py` makes the sheets and
 crops.
 
 ### Fitted variants against indirect light
@@ -702,7 +702,7 @@ gap (1.6), the bake adding the other 0.8.
 ## Sponza poses
 
 The flythrough is a glTF camera animation, `../assets/flythrough.glb`, baked
-to `../flythrough_tracks_generated.c` by
+to `../meshes/flythrough_tracks_generated.c` by
 [`tools/anim/bake_tracks.py`](../../../../tools/anim/README.md). Its poses for
 [`tools/r3d/report_triangle_sizes.sh`](../../../../tools/r3d/README.md#triangle-sizes)
 come from the generic track sampler, at the poses `suite_sponza_perf.c` times
@@ -711,10 +711,10 @@ the scene's camera object (`meshes/sponza.scene.toml`):
 
 ```sh
 ./launcher/tools/anim/sample_tracks.sh \
-    --tracks launcher/main/apps/render_lab/flythrough_tracks_generated.c:flythrough \
+    --tracks launcher/main/apps/render_lab/meshes/flythrough_tracks_generated.c:flythrough \
     --every 5000 --poses camera 184 224 0.62 6 |
     ./launcher/tools/r3d/report_triangle_sizes.sh \
-        --mesh sponza -
+        --mesh sponza.atrium -
 ```
 
 ## The capybara test asset

@@ -11,6 +11,8 @@ import re
 import tomllib
 from types import SimpleNamespace
 
+from asset.asset_pack import NAME_BYTES
+
 RESERVED_LIGHTS = ("point", "spot")
 
 # The one declaration of each light type's fields; light.py pairs each with
@@ -155,47 +157,21 @@ def load_fit(value, variant, where):
 
 
 def load_variant(value, steps, where):
-    if isinstance(value, dict) and "face_samples" in value:
-        raise SettingsError(f"{where}.face_samples moved to shading = {{ flat = ... }}")
-    check_keys(value, ("name",), where, optional=("triangles", "shading", "visibility", "fit", "indirect"))
-    variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None, face_samples=None, visibility=None,
-                              fit=None, indirect=True)
-    if "indirect" in value:
-        if boolean(value["indirect"], f"{where}.indirect"):
-            raise SettingsError(f"{where}.indirect can only be false: indirect light comes from lighting.light.indirect")
-        if not steps.light or steps.light.indirect is None:
-            raise SettingsError(f"{where}.indirect = false needs lighting.light.indirect to turn off")
-        variant.indirect = False
+    homes = {"shading": "objects.mesh_renderer.shading", "visibility": "objects.mesh_renderer.visibility",
+             "fit": "objects.mesh_renderer.fit", "indirect": "objects.mesh_renderer.indirect"}
+    if isinstance(value, dict):
+        for name, home in homes.items():
+            if name in value:
+                raise SettingsError(f"{where}.{name} moved to {home}")
+    check_keys(value, ("name",), where, optional=("triangles",))
+    variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None)
     if steps.simplify:
         if "triangles" not in value:
             raise SettingsError(f"{where}.triangles is required when geometry.simplify is present")
         variant.triangles = count(value["triangles"], f"{where}.triangles")
     elif "triangles" in value:
         raise SettingsError(f"{where}.triangles needs geometry.simplify")
-    if "shading" in value:
-        shading = value["shading"]
-        if shading == "smooth":
-            pass
-        elif isinstance(shading, dict):
-            check_keys(shading, ("flat",), f"{where}.shading")
-            variant.face_samples = face_sample_options(shading["flat"], f"{where}.shading.flat")
-        else:
-            raise SettingsError(f"{where}.shading must be smooth or {{ flat = ... }}")
-    if "visibility" in value:
-        variant.visibility = load_visibility(value["visibility"], f"{where}.visibility")
-    if "fit" in value:
-        if variant.face_samples or not steps.light:
-            raise SettingsError(f"{where}.fit needs a smooth variant of a lit import")
-        variant.fit = load_fit(value["fit"], variant, f"{where}.fit")
     return variant
-
-
-def variant_settings(settings, variant):
-    """The settings `variant` is baked with: the import's, without indirect
-    light when the variant opts out of it."""
-    if variant is None or getattr(variant, "indirect", True) or not settings.light:
-        return settings
-    return SimpleNamespace(**{**vars(settings), "light": SimpleNamespace(**{**vars(settings.light), "indirect": None})})
 
 
 VISIBILITY_SOURCES = ("camera_region", "camera_path")
@@ -207,7 +183,7 @@ def load_visibility(table, where="visibility"):
     tries per triangle); `camera_path` keeps what any pose of the scene
     camera's path sees at `size` pixels, sampled every `every_ms`, with
     `samples` squared rays per pixel and the view widened by `margin`
-    pixels on each side. A variant's own table overrides the import's."""
+    pixels on each side. Each mesh renderer carries its own."""
     source = text(table.get("source", "camera_region"), f"{where}.source")
     if source not in VISIBILITY_SOURCES:
         raise SettingsError(f"{where}.source must be one of {', '.join(VISIBILITY_SOURCES)}")
@@ -228,9 +204,9 @@ def load_visibility(table, where="visibility"):
 
 LEGACY_PROCESS_HOMES = {
     "alpha_mask": "[geometry] alpha_mask",
-    "visibility": "[visibility]",
+    "visibility": "objects.mesh_renderer.visibility",
     "thin": "[geometry] thin",
-    "light": "[lighting] light",
+    "light": "scene [bake]",
     "simplify": "[geometry] simplify",
 }
 
@@ -268,34 +244,16 @@ def load_geometry(table, steps):
             seal_seams=boolean(simplify["seal_seams"], "geometry.simplify.seal_seams"))
 
 
-def load_lighting(table, steps):
-    """The optional step that bakes the scene's light into the mesh."""
-    check_keys(table, (), "lighting", optional=("light",))
-    if "light" not in table:
-        return
-    light = table["light"]
-    check_keys(light, ("ray_offset", "colour_merge_step"), "lighting.light", optional=("flat_sky_rays", "indirect"))
-    steps.light = SimpleNamespace(
-        ray_offset=number(light["ray_offset"], "lighting.light.ray_offset"),
-        colour_merge_step=count(light["colour_merge_step"], "lighting.light.colour_merge_step"),
-        flat_sky_rays=count(light["flat_sky_rays"], "lighting.light.flat_sky_rays") if "flat_sky_rays" in light else None,
-        indirect=None)
-    if "indirect" in light:
-        indirect = light["indirect"]
-        check_keys(indirect, ("bounces", "rays", "cache_samples"), "lighting.light.indirect")
-        steps.light.indirect = SimpleNamespace(
-            bounces=nonnegative_count(indirect["bounces"], "lighting.light.indirect.bounces"),
-            rays=count(indirect["rays"], "lighting.light.indirect.rays"),
-            cache_samples=count(indirect["cache_samples"], "lighting.light.indirect.cache_samples"))
-
-
 def load_import_settings(path):
     """One mesh asset: its source, output and opt-in processing. With only
     those, the mesh is imported as authored."""
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as source:
         values = tomllib.load(source)
-    check_keys(values, ("source", "output"), "settings", optional=("materials", "process", "geometry", "visibility", "lighting", "variants"))
+    for name, home in (("visibility", "objects.mesh_renderer.visibility"), ("lighting", "scene [bake]")):
+        if name in values:
+            raise SettingsError(f"[{name}] moved to {home}")
+    check_keys(values, ("source", "output"), "settings", optional=("materials", "process", "geometry", "variants"))
     source = values["source"]
     check_keys(source, ("url", "sha256", "path", "cache", "credit"), "source")
     for name in source:
@@ -305,14 +263,11 @@ def load_import_settings(path):
     directory = text(output["directory"], "output.directory")
     materials = values.get("materials", {})
     check_keys(materials, (), "materials", optional=("double_sided",))
-    steps = SimpleNamespace(seed=0, seed_given=False, alpha_keep=None, visibility=None, thin=None, light=None, simplify=None)
+    steps = SimpleNamespace(seed=0, seed_given=False, alpha_keep=None, thin=None, simplify=None)
     load_process(values.get("process", {}), steps)
     load_geometry(values.get("geometry", {}), steps)
-    if "visibility" in values:
-        steps.visibility = load_visibility(values["visibility"])
-    load_lighting(values.get("lighting", {}), steps)
-    if steps.seed_given and not (steps.visibility or steps.thin or steps.light):
-        raise SettingsError("process.seed needs a step that draws random rays: visibility, thin or light")
+    if steps.seed_given and not steps.thin:
+        raise SettingsError("process.seed needs geometry.thin")
     if "variants" in values:
         variants = values["variants"]
         if not isinstance(variants, list) or not variants:
@@ -323,30 +278,18 @@ def load_import_settings(path):
         names = [variant.name for variant in variants]
         if len(set(names)) != len(names):
             raise SettingsError("variants names must be unique")
-        shapes = {}
-        for variant in variants:
-            shape = (variant.triangles, repr(variant.face_samples), repr(variant.visibility), repr(variant.fit), variant.indirect)
-            if shape in shapes:
-                raise SettingsError(f"variants {shapes[shape]!r} and {variant.name!r} would produce the same mesh")
-            shapes[shape] = variant.name
+        budgets = [variant.triangles for variant in variants]
+        if len(set(budgets)) != len(budgets):
+            raise SettingsError("variants with the same triangle budget would produce the same mesh")
     else:
         if steps.simplify:
             raise SettingsError("geometry.simplify needs variants, each with its triangles budget")
-        variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None, face_samples=None,
-                                    visibility=None, fit=None)]
-    flat = any(variant.face_samples for variant in variants)
-    if flat and not steps.light:
-        raise SettingsError("shading = { flat = ... } needs lighting.light")
-    if flat and steps.light.flat_sky_rays is None:
-        raise SettingsError("lighting.light.flat_sky_rays is required when a variant has shading = { flat = ... }")
-    if steps.light and not flat and steps.light.flat_sky_rays is not None:
-        raise SettingsError("lighting.light.flat_sky_rays applies to a variant with shading = { flat = ... } only")
+        variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None)]
     return SimpleNamespace(
         path=path, source=source, out_dir=(path.parent / directory).resolve(), mesh_dir=path.parent,
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
-        alpha_keep=steps.alpha_keep, visibility=steps.visibility, thin=steps.thin, light=steps.light,
-        simplify=steps.simplify, scene_dependent=bool(steps.light or steps.visibility or any(variant.visibility for variant in variants)), named=("variants" in values),
+        alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
         variants=variants)
 
 
@@ -421,7 +364,7 @@ def load_camera(component, where):
 
 
 def load_renderer(component, base, where):
-    check_keys(component, ("mesh",), where, optional=("variant",))
+    check_keys(component, ("mesh",), where, optional=("variant", "bake", "shading", "visibility", "fit", "indirect"))
     path = (base / text(component["mesh"], f"{where}.mesh")).resolve()
     if not path.is_file():
         raise SettingsError(f"{where}.mesh {component['mesh']!r} is not a file")
@@ -438,7 +381,45 @@ def load_renderer(component, base, where):
         raise SettingsError(f"{where}.variant: {component['mesh']!r} has no variants")
     else:
         variant = settings.variants[0]
-    return SimpleNamespace(settings=settings, variant=variant)
+    bake = boolean(component["bake"], f"{where}.bake") if "bake" in component else False
+    face_samples = None
+    if "shading" in component:
+        shading = component["shading"]
+        if shading == "smooth":
+            pass
+        elif isinstance(shading, dict):
+            check_keys(shading, ("flat",), f"{where}.shading")
+            face_samples = face_sample_options(shading["flat"], f"{where}.shading.flat")
+        else:
+            raise SettingsError(f"{where}.shading must be smooth or {{ flat = ... }}")
+    visibility = load_visibility(component["visibility"], f"{where}.visibility") if "visibility" in component else None
+    fit = load_fit(component["fit"], variant, f"{where}.fit") if "fit" in component else None
+    indirect = True
+    if "indirect" in component:
+        if boolean(component["indirect"], f"{where}.indirect"):
+            raise SettingsError(f"{where}.indirect can only be false")
+        indirect = False
+    if not bake and (face_samples or visibility or fit or not indirect):
+        raise SettingsError(f"{where} bake = true is required for shading, visibility, fit or indirect")
+    return SimpleNamespace(settings=settings, variant=variant, bake=bake, face_samples=face_samples, visibility=visibility,
+                           fit=fit, indirect=indirect)
+
+
+def make_job(settings, renderer, obj, asset_name, asset_path, bake):
+    """One mesh to write: its import, the renderer that decides its look, the scene object it belongs to
+    (None for a bare import), where it is written and the scene bake settings it is traced with (None for albedo)."""
+    return SimpleNamespace(settings=settings, renderer=renderer, object=obj, asset_name=asset_name, asset_path=asset_path,
+                           bake=bake)
+
+
+def albedo_jobs(settings):
+    """The jobs of a bare import: each variant's authored albedo, written beside the import file."""
+    jobs = []
+    for variant in settings.variants:
+        renderer = SimpleNamespace(settings=settings, variant=variant, bake=False, face_samples=None, visibility=None,
+                                   fit=None, indirect=True)
+        jobs.append(make_job(settings, renderer, None, variant.name, settings.mesh_dir / f"{variant.name}.mesh", None))
+    return jobs
 
 
 COMPONENTS = ("mesh_renderer", "light", "camera")
@@ -483,13 +464,29 @@ def load_indirect_look(table):
     return look
 
 
+def load_bake(table):
+    """The scene's direct-light and indirect-cache settings."""
+    check_keys(table, ("ray_offset", "colour_merge_step"), "scene.bake", optional=("flat_sky_rays", "indirect"))
+    bake = SimpleNamespace(ray_offset=number(table["ray_offset"], "scene.bake.ray_offset"),
+                           colour_merge_step=count(table["colour_merge_step"], "scene.bake.colour_merge_step"),
+                           flat_sky_rays=count(table["flat_sky_rays"], "scene.bake.flat_sky_rays")
+                           if "flat_sky_rays" in table else None, indirect=None)
+    if "indirect" in table:
+        indirect = table["indirect"]
+        check_keys(indirect, ("bounces", "rays", "cache_samples"), "scene.bake.indirect")
+        bake.indirect = SimpleNamespace(bounces=nonnegative_count(indirect["bounces"], "scene.bake.indirect.bounces"),
+                                        rays=count(indirect["rays"], "scene.bake.indirect.rays"),
+                                        cache_samples=count(indirect["cache_samples"], "scene.bake.indirect.cache_samples"))
+    return bake
+
+
 def load_scene(path):
     """A scenario: objects (each a transform and one component), the sky and
     ambient settings, and the tone map the lit meshes use."""
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as source:
         values = tomllib.load(source)
-    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "sky", "ambient", "indirect"))
+    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "sky", "ambient", "indirect", "bake"))
     objects = values["objects"]
     if not isinstance(objects, list) or not objects:
         raise SettingsError("scene.objects must be a non-empty array of tables")
@@ -503,25 +500,49 @@ def load_scene(path):
         raise SettingsError("scene.objects needs a mesh_renderer")
     if len(cameras) > 1:
         raise SettingsError("scene.objects may have one camera")
-    baked = [item.component.variant.name for item in renderers]
-    if len(set(baked)) != len(baked):
-        raise SettingsError("scene.objects place a mesh name twice")
     lights = [item.component for item in objects if item.kind == "light"]
     for name in ("sky", "ambient"):
         if name in values:
             lights.append(load_environment_light(name, values[name], f"scene.{name}"))
     region = cameras[0].component.region if cameras else None
+    bake = load_bake(values["bake"]) if "bake" in values else None
+    if any(item.component.bake for item in renderers) and bake is None:
+        raise SettingsError("scene [bake] is required: a renderer has bake = true")
+    jobs = []
+    scene_name = path.name.removesuffix(".scene.toml").removesuffix(".toml")
+    for item in renderers:
+        component = item.component
+        effective = None
+        if component.bake:
+            if component.face_samples and bake.flat_sky_rays is None:
+                raise SettingsError("scene.bake.flat_sky_rays is required for shading = { flat = ... }")
+            if not component.indirect and bake.indirect is None:
+                raise SettingsError("objects.mesh_renderer.indirect = false needs scene.bake.indirect")
+            effective = SimpleNamespace(
+                ray_offset=bake.ray_offset, colour_merge_step=bake.colour_merge_step,
+                flat_sky_rays=bake.flat_sky_rays if component.face_samples else None,
+                indirect=bake.indirect if component.indirect else None)
+            asset_name = f"{scene_name}.{item.name}"
+            asset_path = path.parent / f"{asset_name}.mesh"
+        else:
+            asset_name = component.variant.name
+            asset_path = component.settings.mesh_dir / f"{asset_name}.mesh"
+        try:
+            too_long = len(asset_name.encode("ascii")) >= NAME_BYTES
+        except UnicodeEncodeError:
+            too_long = True
+        if too_long:
+            raise SettingsError(f"scene.objects {item.name!r}: asset name {asset_name!r} exceeds the pack's {NAME_BYTES - 1}-byte limit")
+        jobs.append(make_job(component.settings, component, item, asset_name, asset_path, effective))
     scene = SimpleNamespace(
-        path=path, objects=objects, renderers=[SimpleNamespace(settings=item.component.settings, variant=item.component.variant,
-                                                               object=item) for item in renderers],
+        path=path, objects=objects, renderers=jobs, bake=bake,
         camera=cameras[0] if cameras else None, region=region, lights=lights,
         tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None,
         indirect=load_indirect_look(values.get("indirect", {})))
-    lit = any(item.component.settings.light for item in renderers)
-    sources = {visibility.source for visibility in (item.component.variant.visibility or item.component.settings.visibility
-                                                    for item in renderers) if visibility}
+    lit = any(item.renderer.bake for item in jobs)
+    sources = {item.renderer.visibility.source for item in jobs if item.renderer.visibility}
     camera_path = cameras[0].component.path if cameras else None
-    bounced = any(item.component.settings.light and item.component.settings.light.indirect for item in renderers)
+    bounced = bool(bake and bake.indirect and any(item.renderer.indirect for item in jobs if item.renderer.bake))
     if "indirect" in values and not bounced:
         raise SettingsError("scene indirect settings is read by no placed mesh")
     for name, present, needed in (("lights", bool(lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),
@@ -532,8 +553,8 @@ def load_scene(path):
             raise SettingsError(f"scene {name} is read by no placed mesh")
     if "camera_path" in sources and camera_path is None:
         raise SettingsError("scene camera path is required: a placed mesh keeps what the camera path sees")
-    for item in renderers:
-        if item.component.settings.scene_dependent and not item.identity:
-            raise SettingsError(f"scene.objects {item.name!r}: a mesh with a scene-dependent step is baked where it "
+    for item in jobs:
+        if item.renderer.bake and not item.object.identity:
+            raise SettingsError(f"scene.objects {item.object.name!r}: a baked renderer is traced where it "
                                 "sits, so its transform must be identity")
     return scene
