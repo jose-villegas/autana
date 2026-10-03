@@ -130,27 +130,40 @@ def face_sample_options(value, where):
     return "auto", minimum, maximum, None if area == "median" else float(area)
 
 
-FIT_KEYS = ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch", "laplacian",
-            "normal_weight", "sha256", "recipe_sha256")
+FIT_GROUPS = {
+    "prune": ("budget", "coverage_every_ms"),
+    "poses": ("train_every_ms", "held_out_every_ms"),
+    "optimise": ("steps", "batch", "laplacian", "normal_weight"),
+    "hashes": ("sha256", "recipe_sha256"),
+}
+FIT_KEYS = tuple(key for keys in FIT_GROUPS.values() for key in keys)
 
 
 def load_fit(value, variant, where):
-    """The recipe of a variant the appearance fit makes offline from the mesh
-    the import bakes at `triangles`: the budget it prunes to, the camera-path
-    poses it trains on (every `train_every_ms`, less the multiples of
-    `held_out_every_ms`), the denser poses its pruning counts over, its
-    optimiser settings, the SHA-256 of the mesh it made, and the SHA-256 of
-    the recipe it was made from (fitted_variant.recipe_digest)."""
-    check_keys(value, FIT_KEYS, where)
+    """The grouped recipe of a variant the appearance fit makes offline from
+    the mesh the import bakes at `triangles`: `prune` names the budget and
+    coverage poses, `poses` names training and held-out camera-path poses,
+    `optimise` holds settings, and `hashes` records the mesh and recipe
+    SHA-256s (fitted_variant.recipe_digest)."""
+    for group, keys in FIT_GROUPS.items():
+        for key in keys:
+            if key in value:
+                raise SettingsError(f"{where}.{key} moved to {where}.{group}.{key}")
+    check_keys(value, FIT_GROUPS, where)
+    values = {}
+    for group, keys in FIT_GROUPS.items():
+        table = value[group]
+        check_keys(table, keys, f"{where}.{group}")
+        values.update(table)
     if variant.triangles is None:
         raise SettingsError(f"{where} needs the variant's triangles, the budget its start is simplified to")
-    fit = SimpleNamespace(**{key: value[key] for key in FIT_KEYS})
+    fit = SimpleNamespace(**{key: values[key] for key in FIT_KEYS})
     for key in ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
-        setattr(fit, key, count(value[key], f"{where}.{key}"))
-    fit.laplacian = number(value["laplacian"], f"{where}.laplacian")
-    fit.normal_weight = number(value["normal_weight"], f"{where}.normal_weight")
-    fit.sha256 = text(value["sha256"], f"{where}.sha256")
-    fit.recipe_sha256 = text(value["recipe_sha256"], f"{where}.recipe_sha256")
+        setattr(fit, key, count(values[key], f"{where}.{key}"))
+    fit.laplacian = number(values["laplacian"], f"{where}.laplacian")
+    fit.normal_weight = number(values["normal_weight"], f"{where}.normal_weight")
+    fit.sha256 = text(values["sha256"], f"{where}.sha256")
+    fit.recipe_sha256 = text(values["recipe_sha256"], f"{where}.recipe_sha256")
     if fit.budget > variant.triangles:
         raise SettingsError(f"{where}.budget cannot exceed the variant's triangles")
     return fit

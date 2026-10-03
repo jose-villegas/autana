@@ -437,9 +437,10 @@ triangles stay as they were, so the budget and the frame cost hold.
 
 A renderer with a `fit` table records the recipe: the budget it prunes to,
 the poses it trains on, holds out and counts pixels over, its optimiser
-settings, and the SHA-256 of the mesh it made. The bake does not run the fit,
-which needs a GPU: it checks that the committed mesh is the one the recipe
-records. `fitted_variant.py` remakes it, in two steps, one per environment.
+settings, and the SHA-256 of the mesh it made, grouped as in
+[Scene-Files.md](Scene-Files.md). The bake does not run the fit, which needs a
+GPU: it checks that the committed mesh is the one the recipe records.
+`fitted_variant.py` remakes it, in two steps, one per environment.
 
 **When to use it:** a mesh seen along a known set of views, at a budget
 where the simplifier's colours and silhouettes visibly drift from the

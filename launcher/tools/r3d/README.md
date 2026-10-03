@@ -184,15 +184,17 @@ $E/bin/python launcher/tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME 
 ```
 
 `prepare` bakes the start (the import's geometry steps at the variant's
-`triangles`, lit by the scene's bake),
-samples the camera's path every `train_every_ms`, holds out the multiples of
-`held_out_every_ms`, samples it again every `coverage_every_ms` for pruning,
-and renders the training references with their normals, in portrait and
-in landscape so the fit holds the panel either way up. `fit` prunes to
-`budget`, fits with `steps`, `batch`, `laplacian` and `normal_weight`, writes
-the renderer's mesh beside the scene and prints the two SHA-256s to record. A refit is not
-bit-identical, the GPU's sums being unordered, so the recipe pins the mesh
-that was committed.
+`triangles`, lit by the scene's bake), samples the camera's path every
+`fit.poses.train_every_ms`, holds out the multiples of
+`fit.poses.held_out_every_ms`, samples it again every
+`fit.prune.coverage_every_ms` for pruning, and renders the training references
+with their normals in portrait and landscape so the fit holds the panel either
+way up. `fit` prunes to `fit.prune.budget`, fits with
+`fit.optimise.steps`, `fit.optimise.batch`, `fit.optimise.laplacian` and
+`fit.optimise.normal_weight`, writes the renderer's mesh beside the scene and
+prints `fit.hashes.sha256` and `fit.hashes.recipe_sha256` to record. A refit
+is not bit-identical, the GPU's sums being unordered, so the recipe pins the
+mesh that was committed.
 
 ### Budget sweep
 
