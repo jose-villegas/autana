@@ -481,6 +481,14 @@ Acid -->|"dissolvable 110"| Metal
             bad = check_doc_index.check_anchors(root)
         self.assertEqual(bad, [])
 
+    def test_anchor_link_from_a_tool_readme_into_docs_is_checked(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/Guide.md", "# Guide\n")
+            self.write(root, "launcher/tools/README.md", "[gone](../../docs/Guide.md#gone)\n")
+            bad = check_doc_index.check_anchors(root)
+        self.assertEqual(len(bad), 1)
+
     def test_anchor_link_slug_uses_a_double_hyphen_for_an_em_dash(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

@@ -671,7 +671,7 @@ material frame-time change is not expected.
 ### Indirect look
 
 The scene's `[indirect]` table, described in
-[Scene-Files.md](../../../../../docs/render/Scene-Files.md#indirect-look), sets
+[Scene-Files.md](../../../../../docs/render/Scene-Files.md#indirect), sets
 `intensity` (a multiplier on the gathered bounce light) and `albedo_boost` (a
 multiplier on the reflectance bounces use, held below 1). The committed scene
 leaves both at the physical 1.0. The reference reads the same table, so each
