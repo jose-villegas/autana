@@ -81,6 +81,16 @@ component table.
 | `light` | `type`, `color`, `intensity`, `disc_degrees`, `rays` | A directional light. The direction toward it is the object's +Y axis turned by its rotation, so a rotation of zero is a sun straight overhead. Position and scale do not matter. `point` and `spot` are reserved and rejected until their bake paths exist. |
 | `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view: the lens, the box the camera moves within (`region`, a `min` and `max`), and optionally the glTF animation it flies. `path = { tracks, node }` names the tracks `tools/anim/bake_tracks.py` baked under the prefix `tracks`, for the glTF node `node`; the generated `<tracks>_tracks_generated.{c,h}` sit beside the scene file. `background` (0xRRGGBB, default black) is the colour a pixel no mesh covers shows, in the panel's RGB565 and in the source reference. Without a path the camera sits at its transform, looking down its own -Z. A scene has at most one camera. |
 
+An appearance-fit recipe is grouped below its renderer's `fit` table.
+
+| Group | Key | Meaning |
+|---|---|---|
+| `target` | `budget`, `coverage_every_ms` | Triangle budget and camera-path sampling interval used to choose triangles. |
+| `train` | `train_every_ms` | Camera-path interval for training poses. |
+| `score` | `held_out_every_ms` | Interval selecting held-out poses from the training samples. |
+| `optimise` | `steps`, `batch`, `laplacian`, `normal_weight` | Optimiser iteration count, batch size and loss weights. |
+| `output` | `sha256`, `recipe_sha256` | Hashes of the fitted mesh and its effective recipe. |
+
 Sky and ambient light are properties of the scene, not objects, and are the
 two settings tables `[sky]` (`color`, `intensity`, `rays`: that many random
 directions per point over the hemisphere) and `[ambient]` (`color`,

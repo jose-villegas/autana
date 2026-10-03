@@ -74,7 +74,26 @@ mesh = "sponza.import.toml"
 variant = "sponza_fitted"
 bake = true
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
-fit = { budget = 8672, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "e7b2620a9905817c9ad11ee1977a502e0900b41d8ef876df9b4744569deb2511", recipe_sha256 = "4b1533e592b99c88cda770d806be4607580ba4a1e97ef52fb565c9824ab7adca" }
+
+[objects.mesh_renderer.fit.target]
+budget = 8672
+coverage_every_ms = 100
+
+[objects.mesh_renderer.fit.train]
+train_every_ms = 1000
+
+[objects.mesh_renderer.fit.score]
+held_out_every_ms = 5000
+
+[objects.mesh_renderer.fit.optimise]
+steps = 2000
+batch = 8
+laplacian = 10.0
+normal_weight = 1.0
+
+[objects.mesh_renderer.fit.output]
+sha256 = "e7b2620a9905817c9ad11ee1977a502e0900b41d8ef876df9b4744569deb2511"
+recipe_sha256 = "4b1533e592b99c88cda770d806be4607580ba4a1e97ef52fb565c9824ab7adca"
 
 [[objects]]
 name = "atrium_fitted_full"
@@ -84,4 +103,23 @@ mesh = "sponza.import.toml"
 variant = "sponza_fitted_full"
 bake = true
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
-fit = { budget = 17381, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, sha256 = "a8f6268cbb5ae48ef6c68945391dbdd1275dd5e24f84fecaeed991d6c8c69c29", recipe_sha256 = "7daec3f033f7ebff0a165ebf36694921b2b27fb5eddcb4eb28c76675bd2a0b73" }
+
+[objects.mesh_renderer.fit.target]
+budget = 17381
+coverage_every_ms = 100
+
+[objects.mesh_renderer.fit.train]
+train_every_ms = 1000
+
+[objects.mesh_renderer.fit.score]
+held_out_every_ms = 5000
+
+[objects.mesh_renderer.fit.optimise]
+steps = 2000
+batch = 8
+laplacian = 10.0
+normal_weight = 1.0
+
+[objects.mesh_renderer.fit.output]
+sha256 = "a8f6268cbb5ae48ef6c68945391dbdd1275dd5e24f84fecaeed991d6c8c69c29"
+recipe_sha256 = "7daec3f033f7ebff0a165ebf36694921b2b27fb5eddcb4eb28c76675bd2a0b73"
