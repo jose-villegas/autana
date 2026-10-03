@@ -28,8 +28,6 @@ carries its stuck state through every replug. Only the PMU cuts a
 battery-backed rail.
 
 Either sequence forces the ROM bootloader regardless of firmware state.
-Use `autana flash` to access the board under the device lock.
-
 From there `autana flash` writes the image and ends with esptool's RTS
 reset. What a flash proves (esptool's hash check and the build's
 `BUILD_ID`, not the boot) and the whole hand-off under the device lock are
@@ -55,6 +53,8 @@ panic, a restart) hangs in the app's PSRAM timing tuning, and repeated, it
 leaves the chip deaf to esptool until a power cycle; a power-on reset boots.
 The bootloader component `launcher/bootloader_components/pmic_cold_boot/`
 requests an AXP2101 power cycle whenever the reset was not a power-on.
+The cause is not established: flash high-performance mode surviving the
+reset is as likely as PSRAM state. The cold restart is a workaround.
 
 ```mermaid
 sequenceDiagram
@@ -76,7 +76,8 @@ The power cycle drops the USB port, and Windows discards serial data the host
 had not read yet, so unread panic output can be lost. Development and
 diagnostics builds set `CONFIG_PMIC_COLD_BOOT_HOST_DRAIN` in their config
 fragments and wait for `HOST_DRAIN_US` before the cycle; release does not.
-The bootloader configuration cannot see `CONFIG_LAUNCHER_DEVELOPMENT`. A power-on reset never waits.
+The bootloader configuration cannot see `CONFIG_LAUNCHER_DEVELOPMENT`. A
+power-on reset never waits.
 
 After a successful PMIC restart the app reports a power-on reset: after a panic
 or a watchdog the cause shows only in what was logged before it, RTC memory
@@ -137,8 +138,13 @@ The target is a 32-bit Xtensa core. A general signed 64-bit divide uses the
 software helper `__divdi3`; constant divisors can be optimized differently.
 Check widening inside fixed-point helpers, prove operand bounds before
 narrowing, and inspect disassembly rather than assigning a source-level
-divide a fixed cycle cost. `launcher/main/render/r3d_project_x.h` keeps the
-wide multiply separate from its narrow divide.
+divide a fixed cycle cost. `r3d_camera_to_screen_x()` in
+`launcher/main/render/r3d_project_x.h` keeps the per-point divide 32-bit
+and widens only the scale multiply. Near-plane clipping uses a 64-bit divide.
+
+`ceilf()` is a libm call, too costly per row; use `(int)x` plus one when it
+falls short. Float division (`__divsf3`) is already the FPU's
+`div0.s`/`divn.s` sequence; a hand-written reciprocal is slower.
 
 Signed division rounds toward zero. An arithmetic right shift rounds negative
 values differently, so signed division by a power of two can require rounding

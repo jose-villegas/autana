@@ -9,10 +9,8 @@ maintainer: a gyro-and-buttons FPS, a rolling-ball game with physics and
 lighting, and a platformer with parallax and 2D lighting.
 
 Every number below that is not marked *estimate* or *unmeasured* is
-measured, and its source is named. The house rule from
-[Debugging.md](../notes/Debugging.md#performance-seems-off) applies to this
-document too: a plausible explanation of where time goes is not a measured
-one, and every phase ends with a number, not a feeling.
+measured, and its source is named. A plausible explanation of where time
+goes is not a measured one: every phase ends with a number, not a feeling.
 
 ---
 
@@ -325,7 +323,7 @@ detail behind every row.
 | SIMD | PIE 128-bit (16×8 / 8×16 lanes), inline asm only | any vector path sits behind a scalar reference implementation with a test asserting identical output (decision A) |
 | Integer mul/div | hardware, pipelined 32-bit mul and div; **64-bit div is a library call** | `__divdi3` and signed `/ 2^n` stay banned in hot loops (see [Arithmetic in hot loops](../notes/Flashing-and-Toolchain.md#arithmetic-in-hot-loops)) |
 | Internal RAM | 512 KB SRAM: ~296 KiB main heap region + 21 KiB + 32 KiB DRAM at boot; free heap and largest block after `gfx_init()` (framebuffer excluded: it lives in PSRAM) are `DP_FREE_HEAP_BYTES`/`DP_LARGEST_FREE_BLOCK_BYTES` (Board-and-Memory.md) | stacks, the DMA gather and strip buffers, and hot per-step buffers (sand's grids, via `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536`) live here; the band ring's buffers will too |
-| PSRAM | 8 MB octal @ 80 MHz (120 MHz experimental); `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps allocations up to 64 KB internal and routes larger ones here; memcpy out ~58 MB/s, in ~47, PSRAM to PSRAM ~22 | under decision B this is read-only bulk/cold storage: the one retained framebuffer, textures and levels; it is never the target of a full-screen write or copy; headroom is a non-issue |
+| PSRAM | 8 MB octal @ 80 MHz (120 MHz experimental); `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` makes allocations up to 64 KB try internal RAM first, falling back to PSRAM; larger allocations try PSRAM first; memcpy out ~58 MB/s, in ~47, PSRAM to PSRAM ~22 | under decision B this is read-only bulk/cold storage: the one retained framebuffer, textures and levels; it is never the target of a full-screen write or copy; headroom is a non-issue |
 | Data cache | 32 KB, 32-byte line, 8-way; 64 KB measured no gain | every PSRAM access (CPU render writes and DMA present reads alike) goes through this cache; see 3.3 |
 | Instruction cache | 32 KB, 32-byte line, 8-way (`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB`; IDF's default is 16 KB): the larger size measured 1-11% per sand step | costs 16 KB of internal RAM over the default |
 | DMA | GDMA, 3 TX + 3 RX channels; async memcpy supported | strip transfers already DMA; mem-to-mem copies could offload clears; measure, do not assume |
@@ -392,9 +390,9 @@ everything in this document. Add to it:
 
 At 40 MHz a full frame is 16.5 ms theoretical over the bus alone. Two
 S3-measured present-cost figures agree closely: `gfx_present()` measures
-17.6 ms directly ([Display-and-Rendering.md](../notes/Display-and-Rendering.md),
-"The blit is bus-bound") and 18.0-18.9 ms via `boot_anim_perf` rows. Both
-present figures sit above the 16.5 ms theoretical; the gap is *unmeasured*
+17.6 ms directly (the present test in
+`launcher/test/suites/suite_gfx.c`) and 18.0-18.9 ms via `boot_anim_perf`
+rows. Both present figures sit above the 16.5 ms theoretical; the gap is *unmeasured*
 why.
 
 **80 MHz is the default.** Reading the framebuffer in
@@ -412,9 +410,8 @@ it through the GPIO matrix. An app that redraws only dirty regions shows
 stray pixels and thin lines that persist until the region is re-sent with
 a different layout; a full-frame renderer hides them within a frame. CS
 setup, pad drive, 40 MHz window commands and double sends were each tried
-on device and none made it clean (see "80 MHz is outside the panel's rating" in
-Display-and-Rendering.md). What is planned instead: keep both clocks, as a
-system display setting with a warning for partial-redraw apps, plus an
+on device and none made it clean. What is planned instead: keep both clocks,
+as a system display setting with a warning for partial-redraw apps, plus an
 opt-in gfx heal that re-sends app-marked regions with a different layout
 under a pixel budget, active only at 80. Full-frame apps keep the ~9 ms
 present for free. Interlace stacks on top.
@@ -1030,10 +1027,10 @@ cheapest path to something that is unmistakably a game.
   keep in sync. A full-screen z-buffer in PSRAM is specifically ruled
   out: per-pixel access to it pays PSRAM's read cost on every touch (3.3).
   LVGL is ruled out in Firmware-Architecture.md regardless.
-- **Do not swizzle the framebuffer into tiles.** Parked on purpose in
-  Display-and-Rendering.md; the dirty-region grid already shipped gets
-  most of that transfer-contiguity property without touching every draw
-  call, and the band ring (3.3) gets the same property for free too.
+- **Do not swizzle the framebuffer into tiles.** Every pixel address would
+  carry a tile computation to help only many small scattered changes. The
+  shipped dirty-region grid already covers most of that, and the band ring
+  (3.3) gets the same transfer-contiguity property for free too.
 - **Do not put `double`, a 64-bit divide, or a signed divide by a power of
   two in a hot loop.** `double` is software-emulated even with the S3's
   FPU; see [Arithmetic in hot loops](../notes/Flashing-and-Toolchain.md#arithmetic-in-hot-loops)
@@ -1069,7 +1066,7 @@ cheapest path to something that is unmistakably a game.
    height (one command each); Phase 2 still ends with the device sweep
    itself across heights measuring present time, rasterizer time, and RAM
    freed, in the same style as the `GATHER_MAX_PIXELS` and
-   `LEAF_REFINE_MAX_RUNS` sweeps summarised in Display-and-Rendering.md.
+   `LEAF_REFINE_MAX_RUNS` device tests in `suite_gfx.c`.
 3. ~~"Parallax" in the platformer~~ **Decided: layered
    parallax scrolling**, not per-pixel parallax mapping.
 4. ~~Own rasterizer vs. deeper small3dlib configuration.~~ **Decided:

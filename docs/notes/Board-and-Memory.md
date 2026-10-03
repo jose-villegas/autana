@@ -104,8 +104,9 @@ debug buffers on use and mutable large test fixtures per test, then free them.
 Clean up earlier allocations before an assertion can abort a failing fixture.
 
 Check `.bss`, `.data` and RAM-resident code in the linker map and size report
-for every build variant. A release-only check misses development and
-diagnostics storage. Link-time size does not prove that a contiguous block
+for every build variant (release, `--dev`, `--diag`). From `launcher/`, run
+`idf.py -B build.dev size` and `idf.py -B build.diag size` as well as the
+release size report. Link-time size does not prove that a contiguous block
 will remain available after runtime allocations.
 
 Compare `memory_free_bytes(MEMORY_DMA)` and
@@ -151,7 +152,6 @@ it live.
 
 ## Related
 
-- [Display-and-Rendering.md](Display-and-Rendering.md): panel bring-up and
-  the rest of the SPI2 story.
-- [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md): the toolchain and
-  build flags behind these numbers.
+- [Display-and-Rendering.md](Display-and-Rendering.md): panel constraints on SPI2.
+- [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md): build configuration
+  and compiler checks.
