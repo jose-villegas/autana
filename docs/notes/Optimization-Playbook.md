@@ -85,7 +85,13 @@ so code growing ahead of it cannot shift it. Alignment alone fixes which
 timing a function gets, not that it is the fastest one; the hottest functions
 also carry `RENDER_ENTRY_OFFSET` (`render/code_layout.h`), never-executed
 `nop.n` ahead of the entry that put their loops at the offsets that ran
-fastest. `launcher/tools/render/code_layout.py` prints those offsets.
+fastest. `launcher/tools/render/code_layout.py` checks those offsets, sizes and
+cache-line spans against `render/code_layout.txt` in the diagnostics build
+gates.
+When a row changes, compare the revisions with the Sponza performance suite
+through `launcher/tools/perf/perf_compare.sh`, retune `RENDER_ENTRY_OFFSET` if
+the new layout is slower, then regenerate the table with the tool's `--write`
+mode.
 `-falign-loops` cannot do this on Xtensa: GCC aligns the label after a
 zero-overhead `loop`, the assembler fills the gap with zeros, and the CPU
 executes them as an IllegalInstruction.
