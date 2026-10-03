@@ -74,42 +74,28 @@ r3d_span_max3(int32_t a, int32_t b, int32_t c) {
 #define R3D_SPAN_FLAT_MAX_WIDTH (3 * R3D_SUBPIXEL)
 
 /* A triangle's pixel centres in its bounding box, over the whole screen and
- * not a window's rows, so every window takes the same path for it. */
+ * not a window's rows: what r3d_span chooses its path by, so every window
+ * takes the same path for it. */
 typedef struct {
     r3d_span_box_t centres; /* x1 - x0 by y1 - y0 centres, not clipped */
     bool flat;              /* one colour and one depth stand in for its planes */
 } r3d_span_extent_t;
 
-/* The same from the subpixel bounds, for a caller that already has them. */
-static inline r3d_span_extent_t
-r3d_span_extent_of(int32_t lo_x, int32_t hi_x, int32_t lo_y, int32_t hi_y) {
-    const r3d_span_box_t centres = {r3d_span_first_centre(lo_x), r3d_span_first_centre(hi_x),
-                                    r3d_span_first_centre(lo_y), r3d_span_first_centre(hi_y)};
-    return (r3d_span_extent_t){centres, centres.y1 - centres.y0 <= R3D_SPAN_FLAT_MAX_ROWS
-                                            && hi_x - lo_x <= R3D_SPAN_FLAT_MAX_WIDTH};
-}
-
 static inline r3d_span_extent_t
 r3d_span_extent(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
-    return r3d_span_extent_of(r3d_span_min3(a->x, b->x, c->x), r3d_span_max3(a->x, b->x, c->x),
-                              r3d_span_min3(a->y, b->y, c->y), r3d_span_max3(a->y, b->y, c->y));
+    const int32_t lo_x = r3d_span_min3(a->x, b->x, c->x);
+    const int32_t hi_x = r3d_span_max3(a->x, b->x, c->x);
+    const r3d_span_box_t centres = {r3d_span_first_centre(lo_x), r3d_span_first_centre(hi_x),
+                                    r3d_span_first_centre(r3d_span_min3(a->y, b->y, c->y)),
+                                    r3d_span_first_centre(r3d_span_max3(a->y, b->y, c->y))};
+    return (r3d_span_extent_t){centres, centres.y1 - centres.y0 <= R3D_SPAN_FLAT_MAX_ROWS
+                                            && hi_x - lo_x <= R3D_SPAN_FLAT_MAX_WIDTH};
 }
 
 /* Twice the signed area of a-b-c; each product is under 2^30. */
 static inline int32_t
 r3d_span_area2(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
     return ((b->x - a->x) * (c->y - a->y)) - ((b->y - a->y) * (c->x - a->x));
-}
-
-/* The centres of `centres` inside the target's columns and rows. */
-static inline r3d_span_box_t
-r3d_span_clip(const r3d_span_target_t* target, r3d_span_box_t centres) {
-    return (r3d_span_box_t){
-        centres.x0 < 0 ? 0 : centres.x0,
-        centres.x1 > target->width ? target->width : centres.x1,
-        centres.y0 < target->row0 ? target->row0 : (centres.y0 > target->row1 ? target->row1 : centres.y0),
-        centres.y1 < target->row0 ? target->row0 : (centres.y1 > target->row1 ? target->row1 : centres.y1),
-    };
 }
 
 /* Temporary measurement switch: 0 draws normally; 1 stops after triangle
