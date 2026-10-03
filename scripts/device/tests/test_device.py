@@ -1754,6 +1754,41 @@ class ResetTests(unittest.TestCase):
         self.assertEqual(self.after_argument(after="watchdog_reset"), "watchdog_reset")
 
 
+class ResetRetryTests(unittest.TestCase):
+    """esptool loses the port mid-connect while the board re-enumerates."""
+
+    def run_reset(self, outcomes):
+        device.ACTIVE_LOCK.held = Namespace(board=BOARD)
+        self.addCleanup(delattr, device.ACTIVE_LOCK, "held")
+        calls = []
+
+        def fake_run(command, check):
+            calls.append(command)
+            outcome = outcomes[len(calls) - 1]
+            if outcome:
+                raise subprocess.CalledProcessError(1, command)
+
+        with mock.patch.object(device, "wait_for_port", return_value="COM5") as wait,              mock.patch.object(device, "python_with_pyserial", return_value="python"),              mock.patch.object(device.subprocess, "run", side_effect=fake_run):
+            try:
+                device.reset()
+            finally:
+                self.waits = wait.call_count
+        return calls
+
+    def test_a_serial_exception_on_the_first_attempt_is_retried_after_waiting_again(self):
+        calls = self.run_reset([True, False])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.waits, 2)
+
+    def test_two_failures_stop_with_the_error_and_no_third_attempt(self):
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.run_reset([True, True, False])
+        self.assertEqual(self.waits, 2)
+
+    def test_a_clean_first_attempt_runs_esptool_once(self):
+        self.assertEqual(len(self.run_reset([False])), 1)
+
+
 class ListenElfResolutionTests(unittest.TestCase):
     """listen() decodes against --elf when given, and otherwise against
     whatever find_elf_for_build_id() resolves from the capture itself."""

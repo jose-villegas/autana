@@ -643,6 +643,12 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
     return bytes(data), "timeout"
 
 
+# esptool's connect handshake resets USB Serial/JTAG into its bootloader, which
+# re-enumerates the port under it; right after a flash that fails once, and the
+# port is back by the next attempt. One retry, never a loop.
+RESET_ATTEMPTS = 2
+
+
 def reset(after="hard_reset"):
     """hard_reset pulses RTS, and USB Serial/JTAG stays up through it, so a
     capture hears the boot from its first line. It cannot restart a chip in
@@ -651,10 +657,16 @@ def reset(after="hard_reset"):
     active = getattr(ACTIVE_LOCK, "held", None)
     if active is None:
         raise RuntimeError("serial port access requires the device lock")
-    port = wait_for_port(active.board, check=require_live_lock)
-    command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
-               "--after", after, "chip_id"]
-    subprocess.run(command, check=True)
+    for attempt in range(RESET_ATTEMPTS):
+        port = wait_for_port(active.board, check=require_live_lock)
+        command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
+                   "--after", after, "chip_id"]
+        try:
+            subprocess.run(command, check=True)
+            return
+        except subprocess.CalledProcessError:
+            if attempt + 1 == RESET_ATTEMPTS:
+                raise
 
 
 def reset_and_capture(output, seconds, idle_seconds, expected_build_id=None,
