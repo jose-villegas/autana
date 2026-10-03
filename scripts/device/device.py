@@ -654,11 +654,11 @@ def reset(after="hard_reset"):
     capture hears the boot from its first line. It cannot restart a chip in
     download mode; watchdog_reset can, but re-enumerates USB, losing the
     early boot lines a release image's BUILD_ID is among."""
-    active = getattr(ACTIVE_LOCK, "held", None)
-    if active is None:
-        raise RuntimeError("serial port access requires the device lock")
+    locked_port()
+    active = ACTIVE_LOCK.held
     for attempt in range(RESET_ATTEMPTS):
         port = wait_for_port(active.board, check=require_live_lock)
+        require_live_lock()
         command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
                    "--after", after, "chip_id"]
         try:

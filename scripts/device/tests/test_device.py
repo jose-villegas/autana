@@ -1740,7 +1740,9 @@ class ResetTests(unittest.TestCase):
     def after_argument(self, *args, **keywords):
         device.ACTIVE_LOCK.held = Namespace(board=BOARD)
         self.addCleanup(delattr, device.ACTIVE_LOCK, "held")
-        with mock.patch.object(device, "wait_for_port", return_value="COM5"), \
+        with mock.patch.object(device, "locked_port", return_value="COM5"), \
+             mock.patch.object(device, "require_live_lock"), \
+             mock.patch.object(device, "wait_for_port", return_value="COM5"), \
              mock.patch.object(device, "python_with_pyserial", return_value="python"), \
              mock.patch.object(device.subprocess, "run") as run:
             device.reset(*args, **keywords)
@@ -1768,7 +1770,11 @@ class ResetRetryTests(unittest.TestCase):
             if outcome:
                 raise subprocess.CalledProcessError(1, command)
 
-        with mock.patch.object(device, "wait_for_port", return_value="COM5") as wait,              mock.patch.object(device, "python_with_pyserial", return_value="python"),              mock.patch.object(device.subprocess, "run", side_effect=fake_run):
+        with mock.patch.object(device, "locked_port", return_value="COM5"), \
+             mock.patch.object(device, "require_live_lock"), \
+             mock.patch.object(device, "wait_for_port", return_value="COM5") as wait, \
+             mock.patch.object(device, "python_with_pyserial", return_value="python"), \
+             mock.patch.object(device.subprocess, "run", side_effect=fake_run):
             try:
                 device.reset()
             finally:
