@@ -3,7 +3,8 @@
 `perf_compare.sh` runs the current report command repeatedly against two
 revision projects and writes the worst observed value for every named timing
 row to `summary.md`. It keeps the individual reports and verifies each
-capture's board build id.
+capture's build id against the one its flash booted, read from the run's log
+(`autana buildid` after the run only when the log has none).
 
 ```sh
 launcher/tools/perf/perf_compare.sh --runs 3 A B -- \

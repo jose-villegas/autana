@@ -148,7 +148,12 @@ capture_side() {
             _pcs_run=$((_pcs_run + 1))
             continue
         fi
-        _pcs_build=$(tr -d '\r\n' < "$out/$_pcs_side/run_${_pcs_run}_buildid_after.txt")
+        # The flash logs the id it booted while it still holds the board; a
+        # `buildid` taken after the lock is released may meet another owner.
+        _pcs_build=$(sed -n 's/^booted BUILD_ID=\([^ ]*\).*/\1/p' "$out/$_pcs_side/run_${_pcs_run}.log" \
+            | tail -n 1 | tr -d '\r')
+        [ -n "$_pcs_build" ] \
+            || _pcs_build=$(tr -d '\r\n' < "$out/$_pcs_side/run_${_pcs_run}_buildid_after.txt")
         _pcs_expected=$(expected_build_id "$_pcs_tree")
         case "$_pcs_build" in *"${_pcs_expected:-no build id written}"*) ;; *)
             capture_failures=$((capture_failures + 1))
