@@ -17,6 +17,7 @@
 | [render_watch.c](render_watch.c) | Fails a scene whose frames keep allocating or printing. |
 | [render_watch.h](render_watch.h) | Frame watch declarations for the host renderer. |
 | [render_masks.json](render_masks.json) | Named masks for image comparisons. |
+| [code_layout.py](code_layout.py) | Where each `RENDER_ENTRY_OFFSET` function and its loops sit within an instruction-cache line, per firmware image. |
 | [check_avi.py](check_avi.py) | Validates AVI structure and frame metadata. |
 | [scenes/](scenes/) | Engine render scenes and their pinned baselines. |
-| [tests/](tests/) | The harness checking its own frame watch against a fixture scene. |
+| [tests/](tests/) | The harness checking its own frame watch against a fixture scene, and code_layout.py's own tests. |

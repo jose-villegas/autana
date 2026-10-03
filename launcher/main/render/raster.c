@@ -127,7 +127,8 @@ draw_instance(const raster_t* raster, const r3d_instance_t* instance, const came
               (slice_t){raster, mesh, &lens, visible, 0, mid, clear});
 }
 
-RENDER_ENTRY_OFFSET(4) raster_stats_t raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
+RENDER_ENTRY_OFFSET(4) raster_stats_t
+raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
     assert(raster->instance_count > 0);
     raster_stats_t stats = {0, 0};
     for (int i = 0; i < raster->instance_count; i++) {
@@ -136,7 +137,8 @@ RENDER_ENTRY_OFFSET(4) raster_stats_t raster_draw(const raster_t* raster, const 
     return stats;
 }
 
-RENDER_ENTRY_OFFSET(12) void raster_upscale(raster_t* raster) {
+RENDER_ENTRY_OFFSET(12) void
+raster_upscale(raster_t* raster) {
     assert(raster->upscaled && raster->destination != NULL);
     assert(raster->width > 0 && raster->height > 0);
     assert(raster->destination_width >= raster->width && raster->destination_height >= raster->height);
