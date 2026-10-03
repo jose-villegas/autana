@@ -106,7 +106,8 @@ def validate(capture_path: str, sentinels=(), require_complete: bool = True):
         failures.append(msg)
 
     boot_count = text.count(BOOT_BANNER)
-    if boot_count == 0:
+    # A RUNSUITE capture opens after the boot, so only a whole run has one.
+    if boot_count == 0 and require_complete:
         failures.append(
             f"no boot banner ({BOOT_BANNER!r}) found - this doesn't look like "
             "a capture that started from a device reset at all."
