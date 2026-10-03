@@ -80,8 +80,9 @@ Three rules keep a reading honest:
 Every frame-budget scene mallocs its ~41 KB grid; if that fails, the
 suite still runs and prints completion with no timings in it. With the
 framebuffer in PSRAM, one grid fits the internal heap's largest block
-and a second contiguous one does not. A report with zero timings: grep
-the raw capture for `free heap after framebuffer`.
+and a second contiguous one does not. A report with zero timings has its
+controls read "not measured"; run `autana suite run_gfx_suite` and grep
+its capture for `free heap after framebuffer`.
 
 ## Perf sanity, not just logging
 
