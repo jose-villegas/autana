@@ -10,18 +10,21 @@ launcher/tools/perf/perf_compare.sh --runs 3 A B -- \
   bash launcher/main/apps/sand/tools/report_performance.sh --no-restore --perf-scope
 ```
 
-The report command runs from the current tree. Each revision checkout is
-appended as `--project PATH`, followed by `OUT.md`. A command that writes a
-raw capture puts `--out` last, so its destination is appended there:
+The command runs from the current tree. Each revision checkout is appended
+as `--project PATH`. A command that writes a raw capture names its
+destination `@CAPTURE@`, and the numbers are read from that file
+(`run_N.capture.log`), never from the report `autana` writes beside it:
 
 ```sh
 launcher/tools/perf/perf_compare.sh --runs 3 A B -- \
-  autana --wait 3600 suite run_sponza_perf_suite --runs 1 --flash --out
+  autana --wait 3600 suite run_sponza_perf_suite --runs 1 --flash --out @CAPTURE@
 ```
 
-The second form reads `both cores: mean` capture lines as name-and-number
-rows. Use `--no-restore` only when another capture will restore the board;
-the default flashes `origin/main`'s release image after the comparison.
+That form reads each `both cores: mean` capture line as a name-and-number
+row. A command without `@CAPTURE@` gets the report path appended last
+(`OUT.md`, the sand report form). Both flash through `autana suite --flash`.
+Use `--no-restore` only when another capture will restore the board; the
+default flashes `origin/main`'s release image after the comparison.
 
 Each capture has a 30-minute deadline; set `--timeout SECONDS` for a different
 limit. A failed capture is recorded and the next one runs. Two consecutive

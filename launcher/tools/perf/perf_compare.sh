@@ -6,8 +6,9 @@
 #   launcher/tools/perf/perf_compare.sh [-o DIR] [--runs N] [--timeout SECONDS] [--no-restore] A B -- COMMAND ...
 #
 # COMMAND runs from this tree. Each detached checkout is supplied through
-# --project, followed by its report path. Put --out last when COMMAND writes
-# a raw capture; report scripts accept OUT.md.
+# --project. A COMMAND that writes a raw capture names its destination @CAPTURE@
+# and the numbers are read from that file, never from the report beside it.
+# Without @CAPTURE@ the report path is appended, for scripts that accept OUT.md.
 
 set -eu
 
@@ -20,7 +21,7 @@ PERF_COMPARE_AUTANA=$(command -v autana)
 . "$LAUNCHER_DIR/tools/revision_worktree.sh"
 
 usage() {
-    sed -n '3,10p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '3,11p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
 }
 
@@ -78,6 +79,34 @@ expected_build_id() {
     [ -n "$_ebi_file" ] && tr -d '\r\n' < "$_ebi_file"
 }
 
+# @CAPTURE@ in COMMAND becomes this run's raw capture path; a COMMAND without
+# one is given the report path last. Rotating "$@" here keeps the caller's own
+# copy of COMMAND intact for the next run.
+run_command() {
+    _rc_tree=$1
+    _rc_capture=$2
+    _rc_report=$3
+    shift 3
+    _rc_named=0
+    _rc_count=$#
+    while [ "$_rc_count" -gt 0 ]; do
+        _rc_arg=$1
+        shift
+        case "$_rc_arg" in
+            *"@CAPTURE@"*)
+                _rc_named=1
+                _rc_arg="${_rc_arg%%"@CAPTURE@"*}$_rc_capture${_rc_arg#*"@CAPTURE@"}" ;;
+        esac
+        set -- "$@" "$_rc_arg"
+        _rc_count=$((_rc_count - 1))
+    done
+    if [ "$_rc_named" -eq 1 ]; then
+        timeout "$capture_timeout" "$@" --project "$_rc_tree" < /dev/null
+    else
+        timeout "$capture_timeout" "$@" --project "$_rc_tree" "$_rc_report" < /dev/null
+    fi
+}
+
 capture_side() {
     _pcs_side=$1
     _pcs_revision=$2
@@ -89,9 +118,12 @@ capture_side() {
     _pcs_run=1
     while [ "$_pcs_run" -le "$runs" ]; do
         _pcs_report="$out/$_pcs_side/run_$_pcs_run.md"
+        _pcs_capture="$out/$_pcs_side/run_$_pcs_run.capture.log"
+        _pcs_numbers=$_pcs_report
+        case " $* " in *"@CAPTURE@"*) _pcs_numbers=$_pcs_capture ;; esac
         "$PERF_COMPARE_AUTANA" status > "$out/$_pcs_side/run_${_pcs_run}_status_before.txt" 2>&1 || true
         "$PERF_COMPARE_AUTANA" buildid > "$out/$_pcs_side/run_${_pcs_run}_buildid_before.txt" 2>&1 || true
-        if timeout "$capture_timeout" "$@" --project "$_pcs_tree" "$_pcs_report" < /dev/null \
+        if run_command "$_pcs_tree" "$_pcs_capture" "$_pcs_report" "$@" \
             > "$out/$_pcs_side/run_${_pcs_run}.log" 2>&1; then
             _pcs_status=0
         else
@@ -132,7 +164,7 @@ capture_side() {
             continue
         esac
         printf '%s\n' "captured $_pcs_build" > "$out/$_pcs_side/run_${_pcs_run}.status"
-        printf '%s\n' "$_pcs_report" >> "$out/$_pcs_side/reports.list"
+        printf '%s\n' "$_pcs_numbers" >> "$out/$_pcs_side/reports.list"
         printf '%s\n' "$_pcs_build" >> "$out/$_pcs_side/buildids.list"
         consecutive_failures=0
         _pcs_run=$((_pcs_run + 1))

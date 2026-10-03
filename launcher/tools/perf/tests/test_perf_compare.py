@@ -90,6 +90,58 @@ class PerfCompareTest(unittest.TestCase):
             cwd=PERF.parent, env=env, capture_output=True, text=True, timeout=15)
         return done, tree_a, tree_b, out, calls, count
 
+    def write_capture_command(self, directory):
+        """Stands in for `autana suite --out PATH`: the raw console lands at
+        PATH, then a summary report with no timings lands beside it."""
+        root = pathlib.Path(directory)
+        command = root / "capture.sh"
+        command.write_text(
+            "#!/bin/sh\n"
+            "set -eu\n"
+            "project=\n"
+            "out=\n"
+            "while [ $# -gt 0 ]; do\n"
+            "  case \"$1\" in\n"
+            "    --project) project=$2; shift 2 ;;\n"
+            "    --out) out=$2; shift 2 ;;\n"
+            "    *) shift ;;\n"
+            "  esac\n"
+            "done\n"
+            "[ -n \"$project\" ] && [ -n \"$out\" ]\n"
+            "printf '%s\n' \"$project\" > \"$PERF_TEST_PROJECT\"\n"
+            "mkdir -p \"$project/launcher/build.diag\"\n"
+            "printf 'BUILD_ID=%s-diag\n' \"$(git -C \"$project\" hash-object firmware.txt | cut -c 1-12)\" > \"$project/launcher/build.diag/build_id.txt\"\n"
+            "cp \"$PERF_TEST_FIXTURE\" \"$out\"\n"
+            "printf '# Device Capture Report\n\nPASS: 2  FAIL: 0\n' > \"${out%.*}.md\"\n",
+            encoding="utf-8")
+        command.chmod(command.stat().st_mode | stat.S_IXUSR)
+        return command
+
+    def test_a_capture_path_is_given_apart_from_the_report_and_its_timings_are_compared(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tree_a = self.make_revision_tree(directory, "before")
+            tree_b = self.make_revision_tree(directory, "after")
+            fake_bin, _, state, calls, count = self.write_compare_fixtures(directory)
+            command = self.write_capture_command(directory)
+            out = pathlib.Path(directory) / "out"
+            env = dict(os.environ, PATH=f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+                       PERF_TEST_PROJECT=str(state), PERF_TEST_FIXTURE=str(FIXTURES / "sponza_capture.txt"))
+            done = subprocess.run(
+                ["sh", str(PERF / "perf_compare.sh"), "-o", str(out), "--no-restore", "--runs", "2",
+                 str(tree_a), str(tree_b), "--", "sh", str(command), "--out", "@CAPTURE@"],
+                cwd=PERF.parent, env=env, capture_output=True, text=True, timeout=30)
+            summary = (out / "summary.md").read_text(encoding="utf-8") if (out / "summary.md").is_file() else ""
+            capture = (out / "a" / "run_1.capture.log").read_text(encoding="utf-8")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("sponza both cores: mean 51000us", capture)
+        self.assertIn("| `fitted-full` | 38000 | 38000 | +0 | no change |", summary)
+        self.assertIn("| `sponza` | 51000 | 51000 | +0 | no change |", summary)
+
+    def test_real_suite_lines_give_one_row_per_variant(self):
+        rows = perf_compare.parse_report(FIXTURES / "sponza_capture.txt")
+        self.assertEqual(rows, {"sponza": 51000, "lite": 42000, "flat": 39000,
+                                "fitted": 41000, "fitted-full": 38000})
+
     def shell_path(self, path):
         return subprocess.check_output(["cygpath", "-u", str(path)], text=True).strip()
 
