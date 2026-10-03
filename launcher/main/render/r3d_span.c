@@ -182,12 +182,11 @@ fill_solid_span(const r3d_span_target_t* target, const gradients_t* g, const int
 }
 
 /* A triangle whose bounding box holds at most this many pixel centres a
- * side has each centre tested against its edges instead of walked: no sort,
- * no edge divides, no span setup. */
-#define BOX_MAX_SIDE   4
-
-/* Up to this many a side, it also takes one colour and one depth. */
+ * side has each centre tested against its edges instead of walked; up to
+ * SMALL_MAX_SIDE it also takes one colour and one depth, and past it, its
+ * planes or its flat values when they need no clamp. */
 #define SMALL_MAX_SIDE 2
+#define BOX_MAX_SIDE   4
 
 #define HALF_PIXEL     (R3D_SUBPIXEL / 2)
 
@@ -365,6 +364,34 @@ small_side(const small_edge_t* e, int32_t x, int32_t y) {
     return (e->dx * (y - e->ay)) - (e->dy * (x - e->ax)) - e->bias;
 }
 
+static void
+fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+           const r3d_span_vertex_t* c, bool positive, r3d_span_box_t box, const uint16_t* face) {
+    fill_t f;
+    set_flat(&f, a, b, c);
+    if (face != NULL) {
+        f.flat_color = *face;
+    }
+    if (r3d_span_stop_after != 0) {
+        return;
+    }
+    const r3d_span_vertex_t* p = positive ? b : c;
+    const r3d_span_vertex_t* q = positive ? c : b;
+    const small_edge_t e[3] = {small_edge(a, p), small_edge(p, q), small_edge(q, a)};
+    for (int y = box.y0; y < box.y1; y++) {
+        const int row = (y - target->row0) * target->width;
+        const int32_t cy = (y << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
+        for (int x = box.x0; x < box.x1; x++) {
+            const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
+            if ((small_side(&e[0], cx, cy) | small_side(&e[1], cx, cy) | small_side(&e[2], cx, cy)) >= 0
+                && f.flat_z > target->depth[row + x]) {
+                target->depth[row + x] = f.flat_z;
+                target->color[row + x] = f.flat_color;
+            }
+        }
+    }
+}
+
 /* An edge's value at the box's first centre, and what a column and a row
  * add to it: the same integers small_side() gives at each centre. */
 typedef struct {
@@ -498,20 +525,6 @@ fill_box_shaded(const r3d_span_target_t* target, const fill_t* f, const r3d_span
     fill_box_planes(target, f, box_edges(v[0], v[1], v[2], positive, box), box, row);
 }
 
-static void
-fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3], bool positive, r3d_span_box_t box,
-           const uint16_t* face) {
-    fill_t f;
-    set_flat(&f, v[0], v[1], v[2]);
-    if (face != NULL) {
-        f.flat_color = *face;
-    }
-    if (r3d_span_stop_after != 0) {
-        return;
-    }
-    fill_box_one_colour(target, v, positive, box, f.flat_z, f.flat_color);
-}
-
 /* A span runs from its clamped start to its end, both values of the plane
  * at centres in `box`, so the largest corner bounds it; a start clamped up
  * from below zero lifts the span by at most the lowest corner's shortfall.
@@ -595,40 +608,47 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3]
 static RENDER_ENTRY_OFFSET(14) void
 r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c, const uint16_t* face) {
-    /* The sort gives the y bounds, and every walked triangle needs it. */
     const r3d_span_vertex_t* v0 = a;
     const r3d_span_vertex_t* v1 = b;
     const r3d_span_vertex_t* v2 = c;
     const bool odd = sort_by_y(&v0, &v1, &v2);
-    const r3d_span_extent_t extent =
-        r3d_span_extent_of(r3d_span_min3(a->x, b->x, c->x), r3d_span_max3(a->x, b->x, c->x), v0->y, v2->y);
-    const r3d_span_box_t box = r3d_span_clip(target, extent.centres);
+
+    /* The whole triangle's rows, not the window's, decide its path, so any
+     * window of rows draws exactly those rows of the whole. */
+    const int rows = r3d_span_first_centre(v2->y) - r3d_span_first_centre(v0->y);
+    const int y_first = clampi(r3d_span_first_centre(v0->y), target->row0, target->row1);
+    const int y_end = clampi(r3d_span_first_centre(v2->y), target->row0, target->row1);
+    const int32_t lo_x = r3d_span_min3(a->x, b->x, c->x);
+    const int32_t hi_x = r3d_span_max3(a->x, b->x, c->x);
+    const int x_first = r3d_span_first_centre(lo_x);
+    const int x_end = r3d_span_first_centre(hi_x);
+    const r3d_span_box_t box = {x_first < 0 ? 0 : x_first, x_end > target->width ? target->width : x_end, y_first,
+                                y_end};
     if (box.y0 >= box.y1 || box.x0 >= box.x1) {
         return; /* no pixel centre inside this window */
     }
     const int32_t area2 = r3d_span_area2(a, b, c);
-    const r3d_span_vertex_t* const v[3] = {a, b, c};
     if (area2 == 0) {
         return;
     }
-    const int columns = extent.centres.x1 - extent.centres.x0;
-    const int rows = extent.centres.y1 - extent.centres.y0;
-    if (columns <= SMALL_MAX_SIDE && rows <= SMALL_MAX_SIDE) {
-        fill_small(target, v, area2 > 0, box, face);
+    if (x_end - x_first <= SMALL_MAX_SIDE && rows <= SMALL_MAX_SIDE) {
+        fill_small(target, a, b, c, area2 > 0, box, face);
         return;
     }
 
-    fill_t f = {extent.flat, face, 0, 0, NULL};
+    fill_t f = {rows <= R3D_SPAN_FLAT_MAX_ROWS && hi_x - lo_x <= R3D_SPAN_FLAT_MAX_WIDTH, face, 0, 0, NULL};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
-    const int y_anchor = clampi(extent.centres.y0, -1, target->row1 + 1);
+    const int y_anchor = clampi(r3d_span_first_centre(v0->y), -1, target->row1 + 1);
     gradients_t g = {0};
     int32_t row[ATTRIBUTES] = {0};
     f.g = &g;
+    const r3d_span_vertex_t* const v[3] = {a, b, c};
     if (!set_up_fill(target, v, box, y_anchor, &f, &g, row)) {
         return;
     }
-    if (columns <= BOX_MAX_SIDE && rows <= BOX_MAX_SIDE && (f.flat || g.in_range)) {
+    if (BOX_MAX_SIDE > SMALL_MAX_SIDE && x_end - x_first <= BOX_MAX_SIDE && rows <= BOX_MAX_SIDE
+        && (f.flat || g.in_range)) {
         if (r3d_span_stop_after != 0) {
             return;
         }
@@ -644,7 +664,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     }
     /* v1 lies right of the long edge v0-v2 when v0-v1-v2 winds positive. */
     const walk_t w = {
-        v0, v1, v2, box.y0, clampi(r3d_span_first_centre(v1->y), box.y0, box.y1), box.y1, (area2 > 0) != odd};
+        v0, v1, v2, y_first, clampi(r3d_span_first_centre(v1->y), y_first, y_end), y_end, (area2 > 0) != odd};
     walk(target, &f, row, &w);
 }
 
