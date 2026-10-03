@@ -133,16 +133,14 @@ capture_side() {
         _pcs_capture="$out/$_pcs_side/run_$_pcs_run.capture.log"
         _pcs_numbers=$_pcs_report
         case " $* " in *"@CAPTURE@"*) _pcs_numbers=$_pcs_capture ;; esac
-        "$PERF_COMPARE_AUTANA" --wait "$capture_timeout" status > "$out/$_pcs_side/run_${_pcs_run}_status_before.txt" 2>&1 || true
-        "$PERF_COMPARE_AUTANA" --wait "$capture_timeout" buildid > "$out/$_pcs_side/run_${_pcs_run}_buildid_before.txt" 2>&1 || true
+        "$PERF_COMPARE_AUTANA" status > "$out/$_pcs_side/run_${_pcs_run}_status_before.txt" 2>&1 || true
         if run_command "$_pcs_tree" "$_pcs_capture" "$_pcs_report" "$@" \
             > "$out/$_pcs_side/run_${_pcs_run}.log" 2>&1; then
             _pcs_status=0
         else
             _pcs_status=$?
         fi
-        "$PERF_COMPARE_AUTANA" --wait "$capture_timeout" status > "$out/$_pcs_side/run_${_pcs_run}_status_after.txt" 2>&1 || true
-        "$PERF_COMPARE_AUTANA" --wait "$capture_timeout" buildid > "$out/$_pcs_side/run_${_pcs_run}_buildid_after.txt" 2>&1 || true
+        "$PERF_COMPARE_AUTANA" status > "$out/$_pcs_side/run_${_pcs_run}_status_after.txt" 2>&1 || true
         if [ "$_pcs_status" -ne 0 ]; then
             capture_failures=$((capture_failures + 1))
             consecutive_failures=$((consecutive_failures + 1))
@@ -164,8 +162,11 @@ capture_side() {
         # `buildid` taken after the lock is released may meet another owner.
         _pcs_build=$(sed -n 's/^booted BUILD_ID=\([^ ]*\).*/\1/p' "$out/$_pcs_side/run_${_pcs_run}.log" \
             | tail -n 1 | tr -d '\r')
-        valid_build_id "$_pcs_build" \
-            || _pcs_build=$(build_id_from_reply "$out/$_pcs_side/run_${_pcs_run}_buildid_after.txt")
+        if ! valid_build_id "$_pcs_build"; then
+            "$PERF_COMPARE_AUTANA" --wait "$capture_timeout" buildid \
+                > "$out/$_pcs_side/run_${_pcs_run}_buildid_after.txt" 2>&1 || true
+            _pcs_build=$(build_id_from_reply "$out/$_pcs_side/run_${_pcs_run}_buildid_after.txt")
+        fi
         _pcs_expected=$(expected_build_id "$_pcs_tree")
         case "$_pcs_build" in *"${_pcs_expected:-no build id written}"*) ;; *)
             capture_failures=$((capture_failures + 1))
