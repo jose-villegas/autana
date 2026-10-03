@@ -71,6 +71,13 @@ short_name() {
     if [ -d "$1" ]; then basename "$1"; else git -C "$REPO_DIR" rev-parse --short=8 "$1^{commit}"; fi
 }
 
+# A build id hashes the ELF, so it never names the commit: a capture is
+# checked against the id that revision's own build wrote.
+expected_build_id() {
+    _ebi_file=$(ls -t "$1"/launcher/build*/build_id.txt 2>/dev/null | head -n 1)
+    [ -n "$_ebi_file" ] && tr -d '\r\n' < "$_ebi_file"
+}
+
 capture_side() {
     _pcs_side=$1
     _pcs_revision=$2
@@ -110,12 +117,13 @@ capture_side() {
             continue
         fi
         _pcs_build=$(tr -d '\r\n' < "$out/$_pcs_side/run_${_pcs_run}_buildid_after.txt")
-        case "$_pcs_build" in *"$_pcs_short"*) ;; *)
+        _pcs_expected=$(expected_build_id "$_pcs_tree")
+        case "$_pcs_build" in *"${_pcs_expected:-no build id written}"*) ;; *)
             capture_failures=$((capture_failures + 1))
             consecutive_failures=$((consecutive_failures + 1))
-            printf '%s\n' "build id $_pcs_build does not identify $_pcs_short" \
+            printf '%s\n' "build id $_pcs_build is not $_pcs_short's build ${_pcs_expected:-(none written)}" \
                 > "$out/$_pcs_side/run_${_pcs_run}.status"
-            echo "capture failed: $_pcs_side run $_pcs_run build id $_pcs_build does not identify $_pcs_short" >&2
+            echo "capture failed: $_pcs_side run $_pcs_run build id $_pcs_build is not $_pcs_short's build ${_pcs_expected:-(none written)}" >&2
             if [ "$consecutive_failures" -ge 2 ]; then
                 echo "ERROR: stopping after two consecutive capture failures" >&2
                 return 1

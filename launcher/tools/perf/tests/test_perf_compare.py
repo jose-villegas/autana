@@ -40,7 +40,7 @@ class PerfCompareTest(unittest.TestCase):
             "#!/bin/sh\n"
             "case \"$1\" in\n"
             "  status) echo unlocked ;;\n"
-            "  buildid) git -C \"$(cat \"$PERF_TEST_PROJECT\")\" rev-parse --short=8 HEAD ;;\n"
+            "  buildid) cat \"$(cat \"$PERF_TEST_PROJECT\")/launcher/build.diag/build_id.txt\" ;;\n"
             "  *) exit 9 ;;\n"
             "esac\n", encoding="utf-8")
         report = root / "report.sh"
@@ -58,6 +58,8 @@ class PerfCompareTest(unittest.TestCase):
             "done\n"
             "[ -n \"$project\" ]\n"
             "printf '%s\\n' \"$project\" > \"$PERF_TEST_PROJECT\"\n"
+            "mkdir -p \"$project/launcher/build.diag\"\n"
+            "printf 'BUILD_ID=%s-diag\\n' \"$(git -C \"$project\" hash-object firmware.txt | cut -c 1-12)\" > \"$project/launcher/build.diag/build_id.txt\"\n"
             "printf '%s:%s\\n' \"$PWD\" \"$project\" >> \"$PERF_TEST_CALLS\"\n"
             "count=0\n"
             "[ -f \"$PERF_TEST_COUNT\" ] && count=$(cat \"$PERF_TEST_COUNT\")\n"
