@@ -76,10 +76,8 @@ component table. A scene needs a `mesh_renderer`.
 | Component | Fields | What it is |
 |---|---|---|
 | `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene; `variant` chooses its geometry variant. |
-| `light` | `type`, `color`, `intensity`, `disc_degrees`, `rays` | A directional light. Its direction toward the light is the object's +Y axis turned by its rotation. Position and scale do not matter. |
-| `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view. `region` is a `min`/`max` box; `path = { tracks, node }`. `background` is 0xRRGGBB, defaults to black, and is what uncovered pixels show. Without a path the camera sits at its transform, looking down -Z. A scene has at most one camera. |
-
-A double-sided face turns toward the lights.
+| `light` | `type`, `color`, `intensity`, `disc_degrees`, `rays` | A directional light; see [light](#light). |
+| `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view; see [camera](#camera). A scene has at most one camera. |
 
 ## Option reference
 
@@ -125,7 +123,9 @@ reference renderer reads the same settings. A renderer can opt out with
 `intensity` is at least 0 and multiplies gathered bounce light.
 `albedo_boost` is greater than 0 and replaces bounce reflectance with
 $`\min(\beta a, \max(a, 0.99))`$. The bake stores the result in the same vertex
-or face colours as direct light.
+or face colours as direct light. The reference renderer reads the same table,
+so a scene's reference carries its look; values above 1 trade fidelity to a
+physical reference for look.
 
 ![The reference beside the direct-light and bounce bakes, each with its error heatmap](../images/render/bake-indirect-compare.png)
 
@@ -186,7 +186,9 @@ recipe_sha256 = "..."
 imported albedo mesh. `shading`, `visibility`, `fit`, and `indirect` require
 `bake = true`. A baked renderer's transform must be identity. Its output is
 `<scene>.<object>.mesh`; an albedo renderer uses `<variant>.mesh`. An import is
-packed only through the scenes that place it.
+packed only through the scenes that place it. The same import can have
+independent bakes in several scenes; an albedo renderer's mesh is shared and
+may be placed anywhere, by many scenes.
 
 #### variant
 
@@ -194,6 +196,7 @@ packed only through the scenes that place it.
 
 #### visibility: camera_region
 
+`rounds`; `source = "camera_region"` (optional, defaults to `"camera_region"`).
 The region source casts from points in the camera's `region`. Use it when the
 camera may occupy the box without a defined path. The image is the same import
 with the cull off above on, cropped where they differ most: without the cull
@@ -209,6 +212,10 @@ view widened by $m$ pixels on each side from the near plane, and a triangle is
 kept if the first face some ray would draw is it. Here $`d_r(u)`$ is ray $r$'s
 distance to face $u$, `double(u)` says that face is double-sided, and
 $`\hat r`$ is the ray direction:
+
+The views are square, as wide as the longer panel side, so the panel held
+either way up is covered; `margin` and the pose spacing cover geometry that
+enters between samples.
 
 ```math
 \mathrm{keep}(t) \iff \exists\, v,\ \exists\, r \in \mathrm{rays}(v, s, m):\;
@@ -232,9 +239,9 @@ described in [The baked mesh](Mesh-Import.md#the-baked-mesh).
 #### shading: flat
 
 Flat shading stores one RGB565 colour per triangle. `fixed` uses that many
-lighting points per face; `auto` chooses a count from face area. Smooth is
-above flat; fixed is above adaptive. One point lights a face from one place, so
-a shadow edge lands on whole faces.
+lighting points per face; `auto` chooses a count from face area. In the sheets,
+smooth is the upper image and flat the lower; fixed is above adaptive. One point
+lights a face from one place, so a shadow edge lands on whole faces.
 
 ![Smooth against flat](../images/render/compare-full-flat.png)
 ![Smooth against flat, the places they differ most](../images/render/compare-full-flat.crops.png)
@@ -245,7 +252,58 @@ at the scene's `flat_sky_rays`: fewer is worse, and more change the score by no
 more than noise. Stratified placement and a disc
 sun preserve soft boundaries. A face's one colour leaves edge error that
 sampling cannot remove. Generated findings and sheets live in the scene tools
-README.
+README. `bake_fidelity.py` re-lights a flat mesh's geometry with chosen
+settings into a scratch directory and scores it against the reference, so
+nothing tracked changes.
+
+#### fit.prune
+
+`budget` is the triangle count the fit keeps, at most the variant's `triangles`;
+`coverage_every_ms` samples the camera path for the dense pose set pruning
+counts pixels over.
+
+The stages are path visibility, simplify above the target, prune to budget,
+optional warm start, then fitting:
+
+```mermaid
+flowchart LR
+    V[path visibility<br/>on the source] --> S[simplify to more<br/>than the budget]
+    S --> P[prune to the budget]
+    P --> R[refine a coarse fit<br/>optional]
+    R --> F[fit: ΔE, Laplacian,<br/>normals, cost]
+    F --> W[write_lit_mesh]
+```
+
+[Path visibility](#visibility-camera_path) spends budget only on surfaces the
+path draws. Each pose of a dense set counts the pixels $`a_t`$ each triangle
+shows; pruning removes zero-coverage triangles first, then the least-covered,
+to the budget. A warm start splits the worst fitted triangles along their
+longest edge, grows the mesh to a larger budget, and fits it again. Generated
+tables show that this is no better than starting with the smaller budget.
+
+The cost model predicts pose time $`\hat t_v`$ from a non-negative least-squares
+fit to board frame times: a constant; clusters in view $`N_{s,v}`$; drawn
+triangles $`D_v`$; their screen rows $`\rho_t`$; pixels covered before the depth
+test $`\alpha_t`$; and clusters in view $`N_{c,v}`$:
+
+```math
+\hat{t}_v = w_0 + w_s\,N_{s,v} + w_d\,|D_v| + w_\rho \sum_{t \in D_v} \rho_t + w_\alpha \sum_{t \in D_v} \alpha_t + w_c\,N_{c,v}
+```
+
+`cost_model.py` fits and applies the weights, retaining them and their source
+frames beside the model. The model predicts board time within a small margin on
+meshes outside its fit. The cost term $`\mathcal{E}_c`$ from
+[fit.optimise](#fitoptimise) trades appearance for predicted time, but a
+smaller budget gives the better trade. Generated tables and findings live in
+the scene tools README.
+
+![Held-out error against predicted frame time](images/appearance-pareto.png)
+
+#### fit.poses
+
+`train_every_ms` samples the camera path for fitting; poses at multiples of
+`held_out_every_ms` (time 0 aside) are held out of training and used only for
+scoring.
 
 #### fit.optimise
 
@@ -253,9 +311,9 @@ The appearance fit starts from a smooth bake at its budget and adjusts welded
 positions and vertex colours against reference renders from camera-path poses.
 The triangles stay fixed, so the budget and frame cost hold. A `fit` table
 records the budget, training, held-out and coverage poses, optimiser settings,
-and output hashes. `fitted_variant.py` remakes the mesh in its GPU environment;
-a bake checks the recorded mesh. The reference, fitted-output, crop and heatmap
-sheets live in the scene tools README. Use it for a mesh seen from known views
+and output hashes. [`fitted_variant.py` remakes the mesh](../../launcher/tools/r3d/README.md#appearance-fit)
+in its GPU environment. The reference, fitted-output, crop and heatmap sheets
+live in the scene tools README. Use it for a mesh seen from known views
 when the simplifier's colours or silhouettes visibly drift from the source. It
 needs a CUDA GPU and minutes per mesh, with no run-time cost.
 
@@ -272,6 +330,9 @@ $`\hat t_v`$ the predicted frame time for pose $`v`$. It minimises the colour
 term $`\mathcal{E}_{\Delta E}`$, the Laplacian term
 $`\mathcal{E}_{\mathcal{L}}`$, the normal term $`\mathcal{E}_n`$, and the cost
 term $`\mathcal{E}_c`$:
+
+`steps` is $`K`$, `batch` is $`|B|`$, `laplacian` is $`\lambda`$ and
+`normal_weight` is $`\lambda_n`$.
 
 ```math
 \min_{P,\,C}\; \mathcal{E}_{\Delta E}(P, C)
@@ -350,54 +411,10 @@ README.
 
 ![Normal angle heatmaps](images/appearance-normal-heat.png)
 
-#### fit.poses
-
-`train_every_ms` samples the camera path for fitting; `held_out_every_ms`
-selects the poses used only for scoring.
-
 #### fit.hashes
 
 `sha256` records the fitted mesh, and `recipe_sha256` records its effective
 recipe. A bake checks the recorded mesh.
-
-#### fit.prune
-
-The stages are path visibility, simplify above the target, prune to budget,
-optional warm start, then fitting:
-
-```mermaid
-flowchart LR
-    V[path visibility<br/>on the source] --> S[simplify to more<br/>than the budget]
-    S --> P[prune to the budget]
-    P --> R[refine a coarse fit<br/>optional]
-    R --> F[fit: ΔE, Laplacian,<br/>normals, cost]
-    F --> W[write_lit_mesh]
-```
-
-[Path visibility](#visibility-camera_path) spends budget only on surfaces the
-path draws. Each pose of a dense set counts the pixels $`a_t`$ each triangle
-shows; pruning removes zero-coverage triangles first, then the least-covered,
-to the budget. A warm start splits the worst fitted triangles along their
-longest edge, grows the mesh to a larger budget, and fits it again. Generated
-tables show that this is no better than starting with the smaller budget.
-
-The cost model predicts pose time $`\hat t_v`$ from a non-negative least-squares
-fit to board frame times: a constant; clusters in view $`N_{s,v}`$; drawn
-triangles $`D_v`$; their screen rows $`\rho_t`$; pixels covered before the depth
-test $`\alpha_t`$; and clusters in view $`N_{c,v}`$:
-
-```math
-\hat{t}_v = w_0 + w_s\,N_{s,v} + w_d\,|D_v| + w_\rho \sum_{t \in D_v} \rho_t + w_\alpha \sum_{t \in D_v} \alpha_t + w_c\,N_{c,v}
-```
-
-`cost_model.py` fits and applies the weights, retaining them and their source
-frames beside the model. The model predicts board time within a small margin on
-meshes outside its fit.
-The cost term $`\mathcal{E}_c`$ from [fit.optimise](#fitoptimise) trades appearance
-for predicted time, but a smaller budget gives the better trade. Generated
-tables and findings live in the scene tools README.
-
-![Held-out error against predicted frame time](images/appearance-pareto.png)
 
 #### indirect: off
 
@@ -413,16 +430,26 @@ renderer and its fit reference.
 #### light
 
 Only directional lights are scene objects; `point` and `spot` are reserved.
+Its direction toward the light is the object's +Y axis turned by its rotation.
+Position and scale do not matter. The lights a bake sees are the directional
+objects in file order, then `[sky]`, then `[ambient]`; the order changes only
+which random rays each light draws. A double-sided face turns to the side the
+directional lights, summed by intensity, shine on.
 
 ### Camera options
 
 | Option | Keys | What it does | Default | Option link |
 |---|---|---|---|---|
-| `camera` | `half_fov_short_tan`, `near_z`; `region`, `path`, `background` | Defines the scene view. | One camera at most. | [camera](#camera) |
+| `camera` | `half_fov_short_tan`, `near_z`; `region`, `path`, `background` | Defines the scene view. | — | [camera](#camera) |
 
 #### camera
 
-Without a path the camera sits at its transform looking down -Z.
+`path = { tracks, node }` names the tracks
+[`tools/anim/bake_tracks.py`](../Animation-Tracks.md) baked under the prefix
+`tracks` for the glTF node `node`; the generated `<tracks>_tracks_generated.{c,h}`
+sit beside the scene file. `background` (0xRRGGBB, default black) is the colour
+a pixel no mesh covers shows, on the panel and in the source reference. Without
+a path the camera sits at its transform, looking down its own -Z.
 
 ## What the scene must carry
 
@@ -434,10 +461,16 @@ lights, `tonemap_white`, a region or `[indirect]` that no placed mesh reads.
 
 ## The scene table
 
-`scene_table.py` writes `<scene>_scene_generated.c` and `.h` beside the scene
-file. A test fails on a stale table. The table is `<scene>_scene`, registered
-with `SCENE_REGISTER()` so [Scene-Manager.md](Scene-Manager.md) can load it.
-Its header names objects `<SCENE>_SCENE_<OBJECT>`, so a misspelt object fails to
-compile. An asset id missing from the pack fails `scene_load()`. The transform
-is baked to a 3x3 plus a position, so the device does no trigonometry. Lights,
-region, sky, ambient and the tone map stay offline.
+`python launcher/tools/r3d/scene_table.py SCENE.scene.toml` reads the scene file
+and its import files with the standard library alone, bakes nothing, and writes
+`<scene>_scene_generated.c` and `.h` beside the scene file. A test fails when
+the committed table is not what its scene file generates. The table is one
+const `scene_def_t`, `<scene>_scene`, registered with `SCENE_REGISTER()` so
+`scene_load()` finds it ([Scene-Manager.md](Scene-Manager.md)). It holds an
+entity for each mesh renderer and the camera, in file order, named
+`<SCENE>_SCENE_<OBJECT>` so a misspelt object fails to compile. It also holds
+each entity's transform baked as a 3x3 and a position, so the device does no
+trigonometry; each renderer's asset id, which `scene_load()` opens from the
+[asset pack](../assets/README.md) and fails on when missing; and the camera's
+lens, background and path symbols. Lights, the camera region, sky, ambient and
+the tone map stay offline.

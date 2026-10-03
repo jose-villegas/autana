@@ -32,7 +32,7 @@ flowchart LR
 
 Keys before `;` are required; after it, optional.
 
-#### Source, output and materials
+### Source, output and materials
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
@@ -40,13 +40,13 @@ Keys before `;` are required; after it, optional.
 | `[output]` | `directory`; `name`, `position_scale` | Names the output directory, single-mesh name and position scale. | `name` required without `[[variants]]`, rejected with them; `position_scale` 8. | Write / none. | [output](#output) |
 | `[materials]` | ; `double_sided` | Draws listed material faces from both sides. | `[]`. | None / more faces drawn. | [materials](#materials) |
 
-#### Process options
+### Process options
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
 | `[process]` | ; `seed` | Seeds thin's random choice. | `0`; only with thin. | None / none. | [process](#process) |
 
-#### Geometry
+### Geometry
 
 Every Geometry table opts its step in; without it the step does not run.
 
@@ -56,7 +56,7 @@ Every Geometry table opts its step in; without it the step does not run.
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
 | `geometry.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges and simplifies each variant to its budget; reserves `props` and can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 
-#### Geometry variants
+### Geometry variants
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
@@ -379,7 +379,8 @@ E = \mathrm{dilate}_1\left\{\, p : \left\lVert \nabla y_T(p) \right\rVert > 0.06
 ```
 
 Appearance fitting, its objective, and its budget and cost choices are
-described by [fit](Scene-Files.md#fitoptimise).
+described by [fit.prune](Scene-Files.md#fitprune) and
+[fit.optimise](Scene-Files.md#fitoptimise).
 
 ## Meshlets
 
