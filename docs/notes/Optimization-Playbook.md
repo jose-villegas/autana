@@ -388,6 +388,16 @@ operand range and stay narrow.
 
 ---
 
+## `ceilf()` is a call; float division is not worth replacing
+
+`ceilf()` is a call into libm, and in a per-row loop it cost more than the
+work around it; an inline ceiling (`(int)x`, plus one if that fell short)
+removed it. Float division needs no such help: libgcc's `__divsf3` on this
+chip is the FPU's own `div0.s`/`divn.s` sequence, and a hand-rolled
+reciprocal measured slower.
+
+---
+
 ## A decision that is constant per row does not belong in the pixel loop
 
 The dithered photo crossfade asked "does the Bayer pattern cover this
