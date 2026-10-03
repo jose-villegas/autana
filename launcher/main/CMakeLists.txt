@@ -254,6 +254,7 @@ idf_component_register(
     SRCS ${app_srcs}
     INCLUDE_DIRS "."
     PRIV_INCLUDE_DIRS ${app_private_include_dirs}
+    LDFRAGMENTS "linker.lf"
     REQUIRES ${app_reqs}
 
     # Required by self-registration, and easy to get wrong.

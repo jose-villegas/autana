@@ -1,0 +1,12 @@
+[sections:patchable_entries]
+entries:
+    __patchable_function_entries
+
+[scheme:patchable_entries_default]
+entries:
+    patchable_entries -> flash_rodata
+
+[mapping:patchable_entries]
+archive: libmain.a
+entries:
+    * (patchable_entries_default)
