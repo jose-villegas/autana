@@ -487,20 +487,21 @@ fill_box_planes(const r3d_span_target_t* target, const fill_t* f, box_edges_t ed
 /* Out of line: inlined into the triangle's entry, the box fills crowd the
  * registers of the walk every larger triangle takes. */
 static __attribute__((noinline)) void
-fill_box(const r3d_span_target_t* target, const fill_t* f, const r3d_span_vertex_t* const v[3], bool positive,
-         r3d_span_box_t box, int32_t row[ATTRIBUTES]) {
-    const box_edges_t edges = box_edges(v[0], v[1], v[2], positive, box);
-    if (f->flat) {
-        fill_box_flat(target, edges, box, f->flat_z, f->flat_color);
-    } else {
-        fill_box_planes(target, f, edges, box, row);
-    }
+fill_box_one_colour(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3], bool positive,
+                    r3d_span_box_t box, uint16_t zq, uint16_t color) {
+    fill_box_flat(target, box_edges(v[0], v[1], v[2], positive, box), box, zq, color);
+}
+
+static __attribute__((noinline)) void
+fill_box_shaded(const r3d_span_target_t* target, const fill_t* f, const r3d_span_vertex_t* const v[3], bool positive,
+                r3d_span_box_t box, int32_t row[ATTRIBUTES]) {
+    fill_box_planes(target, f, box_edges(v[0], v[1], v[2], positive, box), box, row);
 }
 
 static void
 fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3], bool positive, r3d_span_box_t box,
            const uint16_t* face) {
-    fill_t f = {true, face, 0, 0, NULL};
+    fill_t f;
     set_flat(&f, v[0], v[1], v[2]);
     if (face != NULL) {
         f.flat_color = *face;
@@ -508,7 +509,7 @@ fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3],
     if (r3d_span_stop_after != 0) {
         return;
     }
-    fill_box(target, &f, v, positive, box, NULL);
+    fill_box_one_colour(target, v, positive, box, f.flat_z, f.flat_color);
 }
 
 /* A span runs from its clamped start to its end, both values of the plane
@@ -631,7 +632,11 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
         if (r3d_span_stop_after != 0) {
             return;
         }
-        fill_box(target, &f, v, area2 > 0, box, row);
+        if (f.flat) {
+            fill_box_one_colour(target, v, area2 > 0, box, f.flat_z, f.flat_color);
+        } else {
+            fill_box_shaded(target, &f, v, area2 > 0, box, row);
+        }
         return;
     }
     if (r3d_span_stop_after == 1) {
