@@ -175,6 +175,39 @@ def board_for_lock(store, named=None, remembered=False):
                        + " - name one with --board: " + ", ".join(candidates))
 
 
+# USB Serial/JTAG drops off the bus for a few seconds on every reset and may
+# return under another name, so 20 s covers a slow host and still fails fast.
+PORT_REAPPEAR_SECONDS = 20
+
+
+def probe_port(port):
+    """Opens and closes `port`: a name still listed while the device is going
+    away fails here, not later inside a child process."""
+    import serial
+    serial.Serial(port).close()
+
+
+def wait_for_port(board=None, seconds=PORT_REAPPEAR_SECONDS, probe=probe_port,
+                  sleep=time.sleep, now=time.monotonic, check=None):
+    """The name of the board's port once it can be opened, found by its USB
+    serial number each time, never by a remembered COM or ttyACM name. The one
+    wait every caller about to touch the port after a reset goes through;
+    `check` runs after each miss (the lock holder passes its liveness check)."""
+    deadline = now() + seconds
+    while True:
+        try:
+            port = find_board(board).port
+            probe(port)
+            return port
+        except (OSError, NoBoard) as error:
+            if check is not None:
+                check()
+            if now() >= deadline:
+                raise PortUnavailable("board port did not reappear within "
+                                      + str(int(seconds)) + "s: " + str(error)) from error
+            sleep(0.5)
+
+
 def open_serial():
     """Opens the locked board's port for this process alone. Windows refuses a
     second open on its own; POSIX needs `exclusive` (an advisory flock, so it
@@ -615,7 +648,10 @@ def reset(after="hard_reset"):
     capture hears the boot from its first line. It cannot restart a chip in
     download mode; watchdog_reset can, but re-enumerates USB, losing the
     early boot lines a release image's BUILD_ID is among."""
-    port = locked_port()
+    active = getattr(ACTIVE_LOCK, "held", None)
+    if active is None:
+        raise RuntimeError("serial port access requires the device lock")
+    port = wait_for_port(active.board, check=require_live_lock)
     command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
                "--after", after, "chip_id"]
     subprocess.run(command, check=True)
@@ -1810,7 +1846,7 @@ def main(argv=None):
                 print_statuses(entries, store.now())
             return 0
         if args.command == "resolve-port":
-            print(find_board(args.board).port)
+            print(wait_for_port(args.board))
             return 0
         board = board_for_lock(store, args.board,
                                remembered=args.command in ("hand-to-human", "take-back"))

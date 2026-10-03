@@ -1680,9 +1680,67 @@ class CaptureAfterResetTests(unittest.TestCase):
             unused_data, reason = device.capture_after_reset(os.devnull, 30, 0.1)
         self.assertEqual(reason, "complete")
 
+class WaitForPortTests(unittest.TestCase):
+    """A reset takes the board's port off USB for seconds; it returns by the
+    board's serial number, possibly under another name."""
+
+    def setUp(self):
+        self.clock = [0.0]
+        self.listing = []
+
+    def sleep(self, seconds):
+        self.clock[0] += seconds
+
+    def boards(self):
+        return [device.Board(BOARD, name) for name in self.listing
+                if self.clock[0] >= self.appears_at]
+
+    def wait(self, seconds=20, probe=lambda port: None):
+        with mock.patch.object(device, "plugged_boards", self.boards):
+            return device.wait_for_port(BOARD, seconds, probe, self.sleep,
+                                        lambda: self.clock[0])
+
+    def test_a_port_that_appears_after_a_delay_is_returned_under_its_new_name(self):
+        self.appears_at = 6.0
+        self.listing = ["/dev/ttyACM1"]
+        self.assertEqual(self.wait(), "/dev/ttyACM1")
+        self.assertGreaterEqual(self.clock[0], 6.0)
+
+    def test_a_port_that_never_appears_times_out_cleanly(self):
+        self.appears_at = 1e9
+        self.listing = ["COM5"]
+        with self.assertRaisesRegex(device.PortUnavailable, "did not reappear within 20s"):
+            self.wait()
+        self.assertLess(self.clock[0], 21)
+
+    def test_a_listed_port_that_cannot_be_opened_yet_is_waited_out(self):
+        self.appears_at = 0.0
+        self.listing = ["COM5"]
+        opens = []
+
+        def probe(port):
+            opens.append(port)
+            if len(opens) < 4:
+                raise FileNotFoundError(2, "gone")
+
+        self.assertEqual(self.wait(probe=probe), "COM5")
+        self.assertEqual(len(opens), 4)
+
+    def test_the_liveness_check_runs_on_every_miss(self):
+        self.appears_at = 1e9
+        checks = []
+        with mock.patch.object(device, "plugged_boards", self.boards):
+            with self.assertRaises(device.PortUnavailable):
+                device.wait_for_port(BOARD, 2, lambda port: None, self.sleep,
+                                     lambda: self.clock[0], lambda: checks.append(1))
+        self.assertGreater(len(checks), 1)
+
+
 class ResetTests(unittest.TestCase):
     def after_argument(self, *args, **keywords):
-        with mock.patch.object(device, "locked_port", return_value="COM5"), \
+        device.ACTIVE_LOCK.held = Namespace(board=BOARD)
+        self.addCleanup(delattr, device.ACTIVE_LOCK, "held")
+        with mock.patch.object(device, "wait_for_port", return_value="COM5"), \
              mock.patch.object(device, "python_with_pyserial", return_value="python"), \
              mock.patch.object(device.subprocess, "run") as run:
             device.reset(*args, **keywords)
