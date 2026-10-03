@@ -35,14 +35,18 @@ class PerfCompareTest(unittest.TestCase):
         fake_bin.mkdir()
         state = root / "project"
         calls = root / "calls"
+        autana_calls = root / "autana-calls"
         autana = fake_bin / "autana"
         autana.write_text(
             "#!/bin/sh\n"
+            "wait=\n"
+            "if [ \"$1\" = --wait ]; then wait=$2; shift 2; fi\n"
+            "printf '%s %s\\n' \"$wait\" \"$1\" >> \"$PERF_TEST_AUTANA_CALLS\"\n"
             "case \"$1\" in\n"
             "  status) echo unlocked ;;\n"
-            "  buildid) if [ -n \"${PERF_TEST_BUSY:-}\" ]; then\n"
+            "  buildid) if [ -n \"${PERF_TEST_BUSY:-}\" ] && [ -z \"$wait\" ]; then\n"
             "      echo 'the board is busy - held by device_report-performance:75040'\n"
-            "    else cat \"$(cat \"$PERF_TEST_PROJECT\")/launcher/build.diag/build_id.txt\"; fi ;;\n"
+            "    else sed 's/^/BUILD_ID=/' \"$(cat \"$PERF_TEST_PROJECT\")/launcher/build.diag/build_id.txt\"; fi ;;\n"
             "  *) exit 9 ;;\n"
             "esac\n", encoding="utf-8")
         report = root / "report.sh"
@@ -61,7 +65,7 @@ class PerfCompareTest(unittest.TestCase):
             "[ -n \"$project\" ]\n"
             "printf '%s\\n' \"$project\" > \"$PERF_TEST_PROJECT\"\n"
             "mkdir -p \"$project/launcher/build.diag\"\n"
-            "printf 'BUILD_ID=%s-diag\\n' \"$(git -C \"$project\" hash-object firmware.txt | cut -c 1-12)\" > \"$project/launcher/build.diag/build_id.txt\"\n"
+            "printf '%s-diag\\n' \"$(git -C \"$project\" hash-object firmware.txt | cut -c 1-12)\" > \"$project/launcher/build.diag/build_id.txt\"\n"
             "printf '%s:%s\\n' \"$PWD\" \"$project\" >> \"$PERF_TEST_CALLS\"\n"
             "count=0\n"
             "[ -f \"$PERF_TEST_COUNT\" ] && count=$(cat \"$PERF_TEST_COUNT\")\n"
@@ -76,16 +80,16 @@ class PerfCompareTest(unittest.TestCase):
             encoding="utf-8")
         for path in (autana, report):
             path.chmod(path.stat().st_mode | stat.S_IXUSR)
-        return fake_bin, report, state, calls, root / "count"
+        return fake_bin, report, state, calls, autana_calls, root / "count"
 
     def run_compare_fixture(self, directory, mode="ok", runs=1, timeout=5):
         tree_a = self.make_revision_tree(directory, "before")
         tree_b = self.make_revision_tree(directory, "after")
-        fake_bin, report, state, calls, count = self.write_compare_fixtures(directory)
+        fake_bin, report, state, calls, autana_calls, count = self.write_compare_fixtures(directory)
         out = pathlib.Path(directory) / "out"
         env = dict(os.environ, PATH=f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
                    PERF_TEST_PROJECT=str(state), PERF_TEST_CALLS=str(calls),
-                   PERF_TEST_COUNT=str(count), PERF_TEST_MODE=mode)
+                   PERF_TEST_COUNT=str(count), PERF_TEST_AUTANA_CALLS=str(autana_calls), PERF_TEST_MODE=mode)
         done = subprocess.run(
             ["sh", str(PERF / "perf_compare.sh"), "-o", str(out), "--no-restore", "--runs", str(runs),
              "--timeout", str(timeout), str(tree_a), str(tree_b), "--", "sh", str(report)],
@@ -125,11 +129,12 @@ class PerfCompareTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             tree_a = self.make_revision_tree(directory, "before")
             tree_b = self.make_revision_tree(directory, "after")
-            fake_bin, _, state, calls, count = self.write_compare_fixtures(directory)
+            fake_bin, _, state, calls, _, count = self.write_compare_fixtures(directory)
             command = self.write_capture_command(directory)
             out = pathlib.Path(directory) / "out"
             env = dict(os.environ, PATH=f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-                       PERF_TEST_PROJECT=str(state), PERF_TEST_FIXTURE=str(FIXTURES / "sponza_capture.txt"))
+                       PERF_TEST_PROJECT=str(state), PERF_TEST_AUTANA_CALLS=str(pathlib.Path(directory) / "autana-calls"),
+                       PERF_TEST_FIXTURE=str(FIXTURES / "sponza_capture.txt"))
             done = subprocess.run(
                 ["sh", str(PERF / "perf_compare.sh"), "-o", str(out), "--no-restore", "--runs", "2",
                  str(tree_a), str(tree_b), "--", "sh", str(command), "--out", "@CAPTURE@"],
@@ -141,26 +146,27 @@ class PerfCompareTest(unittest.TestCase):
         self.assertIn("| `fitted-full` | 38000 | 38000 | +0 | no change |", summary)
         self.assertIn("| `sponza` | 51000 | 51000 | +0 | no change |", summary)
 
-    def test_the_build_id_comes_from_the_boot_the_capture_logged_under_its_lock(self):
+    def test_busy_buildid_refusal_is_avoided_with_the_capture_wait(self):
         with tempfile.TemporaryDirectory() as directory:
             tree_a = self.make_revision_tree(directory, "before")
             tree_b = self.make_revision_tree(directory, "after")
-            fake_bin, _, state, _, _ = self.write_compare_fixtures(directory)
+            fake_bin, _, state, _, autana_calls, _ = self.write_compare_fixtures(directory)
             command = self.write_capture_command(directory)
             out = pathlib.Path(directory) / "out"
             env = dict(os.environ, PATH=f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-                       PERF_TEST_PROJECT=str(state), PERF_TEST_BUSY="1",
+                       PERF_TEST_PROJECT=str(state), PERF_TEST_AUTANA_CALLS=str(autana_calls), PERF_TEST_BUSY="1",
                        PERF_TEST_FIXTURE=str(FIXTURES / "sponza_capture.txt"))
             done = subprocess.run(
-                ["sh", str(PERF / "perf_compare.sh"), "-o", str(out), "--no-restore", "--runs", "2",
+                ["sh", str(PERF / "perf_compare.sh"), "-o", str(out), "--no-restore", "--runs", "2", "--timeout", "5",
                  str(tree_a), str(tree_b), "--", "sh", str(command), "--out", "@CAPTURE@"],
                 cwd=PERF.parent, env=env, capture_output=True, text=True, timeout=30)
             expected = (tree_a / "launcher" / "build.diag" / "build_id.txt").read_text(encoding="utf-8").strip()
             status = (out / "a" / "run_1.status").read_text(encoding="utf-8").strip()
-            buildid_after = (out / "a" / "run_1_buildid_after.txt").read_text(encoding="utf-8")
+            recorded_calls = autana_calls.read_text(encoding="utf-8").splitlines()
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(status, f"captured {expected}")
-        self.assertIn("the board is busy", buildid_after)
+        self.assertTrue(all(call.startswith("5 ") for call in recorded_calls))
+        self.assertIn("5 buildid", recorded_calls)
 
     def test_real_suite_lines_give_one_row_per_variant(self):
         rows = perf_compare.parse_report(FIXTURES / "sponza_capture.txt")
