@@ -414,44 +414,47 @@ fill_box_flat(const r3d_span_target_t* target, box_edges_t edges, r3d_span_box_t
     }
 }
 
+/* Bit i set when the row's centre i columns into the box is inside every
+ * edge: tested apart from the planes, so neither loop runs short of
+ * registers. */
+static inline uint32_t
+box_row_mask(const box_edges_t* edges, int columns) {
+    int32_t w0 = edges->e[0].w;
+    int32_t w1 = edges->e[1].w;
+    int32_t w2 = edges->e[2].w;
+    uint32_t mask = 0;
+    for (int i = 0; i < columns; i++) {
+        mask |= (uint32_t)((w0 | w1 | w2) >= 0) << i;
+        w0 += edges->e[0].across;
+        w1 += edges->e[1].across;
+        w2 += edges->e[2].across;
+    }
+    return mask;
+}
+
 static inline void
-box_row_solid(uint16_t* depth, uint16_t* out, box_edges_t edges, int x0, int x1, int32_t z, int32_t dz,
-              uint16_t color) {
-    int32_t w0 = edges.e[0].w;
-    int32_t w1 = edges.e[1].w;
-    int32_t w2 = edges.e[2].w;
-    for (int x = x0; x < x1; x++) {
+box_row_solid(uint16_t* depth, uint16_t* out, uint32_t mask, int32_t z, int32_t dz, uint16_t color) {
+    for (; mask != 0; mask >>= 1, depth++, out++, z += dz) {
         const uint16_t zq = (uint16_t)(z >> 8);
-        if ((w0 | w1 | w2) >= 0 && zq > depth[x]) {
-            depth[x] = zq;
-            out[x] = color;
+        if ((mask & 1U) != 0 && zq > *depth) {
+            *depth = zq;
+            *out = color;
         }
-        w0 += edges.e[0].across;
-        w1 += edges.e[1].across;
-        w2 += edges.e[2].across;
-        z += dz;
     }
 }
 
 static inline void
-box_row_smooth(uint16_t* depth, uint16_t* out, box_edges_t edges, int x0, int x1, const int32_t row[ATTRIBUTES],
-               const gradients_t* g) {
-    int32_t w0 = edges.e[0].w;
-    int32_t w1 = edges.e[1].w;
-    int32_t w2 = edges.e[2].w;
+box_row_smooth(uint16_t* depth, uint16_t* out, uint32_t mask, const int32_t row[ATTRIBUTES], const gradients_t* g) {
     int32_t z = row[0];
     int32_t r = row[1];
     int32_t gg = row[2];
     int32_t b = row[3];
-    for (int x = x0; x < x1; x++) {
+    for (; mask != 0; mask >>= 1, depth++, out++) {
         const uint16_t zq = (uint16_t)(z >> 8);
-        if ((w0 | w1 | w2) >= 0 && zq > depth[x]) {
-            depth[x] = zq;
-            out[x] = r3d_span_pack(r, gg, b);
+        if ((mask & 1U) != 0 && zq > *depth) {
+            *depth = zq;
+            *out = r3d_span_pack(r, gg, b);
         }
-        w0 += edges.e[0].across;
-        w1 += edges.e[1].across;
-        w2 += edges.e[2].across;
         z += g->dx[0];
         r += g->dx[1];
         gg += g->dx[2];
@@ -465,12 +468,14 @@ static void
 fill_box_planes(const r3d_span_target_t* target, const fill_t* f, box_edges_t edges, r3d_span_box_t box,
                 int32_t row[ATTRIBUTES]) {
     for (int y = box.y0; y < box.y1; y++) {
-        const int offset = (y - target->row0) * target->width;
-        if (f->face != NULL) {
-            box_row_solid(target->depth + offset, target->color + offset, edges, box.x0, box.x1, row[0], f->g->dx[0],
-                          f->flat_color);
-        } else {
-            box_row_smooth(target->depth + offset, target->color + offset, edges, box.x0, box.x1, row, f->g);
+        const uint32_t mask = box_row_mask(&edges, box.x1 - box.x0);
+        if (mask != 0) {
+            const int offset = ((y - target->row0) * target->width) + box.x0;
+            if (f->face != NULL) {
+                box_row_solid(target->depth + offset, target->color + offset, mask, row[0], f->g->dx[0], f->flat_color);
+            } else {
+                box_row_smooth(target->depth + offset, target->color + offset, mask, row, f->g);
+            }
         }
         for (int k = 0; k < 3; k++) {
             edges.e[k].w += edges.e[k].down;
@@ -589,7 +594,13 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3]
 static RENDER_ENTRY_OFFSET(14) void
 r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c, const uint16_t* face) {
-    const r3d_span_extent_t extent = r3d_span_extent(a, b, c);
+    /* The sort gives the y bounds, and every walked triangle needs it. */
+    const r3d_span_vertex_t* v0 = a;
+    const r3d_span_vertex_t* v1 = b;
+    const r3d_span_vertex_t* v2 = c;
+    const bool odd = sort_by_y(&v0, &v1, &v2);
+    const r3d_span_extent_t extent =
+        r3d_span_extent_of(r3d_span_min3(a->x, b->x, c->x), r3d_span_max3(a->x, b->x, c->x), v0->y, v2->y);
     const r3d_span_box_t box = r3d_span_clip(target, extent.centres);
     if (box.y0 >= box.y1 || box.x0 >= box.x1) {
         return; /* no pixel centre inside this window */
@@ -626,10 +637,6 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     if (r3d_span_stop_after == 1) {
         return;
     }
-    const r3d_span_vertex_t* v0 = a;
-    const r3d_span_vertex_t* v1 = b;
-    const r3d_span_vertex_t* v2 = c;
-    const bool odd = sort_by_y(&v0, &v1, &v2);
     /* v1 lies right of the long edge v0-v2 when v0-v1-v2 winds positive. */
     const walk_t w = {
         v0, v1, v2, box.y0, clampi(r3d_span_first_centre(v1->y), box.y0, box.y1), box.y1, (area2 > 0) != odd};
