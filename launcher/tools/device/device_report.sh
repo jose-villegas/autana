@@ -25,6 +25,8 @@
 #   report_build_flags extra `autana selftest`/`autana suite` flags, e.g. --perf-scope
 #   report_sentinel    a line the capture must contain to count as having
 #                      measured anything, beyond the results every run prints
+#   report_capture_failures_ok
+#                      1 if a completed capture may exit 1 for failing tests
 #   report_failures_ok 1 if the reporter exits 1 to mean "the report records
 #                      a failing test", which is a result to read and not a
 #                      failure of this run
@@ -82,6 +84,7 @@ device_report_run() {
     # before it sources, and a top-level assignment would blank what it said.
     : "${report_build_flags:=}"
     : "${report_sentinel:=}"
+    : "${report_capture_failures_ok:=0}"
     : "${report_failures_ok:=0}"
     for _dr_required in report_name report_dir report_timeout report_suite; do
         eval "_dr_value=\${$_dr_required+set}"
@@ -140,7 +143,16 @@ device_report_run() {
     _dr_do_restore="$_dr_restore"
     trap device_report_finish EXIT
 
-    device_report_capture || return 1
+    _dr_capture_status=0
+    device_report_capture || _dr_capture_status=$?
+    if [ "$_dr_capture_status" -ne 0 ]; then
+        _dr_capture_report="${_dr_raw%.*}.md"
+        if [ "$_dr_capture_status" -ne 1 ] || [ "$report_capture_failures_ok" -ne 1 ] \
+                || ! grep -q '^- Ended: complete' "$_dr_capture_report" 2>/dev/null; then
+            return 1
+        fi
+        echo "=== The completed capture records failing tests - validating its measurements ==="
+    fi
     device_report_validate || return 1
     device_report_report || return 1
 
