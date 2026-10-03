@@ -132,6 +132,21 @@ remaining calls and register spills. `always_inline`, used by
 verification at its call sites. Inlining grows callers and can increase
 instruction-cache pressure, so time the final linked image.
 
+Every compiled source in `launcher/main/render/` receives
+`-falign-functions=${CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE}` from
+`launcher/main/CMakeLists.txt`. Function placement within an instruction-cache
+line stays fixed when unrelated code ahead of it grows or shrinks. Alignment
+stabilizes timing; it does not select the fastest loop offsets. Hot functions
+also carry `RENDER_ENTRY_OFFSET` from `launcher/main/render/code_layout.h`:
+never-executed `nop.n` padding ahead of the entry places their loops at the
+offsets measured fastest on the board. Editing a padded function can move its
+loops; inspect the final image with `launcher/tools/render/code_layout.py`,
+which reports function and loop offsets, and verify timing on the device.
+
+Do not use `-falign-loops` for this on Xtensa. GCC aligns the label after a
+zero-overhead `loop`, the assembler fills the gap with zeros, and the CPU
+executes those bytes as an IllegalInstruction.
+
 ### Arithmetic in hot loops
 
 The target is a 32-bit Xtensa core. A general signed 64-bit divide uses the
