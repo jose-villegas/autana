@@ -241,7 +241,8 @@ endif()
 # line makes its timing independent of link order.
 if(NOT CMAKE_SCRIPT_MODE_FILE)
     launcher_glob(render_srcs "${CMAKE_CURRENT_LIST_DIR}/render/*.c")
-    set_source_files_properties(${render_srcs} PROPERTIES COMPILE_OPTIONS "-falign-functions=64")
+    set_source_files_properties(${render_srcs} PROPERTIES
+        COMPILE_OPTIONS "-falign-functions=${CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE}")
 endif()
 
 set(app_private_include_dirs "")
