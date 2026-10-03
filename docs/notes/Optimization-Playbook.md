@@ -79,6 +79,12 @@ table. A pin is not free: re-pinning at a coarser line size can cost more
 than it recovers once the surrounding hot path has grown large enough
 that where it starts no longer decides most of its own traffic.
 
+`render/` is pinned whole: `launcher/main/CMakeLists.txt` compiles every
+file in it with `-falign-functions` at the configured instruction-cache line,
+so a file added there is pinned too. A pin fixes which timing a function gets,
+not that it gets the fastest one. `-falign-loops` is not an option on this
+toolchain: the image it built took an IllegalInstruction in the rasteriser.
+
 Not every hot path draws this ticket. A separate, bus-bound call boundary
 measured across five different padding-induced addresses moved by at
 most a point and a fraction: fixed per-transfer cost is far less
