@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
-"""Report cache-line offsets of renderer functions and their machine loops."""
+"""Where each pinned render function and its machine loops sit within an
+instruction-cache line, for one or more images.
+
+The pinned functions are the ones launcher/main/render/*.c marks with
+RENDER_ENTRY_OFFSET, so a new pin is reported without editing this file.
+
+  code_layout.py --nm NM --objdump OBJDUMP LABEL=ELF [LABEL=ELF ...]
+"""
 
 import argparse
 import re
 import subprocess
+from pathlib import Path
+
+RENDER = Path(__file__).resolve().parents[2] / "main" / "render"
+PINNED = re.compile(r"RENDER_ENTRY_OFFSET\(\d+\)\s+\w+\s+(\w+)\(")
 
 
-FUNCTIONS = (
-    "raster_draw",
-    "raster_upscale",
-    "r3d_pipeline_draw",
-    "r3d_span_triangle_impl",
-    "upscale_rows",
-    "walk_rows",
-    "r3d_span_hidden",
-)
+def pinned_functions(sources):
+    return [name for text in sources for name in PINNED.findall(text)]
+
+
+FUNCTIONS = pinned_functions(path.read_text(encoding="utf-8") for path in sorted(RENDER.glob("*.c")))
 
 
 def run(tool, *arguments):

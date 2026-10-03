@@ -1,3 +1,5 @@
+# RENDER_ENTRY_OFFSET records each pad in a table the IDF linker script
+# does not place; nothing reads it, flash rodata holds it.
 [sections:patchable_entries]
 entries:
     __patchable_function_entries
