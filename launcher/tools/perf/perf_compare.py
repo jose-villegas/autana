@@ -3,6 +3,8 @@
 import argparse
 import json
 import re
+import statistics
+import sys
 from pathlib import Path
 
 
@@ -12,6 +14,9 @@ CONTROL_ROWS = (
 )
 MEAN_RE = re.compile(r"\b(?P<name>\S+) both cores: mean\s+(?P<value>\d+)us\b")
 NUMBER_RE = re.compile(r"^[+-]?\d+$")
+WHOLE_RUN_MIN_SHIFT_PCT = 0.2
+WHOLE_RUN_MAX_DEVIATION_PCT = 0.15
+WHOLE_RUN_MIN_ROW_FRACTION = 0.8
 
 
 def cell(text):
@@ -66,6 +71,38 @@ def worst(runs):
     return rows
 
 
+def medians(runs):
+    values = {}
+    for report in runs:
+        for name, value in report.items():
+            values.setdefault(name, []).append(value)
+    return {name: statistics.median(row_values)
+            for name, row_values in values.items()}
+
+
+def whole_run_shifts(runs):
+    """Return runs with a coherent upward shift from their per-row medians."""
+    if len(runs) < 3:
+        return []
+    common = set.intersection(*(set(report) for report in runs))
+    centers = {name: statistics.median(report[name] for report in runs)
+               for name in common}
+    if len(centers) < 3:
+        return []
+    shifts = []
+    for run_number, report in enumerate(runs, start=1):
+        row_shifts = [percent(centers[name], report[name]) for name in centers
+                      if centers[name] > 0]
+        center = statistics.median(row_shifts)
+        aligned = sum(shift >= WHOLE_RUN_MIN_SHIFT_PCT
+                      and abs(shift - center) <= WHOLE_RUN_MAX_DEVIATION_PCT
+                      for shift in row_shifts)
+        if (center >= WHOLE_RUN_MIN_SHIFT_PCT
+                and aligned / len(row_shifts) >= WHOLE_RUN_MIN_ROW_FRACTION):
+            shifts.append((run_number, center, aligned, len(row_shifts)))
+    return shifts
+
+
 def percent(old, new):
     if old == 0:
         return float("inf") if new else 0.0
@@ -105,15 +142,26 @@ def write_summary(path, label_a, label_b, build_a, build_b, a_paths, b_paths):
         raise ValueError("a report contains no named numeric rows")
     rows = compare(a_runs, b_runs)
     a, b = worst(a_runs), worst(b_runs)
+    a_median, b_median = medians(a_runs), medians(b_runs)
     controls = all(name in a and name in b for name in CONTROL_ROWS)
     lines = ["# Performance comparison", "",
              f"- A: `{label_a}`; build ids: {', '.join(f'`{item}`' for item in build_a)}",
              f"- B: `{label_b}`; build ids: {', '.join(f'`{item}`' for item in build_b)}",
-             "", "Values are the worst of the captured runs for each row.", "",
-             "| Row | A (us) | B (us) | Delta (us) | Verdict |",
-             "|---|---:|---:|---:|---|"]
+             "", "Worst-of-run values decide the verdict; medians show the typical run.", "",
+             "| Row | A worst (us) | A median (us) | B worst (us) | B median (us) | Delta (us) | Verdict |",
+             "|---|---:|---:|---:|---:|---:|---|"]
     for name, old, new, delta, verdict in rows:
-        lines.append(f"| `{name}` | {old} | {new} | {delta:+d} | {verdict} |")
+        lines.append(f"| `{name}` | {old} | {a_median[name]:g} | {new} | "
+                     f"{b_median[name]:g} | {delta:+d} | {verdict} |")
+    shifted = [("A", item) for item in whole_run_shifts(a_runs)]
+    shifted.extend(("B", item) for item in whole_run_shifts(b_runs))
+    if shifted:
+        lines.extend(["", "## Possible whole-run shifts", "",
+                      "These runs moved almost every row upward together. They remain in "
+                      "the worst-of-run verdict above.", ""])
+        for side, (run_number, shift, aligned, total) in shifted:
+            lines.append(f"- {side} run {run_number}: +{shift:.1f}% above that side's "
+                         f"per-row medians ({aligned} of {total} rows aligned).")
     if controls:
         floor = max(0.5, *(abs(percent(a[name], b[name])) for name in CONTROL_ROWS))
         lines.extend(["", f"Control-row noise floor: {floor:.1f}%. Rows inside it are no change."])
@@ -123,14 +171,25 @@ def write_summary(path, label_a, label_b, build_a, build_b, a_paths, b_paths):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", required=True, type=Path)
-    parser.add_argument("--label-a", required=True)
-    parser.add_argument("--label-b", required=True)
-    parser.add_argument("--build-a", action="append", required=True)
-    parser.add_argument("--build-b", action="append", required=True)
-    parser.add_argument("--a", action="append", required=True, type=Path)
-    parser.add_argument("--b", action="append", required=True, type=Path)
+    parser.add_argument("--check-report", type=Path)
+    parser.add_argument("--out", type=Path)
+    parser.add_argument("--label-a")
+    parser.add_argument("--label-b")
+    parser.add_argument("--build-a", action="append")
+    parser.add_argument("--build-b", action="append")
+    parser.add_argument("--a", action="append", type=Path)
+    parser.add_argument("--b", action="append", type=Path)
     args = parser.parse_args()
+    if args.check_report:
+        try:
+            return 0 if parse_report(args.check_report) else 1
+        except OSError:
+            return 1
+    required = ("out", "label_a", "label_b", "build_a", "build_b", "a", "b")
+    missing = [f"--{name.replace('_', '-')}" for name in required
+               if getattr(args, name) is None]
+    if missing:
+        parser.error("the following arguments are required: " + ", ".join(missing))
     args.out.parent.mkdir(parents=True, exist_ok=True)
     controls = write_summary(args.out, args.label_a, args.label_b, args.build_a,
                              args.build_b, args.a, args.b)
@@ -143,7 +202,8 @@ def main():
                         [parse_report(report) for report in args.b])
     (args.out.parent / "comparison.json").write_text(
         json.dumps({"sand": controls}) + "\n", encoding="utf-8")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
