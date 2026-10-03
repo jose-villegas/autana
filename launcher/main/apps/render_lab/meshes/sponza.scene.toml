@@ -19,7 +19,7 @@ indirect = { bounces = 2, rays = 64, cache_samples = 1 }
 
 [[objects]]
 name = "sun"
-rotation = [18.418610209503857, -48.65222278030633, 0.0]   # toward (-0.25, 1.0, 0.22)
+rotation = [22.29512452730975, -37.568592028827496, 0.0]   # toward (-0.25, 1.0, 0.325)
 
 [objects.light]
 type = "directional"
