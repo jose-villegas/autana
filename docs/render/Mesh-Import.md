@@ -33,7 +33,9 @@ flowchart LR
 Bake times are for a source of about a quarter of a million triangles on one desktop; frame costs were measured on the board on one mesh.
 Keys before `;` are required; after it, optional.
 
-### Source, output and materials
+### Option details
+
+#### Source, output and materials
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
@@ -41,7 +43,7 @@ Keys before `;` are required; after it, optional.
 | `[output]` | `directory`; `name`, `position_scale` | Names the output directory, single-mesh name and position scale. | `name` optional; `position_scale` 8. | Write / none. | [output](#output) |
 | `[materials]` | ; `double_sided` | Draws listed material faces from both sides. | `[]`. | None / more faces drawn. | [materials](#materials) |
 
-### Process
+#### Process options
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
@@ -49,7 +51,7 @@ Keys before `;` are required; after it, optional.
 
 Every Geometry table opts its step in; without it the step does not run.
 
-### Geometry
+#### Geometry
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
@@ -57,68 +59,75 @@ Every Geometry table opts its step in; without it the step does not run.
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
 | `geometry.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges and simplifies each variant to its budget; reserves `props` and can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 
-### Geometry variants
+#### Geometry variants
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
 | `[[variants]]` | `name`; `triangles` | Names a geometry budget. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [variants](#variants) |
 | `[[variants]].triangles` | — | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / set by the budget. | [variants triangles](#variants-triangles) |
 
-### source
+#### source
 
 `[source]` identifies and verifies the source OBJ. `cache` names its cached
 download and `credit` records the source attribution.
 
-### output
+#### output
 
 `[output]` names the generated mesh and its directory. `position_scale` is the
 number of quantisation ticks per model unit.
 
-### materials
+#### materials
 
 `[materials].double_sided` lists materials whose faces draw from both sides.
 
-### process
+#### process
 
 `[process].seed` makes `thin` choose the same triangles on every import.
 
-### alpha_mask
+#### alpha_mask
 
 `geometry.alpha_mask` removes mostly transparent cut-out cards because the
-rasterizer does not alpha-test them. The comparison sheet shows its result.
+rasterizer does not alpha-test them. Off is above on; this step also changes
+what the simplifier keeps elsewhere, so not every difference is a card.
 
 ![alpha_mask off against on](images/import-alpha-mask.png)
 
-### thin
+#### thin
 
 `geometry.thin` retains a selected share of one material's triangles. It is
-for material whose geometry occupies more of the budget than it shows.
+for material whose geometry occupies more of the budget than it shows. The
+share is random, so `process.seed` makes it repeatable.
 
 ![thin off against on](images/import-thin.png)
 
-### simplify
+#### simplify
 
 `geometry.simplify` splits long edges and simplifies each variant to its
-budget. `props` reserves a portion of that budget; `seal_seams` is described
+budget. `dense_edge` is the longest unsplit edge, `props` names materials that
+reserve the `props_share` part of the budget, and `seal_seams` is described
 under [seal_seams](#seal_seams).
 
-### seal_seams
+#### seal_seams
 
 `seal_seams = true` joins touching pieces before simplification, reducing gaps
 at their borders. The comparison image shows the effect.
 
 ![seal_seams off against on](images/import-seal-seams.png)
 
-### variants
+The off/on stills in `images/` are scratch bakes; the doc-images workflow does
+not refresh them.
+
+#### variants
 
 `[[variants]]` gives a geometry output its name and, with `simplify`, its
 triangle budget. Without variants, `output.name` names the single output.
 
-### variants triangles
+#### variants triangles
 
 `[[variants]].triangles` is the required triangle budget of a simplified
-variant. Choose it from the generated held-out-error and predicted-frame-time
-table.
+variant. Its sweep is the generated `fitted_variant.py sweep` image; keep the
+front's knee unless its frame cost misses the target. The Pareto front contains
+the meshes no other beats on both held-out error and predicted frame time.
 
 ![Held-out error against predicted frame time](images/appearance-pareto.png)
 
@@ -138,20 +147,6 @@ owns a contiguous range of vertices and triangles, and its triangles index
 only its own vertices. The clusters are the leaves of a tree rooted at
 `nodes[0]`, so one box test culls a whole subtree. Positions are `int16`
 ticks, `position_scale` ticks per model unit.
-
-Smooth against flat, one pose of the same import: the sheet is the two renders
-and their amplified difference, the crops are where they differ most, smooth
-above flat.
-
-![Smooth against flat](../images/render/compare-full-flat.png)
-![Smooth against flat, the places they differ most](../images/render/compare-full-flat.crops.png)
-
-`shading.flat` sets how many points of a face are lit and averaged: one fixed
-point against the adaptive count, the flat mesh at one pose, crops where they
-differ most, fixed above adaptive. One point lights a face from one place, so
-a shadow edge lands on whole faces.
-
-![One fixed face sample against adaptive](images/import-face-samples.png)
 
 ### The pack entry
 
@@ -230,26 +225,9 @@ Scene-owned bake, visibility, shading and fit settings are described in
 
 ### Indirect-light implementation
 
-`scene.bake.indirect = { bounces = K, rays = R, cache_samples = S }` bakes
-diffuse bounce light into the same vertex or face colours as the direct light:
-sun light that reaches a surface by way of another one, and a coloured
-surface tinting its neighbours. The renderer reads one colour as before, so
-frame cost and mesh size do not change; only the bake takes longer.
-
-| Field | Meaning |
-|---|---|
-| `bounces` | How many times light bounces; 0 turns it off and gives the same bytes as a light step with no `indirect` |
-| `rays` | Cosine-weighted hemisphere rays for each gather |
-| `cache_samples` | Points averaged into each source triangle's direct radiance |
-
-All three are required when `indirect` is present; `rays` and `cache_samples`
-are at least 1 and `bounces` at least 0. The reference renderer reads the
-same settings, so a fidelity score compares like with like. The scene's
-`[indirect]` table carries `intensity` and `albedo_boost`
-([Scene-Files.md](Scene-Files.md#indirect-look)).
-
-A renderer with `indirect = false` is baked without bounces, and its fit
-reference omits them too.
+The [bake recipe](Scene-Files.md#bake-indirect) enables diffuse bounce light
+in the same vertex or face colours as direct light. The renderer reads one
+colour, so frame cost and mesh size do not change; only the bake takes longer.
 
 The bake keeps one outgoing radiance per triangle of the full-detail source
 mesh. With albedo $a(t)$, direct irradiance $`E_0(t)`$ at the triangle, and
@@ -288,25 +266,14 @@ merging into one vertex. A double-sided surface gathers on the side the direct
 light shines on, and a ray that reaches a one-sided triangle from behind finds
 no light, so light does not pass through shells.
 
-The scene's `intensity` $g$ multiplies the gathered term and its `albedo_boost`
-$\beta$ replaces every albedo a bounce reflects with
-$\min(\beta a, \max(a, 0.99))$, so reflectance stays below 1 and a boost of 1
-changes nothing:
-
-```math
-L(x) = a(x)\,\bigl(E_{\mathrm{direct}}(x) + g\,E_{\mathrm{ind}}(x)\bigr)
-```
-
-Neither is physical above 1: they brighten and tint the bounces past what the
-reference renders, so fidelity to a physical reference falls as they rise.
+The [indirect look](Scene-Files.md#indirect) controls gathered intensity and
+bounce reflectance.
 
 The cache and the gathers cost one bundle of rays per source triangle and
 bounce, plus one per baked point. The limit is the light's resolution: it is
 the vertex or face spacing of the baked mesh, so bounce detail smaller than a
 triangle is lost, and a coloured surface tints only the triangles it reaches.
 A scene's bounce sweep, scores and images live beside its own tools.
-
-![The reference beside the direct-light and two-bounce bakes, each with its error heatmap](../images/render/bake-indirect-compare.png)
 
 The scene file that places meshes and carries the lights, the camera and the
 tone map is described in [Scene-Files.md](Scene-Files.md).
@@ -395,29 +362,6 @@ interior ΔE over the rest:
 ```math
 E = \mathrm{dilate}_1\left\{\, p : \left\lVert \nabla y_T(p) \right\rVert > 0.06 \,\right\}
 ```
-
-## Sweeping the flat bake
-
-`bake_fidelity.py` re-lights a flat mesh's simplified geometry with chosen
-settings into a scratch directory, builds the host renderer with that mesh in
-place of the tracked one, and scores it, so a setting is judged by its distance
-to the reference and nothing tracked changes. Its default variant is the bake
-the import file declares, byte for byte. A sweep over a scene found:
-
-- **Samples per face** are the lever. The score converges at about 16 fixed
-  samples; more adds nothing. Raising the minimum helps more than raising the
-  maximum or shrinking the area, because most faces are small and the adaptive
-  count gives them one sample.
-- **Sky rays** are saturated at the bake's default; fewer is worse and more is
-  noise.
-- **Centroid placement** loses to the stratified points, and takes every count
-  to the same colours. **A centre-only sun** loses too: it makes every shadow
-  edge hard, where the disc blends it.
-- **Edge error is structural.** Samples lower the error at lit and shadow
-  edges, but it stays more than twice the interior error, and the smooth bake's
-  own edge error is close to the best flat one. A face holds one colour, so a
-  boundary through it cannot be sampled away, and decimation misplaces
-  silhouettes before lighting.
 
 ## Fitting a mesh to the reference
 

@@ -189,8 +189,8 @@ def check_option_links(root):
     """Option-table rows whose final link is not that option's heading.
 
     An option reference declares itself with an `Option` first column and an
-    `Option link` final column. This keeps the convention in the document,
-    rather than in a list of option names maintained by this gate.
+    `Option link` final column are checked. This keeps the convention in the
+    document, rather than in a list of option names maintained by this gate.
     """
     bad = []
     for doc in sorted(tracked_docs(root)):
@@ -221,6 +221,8 @@ def check_option_links(root):
                     bad.append((doc, index + 1, row[0], f"must link to #{expected}"))
                 elif expected not in headings:
                     bad.append((doc, index + 1, row[0], f"#{expected} is not a heading"))
+                elif f"{expected}-1" in headings:
+                    bad.append((doc, index + 1, row[0], f"#{expected} is shared by another heading"))
                 index += 1
     return bad
 
@@ -242,7 +244,8 @@ def main(argv):
     for doc, number, option, reason in bad_options:
         print(f"{doc}:{number}: option {option}: {reason}")
     print(f"{len(orphans)} unindexed document{'' if len(orphans) == 1 else 's'}, "
-          f"{len(bad_anchors)} anchor link{'' if len(bad_anchors) == 1 else 's'} to no real heading")
+          f"{len(bad_anchors)} anchor link{'' if len(bad_anchors) == 1 else 's'} to no real heading, "
+          f"{len(bad_options)} option row{'' if len(bad_options) == 1 else 's'} not linked to its heading")
     return 1 if (orphans or bad_anchors or bad_options) else 0
 
 
