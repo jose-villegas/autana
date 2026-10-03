@@ -65,19 +65,20 @@ class SweepTests(unittest.TestCase):
             references = work / "reference_held_out"
             references.mkdir()
             (work / "held_out.txt").write_text(poses_text(2, 3, 0.5, 1.0, [[0, 0, 0, 0, 0, -1], [1, 0, 0, 0, 0, -1]]))
-            variant = SimpleNamespace(name="tiny_fitted", fit=SimpleNamespace(held_out_every_ms=5))
+            job = SimpleNamespace(asset_name="tiny.fitted", renderer=SimpleNamespace(
+                variant=SimpleNamespace(name="tiny_fitted"), fit=SimpleNamespace(held_out_every_ms=5)))
             meshes = [work / name for name in ("source.mesh", "first.mesh", "second.mesh")]
             for value, mesh in enumerate(meshes):
                 mesh.write_text(str(value))
             for pose in (1, 2):
                 self._synthetic_picture(0, pose).save(references / ("%04d.png" % (pose - 1)))
             with unittest.mock.patch.object(fitted_variant, "_score_mesh", side_effect=self._synthetic_score):
-                aligned = fitted_variant.held_out_score(variant, meshes[0], work, work / "host")
-                first = fitted_variant.held_out_score(variant, meshes[1], work, work / "host")
-                second = fitted_variant.held_out_score(variant, meshes[2], work, work / "host")
+                aligned = fitted_variant.held_out_score(job, meshes[0], work, work / "host")
+                first = fitted_variant.held_out_score(job, meshes[1], work, work / "host")
+                second = fitted_variant.held_out_score(job, meshes[2], work, work / "host")
                 one_pose_late = self._synthetic_score(
                     SimpleNamespace(render_args="--scene tiny-fitted --frames 3 --dt 5", reference=references,
-                                    reference_first=1), variant.name, meshes[0], work / "late", work / "host")
+                                    reference_first=1), job.asset_name, meshes[0], work / "late", work / "host")
         self.assertLess(aligned[0], 0.01)
         self.assertNotAlmostEqual(first[0], second[0], places=3)
         self.assertGreater(one_pose_late[0], aligned[0] + 8.0)
@@ -110,9 +111,10 @@ class SweepTests(unittest.TestCase):
     def test_a_sweep_reuses_one_prepared_reference_set(self):
         geometry = SimpleNamespace(positions=[], rgb=[], tris=[0], tri_double=[], scale={})
         poses = (2, 3, 0.5, 1.0, [[0, 0, 0, 0, 0, -1], [1, 0, 0, 0, 0, -1]])
-        variant = SimpleNamespace(name="tiny_fitted", fit=SimpleNamespace(train_every_ms=1, held_out_every_ms=2,
-                                                                            coverage_every_ms=1), visibility=SimpleNamespace(
-                                                                                source="camera_path"))
+        renderer = SimpleNamespace(variant=SimpleNamespace(name="tiny_fitted"),
+                                   fit=SimpleNamespace(train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1),
+                                   visibility=SimpleNamespace(source="camera_path"))
+        job = SimpleNamespace(settings=SimpleNamespace(path="settings"), renderer=renderer, object=SimpleNamespace(name="tiny"))
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
             with unittest.mock.patch.object(fitted_variant, "reference_digest", return_value="same"), \
@@ -120,9 +122,12 @@ class SweepTests(unittest.TestCase):
                  unittest.mock.patch.object(mesh_import, "camera_path_poses", return_value=poses), \
                  unittest.mock.patch.object(lit_mesh, "write_lit_mesh"), \
                  unittest.mock.patch.object(reference_render, "main") as render:
-                fitted_variant.sweep_references("scene", "data", SimpleNamespace(path="settings"), variant, work)
-                fitted_variant.sweep_references("scene", "data", SimpleNamespace(path="settings"), variant, work)
+                fitted_variant.sweep_references("scene", "data", job, work)
+                fitted_variant.sweep_references("scene", "data", job, work)
         self.assertEqual(render.call_count, 3)
+        for call in render.call_args_list:
+            argv = call.args[0]
+            self.assertEqual(argv[argv.index("--object") + 1], "tiny", "each reference names its object")
 
     def test_the_front_and_knee_keep_the_best_tradeoffs(self):
         points = [

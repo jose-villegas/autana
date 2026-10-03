@@ -141,7 +141,7 @@ tilt):
 | Mechanism | Rule | What a liquid does instead |
 |---|---|---|
 | **Angle of repose** | A grain on a slope stays put until the slope exceeds the friction angle: `descent > mu * lateral`, the same test as a block on an incline. `mu` is `repose / 10`; sand's `repose = 7` is ~35 degrees. | `repose = 0` means no angle of repose exists at all; it slides sideways however level the surface is, which is what makes it a liquid. |
-| **Burial** | A grain counts how many grains are stacked directly against gravity above it, and each one halves its chance of sliding (`SAND_SLIP_CHANCE = 96` in 256, halving per grain, capped hard past `SAND_LOAD_CAP = 5`). | `slip = 255` means load never holds it at all: water at the bottom of a pool flows exactly as freely as water at the top. |
+| **Burial** | A grain counts how many grains are stacked directly against gravity above it, and each one halves its chance of sliding (sand's material-table `slip` field is 96 in 256, halving per grain, capped hard past `SAND_LOAD_CAP = 5`). | `slip = 255` means load never holds it at all: water at the bottom of a pool flows exactly as freely as water at the top. |
 
 **Gravity's direction is dithered, not snapped to nearest-of-eight.**
 Snapping makes a slow tilt arrive in 45-degree jerks. Instead, each step

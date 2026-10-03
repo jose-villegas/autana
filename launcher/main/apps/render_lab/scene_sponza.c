@@ -17,11 +17,11 @@
 #include "esp_log.h"
 
 #include "gfx/gfx.h"
+#include "meshes/sponza_scene_generated.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
-#include "sponza_scene_generated.h"
 #include "util/tune.h"
 
 static const char* TAG = "sponza";

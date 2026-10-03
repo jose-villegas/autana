@@ -44,9 +44,10 @@ caller(void) {
 SRC
 
 status=0
-# platform|extra flags|what the caller must call itself
+# platform|extra flags|what the caller must call itself, as EREs (MinGW's
+# timespec_get is a macro for _timespec64_get)
 for build in "board|-DESP_PLATFORM|esp_timer_get_time heap_caps_malloc heap_caps_free" \
-    "render||timespec_get malloc free"; do
+    "render||timespec(64)?_get malloc free"; do
     name=${build%%|*}
     rest=${build#*|}
     defines=${rest%%|*}
@@ -62,8 +63,9 @@ for build in "board|-DESP_PLATFORM|esp_timer_get_time heap_caps_malloc heap_caps
                 status=1
             fi
         done
-        if printf '%s\n' "$symbols" | grep -Eq "^[0-9a-f]+ [tT] "; then
-            for wrapper in $(printf '%s\n' "$symbols" | awk '$2 ~ /^[tT]$/ && $3 != "caller" { print $3 }'); do
+        # A leading dot is a section symbol (MinGW's nm lists .text), not code.
+        if printf '%s\n' "$symbols" | grep -Eq "^[0-9a-f]+ [tT] [^.]"; then
+            for wrapper in $(printf '%s\n' "$symbols" | awk '$2 ~ /^[tT]$/ && $3 != "caller" && $3 !~ /^\./ { print $3 }'); do
                 echo "  FAIL $name $opt: $wrapper is a function of its own, not inlined"
                 status=1
             done

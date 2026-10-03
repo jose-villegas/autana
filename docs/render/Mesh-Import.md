@@ -6,20 +6,24 @@ stages and the format a renderer consumes. Drawing that mesh is
 
 ```mermaid
 flowchart LR
+    subgraph Import_lane["Import lane: geometry"]
     Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"]
-    Fetch --> Mask["Mask alpha cards<br/><i>opt in</i>"]
-    Mask --> Vis["Camera visibility<br/><i>opt in, needs a scene</i>"]
-    Vis --> Thin["Thin one material<br/><i>opt in</i>"]
-    Thin --> Colour{"lighting.light?"}
-    Scene["Scene file<br/><i>adds the lights, camera<br/>region or path, tone map</i>"] -.-> Vis
-    Scene -.-> Lit
-    Scene -.-> Face
-    Colour -- yes --> Lit["Light per vertex<br/><i>needs a scene</i>"]
-    Colour -- no --> Albedo["Albedo, no light"]
-    Lit --> Simp["Simplify<br/><i>opt in</i>"]
-    Albedo --> Simp
-    Simp --> Face["Light per face<br/><i>flat shading variants</i>"]
-    Face --> Write["Write: quantise,<br/>meshlets, octree"]
+    Mask["Mask alpha cards<br/><i>opt in</i>"]
+    Thin["Thin one material<br/><i>opt in</i>"]
+    Dense["Split long edges<br/><i>with simplify</i>"]
+    Simp["Simplify to the budget<br/><i>opt in</i>"]
+    end
+    subgraph Scene_lane["Scene lane: renderer options"]
+    Vis["Cull by camera visibility<br/><i>opt in</i>"]
+    Lit["Light per vertex<br/><i>bake = true</i>"]
+    Albedo["Albedo, no light<br/><i>no bake</i>"]
+    Face["Light per face<br/><i>flat shading</i>"]
+    end
+    Fetch --> Mask --> Vis --> Thin --> Dense
+    Dense --> Lit --> Simp
+    Dense --> Albedo --> Simp
+    Simp --> Face --> Write["Write: quantise,<br/>meshlets, octree"]
+    Simp --> Write
     Write --> Entry["Pack entry<br/><i>name.mesh</i>"]
     Entry --> Pack["build_pack.py<br/><i>assets.bin</i>"]
 ```
@@ -41,10 +45,9 @@ Keys before `;` are required; after it, optional.
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
 |---|---|---|---|---|---|
-| `[process]` | ; `seed` | Seeds visibility rays, thin's random choice and lighting rays. | `0`; only with visibility, thin or light. | None / none. | [Import file](#import-file) |
+| `[process]` | ; `seed` | Seeds thin's random choice. | `0`; only with thin. | None / none. | [Import file](#import-file) |
 
-Every table in Geometry, Visibility and Lighting opts its step in; without it
-the step does not run.
+Every Geometry table opts its step in; without it the step does not run.
 
 ### Geometry
 
@@ -54,29 +57,12 @@ the step does not run.
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [Import file](#import-file) |
 | `geometry.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges and simplifies each variant to its budget; reserves `props` and can seal seams. | Off. | Seconds / set by the budget; `seal_seams` costs about 4% frame time. | [Sealing seams](#sealing-seams) |
 
-### Visibility
-
-| Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
-|---|---|---|---|---|---|
-| `[visibility]`: `camera_region` | `rounds`; `source` | Culls what the camera's region can see. | `source = "camera_region"`. | Seconds to minutes / fewer triangles. | [Import file](#import-file) |
-| `[visibility]`: `camera_path` | `source`, `every_ms`, `size`; `samples`, `margin` | Culls what camera-path poses can see. On the measured scene it keeps 116,917 of 245,465 source triangles, compared with the region's 211,004; it cuts the full mesh from 58.6 to 50.1 ms (−14.5%), with 0 hole pixels for culled lite and 4 to 8 px in each of 3 frames for culled full along the path. | `samples` 3, `margin` 0. | Minutes / fewer triangles, about 15% less frame time on the full mesh. | [Import file](#import-file) |
-| `variants.visibility` | The keys of `[visibility]` | Overrides the import's visibility for one variant. | Inherits `[visibility]`. | As `[visibility]`. | [Import file](#import-file) |
-
-### Lighting
-
-| Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
-|---|---|---|---|---|---|
-| `lighting.light` | `ray_offset`, `colour_merge_step`; `flat_sky_rays`, `indirect = { bounces, rays, cache_samples }` | Bakes the scene's light into vertex colour; flat faces share `flat_sky_rays`, while `indirect` adds bounce light. | Off: albedo; `flat_sky_rays` is required with flat shading and refused otherwise. | Minutes / none. | [The baked mesh](#the-baked-mesh) |
-
 ### Variants
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
 |---|---|---|---|---|---|
-| `[[variants]]` | `name`; `triangles`, `shading`, `visibility`, `indirect`, `fit` | Names a separately baked mesh. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [Import file](#import-file) |
+| `[[variants]]` | `name`; `triangles` | Names a geometry budget. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [Import file](#import-file) |
 | `[[variants]].triangles` | — | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / set by the budget. | [Import file](#import-file) |
-| `[[variants]].shading` | ; `flat = { fixed = N }` or `flat = { auto = { min, max, area } }` | `smooth`, or flat shading with fixed or automatic face samples; flat stores one colour per triangle. `area`: a number, or `"median"` for the mesh's median face. | `smooth`. | Minutes / cheaper rasterisation. | [The baked mesh](#the-baked-mesh) |
-| `[[variants]].indirect` | ; `false` | Omits `lighting.light.indirect` from this variant's bake and fit reference. | Inherits `lighting.light.indirect`. | Saves bounce gathering / none. | [Indirect light](#indirect-light) |
-| `[[variants]].fit` | `budget`, `train_every_ms`, `held_out_every_ms`, `coverage_every_ms`, `steps`, `batch`, `laplacian`, `normal_weight`, `sha256`, `recipe_sha256` | Records a smooth appearance-fit recipe and its hashes. | Off. | a CUDA GPU, minutes / unchanged at its budget. | [Fitting a mesh to the reference](#fitting-a-mesh-to-the-reference) |
 
 Choose a triangle budget from held-out error against predicted frame time:
 keep the front's knee unless its frame cost misses the target. Each point is a
@@ -90,7 +76,7 @@ is about 8.7k triangles, where the full budget's last 8.7k triangles buy about
 ## The baked mesh
 
 A vertex carries one sRGB colour: the baked light times the albedo, or, with no
-light step, the albedo alone. A variant with `shading = { flat = ... }` is flat instead,
+bake, the albedo alone. A renderer with `shading = { flat = ... }` is flat instead,
 with one RGB565 colour per triangle (`light.face_colours()`): the light and
 albedo averaged over the points of the face that `shading.flat` sets, a fixed count
 or one chosen per face, every face sharing one set
@@ -163,9 +149,10 @@ closed: an unknown key is an error.
 
 Run `python launcher/tools/r3d/mesh_import.py PATH` from the repository root,
 with `--mesh NAME` for one mesh. `PATH` is either kind of file. An import file
-with no scene-dependent step bakes alone; one with such a step refuses with
-"needs a scene". A scene file bakes every mesh it places, with its own lights,
-camera region and tone map. The
+writes the authored albedo mesh. A scene file writes each renderer's mesh: a
+renderer with `bake = true` is traced against its own source with that scene's
+lights, camera visibility and tone map; an albedo renderer writes its import's
+shared mesh. The
 [scene table](Scene-Files.md#the-scene-table) is written by `scene_table.py`,
 apart from the bake. `build_pack.py -o PACK` then writes the pack from the `.mesh`
 entries every import and scene file names, and `rebake.py` rewrites one
@@ -173,10 +160,9 @@ entries every import and scene file names, and `rebake.py` rewrites one
 
 ### Import file
 
-**Rule: an import brings the mesh in as authored, and each processing table
-present turns its step on.** `lighting.light` and `visibility` are
-scene-dependent: they read the scene's lights or camera. A mesh without a
-scene-dependent step depends on no scene.
+**Rule: an import brings geometry in as authored, and each geometry table
+present turns its step on.** Visibility and lighting belong to the renderer in
+its scene ([Scene-Files.md](Scene-Files.md)).
 
 With only `[source]` and `[output]` the importer keeps the source's triangles,
 cuts nothing, simplifies nothing and lights nothing. Its vertex colour is the
@@ -190,7 +176,7 @@ at the full budget and at about half of it, the full render above the lite.
 ![Full against lite](../images/render/compare-full-lite.png)
 ![Full against lite, the places they differ most](../images/render/compare-full-lite.crops.png)
 
-`visibility` drops triangles the camera never sees, so their share
+A renderer's `visibility` drops triangles the camera never sees, so their share
 of the budget goes to what is seen. A region box keeps whatever any point in
 it could see. A camera path keeps only what the path's own views show: from
 every pose $v$ sampled along it, $s^2$ rays a pixel over the view widened by
@@ -225,8 +211,8 @@ holes.
 ![Triangles the camera path never sees](images/appearance-path-culled.png)
 ![Culled lite against uncut, largest differences](images/appearance-path-culled.crops.png)
 
-`lighting.light` turns the albedo into light: the left render is the same
-import with no light step, the right the baked sun, sky and ambient.
+`bake = true` turns the albedo into light: the left render is the same
+geometry with no bake, the right the scene's baked sun, sky and ambient.
 
 ![Albedo against baked light](images/import-light.png)
 
@@ -249,9 +235,9 @@ The off/on stills in `images/` are not made by the doc-images workflow: each
 which needs the bake toolchain and the source model, so nothing refreshes them
 when the bake changes.
 
-### Indirect light
+### Indirect-light implementation
 
-`lighting.light.indirect = { bounces = K, rays = R, cache_samples = S }` bakes
+`scene.bake.indirect = { bounces = K, rays = R, cache_samples = S }` bakes
 diffuse bounce light into the same vertex or face colours as the direct light:
 sun light that reaches a surface by way of another one, and a coloured
 surface tinting its neighbours. The renderer reads one colour as before, so
@@ -265,11 +251,11 @@ frame cost and mesh size do not change; only the bake takes longer.
 
 All three are required when `indirect` is present; `rays` and `cache_samples`
 are at least 1 and `bounces` at least 0. The reference renderer reads the
-same settings, so a fidelity score compares like with like. How strong the
-bounce light looks is not an import setting: the scene's `[indirect]` table
-carries `intensity` and `albedo_boost` ([Scene-Files.md](Scene-Files.md#indirect-look)).
+same settings, so a fidelity score compares like with like. The scene's
+`[indirect]` table carries `intensity` and `albedo_boost`
+([Scene-Files.md](Scene-Files.md#indirect-look)).
 
-A variant with `indirect = false` is baked without bounces, and its fit
+A renderer with `indirect = false` is baked without bounces, and its fit
 reference omits them too.
 
 The bake keeps one outgoing radiance per triangle of the full-detail source
@@ -449,11 +435,12 @@ way the device draws it, and moves the vertices and changes their colours
 until the renders match the reference over the camera path's poses. The
 triangles stay as they were, so the budget and the frame cost hold.
 
-A variant with a `fit` table records the recipe: the budget it prunes to,
+A renderer with a `fit` table records the recipe: the budget it prunes to,
 the poses it trains on, holds out and counts pixels over, its optimiser
-settings, and the SHA-256 of the mesh it made. The bake does not run the fit,
-which needs a GPU: it checks that the committed mesh is the one the recipe
-records. `fitted_variant.py` remakes it, in two steps, one per environment.
+settings, and the SHA-256 of the mesh it made, grouped as in
+[Scene-Files.md](Scene-Files.md). The bake does not run the fit, which needs a
+GPU: it checks that the committed mesh is the one the recipe records.
+`fitted_variant.py` remakes it, in two steps, one per environment.
 
 **When to use it:** a mesh seen along a known set of views, at a budget
 where the simplifier's colours and silhouettes visibly drift from the
@@ -537,7 +524,7 @@ flowchart LR
     F --> W[write_lit_mesh]
 ```
 
-**Path visibility** is the import's `camera_path` source above. *What:* only
+**Path visibility** is a renderer's `camera_path` source above. *What:* only
 surfaces some pose draws get budget. *When:* a mesh seen from a known path.
 *Cost:* minutes of ray casting per import; it cuts a mesh's triangles, not its
 pixels, so a culled mesh looks the same and draws faster.
