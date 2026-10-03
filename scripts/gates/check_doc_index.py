@@ -29,6 +29,14 @@ def tracked_docs(root):
     return {name for name in result.stdout.splitlines() if name.endswith(".md")}
 
 
+def tracked_markdown(root):
+    result = subprocess.run(["git", "ls-files"], cwd=root,
+                            capture_output=True, text=True)
+    if result.returncode or not result.stdout.strip():
+        return {path.relative_to(root).as_posix() for path in root.rglob("*.md")}
+    return {name for name in result.stdout.splitlines() if name.endswith(".md")}
+
+
 def blank_fences(lines):
     """`lines` with the content of each fenced code block, delimiters
     included, replaced by an empty string. Same length and positions as
@@ -128,7 +136,7 @@ def anchor_links(root):
     link whose target, explicit or the same file, resolves to a `.md`
     file and carries a `#fragment`."""
     root = pathlib.Path(root)
-    for doc in sorted(tracked_docs(root)):
+    for doc in sorted(tracked_markdown(root)):
         path = root / doc
         if not path.is_file():
             continue
@@ -144,8 +152,10 @@ def anchor_links(root):
                 if resolved.suffix != ".md":
                     continue
                 try:
-                    resolved.relative_to(root.resolve())
+                    relative = resolved.relative_to(root.resolve())
                 except ValueError:
+                    continue
+                if not relative.as_posix().startswith("docs/"):
                     continue
                 yield doc, number, file_part or pathlib.Path(doc).name, fragment, resolved
 
@@ -181,6 +191,8 @@ def option_slug(option):
     option = re.sub(r"`([^`]*)`", r"\1", option).strip()
     option = re.sub(r"^geometry\.", "", option)
     option = re.sub(r"^\[\[?([^\]]+)\]\]?", r"\1", option)
+    if option.startswith("fit."):
+        return slugify(option)
     option = option.replace(".", " ")
     return slugify(option)
 
@@ -188,9 +200,8 @@ def option_slug(option):
 def check_option_links(root):
     """Option-table rows whose final link is not that option's heading.
 
-    An option reference declares itself with an `Option` first column and an
-    `Option link` final column are checked. This keeps the convention in the
-    document, rather than in a list of option names maintained by this gate.
+    A table whose first column is `Option` and whose last is `Option link` is
+    an option reference; each row must link to the one heading its option names.
     """
     bad = []
     for doc in sorted(tracked_docs(root)):

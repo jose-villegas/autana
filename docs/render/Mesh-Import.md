@@ -30,17 +30,14 @@ flowchart LR
 
 ## Import options
 
-Bake times are for a source of about a quarter of a million triangles on one desktop; frame costs were measured on the board on one mesh.
 Keys before `;` are required; after it, optional.
-
-### Option details
 
 #### Source, output and materials
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
 | `[source]` | `url`, `sha256`, `path`, `cache`, `credit` | Downloads, verifies and locates the OBJ; `credit` records its attribution. | Required. | Download / none. | [source](#source) |
-| `[output]` | `directory`; `name`, `position_scale` | Names the output directory, single-mesh name and position scale. | `name` optional; `position_scale` 8. | Write / none. | [output](#output) |
+| `[output]` | `directory`; `name`, `position_scale` | Names the output directory, single-mesh name and position scale. | `name` required without `[[variants]]`, rejected with them; `position_scale` 8. | Write / none. | [output](#output) |
 | `[materials]` | ; `double_sided` | Draws listed material faces from both sides. | `[]`. | None / more faces drawn. | [materials](#materials) |
 
 #### Process options
@@ -49,9 +46,9 @@ Keys before `;` are required; after it, optional.
 |---|---|---|---|---|---|
 | `[process]` | ; `seed` | Seeds thin's random choice. | `0`; only with thin. | None / none. | [process](#process) |
 
-Every Geometry table opts its step in; without it the step does not run.
-
 #### Geometry
+
+Every Geometry table opts its step in; without it the step does not run.
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
@@ -146,12 +143,8 @@ triangle budget. Without variants, `output.name` names the single output.
 
 #### variants triangles
 
-`[[variants]].triangles` is the required triangle budget of a simplified
-variant. Its sweep is the generated `fitted_variant.py sweep` image; keep the
-front's knee unless its frame cost misses the target. The Pareto front contains
-the meshes no other beats on both held-out error and predicted frame time.
-
-![Held-out error against predicted frame time](images/appearance-pareto.png)
+`[[variants]].triangles` is the triangle budget `simplify` brings a variant to;
+a `fit` budget may not exceed it.
 
 ## The baked mesh
 
@@ -386,7 +379,7 @@ E = \mathrm{dilate}_1\left\{\, p : \left\lVert \nabla y_T(p) \right\rVert > 0.06
 ```
 
 Appearance fitting, its objective, and its budget and cost choices are
-described by [fit](Scene-Files.md#fit-optimise).
+described by [fit](Scene-Files.md#fitoptimise).
 
 ## Meshlets
 
@@ -402,7 +395,7 @@ to walk. The size trades these: 64 lost on the board and 32 won.
 
 Meshlets also change the draw order of the finest level. Where two triangles
 reach the same depth the first drawn wins, so a redrawn frame differs from the
-old clustering's in a fraction of a percent of its pixels, from ties alone:
+clusterizer's order in a fraction of a percent of its pixels, from ties alone:
 the triangles are the same.
 
 Levels of detail built on the meshlets, and what they would save, are in

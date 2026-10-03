@@ -1,51 +1,83 @@
 # Scene Files
 
-A scene file places objects. Every object has exactly one component: a mesh
-renderer, directional light, or camera. A mesh's source, geometry processing,
-and variants belong in its [import file](Mesh-Import.md#import-file); the scene
-supplies the conditions that make a placed renderer's baked output.
+A scene file is a scenario: objects, each with one transform and one component,
+plus the light and tone-map settings. The offline importer bakes the lit meshes
+the scenario places ([Mesh-Import.md](Mesh-Import.md)); `scene_table.py` writes
+the [scene table](#the-scene-table) it reads at run time.
+
+```toml
+tonemap_white = 0.35             # larger is darker
+
+[sky]                            # scene settings, not objects
+color = [0.55, 0.68, 0.9]
+intensity = 0.9
+rays = 48
+
+[ambient]
+color = [1.0, 1.0, 1.0]
+intensity = 0.06
+
+[bake]
+ray_offset = 0.5
+colour_merge_step = 6
+flat_sky_rays = 128
+indirect = { bounces = 2, rays = 64, cache_samples = 1 }
+
+[[objects]]
+name = "sun"
+rotation = [18.4, -48.7, 0.0]    # pitch, yaw, roll in degrees
+
+[objects.light]
+type = "directional"
+color = [1.0, 0.92, 0.78]
+intensity = 3.0
+disc_degrees = 1.2
+rays = 8
+
+[[objects]]
+name = "camera"
+
+[objects.camera]
+half_fov_short_tan = 0.62
+near_z = 6.0
+background = 0x9CC0E6
+region = { min = [-1400.0, 20.0, -620.0], max = [1270.0, 1250.0, 550.0] }
+path = { tracks = "flight", node = "camera" }
+
+[[objects]]
+name = "hall"
+
+[objects.mesh_renderer]
+mesh = "hall.import.toml"
+variant = "hall"                 # only for an import with variants
+bake = true
+visibility = { source = "camera_region", rounds = 160 }
+
+[[objects]]
+name = "statue"
+position = [0.0, 0.0, 300.0]
+scale = [2.0, 2.0, 2.0]
+
+[objects.mesh_renderer]
+mesh = "statue.import.toml"
+```
 
 ## Objects
 
 Every object has a unique `name`, an optional transform and exactly one
-component table. `position`, `rotation`, and `scale` default to the origin,
-zero rotation, and unit scale. A zero light rotation points its sun straight
-overhead.
+component table. A scene needs a `mesh_renderer`.
+
+| Key | Meaning |
+|---|---|
+| `position` | Where the object is, in model units. Default `[0, 0, 0]`. |
+| `rotation` | `[pitch, yaw, roll]` in degrees, right-handed: roll about z, then pitch about x, then yaw about y. Default `[0, 0, 0]`. |
+| `scale` | Per-axis scale, positive on every axis. Default `[1, 1, 1]`. |
 
 | Component | Fields | What it is |
 |---|---|---|
 | `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene; `variant` chooses its geometry variant. |
 | `light` | `type`, `color`, `intensity`, `disc_degrees`, `rays` | A directional light. Its direction toward the light is the object's +Y axis turned by its rotation. Position and scale do not matter. |
-| `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view. `path` names tracks from `tools/anim/bake_tracks.py` and their glTF node; it writes `<tracks>_tracks_generated.c` and `.h` beside the scene. `background` is what uncovered pixels show, on the panel and in the reference. |
-
-An appearance-fit recipe is grouped below its renderer's `fit` table.
-
-| Group | Key | Meaning |
-|---|---|---|
-| `fit.prune` | `budget`, `coverage_every_ms` | Triangle budget and camera-path sampling interval for pruning. |
-| `fit.poses` | `train_every_ms`, `held_out_every_ms` | Camera-path training poses and the multiples held out for scoring. |
-| `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight` | Optimiser iteration count, batch size and loss weights. |
-| `fit.hashes` | `sha256`, `recipe_sha256` | Hashes of the fitted mesh and its effective recipe. |
-
-```toml
-[objects.mesh_renderer.fit.prune]
-budget = 8672
-coverage_every_ms = 100
-
-[objects.mesh_renderer.fit.poses]
-train_every_ms = 1000
-held_out_every_ms = 5000
-
-[objects.mesh_renderer.fit.optimise]
-steps = 2000
-batch = 8
-laplacian = 10.0
-normal_weight = 1.0
-
-[objects.mesh_renderer.fit.hashes]
-sha256 = "..."
-recipe_sha256 = "..."
-```
+| `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view. `region` is a `min`/`max` box; `path = { tracks, node }`. `background` is 0xRRGGBB, defaults to black, and is what uncovered pixels show. Without a path the camera sits at its transform, looking down -Z. A scene has at most one camera. |
 
 A double-sided face turns toward the lights.
 
@@ -60,9 +92,9 @@ is in [Mesh-Import.md](Mesh-Import.md#import-options).
 |---|---|---|---|---|
 | `[bake]` | `ray_offset`, `colour_merge_step`; `flat_sky_rays`, `indirect = { bounces, rays, cache_samples }` | Scene-wide tracing settings. | Required by a baked renderer. | [bake](#bake) |
 | `[indirect]` | `; intensity, albedo_boost` | Sets the appearance of the baked bounce-light cache. | `1.0 each`; rejected unless a baked renderer uses [bake].indirect. | [indirect](#indirect) |
-| `[sky]` | `color`, `intensity`, `rays` | Hemisphere light for bakes. | Read only by a baked renderer. | [sky](#sky) |
-| `[ambient]` | `color`, `intensity` | Constant light for bakes. | Read only by a baked renderer. | [ambient](#ambient) |
-| `tonemap_white` | value | Tone-map white point. | Read only by a baked renderer. | [tonemap_white](#tonemap_white) |
+| `[sky]` | `color`, `intensity`, `rays` | Hemisphere light for bakes. | Rejected unless a renderer bakes. | [sky](#sky) |
+| `[ambient]` | `color`, `intensity` | Constant light for bakes. | Rejected unless a renderer bakes. | [ambient](#ambient) |
+| `tonemap_white` | value | Tone-map white point. | Rejected unless a renderer bakes. | [tonemap_white](#tonemap_white) |
 
 #### bake
 
@@ -112,6 +144,28 @@ directions used by the bake.
 
 ### mesh_renderer
 
+An appearance-fit recipe is grouped below its renderer's `fit` table.
+
+```toml
+[objects.mesh_renderer.fit.prune]
+budget = 8672
+coverage_every_ms = 100
+
+[objects.mesh_renderer.fit.poses]
+train_every_ms = 1000
+held_out_every_ms = 5000
+
+[objects.mesh_renderer.fit.optimise]
+steps = 2000
+batch = 8
+laplacian = 10.0
+normal_weight = 1.0
+
+[objects.mesh_renderer.fit.hashes]
+sha256 = "..."
+recipe_sha256 = "..."
+```
+
 | Option | Keys | What it does | Default | Option link |
 |---|---|---|---|---|
 | `bake: renderer` | `true` | Traces this renderer against its own source. | `false`. | [bake renderer](#bake-renderer) |
@@ -120,15 +174,19 @@ directions used by the bake.
 | `visibility: camera_path` | `source = "camera_path"`, `every_ms`, `size`; `samples`, `margin` | Keeps triangles first seen from sampled camera-path views. | Off. | [visibility: camera_path](#visibility-camera_path) |
 | `shading: smooth` | `"smooth"` | Stores baked colour at vertices. | `"smooth"`. | [shading: smooth](#shading-smooth) |
 | `shading: flat` | `flat = { fixed = N }` / `flat = { auto = { min, max, area } }` | Stores one averaged RGB565 colour per face. | Off. | [shading: flat](#shading-flat) |
-| `fit: recipe` | `budget`, `train_every_ms`, `held_out_every_ms`, `coverage_every_ms`, `steps`, `batch`, `laplacian`, `normal_weight`, `sha256`, `recipe_sha256` | Records the appearance-fit recipe. | Off. | [fit: recipe](#fit-recipe) |
-| `fit: normal weight` | `normal_weight` | Weighs normal agreement in the fit objective. | `None`; required in `fit`. | [fit: normal weight](#fit-normal-weight) |
-| `fit: budget and cost` | recipe budget, coverage, and fit weights | Selects and weighs visible geometry. | Off. | [fit: budget and cost](#fit-budget-and-cost) |
+| `fit.prune` | `budget`, `coverage_every_ms` | Prunes visible geometry to the triangle budget. | Required in `fit`; the cost weight is `fitted_variant.py sweep --cost-weights`, not a scene key. | [fit.prune](#fitprune) |
+| `fit.poses` | `train_every_ms`, `held_out_every_ms` | Selects training and held-out camera-path poses. | Required in `fit`. | [fit.poses](#fitposes) |
+| `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight` | Sets optimiser steps, batch size and loss weights. | Required in `fit`. | [fit.optimise](#fitoptimise) |
+| `fit.hashes` | `sha256`, `recipe_sha256` | Records the fitted mesh and effective recipe hashes. | Required in `fit`. | [fit.hashes](#fithashes) |
 | `indirect: off` | `indirect = false` | Bakes this renderer without bounce light. | Bounce light on when the scene recipe is present. | [indirect: off](#indirect-off) |
 
 #### bake renderer
 
 `bake = true` writes this renderer's lit mesh; otherwise it draws the shared
-imported albedo mesh.
+imported albedo mesh. `shading`, `visibility`, `fit`, and `indirect` require
+`bake = true`. A baked renderer's transform must be identity. Its output is
+`<scene>.<object>.mesh`; an albedo renderer uses `<variant>.mesh`. An import is
+packed only through the scenes that place it.
 
 #### variant
 
@@ -137,11 +195,11 @@ imported albedo mesh.
 #### visibility: camera_region
 
 The region source casts from points in the camera's `region`. Use it when the
-camera may occupy the box without a defined path. The same import with the
-cull off, crops where they differ most, is off above on: without it the budget
-goes to hidden surfaces.
+camera may occupy the box without a defined path. The image is the same import
+with the cull off above on, cropped where they differ most: without the cull
+the budget goes to hidden surfaces.
 
-![Triangles the camera path never sees](images/import-visibility.png)
+![Visibility cull off against on](images/import-visibility.png)
 
 #### visibility: camera_path
 
@@ -182,13 +240,14 @@ a shadow edge lands on whole faces.
 ![Smooth against flat, the places they differ most](../images/render/compare-full-flat.crops.png)
 ![One fixed face sample against adaptive](images/import-face-samples.png)
 
-Face samples are the useful control; extra samples converge, and more sky rays
-add noise after the bake setting is saturated. Stratified placement and a disc
+Face samples are the useful control; extra samples converge. Sky rays saturate
+at the scene's `flat_sky_rays`: fewer is worse, and more change the score by no
+more than noise. Stratified placement and a disc
 sun preserve soft boundaries. A face's one colour leaves edge error that
 sampling cannot remove. Generated findings and sheets live in the scene tools
 README.
 
-#### fit: recipe
+#### fit.optimise
 
 The appearance fit starts from a smooth bake at its budget and adjusts welded
 positions and vertex colours against reference renders from camera-path poses.
@@ -276,10 +335,8 @@ flowchart LR
     H --> C[render_compare.py score, sheets, heatmaps]
 ```
 
-#### fit: normal weight
-
 Colour alone permits geometry that matches one view but differs from another.
-`normal_weight` weighs $`\mathcal{E}_n`$ from [fit: recipe](#fit-recipe): mean
+`normal_weight` weighs $`\mathcal{E}_n`$: mean
 L1 fitted/reference normal difference where both cover a pixel. The reference
 and fit turn normals toward the eye, and the term needs a second drawing per
 view. The error reported beside $`\Delta E`$ is the mean normal angle:
@@ -293,7 +350,17 @@ README.
 
 ![Normal angle heatmaps](images/appearance-normal-heat.png)
 
-#### fit: budget and cost
+#### fit.poses
+
+`train_every_ms` samples the camera path for fitting; `held_out_every_ms`
+selects the poses used only for scoring.
+
+#### fit.hashes
+
+`sha256` records the fitted mesh, and `recipe_sha256` records its effective
+recipe. A bake checks the recorded mesh.
+
+#### fit.prune
 
 The stages are path visibility, simplify above the target, prune to budget,
 optional warm start, then fitting:
@@ -325,10 +392,12 @@ test $`\alpha_t`$; and clusters in view $`N_{c,v}`$:
 
 `cost_model.py` fits and applies the weights, retaining them and their source
 frames beside the model. The model predicts board time within a small margin on
-meshes outside its fit; its constant alone leaves little of a 60 fps frame.
-The cost term $`\mathcal{E}_c`$ from [fit: recipe](#fit-recipe) trades appearance
+meshes outside its fit.
+The cost term $`\mathcal{E}_c`$ from [fit.optimise](#fitoptimise) trades appearance
 for predicted time, but a smaller budget gives the better trade. Generated
 tables and findings live in the scene tools README.
+
+![Held-out error against predicted frame time](images/appearance-pareto.png)
 
 #### indirect: off
 
@@ -357,14 +426,18 @@ Without a path the camera sits at its transform looking down -Z.
 
 ## What the scene must carry
 
-A renderer with `bake = true` reads lights, `[sky]`, `[ambient]`,
-`tonemap_white`, `[bake]`, and its `[indirect]` look. Its `visibility` reads
-the camera `region`, or `path` for the path source.
+A renderer with `bake = true` needs at least one light (a directional object,
+`[sky]` or `[ambient]`), `tonemap_white` and `[bake]`; its `visibility` needs
+the camera `region`, or `path` for the path source. A scene must carry what a
+baked renderer reads and may not carry what none reads: the importer rejects
+lights, `tonemap_white`, a region or `[indirect]` that no placed mesh reads.
 
 ## The scene table
 
 `scene_table.py` writes `<scene>_scene_generated.c` and `.h` beside the scene
-file. The table is `<scene>_scene`, registered with `SCENE_REGISTER()`. Its
-header names objects `<SCENE>_SCENE_<OBJECT>`, so a misspelt object fails to
+file. A test fails on a stale table. The table is `<scene>_scene`, registered
+with `SCENE_REGISTER()` so [Scene-Manager.md](Scene-Manager.md) can load it.
+Its header names objects `<SCENE>_SCENE_<OBJECT>`, so a misspelt object fails to
 compile. An asset id missing from the pack fails `scene_load()`. The transform
-is baked to a 3x3 plus a position, so the device does no trigonometry.
+is baked to a 3x3 plus a position, so the device does no trigonometry. Lights,
+region, sky, ambient and the tone map stay offline.
