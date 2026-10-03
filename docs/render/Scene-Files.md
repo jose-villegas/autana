@@ -192,50 +192,143 @@ README.
 
 The appearance fit starts from a smooth bake at its budget and adjusts welded
 positions and vertex colours against reference renders from camera-path poses.
-It records its complete recipe and output hashes; `fitted_variant.py` remakes
-it in its GPU environment, while a bake checks the recorded mesh. The reference,
-fitted-output, crop and heatmap sheets live in the scene tools README.
+The triangles stay fixed, so the budget and frame cost hold. A `fit` table
+records the budget, training, held-out and coverage poses, optimiser settings,
+and output hashes. `fitted_variant.py` remakes the mesh in its GPU environment;
+a bake checks the recorded mesh. The reference, fitted-output, crop and heatmap
+sheets live in the scene tools README. Use it for a mesh seen from known views
+when the simplifier's colours or silhouettes visibly drift from the source. It
+needs a CUDA GPU and minutes per mesh, with no run-time cost.
 
 ![Simplifier against the reference](../images/render/appearance-lite-reference.png)
 ![Fitted mesh against the reference](../images/render/appearance-chosen-heat.png)
 ![Simplifier and fitted mesh, largest differences](../images/render/appearance-lite-fitted-reference.crops.png)
 
-The fit draws welded positions $P$ and vertex colours $C$ over batch $B$ of
-poses, with frame pixels $\Omega$, start positions $P^0$, edge neighbours
-$N(i)$, start mean edge length $\bar e$, fitted normal $\hat n$, reference
-normal $n^{\rm ref}$, and predicted frame time $`\hat t_v`$:
+The fit draws welded positions $`P`$ and vertex colours $`C`$ with a
+differentiable rasterizer $`\mathcal{R}`$ over a random batch $`B`$ of training
+poses. $`\Omega`$ is the frame pixels, $`P^0`$ the start positions, $`N(i)`$
+the positions sharing an edge with $`i`$, $`\bar e`$ the start mean edge
+length, $`\hat n`$ the fitted normal, $`n^{\rm ref}`$ the reference normal, and
+$`\hat t_v`$ the predicted frame time for pose $`v`$. It minimises the colour
+term $`\mathcal{E}_{\Delta E}`$, the Laplacian term
+$`\mathcal{E}_{\mathcal{L}}`$, the normal term $`\mathcal{E}_n`$, and the cost
+term $`\mathcal{E}_c`$:
 
 ```math
-\min_{P,\,C}\; \frac{1}{|B|}\sum_{v \in B}\frac{1}{|\Omega|}\sum_{p \in \Omega}
-\Delta E_{76}\!\left(\mathcal{R}_v(P, C)_p,\; T_{v,p}\right)
-+ \lambda\,\frac{1}{|V|}\sum_{i \in V}\left\lVert \frac{\mathcal{L}(P)_i - \mathcal{L}(P^0)_i}{\bar e} \right\rVert^2
-+ \lambda_n\,\frac{1}{|B|}\sum_{v \in B}\frac{1}{|\Omega_v^{\cap}|}\sum_{p \in \Omega_v^{\cap}}\left\lVert \hat n_v(P)_p - n^{\rm ref}_{v,p} \right\rVert_1
-+ \kappa\,\frac{1}{|B|}\sum_{v \in B}\hat t_v(P)
+\min_{P,\,C}\; \mathcal{E}_{\Delta E}(P, C)
++ \lambda\,\mathcal{E}_{\mathcal{L}}(P)
++ \lambda_n\,\mathcal{E}_n(P)
++ \kappa\,\mathcal{E}_c(P)
 ```
 
 ```math
 \mathcal{L}(P)_i = P_i - \frac{1}{|N(i)|}\sum_{j \in N(i)} P_j
 ```
 
+Here $`\mathcal{E}_{\Delta E}`$ is the mean $`\Delta E_{76}`$ between
+$`\mathcal{R}_v(P, C)_p`$ and reference $`T_{v,p}`$ over $`B`$ and $`\Omega`$;
+$`\mathcal{E}_{\mathcal{L}}`$ is the mean squared, edge-length-normalised
+change in the Laplacian; and $`\lambda`$, $`\lambda_n`$, and $`\kappa`$ weigh
+the Laplacian, normal, and cost terms:
+
+```math
+\mathcal{E}_{\Delta E}(P, C) =
+\frac{1}{|B|}\sum_{v \in B}\frac{1}{|\Omega|}\sum_{p \in \Omega}
+\Delta E_{76}\!\left(\mathcal{R}_v(P, C)_p,\; T_{v,p}\right)
+```
+
+```math
+\mathcal{E}_{\mathcal{L}}(P) =
+\frac{1}{|V|}\sum_{i \in V}
+\left\lVert \frac{\mathcal{L}(P)_i - \mathcal{L}(P^0)_i}{\bar e} \right\rVert^2
+```
+
+$`\mathcal{E}_n`$ is the mean L1 difference between $`\hat n_v(P)_p`$ and
+$`n^{\rm ref}_{v,p}`$ over jointly covered pixels $`\Omega_v^{\cap}`$, and
+$`\mathcal{E}_c`$ is the mean $`\hat t_v(P)`$ over $`B`$:
+
+```math
+\mathcal{E}_n(P) =
+\frac{1}{|B|}\sum_{v \in B}\frac{1}{|\Omega_v^{\cap}|}
+\sum_{p \in \Omega_v^{\cap}}
+\left\lVert \hat n_v(P)_p - n^{\rm ref}_{v,p} \right\rVert_1
+\qquad
+\mathcal{E}_c(P) = \frac{1}{|B|}\sum_{v \in B}\hat t_v(P)
+```
+
+Adam takes the steps, both learning rates decay as
+$`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps, and colours are clamped to
+$[0, 1]$ after each. Where nothing is drawn the renderer shows the scene's
+clear colour, as the device and reference do. The fitted colours are a bake in
+their own right, so the fitted mesh enters the import at its writer and is not
+lit again. A fit is judged on held-out poses by the same scores and sheets as
+any other bake; generated results live in the scene tools README. One mesh can
+fit the whole path, or meshes can fit path segments and swap as the camera
+moves; segment fits see fewer poses and fit poses between segments less well.
+
+```mermaid
+flowchart LR
+    S[simplified smooth bake] --> F[fit positions and colours]
+    P[camera path poses] --> R[reference renders]
+    R --> F
+    F --> W[write_lit_mesh]
+    W --> H[host render, held-out poses]
+    H --> C[render_compare.py score, sheets, heatmaps]
+```
+
 #### fit: normal weight
 
 Colour alone permits geometry that matches one view but differs from another.
-`normal_weight` adds mean L1 fitted/reference normal difference where both
-cover a pixel. The reference and fit turn normals toward the eye. The generated
-normal-angle heatmaps and sweep findings live in the scene tools README.
+`normal_weight` weighs $`\mathcal{E}_n`$ from [fit: recipe](#fit-recipe): mean
+L1 fitted/reference normal difference where both cover a pixel. The reference
+and fit turn normals toward the eye, and the term needs a second drawing per
+view. The error reported beside $`\Delta E`$ is the mean normal angle:
+
+```math
+\theta = \frac{1}{|\Omega^{\cap}|}\sum_{p \in \Omega^{\cap}} \arccos\!\left(\hat{n}_p \cdot n^{\mathrm{ref}}_p\right)
+```
+
+The generated normal-angle heatmaps and sweep findings live in the scene tools
+README.
 
 ![Normal angle heatmaps](images/appearance-normal-heat.png)
 
 #### fit: budget and cost
 
 The stages are path visibility, simplify above the target, prune to budget,
-optional warm start, then fitting. [Path visibility](#visibility-camera_path)
-spends budget only on surfaces the path draws. Pruning removes triangles with
-the least covered pixels. A warm start splits worst fitted triangles and
-refines the larger mesh. The cost model learns non-negative weights from board
-frame times; its cost term can trade appearance for predicted time, though a
-smaller budget can be the better trade. Tables and generated findings live in
-the scene tools README.
+optional warm start, then fitting:
+
+```mermaid
+flowchart LR
+    V[path visibility<br/>on the source] --> S[simplify to more<br/>than the budget]
+    S --> P[prune to the budget]
+    P --> R[refine a coarse fit<br/>optional]
+    R --> F[fit: ΔE, Laplacian,<br/>normals, cost]
+    F --> W[write_lit_mesh]
+```
+
+[Path visibility](#visibility-camera_path) spends budget only on surfaces the
+path draws. Each pose of a dense set counts the pixels $`a_t`$ each triangle
+shows; pruning removes zero-coverage triangles first, then the least-covered,
+to the budget. A warm start splits the worst fitted triangles along their
+longest edge, grows the mesh to a larger budget, and fits it again. Generated
+tables show that this is no better than starting with the smaller budget.
+
+The cost model predicts pose time $`\hat t_v`$ from a non-negative least-squares
+fit to board frame times: a constant; clusters in view $`N_{s,v}`$; drawn
+triangles $`D_v`$; their screen rows $`\rho_t`$; pixels covered before the depth
+test $`\alpha_t`$; and clusters in view $`N_{c,v}`$:
+
+```math
+\hat{t}_v = w_0 + w_s\,N_{s,v} + w_d\,|D_v| + w_\rho \sum_{t \in D_v} \rho_t + w_\alpha \sum_{t \in D_v} \alpha_t + w_c\,N_{c,v}
+```
+
+`cost_model.py` fits and applies the weights, retaining them and their source
+frames beside the model. The model predicts board time within a small margin on
+meshes outside its fit; its constant alone leaves little of a 60 fps frame.
+The cost term $`\mathcal{E}_c`$ from [fit: recipe](#fit-recipe) trades appearance
+for predicted time, but a smaller budget gives the better trade. Generated
+tables and findings live in the scene tools README.
 
 #### indirect: off
 

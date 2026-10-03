@@ -110,12 +110,34 @@ under [seal_seams](#seal_seams).
 #### seal_seams
 
 `seal_seams = true` joins touching pieces before simplification, reducing gaps
-at their borders. The comparison image shows the effect.
+at their borders.
+
+```mermaid
+flowchart LR
+    load[Load and light] --> join[Join touching pieces]
+    join --> pass[Simplify pass]
+    pass --> merge[Merge near colours]
+    merge --> bake[Quantise, meshlets, octree]
+    subgraph seal_seams
+        join
+        pass
+        merge
+    end
+```
+
+| Step | What it does |
+|---|---|
+| Join | Welds border vertices within one quantisation step and splits border edges at the vertices lying on them, so a shared edge is one edge. |
+| Pass | Runs meshoptimizer with light regularizing instead of regularizing. |
+| Merge | Gives vertices at one quantised position one colour when they differ by at most one and a half RGB565 steps. |
+
+It cuts the empty spots but does not remove them, and costs frame time for the
+triangles it keeps.
+
+The same import with `seal_seams` off against on, at a pose where it shows,
+off above on: a pixel-sized hole that shows the sky is sealed.
 
 ![seal_seams off against on](images/import-seal-seams.png)
-
-The off/on stills in `images/` are scratch bakes; the doc-images workflow does
-not refresh them.
 
 #### variants
 
@@ -253,8 +275,8 @@ L(x) = a(x)\,\bigl(E_{\mathrm{direct}}(x) + E_{\mathrm{ind}}(x)\bigr)
 A ray that hits nothing adds nothing, because the sky light already counts the
 sky; a ray that an occluder stops takes the occluder's radiance. With every
 albedo at most $\rho \lt 1$, $`\max_t L_k \le \rho^k \max_t L_0`$, so the series converges and
-bounce $k$ adds less than the one before. Pick $K$ where the next bounce adds
-under about 1% of the direct light.
+bounce $k$ adds less than the one before. Pick $K$ where the next bounce is
+negligible beside the direct light.
 
 Every point and every cache triangle uses the same $R$ directions, laid out
 in its own tangent frame, and nothing is drawn at random. Equal surroundings
@@ -363,222 +385,8 @@ interior ΔE over the rest:
 E = \mathrm{dilate}_1\left\{\, p : \left\lVert \nabla y_T(p) \right\rVert > 0.06 \,\right\}
 ```
 
-## Fitting a mesh to the reference
-
-The simplifier keeps what it can of the source's colour and shape, but it
-never looks at an image. `appearance_simplify.py` does: it takes a smooth
-bake at its triangle budget, draws it with a differentiable rasterizer the
-way the device draws it, and moves the vertices and changes their colours
-until the renders match the reference over the camera path's poses. The
-triangles stay as they were, so the budget and the frame cost hold.
-
-A renderer with a `fit` table records the recipe: the budget it prunes to,
-the poses it trains on, holds out and counts pixels over, its optimiser
-settings, and the SHA-256 of the mesh it made, grouped as in
-[Scene-Files.md](Scene-Files.md). The bake does not run the fit, which needs a
-GPU: it checks that the committed mesh is the one the recipe records.
-`fitted_variant.py` remakes it, in two steps, one per environment.
-
-**When to use it:** a mesh seen along a known set of views, at a budget
-where the simplifier's colours and silhouettes visibly drift from the
-source. **What it costs:** a CUDA GPU and minutes per mesh, nothing at run
-time. A scene's crop sheets for every stage, before above after, live in that
-scene's tools README beside its scores.
-
-At the same held-out poses, the two reference sheets put the reference first,
-then the simplifier or the fitted mesh, with each mesh's $`\Delta E`$ heatmap
-under it. The crop sheet shows the places where simplifier and fit differ
-most, with the reference above each crop.
-
-![Simplifier against the reference](../images/render/appearance-lite-reference.png)
-![Fitted mesh against the reference](../images/render/appearance-chosen-heat.png)
-![Simplifier and fitted mesh, largest differences](../images/render/appearance-lite-fitted-reference.crops.png)
-
-```mermaid
-flowchart LR
-    S[simplified smooth bake] --> F[fit positions and colours]
-    P[camera path poses] --> R[reference renders]
-    R --> F
-    F --> W[write_lit_mesh]
-    W --> H[host render, held-out poses]
-    H --> C[render_compare.py score, sheets, heatmaps]
-```
-
-The fitted colours are a bake in their own right, so the fitted mesh enters
-the import at its last stage, the writer, and is never lit again. One mesh
-fits the whole path, or one mesh fits each segment of it, to be swapped as
-the camera moves; segments see fewer poses each and fit poses between them
-less well. A fit is judged on poses it never trained on, by the same scores
-and pictures as any other bake: a sheet and enlarged crops against the
-simplifier's mesh and against the reference, and the heatmap sheet. A
-scene's example lives beside its own tools; nothing refreshes it, since the
-fit needs a CUDA GPU and its own environment
-([`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md#appearance-fit)).
-What a fit achieves on a scene, held-out error against board time, is measured
-in that scene's tools README.
-
-### The fit's objective
-
-The fit draws the mesh with a differentiable rasterizer $\mathcal{R}$
-(nvdiffrast) as the device does, and moves the welded positions $P$ and
-vertex colours $C$ to minimise, over a random batch $B$ of training poses
-each step, the mean ΔE above against the reference $`T_v`$ of pose $v$, plus
-a regulariser that keeps the mesh's local shape:
-
-```math
-\min_{P,\,C}\;
-\frac{1}{|B|}\sum_{v \in B}\frac{1}{|\Omega|}\sum_{p \in \Omega}
-\Delta E_{76}\!\left(\mathcal{R}_v(P, C)_p,\; T_{v,p}\right)
-\;+\;
-\lambda\,\frac{1}{|V|}\sum_{i \in V}
-\left\lVert \frac{\mathcal{L}(P)_i - \mathcal{L}(P^0)_i}{\bar{e}} \right\rVert^2
-```
-
-```math
-\mathcal{L}(P)_i = P_i - \frac{1}{|N(i)|}\sum_{j \in N(i)} P_j
-```
-
-$\Omega$ is the frame's pixels, $P^0$ the start positions, $N(i)$ the
-positions sharing an edge with $i$, $\bar{e}$ the start's mean edge length
-and $\lambda$ the `--laplacian` weight. Adam takes the steps, both learning
-rates decay as $`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps, and the
-colours are clamped to $[0, 1]$ after each. Where nothing is drawn the
-renderer shows the scene's clear colour, as the device and the reference do.
-$`\mathcal{E}_{\Delta E}`$ below names the first term and
-$`\mathcal{E}_{\mathcal{L}}`$ the second.
-
-## Spending the budget where it shows and costs least
-
-The fit can also choose where the triangles go and weigh what they cost.
-Each stage is optional and runs in this order:
-
-```mermaid
-flowchart LR
-    V[path visibility<br/>on the source] --> S[simplify to more<br/>than the budget]
-    S --> P[prune to the budget]
-    P --> R[refine a coarse fit<br/>optional]
-    R --> F[fit: ΔE, Laplacian,<br/>normals, cost]
-    F --> W[write_lit_mesh]
-```
-
-**Path visibility** is a renderer's `camera_path` source above. *What:* only
-surfaces some pose draws get budget. *When:* a mesh seen from a known path.
-*Cost:* minutes of ray casting per import; it cuts a mesh's triangles, not its
-pixels, so a culled mesh looks the same and draws faster.
-
-**Pruning.** *What:* every pose of a dense pose set draws the mesh and counts
-the pixels $`a_t`$ each triangle shows; triangles with $`a_t = 0`$ go first, then
-those with the smallest $`a_t`$, down to the budget. Simplifying to more than
-the budget and pruning back puts the triangles where a pose shows them.
-*When:* always with a path. *Cost:* seconds.
-
-**Warm start.** *What:* a fitted coarse mesh gets its worst triangles, by ΔE
-summed over the pixels they show, split along their longest edge, both sides
-at once, up to a larger budget, and is fitted again. *When:* to grow a fit
-instead of starting a finer one from the simplifier. *Cost:* one more fit.
-On the measured scene, refining reaches $`\Delta E`$ 5.223 at 8,035 triangles
-and 5.153 at 10,382, against the path start fitted at the 8,672 and 12,000
-budgets, which reach 5.220 and 5.029, so it does not move the plateau.
-
-**The normal term.** *What:* colour alone can be matched by geometry that is
-wrong and shows it from another view. The reference renderer also writes the
-source's shading normal per pixel, turned toward the eye, and the fit draws
-its own: area-weighted vertex normals $\hat{n}$, interpolated and turned the
-same way. $`\Omega_v^{\cap}`$ is the pixels both cover, so coverage stays the
-colour term's business, through the scene's clear colour. *When:* always; it
-leaves ΔE where it was and brings the normals back toward the source. *Cost:*
-a second drawing per view. The error reported beside ΔE is the mean angle:
-
-```math
-\theta = \frac{1}{|\Omega^{\cap}|}\sum_{p \in \Omega^{\cap}} \arccos\!\left(\hat{n}_p \cdot n^{\mathrm{ref}}_p\right)
-```
-
-On the measured scene, $`\lambda_n`$ 0 / 0.1 / 0.3 / 1 gives $`\Delta E`$
-5.220 / 5.247 / 5.268 / 5.232 and normal error 18.6 / 17.1 / 16.3 / 14.8°.
-$`\lambda_n = 1`$ recovers geometry within 0.05 $`\Delta E`$. The heatmap
-shows the normal error that it removes.
-
-![Normal angle heatmaps](images/appearance-normal-heat.png)
-
-**The cost model.** A frame's time from pose $v$ is linear in what the
-renderer does: a constant, the triangles of the clusters in view $`N_{s,v}`$
-(fetched, transformed and tested), the drawn triangles $`D_v`$ (in front of the
-eye, facing it or double-sided, on screen), their screen rows $`\rho_t`$, the
-pixels they cover before the depth test $`\alpha_t`$ (overdraw counted) and the
-clusters in view $`N_{c,v}`$:
-
-```math
-\hat{t}_v = w_0 + w_s\,N_{s,v} + w_d\,|D_v| + w_\rho \sum_{t \in D_v} \rho_t + w_\alpha \sum_{t \in D_v} \alpha_t + w_c\,N_{c,v}
-```
-
-The weights are non-negative least squares over board frame times of meshes
-with different triangle counts and overdraw, at the poses the board times.
-`cost_model.py` fits and applies them, and keeps them, with the frames they
-were fitted to, in a weights file beside it.
-
-On the measured scene it is 21.4 ms + 1.14 $`\mu\mathrm{s}`$ per drawn
-triangle + 0.51 $`\mu\mathrm{s}`$ per row + 0.028 $`\mu\mathrm{s}`$ per pixel
-+ 22.7 $`\mu\mathrm{s}`$ per cluster. Its $`R^2`$ is 0.983 and it predicts six
-meshes outside its fit within 1.3 ms. The 21.4 ms constant leaves too little
-time for a 30 fps frame and exceeds a 60 fps frame before drawing.
-
-**The cost term.** *What:* $`D_v`$, $`\rho_t`$ and $`\alpha_t`$ follow the vertex
-positions, so the fit can trade appearance against predicted time with a
-weight $\kappa$ in ΔE per millisecond. *When:* when a smaller budget is not an
-option; on the meshes it was tried on, a smaller budget bought the same time
-for less error. *Cost:* the fit runs about three times longer.
-
-On the measured scene its weight trades 0.2–0.6 $`\Delta E`$ for 4–7 ms, no
-better than a smaller budget.
-
-The whole objective, with $\lambda$, $`\lambda_n`$ and $\kappa$ the weights of
-the Laplacian, normal and cost terms:
-
-```math
-\min_{P,\,C}\; \mathcal{E}_{\Delta E}(P, C) + \lambda\,\mathcal{E}_{\mathcal{L}}(P)
-+ \lambda_n\,\frac{1}{|B|}\sum_{v \in B}\frac{1}{|\Omega_v^{\cap}|}\sum_{p \in \Omega_v^{\cap}}\left\lVert \hat{n}_v(P)_p - n^{\mathrm{ref}}_{v,p} \right\rVert_1
-+ \kappa\,\frac{1}{|B|}\sum_{v \in B}\hat{t}_v(P)
-```
-
-Sweeping the budget and $\kappa$ gives held-out ΔE against predicted
-milliseconds; the meshes no other is better than on both form the Pareto
-front, and its knee is where more triangles stop buying visible error.
-
-## Sealing seams
-
-Simplifying a model made of many separate pieces approximates each piece's
-border on its own, and a border that erodes leaves a pixel-sized empty spot
-where another surface should meet it. `seal_seams = true` in
-`[geometry.simplify]`, where the key is required, imports the same mesh
-differently; `false` simplifies the pieces as they are. It acts in the simplifier's stage
-only; the bake after it is unchanged.
-
-```mermaid
-flowchart LR
-    load[Load and light] --> join[Join touching pieces]
-    join --> pass[Simplify pass]
-    pass --> merge[Merge near colours]
-    merge --> bake[Quantise, meshlets, octree]
-    subgraph seal_seams
-        join
-        pass
-        merge
-    end
-```
-
-| Step | What it does |
-|---|---|
-| Join | Welds border vertices within one quantisation step and splits border edges at the vertices lying on them, so a shared edge is one edge. |
-| Pass | Runs meshoptimizer with light regularizing instead of regularizing. |
-| Merge | Gives vertices at one quantised position one colour when they differ by at most one and a half RGB565 steps. |
-
-It cuts the empty spots but does not remove them. The cost is about 4% frame
-time (about 3% more triangles drawn) on the mesh it was measured on.
-
-The same import with `seal_seams` off against on, at a pose where it shows,
-off above on: a pixel-sized hole that shows the sky is sealed.
-
-![seal_seams off against on](images/import-seal-seams.png)
+Appearance fitting, its objective, and its budget and cost choices are
+described by [fit](Scene-Files.md#fit-optimise).
 
 ## Meshlets
 
