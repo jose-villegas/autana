@@ -25,7 +25,7 @@ mesh. Nothing here runs on the board.
 | [gltf_preview.py](gltf_preview.py) | Renders any skinned `.glb` with Pillow: a looping GIF of one animation (`--gif NAME`) or the bind pose from four sides (`--sheet`). |
 | [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, and the poses file; host-tested by `suite_r3d_triangle_sizes.c`. |
 | [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
-| [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement, sun and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [Sweeping the flat bake](../../../docs/render/Mesh-Import.md#sweeping-the-flat-bake). |
+| [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement, sun and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [shading: flat](../../../docs/render/Scene-Files.md#shading-flat). |
 | [appearance_simplify.py](appearance_simplify.py) | Fits a smooth mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
 | [poses.py](poses.py) | Reads the camera poses file `tools/anim/sample_tracks.sh` writes, samples a scene camera's path through it, and casts a pose's pinhole rays. |
 | [fitted_variant.py](fitted_variant.py) | Remakes a scene renderer's fitted mesh from the `fit` recipe it records; see [A fitted variant](#a-fitted-variant). |
@@ -51,7 +51,7 @@ canonicalizes triangle order and the latter uses the import file's fixed seed.
 **The `seal_seams` import option.** `simplify(seal_seams=True)`, off by default,
 is another way to import the same mesh, with fewer empty pixel-sized spots at
 the price of frame time; what it does and costs is in
-[Mesh-Import.md](../../../docs/render/Mesh-Import.md#sealing-seams). An import turns it on with `seal_seams = true` in `[geometry.simplify]`.
+[Mesh-Import.md](../../../docs/render/Mesh-Import.md#seal_seams). An import turns it on with `seal_seams = true` in `[geometry.simplify]`.
 
 `mesh_import.py` is the shared full-import command. Each import file, the
 scene file that places it and the `.mesh` it bakes live in the app's `meshes/`
@@ -226,7 +226,7 @@ as well as colour, and weigh appearance against frame time.
 
 | Stage | What it does | Where |
 |---|---|---|
-| Path visibility | The import's `visibility` with `source = "camera_path"` keeps only source triangles a ray from some pose of the camera's path lands on, before lighting and simplification, so the budget goes to surfaces the path shows | `light.visible_from_path`, [Mesh-Import.md](../../../docs/render/Mesh-Import.md#import-file) |
+| Path visibility | A renderer's `visibility` with `source = "camera_path"` keeps only source triangles a ray from some pose of the camera's path lands on, before lighting and simplification, so the budget goes to surfaces the path shows | `light.visible_from_path`, [Scene-Files.md](../../../docs/render/Scene-Files.md#visibility-camera_path) |
 | Pruning | `--budget N` draws every pose of `--coverage-poses` (the training poses when omitted) and counts the pixels each triangle shows; triangles no pose shows go first, then those showing fewest, down to N. Simplifying to more than N and pruning back puts the triangles where they show | `appearance_simplify.coverage`, `prune` |
 | Cost term | `--cost-model board_cost_weights.txt --cost-weight L` adds L dE76 per predicted millisecond to the loss: the model's drawn-triangle, row and pixel terms, differentiable in the vertex positions | `appearance_simplify.predicted_ms`, `cost_model.triangle_terms` |
 | Normal term | `--normal-weight L` adds L times the mean L1 distance between the mesh's interpolated vertex normals and the reference's normal buffer (`reference_render.py --normals`, `NNNN.normal.npy` beside each image) where both cover a pixel; `--score` fits nothing and prints the start's mean normal angle, and with `--angle-dir` writes each pose's per-pixel angle for `render_compare.py --angle-column` | `appearance_simplify.normal_l1`, `normal_error` |

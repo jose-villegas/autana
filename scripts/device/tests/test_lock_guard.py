@@ -41,11 +41,14 @@ def usb(serial, port):
 class FakeSerial:
     opened = []
 
-    def __init__(self):
-        self.port = None
+    def __init__(self, port=None):
+        self.port = port
 
     def open(self):
         FakeSerial.opened.append(self.port)
+
+    def close(self):
+        pass
 
 
 @contextlib.contextmanager
@@ -98,6 +101,7 @@ class PrimitiveGuardTests(Store):
         tree = ast.parse((DEVICE / "device.py").read_text(encoding="utf-8"))
         primitives = {
             node.name for node in tree.body if isinstance(node, ast.FunctionDef)
+            and not (node.args.args and node.args.args[0].arg == "port")  # handed its port, not asking
             and (any(isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
                      and call.func.attr == "Serial" for call in ast.walk(node))
                  or (any(isinstance(arg, ast.Constant) and arg.value == "esptool"
@@ -893,7 +897,12 @@ class FlashImageScriptTests(unittest.TestCase):
             shutil.copy(ENGINE / relative, self.tree / relative)
         stubs = self.tree / "stubs"
         (stubs / "serial" / "tools").mkdir(parents=True)
-        (stubs / "serial" / "__init__.py").write_text("")
+        (stubs / "serial" / "__init__.py").write_text(
+            "class Serial:\n"
+            "    def __init__(self, port=None):\n"
+            "        self.port = port\n"
+            "    def close(self):\n"
+            "        pass\n")
         (stubs / "serial" / "tools" / "__init__.py").write_text("")
         (stubs / "serial" / "tools" / "list_ports.py").write_text(
             "from types import SimpleNamespace\n"

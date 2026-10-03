@@ -564,7 +564,7 @@ against the chosen mesh, is `render_compare.py --video` of their
 
 The Sponza scene's `[bake] indirect = { bounces = 2, rays = 64,
 cache_samples = 1 }` is described in
-[Mesh-Import.md](../../../../../docs/render/Mesh-Import.md#indirect-light). It
+[Scene-Files.md](../../../../../docs/render/Scene-Files.md#bake-indirect). It
 lifts the shadowed arcade ceilings and the sides of the columns the sun does
 not reach, and tints a column next to a banner with the banner's colour. The
 three meshes keep their triangle budgets and cost the same to draw. The scene's
@@ -671,7 +671,7 @@ material frame-time change is not expected.
 ### Indirect look
 
 The scene's `[indirect]` table, described in
-[Scene-Files.md](../../../../../docs/render/Scene-Files.md#indirect-look), sets
+[Scene-Files.md](../../../../../docs/render/Scene-Files.md#indirect), sets
 `intensity` (a multiplier on the gathered bounce light) and `albedo_boost` (a
 multiplier on the reflectance bounces use, held below 1). The committed scene
 leaves both at the physical 1.0. The reference reads the same table, so each

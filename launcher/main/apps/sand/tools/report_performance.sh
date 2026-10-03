@@ -1,13 +1,13 @@
 #!/bin/sh
 #
 # One-click device performance report: build+flash the diagnostics image,
-# capture the boot-time run, write a markdown table of just the frame-budget
-# tests (scenario, budget, measured, headroom, pass/fail) - generated fresh
-# from a real capture and the current source, so it can never go stale the
-# way a hand-transcribed copy can.
+# capture the sand perf suite through `autana suite --flash`, write a markdown
+# table of just the frame-budget tests (scenario, budget, measured, headroom,
+# pass/fail) - generated fresh from a real capture and the current source, so
+# it can never go stale the way a hand-transcribed copy can.
 #
 # Usage:
-#   main/apps/sand/tools/report_performance.sh [--no-restore] [--perf-scope] \
+#   main/apps/sand/tools/report_performance.sh [--no-restore] [--perf-scope] [--project PATH] \
 #       [--baseline REPORT.md] [OUT.md]
 #
 #   --board SERIAL
@@ -27,6 +27,9 @@
 #   --baseline REPORT.md
 #                after generating the report, run compare_reports.py
 #                --verdict against this earlier report and print its verdict.
+#   --project PATH
+#                project whose diagnostics image is built and captured, and
+#                whose frame-budget sources are parsed.
 #
 # Everything this does beyond the declarations below - which image, deleting
 # a build directory's sdkconfig that disagrees, asserting the flags took,
@@ -39,10 +42,11 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 LAUNCHER_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../../.." && pwd)
 
 report_name=performance
+report_project=""
 # The app's own results dir: deleting main/apps/sand/ takes its scratch
 # output with it too.
 report_dir="$SCRIPT_DIR/results"
-report_suite=""
+report_suite=run_sand_perf_suite
 
 # 1500s, not 300: the suite ran in ~168s only for as long as its frame-budget
 # fixtures were failing to allocate their grids instantly. Once the heap was
@@ -87,8 +91,8 @@ done
 # a present costs as much as a step.
 report_generate() {
     "$PYTHON" "$SCRIPT_DIR/report_performance.py" "$1" "$2" \
-        --source "$LAUNCHER_DIR/main/apps/sand/tests/suite_sand_perf.c" \
-        --source "$LAUNCHER_DIR/test/suites/suite_gfx.c"
+        --source "$report_project/launcher/main/apps/sand/tests/suite_sand_perf.c" \
+        --source "$report_project/launcher/test/suites/suite_gfx.c"
 }
 
 # The measured (not budget) column of one row of report_performance.py's
@@ -104,24 +108,11 @@ extract_measured() {
 }
 
 # Printed here instead of left to the operator - it was already being typed
-# by hand five times in two days. Free heap first (a short heap means every
-# frame-budget fixture failed to allocate), then the two liquid-free
-# controls, whose value-pair tells a real regression from ordinary
-# flash-layout noise before reading anything else.
+# by hand five times in two days. The two liquid-free controls: their
+# value-pair tells a real regression from ordinary flash-layout noise, and
+# "not measured" means every fixture failed to allocate its grid.
 report_summary() {
     echo "=== Summary ==="
-    heap_line="$(grep -m1 "free heap after framebuffer" "$1" || true)"
-    if [ -z "$heap_line" ]; then
-        echo "WARNING: no 'free heap after framebuffer' line found in $1"
-    else
-        heap="$(printf '%s\n' "$heap_line" | grep -o '[0-9]\+ bytes' | grep -o '[0-9]\+' || true)"
-        echo "free heap after framebuffer: ${heap:-?} bytes"
-        if [ -n "$heap" ] && [ "$heap" -lt 50000 ]; then
-            echo "WARNING: free heap ($heap bytes) is below ~50,000 - frame-budget"
-            echo "fixtures likely failed to allocate their grids and measured"
-            echo "nothing this run."
-        fi
-    fi
     for ctrl in test_a_full_size_step_fits_in_the_frame_budget \
                 test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget; do
         v="$(extract_measured "$ctrl" "$2")"

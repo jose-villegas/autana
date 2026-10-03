@@ -1,0 +1,9 @@
+autana suite: run_sponza_perf_suite x1 (flash)
+I (61230) sponza_perf: stage, both cores: empty frame             1200us (0 clusters)
+I (61900) sponza_perf: === sponza FRAME COST (262144 tris, 131000 verts, 900 clusters, rendered 184x224) ===
+I (62100) sponza_perf: sponza t=    0s clusters= 410 tris=10200 | both cores: frame   51800us
+I (70100) sponza_perf: sponza both cores: mean 51000us (19.6 fps before present), worst 52000us
+I (80100) sponza_perf: lite both cores: mean 42000us (23.8 fps before present), worst 43000us
+I (90100) sponza_perf: flat both cores: mean 39000us (25.6 fps before present), worst 40000us
+I (95100) sponza_perf: fitted both cores: mean 41000us (24.4 fps before present), worst 42000us
+I (99100) sponza_perf: fitted-full both cores: mean 38000us (26.3 fps before present), worst 39000us
