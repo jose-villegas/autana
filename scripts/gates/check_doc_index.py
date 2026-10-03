@@ -17,13 +17,14 @@ import sys
 
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*$")
+TABLE_CELL = re.compile(r"^\s*\|(.+)\|\s*$")
 START = "README.md"
 
 
 def tracked_docs(root):
     result = subprocess.run(["git", "ls-files", "docs"], cwd=root,
                             capture_output=True, text=True)
-    if result.returncode:
+    if result.returncode or not result.stdout.strip():
         return {path.relative_to(root).as_posix() for path in (root / "docs").rglob("*.md")}
     return {name for name in result.stdout.splitlines() if name.endswith(".md")}
 
@@ -167,6 +168,63 @@ def check_anchors(root):
     return bad
 
 
+def table_cells(line):
+    """The stripped cells of one Markdown table row, or None."""
+    match = TABLE_CELL.match(line)
+    if not match:
+        return None
+    return [cell.strip() for cell in match.group(1).split("|")]
+
+
+def option_slug(option):
+    """The heading slug for an option table's first-column spelling."""
+    option = re.sub(r"`([^`]*)`", r"\1", option).strip()
+    option = re.sub(r"^geometry\.", "", option)
+    option = re.sub(r"^\[\[?([^\]]+)\]\]?", r"\1", option)
+    option = option.replace(".", " ")
+    return slugify(option)
+
+
+def check_option_links(root):
+    """Option-table rows whose final link is not that option's heading.
+
+    An option reference declares itself with an `Option` first column and an
+    `Option link` final column. This keeps the convention in the document,
+    rather than in a list of option names maintained by this gate.
+    """
+    bad = []
+    for doc in sorted(tracked_docs(root)):
+        path = root / doc
+        if not path.is_file():
+            continue
+        lines = blank_fences(path.read_text(encoding="utf-8", errors="replace").splitlines())
+        headings = heading_slugs(path)
+        index = 0
+        while index < len(lines):
+            header = table_cells(lines[index])
+            if not header or header[0].lower() != "option" or header[-1].lower() != "option link":
+                index += 1
+                continue
+            index += 2  # Markdown's required separator row
+            while index < len(lines):
+                row = table_cells(lines[index])
+                if not row:
+                    break
+                if len(row) != len(header):
+                    bad.append((doc, index + 1, row[0], "wrong number of columns"))
+                    index += 1
+                    continue
+                expected = option_slug(row[0])
+                links = LINK.findall(row[-1])
+                target = links[0] if len(links) == 1 else ""
+                if target != f"#{expected}":
+                    bad.append((doc, index + 1, row[0], f"must link to #{expected}"))
+                elif expected not in headings:
+                    bad.append((doc, index + 1, row[0], f"#{expected} is not a heading"))
+                index += 1
+    return bad
+
+
 def main(argv):
     root = pathlib.Path(".")
     if argv[:1] == ["--root"] and len(argv) == 2:
@@ -176,13 +234,16 @@ def main(argv):
         return 2
     orphans = check(root)
     bad_anchors = check_anchors(root)
+    bad_options = check_option_links(root)
     for doc in orphans:
         print(f"{doc}: not reachable by links from {START}")
     for doc, number, target, fragment, reason in bad_anchors:
         print(f"{doc}:{number}: ({target}#{fragment}) {reason}")
+    for doc, number, option, reason in bad_options:
+        print(f"{doc}:{number}: option {option}: {reason}")
     print(f"{len(orphans)} unindexed document{'' if len(orphans) == 1 else 's'}, "
           f"{len(bad_anchors)} anchor link{'' if len(bad_anchors) == 1 else 's'} to no real heading")
-    return 1 if (orphans or bad_anchors) else 0
+    return 1 if (orphans or bad_anchors or bad_options) else 0
 
 
 if __name__ == "__main__":

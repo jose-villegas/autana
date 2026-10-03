@@ -1,11 +1,11 @@
 # Scene Files
 
-A scene file is a scenario: a list of **objects**, each with one transform and
-one component, plus the settings of the light that fills the air and the tone
-map. The offline importer is run on it to bake the lit meshes the scenario places
-([Mesh-Import.md](Mesh-Import.md)), and `scene_table.py` writes the
-[scene table](#the-scene-table) a scene reads at run time to know what to draw
-and where.
+A scene file places objects. Every object has a transform and exactly one
+component: a mesh renderer, directional light, or camera. A mesh's source,
+geometry processing, and variants belong in its [import file](Mesh-Import.md#import-file);
+the scene supplies the conditions that make a placed renderer's baked output.
+
+## A minimal scene
 
 ```toml
 tonemap_white = 0.35             # larger is darker
@@ -15,15 +15,9 @@ color = [0.55, 0.68, 0.9]
 intensity = 0.9
 rays = 48
 
-[ambient]
-color = [1.0, 1.0, 1.0]
-intensity = 0.06
-
 [bake]
 ray_offset = 0.5
 colour_merge_step = 6
-flat_sky_rays = 128
-indirect = { bounces = 2, rays = 64, cache_samples = 1 }
 
 [[objects]]
 name = "sun"
@@ -42,27 +36,19 @@ name = "camera"
 [objects.camera]
 half_fov_short_tan = 0.62
 near_z = 6.0
-background = 0x9CC0E6
 region = { min = [-1400.0, 20.0, -620.0], max = [1270.0, 1250.0, 550.0] }
-path = { tracks = "flight", node = "camera" }
 
 [[objects]]
 name = "hall"
 
 [objects.mesh_renderer]
-mesh = "hall.import.toml"
-variant = "hall"                 # only for an import with variants
-bake = true
+mesh = "hall.import.toml"       # import file beside this scene
+bake = true                      # write this renderer's lit mesh
 visibility = { source = "camera_region", rounds = 160 }
-
-[[objects]]
-name = "statue"
-position = [0.0, 0.0, 300.0]
-scale = [2.0, 2.0, 2.0]
-
-[objects.mesh_renderer]
-mesh = "statue.import.toml"
 ```
+
+The light, sky, tone map and `[bake]` settings are read only while baking.
+The camera and renderer become entries in the [scene table](#the-scene-table).
 
 ## Objects
 
@@ -73,13 +59,13 @@ component table.
 |---|---|
 | `position` | Where the object is, in model units. Default `[0, 0, 0]`. |
 | `rotation` | `[pitch, yaw, roll]` in degrees, right-handed: roll about z, then pitch about x, then yaw about y. Default `[0, 0, 0]`. |
-| `scale` | Per-axis scale, positive on every axis (the importer rejects zero and negative). Default `[1, 1, 1]`. |
+| `scale` | Per-axis scale, positive on every axis. Default `[1, 1, 1]`. |
 
 | Component | Fields | What it is |
 |---|---|---|
-| `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene file, and `variant` chooses its geometry variant. `bake = true` traces this renderer against its own source using this scene's settings; without it the shared imported albedo mesh is drawn. `shading` is `"smooth"` or `{ flat = ... }`; `visibility`, `fit` and `indirect = false` apply to this renderer's bake. |
-| `light` | `type`, `color`, `intensity`, `disc_degrees`, `rays` | A directional light. The direction toward it is the object's +Y axis turned by its rotation, so a rotation of zero is a sun straight overhead. Position and scale do not matter. `point` and `spot` are reserved and rejected until their bake paths exist. |
-| `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view: the lens, the box the camera moves within (`region`, a `min` and `max`), and optionally the glTF animation it flies. `path = { tracks, node }` names the tracks `tools/anim/bake_tracks.py` baked under the prefix `tracks`, for the glTF node `node`; the generated `<tracks>_tracks_generated.{c,h}` sit beside the scene file. `background` (0xRRGGBB, default black) is the colour a pixel no mesh covers shows, in the panel's RGB565 and in the source reference. Without a path the camera sits at its transform, looking down its own -Z. A scene has at most one camera. |
+| `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene; `variant` chooses its geometry variant. `bake = true` traces this renderer against its own source using this scene's settings. Without it the shared imported albedo mesh is drawn. |
+| `light` | `type`, `color`, `intensity`, `disc_degrees`, `rays` | A directional light. The direction toward it is the object's +Y axis turned by its rotation. Position and scale do not matter. `point` and `spot` are reserved. |
+| `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view. `region` is the box the camera moves within; `path = { tracks, node }` names baked animation tracks and their glTF node. `background` is 0xRRGGBB, default black. Without a path the camera sits at its transform, looking down its -Z. A scene has at most one camera. |
 
 An appearance-fit recipe is grouped below its renderer's `fit` table.
 
@@ -110,96 +96,156 @@ sha256 = "..."
 recipe_sha256 = "..."
 ```
 
-Sky and ambient light are properties of the scene, not objects, and are the
-two settings tables `[sky]` (`color`, `intensity`, `rays`: that many random
-directions per point over the hemisphere) and `[ambient]` (`color`,
-`intensity`: a constant added everywhere). The lights a bake sees are the
-directional light objects in file order, then the sky, then the ambient; the
-order does not change the lit result except in which random rays each light
-draws. A double-sided face turns to the side the directional lights, summed by
-intensity, shine on.
+A double-sided face turns toward the lights.
 
-## Bake options
+## Option reference
 
-`[bake]` supplies `ray_offset` and `colour_merge_step`; `flat_sky_rays` is
-required by a flat renderer, and `indirect = { bounces, rays, cache_samples }`
-enables the scene's bounce-light cache. All three indirect fields are required;
-`bounces` is non-negative and the sample counts are positive. `indirect = false`
-on a renderer omits that cache from its bake and fit reference.
+Keys before `;` are required; after it, optional. The import option reference
+is in [Mesh-Import.md](Mesh-Import.md#import-options).
 
-| Renderer option | Keys | Meaning |
-|---|---|---|
-| `[bake]` | `ray_offset`, `colour_merge_step`; `flat_sky_rays`, `indirect = { bounces, rays, cache_samples }` | Scene-wide tracing settings. Flat renderers require `flat_sky_rays`; indirect is the cache recipe. |
-| `visibility` | `source = "camera_region"`, `rounds` | Keeps triangles visible from any point in the camera's region. |
-| `visibility` | `source = "camera_path"`, `every_ms`, `size`; `samples`, `margin` | Keeps triangles first seen from sampled camera-path views. The measured path retains 116,917 of 245,465 source triangles rather than 211,004 for the region, reducing the full mesh from 58.6 to 50.1 ms with no lite holes and 4–8 pixels in each of three full frames. |
-| `shading` | `"smooth"` or `flat = { fixed = N }` / `flat = { auto = { min, max, area } }` | Smooth stores vertex colour; flat stores one averaged RGB565 colour per face. |
-| `fit` | `budget`, pose spacing, optimiser settings and hashes | Records the smooth appearance-fit recipe for this renderer. |
+### Baking
 
-Camera-path visibility uses a square view as wide as the longer panel side, so
-both orientations are covered. Its margin and pose spacing cover geometry that
-enters between samples.
+| Option | Keys | What it does | Default | Option link |
+|---|---|---|---|---|
+| `[bake]` | `ray_offset`, `colour_merge_step`; `flat_sky_rays`, `indirect = { bounces, rays, cache_samples }` | Scene-wide tracing settings. | Required by a baked renderer. | [bake](#bake) |
+
+#### bake
+
+`ray_offset` starts a tracing ray clear of its source surface and
+`colour_merge_step` controls colour merging after the bake. `flat_sky_rays` is
+required when a renderer uses [flat shading](#shading-flat). The optional
+`indirect` recipe enables the scene-wide bounce-light cache.
+
+![Albedo against baked light](images/import-light.png)
+
+### Visibility
+
+| Option | Keys | What it does | Default | Option link |
+|---|---|---|---|---|
+| `visibility: camera_region` | `source = "camera_region"`, `rounds` | Keeps triangles visible from any point in the camera's region. | Off. | [visibility: camera_region](#visibility-camera_region) |
+| `visibility: camera_path` | `source = "camera_path"`, `every_ms`, `size`; `samples`, `margin` | Keeps triangles first seen from sampled camera-path views. | Off. | [visibility: camera_path](#visibility-camera_path) |
+
+#### visibility: camera_region
+
+The region source casts from points in the camera's `region`. Use it when the
+camera may occupy the box without a defined path.
+
+#### visibility: camera_path
+
+The path source retains a triangle when a sampled camera view can draw it. A
+sampled pose casts a grid of rays from its near plane across the widened view:
+
+```math
+\mathrm{keep}(t) \iff \exists\, v,\ \exists\, r \in \mathrm{rays}(v, s, m):\;
+t = \underset{u \,\in\, \mathrm{hits}(r),\ \mathrm{drawn}(u, r)}{\mathrm{arg\,min}}\ d_r(u)
+\qquad
+\mathrm{drawn}(u, r) \iff \mathrm{double}(u) \,\lor\, n_u \cdot \hat{r} < 0
+```
+
+Single-sided back faces do not stop a ray, matching rasterizer culling. The
+margin and pose spacing cover geometry entering between samples. `size` is one
+orientation; tracing a square as wide as the longer panel side covers both.
+The generated comparison sheet and crops show the result and the rejected
+triangles.
 
 ![Triangles the camera path never sees](images/appearance-path-culled.png)
 ![Culled lite against uncut, largest differences](images/appearance-path-culled.crops.png)
 
-![Albedo against baked light](images/import-light.png)
+### Shading
+
+| Option | Keys | What it does | Default | Option link |
+|---|---|---|---|---|
+| `shading: smooth` | `"smooth"` | Stores baked colour at vertices. | `"smooth"`. | [shading: smooth](#shading-smooth) |
+| `shading: flat` | `flat = { fixed = N }` / `flat = { auto = { min, max, area } }` | Stores one averaged RGB565 colour per face. | Off. | [shading: flat](#shading-flat) |
+
+#### shading: smooth
+
+Smooth shading bakes one colour per vertex. It is the normal baked mesh form
+described in [The baked mesh](Mesh-Import.md#the-baked-mesh).
+
+#### shading: flat
+
+Flat shading stores one RGB565 colour per triangle. `fixed` uses that many
+lighting points per face; `auto` chooses a count from face area. The comparison
+sheet and crops show the smooth/flat and fixed/adaptive differences.
+
+![Smooth against flat](../images/render/compare-full-flat.png)
+![Smooth against flat, the places they differ most](../images/render/compare-full-flat.crops.png)
 ![One fixed face sample against adaptive](images/import-face-samples.png)
 
-## Indirect look
+### Fit
 
-`[indirect]` sets how the baked bounce light looks. `[bake]` supplies the
-direct-light and cache settings: `ray_offset`, `colour_merge_step`, optional
-`flat_sky_rays`, and optional `indirect = { bounces, rays, cache_samples }`.
-Both tables are scene settings because the lights and camera determine their
-output.
+| Option | Keys | What it does | Default | Option link |
+|---|---|---|---|---|
+| `fit: recipe` | `budget`, pose spacing, optimiser settings, hashes | Records the smooth appearance-fit recipe for this renderer. | Off. | [fit: recipe](#fit-recipe) |
+| `fit: normal weight` | `normal_weight` | Weighs normal agreement in the fit objective. | Required by `fit`. | [fit: normal weight](#fit-normal-weight) |
 
-| Key | Meaning |
-|---|---|
-| `intensity` | A multiplier on the gathered bounce light, at least 0. Above 1 brightens what bounces. |
-| `albedo_boost` | A multiplier on the reflectance every bounce uses, above 0, held below 0.99 and never below the surface's own albedo. Above 1 carries more of a surface's colour to its neighbours. |
+#### fit: recipe
 
-The reference renderer reads the same table, so a scene's reference carries
-its look; values above 1 trade fidelity to a physical reference for look. The
-table is read by no mesh unless a placed import has `indirect`, and is rejected
-then.
+The appearance fit starts from a smooth bake at its budget and adjusts welded
+positions and vertex colours against reference renders from the camera path.
+It records the budget, pose schedule, optimiser settings, and output hashes.
+The bake checks the recorded mesh; `fitted_variant.py` remakes it in its GPU
+environment. The reference, fitted-output and crop sheets show its result.
+
+![Simplifier against the reference](../images/render/appearance-lite-reference.png)
+![Fitted mesh against the reference](../images/render/appearance-chosen-heat.png)
+![Simplifier and fitted mesh, largest differences](../images/render/appearance-lite-fitted-reference.crops.png)
+
+#### fit: normal weight
+
+Colour alone permits geometry that matches one view but differs from another.
+`normal_weight` adds the mean L1 difference between the fitted and reference
+normal buffers where both cover a pixel. The generated normal-angle heatmaps
+show the effect; scores and sweep results live with the scene tools.
+
+![Normal angle heatmaps](images/appearance-normal-heat.png)
+
+The fit minimizes the image term, a Laplacian shape term, the normal term and
+an optional predicted-cost term:
+
+```math
+\min_{P,\,C}\; \mathcal{E}_{\Delta E}(P, C) + \lambda\,\mathcal{E}_{\mathcal{L}}(P)
++ \lambda_n\,\frac{1}{|B|}\sum_{v \in B}\frac{1}{|\Omega_v^{\cap}|}\sum_{p \in \Omega_v^{\cap}}\left\lVert \hat{n}_v(P)_p - n^{\mathrm{ref}}_{v,p} \right\rVert_1
++ \kappa\,\frac{1}{|B|}\sum_{v \in B}\hat{t}_v(P)
+```
+
+### Indirect look
+
+| Option | Keys | What it does | Default | Option link |
+|---|---|---|---|---|
+| `[indirect]` | `intensity`, `albedo_boost` | Sets the appearance of the baked bounce-light cache. | Required when `[bake].indirect` is present. | [indirect](#indirect) |
+
+#### indirect
+
+`intensity` multiplies gathered bounce light. `albedo_boost` changes the
+reflectance used at each bounce while keeping it below one. The reference uses
+the same settings. The bake recipe is in [bake](#bake); it stores the result in
+the same vertex or face colours as direct light.
+
+![The reference beside the direct-light and bounce bakes, each with its error heatmap](../images/render/bake-indirect-compare.png)
 
 ## What the scene must carry
 
-A renderer with `bake = true` reads the scene:
+A renderer with `bake = true` reads lights, `[sky]`, `[ambient]`,
+`tonemap_white`, `[bake]`, and its `[indirect]` look. Its `visibility` reads
+the camera `region`, or `path` for the path source. A scene may carry these
+only when a baked renderer reads them.
 
-- `[bake]` reads the lights (at least one directional object, `[sky]` or
-  `[ambient]`), `tonemap_white`, and its `[indirect]` look;
-- renderer `visibility` reads the camera's `region`, or its `path` for the
-  `camera_path` source.
-
-A scene must carry what a baked renderer reads, and may not carry what none
-reads. A baked scene output is `<scene>.<object>.mesh`, beside the scene file,
-so the same import can have independent bakes in several scenes. An albedo
-renderer uses `<variant>.mesh` beside its import and shares it across scenes. An import is packed only through the scenes that place it. A baked renderer
-is baked where it sits, so its object's transform must be identity; an
-albedo-only renderer may be placed anywhere and by many scenes.
+A baked output is `<scene>.<object>.mesh` beside the scene file, so one import
+can have independent bakes in different scenes. An albedo renderer uses its
+import's `<variant>.mesh`. A baked renderer is baked where it sits, so its
+object transform must be identity; an albedo-only renderer may be placed
+anywhere.
 
 ## The scene table
 
-`python launcher/tools/r3d/scene_table.py SCENE.scene.toml` reads the scene file
-and its import files (it needs no numeric environment and bakes nothing) and
-writes `<scene>_scene_generated.c` and `.h` beside the scene file. A test fails
-when the committed table is not what its scene file generates.
+`python launcher/tools/r3d/scene_table.py SCENE.scene.toml` reads the scene and
+import files without baking and writes `<scene>_scene_generated.c` and `.h`
+beside the scene file. A test checks that the committed table matches it.
 
-The table holds only what the device reads: one const `scene_def_t` named
-`<scene>_scene`, registered by the scene's name with `SCENE_REGISTER()` so that
-`scene_load()` finds it ([Scene-Manager.md](Scene-Manager.md)):
-
-- an entity for each mesh renderer and the camera, in file order; the header
-  names each `<SCENE>_SCENE_<OBJECT>`, so a misspelt object fails to compile;
-- each entity's transform, baked as a 3x3 (rotation times scale) and a
-  position, the identity written out;
-- each mesh renderer's asset id: `scene_load()` opens it from the
-  [asset pack](../assets/README.md), and an id the pack lacks fails the load,
-  naming it;
-- the camera's lens, its background colour and the symbols of its path.
-
-Lights, the camera region, sky, ambient and the tone map are bake settings and
-stay offline. The rotation convention above is written only in the importer, so
-the device does no trigonometry, and what to draw and where lives in the scene
-file rather than in code.
+The table holds only what the device reads: one const `scene_def_t`, registered
+by scene name so `scene_load()` finds it ([Scene-Manager.md](Scene-Manager.md)).
+It includes each mesh renderer and camera in file order, their transforms, mesh
+asset ids, and the camera's lens, background and path symbols. Lights, camera
+region, sky, ambient and tone map stay offline.

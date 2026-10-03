@@ -35,41 +35,90 @@ Keys before `;` are required; after it, optional.
 
 ### Source, output and materials
 
-| Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
+| Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
-| `[source]` | `url`, `sha256`, `path`, `cache`, `credit` | Downloads, verifies and locates the OBJ; `credit` records its attribution. | Required. | Download / none. | [Import file](#import-file) |
-| `[output]` | `directory`; `name`, `position_scale` | Names the output directory, single-mesh name and position scale. | `name` optional; `position_scale` 8. | Write / none. | [The baked mesh](#the-baked-mesh) |
-| `[materials]` | ; `double_sided` | Draws listed material faces from both sides. | `[]`. | None / more faces drawn. | [The baked mesh](#the-baked-mesh) |
+| `[source]` | `url`, `sha256`, `path`, `cache`, `credit` | Downloads, verifies and locates the OBJ; `credit` records its attribution. | Required. | Download / none. | [source](#source) |
+| `[output]` | `directory`; `name`, `position_scale` | Names the output directory, single-mesh name and position scale. | `name` optional; `position_scale` 8. | Write / none. | [output](#output) |
+| `[materials]` | ; `double_sided` | Draws listed material faces from both sides. | `[]`. | None / more faces drawn. | [materials](#materials) |
 
 ### Process
 
-| Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
+| Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
-| `[process]` | ; `seed` | Seeds thin's random choice. | `0`; only with thin. | None / none. | [Import file](#import-file) |
+| `[process]` | ; `seed` | Seeds thin's random choice. | `0`; only with thin. | None / none. | [process](#process) |
 
 Every Geometry table opts its step in; without it the step does not run.
 
 ### Geometry
 
-| Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
+| Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
-| `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [Import file](#import-file) |
-| `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [Import file](#import-file) |
-| `geometry.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges and simplifies each variant to its budget; reserves `props` and can seal seams. | Off. | Seconds / set by the budget; `seal_seams` costs about 4% frame time. | [Sealing seams](#sealing-seams) |
+| `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [alpha_mask](#alpha_mask) |
+| `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
+| `geometry.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges and simplifies each variant to its budget; reserves `props` and can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 
-### Variants
+### Geometry variants
 
-| Option | Keys | What it does | Default | Cost (bake / frame) | Section link |
+| Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
-| `[[variants]]` | `name`; `triangles` | Names a geometry budget. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [Import file](#import-file) |
-| `[[variants]].triangles` | — | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / set by the budget. | [Import file](#import-file) |
+| `[[variants]]` | `name`; `triangles` | Names a geometry budget. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [variants](#variants) |
+| `[[variants]].triangles` | — | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / set by the budget. | [variants triangles](#variants-triangles) |
 
-Choose a triangle budget from held-out error against predicted frame time:
-keep the front's knee unless its frame cost misses the target. Each point is a
-mesh, placed by held-out $`\Delta E`$ against predicted frame time; meshes no
-other mesh beats on both axes form the front. On the measured scene the knee
-is about 8.7k triangles, where the full budget's last 8.7k triangles buy about
-0.34 $`\Delta E`$.
+### source
+
+`[source]` identifies and verifies the source OBJ. `cache` names its cached
+download and `credit` records the source attribution.
+
+### output
+
+`[output]` names the generated mesh and its directory. `position_scale` is the
+number of quantisation ticks per model unit.
+
+### materials
+
+`[materials].double_sided` lists materials whose faces draw from both sides.
+
+### process
+
+`[process].seed` makes `thin` choose the same triangles on every import.
+
+### alpha_mask
+
+`geometry.alpha_mask` removes mostly transparent cut-out cards because the
+rasterizer does not alpha-test them. The comparison sheet shows its result.
+
+![alpha_mask off against on](images/import-alpha-mask.png)
+
+### thin
+
+`geometry.thin` retains a selected share of one material's triangles. It is
+for material whose geometry occupies more of the budget than it shows.
+
+![thin off against on](images/import-thin.png)
+
+### simplify
+
+`geometry.simplify` splits long edges and simplifies each variant to its
+budget. `props` reserves a portion of that budget; `seal_seams` is described
+under [seal_seams](#seal_seams).
+
+### seal_seams
+
+`seal_seams = true` joins touching pieces before simplification, reducing gaps
+at their borders. The comparison image shows the effect.
+
+![seal_seams off against on](images/import-seal-seams.png)
+
+### variants
+
+`[[variants]]` gives a geometry output its name and, with `simplify`, its
+triangle budget. Without variants, `output.name` names the single output.
+
+### variants triangles
+
+`[[variants]].triangles` is the required triangle budget of a simplified
+variant. Choose it from the generated held-out-error and predicted-frame-time
+table.
 
 ![Held-out error against predicted frame time](images/appearance-pareto.png)
 
@@ -176,64 +225,8 @@ at the full budget and at about half of it, the full render above the lite.
 ![Full against lite](../images/render/compare-full-lite.png)
 ![Full against lite, the places they differ most](../images/render/compare-full-lite.crops.png)
 
-A renderer's `visibility` drops triangles the camera never sees, so their share
-of the budget goes to what is seen. A region box keeps whatever any point in
-it could see. A camera path keeps only what the path's own views show: from
-every pose $v$ sampled along it, $s^2$ rays a pixel over the view widened by
-$m$ pixels on each side, each starting at the near plane, and a triangle $t$
-is kept if it is the first face some ray $r$ would draw:
-
-```math
-\mathrm{keep}(t) \iff \exists\, v,\ \exists\, r \in \mathrm{rays}(v, s, m):\;
-t = \underset{u \,\in\, \mathrm{hits}(r),\ \mathrm{drawn}(u, r)}{\mathrm{arg\,min}}\ d_r(u)
-\qquad
-\mathrm{drawn}(u, r) \iff \mathrm{double}(u) \,\lor\, n_u \cdot \hat{r} < 0
-```
-
-A ray passes through a single-sided face seen from behind, as the rasterizer
-culls it; when that face has a twin over the same three corners wound the
-other way, the twin is what the ray sees. Faces within a small distance of
-the first drawn one are kept too, since the depth test, not the ray, picks
-among coincident faces. The margin and the pose spacing cover what enters
-the view between two samples. `size` is one orientation's; the path is
-traced through a square view as wide as its long side, which covers the
-panel held either way up. The same import with the step
-off, at one camera pose, crops where they differ most,
-off above on: without the cull the budget is spent on hidden surfaces and
-visible ones lose triangles.
-
-![Visibility cull off against on](images/import-visibility.png)
-
-The culled triangles are magenta in the first image; the second compares the
-culled lite mesh with the uncut one, where the largest differences are not
-holes.
-
-![Triangles the camera path never sees](images/appearance-path-culled.png)
-![Culled lite against uncut, largest differences](images/appearance-path-culled.crops.png)
-
-`bake = true` turns the albedo into light: the left render is the same
-geometry with no bake, the right the scene's baked sun, sky and ambient.
-
-![Albedo against baked light](images/import-light.png)
-
-`geometry.alpha_mask` drops the triangles of alpha-tested cards, leaves and
-chains, whose texture is mostly transparent where they lie, since the
-rasterizer draws no alpha test. Use it on any source with cut-out cards. Off
-above on, the two poses where the meshes differ most; the step also changes
-what the simplifier keeps elsewhere, so not every difference is a card.
-
-![alpha_mask off against on](images/import-alpha-mask.png)
-
-`geometry.thin` keeps a random share of one material's triangles, for a
-material, such as foliage, that spends budget out of proportion to what it
-shows. Off above on:
-
-![thin off against on](images/import-thin.png)
-
-The off/on stills in `images/` are not made by the doc-images workflow: each
-"off" side is a scratch bake of the import with that step's table removed,
-which needs the bake toolchain and the source model, so nothing refreshes them
-when the bake changes.
+Scene-owned bake, visibility, shading and fit settings are described in
+[Scene-Files.md](Scene-Files.md#option-reference).
 
 ### Indirect-light implementation
 
