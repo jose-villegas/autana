@@ -1,11 +1,8 @@
 /*
  * console_runsuite (RUNSUITE <name> [<pattern>[,<pattern>...]]): runs one
- * named self-test suite instead of the whole boot-time run, narrowed to the
- * tests whose name contains a pattern when any are given.
- * CONFIG_LAUNCHER_SELFTEST only: the verb itself only sets a latch;
- * the shell's frame loop is what actually calls suites_run_request(), for the
- * same reason SCREENSHOT does not draw from this task either (see console.c's
- * own top comment).
+ * self-test suite, narrowed to tests whose name contains a pattern.
+ * CONFIG_LAUNCHER_SELFTEST only. The verb sets a latch; the shell's frame loop
+ * calls suites_run_request() (see console.c).
  */
 #include "console/console_runsuite.h"
 #include "console/console_latch.h"

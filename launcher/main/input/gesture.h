@@ -1,15 +1,9 @@
 /*
  * gesture: recognising touch gestures from input state.
  *
- * Pure logic, deliberately free of hardware and of any screen it might be
- * running on, so it can be tested on the host. The screen dimensions are
- * passed in rather than taken from gfx.h for the same reason.
- *
- * Which edge carries the home gesture is also a parameter, not a constant:
- * this module has no idea the board rotates, where the USB connector is, or
- * which edge the shell currently wants: that mapping is a piece of
- * shell-integration knowledge that belongs in the shell, not here. All this
- * module knows is "an edge", expressed as one of the four values below.
+ * Pure logic, testable on the host: screen size and the edge carrying the
+ * home gesture are parameters. Which edge that is, given the board's
+ * rotation, is the shell's knowledge, not this module's.
  */
 #pragma once
 
