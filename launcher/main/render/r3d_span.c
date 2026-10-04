@@ -181,11 +181,6 @@ fill_solid_span(const r3d_span_target_t* target, const gradients_t* g, const int
     }
 }
 
-/* Small enough that a gradient across it is invisible: one colour, one
- * depth. Its coverage is still decided by the same edges. */
-#define FLAT_MAX_ROWS  2
-#define FLAT_MAX_WIDTH (3 * R3D_SUBPIXEL)
-
 /* A triangle whose bounding box holds at most this many pixel centres a
  * side has each centre tested against its edges instead of walked. */
 #define SMALL_MAX_SIDE 2
@@ -496,8 +491,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     if (box.y0 >= box.y1 || box.x0 >= box.x1) {
         return; /* no pixel centre inside this window */
     }
-    /* Twice the signed area of a-b-c; each product is under 2^30. */
-    const int32_t area2 = ((b->x - a->x) * (c->y - a->y)) - ((b->y - a->y) * (c->x - a->x));
+    const int32_t area2 = r3d_span_area2(a, b, c);
     if (area2 == 0) {
         return;
     }
@@ -506,7 +500,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
         return;
     }
 
-    fill_t f = {rows <= FLAT_MAX_ROWS && hi_x - lo_x <= FLAT_MAX_WIDTH, face, 0, 0, NULL};
+    fill_t f = {rows <= R3D_SPAN_FLAT_MAX_ROWS && hi_x - lo_x <= R3D_SPAN_FLAT_MAX_WIDTH, face, 0, 0, NULL};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
     const int y_anchor = clampi(r3d_span_first_centre(v0->y), -1, target->row1 + 1);
