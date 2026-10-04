@@ -250,6 +250,11 @@ class FullGpuSchedulingTests(unittest.TestCase):
             def submit(self, function, *args, **kwargs):
                 future = Future()
                 owner = function.func if isinstance(function, partial) else function
+                from r3d.process_budget import PREPARE_BYTES, FIT_BYTES, BAKE_BYTES, MEASURE_BYTES
+                estimates = {fitted.prepare: PREPARE_BYTES, fitted.fit_point: FIT_BYTES,
+                             stages.bake_worker: BAKE_BYTES, stages.measure_worker: MEASURE_BYTES}
+                if kwargs.get('estimates') != estimates[owner]:
+                    raise AssertionError(f"wrong estimate for {owner.__name__}: {kwargs}")
                 calls.append((owner, args, kwargs, function))
                 if owner is fitted.prepare:
                     future = PrepareFuture()
