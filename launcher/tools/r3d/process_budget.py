@@ -101,32 +101,6 @@ def pss_bytes(pid):
         return 0
 
 
-def fit_thread_count(setting, cores, fits):
-    if setting == "off":
-        return None
-    if setting == "auto":
-        return max(1, cores // max(1, fits))
-    count = int(setting)
-    if count < 1:
-        raise ValueError("AUTANA_FIT_THREADS must be a positive integer, auto or off")
-    return count
-
-
-def admitted_fit_count(free, queued, active, cores):
-    """Count fits in the scheduler's next admission batch and its active set."""
-    running = len(active)
-    fits = sum(estimate == FIT_BYTES for estimate in active)
-    for estimate in queued:
-        if running >= cores:
-            break
-        if not worker_capacity(free, estimate if running else (0,) * 3, FLOORS, 1):
-            continue
-        fits += estimate == FIT_BYTES
-        running += 1
-        free = projected_available(free, [(estimate, (0,) * 3)])
-    return fits
-
-
 def resident_bytes(pid, gpu):
     rss = status_bytes(pid, "VmRSS")
     return rss, gpu.get(pid, 0), rss
@@ -163,7 +137,7 @@ def function_name(function):
     return getattr(function, '__name__', type(function).__name__)
 
 
-def _task(connection, function, args, estimates=FIT_BYTES, parent_pid=None, fit_threads=None):
+def _task(connection, function, args, estimates=FIT_BYTES, parent_pid=None):
     global _task_reservation
     parent_death_signal(parent_pid if parent_pid is not None else os.getppid())
     if hasattr(os, "setsid"):
@@ -171,9 +145,6 @@ def _task(connection, function, args, estimates=FIT_BYTES, parent_pid=None, fit_
     _task_reservation = estimates
     started = time.monotonic()
     try:
-        if fit_threads is not None:
-            import torch
-            torch.set_num_threads(fit_threads)
         connection.send((True, function(*args)))
     except BaseException:
         detail = traceback.format_exc()
@@ -295,13 +266,8 @@ class TaskExecutor:
                     free = projected_available(free, [(estimates, resident_bytes(process.pid, gpu))
                                                for process, _, _, estimates in self.active])
                     next_query = time.monotonic() + 2
-                    queued_tasks = [*self.priority_queue, *self.queue]
-                    cores = cores_available()
-                    fits = admitted_fit_count(free, [item[3] for item in queued_tasks],
-                                              [item[3] for item in self.active], cores)
-                    threads = fit_thread_count(os.environ.get("AUTANA_FIT_THREADS", "off"), cores, fits)
-                    for queued in queued_tasks:
-                        if len(self.active) >= cores:
+                    for queued in [*self.priority_queue, *self.queue]:
+                        if len(self.active) >= cores_available():
                             break
                         future, function, args, estimates = queued
                         if not worker_capacity(free, estimates if self.active else (0,) * 3, FLOORS, 1):
@@ -309,27 +275,13 @@ class TaskExecutor:
                         (self.priority_queue if queued in self.priority_queue else self.queue).remove(queued)
                         print(f"admit {function_name(function)} projected_available={free} reservation={estimates}", flush=True)
                         receive, send = self.context.Pipe(duplex=False)
-                        fit_threads = threads if estimates == FIT_BYTES else None
-                        process = self.context.Process(target=_task,
-                            args=(send, function, args, estimates, os.getpid(), fit_threads))
-                        thread_env = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")
-                        previous_env = {name: os.environ.get(name) for name in thread_env}
+                        process = self.context.Process(target=_task, args=(send, function, args, estimates, os.getpid()))
                         try:
-                            if fit_threads is not None:
-                                for name in thread_env:
-                                    os.environ[name] = str(fit_threads)
-                                print(f"fit threads={fit_threads} admitted_fits={fits}", flush=True)
                             process.start()
                         except BaseException:
                             receive.close()
                             send.close()
                             raise
-                        finally:
-                            for name, value in previous_env.items():
-                                if value is None:
-                                    os.environ.pop(name, None)
-                                else:
-                                    os.environ[name] = value
                         send.close()
                         self.active.append((process, receive, future, estimates))
                         free = projected_available(free, [(estimates, (0,) * 3)])

@@ -125,15 +125,6 @@ copy-on-write pages proportionally. Unavailable PSS samples report zero.
 Bake and visibility sampling are serial. Platforms without fork render
 poses serially.
 
-`AUTANA_FIT_THREADS=off` is the default pending throughput measurements.
-A positive integer sets each fit worker's torch and BLAS thread cap;
-`auto` divides CPU affinity cores by the active fits plus fits eligible
-in the next memory-admission batch, with a minimum of one thread. The cap
-is fixed when each worker starts. BLAS environment variables are inherited
-before imports, and torch's thread count is set before fitting. Prepare,
-bake and measure workers retain their thread settings. Fit batch sizes,
-steps and seeds come from the recipe.
-
 The rest belong to apps, and each app's `tools/README.md` says what its
 images show.
 
