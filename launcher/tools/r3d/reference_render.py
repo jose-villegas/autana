@@ -2,11 +2,16 @@
 """Render an undecimated import source with the scene's bake lighting.
 
     python launcher/tools/r3d/reference_render.py SCENE.scene.toml [--object NAME] --poses poses.txt --out DIR
+        [--backend mitsuba --spp N --max-depth N [--sky hosek-wilkie]]
 
 The poses file is the ``size``, ``lens`` and ``pose`` format emitted by
 tools/anim/sample_tracks.sh.  Each pose writes a floating-point .npy image and
 an RGB565-expanded PNG.  The renderer deliberately has no scene knowledge:
 the scene supplies the object's source, lights, camera lens and pose path.
+
+The default backend is the Embree reference with the scene's bake lighting. ``--backend mitsuba`` traces the same
+source, albedo, camera and lights as a path-traced reference (r3d.mitsuba_reference, needs requirements-gpu.txt)
+and shares the exposure, tone map and RGB565 conversion below.
 """
 
 import argparse
@@ -20,6 +25,7 @@ from trimesh.ray.ray_pyembree import RayMeshIntersector
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+from r3d import mitsuba_reference
 from r3d.geometry import corner_normals
 from r3d.import_settings import load_scene
 from r3d.light import albedo_from_uv, drop_masked, light, to_srgb8
@@ -103,20 +109,23 @@ def device_picture(linear, covered, tonemap_white, background):
     return expand_565(np.round(lit).astype(np.uint8))
 
 
-def source_for(scene, name=None):
+def source_for(scene, name=None, lit=True):
     """The full-detail source of the scene object `name` (the first mesh renderer
     when None), alpha-masked and lit as that renderer is baked; returns it with
-    the object's job."""
+    the object's job. `lit=False` skips the Embree intersector and the indirect
+    cache, which only the Embree backend uses, and loads float32 textures."""
     named = [item for item in scene.renderers if name in (None, item.object.name)]
     if not named:
         raise ValueError(f"the scene places no mesh renderer named {name!r}")
     job = named[0]
     settings = job.settings
-    source = load_source(settings)
+    source = load_source(settings, np.float64 if lit else np.float32)
     if settings.alpha_keep is not None:
         source.tri_v, source.tri_t, source.tri_m = drop_masked(source.p, source.uv, source.tri_v, source.tri_t,
                                                                  source.tri_m, source.textures, settings.alpha_keep)
     source.corner_normals = corner_normals(source.p, source.tri_v)
+    if not lit:
+        return source, job
     source.intersector = RayMeshIntersector(trimesh.Trimesh(source.p, source.tri_v, process=False))
     source.indirect_cache = indirect_cache_for(source, job, scene, source.intersector)
     return source, job
@@ -131,11 +140,24 @@ def main(argv=None):
     parser.add_argument("--samples", type=int, default=4)
     parser.add_argument("--skip", type=int, default=0, help="ignore this many leading poses")
     parser.add_argument("--normals", action="store_true", help="also write each pose's shading normals as NNNN.normal.npy")
+    parser.add_argument("--backend", choices=("embree", "mitsuba"), default="embree",
+                        help="embree: the scene's bake lighting (default); mitsuba: a path-traced reference")
+    parser.add_argument("--spp", type=int, default=mitsuba_reference.DEFAULT_SPP, help="mitsuba: paths per pixel")
+    parser.add_argument("--max-depth", type=int, default=mitsuba_reference.DEFAULT_DEPTH,
+                        help="mitsuba: path depth, 2 is direct light only")
+    parser.add_argument("--seed", type=int, default=0, help="mitsuba: sampler seed")
+    mitsuba_reference.add_options(parser)
     args = parser.parse_args(argv)
     if args.samples < 1 or args.skip < 0:
         parser.error("--samples must be positive and --skip cannot be negative")
+    if args.backend == "mitsuba" and (args.spp < 1 or args.max_depth < 1):
+        parser.error("--spp and --max-depth must be positive")
+    if args.backend == "mitsuba" and args.normals:
+        parser.error("--normals is an embree backend output")
+    if args.backend == "embree" and args.sky:
+        parser.error("--sky needs --backend mitsuba")
     scene = load_scene(args.scene)
-    width, height, lens, _near, poses = read_poses(args.poses)
+    width, height, lens, near, poses = read_poses(args.poses)
     poses = poses[args.skip :]
     if not poses:
         parser.error("--skip removes every pose")
@@ -144,11 +166,19 @@ def main(argv=None):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     try:
-        source, job = source_for(scene, args.object)
+        source, job = source_for(scene, args.object, lit=args.backend == "embree")
     except ValueError as error:
         parser.error(str(error))
+    path = None
+    if args.backend == "mitsuba":
+        path = mitsuba_reference.prepare(source, scene.lights, job.settings.double_sided, mitsuba_reference.sky_from(args),
+                                         args.variant)
     for index, pose in enumerate(poses):
-        linear, covered, normal = trace(source, job, scene, pose, width, height, lens, args.samples)
+        if path is not None:
+            linear, covered = path.trace(pose, width, height, lens, near, args.spp, args.seed, args.max_depth)
+            normal = None
+        else:
+            linear, covered, normal = trace(source, job, scene, pose, width, height, lens, args.samples)
         np.save(out / ("%04d.linear.npy" % index), linear)
         if args.normals:
             np.save(out / ("%04d.normal.npy" % index), normal.astype(np.float32))
