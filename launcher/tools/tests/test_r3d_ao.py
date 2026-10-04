@@ -12,7 +12,9 @@ try:
     import trimesh
     from trimesh.ray.ray_pyembree import RayMeshIntersector
 
+    from r3d.geometry import corner_normals
     from r3d.light import IndirectCache, light, local_occlusion, sky_directions
+    from r3d.reference_render import occlusion_map
 except ImportError:
     np = None
 
@@ -120,6 +122,33 @@ class OccludedLightTest(unittest.TestCase):
         self.assertGreater(plain[0], 0.0)
         np.testing.assert_allclose(unscaled, plain)
         self.assertLess(scaled[0], plain[0])
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class OcclusionMapTest(unittest.TestCase):
+    def fixture(self, ao):
+        p = np.array([[-40.0, -40.0, 0.0], [40.0, -40.0, 0.0], [40.0, 40.0, 0.0], [-40.0, 40.0, 0.0],
+                      [0.0, -40.0, 0.0], [0.0, 40.0, 0.0], [0.0, 40.0, 40.0], [0.0, -40.0, 40.0]])
+        tris = np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]])
+        source = SimpleNamespace(p=p, tri_v=tris, tri_m=np.zeros(4, dtype=int), names=["m"], intersector=corner(),
+                                 uv=np.zeros((8, 2)), tri_t=tris, materials={}, textures=[None])
+        source.corner_normals = corner_normals(p, tris)
+        job = SimpleNamespace(settings=SimpleNamespace(double_sided=set()), bake=SimpleNamespace(ray_offset=0.01, ao=ao))
+        return source, job
+
+    def test_pixels_beside_the_wall_are_darker_than_pixels_far_from_it(self):
+        source, job = self.fixture(ao(distance=12.0, rays=32))
+        # Looking straight down from over the floor: the left of the picture is nearest the wall at x = 0.
+        pose = np.array([6.0, 0.0, 30.0, 0.0, 0.0, -1.0])
+        factor, covered = occlusion_map(source, job, pose, 12, 12, 0.5, 1)
+        self.assertTrue((covered == 1.0).all())
+        self.assertLess(factor[:, 6:8].mean(), factor[:, 11].mean())
+        self.assertEqual(factor[:, 11].min(), 1.0)
+
+    def test_a_scene_without_the_setting_has_no_map(self):
+        source, job = self.fixture(None)
+        with self.assertRaises(ValueError):
+            occlusion_map(source, job, np.array([6.0, 0.0, 30.0, 0.0, 0.0, -1.0]), 4, 4, 0.5, 1)
 
 
 if __name__ == "__main__":

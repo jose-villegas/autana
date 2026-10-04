@@ -62,6 +62,7 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 | `render/bake-fidelity-sheet.png` | the flat bake against the source model at two poses, with the error heatmap (see Fidelity against the source) |
 | `render/bake-indirect-compare.png`, `render/bake-indirect-crops.png` | the reference beside the smooth bake without and with indirect light (from a bake of the import made without that field), each with its error heatmap against the reference at two poses, then the places the two bakes differ most with the reference above them (see Indirect light) |
 | `render/bake-indirect-look.png` | the reference beside the indirect bake at intensity 1, 2 and 3 and at an albedo boost of 2, each with its error heatmap, then each look's own reference and the error against it (see Indirect look) |
+| `render/bake-ao-compare.png`, `render/bake-ao-crops.png`, `render/bake-ao-map.png` | the reference beside the smooth bake without and with local occlusion at two poses with error heatmaps, the places they differ most, and the occlusion factor alone beside the reference (see Local occlusion) |
 | `render/compare-full-{lite,flat}.png`, `.crops.png` | full against lite and smooth against flat at the GIFs' last pose: both renders and their difference, then the places they differ most, enlarged |
 | `render/compare-lite-fitted.png`, `.crops.png` | lite against the fitted mesh at that pose, the same way |
 | `render/compare-full-fitted-full.png`, `.crops.png` | full against the fitted full mesh, the same way |
@@ -378,6 +379,34 @@ from physical lighting; the own-reference column isolates bake fidelity.
 | intensity 3 | 10.258 | 8.110 | 26.111 | 0.6269 |
 | albedo boost 2 | 8.928 | 7.869 | 24.804 | 0.6388 |
 <!-- /generated: sponza-indirect-look -->
+
+## Local occlusion
+
+The scene's `[bake].ao` ([Scene-Files.md](../../../../../docs/render/Scene-Files.md#bake-ao))
+scales the ambient light, and with `indirect = true` the gathered bounce light,
+by how closed in a point is. The scene's own ambient is faint, so these images
+raise it to 0.25 in both bakes and add `ao` to one of them; the reference
+carries the occlusion, so the first bake's error is what the occlusion adds.
+
+The sheet is the reference, the bake without occlusion and the bake with it at
+two poses, each with its error heatmap against the reference.
+
+![Reference, bake without occlusion and bake with it, with error heatmaps](../../../../../docs/images/render/bake-ao-compare.png)
+
+The places the two bakes differ most, the reference above them.
+
+![Where occlusion changes the picture](../../../../../docs/images/render/bake-ao-crops.png)
+
+The occlusion factor alone at the same two poses, white where nothing is near
+and dark where the surroundings close in, beside the reference frame. It is
+low where stone meets stone: column bases, under arches, the creases between
+walls and floor and around the pots. A curtain stays open on its visible side
+because a double-sided surface takes the less occluded of its two sides.
+
+![The occlusion factor beside the reference](../../../../../docs/images/render/bake-ao-map.png)
+
+`doc_images.sh` bakes the scene twice, with and without `ao`, and
+`reference_render.py --occlusion` writes the factor map.
 
 ## Sponza poses
 

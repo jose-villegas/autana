@@ -134,21 +134,24 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.
 R3D_PYTHON=$(run find_r3d_python "$PWD")
 run "$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 5 --dt 5000 \
     -o "$W/indirect-smooth.bmp" --video "$W/indirect-smooth.avi" 2> "$W/indirect-smooth.log"
+# bake_and_render DIR MESH SCENE: bake the scene file in DIR, pack the mesh in
+# place of the committed one and render the five poses to DIR.avi.
+bake_and_render() {
+    dir=$1 mesh=$2 scene=$3
+    run "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$dir/sponza.scene.toml" --mesh "$mesh" > "$dir/bake.log" 2>&1
+    run "$R3D_PYTHON" launcher/tools/r3d/build_pack.py -o "$dir/assets.bin" --replace "$mesh=$dir/$mesh.mesh" > "$dir/pack.log"
+    run env AUTANA_ASSET_PACK="$dir/assets.bin" "$W/render_lab_render" --quarter 0 --no-hud --scene "$scene" --frames 5 --dt 5000 \
+        -o "$dir/frame.bmp" --video "$dir.avi" 2> "$dir/render.log"
+}
 # variant_bake NAME BOUNCES SCENE-TABLE: bounces is `keep`, or `none` to take
 # the scene bake's indirect cache out; the table goes before the first object.
 variant_bake() {
-    mesh=${4:-sponza.atrium}
-    scene=${5:-sponza}
     run mkdir -p "$W/indirect-$1"
     run cp "$M/meshes/sponza.import.toml" "$W/indirect-$1/"
     run awk -v table="$3" -v direct="$2" '/^\[\[objects\]\]/ && !done { if (table != "") print table "\n"; done = 1 }
         direct == "none" && /^indirect = \{/ { next } { print }' \
         "$M/meshes/sponza.scene.toml" > "$W/indirect-$1/sponza.scene.toml"
-    run "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$W/indirect-$1/sponza.scene.toml" --mesh "$mesh" > "$W/indirect-$1/bake.log" 2>&1
-    run "$R3D_PYTHON" launcher/tools/r3d/build_pack.py -o "$W/indirect-$1/assets.bin" --replace "$mesh=$W/indirect-$1/$mesh.mesh" \
-        > "$W/indirect-$1/pack.log"
-    run env AUTANA_ASSET_PACK="$W/indirect-$1/assets.bin" "$W/render_lab_render" --quarter 0 --no-hud --scene "$scene" --frames 5 --dt 5000 \
-        -o "$W/indirect-$1/frame.bmp" --video "$W/indirect-$1.avi" 2> "$W/indirect-$1/render.log"
+    bake_and_render "$W/indirect-$1" "${4:-sponza.atrium}" "${5:-sponza}"
 }
 variant_bake direct none ''
 variant_bake intensity-2 keep '[indirect]\nintensity = 2.0'
@@ -183,6 +186,46 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/bake-indire
     --bake-reference "intensity 1" "$REFERENCE" --bake-reference "intensity 2" "$INTENSITY_2_REFERENCE" \
     --bake-reference "intensity 3" "$INTENSITY_3_REFERENCE" --bake-reference "albedo boost 2" "$BOOST_2_REFERENCE" \
     > "$W/indirect-look.log"
+
+# Local occlusion. The scene's ambient light is faint, so the occlusion has
+# little to scale: both bakes raise it to 0.25, and one adds `[bake].ao`. The
+# reference carries the occlusion, so the first bake's error is what the
+# occlusion adds. ao_bake NAME AO-LINE: the line goes after `[bake].indirect`.
+ao_bake() {
+    run mkdir -p "$W/ao-$1"
+    run cp "$M/meshes/sponza.import.toml" "$W/ao-$1/"
+    run awk -v ao="$2" '/^\[/ { ambient = ($0 == "[ambient]") } ambient && /^intensity = / { print "intensity = 0.25"; next }
+        { print } /^indirect = \{/ && ao != "" { print ao }' \
+        "$M/meshes/sponza.scene.toml" > "$W/ao-$1/sponza.scene.toml"
+    bake_and_render "$W/ao-$1" sponza.atrium sponza
+}
+ao_bake flat ''
+ao_bake occluded 'ao = { distance = 80.0, rays = 32 }'
+AO_REFERENCE=$(run sh launcher/tools/render/render_compare.sh --reference-frames \
+    --reference "$W/ao-occluded/sponza.scene.toml" --poses "$W/fidelity-poses.txt" 2> "$W/ao-occluded/reference.log")
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/ao-compare.png" --crops 4 \
+    --reference-bakes "$AO_REFERENCE" --reference-scale 2 --sheet-frames 2,4 \
+    --bake "no occlusion" "$W/ao-flat.avi" --bake "occlusion" "$W/ao-occluded.avi" > "$W/ao-compare.log"
+[ -f "$W/ao-compare.crops.png" ] || { echo "doc_images.sh: occlusion has no crops, the bakes do not differ." >&2; exit 1; }
+run cp "$W/ao-compare.png" "$RENDER/bake-ao-compare.png"
+run cp "$W/ao-compare.crops.png" "$RENDER/bake-ao-crops.png"
+
+# The occlusion alone: the factor `ao` scales the ambient and bounce light by,
+# at the same two poses, white where nothing is near and dark where the
+# surroundings close in; the reference frame beside each shows where it falls.
+run "$R3D_PYTHON" launcher/tools/r3d/reference_render.py "$W/ao-occluded/sponza.scene.toml" --poses "$W/fidelity-poses.txt" \
+    --skip 1 --samples 4 --occlusion --out "$W/ao-map" > "$W/ao-map.log" 2>&1
+run "$PYTHON" -c 'import sys; from PIL import Image
+rows = []
+for frame in (2, 4):
+    pair = [Image.open(f"{sys.argv[1]}/{frame:04d}{suffix}.png").convert("RGB") for suffix in (".occlusion", "")]
+    rows.append([picture.resize((picture.width * 2, picture.height * 2), Image.Resampling.NEAREST) for picture in pair])
+width, height = rows[0][0].size
+sheet = Image.new("RGB", (width * 2, height * len(rows)))
+for y, row in enumerate(rows):
+    for x, picture in enumerate(row):
+        sheet.paste(picture, (x * width, y * height))
+sheet.save(sys.argv[2])' "$W/ao-map" "$RENDER/bake-ao-map.png"
 
 # Each fitted target against the same reference: its heatmap sheet at the
 # same two poses, and its last frame beside the reference, enlarged where they
