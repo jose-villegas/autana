@@ -145,9 +145,7 @@ the path-traced backend ignores it.
 The reach should follow the mesh: a bake stores one colour per vertex, so a
 reach much larger than the triangles darkens whole faces around a crease, where
 the reference darkens a thin line. A smaller `distance` or a lower `strength`
-keeps the darkening where the surfaces are close; the
-[render lab's images](../../launcher/main/apps/render_lab/tools/README.md#local-occlusion)
-show the factor alone and where it differs from the reference.
+keeps the darkening where the surfaces are close.
 
 #### indirect
 
