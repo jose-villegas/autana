@@ -85,11 +85,16 @@ measurement of every build variant.
 | Cache | Build configuration | Access |
 |---|---|---|
 | Instruction | 32 KiB, 32-byte lines, 8-way | flash-resident instructions |
-| Data | 32 KiB, 32-byte lines, 8-way | mapped flash data and PSRAM |
+| Data | 64 KiB, 64-byte lines, 8-way | mapped flash data and PSRAM |
 
-`launcher/sdkconfig.defaults` selects the instruction-cache size; the other
-settings use ESP-IDF's ESP32-S3 cache defaults. Cache storage consumes
-internal SRAM. Internal working data avoids external-memory cache traffic;
+`launcher/sdkconfig.defaults` selects the instruction-cache size with
+`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB` and the data-cache size and line size
+with `CONFIG_ESP32S3_DATA_CACHE_64KB` and `CONFIG_ESP32S3_DATA_CACHE_LINE_64B`;
+the remaining settings use ESP-IDF's ESP32-S3 cache defaults. The larger data
+cache serves the renderer's PSRAM vertex, depth and colour streams. Cache
+storage consumes internal SRAM: increasing its capacity reduces the internal
+heap available to allocations. Internal working data avoids external-memory
+cache traffic;
 flash-resident `const` data is not internal working data. Inspect the linker
 map for actual placement, including explicitly RAM-mapped code and tables.
 Changing code layout can change cache behaviour even when a hot function's

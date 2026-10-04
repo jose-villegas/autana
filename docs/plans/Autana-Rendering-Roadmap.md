@@ -43,7 +43,7 @@ flowchart LR
     resSettings["Resolution / colour<br/>system settings"]:::p1
     busRoot["80 MHz QSPI<br/>clock setting + heal"]:::p1
     corePresent["Core-1 present +<br/>sim/update overlap"]:::p1
-    memPlacement["Hot buffers to internal RAM,<br/>icache 32K / dcache 64K experiment"]:::p1
+    memPlacement["Hot buffers to internal RAM,<br/>cache settings in sdkconfig.defaults"]:::p1
   end
   subgraph P2["Phase 2: r3d"]
     direction TB
@@ -324,7 +324,7 @@ detail behind every row.
 | Integer mul/div | hardware, pipelined 32-bit mul and div; **64-bit div is a library call** | `__divdi3` and signed `/ 2^n` stay banned in hot loops (see [Arithmetic in hot loops](../notes/Flashing-and-Toolchain.md#arithmetic-in-hot-loops)) |
 | Internal RAM | 512 KB SRAM: ~296 KiB main heap region + 21 KiB + 32 KiB DRAM at boot; free heap and largest block after `gfx_init()` (framebuffer excluded: it lives in PSRAM) are `DP_FREE_HEAP_BYTES`/`DP_LARGEST_FREE_BLOCK_BYTES` (Board-and-Memory.md) | stacks, the DMA gather and strip buffers, and hot per-step buffers (sand's grids, via `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536`) live here; the band ring's buffers will too |
 | PSRAM | 8 MB octal @ 80 MHz (120 MHz experimental); `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` makes allocations up to 64 KB try internal RAM first, falling back to PSRAM; larger allocations try PSRAM first; memcpy out ~58 MB/s, in ~47, PSRAM to PSRAM ~22 | under decision B this is read-only bulk/cold storage: the one retained framebuffer, textures and levels; it is never the target of a full-screen write or copy; headroom is a non-issue |
-| Data cache | 32 KB, 32-byte line, 8-way; 64 KB measured no gain | every PSRAM access (CPU render writes and DMA present reads alike) goes through this cache; see 3.3 |
+| Data cache | configured in `launcher/sdkconfig.defaults`; see [Cache is carved from the same pool](../notes/Board-and-Memory.md#cache-is-carved-from-the-same-pool) | every PSRAM access (CPU render writes and DMA present reads alike) goes through this cache; see 3.3 |
 | Instruction cache | 32 KB, 32-byte line, 8-way (`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB`; IDF's default is 16 KB): the larger size measured 1-11% per sand step | costs 16 KB of internal RAM over the default |
 | DMA | GDMA, 3 TX + 3 RX channels; async memcpy supported | strip transfers already DMA; mem-to-mem copies could offload clears; measure, do not assume |
 | Display bus | QSPI, both board revisions share the same 368×448 panel geometry and SPI2 wiring, all through the GPIO matrix; 40 MHz clean, 80 MHz outside the panel's 50 MHz rating | 80 MHz halves present but corrupts partial redraws; full-frame renderers are safe, partial ones need 40 or gfx heal (3.2) |
@@ -474,12 +474,11 @@ raised cube frame rates 4-9% and left the sand simulation unchanged (it
 reads internal RAM); it does not change the PSRAM-vs-internal ranking
 above, so it changes none of this section's reasoning.
 
-**Sand's working set is not part of this.** Sand's grids and per-step
-scratch live in internal RAM (allocations up to 64 KB stay internal), and
-its simulation reads no PSRAM <!-- doc-vocabulary: ignore -->: doubling
-the instruction cache bought 1-11% per step, a 64 KB data cache bought
-nothing, and the mixed-scene gravity flip that once measured 18,731 us
-was a reaction-pass regression, fixed at 11,924 us (device).
+**Sand's working set has a different placement policy.** Sand's grids and
+per-step scratch use ordinary allocations; `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`
+makes them try internal RAM first, with PSRAM fallback. The configured data
+cache serves external-memory traffic; internal working data does not benefit
+from increasing its capacity.
 Only sand's draw into the framebuffer touches PSRAM, and under this
 decision that write is the retained framebuffer's ordinary per-frame
 update, not a bulk copy.
@@ -623,7 +622,7 @@ into per-span, per-triangle, or bake-time work:
   reports back what was granted.
 - **Textures column-major for vertical spans** (raycaster) and row-major
   for horizontal ones; 64×64 RGB565 is 8 KB, so a handful live in flash
-  behind the 32 KB icache and the hot ones can be copied into RAM at
+  behind the data cache and the hot ones can be copied into RAM at
   `enter()`.
 
 ### 3.5 Code shape, the levers this repo already knows

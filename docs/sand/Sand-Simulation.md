@@ -1126,8 +1126,8 @@ every step" and the numbers above:
   the difference between a settled screen of sand costing 17 us and
   costing 5.5 ms.
 
-`materials[]` is `const` data in flash, read through this chip's 32 KB
-data cache, separate from the instruction cache the sweep's own code runs
+`materials[]` is `const` data in flash, read through the data cache configured
+in `launcher/sdkconfig.defaults`, separate from the instruction cache the sweep's own code runs
 from, so the two do not evict each other. A cache miss on
 a cold line is still a real cost inside the tightest loop in the project,
 which is what the bitmask above avoids paying per cell. See
