@@ -2,7 +2,8 @@
 #
 # Build and run triangle_sizes: how many of a lit mesh's drawn triangles
 # cover 0, 1, 2-4 or more pixel centres at each pose of a poses file (the
-# format is in triangle_sizes.h).
+# format is in triangle_sizes.h), and the bounding boxes of the triangles
+# the draw hands the rasterizer, by shading mode.
 #
 # Usage:
 #   launcher/tools/r3d/report_triangle_sizes.sh --mesh NAME POSES|- [--write DIR | --against DIR]
@@ -50,14 +51,22 @@ BUILD_DIR="$SCRIPT_DIR/build"
 mkdir -p "$BUILD_DIR"
 OUT_BIN="$BUILD_DIR/triangle_sizes"
 # The same flags as run_tests.sh; -O2 because it draws every pose.
-"$CC_BIN" -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2 \
+CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2"
+# The pipeline hands its triangles to the tool, which counts their boxes
+# and passes them on to r3d_span's own functions.
+# shellcheck disable=SC2086 # CFLAGS is a list of flags
+"$CC_BIN" $CFLAGS -I "$MAIN_DIR" \
+    -Dr3d_span_triangle=sizes_span_triangle -Dr3d_span_triangle_solid=sizes_span_triangle_solid \
+    -c "$MAIN_DIR/render/r3d_pipeline.c" -o "$BUILD_DIR/r3d_pipeline_counted.o"
+# shellcheck disable=SC2086
+"$CC_BIN" $CFLAGS \
     -I "$MAIN_DIR" -I "$SCRIPT_DIR" \
     "$SCRIPT_DIR/triangle_sizes_main.c" \
     "$SCRIPT_DIR/triangle_sizes.c" \
     "$MAIN_DIR/asset/asset_pack.c" \
     "$MAIN_DIR/asset/asset_file.c" \
     "$MAIN_DIR/render/r3d_lit_mesh.c" \
-    "$MAIN_DIR/render/r3d_pipeline.c" \
+    "$BUILD_DIR/r3d_pipeline_counted.o" \
     "$MAIN_DIR/render/r3d_span.c" \
     -lm -o "$OUT_BIN"
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"

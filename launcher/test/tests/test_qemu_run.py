@@ -46,5 +46,43 @@ class VerdictTest(unittest.TestCase):
         self.assertEqual(0, self.verdict(PASSING, actions=[("suite", "x")]))
 
 
+class FakeConsole:
+    def __init__(self, lines):
+        self.sent, self._lines = [], lines
+
+    def send(self, line):
+        self.sent.append(line)
+
+    def lines(self):
+        return iter(self._lines)
+
+
+class RunSuiteTest(unittest.TestCase):
+    """The completion line is read field by field, the way the board tooling
+    reads it: what follows found= says nothing about whether it was found."""
+
+    def run_suite(self, *lines):
+        return qemu_run.run_suite(FakeConsole(list(lines)), "run_sand_suite")
+
+    def test_a_suite_that_ran_passes(self):
+        self.assertTrue(self.run_suite(
+            "RUNSUITE_COMPLETE name=run_sand_suite found=1 selected=12 unmatched=0"))
+
+    def test_an_image_that_prints_no_selection_still_passes(self):
+        self.assertTrue(self.run_suite("RUNSUITE_COMPLETE name=run_sand_suite found=1"))
+
+    def test_a_suite_not_registered_fails(self):
+        self.assertFalse(self.run_suite(
+            "RUNSUITE_COMPLETE name=run_sand_suite found=0 selected=0 unmatched=0"))
+
+    def test_a_suite_that_selected_nothing_fails(self):
+        self.assertFalse(self.run_suite(
+            "RUNSUITE_COMPLETE name=run_sand_suite found=1 selected=0 unmatched=1"))
+
+    def test_another_suites_completion_is_not_this_ones(self):
+        self.assertFalse(self.run_suite(
+            "RUNSUITE_COMPLETE name=run_sand_suite_perf found=1 selected=3 unmatched=0"))
+
+
 if __name__ == "__main__":
     unittest.main()

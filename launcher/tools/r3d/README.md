@@ -23,7 +23,7 @@ mesh. Nothing here runs on the board.
 | [fetch.py](fetch.py) | Downloads a source model once into `.cache/`, checked against a SHA-256. |
 | [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling (LINEAR, STEP, CUBICSPLINE), linear-blend skinning; reads through [`tools/gltf/`](../gltf/gltf_read.py), the reader and reference sampler [`tools/anim/`](../anim/README.md) shares. Standard library only. |
 | [gltf_preview.py](gltf_preview.py) | Renders any skinned `.glb` with Pillow: a looping GIF of one animation (`--gif NAME`) or the bind pose from four sides (`--sheet`). |
-| [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, and the poses file; host-tested by `suite_r3d_triangle_sizes.c`. |
+| [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, the rasterized ones by bounding box and shading mode, and the poses file; host-tested by `suite_r3d_triangle_sizes.c`. |
 | [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
 | [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement, sun and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [shading: flat](../../../docs/render/Scene-Files.md#shading-flat). |
 | [appearance_simplify.py](appearance_simplify.py) | Fits a smooth mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
@@ -260,6 +260,13 @@ size, so a feature row lines up with a measured frame.
 
 How many of a baked mesh's drawn triangles cover 0, 1, 2-4 or more pixel
 centres at each pose, which sizes the rasterizer's small-triangle work.
+After the poses comes a Markdown table of the triangles the draw itself
+hands `r3d_span`, by shading mode (one colour, a face colour over the depth
+plane, or every plane): the share whose bounding box holds at most 2 x 2 up
+to 5 x 5 pixel centres, which is what a centre-by-centre path with that
+limit would take. The script builds the pipeline to pass each triangle
+through the tool on its way to `r3d_span`, so the boxes are the ones the
+rasterizer chooses its path by.
 `--mesh` names the mesh's asset id in a pack built from the tree, or in the pack `AUTANA_ASSET_PACK` names;
 `POSES` is a text file of `size`, `lens` and `pose` lines, its format in
 [`triangle_sizes.h`](triangle_sizes.h), and `-` reads it from standard

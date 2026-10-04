@@ -62,8 +62,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "tools", "device"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "tools", "build"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "scripts", "device"))
 import device_profile  # noqa: E402  (path must be set up first)
 from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
+from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
 
 SENTINEL = "SELFTEST_COMPLETE"
 LISTENING = "listening for 'screenshot'"
@@ -229,13 +232,17 @@ TOUCH_SETTLE_S = 0.6
 
 def run_suite(console, name):
     console.send("RUNSUITE %s" % name)
-    done = "RUNSUITE_COMPLETE name=%s" % name
     for line in console.lines():
-        if line.startswith(done):
-            if line.endswith("found=1"):
-                return True
+        complete = SUITE_COMPLETE_RE.search(line)
+        if complete is None or complete.group("name") != name:
+            continue
+        if complete.group("found") != "1":
             print("suite %s: not registered in this image" % name)
             return False
+        if int(complete.group("unmatched") or 0):
+            print("suite %s: selected no test" % name)
+            return False
+        return True
     print("suite %s: never completed" % name)
     return False
 
