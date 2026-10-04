@@ -57,10 +57,10 @@ requests".
 | `ui/*.png` | the UI toolkit's gallery views, portrait and landscape (`ui_widgets_render_host.sh`) |
 
 Measured CPU tables are refreshed with the images. App scripts write Markdown
-to out/tables/NAME.md. The shared writer replaces the body between a
-`<!-- generated: NAME sha256=HASH -->` start and a
-`<!-- /generated: NAME -->` end, preserving the document's other text and line
-endings. Names use lowercase letters, digits and hyphens and are unique
+to out/tables/NAME.md. The shared writer replaces the body between an HTML
+comment containing `generated: NAME sha256=HASH` and one containing
+`/generated: NAME`, preserving the document's other text and line endings.
+Names use lowercase letters, digits and hyphens and are unique
 across documents. The SHA-256 covers the body,
 including its boundary newlines, with CRLF normalized to LF.
 `scripts/gates/check_doc_generated.py` discovers tracked Markdown blocks and
