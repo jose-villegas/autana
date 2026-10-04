@@ -70,7 +70,7 @@ def sky(intensity=1.0):
 
 def embree(source, lights, pose=LOOK_DOWN, width=16, height=16, lens=0.5, double=()):
     settings = SimpleNamespace(double_sided=set(double), seed=1)
-    job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.001))
+    job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.001, ao=None))
     return render_linear(source, job, SimpleNamespace(lights=lights), pose, width, height, lens, 4)
 
 

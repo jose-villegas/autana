@@ -247,7 +247,8 @@ def bake_sky(light, ctx):
 
 
 def bake_ambient(light, ctx):
-    return np.array(light["color"]) * light["intensity"]
+    colour = np.array(light["color"]) * light["intensity"]
+    return colour if ctx.occlusion is None else ctx.occlusion[:, None] * colour
 
 
 # The one table of what a scene light is: its fields, declared in
@@ -255,6 +256,22 @@ def bake_ambient(light, ctx):
 BAKERS = {"directional": bake_directional, "sky": bake_sky, "ambient": bake_ambient}
 LIGHTS = {kind: (LIGHT_FIELDS[kind], bake) for kind, bake in BAKERS.items()}
 assert set(LIGHTS) == set(LIGHT_FIELDS)
+
+
+def local_occlusion(points, normals, intersector, ao, ray_offset):
+    """Distance-limited ambient occlusion per point: 1 where nothing stands within `ao.distance` of the point's
+    hemisphere, down to 1 - `ao.strength` where it is walled in. Every point uses the same cosine-weighted
+    directions in its own frame, as `gather_indirect` does, and a hit counts for less the farther it is, linearly to
+    nothing at the distance."""
+    origin = points + normals * ray_offset
+    covered = np.zeros(len(points))
+    tu, tv = tangent_frame(normals)
+    for x, y, z in sky_directions(ao.rays):
+        direction = tu * x + tv * y + normals * z
+        locations, indices, _ = intersector.intersects_location(origin, direction, multiple_hits=False)
+        reach = np.linalg.norm(locations - origin[indices], axis=1)
+        covered[indices] += np.clip(1.0 - reach / ao.distance, 0.0, 1.0)
+    return 1.0 - ao.strength * covered / ao.rays
 
 
 def face_towards_light(normals, double_sided, lights):
@@ -270,7 +287,7 @@ def face_towards_light(normals, double_sided, lights):
 
 
 def light(points, normals, double_sided, intersector, lights, ray_offset, rng, shared_sky_rays=0, sun_centre=False,
-          indirect=None, indirect_groups=None):
+          indirect=None, indirect_groups=None, ao=None):
     """Radiance from the scene lights at each point.
 
     With shared_sky_rays > 0 every point uses the same directional samples and
@@ -284,16 +301,22 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, rng, s
     none and is exactly order independent.
 
     `indirect` is an IndirectCache whose gathered light is added to the
-    direct light; `indirect_groups` is gather_indirect's `groups`.
+    direct light; `indirect_groups` is gather_indirect's `groups`. `ao` is
+    the scene's local occlusion setting: it scales the ambient light, and the
+    gathered indirect light when `ao.indirect`.
     """
     n = face_towards_light(normals, double_sided, lights)
-    ctx = SimpleNamespace(normals=n, origin=points + n * ray_offset, intersector=intersector, rng=rng,
+    occlusion = None if ao is None else local_occlusion(points, n, intersector, ao, ray_offset)
+    ctx = SimpleNamespace(normals=n, origin=points + n * ray_offset, intersector=intersector, rng=rng, occlusion=occlusion,
                           shared=bool(shared_sky_rays), shared_sky_rays=shared_sky_rays,
                           sun_centre=sun_centre)
     radiance = np.zeros((len(points), 3))
     for scene_light in lights:
         radiance += LIGHTS[scene_light["type"]][1](scene_light, ctx)
-    return radiance + gather_indirect(points, n, intersector, indirect, indirect_groups)
+    gathered = gather_indirect(points, n, intersector, indirect, indirect_groups)
+    if ao is not None and ao.indirect:
+        gathered = gathered * occlusion[:, None]
+    return radiance + gathered
 
 
 class IndirectCache:
@@ -414,7 +437,7 @@ def adaptive_sample_counts(areas, reference, cap, floor=1):
 
 def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_of, intersector, lights, ray_offset,
                  tonemap_white, samples=4, sky_rays=128, max_samples=16, sample_area=None, min_samples=1,
-                 placement="stratified", sun_centre=False, indirect_cache=None):
+                 placement="stratified", sun_centre=False, indirect_cache=None, ao=None):
     """One sRGB colour per triangle: albedo times light averaged over fixed
     points of the triangle, lit on its face normal. `samples` is a count per
     face, or "auto" for one point per `sample_area` of face area (the mesh's
@@ -441,7 +464,7 @@ def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_o
             double = np.full(len(points), m in double_materials)
             tiled = np.tile(normals, (k, 1))
             radiance = light(points, tiled, double, intersector, lights, ray_offset, None, sky_rays, sun_centre,
-                             indirect_cache)
+                             indirect_cache, ao=ao)
             colour = (albedo * radiance).reshape(k, len(faces), 3).mean(axis=0)
             out[selected] = to_srgb8(colour, tonemap_white)
     return out

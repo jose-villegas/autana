@@ -88,7 +88,7 @@ is in [Mesh-Import.md](Mesh-Import.md#import-options).
 
 | Option | Keys | What it does | Default | Option link |
 |---|---|---|---|---|
-| `[bake]` | `ray_offset`, `colour_merge_step`; `flat_sky_rays`, `indirect = { bounces, rays, cache_samples }` | Scene-wide tracing settings. | Required by a baked renderer. | [bake](#bake) |
+| `[bake]` | `ray_offset`, `colour_merge_step`; `flat_sky_rays`, `indirect = { bounces, rays, cache_samples }`, `ao = { distance, rays; strength, indirect }` | Scene-wide tracing settings. | Required by a baked renderer; `ao` is off unless given. | [bake](#bake) |
 | `[indirect]` | `; intensity, albedo_boost` | Sets the appearance of the baked bounce-light cache. | `1.0 each`; rejected unless a baked renderer uses [bake].indirect. | [indirect](#indirect) |
 | `[sky]` | `color`, `intensity`, `rays` | Hemisphere light for bakes. | Rejected unless a renderer bakes. | [sky](#sky) |
 | `[ambient]` | `color`, `intensity` | Constant light for bakes. | Rejected unless a renderer bakes. | [ambient](#ambient) |
@@ -117,6 +117,28 @@ scene-wide bounce-light cache. All fields are required when it is present.
 `rays` and `cache_samples` are at least 1 and `bounces` is at least 0. The
 reference renderer reads the same settings. A renderer can opt out with
 [indirect: off](#indirect-off).
+
+#### bake: ao
+
+`[bake].ao = { distance = D, rays = R }` darkens crevices, contact lines and
+spots under overhangs that the sky light only measures at the scale of the
+whole scene. Each point casts `R` cosine-weighted rays; a hit within `D` model
+units counts for $`1 - t/D`$ at hit distance $`t`$, and a point's factor is
+$`1 - s\bar{w}`$ for the strength $`s`$ and $`\bar{w}`$ the mean of those weights over its rays. The factor scales the
+[ambient](#ambient) light, and with `indirect = true` the gathered bounce light
+too; direct sun and the sky light are untouched, and the bounce cache itself is
+built without it.
+
+| Field | Meaning |
+|---|---|
+| `distance` | Reach of the occlusion rays, greater than 0, in model units. |
+| `rays` | Rays per point, at least 1. |
+| `strength` | Optional, 0 to 1, default 1: how far the factor can fall. |
+| `indirect` | Optional, default false: also scale the gathered bounce light. |
+
+Off unless given. It needs something to scale: an `[ambient]` light, or
+`indirect = true` with a bounce cache. The reference renderer reads the same
+table.
 
 #### indirect
 

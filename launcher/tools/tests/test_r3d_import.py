@@ -313,6 +313,24 @@ class SceneTests(unittest.TestCase):
         self.assertEqual((scene.bake.indirect.bounces, scene.bake.indirect.rays, scene.bake.indirect.cache_samples), (2, 8, 1))
         self.assertTrue(base in BAKE)
 
+    def test_local_occlusion_is_off_unless_asked_for_and_validated_strictly(self):
+        self.assertIsNone(load_scene(self.lit(head=HEAD)).bake.ao)
+        scene = load_scene(self.lit(head=HEAD + "ao = { distance = 40.0, rays = 16 }\n"))
+        self.assertEqual(vars(scene.bake.ao), {"distance": 40.0, "rays": 16, "strength": 1.0, "indirect": False})
+        self.assertEqual(vars(scene.renderers[0].bake.ao), vars(scene.bake.ao))
+        for pattern, table in (("ao.distance must be positive", "{ distance = 0.0, rays = 16 }"),
+                               ("ao.rays", "{ distance = 4.0, rays = 0 }"),
+                               ("ao.strength must be between", "{ distance = 4.0, rays = 8, strength = 1.5 }"),
+                               ("ao.rays is required", "{ distance = 4.0 }"),
+                               ("ao.depth", "{ distance = 4.0, rays = 8, depth = 1 }")):
+            with self.subTest(pattern=pattern):
+                self.lit_rejects(pattern, head=HEAD + f"ao = {table}\n")
+
+    def test_local_occlusion_needs_something_to_scale(self):
+        head = TONEMAP + BAKE + "ao = { distance = 4.0, rays = 8 }\n"
+        self.lit_rejects("has neither", head=head)
+        self.assertTrue(load_scene(self.lit(head=head.replace("ao = {", "ao = { indirect = true,") + INDIRECT)).bake.ao.indirect)
+
     def test_a_renderer_can_leave_the_indirect_light_out(self):
         head = HEAD + INDIRECT
         self.lit_rejects("indirect can only be false", "indirect = true\n", head=head)

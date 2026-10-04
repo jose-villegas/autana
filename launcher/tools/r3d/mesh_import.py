@@ -104,7 +104,7 @@ def shade_lit(src, job, scene, material, mp, mt, double, intersector, rng, indir
     albedo = albedo_at(src, vpos, vertex_spacing(vpos, vtris), material)
     welded = np.unique(np.round(vpos * 16).astype(np.int64), axis=0, return_inverse=True)[1].reshape(-1)
     radiance = light(vpos, vn, np.full(len(vpos), double), intersector, scene.lights, job.bake.ray_offset, rng,
-                     indirect=indirect_cache, indirect_groups=welded)
+                     indirect=indirect_cache, indirect_groups=welded, ao=job.bake.ao)
     vrgb = to_srgb8(albedo * radiance, scene.tonemap_white)
     return merge_matching_colours(vpos, vrgb, vtris, job.bake.colour_merge_step)
 
@@ -207,7 +207,8 @@ def flat_colours(job, scene, geometry, face_samples, **knobs):
     return face_colours(geometry.positions, geometry.tris, geometry.tri_mat, range(len(src.names)), double_materials,
                         lambda centres, spacing, material: albedo_at(src, centres, spacing, material), geometry.intersector,
                         scene.lights, job.bake.ray_offset, scene.tonemap_white, samples, max_samples=sample_max,
-                        sample_area=sample_area, min_samples=sample_min, indirect_cache=geometry.indirect_cache, **knobs)
+                        sample_area=sample_area, min_samples=sample_min, indirect_cache=geometry.indirect_cache,
+                        ao=job.bake.ao, **knobs)
 
 
 def check_fitted(job, scene):

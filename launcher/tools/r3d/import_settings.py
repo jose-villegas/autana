@@ -479,17 +479,28 @@ def load_indirect_look(table):
 
 def load_bake(table):
     """The scene's direct-light and indirect-cache settings."""
-    check_keys(table, ("ray_offset", "colour_merge_step"), "scene.bake", optional=("flat_sky_rays", "indirect"))
+    check_keys(table, ("ray_offset", "colour_merge_step"), "scene.bake", optional=("flat_sky_rays", "indirect", "ao"))
     bake = SimpleNamespace(ray_offset=number(table["ray_offset"], "scene.bake.ray_offset"),
                            colour_merge_step=count(table["colour_merge_step"], "scene.bake.colour_merge_step"),
                            flat_sky_rays=count(table["flat_sky_rays"], "scene.bake.flat_sky_rays")
-                           if "flat_sky_rays" in table else None, indirect=None)
+                           if "flat_sky_rays" in table else None, indirect=None, ao=None)
     if "indirect" in table:
         indirect = table["indirect"]
         check_keys(indirect, ("bounces", "rays", "cache_samples"), "scene.bake.indirect")
         bake.indirect = SimpleNamespace(bounces=nonnegative_count(indirect["bounces"], "scene.bake.indirect.bounces"),
                                         rays=count(indirect["rays"], "scene.bake.indirect.rays"),
                                         cache_samples=count(indirect["cache_samples"], "scene.bake.indirect.cache_samples"))
+    if "ao" in table:
+        ao = table["ao"]
+        check_keys(ao, ("distance", "rays"), "scene.bake.ao", optional=("strength", "indirect"))
+        bake.ao = SimpleNamespace(distance=number(ao["distance"], "scene.bake.ao.distance"),
+                                  rays=count(ao["rays"], "scene.bake.ao.rays"),
+                                  strength=number(ao.get("strength", 1.0), "scene.bake.ao.strength"),
+                                  indirect=boolean(ao.get("indirect", False), "scene.bake.ao.indirect"))
+        if bake.ao.distance <= 0:
+            raise SettingsError("scene.bake.ao.distance must be positive")
+        if not 0.0 <= bake.ao.strength <= 1.0:
+            raise SettingsError("scene.bake.ao.strength must be between 0 and 1")
     return bake
 
 
@@ -534,7 +545,7 @@ def load_scene(path):
             effective = SimpleNamespace(
                 ray_offset=bake.ray_offset, colour_merge_step=bake.colour_merge_step,
                 flat_sky_rays=bake.flat_sky_rays if component.face_samples else None,
-                indirect=bake.indirect if component.indirect else None)
+                indirect=bake.indirect if component.indirect else None, ao=bake.ao)
             asset_name = f"{scene_name}.{item.name}"
             asset_path = path.parent / f"{asset_name}.mesh"
         else:
@@ -556,6 +567,9 @@ def load_scene(path):
     sources = {item.renderer.visibility.source for item in jobs if item.renderer.visibility}
     camera_path = cameras[0].component.path if cameras else None
     bounced = bool(bake and bake.indirect and any(item.renderer.indirect for item in jobs if item.renderer.bake))
+    if bake and bake.ao and not bake.ao.indirect and not any(light["type"] == "ambient" for light in lights):
+        raise SettingsError("scene.bake.ao scales the ambient light or, with indirect = true, the indirect light: "
+                            "the scene has neither")
     if "indirect" in values and not bounced:
         raise SettingsError("scene indirect settings is read by no placed mesh")
     for name, present, needed in (("lights", bool(lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),
