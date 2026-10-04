@@ -135,9 +135,10 @@ stage instead of being lit again. Every `--poses`/`--reference` pair trains
 one mesh together (the path-averaged mesh); `--per-shot` trains one per
 pair, for a mesh swapped as the camera moves through each segment.
 
-The fit runs on a CUDA GPU in its own environment, not
-[requirements.txt](requirements.txt). One setup that builds it, on WSL 2
-Debian with the Windows NVIDIA driver, no root, a conda environment for
+The fit runs on a CUDA GPU in its own environment with
+[requirements.txt](requirements.txt) and [requirements-gpu.txt](requirements-gpu.txt).
+From the repository root, one setup on WSL 2 Ubuntu 24.04 with the Windows
+NVIDIA driver uses a conda environment for
 the CUDA 12.8 compiler and a GCC that CUDA 12.8 accepts:
 
 ```sh
@@ -146,16 +147,22 @@ micromamba create -y -p ~/gpu/env -c nvidia/label/cuda-12.8.1 -c conda-forge \
 E=~/gpu/env
 $E/bin/python -m ensurepip
 $E/bin/python -m pip install -q --progress-bar off torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
-$E/bin/python -m pip install -q --progress-bar off numpy pillow ninja setuptools wheel
-CUDA_HOME=$E PATH=$E/bin:$PATH TORCH_CUDA_ARCH_LIST=12.0 \
+$E/bin/python -m pip install -q --progress-bar off -r launcher/tools/r3d/requirements.txt -r launcher/tools/r3d/requirements-gpu.txt
+$E/bin/python -m pip install -q --progress-bar off ninja setuptools wheel
+TORCH_CUDA_ARCH_LIST=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
+export TORCH_CUDA_ARCH_LIST
+CUDA_HOME=$E PATH=$E/bin:$PATH \
     CPATH=$E/targets/x86_64-linux/include LIBRARY_PATH=$E/targets/x86_64-linux/lib:$E/lib \
     CC=$E/bin/x86_64-conda-linux-gnu-gcc CXX=$E/bin/x86_64-conda-linux-gnu-g++ \
-    $E/bin/python -m pip install -q --progress-bar off --no-build-isolation git+https://github.com/NVlabs/nvdiffrast.git
+    $E/bin/python -m pip install -q --progress-bar off --no-build-isolation git+https://github.com/NVlabs/nvdiffrast.git@v0.4.0
 ```
 
 That gives PyTorch 2.11.0+cu128 and nvdiffrast 0.4.0; `TORCH_CUDA_ARCH_LIST`
-names the GPU's compute capability (12.0 is Blackwell). Then, from the
-repository root, with the reference images of the training poses:
+names the target GPU's compute capability, queried above with `nvidia-smi`.
+Alternatively, `$E/bin/python -c "import torch; print('.'.join(map(str, torch.cuda.get_device_capability())))"`
+prints the capability of the default CUDA device. Select the device that will
+run the fit when the machine has several GPUs. With the reference images of
+the training poses:
 
 ```sh
 $E/bin/python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \
@@ -218,6 +225,11 @@ The output directory contains `sweep.csv` and `pareto.png`.
 The front joins points for which no other point is no slower and no less
 accurate. Its knee is the front point with the greatest perpendicular distance
 from the chord between the front's end points after both axes are normalized.
+
+The [documentation stages](../../main/apps/render_lab/tools/README.md#refresh-commands)
+rebuild fitted comparisons and sweeps with this recipe API, write measured
+Markdown blocks with the shared doc writer, and consume board captures to
+refit the cost weights. The GPU smoke mode publishes no images or tables.
 
 ## Cost-aware fit
 
