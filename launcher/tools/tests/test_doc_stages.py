@@ -81,7 +81,7 @@ class DocStagesTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "missing or altered"):
                 stages.check_gpu(self.tmp)
 
-    def guard_with(self, wsl_kib, host_bytes):
+    def guard_with(self, wsl_kib, host_bytes, error=None):
         """Run memory_guard with WSL's MemAvailable and the host's AvailableBytes faked."""
         read_text, exists = Path.read_text, Path.exists
 
@@ -95,19 +95,27 @@ class DocStagesTests(unittest.TestCase):
 
         with mock.patch.object(Path, "read_text", fake_read_text), \
                 mock.patch.object(Path, "exists", fake_exists), \
-                mock.patch.object(stages.subprocess, "check_output", return_value=f"{host_bytes}\r\n".encode()):
+                mock.patch.object(stages.subprocess, "check_output", return_value=f"{host_bytes}\r\n".encode(), side_effect=error):
             stages.memory_guard()
 
     def test_memory_guard_checks_limiting_windows_host(self):
-        with self.assertRaisesRegex(ValueError, "Windows host is short by 3.00 GiB"):
-            self.guard_with(wsl_kib=16 * 1024 ** 2, host_bytes=3 * 1024 ** 3)
+        with self.assertRaisesRegex(ValueError, "Windows host is short by 1.00 GiB"):
+            self.guard_with(wsl_kib=16 * 1024 ** 2, host_bytes=1 * 1024 ** 3)
 
     def test_memory_guard_checks_limiting_wsl(self):
         with self.assertRaisesRegex(ValueError, "WSL is short by 2.00 GiB"):
             self.guard_with(wsl_kib=4 * 1024 ** 2, host_bytes=16 * 1024 ** 3)
 
     def test_memory_guard_passes_with_enough_on_both_sides(self):
-        self.guard_with(wsl_kib=8 * 1024 ** 2, host_bytes=8 * 1024 ** 3)
+        self.guard_with(wsl_kib=6 * 1024 ** 2, host_bytes=2 * 1024 ** 3)
+
+    def test_memory_guard_reports_interop_failure(self):
+        with self.assertRaisesRegex(ValueError, "Windows host memory query failed.*Invalid argument"):
+            self.guard_with(wsl_kib=8 * 1024 ** 2, host_bytes=0, error=OSError("Invalid argument"))
+
+    def test_memory_guard_reports_unparseable_host_memory(self):
+        with self.assertRaisesRegex(ValueError, "Windows host memory query failed.*not a byte count"):
+            self.guard_with(wsl_kib=8 * 1024 ** 2, host_bytes="Invalid argument")
 
     def test_smoke_preserves_full_gpu_results(self):
         result = self.tmp / "out/gpu/measurements.json"

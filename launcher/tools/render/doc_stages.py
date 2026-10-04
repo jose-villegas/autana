@@ -21,6 +21,8 @@ SCENE = ROOT / "launcher/main/apps/render_lab/meshes/sponza.scene.toml"
 HOST_SCRIPT = ROOT / "launcher/main/apps/render_lab/tools/render_lab_render_host.sh"
 RESULTS = ROOT / "launcher/tools/results/doc_images"
 WEIGHTS = ROOT / "launcher/tools/r3d/board_cost_weights.txt"
+WSL_MEMORY_REQUIRED_BYTES = 6 * 1024 ** 3
+WINDOWS_MEMORY_REQUIRED_BYTES = 2 * 1024 ** 3
 VARIANTS = ("sponza", "lite", "flat", "fitted", "fitted-full")
 
 
@@ -52,22 +54,31 @@ def validate_mode(smoke, check):
         raise ValueError("smoke outputs cannot check published docs")
 
 
+def require_memory(available, required, side):
+    if available < required:
+        shortfall = required - available
+        raise ValueError(f"GPU stage needs {required / 1024 ** 3:g} GiB available memory; "
+                         f"{side} is short by {shortfall / 1024 ** 3:.2f} GiB")
+
+
 def memory_guard():
     wsl_available = next(int(line.split()[1]) * 1024 for line in Path("/proc/meminfo").read_text().splitlines()
                          if line.startswith("MemAvailable:"))
-    limiting_side = "WSL"
-    available = wsl_available
+    require_memory(wsl_available, WSL_MEMORY_REQUIRED_BYTES, "WSL")
     powershell = Path("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe")
     if powershell.exists():
-        host_bytes = subprocess.check_output([str(powershell), "-NoProfile", "-Command",
-                                              "(Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory).AvailableBytes"])
-        host_available = int(host_bytes.strip())
-        if host_available < available:
-            available = host_available
-            limiting_side = "Windows host"
-    if available < 6 * 1024 ** 3:
-        shortfall = 6 * 1024 ** 3 - available
-        raise ValueError(f"GPU stage needs 6 GiB available memory; {limiting_side} is short by {shortfall / 1024 ** 3:.2f} GiB")
+        try:
+            host_bytes = subprocess.check_output([str(powershell), "-NoProfile", "-Command",
+                                                  "(Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory).AvailableBytes"],
+                                                 stderr=subprocess.STDOUT)
+        except (OSError, subprocess.CalledProcessError) as error:
+            detail = error.output.decode(errors="replace").strip() if isinstance(error, subprocess.CalledProcessError) and error.output else str(error)
+            raise ValueError(f"Windows host memory query failed (PowerShell interop): {detail}") from error
+        try:
+            host_available = int(host_bytes.strip())
+        except ValueError as error:
+            raise ValueError(f"Windows host memory query failed: not a byte count: {host_bytes.decode(errors='replace').strip()}") from error
+        require_memory(host_available, WINDOWS_MEMORY_REQUIRED_BYTES, "Windows host")
 
 
 def run(command, log):
