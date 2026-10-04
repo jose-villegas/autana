@@ -84,11 +84,11 @@ class ProjectionTests(ProcessTests):
     def test_running_allocations_are_not_counted_twice(self):
         from r3d.process_budget import projected_available
         self.assertEqual(projected_available((100, 100, 100, 100),
-                         [((80, 80, 40, 80), (60, 60, 30, 60))]), (80, 80, 90, 80))
+                         [((80, 80, 40, 80), (60, 60, 30, 60))]), (80, 100, 90, 80))
 
     def test_not_started_reserves_full_estimate(self):
         from r3d.process_budget import projected_available
-        self.assertEqual(projected_available((100,) * 4, [((80,) * 4, (0,) * 4)]), (20,) * 4)
+        self.assertEqual(projected_available((100,) * 4, [((80,) * 4, (0,) * 4)]), (20, 100, 20, 20))
 
     def test_over_estimate_does_not_invent_available_memory(self):
         from r3d.process_budget import projected_available
@@ -268,3 +268,50 @@ class ReservationPropagationTests(ProcessTests):
         with patch('r3d.process_budget.available_bytes', return_value=(1 << 60,) * 4):
             with FitExecutor() as executor:
                 self.assertEqual(executor.submit(reservation_worker, estimates=reservation).result(timeout=10), reservation)
+
+
+class WindowsAdmissionTests(unittest.TestCase):
+    def test_runner_fit_admitted_above_windows_floor(self):
+        from r3d.process_budget import GIB, FIT_BYTES, FLOORS
+        for host in (3.08, 3.72):
+            with self.subTest(host=host):
+                available = (int(4.6 * GIB), int(host * GIB), 6 * GIB, 9 * GIB)
+                self.assertEqual(worker_capacity(available, FIT_BYTES, FLOORS, 1), 1)
+
+    def test_windows_below_floor_blocks_admission(self):
+        from r3d.process_budget import GIB, FIT_BYTES, FLOORS
+        available = (14 * GIB, int(1.9 * GIB), 6 * GIB, 16 * GIB)
+        self.assertEqual(worker_capacity(available, FIT_BYTES, FLOORS, 1), 0)
+
+    def test_windows_at_floor_does_not_limit_worker_count(self):
+        from r3d.process_budget import GIB, FIT_BYTES, FLOORS
+        available = (9 * GIB, FLOORS[1], 6 * GIB, 9 * GIB)
+        self.assertEqual(worker_capacity(available, FIT_BYTES, FLOORS, 10), 4)
+
+    def test_pending_workers_do_not_project_windows_usage(self):
+        from r3d.process_budget import projected_available
+        available = (100, 100, 100, 100)
+        workers = [((20,) * 4, (0,) * 4)] * 2
+        self.assertEqual(projected_available(available, workers), (60, 100, 60, 60))
+        first = projected_available(available, workers[:1])
+        self.assertEqual(projected_available(first, workers[1:]), (60, 100, 60, 60))
+
+    def test_windows_floor_matches_stage_guard(self):
+        from r3d.process_budget import FLOORS, WINDOWS_MEMORY_REQUIRED_BYTES
+        self.assertEqual(FLOORS[1], WINDOWS_MEMORY_REQUIRED_BYTES)
+
+
+class WindowsSchedulerTests(ProcessTests):
+    def test_scheduler_does_not_reserve_windows_for_new_workers(self):
+        from unittest.mock import patch
+        from r3d.process_budget import FitExecutor, GIB, FLOORS
+        free = (5 * GIB, FLOORS[1], 6 * GIB, 5 * GIB)
+        with patch('r3d.process_budget.available_bytes', return_value=free), \
+                patch('r3d.process_budget.resident_bytes', return_value=(0,) * 4), \
+                patch('r3d.process_budget.cores_available', return_value=2):
+            with FitExecutor() as executor:
+                first = executor.submit(identity_worker, 'first', 4)
+                second = executor.submit(identity_worker, 'second')
+                self.assertEqual(second.result(timeout=3)[0], 'second')
+                self.assertFalse(first.done())
+                first.result(timeout=10)

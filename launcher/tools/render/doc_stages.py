@@ -16,13 +16,12 @@ sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from generated_blocks import apply_tables
 from perf_compare import MEAN_RE, parse_report
+from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRED_BYTES
 
 SCENE = ROOT / "launcher/main/apps/render_lab/meshes/sponza.scene.toml"
 HOST_SCRIPT = ROOT / "launcher/main/apps/render_lab/tools/render_lab_render_host.sh"
 RESULTS = ROOT / "launcher/tools/results/doc_images"
 WEIGHTS = ROOT / "launcher/tools/r3d/board_cost_weights.txt"
-WSL_MEMORY_REQUIRED_BYTES = 6 * 1024 ** 3
-WINDOWS_MEMORY_REQUIRED_BYTES = 2 * 1024 ** 3
 VARIANTS = ("sponza", "lite", "flat", "fitted", "fitted-full")
 
 
@@ -293,7 +292,7 @@ def _gpu(args, out, work, executor):
     from r3d.bake_fidelity import build_host
     from r3d.cost_model import load
     from functools import partial
-    from r3d.process_budget import PREPARE_BYTES, SMOKE_PREPARE_BYTES
+    from r3d.process_budget import PREPARE_BYTES, SMOKE_PREPARE_BYTES, SMOKE_FIT_BYTES
 
     scene = load_scene(SCENE)
     jobs = [placed_variant(scene, name) for name in ("sponza_fitted", "sponza_fitted_full")]
@@ -306,7 +305,8 @@ def _gpu(args, out, work, executor):
     if args.smoke:
         job = jobs[0]
         executor.submit(smoke_prepare, scene, job, inputs, estimates=SMOKE_PREPARE_BYTES).result()
-        executor.submit(fit_point, {}, work / "fit", SCENE, scene, job, inputs, True, work / "smoke.mesh").result()
+        executor.submit(fit_point, {}, work / "fit", SCENE, scene, job, inputs, True,
+                        work / "smoke.mesh", estimates=SMOKE_FIT_BYTES).result()
         print(f"GPU smoke: eight steps completed; scratch only: {work}")
         return 0
     host = build_host(HOST_SCRIPT, work / "host")
