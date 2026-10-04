@@ -676,6 +676,50 @@ build_confined_gas_pocket(sand_t* g, int x) {
     sand_set(g, x, 2, GAS);
 }
 
+static void
+test_direct_reaction_calls_rearm_confined_blasts(void) {
+    enum { CW = 24, CH = 5, POCKET_COUNT = 6 };
+
+    static const uint32_t seeds[] = {1u, 29u, 97u};
+
+    for (size_t seed = 0; seed < sizeof seeds / sizeof seeds[0]; seed++) {
+        uint8_t* cells = malloc(CW * CH);
+        impulse_t* impulses = malloc((size_t)(CW * CH) * sizeof *impulses);
+        TEST_ASSERT_NOT_NULL(cells);
+        TEST_ASSERT_NOT_NULL(impulses);
+
+        sand_t board;
+        sand_init(&board, cells, CW, CH, seeds[seed]);
+        sand_set_flammability(&board, 255);
+        sand_set_decay(&board, 0);
+        sand_enable_impulses(&board, impulses, CW * CH);
+
+        unsigned blasts[POCKET_COUNT];
+        unsigned explosions[POCKET_COUNT];
+        uint8_t ceilings[POCKET_COUNT];
+        for (int pocket = 0; pocket < POCKET_COUNT; pocket++) {
+            sand_clear(&board);
+            build_confined_gas_pocket(&board, 10);
+            sand_step_reactions(&board);
+            blasts[pocket] = board.confined_blasts_this_step;
+            explosions[pocket] = board.explosions_this_step;
+            ceilings[pocket] = CELL_MATERIAL(sand_at(&board, 10, 1));
+        }
+
+        free(impulses);
+        free(cells);
+
+        for (int pocket = 0; pocket < POCKET_COUNT; pocket++) {
+            TEST_ASSERT_EQUAL_UINT_MESSAGE(1u, blasts[pocket],
+                                           "each reaction call must have its own confined-blast budget");
+            TEST_ASSERT_EQUAL_UINT_MESSAGE(1u, explosions[pocket],
+                                           "the explosion count must describe only the current reaction call");
+            TEST_ASSERT_EQUAL_UINT8_MESSAGE(MAT_FIRE, ceilings[pocket],
+                                            "each pocket must blast through its stone ceiling");
+        }
+    }
+}
+
 static int
 count_remaining_gas(const sand_t* g, int cw, int ch) {
     int remaining = 0;
@@ -2536,6 +2580,7 @@ run_sand_combustion_suite(void) {
     RUN_TEST(test_fire_ignites_an_adjacent_flammable_neighbour);
     RUN_TEST(test_a_confined_gas_pocket_bursts_instead_of_just_catching);
     RUN_TEST(test_a_reaction_driven_board_does_not_read_the_callers_frame);
+    RUN_TEST(test_direct_reaction_calls_rearm_confined_blasts);
     RUN_TEST(test_confined_gas_blasts_chain_without_losing_a_pocket);
     RUN_TEST(test_an_open_gas_pocket_still_just_catches_fire);
     RUN_TEST(test_extinguishing_wins_over_igniting);
