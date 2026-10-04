@@ -388,9 +388,9 @@ channels_of(gfx_color_t c, int out[3]) {
 }
 
 /* Triangles one to five pixels across with a colour and a depth at each
- * corner, so those tested centre by centre carry every plane: drawn as two
- * windows they match the whole draw, and no channel leaves its corners'
- * range. */
+ * corner, the sizes where the one-colour, centre-by-centre and walked paths
+ * meet: drawn as two windows they match the whole draw, and no channel
+ * leaves its corners' range. */
 static void
 test_small_shaded_triangles_keep_their_planes_in_range_in_any_window(void) {
     uint32_t state = 4242u;
