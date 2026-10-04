@@ -125,77 +125,67 @@ and colours come back on full's finer geometry.
 
 ## Fidelity against the source
 
-How far each Sponza bake is from the source model lit per pixel, over the eight
-camera-path poses, and which flat-bake settings get closest. What the numbers
-mean is in [Mesh-Import.md](../../../../../docs/render/Mesh-Import.md#fidelity-against-a-reference);
-the commands, working directory `launcher/`, are in
-[the r3d tools README](../../../../tools/r3d/README.md#fidelity-reference).
-`PY` is the venv's interpreter. The tables here were measured on bakes with
-direct light only (scene ambient 0.06), before indirect light; the current
-bakes' scores are under Indirect light below.
+The source model is lit per pixel at the same camera-path poses as the
+doc images. The generated fidelity table scores the committed bakes against
+that reference. Metric definitions are in
+[Mesh-Import.md](../../../../../docs/render/Mesh-Import.md#fidelity-against-a-reference).
+`doc_images.sh` owns the poses and measurement commands.
 
-```sh
-M=main/apps/render_lab
-H=$M/tools/render_lab_render_host.sh
-tools/anim/sample_tracks.sh --tracks $M/meshes/flythrough_tracks_generated.c:flythrough --every 5000 --until 45000     --poses camera 184 224 0.62 6 > poses.txt
-$PY tools/r3d/reference_render.py $M/meshes/sponza.scene.toml --poses poses.txt --skip 1 --out reference --samples 4
-$PY tools/r3d/bake_fidelity.py $M/meshes/sponza.scene.toml --mesh atrium_flat --script $H     --render-args "--quarter 0 --no-hud --scene sponza-flat --frames 8 --dt 5000"     --reference reference --work scratch     --variant declared= --variant fixed1=samples=fixed:1 --variant fixed4=samples=fixed:4     --variant fixed8=samples=fixed:8 --variant fixed16=samples=fixed:16 --variant fixed32=samples=fixed:32     --variant fixed64=samples=fixed:64 --variant fixed2=samples=fixed:2     --variant min2=samples=auto:2:16:median --variant min4=samples=auto:4:16:median     --variant max4=samples=auto:1:4:median --variant max8=samples=auto:1:8:median     --variant max32=samples=auto:1:32:median --variant area0.25=samples=auto:1:16:median*0.25     --variant area0.5=samples=auto:1:16:median*0.5 --variant area2=samples=auto:1:16:median*2     --variant sky16=sky=16 --variant sky32=sky=32 --variant sky64=sky=64 --variant sky256=sky=256     --variant sky512=sky=512 --variant centroid=place=centroid --variant sun-centre=sun=centre     --variant fixed4-sun-centre=samples=fixed:4,sun=centre
-```
-
-It prints the sweep table below. The smooth and lite rows are the committed
-scenes scored the same way: `sh $H -o host` renders each scene's video
-(`render_lab_render --quarter 0 --no-hud --scene sponza --frames 8 --dt 5000
---video full.avi`, likewise `sponza-lite`) and `render_compare.py --reference-video`
-scores it. The sheet is `--reference-sheet fidelity.png --sheet-frames 2,4` on
-the committed flat render.
-
-| Variant, direct light | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 | Interior ΔE76 |
+<!-- generated: sponza-fidelity sha256=47bbd4c5197e0757e8c3c057068daa2556a2cbbc2994dcaa9f0e9a5c83c1394a -->
+| Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| Full smooth | 6.654 | 21.46 | 0.696 | 13.64 | 5.53 |
-| Lite smooth | 7.541 | 24.83 | 0.651 | 15.76 | 6.22 |
-| Flat, 1 sample per face | 7.495 | 29.46 | 0.645 | 16.25 | 6.08 |
-| Flat, 4 samples per face | 7.072 | 24.43 | 0.658 | 14.91 | 5.81 |
-| Flat, committed (`auto` 1 to 16, median area) | 7.278 | 26.92 | 0.652 | 15.87 | 5.89 |
-| Flat, 16 samples per face | 6.964 | 23.54 | 0.663 | 14.43 | 5.76 |
+| Full smooth | 7.136 | 23.077 | 0.6690 | 15.138 | 5.634 |
+| Lite smooth | 8.367 | 27.692 | 0.6173 | 17.827 | 6.590 |
+| Flat, committed | 8.630 | 31.434 | 0.6080 | 18.613 | 6.735 |
+<!-- /generated: sponza-fidelity -->
 
-Flat against full smooth differs by mean ΔE76 5.54, p95 22.97 and SSIM 0.798:
-the gap flat shading leaves between the two bakes.
+The flat and smooth bakes differ in how colour varies across a face. The
+generated comparison scores the same fidelity poses. The sheet and enlarged
+crops in [The Sponza variants](#the-sponza-variants)
+show where that difference lies.
 
-The flat sweep, sorted by mean ΔE76; `min` and `max` are the `auto` bounds,
-`area` a fraction or multiple of the median face:
+<!-- generated: sponza-flat-smooth sha256=3e24b9ca98d167c006257a4a59b16d97aa4be2327c593e97ff9d67e1664f42a3 -->
+| Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
+|---|---:|---:|---:|---:|---:|
+| Flat against smooth, fidelity poses | 7.044 | 26.330 | 0.7308 | 15.081 | 5.939 |
+<!-- /generated: sponza-flat-smooth -->
 
-| Setting | Mean ΔE76 | p95 ΔE76 | Luma SSIM | Edge ΔE76 |
-|---|---:|---:|---:|---:|
-| fixed 16 | 6.964 | 23.54 | 0.663 | 14.43 |
-| fixed 64 | 6.968 | 23.45 | 0.663 | 14.41 |
-| fixed 32 | 6.973 | 23.51 | 0.663 | 14.39 |
-| fixed 8 | 7.014 | 23.82 | 0.660 | 14.61 |
-| min 4 | 7.060 | 24.41 | 0.659 | 14.90 |
-| fixed 4, sun centre only | 7.070 | 24.73 | 0.659 | 15.21 |
-| fixed 4 | 7.072 | 24.43 | 0.658 | 14.91 |
-| area 0.25 | 7.121 | 24.73 | 0.656 | 15.11 |
-| min 2 | 7.158 | 25.41 | 0.657 | 15.33 |
-| area 0.5 | 7.238 | 25.68 | 0.653 | 15.55 |
-| fixed 2 | 7.248 | 26.21 | 0.654 | 15.41 |
-| max 8 | 7.271 | 26.94 | 0.652 | 15.87 |
-| sky 512 | 7.273 | 26.90 | 0.653 | 15.86 |
-| max 32 | 7.277 | 26.92 | 0.652 | 15.87 |
-| committed (min 1, max 16, area 1, sky 128) | 7.278 | 26.92 | 0.652 | 15.87 |
-| sky 256 | 7.285 | 26.91 | 0.653 | 15.86 |
-| max 4 | 7.290 | 27.02 | 0.652 | 15.88 |
-| sky 64 | 7.383 | 26.95 | 0.651 | 15.90 |
-| area 2 | 7.400 | 28.66 | 0.648 | 16.16 |
-| sun centre only | 7.451 | 28.14 | 0.648 | 16.74 |
-| centroid placement (any count) | 7.505 | 29.70 | 0.644 | 16.33 |
-| sky 32 | 7.539 | 26.96 | 0.650 | 15.94 |
-| sky 16 | 7.935 | 27.05 | 0.644 | 16.00 |
+The flat sampling sweep re-bakes the current scene over the same geometry
+and scores it against the same reference. Rows are sorted by mean error.
+Labels beginning with min or max change the auto bounds; area scales the
+median face area; sky changes the sky-ray count. Sampling changes bake
+quality without adding work to the runtime renderer.
 
-Sixteen fixed samples per face take the committed bake's mean from 7.278 to
-6.964 and its p95 from 26.92 to 23.54, at no cost at run time: the mesh and its
-frame cost are the same. They hold edge error to 14.43 against the smooth
-bake's 13.64.
+<!-- generated: sponza-flat-sampling sha256=080a0e36f09e92f8c608b293bba43e4caef72b8b5d2349c406712716839b184f -->
+| Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
+|---|---:|---:|---:|---:|---:|
+| fixed32 | 7.963 | 26.744 | 0.6297 | 16.473 | 6.360 |
+| fixed64 | 7.989 | 26.811 | 0.6291 | 16.465 | 6.393 |
+| fixed16 | 8.019 | 26.793 | 0.6276 | 16.555 | 6.411 |
+| fixed8 | 8.092 | 27.387 | 0.6251 | 16.707 | 6.465 |
+| fixed4 | 8.192 | 28.291 | 0.6213 | 17.078 | 6.519 |
+| fixed4-sun-centre | 8.194 | 28.394 | 0.6218 | 17.192 | 6.499 |
+| min4 | 8.201 | 28.213 | 0.6211 | 17.083 | 6.528 |
+| area0.25 | 8.201 | 28.175 | 0.6216 | 17.282 | 6.479 |
+| area0.5 | 8.326 | 29.245 | 0.6176 | 17.917 | 6.508 |
+| min2 | 8.403 | 29.433 | 0.6152 | 17.743 | 6.640 |
+| fixed2 | 8.525 | 29.856 | 0.6118 | 17.914 | 6.752 |
+| sky512 | 8.603 | 31.424 | 0.6084 | 18.608 | 6.704 |
+| sky256 | 8.620 | 31.427 | 0.6082 | 18.611 | 6.724 |
+| max4 | 8.621 | 31.449 | 0.6081 | 18.609 | 6.726 |
+| max32 | 8.628 | 31.434 | 0.6079 | 18.614 | 6.733 |
+| declared | 8.630 | 31.434 | 0.6080 | 18.613 | 6.735 |
+| max8 | 8.637 | 31.456 | 0.6077 | 18.614 | 6.743 |
+| sun-centre | 8.662 | 31.653 | 0.6076 | 18.894 | 6.723 |
+| sky64 | 8.685 | 31.429 | 0.6081 | 18.617 | 6.799 |
+| area2 | 8.801 | 32.162 | 0.6068 | 18.976 | 6.873 |
+| sky32 | 8.808 | 31.389 | 0.6061 | 18.635 | 6.941 |
+| centroid | 8.825 | 32.581 | 0.6016 | 18.887 | 6.917 |
+| fixed1 | 8.874 | 32.989 | 0.6002 | 19.004 | 6.952 |
+| sky16 | 9.148 | 31.438 | 0.6018 | 18.646 | 7.338 |
+<!-- /generated: sponza-flat-sampling -->
 
-One sheet of two poses of the committed flat bake, left to right the reference,
+The sheet of the committed flat bake, left to right the reference,
 the bake, the ΔE heatmap and the reference's edge pixels (magenta), with the
 heatmap's scale below. The error sits at lit arch edges, shadow boundaries and
 the foreground drapery. `doc_images.sh` regenerates the sheet.
@@ -562,13 +552,12 @@ against the chosen mesh, is `render_compare.py --video` of their
 
 ## Indirect light
 
-The Sponza scene's `[bake] indirect = { bounces = 2, rays = 64,
-cache_samples = 1 }` is described in
+The Sponza scene's bake-indirect settings are recorded in
+`meshes/sponza.scene.toml` and described in
 [Scene-Files.md](../../../../../docs/render/Scene-Files.md#bake-indirect). It
 lifts the shadowed arcade ceilings and the sides of the columns the sun does
 not reach, and tints a column next to a banner with the banner's colour. The
-three meshes keep their triangle budgets and cost the same to draw. The scene's
-ambient light is 0.03.
+baked variants draw precomputed colours.
 
 The cache is validated in linear light by the closed diffuse furnace and
 red-wall Cornell fixtures in
@@ -586,30 +575,29 @@ remain close to black. The source reference resolves those local changes more
 finely than the vertex-colour mesh, so a per-pixel reference is the comparison
 for a suspected colour-bleed loss.
 
-How far each bake is from the source lit per pixel with the same bounces, over
-the same eight poses as above. Mean ΔE76, p95 ΔE76 and luma SSIM; the
-direct-light bakes are the same scene with `[bake] indirect` removed:
+The generated table scores the direct and indirect bakes against the source
+lit per pixel with the scene's indirect light, at the same poses as the
+fidelity sheet. Direct-light counterparts are rebuilt from the current scene
+with its bake indirect field removed. The reference resolves bounce detail
+finer than a triangle, which contributes to the remaining error.
 
-| Bake | Against the indirect reference |
-|---|---|
-| Full smooth, direct light | 8.507, 21.96, 0.680 |
-| Full smooth, two bounces | 6.645, 21.03, 0.684 |
-| Lite smooth, direct light | 9.489, 26.65, 0.629 |
-| Lite smooth, two bounces | 7.801, 25.19, 0.638 |
-| Flat, direct light | 9.294, 28.99, 0.634 |
-| Flat, two bounces | 7.680, 26.17, 0.623 |
+<!-- generated: sponza-indirect sha256=95d1544c60bde8e166ede16253b2ec108e2a574917ce46450f32d47041268817 -->
+| Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
+|---|---:|---:|---:|---:|---:|
+| Full smooth, indirect light | 7.136 | 23.077 | 0.6690 | 15.138 | 5.634 |
+| Lite smooth, indirect light | 8.367 | 27.692 | 0.6173 | 17.827 | 6.590 |
+| Flat, indirect light | 8.630 | 31.434 | 0.6080 | 18.613 | 6.735 |
+| Full smooth, direct light | 9.629 | 24.368 | 0.6617 | 16.481 | 8.351 |
+| Lite smooth, direct light | 10.682 | 29.787 | 0.6087 | 19.218 | 9.087 |
+| Flat, direct light | 10.927 | 35.947 | 0.6164 | 20.493 | 9.138 |
+<!-- /generated: sponza-indirect -->
 
-The indirect reference is the ground truth for a bake that carries bounce
-light, and the two-bounce bakes are 1.6 to 1.9 ΔE nearer to it than the direct
-bakes. The reference resolves bounce detail finer than a triangle, which is the
-error that remains.
+The reference beside the smooth bake with direct and indirect light, each
+bake with its ΔE heatmap against the reference and the reference's edge pixels
+beside it. The error stays at silhouettes and
+shadow edges; the generated table measures their contribution.
 
-The reference, the smooth bake with direct light only and the smooth bake with
-two bounces at two poses, each bake with its ΔE heatmap against the reference
-and the reference's edge pixels beside them. The error stays at silhouettes and
-shadow edges; the bounces take the mean down by about a fifth.
-
-![Reference, direct-light bake and two-bounce bake, with error heatmaps](../../../../../docs/images/render/bake-indirect-compare.png)
+![Reference, direct-light bake and indirect bake, with error heatmaps](../../../../../docs/images/render/bake-indirect-compare.png)
 
 The places the two bakes differ most, the reference above them: a banner's
 colour on the column beside it, and the lit ceiling.
@@ -617,9 +605,8 @@ colour on the column beside it, and the lit ceiling.
 ![Where bounce light changes the picture](../../../../../docs/images/render/bake-indirect-crops.png)
 
 `doc_images.sh` regenerates the images, baking the scene without `[bake] indirect`
-for the direct-light side. It renders the source reference with and without
-the scene's `[bake] indirect` before `render_compare.py` makes the sheets and
-crops.
+for the direct-light side. The source reference carries the scene's indirect light; `render_compare.py`
+makes the sheets and crops against that reference.
 
 ### Fitted variants against indirect light
 
@@ -683,21 +670,19 @@ heatmap against that:
 
 ![Physical reference and each look's own, with the bakes and their error heatmaps](../../../../../docs/images/render/bake-indirect-look.png)
 
-Over five poses, mean ΔE76 against the physical reference and against the
-look's own, then p95 and luma SSIM against the physical one:
+The generated table scores each look against both references over the
+doc-image poses. The physical-reference columns include the look's difference
+from physical lighting; the own-reference column isolates bake fidelity.
 
-| Look | Mean ΔE76, physical | Mean ΔE76, own | p95, physical | SSIM, physical |
+<!-- generated: sponza-indirect-look sha256=ce3114dd909c17e9c9dcb7ecc95358d58ab5f37192a6074827e029b1e7689479 -->
+| Look | Mean dE76, physical | Mean dE76, own | p95, physical | SSIM, physical |
 |---|---:|---:|---:|---:|
-| Direct light only | 8.76 | | 23.14 | 0.675 |
-| Intensity 1 | 6.80 | 6.80 | 22.14 | 0.679 |
-| Intensity 2 | 7.60 | 7.25 | 22.45 | 0.667 |
-| Intensity 3 | 9.25 | 7.64 | 23.63 | 0.648 |
-| Albedo boost 2 | 8.36 | 7.45 | 23.03 | 0.656 |
-
-The error against the physical reference is the look plus the bake; against the
-look's own reference it is the bake alone, so the gap between the two columns is
-what the look itself costs: most of intensity 3's rise from 6.80 to 9.25 is that
-gap (1.6), the bake adding the other 0.8.
+| Direct light only | 9.629 | | 24.368 | 0.6617 |
+| intensity 1 | 7.136 | 7.136 | 23.077 | 0.6690 |
+| intensity 2 | 8.182 | 7.667 | 24.260 | 0.6532 |
+| intensity 3 | 10.258 | 8.110 | 26.111 | 0.6269 |
+| albedo boost 2 | 8.928 | 7.869 | 24.804 | 0.6388 |
+<!-- /generated: sponza-indirect-look -->
 
 ## Sponza poses
 
