@@ -17,18 +17,6 @@
 *.bin binary
 *.mesh binary
 
-launcher/main/apps/*/meshes/*/**/*.obj filter=lfs diff=lfs merge=lfs -text !eol
-launcher/main/apps/*/meshes/*/**/*.png filter=lfs diff=lfs merge=lfs -text !eol
-launcher/main/apps/*/meshes/*/**/*.jpg filter=lfs diff=lfs merge=lfs -text !eol
-launcher/main/apps/*/meshes/*/**/*.jpeg filter=lfs diff=lfs merge=lfs -text !eol
-launcher/main/apps/*/meshes/*/**/*.bmp filter=lfs diff=lfs merge=lfs -text !eol
-launcher/main/apps/*/meshes/*/**/*.tga filter=lfs diff=lfs merge=lfs -text !eol
-launcher/main/apps/*/meshes/*/**/*.gif filter=lfs diff=lfs merge=lfs -text !eol
-launcher/main/apps/*/meshes/*/**/*.tif filter=lfs diff=lfs merge=lfs -text !eol
-launcher/main/apps/*/meshes/*/**/*.tiff filter=lfs diff=lfs merge=lfs -text !eol
-launcher/main/apps/*/meshes/*/**/*.webp filter=lfs diff=lfs merge=lfs -text !eol
-launcher/main/apps/*/meshes/*/**/*.ppm filter=lfs diff=lfs merge=lfs -text !eol
-launcher/main/apps/*/meshes/*/**/*.pgm filter=lfs diff=lfs merge=lfs -text !eol
-launcher/main/apps/*/meshes/*/**/*.pbm filter=lfs diff=lfs merge=lfs -text !eol
-launcher/main/apps/*/meshes/*/**/*.pnm filter=lfs diff=lfs merge=lfs -text !eol
-launcher/main/apps/*/meshes/*/**/*.dds filter=lfs diff=lfs merge=lfs -text !eol
+launcher/main/apps/*/meshes/*/** filter=lfs diff=lfs merge=lfs -text !eol
+launcher/main/apps/*/meshes/*/**/*.mtl !filter !diff !merge text eol=lf
+launcher/main/apps/*/meshes/*/**/*.txt !filter !diff !merge text eol=lf
