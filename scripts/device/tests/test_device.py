@@ -1176,7 +1176,7 @@ class TestFilterRunTests(unittest.TestCase):
         chunks = [b"\nRUNSUITE_COMPLETE name=sand fire found=0\n"]
         _, error, _, _ = self.run_filtered(chunks, ["fire"])
         self.assertIsInstance(error, device.TestFilterError)
-        self.assertRegex(str(error), "predates --test")
+        self.assertRegex(str(error), "^this image predates --test")
 
     def test_a_filtered_run_with_no_completion_line_is_a_filter_error(self):
         # An image that predates the filter drops a long request whole.

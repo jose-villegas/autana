@@ -31,8 +31,9 @@ from pathlib import Path
 RESULT_RE = re.compile(r"^(?P<file>\S*?):\d+:(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
 # The line a RUNSUITE ends with, read here for the board (device.py) and for
 # QEMU (launcher/test/qemu_run.py). An image that predates --test prints no
-# selected=/unmatched=.
-SUITE_COMPLETE_RE = re.compile(r"RUNSUITE_COMPLETE name=(?P<name>\S+) found=(?P<found>\d)"
+# selected=/unmatched=, and echoes a filtered request whole as the name
+# ("name=sand fire found=0"), so the name runs to the first " found=".
+SUITE_COMPLETE_RE = re.compile(r"RUNSUITE_COMPLETE name=(?P<name>.+?) found=(?P<found>\d)"
                                r"(?: selected=(?P<selected>\d+) unmatched=(?P<unmatched>\d+))?")
 # Searched, not anchored: a real line carries the ESP-IDF log prefix
 # ("I (32139) device_tests: PERF TARGET full-size step: ..."), and a target's
