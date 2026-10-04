@@ -34,7 +34,8 @@ mesh. Nothing here runs on the board.
 
 The environment is pinned in [requirements.txt](requirements.txt), and the
 simplifier needs the meshoptimizer submodule and a host C++ compiler (`CXX`,
-else `c++` or `g++`). From `launcher/`:
+else `c++` or `g++`). Git LFS is a prerequisite for source bakes on Windows and Linux.
+From `launcher/`:
 
 ```sh
 git submodule update --init ../third_party/upstream/meshoptimizer
@@ -43,18 +44,18 @@ tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.tx
 ```
 
 An import's OBJ, MTL and textures live in a subdirectory beside its
-`.import.toml` under an app's `meshes/` directory, matching
-`launcher/main/apps/*/meshes/*/**`.
+`.import.toml` under an app's `meshes/` directory.
 Binary source files use Git LFS; MTL and attribution files stay text.
 Firmware clones exclude source assets through `.lfsconfig`. Before a source
 bake or reference render, run this from the repository root:
 
 ```sh
-git lfs pull --include="launcher/main/apps/*/meshes/*/**" --exclude=""
+git lfs pull --exclude=""
 ```
 
 The empty exclude clears the clone's default exclusion for this pull.
-Doc workflows cache these LFS objects by their content identifiers.
+The hosted doc workflow caches these LFS objects by their content identifiers;
+the self-hosted GPU runner retains its local LFS objects.
 
 **`rebake.py` or a full import.** Rebake a `.mesh` when only clustering
 or data format changes: it reads its triangles and colours back and rewrites

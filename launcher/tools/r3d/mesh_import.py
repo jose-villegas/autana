@@ -27,7 +27,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log  # noqa: E402
 from r3d.geometry import compact, corner_normals, weld_keeping  # noqa: E402
-from r3d.import_settings import SettingsError, albedo_jobs, load_import_settings, load_scene  # noqa: E402
+from r3d.import_settings import (  # noqa: E402
+    SettingsError, albedo_jobs, lfs_pointer_oid, load_import_settings, load_scene, source_files,
+)
 from r3d.light import (  # noqa: E402
     drop_masked,
     build_indirect_cache,
@@ -58,6 +60,9 @@ def vertex_spacing(vpos, vtris):
 
 
 def load_source(settings, texture_dtype=np.float64):
+    for path in source_files(settings):
+        if lfs_pointer_oid(path) is not None:
+            raise SettingsError(f'{path}: Git LFS source is not pulled; run git lfs pull --exclude=""')
     obj_path = settings.source["path"]
     materials = load_mtl(obj_path.with_suffix(".mtl"))
     p, uv, tri_v, tri_t, tri_m, names = load_obj(obj_path)

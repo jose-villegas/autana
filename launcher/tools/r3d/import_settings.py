@@ -311,27 +311,35 @@ def load_import_settings(path):
 
 def source_files(settings):
     """The OBJ, its sibling MTL and every texture the loader reads."""
-    from r3d.obj import load_mtl
+    from r3d.obj import TEXTURE_KEYS, load_mtl
 
     path = settings.source["path"]
     material = path.with_suffix(".mtl")
     files = {path, material}
     for entry in load_mtl(material).values():
-        for name in ("map_Kd", "map_d"):
+        for name in TEXTURE_KEYS:
             if name in entry:
                 files.add((path.parent / entry[name]).resolve())
     return sorted(files)
+
+
+def lfs_pointer_oid(path) -> bytes | None:
+    with path.open("rb") as source:
+        lines = source.read(1024).splitlines()
+    if not lines or lines[0] != b"version https://git-lfs.github.com/spec/v1":
+        return None
+    oids = [line.removeprefix(b"oid sha256:") for line in lines if line.startswith(b"oid sha256:")]
+    if len(oids) != 1 or re.fullmatch(rb"[0-9a-f]{64}", oids[0]) is None:
+        raise SettingsError(f"{path}: malformed Git LFS pointer; run git lfs pull --exclude=\"\"")
+    return oids[0]
 
 
 def content_checksum(path):
     """An LFS pointer and its hydrated contents identify the same source."""
     import hashlib
 
-    content = path.read_bytes()
-    if content.startswith(b"version https://git-lfs.github.com/spec/v1\n"):
-        return next(line.removeprefix(b"oid sha256:") for line in content.splitlines()
-                    if line.startswith(b"oid sha256:"))
-    return hashlib.sha256(content).hexdigest().encode()
+    oid = lfs_pointer_oid(path)
+    return oid if oid is not None else hashlib.sha256(path.read_bytes()).hexdigest().encode()
 
 
 def source_digest(settings):

@@ -942,6 +942,46 @@ class FittedStampTests(unittest.TestCase):
 
 
 class LocalSourceTests(unittest.TestCase):
+    def test_lfs_pointer_oid_and_malformed_pointers(self):
+        from r3d.import_settings import content_checksum, lfs_pointer_oid
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "m.obj"
+            path.write_bytes(b"geometry")
+            self.assertIsNone(lfs_pointer_oid(path))
+            oid = hashlib.sha256(path.read_bytes()).hexdigest().encode()
+            for newline in (b"\n", b"\r\n"):
+                with self.subTest(newline=newline):
+                    path.write_bytes(newline.join((b"version https://git-lfs.github.com/spec/v1",
+                                                   b"oid sha256:" + oid, b"size 8", b"")))
+                    self.assertEqual(lfs_pointer_oid(path), oid)
+                    self.assertEqual(content_checksum(path), oid)
+            for record in (b"", b"oid sha256:invalid", b"oid sha256:" + oid + b"\noid sha256:" + oid):
+                with self.subTest(record=record):
+                    path.write_bytes(b"version https://git-lfs.github.com/spec/v1\n" + record + b"\nsize 8\n")
+                    with self.assertRaisesRegex(SettingsError, r"m\.obj.*malformed.*LFS"):
+                        content_checksum(path)
+
+    @unittest.skipIf(np is None, "the r3d environment is not installed")
+    def test_load_source_rejects_unpulled_files_before_loading(self):
+        pointer = b"version https://git-lfs.github.com/spec/v1\noid sha256:" + b"a" * 64 + b"\nsize 8\n"
+        for name in ("m.obj", "m.mtl", "colour.png", "alpha.png"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                settings = load_import_settings(write_import(directory))
+                root = pathlib.Path(directory)
+                (root / "m.mtl").write_text("newmtl m\nmap_Kd colour.png\nmap_d alpha.png\n")
+                for texture in ("colour.png", "alpha.png"):
+                    (root / texture).write_bytes(b"hydrated texture")
+                (root / name).write_bytes(pointer)
+                with mock.patch.object(mesh_import, "load_obj") as load_obj, \
+                        mock.patch.object(mesh_import, "load_textures") as load_textures:
+                    with self.assertRaises(SettingsError) as error:
+                        mesh_import.load_source(settings)
+                    self.assertIn(str(root / name), str(error.exception))
+                    self.assertIn('git lfs pull --exclude=""', str(error.exception))
+                    load_obj.assert_not_called()
+                    load_textures.assert_not_called()
+
     def test_path_is_relative_to_import(self):
         with tempfile.TemporaryDirectory() as directory:
             path = write_import(directory, source='[source]\npath = "asset/m.obj"\ncredit = "c"\n')

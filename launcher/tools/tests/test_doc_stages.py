@@ -3,6 +3,8 @@ import importlib.util
 import hashlib
 import json
 import tempfile
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -22,6 +24,32 @@ class DocStagesTests(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.tmp = Path(directory.name)
+
+    def test_current_stamp_needs_no_numeric_dependencies(self):
+        launcher = self.tmp / "launcher"
+        launcher.mkdir()
+        (launcher / "m.import.toml").write_text('[source]\npath = "m.obj"\ncredit = "c"\n'
+                                               '[output]\ndirectory = "."\nname = "mesh"\n')
+        (launcher / "m.obj").write_text("geometry")
+        (launcher / "m.mtl").write_text("newmtl m\nmap_Kd texture.png\nmap_d alpha.png\n")
+        (launcher / "texture.png").write_bytes(b"texture")
+        (launcher / "alpha.png").write_bytes(b"alpha")
+        code = """
+import importlib.util
+from pathlib import Path
+import sys
+from unittest import mock
+sys.modules.update(numpy=None, PIL=None)
+spec = importlib.util.spec_from_file_location("doc_stages", sys.argv[1])
+stages = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(stages)
+with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
+        stages.subprocess, "check_output", return_value=b"launcher/m.import.toml\\0"):
+    assert len(stages.current_stamp()) == 64
+"""
+        result = subprocess.run([sys.executable, "-c", code, str(PATH), str(self.tmp)],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_capture_requires_matching_commit(self):
         capture = self.tmp / "capture.txt"

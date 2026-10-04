@@ -28,16 +28,15 @@ for a plain albedo import.
 
 ```toml
 [source]
-url = "https://example.invalid/hall.zip"
-sha256 = "..."                   # the download is checked against it
-path = "hall.obj"                # inside the archive
-cache = "hall"
+path = "hall/hall.obj"           # relative to this file
 credit = "Hall, by A. Modeller, CC BY 4.0."
 
 [output]
 directory = ".."
 name = "hall"                    # the mesh's asset id in the pack
 ```
+
+See [source](Mesh-Import.md#source) for where source files live and how to pull them with Git LFS.
 
 With only these it imports the mesh as authored: its triangles, with each
 vertex coloured by its material's albedo and no light. Geometry options such as
