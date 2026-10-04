@@ -36,9 +36,12 @@ It needs host C and C++ compilers, Python with Pillow and numpy, and ffmpeg
 ```sh
 git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 ```
+
 An app's `tools/doc_images.sh` may also need the packages in
 `launcher/tools/r3d/requirements.txt` and the source model that the import fetches,
 SHA-256 checked, into `launcher/tools/r3d/.cache`; the workflow caches it.
+A render failure prints the failed command and the tails of its work logs,
+including logs inside bake directories.
 CPU `--check` renders into `launcher/tools/results/doc_images/out/cpu/`
 and compares decoded pixels with `compare_images.py`, never bytes: another
 ffmpeg or Pillow writes different GIF bytes for the same frames. It prints
@@ -57,10 +60,10 @@ requests".
 | `ui/*.png` | the UI toolkit's gallery views, portrait and landscape (`ui_widgets_render_host.sh`) |
 
 Measured CPU tables are refreshed with the images. App scripts write Markdown
-to out/tables/NAME.md. The shared writer replaces the body between a
-`<!-- generated: NAME sha256=HASH -->` start and a
-`<!-- /generated: NAME -->` end, preserving the document's other text and line
-endings. Names use lowercase letters, digits and hyphens and are unique
+to out/tables/NAME.md. The shared writer replaces the body between an HTML
+comment containing `generated: NAME sha256=HASH` and one containing
+`/generated: NAME`, preserving the document's other text and line endings.
+Names use lowercase letters, digits and hyphens and are unique
 across documents. The SHA-256 covers the body,
 including its boundary newlines, with CRLF normalized to LF.
 `scripts/gates/check_doc_generated.py` discovers tracked Markdown blocks and

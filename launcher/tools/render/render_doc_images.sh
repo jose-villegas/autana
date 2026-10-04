@@ -24,7 +24,7 @@
 # per image and "changed <doc>#<name>" per changed table, and exits 1 when
 # any changed. An image in the folder that no script made is reported as
 # "orphan" and also exits 1. Exit 2 means the images or tables could not be
-# made or compared; the tail of each render log is printed.
+# made or compared; failed commands and render-log tails are printed.
 #
 # App scripts also write out/tables/NAME.md. generated_blocks.py rewrites
 # the matching named blocks; --check compares them without writing.
@@ -34,6 +34,18 @@
 # changed; CI renders on Linux and is the authority.
 
 set -eu
+
+run() {
+    if "$@"; then
+        return 0
+    else
+        code=$?
+        printf '%s: failed (exit %s):' "$0" "$code" >&2
+        printf ' %s' "$@" >&2
+        printf '\n' >&2
+        return "$code"
+    fi
+}
 
 TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$TOOLS_DIR/../../.." && pwd)
@@ -60,15 +72,18 @@ comparing=0
 finish() {
     code=$?
     if [ "$comparing" = 0 ] && [ "$code" != 0 ]; then
-        for log in "$WORK"/*.log "$WORK"/*/*.log; do
-            [ -f "$log" ] || continue
-            echo "--- $log" >&2
-            tail -n 20 "$log" >&2
-        done
+        if [ -d "$WORK" ]; then
+            find "$WORK" -type f -name '*.log' -exec sh -c '
+                for log do
+                    echo "--- $log" >&2
+                    tail -n 20 "$log" >&2
+                done
+            ' sh {} +
+        fi
         exit 2
     fi
 }
-trap finish EXIT
+trap finish 0
 
 # The one orphan report: --check prints it for an image no run made, --orphans
 # for an image no script names.
@@ -111,12 +126,12 @@ if ! command -v ffmpeg > /dev/null 2>&1; then
     exit 2
 fi
 
-rm -rf "$WORK" "$OUT"
-mkdir -p "$WORK" "$OUT/overview" "$OUT/ui"
+run rm -rf "$WORK" "$OUT"
+run mkdir -p "$WORK" "$OUT/overview" "$OUT/ui"
 
 # The launcher lists the release build's apps, read from the tree.
 L=$WORK/launcher_home
-sh launcher/tools/render/scenes/launcher_home_render_host.sh -o "$L" > "$WORK/launcher_home.log"
+run sh launcher/tools/render/scenes/launcher_home_render_host.sh -o "$L" > "$WORK/launcher_home.log"
 set --
 for dir in launcher/main/apps/*/; do
     [ -f "${dir}development_only.cmake" ] && continue
@@ -131,23 +146,23 @@ for dir in launcher/main/apps/*/; do
         IFS=$old_ifs
     done
 done
-"$L/launcher_home_render" --quarter 1 "$@" -o "$L/release.bmp" 2> "$WORK/launcher_home_png.log"
-"$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' \
+run "$L/launcher_home_render" --quarter 1 "$@" -o "$L/release.bmp" 2> "$WORK/launcher_home_png.log"
+run "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' \
     "$L/release.bmp" "$OUT/overview/launcher-home.png"
 # The board rocking either way.
-"$L/launcher_home_render" --quarter 1 --tilt-sweep "$@" --frames 250 --dt 16 \
+run "$L/launcher_home_render" --quarter 1 --tilt-sweep "$@" --frames 250 --dt 16 \
     -o "$L/sweep.bmp" --video "$L/sweep.avi" 2> "$WORK/launcher_home_sweep.log"
-ffmpeg -hide_banner -loglevel error -y -i "$L/sweep.avi" \
+run ffmpeg -hide_banner -loglevel error -y -i "$L/sweep.avi" \
     -vf "fps=15,palettegen=stats_mode=diff" "$L/sweep-palette.png"
-ffmpeg -hide_banner -loglevel error -y -i "$L/sweep.avi" -i "$L/sweep-palette.png" \
+run ffmpeg -hide_banner -loglevel error -y -i "$L/sweep.avi" -i "$L/sweep-palette.png" \
     -filter_complex "[0:v]fps=15[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" \
     -loop 0 "$OUT/overview/launcher-home.gif"
 
 # The UI toolkit's gallery views.
 U=$WORK/ui_widgets
-sh launcher/tools/render/scenes/ui_widgets_render_host.sh -o "$U" > "$WORK/ui_widgets.log"
+run sh launcher/tools/render/scenes/ui_widgets_render_host.sh -o "$U" > "$WORK/ui_widgets.log"
 for bmp in "$U"/*.bmp; do
-    "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' \
+    run "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' \
         "$bmp" "$OUT/ui/$(basename "$bmp" .bmp).png"
 done
 
@@ -155,7 +170,7 @@ done
 for script in launcher/main/apps/*/tools/doc_images.sh; do
     [ -f "$script" ] || continue
     app=$(basename "$(dirname "$(dirname "$script")")")
-    sh "$script" "$OUT" "$WORK/$app"
+    run bash "$script" "$OUT" "$WORK/$app"
 done
 
 table_status=0
@@ -169,7 +184,7 @@ fi
 if [ "$CHECK" = 0 ]; then
     for dir in "$OUT"/*; do
         [ "$(basename "$dir")" = tables ] && continue
-        cp -R "$dir" "$IMAGES"/
+        run cp -R "$dir" "$IMAGES"/
     done
     echo "wrote $(find "$OUT" -type f ! -path "*/tables/*" | wc -l | tr -d ' ') images to $IMAGES"
     exit 0
