@@ -65,14 +65,15 @@ def load_obj(path):
 class Texture:
     """A linear-light mip chain, sampled bilinearly with wrap-around."""
 
-    def __init__(self, path, alpha_path=None):
+    def __init__(self, path, alpha_path=None, dtype=np.float64):
+        """`dtype` float32 halves a large scene's footprint where only level 0 is read; the bake keeps float64."""
         image = Image.open(path).convert("RGBA")
-        rgba = np.asarray(image, dtype=np.float64) / 255.0
+        rgba = np.asarray(image, dtype=dtype) / 255.0
         rgb = rgba[..., :3] ** 2.2
         alpha = rgba[..., 3:4]
         if alpha_path is not None:
             mask = Image.open(alpha_path).convert("L").resize(image.size)
-            alpha = np.asarray(mask, dtype=np.float64)[..., None] / 255.0
+            alpha = np.asarray(mask, dtype=dtype)[..., None] / 255.0
         level = np.concatenate([rgb, alpha], axis=2)
         self.levels = [level]
         while min(level.shape[0], level.shape[1]) > 1:
@@ -107,13 +108,13 @@ class Texture:
         return out
 
 
-def load_textures(root, materials, names):
+def load_textures(root, materials, names, dtype=np.float64):
     textures = []
     for name in names:
         m = materials.get(name, {})
         if "map_Kd" in m:
             alpha = os.path.join(root, m["map_d"]) if "map_d" in m else None
-            textures.append(Texture(os.path.join(root, m["map_Kd"]), alpha))
+            textures.append(Texture(os.path.join(root, m["map_Kd"]), alpha, dtype))
         else:
             textures.append(None)
     return textures
