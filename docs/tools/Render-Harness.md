@@ -88,31 +88,30 @@ It opens or updates "docs: refresh GPU-rendered images" on the separate
 memory use. The stage requires 6 GiB MemAvailable inside WSL and 2 GiB
 available on the Windows host.
 
-Independent fits use fresh spawned processes. Lite fits are submitted when
-lite references are ready; the full prepare follows when its memory budget
-is available. Measurements, tables and sheets consume results in recipe
-order. Sweep result records remain the resume markers. A failed fit reports
-its worker log, and the stage joins its workers before exiting.
+Prepare, fits and measurements use fresh spawned workers. Both prepares
+are submitted together; a variant's fits become eligible when its prepare
+finishes. Measurements, tables and sheets consume results in recipe order.
+Sweep result records remain the resume markers. Worker failures print their
+tracebacks, fail the stage and join the workers before exit.
 
-Embree reference poses use a fork pool after source and indirect-cache
-loading, sharing that state through copy-on-write. Each pose retains its
-own seeded random generator. Bake and visibility sampling remain serial.
-The pose pool falls back to serial rendering on platforms without fork.
+Embree reference poses fork after source and indirect-cache loading,
+sharing that state through copy-on-write. Each pose retains its own seeded
+random generator. Bake and visibility sampling remain serial. Platforms
+without fork render poses serially.
 
 Admission uses available WSL, Windows, GPU and cgroup memory, with CPU
-affinity as the upper bound. The resource floors and conservative worker
-reservations are defined in
-[`process_budget.py`](../../launcher/tools/r3d/process_budget.py).
-The floors preserve 1 GiB in WSL, 3 GiB on Windows, 512 MiB on the GPU and
-256 MiB within a capped cgroup. Pending fits reserve their full estimates;
-pose scratch memory scales with the supersampled ray count. Admission
-fails after a bounded wait when a worker cannot fit. These reservations
-require validation against peak worker memory on the target runner.
+affinity as the upper bound. Floors and worker estimates live in
+[`process_budget.py`](../../launcher/tools/r3d/process_budget.py): 1 GiB in
+WSL, 3 GiB on Windows, 512 MiB on the GPU and 256 MiB within a capped
+cgroup. Active workers reserve only estimated allocations that are not yet
+resident. Admission waits while workers run and fails if no worker is
+running and the next task cannot fit.
 
 `launcher/tools/render/verify_gpu_concurrency.py` records repeat smoke
 snapshots, compares snapshot trees, checks serial versus pooled references,
 and compares two serial eight-step fits with two scheduled fits. Its
 `--inputs` is a smoke reference directory; its `--out` is scratch storage.
+Reference mode accepts `--size WIDTH HEIGHT` for a larger pose slice.
 
 The rest belong to apps, and each app's `tools/README.md` says what its
 images show.

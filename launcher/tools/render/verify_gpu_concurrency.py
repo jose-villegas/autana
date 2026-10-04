@@ -98,6 +98,21 @@ def compare(left, right):
                     row[field + "_shape"] = [list(x.shape), list(y.shape)]
                     if x.shape == y.shape and x.size:
                         row[field + "_maximum_absolute_delta"] = float(np.max(np.abs(x.astype(float) - y.astype(float))))
+                from scipy.spatial import cKDTree
+                row["position_hausdorff_quantised"] = float(max(
+                    cKDTree(aa.pos).query(bb.pos)[0].max(), cKDTree(bb.pos).query(aa.pos)[0].max()))
+                def triangles(mesh):
+                    return sorted(tuple(sorted((tuple(mesh.pos[index]), tuple(mesh.rgb[index])) for index in tri))
+                                  for tri in mesh.tris)
+                ta, tb = triangles(aa), triangles(bb)
+                if len(ta) == len(tb):
+                    pa = np.array([[corner[0] for corner in tri] for tri in ta])
+                    pb = np.array([[corner[0] for corner in tri] for tri in tb])
+                    row["triangle_geometry_identical"] = bool(np.array_equal(pa, pb))
+                    if row["triangle_geometry_identical"]:
+                        ca = np.array([[corner[1] for corner in tri] for tri in ta], dtype=float)
+                        cb = np.array([[corner[1] for corner in tri] for tri in tb], dtype=float)
+                        row["triangle_rgb_maximum_absolute_delta"] = float(np.max(np.abs(ca - cb)))
             differences[name.as_posix()] = row
     return {"files": len(names), "different": differences}
 
@@ -110,6 +125,7 @@ def main(samples):
     parser.add_argument("--left", type=pathlib.Path)
     parser.add_argument("--right", type=pathlib.Path)
     parser.add_argument("--workers", type=int, default=2)
+    parser.add_argument("--size", type=int, nargs=2, help="reference slice width and height; defaults to input poses")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     from doc_stages import SCENE, RESULTS, current_stamp
@@ -128,6 +144,9 @@ def main(samples):
         result["source_cache_seconds"] = time.monotonic() - start
         result["source_peak_rss_kib"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         width, height, lens, near, poses = read_poses(args.inputs / "train.txt")
+        if args.size:
+            width, height = args.size
+        result["reference_size"] = [width, height]
         for label, workers in (("serial", 1), ("pool", args.workers)):
             directory = args.out / label
             directory.mkdir(exist_ok=True)
@@ -192,5 +211,16 @@ def compare_fit(left, right):
 
 
 if __name__ == "__main__":
-    with MemorySamples() as samples:
-        main(samples)
+    if "--worker" in sys.argv:
+        sys.argv.remove("--worker")
+        main(MemorySamples())
+    else:
+        # Sampling stays outside the CPU worker that forks the reference pose pool.
+        with MemorySamples() as samples:
+            result = subprocess.run([sys.executable, __file__, *sys.argv[1:], "--worker"])
+        if result.returncode == 0:
+            report = pathlib.Path(sys.argv[sys.argv.index("--out") + 1]) / "report.json"
+            data = json.loads(report.read_text())
+            data["resources"] = samples.report()
+            report.write_text(json.dumps(data, indent=2) + "\n")
+        raise SystemExit(result.returncode)

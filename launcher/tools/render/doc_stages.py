@@ -201,6 +201,84 @@ def board(args, out, work):
     return int(args.check and changed)
 
 
+def measure_worker(label, job, mesh, reference_inputs, work, host, weights):
+    from types import SimpleNamespace
+    from r3d.bake_fidelity import score, write_pack
+    from r3d.appearance_simplify import load_views, normal_error, start_mesh
+    from r3d.lit_mesh import finest_triangles, read_lit_mesh
+    from r3d.cost_model import predict, mesh_rows
+    directory = work / label
+    directory.mkdir(exist_ok=True)
+    from r3d.poses import read_poses
+    count = len(read_poses(reference_inputs / "held_out.txt")[-1])
+    settings = SimpleNamespace(render_args=f"--quarter 0 --no-hud --scene {job.renderer.variant.name.replace('_', '-')} "
+                                          f"--frames {count} --dt {job.renderer.fit.held_out_every_ms}",
+                               reference=reference_inputs / "reference_held_out", reference_scale=2)
+    metrics = score(settings, host, write_pack(job.asset_name, mesh, directory), directory)
+    views, size = load_views([(str(reference_inputs / "held_out.txt"), str(settings.reference))], 2)
+    angle = normal_error(start_mesh(mesh), views, size, angle_dir=directory / "angles")
+    triangles = len(finest_triangles(read_lit_mesh(mesh))[2])
+    predicted = float(predict(weights, mesh_rows(mesh, reference_inputs / "held_out.txt")).mean())
+    row = (label, triangles, *(f"{value:.3f}" for value in metrics[:3]), f"{angle:.3f}", f"{predicted:.3f}")
+    return row, directory / "frames.avi", {"triangles": triangles, "mean_delta_e": metrics[0],
+                                         "p95_delta_e": metrics[1], "predicted_ms": predicted}
+
+def bake_worker(scene, job, index, prefix, baked_name, work):
+    from r3d.mesh_import import bake_geometry, camera_path_poses
+    from r3d.lit_mesh import write_lit_mesh
+    baked = copy.deepcopy(next(item for item in scene.renderers if item.object.name == baked_name))
+    directory = work / f"bake-{prefix}"
+    directory.mkdir(exist_ok=True)
+    geometry = bake_geometry(baked, scene)
+    write_lit_mesh(directory, baked.renderer.variant.name, geometry.positions, geometry.rgb, geometry.tris,
+                   geometry.tri_double, **geometry.scale)
+    if index == 1:
+        from r3d.light import visible_from_path
+        from trimesh import Trimesh
+        from trimesh.ray.ray_pyembree import RayMeshIntersector
+        visibility = job.renderer.visibility
+        width, height, lens, near, poses = camera_path_poses(scene, visibility)
+        seen = visible_from_path(geometry.positions, geometry.tris, geometry.tri_double,
+            RayMeshIntersector(Trimesh(geometry.positions, geometry.tris, process=False)),
+            poses, width, height, lens, near, visibility.samples, visibility.margin)
+        culled_dir = work / "culled-full"
+        culled_dir.mkdir(exist_ok=True)
+        write_lit_mesh(culled_dir, "culled", geometry.positions, geometry.rgb, geometry.tris[seen],
+                       geometry.tri_double[seen], **geometry.scale)
+    return directory / f"{baked.renderer.variant.name}.mesh", culled_dir / "culled.mesh" if index == 1 else None
+
+def smoke_prepare(scene, job, inputs):
+    from r3d.mesh_import import camera_path_poses
+    from r3d.fitted_variant import poses_text
+    from r3d.reference_render import main as reference_main
+    inputs.mkdir(exist_ok=True)
+    shutil.copyfile(job.asset_path, inputs / f"{job.renderer.variant.name}.mesh")
+    width, height, lens, near, poses = camera_path_poses(scene, job.renderer.visibility, 5000, either_way_up=False)
+    for name in ("train", "train_landscape", "held_out", "coverage"):
+        (inputs / f"{name}.txt").write_text(poses_text(32, 40, lens, near, poses[:2]))
+    for name in ("reference", "reference_landscape", "reference_held_out"):
+        reference_main([str(SCENE), "--object", job.object.name, "--poses", str(inputs / "train.txt"),
+                        "--out", str(inputs / name), "--normals"])
+
+def prepare_variants(executor, scene, jobs, work, on_ready):
+    from concurrent.futures import Future
+    from r3d.fitted_variant import prepare
+    from r3d.process_budget import PREPARE_BYTES
+    ready = [Future() for job in jobs]
+    prepares = [executor.submit(prepare, SCENE, scene, job, work / f"inputs-{prefix}", estimates=PREPARE_BYTES)
+                for prefix, job in zip(("lite", "full"), jobs)]
+    for index, (job, future) in enumerate(zip(jobs, prepares)):
+        def completed(future, index=index, job=job):
+            try:
+                future.result()
+                on_ready(index, job)
+                ready[index].set_result(None)
+            except BaseException as error:
+                ready[index].set_exception(error)
+        future.add_done_callback(completed)
+    return ready
+
+
 def gpu(args, out, work):
     memory_guard()
     from r3d.process_budget import FitExecutor
@@ -209,18 +287,13 @@ def gpu(args, out, work):
 
 
 def _gpu(args, out, work, executor):
-    from r3d.fitted_variant import (prepare, fit, placed_variant, poses_text, plot_pareto,
+    from r3d.fitted_variant import (placed_variant, plot_pareto,
                                    run_sweep_points, sweep_rows, write_sweep_csv, fit_point)
     from r3d.import_settings import load_scene
-    from r3d.mesh_import import bake_geometry, camera_path_poses
-    from r3d.lit_mesh import write_lit_mesh, read_lit_mesh, finest_triangles
-    from r3d.bake_fidelity import build_host, write_pack, score
-    from r3d.appearance_simplify import load_views, normal_error, start_mesh
-    from r3d.cost_model import load, mesh_rows, predict
-    from r3d.reference_render import main as reference_main
-    from types import SimpleNamespace
+    from r3d.bake_fidelity import build_host
+    from r3d.cost_model import load
     from functools import partial
-    from r3d.process_budget import PREPARE_BYTES
+    from r3d.process_budget import PREPARE_BYTES, SMOKE_PREPARE_BYTES
 
     scene = load_scene(SCENE)
     jobs = [placed_variant(scene, name) for name in ("sponza_fitted", "sponza_fitted_full")]
@@ -231,16 +304,8 @@ def _gpu(args, out, work, executor):
     work.mkdir(parents=True, exist_ok=True)
     inputs = work / "references"
     if args.smoke:
-        inputs.mkdir(exist_ok=True)
         job = jobs[0]
-        shutil.copyfile(job.asset_path, inputs / f"{job.renderer.variant.name}.mesh")
-        width, height, lens, near, poses = camera_path_poses(scene, job.renderer.visibility, 5000, either_way_up=False)
-        for name in ("train", "train_landscape", "held_out", "coverage"):
-            (inputs / f"{name}.txt").write_text(poses_text(32, 40, lens, near, poses[:2]))
-        for name in ("reference", "reference_landscape", "reference_held_out"):
-            reference_main([str(SCENE), "--object", job.object.name, "--poses", str(inputs / "train.txt"),
-                            "--out", str(inputs / name), "--normals"])
-        memory_guard()
+        executor.submit(smoke_prepare, scene, job, inputs, estimates=SMOKE_PREPARE_BYTES).result()
         executor.submit(fit_point, {}, work / "fit", SCENE, scene, job, inputs, True, work / "smoke.mesh").result()
         print(f"GPU smoke: eight steps completed; scratch only: {work}")
         return 0
@@ -249,31 +314,17 @@ def _gpu(args, out, work, executor):
     weights, *_ = load(WEIGHTS)
 
     def measure(label, job, mesh, reference_inputs):
-        directory = work / label
-        directory.mkdir(exist_ok=True)
-        from r3d.poses import read_poses
-        count = len(read_poses(reference_inputs / "held_out.txt")[-1])
-        settings = SimpleNamespace(render_args=f"--quarter 0 --no-hud --scene {job.renderer.variant.name.replace('_', '-')} "
-                                              f"--frames {count} --dt {job.renderer.fit.held_out_every_ms}",
-                                   reference=reference_inputs / "reference_held_out", reference_scale=2)
-        metrics = score(settings, host, write_pack(job.asset_name, mesh, directory), directory)
-        memory_guard()
-        views, size = load_views([(str(reference_inputs / "held_out.txt"), str(settings.reference))], 2)
-        angle = normal_error(start_mesh(mesh), views, size, angle_dir=directory / "angles")
-        triangles = len(finest_triangles(read_lit_mesh(mesh))[2])
-        predicted = float(predict(weights, mesh_rows(mesh, reference_inputs / "held_out.txt")).mean())
-        row = (label, triangles, *(f"{value:.3f}" for value in metrics[:3]), f"{angle:.3f}", f"{predicted:.3f}")
+        # The parent never forks or initialises CUDA; disposable workers own heavy measurement state.
+        row, frames, values = executor.submit(measure_worker, label, job, mesh, reference_inputs,
+                                              work, host, weights, priority=True).result()
         rows.append(row)
-        comparisons[label] = directory / "frames.avi"
-        return {
-    "triangles" : triangles, "mean_delta_e" : metrics[0], "p95_delta_e" : metrics[1], "predicted_ms" : predicted}
+        comparisons[label] = frames
+        return values
 
     fitted_futures, normal_futures, sweep_futures = {}, {}, {}
-    for index, job in enumerate(jobs):
+    def prepared(index, job):
         prefix = "lite" if index == 0 else "full"
         reference_inputs = work / f"inputs-{prefix}"
-        executor.reserve(PREPARE_BYTES)
-        prepare(SCENE, scene, job, reference_inputs)
         fitted_futures[prefix] = executor.submit(fit_point, {}, work / f"fit-{prefix}", SCENE, scene, job,
                                                   reference_inputs, False, work / f"{prefix}.mesh")
         if index == 0:
@@ -290,43 +341,24 @@ def _gpu(args, out, work, executor):
             unfinished = [point for point in points if point["budget"] != job.renderer.fit.budget or point["cost_weight"]]
             run_sweep_points(work, unfinished, partial(fit_point, scene_path=SCENE, scene=scene, job=job,
                              inputs=reference_inputs), executor=executor, deferred=sweep_futures)
-    for future in executor.pending:
-        future.result()
+
+    ready = prepare_variants(executor, scene, jobs, work, prepared)
 
     for index, job in enumerate(jobs):
+        ready[index].result()
         prefix = "lite" if index == 0 else "full"
         reference_inputs = work / f"inputs-{prefix}"
         for label, baked_name in (("GI-bake", "atrium_lite" if index == 0 else "atrium"),):
-            baked = copy.deepcopy(next(item for item in scene.renderers if item.object.name == baked_name))
-            directory = work / f"bake-{prefix}"
-            directory.mkdir(exist_ok=True)
-            geometry = bake_geometry(baked, scene)
-            write_lit_mesh(directory, baked.renderer.variant.name, geometry.positions, geometry.rgb, geometry.tris,
-                           geometry.tri_double, **geometry.scale)
+            baked_mesh, culled_mesh = executor.submit(bake_worker, scene, job, index, prefix, baked_name,
+                                                        work, estimates=PREPARE_BYTES, priority=True).result()
+            measure(f"{prefix}-{label}", job, baked_mesh, reference_inputs)
             if index == 1:
-                from r3d.light import visible_from_path
-                from trimesh import Trimesh
-                from trimesh.ray.ray_pyembree import RayMeshIntersector
-                visibility = job.renderer.visibility
-                width, height, lens, near, poses = camera_path_poses(scene, visibility)
-                memory_guard()
-                seen = visible_from_path(geometry.positions, geometry.tris, geometry.tri_double,
-                    RayMeshIntersector(Trimesh(geometry.positions, geometry.tris, process=False)),
-                    poses, width, height, lens, near, visibility.samples, visibility.margin)
-                culled_dir = work / "culled-full"
-                culled_dir.mkdir(exist_ok=True)
-                write_lit_mesh(culled_dir, "culled", geometry.positions, geometry.rgb, geometry.tris[seen],
-                               geometry.tri_double[seen], **geometry.scale)
-            del geometry
-            measure(f"{prefix}-{label}", job, directory / f"{baked.renderer.variant.name}.mesh", reference_inputs)
-            if index == 1:
-                measure("full-path-culled", job, culled_dir / "culled.mesh", reference_inputs)
+                measure("full-path-culled", job, culled_mesh, reference_inputs)
                 run([sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out",
                      out / "render/gpu/appearance-path-culled.png", "--reference-bakes",
                      reference_inputs / "reference_held_out", "--reference-scale", "2", "--sheet-frames", "0,4",
                      "--bake", "full bake", comparisons["full-GI-bake"], "--bake", "path culled",
                      comparisons["full-path-culled"], "--crops", "3"], work / "path-sheet.log")
-        memory_guard()
         fitted = Path(fitted_futures[prefix].result()["mesh"])
         fitted_values = measure(f"{prefix}-GI-fit", job, fitted, reference_inputs)
         if index == 1:
@@ -343,7 +375,6 @@ def _gpu(args, out, work, executor):
                 variant = copy.deepcopy(job)
                 variant.renderer.fit.normal_weight = normal
                 name = f"normal-{normal:g}"
-                memory_guard()
                 mesh = fitted if normal == job.renderer.fit.normal_weight else Path(normal_futures[normal].result()["mesh"])
                 measure(name, job, mesh, reference_inputs)
                 normal_rows.append(rows[-1])
@@ -364,7 +395,6 @@ def _gpu(args, out, work, executor):
             def run_point(point, point_dir):
                 budget, cost = point["budget"], point["cost_weight"]
                 name = point_dir.name
-                memory_guard()
                 mesh = fitted if budget == job.renderer.fit.budget and not cost else Path(sweep_futures[name].result()["mesh"])
                 return measure(name, job, mesh, reference_inputs)
 
