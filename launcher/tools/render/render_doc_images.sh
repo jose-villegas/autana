@@ -1,15 +1,16 @@
 #!/bin/sh
 #
-# Regenerate every image under docs/images/ from the firmware's own host renders.
+# Regenerate host images and measured Markdown tables from the source.
 # An image no script here can make (a GPU fit, a board photo) lives under
 # docs/<topic>/images/ instead and is refreshed by hand.
 #
-#   ./launcher/tools/render/render_doc_images.sh            # rewrite the images in place
+#   ./launcher/tools/render/render_doc_images.sh            # rewrite images and tables
 #   ./launcher/tools/render/render_doc_images.sh --check    # only report which changed
 #   ./launcher/tools/render/render_doc_images.sh --orphans  # only report images no script names
 #
-# Needs a host C compiler, Python with Pillow and numpy, and ffmpeg 5.1 or newer. Runs in
-# Git Bash on Windows and on Linux.
+# Needs host C and C++ compilers, Python with Pillow and numpy, ffmpeg 5.1
+# or newer, and the initialized meshoptimizer submodule for scratch bakes.
+# Runs in Git Bash on Windows and on Linux.
 #
 # This makes the launcher and UI toolkit images itself and then runs every
 # launcher/main/apps/*/tools/doc_images.sh, which makes that app's images into
@@ -19,9 +20,13 @@
 # --check compares each result with the committed image by decoded pixels
 # (compare_images.py), never by bytes: two encoder versions write different
 # files for one picture. It prints "same <image>" or "changed <image>: <how>"
-# per image and exits 1 when any changed. An image in the folder that no
-# script made is reported as "orphan" and also exits 1. Exit 2 means the
-# images could not be made or compared; failed commands and render-log tails are printed.
+# per image and "changed <doc>#<name>" per changed table, and exits 1 when
+# any changed. An image in the folder that no script made is reported as
+# "orphan" and also exits 1. Exit 2 means the images or tables could not be
+# made or compared; failed commands and render-log tails are printed.
+#
+# App scripts also write out/tables/NAME.md. generated_blocks.py rewrites
+# the matching named blocks; --check compares them without writing.
 #
 # The Cornell box is traced in float, and GIF palettes depend on the ffmpeg
 # version, so a --check on another OS or with another ffmpeg may report them
@@ -156,15 +161,26 @@ for script in launcher/main/apps/*/tools/doc_images.sh; do
     run bash "$script" "$OUT" "$WORK/$app"
 done
 
+table_status=0
+if [ "$CHECK" = 1 ]; then
+    "$PYTHON" "$TOOLS_DIR/generated_blocks.py" --tables "$OUT/tables" --check || table_status=$?
+    [ "$table_status" -le 1 ] || exit 2
+else
+    "$PYTHON" "$TOOLS_DIR/generated_blocks.py" --tables "$OUT/tables"
+fi
+
 if [ "$CHECK" = 0 ]; then
-    run cp -R "$OUT"/. "$IMAGES"/
-    echo "wrote $(find "$OUT" -type f | wc -l | tr -d ' ') images to $IMAGES"
+    for dir in "$OUT"/*; do
+        [ "$(basename "$dir")" = tables ] && continue
+        run cp -R "$dir" "$IMAGES"/
+    done
+    echo "wrote $(find "$OUT" -type f ! -path "*/tables/*" | wc -l | tr -d ' ') images to $IMAGES"
     exit 0
 fi
 
 comparing=1
-status=0
-made_list=$(cd "$OUT" && find . -type f | sed 's|^\./||' | LC_ALL=C sort)
+status=$table_status
+made_list=$(cd "$OUT" && find . -type f ! -path "./tables/*" | sed 's|^\./||' | LC_ALL=C sort)
 kept_list=$(cd "$IMAGES" && find . -type f | sed 's|^\./||' | LC_ALL=C sort)
 for name in $made_list; do
     if [ ! -f "$IMAGES/$name" ]; then

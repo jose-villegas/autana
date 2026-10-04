@@ -5,7 +5,7 @@
 #
 #   doc_images.sh <out-tree> <work-dir>
 #
-# <out-tree> mirrors docs/images/; these images go in its overview/ and render/.
+# <out-tree> holds images in overview/ and render/, and measured blocks in tables/.
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow and numpy
 # (the fidelity sheet also needs launcher/tools/r3d/requirements.txt, found by find_r3d_python);
@@ -27,6 +27,7 @@ run() {
 
 OUT=$1/overview
 RENDER=$1/render
+TABLES=$1/tables
 W=$2
 run mkdir -p "$W" "$RENDER"
 
@@ -136,15 +137,17 @@ run "$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 5 --dt 5
 # variant_bake NAME BOUNCES SCENE-TABLE: bounces is `keep`, or `none` to take
 # the scene bake's indirect cache out; the table goes before the first object.
 variant_bake() {
+    mesh=${4:-sponza.atrium}
+    scene=${5:-sponza}
     run mkdir -p "$W/indirect-$1"
     run cp "$M/meshes/sponza.import.toml" "$W/indirect-$1/"
     run awk -v table="$3" -v direct="$2" '/^\[\[objects\]\]/ && !done { if (table != "") print table "\n"; done = 1 }
         direct == "none" && /^indirect = \{/ { next } { print }' \
         "$M/meshes/sponza.scene.toml" > "$W/indirect-$1/sponza.scene.toml"
-    run "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$W/indirect-$1/sponza.scene.toml" --mesh sponza.atrium > "$W/indirect-$1/bake.log" 2>&1
-    run "$R3D_PYTHON" launcher/tools/r3d/build_pack.py -o "$W/indirect-$1/assets.bin" --replace "sponza.atrium=$W/indirect-$1/sponza.atrium.mesh" \
+    run "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$W/indirect-$1/sponza.scene.toml" --mesh "$mesh" > "$W/indirect-$1/bake.log" 2>&1
+    run "$R3D_PYTHON" launcher/tools/r3d/build_pack.py -o "$W/indirect-$1/assets.bin" --replace "$mesh=$W/indirect-$1/$mesh.mesh" \
         > "$W/indirect-$1/pack.log"
-    run env AUTANA_ASSET_PACK="$W/indirect-$1/assets.bin" "$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 5 --dt 5000 \
+    run env AUTANA_ASSET_PACK="$W/indirect-$1/assets.bin" "$W/render_lab_render" --quarter 0 --no-hud --scene "$scene" --frames 5 --dt 5000 \
         -o "$W/indirect-$1/frame.bmp" --video "$W/indirect-$1.avi" 2> "$W/indirect-$1/render.log"
 }
 variant_bake direct none ''
@@ -223,3 +226,37 @@ against_reference sponza-lite appearance-lite-reference appearance-lite-referenc
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/appearance-lite-fitted-reference.crops.png" --crops 3 \
     --label-a simplifier --label-b fitted --reference-crops "$W/fidelity-reference-4.png" \
     "$W/fidelity-sponza-lite.bmp" "$W/fidelity-sponza-fitted.bmp" > "$W/appearance-lite-fitted-reference.log"
+
+# Direct-light counterparts at the same poses; the committed indirect bakes
+# and source reference are shared with the image measurements above.
+tables_start=$(date +%s)
+variant_bake direct-lite none '' sponza.atrium_lite sponza-lite
+variant_bake direct-flat none '' sponza.atrium_flat sponza-flat
+for kind in lite flat; do
+    "$PYTHON" launcher/tools/render/render_compare.py --out "$W/direct-$kind-unused.png" \
+        --reference-video "$W/indirect-direct-$kind.avi" "$REFERENCE" --reference-scale 2 > "$W/direct-$kind-compare.log"
+done
+
+sweep_start=$(date +%s)
+"$R3D_PYTHON" launcher/tools/r3d/bake_fidelity.py "$M/meshes/sponza.scene.toml" --mesh atrium_flat \
+    --host "$W/render_lab_render" \
+    --render-args "--quarter 0 --no-hud --scene sponza-flat --frames 5 --dt 5000" \
+    --reference "$REFERENCE" --work "$W/sampling" \
+    --variant declared= --variant fixed1=samples=fixed:1 --variant fixed2=samples=fixed:2 \
+    --variant fixed4=samples=fixed:4 --variant fixed8=samples=fixed:8 --variant fixed16=samples=fixed:16 \
+    --variant fixed32=samples=fixed:32 --variant fixed64=samples=fixed:64 \
+    --variant min2=samples=auto:2:16:median --variant min4=samples=auto:4:16:median \
+    --variant max4=samples=auto:1:4:median --variant max8=samples=auto:1:8:median \
+    --variant max32=samples=auto:1:32:median --variant area0.25=samples=auto:1:16:median*0.25 \
+    --variant area0.5=samples=auto:1:16:median*0.5 --variant area2=samples=auto:1:16:median*2 \
+    --variant sky16=sky=16 --variant sky32=sky=32 --variant sky64=sky=64 \
+    --variant sky256=sky=256 --variant sky512=sky=512 --variant centroid=place=centroid \
+    --variant sun-centre=sun=centre --variant fixed4-sun-centre=samples=fixed:4,sun=centre \
+    > "$W/sampling.log" 2>&1
+sweep_seconds=$(($(date +%s) - sweep_start))
+echo "CPU flat sampling sweep: $sweep_seconds seconds"
+echo "$sweep_seconds" > "$W/sweep-seconds.txt"
+"$R3D_PYTHON" "$M/tools/doc_tables.py" "$W" "$TABLES"
+tables_seconds=$(($(date +%s) - tables_start))
+echo "CPU table measurements added: $tables_seconds seconds"
+echo "$tables_seconds" > "$W/tables-seconds.txt"

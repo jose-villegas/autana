@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "render/r3d_span_internal.h"
+
 typedef struct {
     float x, y;
 } point_t;
@@ -128,6 +130,63 @@ r3d_sizes_add(r3d_sizes_t* total, const r3d_sizes_t* s) {
     total->box_two_by_two += s->box_two_by_two;
     for (int b = 0; b < R3D_SIZES_BINS; b++) {
         total->bins[b] += s->bins[b];
+    }
+}
+
+static int
+box_side(int centres) {
+    return centres < R3D_BOXES_SIDES ? centres - 1 : R3D_BOXES_SIDES - 1;
+}
+
+void
+r3d_boxes_count(r3d_boxes_t* out, const r3d_span_target_t* target, const r3d_span_vertex_t* a,
+                const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, bool solid) {
+    const r3d_span_extent_t e = r3d_span_extent(a, b, c);
+    const r3d_span_box_t box = e.centres;
+    const bool in_target = box.x0 < target->width && box.x1 > 0 && box.x0 < box.x1 && box.y0 < target->row1
+                           && box.y1 > target->row0 && box.y0 < box.y1;
+    if (!in_target || r3d_span_area2(a, b, c) == 0) {
+        return;
+    }
+    const int mode = e.flat ? R3D_BOXES_FLAT : (solid ? R3D_BOXES_FACE : R3D_BOXES_SMOOTH);
+    out->boxes[mode][box_side(e.centres.y1 - e.centres.y0)][box_side(e.centres.x1 - e.centres.x0)]++;
+}
+
+/* Triangles of `mode`, or of every mode for R3D_BOXES_MODES, whose box is
+ * at most n x n; all of them for n 0. */
+static long
+boxes_within(const r3d_boxes_t* boxes, int mode, int n) {
+    const int last = n == 0 ? R3D_BOXES_SIDES : n;
+    long sum = 0;
+    for (int m = 0; m < R3D_BOXES_MODES; m++) {
+        for (int rows = 0; rows < last && (m == mode || mode == R3D_BOXES_MODES); rows++) {
+            for (int columns = 0; columns < last; columns++) {
+                sum += boxes->boxes[m][rows][columns];
+            }
+        }
+    }
+    return sum;
+}
+
+void
+r3d_boxes_print(FILE* f, const r3d_boxes_t* boxes) {
+    static const char* const names[R3D_BOXES_MODES + 1] = {"flat", "face", "smooth", "all"};
+    (void)fputs("| mode | triangles |", f);
+    for (int n = 2; n < R3D_BOXES_SIDES; n++) {
+        (void)fprintf(f, " box <= %dx%d |", n, n);
+    }
+    (void)fputs("\n|---|---:|", f);
+    for (int n = 2; n < R3D_BOXES_SIDES; n++) {
+        (void)fputs("---:|", f);
+    }
+    (void)fputs("\n", f);
+    for (int mode = 0; mode <= R3D_BOXES_MODES; mode++) {
+        const long all = boxes_within(boxes, mode, 0);
+        (void)fprintf(f, "| %s | %ld |", names[mode], all);
+        for (int n = 2; n < R3D_BOXES_SIDES; n++) {
+            (void)fprintf(f, " %.1f%% |", all > 0 ? 100.0 * (double)boxes_within(boxes, mode, n) / (double)all : 0.0);
+        }
+        (void)fputs("\n", f);
     }
 }
 
