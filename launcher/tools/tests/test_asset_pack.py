@@ -19,8 +19,7 @@ from r3d.scene_table import mesh_ids  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 LIT_MESH = b"LMSH"
-SOURCE = ('[source]\nurl = "https://example.invalid/m.zip"\nsha256 = "00"\npath = "m.obj"\ncache = "m"\n'
-          'credit = "A model."\n')
+SOURCE = '[source]\npath = "m.obj"\ncredit = "c"\n'
 
 
 def seal(pack):

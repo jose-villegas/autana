@@ -3,6 +3,18 @@
 Host-only scripts; the firmware build skips this folder. The render harness
 itself is [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harness.md).
 
+The source files in `../meshes/sponza/` are committed through Git LFS.
+Firmware clones exclude them through `.lfsconfig`. Before a source bake or
+reference render, run this from the repository root:
+
+```sh
+git lfs pull --include="launcher/main/apps/render_lab/meshes/sponza/**" --exclude=""
+```
+
+The include selects this asset; the empty exclude clears the clone's default
+exclusion for this pull. Doc workflows cache its LFS objects by their content
+identifiers before pulling, so unchanged sources reuse the cached objects.
+
 ## Host renders
 
 ```sh

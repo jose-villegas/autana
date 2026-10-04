@@ -36,14 +36,17 @@ Keys before `;` are required; after it, optional.
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
-| `[source]` | `url`, `sha256`, `path`, `cache`, `credit` | Downloads, verifies and locates the OBJ; `credit` records its attribution. | Required. | Download / none. | [source](#source) |
+| `[source]` | `path`, `credit` | Locates the local source file; `credit` records its attribution. | Required. | Local file / none. | [source](#source) |
 | `[output]` | `directory`; `name`, `position_scale` | Names the output directory, single-mesh name and position scale. | `name` required without `[[variants]]`, rejected with them; `position_scale` 8. | Write / none. | [output](#output) |
 | `[materials]` | ; `double_sided` | Draws listed material faces from both sides. | `[]`. | None / more faces drawn. | [materials](#materials) |
 
 #### source
 
-`[source]` identifies and verifies the source OBJ. `cache` names its cached
-download and `credit` records the source attribution.
+`[source].path` names a local file relative to the import file. The supported
+extension is `.obj`, with its sibling `.mtl` and the textures the MTL names.
+`credit` records the source attribution. Binary source assets are committed
+through Git LFS; local render tools need an explicit pull for the source
+directory (see the app's tools README).
 
 #### output
 
