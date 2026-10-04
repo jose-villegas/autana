@@ -51,11 +51,11 @@ class DocImageFailureTest(unittest.TestCase):
                 'echo import_dependency_ready\nexit 8\n', encoding="utf-8")
             source = APP_SCRIPT.read_text(encoding="utf-8")
             helper = "run() {" + source.split("run() {", 1)[1].split("\n}\n", 1)[0] + "\n}\n"
-            function = source.split("variant_bake() {", 1)[1].split("\nvariant_bake direct", 1)[0]
+            functions = source.split("bake_and_render() {", 1)[1].split("\nvariant_bake direct", 1)[0]
             script = root / "stage.sh"
             script.write_text(
                 'set -e\nW=work\nM=.\nR3D_PYTHON=sh\n'
-                + helper + 'variant_bake() {' + function + "\nvariant_bake direct none ''\n", encoding="utf-8")
+                + helper + 'bake_and_render() {' + functions + "\nvariant_bake direct none ''\n", encoding="utf-8")
             result = subprocess.run(["sh", script.as_posix()], cwd=root, capture_output=True, text=True)
             log = (root / "work/indirect-direct/bake.log").read_text(encoding="utf-8")
             self.assertEqual(result.returncode, 8, result.stderr + log)

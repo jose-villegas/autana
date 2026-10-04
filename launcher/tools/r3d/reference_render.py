@@ -11,7 +11,7 @@ the scene supplies the object's source, lights, camera lens and pose path.
 
 The default backend is the Embree reference with the scene's bake lighting. ``--backend mitsuba`` traces the same
 source, albedo, camera and lights as a path-traced reference (r3d.mitsuba_reference, needs requirements-gpu.txt)
-and shares the exposure, tone map and RGB565 conversion below.
+and shares the exposure, tone map and RGB565 conversion below. Only the Embree backend reads `[bake].ao`.
 """
 
 import argparse
@@ -31,7 +31,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import mitsuba_reference
 from r3d.geometry import corner_normals
 from r3d.import_settings import load_scene
-from r3d.light import albedo_from_uv, drop_masked, light, to_srgb8
+from r3d.light import albedo_from_uv, drop_masked, light, open_side_occlusion, to_srgb8
 from r3d.mesh_import import indirect_cache_for, load_source
 from r3d.poses import camera_rays, read_poses
 
@@ -74,32 +74,55 @@ def render_linear(source, job, scene, pose, width, height, lens, samples=4):
     return trace(source, job, scene, pose, width, height, lens, samples)[0]
 
 
+def primary_hits(source, job, pose, width, height, lens, samples):
+    """The camera rays of a pose and what they hit: (ray origins, directions, hit locations, the ray each hit belongs to,
+    the source triangle hit, its bary-interpolated normal, its barycentrics, whether its material is double-sided)."""
+    origin, direction = camera_rays(width, height, lens, pose[:3], pose[3:], samples)
+    locations, rays, faces = source.intersector.intersects_location(origin, direction, multiple_hits=False)
+    bary = hit_barycentrics(source, faces, locations) if len(rays) else np.zeros((0, 3))
+    normal = hit_normals(source, faces, bary) if len(rays) else np.zeros((0, 3))
+    double = np.isin(source.tri_m[faces], [source.names.index(name) for name in job.settings.double_sided])
+    return origin, direction, locations, rays, faces, normal, bary, double
+
+
 def trace(source, job, scene, pose, width, height, lens, samples=4):
     """(linear RGB, share of each pixel's subpixels that hit the mesh, the
     world-space shading normal per pixel turned toward the eye, averaged over
     the pixel's rays and zero where they all miss)."""
     settings = job.settings
-    eye, forward = pose[:3], pose[3:]
-    origin, direction = camera_rays(width, height, lens, eye, forward, samples)
-    locations, rays, faces = source.intersector.intersects_location(origin, direction, multiple_hits=False)
+    origin, direction, locations, rays, faces, normal, bary, double = primary_hits(source, job, pose, width, height, lens,
+                                                                                    samples)
     linear = np.zeros((len(origin), 3), dtype=float)
     covered = np.zeros(len(origin))
     covered[rays] = 1.0
     shading = np.zeros((len(origin), 3), dtype=float)
     if len(rays):
-        bary = hit_barycentrics(source, faces, locations)
-        normal = hit_normals(source, faces, bary)
-        material = source.tri_m[faces]
         albedo = hit_albedo(source, faces, bary)
-        double = np.isin(material, [source.names.index(name) for name in settings.double_sided])
         radiance = light(locations, normal, double, source.intersector, scene.lights, job.bake.ray_offset,
-                         np.random.default_rng(settings.seed), shared_sky_rays=0, indirect=source.indirect_cache)
+                         np.random.default_rng(settings.seed), shared_sky_rays=0, indirect=source.indirect_cache, ao=job.bake.ao)
         linear[rays] = albedo * radiance
         shading[rays] = normal * np.where((normal * direction[rays]).sum(axis=1) > 0, -1.0, 1.0)[:, None]
     shading = shading.reshape(height, width, samples * samples, 3).sum(axis=2)
     return (linear.reshape(height, width, samples * samples, 3).mean(axis=2),
             covered.reshape(height, width, samples * samples).mean(axis=2),
             shading / np.maximum(np.linalg.norm(shading, axis=2, keepdims=True), 1e-12))
+
+
+def occlusion_map(source, job, pose, width, height, lens, samples=4):
+    """(the scene's local occlusion factor per pixel, 1 where open and where nothing is hit; the share of each pixel's
+    subpixels that hit the mesh), box filtered like trace(). It is the factor `[bake].ao` scales the ambient and bounce
+    light by, so the scene must set it."""
+    if job.bake.ao is None:
+        raise ValueError("the scene sets no [bake].ao")
+    origin, _direction, locations, rays, _faces, normal, _bary, double = primary_hits(source, job, pose, width, height, lens,
+                                                                                       samples)
+    factor = np.ones(len(origin))
+    covered = np.zeros(len(origin))
+    covered[rays] = 1.0
+    if len(rays):
+        factor[rays] = open_side_occlusion(locations, normal, double, source.intersector, job.bake.ao, job.bake.ray_offset)
+    shape = (height, width, samples * samples)
+    return factor.reshape(shape).mean(axis=2), covered.reshape(shape).mean(axis=2)
 
 
 def device_picture(linear, covered, tonemap_white, background):
@@ -141,12 +164,20 @@ POSE_STATE = None
 
 
 def _write_pose(item):
-    source, job, scene, width, height, lens, samples, out, normals = POSE_STATE
+    source, job, scene, width, height, lens, samples, out, normals, occlusion = POSE_STATE
     index, pose = item
     linear, covered, normal = trace(source, job, scene, pose, width, height, lens, samples)
     np.save(out / ("%04d.linear.npy" % index), linear)
     if normals:
         np.save(out / ("%04d.normal.npy" % index), normal.astype(np.float32))
+    if occlusion:
+        factor, share = occlusion_map(source, job, pose, width, height, lens, samples)
+        np.save(out / ("%04d.occlusion.npy" % index), factor.astype(np.float32))
+        background = scene.camera.component.background
+        shade = np.round(255 * factor)[..., None] * np.ones(3)
+        colour = np.array([background >> 16, (background >> 8) & 255, background & 255], dtype=float)
+        shown = shade * share[..., None] + colour * (1.0 - share[..., None])
+        Image.fromarray(np.round(shown).astype(np.uint8)).save(out / ("%04d.occlusion.png" % index))
     picture = device_picture(linear, covered, scene.tonemap_white, scene.camera.component.background)
     Image.fromarray(picture).save(out / ("%04d.png" % index))
     from r3d.process_budget import peak_rss
@@ -158,7 +189,7 @@ def reservation_pose_capacity(reservation, rss, estimate, cores):
     return max(1, min(cores, (reservation - rss) // estimate))
 
 
-def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None):
+def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False):
     """Fork a pool sized by the task reservation or free memory; return its peak RSS.
     Caller must not have initialised CUDA. Each pose seeds its own RNG, matching serial output.
     """
@@ -181,7 +212,7 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
         raise ValueError("workers must be positive")
     if workers > 1 and "fork" not in multiprocessing.get_all_start_methods():
         workers = 1
-    POSE_STATE = (source, job, scene, width, height, lens, samples, pathlib.Path(out), normals)
+    POSE_STATE = (source, job, scene, width, height, lens, samples, pathlib.Path(out), normals, occlusion)
     pose_peaks = {}
     try:
         if workers == 1:
@@ -209,6 +240,9 @@ def main(argv=None):
     parser.add_argument("--samples", type=int, default=4)
     parser.add_argument("--skip", type=int, default=0, help="ignore this many leading poses")
     parser.add_argument("--normals", action="store_true", help="also write each pose's shading normals as NNNN.normal.npy")
+    parser.add_argument("--occlusion", action="store_true",
+                        help="also write each pose's local occlusion factor as NNNN.occlusion.png (white is open) and "
+                             ".npy; the scene must set [bake].ao")
     parser.add_argument("--backend", choices=("embree", "mitsuba"), default="embree",
                         help="embree: the scene's bake lighting (default); mitsuba: a path-traced reference")
     parser.add_argument("--spp", type=int, default=mitsuba_reference.DEFAULT_SPP, help="mitsuba: paths per pixel")
@@ -223,6 +257,8 @@ def main(argv=None):
         parser.error("--spp and --max-depth must be positive")
     if args.backend == "mitsuba" and args.normals:
         parser.error("--normals is an embree backend output")
+    if args.occlusion and args.backend != "embree":
+        parser.error("--occlusion is an embree backend output")
     if args.backend == "embree" and args.sky:
         parser.error("--sky needs --backend mitsuba")
     scene = load_scene(args.scene)
@@ -242,8 +278,10 @@ def main(argv=None):
     if args.backend == "mitsuba":
         path = mitsuba_reference.prepare(source, scene.lights, job.settings.double_sided, mitsuba_reference.sky_from(args),
                                          args.variant)
+    if args.occlusion and job.bake.ao is None:
+        parser.error("the scene sets no [bake].ao")
     if path is None:
-        peak = render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals, args.workers)
+        peak = render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals, args.workers, args.occlusion)
         print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_rss_bytes={peak}", flush=True)
         return 0
     for index, pose in enumerate(poses):

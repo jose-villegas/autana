@@ -34,7 +34,7 @@ def plane_source(corners):
 
 def sun_scene(direction):
     settings = SimpleNamespace(double_sided=set(), seed=1)
-    job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.01))
+    job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.01, ao=None))
     scene = SimpleNamespace(lights=[{"type": "directional", "direction": direction, "color": [1.0, 1.0, 1.0], "intensity": 1.0,
                                      "disc_degrees": 0.0, "rays": 1}])
     return job, scene
@@ -94,9 +94,19 @@ class PooledReferenceTests(unittest.TestCase):
         if "fork" not in multiprocessing.get_all_start_methods():
             self.skipTest("copy-on-write pose pool needs fork")
         source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
+        wall = trimesh.creation.box(extents=(.1, 4., 2.))
+        wall.apply_translation((1.2, 0., 1.))
+        mesh = trimesh.util.concatenate([trimesh.Trimesh(source.p, source.tri_v, process=False), wall])
+        source.p, source.tri_v = mesh.vertices, mesh.faces
+        source.tri_t = np.zeros_like(source.tri_v)
+        source.tri_m = np.zeros(len(source.tri_v), dtype=int)
+        source.corner_normals = corner_normals(source.p, source.tri_v)
+        source.intersector = RayMeshIntersector(mesh)
         job, scene = sun_scene([0., 0., -1.])
+        job.bake.ao = SimpleNamespace(distance=3., strength=.8, rays=8, indirect=True)
         scene.lights[0]["disc_degrees"] = 4.
         scene.lights[0]["rays"] = 3
+        scene.lights.append({"type": "ambient", "color": [1., 1., 1.], "intensity": .5})
         scene.tonemap_white = 2.
         scene.camera = SimpleNamespace(component=SimpleNamespace(background=0x123456))
         poses = [LOOK_DOWN + np.array([i * .1, 0., 0., 0., 0., 0.]) for i in range(6)]
@@ -104,11 +114,32 @@ class PooledReferenceTests(unittest.TestCase):
             root = pathlib.Path(directory)
             serial, pooled = root / "serial", root / "pooled"
             serial.mkdir(); pooled.mkdir()
-            render_poses(source, job, scene, poses, 8, 8, 1., 2, serial, True, 1)
+            render_poses(source, job, scene, poses, 8, 8, 1., 2, serial, True, 1, True)
+            from PIL import Image
+            from r3d.reference_render import occlusion_map
+            for index, pose in enumerate(poses):
+                linear, covered, normal = trace(source, job, scene, pose, 8, 8, 1., 2)
+                factor, share = occlusion_map(source, job, pose, 8, 8, 1., 2)
+                self.assertLess(factor.min(), 1.)
+                np.testing.assert_array_equal(np.load(serial / f'{index:04d}.linear.npy'), linear)
+                np.testing.assert_array_equal(np.load(serial / f'{index:04d}.normal.npy'), normal.astype(np.float32))
+                np.testing.assert_array_equal(np.load(serial / f'{index:04d}.occlusion.npy'), factor.astype(np.float32))
+                background = scene.camera.component.background
+                shade = np.round(255 * factor)[..., None] * np.ones(3)
+                colour = np.array([background >> 16, (background >> 8) & 255, background & 255], dtype=float)
+                shown = shade * share[..., None] + colour * (1.0 - share[..., None])
+                np.testing.assert_array_equal(np.asarray(Image.open(serial / f'{index:04d}.occlusion.png')),
+                                              np.round(shown).astype(np.uint8))
+                np.testing.assert_array_equal(np.asarray(Image.open(serial / f'{index:04d}.png')),
+                                              device_picture(linear, covered, scene.tonemap_white, background))
+                job.bake.ao, ao = None, job.bake.ao
+                unoccluded = trace(source, job, scene, pose, 8, 8, 1., 2)[0]
+                job.bake.ao = ao
+                self.assertFalse(np.array_equal(linear, unoccluded))
             global POSE_BARRIER
             POSE_BARRIER = multiprocessing.get_context('fork').Barrier(2)
             with patch.object(reference_render, '_write_pose', record_pose_pid):
-                render_poses(source, job, scene, poses, 8, 8, 1., 2, pooled, True, 2)
+                render_poses(source, job, scene, poses, 8, 8, 1., 2, pooled, True, 2, True)
             pids = list(pooled.glob('pid-*'))
             self.assertGreater(len(pids), 1)
             for marker in pids:
