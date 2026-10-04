@@ -1,11 +1,8 @@
 /*
  * The home gesture: a swipe from the edge it is told (gesture_edge_t, picked
  * by shell_exit_edge_for_quarter()) toward the centre. It must trigger with a
- * fingertip yet never fire in normal use, so the boundaries are pinned.
- *
- * Boundaries are covered on the bottom edge, whose logic the others share
- * (gesture.c); each other edge gets one trigger and one case per rejection,
- * proving its axis and sign.
+ * fingertip yet never fire in normal use. Boundaries are pinned on the bottom
+ * edge, whose logic the others share; the others prove axis and sign.
  */
 
 #include "input/gesture.h"
