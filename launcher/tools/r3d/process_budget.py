@@ -31,7 +31,7 @@ def task_reservation():
 def meminfo_bytes():
     return {line.split(':')[0]: int(line.split()[1]) * 1024
             for line in pathlib.Path('/proc/meminfo').read_text().splitlines()
-            if line.startswith(('MemAvailable:', 'MemFree:'))}
+            if line.startswith('MemAvailable:')}
 
 
 def worker_capacity(available, estimates, floors, cores):
@@ -78,13 +78,17 @@ def projected_available(available, workers):
                  for index, free in enumerate(available))
 
 
-def resident_bytes(pid, gpu):
+def status_bytes(pid, field):
     try:
-        rss = next(int(line.split()[1]) * 1024
-                   for line in pathlib.Path(f"/proc/{pid}/status").read_text().splitlines()
-                   if line.startswith("VmRSS:"))
+        return next(int(line.split()[1]) * 1024
+                    for line in pathlib.Path(f"/proc/{pid}/status").read_text().splitlines()
+                    if line.startswith(field + ":"))
     except (OSError, StopIteration):
-        rss = 0
+        return 0
+
+
+def resident_bytes(pid, gpu):
+    rss = status_bytes(pid, "VmRSS")
     return rss, gpu.get(pid, 0), rss
 
 
@@ -110,12 +114,7 @@ def parent_death_signal(parent_pid):
 
 
 def peak_rss(pid=None):
-    try:
-        return next(int(line.split()[1]) * 1024
-                    for line in pathlib.Path(f"/proc/{pid or os.getpid()}/status").read_text().splitlines()
-                    if line.startswith("VmHWM:"))
-    except (OSError, StopIteration):
-        return 0
+    return status_bytes(pid or os.getpid(), "VmHWM")
 
 
 def function_name(function):

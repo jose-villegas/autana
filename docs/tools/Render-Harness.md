@@ -95,21 +95,18 @@ larger waiting tasks. Admission and worker peaks are logged.
 flowchart TD
     Start[Stage-start memory guard] --> Queue[Queue both prepares]
     Queue --> Admission{Live memory and core admission}
-    Admission --> Prepare[Spawn prepare worker]
-    Prepare --> Poses[Fork reference poses within reservation]
+    Admission --> Worker[Spawn worker]
+    Worker --> Kind{Task kind}
+    Kind -->|Prepare| Poses[Fork reference poses within reservation]
     Poses --> Ready[Variant inputs ready]
     Ready --> Fits[Queue independent fits]
     Fits --> Admission
-    Admission --> Fit[Spawn fit worker]
     Ready --> Bake[Queue bake with priority]
     Bake --> Admission
-    Admission --> BakeWorker[Spawn bake worker]
-    Fit --> Ordered[Consume results in recipe order]
-    BakeWorker --> Ordered
+    Kind -->|Fit or bake| Ordered[Consume results in recipe order]
     Ordered --> Measure[Queue measurement with priority]
     Measure --> Admission
-    Admission --> MeasureWorker[Spawn measurement worker]
-    MeasureWorker --> Outputs[Ordered tables and sheets]
+    Kind -->|Measurement| Outputs[Ordered tables and sheets]
 ```
 
 Sweep result records are the resume markers. A worker failure prints its
