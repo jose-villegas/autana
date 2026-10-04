@@ -243,7 +243,8 @@ def run_sweep_points(out, points, run_fit, executor=None, deferred=None):
         if executor is not None:
             if deferred is None:
                 raise ValueError("an executor needs a deferred result mapping")
-            deferred[point_name(point)] = executor.submit(run_fit, point, point_dir)
+            from r3d.process_budget import FIT_BYTES
+            deferred[point_name(point)] = executor.submit(run_fit, point, point_dir, estimates=FIT_BYTES)
             continue
         row = {**point, **run_fit(point, point_dir)}
         temporary = result.with_suffix(".tmp")

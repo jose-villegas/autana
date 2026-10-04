@@ -18,8 +18,12 @@ WSL_MEMORY_REQUIRED_BYTES = 6 * GIB
 WINDOWS_MEMORY_REQUIRED_BYTES = 2 * GIB
 # Estimates are (WSL RSS, GPU reserved, cgroup bytes), re-derived from workers' logged peaks.
 FLOORS = (GIB, GIB // 2, GIB // 4)
-FIT_BYTES = (2 * GIB, GIB, 2 * GIB)
-PREPARE_BYTES = (7 * GIB, 0, 7 * GIB)
+FIT_BYTES = (22 * GIB // 10, 7 * GIB // 10, 22 * GIB // 10)
+PREPARE_BYTES = (4 * GIB, 0, 4 * GIB)
+BAKE_BYTES = (5 * GIB // 2, 0, 5 * GIB // 2)
+MEASURE_BYTES = (3 * GIB // 2, 128 * 1024 ** 2, 3 * GIB // 2)
+# Copy-on-write source sharing needs a separate pose-pool sizing budget.
+POSE_POOL_BYTES = 7 * GIB
 SMOKE_PREPARE_BYTES = (2 * GIB, 0, 2 * GIB)
 _task_reservation = None
 
@@ -87,6 +91,42 @@ def status_bytes(pid, field):
         return 0
 
 
+def pss_bytes(pid):
+    """Proportional resident bytes; zero when procfs PSS is unavailable."""
+    try:
+        return next(int(line.split()[1]) * 1024
+                    for line in pathlib.Path(f"/proc/{pid}/smaps_rollup").read_text().splitlines()
+                    if line.startswith("Pss:"))
+    except (OSError, StopIteration):
+        return 0
+
+
+def fit_thread_count(setting, cores, fits):
+    if setting == "off":
+        return None
+    if setting == "auto":
+        return max(1, cores // max(1, fits))
+    count = int(setting)
+    if count < 1:
+        raise ValueError("AUTANA_FIT_THREADS must be a positive integer, auto or off")
+    return count
+
+
+def admitted_fit_count(free, queued, active, cores):
+    """Count fits in the scheduler's next admission batch and its active set."""
+    running = len(active)
+    fits = sum(estimate == FIT_BYTES for estimate in active)
+    for estimate in queued:
+        if running >= cores:
+            break
+        if not worker_capacity(free, estimate if running else (0,) * 3, FLOORS, 1):
+            continue
+        fits += estimate == FIT_BYTES
+        running += 1
+        free = projected_available(free, [(estimate, (0,) * 3)])
+    return fits
+
+
 def resident_bytes(pid, gpu):
     rss = status_bytes(pid, "VmRSS")
     return rss, gpu.get(pid, 0), rss
@@ -123,7 +163,7 @@ def function_name(function):
     return getattr(function, '__name__', type(function).__name__)
 
 
-def _task(connection, function, args, estimates=FIT_BYTES, parent_pid=None):
+def _task(connection, function, args, estimates=FIT_BYTES, parent_pid=None, fit_threads=None):
     global _task_reservation
     parent_death_signal(parent_pid if parent_pid is not None else os.getppid())
     if hasattr(os, "setsid"):
@@ -131,6 +171,9 @@ def _task(connection, function, args, estimates=FIT_BYTES, parent_pid=None):
     _task_reservation = estimates
     started = time.monotonic()
     try:
+        if fit_threads is not None:
+            import torch
+            torch.set_num_threads(fit_threads)
         connection.send((True, function(*args)))
     except BaseException:
         detail = traceback.format_exc()
@@ -252,8 +295,13 @@ class TaskExecutor:
                     free = projected_available(free, [(estimates, resident_bytes(process.pid, gpu))
                                                for process, _, _, estimates in self.active])
                     next_query = time.monotonic() + 2
-                    for queued in [*self.priority_queue, *self.queue]:
-                        if len(self.active) >= cores_available():
+                    queued_tasks = [*self.priority_queue, *self.queue]
+                    cores = cores_available()
+                    fits = admitted_fit_count(free, [item[3] for item in queued_tasks],
+                                              [item[3] for item in self.active], cores)
+                    threads = fit_thread_count(os.environ.get("AUTANA_FIT_THREADS", "off"), cores, fits)
+                    for queued in queued_tasks:
+                        if len(self.active) >= cores:
                             break
                         future, function, args, estimates = queued
                         if not worker_capacity(free, estimates if self.active else (0,) * 3, FLOORS, 1):
@@ -261,13 +309,27 @@ class TaskExecutor:
                         (self.priority_queue if queued in self.priority_queue else self.queue).remove(queued)
                         print(f"admit {function_name(function)} projected_available={free} reservation={estimates}", flush=True)
                         receive, send = self.context.Pipe(duplex=False)
-                        process = self.context.Process(target=_task, args=(send, function, args, estimates, os.getpid()))
+                        fit_threads = threads if estimates == FIT_BYTES else None
+                        process = self.context.Process(target=_task,
+                            args=(send, function, args, estimates, os.getpid(), fit_threads))
+                        thread_env = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")
+                        previous_env = {name: os.environ.get(name) for name in thread_env}
                         try:
+                            if fit_threads is not None:
+                                for name in thread_env:
+                                    os.environ[name] = str(fit_threads)
+                                print(f"fit threads={fit_threads} admitted_fits={fits}", flush=True)
                             process.start()
                         except BaseException:
                             receive.close()
                             send.close()
                             raise
+                        finally:
+                            for name, value in previous_env.items():
+                                if value is None:
+                                    os.environ.pop(name, None)
+                                else:
+                                    os.environ[name] = value
                         send.close()
                         self.active.append((process, receive, future, estimates))
                         free = projected_available(free, [(estimates, (0,) * 3)])

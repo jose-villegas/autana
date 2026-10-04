@@ -97,7 +97,7 @@ flowchart TD
     Queue --> Admission{Live memory and core admission}
     Admission --> Worker[Spawn worker]
     Worker --> Kind{Task kind}
-    Kind -->|Prepare| Poses[Fork reference poses within reservation]
+    Kind -->|Prepare| Poses[Fork reference poses within pose-pool budget]
     Poses --> Ready[Variant inputs ready]
     Ready --> Fits[Queue independent fits]
     Fits --> Admission
@@ -115,8 +115,24 @@ workers too; workers die with their parent.
 
 Reference poses share loaded source and indirect-cache state through
 copy-on-write; each pose seeds its own RNG. Standalone reference renders
-size their pool from available memory. Bake and visibility sampling are
-serial. Platforms without fork render poses serially.
+size their pool from available memory. Admitted prepares use the explicit
+`POSE_POOL_BYTES` sizing budget in `process_budget.py`, independent of the
+prepare admission estimate; smoke prepares retain their smaller budget.
+`worker reference_poses` reports `pose_peak_pss_bytes` and `pose_workers`.
+The PSS value sums each worker's maximum end-of-pose sample from Linux
+`smaps_rollup`; it is not a simultaneous pool high-water mark. PSS shares
+copy-on-write pages proportionally. Unavailable PSS samples report zero.
+Bake and visibility sampling are serial. Platforms without fork render
+poses serially.
+
+`AUTANA_FIT_THREADS=off` is the default pending throughput measurements.
+A positive integer sets each fit worker's torch and BLAS thread cap;
+`auto` divides CPU affinity cores by the active fits plus fits eligible
+in the next memory-admission batch, with a minimum of one thread. The cap
+is fixed when each worker starts. BLAS environment variables are inherited
+before imports, and torch's thread count is set before fitting. Prepare,
+bake and measure workers retain their thread settings. Fit batch sizes,
+steps and seeds come from the recipe.
 
 The rest belong to apps, and each app's `tools/README.md` says what its
 images show.

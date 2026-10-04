@@ -180,9 +180,8 @@ def _write_pose(item):
         Image.fromarray(np.round(shown).astype(np.uint8)).save(out / ("%04d.occlusion.png" % index))
     picture = device_picture(linear, covered, scene.tonemap_white, scene.camera.component.background)
     Image.fromarray(picture).save(out / ("%04d.png" % index))
-    from r3d.process_budget import peak_rss
-    import os
-    return os.getpid(), peak_rss()
+    from r3d.process_budget import pss_bytes
+    return os.getpid(), pss_bytes(os.getpid())
 
 
 def reservation_pose_capacity(reservation, rss, estimate, cores):
@@ -190,7 +189,7 @@ def reservation_pose_capacity(reservation, rss, estimate, cores):
 
 
 def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False):
-    """Fork a pool sized by the task reservation or free memory; return its peak RSS.
+    """Return summed per-worker maxima of end-of-pose PSS samples and worker count.
     Caller must not have initialised CUDA. Each pose seeds its own RNG, matching serial output.
     """
     from r3d import process_budget
@@ -202,7 +201,10 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
         reservation = process_budget.task_reservation()
         if reservation is not None:
             rss = process_budget.resident_bytes(os.getpid(), {})[0]
-            workers = reservation_pose_capacity(reservation[0], rss, estimate, cores_available())
+            budget = process_budget.POSE_POOL_BYTES
+            if reservation == process_budget.SMOKE_PREPARE_BYTES:
+                budget = min(budget, reservation[0])
+            workers = reservation_pose_capacity(budget, rss, estimate, cores_available())
         else:
             workers = worker_capacity(available_bytes(), (estimate, 0, estimate), FLOORS, cores_available())
             if not workers:
@@ -227,7 +229,7 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
                     pose_peaks[pid] = max(pose_peaks.get(pid, 0), peak)
     finally:
         POSE_STATE = None
-    return sum(pose_peaks.values())
+    return sum(pose_peaks.values()), workers
 
 
 def main(argv=None):
@@ -282,10 +284,10 @@ def main(argv=None):
         parser.error("the scene sets no [bake].ao")
     if path is None:
         try:
-            peak = render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals, args.workers, args.occlusion)
+            peak, workers = render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals, args.workers, args.occlusion)
         except ValueError as error:
             parser.error(str(error))
-        print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_rss_bytes={peak}", flush=True)
+        print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_pss_bytes={peak} pose_workers={workers}", flush=True)
         return 0
     for index, pose in enumerate(poses):
         linear, covered = path.trace(pose, width, height, lens, near, args.spp, args.seed, args.max_depth)
