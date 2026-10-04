@@ -183,7 +183,7 @@ def fit_point(point, point_dir, scene_path, scene, job, inputs, smoke=False, tar
             mesh = fit(scene_path, scene, job, pathlib.Path(point_dir), budget=point.get("budget"),
                        cost_weight=point.get("cost_weight", 0.0), smoke=smoke, target=target, inputs=inputs)
         return {"mesh": str(mesh)}
-    except BaseException as error:
+    except Exception as error:
         with log_path.open("a") as output:
             traceback.print_exc(file=output)
         raise RuntimeError(f"fit failed: {log_path}\n" + "\n".join(log_path.read_text().splitlines()[-30:])) from error

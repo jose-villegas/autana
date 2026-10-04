@@ -34,10 +34,10 @@ class ProcessTests(unittest.TestCase):
 class WorkerTests(ProcessTests):
     def test_worker_failure_reaches_parent(self):
         from unittest.mock import patch
-        from r3d.process_budget import FitExecutor
-        with patch("r3d.process_budget.available_bytes", return_value=(1 << 60,) * 4):
+        from r3d.process_budget import TaskExecutor
+        with patch("r3d.process_budget.available_bytes", return_value=(1 << 60,) * 3):
             with self.assertRaisesRegex(RuntimeError, "worker sentinel failure"):
-                with FitExecutor() as pool:
+                with TaskExecutor() as pool:
                     pool.submit(fail_worker).result(timeout=30)
 
     def test_sweep_consumes_out_of_order_completion_in_point_order(self):
@@ -83,30 +83,28 @@ class WorkerTests(ProcessTests):
 class ProjectionTests(ProcessTests):
     def test_running_allocations_are_not_counted_twice(self):
         from r3d.process_budget import projected_available
-        self.assertEqual(projected_available((100, 100, 100, 100),
-                         [((80, 80, 40, 80), (60, 60, 30, 60))]), (80, 100, 90, 80))
+        self.assertEqual(projected_available((100, 100, 100),
+                         [((80, 40, 80), (60, 30, 60))]), (80, 90, 80))
 
     def test_not_started_reserves_full_estimate(self):
         from r3d.process_budget import projected_available
-        self.assertEqual(projected_available((100,) * 4, [((80,) * 4, (0,) * 4)]), (20, 100, 20, 20))
+        self.assertEqual(projected_available((100,) * 3, [((80,) * 3, (0,) * 3)]), (20, 20, 20))
 
     def test_over_estimate_does_not_invent_available_memory(self):
         from r3d.process_budget import projected_available
-        self.assertEqual(projected_available((100,) * 4, [((20,) * 4, (80,) * 4)]), (100,) * 4)
+        self.assertEqual(projected_available((100,) * 3, [((20,) * 3, (80,) * 3)]), (100,) * 3)
 
     def test_admission_failure_without_running_work_is_immediate(self):
         from unittest.mock import patch
-        from r3d.process_budget import FitExecutor
-        with patch('r3d.process_budget.available_bytes', return_value=(0,) * 4):
+        from r3d.process_budget import TaskExecutor
+        with patch('r3d.process_budget.available_bytes', return_value=(0,) * 3):
             with self.assertRaisesRegex(RuntimeError, 'memory admission'):
-                with FitExecutor() as executor:
+                with TaskExecutor() as executor:
                     executor.submit(fail_worker).result(timeout=10)
 
 
-def identity_worker(value, seconds=0):
+def identity_worker(value):
     import os
-    import time
-    time.sleep(seconds)
     return value, os.getpid()
 
 
@@ -114,10 +112,10 @@ class SchedulerTests(ProcessTests):
     def test_spawned_prepares_and_fits_have_independent_pids(self):
         import os
         from unittest.mock import patch
-        from r3d.process_budget import FitExecutor, PREPARE_BYTES
-        with patch('r3d.process_budget.available_bytes', return_value=(1 << 60,) * 4):
-            with FitExecutor() as executor:
-                prepares = [executor.submit(identity_worker, name, .1, estimates=PREPARE_BYTES)
+        from r3d.process_budget import TaskExecutor, PREPARE_BYTES
+        with patch('r3d.process_budget.available_bytes', return_value=(1 << 60,) * 3):
+            with TaskExecutor() as executor:
+                prepares = [executor.submit(identity_worker, name, estimates=PREPARE_BYTES)
                             for name in ('lite', 'full')]
                 fits = []
                 for prepare in prepares:
@@ -127,67 +125,9 @@ class SchedulerTests(ProcessTests):
                 self.assertEqual(len({value[1] for value in values}), 4)
                 self.assertNotIn(os.getpid(), [value[1] for value in values])
 
-    def test_busy_workers_make_progress_without_admission_timeout(self):
-        from unittest.mock import patch
-        from r3d.process_budget import FitExecutor, FIT_BYTES, FLOORS
-        free = tuple(a + b for a, b in zip(FIT_BYTES, FLOORS))
-        with patch('r3d.process_budget.available_bytes', return_value=free), \
-                patch('r3d.process_budget.resident_bytes', return_value=(0,) * 4):
-            with FitExecutor() as executor:
-                first = executor.submit(identity_worker, 'first', .3)
-                second = executor.submit(identity_worker, 'second')
-                self.assertEqual(first.result(timeout=10)[0], 'first')
-                self.assertEqual(second.result(timeout=10)[0], 'second')
-
-    def test_measurement_can_finish_before_remaining_fit(self):
-        from unittest.mock import patch
-        from r3d.process_budget import FitExecutor
-        with patch('r3d.process_budget.available_bytes', return_value=(1 << 60,) * 4), \
-                patch('r3d.process_budget.cores_available', return_value=2):
-            with FitExecutor() as executor:
-                slow = executor.submit(identity_worker, 'fit', 3)
-                measurement = executor.submit(identity_worker, 'measure', priority=True)
-                self.assertEqual(measurement.result(timeout=10)[0], 'measure')
-                self.assertFalse(slow.done())
-                slow.result(timeout=10)
 
 
 class CleanupTests(ProcessTests):
-    def test_large_waiting_task_does_not_block_small_task(self):
-        from unittest.mock import patch
-        from r3d.process_budget import FitExecutor, GIB, FLOORS
-        free = tuple(floor + 3 * GIB for floor in FLOORS)
-        with patch('r3d.process_budget.available_bytes', return_value=free), \
-                patch('r3d.process_budget.resident_bytes', return_value=(0,) * 4):
-            with FitExecutor() as executor:
-                running = executor.submit(identity_worker, 'running', 4, estimates=(2 * GIB,) * 4)
-                big = executor.submit(identity_worker, 'big', estimates=(4 * GIB,) * 4)
-                small = executor.submit(identity_worker, 'small', estimates=(GIB,) * 4)
-                self.assertEqual(small.result(timeout=3)[0], 'small')
-                self.assertFalse(running.done())
-                with executor.condition:
-                    executor.queue.clear()
-                    big.cancel()
-
-    def test_parent_exception_terminates_active_workers(self):
-        import time
-        from unittest.mock import patch
-        from r3d.process_budget import FitExecutor
-        started = time.monotonic()
-        with patch('r3d.process_budget.available_bytes', return_value=(1 << 60,) * 4):
-            with self.assertRaisesRegex(ValueError, 'parent failure'):
-                with FitExecutor() as executor:
-                    executor.submit(identity_worker, 'slow', 8)
-                    deadline = time.monotonic() + 5
-                    while time.monotonic() < deadline:
-                        with executor.condition:
-                            if executor.active:
-                                break
-                        time.sleep(.05)
-                    self.assertTrue(executor.active)
-                    raise ValueError('parent failure')
-        self.assertLess(time.monotonic() - started, 5)
-
     @unittest.skipUnless(sys.platform == 'linux', 'Linux parent death signal')
     def test_worker_dies_when_parent_is_killed(self):
         import os
@@ -209,7 +149,7 @@ def work():
 if __name__ == '__main__':
     context = multiprocessing.get_context('spawn')
     receive, send = context.Pipe(False)
-    process = context.Process(target=_task, args=(send, work, (), (0,) * 4))
+    process = context.Process(target=_task, args=(send, work, (), (0,) * 3))
     process.start()
     time.sleep(60)
 """
@@ -256,62 +196,224 @@ class ReservationTests(unittest.TestCase):
 
 
 def reservation_worker():
-    from r3d.process_budget import TASK_RESERVATION
-    return TASK_RESERVATION
+    from r3d.process_budget import task_reservation
+    return task_reservation()
 
 
 class ReservationPropagationTests(ProcessTests):
     def test_spawned_task_receives_its_own_reservation(self):
         from unittest.mock import patch
-        from r3d.process_budget import FitExecutor, GIB
-        reservation = (GIB, GIB, 0, GIB)
-        with patch('r3d.process_budget.available_bytes', return_value=(1 << 60,) * 4):
-            with FitExecutor() as executor:
+        from r3d.process_budget import TaskExecutor, GIB
+        reservation = (GIB, 0, GIB)
+        with patch('r3d.process_budget.available_bytes', return_value=(1 << 60,) * 3):
+            with TaskExecutor() as executor:
                 self.assertEqual(executor.submit(reservation_worker, estimates=reservation).result(timeout=10), reservation)
 
 
-class WindowsAdmissionTests(unittest.TestCase):
-    def test_runner_fit_admitted_above_windows_floor(self):
-        from r3d.process_budget import GIB, FIT_BYTES, FLOORS
-        for host in (3.08, 3.72):
-            with self.subTest(host=host):
-                available = (int(4.6 * GIB), int(host * GIB), 6 * GIB, 9 * GIB)
-                self.assertEqual(worker_capacity(available, FIT_BYTES, FLOORS, 1), 1)
-
-    def test_windows_below_floor_blocks_admission(self):
-        from r3d.process_budget import GIB, FIT_BYTES, FLOORS
-        available = (14 * GIB, int(1.9 * GIB), 6 * GIB, 16 * GIB)
-        self.assertEqual(worker_capacity(available, FIT_BYTES, FLOORS, 1), 0)
-
-    def test_windows_at_floor_does_not_limit_worker_count(self):
-        from r3d.process_budget import GIB, FIT_BYTES, FLOORS
-        available = (9 * GIB, FLOORS[1], 6 * GIB, 9 * GIB)
-        self.assertEqual(worker_capacity(available, FIT_BYTES, FLOORS, 10), 4)
-
-    def test_pending_workers_do_not_project_windows_usage(self):
-        from r3d.process_budget import projected_available
-        available = (100, 100, 100, 100)
-        workers = [((20,) * 4, (0,) * 4)] * 2
-        self.assertEqual(projected_available(available, workers), (60, 100, 60, 60))
-        first = projected_available(available, workers[:1])
-        self.assertEqual(projected_available(first, workers[1:]), (60, 100, 60, 60))
-
-    def test_windows_floor_matches_stage_guard(self):
-        from r3d.process_budget import FLOORS, WINDOWS_MEMORY_REQUIRED_BYTES
-        self.assertEqual(FLOORS[1], WINDOWS_MEMORY_REQUIRED_BYTES)
-
-
-class WindowsSchedulerTests(ProcessTests):
-    def test_scheduler_does_not_reserve_windows_for_new_workers(self):
+class FailureStateTests(ProcessTests):
+    def test_submit_after_scheduler_failure_raises(self):
         from unittest.mock import patch
-        from r3d.process_budget import FitExecutor, GIB, FLOORS
-        free = (5 * GIB, FLOORS[1], 6 * GIB, 5 * GIB)
+        from r3d.process_budget import TaskExecutor
+        with patch('r3d.process_budget.available_bytes', return_value=(0,) * 3):
+            executor = TaskExecutor()
+            try:
+                with self.assertRaises(RuntimeError):
+                    executor.submit(identity_worker, 'first').result(timeout=10)
+                with self.assertRaisesRegex(RuntimeError, 'failed') as caught:
+                    executor.submit(identity_worker, 'late')
+                self.assertIs(caught.exception.__cause__, executor.failure)
+            finally:
+                with self.assertRaises(RuntimeError):
+                    executor.__exit__(None, None, None)
+
+    def test_first_task_needs_only_floors(self):
+        from unittest.mock import patch
+        from r3d.process_budget import TaskExecutor, FLOORS
+        with patch('r3d.process_budget.available_bytes', return_value=FLOORS):
+            with TaskExecutor() as executor:
+                self.assertEqual(executor.submit(identity_worker, 'first').result(timeout=10)[0], 'first')
+
+
+def handshake_worker(started, release, value, ended=None):
+    import os
+    started.set()
+    try:
+        if not release.wait(20):
+            raise RuntimeError('handshake timed out')
+        return value, os.getpid()
+    finally:
+        if ended is not None:
+            ended.set()
+
+
+def exit_worker():
+    import os
+    os._exit(7)
+
+
+class HandshakeSchedulerTests(ProcessTests):
+    def exercise_residency(self, resident):
+        import threading
+        from unittest.mock import patch
+        from r3d import process_budget as budget
+        context = __import__('multiprocessing').get_context('spawn')
+        started, release, second_started = [context.Event() for _ in range(3)]
+        queried = threading.Event()
+        calls = []
+        free = tuple(a + b for a, b in zip(budget.FIT_BYTES, budget.FLOORS))
+        def available(gpu=False):
+            calls.append(None)
+            if len(calls) >= 2:
+                queried.set()
+            return free
+        with patch.object(budget, 'available_bytes', side_effect=available), \
+                patch.object(budget, 'resident_bytes', return_value=resident), \
+                patch.object(budget, 'cores_available', return_value=2):
+            with budget.TaskExecutor() as executor:
+                try:
+                    with executor.condition:
+                        first = executor.submit(handshake_worker, started, release, 'first')
+                        second = executor.submit(handshake_worker, second_started, release, 'second')
+                    self.assertTrue(started.wait(10))
+                    if any(resident):
+                        self.assertTrue(second_started.wait(10))
+                        self.assertFalse(first.done())
+                    else:
+                        self.assertTrue(queried.wait(10))
+                        with executor.condition:
+                            self.assertEqual(len(executor.active), 1)
+                        self.assertFalse(second_started.is_set())
+                    release.set()
+                    self.assertEqual(first.result(timeout=10)[0], 'first')
+                    self.assertEqual(second.result(timeout=10)[0], 'second')
+                    self.assertTrue(second_started.is_set())
+                finally:
+                    release.set()
+
+    def test_nonresident_reservation_blocks_second_worker(self):
+        self.exercise_residency((0,) * 3)
+
+    def test_resident_worker_leaves_room_for_second(self):
+        from r3d.process_budget import FIT_BYTES
+        self.exercise_residency(FIT_BYTES)
+
+    def test_done_callback_can_submit(self):
+        import subprocess
+        import tempfile
+        code = """
+import concurrent.futures, sys
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+from r3d.process_budget import TaskExecutor
+
+if __name__ == '__main__':
+    chained = concurrent.futures.Future()
+    with patch('r3d.process_budget.available_bytes', return_value=(1 << 60,) * 3), \
+            patch('r3d.process_budget.gpu_resident_bytes', return_value={}):
+        with TaskExecutor() as executor:
+            def completed(future):
+                followup = executor.submit(abs, -2)
+                followup.add_done_callback(lambda result: chained.set_result(result.result()))
+            executor.submit(abs, -1).add_done_callback(completed)
+            assert chained.result(timeout=10) == 2
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            script = pathlib.Path(directory) / 'callback.py'
+            script.write_text(code)
+            result = subprocess.run([sys.executable, str(script), str(pathlib.Path(__file__).resolve().parents[1])],
+                                    capture_output=True, text=True, timeout=15)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    @unittest.skipUnless(sys.platform == 'linux', 'Linux abrupt worker exit')
+    def test_exit_without_result_fails_promptly(self):
+        from unittest.mock import patch
+        from r3d.process_budget import TaskExecutor
+        with patch('r3d.process_budget.available_bytes', return_value=(1 << 60,) * 3):
+            with self.assertRaisesRegex(RuntimeError, 'worker .* (exited|without a result)'):
+                with TaskExecutor() as executor:
+                    executor.submit(exit_worker).result(timeout=10)
+
+    def test_core_cap_and_priority_order(self):
+        import threading
+        from unittest.mock import patch
+        from r3d.process_budget import TaskExecutor
+        context = __import__('multiprocessing').get_context('spawn')
+        started, release = context.Event(), context.Event()
+        order = []
+        core_checked = threading.Event()
+        core_calls = []
+        def cores():
+            core_calls.append(None)
+            if len(core_calls) >= 2:
+                core_checked.set()
+            return 1
+        with patch('r3d.process_budget.available_bytes', return_value=(1 << 60,) * 3), \
+                patch('r3d.process_budget.cores_available', side_effect=cores):
+            with TaskExecutor() as executor:
+                try:
+                    first = executor.submit(handshake_worker, started, release, 'first')
+                    self.assertTrue(started.wait(10))
+                    with executor.condition:
+                        ordinary = executor.submit(identity_worker, 'ordinary')
+                        priority = executor.submit(identity_worker, 'priority', priority=True)
+                        ordinary.add_done_callback(lambda f: order.append(f.result()[0]))
+                        priority.add_done_callback(lambda f: order.append(f.result()[0]))
+                    self.assertTrue(core_checked.wait(10))
+                    with executor.condition:
+                        self.assertEqual(len(executor.active), 1)
+                        self.assertFalse(ordinary.done())
+                        self.assertFalse(priority.done())
+                    release.set()
+                    first.result(timeout=10)
+                    ordinary.result(timeout=10)
+                    self.assertEqual(order, ['priority', 'ordinary'])
+                finally:
+                    release.set()
+
+    def test_big_task_does_not_block_small_task(self):
+        from unittest.mock import patch
+        from r3d.process_budget import TaskExecutor, GIB, FLOORS
+        context = __import__('multiprocessing').get_context('spawn')
+        started, release = context.Event(), context.Event()
+        free = tuple(floor + 3 * GIB for floor in FLOORS)
         with patch('r3d.process_budget.available_bytes', return_value=free), \
-                patch('r3d.process_budget.resident_bytes', return_value=(0,) * 4), \
-                patch('r3d.process_budget.cores_available', return_value=2):
-            with FitExecutor() as executor:
-                first = executor.submit(identity_worker, 'first', 4)
-                second = executor.submit(identity_worker, 'second')
-                self.assertEqual(second.result(timeout=3)[0], 'second')
-                self.assertFalse(first.done())
-                first.result(timeout=10)
+                patch('r3d.process_budget.resident_bytes', return_value=(0,) * 3):
+            with TaskExecutor() as executor:
+                try:
+                    first = executor.submit(handshake_worker, started, release, 'first', estimates=(2 * GIB,) * 3)
+                    self.assertTrue(started.wait(10))
+                    with executor.condition:
+                        big = executor.submit(identity_worker, 'big', estimates=(4 * GIB,) * 3)
+                        small = executor.submit(identity_worker, 'small', estimates=(GIB,) * 3)
+                    self.assertEqual(small.result(timeout=10)[0], 'small')
+                    self.assertFalse(big.done())
+                    release.set()
+                    first.result(timeout=10)
+                    self.assertEqual(big.result(timeout=10)[0], 'big')
+                finally:
+                    release.set()
+
+    def test_parent_error_kills_running_worker(self):
+        from unittest.mock import patch
+        from r3d.process_budget import TaskExecutor
+        context = __import__('multiprocessing').get_context('spawn')
+        started, release, ended = context.Event(), context.Event(), context.Event()
+        with patch('r3d.process_budget.available_bytes', return_value=(1 << 60,) * 3):
+            with self.assertRaisesRegex(ValueError, 'parent failure'):
+                with TaskExecutor() as executor:
+                    executor.submit(handshake_worker, started, release, 'first', ended)
+                    self.assertTrue(started.wait(10))
+                    raise ValueError('parent failure')
+            self.assertFalse(ended.is_set())
+            self.assertFalse(executor.thread.is_alive())
+            self.assertEqual(executor.active, [])
+
+
+class PartialTaskTests(ProcessTests):
+    def test_sweep_partial_runs_and_logs(self):
+        from functools import partial
+        from unittest.mock import patch
+        from r3d.process_budget import TaskExecutor
+        with patch('r3d.process_budget.available_bytes', return_value=(1 << 60,) * 3):
+            with TaskExecutor() as executor:
+                self.assertEqual(executor.submit(partial(identity_worker, 'point')).result(timeout=10)[0], 'point')

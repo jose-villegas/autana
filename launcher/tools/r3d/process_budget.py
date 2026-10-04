@@ -1,5 +1,6 @@
 """Process admission against available host, cgroup and device memory."""
 import concurrent.futures
+import functools
 import multiprocessing
 import os
 import pathlib
@@ -15,28 +16,26 @@ from collections import deque
 GIB = 1024 ** 3
 WSL_MEMORY_REQUIRED_BYTES = 6 * GIB
 WINDOWS_MEMORY_REQUIRED_BYTES = 2 * GIB
-FLOORS = (GIB, WINDOWS_MEMORY_REQUIRED_BYTES, GIB // 2, GIB // 4)
-FIT_BYTES = (2 * GIB, 2 * GIB, GIB, 2 * GIB)
-# Fresh torch+CUDA with 64x80 views; base smoke peaked at 2.0 GB stage RSS and 324 MiB VRAM.
-SMOKE_FIT_BYTES = (3 * GIB // 2, 3 * GIB // 2, GIB // 2, 3 * GIB // 2)
-# Prepare includes the measured base peak and pose scratch; the reservation bounds its nested pool.
-PREPARE_BYTES = (7 * GIB, 7 * GIB, 0, 7 * GIB)
-TASK_RESERVATION = None
-POSE_POOL_PEAK_BYTES = 0
-SMOKE_PREPARE_BYTES = (2 * GIB, 2 * GIB, 0, 2 * GIB)
+# Estimates are (WSL RSS, GPU reserved, cgroup bytes), re-derived from workers' logged peaks.
+FLOORS = (GIB, GIB // 2, GIB // 4)
+FIT_BYTES = (2 * GIB, GIB, 2 * GIB)
+PREPARE_BYTES = (7 * GIB, 0, 7 * GIB)
+SMOKE_PREPARE_BYTES = (2 * GIB, 0, 2 * GIB)
+_task_reservation = None
+
+
+def task_reservation():
+    return _task_reservation
+
+
+def meminfo_bytes():
+    return {line.split(':')[0]: int(line.split()[1]) * 1024
+            for line in pathlib.Path('/proc/meminfo').read_text().splitlines()
+            if line.startswith(('MemAvailable:', 'MemFree:'))}
 
 
 def worker_capacity(available, estimates, floors, cores):
     """Number of additional workers whose projected allocation preserves every floor."""
-    if len(available) == len(estimates) == len(floors) == 4:
-        if estimates[1] < 0 or floors[1] < 0:
-            raise ValueError("negative estimate or floor")
-        if available[1] < floors[1]:
-            return 0
-        indices = (0, 2, 3)
-        return worker_capacity(tuple(available[index] for index in indices),
-                               tuple(estimates[index] for index in indices),
-                               tuple(floors[index] for index in indices), cores)
     if not len(available) == len(estimates) == len(floors) or cores < 0:
         raise ValueError("invalid resource dimensions or core count")
     count = cores
@@ -52,13 +51,7 @@ def worker_capacity(available, estimates, floors, cores):
 
 def available_bytes(gpu=False):
     unlimited = 1 << 60
-    wsl = next(int(line.split()[1]) * 1024 for line in pathlib.Path("/proc/meminfo").read_text().splitlines()
-               if line.startswith("MemAvailable:"))
-    host = unlimited
-    powershell = pathlib.Path("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe")
-    if powershell.exists():
-        host = int(subprocess.check_output([str(powershell), "-NoProfile", "-Command",
-                    "(Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory).AvailableBytes"], timeout=30))
+    wsl = meminfo_bytes()['MemAvailable']
     device = unlimited
     if gpu:
         rows = subprocess.check_output(["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"], timeout=10).decode()
@@ -72,7 +65,7 @@ def available_bytes(gpu=False):
                 if maximum.exists() and maximum.read_text().strip() != "max":
                     cgroup = min(cgroup, int(maximum.read_text()) - int((directory / "memory.current").read_text()))
                 directory = directory.parent
-    return wsl, host, device, cgroup
+    return wsl, device, cgroup
 
 
 def cores_available():
@@ -80,9 +73,8 @@ def cores_available():
 
 
 def projected_available(available, workers):
-    """Reserve nonresident allocations; Windows uses its live floor and the WSL cap."""
-    return tuple(free if index == 1 else
-                 free - sum(max(0, estimate[index] - resident[index]) for estimate, resident in workers)
+    """Subtract each worker's not-yet-resident estimate."""
+    return tuple(free - sum(max(0, estimate[index] - resident[index]) for estimate, resident in workers)
                  for index, free in enumerate(available))
 
 
@@ -93,7 +85,7 @@ def resident_bytes(pid, gpu):
                    if line.startswith("VmRSS:"))
     except (OSError, StopIteration):
         rss = 0
-    return rss, rss, gpu.get(pid, 0), rss
+    return rss, gpu.get(pid, 0), rss
 
 
 def gpu_resident_bytes():
@@ -126,12 +118,18 @@ def peak_rss(pid=None):
         return 0
 
 
+def function_name(function):
+    while isinstance(function, functools.partial):
+        function = function.func
+    return getattr(function, '__name__', type(function).__name__)
+
+
 def _task(connection, function, args, estimates=FIT_BYTES, parent_pid=None):
-    global TASK_RESERVATION
+    global _task_reservation
     parent_death_signal(parent_pid if parent_pid is not None else os.getppid())
     if hasattr(os, "setsid"):
         os.setsid()
-    TASK_RESERVATION = estimates
+    _task_reservation = estimates
     started = time.monotonic()
     try:
         connection.send((True, function(*args)))
@@ -142,19 +140,19 @@ def _task(connection, function, args, estimates=FIT_BYTES, parent_pid=None):
     finally:
         torch = sys.modules.get("torch")
         device = torch.cuda.max_memory_reserved() if torch and torch.cuda.is_initialized() else 0
-        name = function.__name__ + ":" + ",".join(str(arg) for arg in args if isinstance(arg, pathlib.Path))
+        name = function_name(function) + ":" + ",".join(str(arg) for arg in args if isinstance(arg, pathlib.Path))
         print(f"worker {name} pid={os.getpid()} wall_s={time.monotonic() - started:.3f} "
-              f"peak_rss_bytes={peak_rss()} pose_peak_rss_bytes={POSE_POOL_PEAK_BYTES} "
+              f"peak_rss_bytes={peak_rss()} "
               f"peak_gpu_reserved_bytes={device}", flush=True)
         connection.close()
 
 
-class FitExecutor:
+class TaskExecutor:
     """Spawn tasks independently, admitting their remaining allocations against live memory."""
     def __init__(self):
         self.pending = []
         self.queue = deque()
-        self.priorities = set()
+        self.priority_queue = deque()
         self.active = []
         self.condition = threading.Condition(threading.RLock())
         self.closed = False
@@ -169,17 +167,11 @@ class FitExecutor:
     def submit(self, function, *args, estimates=FIT_BYTES, priority=False):
         future = concurrent.futures.Future()
         with self.condition:
-            if self.closed:
-                raise RuntimeError("executor is closed")
+            if self.closed or self.failure:
+                raise RuntimeError("executor is closed or failed") from self.failure
             self.pending.append(future)
             item = (future, function, args, estimates)
-            if priority:
-                index = next((index for index, queued in enumerate(self.queue)
-                              if queued[0] not in self.priorities), len(self.queue))
-                self.queue.insert(index, item)
-                self.priorities.add(future)
-            else:
-                self.queue.append(item)
+            (self.priority_queue if priority else self.queue).append(item)
             self.condition.notify_all()
         return future
 
@@ -187,12 +179,14 @@ class FitExecutor:
         try:
             self._schedule()
         except BaseException as error:
-            self.failure = error
             with self.condition:
-                for future in self.pending:
+                self.failure = error
+                for future in list(self.pending):
                     if not future.done():
                         future.set_exception(error)
                 self.queue.clear()
+                self.priority_queue.clear()
+                self.pending.clear()
         finally:
             with self.condition:
                 for process, connection, future, estimates in self.active:
@@ -240,25 +234,33 @@ class FitExecutor:
                         if not success:
                             raise RuntimeError(result)
                         future.set_result(result)
+                        self.pending.remove(future)
                     elif not process.is_alive():
+                        if connection.poll():
+                            continue
                         raise RuntimeError(f"worker {process.pid} exited with code {process.exitcode}")
-                if self.closed and not self.queue and not self.active:
+                if self.closed and not self.queue and not self.priority_queue and not self.active:
                     return
-                if self.queue and time.monotonic() >= next_query:
-                    free = available_bytes(gpu=True)
-                    gpu = gpu_resident_bytes()
+                if (self.queue or self.priority_queue) and time.monotonic() >= next_query:
+                    self.condition.release()
+                    try:
+                        free = available_bytes(gpu=True)
+                        gpu = gpu_resident_bytes()
+                    finally:
+                        self.condition.acquire()
+                    if self.failure:
+                        raise self.failure
                     free = projected_available(free, [(estimates, resident_bytes(process.pid, gpu))
                                                for process, _, _, estimates in self.active])
                     next_query = time.monotonic() + 2
-                    for queued in list(self.queue):
+                    for queued in [*self.priority_queue, *self.queue]:
                         if len(self.active) >= cores_available():
                             break
                         future, function, args, estimates = queued
-                        if not worker_capacity(free, estimates, FLOORS, 1):
+                        if not worker_capacity(free, estimates if self.active else (0,) * 3, FLOORS, 1):
                             continue
-                        self.queue.remove(queued)
-                        self.priorities.discard(future)
-                        print(f"admit {function.__name__} projected_available={free} reservation={estimates}", flush=True)
+                        (self.priority_queue if queued in self.priority_queue else self.queue).remove(queued)
+                        print(f"admit {function_name(function)} projected_available={free} reservation={estimates}", flush=True)
                         receive, send = self.context.Pipe(duplex=False)
                         process = self.context.Process(target=_task, args=(send, function, args, estimates, os.getpid()))
                         try:
@@ -269,17 +271,17 @@ class FitExecutor:
                             raise
                         send.close()
                         self.active.append((process, receive, future, estimates))
-                        free = projected_available(free, [(estimates, (0,) * 4)])
-                    if self.queue and not self.active:
+                        free = projected_available(free, [(estimates, (0,) * 3)])
+                    if (self.queue or self.priority_queue) and not self.active:
                         raise RuntimeError(f"worker memory admission failed: available={free}, "
-                                           f"required={[item[3] for item in self.queue]}, floors={FLOORS}")
-                    if self.queue and last_wait_log is None:
+                                           f"required={[item[3] for item in [*self.priority_queue, *self.queue]]}, floors={FLOORS}")
+                    if (self.queue or self.priority_queue) and last_wait_log is None:
                         last_wait_log = time.monotonic()
-                    if self.queue and time.monotonic() - last_wait_log >= 10:
-                        print(f"admission wait projected_available={free} queued={len(self.queue)} "
+                    if (self.queue or self.priority_queue) and time.monotonic() - last_wait_log >= 10:
+                        print(f"admission wait projected_available={free} queued={len(self.queue) + len(self.priority_queue)} "
                               f"active={len(self.active)}", flush=True)
                         last_wait_log = time.monotonic()
-                if not self.queue:
+                if not self.queue and not self.priority_queue:
                     last_wait_log = None
                 self.condition.wait(timeout=0.1)
 
@@ -291,9 +293,10 @@ class FitExecutor:
             self.closed = True
             if error[0]:
                 self.failure = error[1]
-                for future, *_ in self.queue:
+                for future, *_ in [*self.priority_queue, *self.queue]:
                     future.cancel()
                 self.queue.clear()
+                self.priority_queue.clear()
             self.condition.notify_all()
         self.thread.join()
         if self.previous_sigterm is not None:

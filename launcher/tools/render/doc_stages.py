@@ -61,8 +61,8 @@ def require_memory(available, required, side):
 
 
 def memory_guard():
-    wsl_available = next(int(line.split()[1]) * 1024 for line in Path("/proc/meminfo").read_text().splitlines()
-                         if line.startswith("MemAvailable:"))
+    from r3d.process_budget import meminfo_bytes
+    wsl_available = meminfo_bytes()["MemAvailable"]
     require_memory(wsl_available, WSL_MEMORY_REQUIRED_BYTES, "WSL")
     powershell = Path("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe")
     if powershell.exists():
@@ -279,9 +279,10 @@ def prepare_variants(executor, scene, jobs, work, on_ready):
 
 
 def gpu(args, out, work):
+    # The parent never forks or initialises CUDA; disposable workers own heavy state.
     memory_guard()
-    from r3d.process_budget import FitExecutor
-    with FitExecutor() as executor:
+    from r3d.process_budget import TaskExecutor
+    with TaskExecutor() as executor:
         return _gpu(args, out, work, executor)
 
 
@@ -292,7 +293,7 @@ def _gpu(args, out, work, executor):
     from r3d.bake_fidelity import build_host
     from r3d.cost_model import load
     from functools import partial
-    from r3d.process_budget import PREPARE_BYTES, SMOKE_PREPARE_BYTES, SMOKE_FIT_BYTES
+    from r3d.process_budget import PREPARE_BYTES, SMOKE_PREPARE_BYTES, FIT_BYTES
 
     scene = load_scene(SCENE)
     jobs = [placed_variant(scene, name) for name in ("sponza_fitted", "sponza_fitted_full")]
@@ -306,7 +307,7 @@ def _gpu(args, out, work, executor):
         job = jobs[0]
         executor.submit(smoke_prepare, scene, job, inputs, estimates=SMOKE_PREPARE_BYTES).result()
         executor.submit(fit_point, {}, work / "fit", SCENE, scene, job, inputs, True,
-                        work / "smoke.mesh", estimates=SMOKE_FIT_BYTES).result()
+                        work / "smoke.mesh", estimates=FIT_BYTES).result()
         print(f"GPU smoke: eight steps completed; scratch only: {work}")
         return 0
     host = build_host(HOST_SCRIPT, work / "host")
@@ -314,7 +315,6 @@ def _gpu(args, out, work, executor):
     weights, *_ = load(WEIGHTS)
 
     def measure(label, job, mesh, reference_inputs):
-        # The parent never forks or initialises CUDA; disposable workers own heavy measurement state.
         row, frames, values = executor.submit(measure_worker, label, job, mesh, reference_inputs,
                                               work, host, weights, priority=True).result()
         rows.append(row)

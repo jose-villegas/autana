@@ -74,10 +74,8 @@ The image script rewrites blocks by default; --check reports
 changed doc-path#block-name and exits 1. The refresh PR includes changed tables
 and images together. `render_doc_images.sh --stage gpu` rebuilds fitted comparisons and sweeps in
 the WSL CUDA environment; the board stage consumes a perf capture. Both use
-this writer. The GPU and board stage commands, requirements and outputs are
-in the [per-tool README][render-tool-commands].
+this writer.
 
-[render-tool-commands]: ../../launcher/tools/render/README.md#refresh-commands
 GPU images live under `docs/images/render/gpu/`; CPU checks leave that stage
 to its own `--check`. GPU `--check` verifies the saved full run and its source
 stamp without fitting again. `--smoke` writes only scratch data.
@@ -85,39 +83,43 @@ The `doc-images-gpu` workflow runs the full stage on the self-hosted Linux GPU
 runner, weekly, on manual dispatch and on main pushes affecting GPU inputs.
 It opens or updates "docs: refresh GPU-rendered images" on the separate
 `feature/refresh-doc-images-gpu` branch. GPU runs are serialized and log GPU
-memory use. The stage requires 6 GiB MemAvailable inside WSL and 2 GiB
-available on the Windows host.
+memory use. The stage-start guard checks WSL and Windows host available memory.
+[`process_budget.py`](../../launcher/tools/r3d/process_budget.py) owns the
+floors and worker estimates. Later admission projects each active worker's
+not-yet-resident allocation onto live WSL, GPU and cgroup memory, bounded
+by CPU affinity. A task can run alone when the floors hold; additional
+workers need room for their reservations. Smaller eligible tasks can pass
+larger waiting tasks. Admission and worker peaks are logged.
 
-Prepare, fits and measurements use fresh spawned workers. Both prepares
-are submitted together; a variant's fits become eligible when its prepare
-finishes. Measurements, tables and sheets consume results in recipe order.
-Sweep result records remain the resume markers. Worker failures print their
-tracebacks, fail the stage and join the workers before exit.
+```mermaid
+flowchart TD
+    Start[Stage-start memory guard] --> Queue[Queue both prepares]
+    Queue --> Admission{Live memory and core admission}
+    Admission --> Prepare[Spawn prepare worker]
+    Prepare --> Poses[Fork reference poses within reservation]
+    Poses --> Ready[Variant inputs ready]
+    Ready --> Fits[Queue independent fits]
+    Fits --> Admission
+    Admission --> Fit[Spawn fit worker]
+    Ready --> Bake[Queue bake with priority]
+    Bake --> Admission
+    Admission --> BakeWorker[Spawn bake worker]
+    Fit --> Ordered[Consume results in recipe order]
+    BakeWorker --> Ordered
+    Ordered --> Measure[Queue measurement with priority]
+    Measure --> Admission
+    Admission --> MeasureWorker[Spawn measurement worker]
+    MeasureWorker --> Outputs[Ordered tables and sheets]
+```
 
-Embree reference poses fork after source and indirect-cache loading,
-sharing that state through copy-on-write. Its pool stays within the
-prepare worker's reservation; standalone renders use available memory.
-Each pose retains its own seeded random generator. Bake and visibility sampling remain serial. Platforms
-without fork render poses serially.
+Sweep result records are the resume markers. A worker failure prints its
+traceback, kills the other workers and fails the stage. SIGTERM kills the
+workers too; workers die with their parent.
 
-Admission uses available WSL, Windows, GPU and cgroup memory, with CPU
-affinity as the upper bound. Floors and worker estimates live in
-[`process_budget.py`](../../launcher/tools/r3d/process_budget.py): 1 GiB in
-WSL, 2 GiB on Windows, 512 MiB on the GPU and 256 MiB within a capped
-cgroup. Active workers reserve only estimated allocations that are not yet
-resident. Windows admission checks current AvailableBytes against its floor;
-the WSL memory cap bounds VM growth, so worker allocations are projected
-only onto WSL, cgroup and GPU memory. Admission waits while workers run
-and fails if no worker is
-running and no queued task fits. Smaller eligible tasks can pass a waiting
-larger task. Admission and worker peak-memory summaries are logged.
-
-`launcher/tools/render/verify_gpu_concurrency.py` records repeat smoke
-snapshots, compares snapshot trees, checks serial versus pooled references,
-and compares two serial eight-step fits with two scheduled fits. Its
-`--inputs` is a smoke reference directory; its `--out` is scratch storage.
-Reference mode accepts `--size WIDTH HEIGHT` for a larger pose slice and
-`--sky-list` to compare materialised sky directions with streamed tracing.
+Reference poses share loaded source and indirect-cache state through
+copy-on-write; each pose seeds its own RNG. Standalone reference renders
+size their pool from available memory. Bake and visibility sampling are
+serial. Platforms without fork render poses serially.
 
 The rest belong to apps, and each app's `tools/README.md` says what its
 images show.

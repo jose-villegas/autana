@@ -126,8 +126,6 @@ class DocStagesTests(unittest.TestCase):
         self.assertEqual(result.read_text(), "full run")
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class PrepareSchedulingTests(unittest.TestCase):
@@ -173,10 +171,10 @@ class PrepareSchedulingTests(unittest.TestCase):
 
 
 class SmokeAdmissionTests(unittest.TestCase):
-    def test_smoke_submits_small_fit_reservation(self):
+    def test_smoke_submits_measured_fit_reservation(self):
         from types import SimpleNamespace
         from r3d import fitted_variant, import_settings
-        from r3d.process_budget import FIT_BYTES, SMOKE_FIT_BYTES
+        from r3d.process_budget import FIT_BYTES
         job = SimpleNamespace(renderer=SimpleNamespace(fit=SimpleNamespace(held_out_every_ms=1)))
         executor = mock.Mock()
         with tempfile.TemporaryDirectory() as directory, \
@@ -186,6 +184,97 @@ class SmokeAdmissionTests(unittest.TestCase):
             stages._gpu(SimpleNamespace(smoke=True), Path(directory), Path(directory), executor)
         fit_call = executor.submit.call_args_list[1]
         self.assertIs(fit_call.args[0], fitted_variant.fit_point)
-        self.assertEqual(fit_call.kwargs['estimates'], SMOKE_FIT_BYTES)
-        self.assertLess(fit_call.kwargs['estimates'][0], FIT_BYTES[0])
-        self.assertLess(fit_call.kwargs['estimates'][2], FIT_BYTES[2])
+        self.assertEqual(fit_call.kwargs['estimates'], FIT_BYTES)
+
+
+class FullGpuSchedulingTests(unittest.TestCase):
+    def test_fit_arguments_resume_and_order_with_reverse_completion(self):
+        from concurrent.futures import Future
+        from functools import partial
+        from types import SimpleNamespace as NS
+        from r3d import fitted_variant as fitted, import_settings, bake_fidelity, cost_model
+        jobs = [NS(renderer=NS(fit=NS(held_out_every_ms=1000, normal_weight=.3, budget=6000),
+                               variant=NS(triangles=10000))) for _ in range(2)]
+        calls, consumed, completed, prepare_futures, fit_futures = [], [], [], [], []
+
+        class PrepareFuture(Future):
+            def add_done_callback(self, callback):
+                super().add_done_callback(callback)
+                if len(prepare_futures) == 2 and all(f._done_callbacks for f in prepare_futures):
+                    for future in reversed(prepare_futures):
+                        future.set_result(None)
+                    for future, directory, target in reversed(fit_futures):
+                        completed.append(directory.name)
+                        future.set_result({'mesh': str(target)})
+
+        class Executor:
+            def submit(self, function, *args, **kwargs):
+                future = Future()
+                owner = function.func if isinstance(function, partial) else function
+                calls.append((owner, args, kwargs, function))
+                if owner is fitted.prepare:
+                    future = PrepareFuture()
+                    prepare_futures.append(future)
+                elif owner is fitted.fit_point:
+                    directory = args[1]
+                    target = args[7] if len(args) > 7 else directory.parent / f'{directory.name}.mesh'
+                    fit_futures.append((future, directory, target))
+                elif owner is stages.bake_worker:
+                    future.set_result((Path('baked.mesh'), Path('culled.mesh')))
+                elif owner is stages.measure_worker:
+                    label = args[0]
+                    consumed.append(label)
+                    future.set_result(((label, 1, '0', '0', '0', '0', '0'), Path('frames.avi'),
+                                       {'triangles': 1, 'mean_delta_e': 0., 'predicted_ms': 0.}))
+                else:
+                    raise AssertionError(owner)
+                return future
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            out = root / 'out'
+            (out / 'tables').mkdir(parents=True)
+            (out / 'render/gpu').mkdir(parents=True)
+            work = root / 'work/full-/stamp'
+            resume = work / 'budget-4000-cost-0/result.json'
+            resume.parent.mkdir(parents=True)
+            resume.write_text(json.dumps({'budget': 4000, 'cost_weight': 0., 'triangles': 1,
+                                          'mean_delta_e': 0., 'predicted_ms': 0.}))
+            before = resume.read_bytes()
+            with mock.patch.object(import_settings, 'load_scene', return_value=object()), \
+                    mock.patch.object(fitted, 'placed_variant', side_effect=jobs), \
+                    mock.patch.object(bake_fidelity, 'build_host', return_value='host'), \
+                    mock.patch.object(cost_model, 'load', return_value=([],)), \
+                    mock.patch.object(stages, 'current_stamp', return_value='stamp'), \
+                    mock.patch.object(stages, 'run'), mock.patch.object(stages, 'apply_tables'), \
+                    mock.patch.object(fitted, 'plot_pareto'):
+                stages._gpu(NS(smoke=False), out, root / 'work', Executor())
+            expected_rows = ['lite-GI-bake', 'lite-GI-fit', 'normal-0', 'normal-0.1', 'normal-0.3',
+                             'budget-4000-cost-0.1', 'budget-6000-cost-0', 'budget-6000-cost-0.1',
+                             'full-GI-bake', 'full-path-culled', 'full-GI-fit']
+            self.assertEqual(consumed, expected_rows)
+            measurements = json.loads((out / 'measurements.json').read_text())
+            self.assertEqual([row[0] for row in measurements['rows']], expected_rows)
+            self.assertEqual([(row['budget'], row['cost_weight']) for row in measurements['sweep']],
+                             [(4000, 0.), (4000, .1), (6000, 0.), (6000, .1), (6000, 0.)])
+            self.assertEqual(resume.read_bytes(), before)
+            fit_calls = [call for call in calls if call[0] is fitted.fit_point]
+            self.assertEqual(completed, [call[1][1].name for call in reversed(fit_calls)])
+            arguments = []
+            for _, args, kwargs, function in fit_calls:
+                point, point_dir = args[:2]
+                job = function.keywords['job'] if isinstance(function, partial) else args[4]
+                target = args[7].name if len(args) > 7 else f'{point_dir.name}.mesh'
+                arguments.append((point_dir.name, target, point.get('budget'), point.get('cost_weight', 0.),
+                                  job.renderer.fit.normal_weight))
+            self.assertCountEqual(arguments, [
+                ('fit-lite', 'lite.mesh', None, 0., .3), ('fit-full', 'full.mesh', None, 0., .3),
+                ('normal-0', 'normal-0.mesh', None, 0., 0.), ('normal-0.1', 'normal-0.1.mesh', None, 0., .1),
+                ('budget-4000-cost-0.1', 'budget-4000-cost-0.1.mesh', 4000, .1, .3),
+                ('budget-6000-cost-0.1', 'budget-6000-cost-0.1.mesh', 6000, .1, .3)])
+            self.assertTrue(all(kwargs.get('priority') for owner, _, kwargs, _ in calls
+                                if owner in (stages.bake_worker, stages.measure_worker)))
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -89,6 +89,8 @@ class PooledReferenceTests(unittest.TestCase):
         import multiprocessing
         import tempfile
         from r3d.reference_render import render_poses
+        from r3d import reference_render
+        from unittest.mock import patch
         if "fork" not in multiprocessing.get_all_start_methods():
             self.skipTest("copy-on-write pose pool needs fork")
         source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
@@ -97,13 +99,20 @@ class PooledReferenceTests(unittest.TestCase):
         scene.lights[0]["rays"] = 3
         scene.tonemap_white = 2.
         scene.camera = SimpleNamespace(component=SimpleNamespace(background=0x123456))
-        poses = [LOOK_DOWN, LOOK_DOWN + np.array([0.1, 0., 0., 0., 0., 0.])]
+        poses = [LOOK_DOWN + np.array([i * .1, 0., 0., 0., 0., 0.]) for i in range(6)]
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             serial, pooled = root / "serial", root / "pooled"
             serial.mkdir(); pooled.mkdir()
             render_poses(source, job, scene, poses, 8, 8, 1., 2, serial, True, 1)
-            render_poses(source, job, scene, poses, 8, 8, 1., 2, pooled, True, 2)
+            global POSE_BARRIER
+            POSE_BARRIER = multiprocessing.get_context('fork').Barrier(2)
+            with patch.object(reference_render, '_write_pose', record_pose_pid):
+                render_poses(source, job, scene, poses, 8, 8, 1., 2, pooled, True, 2)
+            pids = list(pooled.glob('pid-*'))
+            self.assertGreater(len(pids), 1)
+            for marker in pids:
+                marker.unlink()
             self.assertEqual(sorted(p.name for p in serial.iterdir()), sorted(p.name for p in pooled.iterdir()))
             for path in serial.iterdir():
                 self.assertEqual(path.read_bytes(), (pooled / path.name).read_bytes(), path.name)
@@ -125,18 +134,49 @@ class SkyStreamingTests(unittest.TestCase):
                     rng = np.random.default_rng(seed)
                     value = lighting.light(points, normals, np.array([False, False]), source.intersector,
                                            [sky], .01, rng, shared_sky_rays=shared)
-                    return value, rng.random(8)
+                    return value, rng.bit_generator.state
                 def streamed(intersector, origin, directions):
                     self.assertFalse(isinstance(directions, list))
                     return original(intersector, origin, directions)
                 with patch.object(lighting, 'unshadowed_count', side_effect=streamed):
                     actual, state = render()
-                with patch.object(lighting, 'unshadowed_count',
-                                  side_effect=lambda intersector, origin, directions:
-                                  original(intersector, origin, list(directions))):
+                def list_bake_sky(light, ctx):
+                    n = ctx.normals
+                    tu, tv = lighting.tangent_frame(n)
+                    rays = ctx.shared_sky_rays if ctx.shared else light['rays']
+                    directions = []
+                    if ctx.shared:
+                        for x, y, z in lighting.sky_directions(rays):
+                            directions.append(tu * x + tv * y + n * z)
+                    else:
+                        for _ in range(rays):
+                            r1 = ctx.rng.random(len(n))
+                            r2 = ctx.rng.random(len(n))
+                            r = np.sqrt(r1)[:, None]
+                            angle = (2 * np.pi * r2)[:, None]
+                            directions.append(tu * (r * np.cos(angle)) + tv * (r * np.sin(angle)) +
+                                              n * np.sqrt(1 - r1)[:, None])
+                    visible = original(ctx.intersector, ctx.origin, directions) / rays
+                    return visible[:, None] * np.array(light['color']) * light['intensity']
+                with patch.dict(lighting.LIGHTS, sky=(lighting.LIGHTS['sky'][0], list_bake_sky)):
                     expected, old_state = render()
                 self.assertEqual(actual.tobytes(), expected.tobytes())
-                self.assertEqual(state.tobytes(), old_state.tobytes())
+                self.assertEqual(state, old_state)
+
+
+
+
+POSE_BARRIER = None
+if np is not None:
+    from r3d.reference_render import _write_pose as original_write_pose
+
+
+def record_pose_pid(item):
+    from r3d.reference_render import POSE_STATE
+    POSE_BARRIER.wait(timeout=10)
+    pid, peak = original_write_pose(item)
+    (POSE_STATE[7] / f'pid-{pid}').touch()
+    return pid, peak
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ and shares the exposure, tone map and RGB565 conversion below.
 """
 
 import argparse
+import os
 import multiprocessing
 import concurrent.futures
 import pathlib
@@ -133,6 +134,8 @@ def source_for(scene, name=None, lit=True):
     return source, job
 
 
+# Estimated bytes per ray: trace/hit buffers 256, Embree/lighting scratch 256,
+# sky tangents, samples, directions and temporaries 256.
 POSE_BASE_BYTES_PER_RAY = 768
 POSE_STATE = None
 
@@ -156,21 +159,21 @@ def reservation_pose_capacity(reservation, rss, estimate, cores):
 
 
 def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None):
-    """Fork only CPU reference state; each pose retains its independent seeded RNG."""
+    """Fork a pool sized by the task reservation or free memory; return its peak RSS.
+    Caller must not have initialised CUDA. Each pose seeds its own RNG, matching serial output.
+    """
     from r3d import process_budget
     from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS, parent_death_signal
     import os
     global POSE_STATE
     if workers is None:
-        # trace/hit buffers reserve 256 bytes per ray, Embree/lighting scratch 256,
-        # and streamed sky tangents, random samples, direction and temporaries another 256.
         estimate = max(64 * 1024 ** 2, width * height * samples * samples * POSE_BASE_BYTES_PER_RAY)
-        reservation = process_budget.TASK_RESERVATION
+        reservation = process_budget.task_reservation()
         if reservation is not None:
             rss = process_budget.resident_bytes(os.getpid(), {})[0]
             workers = reservation_pose_capacity(reservation[0], rss, estimate, cores_available())
         else:
-            workers = worker_capacity(available_bytes(), (estimate, estimate, 0, estimate), FLOORS, cores_available())
+            workers = worker_capacity(available_bytes(), (estimate, 0, estimate), FLOORS, cores_available())
             if not workers:
                 raise RuntimeError("not enough available memory for a reference pose worker")
     workers = min(workers, len(poses))
@@ -192,9 +195,8 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
                 for pid, peak in pool.map(_write_pose, enumerate(poses)):
                     pose_peaks[pid] = max(pose_peaks.get(pid, 0), peak)
     finally:
-        if workers > 1:
-            process_budget.POSE_POOL_PEAK_BYTES = max(process_budget.POSE_POOL_PEAK_BYTES, sum(pose_peaks.values()))
         POSE_STATE = None
+    return sum(pose_peaks.values())
 
 
 def main(argv=None):
@@ -241,17 +243,12 @@ def main(argv=None):
         path = mitsuba_reference.prepare(source, scene.lights, job.settings.double_sided, mitsuba_reference.sky_from(args),
                                          args.variant)
     if path is None:
-        render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals, args.workers)
+        peak = render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals, args.workers)
+        print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_rss_bytes={peak}", flush=True)
         return 0
     for index, pose in enumerate(poses):
-        if path is not None:
-            linear, covered = path.trace(pose, width, height, lens, near, args.spp, args.seed, args.max_depth)
-            normal = None
-        else:
-            linear, covered, normal = trace(source, job, scene, pose, width, height, lens, args.samples)
+        linear, covered = path.trace(pose, width, height, lens, near, args.spp, args.seed, args.max_depth)
         np.save(out / ("%04d.linear.npy" % index), linear)
-        if args.normals:
-            np.save(out / ("%04d.normal.npy" % index), normal.astype(np.float32))
         picture = device_picture(linear, covered, scene.tonemap_white, scene.camera.component.background)
         Image.fromarray(picture).save(out / ("%04d.png" % index))
     return 0
