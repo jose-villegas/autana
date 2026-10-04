@@ -202,8 +202,15 @@ def board(args, out, work):
 
 
 def gpu(args, out, work):
+    memory_guard()
+    from r3d.process_budget import FitExecutor
+    with FitExecutor() as executor:
+        return _gpu(args, out, work, executor)
+
+
+def _gpu(args, out, work, executor):
     from r3d.fitted_variant import (prepare, fit, placed_variant, poses_text, plot_pareto,
-                                   run_sweep_points, sweep_rows, write_sweep_csv)
+                                   run_sweep_points, sweep_rows, write_sweep_csv, fit_point)
     from r3d.import_settings import load_scene
     from r3d.mesh_import import bake_geometry, camera_path_poses
     from r3d.lit_mesh import write_lit_mesh, read_lit_mesh, finest_triangles
@@ -212,8 +219,9 @@ def gpu(args, out, work):
     from r3d.cost_model import load, mesh_rows, predict
     from r3d.reference_render import main as reference_main
     from types import SimpleNamespace
+    from functools import partial
+    from r3d.process_budget import PREPARE_BYTES
 
-    memory_guard()
     scene = load_scene(SCENE)
     jobs = [placed_variant(scene, name) for name in ("sponza_fitted", "sponza_fitted_full")]
     if len({job.renderer.fit.held_out_every_ms for job in jobs}) != 1:
@@ -233,7 +241,7 @@ def gpu(args, out, work):
             reference_main([str(SCENE), "--object", job.object.name, "--poses", str(inputs / "train.txt"),
                             "--out", str(inputs / name), "--normals"])
         memory_guard()
-        fit(SCENE, scene, job, work / "fit", smoke=True, target=work / "smoke.mesh", inputs=inputs)
+        executor.submit(fit_point, {}, work / "fit", SCENE, scene, job, inputs, True, work / "smoke.mesh").result()
         print(f"GPU smoke: eight steps completed; scratch only: {work}")
         return 0
     host = build_host(HOST_SCRIPT, work / "host")
@@ -260,11 +268,34 @@ def gpu(args, out, work):
         return {
     "triangles" : triangles, "mean_delta_e" : metrics[0], "p95_delta_e" : metrics[1], "predicted_ms" : predicted}
 
+    fitted_futures, normal_futures, sweep_futures = {}, {}, {}
     for index, job in enumerate(jobs):
         prefix = "lite" if index == 0 else "full"
         reference_inputs = work / f"inputs-{prefix}"
-        memory_guard()
+        executor.reserve(PREPARE_BYTES)
         prepare(SCENE, scene, job, reference_inputs)
+        fitted_futures[prefix] = executor.submit(fit_point, {}, work / f"fit-{prefix}", SCENE, scene, job,
+                                                  reference_inputs, False, work / f"{prefix}.mesh")
+        if index == 0:
+            normal_weights = list(dict.fromkeys((0.0, 0.1, 0.3, job.renderer.fit.normal_weight)))
+            for normal in normal_weights:
+                if normal != job.renderer.fit.normal_weight:
+                    variant = copy.deepcopy(job)
+                    variant.renderer.fit.normal_weight = normal
+                    name = f"normal-{normal:g}"
+                    normal_futures[normal] = executor.submit(fit_point, {}, work / name, SCENE, scene, variant, reference_inputs)
+            budgets = list(dict.fromkeys(budget for budget in (4000, 6000, job.renderer.fit.budget)
+                                         if budget <= job.renderer.variant.triangles))
+            points = [{"budget": budget, "cost_weight": cost} for budget in budgets for cost in (0.0, 0.1)]
+            unfinished = [point for point in points if point["budget"] != job.renderer.fit.budget or point["cost_weight"]]
+            run_sweep_points(work, unfinished, partial(fit_point, scene_path=SCENE, scene=scene, job=job,
+                             inputs=reference_inputs), executor=executor, deferred=sweep_futures)
+    for future in executor.pending:
+        future.result()
+
+    for index, job in enumerate(jobs):
+        prefix = "lite" if index == 0 else "full"
+        reference_inputs = work / f"inputs-{prefix}"
         for label, baked_name in (("GI-bake", "atrium_lite" if index == 0 else "atrium"),):
             baked = copy.deepcopy(next(item for item in scene.renderers if item.object.name == baked_name))
             directory = work / f"bake-{prefix}"
@@ -296,7 +327,7 @@ def gpu(args, out, work):
                      "--bake", "full bake", comparisons["full-GI-bake"], "--bake", "path culled",
                      comparisons["full-path-culled"], "--crops", "3"], work / "path-sheet.log")
         memory_guard()
-        fitted = fit(SCENE, scene, job, work / f"fit-{prefix}", target=work / f"{prefix}.mesh", inputs=reference_inputs)
+        fitted = Path(fitted_futures[prefix].result()["mesh"])
         fitted_values = measure(f"{prefix}-GI-fit", job, fitted, reference_inputs)
         if index == 1:
             sweep.append({"budget": job.renderer.fit.budget, "cost_weight": 0.0, **fitted_values})
@@ -313,8 +344,7 @@ def gpu(args, out, work):
                 variant.renderer.fit.normal_weight = normal
                 name = f"normal-{normal:g}"
                 memory_guard()
-                mesh = fitted if normal == job.renderer.fit.normal_weight else fit(
-                    SCENE, scene, variant, work / name, target=work / f"{name}.mesh", inputs=reference_inputs)
+                mesh = fitted if normal == job.renderer.fit.normal_weight else Path(normal_futures[normal].result()["mesh"])
                 measure(name, job, mesh, reference_inputs)
                 normal_rows.append(rows[-1])
             (out / "tables/sponza-normal.md").write_text(markdown(
@@ -335,9 +365,7 @@ def gpu(args, out, work):
                 budget, cost = point["budget"], point["cost_weight"]
                 name = point_dir.name
                 memory_guard()
-                mesh = fitted if budget == job.renderer.fit.budget and not cost else fit(
-                    SCENE, scene, job, point_dir, budget=budget, cost_weight=cost,
-                    target=work / f"{name}.mesh", inputs=reference_inputs)
+                mesh = fitted if budget == job.renderer.fit.budget and not cost else Path(sweep_futures[name].result()["mesh"])
                 return measure(name, job, mesh, reference_inputs)
 
             run_sweep_points(work, points, run_point)

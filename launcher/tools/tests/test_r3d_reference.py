@@ -83,5 +83,31 @@ class ReferenceRenderTest(unittest.TestCase):
         np.testing.assert_array_equal(picture, expand_565(np.full((1, 1, 3), 128, dtype=np.uint8)))
 
 
+@unittest.skipIf(np is None, "needs Embree and NumPy")
+class PooledReferenceTests(unittest.TestCase):
+    def test_pool_matches_serial_files(self):
+        import multiprocessing
+        import tempfile
+        from r3d.reference_render import render_poses
+        if "fork" not in multiprocessing.get_all_start_methods():
+            self.skipTest("copy-on-write pose pool needs fork")
+        source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
+        job, scene = sun_scene([0., 0., -1.])
+        scene.lights[0]["disc_degrees"] = 4.
+        scene.lights[0]["rays"] = 3
+        scene.tonemap_white = 2.
+        scene.camera = SimpleNamespace(component=SimpleNamespace(background=0x123456))
+        poses = [LOOK_DOWN, LOOK_DOWN + np.array([0.1, 0., 0., 0., 0., 0.])]
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            serial, pooled = root / "serial", root / "pooled"
+            serial.mkdir(); pooled.mkdir()
+            render_poses(source, job, scene, poses, 8, 8, 1., 2, serial, True, 1)
+            render_poses(source, job, scene, poses, 8, 8, 1., 2, pooled, True, 2)
+            self.assertEqual(sorted(p.name for p in serial.iterdir()), sorted(p.name for p in pooled.iterdir()))
+            for path in serial.iterdir():
+                self.assertEqual(path.read_bytes(), (pooled / path.name).read_bytes(), path.name)
+
+
 if __name__ == "__main__":
     unittest.main()
