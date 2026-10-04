@@ -95,7 +95,9 @@ def recipe_digest(job, scene):
     entry = SimpleNamespace(**{name: value for name, value in vars(renderer).items() if name != "settings"})
     entry.fit = fit
     look = scene.indirect if job.bake.indirect else None
-    scene_recipe = SimpleNamespace(lights=scene.lights, tonemap_white=scene.tonemap_white, bake=job.bake, indirect=look)
+    # A setting that is off leaves no trace, so recipes recorded before it existed keep their digest.
+    bake = SimpleNamespace(**{name: value for name, value in vars(job.bake).items() if name != "ao" or value is not None})
+    scene_recipe = SimpleNamespace(lights=scene.lights, tonemap_white=scene.tonemap_white, bake=bake, indirect=look)
     return hashlib.sha256(json.dumps([canonical(settings), canonical(entry), canonical(scene_recipe), tracks], sort_keys=True).encode()).hexdigest()
 
 
