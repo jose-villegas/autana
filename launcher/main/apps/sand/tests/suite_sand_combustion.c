@@ -680,7 +680,7 @@ static void
 test_direct_reaction_calls_rearm_confined_blasts(void) {
     enum { CW = 24, CH = 5, POCKET_COUNT = 6 };
 
-    static const uint32_t seeds[] = {1u, 29u, 97u};
+    static const uint32_t seeds[] = {1U, 29U, 97U};
 
     for (size_t seed = 0; seed < sizeof seeds / sizeof seeds[0]; seed++) {
         uint8_t* cells = malloc(CW * CH);
@@ -710,9 +710,9 @@ test_direct_reaction_calls_rearm_confined_blasts(void) {
         free(cells);
 
         for (int pocket = 0; pocket < POCKET_COUNT; pocket++) {
-            TEST_ASSERT_EQUAL_UINT_MESSAGE(1u, blasts[pocket],
+            TEST_ASSERT_EQUAL_UINT_MESSAGE(1U, blasts[pocket],
                                            "each reaction call must have its own confined-blast budget");
-            TEST_ASSERT_EQUAL_UINT_MESSAGE(1u, explosions[pocket],
+            TEST_ASSERT_EQUAL_UINT_MESSAGE(1U, explosions[pocket],
                                            "the explosion count must describe only the current reaction call");
             TEST_ASSERT_EQUAL_UINT8_MESSAGE(MAT_FIRE, ceilings[pocket],
                                             "each pocket must blast through its stone ceiling");
