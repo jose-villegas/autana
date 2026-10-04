@@ -21,7 +21,7 @@ checked, and compared with device captures.
 
 ## Images in these docs
 
-Every file under `docs/images/` is made by one script, from the
+The CPU and GPU stages own the files under `docs/images/`, run from the
 repository root. It makes the launcher's and the UI toolkit's images itself and runs each app's
 `tools/doc_images.sh` for the app's own:
 
@@ -42,7 +42,7 @@ An app's `tools/doc_images.sh` may also need the packages in
 SHA-256 checked, into `launcher/tools/r3d/.cache`; the workflow caches it.
 A render failure prints the failed command and the tails of its work logs,
 including logs inside bake directories.
-`--check` renders into `launcher/tools/results/doc_images/out/`
+CPU `--check` renders into `launcher/tools/results/doc_images/out/cpu/`
 and compares decoded pixels with `compare_images.py`, never bytes: another
 ffmpeg or Pillow writes different GIF bytes for the same frames. It prints
 `same` or `changed` per image, and `orphan` for a file nothing makes.
@@ -72,7 +72,21 @@ Change a measurement's source or generator and regenerate its block; a hash
 verifies recorded content, while the render check detects stale measurements.
 The image script rewrites blocks by default; --check reports
 changed doc-path#block-name and exits 1. The refresh PR includes changed tables
-and images together. GPU and board measurements need their own stages.
+and images together. `render_doc_images.sh --stage gpu` rebuilds fitted comparisons and sweeps in
+the WSL CUDA environment; the board stage consumes a perf capture. Both use
+this writer. The GPU and board stage commands, requirements and outputs are
+in the [per-tool README][render-tool-commands].
+
+[render-tool-commands]: ../../launcher/tools/render/README.md#refresh-commands
+GPU images live under `docs/images/render/gpu/`; CPU checks leave that stage
+to its own `--check`. GPU `--check` verifies the saved full run and its source
+stamp without fitting again. `--smoke` writes only scratch data.
+The `doc-images-gpu` workflow runs the full stage on the self-hosted Linux GPU
+runner, weekly, on manual dispatch and on main pushes affecting GPU inputs.
+It opens or updates "docs: refresh GPU-rendered images" on the separate
+`feature/refresh-doc-images-gpu` branch. GPU runs are serialized and log GPU
+memory use. The stage requires 6 GiB MemAvailable inside WSL and 2 GiB
+available on the Windows host.
 
 The rest belong to apps, and each app's `tools/README.md` says what its
 images show.

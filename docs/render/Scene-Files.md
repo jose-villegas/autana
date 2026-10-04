@@ -101,7 +101,7 @@ is in [Mesh-Import.md](Mesh-Import.md#import-options).
 required for [flat shading](#shading-flat). The image compares the renderer's
 `bake = true` result with albedo.
 
-![Albedo against baked light](images/import-light.png)
+![Albedo against baked light](../images/render/import-light.png)
 
 #### bake: indirect
 
@@ -229,9 +229,6 @@ The views are square, as wide as the longer side of `size`, so the panel held
 either way up is covered; `margin` and the pose spacing cover geometry that
 enters between samples.
 
-![Triangles the camera path never sees](images/appearance-path-culled.png)
-![Culled lite against uncut, largest differences](images/appearance-path-culled.crops.png)
-
 #### shading: smooth
 
 Smooth shading bakes one colour per vertex. It is the normal baked mesh form
@@ -240,13 +237,13 @@ described in [The baked mesh](Mesh-Import.md#the-baked-mesh).
 #### shading: flat
 
 Flat shading stores one RGB565 colour per triangle. `fixed` uses that many
-lighting points per face; `auto` chooses a count from face area. In the sheets,
-smooth is the upper image and flat the lower; fixed is above adaptive. One point
-lights a face from one place, so a shadow edge lands on whole faces.
+lighting points per face; `auto` chooses a count from face area. The sheets
+label the smooth, flat, fixed and adaptive variants. One point lights a face
+from one place, so a shadow edge lands on whole faces.
 
 ![Smooth against flat](../images/render/compare-full-flat.png)
 ![Smooth against flat, the places they differ most](../images/render/compare-full-flat.crops.png)
-![One fixed face sample against adaptive](images/import-face-samples.png)
+![One fixed face sample against adaptive](../images/render/import-face-samples.png)
 
 Face samples are the useful control; extra samples converge. Sky rays saturate
 at the scene's `flat_sky_rays`: fewer is worse, and more change the score by no
@@ -280,7 +277,7 @@ path draws. Each pose of a dense set counts the pixels $`a_t`$ each triangle
 shows; pruning removes zero-coverage triangles first, then the least-covered,
 to the budget. A warm start splits the worst fitted triangles along their
 longest edge, grows the mesh to a larger budget, and fits it again. Generated
-tables show that this is no better than starting with the smaller budget.
+tables compare the current budget and cost settings.
 
 The cost model predicts pose time $`\hat t_v`$ from a non-negative least-squares
 fit to board frame times: a constant; clusters in view $`N_{s,v}`$; drawn
@@ -292,13 +289,10 @@ test $`\alpha_t`$; and clusters in view $`N_{c,v}`$:
 ```
 
 `cost_model.py` fits and applies the weights, retaining them and their source
-frames beside the model. The model predicts board time within a small margin on
-meshes outside its fit. The cost term $`\mathcal{E}_c`$ from
-[fit.optimise](#fitoptimise) trades appearance for predicted time, but a
-smaller budget gives the better trade. Generated tables and findings live in
-the scene tools README.
-
-![Held-out error against predicted frame time](images/appearance-pareto.png)
+frames beside the model. The generated board table records the frames used
+to fit the model. The cost term $`\mathcal{E}_c`$ from
+[fit.optimise](#fitoptimise) trades appearance for predicted time alongside
+the triangle budget. Generated tables and findings live in the scene tools README.
 
 #### fit.poses
 
@@ -385,7 +379,7 @@ their own right, so the fitted mesh enters the import at its writer and is not
 lit again. A fit is judged on held-out poses by the same scores and sheets as
 any other bake; generated results live in the scene tools README. One mesh can
 fit the whole path, or meshes can fit path segments and swap as the camera
-moves; segment fits see fewer poses and fit poses between segments less well.
+moves; segment fits see fewer training poses.
 
 ```mermaid
 flowchart LR
@@ -409,8 +403,6 @@ view. The error reported beside $`\Delta E`$ is the mean normal angle:
 
 The generated normal-angle heatmaps and sweep findings live in the scene tools
 README.
-
-![Normal angle heatmaps](images/appearance-normal-heat.png)
 
 #### fit.hashes
 
