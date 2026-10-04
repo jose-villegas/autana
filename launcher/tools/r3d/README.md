@@ -18,9 +18,8 @@ mesh. Nothing here runs on the board.
 | [mesh_asset.py](mesh_asset.py) | The lit mesh entry's type and byte layout, shared by the baker and the pack builder. Standard library only. |
 | [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under an octree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as a `<name>.mesh` pack entry; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads an entry back. |
 | [import_settings.py](import_settings.py) | Reads and validates an import file and a scene file; standard library only, every table closed. |
-| [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: fetches and checks the source, runs the steps the import opts into, lights with the scene's lights, then writes each `.mesh` entry beside the scene file (a bare import's beside the import file). |
+| [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: loads the local source, runs the steps the import opts into, lights with the scene's lights, then writes each `.mesh` entry beside the scene file (a bare import's beside the import file). |
 | [rebake.py](rebake.py) | Rewrites a baked `.mesh`'s clusters from its own triangles and colours, with no relighting. |
-| [fetch.py](fetch.py) | Downloads a source model once into `.cache/`, checked against a SHA-256. |
 | [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling (LINEAR, STEP, CUBICSPLINE), linear-blend skinning; reads through [`tools/gltf/`](../gltf/gltf_read.py), the reader and reference sampler [`tools/anim/`](../anim/README.md) shares. Standard library only. |
 | [gltf_preview.py](gltf_preview.py) | Renders any skinned `.glb` with Pillow: a looping GIF of one animation (`--gif NAME`) or the bind pose from four sides (`--sheet`). |
 | [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, the rasterized ones by bounding box and shading mode, and the poses file; host-tested by `suite_r3d_triangle_sizes.c`. |
@@ -42,6 +41,15 @@ git submodule update --init ../third_party/upstream/meshoptimizer
 python -m venv tools/r3d/.cache/venv
 tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.txt   # bin/python on Linux
 ```
+
+Firmware clones exclude source assets through `.lfsconfig`. Before a source
+bake or reference render, run the following from the repository root, using
+the source directory recorded in the app's tools README:
+
+```sh
+git lfs pull --include="SOURCE_DIRECTORY/**" --exclude=""
+```
+ The OBJ, MTL and textures live beside their import settings.
 
 **`rebake.py` or a full import.** Rebake a `.mesh` when only clustering
 or data format changes: it reads its triangles and colours back and rewrites

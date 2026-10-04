@@ -89,7 +89,7 @@ class DeclaredVariantTests(unittest.TestCase):
             write_import(root, output='[output]\ndirectory = "."\n', body=FLAT_VARIANT)
             scene_path = write_scene(root, renderer(extra=FLAT_RENDERER) + sun_object(), head=TONEMAP + AMBIENT + FLAT_BAKE,
                                      name="mesh.scene.toml")
-            with mock.patch("r3d.mesh_import.fetch_zip", return_value=root), mock.patch("r3d.mesh_import.REPO", root):
+            with mock.patch("r3d.mesh_import.REPO", root):
                 self.assertEqual(mesh_import.main([str(scene_path)]), 0)
                 scene = mesh_import.load_scene(scene_path)
                 job = scene.renderers[0]
@@ -107,7 +107,7 @@ class DeclaredVariantTests(unittest.TestCase):
             write_import(root, output='[output]\ndirectory = "."\n', body=FLAT_VARIANT)
             scene_path = write_scene(root, renderer(extra=FLAT_RENDERER) + sun_object(), head=TONEMAP + AMBIENT + FLAT_BAKE,
                                      name="mesh.scene.toml")
-            with mock.patch("r3d.mesh_import.fetch_zip", return_value=root), mock.patch("r3d.mesh_import.REPO", root):
+            with mock.patch("r3d.mesh_import.REPO", root):
                 scene = mesh_import.load_scene(scene_path)
                 job = scene.renderers[0]
                 geometry = mesh_import.bake_geometry(job, scene)

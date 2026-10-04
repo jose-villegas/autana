@@ -268,9 +268,12 @@ def load_import_settings(path):
             raise SettingsError(f"[{name}] moved to {home}")
     check_keys(values, ("source", "output"), "settings", optional=("materials", "process", "geometry", "variants"))
     source = values["source"]
-    check_keys(source, ("url", "sha256", "path", "cache", "credit"), "source")
+    check_keys(source, ("path", "credit"), "source")
     for name in source:
         text(source[name], f"source.{name}")
+    source["path"] = (path.parent / source["path"]).resolve()
+    if source["path"].suffix.lower() != ".obj":
+        raise SettingsError("source.path has an unsupported extension; supported: .obj")
     output = values["output"]
     check_keys(output, ("directory",), "output", optional=("name", "position_scale"))
     directory = text(output["directory"], "output.directory")
@@ -304,6 +307,38 @@ def load_import_settings(path):
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
         variants=variants)
+
+
+def source_files(settings):
+    """The OBJ, its sibling MTL and every texture the loader reads."""
+    from r3d.obj import load_mtl
+
+    path = settings.source["path"]
+    material = path.with_suffix(".mtl")
+    files = {path, material}
+    for entry in load_mtl(material).values():
+        for name in ("map_Kd", "map_d"):
+            if name in entry:
+                files.add((path.parent / entry[name]).resolve())
+    return sorted(files)
+
+
+def source_digest(settings):
+    """Hash source contents and relative names, including hydrated LFS objects."""
+    import hashlib
+    import os
+
+    digest = hashlib.sha256()
+    for path in source_files(settings):
+        content = path.read_bytes()
+        if content.startswith(b"version https://git-lfs.github.com/spec/v1\n"):
+            checksum = next(line.removeprefix(b"oid sha256:") for line in content.splitlines()
+                            if line.startswith(b"oid sha256:"))
+        else:
+            checksum = hashlib.sha256(content).hexdigest().encode()
+        digest.update(pathlib.Path(os.path.relpath(path, settings.source["path"].parent)).as_posix().encode())
+        digest.update(b"\0" + checksum)
+    return digest.hexdigest()
 
 
 def rotation_matrix(degrees):
