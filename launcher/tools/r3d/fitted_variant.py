@@ -174,6 +174,23 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     return target
 
 
+def fit_point(point, point_dir, scene_path, scene, job, inputs, smoke=False, target=None):
+    import contextlib
+    import traceback
+    target = pathlib.Path(point_dir).parent / f"{pathlib.Path(point_dir).name}.mesh" if target is None else target
+    log_path = pathlib.Path(point_dir) / "fit.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with log_path.open("w") as output, contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            mesh = fit(scene_path, scene, job, pathlib.Path(point_dir), budget=point.get("budget"),
+                       cost_weight=point.get("cost_weight", 0.0), smoke=smoke, target=target, inputs=inputs)
+        return {"mesh": str(mesh)}
+    except Exception as error:
+        with log_path.open("a") as output:
+            traceback.print_exc(file=output)
+        raise RuntimeError(f"fit failed: {log_path}\n" + "\n".join(log_path.read_text().splitlines()[-30:])) from error
+
+
 def non_dominated_front(points):
     """(front, knee) minimizing predicted milliseconds and mean DeltaE."""
     front = []
@@ -212,8 +229,8 @@ def point_name(point):
     return "budget-%d-cost-%g" % (point["budget"], point["cost_weight"])
 
 
-def run_sweep_points(out, points, run_fit):
-    """Run unfinished points serially; a result record is the resume marker."""
+def run_sweep_points(out, points, run_fit, executor=None, deferred=None):
+    """Submit unfinished fits or consume them in point order; result records are resume markers."""
     completed = 0
     for point in points:
         point_dir = pathlib.Path(out) / point_name(point)
@@ -221,6 +238,11 @@ def run_sweep_points(out, points, run_fit):
         if result.is_file():
             continue
         point_dir.mkdir(parents=True, exist_ok=True)
+        if executor is not None:
+            if deferred is None:
+                raise ValueError("an executor needs a deferred result mapping")
+            deferred[point_name(point)] = executor.submit(run_fit, point, point_dir)
+            continue
         row = {**point, **run_fit(point, point_dir)}
         temporary = result.with_suffix(".tmp")
         temporary.write_text(json.dumps(row, sort_keys=True) + "\n")

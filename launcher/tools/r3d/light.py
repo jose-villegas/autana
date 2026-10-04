@@ -235,13 +235,14 @@ def bake_sky(light, ctx):
     tu, tv = tangent_frame(n)
     rays = ctx.shared_sky_rays if ctx.shared else light["rays"]
     if ctx.shared:
-        directions = [tu * x + tv * y + n * z for x, y, z in sky_directions(rays)]
+        directions = (tu * x + tv * y + n * z for x, y, z in sky_directions(rays))
     else:
-        directions = []
-        for _ in range(rays):
-            r1, r2 = ctx.rng.random(len(n)), ctx.rng.random(len(n))
-            r, angle = np.sqrt(r1)[:, None], (2 * math.pi * r2)[:, None]
-            directions.append(tu * (r * np.cos(angle)) + tv * (r * np.sin(angle)) + n * np.sqrt(1 - r1)[:, None])
+        def directions_for_rays():
+            for _ in range(rays):
+                r1, r2 = ctx.rng.random(len(n)), ctx.rng.random(len(n))
+                r, angle = np.sqrt(r1)[:, None], (2 * math.pi * r2)[:, None]
+                yield tu * (r * np.cos(angle)) + tv * (r * np.sin(angle)) + n * np.sqrt(1 - r1)[:, None]
+        directions = directions_for_rays()
     visible = unshadowed_count(ctx.intersector, ctx.origin, directions) / rays
     return visible[:, None] * np.array(light["color"]) * light["intensity"]
 

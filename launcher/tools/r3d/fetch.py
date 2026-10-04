@@ -3,6 +3,8 @@ against a known SHA-256, and unpacks it. A bake names the archive; nothing
 downloaded is ever committed."""
 
 import hashlib
+import os
+import tempfile
 import pathlib
 import shutil
 import urllib.request
@@ -28,7 +30,7 @@ def fetch_zip(url, sha256, name):
     unpacked = CACHE / name
     if not archive.exists():
         log(f"downloading {url}")
-        partial = archive.with_suffix(".part")
+        partial = archive.with_suffix(f".{os.getpid()}.part")
         request = urllib.request.Request(url, headers={"User-Agent": "autana-r3d-importer/1"})
         with urllib.request.urlopen(request) as response, open(partial, "wb") as destination:
             shutil.copyfileobj(response, destination)
@@ -37,6 +39,13 @@ def fetch_zip(url, sha256, name):
     if actual != sha256:
         raise SystemExit(f"{archive} has SHA-256 {actual}, expected {sha256}: delete it and fetch again")
     if not unpacked.exists():
-        with zipfile.ZipFile(archive) as z:
-            z.extractall(unpacked)
+        with tempfile.TemporaryDirectory(prefix=f"{name}.{os.getpid()}.", dir=CACHE) as directory:
+            staged = pathlib.Path(directory) / name
+            with zipfile.ZipFile(archive) as z:
+                z.extractall(staged)
+            try:
+                os.replace(staged, unpacked)
+            except OSError:
+                if not unpacked.is_dir():
+                    raise
     return unpacked

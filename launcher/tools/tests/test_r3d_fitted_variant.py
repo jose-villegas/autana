@@ -55,6 +55,39 @@ class FittedVariantTests(unittest.TestCase):
 
 @unittest.skipIf(fitted_variant is None, "needs the r3d environment")
 class SweepTests(unittest.TestCase):
+    def test_fit_point_default_target_and_recipe_arguments(self):
+        with tempfile.TemporaryDirectory() as directory:
+            point_dir = pathlib.Path(directory) / "budget-42-cost-0.5"
+            target = point_dir.parent / (point_dir.name + ".mesh")
+            scene_path, scene, job, inputs = "scene.toml", object(), object(), pathlib.Path(directory) / "inputs"
+            with unittest.mock.patch.object(fitted_variant, "fit", return_value=target) as fit:
+                result = fitted_variant.fit_point(
+                    {"budget": 42, "cost_weight": 0.5}, point_dir, scene_path, scene, job, inputs)
+            fit.assert_called_once_with(scene_path, scene, job, point_dir, budget=42,
+                                        cost_weight=0.5, smoke=False, target=target, inputs=inputs)
+            self.assertEqual(result, {"mesh": str(target)})
+
+    def test_fit_point_failure_reports_log_tail_and_preserves_traceback(self):
+        def fail_fit(*args, **kwargs):
+            for line in range(45):
+                print(f"fit output {line}")
+            raise ValueError("fit failure sentinel")
+
+        with tempfile.TemporaryDirectory() as directory:
+            point_dir = pathlib.Path(directory) / "point"
+            with unittest.mock.patch.object(fitted_variant, "fit", side_effect=fail_fit):
+                with self.assertRaises(RuntimeError) as caught:
+                    fitted_variant.fit_point({"budget": 42}, point_dir, "scene", None, None, directory)
+            log_path = point_dir / "fit.log"
+            log = log_path.read_text()
+            self.assertIn("Traceback (most recent call last):", log)
+            self.assertIn("ValueError: fit failure sentinel", log)
+            self.assertIn("fit output 0\n", log)
+            self.assertEqual(str(caught.exception),
+                             f"fit failed: {log_path}\n" + "\n".join(log.splitlines()[-30:]))
+            self.assertNotIn("fit output 0\n", str(caught.exception))
+            self.assertIsInstance(caught.exception.__cause__, ValueError)
+
     def test_mesh_names_map_to_the_host_scene_keys(self):
         self.assertEqual(fitted_variant.host_scene_key("tiny_fitted"), "tiny-fitted")
 

@@ -15,6 +15,9 @@ and shares the exposure, tone map and RGB565 conversion below. Only the Embree b
 """
 
 import argparse
+import os
+import multiprocessing
+import concurrent.futures
 import pathlib
 import sys
 
@@ -154,12 +157,86 @@ def source_for(scene, name=None, lit=True):
     return source, job
 
 
+# Estimated bytes per ray: trace/hit buffers 256, Embree/lighting scratch 256,
+# sky tangents, samples, directions and temporaries 256.
+POSE_BASE_BYTES_PER_RAY = 768
+POSE_STATE = None
+
+
+def _write_pose(item):
+    source, job, scene, width, height, lens, samples, out, normals, occlusion = POSE_STATE
+    index, pose = item
+    linear, covered, normal = trace(source, job, scene, pose, width, height, lens, samples)
+    np.save(out / ("%04d.linear.npy" % index), linear)
+    if normals:
+        np.save(out / ("%04d.normal.npy" % index), normal.astype(np.float32))
+    if occlusion:
+        factor, share = occlusion_map(source, job, pose, width, height, lens, samples)
+        np.save(out / ("%04d.occlusion.npy" % index), factor.astype(np.float32))
+        background = scene.camera.component.background
+        shade = np.round(255 * factor)[..., None] * np.ones(3)
+        colour = np.array([background >> 16, (background >> 8) & 255, background & 255], dtype=float)
+        shown = shade * share[..., None] + colour * (1.0 - share[..., None])
+        Image.fromarray(np.round(shown).astype(np.uint8)).save(out / ("%04d.occlusion.png" % index))
+    picture = device_picture(linear, covered, scene.tonemap_white, scene.camera.component.background)
+    Image.fromarray(picture).save(out / ("%04d.png" % index))
+    from r3d.process_budget import peak_rss
+    import os
+    return os.getpid(), peak_rss()
+
+
+def reservation_pose_capacity(reservation, rss, estimate, cores):
+    return max(1, min(cores, (reservation - rss) // estimate))
+
+
+def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False):
+    """Fork a pool sized by the task reservation or free memory; return its peak RSS.
+    Caller must not have initialised CUDA. Each pose seeds its own RNG, matching serial output.
+    """
+    from r3d import process_budget
+    from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS, parent_death_signal
+    import os
+    global POSE_STATE
+    if workers is None:
+        estimate = max(64 * 1024 ** 2, width * height * samples * samples * POSE_BASE_BYTES_PER_RAY)
+        reservation = process_budget.task_reservation()
+        if reservation is not None:
+            rss = process_budget.resident_bytes(os.getpid(), {})[0]
+            workers = reservation_pose_capacity(reservation[0], rss, estimate, cores_available())
+        else:
+            workers = worker_capacity(available_bytes(), (estimate, 0, estimate), FLOORS, cores_available())
+            if not workers:
+                raise RuntimeError("not enough available memory for a reference pose worker")
+    workers = min(workers, len(poses))
+    if workers < 1:
+        raise ValueError("workers must be positive")
+    if workers > 1 and "fork" not in multiprocessing.get_all_start_methods():
+        workers = 1
+    POSE_STATE = (source, job, scene, width, height, lens, samples, pathlib.Path(out), normals, occlusion)
+    pose_peaks = {}
+    try:
+        if workers == 1:
+            for item in enumerate(poses):
+                pid, peak = _write_pose(item)
+                pose_peaks[pid] = max(pose_peaks.get(pid, 0), peak)
+        else:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=workers,
+                    mp_context=multiprocessing.get_context("fork"),
+                    initializer=parent_death_signal, initargs=(os.getpid(),)) as pool:
+                for pid, peak in pool.map(_write_pose, enumerate(poses)):
+                    pose_peaks[pid] = max(pose_peaks.get(pid, 0), peak)
+    finally:
+        POSE_STATE = None
+    return sum(pose_peaks.values())
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("scene")
     parser.add_argument("--object", help="the scene's mesh renderer to render, lit as it is baked (default: the first)")
     parser.add_argument("--poses", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--workers", type=int, help="Embree pose workers; default: available CPU and memory budget")
     parser.add_argument("--samples", type=int, default=4)
     parser.add_argument("--skip", type=int, default=0, help="ignore this many leading poses")
     parser.add_argument("--normals", action="store_true", help="also write each pose's shading normals as NNNN.normal.npy")
@@ -201,26 +278,18 @@ def main(argv=None):
     if args.backend == "mitsuba":
         path = mitsuba_reference.prepare(source, scene.lights, job.settings.double_sided, mitsuba_reference.sky_from(args),
                                          args.variant)
+    if args.occlusion and job.bake.ao is None:
+        parser.error("the scene sets no [bake].ao")
+    if path is None:
+        try:
+            peak = render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals, args.workers, args.occlusion)
+        except ValueError as error:
+            parser.error(str(error))
+        print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_rss_bytes={peak}", flush=True)
+        return 0
     for index, pose in enumerate(poses):
-        if path is not None:
-            linear, covered = path.trace(pose, width, height, lens, near, args.spp, args.seed, args.max_depth)
-            normal = None
-        else:
-            linear, covered, normal = trace(source, job, scene, pose, width, height, lens, args.samples)
+        linear, covered = path.trace(pose, width, height, lens, near, args.spp, args.seed, args.max_depth)
         np.save(out / ("%04d.linear.npy" % index), linear)
-        if args.normals:
-            np.save(out / ("%04d.normal.npy" % index), normal.astype(np.float32))
-        if args.occlusion:
-            try:
-                factor, share = occlusion_map(source, job, pose, width, height, lens, args.samples)
-            except ValueError as error:
-                parser.error(str(error))
-            np.save(out / ("%04d.occlusion.npy" % index), factor.astype(np.float32))
-            background = scene.camera.component.background
-            shade = np.round(255 * factor)[..., None] * np.ones(3)
-            colour = np.array([background >> 16, (background >> 8) & 255, background & 255], dtype=float)
-            shown = shade * share[..., None] + colour * (1.0 - share[..., None])
-            Image.fromarray(np.round(shown).astype(np.uint8)).save(out / ("%04d.occlusion.png" % index))
         picture = device_picture(linear, covered, scene.tonemap_white, scene.camera.component.background)
         Image.fromarray(picture).save(out / ("%04d.png" % index))
     return 0
