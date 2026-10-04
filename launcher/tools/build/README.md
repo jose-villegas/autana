@@ -7,6 +7,7 @@
 | [idf.sh](idf.sh) | Runs ESP-IDF commands from POSIX shells. |
 | [idf_shim.bat](idf_shim.bat) | Starts ESP-IDF commands from Git Bash on Windows. |
 | [idf_variant.sh](idf_variant.sh) | Selects ESP-IDF configuration for a build variant. |
+| [layout_pad.py](layout_pad.py), [layout_pad.h](layout_pad.h) | The seeded padding behind `--layout-seed`: the seed-to-size mapping and the never-run pad it places ahead of each source's code and rodata. |
 | [espressif.py](espressif.py) | Finds the local ESP-IDF Python and tool installation. |
 | [espressif.sh](espressif.sh) | Finds the local Espressif tools from shell scripts. |
 | [find_cc.sh](find_cc.sh) | Finds a host C compiler. |
