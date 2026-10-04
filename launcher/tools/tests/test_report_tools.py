@@ -72,6 +72,15 @@ class ValidateCaptureTest(CaptureFixture):
         failures, _ = validate_capture.validate(self.capture(BOOT), require_complete=False)
         self.assertEqual(failures, [])
 
+    def test_a_runsuite_capture_starts_after_the_boot_so_it_has_no_banner(self):
+        # autana suite --flash waits for the console, then sends RUNSUITE.
+        failures, _ = validate_capture.validate(self.capture(RESULT), require_complete=False)
+        self.assertEqual(failures, [])
+
+    def test_a_whole_run_without_a_banner_is_rejected(self):
+        failures, _ = validate_capture.validate(self.capture(RESULT + COMPLETE))
+        self.assertTrue(any("no boot banner" in f for f in failures), failures)
+
     def test_a_crash_loop_is_rejected(self):
         failures, _ = validate_capture.validate(self.capture(BOOT + BOOT + RESULT + COMPLETE))
         self.assertTrue(any("boot banners" in f for f in failures), failures)
@@ -145,6 +154,31 @@ class DeviceReportArgumentsTest(unittest.TestCase):
     def device_calls(self):
         return self.calls.read_text().splitlines() if self.calls.exists() else []
 
+    def run_failed_capture_report(self, capture_text):
+        capture = self.dir / "capture-source.txt"
+        capture.write_text(capture_text, encoding="utf-8")
+        out = self.dir / "out.md"
+        out.unlink(missing_ok=True)
+        script = (
+            'report_name=t; report_dir="$1"; report_timeout=1; report_suite=run_perf\n'
+            'report_sentinel="timing row"; report_capture_failures_ok=1\n'
+            'report_generate() { cp "$1" "$2"; }\n'
+            '. "$2"\n'
+            'capture_source="$3"\n'
+            'autana() { while [ "$#" -gt 0 ]; do '
+            'if [ "$1" = --out ]; then cp "$capture_source" "$2"; '
+            'case "$(cat "$capture_source")" in *"timing row"*) ended=complete ;; *) ended=max_seconds ;; esac; '
+            'printf "%s\\n" "- Ended: $ended" > "${2%.*}.md"; break; fi; shift; done; return 1; }\n'
+            'shift 3\n'
+            'device_report_run "$@"\n')
+        done = subprocess.run(
+            [self.bash, "-c", script, str(TOOLS / "quality" / "report_test_results.sh"),
+             self.dir.as_posix(), (TOOLS / "device" / "device_report.sh").as_posix(),
+             capture.as_posix(), "--no-restore", out.as_posix()],
+            cwd=self.dir, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+            timeout=60)
+        return done, out
+
     def test_the_board_is_the_global_board_option_as_for_every_command(self):
         self.run_report("out.md", board="SERIAL1")
         [call] = self.device_calls()
@@ -159,8 +193,8 @@ class DeviceReportArgumentsTest(unittest.TestCase):
         self.run_report("out.md")
         [call] = self.device_calls()
         argv = call.split()
-        self.assertEqual(argv[:3], ["--owner", "device_report", "t"])
-        self.assertEqual(argv[3], "selftest")
+        self.assertEqual(argv[:2], ["--owner", "device_report-t"])
+        self.assertEqual(argv[2:5], ["--wait", "3600", "selftest"])
         self.assertIn("--out", argv)
         self.assertIn("--project", argv)
         # #454 removed these from every command; a leftover here means
@@ -172,8 +206,8 @@ class DeviceReportArgumentsTest(unittest.TestCase):
         self.run_report("out.md", suite="run_gfx_suite")
         [call] = self.device_calls()
         argv = call.split()
-        self.assertEqual(argv[:3], ["--owner", "device_report", "t"])
-        self.assertEqual(argv[3], "suite")
+        self.assertEqual(argv[:2], ["--owner", "device_report-t"])
+        self.assertEqual(argv[2:5], ["--wait", "3600", "suite"])
         self.assertIn("run_gfx_suite", argv)
         self.assertIn("--runs", argv)
         self.assertIn("--flash", argv)
@@ -181,9 +215,19 @@ class DeviceReportArgumentsTest(unittest.TestCase):
         self.assertNotIn("--worktree", argv)
         self.assertNotIn("--purpose", argv)
 
+    def test_a_budget_failure_is_reported_but_a_cut_short_capture_is_not(self):
+        done, out = self.run_failed_capture_report("timing row\nsuite.c:1:test_budget:FAIL\n")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(out.read_text(encoding="utf-8"),
+                         "timing row\nsuite.c:1:test_budget:FAIL\n")
+
+        done, out = self.run_failed_capture_report("suite.c:1:test_budget:FAIL\n")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertFalse(out.exists())
+
     def test_the_lock_owner_names_this_report_without_an_owner_flag(self):
         """Every autana call device_report_run makes starts with the global
-        `--owner "device_report <name>"`."""
+        `--owner device_report-<name>`."""
         env = dict(os.environ)
         script = (
             'report_name=owner-probe; report_dir="$1"; report_timeout=1; report_suite=""\n'
@@ -206,7 +250,7 @@ class DeviceReportArgumentsTest(unittest.TestCase):
                 cwd=directory, stdin=subprocess.DEVNULL, capture_output=True, text=True,
                 timeout=60, env=env)
             self.assertTrue(owner_file.read_text().startswith(
-                "--owner device_report owner-probe "))
+                "--owner device_report-owner-probe "))
 
     def test_anything_but_one_report_path_is_refused_before_any_device_call(self):
         for arguments in (("SERIAL1", "out.md"), ("SERIAL1",), ("--board",),

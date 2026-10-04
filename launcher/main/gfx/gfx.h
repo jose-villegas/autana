@@ -48,7 +48,7 @@
  * exceeds the panel's rated 50 MHz, and can leave stray pixels in a
  * partially redrawn frame; see
  * CONFIG_LAUNCHER_GFX_QSPI_80MHZ. The divider resolves to exactly 40 or 80,
- * hence a bool. THE THRESHOLDS BELOW ARE FITTED TO 40 MHz. */
+ * hence a bool. The thresholds in gfx_dirty.h are fitted to 40 MHz. */
 #if defined(CONFIG_LAUNCHER_GFX_QSPI_80MHZ) && CONFIG_LAUNCHER_GFX_QSPI_80MHZ
 #define GFX_QSPI_HZ (80 * 1000 * 1000)
 #else
@@ -99,7 +99,6 @@ void gfx_clear(gfx_color_t color);
  * wiping the entire 322 KiB framebuffer, and automatically marks that erased
  * region dirty for presentation. Off by default. */
 void gfx_set_partial_clear(bool enabled);
-bool gfx_partial_clear_enabled(void);
 
 /* Enable or disable interlace mode. When enabled, gfx_present() updates
  * only even-numbered strips on even frames and odd-numbered strips on odd
@@ -419,18 +418,6 @@ void gfx_indexed_set_dither16(bool enabled);
  * mode's table must hold. Meaningless in 256 mode. Safe only between
  * frames, on the present task, like every other indexed setter here. */
 void gfx_indexed_set_dither(gfx_dither_mode_t mode, const gfx_color_t* table);
-
-/* Test-only, always declared: an unsigned trip counter for the present-in-
- * flight guard above, and whether one is in flight right now. Both return
- * inert values (0 / false) wherever GFX_PRESENT_GUARD() itself folds to
- * nothing; see gfx_present_guard.h. */
-unsigned gfx_present_guard_trip_count(void);
-bool gfx_present_in_flight(void);
-
-/* Test-only, always declared: an unsigned trip counter for the
- * framebuffer-availability guard (gfx_fb_guard.h) that every drawing
- * primitive checks before touching the framebuffer. */
-unsigned gfx_fb_guard_trip_count(void);
 
 /* Runtime toggle for the panel-grid overlay layer: outlines whichever grid
  * cells are actually sent each frame, cyan for a full-row send and yellow

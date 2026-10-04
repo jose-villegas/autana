@@ -5,6 +5,8 @@
         --script HOST_RENDER.sh --render-args "ARGS" --reference DIR --work DIR \\
         [--variant LABEL=SPEC ...]
 
+--host EXECUTABLE reuses an existing renderer instead of building --script.
+
 Each variant re-lights the mesh's simplified geometry, which is baked once,
 writes the result under --work (nothing tracked is touched), packs it in
 place of the tracked mesh for the scene's host renderer (AUTANA_ASSET_PACK),
@@ -78,9 +80,9 @@ def parse_spec(spec, declared, median):
     return samples, knobs
 
 
-def declared_samples(variant, median):
-    """The import file's own face_samples, its area resolved to a number."""
-    samples, low, high, area = variant.face_samples
+def declared_samples(renderer, median):
+    """The renderer's face samples, with its area resolved to a number."""
+    samples, low, high, area = renderer.face_samples
     return samples, low, high, median if samples == "auto" and area is None else area
 
 
@@ -101,16 +103,17 @@ def write_pack(name, mesh_file, out):
     return pack
 
 
-def write_variant(settings, variant, scene, geometry, spec, out):
+def write_variant(job, scene, geometry, spec, out):
     """Bakes `spec` (see the module docstring) over `geometry` into
     out/<name>.mesh; returns its path."""
+    renderer = job.renderer
     median = float(np.median(triangle_areas(geometry.positions, geometry.tris)))
-    samples, knobs = parse_spec(spec, declared_samples(variant, median), median)
-    face_rgb = flat_colours(settings, scene, geometry, samples, **knobs)
+    samples, knobs = parse_spec(spec, declared_samples(renderer, median), median)
+    face_rgb = flat_colours(job, scene, geometry, samples, **knobs)
     out.mkdir(parents=True, exist_ok=True)
-    write_lit_mesh(out, variant.name, geometry.positions, None, geometry.tris, geometry.tri_double,
+    write_lit_mesh(out, renderer.variant.name, geometry.positions, None, geometry.tris, geometry.tri_double,
                    face_rgb=face_rgb, **geometry.scale)
-    return out / f"{variant.name}.mesh"
+    return out / f"{renderer.variant.name}.mesh"
 
 
 def score(args, host, pack, work):
@@ -136,8 +139,10 @@ def table(rows):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("scene")
-    parser.add_argument("--mesh", required=True, help="the flat variant to re-bake")
-    parser.add_argument("--script", required=True, help="the scene's host-render script")
+    parser.add_argument("--mesh", required=True, help="the scene object, a flat renderer, to re-bake")
+    host_group = parser.add_mutually_exclusive_group(required=True)
+    host_group.add_argument("--host", help="an already built host renderer")
+    host_group.add_argument("--script", help="the scene's host-render script")
     parser.add_argument("--render-args", required=True, help="the host renderer's arguments, without -o and --video")
     parser.add_argument("--reference", required=True, help="reference_render.py's output directory")
     parser.add_argument("--reference-scale", type=int, default=2, help="host render pixels per reference pixel")
@@ -146,21 +151,22 @@ def main(argv=None):
     args = parser.parse_args(argv)
     path = pathlib.Path(args.scene).resolve()
     scene = load_scene(path)
-    jobs = [item for item in scene.renderers if item.variant.name == args.mesh and item.variant.face_samples]
+    jobs = [item for item in scene.renderers if item.object.name == args.mesh and item.renderer.face_samples]
     if not jobs:
         parser.error(f"{args.mesh!r} is not a flat mesh of {path.name}")
-    settings, variant = jobs[0].settings, jobs[0].variant
+    job = jobs[0]
+    variant = job.renderer.variant
     log(f"geometry of {variant.name}")
-    geometry = bake_geometry(settings, variant, scene)
+    geometry = bake_geometry(job, scene)
     work = pathlib.Path(args.work).resolve()
-    host = build_host(pathlib.Path(args.script).resolve(), work / "host")
+    host = pathlib.Path(args.host).resolve() if args.host else build_host(pathlib.Path(args.script).resolve(), work / "host")
     rows = []
     for item in args.variant or ["declared="]:
         label, _, spec = item.partition("=")
         out = work / label
         log(f"variant {label}")
-        mesh_file = write_variant(settings, variant, scene, geometry, spec, out)
-        rows.append((label, score(args, host, write_pack(variant.name, mesh_file, out), out)))
+        mesh_file = write_variant(job, scene, geometry, spec, out)
+        rows.append((label, score(args, host, write_pack(job.asset_name, mesh_file, out), out)))
         print(f"{label}: mean dE76 {rows[-1][1][0]:.3f}", flush=True)
     print(table(rows))
     (work / "table.md").write_text(table(rows) + "\n")

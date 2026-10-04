@@ -24,8 +24,9 @@ except ImportError:
 
 from test_r3d_import import AMBIENT, CUBE, TONEMAP, renderer, sun_object, write_import, write_scene  # noqa: E402
 
-FLAT_STEP = "[process.light]\nray_offset = 0.5\ncolour_merge_step = 6\nflat_sky_rays = 16\n"
-FLAT_VARIANT = '[[variants]]\nname = "mesh"\nface_samples = { auto = { min = 1, max = 8, area = 8.0 } }\n'
+FLAT_BAKE = '[bake]\nray_offset = 0.5\ncolour_merge_step = 6\nflat_sky_rays = 16\n'
+FLAT_VARIANT = '[[variants]]\nname = "mesh"\n'
+FLAT_RENDERER = 'variant = "mesh"\nbake = true\nshading = { flat = { auto = { min = 1, max = 8, area = 8.0 } } }\n'
 # A small triangle, and a roof over half of the cube's top face, so samples within one face disagree.
 SMALL_FACE = ("v 20 0 0\nv 21 0 0\nv 20 1 0\nf 9 10 11\n"
               "v -1 12 -1\nv 4 12 -1\nv 4 12 9\nv -1 12 9\nf 12 13 14\nf 12 14 15\n")
@@ -85,16 +86,16 @@ class DeclaredVariantTests(unittest.TestCase):
             root = pathlib.Path(tmp)
             (root / "m.obj").write_text(CUBE + SMALL_FACE)
             (root / "m.mtl").write_text("newmtl m\nKd 0.5 0.25 0.125\n")
-            write_import(root, output='[output]\ndirectory = "."\n', body=FLAT_STEP + FLAT_VARIANT)
-            scene_path = write_scene(root, renderer(extra='variant = "mesh"\n') + sun_object(), head=TONEMAP + AMBIENT,
+            write_import(root, output='[output]\ndirectory = "."\n', body=FLAT_VARIANT)
+            scene_path = write_scene(root, renderer(extra=FLAT_RENDERER) + sun_object(), head=TONEMAP + AMBIENT + FLAT_BAKE,
                                      name="mesh.scene.toml")
             with mock.patch("r3d.mesh_import.fetch_zip", return_value=root), mock.patch("r3d.mesh_import.REPO", root):
                 self.assertEqual(mesh_import.main([str(scene_path)]), 0)
                 scene = mesh_import.load_scene(scene_path)
                 job = scene.renderers[0]
-                geometry = mesh_import.bake_geometry(job.settings, job.variant, scene)
-                written = write_variant(job.settings, job.variant, scene, geometry, "", root / "scratch")
-            tracked = (root / "mesh.mesh").read_bytes()
+                geometry = mesh_import.bake_geometry(job, scene)
+                written = write_variant(job, scene, geometry, "", root / "scratch")
+            tracked = (root / "mesh.mesh.mesh").read_bytes()
             self.assertEqual(written.read_bytes(), tracked)
             self.assertGreater(len(set(np.unique(geometry.tri_mat))), 0)
 
@@ -103,15 +104,15 @@ class DeclaredVariantTests(unittest.TestCase):
             root = pathlib.Path(tmp)
             (root / "m.obj").write_text(CUBE + SMALL_FACE)
             (root / "m.mtl").write_text("newmtl m\nKd 0.5 0.25 0.125\n")
-            write_import(root, output='[output]\ndirectory = "."\n', body=FLAT_STEP + FLAT_VARIANT)
-            scene_path = write_scene(root, renderer(extra='variant = "mesh"\n') + sun_object(), head=TONEMAP + AMBIENT,
+            write_import(root, output='[output]\ndirectory = "."\n', body=FLAT_VARIANT)
+            scene_path = write_scene(root, renderer(extra=FLAT_RENDERER) + sun_object(), head=TONEMAP + AMBIENT + FLAT_BAKE,
                                      name="mesh.scene.toml")
             with mock.patch("r3d.mesh_import.fetch_zip", return_value=root), mock.patch("r3d.mesh_import.REPO", root):
                 scene = mesh_import.load_scene(scene_path)
                 job = scene.renderers[0]
-                geometry = mesh_import.bake_geometry(job.settings, job.variant, scene)
-                declared = write_variant(job.settings, job.variant, scene, geometry, "", root / "a")
-                other = write_variant(job.settings, job.variant, scene, geometry, "samples=fixed:1,place=centroid",
+                geometry = mesh_import.bake_geometry(job, scene)
+                declared = write_variant(job, scene, geometry, "", root / "a")
+                other = write_variant(job, scene, geometry, "samples=fixed:1,place=centroid",
                                       root / "b")
             self.assertNotEqual(declared.read_bytes(), other.read_bytes())
 

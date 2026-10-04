@@ -15,9 +15,9 @@ change as little of the screen as possible per frame.
 
 | Fact | Value | Source |
 |---|---|---|
-| Full-frame present | 9.6 ms at 80 MHz, 17.6 ms at 40 MHz | `docs/notes/Display-and-Rendering.md` |
-| Fixed cost per panel transaction | about 118 us | same |
-| Small moving partial regions at 80 MHz | corrupt pixels; a full-frame send heals them | same |
+| Full-frame present | 9.6 ms at 80 MHz, 17.6 ms at 40 MHz | device present tests in `launcher/test/suites/suite_gfx.c` |
+| Fixed cost per panel transaction | about 118 us | device tests in `launcher/test/suites/suite_gfx.c` |
+| Small moving partial regions at 80 MHz | corrupt pixels; a full-frame send heals them | `docs/notes/Display-and-Rendering.md` |
 | PSRAM read / PSRAM-to-PSRAM copy | 33-58 MB/s / about 22 MB/s | `docs/plans/Autana-Rendering-Roadmap.md` |
 | Dirty cells | a 7 x 4 grid of boxes with no preferred axis: a send covers the changed boxes, in either orientation | `docs/Gfx-and-Presentation.md` |
 | Launcher frame today | about 24.5 ms, presented synchronously (*est* 14 ms draw + 10 ms send) | measured with injected taps |

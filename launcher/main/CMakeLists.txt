@@ -238,6 +238,17 @@ if(CONFIG_LAUNCHER_SELFTEST)
         COMPILE_OPTIONS "-include;${CMAKE_CURRENT_LIST_DIR}/../test/timing.h")
 endif()
 
+# The software rasteriser's per-pixel loops run from flash through the
+# instruction cache, so where each function starts inside a cache line moves
+# the frame time by a fraction of a percent whenever unrelated code ahead of
+# it in the link grows or shrinks. Starting every render function on a cache
+# line makes its timing independent of link order.
+if(NOT CMAKE_SCRIPT_MODE_FILE)
+    launcher_glob(render_srcs "${CMAKE_CURRENT_LIST_DIR}/render/*.c")
+    set_source_files_properties(${render_srcs} PROPERTIES
+        COMPILE_OPTIONS "-falign-functions=${CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE}")
+endif()
+
 set(app_private_include_dirs "")
 if(CONFIG_LAUNCHER_SELFTEST)
     list(APPEND app_private_include_dirs "../test")
@@ -247,6 +258,7 @@ idf_component_register(
     SRCS ${app_srcs}
     INCLUDE_DIRS "."
     PRIV_INCLUDE_DIRS ${app_private_include_dirs}
+    LDFRAGMENTS "linker.lf"
     REQUIRES ${app_reqs}
 
     # Required by self-registration, and easy to get wrong.

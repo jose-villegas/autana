@@ -1,7 +1,8 @@
 # Board and Memory
 
-Part of the [platform notes](README.md). Numbers come from this board, and the
-two heap figures from `launcher/tools/device/device_profiles/esp32s3.sh`.
+Part of the [platform notes](README.md). Hardware selection lives in
+`launcher/main/board/`; memory policy lives in `launcher/main/util/memory.h`
+and `launcher/sdkconfig.defaults`.
 
 ## The board
 
@@ -20,8 +21,9 @@ flowchart LR
     SOC --- I2C["I2C0<br/>SDA 15, SCL 14"] --- DEV["touch 0x38 / 0x15<br/>AXP2101 0x34, PWR button<br/>QMI8658 0x6B<br/>PCF85063 0x51<br/>ES8311 0x18<br/>TCA9554 0x20, optional"]
 ```
 
-The display, the SD card and memory are on separate buses, so none of them
-waits for another.
+The display, SD card and external memory use separate buses. CPU work and
+internal-memory traffic can still contend; separate buses do not guarantee
+independent throughput.
 
 | Peripheral | Part | POST | Notes |
 |---|---|---|---|
@@ -55,58 +57,67 @@ driver, and do not add the gap yourself.
 
 ## Memory: the constraint that shapes everything
 
-```mermaid
-flowchart LR
-    subgraph PSRAM["PSRAM, 8 MB octal"]
-        ARENA["app arena, APP_ARENA_BYTES<br/>static, lent to the running app"]
-        FB["framebuffer 322 KiB<br/>full-framebuffer mode only"]
-    end
-    subgraph SRAM["internal SRAM"]
-        CACHE["I-cache 32 KiB + D-cache 32 KiB"]
-        STATIC[".text .data .bss"]
-        DMA["gather_buf + 2 x strip_bounce"]
-        APP["allocations up to 64 KB<br/>stacks, app buffers"]
-    end
-    FB -->|"copied per strip"| DMA
-```
-
-In full-framebuffer mode (`MEMORY_PSRAM`, `util/memory.h`) the
-framebuffer is in PSRAM; band and indexed modes free it. How it reaches the
-panel is in [Gfx-and-Presentation.md](../Gfx-and-Presentation.md).
-`CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps every allocation up to 64 KB
-in internal SRAM, an app's per-frame working buffers included. The app arena (`main/app_arena.h`)
-is a static placed in PSRAM before the heap takes the rest, so the PSRAM heap
-is what `APP_ARENA_BYTES` leaves.
-
-| Measurement | Value | Source |
+| Tier | Current placement | Rule |
 |---|---|---|
-| Internal (non-PSRAM) free heap after `gfx_init()` | **130,635 bytes** | `launcher/tools/device/device_profiles/esp32s3.sh`'s `DP_FREE_HEAP_BYTES`, device capture on the diagnostics build |
-| Largest free block in it | **51,200 bytes** | `DP_LARGEST_FREE_BLOCK_BYTES`, same capture; `gfx_init()` holds a gather buffer and two 46 KiB strip buffers in this pool |
+| Internal SRAM | stacks, ordinary mutable statics, DMA gather and bounce buffers, hot working data | budget static storage and the largest allocation together |
+| PSRAM | full framebuffer (`MEMORY_PSRAM`) and app arena | keep frequently accessed working data internal where it fits |
+| Flash | executable code, ordinary `static const` tables and mapped assets | account for cache misses on bulk or scattered reads |
 
-The framebuffer is not in this pool; the figure is what is left for stacks,
-app state and non-release test fixtures.
+In full-framebuffer mode the framebuffer is in PSRAM; band and indexed modes
+free it. The band ring aliases the internal DMA bounce slots. See
+[Gfx-and-Presentation.md](../Gfx-and-Presentation.md) for presentation.
+The app arena (`launcher/main/app_arena.h`) uses explicit external-memory
+placement, so its reservation reduces the PSRAM heap before apps allocate.
+
+`CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` makes ordinary allocations up to
+that threshold **try** internal RAM first, with PSRAM fallback. This is a
+preference, not a placement guarantee. `memory_alloc()` requests the named
+kind explicitly and does not fall back to another kind. Use `MEMORY_INTERNAL`
+for required internal placement and `MEMORY_DMA` for the panel's buffers.
+
+Read current free-heap and largest-block measurements from POST and the
+development build's `HEAPMARK` lines. The host model's budget is recorded in
+`launcher/tools/device/device_profiles/esp32s3.sh`; it is not a live heap
+measurement of every build variant.
 
 ### Cache is carved from the same pool
 
-| Cache | IDF default | This build | Why |
-|---|---|---|---|
-| Instruction | 16 KiB | 32 KiB | measured gain, in `sdkconfig.defaults` |
-| Data | 32 KiB | 32 KiB | 64 KiB measured nothing once hot data stayed internal |
+| Cache | Build configuration | Access |
+|---|---|---|
+| Instruction | 32 KiB, 32-byte lines, 8-way | flash-resident instructions |
+| Data | 64 KiB, 64-byte lines, 8-way | mapped flash data and PSRAM |
+
+`launcher/sdkconfig.defaults` selects the instruction-cache size with
+`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB` and the data-cache size and line size
+with `CONFIG_ESP32S3_DATA_CACHE_64KB` and `CONFIG_ESP32S3_DATA_CACHE_LINE_64B`;
+the remaining settings use ESP-IDF's ESP32-S3 cache defaults. The larger data
+cache serves the renderer's PSRAM vertex, depth and colour streams. Cache
+storage consumes internal SRAM: increasing its capacity reduces the internal
+heap available to allocations. Internal working data avoids external-memory
+cache traffic;
+flash-resident `const` data is not internal working data. Inspect the linker
+map for actual placement, including explicitly RAM-mapped code and tables.
+Changing code layout can change cache behaviour even when a hot function's
+instructions are identical; measure the linked image on the device.
 
 ### Static growth still taxes the internal heap
 
-A file-scope `static` anywhere in `main/` reserves internal DRAM for the
-whole run. Optional buffers (screenshots, debug overlays) are malloc'd on use
-and freed after; check `idf.py -B build.dev size` and `build.diag size`, not
-just `build/`. The checklist is in
-[Optimization-Playbook.md](Optimization-Playbook.md), "Test and debug code
-shares your production memory budget". Watch the heap figures above and a
-development build's `HEAPMARK` lines.
+Ordinary mutable file-scope statics reserve internal DRAM for the whole boot,
+including those in development and self-test code. Explicit PSRAM placement
+and flash-resident constant tables have different costs. Allocate optional
+debug buffers on use and mutable large test fixtures per test, then free them.
+Clean up earlier allocations before an assertion can abort a failing fixture.
 
-Compare free and largest from the same pool, `memory_free_bytes()` and
-`memory_largest_block()` with `MEMORY_DMA`:
-`esp_get_free_heap_size()` adds a separate region and invents a fragmentation
-gap (see `check_memory()` in `launcher/main/boot/post.c`).
+Check `.bss`, `.data` and RAM-resident code in the linker map and size report
+for every build variant (release, `--dev`, `--diag`). From `launcher/`, run
+`idf.py -B build.dev size` and `idf.py -B build.diag size` as well as the
+release size report. Link-time size does not prove that a contiguous block
+will remain available after runtime allocations.
+
+Compare `memory_free_bytes(MEMORY_DMA)` and
+`memory_largest_block(MEMORY_DMA)` from the same pool. Total free heap across
+other capabilities does not establish whether a DMA buffer fits. Watch POST
+and `HEAPMARK` after changing either static storage or allocation order.
 
 ### Task stacks are not the heap
 
@@ -136,17 +147,16 @@ through the cache, so sequential access is fast and random access thrashes.
 or not. POST mounts and releases the card before `gfx_init()` and can remount
 it live.
 
-| Card | Ships as | Mounts |
-|---|---|---|
-| ≤ 32 GB | FAT32 | yes |
-| > 32 GB | exFAT (`FF_FS_EXFAT 0`) | reformat to FAT32 first |
+| Filesystem | Mounts |
+|---|---|
+| FAT32 | yes |
+| exFAT | no (`FF_FS_EXFAT 0`); reformat to FAT32 first |
 
 8.3 filenames only (`CONFIG_FATFS_LFN_NONE`); 20 MHz (`SDMMC_FREQ_DEFAULT`),
 1-bit.
 
 ## Related
 
-- [Display-and-Rendering.md](Display-and-Rendering.md): panel bring-up and
-  the rest of the SPI2 story.
-- [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md): the toolchain and
-  build flags behind these numbers.
+- [Display-and-Rendering.md](Display-and-Rendering.md): panel constraints on SPI2.
+- [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md): build configuration
+  and compiler checks.

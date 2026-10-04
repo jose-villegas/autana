@@ -125,7 +125,8 @@ values, and one lookup maps the result to RGB565, the classic fire effect
   channels, or chroma at 2× subsampling.
 
 **Tone mapping.** A full 65,536-entry RGB565 → RGB565 table is 131 KB, far
-larger than the 32 KB data cache. Three per-field tables (32, 64 and 32
+larger than the configured data cache (see
+[Cache is carved from the same pool](../notes/Board-and-Memory.md#cache-is-carved-from-the-same-pool)). Three per-field tables (32, 64 and 32
 entries) cost about 8 ops.
 
 ## 4. Edge detection
@@ -178,8 +179,9 @@ convolution for display images was found.
 
 ## 6. Memory access
 
-- **A full frame is too big to cache.** One frame is 330 KB, about ten
-  times the 32 KB data cache, and larger than most of internal SRAM.
+- **A full frame is too big to cache.** One frame is 330 KB, larger than
+  the configured data cache and most of internal SRAM. Cache settings live
+  in `launcher/sdkconfig.defaults`.
 - **Row windows fit the cache.** A 3-row luminance window is 1.1 KB and
   the per-column accumulators are 1.5 KB. Scan sequentially and write the
   output in bands.

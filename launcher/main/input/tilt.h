@@ -11,8 +11,7 @@
  * declares exists to work around that: a trust gate on magnitude, a strength
  * scalar so a flat board settles rather than stops dead, and a shake level
  * read off the accelerometer rather than the gyroscope. See
- * docs/notes/Input-and-Sensors.md for the reasoning and the measurements
- * behind each.
+ * docs/notes/Input-and-Sensors.md for the reasoning behind each.
  */
 #pragma once
 

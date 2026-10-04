@@ -27,6 +27,28 @@ from fake_idf import fake_idf, fake_toolchain  # noqa: E402
 NO_OUTSIDE_NAMES = idf_vocabulary.OutsideVocabulary(None)
 
 
+class OptionLinkTest(unittest.TestCase):
+    def check(self, text):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            doc = root / "docs" / "Guide.md"
+            doc.parent.mkdir(parents=True)
+            doc.write_text(text, encoding="utf-8")
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "add", "docs"], cwd=root, check=True)
+            return check_doc_index.check_option_links(root)
+
+    def test_option_rows_require_their_own_unambiguous_heading(self):
+        table = "| Option | Value | Option link |\n|---|---|---|\n"
+        self.assertEqual(self.check(table + "| `alpha` | x | [alpha](#alpha) |\n\n### alpha\n"), [])
+        self.assertEqual(self.check(table + "| `alpha` | x | [beta](#beta) |\n\n### alpha\n### beta\n"),
+                         [("docs/Guide.md", 3, "`alpha`", "must link to #alpha")])
+        self.assertEqual(self.check(table + "| `process` | x | [process](#process) |\n\n### Process\n### process\n"),
+                         [("docs/Guide.md", 3, "`process`", "#process is shared by another heading")])
+        self.assertEqual(self.check(table + "| `alpha` | [alpha](#alpha) |\n\n### alpha\n"),
+                         [("docs/Guide.md", 3, "`alpha`", "wrong number of columns")])
+
+
 class DocCitationTest(unittest.TestCase):
     def write(self, root, path, text):
         target = root / path
@@ -457,6 +479,14 @@ Acid -->|"dissolvable 110"| Metal
             self.write(root, "docs/B.md", "## The section\n")
             bad = check_doc_index.check_anchors(root)
         self.assertEqual(bad, [])
+
+    def test_anchor_link_from_a_tool_readme_into_docs_is_checked(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.write(root, "docs/Guide.md", "# Guide\n")
+            self.write(root, "launcher/tools/README.md", "[gone](../../docs/Guide.md#gone)\n")
+            bad = check_doc_index.check_anchors(root)
+        self.assertEqual(len(bad), 1)
 
     def test_anchor_link_slug_uses_a_double_hyphen_for_an_em_dash(self):
         with tempfile.TemporaryDirectory() as temp:

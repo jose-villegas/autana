@@ -11,9 +11,15 @@ rays = 48
 color = [1.0, 1.0, 1.0]
 intensity = 0.03
 
+[bake]
+ray_offset = 0.5
+colour_merge_step = 6
+flat_sky_rays = 128
+indirect = { bounces = 2, rays = 64, cache_samples = 1 }
+
 [[objects]]
 name = "sun"
-rotation = [18.418610209503857, -48.65222278030633, 0.0]   # toward (-0.25, 1.0, 0.22)
+rotation = [22.450814295724417, -37.230418121890686, 0.0]   # toward (-0.25, 1.0, 0.329)
 
 [objects.light]
 type = "directional"
@@ -38,13 +44,18 @@ name = "atrium"
 [objects.mesh_renderer]
 mesh = "sponza.import.toml"
 variant = "sponza"
+bake = true
+visibility = { source = "camera_region", rounds = 160 }
 
 [[objects]]
 name = "atrium_flat"
 
 [objects.mesh_renderer]
 mesh = "sponza.import.toml"
-variant = "sponza_flat"
+variant = "sponza"
+bake = true
+shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
+visibility = { source = "camera_region", rounds = 160 }
 
 [[objects]]
 name = "atrium_lite"
@@ -52,6 +63,8 @@ name = "atrium_lite"
 [objects.mesh_renderer]
 mesh = "sponza.import.toml"
 variant = "sponza_lite"
+bake = true
+visibility = { source = "camera_region", rounds = 160 }
 
 [[objects]]
 name = "atrium_fitted"
@@ -59,6 +72,26 @@ name = "atrium_fitted"
 [objects.mesh_renderer]
 mesh = "sponza.import.toml"
 variant = "sponza_fitted"
+bake = true
+visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
+
+[objects.mesh_renderer.fit.prune]
+budget = 8672
+coverage_every_ms = 100
+
+[objects.mesh_renderer.fit.poses]
+train_every_ms = 1000
+held_out_every_ms = 5000
+
+[objects.mesh_renderer.fit.optimise]
+steps = 2000
+batch = 8
+laplacian = 10.0
+normal_weight = 1.0
+
+[objects.mesh_renderer.fit.hashes]
+sha256 = "2c2d0b9f3c3b3f9d81f4e49444e42dbe9ec1392856aeb9002eaba9ca34155608"
+recipe_sha256 = "e0088c8b3bbc5ce3526128665a893a242da802021f93246bea94311b18522b3c"
 
 [[objects]]
 name = "atrium_fitted_full"
@@ -66,3 +99,23 @@ name = "atrium_fitted_full"
 [objects.mesh_renderer]
 mesh = "sponza.import.toml"
 variant = "sponza_fitted_full"
+bake = true
+visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
+
+[objects.mesh_renderer.fit.prune]
+budget = 17381
+coverage_every_ms = 100
+
+[objects.mesh_renderer.fit.poses]
+train_every_ms = 1000
+held_out_every_ms = 5000
+
+[objects.mesh_renderer.fit.optimise]
+steps = 2000
+batch = 8
+laplacian = 10.0
+normal_weight = 1.0
+
+[objects.mesh_renderer.fit.hashes]
+sha256 = "f0072397b03ff56977cf234ffbb2dc51a0972ce43af8ebb7f914bd2ca062619a"
+recipe_sha256 = "3377f53e17e4c82b4dcf94e909985a83eab3a7e778650ee24c2c8b6ac666d704"
