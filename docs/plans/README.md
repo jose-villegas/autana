@@ -15,3 +15,4 @@ Designs written before or during the work they describe. Each plan's own
 | [Motion-Design-Plan.md](Motion-Design-Plan.md) | Motion for the launcher: springs and easing, a sliding Control Center, a cached blurred backdrop, app open and close, orientation morphs. |
 | [Reaction-Doc-Generator-Plan.md](Reaction-Doc-Generator-Plan.md) | A generated short description for every sand brush. |
 | [Image-Kernels-Plan.md](Image-Kernels-Plan.md) | Real-time blur and edge detection over the framebuffer: packed-RGB565 tricks, box blurs, SIMD, and ranked first experiments, every cost an estimate. |
+| [Physical-Sky-Plan.md](Physical-Sky-Plan.md) | Physical daylight, path-traced reference and bake, exposure, and shared camera sky. |
