@@ -4,8 +4,8 @@
 
 One physical atmosphere supplies the sun, the sky and later the camera
 background; no ambient term. The reference is path traced (Mitsuba 3 on CUDA)
-and the bake's per-vertex light becomes path traced too. The current two-bounce
-per-triangle cache is kept as a **comparison baseline only**. Lighting stays
+and the bake's per-vertex light becomes path traced too. The current per-triangle
+indirect cache is kept as a **comparison baseline only**. Lighting stays
 offline: the board receives the same lit-mesh positions and colours.
 
 ## Index
@@ -50,7 +50,7 @@ Hillaire only if altitude or twilight becomes a requirement.
 | `launcher/tools/r3d/mesh_import.py` | Recipe hashing, shading backend selection, cache lifetime |
 | `launcher/tools/r3d/reference_render.py` | Backend selection and the Mitsuba adapter, sharing output conversion |
 | `launcher/tools/r3d/obj.py`, `geometry.py`, `poses.py` | Texture decode, alpha rejection, crease normals, camera conventions, shared with the adapter |
-| `scene_table.py`, `launcher/main/render/camera.h`, `raster.c`, `upscale.c` | Scene-to-camera data and the clear paths, including empty-depth fill in upscale |
+| `launcher/tools/r3d/scene_table.py`, `launcher/main/render/camera.h`, `raster.c`, `upscale.c` | Scene-to-camera data and the clear paths, including empty-depth fill in upscale |
 
 No atmosphere evaluator exists in `util/`, `render/` or `gfx/`. New `r3d/sky.py`
 owns atmosphere evaluation only; scene loading, visibility, materials and display
@@ -96,7 +96,7 @@ indirect = { bounces = 2, rays = 64, cache_samples = 1 }
 
 [[objects]]
 name = "sun"
-rotation = [22.450814295724417, -37.230418121890686, 0.0]
+rotation = [30.0, -40.0, 0.0]
 
 [objects.light]
 type = "directional"
@@ -161,7 +161,7 @@ exposure follows transport and does not force retracing.
 
 [Mitsuba pip wheels](https://github.com/mitsuba-renderer/mitsuba3#installation)
 ship `cuda_ad_rgb` and `cuda_ad_spectral`, usable for plain forward renders.
-Pin Mitsuba and Dr.Jit in `launcher/tools/r3d/requirements-gpu.txt`. Validate a
+Add pinned Mitsuba and Dr.Jit to `launcher/tools/r3d/requirements-gpu.txt`, which the GPU workflow installs. Validate a
 CUDA scene render and emitter load on each GPU; installing is not proof.
 
 The [sunsky emitter](https://mitsuba.readthedocs.io/en/stable/src/generated/plugins_emitters.html#sun-and-sky-emitter-sunsky)
@@ -196,10 +196,10 @@ Noise and cost:
   `--samples` is a subpixel grid, not path spp.
 - Denoised images illustrate a look and never decide a fidelity score.
 
-| Machine | Required measurement |
-|---|---|
-| Developer RTX 5080 **Laptop** (16 GiB) | Export, acceleration, cold JIT, warm integration separated; device, power mode, driver, peak VRAM, spp, depth. Not a desktop 5080 benchmark |
-| CI runner RTX 2060 6 GB | Same workload and noise target; bounded texture and path batches, about 1 GiB VRAM headroom, smaller batches on allocation failure without dropping materials |
+On every GPU the stage runs on, record device, driver, power mode, peak VRAM,
+spp and depth, with export, acceleration, cold JIT and warm integration timed
+separately. Bound texture and path batches to the device's free memory, and shrink
+batches on allocation failure without dropping materials.
 
 State scratch reserve, host-RAM reserve and GPU budget separately, keep disk
 headroom, run one heavy job at a time, and synchronise before reading warm timing.
@@ -244,7 +244,7 @@ flowchart LR
     LINEAR --> ENERGY[Linear shadow and energy checks]
 ```
 
-Compare column and arcade crops before exposure, after the curve and after
+Compare crops of the darkest covered regions before exposure, after the curve and after
 RGB565, reporting luminance and occupied dark codes, so low energy, transport
 error and quantisation stay separate. Ordered dithering belongs at pixel
 quantisation, which vertex colours cannot show; prototype it on host renders and
@@ -275,8 +275,8 @@ evidence from the one before.
 | Step | Measurable outcome | Effort |
 |---|---|---|
 | 1. Optional Mitsuba reference and parity fixtures | CUDA render on both GPUs; direct-only parity, UV probe and furnace fixtures; linear output, noise and depth sweeps, cold/warm timing and peak VRAM | 3–5 days |
-| 2. Shared atmosphere, opt-in schema, cache baseline | Author/reference radiance agreement, disc and unit checks, upper-hemisphere sampling, no ambient; frame-5 sheet and held-out scores quantify the baseline's bias | 2–4 days |
-| 3. Exposure and tone with the dark-end ticket | Locked exposure, EV/toe/RGB565 column and arcade sheets, linear energy unchanged; dithering scoped separately | 1–3 days |
+| 2. Shared atmosphere, opt-in schema, cache baseline | Author/reference radiance agreement, disc and unit checks, upper-hemisphere sampling, no ambient; reference-pose sheet and held-out scores quantify the baseline's bias | 2–4 days |
+| 3. Exposure and tone at the dark end | Locked exposure, EV/toe/RGB565 dark-region sheets, linear energy unchanged; dithering scoped separately | 1–3 days |
 | 4. Path-traced vertex and face bake (the goal) | Incident-light fixture, seed and depth convergence, lower held-out interior error than the cache baseline at fixed geometry and output, same pack format and drawing stages | 4–7 days |
 | 5. Camera atlas after the geometry investigation | Yaw and pitch sheets, matching row and upscale clear, measured memory and frame cost, separately accepted runtime budget | 2–3 days |
 
@@ -289,8 +289,8 @@ reference changes, then repack.
 
 | Pipeline | Regenerate and publish together |
 |---|---|
-| CPU docs | `launcher/tools/render/render_doc_images.sh` (via the render lab's `doc_images.sh`): overview and flythrough, variant sheets and crops, bake fidelity, indirect comparison and look sheets, generated tables |
-| GPU docs | `.github/workflows/doc-images-gpu.yml` on the self-hosted GPU runner (labels self-hosted, linux, gpu; RTX 2060 6 GB) runs `launcher/tools/render/run_doc_gpu.sh` on main pushes touching the render tools, weekly and on dispatch, and refreshes the appearance reference sheets, heatmaps, crops and hashes. Extend its recipe (`fitted_variant.py prepare` and `fit`, held-out scoring) with the path reference |
+| CPU docs | `launcher/tools/render/render_doc_images.sh`, which runs each app's `tools/doc_images.sh`: overview and flythrough, variant sheets and crops, bake fidelity, indirect comparison and look sheets, generated tables |
+| GPU docs | `.github/workflows/doc-images-gpu.yml` runs `launcher/tools/render/run_doc_gpu.sh` (`doc_stages.py --stage gpu`) on the self-hosted GPU runner (labels self-hosted, linux, gpu) for pushes to main touching its listed paths, weekly and on dispatch, and opens a refresh PR with the changed appearance sheets, heatmaps, crops and generated tables. Extend that stage's recipe (`fitted_variant.py prepare` and `fit`, held-out scoring) with the path reference |
 | Comparisons | `render_compare.sh --reference`, `--crops`, `--video --fps` over common poses; `render_compare.py` for alternate backends; images and tables come from the same saved runs |
 
 Reference identity covers backend, package and data versions, atmosphere,
@@ -313,7 +313,7 @@ are separate fidelity runs. Each implementation test must fail before the fix.
 | Sun separation | Integrated disc matches derived irradiance; sky-only plus sun-only equals combined, including horizon clipping; sample count does not change power |
 | Materials and visibility | Occluded sky wedge, solar shadow, asymmetric textured card, wrap seam, alpha threshold, backside reflection; match camera and albedo before multibounce comparisons |
 | Seed convergence | Fixed seed reproduces deterministically; independent seeds agree statistically; 95% intervals, under 1% mean patch irradiance change with an absolute dark floor; dark-code stability reported |
-| Reference convergence | Independent high-spp runs: covered-interior mean ΔE76 under 0.2, p95 under 1, arcade crops inspected; raising depth changes mean linear patch radiance under 1% |
+| Reference convergence | Independent high-spp runs: covered-interior mean ΔE76 under 0.2, p95 under 1, dark-region crops inspected; raising depth changes mean linear patch radiance under 1% |
 | Background | Cardinal and horizon rays match evaluator and output; yaw seam wraps; row and upscale empty pixels agree |
 | Lighting runtime | Same vertex-colour layout and drawing stages; no board sky evaluator or tracer |
 
