@@ -3,6 +3,9 @@
 Host-only scripts; the firmware build skips this folder. The render harness
 itself is [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harness.md).
 
+Before a source bake or reference render, pull the
+[mesh source files](../../../../tools/r3d/README.md).
+
 ## Host renders
 
 ```sh

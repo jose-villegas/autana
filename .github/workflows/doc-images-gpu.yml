@@ -44,6 +44,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Fetch mesh source files
+        run: git lfs pull --exclude=""
+
       - name: Initialize only meshoptimizer
         run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 
