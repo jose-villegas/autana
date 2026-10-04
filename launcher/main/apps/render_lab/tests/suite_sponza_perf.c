@@ -239,6 +239,10 @@ report_frame_cost(const char* label, const r3d_instance_t* instance) {
 
 void
 test_sponza_frame_cost_along_the_flythrough(void) {
+    /* Cache configuration trades internal RAM for speed, so a frame-cost
+     * capture carries what it left. */
+    ESP_LOGI(TAG, "internal heap: free %u largest %u", (unsigned)memory_free_bytes(MEMORY_INTERNAL),
+             (unsigned)memory_largest_block(MEMORY_INTERNAL));
     open_the_meshes();
     for (int i = 0; i < mesh_count; i++) {
         const r3d_instance_t instance = {&meshes[i], NULL};

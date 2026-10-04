@@ -40,9 +40,9 @@ than a structural fix does, the cost was structural.**
 ## Know what kind of memory you actually have
 
 "Optimize for cache locality" assumes a data cache, and it is worth checking
-rather than assuming either way: this chip has a real one (32 KB, 32-byte
-line, 8-way) and a separate 32 KB instruction cache of the same line size
-and associativity for flash-resident code and `const` data. Unrelated code
+rather than assuming either way: this chip has a real one (configured here
+at 64 KB with 64-byte lines, 8-way; `sdkconfig.defaults` says why) and a
+separate 32 KB instruction cache for flash-resident code. Unrelated code
 shifting flash layout can still move a hot function across cache-line or
 even instruction-cache-set boundaries and change its measured cost with
 nothing about its own bytes having changed; treat differences under ~20% as
@@ -465,6 +465,43 @@ approximation: bound it with an argument written next to the constant (the
 convex-hull and sagitta bounds in `boot_anim.h`), and verify visually at
 the exact frames each tier first engages, not just at the extremes.
 `suite_boot_anim_perf.c` measures every checkpoint.
+
+---
+
+## A cache setting measured on one workload is measured on that workload
+
+A 64 KB data cache once measured as no change, and the note beside the
+setting said so. That capture ran the cellular simulation, whose hot data
+had already been moved into internal RAM, so it said nothing about a
+workload that streams from PSRAM. The software rasterizer reads vertices
+and reads and writes depth and colour in PSRAM every frame; there the same
+64 KB, with the line doubled to 64 bytes, took 9-12% off every frame-cost
+row, and the line size alone took most of it. Record which
+workload a configuration result came from next to the setting, and retest
+when a workload with a different memory profile arrives. Measure what the
+setting costs too: here the internal heap shrank by the cache's growth, but
+its largest free block did not move, which is what a big allocation needs.
+
+---
+
+## Skipping steps is not cheaper than the steps it skips
+
+The rasterizer walks a triangle row by row: sort, per-edge divides, per-row
+span setup. Testing each pixel centre of the bounding box against three
+edge functions instead skips all of it, and the planes evaluated at each
+centre give the same integers, so the picture cannot change. For boxes up
+to 2 x 2 it pays. Extended to 3 x 3 and 4 x 4 for every shading mode, it
+lost on the board at every size tried: a 4 x 4 box tests sixteen centres
+for a triangle that covers about half of them, and the per-pixel loop of
+three edges and four planes ran out of registers on the in-order core, while
+the walk's per-row work, measured compute-bound and not memory-bound,
+was already cheaper than the guessing it replaced. Neither moving the box
+fills out of line nor splitting each row into a coverage mask and a plane
+pass closed the gap. The same experiment also showed how a rewrite of the
+small path, with no new work, cost a percent: compare a change against
+the code it replaces at the same limit before crediting the new path
+([`report_triangle_sizes.sh`](../../launcher/tools/r3d/README.md#triangle-sizes)
+prints the box sizes by shading mode).
 
 ---
 
