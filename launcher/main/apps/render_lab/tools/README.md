@@ -253,9 +253,9 @@ It runs weekly, on manual dispatch, and on main pushes affecting its inputs.
 
 For a local run from Git Bash, use the documented WSL Ubuntu CUDA environment
 with both r3d requirements files installed. Host C/C++ compilers are needed
-for scoring. Run one GPU job at a time. The stage requires 6 GiB MemAvailable
-inside WSL and a 2 GiB available-memory margin on the Windows host before
-each bake and fit.
+for scoring. Run one GPU job at a time. The guard checks memory at stage
+start; later workers are admitted against live memory, as described in
+[Render-Harness](../../../../../docs/tools/Render-Harness.md#images-in-these-docs).
 
 ```sh
 DOC_PROJECT=$(pwd -W)
