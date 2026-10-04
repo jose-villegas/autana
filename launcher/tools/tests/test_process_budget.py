@@ -5,6 +5,19 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d.process_budget import worker_capacity
 
+class StatusTests(unittest.TestCase):
+    def test_status_fields_and_missing_process(self):
+        from unittest.mock import patch
+        from r3d import process_budget as budget
+        with patch.object(pathlib.Path, 'read_text', return_value="VmRSS: 12 kB\nVmHWM: 34 kB\n") as read:
+            self.assertEqual(budget.status_bytes(123, "VmRSS"), 12 * 1024)
+            self.assertEqual(budget.resident_bytes(123, {123: 56}), (12 * 1024, 56, 12 * 1024))
+            self.assertEqual(budget.peak_rss(123), 34 * 1024)
+            self.assertEqual(budget.status_bytes(123, "absent"), 0)
+        with patch.object(pathlib.Path, 'read_text', side_effect=FileNotFoundError):
+            self.assertEqual(budget.status_bytes(123, "VmRSS"), 0)
+
+
 class CapacityTests(unittest.TestCase):
     def test_limiting_resource(self):
         self.assertEqual(worker_capacity((100, 60, 90), (20, 10, 30), (20, 20, 0), 10), 3)
