@@ -81,6 +81,12 @@ in the [per-tool README][render-tool-commands].
 GPU images live under `docs/images/render/gpu/`; CPU checks leave that stage
 to its own `--check`. GPU `--check` verifies the saved full run and its source
 stamp without fitting again. `--smoke` writes only scratch data.
+The `doc-images-gpu` workflow runs the full stage on the self-hosted Linux GPU
+runner, weekly, on manual dispatch and on main pushes affecting GPU inputs.
+It opens or updates "docs: refresh GPU-rendered images" on the separate
+`feature/refresh-doc-images-gpu` branch. GPU runs are serialized and log GPU
+memory use. The stage requires 6 GiB MemAvailable inside WSL and 2 GiB
+available on the Windows host.
 
 The rest belong to apps, and each app's `tools/README.md` says what its
 images show.

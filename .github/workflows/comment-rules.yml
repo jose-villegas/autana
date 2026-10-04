@@ -40,6 +40,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Workflow gate dependencies
+        run: pip install -r scripts/gates/requirements.txt
+
+      - name: Self-hosted workflows accept no pull request or comment events
+        run: python3 scripts/gates/check_self_hosted_workflows.py
+
       - name: Length beside code, and header height
         run: >
           python3 scripts/gates/check_comment_length.py
