@@ -113,17 +113,13 @@ def source_for(scene, name=None, lit=True):
     """The full-detail source of the scene object `name` (the first mesh renderer
     when None), alpha-masked and lit as that renderer is baked; returns it with
     the object's job. `lit=False` skips the Embree intersector and the indirect
-    cache, which only the Embree backend uses."""
+    cache, which only the Embree backend uses, and loads float32 textures."""
     named = [item for item in scene.renderers if name in (None, item.object.name)]
     if not named:
         raise ValueError(f"the scene places no mesh renderer named {name!r}")
     job = named[0]
     settings = job.settings
-    if lit:
-        source = load_source(settings)
-    else:
-        with mitsuba_reference.lean_textures():
-            source = load_source(settings)
+    source = load_source(settings, np.float64 if lit else np.float32)
     if settings.alpha_keep is not None:
         source.tri_v, source.tri_t, source.tri_m = drop_masked(source.p, source.uv, source.tri_v, source.tri_t,
                                                                  source.tri_m, source.textures, settings.alpha_keep)
@@ -146,13 +142,11 @@ def main(argv=None):
     parser.add_argument("--normals", action="store_true", help="also write each pose's shading normals as NNNN.normal.npy")
     parser.add_argument("--backend", choices=("embree", "mitsuba"), default="embree",
                         help="embree: the scene's bake lighting (default); mitsuba: a path-traced reference")
-    parser.add_argument("--spp", type=int, default=256, help="mitsuba: paths per pixel")
-    parser.add_argument("--max-depth", type=int, default=12, help="mitsuba: path depth, 2 is direct light only")
+    parser.add_argument("--spp", type=int, default=mitsuba_reference.DEFAULT_SPP, help="mitsuba: paths per pixel")
+    parser.add_argument("--max-depth", type=int, default=mitsuba_reference.DEFAULT_DEPTH,
+                        help="mitsuba: path depth, 2 is direct light only")
     parser.add_argument("--seed", type=int, default=0, help="mitsuba: sampler seed")
-    parser.add_argument("--variant", help="mitsuba: variant (default: cuda_ad_rgb, llvm_ad_rgb, else scalar_rgb)")
-    parser.add_argument("--sky", choices=("hosek-wilkie",), help="mitsuba: replace the scene lights by this sun and sky")
-    parser.add_argument("--turbidity", type=float, default=3.0, help="mitsuba: --sky turbidity")
-    parser.add_argument("--ground-albedo", type=float, default=0.3, help="mitsuba: --sky ground albedo")
+    mitsuba_reference.add_options(parser)
     args = parser.parse_args(argv)
     if args.samples < 1 or args.skip < 0:
         parser.error("--samples must be positive and --skip cannot be negative")
@@ -175,11 +169,13 @@ def main(argv=None):
         source, job = source_for(scene, args.object, lit=args.backend == "embree")
     except ValueError as error:
         parser.error(str(error))
-    sky = {"turbidity": args.turbidity, "albedo": args.ground_albedo} if args.sky else None
+    path = None
+    if args.backend == "mitsuba":
+        path = mitsuba_reference.prepare(source, scene.lights, job.settings.double_sided, mitsuba_reference.sky_from(args),
+                                         args.variant)
     for index, pose in enumerate(poses):
-        if args.backend == "mitsuba":
-            linear, covered = mitsuba_reference.render(source, scene.lights, job.settings.double_sided, pose, width, height,
-                                                       lens, near, args.spp, args.max_depth, args.seed, sky, args.variant)
+        if path is not None:
+            linear, covered = path.trace(pose, width, height, lens, near, args.spp, args.seed, args.max_depth)
             normal = None
         else:
             linear, covered, normal = trace(source, job, scene, pose, width, height, lens, args.samples)

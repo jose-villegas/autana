@@ -28,8 +28,43 @@ class ReferenceSweepTest(unittest.TestCase):
         self.assertEqual(reference_sweep.delta_e(a, a), 0.0)
         self.assertGreater(reference_sweep.delta_e(a, a + 30.0), 5.0)
 
+    def test_an_all_black_image_has_no_relative_noise_rather_than_nan(self):
+        self.assertEqual(reference_sweep.relative_noise([np.zeros((4, 4, 3)), np.zeros((4, 4, 3))]), 0.0)
+
+    def test_the_memory_floor_stops_the_sweep_only_below_it(self):
+        saved = reference_sweep.available_memory_gib
+        try:
+            reference_sweep.available_memory_gib = lambda: 5.0
+            reference_sweep.require_memory(3.0, "stage")
+            reference_sweep.available_memory_gib = lambda: 1.0
+            with self.assertRaises(SystemExit):
+                reference_sweep.require_memory(3.0, "stage")
+        finally:
+            reference_sweep.available_memory_gib = saved
+
     def test_the_host_memory_reading_is_a_positive_number_of_gib(self):
         self.assertGreater(reference_sweep.available_memory_gib(), 0.0)
+
+    def test_measure_reports_the_cold_trace_apart_and_compares_depths_on_matching_seeds(self):
+        calls = []
+
+        def trace(spp, seed, depth):
+            calls.append((spp, seed, depth))
+            image = np.full((2, 2, 3), 1.0 + 0.01 * seed + (0.5 if depth == 24 else 0.0))
+            return image, np.ones((2, 2))
+
+        result = reference_sweep.measure(trace, [12, 24], [64, 256], 256, 2, lambda linear, covered: linear * 100)
+        self.assertEqual(sorted(calls), sorted([(spp, seed, 12) for spp in (64, 256) for seed in (1, 2)] +
+                                               [(256, seed, 24) for seed in (1, 2)]))
+        self.assertEqual(calls[0], (64, 1, 12))
+        self.assertEqual(result["cold_spp"], 64)
+        cells = result["depths"][12]["spp"]
+        self.assertEqual(len(cells[64]["seconds"]), 1)
+        self.assertEqual(len(cells[256]["seconds"]), 2)
+        self.assertEqual(sorted(result["depths"][24]["spp"]), [256])
+        against = result["depths"][24]["against_depth_12"]
+        self.assertGreater(against["mean_delta_e"], 0.0)
+        self.assertGreater(against["radiance_ratio"], 1.2)
 
     def test_the_table_lists_every_depth_and_spp_and_the_depth_comparison(self):
         cell = {"relative_noise": 0.1, "seed_pair_delta_e": 2.0, "warm_seconds_mean": 1.5, "peak_mib": 900}

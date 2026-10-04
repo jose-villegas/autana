@@ -101,8 +101,8 @@ names the render and is required with `--reference-sheet`.
 
 `reference_render.py --backend mitsuba` renders the same source with Mitsuba 3 in
 place of Embree. It reads the same geometry after alpha rejection, albedo,
-camera and poses, and shares exposure, tone map and RGB565 conversion, so the
-two backends differ in transport alone. The Embree backend stays the default.
+camera and poses, and shares exposure, tone map and RGB565 conversion. The
+Embree backend stays the default.
 Install the pinned `mitsuba` and `drjit` from
 [requirements-gpu.txt](requirements-gpu.txt); the variant is `cuda_ad_rgb` when
 a CUDA device is present, else `llvm_ad_rgb`, else `scalar_rgb` (`--variant`).
@@ -113,9 +113,16 @@ a CUDA device is present, else `llvm_ad_rgb`, else `scalar_rgb` (`--variant`).
 | `--max-depth N` | Path depth cap; 2 is direct light only |
 | `--sky hosek-wilkie` | Replaces the scene lights by the Hosek–Wilkie sun and sky (`--turbidity`, `--ground-albedo`), the sun taking the first directional light's direction |
 
-A directional light is a point source here, so a soft sun disc is not
-reproduced, and `ambient` has no path-traced meaning and is rejected; a `sky`
-light becomes a constant environment of the same radiance.
+A `sky` light becomes a constant environment of the same radiance. The
+backends differ in these recorded ways, besides transport:
+
+| Case | Embree reference | Path-traced backend |
+|---|---|---|
+| Sun disc | Soft shadows from `disc_degrees` | A point source: no soft edge |
+| `ambient` | Added to every point | Rejected unless black, it has no transport meaning |
+| One-sided card seen from behind | Shades the hit with the front normal, so a sun on the front lights it | Black: the side the ray reached is unlit |
+| Double-sided card | Turns toward the summed suns | Shades the side the ray reached |
+| Near plane | Ignored | Clips at the pose file's near value |
 `tests/test_r3d_mitsuba_reference.py` pins direct-only parity with the Embree
 reference, texture orientation and constant-sky energy. Measure one pose with
 

@@ -103,6 +103,10 @@ jobs:
           pip install -r launcher/tools/r3d/requirements.txt
           git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 
+      # test_r3d_mitsuba_reference.py runs on Mitsuba's scalar CPU variant and skips without it.
+      - name: r3d path-traced reference environment
+        run: pip install -r launcher/tools/r3d/requirements-gpu.txt
+
       # test_check_math.mjs renders through GitHub's MathJax.
       - name: check-math.mjs dependencies
         run: npm ci --prefix scripts/gates

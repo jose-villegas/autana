@@ -75,12 +75,16 @@ class VramPeak:
     """The most GPU memory in use, in MiB, while the block runs, sampled from nvidia-smi."""
 
     def __init__(self, interval=0.1):
-        self.interval, self.peak, self._stop = interval, 0, threading.Event()
+        self.interval, self.peak, self._stop = interval, None, threading.Event()
 
     @staticmethod
     def used():
-        out = subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"], capture_output=True,
-                             text=True, check=True).stdout
+        """GPU memory in use in MiB, or None without an NVIDIA GPU."""
+        try:
+            out = subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"], capture_output=True,
+                                 text=True, check=True).stdout
+        except (OSError, subprocess.CalledProcessError):
+            return None
         return max(int(line) for line in out.split())
 
     def __enter__(self):
@@ -90,14 +94,16 @@ class VramPeak:
                 time.sleep(self.interval)
 
         self.peak = self.used()
-        self._thread = threading.Thread(target=poll, daemon=True)
-        self._thread.start()
+        if self.peak is not None:
+            self._thread = threading.Thread(target=poll, daemon=True)
+            self._thread.start()
         return self
 
     def __exit__(self, *_):
-        self._stop.set()
-        self._thread.join()
-        self.peak = max(self.peak, self.used())
+        if self.peak is not None:
+            self._stop.set()
+            self._thread.join()
+            self.peak = max(self.peak, self.used())
 
 
 def timed(function):
@@ -114,7 +120,49 @@ def delta_e(a, b):
 def relative_noise(images):
     """RMS over pixels and channels of the seed-to-seed standard deviation, as a share of the mean radiance."""
     stack = np.stack(images)
-    return float(np.sqrt(stack.var(axis=0, ddof=1).mean()) / stack.mean())
+    mean = stack.mean()
+    return float(np.sqrt(stack.var(axis=0, ddof=1).mean()) / mean) if mean else 0.0
+
+
+def measure(trace, depths, spps, depth_spp, seeds, picture, before=lambda stage: None):
+    """The sweep's measurements of `trace(spp, seed, depth) -> (linear, covered)`: for the first depth every spp, for
+    each later depth only `depth_spp`, each over seeds 1..`seeds`; `picture(linear, covered)` makes the 8-bit
+    device picture the dE is taken on. Returns the `depths`, `cold_seconds` and `cold_spp` of the result."""
+    kept, result = {}, {}
+    for depth in depths:
+        entry = {"spp": {}}
+        result[depth] = entry
+        sweep = spps if depth == depths[0] else []
+        for spp in sorted(set(sweep) | {depth_spp}):
+            before(f"before depth {depth}, {spp} spp")
+            images, times = [], []
+            with VramPeak() as peak:
+                for seed in range(1, seeds + 1):
+                    image, seconds = timed(lambda: trace(spp, seed, depth))
+                    images.append(image)
+                    times.append(seconds)
+            kept[(depth, spp)] = images
+            entry["spp"][spp] = {"seconds": times, "peak_mib": peak.peak}
+            print(f"depth {depth} spp {spp}: {', '.join('%.2f s' % t for t in times)}, peak {mib(peak.peak)}", flush=True)
+    first = result[depths[0]]["spp"][min(result[depths[0]]["spp"])]
+    cold = {"cold_seconds": first["seconds"][0], "cold_spp": min(result[depths[0]]["spp"])}
+    # The first trace of the first setting compiled the kernels: it is the cold time, never a warm one.
+    first["seconds"] = first["seconds"][1:]
+    for depth, entry in result.items():
+        for spp, cell in entry["spp"].items():
+            images = kept[(depth, spp)]
+            linear = [item[0] for item in images]
+            cell["warm_seconds_mean"] = float(np.mean(cell["seconds"]))
+            cell["relative_noise"] = relative_noise(linear)
+            cell["seed_pair_delta_e"] = delta_e(picture(*images[0]), picture(*images[1]))
+            cell["mean_radiance"] = float(np.mean(linear))
+    base = depths[0]
+    for depth in depths[1:]:
+        pairs = [(kept[(base, depth_spp)][i], kept[(depth, depth_spp)][i]) for i in range(seeds)]
+        result[depth]["against_depth_%d" % base] = {
+            "mean_delta_e": float(np.mean([delta_e(picture(*a), picture(*b)) for a, b in pairs])),
+            "radiance_ratio": float(np.mean([b[0].mean() / a[0].mean() for a, b in pairs]))}
+    return {"depths": result, **cold}
 
 
 def main(argv=None):
@@ -128,10 +176,7 @@ def main(argv=None):
     parser.add_argument("--depths", type=int, nargs="+", default=[12, 24])
     parser.add_argument("--depth-spp", type=int, default=256, help="spp of the depth comparison")
     parser.add_argument("--seeds", type=int, default=4)
-    parser.add_argument("--sky", choices=("hosek-wilkie",))
-    parser.add_argument("--turbidity", type=float, default=3.0)
-    parser.add_argument("--ground-albedo", type=float, default=0.3)
-    parser.add_argument("--variant")
+    mitsuba_reference.add_options(parser)
     parser.add_argument("--min-free-gib", type=float, default=3.0, help="stop when host memory available is lower")
     args = parser.parse_args(argv)
     if args.seeds < 2:
@@ -139,7 +184,7 @@ def main(argv=None):
     scene = load_scene(args.scene)
     width, height, lens, near, poses = read_poses(args.poses)
     pose = poses[args.pose_index]
-    sky = {"turbidity": args.turbidity, "albedo": args.ground_albedo} if args.sky else None
+    sky = mitsuba_reference.sky_from(args)
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     background = scene.camera.component.background
@@ -152,55 +197,23 @@ def main(argv=None):
     guard_memory(args.min_free_gib)
     source, job = source_for(scene, args.object, lit=False)
     result = {"scene": str(args.scene), "pose_index": args.pose_index, "size": [width, height], "sky": sky, "seeds": args.seeds,
-              "variant": args.variant, "base_depth": args.depths[0], "triangles": int(len(source.tri_v)), "vram_baseline_mib": baseline, "depths": {}}
-    kept = {}
+              "variant": args.variant, "base_depth": args.depths[0], "triangles": int(len(source.tri_v)), "vram_baseline_mib": baseline}
     require_memory(args.min_free_gib, "before the export")
     with VramPeak() as export_peak:
-        path, export_seconds = timed(lambda: mitsuba_reference.prepare(source, scene.lights, job.settings.double_sided, pose, width,
-                                                                      height, lens, near, args.depths[0], sky, args.variant,
-                                                                      release_textures=True))
+        path, export_seconds = timed(lambda: mitsuba_reference.prepare(source, scene.lights, job.settings.double_sided, sky,
+                                                                      args.variant))
     result.update(export_seconds=export_seconds, export_peak_mib=export_peak.peak)
-    for depth in args.depths:
-        entry = {"spp": {}}
-        result["depths"][depth] = entry
-        sweep = args.spp if depth == args.depths[0] else []
-        for spp in sorted(set(sweep) | {args.depth_spp}):
-            require_memory(args.min_free_gib, f"before depth {depth}, {spp} spp")
-            images, times = [], []
-            with VramPeak() as peak:
-                for seed in range(args.seeds):
-                    (linear, covered), seconds = timed(lambda: path.trace(spp, seed + 1, depth))
-                    images.append((linear, covered))
-                    times.append(seconds)
-            kept[(depth, spp)] = images
-            entry["spp"][spp] = {"seconds": times, "peak_mib": peak.peak}
-            print(f"depth {depth} spp {spp}: {', '.join('%.2f s' % t for t in times)}, peak {peak.peak} MiB", flush=True)
-        # The first trace of the first setting compiled the kernels: report it as cold, never as warm.
-        if depth == args.depths[0]:
-            first = entry["spp"][min(entry["spp"])]
-            result["cold_seconds"] = first["seconds"][0]
-            result["cold_spp"] = min(entry["spp"])
-            first["seconds"] = first["seconds"][1:]
-    for depth, entry in result["depths"].items():
-        for spp, cell in entry["spp"].items():
-            images = kept[(depth, spp)]
-            linear = [item[0] for item in images]
-            pictures = [picture(*item) for item in images]
-            cell["warm_seconds_mean"] = float(np.mean(cell["seconds"]))
-            cell["relative_noise"] = relative_noise(linear)
-            cell["seed_pair_delta_e"] = delta_e(pictures[0], pictures[1])
-            cell["mean_radiance"] = float(np.mean(linear))
-    base = args.depths[0]
-    for depth in args.depths[1:]:
-        deltas = [delta_e(picture(*kept[(base, args.depth_spp)][i]), picture(*kept[(depth, args.depth_spp)][i]))
-                  for i in range(args.seeds)]
-        ratio = np.mean([kept[(depth, args.depth_spp)][i][0].mean() / kept[(base, args.depth_spp)][i][0].mean()
-                         for i in range(args.seeds)])
-        result["depths"][depth]["against_depth_%d" % base] = {"mean_delta_e": float(np.mean(deltas)), "radiance_ratio": float(ratio)}
+    result.update(measure(lambda spp, seed, depth: path.trace(pose, width, height, lens, near, spp, seed, depth), args.depths,
+                          args.spp, args.depth_spp, args.seeds, picture,
+                          lambda stage: require_memory(args.min_free_gib, stage)))
     (out / "sweep.json").write_text(json.dumps(result, indent=2))
     (out / "sweep.md").write_text(table(result))
     print(table(result))
     return 0
+
+
+def mib(value):
+    return "n/a" if value is None else f"{value} MiB"
 
 
 def table(result):
@@ -209,15 +222,15 @@ def table(result):
     for depth, entry in result["depths"].items():
         for spp, cell in sorted(entry["spp"].items()):
             lines.append(f"| {depth} | {spp} | {cell['relative_noise']:.4f} | {cell['seed_pair_delta_e']:.3f} | "
-                         f"{cell['warm_seconds_mean']:.2f} | {cell['peak_mib']} |")
+                         f"{cell['warm_seconds_mean']:.2f} | {mib(cell['peak_mib']).replace(' MiB', '')} |")
     lines += ["", "| depth | against depth %d: mean dE76 | radiance ratio |" % base, "|---|---|---|"]
     for depth, entry in result["depths"].items():
         if "against_depth_%d" % base in entry:
             cell = entry["against_depth_%d" % base]
             lines.append(f"| {depth} | {cell['mean_delta_e']:.3f} | {cell['radiance_ratio']:.4f} |")
-    lines += ["", f"export: {result['export_seconds']:.2f} s, peak GPU memory in use {result['export_peak_mib']} MiB",
+    lines += ["", f"export: {result['export_seconds']:.2f} s, peak GPU memory in use {mib(result['export_peak_mib'])}",
               f"cold first render ({result['cold_spp']} spp): {result['cold_seconds']:.2f} s",
-              f"GPU memory in use before the run: {result['vram_baseline_mib']} MiB"]
+              f"GPU memory in use before the run: {mib(result['vram_baseline_mib'])}"]
     return "\n".join(lines) + "\n"
 
 

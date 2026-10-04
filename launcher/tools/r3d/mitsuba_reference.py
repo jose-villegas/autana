@@ -7,13 +7,14 @@ conversion stay with reference_render.device_picture. Mitsuba and Dr.Jit are opt
 requirements-gpu.txt.
 """
 
-import contextlib
 import math
 
 import numpy as np
 
-from .obj import Texture
 from .poses import camera_basis
+
+DEFAULT_SPP = 256
+DEFAULT_DEPTH = 12
 
 
 def import_mitsuba():
@@ -23,17 +24,6 @@ def import_mitsuba():
     except ImportError:
         return None
     return mitsuba
-
-
-@contextlib.contextmanager
-def lean_textures():
-    """Load textures as float32 inside the block: the export reads level 0 only, and a large scene's float64 mip chains
-    are several times its source size."""
-    saved, Texture.dtype = Texture.dtype, np.float32
-    try:
-        yield
-    finally:
-        Texture.dtype = saved
 
 
 def default_variant(mi):
@@ -60,11 +50,11 @@ def material_bsdf(mi, kd, texture, two_sided):
     return {"type": "twosided", "bsdf": bsdf} if two_sided else bsdf
 
 
-def source_meshes(mi, source, double_sided, release_textures=False):
+def source_meshes(mi, source, double_sided):
     """One Mitsuba mesh per source material. Corners are not shared, since the source indexes positions and UVs
     separately; the shading normals are the import's crease-limited corner normals. The texture V axis is flipped
-    to the orientation `obj.Texture.sample` reads. `release_textures` drops each texture from the source once exported,
-    which a large scene needs to keep its host memory flat; the source cannot be exported again."""
+    to the orientation `obj.Texture.sample` reads. Each texture is dropped from the source once exported, which a large scene needs to keep its host
+    memory flat, so a source is exported once."""
     meshes = {}
     for index, name in enumerate(source.names):
         chosen = source.tri_m == index
@@ -84,8 +74,7 @@ def source_meshes(mi, source, double_sided, release_textures=False):
         params["vertex_texcoords"] = uv.ravel()
         params.update()
         meshes[f"mesh_{index}"] = mesh
-        if release_textures:
-            source.textures[index] = None
+        source.textures[index] = None
     return meshes
 
 
@@ -95,16 +84,15 @@ def emitters(mi, lights, sky=None):
     intensity. A directional light is a point source here, so soft sun discs are not reproduced. Ambient is a
     non-physical constant with no transport meaning and is rejected unless it is zero.
 
-    `sky` (turbidity, albedo, sun_aperture_degrees) replaces the lights by the Hosek-Wilkie sun and sky, the sun
-    taking its direction from the first directional light."""
+    `sky` (turbidity, albedo) replaces the lights by the Hosek-Wilkie sun and sky, the sun taking its direction from
+    the first directional light."""
     if sky is not None:
         sun = next((light for light in lights if light["type"] == "directional"), None)
         if sun is None:
             raise ValueError("a physical sky needs the scene's directional light for the sun direction")
         direction = np.array(sun["direction"], dtype=np.float64)
         return {"sunsky": {"type": "sunsky", "sun_direction": (direction / np.linalg.norm(direction)).tolist(),
-                           "to_world": y_up_to_z_up(mi), "turbidity": float(sky["turbidity"]),
-                           "albedo": float(sky["albedo"]), "sun_aperture": float(sky.get("sun_aperture_degrees", 0.5338))}}
+                           "to_world": y_up_to_z_up(mi), "turbidity": float(sky["turbidity"]), "albedo": float(sky["albedo"])}}
     found = {}
     for index, light in enumerate(lights):
         colour = (np.array(light["color"], dtype=np.float64) * light["intensity"]).tolist()
@@ -124,16 +112,16 @@ def y_up_to_z_up(mi):
     return mi.ScalarTransform4f.rotate([1, 0, 0], -90)
 
 
-def sensor(mi, pose, width, height, lens, near, spp):
+def sensor(mi, pose, width, height, lens, near):
     """The engine's pinhole camera: `lens` is the tangent of the half field of view along the shorter side, y up."""
-    right, up, forward = camera_basis(pose[3:])
+    _right, _up, forward = camera_basis(pose[3:])
     eye = np.array(pose[:3], dtype=np.float64)
-    return {"type": "perspective", "fov": math.degrees(2.0 * math.atan(lens)), "fov_axis": "x" if width <= height else "y",
-            "near_clip": float(near), "far_clip": 1e7,
-            "to_world": mi.ScalarTransform4f.look_at(origin=eye.tolist(), target=(eye + forward).tolist(), up=[0, 1, 0]),
-            "sampler": {"type": "independent", "sample_count": spp},
-            "film": {"type": "hdrfilm", "width": width, "height": height, "rfilter": {"type": "box"},
-                     "pixel_format": "rgba", "component_format": "float32"}}
+    return mi.load_dict({"type": "perspective", "fov": math.degrees(2.0 * math.atan(lens)), "fov_axis": "smaller",
+                         "near_clip": float(near), "far_clip": 1e7,
+                         "to_world": mi.ScalarTransform4f.look_at(origin=eye.tolist(), target=(eye + forward).tolist(), up=[0, 1, 0]),
+                         "sampler": {"type": "independent"},
+                         "film": {"type": "hdrfilm", "width": width, "height": height, "rfilter": {"type": "box"},
+                                  "pixel_format": "rgba", "component_format": "float32"}})
 
 
 def integrator(max_depth):
@@ -142,54 +130,50 @@ def integrator(max_depth):
     return {"type": "path", "max_depth": int(max_depth), "rr_depth": 5, "hide_emitters": True}
 
 
-def build_scene(mi, source, lights, double_sided, pose, width, height, lens, near, spp, max_depth, sky=None,
-                release_textures=False):
-    """The Mitsuba scene of one pose: the source meshes, the lights, a path integrator, the camera."""
-    scene = {"type": "scene", "integrator": integrator(max_depth), "sensor": sensor(mi, pose, width, height, lens, near, spp)}
-    scene.update(source_meshes(mi, source, double_sided, release_textures))
-    scene.update(emitters(mi, lights, sky))
-    return mi.load_dict(scene)
-
-
 class PathScene:
-    """One pose's Mitsuba scene, traced any number of times at any spp."""
+    """The exported source and lights, traced from any pose at any spp and depth."""
 
-    def __init__(self, mi, scene, width, height, per_pass, max_depth):
-        self.mi, self.scene, self.width, self.height, self.per_pass = mi, scene, width, height, per_pass
-        self.max_depth, self.integrators = max_depth, {}
+    def __init__(self, mi, scene, pixels_per_pass):
+        self.mi, self.scene, self.pixels_per_pass, self.integrators = mi, scene, pixels_per_pass, {}
 
-    def trace(self, spp, seed=0, max_depth=None):
-        """(linear RGB, coverage): `spp` paths per pixel averaged over passes small enough to bound memory, at the
-        scene's path depth or `max_depth`. Coverage is the share of each pixel's paths that hit the mesh."""
-        depth = max_depth or self.max_depth
-        if depth not in self.integrators:
-            self.integrators[depth] = self.mi.load_dict(integrator(depth))
-        per_pass = min(spp, self.per_pass)
-        total, done, index = np.zeros((self.height, self.width, 4)), 0, 0
+    def trace(self, pose, width, height, lens, near, spp=DEFAULT_SPP, seed=0, max_depth=DEFAULT_DEPTH):
+        """(linear RGB, coverage) of a pose: `spp` paths per pixel averaged over passes small enough to bound
+        memory. Coverage is the share of each pixel's paths that hit the mesh."""
+        if max_depth not in self.integrators:
+            self.integrators[max_depth] = self.mi.load_dict(integrator(max_depth))
+        camera = sensor(self.mi, pose, width, height, lens, near)
+        per_pass = min(spp, max(1, self.pixels_per_pass // (width * height)))
+        total, done, index = np.zeros((height, width, 4)), 0, 0
         while done < spp:
             take = min(per_pass, spp - done)
-            total += np.array(self.mi.render(self.scene, spp=take, seed=seed * 100003 + index,
-                                             integrator=self.integrators[depth])) * take
+            total += np.array(self.mi.render(self.scene, sensor=camera, spp=take, seed=seed * 100003 + index,
+                                             integrator=self.integrators[max_depth])) * take
             done, index = done + take, index + 1
         image = total / spp
         return image[..., :3], np.clip(image[..., 3], 0.0, 1.0)
 
 
-def prepare(source, lights, double_sided, pose, width, height, lens, near, max_depth=12, sky=None, variant=None,
-            pixels_per_pass=1 << 24, release_textures=False):
-    """Export the source and the lights for one pose; `pixels_per_pass` bounds the paths in flight at once."""
+def prepare(source, lights, double_sided, sky=None, variant=None, pixels_per_pass=1 << 24):
+    """Export the source and the lights once; the source's textures are consumed. `pixels_per_pass` bounds the paths
+    in flight at once."""
     mi = import_mitsuba()
     if mi is None:
         raise RuntimeError("the path-traced backend needs Mitsuba: pip install -r launcher/tools/r3d/requirements-gpu.txt")
     mi.set_variant(variant or default_variant(mi))
-    per_pass = max(1, pixels_per_pass // (width * height))
-    scene = build_scene(mi, source, lights, double_sided, pose, width, height, lens, near, per_pass, max_depth, sky,
-                        release_textures)
-    return PathScene(mi, scene, width, height, per_pass, max_depth)
+    scene = {"type": "scene", "integrator": integrator(DEFAULT_DEPTH)}
+    scene.update(source_meshes(mi, source, double_sided))
+    scene.update(emitters(mi, lights, sky))
+    return PathScene(mi, mi.load_dict(scene), pixels_per_pass)
 
 
-def render(source, lights, double_sided, pose, width, height, lens, near, spp=256, max_depth=12, seed=0, sky=None,
-           variant=None, pixels_per_pass=1 << 24):
-    """(linear RGB, coverage) of a pose at `spp` paths per pixel."""
-    return prepare(source, lights, double_sided, pose, width, height, lens, near, max_depth, sky, variant,
-                   pixels_per_pass).trace(spp, seed)
+def add_options(parser):
+    """The options naming a path-traced run's sky and variant, shared by the reference and the sweep."""
+    parser.add_argument("--variant", help="mitsuba variant (default: cuda_ad_rgb, llvm_ad_rgb, else scalar_rgb)")
+    parser.add_argument("--sky", choices=("hosek-wilkie",), help="replace the scene lights by this sun and sky")
+    parser.add_argument("--turbidity", type=float, default=3.0, help="--sky turbidity")
+    parser.add_argument("--ground-albedo", type=float, default=0.3, help="--sky ground albedo")
+
+
+def sky_from(args):
+    """The `sky` of prepare() the options of add_options name, or None."""
+    return {"turbidity": args.turbidity, "albedo": args.ground_albedo} if args.sky else None
