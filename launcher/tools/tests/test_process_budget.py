@@ -63,7 +63,7 @@ class WorkerTests(ProcessTests):
         points = [{"budget": 1, "cost_weight": 0}, {"budget": 2, "cost_weight": 0}]
         futures = [concurrent.futures.Future(), concurrent.futures.Future()]
         class Executor:
-            def submit(self, function, point, directory):
+            def submit(self, function, point, directory, **kwargs):
                 return futures[point["budget"] - 1]
         with tempfile.TemporaryDirectory() as directory:
             pending = {}
@@ -430,3 +430,92 @@ class PartialTaskTests(ProcessTests):
         with patch('r3d.process_budget.available_bytes', return_value=(1 << 60,) * 3):
             with TaskExecutor() as executor:
                 self.assertEqual(executor.submit(partial(identity_worker, 'point')).result(timeout=10)[0], 'point')
+
+
+class MeasuredBudgetTests(unittest.TestCase):
+    def test_worker_estimates(self):
+        from r3d import process_budget as b
+        self.assertEqual(b.PREPARE_BYTES, (4 * b.GIB, 0, 4 * b.GIB))
+        self.assertEqual(b.BAKE_BYTES, (5 * b.GIB // 2, 0, 5 * b.GIB // 2))
+        self.assertEqual(b.FIT_BYTES, (22 * b.GIB // 10, 7 * b.GIB // 10, 22 * b.GIB // 10))
+        self.assertEqual(b.MEASURE_BYTES, (3 * b.GIB // 2, 128 * 1024 ** 2, 3 * b.GIB // 2))
+        self.assertEqual(b.SMOKE_PREPARE_BYTES, (2 * b.GIB, 0, 2 * b.GIB))
+
+    def test_pss_reads_rollup_and_handles_unavailable_metric(self):
+        from unittest.mock import patch
+        from r3d import process_budget as b
+        with patch.object(pathlib.Path, 'read_text', return_value='Rss: 999 kB\nPss: 123 kB\n') as read:
+            self.assertEqual(b.pss_bytes(42), 123 * 1024)
+            self.assertEqual(read.call_args.args, ())
+        for error in (FileNotFoundError, PermissionError):
+            with patch.object(pathlib.Path, 'read_text', side_effect=error):
+                self.assertEqual(b.pss_bytes(42), 0)
+        with patch.object(pathlib.Path, 'read_text', return_value='Rss: 999 kB\n'):
+            self.assertEqual(b.pss_bytes(42), 0)
+
+    def test_fit_threads_switch(self):
+        from r3d.process_budget import fit_thread_count
+        self.assertIsNone(fit_thread_count('off', 10, 4))
+        self.assertEqual(fit_thread_count('auto', 10, 4), 2)
+        self.assertEqual(fit_thread_count('auto', 2, 4), 1)
+        self.assertEqual(fit_thread_count('3', 10, 4), 3)
+        for value in ('0', '-1', 'invalid'):
+            with self.assertRaises(ValueError):
+                fit_thread_count(value, 10, 4)
+
+    def test_auto_counts_only_admissible_fits_and_active_fits(self):
+        from r3d import process_budget as b
+        free = tuple(2 * x + floor for x, floor in zip(b.FIT_BYTES, b.FLOORS))
+        self.assertEqual(b.admitted_fit_count(free, [b.FIT_BYTES] * 8, [], 10), 2)
+        self.assertEqual(b.admitted_fit_count(free, [b.FIT_BYTES] * 8, [b.FIT_BYTES], 10), 3)
+        self.assertEqual(b.admitted_fit_count((1 << 60,) * 3,
+                         [b.BAKE_BYTES, b.FIT_BYTES, b.FIT_BYTES], [], 2), 1)
+        self.assertEqual(b.admitted_fit_count(b.FLOORS, [b.FIT_BYTES] * 3, [], 10), 1)
+
+    def test_full_pose_budget_retains_parallelism(self):
+        from r3d import process_budget as b
+        try:
+            from r3d.reference_render import reservation_pose_capacity, POSE_BASE_BYTES_PER_RAY
+        except ImportError:
+            self.skipTest('needs reference dependencies')
+        estimate = 368 * 448 * 4 * 4 * POSE_BASE_BYTES_PER_RAY
+        self.assertGreater(reservation_pose_capacity(b.POSE_POOL_BYTES, 3290000000, estimate, 10), 1)
+
+
+class FitThreadStartupTests(unittest.TestCase):
+    def test_torch_threads_are_set_before_fit(self):
+        from unittest.mock import Mock, patch
+        from r3d import process_budget as b
+        torch = Mock()
+        torch.cuda.is_initialized.return_value = False
+        connection = Mock()
+        def fit():
+            torch.set_num_threads.assert_called_once_with(2)
+            return 'fit result'
+        with patch.dict(sys.modules, torch=torch), patch.object(b, 'parent_death_signal'), \
+                patch.object(b.os, 'setsid', create=True):
+            b._task(connection, fit, (), fit_threads=2)
+        connection.send.assert_called_once_with((True, 'fit result'))
+
+    def test_spawn_environment_is_scoped_to_fit_startup(self):
+        import os
+        from unittest.mock import patch
+        from r3d import process_budget as b
+        observed = []
+        original_start = b.multiprocessing.get_context('spawn').Process.start
+        def start(process):
+            observed.append(tuple(os.environ.get(name) for name in
+                                  ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS')))
+            # The child is a CPU-only probe; its inherited BLAS setting is enough to inspect.
+            process._args = (*process._args[:-1], None)
+            return original_start(process)
+        with patch.dict(os.environ, AUTANA_FIT_THREADS='3', OMP_NUM_THREADS='7',
+                        MKL_NUM_THREADS='8', OPENBLAS_NUM_THREADS='9'), \
+                patch.object(b, 'available_bytes', return_value=(1 << 60,) * 3), \
+                patch.object(b, 'gpu_resident_bytes', return_value={}), \
+                patch.object(b.multiprocessing.get_context('spawn').Process, 'start', start):
+            with b.TaskExecutor() as executor:
+                executor.submit(identity_worker, 'fit', estimates=b.FIT_BYTES).result(timeout=10)
+                executor.submit(identity_worker, 'bake', estimates=b.BAKE_BYTES).result(timeout=10)
+            self.assertEqual(observed, [('3', '3', '3'), ('7', '8', '9')])
+            self.assertEqual(os.environ['OMP_NUM_THREADS'], '7')
