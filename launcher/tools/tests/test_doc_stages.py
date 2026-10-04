@@ -128,3 +128,45 @@ class DocStagesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PrepareSchedulingTests(unittest.TestCase):
+    def test_both_prepares_submitted_before_any_variant_is_consumed(self):
+        from concurrent.futures import Future
+        from r3d.fitted_variant import prepare
+        jobs = ['lite-job', 'full-job']
+        futures = [Future(), Future()]
+        executor = mock.Mock()
+        executor.submit.side_effect = futures
+        seen = []
+        ready = stages.prepare_variants(executor, 'scene', jobs, Path('work'),
+                                        lambda index, job: seen.append((index, job)))
+        self.assertEqual(executor.submit.call_count, 2)
+        self.assertTrue(all(call.args[0] is prepare for call in executor.submit.call_args_list))
+        self.assertEqual(seen, [])
+        futures[0].set_result(None)
+        self.assertEqual(seen, [(0, 'lite-job')])
+        self.assertTrue(ready[0].done())
+        self.assertFalse(ready[1].done())
+        futures[1].set_result(None)
+        self.assertEqual(seen, [(0, 'lite-job'), (1, 'full-job')])
+
+    def test_prepare_failure_reaches_ordered_consumer(self):
+        from concurrent.futures import Future
+        futures = [Future(), Future()]
+        executor = mock.Mock()
+        executor.submit.side_effect = futures
+        callback = mock.Mock()
+        ready = stages.prepare_variants(executor, None, [None, None], Path('work'), callback)
+        futures[0].set_exception(RuntimeError('prepare failure'))
+        with self.assertRaisesRegex(RuntimeError, 'prepare failure'):
+            ready[0].result()
+        callback.assert_not_called()
+
+    def test_memory_guard_is_only_called_at_stage_start(self):
+        import ast
+        tree = ast.parse(PATH.read_text())
+        callers = [node.name for node in tree.body if isinstance(node, ast.FunctionDef)
+                   for call in ast.walk(node) if isinstance(call, ast.Call)
+                   and isinstance(call.func, ast.Name) and call.func.id == 'memory_guard']
+        self.assertEqual(callers, ['gpu'])

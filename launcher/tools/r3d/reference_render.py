@@ -133,6 +133,7 @@ def source_for(scene, name=None, lit=True):
     return source, job
 
 
+POSE_BASE_BYTES_PER_RAY = 512
 POSE_STATE = None
 
 
@@ -152,7 +153,10 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
     from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS
     global POSE_STATE
     if workers is None:
-        estimate = max(64 * 1024 ** 2, width * height * samples * samples * 1024)
+        # trace/hit buffers need about 256 bytes per ray; lighting and Embree scratch reserve another 256.
+        # bake_sky retains one float64 xyz direction (24 bytes) per sky sample and hit ray.
+        sky_rays = max((item["rays"] for item in scene.lights if item["type"] == "sky"), default=0)
+        estimate = max(64 * 1024 ** 2, width * height * samples * samples * (POSE_BASE_BYTES_PER_RAY + 24 * sky_rays))
         workers = worker_capacity(available_bytes(), (estimate, estimate, 0, estimate), FLOORS, cores_available())
         if not workers:
             raise RuntimeError("not enough available memory for a reference pose worker")
