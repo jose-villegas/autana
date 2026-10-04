@@ -211,6 +211,19 @@ recipe outputs; the board table measures the committed scene assets.
 Run the documented stage to populate this comparison from current inputs.
 <!-- /generated: sponza-gpu -->
 
+### Local occlusion on the lite mesh
+
+The same stage repeats the lite mesh on a scratch copy of the scene with its
+ambient light raised and [`[bake].ao`](../../../../../docs/render/Scene-Files.md#bake-ao)
+on. The references carry the occlusion, so the simplified bake and the fit are
+scored on the same occluded picture; the fit sees the occlusion through its
+training references. The sheet's heatmaps show where each mesh keeps or loses
+it.
+
+<!-- generated: sponza-gpu-ao sha256=004310de23d1d3ede4be5737fea3df96589330524e3c9e8b073803d2c099c13d -->
+Run the documented stage to populate this comparison from current inputs.
+<!-- /generated: sponza-gpu-ao -->
+
 ### Budget and normal sweeps
 
 The budget sweep varies the lite recipe's pruning budget and cost weight.

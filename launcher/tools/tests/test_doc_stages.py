@@ -165,6 +165,30 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
         self.assertEqual(result.read_text(), "full run")
 
 
+class OcclusionSceneTests(unittest.TestCase):
+    def test_the_scratch_scene_raises_the_ambient_adds_occlusion_and_keeps_what_it_reads(self):
+        from r3d.import_settings import load_scene
+        with tempfile.TemporaryDirectory() as directory:
+            path = stages.write_ao_scene(Path(directory) / "ao-scene")
+            original, scratch = load_scene(stages.SCENE), load_scene(path)
+            ambient = [light for light in scratch.lights if light["type"] == "ambient"]
+            self.assertEqual(ambient[0]["intensity"], float(stages.AO_AMBIENT))
+            self.assertIsNone(original.bake.ao)
+            self.assertEqual((scratch.bake.ao.distance, scratch.bake.ao.rays), (80.0, 32))
+            self.assertEqual([job.asset_name for job in scratch.renderers], [job.asset_name for job in original.renderers])
+            self.assertTrue(scratch.renderers[0].settings.source["path"].is_absolute())
+            self.assertEqual(scratch.renderers[0].settings.source["path"], original.renderers[0].settings.source["path"])
+            self.assertTrue((Path(directory) / "ao-scene" / "flythrough_tracks_generated.c").is_file())
+
+    def test_a_scene_without_the_lines_to_edit_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stripped = Path(directory) / "meshes"
+            stripped.mkdir()
+            (stripped / "sponza.import.toml").write_text('[source]\npath = "x.obj"\n')
+            (stripped / "sponza.scene.toml").write_text("tonemap_white = 0.3\n")
+            with mock.patch.object(stages, "SCENE", stripped / "sponza.scene.toml"):
+                with self.assertRaisesRegex(ValueError, r"no \[ambient\] intensity"):
+                    stages.write_ao_scene(Path(directory) / "out")
 
 
 class PrepareSchedulingTests(unittest.TestCase):
