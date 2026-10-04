@@ -3330,6 +3330,8 @@ latch_found_flags(sand_t* s, unsigned found) {
 
 void
 sand_step_reactions(sand_t* s) {
+    s->explosions_this_step = 0;
+    s->confined_blasts_this_step = 0;
     sand_reactions_last_was_soak_only = false;
 
     if (s->fuse_blast_wait != 0) {

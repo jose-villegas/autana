@@ -201,6 +201,7 @@ typedef struct sand_s {
 #ifdef DEVICE_BUILD
     unsigned impulse_cap_hits;
 #endif
+    /* Reset at the start of sand_step_reactions(), even on a quiet board. */
     unsigned explosions_this_step;
     uint8_t confined_blasts_this_step;
 
