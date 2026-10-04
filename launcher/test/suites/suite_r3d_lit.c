@@ -379,6 +379,104 @@ test_every_triangle_covers_exactly_the_centres_the_top_left_rule_gives(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, mismatches, "a pixel's coverage disagrees with the top-left rule");
 }
 
+static void
+channels_of(gfx_color_t c, int out[3]) {
+    const uint16_t native = (uint16_t)((c >> 8) | (c << 8));
+    out[0] = native >> 11;
+    out[1] = (native >> 5) & 63;
+    out[2] = native & 31;
+}
+
+/* A small triangle with a random colour and depth at each corner, and the
+ * range its channels span. */
+typedef struct {
+    r3d_span_vertex_t v[3];
+    int lo[3], hi[3];
+    bool solid;
+} shaded_t;
+
+static shaded_t
+random_shaded(uint32_t* state, float cx, float cy, float size) {
+    shaded_t t = {.lo = {255, 255, 255}, .hi = {0, 0, 0}};
+    for (int k = 0; k < 3; k++) {
+        const int rgb[3] = {(int)(next_random(state) % 256u), (int)(next_random(state) % 256u),
+                            (int)(next_random(state) % 256u)};
+        t.v[k] = sv(0, 0, 0.1f + (0.8f * (float)(next_random(state) % 1000u) / 1000.0f), (float)rgb[0], (float)rgb[1],
+                    (float)rgb[2]);
+        t.v[k].x = random_subpixel(state, cx - size, 2.0f * size);
+        t.v[k].y = random_subpixel(state, cy - size, 2.0f * size);
+        for (int ch = 0; ch < 3; ch++) {
+            t.lo[ch] = rgb[ch] < t.lo[ch] ? rgb[ch] : t.lo[ch];
+            t.hi[ch] = rgb[ch] > t.hi[ch] ? rgb[ch] : t.hi[ch];
+        }
+    }
+    t.solid = next_random(state) % 4u == 0;
+    return t;
+}
+
+#define SHADED_FACE GFX_RGB(0x336699)
+
+static void
+draw_shaded(const r3d_span_target_t* target, const shaded_t* t) {
+    if (t->solid) {
+        r3d_span_triangle_solid(target, &t->v[0], &t->v[1], &t->v[2], SHADED_FACE);
+    } else {
+        r3d_span_triangle(target, &t->v[0], &t->v[1], &t->v[2]);
+    }
+}
+
+/* 565 keeps each channel's top bits, and the fixed-point planes may round
+ * one step past a corner. */
+static bool
+within_corners(gfx_color_t c, const shaded_t* t) {
+    static const int drop[3] = {3, 2, 3};
+    int got[3];
+    channels_of(c, got);
+    bool inside = true;
+    for (int ch = 0; ch < 3; ch++) {
+        inside = inside && got[ch] >= (t->lo[ch] >> drop[ch]) - 1 && got[ch] <= (t->hi[ch] >> drop[ch]) + 1;
+    }
+    return inside;
+}
+
+/* Triangles one to five pixels across with a colour and a depth at each
+ * corner, the sizes where the one-colour, centre-by-centre and walked paths
+ * meet: drawn as two windows they match the whole draw, and no channel
+ * leaves its corners' range. */
+static void
+test_small_shaded_triangles_keep_their_planes_in_range_in_any_window(void) {
+    uint32_t state = 4242u;
+    int shaded = 0;
+    gfx_color_t* whole_color = malloc(sizeof(*whole_color) * W * H);
+    uint16_t* whole_depth = malloc(sizeof(*whole_depth) * W * H);
+    TEST_ASSERT_NOT_NULL(whole_color);
+    TEST_ASSERT_NOT_NULL(whole_depth);
+    for (int i = 0; i < 1000; i++) {
+        const float size = 0.5f + (2.0f * (float)(next_random(&state) % 1000u) / 1000.0f);
+        const float cx = 4.0f + (float)(next_random(&state) % (unsigned)(W - 8));
+        const float cy = 4.0f + (float)(next_random(&state) % (unsigned)(H - 8));
+        const shaded_t tri = random_shaded(&state, cx, cy, size);
+        const int split = (int)cy + (int)(next_random(&state) % 5u) - 2;
+        r3d_span_target_t t = fixture();
+        draw_shaded(&t, &tri);
+        memcpy(whole_color, color, sizeof(*color) * W * H);
+        memcpy(whole_depth, depth, sizeof(*depth) * W * H);
+        t = fixture();
+        draw_shaded(&(r3d_span_target_t){t.color, t.depth, W, 0, split}, &tri);
+        draw_shaded(&(r3d_span_target_t){t.color + (split * W), t.depth + (split * W), W, split, H}, &tri);
+        shaded += !r3d_span_extent(&tri.v[0], &tri.v[1], &tri.v[2]).flat && covered() > 0;
+        TEST_ASSERT_EQUAL_MEMORY_MESSAGE(whole_depth, depth, sizeof(*depth) * W * H, "a window drew another depth");
+        TEST_ASSERT_EQUAL_MEMORY_MESSAGE(whole_color, color, sizeof(*color) * W * H, "a window drew another colour");
+        for (int p = 0; p < W * H; p++) {
+            const bool right = depth[p] == 0 || (tri.solid ? color[p] == SHADED_FACE : within_corners(color[p], &tri));
+            TEST_ASSERT_TRUE_MESSAGE(right, "a pixel left its corners' colours");
+        }
+    }
+    free(whole_color);
+    free(whole_depth);
+    TEST_ASSERT_GREATER_THAN_INT(100, shaded);
+}
+
 #define GRID_LINES_MAX 160
 
 /* Grid lines on half pixels from -3 to hi + 3, half a pixel to six apart,
@@ -2118,6 +2216,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_tiny_triangle_takes_the_average_of_its_corners);
     RUN_TEST(test_a_steep_sliver_puts_no_pixel_nearer_than_its_nearest_corner);
     RUN_TEST(test_every_triangle_covers_exactly_the_centres_the_top_left_rule_gives);
+    RUN_TEST(test_small_shaded_triangles_keep_their_planes_in_range_in_any_window);
     RUN_TEST(test_a_mesh_of_small_and_large_triangles_fills_every_pixel_exactly_once);
     RUN_TEST(test_a_triangle_drawn_over_nearer_depth_writes_exactly_what_it_would_alone);
     RUN_TEST(test_a_guard_band_sliver_draws_its_centres_in_one_window_or_two);

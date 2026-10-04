@@ -1,7 +1,7 @@
 /*
- * Host-only suite: tools/r3d/triangle_sizes.h, the triangle-size histogram
- * and its poses file, on a mesh built inside the test. No firmware image
- * compiles the tool.
+ * Host-only suite: tools/r3d/triangle_sizes.h, the triangle-size histogram,
+ * the box histogram and the poses file, on a mesh built inside the test. No
+ * firmware image compiles the tool.
  */
 
 #include <stdint.h>
@@ -147,6 +147,75 @@ test_distance_moves_triangles_between_the_bins(void) {
     grid_close(&g);
 }
 
+static r3d_span_vertex_t
+at(float x, float y) {
+    return (r3d_span_vertex_t){(int32_t)(x * R3D_SUBPIXEL), (int32_t)(y * R3D_SUBPIXEL), 0.5f, 10, 20, 30};
+}
+
+/* A triangle lands in its mode's bin by the centres its box holds, whole,
+ * even where the target holds only some of its rows; one with no centre in
+ * the target, or no area, is not counted. */
+static void
+test_a_triangle_counts_by_its_whole_box_and_shading_mode(void) {
+    /* Counting reads no pixel, so the targets need none. */
+    const r3d_span_target_t whole = {NULL, NULL, 16, 0, 16};
+    const r3d_span_target_t top_rows = {NULL, NULL, 16, 0, 2};
+    r3d_boxes_t* b = calloc(1, sizeof(*b));
+    TEST_ASSERT_NOT_NULL(b);
+    /* Centres 1..3 across and 1..4 down: a 3 x 4 box. */
+    const r3d_span_vertex_t tall[3] = {at(1.2f, 1.2f), at(3.8f, 1.2f), at(1.2f, 4.8f)};
+    r3d_boxes_count(b, &top_rows, &tall[0], &tall[1], &tall[2], false);
+    r3d_boxes_count(b, &whole, &tall[0], &tall[1], &tall[2], true);
+    TEST_ASSERT_EQUAL_INT(1, (int)b->boxes[R3D_BOXES_SMOOTH][3][2]);
+    TEST_ASSERT_EQUAL_INT(1, (int)b->boxes[R3D_BOXES_FACE][3][2]);
+    /* Two rows and under three pixels wide: flat in either call. */
+    const r3d_span_vertex_t tiny[3] = {at(5.2f, 5.2f), at(7.6f, 5.2f), at(5.2f, 6.8f)};
+    r3d_boxes_count(b, &whole, &tiny[0], &tiny[1], &tiny[2], true);
+    TEST_ASSERT_EQUAL_INT(1, (int)b->boxes[R3D_BOXES_FLAT][1][2]);
+    /* Ten centres a side share the last bin. */
+    const r3d_span_vertex_t big[3] = {at(0.2f, 0.2f), at(10.2f, 0.2f), at(0.2f, 10.2f)};
+    r3d_boxes_count(b, &whole, &big[0], &big[1], &big[2], false);
+    TEST_ASSERT_EQUAL_INT(1, (int)b->boxes[R3D_BOXES_SMOOTH][R3D_BOXES_SIDES - 1][R3D_BOXES_SIDES - 1]);
+    /* Below the target's rows, and a line with no area. */
+    const r3d_span_target_t bottom_rows = {NULL, NULL, 16, 14, 16};
+    r3d_boxes_count(b, &bottom_rows, &tall[0], &tall[1], &tall[2], false);
+    const r3d_span_vertex_t line[3] = {at(1.2f, 1.2f), at(3.2f, 3.2f), at(5.2f, 5.2f)};
+    r3d_boxes_count(b, &whole, &line[0], &line[1], &line[2], false);
+    long all = 0;
+    for (int m = 0; m < R3D_BOXES_MODES; m++) {
+        for (int r = 0; r < R3D_BOXES_SIDES; r++) {
+            for (int c = 0; c < R3D_BOXES_SIDES; c++) {
+                all += b->boxes[m][r][c];
+            }
+        }
+    }
+    free(b);
+    TEST_ASSERT_EQUAL_INT(4, (int)all);
+}
+
+/* The table's shares are cumulative: a 3 x 4 box is inside 4 x 4, not 3 x 3. */
+static void
+test_the_box_table_shares_are_within_each_square(void) {
+    r3d_boxes_t* b = calloc(1, sizeof(*b));
+    char* text = calloc(1024, 1);
+    TEST_ASSERT_NOT_NULL(b);
+    TEST_ASSERT_NOT_NULL(text);
+    b->boxes[R3D_BOXES_SMOOTH][3][2] = 1;
+    b->boxes[R3D_BOXES_SMOOTH][0][0] = 1;
+    FILE* f = tmpfile();
+    TEST_ASSERT_NOT_NULL(f);
+    r3d_boxes_print(f, b);
+    rewind(f);
+    const size_t n = fread(text, 1, 1023, f);
+    TEST_ASSERT_EQUAL_INT(0, fclose(f));
+    free(b);
+    TEST_ASSERT_GREATER_THAN_INT(0, (int)n);
+    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(text, "| smooth | 2 | 50.0% | 50.0% | 100.0% | 100.0% |"), text);
+    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(text, "| all | 2 | 50.0% | 50.0% | 100.0% | 100.0% |"), text);
+    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(text, "| flat | 0 | 0.0% |"), text);
+    free(text);
+}
+
 static char problem[160];
 
 /* NULL when the text reads whole, else the reader's problem. */
@@ -217,6 +286,8 @@ void
 run_r3d_triangle_sizes_suite(void) {
     RUN_TEST(test_the_histogram_adds_up_at_every_pose);
     RUN_TEST(test_distance_moves_triangles_between_the_bins);
+    RUN_TEST(test_a_triangle_counts_by_its_whole_box_and_shading_mode);
+    RUN_TEST(test_the_box_table_shares_are_within_each_square);
     RUN_TEST(test_a_poses_file_gives_its_size_lens_and_poses);
     RUN_TEST(test_a_poses_file_missing_a_part_or_a_number_is_refused);
     RUN_TEST(test_poses_read_from_standard_input_when_the_path_is_a_dash);
