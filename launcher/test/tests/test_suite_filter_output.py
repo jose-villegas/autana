@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import host_runner  # noqa: E402
 import device  # noqa: E402
+import device_report  # noqa: E402
 
 HEADER = (host_runner.TEST_DIR / "suites.h").read_text(encoding="utf-8")
 FILTER_MAX = int(re.search(r"#define SUITE_FILTER_MAX (\d+)", HEADER).group(1))
@@ -32,7 +33,7 @@ class FilteredRunOutputTests(unittest.TestCase):
 
     def test_the_completion_line_is_what_the_host_parses(self):
         output = host_runner.run(f"{FIXTURE} fire")
-        complete = device.SUITE_COMPLETE_RE.search(output)
+        complete = device_report.SUITE_COMPLETE_RE.search(output)
         self.assertEqual((complete.group("found"), complete.group("selected"),
                           complete.group("unmatched")), ("1", "1", "0"))
         device.check_test_filter(output.encode(), FIXTURE, ["x"])

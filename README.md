@@ -1,6 +1,7 @@
 # Autana
 
 [![Host Tests](https://github.com/jose-villegas/autana/actions/workflows/host-tests.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/host-tests.yml)
+[![QEMU Tests](https://github.com/jose-villegas/autana/actions/workflows/qemu-tests.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/qemu-tests.yml)
 [![Build (Release)](https://github.com/jose-villegas/autana/actions/workflows/build-release.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/build-release.yml)
 [![Build (Diagnostics)](https://github.com/jose-villegas/autana/actions/workflows/build-diagnostics.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/build-diagnostics.yml)
 

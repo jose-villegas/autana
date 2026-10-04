@@ -58,6 +58,10 @@ report_timeout=1500
 # This line is the proof a frame-budget test got far enough to measure.
 report_sentinel="device_tests: sand_step on"
 
+# A completed suite can miss a frame budget and still carry every timing the
+# report needs. The capture report distinguishes that verdict from a timeout.
+report_capture_failures_ok=1
+
 BASELINE=""
 remaining=$#
 while [ "$remaining" -gt 0 ]; do

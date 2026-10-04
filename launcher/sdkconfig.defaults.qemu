@@ -4,7 +4,11 @@
 
 # QEMU models a plain quad flash: no high-performance mode, no
 # dummy-cycle-aware bootloader, no 120 MHz timing. An image built with those
-# resets in the second-stage bootloader before printing anything.
+# resets in the second-stage bootloader before printing anything. Nor does it
+# count quad I/O's dummy cycles: in QIO mode the code still runs from the
+# cache, but every esp_flash_read comes back two bytes late, so NVS never
+# finds what it wrote. DIO reads correctly.
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
 CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR=n

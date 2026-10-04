@@ -141,22 +141,35 @@ capture_side() {
             _pcs_status=$?
         fi
         "$PERF_COMPARE_AUTANA" status > "$out/$_pcs_side/run_${_pcs_run}_status_after.txt" 2>&1 || true
+        _pcs_status_note=""
         if [ "$_pcs_status" -ne 0 ]; then
-            capture_failures=$((capture_failures + 1))
-            consecutive_failures=$((consecutive_failures + 1))
-            if [ "$_pcs_status" -eq 124 ]; then
-                _pcs_reason="timed out after ${capture_timeout}s"
+            _pcs_complete=1
+            if [ "$_pcs_numbers" = "$_pcs_capture" ] \
+                    && ! grep -q '^- Ended: complete' "${_pcs_capture%.*}.md" 2>/dev/null; then
+                _pcs_complete=0
+            fi
+            if [ "$_pcs_status" -eq 1 ] \
+                    && [ "$_pcs_complete" -eq 1 ] \
+                    && python3 "$TOOLS_DIR/perf_compare.py" --check-report "$_pcs_numbers"; then
+                _pcs_status_note="; command exit 1 recorded a test failure"
+                echo "capture kept: $_pcs_side run $_pcs_run has timing rows despite a failing test" >&2
             else
-                _pcs_reason="failed with exit $_pcs_status"
+                capture_failures=$((capture_failures + 1))
+                consecutive_failures=$((consecutive_failures + 1))
+                if [ "$_pcs_status" -eq 124 ]; then
+                    _pcs_reason="timed out after ${capture_timeout}s"
+                else
+                    _pcs_reason="failed with exit $_pcs_status"
+                fi
+                printf '%s\n' "$_pcs_reason" > "$out/$_pcs_side/run_${_pcs_run}.status"
+                echo "capture failed: $_pcs_side run $_pcs_run $_pcs_reason" >&2
+                if [ "$consecutive_failures" -ge 2 ]; then
+                    echo "ERROR: stopping after two consecutive capture failures" >&2
+                    return 1
+                fi
+                _pcs_run=$((_pcs_run + 1))
+                continue
             fi
-            printf '%s\n' "$_pcs_reason" > "$out/$_pcs_side/run_${_pcs_run}.status"
-            echo "capture failed: $_pcs_side run $_pcs_run $_pcs_reason" >&2
-            if [ "$consecutive_failures" -ge 2 ]; then
-                echo "ERROR: stopping after two consecutive capture failures" >&2
-                return 1
-            fi
-            _pcs_run=$((_pcs_run + 1))
-            continue
         fi
         # The flash logs the id it booted while it still holds the board; a
         # `buildid` taken after the lock is released may meet another owner.
@@ -181,7 +194,7 @@ capture_side() {
             _pcs_run=$((_pcs_run + 1))
             continue
         esac
-        printf '%s\n' "captured $_pcs_build" > "$out/$_pcs_side/run_${_pcs_run}.status"
+        printf '%s\n' "captured $_pcs_build$_pcs_status_note" > "$out/$_pcs_side/run_${_pcs_run}.status"
         printf '%s\n' "$_pcs_numbers" >> "$out/$_pcs_side/reports.list"
         printf '%s\n' "$_pcs_build" >> "$out/$_pcs_side/buildids.list"
         consecutive_failures=0
