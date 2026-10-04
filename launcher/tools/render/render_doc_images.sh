@@ -1,12 +1,13 @@
 #!/bin/sh
 #
 # Regenerate host images and measured Markdown tables from the source.
-# An image no script here can make (a GPU fit, a board photo) lives under
-# docs/<topic>/images/ instead and is refreshed by hand.
+# GPU and board stages share the block writer and use separate output folders.
 #
 #   ./launcher/tools/render/render_doc_images.sh            # rewrite images and tables
 #   ./launcher/tools/render/render_doc_images.sh --check    # only report which changed
 #   ./launcher/tools/render/render_doc_images.sh --orphans  # only report images no script names
+#   ./launcher/tools/render/render_doc_images.sh --stage gpu [--smoke|--check]
+#   ./launcher/tools/render/render_doc_images.sh --stage board --capture PATH [--check]
 #
 # Needs host C and C++ compilers, Python with Pillow and numpy, ffmpeg 5.1
 # or newer, and the initialized meshoptimizer submodule for scratch bakes.
@@ -15,7 +16,7 @@
 # This makes the launcher and UI toolkit images itself and then runs every
 # launcher/main/apps/*/tools/doc_images.sh, which makes that app's images into
 # the out tree it is given. Everything is rendered into
-# launcher/tools/results/doc_images/out/, laid out like docs/images/, first.
+# launcher/tools/results/doc_images/out/cpu/, laid out like docs/images/, first.
 #
 # --check compares each result with the committed image by decoded pixels
 # (compare_images.py), never by bytes: two encoder versions write different
@@ -38,10 +39,20 @@ TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$TOOLS_DIR/../../.." && pwd)
 cd "$ROOT"
 
+if [ "${1:-}" = --stage ]; then
+    if [ "${2:-}" = gpu ]; then
+        shift 2
+        exec sh "$TOOLS_DIR/run_doc_gpu.sh" "$@"
+    fi
+    . "$ROOT/scripts/lib/python.sh"
+    PYTHON=$(find_python numpy scipy) || exit 2
+    exec "$PYTHON" "$TOOLS_DIR/doc_stages.py" "$@"
+fi
+
 IMAGES=docs/images
 RESULTS=launcher/tools/results/doc_images
-WORK=$RESULTS/work
-OUT=$RESULTS/out
+WORK=$RESULTS/work/cpu
+OUT=$RESULTS/out/cpu
 
 # Any failure before the compare loop is "could not render", exit 2. An
 # `|| exit 2` per command would not do: set -e is off inside AND-OR lists.
@@ -76,10 +87,11 @@ case "${1:-}" in
         comparing=1
         status=0
         for image in $(cd "$IMAGES" && find . -type f | sed 's|^\./||' | LC_ALL=C sort); do
+            case "$image" in render/gpu/*) continue ;; esac
             stem=$(basename "$image")
             stem=${stem%%.*}
             if ! grep -qF -- "$stem" "$TOOLS_DIR/render_doc_images.sh" "$TOOLS_DIR"/scenes/*.sh \
-                launcher/main/apps/*/tools/doc_images.sh; then
+                launcher/main/apps/*/tools/doc_images.sh launcher/main/apps/*/tools/doc_import_examples.py; then
                 orphan "$image"
                 status=1
             fi
@@ -99,7 +111,7 @@ if ! command -v ffmpeg > /dev/null 2>&1; then
     exit 2
 fi
 
-rm -rf "$RESULTS"
+rm -rf "$WORK" "$OUT"
 mkdir -p "$WORK" "$OUT/overview" "$OUT/ui"
 
 # The launcher lists the release build's apps, read from the tree.
@@ -182,6 +194,7 @@ for name in $made_list; do
     esac
 done
 for name in $kept_list; do
+    case "$name" in render/gpu/*) continue ;; esac
     if [ ! -f "$OUT/$name" ]; then
         orphan "$name"
         status=1

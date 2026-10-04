@@ -245,3 +245,5 @@ echo "$sweep_seconds" > "$W/sweep-seconds.txt"
 tables_seconds=$(($(date +%s) - tables_start))
 echo "CPU table measurements added: $tables_seconds seconds"
 echo "$tables_seconds" > "$W/tables-seconds.txt"
+
+"$R3D_PYTHON" "$M/tools/doc_import_examples.py" "$W" "$RENDER" > "$W/import-examples.log" 2>&1
