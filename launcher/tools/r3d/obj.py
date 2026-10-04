@@ -65,14 +65,17 @@ def load_obj(path):
 class Texture:
     """A linear-light mip chain, sampled bilinearly with wrap-around."""
 
+    # float32 halves a large scene's footprint where only level 0 is exported; the bake keeps float64.
+    dtype = np.float64
+
     def __init__(self, path, alpha_path=None):
         image = Image.open(path).convert("RGBA")
-        rgba = np.asarray(image, dtype=np.float64) / 255.0
+        rgba = np.asarray(image, dtype=self.dtype) / 255.0
         rgb = rgba[..., :3] ** 2.2
         alpha = rgba[..., 3:4]
         if alpha_path is not None:
             mask = Image.open(alpha_path).convert("L").resize(image.size)
-            alpha = np.asarray(mask, dtype=np.float64)[..., None] / 255.0
+            alpha = np.asarray(mask, dtype=self.dtype)[..., None] / 255.0
         level = np.concatenate([rgb, alpha], axis=2)
         self.levels = [level]
         while min(level.shape[0], level.shape[1]) > 1:
