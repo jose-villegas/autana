@@ -11,7 +11,7 @@ the scene supplies the object's source, lights, camera lens and pose path.
 
 The default backend is the Embree reference with the scene's bake lighting. ``--backend mitsuba`` traces the same
 source, albedo, camera and lights as a path-traced reference (r3d.mitsuba_reference, needs requirements-gpu.txt)
-and shares the exposure, tone map and RGB565 conversion below.
+and shares the exposure, tone map and RGB565 conversion below. Only the Embree backend reads `[bake].ao`.
 """
 
 import argparse
@@ -90,7 +90,7 @@ def trace(source, job, scene, pose, width, height, lens, samples=4):
         albedo = hit_albedo(source, faces, bary)
         double = np.isin(material, [source.names.index(name) for name in settings.double_sided])
         radiance = light(locations, normal, double, source.intersector, scene.lights, job.bake.ray_offset,
-                         np.random.default_rng(settings.seed), shared_sky_rays=0, indirect=source.indirect_cache)
+                         np.random.default_rng(settings.seed), shared_sky_rays=0, indirect=source.indirect_cache, ao=job.bake.ao)
         linear[rays] = albedo * radiance
         shading[rays] = normal * np.where((normal * direction[rays]).sum(axis=1) > 0, -1.0, 1.0)[:, None]
     shading = shading.reshape(height, width, samples * samples, 3).sum(axis=2)
