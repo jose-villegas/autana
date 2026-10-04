@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # The render lab's images for docs/images/, made by
 # launcher/tools/render/render_doc_images.sh.
@@ -11,7 +11,8 @@
 # (the fidelity sheet also needs launcher/tools/r3d/requirements.txt, found by find_r3d_python);
 # ffmpeg must be on PATH. Renderer output goes to logs under <work-dir>.
 
-set -eu
+set -Eeuo pipefail
+trap 'echo "$0: failed (exit $?): $BASH_COMMAND" >&2' ERR
 
 OUT=$1/overview
 RENDER=$1/render
@@ -125,6 +126,7 @@ R3D_PYTHON=$(find_r3d_python "$PWD")
 # the scene bake's indirect cache out; the table goes before the first object.
 variant_bake() {
     mkdir -p "$W/indirect-$1"
+    cp "$M/meshes/sponza.import.toml" "$W/indirect-$1/"
     awk -v table="$3" -v direct="$2" '/^\[\[objects\]\]/ && !done { if (table != "") print table "\n"; done = 1 }
         direct == "none" && /^indirect = \{/ { next } { print }' \
         "$M/meshes/sponza.scene.toml" > "$W/indirect-$1/sponza.scene.toml"
@@ -157,12 +159,15 @@ look_reference() {
     sh launcher/tools/render/render_compare.sh --reference-frames \
         --reference "$W/indirect-$1/sponza.scene.toml" --poses "$W/fidelity-poses.txt" 2> "$W/indirect-$1/reference.log"
 }
+INTENSITY_2_REFERENCE=$(look_reference intensity-2)
+INTENSITY_3_REFERENCE=$(look_reference intensity-3)
+BOOST_2_REFERENCE=$(look_reference boost-2)
 "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/bake-indirect-look.png" \
     --reference-bakes "$REFERENCE" --reference-scale 2 --sheet-frames 4 \
     --bake "intensity 1" "$W/indirect-smooth.avi" --bake "intensity 2" "$W/indirect-intensity-2.avi" \
     --bake "intensity 3" "$W/indirect-intensity-3.avi" --bake "albedo boost 2" "$W/indirect-boost-2.avi" \
-    --bake-reference "intensity 1" "$REFERENCE" --bake-reference "intensity 2" "$(look_reference intensity-2)" \
-    --bake-reference "intensity 3" "$(look_reference intensity-3)" --bake-reference "albedo boost 2" "$(look_reference boost-2)" \
+    --bake-reference "intensity 1" "$REFERENCE" --bake-reference "intensity 2" "$INTENSITY_2_REFERENCE" \
+    --bake-reference "intensity 3" "$INTENSITY_3_REFERENCE" --bake-reference "albedo boost 2" "$BOOST_2_REFERENCE" \
     > "$W/indirect-look.log"
 
 # Each fitted target against the same reference: its heatmap sheet at the

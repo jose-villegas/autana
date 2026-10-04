@@ -40,6 +40,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Initialize meshoptimizer for the indirect-light bakes
+        run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'

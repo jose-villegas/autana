@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # Regenerate every image under docs/images/ from the firmware's own host renders.
 # An image no script here can make (a GPU fit, a board photo) lives under
@@ -21,13 +21,14 @@
 # files for one picture. It prints "same <image>" or "changed <image>: <how>"
 # per image and exits 1 when any changed. An image in the folder that no
 # script made is reported as "orphan" and also exits 1. Exit 2 means the
-# images could not be made or compared; the tail of each render log is printed.
+# images could not be made or compared; failed commands and render-log tails are printed.
 #
 # The Cornell box is traced in float, and GIF palettes depend on the ffmpeg
 # version, so a --check on another OS or with another ffmpeg may report them
 # changed; CI renders on Linux and is the authority.
 
-set -eu
+set -Eeuo pipefail
+trap 'echo "$0: failed (exit $?): $BASH_COMMAND" >&2' ERR
 
 TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$TOOLS_DIR/../../.." && pwd)
@@ -44,11 +45,12 @@ comparing=0
 finish() {
     code=$?
     if [ "$comparing" = 0 ] && [ "$code" != 0 ]; then
-        for log in "$WORK"/*.log "$WORK"/*/*.log; do
-            [ -f "$log" ] || continue
-            echo "--- $log" >&2
-            tail -n 20 "$log" >&2
-        done
+        if [ -d "$WORK" ]; then
+            while IFS= read -r -d '' log; do
+                echo "--- $log" >&2
+                tail -n 20 "$log" >&2
+            done < <(find "$WORK" -type f -name '*.log' -print0)
+        fi
         exit 2
     fi
 }
@@ -138,7 +140,7 @@ done
 for script in launcher/main/apps/*/tools/doc_images.sh; do
     [ -f "$script" ] || continue
     app=$(basename "$(dirname "$(dirname "$script")")")
-    sh "$script" "$OUT" "$WORK/$app"
+    bash "$script" "$OUT" "$WORK/$app"
 done
 
 if [ "$CHECK" = 0 ]; then

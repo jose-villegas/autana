@@ -30,10 +30,15 @@ repository root. It makes the launcher's and the UI toolkit's images itself and 
 ./launcher/tools/render/render_doc_images.sh --check   # report which would change
 ```
 
-It needs a host C compiler, Python with Pillow and numpy, and ffmpeg 5.1 or newer.
+It needs Bash, a host C compiler, Python with Pillow and numpy, and ffmpeg 5.1 or newer.
 An app's `tools/doc_images.sh` may also need the packages in
 `launcher/tools/r3d/requirements.txt` and the source model that the import fetches,
 SHA-256 checked, into `launcher/tools/r3d/.cache`; the workflow caches it.
+The indirect-light bakes also need a host C++ compiler and the pinned
+`third_party/upstream/meshoptimizer` submodule, initialized with
+`git submodule update --init --depth 1 third_party/upstream/meshoptimizer`.
+A render failure prints the failed command and the tails of its work logs,
+including logs inside bake directories.
 `--check` renders into `launcher/tools/results/doc_images/out/`
 and compares decoded pixels with `compare_images.py`, never bytes: another
 ffmpeg or Pillow writes different GIF bytes for the same frames. It prints
