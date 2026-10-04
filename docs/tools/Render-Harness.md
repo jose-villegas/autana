@@ -26,11 +26,16 @@ repository root. It makes the launcher's and the UI toolkit's images itself and 
 `tools/doc_images.sh` for the app's own:
 
 ```sh
-./launcher/tools/render/render_doc_images.sh           # rewrite the images
+./launcher/tools/render/render_doc_images.sh           # rewrite images and tables
 ./launcher/tools/render/render_doc_images.sh --check   # report which would change
 ```
 
-It needs a host C compiler, Python with Pillow and numpy, and ffmpeg 5.1 or newer.
+It needs host C and C++ compilers, Python with Pillow and numpy, and ffmpeg
+5.1 or newer. Scratch bakes need the pinned meshoptimizer submodule:
+
+```sh
+git submodule update --init --depth 1 third_party/upstream/meshoptimizer
+```
 An app's `tools/doc_images.sh` may also need the packages in
 `launcher/tools/r3d/requirements.txt` and the source model that the import fetches,
 SHA-256 checked, into `launcher/tools/r3d/.cache`; the workflow caches it.
@@ -41,7 +46,7 @@ ffmpeg or Pillow writes different GIF bytes for the same frames. It prints
 `--orphans` renders nothing and reports an image whose name no script
 mentions; the Comment Rules workflow runs it on every pull request. The
 `doc-images` workflow runs it on pushes to main that touch `launcher/` or
-`docs/images/`, and opens one pull request when an image changed. It needs the
+`docs/`, and opens one pull request when an image or table changed. It needs the
 repository setting Actions > "Allow GitHub Actions to create and approve pull
 requests".
 
@@ -50,6 +55,21 @@ requests".
 | `overview/launcher-home.png` | the launcher listing the release build's apps, read from the app folders |
 | `overview/launcher-home.gif` | the same, rocking the board either way |
 | `ui/*.png` | the UI toolkit's gallery views, portrait and landscape (`ui_widgets_render_host.sh`) |
+
+Measured CPU tables are refreshed with the images. App scripts write Markdown
+to out/tables/NAME.md. The shared writer replaces the body between an HTML
+comment containing `generated: NAME sha256=HASH` and one containing
+`/generated: NAME`, preserving the document's other text and line endings.
+Names use lowercase letters, digits and hyphens and are unique
+across documents. The SHA-256 covers the body,
+including its boundary newlines, with CRLF normalized to LF.
+`scripts/gates/check_doc_generated.py` discovers tracked Markdown blocks and
+fails on a body hash mismatch or malformed boundaries, without rendering.
+Change a measurement's source or generator and regenerate its block; a hash
+verifies recorded content, while the render check detects stale measurements.
+The image script rewrites blocks by default; --check reports
+changed doc-path#block-name and exits 1. The refresh PR includes changed tables
+and images together. GPU and board measurements need their own stages.
 
 The rest belong to apps, and each app's `tools/README.md` says what its
 images show.
