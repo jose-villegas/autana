@@ -201,6 +201,7 @@ typedef struct sand_s {
 #ifdef DEVICE_BUILD
     unsigned impulse_cap_hits;
 #endif
+    /* Reset at the start of sand_step_reactions(), even on a quiet board. */
     unsigned explosions_this_step;
     uint8_t confined_blasts_this_step;
 
@@ -502,11 +503,6 @@ bool sand_emitter_at(const sand_t* s, int i, int* x, int* y, cell_t* cell);
  * Tune chances as needed. */
 #define SAND_ACID_QUENCH_RESIDUE_CHANCE    96
 #define SAND_ACID_QUENCH_SMOKE_CHANCE      180
-
-/* Chance in 256 that a grain with exactly one grain above it may still
- * slide; halves for each additional grain, so a pile locks up quickly with
- * depth. Falling itself is not affected by burial. */
-#define SAND_SLIP_CHANCE                   96
 
 /* Beyond this much load a grain cannot slide at all. Without a hard floor the
  * chance only ever approaches zero, and at 60 steps a second "almost never"

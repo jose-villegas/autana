@@ -4,7 +4,7 @@
     python launcher/tools/r3d/scene_table.py SCENE.scene.toml
 
 Standard library only, and independent of baking: it reads the scene file and
-its import files and writes <scene>_scene_generated.c and .h beside the meshes.
+its import files and writes <scene>_scene_generated.c and .h beside the scene file.
 The table is one const scene_def_t, <scene>_scene, registered by the scene's
 name with SCENE_REGISTER(): the component arrays scene/scene.h instantiates.
 Each object that is a mesh renderer or the camera is an entity, its id a macro
@@ -48,11 +48,8 @@ def table_symbol(scene):
 
 
 def out_directory(scene):
-    """Where the table goes: with the meshes it names, which must share one folder."""
-    directories = {item.settings.out_dir for item in scene.renderers}
-    if len(directories) != 1:
-        raise ValueError("a scene's meshes must be written to one output directory")
-    return directories.pop()
+    """Where the table goes: beside its owning scene file."""
+    return scene.path.parent
 
 
 def banner_for(scene):
@@ -69,7 +66,7 @@ IDENTITY = "{.m = {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, 
 
 def mesh_ids(scene):
     """The asset id of each mesh renderer, in the order the table lists them: what scene_load() opens from the pack."""
-    return [item.variant.name for item in scene.renderers]
+    return [item.asset_name for item in scene.renderers]
 
 
 def entities(scene):

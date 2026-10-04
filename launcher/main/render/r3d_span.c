@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "render/code_layout.h"
+
 /* Attributes run in fixed point: depth as 16.8, colour channels as 8.8, whose
  * steepest real step (255 levels in one pixel) is far below the clamp. Only a
  * sliver's depth step can reach 2^22; with that bound and at most a screen of
@@ -179,11 +181,6 @@ fill_solid_span(const r3d_span_target_t* target, const gradients_t* g, const int
     }
 }
 
-/* Small enough that a gradient across it is invisible: one colour, one
- * depth. Its coverage is still decided by the same edges. */
-#define FLAT_MAX_ROWS  2
-#define FLAT_MAX_WIDTH (3 * R3D_SUBPIXEL)
-
 /* A triangle whose bounding box holds at most this many pixel centres a
  * side has each centre tested against its edges instead of walked. */
 #define SMALL_MAX_SIDE 2
@@ -272,7 +269,7 @@ step_edge(edge_t* e) {
     }
 }
 
-static void
+static RENDER_ENTRY_OFFSET(6) void
 walk_rows(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge_t* left,
           edge_t* right) {
     for (int y = y0; y < y1; y++) {
@@ -415,7 +412,7 @@ r3d_span_plane_in_range(int32_t top, int32_t dx, int32_t dy, int32_t max, r3d_sp
     return low >= 0 && high <= max;
 }
 
-bool
+RENDER_ENTRY_OFFSET(8) bool
 r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, r3d_span_box_t box) {
     for (int y = box.y0; y < box.y1; y++) {
         const uint16_t* depth = target->depth + ((y - target->row0) * target->width);
@@ -472,7 +469,7 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3]
     return true;
 }
 
-static void
+static RENDER_ENTRY_OFFSET(14) void
 r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c, const uint16_t* face) {
     const r3d_span_vertex_t* v0 = a;
@@ -494,8 +491,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     if (box.y0 >= box.y1 || box.x0 >= box.x1) {
         return; /* no pixel centre inside this window */
     }
-    /* Twice the signed area of a-b-c; each product is under 2^30. */
-    const int32_t area2 = ((b->x - a->x) * (c->y - a->y)) - ((b->y - a->y) * (c->x - a->x));
+    const int32_t area2 = r3d_span_area2(a, b, c);
     if (area2 == 0) {
         return;
     }
@@ -504,7 +500,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
         return;
     }
 
-    fill_t f = {rows <= FLAT_MAX_ROWS && hi_x - lo_x <= FLAT_MAX_WIDTH, face, 0, 0, NULL};
+    fill_t f = {rows <= R3D_SPAN_FLAT_MAX_ROWS && hi_x - lo_x <= R3D_SPAN_FLAT_MAX_WIDTH, face, 0, 0, NULL};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
     const int y_anchor = clampi(r3d_span_first_centre(v0->y), -1, target->row1 + 1);

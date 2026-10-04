@@ -7,14 +7,10 @@ Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8; see
 
 ## Flashing and recovery
 
-**The chip only accepts auto-reset while an app is actively running.** Once
-firmware returns from `app_main` and goes idle, reset signalling stops working
-entirely: `Hard resetting via RTS pin` does nothing, esptool reports
-`No serial data received`, and manual DTR/RTS pulses produce zero bytes.
-
-This is why the launcher's frame loop never exits, and why its error paths park
-in a sleep loop rather than returning from `app_main`: the device has to stay
-flashable even when startup fails.
+Keep `app_main` running: the shell's frame loop never exits, and startup
+error paths park in a sleep loop. Firmware that returns and goes idle can
+leave this board unresponsive to auto-reset, including esptool's RTS reset.
+A successful flash does not establish that the application booted.
 
 If the board becomes unreachable, BOOT has to be held at the moment power
 arrives, so what produces that moment decides the procedure.
@@ -32,15 +28,6 @@ carries its stuck state through every replug. Only the PMU cuts a
 battery-backed rail.
 
 Either sequence forces the ROM bootloader regardless of firmware state.
-Confirm you are in download mode with:
-
-```bash
-esptool.py --chip esp32s3 -p <PORT> --before no_reset flash_id
-```
-
-Connecting almost instantly (a few dots) means the chip is sitting in the
-bootloader.
-
 From there `autana flash` writes the image and ends with esptool's RTS
 reset. What a flash proves (esptool's hash check and the build's
 `BUILD_ID`, not the boot) and the whole hand-off under the device lock are
@@ -64,10 +51,10 @@ the cable first, then the PWR button: this board's power is managed by an
 At 120 MHz PSRAM and flash, a warm reset (esptool's RTS reset, a watchdog, a
 panic, a restart) hangs in the app's PSRAM timing tuning, and repeated, it
 leaves the chip deaf to esptool until a power cycle; a power-on reset boots.
-The cause is not established (flash high-performance mode surviving the
-reset is as likely as PSRAM), so the fix is a workaround:
-`launcher/bootloader_components/pmic_cold_boot/` has the AXP2101 power-cycle
-the SoC whenever the reset was not a power-on.
+The bootloader component `launcher/bootloader_components/pmic_cold_boot/`
+requests an AXP2101 power cycle whenever the reset was not a power-on.
+The cause is not established: flash high-performance mode surviving the
+reset is as likely as PSRAM state. The cold restart is a workaround.
 
 ```mermaid
 sequenceDiagram
@@ -86,16 +73,17 @@ sequenceDiagram
 ```
 
 The power cycle drops the USB port, and Windows discards serial data the host
-had not read yet, so a panic's backtrace and `rst:` line never reached a
-capture. Development and diagnostics builds (`CONFIG_PMIC_COLD_BOOT_HOST_DRAIN`,
-set in their `sdkconfig.defaults.*`, since the bootloader's Kconfig cannot see
-`CONFIG_LAUNCHER_DEVELOPMENT`) wait 250 ms before the cycle; release does
-not. A power-on reset never waits.
+had not read yet, so unread panic output can be lost. Development and
+diagnostics builds set `CONFIG_PMIC_COLD_BOOT_HOST_DRAIN` in their config
+fragments and wait for `HOST_DRAIN_US` before the cycle; release does not.
+The bootloader configuration cannot see `CONFIG_LAUNCHER_DEVELOPMENT`. A
+power-on reset never waits.
 
-So the app always starts from, and reports, a power-on reset: after a panic
+After a successful PMIC restart the app reports a power-on reset: after a panic
 or a watchdog the cause shows only in what was logged before it, RTC memory
 does not survive, and a deep-sleep wake would become a full power cycle.
-Nothing in the tree relies on any of those today.
+Do not rely on RTC state surviving that restart. The bootloader logs and
+continues if the PMIC does not acknowledge or the restart does not occur.
 
 ---
 
@@ -103,18 +91,11 @@ Nothing in the tree relies on any of those today.
 
 - **ESP-IDF v5.5+ is required.** `launcher/main/idf_component.yml` declares
   `idf: ">=5.5"`. Several versions can coexist; they are keyed by `IDF_PATH`.
-- **What the build scripts need is a working `export.bat`, not just a working
-  `idf.py`.** `launcher/tools/build/idf.sh` runs ESP-IDF from Git Bash by handing
-  the command to `cmd`, because v5.5 refuses to activate under MSYS at all.
-  Espressif's newer `eim` installer satisfies `idf.py` and not this: it emits
-  only a PowerShell activation script, and it clones via libgit2, so
-  `export.bat` arrives with LF endings and `cmd` cannot resolve a batch label
-  in one. Its Python environment is also somewhere `export.bat` does not
-  look. Running ESP-IDF's own `install.bat` against that same checkout adds
-  what is missing and re-downloads no toolchain.
-- **The firmware build does not use ccache.** The ELF embeds absolute worktree
-  paths, so worktrees cannot share cache hits, and a miss build measured
-  slower than no ccache on Windows.
+- On Windows, `launcher/tools/build/idf.sh` invokes `export.bat` through
+  `cmd` with the MSYS environment removed. A working `idf.py` or PowerShell
+  activation alone is insufficient: `export.bat` must have batch-compatible
+  line endings and a Python environment it can locate. ESP-IDF's
+  `install.bat` prepares that environment.
 - **`IDF_TOOLS_PATH` is the root, not the `tools/` inside it.** Point it one
   level too deep and `idf_tools.py` installs a second copy of every toolchain
   under `tools/tools/`.
@@ -124,37 +105,75 @@ Nothing in the tree relies on any of those today.
 - `sdkconfig.defaults` worth keeping: `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`;
   without it the image header says 2 MB and the bootloader warns on every boot.
 
-Console output reaches the USB CDC port because
-`CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y` makes USB-Serial-JTAG the *primary*
-console outright; this board's one USB-C port is the SoC's own native
-USB-Serial/JTAG peripheral, not an external USB-UART bridge on UART0.
-ESP-IDF's own default assumes the other, more common board design (UART0
-primary, USB-Serial-JTAG a write-only secondary mirror), which would leave
-input silently unread on a board wired this way; see
-[Debugging.md](Debugging.md) for the full
-mismatch this fixes.
-
----
+`CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y` makes the native USB-Serial/JTAG
+peripheral the primary console for both reads and writes. See
+[Debugging.md](Debugging.md#the-console-is-usb-serial-jtag-not-uart0).
 
 ## The build flag and the frame tick
 
-`CONFIG_COMPILER_OPTIMIZATION_PERF` (-O2) is set in `sdkconfig.defaults`,
-the right choice for a device whose every frame is rasterising, cellular
-automata and pixel loops - there is no debugger attached to this board to
-trade away for it. A build directory's generated `sdkconfig` is not
-re-derived from `sdkconfig.defaults` just because the defaults changed.
-`tools/build/idf_variant.sh` deletes one that is older than a fragment it was built
-from, so change the defaults and rebuild through `autana build` (which runs
-`tools/build/build.sh`) rather than trusting a directory left over from before.
+`CONFIG_COMPILER_OPTIMIZATION_PERF` selects -O2 in
+`launcher/sdkconfig.defaults`. A generated `sdkconfig` is not automatically
+re-derived when defaults change. `launcher/tools/build/idf_variant.sh`
+invalidates configuration older than its fragments; use `autana build` for
+the variant you need.
 
-The frame loop ends in `timing_yield()`, a `vTaskDelay(1)`
-(`shell/shell.c`), so frame time is work
-rounded up to a whole tick - compare microseconds of work, not an fps
-figure, which quantises around any small change.
+The frame loop in `launcher/main/shell/shell.c` calls `timing_yield()`, which uses `vTaskDelay(1)` in
+`launcher/main/util/timing_device.c`. `CONFIG_FREERTOS_HZ` sets the tick.
+Frame rate includes scheduler quantisation; compare device microseconds of
+work when assessing small changes.
 
----
+### Verify compiler decisions
+
+`static inline` is a request. Inspect the Xtensa object's symbol table and
+the caller's disassembly with the toolchain's objdump; a separate function
+symbol alone does not tell whether every call site was inlined. Check for
+remaining calls and register spills. `always_inline`, used by
+`launcher/main/util/memory.h` and `launcher/main/util/timing.h`, also needs
+verification at its call sites. Inlining grows callers and can increase
+instruction-cache pressure, so time the final linked image.
+
+Every compiled source in `launcher/main/render/` receives
+`-falign-functions=${CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE}` from
+`launcher/main/CMakeLists.txt`. Function placement within an instruction-cache
+line stays fixed when unrelated code ahead of it grows or shrinks. Alignment
+stabilizes timing; it does not select the fastest loop offsets. Hot functions
+also carry `RENDER_ENTRY_OFFSET` from `launcher/main/render/code_layout.h`:
+never-executed `nop.n` padding ahead of the entry places their loops at the
+offsets measured fastest on the board. The diagnostics build gate in
+`launcher/tools/build/build_diag_check.sh` runs
+`launcher/tools/render/code_layout.py --check` against
+`launcher/main/render/code_layout.txt`, checking function and machine-loop
+offsets, sizes and cache-line spans. When a row changes, compare revisions
+with the Sponza performance suite through `launcher/tools/perf/perf_compare.sh`.
+If the layout is slower, retune `RENDER_ENTRY_OFFSET`, then regenerate the
+table with `python launcher/tools/render/code_layout.py --write launcher/build.diag`.
+See [Pinned code layout](../../launcher/tools/render/README.md#pinned-code-layout).
+
+Do not use `-falign-loops` for this on Xtensa. GCC aligns the label after a
+zero-overhead `loop`, the assembler fills the gap with zeros, and the CPU
+executes those bytes as an IllegalInstruction.
+
+### Arithmetic in hot loops
+
+The target is a 32-bit Xtensa core. A general signed 64-bit divide uses the
+software helper `__divdi3`; constant divisors can be optimized differently.
+Check widening inside fixed-point helpers, prove operand bounds before
+narrowing, and inspect disassembly rather than assigning a source-level
+divide a fixed cycle cost. `r3d_camera_to_screen_x()` in
+`launcher/main/render/r3d_project_x.h` keeps the per-point divide 32-bit
+and widens only the scale multiply. Near-plane clipping uses a 64-bit divide.
+
+`ceilf()` is a libm call, too costly per row; use `(int)x` plus one when it
+falls short. Float division (`__divsf3`) is already the FPU's
+`div0.s`/`divn.s` sequence; a hand-written reciprocal is slower.
+
+Signed division rounds toward zero. An arithmetic right shift rounds negative
+values differently, so signed division by a power of two can require rounding
+instructions as well as a shift. Use unsigned arithmetic only where the
+value's range and semantics permit it.
 
 ## Related
 
-- [Display-and-Rendering.md](Display-and-Rendering.md): the render-path
-  numbers these build settings affect.
+- [Board-and-Memory.md](Board-and-Memory.md#cache-is-carved-from-the-same-pool):
+  code and data placement.
+- [Debugging.md](Debugging.md#performance-seems-off): device measurements.

@@ -403,8 +403,7 @@ indices, never pixels (`sand_paint_row_n()`, the same function the RGB565 path
 uses, forking only at the final write so hash, mask and local depth stay
 one piece of code, not two that can drift apart): one byte per changed
 cell, not an `n x n` pixel block, which is why this mode skips the PSRAM
-framebuffer's slow writes (see `docs/notes/Board-and-Memory.md` for those
-numbers).
+framebuffer's slow writes (see `docs/notes/Board-and-Memory.md`).
 
 **The palette.** `main/apps/sand/tools/shading_palette.c` emits
 `sand_palette256.h`: a 256-entry LUT (16 reserved UI entries, 240 sand

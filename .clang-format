@@ -26,6 +26,10 @@ BreakAfterReturnType: AllDefinitions
 PointerAlignment: Left
 InsertBraces: true
 
+# Function attributes spelled as macros, so the return type still breaks
+# above the name.
+AttributeMacros: [RENDER_ENTRY_OFFSET]
+
 # A wrapped expression breaks before the operator, so the operator starts
 # the continuation line and says what the line is doing.
 BreakBeforeBinaryOperators: NonAssignment

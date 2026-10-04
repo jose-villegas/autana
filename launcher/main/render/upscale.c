@@ -3,6 +3,8 @@
 #include <assert.h>
 #include <stddef.h>
 
+#include "render/code_layout.h"
+
 static uint16_t
 nearest_source(int destination, int destination_size, int source_size) {
     if (destination_size == 1) {
@@ -94,7 +96,7 @@ upscale_mapped_rows(const upscale_t* scale, const uint16_t* source, const uint16
     }
 }
 
-void
+RENDER_ENTRY_OFFSET(4) void
 upscale_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
              uint16_t* destination, int first_row, int row_count) {
     assert(scale != NULL);

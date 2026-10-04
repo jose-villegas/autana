@@ -117,11 +117,6 @@ post_layout_capacity(const post_layout_t* l) {
     return l->columns * l->rows;
 }
 
-int
-post_layout_capacity_px(const post_layout_t* l) {
-    return l->columns * l->rows * l->line_h;
-}
-
 /* Pixels of this column still able to hold a line. */
 static int
 room_left(const post_layout_t* l, const post_lines_t* lines) {

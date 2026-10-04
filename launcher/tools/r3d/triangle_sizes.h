@@ -1,8 +1,9 @@
 /*
  * triangle_sizes: how many of a lit mesh's drawn triangles cover 0, 1, 2-4
  * or more pixel centres from a lens, counted by the top-left rule from the
- * view itself, so any version of the pipeline means the same; and the poses
- * file the triangle_sizes tool reads.
+ * view itself, so any version of the pipeline means the same; the bounding
+ * boxes of the triangles the rasterizer chooses a path for, by shading mode;
+ * and the poses file the triangle_sizes tool reads.
  */
 #pragma once
 
@@ -12,6 +13,7 @@
 #include <stdio.h>
 
 #include "render/r3d_pipeline.h"
+#include "render/r3d_span.h"
 #include "util/math/vec3f.h"
 
 enum { R3D_SIZES_ZERO, R3D_SIZES_ONE, R3D_SIZES_TWO_TO_FOUR, R3D_SIZES_MORE, R3D_SIZES_BINS };
@@ -28,6 +30,27 @@ void r3d_sizes_count(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const u
                      r3d_sizes_t* out);
 
 void r3d_sizes_add(r3d_sizes_t* total, const r3d_sizes_t* s);
+
+/* How r3d_span shades a triangle: one colour and depth (flat), the face's
+ * colour over the depth plane (face), or every plane (smooth). */
+enum { R3D_BOXES_FLAT, R3D_BOXES_FACE, R3D_BOXES_SMOOTH, R3D_BOXES_MODES };
+
+/* Box sides 1 to R3D_BOXES_SIDES - 1 centres, and one bin for any wider. */
+#define R3D_BOXES_SIDES 6
+
+typedef struct {
+    long boxes[R3D_BOXES_MODES][R3D_BOXES_SIDES][R3D_BOXES_SIDES]; /* [mode][rows][columns] */
+} r3d_boxes_t;
+
+/* Counts a triangle handed to r3d_span_triangle() (`solid` for
+ * r3d_span_triangle_solid()) when it reaches the choice of path: a pixel
+ * centre of its box is inside the target and its area is not zero. */
+void r3d_boxes_count(r3d_boxes_t* out, const r3d_span_target_t* target, const r3d_span_vertex_t* a,
+                     const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, bool solid);
+
+/* Each mode's triangles, then all of them, and the share whose box is at
+ * most n x n centres, n from 2 to R3D_BOXES_SIDES - 1, as a Markdown table. */
+void r3d_boxes_print(FILE* f, const r3d_boxes_t* boxes);
 
 #define R3D_SIZES_POSES_MAX 64
 

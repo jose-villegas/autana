@@ -13,7 +13,7 @@ symptom, not by tool; skim the table, jump to the matching section.
 | Symptom | Reach for |
 |---|---|
 | Board is unresponsive / will not flash | [Board won't boot](#board-wont-boot-or-wont-flash) |
-| Logic might be wrong in code you're writing | [Host test suite](#is-the-logic-right-host-test-suite); sub-second loop |
+| Logic might be wrong in code you're writing | [Host test suite](#is-the-logic-right-host-test-suite) |
 | Passes on host, not sure it holds on the real chip | [On-device test suite](#does-it-still-hold-on-the-real-chip-on-device-suite) |
 | Need to see exactly what's on screen right now | [Screenshot + device state](#what-does-the-screen-look-like-right-now-autana-screenshot) |
 | Need live logs, or a crash to resolve to file:line | [autana monitor](#live-logs-and-crash-backtraces-autana-monitor) |
@@ -47,7 +47,7 @@ see the next sections) without waiting for a failure.
 ./launcher/test/run_tests.sh
 ```
 
-Under a second, runs on this machine (not the chip), and covers every
+Runs on the host and covers every
 *portable* suite: anything with no hardware dependency. This is the loop for
 red-green-refactor; reach for it first for anything that is a question about
 logic rather than about the actual board. See
@@ -88,9 +88,9 @@ mechanism and the full field list.
 
 - **Development-only** (`--dev` or `--diag` build): a release build carries
   none of it.
-- **Slow by design**: a full 368x448 frame is roughly 650 KB of base64 over
-  the serial port ([Flash-and-Captures.md](../tools/Flash-and-Captures.md#screenshots) has the baud),
-  taking the better part of a minute. `autana screenshot`
+- **Serial transfer**: a full frame is streamed as base64 over the console.
+  [Flash-and-Captures.md](../tools/Flash-and-Captures.md#screenshots) records
+  the baud and capture workflow. `autana screenshot`
   prints progress every few seconds so this does not read as a hang.
 - **Does not reset the board**: opens the port with DTR/RTS held low so a
   capture shows whatever app was already running, not a restarted boot
@@ -113,7 +113,7 @@ mechanism and the full field list.
 ## Live logs and crash backtraces `autana monitor`
 
 ```bash
-autana monitor
+autana monitor 30
 ```
 
 Decodes any crash address it sees against an ELF's symbols: the build
@@ -130,30 +130,11 @@ peripheral**, not an external USB-UART bridge chip. UART0 exists on this
 board too, but only broken out on separate solder pads; nothing a USB cable
 ever reaches.
 
-ESP-IDF's own default for a chip with this peripheral assumes the OTHER
-common board design instead: UART0 as the primary console (read AND
-written), USB-Serial-JTAG as a write-only secondary mirror (see
-`esp_system/Kconfig`'s own `ESP_CONSOLE_SECONDARY` help text, which
-describes this exact mismatch and names the fix). Left at that default,
-logging over the one cable this board actually has looks completely normal,
-every line shows up as expected, while anything sent the OTHER direction (a
-typed idf_monitor command, `autana screenshot`'s trigger, anything) goes
-nowhere: console reads only ever come from the primary channel, and
-USB-Serial-JTAG was only ever the secondary.
-
-**Fixed in `sdkconfig.defaults`**: `CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y`
-makes USB-Serial-JTAG the primary channel, matching what this board is
-actually wired to. If idf_monitor ever prints
-
-    Writing to serial is timing out. Please make sure that your application
-    supports an interactive console and that you have picked the correct
-    console for serial communication.
-
-this is the first thing to check; `grep CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
-sdkconfig` should show `=y`. A build directory generated before this was
-fixed has the wrong choice baked into its own `sdkconfig`; delete the
-directory and rebuild rather than expecting `sdkconfig.defaults` alone to
-retroactively fix one that already exists.
+`CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y` in `launcher/sdkconfig.defaults`
+makes this peripheral the primary console. A write-only secondary mirror
+can show logs while discarding commands from the cable. If writes time out,
+check the generated variant configuration as well as the defaults; use the
+build wrappers to regenerate configuration when its fragments change.
 
 ## Sending the board a line
 
@@ -163,7 +144,7 @@ sends, and lets go.
 
 ## Rendering looks wrong: gfx debug overlays
 
-`--dev`/`--diag` builds carry two runtime overlays, switched by
+`--dev`/`--diag` builds carry runtime overlays, switched by
 `gfx_set_debug_overlay()` / `gfx_set_leaf_overlay()` (`main/gfx/gfx.h`),
 which a development-only app's toggle page calls:
 
@@ -182,8 +163,9 @@ always the latest present's sends, not an accumulation.
 
 ## Performance seems off
 
-A development build logs frames per second on a fixed timer (`report_fps()`
-in `main/shell/shell.c`); `autana monitor` shows it.
+A development build logs frame rate and named stage costs through
+`report_fps()` in `launcher/main/shell/shell.c`; `autana monitor 30` shows them.
+See [Frame-Cost.md](../tools/Frame-Cost.md) for stage reports.
 
 For anything deeper than an fps number, an app carries its own: rolling
 averages gated on `CONFIG_LAUNCHER_DEVELOPMENT` and logged periodically, or
@@ -192,6 +174,17 @@ budget, run the same way as any other on-device suite (see
 [above](#does-it-still-hold-on-the-real-chip-on-device-suite)). The
 host-side report script for either lives in that app's own `tools/`
 folder.
+
+Host timings measure the host's compiler, memory and CPU. QEMU instruction
+counts indicate work executed, not ESP32-S3 cycles: stalls, cache misses and
+pipeline effects still matter. Confirm a performance change with device
+timing of the final image and the same workload and build configuration.
+
+Record `autana status` and `autana buildid` before and after a measurement;
+the running build must match the image being assessed. Keep captures with
+their build identity. Discard timing intervals containing a panic, watchdog
+dump or unrelated console traffic, since logging can be charged to the timed
+work. Measurement-only skips and probes do not belong in the result image.
 
 ## Orientation or the IMU seems wrong
 
@@ -220,7 +213,7 @@ Two ways to see raw sensor readings without adding any code:
 - **A dev build's `HEAPMARK` boot lines**: free and largest-contiguous DMA
   at each boot phase, plus one heap block map where the framebuffer lands.
   This is the fastest way to tell a static-footprint problem from an
-  allocation-order one, and it is what settled that question in one boot.
+  allocation-order one.
 - **An `autana screenshot` capture's `.json`**: `heap_free_bytes` (current) and
   `heap_min_free_bytes` (the low-water mark since boot; shows a transient
   allocation that already freed again, which `heap_free_bytes` alone
@@ -236,8 +229,5 @@ Two ways to see raw sensor readings without adding any code:
   of release, and why a self-test runner is narrowed further, to SELFTEST.
 - [`../Testing-Guide.md`](../Testing-Guide.md): the host and device test
   runners, and runsuite.
-- [`../plans/Settings-App-Plan.md`](../plans/Settings-App-Plan.md): the
-  planned Settings app, and the mismatch it would resolve between the
-  SELFTEST flag and the diagnostics build's name.
 - [`Flashing-and-Toolchain.md`](Flashing-and-Toolchain.md): board recovery,
   and the toolchain details `autana monitor`'s crash decoding depends on.

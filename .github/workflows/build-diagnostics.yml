@@ -56,3 +56,4 @@ jobs:
             && python3 launcher/tools/quality/stack_chain_gate.py
             && python3 launcher/tools/quality/misra_tidy_gate.py
             && python3 launcher/tools/build/check_no_soft_double.py launcher/build.diag
+            && python3 launcher/tools/render/code_layout.py --check launcher/build.diag

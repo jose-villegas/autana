@@ -25,6 +25,8 @@
 #   report_build_flags extra `autana selftest`/`autana suite` flags, e.g. --perf-scope
 #   report_sentinel    a line the capture must contain to count as having
 #                      measured anything, beyond the results every run prints
+#   report_capture_failures_ok
+#                      1 if a completed capture may exit 1 for failing tests
 #   report_failures_ok 1 if the reporter exits 1 to mean "the report records
 #                      a failing test", which is a result to read and not a
 #                      failure of this run
@@ -34,7 +36,7 @@
 #
 # and then calls device_report_run with the arguments every report takes:
 #
-#   [--board SERIAL] [--no-restore] [OUT.md]
+#   [--board SERIAL] [--project PATH] [--no-restore] [OUT.md]
 #
 # The board is --board's, else the only one plugged in, as for every autana
 # command.
@@ -45,6 +47,7 @@ device_report_arguments() {
     _dr_restore=1
     _dr_out=""
     _dr_board=""
+    _dr_project=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --no-restore) _dr_restore=0; shift ;;
@@ -54,6 +57,12 @@ device_report_arguments() {
                     return 1
                 fi
                 _dr_board="$2"; shift 2 ;;
+            --project)
+                if [ $# -lt 2 ]; then
+                    echo "ERROR: --project needs a project path" >&2
+                    return 1
+                fi
+                _dr_project="$2"; shift 2 ;;
             -*) echo "ERROR: unknown flag: $1 - name a board with --board" >&2; return 1 ;;
             *)
                 case "$1" in
@@ -75,6 +84,7 @@ device_report_run() {
     # before it sources, and a top-level assignment would blank what it said.
     : "${report_build_flags:=}"
     : "${report_sentinel:=}"
+    : "${report_capture_failures_ok:=0}"
     : "${report_failures_ok:=0}"
     for _dr_required in report_name report_dir report_timeout report_suite; do
         eval "_dr_value=\${$_dr_required+set}"
@@ -106,10 +116,18 @@ device_report_run() {
     fi
     _dr_tools="$_dr_launcher/tools"
     _dr_worktree="$(cd "$_dr_launcher/.." && pwd)"
+    if [ -z "$_dr_project" ]; then
+        _dr_project="$_dr_worktree"
+    fi
+    if [ ! -f "$_dr_project/launcher/CMakeLists.txt" ]; then
+        echo "ERROR: --project must contain launcher/CMakeLists.txt: $_dr_project" >&2
+        return 1
+    fi
+    report_project="$(cd "$_dr_project" && pwd)"
     # shellcheck source=../../../scripts/lib/python.sh
     . "$_dr_worktree/scripts/lib/python.sh"
     PYTHON=$(find_python) || return 1
-    _dr_owner="device_report $report_name"
+    _dr_owner="device_report-$report_name"
     command -v autana > /dev/null 2>&1 || {
         echo "ERROR: autana not on PATH - see scripts/add-tools-to-path.sh" >&2
         return 1
@@ -125,7 +143,16 @@ device_report_run() {
     _dr_do_restore="$_dr_restore"
     trap device_report_finish EXIT
 
-    device_report_capture || return 1
+    _dr_capture_status=0
+    device_report_capture || _dr_capture_status=$?
+    if [ "$_dr_capture_status" -ne 0 ]; then
+        _dr_capture_report="${_dr_raw%.*}.md"
+        if [ "$_dr_capture_status" -ne 1 ] || [ "$report_capture_failures_ok" -ne 1 ] \
+                || ! grep -q '^- Ended: complete' "$_dr_capture_report" 2>/dev/null; then
+            return 1
+        fi
+        echo "=== The completed capture records failing tests - validating its measurements ==="
+    fi
     device_report_validate || return 1
     device_report_report || return 1
 
@@ -144,18 +171,18 @@ device_report_run() {
 device_report_capture() {
     if [ -n "$report_suite" ]; then
         set -- "$report_suite" "$report_timeout" --runs 1 --flash --out "$_dr_raw" \
-               --project "$_dr_worktree"
+               --project "$report_project"
         echo "=== Building and capturing RUNSUITE $report_suite ==="
         # Unquoted on purpose: a caller declares zero or more flags in one string.
         # shellcheck disable=SC2086
         set -- "$@" $report_build_flags
-        autana ${_dr_board:+--board "$_dr_board"} --owner "$_dr_owner" suite "$@"
+        autana ${_dr_board:+--board "$_dr_board"} --owner "$_dr_owner" --wait 3600 suite "$@"
     else
-        set -- "$report_timeout" --out "$_dr_raw" --project "$_dr_worktree"
+        set -- "$report_timeout" --out "$_dr_raw" --project "$report_project"
         echo "=== Building and capturing the self-test run ==="
         # shellcheck disable=SC2086
         set -- "$@" $report_build_flags
-        autana ${_dr_board:+--board "$_dr_board"} --owner "$_dr_owner" selftest "$@"
+        autana ${_dr_board:+--board "$_dr_board"} --owner "$_dr_owner" --wait 3600 selftest "$@"
     fi
 }
 
@@ -200,7 +227,7 @@ device_report_finish() {
     _dr_final=$?
     if [ "$_dr_do_restore" -eq 1 ]; then
         echo "=== Restoring the release firmware ==="
-        autana ${_dr_board:+--board "$_dr_board"} --owner "$_dr_owner" flash release --quiet \
+        autana ${_dr_board:+--board "$_dr_board"} --owner "$_dr_owner" --wait 3600 flash release --quiet \
             --project "$_dr_worktree" \
             || echo "WARNING: could not restore the release firmware - the device may still be on build.diag"
     else

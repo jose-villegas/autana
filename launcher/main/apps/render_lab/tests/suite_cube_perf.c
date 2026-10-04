@@ -25,6 +25,7 @@
 #include "app.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
+#include "util/memory.h"
 #include "util/timing.h"
 
 /* scene_cube.c's own toggle - each test sets this explicitly (see
@@ -194,6 +195,9 @@ cube_perf_fixture(void) {
                           "cube perf capture, and at least one of the two "
                           "failed to allocate");
     }
+    ESP_LOGI(TAG, "heap after setup: internal free %u largest %u, psram free %u largest %u",
+             (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL),
+             (unsigned)memory_free_bytes(MEMORY_PSRAM), (unsigned)memory_largest_block(MEMORY_PSRAM));
 
     sample_count = 0;
 }

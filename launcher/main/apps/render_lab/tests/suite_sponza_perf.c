@@ -19,6 +19,7 @@
 
 #include "esp_log.h"
 
+#include "apps/render_lab/meshes/sponza_scene_generated.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_flythrough.h"
 #include "asset/asset_store.h"
@@ -67,6 +68,9 @@ bench_open(bench_t* b, const r3d_instance_t* instance) {
     TEST_ASSERT_NOT_NULL(b->scratch);
     TEST_ASSERT_NOT_NULL(b->panel);
     b->raster.scratch = b->scratch;
+    ESP_LOGI(TAG, "heap after setup: internal free %u largest %u, psram free %u largest %u",
+             (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL),
+             (unsigned)memory_free_bytes(MEMORY_PSRAM), (unsigned)memory_largest_block(MEMORY_PSRAM));
 }
 
 static void
@@ -144,25 +148,37 @@ report_core_contention(const raster_t* raster, const r3d_lens_t* lens, int visib
              (long long)together_bottom.us, (long long)wall);
 }
 
-#define MESH_COUNT 5
-static r3d_lit_mesh_t meshes[MESH_COUNT];
-static const char* const MESH_IDS[MESH_COUNT] = {"sponza", "sponza_lite", "sponza_flat", "sponza_fitted",
-                                                 "sponza_fitted_full"};
-static const char* const MESH_LABELS[MESH_COUNT] = {"sponza", "lite", "flat", "fitted", "fitted-full"};
+/* One slot for each mesh renderer the scene draws, labelled by its entity's name. */
+#define MESH_MAX 8
+static r3d_lit_mesh_t meshes[MESH_MAX];
+static int mesh_count;
 
 static void
 open_the_meshes(void) {
-    for (int i = 0; i < MESH_COUNT; i++) {
-        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(asset_store_pack(), MESH_IDS[i], &meshes[i]),
-                                      MESH_IDS[i]);
+    mesh_count = sponza_scene.renderer_count;
+    TEST_ASSERT_LESS_OR_EQUAL_INT(MESH_MAX, mesh_count);
+    for (int i = 0; i < mesh_count; i++) {
+        const char* asset = sponza_scene.renderers[i].asset;
+        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(asset_store_pack(), asset, &meshes[i]), asset);
     }
+}
+
+static r3d_lit_mesh_t*
+mesh_of(scene_entity_t entity) {
+    for (int i = 0; i < mesh_count; i++) {
+        if (sponza_scene.renderers[i].entity == entity) {
+            return &meshes[i];
+        }
+    }
+    TEST_FAIL_MESSAGE(sponza_scene.entity_names[entity]);
+    return NULL;
 }
 
 void
 test_sponza_draw_stage_breakdown(void) {
     open_the_meshes();
     bench_t b;
-    const r3d_instance_t atrium = {&meshes[0], NULL};
+    const r3d_instance_t atrium = {mesh_of(SPONZA_SCENE_ATRIUM), NULL};
     bench_open(&b, &atrium);
     const r3d_lens_t lens = view_at(atrium.mesh, 0);
     const r3d_pipeline_buffers_t parts = r3d_pipeline_carve(&b.raster);
@@ -223,10 +239,14 @@ report_frame_cost(const char* label, const r3d_instance_t* instance) {
 
 void
 test_sponza_frame_cost_along_the_flythrough(void) {
+    /* Cache configuration trades internal RAM for speed, so a frame-cost
+     * capture carries what it left. */
+    ESP_LOGI(TAG, "internal heap: free %u largest %u", (unsigned)memory_free_bytes(MEMORY_INTERNAL),
+             (unsigned)memory_largest_block(MEMORY_INTERNAL));
     open_the_meshes();
-    for (int i = 0; i < MESH_COUNT; i++) {
+    for (int i = 0; i < mesh_count; i++) {
         const r3d_instance_t instance = {&meshes[i], NULL};
-        report_frame_cost(MESH_LABELS[i], &instance);
+        report_frame_cost(sponza_scene.entity_names[sponza_scene.renderers[i].entity], &instance);
     }
     TEST_PASS();
 }

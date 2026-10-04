@@ -175,6 +175,39 @@ def board_for_lock(store, named=None, remembered=False):
                        + " - name one with --board: " + ", ".join(candidates))
 
 
+# USB Serial/JTAG drops off the bus for a few seconds on every reset and may
+# return under another name, so 20 s covers a slow host and still fails fast.
+PORT_REAPPEAR_SECONDS = 20
+
+
+def probe_port(port):
+    """Opens and closes `port`: a name still listed while the device is going
+    away fails here, not later inside a child process."""
+    import serial
+    serial.Serial(port).close()
+
+
+def wait_for_port(board=None, seconds=PORT_REAPPEAR_SECONDS, probe=probe_port,
+                  sleep=time.sleep, now=time.monotonic, check=None):
+    """The name of the board's port once it can be opened, found by its USB
+    serial number each time, never by a remembered COM or ttyACM name. The one
+    wait every caller about to touch the port after a reset goes through;
+    `check` runs after each miss (the lock holder passes its liveness check)."""
+    deadline = now() + seconds
+    while True:
+        try:
+            port = find_board(board).port
+            probe(port)
+            return port
+        except (OSError, NoBoard) as error:
+            if check is not None:
+                check()
+            if now() >= deadline:
+                raise PortUnavailable("board port did not reappear within "
+                                      + str(int(seconds)) + "s: " + str(error)) from error
+            sleep(0.5)
+
+
 def open_serial():
     """Opens the locked board's port for this process alone. Windows refuses a
     second open on its own; POSIX needs `exclusive` (an advisory flock, so it
@@ -192,6 +225,9 @@ def open_serial():
     connection.port = port
     connection.baudrate = BAUD
     connection.timeout = 0.2
+    # A board that stops reading its console would otherwise block a write
+    # in the OS forever, holding the lock with it.
+    connection.write_timeout = 5.0
     connection.dtr = False
     connection.rts = False
     connection.open()
@@ -610,15 +646,30 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
     return bytes(data), "timeout"
 
 
+# esptool's connect handshake resets USB Serial/JTAG into its bootloader, which
+# re-enumerates the port under it; right after a flash that fails once, and the
+# port is back by the next attempt. One retry, never a loop.
+RESET_ATTEMPTS = 2
+
+
 def reset(after="hard_reset"):
     """hard_reset pulses RTS, and USB Serial/JTAG stays up through it, so a
     capture hears the boot from its first line. It cannot restart a chip in
     download mode; watchdog_reset can, but re-enumerates USB, losing the
     early boot lines a release image's BUILD_ID is among."""
-    port = locked_port()
-    command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
-               "--after", after, "chip_id"]
-    subprocess.run(command, check=True)
+    locked_port()
+    active = ACTIVE_LOCK.held
+    for attempt in range(RESET_ATTEMPTS):
+        port = wait_for_port(active.board, check=require_live_lock)
+        require_live_lock()
+        command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
+                   "--after", after, "chip_id"]
+        try:
+            subprocess.run(command, check=True)
+            return
+        except subprocess.CalledProcessError:
+            if attempt + 1 == RESET_ATTEMPTS:
+                raise
 
 
 def reset_and_capture(output, seconds, idle_seconds, expected_build_id=None,
@@ -1185,10 +1236,6 @@ def suite_request(suite, patterns):
             + "\n").encode("ascii")
 
 
-SUITE_COMPLETE_RE = re.compile(r"RUNSUITE_COMPLETE name=.+? found=(?P<found>\d)"
-                               r"(?: selected=(?P<selected>\d+) unmatched=(?P<unmatched>\d+))?")
-
-
 class TestFilterError(RuntimeError):
     """The board cannot or will not run the filter asked for. It ends the
     batch: the next run would meet the same board."""
@@ -1209,7 +1256,7 @@ def check_test_filter(data, suite, patterns, reason="complete"):
     finish, a capture error, which a batch survives, when it was cut short."""
     text = data.decode("utf-8", errors="replace")
     complete = None
-    for complete in SUITE_COMPLETE_RE.finditer(text):
+    for complete in device_report.SUITE_COMPLETE_RE.finditer(text):
         pass
     refused = re.findall(r"SUITE_FILTER_REFUSED pattern=(\S*)", text)
     if refused:
@@ -1810,7 +1857,7 @@ def main(argv=None):
                 print_statuses(entries, store.now())
             return 0
         if args.command == "resolve-port":
-            print(find_board(args.board).port)
+            print(wait_for_port(args.board))
             return 0
         board = board_for_lock(store, args.board,
                                remembered=args.command in ("hand-to-human", "take-back"))

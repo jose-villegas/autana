@@ -1,267 +1,106 @@
 # Input and Sensors
 
-Part of the platform notes for the Waveshare ESP32-S3-Touch-AMOLED-1.8; see
-[`README.md`](README.md) for the full set. Everything here was verified on the
-actual board or read out of the actual source.
-
----
+Part of the [platform notes](README.md). Apps consume `input_t`; the input
+layer owns sensor polling, calibration and edge delivery.
 
 ## Touch input
 
-Three separate traps, and like the panel ones they all fail quietly: the
-screen simply feels broken rather than reporting anything.
+`launcher/main/input/touch.c` handles both board revisions through the BSP.
+An idle controller can NACK register reads, logging `i2c transaction failed`
+and `FT5x06 ... I2C read error!`; use these as console search terms. Do not
+poll blindly. GPIO 21 is active-low data-ready, not a finger-down level.
+The CST820 pulses it;
+the interrupt handler latches the report and wakes the polling task. A held
+contact continues to be read even without another pulse.
 
-**1. The touch controller NACKs register reads while idle.** Polling it
-unconditionally produces a failed I2C transaction every time, and each
-failure costs a bus timeout. Doing that once per frame stalled the whole loop
-from 25 fps to roughly 0.3 fps, with the console filling with:
+The task polls at `TOUCH_POLL_HZ` and latches press/release edges, so a tap
+entirely between rendered frames can still reach the next frame. Release
+requires the quiet interval `TOUCH_RELEASE_QUIET_US` in
+`launcher/main/input/touch_fsm.h`; an INT deassertion is not a release.
 
-```
-lcd_panel.io.i2c: panel_io_i2c_rx_buffer(149): i2c transaction failed
-FT5x06: esp_lcd_touch_ft5x06_read_data(186): I2C read error!
-```
-
-(The driver component is named for the FT5x06 but is the same one used for
-this board's FT3168, hence the log tag; see `main/input/touch.c`.)
-
-Gate reads on the INT line (GPIO 21, active low). That is what it is for.
-
-**2. INT means "data ready", not "finger down".** It drops briefly mid-touch,
-so treating every deassertion as a release makes a held finger flicker between
-pressed and released. Require a quiet period, 60 ms works, before declaring
-the finger gone.
-
-**3. microui encodes a mouse's interaction model, and touch cannot satisfy
-it.** This is the subtle one. `mu_update_control()` only establishes hover on a
-frame where the button is *not* held, and a control only submits once it has
-focus:
-
-```c
-if (mouseover && !ctx->mouse_down) { ctx->hover = id; }
-if (ctx->hover == id) { if (ctx->mouse_pressed) { mu_set_focus(ctx, id); } }
-```
-
-That is "point at it, then click": hover on one frame, press on the next. A
-touchscreen never produces the first half, because the pointer does not exist
-until a finger is already down. Send move and press together and hover is never
-set, focus is never taken, and the control never fires.
-
-The fix holds the press back one frame for hover, and the DOWN follows once the
-hover root is settled; the rule is in
+microui needs a hover frame before a press can take focus. The UI bridge
+defers DOWN until the hover root is settled; preserve this for all controls,
+not only buttons. See
 [Firmware-Architecture.md](../Firmware-Architecture.md#two-things-to-know-before-touching-it).
 
-Worth knowing because it is not specific to buttons: every microui control
-resolves interaction through `mu_update_control()`, so anything that reacts to
-a press has the same requirement.
+### Calibration and targets
 
-**Sampling rate matters too.** Reading touch once per rendered frame is too
-coarse: a quick tap can be shorter than a frame, so taps fall between
-samples entirely. Poll on a separate task (100 Hz is plenty and costs
-nothing next to rendering) and latch the press/release edges so an event
-that happens wholly between two frames is still delivered to the next one.
+`touch.c` holds the panel fit. `launcher/main/input/touch_calib.c` applies its
+inverse before consumers receive coordinates. A development build can bypass
+it with `autana tune touch.calibrate 0` for comparison. Calibration corrects
+systematic distortion, not fingertip scatter; use large touch targets and
+clear `DISPLAY_PANEL_CORNER_RADIUS` and `DISPLAY_PANEL_SAFE_INSET`.
 
-**The panel reports taps stretched, and a finger scatters.** Measured on the
-board with a bench-only development app (taps aimed at known points, both
-orientations):
-
-| | Raw | Corrected |
-|---|---|---|
-| Long axis | reads ×1.18, −29 px | ×1.02 |
-| Short axis | reads ×1.07–1.13 | ×1.00 |
-| Median miss | 30–34 px | 14–23 px |
-| Inside a 56 px button | 32–45% | 80–93% |
-
-The long-axis stretch is identical in portrait and landscape, so it is the
-panel's; `input/touch_calib.c` undoes the fitted map on every raw point before
-anything reads it (`autana tune touch.calibrate 0` turns it off to compare).
-What stays is a finger's own scatter, 11–13 px (about 1 mm), which no
-calibration removes: controls need to be large. `DISPLAY_PANEL_CORNER_RADIUS`
-and `DISPLAY_PANEL_SAFE_INSET` are the two glass facts every layout clears.
-That app's own fitting tool refits the coefficients in
-`touch_calib.c` from a capture, and its tests fail if they stop being the
-fit of the captures behind the table.
-
-**On targets and gestures.** A small back button is fine to aim at with a mouse
-and miserable with a fingertip. A swipe up from the bottom edge, what the
-board's stock firmware used, has no target to miss, cannot be triggered
-accidentally mid-app, and leaves the app the whole screen. Trigger it partway
-through the swipe rather than on release, or it feels sluggish.
-
----
+The development touch probe records target and reported coordinates for
+fitting `PANEL_FIT` in `touch.c`. Refit from targeted captures rather than
+treating a single tap's miss as a coefficient error.
 
 ## The IMU's axes do not match the screen's
 
-`launcher/main/input/imu.c` drives the QMI8658 (WHO_AM_I `0x05` at `0x6b`), configured for
-+/-8 g and +/-512 dps, which is where 4096 counts per g and 64 counts per dps
-come from. All six axes come from one twelve-byte burst read at `0x35`, worth
-doing as one transfer, because reading them separately can straddle a sample
-update and produce a vector that never physically existed.
-
-How the chip is soldered relative to the panel is a board fact no datasheet can
-tell you, and the obvious guess is wrong here:
+`launcher/main/input/imu.c` configures the QMI8658 and reads all six axes in
+one burst. Keep the burst intact: separate reads can straddle sample updates.
+The configured ranges determine the counts-per-g and counts-per-dps scales.
 
 | Screen direction | Sensor axis |
 |---|---|
 | down (+y) | `+ax` |
 | right (+x) | `-ay` |
 
-Mapping X to X and Y to Y makes anything steered by gravity fall sideways.
-Determined by tilting the board and watching which way it went; the mapping is
-`imu_gravity_screen()` in `input/imu_sample.h`.
-
-One more distinction that is easy to get wrong: the **accelerometer** senses
-gravity, so it is what tilting changes and what tells you which way is down.
-The **gyroscope** senses rotation *rate*, which is zero however far the board is
-tilted as long as it is held still; it tells you the board is being shaken or
-spun, nothing about orientation.
-
----
+Use `imu_gravity_screen()` in `launcher/main/input/imu_sample.h`, including
+its orientation handling, rather than mapping sensor X directly to screen X.
+The accelerometer measures gravity plus linear acceleration; the gyroscope
+measures angular velocity, not tilt angle.
 
 ## The two buttons are not the same kind of device
 
-Worth separating, because a single "read the button" abstraction over them
-would be a lie.
+| Button | Signal | Interpretation |
+|---|---|---|
+| BOOT | active-low GPIO 0 | level debounced into edges by `button_fsm.c`; also selects the ROM bootloader |
+| PWR | AXP2101 latched interrupt status over I2C | completed event, not a readable finger-down level |
 
-**BOOT** is a plain GPIO: pin 0, pulled up, shorted to ground when pressed, so
-low means down. It is a *level*, and being a mechanical contact it bounces on
-both make and break: read naively, one press becomes several. `button_fsm.c`
-debounces it (pure, host-tested, 25 ms) into press and release edges. It also
-doubles as the flashing button; see
-[Flashing-and-Toolchain.md](Flashing-and-Toolchain.md).
+`launcher/main/input/buttons.c` enables the PMU's short-press interrupt and
+polls independently of rendering. Its `POLL_HZ` controls shared-bus traffic.
 
-**PWR is not connected to the SoC.** It goes to the AXP2101 power-management
-chip, so there is no pin to read. The PMU debounces in hardware and latches a
-completed *event* in an interrupt-status register, which has to be fetched over
-the shared I2C bus and then cleared. It is an event, not a level: reporting a
-`down` state for it would be fiction.
-
-The registers, from the X-Powers datasheet:
-
-| | |
+| PMU register | Rule |
 |---|---|
-| Enable | `0x41` (INTEN2), bit 3 = power key short press |
-| Status | `0x49` (INTSTS2), same bit |
-| Clear | write a **one** back to the bit |
-| Thresholds | `0x27` (IRQLEVEL/OFFLEVEL/ONLEVEL): bits 5:4 `irqlevel` = long-press IRQ threshold (`00`=1s, `01`=1.5s, `10`=2s, `11`=2.5s); bits 3:2 `offlevel` = power-off threshold (`00`=4s, `01`=6s, `10`=8s, `11`=10s); bits 1:0 `onlevel` = power-on threshold (`00`=128ms, `01`=512ms, `10`=1s, `11`=2s) |
-| Power-off enable | `0x22` bit 1 `btn_pwroff_en` (`0`=disabled, `1`=enabled); bit 0 `btn_pwroff_mode` (`0`=power off, `1`=restart) when it fires |
+| `0x41`, bit 3 | enables the short-press interrupt |
+| `0x49`, bit 3 | latched short-press status; write one to clear only the consumed bit |
+| `0x27` | independent long-press IRQ, power-off and power-on thresholds |
+| `0x22`, bit 1 | enables button power-off; bit 0 selects power-off or restart |
 
-Two traps in that. Clearing is write-one, not write-zero: the intuitive
-"write 0 to clear" leaves the flag set and the button appears stuck down
-forever. And clearing with `0xFF` would wipe every other latched event
-(charging, battery insertion) that something else may care about, so clear only
-the bit you consumed.
+Do not clear all interrupt bits: other latched power events may have consumers.
+Firmware leaves power-off settings at their board defaults and logs the
+decoded values at startup. A long PWR hold can cut power; that is configurable
+PMU behaviour, not a GPIO event. Recovery is in
+[Flashing-and-Toolchain.md](Flashing-and-Toolchain.md#flashing-and-recovery).
 
-The long-press interrupt (1-2.5 s, `0x27` bits 5:4) and the PMU's own
-power-off (4-10 s, `0x27` bits 3:2) are separate, independently configurable
-thresholds, not the same event. Power-off is further gated by `0x22` bit 1,
-which firmware can clear entirely. `0x22` and `0x27` default from EFUSE/POR, so
-what a given board actually boots with is not knowable from the datasheet
-alone; `buttons.c` reads and logs the decoded values once at startup so this
-is checkable in the field rather than assumed. Today firmware enables only the
-short-press interrupt and leaves the power-off enable at its default, so as
-shipped a long PWR hold still cuts power, but that is a default left in
-place, not a hardware limit firmware is powerless against.
+## Tilt filtering and acceleration
 
-Both arrive through `input_t` alongside touch, so an app never polls anything
-itself. Polling runs at 50 Hz in its own task, deliberately decoupled from the
-render loop, which now reaches 1000 fps and would hammer the shared I2C bus if
-it read the PMU per frame.
+`launcher/main/input/tilt.c` filters direction with elapsed-time-based
+smoothing. Its time constants and magnitude thresholds live in
+`launcher/main/input/tilt.h`. Use a time constant rather than a fixed fraction
+per rendered frame, so frame-rate changes do not change the filter's response.
+Gyroscope rotation adapts the response: still readings get more smoothing,
+turning readings less.
 
----
+A magnitude far from one g identifies a contaminated gravity sample; the
+filter holds the previous direction. A magnitude near one g cannot prove
+that the sample is gravity alone. Rotation can also introduce linear
+acceleration, so gyro activity does not bypass the magnitude gate.
 
-## Raw sensor readings feel rigid, and it is not the sensor's fault
+Shake strength comes from the accelerometer magnitude's departure from one g,
+not angular velocity. Smooth it independently of direction-filter priming:
+a shaking sample may be rejected for direction while still needing a shake
+update. A rotation test must preserve vector magnitude; a linear interpolation
+between perpendicular unit vectors does not describe a constant-magnitude
+rotation.
 
-Feeding raw accelerometer output straight into anything feels bad, in two
-distinct ways that need two distinct fixes. Worth separating, because fixing
-only one leaves it feeling broken in the other.
-
-**Noise and abruptness.** The sensor reports a few hundred counts of jitter on
-a board sitting still, and a real tilt arrives as a step change. The fix is an
-exponential moving average: a lerp toward the reading rather than a jump to it
-(`main/input/tilt.c`, shared by anything that follows gravity). Two details
-matter more than the lerp:
-
-- Define it by a **time constant**, not a per-frame fraction. "Move 10% each
-  frame" changes meaning the moment the framerate does, and this project's
-  framerate is not fixed across builds and settings.
-- Make it **adaptive using the gyroscope**. Heavy smoothing feels laggy when
-  the board is genuinely moving; light smoothing feels noisy when it is not.
-  The gyro reports rotation rate, which is near zero whenever the board is held
-  still no matter how far it is tilted, so it says exactly when to stop
-  smoothing and start tracking. Here the time constant slides from 260 ms when
-  still to 40 ms when moving.
-
-  This is the honest reason to read the gyro at all: it answers a question the
-  accelerometer structurally cannot.
-
-**Quantisation.** The second cause, and the larger one. Filtering cannot
-fix a consumer that turns the direction into a few coarse steps: the filter
-output is already smooth, and the quantiser throws that away. Such a consumer
-has to dither between the steps bracketing the true angle over time.
-
----
-
-## An accelerometer does not measure gravity
-
-It measures gravity plus whatever else is accelerating the device, and a single
-reading cannot separate them. Pick the board up and the reading is mostly the
-lift, so anything steered by gravity lurches sideways whenever the board is
-handled.
-
-The usable half-answer: at rest the magnitude is exactly 1 g. A sample whose
-magnitude is far from 1 g is *known* to be contaminated, even though a clean one
-cannot be proven honest. Those are ignored and the previous estimate held. Wide
-bounds (0.7 g to 1.3 g), because rejecting a good sample costs a few
-milliseconds of staleness and accepting a bad one throws whatever follows
-gravity across the screen.
-
-This is also what makes the gyro-adaptive smoothing sound. Tracking *faster*
-while the board moves would be exactly wrong if "moving" meant "being shoved",
-but rotation alone keeps the magnitude at 1 g, so genuine turning stays trusted
-while handling fails the magnitude test. The two cases are separated, so
-responding quickly to real rotation is safe.
-
----
-
-## Rotating is not shaking, and the gyroscope cannot tell you which
-
-These want opposite responses: a turn should be followed, a shake should
-disturb whatever it drives, so telling them apart matters. The obvious sensor
-is the wrong one.
-
-Reading "shaken" off the gyroscope means every deliberate turn of the device
-registers as a hard shake, so a consumer that loosens its contents on a shake
-throws them at the walls whenever the board is rotated. Logged while a board
-was merely being held and tilted, a
-gyro-derived shake level sat between 160 and 255 out of 255, effectively
-pinned, the whole time.
-
-Shaking means **accelerating** the device back and forth, and that is the
-accelerometer's business. A smooth rotation keeps the magnitude at exactly 1 g
-however fast it turns; shaking swings it far away. So the shake level is
-derived from how far the magnitude departs from 1 g, the same quantity the
-trust gate above already computes, read for its size rather than for which side
-of a boundary it falls on.
-
-The gyroscope keeps its honest job: saying when the board is genuinely turning,
-which is what the filter's time constant responds to. Both sensors are used,
-each for the question it can actually answer.
-
-Two things this cost, worth knowing:
-
-- **A rotation test has to preserve magnitude.** Sweeping `(k, ONE_G - k)` is
-  not a rotation; it shrinks the vector to 0.71 g in the middle and reads as
-  the device being dropped. Built from the 3-4-5 triangle instead, so the
-  components stay exact in integers.
-- **Shake smoothing must not be conditioned on the position filter priming.**
-  A sample violent enough to be shaking is exactly one the trust gate rejects,
-  so the position filter may never prime while the board is being shaken:
-  tying the two together left the shake level unsmoothed and snapping to zero
-  the instant the board was set down.
-
----
+A consumer that quantizes direction into coarse steps needs its own treatment
+of that quantization. Smoothing the input alone cannot restore discarded
+angular resolution.
 
 ## Related
 
-- [Board-and-Memory.md](Board-and-Memory.md): where the IMU and buttons sit
-  in the board's hardware inventory.
+- [Board-and-Memory.md](Board-and-Memory.md): hardware inventory and buses.
+- [Debugging.md](Debugging.md#orientation-or-the-imu-seems-wrong): raw readings
+  and orientation snapshots.
