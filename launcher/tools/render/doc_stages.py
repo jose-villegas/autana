@@ -52,15 +52,21 @@ def validate_mode(smoke, check):
 
 
 def memory_guard():
-    available = next(int(line.split()[1]) * 1024 for line in Path("/proc/meminfo").read_text().splitlines()
-                     if line.startswith("MemAvailable:"))
+    wsl_available = next(int(line.split()[1]) * 1024 for line in Path("/proc/meminfo").read_text().splitlines()
+                         if line.startswith("MemAvailable:"))
+    limiting_side = "WSL"
+    available = wsl_available
     powershell = Path("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe")
     if powershell.exists():
-        host_kib = subprocess.check_output([str(powershell), "-NoProfile", "-Command",
-                                           "(Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory"])
-        available = min(available, int(host_kib.strip()) * 1024)
+        host_bytes = subprocess.check_output([str(powershell), "-NoProfile", "-Command",
+                                              "(Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory).AvailableBytes"])
+        host_available = int(host_bytes.strip())
+        if host_available < available:
+            available = host_available
+            limiting_side = "Windows host"
     if available < 6 * 1024 ** 3:
-        raise ValueError("GPU stage needs at least 6 GiB available memory")
+        shortfall = 6 * 1024 ** 3 - available
+        raise ValueError(f"GPU stage needs 6 GiB available memory; {limiting_side} is short by {shortfall / 1024 ** 3:.2f} GiB")
 
 
 def run(command, log):
@@ -87,8 +93,8 @@ def capture_rows(path, commit):
     names = [aliases.get(match.group("name"), match.group("name")) for match in MEAN_RE.finditer(text)]
     if len(names) != len(set(names)):
         raise ValueError(f"{path}: duplicate variant means; give one --capture per run")
-    return {aliases.get(name, name): value / 1000 for name, value in parse_report(path).items()}
-
+    return {aliases.get(name, name): value / 1000 for name, value in parse_report(path).items()
+}
 
 def board_means(captures, commit):
     runs = [capture_rows(path, commit) for path in captures]
@@ -96,8 +102,9 @@ def board_means(captures, commit):
         missing = set(VARIANTS) - rows.keys()
         if missing:
             raise ValueError(f"{path}: missing variants {sorted(missing)}")
-    return {name: statistics.median(rows[name] for rows in runs) for name in VARIANTS}
-
+    return {
+name: statistics.median(rows[name] for rows in runs) for name in VARIANTS
+}
 
 def board_frames(captures, expected):
     import re
@@ -112,8 +119,9 @@ def board_frames(captures, expected):
             raise ValueError(f"{capture}: needs each full/lite pose exactly once")
         for name, time, value in parsed:
             values.setdefault((name, time), []).append(value)
-    return {key: statistics.median(row) for key, row in values.items()}
-
+    return {
+key: statistics.median(row) for key, row in values.items()
+}
 
 def capture_viewport(path, expected):
     import re
@@ -237,7 +245,8 @@ def gpu(args, out, work):
         row = (label, triangles, *(f"{value:.3f}" for value in metrics[:3]), f"{angle:.3f}", f"{predicted:.3f}")
         rows.append(row)
         comparisons[label] = directory / "frames.avi"
-        return {"triangles": triangles, "mean_delta_e": metrics[0], "p95_delta_e": metrics[1], "predicted_ms": predicted}
+        return {
+    "triangles" : triangles, "mean_delta_e" : metrics[0], "p95_delta_e" : metrics[1], "predicted_ms" : predicted}
 
     for index, job in enumerate(jobs):
         prefix = "lite" if index == 0 else "full"
@@ -306,7 +315,8 @@ def gpu(args, out, work):
             run(command, work / "normal-sheet.log")
             budgets = list(dict.fromkeys(budget for budget in (4000, 6000, job.renderer.fit.budget)
                                          if budget <= job.renderer.variant.triangles))
-            points = [{"budget": budget, "cost_weight": cost} for budget in budgets
+            points = [{
+    "budget" : budget, "cost_weight" : cost} for budget in budgets
                       for cost in (0.0, 0.1)]
 
             def run_point(point, point_dir):
