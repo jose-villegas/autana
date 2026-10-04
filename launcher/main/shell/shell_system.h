@@ -1,12 +1,10 @@
 /*
- * shell_system: the engine systems the frame loop runs every pass, in one
- * fixed order, without naming any of them. A system is a set of phase
- * callbacks; the loop calls each phase over every registered system, lowest
- * `order` first, and skips a system whose callback for that phase is NULL.
+ * shell_system: the engine systems the frame loop runs every pass, without
+ * naming them. A system is a set of phase callbacks; each phase runs over
+ * every system, lowest `order` first, skipping NULL callbacks.
  *
- * A system below the shell is registered from a file in shell/, since a
- * layer only includes downward and the system's own folder cannot see this
- * header.
+ * A system below the shell is registered from a file in shell/, since its own
+ * folder cannot include this header.
  */
 #pragma once
 

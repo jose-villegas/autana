@@ -1,11 +1,8 @@
 /*
- * console_screenshot (SCREENSHOT): prints the frame gfx holds
- * (gfx_read_panel_row()) as base64 between marker lines that
- * tools/device/screenshot.py reads back out of the console stream idf_monitor
- * already uses. The verb itself only sets a latch; console_screenshot_dump()
- * does the actual streaming, called from the shell's frame loop; see
- * console.c's own top comment for why nothing here may draw on this task.
- * Development builds only; see console.h.
+ * console_screenshot (SCREENSHOT): prints the frame gfx holds as base64
+ * between markers tools/device/screenshot.py reads from the console. The verb
+ * only sets a latch; the shell's frame loop streams it
+ * (console_screenshot_dump(), see console.c). Development builds only.
  */
 #include "console/console_screenshot.h"
 #include "console/console.h"

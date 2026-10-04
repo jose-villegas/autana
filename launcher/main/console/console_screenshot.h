@@ -5,12 +5,9 @@
 
 #include "app.h"
 
-/* Reads and clears whether the SCREENSHOT verb has been seen since the
- * last call, the same "read and consume once per frame" contract
- * buttons_read() already uses (see input/buttons.h), and for the same
- * reason: the shell's loop is the only place that should act on a request,
- * and only once per request, however many frames it takes the shell to get
- * back around to checking. */
+/* Reads and clears whether SCREENSHOT was seen since the last call, like
+ * buttons_read() (input/buttons.h): the shell's loop acts on each request
+ * once, however many frames it takes to check. */
 bool console_screenshot_take_request(void);
 
 /* Streams the framebuffer to stdout as base64 BMP, then one

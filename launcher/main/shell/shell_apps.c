@@ -314,12 +314,10 @@ overlaps_present(const app_t* current) {
     return current->update != NULL || shell_systems_overlap_present();
 }
 
-/* A pass that overlaps the present (overlaps_present()): send the frame drawn
- * last pass (gfx_present_begin()/gfx_present_wait(), gfx.h), skipped while
- * priming (frame_ready false), since nothing is queued yet. THIS pass's
- * frame() output is presented the same way, deferred to
- * shell_present_unless_deferred() next pass. Every frame also gives
- * gfx_band_run() its callback; it does nothing outside GFX_LAYOUT_BANDS. */
+/* An overlapping pass sends last pass's frame (gfx_present_begin() and
+ * gfx_present_wait()) while this one updates; nothing is sent while priming
+ * (frame_ready false). This pass's frame() is sent next pass. gfx_band_run()
+ * does nothing outside GFX_LAYOUT_BANDS. */
 static void
 step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
     if (!overlaps_present(current)) {
