@@ -5,6 +5,8 @@
         --script HOST_RENDER.sh --render-args "ARGS" --reference DIR --work DIR \\
         [--variant LABEL=SPEC ...]
 
+--host EXECUTABLE reuses an existing renderer instead of building --script.
+
 Each variant re-lights the mesh's simplified geometry, which is baked once,
 writes the result under --work (nothing tracked is touched), packs it in
 place of the tracked mesh for the scene's host renderer (AUTANA_ASSET_PACK),
@@ -138,7 +140,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("scene")
     parser.add_argument("--mesh", required=True, help="the scene object, a flat renderer, to re-bake")
-    parser.add_argument("--script", required=True, help="the scene's host-render script")
+    host_group = parser.add_mutually_exclusive_group(required=True)
+    host_group.add_argument("--host", help="an already built host renderer")
+    host_group.add_argument("--script", help="the scene's host-render script")
     parser.add_argument("--render-args", required=True, help="the host renderer's arguments, without -o and --video")
     parser.add_argument("--reference", required=True, help="reference_render.py's output directory")
     parser.add_argument("--reference-scale", type=int, default=2, help="host render pixels per reference pixel")
@@ -155,7 +159,7 @@ def main(argv=None):
     log(f"geometry of {variant.name}")
     geometry = bake_geometry(job, scene)
     work = pathlib.Path(args.work).resolve()
-    host = build_host(pathlib.Path(args.script).resolve(), work / "host")
+    host = pathlib.Path(args.host).resolve() if args.host else build_host(pathlib.Path(args.script).resolve(), work / "host")
     rows = []
     for item in args.variant or ["declared="]:
         label, _, spec = item.partition("=")
