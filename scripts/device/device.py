@@ -1236,10 +1236,6 @@ def suite_request(suite, patterns):
             + "\n").encode("ascii")
 
 
-SUITE_COMPLETE_RE = re.compile(r"RUNSUITE_COMPLETE name=.+? found=(?P<found>\d)"
-                               r"(?: selected=(?P<selected>\d+) unmatched=(?P<unmatched>\d+))?")
-
-
 class TestFilterError(RuntimeError):
     """The board cannot or will not run the filter asked for. It ends the
     batch: the next run would meet the same board."""
@@ -1260,7 +1256,7 @@ def check_test_filter(data, suite, patterns, reason="complete"):
     finish, a capture error, which a batch survives, when it was cut short."""
     text = data.decode("utf-8", errors="replace")
     complete = None
-    for complete in SUITE_COMPLETE_RE.finditer(text):
+    for complete in device_report.SUITE_COMPLETE_RE.finditer(text):
         pass
     refused = re.findall(r"SUITE_FILTER_REFUSED pattern=(\S*)", text)
     if refused:
