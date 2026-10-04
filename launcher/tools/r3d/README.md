@@ -31,6 +31,7 @@ mesh. Nothing here runs on the board.
 | [fitted_variant.py](fitted_variant.py) | Remakes a scene renderer's fitted mesh from the `fit` recipe it records; see [A fitted variant](#a-fitted-variant). |
 | [cost_model.py](cost_model.py), [board_cost_weights.txt](board_cost_weights.txt) | A linear model of a mesh's frame time from a pose (submitted and drawn triangles, rows, pixels with overdraw, clusters in view), and its weights with the board frames they were fitted to; see [Cost-aware fit](#cost-aware-fit). |
 | [reference_render.py](reference_render.py) | Traces the undecimated source mesh through the scene's bake lights at supersampled device resolution; writes linear arrays and RGB565-expanded PNGs for fidelity comparisons. |
+| [mitsuba_reference.py](mitsuba_reference.py), [reference_sweep.py](reference_sweep.py) | The optional path-traced backend of `reference_render.py` (Mitsuba 3, CUDA or CPU), and the measurement of its noise, depth bias, time and GPU memory on one pose; see [Path-traced reference](#path-traced-reference). |
 
 The environment is pinned in [requirements.txt](requirements.txt), and the
 simplifier needs the meshoptimizer submodule and a host C++ compiler (`CXX`,
@@ -95,6 +96,37 @@ sheet is, left to right, the reference, the render, the ΔE heatmap and the
 reference's edge pixels in magenta, over the heatmap's colour scale: ΔE 0 is
 black, about 20 red, 50 or more yellow. Each panel is labelled; `--label-a`
 names the render and is required with `--reference-sheet`.
+
+### Path-traced reference
+
+`reference_render.py --backend mitsuba` renders the same source with Mitsuba 3 in
+place of Embree. It reads the same geometry after alpha rejection, albedo,
+camera and poses, and shares exposure, tone map and RGB565 conversion, so the
+two backends differ in transport alone. The Embree backend stays the default.
+Install the pinned `mitsuba` and `drjit` from
+[requirements-gpu.txt](requirements-gpu.txt); the variant is `cuda_ad_rgb` when
+a CUDA device is present, else `llvm_ad_rgb`, else `scalar_rgb` (`--variant`).
+
+| Option | Meaning |
+|---|---|
+| `--spp N`, `--seed N` | Paths per pixel and sampler seed; `--samples` stays the Embree subpixel grid |
+| `--max-depth N` | Path depth cap; 2 is direct light only |
+| `--sky hosek-wilkie` | Replaces the scene lights by the Hosek–Wilkie sun and sky (`--turbidity`, `--ground-albedo`), the sun taking the first directional light's direction |
+
+A directional light is a point source here, so a soft sun disc is not
+reproduced, and `ambient` has no path-traced meaning and is rejected; a `sky`
+light becomes a constant environment of the same radiance.
+`tests/test_r3d_mitsuba_reference.py` pins direct-only parity with the Embree
+reference, texture orientation and constant-sky energy. Measure one pose with
+
+```sh
+$PY tools/r3d/reference_sweep.py SCENE.scene.toml --poses poses.txt --pose-index 6 --sky hosek-wilkie     --spp 64 256 1024 --depths 12 24 --seeds 4 --out sweep
+```
+
+which writes `sweep.json` and `sweep.md`: per spp the seed-to-seed noise and
+warm time, per depth the change against the shallowest cap, and the export,
+cold-render and peak GPU memory. It stops when host memory available falls
+below `--min-free-gib`.
 
 `bake_fidelity.py` does the whole loop for flat variants of one mesh, and
 sweeps the flat bake's knobs:
