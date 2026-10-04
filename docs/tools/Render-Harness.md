@@ -74,10 +74,8 @@ The image script rewrites blocks by default; --check reports
 changed doc-path#block-name and exits 1. The refresh PR includes changed tables
 and images together. `render_doc_images.sh --stage gpu` rebuilds fitted comparisons and sweeps in
 the WSL CUDA environment; the board stage consumes a perf capture. Both use
-this writer. The GPU and board stage commands, requirements and outputs are
-in the [per-tool README][render-tool-commands].
+this writer.
 
-[render-tool-commands]: ../../launcher/tools/render/README.md#refresh-commands
 GPU images live under `docs/images/render/gpu/`; CPU checks leave that stage
 to its own `--check`. GPU `--check` verifies the saved full run and its source
 stamp without fitting again. `--smoke` writes only scratch data.
@@ -85,8 +83,40 @@ The `doc-images-gpu` workflow runs the full stage on the self-hosted Linux GPU
 runner, weekly, on manual dispatch and on main pushes affecting GPU inputs.
 It opens or updates "docs: refresh GPU-rendered images" on the separate
 `feature/refresh-doc-images-gpu` branch. GPU runs are serialized and log GPU
-memory use. The stage requires 6 GiB MemAvailable inside WSL and 2 GiB
-available on the Windows host.
+memory use. The stage-start guard checks WSL and Windows host available memory.
+[`process_budget.py`](../../launcher/tools/r3d/process_budget.py) owns the
+floors and worker estimates. Later admission projects each active worker's
+not-yet-resident allocation onto live WSL, GPU and cgroup memory, bounded
+by CPU affinity. A task can run alone when the floors hold; additional
+workers need room for their reservations. Smaller eligible tasks can pass
+larger waiting tasks. Admission and worker peaks are logged.
+
+```mermaid
+flowchart TD
+    Start[Stage-start memory guard] --> Queue[Queue both prepares]
+    Queue --> Admission{Live memory and core admission}
+    Admission --> Worker[Spawn worker]
+    Worker --> Kind{Task kind}
+    Kind -->|Prepare| Poses[Fork reference poses within reservation]
+    Poses --> Ready[Variant inputs ready]
+    Ready --> Fits[Queue independent fits]
+    Fits --> Admission
+    Ready --> Bake[Queue bake with priority]
+    Bake --> Admission
+    Kind -->|Fit or bake| Ordered[Consume results in recipe order]
+    Ordered --> Measure[Queue measurement with priority]
+    Measure --> Admission
+    Kind -->|Measurement| Outputs[Ordered tables and sheets]
+```
+
+Sweep result records are the resume markers. A worker failure prints its
+traceback, kills the other workers and fails the stage. SIGTERM kills the
+workers too; workers die with their parent.
+
+Reference poses share loaded source and indirect-cache state through
+copy-on-write; each pose seeds its own RNG. Standalone reference renders
+size their pool from available memory. Bake and visibility sampling are
+serial. Platforms without fork render poses serially.
 
 The rest belong to apps, and each app's `tools/README.md` says what its
 images show.
