@@ -330,6 +330,10 @@ class SceneTests(unittest.TestCase):
         head = TONEMAP + BAKE + "ao = { distance = 4.0, rays = 8 }\n"
         self.lit_rejects("has neither", head=head)
         self.assertTrue(load_scene(self.lit(head=head.replace("ao = {", "ao = { indirect = true,") + INDIRECT)).bake.ao.indirect)
+        for dead in (head.replace("ao = {", "ao = { indirect = true,"), HEAD + "ao = { indirect = true, distance = 4.0, rays = 8 }\n"):
+            self.lit_rejects("read by no placed mesh|has neither", head=dead)
+        self.lit_rejects("read by no placed mesh", "indirect = false\n",
+                         head=HEAD + INDIRECT + "ao = { indirect = true, distance = 4.0, rays = 8 }\n")
 
     def test_a_renderer_can_leave_the_indirect_light_out(self):
         head = HEAD + INDIRECT
@@ -551,6 +555,7 @@ class SceneTests(unittest.TestCase):
         self.assertNotEqual(digest(head=HEAD.replace("intensity = 0.1", "intensity = 0.2")), first, "the scene's lights are the recipe")
         self.assertNotEqual(digest(head=HEAD.replace("tonemap_white = 0.3", "tonemap_white = 0.4")), first)
         self.assertNotEqual(digest(head=HEAD + INDIRECT + "[indirect]\nintensity = 2.0\n"), digest(head=HEAD + INDIRECT))
+        self.assertNotEqual(digest(head=HEAD + "ao = { distance = 4.0, rays = 8 }\n"), first, "occlusion is part of the recipe")
 
     def test_the_recipe_digest_drops_indirect_for_an_opted_out_renderer(self):
         from r3d.fitted_variant import recipe_digest

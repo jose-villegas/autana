@@ -567,9 +567,13 @@ def load_scene(path):
     sources = {item.renderer.visibility.source for item in jobs if item.renderer.visibility}
     camera_path = cameras[0].component.path if cameras else None
     bounced = bool(bake and bake.indirect and any(item.renderer.indirect for item in jobs if item.renderer.bake))
-    if bake and bake.ao and not bake.ao.indirect and not any(light["type"] == "ambient" for light in lights):
-        raise SettingsError("scene.bake.ao scales the ambient light or, with indirect = true, the indirect light: "
-                            "the scene has neither")
+    if bake and bake.ao:
+        scaled = any(light["type"] == "ambient" for light in lights) or (bake.ao.indirect and bounced)
+        if not scaled:
+            raise SettingsError("scene.bake.ao scales the ambient light or, with indirect = true, the bounce light "
+                                "a baked renderer gathers: the scene has neither")
+        if bake.ao.indirect and not bounced:
+            raise SettingsError("scene.bake.ao.indirect is read by no placed mesh: no baked renderer gathers bounce light")
     if "indirect" in values and not bounced:
         raise SettingsError("scene indirect settings is read by no placed mesh")
     for name, present, needed in (("lights", bool(lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),

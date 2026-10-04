@@ -11,7 +11,7 @@ the scene supplies the object's source, lights, camera lens and pose path.
 
 The default backend is the Embree reference with the scene's bake lighting. ``--backend mitsuba`` traces the same
 source, albedo, camera and lights as a path-traced reference (r3d.mitsuba_reference, needs requirements-gpu.txt)
-and shares the exposure, tone map and RGB565 conversion below.
+and shares the exposure, tone map and RGB565 conversion below. Only the Embree backend reads `[bake].ao`.
 """
 
 import argparse

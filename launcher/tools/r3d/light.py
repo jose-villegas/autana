@@ -316,7 +316,7 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, rng, s
     direct light; `indirect_groups` is gather_indirect's `groups`. `ao` is
     the scene's local occlusion setting: it scales the ambient light, and the
     gathered indirect light when `ao.indirect`; a double-sided point takes its
-    less occluded side.
+    less occluded side, which the gather's sun-facing normal need not be.
     """
     n = face_towards_light(normals, double_sided, lights)
     occlusion = None if ao is None else open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offset)
