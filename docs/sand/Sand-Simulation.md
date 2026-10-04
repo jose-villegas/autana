@@ -1562,8 +1562,9 @@ behaviour loss rather than a race on that queue.
 The core-1 task (`util/job.c`, shared by every engine client, not owned
 by this app) runs at priority 3, below gfx's present task at 5, not in a
 window carved out before or after present, because `sand_step()` can run
-while a previous frame is still presenting (`main.c`'s `step_app()`) and
-present's own timing must never move for anything sand does.
+while a previous frame is still presenting (`shell/shell_apps.c`'s
+`step_running_app()`) and present's own timing must never move for anything
+sand does.
 
 A lower-priority task only gets the CPU while present is blocked on its
 own strip-sent semaphore, which is most of a present since the transfer

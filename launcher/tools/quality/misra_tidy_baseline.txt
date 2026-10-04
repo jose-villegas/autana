@@ -94,7 +94,8 @@ cert-err33-c	main/console/console_buildid.c	1
 cert-err33-c	main/console/console_freeze.c	1
 cert-err33-c	main/console/console_screenshot.c	4
 cert-err33-c	main/console/console_tune.c	2
-cert-err33-c	main/main.c	11
+cert-err33-c	main/main.c	1
+cert-err33-c	main/shell/shell.c	10
 cert-err33-c	main/ui/ui_widgets.c	2
 cert-err33-c	main/util/tune.c	5
 readability-isolate-declaration	main/apps/input_lab/app_input_lab.c	4
@@ -163,7 +164,8 @@ readability-isolate-declaration	main/display/display.c	1
 readability-isolate-declaration	main/gfx/gfx.c	16
 readability-isolate-declaration	main/input/buttons.c	1
 readability-isolate-declaration	main/input/touch.c	1
-readability-isolate-declaration	main/main.c	4
+readability-isolate-declaration	main/shell/shell.c	2
+readability-isolate-declaration	main/shell/shell_apps.c	2
 readability-isolate-declaration	main/ui/ui.c	1
 readability-math-missing-parentheses	main/apps/input_lab/app_input_lab.c	7
 readability-math-missing-parentheses	main/apps/input_lab/tests/suite_touch_probe.c	2
