@@ -23,7 +23,7 @@ mesh. Nothing here runs on the board.
 | [fetch.py](fetch.py) | Downloads a source model once into `.cache/`, checked against a SHA-256. |
 | [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling (LINEAR, STEP, CUBICSPLINE), linear-blend skinning; reads through [`tools/gltf/`](../gltf/gltf_read.py), the reader and reference sampler [`tools/anim/`](../anim/README.md) shares. Standard library only. |
 | [gltf_preview.py](gltf_preview.py) | Renders any skinned `.glb` with Pillow: a looping GIF of one animation (`--gif NAME`) or the bind pose from four sides (`--sheet`). |
-| [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, and the poses file; host-tested by `suite_r3d_triangle_sizes.c`. |
+| [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, the rasterized ones by bounding box and shading mode, and the poses file; host-tested by `suite_r3d_triangle_sizes.c`. |
 | [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
 | [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement, sun and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [shading: flat](../../../docs/render/Scene-Files.md#shading-flat). |
 | [appearance_simplify.py](appearance_simplify.py) | Fits a smooth mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
@@ -135,9 +135,10 @@ stage instead of being lit again. Every `--poses`/`--reference` pair trains
 one mesh together (the path-averaged mesh); `--per-shot` trains one per
 pair, for a mesh swapped as the camera moves through each segment.
 
-The fit runs on a CUDA GPU in its own environment, not
-[requirements.txt](requirements.txt). One setup that builds it, on WSL 2
-Debian with the Windows NVIDIA driver, no root, a conda environment for
+The fit runs on a CUDA GPU in its own environment with
+[requirements.txt](requirements.txt) and [requirements-gpu.txt](requirements-gpu.txt).
+From the repository root, one setup on WSL 2 Ubuntu 24.04 with the Windows
+NVIDIA driver uses a conda environment for
 the CUDA 12.8 compiler and a GCC that CUDA 12.8 accepts:
 
 ```sh
@@ -146,16 +147,22 @@ micromamba create -y -p ~/gpu/env -c nvidia/label/cuda-12.8.1 -c conda-forge \
 E=~/gpu/env
 $E/bin/python -m ensurepip
 $E/bin/python -m pip install -q --progress-bar off torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
-$E/bin/python -m pip install -q --progress-bar off numpy pillow ninja setuptools wheel
-CUDA_HOME=$E PATH=$E/bin:$PATH TORCH_CUDA_ARCH_LIST=12.0 \
+$E/bin/python -m pip install -q --progress-bar off -r launcher/tools/r3d/requirements.txt -r launcher/tools/r3d/requirements-gpu.txt
+$E/bin/python -m pip install -q --progress-bar off ninja setuptools wheel
+TORCH_CUDA_ARCH_LIST=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
+export TORCH_CUDA_ARCH_LIST
+CUDA_HOME=$E PATH=$E/bin:$PATH \
     CPATH=$E/targets/x86_64-linux/include LIBRARY_PATH=$E/targets/x86_64-linux/lib:$E/lib \
     CC=$E/bin/x86_64-conda-linux-gnu-gcc CXX=$E/bin/x86_64-conda-linux-gnu-g++ \
-    $E/bin/python -m pip install -q --progress-bar off --no-build-isolation git+https://github.com/NVlabs/nvdiffrast.git
+    $E/bin/python -m pip install -q --progress-bar off --no-build-isolation git+https://github.com/NVlabs/nvdiffrast.git@v0.4.0
 ```
 
 That gives PyTorch 2.11.0+cu128 and nvdiffrast 0.4.0; `TORCH_CUDA_ARCH_LIST`
-names the GPU's compute capability (12.0 is Blackwell). Then, from the
-repository root, with the reference images of the training poses:
+names the target GPU's compute capability, queried above with `nvidia-smi`.
+Alternatively, `$E/bin/python -c "import torch; print('.'.join(map(str, torch.cuda.get_device_capability())))"`
+prints the capability of the default CUDA device. Select the device that will
+run the fit when the machine has several GPUs. With the reference images of
+the training poses:
 
 ```sh
 $E/bin/python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \
@@ -219,6 +226,11 @@ The front joins points for which no other point is no slower and no less
 accurate. Its knee is the front point with the greatest perpendicular distance
 from the chord between the front's end points after both axes are normalized.
 
+The [documentation stages](../../main/apps/render_lab/tools/README.md#refresh-commands)
+rebuild fitted comparisons and sweeps with this recipe API, write measured
+Markdown blocks with the shared doc writer, and consume board captures to
+refit the cost weights. The GPU smoke mode publishes no images or tables.
+
 ## Cost-aware fit
 
 These stages spend a triangle budget where the camera looks, fit geometry
@@ -255,6 +267,13 @@ size, so a feature row lines up with a measured frame.
 
 How many of a baked mesh's drawn triangles cover 0, 1, 2-4 or more pixel
 centres at each pose, which sizes the rasterizer's small-triangle work.
+After the poses comes a Markdown table of the triangles the draw itself
+hands `r3d_span`, by shading mode (one colour, a face colour over the depth
+plane, or every plane): the share whose bounding box holds at most 2 x 2 up
+to 5 x 5 pixel centres, which is what a centre-by-centre path with that
+limit would take. The script builds the pipeline to pass each triangle
+through the tool on its way to `r3d_span`, so the boxes are the ones the
+rasterizer chooses its path by.
 `--mesh` names the mesh's asset id in a pack built from the tree, or in the pack `AUTANA_ASSET_PACK` names;
 `POSES` is a text file of `size`, `lens` and `pose` lines, its format in
 [`triangle_sizes.h`](triangle_sizes.h), and `-` reads it from standard

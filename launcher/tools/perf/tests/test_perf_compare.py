@@ -19,6 +19,10 @@ import perf_compare  # noqa: E402
 
 
 class PerfCompareTest(unittest.TestCase):
+    def sponza_runs(self, side):
+        return [perf_compare.parse_report(path)
+                for path in sorted((FIXTURES / "sponza_runs").glob(f"{side}_*.txt"))]
+
     def make_revision_tree(self, directory, name):
         tree = pathlib.Path(directory) / name
         tree.mkdir()
@@ -73,10 +77,12 @@ class PerfCompareTest(unittest.TestCase):
             "printf '%s\\n' \"$count\" > \"$PERF_TEST_COUNT\"\n"
             "case \"${PERF_TEST_MODE:-ok}\" in\n"
             "  fail-once) [ \"$count\" -eq 1 ] && exit 7 ;;\n"
+            "  cut-short) printf '# incomplete capture\\n' > \"$out\"; exit 1 ;;\n"
             "  timeout) sleep 2 ;;\n"
             "esac\n"
             "read -r ignored || true\n"
-            "printf '| Test | Measured (us) |\\n|---|---:|\\n| `row` | 10 |\\n' > \"$out\"\n",
+            "printf '| Test | Measured (us) |\\n|---|---:|\\n| `row` | 10 |\\n' > \"$out\"\n"
+            "[ \"${PERF_TEST_MODE:-ok}\" = budget-fail ] && exit 1\n",
             encoding="utf-8")
         for path in (autana, report):
             path.chmod(path.stat().st_mode | stat.S_IXUSR)
@@ -143,8 +149,8 @@ class PerfCompareTest(unittest.TestCase):
             capture = (out / "a" / "run_1.capture.log").read_text(encoding="utf-8")
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("sponza both cores: mean 51000us", capture)
-        self.assertIn("| `fitted-full` | 38000 | 38000 | +0 | no change |", summary)
-        self.assertIn("| `sponza` | 51000 | 51000 | +0 | no change |", summary)
+        self.assertIn("| `fitted-full` | 38000 | 38000 | 38000 | 38000 | +0 | no change |", summary)
+        self.assertIn("| `sponza` | 51000 | 51000 | 51000 | 51000 | +0 | no change |", summary)
 
     def test_the_build_id_comes_from_the_boot_the_capture_logged_under_its_lock(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -240,6 +246,25 @@ class PerfCompareTest(unittest.TestCase):
         self.assertEqual(calls, 4)
         self.assertIn("capture failed", done.stderr)
 
+    def test_shell_keeps_a_budget_failure_but_rejects_a_cut_short_capture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            done, _, _, out, _, count = self.run_compare_fixture(
+                directory, mode="budget-fail", runs=1)
+            calls = int(count.read_text(encoding="utf-8"))
+            reports = (out / "a" / "reports.list").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(calls, 2)
+        self.assertEqual(len(reports), 1)
+
+        with tempfile.TemporaryDirectory() as directory:
+            done, _, _, out, _, count = self.run_compare_fixture(
+                directory, mode="cut-short", runs=2)
+            calls = int(count.read_text(encoding="utf-8"))
+            summary_exists = (out / "summary.md").exists()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertEqual(calls, 2)
+        self.assertFalse(summary_exists)
+
     def test_shell_stops_after_two_capture_timeouts(self):
         with tempfile.TemporaryDirectory() as directory:
             done, _, _, _, _, count = self.run_compare_fixture(directory, mode="timeout", runs=3, timeout=1)
@@ -282,6 +307,33 @@ class PerfCompareTest(unittest.TestCase):
         self.assertEqual(hot,
                          ("hot", 2000, 2010, 10, "no change"))
 
+    def test_a_coherent_shifted_run_is_flagged_with_its_size(self):
+        a_paths = sorted((FIXTURES / "sponza_runs").glob("a_*.txt"))
+        b_paths = sorted((FIXTURES / "sponza_runs").glob("b_*.txt"))
+        shifts = perf_compare.whole_run_shifts(
+            [perf_compare.parse_report(path) for path in b_paths])
+        self.assertEqual(len(shifts), 1)
+        self.assertEqual(shifts[0][0], 3)
+        self.assertAlmostEqual(shifts[0][1], 0.4, places=1)
+        with tempfile.TemporaryDirectory() as directory:
+            summary_path = pathlib.Path(directory) / "summary.md"
+            perf_compare.write_summary(
+                summary_path, "before", "after", ["a"] * 3, ["b"] * 3,
+                a_paths, b_paths)
+            summary = summary_path.read_text(encoding="utf-8")
+        self.assertIn("B run 3: +0.4%", summary)
+        self.assertIn("5 of 5 rows aligned", summary)
+
+    def test_normal_run_scatter_is_not_flagged(self):
+        self.assertEqual(perf_compare.whole_run_shifts(self.sponza_runs("a")), [])
+
+    def test_a_regression_present_in_every_run_is_not_a_whole_run_shift(self):
+        a = [{"one": 100 + offset, "two": 200 + offset, "three": 300 + offset}
+             for offset in (-1, 0, 1)]
+        b = [{name: round(value * 1.1) for name, value in run.items()} for run in a]
+        self.assertEqual(perf_compare.whole_run_shifts(b), [])
+        self.assertTrue(all(row[4] == "regressed" for row in perf_compare.compare(a, b)))
+
     def test_summary_lists_worst_values_and_build_ids(self):
         with tempfile.TemporaryDirectory() as directory:
             out = pathlib.Path(directory) / "summary.md"
@@ -294,7 +346,7 @@ class PerfCompareTest(unittest.TestCase):
                 aggregate_path, [perf_compare.parse_report(FIXTURES / "sand_a.md")])
             aggregate = aggregate_path.read_text(encoding="utf-8")
         self.assertIn("`before-diag`", summary)
-        self.assertIn("| `hot` | 2000 | 2010 | +10 | no change |", summary)
+        self.assertIn("| `hot` | 2000 | 2000 | 2010 | 2010 | +10 | no change |", summary)
         self.assertIn("| `hot` | ? | 2000 | ? | measured |", aggregate)
 
 if __name__ == "__main__":

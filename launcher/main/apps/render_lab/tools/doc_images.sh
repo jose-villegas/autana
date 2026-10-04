@@ -5,7 +5,7 @@
 #
 #   doc_images.sh <out-tree> <work-dir>
 #
-# <out-tree> mirrors docs/images/; these images go in its overview/ and render/.
+# <out-tree> holds images in overview/ and render/, and measured blocks in tables/.
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow and numpy
 # (the fidelity sheet also needs launcher/tools/r3d/requirements.txt, found by find_r3d_python);
@@ -13,40 +13,53 @@
 
 set -eu
 
+run() {
+    if "$@"; then
+        return 0
+    else
+        code=$?
+        printf '%s: failed (exit %s):' "$0" "$code" >&2
+        printf ' %s' "$@" >&2
+        printf '\n' >&2
+        return "$code"
+    fi
+}
+
 OUT=$1/overview
 RENDER=$1/render
+TABLES=$1/tables
 W=$2
-mkdir -p "$W" "$RENDER"
+run mkdir -p "$W" "$RENDER"
 
-sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o "$W" > "$W/scenes.log"
+run sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o "$W" > "$W/scenes.log"
 
 bmp_to_png() {
-    "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' "$1" "$2"
+    run "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' "$1" "$2"
 }
 
 bmp_to_png "$W/gouraud-landscape.bmp" "$OUT/render-lab-cube.png"
 
 # Fully resolved and without the HUD, which would print the fps readout over it.
-"$W/render_lab_render" --quarter 1 --no-hud --scene cornell --frames 40 \
+run "$W/render_lab_render" --quarter 1 --no-hud --scene cornell --frames 40 \
     -o "$W/cornell-clean.bmp" 2> "$W/cornell.log"
 bmp_to_png "$W/cornell-clean.bmp" "$OUT/render-lab-cornell.png"
 
 # The rotation, reversed back onto itself as a loop.
-"$W/render_lab_render" --quarter 1 --no-hud --scene gouraud --frames 100 --dt 33 \
+run "$W/render_lab_render" --quarter 1 --no-hud --scene gouraud --frames 100 --dt 33 \
     -o "$W/cube-motion.bmp" --video "$W/cube-motion.avi" 2> "$W/cube.log"
-ffmpeg -hide_banner -loglevel error -y -i "$W/cube-motion.avi" \
+run ffmpeg -hide_banner -loglevel error -y -i "$W/cube-motion.avi" \
     -vf "fps=12,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0,palettegen" \
     "$W/cube-palette.png"
-ffmpeg -hide_banner -loglevel error -y -i "$W/cube-motion.avi" -i "$W/cube-palette.png" \
+run ffmpeg -hide_banner -loglevel error -y -i "$W/cube-motion.avi" -i "$W/cube-palette.png" \
     -filter_complex "[0:v]fps=12,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0[v];[v][1:v]paletteuse=dither=bayer" \
     -loop 0 "$OUT/render-lab-cube.gif"
 
 # The start of the flythrough, on the fitted full mesh.
-"$W/render_lab_render" --quarter 1 --no-hud --scene sponza-fitted-full --frames 90 --dt 100 \
+run "$W/render_lab_render" --quarter 1 --no-hud --scene sponza-fitted-full --frames 90 --dt 100 \
     -o "$W/sponza-motion.bmp" --video "$W/sponza-motion.avi" 2> "$W/sponza.log"
-ffmpeg -hide_banner -loglevel error -y -t 6 -i "$W/sponza-motion.avi" \
+run ffmpeg -hide_banner -loglevel error -y -t 6 -i "$W/sponza-motion.avi" \
     -vf "fps=8,palettegen=stats_mode=diff" "$W/sponza-palette.png"
-ffmpeg -hide_banner -loglevel error -y -t 6 -i "$W/sponza-motion.avi" -i "$W/sponza-palette.png" \
+run ffmpeg -hide_banner -loglevel error -y -t 6 -i "$W/sponza-motion.avi" -i "$W/sponza-palette.png" \
     -filter_complex "[0:v]fps=8[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" \
     -loop 0 "$OUT/render-lab-sponza.gif"
 
@@ -55,11 +68,11 @@ ffmpeg -hide_banner -loglevel error -y -t 6 -i "$W/sponza-motion.avi" -i "$W/spo
 sponza_gif() {
     name=$1
     shift
-    "$W/render_lab_render" --quarter 1 --no-hud --frames 30 --dt 100 \
+    run "$W/render_lab_render" --quarter 1 --no-hud --frames 30 --dt 100 \
         -o "$W/$name.bmp" --video "$W/$name.avi" "$@" 2> "$W/$name.log"
-    ffmpeg -hide_banner -loglevel error -y -i "$W/$name.avi" \
+    run ffmpeg -hide_banner -loglevel error -y -i "$W/$name.avi" \
         -vf "fps=8,scale=240:-1:flags=lanczos,palettegen=max_colors=64:stats_mode=diff" "$W/$name-palette.png"
-    ffmpeg -hide_banner -loglevel error -y -i "$W/$name.avi" -i "$W/$name-palette.png" \
+    run ffmpeg -hide_banner -loglevel error -y -i "$W/$name.avi" -i "$W/$name-palette.png" \
         -filter_complex "[0:v]fps=8,scale=240:-1:flags=lanczos[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" \
         -loop 0 "$RENDER/$name.gif"
 }
@@ -74,20 +87,20 @@ sponza_gif sponza-tiles --scene sponza --view tiles
 # The targets' differences at the pose the GIFs end on: each pair side by side
 # with the amplified difference, and the places they differ most, enlarged.
 sponza_still() {
-    "$W/render_lab_render" --quarter 1 --no-hud --frames 30 --dt 100 -o "$W/still-$1.bmp" --scene "$2" 2> "$W/still-$1.log"
+    run "$W/render_lab_render" --quarter 1 --no-hud --frames 30 --dt 100 -o "$W/still-$1.bmp" --scene "$2" 2> "$W/still-$1.log"
 }
 sponza_still full sponza
 sponza_still lite sponza-lite
 sponza_still flat sponza-flat
 sponza_still fitted sponza-fitted
 sponza_still fitted-full sponza-fitted-full
-"$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-lite.png" --crops 3 \
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-lite.png" --crops 3 \
     --label-a full --label-b lite --row "full | lite" "$W/still-full.bmp" "$W/still-lite.bmp" > "$W/compare-full-lite.log"
-"$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-flat.png" --crops 3 \
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-flat.png" --crops 3 \
     --label-a smooth --label-b flat --row "smooth | flat" "$W/still-full.bmp" "$W/still-flat.bmp" > "$W/compare-full-flat.log"
-"$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-lite-fitted.png" --crops 3 \
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-lite-fitted.png" --crops 3 \
     --label-a lite --label-b fitted --row "lite | fitted" "$W/still-lite.bmp" "$W/still-fitted.bmp" > "$W/compare-lite-fitted.log"
-"$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-fitted-full.png" --crops 3 \
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-fitted-full.png" --crops 3 \
     --label-a full --label-b "fitted full" --row "full | fitted full" "$W/still-full.bmp" "$W/still-fitted-full.bmp" > "$W/compare-full-fitted-full.log"
 # render_compare.py writes no crops where the two renders do not differ; fail
 # here rather than leave the pages linking a missing file.
@@ -100,15 +113,15 @@ done
 # and the sheet shows frames 2 and 4. The source model is fetched once, SHA-256
 # checked, into launcher/tools/r3d/.cache.
 M=launcher/main/apps/render_lab
-sh launcher/tools/anim/sample_tracks.sh --tracks "$M/meshes/flythrough_tracks_generated.c:flythrough" \
+run sh launcher/tools/anim/sample_tracks.sh --tracks "$M/meshes/flythrough_tracks_generated.c:flythrough" \
     --every 5000 --until 30000 --poses camera 184 224 0.62 6 > "$W/fidelity-poses.txt"
 # render_compare.sh keeps the traced frames in r3d/.cache/reference by a hash of
 # their inputs, so only a change to the scene, tracer or poses traces again.
-REFERENCE=$(sh launcher/tools/render/render_compare.sh --reference-frames \
+REFERENCE=$(run sh launcher/tools/render/render_compare.sh --reference-frames \
     --reference "$M/meshes/sponza.scene.toml" --poses "$W/fidelity-poses.txt" 2> "$W/fidelity-reference.log")
-"$W/render_lab_render" --quarter 0 --no-hud --scene sponza-flat --frames 5 --dt 5000 \
+run "$W/render_lab_render" --quarter 0 --no-hud --scene sponza-flat --frames 5 --dt 5000 \
     -o "$W/fidelity-flat.bmp" --video "$W/fidelity-flat.avi" 2> "$W/fidelity-flat.log"
-"$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.png" \
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.png" \
     --reference-video "$W/fidelity-flat.avi" "$REFERENCE" --reference-scale 2 \
     --reference-sheet "$RENDER/bake-fidelity-sheet.png" --sheet-frames 2,4 --label-a "flat bake" > "$W/fidelity-compare.log"
 
@@ -118,20 +131,23 @@ REFERENCE=$(sh launcher/tools/render/render_compare.sh --reference-frames \
 # directory holds copies of the import and the scene, packed in place of the
 # committed mesh, so nothing committed changes.
 . scripts/lib/python.sh
-R3D_PYTHON=$(find_r3d_python "$PWD")
-"$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 5 --dt 5000 \
+R3D_PYTHON=$(run find_r3d_python "$PWD")
+run "$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 5 --dt 5000 \
     -o "$W/indirect-smooth.bmp" --video "$W/indirect-smooth.avi" 2> "$W/indirect-smooth.log"
 # variant_bake NAME BOUNCES SCENE-TABLE: bounces is `keep`, or `none` to take
 # the scene bake's indirect cache out; the table goes before the first object.
 variant_bake() {
-    mkdir -p "$W/indirect-$1"
-    awk -v table="$3" -v direct="$2" '/^\[\[objects\]\]/ && !done { if (table != "") print table "\n"; done = 1 }
+    mesh=${4:-sponza.atrium}
+    scene=${5:-sponza}
+    run mkdir -p "$W/indirect-$1"
+    run cp "$M/meshes/sponza.import.toml" "$W/indirect-$1/"
+    run awk -v table="$3" -v direct="$2" '/^\[\[objects\]\]/ && !done { if (table != "") print table "\n"; done = 1 }
         direct == "none" && /^indirect = \{/ { next } { print }' \
         "$M/meshes/sponza.scene.toml" > "$W/indirect-$1/sponza.scene.toml"
-    "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$W/indirect-$1/sponza.scene.toml" --mesh sponza.atrium > "$W/indirect-$1/bake.log" 2>&1
-    "$R3D_PYTHON" launcher/tools/r3d/build_pack.py -o "$W/indirect-$1/assets.bin" --replace "sponza.atrium=$W/indirect-$1/sponza.atrium.mesh" \
+    run "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$W/indirect-$1/sponza.scene.toml" --mesh "$mesh" > "$W/indirect-$1/bake.log" 2>&1
+    run "$R3D_PYTHON" launcher/tools/r3d/build_pack.py -o "$W/indirect-$1/assets.bin" --replace "$mesh=$W/indirect-$1/$mesh.mesh" \
         > "$W/indirect-$1/pack.log"
-    AUTANA_ASSET_PACK="$W/indirect-$1/assets.bin" "$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 5 --dt 5000 \
+    run env AUTANA_ASSET_PACK="$W/indirect-$1/assets.bin" "$W/render_lab_render" --quarter 0 --no-hud --scene "$scene" --frames 5 --dt 5000 \
         -o "$W/indirect-$1/frame.bmp" --video "$W/indirect-$1.avi" 2> "$W/indirect-$1/render.log"
 }
 variant_bake direct none ''
@@ -142,34 +158,37 @@ variant_bake boost-2 keep '[indirect]\nalbedo_boost = 2.0'
 # Reference, direct-only bake and two-bounce bake at two poses, with each
 # bake's dE heatmap against the reference, then the places the two bakes differ
 # most with the reference above them.
-"$PYTHON" launcher/tools/render/render_compare.py --out "$W/indirect-compare.png" --crops 4 \
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/indirect-compare.png" --crops 4 \
     --reference-bakes "$REFERENCE" --reference-scale 2 --sheet-frames 2,4 \
     --bake "direct light only" "$W/indirect-direct.avi" --bake "two bounces" "$W/indirect-smooth.avi" > "$W/indirect-compare.log"
 [ -f "$W/indirect-compare.crops.png" ] || { echo "doc_images.sh: indirect light has no crops, the bakes do not differ." >&2; exit 1; }
-cp "$W/indirect-compare.png" "$RENDER/bake-indirect-compare.png"
-cp "$W/indirect-compare.crops.png" "$RENDER/bake-indirect-crops.png"
+run cp "$W/indirect-compare.png" "$RENDER/bake-indirect-compare.png"
+run cp "$W/indirect-compare.crops.png" "$RENDER/bake-indirect-crops.png"
 
 # The look controls: the physical bake, indirect intensity 2 and 3, and an
 # albedo boost of 2, last pose, beside the physical reference and, under it,
 # each look's own reference: the scene's [indirect] table reaches the reference
 # too, so the error against it is the bake's alone.
 look_reference() {
-    sh launcher/tools/render/render_compare.sh --reference-frames \
+    run sh launcher/tools/render/render_compare.sh --reference-frames \
         --reference "$W/indirect-$1/sponza.scene.toml" --poses "$W/fidelity-poses.txt" 2> "$W/indirect-$1/reference.log"
 }
-"$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/bake-indirect-look.png" \
+INTENSITY_2_REFERENCE=$(look_reference intensity-2)
+INTENSITY_3_REFERENCE=$(look_reference intensity-3)
+BOOST_2_REFERENCE=$(look_reference boost-2)
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/bake-indirect-look.png" \
     --reference-bakes "$REFERENCE" --reference-scale 2 --sheet-frames 4 \
     --bake "intensity 1" "$W/indirect-smooth.avi" --bake "intensity 2" "$W/indirect-intensity-2.avi" \
     --bake "intensity 3" "$W/indirect-intensity-3.avi" --bake "albedo boost 2" "$W/indirect-boost-2.avi" \
-    --bake-reference "intensity 1" "$REFERENCE" --bake-reference "intensity 2" "$(look_reference intensity-2)" \
-    --bake-reference "intensity 3" "$(look_reference intensity-3)" --bake-reference "albedo boost 2" "$(look_reference boost-2)" \
+    --bake-reference "intensity 1" "$REFERENCE" --bake-reference "intensity 2" "$INTENSITY_2_REFERENCE" \
+    --bake-reference "intensity 3" "$INTENSITY_3_REFERENCE" --bake-reference "albedo boost 2" "$BOOST_2_REFERENCE" \
     > "$W/indirect-look.log"
 
 # Each fitted target against the same reference: its heatmap sheet at the
 # same two poses, and its last frame beside the reference, enlarged where they
 # differ most.
 #   against_reference <scene> <heatmap image> <reference image> <label> [--sheet] [--crops]
-"$PYTHON" -c 'import pathlib, sys; from PIL import Image
+run "$PYTHON" -c 'import pathlib, sys; from PIL import Image
 frame = sorted(pathlib.Path(sys.argv[1]).glob("*.png"))[4]
 picture = Image.open(frame).convert("RGB")
 picture.resize((picture.width * 2, picture.height * 2), Image.Resampling.NEAREST).save(sys.argv[2])' \
@@ -186,13 +205,13 @@ against_reference() {
         esac
         shift
     done
-    "$W/render_lab_render" --quarter 0 --no-hud --scene "$scene" --frames 5 --dt 5000 \
+    run "$W/render_lab_render" --quarter 0 --no-hud --scene "$scene" --frames 5 --dt 5000 \
         -o "$W/fidelity-$scene.bmp" --video "$W/fidelity-$scene.avi" 2> "$W/fidelity-$scene.log"
-    "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$scene-unused.png" \
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$scene-unused.png" \
         --reference-video "$W/fidelity-$scene.avi" "$REFERENCE" --reference-scale 2 \
         --reference-sheet "$RENDER/$heat.png" --sheet-frames 2,4 --label-a "$label" > "$W/$scene-compare.log"
     if [ "$crops" = yes ]; then
-        "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$reference.png" --crops 3 \
+        run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$reference.png" --crops 3 \
             --label-a "$label" --label-b reference --row "$label | reference" "$W/fidelity-$scene.bmp" "$W/fidelity-reference-4.png" > "$W/$scene-reference.log"
         cp "$W/$reference.crops.png" "$RENDER/" || {
             echo "doc_images.sh: $scene matches the reference, no crops." >&2
@@ -204,6 +223,42 @@ against_reference() {
 against_reference sponza-fitted appearance-chosen-heat appearance-chosen-reference fitted --crops
 against_reference sponza-fitted-full appearance-fitted-full-heat appearance-fitted-full-reference "fitted full" --sheet --crops
 against_reference sponza-lite appearance-lite-reference appearance-lite-reference-row simplifier
-"$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/appearance-lite-fitted-reference.crops.png" --crops 3 \
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/appearance-lite-fitted-reference.crops.png" --crops 3 \
     --label-a simplifier --label-b fitted --reference-crops "$W/fidelity-reference-4.png" \
     "$W/fidelity-sponza-lite.bmp" "$W/fidelity-sponza-fitted.bmp" > "$W/appearance-lite-fitted-reference.log"
+
+# Direct-light counterparts at the same poses; the committed indirect bakes
+# and source reference are shared with the image measurements above.
+tables_start=$(date +%s)
+variant_bake direct-lite none '' sponza.atrium_lite sponza-lite
+variant_bake direct-flat none '' sponza.atrium_flat sponza-flat
+for kind in lite flat; do
+    "$PYTHON" launcher/tools/render/render_compare.py --out "$W/direct-$kind-unused.png" \
+        --reference-video "$W/indirect-direct-$kind.avi" "$REFERENCE" --reference-scale 2 > "$W/direct-$kind-compare.log"
+done
+
+sweep_start=$(date +%s)
+"$R3D_PYTHON" launcher/tools/r3d/bake_fidelity.py "$M/meshes/sponza.scene.toml" --mesh atrium_flat \
+    --host "$W/render_lab_render" \
+    --render-args "--quarter 0 --no-hud --scene sponza-flat --frames 5 --dt 5000" \
+    --reference "$REFERENCE" --work "$W/sampling" \
+    --variant declared= --variant fixed1=samples=fixed:1 --variant fixed2=samples=fixed:2 \
+    --variant fixed4=samples=fixed:4 --variant fixed8=samples=fixed:8 --variant fixed16=samples=fixed:16 \
+    --variant fixed32=samples=fixed:32 --variant fixed64=samples=fixed:64 \
+    --variant min2=samples=auto:2:16:median --variant min4=samples=auto:4:16:median \
+    --variant max4=samples=auto:1:4:median --variant max8=samples=auto:1:8:median \
+    --variant max32=samples=auto:1:32:median --variant area0.25=samples=auto:1:16:median*0.25 \
+    --variant area0.5=samples=auto:1:16:median*0.5 --variant area2=samples=auto:1:16:median*2 \
+    --variant sky16=sky=16 --variant sky32=sky=32 --variant sky64=sky=64 \
+    --variant sky256=sky=256 --variant sky512=sky=512 --variant centroid=place=centroid \
+    --variant sun-centre=sun=centre --variant fixed4-sun-centre=samples=fixed:4,sun=centre \
+    > "$W/sampling.log" 2>&1
+sweep_seconds=$(($(date +%s) - sweep_start))
+echo "CPU flat sampling sweep: $sweep_seconds seconds"
+echo "$sweep_seconds" > "$W/sweep-seconds.txt"
+"$R3D_PYTHON" "$M/tools/doc_tables.py" "$W" "$TABLES"
+tables_seconds=$(($(date +%s) - tables_start))
+echo "CPU table measurements added: $tables_seconds seconds"
+echo "$tables_seconds" > "$W/tables-seconds.txt"
+
+"$R3D_PYTHON" "$M/tools/doc_import_examples.py" "$W" "$RENDER" > "$W/import-examples.log" 2>&1
