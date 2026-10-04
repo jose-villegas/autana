@@ -254,7 +254,7 @@ the stage checks WSL and Windows host memory before each bake and fit.
 
 ```sh
 DOC_PROJECT=$(pwd -W)
-MSYS_NO_PATHCONV=1 wsl -d Debian --cd "$DOC_PROJECT" -- bash -lc 'python3 .dev/scripts/quiet.py -- sh launcher/tools/render/run_doc_gpu.sh'
+MSYS_NO_PATHCONV=1 wsl -d Debian --cd "$DOC_PROJECT" -- bash -lc 'sh launcher/tools/render/run_doc_gpu.sh'
 MSYS_NO_PATHCONV=1 wsl -d Debian --cd "$DOC_PROJECT" -- bash -lc 'sh launcher/tools/render/run_doc_gpu.sh --check'
 ```
 
