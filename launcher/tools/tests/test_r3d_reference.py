@@ -109,5 +109,35 @@ class PooledReferenceTests(unittest.TestCase):
                 self.assertEqual(path.read_bytes(), (pooled / path.name).read_bytes(), path.name)
 
 
+@unittest.skipIf(np is None, "needs Embree and NumPy")
+class SkyStreamingTests(unittest.TestCase):
+    def test_sky_directions_are_streamed_and_match_list(self):
+        from unittest.mock import patch
+        from r3d import light as lighting
+        source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
+        original = lighting.unshadowed_count
+        sky = {"type": "sky", "rays": 7, "color": [.5, .7, .9], "intensity": .8}
+        points = np.array([[0., 0., .5], [.2, .3, .1]])
+        normals = np.array([[0., 0., -1.], [0., 0., 1.]])
+        for shared in (0, 7):
+            for seed in (0, 17, 42):
+                def render():
+                    rng = np.random.default_rng(seed)
+                    value = lighting.light(points, normals, np.array([False, False]), source.intersector,
+                                           [sky], .01, rng, shared_sky_rays=shared)
+                    return value, rng.random(8)
+                def streamed(intersector, origin, directions):
+                    self.assertFalse(isinstance(directions, list))
+                    return original(intersector, origin, directions)
+                with patch.object(lighting, 'unshadowed_count', side_effect=streamed):
+                    actual, state = render()
+                with patch.object(lighting, 'unshadowed_count',
+                                  side_effect=lambda intersector, origin, directions:
+                                  original(intersector, origin, list(directions))):
+                    expected, old_state = render()
+                self.assertEqual(actual.tobytes(), expected.tobytes())
+                self.assertEqual(state.tobytes(), old_state.tobytes())
+
+
 if __name__ == "__main__":
     unittest.main()

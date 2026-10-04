@@ -8,13 +8,17 @@ import time
 import threading
 import traceback
 import signal
+import sys
+import ctypes
 from collections import deque
 
 GIB = 1024 ** 3
 FLOORS = (GIB, 3 * GIB, GIB // 2, GIB // 4)
 FIT_BYTES = (2 * GIB, 2 * GIB, GIB, 2 * GIB)
-# Prepare reserves the runner's approximately 5 GiB peak plus allocator and pose-start headroom.
-PREPARE_BYTES = (6 * GIB, 6 * GIB, 0, 6 * GIB)
+# Prepare includes the measured base peak and pose scratch; the reservation bounds its nested pool.
+PREPARE_BYTES = (7 * GIB, 7 * GIB, 0, 7 * GIB)
+TASK_RESERVATION = None
+POSE_POOL_PEAK_BYTES = 0
 SMOKE_PREPARE_BYTES = (2 * GIB, 2 * GIB, 0, 2 * GIB)
 
 
@@ -91,9 +95,31 @@ def gpu_resident_bytes():
     return gpu
 
 
-def _task(connection, function, args):
+def parent_death_signal(parent_pid):
+    if sys.platform == "linux":
+        library = ctypes.CDLL(None, use_errno=True)
+        if library.prctl(1, signal.SIGKILL, 0, 0, 0) != 0:
+            raise OSError(ctypes.get_errno(), "PR_SET_PDEATHSIG failed")
+        if os.getppid() != parent_pid:
+            os.kill(os.getpid(), signal.SIGKILL)
+
+
+def peak_rss(pid=None):
+    try:
+        return next(int(line.split()[1]) * 1024
+                    for line in pathlib.Path(f"/proc/{pid or os.getpid()}/status").read_text().splitlines()
+                    if line.startswith("VmHWM:"))
+    except (OSError, StopIteration):
+        return 0
+
+
+def _task(connection, function, args, estimates=FIT_BYTES, parent_pid=None):
+    global TASK_RESERVATION
+    parent_death_signal(parent_pid if parent_pid is not None else os.getppid())
     if hasattr(os, "setsid"):
         os.setsid()
+    TASK_RESERVATION = estimates
+    started = time.monotonic()
     try:
         connection.send((True, function(*args)))
     except BaseException:
@@ -101,6 +127,12 @@ def _task(connection, function, args):
         print(detail, flush=True)
         connection.send((False, detail))
     finally:
+        torch = sys.modules.get("torch")
+        device = torch.cuda.max_memory_reserved() if torch and torch.cuda.is_initialized() else 0
+        name = function.__name__ + ":" + ",".join(str(arg) for arg in args if isinstance(arg, pathlib.Path))
+        print(f"worker {name} pid={os.getpid()} wall_s={time.monotonic() - started:.3f} "
+              f"peak_rss_bytes={peak_rss()} pose_peak_rss_bytes={POSE_POOL_PEAK_BYTES} "
+              f"peak_gpu_reserved_bytes={device}", flush=True)
         connection.close()
 
 
@@ -109,12 +141,16 @@ class FitExecutor:
     def __init__(self):
         self.pending = []
         self.queue = deque()
+        self.priorities = set()
         self.active = []
         self.condition = threading.Condition(threading.RLock())
         self.closed = False
         self.failure = None
         self.context = multiprocessing.get_context("spawn")
         self.thread = threading.Thread(target=self._run)
+        self.previous_sigterm = None
+        if threading.current_thread() is threading.main_thread():
+            self.previous_sigterm = signal.signal(signal.SIGTERM, self._sigterm)
         self.thread.start()
 
     def submit(self, function, *args, estimates=FIT_BYTES, priority=False):
@@ -123,7 +159,14 @@ class FitExecutor:
             if self.closed:
                 raise RuntimeError("executor is closed")
             self.pending.append(future)
-            (self.queue.appendleft if priority else self.queue.append)((future, function, args, estimates))
+            item = (future, function, args, estimates)
+            if priority:
+                index = next((index for index, queued in enumerate(self.queue)
+                              if queued[0] not in self.priorities), len(self.queue))
+                self.queue.insert(index, item)
+                self.priorities.add(future)
+            else:
+                self.queue.append(item)
             self.condition.notify_all()
         return future
 
@@ -138,31 +181,38 @@ class FitExecutor:
                         future.set_exception(error)
                 self.queue.clear()
         finally:
-            for process, connection, future, estimates in self.active:
-                if self.failure:
-                    if hasattr(os, "killpg"):
-                        try:
-                            os.killpg(process.pid, signal.SIGTERM)
-                        except ProcessLookupError:
-                            pass
-                    elif process.is_alive():
-                        process.terminate()
-                    process.join(timeout=5)
-                    if hasattr(os, "killpg"):
-                        try:
-                            os.killpg(process.pid, signal.SIGKILL)
-                        except ProcessLookupError:
-                            pass
-                    if process.is_alive():
-                        process.kill()
-                process.join()
-                connection.close()
-                process.close()
+            with self.condition:
+                for process, connection, future, estimates in self.active:
+                    if self.failure:
+                        self._kill(process)
+                    process.join()
+                    connection.close()
+                    process.close()
+                self.active.clear()
+
+    @staticmethod
+    def _kill(process):
+        if hasattr(os, "killpg"):
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if process.is_alive():
+            process.kill()
+
+    def _sigterm(self, number, frame):
+        with self.condition:
+            for process, *_ in self.active:
+                self._kill(process)
+        raise SystemExit(128 + number)
 
     def _schedule(self):
         next_query = 0
+        last_wait_log = None
         while True:
             with self.condition:
+                if self.failure:
+                    raise self.failure
                 for item in list(self.active):
                     process, connection, future, estimates = item
                     if connection.poll():
@@ -187,16 +237,17 @@ class FitExecutor:
                     free = projected_available(free, [(estimates, resident_bytes(process.pid, gpu))
                                                for process, _, _, estimates in self.active])
                     next_query = time.monotonic() + 2
-                    while self.queue and len(self.active) < cores_available():
-                        future, function, args, estimates = self.queue[0]
-                        if not worker_capacity(free, estimates, FLOORS, 1):
-                            if not self.active:
-                                raise RuntimeError(f"worker memory admission failed: available={free}, "
-                                                   f"required={estimates}, floors={FLOORS}")
+                    for queued in list(self.queue):
+                        if len(self.active) >= cores_available():
                             break
-                        self.queue.popleft()
+                        future, function, args, estimates = queued
+                        if not worker_capacity(free, estimates, FLOORS, 1):
+                            continue
+                        self.queue.remove(queued)
+                        self.priorities.discard(future)
+                        print(f"admit {function.__name__} projected_available={free} reservation={estimates}", flush=True)
                         receive, send = self.context.Pipe(duplex=False)
-                        process = self.context.Process(target=_task, args=(send, function, args))
+                        process = self.context.Process(target=_task, args=(send, function, args, estimates, os.getpid()))
                         try:
                             process.start()
                         except BaseException:
@@ -206,6 +257,17 @@ class FitExecutor:
                         send.close()
                         self.active.append((process, receive, future, estimates))
                         free = tuple(value - estimate for value, estimate in zip(free, estimates))
+                    if self.queue and not self.active:
+                        raise RuntimeError(f"worker memory admission failed: available={free}, "
+                                           f"required={[item[3] for item in self.queue]}, floors={FLOORS}")
+                    if self.queue and last_wait_log is None:
+                        last_wait_log = time.monotonic()
+                    if self.queue and time.monotonic() - last_wait_log >= 10:
+                        print(f"admission wait projected_available={free} queued={len(self.queue)} "
+                              f"active={len(self.active)}", flush=True)
+                        last_wait_log = time.monotonic()
+                if not self.queue:
+                    last_wait_log = None
                 self.condition.wait(timeout=0.1)
 
     def __enter__(self):
@@ -215,10 +277,13 @@ class FitExecutor:
         with self.condition:
             self.closed = True
             if error[0]:
+                self.failure = error[1]
                 for future, *_ in self.queue:
                     future.cancel()
                 self.queue.clear()
             self.condition.notify_all()
         self.thread.join()
+        if self.previous_sigterm is not None:
+            signal.signal(signal.SIGTERM, self.previous_sigterm)
         if self.failure and not error[0]:
             raise self.failure
