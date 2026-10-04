@@ -12,9 +12,10 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
+sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from generated_blocks import apply_tables
-from perf.perf_compare import MEAN_RE, parse_report
+from perf_compare import MEAN_RE, parse_report
 
 SCENE = ROOT / "launcher/main/apps/render_lab/meshes/sponza.scene.toml"
 HOST_SCRIPT = ROOT / "launcher/main/apps/render_lab/tools/render_lab_render_host.sh"
