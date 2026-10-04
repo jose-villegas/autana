@@ -238,6 +238,23 @@ at the full budget and at about half of it, the full render above the lite.
 Scene-owned bake, visibility, shading and fit settings are described in
 [Scene-Files.md](Scene-Files.md#option-reference).
 
+### Local-occlusion implementation
+
+The [`ao` setting](Scene-Files.md#bake-ao) scales a baked point's ambient light,
+and with `indirect = true` its gathered bounce light, by a factor from short
+rays. Each point $x$ casts $R$ cosine-weighted rays, the same directions in its
+own frame as the bounce gather; the ray $i$ that hits a surface at distance
+$`t_i`$ within the reach $D$ has weight $`w_i = 1 - t_i/D`$, any other ray
+$`w_i = 0`$. With strength $s$ the factor is
+
+```math
+f(x) = 1 - \frac{s}{R} \sum_{i=1}^{R} w_i
+```
+
+A double-sided surface has no side it is meant to be seen from, so it takes the
+larger $f$ of its two sides. Sun and sky visibility use their own rays and are
+not scaled.
+
 ### Indirect-light implementation
 
 The [bake recipe](Scene-Files.md#bake-indirect) enables diffuse bounce light
