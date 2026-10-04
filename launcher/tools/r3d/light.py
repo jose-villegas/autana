@@ -274,6 +274,18 @@ def local_occlusion(points, normals, intersector, ao, ray_offset):
     return 1.0 - ao.strength * covered / ao.rays
 
 
+def open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offset):
+    """local_occlusion on each point's own side. A double-sided surface has no side it is meant to be seen from, so
+    it takes the less occluded of its two: a curtain hanging against a wall is lit by the open side it is seen from,
+    not darkened by the wall behind it."""
+    factor = local_occlusion(points, normals, intersector, ao, ray_offset)
+    if double_sided.any():
+        chosen = np.nonzero(double_sided)[0]
+        other = local_occlusion(points[chosen], -normals[chosen], intersector, ao, ray_offset)
+        factor[chosen] = np.maximum(factor[chosen], other)
+    return factor
+
+
 def face_towards_light(normals, double_sided, lights):
     """Double-sided surfaces turn to the side the directional lights, summed,
     shine on. One orientation for every light, so their order cannot matter."""
@@ -303,10 +315,11 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, rng, s
     `indirect` is an IndirectCache whose gathered light is added to the
     direct light; `indirect_groups` is gather_indirect's `groups`. `ao` is
     the scene's local occlusion setting: it scales the ambient light, and the
-    gathered indirect light when `ao.indirect`.
+    gathered indirect light when `ao.indirect`; a double-sided point takes its
+    less occluded side.
     """
     n = face_towards_light(normals, double_sided, lights)
-    occlusion = None if ao is None else local_occlusion(points, n, intersector, ao, ray_offset)
+    occlusion = None if ao is None else open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offset)
     ctx = SimpleNamespace(normals=n, origin=points + n * ray_offset, intersector=intersector, rng=rng, occlusion=occlusion,
                           shared=bool(shared_sky_rays), shared_sky_rays=shared_sky_rays,
                           sun_centre=sun_centre)

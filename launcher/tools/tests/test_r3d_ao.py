@@ -94,6 +94,19 @@ class OccludedLightTest(unittest.TestCase):
         np.testing.assert_allclose(far, [0.5] * 3)
         self.assertLess(near[0], 0.35)
 
+    def test_a_double_sided_card_against_the_wall_is_lit_by_its_open_side_not_darkened_by_the_wall_behind(self):
+        # A card two units from the wall, both sides lit by a sun on the wall's side: its normal is turned to that
+        # sun, into the wall, yet it is seen from the open side. The ambient it receives must be the open side's.
+        card = np.array([[2.0, -30.0, 0.0], [2.0, 30.0, 0.0], [2.0, 30.0, 40.0], [2.0, -30.0, 40.0]])
+        p = np.array([[0.0, -40.0, 0.0], [0.0, 40.0, 0.0], [0.0, 40.0, 40.0], [0.0, -40.0, 40.0]])
+        mesh = trimesh.Trimesh(np.concatenate([p, card]), np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]]), process=False)
+        sun = dict(self.SUN, direction=[-1.0, 0.0, 0.5])
+        point, normal = np.array([[2.0, 0.0, 10.0]]), np.array([[1.0, 0.0, 0.0]])
+        args = (RayMeshIntersector(mesh), [self.AMBIENT, sun], 0.01, np.random.default_rng(1))
+        sun_only = light(point, normal, np.array([True]), args[0], [sun], 0.01, args[3], ao=ao())[0]
+        both = light(point, normal, np.array([True]), *args, ao=ao())[0]
+        self.assertGreater((both - sun_only)[0], 0.5 * 0.85)
+
     def test_direct_sun_is_not_scaled(self):
         np.testing.assert_allclose(self.lit([self.SUN], 1.0, ao=ao()), self.lit([self.SUN], 1.0))
 
