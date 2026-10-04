@@ -112,7 +112,7 @@ under whichever `tools/` folder owns the scene, which is gitignored.
 is not a perf oracle: an x86 laptop's timings say nothing about what the
 work costs on the chip, and even instruction counts only answer whether
 work was removed (see
-[`../notes/Optimization-Playbook.md`](../notes/Optimization-Playbook.md)).
+[`../notes/Debugging.md`](../notes/Debugging.md#performance-seems-off)).
 Time a change on the device, or under QEMU's `--icount` for counts.
 
 ## Declaring a scene
@@ -363,5 +363,5 @@ The tool needs Pillow and numpy (`launcher/tools/render/requirements.txt`).
   borrows its image from.
 - [`../Building-a-Screen.md`](../Building-a-Screen.md): building the screen
   a scene renders.
-- [`../notes/Optimization-Playbook.md`](../notes/Optimization-Playbook.md):
+- [`../notes/Debugging.md`](../notes/Debugging.md#performance-seems-off):
   why a host timing is not a cost.

@@ -48,7 +48,7 @@
  * exceeds the panel's rated 50 MHz, and can leave stray pixels in a
  * partially redrawn frame; see
  * CONFIG_LAUNCHER_GFX_QSPI_80MHZ. The divider resolves to exactly 40 or 80,
- * hence a bool. THE THRESHOLDS BELOW ARE FITTED TO 40 MHz. */
+ * hence a bool. The thresholds in gfx_dirty.h are fitted to 40 MHz. */
 #if defined(CONFIG_LAUNCHER_GFX_QSPI_80MHZ) && CONFIG_LAUNCHER_GFX_QSPI_80MHZ
 #define GFX_QSPI_HZ (80 * 1000 * 1000)
 #else

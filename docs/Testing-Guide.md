@@ -454,7 +454,7 @@ measurements moved by up to 25%. Measure the same work order walked by one
 thread instead, and take the two-core verdict from the board. The count
 answers whether a change removed work; on this chip that does not predict
 whether it removed time (see
-[`notes/Optimization-Playbook.md`](notes/Optimization-Playbook.md)).
+[`notes/Debugging.md`](notes/Debugging.md#performance-seems-off)).
 
 **Instances are independent.** Each `qemu_run.py --workdir` holds its own
 flash image, eFuse file and console log, and the build directory is only

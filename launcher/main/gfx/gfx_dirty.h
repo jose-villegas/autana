@@ -14,9 +14,6 @@
  * wrappers around the dirty_*() functions here. Those three are the only
  * names in this file with a public-API counterpart to avoid colliding
  * with; everything else is private to gfx.c.
- *
- * The measurements behind the grid and the leaf layer are in
- * docs/notes/Display-and-Rendering.md's "Dirty tracking, measured".
  */
 #pragma once
 
