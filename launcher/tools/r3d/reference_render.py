@@ -15,6 +15,8 @@ and shares the exposure, tone map and RGB565 conversion below.
 """
 
 import argparse
+import multiprocessing
+import concurrent.futures
 import pathlib
 import sys
 
@@ -131,12 +133,54 @@ def source_for(scene, name=None, lit=True):
     return source, job
 
 
+POSE_STATE = None
+
+
+def _write_pose(item):
+    source, job, scene, width, height, lens, samples, out, normals = POSE_STATE
+    index, pose = item
+    linear, covered, normal = trace(source, job, scene, pose, width, height, lens, samples)
+    np.save(out / ("%04d.linear.npy" % index), linear)
+    if normals:
+        np.save(out / ("%04d.normal.npy" % index), normal.astype(np.float32))
+    picture = device_picture(linear, covered, scene.tonemap_white, scene.camera.component.background)
+    Image.fromarray(picture).save(out / ("%04d.png" % index))
+
+
+def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None):
+    """Fork only CPU reference state; each pose retains its independent seeded RNG."""
+    from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS
+    global POSE_STATE
+    if workers is None:
+        estimate = max(64 * 1024 ** 2, width * height * samples * samples * 1024)
+        workers = worker_capacity(available_bytes(), (estimate, estimate, 0, estimate), FLOORS, cores_available())
+        if not workers:
+            raise RuntimeError("not enough available memory for a reference pose worker")
+    workers = min(workers, len(poses))
+    if workers < 1:
+        raise ValueError("workers must be positive")
+    if workers > 1 and "fork" not in multiprocessing.get_all_start_methods():
+        workers = 1
+    POSE_STATE = (source, job, scene, width, height, lens, samples, pathlib.Path(out), normals)
+    try:
+        if workers == 1:
+            for item in enumerate(poses):
+                _write_pose(item)
+        else:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=workers,
+                    mp_context=multiprocessing.get_context("fork")) as pool:
+                list(pool.map(_write_pose, enumerate(poses)))
+    finally:
+        POSE_STATE = None
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("scene")
     parser.add_argument("--object", help="the scene's mesh renderer to render, lit as it is baked (default: the first)")
     parser.add_argument("--poses", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--workers", type=int, help="Embree pose workers; default: available CPU and memory budget")
     parser.add_argument("--samples", type=int, default=4)
     parser.add_argument("--skip", type=int, default=0, help="ignore this many leading poses")
     parser.add_argument("--normals", action="store_true", help="also write each pose's shading normals as NNNN.normal.npy")
@@ -173,6 +217,9 @@ def main(argv=None):
     if args.backend == "mitsuba":
         path = mitsuba_reference.prepare(source, scene.lights, job.settings.double_sided, mitsuba_reference.sky_from(args),
                                          args.variant)
+    if path is None:
+        render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals, args.workers)
+        return 0
     for index, pose in enumerate(poses):
         if path is not None:
             linear, covered = path.trace(pose, width, height, lens, near, args.spp, args.seed, args.max_depth)
