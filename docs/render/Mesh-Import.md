@@ -44,9 +44,18 @@ Keys before `;` are required; after it, optional.
 
 `[source].path` names a local file relative to the import file. The supported
 extension is `.obj`, with its sibling `.mtl` and the textures the MTL names.
-`credit` records the source attribution. Binary source assets are committed
-through Git LFS; local render tools need an explicit pull for the source
-directory (see the app's tools README).
+`credit` records the source attribution. An import's source files live in a
+subdirectory beside its `.import.toml` under an app's `meshes/` directory,
+matching `launcher/main/apps/*/meshes/*/**`. Binary source files use Git LFS;
+MTL and attribution files stay text. Firmware clones exclude source assets
+through `.lfsconfig`. Before a source bake or reference render, run this from
+the repository root:
+
+```sh
+git lfs pull --include="launcher/main/apps/*/meshes/*/**" --exclude=""
+```
+
+The empty exclude clears the clone's default exclusion for this pull.
 
 #### output
 

@@ -323,6 +323,17 @@ def source_files(settings):
     return sorted(files)
 
 
+def content_checksum(path):
+    """An LFS pointer and its hydrated contents identify the same source."""
+    import hashlib
+
+    content = path.read_bytes()
+    if content.startswith(b"version https://git-lfs.github.com/spec/v1\n"):
+        return next(line.removeprefix(b"oid sha256:") for line in content.splitlines()
+                    if line.startswith(b"oid sha256:"))
+    return hashlib.sha256(content).hexdigest().encode()
+
+
 def source_digest(settings):
     """Hash source contents and relative names, including hydrated LFS objects."""
     import hashlib
@@ -330,14 +341,8 @@ def source_digest(settings):
 
     digest = hashlib.sha256()
     for path in source_files(settings):
-        content = path.read_bytes()
-        if content.startswith(b"version https://git-lfs.github.com/spec/v1\n"):
-            checksum = next(line.removeprefix(b"oid sha256:") for line in content.splitlines()
-                            if line.startswith(b"oid sha256:"))
-        else:
-            checksum = hashlib.sha256(content).hexdigest().encode()
         digest.update(pathlib.Path(os.path.relpath(path, settings.source["path"].parent)).as_posix().encode())
-        digest.update(b"\0" + checksum)
+        digest.update(b"\0" + content_checksum(path))
     return digest.hexdigest()
 
 
