@@ -82,6 +82,57 @@ class ProblemsTest(unittest.TestCase):
         self.assertIn("not found", found[0])
 
 
+class ShellFolderTest(unittest.TestCase):
+    """main.c and everything under launcher/main/shell/ are held to one rule:
+    what main.c may not name, no file under shell/ may."""
+
+    def problems(self, files):
+        with tempfile.TemporaryDirectory() as temp:
+            write_main(temp, '#include "shell/shell.h"\nvoid app_main(void) { shell_run(); }\n')
+            for rel, text in files.items():
+                write_file(temp, rel, text)
+            return check_shell_firmware.problems(temp)
+
+    def test_a_vendor_include_or_name_anywhere_in_the_shell_folder_fails(self):
+        cases = (
+            ("launcher/main/shell/shell.c", '#include "esp_timer.h"\n', ["includes esp_timer.h"]),
+            ("launcher/main/shell/shell.h", '#include "freertos/task.h"\n', ["includes freertos/task.h"]),
+            ("launcher/main/shell/shell_apps.c", "void f(void) { vTaskDelay(1); }\n", ["uses vTaskDelay"]),
+            ("launcher/main/shell/deeper/x.c", "int x = ESP_OK;\n", ["uses ESP_OK"]),
+        )
+        for rel, text, reasons in cases:
+            with self.subTest(rel=rel):
+                self.assertEqual(self.problems({rel: text}), [f"{rel}:1: {reason}" for reason in reasons])
+
+    def test_logging_and_the_shells_own_modules_pass_and_other_layers_are_not_the_shell(self):
+        cases = (
+            ("launcher/main/shell/shell.c",
+             '#include "esp_log.h"\n#include "util/timing.h"\nvoid f(void) { ESP_LOGI("t", "x"); timing_yield(); }\n'),
+            ("launcher/main/ui/ui.c", "void f(void) { vTaskDelay(1); }\n"),
+            ("launcher/main/shellish.c", '#include "esp_timer.h"\n'),
+        )
+        for rel, text in cases:
+            with self.subTest(rel=rel):
+                self.assertEqual(self.problems({rel: text}), [])
+
+    def test_main_c_comes_first_then_the_shell_folder_in_path_order_and_only_c_and_h_files(self):
+        with tempfile.TemporaryDirectory() as temp:
+            write_main(temp, "int x = ESP_OK;\n")
+            files = {
+                "launcher/main/shell/zeta.c": "void f(void) { vTaskDelay(1); }\n",
+                "launcher/main/shell/alpha.h": '#include "esp_timer.h"\n',
+                "launcher/main/shell/README.md": "vTaskDelay is named here, in prose\n",
+                "launcher/main/shell/notes.txt": "int y = ESP_OK;\n",
+            }
+            for rel, text in files.items():
+                write_file(temp, rel, text)
+            self.assertEqual(check_shell_firmware.problems(temp), [
+                "launcher/main/main.c:1: uses ESP_OK",
+                "launcher/main/shell/alpha.h:1: includes esp_timer.h",
+                "launcher/main/shell/zeta.c:1: uses vTaskDelay",
+            ])
+
+
 def write_file(root, rel, text):
     path = pathlib.Path(root) / rel
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -170,6 +221,11 @@ class OwnerProblemsTest(unittest.TestCase):
         rel = "launcher/main/gfx/gfx.c"
         self.assertEqual(self.problems({rel: "long d = esp_timer_get_time() - esp_timer_get_time();\n"}),
                          [f"{rel}:1: uses esp_timer_get_time; only util/timing and a driver may"])
+
+    def test_a_shell_file_is_left_to_the_stricter_shell_rule(self):
+        for rel in ("launcher/main/shell/shell.c", "launcher/main/shell/shell_apps.h"):
+            with self.subTest(rel=rel):
+                self.assertEqual(self.problems({rel: CLOCK_READ}), [])
 
     def test_the_host_platform_beneath_the_suites_and_vendored_code_are_not_checked(self):
         for rel in ("launcher/test/heap_arena.c", "launcher/test/timing.c", "launcher/test/stubs/esp_heap_caps.h",

@@ -27,10 +27,10 @@ extern void sand_app_restore_colour_mode_for_test(int mode);
 
 static const char* TAG = "suite_sand_full_redraw";
 
-/* Applies a pending gfx_request_full_redraw() exactly the way main.c's
- * apply_pending_full_redraw() does: consumed before the app draws, so a
- * request made inside the app's own frame() reaches the pass that
- * follows rather than this one. */
+/* Applies a pending gfx_request_full_redraw() to sand the way shell_apps.c's
+ * apply_pending_full_redraw() does to the running app: consumed before the
+ * app draws, so a request made inside the app's own frame() reaches the pass
+ * that follows rather than this one. */
 static void
 apply_pending_full_redraw(void) {
     if (!gfx_full_redraw_pending()) {

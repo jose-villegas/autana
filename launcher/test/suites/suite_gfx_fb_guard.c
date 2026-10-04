@@ -34,7 +34,7 @@ test_drawing_is_allowed_while_a_framebuffer_is_available(void) {
  * guard asserts on a refused draw by design, so these would abort the run. */
 #ifndef DEVICE_BUILD
 
-/* The exact scenario the bug report named: main.c's home hint (or any
+/* The exact scenario the bug report named: the shell's home hint (or any
  * other shell-side draw) reaching a gfx_* entry point after band mode has
  * freed the framebuffer must be refused, not crash. */
 static void
