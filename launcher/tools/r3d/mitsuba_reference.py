@@ -60,10 +60,11 @@ def material_bsdf(mi, kd, texture, two_sided):
     return {"type": "twosided", "bsdf": bsdf} if two_sided else bsdf
 
 
-def source_meshes(mi, source, double_sided):
+def source_meshes(mi, source, double_sided, release_textures=False):
     """One Mitsuba mesh per source material. Corners are not shared, since the source indexes positions and UVs
     separately; the shading normals are the import's crease-limited corner normals. The texture V axis is flipped
-    to the orientation `obj.Texture.sample` reads."""
+    to the orientation `obj.Texture.sample` reads. `release_textures` drops each texture from the source once exported,
+    which a large scene needs to keep its host memory flat; the source cannot be exported again."""
     meshes = {}
     for index, name in enumerate(source.names):
         chosen = source.tri_m == index
@@ -83,6 +84,8 @@ def source_meshes(mi, source, double_sided):
         params["vertex_texcoords"] = uv.ravel()
         params.update()
         meshes[f"mesh_{index}"] = mesh
+        if release_textures:
+            source.textures[index] = None
     return meshes
 
 
@@ -133,12 +136,17 @@ def sensor(mi, pose, width, height, lens, near, spp):
                      "pixel_format": "rgba", "component_format": "float32"}}
 
 
-def build_scene(mi, source, lights, double_sided, pose, width, height, lens, near, spp, max_depth, sky=None):
+def integrator(max_depth):
+    """A path tracer with next-event estimation, MIS and Russian roulette from depth 5, emitters hidden so the film's
+    alpha is the coverage of the mesh."""
+    return {"type": "path", "max_depth": int(max_depth), "rr_depth": 5, "hide_emitters": True}
+
+
+def build_scene(mi, source, lights, double_sided, pose, width, height, lens, near, spp, max_depth, sky=None,
+                release_textures=False):
     """The Mitsuba scene of one pose: the source meshes, the lights, a path integrator, the camera."""
-    scene = {"type": "scene", "integrator": {"type": "path", "max_depth": int(max_depth), "rr_depth": 5,
-                                             "hide_emitters": True},
-             "sensor": sensor(mi, pose, width, height, lens, near, spp)}
-    scene.update(source_meshes(mi, source, double_sided))
+    scene = {"type": "scene", "integrator": integrator(max_depth), "sensor": sensor(mi, pose, width, height, lens, near, spp)}
+    scene.update(source_meshes(mi, source, double_sided, release_textures))
     scene.update(emitters(mi, lights, sky))
     return mi.load_dict(scene)
 
@@ -146,32 +154,38 @@ def build_scene(mi, source, lights, double_sided, pose, width, height, lens, nea
 class PathScene:
     """One pose's Mitsuba scene, traced any number of times at any spp."""
 
-    def __init__(self, mi, scene, width, height, per_pass):
+    def __init__(self, mi, scene, width, height, per_pass, max_depth):
         self.mi, self.scene, self.width, self.height, self.per_pass = mi, scene, width, height, per_pass
+        self.max_depth, self.integrators = max_depth, {}
 
-    def trace(self, spp, seed=0):
-        """(linear RGB, coverage): `spp` paths per pixel averaged over passes small enough to bound memory.
-        Coverage is the share of each pixel's paths that hit the mesh."""
+    def trace(self, spp, seed=0, max_depth=None):
+        """(linear RGB, coverage): `spp` paths per pixel averaged over passes small enough to bound memory, at the
+        scene's path depth or `max_depth`. Coverage is the share of each pixel's paths that hit the mesh."""
+        depth = max_depth or self.max_depth
+        if depth not in self.integrators:
+            self.integrators[depth] = self.mi.load_dict(integrator(depth))
         per_pass = min(spp, self.per_pass)
         total, done, index = np.zeros((self.height, self.width, 4)), 0, 0
         while done < spp:
             take = min(per_pass, spp - done)
-            total += np.array(self.mi.render(self.scene, spp=take, seed=seed * 100003 + index)) * take
+            total += np.array(self.mi.render(self.scene, spp=take, seed=seed * 100003 + index,
+                                             integrator=self.integrators[depth])) * take
             done, index = done + take, index + 1
         image = total / spp
         return image[..., :3], np.clip(image[..., 3], 0.0, 1.0)
 
 
 def prepare(source, lights, double_sided, pose, width, height, lens, near, max_depth=12, sky=None, variant=None,
-            pixels_per_pass=1 << 24):
+            pixels_per_pass=1 << 24, release_textures=False):
     """Export the source and the lights for one pose; `pixels_per_pass` bounds the paths in flight at once."""
     mi = import_mitsuba()
     if mi is None:
         raise RuntimeError("the path-traced backend needs Mitsuba: pip install -r launcher/tools/r3d/requirements-gpu.txt")
     mi.set_variant(variant or default_variant(mi))
     per_pass = max(1, pixels_per_pass // (width * height))
-    scene = build_scene(mi, source, lights, double_sided, pose, width, height, lens, near, per_pass, max_depth, sky)
-    return PathScene(mi, scene, width, height, per_pass)
+    scene = build_scene(mi, source, lights, double_sided, pose, width, height, lens, near, per_pass, max_depth, sky,
+                        release_textures)
+    return PathScene(mi, scene, width, height, per_pass, max_depth)
 
 
 def render(source, lights, double_sided, pose, width, height, lens, near, spp=256, max_depth=12, seed=0, sky=None,
