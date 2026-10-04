@@ -387,6 +387,58 @@ channels_of(gfx_color_t c, int out[3]) {
     out[2] = native & 31;
 }
 
+/* A small triangle with a random colour and depth at each corner, and the
+ * range its channels span. */
+typedef struct {
+    r3d_span_vertex_t v[3];
+    int lo[3], hi[3];
+    bool solid;
+} shaded_t;
+
+static shaded_t
+random_shaded(uint32_t* state, float cx, float cy, float size) {
+    shaded_t t = {.lo = {255, 255, 255}, .hi = {0, 0, 0}};
+    for (int k = 0; k < 3; k++) {
+        const int rgb[3] = {(int)(next_random(state) % 256u), (int)(next_random(state) % 256u),
+                            (int)(next_random(state) % 256u)};
+        t.v[k] = sv(0, 0, 0.1f + (0.8f * (float)(next_random(state) % 1000u) / 1000.0f), (float)rgb[0], (float)rgb[1],
+                    (float)rgb[2]);
+        t.v[k].x = random_subpixel(state, cx - size, 2.0f * size);
+        t.v[k].y = random_subpixel(state, cy - size, 2.0f * size);
+        for (int ch = 0; ch < 3; ch++) {
+            t.lo[ch] = rgb[ch] < t.lo[ch] ? rgb[ch] : t.lo[ch];
+            t.hi[ch] = rgb[ch] > t.hi[ch] ? rgb[ch] : t.hi[ch];
+        }
+    }
+    t.solid = next_random(state) % 4u == 0;
+    return t;
+}
+
+#define SHADED_FACE GFX_RGB(0x336699)
+
+static void
+draw_shaded(const r3d_span_target_t* target, const shaded_t* t) {
+    if (t->solid) {
+        r3d_span_triangle_solid(target, &t->v[0], &t->v[1], &t->v[2], SHADED_FACE);
+    } else {
+        r3d_span_triangle(target, &t->v[0], &t->v[1], &t->v[2]);
+    }
+}
+
+/* 565 keeps each channel's top bits, and the fixed-point planes may round
+ * one step past a corner. */
+static bool
+within_corners(gfx_color_t c, const shaded_t* t) {
+    static const int drop[3] = {3, 2, 3};
+    int got[3];
+    channels_of(c, got);
+    bool inside = true;
+    for (int ch = 0; ch < 3; ch++) {
+        inside = inside && got[ch] >= (t->lo[ch] >> drop[ch]) - 1 && got[ch] <= (t->hi[ch] >> drop[ch]) + 1;
+    }
+    return inside;
+}
+
 /* Triangles one to five pixels across with a colour and a depth at each
  * corner, the sizes where the one-colour, centre-by-centre and walked paths
  * meet: drawn as two windows they match the whole draw, and no channel
@@ -403,57 +455,21 @@ test_small_shaded_triangles_keep_their_planes_in_range_in_any_window(void) {
         const float size = 0.5f + (2.0f * (float)(next_random(&state) % 1000u) / 1000.0f);
         const float cx = 4.0f + (float)(next_random(&state) % (unsigned)(W - 8));
         const float cy = 4.0f + (float)(next_random(&state) % (unsigned)(H - 8));
-        r3d_span_vertex_t v[3];
-        int lo[3] = {255, 255, 255};
-        int hi[3] = {0, 0, 0};
-        for (int k = 0; k < 3; k++) {
-            const float rgb[3] = {(float)(next_random(&state) % 256u), (float)(next_random(&state) % 256u),
-                                  (float)(next_random(&state) % 256u)};
-            v[k] = sv(0, 0, 0.1f + (0.8f * (float)(next_random(&state) % 1000u) / 1000.0f), rgb[0], rgb[1], rgb[2]);
-            v[k].x = random_subpixel(&state, cx - size, 2.0f * size);
-            v[k].y = random_subpixel(&state, cy - size, 2.0f * size);
-            for (int ch = 0; ch < 3; ch++) {
-                lo[ch] = (int)rgb[ch] < lo[ch] ? (int)rgb[ch] : lo[ch];
-                hi[ch] = (int)rgb[ch] > hi[ch] ? (int)rgb[ch] : hi[ch];
-            }
-        }
-        const bool solid = next_random(&state) % 4u == 0;
-        const gfx_color_t face = GFX_RGB(0x336699);
+        const shaded_t tri = random_shaded(&state, cx, cy, size);
         const int split = (int)cy + (int)(next_random(&state) % 5u) - 2;
         r3d_span_target_t t = fixture();
-        if (solid) {
-            r3d_span_triangle_solid(&t, &v[0], &v[1], &v[2], face);
-        } else {
-            r3d_span_triangle(&t, &v[0], &v[1], &v[2]);
-        }
+        draw_shaded(&t, &tri);
         memcpy(whole_color, color, sizeof(*color) * W * H);
         memcpy(whole_depth, depth, sizeof(*depth) * W * H);
         t = fixture();
-        const r3d_span_target_t top = {t.color, t.depth, W, 0, split};
-        const r3d_span_target_t bottom = {t.color + (split * W), t.depth + (split * W), W, split, H};
-        if (solid) {
-            r3d_span_triangle_solid(&top, &v[0], &v[1], &v[2], face);
-            r3d_span_triangle_solid(&bottom, &v[0], &v[1], &v[2], face);
-        } else {
-            r3d_span_triangle(&top, &v[0], &v[1], &v[2]);
-            r3d_span_triangle(&bottom, &v[0], &v[1], &v[2]);
-        }
-        const r3d_span_extent_t e = r3d_span_extent(&v[0], &v[1], &v[2]);
-        shaded += !e.flat && covered() > 0;
+        draw_shaded(&(r3d_span_target_t){t.color, t.depth, W, 0, split}, &tri);
+        draw_shaded(&(r3d_span_target_t){t.color + (split * W), t.depth + (split * W), W, split, H}, &tri);
+        shaded += !r3d_span_extent(&tri.v[0], &tri.v[1], &tri.v[2]).flat && covered() > 0;
         TEST_ASSERT_EQUAL_MEMORY_MESSAGE(whole_depth, depth, sizeof(*depth) * W * H, "a window drew another depth");
         TEST_ASSERT_EQUAL_MEMORY_MESSAGE(whole_color, color, sizeof(*color) * W * H, "a window drew another colour");
         for (int p = 0; p < W * H; p++) {
-            if (depth[p] == 0 || solid) {
-                TEST_ASSERT_TRUE(depth[p] == 0 || color[p] == face);
-                continue;
-            }
-            int c[3];
-            channels_of(color[p], c);
-            /* 565 keeps the top bits, and the fixed-point planes may round
-             * one step past a corner. */
-            TEST_ASSERT_TRUE_MESSAGE(c[0] >= (lo[0] >> 3) - 1 && c[0] <= (hi[0] >> 3) + 1, "red left its corners");
-            TEST_ASSERT_TRUE_MESSAGE(c[1] >= (lo[1] >> 2) - 1 && c[1] <= (hi[1] >> 2) + 1, "green left its corners");
-            TEST_ASSERT_TRUE_MESSAGE(c[2] >= (lo[2] >> 3) - 1 && c[2] <= (hi[2] >> 3) + 1, "blue left its corners");
+            const bool right = depth[p] == 0 || (tri.solid ? color[p] == SHADED_FACE : within_corners(color[p], &tri));
+            TEST_ASSERT_TRUE_MESSAGE(right, "a pixel left its corners' colours");
         }
     }
     free(whole_color);
