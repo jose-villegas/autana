@@ -88,7 +88,7 @@ is in [Mesh-Import.md](Mesh-Import.md#import-options).
 
 | Option | Keys | What it does | Default | Option link |
 |---|---|---|---|---|
-| `[bake]` | `ray_offset`, `colour_merge_step`; `flat_sky_rays`, `indirect = { bounces, rays, cache_samples }` | Scene-wide tracing settings. | Required by a baked renderer. | [bake](#bake) |
+| `[bake]` | `ray_offset`, `colour_merge_step`; `flat_sky_rays`, `indirect = { bounces, rays, cache_samples }`, `ao = { distance, rays; strength, indirect }` | Scene-wide tracing settings. | Required by a baked renderer. | [bake](#bake) |
 | `[indirect]` | `; intensity, albedo_boost` | Sets the appearance of the baked bounce-light cache. | `1.0 each`; rejected unless a baked renderer uses [bake].indirect. | [indirect](#indirect) |
 | `[sky]` | `color`, `intensity`, `rays` | Hemisphere light for bakes. | Rejected unless a renderer bakes. | [sky](#sky) |
 | `[ambient]` | `color`, `intensity` | Constant light for bakes. | Rejected unless a renderer bakes. | [ambient](#ambient) |
@@ -117,6 +117,35 @@ scene-wide bounce-light cache. All fields are required when it is present.
 `rays` and `cache_samples` are at least 1 and `bounces` is at least 0. The
 reference renderer reads the same settings. A renderer can opt out with
 [indirect: off](#indirect-off).
+
+#### bake: ao
+
+`[bake].ao = { distance = D, rays = R }` darkens crevices, contact lines and
+spots under overhangs. The sky light is blocked by an occluder at any
+distance; this counts only hits within `D` model units. It scales the
+[ambient](#ambient) light, and with `indirect = true` the gathered bounce
+light. The directional and sky lights, and the bounce cache itself, are
+untouched. Every baked renderer gets it. How the factor is computed is in
+[Mesh-Import.md](Mesh-Import.md#local-occlusion-implementation).
+
+| Field | Meaning |
+|---|---|
+| `distance` | Reach of the occlusion rays in model units, greater than 0. |
+| `rays` | Rays per point, at least 1. |
+| `strength` | Optional, 0 to 1, default 1: the factor falls as low as 1 − `strength`. |
+| `indirect` | Optional, default false: also scale the gathered bounce light. |
+
+Off unless given. A scene that sets it needs something to scale: an
+`[ambient]` light, or `indirect = true` with a [bounce cache](#bake-indirect)
+that a baked renderer uses. The Embree reference renderer reads the same table;
+the path-traced backend ignores it.
+
+![The reference beside the bake without and with occlusion, each with its error heatmap](../images/render/bake-ao-compare.png)
+
+The reach should follow the mesh: a bake stores one colour per vertex, so a
+reach much larger than the triangles darkens whole faces around a crease, where
+the reference darkens a thin line. A smaller `distance` or a lower `strength`
+keeps the darkening where the surfaces are close.
 
 #### indirect
 

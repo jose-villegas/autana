@@ -12,7 +12,7 @@ mesh. Nothing here runs on the board.
 | [repair.py](repair.py) | The join step of the `seal_seams` import option: border vertices within a tolerance are welded and border edges are split at another piece's vertices, so a shared edge is one edge and the simplifier cannot open a crack along it. Positions only; vertices are never merged. |
 | [simplify.py](simplify.py) | Appearance-preserving simplification: split evenly, weld across materials, one colour-aware pass with reserved budget shares for small props. `seal_seams=True` joins touching pieces first, regularizes lightly and merges near colours. |
 | [meshopt.py](meshopt.py) | [meshoptimizer](https://github.com/zeux/meshoptimizer)'s simplifier and meshlet clusterizer through ctypes, built once from the pinned `third_party/upstream/meshoptimizer` submodule into `.cache/`. |
-| [light.py](light.py) | Baked direct light from a scene's typed lights (`LIGHTS`): directional with soft shadows, sky visibility and ambient, albedo from textures, and culling of what no point in a region can see. |
+| [light.py](light.py) | Baked direct light from a scene's typed lights (`LIGHTS`): directional with soft shadows, sky visibility and ambient, distance-limited local occlusion (`[bake].ao`), albedo from textures, and culling of what no point in a region can see. |
 | [octree.py](octree.py) | Groups weighted items, here meshlets, into an octree whose leaves hold runs of them. |
 | [build_pack.py](build_pack.py) | Writes the [asset pack](../../../docs/assets/README.md) (`-o PACK`) from the `.mesh` entries every import and scene file names, with the container writer in [`tools/asset/`](../asset/asset_pack.py). Standard library only. |
 | [mesh_asset.py](mesh_asset.py) | The lit mesh entry's type and byte layout, shared by the baker and the pack builder. Standard library only. |
@@ -123,6 +123,7 @@ backends differ in these recorded ways, besides transport:
 | One-sided card seen from behind | Shades the hit with the front normal, so a sun on the front lights it | Black: the side the ray reached is unlit |
 | Double-sided card | Turns toward the summed suns | Shades the side the ray reached |
 | Near plane | Ignored | Clips at the pose file's near value |
+| `[bake].ao` | Scales the ambient and, if asked, the gathered bounce light | Ignored |
 `tests/test_r3d_mitsuba_reference.py` pins direct-only parity with the Embree
 reference, texture orientation and constant-sky energy. Measure one pose with
 
