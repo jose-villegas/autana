@@ -170,3 +170,22 @@ class PrepareSchedulingTests(unittest.TestCase):
                    for call in ast.walk(node) if isinstance(call, ast.Call)
                    and isinstance(call.func, ast.Name) and call.func.id == 'memory_guard']
         self.assertEqual(callers, ['gpu'])
+
+
+class SmokeAdmissionTests(unittest.TestCase):
+    def test_smoke_submits_small_fit_reservation(self):
+        from types import SimpleNamespace
+        from r3d import fitted_variant, import_settings
+        from r3d.process_budget import FIT_BYTES, SMOKE_FIT_BYTES
+        job = SimpleNamespace(renderer=SimpleNamespace(fit=SimpleNamespace(held_out_every_ms=1)))
+        executor = mock.Mock()
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(import_settings, 'load_scene', return_value=object()), \
+                mock.patch.object(fitted_variant, 'placed_variant', return_value=job), \
+                mock.patch.object(stages, 'current_stamp', return_value='smoke-stamp'):
+            stages._gpu(SimpleNamespace(smoke=True), Path(directory), Path(directory), executor)
+        fit_call = executor.submit.call_args_list[1]
+        self.assertIs(fit_call.args[0], fitted_variant.fit_point)
+        self.assertEqual(fit_call.kwargs['estimates'], SMOKE_FIT_BYTES)
+        self.assertLess(fit_call.kwargs['estimates'][0], FIT_BYTES[0])
+        self.assertLess(fit_call.kwargs['estimates'][2], FIT_BYTES[2])

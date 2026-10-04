@@ -162,7 +162,7 @@ def main(samples):
         if result["comparison"]["different"]:
             raise RuntimeError(json.dumps(result))
     elif args.mode == "fit":
-        from r3d.process_budget import FitExecutor
+        from r3d.process_budget import FitExecutor, SMOKE_FIT_BYTES
         environment = pathlib.Path(sys.prefix)
         os.environ.setdefault("CUDA_HOME", str(environment))
         os.environ["PATH"] = str(environment / "bin") + os.pathsep + os.environ["PATH"]
@@ -177,7 +177,8 @@ def main(samples):
                     fit_point({}, args.out / label / str(index), SCENE, scene, job, args.inputs, True)
             else:
                 with FitExecutor() as pool:
-                    futures = [pool.submit(fit_point, {}, args.out / label / str(index), SCENE, scene, job, args.inputs, True)
+                    futures = [pool.submit(fit_point, {}, args.out / label / str(index), SCENE, scene, job, args.inputs, True,
+                                           estimates=SMOKE_FIT_BYTES)
                                for index in range(2)]
                     for future in futures:
                         future.result()

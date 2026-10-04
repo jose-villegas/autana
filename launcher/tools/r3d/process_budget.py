@@ -13,8 +13,12 @@ import ctypes
 from collections import deque
 
 GIB = 1024 ** 3
-FLOORS = (GIB, 3 * GIB, GIB // 2, GIB // 4)
+WSL_MEMORY_REQUIRED_BYTES = 6 * GIB
+WINDOWS_MEMORY_REQUIRED_BYTES = 2 * GIB
+FLOORS = (GIB, WINDOWS_MEMORY_REQUIRED_BYTES, GIB // 2, GIB // 4)
 FIT_BYTES = (2 * GIB, 2 * GIB, GIB, 2 * GIB)
+# Fresh torch+CUDA with 64x80 views; base smoke peaked at 2.0 GB stage RSS and 324 MiB VRAM.
+SMOKE_FIT_BYTES = (3 * GIB // 2, 3 * GIB // 2, GIB // 2, 3 * GIB // 2)
 # Prepare includes the measured base peak and pose scratch; the reservation bounds its nested pool.
 PREPARE_BYTES = (7 * GIB, 7 * GIB, 0, 7 * GIB)
 TASK_RESERVATION = None
@@ -24,6 +28,15 @@ SMOKE_PREPARE_BYTES = (2 * GIB, 2 * GIB, 0, 2 * GIB)
 
 def worker_capacity(available, estimates, floors, cores):
     """Number of additional workers whose projected allocation preserves every floor."""
+    if len(available) == len(estimates) == len(floors) == 4:
+        if estimates[1] < 0 or floors[1] < 0:
+            raise ValueError("negative estimate or floor")
+        if available[1] < floors[1]:
+            return 0
+        indices = (0, 2, 3)
+        return worker_capacity(tuple(available[index] for index in indices),
+                               tuple(estimates[index] for index in indices),
+                               tuple(floors[index] for index in indices), cores)
     if not len(available) == len(estimates) == len(floors) or cores < 0:
         raise ValueError("invalid resource dimensions or core count")
     count = cores
@@ -67,9 +80,9 @@ def cores_available():
 
 
 def projected_available(available, workers):
-    """Live counters already include resident allocations; reserve only their remainder."""
-    return tuple(free - sum(max(0, estimate[index] - resident[index])
-                           for estimate, resident in workers)
+    """Reserve nonresident allocations; Windows uses its live floor and the WSL cap."""
+    return tuple(free if index == 1 else
+                 free - sum(max(0, estimate[index] - resident[index]) for estimate, resident in workers)
                  for index, free in enumerate(available))
 
 
@@ -256,7 +269,7 @@ class FitExecutor:
                             raise
                         send.close()
                         self.active.append((process, receive, future, estimates))
-                        free = tuple(value - estimate for value, estimate in zip(free, estimates))
+                        free = projected_available(free, [(estimates, (0,) * 4)])
                     if self.queue and not self.active:
                         raise RuntimeError(f"worker memory admission failed: available={free}, "
                                            f"required={[item[3] for item in self.queue]}, floors={FLOORS}")

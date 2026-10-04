@@ -103,9 +103,12 @@ without fork render poses serially.
 Admission uses available WSL, Windows, GPU and cgroup memory, with CPU
 affinity as the upper bound. Floors and worker estimates live in
 [`process_budget.py`](../../launcher/tools/r3d/process_budget.py): 1 GiB in
-WSL, 3 GiB on Windows, 512 MiB on the GPU and 256 MiB within a capped
+WSL, 2 GiB on Windows, 512 MiB on the GPU and 256 MiB within a capped
 cgroup. Active workers reserve only estimated allocations that are not yet
-resident. Admission waits while workers run and fails if no worker is
+resident. Windows admission checks current AvailableBytes against its floor;
+the WSL memory cap bounds VM growth, so worker allocations are projected
+only onto WSL, cgroup and GPU memory. Admission waits while workers run
+and fails if no worker is
 running and no queued task fits. Smaller eligible tasks can pass a waiting
 larger task. Admission and worker peak-memory summaries are logged.
 
