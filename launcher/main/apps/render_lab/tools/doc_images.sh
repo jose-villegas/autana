@@ -187,10 +187,8 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/bake-indire
     --bake-reference "intensity 3" "$INTENSITY_3_REFERENCE" --bake-reference "albedo boost 2" "$BOOST_2_REFERENCE" \
     > "$W/indirect-look.log"
 
-# Local occlusion. The scene's ambient light is faint, so the occlusion has
-# little to scale: both bakes raise it to 0.25, and one adds `[bake].ao`. The
-# reference carries the occlusion, so the first bake's error is what the
-# occlusion adds. ao_bake NAME AO-LINE: the line goes after `[bake].indirect`.
+# The scene's ambient light is faint, so the occlusion has little to scale; both
+# bakes raise it. ao_bake NAME AO-LINE: the line goes after `[bake].indirect`.
 ao_bake() {
     run mkdir -p "$W/ao-$1"
     run cp "$M/meshes/sponza.import.toml" "$W/ao-$1/"
@@ -210,9 +208,7 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/ao-compare.png" 
 run cp "$W/ao-compare.png" "$RENDER/bake-ao-compare.png"
 run cp "$W/ao-compare.crops.png" "$RENDER/bake-ao-crops.png"
 
-# The occlusion alone: the factor `ao` scales the ambient and bounce light by,
-# at the same two poses, white where nothing is near and dark where the
-# surroundings close in; the reference frame beside each shows where it falls.
+# The occlusion factor beside the reference frame at the sheet's two poses.
 run "$R3D_PYTHON" launcher/tools/r3d/reference_render.py "$W/ao-occluded/sponza.scene.toml" --poses "$W/fidelity-poses.txt" \
     --skip 1 --samples 4 --occlusion --out "$W/ao-map" > "$W/ao-map.log" 2>&1
 run "$PYTHON" -c 'import sys; from PIL import Image
