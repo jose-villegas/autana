@@ -41,6 +41,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Identify mesh source LFS objects
+        id: mesh-source
+        run: |
+          key=$(git lfs ls-files -l | awk '{print $1, $3}' | sha256sum | cut -d' ' -f1)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "path=$(git rev-parse --git-path lfs)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache mesh source LFS objects
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.mesh-source.outputs.path }}
+          key: mesh-source-lfs-${{ steps.mesh-source.outputs.key }}
+
+      - name: Fetch mesh source files
+        run: git lfs pull --exclude=""
+
       - name: Initialize meshoptimizer for scratch bakes
         run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 
@@ -55,14 +71,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg
           ffmpeg -version | head -1
-
-      # The importer checks the archive's SHA-256 whether it was fetched or
-      # restored; a changed import file is a new key.
-      - name: Cache the Sponza source model
-        uses: actions/cache@v4
-        with:
-          path: launcher/tools/r3d/.cache/crytek_sponza.zip
-          key: sponza-source-${{ hashFiles('launcher/main/apps/render_lab/meshes/sponza.import.toml') }}
 
       # Exit 1 means an image or table changed, or an image is an orphan; an orphan or any exit
       # above 1 fails the job.

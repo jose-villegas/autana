@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from generated_blocks import apply_tables
 from perf_compare import MEAN_RE, parse_report
 from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRED_BYTES
+from r3d.import_settings import content_checksum, load_import_settings, source_files
 
 SCENE = ROOT / "launcher/main/apps/render_lab/meshes/sponza.scene.toml"
 HOST_SCRIPT = ROOT / "launcher/main/apps/render_lab/tools/render_lab_render_host.sh"
@@ -38,14 +39,18 @@ def source_stamp(root, paths):
     digest = hashlib.sha256()
     for path in sorted(paths):
         digest.update(path.relative_to(root).as_posix().encode())
-        digest.update(path.read_bytes())
+        digest.update(b"\0" + content_checksum(path))
     return digest.hexdigest()
 
 
 def current_stamp():
     names = subprocess.check_output(["git", "ls-files", "-z", "launcher", "scripts"], cwd=ROOT).decode().split("\0")
-    return source_stamp(ROOT, [ROOT / name for name in names if name and
-                              Path(name).suffix in (".py", ".sh", ".c", ".h", ".toml", ".mesh", ".txt")])
+    paths = {ROOT / name for name in names if name and
+             Path(name).suffix in (".py", ".sh", ".c", ".h", ".toml", ".mesh", ".txt")}
+    for name in names:
+        if name.endswith(".import.toml"):
+            paths.update(source_files(load_import_settings(ROOT / name)))
+    return source_stamp(ROOT, paths)
 
 
 def validate_mode(smoke, check):

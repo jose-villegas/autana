@@ -268,9 +268,12 @@ def load_import_settings(path):
             raise SettingsError(f"[{name}] moved to {home}")
     check_keys(values, ("source", "output"), "settings", optional=("materials", "process", "geometry", "variants"))
     source = values["source"]
-    check_keys(source, ("url", "sha256", "path", "cache", "credit"), "source")
+    check_keys(source, ("path", "credit"), "source")
     for name in source:
         text(source[name], f"source.{name}")
+    source["path"] = (path.parent / source["path"]).resolve()
+    if source["path"].suffix.lower() != ".obj":
+        raise SettingsError("source.path has an unsupported extension; supported: .obj")
     output = values["output"]
     check_keys(output, ("directory",), "output", optional=("name", "position_scale"))
     directory = text(output["directory"], "output.directory")
@@ -304,6 +307,51 @@ def load_import_settings(path):
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
         variants=variants)
+
+
+def source_files(settings):
+    """The OBJ, its sibling MTL and every texture the loader reads."""
+    from r3d.obj import TEXTURE_KEYS, load_mtl
+
+    path = settings.source["path"]
+    material = path.with_suffix(".mtl")
+    files = {path, material}
+    for entry in load_mtl(material).values():
+        for name in TEXTURE_KEYS:
+            if name in entry:
+                files.add((path.parent / entry[name]).resolve())
+    return sorted(files)
+
+
+def lfs_pointer_oid(path) -> bytes | None:
+    with path.open("rb") as source:
+        lines = source.read(1024).splitlines()
+    if not lines or lines[0] != b"version https://git-lfs.github.com/spec/v1":
+        return None
+    oids = [line.removeprefix(b"oid sha256:") for line in lines if line.startswith(b"oid sha256:")]
+    if len(oids) != 1 or re.fullmatch(rb"[0-9a-f]{64}", oids[0]) is None:
+        raise SettingsError(f"{path}: malformed Git LFS pointer; run git lfs pull --exclude=\"\"")
+    return oids[0]
+
+
+def content_checksum(path):
+    """An LFS pointer and its hydrated contents identify the same source."""
+    import hashlib
+
+    oid = lfs_pointer_oid(path)
+    return oid if oid is not None else hashlib.sha256(path.read_bytes()).hexdigest().encode()
+
+
+def source_digest(settings):
+    """Hash source contents and relative names, including hydrated LFS objects."""
+    import hashlib
+    import os
+
+    digest = hashlib.sha256()
+    for path in source_files(settings):
+        digest.update(pathlib.Path(os.path.relpath(path, settings.source["path"].parent)).as_posix().encode())
+        digest.update(b"\0" + content_checksum(path))
+    return digest.hexdigest()
 
 
 def rotation_matrix(degrees):
