@@ -36,9 +36,12 @@ It needs host C and C++ compilers, Python with Pillow and numpy, and ffmpeg
 ```sh
 git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 ```
+
 An app's `tools/doc_images.sh` may also need the packages in
 `launcher/tools/r3d/requirements.txt` and the source model that the import fetches,
 SHA-256 checked, into `launcher/tools/r3d/.cache`; the workflow caches it.
+A render failure prints the failed command and the tails of its work logs,
+including logs inside bake directories.
 `--check` renders into `launcher/tools/results/doc_images/out/`
 and compares decoded pixels with `compare_images.py`, never bytes: another
 ffmpeg or Pillow writes different GIF bytes for the same frames. It prints
