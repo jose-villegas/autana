@@ -58,13 +58,13 @@ def vertex_spacing(vpos, vtris):
     return spacing / np.maximum(count, 1)
 
 
-def load_source(settings):
+def load_source(settings, texture_dtype=np.float64):
     root = fetch_zip(settings.source["url"], settings.source["sha256"], settings.source["cache"])
     obj_path = root / settings.source["path"]
     materials = load_mtl(obj_path.with_suffix(".mtl"))
     p, uv, tri_v, tri_t, tri_m, names = load_obj(obj_path)
     log(f"loaded {len(p)} vertices, {len(tri_v)} triangles, {len(names)} materials")
-    textures = load_textures(obj_path.parent, materials, names)
+    textures = load_textures(obj_path.parent, materials, names, texture_dtype)
     return SimpleNamespace(p=p, uv=uv, tri_v=tri_v, tri_t=tri_t, tri_m=tri_m, names=names, materials=materials,
                            textures=textures)
 
