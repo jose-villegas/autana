@@ -152,14 +152,16 @@ def main(argv=None):
     guard_memory(args.min_free_gib)
     source, job = source_for(scene, args.object, lit=False)
     result = {"scene": str(args.scene), "pose_index": args.pose_index, "size": [width, height], "sky": sky, "seeds": args.seeds,
-              "variant": args.variant, "triangles": int(len(source.tri_v)), "vram_baseline_mib": baseline, "depths": {}}
+              "variant": args.variant, "base_depth": args.depths[0], "triangles": int(len(source.tri_v)), "vram_baseline_mib": baseline, "depths": {}}
     kept = {}
+    require_memory(args.min_free_gib, "before the export")
+    with VramPeak() as export_peak:
+        path, export_seconds = timed(lambda: mitsuba_reference.prepare(source, scene.lights, job.settings.double_sided, pose, width,
+                                                                      height, lens, near, args.depths[0], sky, args.variant,
+                                                                      release_textures=True))
+    result.update(export_seconds=export_seconds, export_peak_mib=export_peak.peak)
     for depth in args.depths:
-        require_memory(args.min_free_gib, f"before the depth {depth} export")
-        with VramPeak() as export_peak:
-            path, export_seconds = timed(lambda: mitsuba_reference.prepare(source, scene.lights, job.settings.double_sided, pose, width,
-                                                                          height, lens, near, depth, sky, args.variant))
-        entry = {"export_seconds": export_seconds, "export_peak_mib": export_peak.peak, "spp": {}}
+        entry = {"spp": {}}
         result["depths"][depth] = entry
         sweep = args.spp if depth == args.depths[0] else []
         for spp in sorted(set(sweep) | {args.depth_spp}):
@@ -167,7 +169,7 @@ def main(argv=None):
             images, times = [], []
             with VramPeak() as peak:
                 for seed in range(args.seeds):
-                    (linear, covered), seconds = timed(lambda: path.trace(spp, seed + 1))
+                    (linear, covered), seconds = timed(lambda: path.trace(spp, seed + 1, depth))
                     images.append((linear, covered))
                     times.append(seconds)
             kept[(depth, spp)] = images
@@ -178,8 +180,7 @@ def main(argv=None):
             first = entry["spp"][min(entry["spp"])]
             result["cold_seconds"] = first["seconds"][0]
             result["cold_spp"] = min(entry["spp"])
-            first["seconds"] = first["seconds"][1:] or first["seconds"]
-        del path
+            first["seconds"] = first["seconds"][1:]
     for depth, entry in result["depths"].items():
         for spp, cell in entry["spp"].items():
             images = kept[(depth, spp)]
@@ -203,7 +204,7 @@ def main(argv=None):
 
 
 def table(result):
-    base = min(result["depths"])
+    base = result["base_depth"]
     lines = ["| depth | spp | relative noise | seed-pair mean dE76 | warm seconds | peak MiB |", "|---|---|---|---|---|---|"]
     for depth, entry in result["depths"].items():
         for spp, cell in sorted(entry["spp"].items()):
@@ -214,7 +215,7 @@ def table(result):
         if "against_depth_%d" % base in entry:
             cell = entry["against_depth_%d" % base]
             lines.append(f"| {depth} | {cell['mean_delta_e']:.3f} | {cell['radiance_ratio']:.4f} |")
-    lines += ["", f"export seconds by depth: " + ", ".join(f"{d}: {e['export_seconds']:.2f}" for d, e in result["depths"].items()),
+    lines += ["", f"export: {result['export_seconds']:.2f} s, peak GPU memory in use {result['export_peak_mib']} MiB",
               f"cold first render ({result['cold_spp']} spp): {result['cold_seconds']:.2f} s",
               f"GPU memory in use before the run: {result['vram_baseline_mib']} MiB"]
     return "\n".join(lines) + "\n"

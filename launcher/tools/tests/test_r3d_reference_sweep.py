@@ -33,9 +33,9 @@ class ReferenceSweepTest(unittest.TestCase):
 
     def test_the_table_lists_every_depth_and_spp_and_the_depth_comparison(self):
         cell = {"relative_noise": 0.1, "seed_pair_delta_e": 2.0, "warm_seconds_mean": 1.5, "peak_mib": 900}
-        result = {"depths": {12: {"export_seconds": 1.0, "spp": {64: cell, 256: cell}},
-                             24: {"export_seconds": 1.1, "spp": {256: cell}, "against_depth_12": {"mean_delta_e": 0.5, "radiance_ratio": 1.01}}},
-                  "cold_seconds": 9.0, "cold_spp": 64, "vram_baseline_mib": 100}
+        result = {"base_depth": 12, "depths": {12: {"spp": {64: cell, 256: cell}},
+                             24: {"spp": {256: cell}, "against_depth_12": {"mean_delta_e": 0.5, "radiance_ratio": 1.01}}},
+                  "export_seconds": 1.0, "export_peak_mib": 500, "cold_seconds": 9.0, "cold_spp": 64, "vram_baseline_mib": 100}
         text = reference_sweep.table(result)
         self.assertEqual(text.count("| 12 | "), 2)
         self.assertIn("| 24 | 256 |", text)
