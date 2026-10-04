@@ -96,7 +96,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          out=launcher/tools/results/doc_images/out
+          out=launcher/tools/results/doc_images/out/cpu
           git switch -C "$REFRESH_BRANCH"
           while IFS= read -r line; do
             name=${line#changed }

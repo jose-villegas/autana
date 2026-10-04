@@ -219,6 +219,11 @@ The front joins points for which no other point is no slower and no less
 accurate. Its knee is the front point with the greatest perpendicular distance
 from the chord between the front's end points after both axes are normalized.
 
+The [documentation stages](../../main/apps/render_lab/tools/README.md#refresh-commands)
+rebuild fitted comparisons and sweeps with this recipe API, write measured
+Markdown blocks with the shared doc writer, and consume board captures to
+refit the cost weights. The GPU smoke mode publishes no images or tables.
+
 ## Cost-aware fit
 
 These stages spend a triangle budget where the camera looks, fit geometry

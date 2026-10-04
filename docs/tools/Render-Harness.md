@@ -21,7 +21,7 @@ checked, and compared with device captures.
 
 ## Images in these docs
 
-Every file under `docs/images/` is made by one script, from the
+The CPU and GPU stages own the files under `docs/images/`, run from the
 repository root. It makes the launcher's and the UI toolkit's images itself and runs each app's
 `tools/doc_images.sh` for the app's own:
 
@@ -39,7 +39,7 @@ git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 An app's `tools/doc_images.sh` may also need the packages in
 `launcher/tools/r3d/requirements.txt` and the source model that the import fetches,
 SHA-256 checked, into `launcher/tools/r3d/.cache`; the workflow caches it.
-`--check` renders into `launcher/tools/results/doc_images/out/`
+CPU `--check` renders into `launcher/tools/results/doc_images/out/cpu/`
 and compares decoded pixels with `compare_images.py`, never bytes: another
 ffmpeg or Pillow writes different GIF bytes for the same frames. It prints
 `same` or `changed` per image, and `orphan` for a file nothing makes.
@@ -69,7 +69,13 @@ Change a measurement's source or generator and regenerate its block; a hash
 verifies recorded content, while the render check detects stale measurements.
 The image script rewrites blocks by default; --check reports
 changed doc-path#block-name and exits 1. The refresh PR includes changed tables
-and images together. GPU and board measurements need their own stages.
+and images together. `render_doc_images.sh --stage gpu` rebuilds fitted comparisons and sweeps in
+the WSL CUDA environment; `--stage board --capture PATH` consumes diagnostics
+perf captures. Both use this writer. Their commands, requirements and outputs
+are in the [scene tools README](../../launcher/main/apps/render_lab/tools/README.md#refresh-commands).
+GPU images live under `docs/images/render/gpu/`; CPU checks leave that stage
+to its own `--check`. GPU `--check` verifies the saved full run and its source
+stamp without fitting again. `--smoke` writes only scratch data.
 
 The rest belong to apps, and each app's `tools/README.md` says what its
 images show.
