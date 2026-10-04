@@ -182,11 +182,8 @@ fill_solid_span(const r3d_span_target_t* target, const gradients_t* g, const int
 }
 
 /* A triangle whose bounding box holds at most this many pixel centres a
- * side has each centre tested against its edges instead of walked; up to
- * SMALL_MAX_SIDE it also takes one colour and one depth, and past it, its
- * planes or its flat values when they need no clamp. */
+ * side has each centre tested against its edges instead of walked. */
 #define SMALL_MAX_SIDE 2
-#define BOX_MAX_SIDE   4
 
 #define HALF_PIXEL     (R3D_SUBPIXEL / 2)
 
@@ -392,139 +389,6 @@ fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3
     }
 }
 
-/* An edge's value at the box's first centre, and what a column and a row
- * add to it: the same integers small_side() gives at each centre. */
-typedef struct {
-    int32_t w, across, down;
-} box_edge_t;
-
-typedef struct {
-    box_edge_t e[3];
-} box_edges_t;
-
-static inline box_edges_t
-box_edges(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, bool positive,
-          r3d_span_box_t box) {
-    const r3d_span_vertex_t* p = positive ? b : c;
-    const r3d_span_vertex_t* q = positive ? c : b;
-    const small_edge_t s[3] = {small_edge(a, p), small_edge(p, q), small_edge(q, a)};
-    const int32_t cx = (box.x0 << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
-    const int32_t cy = (box.y0 << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
-    box_edges_t out;
-    for (int k = 0; k < 3; k++) {
-        out.e[k] = (box_edge_t){small_side(&s[k], cx, cy), -s[k].dy * R3D_SUBPIXEL, s[k].dx * R3D_SUBPIXEL};
-    }
-    return out;
-}
-
-static void
-fill_box_flat(const r3d_span_target_t* target, box_edges_t edges, r3d_span_box_t box, uint16_t zq, uint16_t color) {
-    for (int y = box.y0; y < box.y1; y++) {
-        const int row = (y - target->row0) * target->width;
-        uint16_t* depth = target->depth + row;
-        uint16_t* out = target->color + row;
-        int32_t w0 = edges.e[0].w;
-        int32_t w1 = edges.e[1].w;
-        int32_t w2 = edges.e[2].w;
-        for (int x = box.x0; x < box.x1; x++) {
-            if ((w0 | w1 | w2) >= 0 && zq > depth[x]) {
-                depth[x] = zq;
-                out[x] = color;
-            }
-            w0 += edges.e[0].across;
-            w1 += edges.e[1].across;
-            w2 += edges.e[2].across;
-        }
-        for (int k = 0; k < 3; k++) {
-            edges.e[k].w += edges.e[k].down;
-        }
-    }
-}
-
-/* Bit i set when the row's centre i columns into the box is inside every
- * edge: tested apart from the planes, so neither loop runs short of
- * registers. */
-static inline uint32_t
-box_row_mask(const box_edges_t* edges, int columns) {
-    int32_t w0 = edges->e[0].w;
-    int32_t w1 = edges->e[1].w;
-    int32_t w2 = edges->e[2].w;
-    uint32_t mask = 0;
-    for (int i = 0; i < columns; i++) {
-        mask |= (uint32_t)((w0 | w1 | w2) >= 0) << i;
-        w0 += edges->e[0].across;
-        w1 += edges->e[1].across;
-        w2 += edges->e[2].across;
-    }
-    return mask;
-}
-
-static inline void
-box_row_solid(uint16_t* depth, uint16_t* out, uint32_t mask, int32_t z, int32_t dz, uint16_t color) {
-    for (; mask != 0; mask >>= 1, depth++, out++, z += dz) {
-        const uint16_t zq = (uint16_t)(z >> 8);
-        if ((mask & 1U) != 0 && zq > *depth) {
-            *depth = zq;
-            *out = color;
-        }
-    }
-}
-
-static inline void
-box_row_smooth(uint16_t* depth, uint16_t* out, uint32_t mask, const int32_t row[ATTRIBUTES], const gradients_t* g) {
-    int32_t z = row[0];
-    int32_t r = row[1];
-    int32_t gg = row[2];
-    int32_t b = row[3];
-    for (; mask != 0; mask >>= 1, depth++, out++) {
-        const uint16_t zq = (uint16_t)(z >> 8);
-        if ((mask & 1U) != 0 && zq > *depth) {
-            *depth = zq;
-            *out = r3d_span_pack(r, gg, b);
-        }
-        z += g->dx[0];
-        r += g->dx[1];
-        gg += g->dx[2];
-        b += g->dx[3];
-    }
-}
-
-/* The planes at each covered centre are the values the walk would reach
- * there: it never clamps a plane that stays in range across the box. */
-static void
-fill_box_planes(const r3d_span_target_t* target, const fill_t* f, box_edges_t edges, r3d_span_box_t box,
-                int32_t row[ATTRIBUTES]) {
-    for (int y = box.y0; y < box.y1; y++) {
-        const uint32_t mask = box_row_mask(&edges, box.x1 - box.x0);
-        if (mask != 0) {
-            const int offset = ((y - target->row0) * target->width) + box.x0;
-            if (f->face != NULL) {
-                box_row_solid(target->depth + offset, target->color + offset, mask, row[0], f->g->dx[0], f->flat_color);
-            } else {
-                box_row_smooth(target->depth + offset, target->color + offset, mask, row, f->g);
-            }
-        }
-        for (int k = 0; k < 3; k++) {
-            edges.e[k].w += edges.e[k].down;
-        }
-        step_row(f, row);
-    }
-}
-
-/* Out of line: inlined into the triangle's entry, the box fills crowd the
- * registers of the walk every larger triangle takes. */
-static __attribute__((noinline)) void
-fill_box_one_colour(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3], bool positive,
-                    r3d_span_box_t box, uint16_t zq, uint16_t color) {
-    fill_box_flat(target, box_edges(v[0], v[1], v[2], positive, box), box, zq, color);
-}
-
-static __attribute__((noinline)) void
-fill_box_shaded(const r3d_span_target_t* target, const fill_t* f, const r3d_span_vertex_t* const v[3], bool positive,
-                r3d_span_box_t box, int32_t row[ATTRIBUTES]) {
-    fill_box_planes(target, f, box_edges(v[0], v[1], v[2], positive, box), box, row);
-}
-
 /* A span runs from its clamped start to its end, both values of the plane
  * at centres in `box`, so the largest corner bounds it; a start clamped up
  * from below zero lifts the span by at most the lowest corner's shortfall.
@@ -643,20 +507,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     gradients_t g = {0};
     int32_t row[ATTRIBUTES] = {0};
     f.g = &g;
-    const r3d_span_vertex_t* const v[3] = {a, b, c};
-    if (!set_up_fill(target, v, box, y_anchor, &f, &g, row)) {
-        return;
-    }
-    if (BOX_MAX_SIDE > SMALL_MAX_SIDE && x_end - x_first <= BOX_MAX_SIDE && rows <= BOX_MAX_SIDE
-        && (f.flat || g.in_range)) {
-        if (r3d_span_stop_after != 0) {
-            return;
-        }
-        if (f.flat) {
-            fill_box_one_colour(target, v, area2 > 0, box, f.flat_z, f.flat_color);
-        } else {
-            fill_box_shaded(target, &f, v, area2 > 0, box, row);
-        }
+    if (!set_up_fill(target, (const r3d_span_vertex_t* const[3]){a, b, c}, box, y_anchor, &f, &g, row)) {
         return;
     }
     if (r3d_span_stop_after == 1) {
