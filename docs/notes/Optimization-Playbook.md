@@ -476,7 +476,7 @@ had already been moved into internal RAM, so it said nothing about a
 workload that streams from PSRAM. The software rasterizer reads vertices
 and reads and writes depth and colour in PSRAM every frame; there the same
 64 KB, with the line doubled to 64 bytes, took 9-12% off every frame-cost
-row, and the line size alone took most of it (2026-10-04). Record which
+row, and the line size alone took most of it. Record which
 workload a configuration result came from next to the setting, and retest
 when a workload with a different memory profile arrives. Measure what the
 setting costs too: here the internal heap shrank by the cache's growth, but
