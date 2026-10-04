@@ -45,6 +45,31 @@ LOOK_DOWN = None if np is None else np.array([0.0, 0.0, 1.0, 0.0, 0.0, -1.0])
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ReferenceRenderTest(unittest.TestCase):
+    def test_main_reports_occlusion_value_error_on_serial_path(self):
+        import contextlib
+        import io
+        import tempfile
+        from unittest.mock import patch
+        from r3d import reference_render
+
+        source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
+        job, scene = sun_scene([0., 0., 1.])
+        job.bake.ao = SimpleNamespace(distance=1., strength=1., rays=1, indirect=False)
+        scene.tonemap_white = 2.
+        scene.camera = SimpleNamespace(component=SimpleNamespace(background=0))
+        message = "invalid local occlusion setting"
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stderr(io.StringIO()) as stderr:
+            with patch.object(reference_render, 'load_scene', return_value=scene), \
+                    patch.object(reference_render, 'read_poses', return_value=(1, 1, .1, .01, [LOOK_DOWN])), \
+                    patch.object(reference_render, 'source_for', return_value=(source, job)), \
+                    patch.object(reference_render, 'occlusion_map', side_effect=ValueError(message)) as occlusion:
+                with self.assertRaises(SystemExit) as error:
+                    reference_render.main(['scene', '--poses', 'poses', '--out', directory,
+                                           '--samples', '1', '--workers', '1', '--occlusion'])
+        self.assertEqual(error.exception.code, 2)
+        self.assertIn(message, stderr.getvalue())
+        occlusion.assert_called_once()
+
     def test_an_unshadowed_plane_is_exact_lambert(self):
         source = plane_source([[-2.0, -2.0, 0.0], [2.0, -2.0, 0.0], [2.0, 2.0, 0.0], [-2.0, 2.0, 0.0]])
         picture = render_linear(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 1, 1, 0.1, 1)

@@ -281,7 +281,10 @@ def main(argv=None):
     if args.occlusion and job.bake.ao is None:
         parser.error("the scene sets no [bake].ao")
     if path is None:
-        peak = render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals, args.workers, args.occlusion)
+        try:
+            peak = render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals, args.workers, args.occlusion)
+        except ValueError as error:
+            parser.error(str(error))
         print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_rss_bytes={peak}", flush=True)
         return 0
     for index, pose in enumerate(poses):
