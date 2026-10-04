@@ -9,10 +9,8 @@ maintainer: a gyro-and-buttons FPS, a rolling-ball game with physics and
 lighting, and a platformer with parallax and 2D lighting.
 
 Every number below that is not marked *estimate* or *unmeasured* is
-measured, and its source is named. The house rule from
-[Optimization-Playbook.md](../notes/Optimization-Playbook.md) applies to this
-document too: a plausible explanation of where time goes is not a measured
-one, and every phase ends with a number, not a feeling.
+measured, and its source is named. A plausible explanation of where time
+goes is not a measured one: every phase ends with a number, not a feeling.
 
 ---
 
@@ -45,7 +43,7 @@ flowchart LR
     resSettings["Resolution / colour<br/>system settings"]:::p1
     busRoot["80 MHz QSPI<br/>clock setting + heal"]:::p1
     corePresent["Core-1 present +<br/>sim/update overlap"]:::p1
-    memPlacement["Hot buffers to internal RAM,<br/>icache 32K / dcache 64K experiment"]:::p1
+    memPlacement["Hot buffers to internal RAM,<br/>cache settings in sdkconfig.defaults"]:::p1
   end
   subgraph P2["Phase 2: r3d"]
     direction TB
@@ -323,10 +321,10 @@ detail behind every row.
 | Core | 2 × Xtensa LX7, 240 MHz | for retained apps, core 1 runs `gfx_present()` (read-only) while core 0 runs the next update; full-redraw renderers split rendering and sending the band ring across both (decision B) |
 | FPU | single-precision hardware; `double` is software-emulated | float32 is fine per vertex/object; `double` stays banned on the device (decision A) |
 | SIMD | PIE 128-bit (16×8 / 8×16 lanes), inline asm only | any vector path sits behind a scalar reference implementation with a test asserting identical output (decision A) |
-| Integer mul/div | hardware, pipelined 32-bit mul and div; **64-bit div is a library call** | `__divdi3` and signed `/ 2^n` stay banned in hot loops (see the Optimization Playbook's "A 64-bit divide on a 32-bit core is a library call" and "Division by a power of two is not automatically a shift") |
+| Integer mul/div | hardware, pipelined 32-bit mul and div; **64-bit div is a library call** | `__divdi3` and signed `/ 2^n` stay banned in hot loops (see [Arithmetic in hot loops](../notes/Flashing-and-Toolchain.md#arithmetic-in-hot-loops)) |
 | Internal RAM | 512 KB SRAM: ~296 KiB main heap region + 21 KiB + 32 KiB DRAM at boot; free heap and largest block after `gfx_init()` (framebuffer excluded: it lives in PSRAM) are `DP_FREE_HEAP_BYTES`/`DP_LARGEST_FREE_BLOCK_BYTES` (Board-and-Memory.md) | stacks, the DMA gather and strip buffers, and hot per-step buffers (sand's grids, via `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536`) live here; the band ring's buffers will too |
-| PSRAM | 8 MB octal @ 80 MHz (120 MHz experimental); `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` keeps allocations up to 64 KB internal and routes larger ones here; memcpy out ~58 MB/s, in ~47, PSRAM to PSRAM ~22 | under decision B this is read-only bulk/cold storage: the one retained framebuffer, textures and levels; it is never the target of a full-screen write or copy; headroom is a non-issue |
-| Data cache | 32 KB, 32-byte line, 8-way; 64 KB measured no gain | every PSRAM access (CPU render writes and DMA present reads alike) goes through this cache; see 3.3 |
+| PSRAM | 8 MB octal @ 80 MHz (120 MHz experimental); `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` makes allocations up to 64 KB try internal RAM first, falling back to PSRAM; larger allocations try PSRAM first; memcpy out ~58 MB/s, in ~47, PSRAM to PSRAM ~22 | under decision B this is read-only bulk/cold storage: the one retained framebuffer, textures and levels; it is never the target of a full-screen write or copy; headroom is a non-issue |
+| Data cache | configured in `launcher/sdkconfig.defaults`; see [Cache is carved from the same pool](../notes/Board-and-Memory.md#cache-is-carved-from-the-same-pool) | every PSRAM access (CPU render writes and DMA present reads alike) goes through this cache; see 3.3 |
 | Instruction cache | 32 KB, 32-byte line, 8-way (`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB`; IDF's default is 16 KB): the larger size measured 1-11% per sand step | costs 16 KB of internal RAM over the default |
 | DMA | GDMA, 3 TX + 3 RX channels; async memcpy supported | strip transfers already DMA; mem-to-mem copies could offload clears; measure, do not assume |
 | Display bus | QSPI, both board revisions share the same 368×448 panel geometry and SPI2 wiring, all through the GPIO matrix; 40 MHz clean, 80 MHz outside the panel's 50 MHz rating | 80 MHz halves present but corrupts partial redraws; full-frame renderers are safe, partial ones need 40 or gfx heal (3.2) |
@@ -362,16 +360,11 @@ The two numbers to carry in your head for the S3:
   the reason decision B avoids bulk PSRAM writes rather than trying to
   make them cheap.
 
-What the move to PSRAM costs the sand campaign's existing findings (which
-of them transfer to a chip with a data cache and which were written on the
-premise that there is none) split cleanly: the algorithmic skips
-transfer, and the old SRAM-mask-style wins plausibly do not, because a
-data cache now sits between the CPU and where the grids live (see
-[`notes/Optimization-Playbook.md`](../notes/Optimization-Playbook.md), "Know
-what kind of memory you actually have," and
-[`notes/Board-and-Memory.md`](../notes/Board-and-Memory.md), "Cache is
-carved from the same pool"). The cost/benefit case for taking on the S3 at
-all is retired now that the port has happened.
+A hot loop's cost depends on where its working data lives. Algorithmic
+skips reduce work, while memory-access changes must be assessed against the
+actual placement and cache traffic. See
+[Cache is carved from the same pool](../notes/Board-and-Memory.md#cache-is-carved-from-the-same-pool)
+for the configured memory tiers; time the resulting image on the device.
 
 ---
 
@@ -397,9 +390,9 @@ everything in this document. Add to it:
 
 At 40 MHz a full frame is 16.5 ms theoretical over the bus alone. Two
 S3-measured present-cost figures agree closely: `gfx_present()` measures
-17.6 ms directly ([Display-and-Rendering.md](../notes/Display-and-Rendering.md),
-"The blit is bus-bound") and 18.0-18.9 ms via `boot_anim_perf` rows. Both
-present figures sit above the 16.5 ms theoretical; the gap is *unmeasured*
+17.6 ms directly (the present test in
+`launcher/test/suites/suite_gfx.c`) and 18.0-18.9 ms via `boot_anim_perf`
+rows. Both present figures sit above the 16.5 ms theoretical; the gap is *unmeasured*
 why.
 
 **80 MHz is the default.** Reading the framebuffer in
@@ -417,9 +410,8 @@ it through the GPIO matrix. An app that redraws only dirty regions shows
 stray pixels and thin lines that persist until the region is re-sent with
 a different layout; a full-frame renderer hides them within a frame. CS
 setup, pad drive, 40 MHz window commands and double sends were each tried
-on device and none made it clean (see "80 MHz is outside the panel's rating" in
-Display-and-Rendering.md). What is planned instead: keep both clocks, as a
-system display setting with a warning for partial-redraw apps, plus an
+on device and none made it clean. What is planned instead: keep both clocks,
+as a system display setting with a warning for partial-redraw apps, plus an
 opt-in gfx heal that re-sends app-marked regions with a different layout
 under a pixel budget, active only at 80. Full-frame apps keep the ~9 ms
 present for free. Interlace stacks on top.
@@ -482,12 +474,11 @@ raised cube frame rates 4-9% and left the sand simulation unchanged (it
 reads internal RAM); it does not change the PSRAM-vs-internal ranking
 above, so it changes none of this section's reasoning.
 
-**Sand's working set is not part of this.** Sand's grids and per-step
-scratch live in internal RAM (allocations up to 64 KB stay internal), and
-its simulation reads no PSRAM <!-- doc-vocabulary: ignore -->: doubling
-the instruction cache bought 1-11% per step, a 64 KB data cache bought
-nothing, and the mixed-scene gravity flip that once measured 18,731 us
-was a reaction-pass regression, fixed at 11,924 us (device).
+**Sand's working set has a different placement policy.** Sand's grids and
+per-step scratch use ordinary allocations; `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`
+makes them try internal RAM first, with PSRAM fallback. The configured data
+cache serves external-memory traffic; internal working data does not benefit
+from increasing its capacity.
 Only sand's draw into the framebuffer touches PSRAM, and under this
 decision that write is the retained framebuffer's ordinary per-frame
 update, not a bulk copy.
@@ -631,20 +622,23 @@ into per-span, per-triangle, or bake-time work:
   reports back what was granted.
 - **Textures column-major for vertical spans** (raycaster) and row-major
   for horizontal ones; 64×64 RGB565 is 8 KB, so a handful live in flash
-  behind the 32 KB icache and the hot ones can be copied into RAM at
+  behind the data cache and the hot ones can be copied into RAM at
   `enter()`.
 
 ### 3.5 Code shape, the levers this repo already knows
 
-All from the playbook and the sand campaign, restated because a new
-renderer will hit every one of them: verify inlining with `objdump`, never
-trust the attribute (an automated check for this is worth adding); keep
-the hot loop under the 16 KB icache (32 KB if Phase 1's icache experiment
-lands) and pin it with `aligned(32)`; no 64-bit divides, no signed
-divides by powers of two; a unity build for cross-file inlining if the
-rasterizer spans files; host numbers predict code-shape changes well and
-work-quantity changes badly; and the RTOS tick and input tasks are a
-small, measurable tax. Take the bulk memory an app needs at `enter()`, from
+A new renderer needs the same code-shape rules:
+[verify inlining with `objdump`](../notes/Flashing-and-Toolchain.md#verify-compiler-decisions),
+never trust the attribute; keep the hot loop within the
+[configured instruction cache](../notes/Board-and-Memory.md#cache-is-carved-from-the-same-pool)
+and follow the [render alignment and entry-offset rules](../notes/Flashing-and-Toolchain.md#verify-compiler-decisions);
+[check divide widths and signed rounding](../notes/Flashing-and-Toolchain.md#arithmetic-in-hot-loops);
+consider a unity build for cross-file inlining if the rasterizer spans files;
+and [measure the final device image](../notes/Debugging.md#performance-seems-off),
+because host numbers predict code-shape changes well and work-quantity changes
+badly. The [RTOS tick](../notes/Flashing-and-Toolchain.md#the-build-flag-and-the-frame-tick)
+and input tasks are a small, measurable tax. Take the bulk memory an app needs
+at `enter()`, from
 the shell's [app arena](../Building-an-App.md#app-memory), and nothing more
 during the visit: the usual MCU advice to allocate at startup and never
 again, applied to each visit.
@@ -1035,20 +1029,19 @@ cheapest path to something that is unmistakably a game.
   keep in sync. A full-screen z-buffer in PSRAM is specifically ruled
   out: per-pixel access to it pays PSRAM's read cost on every touch (3.3).
   LVGL is ruled out in Firmware-Architecture.md regardless.
-- **Do not swizzle the framebuffer into tiles.** Parked on purpose in
-  Display-and-Rendering.md; the dirty-region grid already shipped gets
-  most of that transfer-contiguity property without touching every draw
-  call, and the band ring (3.3) gets the same property for free too.
+- **Do not swizzle the framebuffer into tiles.** Every pixel address would
+  carry a tile computation to help only many small scattered changes. The
+  shipped dirty-region grid already covers most of that, and the band ring
+  (3.3) gets the same transfer-contiguity property for free too.
 - **Do not put `double`, a 64-bit divide, or a signed divide by a power of
   two in a hot loop.** `double` is software-emulated even with the S3's
-  FPU; the divides are the two known traps: the Optimization Playbook's
-  "A 64-bit divide on a 32-bit core is a library call" and "Division by a
-  power of two is not automatically a shift". float32 is fine per vertex
+  FPU; see [Arithmetic in hot loops](../notes/Flashing-and-Toolchain.md#arithmetic-in-hot-loops)
+  for software division and signed rounding costs. float32 is fine per vertex
   or per object: it does not belong in a per-pixel/per-cell loop or
   anywhere that must stay bit-exact with the host (decision A).
-- **Do not trust a host win on a work-quantity change**: the Optimization
-  Playbook's "A host-validated win is a hypothesis until the target
-  measures it"; host numbers are for code shape.
+- **Measure work-quantity changes on the device**: see
+  [Performance seems off](../notes/Debugging.md#performance-seems-off).
+  Host timings do not establish target cost.
 
 ---
 
@@ -1075,7 +1068,7 @@ cheapest path to something that is unmistakably a game.
    height (one command each); Phase 2 still ends with the device sweep
    itself across heights measuring present time, rasterizer time, and RAM
    freed, in the same style as the `GATHER_MAX_PIXELS` and
-   `LEAF_REFINE_MAX_RUNS` sweeps summarised in Display-and-Rendering.md.
+   `LEAF_REFINE_MAX_RUNS` device tests in `suite_gfx.c`.
 3. ~~"Parallax" in the platformer~~ **Decided: layered
    parallax scrolling**, not per-pixel parallax mapping.
 4. ~~Own rasterizer vs. deeper small3dlib configuration.~~ **Decided:
@@ -1153,10 +1146,10 @@ what is making it:
 
 - [Firmware-Architecture.md](../Firmware-Architecture.md): the three rules
   the framebuffer modes have to respect.
-- [notes/Display-and-Rendering.md](../notes/Display-and-Rendering.md): every
-  bus and dirty-tracking number cited above, and the parked ideas.
-- [notes/Optimization-Playbook.md](../notes/Optimization-Playbook.md): the
-  code-shape rules a new renderer will hit.
+- [notes/Display-and-Rendering.md](../notes/Display-and-Rendering.md): panel
+  constraints and device tests for send costs.
+- [notes/Flashing-and-Toolchain.md](../notes/Flashing-and-Toolchain.md#verify-compiler-decisions):
+  compiler decisions and arithmetic costs.
 - [notes/Board-and-Memory.md](../notes/Board-and-Memory.md): the memory
   budget the retained framebuffer and the band ring are designed against.
 - [Settings-App-Plan.md](Settings-App-Plan.md): the

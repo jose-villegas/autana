@@ -63,13 +63,10 @@ DP_SPIRAM_ALWAYSINTERNAL_SOURCE="CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL in launcher
 # One SPI transaction's hard ceiling: the peripheral's own transaction-length
 # register is 18 bits wide (SPI_LL_DMA_MAX_BIT_LEN in ESP-IDF's spi_ll.h), so
 # one spi_transaction_t cannot carry more than this many bytes no matter how
-# many DMA descriptors chain it. Not one of this file's usual three sources
-# (no sdkconfig knob names a SoC register width), recorded with the fullest
-# provenance available: docs/notes/Display-and-Rendering.md's 80 MHz
-# investigation lists "sub-windows under 32 KiB" among the transaction shapes
-# it tried. Not wired to a build gate yet.
+# many DMA descriptors chain it. No sdkconfig knob names a SoC register
+# width. Not wired to a build gate yet.
 DP_DMA_MAX_TRANSACTION_BYTES=32768
-DP_DMA_MAX_TRANSACTION_SOURCE="ESP-IDF spi_ll.h SPI_LL_DMA_MAX_BIT_LEN (18-bit transaction-length register); corroborated by docs/notes/Display-and-Rendering.md's 80 MHz investigation"
+DP_DMA_MAX_TRANSACTION_SOURCE="ESP-IDF spi_ll.h SPI_LL_DMA_MAX_BIT_LEN (18-bit transaction-length register)"
 
 # --- toolchain and codegen -------------------------------------------------
 DP_TOOLCHAIN_PREFIX=xtensa-esp32s3-elf
