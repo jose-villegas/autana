@@ -1,8 +1,8 @@
 /*
  * console_runsuite (RUNSUITE <name> [<pattern>[,<pattern>...]]): runs one
  * self-test suite, narrowed to tests whose name contains a pattern.
- * CONFIG_LAUNCHER_SELFTEST only. The verb sets a latch; the shell's frame loop
- * calls suites_run_request() (see console.c).
+ * CONFIG_LAUNCHER_SELFTEST only. The verb sets a latch, as this task may not
+ * draw (console.c); the shell frame loop calls suites_run_request().
  */
 #include "console/console_runsuite.h"
 #include "console/console_latch.h"

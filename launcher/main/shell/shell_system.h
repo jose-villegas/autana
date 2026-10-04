@@ -3,8 +3,7 @@
  * naming them. A system is a set of phase callbacks; each phase runs over
  * every system, lowest `order` first, skipping NULL callbacks.
  *
- * A system below the shell is registered from a file in shell/, since its own
- * folder cannot include this header.
+ * Systems below the shell register from a file in shell/.
  */
 #pragma once
 

@@ -1,8 +1,8 @@
 /*
  * console_screenshot (SCREENSHOT): prints the frame gfx holds as base64
  * between markers tools/device/screenshot.py reads from the console. The verb
- * only sets a latch; the shell's frame loop streams it
- * (console_screenshot_dump(), see console.c). Development builds only.
+ * only sets a latch, since this task may not draw (console.c); the shell
+ * frame loop streams it with console_screenshot_dump(). Development only.
  */
 #include "console/console_screenshot.h"
 #include "console/console.h"
