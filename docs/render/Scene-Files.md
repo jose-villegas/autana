@@ -140,6 +140,13 @@ Off unless given. A scene that sets it needs something to scale: an
 that a baked renderer uses. The Embree reference renderer reads the same table;
 the path-traced backend ignores it.
 
+![The reference beside the bake without and with occlusion, each with its error heatmap](../images/render/bake-ao-compare.png)
+
+The reach should follow the mesh: a bake stores one colour per vertex, so a
+reach much larger than the triangles darkens whole faces around a crease, where
+the reference darkens a thin line. A smaller `distance` or a lower `strength`
+keeps the darkening where the surfaces are close.
+
 #### indirect
 
 `intensity` is at least 0 and multiplies gathered bounce light.
