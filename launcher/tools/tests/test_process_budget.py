@@ -150,3 +150,121 @@ class SchedulerTests(ProcessTests):
                 self.assertEqual(measurement.result(timeout=10)[0], 'measure')
                 self.assertFalse(slow.done())
                 slow.result(timeout=10)
+
+
+class CleanupTests(ProcessTests):
+    def test_large_waiting_task_does_not_block_small_task(self):
+        from unittest.mock import patch
+        from r3d.process_budget import FitExecutor, GIB, FLOORS
+        free = tuple(floor + 3 * GIB for floor in FLOORS)
+        with patch('r3d.process_budget.available_bytes', return_value=free), \
+                patch('r3d.process_budget.resident_bytes', return_value=(0,) * 4):
+            with FitExecutor() as executor:
+                running = executor.submit(identity_worker, 'running', 4, estimates=(2 * GIB,) * 4)
+                big = executor.submit(identity_worker, 'big', estimates=(4 * GIB,) * 4)
+                small = executor.submit(identity_worker, 'small', estimates=(GIB,) * 4)
+                self.assertEqual(small.result(timeout=3)[0], 'small')
+                self.assertFalse(running.done())
+                with executor.condition:
+                    executor.queue.clear()
+                    big.cancel()
+
+    def test_parent_exception_terminates_active_workers(self):
+        import time
+        from unittest.mock import patch
+        from r3d.process_budget import FitExecutor
+        started = time.monotonic()
+        with patch('r3d.process_budget.available_bytes', return_value=(1 << 60,) * 4):
+            with self.assertRaisesRegex(ValueError, 'parent failure'):
+                with FitExecutor() as executor:
+                    executor.submit(identity_worker, 'slow', 8)
+                    deadline = time.monotonic() + 5
+                    while time.monotonic() < deadline:
+                        with executor.condition:
+                            if executor.active:
+                                break
+                        time.sleep(.05)
+                    self.assertTrue(executor.active)
+                    raise ValueError('parent failure')
+        self.assertLess(time.monotonic() - started, 5)
+
+    @unittest.skipUnless(sys.platform == 'linux', 'Linux parent death signal')
+    def test_worker_dies_when_parent_is_killed(self):
+        import os
+        import subprocess
+        import tempfile
+        import time
+        with tempfile.TemporaryDirectory() as directory:
+            marker = pathlib.Path(directory) / 'pid'
+            code = """
+import multiprocessing, pathlib, sys, time
+sys.path.insert(0, sys.argv[1])
+from r3d.process_budget import _task
+
+def work():
+    import os
+    pathlib.Path(sys.argv[2]).write_text(str(os.getpid()))
+    time.sleep(60)
+
+if __name__ == '__main__':
+    context = multiprocessing.get_context('spawn')
+    receive, send = context.Pipe(False)
+    process = context.Process(target=_task, args=(send, work, (), (0,) * 4))
+    process.start()
+    time.sleep(60)
+"""
+            script = pathlib.Path(directory) / 'parent.py'
+            script.write_text(code)
+            parent = subprocess.Popen([sys.executable, str(script), str(pathlib.Path(__file__).resolve().parents[1]), str(marker)])
+            try:
+                deadline = time.monotonic() + 5
+                while not marker.exists() and time.monotonic() < deadline:
+                    time.sleep(.05)
+                self.assertTrue(marker.exists())
+                pid = int(marker.read_text())
+                parent.kill()
+                parent.wait(timeout=5)
+                deadline = time.monotonic() + 2
+                while time.monotonic() < deadline:
+                    status = pathlib.Path(f'/proc/{pid}/status')
+                    if not status.exists() or 'State:\tZ' in status.read_text():
+                        break
+                    time.sleep(.05)
+                else:
+                    self.fail('worker survived parent SIGKILL')
+            finally:
+                if parent.poll() is None:
+                    parent.kill()
+                parent.wait(timeout=5)
+                if marker.exists():
+                    try:
+                        os.kill(int(marker.read_text()), 9)
+                    except ProcessLookupError:
+                        pass
+
+
+class ReservationTests(unittest.TestCase):
+    def test_pose_pool_stays_inside_reservation(self):
+        try:
+            from r3d.reference_render import reservation_pose_capacity
+        except ImportError:
+            self.skipTest('needs reference dependencies')
+        self.assertEqual(reservation_pose_capacity(700, 300, 100, 10), 4)
+        self.assertEqual(reservation_pose_capacity(700, 300, 100, 2), 2)
+        self.assertEqual(reservation_pose_capacity(700, 690, 100, 10), 1)
+
+
+
+def reservation_worker():
+    from r3d.process_budget import TASK_RESERVATION
+    return TASK_RESERVATION
+
+
+class ReservationPropagationTests(ProcessTests):
+    def test_spawned_task_receives_its_own_reservation(self):
+        from unittest.mock import patch
+        from r3d.process_budget import FitExecutor, GIB
+        reservation = (GIB, GIB, 0, GIB)
+        with patch('r3d.process_budget.available_bytes', return_value=(1 << 60,) * 4):
+            with FitExecutor() as executor:
+                self.assertEqual(executor.submit(reservation_worker, estimates=reservation).result(timeout=10), reservation)

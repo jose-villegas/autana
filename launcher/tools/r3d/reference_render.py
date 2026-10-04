@@ -133,7 +133,7 @@ def source_for(scene, name=None, lit=True):
     return source, job
 
 
-POSE_BASE_BYTES_PER_RAY = 512
+POSE_BASE_BYTES_PER_RAY = 768
 POSE_STATE = None
 
 
@@ -146,35 +146,54 @@ def _write_pose(item):
         np.save(out / ("%04d.normal.npy" % index), normal.astype(np.float32))
     picture = device_picture(linear, covered, scene.tonemap_white, scene.camera.component.background)
     Image.fromarray(picture).save(out / ("%04d.png" % index))
+    from r3d.process_budget import peak_rss
+    import os
+    return os.getpid(), peak_rss()
+
+
+def reservation_pose_capacity(reservation, rss, estimate, cores):
+    return max(1, min(cores, (reservation - rss) // estimate))
 
 
 def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None):
     """Fork only CPU reference state; each pose retains its independent seeded RNG."""
-    from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS
+    from r3d import process_budget
+    from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS, parent_death_signal
+    import os
     global POSE_STATE
     if workers is None:
-        # trace/hit buffers need about 256 bytes per ray; lighting and Embree scratch reserve another 256.
-        # bake_sky retains one float64 xyz direction (24 bytes) per sky sample and hit ray.
-        sky_rays = max((item["rays"] for item in scene.lights if item["type"] == "sky"), default=0)
-        estimate = max(64 * 1024 ** 2, width * height * samples * samples * (POSE_BASE_BYTES_PER_RAY + 24 * sky_rays))
-        workers = worker_capacity(available_bytes(), (estimate, estimate, 0, estimate), FLOORS, cores_available())
-        if not workers:
-            raise RuntimeError("not enough available memory for a reference pose worker")
+        # trace/hit buffers reserve 256 bytes per ray, Embree/lighting scratch 256,
+        # and streamed sky tangents, random samples, direction and temporaries another 256.
+        estimate = max(64 * 1024 ** 2, width * height * samples * samples * POSE_BASE_BYTES_PER_RAY)
+        reservation = process_budget.TASK_RESERVATION
+        if reservation is not None:
+            rss = process_budget.resident_bytes(os.getpid(), {})[0]
+            workers = reservation_pose_capacity(reservation[0], rss, estimate, cores_available())
+        else:
+            workers = worker_capacity(available_bytes(), (estimate, estimate, 0, estimate), FLOORS, cores_available())
+            if not workers:
+                raise RuntimeError("not enough available memory for a reference pose worker")
     workers = min(workers, len(poses))
     if workers < 1:
         raise ValueError("workers must be positive")
     if workers > 1 and "fork" not in multiprocessing.get_all_start_methods():
         workers = 1
     POSE_STATE = (source, job, scene, width, height, lens, samples, pathlib.Path(out), normals)
+    pose_peaks = {}
     try:
         if workers == 1:
             for item in enumerate(poses):
-                _write_pose(item)
+                pid, peak = _write_pose(item)
+                pose_peaks[pid] = max(pose_peaks.get(pid, 0), peak)
         else:
             with concurrent.futures.ProcessPoolExecutor(max_workers=workers,
-                    mp_context=multiprocessing.get_context("fork")) as pool:
-                list(pool.map(_write_pose, enumerate(poses)))
+                    mp_context=multiprocessing.get_context("fork"),
+                    initializer=parent_death_signal, initargs=(os.getpid(),)) as pool:
+                for pid, peak in pool.map(_write_pose, enumerate(poses)):
+                    pose_peaks[pid] = max(pose_peaks.get(pid, 0), peak)
     finally:
+        if workers > 1:
+            process_budget.POSE_POOL_PEAK_BYTES = max(process_budget.POSE_POOL_PEAK_BYTES, sum(pose_peaks.values()))
         POSE_STATE = None
 
 

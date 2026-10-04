@@ -95,8 +95,9 @@ Sweep result records remain the resume markers. Worker failures print their
 tracebacks, fail the stage and join the workers before exit.
 
 Embree reference poses fork after source and indirect-cache loading,
-sharing that state through copy-on-write. Each pose retains its own seeded
-random generator. Bake and visibility sampling remain serial. Platforms
+sharing that state through copy-on-write. Its pool stays within the
+prepare worker's reservation; standalone renders use available memory.
+Each pose retains its own seeded random generator. Bake and visibility sampling remain serial. Platforms
 without fork render poses serially.
 
 Admission uses available WSL, Windows, GPU and cgroup memory, with CPU
@@ -105,13 +106,15 @@ affinity as the upper bound. Floors and worker estimates live in
 WSL, 3 GiB on Windows, 512 MiB on the GPU and 256 MiB within a capped
 cgroup. Active workers reserve only estimated allocations that are not yet
 resident. Admission waits while workers run and fails if no worker is
-running and the next task cannot fit.
+running and no queued task fits. Smaller eligible tasks can pass a waiting
+larger task. Admission and worker peak-memory summaries are logged.
 
 `launcher/tools/render/verify_gpu_concurrency.py` records repeat smoke
 snapshots, compares snapshot trees, checks serial versus pooled references,
 and compares two serial eight-step fits with two scheduled fits. Its
 `--inputs` is a smoke reference directory; its `--out` is scratch storage.
-Reference mode accepts `--size WIDTH HEIGHT` for a larger pose slice.
+Reference mode accepts `--size WIDTH HEIGHT` for a larger pose slice and
+`--sky-list` to compare materialised sky directions with streamed tracing.
 
 The rest belong to apps, and each app's `tools/README.md` says what its
 images show.

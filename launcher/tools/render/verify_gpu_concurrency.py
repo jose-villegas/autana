@@ -124,6 +124,7 @@ def main(samples):
     parser.add_argument("--out", required=True, type=pathlib.Path)
     parser.add_argument("--left", type=pathlib.Path)
     parser.add_argument("--right", type=pathlib.Path)
+    parser.add_argument("--sky-list", action="store_true", help="reference proof: materialise sky directions before tracing")
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--size", type=int, nargs=2, help="reference slice width and height; defaults to input poses")
     args = parser.parse_args()
@@ -138,6 +139,10 @@ def main(samples):
         result = compare(args.left, args.right)
     elif args.mode == "reference":
         from r3d.reference_render import source_for, render_poses
+        if args.sky_list:
+            from r3d import light as lighting
+            original = lighting.unshadowed_count
+            lighting.unshadowed_count = lambda intersector, origin, directions: original(intersector, origin, list(directions))
         from r3d.poses import read_poses
         start = time.monotonic()
         source, source_job = source_for(scene, job.object.name)
