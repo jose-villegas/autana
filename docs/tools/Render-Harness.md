@@ -70,9 +70,11 @@ verifies recorded content, while the render check detects stale measurements.
 The image script rewrites blocks by default; --check reports
 changed doc-path#block-name and exits 1. The refresh PR includes changed tables
 and images together. `render_doc_images.sh --stage gpu` rebuilds fitted comparisons and sweeps in
-the WSL CUDA environment; `--stage board --capture PATH` consumes diagnostics
-perf captures. Both use this writer. Their commands, requirements and outputs
-are in the [scene tools README](../../launcher/main/apps/render_lab/tools/README.md#refresh-commands).
+the WSL CUDA environment; the board stage consumes a perf capture. Both use
+this writer. The GPU and board stage commands, requirements and outputs are
+in the [per-tool README][render-tool-commands].
+
+[render-tool-commands]: ../../launcher/tools/render/README.md#refresh-commands
 GPU images live under `docs/images/render/gpu/`; CPU checks leave that stage
 to its own `--check`. GPU `--check` verifies the saved full run and its source
 stamp without fitting again. `--smoke` writes only scratch data.
