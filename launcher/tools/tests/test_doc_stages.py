@@ -1,5 +1,6 @@
 """The GPU and board doc stages check what they are given before they publish."""
 import importlib.util
+import hashlib
 import json
 import tempfile
 import unittest
@@ -46,6 +47,16 @@ class DocStagesTests(unittest.TestCase):
     def test_smoke_cannot_publish_or_check(self):
         with self.assertRaisesRegex(ValueError, "smoke"):
             stages.validate_mode(smoke=True, check=True)
+
+    def test_source_stamp_matches_pointer_and_hydrated_content(self):
+        source = self.tmp / "source.obj"
+        content = b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"
+        source.write_bytes(content)
+        hydrated = stages.source_stamp(self.tmp, [source])
+        checksum = hashlib.sha256(content).hexdigest()
+        source.write_bytes(("version https://git-lfs.github.com/spec/v1\n"
+                            f"oid sha256:{checksum}\nsize {len(content)}\n").encode())
+        self.assertEqual(stages.source_stamp(self.tmp, [source]), hydrated)
 
     def test_board_rejects_missing_variants(self):
         capture = self.tmp / "capture.txt"

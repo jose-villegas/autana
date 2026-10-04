@@ -47,7 +47,7 @@ jobs:
       - name: Identify mesh source LFS objects
         id: mesh-source
         run: |
-          key=$(git lfs ls-files -l --include='launcher/main/apps/render_lab/meshes/sponza/**' | awk '{print $1, $3}' | sha256sum | cut -d' ' -f1)
+          key=$(git lfs ls-files -l --include='launcher/main/apps/*/meshes/*/**' | awk '{print $1, $3}' | sha256sum | cut -d' ' -f1)
           echo "key=$key" >> "$GITHUB_OUTPUT"
           echo "path=$(git rev-parse --git-path lfs)" >> "$GITHUB_OUTPUT"
 
@@ -58,7 +58,7 @@ jobs:
           key: mesh-source-lfs-${{ steps.mesh-source.outputs.key }}
 
       - name: Fetch mesh source files
-        run: git lfs pull --include='launcher/main/apps/render_lab/meshes/sponza/**' --exclude=''
+        run: git lfs pull --include='launcher/main/apps/*/meshes/*/**' --exclude=''
 
       - name: Initialize only meshoptimizer
         run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer

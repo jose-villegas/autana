@@ -1,2 +1,2 @@
 [lfs]
-	fetchexclude = launcher/main/apps/render_lab/meshes/sponza/**
+	fetchexclude = launcher/main/apps/*/meshes/*/**

@@ -42,14 +42,19 @@ python -m venv tools/r3d/.cache/venv
 tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.txt   # bin/python on Linux
 ```
 
+An import's OBJ, MTL and textures live in a subdirectory beside its
+`.import.toml` under an app's `meshes/` directory, matching
+`launcher/main/apps/*/meshes/*/**`.
+Binary source files use Git LFS; MTL and attribution files stay text.
 Firmware clones exclude source assets through `.lfsconfig`. Before a source
-bake or reference render, run the following from the repository root, using
-the source directory recorded in the app's tools README:
+bake or reference render, run this from the repository root:
 
 ```sh
-git lfs pull --include="SOURCE_DIRECTORY/**" --exclude=""
+git lfs pull --include="launcher/main/apps/*/meshes/*/**" --exclude=""
 ```
- The OBJ, MTL and textures live beside their import settings.
+
+The empty exclude clears the clone's default exclusion for this pull.
+Doc workflows cache these LFS objects by their content identifiers.
 
 **`rebake.py` or a full import.** Rebake a `.mesh` when only clustering
 or data format changes: it reads its triangles and colours back and rewrites
@@ -274,7 +279,7 @@ The front joins points for which no other point is no slower and no less
 accurate. Its knee is the front point with the greatest perpendicular distance
 from the chord between the front's end points after both axes are normalized.
 
-The [documentation stages](../../main/apps/render_lab/tools/README.md#refresh-commands)
+The [documentation stages](../render/doc_stages.py)
 rebuild fitted comparisons and sweeps with this recipe API, write measured
 Markdown blocks with the shared doc writer, and consume board captures to
 refit the cost weights. The GPU smoke mode publishes no images or tables.

@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from generated_blocks import apply_tables
 from perf_compare import MEAN_RE, parse_report
 from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRED_BYTES
-from r3d.import_settings import load_import_settings, source_files
+from r3d.import_settings import content_checksum, load_import_settings, source_files
 
 SCENE = ROOT / "launcher/main/apps/render_lab/meshes/sponza.scene.toml"
 HOST_SCRIPT = ROOT / "launcher/main/apps/render_lab/tools/render_lab_render_host.sh"
@@ -39,7 +39,7 @@ def source_stamp(root, paths):
     digest = hashlib.sha256()
     for path in sorted(paths):
         digest.update(path.relative_to(root).as_posix().encode())
-        digest.update(path.read_bytes())
+        digest.update(b"\0" + content_checksum(path))
     return digest.hexdigest()
 
 
