@@ -10,7 +10,7 @@
  * (under emulation it runs fast). The clock decides when the pause is over. */
 void
 timing_sleep_ms(uint32_t ms) {
-    const int64_t until = timing_now_us() + (int64_t)ms * 1000;
+    const int64_t until = timing_now_us() + ((int64_t)ms * 1000);
     vTaskDelay(pdMS_TO_TICKS(ms));
     while (timing_now_us() < until) {
         vTaskDelay(1);
