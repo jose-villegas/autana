@@ -145,18 +145,11 @@ bake_and_render() {
     run env AUTANA_ASSET_PACK="$dir/assets.bin" "$W/render_lab_render" --quarter 0 --no-hud --scene "$scene" --frames 5 --dt 5000 \
         -o "$dir/frame.bmp" --video "$dir.avi" 2> "$dir/render.log"
 }
-# scratch_import DIR: the import file in DIR, its source path made absolute so
-# the copy still reaches the committed source.
-scratch_import() {
-    source_dir=$(cd "$M/meshes/sponza" && pwd)
-    if command -v cygpath > /dev/null 2>&1; then source_dir=$(cygpath -m "$source_dir"); fi
-    run sed "s|^path = \"sponza/|path = \"$source_dir/|" "$M/meshes/sponza.import.toml" > "$1/sponza.import.toml"
-}
 # variant_bake NAME BOUNCES SCENE-TABLE: bounces is `keep`, or `none` to take
 # the scene bake's indirect cache out; the table goes before the first object.
 variant_bake() {
     run mkdir -p "$W/indirect-$1"
-    scratch_import "$W/indirect-$1"
+    run cp "$M/meshes/sponza.import.toml" "$W/indirect-$1/"
     run awk -v table="$3" -v direct="$2" '/^\[\[objects\]\]/ && !done { if (table != "") print table "\n"; done = 1 }
         direct == "none" && /^indirect = \{/ { next } { print }' \
         "$M/meshes/sponza.scene.toml" > "$W/indirect-$1/sponza.scene.toml"
@@ -200,7 +193,7 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/bake-indire
 # bakes raise it. ao_bake NAME AO-LINE: the line goes after `[bake].indirect`.
 ao_bake() {
     run mkdir -p "$W/ao-$1"
-    scratch_import "$W/ao-$1"
+    run cp "$M/meshes/sponza.import.toml" "$W/ao-$1/"
     run awk -v ao="$2" '/^\[/ { ambient = ($0 == "[ambient]") } ambient && /^intensity = / { print "intensity = 0.25"; next }
         { print } /^indirect = \{/ && ao != "" { print ao }' \
         "$M/meshes/sponza.scene.toml" > "$W/ao-$1/sponza.scene.toml"
