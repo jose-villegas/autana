@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "asset/asset_bytes.h"
+
 /* The header's byte offsets within a pack, and an entry's within its row. */
 enum {
     HEADER_VERSION = 4,

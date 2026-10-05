@@ -13,11 +13,11 @@ flowchart LR
     Entry --> Build["build_pack.py"]
     Build --> Files["DIR/name.apak<br/><i>one file per bundle</i>"]
     Build --> Image["assets.bin<br/><i>bundle directory and every bundle</i>"]
-    Image --> Flash["assets partition<br/><i>each bundle mapped alone</i>"]
-    Files --> Host["host reader<br/><i>asset_file_open</i>"]
-    Flash --> Store["asset_store_bundle(name)<br/><i>mounts on first use, counted</i>"]
-    Host --> Store
-    Store --> Open["asset_pack_open(base, size)<br/><i>checks, then views</i>"]
+    Image --> Flash["assets partition<br/><i>device: each bundle mapped alone</i>"]
+    Store["asset_store_bundle(name)<br/><i>mounts on first use, counted</i>"] --> Flash
+    Store --> Files
+    Flash --> Open["asset_pack_open(base, size)<br/><i>checks, then views</i>"]
+    Files --> Open
     Open --> View["r3d_lit_mesh_open()<br/><i>pointers into the bundle</i>"]
 ```
 

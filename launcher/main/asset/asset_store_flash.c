@@ -11,9 +11,10 @@
 
 static const char* TAG = "asset";
 
-/* The partition and its directory, found and mapped once and kept. */
+/* The partition and its directory, found and mapped once and kept for good. */
 static const esp_partition_t* part;
 static asset_directory_t directory;
+static esp_partition_mmap_handle_t directory_mapping;
 static asset_status_t directory_status = ASSET_ERR_NO_PACK;
 static bool tried;
 
@@ -42,13 +43,13 @@ open_directory(void) {
     if (size == 0 || size > part->size) {
         return size == 0 ? ASSET_ERR_MAGIC : ASSET_ERR_TRUNCATED;
     }
-    const void* mapped = map_bytes(0, size, &handle);
+    const void* mapped = map_bytes(0, size, &directory_mapping);
     if (mapped == NULL) {
         return ASSET_ERR_NO_PACK;
     }
     const asset_status_t opened = asset_directory_open(&directory, mapped, size, (uint32_t)part->size);
     if (opened != ASSET_OK) {
-        esp_partition_munmap(handle);
+        esp_partition_munmap(directory_mapping);
     }
     return opened;
 }

@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "asset/asset_bytes.h"
+
 /* The header's byte offsets, and a row's within itself. */
 enum {
     HEADER_CRC = 4,

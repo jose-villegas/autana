@@ -63,12 +63,6 @@ typedef struct {
 /* The alignment a pack's base address must have. */
 #define ASSET_PACK_BASE_ALIGN 16U
 
-/* The little-endian u32 at `at`: how every field of a pack or a directory is read. */
-static inline uint32_t
-asset_read_u32(const uint8_t* at) {
-    return (uint32_t)at[0] | ((uint32_t)at[1] << 8) | ((uint32_t)at[2] << 16) | ((uint32_t)at[3] << 24);
-}
-
 /* CRC-32 (zlib's), which is the checksum a pack carries over its bytes after the header. */
 uint32_t asset_crc32(const void* data, size_t size);
 
