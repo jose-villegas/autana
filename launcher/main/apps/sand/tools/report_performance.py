@@ -27,6 +27,7 @@ app uses, so that deleting the app leaves nothing stranded.
 import argparse
 import re
 import sys
+from pathlib import Path
 from datetime import datetime, timezone
 
 # A frame-budget test: a `static void test_...(void) { ... }` function body
@@ -48,7 +49,8 @@ BUDGET_RES = (
 )
 DEFINE_RE = re.compile(r"#define\s+(\w+)\s+(\d+)")
 
-RESULT_RE = re.compile(r"^\S*:\d+:(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
+sys.path.insert(0, str(Path(__file__).resolve().parents[5] / "scripts/lib"))
+from device_capture import RESULT_RE  # noqa: E402
 
 # A separate line - not part of the result line above - emitted by
 # test/timing.c for every test, on both host and device. Kept separate on

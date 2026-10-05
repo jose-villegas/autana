@@ -23,7 +23,7 @@ def windows_job_binding(kernel=None):
 
 
 def create_kill_on_close_job(breakaway_ok=False, kernel=None):
-    """Create a Windows job, or report unavailable ownership and return None."""
+    """Create a Windows job, or return None when ownership is unavailable."""
     import ctypes
     from ctypes import wintypes
     class BasicLimits(ctypes.Structure):
@@ -42,7 +42,6 @@ def create_kill_on_close_job(breakaway_ok=False, kernel=None):
     job = kernel.CreateJobObjectW(None, None)
     if job:
         limits = ExtendedLimits()
-        # Closing the job kills every process still in it.
         limits.basic.flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
         if breakaway_ok:
             limits.basic.flags |= JOB_OBJECT_LIMIT_BREAKAWAY_OK
@@ -50,7 +49,6 @@ def create_kill_on_close_job(breakaway_ok=False, kernel=None):
                                           ctypes.byref(limits), ctypes.sizeof(limits)):
             return job
         kernel.CloseHandle(job)
-    print("process tree: could not create a job object; using tree kill", file=sys.stderr)
     return None
 
 
@@ -64,18 +62,19 @@ def launch_process_tree(command, **options):
     kernel = windows_job_binding()
     job = create_kill_on_close_job(kernel=kernel)
     if not job:
+        print("process tree: could not create a job object; using tree kill", file=sys.stderr)
         return subprocess.Popen(command, **options)
     process = None
     try:
         options["creationflags"] = options.get("creationflags", 0) | CREATE_SUSPENDED
         process = subprocess.Popen(command, **options)
-        # Popen closes the thread handle, so _handle and NtResumeProcess are used instead of ResumeThread.
         if kernel.AssignProcessToJobObject(job, int(process._handle)):
             process._tree_job = job
         else:
             kernel.CloseHandle(job)
             job = None
             print("process tree: could not assign a job object; using tree kill", file=sys.stderr)
+        # Popen closes the thread handle, so _handle and NtResumeProcess are used instead of ResumeThread.
         resume = ctypes.WinDLL("ntdll").NtResumeProcess
         resume.argtypes = [wintypes.HANDLE]
         if resume(int(process._handle)) < 0:
@@ -105,7 +104,7 @@ def close_process_tree(process):
 
 
 def terminate_tree(process):
-    """Escalate POSIX termination; closing a Windows job kills its tree."""
+    """Escalate POSIX termination; on Windows close the job, or taskkill the tree when no job was assigned."""
     if os.name == "nt":
         if getattr(process, "_tree_job", None):
             close_process_tree(process)

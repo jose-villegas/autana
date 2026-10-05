@@ -1,4 +1,4 @@
-"""Regression coverage for seeded decisions and interrupted acquisitions."""
+"""Seeded decisions and interrupted acquisitions."""
 import contextlib
 import importlib.util
 import io
@@ -361,9 +361,7 @@ class RevisionTests(unittest.TestCase):
                 (perf/name).write_bytes((source/name).read_bytes())
             (root/"scripts/lib").mkdir(parents=True)
             (root/"scripts/lib/process_tree.py").write_bytes((source.parents[2]/"scripts/lib/process_tree.py").read_bytes())
-            reporter = root/"launcher/main/apps/sand/tools/report_performance.py"
-            reporter.parent.mkdir(parents=True)
-            reporter.write_bytes((source.parents[2]/"launcher/main/apps/sand/tools/report_performance.py").read_bytes())
+            (root/"scripts/lib/device_capture.py").write_bytes((source.parents[2]/"scripts/lib/device_capture.py").read_bytes())
             helper = root/"launcher/tools/revision_worktree.sh"
             helper.write_text("revision_worktree_setup() { :; }\n"
                               "revision_worktree_cleanup() { :; }\n"

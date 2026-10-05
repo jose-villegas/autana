@@ -23,12 +23,8 @@ import sys
 from pathlib import Path
 
 
-# `\S*`, not report_performance.py's `\S+`: this project's own Unity result
-# lines carry no filename ahead of the line number: "*:3685:name:PASS", not
-# "file.c:3685:name:PASS", so a required leading token never matches a real
-# capture. Confirmed against 152333_runsuite-run_sand_perf_suite...log:
-# report_performance.py's own RESULT_RE finds zero entries in it.
-RESULT_RE = re.compile(r"^(?P<file>\S*?):\d+:(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from device_capture import RESULT_RE  # noqa: E402
 # The line a RUNSUITE ends with, read here for the board (device.py) and for
 # QEMU (launcher/test/qemu_run.py). An image that predates --test prints no
 # selected=/unmatched=, and echoes a filtered request whole as the name
@@ -110,7 +106,7 @@ def parse_suite_results(text):
             continue
         if m.group("status") == "PASS":
             passed += 1
-        else:
+        elif m.group("status") == "FAIL":
             failed += 1
             failures.append((m.group("name"), m.group("message") or ""))
     return passed, failed, failures

@@ -57,7 +57,7 @@ def seed_means(rows):
 
 
 def selected_suites(suites, active, owners, limits=None, listed=None):
-    """Keep user scope; unfiltered suites use the device's full inventory."""
+    """Keep user scope; unfiltered suites use all tests their captures ran."""
     selected = []
     for suite, tests, template in suites:
         names = [owners.get(name, (suite, None))[1] for name in active if name.startswith(suite + "/")]
@@ -239,7 +239,7 @@ def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=
              f"per-family per-look alpha: {args.alpha / len(sizes) / 2:g}. "
              f"First pass: {sizes[0]} seeds per side. Cap: {args.max_seeds} seeds per side.", "",
              f"RNG seed: {args.rng_seed}; R clamp: [1, {MAX_RUNS}].", "",
-             "Incomplete: capture data missing; see plan errors." if incomplete else "Complete.", "",
+             "Incomplete: stopped after capture failures, or rows not measured; see plan errors and the not-measured rows." if incomplete else "Complete.", "",
              "Seed means decide; medians describe the seed means. "
              f"Intervals are {100 * (1 - args.alpha / len(sizes) / 2):g}% two-sided Welch intervals on log seed means. "
              "Holm corrects difference and equivalence tests separately over all rows. "
@@ -338,7 +338,7 @@ def main(argv=None):
 
 
 def device_inventory(records):
-    """Pool the full device inventory from each captured invocation."""
+    """Pool results from unfiltered invocations as the complete suite inventory."""
     listed = {}
     for record in records:
         for suite, entry in record["suites"].items():

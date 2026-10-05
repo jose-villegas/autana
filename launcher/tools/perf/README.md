@@ -69,8 +69,8 @@ when the estimated layout variance is zero; the summary states the clamp.
 A later flash uses the largest R recommendation among active rows.
 For a filtered first pass, extra seeds re-run the subset of the user's own
 patterns matching active tests. For an unfiltered first pass, capture test
-ownership maps active rows to the shortest substrings unique among the full
-device inventory (`SUITE_TEST`), including unselected tests. Missing inventory,
+ownership maps active rows to the shortest substrings unique among the tests
+the unfiltered pass ran (PASS, FAIL and IGNORE result lines). Missing inventory,
 unknown owners, or tests without a bounded unique substring fall back to the
 user's filter. Filter width and pattern count limits come from each project's
 `launcher/test/suites.h`; requests over the pattern count are split across
@@ -81,10 +81,10 @@ Table commands also run with a deadline of `--timeout`. Status logs
 bracket each flash; the boot id must match its project's seeded build id.
 Later suites request that build id. Complete captures exiting 1 are kept;
 other exit codes, incomplete captures, wrong builds and table errors are
-failures. Two consecutive failures stop measurement and write an incomplete
-summary with decisions and errors. A summary is marked incomplete after
-two consecutive failures or when any row is not measured. A success resets
-the failure count.
+failures. Two consecutive failures stop measurement and write the summary
+so far, with decisions and errors. A summary is marked incomplete after such
+a stop, when no row was decided, or when any row is not measured. A success
+resets the failure count.
 Failed attempts consume the cap.
 
 ## Reading the result
@@ -103,12 +103,15 @@ be regressed.
 
 A real move inside the threshold can be reported as **no change**, so to see
 a small gain as **improved**, pass a `--threshold` below the gain you are
-chasing (for example `--threshold 0.1` for a 0.3% target).
+chasing (for example `--threshold 0.1` for a 0.3% target). A smaller threshold
+needs more seeds per side; raise `--max-seeds` with it, or expect inconclusive
+rows at the cap.
 
 Both arithmetic and log-difference signs must agree on direction. **Added**
 means B only and **removed** A only when every attempt on the other side
-succeeded and its captures ran the row's owning test without printing the row. **Not measured** means missing
-or zero timings or no complete seed. These rows receive no extra seeds.
+succeeded and its captures ran the row's owning test without printing the
+row. **Not measured** means missing or zero timings or no complete seed.
+These rows receive no extra seeds.
 **Inconclusive** rows with data on both sides alone receive more measurements,
 and remain inconclusive when the cap is reached. Permutation n/a means there
 is too little positive timing data to compute it. A/A calibration allows
