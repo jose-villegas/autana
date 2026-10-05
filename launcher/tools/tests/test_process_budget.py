@@ -438,7 +438,7 @@ class PartialTaskTests(ProcessTests):
 class MeasuredBudgetTests(unittest.TestCase):
     def test_worker_estimates(self):
         from r3d import process_budget as b
-        self.assertEqual(b.PREPARE_BYTES, (4 * b.GIB, 0, 4 * b.GIB))
+        self.assertEqual(b.PREPARE_BYTES, (13 * b.GIB // 2, 0, 13 * b.GIB // 2))
         self.assertEqual(b.BAKE_BYTES, (5 * b.GIB // 2, 0, 5 * b.GIB // 2))
         self.assertEqual(b.FIT_BYTES, (22 * b.GIB // 10, 7 * b.GIB // 10, 22 * b.GIB // 10))
         self.assertEqual(b.MEASURE_BYTES, (3 * b.GIB // 2, 128 * 1024 ** 2, 3 * b.GIB // 2))
