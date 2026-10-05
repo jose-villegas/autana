@@ -14,8 +14,7 @@ intensity = 0.03
 [bake]
 ray_offset = 0.5
 colour_merge_step = 6
-flat_sky_rays = 128
-indirect = { bounces = 2, rays = 64, cache_samples = 1 }
+indirect = { bounces = 2, rays = 64 }
 
 [[objects]]
 name = "sun"
@@ -25,8 +24,6 @@ rotation = [22.450814295724417, -37.230418121890686, 0.0]   # toward (-0.25, 1.0
 type = "directional"
 color = [1.0, 0.92, 0.78]
 intensity = 3.0
-disc_degrees = 1.2
-rays = 8
 
 [[objects]]
 name = "camera"
@@ -90,8 +87,8 @@ laplacian = 10.0
 normal_weight = 1.0
 
 [objects.mesh_renderer.fit.hashes]
-sha256 = "2c2d0b9f3c3b3f9d81f4e49444e42dbe9ec1392856aeb9002eaba9ca34155608"
-recipe_sha256 = "751799d216f56f973ee8994e8a468a0c65fc917953c332c0f6bedbede06e3bb2"
+sha256 = "bfab94b089eef107e31d435c304e0ff0d9524864be8d6107ae8095908aed5aa8"
+recipe_sha256 = "fb7cb58a491400184678a42a3c5e5ad5392e65d35c00ec2a51c289ff59731095"
 
 [[objects]]
 name = "atrium_fitted_full"
@@ -117,5 +114,5 @@ laplacian = 10.0
 normal_weight = 1.0
 
 [objects.mesh_renderer.fit.hashes]
-sha256 = "f0072397b03ff56977cf234ffbb2dc51a0972ce43af8ebb7f914bd2ca062619a"
-recipe_sha256 = "b6f363bed465aca982e74a5b59a340f1d56074cd27ec9a750aec79488e8d1607"
+sha256 = "8467e8d3834a3b4c5019cc43010360baf1343f179b4f36c82ab586fdda017e58"
+recipe_sha256 = "a5e891157febe5c2efd2ff53a802b6ed67ee6920321c2ac7b4db0660f2c3ae61"
