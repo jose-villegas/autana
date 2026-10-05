@@ -30,11 +30,14 @@ mesh. Nothing here runs on the board.
 | [fitted_variant.py](fitted_variant.py) | Remakes a scene renderer's fitted mesh from the `fit` recipe it records; see [A fitted variant](#a-fitted-variant). |
 | [cost_model.py](cost_model.py), [board_cost_weights.txt](board_cost_weights.txt) | A linear model of a mesh's frame time from a pose (submitted and drawn triangles, rows, pixels with overdraw, clusters in view), and its weights with the board frames they were fitted to; see [Cost-aware fit](#cost-aware-fit). |
 | [reference_render.py](reference_render.py) | Traces the undecimated source mesh through the scene's bake lights at supersampled device resolution; writes linear arrays and RGB565-expanded PNGs for fidelity comparisons. |
-| [mitsuba_reference.py](mitsuba_reference.py), [reference_sweep.py](reference_sweep.py) | The optional path-traced backend of `reference_render.py` (Mitsuba 3, CUDA or CPU), and the measurement of its noise, depth bias, time and GPU memory on one pose; see [Path-traced reference](#path-traced-reference). |
+| [ray_query.py](ray_query.py) | First-hit, any-hit and every-hit ray queries against a triangle mesh, traced by Mitsuba; the bake, visibility culling and the reference renderer all use it. |
+| [mitsuba_reference.py](mitsuba_reference.py), [reference_sweep.py](reference_sweep.py) | The path-traced backend of `reference_render.py` (Mitsuba 3, CUDA or CPU), and the measurement of its noise, depth bias, time and GPU memory on one pose; see [Path-traced reference](#path-traced-reference). |
 
 The environment is pinned in [requirements.txt](requirements.txt), and the
 simplifier needs the meshoptimizer submodule and a host C++ compiler (`CXX`,
-else `c++` or `g++`). Git LFS is a prerequisite for source bakes on Windows and Linux.
+else `c++` or `g++`). The bake traces its rays on Mitsuba's LLVM variant, so it also
+needs libLLVM (`apt install llvm` on Linux); without it the bake stops with an error.
+Git LFS is a prerequisite for source bakes on Windows and Linux.
 From `launcher/`:
 
 ```sh
@@ -114,23 +117,22 @@ names the render and is required with `--reference-sheet`.
 ### Path-traced reference
 
 `reference_render.py --backend mitsuba` renders the same source with Mitsuba 3 in
-place of Embree. It reads the same geometry after alpha rejection, albedo,
-camera and poses, and shares exposure, tone map and RGB565 conversion. The
-Embree backend stays the default.
-Install the pinned `mitsuba` and `drjit` from
-[requirements-gpu.txt](requirements-gpu.txt); the variant is `cuda_ad_rgb` when
-a CUDA device is present, else `llvm_ad_rgb`, else `scalar_rgb` (`--variant`).
+place of the bake lighting. It reads the same geometry after alpha rejection, albedo,
+camera and poses, and shares exposure, tone map and RGB565 conversion. `bake` is the default backend.
+The variant is `cuda_ad_rgb` when a CUDA device can load a scene, else
+`llvm_ad_rgb` when libLLVM is present, else `scalar_rgb` (`--variant`); only
+the tests are small enough for the scalar one.
 
 | Option | Meaning |
 |---|---|
-| `--spp N`, `--seed N` | Paths per pixel and sampler seed; `--samples` stays the Embree subpixel grid |
+| `--spp N`, `--seed N` | Paths per pixel and sampler seed; `--samples` stays the bake backend's subpixel grid |
 | `--max-depth N` | Path depth cap; 2 is direct light only |
 | `--sky hosek-wilkie` | Replaces the scene lights by the Hosek–Wilkie sun and sky (`--turbidity`, `--ground-albedo`), the sun taking the first directional light's direction |
 
 A `sky` light becomes a constant environment of the same radiance. The
 backends differ in these recorded ways, besides transport:
 
-| Case | Embree reference | Path-traced backend |
+| Case | Bake backend | Path-traced backend |
 |---|---|---|
 | Sun disc | Soft shadows from `disc_degrees` | A point source: no soft edge |
 | `ambient` | Added to every point | Rejected unless black, it has no transport meaning |
@@ -138,7 +140,7 @@ backends differ in these recorded ways, besides transport:
 | Double-sided card | Turns toward the summed suns | Shades the side the ray reached |
 | Near plane | Ignored | Clips at the pose file's near value |
 | `[bake].ao` | Scales the ambient and, if asked, the gathered bounce light | Ignored |
-`tests/test_r3d_mitsuba_reference.py` pins direct-only parity with the Embree
+`tests/test_r3d_mitsuba_reference.py` pins direct-only parity with the bake
 reference, texture orientation and constant-sky energy. Measure one pose with
 
 ```sh
@@ -190,7 +192,7 @@ one mesh together (the path-averaged mesh); `--per-shot` trains one per
 pair, for a mesh swapped as the camera moves through each segment.
 
 The fit runs on a CUDA GPU in its own environment with
-[requirements.txt](requirements.txt) and [requirements-gpu.txt](requirements-gpu.txt).
+[requirements.txt](requirements.txt).
 From the repository root, one setup on WSL 2 Ubuntu 24.04 with the Windows
 NVIDIA driver uses a conda environment for
 the CUDA 12.8 compiler and a GCC that CUDA 12.8 accepts:
@@ -201,7 +203,7 @@ micromamba create -y -p ~/gpu/env -c nvidia/label/cuda-12.8.1 -c conda-forge \
 E=~/gpu/env
 $E/bin/python -m ensurepip
 $E/bin/python -m pip install -q --progress-bar off torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
-$E/bin/python -m pip install -q --progress-bar off -r launcher/tools/r3d/requirements.txt -r launcher/tools/r3d/requirements-gpu.txt
+$E/bin/python -m pip install -q --progress-bar off -r launcher/tools/r3d/requirements.txt
 $E/bin/python -m pip install -q --progress-bar off ninja setuptools wheel
 TORCH_CUDA_ARCH_LIST=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
 export TORCH_CUDA_ARCH_LIST

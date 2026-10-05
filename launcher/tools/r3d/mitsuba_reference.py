@@ -1,10 +1,9 @@
 """Path-traced backend for reference_render.py: the same source mesh, albedo, camera and lights, rendered by Mitsuba 3.
 
-The adapter only translates what the Embree reference already interprets (geometry after alpha rejection, the
+The adapter only translates what the bake reference already interprets (geometry after alpha rejection, the
 albedo decode, the pinhole camera, the scene's lights) into a Mitsuba scene, so the two backends differ in
 transport and nothing else. It returns linear radiance and per-pixel coverage; exposure, tone map and RGB565
-conversion stay with reference_render.device_picture. Mitsuba and Dr.Jit are optional, pinned in
-requirements-gpu.txt.
+conversion stay with reference_render.device_picture. Mitsuba and Dr.Jit are pinned in requirements.txt.
 """
 
 import math
@@ -27,13 +26,23 @@ def import_mitsuba():
 
 
 def default_variant(mi):
-    """The fastest variant this machine can run: CUDA, then LLVM, then the scalar CPU one."""
+    """The fastest variant this machine can run: CUDA, then LLVM, then the scalar CPU one. A CUDA device without
+    OptiX, as under WSL, loads no scene, so each candidate is proven with one."""
     import drjit as dr
 
     for backend, variant in ((dr.JitBackend.CUDA, "cuda_ad_rgb"), (dr.JitBackend.LLVM, "llvm_ad_rgb")):
-        if variant in mi.variants() and dr.has_backend(backend):
+        if variant in mi.variants() and dr.has_backend(backend) and traces_rays(mi, variant):
             return variant
     return "scalar_rgb"
+
+
+def traces_rays(mi, variant):
+    mi.set_variant(variant)
+    try:
+        mi.load_dict({"type": "scene", "shape": {"type": "rectangle"}})
+    except RuntimeError:
+        return False
+    return True
 
 
 def material_bsdf(mi, kd, texture, two_sided):
@@ -158,7 +167,7 @@ def prepare(source, lights, double_sided, sky=None, variant=None, pixels_per_pas
     in flight at once."""
     mi = import_mitsuba()
     if mi is None:
-        raise RuntimeError("the path-traced backend needs Mitsuba: pip install -r launcher/tools/r3d/requirements-gpu.txt")
+        raise RuntimeError("the path-traced backend needs Mitsuba: pip install -r launcher/tools/r3d/requirements.txt")
     mi.set_variant(variant or default_variant(mi))
     scene = {"type": "scene", "integrator": integrator(DEFAULT_DEPTH)}
     scene.update(source_meshes(mi, source, double_sided))

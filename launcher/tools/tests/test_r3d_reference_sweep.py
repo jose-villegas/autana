@@ -9,6 +9,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
 try:
     import numpy as np
+    from tests import soup  # noqa: F401  (traces the bake's rays on the scalar variant)
 
     from r3d import reference_sweep
     from r3d.reference_render import main as reference_main
@@ -87,7 +88,7 @@ class ReferenceBackendOptionsTest(unittest.TestCase):
     def test_a_physical_sky_needs_the_path_traced_backend(self):
         self.rejected("--sky", "hosek-wilkie")
 
-    def test_the_normal_buffer_is_an_embree_output(self):
+    def test_the_normal_buffer_is_a_bake_output(self):
         self.rejected("--backend", "mitsuba", "--normals")
 
     def test_spp_and_depth_must_be_positive(self):

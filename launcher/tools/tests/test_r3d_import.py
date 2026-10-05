@@ -19,6 +19,7 @@ from r3d.scene_table import table_files, write_scene_table
 
 try:
     import numpy as np
+    from tests import soup  # noqa: F401  (traces the bake's rays on the scalar variant)
 
     from r3d import mesh_import
     from r3d.light import LIGHTS, encode_srgb8, light, to_srgb8
@@ -754,7 +755,7 @@ class AuthoredImportTests(unittest.TestCase):
 
 
 class ClearIntersector:
-    def intersects_any(self, origins, directions):
+    def blocked(self, origins, directions):
         return np.zeros(len(origins), dtype=bool)
 
 
@@ -844,8 +845,7 @@ class BakeStepTests(unittest.TestCase):
                                  names=["m"], textures=[None], materials={})
         seen = []
         with mock.patch.object(mesh_import, "load_source", return_value=source), \
-                mock.patch.object(mesh_import, "RayMeshIntersector"), \
-                mock.patch.object(mesh_import.trimesh, "Trimesh"), \
+                mock.patch.object(mesh_import, "RayQuery"), \
                 mock.patch.object(mesh_import, "visible_triangles", side_effect=lambda v, *rest: seen.append(v) or np.array([True])), \
                 mock.patch.object(mesh_import, "shade_unlit",
                                   return_value=(np.zeros((3, 3)), np.zeros((3, 3)), np.array([[0, 1, 2]]))):
@@ -886,8 +886,7 @@ class ReferenceObjectTests(unittest.TestCase):
                                      names=["m"], textures=[None], materials={})
             built = []
             with mock.patch.object(reference_render, "load_source", return_value=source), \
-                    mock.patch.object(reference_render, "RayMeshIntersector"), \
-                    mock.patch.object(reference_render.trimesh, "Trimesh"), \
+                    mock.patch.object(reference_render, "RayQuery"), \
                     mock.patch.object(mesh_import, "build_indirect_cache", side_effect=lambda *args: built.append(args) or "cache"):
                 _, dark = reference_render.source_for(scene, "dark")
                 lit, bounced_job = reference_render.source_for(scene, "bounced")

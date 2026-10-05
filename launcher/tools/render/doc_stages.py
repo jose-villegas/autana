@@ -238,12 +238,11 @@ def bake_worker(scene, job, index, prefix, baked_name, work):
                    geometry.tri_double, **geometry.scale)
     if index == 1:
         from r3d.light import visible_from_path
-        from trimesh import Trimesh
-        from trimesh.ray.ray_pyembree import RayMeshIntersector
+        from r3d.ray_query import RayQuery
         visibility = job.renderer.visibility
         width, height, lens, near, poses = camera_path_poses(scene, visibility)
         seen = visible_from_path(geometry.positions, geometry.tris, geometry.tri_double,
-            RayMeshIntersector(Trimesh(geometry.positions, geometry.tris, process=False)),
+            RayQuery(geometry.positions, geometry.tris),
             poses, width, height, lens, near, visibility.samples, visibility.margin)
         culled_dir = work / "culled-full"
         culled_dir.mkdir(exist_ok=True)

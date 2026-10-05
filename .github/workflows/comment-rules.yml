@@ -97,15 +97,13 @@ jobs:
         run: pip install pyserial==3.5 -r launcher/tools/render/requirements.txt
 
       # test_r3d_bake.py skips itself without numpy and scipy, and builds
-      # meshoptimizer's library from its submodule with the runner's compiler.
+      # meshoptimizer's library from its submodule with the runner's compiler;
+      # test_r3d_ray_query.py checks the LLVM variant when libLLVM is there.
       - name: r3d bake environment
         run: |
           pip install -r launcher/tools/r3d/requirements.txt
+          sudo apt-get install -y --no-install-recommends llvm
           git submodule update --init --depth 1 third_party/upstream/meshoptimizer
-
-      # test_r3d_mitsuba_reference.py runs on Mitsuba's scalar CPU variant and skips without it.
-      - name: r3d path-traced reference environment
-        run: pip install -r launcher/tools/r3d/requirements-gpu.txt
 
       # test_check_math.mjs renders through GitHub's MathJax.
       - name: check-math.mjs dependencies

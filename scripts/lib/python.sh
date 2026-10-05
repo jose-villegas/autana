@@ -26,7 +26,7 @@ for name in sys.argv[1:]:
 
 # find_r3d_python <repo-root> prints the interpreter that has the r3d tools'
 # requirements: the venv under launcher/tools/r3d/.cache when there is one,
-# else the first find_python with trimesh, embreex and scipy.
+# else the first find_python with mitsuba and scipy.
 #
 #   R3D_PYTHON=$(find_r3d_python "$ROOT") || exit 2
 
@@ -37,5 +37,5 @@ find_r3d_python() {
             return 0
         fi
     done
-    find_python trimesh embreex scipy
+    find_python mitsuba scipy
 }

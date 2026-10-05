@@ -53,7 +53,7 @@ def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi):
         hit = np.zeros(len(todo), dtype=bool)
         if np.any(facing):
             f = np.nonzero(facing)[0]
-            locations, index_ray, _ = intersector.intersects_location(origin[f], d[f], multiple_hits=False)
+            locations, index_ray, _ = intersector.first_hit(origin[f], d[f])
             hit_dist = np.full(len(f), np.inf)
             hit_dist[index_ray] = np.linalg.norm(locations - origin[f][index_ray], axis=1)
             hit[f] = hit_dist < dist[f] - 1.0
@@ -106,7 +106,7 @@ def visible_from_path(p, tri_v, double, intersector, poses, width, height, lens,
         origin, direction = camera_rays(width, height, lens, pose[:3], pose[3:], samples, margin)
         ahead = pose[3:] / np.linalg.norm(pose[3:])
         origin = origin + direction * (near / (direction @ ahead))[:, None]
-        hit, ray, where = intersector.intersects_id(origin, direction, multiple_hits=True, return_locations=True)
+        hit, ray, where = intersector.all_hits(origin, direction)
         if len(hit) == 0:
             continue
         distance = ((where - origin[ray]) * direction[ray]).sum(axis=1)
@@ -143,7 +143,7 @@ def unshadowed_count(intersector, origin, directions):
     is one vector for every origin or one per origin."""
     count = np.zeros(len(origin))
     for direction in directions:
-        count += ~intersector.intersects_any(origin, np.ascontiguousarray(np.broadcast_to(direction, origin.shape)))
+        count += ~intersector.blocked(origin, np.ascontiguousarray(np.broadcast_to(direction, origin.shape)))
     return count
 
 
@@ -269,7 +269,7 @@ def local_occlusion(points, normals, intersector, ao, ray_offset):
     tu, tv = tangent_frame(normals)
     for x, y, z in sky_directions(ao.rays):
         direction = tu * x + tv * y + normals * z
-        locations, indices, _ = intersector.intersects_location(origin, direction, multiple_hits=False)
+        locations, indices, _ = intersector.first_hit(origin, direction)
         reach = np.linalg.norm(locations - origin[indices], axis=1)
         covered[indices] += np.clip(1.0 - reach / ao.distance, 0.0, 1.0)
     return 1.0 - ao.strength * covered / ao.rays
@@ -369,7 +369,7 @@ def gather_indirect(points, normals, intersector, cache, groups=None):
     tu, tv = tangent_frame(normals)
     for x, y, z in sky_directions(cache.rays):
         direction = tu * x + tv * y + normals * z
-        locations, indices, faces = intersector.intersects_location(origin, direction, multiple_hits=False)
+        locations, indices, faces = intersector.first_hit(origin, direction)
         found = cache.radiance[:, faces].sum(axis=0)
         if cache.normals is not None:
             behind = np.einsum("ij,ij->i", direction[indices], cache.normals[faces]) > 0
