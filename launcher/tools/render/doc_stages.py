@@ -24,6 +24,9 @@ HOST_SCRIPT = ROOT / "launcher/main/apps/render_lab/tools/render_lab_render_host
 RESULTS = ROOT / "launcher/tools/results/doc_images"
 WEIGHTS = ROOT / "launcher/tools/r3d/board_cost_weights.txt"
 VARIANTS = ("sponza", "lite", "flat", "fitted", "fitted-full")
+# The scene's ambient light is faint, so the occlusion has little to scale; the occlusion run raises it.
+AO_AMBIENT = "0.25"
+AO_SETTING = "ao = { distance = 80.0, rays = 32 }"
 
 
 def git_environment():
@@ -282,6 +285,29 @@ def prepare_variants(executor, scene, jobs, work, on_ready):
     return ready
 
 
+def write_ao_scene(directory):
+    """A scratch copy of the scene with its ambient light raised and local occlusion on, beside copies of the files it
+    reads; the import's source path is made absolute so the copy reaches the committed source."""
+    import re
+    from r3d.import_settings import load_scene
+    from r3d.poses import tracks_file
+    directory.mkdir(parents=True, exist_ok=True)
+    meshes = SCENE.parent
+    imported = (meshes / "sponza.import.toml").read_text(encoding="utf-8")
+    imported = re.sub(r'^path = "(.*)"$', lambda match: f'path = "{(meshes / match.group(1)).resolve().as_posix()}"',
+                      imported, count=1, flags=re.M)
+    (directory / "sponza.import.toml").write_text(imported, encoding="utf-8")
+    text = SCENE.read_text(encoding="utf-8")
+    text, raised = re.subn(r"(?m)(^\[ambient\]\n(?:[^\[\n].*\n)*?intensity = )[0-9.]+", rf"\g<1>{AO_AMBIENT}", text, count=1)
+    text, added = re.subn(r"(?m)^(indirect = \{.*\})$", rf"\1\n{AO_SETTING}", text, count=1)
+    if not raised or not added:
+        raise ValueError(f"{SCENE.name}: no [ambient] intensity or [bake] indirect line to build the occlusion scene from")
+    (directory / SCENE.name).write_text(text, encoding="utf-8")
+    tracks = tracks_file(load_scene(SCENE))
+    shutil.copyfile(tracks, directory / tracks.name)
+    return directory / SCENE.name
+
+
 def gpu(args, out, work):
     # The parent never forks or initialises CUDA; disposable workers own heavy state.
     memory_guard()
@@ -291,13 +317,13 @@ def gpu(args, out, work):
 
 
 def _gpu(args, out, work, executor):
-    from r3d.fitted_variant import (placed_variant, plot_pareto,
+    from r3d.fitted_variant import (placed_variant, plot_pareto, prepare,
                                    run_sweep_points, sweep_rows, write_sweep_csv, fit_point)
     from r3d.import_settings import load_scene
     from r3d.bake_fidelity import build_host
     from r3d.cost_model import load
     from functools import partial
-    from r3d.process_budget import BAKE_BYTES, MEASURE_BYTES, SMOKE_PREPARE_BYTES, FIT_BYTES
+    from r3d.process_budget import BAKE_BYTES, MEASURE_BYTES, PREPARE_BYTES, SMOKE_PREPARE_BYTES, FIT_BYTES
 
     scene = load_scene(SCENE)
     jobs = [placed_variant(scene, name) for name in ("sponza_fitted", "sponza_fitted_full")]
@@ -404,6 +430,30 @@ def _gpu(args, out, work, executor):
 
             run_sweep_points(work, points, run_point)
             sweep = sweep_rows(work, points)
+    # The lite mesh again on a scene with local occlusion: its references carry it, so the fit and the simplified bake
+    # are scored on the same occluded picture.
+    ao_path = write_ao_scene(work / "ao-scene")
+    ao_scene = load_scene(ao_path)
+    ao_job = placed_variant(ao_scene, "sponza_fitted")
+    ao_inputs = work / "inputs-ao"
+    executor.submit(prepare, ao_path, ao_scene, ao_job, ao_inputs, estimates=PREPARE_BYTES).result()
+    ao_fit = executor.submit(fit_point, {}, work / "fit-ao", ao_path, ao_scene, ao_job, ao_inputs, False, work / "ao.mesh",
+                             estimates=FIT_BYTES)
+    ao_baked, _ = executor.submit(bake_worker, ao_scene, ao_job, 0, "ao-lite", "atrium_lite", work,
+                                  estimates=BAKE_BYTES, priority=True).result()
+    measure("ao-bake", ao_job, ao_baked, ao_inputs)
+    measure("ao-fit", ao_job, Path(ao_fit.result()["mesh"]), ao_inputs)
+    run([sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out", out / "render/gpu/appearance-ao-lite.png",
+         "--reference-bakes", ao_inputs / "reference_held_out", "--reference-scale", "2", "--sheet-frames", "0,4",
+         "--bake", "simplified bake", comparisons["ao-bake"], "--bake", "fitted", comparisons["ao-fit"], "--crops", "3"],
+        work / "sheet-ao.log")
+    names = {"ao-bake": "Simplified bake", "ao-fit": "Fitted"}
+    ao_table = markdown(["Mesh", "Triangles", "Mean dE76", "p95 dE76", "SSIM", "Normal angle", "Predicted ms"],
+                        [(names[row[0]], *row[1:]) for row in rows if row[0] in names])
+    ao_table += "\n![Simplified and fitted lite mesh with local occlusion](../../../../../docs/images/render/gpu/appearance-ao-lite.png)\n"
+    if (out / "render/gpu/appearance-ao-lite.crops.png").exists():
+        ao_table += "\n![Where the fit differs from the simplified bake](../../../../../docs/images/render/gpu/appearance-ao-lite.crops.png)\n"
+    (out / "tables/sponza-gpu-ao.md").write_text(ao_table, encoding="utf-8")
     write_sweep_csv(out / "sweep.csv", sweep)
     plot_pareto(out / "render/gpu/appearance-pareto.png", sweep)
     (out / "tables/sponza-budget.md").write_text(markdown(
