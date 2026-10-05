@@ -201,8 +201,8 @@ class SourceTests(unittest.TestCase):
                 tracks_asset.bake(path)
 
     def test_a_source_that_is_not_a_glb_file_name_is_refused_by_the_rule_not_a_missing_file(self):
-        # Every name below is a real, valid glb where the system can make one,
-        # so only the rule can refuse it.
+        # The refusal must be the rule's own message: a missing file fails it,
+        # and the names that are plain paths here are real glbs on disk.
         (self.root / "clips" / "sub").mkdir()
         for name in ("sub/probe.glb", "probe.bin", "probe.glb.bak"):
             (self.root / "clips" / name).write_bytes(probe_glb())
