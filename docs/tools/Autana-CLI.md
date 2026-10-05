@@ -139,6 +139,12 @@ one line naming the new form, then runs it.
 | `autana drag <x0> <y0> <x1> <y1> <ms>` | Drag between two points over `ms`. |
 | `autana button <boot\|power> [short\|long]` | A BOOT or PWR press; `short` when omitted. |
 
+A point is a pixel of the default `autana screenshot` (448 x 368, landscape),
+whichever way the board is held: read a button's centre off that image and
+tap it as it is. autana turns the point into the touch controller's own
+frame before sending it. An `--as-shown` or `--framebuffer` capture is
+turned differently, so its pixels do not tap the same spot.
+
 The two raw levels below gesture, `touch` and `imu`, live under
 [`autana debug`](#debug).
 
