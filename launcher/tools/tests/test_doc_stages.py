@@ -201,6 +201,27 @@ class OcclusionSceneTests(unittest.TestCase):
                     stages.write_ao_scene(Path(directory) / "out")
 
 
+class RayTracingPreflightTests(unittest.TestCase):
+    def test_a_runner_that_cannot_load_the_llvm_backend_is_refused_with_the_fix(self):
+        failed = subprocess.CompletedProcess([], 1, "", "ImportError: libatomic.so.1: cannot open shared object file")
+        with mock.patch.object(stages.subprocess, "run", return_value=failed):
+            with self.assertRaisesRegex(ValueError, r"libatomic\.so\.1.*install libatomic1 and libLLVM"):
+                stages.require_ray_tracing()
+
+    def test_a_runner_without_an_llvm_backend_says_so(self):
+        absent = subprocess.CompletedProcess([], 3, "", "")
+        with mock.patch.object(stages.subprocess, "run", return_value=absent):
+            with self.assertRaisesRegex(ValueError, "no LLVM backend"):
+                stages.require_ray_tracing()
+
+    def test_a_runner_with_the_backend_passes(self):
+        with mock.patch.object(stages.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "", "")):
+            self.assertIsNone(stages.require_ray_tracing())
+
+    def test_the_check_asks_drjit_for_the_llvm_backend(self):
+        self.assertIn("has_backend(dr.JitBackend.LLVM)", stages.RAY_TRACING_CHECK)
+
+
 class PrepareSchedulingTests(unittest.TestCase):
     def test_both_prepares_submitted_before_any_variant_is_consumed(self):
         from concurrent.futures import Future
