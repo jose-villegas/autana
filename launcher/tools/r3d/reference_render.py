@@ -195,6 +195,7 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
     from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS, parent_death_signal
     import os
     global POSE_STATE
+    budget_capacity = None
     if workers is None:
         estimate = max(64 * 1024 ** 2, width * height * samples * samples * POSE_BASE_BYTES_PER_RAY)
         reservation = process_budget.task_reservation()
@@ -203,7 +204,10 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
             budget = process_budget.POSE_POOL_BYTES
             if reservation == process_budget.SMOKE_PREPARE_BYTES:
                 budget = min(budget, reservation[0])
-            workers = reservation_pose_capacity(budget, rss, estimate, cores_available())
+            cores = cores_available()
+            budget_capacity = reservation_pose_capacity(budget, rss, estimate, cores)
+            memory_capacity = worker_capacity(available_bytes(), (estimate, 0, estimate), FLOORS, cores)
+            workers = max(1, min(budget_capacity, memory_capacity))
         else:
             workers = worker_capacity(available_bytes(), (estimate, 0, estimate), FLOORS, cores_available())
             if not workers:
@@ -213,6 +217,8 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
         raise ValueError("workers must be positive")
     if workers > 1 and "fork" not in multiprocessing.get_all_start_methods():
         workers = 1
+    if budget_capacity is not None:
+        print(f"pose pool workers={workers} budget_capacity={budget_capacity} memory_capacity={memory_capacity}", flush=True)
     POSE_STATE = (source, job, scene, width, height, lens, samples, pathlib.Path(out), normals, occlusion)
     pose_peaks = {}
     try:
