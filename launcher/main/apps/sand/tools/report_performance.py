@@ -27,6 +27,7 @@ app uses, so that deleting the app leaves nothing stranded.
 import argparse
 import re
 import sys
+from pathlib import Path
 from datetime import datetime, timezone
 
 # A frame-budget test: a `static void test_...(void) { ... }` function body
@@ -48,12 +49,13 @@ BUDGET_RES = (
 )
 DEFINE_RE = re.compile(r"#define\s+(\w+)\s+(\d+)")
 
-RESULT_RE = re.compile(r"^\S*:\d+:(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
+sys.path.insert(0, str(Path(__file__).resolve().parents[5] / "scripts/lib"))
+from device_capture import RESULT_RE  # noqa: E402
 
 # A separate line - not part of the result line above - emitted by
 # test/timing.c for every test, on both host and device. Kept separate on
 # purpose: RESULT_RE is anchored at end-of-line, so appending timing to the
-# PASS/FAIL line itself would have broken it (and validate_capture.py's
+# result line itself would have broken it (and validate_capture.py's
 # looser prefix match) rather than just adding a new thing to ignore. Its
 # absence means an older capture, from before per-test timing existed - see
 # make_slow_tests_section() below, which degrades to nothing rather than
@@ -321,7 +323,7 @@ def main() -> int:
             budget_s = str(budget)
             headroom_s = f"{(budget - measured) / budget * 100:+.1f}%" if measured else "?"
         measured_s = str(measured) if measured is not None else "?"
-        mark = "PASS" if status == "PASS" else f"**FAIL**"
+        mark = "**FAIL**" if status == "FAIL" else status
         lines.append(f"| `{name}` | {budget_s} | {measured_s} | {headroom_s} | {mark} |")
     lines.append("")
 

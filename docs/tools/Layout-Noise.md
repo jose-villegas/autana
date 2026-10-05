@@ -53,4 +53,6 @@ A seeded image has its own `BUILD_ID`, and the same seed builds the same image.
 Repeating a seed (`--seeds 1 1 1`) flashes the same image again, so that run's
 sigma_flash is boot-to-boot alone; the difference to a run of distinct seeds is
 the layout. The flash cost counts the build, the flash and the boot. A
-comparison's floor is its own sigma_flash, measured from its own captures.
+comparison estimates sigma_flash from its own captures. See
+[Performance comparison](../../launcher/tools/perf/README.md) for seeded revision
+comparisons and A/A calibration.

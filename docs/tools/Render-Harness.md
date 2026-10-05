@@ -89,7 +89,10 @@ floors and worker estimates. Later admission projects each active worker's
 not-yet-resident allocation onto live WSL, GPU and cgroup memory, bounded
 by CPU affinity. A task can run alone when the floors hold; additional
 workers need room for their reservations. Smaller eligible tasks can pass
-larger waiting tasks. Admission and worker peaks are logged.
+larger waiting tasks. Admission and worker peaks are logged. Failed
+memory queries pause admission and retry, with rate-limited warnings; an unbroken
+run of failures lasting `GPU_QUERY_FAILURE_SECONDS` fails the stage, and a missing
+`nvidia-smi` fails at once.
 
 ```mermaid
 flowchart TD
@@ -97,7 +100,7 @@ flowchart TD
     Queue --> Admission{Live memory and core admission}
     Admission --> Worker[Spawn worker]
     Worker --> Kind{Task kind}
-    Kind -->|Prepare| Poses[Fork reference poses within pose-pool budget]
+    Kind -->|Prepare| Poses[Render reference poses in the main process with bounced light, else in a pool within budget and live memory]
     Poses --> Ready[Variant inputs ready]
     Ready --> Fits[Queue independent fits]
     Fits --> Admission
@@ -116,10 +119,12 @@ workers too; workers die with their parent.
 Reference poses share the loaded source through copy-on-write, and every
 pose's rays are fixed, so a pose renders the same in any worker. A source with
 bounced light renders its poses in the main process, where Mitsuba's threads use
-every core. Standalone reference renders
-size their pool from available memory. Admitted prepares use the explicit
-`POSE_POOL_BYTES` sizing budget in `process_budget.py`, independent of the
-prepare admission estimate; smoke prepares retain their smaller budget.
+every core. Standalone reference renders size their pool from available memory.
+An admitted prepare sizes its pool from its own admission estimate
+(`PREPARE_BYTES`, or `SMOKE_PREPARE_BYTES` for a smoke prepare). At pool
+creation, live WSL and cgroup memory also cap the worker count, using the
+memory floors while retaining at least one worker. The pool logs the chosen
+worker count, both capacities and the parent's resident size.
 `worker reference_poses` reports `pose_peak_pss_bytes` and `pose_workers`.
 The PSS value sums each worker's maximum end-of-pose sample from Linux
 `smaps_rollup`; it is not a simultaneous pool high-water mark. PSS shares

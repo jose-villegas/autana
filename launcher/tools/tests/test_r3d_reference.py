@@ -115,7 +115,7 @@ class PooledReferenceTests(unittest.TestCase):
         from r3d import reference_render
         from unittest.mock import patch
         if "fork" not in multiprocessing.get_all_start_methods():
-            self.skipTest("copy-on-write pose pool needs fork")
+            self.skipTest("pose pool needs fork")
         source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
         wall = soup.box(extents=(.1, 4., 2.))
         wall.apply_translation((1.2, 0., 1.))
@@ -260,7 +260,8 @@ class PoseMetricTests(unittest.TestCase):
         pool.__exit__ = Mock(return_value=False)
         pool.map.return_value = [(101, 30), (102, 40), (101, 20), (102, 50)]
         with patch.object(budget, 'task_reservation', return_value=budget.PREPARE_BYTES), \
-                patch.object(budget, 'resident_bytes', return_value=(3290000000, 0, 3290000000)), \
+                patch.object(budget, 'resident_bytes', return_value=(budget.GIB, 0, budget.GIB)), \
+                patch.object(budget, 'available_bytes', return_value=(1 << 60,) * 3), \
                 patch.object(budget, 'cores_available', return_value=10), \
                 patch.object(reference.multiprocessing, 'get_all_start_methods', return_value=['fork']), \
                 patch.object(reference.multiprocessing, 'get_context'), \
@@ -276,6 +277,7 @@ class PoseMetricTests(unittest.TestCase):
         from r3d import process_budget as budget, reference_render as reference
         with patch.object(budget, 'task_reservation', return_value=budget.SMOKE_PREPARE_BYTES), \
                 patch.object(budget, 'resident_bytes', return_value=(budget.GIB, 0, budget.GIB)), \
+                patch.object(budget, 'available_bytes', return_value=(1 << 60,) * 3), \
                 patch.object(budget, 'cores_available', return_value=10), \
                 patch.object(reference, '_write_pose', side_effect=[(1, 20), (1, 30), (1, 10)]):
             self.assertEqual(reference.render_poses(None, None, None, [None] * 3,
