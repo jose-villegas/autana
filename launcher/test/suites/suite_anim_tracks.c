@@ -1,6 +1,5 @@
 /*
- * Portable suite: anim/anim_tracks, the TRCK pack entry. Each malformed case
- * edits one field of an entry built here byte by byte. On a host the clip
+ * Portable suite: anim/anim_tracks, the TRCK pack entry. On a host the clip
  * tools/tests/anim_probe.py packs (AUTANA_ANIM_PROBE) samples as the Python
  * sampler does; on both, every clip in the shipped pack opens, and the boot
  * clip holds the same floats as the tracks compiled into the firmware.
@@ -156,6 +155,36 @@ test_an_array_past_the_end_is_out_of_bounds(void) {
     test_free_aligned(f.raw);
 }
 
+/* Track B's 3 keys fit 1 wide but not 4: the values check counts the width. */
+static void
+test_values_that_leave_the_entry_only_by_their_width_are_out_of_bounds(void) {
+    fixture_t f = fixture();
+    anim_tracks_t tracks;
+    f.entry[ROW1 + 42] = 4;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_fixture(&f, ENTRY_BYTES, &tracks));
+    test_free_aligned(f.raw);
+}
+
+/* Track A's two times start 4 bytes before the end while its values fit. */
+static void
+test_times_that_alone_leave_the_entry_are_out_of_bounds(void) {
+    fixture_t f = fixture();
+    anim_tracks_t tracks;
+    put32(f.entry + ROW0 + 32, ENTRY_BYTES - 4);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_fixture(&f, ENTRY_BYTES, &tracks));
+    test_free_aligned(f.raw);
+}
+
+/* An offset whose end wraps past 2^32 back into the entry is still out of it. */
+static void
+test_an_offset_that_wraps_round_is_out_of_bounds(void) {
+    fixture_t f = fixture();
+    anim_tracks_t tracks;
+    put32(f.entry + ROW0 + 32, 0xFFFFFFFCU);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_fixture(&f, ENTRY_BYTES, &tracks));
+    test_free_aligned(f.raw);
+}
+
 static void
 test_misaligned_floats_or_floats_inside_the_table_are_out_of_bounds(void) {
     fixture_t f = fixture();
@@ -198,7 +227,9 @@ test_a_bad_width_interpolation_or_flag_is_a_format_error(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_with_row_byte(43, ANIM_CUBIC + 1));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_with_row_byte(44, 2));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_with_row_byte(44, 1)); /* a quaternion 3 wide */
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_with_row_byte(46, 1)); /* padding in use */
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_with_row_byte(45, 1)); /* padding in use, each byte */
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_with_row_byte(46, 1));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_with_row_byte(47, 1));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_with_row_byte(40, 0)); /* no keys (count's low byte; high is 0) */
 }
 
@@ -365,6 +396,9 @@ suite_anim_tracks(void) {
     RUN_TEST(test_a_missing_name_is_not_found);
     RUN_TEST(test_a_truncated_header_or_table_is_out_of_bounds);
     RUN_TEST(test_an_array_past_the_end_is_out_of_bounds);
+    RUN_TEST(test_values_that_leave_the_entry_only_by_their_width_are_out_of_bounds);
+    RUN_TEST(test_times_that_alone_leave_the_entry_are_out_of_bounds);
+    RUN_TEST(test_an_offset_that_wraps_round_is_out_of_bounds);
     RUN_TEST(test_misaligned_floats_or_floats_inside_the_table_are_out_of_bounds);
     RUN_TEST(test_an_entry_off_a_4_byte_boundary_is_out_of_bounds);
     RUN_TEST(test_a_bad_width_interpolation_or_flag_is_a_format_error);

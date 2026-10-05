@@ -16,5 +16,7 @@ python tools/anim/bake_tracks.py ASSET.glb --animation NAME --name PREFIX --out-
 tools/anim/sample_tracks.sh --tracks DIR/PREFIX_tracks_generated.c:PREFIX --every 250
 ```
 
-The reader and writer are in [`tools/gltf/`](../gltf/); the sampler in `gltf/gltf_read.py` is the reference: `tests/test_anim_bake.py`
-and `tests/test_anim_tracks_asset.py` hold the C runtime to it; `tests/anim_probe.py` writes the clip the host suite samples.
+The reader and writer are in [`tools/gltf/`](../gltf/); the sampler in `gltf/gltf_read.py` is the reference.
+`tests/test_anim_bake.py` holds the C runtime to it, and `tests/anim_probe.py` writes the clip that
+`suite_anim_tracks.c` holds to it on the host. `tests/test_anim_tracks_asset.py` holds `tracks_asset.py`'s
+writer and reader to each other.

@@ -2,19 +2,9 @@
 NAME.anim.toml beside its .glb, and read back. The one writer and reader of
 the entry; main/anim/anim_tracks.c is the firmware's reader.
 
-A NAME.anim.toml names its source and the animation in it; the pack id is NAME:
-
-    source = "NAME.glb"      # relative to the .anim.toml
-    animation = "walk"       # the animation's name in the glTF
-
-The entry, little-endian, every offset from its first byte:
-
-    header   u16 version, u16 track_count, u32 duration_ms
-    rows     per track: char name[32] (NUL padded, so at most 31 bytes),
-             u32 times_off, u32 values_off, u16 count, u8 width, u8 interp,
-             u8 quaternion, 3 zero bytes
-    data     each track's f32 times, then its f32 values (cubic: in-tangent,
-             value, out-tangent per key), 4-aligned
+A NAME.anim.toml names its source .glb, a file in its own folder, and the
+animation in it; the pack id is NAME. The keys and the entry's layout are in
+docs/Animation-Tracks.md, "The pack entry".
 
 A track is named by its glTF binding: `node/translation`, or a
 KHR_animation_pointer path with the object's index replaced by its name
@@ -134,8 +124,8 @@ def encode(tracks, duration_ms):
     names = set()
     for track in tracks:
         raw = track["name"].encode("utf-8")
-        if not raw or len(raw) >= NAME_BYTES:
-            raise TracksError("track %r: a name is 1 to %d bytes" % (track["name"], NAME_BYTES - 1))
+        if not raw or len(raw) >= NAME_BYTES or b"\0" in raw:
+            raise TracksError("track %r: a name is 1 to %d bytes, none of them NUL" % (track["name"], NAME_BYTES - 1))
         if track["name"] in names:
             raise TracksError("two tracks are named %r" % track["name"])
         names.add(track["name"])
@@ -209,6 +199,9 @@ def load_source(path):
         raise TracksError("%s: %s" % (path, error)) from error
     if set(values) != {"source", "animation"} or not all(isinstance(v, str) and v for v in values.values()):
         raise TracksError("%s: holds exactly source = \"x.glb\" and animation = \"<name>\"" % path)
+    # Beside it, so whatever finds the .anim.toml finds its source too.
+    if pathlib.PurePath(values["source"]).name != values["source"] or values["source"] in (".", ".."):
+        raise TracksError("%s: source %r is not a file in the same folder" % (path, values["source"]))
     return path.parent / values["source"], values["animation"]
 
 
