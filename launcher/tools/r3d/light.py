@@ -1,4 +1,4 @@
-"""Baked direct light: a sun with soft shadows and sky visibility, cast against the full-detail mesh, plus albedo sampled from textures and region visibility culling."""
+"""Baked light: the sun and sky cast against the full-detail mesh by shadow rays, the light that bounces (PathLight), the scene ambient, and albedo sampled from textures and region visibility culling."""
 
 import math
 from types import SimpleNamespace
@@ -122,22 +122,6 @@ def visible_from_path(p, tri_v, double, intersector, poses, width, height, lens,
     return seen
 
 
-def sun_directions(light):
-    """One fixed set of directions over the sun's disc, shared by every point,
-    so two points agree exactly unless something really shadows one of them."""
-    sun = np.array(light["direction"], dtype=np.float64)
-    sun /= np.linalg.norm(sun)
-    u, v = sun_basis(sun)
-    radius = math.tan(math.radians(light["disc_degrees"]))
-    dirs = [sun]
-    rings = max(1, light["rays"] - 1)
-    for i in range(rings):
-        a = 2 * math.pi * i / rings
-        d = sun + u * (0.7 * radius * math.cos(a)) + v * (0.7 * radius * math.sin(a))
-        dirs.append(d / np.linalg.norm(d))
-    return sun, dirs
-
-
 def unshadowed_count(intersector, origin, directions):
     """How many of the directions reach the sky from each origin; a direction
     is one vector for every origin or one per origin."""
@@ -187,13 +171,6 @@ def sample_albedo(points, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd):
     return albedo_from_uv(tex, kd, tuv, lod)
 
 
-def sun_basis(direction):
-    helper = np.array([0.0, 0.0, 1.0]) if abs(direction[2]) < 0.9 else np.array([1.0, 0.0, 0.0])
-    u = np.cross(direction, helper)
-    u /= np.linalg.norm(u)
-    return u, np.cross(direction, u)
-
-
 def tangent_frame(n):
     """Two unit tangents completing each normal in n, fixed by the normal alone."""
     tu = np.where(np.abs(n[:, 2:3]) < 0.9, [[0.0, 0.0, 1.0]], [[1.0, 0.0, 0.0]])
@@ -213,37 +190,19 @@ def sky_directions(count):
 
 
 def bake_directional(light, ctx):
+    """The sun is a point source: one shadow ray, and the cosine of the angle to the normal."""
     sun = np.array(light["direction"], dtype=np.float64)
     sun /= np.linalg.norm(sun)
-    cos_sun = np.maximum(ctx.normals @ sun, 0.0)
-    if ctx.shared:
-        directions = [sun] if ctx.sun_centre else sun_directions(light)[1]
-    else:
-        u, v = sun_basis(sun)
-        radius = math.tan(math.radians(light["disc_degrees"]))
-        directions = []
-        for _ in range(light["rays"]):
-            r, angle = math.sqrt(ctx.rng.random()) * radius, ctx.rng.random() * 2 * math.pi
-            direction = sun + u * (r * math.cos(angle)) + v * (r * math.sin(angle))
-            directions.append(direction / np.linalg.norm(direction))
-    lit = unshadowed_count(ctx.intersector, ctx.origin, directions)
-    return (cos_sun * lit / len(directions))[:, None] * np.array(light["color"]) * light["intensity"]
+    lit = unshadowed_count(ctx.intersector, ctx.origin, [sun])
+    return (np.maximum(ctx.normals @ sun, 0.0) * lit)[:, None] * np.array(light["color"]) * light["intensity"]
 
 
 def bake_sky(light, ctx):
+    """The share of the light's `rays` fixed cosine-weighted directions that reach the sky."""
     n = ctx.normals
     tu, tv = tangent_frame(n)
-    rays = ctx.shared_sky_rays if ctx.shared else light["rays"]
-    if ctx.shared:
-        directions = (tu * x + tv * y + n * z for x, y, z in sky_directions(rays))
-    else:
-        def directions_for_rays():
-            for _ in range(rays):
-                r1, r2 = ctx.rng.random(len(n)), ctx.rng.random(len(n))
-                r, angle = np.sqrt(r1)[:, None], (2 * math.pi * r2)[:, None]
-                yield tu * (r * np.cos(angle)) + tv * (r * np.sin(angle)) + n * np.sqrt(1 - r1)[:, None]
-        directions = directions_for_rays()
-    visible = unshadowed_count(ctx.intersector, ctx.origin, directions) / rays
+    directions = (tu * x + tv * y + n * z for x, y, z in sky_directions(light["rays"]))
+    visible = unshadowed_count(ctx.intersector, ctx.origin, directions) / light["rays"]
     return visible[:, None] * np.array(light["color"]) * light["intensity"]
 
 
@@ -262,7 +221,7 @@ assert set(LIGHTS) == set(LIGHT_FIELDS)
 def local_occlusion(points, normals, intersector, ao, ray_offset):
     """Distance-limited ambient occlusion per point: 1 where nothing stands within `ao.distance` of the point's
     hemisphere, down to 1 - `ao.strength` where it is walled in. Every point uses the same cosine-weighted
-    directions in its own frame, as `gather_indirect` does, and a hit counts for less the farther it is, linearly to
+    directions in its own frame, and a hit counts for less the farther it is, linearly to
     nothing at the distance."""
     origin = points + normals * ray_offset
     covered = np.zeros(len(points))
@@ -299,126 +258,39 @@ def face_towards_light(normals, double_sided, lights):
     return np.where(flip[:, None], -normals, normals)
 
 
-def light(points, normals, double_sided, intersector, lights, ray_offset, rng, shared_sky_rays=0, sun_centre=False,
-          indirect=None, indirect_groups=None, ao=None):
-    """Radiance from the scene lights at each point.
+def light(points, normals, double_sided, intersector, lights, ray_offset, bounce=None, bounce_groups=None, ao=None):
+    """Radiance from the scene lights at each point, in the unit of irradiance over pi.
 
-    With shared_sky_rays > 0 every point uses the same directional samples and
-    that many sky directions (a flat bake); otherwise rays are drawn at random
-    and each sky light uses its own `rays`. `sun_centre` lights a flat bake from
-    the middle of the sun's disc only, a hard shadow edge. Point and spot lights are reserved
-    and not baked yet.
-
-    The lights share one rng, so their order in the list changes which random
-    rays each draws: equal on average, not byte for byte. A flat bake draws
-    none and is exactly order independent.
-
-    `indirect` is an IndirectCache whose gathered light is added to the
-    direct light; `indirect_groups` is gather_indirect's `groups`. `ao` is
-    the scene's local occlusion setting: it scales the ambient light, and the
-    gathered indirect light when `ao.indirect`; a double-sided point takes its
-    less occluded side, which the gather's sun-facing normal need not be.
+    The sun and sky come from shadow rays against `intersector`, the same fixed directions at every point so equal
+    surroundings give equal light. `bounce` is a PathLight whose bounced light is added; `bounce_groups` gives
+    points that share one position the same bounce, gathered once on their mean normal, since bounced light changes
+    slowly where direct light does not. `ao` is the scene's local occlusion setting: it scales the ambient light,
+    and the bounced light when `ao.indirect`; a double-sided point takes its less occluded side, which the sun-facing
+    normal need not be. Point and spot lights are reserved and not baked yet.
     """
     n = face_towards_light(normals, double_sided, lights)
     occlusion = None if ao is None else open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offset)
-    ctx = SimpleNamespace(normals=n, origin=points + n * ray_offset, intersector=intersector, rng=rng, occlusion=occlusion,
-                          shared=bool(shared_sky_rays), shared_sky_rays=shared_sky_rays,
-                          sun_centre=sun_centre)
+    ctx = SimpleNamespace(normals=n, origin=points + n * ray_offset, intersector=intersector, occlusion=occlusion)
     radiance = np.zeros((len(points), 3))
     for scene_light in lights:
         radiance += LIGHTS[scene_light["type"]][1](scene_light, ctx)
-    gathered = gather_indirect(points, n, intersector, indirect, indirect_groups)
+    if bounce is None:
+        return radiance
+    bounced = bounced_light(bounce, points, n, ray_offset, bounce_groups)
     if ao is not None and ao.indirect:
-        gathered = gathered * occlusion[:, None]
-    return radiance + gathered
+        bounced = bounced * occlusion[:, None]
+    return radiance + bounced
 
 
-class IndirectCache:
-    """Full-detail triangle radiance for a finite diffuse bounce series, with
-    each triangle's normal and sidedness so a ray that reaches a one-sided
-    triangle from behind finds no light."""
-
-    def __init__(self, radiance, rays, ray_offset, normals=None, two_sided=None, intensity=1.0):
-        self.radiance = radiance
-        self.intensity = intensity
-        self.rays = rays
-        self.ray_offset = ray_offset
-        self.normals = normals
-        self.two_sided = two_sided
-
-
-def gather_indirect(points, normals, intersector, cache, groups=None):
-    """Estimate irradiance from the cache with cosine-weighted hemisphere rays.
-    Every point uses the same set of directions in its own frame, so equal
-    surroundings give equal light and nothing is random. A miss adds nothing,
-    because the sky light is direct.
-
-    `groups` gives points that share one position the same result: the light
-    is gathered once on their mean normal, since indirect light changes slowly
-    where direct light does not."""
-    if cache is None:
-        return np.zeros((len(points), 3))
-    if groups is not None:
-        _, first = np.unique(groups, return_index=True)
-        total = np.stack([np.bincount(groups, weights=normals[:, axis]) for axis in range(3)], axis=1)
-        length = np.linalg.norm(total, axis=1, keepdims=True)
-        mean = np.where(length > 1e-6, total / np.maximum(length, 1e-12), normals[first])
-        return gather_indirect(points[first], mean, intersector, cache)[groups]
-    origin = points + normals * cache.ray_offset
-    out = np.zeros((len(points), 3))
-    tu, tv = tangent_frame(normals)
-    for x, y, z in sky_directions(cache.rays):
-        direction = tu * x + tv * y + normals * z
-        locations, indices, faces = intersector.first_hit(origin, direction)
-        found = cache.radiance[:, faces].sum(axis=0)
-        if cache.normals is not None:
-            behind = np.einsum("ij,ij->i", direction[indices], cache.normals[faces]) > 0
-            found[behind & ~cache.two_sided[faces]] = 0.0
-        out[indices] += found
-    return out / cache.rays * cache.intensity
-
-
-ALBEDO_CEILING = 0.99
-
-
-def boosted_albedo(albedo, boost):
-    """The reflectance bounces use: albedo times boost, held below ALBEDO_CEILING
-    but never lowered below the albedo itself, so a boost of 1 changes nothing."""
-    return np.minimum(albedo * boost, np.maximum(albedo, ALBEDO_CEILING))
-
-
-def build_indirect_cache(points, tris, tri_mat, materials, double_materials, albedo_of, intersector, lights, ray_offset,
-                         indirect, intensity=1.0, albedo_boost=1.0):
-    """Bake full-detail outgoing radiance once, then gather each later bounce.
-
-    `intensity` scales the light the finished cache gathers, not the bounces
-    inside it; `albedo_boost` scales the reflectance every bounce uses."""
-    if indirect is None or indirect.bounces == 0:
-        return None
-    a, b, c = points[tris[:, 0]], points[tris[:, 1]], points[tris[:, 2]]
-    normals = np.cross(b - a, c - a)
-    normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-12)
-    area = triangle_areas(points, tris)
-    centres = (a + b + c) / 3
-    sample_points = np.concatenate([w[0] * a + w[1] * b + w[2] * c for w in face_samples(indirect.cache_samples)])
-    sample_materials = np.tile(tri_mat, indirect.cache_samples)
-    albedo = np.zeros((len(sample_points), 3))
-    for material in materials:
-        selected = np.nonzero(sample_materials == material)[0]
-        if len(selected):
-            albedo[selected] = albedo_of(sample_points[selected], np.tile(np.sqrt(area), indirect.cache_samples)[selected], material)
-    albedo = boosted_albedo(albedo, albedo_boost)
-    double = np.isin(tri_mat, list(double_materials))
-    sky_rays = max([item["rays"] for item in lights if item["type"] == "sky"], default=1)
-    direct = light(sample_points, np.tile(normals, (indirect.cache_samples, 1)), np.tile(double, indirect.cache_samples),
-                   intersector, lights, ray_offset, None, sky_rays)
-    radiance = [(albedo * direct).reshape(indirect.cache_samples, len(tris), 3).mean(axis=0)]
-    albedo = albedo.reshape(indirect.cache_samples, len(tris), 3).mean(axis=0)
-    lit_side = face_towards_light(normals, double, lights)
-    for _ in range(indirect.bounces - 1):
-        previous = IndirectCache(np.asarray(radiance[-1:]), indirect.rays, ray_offset, normals, double)
-        radiance.append(albedo * gather_indirect(centres, lit_side, intersector, previous))
-    return IndirectCache(np.asarray(radiance), indirect.rays, ray_offset, normals, double, intensity)
+def bounced_light(bounce, points, normals, ray_offset, groups=None):
+    """`bounce.bounce` for every point; with `groups`, once per group on the group's mean normal."""
+    if groups is None:
+        return bounce.bounce(points, normals, ray_offset)
+    _, first = np.unique(groups, return_index=True)
+    total = np.stack([np.bincount(groups, weights=normals[:, axis]) for axis in range(3)], axis=1)
+    length = np.linalg.norm(total, axis=1, keepdims=True)
+    mean = np.where(length > 1e-6, total / np.maximum(length, 1e-12), normals[first])
+    return bounce.bounce(points[first], mean, ray_offset)[groups]
 
 
 def encode_srgb8(linear):
@@ -450,13 +322,13 @@ def adaptive_sample_counts(areas, reference, cap, floor=1):
 
 
 def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_of, intersector, lights, ray_offset,
-                 tonemap_white, samples=4, sky_rays=128, max_samples=16, sample_area=None, min_samples=1,
-                 placement="stratified", sun_centre=False, indirect_cache=None, ao=None):
+                 tonemap_white, samples=4, max_samples=16, sample_area=None, min_samples=1,
+                 placement="stratified", bounce=None, ao=None):
     """One sRGB colour per triangle: albedo times light averaged over fixed
     points of the triangle, lit on its face normal. `samples` is a count per
     face, or "auto" for one point per `sample_area` of face area (the mesh's
-    median face by default), from `min_samples` to `max_samples`. Every face shares one set of
-    sun and `sky_rays` sky directions, so equal surroundings give equal
+    median face by default), from `min_samples` to `max_samples`. Every face
+    shares one set of sky directions, so equal surroundings give equal
     colours. albedo_of(points, spacing, material) gives the albedo."""
     out = np.zeros((len(tris), 3), dtype=np.int64)
     areas = triangle_areas(positions, tris)
@@ -477,8 +349,7 @@ def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_o
             albedo = albedo_of(points, spacing, m)
             double = np.full(len(points), m in double_materials)
             tiled = np.tile(normals, (k, 1))
-            radiance = light(points, tiled, double, intersector, lights, ray_offset, None, sky_rays, sun_centre,
-                             indirect_cache, ao=ao)
+            radiance = light(points, tiled, double, intersector, lights, ray_offset, bounce, ao=ao)
             colour = (albedo * radiance).reshape(k, len(faces), 3).mean(axis=0)
             out[selected] = to_srgb8(colour, tonemap_white)
     return out

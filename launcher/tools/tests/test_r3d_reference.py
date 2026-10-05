@@ -26,7 +26,7 @@ def plane_source(corners):
         tri_m=np.array([0, 0]), names=["plane"], materials={"plane": {"Kd": (1.0, 1.0, 1.0)}}, textures=[None],
     )
     source.corner_normals = corner_normals(source.p, source.tri_v)
-    source.indirect_cache = None
+    source.bounce = None
     source.intersector = soup.rays(soup.Soup(source.p, source.tri_v))
     return source
 
@@ -34,8 +34,7 @@ def plane_source(corners):
 def sun_scene(direction):
     settings = SimpleNamespace(double_sided=set(), seed=1)
     job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.01, ao=None))
-    scene = SimpleNamespace(lights=[{"type": "directional", "direction": direction, "color": [1.0, 1.0, 1.0], "intensity": 1.0,
-                                     "disc_degrees": 0.0, "rays": 1}])
+    scene = SimpleNamespace(lights=[{"type": "directional", "direction": direction, "color": [1.0, 1.0, 1.0], "intensity": 1.0}])
     return job, scene
 
 
@@ -183,42 +182,27 @@ class SkyStreamingTests(unittest.TestCase):
         sky = {"type": "sky", "rays": 7, "color": [.5, .7, .9], "intensity": .8}
         points = np.array([[0., 0., .5], [.2, .3, .1]])
         normals = np.array([[0., 0., -1.], [0., 0., 1.]])
-        for shared in (0, 7):
-            for seed in (0, 17, 42):
-                def render():
-                    rng = np.random.default_rng(seed)
-                    value = lighting.light(points, normals, np.array([False, False]), source.intersector,
-                                           [sky], .01, rng, shared_sky_rays=shared)
-                    return value, rng.bit_generator.state
-                def streamed(intersector, origin, directions):
-                    self.assertFalse(isinstance(directions, list))
-                    return original(intersector, origin, directions)
-                with patch.object(lighting, 'unshadowed_count', side_effect=streamed):
-                    actual, state = render()
-                def list_bake_sky(light, ctx):
-                    n = ctx.normals
-                    tu, tv = lighting.tangent_frame(n)
-                    rays = ctx.shared_sky_rays if ctx.shared else light['rays']
-                    directions = []
-                    if ctx.shared:
-                        for x, y, z in lighting.sky_directions(rays):
-                            directions.append(tu * x + tv * y + n * z)
-                    else:
-                        for _ in range(rays):
-                            r1 = ctx.rng.random(len(n))
-                            r2 = ctx.rng.random(len(n))
-                            r = np.sqrt(r1)[:, None]
-                            angle = (2 * np.pi * r2)[:, None]
-                            directions.append(tu * (r * np.cos(angle)) + tv * (r * np.sin(angle)) +
-                                              n * np.sqrt(1 - r1)[:, None])
-                    visible = original(ctx.intersector, ctx.origin, directions) / rays
-                    return visible[:, None] * np.array(light['color']) * light['intensity']
-                with patch.dict(lighting.LIGHTS, sky=(lighting.LIGHTS['sky'][0], list_bake_sky)):
-                    expected, old_state = render()
-                self.assertEqual(actual.tobytes(), expected.tobytes())
-                self.assertEqual(state, old_state)
 
+        def render():
+            return lighting.light(points, normals, np.array([False, False]), source.intersector, [sky], .01)
 
+        def streamed(intersector, origin, directions):
+            self.assertFalse(isinstance(directions, list))
+            return original(intersector, origin, directions)
+
+        with patch.object(lighting, 'unshadowed_count', side_effect=streamed):
+            actual = render()
+
+        def list_bake_sky(light, ctx):
+            n = ctx.normals
+            tu, tv = lighting.tangent_frame(n)
+            directions = [tu * x + tv * y + n * z for x, y, z in lighting.sky_directions(light['rays'])]
+            visible = original(ctx.intersector, ctx.origin, directions) / light['rays']
+            return visible[:, None] * np.array(light['color']) * light['intensity']
+
+        with patch.dict(lighting.LIGHTS, sky=(lighting.LIGHTS['sky'][0], list_bake_sky)):
+            expected = render()
+        self.assertEqual(actual.tobytes(), expected.tobytes())
 
 
 POSE_BARRIER = None

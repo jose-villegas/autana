@@ -14,8 +14,7 @@ intensity = 0.03
 [bake]
 ray_offset = 0.5
 colour_merge_step = 6
-flat_sky_rays = 128
-indirect = { bounces = 2, rays = 64, cache_samples = 1 }
+indirect = { bounces = 2, rays = 64 }
 
 [[objects]]
 name = "sun"
@@ -25,8 +24,6 @@ rotation = [22.450814295724417, -37.230418121890686, 0.0]   # toward (-0.25, 1.0
 type = "directional"
 color = [1.0, 0.92, 0.78]
 intensity = 3.0
-disc_degrees = 1.2
-rays = 8
 
 [[objects]]
 name = "camera"
