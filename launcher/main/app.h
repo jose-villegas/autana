@@ -28,13 +28,10 @@ typedef struct {
 } app_console_t;
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-/* APP_CONSOLE() (a top-level declaration, before the app's own app_t) plus
- * APP_CONSOLE_PTR(handler) (that app_t's `.console = `) are the only
- * sanctioned way to fill one: two macros because the assert below is a
- * declaration, which cannot sit inside app_t's own constant initializer.
- * A clash and an over-long prefix are both checked at boot instead
- * (console_find_clash(), main.c); this app.h stays clear of console/, so
- * an app pulls in only what it names. */
+/* The only way to fill one: APP_CONSOLE() at top level, then
+ * APP_CONSOLE_PTR(handler) as the app_t's `.console`. Two macros, since the
+ * assert is a declaration. Clashes and long prefixes are checked at boot
+ * (console_find_clash(), shell/shell.c). */
 #define APP_CONSOLE(prefix, handler)                                                                                   \
     _Static_assert(sizeof(prefix) > 1, "APP_CONSOLE needs a non-empty prefix");                                        \
     static const app_console_t handler##_console = {(prefix), (handler)}
@@ -85,14 +82,9 @@ typedef struct app {
      * already was. An app with no such cache needs no implementation. */
     void (*invalidate)(void);
 
-    /* Opt-in, not opt-out: false unless an app sets it. main.c only
-     * tracks the edge-swipe-home gesture and draws its hint strip while
-     * an app with this true is running; an app that leaves it unset
-     * gets neither, and is responsible for its own way back to the
-     * launcher. It exists for an app whose own input is a touch drag
-     * near a screen edge, which the swipe-home gesture cannot be told
-     * apart from: such an app turns the generic one off and offers a
-     * deliberate control instead. */
+    /* Opt-in: the shell tracks the swipe-home gesture and draws its hint
+     * strip only for an app that sets this. An app whose own input is a
+     * drag near an edge leaves it off and offers its own way home. */
     bool home_gesture;
 
     /* Opt-in, like home_gesture above: NULL unless an app sets it. If

@@ -29,7 +29,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log  # noqa: E402
-from r3d.import_settings import SettingsError, load_scene  # noqa: E402
+from r3d.import_settings import SettingsError, load_scene, source_digest  # noqa: E402
 
 CSV_FIELDS = ("budget", "cost_weight", "triangles", "mean_delta_e", "p95_delta_e", "predicted_ms", "board_ms")
 BOARD_SCALE = 2
@@ -98,7 +98,8 @@ def recipe_digest(job, scene):
     # An absent `ao` is left out of the digest, so a scene without it keeps its recorded digest.
     bake = SimpleNamespace(**{name: value for name, value in vars(job.bake).items() if name != "ao" or value is not None})
     scene_recipe = SimpleNamespace(lights=scene.lights, tonemap_white=scene.tonemap_white, bake=bake, indirect=look)
-    return hashlib.sha256(json.dumps([canonical(settings), canonical(entry), canonical(scene_recipe), tracks], sort_keys=True).encode()).hexdigest()
+    return hashlib.sha256(json.dumps([canonical(settings), canonical(entry), canonical(scene_recipe), tracks,
+                                     source_digest(job.settings)], sort_keys=True).encode()).hexdigest()
 
 
 def prepare(scene_path, scene, job, work):
@@ -134,6 +135,7 @@ def reference_digest(scene_path, job, scene):
     for path in (scene_path, job.settings.path, tracks_file(scene)):
         digest.update(pathlib.Path(path).read_bytes())
     digest.update(job.object.name.encode())
+    digest.update(source_digest(job.settings).encode())
     return digest.hexdigest()
 
 
@@ -241,7 +243,8 @@ def run_sweep_points(out, points, run_fit, executor=None, deferred=None):
         if executor is not None:
             if deferred is None:
                 raise ValueError("an executor needs a deferred result mapping")
-            deferred[point_name(point)] = executor.submit(run_fit, point, point_dir)
+            from r3d.process_budget import FIT_BYTES
+            deferred[point_name(point)] = executor.submit(run_fit, point, point_dir, estimates=FIT_BYTES)
             continue
         row = {**point, **run_fit(point, point_dir)}
         temporary = result.with_suffix(".tmp")

@@ -124,7 +124,7 @@ assert_band_frame_did_real_work(stats_t frame, int touched, int64_t raster_us) {
 
 /* Runs one variant for `duration_ms`, timing whichever frame path
  * `run_frame` performs - either the band loop or the full-fb path, both
- * called with dt_ms clamped the same way main.c's own loop clamps it. */
+ * called with dt_ms clamped the same way the shell's own loop clamps it. */
 static void
 capture(void (*run_frame)(uint32_t dt_ms), int64_t duration_ms) {
     sample_count = 0;

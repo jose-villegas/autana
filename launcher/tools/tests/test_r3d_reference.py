@@ -235,5 +235,40 @@ def record_pose_pid(item):
     return pid, peak
 
 
+
+
+@unittest.skipIf(np is None, "needs Embree and NumPy")
+class PoseMetricTests(unittest.TestCase):
+    def test_pool_budget_and_pss_aggregation(self):
+        from unittest.mock import Mock, patch
+        from r3d import process_budget as budget, reference_render as reference
+        pool = Mock()
+        pool.__enter__ = Mock(return_value=pool)
+        pool.__exit__ = Mock(return_value=False)
+        pool.map.return_value = [(101, 30), (102, 40), (101, 20), (102, 50)]
+        with patch.object(budget, 'task_reservation', return_value=budget.PREPARE_BYTES), \
+                patch.object(budget, 'resident_bytes', return_value=(3290000000, 0, 3290000000)), \
+                patch.object(budget, 'cores_available', return_value=10), \
+                patch.object(reference.multiprocessing, 'get_all_start_methods', return_value=['fork']), \
+                patch.object(reference.multiprocessing, 'get_context'), \
+                patch.object(reference.concurrent.futures, 'ProcessPoolExecutor', return_value=pool) as executor:
+            result = reference.render_poses(None, None, None, [None] * 4,
+                                            368, 448, 1., 4, '.')
+        self.assertEqual(result, (80, 2))
+        self.assertEqual(executor.call_args.kwargs['max_workers'], 2)
+        self.assertIsNone(reference.POSE_STATE)
+
+    def test_serial_pss_and_smoke_budget(self):
+        from unittest.mock import patch
+        from r3d import process_budget as budget, reference_render as reference
+        with patch.object(budget, 'task_reservation', return_value=budget.SMOKE_PREPARE_BYTES), \
+                patch.object(budget, 'resident_bytes', return_value=(budget.GIB, 0, budget.GIB)), \
+                patch.object(budget, 'cores_available', return_value=10), \
+                patch.object(reference, '_write_pose', side_effect=[(1, 20), (1, 30), (1, 10)]):
+            self.assertEqual(reference.render_poses(None, None, None, [None] * 3,
+                                                   368, 448, 1., 4, '.'), (30, 1))
+        self.assertIsNone(reference.POSE_STATE)
+
+
 if __name__ == "__main__":
     unittest.main()

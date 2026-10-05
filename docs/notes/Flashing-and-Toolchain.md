@@ -117,7 +117,7 @@ re-derived when defaults change. `launcher/tools/build/idf_variant.sh`
 invalidates configuration older than its fragments; use `autana build` for
 the variant you need.
 
-The frame loop calls `timing_yield()`, which uses `vTaskDelay(1)` in
+The frame loop in `launcher/main/shell/shell.c` calls `timing_yield()`, which uses `vTaskDelay(1)` in
 `launcher/main/util/timing_device.c`. `CONFIG_FREERTOS_HZ` sets the tick.
 Frame rate includes scheduler quantisation; compare device microseconds of
 work when assessing small changes.

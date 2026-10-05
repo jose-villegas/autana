@@ -128,16 +128,18 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.
 # The smooth bake with indirect light against the reference with the same
 # light, and bakes of the same import that differ only in what the scene says
 # about indirect light, each rendered at the same five poses. Each bake's
-# directory holds copies of the import and the scene, packed in place of the
-# committed mesh, so nothing committed changes.
+# directory holds copies of the import and the scene and a link to the mesh
+# source they name, packed in place of the committed mesh, so nothing committed
+# changes.
 . scripts/lib/python.sh
 R3D_PYTHON=$(run find_r3d_python "$PWD")
 run "$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 5 --dt 5000 \
     -o "$W/indirect-smooth.bmp" --video "$W/indirect-smooth.avi" 2> "$W/indirect-smooth.log"
-# bake_and_render DIR MESH SCENE: bake the scene file in DIR, pack the mesh in
-# place of the committed one and render the five poses to DIR.avi.
+# bake_and_render DIR MESH SCENE: link the mesh source into DIR, bake the scene file in DIR,
+# pack the mesh in place of the committed one and render the five poses to DIR.avi.
 bake_and_render() {
     dir=$1 mesh=$2 scene=$3
+    run ln -sfn "$PWD/$M/meshes/sponza" "$dir/sponza"
     run "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$dir/sponza.scene.toml" --mesh "$mesh" > "$dir/bake.log" 2>&1
     run "$R3D_PYTHON" launcher/tools/r3d/build_pack.py -o "$dir/assets.bin" --replace "$mesh=$dir/$mesh.mesh" > "$dir/pack.log"
     run env AUTANA_ASSET_PACK="$dir/assets.bin" "$W/render_lab_render" --quarter 0 --no-hud --scene "$scene" --frames 5 --dt 5000 \
