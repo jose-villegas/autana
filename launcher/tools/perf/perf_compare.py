@@ -57,32 +57,52 @@ def seed_means(rows):
 
 
 def selected_suites(suites, active, owners, limits=None, listed=None):
-    """Map active rows to unique bounded filters on the capture's test list."""
+    """Keep user scope; unfiltered suites use the device's full inventory."""
     selected = []
     for suite, tests, template in suites:
         names = [owners.get(name, (suite, None))[1] for name in active if name.startswith(suite + "/")]
-        if names:
-            if not all(names):
-                selected.append((suite, "-", template))
-                continue
-            width, count = limits or filter_limits(Path(__file__).resolve().parents[3])
-            known = set((listed or {}).get(suite, [owner for s, owner in owners.values() if s == suite and owner]))
-            patterns = []
-            for name in sorted(set(names)):
-                pattern = next((name[start:start+length]
-                                for length in range(1, min(width, len(name)) + 1)
-                                for start in range(len(name)-length+1)
-                                if name in known and sum(name[start:start+length] in test for test in known) == 1), None)
-                if pattern is None:
-                    patterns = []
-                    break
-                patterns.append(pattern)
-            if not patterns:
-                selected.append((suite, "-", template))
-            else:
-                selected.extend((suite, ",".join(patterns[start:start+count]), template)
-                                for start in range(0, len(patterns), count))
+        if not names:
+            continue
+        known = set((listed or {}).get(suite, []))
+        if not all(names):
+            selected.append((suite, tests, template))
+            continue
+        if tests != "-":
+            patterns = [pattern for pattern in tests.split(",") if any(pattern in name for name in names)]
+            selected.append((suite, ",".join(patterns) if patterns else tests, template))
+            continue
+        if not known:
+            selected.append((suite, tests, template))
+            continue
+        width, count = limits or filter_limits(Path(__file__).resolve().parents[3])
+        patterns = []
+        for name in sorted(set(names)):
+            pattern = next((name[start:start+length]
+                            for length in range(1, min(width, len(name)) + 1)
+                            for start in range(len(name)-length+1)
+                            if name in known and sum(name[start:start+length] in test for test in known) == 1), None)
+            if pattern is None:
+                patterns = []
+                break
+            patterns.append(pattern)
+        if not patterns:
+            selected.append((suite, tests, template))
+        else:
+            selected.extend((suite, ",".join(patterns[start:start+count]), template)
+                            for start in range(0, len(patterns), count))
     return selected
+
+
+def absent_by_measurement(name, owner, plan, records, side):
+    """Every other-side attempt succeeded and ran the owner without its row."""
+    suite, row = name.split("/", 1)
+    attempts = [item for item in plan if item["side"] == side and
+                any(entry[0] == suite for entry in item["suites"])]
+    captures = [record["suites"][suite] for record in records if suite in record["suites"]]
+    return bool(owner and attempts and len(captures) == len(attempts) and
+                all(not item.get("error") for item in attempts) and
+                all(entry["runs"] and all(owner in run.get("listed_tests", []) and
+                    row not in run["rows"] for run in entry["runs"]) for entry in captures))
 
 
 def recommendations(records, rows, delta, alpha=0.025):
@@ -141,7 +161,7 @@ def measure(args, runner=None):
             rng.shuffle(sides)
             for side in sides:
                 suites = args.suite if active is None else selected_suites(
-                    args.suite, active, extracted[side][2], limits[side], listed_tests(records[side]))
+                    args.suite, active, extracted[side][2], limits[side], device_inventory(records[side]))
                 seed = rng.randint(1, 2147483647)
                 while seed in used:
                     seed = rng.randint(1, 2147483647)
@@ -176,16 +196,8 @@ def measure(args, runner=None):
         for name, result in current.items():
             if result["verdict"] in ("added", "removed"):
                 missing_side = "a" if result["verdict"] == "added" else "b"
-                suite = name.split("/", 1)[0]
-                attempts = [item for item in plan if item["side"] == missing_side and
-                            any(entry[0] == suite for entry in item["suites"])]
-                owner = extracted["b" if missing_side == "a" else "a"][2].get(name, (suite, None))[1]
-                captures = [record["suites"][suite] for record in records[missing_side] if suite in record["suites"]]
-                if not attempts or any(item.get("error") for item in attempts) or not captures or any(
-                        not owner or (entry.get("tests", "-") != "-" and not any(
-                            pattern in owner for pattern in entry["tests"].split(","))) or not entry["runs"] or
-                        any(not run.get("listed_tests") or owner in run["listed_tests"]
-                            for run in entry["runs"]) for entry in captures):
+                owner = extracted["b" if missing_side == "a" else "a"][2].get(name, (None, None))[1]
+                if not absent_by_measurement(name, owner, plan, records[missing_side], missing_side):
                     result["verdict"] = "not measured"
             if name not in decisions or decisions[name]["verdict"] == "inconclusive":
                 decisions[name] = dict(result, look=look + 1)
@@ -325,13 +337,13 @@ def main(argv=None):
     return 0
 
 
-def listed_tests(records):
-    """Keep test ownership even when a test emits no timing row."""
+def device_inventory(records):
+    """Pool the full device inventory from each captured invocation."""
     listed = {}
     for record in records:
         for suite, entry in record["suites"].items():
             for run in entry["runs"]:
-                listed.setdefault(suite, set()).update(run.get("listed_tests", []))
+                listed.setdefault(suite, set()).update(run.get("inventory", []))
     return listed
 
 

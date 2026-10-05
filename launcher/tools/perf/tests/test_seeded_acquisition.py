@@ -20,7 +20,7 @@ import perf_compare as tool
 import seed_statistics as stats
 
 
-class BlockerTests(unittest.TestCase):
+class AcquisitionTests(unittest.TestCase):
     def test_shortest_unique_filters_and_batches(self):
         names = ['prefix_long_test_alpha', 'prefix_long_test_beta', 'prefix_long_test_gamma']
         owners = {'s/' + name: ('s', name) for name in names}
@@ -36,7 +36,7 @@ class BlockerTests(unittest.TestCase):
             self.assertFalse(any(sum(name[i:i+n] in other for other in names) == 1
                                  for n in range(1, len(pattern)) for i in range(len(name)-n+1)))
         self.assertEqual(tool.selected_suites([('s', 'prefix', '-')], set(owners), owners,
-                                             (1, 2), {'s': ['a', 'aa', 'aaa']}), [('s', '-', '-')])
+                                             (1, 2), {'s': ['a', 'aa', 'aaa']}), [('s', 'prefix', '-')])
         self.assertEqual(tool.selected_suites([('s', '-', '-')], {'s/row'},
                                              {'s/row': ('s', 'alpha')}, (3, 2),
                                              {'s': ['alpha', 'ab']}), [('s', 'l', '-')])
@@ -287,8 +287,20 @@ class BlockerTests(unittest.TestCase):
 
     @unittest.skipIf(os.name == 'nt', 'POSIX escaped session')
     def test_escaped_pipe_holder_has_bounded_wall_time(self):
-        parent = 'import subprocess,sys; subprocess.Popen([sys.executable,"-c","import time; time.sleep(2)"],start_new_session=True)'
-        started = time.monotonic()
-        with self.assertRaisesRegex(RuntimeError, 'timed out'):
-            capture.run_stamped([sys.executable, '-c', parent], io.StringIO(), timeout=.1)
-        self.assertLess(time.monotonic() - started, 3)
+        import signal
+        with tempfile.TemporaryDirectory() as root:
+            pid_file = Path(root) / 'holder.pid'
+            parent = ('import subprocess,sys; from pathlib import Path; '
+                      'child=subprocess.Popen([sys.executable,"-c","import time; time.sleep(6)"],'
+                      f'start_new_session=True); Path({str(pid_file)!r}).write_text(str(child.pid))')
+            started = time.monotonic()
+            try:
+                with self.assertRaisesRegex(RuntimeError, 'timed out'):
+                    capture.run_stamped([sys.executable, '-c', parent], io.StringIO(), timeout=.1)
+                self.assertLess(time.monotonic() - started, 3)
+            finally:
+                if pid_file.exists():
+                    try:
+                        os.kill(int(pid_file.read_text()), signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass

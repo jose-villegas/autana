@@ -2,6 +2,7 @@
 import contextlib
 import importlib.util
 import io
+import inspect
 import json
 import math
 import pathlib
@@ -13,7 +14,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from test_perf_compare import FakeAutana, arguments
+from test_perf_compare import FakeAutana, arguments, record_for_rows
 import layout_measure as capture
 import perf_compare as tool
 import seed_statistics as stats
@@ -193,7 +194,7 @@ class RevisionTests(unittest.TestCase):
             self.assertEqual(fake.calls, [])
         self.assertLess(1/(stats.permutation_samples(.0001)+1), .0001/20)
 
-    def test_added_and_removed_tests_do_not_receive_extra_seeds(self):
+    def test_added_and_removed_rows_do_not_receive_extra_seeds(self):
         class DifferentRows(FakeAutana):
             def __call__(self, command, log, timeout):
                 code, lines, wall = super().__call__(command, log, timeout)
@@ -203,7 +204,7 @@ class RevisionTests(unittest.TestCase):
                 for _, line in lines:
                     if line.startswith("report: "):
                         path = pathlib.Path(line[8:]).with_suffix(".log")
-                        text = path.read_text().replace("quiet", "removed" if side == "a" else "added")
+                        text = path.read_text().replace("quiet both cores", ("removed" if side == "a" else "added") + " both cores").replace("scene=quiet", "scene=" + ("removed" if side == "a" else "added"))
                         path.write_text(text)
                 return code, lines, wall
         with tempfile.TemporaryDirectory() as root:
@@ -242,6 +243,9 @@ class RevisionTests(unittest.TestCase):
                            p_adjusted=1, equivalence_adjusted=1, verdict="inconclusive")
                 decisions = {"suite/heavy": row, "suite/quiet": dict(row, verdict="no change")}
                 with patch.object(tool, "recommendations", side_effect=recommendations), \
+                        patch.object(tool, "run_flash", side_effect=lambda args, seed, runner:
+                                     record_for_rows(args, seed, {'quiet': 10000,
+                                         'heavy': 10000 + (3000 if seed % 2 else -3000)})), \
                         patch.object(tool, "compare", side_effect=lambda *a, **kw: {
                             name: result.copy() for name, result in decisions.items()}):
                     payload, _ = self.measure(root, FakeAutana(root, noisy=True))
@@ -269,7 +273,7 @@ class RevisionTests(unittest.TestCase):
                     elif line.startswith("report: "):
                         path = pathlib.Path(line[8:]).with_suffix(".log")
                         value = center + ((30000 if run % 2 else -30000) if runs > 1 else 0)
-                        path.write_text(f"I perf: heavy both cores: mean {value}us\nsuite.c:1:test_heavy:PASS\n")
+                        path.write_text(f"I perf: heavy both cores: mean {value}us\n:1:test_heavy:PASS\n")
                         rewritten.append((1001+run, line))
                     else:
                         rewritten.append((at, line))
@@ -302,7 +306,7 @@ class RevisionTests(unittest.TestCase):
     def test_counter_deltas_and_ambiguous_scenes(self):
         text = ("I xtperf: scene=one event=insn value_per_step=20\n"
                 "I xtperf: scene=two event=insn value_per_step=30\n"
-                "suite.c:1:test_row:PASS\n")
+                ":1:test_row:PASS\n")
         with tempfile.TemporaryDirectory() as root:
             path = pathlib.Path(root)/"capture.log"
             path.write_text(text)
@@ -357,6 +361,9 @@ class RevisionTests(unittest.TestCase):
                 (perf/name).write_bytes((source/name).read_bytes())
             (root/"scripts/lib").mkdir(parents=True)
             (root/"scripts/lib/process_tree.py").write_bytes((source.parents[2]/"scripts/lib/process_tree.py").read_bytes())
+            reporter = root/"launcher/main/apps/sand/tools/report_performance.py"
+            reporter.parent.mkdir(parents=True)
+            reporter.write_bytes((source.parents[2]/"launcher/main/apps/sand/tools/report_performance.py").read_bytes())
             helper = root/"launcher/tools/revision_worktree.sh"
             helper.write_text("revision_worktree_setup() { :; }\n"
                               "revision_worktree_cleanup() { :; }\n"
@@ -365,9 +372,7 @@ class RevisionTests(unittest.TestCase):
                               "  else printf '%s\\n' \"$RESTORE_TREE\"; fi\n}\n")
             calls = root/"calls.jsonl"
             fake = root/"fake.py"
-            fake.write_text("import json,sys\nfrom pathlib import Path\n"
-                            f"sys.path.insert(0, {str(pathlib.Path(__file__).parent)!r})\n"
-                            "from test_perf_compare import FakeAutana\n"
+            fake.write_text("import json,pathlib,sys\n" + inspect.getsource(FakeAutana) + "\n" +
                             f"with open({str(calls)!r}, 'a') as file: file.write(json.dumps(sys.argv[1:])+'\\n')\n"
                             "if 'flash' in sys.argv: sys.exit(0)\n"
                             f"code,lines,wall = FakeAutana({str(root)!r})(sys.argv[1:], None, 60)\n"
@@ -414,27 +419,22 @@ class RevisionTests(unittest.TestCase):
 
     @patch.object(stats, "permutation_samples", new=lambda alpha: 199)
     def test_default_multilook_aa_smoke(self):
-        class NoisyRows(FakeAutana):
-            def __call__(self, command, log, timeout):
-                code, lines, wall = super().__call__(command, log, timeout)
-                if "status" in command:
-                    return code, lines, wall
-                seed = int(command[command.index("--layout-seed")+1])
-                rng = random.Random(seed + draw*2147483647)
-                values = {name: round(100000*math.exp(rng.gauss(0, .15))) for name in ("quiet", "heavy")}
-                for _, line in lines:
-                    if line.startswith("report: "):
-                        path = pathlib.Path(line[8:]).with_suffix(".log")
-                        path.write_text("".join(f"I perf: {name} both cores: mean {value}us\n"
-                                                f"suite.c:1:test_{name}:PASS\n" for name, value in values.items()))
-                return code, lines, wall
+        def noisy_flash(args, seed, runner):
+            rng = random.Random(seed + draw*2147483647)
+            values = {name: round(100000*math.exp(rng.gauss(0, .15))) for name in ("quiet", "heavy")}
+            record = record_for_rows(args, seed, values)
+            for entry in record['suites'].values():
+                for run in entry['runs']:
+                    run['instructions'], run['inventory'] = {}, []
+            return record
         false, draws = 0, 3
         looks = set()
         for draw in range(draws):
             with tempfile.TemporaryDirectory() as root:
                 with patch.object(tool, "required_seeds", return_value=2), \
+                        patch.object(tool, "run_flash", side_effect=noisy_flash), \
                         patch.object(tool, "compare", wraps=stats.compare) as decision:
-                    result, _ = self.measure(root, NoisyRows(root))
+                    result, _ = self.measure(root, None)
                 self.assertTrue(all(call.args[3] == .05/4/2 for call in decision.call_args_list))
                 false += any(row["verdict"] in ("regressed", "improved") for row in result["rows"].values())
                 looks.update(item["look"] for item in result["plan"])
