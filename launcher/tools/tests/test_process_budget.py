@@ -618,6 +618,6 @@ class LivePoseCapacityTests(unittest.TestCase):
                     self.assertEqual(reference.render_poses(None, None, None, [None] * 10,
                                      1, 1, None, 1, '.'), (0, expected))
                     log.assert_any_call(f'pose pool workers={expected} budget_capacity={budget_capacity} '
-                                        f'memory_capacity={memory_capacity}', flush=True)
+                                        f'memory_capacity={memory_capacity} rss=0', flush=True)
                     if expected > 1:
                         self.assertEqual(pool_class.call_args.kwargs['max_workers'], expected)
