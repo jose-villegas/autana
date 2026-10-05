@@ -36,7 +36,7 @@ mesh. Nothing here runs on the board.
 The environment is pinned in [requirements.txt](requirements.txt), and the
 simplifier needs the meshoptimizer submodule and a host C++ compiler (`CXX`,
 else `c++` or `g++`). The bake traces its rays on Mitsuba's LLVM variant, so it also
-needs libLLVM (`apt install llvm` on Linux); without it the bake stops with an error.
+needs libLLVM and Dr.Jit needs libatomic1 (`apt install libatomic1 llvm` on Linux); without them the bake stops with an error.
 Git LFS is a prerequisite for source bakes on Windows and Linux.
 From `launcher/`:
 
