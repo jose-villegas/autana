@@ -46,15 +46,13 @@ A seeded image has its own `BUILD_ID`, and the same seed builds the same image.
 |---|---|
 | sigma_run | the spread of runs inside one flash |
 | sigma_flash | the spread between flashes' means beyond what sigma_run explains: layout plus boot-to-boot |
-| R* | runs per flash that minimise the cost of a given precision: ceil(sqrt(c_flash / c_run * sigma_runÂ² / sigma_flashÂ²)) |
+| R* | runs per flash that minimise the cost of a given precision: ceil(sqrt(c_flash / c_run * sigma_run² / sigma_flash²)) |
 | K | flashes per side so the 95% interval on B/A is within +-0.1% or +-0.5%, at the measured runs per flash |
 | Shapiro-Wilk p | whether the flash means look normal; with fewer than about 15 flashes it cannot judge |
 
 Repeating a seed (`--seeds 1 1 1`) flashes the same image again, so that run's
 sigma_flash is boot-to-boot alone; the difference to a run of distinct seeds is
 the layout. The flash cost counts the build, the flash and the boot. A
-comparison estimates sigma_flash from its own captures.
-
-## Revision comparison
-
-See [Performance comparison](../../launcher/tools/perf/README.md) for seeded revision comparisons and A/A calibration.
+comparison estimates sigma_flash from its own captures. See
+[Performance comparison](../../launcher/tools/perf/README.md) for seeded revision
+comparisons and A/A calibration.

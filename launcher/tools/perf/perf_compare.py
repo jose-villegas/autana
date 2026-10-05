@@ -10,7 +10,7 @@ from pathlib import Path
 from statistics import mean
 from types import SimpleNamespace
 
-from layout_measure import analyse, autana_command, parse_report, required_seeds, run_flash
+from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters
 from seed_statistics import compare, minimum_seeds, permutation_samples
 
 MAX_RUNS = 16
@@ -56,14 +56,32 @@ def seed_means(rows):
     return {name: [mean(values) for values in seeds] for name, seeds in rows.items()}
 
 
-def selected_suites(suites, active, owners):
-    """Map active rows back to suite filters, preserving unmapped filters."""
+def selected_suites(suites, active, owners, limits=None, listed=None):
+    """Map active rows to unique bounded filters on the capture's test list."""
     selected = []
     for suite, tests, template in suites:
         names = [owners.get(name, (suite, None))[1] for name in active if name.startswith(suite + "/")]
         if names:
-            patterns = ",".join(sorted(set(names))) if all(names) else tests
-            selected.append((suite, patterns, template))
+            if not all(names):
+                selected.append((suite, "-", template))
+                continue
+            width, count = limits or filter_limits(Path(__file__).resolve().parents[3])
+            known = set((listed or {}).get(suite, [owner for s, owner in owners.values() if s == suite and owner]))
+            patterns = []
+            for name in sorted(set(names)):
+                pattern = next((name[start:start+length]
+                                for length in range(1, min(width, len(name)) + 1)
+                                for start in range(len(name)-length+1)
+                                if name in known and sum(name[start:start+length] in test for test in known) == 1), None)
+                if pattern is None:
+                    patterns = []
+                    break
+                patterns.append(pattern)
+            if not patterns:
+                selected.append((suite, "-", template))
+            else:
+                selected.extend((suite, ",".join(patterns[start:start+count]), template)
+                                for start in range(0, len(patterns), count))
     return selected
 
 
@@ -89,6 +107,9 @@ def recommendations(records, rows, delta, alpha=0.025):
 def measure(args, runner=None):
     """Acquire seeded observations and save decisions even after capture failure."""
     sizes = schedule(args.max_seeds, args.alpha)
+    limits = {side: filter_limits(getattr(args, "project_" + side)) for side in ("a", "b")}
+    for side in limits:
+        validate_filters(args.suite, limits[side])
     look_alpha = args.alpha / len(sizes) / 2
     if args.rng_seed is None:
         args.rng_seed = random.SystemRandom().randrange(2**63)
@@ -120,7 +141,7 @@ def measure(args, runner=None):
             rng.shuffle(sides)
             for side in sides:
                 suites = args.suite if active is None else selected_suites(
-                    args.suite, active, extracted[side][2])
+                    args.suite, active, extracted[side][2], limits[side], listed_tests(records[side]))
                 seed = rng.randint(1, 2147483647)
                 while seed in used:
                     seed = rng.randint(1, 2147483647)
@@ -153,6 +174,19 @@ def measure(args, runner=None):
         current = compare(seed_means(extracted["a"][0]), seed_means(extracted["b"][0]),
                           args.threshold, look_alpha, args.rng_seed, permutation_alpha=args.alpha)
         for name, result in current.items():
+            if result["verdict"] in ("added", "removed"):
+                missing_side = "a" if result["verdict"] == "added" else "b"
+                suite = name.split("/", 1)[0]
+                attempts = [item for item in plan if item["side"] == missing_side and
+                            any(entry[0] == suite for entry in item["suites"])]
+                owner = extracted["b" if missing_side == "a" else "a"][2].get(name, (suite, None))[1]
+                captures = [record["suites"][suite] for record in records[missing_side] if suite in record["suites"]]
+                if not attempts or any(item.get("error") for item in attempts) or not captures or any(
+                        not owner or (entry.get("tests", "-") != "-" and not any(
+                            pattern in owner for pattern in entry["tests"].split(","))) or not entry["runs"] or
+                        any(not run.get("listed_tests") or owner in run["listed_tests"]
+                            for run in entry["runs"]) for entry in captures):
+                    result["verdict"] = "not measured"
             if name not in decisions or decisions[name]["verdict"] == "inconclusive":
                 decisions[name] = dict(result, look=look + 1)
         active = {name for name, result in decisions.items() if result["verdict"] == "inconclusive"}
@@ -167,14 +201,16 @@ def measure(args, runner=None):
         desired = max([target + 1] + needed)
         skip_until = next((index for index in range(look + 1, len(sizes)) if sizes[index] >= desired),
                           len(sizes) - 1)
+    incomplete = stop_error is not None or not decisions or any(
+        row["verdict"] == "not measured" for row in decisions.values())
     estimates = {side: recommendations(records[side], observations(records[side])[0],
                                       args.threshold / 100, look_alpha / max(1, len(decisions)))
                  for side in records}
     write_summary(destination / "summary.md", args, records, decisions, estimates, sizes, plan,
-                  incomplete=stop_error is not None)
+                  incomplete=incomplete)
     payload = dict(threshold=args.threshold, alpha=args.alpha, look_alpha=look_alpha,
                    rng_seed=args.rng_seed, max_seeds=args.max_seeds, first_pass=sizes[0],
-                   max_runs=MAX_RUNS, incomplete=stop_error is not None,
+                   max_runs=MAX_RUNS, incomplete=incomplete,
                    rows=decisions, estimates=estimates, plan=plan)
     (destination / "comparison.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print((destination / "summary.md").read_text(encoding="utf-8"))
@@ -191,8 +227,9 @@ def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=
              f"per-family per-look alpha: {args.alpha / len(sizes) / 2:g}. "
              f"First pass: {sizes[0]} seeds per side. Cap: {args.max_seeds} seeds per side.", "",
              f"RNG seed: {args.rng_seed}; R clamp: [1, {MAX_RUNS}].", "",
-             "Incomplete: two consecutive capture failures." if incomplete else "Complete.", "",
-             "Seed means decide; medians describe the seed means. Intervals are Welch intervals on log seed means. "
+             "Incomplete: capture data missing; see plan errors." if incomplete else "Complete.", "",
+             "Seed means decide; medians describe the seed means. "
+             f"Intervals are {100 * (1 - args.alpha / len(sizes) / 2):g}% two-sided Welch intervals on log seed means. "
              "Holm corrects difference and equivalence tests separately over all rows. "
              "Inconclusive rows alone receive more seeds at the planned looks.", ""]
     lines += ["R by look: " + "; ".join(
@@ -230,8 +267,7 @@ def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=
                      f"{number(100 * (ratio - 1) if ratio else None)} | {number(instruction_delta)} | "
                      f"{interval} | {number(row['p_adjusted'])} | {number(row['equivalence_adjusted'])} | "
                      f"{number(row['permutation'])} | {row['verdict']} |")
-    lines += ["", "Permutation n/a means the seed count cannot reach nominal alpha, "
-              "or positive timing data is insufficient. Missing or zero timings are not measured.", "",
+    lines += ["", "Permutation n/a means there is too little positive timing data to compute it. Missing or zero timings are not measured.", "",
               "No change requires Holm-adjusted TOST equivalence within the threshold. "
               "Regressed or improved requires a Holm-adjusted Welch difference and permutation agreement. "
               "All other results are inconclusive, including undecided rows at the cap.", "",
@@ -249,7 +285,6 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--validate-plan", action="store_true")
     parser.add_argument("--restore-project", type=Path)
-    parser.add_argument("--check-report", type=Path)
     parser.add_argument("--out", "-o", type=Path)
     parser.add_argument("--project-a", type=Path)
     parser.add_argument("--project-b", type=Path)
@@ -267,8 +302,6 @@ def main(argv=None):
     if args.restore_project:
         return subprocess.call(autana_command("--wait", str(args.wait), "flash", "rel",
                                              "--project", str(args.restore_project), override=args.autana))
-    if args.check_report:
-        return 0 if parse_report(args.check_report) else 1
     if not 0 < args.threshold < 100 or not 0 < args.alpha < 1 or min(args.timeout, args.wait) <= 0:
         parser.error("threshold, alpha and time limits must be positive and in range")
     if args.validate_plan:
@@ -276,6 +309,9 @@ def main(argv=None):
             parser.error("--suite is required")
         try:
             schedule(args.max_seeds, args.alpha)
+            for project in (args.project_a, args.project_b):
+                if project:
+                    validate_filters(args.suite, filter_limits(project))
         except ValueError as error:
             parser.error(str(error))
         return 0
@@ -287,6 +323,16 @@ def main(argv=None):
         print(f'ERROR: {error}', file=sys.stderr)
         return 1
     return 0
+
+
+def listed_tests(records):
+    """Keep test ownership even when a test emits no timing row."""
+    listed = {}
+    for record in records:
+        for suite, entry in record["suites"].items():
+            for run in entry["runs"]:
+                listed.setdefault(suite, set()).update(run.get("listed_tests", []))
+    return listed
 
 
 if __name__ == "__main__":

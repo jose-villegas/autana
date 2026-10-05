@@ -15,7 +15,7 @@ from seed_statistics import t_quantile
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "scripts/lib"))
-from process_tree import stop_process_tree  # noqa: E402
+from process_tree import stop_process_tree, launch_process_tree, close_process_tree  # noqa: E402
 
 MEAN_RE = re.compile(r"\b(?P<name>\S+) both cores: mean\s+(?P<value>\d+)us\b")
 NUMBER_RE = re.compile(r"^[+-]?\d+$")
@@ -81,7 +81,7 @@ def run_stamped(command, log, timeout=1800):
     started = time.monotonic()
     lines = []
     messages = queue.Queue()
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    process = launch_process_tree(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                text=True, bufsize=1, cwd=REPO,
                                start_new_session=os.name != "nt")
     def read():
@@ -108,6 +108,7 @@ def run_stamped(command, log, timeout=1800):
         stop_process_tree(process)
         raise
     finally:
+        close_process_tree(process)
         reader.join(timeout=2)
         if not reader.is_alive():
             process.stdout.close()
@@ -120,6 +121,9 @@ def captured_runs(lines, suite_name, runs):
     starts = [at for at, line in lines if (m := RUN_LINE.match(line)) and m.group(1) == suite_name]
     reports = [Path(m.group(1)) for _, line in lines if (m := REPORT_LINE.match(line))]
     end = lines[-1][0] if lines else 0.0
+    refusal = capture_refusal(lines)
+    if refusal:
+        raise RuntimeError(refusal)
     if len(starts) != runs or len(reports) != runs:
         raise RuntimeError(f"{suite_name}: wanted {runs} runs, saw {len(starts)} starts and "
                            f"{len(reports)} reports")
@@ -127,16 +131,29 @@ def captured_runs(lines, suite_name, runs):
     return [report.with_suffix(".log") for report in reports], starts[0], seconds
 
 
-def make_table(template, capture, table, project=None):
+def capture_refusal(lines):
+    """Preserve the device verdict even when the wrapper only prints a report path."""
+    refused = [line for _, line in lines if "SUITE_FILTER_REFUSED" in line]
+    for _, line in lines:
+        match = REPORT_LINE.match(line)
+        if match:
+            path = Path(match.group(1)).with_suffix(".log")
+            if path.is_file():
+                refused.extend(line for line in path.read_text(encoding="utf-8", errors="replace").splitlines()
+                               if "SUITE_FILTER_REFUSED" in line)
+    return "\n".join(dict.fromkeys(refused))
+
+
+def make_table(template, capture, table, project=None, timeout=1800):
     if template == "-":
         return capture
     command = [part.replace("@CAPTURE@", str(capture)).replace("@TABLE@", str(table)).replace("@PROJECT@", str(project or REPO))
                for part in shlex.split(template)]
     command[0] = sys.executable if command[0] == "python3" else command[0]
-    try:
-        subprocess.run(command, check=True, cwd=REPO, capture_output=True, text=True)
-    except subprocess.CalledProcessError as error:
-        raise RuntimeError(f"table command {command}: {error.stderr.strip()}") from error
+    with open(table.with_suffix(".command.log"), "w", encoding="utf-8") as log:
+        code, lines, _ = run_stamped(command, log, timeout)
+    if code:
+        raise RuntimeError(f"table command {command}: " + "\n".join(line for _, line in lines))
     return table
 
 
@@ -244,11 +261,13 @@ def run_flash(args, seed, runner=None):
             code, lines, _ = runner(autana_command("status", override=override), status_log, 30)
             if not status_log.tell():
                 status_log.write("\n".join(line for _, line in lines) + "\n")
-            if code:
-                raise RuntimeError(f"autana status exited {code}")
+            status_log.write(f"exit code: {code}\n")
+            if code and phase == "before":
+                raise RuntimeError(f"autana status before exited {code}")
 
-    status("before")
+    validate_filters(args.suite, filter_limits(project))
     try:
+        status("before")
         with open(out / f"{stem}.log", "w", encoding="utf-8") as log:
             for index, (name, tests, template) in enumerate(args.suite):
                 command = autana_command("--wait", str(getattr(args, "wait", 3600)),
@@ -263,7 +282,8 @@ def run_flash(args, seed, runner=None):
                     command += ["--expect-build-id", record["build_id"]]
                 code, lines, wall = runner(command, log, getattr(args, "timeout", 1800) * args.runs + getattr(args, "wait", 3600))
                 if code not in (0, 1):
-                    raise RuntimeError(f"{name} exited {code}; see {log.name}")
+                    refusal = capture_refusal(lines)
+                    raise RuntimeError(refusal or f"{name} exited {code}; see {log.name}")
                 captures, first_run, seconds = captured_runs(lines, name, args.runs)
                 if index == 0:
                     ids = [m.group(1) for _, line in lines
@@ -278,13 +298,54 @@ def run_flash(args, seed, runner=None):
                     completion = capture.with_suffix(".md").read_text(encoding="utf-8", errors="replace")
                     if "- Ended: complete" not in completion:
                         raise RuntimeError(f"incomplete capture: {capture}")
-                    table = make_table(template, capture, out / f"{stem}_{name}_{number + 1}.md", project)
+                    table = make_table(template, capture, out / f"{stem}_{name}_{index}_{number + 1}.md", project, getattr(args, "timeout", 1800))
                     rows = parse_report(table)
                     owners, instructions = capture_metadata(capture, rows)
                     runs.append(dict(capture=str(capture), table=str(table), rows=rows,
-                                     owners=owners, instructions=instructions))
-                record["suites"][name] = dict(tests=tests, run_seconds=seconds, runs=runs)
+                                     owners=owners, instructions=instructions, listed_tests=capture_tests(capture)))
+                if name not in record["suites"]:
+                    record["suites"][name] = dict(tests=tests, run_seconds=seconds, runs=runs)
+                else:
+                    entry = record["suites"][name]
+                    entry["tests"] += "," + tests
+                    for number, run in enumerate(runs):
+                        entry["run_seconds"][number] += seconds[number]
+                        previous = entry["runs"][number]
+                        for key in ("rows", "owners", "instructions"):
+                            previous[key].update(run[key])
+                        previous["listed_tests"].extend(run["listed_tests"])
+                        previous.setdefault("captures", [previous["capture"]]).append(run["capture"])
         (out / f"{stem}.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
         return record
     finally:
-        status("after")
+        try:
+            status("after")
+        except Exception as error:
+            with open(out / f"{stem}_status_after.log", "a", encoding="utf-8") as log:
+                log.write(f"status after error: {error}\n")
+
+
+def filter_limits(project):
+    """Read the compared firmware's accepted pattern width and count."""
+    text = (Path(project) / "launcher/test/suites.h").read_text(encoding="utf-8")
+    def define(name):
+        match = re.search(r"^\s*#define\s+" + name + r"\s+(\d+)\b", text, re.MULTILINE)
+        if not match or int(match.group(1)) <= 0:
+            raise ValueError(f"invalid filter limit {name}")
+        return int(match.group(1))
+    return define("SUITE_FILTER_LEN") - 1, define("SUITE_FILTER_MAX")
+
+
+def validate_filters(suites, limits):
+    """Refuse user filters before any seeded flash."""
+    width, count = limits
+    for _, tests, _ in suites:
+        if tests != "-" and (len(tests.split(",")) > count or
+                             any(not test or len(test) > width for test in tests.split(","))):
+            raise ValueError(f"suite filter exceeds project limits: {width} characters, {count} patterns")
+
+
+def capture_tests(capture):
+    """List all tests reported by the capture, including tests without timings."""
+    text = Path(capture).read_text(encoding="utf-8", errors="replace")
+    return re.findall(r"^\S+:\d+:(\w+):(?:PASS|FAIL)(?::.*)?$", text, re.MULTILINE)

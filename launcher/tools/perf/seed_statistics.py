@@ -2,6 +2,7 @@
 import itertools
 import math
 import random
+from functools import lru_cache
 from statistics import mean, median, variance
 
 
@@ -50,6 +51,7 @@ def t_cdf(value, degrees):
     return 1 - tail if value >= 0 else tail
 
 
+@lru_cache(maxsize=4096)
 def t_quantile(probability, degrees):
     """Return a positive Student t quantile by bounded bisection."""
     low, high = 0.0, 1.0
@@ -96,8 +98,6 @@ def permutation(a, b, alpha, rng, samples=None):
     values = a + b
     n = len(a)
     count = math.comb(len(values), n)
-    if 2 / count > alpha:
-        return None
     observed = abs(mean(b) - mean(a))
     total = sum(values)
     def extreme(indices):

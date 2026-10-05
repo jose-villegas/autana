@@ -24,7 +24,7 @@ import lock_scope
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
-from process_tree import stop_process_tree
+from process_tree import stop_process_tree, launch_process_tree, close_process_tree
 BOARD_ENV = autana_config.BOARD_ENV
 TOKEN_ENV = autana_config.TOKEN_ENV
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
@@ -929,7 +929,7 @@ def run_to_end(command, lost=None, timeout=None, **options):
     if os.name != "nt":
         options["start_new_session"] = True
     deadline = None if timeout is None else time.monotonic() + timeout
-    process = subprocess.Popen(command, **options)
+    process = launch_process_tree(command, **options)
     try:
         while True:
             try:
@@ -943,6 +943,8 @@ def run_to_end(command, lost=None, timeout=None, **options):
     except BaseException:
         stop_process_tree(process)
         raise
+    finally:
+        close_process_tree(process)
     if code:
         raise subprocess.CalledProcessError(code, command)
 

@@ -80,6 +80,7 @@ short_name() {
     else git -C "$REPO_DIR" rev-parse --short=8 "$1"
     fi
 }
+python3 "$TOOLS_DIR/perf_compare.py" --validate-plan --project-a "$tree_a" --project-b "$tree_b" "$@"
 status=0
 python3 "$TOOLS_DIR/perf_compare.py" --out "$out" --project-a "$tree_a" --project-b "$tree_b" \
     --label-a "$(short_name "$rev_a")" --label-b "$(short_name "$rev_b")" "$@" || status=$?

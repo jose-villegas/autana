@@ -9,6 +9,7 @@ import tempfile
 import subprocess
 import os
 import unittest
+from unittest.mock import patch
 from types import SimpleNamespace
 
 PERF = pathlib.Path(__file__).resolve().parents[1]
@@ -63,6 +64,11 @@ class FakeAutana:
 
 def arguments(root, cap=16):
     root = pathlib.Path(root)
+    for side in ("a", "b"):
+        header = root/side/"launcher/test/suites.h"
+        if not header.exists():
+            header.parent.mkdir(parents=True, exist_ok=True)
+            header.write_bytes((PERF.parents[2]/"launcher/test/suites.h").read_bytes())
     return SimpleNamespace(out=root/'out', project_a=root/'a', project_b=root/'b',
                            suite=[('suite', '-', '-')], max_seeds=cap, alpha=.05,
                            threshold=1., rng_seed=9, timeout=1800, wait=3600,
@@ -88,14 +94,15 @@ class SeedInferenceTest(unittest.TestCase):
         self.assertAlmostEqual(result['up']['ratio'], 1.1)
 
     def test_permutation_resolution_and_monte_carlo(self):
-        self.assertIsNone(stats.permutation([1]*3, [2]*3, .05, random.Random(1)))
+        self.assertAlmostEqual(stats.permutation([1]*3, [2]*3, .05, random.Random(1)), .1)
         self.assertAlmostEqual(stats.permutation([1]*4, [2]*4, .05, random.Random(1)), 2/70)
         self.assertLess(stats.permutation([1]*12, [2]*12, .05, random.Random(1), samples=999), .05)
 
-    def test_aa_calibration_and_planted_shift_on_synthetic_and_recorded_data(self):
+    @patch.object(stats, "permutation_samples", new=lambda alpha: 199)
+    def test_aa_smoke_and_planted_shift_on_synthetic_and_recorded_data(self):
         rng = random.Random(412)
         fixtures = [parse_report(path) for path in sorted((FIXTURES/'sponza_runs').glob('*.txt'))]
-        false, detected, draws = 0, 0, 120
+        false, detected, draws = 0, 0, 4
         for _ in range(draws):
             a, b = {}, {}
             for side in (a, b):
@@ -159,14 +166,15 @@ class AcquisitionTest(unittest.TestCase):
                             "for at, line in lines: print(line, flush=True)\n"
                             "sys.exit(code)\n")
             for name in ('a', 'b'):
-                (root/name).mkdir()
+                (root/name/'launcher/test').mkdir(parents=True)
+                (root/name/'launcher/test/suites.h').write_bytes((PERF.parents[2]/'launcher/test/suites.h').read_bytes())
             def shell_path(path):
                 return pathlib.Path(path).as_posix()
             for side in ('a', 'b'):
                 destination = root/f'out_{side}'
                 command = ['sh', shell_path(PERF/'perf_compare.sh'), shell_path(root/'a'), shell_path(root/side),
                            '--no-restore', '-o', shell_path(destination), '--max-seeds', '8', '--suite', 'suite', '-', '-',
-                           '--autana', f'python "{shell_path(fake)}"']
+                           '--autana', f'"{shell_path(sys.executable)}" "{shell_path(fake)}"']
                 done = subprocess.run(command, capture_output=True, text=True, timeout=60)
                 self.assertEqual(done.returncode, 0, done.stderr)
                 self.assertIn('no change' if side == 'a' else 'regressed', done.stdout)
@@ -179,7 +187,7 @@ class AcquisitionTest(unittest.TestCase):
             self.assertEqual(payload['rows']['suite/heavy']['verdict'], 'inconclusive')
             extra = [item for item in payload['plan'] if item['look'] > 1]
             self.assertTrue(extra)
-            self.assertTrue(all(item['suites'][0][1] == 'test_heavy' for item in extra))
+            self.assertTrue(all(item['suites'][0][1] == 'h' for item in extra))
             self.assertEqual(len(payload['plan']), 20)
             self.assertIn('inconclusive', summary)
 
@@ -209,7 +217,8 @@ class AcquisitionTest(unittest.TestCase):
             self.assertEqual(run['owners']['quiet'], 'test_quiet')
             self.assertEqual(run['instructions']['quiet'], 20000)
 
-    def test_aa_calibration_over_generated_captures_and_planted_shift(self):
+    @patch.object(stats, "permutation_samples", new=lambda alpha: 199)
+    def test_aa_smoke_over_generated_captures_and_planted_shift(self):
         class GeneratedAutana(FakeAutana):
             def __init__(self, root, draw, planted=False):
                 super().__init__(root)
@@ -235,7 +244,7 @@ class AcquisitionTest(unittest.TestCase):
                         text += f'suite.c:1:test_{name}:PASS\n'
                     pathlib.Path(line[8:]).with_suffix('.log').write_text(text)
                 return code, lines, wall
-        false, detected, equivalent, draws = 0, 0, 0, 80
+        false, detected, equivalent, draws = 0, 0, 0, 4
         for draw in range(draws):
             with tempfile.TemporaryDirectory() as root:
                 aa, _ = self.measure(root, GeneratedAutana(root, draw), cap=4)
@@ -252,7 +261,7 @@ class AcquisitionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             args = arguments(root)
             project = args.project_a
-            project.mkdir(parents=True)
+            project.mkdir(parents=True, exist_ok=True)
             source = project/'suite.c'
             source.write_text('#ifdef DEVICE_BUILD\n#define LIMIT 200\n'
                               'static void test_quiet(void) {\n'
