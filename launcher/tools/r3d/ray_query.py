@@ -1,12 +1,13 @@
 """Ray queries against a triangle mesh, traced by Mitsuba.
 
 `light.py` and the importer ask three questions of a mesh: the first hit along each ray, whether a ray is blocked, and
-every hit along a ray. `RayQuery` answers them as `intersects_location`, `intersects_first`, `intersects_any` and
-`intersects_id`. Triangle ids are the row numbers of the `tris` given, and every triangle is hit from both sides.
+every hit along a ray. `RayQuery` answers them as `intersects_location` and `intersects_first` (the first hit,
+with and without its location), `intersects_any` and `intersects_id`. Triangle ids are the row numbers of the `tris` given, and every triangle
+is hit from both sides.
 
 The bake is NumPy-bound on the CPU, so the queries run on the LLVM variant: a CUDA context per forked pose worker
-would cost memory and copies for nothing, and the JIT of a process that forks workers must not be CUDA. Tests pass
-`VARIANT = "scalar_rgb"`, which traces one ray at a time.
+would cost memory and copies for nothing, and the JIT of a process that forks workers must not be CUDA. Tests set
+`VARIANT` to `scalar_rgb`, which needs no libLLVM and traces one ray at a time.
 """
 import numpy as np
 
@@ -15,8 +16,8 @@ from r3d.mitsuba_reference import import_mitsuba
 VARIANT = "llvm_ad_rgb"
 # Rays per Mitsuba call: bounds the arrays a large query allocates.
 BATCH = 1 << 22
-# Distance a multi-hit ray steps past a hit before it is traced again: at least this, and a few float32 spacings of
-# the hit's largest coordinate, so a far scene does not hit the same triangle twice.
+# Distance a multi-hit ray steps past a hit before it is traced again: the larger of STEP and STEP_RELATIVE times
+# the hit's largest coordinate (a few float32 spacings there), so a far scene does not hit a triangle twice.
 STEP = 1e-4
 STEP_RELATIVE = 1e-6
 MAX_HITS = 100
