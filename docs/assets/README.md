@@ -2,7 +2,7 @@
 
 Content that is data, not code, lives in one binary file, the asset pack, and
 is read where it lies: in a flash partition the firmware maps, or in a buffer a
-host read from a file. A baked mesh and an animation clip are its kinds of entry. Nothing is
+host read from a file. A baked mesh or an animation clip is one entry. Nothing is
 compiled into the app for it, so the app image does not grow with content.
 
 ```mermaid
@@ -48,8 +48,9 @@ list; `asset_pack_find()` returns an entry's bytes only for the type asked for.
 `asset_pack_open(base, size)` takes a base pointer and a size and nothing else,
 so what it checks and what it returns do not depend on where the bytes came
 from. `asset_pack_total_size()` reads the size a pack states from its first 32
-bytes, so a reader maps or reads the header first and then the pack alone. It
-reports the first failure:
+bytes, so a reader maps or reads the header first and then the pack alone.
+Opening the pack, finding an entry and reading it each report the first
+failure:
 
 | Status | Meaning |
 |---|---|

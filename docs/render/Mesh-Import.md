@@ -200,8 +200,10 @@ it does, the function checks that every array lies inside the entry and on a
 4-byte boundary, every cluster's ranges lie inside the mesh, each cluster's
 triangles index only its own vertices, every node's children lie inside the
 cluster or node array, and an inner node's children come after it, so a walk
-down the tree ends. `lit_mesh.py` writes the entry; `r3d_lit_mesh.c` is the one
-reader.
+down the tree ends; a failure there is `ASSET_ERR_BOUNDS`. A mesh with no
+clusters, no nodes, no position scale, or not exactly one colour source is
+`ASSET_ERR_FORMAT`. `lit_mesh.py` writes the entry; `r3d_lit_mesh.c` is the
+one reader.
 
 ## The offline tools
 

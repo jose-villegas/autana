@@ -1,6 +1,6 @@
 /*
  * anim_tracks: the tracks of one glTF animation as an asset-pack entry
- * (TRCK), baked from a NAME.anim.toml by launcher/tools/anim/tracks_asset.py.
+ * (TRCK), written by launcher/tools/anim/tracks_asset.py.
  * Opening it checks every row once; a track found by name then points into
  * the entry, so nothing is copied. The layout is in docs/Animation-Tracks.md.
  *
@@ -25,11 +25,9 @@ typedef struct {
     anim_clip_t clip;
 } anim_tracks_t;
 
-/* Checks the version, the table and every track: a NUL-terminated name, a
- * width of 1 to ANIM_WIDTH_MAX, an anim_interp_t, a quaternion only of width
- * 4, and its times and values inside the entry, after the table and 4-byte
- * aligned. ASSET_ERR_VERSION, ASSET_ERR_BOUNDS or ASSET_ERR_FORMAT, else
- * fills `out`. */
+/* Checks the entry once, as docs/Animation-Tracks.md lists, and returns the
+ * first failure: ASSET_ERR_VERSION, ASSET_ERR_BOUNDS or ASSET_ERR_FORMAT.
+ * Else fills `out`. */
 asset_status_t anim_tracks_open(asset_view_t entry, anim_tracks_t* out);
 
 /* The TRCK entry `id` of `pack`, opened. */

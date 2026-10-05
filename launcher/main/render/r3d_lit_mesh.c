@@ -94,11 +94,12 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     const uint32_t nodes = word(asset->data, COUNT_NODE);
     const uint32_t colors_at = word(asset->data, AT_COLORS);
     const uint32_t face_at = word(asset->data, AT_FACE_COLORS);
-    /* One colour source, and the tree has a root to start from. */
-    if (vertices > VERTEX_LIMIT || triangles > VERTEX_LIMIT || clusters > VERTEX_LIMIT || nodes > VERTEX_LIMIT
-        || clusters == 0 || nodes == 0 || (colors_at == 0) == (face_at == 0)
-        || word(asset->data, POSITION_SCALE) == 0) {
+    if (vertices > VERTEX_LIMIT || triangles > VERTEX_LIMIT || clusters > VERTEX_LIMIT || nodes > VERTEX_LIMIT) {
         return ASSET_ERR_BOUNDS;
+    }
+    /* One colour source, and the tree has a root to start from. */
+    if (clusters == 0 || nodes == 0 || (colors_at == 0) == (face_at == 0) || word(asset->data, POSITION_SCALE) == 0) {
+        return ASSET_ERR_FORMAT;
     }
     r3d_lit_mesh_t built = {
         .positions = array_at(asset, word(asset->data, AT_POSITIONS), vertices, 6),

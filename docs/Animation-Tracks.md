@@ -22,9 +22,9 @@ flowchart LR
     Sample --> Caller["the caller's own object<br/><i>eye, colour, fov, ...</i>"]
 ```
 
-A clip reaches the firmware two ways while code moves to the first: as an
-entry of the [asset pack](assets/README.md), baked when the pack is built,
-and as committed C. One module, `tools/anim/tracks_asset.py`, bakes both with
+A clip reaches the firmware two ways: as an entry of the
+[asset pack](assets/README.md), baked when the pack is built, and as
+committed C. One module, `tools/anim/tracks_asset.py`, bakes both with
 one set of checks, so they hold the same floats.
 
 ## What a track stores
@@ -60,7 +60,7 @@ A `NAME.anim.toml` beside its `.glb` names one animation in it, and
 clip's pack id is `NAME`.
 
 ```toml
-source = "NAME.glb"     # relative to this file
+source = "NAME.glb"     # a file beside this one
 animation = "walk"      # the animation's name in the glTF
 ```
 
@@ -86,10 +86,11 @@ if (anim_tracks_from_pack(pack, "NAME", &clip) == ASSET_OK
 ```
 
 `anim_tracks_open()` checks the entry once: the version
-(`ASSET_ERR_VERSION`); the table and every array inside the entry, after the
-table and 4-byte aligned (`ASSET_ERR_BOUNDS`); and every row's name ended
-within its 32 bytes, a width of 1 to 4, a known interpolation, a quaternion
-only 4 wide, and zero padding (`ASSET_ERR_FORMAT`). `anim_tracks_find()` then
+(`ASSET_ERR_VERSION`); the entry, the table and every array inside it, after
+the table and 4-byte aligned (`ASSET_ERR_BOUNDS`); and in every row a name
+ended within its 32 bytes, at least one key, a width of 1 to 4, a known
+interpolation, a quaternion only 4 wide, and zero padding
+(`ASSET_ERR_FORMAT`). `anim_tracks_find()` then
 returns a track whose times and values point into the pack, so nothing is
 copied or allocated.
 
@@ -125,8 +126,8 @@ camera track gives a `camera_t` its look direction.
    That writes `DIR/PREFIX_tracks_generated.{c,h}`: a `const anim_track_t
    PREFIX_<node>_<path>` per channel, the clip `PREFIX_clip`, every track in
    `PREFIX_tracks[]` (`PREFIX_track_count` of them), and
-   `PREFIX_track_names[]`, each track's name in the same order. Nothing in
-   the firmware refers to the tables, so the linker drops them. The command is in the file's banner; the output is
+   `PREFIX_track_names[]`, each track's name in the same order. Only the tests
+   refer to the tables, so the linker drops them from any build without tests. The command is in the file's banner; the output is
    checked in and never edited.
 4. Sample what the scene needs, and convert at its own boundary.
 
@@ -162,10 +163,11 @@ reads, so the poses are always the animation's own.
 - `suite_anim_track.c` holds each interpolation, clamp and loop, tracks on one
   clip timeline, a long run's resolution, the quaternion path and the cubic
   layout to hand-built tracks.
-- `suite_anim_tracks.c` refuses each malformed entry with its status, holds
-  every track of a test clip to the Python sampler (bit for bit where the
-  sampler copies a key, which `tools/tests/anim_probe.py` marks), and opens
-  every clip in the shipped pack, on the host and on the board.
+- `suite_anim_tracks.c` refuses each malformed entry with its status and
+  opens every clip in the shipped pack, on the host and on the board. On the
+  host it also holds every track of a test clip to the Python sampler, bit
+  for bit where the sampler copies a key (`tools/tests/anim_probe.py` marks
+  those).
 - `tools/tests/test_anim_tracks_asset.py` reads back what the writer writes,
   refuses what the reader refuses, and has `build_pack.py` find `.anim.toml`
   files.

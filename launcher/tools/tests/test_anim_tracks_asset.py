@@ -2,11 +2,13 @@
 back as baked, what it refuses to write or read, and build_pack finding every
 .anim.toml. The firmware's reader of the same bytes is suite_anim_tracks.c."""
 
+import io
 import pathlib
 import struct
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
@@ -69,6 +71,12 @@ class RoundTripTests(unittest.TestCase):
         held = next(t for t in tracks if t["name"] == "hand/translation")
         self.assertEqual(held["times"], [0.0])
 
+    def test_a_name_holding_a_nul_is_refused(self):
+        tracks, duration_ms = probe_tracks()
+        tracks[0] = dict(tracks[0], name="a\0b/translation")
+        with self.assertRaises(TracksError):
+            tracks_asset.encode(tracks, duration_ms)
+
     def test_a_name_over_31_bytes_fails_naming_the_track(self):
         name = "n" * 21
         glb = gltf_write.build_glb([{"name": name}], [{"name": "clip", "channels": [
@@ -110,6 +118,55 @@ class RefusalTests(unittest.TestCase):
         self.assert_refused(edited(probe_entry(), row_at(0), "<32s", b"x" * 32))
 
 
+    def test_zero_keys_and_each_padding_byte_are_refused(self):
+        entry = probe_entry()
+        self.assert_refused(edited(entry, row_at(0) + 40, "<H", 0))
+        for offset in (45, 46, 47):
+            self.assert_refused(edited(entry, row_at(0) + offset, "<B", 1))
+
+
+class CheckTests(unittest.TestCase):
+    """What the bake refuses or reshapes before a track is written."""
+
+    def assert_refused(self, held):
+        with self.assertRaises(TracksError):
+            tracks_asset.check("n/path", held)
+
+    def test_a_key_that_is_not_finite_is_refused(self):
+        for bad in (float("nan"), float("inf")):
+            self.assert_refused(channel(0, "translation", [0.0, 1.0], [(0, 0, 0), (bad, 0, 0)]))
+            self.assert_refused(channel(0, "translation", [0.0, bad], [(0, 0, 0), (1, 0, 0)]))
+
+    def test_equal_key_times_a_value_over_four_wide_and_a_rotation_not_four_wide_are_refused(self):
+        self.assert_refused(channel(0, "translation", [0.0, 1.0, 1.0], [(0, 0, 0)] * 3))
+        self.assert_refused(channel(0, "translation", [0.0, 1.0], [(0, 0, 0, 0, 0)] * 2))
+        self.assert_refused(channel(0, "rotation", [0.0, 1.0], [(0, 0, 0)] * 2))
+
+    def test_two_tracks_with_one_name_are_refused(self):
+        tracks, duration_ms = probe_tracks()
+        with self.assertRaisesRegex(TracksError, "lamp/translation"):
+            tracks_asset.encode(tracks + [tracks[0]], duration_ms)
+
+    def test_a_held_cubic_channel_with_no_slope_is_one_key_with_its_three_runs(self):
+        held = channel(0, "translation", [0.0, 1.0, 2.0], [(0, 0, 0), (5, 5, 5), (0, 0, 0)] * 3, "CUBICSPLINE")
+        collapsed = tracks_asset.collapse_constant(held)
+        self.assertEqual(collapsed["times"], [0.0])
+        self.assertEqual(collapsed["values"], [(0, 0, 0), (5, 5, 5), (0, 0, 0)])
+
+    def test_a_held_cubic_value_with_a_slope_keeps_its_keys(self):
+        sloped = channel(0, "translation", [0.0, 1.0], [(0, 0, 0), (5, 5, 5), (1, 0, 0)] + [(0, 0, 0), (5, 5, 5), (0, 0, 0)],
+                         "CUBICSPLINE")
+        self.assertEqual(tracks_asset.collapse_constant(sloped)["times"], [0.0, 1.0])
+
+
+class SamplerTests(unittest.TestCase):
+    def test_a_step_track_sampled_exactly_on_a_key_is_that_key(self):
+        track = {"times": [0.0, 1.0, 2.0], "values": [(1.0,), (2.0,), (3.0,)], "interpolation": "STEP",
+                 "quaternion": False}
+        self.assertEqual(tracks_asset.sample(track, 1.0), (2.0,))
+        self.assertEqual(tracks_asset.sample(track, 0.999), (1.0,))
+
+
 class SourceTests(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
@@ -126,24 +183,40 @@ class SourceTests(unittest.TestCase):
         path.write_text(text)
         return path
 
-    def test_a_clip_file_names_its_glb_relative_to_itself_and_its_id_is_the_stem(self):
+    def test_a_clip_file_names_the_glb_beside_it_and_its_id_is_the_stem(self):
         path = self.write("clips/walk.anim.toml", 'source = "probe.glb"\nanimation = "clip"\n')
         self.assertEqual(tracks_asset.clip_id(path), "walk")
         self.assertEqual(tracks_asset.bake(path), probe_entry())
 
-    def test_a_clip_file_with_a_missing_or_extra_key_or_animation_is_refused(self):
+    def test_a_clip_file_with_a_bad_key_a_missing_animation_or_a_source_elsewhere_is_refused(self):
         for text in ('source = "probe.glb"\n', 'source = "probe.glb"\nanimation = "clip"\nloop = true\n',
-                     'source = "probe.glb"\nanimation = "nope"\n', 'source = "gone.glb"\nanimation = "clip"\n'):
+                     'source = "probe.glb"\nanimation = "clip"\nnote = "extra"\n',
+                     'source = "probe.glb"\nanimation = "nope"\n', 'source = "gone.glb"\nanimation = "clip"\n',
+                     'source = "../clips/probe.glb"\nanimation = "clip"\n',
+                     'source = "sub/probe.glb"\nanimation = "clip"\n'):
             path = self.write("clips/bad.anim.toml", text)
             with self.assertRaises(TracksError, msg=text):
                 tracks_asset.bake(path)
 
     def test_build_pack_finds_every_clip_file_by_searching(self):
         self.write("clips/walk.anim.toml", 'source = "probe.glb"\nanimation = "clip"\n')
-        self.write("deeper/still/run.anim.toml", 'source = "../../clips/probe.glb"\nanimation = "clip"\n')
+        (self.root / "deeper" / "still").mkdir(parents=True)
+        (self.root / "deeper" / "still" / "probe.glb").write_bytes(probe_glb())
+        self.write("deeper/still/run.anim.toml", 'source = "probe.glb"\nanimation = "clip"\n')
         entries = parse_pack(build_pack.pack_bytes([self.root]))
         self.assertEqual(sorted(entries), ["run", "walk"])
         self.assertEqual(entries["walk"], (tracks_asset.TYPE, probe_entry()))
+
+    def test_build_pack_takes_a_clip_file_named_on_its_own(self):
+        path = self.write("clips/walk.anim.toml", 'source = "probe.glb"\nanimation = "clip"\n')
+        self.assertEqual(sorted(parse_pack(build_pack.pack_bytes([path]))), ["walk"])
+
+    def test_a_bad_clip_ends_build_pack_with_a_usage_error_naming_it(self):
+        bad = self.write("clips/bad.anim.toml", 'source = "probe.glb"\nanimation = "nope"\n')
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr, self.assertRaises(SystemExit) as stop:
+            build_pack.main(["-o", str(self.root / "out.bin"), str(bad)])
+        self.assertEqual(stop.exception.code, 2)
+        self.assertIn("nope", stderr.getvalue())
 
     def test_two_clip_files_with_one_stem_are_refused(self):
         self.write("a/walk.anim.toml", 'source = "../clips/probe.glb"\nanimation = "clip"\n')

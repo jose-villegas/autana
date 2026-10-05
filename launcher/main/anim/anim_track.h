@@ -37,7 +37,7 @@ typedef struct {
 
 /* The timeline glTF plays all of one animation's tracks on: a track's keys
  * are in clip seconds, so tracks starting or ending at different times stay
- * in step. The tracks themselves come from anim/anim_tracks.h. */
+ * in step. */
 typedef struct {
     uint32_t duration_ms; /* the last key of any track */
 } anim_clip_t;
