@@ -415,6 +415,22 @@ test_a_load_that_fails_says_what_it_was_about(void) {
     TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_nothing_of_the_kind", NULL)); /* no one to tell */
 }
 
+/* A caller's id too long for a pack name fails as unknown, and the failure
+ * holds as much of it as a pack name does. */
+static void
+test_an_id_too_long_for_a_pack_name_is_cut_where_the_failure_names_it(void) {
+    fixture();
+    const char* const longest = "test_abcdefghijklmnopqrstuvwxyz";   /* 31 bytes */
+    const char* const too_long = "test_abcdefghijklmnopqrstuvwxyz0"; /* 32 bytes */
+    scene_failure_t why;
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, longest, &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_UNKNOWN, why.status);
+    TEST_ASSERT_EQUAL_STRING(longest, why.what);
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, too_long, &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_UNKNOWN, why.status);
+    TEST_ASSERT_EQUAL_STRING(longest, why.what);
+}
+
 /* Each failure names the entry it was about, and the load takes nothing. */
 static void
 expect_failure(const char* id, asset_status_t asset, const char* what) {
@@ -484,6 +500,7 @@ static const breakage_t BREAKAGES[] = {
     {"a camera's padding in use", PAIR_CAMERA + 2, 2, 1, false, ASSET_ERR_FORMAT},
     {"a field of view of 0", PAIR_CAMERA + 4, 4, 0, false, ASSET_ERR_FORMAT},
     {"a near plane that is not a number", PAIR_CAMERA + 8, 4, 0x7FC00000U, false, ASSET_ERR_FORMAT},
+    {"an infinite field of view", PAIR_CAMERA + 4, 4, 0x7F800000U, false, ASSET_ERR_FORMAT},
     {"a clear colour past 0xFFFFFF", PAIR_CAMERA + 12, 4, 0x1000000U, false, ASSET_ERR_FORMAT},
     {"a clip with no node", PAIR_CAMERA + 16, 1, 'x', false, ASSET_ERR_FORMAT},
     {"a node with no clip", PAIR_CAMERA + 48, 1, 'x', false, ASSET_ERR_FORMAT},
@@ -982,6 +999,7 @@ run_scene_suite(void) {
     RUN_TEST(test_a_malformed_entry_a_missing_clip_or_track_and_a_mesh_id_fail_naming_the_entry);
     RUN_TEST(test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens);
     RUN_TEST(test_the_reader_refuses_an_entry_that_breaks_any_one_rule);
+    RUN_TEST(test_an_id_too_long_for_a_pack_name_is_cut_where_the_failure_names_it);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_a_scene_the_tools_bake_loads_as_its_file_says);
 #endif
