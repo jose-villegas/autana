@@ -93,8 +93,6 @@ rotation = [30.0, -45.0, 0.0]    # pitch, yaw, roll: a sun 30 degrees off overhe
 type = "directional"
 color = [1.0, 0.92, 0.78]
 intensity = 3.0
-disc_degrees = 1.2
-rays = 8
 ```
 
 ## 4. Add a camera

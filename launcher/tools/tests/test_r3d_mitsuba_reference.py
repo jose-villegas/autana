@@ -53,14 +53,13 @@ def make_source(quads, kd=(1.0, 1.0, 1.0), texture=None, materials=None, uv_scal
                              tri_m=np.array(tri_m), names=names, materials={n: {"Kd": c} for n, c in zip(names, colours)},
                              textures=[texture] + [None] * (len(colours) - 1))
     source.corner_normals = corner_normals(source.p, source.tri_v)
-    source.indirect_cache = None
+    source.bounce = None
     source.intersector = soup.rays(soup.Soup(source.p, source.tri_v))
     return source
 
 
 def sun(direction):
-    return {"type": "directional", "direction": direction, "color": [1.0, 1.0, 1.0], "intensity": 1.0, "disc_degrees": 0.0,
-            "rays": 1}
+    return {"type": "directional", "direction": direction, "color": [1.0, 1.0, 1.0], "intensity": 1.0}
 
 
 def sky(intensity=1.0):

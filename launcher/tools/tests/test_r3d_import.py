@@ -44,7 +44,7 @@ FIT = ('[objects.mesh_renderer.fit.prune]\nbudget = 8\ncoverage_every_ms = 100\n
        '[objects.mesh_renderer.fit.poses]\ntrain_every_ms = 1000\nheld_out_every_ms = 5000\n'
        '[objects.mesh_renderer.fit.optimise]\nsteps = 20\nbatch = 4\nlaplacian = 10.0\nnormal_weight = 1.0\n'
        '[objects.mesh_renderer.fit.hashes]\nsha256 = "ab"\nrecipe_sha256 = "cd"\n')
-INDIRECT = 'indirect = { bounces = 2, rays = 8, cache_samples = 1 }\n'
+INDIRECT = 'indirect = { bounces = 2, rays = 8 }\n'
 THIN = '[geometry]\nthin = { material = "m", keep = 0.5 }\n'
 REGION = 'visibility = { source = "camera_region", rounds = 2 }\n'
 PATH = 'visibility = { source = "camera_path", every_ms = 100, size = [8, 6], margin = 2 }\n'
@@ -76,7 +76,7 @@ def renderer(mesh="mesh.import.toml", extra="", transform="", name=None):
 
 def sun_object(rotation="[0.0, 0.0, 0.0]"):
     return (f'[[objects]]\nname = "sun"\nrotation = {rotation}\n[objects.light]\ntype = "directional"\n'
-            'color = [1.0, 1.0, 1.0]\nintensity = 1.0\ndisc_degrees = 1.0\nrays = 1\n')
+            'color = [1.0, 1.0, 1.0]\nintensity = 1.0\n')
 
 
 def camera(path=False, region=True):
@@ -308,14 +308,14 @@ class SceneTests(unittest.TestCase):
 
     def test_indirect_light_needs_complete_nonnegative_settings(self):
         base = "colour_merge_step = 6"
-        for pattern, bounced in (("bake.indirect.bounces", "{ bounces = -1, rays = 8, cache_samples = 1 }"),
-                                 ("bake.indirect.rays", "{ bounces = 1, rays = 0, cache_samples = 1 }"),
-                                 ("bake.indirect.cache_samples", "{ bounces = 1, rays = 8, cache_samples = 0 }"),
-                                 ("bake.indirect.cache_samples is required", "{ bounces = 1, rays = 8 }")):
+        for pattern, bounced in (("bake.indirect.bounces", "{ bounces = -1, rays = 8 }"),
+                                 ("bake.indirect.bounces", "{ bounces = 0, rays = 8 }"),
+                                 ("bake.indirect.rays", "{ bounces = 1, rays = 0 }"),
+                                 ("bake.indirect.rays is required", "{ bounces = 1 }")):
             with self.subTest(pattern=pattern):
                 self.lit_rejects(pattern, head=TONEMAP + AMBIENT + BAKE + f"indirect = {bounced}\n")
         scene = load_scene(self.lit(head=HEAD + INDIRECT))
-        self.assertEqual((scene.bake.indirect.bounces, scene.bake.indirect.rays, scene.bake.indirect.cache_samples), (2, 8, 1))
+        self.assertEqual((scene.bake.indirect.bounces, scene.bake.indirect.rays), (2, 8))
         self.assertTrue(base in BAKE)
 
     def test_local_occlusion_is_off_unless_asked_for_and_validated_strictly(self):
@@ -350,18 +350,16 @@ class SceneTests(unittest.TestCase):
 
     def test_shading_defaults_to_smooth_and_flat_keeps_its_samples(self):
         flat = "shading = { flat = { fixed = 4 } }\n"
-        head = HEAD.replace("colour_merge_step = 6", "colour_merge_step = 6\nflat_sky_rays = 8")
         smooth = load_scene(self.lit()).renderers[0].renderer
         explicit = load_scene(self.lit('shading = "smooth"\n')).renderers[0].renderer
-        shaded = load_scene(self.lit(flat, head=head)).renderers[0].renderer
+        shaded = load_scene(self.lit(flat)).renderers[0].renderer
         self.assertIsNone(smooth.face_samples)
         self.assertIsNone(explicit.face_samples)
         self.assertEqual(shaded.face_samples, (4, 1, 4, None))
-        self.lit_rejects("flat_sky_rays is required", flat)
 
     def test_auto_samples_with_a_minimum_over_its_maximum_are_rejected(self):
         shading = 'shading = { flat = { auto = { min = 3, max = 2, area = "median" } } }\n'
-        self.lit_rejects("min", shading, head=HEAD.replace("colour_merge_step = 6", "colour_merge_step = 6\nflat_sky_rays = 8"))
+        self.lit_rejects("min", shading)
 
     def test_the_indirect_look_defaults_to_physical_and_is_validated_strictly(self):
         bounced = HEAD + INDIRECT
@@ -413,7 +411,7 @@ class SceneTests(unittest.TestCase):
                      + camera(region=False).replace("near_z = 1.0\n", 'near_z = 1.0\npath = { tracks = "no-good", node = "camera" }\n'))
 
     def test_an_unknown_key_is_rejected_in_a_light_and_in_the_sky(self):
-        self.rejects("typo", self.two_imports, renderer("a.import.toml") + sun_object().replace("rays = 1\n", "rays = 1\ntypo = 1\n"))
+        self.rejects("typo", self.two_imports, renderer("a.import.toml") + sun_object().replace("intensity = 1.0\n", "intensity = 1.0\ntypo = 1\n"))
         self.lit_rejects("typo", head=HEAD + "[sky]\ncolor = [1.0, 1.0, 1.0]\nintensity = 1.0\nrays = 1\ntypo = 1\n")
 
     def test_a_reserved_light_type_is_rejected(self):
@@ -554,8 +552,6 @@ class SceneTests(unittest.TestCase):
         self.assertNotEqual(digest(fit=extra.replace("steps = 20", "steps = 21")), first)
         self.assertNotEqual(digest(head=HEAD.replace("ray_offset = 0.5", "ray_offset = 0.6")), first)
         self.assertNotEqual(digest(tracks="other tracks"), first)
-        self.assertEqual(digest(head=HEAD.replace("colour_merge_step = 6", "colour_merge_step = 6\nflat_sky_rays = 8")), first,
-                         "a smooth renderer does not read flat_sky_rays")
         self.assertNotEqual(digest(simplify=SIMPLIFY.replace("dense_edge = 1.0", "dense_edge = 2.0")), first)
         self.assertNotEqual(digest(head=HEAD.replace("intensity = 0.1", "intensity = 0.2")), first, "the scene's lights are the recipe")
         self.assertNotEqual(digest(head=HEAD.replace("tonemap_white = 0.3", "tonemap_white = 0.4")), first)
@@ -618,12 +614,9 @@ class SceneTests(unittest.TestCase):
             with self.assertRaisesRegex(SettingsError, "scene lights is required"):
                 load_scene(write_scene(directory, objects, TONEMAP + BAKE))
 
-    def test_flat_and_indirect_options_need_their_scene_bake_knobs(self):
+    def test_the_indirect_option_needs_its_scene_bake_knob(self):
         with tempfile.TemporaryDirectory() as directory:
             write_import(directory)
-            objects = renderer(extra='bake = true\nshading = { flat = { fixed = 4 } }\n') + sun_object()
-            with self.assertRaisesRegex(SettingsError, "flat_sky_rays is required"):
-                load_scene(write_scene(directory, objects, TONEMAP + BAKE))
             objects = renderer(extra='bake = true\nindirect = false\n') + sun_object()
             with self.assertRaisesRegex(SettingsError, "needs scene.bake.indirect"):
                 load_scene(write_scene(directory, objects, TONEMAP + BAKE))
@@ -675,7 +668,7 @@ class SceneTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             write_import(directory)
             base = TONEMAP + AMBIENT + BAKE.replace("\n", "\n", 1).replace(
-                "colour_merge_step = 6", "colour_merge_step = 6\nindirect = { bounces = 1, rays = 2, cache_samples = 1 }")
+                "colour_merge_step = 6", "colour_merge_step = 6\nindirect = { bounces = 1, rays = 2 }")
             objects = renderer(extra="bake = true\n") + sun_object()
             scene = load_scene(write_scene(directory, objects, base + "[indirect]\nintensity = 2.5\nalbedo_boost = 1.5\n"))
             self.assertEqual((scene.indirect.intensity, scene.indirect.albedo_boost), (2.5, 1.5))
@@ -760,28 +753,25 @@ class ClearIntersector:
 
 
 def sun(direction, color, intensity):
-    return {"type": "directional", "direction": direction, "color": color, "intensity": intensity,
-            "disc_degrees": 0, "rays": 1}
+    return {"type": "directional", "direction": direction, "color": color, "intensity": intensity}
 
 
 def radiance(lights, normal, double_sided):
     return light(np.array([[0.0, 0.0, 0.0]]), np.array([normal]), np.array([double_sided]), ClearIntersector(),
-                 lights, 0.5, np.random.default_rng(1))
+                 lights, 0.5)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class LightListTests(unittest.TestCase):
     def test_directional_lights_add_their_radiance_and_order_does_not_matter(self):
         lights = [
-            {"type": "directional", "direction": [0, 1, 0], "color": [1, 0, 0], "intensity": 2,
-             "disc_degrees": 0, "rays": 1},
-            {"type": "directional", "direction": [0, 1, 0], "color": [0, 1, 0], "intensity": 3,
-             "disc_degrees": 0, "rays": 1},
+            {"type": "directional", "direction": [0, 1, 0], "color": [1, 0, 0], "intensity": 2},
+            {"type": "directional", "direction": [0, 1, 0], "color": [0, 1, 0], "intensity": 3},
         ]
         args = (np.array([[0.0, 0.0, 0.0]]), np.array([[0.0, 1.0, 0.0]]), np.array([False]), ClearIntersector())
-        first = light(*args, lights, 0.5, np.random.default_rng(1))
+        first = light(*args, lights, 0.5)
         np.testing.assert_allclose(first, [[2.0, 3.0, 0.0]])
-        np.testing.assert_allclose(light(*args, lights[::-1], 0.5, np.random.default_rng(1)), first)
+        np.testing.assert_allclose(light(*args, lights[::-1], 0.5), first)
 
     def test_a_double_sided_face_turns_to_the_light(self):
         got = radiance([sun([0, 1, 0], [1, 1, 1], 1)], [0.0, -1.0, 0.0], True)
@@ -887,20 +877,53 @@ class ReferenceObjectTests(unittest.TestCase):
             built = []
             with mock.patch.object(reference_render, "load_source", return_value=source), \
                     mock.patch.object(reference_render, "RayQuery"), \
-                    mock.patch.object(mesh_import, "build_indirect_cache", side_effect=lambda *args: built.append(args) or "cache"):
+                    mock.patch.object(mesh_import, "PathLight", side_effect=lambda *args: built.append(args) or "cache"):
                 _, dark = reference_render.source_for(scene, "dark")
                 lit, bounced_job = reference_render.source_for(scene, "bounced")
                 with self.assertRaisesRegex(ValueError, "no mesh renderer named"):
                     reference_render.source_for(scene, "sun")
         self.assertEqual(dark.object.name, "dark")
-        self.assertEqual((len(built), lit.indirect_cache), (1, "cache"))
+        self.assertEqual((len(built), lit.bounce), (1, "cache"))
         self.assertEqual(bounced_job.bake.indirect.bounces, 2)
+
+
+class PathLightForTests(unittest.TestCase):
+    def setUp(self):
+        mesh_import.PATH_LIGHTS.clear()
+        self.addCleanup(mesh_import.PATH_LIGHTS.clear)
+
+    def job(self, indirect):
+        return SimpleNamespace(bake=SimpleNamespace(indirect=indirect), settings=SimpleNamespace(path="a.import.toml", double_sided=set()))
+
+    def test_a_renderer_with_no_indirect_builds_no_scene(self):
+        with mock.patch.object(mesh_import, "PathLight") as built:
+            self.assertIsNone(mesh_import.path_light_for(None, self.job(None), SimpleNamespace()))
+        built.assert_not_called()
+
+    def test_one_scene_is_shared_by_equal_settings_and_only_the_latest_is_kept(self):
+        indirect = SimpleNamespace(bounces=1, rays=8)
+        scene = lambda boost, lights: SimpleNamespace(lights=lights, indirect=SimpleNamespace(albedo_boost=boost, intensity=1.0))
+        with mock.patch.object(mesh_import, "PathLight", side_effect=lambda *args: object()) as built:
+            first = mesh_import.path_light_for(None, self.job(indirect), scene(1.0, []))
+            self.assertIs(mesh_import.path_light_for(None, self.job(indirect), scene(1.0, [])), first)
+            self.assertEqual(built.call_count, 1)
+            mesh_import.path_light_for(None, self.job(indirect), scene(2.0, []))
+        self.assertEqual(built.call_count, 2)
+        self.assertEqual(len(mesh_import.PATH_LIGHTS), 1)
+
+    def test_the_intensity_does_not_rebuild_the_scene(self):
+        indirect = SimpleNamespace(bounces=1, rays=8)
+        scene = lambda intensity: SimpleNamespace(lights=[], indirect=SimpleNamespace(albedo_boost=1.0, intensity=intensity))
+        with mock.patch.object(mesh_import, "PathLight", side_effect=lambda *args: object()) as built:
+            mesh_import.path_light_for(None, self.job(indirect), scene(1.0))
+            mesh_import.path_light_for(None, self.job(indirect), scene(3.0))
+        self.assertEqual(built.call_count, 1)
 
 
 class JobTests(unittest.TestCase):
     def test_a_job_carries_the_scene_bake_its_renderer_uses(self):
         smooth = 'bake = true\nvariant = "mesh"\n'
-        head = HEAD.replace("colour_merge_step = 6", "colour_merge_step = 6\nflat_sky_rays = 8") + INDIRECT
+        head = HEAD + INDIRECT
         flat = "shading = { flat = { fixed = 4 } }\n"
         with tempfile.TemporaryDirectory() as directory:
             write_import(directory)
@@ -908,9 +931,9 @@ class JobTests(unittest.TestCase):
                        + renderer(extra="bake = true\n" + flat, name="flat") + renderer(name="plain") + sun_object())
             scene = load_scene(write_scene(directory, objects, head))
         full, dark, flat_job, plain = scene.renderers
-        self.assertEqual((full.bake.indirect.bounces, full.bake.flat_sky_rays), (2, None))
-        self.assertEqual((dark.bake.indirect, dark.bake.flat_sky_rays), (None, None))
-        self.assertEqual(flat_job.bake.flat_sky_rays, 8)
+        self.assertEqual(full.bake.indirect.bounces, 2)
+        self.assertIsNone(dark.bake.indirect)
+        self.assertEqual(flat_job.bake.indirect.bounces, 2)
         self.assertIsNone(plain.bake)
         self.assertEqual((full.bake.ray_offset, full.bake.colour_merge_step), (0.5, 6))
 

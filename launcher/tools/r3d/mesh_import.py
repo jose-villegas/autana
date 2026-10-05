@@ -30,7 +30,6 @@ from r3d.import_settings import (  # noqa: E402
 )
 from r3d.light import (  # noqa: E402
     drop_masked,
-    build_indirect_cache,
     encode_srgb8,
     face_colours,
     light,
@@ -41,6 +40,7 @@ from r3d.light import (  # noqa: E402
     visible_from_region,
 )
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
+from r3d.path_bake import PathLight  # noqa: E402
 from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
 from r3d.poses import either_way, sample_camera_path, tracks_file  # noqa: E402
 from r3d.ray_query import RayQuery  # noqa: E402
@@ -76,27 +76,25 @@ def albedo_at(src, points, spacing, material):
     return sample_albedo(points, spacing, material, src.p, src.uv, src.tri_v, src.tri_t, src.tri_m, src.textures, kd)
 
 
-INDIRECT_CACHES = {}
+PATH_LIGHTS = {}
 
 
-def indirect_cache_for(src, job, scene, intersector):
-    """The indirect light cache of a renderer's source, built once per run: renderers
-    of one import with the same lights and settings share it."""
+def path_light_for(src, job, scene):
+    """The bounced-light tracer of a renderer's source, built once per run: renderers of one import with the same
+    lights and settings share it. None when the renderer takes no bounced light. Only the latest is kept: each holds
+    the source's textures a second time."""
     if job.bake is None or job.bake.indirect is None:
         return None
     settings = job.settings
-    key = (str(settings.path), repr(vars(job.bake.indirect)), repr(scene.lights), job.bake.ray_offset,
-           repr(vars(scene.indirect)))
-    if key not in INDIRECT_CACHES:
-        double = {index for index, name in enumerate(src.names) if name in settings.double_sided}
-        INDIRECT_CACHES[key] = build_indirect_cache(
-            src.p, src.tri_v, src.tri_m, range(len(src.names)), double,
-            lambda centres, spacing, material: albedo_at(src, centres, spacing, material), intersector, scene.lights,
-            job.bake.ray_offset, job.bake.indirect, scene.indirect.intensity, scene.indirect.albedo_boost)
-    return INDIRECT_CACHES[key]
+    boost = scene.indirect.albedo_boost
+    key = (str(settings.path), repr(vars(job.bake.indirect)), repr(scene.lights), boost)
+    if key not in PATH_LIGHTS:
+        PATH_LIGHTS.clear()
+        PATH_LIGHTS[key] = PathLight(src, scene.lights, settings.double_sided, job.bake.indirect, boost)
+    return PATH_LIGHTS[key]
 
 
-def shade_lit(src, job, scene, material, mp, mt, double, intersector, rng, indirect_cache):
+def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce):
     """Vertices split along creases and lit on their own normals, near colours merged."""
     normals = corner_normals(mp, mt)
     corner_pos, corner_n = mp[mt].reshape(-1, 3), normals.reshape(-1, 3)
@@ -105,8 +103,8 @@ def shade_lit(src, job, scene, material, mp, mt, double, intersector, rng, indir
     vpos, vn, vtris = corner_pos[first], corner_n[first], inverse.reshape(-1, 3)
     albedo = albedo_at(src, vpos, vertex_spacing(vpos, vtris), material)
     welded = np.unique(np.round(vpos * 16).astype(np.int64), axis=0, return_inverse=True)[1].reshape(-1)
-    radiance = light(vpos, vn, np.full(len(vpos), double), intersector, scene.lights, job.bake.ray_offset, rng,
-                     indirect=indirect_cache, indirect_groups=welded, ao=job.bake.ao)
+    radiance = light(vpos, vn, np.full(len(vpos), double), intersector, scene.lights, job.bake.ray_offset, bounce,
+                     bounce_groups=welded, ao=job.bake.ao, bounce_intensity=scene.indirect.intensity)
     vrgb = to_srgb8(albedo * radiance, scene.tonemap_white)
     return merge_matching_colours(vpos, vrgb, vtris, job.bake.colour_merge_step)
 
@@ -152,7 +150,7 @@ def bake_geometry(job, scene):
     visibility = renderer.visibility
     if visibility or job.bake:
         intersector = RayQuery(src.p, tri_v)
-    indirect_cache = indirect_cache_for(src, job, scene, intersector)
+    bounce = path_light_for(src, job, scene)
     double_names = settings.double_sided
     seen = np.ones(len(tri_v), dtype=bool)
     if visibility:
@@ -175,7 +173,7 @@ def bake_geometry(job, scene):
     for material, mp, mt in parts:
         double = src.names[material] in double_names
         if job.bake:
-            vpos, vrgb, vtris = shade_lit(src, job, scene, material, mp, mt, double, intersector, rng, indirect_cache)
+            vpos, vrgb, vtris = shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce)
         else:
             vpos, vrgb, vtris = shade_unlit(src, material, mp, mt)
         all_pos.append(vpos)
@@ -195,22 +193,25 @@ def bake_geometry(job, scene):
         rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
         tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
     return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
-                           tri_mat=tri_mat, scale=scale, indirect_cache=indirect_cache)
+                           tri_mat=tri_mat, scale=scale, bounce=bounce)
 
 
 def flat_colours(job, scene, geometry, face_samples, **knobs):
     """One colour per triangle of `geometry` for a flat variant's
-    (samples, min, max, area) options. `knobs` are face_colours' own: sky_rays,
-    placement and sun_centre."""
+    (samples, min, max, area) options. `knobs` are face_colours' own: placement; `sky_rays` replaces every sky
+    light's own ray count."""
     src, settings = geometry.src, job.settings
     samples, sample_min, sample_max, sample_area = face_samples
     double_materials = {index for index, name in enumerate(src.names) if name in settings.double_sided}
-    knobs.setdefault("sky_rays", job.bake.flat_sky_rays)
+    lights = scene.lights
+    if "sky_rays" in knobs:
+        rays = knobs.pop("sky_rays")
+        lights = [{**item, "rays": rays} if item["type"] == "sky" else item for item in lights]
     return face_colours(geometry.positions, geometry.tris, geometry.tri_mat, range(len(src.names)), double_materials,
                         lambda centres, spacing, material: albedo_at(src, centres, spacing, material), geometry.intersector,
-                        scene.lights, job.bake.ray_offset, scene.tonemap_white, samples, max_samples=sample_max,
-                        sample_area=sample_area, min_samples=sample_min, indirect_cache=geometry.indirect_cache,
-                        ao=job.bake.ao, **knobs)
+                        lights, job.bake.ray_offset, scene.tonemap_white, samples, max_samples=sample_max,
+                        sample_area=sample_area, min_samples=sample_min, bounce=geometry.bounce,
+                        ao=job.bake.ao, bounce_intensity=scene.indirect.intensity, **knobs)
 
 
 def check_fitted(job, scene):

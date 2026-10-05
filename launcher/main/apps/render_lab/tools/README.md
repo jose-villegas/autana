@@ -137,10 +137,10 @@ that reference. Metric definitions are in
 [Mesh-Import.md](../../../../../docs/render/Mesh-Import.md#fidelity-against-a-reference).
 `doc_images.sh` owns the poses and measurement commands.
 
-<!-- generated: sponza-fidelity sha256=ff0c677745976917de5a2f1497911518583b7729a1621b5ae407f0755115fd31 -->
+<!-- generated: sponza-fidelity sha256=fb78f0f3449132901b7884fb9f2d5a741efe13986d2b1a8ea2f31168e50ae2c7 -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| Full smooth | 7.128 | 23.079 | 0.6699 | 15.130 | 5.625 |
+| Full smooth | 7.128 | 23.079 | 0.6698 | 15.131 | 5.625 |
 | Lite smooth | 8.360 | 27.690 | 0.6182 | 17.820 | 6.580 |
 | Flat, committed | 8.625 | 31.437 | 0.6079 | 18.606 | 6.729 |
 <!-- /generated: sponza-fidelity -->
@@ -162,33 +162,33 @@ Labels beginning with min or max change the auto bounds; area scales the
 median face area; sky changes the sky-ray count. Sampling changes bake
 quality without adding work to the runtime renderer.
 
-<!-- generated: sponza-flat-sampling sha256=d86a4d4504ae653eacd3496a8c1420cdaacbca0596a0dda8195c1cadd4126b04 -->
+<!-- generated: sponza-flat-sampling sha256=43ba7b693967e9a802414120ca2574e0666c04a173b882f7fef1a1be19051ac6 -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| fixed64 | 8.049 | 27.156 | 0.6272 | 16.881 | 6.380 |
-| fixed32 | 8.053 | 26.997 | 0.6267 | 16.880 | 6.384 |
-| fixed16 | 8.099 | 27.470 | 0.6260 | 16.992 | 6.417 |
-| fixed8 | 8.146 | 27.725 | 0.6244 | 17.146 | 6.444 |
-| area0.25 | 8.292 | 28.560 | 0.6180 | 17.789 | 6.488 |
-| min4 | 8.314 | 28.578 | 0.6166 | 17.663 | 6.539 |
-| fixed4-sun-centre | 8.320 | 28.704 | 0.6162 | 17.718 | 6.536 |
-| fixed4 | 8.322 | 28.587 | 0.6159 | 17.655 | 6.550 |
-| area0.5 | 8.414 | 29.725 | 0.6145 | 18.324 | 6.528 |
-| min2 | 8.454 | 30.197 | 0.6125 | 18.235 | 6.597 |
-| sky512 | 8.617 | 31.534 | 0.6074 | 18.825 | 6.672 |
-| sky256 | 8.619 | 31.534 | 0.6075 | 18.828 | 6.673 |
-| max32 | 8.637 | 31.558 | 0.6076 | 18.844 | 6.692 |
-| declared | 8.639 | 31.552 | 0.6075 | 18.847 | 6.693 |
-| max4 | 8.646 | 31.636 | 0.6068 | 18.838 | 6.704 |
-| max8 | 8.650 | 31.637 | 0.6078 | 18.877 | 6.702 |
-| sun-centre | 8.651 | 31.755 | 0.6083 | 19.040 | 6.673 |
-| fixed2 | 8.658 | 31.133 | 0.6080 | 18.444 | 6.801 |
-| sky64 | 8.688 | 31.532 | 0.6066 | 18.839 | 6.753 |
-| sky32 | 8.805 | 31.581 | 0.6057 | 18.863 | 6.886 |
-| area2 | 8.887 | 33.356 | 0.6015 | 19.432 | 6.880 |
-| centroid | 9.095 | 34.623 | 0.5955 | 19.613 | 7.100 |
-| fixed1 | 9.113 | 34.618 | 0.5935 | 19.689 | 7.105 |
-| sky16 | 9.160 | 31.631 | 0.6006 | 18.893 | 7.299 |
+| fixed64 | 8.075 | 27.197 | 0.6273 | 16.867 | 6.412 |
+| fixed32 | 8.077 | 27.095 | 0.6268 | 16.867 | 6.414 |
+| fixed16 | 8.121 | 27.500 | 0.6266 | 16.968 | 6.447 |
+| fixed8 | 8.167 | 27.793 | 0.6236 | 17.145 | 6.468 |
+| area0.25 | 8.325 | 28.610 | 0.6182 | 17.815 | 6.523 |
+| min4 | 8.333 | 28.601 | 0.6174 | 17.663 | 6.563 |
+| fixed4-sun-centre | 8.343 | 28.763 | 0.6164 | 17.698 | 6.569 |
+| fixed4 | 8.348 | 28.658 | 0.6161 | 17.654 | 6.583 |
+| area0.5 | 8.444 | 29.876 | 0.6148 | 18.317 | 6.564 |
+| min2 | 8.470 | 30.019 | 0.6136 | 18.196 | 6.624 |
+| fixed2 | 8.646 | 31.003 | 0.6081 | 18.373 | 6.798 |
+| sky256 | 8.651 | 31.565 | 0.6083 | 18.853 | 6.706 |
+| sky512 | 8.652 | 31.559 | 0.6083 | 18.851 | 6.707 |
+| max32 | 8.668 | 31.573 | 0.6085 | 18.866 | 6.724 |
+| declared | 8.671 | 31.580 | 0.6086 | 18.870 | 6.727 |
+| max8 | 8.679 | 31.666 | 0.6085 | 18.892 | 6.733 |
+| sun-centre | 8.685 | 31.763 | 0.6090 | 19.065 | 6.707 |
+| max4 | 8.686 | 31.680 | 0.6073 | 18.861 | 6.747 |
+| sky64 | 8.726 | 31.569 | 0.6077 | 18.859 | 6.794 |
+| sky32 | 8.840 | 31.547 | 0.6066 | 18.883 | 6.923 |
+| area2 | 8.923 | 33.395 | 0.6007 | 19.466 | 6.918 |
+| centroid | 9.139 | 34.826 | 0.5954 | 19.658 | 7.142 |
+| fixed1 | 9.146 | 34.801 | 0.5939 | 19.701 | 7.142 |
+| sky16 | 9.198 | 31.635 | 0.6012 | 18.912 | 7.340 |
 <!-- /generated: sponza-flat-sampling -->
 
 The sheet of the committed flat bake, left to right the reference,
@@ -312,17 +312,15 @@ lifts the shadowed arcade ceilings and the sides of the columns the sun does
 not reach, and tints a column next to a banner with the banner's colour. The
 baked variants draw precomputed colours.
 
-The cache is validated in linear light by the closed diffuse furnace and
-red-wall Cornell fixtures in
-[`test_r3d_bake.py`](../../../../tools/tests/test_r3d_bake.py). The furnace
-holds the finite bounce series, while the Cornell floor receives a stronger red
-term next to its red wall. A Sponza cache measurement must use its
-alpha-masked source and linear radiance, not source triangle counts or encoded
-vertex colours.
+The bounced light is validated in linear light by a floor beside a sunlit wall,
+whose bounced term must be half the wall's radiance, in
+[`test_r3d_path_bake.py`](../../../../tools/tests/test_r3d_path_bake.py). A
+Sponza bounce measurement must use its alpha-masked source and linear radiance,
+not source triangle counts or encoded vertex colours.
 
 The atrium's sunlit floor beneath a curtain is direct-light dominated. Its
 small coloured indirect term can disappear through the tone map and RGB565
-quantization even when the cache contains substantial bounce light elsewhere.
+quantization even when there is substantial bounce light elsewhere.
 On a shaded column the indirect term can exceed direct light, but both terms
 remain close to black. The source reference resolves those local changes more
 finely than the vertex-colour mesh, so a per-pixel reference is the comparison
@@ -334,15 +332,15 @@ fidelity sheet. Direct-light counterparts are rebuilt from the current scene
 with its bake indirect field removed. The reference resolves bounce detail
 finer than a triangle, which contributes to the remaining error.
 
-<!-- generated: sponza-indirect sha256=e28c0cadfee13a93bc0a0b57c36632c7a9cc9d522623edc0d66e3d180ef1eac9 -->
+<!-- generated: sponza-indirect sha256=acb2ae19d8dafb03ca574acac9037fd3882082217ca67c05a0b5bf7a454997f8 -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| Full smooth, indirect light | 7.128 | 23.079 | 0.6699 | 15.130 | 5.625 |
+| Full smooth, indirect light | 7.128 | 23.079 | 0.6698 | 15.131 | 5.625 |
 | Lite smooth, indirect light | 8.360 | 27.690 | 0.6182 | 17.820 | 6.580 |
 | Flat, indirect light | 8.625 | 31.437 | 0.6079 | 18.606 | 6.729 |
-| Full smooth, direct light | 9.578 | 24.567 | 0.6597 | 16.511 | 8.282 |
-| Lite smooth, direct light | 10.602 | 28.902 | 0.6148 | 18.455 | 9.123 |
-| Flat, direct light | 11.110 | 36.454 | 0.6160 | 20.762 | 9.302 |
+| Full smooth, direct light | 9.571 | 24.573 | 0.6604 | 16.505 | 8.279 |
+| Lite smooth, direct light | 10.619 | 29.004 | 0.6143 | 18.519 | 9.133 |
+| Flat, direct light | 11.160 | 36.876 | 0.6145 | 20.897 | 9.344 |
 <!-- /generated: sponza-indirect -->
 
 The reference beside the smooth bake with direct and indirect light, each
@@ -371,7 +369,7 @@ reference. Its generated sheets show the held-out error and enlarged differences
 
 The scene's `[indirect]` table, described in
 [Scene-Files.md](../../../../../docs/render/Scene-Files.md#indirect), sets
-`intensity` (a multiplier on the gathered bounce light) and `albedo_boost` (a
+`intensity` (a multiplier on the bounced light) and `albedo_boost` (a
 multiplier on the reflectance bounces use, held below 1). The committed scene
 leaves both at the physical 1.0. The reference reads the same table, so each
 look has two references: the physical one and one made with the look's own
@@ -386,20 +384,20 @@ The generated table scores each look against both references over the
 doc-image poses. The physical-reference columns include the look's difference
 from physical lighting; the own-reference column isolates bake fidelity.
 
-<!-- generated: sponza-indirect-look sha256=c51b803c340bd09475f9e871e7e46787ed473dd6e3e2703811ae387c214630e5 -->
+<!-- generated: sponza-indirect-look sha256=2f134cfca19f264edc9988a880ccf8150569ec2e729bcc2ef219d7f9dc679b52 -->
 | Look | Mean dE76, physical | Mean dE76, own | p95, physical | SSIM, physical |
 |---|---:|---:|---:|---:|
-| Direct light only | 9.578 | | 24.567 | 0.6597 |
-| intensity 1 | 7.128 | 7.128 | 23.079 | 0.6699 |
-| intensity 2 | 8.182 | 7.615 | 23.972 | 0.6556 |
-| intensity 3 | 10.204 | 8.139 | 26.361 | 0.6275 |
-| albedo boost 2 | 8.903 | 7.734 | 24.536 | 0.6487 |
+| Direct light only | 9.571 | | 24.573 | 0.6604 |
+| intensity 1 | 7.128 | 7.128 | 23.079 | 0.6698 |
+| intensity 2 | 8.190 | 7.625 | 24.000 | 0.6555 |
+| intensity 3 | 10.220 | 8.143 | 26.502 | 0.6272 |
+| albedo boost 2 | 8.904 | 7.727 | 24.617 | 0.6483 |
 <!-- /generated: sponza-indirect-look -->
 
 ## Local occlusion
 
 The scene's `[bake].ao` ([Scene-Files.md](../../../../../docs/render/Scene-Files.md#bake-ao))
-scales the ambient light, and with `indirect = true` the gathered bounce light,
+scales the ambient light, and with `indirect = true` the bounced light,
 by how closed in a point is. The scene's own ambient is faint, so these images
 raise it in both bakes and add `ao` to one of them. The reference applies the
 occlusion at every pixel and the bake at every vertex, so the two heatmaps show
