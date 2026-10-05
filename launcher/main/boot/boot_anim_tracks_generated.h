@@ -17,5 +17,7 @@ extern const anim_track_t boot_anim_space_translation;
 extern const anim_track_t boot_anim_space_rotation;
 extern const anim_track_t boot_anim_space_scale;
 
+extern const anim_track_t* const boot_anim_tracks[];
+extern const int boot_anim_track_count;
 extern const anim_clip_t boot_anim_clip;
 extern const char* const boot_anim_track_names[];
