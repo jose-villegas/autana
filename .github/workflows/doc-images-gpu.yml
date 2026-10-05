@@ -91,11 +91,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          number=$(gh pr list --head "$REFRESH_BRANCH" --state open --json number --jq '.[0].number')
-          if [ -n "$number" ]; then
-            gh pr close "$number" --delete-branch \
-              --comment "Every GPU-rendered image and generated table already matches main; nothing left to refresh."
-          fi
+          "$HOME/gpu/env/bin/python" launcher/tools/render/refresh_pr.py close \
+            "Every GPU-rendered image and generated table already matches main; nothing left to refresh."
 
       - name: Commit changes and open or update the GPU refresh PR
         if: steps.render.outputs.count != '0'
@@ -115,10 +112,4 @@ jobs:
             echo "Changed files:"
             sed 's/^/- /' "$RUNNER_TEMP/changed.txt"
           } > "$RUNNER_TEMP/body.md"
-          number=$(gh pr list --head "$REFRESH_BRANCH" --state open --json number --jq '.[0].number')
-          if [ -n "$number" ]; then
-            gh pr edit "$number" --body-file "$RUNNER_TEMP/body.md"
-          else
-            gh pr create --base main --head "$REFRESH_BRANCH" \
-              --title 'docs: refresh GPU-rendered images' --body-file "$RUNNER_TEMP/body.md"
-          fi
+          "$HOME/gpu/env/bin/python" launcher/tools/render/refresh_pr.py sync "$RUNNER_TEMP/body.md"
