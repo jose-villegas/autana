@@ -16,7 +16,7 @@ set -eu
 TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 # shellcheck source=../../../scripts/lib/python.sh
-. "$TOOLS_DIR/../../scripts/lib/python.sh"
+. "$TOOLS_DIR/../../../scripts/lib/python.sh"
 PYTHON=$(find_python) || exit 1
 
 # Git Bash hands this script MSYS paths (/c/...), which the Windows python
