@@ -66,11 +66,13 @@ the two are algebraically identical, verified there rather than assumed.
 """
 
 import sys
+from pathlib import Path
 
-# --- panel/view geometry - MUST match boot_anim.h and gfx.h ----------------
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
+from panel_size import PANEL_HEIGHT as PANEL_H, PANEL_WIDTH as PANEL_W  # noqa: E402  (path must be set up first)
 
-PANEL_W = 368   # gfx.h GFX_WIDTH
-PANEL_H = 448   # gfx.h GFX_HEIGHT
+# --- view geometry - MUST match boot_anim.h -------------------------------
+
 VIEW_W = 448    # boot_anim.h BOOT_ANIM_TITLE_VIEW_W
 VIEW_H = 368    # boot_anim.h BOOT_ANIM_TITLE_VIEW_H
 

@@ -21,8 +21,11 @@ Each orientation's fit is also tried on the other orientation.
 import re
 import statistics
 import sys
+from pathlib import Path
 
-PANEL_W, PANEL_H = 368, 448
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "tools" / "device"))
+from panel_size import PANEL_HEIGHT as PANEL_H, PANEL_WIDTH as PANEL_W  # noqa: E402  (path must be set up first)
+
 CORNER = 40
 BUTTON_HALF = 28
 

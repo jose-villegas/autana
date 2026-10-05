@@ -762,7 +762,7 @@ test_moisture_moving_through_a_resting_bed_does_not_wake_it(void) {
     int moist_before = 0;
     for (int y = 0; y < LOC_H; y++) {
         for (int x = 0; x < LOC_W; x++) {
-            moist_before += moisture_of(fx.loc.cells[y * LOC_W + x], dirt);
+            moist_before += moisture_of(fx.loc.cells[(y * LOC_W) + x], dirt);
         }
     }
     for (int i = 0; i < 40; i++) {
@@ -772,7 +772,7 @@ test_moisture_moving_through_a_resting_bed_does_not_wake_it(void) {
     int changed = 0;
     for (int y = 0; y < LOC_H; y++) {
         for (int x = 0; x < LOC_W; x++) {
-            moist_after += moisture_of(fx.loc.cells[y * LOC_W + x], dirt);
+            moist_after += moisture_of(fx.loc.cells[(y * LOC_W) + x], dirt);
         }
     }
     changed = moist_after != moist_before;

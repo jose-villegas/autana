@@ -39,6 +39,8 @@ import struct
 import time
 import zlib
 
+from panel_size import PANEL_HEIGHT, PANEL_WIDTH
+
 BEGIN_RE = re.compile(r"^SCREENSHOT_BEGIN size=(\d+)$")
 DATA_PREFIX = "SCREENSHOT_DATA:"
 STATE_PREFIX = "SCREENSHOT_STATE:"
@@ -118,11 +120,6 @@ def bmp_bytes_to_png(bmp: bytes) -> bytes:
     return png
 
 
-# The panel's own frame, gfx.h's GFX_WIDTH x GFX_HEIGHT: the framebuffer's
-# bytes and the touch points TAP, PRESS and DRAG take are both in it,
-# whichever way the board is held.
-PANEL_WIDTH, PANEL_HEIGHT = 368, 448
-
 # The turn a screenshot gets when no view is asked for: landscape, the same
 # turn whichever way the board is held.
 DEFAULT_TURN_QUARTER = 3
@@ -130,7 +127,9 @@ DEFAULT_TURN_QUARTER = 3
 
 def panel_point(x, y, quarter, width=PANEL_WIDTH, height=PANEL_HEIGHT):
     """The panel pixel that turn_png(png, quarter) moved to (x, y), for a
-    width x height panel image: turn_png's inverse, for one point.
+    width x height panel image: turn_png's inverse, for one point. The
+    panel's frame is the one the framebuffer's bytes and the touch points
+    TAP, PRESS and DRAG take are in, whichever way the board is held.
     ValueError when (x, y) lies outside the turned image."""
     quarter %= 4
     shown_width, shown_height = (height, width) if quarter % 2 else (width, height)
