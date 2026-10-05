@@ -93,14 +93,14 @@ def bundle_bytes(paths, replace=()):
         if holder is None:
             raise SettingsError(f"--replace {mesh}: no such mesh")
         holder[mesh] = pathlib.Path(file)
-    missing = [str(entry) for meshes in bundles.values() for entry in meshes.values() if not entry.is_file()]
+    missing = [str(source) for sources in bundles.values() for source in sources.values() if not source.is_file()]
     if missing:
         raise SettingsError("no baked mesh at " + ", ".join(missing) + "; run mesh_import.py first")
-    return {name: build_pack([entry(key, source) for key, source in sorted(sources.items())])
+    return {name: build_pack([pack_entry(key, source) for key, source in sorted(sources.items())])
             for name, sources in sorted(bundles.items())}
 
 
-def entry(key, source):
+def pack_entry(key, source):
     """The pack entry `key` from its source: a clip baked from its .anim.toml, else a mesh's bytes."""
     if source.name.endswith(CLIP):
         return key, tracks_asset.TYPE, tracks_asset.bake(source)
