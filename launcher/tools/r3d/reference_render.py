@@ -30,7 +30,7 @@ from r3d import mitsuba_reference
 from r3d.geometry import corner_normals
 from r3d.import_settings import load_scene
 from r3d.light import albedo_from_uv, drop_masked, light, open_side_occlusion, to_srgb8
-from r3d.mesh_import import indirect_cache_for, load_source
+from r3d.mesh_import import load_source, path_light_for
 from r3d.poses import camera_rays, read_poses
 from r3d.ray_query import RayQuery
 
@@ -98,7 +98,8 @@ def trace(source, job, scene, pose, width, height, lens, samples=4):
     if len(rays):
         albedo = hit_albedo(source, faces, bary)
         radiance = light(locations, normal, double, source.intersector, scene.lights, job.bake.ray_offset,
-                         np.random.default_rng(settings.seed), shared_sky_rays=0, indirect=source.indirect_cache, ao=job.bake.ao)
+                         source.bounce, ao=job.bake.ao,
+                         bounce_intensity=scene.indirect.intensity if source.bounce is not None else 1.0)
         linear[rays] = albedo * radiance
         shading[rays] = normal * np.where((normal * direction[rays]).sum(axis=1) > 0, -1.0, 1.0)[:, None]
     shading = shading.reshape(height, width, samples * samples, 3).sum(axis=2)
@@ -137,8 +138,8 @@ def device_picture(linear, covered, tonemap_white, background):
 def source_for(scene, name=None, lit=True):
     """The full-detail source of the scene object `name` (the first mesh renderer
     when None), alpha-masked and lit as that renderer is baked; returns it with
-    the object's job. `lit=False` skips the ray queries and the indirect
-    cache, which only the bake backend uses, and loads float32 textures."""
+    the object's job. `lit=False` skips the ray queries and the
+    bounced-light tracer, which only the bake backend uses, and loads float32 textures."""
     named = [item for item in scene.renderers if name in (None, item.object.name)]
     if not named:
         raise ValueError(f"the scene places no mesh renderer named {name!r}")
@@ -152,7 +153,7 @@ def source_for(scene, name=None, lit=True):
     if not lit:
         return source, job
     source.intersector = RayQuery(source.p, source.tri_v)
-    source.indirect_cache = indirect_cache_for(source, job, scene, source.intersector)
+    source.bounce = path_light_for(source, job, scene)
     return source, job
 
 
@@ -189,12 +190,19 @@ def reservation_pose_capacity(reservation, rss, estimate, cores):
 
 def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False):
     """Return summed per-worker maxima of end-of-pose PSS samples and worker count.
-    Caller must not have initialised CUDA. Each pose seeds its own RNG, matching serial output.
+    Caller must not have initialised CUDA. Every pose's rays are fixed, so the output matches a serial run.
     """
     from r3d import process_budget
     from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS, parent_death_signal
     import os
     global POSE_STATE
+    if getattr(source, "bounce", None) is not None:
+        # Mitsuba's LLVM threads trace one pose on every core, which a forked worker cannot (it traces on one thread
+        # and holds its own copy of the scene, which ran a 15 GB machine out of memory), so a pose with bounced
+        # light renders in this process.
+        if workers not in (None, 1):
+            raise ValueError("poses with bounced light render in the main process; leave --workers unset")
+        workers = 1
     budget_capacity = None
     if workers is None:
         estimate = max(64 * 1024 ** 2, width * height * samples * samples * POSE_BASE_BYTES_PER_RAY)

@@ -45,25 +45,36 @@ def traces_rays(mi, variant):
     return True
 
 
-def material_bsdf(mi, kd, texture, two_sided):
+ALBEDO_CEILING = 0.99
+
+
+def boosted_albedo(albedo, boost):
+    """The reflectance bounces use: albedo times boost, held below ALBEDO_CEILING but never lowered below the
+    albedo itself, so a boost of 1 changes nothing."""
+    return np.minimum(albedo * boost, np.maximum(albedo, ALBEDO_CEILING))
+
+
+def material_bsdf(mi, kd, texture, two_sided, boost=1.0):
     """The diffuse BSDF of one material: texture (linear, level 0) times Kd as `albedo_from_uv` samples it, or Kd
-    decoded with the same power 2.2 when untextured. `raw` keeps Mitsuba from decoding the bitmap a second time."""
+    decoded with the same power 2.2 when untextured, both through `boosted_albedo`. `raw` keeps Mitsuba from
+    decoding the bitmap a second time."""
     kd = np.array(kd, dtype=np.float64)
     if texture is None:
-        reflectance = {"type": "rgb", "value": (kd**2.2).tolist()}
+        reflectance = {"type": "rgb", "value": boosted_albedo(kd**2.2, boost).tolist()}
     else:
-        pixels = (texture.levels[0][..., :3] * kd).astype(np.float32)
+        pixels = boosted_albedo(texture.levels[0][..., :3] * kd, boost).astype(np.float32)
         reflectance = {"type": "bitmap", "bitmap": mi.Bitmap(pixels), "raw": True, "filter_type": "bilinear",
                        "wrap_mode": "repeat"}
     bsdf = {"type": "diffuse", "reflectance": reflectance}
     return {"type": "twosided", "bsdf": bsdf} if two_sided else bsdf
 
 
-def source_meshes(mi, source, double_sided):
+def source_meshes(mi, source, double_sided, keep_textures=False, boost=1.0):
     """One Mitsuba mesh per source material. Corners are not shared, since the source indexes positions and UVs
     separately; the shading normals are the import's crease-limited corner normals. The texture V axis is flipped
-    to the orientation `obj.Texture.sample` reads. Each texture is dropped from the source once exported, which a large scene needs to keep its host
-    memory flat, so a source is exported once."""
+    to the orientation `obj.Texture.sample` reads. Each texture is dropped from the source once exported, which a
+    large scene needs to keep its host memory flat, so a source is exported once; `keep_textures` leaves them for
+    a caller that still samples them."""
     meshes = {}
     for index, name in enumerate(source.names):
         chosen = source.tri_m == index
@@ -72,7 +83,7 @@ def source_meshes(mi, source, double_sided):
             continue
         properties = mi.Properties()
         properties["bsdf"] = mi.load_dict(material_bsdf(mi, source.materials.get(name, {}).get("Kd", (1.0, 1.0, 1.0)),
-                                                         source.textures[index], name in double_sided))
+                                                         source.textures[index], name in double_sided, boost))
         mesh = mi.Mesh(name, count * 3, count, properties, has_vertex_normals=True, has_vertex_texcoords=True)
         params = mi.traverse(mesh)
         params["vertex_positions"] = source.p[source.tri_v[chosen]].astype(np.float32).ravel()
@@ -83,14 +94,15 @@ def source_meshes(mi, source, double_sided):
         params["vertex_texcoords"] = uv.ravel()
         params.update()
         meshes[f"mesh_{index}"] = mesh
-        source.textures[index] = None
+        if not keep_textures:
+            source.textures[index] = None
     return meshes
 
 
 def emitters(mi, lights, sky=None):
     """The scene lights as Mitsuba emitters, in the units `light()` returns: its value is E/pi times albedo, so a
     directional light's irradiance is pi * colour * intensity and a flat sky is a constant radiance of colour *
-    intensity. A directional light is a point source here, so soft sun discs are not reproduced. Ambient is a
+    intensity. A directional light is a point source, as in the bake. Ambient is a
     non-physical constant with no transport meaning and is rejected unless it is zero.
 
     `sky` (turbidity, albedo) replaces the lights by the Hosek-Wilkie sun and sky, the sun taking its direction from
@@ -162,15 +174,16 @@ class PathScene:
         return image[..., :3], np.clip(image[..., 3], 0.0, 1.0)
 
 
-def prepare(source, lights, double_sided, sky=None, variant=None, pixels_per_pass=1 << 24):
-    """Export the source and the lights once; the source's textures are consumed. `pixels_per_pass` bounds the paths
-    in flight at once."""
+def prepare(source, lights, double_sided, sky=None, variant=None, pixels_per_pass=1 << 24, keep_textures=False,
+            albedo_boost=1.0):
+    """Export the source and the lights once; the source's textures are consumed unless `keep_textures`.
+    `pixels_per_pass` bounds the paths in flight at once."""
     mi = import_mitsuba()
     if mi is None:
         raise RuntimeError("the path-traced backend needs Mitsuba: pip install -r launcher/tools/r3d/requirements.txt")
     mi.set_variant(variant or default_variant(mi))
     scene = {"type": "scene", "integrator": integrator(DEFAULT_DEPTH)}
-    scene.update(source_meshes(mi, source, double_sided))
+    scene.update(source_meshes(mi, source, double_sided, keep_textures, albedo_boost))
     scene.update(emitters(mi, lights, sky))
     return PathScene(mi, mi.load_dict(scene), pixels_per_pass)
 

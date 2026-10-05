@@ -20,8 +20,7 @@ intensity = 0.06
 [bake]
 ray_offset = 0.5
 colour_merge_step = 6
-flat_sky_rays = 128
-indirect = { bounces = 2, rays = 64, cache_samples = 1 }
+indirect = { bounces = 2, rays = 64 }
 
 [[objects]]
 name = "sun"
@@ -31,8 +30,6 @@ rotation = [18.4, -48.7, 0.0]    # pitch, yaw, roll in degrees
 type = "directional"
 color = [1.0, 0.92, 0.78]
 intensity = 3.0
-disc_degrees = 1.2
-rays = 8
 
 [[objects]]
 name = "camera"
@@ -76,7 +73,7 @@ component table. A scene needs a `mesh_renderer`.
 | Component | Fields | What it is |
 |---|---|---|
 | `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene; `variant` chooses its geometry variant. |
-| `light` | `type`, `color`, `intensity`, `disc_degrees`, `rays` | A directional light; see [light](#light). |
+| `light` | `type`, `color`, `intensity` | A directional light; see [light](#light). |
 | `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view; see [camera](#camera). A scene has at most one camera. |
 
 ## Option reference
@@ -88,8 +85,8 @@ is in [Mesh-Import.md](Mesh-Import.md#import-options).
 
 | Option | Keys | What it does | Default | Option link |
 |---|---|---|---|---|
-| `[bake]` | `ray_offset`, `colour_merge_step`; `flat_sky_rays`, `indirect = { bounces, rays, cache_samples }`, `ao = { distance, rays; strength, indirect }` | Scene-wide tracing settings. | Required by a baked renderer. | [bake](#bake) |
-| `[indirect]` | `; intensity, albedo_boost` | Sets the appearance of the baked bounce-light cache. | `1.0 each`; rejected unless a baked renderer uses [bake].indirect. | [indirect](#indirect) |
+| `[bake]` | `ray_offset`, `colour_merge_step`; `indirect = { bounces, rays }`, `ao = { distance, rays; strength, indirect }` | Scene-wide tracing settings. | Required by a baked renderer. | [bake](#bake) |
+| `[indirect]` | `; intensity, albedo_boost` | Sets the appearance of the baked bounced light. | `1.0 each`; rejected unless a baked renderer uses [bake].indirect. | [indirect](#indirect) |
 | `[sky]` | `color`, `intensity`, `rays` | Hemisphere light for bakes. | Rejected unless a renderer bakes. | [sky](#sky) |
 | `[ambient]` | `color`, `intensity` | Constant light for bakes. | Rejected unless a renderer bakes. | [ambient](#ambient) |
 | `tonemap_white` | value | Tone-map white point. | Rejected unless a renderer bakes. | [tonemap_white](#tonemap_white) |
@@ -97,35 +94,33 @@ is in [Mesh-Import.md](Mesh-Import.md#import-options).
 #### bake
 
 `ray_offset` starts a tracing ray clear of its source surface and
-`colour_merge_step` controls colour merging after the bake. `flat_sky_rays` is
-required for [flat shading](#shading-flat). The image compares the renderer's
-`bake = true` result with albedo.
+`colour_merge_step` controls colour merging after the bake. The image compares
+the renderer's `bake = true` result with albedo.
 
 ![Albedo against baked light](../images/render/import-light.png)
 
 #### bake: indirect
 
-`[bake].indirect = { bounces = K, rays = R, cache_samples = S }` enables the
-scene-wide bounce-light cache. All fields are required when it is present.
+`[bake].indirect = { bounces = K, rays = R }` adds the light that has bounced off
+the source, path-traced against the full-detail mesh with the scene's
+directional and sky lights as the emitters. Both fields are required when it
+is present.
 
 | Field | Meaning |
 |---|---|
-| `bounces` | How many times light bounces; 0 turns bounce gathering off. |
-| `rays` | Cosine-weighted hemisphere rays for each gather. |
-| `cache_samples` | Points averaged into each source triangle's direct radiance. |
+| `bounces` | How many times light bounces, at least 1. |
+| `rays` | Cosine-weighted hemisphere rays for each point. |
 
-`rays` and `cache_samples` are at least 1 and `bounces` is at least 0. The
-reference renderer reads the same settings. A renderer can opt out with
-[indirect: off](#indirect-off).
+`rays` is at least 1. The reference renderer reads
+the same settings. A renderer can opt out with [indirect: off](#indirect-off).
 
 #### bake: ao
 
 `[bake].ao = { distance = D, rays = R }` darkens crevices, contact lines and
 spots under overhangs. The sky light is blocked by an occluder at any
 distance; this counts only hits within `D` model units. It scales the
-[ambient](#ambient) light, and with `indirect = true` the gathered bounce
-light. The directional and sky lights, and the bounce cache itself, are
-untouched. Every baked renderer gets it. How the factor is computed is in
+[ambient](#ambient) light, and with `indirect = true` the bounced
+light. The directional and sky lights are untouched. Every baked renderer gets it. How the factor is computed is in
 [Mesh-Import.md](Mesh-Import.md#local-occlusion-implementation).
 
 | Field | Meaning |
@@ -133,10 +128,10 @@ untouched. Every baked renderer gets it. How the factor is computed is in
 | `distance` | Reach of the occlusion rays in model units, greater than 0. |
 | `rays` | Rays per point, at least 1. |
 | `strength` | Optional, 0 to 1, default 1: the factor falls as low as 1 − `strength`. |
-| `indirect` | Optional, default false: also scale the gathered bounce light. |
+| `indirect` | Optional, default false: also scale the bounced light. |
 
 Off unless given. A scene that sets it needs something to scale: an
-`[ambient]` light, or `indirect = true` with a [bounce cache](#bake-indirect)
+`[ambient]` light, or `indirect = true` with [bounced light](#bake-indirect)
 that a baked renderer uses. `reference_render.py`'s `bake` backend reads the same table;
 its `mitsuba` backend ignores it.
 
@@ -149,7 +144,7 @@ keeps the darkening where the surfaces are close.
 
 #### indirect
 
-`intensity` is at least 0 and multiplies gathered bounce light.
+`intensity` is at least 0 and multiplies the bounced light.
 `albedo_boost` is greater than 0 and replaces bounce reflectance with
 $`\min(\beta a, \max(a, 0.99))`$. The bake stores the result in the same vertex
 or face colours as direct light. The reference renderer reads the same table,
@@ -160,8 +155,8 @@ trades fidelity to a physical reference for look.
 
 #### sky
 
-`[sky]` supplies coloured hemisphere light; its `rays` are random hemisphere
-directions used by the bake.
+`[sky]` supplies coloured hemisphere light; its `rays` are the fixed
+cosine-weighted directions each point tests for sky visibility.
 
 #### ambient
 
@@ -274,11 +269,10 @@ from one place, so a shadow edge lands on whole faces.
 ![Smooth against flat, the places they differ most](../images/render/compare-full-flat.crops.png)
 ![One fixed face sample against adaptive](../images/render/import-face-samples.png)
 
-Face samples are the useful control; extra samples converge. Sky rays saturate
-at the scene's `flat_sky_rays`: fewer is worse, and more change the score by no
-more than noise. Stratified placement and a disc
-sun preserve soft boundaries. A face's one colour leaves edge error that
-sampling cannot remove. Generated findings and sheets live in the scene tools
+Face samples are the useful control; extra samples converge. A flat bake's sky
+rays are the sky light's `rays`; the scene tools README's sweep shows how the
+score moves with them. Stratified placement preserves soft boundaries. A face's
+one colour leaves edge error that sampling cannot remove. Generated findings and sheets live in the scene tools
 README. `bake_fidelity.py` re-lights a flat mesh's geometry with chosen
 settings into a scratch directory and scores it against the reference, so
 nothing tracked changes.
@@ -447,15 +441,15 @@ renderer and its fit reference.
 
 | Option | Keys | What it does | Default | Option link |
 |---|---|---|---|---|
-| `light` | `type`, `color`, `intensity`, `disc_degrees`, `rays` | Directional bake light. | Required for an object with this component. | [light](#light) |
+| `light` | `type`, `color`, `intensity` | Directional bake light. | Required for an object with this component. | [light](#light) |
 
 #### light
 
 Only directional lights are scene objects; `point` and `spot` are reserved.
 Its direction toward the light is the object's +Y axis turned by its rotation.
 Position and scale do not matter. The lights a bake sees are the directional
-objects in file order, then `[sky]`, then `[ambient]`; the order changes only
-which random rays each light draws. A double-sided face turns to the side the
+objects in file order, then `[sky]`, then `[ambient]`. The sun is a point
+source, so its shadows are hard. A double-sided face turns to the side the
 directional lights, summed by intensity, shine on.
 
 ### Camera options

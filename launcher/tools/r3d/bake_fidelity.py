@@ -19,7 +19,6 @@ SPEC is comma-separated KEY=VALUE, every key optional:
     samples=fixed:N | auto:MIN:MAX:AREA   AREA is median, a number, or median*K
     sky=N                                 sky directions per face sample
     place=stratified | centroid           where a face's samples sit
-    sun=disc | centre                     the sun's disc, or its middle only
 
 No --variant scores the mesh as its import file declares it.
 """
@@ -65,7 +64,7 @@ def parse_samples(text, median):
 def parse_spec(spec, declared, median):
     """The bake options for one variant: (face_samples, flat_colours knobs)."""
     options = dict(item.split("=", 1) for item in spec.split(",") if item)
-    unknown = set(options) - {"samples", "sky", "place", "sun"}
+    unknown = set(options) - {"samples", "sky", "place"}
     if unknown:
         raise SettingsError(f"unknown variant keys {sorted(unknown)}")
     samples = parse_samples(options["samples"], median) if "samples" in options else declared
@@ -74,9 +73,6 @@ def parse_spec(spec, declared, median):
         knobs["sky_rays"] = int(options["sky"])
     if "place" in options:
         knobs["placement"] = options["place"]
-    if options.get("sun", "disc") not in ("disc", "centre"):
-        raise SettingsError("sun must be disc or centre")
-    knobs["sun_centre"] = options.get("sun") == "centre"
     return samples, knobs
 
 

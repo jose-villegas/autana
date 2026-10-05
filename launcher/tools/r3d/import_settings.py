@@ -18,8 +18,7 @@ RESERVED_LIGHTS = ("point", "spot")
 # The one declaration of each light type's fields; light.py pairs each with
 # the function that bakes it.
 LIGHT_FIELDS = {
-    "directional": {"direction": "vector", "color": "vector", "intensity": "number", "disc_degrees": "number",
-                    "rays": "count"},
+    "directional": {"direction": "vector", "color": "vector", "intensity": "number"},
     "sky": {"color": "vector", "intensity": "number", "rays": "count"},
     "ambient": {"color": "vector", "intensity": "number"},
 }
@@ -82,13 +81,6 @@ def count(value, where):
     value = integer(value, where)
     if value < 1:
         raise SettingsError(f"{where} must be at least 1")
-    return value
-
-
-def nonnegative_count(value, where):
-    value = integer(value, where)
-    if value < 0:
-        raise SettingsError(f"{where} must not be negative")
     return value
 
 
@@ -526,18 +518,16 @@ def load_indirect_look(table):
 
 
 def load_bake(table):
-    """The scene's direct-light and indirect-cache settings."""
-    check_keys(table, ("ray_offset", "colour_merge_step"), "scene.bake", optional=("flat_sky_rays", "indirect", "ao"))
+    """The scene's bake settings: ray offset, colour merging, bounced light and local occlusion."""
+    check_keys(table, ("ray_offset", "colour_merge_step"), "scene.bake", optional=("indirect", "ao"))
     bake = SimpleNamespace(ray_offset=number(table["ray_offset"], "scene.bake.ray_offset"),
                            colour_merge_step=count(table["colour_merge_step"], "scene.bake.colour_merge_step"),
-                           flat_sky_rays=count(table["flat_sky_rays"], "scene.bake.flat_sky_rays")
-                           if "flat_sky_rays" in table else None, indirect=None, ao=None)
+                           indirect=None, ao=None)
     if "indirect" in table:
         indirect = table["indirect"]
-        check_keys(indirect, ("bounces", "rays", "cache_samples"), "scene.bake.indirect")
-        bake.indirect = SimpleNamespace(bounces=nonnegative_count(indirect["bounces"], "scene.bake.indirect.bounces"),
-                                        rays=count(indirect["rays"], "scene.bake.indirect.rays"),
-                                        cache_samples=count(indirect["cache_samples"], "scene.bake.indirect.cache_samples"))
+        check_keys(indirect, ("bounces", "rays"), "scene.bake.indirect")
+        bake.indirect = SimpleNamespace(bounces=count(indirect["bounces"], "scene.bake.indirect.bounces"),
+                                        rays=count(indirect["rays"], "scene.bake.indirect.rays"))
     if "ao" in table:
         ao = table["ao"]
         check_keys(ao, ("distance", "rays"), "scene.bake.ao", optional=("strength", "indirect"))
@@ -586,13 +576,10 @@ def load_scene(path):
         component = item.component
         effective = None
         if component.bake:
-            if component.face_samples and bake.flat_sky_rays is None:
-                raise SettingsError("scene.bake.flat_sky_rays is required for shading = { flat = ... }")
             if not component.indirect and bake.indirect is None:
                 raise SettingsError("objects.mesh_renderer.indirect = false needs scene.bake.indirect")
             effective = SimpleNamespace(
                 ray_offset=bake.ray_offset, colour_merge_step=bake.colour_merge_step,
-                flat_sky_rays=bake.flat_sky_rays if component.face_samples else None,
                 indirect=bake.indirect if component.indirect else None, ao=bake.ao)
             asset_name = f"{scene_name}.{item.name}"
             asset_path = path.parent / f"{asset_name}.mesh"
@@ -619,9 +606,9 @@ def load_scene(path):
         scaled = any(light["type"] == "ambient" for light in lights) or (bake.ao.indirect and bounced)
         if not scaled:
             raise SettingsError("scene.bake.ao scales the ambient light or, with indirect = true, the bounce light "
-                                "a baked renderer gathers: the scene has neither")
+                                "a baked renderer takes bounced light: the scene has neither")
         if bake.ao.indirect and not bounced:
-            raise SettingsError("scene.bake.ao.indirect is read by no placed mesh: no baked renderer gathers bounce light")
+            raise SettingsError("scene.bake.ao.indirect is read by no placed mesh: no baked renderer takes bounced light")
     if "indirect" in values and not bounced:
         raise SettingsError("scene indirect settings is read by no placed mesh")
     for name, present, needed in (("lights", bool(lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),
