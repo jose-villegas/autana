@@ -87,6 +87,7 @@ def path_light_for(src, job, scene):
     settings = job.settings
     key = (str(settings.path), repr(vars(job.bake.indirect)), repr(scene.lights), repr(vars(scene.indirect)))
     if key not in PATH_LIGHTS:
+        src.corner_normals = corner_normals(src.p, src.tri_v)
         PATH_LIGHTS[key] = PathLight(src, scene.lights, settings.double_sided, job.bake.indirect, scene.indirect)
     return PATH_LIGHTS[key]
 
