@@ -205,7 +205,8 @@ pressed/released edges rather than the scene restating them.
 
 An image comes out the way the board is READ at that quarter (448x368 for
 a landscape one) unless `--panel` asks for the framebuffer the way the
-panel holds it, 368x448. That second shape is what a device capture has.
+panel holds it, 368x448. render_diff compares in that second shape, and
+turns a device capture back to it first.
 
 A scene that leaves gfx in band mode is refused rather than rendered: the
 band ring retains no frame to read back, the same reason a device capture
@@ -335,7 +336,7 @@ and still; set the pose before comparing at a given quarter.
 ## Diffing against a capture
 
 ```sh
-autana screenshot --framebuffer -o shot.png                  # --dev build only
+autana screenshot -o shot.png                                # --dev build only
 ./launcher/tools/render/scenes/post_ui_render_host.sh -o /tmp/post
 ./launcher/tools/render/render_diff.sh shot.png /tmp/post/landscape-panel.bmp \
     --mask build_mark --mask home_hint --out /tmp/diff.png
@@ -346,11 +347,13 @@ with the differences in red and the masked regions in blue. Exit status is
 0 only when nothing differs. Either side may be a host render, a QEMU
 capture or a board capture.
 
-**Orientation is declared, never guessed.** The capture for this comparison
-uses `--framebuffer`, so it remains panel-native; its sidecar's
-`orientation_quarter` says which rotation the shell used and is reported,
-not applied. A render in the read orientation must say `--quarter-a` /
-`--quarter-b` or it is refused rather than turned on a guess.
+**Orientation is declared, never guessed.** A capture's sidecar records the
+turn its image was given (`image_turn_quarter`), and render_diff undoes it,
+so a default `autana screenshot`, a `--framebuffer` one and a QEMU capture
+all compare. The sidecar's `orientation_quarter` says which rotation the
+shell used and is reported, not applied. A render in the read orientation
+must say `--quarter-a` / `--quarter-b` or it is refused rather than turned
+on a guess.
 
 **Masks cover what the shell draws and a scene does not**: the development
 build's corner mark, the swipe-home strip. They are declared per quarter in

@@ -404,16 +404,17 @@ The option also makes the temperature read report failure, because
 ESP-IDF's driver waits forever on a sensor QEMU does not have.
 
 **Driving the shell.** The console listener of such an image also takes
-`TOUCH <down|up> <x> <y>` and `IMU <ax> <ay> <az>` (panel pixels, the frame
-of `qemu_run.py`'s own unturned screenshot rather than `autana tap`'s; raw
+`TOUCH <down|up> <x> <y>` and `IMU <ax> <ay> <az>` (panel pixels; raw
 accelerometer counts, 4096 to the g). `qemu_run.py --do` strings them into
-what a user does, one ordered step at a time:
+what a user does, one ordered step at a time. Its `screenshot` is the default
+`autana screenshot` view, and its `tap` and `swipe` take that view's pixels,
+as `autana tap` does; `touch` and `--touch` stay in panel pixels:
 
 ```sh
 python launcher/test/qemu_run.py launcher/build.qemu.shell \
-  --do "tap 180 95" --do "wait 2500" --do "screenshot app.png" \
+  --do "tap 95 187" --do "wait 2500" --do "screenshot app.png" \
   --do "tilt 0 -4096 0" --do "wait 2500" --do "screenshot landscape.png" \
-  --do "swipe 184 446 184 200" --do "screenshot home.png"
+  --do "swipe 222 1 222 200" --do "screenshot home.png"
 ```
 
 That opens an app from the launcher, turns the board on its side and swipes
