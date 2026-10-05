@@ -458,8 +458,7 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
     TEST_ASSERT_EQUAL_FLOAT(-1.0F, forward.z);
 }
 
-/* The pair's entry, as the pack holds it: names at 24, transforms at 120,
- * renderers at 264, the camera at 336, 416 bytes in all. */
+/* Where the pair's entry puts its parts, as the pack holds it. */
 enum { PAIR_NAMES = 24, PAIR_RENDERERS = 264, PAIR_CAMERA = 336, PAIR_BYTES = 416 };
 
 /* One edit that breaks the pair's entry: `width` bytes of `value` at `at`,

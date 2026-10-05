@@ -114,8 +114,8 @@ bundle is unmapped or freed. A missing or bad bundle is `NULL` and one log
 line saying why. `scene_load(id)` mounts bundle `id` and opens its scene
 entry `id`, every mesh it names and its camera's clip from it, failing on the
 first missing or malformed one with the id and the status; `scene_unload()`
-releases it. A scene that fails to load is not
-drawn; showing that is up to the app.
+releases it. A scene that fails to load is not drawn; showing that is up to
+the app.
 
 ## The device
 
