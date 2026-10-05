@@ -1,8 +1,8 @@
 """Ray queries against a triangle mesh, traced by Mitsuba.
 
 `light.py` and the importer ask three questions of a mesh: the first hit along each ray, whether a ray is blocked, and
-every hit along a ray. `RayQuery` answers them with the signatures of the intersector it replaced, so those callers
-only change where the object is built. Triangle ids are the row numbers of the `tris` given, and every triangle is hit
+every hit along a ray. `RayQuery` answers them as `intersects_location`, `intersects_any`/`intersects_first` and `intersects_id`.
+Triangle ids are the row numbers of the `tris` given, and every triangle is hit
 from both sides.
 """
 import multiprocessing

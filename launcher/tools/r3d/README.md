@@ -30,7 +30,8 @@ mesh. Nothing here runs on the board.
 | [fitted_variant.py](fitted_variant.py) | Remakes a scene renderer's fitted mesh from the `fit` recipe it records; see [A fitted variant](#a-fitted-variant). |
 | [cost_model.py](cost_model.py), [board_cost_weights.txt](board_cost_weights.txt) | A linear model of a mesh's frame time from a pose (submitted and drawn triangles, rows, pixels with overdraw, clusters in view), and its weights with the board frames they were fitted to; see [Cost-aware fit](#cost-aware-fit). |
 | [reference_render.py](reference_render.py) | Traces the undecimated source mesh through the scene's bake lights at supersampled device resolution; writes linear arrays and RGB565-expanded PNGs for fidelity comparisons. |
-| [mitsuba_reference.py](mitsuba_reference.py), [reference_sweep.py](reference_sweep.py) | The optional path-traced backend of `reference_render.py` (Mitsuba 3, CUDA or CPU), and the measurement of its noise, depth bias, time and GPU memory on one pose; see [Path-traced reference](#path-traced-reference). |
+| [ray_query.py](ray_query.py) | First-hit, any-hit and every-hit ray queries against a triangle mesh, traced by Mitsuba; the bake, visibility culling and the reference renderer all use it. |
+| [mitsuba_reference.py](mitsuba_reference.py), [reference_sweep.py](reference_sweep.py) | The path-traced backend of `reference_render.py` (Mitsuba 3, CUDA or CPU), and the measurement of its noise, depth bias, time and GPU memory on one pose; see [Path-traced reference](#path-traced-reference). |
 
 The environment is pinned in [requirements.txt](requirements.txt), and the
 simplifier needs the meshoptimizer submodule and a host C++ compiler (`CXX`,
@@ -115,11 +116,10 @@ names the render and is required with `--reference-sheet`.
 
 `reference_render.py --backend mitsuba` renders the same source with Mitsuba 3 in
 place of the bake lighting. It reads the same geometry after alpha rejection, albedo,
-camera and poses, and shares exposure, tone map and RGB565 conversion. The
-`bake` backend stays the default.
-Install the pinned `mitsuba` and `drjit` from
-[requirements.txt](requirements.txt); the variant is `cuda_ad_rgb` when
-a CUDA device is present, else `llvm_ad_rgb`, else `scalar_rgb` (`--variant`).
+camera and poses, and shares exposure, tone map and RGB565 conversion. `bake` is the default backend.
+The variant is `cuda_ad_rgb` when a CUDA device can load a scene, else
+`llvm_ad_rgb` when libLLVM is present, else `scalar_rgb` (`--variant`); only
+the tests are small enough for the scalar one.
 
 | Option | Meaning |
 |---|---|
