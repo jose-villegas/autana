@@ -55,22 +55,34 @@ typedef struct {
     int n;
 } support_t;
 
-static void
+static bool
 support_admit(support_t* sp, uint16_t at) {
     unsigned k = support_slot(at);
     while (((sp->filled >> k) & 1u) != 0u) {
         if (sp->slot[k] == at) {
-            return;
+            return false;
         }
         k = (k + 1u) & (SUPPORT_SLOTS - 1u);
     }
     sp->slot[k] = at;
     sp->filled |= (uint64_t)1u << k;
     sp->body[sp->n++] = at;
+    return true;
 }
 
-/* True once a neighbour of body cell `at` that is not kin sits straight
- * down: the body rests on it. Kin neighbours join the body instead. */
+static bool
+rests_on_nonkin(const sand_t* s, int x, int y, int w, int h, int down, cell_t self, const reaction_t* r) {
+    const int* nd = ring_dir(down);
+    const int nx = x + nd[0], ny = y + nd[1];
+    if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
+        return false;
+    }
+    const cell_t c = s->cells[(size_t)ny * (size_t)w + (size_t)nx];
+    return !CELL_IS_EMPTY(c) && !is_kin(c, self, r);
+}
+
+/* Every admitted cell will be dequeued by the bounded walk, so its support
+ * verdict can be checked at admission without changing the chosen body. */
 static bool
 support_visit(sand_t* s, support_t* sp, int at, int w, int h, int down, cell_t self, const reaction_t* r) {
     const int cx = at % w, cy = at / w;
@@ -83,20 +95,17 @@ support_visit(sand_t* s, support_t* sp, int at, int w, int h, int down, cell_t s
         }
         const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
         const cell_t c = s->cells[nat];
-        if (CELL_IS_EMPTY(c)) {
+        if (CELL_IS_EMPTY(c) || !is_kin(c, self, r)) {
             continue;
         }
-        if (!is_kin(c, self, r)) {
-            /* Diagonals not counted; wall sticks in narrow shafts. */
-            if (d == 0) {
-                return true; /* this body is resting on something */
+        if (support_admit(sp, (uint16_t)nat)) {
+            if (rests_on_nonkin(s, nx, ny, w, h, down, self, r)) {
+                return true;
             }
-            continue;
+            if (sp->n == SUPPORT_MAX) {
+                return false;
+            }
         }
-        if (sp->n >= SUPPORT_MAX) {
-            continue; /* too big to finish; treat as loose */
-        }
-        support_admit(sp, (uint16_t)nat);
     }
     return false;
 }
@@ -115,7 +124,13 @@ anchored(sand_t* s, int x, int y, int w, int h, cell_t self, const reaction_t* r
 
     const int down = ring_of(s->last_load_dx, s->last_load_dy);
 
-    while (head < sp.n) {
+    if (rests_on_nonkin(s, x, y, w, h, down, self, r)) {
+        return true;
+    }
+
+    /* At capacity no further cell can join, and every member's support has
+     * already been checked. Expanding the queue tail cannot change false. */
+    while (head < sp.n && sp.n < SUPPORT_MAX) {
         if (support_visit(s, &sp, (int)sp.body[head++], w, h, down, self, r)) {
             return true;
         }
