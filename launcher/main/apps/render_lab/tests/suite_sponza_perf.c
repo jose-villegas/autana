@@ -148,7 +148,9 @@ report_core_contention(const raster_t* raster, const r3d_lens_t* lens, int visib
              (long long)together_bottom.us, (long long)wall);
 }
 
-/* One slot for each mesh renderer the scene draws, labelled by its entity's name. */
+/* The scene's bundle, mounted for the suite, and one slot for each mesh
+ * renderer the scene draws, labelled by its entity's name. */
+static const asset_pack_t* bundle;
 #define MESH_MAX 8
 static r3d_lit_mesh_t meshes[MESH_MAX];
 static int mesh_count;
@@ -159,7 +161,7 @@ open_the_meshes(void) {
     TEST_ASSERT_LESS_OR_EQUAL_INT(MESH_MAX, mesh_count);
     for (int i = 0; i < mesh_count; i++) {
         const char* asset = sponza_scene.renderers[i].asset;
-        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(asset_store_pack(), asset, &meshes[i]), asset);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(bundle, asset, &meshes[i]), asset);
     }
 }
 
@@ -253,8 +255,13 @@ test_sponza_frame_cost_along_the_flythrough(void) {
 
 void
 run_sponza_perf_suite(void) {
+    bundle = asset_store_bundle(sponza_scene.name);
     RUN_TEST(test_sponza_draw_stage_breakdown);
     RUN_TEST(test_sponza_frame_cost_along_the_flythrough);
+    if (bundle != NULL) {
+        asset_store_release(sponza_scene.name);
+        bundle = NULL;
+    }
 }
 
 #else /* !DEVICE_BUILD */
