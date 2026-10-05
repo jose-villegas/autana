@@ -266,11 +266,25 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, bounce
     surroundings give equal light. `bounce` is a PathLight whose bounced light is added; `bounce_groups` gives
     points that share one position the same bounce, gathered once on their mean normal, since bounced light changes
     slowly where direct light does not. `ao` is the scene's local occlusion setting: it scales the ambient light,
-    and the bounced light when `ao.indirect`; a double-sided point takes its less occluded side, which the sun-facing
-    normal need not be. Point and spot lights are reserved and not baked yet.
+    and the bounced light when `ao.indirect`. A double-sided point has no side it is meant to be seen from: it is lit
+    on both sides and keeps the brighter, so a card in the sun takes its sunlit side and a curtain in shade takes
+    its open side, not the back that faces the wall. Point and spot lights are reserved and not baked yet.
     """
     n = face_towards_light(normals, double_sided, lights)
     occlusion = None if ao is None else open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offset)
+    radiance = lit_side(points, n, intersector, lights, ray_offset, occlusion, bounce, bounce_groups, ao, bounce_intensity)
+    both = np.nonzero(double_sided)[0]
+    if len(both):
+        groups = None if bounce_groups is None else bounce_groups[both]
+        other = lit_side(points[both], -n[both], intersector, lights, ray_offset,
+                         None if occlusion is None else occlusion[both], bounce, groups, ao, bounce_intensity)
+        brighter = other.sum(axis=1) > radiance[both].sum(axis=1)
+        radiance[both[brighter]] = other[brighter]
+    return radiance
+
+
+def lit_side(points, n, intersector, lights, ray_offset, occlusion, bounce, bounce_groups, ao, bounce_intensity):
+    """The light at each point on the side its unit normal `n` faces."""
     ctx = SimpleNamespace(normals=n, origin=points + n * ray_offset, intersector=intersector, occlusion=occlusion)
     radiance = np.zeros((len(points), 3))
     for scene_light in lights:

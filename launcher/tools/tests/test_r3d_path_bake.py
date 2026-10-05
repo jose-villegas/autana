@@ -175,10 +175,14 @@ class LightPlumbingTests(unittest.TestCase):
 
     class Recorder:
         def __init__(self):
-            self.normals = None
+            self.calls = []
+
+        @property
+        def normals(self):
+            return self.calls[0]
 
         def bounce(self, points, normals, ray_offset):
-            self.normals = normals
+            self.calls.append(normals)
             return np.zeros((len(points), 3))
 
     def test_the_indirect_intensity_scales_the_bounce_and_nothing_else(self):
@@ -192,6 +196,34 @@ class LightPlumbingTests(unittest.TestCase):
         for intensity in (0.0, 0.5, 3.0):
             got = light(*args, bounce=Constant(), bounce_intensity=intensity)
             np.testing.assert_allclose(got, [[1.0 + intensity] * 3])
+
+    def test_a_double_sided_point_in_shade_takes_the_side_with_more_light_and_a_one_sided_one_keeps_its_own(self):
+        class Below:
+            """Bounced light on the -y side only."""
+
+            def bounce(self, points, normals, ray_offset):
+                return np.where(normals[:, 1:2] < 0, 0.5, 0.0) * np.ones((len(points), 3))
+
+        roof = soup.Soup([(-9, 2, -9), (9, 2, -9), (9, 2, 9), (-9, 2, 9)], [(0, 1, 2), (0, 2, 3)])
+        sun = {"type": "directional", "direction": [0.0, 1.0, 0.0], "color": [1.0, 1.0, 1.0], "intensity": 1.0}
+        point, up = np.array([[0.0, 0.0, 0.0]]), np.array([[0.0, 1.0, 0.0]])
+        args = (point, up, None, soup.rays(roof), [sun], 0.01)
+        # The roof shades the sun-facing (+y) side; the side below has the bounce.
+        both = light(args[0], args[1], np.array([True]), *args[3:], bounce=Below())
+        np.testing.assert_allclose(both, [[0.5] * 3])
+        one = light(args[0], args[1], np.array([False]), *args[3:], bounce=Below())
+        np.testing.assert_allclose(one, [[0.0] * 3])
+
+    def test_a_double_sided_card_in_the_sun_keeps_its_sunlit_side(self):
+        class Below:
+            def bounce(self, points, normals, ray_offset):
+                return np.where(normals[:, 1:2] < 0, 0.25, 0.0) * np.ones((len(points), 3))
+
+        card = soup.Soup([(-9, 0, -9), (9, 0, -9), (9, 0, 9), (-9, 0, 9)], [(0, 1, 2), (0, 2, 3)])
+        sun = {"type": "directional", "direction": [0.0, 1.0, 0.0], "color": [1.0, 1.0, 1.0], "intensity": 1.0}
+        got = light(np.array([[0.0, 0.0, 0.0]]), np.array([[0.0, -1.0, 0.0]]), np.array([True]), soup.rays(card), [sun], 0.01,
+                    bounce=Below())
+        np.testing.assert_allclose(got, [[1.0] * 3])
 
     def test_a_double_sided_point_facing_away_from_the_sun_gathers_on_its_sun_facing_side(self):
         card = soup.Soup([(-9, 0, -9), (9, 0, -9), (9, 0, 9), (-9, 0, 9)], [(0, 1, 2), (0, 2, 3)])
