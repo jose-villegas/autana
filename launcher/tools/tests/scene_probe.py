@@ -4,10 +4,10 @@ suite suite_scene.c reads to hold the firmware's reader to it.
 
     python launcher/tools/tests/scene_probe.py -o PACK
 
-The pack holds SCNE "probe_scene", baked by scene_asset.bake() from a scene
-file written here, and the TRCK "probe" its camera flies (anim_probe.py's
+The pack holds SCNE "probe_scene", baked by scene_asset.bake() from the scene
+file probe_scene.scene.toml written here (its stem is the id), and the TRCK "probe" its camera flies (anim_probe.py's
 clip, node "lamp"). The suite adds meshes of its own for the two renderers,
-"red" and "green", and checks the loaded scene against SCENE below. The scene
+"red" and "green", and checks the loaded scene against what SCENE below says. The scene
 is invented here, so nothing depends on one an app ships.
 """
 
@@ -64,7 +64,8 @@ def probe_pack():
         scene = root / "probe_scene.scene.toml"
         scene.write_text(SCENE)
         entry = scene_asset.bake(scene)
-    return build_pack([("probe_scene", scene_asset.TYPE, entry), ("probe", tracks_asset.TYPE, probe_entry())])
+        scene_id = scene_asset.scene_id(scene)
+    return build_pack([(scene_id, scene_asset.TYPE, entry), ("probe", tracks_asset.TYPE, probe_entry())])
 
 
 def main(argv=None):

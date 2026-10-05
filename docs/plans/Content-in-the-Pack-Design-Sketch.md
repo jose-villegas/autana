@@ -4,10 +4,9 @@
 0 to 3) are built, the rest is not. `[A]` marks a proposal that was approved
 with the rest rather than asked for.
 
-A `.glb` animation was baked to committed C (`*_tracks_generated.{c,h}`)
-and a `.scene.toml` to committed C as well. Both are
-content with a source file that is already the truth, so a second committed
-copy is not allowed. Both become typed entries of the asset pack
+Committed C baked from a `.glb` animation (`*_tracks_generated.{c,h}`) or a
+`.scene.toml` is content with a source file that is already the truth, so a
+second committed copy is not allowed. Both become typed entries of the asset pack
 ([docs/assets/README.md](../assets/README.md)), baked when the pack is built.
 Nothing derived is committed, so there is nothing to drift.
 
