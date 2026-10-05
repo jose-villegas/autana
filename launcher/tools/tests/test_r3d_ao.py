@@ -12,7 +12,7 @@ try:
     from tests import soup
 
     from r3d.geometry import corner_normals
-    from r3d.light import IndirectCache, light, local_occlusion, sky_directions
+    from r3d.light import light, local_occlusion, sky_directions
     from r3d.reference_render import occlusion_map
 except ImportError:
     np = None
@@ -78,12 +78,11 @@ class LocalOcclusionTest(unittest.TestCase):
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class OccludedLightTest(unittest.TestCase):
     AMBIENT = {"type": "ambient", "color": [1.0, 1.0, 1.0], "intensity": 0.5}
-    SUN = {"type": "directional", "direction": [0.0, 0.0, 1.0], "color": [1.0, 1.0, 1.0], "intensity": 1.0,
-           "disc_degrees": 0.0, "rays": 1}
+    SUN = {"type": "directional", "direction": [0.0, 0.0, 1.0], "color": [1.0, 1.0, 1.0], "intensity": 1.0}
 
     def lit(self, lights, x, **kwargs):
         points, normals = floor_points(x)
-        return light(points, normals, np.array([False]), corner(), lights, 0.01, np.random.default_rng(1), **kwargs)[0]
+        return light(points, normals, np.array([False]), corner(), lights, 0.01, **kwargs)[0]
 
     def test_without_the_setting_the_ambient_is_the_same_everywhere(self):
         np.testing.assert_allclose(self.lit([self.AMBIENT], 1.0), [0.5] * 3)
@@ -103,8 +102,8 @@ class OccludedLightTest(unittest.TestCase):
         mesh = soup.Soup(np.concatenate([p, card]), np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]]))
         sun = dict(self.SUN, direction=[-1.0, 0.0, 0.5])
         point, normal = np.array([[2.0, 0.0, 10.0]]), np.array([[1.0, 0.0, 0.0]])
-        args = (soup.rays(mesh), [self.AMBIENT, sun], 0.01, np.random.default_rng(1))
-        sun_only = light(point, normal, np.array([True]), args[0], [sun], 0.01, args[3], ao=ao())[0]
+        args = (soup.rays(mesh), [self.AMBIENT, sun], 0.01)
+        sun_only = light(point, normal, np.array([True]), args[0], [sun], 0.01, ao=ao())[0]
         both = light(point, normal, np.array([True]), *args, ao=ao())[0]
         self.assertGreater((both - sun_only)[0], 0.5 * 0.85)
 
@@ -112,12 +111,13 @@ class OccludedLightTest(unittest.TestCase):
         np.testing.assert_allclose(self.lit([self.SUN], 1.0, ao=ao()), self.lit([self.SUN], 1.0))
 
     def test_the_indirect_light_is_scaled_only_when_asked(self):
-        # A cache that returns a constant: one triangle's radiance seen by every gather ray.
-        normals = np.array([[0.0, 0.0, 1.0]] * 2 + [[1.0, 0.0, 0.0]] * 2)
-        cache = IndirectCache(np.ones((1, 4, 3)), 8, 0.01, normals, np.zeros(4, dtype=bool))
-        plain = self.lit([], 1.0, indirect=cache)
-        scaled = self.lit([], 1.0, indirect=cache, ao=ao(indirect=True))
-        unscaled = self.lit([], 1.0, indirect=cache, ao=ao(indirect=False))
+        class Constant:
+            def bounce(self, points, normals, ray_offset):
+                return np.ones((len(points), 3))
+
+        plain = self.lit([], 1.0, bounce=Constant())
+        scaled = self.lit([], 1.0, bounce=Constant(), ao=ao(indirect=True))
+        unscaled = self.lit([], 1.0, bounce=Constant(), ao=ao(indirect=False))
         self.assertGreater(plain[0], 0.0)
         np.testing.assert_allclose(unscaled, plain)
         self.assertLess(scaled[0], plain[0])

@@ -146,7 +146,7 @@ bake_and_render() {
         -o "$dir/frame.bmp" --video "$dir.avi" 2> "$dir/render.log"
 }
 # variant_bake NAME BOUNCES SCENE-TABLE: bounces is `keep`, or `none` to take
-# the scene bake's indirect cache out; the table goes before the first object.
+# the scene's `[bake].indirect` out; the table goes before the first object.
 variant_bake() {
     run mkdir -p "$W/indirect-$1"
     run cp "$M/meshes/sponza.import.toml" "$W/indirect-$1/"
@@ -292,7 +292,6 @@ sweep_start=$(date +%s)
     --variant area0.5=samples=auto:1:16:median*0.5 --variant area2=samples=auto:1:16:median*2 \
     --variant sky16=sky=16 --variant sky32=sky=32 --variant sky64=sky=64 \
     --variant sky256=sky=256 --variant sky512=sky=512 --variant centroid=place=centroid \
-    --variant sun-centre=sun=centre --variant fixed4-sun-centre=samples=fixed:4,sun=centre \
     > "$W/sampling.log" 2>&1
 sweep_seconds=$(($(date +%s) - sweep_start))
 echo "CPU flat sampling sweep: $sweep_seconds seconds"

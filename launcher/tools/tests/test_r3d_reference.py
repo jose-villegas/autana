@@ -26,7 +26,7 @@ def plane_source(corners):
         tri_m=np.array([0, 0]), names=["plane"], materials={"plane": {"Kd": (1.0, 1.0, 1.0)}}, textures=[None],
     )
     source.corner_normals = corner_normals(source.p, source.tri_v)
-    source.indirect_cache = None
+    source.bounce = None
     source.intersector = soup.rays(soup.Soup(source.p, source.tri_v))
     return source
 
@@ -34,8 +34,7 @@ def plane_source(corners):
 def sun_scene(direction):
     settings = SimpleNamespace(double_sided=set(), seed=1)
     job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.01, ao=None))
-    scene = SimpleNamespace(lights=[{"type": "directional", "direction": direction, "color": [1.0, 1.0, 1.0], "intensity": 1.0,
-                                     "disc_degrees": 0.0, "rays": 1}])
+    scene = SimpleNamespace(lights=[{"type": "directional", "direction": direction, "color": [1.0, 1.0, 1.0], "intensity": 1.0}])
     return job, scene
 
 
@@ -128,8 +127,6 @@ class PooledReferenceTests(unittest.TestCase):
         source.intersector = soup.rays(mesh)
         job, scene = sun_scene([0., 0., -1.])
         job.bake.ao = SimpleNamespace(distance=3., strength=.8, rays=8, indirect=True)
-        scene.lights[0]["disc_degrees"] = 4.
-        scene.lights[0]["rays"] = 3
         scene.lights.append({"type": "ambient", "color": [1., 1., 1.], "intensity": .5})
         scene.tonemap_white = 2.
         scene.camera = SimpleNamespace(component=SimpleNamespace(background=0x123456))
@@ -174,6 +171,35 @@ class PooledReferenceTests(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "needs NumPy")
+class BounceReferenceTests(unittest.TestCase):
+    class Constant:
+        def bounce(self, points, normals, ray_offset):
+            return np.full((len(points), 3), 0.25)
+
+    def test_the_reference_adds_the_bounce_to_each_hit(self):
+        source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
+        without = render_linear(source, *sun_scene([0., 0., 1.]), LOOK_DOWN, 1, 1, 0.1, 1)
+        source.bounce = self.Constant()
+        with_bounce = render_linear(source, *sun_scene([0., 0., 1.]), LOOK_DOWN, 1, 1, 0.1, 1)
+        np.testing.assert_allclose(with_bounce - without, 0.25, atol=1e-12)
+
+    def test_poses_with_bounced_light_render_in_this_process_and_keep_the_pool_otherwise(self):
+        from unittest.mock import patch
+        from r3d import reference_render as reference
+        with patch.object(reference, '_write_pose', side_effect=[(1, 20)] * 3), \
+                patch.object(reference.multiprocessing, 'get_all_start_methods', return_value=['fork']), \
+                patch.object(reference.concurrent.futures, 'ProcessPoolExecutor') as executor:
+            result = reference.render_poses(SimpleNamespace(bounce=object()), None, None, [None] * 3, 8, 8, 1., 1, '.')
+        executor.assert_not_called()
+        self.assertEqual(result[1], 1)
+
+    def test_more_workers_than_one_are_refused_for_bounced_light(self):
+        from r3d import reference_render as reference
+        with self.assertRaisesRegex(ValueError, "leave --workers unset"):
+            reference.render_poses(SimpleNamespace(bounce=object()), None, None, [None] * 3, 8, 8, 1., 1, '.', workers=4)
+
+
+@unittest.skipIf(np is None, "needs NumPy")
 class SkyStreamingTests(unittest.TestCase):
     def test_sky_directions_are_streamed_and_match_list(self):
         from unittest.mock import patch
@@ -183,42 +209,27 @@ class SkyStreamingTests(unittest.TestCase):
         sky = {"type": "sky", "rays": 7, "color": [.5, .7, .9], "intensity": .8}
         points = np.array([[0., 0., .5], [.2, .3, .1]])
         normals = np.array([[0., 0., -1.], [0., 0., 1.]])
-        for shared in (0, 7):
-            for seed in (0, 17, 42):
-                def render():
-                    rng = np.random.default_rng(seed)
-                    value = lighting.light(points, normals, np.array([False, False]), source.intersector,
-                                           [sky], .01, rng, shared_sky_rays=shared)
-                    return value, rng.bit_generator.state
-                def streamed(intersector, origin, directions):
-                    self.assertFalse(isinstance(directions, list))
-                    return original(intersector, origin, directions)
-                with patch.object(lighting, 'unshadowed_count', side_effect=streamed):
-                    actual, state = render()
-                def list_bake_sky(light, ctx):
-                    n = ctx.normals
-                    tu, tv = lighting.tangent_frame(n)
-                    rays = ctx.shared_sky_rays if ctx.shared else light['rays']
-                    directions = []
-                    if ctx.shared:
-                        for x, y, z in lighting.sky_directions(rays):
-                            directions.append(tu * x + tv * y + n * z)
-                    else:
-                        for _ in range(rays):
-                            r1 = ctx.rng.random(len(n))
-                            r2 = ctx.rng.random(len(n))
-                            r = np.sqrt(r1)[:, None]
-                            angle = (2 * np.pi * r2)[:, None]
-                            directions.append(tu * (r * np.cos(angle)) + tv * (r * np.sin(angle)) +
-                                              n * np.sqrt(1 - r1)[:, None])
-                    visible = original(ctx.intersector, ctx.origin, directions) / rays
-                    return visible[:, None] * np.array(light['color']) * light['intensity']
-                with patch.dict(lighting.LIGHTS, sky=(lighting.LIGHTS['sky'][0], list_bake_sky)):
-                    expected, old_state = render()
-                self.assertEqual(actual.tobytes(), expected.tobytes())
-                self.assertEqual(state, old_state)
 
+        def render():
+            return lighting.light(points, normals, np.array([False, False]), source.intersector, [sky], .01)
 
+        def streamed(intersector, origin, directions):
+            self.assertFalse(isinstance(directions, list))
+            return original(intersector, origin, directions)
+
+        with patch.object(lighting, 'unshadowed_count', side_effect=streamed):
+            actual = render()
+
+        def list_bake_sky(light, ctx):
+            n = ctx.normals
+            tu, tv = lighting.tangent_frame(n)
+            directions = [tu * x + tv * y + n * z for x, y, z in lighting.sky_directions(light['rays'])]
+            visible = original(ctx.intersector, ctx.origin, directions) / light['rays']
+            return visible[:, None] * np.array(light['color']) * light['intensity']
+
+        with patch.dict(lighting.LIGHTS, sky=(lighting.LIGHTS['sky'][0], list_bake_sky)):
+            expected = render()
+        self.assertEqual(actual.tobytes(), expected.tobytes())
 
 
 POSE_BARRIER = None

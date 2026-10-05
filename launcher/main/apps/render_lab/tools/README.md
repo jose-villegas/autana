@@ -312,17 +312,15 @@ lifts the shadowed arcade ceilings and the sides of the columns the sun does
 not reach, and tints a column next to a banner with the banner's colour. The
 baked variants draw precomputed colours.
 
-The cache is validated in linear light by the closed diffuse furnace and
-red-wall Cornell fixtures in
-[`test_r3d_bake.py`](../../../../tools/tests/test_r3d_bake.py). The furnace
-holds the finite bounce series, while the Cornell floor receives a stronger red
-term next to its red wall. A Sponza cache measurement must use its
-alpha-masked source and linear radiance, not source triangle counts or encoded
-vertex colours.
+The bounced light is validated in linear light by a floor beside a sunlit wall,
+whose bounced term must be half the wall's radiance, in
+[`test_r3d_path_bake.py`](../../../../tools/tests/test_r3d_path_bake.py). A
+Sponza bounce measurement must use its alpha-masked source and linear radiance,
+not source triangle counts or encoded vertex colours.
 
 The atrium's sunlit floor beneath a curtain is direct-light dominated. Its
 small coloured indirect term can disappear through the tone map and RGB565
-quantization even when the cache contains substantial bounce light elsewhere.
+quantization even when there is substantial bounce light elsewhere.
 On a shaded column the indirect term can exceed direct light, but both terms
 remain close to black. The source reference resolves those local changes more
 finely than the vertex-colour mesh, so a per-pixel reference is the comparison
@@ -371,7 +369,7 @@ reference. Its generated sheets show the held-out error and enlarged differences
 
 The scene's `[indirect]` table, described in
 [Scene-Files.md](../../../../../docs/render/Scene-Files.md#indirect), sets
-`intensity` (a multiplier on the gathered bounce light) and `albedo_boost` (a
+`intensity` (a multiplier on the bounced light) and `albedo_boost` (a
 multiplier on the reflectance bounces use, held below 1). The committed scene
 leaves both at the physical 1.0. The reference reads the same table, so each
 look has two references: the physical one and one made with the look's own
@@ -399,7 +397,7 @@ from physical lighting; the own-reference column isolates bake fidelity.
 ## Local occlusion
 
 The scene's `[bake].ao` ([Scene-Files.md](../../../../../docs/render/Scene-Files.md#bake-ao))
-scales the ambient light, and with `indirect = true` the gathered bounce light,
+scales the ambient light, and with `indirect = true` the bounced light,
 by how closed in a point is. The scene's own ambient is faint, so these images
 raise it in both bakes and add `ao` to one of them. The reference applies the
 occlusion at every pixel and the bake at every vertex, so the two heatmaps show
