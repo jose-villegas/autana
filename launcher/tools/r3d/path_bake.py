@@ -12,6 +12,7 @@ Mitsuba's variant is process-wide and the ray queries pin it, so this runs on `r
 import numpy as np
 
 from r3d import ray_query
+from r3d.geometry import corner_normals
 from r3d.light import sky_directions, tangent_frame
 from r3d.mitsuba_reference import integrator, prepare
 
@@ -21,21 +22,22 @@ BATCH = 1 << 18
 
 
 class PathLight:
-    def __init__(self, source, lights, double_sided, indirect, look):
-        """`indirect` is the scene's `[bake].indirect` (bounces, rays) and `look` its `[indirect]` (intensity,
-        albedo_boost). Ambient has no transport meaning and stays with `light.light`."""
+    def __init__(self, source, lights, double_sided, indirect, albedo_boost):
+        """`indirect` is the scene's `[bake].indirect` (bounces, rays) and `albedo_boost` its `[indirect]` boost, which
+        belongs to the exported materials. Pure transport: the intensity is applied where the light is summed.
+        Ambient has no transport meaning and stays with `light.light`."""
         emitters = [item for item in lights if item["type"] != "ambient"]
+        source.corner_normals = corner_normals(source.p, source.tri_v)
         self.scene = prepare(source, emitters, double_sided, variant=ray_query.VARIANT, keep_textures=True,
-                             albedo_boost=look.albedo_boost)
+                             albedo_boost=albedo_boost)
         self.mi = self.scene.mi
         # Mitsuba counts the ray itself as depth 1, so each bounce adds one.
         self.integrator = self.mi.load_dict(integrator(indirect.bounces + 1))
-        self.rays, self.intensity = indirect.rays, look.intensity
+        self.rays = indirect.rays
         self.scalar = ray_query.VARIANT.startswith("scalar")
 
     def bounce(self, points, normals, ray_offset):
-        """The bounced light at each point, on its `normals` side, scaled by the scene's indirect intensity. Points
-        go through in chunks so the rays in flight stay within BATCH however many points there are."""
+        """The bounced light at each point, on its `normals` side. Points go through in chunks so the rays in flight stay within BATCH however many points there are."""
         local = sky_directions(self.rays)
         out = np.zeros((len(points), 3))
         step = max(1, BATCH // self.rays)
@@ -48,7 +50,7 @@ class PathLight:
                          + n[:, None] * local[None, :, 2:3]).reshape(-1, 3)
             found = self._radiance(origin, direction, SEED + index)
             out[chunk] = found.reshape(len(n), self.rays, 3).mean(axis=1)
-        return out * self.intensity
+        return out
 
     def _radiance(self, origin, direction, seed):
         mi = self.mi

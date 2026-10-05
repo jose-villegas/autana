@@ -108,10 +108,10 @@ is present.
 
 | Field | Meaning |
 |---|---|
-| `bounces` | How many times light bounces; 0 turns bounced light off. |
+| `bounces` | How many times light bounces, at least 1. |
 | `rays` | Cosine-weighted hemisphere rays for each point. |
 
-`rays` is at least 1 and `bounces` is at least 0. The reference renderer reads
+`rays` is at least 1. The reference renderer reads
 the same settings. A renderer can opt out with [indirect: off](#indirect-off).
 
 #### bake: ao
