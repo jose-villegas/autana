@@ -40,7 +40,6 @@ def brute_force(positions, tris, origin, direction):
 class RayQueryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        mitsuba_reference.import_mitsuba().set_variant("scalar_rgb")
         rng = np.random.default_rng(7)
         cls.positions = rng.uniform(-1.0, 1.0, (60, 3))
         tris = rng.integers(0, 60, (40, 3))
@@ -49,7 +48,7 @@ class RayQueryTests(unittest.TestCase):
         cls.origins = rng.uniform(-1.5, 1.5, (200, 3))
         directions = rng.normal(size=(200, 3))
         cls.directions = directions / np.linalg.norm(directions, axis=1, keepdims=True)
-        cls.query = RayQuery(cls.positions, cls.tris)
+        cls.query = RayQuery(cls.positions, cls.tris, variant="scalar_rgb")
         cls.crossings = [brute_force(cls.positions, cls.tris, o, d) for o, d in zip(cls.origins, cls.directions)]
 
     def test_first_hits_are_the_nearest_crossings(self):
@@ -82,8 +81,20 @@ class RayQueryTests(unittest.TestCase):
         self.assertEqual((len(locations), len(rays), len(tris)), (0, 0, 0))
         self.assertEqual(len(self.query.intersects_id(away, up)[0]), 0)
 
+    def test_the_crossings_survive_far_from_the_origin(self):
+        shift = np.array([1400.0, 0.0, 1400.0])
+        positions, origins = [(a + shift).astype(np.float32).astype(np.float64) for a in (self.positions, self.origins)]
+        far = RayQuery(positions, self.tris, variant="scalar_rgb")
+        tris, rays = far.intersects_id(origins, self.directions, multiple_hits=True)
+        want = sorted((index, int(tri)) for index, (o, d) in enumerate(zip(origins, self.directions))
+                      for _, tri in brute_force(positions, self.tris, o, d))
+        got = set(zip(rays.tolist(), tris.tolist()))
+        self.assertEqual(len(rays), len(got), "a triangle was reported twice")
+        # float32 at 1400 resolves 1e-4: a hit on a triangle's very edge may fall either way.
+        self.assertLessEqual(len(got ^ set(want)), 0.03 * len(want))
+
     def test_both_sides_of_a_triangle_are_hit(self):
-        query = RayQuery(np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]), np.array([[0, 1, 2]]))
+        query = RayQuery(np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]), np.array([[0, 1, 2]]), variant="scalar_rgb")
         for z, dz in ((1.0, -1.0), (-1.0, 1.0)):
             self.assertTrue(query.intersects_any(np.array([[0.2, 0.2, z]]), np.array([[0.0, 0.0, dz]]))[0])
 
