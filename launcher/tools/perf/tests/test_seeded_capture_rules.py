@@ -3,6 +3,8 @@ import contextlib
 import copy
 import io
 import math
+import json
+import subprocess
 import os
 from pathlib import Path
 import random
@@ -37,13 +39,12 @@ class CaptureRulesTests(unittest.TestCase):
         self.assertEqual(tool.selected_suites([('s', '-', '-')], {'s/r'}, owners, (23, 4), {}),
                          [('s', '-', '-')])
 
-    def test_full_inventory_contains_unselected_tests(self):
+    def test_unfiltered_inventory_uses_all_result_statuses(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / 'capture.log'
             path.write_text('SUITE_TEST name=test_heavy selected=1\n'
-                            'SUITE_TEST name=test_change_clocks selected=0\n:1:test_heavy:PASS\n')
-            self.assertEqual(capture.capture_inventory(path), ['test_heavy', 'test_change_clocks'])
-            self.assertEqual(capture.capture_tests(path), ['test_heavy'])
+                            ':1:test_failed:FAIL: failed\n:1:test_ignored:IGNORE: ignored\n:1:test_heavy:PASS\n')
+            self.assertEqual(capture.capture_tests(path), ['test_failed', 'test_ignored', 'test_heavy'])
 
     def test_instruction_pair_uses_empty_file_result(self):
         with tempfile.TemporaryDirectory() as root:
@@ -91,20 +92,71 @@ class CaptureRulesTests(unittest.TestCase):
                 self.assertEqual(result['rows']['suite/quiet']['verdict'], 'added' if missing == 'a' else 'removed')
                 self.assertFalse(result['incomplete'])
 
+    @patch.object(stats, 'permutation_samples', new=lambda alpha: 199)
+    def test_unfiltered_extra_seeds_use_unique_bounded_patterns(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root, 8)
+            fake = FakeAutana(root, noisy=True)
+            with patch.object(tool, 'required_seeds', return_value=2), contextlib.redirect_stdout(io.StringIO()):
+                result = tool.measure(args, fake)
+            extra = [item for item in result['plan'] if item['look'] > 1]
+            self.assertTrue(extra)
+            for item in extra:
+                for _, filters, _ in item['suites']:
+                    self.assertNotEqual(filters, '-')
+                    patterns = filters.split(',')
+                    self.assertEqual(len(patterns), 1)
+                    self.assertIn(patterns[0], 'test_heavy')
+                    self.assertNotIn(patterns[0], 'test_quiet')
+                    self.assertLessEqual(len(patterns[0]), capture.filter_limits(args.project_a)[0])
+
+    @patch.object(stats, 'permutation_samples', new=lambda alpha: 199)
+    def test_no_unique_substring_still_remeasures_row(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root, 8)
+            fake = FakeAutana(root, noisy=True)
+            def runner(command, log, timeout):
+                code, lines, wall = fake(command, log, timeout)
+                for _, line in lines:
+                    if line.startswith('report: '):
+                        path = Path(line[8:]).with_suffix('.log')
+                        with path.open('a') as output:
+                            output.write(':1:test_heavy_extra:IGNORE: unavailable\n')
+                return code, lines, wall
+            with patch.object(tool, 'required_seeds', return_value=2), contextlib.redirect_stdout(io.StringIO()):
+                result = tool.measure(args, runner)
+            extra = [item for item in result['plan'] if item['look'] > 1]
+            self.assertTrue(extra)
+            self.assertTrue(all(item['suites'] == args.suite for item in extra))
+            self.assertGreater(sum(item['side'] == 'a' and not item.get('error') for item in result['plan']), result['first_pass'])
+
+    def test_no_unique_bounded_pattern_keeps_unfiltered_scope(self):
+        self.assertEqual(tool.selected_suites([('s', '-', '-')], {'s/r'},
+            {'s/r': ('s', 'test_a')}, (1, 1), {'s': ['test_a', 'test_aa']}), [('s', '-', '-')])
+
+    def test_timeout_cleanup_cannot_replace_capture_error(self):
+        stop = capture.stop_process_tree
+        def timed_out_stop(process):
+            stop(process)
+            raise subprocess.TimeoutExpired('taskkill', 10)
+        with patch.object(capture, 'stop_process_tree', side_effect=timed_out_stop), \
+                contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(RuntimeError, 'capture timed out'):
+            capture.run_stamped([sys.executable, '-c', 'import time; time.sleep(.3)'], io.StringIO(), timeout=.05)
+
     def test_chatty_command_stops_at_deadline(self):
-        command = 'import time\nfor i in range(200):\n print(i,flush=True); time.sleep(.0001)'
+        command = 'for i in range(1000): print(i,flush=True)'
         class SlowLog(io.StringIO):
             def write(self, text):
-                time.sleep(.002)
+                time.sleep(.01)
                 return super().write(text)
         started = time.monotonic()
         with contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(RuntimeError, 'timed out'):
-            capture.run_stamped([sys.executable, '-c', command], SlowLog(), timeout=.05)
-        self.assertLess(time.monotonic() - started, 3)
+            capture.run_stamped([sys.executable, '-c', command], SlowLog(), timeout=.2)
+        self.assertLess(time.monotonic() - started, 1)
 
     def test_filter_boundary_and_different_project_limits(self):
         capture.validate_filters([('s', 'abc,def', '-')], (3, 2))
-        for filters in ('abcd', 'a,b,c', 'a,,b'):
+        for filters in ('abcd', 'a,b,c', ''):
             with self.assertRaises(ValueError):
                 capture.validate_filters([('s', filters, '-')], (3, 2))
         with tempfile.TemporaryDirectory() as root:
@@ -179,74 +231,108 @@ class CaptureRulesTests(unittest.TestCase):
                 self.assertEqual(set(run['listed_tests']), {'test_quiet', 'test_heavy'})
                 self.assertEqual(run['owners'], {'quiet': 'test_quiet', 'heavy': 'test_heavy'})
 
-    @unittest.skipUnless(os.name == 'nt', 'Windows job assignment')
-    def test_job_failure_degrades_and_assignment_precedes_resume(self):
-        import ctypes
-        from unittest.mock import Mock
-        import process_tree
-        for created, assigned in ((None, False), (123, False), (123, True)):
-            kernel, process, ntdll = Mock(), Mock(), Mock()
-            process._handle = 456
-            kernel.AssignProcessToJobObject.return_value = assigned
-            ntdll.NtResumeProcess.return_value = 0
-            order = []
-            kernel.AssignProcessToJobObject.side_effect = lambda *args: order.append('assign') or assigned
-            ntdll.NtResumeProcess.side_effect = lambda *args: order.append('resume') or 0
-            with patch.object(process_tree, 'windows_job_binding', return_value=kernel), \
-                    patch.object(process_tree, 'create_kill_on_close_job', return_value=created), \
-                    patch.object(process_tree.subprocess, 'Popen', return_value=process) as popen, \
-                    patch.object(ctypes, 'WinDLL', return_value=ntdll), contextlib.redirect_stderr(io.StringIO()):
-                self.assertIs(process_tree.launch_process_tree(['command']), process)
-                if created:
-                    self.assertEqual(order, ['assign', 'resume'])
-                    self.assertTrue(popen.call_args.kwargs['creationflags'] & process_tree.CREATE_SUSPENDED)
-                    if assigned:
-                        self.assertEqual(process._tree_job, 123)
-                    else:
-                        kernel.CloseHandle.assert_called_once_with(123)
-                else:
-                    self.assertNotIn('creationflags', popen.call_args.kwargs)
-
-    @unittest.skipUnless(os.name == 'nt', 'Windows job creation')
-    def test_shared_job_creation_failure_degrades(self):
-        from unittest.mock import Mock
-        import process_tree
-        for created, configured in ((None, False), (123, False)):
-            kernel = Mock()
-            kernel.CreateJobObjectW.return_value = created
-            kernel.SetInformationJobObject.return_value = configured
-            with contextlib.redirect_stderr(io.StringIO()) as log:
-                self.assertIsNone(process_tree.create_kill_on_close_job(kernel=kernel))
-            self.assertIn('using tree kill', log.getvalue())
-            if created:
-                kernel.CloseHandle.assert_called_once_with(created)
-
     def test_stop_does_not_flash_if_runner_would_recover(self):
         with tempfile.TemporaryDirectory() as root:
             args = arguments(root, 32)
-            fake = FakeAutana(root)
+            fake = FakeAutana(root, noisy=True)
             attempts = []
             def runner(command, log, timeout):
                 if 'suite' in command:
                     attempts.append(command)
-                    if len(attempts) <= 2:
-                        raise RuntimeError('first two fail')
+                    if 9 <= len(attempts) <= 10:
+                        raise RuntimeError('two fail after inconclusive first pass')
                 return fake(command, log, timeout)
             with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(RuntimeError):
                 tool.measure(args, runner)
-            self.assertEqual(len(attempts), 2)
+            self.assertEqual(len(attempts), 10)
+            payload = json.loads((args.out / 'comparison.json').read_text())
+            self.assertEqual(payload['rows']['suite/heavy']['verdict'], 'inconclusive')
+            self.assertTrue(payload['incomplete'])
 
-    @patch.object(stats, 'permutation_samples', new=lambda alpha: 19)
-    def test_production_aa_calibration(self):
-        rng = random.Random(51493)
-        draws, false = 2000, 0
-        # A 3-sigma binomial bound at the allocated one-look difference share.
-        alpha = .05 / len(tool.schedule(32, .05)) / 2
-        bound = alpha + 3 * (alpha * (1-alpha) / draws) ** .5
-        for draw in range(draws):
-            a = {'r': [100 * math.exp(rng.gauss(0, .15)) for _ in range(16)]}
-            b = {'r': [100 * math.exp(rng.gauss(0, .15)) for _ in range(16)]}
-            result = stats.compare(a, b, 1, alpha, draw, permutation_alpha=.05)
-            false += result['r']['verdict'] in ('regressed', 'improved')
-        print(f'Production A/A false decisions: {false}/{draws} ({false/draws:.4%}); bound {bound:.4%}')
-        self.assertLessEqual(false / draws, bound)
+    def test_exact_aa_family_calibration_uses_production_alpha(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root, 32)
+            with patch.object(tool, 'compare', wraps=stats.compare) as decision, contextlib.redirect_stdout(io.StringIO()):
+                tool.measure(args, FakeAutana(root))
+            alpha = decision.call_args.args[3]
+        # Uniform null p-values isolate the decision budget from statistic estimation.
+        atoms = 1600
+        false = []
+        for share in (alpha, 2 * alpha):
+            count = 0
+            for index in range(atoms):
+                row = dict(a=100, b=110, ratio=1.1, interval=None, log_difference=.1,
+                           p=(index + .5) / atoms, equivalence=1, permutation=0)
+                with patch.object(stats, 'row_test', return_value=row):
+                    verdict = stats.compare({'r': [100]*4}, {'r': [110]*4}, alpha=share,
+                                            permutation_alpha=.05)['r']['verdict']
+                count += verdict in ('regressed', 'improved')
+            false.append(count / atoms)
+        budget = args.alpha / len(tool.schedule(args.max_seeds, args.alpha)) / 2
+        self.assertAlmostEqual(false[0], budget)
+        self.assertAlmostEqual(false[1], 2 * budget)
+        self.assertLess(false[0], false[1])
+
+    def test_absence_requires_every_run_and_ignores_other_suites(self):
+        plan = [dict(side='a', suites=[('s', '-', '-')]),
+                dict(side='a', suites=[('other', '-', '-')], error='failed')]
+        absent = dict(rows={}, listed_tests=['owner'])
+        records = [dict(suites={'s': dict(runs=[absent, dict(absent)])}), dict(suites={})]
+        self.assertTrue(tool.absent_by_measurement('s/r', 'owner', plan, records, 'a'))
+        for changed in (dict(absent, listed_tests=[]), dict(absent, rows={'r': 10})):
+            for index in (0, 1):
+                runs = [dict(absent), dict(absent)]
+                runs[index] = changed
+                self.assertFalse(tool.absent_by_measurement('s/r', 'owner', plan,
+                    [dict(suites={'s': dict(runs=runs)}), dict(suites={})], 'a'))
+
+    def test_not_measured_alone_marks_incomplete(self):
+        for missing in (False, True):
+            with tempfile.TemporaryDirectory() as root:
+                args = arguments(root, 4)
+                fake = FakeAutana(root)
+                metadata = capture.capture_metadata
+                def without_owner(path, rows):
+                    owners, instructions = metadata(path, rows)
+                    return {row: None for row in owners}, instructions
+                def runner(command, log, timeout):
+                    code, lines, wall = fake(command, log, timeout)
+                    if missing and 'suite' in command and Path(command[command.index('--project')+1]).name == 'a':
+                        for _, line in lines:
+                            if line.startswith('report: '):
+                                path = Path(line[8:]).with_suffix('.log')
+                                path.write_text('\n'.join(part for part in path.read_text().splitlines()
+                                                          if not ('quiet' in part and 'both cores' in part)))
+                    return code, lines, wall
+                with patch.object(capture, 'capture_metadata', side_effect=without_owner), contextlib.redirect_stdout(io.StringIO()):
+                    result = tool.measure(args, runner)
+                self.assertEqual(result['incomplete'], missing)
+                self.assertEqual(result['rows']['suite/heavy']['verdict'], 'no change')
+                self.assertEqual('Incomplete:' in (args.out / 'summary.md').read_text(), missing)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows taskkill fallback')
+    def test_real_job_failure_kills_pipe_holding_child(self):
+        import process_tree
+        with tempfile.TemporaryDirectory() as root:
+            marker = Path(root) / 'alive'
+            child = f"import time; from pathlib import Path; time.sleep(1); Path({str(marker)!r}).touch(); time.sleep(10)"
+            parent = f"import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',{child!r}]); time.sleep(10)"
+            with patch.object(process_tree, 'create_kill_on_close_job', return_value=None), \
+                    contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), \
+                    self.assertRaisesRegex(RuntimeError, 'capture timed out'):
+                capture.run_stamped([sys.executable, '-c', parent], io.StringIO(), timeout=.3)
+            time.sleep(1.1)
+            self.assertFalse(marker.exists())
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows job closes on normal completion')
+    def test_normal_completion_kills_lingering_grandchild(self):
+        with tempfile.TemporaryDirectory() as root:
+            marker = Path(root) / 'alive'
+            grandchild = f"import time; from pathlib import Path; time.sleep(1); Path({str(marker)!r}).touch(); time.sleep(10)"
+            child = f"import subprocess,sys; subprocess.Popen([sys.executable,'-c',{grandchild!r}], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)"
+            parent = f"import subprocess,sys; subprocess.run([sys.executable,'-c',{child!r}])"
+            with contextlib.redirect_stdout(io.StringIO()):
+                code, _, _ = capture.run_stamped([sys.executable, '-c', parent], io.StringIO(), timeout=2)
+            self.assertEqual(code, 0)
+            time.sleep(1.1)
+            self.assertFalse(marker.exists())

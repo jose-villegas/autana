@@ -15,8 +15,7 @@ from seed_statistics import t_quantile
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "scripts/lib"))
 from process_tree import stop_process_tree, launch_process_tree, close_process_tree  # noqa: E402
-sys.path.insert(0, str(REPO / "launcher/main/apps/sand/tools"))
-from report_performance import RESULT_RE, SUITE_TEST_RE  # noqa: E402
+from device_capture import RESULT_RE  # noqa: E402
 
 MEAN_RE = re.compile(r"\b(?P<name>\S+) both cores: mean\s+(?P<value>\d+)us\b")
 NUMBER_RE = re.compile(r"^[+-]?\d+$")
@@ -97,8 +96,6 @@ def run_stamped(command, log, timeout=1800):
             if remaining <= 0:
                 raise subprocess.TimeoutExpired(command, timeout)
             item = messages.get(timeout=remaining)
-            if time.monotonic() >= deadline:
-                raise subprocess.TimeoutExpired(command, timeout)
             if item is None:
                 break
             at, line = item
@@ -110,10 +107,11 @@ def run_stamped(command, log, timeout=1800):
         if remaining <= 0:
             raise subprocess.TimeoutExpired(command, timeout)
         code = process.wait(timeout=remaining)
-        if time.monotonic() >= deadline:
-            raise subprocess.TimeoutExpired(command, timeout)
     except (queue.Empty, subprocess.TimeoutExpired):
-        stop_process_tree(process)
+        try:
+            stop_process_tree(process)
+        except subprocess.TimeoutExpired:
+            pass
         raise RuntimeError(f"capture timed out after {timeout}s")
     except BaseException:
         stop_process_tree(process)
@@ -312,7 +310,7 @@ def run_flash(args, seed, runner=None):
                     rows = parse_report(table)
                     owners, instructions = capture_metadata(capture, rows)
                     runs.append(dict(capture=str(capture), table=str(table), rows=rows,
-                                     owners=owners, instructions=instructions, listed_tests=capture_tests(capture), inventory=capture_inventory(capture)))
+                                     owners=owners, instructions=instructions, listed_tests=capture_tests(capture), inventory=capture_tests(capture) if tests == "-" else []))
                 if name not in record["suites"]:
                     record["suites"][name] = dict(tests=tests, run_seconds=seconds, runs=runs)
                 else:
@@ -362,9 +360,3 @@ def capture_tests(capture):
     text = Path(capture).read_text(encoding="utf-8", errors="replace")
     return [match.group("name") for line in text.splitlines()
             if (match := RESULT_RE.match(line.strip()))]
-
-
-def capture_inventory(capture):
-    """Read the device inventory, including tests excluded by its filter."""
-    text = Path(capture).read_text(encoding="utf-8", errors="replace")
-    return [match.group("name") for match in SUITE_TEST_RE.finditer(text)]

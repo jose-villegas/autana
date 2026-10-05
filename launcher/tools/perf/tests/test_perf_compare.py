@@ -45,7 +45,7 @@ class FakeAutana:
             base = self.root/f'capture_{len(self.calls)}_{run}'
             lines.append((10+run*10, f'batch: {suite} run {run+1}/{runs}'))
             text = ''.join(f'SUITE_TEST name={name} selected={int(any(p in name for p in tests))}\n'
-                           for name in ['test_quiet', 'test_heavy'])
+                           for name in ['test_quiet', 'test_heavy']) if '--test' in command else ''
             for name in ['test_quiet', 'test_heavy']:
                 if not any(pattern in name for pattern in tests):
                     continue
