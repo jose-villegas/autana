@@ -142,7 +142,31 @@ test_a_truncated_header_or_table_is_out_of_bounds(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_fixture(&f, 6, &tracks));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_fixture(&f, ROW1 + 20, &tracks));
     TEST_ASSERT_EQUAL_UINT16(0, tracks.count);
+    /* Cut inside row 0, whose padding past the cut is in use: the table is
+     * refused before any row is read. */
+    f.entry[ROW0 + 45] = 1;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_fixture(&f, ROW0 + 20, &tracks));
     test_free_aligned(f.raw);
+}
+
+/* A count past 255 is read whole: 300 keys, linear, one wide. */
+static void
+test_a_track_of_more_than_255_keys_reports_them_all(void) {
+    enum { KEYS = 300, TIMES_AT = 56, VALUES_AT = TIMES_AT + (KEYS * 4), BYTES = VALUES_AT + (KEYS * 4) };
+
+    void* raw;
+    uint8_t* entry = test_alloc_aligned(BYTES, 16, &raw);
+    TEST_ASSERT_NOT_NULL(entry);
+    memset(entry, 0, BYTES);
+    put16(entry, ANIM_TRACKS_VERSION);
+    put16(entry + 2, 1);
+    put_row(entry + ROW0, "long/scale", TIMES_AT, VALUES_AT, KEYS, 1, ANIM_LINEAR);
+    anim_tracks_t tracks;
+    anim_track_t track;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_open((asset_view_t){entry, BYTES}, &tracks));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_find(&tracks, "long/scale", &track));
+    TEST_ASSERT_EQUAL_UINT16(KEYS, track.count);
+    test_free_aligned(raw);
 }
 
 static void
@@ -233,6 +257,20 @@ test_a_bad_width_interpolation_or_flag_is_a_format_error(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_with_row_byte(40, 0)); /* no keys (count's low byte; high is 0) */
 }
 
+/* Row 0 made 4 wide, which its values still fit: flag 1 opens, flag 2 is a
+ * format error whatever the width. */
+static void
+test_a_quaternion_flag_past_1_is_a_format_error_even_4_wide(void) {
+    fixture_t f = fixture();
+    anim_tracks_t tracks;
+    f.entry[ROW0 + 42] = 4;
+    f.entry[ROW0 + 44] = 1;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, open_fixture(&f, ENTRY_BYTES, &tracks));
+    f.entry[ROW0 + 44] = 2;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_fixture(&f, ENTRY_BYTES, &tracks));
+    test_free_aligned(f.raw);
+}
+
 static void
 test_an_unterminated_name_is_a_format_error(void) {
     fixture_t f = fixture();
@@ -318,6 +356,14 @@ test_the_shipped_boot_clip_equals_the_compiled_one(void) {
 }
 
 #ifndef DEVICE_BUILD
+/* The pack run_tests.sh has anim_probe.py write, opened. */
+static void
+open_probe(asset_pack_t* pack, void** buffer) {
+    const char* path = getenv("AUTANA_ANIM_PROBE");
+    TEST_ASSERT_NOT_NULL_MESSAGE(path, "AUTANA_ANIM_PROBE names the pack anim_probe.py wrote");
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(path, pack, buffer));
+}
+
 #define REFERENCE_TYPE ASSET_TYPE('T', 'R', 'E', 'F')
 #define REFERENCE_ROW  24U
 
@@ -358,11 +404,9 @@ check_reference_row(const anim_tracks_t* tracks, const uint8_t* row) {
 
 static void
 test_the_probe_clip_samples_as_the_python_sampler(void) {
-    const char* path = getenv("AUTANA_ANIM_PROBE");
-    TEST_ASSERT_NOT_NULL_MESSAGE(path, "AUTANA_ANIM_PROBE names the pack anim_probe.py wrote");
     asset_pack_t pack;
     void* buffer = NULL;
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(path, &pack, &buffer));
+    open_probe(&pack, &buffer);
     anim_tracks_t tracks;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(&pack, "probe", &tracks));
     asset_view_t reference;
@@ -381,7 +425,7 @@ static void
 test_a_missing_clip_and_an_entry_of_another_type_are_told_apart(void) {
     asset_pack_t pack;
     void* buffer = NULL;
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(getenv("AUTANA_ANIM_PROBE"), &pack, &buffer));
+    open_probe(&pack, &buffer);
     anim_tracks_t tracks;
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_tracks_from_pack(&pack, "nope", &tracks));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_TYPE, anim_tracks_from_pack(&pack, "probe_ref", &tracks));
@@ -396,12 +440,14 @@ suite_anim_tracks(void) {
     RUN_TEST(test_a_missing_name_is_not_found);
     RUN_TEST(test_a_truncated_header_or_table_is_out_of_bounds);
     RUN_TEST(test_an_array_past_the_end_is_out_of_bounds);
+    RUN_TEST(test_a_track_of_more_than_255_keys_reports_them_all);
     RUN_TEST(test_values_that_leave_the_entry_only_by_their_width_are_out_of_bounds);
     RUN_TEST(test_times_that_alone_leave_the_entry_are_out_of_bounds);
     RUN_TEST(test_an_offset_that_wraps_round_is_out_of_bounds);
     RUN_TEST(test_misaligned_floats_or_floats_inside_the_table_are_out_of_bounds);
     RUN_TEST(test_an_entry_off_a_4_byte_boundary_is_out_of_bounds);
     RUN_TEST(test_a_bad_width_interpolation_or_flag_is_a_format_error);
+    RUN_TEST(test_a_quaternion_flag_past_1_is_a_format_error_even_4_wide);
     RUN_TEST(test_an_unterminated_name_is_a_format_error);
     RUN_TEST(test_an_unknown_version_is_refused);
     RUN_TEST(test_a_cubic_track_needs_three_runs_of_values);
