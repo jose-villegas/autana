@@ -891,11 +891,21 @@ def imu(args):
     return code
 
 
-def gesture(args, verb, usage):
+def gesture(args, verb, usage, points):
+    """TAP, PRESS or DRAG, its first `points` x, y pairs read as pixels of the
+    default `autana screenshot` and sent in the panel's own frame, the one
+    the touch controller reports in."""
     reject_unknown(verb, args)
     if not all(is_int(value) for value in args):
         sys.exit(usage)
-    code, replies = send(verb.upper() + " " + " ".join(args), reply=verb.upper(), until=[verb.upper() + "_OK"])
+    values = [int(value) for value in args]
+    try:
+        for i in range(0, 2 * points, 2):
+            values[i:i + 2] = device_module().touch_point(values[i], values[i + 1])
+    except ValueError as error:
+        sys.exit(f"{usage} - {error}")
+    line = verb.upper() + " " + " ".join(str(value) for value in values)
+    code, replies = send(line, reply=verb.upper(), until=[verb.upper() + "_OK"])
     print("\n".join(replies))
     return code
 
@@ -903,19 +913,19 @@ def gesture(args, verb, usage):
 def tap(args):
     if len(args) != 2:
         sys.exit("usage: autana tap <x> <y>")
-    return gesture(args, "tap", "usage: autana tap <x> <y>")
+    return gesture(args, "tap", "usage: autana tap <x> <y>", 1)
 
 
 def press(args):
     if len(args) not in (2, 3):
         sys.exit("usage: autana press <x> <y> [ms]")
-    return gesture(args, "press", "usage: autana press <x> <y> [ms]")
+    return gesture(args, "press", "usage: autana press <x> <y> [ms]", 1)
 
 
 def drag(args):
     if len(args) != 5:
         sys.exit("usage: autana drag <x0> <y0> <x1> <y1> <ms>")
-    return gesture(args, "drag", "usage: autana drag <x0> <y0> <x1> <y1> <ms>")
+    return gesture(args, "drag", "usage: autana drag <x0> <y0> <x1> <y1> <ms>", 2)
 
 
 def button(args):
@@ -1400,9 +1410,9 @@ COMMAND_GROUPS = (
             ("perf off", "disarm the counters"))),
     )),
     ("input", "Drive input", (
-        Command("tap", tap, (("tap <x> <y>", "tap a point"),)),
-        Command("press", press, (("press <x> <y> [ms]", "hold a point; 1000 ms when omitted"),)),
-        Command("drag", drag, (("drag <x0> <y0> <x1> <y1> <ms>", "drag between two points"),)),
+        Command("tap", tap, (("tap <x> <y>", "tap a point, in pixels of the default screenshot"),)),
+        Command("press", press, (("press <x> <y> [ms]", "hold a point, as tap reads it; 1000 ms when omitted"),)),
+        Command("drag", drag, (("drag <x0> <y0> <x1> <y1> <ms>", "drag between two points, as tap reads them"),)),
         Command("button", button, (("button <boot|power> [short|long]", "press a board button"),)),
     )),
     ("apps", "Apps", (
