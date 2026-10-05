@@ -178,7 +178,8 @@ class OcclusionSceneTests(unittest.TestCase):
             self.assertEqual([job.asset_name for job in scratch.renderers], [job.asset_name for job in original.renderers])
             self.assertTrue(scratch.renderers[0].settings.source["path"].is_absolute())
             self.assertEqual(scratch.renderers[0].settings.source["path"], original.renderers[0].settings.source["path"])
-            self.assertTrue((Path(directory) / "ao-scene" / "flythrough_tracks_generated.c").is_file())
+            for name in ("flythrough_tracks_generated.c", "flythrough_tracks_generated.h"):
+                self.assertTrue((Path(directory) / "ao-scene" / name).is_file())
 
     def test_a_long_scene_without_the_ambient_intensity_is_rejected_at_once(self):
         with tempfile.TemporaryDirectory() as directory:
