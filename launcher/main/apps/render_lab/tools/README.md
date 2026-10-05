@@ -137,12 +137,12 @@ that reference. Metric definitions are in
 [Mesh-Import.md](../../../../../docs/render/Mesh-Import.md#fidelity-against-a-reference).
 `doc_images.sh` owns the poses and measurement commands.
 
-<!-- generated: sponza-fidelity sha256=47bbd4c5197e0757e8c3c057068daa2556a2cbbc2994dcaa9f0e9a5c83c1394a -->
+<!-- generated: sponza-fidelity sha256=ff0c677745976917de5a2f1497911518583b7729a1621b5ae407f0755115fd31 -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| Full smooth | 7.136 | 23.077 | 0.6690 | 15.138 | 5.634 |
-| Lite smooth | 8.367 | 27.692 | 0.6173 | 17.827 | 6.590 |
-| Flat, committed | 8.630 | 31.434 | 0.6080 | 18.613 | 6.735 |
+| Full smooth | 7.128 | 23.079 | 0.6699 | 15.130 | 5.625 |
+| Lite smooth | 8.360 | 27.690 | 0.6182 | 17.820 | 6.580 |
+| Flat, committed | 8.625 | 31.437 | 0.6079 | 18.606 | 6.729 |
 <!-- /generated: sponza-fidelity -->
 
 The flat and smooth bakes differ in how colour varies across a face. The
@@ -162,33 +162,33 @@ Labels beginning with min or max change the auto bounds; area scales the
 median face area; sky changes the sky-ray count. Sampling changes bake
 quality without adding work to the runtime renderer.
 
-<!-- generated: sponza-flat-sampling sha256=aa832cbc3e774aa522e1d995875b6af005aa04dc03f0b41e155838278048353c -->
+<!-- generated: sponza-flat-sampling sha256=d86a4d4504ae653eacd3496a8c1420cdaacbca0596a0dda8195c1cadd4126b04 -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| fixed32 | 7.961 | 26.677 | 0.6297 | 16.491 | 6.354 |
-| fixed64 | 7.982 | 26.782 | 0.6292 | 16.477 | 6.383 |
-| fixed16 | 8.008 | 26.723 | 0.6278 | 16.562 | 6.397 |
-| fixed8 | 8.084 | 27.299 | 0.6253 | 16.696 | 6.459 |
-| fixed4 | 8.196 | 28.294 | 0.6213 | 17.107 | 6.518 |
-| fixed4-sun-centre | 8.199 | 28.412 | 0.6219 | 17.226 | 6.498 |
-| area0.25 | 8.200 | 28.233 | 0.6212 | 17.341 | 6.465 |
-| min4 | 8.204 | 28.220 | 0.6209 | 17.116 | 6.524 |
-| area0.5 | 8.346 | 29.389 | 0.6174 | 18.000 | 6.514 |
-| min2 | 8.417 | 29.487 | 0.6146 | 17.793 | 6.647 |
-| fixed2 | 8.519 | 29.968 | 0.6124 | 17.945 | 6.740 |
-| sky512 | 8.619 | 31.461 | 0.6077 | 18.663 | 6.712 |
-| max4 | 8.633 | 31.499 | 0.6076 | 18.662 | 6.729 |
-| sky256 | 8.638 | 31.480 | 0.6074 | 18.667 | 6.733 |
-| declared | 8.640 | 31.471 | 0.6071 | 18.672 | 6.736 |
-| max32 | 8.646 | 31.488 | 0.6071 | 18.669 | 6.742 |
-| max8 | 8.659 | 31.508 | 0.6072 | 18.670 | 6.757 |
-| sun-centre | 8.673 | 31.735 | 0.6067 | 18.952 | 6.723 |
-| sky64 | 8.693 | 31.458 | 0.6072 | 18.677 | 6.796 |
-| area2 | 8.795 | 32.246 | 0.6060 | 19.058 | 6.851 |
-| centroid | 8.832 | 32.631 | 0.6017 | 18.938 | 6.916 |
-| sky32 | 8.833 | 31.456 | 0.6053 | 18.696 | 6.957 |
-| fixed1 | 8.877 | 33.011 | 0.6012 | 19.053 | 6.947 |
-| sky16 | 9.173 | 31.496 | 0.6006 | 18.701 | 7.356 |
+| fixed64 | 8.049 | 27.156 | 0.6272 | 16.881 | 6.380 |
+| fixed32 | 8.053 | 26.997 | 0.6267 | 16.880 | 6.384 |
+| fixed16 | 8.099 | 27.470 | 0.6260 | 16.992 | 6.417 |
+| fixed8 | 8.146 | 27.725 | 0.6244 | 17.146 | 6.444 |
+| area0.25 | 8.292 | 28.560 | 0.6180 | 17.789 | 6.488 |
+| min4 | 8.314 | 28.578 | 0.6166 | 17.663 | 6.539 |
+| fixed4-sun-centre | 8.320 | 28.704 | 0.6162 | 17.718 | 6.536 |
+| fixed4 | 8.322 | 28.587 | 0.6159 | 17.655 | 6.550 |
+| area0.5 | 8.414 | 29.725 | 0.6145 | 18.324 | 6.528 |
+| min2 | 8.454 | 30.197 | 0.6125 | 18.235 | 6.597 |
+| sky512 | 8.617 | 31.534 | 0.6074 | 18.825 | 6.672 |
+| sky256 | 8.619 | 31.534 | 0.6075 | 18.828 | 6.673 |
+| max32 | 8.637 | 31.558 | 0.6076 | 18.844 | 6.692 |
+| declared | 8.639 | 31.552 | 0.6075 | 18.847 | 6.693 |
+| max4 | 8.646 | 31.636 | 0.6068 | 18.838 | 6.704 |
+| max8 | 8.650 | 31.637 | 0.6078 | 18.877 | 6.702 |
+| sun-centre | 8.651 | 31.755 | 0.6083 | 19.040 | 6.673 |
+| fixed2 | 8.658 | 31.133 | 0.6080 | 18.444 | 6.801 |
+| sky64 | 8.688 | 31.532 | 0.6066 | 18.839 | 6.753 |
+| sky32 | 8.805 | 31.581 | 0.6057 | 18.863 | 6.886 |
+| area2 | 8.887 | 33.356 | 0.6015 | 19.432 | 6.880 |
+| centroid | 9.095 | 34.623 | 0.5955 | 19.613 | 7.100 |
+| fixed1 | 9.113 | 34.618 | 0.5935 | 19.689 | 7.105 |
+| sky16 | 9.160 | 31.631 | 0.6006 | 18.893 | 7.299 |
 <!-- /generated: sponza-flat-sampling -->
 
 The sheet of the committed flat bake, left to right the reference,
@@ -321,15 +321,15 @@ fidelity sheet. Direct-light counterparts are rebuilt from the current scene
 with its bake indirect field removed. The reference resolves bounce detail
 finer than a triangle, which contributes to the remaining error.
 
-<!-- generated: sponza-indirect sha256=95d1544c60bde8e166ede16253b2ec108e2a574917ce46450f32d47041268817 -->
+<!-- generated: sponza-indirect sha256=e28c0cadfee13a93bc0a0b57c36632c7a9cc9d522623edc0d66e3d180ef1eac9 -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| Full smooth, indirect light | 7.136 | 23.077 | 0.6690 | 15.138 | 5.634 |
-| Lite smooth, indirect light | 8.367 | 27.692 | 0.6173 | 17.827 | 6.590 |
-| Flat, indirect light | 8.630 | 31.434 | 0.6080 | 18.613 | 6.735 |
-| Full smooth, direct light | 9.629 | 24.368 | 0.6617 | 16.481 | 8.351 |
-| Lite smooth, direct light | 10.682 | 29.787 | 0.6087 | 19.218 | 9.087 |
-| Flat, direct light | 10.927 | 35.947 | 0.6164 | 20.493 | 9.138 |
+| Full smooth, indirect light | 7.128 | 23.079 | 0.6699 | 15.130 | 5.625 |
+| Lite smooth, indirect light | 8.360 | 27.690 | 0.6182 | 17.820 | 6.580 |
+| Flat, indirect light | 8.625 | 31.437 | 0.6079 | 18.606 | 6.729 |
+| Full smooth, direct light | 9.578 | 24.567 | 0.6597 | 16.511 | 8.282 |
+| Lite smooth, direct light | 10.602 | 28.902 | 0.6148 | 18.455 | 9.123 |
+| Flat, direct light | 11.110 | 36.454 | 0.6160 | 20.762 | 9.302 |
 <!-- /generated: sponza-indirect -->
 
 The reference beside the smooth bake with direct and indirect light, each
@@ -373,14 +373,14 @@ The generated table scores each look against both references over the
 doc-image poses. The physical-reference columns include the look's difference
 from physical lighting; the own-reference column isolates bake fidelity.
 
-<!-- generated: sponza-indirect-look sha256=a9a81ad0143f981aa564db38668da817ad2e1705a31d534bd5b8bdb652c69475 -->
+<!-- generated: sponza-indirect-look sha256=c51b803c340bd09475f9e871e7e46787ed473dd6e3e2703811ae387c214630e5 -->
 | Look | Mean dE76, physical | Mean dE76, own | p95, physical | SSIM, physical |
 |---|---:|---:|---:|---:|
-| Direct light only | 9.629 | | 24.368 | 0.6617 |
-| intensity 1 | 7.136 | 7.136 | 23.077 | 0.6690 |
-| intensity 2 | 8.181 | 7.665 | 24.225 | 0.6534 |
-| intensity 3 | 10.277 | 8.125 | 26.266 | 0.6261 |
-| albedo boost 2 | 8.905 | 7.833 | 24.610 | 0.6397 |
+| Direct light only | 9.578 | | 24.567 | 0.6597 |
+| intensity 1 | 7.128 | 7.128 | 23.079 | 0.6699 |
+| intensity 2 | 8.182 | 7.615 | 23.972 | 0.6556 |
+| intensity 3 | 10.204 | 8.139 | 26.361 | 0.6275 |
+| albedo boost 2 | 8.903 | 7.734 | 24.536 | 0.6487 |
 <!-- /generated: sponza-indirect-look -->
 
 ## Local occlusion
