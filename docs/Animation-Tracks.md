@@ -60,7 +60,7 @@ A `NAME.anim.toml` beside its `.glb` names one animation in it, and
 clip's pack id is `NAME`.
 
 ```toml
-source = "NAME.glb"     # a file beside this one
+source = "NAME.glb"     # a .glb beside this one
 animation = "walk"      # the animation's name in the glTF
 ```
 
@@ -127,7 +127,9 @@ camera track gives a `camera_t` its look direction.
    PREFIX_<node>_<path>` per channel, the clip `PREFIX_clip`, every track in
    `PREFIX_tracks[]` (`PREFIX_track_count` of them), and
    `PREFIX_track_names[]`, each track's name in the same order. Only the tests
-   refer to the tables, so the linker drops them from any build without tests. The command is in the file's banner; the output is
+   and `tools/anim/sample_tracks.sh` refer to the tables, so the linker drops
+   them from any firmware build without tests. The command is in the file's
+   banner; the output is
    checked in and never edited.
 4. Sample what the scene needs, and convert at its own boundary.
 

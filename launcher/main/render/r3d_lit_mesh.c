@@ -97,7 +97,7 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     if (vertices > VERTEX_LIMIT || triangles > VERTEX_LIMIT || clusters > VERTEX_LIMIT || nodes > VERTEX_LIMIT) {
         return ASSET_ERR_BOUNDS;
     }
-    /* One colour source, and the tree has a root to start from. */
+    /* One colour source, a scale, and a root for the tree to start from. */
     if (clusters == 0 || nodes == 0 || (colors_at == 0) == (face_at == 0) || word(asset->data, POSITION_SCALE) == 0) {
         return ASSET_ERR_FORMAT;
     }

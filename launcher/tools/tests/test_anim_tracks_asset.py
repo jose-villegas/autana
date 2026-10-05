@@ -77,14 +77,17 @@ class RoundTripTests(unittest.TestCase):
         with self.assertRaises(TracksError):
             tracks_asset.encode(tracks, duration_ms)
 
-    def test_a_name_over_31_bytes_fails_naming_the_track(self):
-        name = "n" * 21
-        glb = gltf_write.build_glb([{"name": name}], [{"name": "clip", "channels": [
-            channel(0, "translation", [0.0, 1.0], [(0, 0, 0), (1, 1, 1)])]}])
-        document, binary = gltf_read.parse_glb(glb)
-        tracks, duration_ms = tracks_asset.clip_tracks(document, binary, document["animations"][0])
-        with self.assertRaisesRegex(TracksError, name + "/translation"):
-            tracks_asset.encode(tracks, duration_ms)
+    def test_a_name_of_31_bytes_bakes_and_one_of_32_fails_naming_the_track(self):
+        def baked(node):
+            glb = gltf_write.build_glb([{"name": node}], [{"name": "clip", "channels": [
+                channel(0, "translation", [0.0, 1.0], [(0, 0, 0), (1, 1, 1)])]}])
+            document, binary = gltf_read.parse_glb(glb)
+            return tracks_asset.encode(*tracks_asset.clip_tracks(document, binary, document["animations"][0]))
+
+        fits = "n" * 19  # with "/translation", 31 bytes
+        self.assertEqual(tracks_asset.decode(baked(fits))[0][0]["name"], fits + "/translation")
+        with self.assertRaisesRegex(TracksError, "n" * 20 + "/translation"):
+            baked("n" * 20)
 
 
 class RefusalTests(unittest.TestCase):
@@ -193,7 +196,11 @@ class SourceTests(unittest.TestCase):
                      'source = "probe.glb"\nanimation = "clip"\nnote = "extra"\n',
                      'source = "probe.glb"\nanimation = "nope"\n', 'source = "gone.glb"\nanimation = "clip"\n',
                      'source = "../clips/probe.glb"\nanimation = "clip"\n',
-                     'source = "sub/probe.glb"\nanimation = "clip"\n'):
+                     'source = "sub/probe.glb"\nanimation = "clip"\n',
+                     'source = "..\\\\clips\\\\probe.glb"\nanimation = "clip"\n',
+                     'source = "C:probe.glb"\nanimation = "clip"\n',
+                     'source = "/probe.glb"\nanimation = "clip"\n',
+                     'source = "probe.bin"\nanimation = "clip"\n'):
             path = self.write("clips/bad.anim.toml", text)
             with self.assertRaises(TracksError, msg=text):
                 tracks_asset.bake(path)
@@ -219,8 +226,10 @@ class SourceTests(unittest.TestCase):
         self.assertIn("nope", stderr.getvalue())
 
     def test_two_clip_files_with_one_stem_are_refused(self):
-        self.write("a/walk.anim.toml", 'source = "../clips/probe.glb"\nanimation = "clip"\n')
-        self.write("b/walk.anim.toml", 'source = "../clips/probe.glb"\nanimation = "clip"\n')
+        for folder in ("a", "b"):
+            (self.root / folder).mkdir()
+            (self.root / folder / "probe.glb").write_bytes(probe_glb())
+            self.write(folder + "/walk.anim.toml", 'source = "probe.glb"\nanimation = "clip"\n')
         with self.assertRaises(build_pack.SettingsError):
             build_pack.pack_bytes([self.root])
 

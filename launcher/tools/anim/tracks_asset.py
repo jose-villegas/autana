@@ -1,6 +1,6 @@
 """The animation tracks pack entry (TRCK): one glTF animation, baked from the
-NAME.anim.toml beside its .glb, and read back. The one writer and reader of
-the entry; main/anim/anim_tracks.c is the firmware's reader.
+NAME.anim.toml beside its .glb, and read back. The one writer of the entry,
+and its reader on the host; main/anim/anim_tracks.c is the firmware's.
 
 A NAME.anim.toml names its source .glb, a file in its own folder, and the
 animation in it; the pack id is NAME. The keys and the entry's layout are in
@@ -34,6 +34,7 @@ WIDTH_MAX = 4
 INTERPOLATIONS = ("STEP", "LINEAR", "CUBICSPLINE")
 PATHS = ("translation", "rotation", "scale")
 POINTER = re.compile(r"^/([A-Za-z]+)/(\d+)/(.+)$")
+SOURCE = re.compile(r"[^/\\:]+\.glb")  # a file name: no folder, drive or path separator of either system
 
 
 class TracksError(ValueError):
@@ -200,8 +201,8 @@ def load_source(path):
     if set(values) != {"source", "animation"} or not all(isinstance(v, str) and v for v in values.values()):
         raise TracksError("%s: holds exactly source = \"x.glb\" and animation = \"<name>\"" % path)
     # Beside it, so whatever finds the .anim.toml finds its source too.
-    if pathlib.PurePath(values["source"]).name != values["source"] or values["source"] in (".", ".."):
-        raise TracksError("%s: source %r is not a file in the same folder" % (path, values["source"]))
+    if not SOURCE.fullmatch(values["source"]):
+        raise TracksError("%s: source %r is not a .glb in the same folder" % (path, values["source"]))
     return path.parent / values["source"], values["animation"]
 
 
