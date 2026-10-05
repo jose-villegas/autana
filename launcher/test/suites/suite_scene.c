@@ -1,9 +1,10 @@
 /*
  * Portable suite: the scene manager (scene/scene.h). Each test loads scenes
- * from a small pack built here, of unit quads in distinct colours, so what
- * was drawn is read straight off the picture: a pixel is a quad's colour or
- * the clear colour. The camera stands at z = 10 with a half field of view of
- * 1, which puts a unit of x 3.2 pixels from the centre of a 64-pixel picture.
+ * from a small pack built here: scene entries (SCNE), a camera clip (TRCK)
+ * and unit quads in distinct colours, so what was drawn is read straight
+ * off the picture: a pixel is a quad's colour or the clear colour. The
+ * camera stands at z = 10 with a half field of view of 1, which puts a unit
+ * of x 3.2 pixels from the centre of a 64-pixel picture.
  */
 
 #include <stdint.h>
@@ -13,6 +14,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "anim/anim_tracks.h"
 #include "asset/asset_pack.h"
 #include "gfx/gfx_color.h"
 #include "scene/scene.h"
@@ -20,6 +22,7 @@
 #include "scene/scene_shell.h"
 #include "test_alloc.h"
 #include "test_cleanup.h"
+#include "test_pack.h"
 #include "util/memory.h"
 
 #ifndef DEVICE_BUILD
@@ -31,17 +34,9 @@
 #define SIZE       64
 #define CENTER     (SIZE / 2)
 #define CLEAR_RGB  0x336699
-#define ENTRY_SIZE 132
-#define ENTRY_STEP 144 /* the entry rounded up to the 16 bytes the pack aligns to */
-#define PACK_MAX   640
+#define QUAD_BYTES 132
+#define PACK_MAX   8192
 #define SENTINEL   0x5A5A
-
-static void
-put32(uint8_t* at, uint32_t value) {
-    for (int i = 0; i < 4; i++) {
-        at[i] = (uint8_t)(value >> (8 * i));
-    }
-}
 
 static void
 put16(uint8_t* at, int value) {
@@ -49,16 +44,33 @@ put16(uint8_t* at, int value) {
     at[1] = (uint8_t)(value >> 8);
 }
 
+static void
+put_floats(uint8_t* at, const float* values, int count) {
+    memcpy(at, values, (size_t)count * sizeof(float));
+}
+
 /* A unit quad in the plane z = 0, two-sided, in one colour. The arrays sit
  * one after another after the 44-byte header. */
 static void
 make_quad_entry(uint8_t* entry, uint8_t red, uint8_t green, uint8_t blue) {
-    enum { POSITIONS = 44, COLORS = 68, TRIANGLES = 80, CLUSTERS = 92, NODES = 116 };
+    enum {
+        POSITIONS = 44,
+        COLORS = 68,
+        TRIANGLES = 80,
+        CLUSTERS = 92,
+        CLUSTER_VERTICES = 94,
+        CLUSTER_TRIANGLES = 98,
+        CLUSTER_LO = 100,
+        CLUSTER_HI = 106,
+        CLUSTER_DOUBLE_SIDED = 112,
+        NODES = 116,
+        NODE_COUNT = 130,
+        NODE_LEAF = 131,
+    };
 
-    memset(entry, 0, ENTRY_SIZE);
     const uint32_t words[11] = {4, 2, 1, 1, 1, POSITIONS, COLORS, TRIANGLES, CLUSTERS, NODES, 0};
     for (int i = 0; i < 11; i++) {
-        put32(entry + (4 * i), words[i]);
+        test_pack_put32(entry + (4 * i), words[i]);
     }
     const int xs[4] = {-1, 1, 1, -1};
     const int ys[4] = {-1, -1, 1, 1};
@@ -73,19 +85,19 @@ make_quad_entry(uint8_t* entry, uint8_t red, uint8_t green, uint8_t blue) {
     for (int i = 0; i < 6; i++) {
         put16(entry + TRIANGLES + (2 * i), corners[i]);
     }
-    put16(entry + CLUSTERS + 2, 4);   /* vertex_count */
-    put16(entry + CLUSTERS + 6, 2);   /* triangle_count */
-    put16(entry + CLUSTERS + 8, -1);  /* lo x */
-    put16(entry + CLUSTERS + 10, -1); /* lo y */
-    put16(entry + CLUSTERS + 14, 1);  /* hi x */
-    put16(entry + CLUSTERS + 16, 1);  /* hi y */
-    entry[CLUSTERS + 20] = 1;         /* double sided */
+    put16(entry + CLUSTER_VERTICES, 4);
+    put16(entry + CLUSTER_TRIANGLES, 2);
+    put16(entry + CLUSTER_LO, -1);
+    put16(entry + CLUSTER_LO + 2, -1);
+    put16(entry + CLUSTER_HI, 1);
+    put16(entry + CLUSTER_HI + 2, 1);
+    entry[CLUSTER_DOUBLE_SIDED] = 1;
     put16(entry + NODES, -1);
     put16(entry + NODES + 2, -1);
     put16(entry + NODES + 6, 1);
     put16(entry + NODES + 8, 1);
-    entry[NODES + 14] = 1; /* count */
-    entry[NODES + 15] = 1; /* leaf */
+    entry[NODE_COUNT] = 1;
+    entry[NODE_LEAF] = 1;
 }
 
 static const struct {
@@ -95,27 +107,34 @@ static const struct {
 
 #define QUAD_COUNT 3
 
-/* The pack of every quad, with the CRC set. */
-static uint32_t
-make_pack(uint8_t* pack) {
-    const uint32_t first = 192; /* 32 header, 3 table rows of 48, rounded to 16 */
-    memset(pack, 0, PACK_MAX);
-    memcpy(pack, ASSET_PACK_MAGIC, 4);
-    put32(pack + 4, ASSET_PACK_VERSION);
-    put32(pack + 8, QUAD_COUNT);
-    for (uint32_t i = 0; i < QUAD_COUNT; i++) {
-        uint8_t* row = pack + ASSET_PACK_HEADER_SIZE + (i * ASSET_PACK_ENTRY_SIZE);
-        memcpy(row, QUADS[i].name, strlen(QUADS[i].name) + 1);
-        put32(row + 32, R3D_LIT_MESH_ASSET);
-        put32(row + 36, first + (i * ENTRY_STEP));
-        put32(row + 40, ENTRY_SIZE);
-        put32(row + 44, 16);
-        make_quad_entry(pack + first + (i * ENTRY_STEP), QUADS[i].red, QUADS[i].green, QUADS[i].blue);
-    }
-    const uint32_t total = first + (QUAD_COUNT * ENTRY_STEP);
-    put32(pack + 12, total);
-    put32(pack + 16, asset_crc32(pack + ASSET_PACK_HEADER_SIZE, total - ASSET_PACK_HEADER_SIZE));
-    return total;
+/* "flight": the camera node flies 5 units along x in a second, facing down
+ * -z. Both tracks share the times; each array starts where the last ends. */
+enum { FLIGHT_ROWS = 8, FLIGHT_TIMES = 104, FLIGHT_POSITIONS = 112, FLIGHT_TURNS = 136, FLIGHT_BYTES = 168 };
+
+static void
+put_track_row(uint8_t* row, const char* name, uint32_t values, int width, bool quaternion) {
+    memcpy(row, name, strlen(name));
+    test_pack_put32(row + 32, FLIGHT_TIMES);
+    test_pack_put32(row + 36, values);
+    put16(row + 40, 2);
+    row[42] = (uint8_t)width;
+    row[43] = ANIM_LINEAR;
+    row[44] = quaternion ? 1U : 0U;
+}
+
+static void
+make_flight_entry(uint8_t* entry) {
+    const float times[] = {0.0F, 1.0F};
+    const float positions[] = {0, 0, 10, 5, 0, 10};
+    const float turns[] = {0, 0, 0, 1, 0, 0, 0, 1};
+    put16(entry, ANIM_TRACKS_VERSION);
+    put16(entry + 2, 2);
+    test_pack_put32(entry + 4, 1000);
+    put_track_row(entry + FLIGHT_ROWS, "camera/translation", FLIGHT_POSITIONS, 3, false);
+    put_track_row(entry + FLIGHT_ROWS + 48, "camera/rotation", FLIGHT_TURNS, 4, true);
+    put_floats(entry + FLIGHT_TIMES, times, 2);
+    put_floats(entry + FLIGHT_POSITIONS, positions, 6);
+    put_floats(entry + FLIGHT_TURNS, turns, 8);
 }
 
 #define IDENTITY {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {0, 0, 0}}
@@ -124,59 +143,141 @@ make_pack(uint8_t* pack) {
         {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, { x, y, z }                                                                 \
     }
 
-/* "pair": a camera, a red quad at the origin and a green one 4 units right. */
-static const char* const PAIR_NAMES[] = {"camera", "red", "green"};
-static const scene_transform_t PAIR_TRANSFORMS[] = {AT(0, 0, 10), IDENTITY, AT(4, 0, 0)};
-static const scene_renderer_def_t PAIR_RENDERERS[] = {{1, "red"}, {2, "green"}};
-static const scene_camera_def_t PAIR_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, NULL}, CLEAR_RGB}};
-static const scene_def_t PAIR = {"test_pair", 3, 2, 1, PAIR_NAMES, PAIR_TRANSFORMS, PAIR_RENDERERS, PAIR_CAMERAS};
-SCENE_REGISTER(PAIR)
+/* What a scene entry holds, written out as tools/r3d/scene_asset.py would.
+ * Every camera has a half field of view and a near plane of 1. */
+typedef struct {
+    const char* id;
+    int entity_count, renderer_count, camera_count;
 
-/* "solo": its own camera and one blue quad at the origin. */
-static const char* const SOLO_NAMES[] = {"eye", "blue"};
-static const scene_transform_t SOLO_TRANSFORMS[] = {AT(0, 0, 10), IDENTITY};
-static const scene_renderer_def_t SOLO_RENDERERS[] = {{1, "blue"}};
-static const scene_camera_def_t SOLO_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, NULL}, CLEAR_RGB}};
-static const scene_def_t SOLO = {"test_solo", 2, 1, 1, SOLO_NAMES, SOLO_TRANSFORMS, SOLO_RENDERERS, SOLO_CAMERAS};
-SCENE_REGISTER(SOLO)
+    struct {
+        const char* name;
+        scene_transform_t at;
+    } entities[3];
 
-/* "sky": the same as solo, its camera clearing to a colour of its own. */
-#define SKY_RGB 0x996633
-static const scene_camera_def_t SKY_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, NULL}, SKY_RGB}};
-static const scene_def_t SKY = {"test_sky", 2, 1, 1, SOLO_NAMES, SOLO_TRANSFORMS, SOLO_RENDERERS, SKY_CAMERAS};
-SCENE_REGISTER(SKY)
+    struct {
+        int entity;
+        const char* mesh;
+    } renderers[2];
 
-/* "broken": names a mesh the pack does not hold. */
-static const char* const BROKEN_NAMES[] = {"red", "gone"};
-static const scene_transform_t BROKEN_TRANSFORMS[] = {IDENTITY, IDENTITY};
-static const scene_renderer_def_t BROKEN_RENDERERS[] = {{0, "red"}, {1, "gone"}};
-static const scene_def_t BROKEN = {"test_broken", 2, 2, 0, BROKEN_NAMES, BROKEN_TRANSFORMS, BROKEN_RENDERERS, NULL};
-SCENE_REGISTER(BROKEN)
+    struct {
+        int entity;
+        uint32_t clear_rgb;
+        const char* clip;
+        const char* node;
+    } cameras[2];
+} scene_spec_t;
 
-/* "flight": a camera that flies 5 units along x in a second, and a red quad. */
-static const float FLIGHT_TIMES[] = {0.0F, 1.0F};
-static const float FLIGHT_POSITIONS[] = {0, 0, 10, 5, 0, 10};
-static const float FLIGHT_TURNS[] = {0, 0, 0, 1, 0, 0, 0, 1};
-static const anim_track_t FLIGHT_TRANSLATION = {FLIGHT_TIMES, FLIGHT_POSITIONS, 2, 3, ANIM_LINEAR, 0};
-static const anim_track_t FLIGHT_ROTATION = {FLIGHT_TIMES, FLIGHT_TURNS, 2, 4, ANIM_LINEAR, 1};
-static const anim_clip_t FLIGHT_CLIP = {1000};
-static const r3d_scene_path_t FLIGHT_PATH = {&FLIGHT_CLIP, &FLIGHT_TRANSLATION, &FLIGHT_ROTATION};
-static const char* const FLIGHT_NAMES[] = {"camera", "red"};
-static const scene_transform_t FLIGHT_TRANSFORMS[] = {IDENTITY, IDENTITY};
-static const scene_renderer_def_t FLIGHT_RENDERERS[] = {{1, "red"}};
-static const scene_camera_def_t FLIGHT_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, &FLIGHT_PATH}, CLEAR_RGB}};
-static const scene_def_t FLIGHT = {"test_flight", 2, 1, 1, FLIGHT_NAMES, FLIGHT_TRANSFORMS, FLIGHT_RENDERERS,
-                                   FLIGHT_CAMERAS};
-SCENE_REGISTER(FLIGHT)
+static const scene_spec_t SCENES[] = {
+    /* a camera, a red quad at the origin and a green one 4 units right */
+    {"test_pair",
+     3,
+     2,
+     1,
+     {{"camera", AT(0, 0, 10)}, {"red", IDENTITY}, {"green", AT(4, 0, 0)}},
+     {{1, "red"}, {2, "green"}},
+     {{0, CLEAR_RGB, "", ""}}},
+    /* its own camera and one blue quad at the origin */
+    {"test_solo", 2, 1, 1, {{"eye", AT(0, 0, 10)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, CLEAR_RGB, "", ""}}},
+    /* the same as solo, its camera clearing to a colour of its own */
+    {"test_sky", 2, 1, 1, {{"eye", AT(0, 0, 10)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, 0x996633, "", ""}}},
+    /* names a mesh the pack does not hold */
+    {"test_broken", 2, 2, 0, {{"red", IDENTITY}, {"gone", IDENTITY}}, {{0, "red"}, {1, "gone"}}, {{0}}},
+    /* a camera that flies the clip "flight", and a red quad */
+    {"test_flight",
+     2,
+     1,
+     1,
+     {{"camera", IDENTITY}, {"red", IDENTITY}},
+     {{1, "red"}},
+     {{0, CLEAR_RGB, "flight", "camera"}}},
+    /* two cameras, 4 units apart, and a red quad at the origin */
+    {"test_twin",
+     3,
+     1,
+     2,
+     {{"left", AT(0, 0, 10)}, {"right", AT(4, 0, 10)}, {"red", IDENTITY}},
+     {{2, "red"}},
+     {{0, CLEAR_RGB, "", ""}, {1, CLEAR_RGB, "", ""}}},
+    /* a camera flying a clip the pack does not hold */
+    {"test_lost",
+     2,
+     1,
+     1,
+     {{"camera", IDENTITY}, {"red", IDENTITY}},
+     {{1, "red"}},
+     {{0, CLEAR_RGB, "nowhere", "camera"}}},
+    /* a camera flying a node the clip does not animate */
+    {"test_headless",
+     2,
+     1,
+     1,
+     {{"camera", IDENTITY}, {"red", IDENTITY}},
+     {{1, "red"}},
+     {{0, CLEAR_RGB, "flight", "lamp"}}},
+};
 
-/* "twin": two cameras, 4 units apart, and a red quad at the origin. */
-static const char* const TWIN_NAMES[] = {"left", "right", "red"};
-static const scene_transform_t TWIN_TRANSFORMS[] = {AT(0, 0, 10), AT(4, 0, 10), IDENTITY};
-static const scene_renderer_def_t TWIN_RENDERERS[] = {{2, "red"}};
-static const scene_camera_def_t TWIN_CAMERAS[] = {{0, {1.0F, 1.0F, NULL, NULL}, CLEAR_RGB},
-                                                  {1, {1.0F, 1.0F, NULL, NULL}, CLEAR_RGB}};
-static const scene_def_t TWIN = {"test_twin", 3, 1, 2, TWIN_NAMES, TWIN_TRANSFORMS, TWIN_RENDERERS, TWIN_CAMERAS};
-SCENE_REGISTER(TWIN)
+#define SCENE_COUNT ((int)(sizeof SCENES / sizeof SCENES[0]))
+#define BAD_SCENE   "test_bad" /* the pair, its second renderer naming entity 9 */
+
+static uint32_t
+scene_entry_size(const scene_spec_t* s) {
+    return 24U + ((uint32_t)s->entity_count * (32U + sizeof(scene_transform_t)))
+           + ((uint32_t)s->renderer_count * sizeof(scene_asset_renderer_t))
+           + ((uint32_t)s->camera_count * sizeof(scene_asset_camera_t));
+}
+
+static void
+make_scene_entry(uint8_t* entry, const scene_spec_t* s) {
+    const uint32_t names = 24;
+    const uint32_t transforms = names + ((uint32_t)s->entity_count * 32U);
+    const uint32_t renderers = transforms + ((uint32_t)s->entity_count * sizeof(scene_transform_t));
+    const uint32_t cameras = renderers + ((uint32_t)s->renderer_count * sizeof(scene_asset_renderer_t));
+    const uint32_t offsets[4] = {names, transforms, renderers, cameras};
+    put16(entry, SCENE_ASSET_VERSION);
+    put16(entry + 2, s->entity_count);
+    put16(entry + 4, s->renderer_count);
+    put16(entry + 6, s->camera_count);
+    for (int i = 0; i < 4; i++) {
+        test_pack_put32(entry + 8 + (4 * i), offsets[i]);
+    }
+    for (int i = 0; i < s->entity_count; i++) {
+        memcpy(entry + names + (32U * (uint32_t)i), s->entities[i].name, strlen(s->entities[i].name));
+        memcpy(entry + transforms + (sizeof(scene_transform_t) * (size_t)i), &s->entities[i].at,
+               sizeof(scene_transform_t));
+    }
+    for (int i = 0; i < s->renderer_count; i++) {
+        uint8_t* row = entry + renderers + (sizeof(scene_asset_renderer_t) * (size_t)i);
+        put16(row, s->renderers[i].entity);
+        memcpy(row + 4, s->renderers[i].mesh, strlen(s->renderers[i].mesh));
+    }
+    for (int i = 0; i < s->camera_count; i++) {
+        uint8_t* row = entry + cameras + (sizeof(scene_asset_camera_t) * (size_t)i);
+        const float lens[2] = {1.0F, 1.0F};
+        put16(row, s->cameras[i].entity);
+        put_floats(row + 4, lens, 2);
+        test_pack_put32(row + 12, s->cameras[i].clear_rgb);
+        memcpy(row + 16, s->cameras[i].clip, strlen(s->cameras[i].clip));
+        memcpy(row + 48, s->cameras[i].node, strlen(s->cameras[i].node));
+    }
+}
+
+/* The pack of every quad, scene and the clip, with the CRC set. */
+static uint32_t
+make_pack(uint8_t* bytes) {
+    test_pack_t pack = test_pack_begin(bytes, PACK_MAX, QUAD_COUNT + SCENE_COUNT + 2);
+    for (int i = 0; i < QUAD_COUNT; i++) {
+        uint8_t* entry = test_pack_add(&pack, QUADS[i].name, R3D_LIT_MESH_ASSET, QUAD_BYTES);
+        make_quad_entry(entry, QUADS[i].red, QUADS[i].green, QUADS[i].blue);
+    }
+    for (int i = 0; i < SCENE_COUNT; i++) {
+        make_scene_entry(test_pack_add(&pack, SCENES[i].id, SCENE_ASSET, scene_entry_size(&SCENES[i])), &SCENES[i]);
+    }
+    uint8_t* bad = test_pack_add(&pack, BAD_SCENE, SCENE_ASSET, scene_entry_size(&SCENES[0]));
+    make_scene_entry(bad, &SCENES[0]);
+    put16(bad + 24 + (3 * (32 + sizeof(scene_transform_t))) + sizeof(scene_asset_renderer_t), 9);
+    make_flight_entry(test_pack_add(&pack, "flight", ANIM_TRACKS_ASSET, FLIGHT_BYTES));
+    return test_pack_finish(&pack);
+}
 
 typedef struct {
     void* raw;      /* what the aligned allocation gave */
@@ -218,7 +319,7 @@ load(const char* name) {
     return scene;
 }
 
-/* Loads and activates the camera at full size; every def's camera clears to CLEAR_RGB. */
+/* Loads and activates the camera at full size. */
 static scene_t*
 show(const char* name, const char* camera) {
     scene_t* scene = load(name);
@@ -255,13 +356,13 @@ test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took(void) {
 }
 
 static void
-test_a_camera_clears_to_the_colour_its_def_gives(void) {
+test_a_camera_clears_to_the_colour_its_scene_gives(void) {
     fixture();
     scene_t* scene = load("test_sky");
     TEST_ASSERT_TRUE(scene_activate(scene, NULL));
     scene_set_render_scale(100);
     frame(0);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(SKY_RGB), pixel(-8.0F));
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x996633), pixel(-8.0F));
 }
 
 static void
@@ -282,8 +383,49 @@ test_a_load_that_fails_says_what_it_was_about(void) {
     TEST_ASSERT_NULL(scene_load_from(NULL, "test_pair", &why));
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, why.asset);
-    TEST_ASSERT_EQUAL_STRING("red", why.what);
+    TEST_ASSERT_EQUAL_STRING("test_pair", why.what);
     TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_nothing_of_the_kind", NULL)); /* no one to tell */
+}
+
+/* Each failure names the entry it was about, and the load takes nothing. */
+static void
+expect_failure(const char* id, asset_status_t asset, const char* what) {
+    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    scene_failure_t why;
+    TEST_ASSERT_NULL_MESSAGE(scene_load_from(&fx.pack, id, &why), id);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_ASSET, why.status, id);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(asset, why.asset, id);
+    TEST_ASSERT_EQUAL_STRING_MESSAGE(what, why.what, id);
+    TEST_ASSERT_TRUE_MESSAGE(memory_free_bytes(MEMORY_PSRAM) == before, id);
+}
+
+static void
+test_a_malformed_entry_a_missing_clip_or_track_and_a_mesh_id_fail_naming_the_entry(void) {
+    fixture();
+    expect_failure(BAD_SCENE, ASSET_ERR_FORMAT, BAD_SCENE);
+    expect_failure("test_lost", ASSET_ERR_NOT_FOUND, "nowhere");
+    expect_failure("test_headless", ASSET_ERR_NOT_FOUND, "flight");
+    expect_failure("red", ASSET_ERR_TYPE, "red"); /* a mesh, not a scene */
+    TEST_ASSERT_EQUAL_INT(0, scene_loaded_count());
+}
+
+static void
+test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
+    fixture();
+    scene_t* pair = load("test_pair");
+    TEST_ASSERT_EQUAL_STRING("green", scene_entity_mesh_id(pair, scene_find(pair, "green")));
+    TEST_ASSERT_NULL(scene_entity_mesh_id(pair, scene_find(pair, "camera")));
+    TEST_ASSERT_NOT_NULL(scene_camera_lens(pair, "camera"));
+    TEST_ASSERT_NULL(scene_camera_lens(pair, "red"));
+    TEST_ASSERT_EQUAL_UINT32(0, r3d_scene_camera_period_ms(scene_camera_lens(pair, NULL)));
+
+    const r3d_scene_camera_t* flight = scene_camera_lens(load("test_flight"), NULL);
+    TEST_ASSERT_EQUAL_UINT32(1000, r3d_scene_camera_period_ms(flight));
+    vec3f_t eye;
+    vec3f_t forward;
+    r3d_scene_camera_sample(flight, 500, &eye, &forward);
+    TEST_ASSERT_EQUAL_FLOAT(2.5F, eye.x);
+    TEST_ASSERT_EQUAL_FLOAT(-1.0F, forward.z);
 }
 
 #ifndef DEVICE_BUILD
@@ -680,9 +822,11 @@ test_a_loaded_scene_that_is_not_active_keeps_its_time(void) {
 void
 run_scene_suite(void) {
     RUN_TEST(test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took);
-    RUN_TEST(test_a_camera_clears_to_the_colour_its_def_gives);
+    RUN_TEST(test_a_camera_clears_to_the_colour_its_scene_gives);
     RUN_TEST(test_a_load_that_fails_says_what_it_was_about);
     RUN_TEST(test_a_success_clears_what_an_earlier_failure_said);
+    RUN_TEST(test_a_malformed_entry_a_missing_clip_or_track_and_a_mesh_id_fail_naming_the_entry);
+    RUN_TEST(test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_scene_load_holds_its_bundle_until_the_last_scene_from_it_unloads);
     RUN_TEST(test_a_scene_that_fails_to_load_does_not_hold_its_bundle);

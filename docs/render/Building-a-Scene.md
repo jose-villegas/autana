@@ -11,10 +11,9 @@ flowchart LR
     Import --> Scene["Scene file<br/><i>.scene.toml</i>"]
     Scene --> Bake["mesh_import.py"]
     Bake --> Meshes["Baked meshes<br/><i>name.mesh</i>"]
-    Meshes --> Pack["build_pack.py<br/><i>one bundle per scene</i>"]
-    Bake --> Table["Scene table<br/><i>_scene_generated.c</i>"]
+    Meshes --> Pack["build_pack.py<br/><i>one bundle per scene:<br/>its entry, meshes and clip</i>"]
+    Scene --> Pack
     Pack --> Draw["Your app<br/><i>scene_load(), scene_activate()</i>"]
-    Table --> Draw
 ```
 
 You need the Python environment in
@@ -97,9 +96,11 @@ intensity = 3.0
 
 ## 4. Add a camera
 
-The camera object has the lens and, if it flies a glTF animation, the tracks
-that `tools/anim/bake_tracks.py` baked into the scene file's folder. A `region` (the box region `visibility` culls
-against) belongs here only when a placed mesh has that step:
+The camera object has the lens and, if it flies a glTF animation, the clip:
+its `NAME.anim.toml`, relative to the scene file, and the node that is the
+camera ([Animation-Tracks.md](../Animation-Tracks.md)). A `region` (the box
+region `visibility` culls against) belongs here only when a placed mesh has
+that step:
 
 ```toml
 [[objects]]
@@ -108,43 +109,44 @@ name = "camera"
 [objects.camera]
 half_fov_short_tan = 0.62
 near_z = 6.0
-# path = { tracks = "flight", node = "camera" }   # only once bake_tracks.py has written flight_tracks_generated.c
+# path = { animation = "flight.anim.toml", node = "camera" }
 ```
 
 ## 5. Bake
 
 ```sh
 python launcher/tools/r3d/mesh_import.py path/to/hall.scene.toml
-python launcher/tools/r3d/scene_table.py path/to/hall.scene.toml
 ```
 
-The first writes `<scene>.<variant>.mesh` for each baked renderer; the second
-writes the `hall` scene table, one const `scene_def_t` the scene manager loads
-by name. A mesh without `bake = true` can also be imported on its own.
-Generated files and baked `.mesh` entries are committed as written and never
-reformatted. The firmware build writes the scene's meshes into its
-[bundle](../assets/README.md#bundles), named after the scene, and flashes it with the app ([assets/README.md](../assets/README.md#flashing)).
+This writes `<scene>.<variant>.mesh` for each baked renderer. A mesh without
+`bake = true` can also be imported on its own. Baked `.mesh` entries are
+committed as written and never reformatted. The firmware build writes the
+scene's [bundle](../assets/README.md#bundles), named after the scene: its
+[scene entry](Scene-Files.md#the-scene-entry), baked from the scene file, its
+meshes and its camera's clip. It flashes the bundle with the app
+([assets/README.md](../assets/README.md#flashing)).
 
 ## 6. Draw it
 
 An app loads the scene by name and activates its camera. The shell advances
 every loaded scene and draws through the active camera each frame, so the app
 never calls draw; `frame()` runs after the scene is in the framebuffer and
-draws over it. The generated header names each entity, so a misspelt one fails to
-compile:
+draws over it. Entities are found by name once the scene has loaded, so a
+misspelt one is found missing then:
 
 ```c
-#include "hall_scene_generated.h"
 #include "scene/scene.h"
 
 static scene_t* hall;
+static scene_entity_t statue;
 
 static void
 enter(void) {
     scene_failure_t why;
-    hall = scene_load("hall", &why); /* NULL when a mesh is missing: `why` names it */
+    hall = scene_load("hall", &why); /* NULL when an entry is missing: `why` names it */
     if (hall != NULL) {
-        scene_activate(hall, NULL); /* its first camera */
+        statue = scene_find(hall, "statue"); /* SCENE_ENTITY_NONE when there is none */
+        scene_activate(hall, NULL);          /* its first camera */
     }
 }
 
@@ -155,7 +157,7 @@ frame(uint32_t dt_ms, const input_t* input) {
 ```
 
 Nothing else: the shell unloads what the app loaded when it exits. To move
-something, `scene_entity_set_transform(hall, HALL_SCENE_HALL, &where)`; to hide
+something, `scene_entity_set_transform(hall, statue, &where)`; to hide
 it, `scene_entity_set_enabled()`. Several scenes may be loaded at once, and
 `scene_activate()` on another's camera changes what is drawn. How a frame is
 ordered against the panel send and the storage behind it are in

@@ -10,11 +10,12 @@
 #include "render/camera.h"
 #include "render/r3d_instance.h"
 
-/* A glTF camera animation's two tracks and the clip that plays them. */
+/* A glTF camera animation's two tracks and the clip that plays them; the
+ * tracks' keys stay where they lie. */
 typedef struct {
-    const anim_clip_t* clip;
-    const anim_track_t* translation;
-    const anim_track_t* rotation;
+    anim_clip_t clip;
+    anim_track_t translation;
+    anim_track_t rotation;
 } r3d_scene_path_t;
 
 typedef struct {

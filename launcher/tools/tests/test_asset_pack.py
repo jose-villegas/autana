@@ -13,11 +13,11 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+from anim import tracks_asset  # noqa: E402
 from asset import asset_pack  # noqa: E402
 from asset.asset_pack import PackError, build_directory, build_pack as make_pack, parse_directory, parse_pack  # noqa: E402
-from r3d import build_pack  # noqa: E402
-from r3d.import_settings import SettingsError, load_scene  # noqa: E402
-from r3d.scene_table import mesh_ids  # noqa: E402
+from r3d import build_pack, scene_asset  # noqa: E402
+from r3d.import_settings import SettingsError  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 LIT_MESH = b"LMSH"
@@ -206,7 +206,7 @@ class BuilderTests(unittest.TestCase):
             packs = build_pack.bundle_bytes([root])
         self.assertEqual(contents(packs), {"one": {"one": b"1"}, "two": {"two": b"22"}, "three": {"three": b"333"}})
 
-    def test_a_scene_is_a_bundle_of_every_mesh_it_places_and_its_imports_make_none(self):
+    def test_a_scene_is_a_bundle_of_its_entry_and_every_mesh_it_places_and_its_imports_make_none(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             variants_file(root, "chair.import.toml", "chair")
@@ -216,7 +216,9 @@ class BuilderTests(unittest.TestCase):
             for mesh in ("chair", "table", "lamp"):
                 (root / f"{mesh}.mesh").write_bytes(mesh.encode())
             packs = build_pack.bundle_bytes([root])
-        self.assertEqual(contents(packs), {"room": {"chair": b"chair", "table": b"table"}, "free": {"lamp": b"lamp"}})
+            room = scene_asset.bake(root / "room.scene.toml")
+        self.assertEqual(contents(packs), {"room": {"room": room, "chair": b"chair", "table": b"table"},
+                                           "free": {"lamp": b"lamp"}})
 
     def test_a_mesh_two_roots_name_is_refused_naming_it(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -281,19 +283,29 @@ class TreeTests(unittest.TestCase):
         kinds = {kind for pack in packs.values() for kind, _ in parse_pack(pack).values()}
         self.assertIn(LIT_MESH, kinds)
 
-    def test_each_scene_s_bundle_holds_every_mesh_it_names(self):
+    def test_each_scene_s_bundle_holds_its_entry_every_mesh_it_names_and_its_camera_s_tracks(self):
         packs = build_pack.bundle_bytes([build_pack.DEFAULT_SEARCH])
         scenes = sorted((REPO / "launcher" / "main").rglob("*.scene.toml"))
         self.assertTrue(scenes, "no scene file found: the tree test would pass for nothing")
         for path in scenes:
-            name = path.name.removesuffix(".scene.toml")
+            name = scene_asset.scene_id(path)
             self.assertIn(name, packs, f"{path.name} makes no bundle")
             entries = parse_pack(packs[name])
-            ids = mesh_ids(load_scene(path))
-            self.assertTrue(ids, f"{path.name} names no mesh")
-            for mesh in ids:
+            self.assertEqual(entries[name][0], scene_asset.TYPE)
+            scene = scene_asset.decode(entries[name][1])
+            self.assertTrue(scene["renderers"], f"{path.name} names no mesh")
+            for renderer in scene["renderers"]:
+                mesh = renderer["mesh"]
                 self.assertIn(mesh, entries, f"{path.name} names mesh {mesh!r}, which its bundle does not hold")
                 self.assertEqual(entries[mesh][0], LIT_MESH)
+            for camera in scene["cameras"]:
+                if not camera["clip"]:
+                    continue
+                kind, clip = entries[camera["clip"]]
+                self.assertEqual(kind, tracks_asset.TYPE)
+                tracks = {track["name"] for track in tracks_asset.decode(clip)[0]}
+                for part in ("translation", "rotation"):
+                    self.assertIn(f"{camera['node']}/{part}", tracks, f"{path.name}: clip {camera['clip']!r}")
 
 
 if __name__ == "__main__":

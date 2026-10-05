@@ -1,6 +1,6 @@
 /*
  * Portable suite: the three baked Sponza meshes, read from the sponza bundle,
- * and the camera loop through them
+ * and the camera loop through them, the scene's camera once it has loaded
  * (sponza_flythrough.h). Each mesh is checked for the structure
  * r3d_pipeline.h relies on, never against the generator; the path and
  * the pictures it sees are checked against the shipped meshes themselves.
@@ -16,16 +16,18 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "apps/render_lab/meshes/sponza_scene_generated.h"
 #include "apps/render_lab/sponza_flythrough.h"
 #include "asset/asset_store.h"
 #include "r3d_lit_mesh_expect.h"
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
+#include "scene/scene.h"
 #include "util/memory.h"
 
-/* The scene's bundle, mounted for the suite, and the three bakes in it. */
+/* The scene, loaded for the suite, its bundle, and the three bakes in it. */
+static scene_t* sponza;
 static const asset_pack_t* bundle;
+static const r3d_scene_camera_t* flythrough;
 #define MESH_FULL (&mesh_full)
 #define MESH_LITE (&mesh_lite)
 #define MESH_FLAT (&mesh_flat)
@@ -35,27 +37,30 @@ static r3d_lit_mesh_t mesh_lite;
 static r3d_lit_mesh_t mesh_flat;
 
 static void
+require_the_scene(void) {
+    TEST_ASSERT_NOT_NULL_MESSAGE(sponza, "scene sponza did not load: see the log above");
+}
+
+static void
 open_the_mesh(const char* id, r3d_lit_mesh_t* mesh) {
+    TEST_ASSERT_NOT_NULL(id);
     TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(bundle, id, mesh), id);
 }
 
-/* The pack id the scene gives the mesh its `entity` draws. */
+/* The pack id of the mesh `bake`'s entity draws. */
 static const char*
-asset_of(scene_entity_t entity) {
-    for (uint16_t i = 0; i < sponza_scene.renderer_count; i++) {
-        if (sponza_scene.renderers[i].entity == entity) {
-            return sponza_scene.renderers[i].asset;
-        }
-    }
-    TEST_FAIL_MESSAGE(sponza_scene.entity_names[entity]);
-    return NULL;
+mesh_of(sponza_bake_t bake) {
+    const scene_entity_t entity = scene_find(sponza, sponza_bakes[bake]);
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, entity, sponza_bakes[bake]);
+    return scene_entity_mesh_id(sponza, entity);
 }
 
 static void
 open_the_meshes(void) {
-    open_the_mesh(asset_of(SPONZA_SCENE_ATRIUM), &mesh_full);
-    open_the_mesh(asset_of(SPONZA_SCENE_ATRIUM_LITE), &mesh_lite);
-    open_the_mesh(asset_of(SPONZA_SCENE_ATRIUM_FLAT), &mesh_flat);
+    require_the_scene();
+    open_the_mesh(mesh_of(SPONZA_BAKE_FULL), &mesh_full);
+    open_the_mesh(mesh_of(SPONZA_BAKE_LITE), &mesh_lite);
+    open_the_mesh(mesh_of(SPONZA_BAKE_FLAT), &mesh_flat);
 }
 
 /* The flat reference: every cluster's eight corners against each plane. */
@@ -85,13 +90,13 @@ cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lens_t* lens) {
 
 static void
 check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* mesh) {
-    const uint32_t period = sponza_flythrough_period_ms();
+    const uint32_t period = r3d_scene_camera_period_ms(flythrough);
     uint16_t* walked = malloc(sizeof(*walked) * (size_t)mesh->cluster_count);
     uint8_t* kept = malloc((size_t)mesh->cluster_count);
     TEST_ASSERT_NOT_NULL(walked);
     TEST_ASSERT_NOT_NULL(kept);
     for (uint32_t t = 0; t < period; t += 2500) {
-        const camera_t camera = sponza_camera_at(t);
+        const camera_t camera = r3d_scene_camera_at(flythrough, t);
         const viewport_t viewport = {SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, (int)(t / 2500) & 3};
         r3d_lens_t lens;
         r3d_lens_init(&lens, &camera, mesh->position_scale, viewport);
@@ -215,11 +220,11 @@ clearance(const r3d_lit_mesh_t* mesh, v3 p) {
 
 static void
 check_the_flythrough_keeps_clear_of_every_triangle(const r3d_lit_mesh_t* mesh) {
-    const uint32_t period = sponza_flythrough_period_ms();
+    const uint32_t period = r3d_scene_camera_period_ms(flythrough);
     for (uint32_t t = 0; t < period; t += 100) {
         vec3f_t eye;
         vec3f_t forward;
-        sponza_flythrough_sample(t, &eye, &forward);
+        r3d_scene_camera_sample(flythrough, t, &eye, &forward);
         const float d = clearance(mesh, (v3){eye.x, eye.y, eye.z});
         if (d < SPONZA_FLYTHROUGH_CLEARANCE) {
             char message[96];
@@ -278,13 +283,14 @@ test_the_flythrough_keeps_clear_of_every_triangle(void) {
  * as smooth as anywhere else. */
 static void
 test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
-    const uint32_t period = sponza_flythrough_period_ms();
+    require_the_scene();
+    const uint32_t period = r3d_scene_camera_period_ms(flythrough);
     vec3f_t previous;
     vec3f_t forward;
-    sponza_flythrough_sample(0, &previous, &forward);
+    r3d_scene_camera_sample(flythrough, 0, &previous, &forward);
     for (uint32_t t = 10; t <= period + 100; t += 10) {
         vec3f_t eye;
-        sponza_flythrough_sample(t, &eye, &forward);
+        r3d_scene_camera_sample(flythrough, t, &eye, &forward);
         const vec3f_t step = vec3f_sub(eye, previous);
         TEST_ASSERT_TRUE_MESSAGE(vec3f_dot(step, step) < 2.0F * 2.0F, "the eye jumped between two samples 10 ms apart");
         TEST_ASSERT_FLOAT_WITHIN(0.001F, 1.0F, sqrtf(vec3f_dot(forward, forward)));
@@ -295,7 +301,7 @@ test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
 /* The fraction of the picture covered at `t_ms` into the flythrough. */
 static float
 share_covered_at(const raster_t* raster, uint32_t t_ms) {
-    const camera_t camera = sponza_camera_at(t_ms);
+    const camera_t camera = r3d_scene_camera_at(flythrough, t_ms);
     raster_draw(raster, &camera, 0);
     const int pixels = raster->width * raster->height;
     const uint16_t* depth = r3d_pipeline_carve(raster).depth;
@@ -318,7 +324,7 @@ check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
     void* scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(scratch);
     raster.scratch = scratch;
-    const uint32_t period = sponza_flythrough_period_ms();
+    const uint32_t period = r3d_scene_camera_period_ms(flythrough);
     float sum = 0.0F;
     int samples = 0;
     for (uint32_t t = 0; t < period; t += SPONZA_POSE_EVERY_MS) {
@@ -338,21 +344,32 @@ test_the_flythrough_sees_mostly_building(void) {
 }
 
 /* The bundle the build wrote for the scene: on the device, the one flashed
- * to the assets partition. */
+ * to the assets partition. The scene loads from it, and each bake's mesh
+ * opens. */
 static void
-test_the_scene_s_bundle_mounts_and_holds_a_lit_mesh_for_each_renderer(void) {
-    TEST_ASSERT_NOT_NULL_MESSAGE(bundle, "bundle sponza did not mount: see the log above");
-    for (uint16_t i = 0; i < sponza_scene.renderer_count; i++) {
+test_the_scene_loads_from_its_bundle_with_a_lit_mesh_for_each_bake_and_its_path(void) {
+    require_the_scene();
+    for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
         r3d_lit_mesh_t mesh;
-        open_the_mesh(sponza_scene.renderers[i].asset, &mesh);
+        open_the_mesh(mesh_of((sponza_bake_t)i), &mesh);
         TEST_ASSERT_GREATER_THAN_INT(0, mesh.triangle_count);
     }
+    TEST_ASSERT_NOT_NULL(flythrough);
+    TEST_ASSERT_GREATER_THAN_UINT32(0, r3d_scene_camera_period_ms(flythrough));
 }
 
 static void
 run_sponza_suite(void) {
-    bundle = asset_store_bundle(sponza_scene.name);
-    RUN_TEST(test_the_scene_s_bundle_mounts_and_holds_a_lit_mesh_for_each_renderer);
+    scene_failure_t why;
+    sponza = scene_load("sponza", &why);
+    if (sponza == NULL) {
+        printf("scene sponza: status %d, asset %s, about '%s'\n", (int)why.status, asset_status_text(why.asset),
+               why.what);
+    } else {
+        bundle = asset_store_bundle("sponza");
+        flythrough = scene_camera_lens(sponza, NULL);
+    }
+    RUN_TEST(test_the_scene_loads_from_its_bundle_with_a_lit_mesh_for_each_bake_and_its_path);
     RUN_TEST(test_both_bakes_have_the_structure_the_pipeline_relies_on);
     RUN_TEST(test_both_bakes_are_cut_into_meshlets);
     RUN_TEST(test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps);
@@ -360,9 +377,12 @@ run_sponza_suite(void) {
     RUN_TEST(test_the_flythrough_keeps_clear_of_every_triangle);
     RUN_TEST(test_the_flythrough_sees_mostly_building);
     if (bundle != NULL) {
-        asset_store_release(sponza_scene.name);
-        bundle = NULL;
+        asset_store_release("sponza");
     }
+    scene_unload(sponza);
+    sponza = NULL;
+    bundle = NULL;
+    flythrough = NULL;
 }
 
 SUITE_REGISTER(run_sponza_suite);

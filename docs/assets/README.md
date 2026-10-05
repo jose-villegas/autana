@@ -28,11 +28,13 @@ searching, so no list is kept:
 
 | Root | Bundle | Holds |
 |---|---|---|
-| `NAME.scene.toml` | `NAME` | every mesh its renderers name |
+| `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#the-scene-entry) `NAME`, every mesh its renderers name, the clip its camera flies |
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
-| `NAME.anim.toml` | `NAME` | its one clip, baked from its `.glb` |
+| `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its `.glb` |
 
-Ids are unique within a bundle. A mesh two roots name would be a shared asset,
+Ids are unique within a bundle whatever their type: the reader finds an entry
+by name, then checks its type, so a scene and its clip cannot share a stem,
+and `build_pack.py` refuses them naming both files. A mesh or clip two roots name would be a shared asset,
 a bundle of its own the others depend on; that loader is not built, so
 `build_pack.py` refuses such a tree and names the mesh.
 

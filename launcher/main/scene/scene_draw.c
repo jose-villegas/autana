@@ -1,6 +1,5 @@
 #include <assert.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "gfx/gfx_color.h"
 #include "scene/scene_internal.h"
@@ -40,14 +39,13 @@ scene_set_paused(bool pause) {
 
 bool
 scene_activate(scene_t* scene, const char* camera) {
-    for (int i = 0; i < scene->def->camera_count; i++) {
-        if (camera == NULL || strcmp(scene->def->entity_names[scene->cameras[i].entity], camera) == 0) {
-            active = (active_t){scene, i};
-            rendered = false;
-            return true;
-        }
+    const int index = scene_camera_index(scene, camera);
+    if (index < 0) {
+        return false;
     }
-    return false;
+    active = (active_t){scene, index};
+    rendered = false;
+    return true;
 }
 
 void
@@ -102,14 +100,14 @@ scene_set_debug_view(raster_show_t mode) {
 /* Rebuilds the placement of each renderer whose entity moved. */
 static void
 update_placements(scene_t* scene) {
-    for (int i = 0; i < scene->def->renderer_count; i++) {
+    for (int i = 0; i < scene->asset.renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[i];
         if ((scene->flags[r->entity] & SCENE_FLAG_DIRTY) != 0) {
             r->placement = scene->transforms[r->entity];
             r->placed = !scene_transform_is_identity(&r->placement);
         }
     }
-    for (int i = 0; i < scene->def->entity_count; i++) {
+    for (int i = 0; i < scene->asset.entity_count; i++) {
         scene->flags[i] &= (uint8_t)~SCENE_FLAG_DIRTY;
     }
 }
@@ -118,7 +116,7 @@ update_placements(scene_t* scene) {
 static int
 fill_instances(scene_t* scene) {
     int count = 0;
-    for (int i = 0; i < scene->def->renderer_count; i++) {
+    for (int i = 0; i < scene->asset.renderer_count; i++) {
         const scene_renderer_t* r = &scene->renderers[i];
         if ((scene->flags[r->entity] & SCENE_FLAG_ENABLED) != 0) {
             scene->instances[count++] = (r3d_instance_t){&r->mesh, r->placed ? &r->placement : NULL};
