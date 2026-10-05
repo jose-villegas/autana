@@ -17,7 +17,7 @@ from r3d.mitsuba_reference import integrator, prepare
 
 SEED = 0
 # Rays per Mitsuba call: bounds the arrays a large bake allocates.
-BATCH = 1 << 20
+BATCH = 1 << 18
 
 
 class PathLight:

@@ -156,9 +156,10 @@ def source_for(scene, name=None, lit=True):
     return source, job
 
 
-# Estimated bytes per ray: trace/hit buffers 256, ray-query/lighting scratch 256,
-# sky tangents, samples, directions and temporaries 256.
-POSE_BASE_BYTES_PER_RAY = 768
+# Estimated bytes per ray: trace/hit buffers 256, ray-query/lighting scratch 256, sky tangents, samples, directions
+# and temporaries 256, and 1280 for the bounce paths: the Mitsuba arrays of one batch (path_bake.BATCH rays) held by
+# every worker, spread over the pose's rays.
+POSE_BASE_BYTES_PER_RAY = 2048
 POSE_STATE = None
 
 
