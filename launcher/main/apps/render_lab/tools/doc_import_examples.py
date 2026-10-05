@@ -29,7 +29,7 @@ def main(work, out):
     compare = root / "launcher/tools/render/render_compare.py"
     subprocess.run([sys.executable, str(compare), "--out", str(out / "import-light.png"),
                     "--label-a", "albedo", "--label-b", "baked light", "--row", "albedo | baked light",
-                    str(scratch / "last.bmp"), str(work / "indirect-smooth.bmp")], check=True)
+                    str(scratch / "last.bmp"), str(work / "committed-smooth.bmp")], check=True)
     subprocess.run([sys.executable, str(compare), "--out", str(out / "import-face-samples.png"),
                     "--label-a", "fixed 1", "--label-b", "adaptive", "--row", "fixed 1 | adaptive",
                     str(work / "sampling/fixed1/last.bmp"), str(work / "sampling/declared/last.bmp")], check=True)

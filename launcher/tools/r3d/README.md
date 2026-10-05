@@ -137,7 +137,7 @@ backends differ in these recorded ways, besides transport:
 |---|---|---|
 | `ambient` | Added to every point | Rejected unless black, it has no transport meaning |
 | One-sided card seen from behind | Shades the hit with the front normal, so a sun on the front lights it | Black: the side the ray reached is unlit |
-| Double-sided card | Turns toward the summed suns | Shades the side the ray reached |
+| Double-sided card | Lit on both sides, keeps the brighter | Shades the side the ray reached |
 | Near plane | Ignored | Clips at the pose file's near value |
 | `[bake].ao` | Scales the ambient and, if asked, the bounced light | Ignored |
 

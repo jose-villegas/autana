@@ -169,38 +169,95 @@ class BounceTests(unittest.TestCase):
         np.testing.assert_allclose(got[0], path.bounce(points[:1], mean, 0.01)[0], rtol=1e-12)
 
 
+class RoofOverhead:
+    """Ray queries without a mesh: a roof over the points blocks every ray that heads up."""
+
+    def blocked(self, origins, directions):
+        return directions[:, 1] > 0
+
+
+class Open:
+    def blocked(self, origins, directions):
+        return np.zeros(len(origins), bool)
+
+
+class SideBounce:
+    """Bounced light that depends on the side asked for: `up` for normals facing +y, `down` for -y."""
+
+    def __init__(self, up=(0.0, 0.0, 0.0), down=(0.0, 0.0, 0.0)):
+        self.up, self.down, self.calls = np.array(up), np.array(down), []
+
+    def bounce(self, points, normals, ray_offset):
+        self.calls.append(normals)
+        return np.where(normals[:, 1:2] > 0, self.up, self.down)
+
+
+SUN_UP = {"type": "directional", "direction": [0.0, 1.0, 0.0], "color": [1.0, 1.0, 1.0], "intensity": 1.0}
+
+
+def lit(points, normals, double, intersector, lights, **kwargs):
+    count = len(points)
+    return light(np.array(points, float), np.array(normals, float), np.array(double), intersector, lights, 0.01, **kwargs)
+
+
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class LightPlumbingTests(unittest.TestCase):
-    """What `light()` hands to the bounce, without Mitsuba."""
+    """What `light()` hands to the bounce and which side it keeps, without Mitsuba."""
 
-    class Recorder:
-        def __init__(self):
-            self.normals = None
-
-        def bounce(self, points, normals, ray_offset):
-            self.normals = normals
-            return np.zeros((len(points), 3))
+    UP, DOWN = [0.0, 1.0, 0.0], [0.0, -1.0, 0.0]
 
     def test_the_indirect_intensity_scales_the_bounce_and_nothing_else(self):
-        class Constant:
-            def bounce(self, points, normals, ray_offset):
-                return np.ones((len(points), 3))
-
-        card = soup.Soup([(-9, 0, -9), (9, 0, -9), (9, 0, 9), (-9, 0, 9)], [(0, 1, 2), (0, 2, 3)])
-        sun = {"type": "directional", "direction": [0.0, 1.0, 0.0], "color": [1.0, 1.0, 1.0], "intensity": 1.0}
-        args = (np.array([[0.0, 0.0, 0.0]]), np.array([[0.0, 1.0, 0.0]]), np.array([False]), soup.rays(card), [sun], 0.01)
         for intensity in (0.0, 0.5, 3.0):
-            got = light(*args, bounce=Constant(), bounce_intensity=intensity)
+            got = lit([[0, 0, 0]], [self.UP], [False], Open(), [SUN_UP], bounce=SideBounce(up=(1, 1, 1)),
+                      bounce_intensity=intensity)
             np.testing.assert_allclose(got, [[1.0 + intensity] * 3])
 
-    def test_a_double_sided_point_facing_away_from_the_sun_gathers_on_its_sun_facing_side(self):
-        card = soup.Soup([(-9, 0, -9), (9, 0, -9), (9, 0, 9), (-9, 0, 9)], [(0, 1, 2), (0, 2, 3)])
-        sun = {"type": "directional", "direction": [0.0, 1.0, 0.0], "color": [1.0, 1.0, 1.0], "intensity": 1.0}
-        for double, want in ((True, [0.0, 1.0, 0.0]), (False, [0.0, -1.0, 0.0])):
-            recorder = self.Recorder()
-            light(np.array([[0.0, 0.0, 0.0]]), np.array([[0.0, -1.0, 0.0]]), np.array([double]), soup.rays(card), [sun], 0.01,
-                  bounce=recorder)
-            self.assertEqual(recorder.normals.tolist(), [want])
+    def test_a_double_sided_point_in_shade_takes_the_side_with_more_light_and_a_one_sided_one_keeps_its_own(self):
+        both = lit([[0, 0, 0]], [self.UP], [True], RoofOverhead(), [SUN_UP], bounce=SideBounce(down=(0.5, 0.5, 0.5)))
+        np.testing.assert_allclose(both, [[0.5] * 3])
+        one = lit([[0, 0, 0]], [self.UP], [False], RoofOverhead(), [SUN_UP], bounce=SideBounce(down=(0.5, 0.5, 0.5)))
+        np.testing.assert_allclose(one, [[0.0] * 3])
+
+    def test_a_double_sided_card_in_the_sun_keeps_its_sunlit_side(self):
+        got = lit([[0, 0, 0]], [self.DOWN], [True], Open(), [SUN_UP], bounce=SideBounce(down=(0.25, 0.25, 0.25)))
+        np.testing.assert_allclose(got, [[1.0] * 3])
+
+    def test_in_a_mixed_batch_each_row_keeps_its_own_rule(self):
+        got = lit([[0, 0, 0]] * 3, [self.UP] * 3, [False, True, False], RoofOverhead(), [SUN_UP],
+                  bounce=SideBounce(down=(0.5, 0.5, 0.5)))
+        np.testing.assert_allclose(got, [[0.0] * 3, [0.5] * 3, [0.0] * 3])
+
+    def test_a_mixed_batch_with_groups_does_not_trip_over_the_subset(self):
+        got = lit([[0, 0, 0]] * 4, [self.UP] * 4, [True, True, True, False], RoofOverhead(), [SUN_UP],
+                  bounce=SideBounce(down=(0.5, 0.5, 0.5)), bounce_groups=np.array([0, 1, 1, 2]))
+        np.testing.assert_allclose(got, [[0.5] * 3, [0.5] * 3, [0.5] * 3, [0.0] * 3])
+
+    def test_groups_with_gaps_in_their_ids_gather_once_each(self):
+        bounce = SideBounce(up=(1, 1, 1))
+        got = bounced_light(bounce, np.zeros((4, 3)), np.tile(self.UP, (4, 1)), 0.01, np.array([7, 7, 3, 9]))
+        self.assertEqual(len(bounce.calls[0]), 3)
+        np.testing.assert_allclose(got, np.ones((4, 3)))
+
+    def test_a_tie_keeps_the_sun_facing_side_and_a_brighter_side_is_kept_whole(self):
+        tie = lit([[0, 0, 0]], [self.UP], [True], Open(), [], bounce=SideBounce(up=(0.5, 0, 0), down=(0, 0.25, 0.25)))
+        np.testing.assert_allclose(tie, [[0.5, 0.0, 0.0]])
+        brighter = lit([[0, 0, 0]], [self.UP], [True], Open(), [], bounce=SideBounce(up=(0.5, 0, 0), down=(0.1, 0.5, 0.5)))
+        np.testing.assert_allclose(brighter, [[0.1, 0.5, 0.5]])
+
+    def test_only_double_sided_points_cost_a_second_gather_on_the_opposite_normal(self):
+        single = SideBounce(up=(1, 1, 1))
+        lit([[0, 0, 0]], [self.UP], [False], Open(), [SUN_UP], bounce=single)
+        self.assertEqual(len(single.calls), 1)
+        double = SideBounce(up=(1, 1, 1))
+        lit([[0, 0, 0]], [self.UP], [True], Open(), [SUN_UP], bounce=double)
+        self.assertEqual(len(double.calls), 2)
+        np.testing.assert_allclose(double.calls[1], -double.calls[0])
+
+    def test_a_double_sided_point_facing_away_from_the_sun_is_first_gathered_on_its_sun_facing_side(self):
+        for double, want in ((True, self.UP), (False, self.DOWN)):
+            recorder = SideBounce()
+            lit([[0, 0, 0]], [self.DOWN], [double], Open(), [SUN_UP], bounce=recorder)
+            self.assertEqual(recorder.calls[0].tolist(), [want])
 
 
 @needs_mitsuba
