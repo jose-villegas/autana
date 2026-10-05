@@ -1,353 +1,311 @@
-"""Regression tests for the revision performance report comparison.
-
-    python -m unittest discover -s launcher/tools/perf/tests
-"""
-import os
+"""Seed inference and foreground acquisition exercised without hardware."""
+import contextlib
+import io
+import inspect
+import math
 import pathlib
-import stat
-import subprocess
+import random
 import sys
 import tempfile
+import subprocess
+import os
 import unittest
-
+from unittest.mock import patch
+from types import SimpleNamespace
 
 PERF = pathlib.Path(__file__).resolve().parents[1]
-FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
+FIXTURES = pathlib.Path(__file__).resolve().parent / 'fixtures'
 sys.path.insert(0, str(PERF))
+import perf_compare as tool
+import seed_statistics as stats
+from layout_measure import capture_metadata, parse_report, run_flash, run_stamped
 
-import perf_compare  # noqa: E402
+
+class FakeAutana:
+    def __init__(self, root, shifted=False, mode='ok', noisy=False):
+        self.root, self.shifted, self.mode, self.noisy = pathlib.Path(root), shifted, mode, noisy
+        self.calls = []
+
+    def __call__(self, command, log, timeout):
+        if "status" in command:
+            return 0, [(0, "free")], 0
+        self.calls.append(command)
+        def arg(name):
+            return command[command.index(name)+1]
+        project = pathlib.Path(arg('--project'))
+        seed, runs = int(arg('--layout-seed')), int(arg('--runs'))
+        suite = command[command.index('suite')+1]
+        build = f'{seed}-diag'
+        directory = project/'launcher/build.diag'
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory/'build_id.txt').write_text(build)
+        lines = [(1, 'booted BUILD_ID=' + (build if self.mode != 'mismatch' else 'wrong-diag'))]
+        tests = arg('--test').split(',') if '--test' in command else ['test_quiet', 'test_heavy']
+        for run in range(runs):
+            base = self.root/f'capture_{len(self.calls)}_{run}'
+            lines.append((10+run*10, f'batch: {suite} run {run+1}/{runs}'))
+            text = ''.join(f'SUITE_TEST name={name} selected={int(any(p in name for p in tests))}\n'
+                           for name in ['test_quiet', 'test_heavy']) if '--test' in command else ''
+            for name in ['test_quiet', 'test_heavy']:
+                if not any(pattern in name for pattern in tests):
+                    continue
+                row = name.removeprefix('test_')
+                value = 10000
+                if self.shifted and project.name == 'b':
+                    value += 1000
+                if row == 'heavy' and self.noisy:
+                    value += 3000 if seed % 2 else -3000
+                text += f'I (1) perf: {row} both cores: mean {value}us\n'
+                text += f'I (2) xtperf: scene={row} event=insn cycles_per_step=99 value_per_step={value*2} steps=1\n'
+                text += f':1:{name}:PASS\nTEST_TIME name={name} elapsed_ms=1\n'
+            base.with_suffix('.log').write_text(text)
+            base.with_suffix('.md').write_text('- Ended: complete\n' if self.mode != 'incomplete' else '- Ended: timeout\n')
+            lines.append((19+run*10, 'report: ' + str(base.with_suffix('.md'))))
+        return (1 if self.mode == 'budget' else 0), lines, runs*10+10
 
 
-class PerfCompareTest(unittest.TestCase):
-    def sponza_runs(self, side):
-        return [perf_compare.parse_report(path)
-                for path in sorted((FIXTURES / "sponza_runs").glob(f"{side}_*.txt"))]
+def arguments(root, cap=16):
+    root = pathlib.Path(root)
+    for side in ("a", "b"):
+        header = root/side/"launcher/test/suites.h"
+        if not header.exists():
+            header.parent.mkdir(parents=True, exist_ok=True)
+            header.write_bytes((PERF.parents[2]/"launcher/test/suites.h").read_bytes())
+    return SimpleNamespace(out=root/'out', project_a=root/'a', project_b=root/'b',
+                           suite=[('suite', '-', '-')], max_seeds=cap, alpha=.05,
+                           threshold=1., rng_seed=9, timeout=1800, wait=3600,
+                           label_a='A', label_b='B')
 
-    def make_revision_tree(self, directory, name):
-        tree = pathlib.Path(directory) / name
-        tree.mkdir()
-        (tree / "firmware.txt").write_text(name, encoding="utf-8")
-        subprocess.run(["git", "init", "-q", str(tree)], check=True)
-        subprocess.run(["git", "-C", str(tree), "add", "firmware.txt"], check=True)
-        subprocess.run(["git", "-C", str(tree), "-c", "user.name=test",
-                        "-c", "user.email=test@example.invalid", "commit", "-qm", name], check=True)
-        return tree
 
-    def write_compare_fixtures(self, directory):
-        root = pathlib.Path(directory)
-        fake_bin = root / "bin"
-        fake_bin.mkdir()
-        state = root / "project"
-        calls = root / "calls"
-        autana_calls = root / "autana-calls"
-        autana = fake_bin / "autana"
-        autana.write_text(
-            "#!/bin/sh\n"
-            "wait=\n"
-            "if [ \"$1\" = --wait ]; then wait=$2; shift 2; fi\n"
-            "printf '%s %s\\n' \"$wait\" \"$1\" >> \"$PERF_TEST_AUTANA_CALLS\"\n"
-            "case \"$1\" in\n"
-            "  status) echo unlocked ;;\n"
-            "  buildid) if [ -n \"${PERF_TEST_BUSY_ALWAYS:-}\" ] || { [ -n \"${PERF_TEST_BUSY:-}\" ] && [ -z \"$wait\" ]; }; then\n"
-            "      echo 'the board is busy - held by device_report-performance:75040'\n"
-            "    else sed 's/^/BUILD_ID=/' \"$(cat \"$PERF_TEST_PROJECT\")/launcher/build.diag/build_id.txt\"; fi ;;\n"
-            "  *) exit 9 ;;\n"
-            "esac\n", encoding="utf-8")
-        report = root / "report.sh"
-        report.write_text(
-            "#!/bin/sh\n"
-            "set -eu\n"
-            "project=\n"
-            "out=\n"
-            "while [ $# -gt 0 ]; do\n"
-            "  case \"$1\" in\n"
-            "    --project) project=$2; shift 2 ;;\n"
-            "    *.md) out=$1; shift ;;\n"
-            "    *) shift ;;\n"
-            "  esac\n"
-            "done\n"
-            "[ -n \"$project\" ]\n"
-            "printf '%s\\n' \"$project\" > \"$PERF_TEST_PROJECT\"\n"
-            "mkdir -p \"$project/launcher/build.diag\"\n"
-            "printf '%s-diag\\n' \"$(git -C \"$project\" hash-object firmware.txt | cut -c 1-12)\" > \"$project/launcher/build.diag/build_id.txt\"\n"
-            "printf '%s:%s\\n' \"$PWD\" \"$project\" >> \"$PERF_TEST_CALLS\"\n"
-            "count=0\n"
-            "[ -f \"$PERF_TEST_COUNT\" ] && count=$(cat \"$PERF_TEST_COUNT\")\n"
-            "count=$((count + 1))\n"
-            "printf '%s\\n' \"$count\" > \"$PERF_TEST_COUNT\"\n"
-            "case \"${PERF_TEST_MODE:-ok}\" in\n"
-            "  fail-once) [ \"$count\" -eq 1 ] && exit 7 ;;\n"
-            "  cut-short) printf '# incomplete capture\\n' > \"$out\"; exit 1 ;;\n"
-            "  timeout) sleep 2 ;;\n"
-            "esac\n"
-            "read -r ignored || true\n"
-            "printf '| Test | Measured (us) |\\n|---|---:|\\n| `row` | 10 |\\n' > \"$out\"\n"
-            "[ \"${PERF_TEST_MODE:-ok}\" = budget-fail ] && exit 1\n",
-            encoding="utf-8")
-        for path in (autana, report):
-            path.chmod(path.stat().st_mode | stat.S_IXUSR)
-        return fake_bin, report, state, calls, autana_calls, root / "count"
+def record_for_rows(args, seed, values):
+    """Records for decision tests; capture parsing has its own acquisition tests."""
+    suites = {}
+    inventory = ['test_' + row for row in values]
+    for suite, tests, _ in args.suite:
+        rows = {row: value for row, value in values.items()
+                if tests == '-' or any(pattern in 'test_' + row for pattern in tests.split(','))}
+        run = dict(rows=rows, owners={row: 'test_' + row for row in rows},
+                   instructions={row: value * 2 for row, value in rows.items()},
+                   listed_tests=['test_' + row for row in rows], inventory=inventory)
+        suites[suite] = dict(tests=tests, runs=[run.copy() for _ in range(args.runs)],
+                             run_seconds=[10] * (args.runs - 1) + [9])
+    return dict(seed=seed, build_id=f'{seed}-diag', flash_seconds=10, suites=suites)
 
-    def run_compare_fixture(self, directory, mode="ok", runs=1, timeout=5):
-        tree_a = self.make_revision_tree(directory, "before")
-        tree_b = self.make_revision_tree(directory, "after")
-        fake_bin, report, state, calls, autana_calls, count = self.write_compare_fixtures(directory)
-        out = pathlib.Path(directory) / "out"
-        env = dict(os.environ, PATH=f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-                   PERF_TEST_PROJECT=str(state), PERF_TEST_CALLS=str(calls),
-                   PERF_TEST_COUNT=str(count), PERF_TEST_AUTANA_CALLS=str(autana_calls), PERF_TEST_MODE=mode)
-        done = subprocess.run(
-            ["sh", str(PERF / "perf_compare.sh"), "-o", str(out), "--no-restore", "--runs", str(runs),
-             "--timeout", str(timeout), str(tree_a), str(tree_b), "--", "sh", str(report)],
-            cwd=PERF.parent, env=env, capture_output=True, text=True, timeout=15)
-        return done, tree_a, tree_b, out, calls, count
 
-    def write_capture_command(self, directory):
-        """Stands in for `autana suite --out PATH`: the raw console lands at
-        PATH, then a summary report with no timings lands beside it."""
-        root = pathlib.Path(directory)
-        command = root / "capture.sh"
-        command.write_text(
-            "#!/bin/sh\n"
-            "set -eu\n"
-            "project=\n"
-            "out=\n"
-            "while [ $# -gt 0 ]; do\n"
-            "  case \"$1\" in\n"
-            "    --project) project=$2; shift 2 ;;\n"
-            "    --out) out=$2; shift 2 ;;\n"
-            "    *) shift ;;\n"
-            "  esac\n"
-            "done\n"
-            "[ -n \"$project\" ] && [ -n \"$out\" ]\n"
-            "printf '%s\n' \"$project\" > \"$PERF_TEST_PROJECT\"\n"
-            "mkdir -p \"$project/launcher/build.diag\"\n"
-            "build=$(git -C \"$project\" hash-object firmware.txt | cut -c 1-12)-diag\n"
-            "printf '%s\n' \"$build\" > \"$project/launcher/build.diag/build_id.txt\"\n"
-            "[ -n \"${PERF_TEST_NO_BOOT_BUILD_ID:-}\" ] || echo \"booted BUILD_ID=$build to its console\"\n"
-            "cp \"$PERF_TEST_FIXTURE\" \"$out\"\n"
-            "printf '# Device Capture Report\n\nPASS: 2  FAIL: 0\n' > \"${out%.*}.md\"\n",
-            encoding="utf-8")
-        command.chmod(command.stat().st_mode | stat.S_IXUSR)
-        return command
+class SeedInferenceTest(unittest.TestCase):
+    def test_parsers_pool_tables_and_ignore_capture_worst(self):
+        self.assertEqual(parse_report(FIXTURES/'sponza_capture.txt')['sponza'], 51000)
+        self.assertIn('hot', parse_report(FIXTURES/'sand_a.md'))
 
-    def test_a_capture_path_is_given_apart_from_the_report_and_its_timings_are_compared(self):
-        with tempfile.TemporaryDirectory() as directory:
-            tree_a = self.make_revision_tree(directory, "before")
-            tree_b = self.make_revision_tree(directory, "after")
-            fake_bin, _, state, calls, _, count = self.write_compare_fixtures(directory)
-            command = self.write_capture_command(directory)
-            out = pathlib.Path(directory) / "out"
-            env = dict(os.environ, PATH=f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-                       PERF_TEST_PROJECT=str(state), PERF_TEST_AUTANA_CALLS=str(pathlib.Path(directory) / "autana-calls"),
-                       PERF_TEST_FIXTURE=str(FIXTURES / "sponza_capture.txt"))
-            done = subprocess.run(
-                ["sh", str(PERF / "perf_compare.sh"), "-o", str(out), "--no-restore", "--runs", "2",
-                 str(tree_a), str(tree_b), "--", "sh", str(command), "--out", "@CAPTURE@"],
-                cwd=PERF.parent, env=env, capture_output=True, text=True, timeout=30)
-            summary = (out / "summary.md").read_text(encoding="utf-8") if (out / "summary.md").is_file() else ""
-            capture = (out / "a" / "run_1.capture.log").read_text(encoding="utf-8")
-        self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertIn("sponza both cores: mean 51000us", capture)
-        self.assertIn("| `fitted-full` | 38000 | 38000 | 38000 | 38000 | +0 | no change |", summary)
-        self.assertIn("| `sponza` | 51000 | 51000 | 51000 | 51000 | +0 | no change |", summary)
+    def test_student_distribution_and_holm(self):
+        self.assertAlmostEqual(stats.t_cdf(1, 1), .75)
+        self.assertAlmostEqual(stats.t_quantile(.975, 10), 2.228139, places=5)
+        self.assertEqual(stats.holm({'a': .01, 'b': .04, 'c': .1}), {'a': .03, 'b': .08, 'c': .1})
 
-    def test_the_build_id_comes_from_the_boot_the_capture_logged_under_its_lock(self):
-        with tempfile.TemporaryDirectory() as directory:
-            tree_a = self.make_revision_tree(directory, "before")
-            tree_b = self.make_revision_tree(directory, "after")
-            fake_bin, _, state, _, autana_calls, _ = self.write_compare_fixtures(directory)
-            command = self.write_capture_command(directory)
-            out = pathlib.Path(directory) / "out"
-            env = dict(os.environ, PATH=f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-                       PERF_TEST_PROJECT=str(state), PERF_TEST_AUTANA_CALLS=str(autana_calls),
-                       PERF_TEST_BUSY_ALWAYS="1", PERF_TEST_FIXTURE=str(FIXTURES / "sponza_capture.txt"))
-            done = subprocess.run(
-                ["sh", str(PERF / "perf_compare.sh"), "-o", str(out), "--no-restore", "--runs", "2", "--timeout", "5",
-                 str(tree_a), str(tree_b), "--", "sh", str(command), "--out", "@CAPTURE@"],
-                cwd=PERF.parent, env=env, capture_output=True, text=True, timeout=30)
-            expected = (tree_a / "launcher" / "build.diag" / "build_id.txt").read_text(encoding="utf-8").strip()
-            status = (out / "a" / "run_1.status").read_text(encoding="utf-8").strip()
-            recorded_calls = autana_calls.read_text(encoding="utf-8").splitlines()
-        self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(status, f"captured {expected}")
-        self.assertFalse(any("buildid" in call for call in recorded_calls))
+    def test_three_verdicts_and_missing_or_zero_rows(self):
+        a = {'quiet': [100]*8, 'up': [100]*8, 'down': [100]*8, 'zero': [0]*8, 'missing': [1]*8}
+        b = {'quiet': [100]*8, 'up': [110]*8, 'down': [90]*8, 'zero': [0]*8}
+        result = stats.compare(a, b)
+        self.assertEqual([result[name]['verdict'] for name in ['quiet', 'up', 'down', 'zero', 'missing']],
+                         ['no change', 'regressed', 'improved', 'not measured', 'removed'])
+        self.assertAlmostEqual(result['up']['ratio'], 1.1)
 
-    def test_busy_buildid_refusal_is_avoided_with_the_capture_wait(self):
-        with tempfile.TemporaryDirectory() as directory:
-            tree_a = self.make_revision_tree(directory, "before")
-            tree_b = self.make_revision_tree(directory, "after")
-            fake_bin, _, state, _, autana_calls, _ = self.write_compare_fixtures(directory)
-            command = self.write_capture_command(directory)
-            out = pathlib.Path(directory) / "out"
-            env = dict(os.environ, PATH=f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-                       PERF_TEST_PROJECT=str(state), PERF_TEST_AUTANA_CALLS=str(autana_calls), PERF_TEST_BUSY="1",
-                       PERF_TEST_NO_BOOT_BUILD_ID="1",
-                       PERF_TEST_FIXTURE=str(FIXTURES / "sponza_capture.txt"))
-            done = subprocess.run(
-                ["sh", str(PERF / "perf_compare.sh"), "-o", str(out), "--no-restore", "--runs", "2", "--timeout", "5",
-                 str(tree_a), str(tree_b), "--", "sh", str(command), "--out", "@CAPTURE@"],
-                cwd=PERF.parent, env=env, capture_output=True, text=True, timeout=30)
-            expected = (tree_a / "launcher" / "build.diag" / "build_id.txt").read_text(encoding="utf-8").strip()
-            status = (out / "a" / "run_1.status").read_text(encoding="utf-8").strip()
-            recorded_calls = autana_calls.read_text(encoding="utf-8").splitlines()
-        self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(status, f"captured {expected}")
-        self.assertTrue(all(call == " status" or call.startswith("5 ") for call in recorded_calls))
-        self.assertIn("5 buildid", recorded_calls)
+    def test_permutation_resolution_and_monte_carlo(self):
+        self.assertAlmostEqual(stats.permutation([1]*3, [2]*3, .05, random.Random(1)), .1)
+        self.assertAlmostEqual(stats.permutation([1]*4, [2]*4, .05, random.Random(1)), 2/70)
+        self.assertLess(stats.permutation([1]*12, [2]*12, .05, random.Random(1), samples=999), .05)
 
-    def test_busy_buildid_without_a_boot_log_fails_without_recording_the_refusal_as_an_id(self):
-        with tempfile.TemporaryDirectory() as directory:
-            tree_a = self.make_revision_tree(directory, "before")
-            tree_b = self.make_revision_tree(directory, "after")
-            fake_bin, _, state, _, autana_calls, _ = self.write_compare_fixtures(directory)
-            command = self.write_capture_command(directory)
-            out = pathlib.Path(directory) / "out"
-            env = dict(os.environ, PATH=f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-                       PERF_TEST_PROJECT=str(state), PERF_TEST_AUTANA_CALLS=str(autana_calls),
-                       PERF_TEST_BUSY_ALWAYS="1", PERF_TEST_NO_BOOT_BUILD_ID="1",
-                       PERF_TEST_FIXTURE=str(FIXTURES / "sponza_capture.txt"))
-            done = subprocess.run(
-                ["sh", str(PERF / "perf_compare.sh"), "-o", str(out), "--no-restore", "--runs", "2", "--timeout", "5",
-                 str(tree_a), str(tree_b), "--", "sh", str(command), "--out", "@CAPTURE@"],
-                cwd=PERF.parent, env=env, capture_output=True, text=True, timeout=30)
-            status = (out / "a" / "run_1.status").read_text(encoding="utf-8").strip()
-        self.assertNotEqual(done.returncode, 0)
-        self.assertNotIn("the board is busy", status)
-        self.assertTrue(status.startswith("build id "))
+    @patch.object(stats, "permutation_samples", new=lambda alpha: 199)
+    def test_aa_smoke_and_planted_shift_on_synthetic_and_recorded_data(self):
+        rng = random.Random(412)
+        fixtures = [parse_report(path) for path in sorted((FIXTURES/'sponza_runs').glob('*.txt'))]
+        false, detected, draws = 0, 0, 4
+        for _ in range(draws):
+            a, b = {}, {}
+            for side in (a, b):
+                side['quiet'] = [math.exp(rng.gauss(0, .002)) for _ in range(6)]
+                side['heavy'] = [math.exp(rng.gauss(0, .3)) for _ in range(6)]
+                side['near_zero'] = [1e-6*math.exp(rng.gauss(0, .1)) for _ in range(6)]
+                side['bimodal'] = [math.exp(rng.choice([-.15, .15])+rng.gauss(0, .003)) for _ in range(6)]
+                for name in fixtures[0]:
+                    side[name] = [rng.choice(fixtures)[name] for _ in range(6)]
+            result = stats.compare(a, b, rng_seed=rng.randrange(100000))
+            false += any(row['verdict'] in ('improved', 'regressed') for row in result.values())
+            b['quiet'] = [value*1.05 for value in b['quiet']]
+            detected += stats.compare(a, b)['quiet']['verdict'] == 'regressed'
+        tolerance = draws*.05 + 3*math.sqrt(draws*.05*.95)
+        self.assertLessEqual(false, tolerance)
+        self.assertGreaterEqual(detected, draws*.95)
 
-    def test_real_suite_lines_give_one_row_per_variant(self):
-        rows = perf_compare.parse_report(FIXTURES / "sponza_capture.txt")
-        self.assertEqual(rows, {"sponza": 51000, "lite": 42000, "flat": 39000,
-                                "fitted": 41000, "fitted-full": 38000})
+    def test_seed_unit_does_not_treat_repeated_runs_as_independent(self):
+        rows = tool.seed_means({'row': [[100]*100, [200]*100]})
+        self.assertEqual(rows['row'], [100, 200])
+        self.assertEqual(stats.compare(rows, rows)['row']['verdict'], 'inconclusive')
 
-    def shell_path(self, path):
-        if os.name != "nt":
-            return str(path)
-        return subprocess.check_output(["cygpath", "-u", str(path)], text=True).strip()
 
-    def test_shell_uses_current_reporter_with_project_and_closed_stdin(self):
-        with tempfile.TemporaryDirectory() as directory:
-            done, tree_a, tree_b, out, calls, _ = self.run_compare_fixture(directory)
-            recorded = calls.read_text(encoding="utf-8").splitlines()
-            summary_exists = (out / "summary.md").is_file()
-        self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(recorded, [
-            f"{self.shell_path(PERF.parent)}:{self.shell_path(tree_a)}",
-            f"{self.shell_path(PERF.parent)}:{self.shell_path(tree_b)}",
-        ])
-        self.assertTrue(summary_exists)
+class AcquisitionTest(unittest.TestCase):
+    def measure(self, root, fake, cap=16):
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            payload = tool.measure(arguments(root, cap), fake)
+        return payload, output.getvalue()
 
-    def test_shell_continues_after_one_failed_capture(self):
-        with tempfile.TemporaryDirectory() as directory:
-            done, _, _, _, _, count = self.run_compare_fixture(directory, mode="fail-once", runs=2)
-            calls = int(count.read_text(encoding="utf-8"))
-        self.assertNotEqual(done.returncode, 0)
-        self.assertEqual(calls, 4)
-        self.assertIn("capture failed", done.stderr)
+    def test_ab_and_aa_replay_interleaved_distinct_seed_sets(self):
+        for shift in (False, True):
+            with tempfile.TemporaryDirectory() as root:
+                fake = FakeAutana(root, shifted=shift, mode='budget')
+                payload, summary = self.measure(root, fake)
+                self.assertTrue(all(row['verdict'] == ('regressed' if shift else 'no change')
+                                    for row in payload['rows'].values()))
+                seeds = [item['seed'] for item in payload['plan']]
+                self.assertEqual(len(seeds), len(set(seeds)))
+                self.assertTrue(all(set(item['side'] for item in payload['plan'][i:i+2]) == {'a', 'b'}
+                                    for i in range(0, len(seeds), 2)))
+                self.assertIn('Delta insn %', summary)
+                self.assertIn('Cap: 16', summary)
+                self.assertGreaterEqual(payload['first_pass'], 4)
+                self.assertTrue(all('--perf-scope' in call and '--flash' in call for call in fake.calls))
+                args = arguments(root)
+                if not shift:
+                    args.project_b = args.project_a
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        aa = tool.measure(args, FakeAutana(root))
+                    self.assertEqual([item['seed'] for item in aa['plan']], seeds)
 
-    def test_shell_keeps_a_budget_failure_but_rejects_a_cut_short_capture(self):
-        with tempfile.TemporaryDirectory() as directory:
-            done, _, _, out, _, count = self.run_compare_fixture(
-                directory, mode="budget-fail", runs=1)
-            calls = int(count.read_text(encoding="utf-8"))
-            reports = (out / "a" / "reports.list").read_text(encoding="utf-8").splitlines()
-        self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(calls, 2)
-        self.assertEqual(len(reports), 1)
+    def test_shell_wrapper_runs_ab_and_aa_with_fake_autana(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = pathlib.Path(root)
+            fake = root/'fake.py'
+            fake.write_text("import pathlib,sys\n" + inspect.getsource(FakeAutana) + "\n" +
+                            f"fake = FakeAutana({str(root)!r}, shifted=True)\n"
+                            "code, lines, wall = fake(sys.argv[1:], None, 1800)\n"
+                            "for at, line in lines: print(line, flush=True)\n"
+                            "sys.exit(code)\n")
+            for name in ('a', 'b'):
+                (root/name/'launcher/test').mkdir(parents=True)
+                (root/name/'launcher/test/suites.h').write_bytes((PERF.parents[2]/'launcher/test/suites.h').read_bytes())
+            def shell_path(path):
+                return pathlib.Path(path).as_posix()
+            for side in ('a', 'b'):
+                destination = root/f'out_{side}'
+                command = ['sh', shell_path(PERF/'perf_compare.sh'), shell_path(root/'a'), shell_path(root/side),
+                           '--no-restore', '-o', shell_path(destination), '--max-seeds', '8', '--suite', 'suite', '-', '-',
+                           '--autana', f'"{shell_path(sys.executable)}" "{shell_path(fake)}"']
+                done = subprocess.run(command, capture_output=True, text=True, timeout=60)
+                self.assertEqual(done.returncode, 0, done.stderr)
+                self.assertIn('no change' if side == 'a' else 'regressed', done.stdout)
 
-        with tempfile.TemporaryDirectory() as directory:
-            done, _, _, out, _, count = self.run_compare_fixture(
-                directory, mode="cut-short", runs=2)
-            calls = int(count.read_text(encoding="utf-8"))
-            summary_exists = (out / "summary.md").exists()
-        self.assertNotEqual(done.returncode, 0)
-        self.assertEqual(calls, 2)
-        self.assertFalse(summary_exists)
+    def test_extra_seeds_only_remeasure_inconclusive_rows_and_stop_at_cap(self):
+        with tempfile.TemporaryDirectory() as root:
+            fake = FakeAutana(root, noisy=True)
+            payload, summary = self.measure(root, fake, cap=10)
+            self.assertEqual(payload['rows']['suite/quiet']['verdict'], 'no change')
+            self.assertEqual(payload['rows']['suite/heavy']['verdict'], 'inconclusive')
+            extra = [item for item in payload['plan'] if item['look'] > 1]
+            self.assertTrue(extra)
+            self.assertTrue(all(item['suites'][0][1] == 'h' for item in extra))
+            self.assertEqual(len(payload['plan']), 20)
+            self.assertIn('inconclusive', summary)
 
-    def test_shell_stops_after_two_capture_timeouts(self):
-        with tempfile.TemporaryDirectory() as directory:
-            done, _, _, _, _, count = self.run_compare_fixture(directory, mode="timeout", runs=3, timeout=1)
-            calls = int(count.read_text(encoding="utf-8"))
-        self.assertNotEqual(done.returncode, 0)
-        self.assertEqual(calls, 2)
-        self.assertIn("two consecutive capture failures", done.stderr)
+    def test_unmapped_row_falls_back_to_original_suite_filter(self):
+        self.assertEqual(tool.selected_suites([('suite', '-', '-')], {'suite/row'}, {}), [('suite', '-', '-')])
 
-    def test_no_script_pauses_for_enter_without_a_terminal(self):
-        tools = PERF.parent
-        for script in (tools / "build" / "build.sh", tools / "device" / "device_report.sh"):
-            lines = script.read_text(encoding="utf-8").splitlines()
-            for number, line in enumerate(lines):
-                if "read -r" in line and ("Press Enter" in line or "dismissed" in line):
-                    window = " ".join(lines[max(0, number - 3):number + 1])
-                    self.assertIn("[ -t 0 ]", window, f"{script.name}:{number + 1} reads without a terminal check")
+    def test_foreground_runner_enforces_capture_deadline(self):
+        with self.assertRaisesRegex(RuntimeError, 'timed out'):
+            run_stamped([sys.executable, '-c', 'import time; time.sleep(2)'], io.StringIO(), timeout=.05)
 
-    def test_a_markdown_table_uses_its_measured_column(self):
-        rows = perf_compare.parse_report(FIXTURES / "sand_a.md")
-        self.assertEqual(rows["hot"], 2000)
+    def test_wrong_build_and_incomplete_captures_stop_after_two_failures(self):
+        for mode in ('mismatch', 'incomplete'):
+            with tempfile.TemporaryDirectory() as root:
+                fake = FakeAutana(root, mode=mode)
+                with self.assertRaisesRegex(RuntimeError, 'two consecutive'):
+                    self.measure(root, fake)
+                self.assertEqual(len(fake.calls), 2)
 
-    def test_sponza_mean_lines_are_generic_named_number_rows(self):
-        rows = perf_compare.parse_report(FIXTURES / "sponza.txt")
-        self.assertEqual(rows, {"sponza": 51000, "lite": 42000, "flat": 39000})
+    def test_capture_rows_map_to_test_and_counter(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root)
+            args.out = pathlib.Path(root)/'flash'
+            args.project = args.project_a
+            args.runs = 2
+            record = run_flash(args, 3, FakeAutana(root))
+            run = record['suites']['suite']['runs'][0]
+            self.assertEqual(run['owners']['quiet'], 'test_quiet')
+            self.assertEqual(run['instructions']['quiet'], 20000)
 
-    def test_worst_of_each_side_is_compared_per_row(self):
-        a = [{"full": 100, "lite": 80}, {"full": 110, "lite": 78}]
-        b = [{"full": 105, "lite": 82}, {"full": 104, "lite": 88}]
-        self.assertEqual(perf_compare.compare(a, b), [
-            ("full", 110, 105, -5, "improved"),
-            ("lite", 80, 88, 8, "regressed"),
-        ])
+    @patch.object(stats, "permutation_samples", new=lambda alpha: 199)
+    def test_aa_smoke_over_generated_captures_and_planted_shift(self):
+        class GeneratedAutana(FakeAutana):
+            def __init__(self, root, draw, planted=False):
+                super().__init__(root)
+                self.draw, self.planted = draw, planted
+            def __call__(self, command, log, timeout):
+                code, lines, wall = super().__call__(command, log, timeout)
+                if "status" in command:
+                    return code, lines, wall
+                seed = int(command[command.index('--layout-seed')+1])
+                project = pathlib.Path(command[command.index('--project')+1])
+                rng = random.Random(seed + self.draw*2147483647)
+                layout = {'quiet': rng.gauss(0, .0005), 'heavy': rng.gauss(0, .3),
+                          'near_zero': rng.gauss(0, .2), 'bimodal': rng.choice([-.15, .15])}
+                for _, line in lines:
+                    if not line.startswith('report: '):
+                        continue
+                    text = ''.join(f'SUITE_TEST name=test_{name} selected=1\n'
+                                   for name in layout)
+                    for name, base in [('quiet', 100000), ('heavy', 100000), ('near_zero', 2), ('bimodal', 100000)]:
+                        value = max(1, round(base*math.exp(layout[name]+rng.gauss(0, .0005))))
+                        if self.planted and name == 'quiet' and project.name == 'b':
+                            value = round(value*1.05)
+                        text += f'I (1) perf: {name} both cores: mean {value}us\n'
+                        text += f':1:test_{name}:PASS\n'
+                    pathlib.Path(line[8:]).with_suffix('.log').write_text(text)
+                return code, lines, wall
+        false, detected, equivalent, draws = 0, 0, 0, 4
+        for draw in range(draws):
+            with tempfile.TemporaryDirectory() as root:
+                aa, _ = self.measure(root, GeneratedAutana(root, draw), cap=4)
+                false += any(row['verdict'] in ('improved', 'regressed') for row in aa['rows'].values())
+                equivalent += aa['rows']['suite/quiet']['verdict'] == 'no change'
+                ab, _ = self.measure(root, GeneratedAutana(root, draw, planted=True), cap=4)
+                detected += ab['rows']['suite/quiet']['verdict'] == 'regressed'
+        tolerance = 3*math.sqrt(draws*.05*.95)
+        self.assertLessEqual(false, draws*.05+tolerance)
+        self.assertGreaterEqual(equivalent, draws*.95-tolerance)
+        self.assertGreaterEqual(detected, draws*.95-tolerance)
 
-    def test_controls_turn_a_small_delta_into_no_change(self):
-        a = [perf_compare.parse_report(FIXTURES / "sand_a.md")]
-        b = [perf_compare.parse_report(FIXTURES / "sand_b.md")]
-        controls = ("test_a_full_size_step_fits_in_the_frame_budget",
-                    "test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget")
-        hot = next(row for row in perf_compare.compare(a, b, controls) if row[0] == "hot")
-        self.assertEqual(hot,
-                         ("hot", 2000, 2010, 10, "no change"))
+    def test_real_table_command_reads_revision_source_and_pools_tables(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root)
+            project = args.project_a
+            project.mkdir(parents=True, exist_ok=True)
+            source = project/'suite.c'
+            source.write_text('test_quiet 200\ntest_heavy 300\n')
+            reporter = FIXTURES / 'table_report.py'
+            args.suite = [('suite', '-', f'python3 "{reporter}" @CAPTURE@ @TABLE@ --source @PROJECT@/suite.c')]
+            class TableRunner(FakeAutana):
+                def __call__(self, command, log, timeout):
+                    code, lines, wall = super().__call__(command, log, timeout)
+                    for _, line in lines:
+                        if line.startswith('report: '):
+                            path = pathlib.Path(line[8:]).with_suffix('.log')
+                            path.write_text('I (1) device_tests: row 100 us\n'
+                                            ':1:test_quiet:PASS\n'
+                                            'I (2) device_tests: row 200 us\n'
+                                            ':2:test_heavy:PASS\n')
+                    return code, lines, wall
+            args.project = project
+            args.out = pathlib.Path(root)/'flash'
+            args.runs = 2
+            record = run_flash(args, 2, TableRunner(root))
+            self.assertEqual(record['suites']['suite']['runs'][0]['rows'], {'test_quiet': 100, 'test_heavy': 200})
 
-    def test_a_coherent_shifted_run_is_flagged_with_its_size(self):
-        a_paths = sorted((FIXTURES / "sponza_runs").glob("a_*.txt"))
-        b_paths = sorted((FIXTURES / "sponza_runs").glob("b_*.txt"))
-        shifts = perf_compare.whole_run_shifts(
-            [perf_compare.parse_report(path) for path in b_paths])
-        self.assertEqual(len(shifts), 1)
-        self.assertEqual(shifts[0][0], 3)
-        self.assertAlmostEqual(shifts[0][1], 0.4, places=1)
-        with tempfile.TemporaryDirectory() as directory:
-            summary_path = pathlib.Path(directory) / "summary.md"
-            perf_compare.write_summary(
-                summary_path, "before", "after", ["a"] * 3, ["b"] * 3,
-                a_paths, b_paths)
-            summary = summary_path.read_text(encoding="utf-8")
-        self.assertIn("B run 3: +0.4%", summary)
-        self.assertIn("5 of 5 rows aligned", summary)
+    def test_wall_cost_and_variance_drive_recommendations(self):
+        records = [{'flash_seconds': 100, 'suites': {'suite': {'run_seconds': [10, 10]}}}]
+        rows = {'row': [[990, 1010], [991, 1011], [989, 1009], [992, 1012]]}
+        result = tool.recommendations(records, rows, .01)['row']
+        self.assertGreater(result['recommended_runs'], 2)
+        self.assertGreaterEqual(result['recommended_seeds'], 2)
 
-    def test_normal_run_scatter_is_not_flagged(self):
-        self.assertEqual(perf_compare.whole_run_shifts(self.sponza_runs("a")), [])
 
-    def test_a_regression_present_in_every_run_is_not_a_whole_run_shift(self):
-        a = [{"one": 100 + offset, "two": 200 + offset, "three": 300 + offset}
-             for offset in (-1, 0, 1)]
-        b = [{name: round(value * 1.1) for name, value in run.items()} for run in a]
-        self.assertEqual(perf_compare.whole_run_shifts(b), [])
-        self.assertTrue(all(row[4] == "regressed" for row in perf_compare.compare(a, b)))
-
-    def test_summary_lists_worst_values_and_build_ids(self):
-        with tempfile.TemporaryDirectory() as directory:
-            out = pathlib.Path(directory) / "summary.md"
-            perf_compare.write_summary(
-                out, "before", "after", ["before-diag"], ["after-diag"],
-                [FIXTURES / "sand_a.md"], [FIXTURES / "sand_b.md"])
-            summary = out.read_text(encoding="utf-8")
-            aggregate_path = out.parent / "worst.md"
-            perf_compare.write_aggregate(
-                aggregate_path, [perf_compare.parse_report(FIXTURES / "sand_a.md")])
-            aggregate = aggregate_path.read_text(encoding="utf-8")
-        self.assertIn("`before-diag`", summary)
-        self.assertIn("| `hot` | 2000 | 2000 | 2010 | 2010 | +10 | no change |", summary)
-        self.assertIn("| `hot` | ? | 2000 | ? | measured |", aggregate)
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

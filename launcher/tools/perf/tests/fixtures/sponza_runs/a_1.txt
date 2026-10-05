@@ -3,3 +3,4 @@ I (9958) sponza_perf: lite both cores: mean 46543us (21.5 fps before present), w
 I (10331) sponza_perf: flat both cores: mean 45407us (22.0 fps before present), worst 56227us
 I (10710) sponza_perf: fitted both cores: mean 46238us (21.6 fps before present), worst 54132us
 I (11207) sponza_perf: fitted-full both cores: mean 60947us (16.4 fps before present), worst 75585us
+:4670:test_scene_frame_budget:PASS
