@@ -87,7 +87,7 @@ class ReferenceBackendOptionsTest(unittest.TestCase):
     def test_a_physical_sky_needs_the_path_traced_backend(self):
         self.rejected("--sky", "hosek-wilkie")
 
-    def test_the_normal_buffer_is_an_embree_output(self):
+    def test_the_normal_buffer_is_a_bake_output(self):
         self.rejected("--backend", "mitsuba", "--normals")
 
     def test_spp_and_depth_must_be_positive(self):

@@ -137,7 +137,7 @@ untouched. Every baked renderer gets it. How the factor is computed is in
 
 Off unless given. A scene that sets it needs something to scale: an
 `[ambient]` light, or `indirect = true` with a [bounce cache](#bake-indirect)
-that a baked renderer uses. The Embree reference renderer reads the same table;
+that a baked renderer uses. The bake reference renderer reads the same table;
 the path-traced backend ignores it.
 
 ![The reference beside the bake without and with occlusion, each with its error heatmap](../images/render/bake-ao-compare.png)

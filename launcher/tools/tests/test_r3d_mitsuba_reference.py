@@ -1,4 +1,4 @@
-"""Checks the path-traced reference backend against the Embree reference on small fixtures: direct-only parity,
+"""Checks the path-traced reference backend against the bake reference on small fixtures: direct-only parity,
 materials, texture orientation and wrap, cameras, seeds and depth, and the energy of a constant environment."""
 
 import pathlib
@@ -12,9 +12,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
 try:
     import numpy as np
-    import trimesh
+    from tests import soup
     from PIL import Image
-    from trimesh.ray.ray_pyembree import RayMeshIntersector
 
     from r3d import mitsuba_reference
     from r3d.geometry import corner_normals
@@ -24,7 +23,7 @@ except ImportError:
     np = None
 
 HAVE_MITSUBA = np is not None and mitsuba_reference.import_mitsuba() is not None
-needs_mitsuba = unittest.skipIf(not HAVE_MITSUBA, "the path-traced backend needs requirements-gpu.txt")
+needs_mitsuba = unittest.skipIf(not HAVE_MITSUBA, "the path-traced backend needs Mitsuba")
 
 LOOK_DOWN = None if np is None else np.array([0.0, 0.0, 3.0, 0.0, 0.0, -1.0])
 LOOK_UP = None if np is None else np.array([0.0, 0.0, -3.0, 0.0, 0.0, 1.0])
@@ -55,7 +54,7 @@ def make_source(quads, kd=(1.0, 1.0, 1.0), texture=None, materials=None, uv_scal
                              textures=[texture] + [None] * (len(colours) - 1))
     source.corner_normals = corner_normals(source.p, source.tri_v)
     source.indirect_cache = None
-    source.intersector = RayMeshIntersector(trimesh.Trimesh(source.p, source.tri_v, process=False))
+    source.intersector = soup.rays(soup.Soup(source.p, source.tri_v))
     return source
 
 
@@ -68,7 +67,7 @@ def sky(intensity=1.0):
     return {"type": "sky", "color": [1.0, 1.0, 1.0], "intensity": intensity, "rays": 16}
 
 
-def embree(source, lights, pose=LOOK_DOWN, width=16, height=16, lens=0.5, double=()):
+def bake_render(source, lights, pose=LOOK_DOWN, width=16, height=16, lens=0.5, double=()):
     settings = SimpleNamespace(double_sided=set(double), seed=1)
     job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.001, ao=None))
     return render_linear(source, job, SimpleNamespace(lights=lights), pose, width, height, lens, 4)
@@ -96,19 +95,19 @@ def corridor_trace(path, spp, seed, depth=12):
 
 @needs_mitsuba
 class MitsubaDirectParityTest(unittest.TestCase):
-    def test_a_shadowed_plane_matches_the_embree_reference_pixel_for_pixel(self):
+    def test_a_shadowed_plane_matches_the_bake_reference_pixel_for_pixel(self):
         # An occluder card above a ground plane, and a sun tilted so its shadow falls inside the view.
         lights = [sun([0.5, 0.2, 0.8])]
-        a = embree(make_source([quad(0.0, 4.0), quad(1.0, 0.8, 0.0, 0.0)]), lights)
+        a = bake_render(make_source([quad(0.0, 4.0), quad(1.0, 0.8, 0.0, 0.0)]), lights)
         b = mitsuba(make_source([quad(0.0, 4.0), quad(1.0, 0.8, 0.0, 0.0)]), lights)[0]
         self.assertGreater(a.max() - a.min(), 0.1, "the fixture needs a shadow to compare")
         self.assertGreaterEqual((np.abs(a - b).max(axis=2) < 0.02).mean(), 0.9)
         self.assertLess(np.abs(a - b).mean(), 0.01)
 
-    def test_the_camera_looks_where_the_embree_reference_looks(self):
+    def test_the_camera_looks_where_the_bake_reference_looks(self):
         # A card covering only the upper-left of the view: both backends must cover the same pixels.
         lights = [sun([0.0, 0.0, 1.0])]
-        covered_a = embree(make_source([quad(0.0, 0.5, -0.6, 0.6)]), lights).max(axis=2) > 0.5
+        covered_a = bake_render(make_source([quad(0.0, 0.5, -0.6, 0.6)]), lights).max(axis=2) > 0.5
         covered_b = mitsuba(make_source([quad(0.0, 0.5, -0.6, 0.6)]), lights)[0].max(axis=2) > 0.5
         self.assertTrue(covered_a[:4, :4].any() and not covered_a[8:, :].any())
         self.assertGreaterEqual((covered_a == covered_b).mean(), 0.97)
@@ -116,7 +115,7 @@ class MitsubaDirectParityTest(unittest.TestCase):
     def test_lens_is_the_half_field_of_view_along_the_shorter_side_in_wide_and_tall_frames(self):
         lights = [sun([0.0, 0.0, 1.0])]
         for width, height in ((24, 8), (8, 24)):
-            a = embree(make_source([quad(0.0, 1.0)]), lights, width=width, height=height, lens=0.4)
+            a = bake_render(make_source([quad(0.0, 1.0)]), lights, width=width, height=height, lens=0.4)
             b = mitsuba(make_source([quad(0.0, 1.0)]), lights, width=width, height=height, lens=0.4)[0]
             self.assertGreaterEqual(((a.max(axis=2) > 0.5) == (b.max(axis=2) > 0.5)).mean(), 0.97, (width, height))
             self.assertTrue((a.max(axis=2) > 0.5).any() and not (a.max(axis=2) > 0.5).all(), "the card must end inside the frame")
@@ -147,19 +146,19 @@ class MitsubaMaterialTest(unittest.TestCase):
             Image.fromarray(pixels).save(path)
             return Texture(path)
 
-    def test_texels_land_where_the_embree_sampler_puts_them(self):
+    def test_texels_land_where_the_bake_sampler_puts_them(self):
         lights = [sun([0.0, 0.0, 1.0])]
-        a = embree(make_source([quad(0.0, 1.0)], texture=self.blocks()), lights, width=8, height=8)
+        a = bake_render(make_source([quad(0.0, 1.0)], texture=self.blocks()), lights, width=8, height=8)
         b = mitsuba(make_source([quad(0.0, 1.0)], texture=self.blocks()), lights, width=8, height=8, lens=0.4)[0]
         centres = [(2, 2), (2, 5), (5, 2), (5, 5)]
         for y, x in centres:
             np.testing.assert_allclose(b[y, x], a[y, x], atol=0.02)
         self.assertEqual(len({tuple(np.round(b[y, x], 2)) for y, x in centres}), 4)
 
-    def test_kd_scales_a_texture_per_channel_as_the_embree_albedo_does(self):
+    def test_kd_scales_a_texture_per_channel_as_the_bake_albedo_does(self):
         lights = [sun([0.0, 0.0, 1.0])]
         kd = (0.9, 0.5, 0.2)
-        a = embree(make_source([quad(0.0, 1.0)], kd=kd, texture=self.blocks()), lights, width=8, height=8)
+        a = bake_render(make_source([quad(0.0, 1.0)], kd=kd, texture=self.blocks()), lights, width=8, height=8)
         b = mitsuba(make_source([quad(0.0, 1.0)], kd=kd, texture=self.blocks()), lights, width=8, height=8, lens=0.4)[0]
         np.testing.assert_allclose(b[2, 2], a[2, 2], atol=0.02)
         self.assertLess(b[2, 2, 0], 0.95)
@@ -171,7 +170,7 @@ class MitsubaMaterialTest(unittest.TestCase):
 
     def test_texture_coordinates_beyond_one_repeat_the_texture(self):
         lights = [sun([0.0, 0.0, 1.0])]
-        a = embree(make_source([quad(0.0, 1.0)], texture=self.blocks(), uv_scale=2.0), lights, width=32, height=32, lens=0.4)
+        a = bake_render(make_source([quad(0.0, 1.0)], texture=self.blocks(), uv_scale=2.0), lights, width=32, height=32, lens=0.4)
         b = mitsuba(make_source([quad(0.0, 1.0)], texture=self.blocks(), uv_scale=2.0), lights, width=32, height=32, lens=0.4)[0]
         # Away from the blocks' edges, where only the wrap decides the colour.
         flat = np.ones((32, 32), dtype=bool)
@@ -198,21 +197,21 @@ class MitsubaMaterialTest(unittest.TestCase):
         mitsuba(source, [sun([0.0, 0.0, 1.0])], width=4, height=4)
         self.assertEqual(source.textures, [None])
 
-    def test_a_declared_double_sided_card_matches_embree_and_an_undeclared_one_is_dark_from_behind(self):
+    def test_a_declared_double_sided_card_matches_bake_and_an_undeclared_one_is_dark_from_behind(self):
         # The sun and the viewer are both behind the card.
         lights = [sun([0.0, 0.0, -1.0])]
         for double, lit in (((), False), (("material0",), True)):
-            a = embree(make_source([quad(0.0, 2.0)]), lights, pose=LOOK_UP, width=4, height=4, double=double)
+            a = bake_render(make_source([quad(0.0, 2.0)]), lights, pose=LOOK_UP, width=4, height=4, double=double)
             b = mitsuba(make_source([quad(0.0, 2.0)]), lights, pose=LOOK_UP, width=4, height=4, double=double)[0]
             self.assertEqual(a.max() > 0.5, lit, double)
             np.testing.assert_allclose(b, a, atol=0.02)
 
-    def test_a_card_seen_from_behind_under_a_sun_on_its_front_is_lit_in_embree_only(self):
-        # The recorded difference: the Embree reference shades a back-face hit with the front normal, and a double-sided
+    def test_a_card_seen_from_behind_under_a_sun_on_its_front_is_lit_in_bake_only(self):
+        # The recorded difference: the bake reference shades a back-face hit with the front normal, and a double-sided
         # card turns toward the sun. Mitsuba shades the side the ray reached.
         lights = [sun([0.0, 0.0, 1.0])]
         for double in ((), ("material0",)):
-            a = embree(make_source([quad(0.0, 2.0)]), lights, pose=LOOK_UP, width=4, height=4, double=double)
+            a = bake_render(make_source([quad(0.0, 2.0)]), lights, pose=LOOK_UP, width=4, height=4, double=double)
             b = mitsuba(make_source([quad(0.0, 2.0)]), lights, pose=LOOK_UP, width=4, height=4, double=double)[0]
             self.assertGreater(a.max(), 0.5)
             self.assertEqual(b.max(), 0.0)
@@ -227,8 +226,8 @@ class MitsubaTransportTest(unittest.TestCase):
                 picture = mitsuba(source, [sky(2.0)], width=4, height=4, lens=0.3, spp=256, depth=depth)[0]
                 np.testing.assert_allclose(picture.mean(axis=(0, 1)), [2.0 * albedo] * 3, rtol=0.03)
 
-    def test_the_embree_sky_and_the_path_traced_sky_agree_in_units(self):
-        a = embree(make_source([quad(0.0, 8.0)], kd=(0.7,) * 3), [sky(1.5)], width=4, height=4, lens=0.3)
+    def test_the_bake_sky_and_the_path_traced_sky_agree_in_units(self):
+        a = bake_render(make_source([quad(0.0, 8.0)], kd=(0.7,) * 3), [sky(1.5)], width=4, height=4, lens=0.3)
         b = mitsuba(make_source([quad(0.0, 8.0)], kd=(0.7,) * 3), [sky(1.5)], width=4, height=4, lens=0.3, spp=256)[0]
         np.testing.assert_allclose(b.mean(axis=(0, 1)), a.mean(axis=(0, 1)), rtol=0.03)
 

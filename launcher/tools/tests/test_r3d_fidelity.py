@@ -11,8 +11,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 try:
     import numpy as np
-    import trimesh
-    from trimesh.ray.ray_pyembree import RayMeshIntersector
+    from tests import soup
 
     from r3d import mesh_import
     from r3d.bake_fidelity import write_variant
@@ -49,12 +48,12 @@ class PlacementTests(unittest.TestCase):
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class SunTests(unittest.TestCase):
     def radiance_at_a_shadow_edge(self, sun_centre):
-        floor = trimesh.Trimesh([(0, 0, 0), (0, 0, 8), (16, 0, 8), (16, 0, 0)], [(0, 1, 2), (0, 2, 3)], process=False)
-        wall = trimesh.creation.box(extents=(1, 6, 8))
+        floor = soup.Soup([(0, 0, 0), (0, 0, 8), (16, 0, 8), (16, 0, 0)], [(0, 1, 2), (0, 2, 3)])
+        wall = soup.box(extents=(1, 6, 8))
         wall.apply_translation((8.5, 3, 4))
         # The wall's top edge shades the floor from x = 3.2 on the sun's middle ray: this point is just lit.
         point, up = np.array([[3.0, 0.0, 4.0]]), np.array([[0.0, 1.0, 0.0]])
-        return light(point, up, np.array([False]), RayMeshIntersector(trimesh.util.concatenate([floor, wall])), sun_only(25.0),
+        return light(point, up, np.array([False]), soup.rays(soup.concatenate([floor, wall])), sun_only(25.0),
                      0.01, None, 1, sun_centre)[0, 0]
 
     def test_the_sun_disc_softens_a_shadow_edge_the_middle_ray_lights_fully(self):

@@ -10,8 +10,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
 try:
     import numpy as np
-    import trimesh
-    from trimesh.ray.ray_pyembree import RayMeshIntersector
+    from tests import soup
 
     from r3d.geometry import corner_normals
     from r3d.reference_render import device_picture, render_linear, trace
@@ -28,7 +27,7 @@ def plane_source(corners):
     )
     source.corner_normals = corner_normals(source.p, source.tri_v)
     source.indirect_cache = None
-    source.intersector = RayMeshIntersector(trimesh.Trimesh(source.p, source.tri_v, process=False))
+    source.intersector = soup.rays(soup.Soup(source.p, source.tri_v))
     return source
 
 
@@ -108,7 +107,7 @@ class ReferenceRenderTest(unittest.TestCase):
         np.testing.assert_array_equal(picture, expand_565(np.full((1, 1, 3), 128, dtype=np.uint8)))
 
 
-@unittest.skipIf(np is None, "needs Embree and NumPy")
+@unittest.skipIf(np is None, "needs NumPy")
 class PooledReferenceTests(unittest.TestCase):
     def test_pool_matches_serial_files(self):
         import multiprocessing
@@ -119,14 +118,14 @@ class PooledReferenceTests(unittest.TestCase):
         if "fork" not in multiprocessing.get_all_start_methods():
             self.skipTest("copy-on-write pose pool needs fork")
         source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
-        wall = trimesh.creation.box(extents=(.1, 4., 2.))
+        wall = soup.box(extents=(.1, 4., 2.))
         wall.apply_translation((1.2, 0., 1.))
-        mesh = trimesh.util.concatenate([trimesh.Trimesh(source.p, source.tri_v, process=False), wall])
+        mesh = soup.concatenate([soup.Soup(source.p, source.tri_v), wall])
         source.p, source.tri_v = mesh.vertices, mesh.faces
         source.tri_t = np.zeros_like(source.tri_v)
         source.tri_m = np.zeros(len(source.tri_v), dtype=int)
         source.corner_normals = corner_normals(source.p, source.tri_v)
-        source.intersector = RayMeshIntersector(mesh)
+        source.intersector = soup.rays(mesh)
         job, scene = sun_scene([0., 0., -1.])
         job.bake.ao = SimpleNamespace(distance=3., strength=.8, rays=8, indirect=True)
         scene.lights[0]["disc_degrees"] = 4.
@@ -174,7 +173,7 @@ class PooledReferenceTests(unittest.TestCase):
                 self.assertEqual(path.read_bytes(), (pooled / path.name).read_bytes(), path.name)
 
 
-@unittest.skipIf(np is None, "needs Embree and NumPy")
+@unittest.skipIf(np is None, "needs NumPy")
 class SkyStreamingTests(unittest.TestCase):
     def test_sky_directions_are_streamed_and_match_list(self):
         from unittest.mock import patch
@@ -237,7 +236,7 @@ def record_pose_pid(item):
 
 
 
-@unittest.skipIf(np is None, "needs Embree and NumPy")
+@unittest.skipIf(np is None, "needs NumPy")
 class PoseMetricTests(unittest.TestCase):
     def test_pool_budget_and_pss_aggregation(self):
         from unittest.mock import Mock, patch
