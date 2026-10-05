@@ -12,7 +12,7 @@ mesh. Nothing here runs on the board.
 | [repair.py](repair.py) | The join step of the `seal_seams` import option: border vertices within a tolerance are welded and border edges are split at another piece's vertices, so a shared edge is one edge and the simplifier cannot open a crack along it. Positions only; vertices are never merged. |
 | [simplify.py](simplify.py) | Appearance-preserving simplification: split evenly, weld across materials, one colour-aware pass with reserved budget shares for small props. `seal_seams=True` joins touching pieces first, regularizes lightly and merges near colours. |
 | [meshopt.py](meshopt.py) | [meshoptimizer](https://github.com/zeux/meshoptimizer)'s simplifier and meshlet clusterizer through ctypes, built once from the pinned `third_party/upstream/meshoptimizer` submodule into `.cache/`. |
-| [light.py](light.py) | Baked direct light from a scene's typed lights (`LIGHTS`): directional with soft shadows, sky visibility and ambient, distance-limited local occlusion (`[bake].ao`), albedo from textures, and culling of what no point in a region can see. |
+| [light.py](light.py) | Baked light from a scene's typed lights (`LIGHTS`): a point sun by shadow rays, sky visibility and ambient, distance-limited local occlusion (`[bake].ao`), albedo from textures, and culling of what no point in a region can see. |
 | [octree.py](octree.py) | Groups weighted items, here meshlets, into an octree whose leaves hold runs of them. |
 | [build_pack.py](build_pack.py) | Writes the [asset pack](../../../docs/assets/README.md) (`-o PACK`) from the `.mesh` entries every import and scene file names, with the container writer in [`tools/asset/`](../asset/asset_pack.py). Standard library only. |
 | [mesh_asset.py](mesh_asset.py) | The lit mesh entry's type and byte layout, shared by the baker and the pack builder. Standard library only. |
@@ -30,6 +30,7 @@ mesh. Nothing here runs on the board.
 | [fitted_variant.py](fitted_variant.py) | Remakes a scene renderer's fitted mesh from the `fit` recipe it records; see [A fitted variant](#a-fitted-variant). |
 | [cost_model.py](cost_model.py), [board_cost_weights.txt](board_cost_weights.txt) | A linear model of a mesh's frame time from a pose (submitted and drawn triangles, rows, pixels with overdraw, clusters in view), and its weights with the board frames they were fitted to; see [Cost-aware fit](#cost-aware-fit). |
 | [reference_render.py](reference_render.py) | Traces the undecimated source mesh through the scene's bake lights at supersampled device resolution; writes linear arrays and RGB565-expanded PNGs for fidelity comparisons. |
+| [path_bake.py](path_bake.py) | `PathLight`: the bake's bounced light, Mitsuba's path integrator along each point's fixed cosine-weighted rays against the full-detail source; see [Bounced-light implementation](../../../docs/render/Mesh-Import.md#bounced-light-implementation). |
 | [ray_query.py](ray_query.py) | First-hit, any-hit and every-hit ray queries against a triangle mesh, traced by Mitsuba; the bake, visibility culling and the reference renderer all use it. |
 | [mitsuba_reference.py](mitsuba_reference.py), [reference_sweep.py](reference_sweep.py) | The path-traced backend of `reference_render.py` (Mitsuba 3, CUDA or CPU), and the measurement of its noise, depth bias, time and GPU memory on one pose; see [Path-traced reference](#path-traced-reference). |
 
@@ -134,7 +135,6 @@ backends differ in these recorded ways, besides transport:
 
 | Case | Bake backend | Path-traced backend |
 |---|---|---|
-| Sun disc | Soft shadows from `disc_degrees` | A point source: no soft edge |
 | `ambient` | Added to every point | Rejected unless black, it has no transport meaning |
 | One-sided card seen from behind | Shades the hit with the front normal, so a sun on the front lights it | Black: the side the ray reached is unlit |
 | Double-sided card | Turns toward the summed suns | Shades the side the ray reached |
@@ -164,7 +164,7 @@ It bakes the simplified geometry once, re-lights it for each variant into
 tracked one for the host renderer (`AUTANA_ASSET_PACK`), renders
 the poses and scores them with `render_compare.py`. A variant is
 `samples=fixed:N` or `auto:MIN:MAX:AREA` (`median*K` for AREA), `sky=N`,
-`place=stratified|centroid` and `sun=disc|centre`. Without `--variant` the
+and `place=stratified|centroid`. Without `--variant` the
 mesh is baked as its import file declares it, byte for byte the tracked bake.
 It prints a table sorted by mean ΔE.
 

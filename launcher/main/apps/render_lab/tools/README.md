@@ -312,17 +312,15 @@ lifts the shadowed arcade ceilings and the sides of the columns the sun does
 not reach, and tints a column next to a banner with the banner's colour. The
 baked variants draw precomputed colours.
 
-The cache is validated in linear light by the closed diffuse furnace and
-red-wall Cornell fixtures in
-[`test_r3d_bake.py`](../../../../tools/tests/test_r3d_bake.py). The furnace
-holds the finite bounce series, while the Cornell floor receives a stronger red
-term next to its red wall. A Sponza cache measurement must use its
-alpha-masked source and linear radiance, not source triangle counts or encoded
-vertex colours.
+The bounced light is validated in linear light by a floor beside a sunlit wall,
+whose bounced term must be half the wall's radiance, in
+[`test_r3d_path_bake.py`](../../../../tools/tests/test_r3d_path_bake.py). A
+Sponza bounce measurement must use its alpha-masked source and linear radiance,
+not source triangle counts or encoded vertex colours.
 
 The atrium's sunlit floor beneath a curtain is direct-light dominated. Its
 small coloured indirect term can disappear through the tone map and RGB565
-quantization even when the cache contains substantial bounce light elsewhere.
+quantization even when there is substantial bounce light elsewhere.
 On a shaded column the indirect term can exceed direct light, but both terms
 remain close to black. The source reference resolves those local changes more
 finely than the vertex-colour mesh, so a per-pixel reference is the comparison

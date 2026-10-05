@@ -253,9 +253,9 @@ Scene-owned bake, visibility, shading and fit settings are described in
 ### Local-occlusion implementation
 
 The [`ao` setting](Scene-Files.md#bake-ao) scales a baked point's ambient light,
-and with `indirect = true` its gathered bounce light, by a factor from short
+and with `indirect = true` its bounced light, by a factor from short
 rays. Each point $x$ casts $R$ cosine-weighted rays, the same directions in its
-own frame as the bounce gather; the ray $i$ that hits a surface at distance
+own frame as the bounce rays; the ray $i$ that hits a surface at distance
 $`t_i`$ within the reach $D$ has weight $`w_i = 1 - t_i/D`$, any other ray
 $`w_i = 0`$. With strength $s$ the factor is
 
@@ -267,57 +267,53 @@ A double-sided surface has no side it is meant to be seen from, so it takes the
 larger $f$ of its two sides. Sun and sky visibility use their own rays and are
 not scaled.
 
-### Indirect-light implementation
+### Bounced-light implementation
 
 The [bake recipe](Scene-Files.md#bake-indirect) enables diffuse bounce light
 in the same vertex or face colours as direct light. The renderer reads one
 colour, so frame cost and mesh size do not change; only the bake takes longer.
 
-The bake keeps one outgoing radiance per triangle of the full-detail source
-mesh. With albedo $a(t)$, direct irradiance $`E_0(t)`$ at the triangle, and
-$`h_i`$ the first triangle hit by the $i$-th of $R$ cosine-weighted rays from
-it, bounce $k$ gathers the previous bounce's radiance:
+The bake exports the full-detail source mesh, with its textures at full
+resolution, and the scene's directional and sky lights to Mitsuba once. A baked
+point $x$, a smooth vertex or a flat face sample, sends $R$ cosine-weighted
+rays into that scene. Mitsuba's path integrator follows each ray for up to $K$
+bounces with next-event estimation at every hit, so the hit's own shadow, albedo
+and further bounces are all in what comes back. With $`L_i(x)`$ the light
+gathered along ray $i$, the mean is the bounced irradiance over $\pi$, and the
+albedo, the tone map and the encode follow the direct light:
 
 ```math
-L_0(t) = a(t)\,E_0(t), \qquad
-E_k(t) = \frac{1}{R} \sum_{i=1}^{R} L_{k-1}(h_i), \qquad
-L_k(t) = a(t)\,E_k(t)
-```
-
-A baked point $x$, a smooth vertex or a flat face sample, gathers the same way
-into the cache and adds the sum of the bounces to its direct irradiance, before
-the albedo, the tone map and the encode:
-
-```math
-E_{\mathrm{ind}}(x) = \frac{1}{R} \sum_{i=1}^{R} \sum_{k=0}^{K-1} L_k(h_i),
+E_{\mathrm{ind}}(x) = \frac{1}{R} \sum_{i=1}^{R} L_i(x),
 \qquad
 L(x) = a(x)\,\bigl(E_{\mathrm{direct}}(x) + E_{\mathrm{ind}}(x)\bigr)
 ```
 
-A ray that hits nothing adds nothing, because the sky light already counts the
-sky; a ray that an occluder stops takes the occluder's radiance. With every
-albedo at most $\rho \lt 1$, $`\max_t L_k \le \rho^k \max_t L_0`$, so the series converges and
-bounce $k$ adds less than the one before. Pick $K$ where the next bounce is
-negligible beside the direct light.
+Light that reaches $x$ without a bounce is $`E_{\mathrm{direct}}`$: one shadow ray
+toward the sun, which is a point source and so casts hard shadows, and the
+sky light's own fixed rays, then the ambient light. A ray that hits nothing adds
+nothing to $`E_{\mathrm{ind}}`$, because the sky light already counts the sky.
+With every albedo at most $\rho \lt 1$ each bounce adds less than the one before;
+pick $K$ where the next bounce is negligible beside the direct light.
 
-Every point and every cache triangle uses the same $R$ directions, laid out
-in its own tangent frame, and nothing is drawn at random. Equal surroundings
-give equal colours and a rebake gives the same bytes. A smooth bake gathers
-once for the vertex copies a crease splits at one position, on their mean
-normal, and gives every copy that indirect term: indirect light changes slowly
-where direct light does not, and copies that differ only in it would stop
-merging into one vertex. A double-sided surface gathers on the side the direct
-light shines on, and a ray that reaches a one-sided triangle from behind finds
-no light, so light does not pass through shells.
+Every point uses the same $R$ first directions, laid out in its own tangent
+frame, and the path integrator's own random numbers come from a fixed seed, so
+a rebake gives the same bytes. The noise the paths leave in the bounced light
+falls with $\sqrt{R}$. A smooth bake gathers once for the vertex copies a crease
+splits at one position, on their mean normal, and gives every copy that
+bounced term: bounced light changes slowly where direct light does not, and
+copies that differ only in it would stop merging into one vertex. A
+double-sided surface gathers on the side the direct light shines on, and a ray
+that reaches a one-sided triangle from behind finds no light, so light does
+not pass through shells.
 
-The [indirect look](Scene-Files.md#indirect) controls gathered intensity and
+The [indirect look](Scene-Files.md#indirect) controls bounced intensity and
 bounce reflectance.
 
-The cache and the gathers cost one bundle of rays per source triangle and
-bounce, plus one per baked point. The limit is the light's resolution: it is
-the vertex or face spacing of the baked mesh, so bounce detail smaller than a
-triangle is lost, and a coloured surface tints only the triangles it reaches.
-A scene's bounce sweep, scores and images live beside its own tools.
+The cost is $R$ paths of up to $K+1$ segments per baked point. The limit is the
+light's resolution: it is the vertex or face spacing of the baked mesh, so
+bounce detail smaller than a triangle is lost, and a coloured surface tints
+only the triangles it reaches. A scene's bounce sweep, scores and images live
+beside its own tools.
 
 The scene file that places meshes and carries the lights, the camera and the
 tone map is described in [Scene-Files.md](Scene-Files.md).
