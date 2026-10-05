@@ -19,6 +19,7 @@ from r3d.scene_table import table_files, write_scene_table
 
 try:
     import numpy as np
+    from tests import soup  # noqa: F401  (traces the bake's rays on the scalar variant)
 
     from r3d import mesh_import
     from r3d.light import LIGHTS, encode_srgb8, light, to_srgb8

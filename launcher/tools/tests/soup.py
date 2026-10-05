@@ -2,7 +2,11 @@
 
 import numpy as np
 
+from r3d import ray_query
 from r3d.ray_query import RayQuery
+
+# Every ray query the tests make, in the bake too, traces one ray at a time: no LLVM needed.
+ray_query.VARIANT = "scalar_rgb"
 
 
 class Soup:
