@@ -600,9 +600,10 @@ soak_in_one_level(sand_t* s, uint8_t* row, int x, int y, int w, const reaction_t
         return;
     }
     if (held < r->moist_max) {
+        /* No block wake: moisture only retones the cell, and nothing the
+         * gravity sweep or cross-flow reads depends on it. */
         row[x] = with_moisture(c, (uint8_t)(held + 1), r);
         mark_rows(s, x, y, y);
-        wake_block_and_neighbors(s, x, y);
         mark_block_has_moisture(s, x, y);
     }
 }
@@ -639,15 +640,18 @@ soak_from_liquid(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reac
 }
 
 /* Commits a moisture hand-off: this cell keeps `held - cost`, the
- * neighbour at (nx, ny) has already been written. */
+ * neighbour at (nx, ny) has already been written. Only a neighbour that
+ * changed material (`converted`: its powder behaviour changed) wakes
+ * blocks; a retone alone never moves a grain. */
 static inline __attribute__((always_inline)) void
 settle_moisture_move(sand_t* s, uint8_t* row, int x, int y, int nx, int ny, cell_t c, uint8_t held, int cost,
-                     int recv_m) {
+                     int recv_m, bool converted) {
     row[x] = soil_set_moisture(c, (uint8_t)(held - cost), (uint8_t)recv_m);
     mark_rows(s, x, y, y);
     mark_rows(s, nx, ny, ny);
-    wake_block_and_neighbors(s, x, y);
-    wake_block_and_neighbors(s, nx, ny);
+    if (converted) {
+        wake_block_and_neighbors(s, nx, ny);
+    }
     mark_block_has_moisture(s, x, y);
     mark_block_has_moisture(s, nx, ny);
 }
@@ -692,7 +696,7 @@ soak_share_with(sand_t* s, uint8_t* row, int x, int y, int nx, int ny, size_t na
         return false;
     }
 
-    settle_moisture_move(s, row, x, y, nx, ny, c, held, cost, recv_m);
+    settle_moisture_move(s, row, x, y, nx, ny, c, held, cost, recv_m, nr->soaks_to != 0);
     return true;
 }
 
@@ -786,7 +790,7 @@ percolate_into(sand_t* s, uint8_t* row, int x, int y, int w, cell_t c, uint8_t h
         s->cells[nat] = with_moisture(below, (uint8_t)recv_m, br);
         cost = give;
     }
-    settle_moisture_move(s, row, x, y, nx, ny, c, held, cost, recv_m);
+    settle_moisture_move(s, row, x, y, nx, ny, c, held, cost, recv_m, br->soaks_to != 0);
 }
 
 /* Water percolates downhill, not just diffuses: on a won roll it hands
@@ -857,9 +861,9 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
     }
 
     if (r->dries != 0 && held != 0 && sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_SOAK_DRY, r->dries)) {
+        /* No block wake: drying only retones the cell. */
         row[x] = soil_set_moisture(c, (uint8_t)(held - 1), 0);
         mark_rows(s, x, y, y);
-        wake_block_and_neighbors(s, x, y);
         return held - 1 != 0;
     }
 
