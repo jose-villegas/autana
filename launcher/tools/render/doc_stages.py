@@ -207,7 +207,7 @@ def board(args, out, work):
 
 def measure_worker(label, job, mesh, reference_inputs, work, host, weights):
     from types import SimpleNamespace
-    from r3d.bake_fidelity import score, write_pack
+    from r3d.bake_fidelity import score, write_assets
     from r3d.appearance_simplify import load_views, normal_error, start_mesh
     from r3d.lit_mesh import finest_triangles, read_lit_mesh
     from r3d.cost_model import predict, mesh_rows
@@ -218,7 +218,7 @@ def measure_worker(label, job, mesh, reference_inputs, work, host, weights):
     settings = SimpleNamespace(render_args=f"--quarter 0 --no-hud --scene {job.renderer.variant.name.replace('_', '-')} "
                                           f"--frames {count} --dt {job.renderer.fit.held_out_every_ms}",
                                reference=reference_inputs / "reference_held_out", reference_scale=2)
-    metrics = score(settings, host, write_pack(job.asset_name, mesh, directory), directory)
+    metrics = score(settings, host, write_assets(job.asset_name, mesh, directory), directory)
     views, size = load_views([(str(reference_inputs / "held_out.txt"), str(settings.reference))], 2)
     angle = normal_error(start_mesh(mesh), views, size, angle_dir=directory / "angles")
     triangles = len(finest_triangles(read_lit_mesh(mesh))[2])

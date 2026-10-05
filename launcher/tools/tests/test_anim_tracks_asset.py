@@ -212,23 +212,23 @@ class SourceTests(unittest.TestCase):
             with self.assertRaisesRegex(TracksError, "is not a .glb in the same folder", msg=source):
                 tracks_asset.bake(path)
 
-    def test_build_pack_finds_every_clip_file_by_searching(self):
+    def test_build_pack_makes_each_clip_file_a_bundle_named_after_it(self):
         self.write("clips/walk.anim.toml", 'source = "probe.glb"\nanimation = "clip"\n')
         (self.root / "deeper" / "still").mkdir(parents=True)
         (self.root / "deeper" / "still" / "probe.glb").write_bytes(probe_glb())
         self.write("deeper/still/run.anim.toml", 'source = "probe.glb"\nanimation = "clip"\n')
-        entries = parse_pack(build_pack.pack_bytes([self.root]))
-        self.assertEqual(sorted(entries), ["run", "walk"])
-        self.assertEqual(entries["walk"], (tracks_asset.TYPE, probe_entry()))
+        bundles = {name: parse_pack(pack) for name, pack in build_pack.bundle_bytes([self.root]).items()}
+        self.assertEqual(sorted(bundles), ["run", "walk"])
+        self.assertEqual(bundles["walk"], {"walk": (tracks_asset.TYPE, probe_entry())})
 
     def test_build_pack_takes_a_clip_file_named_on_its_own(self):
         path = self.write("clips/walk.anim.toml", 'source = "probe.glb"\nanimation = "clip"\n')
-        self.assertEqual(sorted(parse_pack(build_pack.pack_bytes([path]))), ["walk"])
+        self.assertEqual(sorted(build_pack.bundle_bytes([path])), ["walk"])
 
     def test_a_bad_clip_ends_build_pack_with_a_usage_error_naming_it(self):
         bad = self.write("clips/bad.anim.toml", 'source = "probe.glb"\nanimation = "nope"\n')
         with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr, self.assertRaises(SystemExit) as stop:
-            build_pack.main(["-o", str(self.root / "out.bin"), str(bad)])
+            build_pack.main(["-o", str(self.root / "out"), str(bad)])
         self.assertEqual(stop.exception.code, 2)
         self.assertIn("nope", stderr.getvalue())
 
@@ -237,12 +237,12 @@ class SourceTests(unittest.TestCase):
             (self.root / folder).mkdir()
             (self.root / folder / "probe.glb").write_bytes(probe_glb())
             self.write(folder + "/walk.anim.toml", 'source = "probe.glb"\nanimation = "clip"\n')
-        with self.assertRaises(build_pack.SettingsError):
-            build_pack.pack_bytes([self.root])
+        with self.assertRaisesRegex(build_pack.SettingsError, "bundle named 'walk'"):
+            build_pack.bundle_bytes([self.root])
 
     def test_every_clip_in_the_tree_packs_and_reads_back(self):
-        entries = parse_pack(build_pack.pack_bytes([build_pack.DEFAULT_SEARCH]))
-        clips = {name: data for name, (kind, data) in entries.items() if kind == tracks_asset.TYPE}
+        packs = build_pack.bundle_bytes([build_pack.DEFAULT_SEARCH]).values()
+        clips = {name: data for pack in packs for name, (kind, data) in parse_pack(pack).items() if kind == tracks_asset.TYPE}
         self.assertGreater(len(clips), 0)
         for name, data in clips.items():
             tracks, duration_ms = tracks_asset.decode(data)

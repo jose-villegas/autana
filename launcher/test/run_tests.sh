@@ -113,6 +113,7 @@ $TEST_DIR/suites.c
 $TEST_DIR/timing.c
 $TEST_DIR/test_cleanup.c
 $TEST_DIR/heap_arena.c
+$TEST_DIR/test_asset_dir.c
 $MAIN_DIR/app_arena.c
 $MAIN_DIR/app_registry.c
 $MAIN_DIR/shell/shell_system.c
@@ -134,6 +135,8 @@ $MAIN_DIR/anim/anim_track.c
 $MAIN_DIR/anim/anim_tracks.c
 $MAIN_DIR/asset/asset_pack.c
 $MAIN_DIR/asset/asset_file.c
+$MAIN_DIR/asset/asset_directory.c
+$MAIN_DIR/asset/asset_store.c
 $MAIN_DIR/asset/asset_store_file.c
 $MAIN_DIR/render/r3d_lit_mesh.c
 $MAIN_DIR/render/raster.c
@@ -445,10 +448,10 @@ PYTHON=$(find_python) || exit 1
 
 [ "$BUILD_ONLY" != 1 ] || exit 0
 
-# The asset pack the suites read, packed from the baked meshes in the tree.
-AUTANA_ASSET_PACK="$BUILD_DIR/assets.bin"
-export AUTANA_ASSET_PACK
-"$PYTHON" "$TEST_DIR/../tools/r3d/build_pack.py" -o "$AUTANA_ASSET_PACK" "$MAIN_DIR" > /dev/null
+# The asset bundles the suites read, one per root asset in the tree.
+AUTANA_ASSET_DIR="$BUILD_DIR/assets"
+export AUTANA_ASSET_DIR
+"$PYTHON" "$TEST_DIR/../tools/r3d/build_pack.py" -o "$AUTANA_ASSET_DIR" "$MAIN_DIR" > /dev/null
 # The test clip suite_anim_tracks.c holds to the Python sampler.
 AUTANA_ANIM_PROBE="$BUILD_DIR/anim_probe.bin"
 export AUTANA_ANIM_PROBE

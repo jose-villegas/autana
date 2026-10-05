@@ -1,5 +1,5 @@
 /*
- * Portable suite: the three baked Sponza meshes, read from the asset pack,
+ * Portable suite: the three baked Sponza meshes, read from the sponza bundle,
  * and the camera loop through them
  * (sponza_flythrough.h). Each mesh is checked for the structure
  * r3d_pipeline.h relies on, never against the generator; the path and
@@ -24,7 +24,8 @@
 #include "render/r3d_pipeline.h"
 #include "util/memory.h"
 
-/* The three bakes, opened once from the build's asset pack. */
+/* The scene's bundle, mounted for the suite, and the three bakes in it. */
+static const asset_pack_t* bundle;
 #define MESH_FULL (&mesh_full)
 #define MESH_LITE (&mesh_lite)
 #define MESH_FLAT (&mesh_flat)
@@ -35,7 +36,7 @@ static r3d_lit_mesh_t mesh_flat;
 
 static void
 open_the_mesh(const char* id, r3d_lit_mesh_t* mesh) {
-    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(asset_store_pack(), id, mesh), id);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(bundle, id, mesh), id);
 }
 
 /* The pack id the scene gives the mesh its `entity` draws. */
@@ -336,14 +337,32 @@ test_the_flythrough_sees_mostly_building(void) {
     check_the_flythrough_sees_mostly_building(MESH_FLAT);
 }
 
+/* The bundle the build wrote for the scene: on the device, the one flashed
+ * to the assets partition. */
+static void
+test_the_scene_s_bundle_mounts_and_holds_a_lit_mesh_for_each_renderer(void) {
+    TEST_ASSERT_NOT_NULL_MESSAGE(bundle, "bundle sponza did not mount: see the log above");
+    for (uint16_t i = 0; i < sponza_scene.renderer_count; i++) {
+        r3d_lit_mesh_t mesh;
+        open_the_mesh(sponza_scene.renderers[i].asset, &mesh);
+        TEST_ASSERT_GREATER_THAN_INT(0, mesh.triangle_count);
+    }
+}
+
 static void
 run_sponza_suite(void) {
+    bundle = asset_store_bundle(sponza_scene.name);
+    RUN_TEST(test_the_scene_s_bundle_mounts_and_holds_a_lit_mesh_for_each_renderer);
     RUN_TEST(test_both_bakes_have_the_structure_the_pipeline_relies_on);
     RUN_TEST(test_both_bakes_are_cut_into_meshlets);
     RUN_TEST(test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps);
     RUN_TEST(test_the_flythrough_moves_smoothly_and_closes_its_loop);
     RUN_TEST(test_the_flythrough_keeps_clear_of_every_triangle);
     RUN_TEST(test_the_flythrough_sees_mostly_building);
+    if (bundle != NULL) {
+        asset_store_release(sponza_scene.name);
+        bundle = NULL;
+    }
 }
 
 SUITE_REGISTER(run_sponza_suite);

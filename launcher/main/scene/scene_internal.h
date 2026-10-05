@@ -27,6 +27,7 @@ typedef struct {
 
 struct scene {
     const scene_def_t* def;
+    bool holds_bundle; /* loaded by scene_load(): a use of bundle def->name */
     uint32_t elapsed_ms;
     scene_transform_t* transforms; /* one per entity */
     uint8_t* flags;                /* one per entity: SCENE_FLAG_* */

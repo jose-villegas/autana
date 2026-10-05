@@ -25,7 +25,7 @@ flowchart LR
     Simp --> Face --> Write["Write: quantise,<br/>meshlets, octree"]
     Simp --> Write
     Write --> Entry["Pack entry<br/><i>name.mesh</i>"]
-    Entry --> Pack["build_pack.py<br/><i>assets.bin</i>"]
+    Entry --> Pack["build_pack.py<br/><i>its root's bundle</i>"]
 ```
 
 ## Import options
@@ -228,8 +228,8 @@ renderer with `bake = true` is traced against its own source with that scene's
 lights, camera visibility and tone map; an albedo renderer writes its import's
 shared mesh. The
 [scene table](Scene-Files.md#the-scene-table) is written by `scene_table.py`,
-apart from the bake. `build_pack.py -o PACK` then writes the pack from the `.mesh`
-entries every import and scene file names, and `rebake.py` rewrites one
+apart from the bake. `build_pack.py -o DIR` then writes one [bundle](../assets/README.md#bundles) per
+root from the `.mesh` entries it names, and `rebake.py` rewrites one
 `.mesh`'s clusters only.
 
 ### Import file

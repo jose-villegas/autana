@@ -1,8 +1,8 @@
 /*
  * Portable suite: anim/anim_tracks, the TRCK pack entry. On a host the clip
  * tools/tests/anim_probe.py packs (AUTANA_ANIM_PROBE) samples as the Python
- * sampler does; on both, every clip in the shipped pack opens, and the boot
- * clip holds the same floats as the tracks compiled into the firmware.
+ * sampler does; on both, the boot clip's shipped bundle opens, and the clip
+ * holds the same floats as the tracks compiled into the firmware.
  */
 
 #include <stdint.h>
@@ -329,17 +329,19 @@ open_every_clip(const asset_pack_t* pack) {
 }
 
 static void
-test_every_clip_in_the_shipped_pack_opens(void) {
-    const asset_pack_t* pack = asset_store_pack();
-    TEST_ASSERT_NOT_NULL_MESSAGE(pack, "the asset pack did not open: see the log above");
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, open_every_clip(pack), "the pack holds no clip");
+test_every_clip_in_the_boot_clip_s_bundle_opens(void) {
+    const asset_pack_t* pack = asset_store_bundle(BOOT_CLIP);
+    TEST_ASSERT_NOT_NULL_MESSAGE(pack, "the boot clip's bundle did not mount: see the log above");
+    const int clips = open_every_clip(pack);
+    asset_store_release(BOOT_CLIP);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, clips, "the bundle holds no clip");
 }
 
 /* The boot clip, baked into the pack and into C from one .glb by one set of
  * checks, holds the same floats either way. */
 static void
 test_the_shipped_boot_clip_equals_the_compiled_one(void) {
-    const asset_pack_t* pack = asset_store_pack();
+    const asset_pack_t* pack = asset_store_bundle(BOOT_CLIP);
     TEST_ASSERT_NOT_NULL(pack);
     anim_tracks_t tracks;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(pack, BOOT_CLIP, &tracks));
@@ -359,6 +361,7 @@ test_the_shipped_boot_clip_equals_the_compiled_one(void) {
         TEST_ASSERT_EQUAL_MEMORY_MESSAGE(want->values, got.values, sizeof(float) * runs * want->count * want->width,
                                          boot_anim_track_names[i]);
     }
+    asset_store_release(BOOT_CLIP);
 }
 
 #ifndef DEVICE_BUILD
@@ -457,7 +460,7 @@ suite_anim_tracks(void) {
     RUN_TEST(test_an_unterminated_name_is_a_format_error);
     RUN_TEST(test_an_unknown_version_is_refused);
     RUN_TEST(test_a_cubic_track_needs_three_runs_of_values);
-    RUN_TEST(test_every_clip_in_the_shipped_pack_opens);
+    RUN_TEST(test_every_clip_in_the_boot_clip_s_bundle_opens);
     RUN_TEST(test_the_shipped_boot_clip_equals_the_compiled_one);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_the_probe_clip_samples_as_the_python_sampler);
