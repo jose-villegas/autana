@@ -13,6 +13,7 @@ import unittest
 PERF = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PERF))
 
+from seed_statistics import t_quantile
 import layout_pilot as pilot  # noqa: E402
 
 
@@ -45,6 +46,15 @@ class LayoutPilotTest(unittest.TestCase):
         self.assertGreater(tight, loose)
         self.assertGreaterEqual(loose, 2)
 
+    def test_mixed_run_counts_subtract_each_seed_mean_variance(self):
+        import statistics
+        seeds = [[90, 110], [109, 111]*10, [89, 91]*10, [104, 106]*10]
+        result = pilot.analyse(seeds, flash_over_run=10)
+        spread = statistics.variance(statistics.mean(seed) for seed in seeds)
+        residual = statistics.mean(statistics.variance(seed)/len(seed) for seed in seeds)
+        expected = math.sqrt(max(0, spread-residual))/result['mean']
+        self.assertAlmostEqual(result['sigma_flash'], expected)
+
     def test_one_flash_is_not_enough_to_measure_a_spread(self):
         with self.assertRaises(ValueError):
             pilot.analyse([[1, 2, 3]], flash_over_run=10)
@@ -55,7 +65,7 @@ class LayoutPilotTest(unittest.TestCase):
     def test_the_interval_the_seed_count_buys_is_the_one_asked_for(self):
         layout, run, runs, half_width = 0.003, 0.0005, 3, 0.002
         seeds = pilot.required_seeds(layout, run, runs, half_width)
-        width = lambda k: pilot.t95(2 * (k - 1)) * math.sqrt(
+        width = lambda k: t_quantile(.975, 2 * (k - 1)) * math.sqrt(
             2 * (layout ** 2 + run ** 2 / runs) / k)
         self.assertLessEqual(width(seeds), half_width)
         self.assertGreater(width(seeds - 1), half_width)

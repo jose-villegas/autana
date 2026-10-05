@@ -13,12 +13,10 @@ import sys
 import time
 
 import device_lock
+from process_tree import create_kill_on_close_job
 
 GRACE_SECONDS = 2.0
 POLL_SECONDS = 0.05
-KILL_ON_JOB_CLOSE = 0x2000
-BREAKAWAY_OK = 0x800
-EXTENDED_LIMIT_INFORMATION = 9
 BASIC_PROCESS_ID_LIST = 3
 MAX_MEMBERS = 256
 ERROR_MORE_DATA = 234
@@ -47,10 +45,6 @@ def binding():
         import ctypes
         from ctypes import wintypes
         kernel32 = device_lock.windows_kernel32()
-        kernel32.CreateJobObjectW.restype = wintypes.HANDLE
-        kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
-        kernel32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int,
-                                                     ctypes.c_void_p, wintypes.DWORD]
         kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
         kernel32.QueryInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int,
                                                        ctypes.c_void_p, wintypes.DWORD,
@@ -63,34 +57,8 @@ def binding():
 
 
 def create_job(kernel32):
-    """A job that kills its members when its last handle closes, or None."""
-    import ctypes
-    from ctypes import wintypes
-
-    class BasicLimits(ctypes.Structure):
-        _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64),
-                    ("PerJobUserTimeLimit", ctypes.c_int64), ("LimitFlags", wintypes.DWORD),
-                    ("MinimumWorkingSetSize", ctypes.c_size_t),
-                    ("MaximumWorkingSetSize", ctypes.c_size_t),
-                    ("ActiveProcessLimit", wintypes.DWORD), ("Affinity", ctypes.c_size_t),
-                    ("PriorityClass", wintypes.DWORD), ("SchedulingClass", wintypes.DWORD)]
-
-    class ExtendedLimits(ctypes.Structure):
-        _fields_ = [("Basic", BasicLimits), ("IoCounters", ctypes.c_uint64 * 6),
-                    ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
-                    ("PeakProcessMemoryUsed", ctypes.c_size_t),
-                    ("PeakJobMemoryUsed", ctypes.c_size_t)]
-
-    job = kernel32.CreateJobObjectW(None, None)
-    if not job:
-        return None
-    limits = ExtendedLimits()
-    limits.Basic.LimitFlags = KILL_ON_JOB_CLOSE | BREAKAWAY_OK
-    if kernel32.SetInformationJobObject(job, EXTENDED_LIMIT_INFORMATION,
-                                        ctypes.byref(limits), ctypes.sizeof(limits)):
-        return job
-    kernel32.CloseHandle(job)
-    return None
+    """Create the lock holder's job with explicit child breakaway allowed."""
+    return create_kill_on_close_job(breakaway_ok=True, kernel=kernel32)
 
 
 def enter(token=None):

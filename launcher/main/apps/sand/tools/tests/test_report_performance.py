@@ -41,6 +41,14 @@ class ReportPerformanceTest(unittest.TestCase):
             capture_output=True, text=True)
         return done, pathlib.Path(out).read_text(encoding="utf-8")
 
+    def test_ignored_budget_test_is_not_a_failure(self):
+        capture = BOOT + MEASURED.replace(':PASS', ':IGNORE: unavailable') + COMPLETE
+        done, report = self.run_reporter(capture)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        row = next(line for line in report.splitlines() if line.startswith(f'| `{BUDGETED}`'))
+        self.assertIn('IGNORE', row)
+        self.assertNotIn('**FAIL**', row)
+
     def test_it_refuses_a_capture_with_no_results(self):
         done, _ = self.run_reporter(BOOT + "I (4500) shell: 30.0 fps\n" + COMPLETE)
         self.assertEqual(done.returncode, 2, done.stderr)

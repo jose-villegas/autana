@@ -36,6 +36,10 @@ def write_index(directory, entries):
 
 
 class ParseSuiteResultsTests(unittest.TestCase):
+    def test_ignored_results_are_not_failures(self):
+        self.assertEqual(device_report.parse_suite_results(':1:test_skipped:IGNORE: unavailable\n'),
+                         (0, 0, []))
+
     def test_counts_pass_and_fail_and_captures_the_failure_message(self):
         passed, failed, failures = device_report.parse_suite_results(SAND_CAPTURE)
         self.assertEqual(passed, 1)
