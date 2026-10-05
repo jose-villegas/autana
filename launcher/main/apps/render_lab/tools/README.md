@@ -211,19 +211,6 @@ recipe outputs; the board table measures the committed scene assets.
 Run the documented stage to populate this comparison from current inputs.
 <!-- /generated: sponza-gpu -->
 
-### Local occlusion on the lite mesh
-
-The same stage repeats the lite mesh on a scratch copy of the scene with its
-ambient light raised and [`[bake].ao`](../../../../../docs/render/Scene-Files.md#bake-ao)
-on. The references carry the occlusion, so the simplified bake and the fit are
-scored on the same occluded picture; the fit sees the occlusion through its
-training references. The sheet's heatmaps show where each mesh keeps or loses
-it.
-
-<!-- generated: sponza-gpu-ao sha256=004310de23d1d3ede4be5737fea3df96589330524e3c9e8b073803d2c099c13d -->
-Run the documented stage to populate this comparison from current inputs.
-<!-- /generated: sponza-gpu-ao -->
-
 ### Budget and normal sweeps
 
 The budget sweep varies the lite recipe's pruning budget and cost weight.
@@ -371,7 +358,9 @@ The scene's `[indirect]` table, described in
 [Scene-Files.md](../../../../../docs/render/Scene-Files.md#indirect), sets
 `intensity` (a multiplier on the bounced light) and `albedo_boost` (a
 multiplier on the reflectance bounces use, held below 1). The committed scene
-leaves both at the physical 1.0. The reference reads the same table, so each
+doubles the bounce and leaves the boost at 1.0; the studies below start from the
+physical look, the scene without that table and without its occlusion. The
+reference reads the same table, so each
 look has two references: the physical one and one made with the look's own
 settings. The sheet bakes the same import at intensity 2 and 3 and at an albedo
 boost of 2 and shows, at the last pose, the physical reference above the bakes
@@ -398,8 +387,10 @@ from physical lighting; the own-reference column isolates bake fidelity.
 
 The scene's `[bake].ao` ([Scene-Files.md](../../../../../docs/render/Scene-Files.md#bake-ao))
 scales the ambient light, and with `indirect = true` the bounced light,
-by how closed in a point is. The scene's own ambient is faint, so these images
-raise it in both bakes and add `ao` to one of them. The reference applies the
+by how closed in a point is. The committed scene sets it, with its ambient
+light nearly off. These images start from the physical look instead, raise the
+ambient light in both bakes, which gives the occlusion something to scale, and
+add `ao` to one of them. The reference applies the
 occlusion at every pixel and the bake at every vertex, so the two heatmaps show
 where the bake's occlusion helps and where it overshoots.
 
