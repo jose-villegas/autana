@@ -101,6 +101,10 @@ or improved means a significant Welch difference with permutation agreement
 that is not shown equivalent, so a move smaller than the threshold can still
 be regressed.
 
+A real move inside the threshold can be reported as **no change**, so to see
+a small gain as **improved**, pass a `--threshold` below the gain you are
+chasing (for example `--threshold 0.1` for a 0.3% target).
+
 Both arithmetic and log-difference signs must agree on direction. **Added**
 means B only and **removed** A only when every attempt on the other side
 succeeded and its captures ran the row's owning test without printing the row. **Not measured** means missing
