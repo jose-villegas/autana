@@ -17,12 +17,14 @@ GIB = 1024 ** 3
 WSL_MEMORY_REQUIRED_BYTES = 6 * GIB
 WINDOWS_MEMORY_REQUIRED_BYTES = 2 * GIB
 # Estimates are (WSL RSS, GPU reserved, cgroup bytes), re-derived from workers' logged peaks.
+# Prepare includes its pose pool.
 FLOORS = (GIB, GIB // 2, GIB // 4)
 FIT_BYTES = (22 * GIB // 10, 7 * GIB // 10, 22 * GIB // 10)
-PREPARE_BYTES = (4 * GIB, 0, 4 * GIB)
+PREPARE_BYTES = (13 * GIB // 2, 0, 13 * GIB // 2)
 BAKE_BYTES = (5 * GIB // 2, 0, 5 * GIB // 2)
 MEASURE_BYTES = (3 * GIB // 2, 128 * 1024 ** 2, 3 * GIB // 2)
-# Copy-on-write source sharing needs a separate pose-pool sizing budget.
+# Ray-query pose workers share almost nothing (about 1.9 GB each, measured),
+# so this explicit pool budget and live free memory at fork time cap their count.
 POSE_POOL_BYTES = 7 * GIB
 SMOKE_PREPARE_BYTES = (2 * GIB, 0, 2 * GIB)
 GPU_QUERY_FAILURE_SECONDS = 300

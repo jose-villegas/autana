@@ -116,7 +116,7 @@ class PooledReferenceTests(unittest.TestCase):
         from r3d import reference_render
         from unittest.mock import patch
         if "fork" not in multiprocessing.get_all_start_methods():
-            self.skipTest("copy-on-write pose pool needs fork")
+            self.skipTest("pose pool needs fork")
         source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
         wall = soup.box(extents=(.1, 4., 2.))
         wall.apply_translation((1.2, 0., 1.))

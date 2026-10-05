@@ -115,10 +115,12 @@ Sweep result records are the resume markers. A worker failure prints its
 traceback, kills the other workers and fails the stage. SIGTERM kills the
 workers too; workers die with their parent.
 
-Reference poses share loaded source and indirect-cache state through
-copy-on-write; each pose seeds its own RNG. Standalone reference renders
-size their pool from available memory. Admitted prepares use the explicit
-`POSE_POOL_BYTES` sizing budget in `process_budget.py`, independent of the
+Reference pose workers under the ray-query backend share almost nothing
+(about 1.9 GB each, measured); each pose seeds its own RNG. Standalone
+reference renders size their pool from available memory. Prepare reserves
+6.5 GiB of RAM and cgroup memory, including its pose pool, and no VRAM.
+Admitted prepares use the explicit `POSE_POOL_BYTES` sizing budget in
+`process_budget.py`, independent of the
 prepare admission estimate; smoke prepares retain their smaller budget.
 At pool creation, live WSL and cgroup memory cap that budget's worker count,
 using the memory floors while retaining at least one worker. The pool logs
