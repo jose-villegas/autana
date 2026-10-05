@@ -46,11 +46,44 @@ A seeded image has its own `BUILD_ID`, and the same seed builds the same image.
 |---|---|
 | sigma_run | the spread of runs inside one flash |
 | sigma_flash | the spread between flashes' means beyond what sigma_run explains: layout plus boot-to-boot |
-| R* | runs per flash that minimise the cost of a given precision: ceil(sqrt(c_flash / c_run * sigma_run² / sigma_flash²)) |
+| R* | runs per flash that minimise the cost of a given precision: ceil(sqrt(c_flash / c_run * sigma_runÂ² / sigma_flashÂ²)) |
 | K | flashes per side so the 95% interval on B/A is within +-0.1% or +-0.5%, at the measured runs per flash |
 | Shapiro-Wilk p | whether the flash means look normal; with fewer than about 15 flashes it cannot judge |
 
 Repeating a seed (`--seeds 1 1 1`) flashes the same image again, so that run's
 sigma_flash is boot-to-boot alone; the difference to a run of distinct seeds is
 the layout. The flash cost counts the build, the flash and the boot. A
-comparison's floor is its own sigma_flash, measured from its own captures.
+comparison estimates sigma_flash from its own captures.
+
+## Revision comparison
+
+[`perf_compare.sh`](../../launcher/tools/perf/README.md) uses separate random
+layout seeds for A and B, with random order within each A/B flash pair.
+`A A` calibrates two seed sets of the same source. Each flash captures repeated
+runs; their mean is one independent seed observation. The tool shares the
+pilot's acquisition and variance calculations and uses the seeded build's
+pad geometry directly.
+
+The first pass has at least two runs per seed and enough seeds for the exact
+permutation test to reach its testing alpha. Measured flash/run wall costs,
+sigma_run and sigma_flash determine recommended runs per flash and required
+seeds for the requested threshold. Extra passes select only inconclusive
+rows, map them to capture test names, and use the largest recommended run
+count. Required seeds select a planned look up to `--max-seeds`; the summary
+states the first pass, cap and threshold. The random plan is replayable with
+`--rng-seed` and recorded alongside captures.
+
+The three-way result uses seed means. No change requires equivalence within
+`--threshold PCT` through a Holm-adjusted TOST. Improved or regressed requires
+a Holm-adjusted Welch difference on log seed means and a permutation test
+that agrees. The permutation test is exact when feasible and Monte Carlo
+otherwise; it reports n/a when the sample count cannot reach alpha. Anything
+else is inconclusive, including a row still undecided at the cap. Holm adjusts
+the difference and equivalence families separately; alpha is budgeted across
+planned looks to account for repeated decisions. No individual row supplies
+a noise floor for another row.
+
+The displayed B/A is a ratio of arithmetic seed means. Its Welch interval
+is on the geometric ratio from log seed means, so they can differ for skewed
+layouts. Medians are descriptive. Instruction deltas are shown where existing
+capture lines identify an unambiguous pairing with the timing row.

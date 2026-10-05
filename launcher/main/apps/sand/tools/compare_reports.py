@@ -1,48 +1,8 @@
 #!/usr/bin/env python3
-"""Diffs two markdown reports from report_performance.py and prints a delta
-table, so a round of tuning gets compared by machine instead of by eye.
+"""Compare report timing rows against a supplied percentage threshold.
 
-Hand-comparing two 13+ row tables across a browser tab or two terminal
-scrollbacks is slow and error-prone, and it throws away the one piece of
-context that actually tells a real regression from flash-layout noise: two
-of the frame-budget tests exercise no liquid, reaction or gas code at all
-(`test_a_full_size_step_fits_in_the_frame_budget` and
-`test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget`). Nothing
-under test changes what those two cost, so however much *they* move between
-two captures is exactly how much any other row can move for free - link
-placement, cache lines, whatever the flash layout lottery deals that build.
-This tool takes that measured movement as a per-comparison noise floor and
-uses it to label every other row `signal` or `layout?`, instead of leaving
-that judgment call to a human skimming two tables.
-
-The floor is measured fresh from the two reports being compared, every
-time - not a constant, because the controls are build-specific and would
-rot the moment someone tuned an unrelated budget. See classify() below.
-
-It also reads the `*_raw.txt` beside each report, for the pass-decomposition
-rows a round's gates print (`gas split: rise off: 191471 us`). Those never
-reach the markdown table - report_performance.py only tabulates budgeted
-tests - so without this they get diffed by eye, which is how a round ends up
-hand-writing this comparison in a scratch file. A decomposition line is
-recognised by its shape and nothing else: `device_tests: <prefix>: <label>:
-<n> us`, the second colon being what separates a split's row from an
-ordinary benchmark's one-line result.
-
-THE CAVEAT IS PRINTED, NOT JUST DOCUMENTED. Absolute microseconds do not
-compare across differently-scoped builds, and barely compare across builds
-whose flash layout moved much - only within-capture comparisons are
-trustworthy. The clearest machine-readable signature of the
-first mistake is the total run time: a perf-scoped capture runs 39 timed
-tests in ~2m and a full one 952 in ~7m, so a large gap between the two
-reports' totals means the two tables are not comparable at all. That check
-runs on every comparison and says so above the numbers.
-
-Usage:
-    python compare_reports.py OLD.md NEW.md [--threshold PCT]
-
-Exits non-zero if any row regressed by more than the threshold, so it can
-gate a round. --verdict keeps its own stricter contract (exit 0 only for a
-measured win) for the optimisation loop, which is the only caller.
+Seeded comparisons in launcher/tools/perf distinguish layout variation from change.
+The verdict mode also requires an absolute microsecond movement.
 """
 import argparse
 import os
@@ -74,14 +34,6 @@ DECOMP_RE = re.compile(
 # Deliberately loose: a genuine within-scope pair lands within a few percent,
 # so anything near this is already the wrong comparison.
 SCOPE_MISMATCH_PCT = 20.0
-
-# The two frame-budget tests that run no liquid, reaction or gas code -
-# anything that moves them is flash layout, not the change under test.
-CONTROLS = (
-    "test_a_full_size_step_fits_in_the_frame_budget",
-    "test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget",
-)
-
 
 def parse_report(path: str) -> dict:
     """Returns {test name: measured microseconds}, pooling both of
@@ -172,43 +124,14 @@ def pct_delta(old: int, new: int) -> float:
     return (new - old) / old * 100.0
 
 
-def classify(old_report: dict, new_report: dict):
-    """Returns (floor_pct, control_rows, error). error is a message string
-    if either control is missing from either report - without both, there
-    is nothing to measure the floor from and calling every row "signal" or
-    "layout?" would just be a guess."""
-    control_rows = []
-    for name in CONTROLS:
-        if name not in old_report or name not in new_report:
-            return None, [], f"control `{name}` is missing from one of the two reports - cannot establish a noise floor"
-        old_v, new_v = old_report[name], new_report[name]
-        control_rows.append((name, old_v, new_v, new_v - old_v, pct_delta(old_v, new_v)))
-    floor_pct = max(abs(row[4]) for row in control_rows)
-
-    # A floor of exactly zero is not a claim that 1us is meaningful - it
-    # means both controls happened to land on identical values, which does
-    # happen here: the flash layout lottery on this device is quantised
-    # (controls come back on one of a small number of value-pairs, never
-    # between), so two different builds can produce byte-identical control
-    # rows. Taking 0.0% literally labels a +1us move "signal" and invites
-    # chasing noise, which is the exact failure this tool exists to prevent.
-    # 0.5% is the smallest move this campaign has ever attributed to a real
-    # cause; below that, a single capture cannot tell you anything.
-    floor_pct = max(floor_pct, 0.5)
-    return floor_pct, control_rows, None
-
-
-def format_row(name, old_v, new_v, tag=None):
+def format_row(name, old_v, new_v):
     delta = new_v - old_v
     pct = pct_delta(old_v, new_v)
     line = f"| `{name}` | {old_v} | {new_v} | {delta:+d} | {pct:+.1f}% |"
-    if tag:
-        line += f" {tag} |"
     return line
 
 
-def print_delta_table(old: dict, new: dict, threshold: float,
-                      floor_pct: float = None, skip: set = frozenset()) -> int:
+def print_delta_table(old: dict, new: dict, threshold: float) -> int:
     """Common rows, largest absolute percentage move first. Returns how many
     rows regressed by more than `threshold`.
 
@@ -216,12 +139,11 @@ def print_delta_table(old: dict, new: dict, threshold: float,
     IS ALWAYS PRINTED, even when it is zero. A filter that quietly drops rows
     is how a regression leaves a round unnoticed, and the whole point of
     comparing by machine is that nothing falls off the bottom of the table."""
-    common = sorted((set(old) & set(new)) - set(skip),
+    common = sorted(set(old) & set(new),
                     key=lambda n: -abs(pct_delta(old[n], new[n])))
 
-    print("| Test | Old (us) | New (us) | Delta | Delta % |"
-          + (" |" if floor_pct is not None else ""))
-    print("|---|---:|---:|---:|---:|" + ("---|" if floor_pct is not None else ""))
+    print("| Test | Old (us) | New (us) | Delta | Delta % |")
+    print("|---|---:|---:|---:|---:|")
 
     hidden, regressed = 0, 0
     for name in common:
@@ -232,10 +154,7 @@ def print_delta_table(old: dict, new: dict, threshold: float,
         if abs(pct) < threshold:
             hidden += 1
             continue
-        tag = None
-        if floor_pct is not None:
-            tag = "signal" if abs(pct) > floor_pct else "layout?"
-        print(format_row(name, old_v, new_v, tag))
+        print(format_row(name, old_v, new_v))
     print()
     print(f"{len(common) - hidden} of {len(common)} rows shown; {hidden} hidden "
           f"for moving less than the {threshold:.1f}% threshold.")
@@ -294,8 +213,8 @@ def print_scope_check(old_path: str, new_path: str):
     print()
     print("Even within one scope, absolute numbers compare only between "
           "captures of the same shape - a change that grows a hot function "
-          "relocates everything after it and moves every row together. Read "
-          "the controls before anything else.")
+          "relocates everything after it and moves every row together. Use "
+          "seeded performance comparison to distinguish layout from change.")
     print()
 
 
@@ -306,7 +225,7 @@ def main() -> int:
     parser.add_argument("--verdict", action="store_true",
                         help="Print one machine-readable line instead of the "
                              "tables, and exit 0 only if this is a win: at "
-                             "least one row improved beyond the noise floor "
+                             "least one row improved beyond the threshold "
                              "and none regressed beyond it. For the "
                              "optimisation loop, which cannot read a table.")
     parser.add_argument("--threshold", type=float, default=0.4,
@@ -317,11 +236,6 @@ def main() -> int:
     old_report = parse_report(args.old_report)
     new_report = parse_report(args.new_report)
 
-    floor_pct, control_rows, error = classify(old_report, new_report)
-    if error:
-        print(f"ERROR: {error}")
-        return 1
-
     if args.verdict:
         # A row is only counted when BOTH reports measured it, so a newly
         # added or newly failing-to-run row can never be read as a win.
@@ -330,15 +244,9 @@ def main() -> int:
             if name not in old_report:
                 continue
             d = pct_delta(old_report[name], new_v)
-            if abs(d) <= floor_pct:
+            if abs(d) <= args.threshold:
                 continue
-            # A percentage floor alone is not enough on the very small rows.
-            # test_an_unchanged_frame_costs_almost_nothing measures 3 us, so
-            # one microsecond of timer quantisation reads as 33% and would
-            # be banked as a large win by a loop that only checked percent.
-            # Requiring an absolute movement too makes the tiny rows
-            # unwinnable rather than wildly noisy, which is correct: nothing
-            # worth finding hides in a 1 us move.
+            # Timer quantisation can dominate percentage movement in tiny rows.
             if abs(new_v - old_report[name]) < MIN_ABS_DELTA_US:
                 continue
             if d < 0:
@@ -347,11 +255,11 @@ def main() -> int:
             else:
                 regressed.append(name)
                 worst = max(worst, d)
-        # A regression beyond the floor disqualifies the candidate outright,
+        # A regression beyond the threshold disqualifies the candidate outright,
         # however large the win elsewhere: this loop is not authorised to
         # trade one budget against another. A human decides that.
         win = bool(improved) and not regressed
-        print(f"VERDICT {'WIN' if win else 'NO'} floor={floor_pct:.1f}% "
+        print(f"VERDICT {'WIN' if win else 'NO'} threshold={args.threshold:.1f}% "
               f"improved={len(improved)} regressed={len(regressed)} "
               f"best={best:.1f}% worst={worst:.1f}%")
         for name in improved:
@@ -363,46 +271,10 @@ def main() -> int:
     print(f"# Comparing `{args.old_report}` -> `{args.new_report}`")
     print()
     print_scope_check(args.old_report, args.new_report)
-    print("## Controls (noise floor)")
+    print("## Timing rows")
     print()
-    print("These two run no liquid, reaction or gas code, so their movement "
-          "between these two specific captures is flash layout, not signal. "
-          "The floor below is measured from THEM, here, not a hardcoded "
-          "constant - it will differ for any other pair of captures.")
-    print()
-    print("| Test | Old (us) | New (us) | Delta | Delta % |")
-    print("|---|---:|---:|---:|---:|")
-    for name, old_v, new_v, _delta, _pct in control_rows:
-        print(format_row(name, old_v, new_v))
-    print()
-    measured_floor = max(abs(row[4]) for row in control_rows)
-    origin = ("the larger of the two control moves above"
-              if measured_floor >= 0.5
-              else f"the 0.5% minimum - the controls themselves moved only "
-                   f"{measured_floor:.1f}%, which is too little to measure a "
-                   f"floor from")
-    print(f"Noise floor for this comparison: **{floor_pct:.1f}%** ({origin}).")
-    # Worth printing raw, not just the floor: across this campaign the
-    # controls were observed landing on one of two specific value pairs -
-    # an observation worth a reader's attention, not worth hardcoding as a
-    # rule, since it is a property of this build's flash layout, not of the
-    # test.
-    print(f"Raw control values: {control_rows[0][0]}: {control_rows[0][1]} -> {control_rows[0][2]}, "
-          f"{control_rows[1][0]}: {control_rows[1][1]} -> {control_rows[1][2]}.")
-    print()
-
-    control_names = set(CONTROLS)
-
-    print("## Everything else")
-    print()
-    print(f"Rows beyond the {floor_pct:.1f}% floor are marked `signal`; rows "
-          "within it are marked `layout?` - their move is no bigger than "
-          "what the two controls moved for free, so it's not distinguishable "
-          "from flash layout noise in this comparison.")
-    print()
-    regressed = print_delta_table(old_report, new_report, args.threshold,
-                                  floor_pct=floor_pct, skip=control_names)
-    report_missing(old_report, new_report, control_names,
+    regressed = print_delta_table(old_report, new_report, args.threshold)
+    report_missing(old_report, new_report, set(),
                    "the old report (removed or renamed)",
                    "the new report (added or renamed)")
 

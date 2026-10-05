@@ -54,34 +54,28 @@ goal x 1.15, a regression guard only. A run ends with `PERF TARGET SUMMARY:
 <n> unmet`; on an unchanged tree that count is zero. A perf-scoped run outlasts
 the default capture window, so pass `autana suite run_sand_perf_suite 1000`.
 
-Three rules keep a reading honest:
+Two rules keep a reading honest:
 
-- **Only within-capture comparisons are trustworthy.** Two separately
-  linked images of identical source can disagree by several percent
-  purely from where things land in flash. Never read a delta between two
-  different captures' numbers for the same row as real without checking
-  that the pair's own noise floor (`compare_reports.py` derives one from
-  the two control rows in the pair actually being compared) is smaller
-  than the delta.
-- **Check the control rows before reading anything else.** Every capture
-  carries at least one movement-free control row alongside the timed
-  scenes. If a change that should only touch one material moves a
-  control row too, the capture's flash layout shifted, and every other
-  delta in that capture needs to be read against that shift rather than
-  treated as real on its own.
+- **Use independent layout seeds to judge a change.**
+  [`perf_compare.sh`](../../launcher/tools/perf/README.md) compares revisions
+  with distinct seeded images, repeated runs per image and interleaved
+  flashes. Its measured layout and run variance determine extra measurements.
+  No change means equivalence within the requested threshold; improved or
+  regressed requires a statistical difference and permutation agreement.
+  An inconclusive result at the seed cap remains inconclusive. `A A`
+  calibrates the same source with separate seed sets. A single pair of
+  reports from `compare_reports.py` applies its percentage threshold and
+  absolute-us guard; it cannot distinguish layout variation from change.
 - **Measure landscape first.** Landscape is the shipping orientation:
   gravity moves within a fixed grid, so a portrait-tuned scene measures
-  the wrong thing. A portrait-only frame-budget row has hidden real costs
-  before: rotated UI work, and sand rows running along gravity rather
-  than across it.
+  different work, including rotated UI and gravity along a different grid axis.
 
 ### A report with no timings means a short heap
 
 Every frame-budget scene mallocs its ~41 KB grid; if that fails, the
 suite still runs and prints completion with no timings in it. With the
 framebuffer in PSRAM, one grid fits the internal heap's largest block
-and a second contiguous one does not. A report with zero timings has its
-controls read "not measured"; run `autana suite run_gfx_suite` and grep
+and a second contiguous one does not. A report with zero timings cannot supply a comparison; run `autana suite run_gfx_suite` and grep
 its capture for `free heap after framebuffer`.
 
 ## Perf sanity, not just logging
@@ -102,7 +96,7 @@ It buys run time, not memory (the framebuffer lives in PSRAM) and
 changes the image's layout in the 32 KB instruction cache. That second
 effect means **a scoped capture's numbers compare only with other scoped
 captures**, never with an unscoped run, same reasoning as the
-within-capture-only rule above, one layer up.
+seeded-comparison rule above, one layer up.
 
 ```sh
 bash launcher/main/apps/sand/tools/report_performance.sh --perf-scope
