@@ -2,7 +2,8 @@
  * sample_tracks: prints what a baked animation's tracks hold every N
  * milliseconds, through the same anim_clip_seconds() and anim_track_sample()
  * the firmware calls. Built by sample_tracks.sh against one baked animation,
- * whose clip ANIM_CLIP and track names ANIM_NAMES it is compiled with.
+ * whose clip ANIM_CLIP, tracks ANIM_TRACKS (ANIM_COUNT of them) and track
+ * names ANIM_NAMES it is compiled with.
  *
  *   sample_tracks [--from MS] [--every MS] [--until MS] [--clamp] [--poses NODE W H TAN NEAR]
  *
@@ -22,15 +23,17 @@
 #define POSES_MAX 4096
 
 extern const anim_clip_t ANIM_CLIP;
+extern const anim_track_t* const ANIM_TRACKS[];
+extern const int ANIM_COUNT;
 extern const char* const ANIM_NAMES[];
 
 static const anim_track_t*
 find_track(const char* node, const char* path) {
     char name[128];
     snprintf(name, sizeof name, "%s/%s", node, path);
-    for (int i = 0; i < ANIM_CLIP.count; i++) {
+    for (int i = 0; i < ANIM_COUNT; i++) {
         if (strcmp(ANIM_NAMES[i], name) == 0) {
-            return ANIM_CLIP.tracks[i];
+            return ANIM_TRACKS[i];
         }
     }
     fprintf(stderr, "sample_tracks: no track %s\n", name);
@@ -97,11 +100,11 @@ main(int argc, char** argv) {
     }
     for (uint32_t t = from_ms; t < until_ms; t += every_ms) {
         const float seconds = anim_clip_seconds(&ANIM_CLIP, t, wrap);
-        for (int i = 0; i < ANIM_CLIP.count; i++) {
+        for (int i = 0; i < ANIM_COUNT; i++) {
             float v[ANIM_WIDTH_MAX];
-            anim_track_sample(ANIM_CLIP.tracks[i], seconds, v);
+            anim_track_sample(ANIM_TRACKS[i], seconds, v);
             printf("%" PRIu32 " %s", t, ANIM_NAMES[i]);
-            for (int k = 0; k < ANIM_CLIP.tracks[i]->width; k++) {
+            for (int k = 0; k < ANIM_TRACKS[i]->width; k++) {
                 printf(" %.9g", (double)v[k]);
             }
             printf("\n");

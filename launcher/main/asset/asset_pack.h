@@ -30,12 +30,13 @@ typedef enum {
     ASSET_ERR_NO_PACK,   /* nothing mapped or read */
     ASSET_ERR_TRUNCATED, /* the buffer is shorter than the pack's own header, or than the size it states */
     ASSET_ERR_MAGIC,     /* not an asset pack */
-    ASSET_ERR_VERSION,   /* a format this firmware does not read */
+    ASSET_ERR_VERSION,   /* a pack or entry format this firmware does not read */
     ASSET_ERR_SIZE,      /* the header is malformed: a size that cannot hold it, or reserved bytes in use */
     ASSET_ERR_CRC,       /* the bytes after the header do not match its checksum */
     ASSET_ERR_BOUNDS,    /* an entry or one of its parts leaves its range, or is misaligned */
     ASSET_ERR_NOT_FOUND, /* no entry has that name */
     ASSET_ERR_TYPE,      /* the entry is not of the type asked for */
+    ASSET_ERR_FORMAT,    /* inside its range, an entry holds a value its reader does not accept */
 } asset_status_t;
 
 /* A validated pack. Holds no copy: `base` must outlive it. */

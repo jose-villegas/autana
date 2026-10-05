@@ -131,6 +131,7 @@ $MAIN_DIR/util/job.c
 $MAIN_DIR/util/memory.c
 $MAIN_DIR/util/settings_policy.c
 $MAIN_DIR/anim/anim_track.c
+$MAIN_DIR/anim/anim_tracks.c
 $MAIN_DIR/asset/asset_pack.c
 $MAIN_DIR/asset/asset_file.c
 $MAIN_DIR/asset/asset_store_file.c
@@ -448,6 +449,10 @@ PYTHON=$(find_python) || exit 1
 AUTANA_ASSET_PACK="$BUILD_DIR/assets.bin"
 export AUTANA_ASSET_PACK
 "$PYTHON" "$TEST_DIR/../tools/r3d/build_pack.py" -o "$AUTANA_ASSET_PACK" "$MAIN_DIR" > /dev/null
+# The test clip suite_anim_tracks.c holds to the Python sampler.
+AUTANA_ANIM_PROBE="$BUILD_DIR/anim_probe.bin"
+export AUTANA_ANIM_PROBE
+"$PYTHON" "$TEST_DIR/../tools/tests/anim_probe.py" -o "$AUTANA_ANIM_PROBE"
 
 if [ "$SANITIZE" = 1 ] && [ "$(uname -s)" = Linux ]; then
     # Control ids are value addresses and must stay stable across frames, as on the device.

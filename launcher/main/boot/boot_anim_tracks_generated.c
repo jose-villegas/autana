@@ -32,7 +32,7 @@ static const float boot_anim_space_scale_times[] = {0.0F, 0.699999988F, 1.580000
 static const float boot_anim_space_scale_values[] = {1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 0.600000024F, 0.600000024F, 0.600000024F};
 const anim_track_t boot_anim_space_scale = {boot_anim_space_scale_times, boot_anim_space_scale_values, 7, 3, ANIM_LINEAR, 0};
 
-static const anim_track_t* const boot_anim_clip_tracks[] = {
+const anim_track_t* const boot_anim_tracks[] = {
     &boot_anim_camera_translation,
     &boot_anim_camera_rotation,
     &boot_anim_camera_scale,
@@ -41,7 +41,9 @@ static const anim_track_t* const boot_anim_clip_tracks[] = {
     &boot_anim_space_scale,
 };
 
-const anim_clip_t boot_anim_clip = {boot_anim_clip_tracks, 6, 4300};
+const int boot_anim_track_count = 6;
+
+const anim_clip_t boot_anim_clip = {4300};
 
 const char* const boot_anim_track_names[] = {
     "camera/translation",

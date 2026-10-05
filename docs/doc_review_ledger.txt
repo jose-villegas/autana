@@ -21,3 +21,5 @@ docs/tools/Frame-Cost.md	2026-10-01	reviewed against launcher/main/util/frame_co
 docs/tools/Layout-Noise.md	2026-10-05
 launcher/tools/perf/README.md	2026-10-05
 docs/sand/Testing-Sand.md	2026-10-05
+docs/Animation-Tracks.md	2026-10-05	PR 625 round 3: reviewed against anim_tracks.c, tracks_asset.py and bake_tracks.py, accurate
+docs/render/Mesh-Import.md	2026-10-05	PR 625 round 3: BOUNDS/FORMAT reviewed against r3d_lit_mesh.c, accurate

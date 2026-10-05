@@ -35,12 +35,10 @@ typedef struct {
     uint8_t quaternion;  /* nonzero: xyzw, interpolated as a rotation */
 } anim_track_t;
 
-/* The tracks of one animation, which glTF plays on a single timeline: a
- * track's keys are in clip seconds, and tracks starting or ending at
- * different times stay in step. */
+/* The timeline glTF plays all of one animation's tracks on: a track's keys
+ * are in clip seconds, so tracks starting or ending at different times stay
+ * in step. */
 typedef struct {
-    const anim_track_t* const* tracks;
-    int count;
     uint32_t duration_ms; /* the last key of any track */
 } anim_clip_t;
 
