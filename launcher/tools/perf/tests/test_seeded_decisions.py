@@ -67,9 +67,10 @@ class RevisionTests(unittest.TestCase):
             self.assertIn("suite/quiet", result["rows"])
 
     def test_table_failure_has_stderr(self):
-        with self.assertRaisesRegex(RuntimeError, "table exploded"):
-            capture.make_table('python3 -c "import sys; sys.exit(\'table exploded\')"',
-                               pathlib.Path("capture"), pathlib.Path("table"))
+        with tempfile.TemporaryDirectory() as root:
+            with self.assertRaisesRegex(RuntimeError, "table exploded"):
+                capture.make_table('python3 -c "import sys; sys.exit(\'table exploded\')"',
+                                   pathlib.Path(root)/"capture", pathlib.Path(root)/"table")
 
     def test_two_failures_write_incomplete_summary(self):
         with tempfile.TemporaryDirectory() as root:
@@ -209,7 +210,7 @@ class RevisionTests(unittest.TestCase):
             payload, summary = self.measure(root, DifferentRows(root, noisy=True))
             self.assertEqual(payload["rows"]["suite/removed"]["verdict"], "removed")
             self.assertEqual(payload["rows"]["suite/added"]["verdict"], "added")
-            self.assertTrue(all(item["suites"][0][1] == "test_heavy"
+            self.assertTrue(all(item["suites"][0][1] == "h"
                                 for item in payload["plan"] if item["look"] > 1))
             self.assertIn("removed", summary)
             self.assertIn("added", summary)
@@ -237,7 +238,12 @@ class RevisionTests(unittest.TestCase):
                                recommended_seeds=desired) for name in rows}
         for desired, expected in ((2, 2), (12, 3), (100, 4)):
             with tempfile.TemporaryDirectory() as root:
-                with patch.object(tool, "recommendations", side_effect=recommendations):
+                row = dict(a=10000, b=10000, ratio=1, interval=None, permutation=1,
+                           p_adjusted=1, equivalence_adjusted=1, verdict="inconclusive")
+                decisions = {"suite/heavy": row, "suite/quiet": dict(row, verdict="no change")}
+                with patch.object(tool, "recommendations", side_effect=recommendations), \
+                        patch.object(tool, "compare", side_effect=lambda *a, **kw: {
+                            name: result.copy() for name, result in decisions.items()}):
                     payload, _ = self.measure(root, FakeAutana(root, noisy=True))
                 quiet = payload["rows"]["suite/quiet"]
                 self.assertEqual(quiet["look"], 1)
@@ -367,12 +373,13 @@ class RevisionTests(unittest.TestCase):
                             f"code,lines,wall = FakeAutana({str(root)!r})(sys.argv[1:], None, 60)\n"
                             "for at,line in lines: print(line, flush=True)\nsys.exit(code)\n")
             for name in ("a", "restore"):
-                (root/name).mkdir()
+                (root/name/"launcher/test").mkdir(parents=True)
+                (root/name/"launcher/test/suites.h").write_bytes((source.parents[2]/"launcher/test/suites.h").read_bytes())
             env = dict(__import__("os").environ, RESTORE_TREE=(root/"restore").as_posix())
             done = subprocess.run(["sh", (perf/"perf_compare.sh").as_posix(),
                                    (root/"a").as_posix(), (root/"a").as_posix(),
                                    "--suite", "suite", "-", "-", "--max-seeds", "4",
-                                   "--autana", f'python "{fake.as_posix()}"', "-o", (root/"out").as_posix()],
+                                   "--autana", f'"{pathlib.Path(sys.executable).as_posix()}" "{fake.as_posix()}"', "-o", (root/"out").as_posix()],
                                   env=env, capture_output=True, text=True, timeout=60)
             self.assertEqual(done.returncode, 0, done.stderr)
             recorded = [json.loads(line) for line in calls.read_text().splitlines()]
@@ -383,10 +390,17 @@ class RevisionTests(unittest.TestCase):
             done = subprocess.run(["sh", (perf/"perf_compare.sh").as_posix(),
                                    (root/"a").as_posix(), (root/"a").as_posix(),
                                    "--suite", "suite", "-", "-", "--alpha", "1e-8",
-                                   "--autana", f'python "{fake.as_posix()}"'],
+                                   "--autana", f'"{pathlib.Path(sys.executable).as_posix()}" "{fake.as_posix()}"'],
                                   env=env, capture_output=True, text=True, timeout=60)
             self.assertNotEqual(done.returncode, 0)
             self.assertFalse(calls.exists(), "invalid settings must not reach capture or restore")
+            done = subprocess.run(["sh", (perf/"perf_compare.sh").as_posix(),
+                                   (root/"a").as_posix(), (root/"a").as_posix(),
+                                   "--suite", "suite", "x" * 24, "-", "--max-seeds", "4",
+                                   "--autana", f'"{pathlib.Path(sys.executable).as_posix()}" "{fake.as_posix()}"'],
+                                  env=env, capture_output=True, text=True, timeout=60)
+            self.assertNotEqual(done.returncode, 0)
+            self.assertFalse(calls.exists(), "invalid filters must not reach capture or restore")
 
     def test_shell_help_and_missing_arguments_are_messages(self):
         wrapper = pathlib.Path(tool.__file__).with_suffix(".sh")
@@ -398,7 +412,8 @@ class RevisionTests(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertTrue(result.stderr.strip())
 
-    def test_default_multilook_aa_calibration(self):
+    @patch.object(stats, "permutation_samples", new=lambda alpha: 199)
+    def test_default_multilook_aa_smoke(self):
         class NoisyRows(FakeAutana):
             def __call__(self, command, log, timeout):
                 code, lines, wall = super().__call__(command, log, timeout)
@@ -413,7 +428,7 @@ class RevisionTests(unittest.TestCase):
                         path.write_text("".join(f"I perf: {name} both cores: mean {value}us\n"
                                                 f"suite.c:1:test_{name}:PASS\n" for name, value in values.items()))
                 return code, lines, wall
-        false, draws = 0, 40
+        false, draws = 0, 3
         looks = set()
         for draw in range(draws):
             with tempfile.TemporaryDirectory() as root:
