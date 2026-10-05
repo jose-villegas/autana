@@ -755,7 +755,7 @@ class AuthoredImportTests(unittest.TestCase):
 
 
 class ClearIntersector:
-    def intersects_any(self, origins, directions):
+    def blocked(self, origins, directions):
         return np.zeros(len(origins), dtype=bool)
 
 
