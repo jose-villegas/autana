@@ -5,6 +5,9 @@ every hit along a ray. `RayQuery` answers them with the signatures of the inters
 only change where the object is built. Triangle ids are the row numbers of the `tris` given, and every triangle is hit
 from both sides.
 """
+import multiprocessing
+import os
+
 import numpy as np
 
 from r3d.mitsuba_reference import default_variant, import_mitsuba
@@ -16,22 +19,54 @@ STEP = 1e-4
 MAX_HITS = 64
 
 
+def in_fresh_process(function, *args):
+    """`function(*args)` run in a forked child, its result sent back. Dr.Jit's JIT cannot survive a fork, so a
+    process that will fork workers does its own ray queries here and never starts the JIT itself. Without fork
+    the call runs in place."""
+    if "fork" not in multiprocessing.get_all_start_methods():
+        return function(*args)
+    context = multiprocessing.get_context("fork")
+    receiver, sender = context.Pipe(duplex=False)
+
+    def run():
+        try:
+            sender.send((True, function(*args)))
+        except BaseException as error:
+            sender.send((False, repr(error)))
+
+    child = context.Process(target=run)
+    child.start()
+    sender.close()
+    try:
+        ok, value = receiver.recv()
+    except EOFError:
+        ok, value = False, "the child exited without a result"
+    child.join()
+    if not ok:
+        raise RuntimeError(value)
+    return value
+
+
 class RayQuery:
+    """The scene is built on the first query, in the process that asks, so a forked worker builds its own."""
+
     def __init__(self, positions, tris, variant=None):
+        self.positions, self.tris = np.asarray(positions, dtype=np.float64), np.asarray(tris, dtype=np.int64)
+        self.variant, self.scene, self.owner = variant, None, None
+
+    def _build(self):
         mi = import_mitsuba()
         if mi is None:
             raise RuntimeError("ray queries need Mitsuba: pip install -r launcher/tools/r3d/requirements.txt")
         if mi.variant() is None:
-            mi.set_variant(variant or default_variant(mi))
-        self.mi = mi
-        self.positions, self.tris = np.asarray(positions, dtype=np.float64), np.asarray(tris, dtype=np.int64)
-        self.scalar = mi.variant().startswith("scalar")
-        mesh = mi.Mesh("query", len(positions), len(tris))
+            mi.set_variant(self.variant or default_variant(mi))
+        self.mi, self.scalar = mi, mi.variant().startswith("scalar")
+        mesh = mi.Mesh("query", len(self.positions), len(self.tris))
         params = mi.traverse(mesh)
-        params["vertex_positions"] = np.asarray(positions, dtype=np.float32).ravel()
-        params["faces"] = np.asarray(tris, dtype=np.uint32).ravel()
+        params["vertex_positions"] = self.positions.astype(np.float32).ravel()
+        params["faces"] = self.tris.astype(np.uint32).ravel()
         params.update()
-        self.scene = mi.load_dict({"type": "scene", "mesh": mesh})
+        self.scene, self.owner = mi.load_dict({"type": "scene", "mesh": mesh}), os.getpid()
 
     def first_hits(self, origins, directions):
         """(hit mask, distance along the direction, triangle) for every ray."""
@@ -43,6 +78,8 @@ class RayQuery:
         return hit, distance, tri
 
     def _trace(self, origins, directions):
+        if self.owner != os.getpid():
+            self._build()
         mi = self.mi
         o, d = np.asarray(origins, np.float32), np.asarray(directions, np.float32)
         if self.scalar:
