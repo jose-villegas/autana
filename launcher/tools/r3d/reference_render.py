@@ -223,7 +223,7 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
     if workers > 1 and "fork" not in multiprocessing.get_all_start_methods():
         workers = 1
     if budget_capacity is not None:
-        print(f"pose pool workers={workers} budget_capacity={budget_capacity} memory_capacity={memory_capacity}", flush=True)
+        print(f"pose pool workers={workers} budget_capacity={budget_capacity} memory_capacity={memory_capacity} rss={rss}", flush=True)
     POSE_STATE = (source, job, scene, width, height, lens, samples, pathlib.Path(out), normals, occlusion)
     pose_peaks = {}
     try:
