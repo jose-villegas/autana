@@ -27,8 +27,8 @@ TYPE = b"TRCK"
 VERSION = 1
 SUFFIX = ".anim.toml"
 HEADER = struct.Struct("<HHI")
-ROW = struct.Struct("<32sIIHBBB3x")
-NAME_BYTES = 32
+NAME_BYTES = 32  # a track name's field, as ANIM_TRACK_NAME_MAX
+ROW = struct.Struct(f"<{NAME_BYTES}sIIHBBB3x")
 WIDTH_MAX = 4
 # glTF's interpolation names, in anim_interp_t's order.
 INTERPOLATIONS = ("STEP", "LINEAR", "CUBICSPLINE")

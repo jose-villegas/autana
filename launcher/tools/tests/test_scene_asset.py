@@ -114,6 +114,23 @@ class SceneEntryTests(SceneFiles):
         with self.assertRaisesRegex(SettingsError, "letters, digits and _"):
             load_scene(self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml").replace('"lamp"', '"no-good"')))
 
+    def test_a_clip_id_must_fit_a_pack_name(self):
+        for stem, refused in (("c" * 31, False), ("c" * 32, True)):
+            (self.root / "clips" / f"{stem}.anim.toml").write_text(CLIP)
+            path = self.scene(renderer("a.import.toml") + lens(f"clips/{stem}.anim.toml"))
+            with self.subTest(length=len(stem)):
+                if refused:
+                    with self.assertRaisesRegex(SettingsError, "exceeds the pack's 31-byte limit"):
+                        load_scene(path)
+                else:
+                    self.assertEqual(load_scene(path).camera.component.path.clip, stem)
+
+    def test_a_name_too_long_for_its_field_is_refused_by_the_writer_itself(self):
+        scene = load_scene(self.scene(renderer("a.import.toml")))
+        scene.renderers[0].asset_name = "m" * 32
+        with self.assertRaisesRegex(SceneError, "31-byte field"):
+            scene_asset.encode(scene)
+
     def test_an_object_name_must_fit_the_entry(self):
         with self.assertRaisesRegex(SettingsError, "letters, digits and _"):
             load_scene(self.scene(renderer("a.import.toml", name="not a name")))
@@ -172,6 +189,9 @@ class SceneEntryRefusalTests(unittest.TestCase):
         self.refuses(lambda e: struct.pack_into("<f", e, at + 8, float("nan")), "does not allow")
         self.refuses(lambda e: struct.pack_into("<I", e, at + 12, 0x1000000), "does not allow")
         self.refuses(lambda e: e.__setitem__(slice(at + 48, at + 80), bytes(32)), "does not allow")
+        self.refuses(lambda e: e.__setitem__(slice(at + 16, at + 48), bytes(32)), "does not allow")
+        self.refuses(lambda e: struct.pack_into("<H", e, at, 2), "does not allow")
+        self.refuses(lambda e: struct.pack_into("<H", e, at + 2, 1), "does not allow")
 
 
 class SceneBundleTests(SceneFiles):
@@ -186,6 +206,15 @@ class SceneBundleTests(SceneFiles):
         self.assertEqual({name: kind for name, (kind, _) in hall.items()},
                          {"hall": scene_asset.TYPE, "a": LIT_MESH, "b": LIT_MESH, "fly": tracks_asset.TYPE})
         self.assertEqual(hall["fly"][1], probe_entry())
+
+    def test_replace_takes_only_a_mesh(self):
+        self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml"))
+        (self.root / "scratch.mesh").write_bytes(b"9")
+        packs = build_pack.bundle_bytes([self.root], [f"a={self.root / 'scratch.mesh'}"])
+        self.assertEqual(parse_pack(packs["hall"])["a"], (LIT_MESH, b"9"))
+        for entry in ("hall", "fly"):
+            with self.subTest(entry=entry), self.assertRaisesRegex(SettingsError, "no such mesh"):
+                build_pack.bundle_bytes([self.root], [f"{entry}={self.root / 'scratch.mesh'}"])
 
     def test_a_scene_and_its_clip_cannot_share_an_id_and_the_refusal_names_both_files(self):
         (self.root / "clips" / "hall.anim.toml").write_text(CLIP)

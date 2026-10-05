@@ -10,8 +10,8 @@
 #include "render/camera.h"
 #include "render/r3d_instance.h"
 
-/* A glTF camera animation's two tracks and the clip that plays them; the
- * tracks' keys stay where they lie. */
+/* A glTF camera animation's two tracks and the clip that plays them, by
+ * value; the tracks point at their keys, which are not copied. */
 typedef struct {
     anim_clip_t clip;
     anim_track_t translation;

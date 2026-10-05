@@ -1,4 +1,4 @@
-#include "sponza_flythrough.h"
+#include "sponza_content.h"
 
 const char* const sponza_bakes[SPONZA_BAKE_COUNT] = {
     [SPONZA_BAKE_FULL] = "atrium",

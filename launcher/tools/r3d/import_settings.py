@@ -52,7 +52,7 @@ def identifier(value, where):
     field: an object's name names its baked mesh and its entity in the scene
     entry, a node's names its tracks."""
     if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value) or len(value) >= NAME_BYTES:
-        raise SettingsError(f"{where} must be letters, digits and _, not starting with a digit, at most {NAME_BYTES - 1}")
+        raise SettingsError(f"{where} must be letters, digits and _, not starting with a digit, at most {NAME_BYTES - 1} bytes")
     return value
 
 

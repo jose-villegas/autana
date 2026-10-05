@@ -172,8 +172,8 @@ reads, so the poses are always the animation's own.
   for bit where the sampler copies a key (`tools/tests/anim_probe.py` marks
   those).
 - `tools/tests/test_anim_tracks_asset.py` reads back what the writer writes,
-  refuses what the reader refuses, and has `build_pack.py` make each
-  `.anim.toml` no scene names a bundle.
+  refuses what the reader refuses, and has `build_pack.py` make a bundle
+  of each `.anim.toml` no scene names.
 - `tools/tests/test_anim_bake.py` builds a glTF of its own with every
   interpolation, a quaternion, a pointer-targeted scalar and a non-zero first
   key, bakes it, samples it in C, and holds every value to the Python sampler

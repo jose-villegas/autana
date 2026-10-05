@@ -90,19 +90,19 @@ def bundle_files(paths):
         if path.name.endswith(CLIP) and path.resolve() not in placed:
             roots[path] = {tracks_asset.clip_id(path): path}
     bundles, owner = {}, {}
-    for path, meshes in roots.items():
+    for path, entries in roots.items():
         name = path.name.removesuffix(SCENE).removesuffix(IMPORT).removesuffix(CLIP)
         if name in bundles:
             raise SettingsError(f"two roots make a bundle named {name!r}: {owner[name]} and {path}")
         owner[name] = path
-        bundles[name] = meshes
+        bundles[name] = entries
     holder = {}
-    for name, meshes in bundles.items():
-        for mesh in meshes:
-            if mesh in holder:
-                raise SettingsError(f"{mesh!r} is named by bundles {holder[mesh]!r} and {name!r}: "
+    for name, entries in bundles.items():
+        for entry in entries:
+            if entry in holder:
+                raise SettingsError(f"{entry!r} is named by bundles {holder[entry]!r} and {name!r}: "
                                     "a shared asset needs a bundle of its own, which is not built yet")
-            holder[mesh] = name
+            holder[entry] = name
     return bundles
 
 
@@ -111,8 +111,8 @@ def bundle_bytes(paths, replace=()):
     bundles = bundle_files(paths)
     for item in replace:
         mesh, _, file = item.partition("=")
-        holder = next((meshes for meshes in bundles.values() if mesh in meshes), None)
-        if holder is None:
+        holder = next((entries for entries in bundles.values() if mesh in entries), None)
+        if holder is None or holder[mesh].name.endswith((SCENE, CLIP)):
             raise SettingsError(f"--replace {mesh}: no such mesh")
         holder[mesh] = pathlib.Path(file)
     missing = [str(source) for sources in bundles.values() for source in sources.values() if not source.is_file()]
@@ -165,7 +165,7 @@ def main(argv=None):
     paths = args.paths or [DEFAULT_SEARCH]
     try:
         if args.bundle_of:
-            holder = [name for name, meshes in bundle_files(paths).items() if args.bundle_of in meshes]
+            holder = [name for name, entries in bundle_files(paths).items() if args.bundle_of in entries]
             if not holder:
                 parser.error(f"no bundle holds entry {args.bundle_of!r}")
             print(holder[0])

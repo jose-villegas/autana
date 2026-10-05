@@ -19,6 +19,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+from asset.asset_pack import NAME_BYTES  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene  # noqa: E402
 
 TYPE = b"SCNE"
@@ -26,11 +27,10 @@ VERSION = 1
 SUFFIX = ".scene.toml"
 # version, entity, renderer and camera counts, then where the names, transforms, renderers and cameras start
 HEADER = struct.Struct("<HHHHIIII")
-NAME = struct.Struct("<32s")
+NAME = struct.Struct(f"<{NAME_BYTES}s")
 TRANSFORM = struct.Struct("<12f")
-RENDERER = struct.Struct("<HH32s")
-CAMERA = struct.Struct("<HHffI32s32s")
-NAME_BYTES = 32
+RENDERER = struct.Struct(f"<HH{NAME_BYTES}s")
+CAMERA = struct.Struct(f"<HHffI{NAME_BYTES}s{NAME_BYTES}s")
 
 
 class SceneError(ValueError):

@@ -1,10 +1,11 @@
 # Animation tracks and scenes in the asset pack: design sketch
 
-**Status:** approved, not yet built. `[A]` marks a proposal that was approved
+**Status:** approved; bundles, the `TRCK` entry and the scenes step (sections
+0 to 3) are built, the rest is not. `[A]` marks a proposal that was approved
 with the rest rather than asked for.
 
-Today a `.glb` animation is baked to committed C (`*_tracks_generated.{c,h}`)
-and a `.scene.toml` to committed C (`*_scene_generated.{c,h}`). Both are
+A `.glb` animation was baked to committed C (`*_tracks_generated.{c,h}`)
+and a `.scene.toml` to committed C as well. Both are
 content with a source file that is already the truth, so a second committed
 copy is not allowed. Both become typed entries of the asset pack
 ([docs/assets/README.md](../assets/README.md)), baked when the pack is built.
@@ -76,8 +77,9 @@ flashed with the app by `flash_args` and alone by `idf.py assets-flash`.
 | `NAME.scene.toml` | unchanged, except the camera key (below) | stem: `NAME` |
 
 `build_pack.py` finds `*.anim.toml` by searching, like `.import.toml`, so no
-list exists to keep. Ids are unique within a bundle (the writer already rejects
-a repeat); the entry type tells a clip from a scene from a mesh. [A] A scene
+list exists to keep. Ids are unique within a bundle whatever their type (the
+writer already rejects a repeat): the reader finds an entry by name and only
+then checks its type. [A] A scene
 names its clip as a relative file, as it names a mesh:
 `path = { animation = "../assets/flythrough.anim.toml", node = "camera" }`, the id being
 the stem. A baker and a loader can then never disagree on what the id is.

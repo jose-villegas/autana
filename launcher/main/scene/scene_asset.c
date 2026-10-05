@@ -6,8 +6,8 @@
 
 #include "scene/scene_internal.h"
 
-/* The header, written by tools/r3d/scene_asset.py: four u16 counts after the
- * version, then the u32 offset of each section. */
+/* The header, written by tools/r3d/scene_asset.py: a u16 version and three
+ * u16 counts, then the u32 offset of each section. */
 enum {
     HEADER_SIZE = 24,
     AT_ENTITIES = 2,

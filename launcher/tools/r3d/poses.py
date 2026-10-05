@@ -69,7 +69,8 @@ def either_way(width, height, lens, near, poses):
 
 
 def tracks_file(scene):
-    """The C file of the scene camera's baked tracks, beside the scene file."""
+    """The C file of the scene camera's baked tracks, beside the scene file,
+    named after the clip id, which must be the prefix bake_tracks.py was given."""
     return scene.path.parent / f"{scene.camera.component.path.clip}_tracks_generated.c"
 
 

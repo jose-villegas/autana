@@ -21,7 +21,7 @@
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
-#include "sponza_flythrough.h"
+#include "sponza_content.h"
 #include "util/tune.h"
 
 static const char* TAG = "sponza";
@@ -58,7 +58,7 @@ enter_with(sponza_bake_t shown) {
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
     failure[0] = '\0';
     scene_failure_t why;
-    sponza = scene_load("sponza", &why);
+    sponza = scene_load(SPONZA_SCENE, &why);
     if (sponza == NULL) {
         record_failure(&why);
         return;
@@ -67,7 +67,9 @@ enter_with(sponza_bake_t shown) {
         const scene_entity_t bake = scene_find(sponza, sponza_bakes[i]);
         if (bake == SCENE_ENTITY_NONE) {
             ESP_LOGE(TAG, "the scene has no entity '%s'", sponza_bakes[i]);
-            (void)snprintf(failure, sizeof failure, "no bake '%s'", sponza_bakes[i]);
+            if (snprintf(failure, sizeof failure, "no bake '%s'", sponza_bakes[i]) < 0) {
+                failure[0] = '\0';
+            }
             continue;
         }
         scene_entity_set_enabled(sponza, bake, i == (int)shown);
