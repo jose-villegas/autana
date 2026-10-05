@@ -77,7 +77,7 @@ def primary_hits(source, job, pose, width, height, lens, samples):
     """The camera rays of a pose and what they hit: (ray origins, directions, hit locations, the ray each hit belongs to,
     the source triangle hit, its bary-interpolated normal, its barycentrics, whether its material is double-sided)."""
     origin, direction = camera_rays(width, height, lens, pose[:3], pose[3:], samples)
-    locations, rays, faces = source.intersector.intersects_location(origin, direction, multiple_hits=False)
+    locations, rays, faces = source.intersector.first_hit(origin, direction)
     bary = hit_barycentrics(source, faces, locations) if len(rays) else np.zeros((0, 3))
     normal = hit_normals(source, faces, bary) if len(rays) else np.zeros((0, 3))
     double = np.isin(source.tri_m[faces], [source.names.index(name) for name in job.settings.double_sided])

@@ -129,7 +129,8 @@ class BetweenPoseTests(unittest.TestCase):
         for a, b in zip(samples, samples[1:]):
             pose = (np.array(a) + np.array(b)) / 2
             origin, direction = camera_rays(24, 18, 0.62, pose[:3], pose[3:], 1, 0)
-            hit = intersector.intersects_first(origin, direction)
+            found, _, tri = intersector.first_hits(origin, direction)
+            hit = np.where(found, tri, -1)
             drawn = hit[(hit >= 0)]
             drawn = drawn[(normal[drawn] * direction[hit >= 0]).sum(axis=1) < 0]
             self.assertTrue(kept[drawn].all(), f"a face drawn from {pose[:3]} was culled")

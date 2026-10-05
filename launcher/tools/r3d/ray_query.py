@@ -1,14 +1,17 @@
 """Ray queries against a triangle mesh, traced by Mitsuba.
 
 `light.py` and the importer ask three questions of a mesh: the first hit along each ray, whether a ray is blocked, and
-every hit along a ray. `RayQuery` answers them as `intersects_location` and `intersects_first` (the first hit,
-with and without its location), `intersects_any` and `intersects_id`. Triangle ids are the row numbers of the `tris` given, and every triangle
+every hit along a ray. `RayQuery` answers them as `first_hit`, `blocked` and `all_hits`, and `first_hits` gives
+the raw arrays behind the first. Triangle ids are the row numbers of the `tris` given, and every triangle
 is hit from both sides.
 
 The bake is NumPy-bound on the CPU, so the queries run on the LLVM variant: a CUDA context per forked pose worker
 would cost memory and copies for nothing, and the JIT of a process that forks workers must not be CUDA. Tests set
-`VARIANT` to `scalar_rgb`, which needs no libLLVM and traces one ray at a time.
+`VARIANT` to `scalar_rgb`, which needs no libLLVM and traces one ray at a time. A worker forked after a query
+inherits the scene and traces serially on its own thread.
 """
+import sys
+
 import numpy as np
 
 from r3d.mitsuba_reference import import_mitsuba
@@ -56,7 +59,8 @@ class RayQuery:
             raise RuntimeError(f"the ray query was built on {self.variant} but Mitsuba is now on {self.mi.variant()}")
 
     def first_hits(self, origins, directions):
-        """(hit mask, distance along the direction, triangle) for every ray."""
+        """(hit mask, distance along the direction, triangle) for every ray; distance and triangle mean nothing where
+        the mask is false."""
         self._check_variant()
         count = len(origins)
         hit, distance, tri = np.zeros(count, bool), np.zeros(count), np.zeros(count, np.int64)
@@ -81,21 +85,14 @@ class RayQuery:
         dr.eval(valid, hit.t, hit.prim_index)
         return np.array(valid, bool), np.array(hit.t, np.float64), np.array(hit.prim_index, np.int64)
 
-    def intersects_location(self, origins, directions, multiple_hits=False):
+    def first_hit(self, origins, directions):
         """(locations, ray index, triangle) of each ray's first hit; rays that miss are left out."""
-        if multiple_hits:
-            raise ValueError("use intersects_id for every hit along a ray")
         origins, directions = np.asarray(origins, np.float64), np.asarray(directions, np.float64)
         hit, distance, tri = self.first_hits(origins, directions)
         ray = np.flatnonzero(hit)
         return origins[ray] + directions[ray] * distance[ray, None], ray, tri[ray]
 
-    def intersects_first(self, origins, directions):
-        """The first triangle each ray hits, -1 where it hits none."""
-        hit, _, tri = self.first_hits(np.asarray(origins), np.asarray(directions))
-        return np.where(hit, tri, -1)
-
-    def intersects_any(self, origins, directions):
+    def blocked(self, origins, directions):
         """True for each ray that hits the mesh."""
         if self.scalar:
             return self.first_hits(np.asarray(origins), np.asarray(directions))[0]
@@ -110,13 +107,15 @@ class RayQuery:
             blocked[chunk] = np.array(mask, bool)
         return blocked
 
-    def intersects_id(self, origins, directions, multiple_hits=True, return_locations=False):
-        """(triangle, ray index[, location]) of every hit along each ray, nearest first, up to `MAX_HITS` per ray."""
+    def all_hits(self, origins, directions):
+        """(triangle, ray index, location) of every hit along each ray, in rounds: every ray's first hit, then every
+        second hit, and so on, so one ray's hits run nearest first. A ray still alive after `MAX_HITS` is cut off and
+        reported on stderr."""
         origins, directions = np.asarray(origins, np.float64), np.asarray(directions, np.float64)
         alive = np.arange(len(origins))
         start = origins.copy()
         tris, rays, locations = [], [], []
-        for _ in range(MAX_HITS if multiple_hits else 1):
+        for _ in range(MAX_HITS):
             if not len(alive):
                 break
             hit, distance, tri = self.first_hits(start[alive], directions[alive])
@@ -125,7 +124,9 @@ class RayQuery:
             tris.append(tri), rays.append(alive), locations.append(where)
             step = np.maximum(STEP, STEP_RELATIVE * np.abs(where).max(axis=1, initial=0.0))
             start[alive] = where + directions[alive] * step[:, None]
+        else:
+            if len(alive):
+                print(f"ray query: {len(alive)} rays still crossing triangles after {MAX_HITS} hits were cut off", file=sys.stderr)
         if not tris:
             tris, rays, locations = [np.zeros(0, np.int64)], [np.zeros(0, np.int64)], [np.zeros((0, 3))]
-        result = (np.concatenate(tris), np.concatenate(rays))
-        return result + (np.concatenate(locations),) if return_locations else result
+        return np.concatenate(tris), np.concatenate(rays), np.concatenate(locations)
