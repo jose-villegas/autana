@@ -298,7 +298,7 @@ def write_ao_scene(directory):
                       imported, count=1, flags=re.M)
     (directory / "sponza.import.toml").write_text(imported, encoding="utf-8")
     text = SCENE.read_text(encoding="utf-8")
-    text, raised = re.subn(r"(?ms)(^\[ambient\]\n(?:(?!\[).*\n)*?intensity = )[0-9.]+", rf"\g<1>{AO_AMBIENT}", text, count=1)
+    text, raised = re.subn(r"(?m)(^\[ambient\]\n(?:[^\[\n].*\n)*?intensity = )[0-9.]+", rf"\g<1>{AO_AMBIENT}", text, count=1)
     text, added = re.subn(r"(?m)^(indirect = \{.*\})$", rf"\1\n{AO_SETTING}", text, count=1)
     if not raised or not added:
         raise ValueError(f"{SCENE.name}: no [ambient] intensity or [bake] indirect line to build the occlusion scene from")
@@ -323,7 +323,7 @@ def _gpu(args, out, work, executor):
     from r3d.bake_fidelity import build_host
     from r3d.cost_model import load
     from functools import partial
-    from r3d.process_budget import BAKE_BYTES, MEASURE_BYTES, SMOKE_PREPARE_BYTES, FIT_BYTES
+    from r3d.process_budget import BAKE_BYTES, MEASURE_BYTES, PREPARE_BYTES, SMOKE_PREPARE_BYTES, FIT_BYTES
 
     scene = load_scene(SCENE)
     jobs = [placed_variant(scene, name) for name in ("sponza_fitted", "sponza_fitted_full")]
@@ -437,9 +437,10 @@ def _gpu(args, out, work, executor):
     ao_job = placed_variant(ao_scene, "sponza_fitted")
     ao_inputs = work / "inputs-ao"
     executor.submit(prepare, ao_path, ao_scene, ao_job, ao_inputs, estimates=PREPARE_BYTES).result()
-    ao_fit = executor.submit(fit_point, {}, work / "fit-ao", ao_path, ao_scene, ao_job, ao_inputs, False, work / "ao.mesh")
+    ao_fit = executor.submit(fit_point, {}, work / "fit-ao", ao_path, ao_scene, ao_job, ao_inputs, False, work / "ao.mesh",
+                             estimates=FIT_BYTES)
     ao_baked, _ = executor.submit(bake_worker, ao_scene, ao_job, 0, "ao-lite", "atrium_lite", work,
-                                  estimates=PREPARE_BYTES, priority=True).result()
+                                  estimates=BAKE_BYTES, priority=True).result()
     measure("ao-bake", ao_job, ao_baked, ao_inputs)
     measure("ao-fit", ao_job, Path(ao_fit.result()["mesh"]), ao_inputs)
     run([sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out", out / "render/gpu/appearance-ao-lite.png",

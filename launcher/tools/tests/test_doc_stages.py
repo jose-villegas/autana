@@ -180,6 +180,20 @@ class OcclusionSceneTests(unittest.TestCase):
             self.assertEqual(scratch.renderers[0].settings.source["path"], original.renderers[0].settings.source["path"])
             self.assertTrue((Path(directory) / "ao-scene" / "flythrough_tracks_generated.c").is_file())
 
+    def test_a_long_scene_without_the_ambient_intensity_is_rejected_at_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            long = Path(directory) / "meshes"
+            long.mkdir()
+            (long / "sponza.import.toml").write_text('[source]
+path = "x.obj"
+')
+            (long / "sponza.scene.toml").write_text("[ambient]
+" + "color = [1.0, 1.0, 1.0]
+" * 20000)
+            with mock.patch.object(stages, "SCENE", long / "sponza.scene.toml"):
+                with self.assertRaisesRegex(ValueError, r"no \[ambient\] intensity"):
+                    stages.write_ao_scene(Path(directory) / "out")
+
     def test_a_scene_without_the_lines_to_edit_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             stripped = Path(directory) / "meshes"
@@ -257,7 +271,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
         from types import SimpleNamespace as NS
         from r3d import fitted_variant as fitted, import_settings, bake_fidelity, cost_model
         jobs = [NS(renderer=NS(fit=NS(held_out_every_ms=1000, normal_weight=.3, budget=6000),
-                               variant=NS(triangles=10000))) for _ in range(2)]
+                               variant=NS(triangles=10000))) for _ in range(3)]
         calls, consumed, completed, prepare_futures, fit_futures = [], [], [], [], []
 
         class PrepareFuture(Future):
@@ -280,13 +294,18 @@ class FullGpuSchedulingTests(unittest.TestCase):
                 if kwargs.get('estimates') != estimates[owner]:
                     raise AssertionError(f"wrong estimate for {owner.__name__}: {kwargs}")
                 calls.append((owner, args, kwargs, function))
-                if owner is fitted.prepare:
+                if owner is fitted.prepare and args[3].name == 'inputs-ao':
+                    future.set_result(None)
+                elif owner is fitted.prepare:
                     future = PrepareFuture()
                     prepare_futures.append(future)
                 elif owner is fitted.fit_point:
                     directory = args[1]
                     target = args[7] if len(args) > 7 else directory.parent / f'{directory.name}.mesh'
-                    fit_futures.append((future, directory, target))
+                    if directory.name == 'fit-ao':
+                        future.set_result({'mesh': str(target)})
+                    else:
+                        fit_futures.append((future, directory, target))
                 elif owner is stages.bake_worker:
                     future.set_result((Path('baked.mesh'), Path('culled.mesh')))
                 elif owner is stages.measure_worker:
@@ -314,19 +333,20 @@ class FullGpuSchedulingTests(unittest.TestCase):
                     mock.patch.object(bake_fidelity, 'build_host', return_value='host'), \
                     mock.patch.object(cost_model, 'load', return_value=([],)), \
                     mock.patch.object(stages, 'current_stamp', return_value='stamp'), \
+                    mock.patch.object(stages, 'write_ao_scene', return_value=root / 'ao.scene.toml'), \
                     mock.patch.object(stages, 'run'), mock.patch.object(stages, 'apply_tables'), \
                     mock.patch.object(fitted, 'plot_pareto'):
                 stages._gpu(NS(smoke=False), out, root / 'work', Executor())
             expected_rows = ['lite-GI-bake', 'lite-GI-fit', 'normal-0', 'normal-0.1', 'normal-0.3',
                              'budget-4000-cost-0.1', 'budget-6000-cost-0', 'budget-6000-cost-0.1',
-                             'full-GI-bake', 'full-path-culled', 'full-GI-fit']
+                             'full-GI-bake', 'full-path-culled', 'full-GI-fit', 'ao-bake', 'ao-fit']
             self.assertEqual(consumed, expected_rows)
             measurements = json.loads((out / 'measurements.json').read_text())
             self.assertEqual([row[0] for row in measurements['rows']], expected_rows)
             self.assertEqual([(row['budget'], row['cost_weight']) for row in measurements['sweep']],
                              [(4000, 0.), (4000, .1), (6000, 0.), (6000, .1), (6000, 0.)])
             self.assertEqual(resume.read_bytes(), before)
-            fit_calls = [call for call in calls if call[0] is fitted.fit_point]
+            fit_calls = [call for call in calls if call[0] is fitted.fit_point and call[1][1].name != 'fit-ao']
             self.assertEqual(completed, [call[1][1].name for call in reversed(fit_calls)])
             arguments = []
             for _, args, kwargs, function in fit_calls:
@@ -340,6 +360,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
                 ('normal-0', 'normal-0.mesh', None, 0., 0.), ('normal-0.1', 'normal-0.1.mesh', None, 0., .1),
                 ('budget-4000-cost-0.1', 'budget-4000-cost-0.1.mesh', 4000, .1, .3),
                 ('budget-6000-cost-0.1', 'budget-6000-cost-0.1.mesh', 6000, .1, .3)])
+            self.assertTrue((out / 'tables/sponza-gpu-ao.md').read_text().startswith('| Mesh |'))
             self.assertTrue(all(kwargs.get('priority') for owner, _, kwargs, _ in calls
                                 if owner in (stages.bake_worker, stages.measure_worker)))
 
