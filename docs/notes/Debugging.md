@@ -164,7 +164,7 @@ always the latest present's sends, not an accumulation.
 ## Performance seems off
 
 A development build logs frame rate and named stage costs through
-`report_fps()` in `launcher/main/main.c`; `autana monitor 30` shows them.
+`report_fps()` in `launcher/main/shell/shell.c`; `autana monitor 30` shows them.
 See [Frame-Cost.md](../tools/Frame-Cost.md) for stage reports.
 
 For anything deeper than an fps number, an app carries its own: rolling

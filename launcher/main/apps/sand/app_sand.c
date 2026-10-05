@@ -1702,13 +1702,9 @@ take_ui_actions(const input_t* input) {
 
 static void
 close_overlay_screen(void) {
-    /* Restores UI_TEXT_PLAIN so the palette's outline style doesn't leak
-     * into the next UI drawn (text style stays in force until changed -
-     * ui.h); the brush screen only ever used PLAIN, so this is a no-op
-     * on that path. main.c owns the transform for the whole shell,
-     * sampling real orientation on its own schedule - an app must not
-     * touch it; resetting it here would fight the shell the moment the
-     * board is actually held sideways. */
+    /* Restores UI_TEXT_PLAIN so the palette's outline style does not leak
+     * into the next UI drawn (ui.h). The transform is left alone: the shell
+     * owns it and sets it from the board's orientation. */
     ui_set_text_style(UI_TEXT_PLAIN);
 
     apply_gfx_action(sand_colour_on_close_overlay(&colour_state));

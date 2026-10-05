@@ -63,7 +63,7 @@ class WorkerTests(ProcessTests):
         points = [{"budget": 1, "cost_weight": 0}, {"budget": 2, "cost_weight": 0}]
         futures = [concurrent.futures.Future(), concurrent.futures.Future()]
         class Executor:
-            def submit(self, function, point, directory):
+            def submit(self, function, point, directory, **kwargs):
                 return futures[point["budget"] - 1]
         with tempfile.TemporaryDirectory() as directory:
             pending = {}
@@ -430,3 +430,34 @@ class PartialTaskTests(ProcessTests):
         with patch('r3d.process_budget.available_bytes', return_value=(1 << 60,) * 3):
             with TaskExecutor() as executor:
                 self.assertEqual(executor.submit(partial(identity_worker, 'point')).result(timeout=10)[0], 'point')
+
+
+class MeasuredBudgetTests(unittest.TestCase):
+    def test_worker_estimates(self):
+        from r3d import process_budget as b
+        self.assertEqual(b.PREPARE_BYTES, (4 * b.GIB, 0, 4 * b.GIB))
+        self.assertEqual(b.BAKE_BYTES, (5 * b.GIB // 2, 0, 5 * b.GIB // 2))
+        self.assertEqual(b.FIT_BYTES, (22 * b.GIB // 10, 7 * b.GIB // 10, 22 * b.GIB // 10))
+        self.assertEqual(b.MEASURE_BYTES, (3 * b.GIB // 2, 128 * 1024 ** 2, 3 * b.GIB // 2))
+        self.assertEqual(b.SMOKE_PREPARE_BYTES, (2 * b.GIB, 0, 2 * b.GIB))
+
+    def test_pss_reads_rollup_and_handles_unavailable_metric(self):
+        from unittest.mock import patch
+        from r3d import process_budget as b
+        with patch.object(pathlib.Path, 'read_text', return_value='Rss: 999 kB\nPss: 123 kB\n') as read:
+            self.assertEqual(b.pss_bytes(42), 123 * 1024)
+            self.assertEqual(read.call_args.args, ())
+        for error in (FileNotFoundError, PermissionError):
+            with patch.object(pathlib.Path, 'read_text', side_effect=error):
+                self.assertEqual(b.pss_bytes(42), 0)
+        with patch.object(pathlib.Path, 'read_text', return_value='Rss: 999 kB\n'):
+            self.assertEqual(b.pss_bytes(42), 0)
+
+    def test_full_pose_budget_retains_parallelism(self):
+        from r3d import process_budget as b
+        try:
+            from r3d.reference_render import reservation_pose_capacity, POSE_BASE_BYTES_PER_RAY
+        except ImportError:
+            self.skipTest('needs reference dependencies')
+        estimate = 368 * 448 * 4 * 4 * POSE_BASE_BYTES_PER_RAY
+        self.assertGreater(reservation_pose_capacity(b.POSE_POOL_BYTES, 3290000000, estimate, 10), 1)

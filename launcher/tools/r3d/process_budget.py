@@ -18,8 +18,12 @@ WSL_MEMORY_REQUIRED_BYTES = 6 * GIB
 WINDOWS_MEMORY_REQUIRED_BYTES = 2 * GIB
 # Estimates are (WSL RSS, GPU reserved, cgroup bytes), re-derived from workers' logged peaks.
 FLOORS = (GIB, GIB // 2, GIB // 4)
-FIT_BYTES = (2 * GIB, GIB, 2 * GIB)
-PREPARE_BYTES = (7 * GIB, 0, 7 * GIB)
+FIT_BYTES = (22 * GIB // 10, 7 * GIB // 10, 22 * GIB // 10)
+PREPARE_BYTES = (4 * GIB, 0, 4 * GIB)
+BAKE_BYTES = (5 * GIB // 2, 0, 5 * GIB // 2)
+MEASURE_BYTES = (3 * GIB // 2, 128 * 1024 ** 2, 3 * GIB // 2)
+# Copy-on-write source sharing needs a separate pose-pool sizing budget.
+POSE_POOL_BYTES = 7 * GIB
 SMOKE_PREPARE_BYTES = (2 * GIB, 0, 2 * GIB)
 _task_reservation = None
 
@@ -83,6 +87,16 @@ def status_bytes(pid, field):
         return next(int(line.split()[1]) * 1024
                     for line in pathlib.Path(f"/proc/{pid}/status").read_text().splitlines()
                     if line.startswith(field + ":"))
+    except (OSError, StopIteration):
+        return 0
+
+
+def pss_bytes(pid):
+    """Proportional resident bytes; zero when procfs PSS is unavailable."""
+    try:
+        return next(int(line.split()[1]) * 1024
+                    for line in pathlib.Path(f"/proc/{pid}/smaps_rollup").read_text().splitlines()
+                    if line.startswith("Pss:"))
     except (OSError, StopIteration):
         return 0
 

@@ -311,7 +311,7 @@ test_taking_into_a_smaller_buffer_truncates_too(void) {
 }
 
 /* console_word_match() is console_registry_handle_line()'s own matcher,
- * exported so main.c can match an app's console prefix the same way. */
+ * exported so the shell can match an app's console prefix the same way. */
 static void
 test_word_match_carries_what_follows_the_name(void) {
     const char* args;
@@ -334,7 +334,7 @@ test_word_match_folds_case(void) {
 }
 
 /* console_find_clash() is the boot-time clash check's own primitive
- * (main.c): a verb's name and an app's prefix, or two apps' own prefixes,
+ * (shell/shell.c): a verb's name and an app's prefix, or two apps' own prefixes,
  * must never fold to the same word; a prefix must carry no space of its
  * own and fit CONSOLE_LINE_MAX. */
 static void

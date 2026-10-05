@@ -27,8 +27,7 @@ except ImportError:
     np = None
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-SOURCE = ('[source]\nurl = "https://example.invalid/m.zip"\nsha256 = "abc"\npath = "m.obj"\n'
-          'cache = "m"\ncredit = "c"\n')
+SOURCE = '[source]\npath = "m.obj"\ncredit = "c"\n'
 OUTPUT = '[output]\ndirectory = "."\nname = "mesh"\n'
 AMBIENT = '[ambient]\ncolor = [1.0, 1.0, 1.0]\nintensity = 0.1\n'
 TONEMAP = 'tonemap_white = 0.3\n'
@@ -55,6 +54,11 @@ CUBE = ("v 0 0 0\nv 8 0 0\nv 8 8 0\nv 0 8 0\nv 0 0 8\nv 8 0 8\nv 8 8 8\nv 0 8 8\
 def write_import(directory, name="mesh.import.toml", source=SOURCE, output=OUTPUT, body=""):
     path = pathlib.Path(directory) / name
     path.write_text(source + output + body)
+    if source == SOURCE:
+        for name, content in (("m.obj", CUBE), ("m.mtl", "newmtl m\nKd 1 1 1\n")):
+            asset = path.parent / name
+            if not asset.exists():
+                asset.write_text(content)
     return path
 
 
@@ -153,10 +157,10 @@ class ImportTests(unittest.TestCase):
         self.rejects("geometry.thin.typo", '[geometry]\nthin = { material = "m", keep = 0.5, typo = 1 }\n')
         self.rejects("geometry.simplify.typo", SIMPLIFY.replace(" }", ", typo = 1 }") + VARIANT)
 
-    def test_a_source_without_a_sha_is_rejected(self):
+    def test_a_source_without_a_path_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaisesRegex(SettingsError, "sha256"):
-                load_import_settings(write_import(directory, source=SOURCE.replace('sha256 = "abc"\n', "")))
+            with self.assertRaisesRegex(SettingsError, "source.path"):
+                load_import_settings(write_import(directory, source=SOURCE.replace('path = "m.obj"\n', "")))
 
     def test_an_unknown_key_is_rejected_in_a_table(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -702,8 +706,7 @@ class AuthoredImportTests(unittest.TestCase):
         (root / "m.mtl").write_text("newmtl m\nKd 0.5 0.25 0.125\n")
         import_path = write_import(root, output=output)
         path = write_scene(root, scene, head, name=name) if scene else import_path
-        with mock.patch("r3d.mesh_import.fetch_zip", return_value=root):
-            return mesh_import.main([str(path)])
+        return mesh_import.main([str(path)])
 
     def test_a_bare_import_runs_the_albedo_bake(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -936,6 +939,110 @@ class FittedStampTests(unittest.TestCase):
                     self.assertEqual(hashlib.sha256(job.asset_path.read_bytes()).hexdigest(), job.renderer.fit.sha256,
                                      job.asset_path.name)
         self.assertGreater(found, 0)
+
+
+class LocalSourceTests(unittest.TestCase):
+    def test_lfs_pointer_oid_and_malformed_pointers(self):
+        from r3d.import_settings import content_checksum, lfs_pointer_oid
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "m.obj"
+            path.write_bytes(b"geometry")
+            self.assertIsNone(lfs_pointer_oid(path))
+            oid = hashlib.sha256(path.read_bytes()).hexdigest().encode()
+            for newline in (b"\n", b"\r\n"):
+                with self.subTest(newline=newline):
+                    path.write_bytes(newline.join((b"version https://git-lfs.github.com/spec/v1",
+                                                   b"oid sha256:" + oid, b"size 8", b"")))
+                    self.assertEqual(lfs_pointer_oid(path), oid)
+                    self.assertEqual(content_checksum(path), oid)
+            for record in (b"", b"oid sha256:invalid", b"oid sha256:" + oid + b"\noid sha256:" + oid):
+                with self.subTest(record=record):
+                    path.write_bytes(b"version https://git-lfs.github.com/spec/v1\n" + record + b"\nsize 8\n")
+                    with self.assertRaisesRegex(SettingsError, r"m\.obj.*malformed.*LFS"):
+                        content_checksum(path)
+
+    @unittest.skipIf(np is None, "the r3d environment is not installed")
+    def test_load_source_rejects_unpulled_files_before_loading(self):
+        pointer = b"version https://git-lfs.github.com/spec/v1\noid sha256:" + b"a" * 64 + b"\nsize 8\n"
+        for name in ("m.obj", "m.mtl", "colour.png", "alpha.png"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                settings = load_import_settings(write_import(directory))
+                root = pathlib.Path(directory)
+                (root / "m.mtl").write_text("newmtl m\nmap_Kd colour.png\nmap_d alpha.png\n")
+                for texture in ("colour.png", "alpha.png"):
+                    (root / texture).write_bytes(b"hydrated texture")
+                (root / name).write_bytes(pointer)
+                with mock.patch.object(mesh_import, "load_obj") as load_obj, \
+                        mock.patch.object(mesh_import, "load_textures") as load_textures:
+                    with self.assertRaises(SettingsError) as error:
+                        mesh_import.load_source(settings)
+                    self.assertIn(str(root / name), str(error.exception))
+                    self.assertIn('git lfs pull --exclude=""', str(error.exception))
+                    load_obj.assert_not_called()
+                    load_textures.assert_not_called()
+
+    def test_path_is_relative_to_import(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = write_import(directory, source='[source]\npath = "asset/m.obj"\ncredit = "c"\n')
+            settings = load_import_settings(path)
+            self.assertEqual(settings.source["path"], (path.parent / "asset/m.obj").resolve())
+
+    def test_unsupported_format_names_obj(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = write_import(directory, source='[source]\npath = "m.zip"\ncredit = "c"\n')
+            with self.assertRaisesRegex(SettingsError, r"supported.*\.obj"):
+                load_import_settings(path)
+
+    def test_download_keys_are_rejected(self):
+        for key in ("url", "sha256", "cache"):
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as directory:
+                source = '[source]\npath = "m.obj"\ncredit = "c"\n' + key + ' = "x"\n'
+                with self.assertRaisesRegex(SettingsError, key + " is not a known setting"):
+                    load_import_settings(write_import(directory, source=source))
+
+    def test_source_changes_invalidate_recipe_and_reference(self):
+        from r3d.fitted_variant import recipe_digest, reference_digest
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            asset = root / "asset"
+            asset.mkdir()
+            (asset / "m.obj").write_text("geometry")
+            (asset / "m.mtl").write_text("newmtl m\nmap_Kd texture.weird\n")
+            (asset / "texture.weird").write_bytes(b"texture")
+            source = '[source]\npath = "asset/m.obj"\ncredit = "c"\n'
+            write_import(root, source=source, output='[output]\ndirectory = "."\n', body=SIMPLIFY + VARIANT)
+            (root / "fly_tracks_generated.c").write_text("tracks")
+            objects = renderer(extra='variant = "mesh"\nbake = true\n' + FIT)
+            scene_path = write_scene(root, objects + sun_object() + camera(path=True, region=False), TONEMAP + AMBIENT + BAKE)
+            scene = load_scene(scene_path)
+            job = scene.renderers[0]
+            for name in ("m.obj", "m.mtl", "texture.weird"):
+                before = recipe_digest(job, scene), reference_digest(scene_path, job, scene)
+                path = asset / name
+                path.write_bytes(path.read_bytes() + b"\n# changed")
+                after = recipe_digest(job, scene), reference_digest(scene_path, job, scene)
+                self.assertTrue(all(a != b for a, b in zip(before, after)), name)
+
+    def test_doc_stamp_covers_source_directory(self):
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
+        import doc_stages
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            import_path = root / "launcher/m.import.toml"
+            import_path.parent.mkdir()
+            asset = import_path.parent / "asset"
+            asset.mkdir()
+            (asset / "m.obj").write_text("geometry")
+            (asset / "m.mtl").write_text("newmtl m\nmap_Kd texture.weird\n")
+            texture = asset / "texture.weird"
+            texture.write_bytes(b"texture")
+            write_import(import_path.parent, name=import_path.name, source='[source]\npath = "asset/m.obj"\ncredit = "c"\n')
+            with mock.patch.object(doc_stages, "ROOT", root), mock.patch.object(doc_stages.subprocess, "check_output", return_value=b"launcher/m.import.toml\0"):
+                before = doc_stages.current_stamp()
+                texture.write_bytes(b"new texture")
+                self.assertNotEqual(doc_stages.current_stamp(), before)
 
 
 if __name__ == "__main__":

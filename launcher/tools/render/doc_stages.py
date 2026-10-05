@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from generated_blocks import apply_tables
 from perf_compare import MEAN_RE, parse_report
 from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRED_BYTES
+from r3d.import_settings import content_checksum, load_import_settings, source_files
 
 SCENE = ROOT / "launcher/main/apps/render_lab/meshes/sponza.scene.toml"
 HOST_SCRIPT = ROOT / "launcher/main/apps/render_lab/tools/render_lab_render_host.sh"
@@ -38,14 +39,18 @@ def source_stamp(root, paths):
     digest = hashlib.sha256()
     for path in sorted(paths):
         digest.update(path.relative_to(root).as_posix().encode())
-        digest.update(path.read_bytes())
+        digest.update(b"\0" + content_checksum(path))
     return digest.hexdigest()
 
 
 def current_stamp():
     names = subprocess.check_output(["git", "ls-files", "-z", "launcher", "scripts"], cwd=ROOT).decode().split("\0")
-    return source_stamp(ROOT, [ROOT / name for name in names if name and
-                              Path(name).suffix in (".py", ".sh", ".c", ".h", ".toml", ".mesh", ".txt")])
+    paths = {ROOT / name for name in names if name and
+             Path(name).suffix in (".py", ".sh", ".c", ".h", ".toml", ".mesh", ".txt")}
+    for name in names:
+        if name.endswith(".import.toml"):
+            paths.update(source_files(load_import_settings(ROOT / name)))
+    return source_stamp(ROOT, paths)
 
 
 def validate_mode(smoke, check):
@@ -293,7 +298,7 @@ def _gpu(args, out, work, executor):
     from r3d.bake_fidelity import build_host
     from r3d.cost_model import load
     from functools import partial
-    from r3d.process_budget import PREPARE_BYTES, SMOKE_PREPARE_BYTES, FIT_BYTES
+    from r3d.process_budget import BAKE_BYTES, MEASURE_BYTES, SMOKE_PREPARE_BYTES, FIT_BYTES
 
     scene = load_scene(SCENE)
     jobs = [placed_variant(scene, name) for name in ("sponza_fitted", "sponza_fitted_full")]
@@ -316,7 +321,7 @@ def _gpu(args, out, work, executor):
 
     def measure(label, job, mesh, reference_inputs):
         row, frames, values = executor.submit(measure_worker, label, job, mesh, reference_inputs,
-                                              work, host, weights, priority=True).result()
+                                              work, host, weights, estimates=MEASURE_BYTES, priority=True).result()
         rows.append(row)
         comparisons[label] = frames
         return values
@@ -326,7 +331,7 @@ def _gpu(args, out, work, executor):
         prefix = "lite" if index == 0 else "full"
         reference_inputs = work / f"inputs-{prefix}"
         fitted_futures[prefix] = executor.submit(fit_point, {}, work / f"fit-{prefix}", SCENE, scene, job,
-                                                  reference_inputs, False, work / f"{prefix}.mesh")
+                                                  reference_inputs, False, work / f"{prefix}.mesh", estimates=FIT_BYTES)
         if index == 0:
             normal_weights = list(dict.fromkeys((0.0, 0.1, 0.3, job.renderer.fit.normal_weight)))
             for normal in normal_weights:
@@ -334,7 +339,7 @@ def _gpu(args, out, work, executor):
                     variant = copy.deepcopy(job)
                     variant.renderer.fit.normal_weight = normal
                     name = f"normal-{normal:g}"
-                    normal_futures[normal] = executor.submit(fit_point, {}, work / name, SCENE, scene, variant, reference_inputs)
+                    normal_futures[normal] = executor.submit(fit_point, {}, work / name, SCENE, scene, variant, reference_inputs, estimates=FIT_BYTES)
             budgets = list(dict.fromkeys(budget for budget in (4000, 6000, job.renderer.fit.budget)
                                          if budget <= job.renderer.variant.triangles))
             points = [{"budget": budget, "cost_weight": cost} for budget in budgets for cost in (0.0, 0.1)]
@@ -350,7 +355,7 @@ def _gpu(args, out, work, executor):
         reference_inputs = work / f"inputs-{prefix}"
         for label, baked_name in (("GI-bake", "atrium_lite" if index == 0 else "atrium"),):
             baked_mesh, culled_mesh = executor.submit(bake_worker, scene, job, index, prefix, baked_name,
-                                                        work, estimates=PREPARE_BYTES, priority=True).result()
+                                                        work, estimates=BAKE_BYTES, priority=True).result()
             measure(f"{prefix}-{label}", job, baked_mesh, reference_inputs)
             if index == 1:
                 measure("full-path-culled", job, culled_mesh, reference_inputs)
