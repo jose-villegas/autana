@@ -13,5 +13,7 @@
 extern const anim_track_t flythrough_camera_translation;
 extern const anim_track_t flythrough_camera_rotation;
 
+extern const anim_track_t* const flythrough_tracks[];
+extern const int flythrough_track_count;
 extern const anim_clip_t flythrough_clip;
 extern const char* const flythrough_track_names[];

@@ -12,11 +12,20 @@ or any other exporter plays back as it was made.
 
 ```mermaid
 flowchart LR
-    Author["Blender, or any glTF exporter<br/><i>.glb with an animation</i>"] --> Bake["tools/anim/bake_tracks.py"]
-    Bake --> C["*_tracks_generated.c<br/><i>a clip of anim_track_t</i>"]
-    C --> Sample["anim_clip_seconds(), anim_track_sample()<br/><i>clip time, then each track</i>"]
+    Author["Blender, or any glTF exporter<br/><i>.glb with an animation</i>"] --> Anim["NAME.anim.toml<br/><i>source and animation name</i>"]
+    Anim --> Pack["build_pack.py<br/><i>a TRCK entry in the asset pack</i>"]
+    Pack --> Open["anim_tracks_from_pack(), anim_tracks_find()<br/><i>tracks pointing into the pack</i>"]
+    Author --> Bake["tools/anim/bake_tracks.py"]
+    Bake --> C["*_tracks_generated.c<br/><i>the same tracks as C</i>"]
+    Open --> Sample["anim_clip_seconds(), anim_track_sample()<br/><i>clip time, then each track</i>"]
+    C --> Sample
     Sample --> Caller["the caller's own object<br/><i>eye, colour, fov, ...</i>"]
 ```
+
+A clip reaches the firmware two ways while code moves to the first: as an
+entry of the [asset pack](assets/README.md), baked when the pack is built,
+and as committed C. One module, `tools/anim/tracks_asset.py`, bakes both with
+one set of checks, so they hold the same floats.
 
 ## What a track stores
 
@@ -43,6 +52,46 @@ changes is baked as one key.
 A **clip** is the tracks of one animation, on one timeline as in glTF: a
 track's key times are clip seconds, so tracks that start or end at different
 times stay in step, and the clip's duration is the last key of any of them.
+
+## The pack entry
+
+A `NAME.anim.toml` beside its `.glb` names one animation in it, and
+`build_pack.py` finds every such file by searching, so no list is kept. The
+clip's pack id is `NAME`.
+
+```toml
+source = "NAME.glb"     # relative to this file
+animation = "walk"      # the animation's name in the glTF
+```
+
+The entry's type is `TRCK`. It is little-endian, and every offset counts from
+the entry's first byte:
+
+| Part | Layout |
+|---|---|
+| header | `u16 version`, `u16 track_count`, `u32 duration_ms` |
+| row per track, 48 bytes | `char name[32]` (NUL padded, at most 31 bytes), `u32 times_off`, `u32 values_off`, `u16 count`, `u8 width`, `u8 interp` (an `anim_interp_t`), `u8 quaternion`, 3 zero bytes |
+| data | each track's `f32` times, then its `f32` values (cubic: in-tangent, value, out-tangent per key), 4-byte aligned |
+
+A track's name is its binding, as above: `camera/translation`,
+`lens/perspective/yfov`. A name over 31 bytes fails the bake, naming the track.
+
+```c
+anim_tracks_t clip;
+anim_track_t move;
+if (anim_tracks_from_pack(pack, "NAME", &clip) == ASSET_OK
+    && anim_tracks_find(&clip, "camera/translation", &move) == ASSET_OK) {
+    anim_track_sample(&move, anim_clip_seconds(&clip.clip, t_ms, ANIM_LOOP), out);
+}
+```
+
+`anim_tracks_open()` checks the entry once: the version
+(`ASSET_ERR_VERSION`); the table and every array inside the entry, after the
+table and 4-byte aligned (`ASSET_ERR_BOUNDS`); and every row's name ended
+within its 32 bytes, a width of 1 to 4, a known interpolation, a quaternion
+only 4 wide, and zero padding (`ASSET_ERR_FORMAT`). `anim_tracks_find()` then
+returns a track whose times and values point into the pack, so nothing is
+copied or allocated.
 
 ## Sampling
 
@@ -74,9 +123,10 @@ camera track gives a `camera_t` its look direction.
    ```
 
    That writes `DIR/PREFIX_tracks_generated.{c,h}`: a `const anim_track_t
-   PREFIX_<node>_<path>` per channel, the clip `PREFIX_clip`, and
-   `PREFIX_track_names[]`, each track's name in the clip's order. Nothing in
-   the firmware refers to the names, so the linker drops them. The command is in the file's banner; the output is
+   PREFIX_<node>_<path>` per channel, the clip `PREFIX_clip`, every track in
+   `PREFIX_tracks[]` (`PREFIX_track_count` of them), and
+   `PREFIX_track_names[]`, each track's name in the same order. Nothing in
+   the firmware refers to the tables, so the linker drops them. The command is in the file's banner; the output is
    checked in and never edited.
 4. Sample what the scene needs, and convert at its own boundary.
 
@@ -112,6 +162,13 @@ reads, so the poses are always the animation's own.
 - `suite_anim_track.c` holds each interpolation, clamp and loop, tracks on one
   clip timeline, a long run's resolution, the quaternion path and the cubic
   layout to hand-built tracks.
+- `suite_anim_tracks.c` refuses each malformed entry with its status, holds
+  every track of a test clip to the Python sampler (bit for bit where the
+  sampler copies a key, which `tools/tests/anim_probe.py` marks), and opens
+  every clip in the shipped pack, on the host and on the board.
+- `tools/tests/test_anim_tracks_asset.py` reads back what the writer writes,
+  refuses what the reader refuses, and has `build_pack.py` find `.anim.toml`
+  files.
 - `tools/tests/test_anim_bake.py` builds a glTF of its own with every
   interpolation, a quaternion, a pointer-targeted scalar and a non-zero first
   key, bakes it, samples it in C, and holds every value to the Python sampler

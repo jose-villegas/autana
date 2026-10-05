@@ -99,7 +99,8 @@ def sample_keys(times, values, time, interpolation="LINEAR", quaternion=False):
         return value(0)
     if time >= times[-1]:
         return value(len(times) - 1)
-    hi = next(i for i, t in enumerate(times) if t >= time)
+    # The first key after `time`: exactly on a key, that key starts the segment.
+    hi = next(i for i, t in enumerate(times) if t > time)
     lo = hi - 1
     if interpolation == "STEP":
         return value(lo)

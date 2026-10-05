@@ -154,12 +154,13 @@ asset_status_text(asset_status_t status) {
         case ASSET_ERR_NO_PACK: return "no asset pack is mapped";
         case ASSET_ERR_TRUNCATED: return "the pack is shorter than its header says";
         case ASSET_ERR_MAGIC: return "not an asset pack";
-        case ASSET_ERR_VERSION: return "an asset pack format this firmware does not read";
+        case ASSET_ERR_VERSION: return "a pack or entry format this firmware does not read";
         case ASSET_ERR_SIZE: return "the pack's header is malformed";
         case ASSET_ERR_CRC: return "the pack's checksum does not match";
         case ASSET_ERR_BOUNDS: return "an entry leaves the pack or is misaligned";
         case ASSET_ERR_NOT_FOUND: return "no such asset";
         case ASSET_ERR_TYPE: return "the asset is not that type";
+        case ASSET_ERR_FORMAT: return "the asset holds a value its reader does not accept";
     }
     return "unknown";
 }

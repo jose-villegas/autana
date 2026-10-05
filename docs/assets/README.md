@@ -2,7 +2,7 @@
 
 Content that is data, not code, lives in one binary file, the asset pack, and
 is read where it lies: in a flash partition the firmware maps, or in a buffer a
-host read from a file. A baked mesh is the first kind of entry. Nothing is
+host read from a file. A baked mesh and an animation clip are its kinds of entry. Nothing is
 compiled into the app for it, so the app image does not grow with content.
 
 ```mermaid
@@ -41,6 +41,7 @@ list; `asset_pack_find()` returns an entry's bytes only for the type asked for.
 | Type | Entry | Defined by |
 |---|---|---|
 | `LMSH` | A lit mesh | [The baked mesh](../render/Mesh-Import.md#the-baked-mesh) |
+| `TRCK` | The tracks of one animation | [The pack entry](../Animation-Tracks.md#the-pack-entry) |
 
 ## Checks
 
@@ -55,12 +56,13 @@ reports the first failure:
 | `ASSET_ERR_NO_PACK` | no bytes: no partition, no file |
 | `ASSET_ERR_TRUNCATED` | shorter than a header, or than the size it states |
 | `ASSET_ERR_MAGIC` | not an asset pack |
-| `ASSET_ERR_VERSION` | a format version this firmware does not read |
+| `ASSET_ERR_VERSION` | a pack or entry format version this firmware does not read |
 | `ASSET_ERR_SIZE` | the header is malformed: a size that cannot hold it, or reserved bytes in use |
 | `ASSET_ERR_CRC` | the bytes after the header do not match the checksum |
 | `ASSET_ERR_BOUNDS` | an entry or one of its parts leaves its range, or is misaligned |
 | `ASSET_ERR_NOT_FOUND` | no entry has that name |
 | `ASSET_ERR_TYPE` | the entry is not of the type asked for |
+| `ASSET_ERR_FORMAT` | inside its range, an entry holds a value its reader does not accept |
 
 A buffer may be larger than the pack, as a partition is. A scene names the
 meshes it draws by asset id; `scene_load()` opens each from the pack and
@@ -103,15 +105,17 @@ tree and set it.
 | Tool | Does |
 |---|---|
 | `mesh_import.py` | bakes a mesh and writes `<name>.mesh`, one entry, beside its import file |
-| `build_pack.py -o PACK` | writes the pack from the `.mesh` entries every import and scene file in `launcher/main` names |
+| `build_pack.py -o PACK` | writes the pack from the `.mesh` entries every import and scene file in `launcher/main` names, and bakes the clip every `.anim.toml` there names |
 | `rebake.py` | rewrites one `.mesh`'s clusters and octree; a fixed point |
 
 `launcher/tools/asset/asset_pack.py` is the one writer of the container,
-`launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` of the mesh entry; `asset_pack.c` and
-`r3d_lit_mesh.c` are the one reader of each.
+`launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` of the mesh entry,
+`launcher/tools/anim/tracks_asset.py` of the clip entry; `asset_pack.c`,
+`r3d_lit_mesh.c` and `anim_tracks.c` are the one reader of each.
 
-The entries are committed, like the generated C they stand beside. The pack is
-built from them and never committed: the firmware build, the host tests and the
+The mesh entries are committed, like the generated C they stand beside; a clip
+entry is baked from its `.glb` when the pack is built. The pack is never
+committed: the firmware build, the host tests and the
 render scripts each pack the tree they are in, so there is no second copy to
 keep in step.
 
