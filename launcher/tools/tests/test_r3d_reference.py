@@ -127,7 +127,6 @@ class PooledReferenceTests(unittest.TestCase):
         source.intersector = soup.rays(mesh)
         job, scene = sun_scene([0., 0., -1.])
         job.bake.ao = SimpleNamespace(distance=3., strength=.8, rays=8, indirect=True)
-        scene.lights[0]["disc_degrees"] = 4.
         scene.lights[0]["rays"] = 3
         scene.lights.append({"type": "ambient", "color": [1., 1., 1.], "intensity": .5})
         scene.tonemap_white = 2.
