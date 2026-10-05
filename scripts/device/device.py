@@ -1539,14 +1539,14 @@ def screenshot(args, store, board):
             raise RuntimeError("the capture did not report orientation_quarter for --as-shown")
         description = "as shown"
     else:
-        image_turn_quarter = 3
+        image_turn_quarter = screenshot_tool.DEFAULT_TURN_QUARTER
         description = "to match the board"
     png = screenshot_tool.turn_png(png, image_turn_quarter)
     png_path, state_path = screenshot_tool.write_capture(out, png, state_json, image_turn_quarter)
     degrees = image_turn_quarter * 90
     direction = "clockwise" if image_turn_quarter == 1 else "counter-clockwise"
     if image_turn_quarter == 0:
-        print(f"wrote {png_path} (framebuffer bytes; turned 0 degrees)")
+        print(f"wrote {png_path} ({description}; turned 0 degrees)")
     else:
         print(f"wrote {png_path} (turned {min(degrees, 360 - degrees)} degrees {direction} {description})")
     if state_path:
@@ -1554,6 +1554,16 @@ def screenshot(args, store, board):
     else:
         print("no SCREENSHOT_STATE line arrived - device state was not captured", file=sys.stderr)
     return 0
+
+
+def touch_point(x, y):
+    """The panel-frame point TAP, PRESS and DRAG take for pixel (x, y) of
+    the default screenshot; ValueError outside that screenshot. The default
+    screenshot is one fixed turn of the panel, so the board's orientation
+    never enters."""
+    import screenshot as screenshot_tool
+
+    return screenshot_tool.panel_point(x, y, screenshot_tool.DEFAULT_TURN_QUARTER)
 
 
 def batch(args, store, board):
