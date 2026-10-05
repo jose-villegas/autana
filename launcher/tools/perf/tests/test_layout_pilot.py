@@ -45,6 +45,15 @@ class LayoutPilotTest(unittest.TestCase):
         self.assertGreater(tight, loose)
         self.assertGreaterEqual(loose, 2)
 
+    def test_mixed_run_counts_subtract_each_seed_mean_variance(self):
+        import statistics
+        seeds = [[90, 110], [109, 111]*10, [89, 91]*10, [104, 106]*10]
+        result = pilot.analyse(seeds, flash_over_run=10)
+        spread = statistics.variance(statistics.mean(seed) for seed in seeds)
+        residual = statistics.mean(statistics.variance(seed)/len(seed) for seed in seeds)
+        expected = math.sqrt(max(0, spread-residual))/result['mean']
+        self.assertAlmostEqual(result['sigma_flash'], expected)
+
     def test_one_flash_is_not_enough_to_measure_a_spread(self):
         with self.assertRaises(ValueError):
             pilot.analyse([[1, 2, 3]], flash_over_run=10)

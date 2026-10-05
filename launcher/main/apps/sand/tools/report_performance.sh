@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck disable=SC2034,SC1091,SC2329
 #
 # One-click device performance report: build+flash the diagnostics image,
 # capture the sand perf suite through `autana suite --flash`, write a markdown
@@ -37,9 +38,9 @@
 
 set -eu
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 # tools -> sand -> apps -> main -> launcher.
-LAUNCHER_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../../.." && pwd)
+LAUNCHER_DIR=$(CDPATH='' cd -- "$SCRIPT_DIR/../../../.." && pwd)
 
 report_name=performance
 report_project=""
@@ -99,33 +100,11 @@ report_generate() {
         --source "$report_project/launcher/test/suites/suite_gfx.c"
 }
 
-# The measured (not budget) column of one row of report_performance.py's
-# table: "| `name` | budget | measured | headroom | status |". Anchored at
-# the start of the line so it only matches an actual table row, not `name`
-# appearing in one of the report's prose bullet lists.
-extract_measured() {
-    # `|| true`: awk exits nonzero if the report cannot be opened, and that
-    # failure inside a `var=$(...)` assignment would abort the whole script.
-    awk -F'|' -v name="$1" '
-        $0 ~ "^\\| *`" name "`" { v = $4; gsub(/^[ \t]+|[ \t]+$/, "", v); print v; exit }
-    ' "$2" 2>/dev/null || true
-}
-
-# Printed here instead of left to the operator - it was already being typed
-# by hand five times in two days. The two liquid-free controls: their
-# value-pair tells a real regression from ordinary flash-layout noise, and
-# "not measured" means every fixture failed to allocate its grid.
 report_summary() {
     echo "=== Summary ==="
-    for ctrl in test_a_full_size_step_fits_in_the_frame_budget \
-                test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget; do
-        v="$(extract_measured "$ctrl" "$2")"
-        echo "control $ctrl: ${v:-not measured this capture} us"
-    done
-
     if [ -n "$BASELINE" ]; then
         echo "=== Comparing against baseline: $BASELINE ==="
-        # A non-win verdict, or an error like a missing control row, is a
+        # A non-win verdict, or an unreadable report, is a
         # normal outcome to print and read rather than a failure of this run.
         "$PYTHON" "$SCRIPT_DIR/compare_reports.py" --verdict "$BASELINE" "$2" || true
     fi
