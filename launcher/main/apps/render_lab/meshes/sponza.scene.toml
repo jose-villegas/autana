@@ -9,12 +9,16 @@ rays = 48
 
 [ambient]
 color = [1.0, 1.0, 1.0]
-intensity = 0.03
+intensity = 0.005
+
+[indirect]
+intensity = 2.0
 
 [bake]
 ray_offset = 0.5
 colour_merge_step = 6
 indirect = { bounces = 2, rays = 64 }
+ao = { distance = 40.0, rays = 32, indirect = true }
 
 [[objects]]
 name = "sun"
