@@ -1,12 +1,15 @@
 /*
- * sponza_flythrough: the Sponza scene's five bakes, the size it is seen at,
- * and what its camera loop is held to. The loop is the scene's camera, its
+ * sponza_content: the Sponza scene's id and five bakes, the size it is seen
+ * at, and what its camera loop is held to. The loop is the scene's camera, its
  * lens and path from scene_camera_lens() once the scene has loaded. Model
  * units are centimetres; y is up.
  */
 #pragma once
 
 #include "gfx/gfx.h"
+
+/* The scene's id, and its bundle's name. */
+#define SPONZA_SCENE                "sponza"
 
 /* Half the panel's resolution in each axis, upscaled on the way out. */
 #define SPONZA_RENDER_WIDTH         (GFX_WIDTH / 2)

@@ -485,14 +485,13 @@ named after the file: `NAME.scene.toml` is entry and bundle `NAME`, beside every
 mesh its renderers name and the clip its camera flies
 ([assets/README.md](../assets/README.md)). `tools/r3d/scene_asset.py` writes and
 reads it; `scene_load()` opens it ([Scene-Manager.md](Scene-Manager.md)), each
-mesh and the clip, and fails naming whichever is missing or malformed. Ids are
-unique within a bundle whatever their type, so a scene and its clip cannot
-share a stem.
+mesh and the clip, and fails naming whichever is missing or malformed. A scene
+and its clip cannot share a stem ([assets/README.md](../assets/README.md#bundles)).
 
 An entity is each mesh renderer and the camera, in file order, found by name at
 run time. Its transform is baked as a 3x3 (rotation times scale) and a
-position, so the device does no trigonometry. An object's name is letters,
-digits and `_`, at most 31 bytes. Lights, the camera region, sky, ambient and
+position, so the device does no trigonometry. An entity's name is letters,
+digits and `_`, not starting with a digit, at most 31 bytes. Lights, the camera region, sky, ambient and
 the tone map stay offline.
 
 Little-endian; offsets count from the entry's first byte, each 4-aligned:
@@ -502,5 +501,8 @@ Little-endian; offsets count from the entry's first byte, each 4-aligned:
 | header | `u16 version`, `u16 entity_count`, `u16 renderer_count`, `u16 camera_count`, `u32` offset of each part below |
 | names | `char name[32]` per entity, NUL padded |
 | transforms | `f32 m[3][3]`, `f32 position[3]` per entity |
-| renderers | `u16 entity`, `u16 pad`, `char mesh_id[32]` |
-| cameras | `u16 entity`, `u16 pad`, `f32 half_fov_short_tan`, `f32 near_z`, `u32 clear_rgb`, `char clip_id[32]`, `char node[32]`; an empty clip: no path |
+| renderers | `u16 entity`, `u16 pad`, `char mesh_id[32]` per renderer |
+| cameras | `u16 entity`, `u16 pad`, `f32 half_fov_short_tan`, `f32 near_z`, `u32 clear_rgb`, `char clip_id[32]`, `char node[32]` per camera; an empty clip: no path |
+
+The reader refuses a `pad` that is not zero, text with anything but NULs after
+its end, and a clip without a node or a node without a clip.

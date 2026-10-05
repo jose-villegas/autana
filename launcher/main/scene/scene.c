@@ -86,10 +86,22 @@ instantiate(const scene_asset_t* asset) {
     return scene;
 }
 
+/* `id`, cut to what a pack name holds: an id from the pack always fits, a
+ * caller's may not. */
+static void
+copy_id(char out[ASSET_NAME_MAX], const char* id) {
+    size_t length = strlen(id);
+    if (length >= ASSET_NAME_MAX) {
+        length = ASSET_NAME_MAX - 1U;
+    }
+    (void)memcpy(out, id, length);
+    out[length] = '\0';
+}
+
 static scene_failure_t
 failure(scene_status_t status, asset_status_t asset, const char* what) {
     scene_failure_t out = {status, asset, ""};
-    (void)snprintf(out.what, sizeof out.what, "%s", what);
+    copy_id(out.what, what);
     return out;
 }
 
@@ -186,7 +198,7 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
     if (scene == NULL) {
         return fail(why, failure(SCENE_ERR_MEMORY, ASSET_OK, id));
     }
-    (void)snprintf(scene->id, sizeof scene->id, "%s", id);
+    copy_id(scene->id, id);
     scene_failure_t done = open_meshes(scene, pack);
     if (done.status == SCENE_OK) {
         done = open_paths(scene, pack);

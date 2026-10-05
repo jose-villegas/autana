@@ -1,6 +1,6 @@
 /*
  * Portable suite: the scene manager (scene/scene.h). Each test loads scenes
- * from a small pack built here: scene entries (SCNE), a camera clip (TRCK)
+ * from a small pack built here: scene entries (SCNE), camera clips (TRCK)
  * and unit quads in distinct colours, so what was drawn is read straight
  * off the picture: a pixel is a quad's colour or the clear colour. The
  * camera stands at z = 10 with a half field of view of 1, which puts a unit
@@ -28,6 +28,7 @@
 #ifndef DEVICE_BUILD
 #include <stdio.h>
 
+#include "asset/asset_file.h"
 #include "test_asset_dir.h"
 #endif
 
@@ -107,7 +108,7 @@ static const struct {
 
 #define QUAD_COUNT 3
 
-/* "flight": the camera node flies 5 units along x in a second, facing down
+/* A clip of the camera node flying 5 units along x in a second, facing down
  * -z. Both tracks share the times; each array starts where the last ends. */
 enum { FLIGHT_ROWS = 8, FLIGHT_TIMES = 104, FLIGHT_POSITIONS = 112, FLIGHT_TURNS = 136, FLIGHT_BYTES = 168 };
 
@@ -122,15 +123,24 @@ put_track_row(uint8_t* row, const char* name, uint32_t values, int width, bool q
     row[44] = quaternion ? 1U : 0U;
 }
 
+/* "flight" is the clip as a scene reads it; "skewed" has a translation 2 wide
+ * and "unturned" no rotation, which a scene must refuse. */
+static const struct {
+    const char* id;
+    int translation_width, track_count;
+} CLIPS[] = {{"flight", 3, 2}, {"skewed", 2, 2}, {"unturned", 3, 1}};
+
+#define CLIP_COUNT ((int)(sizeof CLIPS / sizeof CLIPS[0]))
+
 static void
-make_flight_entry(uint8_t* entry) {
+make_clip_entry(uint8_t* entry, int translation_width, int track_count) {
     const float times[] = {0.0F, 1.0F};
     const float positions[] = {0, 0, 10, 5, 0, 10};
     const float turns[] = {0, 0, 0, 1, 0, 0, 0, 1};
     put16(entry, ANIM_TRACKS_VERSION);
-    put16(entry + 2, 2);
+    put16(entry + 2, track_count);
     test_pack_put32(entry + 4, 1000);
-    put_track_row(entry + FLIGHT_ROWS, "camera/translation", FLIGHT_POSITIONS, 3, false);
+    put_track_row(entry + FLIGHT_ROWS, "camera/translation", FLIGHT_POSITIONS, translation_width, false);
     put_track_row(entry + FLIGHT_ROWS + 48, "camera/rotation", FLIGHT_TURNS, 4, true);
     put_floats(entry + FLIGHT_TIMES, times, 2);
     put_floats(entry + FLIGHT_POSITIONS, positions, 6);
@@ -214,6 +224,21 @@ static const scene_spec_t SCENES[] = {
      {{"camera", IDENTITY}, {"red", IDENTITY}},
      {{1, "red"}},
      {{0, CLEAR_RGB, "flight", "lamp"}}},
+    /* cameras flying a translation of the wrong width, and a clip with no rotation */
+    {"test_skewed",
+     2,
+     1,
+     1,
+     {{"camera", IDENTITY}, {"red", IDENTITY}},
+     {{1, "red"}},
+     {{0, CLEAR_RGB, "skewed", "camera"}}},
+    {"test_unturned",
+     2,
+     1,
+     1,
+     {{"camera", IDENTITY}, {"red", IDENTITY}},
+     {{1, "red"}},
+     {{0, CLEAR_RGB, "unturned", "camera"}}},
 };
 
 #define SCENE_COUNT ((int)(sizeof SCENES / sizeof SCENES[0]))
@@ -264,7 +289,7 @@ make_scene_entry(uint8_t* entry, const scene_spec_t* s) {
 /* The pack of every quad, scene and the clip, with the CRC set. */
 static uint32_t
 make_pack(uint8_t* bytes) {
-    test_pack_t pack = test_pack_begin(bytes, PACK_MAX, QUAD_COUNT + SCENE_COUNT + 2);
+    test_pack_t pack = test_pack_begin(bytes, PACK_MAX, QUAD_COUNT + SCENE_COUNT + 1 + CLIP_COUNT);
     for (int i = 0; i < QUAD_COUNT; i++) {
         uint8_t* entry = test_pack_add(&pack, QUADS[i].name, R3D_LIT_MESH_ASSET, QUAD_BYTES);
         make_quad_entry(entry, QUADS[i].red, QUADS[i].green, QUADS[i].blue);
@@ -275,7 +300,10 @@ make_pack(uint8_t* bytes) {
     uint8_t* bad = test_pack_add(&pack, BAD_SCENE, SCENE_ASSET, scene_entry_size(&SCENES[0]));
     make_scene_entry(bad, &SCENES[0]);
     put16(bad + 24 + (3 * (32 + sizeof(scene_transform_t))) + sizeof(scene_asset_renderer_t), 9);
-    make_flight_entry(test_pack_add(&pack, "flight", ANIM_TRACKS_ASSET, FLIGHT_BYTES));
+    for (int i = 0; i < CLIP_COUNT; i++) {
+        make_clip_entry(test_pack_add(&pack, CLIPS[i].id, ANIM_TRACKS_ASSET, FLIGHT_BYTES), CLIPS[i].translation_width,
+                        CLIPS[i].track_count);
+    }
     return test_pack_finish(&pack);
 }
 
@@ -405,6 +433,8 @@ test_a_malformed_entry_a_missing_clip_or_track_and_a_mesh_id_fail_naming_the_ent
     expect_failure(BAD_SCENE, ASSET_ERR_FORMAT, BAD_SCENE);
     expect_failure("test_lost", ASSET_ERR_NOT_FOUND, "nowhere");
     expect_failure("test_headless", ASSET_ERR_NOT_FOUND, "flight");
+    expect_failure("test_skewed", ASSET_ERR_FORMAT, "skewed");
+    expect_failure("test_unturned", ASSET_ERR_NOT_FOUND, "unturned");
     expect_failure("red", ASSET_ERR_TYPE, "red"); /* a mesh, not a scene */
     TEST_ASSERT_EQUAL_INT(0, scene_loaded_count());
 }
@@ -427,6 +457,130 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
     TEST_ASSERT_EQUAL_FLOAT(2.5F, eye.x);
     TEST_ASSERT_EQUAL_FLOAT(-1.0F, forward.z);
 }
+
+/* The pair's entry, as the pack holds it: names at 24, transforms at 120,
+ * renderers at 264, the camera at 336, 416 bytes in all. */
+enum { PAIR_NAMES = 24, PAIR_RENDERERS = 264, PAIR_CAMERA = 336, PAIR_BYTES = 416 };
+
+/* One edit that breaks the pair's entry: `width` bytes of `value` at `at`,
+ * little-endian, or with `fill` every byte of a 32-byte field. */
+typedef struct {
+    const char* what;
+    uint32_t at, width, value;
+    bool fill;
+    asset_status_t want;
+} breakage_t;
+
+static const breakage_t BREAKAGES[] = {
+    {"another version", 0, 2, 2, false, ASSET_ERR_VERSION},
+    {"names not 4-aligned", 8, 4, PAIR_NAMES + 2, false, ASSET_ERR_BOUNDS},
+    {"names inside the header", 8, 4, 20, false, ASSET_ERR_BOUNDS},
+    {"the camera past the end by part of a row", 20, 4, PAIR_CAMERA + 4, false, ASSET_ERR_BOUNDS},
+    {"a name with no NUL", PAIR_NAMES, 1, 'x', true, ASSET_ERR_FORMAT},
+    {"bytes after a name's NUL", PAIR_NAMES + 20, 1, 'x', false, ASSET_ERR_FORMAT},
+    {"an empty entity name", PAIR_NAMES, 1, 0, true, ASSET_ERR_FORMAT},
+    {"an empty mesh id", PAIR_RENDERERS + 4, 1, 0, true, ASSET_ERR_FORMAT},
+    {"a renderer's padding in use", PAIR_RENDERERS + 2, 2, 1, false, ASSET_ERR_FORMAT},
+    {"a camera of no entity", PAIR_CAMERA, 2, 3, false, ASSET_ERR_FORMAT},
+    {"a camera's padding in use", PAIR_CAMERA + 2, 2, 1, false, ASSET_ERR_FORMAT},
+    {"a field of view of 0", PAIR_CAMERA + 4, 4, 0, false, ASSET_ERR_FORMAT},
+    {"a near plane that is not a number", PAIR_CAMERA + 8, 4, 0x7FC00000U, false, ASSET_ERR_FORMAT},
+    {"a clear colour past 0xFFFFFF", PAIR_CAMERA + 12, 4, 0x1000000U, false, ASSET_ERR_FORMAT},
+    {"a clip with no node", PAIR_CAMERA + 16, 1, 'x', false, ASSET_ERR_FORMAT},
+    {"a node with no clip", PAIR_CAMERA + 48, 1, 'x', false, ASSET_ERR_FORMAT},
+};
+
+static void
+apply(uint8_t* entry, const breakage_t* b) {
+    if (b->fill) {
+        memset(entry + b->at, (int)b->value, ASSET_NAME_MAX);
+        return;
+    }
+    for (uint32_t i = 0; i < b->width; i++) {
+        entry[b->at + i] = (uint8_t)(b->value >> (8 * i));
+    }
+}
+
+static asset_status_t
+open_entry(const uint8_t* entry, uint32_t size) {
+    scene_asset_t asset;
+    return scene_asset_open((asset_view_t){entry, size}, &asset);
+}
+
+/* Each edit alone is refused with its status; the entry as written opens,
+ * and a load of it fails taking nothing. */
+static void
+test_the_reader_refuses_an_entry_that_breaks_any_one_rule(void) {
+    void* raw = NULL;
+    uint8_t* entry = test_alloc_aligned(PAIR_BYTES + 4, 4, &raw);
+    TEST_ASSERT_NOT_NULL(entry);
+    TEST_ASSERT_EQUAL_UINT32(PAIR_BYTES, scene_entry_size(&SCENES[0]));
+    for (size_t i = 0; i < sizeof BREAKAGES / sizeof BREAKAGES[0]; i++) {
+        memset(entry, 0, PAIR_BYTES);
+        make_scene_entry(entry, &SCENES[0]);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, open_entry(entry, PAIR_BYTES), BREAKAGES[i].what);
+        apply(entry, &BREAKAGES[i]);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(BREAKAGES[i].want, open_entry(entry, PAIR_BYTES), BREAKAGES[i].what);
+    }
+    memset(entry, 0, PAIR_BYTES + 4);
+    make_scene_entry(entry, &SCENES[0]);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_BOUNDS, open_entry(entry, 23), "shorter than its header");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_BOUNDS, open_entry(entry, PAIR_BYTES - 1), "a byte short");
+    memmove(entry + 1, entry, PAIR_BYTES);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_BOUNDS, open_entry(entry + 1, PAIR_BYTES), "not 4-aligned");
+    test_free_aligned(raw);
+}
+
+#ifndef DEVICE_BUILD
+/* The scene tools/tests/scene_probe.py bakes with the tools' own writer,
+ * loaded beside quads for its two meshes: what the scene file says arrives. */
+static void
+test_a_scene_the_tools_bake_loads_as_its_file_says(void) {
+    fixture();
+    const char* path = getenv("AUTANA_SCENE_PROBE");
+    TEST_ASSERT_NOT_NULL_MESSAGE(path, "AUTANA_SCENE_PROBE names the pack scene_probe.py wrote");
+    asset_pack_t probe;
+    void* buffer = NULL;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(path, &probe, &buffer));
+    asset_view_t scene_entry;
+    asset_view_t clip_entry;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&probe, "probe_scene", SCENE_ASSET, &scene_entry));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&probe, "probe", ANIM_TRACKS_ASSET, &clip_entry));
+    test_pack_t built = test_pack_begin(fx.bytes, PACK_MAX, 4);
+    make_quad_entry(test_pack_add(&built, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES), 255, 0, 0);
+    make_quad_entry(test_pack_add(&built, "green", R3D_LIT_MESH_ASSET, QUAD_BYTES), 0, 255, 0);
+    memcpy(test_pack_add(&built, "probe_scene", SCENE_ASSET, scene_entry.size), scene_entry.data, scene_entry.size);
+    memcpy(test_pack_add(&built, "probe", ANIM_TRACKS_ASSET, clip_entry.size), clip_entry.data, clip_entry.size);
+    asset_file_release(buffer);
+    asset_pack_t pack;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, fx.bytes, test_pack_finish(&built)));
+
+    scene_t* scene = scene_load_from(&pack, "probe_scene", NULL);
+    TEST_ASSERT_NOT_NULL(scene);
+    TEST_ASSERT_EQUAL_UINT16(0, scene_find(scene, "red"));
+    TEST_ASSERT_EQUAL_UINT16(1, scene_find(scene, "camera"));
+    TEST_ASSERT_EQUAL_UINT16(2, scene_find(scene, "green"));
+    TEST_ASSERT_EQUAL_STRING("red", scene_entity_mesh_id(scene, 0));
+    TEST_ASSERT_EQUAL_STRING("green", scene_entity_mesh_id(scene, 2));
+    TEST_ASSERT_NULL(scene_entity_mesh_id(scene, 1));
+    /* a quarter turn about y, scaled (2, 4, 0.5), at (1, 2, 3) */
+    const scene_transform_t want = {{{0, 0, 0.5F}, {0, 4, 0}, {-2, 0, 0}}, {1, 2, 3}};
+    const scene_transform_t* got = scene_entity_transform(scene, 0);
+    for (int row = 0; row < 3; row++) {
+        for (int column = 0; column < 3; column++) {
+            TEST_ASSERT_FLOAT_WITHIN(1e-6F, want.m[row][column], got->m[row][column]);
+        }
+    }
+    TEST_ASSERT_EQUAL_FLOAT(want.position.x, got->position.x);
+    TEST_ASSERT_EQUAL_FLOAT(want.position.y, got->position.y);
+    TEST_ASSERT_EQUAL_FLOAT(want.position.z, got->position.z);
+    const r3d_scene_camera_t* lens = scene_camera_lens(scene, "camera");
+    TEST_ASSERT_EQUAL_FLOAT(0.75F, lens->half_fov_short_tan);
+    TEST_ASSERT_EQUAL_FLOAT(1.5F, lens->near_z);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x336699), scene->cameras[0].clear);
+    TEST_ASSERT_EQUAL_UINT32(3000, r3d_scene_camera_period_ms(lens)); /* the probe clip's length */
+}
+#endif
 
 #ifndef DEVICE_BUILD
 /* The fixture's pack as bundle `name` in the working directory, one byte
@@ -479,6 +633,7 @@ test_a_scene_that_fails_to_load_does_not_hold_its_bundle(void) {
     scene_failure_t why;
     TEST_ASSERT_NULL(scene_load("test_broken", &why));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, why.asset);
+    TEST_ASSERT_EQUAL_STRING("gone", why.what); /* a copy: the bundle it was read from is gone */
     write_bundle("test_broken", true);
     TEST_ASSERT_NULL(scene_load("test_broken", &why));
     TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_NO_PACK, why.asset, "the damaged file was read again");
@@ -827,6 +982,10 @@ run_scene_suite(void) {
     RUN_TEST(test_a_success_clears_what_an_earlier_failure_said);
     RUN_TEST(test_a_malformed_entry_a_missing_clip_or_track_and_a_mesh_id_fail_naming_the_entry);
     RUN_TEST(test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens);
+    RUN_TEST(test_the_reader_refuses_an_entry_that_breaks_any_one_rule);
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_a_scene_the_tools_bake_loads_as_its_file_says);
+#endif
 #ifndef DEVICE_BUILD
     RUN_TEST(test_scene_load_holds_its_bundle_until_the_last_scene_from_it_unloads);
     RUN_TEST(test_a_scene_that_fails_to_load_does_not_hold_its_bundle);

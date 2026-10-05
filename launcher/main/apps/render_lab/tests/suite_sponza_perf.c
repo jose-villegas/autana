@@ -20,7 +20,7 @@
 #include "esp_log.h"
 
 #include "apps/render_lab/render_lab_view.h"
-#include "apps/render_lab/sponza_flythrough.h"
+#include "apps/render_lab/sponza_content.h"
 #include "asset/asset_store.h"
 #include "gfx/gfx.h"
 #include "render/r3d.h"
@@ -158,7 +158,9 @@ static void
 open_the_meshes(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(sponza, "scene sponza did not load: see the log above");
     for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
-        const char* mesh = scene_entity_mesh_id(sponza, scene_find(sponza, sponza_bakes[i]));
+        const scene_entity_t bake = scene_find(sponza, sponza_bakes[i]);
+        TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, bake, sponza_bakes[i]);
+        const char* mesh = scene_entity_mesh_id(sponza, bake);
         TEST_ASSERT_NOT_NULL_MESSAGE(mesh, sponza_bakes[i]);
         TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(bundle, mesh, &meshes[i]), mesh);
     }
@@ -244,18 +246,18 @@ test_sponza_frame_cost_along_the_flythrough(void) {
 void
 run_sponza_perf_suite(void) {
     scene_failure_t why;
-    sponza = scene_load("sponza", &why);
+    sponza = scene_load(SPONZA_SCENE, &why);
     if (sponza == NULL) {
         ESP_LOGE(TAG, "scene sponza: status %d, asset %s, about '%s'", (int)why.status, asset_status_text(why.asset),
                  why.what);
     } else {
-        bundle = asset_store_bundle("sponza");
+        bundle = asset_store_bundle(SPONZA_SCENE);
         flythrough = scene_camera_lens(sponza, NULL);
     }
     RUN_TEST(test_sponza_draw_stage_breakdown);
     RUN_TEST(test_sponza_frame_cost_along_the_flythrough);
     if (bundle != NULL) {
-        asset_store_release("sponza");
+        asset_store_release(SPONZA_SCENE);
     }
     scene_unload(sponza);
     sponza = NULL;

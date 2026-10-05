@@ -1,7 +1,7 @@
 /*
  * Portable suite: the three baked Sponza meshes, read from the sponza bundle,
  * and the camera loop through them, the scene's camera once it has loaded
- * (sponza_flythrough.h). Each mesh is checked for the structure
+ * (sponza_content.h). Each mesh is checked for the structure
  * r3d_pipeline.h relies on, never against the generator; the path and
  * the pictures it sees are checked against the shipped meshes themselves.
  */
@@ -16,7 +16,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "apps/render_lab/sponza_flythrough.h"
+#include "apps/render_lab/sponza_content.h"
 #include "asset/asset_store.h"
 #include "r3d_lit_mesh_expect.h"
 #include "render/r3d.h"
@@ -361,12 +361,12 @@ test_the_scene_loads_from_its_bundle_with_a_lit_mesh_for_each_bake_and_its_path(
 static void
 run_sponza_suite(void) {
     scene_failure_t why;
-    sponza = scene_load("sponza", &why);
+    sponza = scene_load(SPONZA_SCENE, &why);
     if (sponza == NULL) {
         printf("scene sponza: status %d, asset %s, about '%s'\n", (int)why.status, asset_status_text(why.asset),
                why.what);
     } else {
-        bundle = asset_store_bundle("sponza");
+        bundle = asset_store_bundle(SPONZA_SCENE);
         flythrough = scene_camera_lens(sponza, NULL);
     }
     RUN_TEST(test_the_scene_loads_from_its_bundle_with_a_lit_mesh_for_each_bake_and_its_path);
@@ -377,7 +377,7 @@ run_sponza_suite(void) {
     RUN_TEST(test_the_flythrough_keeps_clear_of_every_triangle);
     RUN_TEST(test_the_flythrough_sees_mostly_building);
     if (bundle != NULL) {
-        asset_store_release("sponza");
+        asset_store_release(SPONZA_SCENE);
     }
     scene_unload(sponza);
     sponza = NULL;

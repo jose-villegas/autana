@@ -164,7 +164,7 @@ def board(args, out, work):
         [(name, f"{means[name]:.3f}") for name in VARIANTS]), encoding="utf-8")
     scene = load_scene(SCENE)
     job = placed_variant(scene, "sponza_fitted")
-    header = ROOT / "launcher/main/apps/render_lab/sponza_flythrough.h"
+    header = ROOT / "launcher/main/apps/render_lab/sponza_content.h"
     interval = re.search(r"#define\s+SPONZA_POSE_EVERY_MS\s+(\d+)", header.read_text())
     if interval is None:
         raise ValueError("cannot read the board suite pose interval")

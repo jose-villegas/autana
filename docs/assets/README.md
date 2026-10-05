@@ -34,9 +34,10 @@ searching, so no list is kept:
 
 Ids are unique within a bundle whatever their type: the reader finds an entry
 by name, then checks its type, so a scene and its clip cannot share a stem,
-and `build_pack.py` refuses them naming both files. A mesh or clip two roots name would be a shared asset,
-a bundle of its own the others depend on; that loader is not built, so
-`build_pack.py` refuses such a tree and names the mesh.
+and `build_pack.py` refuses them, naming both files. A mesh or clip two roots
+name would be a shared asset, a bundle of its own the others depend on; that
+loader is not built, so `build_pack.py` refuses such a tree and names the
+entry.
 
 ## The pack
 
@@ -110,9 +111,10 @@ A buffer may be larger than the pack, as a mapping is.
 `asset_store_bundle(name)` mounts bundle `name` and checks it on its first
 use, then counts uses; `asset_store_release(name)` drops one, and at none the
 bundle is unmapped or freed. A missing or bad bundle is `NULL` and one log
-line saying why. `scene_load(id)` mounts bundle `id` and opens the scene's
-meshes from it, failing on the first missing or malformed one with the id and
-the status; `scene_unload()` releases it. A scene that fails to load is not
+line saying why. `scene_load(id)` mounts bundle `id` and opens its scene
+entry `id`, every mesh it names and its camera's clip from it, failing on the
+first missing or malformed one with the id and the status; `scene_unload()`
+releases it. A scene that fails to load is not
 drawn; showing that is up to the app.
 
 ## The device
