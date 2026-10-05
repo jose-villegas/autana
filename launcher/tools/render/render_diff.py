@@ -11,8 +11,7 @@ or qemu_run.py's) is the framebuffer the way the panel holds it, turned by
 the quarter its sidecar's image_turn_quarter records; that turn is undone
 here, whatever the shell was rotated to at the time. The sidecar's
 orientation_quarter says which rotation that was, and is reported here
-rather than applied. State the
-quarter for anything that is a render: a quarter turn comes out 448 x 368
+rather than applied. State the quarter for anything that is a render: a quarter turn comes out 448 x 368
 and is refused without one, and half a turn keeps the panel's own shape
 while still being upside down, which no size can reveal. Everything is
 compared in panel coordinates.
@@ -34,7 +33,7 @@ import zlib
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "device"))
 from panel_size import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402  (path must be set up first)
-from screenshot import panel_point  # noqa: E402
+from screenshot import turn_png  # noqa: E402
 
 BMP_HEADER_SIZE = 54
 
@@ -164,10 +163,15 @@ def read_png(data):
 
 
 def load(path):
+    """The image at `path`; a capture comes back with the turn its sidecar
+    records undone, as the framebuffer the way the panel holds it."""
     with open(path, "rb") as f:
         data = f.read()
     if data[:2] == b"BM":
         return read_bmp(data)
+    quarter = sidecar(path).get("image_turn_quarter", 0) % 4
+    if quarter:
+        data = turn_png(data, -quarter)
     return read_png(data)
 
 
@@ -183,25 +187,6 @@ def sidecar(path):
 def sidecar_quarter(path):
     """The quarter the shell was at when a capture was taken, or None."""
     return sidecar(path).get("orientation_quarter")
-
-
-def load_capture(path):
-    """The image at `path`, with the turn its sidecar records undone, so a
-    capture is the framebuffer the way the panel holds it."""
-    image = load(path)
-    quarter = sidecar(path).get("image_turn_quarter", 0) % 4
-    if quarter == 0:
-        return image
-    expected = (PANEL_HEIGHT, PANEL_WIDTH) if quarter % 2 else (PANEL_WIDTH, PANEL_HEIGHT)
-    if (image.width, image.height) != expected:
-        raise SystemExit("%s is %dx%d, which a turn of quarter %d never produces"
-                         % (path, image.width, image.height, quarter))
-    rows = [bytearray(PANEL_WIDTH * 3) for _ in range(PANEL_HEIGHT)]
-    for y in range(image.height):
-        for x in range(image.width):
-            px, py = panel_point(x, y, quarter)
-            rows[py][px * 3:px * 3 + 3] = image.rows[y][x * 3:x * 3 + 3]
-    return Image(PANEL_WIDTH, PANEL_HEIGHT, [bytes(row) for row in rows])
 
 
 def to_panel(image, quarter, label):
@@ -305,8 +290,8 @@ def main(argv=None):
     ap.add_argument("--out", help="write a visual diff PNG here")
     args = ap.parse_args(argv)
 
-    a = to_panel(load_capture(args.a), args.quarter_a, args.a)
-    b = to_panel(load_capture(args.b), args.quarter_b, args.b)
+    a = to_panel(load(args.a), args.quarter_a, args.a)
+    b = to_panel(load(args.b), args.quarter_b, args.b)
 
     shell_quarter = sidecar_quarter(args.a)
     if shell_quarter is None:
@@ -314,7 +299,7 @@ def main(argv=None):
     for path, declared in ((args.a, args.quarter_a), (args.b, args.quarter_b)):
         side = sidecar_quarter(path)
         if side is not None:
-            print("%s: a capture, panel-native; its sidecar says the shell was at "
+            print("%s: a capture, turned back to the panel's frame; its sidecar says the shell was at "
                   "quarter %s" % (path, side))
             if declared is not None and declared != side:
                 raise SystemExit("%s was given --quarter %d but its sidecar says %s"

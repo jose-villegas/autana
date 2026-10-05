@@ -30,7 +30,7 @@ runs after the --suite and --touch options and before --screenshot:
 
 A tap or swipe takes pixels of that screenshot, as `autana tap` does, and
 goes in as TOUCH lines in the panel's own frame; a touch (and --touch) is
-that raw level, in panel pixels. A tilt goes in as an IMU line. Leave
+sent as it is, in panel pixels. A tilt goes in as an IMU line. Leave
 --icount off for this: emulated time then runs far slower than the host's,
 and how long a press lasts is counted in the emulated clock.
 
