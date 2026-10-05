@@ -22,6 +22,12 @@
 #include "test_cleanup.h"
 #include "util/memory.h"
 
+#ifndef DEVICE_BUILD
+#include <stdio.h>
+
+#include "test_asset_dir.h"
+#endif
+
 #define SIZE       64
 #define CENTER     (SIZE / 2)
 #define CLEAR_RGB  0x336699
@@ -280,6 +286,65 @@ test_a_load_that_fails_says_what_it_was_about(void) {
     TEST_ASSERT_EQUAL_STRING("red", why.what);
     TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_nothing_of_the_kind", NULL)); /* no one to tell */
 }
+
+#ifndef DEVICE_BUILD
+/* The fixture's pack as bundle `name` in the working directory, one byte
+ * after its header flipped when `damage` is set. */
+static void
+write_bundle(const char* name, bool damage) {
+    char path[64];
+    (void)snprintf(path, sizeof path, "./%s.apak", name);
+    fx.bytes[ASSET_PACK_HEADER_SIZE] ^= damage ? 1U : 0U;
+    test_write_file(path, fx.bytes, fx.pack.size);
+    fx.bytes[ASSET_PACK_HEADER_SIZE] ^= damage ? 1U : 0U;
+}
+
+static void
+remove_bundle(const char* name) {
+    char path[64];
+    (void)snprintf(path, sizeof path, "./%s.apak", name);
+    TEST_ASSERT_EQUAL_INT(0, remove(path));
+}
+
+/* scene_load() reads the bundle named after the scene once and holds it while
+ * a scene loaded from it stays: damage to the file goes unseen until the last
+ * one unloads and the next load reads it again. */
+static void
+test_scene_load_holds_its_bundle_until_the_last_scene_from_it_unloads(void) {
+    fixture();
+    test_asset_dir_use(".");
+    write_bundle("test_pair", false);
+    scene_failure_t why;
+    scene_t* first = scene_load("test_pair", &why);
+    TEST_ASSERT_NOT_NULL(first);
+    write_bundle("test_pair", true);
+    scene_t* second = scene_load("test_pair", &why);
+    TEST_ASSERT_NOT_NULL(second);
+    scene_unload(first);
+    scene_unload(second);
+    TEST_ASSERT_NULL(scene_load("test_pair", &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, why.asset);
+    remove_bundle("test_pair");
+    test_asset_dir_restore();
+}
+
+/* A load that fails gives its use of the bundle back. */
+static void
+test_a_scene_that_fails_to_load_does_not_hold_its_bundle(void) {
+    fixture();
+    test_asset_dir_use(".");
+    write_bundle("test_broken", false);
+    scene_failure_t why;
+    TEST_ASSERT_NULL(scene_load("test_broken", &why));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, why.asset);
+    write_bundle("test_broken", true);
+    TEST_ASSERT_NULL(scene_load("test_broken", &why));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_NO_PACK, why.asset, "the damaged file was read again");
+    remove_bundle("test_broken");
+    test_asset_dir_restore();
+}
+#endif
 
 static void
 test_a_success_clears_what_an_earlier_failure_said(void) {
@@ -619,6 +684,10 @@ run_scene_suite(void) {
     RUN_TEST(test_a_camera_clears_to_the_colour_its_def_gives);
     RUN_TEST(test_a_load_that_fails_says_what_it_was_about);
     RUN_TEST(test_a_success_clears_what_an_earlier_failure_said);
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_scene_load_holds_its_bundle_until_the_last_scene_from_it_unloads);
+    RUN_TEST(test_a_scene_that_fails_to_load_does_not_hold_its_bundle);
+#endif
     RUN_TEST(test_a_load_with_no_memory_left_says_so_and_takes_nothing);
     RUN_TEST(test_a_full_manager_refuses_another_scene_until_one_is_unloaded);
     RUN_TEST(test_an_entity_is_found_by_its_name);

@@ -79,7 +79,8 @@ typedef struct {
 } scene_failure_t;
 
 /* Loads the scene `name` beside any already loaded, its meshes opened from
- * `pack` or the build's asset pack. NULL on failure, and `why`, which may be
+ * `pack`, or for scene_load() from the asset bundle named after the scene,
+ * held until the scene unloads. NULL on failure, and `why`, which may be
  * NULL, says why; a success sets it to SCENE_OK. */
 scene_t* scene_load(const char* name, scene_failure_t* why);
 scene_t* scene_load_from(const asset_pack_t* pack, const char* name, scene_failure_t* why);

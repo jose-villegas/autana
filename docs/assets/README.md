@@ -1,27 +1,45 @@
-# Asset packs
+# Asset bundles
 
-Content that is data, not code, lives in one binary file, the asset pack, and
-is read where it lies: in a flash partition the firmware maps, or in a buffer a
-host read from a file. A baked mesh is the first kind of entry. Nothing is
-compiled into the app for it, so the app image does not grow with content.
+Content that is data, not code, ships in **bundles** and is read where it
+lies: in a flash partition the firmware maps, or in a buffer a host read from
+a file. Each bundle is one asset pack, named after its root asset, and is
+mounted and checked alone, so reading one costs its own size only. A baked
+mesh is the first kind of entry. Nothing is compiled into the app for it, so
+the app image does not grow with content.
 
 ```mermaid
 flowchart LR
     Import["mesh_import.py"] --> Entry["name.mesh<br/><i>one entry, committed</i>"]
     Entry --> Build["build_pack.py"]
-    Build --> Pack["assets.bin<br/><i>a build product</i>"]
-    Pack --> Flash["flashed with the app<br/><i>assets partition, mapped by esp_partition_mmap</i>"]
-    Pack --> Host["host reader<br/><i>asset_file_open</i>"]
-    Flash --> Open["asset_pack_open(base, size)<br/><i>checks, then views</i>"]
-    Host --> Open
-    Open --> View["r3d_lit_mesh_open()<br/><i>pointers into the pack</i>"]
+    Build --> Files["DIR/name.apak<br/><i>one file per bundle</i>"]
+    Build --> Image["assets.bin<br/><i>bundle directory and every bundle</i>"]
+    Image --> Flash["assets partition<br/><i>each bundle mapped alone</i>"]
+    Files --> Host["host reader<br/><i>asset_file_open</i>"]
+    Flash --> Store["asset_store_bundle(name)<br/><i>mounts on first use, counted</i>"]
+    Host --> Store
+    Store --> Open["asset_pack_open(base, size)<br/><i>checks, then views</i>"]
+    Open --> View["r3d_lit_mesh_open()<br/><i>pointers into the bundle</i>"]
 ```
+
+## Bundles
+
+A root is a source file nothing else names. `build_pack.py` finds the roots by
+searching, so no list is kept:
+
+| Root | Bundle | Holds |
+|---|---|---|
+| `NAME.scene.toml` | `NAME` | every mesh its renderers name |
+| `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
+
+Ids are unique within a bundle. A mesh two roots name would be a shared asset,
+a bundle of its own the others depend on; that loader is not built, so
+`build_pack.py` refuses such a tree and names the mesh.
 
 ## The pack
 
-All integers are little-endian. An entry never holds a pointer: it names its own
-parts by offset from its own first byte, so the bytes are usable as mapped and
-there is no fix-up pass.
+Every bundle is a pack. All integers are little-endian. An entry never holds a
+pointer: it names its own parts by offset from its own first byte, so the
+bytes are usable as mapped and there is no fix-up pass.
 
 | Part | Size | Holds |
 |---|---|---|
@@ -31,7 +49,7 @@ there is no fix-up pass.
 
 Offsets in the table count from the start of the pack. The writer pads each
 entry to its alignment (16 by default), and the pack must itself start on a
-16-byte boundary, which a partition mapping (64 KB) and `aligned_alloc()` both
+16-byte boundary, which a sector-aligned mapping and `aligned_alloc()` both
 give. The entry rows are read in one place, `asset_pack_entry()`.
 
 An entry's type is four characters stored in the table, so a hex dump reads it.
@@ -42,36 +60,61 @@ list; `asset_pack_find()` returns an entry's bytes only for the type asked for.
 |---|---|---|
 | `LMSH` | A lit mesh | [The baked mesh](../render/Mesh-Import.md#the-baked-mesh) |
 
+## The bundle directory
+
+A region that holds several bundles, the device's partition, starts with a
+directory that says where each lies:
+
+| Part | Size | Holds |
+|---|---|---|
+| Header | 16 bytes | `"ABDR"`, CRC-32 of every byte after it to the end of the rows, format version, bundle count |
+| Rows | 40 bytes per bundle | name (32 bytes, NUL padded), offset from the region's start, size |
+| Bundles | each on its own 4 KB sector, after the rows, in row order | the bundle's pack |
+
+A sector per bundle lets one bundle be mapped, and rewritten, without the
+others.
+
 ## Checks
 
 `asset_pack_open(base, size)` takes a base pointer and a size and nothing else,
 so what it checks and what it returns do not depend on where the bytes came
 from. `asset_pack_total_size()` reads the size a pack states from its first 32
-bytes, so a reader maps or reads the header first and then the pack alone. It
-reports the first failure:
+bytes, so a reader maps or reads the header first and then the pack alone.
+`asset_directory_open()` checks a directory the same way, and
+`asset_directory_size()` reads its size from its header. Each reports the first
+failure:
 
 | Status | Meaning |
 |---|---|
 | `ASSET_ERR_NO_PACK` | no bytes: no partition, no file |
 | `ASSET_ERR_TRUNCATED` | shorter than a header, or than the size it states |
-| `ASSET_ERR_MAGIC` | not an asset pack |
+| `ASSET_ERR_MAGIC` | not an asset pack or bundle directory |
 | `ASSET_ERR_VERSION` | a format version this firmware does not read |
 | `ASSET_ERR_SIZE` | the header is malformed: a size that cannot hold it, or reserved bytes in use |
-| `ASSET_ERR_CRC` | the bytes after the header do not match the checksum |
-| `ASSET_ERR_BOUNDS` | an entry or one of its parts leaves its range, or is misaligned |
-| `ASSET_ERR_NOT_FOUND` | no entry has that name |
+| `ASSET_ERR_CRC` | the bytes do not match the checksum |
+| `ASSET_ERR_BOUNDS` | an entry or one of its parts leaves its range, or is misaligned; a directory row outside the region, off its sector, over the rows or the bundle before it, or with no room for its name's NUL |
+| `ASSET_ERR_DUPLICATE` | two directory rows share a name |
+| `ASSET_ERR_NOT_FOUND` | no entry or bundle has that name |
 | `ASSET_ERR_TYPE` | the entry is not of the type asked for |
+| `ASSET_ERR_FULL` | as many bundles are mounted as the store holds |
 
-A buffer may be larger than the pack, as a partition is. A scene names the
-meshes it draws by asset id; `scene_load()` opens each from the pack and
-fails on the first missing or malformed one. A scene that fails to load is
-not drawn, and the load names the id and the pack's status; showing that is up
-to the app.
+A buffer may be larger than the pack, as a mapping is.
+
+## The store
+
+`asset_store_bundle(name)` mounts bundle `name` and checks it on its first
+use, then counts uses; `asset_store_release(name)` drops one, and at none the
+bundle is unmapped or freed. A missing or bad bundle is `NULL` and one log
+line saying why. `scene_load(id)` mounts bundle `id` and opens the scene's
+meshes from it, failing on the first missing or malformed one with the id and
+the status; `scene_unload()` releases it. A scene that fails to load is not
+drawn; showing that is up to the app.
 
 ## The device
 
-`launcher/partitions.csv` holds the pack in a data partition labelled `assets`,
-subtype `0x40` (the first application subtype), at the end of the 16 MB flash.
+`launcher/partitions.csv` holds the bundles in a data partition labelled
+`assets`, subtype `0x40` (the first application subtype), at the end of the
+16 MB flash.
 
 | Partition | Offset | Size |
 |---|---|---|
@@ -80,45 +123,47 @@ subtype `0x40` (the first application subtype), at the end of the 16 MB flash.
 | `factory` (the app) | `0x10000` | 8 MB |
 | `assets` | `0x810000` | `0x7F0000` |
 
-`asset_store_pack()` finds the partition, maps its first bytes to read the
-pack's size, maps that many and opens it, on the first call and never again.
-Reads of the mapped pack go through the flash cache as the app's own const data
-does, so an entry costs no RAM and no copy. When the partition table is older
-than the firmware, the pack is missing or the checks fail, it logs why and the
-scene that asked stays blank.
-
-The reader takes the bytes and their size, so a pack that arrives some other way
-(read into PSRAM from a card, say) opens with the same call.
+On the first mount the store finds the partition and maps its directory, kept
+for good. Each bundle is then mapped alone from its slot. Reads of a mapped
+bundle go through the flash cache as the app's own const data does, so an entry
+costs no RAM and no copy. When the partition table is older than the firmware,
+the directory is missing or a check fails, the log says why and the content
+that asked stays out.
 
 ## The host
 
-`asset_file_open()` reads a file into aligned memory outside the host tests'
-modelled heap, as a mapped partition costs the board none, and calls the same
-`asset_pack_open()`. `asset_store_pack()` on a host reads the file named by
-`AUTANA_ASSET_PACK`. `run_tests.sh` and the render scripts pack the meshes in the
-tree and set it.
+The host lays bundles out the way a card will: one file per bundle,
+`<dir>/<name>.apak`. `asset_file_open()` reads a file into aligned memory
+outside the host tests' modelled heap, as a mapped partition costs the board
+none, and calls the same `asset_pack_open()`. The store's `dir` is
+`AUTANA_ASSET_DIR`, set per process; `run_tests.sh` and the render scripts
+write the bundles in the tree and set it, or build the folder into the
+renderer.
 
 ## Tools
 
 | Tool | Does |
 |---|---|
 | `mesh_import.py` | bakes a mesh and writes `<name>.mesh`, one entry, beside its import file |
-| `build_pack.py -o PACK` | writes the pack from the `.mesh` entries every import and scene file in `launcher/main` names |
+| `build_pack.py -o DIR [--image FILE]` | writes `DIR/<bundle>.apak` for each root in `launcher/main`, and with `--image` the partition image |
+| `build_pack.py --bundle-of ID` | prints the bundle that holds mesh `ID` |
 | `rebake.py` | rewrites one `.mesh`'s clusters and octree; a fixed point |
 
-`launcher/tools/asset/asset_pack.py` is the one writer of the container,
-`launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` of the mesh entry; `asset_pack.c` and
-`r3d_lit_mesh.c` are the one reader of each.
+`launcher/tools/asset/asset_pack.py` is the one writer of the pack and the
+directory, `launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` of the mesh
+entry; `asset_pack.c`, `asset_directory.c` and `r3d_lit_mesh.c` are the one
+reader of each.
 
-The entries are committed, like the generated C they stand beside. The pack is
-built from them and never committed: the firmware build, the host tests and the
-render scripts each pack the tree they are in, so there is no second copy to
-keep in step.
+The entries are committed, like the generated C they stand beside. Bundles are
+built from them and never committed: the firmware build, the host tests and
+the render scripts each write the tree they are in, so there is no second copy
+to keep in step.
 
 ### Flashing
 
-The firmware build packs `assets.bin` into its build directory and lists it
-with the partition's offset in `flash_args`, so every `autana flash` writes the
-pack with the app. `idf.py assets-flash` writes just that region, in seconds,
-after a change to the meshes alone. The QEMU image carries it because it merges
-every file in `flash_args`.
+The firmware build writes the bundles to `assets/` in its build directory and
+the partition image to `assets.bin`, listed with the partition's offset in
+`flash_args`, so every `autana flash` writes the bundles with the app.
+`idf.py assets-flash` writes just that region, in seconds, after a change to
+the meshes alone. The QEMU image carries it because it merges every file in
+`flash_args`.

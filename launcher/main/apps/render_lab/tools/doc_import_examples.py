@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "tools"))
-from r3d.bake_fidelity import write_pack
+from r3d.bake_fidelity import write_assets
 from r3d.import_settings import load_scene
 from r3d.lit_mesh import write_lit_mesh
 from r3d.mesh_import import bake_geometry
@@ -22,10 +22,10 @@ def main(work, out):
     geometry = bake_geometry(job, scene)
     write_lit_mesh(scratch, job.renderer.variant.name, geometry.positions, geometry.rgb, geometry.tris,
                    geometry.tri_double, **geometry.scale)
-    pack = write_pack(job.asset_name, scratch / f"{job.renderer.variant.name}.mesh", scratch)
+    assets = write_assets(job.asset_name, scratch / f"{job.renderer.variant.name}.mesh", scratch)
     subprocess.run([str(work / "render_lab_render"), "--quarter", "0", "--no-hud", "--scene", "sponza",
                     "--frames", "5", "--dt", "5000", "-o", str(scratch / "last.bmp")], check=True,
-                   env={**os.environ, "AUTANA_ASSET_PACK": str(pack)})
+                   env={**os.environ, "AUTANA_ASSET_DIR": str(assets)})
     compare = root / "launcher/tools/render/render_compare.py"
     subprocess.run([sys.executable, str(compare), "--out", str(out / "import-light.png"),
                     "--label-a", "albedo", "--label-b", "baked light", "--row", "albedo | baked light",

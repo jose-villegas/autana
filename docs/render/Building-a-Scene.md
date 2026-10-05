@@ -11,7 +11,7 @@ flowchart LR
     Import --> Scene["Scene file<br/><i>.scene.toml</i>"]
     Scene --> Bake["mesh_import.py"]
     Bake --> Meshes["Baked meshes<br/><i>name.mesh</i>"]
-    Meshes --> Pack["build_pack.py<br/><i>assets.bin</i>"]
+    Meshes --> Pack["build_pack.py<br/><i>one bundle per scene</i>"]
     Bake --> Table["Scene table<br/><i>_scene_generated.c</i>"]
     Pack --> Draw["Your app<br/><i>scene_load(), scene_activate()</i>"]
     Table --> Draw
@@ -122,8 +122,8 @@ The first writes `<scene>.<variant>.mesh` for each baked renderer; the second
 writes the `hall` scene table, one const `scene_def_t` the scene manager loads
 by name. A mesh without `bake = true` can also be imported on its own.
 Generated files and baked `.mesh` entries are committed as written and never
-reformatted. The firmware build packs every baked mesh in the tree into the
-asset pack and flashes it with the app ([assets/README.md](../assets/README.md#flashing)).
+reformatted. The firmware build writes the scene's meshes into its
+[bundle](../assets/README.md#bundles), named after the scene, and flashes it with the app ([assets/README.md](../assets/README.md#flashing)).
 
 ## 6. Draw it
 

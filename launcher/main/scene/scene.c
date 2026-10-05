@@ -149,7 +149,14 @@ scene_load_from(const asset_pack_t* pack, const char* name, scene_failure_t* why
 
 scene_t*
 scene_load(const char* name, scene_failure_t* why) {
-    return scene_load_from(asset_store_pack(), name, why);
+    const asset_pack_t* bundle = asset_store_bundle(name);
+    scene_t* scene = scene_load_from(bundle, name, why);
+    if (scene != NULL) {
+        scene->holds_bundle = true;
+    } else if (bundle != NULL) {
+        asset_store_release(name);
+    }
+    return scene;
 }
 
 void
@@ -162,6 +169,9 @@ scene_unload(scene_t* scene) {
             continue;
         }
         scene_draw_forget(scene);
+        if (scene->holds_bundle) {
+            asset_store_release(scene->def->name);
+        }
         loaded_count--;
         memmove(&loaded[i], &loaded[i + 1], sizeof loaded[0] * (size_t)(loaded_count - i));
         loaded[loaded_count] = NULL;

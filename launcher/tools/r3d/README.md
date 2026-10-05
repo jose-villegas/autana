@@ -14,7 +14,7 @@ mesh. Nothing here runs on the board.
 | [meshopt.py](meshopt.py) | [meshoptimizer](https://github.com/zeux/meshoptimizer)'s simplifier and meshlet clusterizer through ctypes, built once from the pinned `third_party/upstream/meshoptimizer` submodule into `.cache/`. |
 | [light.py](light.py) | Baked light from a scene's typed lights (`LIGHTS`): a point sun by shadow rays, sky visibility and ambient, distance-limited local occlusion (`[bake].ao`), albedo from textures, and culling of what no point in a region can see. |
 | [octree.py](octree.py) | Groups weighted items, here meshlets, into an octree whose leaves hold runs of them. |
-| [build_pack.py](build_pack.py) | Writes the [asset pack](../../../docs/assets/README.md) (`-o PACK`) from the `.mesh` entries every import and scene file names, with the container writer in [`tools/asset/`](../asset/asset_pack.py). Standard library only. |
+| [build_pack.py](build_pack.py) | Writes the [asset bundles](../../../docs/assets/README.md) (`-o DIR`, `--image FILE`), one per root, from the `.mesh` entries each names, with the container writer in [`tools/asset/`](../asset/asset_pack.py). Standard library only. |
 | [mesh_asset.py](mesh_asset.py) | The lit mesh entry's type and byte layout, shared by the baker and the pack builder. Standard library only. |
 | [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under an octree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as a `<name>.mesh` pack entry; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads an entry back. |
 | [import_settings.py](import_settings.py) | Reads and validates an import file and a scene file; standard library only, every table closed. |
@@ -161,8 +161,8 @@ $PY tools/r3d/bake_fidelity.py SCENE.scene.toml --mesh FLAT_MESH --script HOST  
 ```
 
 It bakes the simplified geometry once, re-lights it for each variant into
-`scratch/` (nothing tracked is written), packs that mesh in place of the
-tracked one for the host renderer (`AUTANA_ASSET_PACK`), renders
+`scratch/` (nothing tracked is written), bundles that mesh in place of the
+tracked one for the host renderer (`AUTANA_ASSET_DIR`), renders
 the poses and scores them with `render_compare.py`. A variant is
 `samples=fixed:N` or `auto:MIN:MAX:AREA` (`median*K` for AREA), `sky=N`,
 and `place=stratified|centroid`. Without `--variant` the
@@ -226,9 +226,9 @@ $E/bin/python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml
     --poses train.txt --reference reference_train --out fitted
 ```
 
-To score a fitted mesh, pack it in place of the tracked one, as
-`bake_fidelity.py`'s `write_pack` does, run the scene's host renderer on that
-pack (`AUTANA_ASSET_PACK`) over poses the fit never saw, and score the video
+To score a fitted mesh, bundle it in place of the tracked one, as
+`bake_fidelity.py`'s `write_assets` does, run the scene's host renderer on those
+bundles (`AUTANA_ASSET_DIR`) over poses the fit never saw, and score the video
 with `render_compare.py --reference-video`, as in
 [Fidelity reference](#fidelity-reference). `test_r3d_appearance.py` runs
 the fit itself only where CUDA, PyTorch and nvdiffrast import.
@@ -331,7 +331,7 @@ to 5 x 5 pixel centres, which is what a centre-by-centre path with that
 limit would take. The script builds the pipeline to pass each triangle
 through the tool on its way to `r3d_span`, so the boxes are the ones the
 rasterizer chooses its path by.
-`--mesh` names the mesh's asset id in a pack built from the tree, or in the pack `AUTANA_ASSET_PACK` names;
+`--mesh` names the mesh's asset id, read from the bundle that holds it, written from the tree or in the folder `AUTANA_ASSET_DIR` names;
 `POSES` is a text file of `size`, `lens` and `pose` lines, its format in
 [`triangle_sizes.h`](triangle_sizes.h), and `-` reads it from standard
 input: a scene prints its poses from its own camera rather than keeping a

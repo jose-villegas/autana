@@ -8,8 +8,8 @@
 --host EXECUTABLE reuses an existing renderer instead of building --script.
 
 Each variant re-lights the mesh's simplified geometry, which is baked once,
-writes the result under --work (nothing tracked is touched), packs it in
-place of the tracked mesh for the scene's host renderer (AUTANA_ASSET_PACK),
+writes the result under --work (nothing tracked is touched), bundles it in
+place of the tracked mesh for the scene's host renderer (AUTANA_ASSET_DIR),
 renders --render-args with a video, and scores the frames against the reference
 images from reference_render.py with render_compare.py. Prints one table
 sorted by mean error.
@@ -37,10 +37,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import log  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene  # noqa: E402
 from r3d.light import triangle_areas  # noqa: E402
-from asset.asset_pack import build_pack  # noqa: E402
-from r3d.build_pack import mesh_files  # noqa: E402
+from r3d.build_pack import bundle_bytes, write_bundles  # noqa: E402
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
-from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 from r3d.mesh_import import REPO, bake_geometry, flat_colours  # noqa: E402
 
 LAUNCHER = REPO / "launcher"
@@ -89,14 +87,12 @@ def build_host(script, out_dir):
     return pathlib.Path(done.stdout.split("built ", 1)[1].strip())
 
 
-def write_pack(name, mesh_file, out):
-    """The asset pack of every mesh the scene's tree bakes, with `name`'s entry
-    taken from `mesh_file`; returns its path."""
-    entries = mesh_files([LAUNCHER / "main"])
-    entries[name] = mesh_file
-    pack = out / "assets.bin"
-    pack.write_bytes(build_pack([(key, LIT_MESH, entry.read_bytes()) for key, entry in sorted(entries.items())]))
-    return pack
+def write_assets(name, mesh_file, out):
+    """The asset bundles of every root in the tree, mesh `name` taken from
+    `mesh_file`, written to out/assets; returns that folder."""
+    assets = out / "assets"
+    write_bundles(assets, bundle_bytes([LAUNCHER / "main"], [f"{name}={mesh_file}"]))
+    return assets
 
 
 def write_variant(job, scene, geometry, spec, out):
@@ -112,11 +108,11 @@ def write_variant(job, scene, geometry, spec, out):
     return out / f"{renderer.variant.name}.mesh"
 
 
-def score(args, host, pack, work):
-    """(mean, p95, ssim, edge, interior) of the frames `host` renders from `pack`."""
+def score(args, host, assets, work):
+    """(mean, p95, ssim, edge, interior) of the frames `host` renders from the bundles in `assets`."""
     video = work / "frames.avi"
     subprocess.run([host.as_posix(), *args.render_args.split(), "-o", (work / "last.bmp").as_posix(), "--video", video.as_posix()],
-                   check=True, capture_output=True, env={**os.environ, "AUTANA_ASSET_PACK": pack.as_posix()})
+                   check=True, capture_output=True, env={**os.environ, "AUTANA_ASSET_DIR": assets.as_posix()})
     compare = LAUNCHER / "tools" / "render" / "render_compare.py"
     done = subprocess.run([sys.executable, compare.as_posix(), "--out", (work / "unused.png").as_posix(), "--reference-video",
                            video.as_posix(), pathlib.Path(args.reference).as_posix(), "--reference-scale", str(args.reference_scale),
@@ -162,7 +158,7 @@ def main(argv=None):
         out = work / label
         log(f"variant {label}")
         mesh_file = write_variant(job, scene, geometry, spec, out)
-        rows.append((label, score(args, host, write_pack(job.asset_name, mesh_file, out), out)))
+        rows.append((label, score(args, host, write_assets(job.asset_name, mesh_file, out), out)))
         print(f"{label}: mean dE76 {rows[-1][1][0]:.3f}", flush=True)
     print(table(rows))
     (work / "table.md").write_text(table(rows) + "\n")

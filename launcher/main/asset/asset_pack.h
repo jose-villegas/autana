@@ -36,6 +36,8 @@ typedef enum {
     ASSET_ERR_BOUNDS,    /* an entry or one of its parts leaves its range, or is misaligned */
     ASSET_ERR_NOT_FOUND, /* no entry has that name */
     ASSET_ERR_TYPE,      /* the entry is not of the type asked for */
+    ASSET_ERR_DUPLICATE, /* two bundles in a directory share a name */
+    ASSET_ERR_FULL,      /* as many bundles are mounted as the store holds */
 } asset_status_t;
 
 /* A validated pack. Holds no copy: `base` must outlive it. */
@@ -60,6 +62,12 @@ typedef struct {
 
 /* The alignment a pack's base address must have. */
 #define ASSET_PACK_BASE_ALIGN 16U
+
+/* The little-endian u32 at `at`: how every field of a pack or a directory is read. */
+static inline uint32_t
+asset_read_u32(const uint8_t* at) {
+    return (uint32_t)at[0] | ((uint32_t)at[1] << 8) | ((uint32_t)at[2] << 16) | ((uint32_t)at[3] << 24);
+}
 
 /* CRC-32 (zlib's), which is the checksum a pack carries over its bytes after the header. */
 uint32_t asset_crc32(const void* data, size_t size);

@@ -29,8 +29,8 @@ read flash in place and cost no RAM.
 
 | Call | Meaning |
 |---|---|
-| `scene_load(name, &why)` | loads the scene beside any already loaded; NULL on failure, and `why` (which may be NULL) says what failed: no such scene, the manager full, no memory, or a mesh the pack could not open, with its id and the pack's status |
-| `scene_unload(scene)` | frees it; its camera, if active, is deactivated |
+| `scene_load(name, &why)` | mounts the [asset bundle](../assets/README.md#the-store) `name` and loads the scene from it beside any already loaded; NULL on failure, and `why` (which may be NULL) says what failed: no such scene, the manager full, no memory, or a mesh the pack could not open, with its id and the pack's status |
+| `scene_unload(scene)` | frees it and releases its bundle; its camera, if active, is deactivated |
 | `scene_find(scene, name)` | the entity with that name |
 | `scene_entity_set_transform()` / `_set_enabled()` | move an entity, hide or show a renderer |
 | `scene_activate(scene, camera)` | makes that camera (NULL: the first) the one active camera |
@@ -83,8 +83,8 @@ sooner.
 
 Scenes are not taken from the app arena: it gives memory back only in the
 reverse order it was taken, and scenes unload in any order. Meshes are opened
-from an `asset_pack_t`; `scene_load_from()` takes the pack, so a test can load
-from one it builds.
+from an `asset_pack_t`: `scene_load()` mounts the scene's bundle, and
+`scene_load_from()` takes the pack, so a test can load from one it builds.
 
 ## Beneath it
 

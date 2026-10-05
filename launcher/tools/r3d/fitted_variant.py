@@ -261,9 +261,9 @@ def sweep_rows(out, points):
 
 def _score_mesh(args, name, mesh_path, score_dir, host):
     """Score a packed mesh through the host renderer."""
-    from r3d.bake_fidelity import score, write_pack
+    from r3d.bake_fidelity import score, write_assets
 
-    return score(args, host, write_pack(name, mesh_path, score_dir), score_dir)[:2]
+    return score(args, host, write_assets(name, mesh_path, score_dir), score_dir)[:2]
 
 
 def held_out_score(job, mesh_path, work, host, inputs=None):
