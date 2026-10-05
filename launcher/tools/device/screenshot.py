@@ -130,8 +130,12 @@ DEFAULT_TURN_QUARTER = 3
 
 def panel_point(x, y, quarter, width=PANEL_WIDTH, height=PANEL_HEIGHT):
     """The panel pixel that turn_png(png, quarter) moved to (x, y), for a
-    width x height panel image: turn_png's inverse, for one point."""
+    width x height panel image: turn_png's inverse, for one point.
+    ValueError when (x, y) lies outside the turned image."""
     quarter %= 4
+    shown_width, shown_height = (height, width) if quarter % 2 else (width, height)
+    if not (0 <= x < shown_width and 0 <= y < shown_height):
+        raise ValueError(f"({x}, {y}) is outside the {shown_width} x {shown_height} screenshot")
     if quarter == 1:
         return y, height - 1 - x
     if quarter == 2:

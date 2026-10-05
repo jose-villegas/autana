@@ -139,11 +139,11 @@ one line naming the new form, then runs it.
 | `autana drag <x0> <y0> <x1> <y1> <ms>` | Drag between two points over `ms`. |
 | `autana button <boot\|power> [short\|long]` | A BOOT or PWR press; `short` when omitted. |
 
-A point is a pixel of the default `autana screenshot` (448 x 368, landscape),
-whichever way the board is held: read a button's centre off that image and
-tap it as it is. autana turns the point into the touch controller's own
-frame before sending it. An `--as-shown` or `--framebuffer` capture is
-turned differently, so its pixels do not tap the same spot.
+A point is a pixel of the default `autana screenshot`, whichever way the
+board is held: read a button's centre off that image and pass it as it is.
+autana turns it into the panel's own frame, the one `--framebuffer` shows,
+before sending it. An `--as-shown` or `--framebuffer` capture's pixels are in
+a different frame and may not tap the same spot.
 
 The two raw levels below gesture, `touch` and `imu`, live under
 [`autana debug`](#debug).
@@ -206,7 +206,7 @@ rarely needs the frame loop paused or a raw sensor level, so these stay one
 | `autana debug freeze` | Stop the frame loop where it is. |
 | `autana debug resume` | Run it again. |
 | `autana debug step [N]` | Advance `N` frames while frozen; 1 when omitted. |
-| `autana debug touch <down\|up> <x> <y>` | One raw touch-controller level; `up` hands back to the controller. |
+| `autana debug touch <down\|up> <x> <y>` | One raw touch-controller level, at a panel-frame point (a `--framebuffer` pixel, not a default-screenshot one); `up` hands back to the controller. |
 | `autana debug imu <ax> <ay> <az>` | Raw accelerometer counts; `autana debug imu release` hands back to the sensor. |
 | `autana debug framewatch` | A development build's frame watch as JSON: the last frame's allocations, frees and log lines, and every site repeating frame after frame ([the frame watch](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state)). |
 

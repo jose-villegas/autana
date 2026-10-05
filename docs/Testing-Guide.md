@@ -404,7 +404,8 @@ The option also makes the temperature read report failure, because
 ESP-IDF's driver waits forever on a sensor QEMU does not have.
 
 **Driving the shell.** The console listener of such an image also takes
-`TOUCH <down|up> <x> <y>` and `IMU <ax> <ay> <az>` (panel pixels; raw
+`TOUCH <down|up> <x> <y>` and `IMU <ax> <ay> <az>` (panel pixels, the frame
+of `qemu_run.py`'s own unturned screenshot rather than `autana tap`'s; raw
 accelerometer counts, 4096 to the g). `qemu_run.py --do` strings them into
 what a user does, one ordered step at a time:
 

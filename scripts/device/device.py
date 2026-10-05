@@ -1557,17 +1557,13 @@ def screenshot(args, store, board):
 
 
 def touch_point(x, y):
-    """A point of the default screenshot in the panel's own frame, the one
-    the TAP, PRESS and DRAG console verbs take. The default screenshot is
-    one fixed turn of the panel, so the board's orientation never enters."""
+    """The panel-frame point TAP, PRESS and DRAG take for pixel (x, y) of
+    the default screenshot; ValueError outside that screenshot. The default
+    screenshot is one fixed turn of the panel, so the board's orientation
+    never enters."""
     import screenshot as screenshot_tool
 
-    quarter = screenshot_tool.DEFAULT_TURN_QUARTER
-    width, height = screenshot_tool.PANEL_WIDTH, screenshot_tool.PANEL_HEIGHT
-    shown_width, shown_height = (height, width) if quarter % 2 else (width, height)
-    if not (0 <= x < shown_width and 0 <= y < shown_height):
-        raise ValueError(f"({x}, {y}) is outside the {shown_width} x {shown_height} screenshot")
-    return screenshot_tool.panel_point(x, y, quarter)
+    return screenshot_tool.panel_point(x, y, screenshot_tool.DEFAULT_TURN_QUARTER)
 
 
 def batch(args, store, board):

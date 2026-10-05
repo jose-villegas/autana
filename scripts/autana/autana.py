@@ -893,8 +893,7 @@ def imu(args):
 
 def gesture(args, verb, usage, points):
     """TAP, PRESS or DRAG, its first `points` x, y pairs read as pixels of the
-    default `autana screenshot` and sent in the panel's own frame, the one
-    the touch controller reports in."""
+    default `autana screenshot` and sent in the panel's own frame."""
     reject_unknown(verb, args)
     if not all(is_int(value) for value in args):
         sys.exit(usage)
