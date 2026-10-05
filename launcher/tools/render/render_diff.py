@@ -6,11 +6,12 @@
 Either side may be a host render (tools/render/render_scene.sh writes 24bpp BMPs)
 or a device capture (autana screenshot writes a PNG plus a .json sidecar).
 
-ORIENTATION IS DECLARED, NEVER GUESSED. A device capture is always the
-framebuffer the way the panel holds it - 368 x 448 - whatever the shell was
-rotated to at the time; the sidecar's orientation_quarter says which
-rotation that was, and is reported here rather than applied. State the
-quarter for anything that is a render: a quarter turn comes out 448 x 368
+ORIENTATION IS DECLARED, NEVER GUESSED. A device capture (autana screenshot,
+or qemu_run.py's) is the framebuffer the way the panel holds it, turned by
+the quarter its sidecar's image_turn_quarter records; that turn is undone
+here, whatever the shell was rotated to at the time. The sidecar's
+orientation_quarter says which rotation that was, and is reported here
+rather than applied. State the quarter for anything that is a render: a quarter turn comes out 448 x 368
 and is refused without one, and half a turn keeps the panel's own shape
 while still being upside down, which no size can reveal. Everything is
 compared in panel coordinates.
@@ -32,6 +33,7 @@ import zlib
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "device"))
 from panel_size import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402  (path must be set up first)
+from screenshot import turn_png  # noqa: E402
 
 BMP_HEADER_SIZE = 54
 
@@ -161,20 +163,30 @@ def read_png(data):
 
 
 def load(path):
+    """The image at `path`; a capture comes back with the turn its sidecar
+    records undone, as the framebuffer the way the panel holds it."""
     with open(path, "rb") as f:
         data = f.read()
     if data[:2] == b"BM":
         return read_bmp(data)
+    quarter = sidecar(path).get("image_turn_quarter", 0) % 4
+    if quarter:
+        data = turn_png(data, -quarter)
     return read_png(data)
+
+
+def sidecar(path):
+    """A capture's .json state, or an empty dict for a render."""
+    state = os.path.splitext(path)[0] + ".json"
+    if not os.path.exists(state):
+        return {}
+    with open(state) as f:
+        return json.load(f)
 
 
 def sidecar_quarter(path):
     """The quarter the shell was at when a capture was taken, or None."""
-    state = os.path.splitext(path)[0] + ".json"
-    if not os.path.exists(state):
-        return None
-    with open(state) as f:
-        return json.load(f).get("orientation_quarter")
+    return sidecar(path).get("orientation_quarter")
 
 
 def to_panel(image, quarter, label):
@@ -287,7 +299,7 @@ def main(argv=None):
     for path, declared in ((args.a, args.quarter_a), (args.b, args.quarter_b)):
         side = sidecar_quarter(path)
         if side is not None:
-            print("%s: a capture, panel-native; its sidecar says the shell was at "
+            print("%s: a capture, turned back to the panel's frame; its sidecar says the shell was at "
                   "quarter %s" % (path, side))
             if declared is not None and declared != side:
                 raise SystemExit("%s was given --quarter %d but its sidecar says %s"

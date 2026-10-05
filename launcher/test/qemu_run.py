@@ -19,15 +19,18 @@ SELFTEST_COMPLETE. With either, the image is expected to boot into the shell
 instead: once the console listener is up, each --suite is sent as RUNSUITE
 and waited out to its RUNSUITE_COMPLETE, each --touch is left on the screen
 in turn, and then --screenshot sends SCREENSHOT and writes the frame as a
-PNG (and its state as .json) the way tools/device/screenshot.py does from a board.
+PNG (and its state as .json) the way `autana screenshot` does from a board:
+turned to its default landscape view.
 
 --do drives that same image as a user would, one ordered step at a time, and
 runs after the --suite and --touch options and before --screenshot:
 
-    --do "tap 180 95" --do "wait 2500" --do "screenshot cube.png"
-    --do "tilt 0 -4096 0" --do "swipe 184 446 184 200"
+    --do "tap 95 187" --do "wait 2500" --do "screenshot cube.png"
+    --do "tilt 0 -4096 0" --do "swipe 222 1 222 200"
 
-A tap or swipe goes in as TOUCH lines and a tilt as an IMU line. Leave
+A tap or swipe takes pixels of that screenshot, as `autana tap` does, and
+goes in as TOUCH lines in the panel's own frame; a touch (and --touch) is
+sent as it is, in panel pixels. A tilt goes in as an IMU line. Leave
 --icount off for this: emulated time then runs far slower than the host's,
 and how long a press lasts is counted in the emulated clock.
 
@@ -67,6 +70,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 import device_profile  # noqa: E402  (path must be set up first)
 from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
 from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
+import screenshot as wire  # noqa: E402  (the board tool's own protocol)
 
 SENTINEL = "SELFTEST_COMPLETE"
 LISTENING = "listening for 'screenshot'"
@@ -185,10 +189,6 @@ class Console:
 
 
 def take_screenshot(console, out_path):
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                    "..", "tools", "device"))
-    import screenshot as wire  # noqa: E402  (the board tool's own protocol)
-
     console.send(wire.TRIGGER.decode().strip())
     total, chunks, state = None, [], None
     for line in console.lines():
@@ -210,14 +210,9 @@ def take_screenshot(console, out_path):
                 print("screenshot: decoded %d bytes, device announced %d"
                       % (len(bmp), total))
                 return False
-            stem = os.path.splitext(out_path)[0]
-            with open(stem + ".png", "wb") as fh:
-                fh.write(wire.bmp_bytes_to_png(bmp))
-            if state is not None:
-                with open(stem + ".json", "w") as fh:
-                    json.dump(json.loads(state), fh, indent=2)
-                    fh.write("\n")
-            print("screenshot: %s.png" % stem)
+            png = wire.turn_png(wire.bmp_bytes_to_png(bmp), wire.DEFAULT_TURN_QUARTER)
+            png_path, _ = wire.write_capture(out_path, png, state, wire.DEFAULT_TURN_QUARTER)
+            print("screenshot: %s" % png_path)
             return True
     print("screenshot: the capture never finished")
     return False
@@ -258,6 +253,7 @@ def touch(console, state, x, y):
 
 
 def touch_tap(console, x, y):
+    x, y = wire.panel_point(x, y, wire.DEFAULT_TURN_QUARTER)
     touch(console, "down", x, y)
     time.sleep(TOUCH_SETTLE_S)
     touch(console, "up", x, y)
@@ -266,6 +262,8 @@ def touch_tap(console, x, y):
 
 
 def touch_swipe(console, x0, y0, x1, y1):
+    x0, y0 = wire.panel_point(x0, y0, wire.DEFAULT_TURN_QUARTER)
+    x1, y1 = wire.panel_point(x1, y1, wire.DEFAULT_TURN_QUARTER)
     for i in range(SWIPE_POINTS + 1):
         touch(console, "down", x0 + (x1 - x0) * i // SWIPE_POINTS,
               y0 + (y1 - y0) * i // SWIPE_POINTS)
@@ -298,8 +296,9 @@ def run_action(console, action):
         if verb == "wait" and len(args) == 1:
             time.sleep(int(args[0]) / 1000.0)
             return True
-    except ValueError:
-        pass
+    except ValueError as error:
+        print("not an action: %r (%s)" % (action, error))
+        return False
     print("not an action: %r" % action)
     return False
 
@@ -362,7 +361,8 @@ def main(argv):
                         help="one step, in order (repeatable): 'suite NAME', "
                              "'tap X Y', 'swipe X0 Y0 X1 Y1', 'touch down|up "
                              "X Y', 'tilt AX AY AZ', 'wait MS', 'screenshot "
-                             "PNG'. Pixels are the panel's own, tilt is raw "
+                             "PNG'. A tap or swipe takes pixels of the "
+                             "screenshot, a touch the panel's own; tilt is raw "
                              "accelerometer counts, 4096 to the g")
     parser.add_argument("--screenshot", default=None, metavar="PNG",
                         help="capture the screen once the suites and touches "
