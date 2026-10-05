@@ -184,8 +184,8 @@ def _write_pose(item):
     return os.getpid(), pss_bytes(os.getpid())
 
 
-def reservation_pose_capacity(reservation, rss, estimate, cores):
-    return max(1, min(cores, (reservation - rss) // estimate))
+def budget_pose_capacity(budget, rss, estimate, cores):
+    return max(1, min(cores, (budget - rss) // estimate))
 
 
 def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False):
@@ -203,15 +203,16 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
         if workers not in (None, 1):
             raise ValueError("poses with bounced light render in the main process; leave --workers unset")
         workers = 1
+    budget_capacity = None
     if workers is None:
         estimate = max(64 * 1024 ** 2, width * height * samples * samples * POSE_BASE_BYTES_PER_RAY)
         reservation = process_budget.task_reservation()
         if reservation is not None:
             rss = process_budget.resident_bytes(os.getpid(), {})[0]
-            budget = process_budget.POSE_POOL_BYTES
-            if reservation == process_budget.SMOKE_PREPARE_BYTES:
-                budget = min(budget, reservation[0])
-            workers = reservation_pose_capacity(budget, rss, estimate, cores_available())
+            cores = cores_available()
+            budget_capacity = budget_pose_capacity(reservation[0], rss, estimate, cores)
+            memory_capacity = worker_capacity(available_bytes(), (estimate, 0, estimate), FLOORS, cores)
+            workers = max(1, min(budget_capacity, memory_capacity))
         else:
             workers = worker_capacity(available_bytes(), (estimate, 0, estimate), FLOORS, cores_available())
             if not workers:
@@ -221,6 +222,8 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
         raise ValueError("workers must be positive")
     if workers > 1 and "fork" not in multiprocessing.get_all_start_methods():
         workers = 1
+    if budget_capacity is not None:
+        print(f"pose pool workers={workers} budget_capacity={budget_capacity} memory_capacity={memory_capacity} rss={rss}", flush=True)
     POSE_STATE = (source, job, scene, width, height, lens, samples, pathlib.Path(out), normals, occlusion)
     pose_peaks = {}
     try:

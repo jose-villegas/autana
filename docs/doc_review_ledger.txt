@@ -18,3 +18,6 @@ docs/tools/Docs-Search.md	2026-09-28	PR #445 round 2: reviewed against scripts/d
 docs/render/Mesh-Import.md	2026-09-30	split out of Mesh-Rendering.md: moved text, checked against launcher/tools/r3d/
 docs/render/README.md	2026-10-01
 docs/tools/Frame-Cost.md	2026-10-01	reviewed against launcher/main/util/frame_cost.h, frame_cost.c, console_perf_parse.h and scripts/autana/autana.py
+docs/tools/Layout-Noise.md	2026-10-05
+launcher/tools/perf/README.md	2026-10-05
+docs/sand/Testing-Sand.md	2026-10-05

@@ -887,7 +887,7 @@ class FlashImageScriptTests(unittest.TestCase):
         (self.tree / "launcher").mkdir()
         for relative in ("scripts/device/flash_image.sh", "launcher/tools/build/idf.sh",
                          "launcher/tools/build/idf_shim.bat", "launcher/tools/build/espressif.py",
-                         "scripts/lib/python.sh", "scripts/lib/autana_config.py",
+                         "scripts/lib/python.sh",
                          "scripts/device/device.py", "scripts/device/device_lock.py",
                          "scripts/device/device_hook.py", "scripts/device/device_report.py",
                          "scripts/device/lock_job.py", "scripts/device/lock_scope.py",
@@ -895,6 +895,10 @@ class FlashImageScriptTests(unittest.TestCase):
                          "scripts/autana/version.py"):
             (self.tree / relative).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(ENGINE / relative, self.tree / relative)
+        for source in (ENGINE / "scripts/lib").glob("*.py"):
+            target = self.tree / "scripts/lib" / source.name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(source, target)
         stubs = self.tree / "stubs"
         (stubs / "serial" / "tools").mkdir(parents=True)
         (stubs / "serial" / "__init__.py").write_text(

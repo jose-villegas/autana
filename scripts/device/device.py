@@ -10,7 +10,6 @@ import math
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -25,6 +24,7 @@ import lock_scope
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
+from process_tree import stop_process_tree, launch_process_tree, close_process_tree
 BOARD_ENV = autana_config.BOARD_ENV
 TOKEN_ENV = autana_config.TOKEN_ENV
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
@@ -922,28 +922,12 @@ def holding(store, board, args, held_lock, kind):
 FLASH_POLL_SECONDS = 0.5
 
 
-def stop_process_tree(process):
-    """A flash command runs idf.py and esptool under it; the flash has to stop,
-    not just the shell that started it."""
-    if os.name == "nt":
-        subprocess.run(["taskkill", "/F", "/T", "/PID", str(process.pid)],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    else:
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-    process.wait()
-
-
 def run_to_end(command, lost=None, timeout=None, **options):
     """Runs `command` to its end, stopping its whole process tree on any
     error, on Ctrl+C, or the moment `lost`, a held lock's event, None for a
     command that holds none, is set."""
-    if os.name != "nt":
-        options["start_new_session"] = True
     deadline = None if timeout is None else time.monotonic() + timeout
-    process = subprocess.Popen(command, **options)
+    process = launch_process_tree(command, **options)
     try:
         while True:
             try:
@@ -957,6 +941,8 @@ def run_to_end(command, lost=None, timeout=None, **options):
     except BaseException:
         stop_process_tree(process)
         raise
+    finally:
+        close_process_tree(process)
     if code:
         raise subprocess.CalledProcessError(code, command)
 
