@@ -20,8 +20,8 @@ WINDOWS_MEMORY_REQUIRED_BYTES = 2 * GIB
 # The prepare estimate covers the parent and, for a source without bounced light, its pose pool.
 FLOORS = (GIB, GIB // 2, GIB // 4)
 FIT_BYTES = (22 * GIB // 10, 7 * GIB // 10, 22 * GIB // 10)
-PREPARE_BYTES = (13 * GIB // 2, 0, 13 * GIB // 2)
-BAKE_BYTES = (5 * GIB // 2, 0, 5 * GIB // 2)
+PREPARE_BYTES = (21 * GIB // 4, 0, 21 * GIB // 4)
+BAKE_BYTES = (17 * GIB // 4, 0, 17 * GIB // 4)
 MEASURE_BYTES = (3 * GIB // 2, 128 * 1024 ** 2, 3 * GIB // 2)
 SMOKE_PREPARE_BYTES = (2 * GIB, 0, 2 * GIB)
 GPU_QUERY_FAILURE_SECONDS = 300
@@ -304,13 +304,18 @@ class TaskExecutor:
                     query_failures.recovered()
                     free = projected_available(free, [(estimates, resident_bytes(process.pid, gpu))
                                                for process, _, _, estimates in self.active])
+                    priority_waiting = False
                     for queued in [*self.priority_queue, *self.queue]:
                         if len(self.active) >= cores_available():
                             break
                         future, function, args, estimates = queued
+                        priority = queued in self.priority_queue
+                        if priority_waiting and not priority:
+                            break
                         if not worker_capacity(free, estimates if self.active else (0,) * 3, FLOORS, 1):
+                            priority_waiting |= priority
                             continue
-                        (self.priority_queue if queued in self.priority_queue else self.queue).remove(queued)
+                        (self.priority_queue if priority else self.queue).remove(queued)
                         print(f"admit {function_name(function)} projected_available={free} reservation={estimates}", flush=True)
                         receive, send = self.context.Pipe(duplex=False)
                         process = self.context.Process(target=_task, args=(send, function, args, estimates, os.getpid()))
