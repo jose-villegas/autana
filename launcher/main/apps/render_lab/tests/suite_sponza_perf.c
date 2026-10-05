@@ -33,6 +33,12 @@
 
 static const char* TAG = "sponza_perf";
 
+/* The scene, loaded for the suite, its bundle, and one mesh for each bake. */
+static scene_t* sponza;
+static const asset_pack_t* bundle;
+static const r3d_scene_camera_t* flythrough;
+static r3d_lit_mesh_t meshes[SPONZA_BAKE_COUNT];
+
 #define PANEL_PIXELS ((size_t)GFX_WIDTH * GFX_HEIGHT)
 
 static int
@@ -147,12 +153,6 @@ report_core_contention(const raster_t* raster, const r3d_lens_t* lens, int visib
     ESP_LOGI(TAG, "contention: at once top %6lldus  bottom %6lldus  wall %6lldus", (long long)core1_result.us,
              (long long)together_bottom.us, (long long)wall);
 }
-
-/* The scene, loaded for the suite, its bundle, and one mesh for each bake. */
-static scene_t* sponza;
-static const asset_pack_t* bundle;
-static const r3d_scene_camera_t* flythrough;
-static r3d_lit_mesh_t meshes[SPONZA_BAKE_COUNT];
 
 static void
 open_the_meshes(void) {
