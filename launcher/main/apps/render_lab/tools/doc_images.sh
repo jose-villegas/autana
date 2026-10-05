@@ -135,10 +135,11 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.
 R3D_PYTHON=$(run find_r3d_python "$PWD")
 run "$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 5 --dt 5000 \
     -o "$W/indirect-smooth.bmp" --video "$W/indirect-smooth.avi" 2> "$W/indirect-smooth.log"
-# bake_and_render DIR MESH SCENE: bake the scene file in DIR, pack the mesh in
-# place of the committed one and render the five poses to DIR.avi.
+# bake_and_render DIR MESH SCENE: link the mesh source into DIR, bake the scene file in DIR,
+# pack the mesh in place of the committed one and render the five poses to DIR.avi.
 bake_and_render() {
     dir=$1 mesh=$2 scene=$3
+    run ln -sfn "$PWD/$M/meshes/sponza" "$dir/sponza"
     run "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$dir/sponza.scene.toml" --mesh "$mesh" > "$dir/bake.log" 2>&1
     run "$R3D_PYTHON" launcher/tools/r3d/build_pack.py -o "$dir/assets.bin" --replace "$mesh=$dir/$mesh.mesh" > "$dir/pack.log"
     run env AUTANA_ASSET_PACK="$dir/assets.bin" "$W/render_lab_render" --quarter 0 --no-hud --scene "$scene" --frames 5 --dt 5000 \
@@ -149,7 +150,6 @@ bake_and_render() {
 variant_bake() {
     run mkdir -p "$W/indirect-$1"
     run cp "$M/meshes/sponza.import.toml" "$W/indirect-$1/"
-    run ln -sfn "$PWD/$M/meshes/sponza" "$W/indirect-$1/sponza"
     run awk -v table="$3" -v direct="$2" '/^\[\[objects\]\]/ && !done { if (table != "") print table "\n"; done = 1 }
         direct == "none" && /^indirect = \{/ { next } { print }' \
         "$M/meshes/sponza.scene.toml" > "$W/indirect-$1/sponza.scene.toml"
