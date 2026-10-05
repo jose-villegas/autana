@@ -63,8 +63,8 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 | `render/sponza-{full,lite,flat,fitted,fitted-full}.gif` | the same three seconds of the flythrough, one GIF per bake |
 | `render/sponza-{depth,tiles}.gif` | those three seconds as the depth and depth-tile views of the full bake |
 | `render/bake-fidelity-sheet.png` | the flat bake against the source model at two poses, with the error heatmap (see Fidelity against the source) |
-| `render/bake-indirect-compare.png`, `render/bake-indirect-crops.png` | the reference beside the smooth bake without and with indirect light (from a bake of the import made without that field), each with its error heatmap against the reference at two poses, then the places the two bakes differ most with the reference above them (see Indirect light) |
-| `render/bake-indirect-look.png` | the reference beside the indirect bake at intensity 1, 2 and 3 and at an albedo boost of 2, each with its error heatmap, then each look's own reference and the error against it (see Indirect look) |
+| `render/bake-indirect-compare.png`, `render/bake-indirect-crops.png` | the physical reference beside the smooth bake without and with indirect light (the scene's physical look, bakes made without and with that field), each with its error heatmap against the reference at two poses, then the places the two bakes differ most with the reference above them (see Indirect light) |
+| `render/bake-indirect-look.png` | the physical reference beside the indirect bake at intensity 1, 2 and 3 and at an albedo boost of 2, each with its error heatmap, then each look's own reference and the error against it (see Indirect look) |
 | `render/bake-ao-compare.png`, `render/bake-ao-crops.png`, `render/bake-ao-map.png` | the reference beside the smooth bake without and with local occlusion at two poses with error heatmaps, the places they differ most, and the occlusion factor alone beside the reference (see Local occlusion) |
 | `render/compare-full-{lite,flat}.png`, `.crops.png` | full against lite and smooth against flat at the GIFs' last pose: both renders and their difference, then the places they differ most, enlarged |
 | `render/compare-lite-fitted.png`, `.crops.png` | lite against the fitted mesh at that pose, the same way |
@@ -209,19 +209,6 @@ recipe outputs; the board table measures the committed scene assets.
 Run the documented stage to populate this comparison from current inputs.
 <!-- /generated: sponza-gpu -->
 
-### Local occlusion on the lite mesh
-
-The same stage repeats the lite mesh on a scratch copy of the scene with its
-ambient light raised and [`[bake].ao`](../../../../../docs/render/Scene-Files.md#bake-ao)
-on. The references carry the occlusion, so the simplified bake and the fit are
-scored on the same occluded picture; the fit sees the occlusion through its
-training references. The sheet's heatmaps show where each mesh keeps or loses
-it.
-
-<!-- generated: sponza-gpu-ao sha256=004310de23d1d3ede4be5737fea3df96589330524e3c9e8b073803d2c099c13d -->
-Run the documented stage to populate this comparison from current inputs.
-<!-- /generated: sponza-gpu-ao -->
-
 ### Budget and normal sweeps
 
 The budget sweep varies the lite recipe's pruning budget and cost weight.
@@ -324,10 +311,11 @@ remain close to black. The source reference resolves those local changes more
 finely than the vertex-colour mesh, so a per-pixel reference is the comparison
 for a suspected colour-bleed loss.
 
-The generated table scores the direct and indirect bakes against the source
-lit per pixel with the scene's indirect light, at the same poses as the
-fidelity sheet. Direct-light counterparts are rebuilt from the current scene
-with its bake indirect field removed. The reference resolves bounce detail
+The generated table scores the direct and indirect bakes of the full, lite and
+flat meshes against the source lit per pixel with physical bounced light, at the
+same poses as the fidelity sheet. All of them are bakes of the physical look,
+the scene without its `[indirect]` table and its occlusion; the direct-light
+counterparts also drop `[bake].indirect`. The reference resolves bounce detail
 finer than a triangle, which contributes to the remaining error.
 
 <!-- generated: sponza-indirect sha256=744871f71c3bb1bc12ca314e720ff59400c7604514fcc2f9afb8053a537832c2 -->
@@ -353,9 +341,10 @@ colour on the column beside it, and the lit ceiling.
 
 ![Where bounce light changes the picture](../../../../../docs/images/render/bake-indirect-crops.png)
 
-`doc_images.sh` regenerates the images, baking the scene without `[bake] indirect`
-for the direct-light side. The source reference carries the scene's indirect light; `render_compare.py`
-makes the sheets and crops against that reference.
+`doc_images.sh` regenerates the images from the physical look, the scene without
+its `[indirect]` table and its occlusion, and bakes it without `[bake].indirect`
+for the direct-light side. The reference is that look's, lit per pixel with
+physical bounced light; `render_compare.py` makes the sheets and crops against it.
 
 ### Fitted variants against indirect light
 
@@ -369,7 +358,9 @@ The scene's `[indirect]` table, described in
 [Scene-Files.md](../../../../../docs/render/Scene-Files.md#indirect), sets
 `intensity` (a multiplier on the bounced light) and `albedo_boost` (a
 multiplier on the reflectance bounces use, held below 1). The committed scene
-leaves both at the physical 1.0. The reference reads the same table, so each
+sets its own look in that table; this sheet, like the indirect images above,
+starts from the physical look, the scene without that table and without its
+occlusion. The reference reads the same table, so each
 look has two references: the physical one and one made with the look's own
 settings. The sheet bakes the same import at intensity 2 and 3 and at an albedo
 boost of 2 and shows, at the last pose, the physical reference above the bakes
@@ -396,8 +387,11 @@ from physical lighting; the own-reference column isolates bake fidelity.
 
 The scene's `[bake].ao` ([Scene-Files.md](../../../../../docs/render/Scene-Files.md#bake-ao))
 scales the ambient light, and with `indirect = true` the bounced light,
-by how closed in a point is. The scene's own ambient is faint, so these images
-raise it in both bakes and add `ao` to one of them. The reference applies the
+by how closed in a point is. The committed scene sets it in
+`meshes/sponza.scene.toml`, whose ambient light is faint. These images start
+from the physical look instead, raise the
+ambient light in both bakes, which gives the occlusion something to scale, and
+add `ao` to one of them. The reference applies the
 occlusion at every pixel and the bake at every vertex, so the two heatmaps show
 where the bake's occlusion helps and where it overshoots.
 

@@ -247,8 +247,9 @@ def open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offs
 
 
 def face_towards_light(normals, double_sided, lights):
-    """Double-sided surfaces turn to the side the directional lights, summed,
-    shine on. One orientation for every light, so their order cannot matter."""
+    """The orientation a double-sided surface is first lit on: the side the directional lights, summed, shine on. One
+    orientation for every light, so their order cannot matter. It also keeps the copies of a vertex at one position
+    facing alike when their bounce is gathered together; `light` then tries the other side too."""
     toward = np.zeros(3)
     for light in lights:
         if light["type"] == "directional":
@@ -266,11 +267,25 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, bounce
     surroundings give equal light. `bounce` is a PathLight whose bounced light is added; `bounce_groups` gives
     points that share one position the same bounce, gathered once on their mean normal, since bounced light changes
     slowly where direct light does not. `ao` is the scene's local occlusion setting: it scales the ambient light,
-    and the bounced light when `ao.indirect`; a double-sided point takes its less occluded side, which the sun-facing
-    normal need not be. Point and spot lights are reserved and not baked yet.
+    and the bounced light when `ao.indirect`. A double-sided point has no side it is meant to be seen from: it is lit
+    on both sides and keeps the brighter, so a card in the sun takes its sunlit side and a curtain in shade takes
+    its open side, not the back that faces the wall. Point and spot lights are reserved and not baked yet.
     """
     n = face_towards_light(normals, double_sided, lights)
     occlusion = None if ao is None else open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offset)
+    radiance = lit_side(points, n, intersector, lights, ray_offset, occlusion, bounce, bounce_groups, ao, bounce_intensity)
+    both = np.nonzero(double_sided)[0]
+    if len(both):
+        groups = None if bounce_groups is None else bounce_groups[both]
+        other = lit_side(points[both], -n[both], intersector, lights, ray_offset,
+                         None if occlusion is None else occlusion[both], bounce, groups, ao, bounce_intensity)
+        brighter = other.sum(axis=1) > radiance[both].sum(axis=1)
+        radiance[both[brighter]] = other[brighter]
+    return radiance
+
+
+def lit_side(points, n, intersector, lights, ray_offset, occlusion, bounce, bounce_groups, ao, bounce_intensity):
+    """The light at each point on the side its unit normal `n` faces."""
     ctx = SimpleNamespace(normals=n, origin=points + n * ray_offset, intersector=intersector, occlusion=occlusion)
     radiance = np.zeros((len(points), 3))
     for scene_light in lights:
@@ -287,11 +302,12 @@ def bounced_light(bounce, points, normals, ray_offset, groups=None):
     """`bounce.bounce` for every point; with `groups`, once per group on the group's mean normal."""
     if groups is None:
         return bounce.bounce(points, normals, ray_offset)
-    _, first = np.unique(groups, return_index=True)
-    total = np.stack([np.bincount(groups, weights=normals[:, axis]) for axis in range(3)], axis=1)
+    _, first, inverse = np.unique(groups, return_index=True, return_inverse=True)
+    inverse = inverse.reshape(-1)
+    total = np.stack([np.bincount(inverse, weights=normals[:, axis]) for axis in range(3)], axis=1)
     length = np.linalg.norm(total, axis=1, keepdims=True)
     mean = np.where(length > 1e-6, total / np.maximum(length, 1e-12), normals[first])
-    return bounce.bounce(points[first], mean, ray_offset)[groups]
+    return bounce.bounce(points[first], mean, ray_offset)[inverse]
 
 
 def encode_srgb8(linear):

@@ -27,13 +27,14 @@ def write_tables(work, out):
     out.mkdir(parents=True, exist_ok=True)
     indirect = scores(work / "indirect-compare.log")
     smooth = indirect["two bounces"]
+    full = scores(work / "committed-smooth-compare.log")["frames mean"]
     lite = scores(work / "sponza-lite-compare.log")["frames mean"]
     flat = scores(work / "fidelity-compare.log")["frames mean"]
     (out / "sponza-fidelity.md").write_text(table([
-        ("Full smooth", smooth), ("Lite smooth", lite), ("Flat, committed", flat)]) + "\n", encoding="utf-8")
+        ("Full smooth", full), ("Lite smooth", lite), ("Flat, committed", flat)]) + "\n", encoding="utf-8")
     smooth_frames = work / "smooth-reference"
     smooth_frames.mkdir(exist_ok=True)
-    _, frames = read_video(work / "indirect-smooth.avi")
+    _, frames = read_video(work / "committed-smooth.avi")
     for index, frame in enumerate(frames):
         Image.fromarray(frame).save(smooth_frames / f"{index:04d}.png")
     _, pair = reference_video(work / "fidelity-flat.avi", smooth_frames, scale=1)
@@ -44,9 +45,9 @@ def write_tables(work, out):
     (out / "sponza-indirect.md").write_text(table([
         ("Full smooth, direct light", indirect["direct light only"]), ("Full smooth, indirect light", smooth),
         ("Lite smooth, direct light", scores(work / "direct-lite-compare.log")["frames mean"]),
-        ("Lite smooth, indirect light", lite),
+        ("Lite smooth, indirect light", scores(work / "smooth-lite-compare.log")["frames mean"]),
         ("Flat, direct light", scores(work / "direct-flat-compare.log")["frames mean"]),
-        ("Flat, indirect light", flat)]) + "\n", encoding="utf-8")
+        ("Flat, indirect light", scores(work / "smooth-flat-compare.log")["frames mean"])]) + "\n", encoding="utf-8")
     look = scores(work / "indirect-look.log")
     lines = ["| Look | Mean dE76, physical | Mean dE76, own | p95, physical | SSIM, physical |",
              "|---|---:|---:|---:|---:|"]

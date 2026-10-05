@@ -302,9 +302,10 @@ falls as $1/\sqrt{R}$. A smooth bake gathers once for the vertex copies a crease
 splits at one position, on their mean normal, and gives every copy that
 bounced term: bounced light changes slowly where direct light does not, and
 copies that differ only in it would stop merging into one vertex. A
-double-sided surface gathers on the side the direct light shines on, and a ray
-that reaches a one-sided triangle from behind finds no light, so light does
-not pass through shells.
+double-sided surface is lit on both sides, bounced light included, and keeps the
+brighter, so a card in the sun takes its sunlit side and a curtain in shade
+takes its open side; a ray that reaches a one-sided triangle from behind finds
+no light, so light does not pass through shells.
 
 The [indirect look](Scene-Files.md#indirect) controls bounced intensity and
 bounce reflectance.

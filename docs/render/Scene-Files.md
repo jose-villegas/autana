@@ -449,8 +449,8 @@ Only directional lights are scene objects; `point` and `spot` are reserved.
 Its direction toward the light is the object's +Y axis turned by its rotation.
 Position and scale do not matter. The lights a bake sees are the directional
 objects in file order, then `[sky]`, then `[ambient]`. The sun is a point
-source, so its shadows are hard. A double-sided face turns to the side the
-directional lights, summed by intensity, shine on.
+source, so its shadows are hard. A double-sided face is lit on both sides and
+keeps the brighter.
 
 ### Camera options
 
