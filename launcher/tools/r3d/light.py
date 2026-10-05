@@ -258,7 +258,8 @@ def face_towards_light(normals, double_sided, lights):
     return np.where(flip[:, None], -normals, normals)
 
 
-def light(points, normals, double_sided, intersector, lights, ray_offset, bounce=None, bounce_groups=None, ao=None):
+def light(points, normals, double_sided, intersector, lights, ray_offset, bounce=None, bounce_groups=None, ao=None,
+          bounce_intensity=1.0):
     """Radiance from the scene lights at each point, in the unit of irradiance over pi.
 
     The sun and sky come from shadow rays against `intersector`, the same fixed directions at every point so equal
@@ -276,7 +277,7 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, bounce
         radiance += LIGHTS[scene_light["type"]][1](scene_light, ctx)
     if bounce is None:
         return radiance
-    bounced = bounced_light(bounce, points, n, ray_offset, bounce_groups)
+    bounced = bounced_light(bounce, points, n, ray_offset, bounce_groups) * bounce_intensity
     if ao is not None and ao.indirect:
         bounced = bounced * occlusion[:, None]
     return radiance + bounced
@@ -323,7 +324,7 @@ def adaptive_sample_counts(areas, reference, cap, floor=1):
 
 def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_of, intersector, lights, ray_offset,
                  tonemap_white, samples=4, max_samples=16, sample_area=None, min_samples=1,
-                 placement="stratified", bounce=None, ao=None):
+                 placement="stratified", bounce=None, ao=None, bounce_intensity=1.0):
     """One sRGB colour per triangle: albedo times light averaged over fixed
     points of the triangle, lit on its face normal. `samples` is a count per
     face, or "auto" for one point per `sample_area` of face area (the mesh's
@@ -349,7 +350,8 @@ def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_o
             albedo = albedo_of(points, spacing, m)
             double = np.full(len(points), m in double_materials)
             tiled = np.tile(normals, (k, 1))
-            radiance = light(points, tiled, double, intersector, lights, ray_offset, bounce, ao=ao)
+            radiance = light(points, tiled, double, intersector, lights, ray_offset, bounce, ao=ao,
+                             bounce_intensity=bounce_intensity)
             colour = (albedo * radiance).reshape(k, len(faces), 3).mean(axis=0)
             out[selected] = to_srgb8(colour, tonemap_white)
     return out
