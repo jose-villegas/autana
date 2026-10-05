@@ -2,8 +2,8 @@
 
 A scene file is a scenario: objects, each with one transform and one component,
 plus the light and tone-map settings. The offline importer bakes the lit meshes
-the scenario places ([Mesh-Import.md](Mesh-Import.md)); `scene_table.py` writes
-the [scene table](#the-scene-table) it reads at run time.
+the scenario places ([Mesh-Import.md](Mesh-Import.md)); the pack build bakes the
+[scene entry](#the-scene-entry) it reads at run time.
 
 ```toml
 tonemap_white = 0.35             # larger is darker
@@ -39,7 +39,7 @@ half_fov_short_tan = 0.62
 near_z = 6.0
 background = 0x9CC0E6
 region = { min = [-1400.0, 20.0, -620.0], max = [1270.0, 1250.0, 550.0] }
-path = { tracks = "flight", node = "camera" }
+path = { animation = "../assets/flight.anim.toml", node = "camera" }
 
 [[objects]]
 name = "hall"
@@ -461,10 +461,12 @@ keeps the brighter.
 #### camera
 
 `region = { min, max }` is the box the camera may occupy; region visibility
-casts from points inside it. `path = { tracks, node }` names the tracks
-[`tools/anim/bake_tracks.py`](../Animation-Tracks.md) baked under the prefix
-`tracks` for the glTF node `node`; the generated `<tracks>_tracks_generated.{c,h}`
-sit beside the scene file. `background` (0xRRGGBB, default black) is the colour
+casts from points inside it. `path = { animation, node }` names the clip the
+camera flies: `animation` is its `NAME.anim.toml`
+([Animation-Tracks.md](../Animation-Tracks.md)), relative to the scene file,
+and `node` the glTF node in it that is the camera. The clip's id is `NAME`, and
+it travels in the scene's bundle; `<node>/translation` must fit a track name's
+31 bytes. `background` (0xRRGGBB, default black) is the colour
 a pixel no mesh covers shows, on the panel and in the source reference. Without
 a path the camera sits at its transform, looking down its own -Z.
 
@@ -476,18 +478,29 @@ the camera `region`, or `path` for the path source. A scene must carry what a
 baked renderer reads and may not carry what none reads: the importer rejects
 lights, `tonemap_white`, a region or `[indirect]` that no placed mesh reads.
 
-## The scene table
+## The scene entry
 
-`python launcher/tools/r3d/scene_table.py SCENE.scene.toml` reads the scene file
-and its import files with the standard library alone, bakes nothing, and writes
-`<scene>_scene_generated.c` and `.h` beside the scene file. A test fails when
-the committed table is not what its scene file generates. The table is one
-const `scene_def_t`, `<scene>_scene`, registered with `SCENE_REGISTER()` so
-`scene_load()` finds it ([Scene-Manager.md](Scene-Manager.md)). It holds an
-entity for each mesh renderer and the camera, in file order, named
-`<SCENE>_SCENE_<OBJECT>` so a misspelt object fails to compile. It also holds
-each entity's transform baked as a 3x3 and a position, so the device does no
-trigonometry; each renderer's asset id, which `scene_load()` opens from the
-[asset pack](../assets/README.md) and fails on when missing; and the camera's
-lens, background and path symbols. Lights, the camera region, sky, ambient and
+`build_pack.py` bakes each scene file into a `SCNE` entry of its own bundle,
+named after the file: `NAME.scene.toml` is entry and bundle `NAME`, beside every
+mesh its renderers name and the clip its camera flies
+([assets/README.md](../assets/README.md)). `tools/r3d/scene_asset.py` writes and
+reads it; `scene_load()` opens it ([Scene-Manager.md](Scene-Manager.md)), each
+mesh and the clip, and fails naming whichever is missing or malformed. Ids are
+unique within a bundle whatever their type, so a scene and its clip cannot
+share a stem.
+
+An entity is each mesh renderer and the camera, in file order, found by name at
+run time. Its transform is baked as a 3x3 (rotation times scale) and a
+position, so the device does no trigonometry. An object's name is letters,
+digits and `_`, at most 31 bytes. Lights, the camera region, sky, ambient and
 the tone map stay offline.
+
+Little-endian; offsets count from the entry's first byte, each 4-aligned:
+
+| Part | Layout |
+|---|---|
+| header | `u16 version`, `u16 entity_count`, `u16 renderer_count`, `u16 camera_count`, `u32` offset of each part below |
+| names | `char name[32]` per entity, NUL padded |
+| transforms | `f32 m[3][3]`, `f32 position[3]` per entity |
+| renderers | `u16 entity`, `u16 pad`, `char mesh_id[32]` |
+| cameras | `u16 entity`, `u16 pad`, `f32 half_fov_short_tan`, `f32 near_z`, `u32 clear_rgb`, `char clip_id[32]`, `char node[32]`; an empty clip: no path |

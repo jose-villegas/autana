@@ -120,7 +120,7 @@ def camera_path_poses(scene, visibility, every_ms=None, either_way_up=True):
     covers the panel held either way up unless `either_way_up` is False."""
     camera = scene.camera.component
     width, height = visibility.size
-    poses = sample_camera_path(tracks_file(scene), camera.path.tracks, camera.path.node,
+    poses = sample_camera_path(tracks_file(scene), camera.path.clip, camera.path.node,
                                every_ms or visibility.every_ms, width, height, camera.half_fov_short_tan, camera.near_z)
     return either_way(*poses) if either_way_up else poses
 

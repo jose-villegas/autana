@@ -59,6 +59,7 @@ A `NAME.anim.toml` beside its `.glb` names one animation in it, and
 `build_pack.py` finds every such file by searching, so no list is kept. A
 clip no scene names is a [bundle](assets/README.md#bundles) of its own, named
 `NAME`, holding the one entry `NAME`; `asset_store_bundle("NAME")` mounts it.
+A clip a scene's camera flies travels in that scene's bundle instead.
 
 ```toml
 source = "NAME.glb"     # a .glb beside this one
@@ -172,7 +173,7 @@ reads, so the poses are always the animation's own.
   those).
 - `tools/tests/test_anim_tracks_asset.py` reads back what the writer writes,
   refuses what the reader refuses, and has `build_pack.py` make each
-  `.anim.toml` a bundle.
+  `.anim.toml` no scene names a bundle.
 - `tools/tests/test_anim_bake.py` builds a glTF of its own with every
   interpolation, a quaternion, a pointer-targeted scalar and a non-zero first
   key, bakes it, samples it in C, and holds every value to the Python sampler

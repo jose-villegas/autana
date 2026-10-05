@@ -29,9 +29,11 @@ main/render/raster_show.c
 main/render/r3d_pipeline.c
 main/render/upscale.c
 main/anim/anim_track.c
+main/anim/anim_tracks.c
 main/render/r3d_span.c
 main/render/r3d_scene.c
 main/scene/scene.c
+main/scene/scene_asset.c
 main/scene/scene_draw.c
 main/scene/scene_shell.c
 main/render/r3d_lit_mesh.c

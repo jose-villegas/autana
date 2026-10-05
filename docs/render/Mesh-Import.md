@@ -226,11 +226,10 @@ with `--mesh NAME` for one mesh. `PATH` is either kind of file. An import file
 writes the authored albedo mesh. A scene file writes each renderer's mesh: a
 renderer with `bake = true` is traced against its own source with that scene's
 lights, camera visibility and tone map; an albedo renderer writes its import's
-shared mesh. The
-[scene table](Scene-Files.md#the-scene-table) is written by `scene_table.py`,
-apart from the bake. `build_pack.py -o DIR` then writes one [bundle](../assets/README.md#bundles) per
-root from the `.mesh` entries it names, and `rebake.py` rewrites one
-`.mesh`'s clusters only.
+shared mesh. `build_pack.py -o DIR` then writes one
+[bundle](../assets/README.md#bundles) per root from the `.mesh` entries it
+names, baking each scene's [entry](Scene-Files.md#the-scene-entry) on the way,
+and `rebake.py` rewrites one `.mesh`'s clusters only.
 
 ### Import file
 

@@ -1,14 +1,12 @@
 /*
- * sponza_flythrough, the camera loop through Sponza's atrium, and the render
- * size it is seen at. Model units are centimetres; y is up. The lens and
- * path are the scene's camera entity (sponza_scene_generated.h).
+ * sponza_flythrough: the Sponza scene's five bakes, the size it is seen at,
+ * and what its camera loop is held to. The loop is the scene's camera, its
+ * lens and path from scene_camera_lens() once the scene has loaded. Model
+ * units are centimetres; y is up.
  */
 #pragma once
 
-#include <stdint.h>
-
 #include "gfx/gfx.h"
-#include "render/r3d.h"
 
 /* Half the panel's resolution in each axis, upscaled on the way out. */
 #define SPONZA_RENDER_WIDTH         (GFX_WIDTH / 2)
@@ -21,10 +19,14 @@
 /* The loop is measured at a pose this often, from its start. */
 #define SPONZA_POSE_EVERY_MS        5000
 
-uint32_t sponza_flythrough_period_ms(void);
+typedef enum {
+    SPONZA_BAKE_FULL,
+    SPONZA_BAKE_FLAT,
+    SPONZA_BAKE_LITE,
+    SPONZA_BAKE_FITTED,
+    SPONZA_BAKE_FITTED_FULL,
+    SPONZA_BAKE_COUNT,
+} sponza_bake_t;
 
-/* The eye and look direction t_ms into the loop, which wraps at the period. */
-void sponza_flythrough_sample(uint32_t t_ms, vec3f_t* eye, vec3f_t* forward);
-
-/* The camera t_ms into the loop. */
-camera_t sponza_camera_at(uint32_t t_ms);
+/* The name of the entity that draws each bake, found at load. */
+extern const char* const sponza_bakes[SPONZA_BAKE_COUNT];

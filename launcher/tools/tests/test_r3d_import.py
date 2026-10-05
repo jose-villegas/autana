@@ -15,7 +15,6 @@ from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d.import_settings import LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
-from r3d.scene_table import table_files, write_scene_table
 
 try:
     import numpy as np
@@ -64,8 +63,12 @@ def write_import(directory, name="mesh.import.toml", source=SOURCE, output=OUTPU
 
 
 def write_scene(directory, objects, head="", name="scene.scene.toml"):
+    """The scene file; beside it fly.anim.toml, the clip camera(path=True) names."""
     path = pathlib.Path(directory) / name
     path.write_text(head + objects)
+    clip = path.parent / "fly.anim.toml"
+    if not clip.exists():
+        clip.write_text('source = "fly.glb"\nanimation = "fly"\n')
     return path
 
 
@@ -80,7 +83,7 @@ def sun_object(rotation="[0.0, 0.0, 0.0]"):
 
 
 def camera(path=False, region=True):
-    track = 'path = { tracks = "fly", node = "camera" }\n' if path else ''
+    track = 'path = { animation = "fly.anim.toml", node = "camera" }\n' if path else ''
     bounds = 'region = { min = [0.0, 0.0, 0.0], max = [1.0, 1.0, 1.0] }\n' if region else ''
     return ('[[objects]]\nname = "camera"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.0\n'
             + bounds + track)
@@ -407,8 +410,8 @@ class SceneTests(unittest.TestCase):
                      + camera(region=False).replace('"camera"', '"other"'))
         self.rejects("half_fov_short_tan", self.two_imports, renderer("a.import.toml")
                      + '[[objects]]\nname = "c"\n[objects.camera]\nnear_z = 1.0\n')
-        self.rejects("C identifier", self.two_imports, renderer("a.import.toml")
-                     + camera(region=False).replace("near_z = 1.0\n", 'near_z = 1.0\npath = { tracks = "no-good", node = "camera" }\n'))
+        self.rejects("letters, digits and _", self.two_imports, renderer("a.import.toml")
+                     + camera(path=True, region=False).replace('node = "camera"', 'node = "no-good"'))
 
     def test_an_unknown_key_is_rejected_in_a_light_and_in_the_sky(self):
         self.rejects("typo", self.two_imports, renderer("a.import.toml") + sun_object().replace("intensity = 1.0\n", "intensity = 1.0\ntypo = 1\n"))
@@ -422,109 +425,9 @@ class SceneTests(unittest.TestCase):
         sky = '[[objects]]\nname = "s"\n[objects.light]\ntype = "sky"\n'
         self.rejects("scene settings", self.two_imports, renderer("a.import.toml") + sky)
 
-    def test_the_scene_table_is_one_definition_with_an_entity_per_renderer_and_the_camera(self):
-        flight = 'path = { tracks = "flight", node = "rig" }\n'
-        placed = renderer("b.import.toml", transform="position = [1.0, 2.0, 3.0]\nscale = [2.0, 2.0, 2.0]\n")
-        with tempfile.TemporaryDirectory() as directory:
-            self.two_imports(directory)
-            path = write_scene(directory, renderer("a.import.toml") + placed + camera(region=False).replace(
-                "near_z = 1.0\n", "near_z = 1.0\n" + flight), name="hall.scene.toml")
-            written = write_scene_table(load_scene(path))
-            source = written[0].read_text()
-            header = written[1].read_text()
-            self.assertEqual([item.name for item in written], ["hall_scene_generated.c", "hall_scene_generated.h"])
-        self.assertIn('.name = "hall",', source)
-        self.assertIn('static const scene_renderer_def_t hall_scene_renderers[] = {\n    {0, "a"},\n    {1, "b"},\n};', source)
-        self.assertIn("{.m = {{2.0F, 0.0F, 0.0F}, {0.0F, 2.0F, 0.0F}, {0.0F, 0.0F, 2.0F}}, .position = {1.0F, 2.0F, 3.0F}},", source)
-        self.assertIn(".clip = &flight_clip, .translation = &flight_rig_translation, .rotation = &flight_rig_rotation", source)
-        self.assertIn("{2, {.half_fov_short_tan = 0.6F, .near_z = 1.0F, .placement = NULL, .path = &hall_scene_camera_path}, 0x000000},",
-                      source)
-        self.assertIn(".entity_count = 3,", source)
-        self.assertIn("SCENE_REGISTER(hall_scene)", source)
-        self.assertIn('#include "scene/scene.h"', source)
-        self.assertNotIn("scene_shell", source)
-        self.assertIn("extern const scene_def_t hall_scene;", header)
-        self.assertIn("#define HALL_SCENE_B ((scene_entity_t)1)", header)
-        self.assertIn("#define HALL_SCENE_CAMERA ((scene_entity_t)2)", header)
-
-    def test_a_camera_background_reaches_its_table_entry_and_defaults_to_black(self):
-        for extra, wanted in (("background = 0x336699" + chr(10), "0x336699"), ("", "0x000000")):
-            with tempfile.TemporaryDirectory() as directory:
-                self.two_imports(directory)
-                path = write_scene(directory, renderer("a.import.toml")
-                                   + camera(region=False).replace("near_z = 1.0\n", "near_z = 1.0\n" + extra), name="hall.scene.toml")
-                source = write_scene_table(load_scene(path))[0].read_text()
-            self.assertIn(".placement = NULL, .path = NULL}, " + wanted + "},", source)
-
-    def table_of(self, objects, lit=False):
-        """The generated source and header of a scene, as text; `lit` bakes both of its meshes."""
-        with tempfile.TemporaryDirectory() as directory:
-            for mesh in ("a", "b"):
-                write_import(directory, f"{mesh}.import.toml", output=f'[output]\ndirectory = "."\nname = "{mesh}"\n')
-            scene = load_scene(write_scene(directory, objects, HEAD if lit else "", name="hall.scene.toml"))
-            source, header = (text for _, text in table_files(scene))
-        return source, header
-
-    def test_names_transforms_renderers_and_macros_share_one_order(self):
-        # The first entity is the only one that moved, so an array reversed or shifted is caught.
-        moved = renderer("a.import.toml", transform="position = [1.0, 2.0, 3.0]\n")
-        source, header = self.table_of(moved + renderer("b.import.toml") + camera(region=False))
-        names = re.search(r"hall_scene_names\[\] = \{(.*?)\};", source).group(1).replace('"', "").split(", ")
-        transforms = re.search(r"hall_scene_transforms\[\] = \{\n(.*?)\n\};", source, re.S).group(1).splitlines()
-        indices = [int(i) for i in re.findall(r"^    \{(\d+), \"", source, re.M)]
-        macros = re.findall(r"#define HALL_SCENE_(\w+) \(\(scene_entity_t\)(\d+)\)", header)
-        self.assertEqual(names, ["a", "b", "camera"])
-        self.assertEqual([name.lower() for name, _ in macros], names)
-        self.assertEqual([int(index) for _, index in macros], [0, 1, 2])
-        self.assertEqual(len(transforms), len(names))
-        self.assertEqual([("position = {1.0F, 2.0F, 3.0F}" in line) for line in transforms], [True, False, False])
-        self.assertEqual(indices[:2], [names.index("a"), names.index("b")])
-
-    def test_a_light_has_no_entity_and_the_indices_step_over_it(self):
-        objects = (renderer("a.import.toml", extra="bake = true\n") + sun_object() + renderer("b.import.toml", extra="bake = true\n")
-                   + camera(region=False))
-        source, header = self.table_of(objects, lit=True)
-        self.assertIn('hall_scene_names[] = {"a", "b", "camera"};', source)
-        self.assertIn('{0, "hall.a"},', source)
-        self.assertIn('{1, "hall.b"},', source)
-        self.assertIn("{2, {.half_fov_short_tan", source)
-        self.assertNotIn("SUN", header)
-        self.assertIn(".entity_count = 3,", source)
-
-    def test_the_scene_table_holds_only_what_the_device_reads(self):
-        with tempfile.TemporaryDirectory() as directory:
-            write_import(directory)
-            scene = load_scene(write_scene(directory, renderer(extra="bake = true\n" + REGION) + sun_object() + camera(), HEAD,
-                                           name="hall.scene.toml"))
-            source = "".join(text for _, text in table_files(scene))
-        self.assertNotIn("sun", source)
-        self.assertNotIn("region", source)
-        self.assertNotIn("1.0F, 1.0F, 1.0F}}", source.replace("{{{1.0F", "x"))
-
-    def test_a_placement_is_baked_as_rotation_times_scale(self):
-        quarter = "rotation = [0.0, 90.0, 0.0]\nscale = [1.0, 2.0, 3.0]\n"
-        with tempfile.TemporaryDirectory() as directory:
-            self.two_imports(directory)
-            scene = load_scene(write_scene(directory, renderer("a.import.toml", transform=quarter)))
-        want = ((0.0, 0.0, 3.0), (0.0, 2.0, 0.0), (-1.0, 0.0, 0.0))
-        for row, expected in zip(scene.objects[0].matrix, want):
-            self.assertTrue(all(abs(a - b) < 1e-12 for a, b in zip(row, expected)), scene.objects[0].matrix)
-
-    def test_a_scale_must_be_positive_and_a_symbol_name_an_identifier(self):
+    def test_a_scale_must_be_positive(self):
         self.rejects("positive", self.two_imports, renderer("a.import.toml", transform="scale = [1.0, -1.0, 1.0]\n"))
         self.rejects("positive", self.two_imports, renderer("a.import.toml", transform="scale = [0.0, 1.0, 1.0]\n"))
-        self.rejects("C identifier", self.two_imports, renderer("a.import.toml", name="not a symbol"))
-
-    def test_a_scene_table_includes_its_tracks_header_from_beside_the_scene(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = pathlib.Path(directory)
-            (root / "generated").mkdir()
-            write_import(root, output='[output]\ndirectory = "generated"\nname = "mesh"\n')
-            scene = load_scene(write_scene(
-                root, renderer() + camera(region=False).replace("near_z = 1.0\n", 'near_z = 1.0\npath = { tracks = "fly", node = "rig" }\n'),
-                name="hall.scene.toml"))
-            source = table_files(scene)[0][1]
-        self.assertIn('#include "fly_tracks_generated.h"', source)
 
     def test_two_objects_of_one_scene_cannot_share_a_name(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -621,18 +524,6 @@ class SceneTests(unittest.TestCase):
             with self.assertRaisesRegex(SettingsError, "needs scene.bake.indirect"):
                 load_scene(write_scene(directory, objects, TONEMAP + BAKE))
 
-    def test_committed_scene_tables_match_their_inputs(self):
-        for path in tree_scenes():
-            for table, text in table_files(load_scene(path)):
-                self.assertEqual(table.read_text().replace("\r\n", "\n"), text, table.name)
-
-    def test_a_scene_table_belongs_beside_its_scene(self):
-        with tempfile.TemporaryDirectory() as directory:
-            write_import(directory, output='[output]\ndirectory = "generated"\nname = "mesh"\n')
-            scene = load_scene(write_scene(directory, renderer(), name="hall.scene.toml"))
-            tables = table_files(scene)
-        self.assertEqual([item.parent for item, _ in tables], [scene.path.parent, scene.path.parent])
-
     def test_baked_output_names_the_scene_and_object_but_plain_output_names_the_import(self):
         with tempfile.TemporaryDirectory() as directory:
             write_import(directory)
@@ -682,7 +573,7 @@ class SceneTests(unittest.TestCase):
                 directory, renderer(extra="bake = true\n") + sun_object("[90.0, 90.0, 0.0]")
                 + camera(path=True, region=False), TONEMAP + AMBIENT + BAKE))
         self.assertTrue(all(abs(a - b) < 1e-12 for a, b in zip(scene.lights[0]["direction"], [1.0, 0.0, 0.0])))
-        self.assertEqual(scene.camera.component.path.tracks, "fly")
+        self.assertEqual((scene.camera.component.path.clip, scene.camera.component.path.node), ("fly", "camera"))
 
     def test_identical_import_variant_budgets_are_rejected(self):
         variants = VARIANT + VARIANT.replace('name = "mesh"', 'name = "copy"')
