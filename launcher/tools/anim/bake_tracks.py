@@ -11,10 +11,10 @@ PREFIX_tracks[] and PREFIX_track_count, every track; and PREFIX_track_names[],
 each track's name in the file, in the same order. Objects are named by
 their glTF name, so a re-export that reorders nodes binds the same symbols.
 Only the tests and sample_tracks.sh refer to the tables, so the linker drops
-them from any firmware build without tests. The tracks, their checks and the collapse of a channel
-that never changes are anim/tracks_asset.py's, which bakes the same
-animation into a pack entry; the runtime does the sampling, and tools/tests
-holds it to the Python sampler in tools/gltf.
+them from any firmware build without tests. The tracks, their checks and
+the collapse of a channel that never changes are anim/tracks_asset.py's,
+which bakes the same animation into a pack entry; the runtime does the
+sampling, and tools/tests holds it to the Python sampler in tools/gltf.
 
 Any node, and any property a pointer names, bakes the same way; nothing here
 knows what a track drives.

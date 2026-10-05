@@ -166,6 +166,12 @@ test_a_track_of_more_than_255_keys_reports_them_all(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_open((asset_view_t){entry, BYTES}, &tracks));
     TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_find(&tracks, "long/scale", &track));
     TEST_ASSERT_EQUAL_UINT16(KEYS, track.count);
+
+    /* Arrays that hold 300 mod 256 keys: fine for the low byte, not for the count. */
+    enum { SHORT = KEYS % 256, SHORT_VALUES_AT = TIMES_AT + (SHORT * 4), SHORT_BYTES = SHORT_VALUES_AT + (SHORT * 4) };
+
+    put_row(entry + ROW0, "long/scale", TIMES_AT, SHORT_VALUES_AT, KEYS, 1, ANIM_LINEAR);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, anim_tracks_open((asset_view_t){entry, SHORT_BYTES}, &tracks));
     test_free_aligned(raw);
 }
 

@@ -3,6 +3,7 @@ back as baked, what it refuses to write or read, and build_pack finding every
 .anim.toml. The firmware's reader of the same bytes is suite_anim_tracks.c."""
 
 import io
+import json
 import pathlib
 import struct
 import sys
@@ -191,18 +192,24 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(tracks_asset.clip_id(path), "walk")
         self.assertEqual(tracks_asset.bake(path), probe_entry())
 
-    def test_a_clip_file_with_a_bad_key_a_missing_animation_or_a_source_elsewhere_is_refused(self):
+    def test_a_clip_file_with_a_bad_key_or_a_missing_animation_is_refused(self):
         for text in ('source = "probe.glb"\n', 'source = "probe.glb"\nanimation = "clip"\nloop = true\n',
                      'source = "probe.glb"\nanimation = "clip"\nnote = "extra"\n',
-                     'source = "probe.glb"\nanimation = "nope"\n', 'source = "gone.glb"\nanimation = "clip"\n',
-                     'source = "../clips/probe.glb"\nanimation = "clip"\n',
-                     'source = "sub/probe.glb"\nanimation = "clip"\n',
-                     'source = "..\\\\clips\\\\probe.glb"\nanimation = "clip"\n',
-                     'source = "C:probe.glb"\nanimation = "clip"\n',
-                     'source = "/probe.glb"\nanimation = "clip"\n',
-                     'source = "probe.bin"\nanimation = "clip"\n'):
+                     'source = "probe.glb"\nanimation = "nope"\n', 'source = "gone.glb"\nanimation = "clip"\n'):
             path = self.write("clips/bad.anim.toml", text)
             with self.assertRaises(TracksError, msg=text):
+                tracks_asset.bake(path)
+
+    def test_a_source_that_is_not_a_glb_file_name_is_refused_by_the_rule_not_a_missing_file(self):
+        # Every name below is a real, valid glb where the system can make one,
+        # so only the rule can refuse it.
+        (self.root / "clips" / "sub").mkdir()
+        for name in ("sub/probe.glb", "probe.bin", "probe.glb.bak"):
+            (self.root / "clips" / name).write_bytes(probe_glb())
+        for source in ("../clips/probe.glb", "sub/probe.glb", "..\\clips\\probe.glb", "C:probe.glb",
+                       str(self.root / "clips" / "probe.glb").replace("\\", "/"), "probe.bin", "probe.glb.bak"):
+            path = self.write("clips/bad.anim.toml", 'source = %s\nanimation = "clip"\n' % json.dumps(source))
+            with self.assertRaisesRegex(TracksError, "is not a .glb in the same folder", msg=source):
                 tracks_asset.bake(path)
 
     def test_build_pack_finds_every_clip_file_by_searching(self):
