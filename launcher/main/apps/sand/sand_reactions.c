@@ -813,10 +813,12 @@ try_percolate(sand_t* s, uint8_t* row, int x, int y, int w, int h, cell_t c, uin
     return true;
 }
 
-/* Splits cell for input/output. Soaks UNIT, transforms or increases variant.
+/* Out of line on purpose: inlined it doubles step_one_reacting_row(), the
+ * walk every gas cell goes through, and slows scenes with no soil at all.
+ * Splits cell for input/output. Soaks UNIT, transforms or increases variant.
  * Drying decreases variant. Returns true if wet/near liquid. Prevents
  * `may_have_moisture`. Activated by SOAKING side. */
-static bool
+static __attribute__((noinline)) bool
 step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reaction_t* r) {
     const cell_t c = row[x];
     const uint8_t held = moisture_of(c, r);
