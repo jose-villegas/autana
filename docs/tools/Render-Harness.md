@@ -89,9 +89,9 @@ floors and worker estimates. Later admission projects each active worker's
 not-yet-resident allocation onto live WSL, GPU and cgroup memory, bounded
 by CPU affinity. A task can run alone when the floors hold; additional
 workers need room for their reservations. Smaller eligible tasks can pass
-larger waiting tasks. Admission and worker peaks are logged. Failed GPU
-memory queries pause admission for that cycle and retry; warnings are
-rate-limited. Consecutive query failures lasting five minutes fail the stage.
+larger waiting tasks. Admission and worker peaks are logged. Failed
+memory queries pause admission and retry, with rate-limited warnings; failures
+lasting `GPU_QUERY_FAILURE_SECONDS` fail the stage.
 
 ```mermaid
 flowchart TD
@@ -119,12 +119,12 @@ Reference poses share the loaded source through copy-on-write, and every
 pose's rays are fixed, so a pose renders the same in any worker. A source with
 bounced light renders its poses in the main process, where Mitsuba's threads use
 every core. Standalone reference renders
-size their pool from available memory. Admitted prepares use the explicit
-`POSE_POOL_BYTES` sizing budget in `process_budget.py`, independent of the
-prepare admission estimate; smoke prepares retain their smaller budget.
-At pool creation, live WSL and cgroup memory cap that budget's worker count,
-using the memory floors while retaining at least one worker. The pool logs
-the chosen worker count and both capacities.
+size their pool from available memory. An admitted prepare sizes its pool
+from its own admission estimate (`PREPARE_BYTES`, or `SMOKE_PREPARE_BYTES` for a
+smoke prepare), which covers the parent and a typical pool. At pool creation,
+live WSL and cgroup memory also cap the worker count, using the memory floors
+while retaining at least one worker. The pool logs the chosen worker count and
+both capacities.
 `worker reference_poses` reports `pose_peak_pss_bytes` and `pose_workers`.
 The PSS value sums each worker's maximum end-of-pose sample from Linux
 `smaps_rollup`; it is not a simultaneous pool high-water mark. PSS shares
