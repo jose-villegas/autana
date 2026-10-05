@@ -268,8 +268,25 @@ test_a_cluster_or_node_range_outside_the_mesh_is_refused(void) {
     f = fixture();
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_mesh_with(&f, 12, 2)); /* two clusters' rows do not fit the entry */
     release(&f);
+}
+
+/* Inside its range, a field holds a value no mesh can have. */
+static void
+test_a_mesh_without_one_colour_source_a_scale_clusters_or_nodes_is_a_format_error(void) {
+    fixture_t f = fixture();
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_mesh_with(&f, 24, 0)); /* no colours at all */
+    release(&f);
     f = fixture();
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_mesh_with(&f, 24, 0)); /* no colours at all */
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_mesh_with(&f, 16, 0)); /* no position scale */
+    release(&f);
+    f = fixture();
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_mesh_with(&f, 8, 0)); /* no clusters */
+    release(&f);
+    f = fixture();
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_mesh_with(&f, 12, 0)); /* no nodes */
+    release(&f);
+    f = fixture();
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_mesh_with(&f, 40, COLORS_AT)); /* both colour sources */
     release(&f);
 }
 
@@ -391,6 +408,7 @@ suite_asset_pack(void) {
     RUN_TEST(test_a_missing_id_and_a_wrong_type_are_told_apart);
     RUN_TEST(test_a_mesh_array_outside_its_entry_is_refused);
     RUN_TEST(test_a_cluster_or_node_range_outside_the_mesh_is_refused);
+    RUN_TEST(test_a_mesh_without_one_colour_source_a_scale_clusters_or_nodes_is_a_format_error);
     RUN_TEST(test_an_entry_row_is_read_by_its_index_and_an_index_past_the_table_is_not_found);
     RUN_TEST(test_a_base_that_is_not_16_byte_aligned_is_refused);
     RUN_TEST(test_a_header_with_reserved_bytes_in_use_is_refused);

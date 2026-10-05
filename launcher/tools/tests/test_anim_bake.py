@@ -4,7 +4,6 @@ loop and clamp on one shared timeline, and properties reached by a
 KHR_animation_pointer. The scene is invented in this test, so nothing here
 depends on one an app ships. Skipped where there is no C compiler or no sh."""
 
-import math
 import pathlib
 import shutil
 import subprocess
@@ -15,71 +14,17 @@ import unittest
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "anim"))
+sys.path.insert(0, str(TOOLS / "tests"))
 
 import bake_tracks  # noqa: E402
+from anim import tracks_asset  # noqa: E402
+from anim_probe import channel, probe_glb  # noqa: E402
 from gltf import gltf_read, gltf_write  # noqa: E402
 
 TOLERANCE = 2e-5
 EVERY_MS = 37
 UNTIL_MS = 4200
 NAME = "probe"
-
-
-def turn(axis, degrees):
-    half = math.radians(degrees) / 2.0
-    s = math.sin(half)
-    return (axis[0] * s, axis[1] * s, axis[2] * s, math.cos(half))
-
-
-def cubic_rows(values, slopes):
-    """glTF CUBICSPLINE rows: in-tangent, value, out-tangent per key."""
-    rows = []
-    for value, slope in zip(values, slopes):
-        rows += [slope, value, slope]
-    return rows
-
-
-def channel(node, path, times, values, interpolation="LINEAR", pointer=None):
-    return {"node": node, "path": path, "pointer": pointer, "interpolation": interpolation,
-            "times": times, "values": values}
-
-
-NODES = ("lamp", "arm", "hand")
-
-
-def probe_channels(index):
-    """The clip's channels, with each node at index[name] in the file."""
-    lamp, arm, hand = (index[n] for n in NODES)
-    return [
-        channel(lamp, "translation", [0.0, 1.0, 2.5], [(0, 0, 0), (4, -2, 1), (1, 1, 1)]),
-        # The second pair of keys is in the opposite hemisphere: slerp must take the short way.
-        channel(lamp, "rotation", [0.0, 1.0, 2.5],
-                [turn((0, 1, 0), 10), turn((0, 1, 0), 170), tuple(-x for x in turn((0, 1, 0), 200))]),
-        channel(arm, "scale", [0.0, 1.0, 2.0], [(1, 1, 1), (2, 3, 4), (0.5, 0.5, 0.5)], "STEP"),
-        # These start late and end last: the clip is 3 s, and these run 0.5 to 3.
-        channel(arm, "translation", [0.5, 1.5, 3.0],
-                cubic_rows([(0, 0, 0), (2, 1, 0), (0, 3, 3)], [(1, 0, 0), (0, 2, 0), (-1, -1, 0)]), "CUBICSPLINE"),
-        channel(arm, "rotation", [0.5, 1.5, 3.0],
-                cubic_rows([turn((1, 0, 0), 0), turn((1, 0, 0), 90), turn((1, 0, 0), 30)],
-                           [(0.2, 0, 0, 0), (0, 0.3, 0, 0), (0, 0, 0.1, 0)]), "CUBICSPLINE"),
-        channel(None, "pointer", [0.0, 0.8, 2.0], [(0.6,), (1.2,), (0.9,)],
-                pointer="/cameras/0/perspective/yfov"),
-        # A pointer to a rotation is a quaternion too.
-        channel(None, "pointer", [0.0, 2.0], [turn((0, 0, 1), 0), turn((0, 0, 1), 200)],
-                pointer="/nodes/%d/rotation" % hand),
-        # A channel that never changes bakes to one key.
-        channel(hand, "translation", [0.0, 3.0], [(7, 7, 7), (7, 7, 7)]),
-    ]
-
-
-def probe_glb(reordered=False):
-    order = list(NODES)
-    if reordered:
-        order.reverse()
-    index = {name: order.index(name) for name in NODES}
-    cameras = [{"name": "lens", "type": "perspective", "perspective": {"yfov": 0.6, "znear": 0.1}}]
-    return gltf_write.build_glb([{"name": n} for n in order],
-                                [{"name": "clip", "channels": probe_channels(index)}], cameras=cameras)
 
 
 def find_sh():
@@ -102,7 +47,7 @@ class BakeRoundTripTest(unittest.TestCase):
         cls.document, cls.binary = gltf_read.load_glb(str(glb))
         animation = cls.document["animations"][0]
         cls.animation = gltf_read.read_animation(cls.document, cls.binary, animation)
-        cls.channels = {bake_tracks.channel_name(cls.document, c): c for c in cls.animation}
+        cls.channels = {tracks_asset.channel_name(cls.document, c): c for c in cls.animation}
         cls.duration_ms = round(gltf_read.animation_duration(cls.animation) * 1000)
 
     @classmethod
@@ -196,10 +141,11 @@ class BakeRoundTripTest(unittest.TestCase):
         self.assertTrue(source.startswith("/*\n * GENERATED FILE - do not edit.\n"))
         self.assertIn("python tools/anim/bake_tracks.py", source)
 
-    def test_the_clip_carries_its_duration_and_the_names_are_a_separate_table(self):
+    def test_the_clip_carries_its_duration_and_the_tracks_and_names_are_separate_tables(self):
         source = (self.dir / (NAME + "_tracks_generated.c")).read_text()
-        self.assertIn("const anim_clip_t probe_clip = {probe_clip_tracks, ", source)
-        self.assertIn(", 3000};", source)
+        self.assertIn("const anim_clip_t probe_clip = {3000};", source)
+        self.assertIn("const anim_track_t* const probe_tracks[]", source)
+        self.assertIn("const int probe_track_count = 8;", source)
         self.assertIn("const char* const probe_track_names[]", source)
 
 
@@ -227,7 +173,7 @@ class BakeBindingTest(unittest.TestCase):
             source = (pathlib.Path(directory) / (NAME + "_tracks_generated.c")).read_text()
         self.assertIn("probe_n_translation = {probe_n_translation_times, probe_n_translation_values, 1, 3,", source)
         self.assertIn("probe_n_scale = {probe_n_scale_times, probe_n_scale_values, 2, 3,", source)
-        self.assertIn(", 2000};", source)
+        self.assertIn("probe_clip = {2000};", source)
 
 
 class BakeRefusalTest(unittest.TestCase):
