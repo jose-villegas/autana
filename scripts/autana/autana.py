@@ -150,6 +150,12 @@ def pop_layout_seed(args):
     return value, rest
 
 
+def refuse_release_seed(seed, variant):
+    """A release image carries no padding to sample, so a seed there is a typo."""
+    if seed is not None and variant == "release":
+        sys.exit("autana: --layout-seed is for measuring; a release image is never padded")
+
+
 def device_tool():
     # Under the same scripts/ as this file, so the device tool is the one
     # belonging to the checkout on the PATH.
@@ -284,6 +290,7 @@ def flash(args):
     project = resolve_project()
     seed, args = pop_layout_seed(args)
     _, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope"), project)
+    refuse_release_seed(seed, variant)
     quiet = "--quiet" in seen
     perf_scope = "--perf-scope" in seen
     command = device_command(
@@ -319,6 +326,7 @@ def build(args):
         return build_diag_check(project)
     seed, args = pop_layout_seed(args)
     _, variant, seen = variant_request("build", args, ("--perf-scope",), project)
+    refuse_release_seed(seed, variant)
     flags = sorted(seen) + (["--layout-seed", seed] if seed is not None else [])
     return device_module().build_worktree(project, variant, flags)
 

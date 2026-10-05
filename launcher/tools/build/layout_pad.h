@@ -6,17 +6,14 @@
  * ahead of the object's other code or rodata. Nothing refers to it. */
 #define LAYOUT_PAD_STR2(x) #x
 #define LAYOUT_PAD_STR(x)  LAYOUT_PAD_STR2(x)
+#define LAYOUT_PAD_SECTION(name, flags, align, bytes)                                                                  \
+    ".pushsection " name ",\"" flags                                                                                   \
+    "\",@progbits\n.balign " LAYOUT_PAD_STR(align) "\n.space " LAYOUT_PAD_STR(bytes) "\n.popsection\n"
 
 #if LAYOUT_PAD_TEXT > 0
-__asm__(".pushsection .text.layout_pad,\"axR\",@progbits\n"
-        ".balign 32\n"
-        ".space " LAYOUT_PAD_STR(LAYOUT_PAD_TEXT) "\n"
-                                                  ".popsection\n");
+__asm__(LAYOUT_PAD_SECTION(".text.layout_pad", "axR", LAYOUT_PAD_TEXT_ALIGN, LAYOUT_PAD_TEXT));
 #endif
 
 #if LAYOUT_PAD_RODATA > 0
-__asm__(".pushsection .rodata.layout_pad,\"aR\",@progbits\n"
-        ".balign 64\n"
-        ".space " LAYOUT_PAD_STR(LAYOUT_PAD_RODATA) "\n"
-                                                    ".popsection\n");
+__asm__(LAYOUT_PAD_SECTION(".rodata.layout_pad", "aR", LAYOUT_PAD_RODATA_ALIGN, LAYOUT_PAD_RODATA));
 #endif

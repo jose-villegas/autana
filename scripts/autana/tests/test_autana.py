@@ -621,6 +621,12 @@ class BuildCommandTests(unittest.TestCase):
         _, built = self.build("diag", "--layout-seed", "3")
         built.assert_called_once_with("C:/wt", "diag", ["--layout-seed", "3"])
 
+    def test_a_layout_seed_on_a_release_build_is_refused(self):
+        device = autana.device_module()
+        with mock.patch.object(device, "build_worktree") as built,                 mock.patch.object(autana, "resolve_project", return_value="C:/wt"),                 mock.patch.object(autana, "git", return_value=""),                 mock.patch("builtins.print"), self.assertRaises(SystemExit):
+            autana.build(["rel", "--layout-seed", "3"])
+        built.assert_not_called()
+
     def test_a_layout_seed_that_is_not_a_number_is_refused(self):
         device = autana.device_module()
         with mock.patch.object(device, "build_worktree") as built,                 self.assertRaises(SystemExit):
