@@ -4,7 +4,7 @@ Content that is data, not code, ships in **bundles** and is read where it
 lies: in a flash partition the firmware maps, or in a buffer a host read from
 a file. Each bundle is one asset pack, named after its root asset, and is
 mounted and checked alone, so reading one costs its own size only. A baked
-mesh is the first kind of entry. Nothing is compiled into the app for it, so
+mesh or an animation clip is one entry. Nothing is compiled into the app for it, so
 the app image does not grow with content.
 
 ```mermaid
@@ -30,6 +30,7 @@ searching, so no list is kept:
 |---|---|---|
 | `NAME.scene.toml` | `NAME` | every mesh its renderers name |
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
+| `NAME.anim.toml` | `NAME` | its one clip, baked from its `.glb` |
 
 Ids are unique within a bundle. A mesh two roots name would be a shared asset,
 a bundle of its own the others depend on; that loader is not built, so
@@ -59,6 +60,7 @@ list; `asset_pack_find()` returns an entry's bytes only for the type asked for.
 | Type | Entry | Defined by |
 |---|---|---|
 | `LMSH` | A lit mesh | [The baked mesh](../render/Mesh-Import.md#the-baked-mesh) |
+| `TRCK` | The tracks of one animation | [The pack entry](../Animation-Tracks.md#the-pack-entry) |
 
 ## The bundle directory
 
@@ -81,21 +83,22 @@ so what it checks and what it returns do not depend on where the bytes came
 from. `asset_pack_total_size()` reads the size a pack states from its first 32
 bytes, so a reader maps or reads the header first and then the pack alone.
 `asset_directory_open()` checks a directory the same way, and
-`asset_directory_size()` reads its size from its header. Each reports the first
-failure:
+`asset_directory_size()` reads its size from its header. Opening a pack or a
+directory, finding an entry and reading it each report the first failure:
 
 | Status | Meaning |
 |---|---|
 | `ASSET_ERR_NO_PACK` | no bytes: no partition, no file |
 | `ASSET_ERR_TRUNCATED` | shorter than a header, or than the size it states |
 | `ASSET_ERR_MAGIC` | not an asset pack or bundle directory |
-| `ASSET_ERR_VERSION` | a format version this firmware does not read |
+| `ASSET_ERR_VERSION` | a pack, directory or entry format version this firmware does not read |
 | `ASSET_ERR_SIZE` | the header is malformed: a size that cannot hold it, or reserved bytes in use |
 | `ASSET_ERR_CRC` | the bytes do not match the checksum |
 | `ASSET_ERR_BOUNDS` | an entry or one of its parts leaves its range, or is misaligned; a directory row outside the region, off its sector, over the rows or the bundle before it, or with no room for its name's NUL |
 | `ASSET_ERR_DUPLICATE` | two directory rows share a name |
 | `ASSET_ERR_NOT_FOUND` | no entry or bundle has that name |
 | `ASSET_ERR_TYPE` | the entry is not of the type asked for |
+| `ASSET_ERR_FORMAT` | inside its range, an entry holds a value its reader does not accept |
 | `ASSET_ERR_FULL` | as many bundles are mounted as the store holds |
 
 A buffer may be larger than the pack, as a mapping is.
@@ -151,11 +154,13 @@ renderer.
 
 `launcher/tools/asset/asset_pack.py` is the one writer of the pack and the
 directory, `launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` of the mesh
-entry; `asset_pack.c`, `asset_directory.c` and `r3d_lit_mesh.c` are the one
-reader of each.
+entry, `launcher/tools/anim/tracks_asset.py` of the clip entry; `asset_pack.c`,
+`asset_directory.c`, `r3d_lit_mesh.c` and `anim_tracks.c` are the one reader of
+each.
 
-The entries are committed, like the generated C they stand beside. Bundles are
-built from them and never committed: the firmware build, the host tests and
+The mesh entries are committed, like the generated C they stand beside; a clip
+entry is baked from its `.glb` when the bundles are built. Bundles are never
+committed: the firmware build, the host tests and
 the render scripts each write the tree they are in, so there is no second copy
 to keep in step.
 

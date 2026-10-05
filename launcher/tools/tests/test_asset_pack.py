@@ -278,9 +278,8 @@ class TreeTests(unittest.TestCase):
         packs = build_pack.bundle_bytes([build_pack.DEFAULT_SEARCH])
         self.assertTrue(packs)
         parse_directory(build_directory(sorted(packs.items())))
-        for pack in packs.values():
-            for kind, _ in parse_pack(pack).values():
-                self.assertEqual(kind, LIT_MESH)
+        kinds = {kind for pack in packs.values() for kind, _ in parse_pack(pack).values()}
+        self.assertIn(LIT_MESH, kinds)
 
     def test_each_scene_s_bundle_holds_every_mesh_it_names(self):
         packs = build_pack.bundle_bytes([build_pack.DEFAULT_SEARCH])
