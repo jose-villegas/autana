@@ -113,8 +113,8 @@ Sweep result records are the resume markers. A worker failure prints its
 traceback, kills the other workers and fails the stage. SIGTERM kills the
 workers too; workers die with their parent.
 
-Reference poses share loaded source and the path-traced bounce scene through
-copy-on-write; each pose seeds its own RNG. Standalone reference renders
+Reference poses share loaded source through
+copy-on-write; each pose seeds its own RNG. A source with bounced light renders its poses in the main process, where Mitsuba's threads use every core. Standalone reference renders
 size their pool from available memory. Admitted prepares use the explicit
 `POSE_POOL_BYTES` sizing budget in `process_budget.py`, independent of the
 prepare admission estimate; smoke prepares retain their smaller budget.
