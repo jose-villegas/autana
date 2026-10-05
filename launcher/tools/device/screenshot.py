@@ -118,6 +118,33 @@ def bmp_bytes_to_png(bmp: bytes) -> bytes:
     return png
 
 
+# The panel's own frame, gfx.h's GFX_WIDTH x GFX_HEIGHT: the framebuffer's
+# bytes and the touch points TAP, PRESS and DRAG take are both in it,
+# whichever way the board is held.
+PANEL_WIDTH, PANEL_HEIGHT = 368, 448
+
+# The turn a screenshot gets when no view is asked for: landscape, the same
+# turn whichever way the board is held.
+DEFAULT_TURN_QUARTER = 3
+
+
+def panel_point(x, y, quarter, width=PANEL_WIDTH, height=PANEL_HEIGHT):
+    """The panel pixel that turn_png(png, quarter) moved to (x, y), for a
+    width x height panel image: turn_png's inverse, for one point.
+    ValueError when (x, y) lies outside the turned image."""
+    quarter %= 4
+    shown_width, shown_height = (height, width) if quarter % 2 else (width, height)
+    if not (0 <= x < shown_width and 0 <= y < shown_height):
+        raise ValueError(f"({x}, {y}) is outside the {shown_width} x {shown_height} screenshot")
+    if quarter == 1:
+        return y, height - 1 - x
+    if quarter == 2:
+        return width - 1 - x, height - 1 - y
+    if quarter == 3:
+        return width - 1 - y, x
+    return x, y
+
+
 def turn_png(png: bytes, quarter: int) -> bytes:
     """Turn an RGB PNG made by bmp_bytes_to_png() clockwise by `quarter`."""
     quarter %= 4
