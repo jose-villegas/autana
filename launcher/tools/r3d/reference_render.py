@@ -30,7 +30,7 @@ from r3d import mitsuba_reference
 from r3d.geometry import corner_normals
 from r3d.import_settings import load_scene
 from r3d.light import albedo_from_uv, drop_masked, light, open_side_occlusion, to_srgb8
-from r3d.mesh_import import indirect_cache_for, load_source
+from r3d.mesh_import import load_source, path_light_for
 from r3d.poses import camera_rays, read_poses
 from r3d.ray_query import RayQuery
 
@@ -98,7 +98,7 @@ def trace(source, job, scene, pose, width, height, lens, samples=4):
     if len(rays):
         albedo = hit_albedo(source, faces, bary)
         radiance = light(locations, normal, double, source.intersector, scene.lights, job.bake.ray_offset,
-                         np.random.default_rng(settings.seed), shared_sky_rays=0, indirect=source.indirect_cache, ao=job.bake.ao)
+                         source.bounce, ao=job.bake.ao)
         linear[rays] = albedo * radiance
         shading[rays] = normal * np.where((normal * direction[rays]).sum(axis=1) > 0, -1.0, 1.0)[:, None]
     shading = shading.reshape(height, width, samples * samples, 3).sum(axis=2)
@@ -152,7 +152,7 @@ def source_for(scene, name=None, lit=True):
     if not lit:
         return source, job
     source.intersector = RayQuery(source.p, source.tri_v)
-    source.indirect_cache = indirect_cache_for(source, job, scene, source.intersector)
+    source.bounce = path_light_for(source, job, scene)
     return source, job
 
 
