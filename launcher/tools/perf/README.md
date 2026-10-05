@@ -1,17 +1,17 @@
 # Performance comparison
 
 `perf_compare.sh A B` compares revisions using independent, random positive
-layout seeds on each side. `A A` measures the same source with two distinct
-seed sets. The wrapper uses `revision_worktree.sh` for detached revision
-checkouts and restores `origin/main`'s release image afterwards. Directory
-arguments use existing project trees. `--no-restore` omits the restore flash.
+layout seeds on each side. `A A` calibrates the same source with two distinct
+seed sets. Arguments accept revisions or existing project directories.
+The wrapper restores `origin/main`'s release image afterwards;
+`--no-restore` omits that flash.
 
-Each `--suite NAME TESTS TABLE` uses the layout pilot's triple: a registered
-suite name, comma-separated test patterns (`-` for all), and a table command
-(`-` to read timing rows directly from the capture). Commands run from the
-current repository; `@CAPTURE@`, `@TABLE@` and `@PROJECT@` are replaced with file paths.
-The table command must read suite budgets from the revision being compared
-when budgets are needed; comparison itself reads measured timing values.
+Each `--suite NAME TESTS TABLE` takes a registered suite name, comma-separated
+test patterns (`-` for all), and a table command (`-` reads timing rows from
+the capture). Commands run from the current repository: `@CAPTURE@` and
+`@TABLE@` become this flash's capture and table files, `@PROJECT@` the revision's
+project tree. A table command requiring budgets must read them from that tree,
+for example with `--source @PROJECT@/path/to/suite.c`.
 
 ```sh
 launcher/tools/perf/perf_compare.sh A B -o comparison --rng-seed 42 \
@@ -22,73 +22,88 @@ launcher/tools/perf/perf_compare.sh A A -o calibration \
   'python3 launcher/main/apps/sand/tools/report_performance.py @CAPTURE@ @TABLE@ --source @PROJECT@/launcher/main/apps/sand/tests/suite_sand_perf.c'
 ```
 
-For a report requiring budgets, add `--source PATH` to its table command.
-Both the pilot and comparison import capture acquisition, table parsing,
-wall timing and variance estimates from `layout_measure.py`. The comparison
-uses the existing seeded build mechanism and its sdkconfig pad geometry;
-it does not implement padding itself.
+`--perf-scope` is forced for every seeded flash.
+Captures, status checks and restore use `autana` on PATH; `--autana COMMAND`
+overrides all three for a host replay.
 
 ## Measurement plan
 
-`--rng-seed` replays the random seed and interleaving choices. Every A/B
-pair randomises which side flashes first, and seeds are distinct across
-both sides. `plan.json` records the order, seed, runs, selected suites and
-capture failures. Each seed flashes once, then runs its selected tests
-repeatedly. The first pass uses two runs per seed and the smallest seed
-count whose exact two-sided permutation test can reach the per-look alpha.
-`comparison.json` and `summary.md` state the first pass and cap actually used.
+The default RNG seed is a fresh draw. `--rng-seed` replays a recorded draw;
+`plan.json`, `summary.md` and `comparison.json` record it. Every A/B pair
+randomises which side flashes first, with distinct seeds across both sides.
+The plan preserves seed order, runs, suites and capture failures.
 
-`--max-seeds` caps seeds per side. The default bounds capture cost; increase
-it when an inconclusive result justifies more measurement. Planned looks
-start at the first-pass count, double towards the cap and end at the cap.
-The nominal alpha is divided across all planned looks to account for
-repeated decisions. Holm adjusts difference and equivalence tests separately
-across the row family, including rows decided on earlier looks.
+The first pass takes the seed count needed for exact permutation resolution
+at nominal alpha, repeats a subset to estimate run variance, and captures
+the remaining seeds once. The summary states actual first-pass size, runs
+per look, cap and run clamp. Run variance is pooled from repeated seeds;
+every complete seed contributes a mean and layout estimate.
 
-Measured build/flash/boot and run wall times, sigma_run and sigma_flash
-feed the pilot's Kalibera-Jones R* and required K calculation. K selects the
-next planned look, bounded by the cap; a flash uses the largest recommended
-R among rows selected for that pass. When estimated layout variance is zero,
-run count follows measured flash/run cost (and stays at least two).
-Inconclusive rows alone receive extra seeds. Capture result lines map rows
-to the tests that print them; an unmapped row uses the original suite filter.
+```mermaid
+flowchart TD
+    First[First pass] --> Decide[Decide rows]
+    Decide --> Active{Inconclusive rows with data on both sides?}
+    Active -->|No| Summary[Write summary]
+    Active -->|Yes| Cap{At seed cap?}
+    Cap -->|Yes| Summary
+    Cap -->|No| Estimate[Estimate K and bounded R from variance and costs]
+    Estimate --> Next[First planned look at or above K, or next look]
+    Next --> Capture[Capture active rows]
+    Capture --> Decide
+```
 
-`--timeout` sets the capture deadline; `--wait` sets lock queue time. The
-foreground command deadline allows that wait and all requested runs. Each
-flash checks the logged boot id against its project tree's seeded build id.
-Later suites on that flash request that same build id. A complete capture
-that exits 1 but has timing rows is kept. An incomplete capture, missing rows,
-wrong build or other capture failure is recorded; two consecutive failures
-stop the comparison. Failed attempts consume the cap. Summaries state
-successful seeds and their build ids.
+Planned looks double towards `--max-seeds` and end at the cap. Nominal alpha
+is divided across planned looks, then split equally between Welch difference
+and TOST equivalence families. Each family uses Holm adjustment across rows,
+including rows decided earlier. Permutation is an AND cross-check at nominal
+alpha. Its Monte Carlo resample count keeps the add-one floor well below that
+alpha; settings exceeding the supported resample budget are refused before
+measurement.
+
+Measured build/flash/boot and run costs, sigma_run and sigma_flash feed
+Kalibera-Jones R and required K. K uses the per-look Holm share and one-sided
+TOST alpha. R is clamped to [1, 16], including when estimated layout variance
+is zero. A later flash uses the largest R recommendation among active rows.
+Capture test ownership maps active rows to filters; unmapped rows retain the
+original suite filter.
+
+`--timeout` sets the capture deadline and `--wait` the lock queue time.
+The foreground deadline allows the wait and requested runs. Status logs
+bracket each flash; the boot id must match its project's seeded build id.
+Later suites request that build id. Complete captures exiting 1 are kept;
+other exit codes, incomplete captures, wrong builds and table errors are
+failures. Two consecutive failures stop measurement and write an incomplete
+summary with decisions and errors. A success resets the failure count.
+Failed attempts consume the cap.
 
 ## Reading the result
 
-A seed's mean of runs is one independent observation. The table displays
-arithmetic means and medians of seed means, B/A, delta time and a Welch
-interval on log seed means. The interval describes the geometric ratio;
-B/A is the ratio of arithmetic means. Existing instruction-counter lines
-are paired through capture test ownership and exact scene names; only
-unambiguous, non-overflowing pairs produce delta-insn.
+Each complete seed mean is one independent observation. A row missing from
+any run of a seed excludes that seed for that row; expected rows remain
+visible even when a later flash omits them. The table shows arithmetic means,
+medians of seed means, B/A, delta time and a Welch interval on log seed means.
+The interval describes a geometric ratio, whereas B/A uses arithmetic means.
+Instruction deltas use complete, unambiguous, non-overflowing counter pairs.
 
-`--threshold PCT` states the equivalence margin. `--alpha` states the nominal
-family error rate. **No change** requires TOST equivalence within that margin,
-with Holm adjustment. **Regressed** or **improved** requires a Holm-adjusted
-Welch difference from one and agreement from an exact permutation test on
-the same log seed means (Monte Carlo for large partitions). A permutation
-p-value is `n/a` if the seed count cannot reach the per-look alpha. **Inconclusive**
-covers everything else, including insufficient or zero timings and rows
-undecided at the cap. A/A calibration allows inconclusive noisy rows; lack
-of significance alone does not establish equivalence.
+No change means Holm-adjusted TOST equivalence within +/-threshold; regressed
+or improved means a significant Welch difference with permutation agreement
+that is not shown equivalent, so even a +0.5% move at a 1% threshold can be
+regressed.
 
-There are no row allowlists or fixed noise floors. Row statistics, estimates,
-the plan and capture records are preserved beside the summary. Host tests
-inject an autana-compatible runner for acquisition and exercise the shell
-wrapper with `--autana COMMAND`; this option does not require hardware.
+Both arithmetic and log-difference signs must agree on direction. **Added**
+means B only, **removed** A only, and **not measured** means missing or zero
+timings or no complete seed. These rows receive no extra seeds.
+**Inconclusive** rows with data on both sides alone receive more measurements,
+and remain inconclusive when the cap is reached. Permutation n/a indicates
+insufficient resolution or positive data. A/A calibration allows inconclusive
+noisy rows; lack of significance does not establish equivalence.
+
+Statistics, variance estimates, seed/build identities and capture records
+are preserved beside the summary. Host tests use an injected runner:
 
 ```sh
 python -m unittest discover -s launcher/tools/perf/tests
 ```
 
-See [Layout-Noise.md](../../../docs/tools/Layout-Noise.md) for the seeded
-build and pilot variance definitions.
+See [Layout-Noise.md](../../../docs/tools/Layout-Noise.md) for seeded builds
+and pilot variance definitions.

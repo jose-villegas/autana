@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare report timing rows against a supplied percentage threshold.
+"""Compare report timing rows against a percentage threshold.
 
 Seeded comparisons in launcher/tools/perf distinguish layout variation from change.
 The verdict mode also requires an absolute microsecond movement.

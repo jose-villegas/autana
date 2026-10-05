@@ -16,7 +16,7 @@ confidence interval on B/A (docs/tools/Layout-Noise.md).
 
 Each --suite is: the suite name, its --test patterns ('-' for all) and a
 command that turns a capture into a table ('-' to read the capture itself;
-@CAPTURE@ and @TABLE@ are replaced).
+@CAPTURE@ and @TABLE@ become capture and table files, @PROJECT@ the project tree).
 """
 
 import argparse
@@ -28,7 +28,7 @@ from statistics import mean
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from layout_measure import (analyse, autana_command, captured_runs, make_table,
-                            parse_report, required_seeds, run_flash, t95)
+                            parse_report, required_seeds, run_flash)
 
 def run(args):
     for seed in args.seeds:
@@ -38,7 +38,7 @@ def run(args):
 
 def load(directory):
     """{suite: {flash file: {"seed": n, "flash": s, "run": s, "rows": {name: [values]}}}}
-    from `run`'s files (seed_*.json from the first pilot included)."""
+    from `run`'s files."""
     suites = {}
     for path in sorted(Path(directory).glob("*.json")):
         record = json.loads(path.read_text(encoding="utf-8"))

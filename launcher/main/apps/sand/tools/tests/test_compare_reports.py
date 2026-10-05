@@ -35,6 +35,12 @@ class CompareReportsTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn('regressed=1', result.stdout)
 
+    def test_move_exactly_at_threshold_is_not_counted(self):
+        for value in (9900, 10100):
+            result = self.verdict({'row': 10000}, {'row': value}, 1)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn('improved=0 regressed=0', result.stdout)
+
     def test_table_includes_every_row_without_control_section(self):
         with tempfile.TemporaryDirectory() as root:
             path = pathlib.Path(root)/'table.md'
