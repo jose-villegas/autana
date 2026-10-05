@@ -32,7 +32,7 @@ from r3d.import_settings import load_scene
 from r3d.light import albedo_from_uv, drop_masked, light, open_side_occlusion, to_srgb8
 from r3d.mesh_import import indirect_cache_for, load_source
 from r3d.poses import camera_rays, read_poses
-from r3d.ray_query import RayQuery
+from r3d.ray_query import RayQuery, in_fresh_process
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
@@ -152,7 +152,8 @@ def source_for(scene, name=None, lit=True):
     if not lit:
         return source, job
     source.intersector = RayQuery(source.p, source.tri_v)
-    source.indirect_cache = indirect_cache_for(source, job, scene, source.intersector)
+    # The pose workers fork from this process, which must not start the JIT its cache needs.
+    source.indirect_cache = in_fresh_process(indirect_cache_for, source, job, scene, source.intersector)
     return source, job
 
 
