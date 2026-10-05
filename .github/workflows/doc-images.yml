@@ -93,11 +93,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          number=$(gh pr list --head "$REFRESH_BRANCH" --state open --json number --jq '.[0].number')
-          if [ -n "$number" ]; then
-            gh pr close "$number" --delete-branch \
-              --comment "Every rendered image and generated table already matches main; nothing left to refresh."
-          fi
+          python scripts/ci/refresh_pr.py close \
+            "Every rendered image and generated table already matches main; nothing left to refresh."
 
       - name: Commit the changed images and tables and open or update the PR
         if: steps.render.outputs.count != '0' && github.ref == 'refs/heads/main'
@@ -131,10 +128,4 @@ jobs:
             sed -e 's/^changed \([^:]*\): \(.*\)$/| `\1` | \2 |/' "$RUNNER_TEMP/changed.txt" | sed 's/^changed \(.*\)$/| `\1` | regenerated table |/'
           } > "$RUNNER_TEMP/body.md"
 
-          number=$(gh pr list --head "$REFRESH_BRANCH" --state open --json number --jq '.[0].number')
-          if [ -n "$number" ]; then
-            gh pr edit "$number" --body-file "$RUNNER_TEMP/body.md"
-          else
-            gh pr create --base main --head "$REFRESH_BRANCH" \
-              --title 'docs: refresh rendered images' --body-file "$RUNNER_TEMP/body.md"
-          fi
+          python scripts/ci/refresh_pr.py sync 'docs: refresh rendered images' "$RUNNER_TEMP/body.md"
