@@ -64,12 +64,12 @@ jobs:
         with:
           python-version: '3.13'
 
-      # The fidelity sheet traces the source model: trimesh, embreex and scipy.
+      # The bakes and the fidelity sheet trace rays on Mitsuba's LLVM variant, which needs libLLVM.
       - name: Install Pillow, the r3d requirements and ffmpeg
         run: |
           pip install -r launcher/tools/r3d/requirements.txt
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
+          sudo apt-get install -y --no-install-recommends ffmpeg llvm
           ffmpeg -version | head -1
 
       # Exit 1 means an image or table changed, or an image is an orphan; an orphan or any exit

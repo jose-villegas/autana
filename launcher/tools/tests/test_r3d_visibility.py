@@ -13,8 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 try:
     import numpy as np
-    import trimesh
-    from trimesh.ray.ray_pyembree import RayMeshIntersector
+    from tests import soup
 
     from r3d import mesh_import
     from r3d.light import coincident_faces, visible_from_path
@@ -39,7 +38,7 @@ def scene(*cards):
         tris += [[len(positions) + i for i in face] for face in faces]
         positions += corners
     positions, tris = np.array(positions, dtype=float), np.array(tris)
-    return positions, tris, RayMeshIntersector(trimesh.Trimesh(positions, tris, process=False))
+    return positions, tris, soup.rays(soup.Soup(positions, tris))
 
 
 def visible(positions, tris, intersector, poses=(EYE,), size=(16, 12), lens=0.62, near=0.5, samples=2, margin=0, **options):

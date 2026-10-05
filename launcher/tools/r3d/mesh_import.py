@@ -20,8 +20,6 @@ import sys
 from types import SimpleNamespace
 
 import numpy as np
-import trimesh
-from trimesh.ray.ray_pyembree import RayMeshIntersector
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -45,6 +43,7 @@ from r3d.light import (  # noqa: E402
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
 from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
 from r3d.poses import either_way, sample_camera_path, tracks_file  # noqa: E402
+from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.simplify import densify, simplify  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
@@ -152,7 +151,7 @@ def bake_geometry(job, scene):
     intersector = None
     visibility = renderer.visibility
     if visibility or job.bake:
-        intersector = RayMeshIntersector(trimesh.Trimesh(src.p, tri_v, process=False))
+        intersector = RayQuery(src.p, tri_v)
     indirect_cache = indirect_cache_for(src, job, scene, intersector)
     double_names = settings.double_sided
     seen = np.ones(len(tri_v), dtype=bool)

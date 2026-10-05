@@ -114,23 +114,23 @@ names the render and is required with `--reference-sheet`.
 ### Path-traced reference
 
 `reference_render.py --backend mitsuba` renders the same source with Mitsuba 3 in
-place of Embree. It reads the same geometry after alpha rejection, albedo,
+place of the bake lighting. It reads the same geometry after alpha rejection, albedo,
 camera and poses, and shares exposure, tone map and RGB565 conversion. The
-Embree backend stays the default.
+`bake` backend stays the default.
 Install the pinned `mitsuba` and `drjit` from
-[requirements-gpu.txt](requirements-gpu.txt); the variant is `cuda_ad_rgb` when
+[requirements.txt](requirements.txt); the variant is `cuda_ad_rgb` when
 a CUDA device is present, else `llvm_ad_rgb`, else `scalar_rgb` (`--variant`).
 
 | Option | Meaning |
 |---|---|
-| `--spp N`, `--seed N` | Paths per pixel and sampler seed; `--samples` stays the Embree subpixel grid |
+| `--spp N`, `--seed N` | Paths per pixel and sampler seed; `--samples` stays the bake backend's subpixel grid |
 | `--max-depth N` | Path depth cap; 2 is direct light only |
 | `--sky hosek-wilkie` | Replaces the scene lights by the Hosek–Wilkie sun and sky (`--turbidity`, `--ground-albedo`), the sun taking the first directional light's direction |
 
 A `sky` light becomes a constant environment of the same radiance. The
 backends differ in these recorded ways, besides transport:
 
-| Case | Embree reference | Path-traced backend |
+| Case | Bake reference | Path-traced backend |
 |---|---|---|
 | Sun disc | Soft shadows from `disc_degrees` | A point source: no soft edge |
 | `ambient` | Added to every point | Rejected unless black, it has no transport meaning |
@@ -138,7 +138,7 @@ backends differ in these recorded ways, besides transport:
 | Double-sided card | Turns toward the summed suns | Shades the side the ray reached |
 | Near plane | Ignored | Clips at the pose file's near value |
 | `[bake].ao` | Scales the ambient and, if asked, the gathered bounce light | Ignored |
-`tests/test_r3d_mitsuba_reference.py` pins direct-only parity with the Embree
+`tests/test_r3d_mitsuba_reference.py` pins direct-only parity with the bake
 reference, texture orientation and constant-sky energy. Measure one pose with
 
 ```sh
@@ -190,7 +190,7 @@ one mesh together (the path-averaged mesh); `--per-shot` trains one per
 pair, for a mesh swapped as the camera moves through each segment.
 
 The fit runs on a CUDA GPU in its own environment with
-[requirements.txt](requirements.txt) and [requirements-gpu.txt](requirements-gpu.txt).
+[requirements.txt](requirements.txt).
 From the repository root, one setup on WSL 2 Ubuntu 24.04 with the Windows
 NVIDIA driver uses a conda environment for
 the CUDA 12.8 compiler and a GCC that CUDA 12.8 accepts:
@@ -201,7 +201,7 @@ micromamba create -y -p ~/gpu/env -c nvidia/label/cuda-12.8.1 -c conda-forge \
 E=~/gpu/env
 $E/bin/python -m ensurepip
 $E/bin/python -m pip install -q --progress-bar off torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
-$E/bin/python -m pip install -q --progress-bar off -r launcher/tools/r3d/requirements.txt -r launcher/tools/r3d/requirements-gpu.txt
+$E/bin/python -m pip install -q --progress-bar off -r launcher/tools/r3d/requirements.txt
 $E/bin/python -m pip install -q --progress-bar off ninja setuptools wheel
 TORCH_CUDA_ARCH_LIST=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
 export TORCH_CUDA_ARCH_LIST
