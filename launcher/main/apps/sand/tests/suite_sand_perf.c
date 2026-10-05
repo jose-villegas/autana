@@ -312,8 +312,8 @@ perf_target_by_core(const char* two_core_name, const char* one_core_name, int64_
 
 /* The worst case: every cell on the screen moving at once. Unrelated code
  * shifting the flash layout can move this row between builds with no work
- * changed, so check the control rows before reading a miss here as a
- * regression. */
+ * changed, so confirm a miss with a seeded perf_compare.sh run before reading
+ * it as a regression. */
 #define FULL_STEP_BUDGET_US 7290
 
 /* Goal = worst of a 5-run board capture + 1% (layout drift between images

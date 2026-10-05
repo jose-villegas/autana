@@ -10,7 +10,6 @@ import math
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -25,6 +24,7 @@ import lock_scope
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
+from process_tree import stop_process_tree
 BOARD_ENV = autana_config.BOARD_ENV
 TOKEN_ENV = autana_config.TOKEN_ENV
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
@@ -920,20 +920,6 @@ def holding(store, board, args, held_lock, kind):
 
 
 FLASH_POLL_SECONDS = 0.5
-
-
-def stop_process_tree(process):
-    """A flash command runs idf.py and esptool under it; the flash has to stop,
-    not just the shell that started it."""
-    if os.name == "nt":
-        subprocess.run(["taskkill", "/F", "/T", "/PID", str(process.pid)],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    else:
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-    process.wait()
 
 
 def run_to_end(command, lost=None, timeout=None, **options):

@@ -25,6 +25,8 @@ class FakeAutana:
         self.calls = []
 
     def __call__(self, command, log, timeout):
+        if "status" in command:
+            return 0, [(0, "free")], 0
         self.calls.append(command)
         def arg(name):
             return command[command.index(name)+1]
@@ -82,7 +84,7 @@ class SeedInferenceTest(unittest.TestCase):
         b = {'quiet': [100]*8, 'up': [110]*8, 'down': [90]*8, 'zero': [0]*8}
         result = stats.compare(a, b)
         self.assertEqual([result[name]['verdict'] for name in ['quiet', 'up', 'down', 'zero', 'missing']],
-                         ['no change', 'regressed', 'improved', 'inconclusive', 'inconclusive'])
+                         ['no change', 'regressed', 'improved', 'not measured', 'removed'])
         self.assertAlmostEqual(result['up']['ratio'], 1.1)
 
     def test_permutation_resolution_and_monte_carlo(self):
@@ -214,6 +216,8 @@ class AcquisitionTest(unittest.TestCase):
                 self.draw, self.planted = draw, planted
             def __call__(self, command, log, timeout):
                 code, lines, wall = super().__call__(command, log, timeout)
+                if "status" in command:
+                    return code, lines, wall
                 seed = int(command[command.index('--layout-seed')+1])
                 project = pathlib.Path(command[command.index('--project')+1])
                 rng = random.Random(seed + self.draw*2147483647)

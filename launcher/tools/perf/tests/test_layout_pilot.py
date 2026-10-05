@@ -13,6 +13,7 @@ import unittest
 PERF = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PERF))
 
+from seed_statistics import t_quantile
 import layout_pilot as pilot  # noqa: E402
 
 
@@ -64,7 +65,7 @@ class LayoutPilotTest(unittest.TestCase):
     def test_the_interval_the_seed_count_buys_is_the_one_asked_for(self):
         layout, run, runs, half_width = 0.003, 0.0005, 3, 0.002
         seeds = pilot.required_seeds(layout, run, runs, half_width)
-        width = lambda k: pilot.t95(2 * (k - 1)) * math.sqrt(
+        width = lambda k: t_quantile(.975, 2 * (k - 1)) * math.sqrt(
             2 * (layout ** 2 + run ** 2 / runs) / k)
         self.assertLessEqual(width(seeds), half_width)
         self.assertGreater(width(seeds - 1), half_width)

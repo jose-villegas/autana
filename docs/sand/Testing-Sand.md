@@ -56,16 +56,10 @@ the default capture window, so pass `autana suite run_sand_perf_suite 1000`.
 
 Two rules keep a reading honest:
 
-- **Use independent layout seeds to judge a change.**
-  [`perf_compare.sh`](../../launcher/tools/perf/README.md) compares revisions
-  with distinct seeded images, repeated runs per image and interleaved
-  flashes. Its measured layout and run variance determine extra measurements.
-  No change means equivalence within the requested threshold; improved or
-  regressed requires a statistical difference and permutation agreement.
-  An inconclusive result at the seed cap remains inconclusive. `A A`
-  calibrates the same source with separate seed sets. A single pair of
-  reports from `compare_reports.py` applies its percentage threshold and
-  absolute-us guard; it cannot distinguish layout variation from change.
+- **Judge a change with seeded images.**
+  [`perf_compare.sh`](../../launcher/tools/perf/README.md) separates layout
+  variation from change; `A A` calibrates. `compare_reports.py` on one pair of
+  reports applies only its threshold and cannot tell layout from change.
 - **Measure landscape first.** Landscape is the shipping orientation:
   gravity moves within a fixed grid, so a portrait-tuned scene measures
   different work, including rotated UI and gravity along a different grid axis.
@@ -75,8 +69,9 @@ Two rules keep a reading honest:
 Every frame-budget scene mallocs its ~41 KB grid; if that fails, the
 suite still runs and prints completion with no timings in it. With the
 framebuffer in PSRAM, one grid fits the internal heap's largest block
-and a second contiguous one does not. A report with zero timings cannot supply a comparison; run `autana suite run_gfx_suite` and grep
-its capture for `free heap after framebuffer`.
+and a second contiguous one does not. A report with zero timings cannot
+supply a comparison; run `autana suite run_gfx_suite` and grep its capture
+for `free heap after framebuffer`.
 
 ## Perf sanity, not just logging
 
