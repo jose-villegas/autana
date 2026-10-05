@@ -1,6 +1,6 @@
 """Checks the bounced light of the bake (r3d/path_bake.py) against a wall whose answer is known, and its settings: the
-indirect intensity, the albedo boost, colour, the sky, one- and two-sided surfaces, chunks of points, groups of points
-and determinism."""
+albedo boost, colour, the sky, one- and two-sided surfaces, chunks of points, groups of points and determinism, and
+that the scene's indirect intensity scales the bounce where `light()` sums it."""
 
 import pathlib
 import sys
@@ -75,9 +75,8 @@ def floor_only():
     return source
 
 
-def path_light(source=None, double=(), bounces=1, rays=256, intensity=1.0, boost=1.0, lights=(SUN,)):
-    return PathLight(source or corridor(), list(lights), set(double), SimpleNamespace(bounces=bounces, rays=rays),
-                     SimpleNamespace(intensity=intensity, albedo_boost=boost))
+def path_light(source=None, double=(), bounces=1, rays=256, boost=1.0, lights=(SUN,)):
+    return PathLight(source or corridor(), list(lights), set(double), SimpleNamespace(bounces=bounces, rays=rays), boost)
 
 
 def bounce_at(path, xs, ray_offset=0.01):
@@ -107,11 +106,6 @@ class BounceTests(unittest.TestCase):
         np.testing.assert_allclose(got / got.sum(), wall_albedo / wall_albedo.sum(), rtol=0.08)
         self.assertGreater(got[0], got[1])
         self.assertGreater(got[1], got[2])
-
-    def test_the_intensity_scales_the_bounce_linearly(self):
-        base = bounce_at_the_wall_foot()
-        for intensity in (0.0, 0.5, 3.0):
-            np.testing.assert_allclose(bounce_at_the_wall_foot(intensity=intensity), base * intensity, rtol=1e-9, atol=0.0)
 
     def test_the_albedo_boost_multiplies_the_reflectance_and_holds_it_below_one(self):
         low, high = bounce_at_the_wall_foot(source=corridor(0.2)), bounce_at_the_wall_foot(source=corridor(0.2), boost=2.0)
@@ -186,6 +180,18 @@ class LightPlumbingTests(unittest.TestCase):
         def bounce(self, points, normals, ray_offset):
             self.normals = normals
             return np.zeros((len(points), 3))
+
+    def test_the_indirect_intensity_scales_the_bounce_and_nothing_else(self):
+        class Constant:
+            def bounce(self, points, normals, ray_offset):
+                return np.ones((len(points), 3))
+
+        card = soup.Soup([(-9, 0, -9), (9, 0, -9), (9, 0, 9), (-9, 0, 9)], [(0, 1, 2), (0, 2, 3)])
+        sun = {"type": "directional", "direction": [0.0, 1.0, 0.0], "color": [1.0, 1.0, 1.0], "intensity": 1.0}
+        args = (np.array([[0.0, 0.0, 0.0]]), np.array([[0.0, 1.0, 0.0]]), np.array([False]), soup.rays(card), [sun], 0.01)
+        for intensity in (0.0, 0.5, 3.0):
+            got = light(*args, bounce=Constant(), bounce_intensity=intensity)
+            np.testing.assert_allclose(got, [[1.0 + intensity] * 3])
 
     def test_a_double_sided_point_facing_away_from_the_sun_gathers_on_its_sun_facing_side(self):
         card = soup.Soup([(-9, 0, -9), (9, 0, -9), (9, 0, 9), (-9, 0, 9)], [(0, 1, 2), (0, 2, 3)])
