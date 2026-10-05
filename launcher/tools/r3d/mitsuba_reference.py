@@ -102,7 +102,7 @@ def source_meshes(mi, source, double_sided, keep_textures=False, boost=1.0):
 def emitters(mi, lights, sky=None):
     """The scene lights as Mitsuba emitters, in the units `light()` returns: its value is E/pi times albedo, so a
     directional light's irradiance is pi * colour * intensity and a flat sky is a constant radiance of colour *
-    intensity. A directional light is a point source here, so soft sun discs are not reproduced. Ambient is a
+    intensity. A directional light is a point source, as in the bake. Ambient is a
     non-physical constant with no transport meaning and is rejected unless it is zero.
 
     `sky` (turbidity, albedo) replaces the lights by the Hosek-Wilkie sun and sky, the sun taking its direction from

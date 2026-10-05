@@ -146,7 +146,7 @@ bake_and_render() {
         -o "$dir/frame.bmp" --video "$dir.avi" 2> "$dir/render.log"
 }
 # variant_bake NAME BOUNCES SCENE-TABLE: bounces is `keep`, or `none` to take
-# the scene bake's indirect cache out; the table goes before the first object.
+# the scene's `[bake].indirect` out; the table goes before the first object.
 variant_bake() {
     run mkdir -p "$W/indirect-$1"
     run cp "$M/meshes/sponza.import.toml" "$W/indirect-$1/"

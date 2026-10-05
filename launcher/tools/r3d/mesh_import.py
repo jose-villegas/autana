@@ -82,7 +82,7 @@ PATH_LIGHTS = {}
 def path_light_for(src, job, scene):
     """The bounced-light tracer of a renderer's source, built once per run: renderers of one import with the same
     lights and settings share it. None when the renderer takes no bounced light."""
-    if job.bake is None or job.bake.indirect is None:
+    if job.bake is None or job.bake.indirect is None or job.bake.indirect.bounces == 0:
         return None
     settings = job.settings
     key = (str(settings.path), repr(vars(job.bake.indirect)), repr(scene.lights), repr(vars(scene.indirect)))

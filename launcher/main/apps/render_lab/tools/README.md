@@ -369,7 +369,7 @@ reference. Its generated sheets show the held-out error and enlarged differences
 
 The scene's `[indirect]` table, described in
 [Scene-Files.md](../../../../../docs/render/Scene-Files.md#indirect), sets
-`intensity` (a multiplier on the gathered bounce light) and `albedo_boost` (a
+`intensity` (a multiplier on the bounced light) and `albedo_boost` (a
 multiplier on the reflectance bounces use, held below 1). The committed scene
 leaves both at the physical 1.0. The reference reads the same table, so each
 look has two references: the physical one and one made with the look's own
@@ -397,7 +397,7 @@ from physical lighting; the own-reference column isolates bake fidelity.
 ## Local occlusion
 
 The scene's `[bake].ao` ([Scene-Files.md](../../../../../docs/render/Scene-Files.md#bake-ao))
-scales the ambient light, and with `indirect = true` the gathered bounce light,
+scales the ambient light, and with `indirect = true` the bounced light,
 by how closed in a point is. The scene's own ambient is faint, so these images
 raise it in both bakes and add `ao` to one of them. The reference applies the
 occlusion at every pixel and the bake at every vertex, so the two heatmaps show

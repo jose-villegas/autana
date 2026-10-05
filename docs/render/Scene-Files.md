@@ -119,7 +119,7 @@ the same settings. A renderer can opt out with [indirect: off](#indirect-off).
 `[bake].ao = { distance = D, rays = R }` darkens crevices, contact lines and
 spots under overhangs. The sky light is blocked by an occluder at any
 distance; this counts only hits within `D` model units. It scales the
-[ambient](#ambient) light, and with `indirect = true` the gathered bounce
+[ambient](#ambient) light, and with `indirect = true` the bounced
 light. The directional and sky lights are untouched. Every baked renderer gets it. How the factor is computed is in
 [Mesh-Import.md](Mesh-Import.md#local-occlusion-implementation).
 
@@ -128,7 +128,7 @@ light. The directional and sky lights are untouched. Every baked renderer gets i
 | `distance` | Reach of the occlusion rays in model units, greater than 0. |
 | `rays` | Rays per point, at least 1. |
 | `strength` | Optional, 0 to 1, default 1: the factor falls as low as 1 − `strength`. |
-| `indirect` | Optional, default false: also scale the gathered bounce light. |
+| `indirect` | Optional, default false: also scale the bounced light. |
 
 Off unless given. A scene that sets it needs something to scale: an
 `[ambient]` light, or `indirect = true` with [bounced light](#bake-indirect)
@@ -269,10 +269,10 @@ from one place, so a shadow edge lands on whole faces.
 ![Smooth against flat, the places they differ most](../images/render/compare-full-flat.crops.png)
 ![One fixed face sample against adaptive](../images/render/import-face-samples.png)
 
-Face samples are the useful control; extra samples converge. Sky rays saturate
-at the sky light's `rays`: fewer is worse, and more change the score by no
-more than noise. Stratified placement preserves soft boundaries. A face's one colour leaves edge error that
-sampling cannot remove. Generated findings and sheets live in the scene tools
+Face samples are the useful control; extra samples converge. A flat bake's sky
+rays are the sky light's `rays`; the scene tools README's sweep shows how the
+score moves with them. Stratified placement preserves soft boundaries. A face's
+one colour leaves edge error that sampling cannot remove. Generated findings and sheets live in the scene tools
 README. `bake_fidelity.py` re-lights a flat mesh's geometry with chosen
 settings into a scratch directory and scores it against the reference, so
 nothing tracked changes.
