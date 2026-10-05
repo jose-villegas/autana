@@ -308,9 +308,25 @@ def write_ao_scene(directory):
     return directory / SCENE.name
 
 
+# Run in a child so the stage's own process never initialises the JIT.
+RAY_TRACING_CHECK = "import drjit as dr; raise SystemExit(0 if dr.has_backend(dr.JitBackend.LLVM) else 3)"
+
+
+def require_ray_tracing():
+    """The bakes trace their rays on Mitsuba's LLVM variant, which needs libatomic1 and libLLVM. A runner missing
+    either fails here with the fix, not later inside a worker."""
+    done = subprocess.run([sys.executable, "-c", RAY_TRACING_CHECK], capture_output=True, text=True)
+    if done.returncode:
+        lines = done.stderr.strip().splitlines()
+        reason = lines[-1] if lines else "drjit found no LLVM backend"
+        raise ValueError(f"the GPU stage traces rays on Mitsuba's LLVM variant ({reason}); "
+                         "install libatomic1 and libLLVM, for example apt install libatomic1 llvm")
+
+
 def gpu(args, out, work):
     # The parent never forks or initialises CUDA; disposable workers own heavy state.
     memory_guard()
+    require_ray_tracing()
     from r3d.process_budget import TaskExecutor
     with TaskExecutor() as executor:
         return _gpu(args, out, work, executor)
