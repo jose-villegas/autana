@@ -26,13 +26,23 @@ def import_mitsuba():
 
 
 def default_variant(mi):
-    """The fastest variant this machine can run: CUDA, then LLVM, then the scalar CPU one."""
+    """The fastest variant this machine can run: CUDA, then LLVM, then the scalar CPU one. A CUDA device without
+    OptiX, as under WSL, loads no scene, so each candidate is proven with one."""
     import drjit as dr
 
     for backend, variant in ((dr.JitBackend.CUDA, "cuda_ad_rgb"), (dr.JitBackend.LLVM, "llvm_ad_rgb")):
-        if variant in mi.variants() and dr.has_backend(backend):
+        if variant in mi.variants() and dr.has_backend(backend) and traces_rays(mi, variant):
             return variant
     return "scalar_rgb"
+
+
+def traces_rays(mi, variant):
+    mi.set_variant(variant)
+    try:
+        mi.load_dict({"type": "scene", "shape": {"type": "rectangle"}})
+    except RuntimeError:
+        return False
+    return True
 
 
 def material_bsdf(mi, kd, texture, two_sided):
