@@ -162,33 +162,33 @@ Labels beginning with min or max change the auto bounds; area scales the
 median face area; sky changes the sky-ray count. Sampling changes bake
 quality without adding work to the runtime renderer.
 
-<!-- generated: sponza-flat-sampling sha256=080a0e36f09e92f8c608b293bba43e4caef72b8b5d2349c406712716839b184f -->
+<!-- generated: sponza-flat-sampling sha256=aa832cbc3e774aa522e1d995875b6af005aa04dc03f0b41e155838278048353c -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| fixed32 | 7.963 | 26.744 | 0.6297 | 16.473 | 6.360 |
-| fixed64 | 7.989 | 26.811 | 0.6291 | 16.465 | 6.393 |
-| fixed16 | 8.019 | 26.793 | 0.6276 | 16.555 | 6.411 |
-| fixed8 | 8.092 | 27.387 | 0.6251 | 16.707 | 6.465 |
-| fixed4 | 8.192 | 28.291 | 0.6213 | 17.078 | 6.519 |
-| fixed4-sun-centre | 8.194 | 28.394 | 0.6218 | 17.192 | 6.499 |
-| min4 | 8.201 | 28.213 | 0.6211 | 17.083 | 6.528 |
-| area0.25 | 8.201 | 28.175 | 0.6216 | 17.282 | 6.479 |
-| area0.5 | 8.326 | 29.245 | 0.6176 | 17.917 | 6.508 |
-| min2 | 8.403 | 29.433 | 0.6152 | 17.743 | 6.640 |
-| fixed2 | 8.525 | 29.856 | 0.6118 | 17.914 | 6.752 |
-| sky512 | 8.603 | 31.424 | 0.6084 | 18.608 | 6.704 |
-| sky256 | 8.620 | 31.427 | 0.6082 | 18.611 | 6.724 |
-| max4 | 8.621 | 31.449 | 0.6081 | 18.609 | 6.726 |
-| max32 | 8.628 | 31.434 | 0.6079 | 18.614 | 6.733 |
-| declared | 8.630 | 31.434 | 0.6080 | 18.613 | 6.735 |
-| max8 | 8.637 | 31.456 | 0.6077 | 18.614 | 6.743 |
-| sun-centre | 8.662 | 31.653 | 0.6076 | 18.894 | 6.723 |
-| sky64 | 8.685 | 31.429 | 0.6081 | 18.617 | 6.799 |
-| area2 | 8.801 | 32.162 | 0.6068 | 18.976 | 6.873 |
-| sky32 | 8.808 | 31.389 | 0.6061 | 18.635 | 6.941 |
-| centroid | 8.825 | 32.581 | 0.6016 | 18.887 | 6.917 |
-| fixed1 | 8.874 | 32.989 | 0.6002 | 19.004 | 6.952 |
-| sky16 | 9.148 | 31.438 | 0.6018 | 18.646 | 7.338 |
+| fixed32 | 7.961 | 26.677 | 0.6297 | 16.491 | 6.354 |
+| fixed64 | 7.982 | 26.782 | 0.6292 | 16.477 | 6.383 |
+| fixed16 | 8.008 | 26.723 | 0.6278 | 16.562 | 6.397 |
+| fixed8 | 8.084 | 27.299 | 0.6253 | 16.696 | 6.459 |
+| fixed4 | 8.196 | 28.294 | 0.6213 | 17.107 | 6.518 |
+| fixed4-sun-centre | 8.199 | 28.412 | 0.6219 | 17.226 | 6.498 |
+| area0.25 | 8.200 | 28.233 | 0.6212 | 17.341 | 6.465 |
+| min4 | 8.204 | 28.220 | 0.6209 | 17.116 | 6.524 |
+| area0.5 | 8.346 | 29.389 | 0.6174 | 18.000 | 6.514 |
+| min2 | 8.417 | 29.487 | 0.6146 | 17.793 | 6.647 |
+| fixed2 | 8.519 | 29.968 | 0.6124 | 17.945 | 6.740 |
+| sky512 | 8.619 | 31.461 | 0.6077 | 18.663 | 6.712 |
+| max4 | 8.633 | 31.499 | 0.6076 | 18.662 | 6.729 |
+| sky256 | 8.638 | 31.480 | 0.6074 | 18.667 | 6.733 |
+| declared | 8.640 | 31.471 | 0.6071 | 18.672 | 6.736 |
+| max32 | 8.646 | 31.488 | 0.6071 | 18.669 | 6.742 |
+| max8 | 8.659 | 31.508 | 0.6072 | 18.670 | 6.757 |
+| sun-centre | 8.673 | 31.735 | 0.6067 | 18.952 | 6.723 |
+| sky64 | 8.693 | 31.458 | 0.6072 | 18.677 | 6.796 |
+| area2 | 8.795 | 32.246 | 0.6060 | 19.058 | 6.851 |
+| centroid | 8.832 | 32.631 | 0.6017 | 18.938 | 6.916 |
+| sky32 | 8.833 | 31.456 | 0.6053 | 18.696 | 6.957 |
+| fixed1 | 8.877 | 33.011 | 0.6012 | 19.053 | 6.947 |
+| sky16 | 9.173 | 31.496 | 0.6006 | 18.701 | 7.356 |
 <!-- /generated: sponza-flat-sampling -->
 
 The sheet of the committed flat bake, left to right the reference,
@@ -373,14 +373,14 @@ The generated table scores each look against both references over the
 doc-image poses. The physical-reference columns include the look's difference
 from physical lighting; the own-reference column isolates bake fidelity.
 
-<!-- generated: sponza-indirect-look sha256=ce3114dd909c17e9c9dcb7ecc95358d58ab5f37192a6074827e029b1e7689479 -->
+<!-- generated: sponza-indirect-look sha256=a9a81ad0143f981aa564db38668da817ad2e1705a31d534bd5b8bdb652c69475 -->
 | Look | Mean dE76, physical | Mean dE76, own | p95, physical | SSIM, physical |
 |---|---:|---:|---:|---:|
 | Direct light only | 9.629 | | 24.368 | 0.6617 |
 | intensity 1 | 7.136 | 7.136 | 23.077 | 0.6690 |
-| intensity 2 | 8.182 | 7.667 | 24.260 | 0.6532 |
-| intensity 3 | 10.258 | 8.110 | 26.111 | 0.6269 |
-| albedo boost 2 | 8.928 | 7.869 | 24.804 | 0.6388 |
+| intensity 2 | 8.181 | 7.665 | 24.225 | 0.6534 |
+| intensity 3 | 10.277 | 8.125 | 26.266 | 0.6261 |
+| albedo boost 2 | 8.905 | 7.833 | 24.610 | 0.6397 |
 <!-- /generated: sponza-indirect-look -->
 
 ## Local occlusion
