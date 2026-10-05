@@ -1,0 +1,21 @@
+name: LFS objects
+
+# Every LFS pointer in the tree must have its object on the server. A pointer
+# pushed without its object checks out as a pointer and fails every later
+# `git lfs pull` with a 404; the GPU and CPU doc runs did exactly that.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lfs-objects:
+    name: LFS objects exist on the server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ask the server for every pointer's object
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/gates/check_lfs_objects.py
