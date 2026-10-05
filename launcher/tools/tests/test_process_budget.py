@@ -383,6 +383,38 @@ if __name__ == '__main__':
                 finally:
                     release.set()
 
+    def test_ordinary_task_does_not_pass_a_waiting_priority_task(self):
+        from unittest.mock import patch
+        from r3d import process_budget as budget
+        context = __import__('multiprocessing').get_context('spawn')
+        started, release = context.Event(), context.Event()
+        order = []
+        free = tuple(2 * fit + floor for fit, floor in zip(budget.FIT_BYTES, budget.FLOORS))
+        large = tuple(3 * fit for fit in budget.FIT_BYTES)
+        with patch.object(budget, 'available_bytes', return_value=free), \
+                patch.object(budget, 'resident_bytes', return_value=(0,) * 3), \
+                patch.object(budget, 'cores_available', return_value=4):
+            with budget.TaskExecutor() as executor:
+                try:
+                    first = executor.submit(handshake_worker, started, release, 'first')
+                    self.assertTrue(started.wait(10))
+                    with executor.condition:
+                        priority = executor.submit(identity_worker, 'priority', estimates=large, priority=True)
+                        ordinary = executor.submit(identity_worker, 'ordinary')
+                        priority.add_done_callback(lambda f: order.append(f.result()[0]))
+                        ordinary.add_done_callback(lambda f: order.append(f.result()[0]))
+                    self.assertFalse(ordinary.done())
+                    with executor.condition:
+                        executor.condition.wait(timeout=3)
+                        self.assertEqual(len(executor.active), 1)
+                    release.set()
+                    first.result(timeout=10)
+                    priority.result(timeout=10)
+                    ordinary.result(timeout=10)
+                    self.assertEqual(order, ['priority', 'ordinary'])
+                finally:
+                    release.set()
+
     def test_big_task_does_not_block_small_task(self):
         from unittest.mock import patch
         from r3d.process_budget import TaskExecutor, GIB, FLOORS
@@ -435,8 +467,8 @@ class PartialTaskTests(ProcessTests):
 class MeasuredBudgetTests(unittest.TestCase):
     def test_worker_estimates(self):
         from r3d import process_budget as b
-        self.assertEqual(b.PREPARE_BYTES, (13 * b.GIB // 2, 0, 13 * b.GIB // 2))
-        self.assertEqual(b.BAKE_BYTES, (5 * b.GIB // 2, 0, 5 * b.GIB // 2))
+        self.assertEqual(b.PREPARE_BYTES, (21 * b.GIB // 4, 0, 21 * b.GIB // 4))
+        self.assertEqual(b.BAKE_BYTES, (17 * b.GIB // 4, 0, 17 * b.GIB // 4))
         self.assertEqual(b.FIT_BYTES, (22 * b.GIB // 10, 7 * b.GIB // 10, 22 * b.GIB // 10))
         self.assertEqual(b.MEASURE_BYTES, (3 * b.GIB // 2, 128 * 1024 ** 2, 3 * b.GIB // 2))
         self.assertEqual(b.SMOKE_PREPARE_BYTES, (2 * b.GIB, 0, 2 * b.GIB))
