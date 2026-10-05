@@ -184,12 +184,8 @@ class OcclusionSceneTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             long = Path(directory) / "meshes"
             long.mkdir()
-            (long / "sponza.import.toml").write_text('[source]
-path = "x.obj"
-')
-            (long / "sponza.scene.toml").write_text("[ambient]
-" + "color = [1.0, 1.0, 1.0]
-" * 20000)
+            (long / "sponza.import.toml").write_text('[source]\npath = "x.obj"\n')
+            (long / "sponza.scene.toml").write_text("[ambient]\n" + "color = [1.0, 1.0, 1.0]\n" * 20000)
             with mock.patch.object(stages, "SCENE", long / "sponza.scene.toml"):
                 with self.assertRaisesRegex(ValueError, r"no \[ambient\] intensity"):
                     stages.write_ao_scene(Path(directory) / "out")
