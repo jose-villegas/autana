@@ -11,12 +11,16 @@ authored screen. Every C identifier in the output derives from `screen`.
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
+from panel_size import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402  (path must be set up first)
 
 
 SCHEMA_VERSION = 2
 ORIENTATIONS = ("portrait", "landscape")
-CANVASES = {"portrait": (368, 448), "landscape": (448, 368)}
+CANVASES = {"portrait": (PANEL_WIDTH, PANEL_HEIGHT), "landscape": (PANEL_HEIGHT, PANEL_WIDTH)}
 MIN_TAP_TARGET = 56  # ui/ui.h UI_TAP_MIN
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
 

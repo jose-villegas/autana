@@ -3,10 +3,14 @@ the part of a QEMU run that decides its exit status, with no QEMU needed.
 
     python -m unittest discover -s launcher/test/tests
 """
+import base64
+import json
 import os
+import struct
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -82,6 +86,61 @@ class RunSuiteTest(unittest.TestCase):
     def test_another_suites_completion_is_not_this_ones(self):
         self.assertFalse(self.run_suite(
             "RUNSUITE_COMPLETE name=run_sand_suite_perf found=1 selected=3 unmatched=0"))
+
+
+
+class DriveFrameTest(unittest.TestCase):
+    """A tap or swipe takes pixels of the default screenshot, as `autana tap`
+    does; a touch stays the raw panel-frame level."""
+
+    def run_action(self, action):
+        console = FakeConsole([])
+        with unittest.mock.patch.object(qemu_run.time, "sleep"):
+            ok = qemu_run.run_action(console, action)
+        return ok, console.sent
+
+    def test_a_tap_goes_in_at_the_panel_point_of_the_screenshot_pixel(self):
+        ok, sent = self.run_action("tap 10 20")
+        self.assertTrue(ok)
+        self.assertEqual(sent, ["TOUCH down 347 10", "TOUCH up 347 10"])
+
+    def test_a_swipe_turns_both_ends(self):
+        ok, sent = self.run_action("swipe 0 0 447 367")
+        self.assertTrue(ok)
+        self.assertEqual(sent[0], "TOUCH down 367 0")
+        self.assertEqual(sent[-1], "TOUCH up 0 447")
+
+    def test_a_touch_stays_in_panel_pixels(self):
+        ok, sent = self.run_action("touch down 10 20")
+        self.assertTrue(ok)
+        self.assertEqual(sent, ["TOUCH down 10 20"])
+
+    def test_a_tap_outside_the_screenshot_is_not_an_action(self):
+        with unittest.mock.patch("builtins.print"):
+            ok, sent = self.run_action("tap 448 0")
+        self.assertFalse(ok)
+        self.assertEqual(sent, [])
+
+
+class ScreenshotTest(unittest.TestCase):
+    def test_writes_the_default_view_and_records_its_turn(self):
+        # A 2 x 3 frame, BGR bottom-up rows padded to 4 bytes.
+        rows = [bytes((1, 2, 3, 4, 5, 6, 0, 0)), bytes((7, 8, 9, 10, 11, 12, 0, 0)),
+                bytes((13, 14, 15, 16, 17, 18, 0, 0))]
+        pixels = b"".join(rows)
+        bmp = (b"BM" + struct.pack("<IHHI", 54 + len(pixels), 0, 0, 54)
+               + struct.pack("<IiiHHIIiiII", 40, 2, 3, 1, 24, 0, len(pixels), 0, 0, 0, 0) + pixels)
+        lines = ["SCREENSHOT_BEGIN size=%d" % len(bmp),
+                 "SCREENSHOT_DATA:" + base64.b64encode(bmp).decode("ascii"),
+                 'SCREENSHOT_STATE:{"orientation_quarter": 2}', "SCREENSHOT_END"]
+        with tempfile.TemporaryDirectory() as directory, unittest.mock.patch("builtins.print"):
+            out = os.path.join(directory, "shot.png")
+            self.assertTrue(qemu_run.take_screenshot(FakeConsole(lines), out))
+            with open(out, "rb") as fh:
+                self.assertEqual(struct.unpack_from(">II", fh.read(), 16), (3, 2))
+            with open(os.path.join(directory, "shot.json")) as fh:
+                state = json.load(fh)
+        self.assertEqual(state, {"orientation_quarter": 2, "image_turn_quarter": 3})
 
 
 if __name__ == "__main__":
