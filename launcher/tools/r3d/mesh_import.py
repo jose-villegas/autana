@@ -81,14 +81,16 @@ PATH_LIGHTS = {}
 
 def path_light_for(src, job, scene):
     """The bounced-light tracer of a renderer's source, built once per run: renderers of one import with the same
-    lights and settings share it. None when the renderer takes no bounced light."""
-    if job.bake is None or job.bake.indirect is None or job.bake.indirect.bounces == 0:
+    lights and settings share it. None when the renderer takes no bounced light. Only the latest is kept: each holds
+    the source's textures a second time."""
+    if job.bake is None or job.bake.indirect is None:
         return None
     settings = job.settings
-    key = (str(settings.path), repr(vars(job.bake.indirect)), repr(scene.lights), repr(vars(scene.indirect)))
+    boost = scene.indirect.albedo_boost
+    key = (str(settings.path), repr(vars(job.bake.indirect)), repr(scene.lights), boost)
     if key not in PATH_LIGHTS:
-        src.corner_normals = corner_normals(src.p, src.tri_v)
-        PATH_LIGHTS[key] = PathLight(src, scene.lights, settings.double_sided, job.bake.indirect, scene.indirect)
+        PATH_LIGHTS.clear()
+        PATH_LIGHTS[key] = PathLight(src, scene.lights, settings.double_sided, job.bake.indirect, boost)
     return PATH_LIGHTS[key]
 
 
@@ -102,7 +104,7 @@ def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce):
     albedo = albedo_at(src, vpos, vertex_spacing(vpos, vtris), material)
     welded = np.unique(np.round(vpos * 16).astype(np.int64), axis=0, return_inverse=True)[1].reshape(-1)
     radiance = light(vpos, vn, np.full(len(vpos), double), intersector, scene.lights, job.bake.ray_offset, bounce,
-                     bounce_groups=welded, ao=job.bake.ao)
+                     bounce_groups=welded, ao=job.bake.ao, bounce_intensity=scene.indirect.intensity)
     vrgb = to_srgb8(albedo * radiance, scene.tonemap_white)
     return merge_matching_colours(vpos, vrgb, vtris, job.bake.colour_merge_step)
 
@@ -209,7 +211,7 @@ def flat_colours(job, scene, geometry, face_samples, **knobs):
                         lambda centres, spacing, material: albedo_at(src, centres, spacing, material), geometry.intersector,
                         lights, job.bake.ray_offset, scene.tonemap_white, samples, max_samples=sample_max,
                         sample_area=sample_area, min_samples=sample_min, bounce=geometry.bounce,
-                        ao=job.bake.ao, **knobs)
+                        ao=job.bake.ao, bounce_intensity=scene.indirect.intensity, **knobs)
 
 
 def check_fitted(job, scene):

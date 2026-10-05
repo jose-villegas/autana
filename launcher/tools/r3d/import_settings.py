@@ -84,13 +84,6 @@ def count(value, where):
     return value
 
 
-def nonnegative_count(value, where):
-    value = integer(value, where)
-    if value < 0:
-        raise SettingsError(f"{where} must not be negative")
-    return value
-
-
 def colour_rgb(value, where):
     """A colour as 0xRRGGBB."""
     value = integer(value, where)
@@ -533,7 +526,7 @@ def load_bake(table):
     if "indirect" in table:
         indirect = table["indirect"]
         check_keys(indirect, ("bounces", "rays"), "scene.bake.indirect")
-        bake.indirect = SimpleNamespace(bounces=nonnegative_count(indirect["bounces"], "scene.bake.indirect.bounces"),
+        bake.indirect = SimpleNamespace(bounces=count(indirect["bounces"], "scene.bake.indirect.bounces"),
                                         rays=count(indirect["rays"], "scene.bake.indirect.rays"))
     if "ao" in table:
         ao = table["ao"]

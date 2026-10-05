@@ -309,6 +309,7 @@ class SceneTests(unittest.TestCase):
     def test_indirect_light_needs_complete_nonnegative_settings(self):
         base = "colour_merge_step = 6"
         for pattern, bounced in (("bake.indirect.bounces", "{ bounces = -1, rays = 8 }"),
+                                 ("bake.indirect.bounces", "{ bounces = 0, rays = 8 }"),
                                  ("bake.indirect.rays", "{ bounces = 1, rays = 0 }"),
                                  ("bake.indirect.rays is required", "{ bounces = 1 }")):
             with self.subTest(pattern=pattern):
@@ -887,12 +888,36 @@ class ReferenceObjectTests(unittest.TestCase):
 
 
 class PathLightForTests(unittest.TestCase):
-    def test_a_renderer_with_no_bounces_or_no_indirect_builds_no_scene(self):
-        for indirect in (SimpleNamespace(bounces=0, rays=8), None):
-            job = SimpleNamespace(bake=SimpleNamespace(indirect=indirect), settings=SimpleNamespace())
-            with mock.patch.object(mesh_import, "PathLight") as built:
-                self.assertIsNone(mesh_import.path_light_for(None, job, SimpleNamespace()))
-            built.assert_not_called()
+    def setUp(self):
+        mesh_import.PATH_LIGHTS.clear()
+        self.addCleanup(mesh_import.PATH_LIGHTS.clear)
+
+    def job(self, indirect):
+        return SimpleNamespace(bake=SimpleNamespace(indirect=indirect), settings=SimpleNamespace(path="a.import.toml", double_sided=set()))
+
+    def test_a_renderer_with_no_indirect_builds_no_scene(self):
+        with mock.patch.object(mesh_import, "PathLight") as built:
+            self.assertIsNone(mesh_import.path_light_for(None, self.job(None), SimpleNamespace()))
+        built.assert_not_called()
+
+    def test_one_scene_is_shared_by_equal_settings_and_only_the_latest_is_kept(self):
+        indirect = SimpleNamespace(bounces=1, rays=8)
+        scene = lambda boost, lights: SimpleNamespace(lights=lights, indirect=SimpleNamespace(albedo_boost=boost, intensity=1.0))
+        with mock.patch.object(mesh_import, "PathLight", side_effect=lambda *args: object()) as built:
+            first = mesh_import.path_light_for(None, self.job(indirect), scene(1.0, []))
+            self.assertIs(mesh_import.path_light_for(None, self.job(indirect), scene(1.0, [])), first)
+            self.assertEqual(built.call_count, 1)
+            mesh_import.path_light_for(None, self.job(indirect), scene(2.0, []))
+        self.assertEqual(built.call_count, 2)
+        self.assertEqual(len(mesh_import.PATH_LIGHTS), 1)
+
+    def test_the_intensity_does_not_rebuild_the_scene(self):
+        indirect = SimpleNamespace(bounces=1, rays=8)
+        scene = lambda intensity: SimpleNamespace(lights=[], indirect=SimpleNamespace(albedo_boost=1.0, intensity=intensity))
+        with mock.patch.object(mesh_import, "PathLight", side_effect=lambda *args: object()) as built:
+            mesh_import.path_light_for(None, self.job(indirect), scene(1.0))
+            mesh_import.path_light_for(None, self.job(indirect), scene(3.0))
+        self.assertEqual(built.call_count, 1)
 
 
 class JobTests(unittest.TestCase):
