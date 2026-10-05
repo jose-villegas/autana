@@ -133,6 +133,12 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.
 # changes.
 . scripts/lib/python.sh
 R3D_PYTHON=$(run find_r3d_python "$PWD")
+# The committed smooth bake at the same five poses, scored against the committed
+# reference, for the fidelity table and the import-light image.
+run "$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 5 --dt 5000 \
+    -o "$W/committed-smooth.bmp" --video "$W/committed-smooth.avi" 2> "$W/committed-smooth.log"
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/committed-smooth-unused.png" \
+    --reference-video "$W/committed-smooth.avi" "$REFERENCE" --reference-scale 2 > "$W/committed-smooth-compare.log"
 # bake_and_render DIR MESH SCENE: link the mesh source into DIR, bake the scene file in DIR,
 # pack the mesh in place of the committed one and render the five poses to DIR.avi.
 bake_and_render() {
@@ -143,10 +149,10 @@ bake_and_render() {
     run env AUTANA_ASSET_PACK="$dir/assets.bin" "$W/render_lab_render" --quarter 0 --no-hud --scene "$scene" --frames 5 --dt 5000 \
         -o "$dir/frame.bmp" --video "$dir.avi" 2> "$dir/render.log"
 }
-# The studies below start from the physical look: the committed scene without
-# its occlusion and its [indirect] table, which the scene sets for its renders.
-run awk '/^\[indirect\]$/ { skip = 1; next } skip && /^$/ { skip = 0; next } skip { next } /^ao = \{/ { next } { print }' \
-    "$M/meshes/sponza.scene.toml" > "$W/physical.scene.toml"
+# The indirect-light and occlusion studies start from the physical look: the
+# committed scene without its occlusion and its [indirect] table, which the
+# scene sets for its own renders. Everything else here uses the committed look.
+run "$R3D_PYTHON" "$M/tools/physical_scene.py" "$M/meshes/sponza.scene.toml" "$W/physical.scene.toml"
 # variant_bake NAME BOUNCES SCENE-TABLE: bounces is `keep`, or `none` to take
 # the scene's `[bake].indirect` out; the table goes before the first object.
 variant_bake() {
@@ -274,14 +280,19 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/appearance-
     --label-a simplifier --label-b fitted --reference-crops "$W/fidelity-reference-4.png" \
     "$W/fidelity-sponza-lite.bmp" "$W/fidelity-sponza-fitted.bmp" > "$W/appearance-lite-fitted-reference.log"
 
-# Direct-light counterparts at the same poses; the committed indirect bakes
-# and source reference are shared with the image measurements above.
+# The lite and flat meshes with and without bounced light, at the same poses and
+# against the same physical reference as the full mesh above, so one table holds
+# one look.
 tables_start=$(date +%s)
 variant_bake direct-lite none '' sponza.atrium_lite sponza-lite
 variant_bake direct-flat none '' sponza.atrium_flat sponza-flat
+variant_bake smooth-lite keep '' sponza.atrium_lite sponza-lite
+variant_bake smooth-flat keep '' sponza.atrium_flat sponza-flat
 for kind in lite flat; do
-    "$PYTHON" launcher/tools/render/render_compare.py --out "$W/direct-$kind-unused.png" \
-        --reference-video "$W/indirect-direct-$kind.avi" "$REFERENCE" --reference-scale 2 > "$W/direct-$kind-compare.log"
+    for look in direct smooth; do
+        "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$look-$kind-unused.png" \
+            --reference-video "$W/indirect-$look-$kind.avi" "$PHYSICAL_REFERENCE" --reference-scale 2 > "$W/$look-$kind-compare.log"
+    done
 done
 
 sweep_start=$(date +%s)

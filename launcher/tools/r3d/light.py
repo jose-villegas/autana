@@ -247,8 +247,9 @@ def open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offs
 
 
 def face_towards_light(normals, double_sided, lights):
-    """Double-sided surfaces turn to the side the directional lights, summed,
-    shine on. One orientation for every light, so their order cannot matter."""
+    """The orientation a double-sided surface is first lit on: the side the directional lights, summed, shine on. One
+    orientation for every light, so their order cannot matter. It also keeps the copies of a vertex at one position
+    facing alike when their bounce is gathered together; `light` then tries the other side too."""
     toward = np.zeros(3)
     for light in lights:
         if light["type"] == "directional":
@@ -301,11 +302,12 @@ def bounced_light(bounce, points, normals, ray_offset, groups=None):
     """`bounce.bounce` for every point; with `groups`, once per group on the group's mean normal."""
     if groups is None:
         return bounce.bounce(points, normals, ray_offset)
-    _, first = np.unique(groups, return_index=True)
-    total = np.stack([np.bincount(groups, weights=normals[:, axis]) for axis in range(3)], axis=1)
+    _, first, inverse = np.unique(groups, return_index=True, return_inverse=True)
+    inverse = inverse.reshape(-1)
+    total = np.stack([np.bincount(inverse, weights=normals[:, axis]) for axis in range(3)], axis=1)
     length = np.linalg.norm(total, axis=1, keepdims=True)
     mean = np.where(length > 1e-6, total / np.maximum(length, 1e-12), normals[first])
-    return bounce.bounce(points[first], mean, ray_offset)[groups]
+    return bounce.bounce(points[first], mean, ray_offset)[inverse]
 
 
 def encode_srgb8(linear):
