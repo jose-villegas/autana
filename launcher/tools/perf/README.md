@@ -18,8 +18,8 @@ launcher/tools/perf/perf_compare.sh A B -o comparison --rng-seed 42 \
   --suite run_sponza_perf_suite flythrough -
 
 launcher/tools/perf/perf_compare.sh A A -o calibration \
-  --suite run_sand_perf_suite frame_budget \
-  'python3 launcher/main/apps/sand/tools/report_performance.py @CAPTURE@ @TABLE@ --source @PROJECT@/launcher/main/apps/sand/tests/suite_sand_perf.c'
+  --suite run_example_perf_suite frame_budget \
+  'python3 path/to/report_performance.py @CAPTURE@ @TABLE@ --source @PROJECT@/path/to/suite.c'
 ```
 
 `--perf-scope` is forced for every seeded flash.
@@ -70,7 +70,7 @@ A later flash uses the largest R recommendation among active rows.
 For a filtered first pass, extra seeds re-run the subset of the user's own
 patterns matching active tests. For an unfiltered first pass, capture test
 ownership maps active rows to the shortest substrings unique among the tests
-the unfiltered pass ran (PASS, FAIL and IGNORE result lines). Missing inventory,
+the unfiltered pass reported (PASS, FAIL and IGNORE result lines). Missing inventory,
 unknown owners, or tests without a bounded unique substring fall back to the
 user's filter. Filter width and pattern count limits come from each project's
 `launcher/test/suites.h`; requests over the pattern count are split across
@@ -82,8 +82,8 @@ bracket each flash; the boot id must match its project's seeded build id.
 Later suites request that build id. Complete captures exiting 1 are kept;
 other exit codes, incomplete captures, wrong builds and table errors are
 failures. Two consecutive failures stop measurement and write the summary
-so far, with decisions and errors. A summary is marked incomplete after such
-a stop, when no row was decided, or when any row is not measured. A success
+so far, with decisions and errors. A summary is marked incomplete after such a stop,
+when the captures yielded no rows, or when any row is not measured. A success
 resets the failure count.
 Failed attempts consume the cap.
 
@@ -94,7 +94,8 @@ any run of a seed excludes that seed for that row; expected rows remain
 visible even when a later flash omits them. The table shows arithmetic means,
 medians of seed means, B/A, delta time and a Welch interval on log seed means.
 The interval describes a geometric ratio, whereas B/A uses arithmetic means.
-Instruction deltas use complete, unambiguous, non-overflowing counter pairs.
+Instruction deltas use complete, unambiguous, non-overflowing counter pairs
+from the look that decided the row.
 
 No change means Holm-adjusted TOST equivalence within +/-threshold; regressed
 or improved means a significant Welch difference with permutation agreement
@@ -110,7 +111,8 @@ rows at the cap.
 Both arithmetic and log-difference signs must agree on direction. **Added**
 means B only and **removed** A only when every attempt on the other side
 succeeded and its captures ran the row's owning test without printing the
-row. **Not measured** means missing or zero timings or no complete seed.
+row. An IGNORE result does not establish measured absence.
+**Not measured** means missing or zero timings or no complete seed.
 These rows receive no extra seeds.
 **Inconclusive** rows with data on both sides alone receive more measurements,
 and remain inconclusive when the cap is reached. Permutation n/a means there

@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import process_tree
@@ -15,8 +15,6 @@ class ProcessTreeTests(unittest.TestCase):
     @unittest.skipUnless(os.name == 'nt', 'Windows job assignment')
     def test_job_failure_degrades_and_assignment_precedes_resume(self):
         import ctypes
-        from unittest.mock import Mock
-        import process_tree
         for created, assigned in ((None, False), (123, False), (123, True)):
             kernel, process, ntdll = Mock(), Mock(), Mock()
             process._handle = 456
@@ -42,8 +40,6 @@ class ProcessTreeTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name == 'nt', 'Windows job creation')
     def test_shared_job_creation_failure_degrades(self):
-        from unittest.mock import Mock
-        import process_tree
         for created, configured in ((None, False), (123, False)):
             kernel = Mock()
             kernel.CreateJobObjectW.return_value = created

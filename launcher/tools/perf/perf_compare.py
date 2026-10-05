@@ -200,7 +200,11 @@ def measure(args, runner=None):
                 if not absent_by_measurement(name, owner, plan, records[missing_side], missing_side):
                     result["verdict"] = "not measured"
             if name not in decisions or decisions[name]["verdict"] == "inconclusive":
-                decisions[name] = dict(result, look=look + 1)
+                counter_means = {side: mean(extracted[side][1][name]) if extracted[side][1].get(name) else None
+                                 for side in records}
+                delta_insn = (100 * (counter_means['b'] / counter_means['a'] - 1)
+                              if counter_means['a'] and counter_means['b'] is not None else None)
+                decisions[name] = dict(result, look=look + 1, counter_means=counter_means, delta_insn=delta_insn)
         active = {name for name, result in decisions.items() if result["verdict"] == "inconclusive"}
         if stop_error or not active:
             break
@@ -239,7 +243,7 @@ def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=
              f"per-family per-look alpha: {args.alpha / len(sizes) / 2:g}. "
              f"First pass: {sizes[0]} seeds per side. Cap: {args.max_seeds} seeds per side.", "",
              f"RNG seed: {args.rng_seed}; R clamp: [1, {MAX_RUNS}].", "",
-             "Incomplete: stopped after capture failures, or rows not measured; see plan errors and the not-measured rows." if incomplete else "Complete.", "",
+             "Incomplete: stopped after capture failures, no rows, or rows not measured; see plan errors and the not-measured rows." if incomplete else "Complete.", "",
              "Seed means decide; medians describe the seed means. "
              f"Intervals are {100 * (1 - args.alpha / len(sizes) / 2):g}% two-sided Welch intervals on log seed means. "
              "Holm corrects difference and equivalence tests separately over all rows. "
@@ -264,15 +268,11 @@ def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=
                           ", ".join(map(str, missing)), ""]
     lines += ["| Row | A mean us | A median us | B mean us | B median us | B/A | Delta time % | Delta insn % | Interval B/A | Welch Holm p | TOST Holm p | Permutation p | Verdict |",
               "|---|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---|"]
-    counters = {side: observations(records[side])[1] for side in records}
     def number(value):
         return "n/a" if value is None else f"{value:.6g}"
     for name, row in sorted(rows.items()):
         ratio = row["ratio"]
-        instruction_delta = None
-        if counters["a"].get(name) and counters["b"].get(name) and mean(counters["a"][name]):
-            instruction_delta = 100 * (mean(counters["b"][name]) / mean(counters["a"][name]) - 1)
-        row["delta_insn"] = instruction_delta
+        instruction_delta = row.get("delta_insn")
         interval = "n/a" if row["interval"] is None else ", ".join(number(x) for x in row["interval"])
         lines.append(f"| `{name}` | {number(row['a'])} | {number(row.get('a_median'))} | "
                      f"{number(row['b'])} | {number(row.get('b_median'))} | {number(ratio)} | "

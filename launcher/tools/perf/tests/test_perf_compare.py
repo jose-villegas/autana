@@ -279,11 +279,8 @@ class AcquisitionTest(unittest.TestCase):
             project = args.project_a
             project.mkdir(parents=True, exist_ok=True)
             source = project/'suite.c'
-            source.write_text('#ifdef DEVICE_BUILD\n#define LIMIT 200\n'
-                              'static void test_quiet(void) {\n'
-                              '    perf_guard("row", 100, LIMIT);\n}\n'
-                              '#endif /* DEVICE_BUILD */\n')
-            reporter = PERF.parents[1]/'main/apps/sand/tools/report_performance.py'
+            source.write_text('test_quiet 200\ntest_heavy 300\n')
+            reporter = FIXTURES / 'table_report.py'
             args.suite = [('suite', '-', f'python3 "{reporter}" @CAPTURE@ @TABLE@ --source @PROJECT@/suite.c')]
             class TableRunner(FakeAutana):
                 def __call__(self, command, log, timeout):

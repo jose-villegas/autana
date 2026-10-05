@@ -310,7 +310,7 @@ def run_flash(args, seed, runner=None):
                     rows = parse_report(table)
                     owners, instructions = capture_metadata(capture, rows)
                     runs.append(dict(capture=str(capture), table=str(table), rows=rows,
-                                     owners=owners, instructions=instructions, listed_tests=capture_tests(capture), inventory=capture_tests(capture) if tests == "-" else []))
+                                     owners=owners, instructions=instructions, listed_tests=capture_tests(capture, include_ignored=False), inventory=capture_tests(capture) if tests == "-" else []))
                 if name not in record["suites"]:
                     record["suites"][name] = dict(tests=tests, run_seconds=seconds, runs=runs)
                 else:
@@ -355,8 +355,9 @@ def validate_filters(suites, limits):
             raise ValueError(f"suite filter exceeds project limits: {width} characters, {count} patterns")
 
 
-def capture_tests(capture):
+def capture_tests(capture, include_ignored=True):
     """List all tests reported by the capture, including tests without timings."""
     text = Path(capture).read_text(encoding="utf-8", errors="replace")
     return [match.group("name") for line in text.splitlines()
-            if (match := RESULT_RE.match(line.strip()))]
+            if (match := RESULT_RE.match(line.strip())) and
+            (include_ignored or match.group("status") != "IGNORE")]
