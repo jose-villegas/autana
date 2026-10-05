@@ -98,7 +98,8 @@ def trace(source, job, scene, pose, width, height, lens, samples=4):
     if len(rays):
         albedo = hit_albedo(source, faces, bary)
         radiance = light(locations, normal, double, source.intersector, scene.lights, job.bake.ray_offset,
-                         source.bounce, ao=job.bake.ao)
+                         source.bounce, ao=job.bake.ao,
+                         bounce_intensity=scene.indirect.intensity if source.bounce is not None else 1.0)
         linear[rays] = albedo * radiance
         shading[rays] = normal * np.where((normal * direction[rays]).sum(axis=1) > 0, -1.0, 1.0)[:, None]
     shading = shading.reshape(height, width, samples * samples, 3).sum(axis=2)

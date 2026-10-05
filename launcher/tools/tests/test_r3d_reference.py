@@ -180,8 +180,11 @@ class BounceReferenceTests(unittest.TestCase):
         source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
         without = render_linear(source, *sun_scene([0., 0., 1.]), LOOK_DOWN, 1, 1, 0.1, 1)
         source.bounce = self.Constant()
-        with_bounce = render_linear(source, *sun_scene([0., 0., 1.]), LOOK_DOWN, 1, 1, 0.1, 1)
-        np.testing.assert_allclose(with_bounce - without, 0.25, atol=1e-12)
+        job, scene = sun_scene([0., 0., 1.])
+        for intensity in (1.0, 2.0):
+            scene.indirect = SimpleNamespace(intensity=intensity)
+            with_bounce = render_linear(source, job, scene, LOOK_DOWN, 1, 1, 0.1, 1)
+            np.testing.assert_allclose(with_bounce - without, 0.25 * intensity, atol=1e-12)
 
     def test_poses_with_bounced_light_render_in_this_process_and_keep_the_pool_otherwise(self):
         from unittest.mock import patch
