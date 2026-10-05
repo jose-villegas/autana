@@ -926,8 +926,6 @@ def run_to_end(command, lost=None, timeout=None, **options):
     """Runs `command` to its end, stopping its whole process tree on any
     error, on Ctrl+C, or the moment `lost`, a held lock's event, None for a
     command that holds none, is set."""
-    if os.name != "nt":
-        options["start_new_session"] = True
     deadline = None if timeout is None else time.monotonic() + timeout
     process = launch_process_tree(command, **options)
     try:

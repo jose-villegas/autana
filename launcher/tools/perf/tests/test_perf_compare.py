@@ -1,6 +1,7 @@
 """Seed inference and foreground acquisition exercised without hardware."""
 import contextlib
 import io
+import inspect
 import math
 import pathlib
 import random
@@ -43,7 +44,8 @@ class FakeAutana:
         for run in range(runs):
             base = self.root/f'capture_{len(self.calls)}_{run}'
             lines.append((10+run*10, f'batch: {suite} run {run+1}/{runs}'))
-            text = ''
+            text = ''.join(f'SUITE_TEST name={name} selected={int(any(p in name for p in tests))}\n'
+                           for name in ['test_quiet', 'test_heavy'])
             for name in ['test_quiet', 'test_heavy']:
                 if not any(pattern in name for pattern in tests):
                     continue
@@ -55,7 +57,7 @@ class FakeAutana:
                     value += 3000 if seed % 2 else -3000
                 text += f'I (1) perf: {row} both cores: mean {value}us\n'
                 text += f'I (2) xtperf: scene={row} event=insn cycles_per_step=99 value_per_step={value*2} steps=1\n'
-                text += f'suite.c:1:{name}:PASS\nTEST_TIME name={name} elapsed_ms=1\n'
+                text += f':1:{name}:PASS\nTEST_TIME name={name} elapsed_ms=1\n'
             base.with_suffix('.log').write_text(text)
             base.with_suffix('.md').write_text('- Ended: complete\n' if self.mode != 'incomplete' else '- Ended: timeout\n')
             lines.append((19+run*10, 'report: ' + str(base.with_suffix('.md'))))
@@ -73,6 +75,21 @@ def arguments(root, cap=16):
                            suite=[('suite', '-', '-')], max_seeds=cap, alpha=.05,
                            threshold=1., rng_seed=9, timeout=1800, wait=3600,
                            label_a='A', label_b='B')
+
+
+def record_for_rows(args, seed, values):
+    """Records for decision tests; capture parsing has its own acquisition tests."""
+    suites = {}
+    inventory = ['test_' + row for row in values]
+    for suite, tests, _ in args.suite:
+        rows = {row: value for row, value in values.items()
+                if tests == '-' or any(pattern in 'test_' + row for pattern in tests.split(','))}
+        run = dict(rows=rows, owners={row: 'test_' + row for row in rows},
+                   instructions={row: value * 2 for row, value in rows.items()},
+                   listed_tests=['test_' + row for row in rows], inventory=inventory)
+        suites[suite] = dict(tests=tests, runs=[run.copy() for _ in range(args.runs)],
+                             run_seconds=[10] * (args.runs - 1) + [9])
+    return dict(seed=seed, build_id=f'{seed}-diag', flash_seconds=10, suites=suites)
 
 
 class SeedInferenceTest(unittest.TestCase):
@@ -158,9 +175,7 @@ class AcquisitionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             root = pathlib.Path(root)
             fake = root/'fake.py'
-            fake.write_text("import sys\nfrom pathlib import Path\n"
-                            f"sys.path.insert(0, {str(pathlib.Path(__file__).parent)!r})\n"
-                            "from test_perf_compare import FakeAutana\n"
+            fake.write_text("import pathlib,sys\n" + inspect.getsource(FakeAutana) + "\n" +
                             f"fake = FakeAutana({str(root)!r}, shifted=True)\n"
                             "code, lines, wall = fake(sys.argv[1:], None, 1800)\n"
                             "for at, line in lines: print(line, flush=True)\n"
@@ -235,13 +250,14 @@ class AcquisitionTest(unittest.TestCase):
                 for _, line in lines:
                     if not line.startswith('report: '):
                         continue
-                    text = ''
+                    text = ''.join(f'SUITE_TEST name=test_{name} selected=1\n'
+                                   for name in layout)
                     for name, base in [('quiet', 100000), ('heavy', 100000), ('near_zero', 2), ('bimodal', 100000)]:
                         value = max(1, round(base*math.exp(layout[name]+rng.gauss(0, .0005))))
                         if self.planted and name == 'quiet' and project.name == 'b':
                             value = round(value*1.05)
                         text += f'I (1) perf: {name} both cores: mean {value}us\n'
-                        text += f'suite.c:1:test_{name}:PASS\n'
+                        text += f':1:test_{name}:PASS\n'
                     pathlib.Path(line[8:]).with_suffix('.log').write_text(text)
                 return code, lines, wall
         false, detected, equivalent, draws = 0, 0, 0, 4
@@ -276,9 +292,9 @@ class AcquisitionTest(unittest.TestCase):
                         if line.startswith('report: '):
                             path = pathlib.Path(line[8:]).with_suffix('.log')
                             path.write_text('I (1) device_tests: row 100 us\n'
-                                            'suite.c:1:test_quiet:PASS\n'
+                                            ':1:test_quiet:PASS\n'
                                             'I (2) device_tests: row 200 us\n'
-                                            'suite.c:2:test_heavy:PASS\n')
+                                            ':2:test_heavy:PASS\n')
                     return code, lines, wall
             args.project = project
             args.out = pathlib.Path(root)/'flash'

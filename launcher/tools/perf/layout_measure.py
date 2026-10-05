@@ -1,7 +1,6 @@
 """Seeded capture acquisition and variance estimates shared by performance tools."""
 import json
 import math
-import os
 import re
 import shlex
 import shutil
@@ -16,6 +15,8 @@ from seed_statistics import t_quantile
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "scripts/lib"))
 from process_tree import stop_process_tree, launch_process_tree, close_process_tree  # noqa: E402
+sys.path.insert(0, str(REPO / "launcher/main/apps/sand/tools"))
+from report_performance import RESULT_RE, SUITE_TEST_RE  # noqa: E402
 
 MEAN_RE = re.compile(r"\b(?P<name>\S+) both cores: mean\s+(?P<value>\d+)us\b")
 NUMBER_RE = re.compile(r"^[+-]?\d+$")
@@ -75,15 +76,15 @@ def autana_command(*words, override=None):
 
 
 def run_stamped(command, log, timeout=1800):
-    """Capture wall times while enforcing a deadline on the foreground child."""
+    """Stamp each output line; past the deadline, stop the command's whole process tree."""
     import queue
     import threading
     started = time.monotonic()
+    deadline = started + timeout
     lines = []
     messages = queue.Queue()
     process = launch_process_tree(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               text=True, bufsize=1, cwd=REPO,
-                               start_new_session=os.name != "nt")
+                               text=True, bufsize=1, cwd=REPO)
     def read():
         for line in process.stdout:
             messages.put((time.monotonic() - started, line.rstrip("\n")))
@@ -92,7 +93,12 @@ def run_stamped(command, log, timeout=1800):
     reader.start()
     try:
         while True:
-            item = messages.get(timeout=max(0.001, timeout - (time.monotonic() - started)))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(command, timeout)
+            item = messages.get(timeout=remaining)
+            if time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(command, timeout)
             if item is None:
                 break
             at, line = item
@@ -100,7 +106,12 @@ def run_stamped(command, log, timeout=1800):
             log.write(line + "\n")
             log.flush()
             lines.append((at, line))
-        code = process.wait(timeout=max(0.001, timeout - (time.monotonic() - started)))
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(command, timeout)
+        code = process.wait(timeout=remaining)
+        if time.monotonic() >= deadline:
+            raise subprocess.TimeoutExpired(command, timeout)
     except (queue.Empty, subprocess.TimeoutExpired):
         stop_process_tree(process)
         raise RuntimeError(f"capture timed out after {timeout}s")
@@ -221,7 +232,6 @@ def capture_metadata(capture, rows):
     text = Path(capture).read_text(encoding="utf-8", errors="replace")
     owners, instructions = {}, {}
     pending_rows, pending_insn = [], {}
-    result = re.compile(r"^\S+:\d+:(\w+):(PASS|FAIL)(?::.*)?$")
     insn = re.compile(r"xtperf: scene=(\S+) event=insn .*value_per_step=(\d+)")
     for line in text.splitlines():
         timing = MEAN_RE.search(line)
@@ -230,9 +240,9 @@ def capture_metadata(capture, rows):
         counter = insn.search(line)
         if counter and "overflow=" not in line:
             pending_insn[counter.group(1)] = int(counter.group(2))
-        match = result.match(line.strip())
+        match = RESULT_RE.match(line.strip())
         if match:
-            test = match.group(1)
+            test = match.group("name")
             for row in pending_rows:
                 owners[row] = test
                 if row in pending_insn:
@@ -302,7 +312,7 @@ def run_flash(args, seed, runner=None):
                     rows = parse_report(table)
                     owners, instructions = capture_metadata(capture, rows)
                     runs.append(dict(capture=str(capture), table=str(table), rows=rows,
-                                     owners=owners, instructions=instructions, listed_tests=capture_tests(capture)))
+                                     owners=owners, instructions=instructions, listed_tests=capture_tests(capture), inventory=capture_inventory(capture)))
                 if name not in record["suites"]:
                     record["suites"][name] = dict(tests=tests, run_seconds=seconds, runs=runs)
                 else:
@@ -314,6 +324,8 @@ def run_flash(args, seed, runner=None):
                         for key in ("rows", "owners", "instructions"):
                             previous[key].update(run[key])
                         previous["listed_tests"].extend(run["listed_tests"])
+                        previous["inventory"].extend(run["inventory"])
+                        previous.setdefault("tables", [previous["table"]]).append(run["table"])
                         previous.setdefault("captures", [previous["capture"]]).append(run["capture"])
         (out / f"{stem}.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
         return record
@@ -348,4 +360,11 @@ def validate_filters(suites, limits):
 def capture_tests(capture):
     """List all tests reported by the capture, including tests without timings."""
     text = Path(capture).read_text(encoding="utf-8", errors="replace")
-    return re.findall(r"^\S+:\d+:(\w+):(?:PASS|FAIL)(?::.*)?$", text, re.MULTILINE)
+    return [match.group("name") for line in text.splitlines()
+            if (match := RESULT_RE.match(line.strip()))]
+
+
+def capture_inventory(capture):
+    """Read the device inventory, including tests excluded by its filter."""
+    text = Path(capture).read_text(encoding="utf-8", errors="replace")
+    return [match.group("name") for match in SUITE_TEST_RE.finditer(text)]
