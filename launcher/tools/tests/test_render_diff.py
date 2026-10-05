@@ -56,7 +56,7 @@ class CaptureTurnTests(unittest.TestCase):
         png = screenshot.bmp_bytes_to_png(panel_bmp())
         with tempfile.TemporaryDirectory() as directory:
             wrong, _ = screenshot.write_capture(str(Path(directory, "wrong")), png, "{}", 1)
-            with self.assertRaisesRegex(SystemExit, "quarter 1 never produces"):
+            with self.assertRaisesRegex(SystemExit, "read orientation"):
                 self.diff(wrong, wrong)
 
 

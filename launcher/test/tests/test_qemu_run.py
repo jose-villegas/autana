@@ -88,9 +88,6 @@ class RunSuiteTest(unittest.TestCase):
             "RUNSUITE_COMPLETE name=run_sand_suite_perf found=1 selected=3 unmatched=0"))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class DriveFrameTest(unittest.TestCase):
     """A tap or swipe takes pixels of the default screenshot, as `autana tap`
@@ -144,3 +141,7 @@ class ScreenshotTest(unittest.TestCase):
             with open(os.path.join(directory, "shot.json")) as fh:
                 state = json.load(fh)
         self.assertEqual(state, {"orientation_quarter": 2, "image_turn_quarter": 3})
+
+
+if __name__ == "__main__":
+    unittest.main()
