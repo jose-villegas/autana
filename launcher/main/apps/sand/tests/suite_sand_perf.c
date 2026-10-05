@@ -1628,7 +1628,7 @@ test_a_growing_plant_bed_fits_in_the_frame_budget(void) {
     free(blocks);
 
     /* Soak/dry is 28% of this step. */
-    perf_target("growing plant bed", per_step, 45950, 52840);
+    perf_target("growing plant bed", per_step, 45680, 52840);
     free(real);
 }
 
@@ -2587,7 +2587,7 @@ test_the_wet_earth_scene_fits_in_the_frame_budget(void) {
     free(blocks);
 
     /* Perf-scoped, with the block at 16x32. */
-    perf_target("wet earth", per_step, 32710, 37620);
+    perf_target("wet earth", per_step, 31620, 37620);
     free(real);
 }
 
@@ -2788,12 +2788,12 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
  */
 
 /* Perf-scoped goals for the three plant-scene rows. */
-#define PLANT_RUIN_BUDGET_US    62480
+#define PLANT_RUIN_BUDGET_US    62240
 #define FILLING_BASIN_BUDGET_US 15740
-#define SNOWFALL_BUDGET_US      35240
+#define SNOWFALL_BUDGET_US      34990
 
 /* Perf-scoped; among the dearest scenes in the suite. */
-#define PLANT_POUR_BUDGET_US    68460
+#define PLANT_POUR_BUDGET_US    62610
 
 /* What is left after a landed plant stopped arming the reaction pass (see
  * may_have_faller/faller_may_move in sand.h) is the sweep's own block scan. */
