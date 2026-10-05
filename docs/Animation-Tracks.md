@@ -13,8 +13,8 @@ or any other exporter plays back as it was made.
 ```mermaid
 flowchart LR
     Author["Blender, or any glTF exporter<br/><i>.glb with an animation</i>"] --> Anim["NAME.anim.toml<br/><i>source and animation name</i>"]
-    Anim --> Pack["build_pack.py<br/><i>a TRCK entry in the asset pack</i>"]
-    Pack --> Open["anim_tracks_from_pack(), anim_tracks_find()<br/><i>tracks pointing into the pack</i>"]
+    Anim --> Pack["build_pack.py<br/><i>a TRCK entry in its bundle</i>"]
+    Pack --> Open["anim_tracks_from_pack(), anim_tracks_find()<br/><i>tracks pointing into the bundle</i>"]
     Author --> Bake["tools/anim/bake_tracks.py"]
     Bake --> C["*_tracks_generated.c<br/><i>the same tracks as C</i>"]
     Open --> Sample["anim_clip_seconds(), anim_track_sample()<br/><i>clip time, then each track</i>"]
@@ -22,8 +22,8 @@ flowchart LR
     Sample --> Caller["the caller's own object<br/><i>eye, colour, fov, ...</i>"]
 ```
 
-A clip reaches the firmware two ways: as an entry of the
-[asset pack](assets/README.md), baked when the pack is built, and as
+A clip reaches the firmware two ways: as an entry of an
+[asset bundle](assets/README.md), baked when the bundle is built, and as
 committed C. One module, `tools/anim/tracks_asset.py`, bakes both with
 one set of checks, so they hold the same floats.
 
@@ -56,8 +56,9 @@ times stay in step, and the clip's duration is the last key of any of them.
 ## The pack entry
 
 A `NAME.anim.toml` beside its `.glb` names one animation in it, and
-`build_pack.py` finds every such file by searching, so no list is kept. The
-clip's pack id is `NAME`.
+`build_pack.py` finds every such file by searching, so no list is kept. A
+clip no scene names is a [bundle](assets/README.md#bundles) of its own, named
+`NAME`, holding the one entry `NAME`; `asset_store_bundle("NAME")` mounts it.
 
 ```toml
 source = "NAME.glb"     # a .glb beside this one
@@ -165,13 +166,13 @@ reads, so the poses are always the animation's own.
   clip timeline, a long run's resolution, the quaternion path and the cubic
   layout to hand-built tracks.
 - `suite_anim_tracks.c` refuses each malformed entry with its status and
-  opens every clip in the shipped pack, on the host and on the board. On the
+  opens every clip in the boot clip's shipped bundle, on the host and on the board. On the
   host it also holds every track of a test clip to the Python sampler, bit
   for bit where the sampler copies a key (`tools/tests/anim_probe.py` marks
   those).
 - `tools/tests/test_anim_tracks_asset.py` reads back what the writer writes,
-  refuses what the reader refuses, and has `build_pack.py` find `.anim.toml`
-  files.
+  refuses what the reader refuses, and has `build_pack.py` make each
+  `.anim.toml` a bundle.
 - `tools/tests/test_anim_bake.py` builds a glTF of its own with every
   interpolation, a quaternion, a pointer-targeted scalar and a non-zero first
   key, bakes it, samples it in C, and holds every value to the Python sampler

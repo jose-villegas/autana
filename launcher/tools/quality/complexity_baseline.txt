@@ -229,7 +229,6 @@
 11	launcher/main/apps/sand/tools/grid_fingerprint.c:476	scene_powder_keg
 11	launcher/main/apps/sand/tools/shading_palette.c:2442	dp_pixel
 11	launcher/main/apps/sand/tools/shading_palette.c:2613	report_sweep_group
-11	launcher/main/asset/asset_store_file.c:8	asset_store_pack
 11	launcher/main/boot/post_layout.c:191	post_wrap_next
 11	launcher/main/console/console.c:167	console_task
 11	launcher/main/gfx/gfx.c:1106	gfx_fill_rect_dither
@@ -567,7 +566,6 @@
 8	launcher/main/apps/sand/tools/shading_palette.c:107	group_of
 8	launcher/main/apps/sand/tools/shading_palette.c:871	lloyd_update_centers
 8	launcher/main/asset/asset_pack.c:131	asset_pack_find
-8	launcher/main/asset/asset_store_flash.c:33	map_partition
 8	launcher/main/boot/post_layout.c:39	post_layout_with
 8	launcher/main/gfx/gfx.c:1147	gfx_fill_rect_blend
 8	launcher/main/gfx/gfx.c:795	gfx_mark_dirty
@@ -1429,7 +1427,6 @@
 4	launcher/main/apps/sand/tools/shading_palette.c:2013	scene_plot_pixel
 4	launcher/main/apps/sand/ui/brush_screen.c:210	draw_brush_swatch
 4	launcher/main/apps/sand/ui/title_screen.c:90	title_screen_draw
-4	launcher/main/asset/asset_store_flash.c:65	asset_store_pack
 4	launcher/main/boot/boot_anim.c:432	draw_disc
 4	launcher/main/boot/post_layout.c:142	post_layout_take_line
 4	launcher/main/console/console.c:204	log_listening

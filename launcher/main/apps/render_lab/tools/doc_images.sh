@@ -145,8 +145,8 @@ bake_and_render() {
     dir=$1 mesh=$2 scene=$3
     run ln -sfn "$PWD/$M/meshes/sponza" "$dir/sponza"
     run "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$dir/sponza.scene.toml" --mesh "$mesh" > "$dir/bake.log" 2>&1
-    run "$R3D_PYTHON" launcher/tools/r3d/build_pack.py -o "$dir/assets.bin" --replace "$mesh=$dir/$mesh.mesh" > "$dir/pack.log"
-    run env AUTANA_ASSET_PACK="$dir/assets.bin" "$W/render_lab_render" --quarter 0 --no-hud --scene "$scene" --frames 5 --dt 5000 \
+    run "$R3D_PYTHON" launcher/tools/r3d/build_pack.py -o "$dir/assets" --replace "$mesh=$dir/$mesh.mesh" > "$dir/pack.log"
+    run env AUTANA_ASSET_DIR="$dir/assets" "$W/render_lab_render" --quarter 0 --no-hud --scene "$scene" --frames 5 --dt 5000 \
         -o "$dir/frame.bmp" --video "$dir.avi" 2> "$dir/render.log"
 }
 # The indirect-light and occlusion studies start from the physical look: the

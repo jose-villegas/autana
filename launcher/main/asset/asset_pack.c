@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "asset/asset_bytes.h"
+
 /* The header's byte offsets within a pack, and an entry's within its row. */
 enum {
     HEADER_VERSION = 4,
@@ -16,11 +18,6 @@ enum {
     ENTRY_SIZE = 40,
     ENTRY_ALIGN = 44,
 };
-
-static uint32_t
-read_u32(const uint8_t* at) {
-    return (uint32_t)at[0] | ((uint32_t)at[1] << 8) | ((uint32_t)at[2] << 16) | ((uint32_t)at[3] << 24);
-}
 
 /* CRC-32 as zlib computes it, a nibble at a time: no 1 KiB table in RAM, and
  * the pack is read once. */
@@ -45,7 +42,7 @@ asset_pack_total_size(const void* head, size_t available) {
     if (bytes == NULL || available < ASSET_PACK_HEADER_SIZE || memcmp(bytes, ASSET_PACK_MAGIC, 4) != 0) {
         return 0;
     }
-    return read_u32(bytes + HEADER_TOTAL);
+    return asset_read_u32(bytes + HEADER_TOTAL);
 }
 
 asset_status_t
@@ -55,9 +52,9 @@ asset_pack_entry(const asset_pack_t* pack, uint32_t index, asset_entry_t* entry)
         return ASSET_ERR_NOT_FOUND;
     }
     const uint8_t* row = pack->base + ASSET_PACK_HEADER_SIZE + ((size_t)index * ASSET_PACK_ENTRY_SIZE);
-    const uint32_t offset = read_u32(row + ENTRY_OFFSET);
-    const uint32_t size = read_u32(row + ENTRY_SIZE);
-    const uint32_t align = read_u32(row + ENTRY_ALIGN);
+    const uint32_t offset = asset_read_u32(row + ENTRY_OFFSET);
+    const uint32_t size = asset_read_u32(row + ENTRY_SIZE);
+    const uint32_t align = asset_read_u32(row + ENTRY_ALIGN);
     const uint32_t table_end = ASSET_PACK_HEADER_SIZE + (pack->count * ASSET_PACK_ENTRY_SIZE);
     if (align == 0 || (align & (align - 1U)) != 0 || offset % align != 0 || offset < table_end) {
         return ASSET_ERR_BOUNDS;
@@ -67,7 +64,7 @@ asset_pack_entry(const asset_pack_t* pack, uint32_t index, asset_entry_t* entry)
         return ASSET_ERR_BOUNDS;
     }
     *entry = (asset_entry_t){.name = (const char*)row + ENTRY_NAME,
-                             .type = read_u32(row + ENTRY_TYPE),
+                             .type = asset_read_u32(row + ENTRY_TYPE),
                              .view = {.data = pack->base + offset, .size = size}};
     return ASSET_OK;
 }
@@ -98,11 +95,11 @@ asset_pack_open(asset_pack_t* pack, const void* base, size_t size) {
     if (memcmp(bytes, ASSET_PACK_MAGIC, 4) != 0) {
         return ASSET_ERR_MAGIC;
     }
-    if (read_u32(bytes + HEADER_VERSION) != ASSET_PACK_VERSION) {
+    if (asset_read_u32(bytes + HEADER_VERSION) != ASSET_PACK_VERSION) {
         return ASSET_ERR_VERSION;
     }
-    const uint32_t count = read_u32(bytes + HEADER_COUNT);
-    const uint32_t total = read_u32(bytes + HEADER_TOTAL);
+    const uint32_t count = asset_read_u32(bytes + HEADER_COUNT);
+    const uint32_t total = asset_read_u32(bytes + HEADER_TOTAL);
     if (total > size) {
         return ASSET_ERR_TRUNCATED; /* a partition may be larger than the pack it holds, never smaller */
     }
@@ -112,7 +109,8 @@ asset_pack_open(asset_pack_t* pack, const void* base, size_t size) {
     if (count > (total - ASSET_PACK_HEADER_SIZE) / ASSET_PACK_ENTRY_SIZE) {
         return ASSET_ERR_BOUNDS;
     }
-    if (asset_crc32(bytes + ASSET_PACK_HEADER_SIZE, total - ASSET_PACK_HEADER_SIZE) != read_u32(bytes + HEADER_CRC)) {
+    if (asset_crc32(bytes + ASSET_PACK_HEADER_SIZE, total - ASSET_PACK_HEADER_SIZE)
+        != asset_read_u32(bytes + HEADER_CRC)) {
         return ASSET_ERR_CRC;
     }
     const asset_pack_t opened = {.base = bytes, .size = total, .count = count};
@@ -151,7 +149,7 @@ const char*
 asset_status_text(asset_status_t status) {
     switch (status) {
         case ASSET_OK: return "ok";
-        case ASSET_ERR_NO_PACK: return "no asset pack is mapped";
+        case ASSET_ERR_NO_PACK: return "no such bundle is mapped or read";
         case ASSET_ERR_TRUNCATED: return "the pack is shorter than its header says";
         case ASSET_ERR_MAGIC: return "not an asset pack";
         case ASSET_ERR_VERSION: return "a pack or entry format this firmware does not read";
@@ -161,6 +159,8 @@ asset_status_text(asset_status_t status) {
         case ASSET_ERR_NOT_FOUND: return "no such asset";
         case ASSET_ERR_TYPE: return "the asset is not that type";
         case ASSET_ERR_FORMAT: return "the asset holds a value its reader does not accept";
+        case ASSET_ERR_DUPLICATE: return "two bundles share a name";
+        case ASSET_ERR_FULL: return "as many bundles are mounted as the store holds";
     }
     return "unknown";
 }

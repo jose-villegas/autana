@@ -1,11 +1,12 @@
 /*
  * Portable suite: the asset pack container (asset/asset_pack.h), the lit mesh
- * view built from an entry (render/r3d_lit_mesh.h). Each test builds its own small pack byte by byte, so a
- * check never leans on what the committed pack holds; the last tests open
- * that one, which is the file the host reader and the device partition share.
+ * view built from an entry (render/r3d_lit_mesh.h). Each test builds its own
+ * small pack byte by byte, so a check never leans on what the tree's bundles
+ * hold; on a host the last tests read it back from a file.
  */
 
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -13,7 +14,6 @@
 #include "unity.h"
 
 #include "asset/asset_pack.h"
-#include "asset/asset_store.h"
 #include "render/r3d_lit_mesh.h"
 #include "test_alloc.h"
 
@@ -290,28 +290,6 @@ test_a_mesh_without_one_colour_source_a_scale_clusters_or_nodes_is_a_format_erro
     release(&f);
 }
 
-/* What the shipped pack must hold: the file the host reads and the partition
- * the device maps. */
-static void
-test_the_store_opens_the_shipped_pack_and_it_has_meshes(void) {
-    const asset_pack_t* pack = asset_store_pack();
-    TEST_ASSERT_NOT_NULL_MESSAGE(pack, "the asset pack did not open: see the log above");
-    TEST_ASSERT_GREATER_THAN_UINT32(0, pack->count);
-    int meshes = 0;
-    for (uint32_t i = 0; i < pack->count; i++) {
-        asset_entry_t entry;
-        TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_entry(pack, i, &entry));
-        if (entry.type != R3D_LIT_MESH_ASSET) {
-            continue; /* another kind of content is not this test's business */
-        }
-        r3d_lit_mesh_t mesh;
-        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(pack, entry.name, &mesh), entry.name);
-        TEST_ASSERT_GREATER_THAN_INT(0, mesh.triangle_count);
-        meshes++;
-    }
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, meshes, "the pack holds no lit mesh");
-}
-
 static void
 test_an_entry_row_is_read_by_its_index_and_an_index_past_the_table_is_not_found(void) {
     fixture_t f = fixture();
@@ -369,31 +347,49 @@ test_an_inner_node_whose_children_are_not_after_it_is_refused(void) {
 }
 
 #ifndef DEVICE_BUILD
+#define PACK_FILE "suite_asset_pack.apak"
+
+/* The fixture's pack, written where the host reader reads it. */
 static void
-test_the_host_reader_reads_the_shipped_pack_and_refuses_a_missing_file(void) {
+write_pack_file(const fixture_t* f) {
+    FILE* file = fopen(PACK_FILE, "wb");
+    TEST_ASSERT_NOT_NULL(file);
+    TEST_ASSERT_EQUAL_size_t(f->total, fwrite(f->pack, 1, f->total, file));
+    TEST_ASSERT_EQUAL_INT(0, fclose(file));
+}
+
+static void
+test_the_host_reader_reads_a_pack_file_and_refuses_a_missing_one(void) {
+    fixture_t f = fixture();
+    write_pack_file(&f);
     asset_pack_t pack;
     void* buffer = NULL;
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, asset_file_open("no/such/assets.bin", &pack, &buffer));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, asset_file_open("no/such/bundle.apak", &pack, &buffer));
     TEST_ASSERT_NULL(buffer);
-    const char* path = getenv("AUTANA_ASSET_PACK");
-    TEST_ASSERT_NOT_NULL_MESSAGE(path, "AUTANA_ASSET_PACK names the pack the runner built");
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(path, &pack, &buffer));
-    TEST_ASSERT_GREATER_THAN_UINT32(0, pack.count);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(PACK_FILE, &pack, &buffer));
+    r3d_lit_mesh_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&pack, "tri", &mesh));
     asset_file_release(buffer);
+    TEST_ASSERT_EQUAL_INT(0, remove(PACK_FILE));
+    release(&f);
 }
 
 static void
 test_the_host_reader_holds_the_pack_outside_the_modelled_heap(void) {
+    fixture_t f = fixture();
+    write_pack_file(&f);
     asset_pack_t pack;
     void* buffer = NULL;
     size_t blocks_before;
     size_t bytes_before;
     heap_arena_snapshot(&blocks_before, &bytes_before);
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(getenv("AUTANA_ASSET_PACK"), &pack, &buffer));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(PACK_FILE, &pack, &buffer));
     size_t blocks_after;
     size_t bytes_after;
     heap_arena_snapshot(&blocks_after, &bytes_after);
     asset_file_release(buffer);
+    TEST_ASSERT_EQUAL_INT(0, remove(PACK_FILE));
+    release(&f);
     TEST_ASSERT_EQUAL_UINT(bytes_before, bytes_after);
     TEST_ASSERT_EQUAL_UINT(blocks_before, blocks_after);
 }
@@ -417,9 +413,8 @@ suite_asset_pack(void) {
     RUN_TEST(test_a_base_that_is_not_16_byte_aligned_is_refused);
     RUN_TEST(test_a_header_with_reserved_bytes_in_use_is_refused);
     RUN_TEST(test_an_inner_node_whose_children_are_not_after_it_is_refused);
-    RUN_TEST(test_the_store_opens_the_shipped_pack_and_it_has_meshes);
 #ifndef DEVICE_BUILD
-    RUN_TEST(test_the_host_reader_reads_the_shipped_pack_and_refuses_a_missing_file);
+    RUN_TEST(test_the_host_reader_reads_a_pack_file_and_refuses_a_missing_one);
     RUN_TEST(test_the_host_reader_holds_the_pack_outside_the_modelled_heap);
 #endif
 }
