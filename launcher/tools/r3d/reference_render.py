@@ -156,10 +156,12 @@ def source_for(scene, name=None, lit=True):
     return source, job
 
 
-# Estimated bytes per ray: trace/hit buffers 256, ray-query/lighting scratch 256, sky tangents, samples, directions
-# and temporaries 256, and 1280 for the bounce paths: the Mitsuba arrays of one batch (path_bake.BATCH rays) held by
-# every worker, spread over the pose's rays.
-POSE_BASE_BYTES_PER_RAY = 2048
+# Estimated bytes per ray: trace/hit buffers 256, ray-query/lighting scratch 256,
+# sky tangents, samples, directions and temporaries 256.
+POSE_BASE_BYTES_PER_RAY = 768
+# What each forked worker adds when the source has a bounce scene: it touches the inherited Mitsuba scene and traces
+# its own batches, about 2.3 GiB measured on the Sponza source.
+POSE_BOUNCE_BYTES = int(2.4 * 1024 ** 3)
 POSE_STATE = None
 
 
@@ -198,6 +200,8 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
     global POSE_STATE
     if workers is None:
         estimate = max(64 * 1024 ** 2, width * height * samples * samples * POSE_BASE_BYTES_PER_RAY)
+        if getattr(source, "bounce", None) is not None:
+            estimate += POSE_BOUNCE_BYTES
         reservation = process_budget.task_reservation()
         if reservation is not None:
             rss = process_budget.resident_bytes(os.getpid(), {})[0]
