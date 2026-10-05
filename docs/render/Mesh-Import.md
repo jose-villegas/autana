@@ -297,7 +297,7 @@ pick $K$ where the next bounce is negligible beside the direct light.
 
 Every point uses the same $R$ first directions, laid out in its own tangent
 frame, and the path integrator's own random numbers come from a fixed seed, so
-a rebake gives the same bytes. The noise the paths leave in the bounced light
+the same tree and the same partition of points give the same bytes. The noise the paths leave in the bounced light
 falls as $1/\sqrt{R}$. A smooth bake gathers once for the vertex copies a crease
 splits at one position, on their mean normal, and gives every copy that
 bounced term: bounced light changes slowly where direct light does not, and

@@ -127,7 +127,6 @@ class PooledReferenceTests(unittest.TestCase):
         source.intersector = soup.rays(mesh)
         job, scene = sun_scene([0., 0., -1.])
         job.bake.ao = SimpleNamespace(distance=3., strength=.8, rays=8, indirect=True)
-        scene.lights[0]["rays"] = 3
         scene.lights.append({"type": "ambient", "color": [1., 1., 1.], "intensity": .5})
         scene.tonemap_white = 2.
         scene.camera = SimpleNamespace(component=SimpleNamespace(background=0x123456))
@@ -169,6 +168,35 @@ class PooledReferenceTests(unittest.TestCase):
             self.assertEqual(sorted(p.name for p in serial.iterdir()), sorted(p.name for p in pooled.iterdir()))
             for path in serial.iterdir():
                 self.assertEqual(path.read_bytes(), (pooled / path.name).read_bytes(), path.name)
+
+
+@unittest.skipIf(np is None, "needs NumPy")
+class BounceReferenceTests(unittest.TestCase):
+    class Constant:
+        def bounce(self, points, normals, ray_offset):
+            return np.full((len(points), 3), 0.25)
+
+    def test_the_reference_adds_the_bounce_to_each_hit(self):
+        source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
+        without = render_linear(source, *sun_scene([0., 0., 1.]), LOOK_DOWN, 1, 1, 0.1, 1)
+        source.bounce = self.Constant()
+        with_bounce = render_linear(source, *sun_scene([0., 0., 1.]), LOOK_DOWN, 1, 1, 0.1, 1)
+        np.testing.assert_allclose(with_bounce - without, 0.25, atol=1e-12)
+
+    def test_poses_with_bounced_light_render_in_this_process_and_keep_the_pool_otherwise(self):
+        from unittest.mock import patch
+        from r3d import reference_render as reference
+        with patch.object(reference, '_write_pose', side_effect=[(1, 20)] * 3), \
+                patch.object(reference.multiprocessing, 'get_all_start_methods', return_value=['fork']), \
+                patch.object(reference.concurrent.futures, 'ProcessPoolExecutor') as executor:
+            result = reference.render_poses(SimpleNamespace(bounce=object()), None, None, [None] * 3, 8, 8, 1., 1, '.')
+        executor.assert_not_called()
+        self.assertEqual(result[1], 1)
+
+    def test_more_workers_than_one_are_refused_for_bounced_light(self):
+        from r3d import reference_render as reference
+        with self.assertRaisesRegex(ValueError, "leave --workers unset"):
+            reference.render_poses(SimpleNamespace(bounce=object()), None, None, [None] * 3, 8, 8, 1., 1, '.', workers=4)
 
 
 @unittest.skipIf(np is None, "needs NumPy")

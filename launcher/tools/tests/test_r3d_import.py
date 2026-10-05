@@ -886,6 +886,15 @@ class ReferenceObjectTests(unittest.TestCase):
         self.assertEqual(bounced_job.bake.indirect.bounces, 2)
 
 
+class PathLightForTests(unittest.TestCase):
+    def test_a_renderer_with_no_bounces_or_no_indirect_builds_no_scene(self):
+        for indirect in (SimpleNamespace(bounces=0, rays=8), None):
+            job = SimpleNamespace(bake=SimpleNamespace(indirect=indirect), settings=SimpleNamespace())
+            with mock.patch.object(mesh_import, "PathLight") as built:
+                self.assertIsNone(mesh_import.path_light_for(None, job, SimpleNamespace()))
+            built.assert_not_called()
+
+
 class JobTests(unittest.TestCase):
     def test_a_job_carries_the_scene_bake_its_renderer_uses(self):
         smooth = 'bake = true\nvariant = "mesh"\n'
