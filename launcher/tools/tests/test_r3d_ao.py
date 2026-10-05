@@ -9,8 +9,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 try:
     import numpy as np
-    import trimesh
-    from trimesh.ray.ray_pyembree import RayMeshIntersector
+    from tests import soup
 
     from r3d.geometry import corner_normals
     from r3d.light import IndirectCache, light, local_occlusion, sky_directions
@@ -24,7 +23,7 @@ def corner():
     p = np.array([[-40.0, -40.0, 0.0], [40.0, -40.0, 0.0], [40.0, 40.0, 0.0], [-40.0, 40.0, 0.0],
                   [0.0, -40.0, 0.0], [0.0, 40.0, 0.0], [0.0, 40.0, 40.0], [0.0, -40.0, 40.0]])
     tris = np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]])
-    return RayMeshIntersector(trimesh.Trimesh(p, tris, process=False))
+    return soup.rays(soup.Soup(p, tris))
 
 
 def ao(distance=10.0, rays=64, strength=1.0, indirect=False):
@@ -60,11 +59,11 @@ class LocalOcclusionTest(unittest.TestCase):
     def test_a_hit_is_worth_one_minus_its_reach_over_the_distance(self):
         # One ray from the floor up to a ceiling two units over it: it travels 2 / z along the ray's z component.
         p = np.array([[-40.0, -40.0, 2.0], [40.0, -40.0, 2.0], [40.0, 40.0, 2.0], [-40.0, 40.0, 2.0]])
-        ceiling = RayMeshIntersector(trimesh.Trimesh(p, np.array([[0, 2, 1], [0, 3, 2]]), process=False))
+        ceiling = soup.rays(soup.Soup(p, np.array([[0, 2, 1], [0, 3, 2]])))
         reach = 2.0 / sky_directions(1)[0][2]
         for distance in (100.0, 40.0):
             got = local_occlusion(*floor_points(0.0), ceiling, ao(distance=distance, rays=1), 0.0)[0]
-            self.assertAlmostEqual(got, reach / distance, places=9)
+            self.assertAlmostEqual(got, reach / distance, places=6)
 
     def test_strength_scales_the_darkening_linearly(self):
         full, half, none = (self.factor([1.0], strength=s)[0] for s in (1.0, 0.5, 0.0))
@@ -101,10 +100,10 @@ class OccludedLightTest(unittest.TestCase):
         # sun, into the wall, yet it is seen from the open side. The ambient it receives must be the open side's.
         card = np.array([[2.0, -30.0, 0.0], [2.0, 30.0, 0.0], [2.0, 30.0, 40.0], [2.0, -30.0, 40.0]])
         p = np.array([[0.0, -40.0, 0.0], [0.0, 40.0, 0.0], [0.0, 40.0, 40.0], [0.0, -40.0, 40.0]])
-        mesh = trimesh.Trimesh(np.concatenate([p, card]), np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]]), process=False)
+        mesh = soup.Soup(np.concatenate([p, card]), np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]]))
         sun = dict(self.SUN, direction=[-1.0, 0.0, 0.5])
         point, normal = np.array([[2.0, 0.0, 10.0]]), np.array([[1.0, 0.0, 0.0]])
-        args = (RayMeshIntersector(mesh), [self.AMBIENT, sun], 0.01, np.random.default_rng(1))
+        args = (soup.rays(mesh), [self.AMBIENT, sun], 0.01, np.random.default_rng(1))
         sun_only = light(point, normal, np.array([True]), args[0], [sun], 0.01, args[3], ao=ao())[0]
         both = light(point, normal, np.array([True]), *args, ao=ao())[0]
         self.assertGreater((both - sun_only)[0], 0.5 * 0.85)

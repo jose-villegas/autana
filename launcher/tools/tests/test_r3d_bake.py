@@ -16,8 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 try:
     import numpy as np
-    import trimesh
-    from trimesh.ray.ray_pyembree import RayMeshIntersector
+    from tests import soup
 
     from r3d.geometry import triangle_areas, weld
     from r3d.light import (ALBEDO_CEILING, IndirectCache, adaptive_sample_counts, boosted_albedo, build_indirect_cache, face_colours, gather_indirect, light,
@@ -464,14 +463,13 @@ def walled_floors(offsets):
     x offset: every copy sees the same sky, shadowed on one side."""
     meshes, positions, tris = [], [], []
     for ox in offsets:
-        floor = trimesh.Trimesh([(ox, 0, 0), (ox, 0, 8), (ox + 8, 0, 8), (ox + 8, 0, 0)], [(0, 1, 2), (0, 2, 3)],
-                                process=False)
-        wall = trimesh.creation.box(extents=(1, 6, 8))
+        floor = soup.Soup([(ox, 0, 0), (ox, 0, 8), (ox + 8, 0, 8), (ox + 8, 0, 0)], [(0, 1, 2), (0, 2, 3)])
+        wall = soup.box(extents=(1, 6, 8))
         wall.apply_translation((ox + 8.5, 3, 4))
         meshes += [floor, wall]
         tris.append(np.array(floor.faces) + 4 * len(positions))
         positions.append(np.array(floor.vertices))
-    return np.concatenate(positions), np.concatenate(tris), RayMeshIntersector(trimesh.util.concatenate(meshes))
+    return np.concatenate(positions), np.concatenate(tris), soup.rays(soup.concatenate(meshes))
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -513,14 +511,14 @@ class FlatLightTests(unittest.TestCase):
         self.assertEqual(capped.tolist(), self.colours([0], samples=3).tolist())
 
     def test_a_smooth_bake_draws_its_rays_as_before(self):
-        floor = trimesh.Trimesh([(0, 0, 0), (0, 0, 8), (8, 0, 8), (8, 0, 0)], [(0, 1, 2), (0, 2, 3)], process=False)
-        wall = trimesh.creation.box(extents=(1, 6, 8))
+        floor = soup.Soup([(0, 0, 0), (0, 0, 8), (8, 0, 8), (8, 0, 0)], [(0, 1, 2), (0, 2, 3)])
+        wall = soup.box(extents=(1, 6, 8))
         wall.apply_translation((8.5, 3, 4))
         points = np.array([[1, 0, 1], [4, 0, 4], [7, 0, 2], [7.5, 0, 7.5], [2, 0, 6]], dtype=float)
         normals = np.tile([0.0, 1.0, 0.0], (5, 1))
         normals[4] = [0, -1, 0]
         got = light(points, normals, np.array([False, False, False, False, True]),
-                    RayMeshIntersector(trimesh.util.concatenate([floor, wall])), lighting_lights(), 0.5, np.random.default_rng(7))
+                    soup.rays(soup.concatenate([floor, wall])), lighting_lights(), 0.5, np.random.default_rng(7))
         # Recorded from the bake before flat faces shared their sky directions.
         want = [[3.4013203074259875, 3.290614682831909, 3.09012983979227], [3.3394453074259873, 3.214114682831909, 2.98887983979227], [3.277570307425987, 3.137614682831909, 2.88762983979227], [3.2156953074259875, 3.0611146828319087, 2.78637983979227], [3.3394453074259873, 3.214114682831909, 2.98887983979227]]
         np.testing.assert_allclose(got, want, rtol=0, atol=1e-12)
@@ -528,18 +526,18 @@ class FlatLightTests(unittest.TestCase):
 
 def box_inside(size):
     """A closed box whose triangles wind to face inward."""
-    box = trimesh.creation.box(extents=(size, size, size))
+    box = soup.box(extents=(size, size, size))
     return np.array(box.vertices), np.array(box.faces)[:, [0, 2, 1]]
 
 
 def bleed_scene():
     """A white floor with a saturated wall on it; material 0 is the floor."""
-    floor = trimesh.Trimesh([(0, 0, 0), (0, 0, 40), (40, 0, 40), (40, 0, 0)], [(0, 1, 2), (0, 2, 3)], process=False)
-    wall = trimesh.creation.box(extents=(1, 10, 40))
+    floor = soup.Soup([(0, 0, 0), (0, 0, 40), (40, 0, 40), (40, 0, 0)], [(0, 1, 2), (0, 2, 3)])
+    wall = soup.box(extents=(1, 10, 40))
     wall.apply_translation((40.5, 5, 20))
-    mesh = trimesh.util.concatenate([floor, wall])
+    mesh = soup.concatenate([floor, wall])
     tri_mat = np.array([0] * len(floor.faces) + [1] * len(wall.faces))
-    return np.array(mesh.vertices), np.array(mesh.faces), tri_mat, RayMeshIntersector(mesh)
+    return np.array(mesh.vertices), np.array(mesh.faces), tri_mat, soup.rays(mesh)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -555,7 +553,7 @@ class IndirectLightTests(unittest.TestCase):
 
     def test_a_closed_diffuse_box_follows_the_bounce_series(self):
         p, tris = box_inside(10.0)
-        intersector = RayMeshIntersector(trimesh.Trimesh(p, tris, process=False))
+        intersector = soup.rays(soup.Soup(p, tris))
         lights = [{"type": "ambient", "color": [1, 1, 1], "intensity": 1.0}]
         a, inside = 0.5, np.array([[1.0, 2.0, -3.0], [-4.0, 0.5, 4.0]])
         for bounces, cache_samples in ((1, 1), (2, 1), (3, 1), (3, 4)):
@@ -566,7 +564,7 @@ class IndirectLightTests(unittest.TestCase):
 
     def boxed(self, albedo, bounces=2, **look):
         p, tris = box_inside(10.0)
-        intersector = RayMeshIntersector(trimesh.Trimesh(p, tris, process=False))
+        intersector = soup.rays(soup.Soup(p, tris))
         lights = [{"type": "ambient", "color": [1, 1, 1], "intensity": 1.0}]
         cache = self.cache(p, tris, np.zeros(len(tris), dtype=int), intersector, {0: np.full(3, albedo)}, lights, bounces, **look)
         inside = np.array([[1.0, 2.0, -3.0], [-4.0, 0.5, 4.0]])
@@ -615,14 +613,14 @@ class IndirectLightTests(unittest.TestCase):
         quad = lambda y: [(-big, y, -big), (big, y, -big), (big, y, big), (-big, y, big)]
         p = np.array(quad(1.0) + quad(3.0))
         tris = np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]])
-        intersector = RayMeshIntersector(trimesh.Trimesh(p, tris, process=False))
+        intersector = soup.rays(soup.Soup(p, tris))
         cache = IndirectCache(np.array([[[1.0, 0.0, 0.0]] * 2 + [[0.0, 0.0, 1.0]] * 2]), 16, 0.01)
         got = gather_indirect(np.zeros((1, 3)), np.array([[0.0, 1.0, 0.0]]), intersector, cache)
         self.assertEqual(got.tolist(), [[1.0, 0.0, 0.0]])
 
     def test_a_miss_adds_nothing(self):
         p = np.array([(-100.0, -1.0, -100.0), (100.0, -1.0, -100.0), (100.0, -1.0, 100.0)])
-        intersector = RayMeshIntersector(trimesh.Trimesh(p, [[0, 1, 2]], process=False))
+        intersector = soup.rays(soup.Soup(p, [[0, 1, 2]]))
         cache = IndirectCache(np.ones((1, 1, 3)), 8, 0.01)
         got = gather_indirect(np.zeros((1, 3)), np.array([[0.0, 1.0, 0.0]]), intersector, cache)
         self.assertEqual(got.tolist(), [[0.0, 0.0, 0.0]])
@@ -654,8 +652,7 @@ class IndirectLightTests(unittest.TestCase):
         grey = lambda points, spacing, material: np.full((len(points), 3), 0.3)
         lights = lighting_lights(sun=[0.8, 1.0, 0.0], sun_intensity=1.0, sky_intensity=1.0, ambient=0.02)
         mat = np.zeros(len(tris), dtype=int)
-        every = intersector.mesh
-        cache = build_indirect_cache(np.array(every.vertices), np.array(every.faces), np.zeros(len(every.faces), dtype=int), [0],
+        cache = build_indirect_cache(intersector.positions, intersector.tris, np.zeros(len(intersector.tris), dtype=int), [0],
                                      set(), grey, intersector, lights, 0.5, SimpleNamespace(bounces=2, rays=32, cache_samples=1))
         c = face_colours(p, tris, mat, [0], set(), grey, intersector, lights, 0.5, 0.35, indirect_cache=cache).tolist()
         self.assertEqual(c[:2], c[2:])
@@ -666,8 +663,8 @@ class IndirectLightTests(unittest.TestCase):
         p, tris, tri_mat, intersector = bleed_scene()
         flipped = tris.copy()
         flipped[:2] = flipped[:2][:, [0, 2, 1]]
-        flat = trimesh.Trimesh(p, flipped, process=False)
-        intersector = RayMeshIntersector(flat)
+        flat = soup.Soup(p, flipped)
+        intersector = soup.rays(flat)
         albedo = {0: np.array([0.8, 0.8, 0.8]), 1: np.array([0.9, 0.05, 0.05])}
         cache = self.cache(p, flipped, tri_mat, intersector, albedo, self.ONE_FLOOR_LIGHT, 2, double=[0])
         points = np.array([[39.0, 0.0, 20.0]])
@@ -684,7 +681,7 @@ class IndirectLightTests(unittest.TestCase):
         p = np.array([(-big, 1.0, -big), (big, 1.0, -big), (big, 1.0, big), (-big, 1.0, big)])
         tris = np.array([[0, 2, 1], [0, 3, 2]])
         self.assertGreater(np.cross(p[1] - p[0], p[2] - p[0])[1] * -1, 0, "the quad faces up")
-        intersector = RayMeshIntersector(trimesh.Trimesh(p, tris, process=False))
+        intersector = soup.rays(soup.Soup(p, tris))
         normals = np.tile([0.0, 1.0, 0.0], (2, 1))
         radiance = np.ones((1, 2, 3))
         for two_sided, want in ((False, 0.0), (True, 1.0)):
