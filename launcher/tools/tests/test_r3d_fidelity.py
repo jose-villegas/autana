@@ -1,5 +1,5 @@
 """Checks the flat-bake knobs bake_fidelity.py sweeps: where a face's samples
-sit, whether the sun is its whole disc or its middle, and the variant spec."""
+sit, how many rays the sky tests, the hardness of the sun's shadow edge, and the variant spec."""
 
 import pathlib
 import sys
@@ -57,6 +57,23 @@ class SunTests(unittest.TestCase):
         # The wall's top edge shades the floor from x = 3.2 on: just before it the sun lights fully, just after, not at all.
         self.assertAlmostEqual(self.radiance_at(3.0), 1.0 / np.hypot(0.8, 1.0), places=9)
         self.assertEqual(self.radiance_at(3.4), 0.0)
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class SkyRaysKnobTests(unittest.TestCase):
+    def test_sky_rays_replaces_the_sky_lights_ray_count_only_and_leaves_the_scene_alone(self):
+        from types import SimpleNamespace
+        lights = [sun_only()[0], {"type": "sky", "color": [1.0, 1.0, 1.0], "intensity": 1.0, "rays": 48},
+                  {"type": "ambient", "color": [1.0, 1.0, 1.0], "intensity": 0.1}]
+        scene = SimpleNamespace(lights=lights, tonemap_white=0.35)
+        job = SimpleNamespace(settings=SimpleNamespace(double_sided=set()), bake=SimpleNamespace(ray_offset=0.5, ao=None))
+        geometry = SimpleNamespace(src=SimpleNamespace(names=["m"]), positions=None, tris=None, tri_mat=None, intersector=None,
+                                   bounce=None)
+        with mock.patch.object(mesh_import, "face_colours", return_value="colours") as face:
+            self.assertEqual(mesh_import.flat_colours(job, scene, geometry, (1, 1, 1, None), sky_rays=7), "colours")
+        passed = face.call_args.args[7]
+        self.assertEqual([item.get("rays") for item in passed], [None, 7, None])
+        self.assertEqual(scene.lights[1]["rays"], 48)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

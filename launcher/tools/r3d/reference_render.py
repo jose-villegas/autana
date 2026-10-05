@@ -195,6 +195,13 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
     from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS, parent_death_signal
     import os
     global POSE_STATE
+    if getattr(source, "bounce", None) is not None:
+        # Mitsuba's LLVM threads trace one pose on every core, which a forked worker cannot (it traces on one thread
+        # and holds its own copy of the scene, which ran a 15 GB machine out of memory), so a pose with bounced
+        # light renders in this process.
+        if workers not in (None, 1):
+            raise ValueError("poses with bounced light render in the main process; leave --workers unset")
+        workers = 1
     if workers is None:
         estimate = max(64 * 1024 ** 2, width * height * samples * samples * POSE_BASE_BYTES_PER_RAY)
         reservation = process_budget.task_reservation()
@@ -208,10 +215,6 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
             workers = worker_capacity(available_bytes(), (estimate, 0, estimate), FLOORS, cores_available())
             if not workers:
                 raise RuntimeError("not enough available memory for a reference pose worker")
-    if getattr(source, "bounce", None) is not None:
-        # Mitsuba's LLVM threads trace one pose on every core, which a forked worker cannot (it traces on one thread
-        # and holds its own copy of the scene), so a pose with bounced light renders in this process.
-        workers = 1
     workers = min(workers, len(poses))
     if workers < 1:
         raise ValueError("workers must be positive")
