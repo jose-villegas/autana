@@ -129,8 +129,7 @@ camera track gives a `camera_t` its look direction.
    `PREFIX_track_names[]`, each track's name in the same order. Only the tests
    and `tools/anim/sample_tracks.sh` refer to the tables, so the linker drops
    them from any firmware build without tests. The command is in the file's
-   banner; the output is
-   checked in and never edited.
+   banner; the output is checked in and never edited.
 4. Sample what the scene needs, and convert at its own boundary.
 
 The baker refuses keys out of order, a channel with no node and no pointer,
