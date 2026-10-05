@@ -3,9 +3,10 @@
 
 `run` builds one image per layout seed (autana's --layout-seed), flashes it
 once, and captures each requested suite R times on it, writing one JSON file
-per seed into OUT. `report` reads those files and prints, for every timing
-row, the run-to-run noise inside a flash, the spread between layouts, the
-Kalibera-Jones split of runs per flash, and the seeds needed for a given
+per flash into OUT. A seed may repeat: the same image flashed again is the
+boot-to-boot control. `report` reads those files and prints, for every timing
+row, the run-to-run noise inside a flash, the spread between flashes, the
+Kalibera-Jones split of runs per flash, and the flashes needed for a given
 confidence interval on B/A (docs/tools/Layout-Noise.md).
 
   layout_pilot.py run --out DIR --seeds 1 2 3 --runs 3 \\
@@ -96,11 +97,12 @@ def make_table(template, capture, table):
     return table
 
 
-def run_seed(args, seed):
+def run_flash(args, seed):
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     record = {"seed": seed, "suites": {}}
-    with open(out / f"seed_{seed}.log", "w", encoding="utf-8") as log:
+    stem = f"flash_{len(list(out.glob('flash_*.json'))) + 1}"
+    with open(out / f"{stem}.log", "w", encoding="utf-8") as log:
         for index, (name, tests, template) in enumerate(args.suite):
             command = autana_command("suite", name, "--runs", str(args.runs))
             if tests != "-":
@@ -115,7 +117,7 @@ def run_seed(args, seed):
                 record["flash_seconds"] = first_run
                 record["build_id"] = next(m.group(1) for _, line in lines
                                           if (m := BUILD_LINE.search(line)) and "booted" in line)
-            tables = [make_table(template, capture, out / f"seed_{seed}_{name}_{n + 1}.md")
+            tables = [make_table(template, capture, out / f"{stem}_{name}_{n + 1}.md")
                       for n, capture in enumerate(captures)]
             record["suites"][name] = {
                 "run_seconds": run_seconds,
@@ -124,27 +126,28 @@ def run_seed(args, seed):
         answer = subprocess.run(autana_command("buildid"), capture_output=True, text=True, cwd=REPO)
         if record["build_id"] not in answer.stdout:
             raise RuntimeError(f"the board runs {answer.stdout.strip()!r}, not {record['build_id']}")
-    (out / f"seed_{seed}.json").write_text(json.dumps(record, indent=1), encoding="utf-8")
+    (out / f"{stem}.json").write_text(json.dumps(record, indent=1), encoding="utf-8")
 
 
 def run(args):
     for seed in args.seeds:
-        run_seed(args, seed)
+        run_flash(args, seed)
     return 0
 
 
 def load(directory):
-    """{suite: {seed: {"flash": s, "run": s, "rows": {name: [values]}}}} from `run`'s files."""
+    """{suite: {flash file: {"seed": n, "flash": s, "run": s, "rows": {name: [values]}}}}
+    from `run`'s files (seed_*.json from the first pilot included)."""
     suites = {}
-    for path in sorted(Path(directory).glob("seed_*.json")):
+    for path in sorted(Path(directory).glob("*.json")):
         record = json.loads(path.read_text(encoding="utf-8"))
         for name, entry in record["suites"].items():
             rows = {}
             for report in entry["runs"]:
                 for row, value in parse_report(report["table"]).items():
                     rows.setdefault(row, []).append(value)
-            suites.setdefault(name, {})[record["seed"]] = {
-                "flash": record["flash_seconds"], "run": mean(entry["run_seconds"]), "rows": rows}
+            suites.setdefault(name, {})[path.stem] = {
+                "seed": record["seed"], "flash": record["flash_seconds"], "run": mean(entry["run_seconds"]), "rows": rows}
     return suites
 
 
@@ -168,30 +171,32 @@ def required_seeds(layout, run, runs, half_width):
 
 
 def analyse(rows_by_seed, flash_over_run):
-    """The pilot numbers for one row: values per seed, each a list of runs."""
+    """The pilot numbers for one row: values per flash, each a list of runs. K is
+    at the measured runs per flash, R* is what the cost ratio would favour."""
     per_seed = [values for values in rows_by_seed if len(values) >= 2]
+    if len(per_seed) < 2:
+        raise ValueError("a row needs at least two flashes with two runs each")
     runs = round(mean(len(values) for values in per_seed))
     grand = mean(mean(values) for values in per_seed)
     within = math.sqrt(mean(stdev(values) ** 2 for values in per_seed))
     means = [mean(values) for values in per_seed]
     seed_spread = stdev(means)
-    layout_variance = max(0.0, seed_spread ** 2 - within ** 2 / runs)
-    layout = math.sqrt(layout_variance)
+    flash_variance = max(0.0, seed_spread ** 2 - within ** 2 / runs)
+    layout = math.sqrt(flash_variance)
     optimum = (None if layout == 0 else
-               max(1, math.ceil(math.sqrt(flash_over_run * within ** 2 / layout_variance))))
+               max(1, math.ceil(math.sqrt(flash_over_run * within ** 2 / flash_variance))))
     relative = (layout / grand, within / grand)
-    chosen = optimum or runs
     return {
         "mean": grand, "seeds": len(per_seed), "runs": runs,
-        "sigma_run": relative[1], "sigma_layout": relative[0], "seed_spread": seed_spread / grand,
+        "sigma_run": relative[1], "sigma_flash": relative[0], "seed_spread": seed_spread / grand,
         "optimum_runs": optimum, "shapiro": shapiro(means),
-        "seeds_01": required_seeds(*relative, chosen, 0.001),
-        "seeds_05": required_seeds(*relative, chosen, 0.005),
+        "seeds_01": required_seeds(*relative, runs, 0.001),
+        "seeds_05": required_seeds(*relative, runs, 0.005),
     }
 
 
 def shapiro(values):
-    """Shapiro-Wilk p-value of the seed means, or None without scipy or with
+    """Shapiro-Wilk p-value of the flash means, or None without scipy or with
     fewer than three distinct values."""
     try:
         from scipy.stats import shapiro as test
@@ -210,18 +215,19 @@ def report(args):
         run_seconds = mean(entry["run"] for entry in seeds.values())
         ratio = flash / run_seconds
         lines += [f"### {name}", "",
-                  f"{len(seeds)} seeds ({', '.join(str(s) for s in sorted(seeds))}); one flash "
+                  f"{len(seeds)} flashes, seeds {', '.join(str(e['seed']) for e in seeds.values())}; one flash "
                   f"{flash:.0f} s (build, flash, boot), one run {run_seconds:.0f} s, "
-                  f"c_flash/c_run = {ratio:.1f}", "",
-                  "| row | mean (us) | sigma_run | sigma_layout | sd of seed means | "
+                  f"c_flash/c_run = {ratio:.1f}; K is at the measured runs per flash; "
+                  f"Shapiro-Wilk on fewer than 15 flashes cannot judge", "",
+                  "| row | mean (us) | sigma_run | sigma_flash | sd of flash means | "
                   "R* | K for +-0.1% | K for +-0.5% | Shapiro-Wilk p |",
                   "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
         names = sorted(set().union(*(entry["rows"] for entry in seeds.values())))
         for row in names:
-            result = analyse([seeds[s]["rows"].get(row, []) for s in sorted(seeds)], ratio)
+            result = analyse([seeds[s]["rows"].get(row, []) for s in seeds], ratio)
             lines.append(
                 f"| `{row}` | {result['mean']:.0f} | {hundredths(result['sigma_run'])} | "
-                f"{hundredths(result['sigma_layout'])} | {hundredths(result['seed_spread'])} | "
+                f"{hundredths(result['sigma_flash'])} | {hundredths(result['seed_spread'])} | "
                 f"{'inf' if result['optimum_runs'] is None else result['optimum_runs']} | "
                 f"{result['seeds_01'] or 'inf'} | {result['seeds_05'] or 'inf'} | "
                 f"{'n/a' if result['shapiro'] is None else format(result['shapiro'], '.2f')} |")

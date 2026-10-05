@@ -1,23 +1,20 @@
 #!/usr/bin/env python3
 """Seeded padding sizes for the firmware's code and rodata layout.
 
-Where hot code and its constants land modulo a cache way (4 KB of
-instruction cache, 8 KB of data cache) moves a frame's time by a fraction of
-a percent. Seed 0 is the build as it is; seed N > 0 puts a never-run pad
-ahead of each source's code (0..4064 B in 32 B steps) and ahead of its flash
-rodata (0..8128 B in 64 B steps), so a set of seeds samples the layouts a
-change could have landed on. main/CMakeLists.txt calls this at configure time:
+Where hot code and its constants land modulo a cache way moves a frame's time
+by a fraction of a percent. Seed 0 is the build as it is; seed N > 0 puts a
+never-run pad ahead of each source's code and of its flash rodata, a whole
+number of cache lines up to one way less a line, so a set of seeds samples the
+layouts a change could have landed on. main/CMakeLists.txt calls this at
+configure time with the cache geometry from sdkconfig:
 
-  layout_pad.py SEED SOURCE [SOURCE ...]     prints "SOURCE,TEXT,RODATA;..." on one line
+  layout_pad.py SEED TEXT_LINE TEXT_WAY RODATA_LINE RODATA_WAY SOURCE [SOURCE ...]
+
+and reads back "SOURCE,TEXT,RODATA;..." on one line.
 """
 
 import hashlib
 import sys
-
-TEXT_STEP = 32
-TEXT_STEPS = 128
-RODATA_STEP = 64
-RODATA_STEPS = 128
 
 
 def steps(seed, source, kind, count):
@@ -25,23 +22,26 @@ def steps(seed, source, kind, count):
     return int.from_bytes(digest[:8], "big") % count
 
 
-def pad_sizes(seed, source):
+def pad_sizes(seed, source, text=(32, 4096), rodata=(64, 8192)):
     """The (code, rodata) pad bytes for one source file under `seed`; the
-    source is named by its path below the main component, forward slashes."""
+    source is named by its path below the main component, forward slashes.
+    Each geometry is (line bytes, way bytes): a pad is 0 to way - line bytes
+    in whole lines."""
     if seed == 0:
         return 0, 0
-    return (steps(seed, source, "text", TEXT_STEPS) * TEXT_STEP,
-            steps(seed, source, "rodata", RODATA_STEPS) * RODATA_STEP)
+    return tuple(steps(seed, source, kind, way // line) * line
+                 for kind, (line, way) in (("text", text), ("rodata", rodata)))
 
 
 def main(argv):
-    if len(argv) < 2 or not argv[0].isdigit():
-        sys.exit("usage: layout_pad.py SEED SOURCE [SOURCE ...]")
-    seed = int(argv[0])
+    if len(argv) < 6 or not all(word.isdigit() for word in argv[:5]):
+        sys.exit("usage: layout_pad.py SEED TEXT_LINE TEXT_WAY RODATA_LINE RODATA_WAY "
+                 "SOURCE [SOURCE ...]")
+    seed, text_line, text_way, rodata_line, rodata_way = (int(word) for word in argv[:5])
     rows = []
-    for source in argv[1:]:
-        text, rodata = pad_sizes(seed, source)
-        rows.append(f"{source},{text},{rodata}")
+    for source in argv[5:]:
+        text, data = pad_sizes(seed, source, (text_line, text_way), (rodata_line, rodata_way))
+        rows.append(f"{source},{text},{data}")
     print(";".join(rows), end="")
 
 

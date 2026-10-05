@@ -45,14 +45,21 @@ class LayoutPadTest(unittest.TestCase):
         self.assertTrue(any(text // 32 != rodata // 64 for text, rodata in rows))
 
     def test_the_command_line_prints_one_row_per_source(self):
-        out = subprocess.run([sys.executable, str(BUILD / "layout_pad.py"), "3", "a.c", "b/c.c"],
+        out = subprocess.run([sys.executable, str(BUILD / "layout_pad.py"), "3", "32", "4096",
+                              "64", "8192", "a.c", "b/c.c"],
                              check=True, capture_output=True, text=True).stdout
         rows = [row.split(",") for row in out.split(";")]
         self.assertEqual([row[0] for row in rows], ["a.c", "b/c.c"])
         self.assertEqual([int(v) for v in rows[0][1:]], list(pads.pad_sizes(3, "a.c")))
 
+    def test_a_wider_cache_way_allows_larger_pads(self):
+        pads_seen = {pads.pad_sizes(seed, source, (32, 8192), (64, 16384))
+                     for seed in range(1, 4) for source in SOURCES}
+        self.assertGreater(max(text for text, _ in pads_seen), 4064)
+        self.assertGreater(max(rodata for _, rodata in pads_seen), 8128)
+
     def test_a_seed_that_is_not_a_number_is_refused(self):
-        run = subprocess.run([sys.executable, str(BUILD / "layout_pad.py"), "x", "a.c"],
+        run = subprocess.run([sys.executable, str(BUILD / "layout_pad.py"), "x", "32", "4096", "64", "8192", "a.c"],
                              capture_output=True, text=True)
         self.assertNotEqual(run.returncode, 0)
 
