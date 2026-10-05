@@ -23,7 +23,7 @@ idf_variant_disagreement() {
 }
 
 # idf_variant_build <launcher-dir> <release|dev|diag> <build-dir> [options]
-# Options: --autorun, --perf-scope, --qemu, --defaults <fragment> <symbol>.
+# Options: --autorun, --perf-scope, --qemu, --layout-seed <n>, --defaults <fragment> <symbol>.
 idf_variant_build() {
     launcher_dir=$1
     variant=$2
@@ -34,6 +34,7 @@ idf_variant_build() {
     IDF_VARIANT_REQUIRED=""
     IDF_VARIANT_FORBIDDEN="CONFIG_LAUNCHER_DEVELOPMENT CONFIG_LAUNCHER_SELFTEST CONFIG_LAUNCHER_SELFTEST_AUTORUN CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF CONFIG_LAUNCHER_QEMU"
     perf_scope=0
+    layout_seed=0
 
     case "$variant" in
         release) IDF_VARIANT_REQUIRED=CONFIG_LAUNCHER_RELEASE ;;
@@ -73,6 +74,12 @@ idf_variant_build() {
                 IDF_VARIANT_DEFAULTS="$IDF_VARIANT_DEFAULTS;sdkconfig.defaults.qemu"
                 IDF_VARIANT_REQUIRED="$IDF_VARIANT_REQUIRED CONFIG_LAUNCHER_QEMU"
                 IDF_VARIANT_FORBIDDEN=$(printf '%s\n' "$IDF_VARIANT_FORBIDDEN" | sed 's/CONFIG_LAUNCHER_QEMU//')
+                ;;
+            --layout-seed)
+                [ $# -ge 2 ] || { echo "--layout-seed needs a number" >&2; return 2; }
+                case "$2" in ''|*[!0-9]*) echo "--layout-seed needs a number, not $2" >&2; return 2 ;; esac
+                layout_seed=$2
+                shift
                 ;;
             --defaults)
                 [ $# -ge 3 ] || { echo "--defaults needs a fragment and symbol" >&2; return 2; }
@@ -115,9 +122,14 @@ idf_variant_build() {
     echo "=== $build_dir/sdkconfig must have:" $IDF_VARIANT_REQUIRED "==="
     # shellcheck disable=SC2086
     echo "===   and must not have:" $IDF_VARIANT_FORBIDDEN "==="
+    if [ "$layout_seed" -ne 0 ]; then
+        echo "=== layout seed $layout_seed ==="
+    fi
     # Both values are required: SDKCONFIG keeps this variant's generated
     # config in its build directory while SDKCONFIG_DEFAULTS selects its seed.
-    idf -B "$build_dir" -D SDKCONFIG_DEFAULTS="$IDF_VARIANT_DEFAULTS" \
+    # The layout seed is always passed: the CMake cache would otherwise keep
+    # the last seed a build directory was given.
+    idf -B "$build_dir" -D SDKCONFIG_DEFAULTS="$IDF_VARIANT_DEFAULTS"         -D LAUNCHER_LAYOUT_SEED="$layout_seed" \
         -D SDKCONFIG="$build_dir/sdkconfig" build || return $?
 
     disagreement="$(idf_variant_disagreement "$config")" || disagreement=""

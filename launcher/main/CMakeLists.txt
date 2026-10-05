@@ -249,6 +249,39 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
         COMPILE_OPTIONS "-falign-functions=${CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE}")
 endif()
 
+# LAUNCHER_LAYOUT_SEED > 0 pads every source of this component by a size its
+# seed picks (tools/build/layout_pad.py), up to one cache way less a line each
+# for code and flash rodata, to sample the layouts a timing could have landed
+# on. Seed 0 changes nothing.
+if(NOT CMAKE_SCRIPT_MODE_FILE AND LAUNCHER_LAYOUT_SEED)
+    idf_build_get_property(layout_python PYTHON)
+    set(layout_sources "")
+    foreach(src IN LISTS app_srcs)
+        get_filename_component(src "${src}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+        file(RELATIVE_PATH src "${CMAKE_CURRENT_LIST_DIR}" "${src}")
+        list(APPEND layout_sources "${src}")
+    endforeach()
+    set(layout_tools "${CMAKE_CURRENT_LIST_DIR}/../tools/build")
+    set(text_line ${CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE})
+    set(rodata_line ${CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE})
+    math(EXPR text_way "${CONFIG_ESP32S3_INSTRUCTION_CACHE_SIZE} / ${CONFIG_ESP32S3_ICACHE_ASSOCIATED_WAYS}")
+    math(EXPR rodata_way "${CONFIG_ESP32S3_DATA_CACHE_SIZE} / ${CONFIG_ESP32S3_DCACHE_ASSOCIATED_WAYS}")
+    execute_process(
+        COMMAND ${layout_python} "${layout_tools}/layout_pad.py" "${LAUNCHER_LAYOUT_SEED}"
+                ${text_line} ${text_way} ${rodata_line} ${rodata_way} ${layout_sources}
+        OUTPUT_VARIABLE layout_pads
+        COMMAND_ERROR_IS_FATAL ANY)
+    foreach(row IN LISTS layout_pads)
+        string(REPLACE "," ";" row "${row}")
+        list(GET row 0 src)
+        list(GET row 1 text_pad)
+        list(GET row 2 rodata_pad)
+        set_property(SOURCE "${CMAKE_CURRENT_LIST_DIR}/${src}" APPEND PROPERTY COMPILE_OPTIONS
+            "-include;${layout_tools}/layout_pad.h;-DLAYOUT_PAD_TEXT=${text_pad};-DLAYOUT_PAD_RODATA=${rodata_pad};-DLAYOUT_PAD_TEXT_ALIGN=${text_line};-DLAYOUT_PAD_RODATA_ALIGN=${rodata_line}")
+    endforeach()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${layout_tools}/layout_pad.py")
+endif()
+
 set(app_private_include_dirs "")
 if(CONFIG_LAUNCHER_SELFTEST)
     list(APPEND app_private_include_dirs "../test")

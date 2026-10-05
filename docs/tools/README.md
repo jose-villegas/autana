@@ -16,6 +16,7 @@ The rest of this index explains the repository's checks and tools in depth.
 | [Complexity-Gate.md](Complexity-Gate.md) | The cognitive-complexity ratchet: what it measures, the committed baseline, and when a score fails or only warns. |
 | [Doc-Drift.md](Doc-Drift.md) | Ranking documents for review by age and changed cited sources, and recording a review in the ledger. |
 | [Live-Tuning.md](Live-Tuning.md) | Changing a number on a running device by name, with no build and no flash: the commands, the console protocol, and making a constant tunable. |
+| [Layout-Noise.md](Layout-Noise.md) | Why a neutral edit moves a timing, the seeded padding build (`--layout-seed`), and the pilot that measures how much a row moves with layout alone. |
 | [Frame-Cost.md](Frame-Cost.md) | Measuring named stages of the frame loop and reading their console report. |
 | [Render-Harness.md](Render-Harness.md) | Rendering real firmware screens on a host: declaring a scene, what its pixels are pinned to, video output, the QEMU backend, and diffing against a device capture. |
 | [Mermaid-Diagrams.md](Mermaid-Diagrams.md) | Validating ```` ```mermaid ```` diagrams with mermaid-cli: the command, the pre-commit step, and CI. |
