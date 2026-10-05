@@ -17,7 +17,7 @@ from r3d.mitsuba_reference import integrator, prepare
 
 SEED = 0
 # Rays per Mitsuba call: bounds the arrays a large bake allocates.
-BATCH = 1 << 21
+BATCH = 1 << 20
 
 
 class PathLight:
@@ -34,17 +34,21 @@ class PathLight:
         self.scalar = ray_query.VARIANT.startswith("scalar")
 
     def bounce(self, points, normals, ray_offset):
-        """The bounced light at each point, on its `normals` side, scaled by the scene's indirect intensity."""
-        tu, tv = tangent_frame(normals)
-        origin = np.repeat(points + normals * ray_offset, self.rays, axis=0)
+        """The bounced light at each point, on its `normals` side, scaled by the scene's indirect intensity. Points
+        go through in chunks so the rays in flight stay within BATCH however many points there are."""
         local = sky_directions(self.rays)
-        direction = (tu[:, None] * local[None, :, 0:1] + tv[:, None] * local[None, :, 1:2]
-                     + normals[:, None] * local[None, :, 2:3]).reshape(-1, 3)
-        found = np.zeros((len(origin), 3))
-        for start in range(0, len(origin), BATCH):
-            chunk = slice(start, start + BATCH)
-            found[chunk] = self._radiance(origin[chunk], direction[chunk], SEED + start // BATCH)
-        return found.reshape(len(points), self.rays, 3).mean(axis=1) * self.intensity
+        out = np.zeros((len(points), 3))
+        step = max(1, BATCH // self.rays)
+        for index, start in enumerate(range(0, len(points), step)):
+            chunk = slice(start, start + step)
+            n = normals[chunk]
+            tu, tv = tangent_frame(n)
+            origin = np.repeat(points[chunk] + n * ray_offset, self.rays, axis=0)
+            direction = (tu[:, None] * local[None, :, 0:1] + tv[:, None] * local[None, :, 1:2]
+                         + n[:, None] * local[None, :, 2:3]).reshape(-1, 3)
+            found = self._radiance(origin, direction, SEED + index)
+            out[chunk] = found.reshape(len(n), self.rays, 3).mean(axis=1)
+        return out * self.intensity
 
     def _radiance(self, origin, direction, seed):
         mi = self.mi
