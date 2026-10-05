@@ -128,8 +128,9 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.
 # The smooth bake with indirect light against the reference with the same
 # light, and bakes of the same import that differ only in what the scene says
 # about indirect light, each rendered at the same five poses. Each bake's
-# directory holds copies of the import and the scene, packed in place of the
-# committed mesh, so nothing committed changes.
+# directory holds copies of the import and the scene and a link to the mesh
+# source they name, packed in place of the committed mesh, so nothing committed
+# changes.
 . scripts/lib/python.sh
 R3D_PYTHON=$(run find_r3d_python "$PWD")
 run "$W/render_lab_render" --quarter 0 --no-hud --scene sponza --frames 5 --dt 5000 \
@@ -148,6 +149,7 @@ bake_and_render() {
 variant_bake() {
     run mkdir -p "$W/indirect-$1"
     run cp "$M/meshes/sponza.import.toml" "$W/indirect-$1/"
+    run ln -sfn "$PWD/$M/meshes/sponza" "$W/indirect-$1/sponza"
     run awk -v table="$3" -v direct="$2" '/^\[\[objects\]\]/ && !done { if (table != "") print table "\n"; done = 1 }
         direct == "none" && /^indirect = \{/ { next } { print }' \
         "$M/meshes/sponza.scene.toml" > "$W/indirect-$1/sponza.scene.toml"
