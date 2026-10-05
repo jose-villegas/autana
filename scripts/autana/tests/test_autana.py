@@ -550,6 +550,17 @@ class FlashCommandTests(unittest.TestCase):
         command = called.call_args[0][0]
         self.assertNotIn("--perf-scope", command)
 
+    def test_layout_seed_is_forwarded(self):
+        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"),              mock.patch.object(autana, "git", return_value=""),              mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.flash(["diag", "--quiet", "--layout-seed", "4"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--layout-seed") + 1], "4")
+
+    def test_no_layout_seed_is_not_forwarded(self):
+        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"),              mock.patch.object(autana, "git", return_value=""),              mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.flash(["diag", "--quiet"])
+        self.assertNotIn("--layout-seed", called.call_args[0][0])
+
     def test_the_owner_is_this_processs_own_name(self):
         with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
              mock.patch.object(autana, "git", return_value=""), \
@@ -605,6 +616,22 @@ class BuildCommandTests(unittest.TestCase):
     def test_perf_scope_is_forwarded(self):
         _, built = self.build("diag", "--perf-scope")
         built.assert_called_once_with("C:/wt", "diag", ["--perf-scope"])
+
+    def test_layout_seed_is_forwarded_to_the_build(self):
+        _, built = self.build("diag", "--layout-seed", "3")
+        built.assert_called_once_with("C:/wt", "diag", ["--layout-seed", "3"])
+
+    def test_a_layout_seed_on_a_release_build_is_refused(self):
+        device = autana.device_module()
+        with mock.patch.object(device, "build_worktree") as built,                 mock.patch.object(autana, "resolve_project", return_value="C:/wt"),                 mock.patch.object(autana, "git", return_value=""),                 mock.patch("builtins.print"), self.assertRaises(SystemExit):
+            autana.build(["rel", "--layout-seed", "3"])
+        built.assert_not_called()
+
+    def test_a_layout_seed_that_is_not_a_number_is_refused(self):
+        device = autana.device_module()
+        with mock.patch.object(device, "build_worktree") as built,                 self.assertRaises(SystemExit):
+            autana.build(["diag", "--layout-seed", "three"])
+        built.assert_not_called()
 
     def test_the_exit_status_is_the_builds(self):
         self.assertEqual(self.build("dev", code=2)[0], 2)
@@ -1720,6 +1747,12 @@ class SuiteFlashAndRunsTests(unittest.TestCase):
              mock.patch.object(autana.subprocess, "call", return_value=0) as called:
             autana.suite(["run_gfx_suite", "--flash", "--perf-scope"])
         self.assertIn("--perf-scope", called.call_args[0][0])
+
+    def test_layout_seed_is_forwarded(self):
+        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"),              mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            autana.suite(["run_gfx_suite", "--flash", "--layout-seed", "5"])
+        command = called.call_args[0][0]
+        self.assertEqual(command[command.index("--layout-seed") + 1], "5")
 
     def test_no_suite_name_is_rejected(self):
         with self.assertRaises(SystemExit):

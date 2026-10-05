@@ -980,6 +980,12 @@ def flash_commands(bash, worktree, variant, build_flags=()):
             [bash, (worktree / FLASH_SCRIPT).as_posix()])
 
 
+def layout_flags(args):
+    """build.sh's flag for a layout seed; none for the plain build."""
+    seed = getattr(args, "layout_seed", 0)
+    return ["--layout-seed", str(seed)] if seed else []
+
+
 def build_directory(worktree, variant):
     return Path(worktree) / "launcher" / BUILD_DIRS[variant]
 
@@ -1574,13 +1580,14 @@ def batch(args, store, board):
     what a standalone `run-suite` leaves behind: one capture under its own
     name, no `batch` summary or manifest row, since there is nothing across
     runs for either to tell apart."""
-    extra_flags = ["--perf-scope"] if args.perf_scope else []
+    extra_flags = (["--perf-scope"] if args.perf_scope else []) + layout_flags(args)
     patterns = test_patterns(getattr(args, "test_filter", None))
     if args.out and (len(args.suite) != 1 or args.runs != 1):
         raise RuntimeError("--out only makes sense with exactly one --suite and --runs 1 - "
                            "several captures cannot all land on one path")
-    if args.perf_scope and not args.flash:
-        raise RuntimeError("--perf-scope selects the image built - it needs --flash")
+    if (args.perf_scope or getattr(args, "layout_seed", 0)) and not args.flash:
+        raise RuntimeError("--perf-scope and --layout-seed select the image built - "
+                           "they need --flash")
     single = len(args.suite) == 1 and args.runs == 1
     worktree = str(Path(args.worktree).resolve())
     started_at = now()
@@ -1747,6 +1754,8 @@ def main(argv=None):
     flash_parser.add_argument("--out")
     flash_parser.add_argument("--perf-scope", action="store_true",
                               help="with --variant diag: build the perf-scoped image")
+    flash_parser.add_argument("--layout-seed", type=int, default=0,
+                              help="pad the layout by this seed (0 is the plain build)")
     suite = subparsers.add_parser("run-suite")
     suite.add_argument("suite")
     suite.add_argument("--out")
@@ -1817,6 +1826,8 @@ def main(argv=None):
                               help="capture against the image already on the board")
     batch_parser.add_argument("--perf-scope", action="store_true",
                               help="build the perf-scoped image (needs --flash, the default)")
+    batch_parser.add_argument("--layout-seed", type=int, default=0,
+                              help="pad the layout by this seed (needs --flash, the default)")
     batch_parser.add_argument("--max-seconds", type=float, default=1800)
     batch_parser.add_argument("--test", dest="test_filter", action="append", metavar="PATTERN",
                               help="run only the tests whose name contains PATTERN; repeat or "
@@ -1883,7 +1894,7 @@ def main(argv=None):
             print_statuses(board_statuses(store, board), store.now())
             return 0
         if args.command == "flash":
-            extra_flags = ["--perf-scope"] if args.perf_scope else []
+            extra_flags = (["--perf-scope"] if args.perf_scope else []) + layout_flags(args)
             with build_image(args, board, extra_flags) as built:
                 write_image(built, store, board)
         elif args.command == "run-suite":

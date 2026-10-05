@@ -1018,6 +1018,11 @@ class FlashCommandLineTests(unittest.TestCase):
                                "--worktree", "C:/wt", "--perf-scope"])
         self.assertEqual(calls, [["--perf-scope"]])
 
+    def test_layout_seed_becomes_an_extra_flag(self):
+        calls = self.run_main(["--owner", "a", "flash", "--variant", "diag",
+                               "--worktree", "C:/wt", "--layout-seed", "7"])
+        self.assertEqual(calls, [["--layout-seed", "7"]])
+
     def test_no_perf_scope_flag_passes_nothing_extra(self):
         calls = self.run_main(["--owner", "a", "flash", "--variant", "dev", "--worktree", "C:/wt"])
         self.assertEqual(calls, [[]])
@@ -1218,7 +1223,8 @@ class BatchTests(unittest.TestCase):
     def run_batch(self, suites=("run_sand_perf_suite",), runs=3, fail_run=None,
                   perf_scope=False, script_text="--diag --dev --perf-scope", out=False,
                   expect_build_id=None, flashed_build_id="abc123-diag", flash=True,
-                  test_filter=None, filter_error_run=None, error_class=None):
+                  test_filter=None, filter_error_run=None, error_class=None,
+                  layout_seed=0):
         calls = {"locks": 0, "build": [], "flash": [], "run_suite": [], "events": [],
                  "suite_args": []}
 
@@ -1269,7 +1275,7 @@ class BatchTests(unittest.TestCase):
                              variant="diag", suite=list(suites), runs=runs, perf_scope=perf_scope,
                              max_seconds=1, idle_seconds=None, out=out_path,
                              expect_build_id=expect_build_id, flash=flash,
-                             test_filter=test_filter)
+                             test_filter=test_filter, layout_seed=layout_seed)
             store = mock.Mock()
             with mock.patch.object(device, "HeldLock", FakeLock), \
                  mock.patch.object(device, "build_image", fake_build_image), \
@@ -1393,6 +1399,10 @@ class BatchTests(unittest.TestCase):
         _, calls, _, _ = self.run_batch(runs=1, flash=False)
         self.assertIsNone(calls["run_suite"][0][4])
 
+    def test_layout_seed_without_flash_is_rejected(self):
+        with self.assertRaisesRegex(RuntimeError, "--layout-seed.*--flash"):
+            self.run_batch(flash=False, layout_seed=3)
+
     def test_perf_scope_without_flash_is_rejected(self):
         with self.assertRaisesRegex(RuntimeError, "--perf-scope.*--flash"):
             self.run_batch(flash=False, perf_scope=True)
@@ -1443,6 +1453,10 @@ class BatchTests(unittest.TestCase):
     def test_perf_scope_is_passed_to_the_build(self):
         _, calls, _, _ = self.run_batch(perf_scope=True)
         self.assertEqual(calls["build"], [["--perf-scope"]])
+
+    def test_layout_seed_is_passed_to_the_build(self):
+        _, calls, _, _ = self.run_batch(layout_seed=3)
+        self.assertEqual(calls["build"], [["--layout-seed", "3"]])
 
     def test_out_is_used_for_one_suite_one_run(self):
         _, calls, _, _ = self.run_batch(suites=("run_sand_perf_suite",), runs=1, out=True)

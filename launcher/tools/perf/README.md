@@ -44,3 +44,6 @@ least 80% of rows. Similar means each aligned row is within 0.15 percentage
 points of that run's median shift. The run stays in the worst values and
 verdict. A change present in every run moves that side's medians instead, so
 it remains a regression rather than being labelled a slow boot.
+
+The layout noise floor, and how to measure it with seeded padding builds, is in
+[Layout-Noise.md](../../../docs/tools/Layout-Noise.md); `layout_pilot.py` runs the pilot.

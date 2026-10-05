@@ -141,6 +141,21 @@ def pop_value(args, flag):
     return value, rest
 
 
+def pop_layout_seed(args):
+    """(seed or None, `args` without `--layout-seed N`): N is a non-negative
+    whole number, 0 being the plain build."""
+    value, rest = pop_value(args, "--layout-seed")
+    if value is not None and not value.isdigit():
+        sys.exit(f"usage: --layout-seed needs a whole number, not {value}")
+    return value, rest
+
+
+def refuse_release_seed(seed, variant):
+    """A release image carries no padding to sample, so a seed there is a typo."""
+    if seed is not None and variant == "release":
+        sys.exit("autana: --layout-seed is for measuring; a release image is never padded")
+
+
 def device_tool():
     # Under the same scripts/ as this file, so the device tool is the one
     # belonging to the checkout on the PATH.
@@ -273,7 +288,9 @@ def variant_request(verb, args, flags, project):
 
 def flash(args):
     project = resolve_project()
+    seed, args = pop_layout_seed(args)
     _, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope"), project)
+    refuse_release_seed(seed, variant)
     quiet = "--quiet" in seen
     perf_scope = "--perf-scope" in seen
     command = device_command(
@@ -281,6 +298,8 @@ def flash(args):
     )
     if perf_scope:
         command.append("--perf-scope")
+    if seed is not None:
+        command += ["--layout-seed", seed]
     return subprocess.call(command) if quiet else run_streaming_its_log(command)
 
 
@@ -305,8 +324,11 @@ def build(args):
         if args != ["diag"]:
             sys.exit("usage: autana build diag --check")
         return build_diag_check(project)
+    seed, args = pop_layout_seed(args)
     _, variant, seen = variant_request("build", args, ("--perf-scope",), project)
-    return device_module().build_worktree(project, variant, sorted(seen))
+    refuse_release_seed(seed, variant)
+    flags = sorted(seen) + (["--layout-seed", seed] if seed is not None else [])
+    return device_module().build_worktree(project, variant, flags)
 
 
 def seconds_argument(args, default, usage):
@@ -589,7 +611,7 @@ def suite_list(args):
 
 
 SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [seconds] [--runs N] [--test PATTERN] "
-              "[--flash] [--perf-scope] [--verbose] [--out PATH] [--expect-build-id ID] | "
+              "[--flash] [--perf-scope] [--layout-seed N] [--verbose] [--out PATH] [--expect-build-id ID] | "
               "autana suite list [text]")
 
 
@@ -627,6 +649,7 @@ def suite(args):
     perf_scope = "--perf-scope" in rest
     if perf_scope:
         rest.remove("--perf-scope")
+    seed, rest = pop_layout_seed(rest)
     verbose = "--verbose" in rest
     if verbose:
         rest.remove("--verbose")
@@ -662,6 +685,8 @@ def suite(args):
         command += ["--suite", name]
     if perf_scope:
         command.append("--perf-scope")
+    if seed is not None:
+        command += ["--layout-seed", seed]
     if verbose:
         command.append("--verbose")
     if out:
@@ -1338,17 +1363,18 @@ def debug(args):
 COMMAND_GROUPS = (
     ("build", "Build and flash", (
         Command("build", build, (
-            ("build [rel|dev|diag] [--perf-scope]", "build this project, no board; dev when omitted"),
+            ("build [rel|dev|diag] [--perf-scope] [--layout-seed N]",
+             "build this project, no board; dev when omitted; a seed N > 0 pads the layout, 0 is the plain build"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
         Command("flash", flash, (
-            ("flash [rel|dev|diag] [--quiet] [--perf-scope]",
+            ("flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N]",
              "build and flash this project; dev when omitted"),)),
         Command("buildid", buildid, (
             ("buildid [--json]", "the BUILD_ID the board is running"),)),
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
-            ("suite <name>... [seconds] [--runs N] [--flash] [--verbose]",
+            ("suite <name>... [seconds] [--runs N] [--flash] [--layout-seed N] [--verbose]",
              "run suites under one lock; --flash builds and flashes first; seconds caps a "
              "capture (1800 when omitted)"),
             ("suite <name> --test PATTERN[,PATTERN]",
