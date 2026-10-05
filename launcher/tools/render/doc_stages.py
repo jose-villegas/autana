@@ -304,7 +304,8 @@ def write_ao_scene(directory):
         raise ValueError(f"{SCENE.name}: no [ambient] intensity or [bake] indirect line to build the occlusion scene from")
     (directory / SCENE.name).write_text(text, encoding="utf-8")
     tracks = tracks_file(load_scene(SCENE))
-    shutil.copyfile(tracks, directory / tracks.name)
+    for name in (tracks, tracks.with_suffix('.h')):
+        shutil.copyfile(name, directory / name.name)
     return directory / SCENE.name
 
 
