@@ -159,9 +159,7 @@ class BuilderTests(unittest.TestCase):
 class TreeTests(unittest.TestCase):
     def test_the_meshes_in_the_tree_pack_and_parse(self):
         names = parse_pack(build_pack.pack_bytes([build_pack.DEFAULT_SEARCH]))
-        self.assertTrue(names)
-        for kind, _ in names.values():
-            self.assertEqual(kind, LIT_MESH)
+        self.assertIn(LIT_MESH, {kind for kind, _ in names.values()})
 
     def test_every_mesh_a_scene_table_names_is_in_the_committed_pack(self):
         names = parse_pack(build_pack.pack_bytes([build_pack.DEFAULT_SEARCH]))

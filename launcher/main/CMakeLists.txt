@@ -37,6 +37,7 @@ set(app_srcs
     "ui/ui_scroll.c"
     "ui/ui_widgets.c"
     "anim/anim_track.c"
+    "anim/anim_tracks.c"
     "asset/asset_pack.c"
     "asset/asset_store_flash.c"
     "render/raster.c"
@@ -319,19 +320,23 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=double-promotion -Werror=float-conversion)
 
     # The asset pack is a build product: every baked mesh the import and scene
-    # files name, packed into one image that flashes to the "assets" partition
-    # with the app. `idf.py assets-flash` writes just that region.
+    # files name and every clip an .anim.toml names, packed into one image that
+    # flashes to the "assets" partition with the app. build_pack.py searches
+    # all of main/, so its inputs are globbed there too: a clip's .glb counts.
+    # `idf.py assets-flash` writes just that region.
     idf_build_get_property(python PYTHON)
     set(asset_pack "${CMAKE_BINARY_DIR}/assets.bin")
     set(asset_tools "${CMAKE_CURRENT_LIST_DIR}/../tools")
-    launcher_glob(asset_inputs "${CMAKE_CURRENT_LIST_DIR}/apps/*.mesh")
-    launcher_glob(asset_settings "${CMAKE_CURRENT_LIST_DIR}/apps/*.toml")
+    launcher_glob(asset_inputs "${CMAKE_CURRENT_LIST_DIR}/*.mesh")
+    launcher_glob(asset_settings "${CMAKE_CURRENT_LIST_DIR}/*.toml")
+    launcher_glob(asset_sources "${CMAKE_CURRENT_LIST_DIR}/*.glb")
     add_custom_command(
         OUTPUT "${asset_pack}"
         COMMAND ${python} "${asset_tools}/r3d/build_pack.py" -o "${asset_pack}" "${CMAKE_CURRENT_LIST_DIR}"
-        DEPENDS ${asset_inputs} ${asset_settings} "${asset_tools}/r3d/build_pack.py"
+        DEPENDS ${asset_inputs} ${asset_settings} ${asset_sources} "${asset_tools}/r3d/build_pack.py"
                 "${asset_tools}/r3d/import_settings.py" "${asset_tools}/r3d/mesh_asset.py"
-                "${asset_tools}/asset/asset_pack.py"
+                "${asset_tools}/asset/asset_pack.py" "${asset_tools}/anim/tracks_asset.py"
+                "${asset_tools}/gltf/gltf_read.py"
         COMMENT "Packing the asset pack"
         VERBATIM)
     add_custom_target(asset_pack_image ALL DEPENDS "${asset_pack}")

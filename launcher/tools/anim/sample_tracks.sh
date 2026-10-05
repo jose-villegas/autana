@@ -47,7 +47,8 @@ mkdir -p "$BUILD_DIR"
 OUT_BIN="$BUILD_DIR/sample_tracks"
 "$CC_BIN" -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2 \
     -I "$MAIN_DIR" -I "$(dirname -- "$tracks_source")" \
-    -DANIM_CLIP="${tracks_name}_clip" -DANIM_NAMES="${tracks_name}_track_names" \
+    -DANIM_CLIP="${tracks_name}_clip" -DANIM_TRACKS="${tracks_name}_tracks" \
+    -DANIM_COUNT="${tracks_name}_track_count" -DANIM_NAMES="${tracks_name}_track_names" \
     "$SCRIPT_DIR/sample_tracks_main.c" "$tracks_source" "$MAIN_DIR/anim/anim_track.c" \
     -lm -o "$OUT_BIN"
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"
