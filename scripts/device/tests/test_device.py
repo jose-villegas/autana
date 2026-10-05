@@ -2257,6 +2257,55 @@ class SelftestTests(unittest.TestCase):
         self.assertEqual(code, 1)
 
 
+class TouchPointTests(unittest.TestCase):
+    """The default screenshot's pixels in the panel's own frame, which
+    TAP, PRESS and DRAG take."""
+
+    @staticmethod
+    def coordinate_png(width, height):
+        """Each pixel's red and green are its own x and y."""
+        import screenshot as screenshot_tool
+        raw = b"".join(b"\0" + b"".join(bytes((x, y, 0)) for x in range(width)) for y in range(height))
+        return (b"\x89PNG\r\n\x1a\n"
+                + screenshot_tool._png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+                + screenshot_tool._png_chunk(b"IDAT", zlib.compress(raw))
+                + screenshot_tool._png_chunk(b"IEND", b""))
+
+    @staticmethod
+    def pixels(png):
+        width, height = struct.unpack_from(">II", png, 16)
+        pos, compressed = 8, bytearray()
+        while pos < len(png):
+            length, = struct.unpack_from(">I", png, pos)
+            if png[pos + 4:pos + 8] == b"IDAT":
+                compressed += png[pos + 8:pos + 8 + length]
+            pos += length + 12
+        raw = zlib.decompress(compressed)
+        stride = 1 + width * 3
+        return {(x, y): tuple(raw[y * stride + 1 + x * 3:y * stride + 3 + x * 3])
+                for y in range(height) for x in range(width)}
+
+    def test_panel_point_finds_the_pixel_turn_png_moved_for_every_quarter(self):
+        import screenshot as screenshot_tool
+        width, height = 3, 5
+        for quarter in range(4):
+            turned = self.pixels(screenshot_tool.turn_png(self.coordinate_png(width, height), quarter))
+            for (x, y), source in turned.items():
+                self.assertEqual(screenshot_tool.panel_point(x, y, quarter, width, height), source,
+                                 f"quarter {quarter} at ({x}, {y})")
+
+    def test_maps_the_default_screenshot_to_the_panel(self):
+        self.assertEqual(device.touch_point(0, 0), (367, 0))
+        self.assertEqual(device.touch_point(447, 367), (0, 447))
+        # render_lab's NEXT SCENE with the board landscape, tapped on the board.
+        self.assertEqual(device.touch_point(222, 246), (121, 222))
+
+    def test_rejects_a_point_outside_the_default_screenshot(self):
+        for x, y in ((448, 0), (0, 368), (-1, 10), (10, -1)):
+            with self.assertRaises(ValueError):
+                device.touch_point(x, y)
+
+
 class ScreenshotCommandTests(unittest.TestCase):
     """device.screenshot() under a faked serial port, driving the real
     launcher/tools/device/screenshot.py decode, see that module's own tests
