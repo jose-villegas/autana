@@ -134,13 +134,13 @@ class AcquisitionTests(unittest.TestCase):
     def test_exited_parent_grandchild_is_stopped(self):
         with tempfile.TemporaryDirectory() as root:
             marker = Path(root) / 'alive'
-            child = f'import time; from pathlib import Path; time.sleep(1); Path({str(marker)!r}).touch(); time.sleep(20)'
+            child = f'import time; from pathlib import Path; time.sleep(3); Path({str(marker)!r}).touch(); time.sleep(20)'
             parent = f'import subprocess,sys; subprocess.Popen([sys.executable,"-c",{child!r}])'
             started = time.monotonic()
             with self.assertRaisesRegex(RuntimeError, 'timed out'):
                 capture.run_stamped([sys.executable, '-c', parent], io.StringIO(), timeout=.3)
             self.assertLess(time.monotonic() - started, 3)
-            time.sleep(1.1)
+            time.sleep(4)
             self.assertFalse(marker.exists())
 
     def test_final_wait_does_not_hide_original_exception(self):
@@ -265,21 +265,21 @@ class AcquisitionTests(unittest.TestCase):
     def test_interruption_kills_descendants(self):
         with tempfile.TemporaryDirectory() as root:
             marker = Path(root) / 'alive'
-            child = f'import time; from pathlib import Path; time.sleep(1); Path({str(marker)!r}).touch(); time.sleep(20)'
+            child = f'import time; from pathlib import Path; time.sleep(3); Path({str(marker)!r}).touch(); time.sleep(20)'
             parent = f'import subprocess,sys,time; subprocess.Popen([sys.executable,"-c",{child!r}]); print("ready",flush=True); time.sleep(20)'
             class Interrupted(io.StringIO):
                 def write(self, value):
                     raise KeyboardInterrupt('capture interrupted')
             with contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(KeyboardInterrupt, 'interrupted'):
                 capture.run_stamped([sys.executable, '-c', parent], Interrupted(), timeout=3)
-            time.sleep(1.1)
+            time.sleep(4)
             self.assertFalse(marker.exists())
 
     @unittest.skipIf(os.name == 'nt', 'POSIX process groups')
     def test_sigterm_ignoring_child_is_killed(self):
         with tempfile.TemporaryDirectory() as root:
             marker = Path(root) / 'alive'
-            child = f'import signal,time; from pathlib import Path; signal.signal(signal.SIGTERM,signal.SIG_IGN); time.sleep(1); Path({str(marker)!r}).touch(); time.sleep(20)'
+            child = f'import signal,time; from pathlib import Path; signal.signal(signal.SIGTERM,signal.SIG_IGN); time.sleep(3); Path({str(marker)!r}).touch(); time.sleep(20)'
             parent = f'import subprocess,sys,time; subprocess.Popen([sys.executable,"-c",{child!r}]); time.sleep(20)'
             with self.assertRaisesRegex(RuntimeError, 'timed out'):
                 capture.run_stamped([sys.executable, '-c', parent], io.StringIO(), timeout=.3)

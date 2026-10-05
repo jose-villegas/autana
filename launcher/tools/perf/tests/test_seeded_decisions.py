@@ -136,13 +136,13 @@ class RevisionTests(unittest.TestCase):
     def test_deadline_stops_grandchild_holding_pipe(self):
         with tempfile.TemporaryDirectory() as root:
             marker = pathlib.Path(root)/"alive"
-            grandchild = f"import time; from pathlib import Path; time.sleep(1); Path({str(marker)!r}).touch(); time.sleep(10)"
+            grandchild = f"import time; from pathlib import Path; time.sleep(3); Path({str(marker)!r}).touch(); time.sleep(10)"
             parent = f"import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',{grandchild!r}]); time.sleep(10)"
             started = time.monotonic()
             with self.assertRaisesRegex(RuntimeError, "timed out"):
                 capture.run_stamped([sys.executable, "-c", parent], io.StringIO(), timeout=.1)
             self.assertLess(time.monotonic()-started, 3)
-            time.sleep(1.1)
+            time.sleep(4)
             self.assertFalse(marker.exists())
 
     def test_permutation_is_cross_check_and_signs_agree(self):

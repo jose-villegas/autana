@@ -25,6 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from device_capture import RESULT_RE  # noqa: E402
+
 # The line a RUNSUITE ends with, read here for the board (device.py) and for
 # QEMU (launcher/test/qemu_run.py). An image that predates --test prints no
 # selected=/unmatched=, and echoes a filtered request whole as the name
