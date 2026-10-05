@@ -91,7 +91,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          "$HOME/gpu/env/bin/python" launcher/tools/render/refresh_pr.py close \
+          "$HOME/gpu/env/bin/python" scripts/ci/refresh_pr.py close \
             "Every GPU-rendered image and generated table already matches main; nothing left to refresh."
 
       - name: Commit changes and open or update the GPU refresh PR
@@ -112,4 +112,4 @@ jobs:
             echo "Changed files:"
             sed 's/^/- /' "$RUNNER_TEMP/changed.txt"
           } > "$RUNNER_TEMP/body.md"
-          "$HOME/gpu/env/bin/python" launcher/tools/render/refresh_pr.py sync "$RUNNER_TEMP/body.md"
+          "$HOME/gpu/env/bin/python" scripts/ci/refresh_pr.py sync 'docs: refresh GPU-rendered images' "$RUNNER_TEMP/body.md"
