@@ -46,7 +46,7 @@ A seeded image has its own `BUILD_ID`, and the same seed builds the same image.
 |---|---|
 | sigma_run | the spread of runs inside one flash |
 | sigma_flash | the spread between flashes' means beyond what sigma_run explains: layout plus boot-to-boot |
-| R* | runs per flash that minimise the cost of a given precision: ceil(sqrt(c_flash / c_run * sigma_run² / sigma_flash²)) |
+| R* | runs per flash that minimise the cost of a given precision: ceil(sqrt(c_flash / c_run * sigma_runÂ² / sigma_flashÂ²)) |
 | K | flashes per side so the 95% interval on B/A is within +-0.1% or +-0.5%, at the measured runs per flash |
 | Shapiro-Wilk p | whether the flash means look normal; with fewer than about 15 flashes it cannot judge |
 
