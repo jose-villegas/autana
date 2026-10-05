@@ -17,14 +17,15 @@ GIB = 1024 ** 3
 WSL_MEMORY_REQUIRED_BYTES = 6 * GIB
 WINDOWS_MEMORY_REQUIRED_BYTES = 2 * GIB
 # Estimates are (WSL RSS, GPU reserved, cgroup bytes), re-derived from workers' logged peaks.
+# The prepare estimate covers the parent and, for a source without bounced light, its pose pool.
 FLOORS = (GIB, GIB // 2, GIB // 4)
 FIT_BYTES = (22 * GIB // 10, 7 * GIB // 10, 22 * GIB // 10)
-PREPARE_BYTES = (4 * GIB, 0, 4 * GIB)
+PREPARE_BYTES = (13 * GIB // 2, 0, 13 * GIB // 2)
 BAKE_BYTES = (5 * GIB // 2, 0, 5 * GIB // 2)
 MEASURE_BYTES = (3 * GIB // 2, 128 * 1024 ** 2, 3 * GIB // 2)
-# Copy-on-write source sharing needs a separate pose-pool sizing budget.
-POSE_POOL_BYTES = 7 * GIB
 SMOKE_PREPARE_BYTES = (2 * GIB, 0, 2 * GIB)
+GPU_QUERY_FAILURE_SECONDS = 300
+GPU_QUERY_LOG_SECONDS = 60
 _task_reservation = None
 
 
@@ -89,6 +90,26 @@ def status_bytes(pid, field):
                     if line.startswith(field + ":"))
     except (OSError, StopIteration):
         return 0
+
+
+class QueryFailures:
+    """Consecutive failed memory queries: when to warn, and when the window has run out."""
+
+    def __init__(self):
+        self.since = None
+        self.warned = None
+
+    def failed(self, now):
+        if self.since is None:
+            self.since = now
+        expired = now - self.since >= GPU_QUERY_FAILURE_SECONDS
+        warn = self.warned is None or now - self.warned >= GPU_QUERY_LOG_SECONDS
+        if warn:
+            self.warned = now
+        return expired, warn
+
+    def recovered(self):
+        self.since = self.warned = None
 
 
 def pss_bytes(pid):
@@ -228,6 +249,7 @@ class TaskExecutor:
 
     def _schedule(self):
         next_query = 0
+        query_failures = QueryFailures()
         last_wait_log = None
         while True:
             with self.condition:
@@ -255,17 +277,33 @@ class TaskExecutor:
                 if self.closed and not self.queue and not self.priority_queue and not self.active:
                     return
                 if (self.queue or self.priority_queue) and time.monotonic() >= next_query:
+                    query_error = None
                     self.condition.release()
                     try:
                         free = available_bytes(gpu=True)
                         gpu = gpu_resident_bytes()
+                    except FileNotFoundError:
+                        raise
+                    except (subprocess.TimeoutExpired, OSError, subprocess.CalledProcessError) as error:
+                        query_error = error
                     finally:
                         self.condition.acquire()
                     if self.failure:
                         raise self.failure
+                    now = time.monotonic()
+                    next_query = now + 2
+                    if query_error is not None:
+                        expired, warn = query_failures.failed(now)
+                        if expired:
+                            raise RuntimeError(f"memory queries failed for {GPU_QUERY_FAILURE_SECONDS} "
+                                               "seconds of consecutive failures; worker admission unavailable") from query_error
+                        if warn:
+                            print(f"memory query failed: {query_error}; worker admission paused, retrying", flush=True)
+                        self.condition.wait(timeout=0.1)
+                        continue
+                    query_failures.recovered()
                     free = projected_available(free, [(estimates, resident_bytes(process.pid, gpu))
                                                for process, _, _, estimates in self.active])
-                    next_query = time.monotonic() + 2
                     for queued in [*self.priority_queue, *self.queue]:
                         if len(self.active) >= cores_available():
                             break

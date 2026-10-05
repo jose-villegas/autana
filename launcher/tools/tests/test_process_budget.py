@@ -197,14 +197,14 @@ if __name__ == '__main__':
 
 
 class ReservationTests(unittest.TestCase):
-    def test_pose_pool_stays_inside_reservation(self):
+    def test_pose_pool_stays_inside_budget(self):
         try:
-            from r3d.reference_render import reservation_pose_capacity
+            from r3d.reference_render import budget_pose_capacity
         except ImportError:
             self.skipTest('needs reference dependencies')
-        self.assertEqual(reservation_pose_capacity(700, 300, 100, 10), 4)
-        self.assertEqual(reservation_pose_capacity(700, 300, 100, 2), 2)
-        self.assertEqual(reservation_pose_capacity(700, 690, 100, 10), 1)
+        self.assertEqual(budget_pose_capacity(700, 300, 100, 10), 4)
+        self.assertEqual(budget_pose_capacity(700, 300, 100, 2), 2)
+        self.assertEqual(budget_pose_capacity(700, 690, 100, 10), 1)
 
 
 
@@ -435,7 +435,7 @@ class PartialTaskTests(ProcessTests):
 class MeasuredBudgetTests(unittest.TestCase):
     def test_worker_estimates(self):
         from r3d import process_budget as b
-        self.assertEqual(b.PREPARE_BYTES, (4 * b.GIB, 0, 4 * b.GIB))
+        self.assertEqual(b.PREPARE_BYTES, (13 * b.GIB // 2, 0, 13 * b.GIB // 2))
         self.assertEqual(b.BAKE_BYTES, (5 * b.GIB // 2, 0, 5 * b.GIB // 2))
         self.assertEqual(b.FIT_BYTES, (22 * b.GIB // 10, 7 * b.GIB // 10, 22 * b.GIB // 10))
         self.assertEqual(b.MEASURE_BYTES, (3 * b.GIB // 2, 128 * 1024 ** 2, 3 * b.GIB // 2))
@@ -456,8 +456,210 @@ class MeasuredBudgetTests(unittest.TestCase):
     def test_full_pose_budget_retains_parallelism(self):
         from r3d import process_budget as b
         try:
-            from r3d.reference_render import reservation_pose_capacity, POSE_BASE_BYTES_PER_RAY
+            from r3d.reference_render import budget_pose_capacity, POSE_BASE_BYTES_PER_RAY
         except ImportError:
             self.skipTest('needs reference dependencies')
         estimate = 368 * 448 * 4 * 4 * POSE_BASE_BYTES_PER_RAY
-        self.assertGreater(reservation_pose_capacity(b.POSE_POOL_BYTES, 3290000000, estimate, 10), 1)
+        self.assertGreater(budget_pose_capacity(b.PREPARE_BYTES[0], b.GIB, estimate, 10), 1)
+
+
+class GpuQueryFailureTests(unittest.TestCase):
+    def run_queries(self, query, errors, recover, failure_step=151):
+        import subprocess
+        from unittest.mock import patch
+        from r3d import process_budget as budget
+        clock = [0.0]
+        calls = []
+        def now():
+            clock[0] += 3
+            return clock[0]
+        def fake_query(command, **kwargs):
+            if query in command[1]:
+                calls.append(command[1])
+                if errors:
+                    self.assertEqual(executor.active, [])
+                    clock[0] += failure_step
+                    raise errors.pop(0)
+                if not recover:
+                    clock[0] += 151
+                    raise subprocess.TimeoutExpired(command, 10)
+            return b''
+        def fake_available(gpu=False):
+            if gpu:
+                budget.subprocess.check_output(['nvidia-smi', '--query-gpu=memory.free'], timeout=10)
+            return (1 << 60,) * 3
+        with patch.object(budget, 'available_bytes', side_effect=fake_available), \
+             patch.object(budget.pathlib.Path, 'exists', return_value=True), \
+             patch.object(budget.subprocess, 'check_output', side_effect=fake_query), \
+             patch.object(budget.time, 'monotonic', side_effect=now), \
+             patch('builtins.print') as log:
+            with budget.TaskExecutor() as executor:
+                future = executor.submit(identity_worker, 'recovered')
+                if recover:
+                    self.assertEqual(future.result(timeout=10)[0], 'recovered')
+                else:
+                    future.result(timeout=10)
+            warnings = [call for call in log.call_args_list if 'memory query failed' in str(call)]
+            self.assertEqual(len(warnings), 1)
+        return calls
+
+    def test_timeout_then_recovery_for_both_queries(self):
+        import subprocess
+        for query in ('query-gpu', 'query-compute-apps'):
+            with self.subTest(query=query):
+                calls = self.run_queries(query, [subprocess.TimeoutExpired('nvidia-smi', 10)], True)
+                self.assertEqual(len(calls), 2)
+
+    def test_repeated_timeouts_are_rate_limited(self):
+        import subprocess
+        for query in ('query-gpu', 'query-compute-apps'):
+            with self.subTest(query=query):
+                errors = [subprocess.TimeoutExpired('nvidia-smi', 10) for _ in range(3)]
+                self.assertEqual(len(self.run_queries(query, errors, True, failure_step=0)), 4)
+
+    def test_oserror_and_nonzero_exit_then_recovery(self):
+        import subprocess
+        for query in ('query-gpu', 'query-compute-apps'):
+            for error in (OSError('unavailable'), subprocess.CalledProcessError(1, 'nvidia-smi')):
+                with self.subTest(query=query, error=type(error).__name__):
+                    self.assertEqual(len(self.run_queries(query, [error], True)), 2)
+
+    def test_consecutive_failures_expire_explicit_window(self):
+        for query in ('query-gpu', 'query-compute-apps'):
+            with self.subTest(query=query):
+                with self.assertRaisesRegex(RuntimeError, 'memory queries failed for 300.*consecutive'):
+                    self.run_queries(query, [], False)
+
+
+class QueryFailuresTests(unittest.TestCase):
+    def test_window_expires_at_the_limit_not_before(self):
+        from r3d.process_budget import QueryFailures, GPU_QUERY_FAILURE_SECONDS as limit
+        failures = QueryFailures()
+        self.assertFalse(failures.failed(0)[0])
+        self.assertFalse(failures.failed(limit - 1)[0])
+        self.assertTrue(failures.failed(limit)[0])
+
+    def test_recovery_restarts_the_window(self):
+        from r3d.process_budget import QueryFailures, GPU_QUERY_FAILURE_SECONDS as limit
+        failures = QueryFailures()
+        failures.failed(0)
+        failures.failed(limit - 50)
+        failures.recovered()
+        self.assertFalse(failures.failed(limit - 40)[0])
+        self.assertFalse(failures.failed(2 * limit - 41)[0])
+        self.assertTrue(failures.failed(2 * limit - 40)[0])
+
+    def test_warnings_are_rate_limited_and_reopen_after_recovery(self):
+        from r3d.process_budget import QueryFailures, GPU_QUERY_LOG_SECONDS as window
+        failures = QueryFailures()
+        self.assertTrue(failures.failed(0)[1])
+        self.assertFalse(failures.failed(window - 1)[1])
+        self.assertTrue(failures.failed(window)[1])
+        failures.recovered()
+        self.assertTrue(failures.failed(window + 1)[1])
+
+
+class QueryFailureReapingTests(ProcessTests):
+    def test_finished_worker_is_reaped_while_queries_fail(self):
+        import subprocess
+        import threading
+        from unittest.mock import patch
+        from r3d import process_budget as budget
+        context = __import__('multiprocessing').get_context('spawn')
+        started, release = context.Event(), context.Event()
+        failing, failed = threading.Event(), threading.Event()
+        free = tuple(a + b for a, b in zip(budget.FIT_BYTES, budget.FLOORS))
+        def available(gpu=False):
+            if failing.is_set():
+                failed.set()
+                raise subprocess.TimeoutExpired('nvidia-smi', 10)
+            return free
+        with patch.object(budget, 'available_bytes', side_effect=available), \
+                patch.object(budget, 'resident_bytes', return_value=(0,) * 3), \
+                patch.object(budget, 'cores_available', return_value=2), \
+                patch('builtins.print'):
+            with budget.TaskExecutor() as executor:
+                try:
+                    first = executor.submit(handshake_worker, started, release, 'first')
+                    self.assertTrue(started.wait(10))
+                    failing.set()
+                    second = executor.submit(identity_worker, 'second')
+                    self.assertTrue(failed.wait(10))
+                    release.set()
+                    self.assertEqual(first.result(timeout=10)[0], 'first')
+                    failing.clear()
+                    self.assertEqual(second.result(timeout=10)[0], 'second')
+                finally:
+                    release.set()
+
+    def test_a_success_clears_the_failure_window_in_the_scheduler(self):
+        import subprocess
+        from unittest.mock import patch
+        from r3d import process_budget as budget
+        context = __import__('multiprocessing').get_context('spawn')
+        started, release = context.Event(), context.Event()
+        outcomes = iter(['fail', 'ok', 'fail'])
+        clock = [0.0]
+        failures = [0]
+        free = tuple(a + b for a, b in zip(budget.FIT_BYTES, budget.FLOORS))
+        def available(gpu=False):
+            outcome = next(outcomes, 'ok')
+            if outcome == 'ok':
+                return free
+            failures[0] += 1
+            if failures[0] == 2:
+                clock[0] += budget.GPU_QUERY_FAILURE_SECONDS + 50
+            raise subprocess.TimeoutExpired('nvidia-smi', 10)
+        def now():
+            clock[0] += 3
+            return clock[0]
+        with patch.object(budget, 'available_bytes', side_effect=available), \
+                patch.object(budget, 'resident_bytes', return_value=(0,) * 3), \
+                patch.object(budget, 'cores_available', return_value=1), \
+                patch.object(budget.time, 'monotonic', side_effect=now), \
+                patch('builtins.print') as log:
+            with budget.TaskExecutor() as executor:
+                try:
+                    first = executor.submit(handshake_worker, started, release, 'first')
+                    second = executor.submit(identity_worker, 'second')
+                    self.assertTrue(started.wait(10))
+                    release.set()
+                    self.assertEqual(first.result(timeout=10)[0], 'first')
+                    self.assertEqual(second.result(timeout=10)[0], 'second')
+                finally:
+                    release.set()
+            warnings = [call for call in log.call_args_list if 'memory query failed' in str(call)]
+            self.assertEqual(len(warnings), 2)
+
+
+class LivePoseCapacityTests(unittest.TestCase):
+    def test_reserved_pool_uses_both_caps_and_serial_floor(self):
+        from unittest.mock import patch, MagicMock
+        from r3d import process_budget as budget
+        try:
+            from r3d import reference_render as reference
+        except ImportError:
+            self.skipTest('needs reference dependencies')
+        estimate = 64 * 1024 ** 2
+        for budget_capacity, memory_capacity, expected in ((2, 6, 2), (6, 2, 2), (6, 0, 1)):
+            with self.subTest(budget=budget_capacity, memory=memory_capacity):
+                available = tuple(floor + memory_capacity * cost
+                                  for floor, cost in zip(budget.FLOORS, (estimate, 0, estimate)))
+                pool = MagicMock()
+                pool.__enter__.return_value.map.return_value = [(123, 0)] * 10
+                pool_budget = budget_capacity * estimate
+                with patch.object(budget, 'task_reservation', return_value=(pool_budget, 0, pool_budget)), \
+                     patch.object(budget, 'resident_bytes', return_value=(0, 0, 0)), \
+                     patch.object(budget, 'available_bytes', return_value=available), \
+                     patch.object(budget, 'cores_available', return_value=10), \
+                     patch.object(reference.multiprocessing, 'get_all_start_methods', return_value=['fork']), \
+                     patch.object(reference.multiprocessing, 'get_context'), \
+                     patch.object(reference.concurrent.futures, 'ProcessPoolExecutor', return_value=pool) as pool_class, \
+                     patch.object(reference, '_write_pose', return_value=(123, 0)), \
+                     patch('builtins.print') as log:
+                    self.assertEqual(reference.render_poses(None, None, None, [None] * 10,
+                                     1, 1, None, 1, '.'), (0, expected))
+                    log.assert_any_call(f'pose pool workers={expected} budget_capacity={budget_capacity} '
+                                        f'memory_capacity={memory_capacity} rss=0', flush=True)
+                    if expected > 1:
+                        self.assertEqual(pool_class.call_args.kwargs['max_workers'], expected)
