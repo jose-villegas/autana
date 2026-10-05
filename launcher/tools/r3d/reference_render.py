@@ -137,8 +137,8 @@ def device_picture(linear, covered, tonemap_white, background):
 def source_for(scene, name=None, lit=True):
     """The full-detail source of the scene object `name` (the first mesh renderer
     when None), alpha-masked and lit as that renderer is baked; returns it with
-    the object's job. `lit=False` skips the ray queries and the indirect
-    cache, which only the bake backend uses, and loads float32 textures."""
+    the object's job. `lit=False` skips the ray queries and the
+    bounced-light tracer, which only the bake backend uses, and loads float32 textures."""
     named = [item for item in scene.renderers if name in (None, item.object.name)]
     if not named:
         raise ValueError(f"the scene places no mesh renderer named {name!r}")
@@ -189,7 +189,7 @@ def reservation_pose_capacity(reservation, rss, estimate, cores):
 
 def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False):
     """Return summed per-worker maxima of end-of-pose PSS samples and worker count.
-    Caller must not have initialised CUDA. Each pose seeds its own RNG, matching serial output.
+    Caller must not have initialised CUDA. Every pose's rays are fixed, so the output matches a serial run.
     """
     from r3d import process_budget
     from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS, parent_death_signal

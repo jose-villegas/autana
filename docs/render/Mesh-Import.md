@@ -289,8 +289,8 @@ L(x) = a(x)\,\bigl(E_{\mathrm{direct}}(x) + E_{\mathrm{ind}}(x)\bigr)
 ```
 
 Light that reaches $x$ without a bounce is $`E_{\mathrm{direct}}`$: one shadow ray
-toward the sun, which is a point source and so casts hard shadows, and the
-sky light's own fixed rays, then the ambient light. A ray that hits nothing adds
+toward the sun, which is a point source and so casts hard shadows, the share of
+the sky light's fixed rays that reach the sky, and the ambient light. A ray that hits nothing adds
 nothing to $`E_{\mathrm{ind}}`$, because the sky light already counts the sky.
 With every albedo at most $\rho \lt 1$ each bounce adds less than the one before;
 pick $K$ where the next bounce is negligible beside the direct light.
@@ -298,7 +298,7 @@ pick $K$ where the next bounce is negligible beside the direct light.
 Every point uses the same $R$ first directions, laid out in its own tangent
 frame, and the path integrator's own random numbers come from a fixed seed, so
 a rebake gives the same bytes. The noise the paths leave in the bounced light
-falls with $\sqrt{R}$. A smooth bake gathers once for the vertex copies a crease
+falls as $1/\sqrt{R}$. A smooth bake gathers once for the vertex copies a crease
 splits at one position, on their mean normal, and gives every copy that
 bounced term: bounced light changes slowly where direct light does not, and
 copies that differ only in it would stop merging into one vertex. A

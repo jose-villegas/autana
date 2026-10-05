@@ -613,9 +613,9 @@ def load_scene(path):
         scaled = any(light["type"] == "ambient" for light in lights) or (bake.ao.indirect and bounced)
         if not scaled:
             raise SettingsError("scene.bake.ao scales the ambient light or, with indirect = true, the bounce light "
-                                "a baked renderer gathers: the scene has neither")
+                                "a baked renderer takes bounced light: the scene has neither")
         if bake.ao.indirect and not bounced:
-            raise SettingsError("scene.bake.ao.indirect is read by no placed mesh: no baked renderer gathers bounce light")
+            raise SettingsError("scene.bake.ao.indirect is read by no placed mesh: no baked renderer takes bounced light")
     if "indirect" in values and not bounced:
         raise SettingsError("scene indirect settings is read by no placed mesh")
     for name, present, needed in (("lights", bool(lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),
