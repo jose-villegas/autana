@@ -30,8 +30,8 @@ import struct
 import sys
 import zlib
 
-PANEL_WIDTH = 368
-PANEL_HEIGHT = 448
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "device"))
+from panel_size import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402  (path must be set up first)
 
 BMP_HEADER_SIZE = 54
 
