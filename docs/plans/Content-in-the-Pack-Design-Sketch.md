@@ -1,7 +1,7 @@
 # Animation tracks and scenes in the asset pack: design sketch
 
-**Status:** approved by the maintainer on 2026-10-05 (autana-zv6b.1); the child tickets of
-epic autana-zv6b and autana-jf1g carry the steps. `[A]` marks a proposal the maintainer approved with the rest.
+**Status:** approved, not yet built. `[A]` marks a proposal that was approved
+with the rest rather than asked for.
 
 Today a `.glb` animation is baked to committed C (`*_tracks_generated.{c,h}`)
 and a `.scene.toml` to committed C (`*_scene_generated.{c,h}`). Both are
@@ -26,7 +26,7 @@ flowchart LR
     Poses --> Tools["r3d, fits, doc stages"]
 ```
 
-## 0. Bundles, not one pack (maintainer, 2026-10-05)
+## 0. Bundles, not one pack
 
 One pack for all content can neither scale nor move outside the image:
 every first reader pays to check every entry, and nothing can be shipped,
@@ -35,7 +35,7 @@ pack in today's `APAK` format, unchanged: its own header, table and CRC.
 Checking a bundle costs its own size only.
 
 **A bundle is named after its root asset and holds what that asset relates
-to** (maintainer). A root is a source file nothing else names:
+to**. A root is a source file nothing else names:
 
 | Root | Bundle name | Holds |
 |---|---|---|
@@ -164,7 +164,7 @@ function of the same source, so the poses are identical to the device's.
 The Python sampler (`gltf_read.sample_keys`) stays only inside
 `test_anim_bake.py` as a cross-check, holding the C sampler to it (looping and
 clamped); it produces no poses. Fit recipe digests hash the TRCK bytes (the
-bake is deterministic), which re-stamps each fit once (autana-gmxy).
+bake is deterministic), which re-stamps each fit once.
 
 ## 5. Boot animation
 
@@ -205,7 +205,7 @@ still measures first-frame time on the board (`autana status` and
 
 | Ticket | Deleted with every reference |
 |---|---|
-| render-lab flythrough | `flythrough_tracks_generated.{c,h}`, `sample_tracks.sh`, `sample_tracks_main.c`, its `doc_images.sh` and README lines, `write_ao_scene`'s tracks copy (PR 619) and its test |
+| render-lab flythrough | `flythrough_tracks_generated.{c,h}`, `sample_tracks.sh`, `sample_tracks_main.c`, its `doc_images.sh` and README lines, `write_ao_scene`'s tracks copy and its test |
 | boot | `boot_anim_tracks_generated.{c,h}`; includes, CMake, `run_tests.sh`, `boot_anim_render_host.sh`, `gen_boot_anim_timeline.py` and its test, README |
 | scenes | `sponza_scene_generated.{c,h}`, `scene_table.py`'s C output, `SCENE_REGISTER`, `scene_def_t`, every `*_SCENE_*` macro (users: the render-lab scene, its suites and flythrough module, `suite_scene.c`) |
 | docs | `Animation-Tracks.md`, `render/Scene-Files.md`, `render/Building-a-Scene.md`, `render/Scene-Manager.md`, `assets/README.md`, `anim/README.md`, the render-lab tools README, `r3d/README.md`, `tools/Render-Harness.md`: rewritten for `.anim.toml` to pack |
@@ -214,16 +214,16 @@ Final check: `git grep -n "_tracks_generated\|_scene_generated\|sample_tracks\|S
 The build's pack command gains the `.anim.toml`, `.glb` and boot-directory
 inputs as `DEPENDS` (today it globs only `apps/`).
 
-## 7. Order and tickets
+## 7. Order
 
-bundles (new; .2 can run beside it) and TRCK format, writer, reader (.2) -> scenes from
-their own bundle, camera path included (jf1g) -> host tools (.4) -> delete flythrough (.5)
--> boot from its clip's bundle (.6) -> final sweep (.7).
-[A] **.3 folds into jf1g**: both rewrite the same scene table and the same
-loader, so doing the camera path first would change them twice. .3 closes as
-subsumed.
+Bundles and the `TRCK` entry (format, writer, reader) first, side by side ->
+scenes from their own bundle, camera path included -> host tools -> delete the
+flythrough tracks -> boot from its clip's bundle -> final sweep. Moving the
+scene camera path to a clip id is part of the scene step, not a step before
+it: both rewrite the same scene table and loader, so doing it first would
+change them twice.
 
-## 8. For the content audit (.9), not decided here
+## 8. For the content audit, not decided here
 
 Same rule: data goes to the pack and its generated file is deleted; true
 compile-time tables may stay. Files to classify: `boot_anim_image.h`,
@@ -234,11 +234,11 @@ icon, palette and `captured_slope_data.h` headers, and the banner-carrying
 `capybara.glb`. Anything needed before or without the pack inherits the
 fallback question section 5 answers.
 
-## Decisions for you
+## Decisions
 
-1. Fold .3 into jf1g (section 7). Recommended.
-2. Boot fallback is an authored rest pose, not derived from the clip (section 5). Recommended.
-3. Poses read a scratch pack of just the clip, not the scene's whole bundle (section 4). Recommended.
-4. Bundles (section 0): one per root asset, named after it, holding what it relates to (maintainer). Proposals: 4 KB-aligned directory in the partition, one file per bundle on host and card, a shared asset becomes its own bundle the others depend on, counted mounts.
+1. The scene camera path moves with the scene step, not before it (section 7).
+2. Boot fallback is an authored rest pose, not derived from the clip (section 5).
+3. Poses read a scratch pack of just the clip, not the scene's whole bundle (section 4).
+4. Bundles (section 0): one per root asset, named after it, holding what it relates to; 4 KB-aligned directory in the partition, one file per bundle on host and card, a shared asset becomes its own bundle the others depend on, counted mounts.
 5. Scene names its clip as a relative `.anim.toml` path, id = stem (section 1).
 6. Entities are found by name at setup, no baked numeric ids (section 3).
