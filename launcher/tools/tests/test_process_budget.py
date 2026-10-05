@@ -592,12 +592,54 @@ class QueryFailureReapingTests(ProcessTests):
                 finally:
                     release.set()
 
+    def test_a_success_clears_the_failure_window_in_the_scheduler(self):
+        import subprocess
+        from unittest.mock import patch
+        from r3d import process_budget as budget
+        context = __import__('multiprocessing').get_context('spawn')
+        started, release = context.Event(), context.Event()
+        outcomes = iter(['fail', 'ok', 'fail'])
+        clock = [0.0]
+        failures = [0]
+        free = tuple(a + b for a, b in zip(budget.FIT_BYTES, budget.FLOORS))
+        def available(gpu=False):
+            outcome = next(outcomes, 'ok')
+            if outcome == 'ok':
+                return free
+            failures[0] += 1
+            if failures[0] == 2:
+                clock[0] += budget.GPU_QUERY_FAILURE_SECONDS + 50
+            raise subprocess.TimeoutExpired('nvidia-smi', 10)
+        def now():
+            clock[0] += 3
+            return clock[0]
+        with patch.object(budget, 'available_bytes', side_effect=available), \
+                patch.object(budget, 'resident_bytes', return_value=(0,) * 3), \
+                patch.object(budget, 'cores_available', return_value=1), \
+                patch.object(budget.time, 'monotonic', side_effect=now), \
+                patch('builtins.print') as log:
+            with budget.TaskExecutor() as executor:
+                try:
+                    first = executor.submit(handshake_worker, started, release, 'first')
+                    second = executor.submit(identity_worker, 'second')
+                    self.assertTrue(started.wait(10))
+                    release.set()
+                    self.assertEqual(first.result(timeout=10)[0], 'first')
+                    self.assertEqual(second.result(timeout=10)[0], 'second')
+                finally:
+                    release.set()
+            warnings = [call for call in log.call_args_list if 'memory query failed' in str(call)]
+            self.assertEqual(len(warnings), 2)
+
 
 class LivePoseCapacityTests(unittest.TestCase):
     def test_reserved_pool_uses_both_caps_and_serial_floor(self):
         from unittest.mock import patch, MagicMock
         from r3d import process_budget as budget
-        from r3d import reference_render as reference
+        try:
+            from r3d import reference_render as reference
+        except ImportError:
+            self.skipTest('needs reference dependencies')
         estimate = 64 * 1024 ** 2
         for budget_capacity, memory_capacity, expected in ((2, 6, 2), (6, 2, 2), (6, 0, 1)):
             with self.subTest(budget=budget_capacity, memory=memory_capacity):
