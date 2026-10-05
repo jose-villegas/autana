@@ -184,8 +184,8 @@ def _write_pose(item):
     return os.getpid(), pss_bytes(os.getpid())
 
 
-def reservation_pose_capacity(reservation, rss, estimate, cores):
-    return max(1, min(cores, (reservation - rss) // estimate))
+def budget_pose_capacity(budget, rss, estimate, cores):
+    return max(1, min(cores, (budget - rss) // estimate))
 
 
 def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False):
@@ -209,11 +209,8 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
         reservation = process_budget.task_reservation()
         if reservation is not None:
             rss = process_budget.resident_bytes(os.getpid(), {})[0]
-            budget = process_budget.POSE_POOL_BYTES
-            if reservation == process_budget.SMOKE_PREPARE_BYTES:
-                budget = min(budget, reservation[0])
             cores = cores_available()
-            budget_capacity = reservation_pose_capacity(budget, rss, estimate, cores)
+            budget_capacity = budget_pose_capacity(reservation[0], rss, estimate, cores)
             memory_capacity = worker_capacity(available_bytes(), (estimate, 0, estimate), FLOORS, cores)
             workers = max(1, min(budget_capacity, memory_capacity))
         else:
