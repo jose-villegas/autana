@@ -36,9 +36,7 @@ enum {
     ROW_SIZE = 48,
 };
 
-#define BOOT_CLIP      "boot_anim_motion"
-#define REFERENCE_TYPE ASSET_TYPE('T', 'R', 'E', 'F')
-#define REFERENCE_ROW  24U
+#define BOOT_CLIP "boot_anim_motion"
 
 static void
 put32(uint8_t* at, uint32_t value) {
@@ -51,11 +49,6 @@ static void
 put16(uint8_t* at, uint32_t value) {
     at[0] = (uint8_t)value;
     at[1] = (uint8_t)(value >> 8);
-}
-
-static uint32_t
-get32(const uint8_t* at) {
-    return (uint32_t)at[0] | ((uint32_t)at[1] << 8) | ((uint32_t)at[2] << 16) | ((uint32_t)at[3] << 24);
 }
 
 static void
@@ -294,6 +287,14 @@ test_the_shipped_boot_clip_equals_the_compiled_one(void) {
 }
 
 #ifndef DEVICE_BUILD
+#define REFERENCE_TYPE ASSET_TYPE('T', 'R', 'E', 'F')
+#define REFERENCE_ROW  24U
+
+static uint32_t
+get32(const uint8_t* at) {
+    return (uint32_t)at[0] | ((uint32_t)at[1] << 8) | ((uint32_t)at[2] << 16) | ((uint32_t)at[3] << 24);
+}
+
 static float
 get_float(const uint8_t* at) {
     float value;
