@@ -268,7 +268,8 @@ def prepare_variants(executor, scene, jobs, work, on_ready):
     from r3d.fitted_variant import prepare
     from r3d.process_budget import PREPARE_BYTES
     ready = [Future() for job in jobs]
-    prepares = [executor.submit(prepare, SCENE, scene, job, work / f"inputs-{prefix}", estimates=PREPARE_BYTES)
+    prepares = [executor.submit(prepare, SCENE, scene, job, work / f"inputs-{prefix}", estimates=PREPARE_BYTES,
+                                priority=True)
                 for prefix, job in zip(("lite", "full"), jobs)]
     for index, (job, future) in enumerate(zip(jobs, prepares)):
         def completed(future, index=index, job=job):
