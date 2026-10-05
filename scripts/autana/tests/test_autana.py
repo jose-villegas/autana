@@ -230,10 +230,26 @@ class DeviceVerbCommandTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             autana.imu(["1", "two", "3"])
 
-    def test_tap_sends_one_device_side_gesture(self):
+    def test_tap_sends_the_default_screenshot_point_in_the_panel_frame(self):
         with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
             autana.tap(["10", "20"])
-        sent.assert_called_once_with("TAP 10 20", reply="TAP", until=["TAP_OK"])
+        sent.assert_called_once_with("TAP 347 10", reply="TAP", until=["TAP_OK"])
+
+    def test_press_turns_its_point_and_keeps_its_duration(self):
+        with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
+            autana.press(["10", "20", "300"])
+        sent.assert_called_once_with("PRESS 347 10 300", reply="PRESS", until=["PRESS_OK"])
+
+    def test_drag_turns_both_points_and_keeps_its_duration(self):
+        with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
+            autana.drag(["0", "0", "447", "367", "200"])
+        sent.assert_called_once_with("DRAG 367 0 0 447 200", reply="DRAG", until=["DRAG_OK"])
+
+    def test_tap_refuses_a_point_outside_the_screenshot_without_sending(self):
+        with mock.patch.object(autana, "send") as sent, self.assertRaises(SystemExit) as raised:
+            autana.tap(["448", "0"])
+        sent.assert_not_called()
+        self.assertIn("outside the 448 x 368 screenshot", str(raised.exception.code))
 
     def test_drag_requires_its_duration(self):
         with self.assertRaises(SystemExit):
