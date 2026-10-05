@@ -1,8 +1,8 @@
 /*
  * Portable suite: the asset pack container (asset/asset_pack.h), the lit mesh
  * view built from an entry (render/r3d_lit_mesh.h). Each test builds its own
- * small pack byte by byte, so a check never leans on what the tree's bundles
- * hold; on a host the last tests read it back from a file.
+ * small pack, so a check never leans on what the tree's bundles hold; on a
+ * host the last tests read it back from a file.
  */
 
 #include <stdint.h>
@@ -16,6 +16,7 @@
 #include "asset/asset_pack.h"
 #include "render/r3d_lit_mesh.h"
 #include "test_alloc.h"
+#include "test_pack.h"
 
 #ifndef DEVICE_BUILD
 #include "asset/asset_file.h"
@@ -24,19 +25,6 @@
 
 #define BUFFER_BYTES 512
 #define OTHER_TYPE   7U
-
-static void
-put32(uint8_t* at, uint32_t value) {
-    for (int i = 0; i < 4; i++) {
-        at[i] = (uint8_t)(value >> (8 * i));
-    }
-}
-
-static void
-put16(uint8_t* at, int value) {
-    at[0] = (uint8_t)value;
-    at[1] = (uint8_t)(value >> 8);
-}
 
 /* The arrays of the one-triangle mesh below: each starts where the last ends,
  * on a 4-byte boundary, after the 44-byte header. */
@@ -54,47 +42,35 @@ make_mesh_entry(uint8_t* entry) {
     const uint32_t end = ENTRY_END;
     const uint32_t words[11] = {3, 1, 1, 1, 8, positions, colors, triangles, clusters, nodes, 0};
     for (int i = 0; i < 11; i++) {
-        put32(entry + (4 * i), words[i]);
+        test_pack_put32(entry + (4 * i), words[i]);
     }
     for (int v = 0; v < 3; v++) {
-        put16(entry + positions + (6 * v), v * 10);
+        test_pack_put16(entry + positions + (6 * v), v * 10);
         entry[colors + (3 * v)] = (uint8_t)(50 * v);
     }
     for (int v = 0; v < 3; v++) {
-        put16(entry + triangles + (2 * v), v);
+        test_pack_put16(entry + triangles + (2 * v), v);
     }
-    put16(entry + clusters + 2, 3);   /* vertex_count */
-    put16(entry + clusters + 6, 1);   /* triangle_count */
-    put16(entry + clusters + 14, 20); /* hi[0]: lo is the origin */
-    put16(entry + nodes + 6, 20);
+    test_pack_put16(entry + clusters + 2, 3);   /* vertex_count */
+    test_pack_put16(entry + clusters + 6, 1);   /* triangle_count */
+    test_pack_put16(entry + clusters + 14, 20); /* hi[0]: lo is the origin */
+    test_pack_put16(entry + nodes + 6, 20);
     entry[nodes + 14] = 1; /* count */
     entry[nodes + 15] = 1; /* leaf */
     return end;
 }
 
-/* A pack of one entry named "tri" of `type`, with the CRC set. */
+/* A pack of one entry named "tri" of `type`. */
 static uint32_t
 make_pack(uint8_t* pack, const uint8_t* entry, uint32_t entry_size, uint32_t type) {
-    const uint32_t offset = 96; /* 32 header, 48 table, 16 aligned */
-    memset(pack, 0, BUFFER_BYTES);
-    memcpy(pack, ASSET_PACK_MAGIC, 4);
-    put32(pack + 4, ASSET_PACK_VERSION);
-    put32(pack + 8, 1);
-    memcpy(pack + 32, "tri", 4);
-    put32(pack + 32 + 32, type);
-    put32(pack + 32 + 36, offset);
-    put32(pack + 32 + 40, entry_size);
-    put32(pack + 32 + 44, 16);
-    memcpy(pack + offset, entry, entry_size);
-    const uint32_t total = offset + entry_size;
-    put32(pack + 12, total);
-    put32(pack + 16, asset_crc32(pack + ASSET_PACK_HEADER_SIZE, total - ASSET_PACK_HEADER_SIZE));
-    return total;
+    test_pack_t built = test_pack_begin(pack, BUFFER_BYTES, 1);
+    memcpy(test_pack_add(&built, "tri", type, entry_size), entry, entry_size);
+    return test_pack_finish(&built);
 }
 
 static void
 seal(uint8_t* pack, uint32_t total) {
-    put32(pack + 16, asset_crc32(pack + ASSET_PACK_HEADER_SIZE, total - ASSET_PACK_HEADER_SIZE));
+    test_pack_put32(pack + 16, asset_crc32(pack + ASSET_PACK_HEADER_SIZE, total - ASSET_PACK_HEADER_SIZE));
 }
 
 typedef struct {
@@ -164,7 +140,7 @@ test_one_changed_byte_fails_the_checksum(void) {
 static void
 test_another_format_version_is_refused(void) {
     fixture_t f = fixture();
-    put32(f.pack + 4, ASSET_PACK_VERSION + 1);
+    test_pack_put32(f.pack + 4, ASSET_PACK_VERSION + 1);
     asset_pack_t pack;
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_VERSION, asset_pack_open(&pack, f.pack, f.total));
     release(&f);
@@ -186,10 +162,10 @@ static void
 test_an_entry_that_leaves_the_pack_is_refused_even_with_a_good_checksum(void) {
     fixture_t f = fixture();
     asset_pack_t pack;
-    put32(f.pack + 32 + 40, f.total); /* its size now runs past the end */
+    test_pack_put32(f.pack + 32 + 40, f.total); /* its size now runs past the end */
     seal(f.pack, f.total);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, asset_pack_open(&pack, f.pack, f.total));
-    put32(f.pack + 32 + 40, 0xFFFFFFF0U); /* a size that wraps when added to the offset */
+    test_pack_put32(f.pack + 32 + 40, 0xFFFFFFF0U); /* a size that wraps when added to the offset */
     seal(f.pack, f.total);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, asset_pack_open(&pack, f.pack, f.total));
     release(&f);
@@ -199,12 +175,51 @@ static void
 test_a_misaligned_or_table_overlapping_entry_is_refused(void) {
     fixture_t f = fixture();
     asset_pack_t pack;
-    put32(f.pack + 32 + 36, 98); /* not a multiple of its 16 */
+    test_pack_put32(f.pack + 32 + 36, 82); /* not a multiple of its 16, though the entry still ends inside */
     seal(f.pack, f.total);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, asset_pack_open(&pack, f.pack, f.total));
-    put32(f.pack + 32 + 36, 64); /* aligned, but inside the table */
+    test_pack_put32(f.pack + 32 + 36, 64); /* aligned, but inside the table */
     seal(f.pack, f.total);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, asset_pack_open(&pack, f.pack, f.total));
+    release(&f);
+}
+
+/* The entry row's align is checked before the offset is divided by it. */
+static void
+test_an_entry_alignment_of_zero_or_not_a_power_of_two_is_refused(void) {
+    fixture_t f = fixture();
+    asset_pack_t pack;
+    test_pack_put32(f.pack + 32 + 44, 0);
+    seal(f.pack, f.total);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, asset_pack_open(&pack, f.pack, f.total));
+    test_pack_put32(f.pack + 32 + 36, 96); /* a multiple of both 24 and 32 */
+    test_pack_put32(f.pack + 32 + 40, 100);
+    test_pack_put32(f.pack + 32 + 44, 24);
+    seal(f.pack, f.total);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, asset_pack_open(&pack, f.pack, f.total));
+    test_pack_put32(f.pack + 32 + 44, 32);
+    seal(f.pack, f.total);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, f.pack, f.total));
+    release(&f);
+}
+
+static void
+test_an_empty_entry_past_the_end_is_refused(void) {
+    fixture_t f = fixture();
+    asset_pack_t pack;
+    test_pack_put32(f.pack + 32 + 36, f.total + 16);
+    test_pack_put32(f.pack + 32 + 40, 0);
+    seal(f.pack, f.total);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, asset_pack_open(&pack, f.pack, f.total));
+    release(&f);
+}
+
+static void
+test_a_total_smaller_than_the_header_is_a_size_error(void) {
+    fixture_t f = fixture();
+    asset_pack_t pack;
+    test_pack_put32(f.pack + 12, ASSET_PACK_HEADER_SIZE - 16);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_SIZE, asset_pack_open(&pack, f.pack, f.total));
     release(&f);
 }
 
@@ -212,7 +227,7 @@ static void
 test_a_count_the_table_cannot_hold_is_refused(void) {
     fixture_t f = fixture();
     asset_pack_t pack;
-    put32(f.pack + 8, 1000);
+    test_pack_put32(f.pack + 8, 1000);
     seal(f.pack, f.total);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, asset_pack_open(&pack, f.pack, f.total));
     release(&f);
@@ -236,7 +251,7 @@ test_a_missing_id_and_a_wrong_type_are_told_apart(void) {
 /* A mesh entry whose own offsets or ranges are wrong, in a pack that is not. */
 static asset_status_t
 open_mesh_with(fixture_t* f, uint32_t at, uint32_t value) {
-    put32(f->entry + at, value);
+    test_pack_put32(f->entry + at, value);
     f->total = make_pack(f->pack, f->entry, f->entry_size, R3D_LIT_MESH_ASSET);
     asset_pack_t pack;
     r3d_lit_mesh_t mesh;
@@ -337,7 +352,7 @@ test_an_inner_node_whose_children_are_not_after_it_is_refused(void) {
     /* The only node is a leaf; making it an inner node over itself would loop a walk. */
     f.entry[NODES_AT + 15] = 0;
     f.entry[NODES_AT + 14] = 1;
-    put16(f.entry + NODES_AT + 12, 0);
+    test_pack_put16(f.entry + NODES_AT + 12, 0);
     f.total = make_pack(f.pack, f.entry, f.entry_size, R3D_LIT_MESH_ASSET);
     asset_pack_t pack;
     r3d_lit_mesh_t mesh;
@@ -404,6 +419,9 @@ suite_asset_pack(void) {
     RUN_TEST(test_what_is_not_a_pack_is_refused);
     RUN_TEST(test_an_entry_that_leaves_the_pack_is_refused_even_with_a_good_checksum);
     RUN_TEST(test_a_misaligned_or_table_overlapping_entry_is_refused);
+    RUN_TEST(test_an_entry_alignment_of_zero_or_not_a_power_of_two_is_refused);
+    RUN_TEST(test_an_empty_entry_past_the_end_is_refused);
+    RUN_TEST(test_a_total_smaller_than_the_header_is_a_size_error);
     RUN_TEST(test_a_count_the_table_cannot_hold_is_refused);
     RUN_TEST(test_a_missing_id_and_a_wrong_type_are_told_apart);
     RUN_TEST(test_a_mesh_array_outside_its_entry_is_refused);

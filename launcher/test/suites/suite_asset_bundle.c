@@ -15,6 +15,7 @@
 #include "asset/asset_directory.h"
 #include "asset/asset_pack.h"
 #include "asset/asset_store.h"
+#include "test_pack.h"
 
 #ifndef DEVICE_BUILD
 #include "test_asset_dir.h"
@@ -24,13 +25,6 @@
 #define DIRECTORY_BYTES (ASSET_DIRECTORY_HEADER_SIZE + (ROWS * ASSET_DIRECTORY_ROW_SIZE))
 #define REGION          (4U * ASSET_BUNDLE_ALIGN)
 
-static void
-put32(uint8_t* at, uint32_t value) {
-    for (int i = 0; i < 4; i++) {
-        at[i] = (uint8_t)(value >> (8 * i));
-    }
-}
-
 static uint8_t*
 row(uint8_t* directory, int index) {
     return directory + ASSET_DIRECTORY_HEADER_SIZE + (index * ASSET_DIRECTORY_ROW_SIZE);
@@ -38,7 +32,7 @@ row(uint8_t* directory, int index) {
 
 static void
 seal(uint8_t* directory) {
-    put32(directory + 4, asset_crc32(directory + 8, DIRECTORY_BYTES - 8));
+    test_pack_put32(directory + 4, asset_crc32(directory + 8, DIRECTORY_BYTES - 8));
 }
 
 /* Bundle "one" at the first sector after the directory, "two" two sectors on. */
@@ -47,14 +41,14 @@ make_directory(void) {
     uint8_t* directory = calloc(1, DIRECTORY_BYTES);
     TEST_ASSERT_NOT_NULL(directory);
     memcpy(directory, ASSET_DIRECTORY_MAGIC, 4);
-    put32(directory + 8, ASSET_DIRECTORY_VERSION);
-    put32(directory + 12, ROWS);
+    test_pack_put32(directory + 8, ASSET_DIRECTORY_VERSION);
+    test_pack_put32(directory + 12, ROWS);
     memcpy(row(directory, 0), "one", 3);
-    put32(row(directory, 0) + 32, ASSET_BUNDLE_ALIGN);
-    put32(row(directory, 0) + 36, 100);
+    test_pack_put32(row(directory, 0) + 32, ASSET_BUNDLE_ALIGN);
+    test_pack_put32(row(directory, 0) + 36, 100);
     memcpy(row(directory, 1), "two", 3);
-    put32(row(directory, 1) + 32, 3U * ASSET_BUNDLE_ALIGN);
-    put32(row(directory, 1) + 36, ASSET_BUNDLE_ALIGN);
+    test_pack_put32(row(directory, 1) + 32, 3U * ASSET_BUNDLE_ALIGN);
+    test_pack_put32(row(directory, 1) + 36, ASSET_BUNDLE_ALIGN);
     seal(directory);
     return directory;
 }
@@ -90,9 +84,9 @@ test_a_bad_magic_version_or_checksum_is_refused(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_MAGIC, asset_directory_open(&opened, directory, DIRECTORY_BYTES, REGION));
     TEST_ASSERT_EQUAL_UINT32(0, asset_directory_size(directory, DIRECTORY_BYTES));
     directory[0] = 'A';
-    put32(directory + 8, ASSET_DIRECTORY_VERSION + 1U);
+    test_pack_put32(directory + 8, ASSET_DIRECTORY_VERSION + 1U);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_VERSION, open_sealed(directory));
-    put32(directory + 8, ASSET_DIRECTORY_VERSION);
+    test_pack_put32(directory + 8, ASSET_DIRECTORY_VERSION);
     seal(directory);
     row(directory, 1)[2] = 'x';
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_CRC, asset_directory_open(&opened, directory, DIRECTORY_BYTES, REGION));
@@ -118,7 +112,7 @@ test_a_row_out_of_range_misaligned_or_overlapping_is_refused(void) {
 
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
         uint8_t* directory = make_directory();
-        put32(row(directory, cases[i].row) + cases[i].field, cases[i].value);
+        test_pack_put32(row(directory, cases[i].row) + cases[i].field, cases[i].value);
         TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_BOUNDS, open_sealed(directory), "case");
         free(directory);
     }
@@ -137,9 +131,9 @@ test_two_bundles_with_one_name_or_a_name_with_no_room_for_its_nul_are_refused(vo
 }
 
 #ifndef DEVICE_BUILD
-#define BUNDLE_BYTES 112
+#define BUNDLE_BYTES 96
 #define NOTE_TYPE    ASSET_TYPE('N', 'O', 'T', 'E')
-#define NOTE_AT      96 /* 32 header, 48 row, 16 aligned */
+#define NOTE_BYTES   16
 
 /* The bundles go to the working directory, named after this suite. */
 static void
@@ -151,24 +145,17 @@ bundle_path(char* path, size_t size, const char* name) {
  * after the header, which its CRC covers. */
 static void
 write_bundle(const char* name, const char* note, int damage) {
-    uint8_t* pack = calloc(1, BUNDLE_BYTES);
-    TEST_ASSERT_NOT_NULL(pack);
-    memcpy(pack, ASSET_PACK_MAGIC, 4);
-    put32(pack + 4, ASSET_PACK_VERSION);
-    put32(pack + 8, 1);
-    put32(pack + 12, BUNDLE_BYTES);
-    memcpy(pack + 32, "note", 4);
-    put32(pack + 64, NOTE_TYPE);
-    put32(pack + 68, NOTE_AT);
-    put32(pack + 72, BUNDLE_BYTES - NOTE_AT);
-    put32(pack + 76, 16);
-    (void)strncpy((char*)pack + NOTE_AT, note, BUNDLE_BYTES - NOTE_AT - 1);
-    put32(pack + 16, asset_crc32(pack + ASSET_PACK_HEADER_SIZE, BUNDLE_BYTES - ASSET_PACK_HEADER_SIZE));
-    pack[NOTE_AT] ^= (uint8_t)damage;
+    uint8_t* bytes = malloc(BUNDLE_BYTES);
+    TEST_ASSERT_NOT_NULL(bytes);
+    test_pack_t pack = test_pack_begin(bytes, BUNDLE_BYTES, 1);
+    uint8_t* text = test_pack_add(&pack, "note", NOTE_TYPE, NOTE_BYTES);
+    (void)strncpy((char*)text, note, NOTE_BYTES - 1);
+    const uint32_t size = test_pack_finish(&pack);
+    text[0] ^= (uint8_t)damage;
     char path[64];
     bundle_path(path, sizeof path, name);
-    test_write_file(path, pack, BUNDLE_BYTES);
-    free(pack);
+    test_write_file(path, bytes, size);
+    free(bytes);
 }
 
 static void

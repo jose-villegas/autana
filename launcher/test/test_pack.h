@@ -1,6 +1,8 @@
 /* Writes an asset pack into a test's buffer, the layout docs/assets/README.md
  * gives: test_pack_begin() with the entry count, test_pack_add() for each
- * entry, which returns its zeroed bytes to fill, then test_pack_finish(). */
+ * entry, which returns its zeroed bytes to fill, then test_pack_finish().
+ * test_pack_put16/put32 write little-endian fields; test_pack_put_floats
+ * copies floats as they are. */
 #pragma once
 
 #include <stdint.h>
@@ -19,6 +21,17 @@ test_pack_put32(uint8_t* at, uint32_t value) {
     for (int i = 0; i < 4; i++) {
         at[i] = (uint8_t)(value >> (8 * i));
     }
+}
+
+static inline void
+test_pack_put16(uint8_t* at, int value) {
+    at[0] = (uint8_t)value;
+    at[1] = (uint8_t)(value >> 8);
+}
+
+static inline void
+test_pack_put_floats(uint8_t* at, const float* values, int count) {
+    memcpy(at, values, (size_t)count * sizeof(float));
 }
 
 static inline uint64_t
