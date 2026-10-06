@@ -286,27 +286,24 @@ static sand_ui_t ui = {
 typedef struct {
     uint8_t* grid;
     uint8_t* dirty_rows;    /* GRID_H_MAX bytes: which rows changed -
-                                   * only the first grid_h are in use at any
-                                   * quality below ULTRA */
+                            * only the first grid_h are in use at any
+                            * quality below ULTRA */
     uint8_t* sleep_blocks;  /* BLOCK_COLS_MAX*BLOCK_ROWS_MAX bytes:
-                                   * settled blocks to skip - see
-                                   * sand_enable_sleeping() */
+                            * settled blocks to skip - see
+                            * sand_enable_sleeping() */
     uint8_t* step_stamps;   /* sized for the largest grid - see
-                                   * sand_enable_step_stamps() */
+                            * sand_enable_step_stamps() */
     void* lane_scratch;     /* sized for the largest grid - see
-                                   * sand_enable_lane_scratch() */
+                            * sand_enable_lane_scratch() */
     impulse_t* impulse_buf; /* APP_IMPULSE_MAX entries: grains in
-                                   * flight from DETONATE - see
-                                   * sand_enable_impulses(). */
+                            * flight from DETONATE - see
+                            * sand_enable_impulses(). */
 
     uint16_t* row_run_x0;
     uint16_t* row_run_x1;
     uint8_t* row_run_n;
 
-    /* GRID_H_MAX entries each: the sim's own changed-column span per row - see
- * sand_track_dirty_cols(). x0 > x1 (the sentinel sand_track_dirty_cols()
- * seeds) means no span was ever narrowed for that row this frame, so
- * draw_dirty_rows() repaints it full-width, exactly as before this existed. */
+    /* x0 > x1 means no span this frame; draw_dirty_rows() repaints the row full-width. */
     uint16_t* dirty_x0;
     uint16_t* dirty_x1;
 } sim_buffers_t;
@@ -528,77 +525,72 @@ mark_sand_fully_dirty(void) {
     indexed_force_full_repaint = true;
 }
 
-static inline void
-alloc_grid_buffers(sim_buffers_t* buffers) {
-    if (buffers->dirty_rows == NULL) {
-        buffers->dirty_rows = malloc(GRID_H_MAX);
+static bool
+alloc_sim_buffers(sim_buffers_t* b) {
+    if (b->dirty_rows == NULL) {
+        b->dirty_rows = malloc(GRID_H_MAX);
     }
-    if (buffers->sleep_blocks == NULL) {
-        buffers->sleep_blocks = malloc((size_t)BLOCK_COLS_MAX * BLOCK_ROWS_MAX);
+    if (b->sleep_blocks == NULL) {
+        b->sleep_blocks = malloc((size_t)BLOCK_COLS_MAX * BLOCK_ROWS_MAX);
     }
-    if (buffers->grid == NULL) {
-        buffers->grid = malloc((size_t)GRID_W_MAX * GRID_H_MAX);
+    if (b->grid == NULL) {
+        b->grid = malloc((size_t)GRID_W_MAX * GRID_H_MAX);
     }
     /* The grid needs the largest contiguous heap run, so it must allocate
      * before the blast buffer and bookkeeping. */
-    if (buffers->impulse_buf == NULL) {
-        buffers->impulse_buf = malloc((size_t)APP_IMPULSE_MAX * sizeof(*buffers->impulse_buf));
+    if (b->impulse_buf == NULL) {
+        b->impulse_buf = malloc((size_t)APP_IMPULSE_MAX * sizeof(*b->impulse_buf));
     }
-}
-
-static bool
-alloc_grid_bookkeeping(sim_buffers_t* buffers) {
-    if (buffers->step_stamps == NULL) {
-        buffers->step_stamps = malloc(sand_step_stamp_bytes(GRID_W_MAX, GRID_H_MAX));
+    if (b->step_stamps == NULL) {
+        b->step_stamps = malloc(sand_step_stamp_bytes(GRID_W_MAX, GRID_H_MAX));
     }
-    if (buffers->lane_scratch == NULL) {
-        buffers->lane_scratch = malloc(sand_lane_scratch_bytes(GRID_W_MAX, GRID_H_MAX));
+    if (b->lane_scratch == NULL) {
+        b->lane_scratch = malloc(sand_lane_scratch_bytes(GRID_W_MAX, GRID_H_MAX));
     }
-    if (buffers->row_run_x0 == NULL) {
-        buffers->row_run_x0 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*buffers->row_run_x0));
+    if (b->row_run_x0 == NULL) {
+        b->row_run_x0 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*b->row_run_x0));
     }
-    if (buffers->row_run_x1 == NULL) {
-        buffers->row_run_x1 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*buffers->row_run_x1));
+    if (b->row_run_x1 == NULL) {
+        b->row_run_x1 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*b->row_run_x1));
     }
-    if (buffers->row_run_n == NULL) {
-        buffers->row_run_n = malloc(GRID_H_MAX * sizeof(*buffers->row_run_n));
+    if (b->row_run_n == NULL) {
+        b->row_run_n = malloc(GRID_H_MAX * sizeof(*b->row_run_n));
     }
-    if (buffers->dirty_x0 == NULL) {
-        buffers->dirty_x0 = malloc(GRID_H_MAX * sizeof(*buffers->dirty_x0));
+    if (b->dirty_x0 == NULL) {
+        b->dirty_x0 = malloc(GRID_H_MAX * sizeof(*b->dirty_x0));
     }
-    if (buffers->dirty_x1 == NULL) {
-        buffers->dirty_x1 = malloc(GRID_H_MAX * sizeof(*buffers->dirty_x1));
+    if (b->dirty_x1 == NULL) {
+        b->dirty_x1 = malloc(GRID_H_MAX * sizeof(*b->dirty_x1));
     }
-    return buffers->grid != NULL && buffers->dirty_rows != NULL && buffers->sleep_blocks != NULL
-           && buffers->step_stamps != NULL && buffers->lane_scratch != NULL && buffers->row_run_x0 != NULL
-           && buffers->row_run_x1 != NULL && buffers->row_run_n != NULL && buffers->dirty_x0 != NULL
-           && buffers->dirty_x1 != NULL;
+    return b->grid != NULL && b->dirty_rows != NULL && b->sleep_blocks != NULL && b->step_stamps != NULL
+           && b->lane_scratch != NULL && b->row_run_x0 != NULL && b->row_run_x1 != NULL && b->row_run_n != NULL
+           && b->dirty_x0 != NULL && b->dirty_x1 != NULL;
 }
 
 static void
-free_buffers(sim_buffers_t* buffers) {
-    free(buffers->dirty_x1);
-    buffers->dirty_x1 = NULL;
-    free(buffers->dirty_x0);
-    buffers->dirty_x0 = NULL;
-    free(buffers->row_run_n);
-    buffers->row_run_n = NULL;
-    free(buffers->row_run_x1);
-    buffers->row_run_x1 = NULL;
-    free(buffers->row_run_x0);
-    buffers->row_run_x0 = NULL;
-    free(buffers->lane_scratch);
-    buffers->lane_scratch = NULL;
-    free(buffers->step_stamps);
-    buffers->step_stamps = NULL;
-    free(buffers->impulse_buf);
-    buffers->impulse_buf = NULL;
-    free(buffers->grid);
-    buffers->grid = NULL;
-    free(buffers->sleep_blocks);
-    buffers->sleep_blocks = NULL;
-    free(buffers->dirty_rows);
-    buffers->dirty_rows = NULL;
+free_buffers(sim_buffers_t* b) {
+    free(b->dirty_x1);
+    b->dirty_x1 = NULL;
+    free(b->dirty_x0);
+    b->dirty_x0 = NULL;
+    free(b->row_run_n);
+    b->row_run_n = NULL;
+    free(b->row_run_x1);
+    b->row_run_x1 = NULL;
+    free(b->row_run_x0);
+    b->row_run_x0 = NULL;
+    free(b->lane_scratch);
+    b->lane_scratch = NULL;
+    free(b->step_stamps);
+    b->step_stamps = NULL;
+    free(b->impulse_buf);
+    b->impulse_buf = NULL;
+    free(b->grid);
+    b->grid = NULL;
+    free(b->sleep_blocks);
+    b->sleep_blocks = NULL;
+    free(b->dirty_rows);
+    b->dirty_rows = NULL;
 }
 
 static void
@@ -615,8 +607,7 @@ free_sim_buffers(void) {
 bool
 sand_app_alloc_selfcheck(size_t* out_largest_free, bool* out_impulses_ok) {
     sim_buffers_t probe = {0};
-    alloc_grid_buffers(&probe);
-    const bool essential_ok = alloc_grid_bookkeeping(&probe);
+    const bool essential_ok = alloc_sim_buffers(&probe);
     if (out_impulses_ok) {
         *out_impulses_ok = (probe.impulse_buf != NULL);
     }
@@ -648,8 +639,8 @@ start_sim(void) {
     input_ready = false;
     overlays_skipped_reason_logged = false;
 
-    alloc_grid_buffers(&buffers);
-    /* LOUD, NOT FATAL, unlike the buffers below: sand_enable_impulses
+    const bool buffers_ok = alloc_sim_buffers(&buffers);
+    /* LOUD, NOT FATAL, unlike the essential buffers: sand_enable_impulses
      * (NULL, ...) safely disables just DETONATE, so failing here alone
      * shouldn't strand a player who never wanted it behind a "no
      * memory" screen. Logs largest_free_block, not total free heap -
@@ -664,7 +655,6 @@ start_sim(void) {
                  APP_IMPULSE_MAX, (unsigned)((size_t)APP_IMPULSE_MAX * sizeof(*buffers.impulse_buf)),
                  (unsigned)memory_largest_block(MEMORY_8BIT));
     }
-    const bool buffers_ok = alloc_grid_bookkeeping(&buffers);
     if (!buffers_ok) {
         ESP_LOGE(TAG,
                  "Could not allocate a %d x %d grid (%d bytes); "
