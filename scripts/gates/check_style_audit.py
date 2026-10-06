@@ -295,9 +295,9 @@ def _fix_include_layer(root, path, text):
 # RULE: a folder may include only a strictly lower tier of
 # docs/Firmware-Architecture.md's "Layers" (LAYER_TIER below;
 # two folders can share a tier). A "<folder>/<sub>" key tiers that subfolder
-# on its own, so util/'s pure code sits below its runtime services; once one
-# subfolder of a folder is keyed, every subfolder must be. A system header such as
-# "driver/temperature_sensor.h" never resolves to a layer.
+# on its own; once one subfolder of a folder is keyed, every subfolder must
+# be, and the folder itself holds only its <folder>.h. A system header such
+# as "driver/temperature_sensor.h" never resolves to a layer.
 
 LAYER_TIER = {"apps": 0, "shell": 1, "boot": 2, "selftest": 2, "ui": 3, "console": 3, "scene": 3, "app": 4,
              "display": 5, "input": 5, "gfx": 6, "render": 6, "anim": 7, "asset": 8,
@@ -325,6 +325,13 @@ def _layer_dirs_match(root):
     found = {d.name for d in main_dir.iterdir() if d.is_dir()}
     split = {key.split("/")[0] for key in LAYER_TIER if "/" in key}
     found |= {f"{d.parent.name}/{d.name}" for top in split for d in (main_dir / top).glob("*/") if d.is_dir()}
+    loose = sorted(f"{top}/{p.name}" for top in split if (main_dir / top).is_dir()
+                   for p in (main_dir / top).iterdir()
+                   if p.is_file() and p.name != f"{top}.h" and not p.name.startswith("."))
+    if loose:
+        raise ValueError(
+            f"launcher/main has file(s) {loose} loose in a folder whose subfolders are tiered - "
+            "move each into the subfolder it belongs to (check_style_audit.py LAYER_TIER).")
     unknown = sorted(found - set(LAYER_TIER))
     if unknown:
         raise ValueError(

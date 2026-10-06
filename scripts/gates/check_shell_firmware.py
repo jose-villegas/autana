@@ -8,8 +8,8 @@ The rule holds launcher/main/main.c, which starts the platform, and every
 file under launcher/main/shell/, which runs the frame loop, to one standard.
 The chip's vendor code (ESP-IDF, FreeRTOS, NVS, the board support package)
 sits behind a module of this firmware's own (input/, display/,
-util/runtime/timing.h, util/runtime/settings.h, util/runtime/memory.h). A vendor call left in the
-shell is a second place that knows the chip, so this fails on
+util/runtime/timing.h, util/runtime/settings.h, util/runtime/memory.h). A
+vendor call left in the shell is a second place that knows the chip, so this fails on
 
   - an include of an esp_*, nvs*, freertos/, bsp/, driver/, hal/, soc/ or
     rom/ header, and
@@ -22,15 +22,16 @@ patterns themselves, not by a list. Comments and string literals are not
 code. There is no exemption list: a reason for the shell to touch the vendor
 code is a missing module, so add one.
 
-The vendor timer and heap have owners: esp_timer_* belongs to util/runtime/timing,
-and heap_caps_* and MALLOC_CAP_* to util/runtime/memory. In the firmware, its suites
-and its tools, a name of either is code only in its owner's own files
-(util/runtime/timing.* and util/runtime/timing_*.*, the same for memory) or in a driver:
-anything under board/, or a *_device.c in launcher/main/ outside a tests/
-folder, where the name means a suite that runs on the board. launcher/test/
-outside suites/ (the host heap model, the stubs, the harness the board also
-builds) stands in for the vendor code or measures from beneath it, so it is
-not checked; nor is the shell, which the rule above holds to more.
+The vendor timer and heap have owners: esp_timer_* belongs to
+util/runtime/timing, and heap_caps_* and MALLOC_CAP_* to util/runtime/memory.
+In the firmware, its suites and its tools, a name of either is code only in
+its owner's own files (util/runtime/timing.* and util/runtime/timing_*.*, the
+same for memory) or in a driver: anything under board/, or a *_device.c in
+launcher/main/ outside a tests/ folder, where the name means a suite that runs
+on the board. launcher/test/ outside suites/ (the host heap model, the stubs,
+the harness the board also builds) stands in for the vendor code or measures
+from beneath it, so it is not checked; nor is the shell, which the rule above
+holds to more.
 """
 import pathlib
 import re

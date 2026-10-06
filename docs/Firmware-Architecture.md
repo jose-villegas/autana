@@ -80,7 +80,7 @@ flowchart TB
     subgraph R9["content"]
         Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
     end
-    subgraph R10["runtime services"]
+    subgraph R10["chip services"]
         Runtime["util/runtime/<br/><i>time, memory, settings, jobs, frame cost, tunables, build id</i>"]:::hw
     end
     subgraph R11["pure code"]
@@ -103,10 +103,10 @@ flowchart TB
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into
   `gfx` is visible at the line that does it.
-- **util/ is two kinds of code.** `util/runtime/` holds the services over
-  the chip; `util/math/`, `util/scalar/`, `util/motion/`, `util/encode/`
-  and `util/build/` are pure, build on a host, and never include `util/runtime/`. The
-  subfolders are tiered on their own, as the rows above show.
+- **util/ is two kinds of code.** `util/runtime/` holds the services that
+  reach the chip, each with a host half; the other util/ subfolders never
+  touch the chip and never include `util/runtime/`. Each subfolder has its
+  own row above.
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. How a
   draw call becomes pixels on the panel is
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path).
@@ -119,7 +119,8 @@ flowchart TB
   `input/input_shell.h` (`input_start`, `input_poll`, `input_read_gravity`),
   `display/display_shell.h` (`display_start`, `display_sample_orientation`),
   `display/display.h` (the system panel clock) and
-  `util/runtime/{timing,settings,memory}.h`; they call this firmware's own drivers
+  `util/runtime/{timing,settings,memory}.h`; they call this firmware's own
+  drivers
   (`imu_read`, `touch_read`) directly. A module's device half, where it has
   one, lives in a `*_device.c` beside it and is compiled for the board only,
   so the files a host builds stay pure.

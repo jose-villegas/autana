@@ -211,6 +211,8 @@ class OwnerProblemsTest(unittest.TestCase):
             ("launcher/main/gfx/timing.c", CLOCK_READ, clock),
             ("launcher/main/util/math/timing.c", CLOCK_READ, clock),
             ("launcher/main/util/runtime/memory/memory.c", HEAP_CALL, heap),
+            ("launcher/main/util/memory.c", HEAP_CALL, heap),
+            ("launcher/main/util/timing.h", CLOCK_READ, clock),
             ("launcher/main/input/touch_device.h", CLOCK_READ, clock),
         )
         for rel, text, reasons in cases:
