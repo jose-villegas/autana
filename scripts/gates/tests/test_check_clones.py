@@ -50,6 +50,10 @@ class CloneTests(unittest.TestCase):
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(text, encoding="utf-8")
+            gate.git(root, "init")
+            gate.git(root, "add", ".")
+            gate.git(root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                     "commit", "-m", "test: source")
             return gate.scan(root, minimum)
 
     def test_renamed_copy(self):
@@ -92,13 +96,43 @@ class CloneTests(unittest.TestCase):
                  "/* GENERATED FILE - do not edit. */\n" + BLOCK}
         self.assertEqual(self.scan(files), [])
 
-    def test_untracked_file_excluded(self):
+    def test_whole_gate_committed_changes(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            (root / "scripts").mkdir()
-            (root / "scripts/a.py").write_text("pass", encoding="utf-8")
-            with mock.patch.object(gate, "tracked_files", return_value=()):
-                self.assertEqual(gate.source_files(root), [])
+            def git(*args):
+                return gate.git(root, *args).decode().strip()
+            def commit():
+                git("add", ".")
+                git("commit", "-m", "test: source")
+            def check(expected, message):
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    result = gate.main([], root=root)
+                self.assertEqual(result, expected, output.getvalue())
+                self.assertIn(message, output.getvalue())
+            git("init", "-b", "main")
+            git("config", "user.email", "test@example.invalid")
+            git("config", "user.name", "Test")
+            original = root / "launcher/main/a.c"
+            original.parent.mkdir(parents=True)
+            original.write_text(BLOCK, encoding="utf-8")
+            commit()
+            git("update-ref", "refs/remotes/origin/main", "HEAD")
+            git("checkout", "-b", "feature/test")
+            copy = original.with_name("b.c")
+            copy.write_text(BLOCK, encoding="utf-8")
+            commit()
+            check(1, "FAIL: 1 new clone pairs")
+            git("update-ref", "refs/remotes/origin/main", "HEAD")
+            git("mv", "launcher/main/a.c", "launcher/main/renamed.c")
+            commit()
+            check(0, "PASS: no new clone pairs (1 checked HEAD pairs, 1 base pairs)")
+            git("update-ref", "refs/remotes/origin/main", "HEAD")
+            copy.write_text("\n\n" + BLOCK, encoding="utf-8")
+            commit()
+            check(0, "PASS: no new clone pairs (1 checked HEAD pairs, 1 base pairs)")
+            original.write_text(BLOCK, encoding="utf-8")
+            self.assertEqual(len(gate.scan(root, 80)), 1)
 
     def pair(self, first="a.c", second="b.c", fragment=BLOCK):
         return {"firstFile": {"name": first, "start": 1, "end": 12},
@@ -180,7 +214,7 @@ class CloneTests(unittest.TestCase):
         pair = self.pair()
         def git(root, *args):
             if args[0] == "diff":
-                return b"docs/notes.md\0"
+                return b"M\0docs/notes.md\0"
             return b"head\n"
         with mock.patch.object(gate, "git", side_effect=git), \
                 mock.patch.object(gate, "comparison_base", return_value="base"), \

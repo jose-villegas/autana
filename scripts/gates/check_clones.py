@@ -20,7 +20,6 @@ import tempfile
 import time
 
 from check_generated_files import is_generated
-from tracked import tracked_files
 
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE = ROOT / "scripts/gates/node_modules/jscpd/run-jscpd.js"
@@ -33,11 +32,6 @@ def eligible_name(name):
     return (path.suffix in SUFFIXES
             and not name.startswith(("launcher/components/", "launcher/test/framework/"))
             and "fixtures" not in path.parts and "fixture" not in path.parts)
-
-
-def source_files(root):
-    return [name for name in sorted(tracked_files(root, ("launcher", "scripts", "editor")))
-            if eligible_name(name) and not is_generated((root / name).read_text(encoding="utf-8"))]
 
 
 def git(root, *args):
@@ -84,8 +78,9 @@ def filter_pairs(pairs):
     return [pair for pair in pairs if keep(pair)]
 
 
-def revision_contents(root, revision, names):
-    requests = "".join(f"{revision}:{name}\n" for name in names).encode("utf-8")
+def revision_contents(root, revision, names, renames=None):
+    renames = renames or {}
+    requests = "".join(f"{revision}:{renames.get(name, name)}\n" for name in names).encode("utf-8")
     result = subprocess.run(["git", "cat-file", "--batch"], cwd=root, input=requests,
                             check=True, capture_output=True)
     stream = io.BytesIO(result.stdout)
@@ -102,16 +97,15 @@ def revision_contents(root, revision, names):
         yield name, content
 
 
-def scan(root, minimum, names=None, revision=None):
+def scan(root, minimum, names=None, revision="HEAD", renames=None):
     if minimum < 1:
         raise ValueError("minimum must be positive")
     problem = dependency_problem()
     if problem:
         raise RuntimeError(problem)
     if names is None:
-        names = (sorted(git(root, "ls-tree", "-r", "--name-only", revision, "--",
-                            "launcher", "scripts", "editor").decode().splitlines())
-                 if revision else source_files(root))
+        names = sorted(git(root, "ls-tree", "-r", "--name-only", revision, "--",
+                           "launcher", "scripts", "editor").decode().splitlines())
     scratch_parent = ROOT / "launcher/test/build"
     scratch_parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="clones-", dir=scratch_parent) as folder:
@@ -119,8 +113,7 @@ def scan(root, minimum, names=None, revision=None):
         tree = scratch / "source"
         tree.mkdir()
         names = [name for name in names if eligible_name(name)]
-        contents = (revision_contents(root, revision, names) if revision else
-                    ((name, (root / name).read_bytes()) for name in names))
+        contents = revision_contents(root, revision, names, renames)
         for name, content in contents:
             if is_generated(content.decode("utf-8")):
                 continue
@@ -144,6 +137,23 @@ def scan(root, minimum, names=None, revision=None):
                 pair[side]["name"] = Path(pair[side]["name"].removeprefix("\\\\?\\")).relative_to(tree).as_posix()
         return sorted(filter_pairs(pairs), key=lambda pair: (-pair["tokens"], pair["firstFile"]["name"],
                                               pair["firstFile"]["start"], pair["secondFile"]["name"]))
+
+
+def changed_paths(root, base, head):
+    fields = iter(git(root, "diff", "-M", "--name-status", "-z", f"{base}...{head}")
+                  .decode().rstrip("\0").split("\0"))
+    changed = set()
+    renames = {}
+    for status in fields:
+        if not status:
+            continue
+        name = next(fields)
+        if status.startswith("R"):
+            new_name = next(fields)
+            renames[new_name] = name
+            name = new_name
+        changed.add(name)
+    return changed, renames
 
 
 def describe(pair):
@@ -170,7 +180,7 @@ def check_pairs(pairs, base_pairs):
     return 0
 
 
-def main(argv=None):
+def main(argv=None, root=ROOT):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", action="store_true")
     parser.add_argument("--min-tokens", type=int, default=MIN_TOKENS)
@@ -179,21 +189,21 @@ def main(argv=None):
         parser.error("--min-tokens must be positive")
     started = time.perf_counter()
     try:
-        head = git(ROOT, "rev-parse", "HEAD").decode().strip()
-        pairs = scan(ROOT, args.min_tokens, revision=head)
+        head = git(root, "rev-parse", "HEAD").decode().strip()
+        pairs = scan(root, args.min_tokens, revision=head)
         if args.report or args.min_tokens != MIN_TOKENS:
             for pair in pairs:
                 print(describe(pair))
         if args.min_tokens != MIN_TOKENS:
             print(f"{len(pairs)} clone pairs at {args.min_tokens} tokens; {time.perf_counter() - started:.2f}s.")
             return 0
-        base = comparison_base(ROOT, head)
-        changed = set(git(ROOT, "diff", "--name-only", "-z", f"{base}...{head}").decode().split("\0"))
+        base = comparison_base(root, head)
+        changed, renames = changed_paths(root, base, head)
         candidates = [pair for pair in pairs
                       if any(pair[side]["name"] in changed for side in ("firstFile", "secondFile"))]
         names = sorted({pair[side]["name"] for pair in candidates
                         for side in ("firstFile", "secondFile")})
-        base_pairs = scan(ROOT, args.min_tokens, names=names, revision=base) if names else []
+        base_pairs = scan(root, args.min_tokens, names=names, revision=base, renames=renames) if names else []
         result = check_pairs(candidates, base_pairs)
         print(f"{len(pairs)} clone pairs at {args.min_tokens} tokens; {time.perf_counter() - started:.2f}s.")
         return result
