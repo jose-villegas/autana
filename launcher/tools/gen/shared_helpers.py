@@ -1,6 +1,6 @@
 """Catalogue every tracked C/C++ header or Python module outside apps/, test/
-and tests/ folders and generated files that is included or imported from
-more than one directory, using its banner sentence and public names.
+and tests/ folders and c_comments.EXCLUDED paths that is included or imported
+from more than one directory, using its banner sentence and public names.
 
     python launcher/tools/gen/shared_helpers.py [--check]
 """
@@ -14,8 +14,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/gates"))
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 
-from c_comments import blank_comments, file_header
-from check_generated_files import is_generated
+from c_comments import EXCLUDED, blank_comments, file_header
 from check_style_audit import resolve_include
 from check_doc_constants import sentences
 from generated_blocks import replace_block
@@ -34,7 +33,7 @@ def catalogue(root):
     owners = {path for path, text in texts.items()
               if pathlib.PurePosixPath(path).suffix in {".h", ".hh", ".hpp", ".hxx", ".py"}
               and not {"apps", "test", "tests"}.intersection(pathlib.PurePosixPath(path).parts)
-              and not is_generated(text)}
+              and not path.startswith(EXCLUDED)}
     users = {path: set() for path in owners}
     modules = {path[:-3].replace("/", "."): path for path in owners if path.endswith(".py")}
     for path, text in texts.items():
@@ -88,8 +87,12 @@ def catalogue(root):
                       for name in re.findall(r"\b\w+(?:##\w+)+", blank_comments(text, "code"))}
             declarations = c_declarations(text.replace("##", "__").replace("\\\n", "\n"))
             declarations[2].update(re.findall(r"\bclass\s+([A-Za-z_]\w*)", blank_comments(text, "code")))
+            guards = {name for name in re.findall(
+                r"^\s*#\s*ifndef\s+(\w+)\s*\n\s*#\s*define\s+\1[ \t]*$",
+                blank_comments(text), re.M)
+                if ("_" + re.sub(r"\W", "_", path).upper()).endswith("_" + name)}
             names = sorted(pasted.get(name, name) for name in set().union(*declarations)
-                           if not name.startswith("_"))
+                           if not name.startswith("_") and name not in guards)
         purpose = next(sentences(None, prose), (0, ""))[1].strip()
         rows.append((path, " ".join(purpose.split()), ", ".join(names)))
     return rows

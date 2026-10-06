@@ -1,4 +1,4 @@
-/* Control center widgets and the layout matching the current panel size. */
+/* ui_control_center: control center widgets and the layout matching the current panel size. */
 #pragma once
 
 #include "input/input.h"

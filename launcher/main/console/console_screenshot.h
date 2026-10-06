@@ -1,4 +1,4 @@
-/* Frame-loop screenshot requests and framebuffer state capture. */
+/* console_screenshot: screenshot requests and the framebuffer dump with device state. */
 #pragma once
 
 #include <stdbool.h>

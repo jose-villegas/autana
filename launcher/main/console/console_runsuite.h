@@ -1,4 +1,4 @@
-/* Suite requests retained for execution by the frame loop. */
+/* console_runsuite: suite requests retained for execution by the frame loop. */
 #pragma once
 
 #include <stdbool.h>

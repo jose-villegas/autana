@@ -1,4 +1,4 @@
-/* Document snapshots with undo, redo and saved-state tracking. */
+/* edit_history: document snapshots with undo, redo and saved-state tracking. */
 #pragma once
 
 #include <cstddef>

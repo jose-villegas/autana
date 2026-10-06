@@ -3,10 +3,13 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "launcher/tools/gen"))
 from shared_helpers import catalogue, update
-from gate_tree import write
+from c_comments import EXCLUDED
+from check_generated_files import generated_files
+from gate_tree import commit, write
 
 
 class SharedHelpers(unittest.TestCase):
@@ -57,7 +60,31 @@ class SharedHelpers(unittest.TestCase):
             self.assertEqual([], catalogue(self.root))
         write(self.root, "engine/generated.h", "/* GENERATED FILE - do not edit. */\n")
         self.include("engine/generated.h")
-        self.assertEqual([], catalogue(self.root))
+        commit(self.root, ".")
+        with mock.patch("shared_helpers.EXCLUDED", (*EXCLUDED, *generated_files(self.root))):
+            self.assertEqual([], catalogue(self.root))
+
+    def test_vendored_owners_are_excluded(self):
+        for owner in ("launcher/components/bsp/value.h",
+                      "launcher/components/microui/microui.h",
+                      "launcher/test/framework/value.h"):
+            with self.subTest(owner=owner):
+                write(self.root, owner, "/* Values. */\nint value(void);\n")
+                self.include(owner)
+                self.assertEqual([], catalogue(self.root))
+
+    def test_include_guard_is_not_a_public_name(self):
+        for filename, guard in (("value.h", "VALUE_H"), ("value.hpp", "VALUE_HPP"),
+                                ("shared-value.h", "SHARED_VALUE_H"),
+                                ("editor/runtime.h", "EDITOR_RUNTIME_H")):
+            with self.subTest(filename=filename):
+                owner = "engine/" + filename
+                write(self.root, owner, "/* Values. */\n"
+                      f"#ifndef {guard}\n#define {guard}\n"
+                      "#define VALUE_LIMIT 1\nint value(void);\n#endif\n")
+                self.include(owner)
+                rows = {row[0]: row for row in catalogue(self.root)}
+                self.assertEqual("VALUE_LIMIT, value", rows[owner][2])
 
     def test_python_import_forms_and_public_names(self):
         write(self.root, "tools/common/value.py", '"""Shared values. Details."""\n'
