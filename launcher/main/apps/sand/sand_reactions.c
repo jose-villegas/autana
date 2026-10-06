@@ -2693,6 +2693,7 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
         const cell_t c = row[x];
         seen |= (uint16_t)(1u << CELL_MATERIAL(c));
         if (CELL_IS_EMPTY(c)) {
+            x = empty_run_end(row, x + 1, x_hi) - 1;
             continue;
         }
         k.x = x;

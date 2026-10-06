@@ -1367,6 +1367,16 @@ span_is_empty(const uint8_t* row, int x0, int x1) {
     return true;
 }
 
+/* Returns the first non-empty x; reactions call it only for empty cells, so
+ * the non-empty path is unchanged. */
+static inline int
+empty_run_end(const uint8_t* row, int x0, int x1) {
+    while (x0 < x1 && CELL_IS_EMPTY(row[x0])) {
+        x0++;
+    }
+    return x0;
+}
+
 /* try_fall_or_scatter_impl()/try_slide_impl() live here, static inline,
  * same reason as dest_row()/mark_rows(): hottest path, called once per
  * grain per step. Un-static-ing them loses inlining at sand.c's hot site.
