@@ -5,13 +5,14 @@
  * firmware calls. One program for every clip: track_host.py builds it once.
  *
  *   track_host --pack PACK --clip ID [--from MS] [--every MS] [--until MS] [--clamp]
- *   track_host --pack PACK --clip ID [--every MS] --poses NODE W H TAN NEAR
+ *   track_host --pack PACK --clip ID [--every MS] [--until MS] --poses NODE W H TAN NEAR
  *
- * By default a line a track per time: `<t_ms> <name> <value...>`, from
- * --from (0) to --until (the clip's duration). With --poses it prints the
+ * By default one line per track per sample time: `<t_ms> <name> <value...>`,
+ * from --from (0) to --until (the clip's duration). With --poses it prints the
  * poses file r3d's triangle_sizes reads, for the camera node NODE: its
  * translation as the eye, the way its rotation turns glTF's -Z as the
- * forward, over the lens and size given. --poses comes last.
+ * forward, over the lens and size given, from 0 and looping. --poses comes
+ * last.
  */
 #include <inttypes.h>
 #include <stdbool.h>
@@ -22,8 +23,6 @@
 #include "anim/anim_track.h"
 #include "anim/anim_tracks.h"
 #include "asset/asset_file.h"
-
-#define POSES_MAX 4096
 
 typedef struct {
     uint32_t from_ms;
@@ -36,7 +35,7 @@ typedef struct {
 static int
 usage(void) {
     fprintf(stderr, "usage: track_host --pack PACK --clip ID [--from MS] [--every MS] [--until MS] [--clamp]\n"
-                    "       track_host --pack PACK --clip ID [--every MS] --poses NODE W H TAN NEAR\n");
+                    "       track_host --pack PACK --clip ID [--every MS] [--until MS] --poses NODE W H TAN NEAR\n");
     return 2;
 }
 
@@ -59,8 +58,7 @@ print_poses(const anim_tracks_t* tracks, char** pose_args, const sampling_t* at)
     if (!find_track(tracks, node, "translation", &move) || !find_track(tracks, node, "rotation", &turn)) {
         return 2;
     }
-    if (at->every_ms == 0 || at->until_ms / at->every_ms >= POSES_MAX) {
-        fprintf(stderr, "track_host: more than %d poses; raise --every\n", POSES_MAX);
+    if (at->every_ms == 0) {
         return 2;
     }
     printf("size %d %d\nlens %s %s\n", atoi(pose_args[1]), atoi(pose_args[2]), pose_args[3], pose_args[4]);
@@ -154,7 +152,8 @@ main(int argc, char** argv) {
             return usage();
         }
     }
-    if (pack_path == NULL || clip == NULL) {
+    /* Poses always start at 0 and loop; a --from or --clamp would be ignored, so it is refused. */
+    if (pack_path == NULL || clip == NULL || (pose_args != NULL && (at.from_ms != 0 || at.wrap == ANIM_CLAMP))) {
         return usage();
     }
     return sample(pack_path, clip, pose_args, &at);

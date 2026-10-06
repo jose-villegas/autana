@@ -5,6 +5,7 @@ environment (tools/r3d/requirements.txt)."""
 
 import pathlib
 import sys
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest import mock
@@ -20,6 +21,8 @@ try:
     from r3d.poses import camera_rays
 except ImportError:
     np = None
+from tests.anim_probe import write_camera_clip  # noqa: E402
+from tests.test_track_host import has_compiler  # noqa: E402
 
 EYE = [0.0, 0.0, 5.0, 0.0, 0.0, -1.0]
 
@@ -112,6 +115,20 @@ class ImportWiringTests(unittest.TestCase):
         # A square view as wide as the long side covers the panel either way up.
         by_path.assert_called_once_with("p", "t", "d", "i", ["pose"], 224, 224, 0.62 * 224 / 184, 6.0, 3, 8)
         by_region.assert_called_once_with("p", "t", "d", "i", 4, "rng", [0, 0, 0], [1, 1, 1])
+
+    @unittest.skipUnless(has_compiler(), "needs sh and a C compiler")
+    def test_the_camera_path_is_the_scene_clip_sampled_at_the_step_s_size_and_lens(self):
+        with tempfile.TemporaryDirectory() as directory:
+            clip = write_camera_clip(directory, reach=2.0)
+            camera = SimpleNamespace(half_fov_short_tan=0.62, near_z=6.0,
+                                     path=SimpleNamespace(animation=clip, clip="fly", node="camera"))
+            scene_ = SimpleNamespace(camera=SimpleNamespace(component=camera))
+            path = SimpleNamespace(every_ms=250, size=(184, 224))
+            width, height, lens, near, poses = mesh_import.camera_path_poses(scene_, path, either_way_up=False)
+        self.assertEqual((width, height, lens, near), (184, 224, 0.62, 6.0))
+        self.assertEqual(len(poses), 4)
+        for pose, x in zip(poses, (0.0, 0.5, 1.0, 1.5)):
+            np.testing.assert_allclose(pose, [x, 0, 0, 0, 0, -1], atol=1e-6)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

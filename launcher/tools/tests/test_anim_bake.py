@@ -21,15 +21,12 @@ import bake_tracks  # noqa: E402
 from anim import track_host, tracks_asset  # noqa: E402
 from anim_probe import channel, probe_glb  # noqa: E402
 from gltf import gltf_read, gltf_write  # noqa: E402
+from tests.test_track_host import has_compiler  # noqa: E402
 
 TOLERANCE = 2e-5
 EVERY_MS = 37
 UNTIL_MS = 4200
 NAME = "probe"
-
-
-def find_sh():
-    return shutil.which("sh")
 
 
 def bake_into(directory, glb_bytes):
@@ -40,7 +37,7 @@ def bake_into(directory, glb_bytes):
     return glb
 
 
-@unittest.skipUnless(find_sh() and any(shutil.which(c) for c in ("cc", "gcc", "clang")), "needs sh and a C compiler")
+@unittest.skipUnless(has_compiler(), "needs sh and a C compiler")
 class BakeRoundTripTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

@@ -94,6 +94,22 @@ def probe_glb(reordered=False):
                                 [{"name": "clip", "channels": probe_channels(index)}], cameras=cameras)
 
 
+def write_camera_clip(directory, name="fly", reach=1.0, degrees=0.0, props=()):
+    """NAME.anim.toml and NAME.glb beside it: node `camera` moving from x 0 to
+    `reach` over a second while turning `degrees` about +y from facing glTF's
+    -Z, linearly. `props` names nodes the clip does not animate, which change
+    the file and not the clip. Returns the .anim.toml's path."""
+    directory = pathlib.Path(directory)
+    rotation = [turn((0, 1, 0), 0)] if not degrees else [turn((0, 1, 0), 0), turn((0, 1, 0), degrees)]
+    channels = [channel(0, "translation", [0.0, 1.0], [(0.0, 0.0, 0.0), (reach, 0.0, 0.0)]),
+                channel(0, "rotation", [0.0, 1.0][:len(rotation)], rotation)]
+    nodes = [{"name": "camera"}] + [{"name": prop} for prop in props]
+    (directory / (name + ".glb")).write_bytes(gltf_write.build_glb(nodes, [{"name": name, "channels": channels}]))
+    clip = directory / (name + tracks_asset.SUFFIX)
+    clip.write_text('source = "%s.glb"\nanimation = "%s"\n' % (name, name))
+    return clip
+
+
 def probe_entry():
     """The probe clip's TRCK bytes."""
     document, binary = gltf_read.parse_glb(probe_glb())

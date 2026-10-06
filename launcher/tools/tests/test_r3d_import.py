@@ -14,8 +14,8 @@ from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from gltf import gltf_write
 from r3d.import_settings import LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
+from tests.anim_probe import write_camera_clip
 
 try:
     import numpy as np
@@ -63,23 +63,12 @@ def write_import(directory, name="mesh.import.toml", source=SOURCE, output=OUTPU
     return path
 
 
-def write_clip(directory, reach=1.0):
-    """fly.anim.toml and its fly.glb: a camera node moving `reach` along x."""
-    directory = pathlib.Path(directory)
-    (directory / "fly.anim.toml").write_text('source = "fly.glb"\nanimation = "fly"\n')
-    channels = [{"node": 0, "path": "translation", "pointer": None, "interpolation": "LINEAR",
-                 "times": [0.0, 1.0], "values": [(0.0, 0.0, 0.0), (reach, 0.0, 0.0)]},
-                {"node": 0, "path": "rotation", "pointer": None, "interpolation": "LINEAR",
-                 "times": [0.0], "values": [(0.0, 0.0, 0.0, 1.0)]}]
-    (directory / "fly.glb").write_bytes(gltf_write.build_glb([{"name": "camera"}], [{"name": "fly", "channels": channels}]))
-
-
 def write_scene(directory, objects, head="", name="scene.scene.toml"):
     """The scene file; beside it fly.anim.toml, the clip camera(path=True) names."""
     path = pathlib.Path(directory) / name
     path.write_text(head + objects)
     if not (path.parent / "fly.anim.toml").exists():
-        write_clip(path.parent)
+        write_camera_clip(path.parent)
     return path
 
 
@@ -455,7 +444,7 @@ class SceneTests(unittest.TestCase):
         def digest(head=HEAD, fit=extra, reach=1.0, simplify=SIMPLIFY):
             with tempfile.TemporaryDirectory() as directory:
                 root = pathlib.Path(directory)
-                write_clip(root, reach)
+                write_camera_clip(root, reach=reach)
                 write_import(root, output=VARIANT_OUTPUT, body=simplify + VARIANT)
                 scene = load_scene(write_scene(root, renderer(extra="bake = true\n" + PATH + fit) + sun_object() + fly, head))
                 job = scene.renderers[0]
@@ -945,6 +934,25 @@ class LocalSourceTests(unittest.TestCase):
                 path.write_bytes(path.read_bytes() + b"\n# changed")
                 after = recipe_digest(job, scene), reference_digest(scene_path, job, scene)
                 self.assertTrue(all(a != b for a, b in zip(before, after)), name)
+
+    def test_the_camera_clip_s_keys_and_nothing_else_of_its_file_stamp_recipe_and_reference(self):
+        from r3d.fitted_variant import recipe_digest, reference_digest
+
+        def digests(**clip):
+            with tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                write_camera_clip(root, **clip)
+                write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT)
+                scene_path = write_scene(root, renderer(extra='variant = "mesh"\nbake = true\n' + PATH + FIT)
+                                         + sun_object() + camera(path=True, region=False), HEAD)
+                scene = load_scene(scene_path)
+                job = scene.renderers[0]
+                return recipe_digest(job, scene), reference_digest(scene_path, job, scene)
+
+        first = digests()
+        for changed in (digests(reach=2.0), digests(degrees=30.0)):
+            self.assertTrue(all(a != b for a, b in zip(first, changed)), "a key of the clip changed")
+        self.assertEqual(digests(props=("unused",)), first, "the .glb changed but not the clip it bakes to")
 
     def test_doc_stamp_covers_source_directory(self):
         sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
