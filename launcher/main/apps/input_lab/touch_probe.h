@@ -13,6 +13,7 @@
 #include <stdint.h>
 
 #include "input/input.h"
+#include "util/scalar/rng.h"
 
 typedef struct {
     int x, y; /* top-left */
@@ -28,8 +29,8 @@ typedef struct {
 } touch_probe_stats_t;
 
 /* A `side` square wholly inside a `screen_w` x `screen_h` screen with
- * `margin` to spare on every edge. `rng` is any nonzero seed, advanced. */
-touch_probe_target_t touch_probe_next(uint32_t* rng, int screen_w, int screen_h, int side, int margin);
+ * `margin` to spare on every edge. `rng` is advanced. */
+touch_probe_target_t touch_probe_next(rng_t* rng, int screen_w, int screen_h, int side, int margin);
 
 /* Scores a tap at (x, y); true when it lands inside the target. */
 bool touch_probe_record(touch_probe_stats_t* stats, touch_probe_target_t target, int x, int y);
@@ -43,7 +44,7 @@ void touch_probe_offset(touch_probe_target_t target, int x, int y, int* dx, int*
 touch_probe_target_t touch_probe_grid(int index, int cols, int rows, int screen_w, int screen_h, int side, int margin);
 
 /* `order` becomes 0..n-1 in a random order. */
-void touch_probe_shuffle(uint32_t* rng, int* order, int n);
+void touch_probe_shuffle(rng_t* rng, int* order, int n);
 
 typedef struct {
     int x, y;

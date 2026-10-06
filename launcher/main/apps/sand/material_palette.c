@@ -22,11 +22,8 @@
 #include "util/scalar/fixed.h"
 #include "util/scalar/intmath.h" /* see material_set_gravity() below */
 
-/* Channel `sh` of the way from `lo` to `hi`, out of 15. */
-#define LERP_CH(lo, hi, shift, sh)                                                                                     \
-    ((((((lo) >> (shift)) & 0xFF) * (15 - (sh)) + (((hi) >> (shift)) & 0xFF) * (sh)) / 15) & 0xFF)
-
-#define LERP_RGB(lo, hi, sh) ((LERP_CH(lo, hi, 16, sh) << 16) | (LERP_CH(lo, hi, 8, sh) << 8) | LERP_CH(lo, hi, 0, sh))
+/* `sh` of the way from `lo` to `hi`, out of 15. */
+#define LERP_RGB(lo, hi, sh) GFX_LERP_RGB888(lo, hi, sh, 15)
 
 #ifdef ANALYSIS_SCAN
 /* The tables below nest LERP inside LERP, so any stub that keeps both colour
@@ -39,10 +36,7 @@
 #endif
 
 /* glass MAT_GLASS case needs small tilt for finer gradient than palette steps */
-#define LERP8_CH(lo, hi, shift, fr)                                                                                    \
-    ((((((lo) >> (shift)) & 0xFF) * (255 - (fr)) + (((hi) >> (shift)) & 0xFF) * (fr)) / 255) & 0xFF)
-
-#define LERP8(lo, hi, fr) ((LERP8_CH(lo, hi, 16, fr) << 16) | (LERP8_CH(lo, hi, 8, fr) << 8) | LERP8_CH(lo, hi, 0, fr))
+#define LERP8(lo, hi, fr) GFX_LERP_RGB888(lo, hi, fr, 255)
 
 /* One shade per variant, dry to wet; the saturated level takes the full wet
  * colour. */
@@ -940,11 +934,9 @@ material_palette(void) {
 
 /* One flash read, no search: sand_rgb565_to_index[] is generated straight
  * from build_palette()'s own per-group OKLab assignment (shading_palette.c,
- * write_sand_palette_header()), keyed by native (non-byte-swapped) RGB565 -
- * gfx_color_t is that swapped for the panel (gfx_color.h), so the lookup
- * key is the same swap native_key() takes in the generator. */
+ * write_sand_palette_header()), keyed by native (non-byte-swapped) RGB565,
+ * the same gfx_color_swap() the generator keys it with. */
 int
 material_palette256_index(gfx_color_t c) {
-    const uint16_t native = (uint16_t)((c >> 8) | (c << 8));
-    return sand_rgb565_to_index[native];
+    return sand_rgb565_to_index[gfx_color_swap(c)];
 }
