@@ -42,7 +42,7 @@ from r3d.light import (  # noqa: E402
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
 from r3d.path_bake import PathLight  # noqa: E402
 from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
-from r3d.poses import either_way, sample_camera_path, tracks_file  # noqa: E402
+from r3d.poses import either_way, sample_camera_path  # noqa: E402
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.simplify import densify, simplify  # noqa: E402
 
@@ -120,7 +120,7 @@ def camera_path_poses(scene, visibility, every_ms=None, either_way_up=True):
     covers the panel held either way up unless `either_way_up` is False."""
     camera = scene.camera.component
     width, height = visibility.size
-    poses = sample_camera_path(tracks_file(scene), camera.path.clip, camera.path.node,
+    poses = sample_camera_path(camera.path.animation, camera.path.node,
                                every_ms or visibility.every_ms, width, height, camera.half_fov_short_tan, camera.near_z)
     return either_way(*poses) if either_way_up else poses
 

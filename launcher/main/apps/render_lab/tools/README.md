@@ -449,17 +449,17 @@ the factor map.
 
 ## Sponza poses
 
-The flythrough is a glTF camera animation, `../assets/flythrough.glb`, baked
-to `../meshes/flythrough_tracks_generated.c` by
-[`tools/anim/bake_tracks.py`](../../../../tools/anim/README.md). Its poses for
+The flythrough is a glTF camera animation, `../assets/flythrough.glb`, named
+by `../assets/flythrough.anim.toml`. Its poses for
 [`tools/r3d/report_triangle_sizes.sh`](../../../../tools/r3d/README.md#triangle-sizes)
-come from the generic track sampler, at the poses `suite_sponza_perf.c` times
+come from the device's track sampler,
+[`tools/anim/track_host.py`](../../../../tools/anim/README.md), at the poses `suite_sponza_perf.c` times
 (every `SPONZA_POSE_EVERY_MS`) and the size `sponza_content.h` names and the lens of
 the scene's camera object (`meshes/sponza.scene.toml`):
 
 ```sh
-./launcher/tools/anim/sample_tracks.sh \
-    --tracks launcher/main/apps/render_lab/meshes/flythrough_tracks_generated.c:flythrough \
+python launcher/tools/anim/track_host.py \
+    launcher/main/apps/render_lab/assets/flythrough.anim.toml \
     --every 5000 --poses camera 184 224 0.62 6 |
     ./launcher/tools/r3d/report_triangle_sizes.sh \
         --mesh sponza.atrium -

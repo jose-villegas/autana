@@ -81,12 +81,18 @@ def canonical(value):
     return value
 
 
-def recipe_digest(job, scene):
-    """SHA-256 over the parsed effective recipe and its camera tracks."""
-    from r3d.poses import tracks_file
+def camera_clip(scene):
+    """The TRCK entry the scene camera's clip bakes to: its poses are a
+    function of these bytes alone."""
+    from anim import tracks_asset
 
+    return tracks_asset.bake(scene.camera.component.path.animation)
+
+
+def recipe_digest(job, scene):
+    """SHA-256 over the parsed effective recipe and its camera clip."""
     renderer = job.renderer
-    tracks = hashlib.sha256(tracks_file(scene).read_bytes()).hexdigest()
+    tracks = hashlib.sha256(camera_clip(scene)).hexdigest()
     settings = SimpleNamespace(**{name: value for name, value in vars(job.settings).items()
                                   if name not in ("path", "out_dir", "mesh_dir", "named", "variants")})
     fit = SimpleNamespace(**vars(renderer.fit))
@@ -129,11 +135,10 @@ def prepare(scene_path, scene, job, work):
 
 def reference_digest(scene_path, job, scene):
     """The source and lighting inputs that determine a sweep's references."""
-    from r3d.poses import tracks_file
-
     digest = hashlib.sha256()
-    for path in (scene_path, job.settings.path, tracks_file(scene)):
+    for path in (scene_path, job.settings.path):
         digest.update(pathlib.Path(path).read_bytes())
+    digest.update(camera_clip(scene))
     digest.update(job.object.name.encode())
     digest.update(source_digest(job.settings).encode())
     return digest.hexdigest()

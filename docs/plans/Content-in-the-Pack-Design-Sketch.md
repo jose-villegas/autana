@@ -1,7 +1,7 @@
 # Animation tracks and scenes in the asset pack: design sketch
 
-**Status:** approved; bundles, the `TRCK` entry and the scenes step (sections
-0 to 3) are built, the rest is not. `[A]` marks a proposal that was approved
+**Status:** approved; bundles, the `TRCK` entry, the scenes step and the host poses (sections
+0 to 4) are built, the rest is not. `[A]` marks a proposal that was approved
 with the rest rather than asked for.
 
 Committed C baked from a `.glb` animation (`*_tracks_generated.{c,h}`) or a

@@ -129,7 +129,7 @@ camera track gives a `camera_t` its look direction.
    PREFIX_<node>_<path>` per channel, the clip `PREFIX_clip`, every track in
    `PREFIX_tracks[]` (`PREFIX_track_count` of them), and
    `PREFIX_track_names[]`, each track's name in the same order. Only the tests
-   and `tools/anim/sample_tracks.sh` refer to the tables, so the linker drops
+   refer to the tables, so the linker drops
    them from any firmware build without tests. The command is in the file's
    banner; the output is checked in and never edited.
 4. Sample what the scene needs, and convert at its own boundary.
@@ -154,12 +154,23 @@ translation, rotation and scale tracks into a `util/math/transformf.h`
 
 ## Looking at a baked animation
 
-`launcher/tools/anim/sample_tracks.sh` builds a small program against a baked
-file and prints every track every N milliseconds, through the same
-`anim_track_sample()` the firmware runs. With `--poses NODE W H TAN NEAR` it
-prints a camera node as the poses file
+`launcher/tools/anim/track_host.py` prints every track of a clip every N
+milliseconds, read from the clip's `TRCK` entry by the same
+`anim_tracks_from_pack()` and `anim_track_sample()` the firmware runs. Given a
+`NAME.anim.toml`, it bakes the clip into a scratch pack of its own first; given
+`--pack PACK --clip ID`, it reads that pack. With `--poses NODE W H TAN NEAR`
+it prints a camera node as the poses file
 [`report_triangle_sizes.sh`](../launcher/tools/r3d/README.md#triangle-sizes)
 reads, so the poses are always the animation's own.
+
+```sh
+python launcher/tools/anim/track_host.py PATH/NAME.anim.toml --every 250
+python launcher/tools/anim/track_host.py --pack PACK --clip ID --every 5000 --poses camera 184 224 0.62 6
+```
+
+The program, `track_host.c`, is one for every clip: it is compiled once into
+`launcher/tools/anim/build/`, and again only when its sources, the compiler or
+the flags change.
 
 ## How it is tested
 
@@ -176,7 +187,7 @@ reads, so the poses are always the animation's own.
   of each `.anim.toml` no scene names.
 - `tools/tests/test_anim_bake.py` builds a glTF of its own with every
   interpolation, a quaternion, a pointer-targeted scalar and a non-zero first
-  key, bakes it, samples it in C, and holds every value to the Python sampler
+  key, bakes it, samples it in C through `track_host`, and holds every value to the Python sampler
   in `launcher/tools/gltf/gltf_read.py`, looping and clamped.
 
 ## Rules

@@ -118,6 +118,25 @@ test_a_missing_name_is_not_found(void) {
 }
 
 static void
+test_a_track_by_index_is_the_table_row_and_past_the_count_is_not_found(void) {
+    fixture_t f = fixture();
+    anim_tracks_t tracks;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, open_fixture(&f, ENTRY_BYTES, &tracks));
+    const char* name;
+    anim_track_t track;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_at(&tracks, 0, &name, &track));
+    TEST_ASSERT_EQUAL_STRING("a/translation", name);
+    TEST_ASSERT_EQUAL_PTR(f.entry + A_TIMES, track.times);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_at(&tracks, 1, &name, &track));
+    TEST_ASSERT_EQUAL_STRING("lens/perspective/yfov", name);
+    TEST_ASSERT_EQUAL_UINT8(ANIM_STEP, track.interp);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_tracks_at(&tracks, 2, &name, &track));
+    TEST_ASSERT_NULL(name);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_tracks_at(&tracks, -1, &name, &track));
+    test_free_aligned(f.raw);
+}
+
+static void
 test_a_truncated_header_or_table_is_out_of_bounds(void) {
     fixture_t f = fixture();
     anim_tracks_t tracks;
@@ -312,8 +331,9 @@ open_every_clip(const asset_pack_t* pack) {
         TEST_ASSERT_GREATER_THAN_UINT16_MESSAGE(0, tracks.count, entry.name);
         TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, tracks.clip.duration_ms, entry.name);
         for (int t = 0; t < tracks.count; t++) {
+            const char* name;
             anim_track_t track;
-            const char* name = (const char*)(tracks.base + ROW0 + ((size_t)t * TEST_TRACK_ROW_SIZE));
+            TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_at(&tracks, t, &name, &track));
             TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, anim_tracks_find(&tracks, name, &track), name);
         }
         clips++;
@@ -386,9 +406,9 @@ static void
 check_reference_row(const anim_tracks_t* tracks, const uint8_t* row) {
     const int index = row[0] | (row[1] << 8);
     TEST_ASSERT_LESS_THAN_INT(tracks->count, index);
-    const char* name = (const char*)(tracks->base + ROW0 + ((size_t)index * TEST_TRACK_ROW_SIZE));
+    const char* name;
     anim_track_t track;
-    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, anim_tracks_find(tracks, name, &track), name);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_at(tracks, index, &name, &track));
     const float seconds = get_float(row + 4);
     float got[ANIM_WIDTH_MAX];
     anim_track_sample(&track, seconds, got);
@@ -440,6 +460,7 @@ void
 suite_anim_tracks(void) {
     RUN_TEST(test_an_entry_opens_and_a_found_track_points_into_it);
     RUN_TEST(test_a_missing_name_is_not_found);
+    RUN_TEST(test_a_track_by_index_is_the_table_row_and_past_the_count_is_not_found);
     RUN_TEST(test_a_truncated_header_or_table_is_out_of_bounds);
     RUN_TEST(test_an_array_past_the_end_is_out_of_bounds);
     RUN_TEST(test_a_track_of_more_than_255_keys_reports_them_all);

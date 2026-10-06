@@ -106,18 +106,31 @@ anim_tracks_from_pack(const asset_pack_t* pack, const char* id, anim_tracks_t* o
 }
 
 asset_status_t
+anim_tracks_at(const anim_tracks_t* tracks, int index, const char** name, anim_track_t* out) {
+    if (index < 0 || index >= tracks->count) {
+        *name = NULL;
+        *out = (anim_track_t){0};
+        return ASSET_ERR_NOT_FOUND;
+    }
+    const uint8_t* row = row_at(tracks, index);
+    *name = (const char*)row;
+    *out = (anim_track_t){
+        .times = (const float*)(const void*)(tracks->base + word(row + ROW_TIMES)),
+        .values = (const float*)(const void*)(tracks->base + word(row + ROW_VALUES)),
+        .count = half(row + ROW_KEYS),
+        .width = row[ROW_WIDTH],
+        .interp = row[ROW_INTERP],
+        .quaternion = row[ROW_QUATERNION],
+    };
+    return ASSET_OK;
+}
+
+asset_status_t
 anim_tracks_find(const anim_tracks_t* tracks, const char* name, anim_track_t* out) {
     for (int i = 0; i < tracks->count; i++) {
-        const uint8_t* row = row_at(tracks, i);
-        if (strncmp((const char*)row, name, ANIM_TRACK_NAME_MAX) == 0) {
-            *out = (anim_track_t){
-                .times = (const float*)(const void*)(tracks->base + word(row + ROW_TIMES)),
-                .values = (const float*)(const void*)(tracks->base + word(row + ROW_VALUES)),
-                .count = half(row + ROW_KEYS),
-                .width = row[ROW_WIDTH],
-                .interp = row[ROW_INTERP],
-                .quaternion = row[ROW_QUATERNION],
-            };
+        const char* row_name;
+        (void)anim_tracks_at(tracks, i, &row_name, out);
+        if (strncmp(row_name, name, ANIM_TRACK_NAME_MAX) == 0) {
             return ASSET_OK;
         }
     }

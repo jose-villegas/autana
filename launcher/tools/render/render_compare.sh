@@ -34,7 +34,7 @@
 # --reference SCENE.scene.toml --poses FILE --render LABEL "ARGS" compares
 # <A> against the scene's source reference instead of a <B>: the reference
 # frames come from r3d/reference_render.py at the poses in FILE, the camera
-# path sampled at the renderer's --dt (tools/anim/sample_tracks.sh --every DT),
+# path sampled at the renderer's --dt (tools/anim/track_host.py --every DT),
 # and are cached under r3d/.cache/reference by a hash of the scene, its import
 # files (which pin the source model's sha256), the r3d sources, the poses and N
 # (--samples N is the supersampling, default 4). It
