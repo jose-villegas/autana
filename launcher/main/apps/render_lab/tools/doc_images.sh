@@ -113,7 +113,7 @@ done
 # and the sheet shows frames 2 and 4. The source model is fetched once, SHA-256
 # checked, into launcher/tools/r3d/.cache.
 M=launcher/main/apps/render_lab
-run sh launcher/tools/anim/sample_tracks.sh --tracks "$M/meshes/flythrough_tracks_generated.c:flythrough" \
+run "$PYTHON" launcher/tools/anim/track_host.py "$M/assets/flythrough.anim.toml" \
     --every 5000 --until 30000 --poses camera 184 224 0.62 6 > "$W/fidelity-poses.txt"
 # render_compare.sh keeps the traced frames in r3d/.cache/reference by a hash of
 # their inputs, so only a change to the scene, tracer or poses traces again.

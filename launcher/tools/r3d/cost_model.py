@@ -149,7 +149,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=("features", "fit", "predict"))
     parser.add_argument("path", help="a generated mesh, or for fit the weights file")
-    parser.add_argument("--poses", help="a sample_tracks.sh poses file at the board's render size")
+    parser.add_argument("--poses", help="a track_host.py poses file at the board's render size")
     parser.add_argument("--weights", help="a weights file")
     args = parser.parse_args(argv)
     if args.command == "fit":

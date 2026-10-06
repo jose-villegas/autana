@@ -98,7 +98,7 @@ class FrustumTests(unittest.TestCase):
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ImportWiringTests(unittest.TestCase):
     def test_the_import_step_calls_the_source_its_settings_name(self):
-        camera = SimpleNamespace(half_fov_short_tan=0.62, near_z=6.0, path=SimpleNamespace(clip="fly", node="camera"))
+        camera = SimpleNamespace(half_fov_short_tan=0.62, near_z=6.0, path=SimpleNamespace(animation=pathlib.Path("out") / "fly.anim.toml", clip="fly", node="camera"))
         scene_ = SimpleNamespace(camera=SimpleNamespace(component=camera), region=([0, 0, 0], [1, 1, 1]), path=pathlib.Path("out") / "hall.scene.toml")
         path = SimpleNamespace(source="camera_path", every_ms=100, size=(184, 224), samples=3, margin=8)
         region = SimpleNamespace(source="camera_region", rounds=4)
@@ -108,7 +108,7 @@ class ImportWiringTests(unittest.TestCase):
                 mock.patch.object(mesh_import, "visible_from_region", return_value="region") as by_region:
             self.assertEqual(mesh_import.visible_triangles(path, scene_, "p", "t", "d", "i", "rng"), "path")
             self.assertEqual(mesh_import.visible_triangles(region, scene_, "p", "t", "d", "i", "rng"), "region")
-        sampled.assert_called_once_with(pathlib.Path("out") / "fly_tracks_generated.c", "fly", "camera", 100, 184, 224, 0.62, 6.0)
+        sampled.assert_called_once_with(pathlib.Path("out") / "fly.anim.toml", "camera", 100, 184, 224, 0.62, 6.0)
         # A square view as wide as the long side covers the panel either way up.
         by_path.assert_called_once_with("p", "t", "d", "i", ["pose"], 224, 224, 0.62 * 224 / 184, 6.0, 3, 8)
         by_region.assert_called_once_with("p", "t", "d", "i", 4, "rng", [0, 0, 0], [1, 1, 1])

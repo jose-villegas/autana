@@ -394,7 +394,7 @@ The renderer arguments are split on spaces and never expanded as patterns.
 `--reference SCENE.scene.toml --poses FILE` (with one `A` and a `--render`) scores
 a whole camera path against the scene's source model instead of a second
 revision: `reference_render.py` draws the poses, `FILE` sampled at the renderer's
-`--dt` by `tools/anim/sample_tracks.sh --every`, once per scene, poses and
+`--dt` by `tools/anim/track_host.py --every`, once per scene, poses and
 `--samples`, and the render's frames are scored against them. It writes
 `<label>.mp4` (reference, render, error heatmap, edge pixels) at `--fps`
 30, 40, 60 or 80, and one reference line per frame in `summary.txt`. The

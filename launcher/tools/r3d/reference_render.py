@@ -5,7 +5,7 @@
         [--backend mitsuba --spp N --max-depth N [--sky hosek-wilkie]]
 
 The poses file is the ``size``, ``lens`` and ``pose`` format emitted by
-tools/anim/sample_tracks.sh.  Each pose writes a floating-point .npy image and
+tools/anim/track_host.py.  Each pose writes a floating-point .npy image and
 an RGB565-expanded PNG.  The renderer deliberately has no scene knowledge:
 the scene supplies the object's source, lights, camera lens and pose path.
 
