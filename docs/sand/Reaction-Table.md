@@ -226,7 +226,7 @@ Colour means exactly one thing on this page: this word is a material. Every mate
 
 **Materials**
 
-$\textcolor{#D6A663}{\text{Sand}}$, $\textcolor{#10416B}{\text{Water}}$, $\textcolor{#5A6573}{\text{Stone}}$, $\textcolor{#CEEBBD}{\text{Gas}}$, $\textcolor{#FFE363}{\text{Fire}}$, $\textcolor{#5A3D21}{\text{Wood}}$, $\textcolor{#F7FBFF}{\text{Steam}}$, $\textcolor{#84796B}{\text{Smoke}}$, $\textcolor{#101008}{\text{Oil}}$, $\textcolor{#8C1400}{\text{Lava}}$, $\textcolor{#296908}{\text{Acid}}$, $\textcolor{#296984}{\text{Glass}}$, $\textcolor{#E6EFF7}{\text{Snow}}$, $\textcolor{#846542}{\text{Dirt}}$, $\textcolor{#B5E7F7}{\text{Ice}}$, $\textcolor{#526529}{\text{Plant}}$, $\textcolor{#6BB23A}{\text{Leaf}}$, $\textcolor{#7B8694}{\text{Metal}}$, $\textcolor{#BDA68C}{\text{Root}}$, $\textcolor{#421408}{\text{Gunpowder}}$
+$\textcolor{#D6A663}{\text{Sand}}$, $\textcolor{#10416B}{\text{Water}}$, $\textcolor{#5A6573}{\text{Stone}}$, $\textcolor{#CEEBBD}{\text{Gas}}$, $\textcolor{#FFE363}{\text{Fire}}$, $\textcolor{#5A3C21}{\text{Wood}}$, $\textcolor{#F7FBFF}{\text{Steam}}$, $\textcolor{#84796B}{\text{Smoke}}$, $\textcolor{#101008}{\text{Oil}}$, $\textcolor{#8C1400}{\text{Lava}}$, $\textcolor{#296908}{\text{Acid}}$, $\textcolor{#296984}{\text{Glass}}$, $\textcolor{#E7EFF7}{\text{Snow}}$, $\textcolor{#846542}{\text{Dirt}}$, $\textcolor{#B5E7F7}{\text{Ice}}$, $\textcolor{#526529}{\text{Plant}}$, $\textcolor{#6BB239}{\text{Leaf}}$, $\textcolor{#7B8694}{\text{Metal}}$, $\textcolor{#BDA68C}{\text{Root}}$, $\textcolor{#421408}{\text{Gunpowder}}$
 
 These are the device's exact palette values, not colours chosen for legibility - deliberately, so the doc and the panel never disagree. That means a few names above sit near the ends of the range on purpose: the palest materials (snow, sand) wash out against a light background, and the darkest (stone) washes out against a dark one. If a name anywhere in this section is hard to read, that is the palette speaking, not a rendering bug.
 
@@ -245,7 +245,7 @@ One representative sentence per group (see group_id_t), the subject written out 
 
 Wood: Catches fire from fire or lava, and burns in place.
 
-$\textcolor{#5A3D21}{\text{Wood}}$: *Catches* $\textcolor{#FFE363}{\text{fire}}$ from $\textcolor{#FFE363}{\text{fire}}$ or $\textcolor{#8C1400}{\text{lava}}$, and burns in place.
+$\textcolor{#5A3C21}{\text{Wood}}$: *Catches* $\textcolor{#FFE363}{\text{fire}}$ from $\textcolor{#FFE363}{\text{fire}}$ or $\textcolor{#8C1400}{\text{lava}}$, and burns in place.
 
 
 **Burn - GRP_BURN: burns, residue, quench_to (emit_burn)**
@@ -287,7 +287,7 @@ $\textcolor{#F7FBFF}{\text{Steam}}$: *Warms whatever it touches*, without igniti
 
 Snow: Melts in any liquid it touches slowly, becoming water.
 
-$\textcolor{#E6EFF7}{\text{Snow}}$: *Melts in any liquid it touches* **slowly**, becoming $\textcolor{#10416B}{\text{water}}$.
+$\textcolor{#E7EFF7}{\text{Snow}}$: *Melts in any liquid it touches* **slowly**, becoming $\textcolor{#10416B}{\text{water}}$.
 
 
 **Wet - GRP_WET: soaks, soaks_to, wetting_liquids (emit_wet)**
@@ -315,14 +315,14 @@ $\textcolor{#526529}{\text{Plant}}$: *Grows into wet* $\textcolor{#846542}{\text
 
 Plant: A straight run of 6 cells occasionally hardens into wood, up to 2 cells wider at the foot than at the tip, and mostly a limb holds its own direction (rather than bending back toward gravity); the hardened body counts as part of wood.
 
-$\textcolor{#526529}{\text{Plant}}$: A straight run of 6 cells **occasionally** *hardens* into $\textcolor{#5A3D21}{\text{wood}}$, up to 2 cells wider at the foot than at the tip, and **mostly** a limb holds its own direction (rather than bending back toward gravity); the hardened body counts as part of $\textcolor{#5A3D21}{\text{wood}}$.
+$\textcolor{#526529}{\text{Plant}}$: A straight run of 6 cells **occasionally** *hardens* into $\textcolor{#5A3C21}{\text{wood}}$, up to 2 cells wider at the foot than at the tip, and **mostly** a limb holds its own direction (rather than bending back toward gravity); the hardened body counts as part of $\textcolor{#5A3C21}{\text{wood}}$.
 
 
 **Regrow - GRP_REGROW: sprouts, sprouts_to (emit_regrow)**
 
 Wood: Standing in wet dirt, sprouts leaf beside itself.
 
-$\textcolor{#5A3D21}{\text{Wood}}$: Standing in wet $\textcolor{#846542}{\text{dirt}}$, *sprouts* $\textcolor{#6BB23A}{\text{leaf}}$ beside itself.
+$\textcolor{#5A3C21}{\text{Wood}}$: Standing in wet $\textcolor{#846542}{\text{dirt}}$, *sprouts* $\textcolor{#6BB239}{\text{leaf}}$ beside itself.
 
 
 **Shatter - GRP_SHATTER: shatters_to (emit_shatter)**
