@@ -42,6 +42,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "build"))
 from espressif import espressif_tools_root  # noqa: E402  (path must be set up first)
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
+from pinned_tool import PINNED_MAJOR, resolve
+from native_path import to_native as to_native_path
 
 TOOLS_DIR = Path(__file__).resolve().parent
 LAUNCHER_DIR = TOOLS_DIR.parent.parent
@@ -52,7 +55,6 @@ BASELINE_PATH = TOOLS_DIR / "complexity_baseline.txt"
 BUILD_DIR = LAUNCHER_DIR / "build.tidy"
 IDF_DB_PATH = LAUNCHER_DIR / "build.diag" / "compile_commands.json"
 
-PINNED_MAJOR = "19"
 
 # The project's own documented standard (docs/sand/Sand-Simulation.md,
 # "Broken down further") is Sonar's *default* line of 15, not the 25 the
@@ -123,77 +125,8 @@ FILE_ERROR_RE = re.compile(
 BARE_ERROR_RE = re.compile(r"^error: (?P<msg>.+)$")
 
 
-def to_native_path(p):
-    """Git Bash's `pwd` (what run_tests.sh's paths are built from) prints
-    MSYS-style /c/Users/... paths; native clang-tidy.exe wants a drive
-    letter. Rewrites just that leading segment; a no-op on any path that
-    doesn't start with it, which is every path on a non-Windows host."""
-    m = re.match(r"^/([A-Za-z])/(.*)$", p)
-    if m and os.name == "nt":
-        return f"{m.group(1)}:/{m.group(2)}"
-    return p
-
-
-def clang_tidy_major(binary):
-    try:
-        out = subprocess.run([binary, "--version"], capture_output=True,
-                              text=True, timeout=15)
-    except OSError:
-        return None
-    m = re.search(r"version\s+(\d+)", out.stdout)
-    return m.group(1) if m else None
-
-
-def candidate_clang_tidy_binaries():
-    candidates = []
-    env = os.environ.get("CLANG_TIDY")
-    if env:
-        candidates.append(env)
-    for name in (f"clang-tidy-{PINNED_MAJOR}", "clang-tidy"):
-        from shutil import which
-        found = which(name)
-        if found:
-            candidates.append(found)
-    exe = "clang-tidy.exe" if os.name == "nt" else "clang-tidy"
-    pattern = str(espressif_tools_root() / "tools" / "esp-clang" / "*" /
-                  "esp-clang" / "bin" / exe)
-    candidates.extend(sorted(glob.glob(pattern), reverse=True))
-    return candidates
-
-
 def resolve_clang_tidy():
-    allow_any = os.environ.get("CLANG_TIDY_ANY_VERSION") == "1"
-    fallback = None
-    for candidate in candidate_clang_tidy_binaries():
-        major = clang_tidy_major(candidate)
-        if major is None:
-            continue
-        if major == PINNED_MAJOR:
-            return candidate, major
-        if fallback is None:
-            fallback = (candidate, major)
-
-    if fallback is None:
-        sys.exit(
-            "No clang-tidy found: not on PATH, not in $CLANG_TIDY, and not "
-            f"under {espressif_tools_root() / 'tools' / 'esp-clang'}. This gate needs clang-tidy "
-            f"{PINNED_MAJOR}.x - ESP-IDF's bundled esp-clang carries it "
-            "(install ESP-IDF, or source its export script so PATH finds "
-            "it), or install LLVM 19 directly "
-            f"(apt install clang-tidy-{PINNED_MAJOR})."
-        )
-    candidate, major = fallback
-    if not allow_any:
-        sys.exit(
-            f"Found clang-tidy {major} ({candidate}), but this gate pins "
-            f"{PINNED_MAJOR}.x, the same major scripts/gates/check-format.sh pins "
-            "clang-format to and for the same reason: different majors score "
-            "this check differently. Set CLANG_TIDY_ANY_VERSION=1 to run "
-            "anyway (informational only - CI always uses the pinned major)."
-        )
-    print(f"WARNING: using clang-tidy {major}, not the pinned {PINNED_MAJOR}.x.",
-          file=sys.stderr)
-    return candidate, major
+    return resolve("clang-tidy")
 
 
 def find_xtensa_toolchain_root():

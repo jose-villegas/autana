@@ -32,7 +32,7 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from check_comment_length import EXCLUDED, scan  # noqa: E402
+from c_comments import sources as comment_sources, scan  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 
 # Below the apps: all of launcher/main/ except apps/, and the test tree. A
@@ -68,12 +68,10 @@ def canonical(hit, names):
 
 
 def sources(root):
-    for rp in tracked_files(root):
-        if not rp.endswith((".c", ".h")) or rp.startswith(EXCLUDED):
-            continue
+    for path in comment_sources(root, tracked=True):
+        rp = path.relative_to(root).as_posix()
         if below_apps(rp):
             yield rp
-
 
 def documents(root, names):
     own = ("docs/plans/",) + tuple(f"docs/{n}/" for n in names)

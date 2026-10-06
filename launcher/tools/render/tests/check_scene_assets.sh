@@ -48,9 +48,10 @@ else
     echo "ok scene assets: the renderer reads its built-in pack folder"
 fi
 
-empty="$scene_out_dir/no_packs"
-mkdir -p "$empty"
-if AUTANA_ASSET_DIR="$(render_scene_to_native "$empty")" "$_rs_bin" "$pack" -o "$image" > "$log" 2>&1; then
+empty=$(mktemp -d "$scene_out_dir/no_packs.XXXXXX") || exit 1
+trap 'rmdir "$empty"' 0
+empty_native=$(to_native "$empty") || exit 1
+if AUTANA_ASSET_DIR="$empty_native" "$_rs_bin" "$pack" -o "$image" > "$log" 2>&1; then
     fail "AUTANA_ASSET_DIR did not override the built-in folder"
 else
     echo "ok scene assets: AUTANA_ASSET_DIR overrides the built-in folder"

@@ -17,8 +17,11 @@ import argparse
 import sys
 from pathlib import Path
 
-VIEW_W = 448
-VIEW_H = 368
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
+from panel_size import PANEL_WIDTH, PANEL_HEIGHT
+
+VIEW_W = PANEL_HEIGHT
+VIEW_H = PANEL_WIDTH
 Q_SHIFT = 4
 MAX_NEIGHBOUR_STEP_PX = 8
 VALUES_PER_LINE = 12

@@ -50,7 +50,7 @@ BUDGET_RES = (
 DEFINE_RE = re.compile(r"#define\s+(\w+)\s+(\d+)")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[5] / "scripts/lib"))
-from device_capture import RESULT_RE  # noqa: E402
+from device_capture import RESULT_RE, SELFTEST_COMPLETE_RE  # noqa: E402
 
 # A separate line - not part of the result line above - emitted by
 # test/timing.c for every test, on both host and device. Kept separate on
@@ -74,7 +74,6 @@ TEST_TIME_RE = re.compile(
 # one total this file cannot get by summing TEST_TIME lines, because a
 # capture can be truncated (see validate_capture.py's panic handling) while
 # still having logged individual test times right up to the crash.
-SELFTEST_COMPLETE_RE = re.compile(r"SELFTEST_COMPLETE(?:\s+failures=(\d+)\s+elapsed_ms=(\d+))?")
 # ESP_LOGI lines this project's own frame-budget tests print - always
 # tagged "device_tests", always some number of microseconds. Phrasing
 # after the number varies per test ("us per step", "us for the one

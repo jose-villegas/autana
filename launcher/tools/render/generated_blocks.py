@@ -1,8 +1,12 @@
 """Replace named Markdown blocks, retaining the document's line endings."""
 import argparse
+import sys
 import hashlib
 import pathlib
 import re
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "scripts/gates"))
+from tracked import tracked_files
 
 MARKER = re.compile(r"^<!-- (/?generated): ([a-z0-9][a-z0-9-]*)(?: sha256=([0-9a-f]{64}))? -->$", re.M)
 TOKEN = re.compile(r"^<!--\s*/?generated:", re.M)
@@ -60,11 +64,9 @@ def replace_block(path, name, body, check=False):
 
 
 def apply_tables(root, tables, check=False):
-    import subprocess
-    listing = subprocess.run(["git", "ls-files", "-z", "--", "*.md"], cwd=root,
-                             check=True, capture_output=True).stdout.decode("utf-8")
+    listing = tracked_files(root, ("*.md",))
     owners = {}
-    for name in filter(None, listing.split("\0")):
+    for name in listing:
         for block in blocks((root / name).read_text(encoding="utf-8")):
             if block in owners:
                 raise ValueError(f"generated name has multiple owners: {block}")

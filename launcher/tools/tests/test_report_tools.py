@@ -44,9 +44,10 @@ class ValidateCaptureTest(CaptureFixture):
         self.assertEqual(failures, [])
 
     def test_a_capture_with_no_results_is_rejected(self):
-        path = self.capture(BOOT + "I (4500) shell: 30.0 fps\n" + COMPLETE)
-        failures, _ = validate_capture.validate(path)
-        self.assertTrue(any("no test result lines" in f for f in failures), failures)
+        for body in ("I (4500) shell: 30.0 fps\n", ":1:skipped:IGNORE\n"):
+            with self.subTest(body=body):
+                failures, _ = validate_capture.validate(self.capture(BOOT + body + COMPLETE))
+                self.assertTrue(any("no test result lines" in f for f in failures), failures)
 
     def test_a_declared_sentinel_that_never_appears_is_rejected(self):
         path = self.capture(BOOT + RESULT + COMPLETE)

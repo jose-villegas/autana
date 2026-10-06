@@ -73,8 +73,8 @@ from panel_size import PANEL_HEIGHT as PANEL_H, PANEL_WIDTH as PANEL_W  # noqa: 
 
 # --- view geometry - MUST match boot_anim.h -------------------------------
 
-VIEW_W = 448    # boot_anim.h BOOT_ANIM_TITLE_VIEW_W
-VIEW_H = 368    # boot_anim.h BOOT_ANIM_TITLE_VIEW_H
+VIEW_W = PANEL_H
+VIEW_H = PANEL_W
 
 
 def gfx_rgb565(r, g, b):
