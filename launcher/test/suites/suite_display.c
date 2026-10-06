@@ -170,7 +170,7 @@ test_update_reports_true_only_on_an_actual_change(void) {
 /* the shell's sampler: cadence and reporting, with a scripted sensor */
 
 typedef struct {
-    imu_sample_t sample;
+    vec2i_t gravity;
     bool read_ok;
     int reads;
 } scripted_t;
@@ -179,18 +179,18 @@ typedef struct {
 static scripted_t* scripted;
 
 static bool
-scripted_motion(imu_sample_t* out) {
+scripted_gravity(vec2i_t* out) {
     scripted->reads++;
     if (!scripted->read_ok) {
         return false;
     }
-    *out = scripted->sample;
+    *out = scripted->gravity;
     return true;
 }
 
 static void
 script_gravity(int gx, int gy) {
-    scripted->sample = (imu_sample_t){.ax = (int16_t)gy, .ay = (int16_t)-gx};
+    scripted->gravity = (vec2i_t){gx, gy};
 }
 
 static void
@@ -214,7 +214,7 @@ test_the_sampler_starts_landscape_and_the_first_call_samples(void) {
     display_orientation_t o;
     begin_scripted_sampler(&o);
     TEST_ASSERT_EQUAL_INT(DISPLAY_DEFAULT_QUARTER, display_quarter(&o.display));
-    TEST_ASSERT_FALSE(display_orientation_sample(&o, 0, scripted_motion));
+    TEST_ASSERT_FALSE(display_orientation_sample(&o, 0, scripted_gravity));
     TEST_ASSERT_EQUAL_INT(1, scripted->reads);
 }
 
@@ -222,11 +222,11 @@ void
 test_the_sampler_waits_for_its_deadline_and_samples_exactly_at_it(void) {
     display_orientation_t o;
     begin_scripted_sampler(&o);
-    display_orientation_sample(&o, 0, scripted_motion);
+    display_orientation_sample(&o, 0, scripted_gravity);
 
-    display_orientation_sample(&o, DISPLAY_SAMPLE_MS * 1000 - 1, scripted_motion);
+    display_orientation_sample(&o, DISPLAY_SAMPLE_MS * 1000 - 1, scripted_gravity);
     TEST_ASSERT_EQUAL_INT(1, scripted->reads);
-    display_orientation_sample(&o, DISPLAY_SAMPLE_MS * 1000, scripted_motion);
+    display_orientation_sample(&o, DISPLAY_SAMPLE_MS * 1000, scripted_gravity);
     TEST_ASSERT_EQUAL_INT(2, scripted->reads);
 }
 
@@ -236,10 +236,10 @@ test_a_failed_read_still_moves_the_deadline(void) {
     begin_scripted_sampler(&o);
     scripted->read_ok = false;
 
-    TEST_ASSERT_FALSE(display_orientation_sample(&o, 0, scripted_motion));
-    TEST_ASSERT_FALSE(display_orientation_sample(&o, DISPLAY_SAMPLE_MS * 500, scripted_motion));
+    TEST_ASSERT_FALSE(display_orientation_sample(&o, 0, scripted_gravity));
+    TEST_ASSERT_FALSE(display_orientation_sample(&o, DISPLAY_SAMPLE_MS * 500, scripted_gravity));
     TEST_ASSERT_EQUAL_INT(1, scripted->reads);
-    display_orientation_sample(&o, DISPLAY_SAMPLE_MS * 1000, scripted_motion);
+    display_orientation_sample(&o, DISPLAY_SAMPLE_MS * 1000, scripted_gravity);
     TEST_ASSERT_EQUAL_INT(2, scripted->reads);
 }
 
@@ -251,14 +251,14 @@ test_the_sampler_reports_a_change_in_both_directions_and_only_then(void) {
     const int64_t step = DISPLAY_SAMPLE_MS * 1000;
 
     script_gravity(0, STRONG);
-    TEST_ASSERT_TRUE(display_orientation_sample(&o, now, scripted_motion));
+    TEST_ASSERT_TRUE(display_orientation_sample(&o, now, scripted_gravity));
     TEST_ASSERT_EQUAL_INT(0, display_quarter(&o.display));
-    TEST_ASSERT_FALSE(display_orientation_sample(&o, now += step, scripted_motion));
+    TEST_ASSERT_FALSE(display_orientation_sample(&o, now += step, scripted_gravity));
 
     script_gravity(-STRONG, 0);
-    TEST_ASSERT_TRUE(display_orientation_sample(&o, now += step, scripted_motion));
+    TEST_ASSERT_TRUE(display_orientation_sample(&o, now += step, scripted_gravity));
     TEST_ASSERT_EQUAL_INT(1, display_quarter(&o.display));
-    TEST_ASSERT_FALSE(display_orientation_sample(&o, now += step, scripted_motion));
+    TEST_ASSERT_FALSE(display_orientation_sample(&o, now += step, scripted_gravity));
 }
 
 /* suite */

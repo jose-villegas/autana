@@ -7,9 +7,12 @@
  * are trivial when time is a parameter.
  */
 
+#include <stddef.h>
+
 #include "suites.h"
 #include "unity.h"
 
+#include "input/imu_sample.h"
 #include "input/tilt.h"
 
 /* Roughly 1 g in the units the QMI8658 reports, which is what the filter sees
@@ -358,8 +361,32 @@ test_shaking_fades_rather_than_switching_off(void) {
     TEST_ASSERT_LESS_THAN_MESSAGE(16, tilt_shake(&t), "and settle to nothing");
 }
 
+/* imu_gravity_screen: how the sensor sits under the panel. Each sensor axis
+ * lands on one screen axis with its own sign; z and the gyroscope play no
+ * part. */
+static void
+test_each_sensor_axis_lands_on_its_screen_axis(void) {
+    const struct {
+        imu_sample_t s;
+        int x, y;
+    } cases[] = {
+        {{.ax = ONE_G}, 0, ONE_G},
+        {{.ax = -ONE_G}, 0, -ONE_G},
+        {{.ay = ONE_G}, -ONE_G, 0},
+        {{.ay = -ONE_G}, ONE_G, 0},
+        {{.az = ONE_G, .gx = 500, .gy = -500, .gz = 500}, 0, 0},
+    };
+
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        const vec2i_t g = imu_gravity_screen(&cases[i].s);
+        TEST_ASSERT_EQUAL_INT(cases[i].x, g.x);
+        TEST_ASSERT_EQUAL_INT(cases[i].y, g.y);
+    }
+}
+
 void
 run_tilt_suite(void) {
+    RUN_TEST(test_each_sensor_axis_lands_on_its_screen_axis);
     RUN_TEST(test_turning_the_board_does_not_read_as_shaking);
     RUN_TEST(test_shaking_registers_as_shaking);
     RUN_TEST(test_a_still_board_is_not_shaking);

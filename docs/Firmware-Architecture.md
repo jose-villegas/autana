@@ -64,29 +64,31 @@ flowchart TB
         Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
         Scene["scene/<br/><i>scenes loaded by name, the active camera</i>"]
     end
-    subgraph R5["the panel and the app contract"]
-        Display["display/<br/><i>orientation, panel clock, panel start</i>"]:::hw
+    subgraph R5["the app contract"]
         App["app/<br/><i>the shell/app contract, the app list, the app arena</i>"]
     end
-    subgraph R6["devices and drawing"]
-        Gfx["gfx/<br/><i>the one framebuffer</i>"]:::hw
-        Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
+    subgraph R6["panel and sensors"]
+        Display["display/<br/><i>orientation from the gravity it is handed, panel clock, panel start</i>"]:::hw
         Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
     end
-    subgraph R7["animation"]
+    subgraph R7["drawing"]
+        Gfx["gfx/<br/><i>the one framebuffer</i>"]:::hw
+        Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
+    end
+    subgraph R8["animation"]
         Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
     end
-    subgraph R8["content"]
+    subgraph R9["content"]
         Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
     end
-    subgraph R9["utilities"]
+    subgraph R10["utilities"]
         Util["util/<br/><i>fixed point, float and fixed maths, tween, jobs, tunables, time, settings, memory</i>"]
     end
-    subgraph R10["board"]
+    subgraph R11["board"]
         Board["board/<br/><i>this board's pins and peripherals</i>"]:::hw
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10 --> R11
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
@@ -102,7 +104,7 @@ flowchart TB
   folder, and is what the [Testing-Guide.md](Testing-Guide.md) relies on.
 - **The shell names no vendor firmware.** `main.c` and `shell/` reach the
   chip's vendor code only through modules that own it:
-  `input/input_shell.h` (`input_start`, `input_poll`),
+  `input/input_shell.h` (`input_start`, `input_poll`, `input_read_gravity`),
   `display/display_shell.h` (`display_start`, `display_sample_orientation`),
   `display/display.h` (the system panel clock) and
   `util/{timing,settings,memory}.h`; they call this firmware's own drivers

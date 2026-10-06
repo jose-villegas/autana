@@ -117,15 +117,15 @@ display_orientation_init(display_orientation_t* o) {
 }
 
 bool
-display_orientation_sample(display_orientation_t* o, int64_t now_us, display_motion_reader_t read) {
+display_orientation_sample(display_orientation_t* o, int64_t now_us, display_gravity_reader_t read) {
     if (now_us < o->next_sample_us) {
         return false;
     }
     o->next_sample_us = now_us + (int64_t)DISPLAY_SAMPLE_MS * 1000;
 
-    imu_sample_t sample;
-    if (!read(&sample)) {
+    vec2i_t gravity;
+    if (!read(&gravity)) {
         return false;
     }
-    return display_update(&o->display, imu_gravity_screen(&sample));
+    return display_update(&o->display, gravity);
 }
