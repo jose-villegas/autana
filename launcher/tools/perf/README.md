@@ -7,8 +7,11 @@ The wrapper restores `origin/main`'s release image afterwards;
 `--no-restore` omits that flash.
 
 Each `--suite NAME TESTS TABLE` takes a registered suite name, comma-separated
-test patterns (`-` for all), and a table command (`-` reads timing rows from
-the capture). Commands run from the current repository: `@CAPTURE@` and
+test patterns (`-` for all), and a table command (`-` reads the capture's
+`<row> both cores: mean <N>us` lines). Pattern width and count limits come
+from each project's `launcher/test/suites.h`; a pattern over the width is
+refused before any flash, and patterns over the count run as several requests
+on the same flash. Commands run from the current repository: `@CAPTURE@` and
 `@TABLE@` become this flash's capture and table files, `@PROJECT@` the revision's
 project tree. A table command requiring budgets must read them from that tree,
 for example with `--source @PROJECT@/path/to/suite.c`.
@@ -72,9 +75,7 @@ patterns matching active tests. For an unfiltered first pass, capture test
 ownership maps active rows to the shortest substrings unique among the tests
 the unfiltered pass reported (PASS, FAIL and IGNORE result lines). Missing inventory,
 unknown owners, or tests without a bounded unique substring fall back to the
-user's filter. Filter width and pattern count limits come from each project's
-`launcher/test/suites.h`; requests over the pattern count are split across
-invocations on the same flash.
+user's filter.
 
 Each suite's deadline is `--timeout` per requested run plus `--wait`.
 Table commands also run with a deadline of `--timeout`. Status logs
@@ -85,7 +86,9 @@ failures. Two consecutive failures stop measurement and write the summary
 so far, with decisions and errors. A summary is marked incomplete after such a stop,
 when the captures yielded no rows, or when any row is not measured. A success
 resets the failure count.
-Failed attempts consume the cap.
+Failed attempts consume the cap. A suite whose first flash on either side
+gives no timing rows stops measurement with an error naming the suite: its
+output needs a table command.
 
 ## Reading the result
 

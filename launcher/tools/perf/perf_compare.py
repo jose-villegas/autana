@@ -10,7 +10,7 @@ from pathlib import Path
 from statistics import mean
 from types import SimpleNamespace
 
-from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters
+from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, split_filters
 from seed_statistics import compare, minimum_seeds, permutation_samples
 
 MAX_RUNS = 16
@@ -74,7 +74,7 @@ def selected_suites(suites, active, owners, limits=None, listed=None):
         if not known:
             selected.append((suite, tests, template))
             continue
-        width, count = limits or filter_limits(Path(__file__).resolve().parents[3])
+        width = (limits or filter_limits(Path(__file__).resolve().parents[3]))[0]
         patterns = []
         for name in sorted(set(names)):
             pattern = next((name[start:start+length]
@@ -88,8 +88,7 @@ def selected_suites(suites, active, owners, limits=None, listed=None):
         if not patterns:
             selected.append((suite, tests, template))
         else:
-            selected.extend((suite, ",".join(patterns[start:start+count]), template)
-                            for start in range(0, len(patterns), count))
+            selected.append((suite, ",".join(patterns), template))
     return selected
 
 
@@ -129,7 +128,7 @@ def measure(args, runner=None):
     sizes = schedule(args.max_seeds, args.alpha)
     limits = {side: filter_limits(getattr(args, "project_" + side)) for side in ("a", "b")}
     for side in limits:
-        validate_filters(args.suite, limits[side])
+        split_filters(args.suite, limits[side])
     look_alpha = args.alpha / len(sizes) / 2
     if args.rng_seed is None:
         args.rng_seed = random.SystemRandom().randrange(2**63)
@@ -187,6 +186,15 @@ def measure(args, runner=None):
                     continue
                 failures = 0
                 records[side].append(record)
+                silent = [suite for suite, entry in record["suites"].items()
+                          if not any(run["rows"] for run in entry["runs"])]
+                if len(records[side]) == 1 and silent:
+                    tables = {suite: template for suite, _, template in args.suite}
+                    stop_error = RuntimeError("; ".join(
+                        f"{suite}: the first {side.upper()} flash's captures gave no timing rows with table "
+                        f"'{tables[suite]}'; pass a table command that turns this suite's capture into a timing table"
+                        for suite in silent))
+                    break
             if stop_error:
                 break
         previous_target = target
@@ -323,7 +331,7 @@ def main(argv=None):
             schedule(args.max_seeds, args.alpha)
             for project in (args.project_a, args.project_b):
                 if project:
-                    validate_filters(args.suite, filter_limits(project))
+                    split_filters(args.suite, filter_limits(project))
         except ValueError as error:
             parser.error(str(error))
         return 0

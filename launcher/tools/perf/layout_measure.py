@@ -273,11 +273,11 @@ def run_flash(args, seed, runner=None):
             if code and phase == "before":
                 raise RuntimeError(f"autana status before exited {code}")
 
-    validate_filters(args.suite, filter_limits(project))
+    requests = split_filters(args.suite, filter_limits(project))
     try:
         status("before")
         with open(out / f"{stem}.log", "w", encoding="utf-8") as log:
-            for index, (name, tests, template) in enumerate(args.suite):
+            for index, (name, tests, template) in enumerate(requests):
                 command = autana_command("--wait", str(getattr(args, "wait", 3600)),
                                          "--project", str(project), "suite", name,
                                          str(getattr(args, "timeout", 1800)), "--runs", str(args.runs),
@@ -346,13 +346,20 @@ def filter_limits(project):
     return define("SUITE_FILTER_LEN") - 1, define("SUITE_FILTER_MAX")
 
 
-def validate_filters(suites, limits):
-    """Refuse user filters before any seeded flash."""
+def split_filters(suites, limits):
+    """Refuse patterns over the width; split filters over the count into requests."""
     width, count = limits
-    for _, tests, _ in suites:
-        if tests != "-" and (len(tests.split(",")) > count or
-                             any(not test or len(test) > width for test in tests.split(","))):
-            raise ValueError(f"suite filter exceeds project limits: {width} characters, {count} patterns")
+    requests = []
+    for name, tests, template in suites:
+        if tests == "-":
+            requests.append((name, tests, template))
+            continue
+        patterns = tests.split(",")
+        if any(not pattern or len(pattern) > width for pattern in patterns):
+            raise ValueError(f"suite filter pattern exceeds project limit: {width} characters")
+        requests.extend((name, ",".join(patterns[start:start + count]), template)
+                        for start in range(0, len(patterns), count))
+    return requests
 
 
 def capture_tests(capture, include_ignored=True):

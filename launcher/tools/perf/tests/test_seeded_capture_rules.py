@@ -236,10 +236,12 @@ class CaptureRulesTests(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 1)
 
     def test_filter_boundary_and_different_project_limits(self):
-        capture.validate_filters([('s', 'abc,def', '-')], (3, 2))
-        for filters in ('abcd', 'a,b,c', ''):
+        self.assertEqual(capture.split_filters([('s', 'abc,def', '-')], (3, 2)), [('s', 'abc,def', '-')])
+        self.assertEqual(capture.split_filters([('s', 'a,b,c', 't'), ('u', '-', '-')], (3, 2)),
+                         [('s', 'a,b', 't'), ('s', 'c', 't'), ('u', '-', '-')])
+        for filters in ('abcd', 'a,,b', ''):
             with self.assertRaises(ValueError):
-                capture.validate_filters([('s', filters, '-')], (3, 2))
+                capture.split_filters([('s', filters, '-')], (3, 2))
         with tempfile.TemporaryDirectory() as root:
             args = arguments(root)
             (args.project_a / 'launcher/test/suites.h').write_text('#define SUITE_FILTER_LEN 5\n#define SUITE_FILTER_MAX 3\n')
@@ -273,6 +275,62 @@ class CaptureRulesTests(unittest.TestCase):
             self.assertTrue(extra)
             self.assertTrue(all(item['suites'] == args.suite for item in extra))
             self.assertEqual({call.args[3] for call in selected.call_args_list}, {(5, 1), (7, 2)})
+
+    def test_user_filter_over_count_runs_as_requests_on_one_flash(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root)
+            args.project, args.runs = args.project_a, 1
+            (args.project / 'launcher/test/suites.h').write_text(
+                '#define SUITE_FILTER_LEN 24\n#define SUITE_FILTER_MAX 1\n')
+            args.suite = [('suite', 'quiet,heavy', '-')]
+            fake = FakeAutana(root)
+            def runner(command, log, timeout):
+                if 'suite' in command and '--layout-seed' not in command:
+                    command = command + ['--layout-seed', '3']
+                return fake(command, log, timeout)
+            record = capture.run_flash(args, 3, runner)
+            self.assertEqual([command[command.index('--test') + 1] for command in fake.calls], ['quiet', 'heavy'])
+            self.assertIn('--flash', fake.calls[0])
+            self.assertNotIn('--flash', fake.calls[1])
+            self.assertEqual(fake.calls[1][fake.calls[1].index('--expect-build-id') + 1], record['build_id'])
+            self.assertEqual(record['suites']['suite']['runs'][0]['rows'], {'quiet': 10000, 'heavy': 10000})
+
+    def test_comparison_accepts_user_filter_over_count(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root, 4)
+            args.suite = [('suite', 'quiet,heavy,quie,heav,qu', '-')]
+            fake = FakeAutana(root)
+            def runner(command, log, timeout):
+                if 'suite' in command and '--layout-seed' not in command:
+                    command = command + ['--layout-seed', command[command.index('--expect-build-id') + 1].split('-')[0]]
+                return fake(command, log, timeout)
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = tool.measure(args, runner)
+            self.assertFalse(any(item.get('error') for item in result['plan']))
+            self.assertEqual(len(fake.calls), 2 * len(result['plan']))
+            self.assertEqual({result['rows'][name]['verdict'] for name in ('suite/quiet', 'suite/heavy')}, {'no change'})
+
+    def test_first_flash_without_rows_stops_naming_suite(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root)
+            args.suite = [('suite', '-', '-'), ('silent', '-', '-')]
+            fake = FakeAutana(root)
+            def runner(command, log, timeout):
+                if 'suite' in command and '--layout-seed' not in command:
+                    command = command + ['--layout-seed', command[command.index('--expect-build-id') + 1].split('-')[0]]
+                code, lines, wall = fake(command, log, timeout)
+                if 'silent' in command:
+                    for _, line in lines:
+                        if line.startswith('report: '):
+                            path = Path(line[8:]).with_suffix('.log')
+                            path.write_text('device_tests silent: 1234 us per step\n:1:test_silent:PASS\n')
+                return code, lines, wall
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    self.assertRaisesRegex(RuntimeError, r"silent.*no timing rows.*table command"):
+                tool.measure(args, runner)
+            plan = json.loads((args.out / 'plan.json').read_text())['plan']
+            self.assertEqual(len(plan), 1)
+            self.assertIn('Incomplete', (args.out / 'summary.md').read_text())
 
     def test_status_after_exception_and_table_timeout(self):
         with tempfile.TemporaryDirectory() as root:
