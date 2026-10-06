@@ -66,8 +66,23 @@ PYTHON_TOKENS = re.compile(
 )
 
 
+# A suite's list of RUN_TEST lines matches any other long list once
+# identifiers are ignored, and has no shared owner to extract; a pair counts
+# only if what remains without them is still a clone's length in itself.
+TEST_REGISTRATION = re.compile(r"RUN_TEST\s*\(\s*\w+\s*\)\s*;")
+
+
+def registration_only(pair):
+    if pair["format"] == "python":
+        return False
+    rest = TEST_REGISTRATION.sub(" ", pair["fragment"])
+    return pair["fragment"] != rest and len(C_TOKENS.findall(rest)) < MIN_TOKENS // 2
+
+
 def filter_pairs(pairs):
     def keep(pair):
+        if registration_only(pair):
+            return False
         first, second = pair["firstFile"], pair["secondFile"]
         same_range = (first["name"] == second["name"]
                       and all(first.get(field) == second.get(field)

@@ -254,18 +254,23 @@ typedef struct {
     unsigned lut;
 } variant_t;
 
+/* A table variant's row: its size, filter and kind. */
+#define TABLE(size, filter, kind)                                                                                      \
+    {"Table " #size "x" #size " " #filter ": int8 normal", #size "x" #size " " #filter, kind, size}
+
 static const variant_t VARIANTS[] = {
     {"Skin only (shared)", "", K_SKIN, 0},
     {"Reference: float normal, renormalised", "Reference", K_REFERENCE, 0},
     {"Direct: float normal", "Direct, float", K_DIRECT, 0},
     {"Direct: int8 normal", "Direct, int8", K_DIRECT8, 0},
-    {"Table 8x8 nearest: int8 normal", "8x8 nearest", K_LUT, 8},
-    {"Table 16x16 nearest: int8 normal", "16x16 nearest", K_LUT, 16},
-    {"Table 32x32 nearest: int8 normal", "32x32 nearest", K_LUT, 32},
-    {"Table 8x8 bilinear: int8 normal", "8x8 bilinear", K_LUT_BILINEAR, 8},
-    {"Table 16x16 bilinear: int8 normal", "16x16 bilinear", K_LUT_BILINEAR, 16},
-    {"Table 32x32 bilinear: int8 normal", "32x32 bilinear", K_LUT_BILINEAR, 32},
+    TABLE(8, nearest, K_LUT),
+    TABLE(16, nearest, K_LUT),
+    TABLE(32, nearest, K_LUT),
+    TABLE(8, bilinear, K_LUT_BILINEAR),
+    TABLE(16, bilinear, K_LUT_BILINEAR),
+    TABLE(32, bilinear, K_LUT_BILINEAR),
 };
+#undef TABLE
 #define VARIANT_N (sizeof(VARIANTS) / sizeof(VARIANTS[0]))
 
 static int
