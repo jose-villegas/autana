@@ -98,7 +98,7 @@ class FrustumTests(unittest.TestCase):
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ImportWiringTests(unittest.TestCase):
     def test_the_import_step_calls_the_source_its_settings_name(self):
-        camera = SimpleNamespace(half_fov_short_tan=0.62, near_z=6.0, path=SimpleNamespace(tracks="fly", node="camera"))
+        camera = SimpleNamespace(half_fov_short_tan=0.62, near_z=6.0, path=SimpleNamespace(clip="fly", node="camera"))
         scene_ = SimpleNamespace(camera=SimpleNamespace(component=camera), region=([0, 0, 0], [1, 1, 1]), path=pathlib.Path("out") / "hall.scene.toml")
         path = SimpleNamespace(source="camera_path", every_ms=100, size=(184, 224), samples=3, margin=8)
         region = SimpleNamespace(source="camera_region", rounds=4)

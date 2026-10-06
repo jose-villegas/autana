@@ -49,6 +49,7 @@ set(app_srcs
     "render/r3d_span.c"
     "render/r3d_scene.c"
     "scene/scene.c"
+    "scene/scene_asset.c"
     "scene/scene_draw.c"
     "scene/scene_shell.c"
     "shell/scene_system.c"

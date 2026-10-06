@@ -17,11 +17,11 @@
 #include "esp_log.h"
 
 #include "gfx/gfx.h"
-#include "meshes/sponza_scene_generated.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
+#include "sponza_content.h"
 #include "util/tune.h"
 
 static const char* TAG = "sponza";
@@ -34,7 +34,7 @@ static char failure[48];
 
 static void
 record_failure(const scene_failure_t* why) {
-    const char* what = why->what == NULL ? "?" : why->what;
+    const char* what = why->what;
     ESP_LOGE(TAG, "scene '%s' did not load (%d, asset %s); it stays blank", what, (int)why->status,
              asset_status_text(why->asset));
     const bool missing = why->asset == ASSET_ERR_NOT_FOUND || why->asset == ASSET_ERR_NO_PACK;
@@ -51,22 +51,28 @@ record_failure(const scene_failure_t* why) {
     }
 }
 
-/* Loads the scene and shows `variant`, the one of its five bakes to draw. */
+/* Loads the scene and shows sponza_bakes[shown], the one of its five bakes to draw. */
 static void
-enter_with(scene_entity_t variant) {
+enter_with(sponza_bake_t shown) {
     gfx_set_partial_clear(false);
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
     failure[0] = '\0';
     scene_failure_t why;
-    sponza = scene_load("sponza", &why);
+    sponza = scene_load(SPONZA_SCENE, &why);
     if (sponza == NULL) {
         record_failure(&why);
         return;
     }
-    const scene_entity_t bakes[] = {SPONZA_SCENE_ATRIUM, SPONZA_SCENE_ATRIUM_FLAT, SPONZA_SCENE_ATRIUM_LITE,
-                                    SPONZA_SCENE_ATRIUM_FITTED, SPONZA_SCENE_ATRIUM_FITTED_FULL};
-    for (size_t i = 0; i < sizeof bakes / sizeof bakes[0]; i++) {
-        scene_entity_set_enabled(sponza, bakes[i], bakes[i] == variant);
+    for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
+        const scene_entity_t bake = scene_find(sponza, sponza_bakes[i]);
+        if (bake == SCENE_ENTITY_NONE) {
+            ESP_LOGE(TAG, "the scene has no entity '%s'", sponza_bakes[i]);
+            if (snprintf(failure, sizeof failure, "no bake '%s'", sponza_bakes[i]) < 0) {
+                failure[0] = '\0';
+            }
+            continue;
+        }
+        scene_entity_set_enabled(sponza, bake, i == (int)shown);
     }
     (void)scene_activate(sponza, NULL);
     scene_set_render_scale(10000 / render_lab_scale());
@@ -77,27 +83,27 @@ enter_with(scene_entity_t variant) {
 
 static void
 scene_sponza_enter(void) {
-    enter_with(SPONZA_SCENE_ATRIUM);
+    enter_with(SPONZA_BAKE_FULL);
 }
 
 static void
 scene_sponza_lite_enter(void) {
-    enter_with(SPONZA_SCENE_ATRIUM_LITE);
+    enter_with(SPONZA_BAKE_LITE);
 }
 
 static void
 scene_sponza_flat_enter(void) {
-    enter_with(SPONZA_SCENE_ATRIUM_FLAT);
+    enter_with(SPONZA_BAKE_FLAT);
 }
 
 static void
 scene_sponza_fitted_enter(void) {
-    enter_with(SPONZA_SCENE_ATRIUM_FITTED);
+    enter_with(SPONZA_BAKE_FITTED);
 }
 
 static void
 scene_sponza_fitted_full_enter(void) {
-    enter_with(SPONZA_SCENE_ATRIUM_FITTED_FULL);
+    enter_with(SPONZA_BAKE_FITTED_FULL);
 }
 
 static void

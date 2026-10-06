@@ -454,7 +454,7 @@ to `../meshes/flythrough_tracks_generated.c` by
 [`tools/anim/bake_tracks.py`](../../../../tools/anim/README.md). Its poses for
 [`tools/r3d/report_triangle_sizes.sh`](../../../../tools/r3d/README.md#triangle-sizes)
 come from the generic track sampler, at the poses `suite_sponza_perf.c` times
-(every `SPONZA_POSE_EVERY_MS`) and the size `sponza_flythrough.h` names and the lens of
+(every `SPONZA_POSE_EVERY_MS`) and the size `sponza_content.h` names and the lens of
 the scene's camera object (`meshes/sponza.scene.toml`):
 
 ```sh

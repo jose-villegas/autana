@@ -146,6 +146,7 @@ $MAIN_DIR/render/upscale.c
 $MAIN_DIR/render/r3d_span.c
 $MAIN_DIR/render/r3d_scene.c
 $MAIN_DIR/scene/scene.c
+$MAIN_DIR/scene/scene_asset.c
 $MAIN_DIR/scene/scene_draw.c
 $MAIN_DIR/util/tune.c
 $MAIN_DIR/console/console_verbs.c
@@ -456,6 +457,10 @@ export AUTANA_ASSET_DIR
 AUTANA_ANIM_PROBE="$BUILD_DIR/anim_probe.bin"
 export AUTANA_ANIM_PROBE
 "$PYTHON" "$TEST_DIR/../tools/tests/anim_probe.py" -o "$AUTANA_ANIM_PROBE"
+# The scene suite_scene.c holds to the scene entry's Python writer.
+AUTANA_SCENE_PROBE="$BUILD_DIR/scene_probe.bin"
+export AUTANA_SCENE_PROBE
+"$PYTHON" "$TEST_DIR/../tools/tests/scene_probe.py" -o "$AUTANA_SCENE_PROBE"
 
 if [ "$SANITIZE" = 1 ] && [ "$(uname -s)" = Linux ]; then
     # Control ids are value addresses and must stay stable across frames, as on the device.
