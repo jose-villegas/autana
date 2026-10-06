@@ -89,7 +89,7 @@ flowchart TB
         Encode["util/encode/<br/><i>JSON splice, BMP and base64</i>"]
     end
     subgraph R12["scalars and the build"]
-        Scalar["util/scalar/<br/><i>fixed point, integer maths, trig tables, random numbers</i>"]
+        Scalar["util/scalar/<br/><i>scalar operations per number type (f, i, s, x), trig tables, random numbers</i>"]
         Build["util/build/<br/><i>which build variant this is</i>"]
     end
     subgraph R13["board"]

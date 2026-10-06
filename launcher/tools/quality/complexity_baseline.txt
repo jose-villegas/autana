@@ -1892,7 +1892,6 @@
 3	launcher/main/render/r3d_pipeline.c:52	r3d_lens_place
 3	launcher/main/render/r3d_pipeline.c:256	r3d_pipeline_transform
 3	launcher/main/render/r3d_span.c:40	clamp_value
-3	launcher/main/render/r3d_span.c:30	mathf_clamp
 3	launcher/main/render/r3d_span.c:328	clampi
 3	launcher/main/render/r3d_span.c:150	fill_flat_span
 3	launcher/main/render/r3d_span.c:164	fill_solid_span

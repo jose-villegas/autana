@@ -2,12 +2,12 @@
  * mathi: plain integer scalar operations, for grid, pixel and cell
  * coordinates. The first group serves the math templates (math_template.h):
  * sums and products wrap like any int32, so a caller keeps its coordinates
- * small, and a dot product widens to int64. There is no division or angle,
- * hence no rotation maths. The rest are the shared integer helpers: abs, min,
+ * small, and a dot product widens to int64. The template group has no div,
+ * sqrt or angle op, so an `i` vector gets no normalize or rotation. The rest are the shared integer helpers: abs, min,
  * max, clamp, an approximate length, an integer square root, even rounding.
  *
  * `static inline`: some are called tens of thousands of times a second from
- * an innermost loop, where a cross-file call is not free. abs and min are
+ * an innermost loop, where a cross-file call is not free. abs and sign are
  * prefixed like the rest, which also keeps them clear of <stdlib.h>.
  */
 #pragma once
