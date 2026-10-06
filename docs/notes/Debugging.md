@@ -32,7 +32,7 @@ Not a diagnosis question so much as a recovery one; see
 [`Flashing-and-Toolchain.md`](Flashing-and-Toolchain.md) for the BOOT-button
 recovery sequence and why auto-reset stops working once firmware goes idle.
 
-Every build, release included, also runs POST at boot (`main/boot/post.c`):
+Every build, release included, also runs POST at boot (`main/selftest/post.c`):
 I2C peripheral probes, flash size, heap headroom, MAC validity, the on-die
 temperature sensor, the SD card. Silent when everything passes; on a
 **failure** it holds the report on screen for 8 seconds or until touched, so
@@ -205,7 +205,7 @@ Two ways to see raw sensor readings without adding any code:
 
 - **POST's boot-time check**: fails outright (not just a warning) when the
   largest free DMA-capable block falls below `MIN_LARGEST_DMA_BLOCK` in
-  `main/boot/post.c`, and reports that block plus free DMA heap on every
+  `main/selftest/post.c`, and reports that block plus free DMA heap on every
   boot, release included. Both figures come from `MEMORY_DMA`; reading
   either against `esp_get_free_heap_size()` compares different pools and
   invents a fragmentation gap that is not there (see

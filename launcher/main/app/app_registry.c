@@ -9,7 +9,7 @@
  * the editor's runtime and every render-host harness link this one list
  * and call app_register() on whatever app_t they have.
  */
-#include "app.h"
+#include "app/app.h"
 
 #include <assert.h>
 #include <string.h>

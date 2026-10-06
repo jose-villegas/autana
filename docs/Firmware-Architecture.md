@@ -27,7 +27,7 @@ and means something different by each:
 |---|---|
 | **shell** | the frame loop and the app switching: `shell/`, whose log tag, shared with `main.c`'s boot lines, is `shell`; `main.c` starts the board and calls `shell_run()` |
 | **launcher** | the home screen the shell draws when no app is running: `ui/ui_launcher.c` |
-| **boot** | what runs once before the loop exists and never again: `boot/` |
+| **boot** | what runs once before the loop exists: `main.c`'s startup and the animation in `boot/`. The power-on self test and the suite runner in `selftest/` run then too, and an app may run either again later |
 
 The top-level folder `launcher/` is the whole firmware, not the home
 screen.
@@ -36,17 +36,17 @@ screen.
 
 ## Layers
 
-Each row may include anything in a row below it, and the root headers
-(`app.h`, `app_arena.h`, `build_variant.h`), never a row
-above or a folder beside it in the same row. The top row is the two callers,
-and neither includes the other: `main.c` starts the board and calls
-`shell_run()`, and the apps. The shell reaches an app only through the
-callbacks `app.h` declares. Folders that touch hardware are marked. `ls launcher/main/<folder>` is the inventory; this is the shape.
+Each row may include anything in a row below it, and the root header
+`build_variant.h`, never a row above or a folder beside it in the same row.
+The top row is the two callers, and neither includes the other: `main.c`
+starts the board and calls `shell_run()`, and the apps. The shell reaches an
+app only through the callbacks `app/app.h` declares. Folders that touch
+hardware are marked. `ls launcher/main/<folder>` is the inventory; this is
+the shape.
 
 ```mermaid
 flowchart TB
     classDef hw fill:#8a3d3d,color:#fff
-    classDef contract fill:#f4f1e8,stroke:#333,stroke-width:1px,color:#111
 
     subgraph R1["callers"]
         Apps["apps/<br/><i>one folder per app</i>"]
@@ -55,39 +55,41 @@ flowchart TB
     subgraph R2["the runtime"]
         Shell["shell/<br/><i>the frame loop, app switching, engine systems</i>"]
     end
-    subgraph R3["before the loop"]
-        Boot["boot/<br/><i>POST, self-test, boot animation</i>"]:::hw
+    subgraph R3["boot and self test"]
+        Boot["boot/<br/><i>the startup animation</i>"]
+        Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
     end
     subgraph R4["services"]
         Ui["ui/<br/><i>microui, launcher, Control Center</i>"]
         Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
         Scene["scene/<br/><i>scenes loaded by name, the active camera</i>"]
     end
-    subgraph R5["the shell's panel"]
-        Display["display/<br/><i>orientation, panel clock, panel start</i>"]:::hw
+    subgraph R5["the app contract"]
+        App["app/<br/><i>the shell/app contract, the app list, the app arena</i>"]
     end
-    subgraph R6["devices and drawing"]
-        Gfx["gfx/<br/><i>the one framebuffer</i>"]:::hw
-        Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
+    subgraph R6["panel and sensors"]
+        Display["display/<br/><i>orientation from the gravity it is handed, panel clock, panel start</i>"]:::hw
         Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
     end
-    subgraph R7["animation"]
+    subgraph R7["drawing"]
+        Gfx["gfx/<br/><i>the one framebuffer</i>"]:::hw
+        Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
+    end
+    subgraph R8["animation"]
         Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
     end
-    subgraph R8["content"]
+    subgraph R9["content"]
         Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
     end
-    subgraph R9["utilities"]
+    subgraph R10["utilities"]
         Util["util/<br/><i>fixed point, float and fixed maths, tween, jobs, tunables, time, settings, memory</i>"]
     end
-    subgraph R10["board"]
+    subgraph R11["board"]
         Board["board/<br/><i>this board's pins and peripherals</i>"]:::hw
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10
-    Contract(["app.h: the shell/app contract"]):::contract
-    Shell -.->|"calls through app.h"| Apps
-    Contract -.->|"includes input/input.h"| Input
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10 --> R11
+    Shell -.->|"calls through app/app.h"| Apps
 ```
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
@@ -102,7 +104,7 @@ flowchart TB
   folder, and is what the [Testing-Guide.md](Testing-Guide.md) relies on.
 - **The shell names no vendor firmware.** `main.c` and `shell/` reach the
   chip's vendor code only through modules that own it:
-  `input/input_shell.h` (`input_start`, `input_poll`),
+  `input/input_shell.h` (`input_start`, `input_poll`, `input_read_gravity`),
   `display/display_shell.h` (`display_start`, `display_sample_orientation`),
   `display/display.h` (the system panel clock) and
   `util/{timing,settings,memory}.h`; they call this firmware's own drivers
@@ -341,7 +343,7 @@ the folder deletes the declaration. What each build variant carries is
 [Build-Variants.md](Build-Variants.md).
 
 **App memory is lent, not owned.** The shell holds one static block in
-PSRAM, the app arena (`APP_ARENA_BYTES`, `app_arena.h`), and empties it
+PSRAM, the app arena (`APP_ARENA_BYTES`, `app/app_arena.h`), and empties it
 right after every app's `exit()`; an app takes bulk buffers from it and
 never frees them. Re-entry cannot fail to heap fragmentation, since every
 visit gets the same block, and taking from it is no dynamic-memory call

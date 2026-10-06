@@ -14,8 +14,8 @@
 
 #include "unity.h"
 
-#include "app.h"
-#include "app_arena.h"
+#include "app/app.h"
+#include "app/app_arena.h"
 #include "apps/render_lab/render_lab_scene.h"
 #include "apps/render_lab/rt_path.h"
 #include "gfx/gfx.h"

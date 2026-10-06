@@ -1,4 +1,4 @@
-#include "boot/post_layout.h"
+#include "selftest/post_layout.h"
 
 #include "display/display.h"
 

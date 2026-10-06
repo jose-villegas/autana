@@ -67,7 +67,7 @@ menu "Launcher"
             toggle screen.
 
             Off by default. The suite count has grown well past the "roughly
-            half a second" boot/selftest.c's own comment once described, so
+            half a second" selftest/selftest.c's own comment once described, so
             paying that cost on every boot of an interactive diagnostics
             session - just to check the POST report or flip a toggle - makes
             the build too slow to use for anything else. Turn this on only

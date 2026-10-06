@@ -2,7 +2,7 @@
 
 #ifdef DEVICE_BUILD
 
-#include "app.h"
+#include "app/app.h"
 #include "unity.h"
 
 #include "util/memory.h"

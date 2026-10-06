@@ -7,14 +7,14 @@
 #include <stdio.h>
 
 #include "boot/boot_anim.h"
-#include "boot/post.h"
-#include "boot/post_layout.h"
-#include "boot/post_ui.h"
 #include "build_variant.h"
 #include "display/display.h"
 #include "display/display_shell.h"
 #include "gfx/gfx.h"
 #include "input/input_shell.h"
+#include "selftest/post.h"
+#include "selftest/post_layout.h"
+#include "selftest/post_ui.h"
 #include "shell/shell.h"
 #include "ui/ui.h"
 #include "ui/ui_launcher.h"
@@ -27,7 +27,7 @@
 #endif
 
 #if CONFIG_LAUNCHER_SELFTEST
-#include "boot/selftest.h"
+#include "selftest/selftest.h"
 #endif
 
 #include "esp_log.h"

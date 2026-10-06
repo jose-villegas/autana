@@ -6,13 +6,13 @@
  * failure screen at boot and by whichever app re-runs the checks.
  */
 
-#include "boot/post_ui.h"
+#include "selftest/post_ui.h"
 
 #include <stdio.h>
 #include <string.h>
 
-#include "boot/post_layout.h"
 #include "gfx/gfx.h"
+#include "selftest/post_layout.h"
 #include "ui/ui_transform.h"
 
 #define BG_RGB      0x0A0C14

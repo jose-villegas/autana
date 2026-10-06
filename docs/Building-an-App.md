@@ -2,7 +2,7 @@
 
 What an app is to the shell: the callbacks it fills in, when the shell calls
 them, and how it gets into and out of the launcher list. The contract is
-[`launcher/main/app.h`](../launcher/main/app.h); the caller is the shell,
+[`launcher/main/app/app.h`](../launcher/main/app/app.h); the caller is the shell,
 [`launcher/main/shell/`](../launcher/main/shell/). For the UI inside an app see
 [`Building-a-Screen.md`](Building-a-Screen.md); for why the shell is built this
 way see [`Firmware-Architecture.md`](Firmware-Architecture.md).
@@ -24,7 +24,7 @@ one binary, one address space, no isolation.
 the shell, not `CMakeLists.txt`:
 
 ```c
-#include "app.h"
+#include "app/app.h"
 #include "gfx/gfx.h"
 
 static void yours_enter(void) { /* reset state */ }

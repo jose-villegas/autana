@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "app.h"
+#include "app/app.h"
 
 /* Reads and clears whether SCREENSHOT was seen since the last call, like
  * buttons_read() (input/buttons.h): the shell's loop acts on each request

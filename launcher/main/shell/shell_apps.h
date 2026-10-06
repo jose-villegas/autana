@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#include "app.h"
+#include "app/app.h"
 #include "input/gesture.h"
 #include "input/input.h"
 

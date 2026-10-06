@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "app.h"
+#include "app/app.h"
 #include "display/display.h"
 #include "display/display_shell.h"
 #include "gfx/gfx.h"
@@ -214,7 +214,7 @@ run_pending_selftest_suite(void) {
 
 static void
 apply_display_orientation(int64_t now_us) {
-    if (display_sample_orientation(now_us)) {
+    if (display_sample_orientation(now_us, input_read_gravity)) {
         ui_set_transform(ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT));
         gfx_request_full_redraw();
     }

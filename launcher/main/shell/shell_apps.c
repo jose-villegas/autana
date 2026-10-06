@@ -8,8 +8,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "app.h"
-#include "app_arena.h"
+#include "app/app.h"
+#include "app/app_arena.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "input/gesture.h"
