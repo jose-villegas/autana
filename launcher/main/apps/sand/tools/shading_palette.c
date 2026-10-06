@@ -138,16 +138,10 @@ group_of(cell_t c, unsigned depth) {
     }
 }
 
-/* Native RGB565, not the panel's byte-swapped gfx_color_t. */
-static uint16_t
-native_key(gfx_color_t c) {
-    return (uint16_t)((c >> 8) | (c << 8));
-}
-
+/* A native RGB565 key as 0xRRGGBB. */
 static uint32_t
 key_rgb888(uint16_t key) {
-    const unsigned r5 = (key >> 11) & 0x1Fu, g6 = (key >> 5) & 0x3Fu, b5 = key & 0x1Fu;
-    return ((r5 << 3 | r5 >> 2) << 16) | ((g6 << 2 | g6 >> 4) << 8) | (b5 << 3 | b5 >> 2);
+    return gfx_color_rgb888(gfx_color_swap(key));
 }
 
 /* 1. the sweep */
@@ -176,7 +170,7 @@ record(cell_t c, unsigned hash, unsigned mask, unsigned depth, bool base_state) 
     bits |= (base_state && depth == 0) ? PIN_DEPTH : 0u;
     const int n_out = pat == MATERIAL_HATCHED ? 3 : 1;
     for (int i = 0; i < n_out; i++) {
-        seen[g][native_key(out[i])] |= bits;
+        seen[g][gfx_color_swap(out[i])] |= bits;
     }
 }
 
@@ -761,50 +755,14 @@ paint_frame(const uint8_t* grid, gfx_color_t* fb, uint8_t* grp, uint32_t time_ms
 
 /* 2. OKLab and the quantiser */
 
-typedef struct {
-    double l, a, b;
-} lab_t;
-
-typedef struct {
-    double r, g, b;
-} lin_t;
-
-static double
-srgb_to_linear(double c) {
-    return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
-}
-
 static double
 linear_to_srgb(double c) {
     c = c < 0.0 ? 0.0 : (c > 1.0 ? 1.0 : c);
     return c <= 0.0031308 ? c * 12.92 : 1.055 * pow(c, 1.0 / 2.4) - 0.055;
 }
 
-/* Scaled by 100 so a distance reads like a CIE delta E: about 1-2 is a just
- * noticeable difference. */
-static lin_t
-rgb_to_lin(uint32_t rgb) {
-    return (lin_t){
-        srgb_to_linear(((rgb >> 16) & 0xFF) / 255.0),
-        srgb_to_linear(((rgb >> 8) & 0xFF) / 255.0),
-        srgb_to_linear((rgb & 0xFF) / 255.0),
-    };
-}
-
-static lab_t
-lin_to_lab(lin_t c) {
-    const double l = cbrt(0.4122214708 * c.r + 0.5363325602 * c.g + 0.0514459929 * c.b);
-    const double m = cbrt(0.2119034982 * c.r + 0.6806995451 * c.g + 0.1073969566 * c.b);
-    const double s = cbrt(0.0883024619 * c.r + 0.2817188376 * c.g + 0.6299787005 * c.b);
-    return (lab_t){
-        100.0 * (0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s),
-        100.0 * (1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s),
-        100.0 * (0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s),
-    };
-}
-
 static uint16_t
-lab_to_key(lab_t p) {
+lab_to_key(gfx_lab_t p) {
     const double L = p.l / 100.0, A = p.a / 100.0, B = p.b / 100.0;
     double l = L + 0.3963377774 * A + 0.2158037573 * B;
     double m = L - 0.1055613458 * A - 0.0638541728 * B;
@@ -819,40 +777,34 @@ lab_to_key(lab_t p) {
     return (uint16_t)(r5 << 11 | g6 << 5 | b5);
 }
 
-static double
-dist2(lab_t p, lab_t q) {
-    const double dl = p.l - q.l, da = p.a - q.a, db = p.b - q.b;
-    return dl * dl + da * da + db * db;
-}
-
 typedef struct {
     int n;
     uint16_t* key;
-    lab_t* p;
+    gfx_lab_t* p;
     double* w;
     int k;
-    lab_t* c;
+    gfx_lab_t* c;
     double sse;
     bool has_next;
-    lab_t* next_c;
+    gfx_lab_t* next_c;
     double next_sse;
     double max_error;
     int fixed;
 } gq_t;
 
 static gq_t quant[G_COUNT];
-static lab_t key_lab[KEYS];
-static lin_t key_lin[KEYS];
+static gfx_lab_t key_lab[KEYS];
+static gfx_lin_t key_lin[KEYS];
 
 static bool
-lloyd_assign(const gq_t* q, const lab_t* c, int k, int* assign, int iter, double* sse) {
+lloyd_assign(const gq_t* q, const gfx_lab_t* c, int k, int* assign, int iter, double* sse) {
     bool moved = false;
     *sse = 0.0;
     for (int i = 0; i < q->n; i++) {
         int best = 0;
-        double bd = dist2(q->p[i], c[0]);
+        double bd = gfx_lab_dist2(q->p[i], c[0]);
         for (int j = 1; j < k; j++) {
-            const double d = dist2(q->p[i], c[j]);
+            const double d = gfx_lab_dist2(q->p[i], c[j]);
             if (d < bd) {
                 bd = d;
                 best = j;
@@ -868,7 +820,7 @@ lloyd_assign(const gq_t* q, const lab_t* c, int k, int* assign, int iter, double
 }
 
 static void
-lloyd_update_centers(const gq_t* q, lab_t* c, int k, const int* assign) {
+lloyd_update_centers(const gq_t* q, gfx_lab_t* c, int k, const int* assign) {
     for (int j = q->fixed; j < k; j++) {
         double sl = 0, sa = 0, sb = 0, sw = 0;
         for (int i = 0; i < q->n; i++) {
@@ -880,13 +832,13 @@ lloyd_update_centers(const gq_t* q, lab_t* c, int k, const int* assign) {
             }
         }
         if (sw > 0.0) {
-            c[j] = (lab_t){sl / sw, sa / sw, sb / sw};
+            c[j] = (gfx_lab_t){sl / sw, sa / sw, sb / sw};
         }
     }
 }
 
 static double
-lloyd(const gq_t* q, lab_t* c, int k) {
+lloyd(const gq_t* q, gfx_lab_t* c, int k) {
     int* assign = malloc((size_t)q->n * sizeof *assign);
     double sse = 0.0;
     for (int iter = 0; iter < 60; iter++) {
@@ -904,9 +856,9 @@ static double
 group_max_error(const gq_t* q) {
     double worst = 0.0;
     for (int i = 0; i < q->n; i++) {
-        double bd = dist2(q->p[i], q->c[0]);
+        double bd = gfx_lab_dist2(q->p[i], q->c[0]);
         for (int j = 1; j < q->k; j++) {
-            const double d = dist2(q->p[i], q->c[j]);
+            const double d = gfx_lab_dist2(q->p[i], q->c[j]);
             bd = d < bd ? d : bd;
         }
         worst = bd > worst ? bd : worst;
@@ -928,9 +880,9 @@ plan_next(gq_t* q) {
     int worst = -1;
     double wd = 0.0;
     for (int i = 0; i < q->n; i++) {
-        double bd = dist2(q->p[i], q->c[0]);
+        double bd = gfx_lab_dist2(q->p[i], q->c[0]);
         for (int j = 1; j < q->k; j++) {
-            const double d = dist2(q->p[i], q->c[j]);
+            const double d = gfx_lab_dist2(q->p[i], q->c[j]);
             bd = d < bd ? d : bd;
         }
         const double score = minimax ? bd : bd * q->w[i];
@@ -994,7 +946,7 @@ pin_depth_steps(void) {
         for (unsigned d = 0; d <= MATERIAL_LIQUID_DEPTH_BAND; d++) {
             gfx_color_t out[3];
             material_colours(CELL_MAKE(m, MASS_MAX), 0u, 0u, d, out);
-            pinned[group_of(CELL_MAKE(m, MASS_MAX), d)][native_key(out[0])] = true;
+            pinned[group_of(CELL_MAKE(m, MASS_MAX), d)][gfx_color_swap(out[0])] = true;
         }
     }
 }
@@ -1068,7 +1020,7 @@ quant_seed_centers(gq_t* q) {
         sb += q->w[j] * q->p[j].b;
         sw += q->w[j];
     }
-    q->c[0] = (lab_t){sl / sw, sa / sw, sb / sw};
+    q->c[0] = (gfx_lab_t){sl / sw, sa / sw, sb / sw};
     q->k = 1;
     q->sse = lloyd(q, q->c, 1);
     q->max_error = group_max_error(q);
@@ -1098,7 +1050,7 @@ greedy_grow_palette(int budget) {
             return;
         }
         gq_t* q = &quant[best];
-        lab_t* keep_c = q->c;
+        gfx_lab_t* keep_c = q->c;
         const int keep_k = q->k;
         const double keep_sse = q->sse;
         q->c = q->next_c;
@@ -1164,7 +1116,7 @@ map_index_for_key(group_t g, uint16_t k, const int16_t* index_of) {
     double bd = 1e30;
     if (g == G_SPARE) {
         for (int j = 0; j < UI_ENTRIES; j++) {
-            const double d = dist2(key_lab[k], key_lab[palette[j]]);
+            const double d = gfx_lab_dist2(key_lab[k], key_lab[palette[j]]);
             if (d < bd) {
                 bd = d;
                 best = j;
@@ -1174,7 +1126,7 @@ map_index_for_key(group_t g, uint16_t k, const int16_t* index_of) {
     }
     for (int j = 0; j < q->k; j++) {
         const int idx = index_of[lab_to_key(q->c[j])];
-        const double d = dist2(key_lab[k], key_lab[palette[idx]]);
+        const double d = gfx_lab_dist2(key_lab[k], key_lab[palette[idx]]);
         if (d < bd) {
             bd = d;
             best = idx;
@@ -1220,7 +1172,7 @@ build_palette(void) {
 static double
 map_error(group_t g, uint16_t key) {
     const int idx = map_index[g][key];
-    return idx < 0 ? 1e9 : sqrt(dist2(key_lab[key], key_lab[palette[idx]]));
+    return idx < 0 ? 1e9 : sqrt(gfx_lab_dist2(key_lab[key], key_lab[palette[idx]]));
 }
 
 /* ramps */
@@ -1249,7 +1201,7 @@ ramp_add(cell_t c, unsigned hash, unsigned mask, unsigned depth) {
     gfx_color_t out[3];
     material_colours(c, hash, mask, depth, out);
     ramp.g[ramp.n] = group_of(c, depth);
-    ramp.key[ramp.n] = native_key(out[0]);
+    ramp.key[ramp.n] = gfx_color_swap(out[0]);
     ramp.n++;
 }
 
@@ -1266,7 +1218,7 @@ ramp_step(int i, bool* left, ramp_stats_t* st) {
     const int idx = map_index[ramp.g[i]][ramp.key[i]];
     const int prev = i == 0 ? -1 : map_index[ramp.g[i - 1]][ramp.key[i - 1]];
     if (i > 0 && idx == prev && ramp.key[i] != ramp.key[i - 1]) {
-        const double d = sqrt(dist2(key_lab[ramp.key[i]], key_lab[ramp.key[i - 1]]));
+        const double d = sqrt(gfx_lab_dist2(key_lab[ramp.key[i]], key_lab[ramp.key[i - 1]]));
         st->lost = d > st->lost ? d : st->lost;
     }
     if (idx == prev) {
@@ -1707,8 +1659,8 @@ write_swatches(const char* dir) {
 
 typedef struct {
     uint16_t key[EGA_ENTRIES];
-    lin_t lin[EGA_ENTRIES];
-    lab_t lab[EGA_ENTRIES];
+    gfx_lin_t lin[EGA_ENTRIES];
+    gfx_lab_t lab[EGA_ENTRIES];
 } ega_palette_t;
 
 typedef struct {
@@ -1731,10 +1683,10 @@ ega_set(ega_palette_t* pal, int i, uint16_t key) {
 }
 
 static ega_choice_t
-ega_nearest_single(const ega_palette_t* pal, lab_t target) {
+ega_nearest_single(const ega_palette_t* pal, gfx_lab_t target) {
     ega_choice_t best = {0, 0, 0, 1e30, 0.0};
     for (int i = 0; i < EGA_ENTRIES; i++) {
-        const double e = sqrt(dist2(target, pal->lab[i]));
+        const double e = sqrt(gfx_lab_dist2(target, pal->lab[i]));
         if (e < best.error) {
             best = (ega_choice_t){(uint8_t)i, (uint8_t)i, 0, e, 0.0};
         }
@@ -1746,22 +1698,23 @@ ega_nearest_single(const ega_palette_t* pal, lab_t target) {
  * the target's least-squares projection onto that segment, plus one on
  * each side), keeping best/best_cost if one of them wins. */
 static void
-ega_try_pair(const ega_palette_t* pal, lin_t c, lab_t target, int i, int j, double* best_cost, ega_choice_t* best) {
-    const lin_t d = {pal->lin[j].r - pal->lin[i].r, pal->lin[j].g - pal->lin[i].g, pal->lin[j].b - pal->lin[i].b};
+ega_try_pair(const ega_palette_t* pal, gfx_lin_t c, gfx_lab_t target, int i, int j, double* best_cost,
+             ega_choice_t* best) {
+    const gfx_lin_t d = {pal->lin[j].r - pal->lin[i].r, pal->lin[j].g - pal->lin[i].g, pal->lin[j].b - pal->lin[i].b};
     const double den = d.r * d.r + d.g * d.g + d.b * d.b;
     if (den <= 0.0) {
         return;
     }
     const double t = ((c.r - pal->lin[i].r) * d.r + (c.g - pal->lin[i].g) * d.g + (c.b - pal->lin[i].b) * d.b) / den;
     const int centre = (int)lround(t * EGA_LEVELS);
-    const double grain = sqrt(dist2(pal->lab[i], pal->lab[j]));
+    const double grain = sqrt(gfx_lab_dist2(pal->lab[i], pal->lab[j]));
     for (int level = centre - 1; level <= centre + 1; level++) {
         if (level < 1 || level >= EGA_LEVELS) {
             continue;
         }
         const double f = (double)level / EGA_LEVELS;
-        const lin_t mix = {pal->lin[i].r + d.r * f, pal->lin[i].g + d.g * f, pal->lin[i].b + d.b * f};
-        const double e = sqrt(dist2(target, lin_to_lab(mix)));
+        const gfx_lin_t mix = {pal->lin[i].r + d.r * f, pal->lin[i].g + d.g * f, pal->lin[i].b + d.b * f};
+        const double e = sqrt(gfx_lab_dist2(target, gfx_lin_to_lab(mix)));
         const double cost = e + EGA_GRAIN_CHARGE * grain;
         if (cost < *best_cost) {
             *best_cost = cost;
@@ -1772,8 +1725,8 @@ ega_try_pair(const ega_palette_t* pal, lin_t c, lab_t target, int i, int j, doub
 
 static ega_choice_t
 ega_choose(const ega_palette_t* pal, uint16_t key) {
-    const lin_t c = key_lin[key];
-    const lab_t target = key_lab[key];
+    const gfx_lin_t c = key_lin[key];
+    const gfx_lab_t target = key_lab[key];
     ega_choice_t best = ega_nearest_single(pal, target);
     double best_cost = best.error;
     for (int i = 0; i < EGA_ENTRIES; i++) {
@@ -1797,14 +1750,14 @@ ega_cost(const ega_palette_t* pal, const ega_points_t* pts) {
 /* Seeds every entry past the background on whichever remaining point is
  * furthest (weighted) from every centre chosen so far. */
 static void
-ega_farthest_seed(lab_t* c, const ega_points_t* pts) {
+ega_farthest_seed(gfx_lab_t* c, const ega_points_t* pts) {
     for (int j = 1; j < EGA_ENTRIES; j++) {
         int far = 0;
         double fd = -1.0;
         for (int i = 0; i < pts->n; i++) {
             double bd = 1e30;
             for (int m = 0; m < j; m++) {
-                const double d = dist2(key_lab[pts->key[i]], c[m]);
+                const double d = gfx_lab_dist2(key_lab[pts->key[i]], c[m]);
                 bd = d < bd ? d : bd;
             }
             if (bd * pts->w[i] > fd) {
@@ -1817,14 +1770,14 @@ ega_farthest_seed(lab_t* c, const ega_points_t* pts) {
 }
 
 static void
-ega_lloyd(lab_t* c, const ega_points_t* pts) {
+ega_lloyd(gfx_lab_t* c, const ega_points_t* pts) {
     for (int iter = 0; iter < 40; iter++) {
         double sl[EGA_ENTRIES] = {0}, sa[EGA_ENTRIES] = {0}, sb[EGA_ENTRIES] = {0}, sw[EGA_ENTRIES] = {0};
         for (int i = 0; i < pts->n; i++) {
-            const lab_t p = key_lab[pts->key[i]];
+            const gfx_lab_t p = key_lab[pts->key[i]];
             int best = 0;
             for (int j = 1; j < EGA_ENTRIES; j++) {
-                if (dist2(p, c[j]) < dist2(p, c[best])) {
+                if (gfx_lab_dist2(p, c[j]) < gfx_lab_dist2(p, c[best])) {
                     best = j;
                 }
             }
@@ -1835,7 +1788,7 @@ ega_lloyd(lab_t* c, const ega_points_t* pts) {
         }
         for (int j = 1; j < EGA_ENTRIES; j++) {
             if (sw[j] > 0.0) {
-                c[j] = (lab_t){sl[j] / sw[j], sa[j] / sw[j], sb[j] / sw[j]};
+                c[j] = (gfx_lab_t){sl[j] / sw[j], sa[j] / sw[j], sb[j] / sw[j]};
             }
         }
     }
@@ -1845,7 +1798,7 @@ ega_lloyd(lab_t* c, const ega_points_t* pts) {
  * it lowers the dithered cost, restoring the entry otherwise. */
 static bool
 ega_try_move(ega_palette_t* pal, const ega_points_t* pts, int j, int axis, int sign, double step, double* cost) {
-    lab_t moved = pal->lab[j];
+    gfx_lab_t moved = pal->lab[j];
     const double delta = sign * step;
     moved.l += axis == 0 ? delta : 0.0;
     moved.a += axis == 1 ? delta : 0.0;
@@ -1895,7 +1848,7 @@ ega_refine(ega_palette_t* pal, const ega_points_t* pts, double* cost) {
  * the data, and a dither can only reach colours between its entries. */
 static void
 ega_build(ega_palette_t* pal, const ega_points_t* pts, uint16_t background) {
-    lab_t c[EGA_ENTRIES];
+    gfx_lab_t c[EGA_ENTRIES];
     c[0] = key_lab[background];
     ega_farthest_seed(c, pts);
     ega_lloyd(c, pts);
@@ -1986,7 +1939,7 @@ scene_count_used(gfx_color_t* fb, uint8_t* grp) {
     memset(scene_used, 0, sizeof scene_used);
     uint64_t unseen = 0;
     for (int i = 0; i < PANEL_W * PANEL_H; i++) {
-        const uint16_t key = native_key(fb[i]);
+        const uint16_t key = gfx_color_swap(fb[i]);
         unseen += !(seen[grp[i]][key] & PIN_NONE);
         scene_used[grp[i]][key]++;
     }
@@ -2013,7 +1966,7 @@ static void
 scene_plot_pixel(int si, int px, int py, gfx_color_t* fb, uint8_t* grp, const ega_choice_t* choice_global,
                  const ega_choice_t* choice_local, uint8_t* rgb, uint8_t* rgb_local, int w, scene_error_stats_t* st) {
     const group_t g = (group_t)grp[py * PANEL_W + px];
-    const uint16_t key = native_key(fb[py * PANEL_W + px]);
+    const uint16_t key = gfx_color_swap(fb[py * PANEL_W + px]);
     const int idx = map_index[g][key];
     const double e = map_error(g, key);
     st->sum += e;
@@ -2069,7 +2022,7 @@ render_scene(const char* dir, int si, FILE* f, gfx_color_t* fb, uint8_t* grp) {
 
     static ega_points_t pts;
     ega_points(&pts, scene_used);
-    ega_build(&ega_local[si], &pts, native_key(material_palette()[SAND_EMPTY]));
+    ega_build(&ega_local[si], &pts, gfx_color_swap(material_palette()[SAND_EMPTY]));
 
     static ega_choice_t choice_global[KEYS], choice_local[KEYS];
     scene_build_choices(si, choice_global, choice_local);
@@ -2109,13 +2062,6 @@ render_scene(const char* dir, int si, FILE* f, gfx_color_t* fb, uint8_t* grp) {
  * above is built from, not re-derived from mapping.csv, so the two cannot
  * drift apart.
  */
-
-/* gfx_color_t is RGB565 with its bytes swapped (gfx_color.h), the inverse
- * of native_key() above. */
-static uint16_t
-to_gfx_color(uint16_t native) {
-    return (uint16_t)((native >> 8) | (native << 8));
-}
 
 /* A generator that half-works is worse than one that fails outright; see
  * launcher/tools/gen/README.md's rules. */
@@ -2173,7 +2119,7 @@ rgb565_nearest_palette_index(uint16_t k) {
     int best = UI_ENTRIES;
     double bd = 1e30;
     for (int j = UI_ENTRIES; j < palette_used; j++) {
-        const double d = dist2(key_lab[k], key_lab[palette[j]]);
+        const double d = gfx_lab_dist2(key_lab[k], key_lab[palette[j]]);
         if (d < bd) {
             bd = d;
             best = j;
@@ -2209,10 +2155,10 @@ static void
 build_output_rgb(uint16_t* entry_key, gfx_color_t* sand256_rgb, gfx_color_t* sand16_rgb) {
     for (int i = 0; i < PALETTE_SIZE; i++) {
         entry_key[i] = i < palette_used ? palette[i] : palette[UI_ENTRIES];
-        sand256_rgb[i] = to_gfx_color(entry_key[i]);
+        sand256_rgb[i] = gfx_color_swap(entry_key[i]);
     }
     for (int i = 0; i < EGA_ENTRIES; i++) {
-        sand16_rgb[i] = to_gfx_color(ega_global.key[i]);
+        sand16_rgb[i] = gfx_color_swap(ega_global.key[i]);
     }
 }
 
@@ -2354,8 +2300,8 @@ static void
 common_setup(void) {
     crc_init();
     for (int k = 0; k < KEYS; k++) {
-        key_lin[k] = rgb_to_lin(key_rgb888((uint16_t)k));
-        key_lab[k] = lin_to_lab(key_lin[k]);
+        key_lin[k] = gfx_rgb_to_lin(key_rgb888((uint16_t)k));
+        key_lab[k] = gfx_lin_to_lab(key_lin[k]);
     }
 
     fprintf(stderr, "sweeping material_colours()...\n");
@@ -2378,7 +2324,7 @@ common_setup(void) {
     for (int si = 0; si < SCENE_COUNT; si++) {
         paint_frame(grids[si], common_fb, common_grp, 1234u + 97u * (uint32_t)si);
         for (int i = 0; i < PANEL_W * PANEL_H; i++) {
-            used[common_grp[i]][native_key(common_fb[i])]++;
+            used[common_grp[i]][gfx_color_swap(common_fb[i])]++;
         }
     }
 
@@ -2389,7 +2335,7 @@ common_setup(void) {
     fprintf(stderr, "building the shared 16-colour palette...\n");
     static ega_points_t ega_all;
     ega_points(&ega_all, used);
-    ega_build(&ega_global, &ega_all, native_key(material_palette()[SAND_EMPTY]));
+    ega_build(&ega_global, &ega_all, gfx_color_swap(material_palette()[SAND_EMPTY]));
 }
 
 /*
@@ -2401,10 +2347,10 @@ common_setup(void) {
  * from before searching for a better pair. Variant (e)'s own choice. */
 static ega_choice_t
 ega_nearest(const ega_palette_t* pal, uint16_t key) {
-    const lab_t target = key_lab[key];
+    const gfx_lab_t target = key_lab[key];
     ega_choice_t best = {0, 0, 0, 1e30, 0.0};
     for (int i = 0; i < EGA_ENTRIES; i++) {
-        const double e = sqrt(dist2(target, pal->lab[i]));
+        const double e = sqrt(gfx_lab_dist2(target, pal->lab[i]));
         if (e < best.error) {
             best = (ega_choice_t){(uint8_t)i, (uint8_t)i, 0, e, 0.0};
         }
@@ -2492,7 +2438,7 @@ dp_coarsen_cells(gfx_color_t* fb, uint8_t* grp, int cell, int qgw, int qgh, uint
     for (int qy = 0; qy < qgh; qy++) {
         for (int qx = 0; qx < qgw; qx++) {
             const int px = qx * cell, py = qy * cell;
-            cell_key[qy * qgw + qx] = native_key(fb[py * PANEL_W + px]);
+            cell_key[qy * qgw + qx] = gfx_color_swap(fb[py * PANEL_W + px]);
             cell_grp[qy * qgw + qx] = grp[py * PANEL_W + px];
         }
     }

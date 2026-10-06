@@ -68,11 +68,6 @@ editor_runtime_element_count(editor_screen_t screen) {
     return screen == EDITOR_SCREEN_CONTROL_CENTER ? CONTROL_CENTER_ELEMENT_COUNT : 0;
 }
 
-static uint16_t
-native_rgb565(gfx_color_t color) {
-    return (uint16_t)((color >> 8) | (color << 8));
-}
-
 static bool
 layout_fits(editor_screen_t screen, const control_center_layout_t* layout, int width, int height) {
     if (editor_runtime_element_count(screen) != CONTROL_CENTER_ELEMENT_COUNT || layout->canvas_width != width
@@ -96,7 +91,7 @@ copy_framebuffer(uint16_t* pixels, int width, int height, bool portrait) {
         for (int x = 0; x < width; x++) {
             const size_t source =
                 portrait ? (size_t)y * GFX_WIDTH + (size_t)x : (size_t)x * GFX_WIDTH + (size_t)(GFX_WIDTH - 1 - y);
-            pixels[(size_t)y * (size_t)width + (size_t)x] = native_rgb565(framebuffer[source]);
+            pixels[(size_t)y * (size_t)width + (size_t)x] = gfx_color_swap(framebuffer[source]);
         }
     }
 }

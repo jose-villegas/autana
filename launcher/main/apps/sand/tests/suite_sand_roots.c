@@ -1020,20 +1020,17 @@ test_a_continuously_watered_root_system_still_saturates(void) {
  * luminance, so a hue drift cannot pass as "darker". */
 static unsigned
 r5(gfx_color_t c) {
-    const unsigned n = (unsigned)((c >> 8) | (c << 8)) & 0xFFFFu;
-    return (n >> 11) & 31u;
+    return gfx_rgb565_r5(gfx_color_swap(c));
 }
 
 static unsigned
 g6(gfx_color_t c) {
-    const unsigned n = (unsigned)((c >> 8) | (c << 8)) & 0xFFFFu;
-    return (n >> 5) & 63u;
+    return gfx_rgb565_g6(gfx_color_swap(c));
 }
 
 static unsigned
 b5(gfx_color_t c) {
-    const unsigned n = (unsigned)((c >> 8) | (c << 8)) & 0xFFFFu;
-    return n & 31u;
+    return gfx_rgb565_b5(gfx_color_swap(c));
 }
 
 static void

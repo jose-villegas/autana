@@ -29,14 +29,70 @@ typedef uint16_t gfx_color_t;
  * layout. Usable in a constant expression. */
 #define GFX_RGB(rgb) ((gfx_color_t)((GFX_RGB565(rgb) >> 8) | (GFX_RGB565(rgb) << 8)))
 
+/* 0xRRGGBB `t` of `n` of the way from `lo` to `hi`, per channel, truncated.
+ * A constant expression, so colour tables built from it stay in .rodata. */
+#define GFX_LERP_RGB888_CH(lo, hi, shift, t, n)                                                                        \
+    ((((((lo) >> (shift)) & 0xFF) * ((n) - (t)) + (((hi) >> (shift)) & 0xFF) * (t)) / (n)) & 0xFF)
+
+#define GFX_LERP_RGB888(lo, hi, t, n)                                                                                  \
+    ((GFX_LERP_RGB888_CH(lo, hi, 16, t, n) << 16) | (GFX_LERP_RGB888_CH(lo, hi, 8, t, n) << 8)                         \
+     | GFX_LERP_RGB888_CH(lo, hi, 0, t, n))
+
+/* Panel order to native RGB565 and back: the same byte swap both ways. */
+static inline uint16_t
+gfx_color_swap(uint16_t c) {
+    return (uint16_t)((c >> 8) | (c << 8));
+}
+
+/* The channels of a NATIVE RGB565 value (gfx_color_swap() a panel colour
+ * first): red and blue are 5 bits, green 6. */
+static inline unsigned
+gfx_rgb565_r5(uint16_t native) {
+    return (native >> 11) & 0x1Fu;
+}
+
+static inline unsigned
+gfx_rgb565_g6(uint16_t native) {
+    return (native >> 5) & 0x3Fu;
+}
+
+static inline unsigned
+gfx_rgb565_b5(uint16_t native) {
+    return native & 0x1Fu;
+}
+
 /* The panel colour for three already-quantised channels (5, 6, 5 bits),
  * what GFX_RGB does after its own 8-bit-to-565 truncation, for a caller
  * (a dithered tracer, say) that quantised its own channels and only needs
  * the packing and the panel's byte swap. */
 static inline gfx_color_t
 gfx_color_rgb565(uint8_t r5, uint8_t g6, uint8_t b5) {
-    const uint16_t native = (uint16_t)(((uint16_t)r5 << 11) | ((uint16_t)g6 << 5) | b5);
-    return (gfx_color_t)((native >> 8) | (native << 8));
+    return gfx_color_swap((uint16_t)(((uint16_t)r5 << 11) | ((uint16_t)g6 << 5) | b5));
+}
+
+/* A whole turn: six sectors of 256, so the sector is a shift and the ramp
+ * within one is a byte. */
+#define GFX_HUE_TURN 1536
+
+/* 0xRRGGBB at full saturation and full brightness. */
+static inline uint32_t
+gfx_hue_rgb(int hue) {
+    hue %= GFX_HUE_TURN;
+    if (hue < 0) {
+        hue += GFX_HUE_TURN;
+    }
+
+    const uint32_t ramp = (uint32_t)(hue & 0xFF); /* rising edge, 0..255 */
+    const uint32_t fall = 255u - ramp;
+
+    switch (hue >> 8) {
+        case 0: return (0xFFu << 16) | (ramp << 8); /* red     -> yellow  */
+        case 1: return (fall << 16) | (0xFFu << 8); /* yellow  -> green   */
+        case 2: return (0xFFu << 8) | ramp;         /* green   -> cyan    */
+        case 3: return (fall << 8) | 0xFFu;         /* cyan    -> blue    */
+        case 4: return (ramp << 16) | 0xFFu;        /* blue    -> magenta */
+        default: return (0xFFu << 16) | fall;       /* magenta -> red     */
+    }
 }
 
 /* Blend `a` toward `b`. t is 0..255, 0 all `a`, 255 all `b`. A gfx_color_t
@@ -68,13 +124,10 @@ div255(uint32_t v) {
  * high bits instead, so GFX_RGB(gfx_color_rgb888(c)) == c for every c. */
 static inline uint32_t
 gfx_color_rgb888(gfx_color_t c) {
-    /* Undo the byte swap to get back to native-endian RGB565; see
-     * gfx_color_mix() above for the same first step. */
-    const uint16_t native = (uint16_t)((c >> 8) | (c << 8));
-
-    const uint8_t r5 = (uint8_t)((native >> 11) & 0x1Fu); /* 5 bits */
-    const uint8_t g6 = (uint8_t)((native >> 5) & 0x3Fu);  /* 6 bits */
-    const uint8_t b5 = (uint8_t)(native & 0x1Fu);         /* 5 bits */
+    const uint16_t native = gfx_color_swap(c);
+    const uint8_t r5 = (uint8_t)gfx_rgb565_r5(native);
+    const uint8_t g6 = (uint8_t)gfx_rgb565_g6(native);
+    const uint8_t b5 = (uint8_t)gfx_rgb565_b5(native);
 
     const uint8_t r8 = (uint8_t)((r5 << 3) | (r5 >> 2));
     const uint8_t g8 = (uint8_t)((g6 << 2) | (g6 >> 4));
@@ -85,17 +138,14 @@ gfx_color_rgb888(gfx_color_t c) {
 
 static inline gfx_color_t
 gfx_color_mix(gfx_color_t a, gfx_color_t b, uint8_t t) {
-    /* Undo the byte swap to get back to native-endian RGB565. */
-    const uint16_t na = (uint16_t)((a >> 8) | (a << 8));
-    const uint16_t nb = (uint16_t)((b >> 8) | (b << 8));
-
-    const uint8_t ar = (uint8_t)((na >> 11) & 0x1Fu); /* 5 bits */
-    const uint8_t ag = (uint8_t)((na >> 5) & 0x3Fu);  /* 6 bits */
-    const uint8_t ab = (uint8_t)(na & 0x1Fu);         /* 5 bits */
-
-    const uint8_t br = (uint8_t)((nb >> 11) & 0x1Fu);
-    const uint8_t bg = (uint8_t)((nb >> 5) & 0x3Fu);
-    const uint8_t bb = (uint8_t)(nb & 0x1Fu);
+    const uint16_t na = gfx_color_swap(a);
+    const uint16_t nb = gfx_color_swap(b);
+    const uint8_t ar = (uint8_t)gfx_rgb565_r5(na);
+    const uint8_t ag = (uint8_t)gfx_rgb565_g6(na);
+    const uint8_t ab = (uint8_t)gfx_rgb565_b5(na);
+    const uint8_t br = (uint8_t)gfx_rgb565_r5(nb);
+    const uint8_t bg = (uint8_t)gfx_rgb565_g6(nb);
+    const uint8_t bb = (uint8_t)gfx_rgb565_b5(nb);
 
     /* (channel * (255 - t) + channel * t) / 255, rounded rather than
      * truncated so t=255 lands exactly on `b` and t=0 exactly on `a`.
@@ -105,10 +155,7 @@ gfx_color_mix(gfx_color_t a, gfx_color_t b, uint8_t t) {
     const uint8_t mg = (uint8_t)div255(ag * (255 - t) + bg * t + 127);
     const uint8_t mb = (uint8_t)div255(ab * (255 - t) + bb * t + 127);
 
-    const uint16_t nm = (uint16_t)((mr << 11) | (mg << 5) | mb);
-
-    /* Swap back to the panel's byte order. */
-    return (gfx_color_t)((nm >> 8) | (nm << 8));
+    return gfx_color_swap((uint16_t)((mr << 11) | (mg << 5) | mb));
 }
 
 /* The standard order-4 Bayer matrix, values 0..15 rather than pre-scaled
@@ -163,12 +210,11 @@ gfx_dither_covers(int x, int y, uint8_t alpha) {
  * to nearly black at their brightest, looking like holes. */
 static inline gfx_color_t
 gfx_color_add(gfx_color_t a, gfx_color_t b) {
-    const uint16_t na = (uint16_t)((a >> 8) | (a << 8));
-    const uint16_t nb = (uint16_t)((b >> 8) | (b << 8));
-
-    uint16_t r = (uint16_t)(((na >> 11) & 0x1Fu) + ((nb >> 11) & 0x1Fu));
-    uint16_t g = (uint16_t)(((na >> 5) & 0x3Fu) + ((nb >> 5) & 0x3Fu));
-    uint16_t bl = (uint16_t)((na & 0x1Fu) + (nb & 0x1Fu));
+    const uint16_t na = gfx_color_swap(a);
+    const uint16_t nb = gfx_color_swap(b);
+    uint16_t r = (uint16_t)(gfx_rgb565_r5(na) + gfx_rgb565_r5(nb));
+    uint16_t g = (uint16_t)(gfx_rgb565_g6(na) + gfx_rgb565_g6(nb));
+    uint16_t bl = (uint16_t)(gfx_rgb565_b5(na) + gfx_rgb565_b5(nb));
 
     if (r > 0x1Fu) {
         r = 0x1Fu;
@@ -180,6 +226,5 @@ gfx_color_add(gfx_color_t a, gfx_color_t b) {
         bl = 0x1Fu;
     }
 
-    const uint16_t nm = (uint16_t)((r << 11) | (g << 5) | bl);
-    return (gfx_color_t)((nm >> 8) | (nm << 8));
+    return gfx_color_swap((uint16_t)((r << 11) | (g << 5) | bl));
 }

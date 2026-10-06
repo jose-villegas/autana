@@ -1,20 +1,13 @@
 /*
- * gfx_palette_gen, host-only build-time helpers for GFX_LAYOUT_INDEXED:
- * given a finished palette, build the reverse RGB565 -> index map an
- * app's own material_palette256_index()-style lookup needs, or the
- * per-(index, Bayer phase) dither table gfx_indexed_expand_row_dither16()
- * needs. Building the PALETTE ITSELF, which colours it holds, and by what
- * weighting, is app-specific work (see main/apps/sand/tools/
- * shading_palette.c's own k-means budget allocation) and stays out of this
- * file; this is only the two derived-table steps every such generator
- * needs afterward, done once in OKLab so two entries near each other in a
- * palette do not fight over which colour "belongs" to which by RGB
- * distance alone.
+ * gfx_palette_gen, host-only build-time helpers for GFX_LAYOUT_INDEXED: the
+ * OKLab colour space every palette generator measures with, and the tables
+ * derived from a finished palette (the reverse RGB565 -> index map and the
+ * per-(index, Bayer phase) dither tables gfx_indexed.h reads). Choosing the
+ * palette's colours is the generator's own work and stays out of this file;
+ * nearest entries are found in OKLab so two entries close together do not
+ * fight over which colour "belongs" to which by RGB distance alone.
  *
- * Never included from device code; it links libm and is only ever run on
- * a host, the same reason main/apps/sand/tools/ itself is excluded from
- * the firmware image (see docs/Building-an-App.md, "An app is a
- * folder").
+ * Never included from device code: it links libm and runs only on a host.
  */
 #pragma once
 
@@ -22,6 +15,25 @@
 
 #include "gfx/gfx_color.h"
 #include "gfx/gfx_palette.h"
+
+/* OKLab, scaled by 100 so a distance reads like a CIE delta E (about 1-2 is a
+ * just noticeable difference), from linear-light sRGB. Exported so every
+ * palette generator measures colour the same way. */
+typedef struct {
+    double l, a, b;
+} gfx_lab_t;
+
+typedef struct {
+    double r, g, b;
+} gfx_lin_t;
+
+/* 0xRRGGBB to linear light. */
+gfx_lin_t gfx_rgb_to_lin(uint32_t rgb888);
+
+gfx_lab_t gfx_lin_to_lab(gfx_lin_t c);
+
+/* Squared OKLab distance. */
+double gfx_lab_dist2(gfx_lab_t p, gfx_lab_t q);
 
 /* Nearest-OKLab index of every one of the 65536 possible native RGB565
  * keys among `palette->entries[first_index .. palette->count)`, a plain

@@ -161,6 +161,11 @@ long acid_tank(int sand_rows, int acid_rows);
  * tests it was written for need the same unpacking math. */
 int panel_luminance(gfx_color_t c);
 
+/* How far apart two panel colours are: red and blue count twice, green
+ * once, in their own 5/6-bit steps. A rule of thumb for "clearly further
+ * apart", nothing finer. */
+int colour_gap(gfx_color_t x, gfx_color_t y);
+
 /* Count of cells in [x0,x1) x [y0,y1) on grid g that are a growing tree
  * body - an MATX_PLANT tip, or hardened MAT_WOOD - the shape every
  * root/lift/growth test in the split watches spread. */

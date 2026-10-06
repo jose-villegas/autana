@@ -14,6 +14,7 @@
 #include "unity.h"
 
 #include "boot/boot_anim_image.h"
+#include "gfx/gfx_color.h"
 #include "ui/ridge_curve_generated.h"
 
 #define VIEW_W               RIDGE_CURVE_POINTS
@@ -40,10 +41,10 @@ photo_rgb(int view_x, int view_y, int rgb[3]) {
     const int panel_x = BOOT_ANIM_IMAGE_W - 1 - view_y;
     const int panel_y = view_x;
     const uint16_t stored = boot_anim_image[panel_y * BOOT_ANIM_IMAGE_W + panel_x];
-    const uint16_t c = (uint16_t)((stored >> 8) | (stored << 8));
-    rgb[0] = ((c >> 11) & 0x1F) * 255 / 31;
-    rgb[1] = ((c >> 5) & 0x3F) * 255 / 63;
-    rgb[2] = (c & 0x1F) * 255 / 31;
+    const uint16_t c = gfx_color_swap(stored);
+    rgb[0] = (int)gfx_rgb565_r5(c) * 255 / 31;
+    rgb[1] = (int)gfx_rgb565_g6(c) * 255 / 63;
+    rgb[2] = (int)gfx_rgb565_b5(c) * 255 / 31;
 }
 
 static void

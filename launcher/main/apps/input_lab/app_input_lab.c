@@ -55,7 +55,7 @@ typedef enum { MODE_RANDOM, MODE_GRID, MODE_BEZEL, MODE_COUNT } lab_mode_t;
 static const char* const MODE_NAMES[MODE_COUNT] = {"random", "grid", "bezel"};
 
 static lab_mode_t mode;
-static uint32_t rng;
+static rng_t rng;
 static int grid_order[GRID_COUNT];
 static int grid_next;
 static touch_probe_target_t target;
@@ -114,7 +114,7 @@ start_round(void) {
 
 static void
 input_lab_enter(void) {
-    rng = (uint32_t)timing_now_us() | 1u;
+    rng_seed(&rng, (uint32_t)timing_now_us());
     panel_max_x = -1;
     mode = MODE_RANDOM;
     tap = (touch_probe_tap_t){0};

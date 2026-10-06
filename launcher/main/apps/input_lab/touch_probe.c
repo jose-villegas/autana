@@ -2,23 +2,13 @@
 
 #include <math.h>
 
-static uint32_t
-xorshift32(uint32_t* state) {
-    uint32_t x = *state;
-    x ^= x << 13;
-    x ^= x >> 17;
-    x ^= x << 5;
-    *state = x;
-    return x;
-}
-
 static int
-random_in(uint32_t* rng, int lo, int hi) {
-    return lo + (int)(xorshift32(rng) % (uint32_t)(hi - lo + 1));
+random_in(rng_t* rng, int lo, int hi) {
+    return lo + rng_below(rng, hi - lo + 1);
 }
 
 touch_probe_target_t
-touch_probe_next(uint32_t* rng, int screen_w, int screen_h, int side, int margin) {
+touch_probe_next(rng_t* rng, int screen_w, int screen_h, int side, int margin) {
     const touch_probe_target_t t = {
         .x = random_in(rng, margin, screen_w - margin - side),
         .y = random_in(rng, margin, screen_h - margin - side),
@@ -101,7 +91,7 @@ touch_probe_grid(int index, int cols, int rows, int screen_w, int screen_h, int 
 }
 
 void
-touch_probe_shuffle(uint32_t* rng, int* order, int n) {
+touch_probe_shuffle(rng_t* rng, int* order, int n) {
     for (int i = 0; i < n; i++) {
         order[i] = i;
     }

@@ -872,17 +872,7 @@ material_hex(uint8_t v, char* buf, size_t cap) {
             ? base
             : CELL_MAKE(CELL_MATERIAL(base), representative_variant((material_id_t)CELL_MATERIAL(base)));
     const gfx_color_t packed = material_palette()[swatch];
-    /* gfx_color_t is RGB565 byte-swapped (GFX_RGB(), gfx_color.h); this
-     * reverses that, then round-to-nearest (not a naive shift) so 0x1F
-     * recovers as 0xFF, not 0xF8. */
-    const uint16_t rgb565 = (uint16_t)((packed >> 8) | (packed << 8));
-    const uint8_t r5 = (rgb565 >> 11) & 0x1Fu;
-    const uint8_t g6 = (rgb565 >> 5) & 0x3Fu;
-    const uint8_t b5 = rgb565 & 0x1Fu;
-    const uint8_t r8 = (uint8_t)((r5 * 255 + 15) / 31);
-    const uint8_t g8 = (uint8_t)((g6 * 255 + 31) / 63);
-    const uint8_t b8 = (uint8_t)((b5 * 255 + 15) / 31);
-    snprintf(buf, cap, "#%02X%02X%02X", r8, g8, b8);
+    snprintf(buf, cap, "#%06X", (unsigned)gfx_color_rgb888(packed));
 }
 
 /*
@@ -908,11 +898,11 @@ typedef struct {
 static const legibility_override_t LEGIBILITY_OVERRIDES[] = {
     {MAT_SAND, "#D6A663", "#C58834"},          {MAT_WATER, "#10416B", "#1863A3"},
     {MAT_GAS, "#CEEBBD", "#5CA532"},           {MAT_FIRE, "#FFE363", "#B19100"},
-    {MAT_WOOD, "#5A3D21", "#825830"},          {MAT_STEAM, "#F7FBFF", "#2D96FF"},
+    {MAT_WOOD, "#5A3C21", "#825830"},          {MAT_STEAM, "#F7FBFF", "#2D96FF"},
     {MAT_OIL, "#101008", "#636331"},           {MAT_LAVA, "#8C1400", "#BF1B00"},
-    {MAT_ACID, "#296908", "#2B6F08"},          {MAT_SNOW, "#E6EFF7", "#6099CC"},
+    {MAT_ACID, "#296908", "#2B6F08"},          {MAT_SNOW, "#E7EFF7", "#6099CC"},
     {MATX(MATX_ICE), "#B5E7F7", "#16A0CC"},    {MATX(MATX_PLANT), "#526529", "#54682A"},
-    {MATX(MATX_LEAF), "#6BB23A", "#63A435"},   {MATX(MATX_ROOT), "#BDA68C", "#AC8F6F"},
+    {MATX(MATX_LEAF), "#6BB239", "#63A435"},   {MATX(MATX_ROOT), "#BDA68C", "#AC8F6F"},
     {GUNPOWDER_CELL(2), "#421408", "#B03515"},
 };
 

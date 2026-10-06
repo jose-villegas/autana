@@ -8,13 +8,16 @@ invariants before a byte is written. A mesh's triangles are put in a canonical
 order first, so the same triangles always bake to the same bytes."""
 
 import pathlib
+import sys
 from types import SimpleNamespace
 
 import numpy as np
 
-from r3d.mesh_asset import BLOB_HEADER, CLUSTER, NODE, TYPE  # noqa: F401
-from r3d.meshopt import build_meshlets
-from r3d.octree import build_octree, flatten_octree, node_bounds
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
+import gfx_color  # noqa: E402  (path must be set up first)
+from r3d.mesh_asset import BLOB_HEADER, CLUSTER, NODE, TYPE  # noqa: E402,F401
+from r3d.meshopt import build_meshlets  # noqa: E402
+from r3d.octree import build_octree, flatten_octree, node_bounds  # noqa: E402
 
 INT16_MAX = 32767
 MAX_VERTICES = 65535  # uint16 indices
@@ -192,17 +195,14 @@ def write_lit_mesh(out_dir, name, positions, rgb, tris, double, **options):
 def panel_colour(rgb):
     """The panel's RGB565 with its bytes swapped, what GFX_RGB(0xRRGGBB) gives."""
     c = np.asarray(rgb, dtype=np.int64)
-    packed = ((c[:, 0] & 0xF8) << 8) | ((c[:, 1] & 0xFC) << 3) | (c[:, 2] >> 3)
-    return (((packed >> 8) | (packed << 8)) & 0xFFFF).astype("<u2")
+    return gfx_color.swap(gfx_color.rgb565(c[:, 0], c[:, 1], c[:, 2])).astype("<u2")
 
 
 def rgb888(panel):
     """The 0..255 channels a panel colour stands for, with the low bits
     refilled from the high ones so panel_colour() returns the same value."""
-    p = np.asarray(panel, dtype=np.int64)
-    p = ((p >> 8) | (p << 8)) & 0xFFFF
-    r, g, b = p >> 11, (p >> 5) & 63, p & 31
-    return np.stack([(r << 3) | (r >> 2), (g << 2) | (g >> 4), (b << 3) | (b >> 2)], axis=1)
+    p = gfx_color.swap(np.asarray(panel, dtype=np.int64))
+    return np.stack(gfx_color.expand(p >> 11, (p >> 5) & 63, p & 31), axis=1)
 
 
 def mesh_blob(mesh):

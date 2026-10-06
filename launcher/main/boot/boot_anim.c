@@ -294,7 +294,7 @@ draw_floor_ring(int ring, uint32_t now_ms, int32_t amp_q12, int dissolve_level, 
     const int steps = floor_ring_steps(rim_a, rim_b, dissolve_level, view);
     const bool tiny = boot_anim_screen_chord_lt(rim_a, rim_b, view, 16);
     const gfx_color_t c =
-        lit_whitened(boot_anim_hue_rgb(boot_anim_grid_hue(now_ms, ring)), boot_anim_grid_whiten(now_ms), alpha);
+        lit_whitened(gfx_hue_rgb(boot_anim_grid_hue(now_ms, ring)), boot_anim_grid_whiten(now_ms), alpha);
     draw_grid_circle(d, &plane, c, steps, view);
     return tiny;
 }
@@ -468,7 +468,7 @@ draw_heads(int32_t colour_pen, uint8_t ink, const boot_anim_view_t* view) {
             continue;
         }
 
-        draw_head(x, y, boot_anim_hue_rgb(boot_anim_stroke(at, colour_pen).hue), ink);
+        draw_head(x, y, gfx_hue_rgb(boot_anim_stroke(at, colour_pen).hue), ink);
     }
 }
 
@@ -564,7 +564,7 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
         }
 
         const boot_anim_stroke_t s = boot_anim_stroke(a0 + ((a1 - a0) >> 1), colour);
-        gfx_color_t span_c = gfx_rgb(boot_anim_hue_rgb(s.hue));
+        gfx_color_t span_c = gfx_rgb(gfx_hue_rgb(s.hue));
         span_c = gfx_color_mix(span_c, COL_WHITE, s.bloom);
         span_c = gfx_color_mix(COL_BG, span_c, scale8(s.glow, ink));
 

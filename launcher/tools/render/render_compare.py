@@ -51,12 +51,16 @@ import argparse
 import pathlib
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 import check_avi
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
+import gfx_color  # noqa: E402  (path must be set up first)
 
 HOLE_RED = (255, 0, 0)
 LABEL_BAR = 22
@@ -104,8 +108,7 @@ def expand_565(rgb):
     values, or an integer array with the channels last."""
     if isinstance(rgb, tuple):
         return tuple(int(value) for value in expand_565(np.array(rgb)))
-    r5, g6, b5 = rgb[..., 0] >> 3, rgb[..., 1] >> 2, rgb[..., 2] >> 3
-    return np.stack([r5 << 3 | r5 >> 2, g6 << 2 | g6 >> 4, b5 << 3 | b5 >> 2], axis=-1)
+    return np.stack(gfx_color.expand(rgb[..., 0] >> 3, rgb[..., 1] >> 2, rgb[..., 2] >> 3), axis=-1)
 
 
 def _pixels(picture):
