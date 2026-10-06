@@ -70,9 +70,10 @@ current_step(const render_context_t* c) {
     return c->policy == RENDER_STEPPED ? c->control.step : c->predict.step;
 }
 
-/* A scratch block big enough for what is drawn now: under dynamic
- * resolution, for the finest step, so a step never allocates. */
-static bool
+/* A scratch block big enough for what is drawn now, the culled list after
+ * it: under dynamic resolution, for the finest step, so a step never
+ * allocates. */
+static uint16_t*
 fit_scratch(render_context_t* c) {
     const int width = c->raster.width;
     const int height = c->raster.height;
@@ -80,7 +81,8 @@ fit_scratch(render_context_t* c) {
         c->raster.width = c->ladder.steps[0].width;
         c->raster.height = c->ladder.steps[0].height;
     }
-    const size_t needed = raster_scratch_bytes(&c->raster);
+    const size_t raster_bytes = raster_scratch_bytes(&c->raster);
+    const size_t needed = raster_bytes + (sizeof(uint16_t) * raster_culled_length(&c->raster));
     c->raster.width = width;
     c->raster.height = height;
     if (needed > c->scratch_bytes) {
@@ -89,7 +91,7 @@ fit_scratch(render_context_t* c) {
         c->scratch_bytes = c->scratch == NULL ? 0 : needed;
     }
     c->raster.scratch = c->scratch;
-    return c->scratch != NULL;
+    return c->scratch == NULL ? NULL : (uint16_t*)((char*)c->scratch + raster_bytes);
 }
 
 bool
@@ -105,20 +107,21 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     r->upscaled = true; /* render_context_compose() names the picture */
     r->destination_width = width;
     r->destination_height = height;
-    if (!fit_scratch(c)) {
+    uint16_t* culled = fit_scratch(c);
+    if (culled == NULL) {
         return false;
     }
     const int64_t began_us = timing_now_us();
+    c->frame.stats = raster_census(r, camera, quarter, culled);
     if (c->policy == RENDER_PREDICTED) {
-        const int chosen =
-            resolution_predict_choose(&c->predict, &c->ladder, raster_census(r, camera, quarter).triangles);
+        const int chosen = resolution_predict_choose(&c->predict, &c->ladder, c->frame.stats.triangles);
         r->width = c->ladder.steps[chosen].width;
         r->height = c->ladder.steps[chosen].height;
     }
     c->frame.step = current_step(c);
     c->frame.width = r->width;
     c->frame.height = r->height;
-    c->frame.stats = raster_draw(r, camera, quarter);
+    raster_draw_culled(r, camera, quarter, culled);
     c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
 #if DEBUG_VIEW
     raster_show(r, c->debug_view);

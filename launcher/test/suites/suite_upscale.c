@@ -72,7 +72,7 @@ test_fractional_maps_cover_destination_in_order_and_at_source_corners(void) {
     uint16_t columns[12], rows[9];
     upscale_t scale;
     TEST_ASSERT_TRUE(upscale_init(&scale, 8, 6, 12, 9, columns, rows));
-    TEST_ASSERT_FALSE(scale.integer);
+    TEST_ASSERT_EQUAL_INT(UPSCALE_MAPPED, scale.path);
     TEST_ASSERT_EQUAL_UINT16(0, scale.columns[0]);
     TEST_ASSERT_EQUAL_UINT16(7, scale.columns[11]);
     TEST_ASSERT_EQUAL_UINT16(0, scale.rows[0]);
@@ -109,12 +109,108 @@ test_two_row_ranges_equal_one_whole_upscale(void) {
     TEST_ASSERT_EQUAL_HEX16_ARRAY(whole, split, OUT_WIDTH * OUT_HEIGHT);
 }
 
+typedef struct {
+    int source_width, source_height, destination_width, destination_height;
+    upscale_path_t path;
+} path_case_t;
+
+/* Every destination pixel is the source pixel the maps name, or 0xF00D
+ * where its depth is zero. */
+static void
+assert_each_pixel_follows_the_maps(const upscale_t* scale, const uint16_t* source, const uint16_t* depth,
+                                   const uint16_t* actual) {
+    for (int y = 0; y < scale->destination_height; y++) {
+        for (int x = 0; x < scale->destination_width; x++) {
+            const size_t from = ((size_t)scale->rows[y] * (size_t)scale->source_width) + scale->columns[x];
+            const uint16_t expected = depth != NULL && depth[from] == 0 ? 0xF00D : source[from];
+            TEST_ASSERT_EQUAL_HEX16(expected, actual[((size_t)y * (size_t)scale->destination_width) + (size_t)x]);
+        }
+    }
+}
+
+/* Upscales in two ranges split on an odd row, with and without depth, and
+ * holds every destination pixel to what the maps say it shows. */
+static void
+assert_matches_the_maps(const path_case_t* c) {
+    const size_t source_pixels = (size_t)c->source_width * (size_t)c->source_height;
+    const size_t destination_pixels = (size_t)c->destination_width * (size_t)c->destination_height;
+    uint16_t* source = malloc(sizeof(*source) * source_pixels);
+    uint16_t* depth = malloc(sizeof(*depth) * source_pixels);
+    uint16_t* actual = malloc(sizeof(*actual) * destination_pixels);
+    uint16_t* columns = malloc(sizeof(*columns) * (size_t)c->destination_width);
+    uint16_t* rows = malloc(sizeof(*rows) * (size_t)c->destination_height);
+    TEST_ASSERT_NOT_NULL(source);
+    TEST_ASSERT_NOT_NULL(depth);
+    TEST_ASSERT_NOT_NULL(actual);
+    TEST_ASSERT_NOT_NULL(columns);
+    TEST_ASSERT_NOT_NULL(rows);
+    for (size_t i = 0; i < source_pixels; i++) {
+        source[i] = (uint16_t)(0x1000 + i);
+        depth[i] = (uint16_t)(i % 3 == 0 ? 0 : i);
+    }
+    upscale_t scale;
+    TEST_ASSERT_TRUE(upscale_init(&scale, c->source_width, c->source_height, c->destination_width,
+                                  c->destination_height, columns, rows));
+    TEST_ASSERT_EQUAL_INT(c->path, scale.path);
+    const int split = (c->destination_height / 2) | 1;
+    for (int with_depth = 0; with_depth < 2; with_depth++) {
+        const uint16_t* d = with_depth ? depth : NULL;
+        memset(actual, 0, sizeof(*actual) * destination_pixels);
+        upscale_rows(&scale, source, d, 0xF00D, actual, 0, split);
+        upscale_rows(&scale, source, d, 0xF00D, actual, split, c->destination_height - split);
+        assert_each_pixel_follows_the_maps(&scale, source, d, actual);
+    }
+    free(rows);
+    free(columns);
+    free(actual);
+    free(depth);
+    free(source);
+}
+
+static void
+test_a_kept_width_copies_mapped_rows(void) {
+    static const path_case_t cases[] = {
+        {8, 5, 8, 9, UPSCALE_ROWS},      {8, 6, 8, 12, UPSCALE_ROWS},     {6, 3, 6, 3, UPSCALE_ROWS},
+        {92, 56, 92, 112, UPSCALE_ROWS}, {92, 90, 92, 112, UPSCALE_ROWS}, {92, 75, 92, 112, UPSCALE_ROWS},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        assert_matches_the_maps(&cases[i]);
+    }
+}
+
+static void
+test_a_doubled_width_writes_pairs_down_any_row_map(void) {
+    static const path_case_t cases[] = {
+        {4, 5, 8, 9, UPSCALE_PAIRS},      {4, 3, 8, 7, UPSCALE_PAIRS},       {7, 5, 14, 10, UPSCALE_PAIRS},
+        {46, 75, 92, 112, UPSCALE_PAIRS}, {46, 112, 92, 112, UPSCALE_PAIRS}, {46, 56, 92, 112, UPSCALE_PAIRS},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        assert_matches_the_maps(&cases[i]);
+    }
+}
+
+static void
+test_other_fractional_widths_take_the_maps(void) {
+    static const path_case_t cases[] = {
+        {61, 75, 92, 112, UPSCALE_MAPPED},
+        {6, 4, 15, 10, UPSCALE_MAPPED},
+        {5, 4, 15, 8, UPSCALE_MAPPED},
+        {5, 3, 5, 7, UPSCALE_MAPPED},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        assert_matches_the_maps(&cases[i]);
+    }
+}
+
 void
 run_upscale_suite(void) {
     RUN_TEST(test_two_times_matches_the_frame_doubling_reference);
     RUN_TEST(test_integer_factors_copy_each_source_pixel_to_its_block);
     RUN_TEST(test_fractional_maps_cover_destination_in_order_and_at_source_corners);
     RUN_TEST(test_two_row_ranges_equal_one_whole_upscale);
+    RUN_TEST(test_a_kept_width_copies_mapped_rows);
+    RUN_TEST(test_a_doubled_width_writes_pairs_down_any_row_map);
+    RUN_TEST(test_other_fractional_widths_take_the_maps);
 }
 
 SUITE_REGISTER(run_upscale_suite);

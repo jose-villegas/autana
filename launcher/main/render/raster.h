@@ -52,9 +52,14 @@ size_t raster_scratch_bytes(const raster_t* raster);
 /* Draws every instance as `camera` sees it, turned for the panel's `quarter`. */
 raster_stats_t raster_draw(const raster_t* raster, const camera_t* camera, int quarter);
 
-/* What raster_draw() would keep after culling, without drawing: the same
- * view at any render size, so a caller can price sizes before choosing one. */
-raster_stats_t raster_census(const raster_t* raster, const camera_t* camera, int quarter);
+/* raster_draw() split in two, so a caller can price sizes between them.
+ * raster_census() culls every instance into `culled`, raster_culled_length()
+ * entries the caller holds, and returns what survived: the same at any
+ * render size. raster_draw_culled() then draws that list at the raster's
+ * size now, the picture raster_draw() would draw, without culling again. */
+size_t raster_culled_length(const raster_t* raster);
+raster_stats_t raster_census(const raster_t* raster, const camera_t* camera, int quarter, uint16_t* culled);
+void raster_draw_culled(const raster_t* raster, const camera_t* camera, int quarter, const uint16_t* culled);
 
 /* Fills `destination` from what raster_draw() last drew, both cores taking
  * half the destination rows. The destination is at least the drawn size. */

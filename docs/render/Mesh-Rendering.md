@@ -25,7 +25,8 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
 | `raster_draw()` | Draws every instance through a camera, turned for the panel's quarter |
-| `raster_census()` | What `raster_draw()` would keep after culling, without drawing: the same at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
+| `raster_census()` | `raster_draw()`'s cull alone, into a list the caller holds: what survives is the same at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
+| `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
 | `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the glTF animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
 | `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows and a depth plane of the same shape, from `render/r3d_span.h` |

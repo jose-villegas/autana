@@ -14,6 +14,22 @@ nearest_source(int destination, int destination_size, int source_size) {
     return (uint16_t)((numerator + ((destination_size - 1) / 2)) / (destination_size - 1));
 }
 
+/* The width decides: kept (on an even width, for 32-bit stores) or doubled
+ * takes any row map; otherwise both axes by one integer, or the maps. */
+static upscale_path_t
+choose_path(int source_width, int source_height, int destination_width, int destination_height) {
+    if (destination_width == source_width && destination_width % 2 == 0) {
+        return UPSCALE_ROWS;
+    }
+    if (destination_width == 2 * source_width) {
+        return UPSCALE_PAIRS;
+    }
+    const int factor = destination_width / source_width;
+    const bool integer = destination_width % source_width == 0 && destination_height % source_height == 0
+                         && factor == destination_height / source_height;
+    return integer ? UPSCALE_BLOCKS : UPSCALE_MAPPED;
+}
+
 bool
 upscale_init(upscale_t* scale, int source_width, int source_height, int destination_width, int destination_height,
              uint16_t* columns, uint16_t* rows) {
@@ -25,10 +41,8 @@ upscale_init(upscale_t* scale, int source_width, int source_height, int destinat
     scale->source_height = source_height;
     scale->destination_width = destination_width;
     scale->destination_height = destination_height;
-    scale->horizontal_factor = destination_width / source_width;
-    scale->vertical_factor = destination_height / source_height;
-    scale->integer = destination_width % source_width == 0 && destination_height % source_height == 0
-                     && scale->horizontal_factor == scale->vertical_factor;
+    scale->factor = destination_width / source_width;
+    scale->path = choose_path(source_width, source_height, destination_width, destination_height);
     scale->columns = columns;
     scale->rows = rows;
     for (int x = 0; x < destination_width; x++) {
@@ -40,39 +54,49 @@ upscale_init(upscale_t* scale, int source_width, int source_height, int destinat
     return true;
 }
 
+/* A source pixel as shown: `clear` where nothing was drawn. */
+static inline uint16_t
+shown(const uint16_t* input, const uint16_t* input_depth, int x, uint16_t clear) {
+    return input_depth != NULL && input_depth[x] == 0 ? clear : input[x];
+}
+
 static void
-upscale_integer_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
-                     uint16_t* destination, int first_row, int row_count) {
+upscale_block_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
+                   uint16_t* destination, int first_row, int row_count) {
     for (int y = first_row; y < first_row + row_count; y++) {
-        const uint16_t* input = source + ((size_t)(y / scale->vertical_factor) * scale->source_width);
-        const uint16_t* input_depth =
-            depth == NULL ? NULL : depth + ((size_t)(y / scale->vertical_factor) * scale->source_width);
+        const size_t row = (size_t)(y / scale->factor) * scale->source_width;
+        const uint16_t* input_depth = depth == NULL ? NULL : depth + row;
         uint16_t* output = destination + ((size_t)y * scale->destination_width);
         for (int x = 0; x < scale->source_width; x++) {
-            const uint16_t pixel = input_depth != NULL && input_depth[x] == 0 ? clear : input[x];
-            for (int repeat = 0; repeat < scale->horizontal_factor; repeat++) {
-                output[(x * scale->horizontal_factor) + repeat] = pixel;
+            const uint16_t pixel = shown(source + row, input_depth, x, clear);
+            for (int repeat = 0; repeat < scale->factor; repeat++) {
+                output[(x * scale->factor) + repeat] = pixel;
             }
         }
     }
 }
 
-/* Each source pixel is one 32-bit store per destination row, and a source
- * row read once feeds both of its rows when the range holds them. */
-static void
-upscale_double_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
-                    uint16_t* destination, int first_row, int row_count) {
+/* UPSCALE_ROWS and UPSCALE_PAIRS store 32 bits at a time: two
+ * neighbouring source pixels when the width is kept, one twice when it is
+ * doubled. A source row read once feeds the next destination row too when
+ * the row map repeats it inside the range. Inlined per path, so neither
+ * branches per pixel on which. */
+static inline __attribute__((always_inline)) void
+paired_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
+            uint16_t* destination, int first_row, int row_count, bool doubled) {
     const int end = first_row + row_count;
+    const int stores = scale->destination_width / 2;
     for (int y = first_row; y < end;) {
-        const size_t row = (size_t)(y / 2) * scale->source_width;
+        const size_t row = (size_t)scale->rows[y] * scale->source_width;
         const uint16_t* input = source + row;
         const uint16_t* input_depth = depth == NULL ? NULL : depth + row;
         uint32_t* top = (uint32_t*)(destination + ((size_t)y * scale->destination_width));
-        uint32_t* bottom = top + scale->source_width;
-        const bool both = (y % 2 == 0) && (y + 1 < end);
-        for (int x = 0; x < scale->source_width; x++) {
-            const uint16_t pixel = input_depth != NULL && input_depth[x] == 0 ? clear : input[x];
-            const uint32_t pair = ((uint32_t)pixel << 16) | pixel;
+        uint32_t* bottom = top + stores;
+        const bool both = y + 1 < end && scale->rows[y + 1] == scale->rows[y];
+        for (int x = 0; x < stores; x++) {
+            const uint32_t pair = doubled ? 0x10001U * shown(input, input_depth, x, clear)
+                                          : shown(input, input_depth, 2 * x, clear)
+                                                | ((uint32_t)shown(input, input_depth, (2 * x) + 1, clear) << 16);
             top[x] = pair;
             if (both) {
                 bottom[x] = pair;
@@ -83,15 +107,26 @@ upscale_double_rows(const upscale_t* scale, const uint16_t* source, const uint16
 }
 
 static void
+upscale_kept_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
+                  uint16_t* destination, int first_row, int row_count) {
+    paired_rows(scale, source, depth, clear, destination, first_row, row_count, false);
+}
+
+static void
+upscale_doubled_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
+                     uint16_t* destination, int first_row, int row_count) {
+    paired_rows(scale, source, depth, clear, destination, first_row, row_count, true);
+}
+
+static void
 upscale_mapped_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
                     uint16_t* destination, int first_row, int row_count) {
     for (int y = first_row; y < first_row + row_count; y++) {
-        const uint16_t* input = source + ((size_t)scale->rows[y] * scale->source_width);
-        const uint16_t* input_depth = depth == NULL ? NULL : depth + ((size_t)scale->rows[y] * scale->source_width);
+        const size_t row = (size_t)scale->rows[y] * scale->source_width;
+        const uint16_t* input_depth = depth == NULL ? NULL : depth + row;
         uint16_t* output = destination + ((size_t)y * scale->destination_width);
         for (int x = 0; x < scale->destination_width; x++) {
-            const int source_x = scale->columns[x];
-            output[x] = input_depth != NULL && input_depth[source_x] == 0 ? clear : input[source_x];
+            output[x] = shown(source + row, input_depth, scale->columns[x], clear);
         }
     }
 }
@@ -105,11 +140,10 @@ upscale_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* dep
     assert(first_row >= 0);
     assert(row_count >= 0);
     assert(first_row + row_count <= scale->destination_height);
-    if (scale->integer && scale->horizontal_factor == 2) {
-        upscale_double_rows(scale, source, depth, clear, destination, first_row, row_count);
-    } else if (scale->integer) {
-        upscale_integer_rows(scale, source, depth, clear, destination, first_row, row_count);
-    } else {
-        upscale_mapped_rows(scale, source, depth, clear, destination, first_row, row_count);
+    switch (scale->path) {
+        case UPSCALE_ROWS: upscale_kept_rows(scale, source, depth, clear, destination, first_row, row_count); break;
+        case UPSCALE_PAIRS: upscale_doubled_rows(scale, source, depth, clear, destination, first_row, row_count); break;
+        case UPSCALE_BLOCKS: upscale_block_rows(scale, source, depth, clear, destination, first_row, row_count); break;
+        case UPSCALE_MAPPED: upscale_mapped_rows(scale, source, depth, clear, destination, first_row, row_count); break;
     }
 }

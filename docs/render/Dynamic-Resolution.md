@@ -14,52 +14,54 @@ and with no call every frame draws at the context's fixed scale.
 | Stepped controller | one step at a time, after the cost | the mean of a window of measured frames against an up and a down threshold | a cooldown after each step that doubles when a step reverses the last one; a panic drop for one frame far over budget |
 | Predictor | any step, before the cost | a linear model of the frame, priced at every step from the triangles culling kept this frame, corrected by measured frames | going finer needs a margin under the budget |
 
-The cost a policy holds is the part that scales: the draw (with the
-predictor's cull-only census) and the upscale. The present and whatever an
+The cost a policy holds is the part that scales: the draw and the upscale.
+The render context culls once, in a census whose list the draw then uses,
+so the predictor prices a frame from what culling kept at no extra cost. The present and whatever an
 app draws over the scene are not in it.
 
 ## Where a frame's time goes at each size
 
 The raster brackets its stages for [frame cost](../tools/Frame-Cost.md):
-`r3d.cull`, `r3d.transform`, `r3d.draw` and `r3d.upscale`, and the
-predictor's census as `r3d.census`. The suite behind
+`r3d.cull`, `r3d.transform`, `r3d.draw` and `r3d.upscale`; through the
+render context the cull is the census, `r3d.census`. The suite behind
 these tables draws the test scene's path at every size, both cores, and then
 once more on one core with the span rasterizer stopped after each stage.
 
-<!-- generated: dynres-stages sha256=8dadb99e9bca61808fbbac2281e9730d20a8efa1e099430db8ec2702ae51d462 -->
+<!-- generated: dynres-stages sha256=fe4c2bb9e556b8ba11be8a07966e5285b97ae603700cdca7270409bd3cc270ae -->
 | Render size | Divisor | Pixels | Frame mean | p50 | max | cull | transform | draw | upscale | 1 core: setup | rows | span setup | fill |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 368x448 | 1.00 | 100% | 111.6 | 112.4 | 131.5 | 0.6 | 4.3 | 93.6 | 13.0 | 33.5 | 33.4 | 33.4 | 48.7 |
-| 294x358 | 1.25 | 64% | 86.1 | 86.4 | 104.5 | 0.6 | 4.4 | 70.8 | 10.2 | 31.9 | 27.2 | 25.6 | 28.2 |
+| 368x448 | 1.00 | 100% | 108.6 | 109.5 | 128.6 | 0.6 | 4.4 | 93.7 | 9.9 | 33.5 | 33.4 | 33.4 | 48.8 |
+| 294x358 | 1.25 | 64% | 86.3 | 86.5 | 104.7 | 0.7 | 4.4 | 70.9 | 10.3 | 31.9 | 27.2 | 25.6 | 28.3 |
 | 276x336 | 1.33 | 56% | 81.4 | 81.5 | 99.2 | 0.6 | 4.4 | 66.0 | 10.3 | 31.5 | 25.6 | 23.6 | 24.8 |
-| 245x298 | 1.50 | 44% | 72.5 | 72.4 | 88.9 | 0.7 | 4.4 | 57.9 | 9.6 | 30.6 | 23.0 | 20.4 | 17.9 |
-| 210x256 | 1.75 | 33% | 65.2 | 66.0 | 79.9 | 0.6 | 4.4 | 50.8 | 9.3 | 29.6 | 19.9 | 16.8 | 13.7 |
-| 184x224 | 2.00 | 25% | 54.0 | 54.6 | 66.7 | 0.6 | 4.4 | 43.1 | 5.8 | 28.6 | 17.6 | 14.2 | 8.3 |
-| 147x179 | 2.50 | 16% | 48.8 | 49.4 | 60.2 | 0.7 | 4.4 | 35.1 | 8.6 | 27.0 | 14.3 | 10.6 | 3.8 |
+| 245x298 | 1.50 | 44% | 72.6 | 72.4 | 88.9 | 0.6 | 4.4 | 58.0 | 9.6 | 30.6 | 23.0 | 20.4 | 18.0 |
+| 210x256 | 1.75 | 33% | 65.3 | 66.1 | 79.9 | 0.6 | 4.4 | 50.9 | 9.3 | 29.6 | 19.9 | 16.8 | 13.7 |
+| 184x224 | 2.00 | 25% | 54.1 | 54.8 | 66.7 | 0.7 | 4.4 | 43.1 | 5.9 | 28.6 | 17.6 | 14.2 | 8.3 |
+| 147x179 | 2.50 | 16% | 48.8 | 49.5 | 60.3 | 0.7 | 4.4 | 35.2 | 8.5 | 27.0 | 14.3 | 10.6 | 3.8 |
 | 122x149 | 3.02 | 11% | 43.7 | 44.4 | 53.7 | 0.7 | 4.4 | 30.2 | 8.4 | 25.6 | 12.0 | 8.2 | 1.7 |
-| 368x224 | 1.00 x 2.00 | 50% | 70.6 | 70.5 | 86.0 | 0.6 | 4.4 | 55.1 | 10.4 | 31.2 | 18.8 | 16.6 | 20.9 |
-| 184x448 | 2.00 x 1.00 | 50% | 85.8 | 86.3 | 101.1 | 0.6 | 4.4 | 70.7 | 10.0 | 31.3 | 31.9 | 28.7 | 21.8 |
-| 245x224 | 1.50 x 2.00 | 33% | 62.0 | 62.2 | 76.2 | 0.6 | 4.4 | 47.5 | 9.4 | 29.6 | 18.1 | 15.2 | 12.7 |
-| 184x298 | 2.00 x 1.50 | 33% | 66.3 | 67.0 | 80.8 | 0.6 | 4.4 | 52.2 | 9.1 | 29.7 | 22.4 | 19.0 | 12.1 |
+| 368x224 | 1.00 x 2.00 | 50% | 67.5 | 67.2 | 82.9 | 0.7 | 4.4 | 55.2 | 7.2 | 31.2 | 18.8 | 16.6 | 21.0 |
+| 184x448 | 2.00 x 1.00 | 50% | 83.2 | 83.7 | 98.4 | 0.6 | 4.4 | 70.8 | 7.3 | 31.3 | 31.9 | 28.8 | 21.9 |
+| 245x224 | 1.50 x 2.00 | 33% | 62.0 | 62.3 | 76.4 | 0.6 | 4.4 | 47.5 | 9.4 | 29.6 | 18.1 | 15.3 | 12.7 |
+| 184x298 | 2.00 x 1.50 | 33% | 63.7 | 64.3 | 78.1 | 0.6 | 4.4 | 52.2 | 6.4 | 29.7 | 22.4 | 19.0 | 12.2 |
 
 Milliseconds; both cores unless marked one core.
 <!-- /generated: dynres-stages -->
 
 The questions the split answers, as differences between two sizes. Most of
-the gap between neighbouring isotropic steps is the raster, not the upscale;
-a non-integer step pays the mapped upscale on top, which is why 2.5x saves
-little over 2x. Halving the height saves far more than halving the width,
+the gap between neighbouring isotropic steps is the raster, not the upscale.
+A step that keeps the panel's width or halves it upscales whole rows or
+pixel pairs down any row map; any other width pays the mapped upscale on
+top, which is why 2.5x saves little over 2x. Halving the height saves far more than halving the width,
 since rows and span setup follow the height, so a ladder cuts the height
 first. The one-core setup stage barely moves with size: it is the floor no
 step goes under.
 
-<!-- generated: dynres-findings sha256=e3fd2e7e30eaec3845fb80a8ae2b647d7e442ec72404ce5674ecc1f5addcaf32 -->
+<!-- generated: dynres-findings sha256=4d33a41910767f4d80a7b3a3426d37abd73ec023fab27bcb0dee7a63afc266b1 -->
 | Question | Compared | Frame | draw | upscale | 1 core: rows | span setup | fill |
 |---|---|---|---|---|---|---|---|
 | 1.5x over 2x | 245x298 minus 184x224 | 18.5 | 14.8 | 3.7 | 5.3 | 6.2 | 9.6 |
-| 2x over 2.5x | 184x224 minus 147x179 | 5.2 | 7.9 | -2.7 | 3.3 | 3.6 | 4.5 |
-| full height over half | 368x448 minus 368x224 | 41.0 | 38.4 | 2.7 | 14.5 | 16.9 | 27.8 |
-| full width over half | 368x448 minus 184x448 | 25.8 | 22.8 | 3.0 | 1.5 | 4.7 | 26.9 |
+| 2x over 2.5x | 184x224 minus 147x179 | 5.3 | 7.9 | -2.6 | 3.3 | 3.6 | 4.5 |
+| full height over half | 368x448 minus 368x224 | 41.2 | 38.5 | 2.7 | 14.5 | 16.9 | 27.8 |
+| full width over half | 368x448 minus 184x448 | 25.4 | 22.9 | 2.6 | 1.5 | 4.7 | 27.0 |
 <!-- /generated: dynres-findings -->
 
 ## The policies on the board
@@ -69,17 +71,17 @@ manager, at two budgets; the fixed row is the camera's half scale. The quality
 columns score every frame's size against the reference render of the same
 pose at full size ([Render-Harness.md](../tools/Render-Harness.md)).
 
-<!-- generated: dynres-policies sha256=49547fadc5e0fa3c54abb163704665e15e4dca2ba83c1d0db06e2a39baee6d2c -->
+<!-- generated: dynres-policies sha256=0aa73aa209df50104b8b5ddf83836d1e4a005981e8eab19bb89a3200ea9a7618 -->
 | Budget | Policy | Ladder | p50 | p95 | max | Over budget | Switches | Time at each size | Mean dE | SSIM |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 60.0 | fixed | half | 54.7 | 66.4 | 68.5 | 24.8% | 0 | 184x224 100% | 9.30 | 0.5562 |
-| 60.0 | stepped | isotropic | 52.0 | 60.7 | 66.8 | 10.2% | 11 | 245x298 3%, 210x256 17%, 184x224 27%, 147x179 53% | 9.38 | 0.5503 |
-| 60.0 | predicted | isotropic | 54.6 | 60.8 | 63.3 | 9.2% | 12 | 245x298 7%, 210x256 21%, 184x224 32%, 147x179 41% | 9.37 | 0.5511 |
-| 60.0 | predicted | height | 54.3 | 60.8 | 63.8 | 8.7% | 14 | 368x298 2%, 368x224 10%, 245x224 20%, 184x224 28%, 147x179 40% | 9.36 | 0.5522 |
-| 75.0 | fixed | half | 54.7 | 66.4 | 68.5 | 0.0% | 0 | 184x224 100% | 9.30 | 0.5562 |
-| 75.0 | stepped | isotropic | 65.6 | 74.6 | 83.4 | 4.1% | 12 | 368x448 1%, 294x358 11%, 245x298 19%, 210x256 41%, 184x224 28% | 9.30 | 0.5564 |
-| 75.0 | predicted | isotropic | 66.9 | 73.7 | 78.4 | 1.7% | 10 | 294x358 14%, 245x298 26%, 210x256 39%, 184x224 20% | 9.30 | 0.5566 |
-| 75.0 | predicted | height | 66.3 | 73.9 | 79.2 | 2.9% | 12 | 368x358 3%, 368x298 15%, 368x224 31%, 245x224 37%, 184x224 15% | 9.27 | 0.5589 |
+| 60.0 | fixed | half | 54.8 | 66.5 | 68.6 | 25.3% | 0 | 184x224 100% | 9.30 | 0.5562 |
+| 60.0 | stepped | isotropic | 52.1 | 60.7 | 66.9 | 10.2% | 11 | 245x298 3%, 210x256 17%, 184x224 27%, 147x179 53% | 9.38 | 0.5502 |
+| 60.0 | predicted | isotropic | 54.6 | 60.4 | 64.7 | 7.2% | 14 | 294x358 1%, 245x298 9%, 210x256 18%, 184x224 32%, 147x179 39% | 9.37 | 0.5514 |
+| 60.0 | predicted | height | 53.9 | 60.4 | 63.2 | 7.0% | 14 | 368x298 2%, 368x224 15%, 245x224 16%, 184x224 28%, 147x179 39% | 9.35 | 0.5526 |
+| 75.0 | fixed | half | 54.8 | 66.5 | 68.6 | 0.0% | 0 | 184x224 100% | 9.30 | 0.5562 |
+| 75.0 | stepped | isotropic | 65.7 | 74.8 | 82.5 | 4.7% | 12 | 368x448 2%, 294x358 11%, 245x298 19%, 210x256 41%, 184x224 28% | 9.30 | 0.5564 |
+| 75.0 | predicted | isotropic | 66.5 | 73.3 | 77.9 | 1.5% | 10 | 294x358 15%, 245x298 27%, 210x256 39%, 184x224 20% | 9.30 | 0.5566 |
+| 75.0 | predicted | height | 66.1 | 73.7 | 81.3 | 2.9% | 12 | 368x358 4%, 368x298 19%, 368x224 38%, 245x224 25%, 184x224 15% | 9.27 | 0.5594 |
 
 Frame time is the scaled part, draw plus upscale, in milliseconds; dE and SSIM are against the reference at full size, lower dE and higher SSIM being closer.
 <!-- /generated: dynres-policies -->

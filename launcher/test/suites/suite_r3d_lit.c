@@ -1759,6 +1759,63 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     free(upscaled);
 }
 
+/* Culled once at one size and drawn at another, two instances (the second
+ * moved, so each keeps its own list): the same picture, depth and survivors
+ * as raster_draw() at the drawn size, from eyes that cull different parts. */
+static void
+test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
+    parts_t* const p = parts_buffer();
+    build_wall_and_stack(p);
+    const r3d_placement_t moved = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {-120.0f, 40.0f, 0.0f}};
+    const r3d_instance_t instances[] = {{&p->mesh, NULL}, {&p->mesh, &moved}};
+    raster_t raster = {.instances = instances,
+                       .instance_count = 2,
+                       .width = W,
+                       .height = H,
+                       .clear = SKY,
+                       .upscaled = true,
+                       .destination_width = 2 * W,
+                       .destination_height = 2 * H};
+    const size_t pixels = (size_t)W * H;
+    raster.scratch = malloc(raster_scratch_bytes(&raster));
+    uint16_t* culled = malloc(sizeof(*culled) * raster_culled_length(&raster));
+    uint16_t* want = malloc(sizeof(*want) * 2 * pixels);
+    TEST_ASSERT_NOT_NULL(raster.scratch);
+    TEST_ASSERT_NOT_NULL(culled);
+    TEST_ASSERT_NOT_NULL(want);
+
+    static const float eye_heights[] = {-100.0f, 150.0f, 300.0f};
+    static const int sizes[][2] = {{W, H}, {W / 2, H}, {W, H / 2 + 3}};
+    for (int e = 0; e < (int)(sizeof eye_heights / sizeof eye_heights[0]); e++) {
+        const camera_t camera = camera_down_minus_z(eye_heights[e], 400, 1.0f);
+        for (int z = 0; z < (int)(sizeof sizes / sizeof sizes[0]); z++) {
+            raster.width = sizes[z][0];
+            raster.height = sizes[z][1];
+            const size_t drawn = (size_t)raster.width * (size_t)raster.height;
+            memset(r3d_pipeline_carve(&raster).color, 0xEE, sizeof(uint16_t) * drawn); /* upscaling never clears */
+            const raster_stats_t direct = raster_draw(&raster, &camera, 0);
+            memcpy(want, r3d_pipeline_carve(&raster).color, sizeof(*want) * drawn);
+            memcpy(want + drawn, r3d_pipeline_carve(&raster).depth, sizeof(*want) * drawn);
+
+            raster.width = sizes[(z + 1) % 3][0]; /* the census at another size */
+            raster.height = sizes[(z + 1) % 3][1];
+            const raster_stats_t counted = raster_census(&raster, &camera, 0, culled);
+            raster.width = sizes[z][0];
+            raster.height = sizes[z][1];
+            memset(r3d_pipeline_carve(&raster).color, 0xEE, sizeof(uint16_t) * drawn);
+            raster_draw_culled(&raster, &camera, 0, culled);
+
+            TEST_ASSERT_EQUAL_INT(direct.clusters, counted.clusters);
+            TEST_ASSERT_EQUAL_INT(direct.triangles, counted.triangles);
+            TEST_ASSERT_EQUAL_HEX16_ARRAY(want, r3d_pipeline_carve(&raster).color, drawn);
+            TEST_ASSERT_EQUAL_HEX16_ARRAY(want + drawn, r3d_pipeline_carve(&raster).depth, drawn);
+        }
+    }
+    free(want);
+    free(culled);
+    free(raster.scratch);
+}
+
 /* A destination the raster's own size is a copy of it, taking
  * the clear colour wherever nothing was drawn. */
 static void
@@ -2268,6 +2325,7 @@ run_r3d_lit_suite(void) {
 
     RUN_TEST(test_the_frame_carves_its_scratch_without_overlap);
     RUN_TEST(test_the_two_core_frame_matches_one_full_draw);
+    RUN_TEST(test_a_census_list_draws_what_raster_draw_draws_at_any_size);
     RUN_TEST(test_a_destination_of_the_same_size_is_a_copy);
     RUN_TEST(test_a_fractional_destination_upscales_a_drawn_frame);
     RUN_TEST(test_a_tile_holds_its_minimum_depth_not_its_maximum);
