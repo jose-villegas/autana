@@ -100,6 +100,27 @@ is the gate, and it checks every file in the list on every pull request and
 every push to `main`; a drift that reaches `main` is a failed build, not
 a surprise six months later.
 
+### Token clones
+
+`python scripts/gates/check_clones.py` checks the whole-tree clone count
+against `scripts/gates/clones_baseline.txt`. Install its pinned jscpd engine
+with `npm ci --prefix scripts/gates`. A rise fails: extract a shared owner.
+When the count falls, lower the baseline in the same PR; do not raise it to
+accept a new copy.
+
+Use `--report` to list every pair with file and line ranges, or
+`--changed origin/main` to list pairs touching changed files. Both still
+check the whole tree. `--min-tokens N` measures a different threshold without
+checking the ratchet; the gate's `MIN_TOKENS` defines the enforced threshold.
+
+The gate scans tracked C, C++ and Python under `launcher/`, `scripts/` and
+`editor/`. Vendored component and test-framework directories, generated-banner
+files and fixture-data directories are excluded by rule. Comments and
+whitespace are ignored; identifier names and literal values are abstracted.
+Short helpers below the threshold are missed. Repeated tables and test setup
+remain in the count, so a reported pair needs review before extraction.
+The Linux comment-rules workflow runs the gate.
+
 ## Judgment rules
 
 These rules need a reader who understands the code. Do not add scripts that
