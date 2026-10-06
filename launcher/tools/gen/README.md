@@ -11,7 +11,7 @@
 | [bake_ui_layout.py](bake_ui_layout.py) | Runs the C++ authored-layout baker built in `editor/build`. |
 | [gen_zeta_curve.py](gen_zeta_curve.py) | Bakes the boot animation curve. |
 | [gfx_palette_gen.c](gfx_palette_gen.c) | Portable palette table calculations shared by host tools and tests. |
-| [gfx_palette_gen.h](gfx_palette_gen.h) | Declarations for the palette table calculations. |
+| [gfx_palette_gen.h](gfx_palette_gen.h) | OKLab colour space and palette table calculations for host generators. |
 
 ## The rules every generator follows
 

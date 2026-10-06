@@ -23,7 +23,7 @@ import pathlib
 import re
 import sys
 
-from check_comment_length import EXCLUDED as C_EXCLUDED, scan
+from c_comments import EXCLUDED as C_EXCLUDED, scan
 from check_doc_index import blank_fences, doc_headings
 from code_vocabulary import vocabulary
 from idf_vocabulary import not_verified_notice, outside_vocabulary, required_missing
