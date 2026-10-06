@@ -439,3 +439,17 @@ collect_core1_lane(void) {
     for (int tries = 0; tries < 20 && !job_wait(100); tries++) {}
     TEST_ASSERT_TRUE_MESSAGE(job_wait(0), "a core-1 lane never came back");
 }
+
+sand_t*
+sand_test_grid_open(uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t seed) {
+    *grid = malloc((size_t)w * (size_t)h);
+    *blocks = malloc((size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    TEST_ASSERT_NOT_NULL(*grid);
+    TEST_ASSERT_NOT_NULL(*blocks);
+
+    sand_t* const real = malloc(sizeof *real);
+    TEST_ASSERT_NOT_NULL(real);
+    sand_init(real, *grid, w, h, seed);
+    sand_enable_sleeping(real, *blocks);
+    return real;
+}

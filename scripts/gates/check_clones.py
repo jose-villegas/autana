@@ -2,7 +2,8 @@
 """Reject new jscpd pairs in tracked first-party C/C++ and Python.
 
 Compare HEAD with its merge-base with origin/main, or HEAD~1 when HEAD is
-on main. Pair keys use sorted filenames and whitespace-normalised fragments.
+on main. Pairs use sorted filenames and whitespace-normalised fragments. A shorter
+fragment contained in a baseline pair is existing duplication.
 --report lists all pairs. --min-tokens N reports another threshold without
 checking new pairs. MIN_TOKENS is 80: longer copied helpers and test setup
 are detected, including renamed identifiers and changed literal values;
@@ -169,8 +170,15 @@ def pair_key(pair):
 
 
 def check_pairs(pairs, base_pairs):
-    existing = {pair_key(pair) for pair in base_pairs}
-    added = [pair for pair in pairs if pair_key(pair) not in existing]
+    existing = {}
+    for pair in base_pairs:
+        names, fragment = pair_key(pair)
+        existing.setdefault(names, []).append(fragment)
+    added = []
+    for pair in pairs:
+        names, fragment = pair_key(pair)
+        if not any(fragment in baseline for baseline in existing.get(names, ())):
+            added.append(pair)
     if added:
         print(f"FAIL: {len(added)} new clone pairs; extract a shared owner.")
         for pair in added:

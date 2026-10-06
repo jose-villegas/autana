@@ -147,6 +147,16 @@ class CloneTests(unittest.TestCase):
             self.assertEqual(gate.check_pairs(head, base), 1)
         self.assertIn("c.c:1-12 ~ d.c:1-12", output.getvalue())
 
+    def test_shortened_existing_clone_passes(self):
+        shorter = self.pair(fragment="\n".join(BLOCK.splitlines()[2:-3]))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pairs([shorter], [self.pair()]), 0)
+
+    def test_extended_existing_clone_fails(self):
+        extended = self.pair(fragment=BLOCK + "return another(input);")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pairs([extended], [self.pair()]), 1)
+
     def test_literal_only_table_rows_are_ignored(self):
         rows = "    {0xAB, 1.5e-2f, 42UL, 'x', \"identifier\"}, // label\n" * 12
         pairs = self.scan({"launcher/main/a.c": rows,

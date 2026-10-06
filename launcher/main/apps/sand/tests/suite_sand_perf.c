@@ -1727,15 +1727,9 @@ test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget(void) {
 
 static void
 test_turning_a_half_screen_of_gas_fits_in_the_frame_budget(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
-
-    sand_t* const real = malloc(sizeof *real);
-    TEST_ASSERT_NOT_NULL(real);
-    sand_init(real, big, REAL_W, REAL_H, 31u);
-    sand_enable_sleeping(real, blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 31u);
     board_bookkeeping_open(real);
 
     /* 40% of the grid, full width, against the ceiling - where gas ends up. */
@@ -2400,15 +2394,9 @@ test_the_lava_stress_scene_fits_in_the_frame_budget(void) {
 
 static void
 test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
-
-    sand_t* const real = malloc(sizeof *real);
-    TEST_ASSERT_NOT_NULL(real);
-    sand_init(real, big, REAL_W, REAL_H, 31u);
-    sand_enable_sleeping(real, blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 31u);
     board_bookkeeping_open(real);
 
     build_smoke_and_steam_scene(real);
@@ -2808,15 +2796,9 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
  * together - see that constant. */
 static void
 test_the_plant_ruin_scene_fits_in_the_frame_budget(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks = malloc(REAL_BLOCK_COLS * REAL_BLOCK_ROWS);
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
-
-    sand_t* const real = malloc(sizeof *real);
-    TEST_ASSERT_NOT_NULL(real);
-    sand_init(real, big, REAL_W, REAL_H, 11u);
-    sand_enable_sleeping(real, blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 11u);
     board_bookkeeping_open(real);
     sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(real, SAND_DECAY_PER_MATERIAL);

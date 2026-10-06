@@ -236,3 +236,6 @@ void board_bookkeeping_close(void);
  * one hands the next a core still writing into memory about to be freed and
  * handed back. Waits it out before anything reads what it wrote. */
 void collect_core1_lane(void);
+
+/* The caller owns all three allocations and frees them after its last step. */
+sand_t* sand_test_grid_open(uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t seed);
