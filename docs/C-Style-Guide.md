@@ -83,8 +83,8 @@ cost of reformatting files you did not touch.
 
 Three places, one file list. `scripts/gates/format-file-list.sh` defines which
 files the rules apply to: vendored trees by path, generated files by the
-`GENERATED FILE` marker they carry; so the hook and CI cannot disagree about
-what is in scope.
+banner they carry ([Generated-Files.md](tools/Generated-Files.md)); so the
+hook and CI cannot disagree about what is in scope.
 
 ```sh
 scripts/install-git-hooks.sh          # opt in to the pre-commit hook
