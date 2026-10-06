@@ -1,5 +1,5 @@
 /*
- * Portable suite: the three baked Sponza meshes, read from the sponza bundle,
+ * Portable suite: the three baked Sponza meshes, read from the sponza pack,
  * and the camera loop through them, the scene's camera once it has loaded
  * (sponza_content.h). Each mesh is checked for the structure
  * r3d_pipeline.h relies on, never against the generator; the path and
@@ -24,9 +24,9 @@
 #include "scene/scene.h"
 #include "util/runtime/memory.h"
 
-/* The scene, loaded for the suite, its bundle, and the three bakes in it. */
+/* The scene, loaded for the suite, its pack, and the three bakes in it. */
 static scene_t* sponza;
-static const asset_pack_t* bundle;
+static const asset_pack_t* pack;
 static const r3d_scene_camera_t* flythrough;
 #define MESH_FULL (&mesh_full)
 #define MESH_LITE (&mesh_lite)
@@ -44,7 +44,7 @@ require_the_scene(void) {
 static void
 open_the_mesh(const char* id, r3d_lit_mesh_t* mesh) {
     TEST_ASSERT_NOT_NULL(id);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(bundle, id, mesh), id);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(pack, id, mesh), id);
 }
 
 /* The pack id of the mesh `bake`'s entity draws. */
@@ -343,11 +343,11 @@ test_the_flythrough_sees_mostly_building(void) {
     check_the_flythrough_sees_mostly_building(MESH_FLAT);
 }
 
-/* The bundle the build wrote for the scene: on the device, the one flashed
+/* The pack the build wrote for the scene: on the device, the one flashed
  * to the assets partition. The scene loads from it, and each bake's mesh
  * opens. */
 static void
-test_the_scene_loads_from_its_bundle_with_a_lit_mesh_for_each_bake_and_its_path(void) {
+test_the_scene_loads_from_its_pack_with_a_lit_mesh_for_each_bake_and_its_path(void) {
     require_the_scene();
     for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
         r3d_lit_mesh_t mesh;
@@ -366,22 +366,22 @@ run_sponza_suite(void) {
         printf("scene sponza: status %d, asset %s, about '%s'\n", (int)why.status, asset_status_text(why.asset),
                why.what);
     } else {
-        bundle = asset_store_bundle(SPONZA_SCENE);
+        pack = asset_store_pack(SPONZA_SCENE);
         flythrough = scene_camera_lens(sponza, NULL);
     }
-    RUN_TEST(test_the_scene_loads_from_its_bundle_with_a_lit_mesh_for_each_bake_and_its_path);
+    RUN_TEST(test_the_scene_loads_from_its_pack_with_a_lit_mesh_for_each_bake_and_its_path);
     RUN_TEST(test_both_bakes_have_the_structure_the_pipeline_relies_on);
     RUN_TEST(test_both_bakes_are_cut_into_meshlets);
     RUN_TEST(test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps);
     RUN_TEST(test_the_flythrough_moves_smoothly_and_closes_its_loop);
     RUN_TEST(test_the_flythrough_keeps_clear_of_every_triangle);
     RUN_TEST(test_the_flythrough_sees_mostly_building);
-    if (bundle != NULL) {
+    if (pack != NULL) {
         asset_store_release(SPONZA_SCENE);
     }
     scene_unload(sponza);
     sponza = NULL;
-    bundle = NULL;
+    pack = NULL;
     flythrough = NULL;
 }
 

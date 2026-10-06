@@ -8,7 +8,7 @@
 # Usage:
 #   launcher/tools/r3d/report_triangle_sizes.sh --mesh NAME POSES|- [--write DIR | --against DIR]
 #
-#   --mesh NAME             the baked mesh: its asset id, read from the bundle that holds it, in a folder
+#   --mesh NAME             the baked mesh: its asset id, read from the pack that holds it, in a folder
 #                           written from the baked meshes in the tree, or the one AUTANA_ASSET_DIR names
 #   POSES                   the poses file: size, lens and one line per pose; - reads standard input
 #   --write DIR             also keep each pose's frame in DIR
@@ -78,7 +78,7 @@ if [ -z "$asset_dir" ]; then
     asset_dir="$BUILD_DIR/assets"
     "$PYTHON" "$SCRIPT_DIR/build_pack.py" -o "$asset_dir" "$MAIN_DIR" > /dev/null
 fi
-pack="$asset_dir/$("$PYTHON" "$SCRIPT_DIR/build_pack.py" --bundle-of "$mesh_name" "$MAIN_DIR").apak"
+pack="$asset_dir/$("$PYTHON" "$SCRIPT_DIR/build_pack.py" --pack-of "$mesh_name" "$MAIN_DIR").apak"
 
 if [ -n "$mode" ]; then
     mkdir -p "$dir"

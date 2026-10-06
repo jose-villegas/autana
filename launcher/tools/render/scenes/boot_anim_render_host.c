@@ -18,7 +18,7 @@
  *     main/boot/boot_anim.c     (host-portable for the same reason)
  *
  * The camera and space it draws through are the boot clip's, loaded from its
- * bundle as boot does (the rest pose when there is none), and the timing is
+ * pack as boot does (the rest pose when there is none), and the timing is
  * boot_anim_timeline.h.
  */
 
@@ -42,9 +42,9 @@ options(int argc, char** argv) {
     now_ms = (uint32_t)strtoul(argv[0], NULL, 10);
     boot_anim_motion_load(&motion);
     /* The rest pose only when asked for, by pointing AUTANA_ASSET_DIR at a
-     * folder without the clip: a renderer that lost its bundles must fail. */
+     * folder without the clip: a renderer that lost its packs must fail. */
     if (!motion.from_pack && getenv("AUTANA_ASSET_DIR") == NULL) {
-        fprintf(stderr, "no boot clip in the bundle folder built into this renderer\n");
+        fprintf(stderr, "no boot clip in the pack folder built into this renderer\n");
         return false;
     }
     return true;

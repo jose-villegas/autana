@@ -760,7 +760,7 @@ boot_anim_run(void) {
         vTaskDelay(1);
     }
     /* Boot plays once and nothing else reads its clip: releasing gives back the
-     * bundle and its mount slot. */
+     * pack and its mount slot. */
     boot_anim_motion_release(&motion);
 
     /* Checked only on the board; not on host. */

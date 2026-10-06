@@ -8,7 +8,7 @@
 
 #include "gfx/gfx.h"
 
-/* The scene's id, and its bundle's name. */
+/* The scene's id, and its pack's name. */
 #define SPONZA_SCENE                "sponza"
 
 /* Half the panel's resolution in each axis, upscaled on the way out. */

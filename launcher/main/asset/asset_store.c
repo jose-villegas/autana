@@ -59,7 +59,7 @@ mount(const char* name, mount_t** out) {
 }
 
 const asset_pack_t*
-asset_store_bundle(const char* name) {
+asset_store_pack(const char* name) {
     mount_t* mounted;
     const asset_status_t status = mount(name, &mounted);
     if (status != ASSET_OK) {

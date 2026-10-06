@@ -8,7 +8,7 @@
 --host EXECUTABLE reuses an existing renderer instead of building --script.
 
 Each variant re-lights the mesh's simplified geometry, which is baked once,
-writes the result under --work (nothing tracked is touched), bundles it in
+writes the result under --work (nothing tracked is touched), packs it in
 place of the tracked mesh for the scene's host renderer (AUTANA_ASSET_DIR),
 renders --render-args with a video, and scores the frames against the reference
 images from reference_render.py with render_compare.py. Prints one table
@@ -37,7 +37,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import log  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene  # noqa: E402
 from r3d.light import triangle_areas  # noqa: E402
-from r3d.build_pack import bundle_bytes, write_bundles  # noqa: E402
+from r3d.build_pack import pack_bytes, write_packs  # noqa: E402
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
 from r3d.mesh_import import REPO, bake_geometry, flat_colours  # noqa: E402
 
@@ -88,10 +88,10 @@ def build_host(script, out_dir):
 
 
 def write_assets(name, mesh_file, out):
-    """The asset bundles of every root in the tree, mesh `name` taken from
+    """The asset packs of every root in the tree, mesh `name` taken from
     `mesh_file`, written to out/assets; returns that folder."""
     assets = out / "assets"
-    write_bundles(assets, bundle_bytes([LAUNCHER / "main"], [f"{name}={mesh_file}"]))
+    write_packs(assets, pack_bytes([LAUNCHER / "main"], [f"{name}={mesh_file}"]))
     return assets
 
 
@@ -109,7 +109,7 @@ def write_variant(job, scene, geometry, spec, out):
 
 
 def score(args, host, assets, work):
-    """(mean, p95, ssim, edge, interior) of the frames `host` renders from the bundles in `assets`."""
+    """(mean, p95, ssim, edge, interior) of the frames `host` renders from the packs in `assets`."""
     video = work / "frames.avi"
     subprocess.run([host.as_posix(), *args.render_args.split(), "-o", (work / "last.bmp").as_posix(), "--video", video.as_posix()],
                    check=True, capture_output=True, env={**os.environ, "AUTANA_ASSET_DIR": assets.as_posix()})

@@ -110,7 +110,7 @@ sponza-tiles-portrait|--quarter 0 --no-hud --scene sponza --frames 2 --view tile
 sponza-tiles-flipped|--quarter 3 --no-hud --scene sponza --frames 2 --view tiles|448x368|nopin
 "
 
-# The scenes read their meshes from asset bundles of the baked meshes in the tree.
+# The scenes read their meshes from asset packs of the baked meshes in the tree.
 scene_assets=main
 
 # shellcheck source=../../../../tools/render/render_scene.sh

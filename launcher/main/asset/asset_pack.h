@@ -37,8 +37,8 @@ typedef enum {
     ASSET_ERR_NOT_FOUND, /* no entry has that name */
     ASSET_ERR_TYPE,      /* the entry is not of the type asked for */
     ASSET_ERR_FORMAT,    /* inside its range, an entry holds a value its reader does not accept */
-    ASSET_ERR_DUPLICATE, /* two bundles in a directory share a name */
-    ASSET_ERR_FULL,      /* as many bundles are mounted as the store holds */
+    ASSET_ERR_DUPLICATE, /* two packs in a directory share a name */
+    ASSET_ERR_FULL,      /* as many packs are mounted as the store holds */
 } asset_status_t;
 
 /* A validated pack. Holds no copy: `base` must outlive it. */

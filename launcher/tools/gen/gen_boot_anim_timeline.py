@@ -10,7 +10,7 @@ main/boot/boot_anim_timeline.json is the source of truth for everything
 that is not motion, edited by hand. The camera and the space the grid and
 curve live in move by a glTF animation instead,
 main/boot/boot_anim_motion.glb (see docs/Animation-Tracks.md), authored in
-any glTF tool and baked into the boot clip's own asset bundle by
+any glTF tool and baked into the boot clip's own asset pack by
 tools/r3d/build_pack.py from main/boot/boot_anim_motion.anim.toml; this
 script only reads it to check it.
 

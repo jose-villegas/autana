@@ -1,7 +1,7 @@
 /*
  * Portable suite: the asset pack container (asset/asset_pack.h), the lit mesh
  * view built from an entry (render/r3d_lit_mesh.h). Each test builds its own
- * small pack, so a check never leans on what the tree's bundles hold; on a
+ * small pack, so a check never leans on what the tree's packs hold; on a
  * host the last tests read it back from a file.
  */
 
@@ -395,7 +395,7 @@ test_the_host_reader_reads_a_pack_file_and_refuses_a_missing_one(void) {
     write_pack_file(&f);
     asset_pack_t pack;
     void* buffer = NULL;
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, asset_file_open("no/such/bundle.apak", &pack, &buffer));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, asset_file_open("no/such/pack.apak", &pack, &buffer));
     TEST_ASSERT_NULL(buffer);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(PACK_FILE, &pack, &buffer));
     r3d_lit_mesh_t mesh;

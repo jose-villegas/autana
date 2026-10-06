@@ -589,10 +589,10 @@ test_a_scene_the_tools_bake_loads_as_its_file_says(void) {
 #endif
 
 #ifndef DEVICE_BUILD
-/* The fixture's pack as bundle `name` in the working directory, one byte
+/* The fixture's pack as pack `name` in the working directory, one byte
  * after its header flipped when `damage` is set. */
 static void
-write_bundle(const char* name, bool damage) {
+write_pack(const char* name, bool damage) {
     char path[64];
     (void)snprintf(path, sizeof path, "./%s.apak", name);
     fx.bytes[ASSET_PACK_HEADER_SIZE] ^= damage ? 1U : 0U;
@@ -601,24 +601,24 @@ write_bundle(const char* name, bool damage) {
 }
 
 static void
-remove_bundle(const char* name) {
+remove_pack(const char* name) {
     char path[64];
     (void)snprintf(path, sizeof path, "./%s.apak", name);
     TEST_ASSERT_EQUAL_INT(0, remove(path));
 }
 
-/* scene_load() reads the bundle named after the scene once and holds it while
+/* scene_load() reads the pack named after the scene once and holds it while
  * a scene loaded from it stays: damage to the file goes unseen until the last
  * one unloads and the next load reads it again. */
 static void
-test_scene_load_holds_its_bundle_until_the_last_scene_from_it_unloads(void) {
+test_scene_load_holds_its_pack_until_the_last_scene_from_it_unloads(void) {
     fixture();
     test_asset_dir_use(".");
-    write_bundle("test_pair", false);
+    write_pack("test_pair", false);
     scene_failure_t why;
     scene_t* first = scene_load("test_pair", &why);
     TEST_ASSERT_NOT_NULL(first);
-    write_bundle("test_pair", true);
+    write_pack("test_pair", true);
     scene_t* second = scene_load("test_pair", &why);
     TEST_ASSERT_NOT_NULL(second);
     scene_unload(first);
@@ -626,24 +626,24 @@ test_scene_load_holds_its_bundle_until_the_last_scene_from_it_unloads(void) {
     TEST_ASSERT_NULL(scene_load("test_pair", &why));
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, why.asset);
-    remove_bundle("test_pair");
+    remove_pack("test_pair");
     test_asset_dir_restore();
 }
 
-/* A load that fails gives its use of the bundle back. */
+/* A load that fails gives its use of the pack back. */
 static void
-test_a_scene_that_fails_to_load_does_not_hold_its_bundle(void) {
+test_a_scene_that_fails_to_load_does_not_hold_its_pack(void) {
     fixture();
     test_asset_dir_use(".");
-    write_bundle("test_broken", false);
+    write_pack("test_broken", false);
     scene_failure_t why;
     TEST_ASSERT_NULL(scene_load("test_broken", &why));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, why.asset);
-    TEST_ASSERT_EQUAL_STRING("gone", why.what); /* a copy: the bundle it was read from is gone */
-    write_bundle("test_broken", true);
+    TEST_ASSERT_EQUAL_STRING("gone", why.what); /* a copy: the pack it was read from is gone */
+    write_pack("test_broken", true);
     TEST_ASSERT_NULL(scene_load("test_broken", &why));
     TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_NO_PACK, why.asset, "the damaged file was read again");
-    remove_bundle("test_broken");
+    remove_pack("test_broken");
     test_asset_dir_restore();
 }
 #endif
@@ -994,8 +994,8 @@ run_scene_suite(void) {
     RUN_TEST(test_a_scene_the_tools_bake_loads_as_its_file_says);
 #endif
 #ifndef DEVICE_BUILD
-    RUN_TEST(test_scene_load_holds_its_bundle_until_the_last_scene_from_it_unloads);
-    RUN_TEST(test_a_scene_that_fails_to_load_does_not_hold_its_bundle);
+    RUN_TEST(test_scene_load_holds_its_pack_until_the_last_scene_from_it_unloads);
+    RUN_TEST(test_a_scene_that_fails_to_load_does_not_hold_its_pack);
 #endif
     RUN_TEST(test_a_load_with_no_memory_left_says_so_and_takes_nothing);
     RUN_TEST(test_a_full_manager_refuses_another_scene_until_one_is_unloaded);

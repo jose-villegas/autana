@@ -63,7 +63,7 @@ typedef struct {
 struct scene {
     scene_asset_t asset;
     char id[ASSET_NAME_MAX];
-    bool holds_bundle; /* loaded by scene_load(): a use of bundle `id` */
+    bool holds_pack; /* loaded by scene_load(): a use of pack `id` */
     uint32_t elapsed_ms;
     scene_transform_t* transforms; /* one per entity */
     uint8_t* flags;                /* one per entity: SCENE_FLAG_* */

@@ -1,5 +1,5 @@
 """The scene entry (r3d/scene_asset.py): what it writes reads back as the
-scene file says, what it refuses to read, and the bundle build_pack makes of a
+scene file says, what it refuses to read, and the pack build_pack makes of a
 scene. The firmware's reader of the same bytes is suite_scene.c."""
 
 import pathlib
@@ -194,14 +194,14 @@ class SceneEntryRefusalTests(unittest.TestCase):
         self.refuses(lambda e: struct.pack_into("<H", e, at + 2, 1), "does not allow")
 
 
-class SceneBundleTests(SceneFiles):
-    """build_pack: a scene's bundle holds its entry, its meshes and its camera's clip."""
+class ScenePackTests(SceneFiles):
+    """build_pack: a scene's pack holds its entry, its meshes and its camera's clip."""
 
-    def test_the_bundle_holds_the_entry_every_mesh_and_the_clip_which_makes_no_bundle_of_its_own(self):
+    def test_the_pack_holds_the_entry_every_mesh_and_the_clip_which_makes_no_pack_of_its_own(self):
         path = self.scene(renderer("a.import.toml") + renderer("b.import.toml") + lens("clips/fly.anim.toml"))
-        bundles = {name: parse_pack(pack) for name, pack in build_pack.bundle_bytes([self.root]).items()}
-        self.assertEqual(sorted(bundles), ["hall"])
-        hall = bundles["hall"]
+        packs = {name: parse_pack(pack) for name, pack in build_pack.pack_bytes([self.root]).items()}
+        self.assertEqual(sorted(packs), ["hall"])
+        hall = packs["hall"]
         self.assertEqual(hall["hall"], (scene_asset.TYPE, scene_asset.bake(path)))
         self.assertEqual({name: kind for name, (kind, _) in hall.items()},
                          {"hall": scene_asset.TYPE, "a": LIT_MESH, "b": LIT_MESH, "fly": tracks_asset.TYPE})
@@ -210,24 +210,24 @@ class SceneBundleTests(SceneFiles):
     def test_replace_takes_only_a_mesh(self):
         self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml"))
         (self.root / "scratch.mesh").write_bytes(b"9")
-        packs = build_pack.bundle_bytes([self.root], [f"a={self.root / 'scratch.mesh'}"])
+        packs = build_pack.pack_bytes([self.root], [f"a={self.root / 'scratch.mesh'}"])
         self.assertEqual(parse_pack(packs["hall"])["a"], (LIT_MESH, b"9"))
         for entry in ("hall", "fly"):
             with self.subTest(entry=entry), self.assertRaisesRegex(SettingsError, "no such mesh"):
-                build_pack.bundle_bytes([self.root], [f"{entry}={self.root / 'scratch.mesh'}"])
+                build_pack.pack_bytes([self.root], [f"{entry}={self.root / 'scratch.mesh'}"])
 
     def test_a_scene_and_its_clip_cannot_share_an_id_and_the_refusal_names_both_files(self):
         (self.root / "clips" / "hall.anim.toml").write_text(CLIP)
         self.scene(renderer("a.import.toml") + lens("clips/hall.anim.toml"))
         with self.assertRaisesRegex(SettingsError, r"hall\.scene\.toml and .*hall\.anim\.toml both make entry 'hall'"):
-            build_pack.bundle_files([self.root])
+            build_pack.pack_files([self.root])
 
-    def test_two_scenes_flying_one_clip_are_refused_until_shared_bundles_exist(self):
+    def test_two_scenes_flying_one_clip_are_refused_until_shared_packs_exist(self):
         flying = renderer("a.import.toml", name="x") + lens("clips/fly.anim.toml")
         self.scene(flying, name="one.scene.toml")
         self.scene(flying.replace('mesh = "a.import.toml"', 'mesh = "b.import.toml"'), name="two.scene.toml")
-        with self.assertRaisesRegex(SettingsError, "'fly' is named by bundles"):
-            build_pack.bundle_files([self.root])
+        with self.assertRaisesRegex(SettingsError, "'fly' is named by packs"):
+            build_pack.pack_files([self.root])
 
 
 if __name__ == "__main__":

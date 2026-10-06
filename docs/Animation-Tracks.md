@@ -13,15 +13,15 @@ or any other exporter plays back as it was made.
 ```mermaid
 flowchart LR
     Author["Blender, or any glTF exporter<br/><i>.glb with an animation</i>"] --> Anim["NAME.anim.toml<br/><i>source and animation name</i>"]
-    Anim --> Pack["build_pack.py<br/><i>a TRCK entry in its bundle</i>"]
-    Pack --> Open["anim_tracks_from_pack(), anim_tracks_find()<br/><i>tracks pointing into the bundle</i>"]
+    Anim --> Pack["build_pack.py<br/><i>a TRCK entry in its pack</i>"]
+    Pack --> Open["anim_tracks_from_pack(), anim_tracks_find()<br/><i>tracks pointing into the pack</i>"]
     Open --> Sample["anim_clip_seconds(), anim_track_sample()<br/><i>clip time, then each track</i>"]
     Sample --> Caller["the caller's own object<br/><i>eye, colour, fov, ...</i>"]
 ```
 
 A clip reaches the firmware as an entry of an
-[asset bundle](assets/README.md): `build_pack.py` bakes it through
-`tools/anim/tracks_asset.py`, the entry's one writer, when the bundles are
+[asset pack](assets/README.md): `build_pack.py` bakes it through
+`tools/anim/tracks_asset.py`, the entry's one writer, when the packs are
 built.
 
 ## What a track stores
@@ -54,9 +54,9 @@ times stay in step, and the clip's duration is the last key of any of them.
 
 A `NAME.anim.toml` beside its `.glb` names one animation in it, and
 `build_pack.py` finds every such file by searching, so no list is kept. A
-clip no scene names is a [bundle](assets/README.md#bundles) of its own, named
-`NAME`, holding the one entry `NAME`; `asset_store_bundle("NAME")` mounts it.
-A clip a scene's camera flies travels in that scene's bundle instead.
+clip no scene names is a [pack](assets/README.md#packs) of its own, named
+`NAME`, holding the one entry `NAME`; `asset_store_pack("NAME")` mounts it.
+A clip a scene's camera flies travels in that scene's pack instead.
 
 ```toml
 source = "NAME.glb"     # a .glb beside this one
@@ -123,8 +123,8 @@ camera track gives a `camera_t` its look direction.
 2. Keep the file beside the code that plays it, as an asset, and write a
    `NAME.anim.toml` beside it naming the animation, as in
    [The pack entry](#the-pack-entry).
-3. Build the bundles: `build_pack.py` finds the `.anim.toml` and bakes the
-   clip into its bundle. Nothing is generated into the source tree.
+3. Build the packs: `build_pack.py` finds the `.anim.toml` and bakes the
+   clip into its pack. Nothing is generated into the source tree.
 4. Open the clip with `anim_tracks_from_pack()`, find the tracks the scene
    needs by name, sample them, and convert at the scene's own boundary.
 
@@ -175,12 +175,12 @@ build it, the compiler or the flags change.
   clip timeline, a long run's resolution, the quaternion path and the cubic
   layout to hand-built tracks.
 - `suite_anim_tracks.c` refuses each malformed entry with its status and
-  opens every clip in the boot clip's shipped bundle, on the host and on the board. On the
+  opens every clip in the boot clip's shipped pack, on the host and on the board. On the
   host it also holds every track of a test clip to the Python sampler, bit
   for bit where the sampler copies a key (`tools/tests/anim_probe.py` marks
   those).
 - `tools/tests/test_anim_tracks_asset.py` reads back what the writer writes,
-  refuses what the reader refuses, and has `build_pack.py` make a bundle
+  refuses what the reader refuses, and has `build_pack.py` make a pack
   of each `.anim.toml` no scene names.
 - `tools/tests/test_anim_bake.py` builds a glTF of its own with every
   interpolation, a quaternion, a pointer-targeted scalar and a non-zero first

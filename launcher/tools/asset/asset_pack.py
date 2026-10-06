@@ -13,14 +13,14 @@ An entry never holds a pointer: it names its own parts by offset from its
 own first byte, so the mapped pack is usable as it is. What an entry's bytes
 mean is the business of the module that owns its type.
 
-Content ships as bundles, each a pack. A flash partition holds them under a
-bundle directory, little-endian:
+Content ships as packs. A flash partition holds them under a
+pack directory, little-endian:
 
     header   16 bytes  magic "ABDR", CRC-32 of every byte after it to the end
-                       of the rows, version, bundle count
-    rows     40 bytes per bundle: name (32, NUL padded), offset, size;
+                       of the rows, version, pack count
+    rows     40 bytes per pack: name (32, NUL padded), offset, size;
                        offsets count from the start of the partition
-    bundles  each on its own 4 KB sector, after the rows, in row order
+    packs  each on its own 4 KB sector, after the rows, in row order
 
 Standard library only.
 """
@@ -107,20 +107,20 @@ def parse_pack(pack):
     return entries
 
 
-def build_directory(bundles):
-    """The partition image for `bundles`, (name, pack bytes) in order: the
-    directory, then each bundle on its own sector."""
-    names = [name for name, _ in bundles]
+def build_directory(packs):
+    """The partition image for `packs`, (name, pack bytes) in order: the
+    directory, then each pack on its own sector."""
+    names = [name for name, _ in packs]
     for name in names:
         if not name or len(name.encode("ascii")) >= NAME_BYTES or names.count(name) > 1:
-            raise PackError(f"bundle name {name!r} is empty, too long or repeated")
-    first = padded(DIRECTORY_HEADER.size + DIRECTORY_ROW.size * len(bundles), SECTOR)
+            raise PackError(f"pack name {name!r} is empty, too long or repeated")
+    first = padded(DIRECTORY_HEADER.size + DIRECTORY_ROW.size * len(packs), SECTOR)
     rows, body = [], bytearray()
-    for name, pack in bundles:
+    for name, pack in packs:
         start = padded(len(body), SECTOR)
         body += bytes(start - len(body)) + pack
         rows.append(DIRECTORY_ROW.pack(name.encode("ascii"), first + start, len(pack)))
-    covered = struct.pack("<II", DIRECTORY_VERSION, len(bundles)) + b"".join(rows)
+    covered = struct.pack("<II", DIRECTORY_VERSION, len(packs)) + b"".join(rows)
     directory = DIRECTORY_MAGIC + struct.pack("<I", zlib.crc32(covered)) + covered
     return directory + bytes(first - len(directory)) + bytes(body)
 
@@ -142,16 +142,16 @@ def parse_directory(image):
         raise PackError("the directory's rows leave the image")
     if zlib.crc32(image[8:rows_end]) != crc:
         raise PackError("directory CRC-32 mismatch")
-    bundles, end = {}, rows_end
+    packs, end = {}, rows_end
     for index in range(count):
         raw, offset, size = DIRECTORY_ROW.unpack_from(image, DIRECTORY_HEADER.size + DIRECTORY_ROW.size * index)
         name = raw.rstrip(b"\0").decode("ascii")
         if offset % SECTOR:
-            raise PackError(f"bundle {name!r} does not start on a sector")
+            raise PackError(f"pack {name!r} does not start on a sector")
         if offset < end or offset + size > len(image):
-            raise PackError(f"bundle {name!r} is outside the image or overlaps another")
-        if not name or raw[-1] or name in bundles:
-            raise PackError(f"bundle name {name!r} is empty, fills its 32 bytes or is repeated")
-        bundles[name] = image[offset : offset + size]
+            raise PackError(f"pack {name!r} is outside the image or overlaps another")
+        if not name or raw[-1] or name in packs:
+            raise PackError(f"pack name {name!r} is empty, fills its 32 bytes or is repeated")
+        packs[name] = image[offset : offset + size]
         end = offset + size
-    return bundles
+    return packs

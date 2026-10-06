@@ -29,7 +29,7 @@
 #                   and renders nothing; tools/render/render_compare.sh uses it.
 #   scene_includes  OPTIONAL extra -I directories, relative to launcher/
 #   scene_assets    OPTIONAL folders, relative to launcher/, whose asset roots
-#                   the scene reads as bundles: build_pack.py writes them to
+#                   the scene reads as packs: build_pack.py writes them to
 #                   assets/ in the output folder, the store's sources join the
 #                   build, and that folder is built in as the default, so a
 #                   revision comparison running each build alone finds its
@@ -85,8 +85,8 @@ render_scene_run() {
     render_scene_render
 }
 
-# The bundles of scene_assets' roots, and what the build needs to read them.
-render_scene_bundles() {
+# The packs of scene_assets' roots, and what the build needs to read them.
+render_scene_packs() {
     for _rs_src in asset/asset_pack.c asset/asset_file.c asset/asset_store.c asset/asset_store_file.c; do
         _rs_files="$_rs_files $_rs_launcher/main/$_rs_src"
     done
@@ -198,7 +198,7 @@ render_scene_build() {
     done
     _rs_asset_flags=
     if [ -n "$scene_assets" ]; then
-        render_scene_bundles || return 1
+        render_scene_packs || return 1
     fi
 
     # -lm LAST, after the sources, because GNU ld resolves left to right and

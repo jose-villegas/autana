@@ -200,11 +200,11 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
 
 scene_t*
 scene_load(const char* id, scene_failure_t* why) {
-    const asset_pack_t* bundle = asset_store_bundle(id);
-    scene_t* scene = scene_load_from(bundle, id, why);
+    const asset_pack_t* pack = asset_store_pack(id);
+    scene_t* scene = scene_load_from(pack, id, why);
     if (scene != NULL) {
-        scene->holds_bundle = true;
-    } else if (bundle != NULL) {
+        scene->holds_pack = true;
+    } else if (pack != NULL) {
         asset_store_release(id);
     }
     return scene;
@@ -220,7 +220,7 @@ scene_unload(scene_t* scene) {
             continue;
         }
         scene_draw_forget(scene);
-        if (scene->holds_bundle) {
+        if (scene->holds_pack) {
             asset_store_release(scene->id);
         }
         loaded_count--;
