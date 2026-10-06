@@ -21,8 +21,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/gfx/defines.c",
-                       "#ifdef ANALYSIS_SCAN\n#undef A\n#ifdef INNER\n#undef B\n#endif\n"
-                       "#else\n#undef C\n#endif\n#undef D\n")
+                            "#ifdef ANALYSIS_SCAN\n#undef A\n#ifdef INNER\n#undef B\n#endif\n"
+                            "#else\n#undef C\n#endif\n#undef D\n")
             gate_tree.commit(root, "launcher")
             hits = self.rule_hits(root, "UNDEF-PLACEMENT")
             self.assertEqual([hit.line for hit in hits], [7, 9])
@@ -31,9 +31,9 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                      "/* gfx - fixture header. */\n\n"
-                      "void\ngfx_init(void) {\n"
-                      "    /* see bd autana-zq7 for the follow-up */\n}\n")
+                            "/* gfx - fixture header. */\n\n"
+                            "void\ngfx_init(void) {\n"
+                            "    /* see bd autana-zq7 for the follow-up */\n}\n")
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "TRACKER-REF")
         self.assertEqual(len(findings), 1)
@@ -51,7 +51,7 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "docs/Guide.md",
-                      "Pinned to commit 8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c.\n")
+                            "Pinned to commit 8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c.\n")
             gate_tree.commit(root, "docs")
             findings = self.rule_hits(root, "TRACKER-REF")
         self.assertEqual(len(findings), 1)
@@ -63,9 +63,9 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "docs/Guide.md",
-                      "Run `autana screenshot` (autana-screenshot), `autana monitor` "
-                      "(autana-monitor), autana-cli, or check autana-device; "
-                      "build a195574e7177-diag.\n")
+                            "Run `autana screenshot` (autana-screenshot), `autana monitor` "
+                            "(autana-monitor), autana-cli, or check autana-device; "
+                            "build a195574e7177-diag.\n")
             gate_tree.commit(root, "docs")
             findings = self.rule_hits(root, "TRACKER-REF")
         self.assertEqual(findings, [])
@@ -74,9 +74,9 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                      "/* gfx - fixture header. */\n\n"
-                      "void\ngfx_init(void) {\n"
-                      "    /* measured on device, 2026-09-13 */\n}\n")
+                            "/* gfx - fixture header. */\n\n"
+                            "void\ngfx_init(void) {\n"
+                            "    /* measured on device, 2026-09-13 */\n}\n")
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "CALENDAR-DATE")
         self.assertEqual(len(findings), 1)
@@ -158,7 +158,7 @@ class StyleAuditTest(unittest.TestCase):
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/apps/sand/material.h", "#pragma once\n")
             gate_tree.write(root, "launcher/main/apps/sand/ui/brush_screen.c",
-                      '#include "../material.h"\n')
+                            '#include "../material.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-LAYER")
         self.assertEqual(findings, [])
@@ -300,7 +300,7 @@ class StyleAuditTest(unittest.TestCase):
             root = pathlib.Path(temp)
             self.util_tree(root)
             gate_tree.write(root, "launcher/main/util/runtime/job.c",
-                       "".join(f'#include "util/{sub}/{sub}.h"\n' for sub in self.PURE_UTIL))
+                            "".join(f'#include "util/{sub}/{sub}.h"\n' for sub in self.PURE_UTIL))
             gate_tree.write(root, "launcher/main/util/math/mathx.h", '#include "util/scalar/scalar.h"\n')
             gate_tree.write(root, "launcher/main/util/scalar/fixed.h", '#include "util/math/math.h"\n')
             gate_tree.commit(root, "launcher")
@@ -344,7 +344,7 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "scripts/device/device.py",
-                      'IDF_PYTHON = r"C:\\Users\\jdoe\\.espressif\\python_env\\python.exe"\n')
+                            'IDF_PYTHON = r"C:\\Users\\jdoe\\.espressif\\python_env\\python.exe"\n')
             gate_tree.commit(root, "scripts")
             findings = self.rule_hits(root, "PERSONAL-PATH")
         self.assertEqual(len(findings), 1)
@@ -353,7 +353,7 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/tools/build.sh",
-                      "DEFAULT_EXPORT='" + "\\".join(["C:", "Espressif", "esp-idf-v5.5", "export.bat"]) + "'\n")
+                            "DEFAULT_EXPORT='" + "\\".join(["C:", "Espressif", "esp-idf-v5.5", "export.bat"]) + "'\n")
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "PERSONAL-PATH")
         self.assertEqual(len(findings), 1)
@@ -366,7 +366,7 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/tools/build.sh",
-                      "".join(f"EXPORT_{i}='{layout}'\n" for i, layout in enumerate(layouts)))
+                            "".join(f"EXPORT_{i}='{layout}'\n" for i, layout in enumerate(layouts)))
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "PERSONAL-PATH")
         self.assertEqual(len(findings), len(layouts))
@@ -375,8 +375,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/tools/build.sh",
-                      'EXPORT="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"\n'
-                      "# https://github.com/espressif/esp-idf\n")
+                            'EXPORT="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"\n'
+                            "# https://github.com/espressif/esp-idf\n")
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "PERSONAL-PATH")
         self.assertEqual(findings, [])
@@ -385,7 +385,7 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "scripts/device/device.py",
-                      'GLOB = "~/.espressif/python_env/idf*_env/Scripts/python.exe"\n')
+                            'GLOB = "~/.espressif/python_env/idf*_env/Scripts/python.exe"\n')
             gate_tree.commit(root, "scripts")
             findings = self.rule_hits(root, "PERSONAL-PATH")
         self.assertEqual(findings, [])
@@ -410,8 +410,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "docs/Guide.md",
-                      "C6 is historical. <!-- doc-vocabulary: ignore -->\n"
-                      "<!-- BEGIN GENERATED -->\ntable\n<!-- END GENERATED -->\n")
+                            "C6 is historical. <!-- doc-vocabulary: ignore -->\n"
+                            "<!-- BEGIN GENERATED -->\ntable\n<!-- END GENERATED -->\n")
             gate_tree.commit(root, "docs")
             findings = self.rule_hits(root, "STRAY-HTML-COMMENT")
         self.assertEqual(findings, [])
@@ -420,8 +420,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "docs/Guide.md",
-                      "This sentence continues onto the next line where it\n"
-                      "- 3 happens to start with a dash and a space\n")
+                            "This sentence continues onto the next line where it\n"
+                            "- 3 happens to start with a dash and a space\n")
             gate_tree.commit(root, "docs")
             findings = self.rule_hits(root, "ACCIDENTAL-BULLET")
         self.assertEqual(len(findings), 1)
@@ -430,9 +430,9 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "docs/Guide.md",
-                      "- **First item.** Some wrapped continuation text\n"
-                      "  that is indented under the item above.\n"
-                      "- Second item.\n")
+                            "- **First item.** Some wrapped continuation text\n"
+                            "  that is indented under the item above.\n"
+                            "- Second item.\n")
             gate_tree.commit(root, "docs")
             findings = self.rule_hits(root, "ACCIDENTAL-BULLET")
         self.assertEqual(findings, [])
@@ -445,9 +445,9 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "docs/Guide.md",
-                      "- First item text\n"
-                      "continues here with no indentation at all\n"
-                      "- Second item\n")
+                            "- First item text\n"
+                            "continues here with no indentation at all\n"
+                            "- Second item\n")
             gate_tree.commit(root, "docs")
             findings = self.rule_hits(root, "ACCIDENTAL-BULLET")
         self.assertEqual(findings, [])
@@ -483,7 +483,7 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "docs/Table.md",
-                      "<!-- BEGIN GENERATED -->\na\n\n\nb\n<!-- END GENERATED -->\n")
+                            "<!-- BEGIN GENERATED -->\na\n\n\nb\n<!-- END GENERATED -->\n")
             gate_tree.commit(root, "docs")
             findings = self.rule_hits(root, "BLANK-LINES")
         self.assertEqual(findings, [])
@@ -504,8 +504,8 @@ class StyleAuditTest(unittest.TestCase):
             root = pathlib.Path(temp)
             target = root / "launcher/main/gfx/gfx.c"
             gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                      "/* gfx - fixture header. */\n\n"
-                      "/* ==== Setup ==== */\nvoid\ngfx_init(void) {}\n")
+                            "/* gfx - fixture header. */\n\n"
+                            "/* ==== Setup ==== */\nvoid\ngfx_init(void) {}\n")
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "DRAWN-COMMENT-RULE")
             self.assertEqual(len(findings), 1)
@@ -517,8 +517,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                      "/* gfx - fixture header. */\n\n"
-                      "void\nfoo(void) {\n    int a = 1;\n    /* Setup */\n    a = 2;\n}\n")
+                            "/* gfx - fixture header. */\n\n"
+                            "void\nfoo(void) {\n    int a = 1;\n    /* Setup */\n    a = 2;\n}\n")
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "HEADING-COMMENT")
         self.assertEqual(len(findings), 1)
@@ -528,7 +528,7 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                      "/* Setup */\n\nstatic int\nfoo(void) {\n    return 1;\n}\n")
+                            "/* Setup */\n\nstatic int\nfoo(void) {\n    return 1;\n}\n")
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "HEADING-COMMENT")
         self.assertEqual(findings, [])
@@ -537,7 +537,7 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                      "static const int table[] = {\n    /* Values */\n    1, 2, 3,\n};\n")
+                            "static const int table[] = {\n    /* Values */\n    1, 2, 3,\n};\n")
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "HEADING-COMMENT")
         self.assertEqual(findings, [])
@@ -582,8 +582,8 @@ class MainTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                      "/* gfx - fixture header. */\n\n"
-                      "void\nfoo(void) {\n    /* Setup */\n    bar();\n}\n")
+                            "/* gfx - fixture header. */\n\n"
+                            "void\nfoo(void) {\n    /* Setup */\n    bar();\n}\n")
             gate_tree.commit(root, "launcher")
             plain = self.run_main(root, [])
             strict = self.run_main(root, ["--strict"])
@@ -627,14 +627,14 @@ class ShellCompoundStatusTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "tools/run.sh",
-                       "#!/bin/sh\n"
-                       "run_it() {\n"
-                       "    if build >>\"$LOG\" 2>&1; then\n"
-                       "        return 0\n"
-                       "    fi\n"
-                       "    rc=$?\n"
-                       "    report \"$rc\"\n"
-                       "}\n")
+                            "#!/bin/sh\n"
+                            "run_it() {\n"
+                            "    if build >>\"$LOG\" 2>&1; then\n"
+                            "        return 0\n"
+                            "    fi\n"
+                            "    rc=$?\n"
+                            "    report \"$rc\"\n"
+                            "}\n")
             gate_tree.commit(root, "tools")
             findings = self.rule_hits(root, "SHELL-COMPOUND-STATUS")
         self.assertEqual(len(findings), 1)
@@ -645,11 +645,11 @@ class ShellCompoundStatusTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "tools/run.sh",
-                       "#!/bin/sh\n"
-                       "if report run; then\n"
-                       "    exit 0\n"
-                       "fi\n"
-                       "exit $?\n")
+                            "#!/bin/sh\n"
+                            "if report run; then\n"
+                            "    exit 0\n"
+                            "fi\n"
+                            "exit $?\n")
             gate_tree.commit(root, "tools")
             findings = self.rule_hits(root, "SHELL-COMPOUND-STATUS")
         self.assertEqual(len(findings), 1)
@@ -659,13 +659,13 @@ class ShellCompoundStatusTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "tools/run.sh",
-                       "#!/bin/sh\n"
-                       "run_it() {\n"
-                       "    build >>\"$LOG\" 2>&1 && return 0\n"
-                       "    rc=$?\n"
-                       "    report \"$rc\"\n"
-                       "}\n"
-                       "report run || exit $?\n")
+                            "#!/bin/sh\n"
+                            "run_it() {\n"
+                            "    build >>\"$LOG\" 2>&1 && return 0\n"
+                            "    rc=$?\n"
+                            "    report \"$rc\"\n"
+                            "}\n"
+                            "report run || exit $?\n")
             gate_tree.commit(root, "tools")
             findings = self.rule_hits(root, "SHELL-COMPOUND-STATUS")
         self.assertEqual(findings, [])
@@ -674,9 +674,9 @@ class ShellCompoundStatusTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                       "/* gfx - fixture header. */\n\n"
-                       "void\ngfx_init(void) {\n}\n"
-                       "int rc=$?\n")
+                            "/* gfx - fixture header. */\n\n"
+                            "void\ngfx_init(void) {\n}\n"
+                            "int rc=$?\n")
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "SHELL-COMPOUND-STATUS")
         self.assertEqual(findings, [])

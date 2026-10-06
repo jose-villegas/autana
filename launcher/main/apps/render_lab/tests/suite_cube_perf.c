@@ -307,6 +307,9 @@ run_perf_capture(const char* label, bool with_hud, bool with_partial, bool with_
  * baseline, so the label is never a surprise. */
 static void
 run_perf_variant(bool with_hud, bool with_partial, bool with_interlace) {
+#if CONFIG_LAUNCHER_QEMU
+    TEST_IGNORE_MESSAGE("performance requires the device clock and display");
+#endif
     char label[48];
     snprintf(label, sizeof label, "hud_%s_partial_%s_interlace_%s", with_hud ? "on" : "off",
              with_partial ? "on" : "off", with_interlace ? "on" : "off");
@@ -351,9 +354,6 @@ test_cube_performance_interlaced(void) {
 
 void
 run_cube_perf_suite(void) {
-#if CONFIG_LAUNCHER_QEMU
-    TEST_IGNORE_MESSAGE("performance requires the device clock and display");
-#endif
     RUN_TEST(test_cube_performance_baseline);
     RUN_TEST(test_cube_performance_no_hud);
     RUN_TEST(test_cube_performance_no_partial);

@@ -53,14 +53,14 @@ class OptionLinkTest(unittest.TestCase):
 class DocCitationTest(unittest.TestCase):
     def fixture(self, root):
         gate_tree.write(root, "launcher/main/example.c",
-                   "void live_function(void) {}\n#define LIVE_MACRO 1\n")
+                        "void live_function(void) {}\n#define LIVE_MACRO 1\n")
         gate_tree.write(root, "scripts/live.py", "def helper():\n    pass\n")
         gate_tree.write(root, "docs/Guide.md", """`live_function()` `missing_function()`
-`example.c` `missing.h` `LIVE_MACRO` `LIVE_MISSING`
-```sh
-missing_function() LIVE_MISSING missing.sh
-```
-""")
+                        `example.c` `missing.h` `LIVE_MACRO` `LIVE_MISSING`
+                        ```sh
+                        missing_function() LIVE_MISSING missing.sh
+                        ```
+                        """)
 
     def test_checker_reports_only_missing_repo_citations(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -78,7 +78,7 @@ missing_function() LIVE_MISSING missing.sh
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/example.c", "void live_function(void) {}\n")
             gate_tree.write(root, "docs/Guide.md",
-                       "`live_function()` `_count()` `palette##_set_lut16()` `<prefix>_count()`\n")
+                            "`live_function()` `_count()` `palette##_set_lut16()` `<prefix>_count()`\n")
             found = list(check_doc_citations.citations(root))
         self.assertEqual([(item.kind, item.value) for item in found],
                          [("function", "live_function")])
@@ -88,8 +88,8 @@ missing_function() LIVE_MISSING missing.sh
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/example.h", "#define LIVE_LIMIT 32\nenum { LIVE_ENUM = 9 };\n")
             gate_tree.write(root, "docs/Guide.md",
-                       "`LIVE_LIMIT` is 32. `LIVE_ENUM` is 9.\n"
-                       "`LIVE_LIMIT` is 16.\n| `LIVE_LIMIT` | 16 |\n")
+                            "`LIVE_LIMIT` is 32. `LIVE_ENUM` is 9.\n"
+                            "`LIVE_LIMIT` is 16.\n| `LIVE_LIMIT` | 16 |\n")
             found = check_doc_constants.check(root)
         self.assertEqual([(item.line, item.name, item.claimed, item.defined) for item in found],
                          [(2, "LIVE_LIMIT", 16, 32), (3, "LIVE_LIMIT", 16, 32)])
@@ -125,8 +125,8 @@ missing_function() LIVE_MISSING missing.sh
             gate_tree.write(root, "launcher/main/a.h", "#define AMBIGUOUS 4\n#define LIVE_LIMIT 32\n")
             gate_tree.write(root, "launcher/main/b.h", "#define AMBIGUOUS 8\n")
             gate_tree.write(root, "docs/Guide.md",
-                       "`AMBIGUOUS` is 1.\n`LIVE_LIMIT` was 16.\n"
-                       "`LIVE_LIMIT` is 8. <!-- doc-constants: ignore -->\n")
+                            "`AMBIGUOUS` is 1.\n`LIVE_LIMIT` was 16.\n"
+                            "`LIVE_LIMIT` is 8. <!-- doc-constants: ignore -->\n")
             found = check_doc_constants.check(root)
         self.assertEqual(found, [])
 
@@ -135,7 +135,7 @@ missing_function() LIVE_MISSING missing.sh
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/example.h", "#define LIVE_LIMIT 32\n")
             gate_tree.write(root, "docs/Guide.md",
-                       "`LIVE_LIMIT` is 16. At `LIVE_LIMIT` = 8 it would fail.\n")
+                            "`LIVE_LIMIT` is 16. At `LIVE_LIMIT` = 8 it would fail.\n")
             found, skipped = check_doc_constants.check(root, verbose=True)
         self.assertEqual([(item.name, item.claimed, item.defined) for item in found], [
             ("LIVE_LIMIT", 16, 32),
@@ -147,7 +147,7 @@ missing_function() LIVE_MISSING missing.sh
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/example.h", "#define LIVE_LIMIT 32\n")
             gate_tree.write(root, "docs/Guide.md",
-                       "At `LIVE_LIMIT` = 16 the system would fail.\n")
+                            "At `LIVE_LIMIT` = 16 the system would fail.\n")
             found, skipped = check_doc_constants.check(root, verbose=True)
         self.assertEqual(found, [])
         self.assertIn(("docs/Guide.md", 1, "skipped-on-hypothetical"), skipped)
@@ -157,12 +157,12 @@ missing_function() LIVE_MISSING missing.sh
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/example.h", "#define back 1\n#define LIVE_LIMIT 32\n")
             gate_tree.write(root, "docs/Guide.md", """\
-back, the honest value is 0, not whatever a different part of the pool last left there.
-`LIVE_LIMIT` = 16.
-| Constant | value |
-| --- | --- |
-| `LIVE_LIMIT` | 16 |
-""")
+                            back, the honest value is 0, not whatever a different part of the pool last left there.
+                            `LIVE_LIMIT` = 16.
+                            | Constant | value |
+                            | --- | --- |
+                            | `LIVE_LIMIT` | 16 |
+                            """)
             found = check_doc_constants.check(root)
         self.assertEqual([(item.line, item.name, item.claimed, item.defined) for item in found], [
             (2, "LIVE_LIMIT", 16, 32),
@@ -174,32 +174,32 @@ back, the honest value is 0, not whatever a different part of the pool last left
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/example.h", "#define CONDUCT_REACH 32\n#define FRAME_MS 16\n")
             gate_tree.write(root, "launcher/main/apps/sand/material.c", """\
-const material_t materials[] = {
-    TWIN_ROW(MAT_GLASS, { .name = "Glass", .density = 121, }),
-};
-const reaction_t reactions[] = {
-    [MAT_GLASS] = { .heat_chance = 8, },
-};
-static const char* const extended_names[] = {
-    [MATX_METAL] = "Metal", [8] = "Gunpowder",
-};
-const reaction_t extended_reactions[] = {
-    [MATX_METAL] = { .dissolvable = 1, },
-#define GUNPOWDER_REACTION { .soaked_chance = 16, }
-    [8] = GUNPOWDER_REACTION,
-};
-""")
+                            const material_t materials[] = {
+                            TWIN_ROW(MAT_GLASS, { .name = "Glass", .density = 121, }),
+                            };
+                            const reaction_t reactions[] = {
+                            [MAT_GLASS] = { .heat_chance = 8, },
+                            };
+                            static const char* const extended_names[] = {
+                            [MATX_METAL] = "Metal", [8] = "Gunpowder",
+                            };
+                            const reaction_t extended_reactions[] = {
+                            [MATX_METAL] = { .dissolvable = 1, },
+                            #define GUNPOWDER_REACTION { .soaked_chance = 16, }
+                            [8] = GUNPOWDER_REACTION,
+                            };
+                            """)
             gate_tree.write(root, "docs/Guide.md", """\
-`CONDUCT_REACH` (99 cells). `CONDUCT_REACH`, 98-cell wide. `CONDUCT_REACH` is a 97-cell run.
-`FRAME_MS` is 99 cells. `FRAME_MS` is 99 ms.
-| Material | density |
-| --- | --- |
-| Glass | 200 |
-Glass heat_chance 16. `soaked_chance` 8.
-```mermaid
-Acid -->|"dissolvable 110"| Metal
-```
-""")
+                            `CONDUCT_REACH` (99 cells). `CONDUCT_REACH`, 98-cell wide. `CONDUCT_REACH` is a 97-cell run.
+                            `FRAME_MS` is 99 cells. `FRAME_MS` is 99 ms.
+                            | Material | density |
+                            | --- | --- |
+                            | Glass | 200 |
+                            Glass heat_chance 16. `soaked_chance` 8.
+                            ```mermaid
+                            Acid -->|"dissolvable 110"| Metal
+                            ```
+                            """)
             found, skipped = check_doc_constants.check(root, verbose=True)
         self.assertEqual([(item.name, item.claimed, item.defined) for item in found], [
             ("CONDUCT_REACH", 99, 32),
@@ -275,9 +275,9 @@ Acid -->|"dissolvable 110"| Metal
             root = pathlib.Path(temp)
             gate_tree.write(root, "scripts/gates/doc_vocabulary.txt", "C6\twrong board\n")
             gate_tree.write(root, "docs/Guide.md",
-                       "C6 is historical. <!-- doc-vocabulary: ignore -->\n"
-                       "<!-- doc-vocabulary: ignore -->\n"
-                       "C6 was the prior target.\n")
+                            "C6 is historical. <!-- doc-vocabulary: ignore -->\n"
+                            "<!-- doc-vocabulary: ignore -->\n"
+                            "C6 was the prior target.\n")
             found = check_doc_vocabulary.check(root)
         self.assertEqual(found, [])
 
@@ -310,9 +310,9 @@ Acid -->|"dissolvable 110"| Metal
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "docs/Guide.md",
-                       "`gone_a()` <!-- doc-vocabulary: ignore -->\n"
-                       "`gone_b()` <!-- doc-constants: ignore -->\n"
-                       "`gone_c()` <!-- gone_c() -->\n")
+                            "`gone_a()` <!-- doc-vocabulary: ignore -->\n"
+                            "`gone_b()` <!-- doc-constants: ignore -->\n"
+                            "`gone_c()` <!-- gone_c() -->\n")
             missing = check_doc_citations.check(root, NO_OUTSIDE_NAMES)
         self.assertEqual([item.value for item in missing], ["gone_a", "gone_b", "gone_c"])
 
@@ -322,9 +322,9 @@ Acid -->|"dissolvable 110"| Metal
             root = base / "repo"
             gate_tree.write(root, "launcher/main/example.c", "void live_function(void) {}\n")
             gate_tree.write(root, "docs/Guide.md",
-                       "`live_function()` `fake_ll_cal_clock()` in `hal/fake_ll.h`, `idf.py`,\n"
-                       "`CONFIG_FAKE_LFN_NONE`, `FAKE_FREQ_DEFAULT`, `fake_hypot()` in `math.h`;\n"
-                       "`ghost_ll_function()` `GHOST_FREQ` `hal/ghost_ll.h`\n")
+                            "`live_function()` `fake_ll_cal_clock()` in `hal/fake_ll.h`, `idf.py`,\n"
+                            "`CONFIG_FAKE_LFN_NONE`, `FAKE_FREQ_DEFAULT`, `fake_hypot()` in `math.h`;\n"
+                            "`ghost_ll_function()` `GHOST_FREQ` `hal/ghost_ll.h`\n")
             outside = idf_vocabulary.outside_vocabulary(
                 fake_idf(base / "esp-idf"), fake_toolchain(base / "espressif"), base / "cache")
             missing = check_doc_citations.check(root, outside)
@@ -384,8 +384,8 @@ Acid -->|"dissolvable 110"| Metal
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "scripts/gates/check.mjs",
-                       "// CHECK_COMMENTED_ONLY is only named here\n"
-                       "const extra = process.env.CHECK_EXTRA_ARGS;\n")
+                            "// CHECK_COMMENTED_ONLY is only named here\n"
+                            "const extra = process.env.CHECK_EXTRA_ARGS;\n")
             gate_tree.write(root, "docs/Guide.md", "`CHECK_EXTRA_ARGS` `CHECK_COMMENTED_ONLY`\n")
             missing = check_doc_citations.check(root, NO_OUTSIDE_NAMES)
         self.assertEqual([item.value for item in missing], ["CHECK_COMMENTED_ONLY"])
@@ -418,7 +418,7 @@ Acid -->|"dissolvable 110"| Metal
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "docs/Target.md",
-                      "## Two cores: chunk-parallel passes, and what stays serial\n")
+                            "## Two cores: chunk-parallel passes, and what stays serial\n")
             gate_tree.write(root, "docs/Guide.md", 'See Target.md\'s "Two cores" section.\n')
             missing = check_doc_citations.unresolved_sections(root)
         self.assertEqual(missing, [])
@@ -428,7 +428,7 @@ Acid -->|"dissolvable 110"| Metal
             root = pathlib.Path(temp)
             gate_tree.write(root, "docs/Target.md", "## Partial updates\n## Still untapped\n")
             gate_tree.write(root, "docs/Guide.md",
-                      'See "Partial updates" and "Still untapped" in Target.md for more.\n')
+                            'See "Partial updates" and "Still untapped" in Target.md for more.\n')
             missing = check_doc_citations.unresolved_sections(root)
         self.assertEqual(missing, [])
 
@@ -445,7 +445,7 @@ Acid -->|"dissolvable 110"| Metal
             root = pathlib.Path(temp)
             gate_tree.write(root, "docs/Target.md", "## Real section\n")
             gate_tree.write(root, "launcher/main/example.h",
-                      '/* see docs/Target.md\'s "Not real" for background. */\n')
+                            '/* see docs/Target.md\'s "Not real" for background. */\n')
             missing = check_doc_citations.unresolved_sections(root)
         self.assertEqual(len(missing), 1)
         self.assertEqual(missing[0][0].doc, "launcher/main/example.h")
@@ -455,8 +455,8 @@ Acid -->|"dissolvable 110"| Metal
             root = pathlib.Path(temp)
             gate_tree.write(root, "docs/Target.md", "## Still untapped\n")
             gate_tree.write(root, "launcher/main/example.h",
-                      '/* See docs/Target.md\'s "Partial updates" and "Still\n'
-                      ' * untapped" for the full reasoning. */\n')
+                            '/* See docs/Target.md\'s "Partial updates" and "Still\n'
+                            ' * untapped" for the full reasoning. */\n')
             missing = check_doc_citations.unresolved_sections(root)
         self.assertEqual(len(missing), 1)
         self.assertEqual(missing[0][0].section, "Partial updates")
@@ -488,8 +488,8 @@ Acid -->|"dissolvable 110"| Metal
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "docs/Guide.md",
-                      "### SD card — fully independent\n\n"
-                      "[SD card](#sd-card--fully-independent)\n")
+                            "### SD card — fully independent\n\n"
+                            "[SD card](#sd-card--fully-independent)\n")
             bad = check_doc_index.check_anchors(root)
         self.assertEqual(bad, [])
 
@@ -528,8 +528,8 @@ Acid -->|"dissolvable 110"| Metal
 
     def citers_repo(self, root):
         gate_tree.write(root, "launcher/main/liquid.c",
-                   "static int\nfind_level(int x) {\n    return x;\n}\n\n"
-                   "static int\nspread(int x) {\n    return x + 1;\n}\n")
+                        "static int\nfind_level(int x) {\n    return x;\n}\n\n"
+                        "static int\nspread(int x) {\n    return x + 1;\n}\n")
         gate_tree.write(root, "docs/Liquid.md", "`find_level()` picks the level; see `liquid.c`.\n")
         gate_tree.write(root, "docs/Spread.md", "`spread()` moves it.\n")
         gate_tree.write(root, "docs/plans/Next.md", "`find_level()` will change.\n")
@@ -564,8 +564,8 @@ Acid -->|"dissolvable 110"| Metal
 
     def cmake_repo(self, root):
         gate_tree.write(root, "launcher/main/CMakeLists.txt",
-                   "set(app_srcs main.c)\n"
-                   "idf_component_register(SRCS ${app_srcs} WHOLE_ARCHIVE)\n")
+                        "set(app_srcs main.c)\n"
+                        "idf_component_register(SRCS ${app_srcs} WHOLE_ARCHIVE)\n")
         gate_tree.write(root, "docs/Build.md", "`WHOLE_ARCHIVE` keeps unreferenced apps linked.\n")
         gate_tree.write(root, "docs/Glob.md", "Apps are globbed by `main/CMakeLists.txt`.\n")
         gate_tree.write(root, "docs/Other.md", "`CONFIGURE_DEPENDS` re-globs.\n")

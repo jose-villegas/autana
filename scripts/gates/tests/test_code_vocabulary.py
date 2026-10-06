@@ -21,8 +21,8 @@ class NamesRequireADefinitionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                      "/* replaces the old gfx_default_font() call */\n"
-                      "void gfx_init(void) {}\n")
+                            "/* replaces the old gfx_default_font() call */\n"
+                            "void gfx_init(void) {}\n")
             vocab = code_vocabulary.vocabulary(str(root))
         self.assertNotIn("gfx_default_font", vocab.functions)
         self.assertIn("gfx_init", vocab.functions)
@@ -31,9 +31,9 @@ class NamesRequireADefinitionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/apps/sand/tests/suite_sand.c",
-                      'TEST_ASSERT_TRUE_MESSAGE(x, "the case cover_count() '
-                      'could never fire");\n'
-                      "void real_function(void) {}\n")
+                            'TEST_ASSERT_TRUE_MESSAGE(x, "the case cover_count() '
+                            'could never fire");\n'
+                            "void real_function(void) {}\n")
             vocab = code_vocabulary.vocabulary(str(root))
         self.assertNotIn("cover_count", vocab.functions)
         self.assertIn("real_function", vocab.functions)
@@ -42,8 +42,8 @@ class NamesRequireADefinitionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/gfx/gfx.h",
-                      "/* draws a rectangle */\n"
-                      "void gfx_fill_rect(int x, int y, int w, int h);\n")
+                            "/* draws a rectangle */\n"
+                            "void gfx_fill_rect(int x, int y, int w, int h);\n")
             vocab = code_vocabulary.vocabulary(str(root))
         self.assertIn("gfx_fill_rect", vocab.functions)
 
@@ -51,9 +51,9 @@ class NamesRequireADefinitionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                      "void gfx_init(void) {\n"
-                      "    gfx_reset_palette();\n"
-                      "}\n")
+                            "void gfx_init(void) {\n"
+                            "    gfx_reset_palette();\n"
+                            "}\n")
             vocab = code_vocabulary.vocabulary(str(root))
         self.assertIn("gfx_reset_palette", vocab.functions)
 
@@ -65,9 +65,9 @@ class NamesRequireADefinitionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "scripts/gates/example.py",
-                      "# don't do this\n"
-                      "def real_one():\n"
-                      "    pass\n")
+                            "# don't do this\n"
+                            "def real_one():\n"
+                            "    pass\n")
             vocab = code_vocabulary.vocabulary(str(root))
         self.assertIn("real_one", vocab.script_functions)
 
@@ -75,8 +75,8 @@ class NamesRequireADefinitionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "scripts/gates/example.py",
-                      "def real_two():\n"
-                      "    return a // real_two_helper()\n")
+                            "def real_two():\n"
+                            "    return a // real_two_helper()\n")
             vocab = code_vocabulary.vocabulary(str(root))
         self.assertIn("real_two", vocab.script_functions)
         self.assertIn("real_two_helper", vocab.script_functions)
@@ -85,9 +85,9 @@ class NamesRequireADefinitionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "scripts/gates/example.py",
-                      '"""Module docstring."""\n'
-                      "def real_three():\n"
-                      "    pass\n")
+                            '"""Module docstring."""\n'
+                            "def real_three():\n"
+                            "    pass\n")
             vocab = code_vocabulary.vocabulary(str(root))
         self.assertIn("real_three", vocab.script_functions)
 
@@ -95,9 +95,9 @@ class NamesRequireADefinitionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "scripts/gates/check.mjs",
-                      "function render_block() {}\n"
-                      "const extra = process.env['CHECK_EXTRA_ARGS'];\n"
-                      "render_block(extra);\n")
+                            "function render_block() {}\n"
+                            "const extra = process.env['CHECK_EXTRA_ARGS'];\n"
+                            "render_block(extra);\n")
             vocab = code_vocabulary.vocabulary(str(root))
         self.assertIn("CHECK_EXTRA_ARGS", vocab.constants)
         self.assertNotIn("render_block", vocab.functions | vocab.script_functions)
@@ -113,9 +113,9 @@ class NamesRequireADefinitionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/tools/profile.sh",
-                       "# PROFILE_COMMENTED_ONLY is only named here\n"
-                       "PROFILE_FREE_BYTES=51200\n"
-                       'BASE="${PROFILE_GATE_BASE:-origin/main}"\n')
+                            "# PROFILE_COMMENTED_ONLY is only named here\n"
+                            "PROFILE_FREE_BYTES=51200\n"
+                            'BASE="${PROFILE_GATE_BASE:-origin/main}"\n')
             vocab = code_vocabulary.vocabulary(str(root))
         self.assertIn("PROFILE_FREE_BYTES", vocab.constants)
         self.assertIn("PROFILE_GATE_BASE", vocab.constants)

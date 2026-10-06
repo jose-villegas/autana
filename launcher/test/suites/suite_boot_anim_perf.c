@@ -305,6 +305,9 @@ run_checkpoint(const boot_anim_motion_t* motion, const checkpoint_t* cp) {
 
 void
 test_boot_anim_performance_by_checkpoint(void) {
+#if CONFIG_LAUNCHER_QEMU
+    TEST_IGNORE_MESSAGE("performance requires the device clock and display");
+#endif
     gfx_clear_clip();
     gfx_set_partial_clear(false);
     gfx_invalidate();
@@ -328,9 +331,6 @@ test_boot_anim_performance_by_checkpoint(void) {
 
 void
 run_boot_anim_perf_suite(void) {
-#if CONFIG_LAUNCHER_QEMU
-    TEST_IGNORE_MESSAGE("performance requires the device clock and display");
-#endif
     RUN_TEST(test_boot_anim_performance_by_checkpoint);
 }
 

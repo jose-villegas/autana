@@ -17,7 +17,7 @@ class DeviceAccessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/tools/capture.py",
-                      "import serial\n\nport = serial.Serial('COM5', 115200)\n")
+                            "import serial\n\nport = serial.Serial('COM5', 115200)\n")
             gate_tree.commit(root, "launcher")
             openers = check_device_access.check(root)
         self.assertEqual(len(openers), 1)
@@ -27,7 +27,7 @@ class DeviceAccessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "scripts/device/device.py",
-                      "import serial\n\nport = serial.Serial('COM5', 115200)\n")
+                            "import serial\n\nport = serial.Serial('COM5', 115200)\n")
             gate_tree.commit(root, "scripts")
             openers = check_device_access.check(root)
         self.assertEqual(openers, [])
@@ -39,10 +39,10 @@ class DeviceAccessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "scripts/gates/check_device_access.py",
-                      'IDF_MONITOR_RE = "idf.py monitor"\n'
-                      'ESPTOOL = [\'"-m", "esptool"\']\n')
+                            'IDF_MONITOR_RE = "idf.py monitor"\n'
+                            'ESPTOOL = [\'"-m", "esptool"\']\n')
             gate_tree.write(root, "scripts/gates/tests/test_check_device_access.py",
-                      'FIXTURE = \'cmd = [python, "-m", "esptool", "flash"]\'\n')
+                            'FIXTURE = \'cmd = [python, "-m", "esptool", "flash"]\'\n')
             gate_tree.commit(root, "scripts")
             openers = check_device_access.check(root)
         self.assertEqual(openers, [])
@@ -95,10 +95,10 @@ class DeviceAccessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/test/qemu_run.py",
-                      'import socket\n\n'
-                      'cmd = [python, "-m", "esptool", "--chip", "esp32s3", "merge_bin",\n'
-                      '       "-o", out_path]\n'
-                      'sock = socket.create_connection(("127.0.0.1", port), 1.0)\n')
+                            'import socket\n\n'
+                            'cmd = [python, "-m", "esptool", "--chip", "esp32s3", "merge_bin",\n'
+                            '       "-o", out_path]\n'
+                            'sock = socket.create_connection(("127.0.0.1", port), 1.0)\n')
             gate_tree.commit(root, "launcher")
             openers = check_device_access.check(root)
         self.assertEqual(openers, [])
@@ -109,7 +109,7 @@ class DeviceAccessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/tools/example.py",
-                      "def Serial(x):\n    return x\n\nSerial(1)\n")
+                            "def Serial(x):\n    return x\n\nSerial(1)\n")
             gate_tree.commit(root, "launcher")
             openers = check_device_access.check(root)
         self.assertEqual(openers, [])
@@ -118,7 +118,7 @@ class DeviceAccessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/tools/flash_it.py",
-                      'cmd = [python, "-m", "esptool", "--chip", "esp32s3", "flash"]\n')
+                            'cmd = [python, "-m", "esptool", "--chip", "esp32s3", "flash"]\n')
             gate_tree.commit(root, "launcher")
             openers = check_device_access.check(root)
         self.assertEqual(len(openers), 1)
@@ -128,7 +128,7 @@ class DeviceAccessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/tools/build_it.sh",
-                      '#!/bin/sh\necho "=== letting esptool pick the port ==="\n')
+                            '#!/bin/sh\necho "=== letting esptool pick the port ==="\n')
             gate_tree.commit(root, "launcher")
             openers = check_device_access.check(root)
         self.assertEqual(openers, [])
@@ -137,7 +137,7 @@ class DeviceAccessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/tools/rogue_flash.sh",
-                      '#!/bin/sh\nidf -B build -p "$COM_PORT" flash\n')
+                            '#!/bin/sh\nidf -B build -p "$COM_PORT" flash\n')
             gate_tree.commit(root, "launcher")
             openers = check_device_access.check(root)
         self.assertEqual(len(openers), 1)
@@ -147,7 +147,7 @@ class DeviceAccessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/tools/guidance.sh",
-                      '#!/bin/sh\necho "Flash with: idf.py -B build -p COM3 flash"\n')
+                            '#!/bin/sh\necho "Flash with: idf.py -B build -p COM3 flash"\n')
             gate_tree.commit(root, "launcher")
             openers = check_device_access.check(root)
         self.assertEqual(openers, [])
@@ -156,7 +156,7 @@ class DeviceAccessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "monitor.sh",
-                      '#!/bin/sh\nexec "$PY" "$IDF_PATH/tools/idf_monitor.py" -p "$PORT"\n')
+                            '#!/bin/sh\nexec "$PY" "$IDF_PATH/tools/idf_monitor.py" -p "$PORT"\n')
             gate_tree.commit(root, "monitor.sh")
             openers = check_device_access.check(root)
         self.assertEqual(len(openers), 1)
@@ -168,8 +168,8 @@ class DeviceAccessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/tools/device/screenshot.py",
-                      '"""Reads the response back out of the same stream idf_monitor\n'
-                      'would otherwise be showing as logs.\n"""\n')
+                            '"""Reads the response back out of the same stream idf_monitor\n'
+                            'would otherwise be showing as logs.\n"""\n')
             gate_tree.commit(root, "launcher")
             openers = check_device_access.check(root)
         self.assertEqual(openers, [])

@@ -23,7 +23,7 @@ class CommentLengthTest(unittest.TestCase):
             self.git(root, "config", "user.name", "test")
             self.git(root, "config", "user.email", "test@example.com")
             gate_tree.write(root, "original.c",
-                       f"/* {moved} */\nvoid old(void) {{}}\n")
+                            f"/* {moved} */\nvoid old(void) {{}}\n")
             self.git(root, "add", "original.c")
             self.git(root, "commit", "-qm", "base")
             base = self.git(root, "rev-parse", "HEAD").stdout.strip()
