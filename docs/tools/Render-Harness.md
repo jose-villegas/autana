@@ -89,7 +89,7 @@ floors and worker estimates. Later admission projects each active worker's
 not-yet-resident allocation onto live WSL, GPU and cgroup memory, bounded
 by CPU affinity. A task can run alone when the floors hold; additional
 workers need room for their reservations. Smaller eligible tasks can pass
-larger waiting tasks, but an ordinary task never passes a waiting priority task. Admission and worker peaks are logged. Failed
+larger waiting tasks. Admission and worker peaks are logged. Failed
 memory queries pause admission and retry, with rate-limited warnings; an unbroken
 run of failures lasting `GPU_QUERY_FAILURE_SECONDS` fails the stage, and a missing
 `nvidia-smi` fails at once.

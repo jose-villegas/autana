@@ -304,16 +304,12 @@ class TaskExecutor:
                     query_failures.recovered()
                     free = projected_available(free, [(estimates, resident_bytes(process.pid, gpu))
                                                for process, _, _, estimates in self.active])
-                    priority_waiting = False
                     for queued in [*self.priority_queue, *self.queue]:
                         if len(self.active) >= cores_available():
                             break
                         future, function, args, estimates = queued
                         priority = queued in self.priority_queue
-                        if priority_waiting and not priority:
-                            break
                         if not worker_capacity(free, estimates if self.active else (0,) * 3, FLOORS, 1):
-                            priority_waiting |= priority
                             continue
                         (self.priority_queue if priority else self.queue).remove(queued)
                         print(f"admit {function_name(function)} projected_available={free} reservation={estimates}", flush=True)
