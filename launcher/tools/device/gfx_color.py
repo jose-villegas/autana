@@ -1,6 +1,7 @@
 """gfx_color: the firmware's RGB565 packing (launcher/main/gfx/gfx_color.h) for host tools.
 
-Every function works on plain ints and on numpy integer arrays alike.
+Every function works on plain ints and on numpy integer arrays at least 16
+bits wide.
 """
 
 

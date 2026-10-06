@@ -59,8 +59,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 import check_avi
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "gen"))
-import gfx_color  # noqa: E402  (path set just above)
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
+import gfx_color  # noqa: E402  (path must be set up first)
 
 HOLE_RED = (255, 0, 0)
 LABEL_BAR = 22

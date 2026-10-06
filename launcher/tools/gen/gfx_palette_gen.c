@@ -134,7 +134,7 @@ choose_dither(const gfx_lin_t* lin, const gfx_lab_t* lab, int count16, gfx_lab_t
 static void
 lin_lab_of_palette16(const gfx_palette_t* palette16, gfx_lin_t out_lin[16], gfx_lab_t out_lab[16]) {
     for (int i = 0; i < palette16->count; i++) {
-        const uint32_t rgb888 = gfx_color_rgb888((palette16->entries[i]));
+        const uint32_t rgb888 = gfx_color_rgb888(palette16->entries[i]);
         out_lin[i] = gfx_rgb_to_lin(rgb888);
         out_lab[i] = gfx_lin_to_lab(out_lin[i]);
     }
@@ -146,7 +146,7 @@ lin_lab_of_palette16(const gfx_palette_t* palette16, gfx_lin_t out_lin[16], gfx_
 static dither_choice_t
 dither_choice_of_entry(const gfx_palette_t* palette256, int i, const gfx_lin_t* lin16, const gfx_lab_t* lab16,
                        int count16) {
-    const uint32_t rgb888 = gfx_color_rgb888((palette256->entries[i]));
+    const uint32_t rgb888 = gfx_color_rgb888(palette256->entries[i]);
     const gfx_lin_t target_lin = gfx_rgb_to_lin(rgb888);
     const gfx_lab_t target_lab = gfx_lin_to_lab(target_lin);
     return choose_dither(lin16, lab16, count16, target_lab, target_lin);
@@ -156,7 +156,7 @@ dither_choice_of_entry(const gfx_palette_t* palette256, int i, const gfx_lin_t* 
  * GFX_DITHER_NONE's own choice. */
 static uint8_t
 nearest_index_of_entry(const gfx_palette_t* palette256, int i, const gfx_lab_t* lab16, int count16) {
-    const uint32_t rgb888 = gfx_color_rgb888((palette256->entries[i]));
+    const uint32_t rgb888 = gfx_color_rgb888(palette256->entries[i]);
     const gfx_lab_t target_lab = gfx_lin_to_lab(gfx_rgb_to_lin(rgb888));
     double cost;
     return nearest_choice(lab16, count16, target_lab, &cost).lo;
@@ -188,7 +188,7 @@ gfx_palette_gen_build_lut_nearest(const gfx_palette_t* palette256, const gfx_pal
                                   gfx_color_t out_lut[GFX_PALETTE_MAX_ENTRIES]) {
     gfx_lab_t lab16[16];
     for (int i = 0; i < palette16->count; i++) {
-        lab16[i] = gfx_lin_to_lab(gfx_rgb_to_lin(gfx_color_rgb888((palette16->entries[i]))));
+        lab16[i] = gfx_lin_to_lab(gfx_rgb_to_lin(gfx_color_rgb888(palette16->entries[i])));
     }
 
     for (int i = 0; i < palette256->count; i++) {

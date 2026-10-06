@@ -114,7 +114,7 @@ start_round(void) {
 
 static void
 input_lab_enter(void) {
-    rng_seed(&rng, (uint32_t)timing_now_us() | 1u);
+    rng_seed(&rng, (uint32_t)timing_now_us());
     panel_max_x = -1;
     mode = MODE_RANDOM;
     tap = (touch_probe_tap_t){0};

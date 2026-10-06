@@ -421,21 +421,6 @@ test_snow_cracks_glass_but_not_stone(void) {
                                   "shock is simply broken");
 }
 
-/* Rough perceptual distance between two panel colours - both are RGB565
- * with the bytes swapped for the panel (GFX_RGB in gfx_color.h), so they
- * have to be unswapped before the channels mean anything. Green counts
- * once and red and blue twice, which is only a rule of thumb; nothing here
- * needs better than "clearly further apart". */
-static int
-colour_gap(gfx_color_t x, gfx_color_t y) {
-    const uint16_t a = (uint16_t)((x >> 8) | (x << 8));
-    const uint16_t b = (uint16_t)((y >> 8) | (y << 8));
-    const int dr = ((a >> 11) & 0x1F) - ((b >> 11) & 0x1F);
-    const int dg = ((a >> 5) & 0x3F) - ((b >> 5) & 0x3F);
-    const int db = (a & 0x1F) - (b & 0x1F);
-    return (dr < 0 ? -dr : dr) * 2 + (dg < 0 ? -dg : dg) + (db < 0 ? -db : db) * 2;
-}
-
 /* An outline moves less with temperature than the body it encloses.
  *
  * A wall going from grey to glowing changed its whole silhouette, so the

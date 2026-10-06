@@ -8,14 +8,16 @@ invariants before a byte is written. A mesh's triangles are put in a canonical
 order first, so the same triangles always bake to the same bytes."""
 
 import pathlib
+import sys
 from types import SimpleNamespace
 
 import numpy as np
 
-from gen import gfx_color
-from r3d.mesh_asset import BLOB_HEADER, CLUSTER, NODE, TYPE  # noqa: F401
-from r3d.meshopt import build_meshlets
-from r3d.octree import build_octree, flatten_octree, node_bounds
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
+import gfx_color  # noqa: E402  (path must be set up first)
+from r3d.mesh_asset import BLOB_HEADER, CLUSTER, NODE, TYPE  # noqa: E402,F401
+from r3d.meshopt import build_meshlets  # noqa: E402
+from r3d.octree import build_octree, flatten_octree, node_bounds  # noqa: E402
 
 INT16_MAX = 32767
 MAX_VERTICES = 65535  # uint16 indices
