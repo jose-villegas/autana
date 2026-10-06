@@ -100,6 +100,10 @@ render_scene_bundles() {
     done
     "$_rs_python" "$(render_scene_to_native "$_rs_tools/r3d/build_pack.py")" \
         -o "$(render_scene_to_native "$_rs_assets")" "$@" > /dev/null || return 1
+    if [ -z "$(find "$_rs_assets" -name '*.apak' | head -n 1)" ]; then
+        echo "ERROR: scene_assets ($scene_assets) holds no asset roots, so the scene has nothing to read" >&2
+        return 1
+    fi
     if command -v cygpath > /dev/null 2>&1; then
         _rs_assets=$(cygpath -m "$_rs_assets")
     fi

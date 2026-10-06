@@ -41,6 +41,12 @@ options(int argc, char** argv) {
     }
     now_ms = (uint32_t)strtoul(argv[0], NULL, 10);
     boot_anim_motion_load(&motion);
+    /* The rest pose only when asked for, by pointing AUTANA_ASSET_DIR at a
+     * folder without the clip: a renderer that lost its bundles must fail. */
+    if (!motion.from_pack && getenv("AUTANA_ASSET_DIR") == NULL) {
+        fprintf(stderr, "no boot clip in the bundle folder built into this renderer\n");
+        return false;
+    }
     return true;
 }
 

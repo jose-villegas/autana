@@ -20,6 +20,8 @@
 # Every render also runs the frame watch (render_watch.h): a scene whose
 # steady state allocates or prints fails. tests/check_frame_watch.sh, run
 # first, proves that check still fails what it should.
+# tests/check_scene_assets.sh, run next, proves a scene's scene_assets
+# bundles are found, overridable and required.
 #
 # --update-baseline re-pins every scene's hashes. It is a deliberate act:
 # run it only after looking at the images and agreeing the pixels should
@@ -66,6 +68,8 @@ fi
 
 echo "--- frame watch"
 sh "$TOOLS_DIR/tests/check_frame_watch.sh"
+echo "--- scene assets"
+sh "$TOOLS_DIR/tests/check_scene_assets.sh"
 
 count=0
 for scene in $scenes; do
