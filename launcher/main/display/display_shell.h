@@ -1,10 +1,9 @@
 /*
  * display_shell: the shell's side of display: starting the panel, loading its
- * clock, and turning gravity into orientation. The shell reads the motion
- * sensor and hands gravity in; display never reads it. An app never calls
- * these. Defined in display_device.c, device only, except the sampler, which
- * display.c holds so its cadence is tested on a host. Applying a quarter
- * change to the UI is the caller's.
+ * clock, and turning gravity, from a reader the shell hands in, into
+ * orientation. An app never calls these. Defined in display_device.c,
+ * device only, except the sampler, which display.c holds so its cadence is
+ * tested on a host. Applying a quarter change to the UI is the caller's.
  */
 #pragma once
 
@@ -50,6 +49,6 @@ void display_load_panel_clock(void);
 /* Puts the shell's orientation at DISPLAY_DEFAULT_QUARTER. */
 void display_reset_quarter(void);
 
-/* The shell's orientation, asking `read` for gravity at DISPLAY_SAMPLE_MS.
- * True when the quarter changed. */
+/* Samples the shell's orientation, asking `read` for gravity at most every
+ * DISPLAY_SAMPLE_MS. True when the quarter changed. */
 bool display_sample_orientation(int64_t now_us, display_gravity_reader_t read);

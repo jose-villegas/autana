@@ -67,7 +67,7 @@ flowchart TB
     subgraph R5["the app contract"]
         App["app/<br/><i>the shell/app contract, the app list, the app arena</i>"]
     end
-    subgraph R6["devices"]
+    subgraph R6["panel and sensors"]
         Display["display/<br/><i>orientation from the gravity it is handed, panel clock, panel start</i>"]:::hw
         Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
     end
@@ -104,10 +104,8 @@ flowchart TB
   folder, and is what the [Testing-Guide.md](Testing-Guide.md) relies on.
 - **The shell names no vendor firmware.** `main.c` and `shell/` reach the
   chip's vendor code only through modules that own it:
-  `input/input_shell.h` (`input_start`, `input_poll`),
-  `display/display_shell.h` (`display_start`, `display_sample_orientation`,
-  which takes gravity from `input_read_gravity`, so display never reads the
-  sensor),
+  `input/input_shell.h` (`input_start`, `input_poll`, `input_read_gravity`),
+  `display/display_shell.h` (`display_start`, `display_sample_orientation`),
   `display/display.h` (the system panel clock) and
   `util/{timing,settings,memory}.h`; they call this firmware's own drivers
   (`imu_read`, `touch_read`) directly. A module's device half, where it has

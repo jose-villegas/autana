@@ -1,8 +1,8 @@
 /*
  * input_shell: the shell's side of input: starting the touch, button and
- * motion drivers and reading touch and buttons each frame into the input_t an
- * app is handed. An app never calls these. Defined in input_device.c, device
- * only.
+ * motion drivers, reading touch and buttons each frame into the input_t an
+ * app is handed, and reading gravity in screen axes on demand. An app never
+ * calls these. Defined in input_device.c, device only.
  */
 #pragma once
 
