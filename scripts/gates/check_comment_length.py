@@ -33,26 +33,17 @@ Options:
 
 import os
 import pathlib
-
 import re
 import subprocess
 import sys
 
+from check_generated_files import generated_files
 from tracked import tracked_files, committable
 
-# Vendored upstream (microui) and machine-written headers: neither
-# is ours to rewrite, and the generators' banner comments would dominate the
-# report.
-EXCLUDED = (
-    "launcher/components/",
-    "launcher/test/framework/",
-    "launcher/main/boot/boot_anim_curve.h",
-    "launcher/main/boot/boot_anim_image.h",
-    "launcher/main/boot/boot_anim_timeline.h",
-    "launcher/main/gfx/gfx_palette_standard_generated.h",
-    "launcher/main/apps/sand/sand_palette256.h",
-    "launcher/main/apps/sand/captured_slope_data.h",
-)
+# Vendored upstream (microui) and every file whose banner says it is
+# generated: neither is ours to rewrite, and the generators' banner comments
+# would dominate the report.
+EXCLUDED = ("launcher/components/", "launcher/test/framework/", *generated_files())
 
 
 # A drawn rule's run: 3+ of `=`, `_`, `#` or `-`; this tree's own
