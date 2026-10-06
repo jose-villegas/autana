@@ -21,6 +21,14 @@ class TrackedFilesTest(unittest.TestCase):
             (root / "notes.txt").write_text("x\n", encoding="utf-8")
             self.assertEqual(tracked.tracked_files(root, ["*.md"]), ("docs/Guide.md",))
 
+    def test_directory_pathspec_outside_git_includes_descendants(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            (root / "launcher/main").mkdir(parents=True)
+            (root / "launcher/main/example.c").write_text("x\n", encoding="utf-8")
+            (root / "other.c").write_text("x\n", encoding="utf-8")
+            self.assertEqual(tracked.tracked_files(root, ["launcher"]), ("launcher/main/example.c",))
+
     def test_any_other_git_failure_raises_with_gits_message(self):
         # A container running as another user than the checkout's owner:
         # git refuses the repository, and a fallback to the walk would list

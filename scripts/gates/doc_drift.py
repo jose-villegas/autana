@@ -5,6 +5,8 @@ import datetime as dt
 import pathlib
 import subprocess
 
+from tracked import tracked_files
+
 from check_doc_citations import citations, documentation, path_exists
 
 
@@ -52,8 +54,7 @@ def changed_since(root, revision, paths):
 def report(root, today=None):
     root = pathlib.Path(root)
     today = today or dt.date.today()
-    tracked = set(subprocess.run(["git", "ls-files", "docs"], cwd=root, check=True,
-                                 capture_output=True, text=True).stdout.splitlines())
+    tracked = set(tracked_files(root, ("docs",)))
     reviewed = reviews(root)
     cited = cited_files(root)
     rows = []
