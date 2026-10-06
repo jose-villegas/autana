@@ -11,6 +11,7 @@ import re
 import tomllib
 from types import SimpleNamespace
 
+from anim import tracks_asset
 from asset.asset_pack import NAME_BYTES
 
 RESERVED_LIGHTS = ("point", "spot")
@@ -47,9 +48,11 @@ def text(value, where):
 
 
 def identifier(value, where):
-    """A C identifier, since the scene table names symbols by it."""
-    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value):
-        raise SettingsError(f"{where} must be a C identifier")
+    """Letters, digits and _, not starting with a digit, that fit a pack name
+    field: an object's name names its baked mesh and its entity in the scene
+    entry, a node's names its tracks."""
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value) or len(value) >= NAME_BYTES:
+        raise SettingsError(f"{where} must be letters, digits and _, not starting with a digit, at most {NAME_BYTES - 1} bytes")
     return value
 
 
@@ -399,7 +402,7 @@ def load_light(component, rotation, where):
     return light
 
 
-def load_camera(component, where):
+def load_camera(component, base, where):
     check_keys(component, ("half_fov_short_tan", "near_z"), where, optional=("region", "path", "background"))
     camera = SimpleNamespace(half_fov_short_tan=number(component["half_fov_short_tan"], f"{where}.half_fov_short_tan"),
                              near_z=number(component["near_z"], f"{where}.near_z"), region=None, path=None,
@@ -409,11 +412,24 @@ def load_camera(component, where):
         check_keys(region, ("min", "max"), f"{where}.region")
         camera.region = (vector(region["min"], f"{where}.region.min"), vector(region["max"], f"{where}.region.max"))
     if "path" in component:
-        path = component["path"]
-        check_keys(path, ("tracks", "node"), f"{where}.path")
-        camera.path = SimpleNamespace(tracks=identifier(path["tracks"], f"{where}.path.tracks"),
-                                      node=identifier(path["node"], f"{where}.path.node"))
+        camera.path = load_camera_path(component["path"], base, f"{where}.path")
     return camera
+
+
+def load_camera_path(path, base, where):
+    """The clip a camera flies, named as a .anim.toml relative to the scene
+    file (its id is the stem), and the node in it that is the camera."""
+    check_keys(path, ("animation", "node"), where)
+    animation = (base / text(path["animation"], f"{where}.animation")).resolve()
+    if not animation.name.endswith(tracks_asset.SUFFIX) or not animation.is_file():
+        raise SettingsError(f"{where}.animation {path['animation']!r} is not an {tracks_asset.SUFFIX} file")
+    node = identifier(path["node"], f"{where}.node")
+    if len(f"{node}/translation") >= tracks_asset.NAME_BYTES:
+        raise SettingsError(f"{where}.node {node!r}: its track names exceed {tracks_asset.NAME_BYTES - 1} bytes")
+    clip = tracks_asset.clip_id(animation)
+    if len(clip.encode("utf-8")) >= NAME_BYTES:
+        raise SettingsError(f"{where}.animation: clip id {clip!r} exceeds the pack's {NAME_BYTES - 1}-byte limit")
+    return SimpleNamespace(animation=animation, clip=clip, node=node)
 
 
 def load_renderer(component, base, where):
@@ -495,13 +511,13 @@ def load_object(value, base, where):
     obj.identity = obj.position == [0.0] * 3 and obj.rotation == [0.0] * 3 and obj.scale == [1.0] * 3
     spot = f"{where}.{kind}"
     if kind in ("mesh_renderer", "camera"):
-        identifier(obj.name, f"{where}.name")  # the scene table names a symbol after it
+        identifier(obj.name, f"{where}.name")
     if kind == "mesh_renderer":
         obj.component = load_renderer(value[kind], base, spot)
     elif kind == "light":
         obj.component = load_light(value[kind], obj.rotation, spot)
     else:
-        obj.component = load_camera(value[kind], spot)
+        obj.component = load_camera(value[kind], base, spot)
     return obj
 
 

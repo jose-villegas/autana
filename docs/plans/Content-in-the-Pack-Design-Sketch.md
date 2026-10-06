@@ -1,12 +1,12 @@
 # Animation tracks and scenes in the asset pack: design sketch
 
-**Status:** approved, not yet built. `[A]` marks a proposal that was approved
+**Status:** approved; bundles, the `TRCK` entry and the scenes step (sections
+0 to 3) are built, the rest is not. `[A]` marks a proposal that was approved
 with the rest rather than asked for.
 
-Today a `.glb` animation is baked to committed C (`*_tracks_generated.{c,h}`)
-and a `.scene.toml` to committed C (`*_scene_generated.{c,h}`). Both are
-content with a source file that is already the truth, so a second committed
-copy is not allowed. Both become typed entries of the asset pack
+Committed C baked from a `.glb` animation (`*_tracks_generated.{c,h}`) or a
+`.scene.toml` is content with a source file that is already the truth, so a
+second committed copy is not allowed. Both become typed entries of the asset pack
 ([docs/assets/README.md](../assets/README.md)), baked when the pack is built.
 Nothing derived is committed, so there is nothing to drift.
 
@@ -76,8 +76,9 @@ flashed with the app by `flash_args` and alone by `idf.py assets-flash`.
 | `NAME.scene.toml` | unchanged, except the camera key (below) | stem: `NAME` |
 
 `build_pack.py` finds `*.anim.toml` by searching, like `.import.toml`, so no
-list exists to keep. Ids are unique within a bundle (the writer already rejects
-a repeat); the entry type tells a clip from a scene from a mesh. [A] A scene
+list exists to keep. Ids are unique within a bundle whatever their type (the
+writer already rejects a repeat): the reader finds an entry by name and only
+then checks its type. [A] A scene
 names its clip as a relative file, as it names a mesh:
 `path = { animation = "../assets/flythrough.anim.toml", node = "camera" }`, the id being
 the stem. A baker and a loader can then never disagree on what the id is.
@@ -242,3 +243,5 @@ fallback question section 5 answers.
 4. Bundles (section 0): one per root asset, named after it, holding what it relates to; 4 KB-aligned directory in the partition, one file per bundle on host and card, a shared asset becomes its own bundle the others depend on, counted mounts.
 5. Scene names its clip as a relative `.anim.toml` path, id = stem (section 1).
 6. Entities are found by name at setup, no baked numeric ids (section 3).
+7. Ids stay unique within a bundle whatever their type (scenes step): `asset_pack_find()` finds by name and then checks the type, so a scene and its clip sharing a stem could never both be found; `build_pack` refuses them naming both files.
+8. `scene_failure_t.what` is a copy, `char what[ASSET_NAME_MAX]` (scenes step): a failed `scene_load()` releases the bundle the id pointed into.
