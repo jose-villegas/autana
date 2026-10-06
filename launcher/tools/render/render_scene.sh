@@ -85,9 +85,6 @@ render_scene_run() {
     render_scene_render
 }
 
-# Everything before the first render: the declarations checked, the options
-# read, the binary compiled to $_rs_bin. Also what a harness self-check calls
-# to build a fixture scene it then runs by hand.
 # The bundles of scene_assets' roots, and what the build needs to read them.
 render_scene_bundles() {
     for _rs_src in asset/asset_pack.c asset/asset_file.c asset/asset_store.c asset/asset_store_file.c; do
@@ -101,13 +98,17 @@ render_scene_bundles() {
     for _rs_folder in $scene_assets; do
         set -- "$@" "$(render_scene_to_native "$_rs_launcher/$_rs_folder")"
     done
-    "$_rs_python" "$(render_scene_to_native "$_rs_tools/r3d/build_pack.py")"         -o "$(render_scene_to_native "$_rs_assets")" "$@" > /dev/null || return 1
+    "$_rs_python" "$(render_scene_to_native "$_rs_tools/r3d/build_pack.py")" \
+        -o "$(render_scene_to_native "$_rs_assets")" "$@" > /dev/null || return 1
     if command -v cygpath > /dev/null 2>&1; then
         _rs_assets=$(cygpath -m "$_rs_assets")
     fi
     _rs_asset_flags="-DASSET_DIR_DEFAULT_PATH=\"$_rs_assets\""
 }
 
+# Everything before the first render: the declarations checked, the options
+# read, the binary compiled to $_rs_bin. Also what a harness self-check calls
+# to build a fixture scene it then runs by hand.
 render_scene_build() {
     for _rs_required in scene_name scene_sources scene_renders; do
         eval "_rs_value=\${$_rs_required+set}"

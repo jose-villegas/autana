@@ -170,7 +170,9 @@ Two files, the same declare-then-source shape a report script uses:
 - **`<name>_render_host.sh`** declares `scene_name`, `scene_sources` and
   `scene_renders`, then sources `launcher/tools/render/render_scene.sh` and calls
   `render_scene_run "$@"`. Everything else (finding a compiler, building,
-  checking each image, converting to PNG) is that one procedure.
+  checking each image, converting to PNG) is that one procedure. A scene that
+  reads asset bundles also declares `scene_assets`, the folders whose roots
+  `build_pack.py` writes as bundles beside the renderer.
 
 An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives
 in that app's own `tools/`, so nothing in the engine's tooling names an app.

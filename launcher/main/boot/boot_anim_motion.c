@@ -20,10 +20,10 @@
 
 static const char* TAG = "boot_anim";
 
-/* The camera 14 m back on -z. The space turned a quarter about the view
+/* The camera back on -z, unturned. The space turned a quarter about the view
  * axis, so t climbs the way the panel is read, and tipped 25 degrees toward
- * the camera so the floor reads as a plane; at half size the whole climb
- * stays on the panel, short of the camera. */
+ * the camera so the floor reads as a plane; at its size the whole climb stays
+ * on the panel, short of the camera. */
 static const float REST_TIME[] = {0.0F};
 static const float REST_CAMERA_AT[] = {0.0F, 0.0F, -14.0F};
 static const float REST_UNTURNED[] = {0.0F, 0.0F, 0.0F, 1.0F};

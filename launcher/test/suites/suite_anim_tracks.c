@@ -428,13 +428,11 @@ test_a_node_without_a_translation_or_a_rotation_is_not_found(void) {
     anim_node_tracks_t node;
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_tracks_find_node(&c.tracks, "n", &node));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_tracks_find_node(&c.tracks, "m", &node));
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND,
-                          anim_tracks_find_node(&c.tracks, "a_node_name_longer_than_a_track_name", &node));
     test_free_aligned(c.raw);
 }
 
-/* Each rule alone: a translation two wide, a scale four wide, and a rotation
- * four wide but not flagged a quaternion. */
+/* Each rule alone: a translation two wide, a scale four wide, a rotation four
+ * wide but not flagged a quaternion, and a node too long to name a track. */
 static void
 test_a_part_of_the_wrong_width_or_an_unflagged_rotation_is_a_format_error(void) {
     const test_track_t narrow[] = {
@@ -463,6 +461,11 @@ test_a_part_of_the_wrong_width_or_an_unflagged_rotation_is_a_format_error(void) 
         test_free_aligned(c.raw);
         TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, status);
     }
+    node_clip_t c = node_clip(narrow, 2);
+    anim_node_tracks_t node;
+    const asset_status_t status = anim_tracks_find_node(&c.tracks, "a_node_name_longer_than_a_track_name", &node);
+    test_free_aligned(c.raw);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, status);
 }
 
 static void

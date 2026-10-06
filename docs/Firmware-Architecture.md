@@ -199,9 +199,10 @@ shell_check_console_prefixes()
                             prefixes that clash
 display_reset_quarter(), ui_launcher_init(), ui_set_transform()
                             the launcher exists, turned the way boot draws
-boot_anim_run()             the startup animation, 5.5 s; the first to
-                            mount a bundle (its clip's), which reads the
-                            asset directory; without it, a rest pose
+boot_anim_run()             the startup animation, 5.5 s; it mounts the
+                            first bundle (its clip's), which first reads
+                            the asset directory; with no bundle it holds a
+                            rest pose
 gfx_request_full_redraw()
 input_start()               touch, buttons, then the motion sensor; no
                             sensor: the display stays upright

@@ -146,7 +146,7 @@ find_part(const anim_tracks_t* tracks, const char* node, const char* part, uint8
     const int length = snprintf(name, sizeof name, "%s/%s", node, part);
     if (length < 0 || (size_t)length >= sizeof name) {
         *out = (anim_track_t){0};
-        return ASSET_ERR_NOT_FOUND;
+        return ASSET_ERR_FORMAT;
     }
     const asset_status_t status = anim_tracks_find(tracks, name, out);
     if (status == ASSET_OK && (out->width != width || (out->quaternion != 0) != (width == 4))) {

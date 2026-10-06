@@ -55,7 +55,7 @@ typedef struct {
 } boot_anim_motion_t;
 
 /* Fills `out` from the boot clip's bundle, mounting it. On any failure it logs
- * one line and fills the rest pose, so the animation still draws. */
+ * why and fills the rest pose, so the animation still draws. */
 void boot_anim_motion_load(boot_anim_motion_t* out);
 
 /* Drops the bundle boot_anim_motion_load() mounted, if it did, and leaves the

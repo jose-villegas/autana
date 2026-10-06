@@ -15,17 +15,15 @@ flowchart LR
     Author["Blender, or any glTF exporter<br/><i>.glb with an animation</i>"] --> Anim["NAME.anim.toml<br/><i>source and animation name</i>"]
     Anim --> Pack["build_pack.py<br/><i>a TRCK entry in its bundle</i>"]
     Pack --> Open["anim_tracks_from_pack(), anim_tracks_find()<br/><i>tracks pointing into the bundle</i>"]
-    Author --> Bake["tools/anim/bake_tracks.py"]
-    Bake --> C["*_tracks_generated.c<br/><i>the same tracks as C</i>"]
     Open --> Sample["anim_clip_seconds(), anim_track_sample()<br/><i>clip time, then each track</i>"]
-    C --> Sample
     Sample --> Caller["the caller's own object<br/><i>eye, colour, fov, ...</i>"]
 ```
 
-A clip reaches the firmware two ways: as an entry of an
-[asset bundle](assets/README.md), baked when the bundle is built, and as
-committed C. One module, `tools/anim/tracks_asset.py`, bakes both with
-one set of checks, so they hold the same floats.
+A clip reaches the firmware as an entry of an
+[asset bundle](assets/README.md), baked when the bundle is built.
+`tools/anim/bake_tracks.py` can still write the same tracks as C, through the
+same checks in `tools/anim/tracks_asset.py`, but no firmware code uses that
+output.
 
 ## What a track stores
 
@@ -94,10 +92,12 @@ ended within its 32 bytes, at least one key, a width of 1 to 4, a known
 interpolation, a quaternion only 4 wide, and zero padding
 (`ASSET_ERR_FORMAT`). `anim_tracks_find()` then
 returns a track whose times and values point into the pack, so nothing is
-copied or allocated. `anim_tracks_find_node()` finds a node's three at once
-into an `anim_node_tracks_t`, which `anim_transform_sample()` turns into a
-transform: translation and rotation must be there, 3 and 4 wide, the
-rotation a quaternion; a node the clip does not scale keeps unit scale.
+copied or allocated. `anim_tracks_find_node()` finds a node's translation,
+rotation and scale tracks at once into an `anim_node_tracks_t`, which
+`anim_transform_sample()` turns into a transform. Translation and rotation
+must be there; translation and scale are 3 wide and rotation is a 4-wide
+quaternion (`ASSET_ERR_FORMAT` otherwise); a node the clip does not scale
+keeps unit scale.
 
 ## Sampling
 
