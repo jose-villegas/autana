@@ -1,4 +1,3 @@
-/* Options screen layout and quality controls. */
 #include "options_screen.h"
 
 #include <assert.h>

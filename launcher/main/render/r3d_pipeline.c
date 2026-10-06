@@ -1,4 +1,3 @@
-/* Mesh drawing and row partitioning for the render pipeline. */
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
 

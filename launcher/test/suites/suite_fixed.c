@@ -216,6 +216,7 @@ test_scalar_integer_bounds(void) {
     TEST_ASSERT_EQUAL_INT(9, im_clamp(INT32_MAX, -7, 9));
     TEST_ASSERT_EQUAL_INT(3, im_clamp(3, -7, 9));
     TEST_ASSERT_EQUAL_INT(3, im_clamp(-5, 3, 3));
+    TEST_ASSERT_EQUAL_INT(0, im_clamp(-1, 0, -2));
     static const uint64_t roots[] = {0, 1, 2, 255, 65535, 65536, 16777215, 3037000499, UINT32_MAX};
     for (size_t i = 0; i < sizeof(roots) / sizeof(roots[0]); i++) {
         const uint64_t root = roots[i];
@@ -231,30 +232,9 @@ test_scalar_integer_bounds(void) {
     TEST_ASSERT_EQUAL_UINT64(UINT32_MAX, im_isqrt64(UINT64_MAX));
 }
 
-static void
-test_saturating_division_and_integer_rounding(void) {
-    TEST_ASSERT_EQUAL_INT32(INT32_MAX, fx_div_round64(INT32_MAX, 1, 16));
-    TEST_ASSERT_EQUAL_INT32(INT32_MIN, fx_div_round64(INT32_MIN, 1, 16));
-    TEST_ASSERT_EQUAL_INT32(INT32_MAX, fx_div_round64(INT32_MIN, -1, 0));
-    TEST_ASSERT_EQUAL_INT32(65536, fx_div_round64(INT32_MIN, INT32_MIN, 16));
-    TEST_ASSERT_EQUAL_INT32(INT32_MAX, fx_div_round64(1, 0, 16));
-    TEST_ASSERT_EQUAL_INT32(INT32_MIN, fx_div_round64(-1, 0, 16));
-    TEST_ASSERT_EQUAL_INT32(0, fx_div_round64(0, 0, 16));
-    TEST_ASSERT_EQUAL_INT32(2, fx_div_round64(-3, -2, 0));
-    TEST_ASSERT_EQUAL_INT32(-2, fx_div_round64(3, -2, 0));
-    for (int den = 1; den <= 31; den++) {
-        for (int num = -100; num <= 100; num++) {
-            const int expected = num < 0 ? -((-num + den / 2) / den) : (num + den / 2) / den;
-            TEST_ASSERT_EQUAL_INT(expected, fx_round_div(num, den));
-            TEST_ASSERT_EQUAL_INT32(expected, fx_div_round64(num, den, 0));
-        }
-    }
-}
-
 void
 suite_fixed(void) {
     RUN_TEST(test_scalar_integer_bounds);
-    RUN_TEST(test_saturating_division_and_integer_rounding);
     RUN_TEST(test_mul_floor_matches_a_hand_written_widened_shift);
     RUN_TEST(test_floor_and_round_diverge_on_an_inexact_negative_product);
     RUN_TEST(test_mul_round_rounds_to_nearest_for_positives);

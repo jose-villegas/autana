@@ -1,4 +1,3 @@
-/* Tilt filtering derives gravity direction and shake strength from samples. */
 #include "input/tilt.h"
 
 #include "util/scalar/intmath.h"
@@ -52,12 +51,10 @@ approach(int32_t current_q8, int target, int tau_ms, uint32_t dt_ms) {
     return current_q8 + (int32_t)(delta / (int64_t)(tau_ms + (int)dt_ms));
 }
 
-/* How far this sample departs from rest, as 0-255.
- *
- * At rest the magnitude is exactly one g whatever the orientation, so anything
- * left over is the device being moved rather than turned. That is what shaking
- * is, and it is why the gyroscope is the wrong instrument for it: a smooth
- * rotation keeps the magnitude at one g and reads as nothing. */
+/* At rest the magnitude is one g in any orientation: shaking changes it,
+ * while a smooth rotation does not, so the gyroscope is unsuitable.
+ * Departure is a distance from one g, so unlike magnitude_within() it
+ * needs the root: squares do not subtract. */
 static int
 shake_from_sample(const tilt_t* t, int gx, int gy, int gz) {
     const int64_t mag2 = (int64_t)gx * gx + (int64_t)gy * gy + (int64_t)gz * gz;

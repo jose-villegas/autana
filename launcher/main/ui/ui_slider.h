@@ -42,7 +42,7 @@ ui_slider_knob_rect(mu_Rect track, int lo, int hi, int value, int knob_w) {
     const int travel = ui_slider_travel(track, knob_w);
     const int range = hi - lo;
     const int v = mu_clamp(value, lo, hi);
-    const int x = (range > 0) ? track.x + fx_round_div((v - lo) * travel, range) : track.x;
+    const int x = (range > 0) ? track.x + fx_div_round((v - lo) * travel, range, 0) : track.x;
     return (mu_Rect){x, track.y, w, track.h};
 }
 
@@ -79,7 +79,7 @@ ui_slider_value_at_x(mu_Rect track, int lo, int hi, int knob_w, int step, int x)
     const int travel = ui_slider_travel(track, knob_w);
     const int w = ui_slider_knob_w(track, knob_w);
     const int off = mu_clamp(x - track.x - w / 2, 0, mu_max(travel, 0));
-    const int raw = (travel > 0) ? lo + fx_round_div(off * range, travel) : lo;
-    const int steps = fx_round_div((raw - lo), s);
+    const int raw = (travel > 0) ? lo + fx_div_round(off * range, travel, 0) : lo;
+    const int steps = fx_div_round(raw - lo, s, 0);
     return mu_clamp(lo + steps * s, lo, hi);
 }

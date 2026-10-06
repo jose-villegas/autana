@@ -63,7 +63,7 @@ im_clamp(int value, int lo, int hi) {
     return value < lo ? lo : (value > hi ? hi : value);
 }
 
-/* Floor of the square root, including the full unsigned 64-bit range. */
+/* Floor of the square root over the whole uint64_t range. */
 static inline uint32_t
 im_isqrt64(uint64_t value) {
     uint64_t root = 0;

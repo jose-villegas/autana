@@ -1,7 +1,7 @@
-/* Touch calibration maps raw coordinates into panel bounds. */
 #include "input/touch_calib.h"
 
 #include <math.h>
+
 #include "util/scalar/intmath.h"
 
 #define ONE 65536.0f

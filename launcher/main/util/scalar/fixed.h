@@ -1,10 +1,13 @@
 /*
  * fixed: shift-based fixed-point arithmetic at caller-selected scales.
  *
- * Products widen before shifting to avoid 32-bit overflow. Floor and round
- * are distinct: rounding a repeatedly negative accumulator changes its
- * trajectory. Geometry rounds to nearest with ties away from zero.
- * Header-only helpers keep innermost loops free of cross-file calls.
+ * Products widen to 64 bits before the shift because multiplying two 32-bit
+ * fixed-point numbers in 32 bits overflows before the shift.
+ * fx_mul_floor and fx_mul_round are not interchangeable: on a signed, often-
+ * negative accumulator rounding moves each negative step up and the error
+ * compounds, so keep whichever an accumulator already uses and round only
+ * one-shot values.
+ * Header-only helpers keep inner loops free of cross-file calls.
  */
 #pragma once
 
@@ -28,8 +31,8 @@ fx_round_shift32(int32_t v, int shift) {
 }
 
 /* Multiply two fixed-point numbers in Q(*.shift) and shift the product back
- * down by `shift`, flooring toward negative infinity (see this header's top
- * comment on why that is not the same as truncating toward zero). */
+ * down by `shift`; an arithmetic shift of a negative value floors toward
+ * negative infinity, unlike a truncating cast. */
 static inline int32_t
 fx_mul_floor(int32_t a, int32_t b, int shift) {
     return (int32_t)(((int64_t)a * (int64_t)b) >> shift);
@@ -54,26 +57,8 @@ fx_div_round_wide(int32_t num, int32_t den, int shift) {
     return neg ? -q : q;
 }
 
-/* Narrowing preserves wrap; callers requiring saturation use fx_div_round64. */
+/* den must be nonzero. The result wraps if it overflows int32; mathx_div saturates instead. */
 static inline int32_t
 fx_div_round(int32_t num, int32_t den, int shift) {
     return (int32_t)fx_div_round_wide(num, den, shift);
-}
-
-/* Widened division with an int32-saturated result. Zero denominators
- * saturate by the numerator's sign, with 0/0 yielding 0. shift is 0..31. */
-static inline int32_t
-fx_div_round64(int32_t num, int32_t den, int shift) {
-    if (den == 0) {
-        return num > 0 ? INT32_MAX : (num < 0 ? INT32_MIN : 0);
-    }
-    const int64_t q = fx_div_round_wide(num, den, shift);
-    return q > INT32_MAX ? INT32_MAX : (q < INT32_MIN ? INT32_MIN : (int32_t)q);
-}
-
-/* Nearest integer, ties away from zero. den is positive; |num| + den/2
- * fits in int, so a 32-bit core needs no widened division. */
-static inline int
-fx_round_div(int num, int den) {
-    return num >= 0 ? (num + den / 2) / den : -((-num + den / 2) / den);
 }

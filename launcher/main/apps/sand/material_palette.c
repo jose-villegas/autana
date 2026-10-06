@@ -555,7 +555,8 @@ liquid_spec_for_mask(unsigned mask, int ux_q8, int uy_q8) {
     const int raw_q8 = nx * ux_q8 + ny * uy_q8;
     const int norm_q8 = (nx != 0 && ny != 0) ? 181 : 256;
     const int spec_q8 = (raw_q8 * norm_q8) / 256; /* now in [-256,256] */
-    return (int8_t)(-fx_round_div(spec_q8 * SPEC_STRENGTH, 256));
+    /* Rounded, not truncated: truncation weakens one side's rim. */
+    return (int8_t)(-fx_round_shift32(spec_q8 * SPEC_STRENGTH, 8));
 }
 
 /* Only three outward-normal cases exist here (two axes): no empty side, one,

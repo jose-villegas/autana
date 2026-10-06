@@ -10,9 +10,9 @@
 #pragma once
 
 #include <stdbool.h>
-
 #include <stdint.h>
 #include <stdlib.h>
+
 #include "util/scalar/intmath.h"
 
 #define RIDGE_POSE_ONE (1 << 14)

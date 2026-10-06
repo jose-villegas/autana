@@ -1,4 +1,3 @@
-/* Title screen layout and menu controls. */
 #include "title_screen.h"
 
 #include "gfx/gfx_font_roles.h"

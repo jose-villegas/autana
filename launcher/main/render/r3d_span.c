@@ -1,4 +1,3 @@
-/* Triangle spans interpolate bounded color and depth attributes. */
 #include "render/r3d_span.h"
 #include "render/r3d_span_internal.h"
 

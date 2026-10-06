@@ -51,7 +51,10 @@ mathx_mul(int32_t a, int32_t b) {
 
 static inline int32_t
 mathx_div(int32_t num, int32_t den) {
-    return fx_div_round64(num, den, MATHX_SHIFT);
+    if (den == 0) {
+        return num > 0 ? INT32_MAX : (num < 0 ? INT32_MIN : 0);
+    }
+    return mathx_saturate(fx_div_round_wide(num, den, MATHX_SHIFT));
 }
 
 /* The square root of a non-negative value; a negative one gives 0. */
