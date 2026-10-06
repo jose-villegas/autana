@@ -9,6 +9,10 @@
 #include <string>
 #include <utility>
 
+#include <nlohmann/json.hpp>
+
+#include "editor/runtime.h"
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -66,8 +70,8 @@ TEST(LayoutDocument, LoadsScreenElementsAndBothOrientations) {
     EXPECT_TRUE(document.validate().empty());
     EXPECT_EQ(document.screen(), "control_center");
     EXPECT_EQ(document.title(), "Control Center");
-    EXPECT_EQ(document.layout(LayoutOrientation::Landscape).canvas_width, 448);
-    EXPECT_EQ(document.layout(LayoutOrientation::Portrait).canvas_height, 448);
+    EXPECT_EQ(document.layout(LayoutOrientation::Landscape).canvas_width, editor_runtime_panel_height());
+    EXPECT_EQ(document.layout(LayoutOrientation::Portrait).canvas_height, editor_runtime_panel_height());
     ASSERT_EQ(document.elements().size(), document.layout(LayoutOrientation::Portrait).rects.size());
     EXPECT_EQ(document.elements().front().id, "wifi");
     EXPECT_EQ(document.elements().front().label, "Wi-Fi");
@@ -90,15 +94,16 @@ TEST(LayoutDocument, RejectsPanelOverlap) {
 
 TEST(LayoutDocument, RejectsUndersizedInteractiveTarget) {
     LayoutDocument document = load_layout();
-    rect_of(document, LayoutOrientation::Portrait, "volume").height = 55;
+    rect_of(document, LayoutOrientation::Portrait, "volume").height = editor_runtime_tap_min() - 1;
 
-    EXPECT_THAT(document.validate(), Contains("portrait: volume is smaller than 56px tap target"));
+    EXPECT_THAT(document.validate(), Contains("portrait: volume is smaller than "
+                                              + std::to_string(editor_runtime_tap_min()) + "px tap target"));
 }
 
 TEST(LayoutDocument, AllowsUndersizedPassiveElement) {
     LayoutDocument document = load_layout();
 
-    EXPECT_LT(rect_of(document, LayoutOrientation::Portrait, "notifications_header").height, 56);
+    EXPECT_LT(rect_of(document, LayoutOrientation::Portrait, "notifications_header").height, editor_runtime_tap_min());
     EXPECT_TRUE(document.validate().empty());
 }
 
@@ -141,7 +146,8 @@ TEST(LayoutDocument, RefusesToSaveInvalidGeometry) {
 
     std::string error;
     EXPECT_FALSE(document.save(error));
-    EXPECT_THAT(error, HasSubstr("canvas must be 368 x 448"));
+    EXPECT_THAT(error, HasSubstr("canvas must be " + std::to_string(editor_runtime_panel_width()) + " x "
+                                 + std::to_string(editor_runtime_panel_height())));
 }
 
 TEST(LayoutDocument, RejectsSharedBadDocuments) {
@@ -151,12 +157,32 @@ TEST(LayoutDocument, RejectsSharedBadDocuments) {
             continue;
         }
         SCOPED_TRACE(fixture.path().filename().string());
+        const auto source = nlohmann::json::parse(read_bytes(fixture.path()));
+        TemporaryLayout document;
+        {
+            std::ofstream stream(document.path(), std::ios::binary | std::ios::trunc);
+            stream << source.at("document").dump();
+        }
         std::string error;
-        EXPECT_FALSE(LayoutDocument::load(fixture.path(), error));
-        EXPECT_FALSE(error.empty());
+        EXPECT_FALSE(LayoutDocument::load(document.path(), error));
+        EXPECT_THAT(error, HasSubstr(source.at("error").get<std::string>()));
         count++;
     }
     EXPECT_GT(count, 0u);
+}
+
+TEST(LayoutDocument, RefusesWrongRectCount) {
+    LayoutDocument document = load_layout();
+    document.layout(LayoutOrientation::Portrait).rects.pop_back();
+    EXPECT_THAT(document.validate(), Contains("portrait: rects must contain exactly the declared element ids"));
+}
+
+TEST(LayoutDocument, BakesEditedGeometryAndRefusesInvalidGeometry) {
+    LayoutDocument document = load_layout();
+    rect_of(document, LayoutOrientation::Portrait, "wifi").x++;
+    EXPECT_THAT(bake_header(document), HasSubstr("[CONTROL_CENTER_ELEMENT_WIFI] = {17,"));
+    document.layout(LayoutOrientation::Portrait).rects.pop_back();
+    EXPECT_THROW(bake_header(document), std::runtime_error);
 }
 
 TEST(LayoutDocument, HistoryTracksGeometryAndSavedRevision) {

@@ -18,9 +18,9 @@ to the level editor already banked in that roadmap.
 | piece | where |
 |---|---|
 | authored layout | `launcher/main/ui/<screen>_layout.json`: the screen's name, its elements (`id`, `label`, `interactive`) and one rect per element per orientation |
-| generator | `launcher/tools/gen/gen_ui_layout.py`, one for every screen; every C identifier derives from the JSON's `screen` |
+| generator | `bake_header()` in `editor/src/layout_document.cpp`, exposed by `editor_layout_bake`; every C identifier derives from the JSON's `screen` |
 | baked table | `<screen>_layout_generated.h`, the only form the device links |
-| document | `editor/src/layout_document.{h,cpp}`, one type for every screen, applying the generator's rules |
+| document | `editor/src/layout_document.{h,cpp}`, one type for every screen, owning the rules and header emission |
 | renderer | `editor/runtime/runtime.c`: the firmware's `ui/` and `gfx.c` compiled for the host |
 | shell | `editor/src/main.cpp`: SDL2 + Dear ImGui; hierarchy, both orientations side by side, inspector, undo, explicit save and bake |
 

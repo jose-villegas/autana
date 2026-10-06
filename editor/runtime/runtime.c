@@ -80,7 +80,7 @@ layout_fits(editor_screen_t screen, const control_center_layout_t* layout, int w
         return false;
     }
     for (int i = 0; i < CONTROL_CENTER_ELEMENT_COUNT; i++) {
-        const control_center_layout_rect_t* rect = &layout->rects[i];
+        const ui_layout_rect_t* rect = &layout->rects[i];
         if (rect->x < 0 || rect->y < 0 || rect->width <= 0 || rect->height <= 0 || rect->width > width - rect->x
             || rect->height > height - rect->y) {
             return false;

@@ -1,1 +1,1 @@
-{"schema_version":2,"screen":"fixture","title":"Fixture","elements":[],"orientations":{"portrait":{"canvas":[368,448],"rects":{"first":[0,0,56,56],"second":[60,0,20,20]}},"landscape":{"canvas":[448,368],"rects":{"first":[0,0,56,56],"second":[60,0,20,20]}}}}
+{"error":"elements must be a non-empty list","document":{"schema_version":2,"screen":"fixture","title":"Fixture","elements":[],"orientations":{"portrait":{"canvas":[368,448],"rects":{}},"landscape":{"canvas":[448,368],"rects":{}}}}}

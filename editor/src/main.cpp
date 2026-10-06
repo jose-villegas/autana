@@ -10,7 +10,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -97,62 +99,21 @@ baked_header_path(const LayoutDocument& document) {
     return document.path().parent_path() / (document.screen() + "_layout_generated.h");
 }
 
-std::string
-shell_argument(const std::filesystem::path& path) {
-    const std::string value = path.string();
-#ifdef _WIN32
-    if (value.find('"') != std::string::npos || value.find('%') != std::string::npos) {
-        return {};
-    }
-    return '"' + value + '"';
-#else
-    std::string quoted = "'";
-    for (char character : value) {
-        quoted += character == '\'' ? "'\\''" : std::string(1, character);
-    }
-    return quoted + "'";
-#endif
-}
-
 bool
-bake_layout(const LayoutDocument& document, bool check_only, std::string& error) {
-#ifndef EDITOR_PYTHON_EXECUTABLE
-    (void)document;
-    (void)check_only;
-    error = "Python was not available when the editor was configured";
-    return false;
-#else
-    const std::filesystem::path generator =
-        std::filesystem::path(EDITOR_PROJECT_ROOT) / "launcher" / "tools" / "gen" / "gen_ui_layout.py";
-    const std::filesystem::path output = baked_header_path(document);
-    const std::string python_argument = shell_argument(EDITOR_PYTHON_EXECUTABLE);
-    const std::string generator_argument = shell_argument(generator);
-    const std::string source_argument = shell_argument(document.path());
-    const std::string output_argument = shell_argument(output);
-    const std::string validator_argument = shell_argument(EDITOR_LAYOUT_VALIDATOR);
-    if (python_argument.empty() || generator_argument.empty() || source_argument.empty() || output_argument.empty()
-        || validator_argument.empty()) {
-        error = "A bake path contains unsupported shell characters";
+bake_layout(const LayoutDocument& document, std::string& error) {
+    try {
+        const std::string baked = bake_header(document);
+        std::ofstream output(baked_header_path(document), std::ios::binary | std::ios::trunc);
+        output << baked;
+        if (!output) {
+            throw std::runtime_error("could not write baked header");
+        }
+        error.clear();
+        return true;
+    } catch (const std::exception& exception) {
+        error = exception.what();
         return false;
     }
-
-    // gen_ui_layout.py stays the only writer of firmware geometry; the
-    // editor launches it and never reimplements it.
-    std::string command = python_argument + " " + generator_argument + " " + source_argument + " " + output_argument
-                          + " --validator " + validator_argument;
-    if (check_only) {
-        command += " --check";
-    }
-#ifdef _WIN32
-    command = '"' + command + '"';
-#endif
-    if (std::system(command.c_str()) != 0) {
-        error = "Layout generator failed";
-        return false;
-    }
-    error.clear();
-    return true;
-#endif
 }
 
 bool
@@ -487,7 +448,7 @@ save_and_bake(EditorState& state, const MenuRequests& requests) {
         }
     }
     if (requests.bake) {
-        state.notice = bake_layout(*screen.document, false, error)
+        state.notice = bake_layout(*screen.document, error)
                            ? "Baked " + baked_header_path(*screen.document).filename().string()
                            : "Bake failed: " + error;
     }
@@ -558,22 +519,10 @@ load_system_screens(std::string& error) {
     return state;
 }
 
-int
-check_bakes(const EditorState& state) {
-    for (const SystemScreen& screen : state.screens) {
-        std::string error;
-        if (screen.document && !bake_layout(*screen.document, true, error)) {
-            std::fprintf(stderr, "%s bake check failed: %s\n", screen.title, error.c_str());
-            return 1;
-        }
-    }
-    return 0;
-}
-
 } // namespace
 
 int
-main(int argument_count, char** arguments) {
+main() {
     std::string load_error;
     std::optional<EditorState> loaded = load_system_screens(load_error);
     if (!loaded) {
@@ -581,10 +530,6 @@ main(int argument_count, char** arguments) {
         return 1;
     }
     EditorState state = std::move(*loaded);
-
-    if (argument_count == 2 && std::string(arguments[1]) == "--check-bake") {
-        return check_bakes(state);
-    }
 
     SDL_SetMainReady();
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {

@@ -3,14 +3,14 @@
 
 #include <vector>
 
-#include "ui/control_center_layout_generated.h"
+#include "ui/ui_layout.h"
 
 enum class LayoutOrientation {
     Portrait,
     Landscape,
 };
 
-using LayoutRect = control_center_layout_rect_t;
+using LayoutRect = ui_layout_rect_t;
 
 inline bool
 operator==(const LayoutRect& first, const LayoutRect& second) {

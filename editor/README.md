@@ -15,23 +15,23 @@ flowchart LR
     JSON["launcher/main/ui/<br/>&lt;screen&gt;_layout.json"] -->|load / save| DOC["LayoutDocument<br/><i>src/layout_document</i>"]
     DOC -->|rects, every edit| RT["editor_runtime_render()<br/><i>runtime/runtime.c</i>"]
     RT -->|"real ui/ + gfx.c"| PREVIEW["both orientations,<br/>side by side"]
-    JSON -->|"Bake: gen_ui_layout.py"| HEADER["&lt;screen&gt;_layout_generated.h"]
+    DOC -->|"Bake: bake_header()"| HEADER["&lt;screen&gt;_layout_generated.h"]
     HEADER --> FW["firmware build"]
 ```
 
 - **The JSON is the source.** It names its screen and declares its elements
   (`id`, `label`, `interactive`), then gives one rect per element for
-  `portrait` (368 x 448) and `landscape` (448 x 368). The editor writes it one
-  rect per line, so an edit's diff is the rects that moved.
-- **The header is output, never input.** `launcher/tools/gen/gen_ui_layout.py` is
-  the only thing that writes firmware geometry. The editor launches it on an
-  explicit Bake and never reimplements it. The device links the baked table:
-  no JSON, no parser, no layout solver.
+  `portrait` (panel width x height) and `landscape` (height x width). The editor
+  writes it one rect per line, so an edit's diff is the rects that moved.
+- **The header is output, never input.** `bake_header()` in
+  `layout_document.cpp` emits firmware geometry. The editor calls it in-process
+  on an explicit Bake; `editor_layout_bake` calls it from the command line.
+  The device links the baked table: no JSON, no parser, no layout solver.
 - **Save and Bake are separate**, so a preview edit cannot silently change a
   device build. Both refuse a layout with problems.
-- **The same rules in both places.** Inside the canvas, no overlap, and at least
-  `UI_TAP_MIN` in each dimension for an `interactive` element - enforced by the generator at bake
-  time and by `LayoutDocument` while dragging.
+- **One rule set.** Inside the canvas, no overlap, and at least
+  `UI_TAP_MIN` in each dimension for an `interactive` element. `LayoutDocument`
+  owns these rules for loading, dragging, saving and baking.
 
 ## Layout
 
@@ -43,7 +43,7 @@ editor/
 │   └── core/                 reusable: dockspace, edit history, RGB565 texture
 ├── include/editor/runtime.h  the C boundary the editor renders through
 ├── runtime/runtime.c         firmware ui/ + gfx.c on the host; never an IDF component
-└── tests/                    CTest: GoogleTest, a C smoke test, Python unittest
+└── tests/                    CTest: GoogleTest and C runtime tests
 ```
 
 Control Center is the authored document. The launcher is listed beside it as
@@ -68,14 +68,18 @@ cmake --build editor/build
 ctest --test-dir editor/build --output-on-failure
 ```
 
-Baking uses `editor_layout_validate`, which loads documents through the editor's
-live validator. The Python generator requires this executable: its default is
-`editor/build/editor_layout_validate` (`.exe` on Windows). For another build
-directory, pass `--validator PATH` or set `AUTANA_LAYOUT_VALIDATOR`. CTest and
-the editor's Bake action select the validator from their own build directory.
-Panel dimensions and tap constraints come from the firmware headers; the
-invalid document fixtures in `editor/tests/fixtures/layout_document/` are
-shared by the C++ and Python tests.
+To bake outside the window, run:
+
+```sh
+editor/build/editor_layout_bake launcher/main/ui/<screen>_layout.json launcher/main/ui/<screen>_layout_generated.h
+```
+
+On Windows, use `editor_layout_bake.exe`; multi-config builds place it under
+`Debug/` or `Release/`. The generated banner's `bake_ui_layout.py` launcher
+selects that executable from `editor/build`. It forwards arguments; validation
+and emission both belong to C++. Panel dimensions and tap constraints come
+from the firmware through `editor_runtime_*`. Invalid-document fixtures pair a
+document with the error substring its rule must report.
 
 The executable is `editor/build/autana_editor`. SDL2, Dear ImGui, nlohmann/json and
 GoogleTest are fetched by git at pinned tags into the untracked build
@@ -93,11 +97,11 @@ CTest is the single entry point.
 
 | suite | covers |
 |---|---|
-| `editor_document.*` (GoogleTest) | load, validate, save; the checked-in JSON re-serialises byte for byte |
+| `editor_document.*` (GoogleTest) | load, validate, save, bake, wrong rect count; fixtures assert their named rule; JSON re-serialises byte for byte |
 | `editor_core.*` (GoogleTest) | edit history: undo, redo, saved revision |
 | `editor_navigation.*` (GoogleTest) | the firmware's `system_navigation.c`, all four rotations |
 | `editor_runtime_smoke` (C) | both screens and orientations render; an authored rect reaches the pixels; bad layouts are refused |
-| `ui_layout_generator` (unittest) | the generator's rules |
+| Generated-file drift gate | every layout header matches its JSON through the C++ baker |
 | `editor_ridge_backdrop` (C) | the launcher over its ridge: idle sends nothing, a touch wakes it, and at rest the screen is the settled one exactly |
 
 The window itself - SDL and Dear ImGui glue - has no automated coverage.

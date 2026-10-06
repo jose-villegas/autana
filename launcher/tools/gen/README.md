@@ -8,7 +8,7 @@
 | [gen_gfx_palette_standard.py](gen_gfx_palette_standard.py) | Bakes standard graphics palette data. |
 | [gen_icons.py](gen_icons.py) | Bakes icon artwork and metadata into C headers. |
 | [gen_ridge_curve.py](gen_ridge_curve.py) | Bakes a ridge line from the source image. |
-| [gen_ui_layout.py](gen_ui_layout.py) | Bakes authored screen layouts into C headers. |
+| [bake_ui_layout.py](bake_ui_layout.py) | Runs the C++ authored-layout baker built in `editor/build`. |
 | [gen_zeta_curve.py](gen_zeta_curve.py) | Bakes the boot animation curve. |
 | [gfx_palette_gen.c](gfx_palette_gen.c) | Portable palette table calculations shared by host tools and tests. |
 | [gfx_palette_gen.h](gfx_palette_gen.h) | Declarations for the palette table calculations. |
@@ -18,7 +18,7 @@
 Apps keep their own generators in `apps/<name>/tools/`; the rules are the
 same. Every checked-in output, from the banner each one carries:
 
-<!-- generated: generated-files sha256=f0cf591f759634c949c13816ab09df774b78156c9c66d40eb8a33db5de4cfeb3 -->
+<!-- generated: generated-files sha256=b42d9aea87e34eca87edbe8f935fad5b1f5a12216c10f1f49f27df6bf5c3287d -->
 | Output | Generator | Run in | Command |
 |---|---|---|---|
 | [wire_primitives_generated.h](../../main/apps/render_lab/wire_primitives_generated.h) | [gen_wire_primitives.py](../../main/apps/render_lab/tools/gen_wire_primitives.py) | `launcher/` | `python main/apps/render_lab/tools/gen_wire_primitives.py > main/apps/render_lab/wire_primitives_generated.h` |
@@ -31,7 +31,7 @@ same. Every checked-in output, from the banner each one carries:
 | [gfx_dither_patterns_generated.h](../../main/gfx/gfx_dither_patterns_generated.h) | [gen_gfx_dither_patterns.py](gen_gfx_dither_patterns.py) | `launcher/` | `python tools/gen/gen_gfx_dither_patterns.py main/gfx/gfx_dither_patterns_generated.h` |
 | [gfx_palette_standard_generated.h](../../main/gfx/gfx_palette_standard_generated.h) | [gen_gfx_palette_standard.py](gen_gfx_palette_standard.py) | `launcher/` | `python tools/gen/gen_gfx_palette_standard.py > main/gfx/gfx_palette_standard_generated.h` |
 | [icons_system.h](../../main/gfx/icons_system.h) | [gen_icons.py](gen_icons.py) | `launcher/` | `python tools/gen/gen_icons.py ../design/icons/system.png ../design/icons/system.json > main/gfx/icons_system.h` |
-| [control_center_layout_generated.h](../../main/ui/control_center_layout_generated.h) | [gen_ui_layout.py](gen_ui_layout.py) | `launcher/` | `python tools/gen/gen_ui_layout.py main/ui/control_center_layout.json main/ui/control_center_layout_generated.h` |
+| [control_center_layout_generated.h](../../main/ui/control_center_layout_generated.h) | [bake_ui_layout.py](bake_ui_layout.py) | `launcher/` | `python tools/gen/bake_ui_layout.py main/ui/control_center_layout.json main/ui/control_center_layout_generated.h` |
 | [ridge_curve_generated.h](../../main/ui/ridge_curve_generated.h) | [gen_ridge_curve.py](gen_ridge_curve.py) | `launcher/` | `python tools/gen/gen_ridge_curve.py ../design/boot/ridge.png main/ui/ridge_curve_generated.h` |
 <!-- /generated: generated-files -->
 

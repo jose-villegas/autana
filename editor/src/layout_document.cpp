@@ -86,9 +86,11 @@ read_rect(const Json& value) {
         throw std::runtime_error("rectangle must be [x, y, width, height]");
     }
     for (const Json& component : value) {
-        if (!component.is_number_integer() || component < std::numeric_limits<int16_t>::min()
-            || component > std::numeric_limits<int16_t>::max()) {
+        if (!component.is_number_integer()) {
             throw std::runtime_error("rectangle components must be integers");
+        }
+        if (component < std::numeric_limits<int16_t>::min() || component > std::numeric_limits<int16_t>::max()) {
+            throw std::runtime_error("rectangle components must fit int16");
         }
     }
     return {value[0].get<int16_t>(), value[1].get<int16_t>(), value[2].get<int16_t>(), value[3].get<int16_t>()};
@@ -126,6 +128,10 @@ void
 validate_layout(const ScreenLayout& layout, const std::vector<LayoutElement>& elements, LayoutOrientation orientation,
                 std::vector<std::string>& problems) {
     const std::string prefix = std::string(layout_orientation_id(orientation)) + ": ";
+    if (layout.rects.size() != elements.size()) {
+        problems.push_back(prefix + "rects must contain exactly the declared element ids");
+        return;
+    }
     for (std::size_t index = 0; index < elements.size(); index++) {
         const LayoutRect& rect = layout.rects[index];
         if (rect.x < 0 || rect.y < 0 || rect.width <= 0 || rect.height <= 0 || rect.x + rect.width > layout.canvas_width
@@ -337,4 +343,46 @@ LayoutGeometryEqual::operator()(const LayoutDocument& first, const LayoutDocumen
         }
     }
     return true;
+}
+
+std::string
+bake_header(const LayoutDocument& document) {
+    const auto problems = document.validate();
+    if (!problems.empty()) {
+        throw std::runtime_error(problems.front());
+    }
+    const auto upper = [](std::string text) {
+        for (char& character : text) {
+            character = static_cast<char>(std::toupper(static_cast<unsigned char>(character)));
+        }
+        return text;
+    };
+    const std::string& screen = document.screen();
+    const std::string prefix = upper(screen) + "_ELEMENT_";
+    std::ostringstream out;
+    out << "/*\n * GENERATED FILE - do not edit.\n *\n"
+        << " *     python tools/gen/bake_ui_layout.py main/ui/" << screen << "_layout.json main/ui/" << screen
+        << "_layout_generated.h\n */\n#pragma once\n\n#include \"ui/ui_layout.h\"\n\ntypedef enum {\n";
+    for (std::size_t index = 0; index < document.elements().size(); index++) {
+        out << "    " << prefix << upper(document.elements()[index].id) << " = " << index << ",\n";
+    }
+    out << "    " << prefix << "COUNT = " << document.elements().size() << "\n} " << screen
+        << "_element_id_t;\n\ntypedef struct {\n    int16_t canvas_width, canvas_height;\n"
+        << "    ui_layout_rect_t rects[" << prefix << "COUNT];\n} " << screen << "_layout_t;\n\n";
+    for (LayoutOrientation orientation : {LayoutOrientation::Portrait, LayoutOrientation::Landscape}) {
+        const ScreenLayout& layout = document.layout(orientation);
+        out << "static const " << screen << "_layout_t " << screen << "_layout_" << layout_orientation_id(orientation)
+            << " = {\n    .canvas_width = " << layout.canvas_width << ",\n    .canvas_height = " << layout.canvas_height
+            << ",\n    .rects =\n        {\n";
+        for (std::size_t index = 0; index < document.elements().size(); index++) {
+            const LayoutRect& rect = layout.rects[index];
+            out << "            [" << prefix << upper(document.elements()[index].id) << "] = {" << rect.x << ", "
+                << rect.y << ", " << rect.width << ", " << rect.height << "},\n";
+        }
+        out << "        },\n};\n";
+        if (orientation == LayoutOrientation::Portrait) {
+            out << "\n";
+        }
+    }
+    return out.str();
 }

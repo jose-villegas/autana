@@ -1,4 +1,4 @@
-# Host editor, firmware preview runtime and shared layout validator.
+# Host editor, firmware preview runtime and shared layout baker.
 cmake_minimum_required(VERSION 3.24)
 
 project(autana_editor LANGUAGES C CXX)
@@ -95,8 +95,8 @@ add_library(editor_document STATIC
 target_include_directories(editor_document PUBLIC src)
 target_link_libraries(editor_document PUBLIC nlohmann_json::nlohmann_json editor_runtime)
 
-add_executable(editor_layout_validate src/layout_validate.cpp)
-target_link_libraries(editor_layout_validate PRIVATE editor_document)
+add_executable(editor_layout_bake src/layout_bake.cpp)
+target_link_libraries(editor_layout_bake PRIVATE editor_document)
 
 if(MSVC)
     target_compile_options(editor_document PRIVATE /W4 /permissive-)
@@ -176,15 +176,8 @@ if(EDITOR_BUILD_GUI)
         ${EDITOR_SDL_TARGET}
     )
     target_compile_definitions(autana_editor PRIVATE
-        EDITOR_LAYOUT_VALIDATOR="$<TARGET_FILE:editor_layout_validate>"
         EDITOR_PROJECT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/.."
     )
-    add_dependencies(autana_editor editor_layout_validate)
-    if(Python3_Interpreter_FOUND)
-        target_compile_definitions(autana_editor PRIVATE
-            EDITOR_PYTHON_EXECUTABLE="${Python3_EXECUTABLE}"
-        )
-    endif()
 
     if(MSVC)
         target_compile_options(autana_editor PRIVATE /W4 /permissive-)
@@ -236,16 +229,6 @@ if(BUILD_TESTING)
     target_include_directories(editor_system_navigation_test PRIVATE ${LAUNCHER_DIR}/main)
     target_link_libraries(editor_system_navigation_test PRIVATE editor_runtime GTest::gtest_main)
     gtest_discover_tests(editor_system_navigation_test TEST_PREFIX "editor_navigation.")
-
-    if(Python3_Interpreter_FOUND)
-        add_test(
-            NAME ui_layout_generator
-            COMMAND ${Python3_EXECUTABLE}
-                ${CMAKE_CURRENT_SOURCE_DIR}/tests/ui_layout_generator_test.py
-        )
-        set_tests_properties(ui_layout_generator PROPERTIES
-            ENVIRONMENT "AUTANA_LAYOUT_VALIDATOR=$<TARGET_FILE:editor_layout_validate>")
-    endif()
 endif()
 
 if(EDITOR_ENABLE_COVERAGE)
@@ -283,7 +266,7 @@ if(EDITOR_ENABLE_COVERAGE)
         target_compile_options(${target} PRIVATE --coverage -O0 -g)
         target_link_options(${target} PRIVATE --coverage)
     endforeach()
-    target_link_options(editor_layout_validate PRIVATE --coverage)
+    target_link_options(editor_layout_bake PRIVATE --coverage)
     # The editor consumes instrumented static libraries but is not itself in
     # the coverage scope, so it only needs the gcov link runtime.
     if(EDITOR_BUILD_GUI)
@@ -316,7 +299,7 @@ if(EDITOR_ENABLE_COVERAGE)
             --fail-under-line 80
             --fail-under-branch 70
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
-        DEPENDS editor_layout_validate editor_layout_document_test editor_core_test
+        DEPENDS editor_layout_bake editor_layout_document_test editor_core_test
                 editor_system_navigation_test editor_runtime_smoke
         USES_TERMINAL
         COMMENT "Running tests and enforcing editor coverage gates"
