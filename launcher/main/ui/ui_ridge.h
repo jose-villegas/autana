@@ -1,3 +1,4 @@
+/* Interactive ridge animation driven by touch, tilt and elapsed time. */
 #pragma once
 
 #include <stdbool.h>

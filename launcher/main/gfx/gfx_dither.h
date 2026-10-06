@@ -30,7 +30,6 @@ typedef struct {
     uint16_t levels;
 } gfx_dither_pattern_t;
 
-/* Return the recursively ordered Bayer rank at the given coordinates. */
 static inline int
 gfx_dither_bayer_rank(int x, int y, int bits) {
     static const uint8_t cell[2][2] = {{0, 2}, {3, 1}};
@@ -41,7 +40,6 @@ gfx_dither_bayer_rank(int x, int y, int bits) {
     return rank;
 }
 
-/* Return pattern dimensions and ranks, NULL for an invalid identifier. */
 static inline const gfx_dither_pattern_t*
 gfx_dither_pattern(gfx_dither_pattern_id_t id) {
     static const gfx_dither_pattern_t patterns[GFX_DITHER_PATTERN_COUNT] = {
@@ -58,7 +56,6 @@ gfx_dither_pattern(gfx_dither_pattern_id_t id) {
     return id >= 0 && id < GFX_DITHER_PATTERN_COUNT ? &patterns[id] : NULL;
 }
 
-/* Return the pattern rank at a pixel, zero for an invalid identifier. */
 static inline int
 gfx_dither_threshold(gfx_dither_pattern_id_t id, int x, int y) {
     const gfx_dither_pattern_t* const pattern = gfx_dither_pattern(id);
@@ -81,7 +78,6 @@ gfx_dither_threshold(gfx_dither_pattern_id_t id, int x, int y) {
     }
 }
 
-/* Whether the pattern covers this pixel at the given alpha. */
 static inline bool
 gfx_dither_alpha_pick(gfx_dither_pattern_id_t id, int x, int y, uint8_t alpha) {
     const gfx_dither_pattern_t* const pattern = gfx_dither_pattern(id);

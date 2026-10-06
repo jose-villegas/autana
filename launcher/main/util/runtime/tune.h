@@ -62,9 +62,7 @@ typedef void (*tune_reply_fn)(const char* line);
  * reports the clash. An entry registered twice is registered once. */
 bool tune_register(tune_registry_t* registry, tune_entry_t* entry);
 
-/* Return the number of registered tunables. */
 int tune_count(const tune_registry_t* registry);
-/* Find a registered tunable by name, NULL when absent. */
 const tune_entry_t* tune_find(const tune_registry_t* registry, const char* name);
 
 /* True if `line` was one of these, whatever came of it. Replies, one call
@@ -81,13 +79,10 @@ bool tune_registry_handle_line(tune_registry_t* registry, const char* line, tune
 
 /* The one TUNE() entries join, and the console answers from. */
 tune_registry_t* tune_shared(void);
-/* Handle a console tuning command against the shared registry. */
 bool tune_handle_line(const char* line, tune_reply_fn reply);
 
-/* Declare the generation storage shared by one owner's tunables. */
 #define TUNE_OWNER(owner) static tune_owner_t owner##_tunables
 
-/* Declare a bounded tunable, constant in release and registered in development. */                                    \
 #define TUNE(owner, what, initial_value, low_value, high_value)                                                        \
     _Static_assert((initial_value) >= (low_value) && (initial_value) <= (high_value),                                  \
                    #owner "." #what " starts outside its own range");                                                  \
@@ -100,7 +95,6 @@ bool tune_handle_line(const char* line, tune_reply_fn reply);
     static tune_entry_t what##_tunable = {#owner "." #what,  &what, (initial_value), (low_value), (high_value),        \
                                           &owner##_tunables, NULL}
 
-/* Read the owner generation for invalidating derived data, zero in release. */
 #define TUNE_GENERATION(owner) (owner##_tunables.generation)
 
 #else

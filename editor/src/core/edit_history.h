@@ -1,3 +1,4 @@
+/* Document snapshots with undo, redo and saved-state tracking. */
 #pragma once
 
 #include <cstddef>

@@ -29,7 +29,6 @@ gfx_indexed_panel_row_to_grid_row(int panel_row, int cell_size) {
     return panel_row / cell_size;
 }
 
-/* Return the first panel row covered by a grid row. */
 static inline int
 gfx_indexed_grid_row_to_panel_row(int grid_row, int cell_size) {
     return grid_row * cell_size;
@@ -115,7 +114,6 @@ gfx_indexed_classify(const gfx_color_t* table, int phases, uint8_t out_class[GFX
     }
 }
 
-/* Group palette indices whose entire ordered-dither output is identical. */
 static inline void
 gfx_indexed_dither16_classify(const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES],
                               uint8_t out_class[GFX_INDEXED_PALETTE_SIZE]) {

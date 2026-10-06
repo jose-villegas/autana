@@ -1,3 +1,4 @@
+/* Home-screen app selection and scroll interaction. */
 #pragma once
 
 #include <stdint.h>

@@ -14,55 +14,46 @@
 
 #include <stdint.h>
 
-/* Return zero in the scalar type's own units. */
 static inline int32_t
 mathi_zero(void) {
     return 0;
 }
 
-/* Return one in the scalar type's own units. */
 static inline int32_t
 mathi_one(void) {
     return 1;
 }
 
-/* Add scalar values with wrapping int32 arithmetic. */
 static inline int32_t
 mathi_add(int32_t a, int32_t b) {
     return (int32_t)((uint32_t)a + (uint32_t)b);
 }
 
-/* Subtract scalar values with wrapping int32 arithmetic. */
 static inline int32_t
 mathi_sub(int32_t a, int32_t b) {
     return (int32_t)((uint32_t)a - (uint32_t)b);
 }
 
-/* Negate scalar values with wrapping int32 arithmetic. */
 static inline int32_t
 mathi_neg(int32_t a) {
     return (int32_t)(0u - (uint32_t)a);
 }
 
-/* Multiply scalar values with wrapping int32 arithmetic. */
 static inline int32_t
 mathi_mul(int32_t a, int32_t b) {
     return (int32_t)((uint32_t)a * (uint32_t)b);
 }
 
-/* Add dot-product terms in int64. */
 static inline int64_t
 mathi_wadd(int64_t a, int64_t b) {
     return a + b;
 }
 
-/* Multiply dot-product terms in int64. */
 static inline int64_t
 mathi_wmul(int32_t a, int32_t b) {
     return (int64_t)a * (int64_t)b;
 }
 
-/* Return the integer magnitude; the caller excludes INT_MIN. */
 static inline int
 mathi_abs(int v) {
     return v < 0 ? -v : v;
@@ -74,13 +65,11 @@ mathi_sign(int v) {
     return v > 0 ? 1 : (v < 0 ? -1 : 0);
 }
 
-/* Return the smaller integer. */
 static inline int
 mathi_min(int a, int b) {
     return a < b ? a : b;
 }
 
-/* Return the larger integer. */
 static inline int
 mathi_max(int a, int b) {
     return a < b ? b : a;
@@ -108,13 +97,11 @@ mathi_even_floor(int v) {
     return v & ~1;
 }
 
-/* Round a coordinate up to an even panel edge. */
 static inline int
 mathi_even_ceil(int v) {
     return (v + 1) & ~1;
 }
 
-/* Clamp a value to a closed interval. */
 static inline __attribute__((always_inline)) int
 mathi_clamp(int value, int lo, int hi) {
     return value < lo ? lo : (value > hi ? hi : value);

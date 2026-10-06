@@ -1,3 +1,4 @@
+/* Frame-loop screenshot requests and framebuffer state capture. */
 #pragma once
 
 #include <stdbool.h>

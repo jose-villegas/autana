@@ -19,7 +19,6 @@
 
 #include <stdbool.h>
 
-/* Instantiate a transform with a lazily cached matrix. */                                                             \
 #define MATH_DEFINE_TRANSFORM(P, V, Q, M, OPS)                                                                         \
                                                                                                                        \
     typedef struct {                                                                                                   \
@@ -35,12 +34,12 @@
         t->position = position;                                                                                        \
         t->cached = false;                                                                                             \
     }                                                                                                                  \
-    /* Set rotation and invalidate the cached matrix. */                                                               \
+                                                                                                                       \
     static inline void P##_set_rotation(P##_t* t, Q##_t rotation) {                                                    \
         t->rotation = rotation;                                                                                        \
         t->cached = false;                                                                                             \
     }                                                                                                                  \
-    /* Set scale and invalidate the cached matrix. */                                                                  \
+                                                                                                                       \
     static inline void P##_set_scale(P##_t* t, V##_t scale) {                                                          \
         t->scale = scale;                                                                                              \
         t->cached = false;                                                                                             \

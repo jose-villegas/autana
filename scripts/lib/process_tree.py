@@ -11,7 +11,6 @@ CREATE_SUSPENDED = 0x4
 
 
 def windows_job_binding(kernel=None):
-    """Bind Windows job-object functions with pointer-safe ctypes signatures."""
     import ctypes
     from ctypes import wintypes
     kernel = kernel or ctypes.WinDLL("kernel32", use_last_error=True)

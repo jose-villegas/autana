@@ -10,7 +10,6 @@
 
 #include <stdbool.h>
 
-/* Instantiate quaternion arithmetic for one scalar type. */                                                           \
 #define MATH_DEFINE_QUAT(P, V, T, OPS)                                                                                 \
     typedef struct {                                                                                                   \
         T x, y, z, w;                                                                                                  \
@@ -60,7 +59,6 @@
         return V##_add(V##_add(v, V##_scale(t, q.w)), V##_cross(u, t));                                                \
     }
 
-/* Instantiate quaternion normalization and rotation operations for one scalar type. */                                \
 #define MATH_DEFINE_QUAT_NORMALIZE(P, V, T, OPS)                                                                       \
     /* normalize = q * (1 / sqrt(qx*qx + qy*qy + qz*qz + qw*qw)). Precondition: `q` is not zero. */                    \
     static inline P##_t P##_normalize(P##_t q) {                                                                       \

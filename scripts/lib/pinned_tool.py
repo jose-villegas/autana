@@ -15,7 +15,6 @@ PINNED_MAJOR = '19'
 
 
 def tool_major(binary):
-    """Read a tool version major, returning None when probing fails."""
     try:
         result = subprocess.run([binary, '--version'], capture_output=True, text=True, timeout=15)
     except (OSError, subprocess.TimeoutExpired):
@@ -25,7 +24,6 @@ def tool_major(binary):
 
 
 def candidates(tool):
-    """Find tool candidates from the environment, PATH, and installed ESP toolchains."""
     names = [os.environ.get('CLANG_TIDY')] if tool == 'clang-tidy' else []
     names += [which(name) for name in (f'{tool}-{PINNED_MAJOR}', tool)]
     found = []
@@ -36,7 +34,6 @@ def candidates(tool):
 
 
 def resolve(tool):
-    """Resolve the pinned tool major or exit with installation guidance."""
     fallback = None
     for candidate in candidates(tool):
         major = tool_major(candidate)

@@ -10,7 +10,6 @@ DISPLAY_HEADER = (Path(__file__).resolve().parents[2] / "components" / "esp32_s3
 
 
 def read_define(text, name):
-    """Read a required integer definition from the panel header text."""
     match = re.search(r"^#define\s+" + name + r"\s+\(?(\d+)\)?", text, re.MULTILINE)
     if match is None:
         raise RuntimeError(f"{DISPLAY_HEADER} defines no {name}")

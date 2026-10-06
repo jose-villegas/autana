@@ -13,13 +13,11 @@ typedef struct {
 
 #define GFX_BOX_EMPTY ((gfx_box_t){INT_MAX, INT_MAX, INT_MIN, INT_MIN})
 
-/* Whether either half-open rectangle dimension is empty. */
 static inline bool
 gfx_box_is_empty(gfx_box_t box) {
     return box.x0 >= box.x1 || box.y0 >= box.y1;
 }
 
-/* Union a nonempty addition into a half-open rectangle. */
 static inline void
 gfx_box_extend(gfx_box_t* box, gfx_box_t addition) {
     if (gfx_box_is_empty(addition)) {
@@ -34,7 +32,6 @@ gfx_box_extend(gfx_box_t* box, gfx_box_t addition) {
 /* Cohen-Sutherland outcodes: one bit per edge the point lies outside of. */
 enum { GFX_BOX_OUT_LEFT = 1, GFX_BOX_OUT_RIGHT = 2, GFX_BOX_OUT_TOP = 4, GFX_BOX_OUT_BOTTOM = 8 };
 
-/* Classify a point against the four half-open clipping edges. */
 static inline int
 gfx_box_outcode(const gfx_box_t* clip, int x, int y) {
     int code = 0;

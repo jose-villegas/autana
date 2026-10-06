@@ -1,3 +1,4 @@
+/* Retained self-test reports drawn in the panel orientation. */
 #pragma once
 
 #include <stdbool.h>

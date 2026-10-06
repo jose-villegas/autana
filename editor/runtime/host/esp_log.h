@@ -1,3 +1,4 @@
+/* No-op ESP logging for the host firmware renderer. */
 #pragma once
 
 #define ESP_LOGE(...) ((void)0)

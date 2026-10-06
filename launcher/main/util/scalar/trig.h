@@ -46,7 +46,6 @@ trig_sin(uint16_t phase) {
     }
 }
 
-/* Return Q15 cosine at a uint16 phase covering one complete turn. */
 static inline int32_t
 trig_cos(uint16_t phase) {
     return trig_sin((uint16_t)(phase + 16384u));

@@ -62,7 +62,6 @@ typedef struct {
     uint32_t carried_ms;
 } spring_line_t;
 
-/* Initialize the line using caller-owned offset and velocity buffers. */
 static inline void
 spring_line_init(spring_line_t* line, int32_t* offset, int32_t* velocity, int count, int tension, int stiffness,
                  int damping) {
@@ -80,19 +79,16 @@ spring_line_init(spring_line_t* line, int32_t* offset, int32_t* velocity, int co
     }
 }
 
-/* Whether the active spring range is empty. */
 static inline bool
 spring_line_at_rest(const spring_line_t* line) {
     return line->active_hi <= line->active_lo;
 }
 
-/* Scale a signed value by a fraction out of 256, truncating toward zero. */
 static inline int32_t
 spring_line_scale(int32_t value, int out_of_256) {
     return (int32_t)(((int64_t)value * out_of_256) / 256);
 }
 
-/* Include a clipped half-open column range in the active springs. */
 static inline void
 spring_line_wake(spring_line_t* line, int lo, int hi) {
     lo = lo < 0 ? 0 : lo;
@@ -141,7 +137,6 @@ spring_line_nudge(spring_line_t* line, int x, int half_width, int32_t offset) {
     spring_line_add_bump(line, line->offset, x, half_width, offset);
 }
 
-/* Whether one column meets both rest thresholds. */
 static inline bool
 spring_line_quiet(const spring_line_t* line, int x) {
     const int32_t away = line->offset[x] < 0 ? -line->offset[x] : line->offset[x];

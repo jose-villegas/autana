@@ -8,7 +8,6 @@
 
 #include <stdbool.h>
 
-/* Instantiate a column-major matrix type and its operations for one scalar type. */                                   \
 #define MATH_DEFINE_MAT4(P, V, Q, T, OPS)                                                                              \
     typedef struct {                                                                                                   \
         T m[4][4];                                                                                                     \

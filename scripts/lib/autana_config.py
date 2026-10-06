@@ -43,12 +43,10 @@ class ConfigError(ValueError):
 
 
 def project_dir():
-    """Return the project selected for this command, defaulting to the working directory."""
     return Path(os.environ.get(PROJECT_ENV) or Path.cwd())
 
 
 def help_text():
-    """Describe supported project-local settings and their value types."""
     lines = [f"{CONFIG_NAME} in the project folder holds per-checkout settings; "
              "gitignored, optional.", ""]
     for key, (kind, meaning) in KEYS.items():
@@ -99,7 +97,6 @@ def value(text, at, fail):
 
 
 def parse(path, text):
-    """Parse supported project settings, rejecting malformed or unknown keys."""
     values = {}
     for number, line in enumerate(text.splitlines(), 1):
         def fail(message):

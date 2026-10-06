@@ -24,7 +24,6 @@ typedef struct {
     int next_slot;   /* the buffer not holding in_flight's pixels */
 } gfx_band_ring_t;
 
-/* Reset the ring for a frame with no transfer in flight. */
 static inline void
 gfx_band_ring_begin(gfx_band_ring_t* ring, int band_count) {
     ring->band_count = band_count;
@@ -87,7 +86,6 @@ gfx_band_ring_settled(const gfx_band_ring_t* ring) {
     return ring->in_flight < 0;
 }
 
-/* Record that the outstanding band transfer has completed. */
 static inline void
 gfx_band_ring_settle(gfx_band_ring_t* ring) {
     ring->in_flight = -1;

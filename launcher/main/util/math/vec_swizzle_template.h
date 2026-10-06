@@ -16,29 +16,20 @@
  */
 #pragma once
 
-/* Apply a macro to each of 2 component letters at nesting depth 1. */
 #define MATH_SWIZZLE_1OF2(F, ...)              F(__VA_ARGS__, x) F(__VA_ARGS__, y)
-/* Apply a macro to each of 3 component letters at nesting depth 1. */
 #define MATH_SWIZZLE_1OF3(F, ...)              F(__VA_ARGS__, x) F(__VA_ARGS__, y) F(__VA_ARGS__, z)
-/* Apply a macro to each of 2 component letters at nesting depth 2. */
 #define MATH_SWIZZLE_2OF2(F, ...)              F(__VA_ARGS__, x) F(__VA_ARGS__, y)
-/* Apply a macro to each of 3 component letters at nesting depth 2. */
 #define MATH_SWIZZLE_2OF3(F, ...)              F(__VA_ARGS__, x) F(__VA_ARGS__, y) F(__VA_ARGS__, z)
-/* Apply a macro to each of 2 component letters at nesting depth 3. */
 #define MATH_SWIZZLE_3OF2(F, ...)              F(__VA_ARGS__, x) F(__VA_ARGS__, y)
-/* Apply a macro to each of 3 component letters at nesting depth 3. */
 #define MATH_SWIZZLE_3OF3(F, ...)              F(__VA_ARGS__, x) F(__VA_ARGS__, y) F(__VA_ARGS__, z)
 
 /* F(D, S, a, b) for every pair of letters from the first N of x, y, z. */
 #define MATH_SWIZZLE_EACH2(N, F, D, S)         MATH_SWIZZLE_1OF##N(MATH_SWIZZLE_EACH2_B, N, F, D, S)
-/* Expand the second component of every two-letter swizzle. */
 #define MATH_SWIZZLE_EACH2_B(N, F, D, S, a)    MATH_SWIZZLE_2OF##N(F, D, S, a)
 
 /* F(D, S, a, b, c) for every triple of letters from the first N of x, y, z. */
 #define MATH_SWIZZLE_EACH3(N, F, D, S)         MATH_SWIZZLE_1OF##N(MATH_SWIZZLE_EACH3_B, N, F, D, S)
-/* Expand the second component of every three-letter swizzle. */
 #define MATH_SWIZZLE_EACH3_B(N, F, D, S, a)    MATH_SWIZZLE_2OF##N(MATH_SWIZZLE_EACH3_C, N, F, D, S, a)
-/* Expand the third component of every three-letter swizzle. */
 #define MATH_SWIZZLE_EACH3_C(N, F, D, S, a, b) MATH_SWIZZLE_3OF##N(F, D, S, a, b)
 
 /* S_ab(v) = (v.a, v.b), a D. */

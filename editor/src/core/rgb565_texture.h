@@ -1,3 +1,4 @@
+/* RGB565 pixel storage and SDL texture lifetime. */
 #pragma once
 
 #include <cstdint>

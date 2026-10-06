@@ -102,11 +102,7 @@ a surprise six months later.
 
 ### Shared helpers
 
-Consult the [shared-helper catalogue](Shared-Helpers.md) before writing an
-operation. Its generated table names the owner and quotes the declaration's
-own comment or docstring. Extend the existing owner when it fits.
-`python launcher/tools/gen/shared_helpers.py --check` rejects missing
-descriptions and a stale table; omit `--check` to regenerate it.
+Consult the [shared-owner catalogue](Shared-Helpers.md) before writing a helper and extend an existing owner when it fits.
 
 ### Token clones
 
