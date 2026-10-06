@@ -201,7 +201,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
     # SCOPE: full is the default and stays globbed, so nothing can lose
     # coverage by accident; a scope only ever NARROWS, and only when asked
     # for by name (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild). The
-    # perf scope replaces the shell suites outright with what apps declare.
+    # perf scope selects shell measurements and what apps declare.
     if(CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF)
         launcher_glob(perf_scope_files "${CMAKE_CURRENT_LIST_DIR}/apps/*/scope_perf.cmake")
         set(perf_scope_srcs "")
@@ -219,7 +219,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
             endif()
         endforeach()
         set(app_suites ${perf_scope_srcs})
-        set(suite_srcs "")
+        set(suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_boot_anim_perf.c")
     endif()
 
     list(APPEND app_srcs

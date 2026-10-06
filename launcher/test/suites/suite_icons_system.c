@@ -19,18 +19,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "icon_walk.h"
 #include "suites.h"
 #include "unity.h"
 
 #include "bbox_extend.h"
 #include "gfx/icon.h"
 #include "gfx/icons_system.h"
-
-static bool
-baked_bit(const icon_t* icon, int x, int y) {
-    const uint8_t byte = icon_system_rows[icon->offset + (unsigned)y * icon->stride + (unsigned)(x / 8)];
-    return (byte & (0x80 >> (x % 8))) != 0;
-}
 
 /* A run-length walk of the UNPACKED rows, independent of count_runs() in
  * gen_icons.py, proving every baked `blocks` field against what the bytes
@@ -41,17 +36,7 @@ static void
 test_all_icons_blocks_match_actual_run_length(void) {
     for (int id = 0; id < ICON_SYSTEM_COUNT; id++) {
         const icon_t* icon = &icon_system_table[id];
-        int total = 0;
-        for (int y = 0; y < icon->h; y++) {
-            bool in_run = false;
-            for (int x = 0; x < icon->w; x++) {
-                const bool on = baked_bit(icon, x, y);
-                if (on && !in_run) {
-                    total++;
-                }
-                in_run = on;
-            }
-        }
+        const int total = icon_test_runs(icon_system_rows, icon);
         TEST_ASSERT_EQUAL_INT_MESSAGE(icon->blocks, total,
                                       "icon_t.blocks does not match an actual run-length walk of the "
                                       "unpacked rows for some icon in icon_system_table - the baked "
@@ -98,7 +83,7 @@ test_chevron_left_matches_source_svg_rectangles(void) {
         TEST_ASSERT_EQUAL_INT_MESSAGE(24, (int)strlen(row), "a hand-transcribed expected row is not 24 characters");
         for (int x = 0; x < 24; x++) {
             const bool want = row[x] == 'X';
-            const bool got = baked_bit(icon, x, y);
+            const bool got = icon_test_bit(icon_system_rows, icon, x, y);
             TEST_ASSERT_EQUAL_INT_MESSAGE(want, got,
                                           "baked chevron_left diverges from chevron-left.svg's own "
                                           "rectangles - see the message above for row/col");
@@ -131,7 +116,7 @@ reference_icon_bbox(const icon_t* icon, int iw, int ih, int* min_x, int* max_x, 
     *max_y = -1;
     for (int y = 0; y < ih; y++) {
         for (int x = 0; x < iw; x++) {
-            if (baked_bit(icon, x, y)) {
+            if (icon_test_bit(icon_system_rows, icon, x, y)) {
                 bbox_extend_inclusive(x, y, min_x, max_x, min_y, max_y);
             }
         }
@@ -161,12 +146,12 @@ reference_blocks(const icon_t* icon, int box_w, int box_h, icon_rect_t* out, int
     for (int y = 0; y < ih; y++) {
         int x = 0;
         while (x < iw) {
-            if (!baked_bit(icon, x, y)) {
+            if (!icon_test_bit(icon_system_rows, icon, x, y)) {
                 x++;
                 continue;
             }
             const int start = x;
-            while (x < iw && baked_bit(icon, x, y)) {
+            while (x < iw && icon_test_bit(icon_system_rows, icon, x, y)) {
                 x++;
             }
             TEST_ASSERT_TRUE_MESSAGE(n < max, "reference extraction overflowed the test's own buffer");
@@ -184,21 +169,6 @@ reference_blocks(const icon_t* icon, int box_w, int box_h, icon_rect_t* out, int
  * every buffer below: malloc'd, not on-stack, per check_stack_usage.py's
  * gate (see its own header on the two device panics that gate exists for). */
 #define TEST_MAX_BLOCKS 64
-
-typedef struct {
-    icon_rect_t* blocks;
-    int count;
-    int cap;
-} collect_ctx_t;
-
-static void
-collect_emit(void* ctx, int x, int y, int w, int h) {
-    collect_ctx_t* cc = ctx;
-    TEST_ASSERT_TRUE_MESSAGE(cc->count < cc->cap,
-                             "icon_walk_blocks emitted more runs than the test's own buffer expects");
-    cc->blocks[cc->count] = (icon_rect_t){x, y, w, h};
-    cc->count++;
-}
 
 /* Proves the reshape from an array-collecting extraction to a streaming
  * callback changed no geometry: every baked icon, at its native size, at
@@ -221,9 +191,9 @@ test_streaming_walker_matches_reference_extraction(void) {
         for (size_t s = 0; s < sizeof(box_sizes) / sizeof(box_sizes[0]); s++) {
             const int box_w = box_sizes[s][0], box_h = box_sizes[s][1];
 
-            collect_ctx_t cc = {.blocks = cc_buf, .count = 0, .cap = TEST_MAX_BLOCKS};
+            icon_test_collect_t cc = {.blocks = cc_buf, .count = 0, .cap = TEST_MAX_BLOCKS};
             icon_walk_blocks(icon_system_rows + icon->offset, icon->w, icon->h, icon->stride, box_w, box_h,
-                             collect_emit, &cc);
+                             icon_test_collect, &cc);
 
             const int ref_n = reference_blocks(icon, box_w, box_h, ref, TEST_MAX_BLOCKS);
 
@@ -255,8 +225,8 @@ test_content_bbox_centring_uses_a_specific_expected_origin(void) {
 
     icon_rect_t* cc_buf = malloc(sizeof(icon_rect_t) * TEST_MAX_BLOCKS);
     TEST_ASSERT_NOT_NULL(cc_buf);
-    collect_ctx_t cc = {.blocks = cc_buf, .count = 0, .cap = TEST_MAX_BLOCKS};
-    icon_walk_blocks(icon_system_rows + icon->offset, icon->w, icon->h, icon->stride, 32, 32, collect_emit, &cc);
+    icon_test_collect_t cc = {.blocks = cc_buf, .count = 0, .cap = TEST_MAX_BLOCKS};
+    icon_walk_blocks(icon_system_rows + icon->offset, icon->w, icon->h, icon->stride, 32, 32, icon_test_collect, &cc);
 
     TEST_ASSERT_TRUE_MESSAGE(cc.count > 0, "check emitted no runs");
     TEST_ASSERT_EQUAL_INT_MESSAGE(26, cc_buf[0].x, "first run x");
@@ -276,9 +246,9 @@ test_home_bakes_and_walks_at_fifty_runs(void) {
 
     icon_rect_t* cc_buf = malloc(sizeof(icon_rect_t) * TEST_MAX_BLOCKS);
     TEST_ASSERT_NOT_NULL(cc_buf);
-    collect_ctx_t cc = {.blocks = cc_buf, .count = 0, .cap = TEST_MAX_BLOCKS};
-    icon_walk_blocks(icon_system_rows + icon->offset, icon->w, icon->h, icon->stride, icon->w, icon->h, collect_emit,
-                     &cc);
+    icon_test_collect_t cc = {.blocks = cc_buf, .count = 0, .cap = TEST_MAX_BLOCKS};
+    icon_walk_blocks(icon_system_rows + icon->offset, icon->w, icon->h, icon->stride, icon->w, icon->h,
+                     icon_test_collect, &cc);
     TEST_ASSERT_EQUAL_INT_MESSAGE(50, cc.count, "icon_walk_blocks did not emit 50 runs for home at its native size");
     free(cc_buf);
 }

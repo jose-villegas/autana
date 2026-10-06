@@ -23,6 +23,8 @@
 
 #ifdef DEVICE_BUILD
 
+#include "perf_stats.h"
+
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -74,13 +76,6 @@ typedef struct {
 static frame_sample_t* samples = NULL;
 static int32_t* stat_scratch = NULL;
 
-static int
-cmp_i32(const void* a, const void* b) {
-    int32_t va = *(const int32_t*)a;
-    int32_t vb = *(const int32_t*)b;
-    return (va > vb) - (va < vb);
-}
-
 typedef enum {
     FIELD_TOTAL,
     FIELD_CLEAR,
@@ -109,32 +104,14 @@ field_of(const frame_sample_t* s, sample_field_t field) {
     return 0;
 }
 
-typedef struct {
-    int64_t min, max, avg, med, p95;
-} phase_stats_t;
+typedef perf_stats_t phase_stats_t;
 
 static phase_stats_t
 compute_stats(sample_field_t field, int n) {
-    phase_stats_t s = {.min = INT64_MAX, .max = 0, .avg = 0, .med = 0, .p95 = 0};
-    int64_t sum = 0;
-
     for (int i = 0; i < n; i++) {
-        int32_t v = field_of(&samples[i], field);
-        stat_scratch[i] = v;
-        if (v < s.min) {
-            s.min = v;
-        }
-        if (v > s.max) {
-            s.max = v;
-        }
-        sum += v;
+        stat_scratch[i] = field_of(&samples[i], field);
     }
-
-    s.avg = sum / n;
-    qsort(stat_scratch, n, sizeof(int32_t), cmp_i32);
-    s.med = stat_scratch[n / 2];
-    s.p95 = stat_scratch[(n * 95) / 100];
-    return s;
+    return perf_stats_compute(stat_scratch, n);
 }
 
 typedef struct {
@@ -361,4 +338,6 @@ run_boot_anim_perf_suite(void) {}
 
 #endif
 
+#if defined(CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF)
 SUITE_REGISTER(run_boot_anim_perf_suite);
+#endif

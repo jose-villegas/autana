@@ -17,6 +17,8 @@
 
 #ifdef DEVICE_BUILD
 
+#include "perf_stats.h"
+
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -60,35 +62,11 @@ static const char* TAG = "cube_band_perf";
 static int32_t* samples;
 static int sample_count;
 
-static int
-cmp_i32(const void* a, const void* b) {
-    const int32_t va = *(const int32_t*)a;
-    const int32_t vb = *(const int32_t*)b;
-    return (va > vb) - (va < vb);
-}
-
-typedef struct {
-    int64_t min, max, avg, med;
-} stats_t;
+typedef perf_stats_t stats_t;
 
 static stats_t
 compute_stats(int n) {
-    stats_t s = {.min = INT64_MAX, .max = 0, .avg = 0, .med = 0};
-    int64_t sum = 0;
-
-    for (int i = 0; i < n; i++) {
-        if (samples[i] < s.min) {
-            s.min = samples[i];
-        }
-        if (samples[i] > s.max) {
-            s.max = samples[i];
-        }
-        sum += samples[i];
-    }
-    s.avg = sum / n;
-    qsort(samples, n, sizeof(int32_t), cmp_i32);
-    s.med = samples[n / 2];
-    return s;
+    return perf_stats_compute(samples, n);
 }
 
 static void
