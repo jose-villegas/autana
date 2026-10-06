@@ -1,5 +1,5 @@
 /*
- * asset_fixture: a render_host.h scene that mounts the bundle its one argument
+ * asset_fixture: a render_host.h scene that mounts the pack its one argument
  * names, from the folder a scene's scene_assets built in, and refuses to
  * render without it. check_scene_assets.sh runs it.
  */
@@ -13,14 +13,14 @@
 static bool
 options(int argc, char** argv) {
     if (argc != 1) {
-        fprintf(stderr, "this scene takes one argument: <bundle>\n");
+        fprintf(stderr, "this scene takes one argument: <pack>\n");
         return false;
     }
-    const asset_pack_t* bundle = asset_store_bundle(argv[0]);
-    if (bundle == NULL) {
+    const asset_pack_t* pack = asset_store_pack(argv[0]);
+    if (pack == NULL) {
         return false;
     }
-    printf("bundle %s: %u entries\n", argv[0], (unsigned)bundle->count);
+    printf("pack %s: %u entries\n", argv[0], (unsigned)pack->count);
     asset_store_release(argv[0]);
     return true;
 }

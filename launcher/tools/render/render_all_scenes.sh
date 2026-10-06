@@ -21,7 +21,7 @@
 # steady state allocates or prints fails. tests/check_frame_watch.sh, run
 # first, proves that check still fails what it should.
 # tests/check_scene_assets.sh, run next, proves a scene's scene_assets
-# bundles are found, overridable and required.
+# packs are found, overridable and required.
 #
 # --update-baseline re-pins every scene's hashes. It is a deliberate act:
 # run it only after looking at the images and agreeing the pixels should
