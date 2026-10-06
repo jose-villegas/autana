@@ -167,11 +167,27 @@ class CloneTests(unittest.TestCase):
             git("commit", "-m", "test: remove clone")
             self.assertEqual(gate.comparison_base(root), base)
             self.assertTrue(gate.scan(root, 80, revision=base))
+            self.assertTrue(gate.scan(root, 80, names=["launcher/main/a.c", "launcher/main/b.c",
+                                                      "launcher/main/new.c"], revision=base))
+            self.assertEqual(gate.scan(root, 80, names=["launcher/main/a.c"], revision=base), [])
             self.assertEqual(gate.scan(root, 80, revision="HEAD"), [])
             (root / "launcher/main/a.c").write_text(BLOCK, encoding="utf-8")
             self.assertEqual(gate.scan(root, 80, revision="HEAD"), [])
             git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD"))
             self.assertEqual(gate.comparison_base(root), base)
+
+    def test_unrelated_branch_change_skips_base_scan(self):
+        pair = self.pair()
+        def git(root, *args):
+            if args[0] == "diff":
+                return b"docs/notes.md\0"
+            return b"head\n"
+        with mock.patch.object(gate, "git", side_effect=git), \
+                mock.patch.object(gate, "comparison_base", return_value="base"), \
+                mock.patch.object(gate, "scan", return_value=[pair]) as scan, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.main([]), 0)
+        scan.assert_called_once_with(gate.ROOT, 80, revision="head")
 
     def test_missing_node_message(self):
         with mock.patch.object(gate.shutil, "which", return_value=None):

@@ -10,6 +10,7 @@ short helpers are missed. Literal-only fragments and exact self-matches
 are excluded. The pinned engine ignores comments and whitespace.
 """
 import argparse
+import io
 import json
 import re
 from pathlib import Path
@@ -83,6 +84,24 @@ def filter_pairs(pairs):
     return [pair for pair in pairs if keep(pair)]
 
 
+def revision_contents(root, revision, names):
+    requests = "".join(f"{revision}:{name}\n" for name in names).encode("utf-8")
+    result = subprocess.run(["git", "cat-file", "--batch"], cwd=root, input=requests,
+                            check=True, capture_output=True)
+    stream = io.BytesIO(result.stdout)
+    for name in names:
+        header = stream.readline().rstrip(b"\n")
+        if header.endswith(b" missing"):
+            continue
+        _, kind, size = header.split()
+        if kind != b"blob":
+            raise ValueError(f"Not a source blob: {revision}:{name}")
+        content = stream.read(int(size))
+        if len(content) != int(size) or stream.read(1) != b"\n":
+            raise ValueError(f"Incomplete source blob: {revision}:{name}")
+        yield name, content
+
+
 def scan(root, minimum, names=None, revision=None):
     if minimum < 1:
         raise ValueError("minimum must be positive")
@@ -99,10 +118,10 @@ def scan(root, minimum, names=None, revision=None):
         scratch = Path(folder)
         tree = scratch / "source"
         tree.mkdir()
-        for name in names:
-            if not eligible_name(name):
-                continue
-            content = git(root, "show", f"{revision}:{name}") if revision else (root / name).read_bytes()
+        names = [name for name in names if eligible_name(name)]
+        contents = (revision_contents(root, revision, names) if revision else
+                    ((name, (root / name).read_bytes()) for name in names))
+        for name, content in contents:
             if is_generated(content.decode("utf-8")):
                 continue
             target = tree / name
@@ -147,7 +166,7 @@ def check_pairs(pairs, base_pairs):
         for pair in added:
             print(describe(pair))
         return 1
-    print(f"PASS: no new clone pairs ({len(pairs)} HEAD pairs, {len(base_pairs)} base pairs).")
+    print(f"PASS: no new clone pairs ({len(pairs)} checked HEAD pairs, {len(base_pairs)} base pairs).")
     return 0
 
 
@@ -169,8 +188,13 @@ def main(argv=None):
             print(f"{len(pairs)} clone pairs at {args.min_tokens} tokens; {time.perf_counter() - started:.2f}s.")
             return 0
         base = comparison_base(ROOT, head)
-        base_pairs = scan(ROOT, args.min_tokens, revision=base)
-        result = check_pairs(pairs, base_pairs)
+        changed = set(git(ROOT, "diff", "--name-only", "-z", f"{base}...{head}").decode().split("\0"))
+        candidates = [pair for pair in pairs
+                      if any(pair[side]["name"] in changed for side in ("firstFile", "secondFile"))]
+        names = sorted({pair[side]["name"] for pair in candidates
+                        for side in ("firstFile", "secondFile")})
+        base_pairs = scan(ROOT, args.min_tokens, names=names, revision=base) if names else []
+        result = check_pairs(candidates, base_pairs)
         print(f"{len(pairs)} clone pairs at {args.min_tokens} tokens; {time.perf_counter() - started:.2f}s.")
         return result
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
