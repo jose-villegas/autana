@@ -6,7 +6,7 @@
 
 #include <stdint.h>
 
-#include "util/math/mathf.h"
 #include "util/math/vec2_template.h"
+#include "util/scalar/mathf.h"
 
 MATH_DEFINE_VEC2(vec2f, float, float, mathf)

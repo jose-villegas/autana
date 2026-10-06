@@ -20,7 +20,7 @@
 
 #include "sand_palette256.h" /* see material_palette256_index() below */
 #include "util/scalar/fixed.h"
-#include "util/scalar/intmath.h" /* see material_set_gravity() below */
+#include "util/scalar/mathi.h"
 
 /* `sh` of the way from `lo` to `hi`, out of 15. */
 #define LERP_RGB(lo, hi, sh) GFX_LERP_RGB888(lo, hi, sh, 15)
@@ -560,7 +560,7 @@ liquid_spec_for_mask(unsigned mask, int ux_q8, int uy_q8) {
  * surroundings. */
 void
 material_set_gravity(int gx, int gy) {
-    const int len = im_len(gx, gy);
+    const int len = mathi_len(gx, gy);
     if (len == 0) {
         /* No "up" for light, so no rim highlight. */
         for (unsigned m = 0; m < MATERIAL_EDGE_MASK_COUNT; m++) {
@@ -580,7 +580,7 @@ material_set_gravity(int gx, int gy) {
 
 void
 material_shine_direction(int gx, int gy, int* ux_q8, int* uy_q8) {
-    const int len = im_len(gx, gy);
+    const int len = mathi_len(gx, gy);
     if (len == 0) {
         *ux_q8 = 181;
         *uy_q8 = 181;
@@ -596,7 +596,7 @@ material_shine_direction(int gx, int gy, int* ux_q8, int* uy_q8) {
  * uses for its own band. Flat: defaults to grid-x. */
 void
 material_wood_leaf_wind_axis(int gx, int gy, int* ux_q8, int* uy_q8) {
-    const int len = im_len(gx, gy);
+    const int len = mathi_len(gx, gy);
     if (len == 0) {
         *ux_q8 = 256;
         *uy_q8 = 0;
@@ -620,7 +620,7 @@ static const int8_t wood_leaf_ring[8][2] = {
  * glass_last_phase. */
 void
 material_wood_leaf_top5(int gx, int gy, int* last_down, int8_t top5[5][2]) {
-    const int len = im_len(gx, gy);
+    const int len = mathi_len(gx, gy);
     const long margin = len / 4;
     int down = *last_down & 7;
     long best = (long)wood_leaf_ring[down][0] * gx + (long)wood_leaf_ring[down][1] * gy;
@@ -764,7 +764,7 @@ liquid_interior(uint8_t id, unsigned depth) {
     const unsigned depth_capped = depth < DEPTH_SATURATE_CELLS ? depth : DEPTH_SATURATE_CELLS;
 
     const int bright = ((int)DEPTH_RANGE * (int)(DEPTH_SATURATE_CELLS - depth_capped)) / (int)DEPTH_SATURATE_CELLS;
-    const int idx = im_clamp((int)MASS_MAX - bright, 0, MASS_MAX);
+    const int idx = mathi_clamp((int)MASS_MAX - bright, 0, MASS_MAX);
     return palette[CELL_MAKE(id, (uint8_t)idx)];
 }
 
@@ -790,7 +790,7 @@ water_foams(unsigned hash, unsigned mask) {
  * material_palette.h. */
 static inline __attribute__((always_inline)) gfx_color_t
 liquid_rim(uint8_t id, uint8_t v, unsigned hash, unsigned mask, unsigned cardinal) {
-    const int idx = im_clamp((int)v + liquid_spec[cardinal], 0, MASS_MAX);
+    const int idx = mathi_clamp((int)v + liquid_spec[cardinal], 0, MASS_MAX);
     if (id == MAT_WATER && water_foams(hash, mask)) {
         return water_foam;
     }

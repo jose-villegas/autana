@@ -1,6 +1,8 @@
 # Math: vectors, rotations, matrices, transforms
 
-`launcher/main/util/math/` is the one maths library of the firmware: header-only,
+`launcher/main/util/math/` is the firmware's vector, quaternion, matrix and
+transform library, built on the per-type scalar operations in
+`launcher/main/util/scalar/`: header-only,
 static inline, ESP-IDF-free, so a host suite checks every line. Four families
 (vector, quaternion, matrix, transform), each written once as a template
 (`math_template.h` says how) and instantiated per number type. A type's name is
@@ -172,7 +174,7 @@ The scalar steps behind them, in `vec_convert.h`:
 | `mathf_to_x(v)` | float to Q16.16, rounded and saturated |
 | `mathx_to_f(v)` | Q16.16 to float |
 
-Scalar operations live in `mathf.h`, `mathi.h`, `maths.h` and `mathx.h`
+Scalar operations live in `util/scalar/` (`mathf.h`, `mathi.h`, `maths.h`, `mathx.h`)
 (`mathx_add`, `mathx_mul`, `mathx_div`, `mathx_sqrt`, `mathx_sin_turns`, ...);
 a family names only the ones it uses.
 

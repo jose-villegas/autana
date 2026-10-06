@@ -432,9 +432,9 @@ can_impulse_enter_gravity_ward(cell_t target, cell_t mover, uint8_t speed) {
  * to avoid divergent candidate lists. */
 static void
 impulse_gravity_candidates(int x, int y, int dx, int dy, int cand[3][2]) {
-    const int i_dir = ring_of(dx, dy);
-    const int* slide_a = ring_dir(i_dir + 7);
-    const int* slide_b = ring_dir(i_dir + 1);
+    const int dir_index = ring_of(dx, dy);
+    const int* slide_a = ring_dir(dir_index + 7);
+    const int* slide_b = ring_dir(dir_index + 1);
     cand[0][0] = x + dx;
     cand[0][1] = y + dy;
     cand[1][0] = x + slide_a[0];
@@ -701,8 +701,8 @@ static_chunk_gravity_drift(sand_t* s, impulse_t* entry, int dx, int dy, impulse_
      * Matches order in impulse_gravity_candidates(). gcand_dir[c] is
      * needed for impulse_charge_displacement()'s transfer cone, not
      * just entry->dir. */
-    const int i_dir = ring_of(dx, dy);
-    const int gcand_dir[3] = {i_dir, (i_dir + 7) & 7, (i_dir + 1) & 7};
+    const int dir_index = ring_of(dx, dy);
+    const int gcand_dir[3] = {dir_index, (dir_index + 7) & 7, (dir_index + 1) & 7};
     for (int c = 0; c < 3; c++) {
         const int cx = gcand[c][0];
         const int cy = gcand[c][1];
