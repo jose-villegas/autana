@@ -1,6 +1,6 @@
 /*
  * Portable suite: the startup animation's projection, curve, smoothing and
- * timeline, driven by the motion boot loads from the boot clip's bundle.
+ * timeline, driven by the motion boot loads from the boot clip's pack.
  *
  * boot_anim.h and the generated boot_anim_curve.h are what is tested here.
  * boot_anim.c, which turns all that into gfx calls, is drawn only on a host,
@@ -47,7 +47,7 @@
 #define PANEL_W 368
 #define PANEL_H 448
 
-/* The motion boot ships, read from the boot clip's bundle as boot reads it;
+/* The motion boot ships, read from the boot clip's pack as boot reads it;
  * allocated for the suite's run. */
 static boot_anim_motion_t* seed;
 
@@ -458,9 +458,9 @@ test_an_untouched_scale_reads_back_as_identity(void) {
  */
 
 static void
-test_the_seed_is_the_boot_clip_read_from_its_bundle(void) {
+test_the_seed_is_the_boot_clip_read_from_its_pack(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(seed, "no memory for the seed motion");
-    TEST_ASSERT_TRUE_MESSAGE(seed->from_pack, "the boot clip did not load from its bundle: see the log above");
+    TEST_ASSERT_TRUE_MESSAGE(seed->from_pack, "the boot clip did not load from its pack: see the log above");
     TEST_ASSERT_GREATER_THAN_UINT32(0, seed->clip.duration_ms);
 }
 
@@ -1624,12 +1624,12 @@ test_title_shadow_offset_turns_reader_frame_into_panel_frame(void) {
  *
  * Without the clip, boot holds an authored pose: it must draw, follow the same
  * view rules as the clip, and leave nothing mounted. Each case loads the
- * motion the way boot does, after the seed has let go of the shipped bundle,
+ * motion the way boot does, after the seed has let go of the shipped pack,
  * so the store mounts what the case leaves.
  */
 
-#define FALLBACK_BUNDLE "./boot_anim_motion.apak"
-#define NO_BUNDLES      "./suite_boot_anim_no_such_folder"
+#define FALLBACK_PACK   "./boot_anim_motion.apak"
+#define NO_PACKS        "./suite_boot_anim_no_such_folder"
 #define FALLBACK_TRACKS 6
 
 static const char* const NODE_PARTS[FALLBACK_TRACKS] = {"camera/translation", "camera/rotation", "camera/scale",
@@ -1644,7 +1644,7 @@ six_tracks(test_track_t rows[FALLBACK_TRACKS]) {
     }
 }
 
-/* Writes bundle "boot_anim_motion" in "." holding a TRCK of `rows`, one key
+/* Writes pack "boot_anim_motion" in "." holding a TRCK of `rows`, one key
  * each, row i holding i * 10 + 1, + 2, ... so each track can be told apart. */
 static void
 write_clip(const test_track_t* rows, int count) {
@@ -1671,7 +1671,7 @@ write_clip(const test_track_t* rows, int count) {
         test_pack_put_floats(entry + row.values, values, 4);
     }
     const uint32_t size = test_pack_finish(&pack);
-    test_write_file(FALLBACK_BUNDLE, bytes, size);
+    test_write_file(FALLBACK_PACK, bytes, size);
     free(bytes);
 }
 
@@ -1704,7 +1704,7 @@ lit_pixels(void) {
     return lit;
 }
 
-/* Loads from `dir` and expects exactly the rest pose a missing bundle gives,
+/* Loads from `dir` and expects exactly the rest pose a missing pack gives,
  * pointing into nothing that was mounted, then draws it a moment before the
  * title and the photograph, so whatever is lit the motion put there. */
 static void
@@ -1718,7 +1718,7 @@ expect_the_rest_pose(const char* dir) {
     TEST_ASSERT_EQUAL_UINT8(0, boot_anim_image_reveal(now_ms));
 
     boot_anim_motion_t rest;
-    load_from(NO_BUNDLES, &rest);
+    load_from(NO_PACKS, &rest);
     boot_anim_motion_t motion;
     load_from(dir, &motion);
     const bool from_pack = motion.from_pack;
@@ -1732,7 +1732,7 @@ expect_the_rest_pose(const char* dir) {
                                          "the rest pose left the panel all but blank");
 }
 
-/* A failed load holds no use of the bundle: the next load mounts the file as
+/* A failed load holds no use of the pack: the next load mounts the file as
  * it is then. */
 static void
 expect_a_good_clip_loads_next(void) {
@@ -1743,13 +1743,13 @@ expect_a_good_clip_loads_next(void) {
     load_from(".", &motion);
     const bool from_pack = motion.from_pack;
     boot_anim_motion_release(&motion);
-    (void)remove(FALLBACK_BUNDLE);
-    TEST_ASSERT_TRUE_MESSAGE(from_pack, "the failed load left its bundle mounted");
+    (void)remove(FALLBACK_PACK);
+    TEST_ASSERT_TRUE_MESSAGE(from_pack, "the failed load left its pack mounted");
 }
 
 static void
-test_with_no_bundle_the_rest_pose_draws(void) {
-    expect_the_rest_pose(NO_BUNDLES);
+test_with_no_pack_the_rest_pose_draws(void) {
+    expect_the_rest_pose(NO_PACKS);
 }
 
 static void
@@ -1759,7 +1759,7 @@ test_with_a_track_missing_the_rest_pose_draws_and_nothing_stays_mounted(void) {
     rows[4] = rows[5];
     write_clip(rows, FALLBACK_TRACKS - 1);
     expect_the_rest_pose(".");
-    (void)remove(FALLBACK_BUNDLE);
+    (void)remove(FALLBACK_PACK);
     expect_a_good_clip_loads_next();
 }
 
@@ -1771,7 +1771,7 @@ test_with_a_malformed_space_the_rest_pose_draws_and_nothing_stays_mounted(void) 
     rows[4].quaternion = false;
     write_clip(rows, FALLBACK_TRACKS);
     expect_the_rest_pose(".");
-    (void)remove(FALLBACK_BUNDLE);
+    (void)remove(FALLBACK_PACK);
     expect_a_good_clip_loads_next();
 }
 
@@ -1793,7 +1793,7 @@ test_each_part_of_the_motion_is_the_track_of_its_name(void) {
     }
     const bool from_pack = motion.from_pack;
     boot_anim_motion_release(&motion);
-    (void)remove(FALLBACK_BUNDLE);
+    (void)remove(FALLBACK_PACK);
     TEST_ASSERT_TRUE(from_pack);
     for (int i = 0; i < FALLBACK_TRACKS; i++) {
         TEST_ASSERT_EQUAL_FLOAT_MESSAGE((float)(i * 10) + 1.0F, first[i], NODE_PARTS[i]);
@@ -1804,7 +1804,7 @@ test_each_part_of_the_motion_is_the_track_of_its_name(void) {
 static void
 test_the_rest_pose_keeps_the_seeds_view_rules(void) {
     boot_anim_motion_t rest;
-    load_from(NO_BUNDLES, &rest);
+    load_from(NO_PACKS, &rest);
     TEST_ASSERT_FALSE(rest.from_pack);
     expect_the_curve_near_the_panel_throughout(&rest);
     expect_three_distinct_axes(&rest);
@@ -1816,11 +1816,11 @@ void
 run_boot_anim_suite(void) {
     seed = malloc(sizeof *seed);
     if (seed == NULL) {
-        RUN_TEST(test_the_seed_is_the_boot_clip_read_from_its_bundle);
+        RUN_TEST(test_the_seed_is_the_boot_clip_read_from_its_pack);
         return;
     }
     boot_anim_motion_load(seed);
-    RUN_TEST(test_the_seed_is_the_boot_clip_read_from_its_bundle);
+    RUN_TEST(test_the_seed_is_the_boot_clip_read_from_its_pack);
     RUN_TEST(test_the_curve_climbs_from_zero_to_the_top);
     RUN_TEST(test_the_curve_never_descends);
     RUN_TEST(test_the_curve_meets_the_axis_at_every_known_zero);
@@ -1916,7 +1916,7 @@ run_boot_anim_suite(void) {
     free(seed);
     seed = NULL;
 #ifndef DEVICE_BUILD
-    RUN_TEST(test_with_no_bundle_the_rest_pose_draws);
+    RUN_TEST(test_with_no_pack_the_rest_pose_draws);
     RUN_TEST(test_with_a_track_missing_the_rest_pose_draws_and_nothing_stays_mounted);
     RUN_TEST(test_with_a_malformed_space_the_rest_pose_draws_and_nothing_stays_mounted);
     RUN_TEST(test_each_part_of_the_motion_is_the_track_of_its_name);

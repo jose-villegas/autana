@@ -1,6 +1,6 @@
 /*
  * test_asset_dir: host only. Points the store's file backend at a folder for
- * one test and back at the runner's, and writes the bundle files a test makes.
+ * one test and back at the runner's, and writes the pack files a test makes.
  */
 #pragma once
 

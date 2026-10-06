@@ -93,13 +93,13 @@ class TimelineGeneratorTests(unittest.TestCase):
         result = self.generate(motion=motion_glb(space_scale=9.0))
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_the_clip_boot_plays_is_the_motion_checked_here_in_a_bundle_of_its_own(self):
+    def test_the_clip_boot_plays_is_the_motion_checked_here_in_a_pack_of_its_own(self):
         glb, animation = tracks_asset.load_source(CLIP)
         self.assertEqual(MOTION.resolve(), glb.resolve())
         self.assertEqual(gen_boot_anim_timeline.MOTION_ANIMATION, animation)
-        # boot_anim_motion.c mounts the bundle named after its one entry.
+        # boot_anim_motion.c mounts the pack named after its one entry.
         clip = tracks_asset.clip_id(CLIP)
-        self.assertEqual({clip: CLIP}, build_pack.bundle_files([CLIP.parent])[clip])
+        self.assertEqual({clip: CLIP}, build_pack.pack_files([CLIP.parent])[clip])
 
 if __name__ == "__main__":
     unittest.main()
