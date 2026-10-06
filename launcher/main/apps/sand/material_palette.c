@@ -17,7 +17,9 @@
  * of.
  */
 #include "material_palette.h"
-#include "sand_palette256.h"     /* see material_palette256_index() below */
+
+#include "sand_palette256.h" /* see material_palette256_index() below */
+#include "util/scalar/fixed.h"
 #include "util/scalar/intmath.h" /* see material_set_gravity() below */
 
 /* Channel `sh` of the way from `lo` to `hi`, out of 15. */
@@ -541,16 +543,6 @@ static int8_t liquid_spec[MATERIAL_EDGE_MASK_COUNT];
 /* Adjust if rim highlight is too strong or faint */
 #define SPEC_STRENGTH 10
 
-/* Rounds n/d to nearest integer. Plain division truncates, incorrect here:
- * weakens one side. */
-static int
-fx_round_div(int n, int d) {
-    if (n >= 0) {
-        return (n + d / 2) / d;
-    }
-    return -((-n + d / 2) / d);
-}
-
 /* Positive specular term subtracts from index; see
  * test_a_liquid_rim_catches_the_light_from_above. */
 static int8_t
@@ -769,11 +761,6 @@ paint_solid(gfx_color_t out[3], gfx_color_t col) {
     out[2] = out[0];
 }
 
-static inline __attribute__((always_inline)) int
-clamp_mass(int idx) {
-    return idx < 0 ? 0 : (idx > MASS_MAX ? MASS_MAX : idx);
-}
-
 /* A liquid cell with no empty cardinal neighbour, shaded by its local depth. */
 static inline __attribute__((always_inline)) gfx_color_t
 liquid_interior(uint8_t id, unsigned depth) {
@@ -782,7 +769,7 @@ liquid_interior(uint8_t id, unsigned depth) {
     const unsigned depth_capped = depth < DEPTH_SATURATE_CELLS ? depth : DEPTH_SATURATE_CELLS;
 
     const int bright = ((int)DEPTH_RANGE * (int)(DEPTH_SATURATE_CELLS - depth_capped)) / (int)DEPTH_SATURATE_CELLS;
-    const int idx = clamp_mass((int)MASS_MAX - bright);
+    const int idx = im_clamp((int)MASS_MAX - bright, 0, MASS_MAX);
     return palette[CELL_MAKE(id, (uint8_t)idx)];
 }
 
@@ -808,7 +795,7 @@ water_foams(unsigned hash, unsigned mask) {
  * material_palette.h. */
 static inline __attribute__((always_inline)) gfx_color_t
 liquid_rim(uint8_t id, uint8_t v, unsigned hash, unsigned mask, unsigned cardinal) {
-    const int idx = clamp_mass((int)v + liquid_spec[cardinal]);
+    const int idx = im_clamp((int)v + liquid_spec[cardinal], 0, MASS_MAX);
     if (id == MAT_WATER && water_foams(hash, mask)) {
         return water_foam;
     }

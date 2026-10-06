@@ -1,3 +1,4 @@
+/* Title screen layout and menu controls. */
 #include "title_screen.h"
 
 #include "gfx/gfx_font_roles.h"
@@ -6,6 +7,7 @@
 
 #include "apps/sand/icons_sand.h"
 #include "sand_theme.h"
+#include "util/scalar/intmath.h"
 
 #define HEADER_H        48
 #define SUBTITLE_GAP    12
@@ -45,11 +47,6 @@ title_screen_button_enabled(sand_title_button_t button) {
 }
 
 static int
-min_int(int a, int b) {
-    return a < b ? a : b;
-}
-
-static int
 largest_title_scale(int room) {
     int scale = TITLE_SCALE_MAX;
     while (scale > 1 && gfx_font_text_width(gfx_font_ui(), TITLE_SCREEN_TITLE, -1, scale) > room) {
@@ -60,7 +57,7 @@ largest_title_scale(int room) {
 
 static void
 layout_footer(int screen_w, int screen_h, title_screen_layout_t* out) {
-    const int w = min_int(screen_w - 2 * UI_MARGIN, FOOTER_W_MAX);
+    const int w = im_min(screen_w - 2 * UI_MARGIN, FOOTER_W_MAX);
     out->footer = ui_centered_rect(screen_w, w, FOOTER_H, screen_h - UI_MARGIN - FOOTER_H);
 
     const int button_w = (w - 3 * FOOTER_PAD) / 2;
@@ -80,7 +77,7 @@ title_screen_layout(int screen_w, int screen_h, title_screen_layout_t* out) {
     const int stack_h = MAIN_COUNT * MAIN_H + (MAIN_COUNT - 1) * MAIN_GAP;
     const int room_top = out->subtitle.y + out->subtitle.h;
     const int top = room_top + (out->footer.y - room_top - stack_h) / 2;
-    const int w = min_int(screen_w - 2 * UI_MARGIN, MAIN_W_MAX);
+    const int w = im_min(screen_w - 2 * UI_MARGIN, MAIN_W_MAX);
     for (int i = 0; i < MAIN_COUNT; i++) {
         out->buttons[SAND_TITLE_START + i] = ui_centered_rect(screen_w, w, MAIN_H, top + i * (MAIN_H + MAIN_GAP));
     }
