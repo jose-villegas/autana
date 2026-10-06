@@ -17,6 +17,7 @@
 #include "unity.h"
 
 #include "util/scalar/fixed.h"
+#include "util/scalar/intmath.h"
 
 /* fx_mul_floor() against a hand-written ((int64_t)a * b) >> shift */
 
@@ -209,8 +210,31 @@ test_round_shift32_agrees_with_the_widened_round(void) {
     TEST_ASSERT_EQUAL_INT32(2, fx_round_shift32(768, 9));
 }
 
+static void
+test_scalar_integer_bounds(void) {
+    TEST_ASSERT_EQUAL_INT(-7, im_clamp(INT32_MIN, -7, 9));
+    TEST_ASSERT_EQUAL_INT(9, im_clamp(INT32_MAX, -7, 9));
+    TEST_ASSERT_EQUAL_INT(3, im_clamp(3, -7, 9));
+    TEST_ASSERT_EQUAL_INT(3, im_clamp(-5, 3, 3));
+    TEST_ASSERT_EQUAL_INT(0, im_clamp(-1, 0, -2));
+    static const uint64_t roots[] = {0, 1, 2, 255, 65535, 65536, 16777215, 3037000499, UINT32_MAX};
+    for (size_t i = 0; i < sizeof(roots) / sizeof(roots[0]); i++) {
+        const uint64_t root = roots[i];
+        const uint64_t square = root * root;
+        TEST_ASSERT_EQUAL_UINT64(root, im_isqrt64(square));
+        if (root > 0) {
+            TEST_ASSERT_EQUAL_UINT64(root - 1, im_isqrt64(square - 1));
+        }
+        if (root > 1) {
+            TEST_ASSERT_EQUAL_UINT64(root, im_isqrt64(square + 1));
+        }
+    }
+    TEST_ASSERT_EQUAL_UINT64(UINT32_MAX, im_isqrt64(UINT64_MAX));
+}
+
 void
 suite_fixed(void) {
+    RUN_TEST(test_scalar_integer_bounds);
     RUN_TEST(test_mul_floor_matches_a_hand_written_widened_shift);
     RUN_TEST(test_floor_and_round_diverge_on_an_inexact_negative_product);
     RUN_TEST(test_mul_round_rounds_to_nearest_for_positives);

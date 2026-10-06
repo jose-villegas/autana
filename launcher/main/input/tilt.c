@@ -4,34 +4,6 @@
 
 #define Q 256 /* fixed-point scale for the stored vector */
 
-/* Integer square root, by binary search over the bits. Needed because shaking
- * is measured as a DISTANCE from one g, and a distance cannot be compared in
- * squared space, unlike the trust gate, which only asks which side of a
- * boundary a value falls. Runs once per frame. */
-static int32_t
-isqrt64(int64_t v) {
-    if (v <= 0) {
-        return 0;
-    }
-
-    int64_t root = 0;
-    int64_t bit = 1ll << 46; /* highest power of four below the range */
-
-    while (bit > v) {
-        bit >>= 2;
-    }
-    while (bit != 0) {
-        if (v >= root + bit) {
-            v -= root + bit;
-            root = (root >> 1) + bit;
-        } else {
-            root >>= 1;
-        }
-        bit >>= 2;
-    }
-    return (int32_t)root;
-}
-
 /* Compared as squares, so no root is needed and the percentages stay exact.
  * int64 because three squared sensor readings overflow 32 bits, and this runs
  * once per frame where the width costs nothing. */
@@ -79,16 +51,14 @@ approach(int32_t current_q8, int target, int tau_ms, uint32_t dt_ms) {
     return current_q8 + (int32_t)(delta / (int64_t)(tau_ms + (int)dt_ms));
 }
 
-/* How far this sample departs from rest, as 0-255.
- *
- * At rest the magnitude is exactly one g whatever the orientation, so anything
- * left over is the device being moved rather than turned. That is what shaking
- * is, and it is why the gyroscope is the wrong instrument for it: a smooth
- * rotation keeps the magnitude at one g and reads as nothing. */
+/* At rest the magnitude is one g in any orientation: shaking changes it,
+ * while a smooth rotation does not, so the gyroscope is unsuitable.
+ * Departure is a distance from one g, so unlike magnitude_within() it
+ * needs the root: squares do not subtract. */
 static int
 shake_from_sample(const tilt_t* t, int gx, int gy, int gz) {
     const int64_t mag2 = (int64_t)gx * gx + (int64_t)gy * gy + (int64_t)gz * gz;
-    const int32_t mag = isqrt64(mag2);
+    const int32_t mag = (int32_t)im_isqrt64((uint64_t)mag2);
 
     const int32_t departure = im_abs(mag - t->counts_per_g);
 
