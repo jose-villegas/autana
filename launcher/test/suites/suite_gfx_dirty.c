@@ -593,13 +593,13 @@ test_box_clip_edges(void) {
     fixture();
     const gfx_box_t clip = {10, 20, 31, 41};
     int x0 = -10, y0 = 30, x1 = 50, y1 = 30;
-    TEST_ASSERT_TRUE(gfx_box_clip_segment(clip, &x0, &y0, &x1, &y1));
+    TEST_ASSERT_TRUE(gfx_box_clip_segment(&clip, &x0, &y0, &x1, &y1));
     TEST_ASSERT_EQUAL_INT(10, x0);
     TEST_ASSERT_EQUAL_INT(30, x1);
     x0 = x1 = 20;
     y0 = 0;
     y1 = 60;
-    TEST_ASSERT_TRUE(gfx_box_clip_segment(clip, &x0, &y0, &x1, &y1));
+    TEST_ASSERT_TRUE(gfx_box_clip_segment(&clip, &x0, &y0, &x1, &y1));
     TEST_ASSERT_EQUAL_INT(20, y0);
     TEST_ASSERT_EQUAL_INT(40, y1);
 }
@@ -609,7 +609,7 @@ test_box_clip_corners(void) {
     fixture();
     const gfx_box_t clip = {10, 20, 31, 41};
     int x0 = 0, y0 = 10, x1 = 50, y1 = 60;
-    TEST_ASSERT_TRUE(gfx_box_clip_segment(clip, &x0, &y0, &x1, &y1));
+    TEST_ASSERT_TRUE(gfx_box_clip_segment(&clip, &x0, &y0, &x1, &y1));
     TEST_ASSERT_EQUAL_INT(10, x0);
     TEST_ASSERT_EQUAL_INT(20, y0);
     TEST_ASSERT_EQUAL_INT(30, x1);
@@ -618,7 +618,7 @@ test_box_clip_corners(void) {
     y0 = 0;
     x1 = 0;
     y1 = 50;
-    TEST_ASSERT_TRUE(gfx_box_clip_segment(clip, &x0, &y0, &x1, &y1));
+    TEST_ASSERT_TRUE(gfx_box_clip_segment(&clip, &x0, &y0, &x1, &y1));
     TEST_ASSERT_EQUAL_INT(30, x0);
     TEST_ASSERT_EQUAL_INT(20, y0);
     TEST_ASSERT_EQUAL_INT(10, x1);
@@ -632,7 +632,7 @@ test_box_clip_fully_outside(void) {
     const int points[][4] = {{0, 20, 9, 40}, {31, 20, 50, 40}, {10, 0, 30, 19}, {10, 41, 30, 50}, {0, 25, 15, 10}};
     for (unsigned i = 0; i < sizeof(points) / sizeof(points[0]); i++) {
         int x0 = points[i][0], y0 = points[i][1], x1 = points[i][2], y1 = points[i][3];
-        TEST_ASSERT_FALSE(gfx_box_clip_segment(clip, &x0, &y0, &x1, &y1));
+        TEST_ASSERT_FALSE(gfx_box_clip_segment(&clip, &x0, &y0, &x1, &y1));
     }
 }
 
@@ -641,7 +641,7 @@ test_box_clip_both_inside(void) {
     fixture();
     const gfx_box_t clip = {10, 20, 31, 41};
     int x0 = 10, y0 = 20, x1 = 30, y1 = 40;
-    TEST_ASSERT_TRUE(gfx_box_clip_segment(clip, &x0, &y0, &x1, &y1));
+    TEST_ASSERT_TRUE(gfx_box_clip_segment(&clip, &x0, &y0, &x1, &y1));
     TEST_ASSERT_EQUAL_INT(10, x0);
     TEST_ASSERT_EQUAL_INT(20, y0);
     TEST_ASSERT_EQUAL_INT(30, x1);

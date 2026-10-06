@@ -37,7 +37,7 @@ wire_project_edges(const wire_mesh_t* mesh, const r3d_line_view_t* view, int scr
             continue;
         }
 
-        if (!gfx_box_clip_segment((gfx_box_t){0, 0, screen_w, screen_h}, &ax, &ay, &bx, &by)) {
+        if (!gfx_box_clip_segment(&(const gfx_box_t){0, 0, screen_w, screen_h}, &ax, &ay, &bx, &by)) {
             continue;
         }
         if (frame->segment_count >= frame->segment_capacity) {

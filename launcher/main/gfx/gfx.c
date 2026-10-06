@@ -919,7 +919,7 @@ walk(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
  * underestimating leaves stale. */
 static void
 draw_line(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
-    if (!gfx_box_clip_segment(clip, &x0, &y0, &x1, &y1)) {
+    if (!gfx_box_clip_segment(&clip, &x0, &y0, &x1, &y1)) {
         return;
     }
 
