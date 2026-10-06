@@ -27,6 +27,12 @@ It prints `ok` or `FAIL` per file, and for a file that differs, the first
 lines of the difference. To fix one, run the command in its banner and
 commit the result.
 
+The [generators' README](../../launcher/tools/gen/README.md) holds a table
+of every generated file, its generator and its command, written from the
+banners. A full run also fails when that table is stale; add
+`--write-table` to rewrite it after adding, moving or removing a generated
+file.
+
 ## What the gate reads from a banner
 
 - **Which files are generated.** Every file git tracks with

@@ -2,6 +2,7 @@
 """Fail on a generated file that its own banner's command no longer makes.
 
     python scripts/gates/check_generated_files.py [--jobs N] [path ...]
+    python scripts/gates/check_generated_files.py --write-table
 
 A tracked file is generated when one of its first five lines carries
 MARKER. The first non-blank line after the marker, stripped of comment
@@ -22,10 +23,14 @@ for a newline counts as LF, as git stores it.
 A banner whose command names a <placeholder> input, finds no script, or
 does not name its own file as output fails: a file nobody can regenerate is
 a committed fixture, and carries no banner.
+
+A run over every file also fails when the table of them in TABLE_DOC is not
+the one --write-table would write.
 """
 import argparse
 import concurrent.futures
 import difflib
+import os
 import pathlib
 import shlex
 import shutil
@@ -33,11 +38,16 @@ import subprocess
 import sys
 import tempfile
 
-
 MARKER = "GENERATED FILE - do not edit."
 REPO = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "launcher/tools/render"))
+from generated_blocks import replace_block  # noqa: E402
+
 INTERPRETERS = {"python": sys.executable, "python3": sys.executable, "sh": "sh"}
 DIFF_LINES = 20
+# The table of every generated file, kept beside the generators' rules.
+TABLE_DOC = "launcher/tools/gen/README.md"
+TABLE_BLOCK = "generated-files"
 
 
 def is_generated(text):
@@ -70,8 +80,9 @@ def banner_command(text):
 
 
 def plan(root, name, command):
-    """(argv, cwd, output) to regenerate `name` from `command`: output is
-    None when stdout is the result, else the argument index to redirect.
+    """(argv, cwd, output, script) to regenerate `name` from `command`:
+    output is None when stdout is the result, else the argument index to
+    redirect; script is the generator's path.
     Raises ValueError saying why the banner cannot be run."""
     words = shlex.split(command)
     placeholders = [word for word in words if word.startswith("<") and word.endswith(">")]
@@ -104,7 +115,7 @@ def plan(root, name, command):
         output = next((i for i, word in enumerate(argv) if word != script and is_self(word)), None)
         if output is None:
             raise ValueError("the banner's command names neither `> this file` nor this file as an argument")
-    return argv, cwd, output
+    return argv, cwd, output, cwd / script
 
 
 def regenerate(root, name):
@@ -113,7 +124,7 @@ def regenerate(root, name):
     command = banner_command(text)
     if command is None:
         raise ValueError("the banner names no command")
-    argv, cwd, output = plan(root, name, command)
+    argv, cwd, output, _ = plan(root, name, command)
     with tempfile.TemporaryDirectory() as scratch:
         if output is not None:
             argv[output] = str(pathlib.Path(scratch) / pathlib.PurePosixPath(name).name)
@@ -142,19 +153,47 @@ def check(root, name):
     return "differs from what its banner's command makes; rerun that command\n" + shown
 
 
+def table(root, names):
+    """The Markdown table of `names` for TABLE_DOC: each output, the script
+    its banner runs, the folder it runs in and the banner's command, linked
+    from that document."""
+    here = (root / TABLE_DOC).parent
+
+    def link(path):
+        return f"[{path.name}]({os.path.relpath(path, here).replace(os.sep, '/')})"
+
+    rows = ["| Output | Generator | Run in | Command |", "|---|---|---|---|"]
+    for name in names:
+        command = banner_command((root / name).read_text(encoding="utf-8", errors="replace")) or ""
+        try:
+            _, cwd, _, script = plan(root, name, command)
+            generator, folder = link(script), f"`{cwd.relative_to(root).as_posix()}/`"
+        except ValueError:
+            generator, folder = "-", "-"
+        rows.append(f"| {link(root / name)} | {generator} | {folder} | `{command}` |")
+    return "\n".join(rows) + "\n"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("paths", nargs="*", help="generated files to check (default: every one)")
+    parser.add_argument("paths", nargs="*", help="generated files to check (default: every one, and the table)")
     parser.add_argument("--root", type=pathlib.Path, default=REPO)
     parser.add_argument("--jobs", type=int, default=8)
+    parser.add_argument("--write-table", action="store_true", help=f"rewrite the table in {TABLE_DOC} and exit")
     args = parser.parse_args()
     root = args.root.resolve()
+    if args.write_table:
+        replace_block(root / TABLE_DOC, TABLE_BLOCK, table(root, generated_files(root)))
+        return 0
     names = [pathlib.Path(p).resolve().relative_to(root).as_posix() for p in args.paths] or generated_files(root)
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
         results = list(pool.map(lambda name: check(root, name), names))
     for name, problem in zip(names, results):
         print(f"ok   {name}" if problem is None else f"FAIL {name}: {problem}")
     failed = sum(problem is not None for problem in results)
+    if not args.paths and replace_block(root / TABLE_DOC, TABLE_BLOCK, table(root, names), check=True):
+        print(f"FAIL {TABLE_DOC}: its table of generated files is stale; run this gate with --write-table")
+        failed += 1
     print(f"generated files: {len(names)} checked, {failed} failed")
     return int(failed > 0)
 

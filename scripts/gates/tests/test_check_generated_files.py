@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from check_generated_files import MARKER, check, generated_files  # noqa: E402
+from check_generated_files import MARKER, TABLE_DOC, check, generated_files, table  # noqa: E402
 
 # `gen.py VALUE` prints the header for VALUE; `gen.py VALUE PATH` writes it
 # to PATH. Like a real generator, its banner names its output by a fixed
@@ -98,6 +98,13 @@ class GateTests(unittest.TestCase):
     def test_a_failing_command_fails_with_its_error(self):
         self.add("main/a.h", header("python tools/gen.py > main/a.h", 1))
         self.assertIn("IndexError", check(self.root, "main/a.h"))
+
+    def test_the_table_names_each_output_its_generator_folder_and_command(self):
+        command = "python tools/gen.py 1 > main/a.h"
+        self.add("main/a.h", header(command, 1))
+        (self.root / TABLE_DOC).parent.mkdir(parents=True)
+        rows = table(self.root, generated_files(self.root)).splitlines()
+        self.assertEqual(rows[2], "| [a.h](../../../main/a.h) | [gen.py](../../../tools/gen.py) | `./` | `" + command + "` |")
 
 
 if __name__ == "__main__":
