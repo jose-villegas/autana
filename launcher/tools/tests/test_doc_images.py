@@ -3,11 +3,13 @@
 import pathlib
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "launcher/tools"))
 SCRIPT = ROOT / "launcher/tools/render/render_doc_images.sh"
 APP_SCRIPT = ROOT / "launcher/main/apps/render_lab/tools/doc_images.sh"
 
@@ -90,6 +92,19 @@ class PhysicalSceneTests(unittest.TestCase):
     def test_an_ao_key_outside_bake_is_left_alone(self):
         text = "[bake]\nray_offset = 0.5\n\n[[objects]]\nname = \"a\"\nao = 1\n"
         self.assertEqual(self.module.physical_scene(text), text)
+
+    def test_a_copy_in_another_folder_still_reaches_the_camera_animation(self):
+        from r3d.import_settings import load_scene
+        scene = ROOT / "launcher/main/apps/render_lab/meshes/sponza.scene.toml"
+        text = self.module.physical_scene(scene.read_text(encoding="utf-8"), scene.parent)
+        with tempfile.TemporaryDirectory() as directory:
+            copy = pathlib.Path(directory) / "study" / scene.name
+            copy.parent.mkdir()
+            copy.write_text(text, encoding="utf-8")
+            (copy.parent / "sponza.import.toml").write_text(
+                (scene.parent / "sponza.import.toml").read_text(encoding="utf-8"), encoding="utf-8")
+            path = load_scene(copy).camera.component.path
+            self.assertIsNotNone(path)
 
 
 if __name__ == "__main__":
