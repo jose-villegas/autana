@@ -255,19 +255,21 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(len(findings), 1)
 
-    def test_display_may_include_gfx_and_input_but_not_the_other_way(self):
+    def test_display_may_include_gfx_but_not_input_and_gfx_not_display(self):
+        # display/ is handed gravity by the shell; it never reads input/.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
             self.write(root, "launcher/main/display/display.h", "#pragma once\n")
             self.write(root, "launcher/main/gfx/gfx.h", "#pragma once\n")
             self.write(root, "launcher/main/input/input.h", "#pragma once\n")
-            self.write(root, "launcher/main/display/display_device.c",
-                       '#include "gfx/gfx.h"\n#include "input/input.h"\n')
+            self.write(root, "launcher/main/display/display.c", '#include "gfx/gfx.h"\n')
+            self.write(root, "launcher/main/display/display_device.c", '#include "input/input.h"\n')
             self.write(root, "launcher/main/gfx/gfx.c", '#include "display/display.h"\n')
             self.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
-        self.assertEqual([f.path for f in findings], ["launcher/main/gfx/gfx.c"])
+        self.assertEqual(sorted(f.path for f in findings),
+                         ["launcher/main/display/display_device.c", "launcher/main/gfx/gfx.c"])
 
     def test_boot_and_selftest_may_not_include_each_other(self):
         with tempfile.TemporaryDirectory() as temp:
