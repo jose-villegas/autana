@@ -69,7 +69,7 @@ PYTHON_TOKENS = re.compile(
 # A suite's list of RUN_TEST lines matches any other long list once
 # identifiers are ignored, and has no shared owner to extract; a pair counts
 # only if what remains without them is still a clone's length in itself.
-TEST_REGISTRATION = re.compile(r"RUN_TEST\s*\(\s*\w+\s*\)\s*;")
+TEST_REGISTRATION = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;")
 
 
 def registration_only(pair):

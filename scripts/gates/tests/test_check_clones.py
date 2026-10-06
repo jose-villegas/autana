@@ -153,6 +153,12 @@ class CloneTests(unittest.TestCase):
                            "launcher/main/b.c": rows}, 80)
         self.assertEqual(pairs, [])
 
+    def test_a_run_test_list_is_ignored_but_a_copy_beside_it_is_not(self):
+        listing = "}\n\nvoid\nsuite_a(void) {\n" + "".join(f"    RUN_TEST(test_{i});\n" for i in range(24)) + "}\n"
+        self.assertEqual(gate.filter_pairs([self.pair(fragment=listing)]), [])
+        copied = self.pair(fragment=BLOCK + listing)
+        self.assertEqual(gate.filter_pairs([copied]), [copied])
+
     def test_self_match_is_ignored(self):
         self.assertEqual(gate.filter_pairs([self.pair("a.c", "a.c")]), [])
 
