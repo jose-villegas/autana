@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "build_variant.h"
+#include "util/build/build_variant.h"
 #include "util/runtime/frame_watch.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"

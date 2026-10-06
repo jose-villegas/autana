@@ -36,13 +36,12 @@ screen.
 
 ## Layers
 
-Each row may include anything in a row below it, and the root header
-`build_variant.h`, never a row above or a folder beside it in the same row.
-The top row is the two callers, and neither includes the other: `main.c`
-starts the board and calls `shell_run()`, and the apps. The shell reaches an
-app only through the callbacks `app/app.h` declares. Folders that touch
-hardware are marked. `ls launcher/main/<folder>` is the inventory; this is
-the shape.
+Each row may include anything in a row below it, never a row above or a
+folder beside it in the same row. The top row is the two callers, and
+neither includes the other: `main.c` starts the board and calls
+`shell_run()`, and the apps. The shell reaches an app only through the
+callbacks `app/app.h` declares. Folders that touch hardware are marked.
+`ls launcher/main/<folder>` is the inventory; this is the shape.
 
 ```mermaid
 flowchart TB
@@ -89,8 +88,9 @@ flowchart TB
         Motion["util/motion/<br/><i>tween, easing, springs</i>"]
         Encode["util/encode/<br/><i>JSON splice, BMP and base64</i>"]
     end
-    subgraph R12["scalars"]
+    subgraph R12["scalars and the build"]
         Scalar["util/scalar/<br/><i>fixed point, integer maths, trig tables, random numbers</i>"]
+        Build["util/build/<br/><i>which build variant this is</i>"]
     end
     subgraph R13["board"]
         Board["board/<br/><i>this board's pins and peripherals</i>"]:::hw
@@ -104,8 +104,8 @@ flowchart TB
   between two files in the same folder, so an app reaching past `ui` into
   `gfx` is visible at the line that does it.
 - **util/ is two kinds of code.** `util/runtime/` holds the services over
-  the chip; `util/math/`, `util/scalar/`, `util/motion/` and `util/encode/`
-  are pure, build on a host, and never include `util/runtime/`. The
+  the chip; `util/math/`, `util/scalar/`, `util/motion/`, `util/encode/`
+  and `util/build/` are pure, build on a host, and never include `util/runtime/`. The
   subfolders are tiered on their own, as the rows above show.
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. How a
   draw call becomes pixels on the panel is

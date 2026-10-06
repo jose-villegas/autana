@@ -22,9 +22,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "build_variant.h"
 #include "sand_limits.h"
 #include "sand_liquid_move.h"
+#include "util/build/build_variant.h"
 #include "util/scalar/fixed.h"
 #include "util/scalar/intmath.h"
 

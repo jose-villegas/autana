@@ -44,7 +44,6 @@
 
 #include "app/app.h"
 #include "apps/sand/app_sand_test.h"
-#include "build_variant.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
@@ -73,6 +72,7 @@
 #include "ui/title_screen.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
+#include "util/build/build_variant.h"
 #include "util/runtime/frame_cost.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"

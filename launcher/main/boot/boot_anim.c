@@ -32,10 +32,10 @@
 #include <string.h>
 
 #include "boot/boot_anim_image.h"
-#include "build_variant.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
+#include "util/build/build_variant.h"
 #include "util/runtime/timing.h"
 #include "util/scalar/fixed.h"
 #include "util/scalar/intmath.h"

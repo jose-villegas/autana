@@ -31,12 +31,12 @@
 
 #include "esp_log.h"
 
-#include "build_variant.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_target.h"
 #include "gfx/icons_system.h"
 #include "ui/ui_bridge.h"
 #include "ui/ui_internal.h"
+#include "util/build/build_variant.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static const char* TAG = "ui";

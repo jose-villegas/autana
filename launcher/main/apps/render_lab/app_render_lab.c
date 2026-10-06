@@ -15,7 +15,6 @@
 
 #include "app/app.h"
 #include "app/app_arena.h"
-#include "build_variant.h"
 #include "gfx/gfx.h"
 #include "render_lab.h"
 #include "render_lab_mode_switch.h"
@@ -25,6 +24,7 @@
 #include "ui/render_lab_hud_screen.h"
 #include "ui/render_lab_menu_screen.h"
 #include "ui/ui.h"
+#include "util/build/build_variant.h"
 #include "util/runtime/tune.h"
 
 extern const render_lab_scene_t scene_cube;

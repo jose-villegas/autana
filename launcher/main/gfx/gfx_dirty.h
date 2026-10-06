@@ -21,7 +21,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "build_variant.h"
+#include "util/build/build_variant.h"
 #include "util/scalar/intmath.h"
 
 /* Mirrors gfx.h's GFX_WIDTH/GFX_HEIGHT (BSP_LCD_H_RES/V_RES) as plain

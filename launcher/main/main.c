@@ -7,7 +7,6 @@
 #include <stdio.h>
 
 #include "boot/boot_anim.h"
-#include "build_variant.h"
 #include "display/display.h"
 #include "display/display_shell.h"
 #include "gfx/gfx.h"
@@ -18,6 +17,7 @@
 #include "shell/shell.h"
 #include "ui/ui.h"
 #include "ui/ui_launcher.h"
+#include "util/build/build_variant.h"
 #include "util/runtime/build_id.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"

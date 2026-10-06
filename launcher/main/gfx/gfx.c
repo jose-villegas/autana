@@ -1,5 +1,4 @@
 #include "gfx/gfx.h"
-#include "build_variant.h"
 #include "gfx/gfx_band_run.h"
 #include "gfx/gfx_dirty.h"
 #include "gfx/gfx_fb_guard.h"
@@ -8,6 +7,7 @@
 #include "gfx/gfx_heal.h"
 #include "gfx/gfx_present_guard.h"
 #include "gfx/gfx_target.h"
+#include "util/build/build_variant.h"
 #include "util/runtime/frame_watch.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"

@@ -302,7 +302,7 @@ def _fix_include_layer(root, path, text):
 LAYER_TIER = {"apps": 0, "shell": 1, "boot": 2, "selftest": 2, "ui": 3, "console": 3, "scene": 3, "app": 4,
              "display": 5, "input": 5, "gfx": 6, "render": 6, "anim": 7, "asset": 8,
              "util": 9, "util/runtime": 9, "util/math": 10, "util/motion": 10, "util/encode": 10,
-             "util/scalar": 11, "board": 12}
+             "util/scalar": 11, "util/build": 11, "board": 12}
 LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps" and "/" not in layer)
 
 

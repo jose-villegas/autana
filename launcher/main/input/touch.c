@@ -4,7 +4,7 @@
 #include "input/touch_inject_fsm.h"
 #include "input/touch_point.h"
 
-#include "build_variant.h"
+#include "util/build/build_variant.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
 #include "util/runtime/tune.h"

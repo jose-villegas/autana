@@ -20,9 +20,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "build_variant.h"
 #include "material.h"
 #include "sand_impulse.h"
+#include "util/build/build_variant.h"
 #include "util/scalar/rng.h"
 
 /* See material.h for cell encoding. Variant travels with the cell, not the
