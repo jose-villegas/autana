@@ -1,12 +1,13 @@
-"""Bakes a glTF built here, samples the baked clip in C, and holds it to the
-Python sampler in gltf/gltf_read.py: every interpolation, quaternion slerp,
-loop and clamp on one shared timeline, and properties reached by a
-KHR_animation_pointer. The scene is invented in this test, so nothing here
-depends on one an app ships. Skipped where there is no C compiler or no sh."""
+"""Bakes a glTF built here, samples the baked clip in C through
+anim/track_host.py (the device's sampler over the clip's TRCK entry), and
+holds it to the Python sampler in gltf/gltf_read.py: every interpolation,
+quaternion slerp, loop and clamp on one shared timeline, and properties
+reached by a KHR_animation_pointer. The scene is invented in this test, so
+nothing here depends on one an app ships. Skipped where there is no C
+compiler or no sh."""
 
 import pathlib
 import shutil
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -17,7 +18,7 @@ sys.path.insert(0, str(TOOLS / "anim"))
 sys.path.insert(0, str(TOOLS / "tests"))
 
 import bake_tracks  # noqa: E402
-from anim import tracks_asset  # noqa: E402
+from anim import track_host, tracks_asset  # noqa: E402
 from anim_probe import channel, probe_glb  # noqa: E402
 from gltf import gltf_read, gltf_write  # noqa: E402
 
@@ -35,6 +36,7 @@ def bake_into(directory, glb_bytes):
     glb = pathlib.Path(directory) / "probe.glb"
     glb.write_bytes(glb_bytes)
     bake_tracks.main([str(glb), "--animation", "clip", "--name", NAME, "--out-dir", str(directory)])
+    (pathlib.Path(directory) / (NAME + tracks_asset.SUFFIX)).write_text('source = "probe.glb"\nanimation = "clip"\n')
     return glb
 
 
@@ -54,15 +56,12 @@ class BakeRoundTripTest(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls.dir, ignore_errors=True)
 
+    def run_host(self, *flags):
+        return track_host.sample(self.dir / (NAME + tracks_asset.SUFFIX), flags)
+
     def sampled(self, *flags):
-        script = TOOLS / "anim" / "sample_tracks.sh"
-        result = subprocess.run(
-            [find_sh(), str(script), "--tracks", "%s:%s" % (self.dir / (NAME + "_tracks_generated.c"), NAME),
-             "--every", str(EVERY_MS), "--until", str(UNTIL_MS), *flags],
-            capture_output=True, text=True, check=False)
-        self.assertEqual(result.returncode, 0, result.stderr)
         rows = []
-        for line in result.stdout.splitlines():
+        for line in self.run_host("--every", EVERY_MS, "--until", UNTIL_MS, *flags).splitlines():
             t, name, *values = line.split(" ")
             rows.append((int(t), name, [float(v) for v in values]))
         return rows
@@ -109,14 +108,8 @@ class BakeRoundTripTest(unittest.TestCase):
                 self.assertAlmostEqual(a, b, delta=TOLERANCE, msg=name)
 
     def test_a_large_time_keeps_millisecond_resolution(self):
-        script = TOOLS / "anim" / "sample_tracks.sh"
         start = 4000000000 - 4000000000 % self.duration_ms + 1200
-        result = subprocess.run(
-            [find_sh(), str(script), "--tracks", "%s:%s" % (self.dir / (NAME + "_tracks_generated.c"), NAME),
-             "--from", str(start), "--every", "7", "--until", str(start + 60)],
-            capture_output=True, text=True, check=False)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        for line in result.stdout.splitlines():
+        for line in self.run_host("--from", start, "--every", 7, "--until", start + 60).splitlines():
             t, name, *values = line.split(" ")
             want = self.reference(name, int(t), True)
             for a, b in zip(map(float, values), want):

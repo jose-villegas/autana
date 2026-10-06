@@ -27,7 +27,7 @@ mesh. Nothing here runs on the board.
 | [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
 | [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [shading: flat](../../../docs/render/Scene-Files.md#shading-flat). |
 | [appearance_simplify.py](appearance_simplify.py) | Fits a smooth mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
-| [poses.py](poses.py) | Reads the camera poses file `tools/anim/sample_tracks.sh` writes, samples a scene camera's path through it, and casts a pose's pinhole rays. |
+| [poses.py](poses.py) | Reads the camera poses file `tools/anim/track_host.py` writes, samples a scene camera's path through it from the clip's `.anim.toml`, and casts a pose's pinhole rays. |
 | [fitted_variant.py](fitted_variant.py) | Remakes a scene renderer's fitted mesh from the `fit` recipe it records; see [A fitted variant](#a-fitted-variant). |
 | [cost_model.py](cost_model.py), [board_cost_weights.txt](board_cost_weights.txt) | A linear model of a mesh's frame time from a pose (submitted and drawn triangles, rows, pixels with overdraw, clusters in view), and its weights with the board frames they were fitted to; see [Cost-aware fit](#cost-aware-fit). |
 | [reference_render.py](reference_render.py) | Traces the undecimated source mesh through the scene's bake lights at supersampled device resolution; writes linear arrays and RGB565-expanded PNGs for fidelity comparisons. |
@@ -88,11 +88,11 @@ host render compares with `render_compare.py`. What the scores mean is in
 
 These commands run from `launcher/`; `PY` is the venv's interpreter
 (`tools/r3d/.cache/venv/Scripts/python` on Windows, `.../bin/python` elsewhere).
-`TRACKS` is the scene camera's baked track source, `HOST` the scene's
+`CLIP` is the `.anim.toml` the scene camera's path names, `HOST` the scene's
 host-render script and `SCENE` its scene file.
 
 ```sh
-tools/anim/sample_tracks.sh --tracks TRACKS.c:NAME --every 5000 --until 45000     --poses camera 184 224 0.62 6 > poses.txt
+python tools/anim/track_host.py CLIP.anim.toml --every 5000 --until 45000 --poses camera 184 224 0.62 6 > poses.txt
 $PY tools/r3d/reference_render.py SCENE.scene.toml --poses poses.txt --skip 1     --out reference --samples 4
 ```
 

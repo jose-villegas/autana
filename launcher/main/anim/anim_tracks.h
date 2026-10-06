@@ -36,3 +36,7 @@ asset_status_t anim_tracks_from_pack(const asset_pack_t* pack, const char* id, a
 /* The track named `name` (its glTF binding, e.g. "camera/translation"),
  * pointing into the entry; ASSET_ERR_NOT_FOUND when the clip has none. */
 asset_status_t anim_tracks_find(const anim_tracks_t* tracks, const char* name, anim_track_t* out);
+
+/* Track `index` of the entry's table and its name, both pointing into the
+ * entry; ASSET_ERR_NOT_FOUND when `index` is outside [0, count). */
+asset_status_t anim_tracks_at(const anim_tracks_t* tracks, int index, const char** name, anim_track_t* out);

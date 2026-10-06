@@ -14,6 +14,7 @@ from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+from gltf import gltf_write
 from r3d.import_settings import LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
 
 try:
@@ -62,13 +63,23 @@ def write_import(directory, name="mesh.import.toml", source=SOURCE, output=OUTPU
     return path
 
 
+def write_clip(directory, reach=1.0):
+    """fly.anim.toml and its fly.glb: a camera node moving `reach` along x."""
+    directory = pathlib.Path(directory)
+    (directory / "fly.anim.toml").write_text('source = "fly.glb"\nanimation = "fly"\n')
+    channels = [{"node": 0, "path": "translation", "pointer": None, "interpolation": "LINEAR",
+                 "times": [0.0, 1.0], "values": [(0.0, 0.0, 0.0), (reach, 0.0, 0.0)]},
+                {"node": 0, "path": "rotation", "pointer": None, "interpolation": "LINEAR",
+                 "times": [0.0], "values": [(0.0, 0.0, 0.0, 1.0)]}]
+    (directory / "fly.glb").write_bytes(gltf_write.build_glb([{"name": "camera"}], [{"name": "fly", "channels": channels}]))
+
+
 def write_scene(directory, objects, head="", name="scene.scene.toml"):
     """The scene file; beside it fly.anim.toml, the clip camera(path=True) names."""
     path = pathlib.Path(directory) / name
     path.write_text(head + objects)
-    clip = path.parent / "fly.anim.toml"
-    if not clip.exists():
-        clip.write_text('source = "fly.glb"\nanimation = "fly"\n')
+    if not (path.parent / "fly.anim.toml").exists():
+        write_clip(path.parent)
     return path
 
 
@@ -441,10 +452,10 @@ class SceneTests(unittest.TestCase):
         extra = 'variant = "mesh"\n' + FIT
         fly = camera(path=True, region=False)
 
-        def digest(head=HEAD, fit=extra, tracks="tracks", simplify=SIMPLIFY):
+        def digest(head=HEAD, fit=extra, reach=1.0, simplify=SIMPLIFY):
             with tempfile.TemporaryDirectory() as directory:
                 root = pathlib.Path(directory)
-                (root / "fly_tracks_generated.c").write_text(tracks)
+                write_clip(root, reach)
                 write_import(root, output=VARIANT_OUTPUT, body=simplify + VARIANT)
                 scene = load_scene(write_scene(root, renderer(extra="bake = true\n" + PATH + fit) + sun_object() + fly, head))
                 job = scene.renderers[0]
@@ -454,7 +465,7 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(digest(fit=extra.replace('sha256 = "ab"', 'sha256 = "ef"')), first, "the recorded hashes are not the recipe")
         self.assertNotEqual(digest(fit=extra.replace("steps = 20", "steps = 21")), first)
         self.assertNotEqual(digest(head=HEAD.replace("ray_offset = 0.5", "ray_offset = 0.6")), first)
-        self.assertNotEqual(digest(tracks="other tracks"), first)
+        self.assertNotEqual(digest(reach=2.0), first, "the camera clip's keys are the recipe")
         self.assertNotEqual(digest(simplify=SIMPLIFY.replace("dense_edge = 1.0", "dense_edge = 2.0")), first)
         self.assertNotEqual(digest(head=HEAD.replace("intensity = 0.1", "intensity = 0.2")), first, "the scene's lights are the recipe")
         self.assertNotEqual(digest(head=HEAD.replace("tonemap_white = 0.3", "tonemap_white = 0.4")), first)
@@ -468,7 +479,6 @@ class SceneTests(unittest.TestCase):
             out = "indirect = false\n" if opted_out else ""
             with tempfile.TemporaryDirectory() as directory:
                 root = pathlib.Path(directory)
-                (root / "fly_tracks_generated.c").write_text("tracks")
                 write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT)
                 head = HEAD + INDIRECT.replace("bounces = 2", f"bounces = {bounces}")
                 scene = load_scene(write_scene(
@@ -693,7 +703,6 @@ class DigestTests(unittest.TestCase):
         fit = FIT
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            (root / "fly_tracks_generated.c").write_text("tracks")
             write_import(root, output='[output]\ndirectory = "."\n', body=SIMPLIFY + VARIANT)
             objects = renderer(extra='variant = "mesh"\nbake = true\nvisibility = { source = "camera_path", every_ms = 10, size = [8, 6] }\n' + fit)
             first = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), TONEMAP + AMBIENT + BAKE))
@@ -926,7 +935,6 @@ class LocalSourceTests(unittest.TestCase):
             (asset / "texture.weird").write_bytes(b"texture")
             source = '[source]\npath = "asset/m.obj"\ncredit = "c"\n'
             write_import(root, source=source, output='[output]\ndirectory = "."\n', body=SIMPLIFY + VARIANT)
-            (root / "fly_tracks_generated.c").write_text("tracks")
             objects = renderer(extra='variant = "mesh"\nbake = true\n' + FIT)
             scene_path = write_scene(root, objects + sun_object() + camera(path=True, region=False), TONEMAP + AMBIENT + BAKE)
             scene = load_scene(scene_path)
