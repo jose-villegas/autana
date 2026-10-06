@@ -25,6 +25,7 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
 | `raster_draw()` | Draws every instance through a camera, turned for the panel's quarter |
+| `raster_census()` | What `raster_draw()` would keep after culling, without drawing: the same at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
 | `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the glTF animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
 | `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows and a depth plane of the same shape, from `render/r3d_span.h` |
@@ -87,7 +88,7 @@ raster's lens and cluster transform stay a 3x4 of their own.
 flowchart LR
     Camera["camera_t<br/><i>eye, forward, lens</i>"] --> Lens
     subgraph Render["raster_draw()"]
-        Lens["r3d_lens_init()<br/><i>for this viewport</i><br/>r3d_lens_place()<br/><i>per instance</i>"] --> Cull
+        Lens["r3d_lens_init()<br/><i>for the picture</i><br/>r3d_lens_fit()<br/><i>to the render size</i><br/>r3d_lens_place()<br/><i>per instance</i>"] --> Cull
         Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
         Transform --> Draw["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
     end
@@ -104,7 +105,10 @@ rows of its own target. `r3d_pipeline_transform()` also records the screen rows
 each cluster spans, so a core drawing half the rows skips a cluster wholly
 outside them. The raster draws at the caller's width and height and can
 upscale the result into a destination picture, so rendering at half the
-panel's size quarters the pixels and halves the rows and spans.
+panel's size quarters the pixels and halves the rows and spans. The lens
+frames the destination's shape and `r3d_lens_fit()` then scales each axis to
+the render size on its own, so a render may cut its height more than its
+width and still show the same view.
 
 ### On both cores
 

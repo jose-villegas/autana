@@ -125,13 +125,11 @@ cull_instance(const raster_t* raster, const r3d_instance_t* instance, const came
     if (instance->placement != NULL) {
         r3d_lens_place(lens, instance->placement, mesh->position_scale);
     }
-    FRAME_COST_BEGIN(culled_from);
     const int visible = r3d_pipeline_cull(mesh, lens, b.visible);
     stats->clusters += visible;
     for (int i = 0; i < visible; i++) {
         stats->triangles += mesh->clusters[b.visible[i]].triangle_count;
     }
-    FRAME_COST_END(culled_from, "r3d.cull");
     return visible;
 }
 
@@ -141,7 +139,9 @@ draw_instance(const raster_t* raster, const r3d_instance_t* instance, const came
     const r3d_lit_mesh_t* mesh = instance->mesh;
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     r3d_lens_t lens;
+    FRAME_COST_BEGIN(culled_from);
     const int visible = cull_instance(raster, instance, camera, quarter, &lens, stats);
+    FRAME_COST_END(culled_from, "r3d.cull");
 
     FRAME_COST_BEGIN(transformed_from);
     const int half = r3d_pipeline_transform_split(mesh, b.visible, visible);
@@ -170,10 +170,12 @@ raster_stats_t
 raster_census(const raster_t* raster, const camera_t* camera, int quarter) {
     assert(raster->instance_count > 0);
     raster_stats_t stats = {0, 0};
+    FRAME_COST_BEGIN(counted_from);
     for (int i = 0; i < raster->instance_count; i++) {
         r3d_lens_t lens;
         (void)cull_instance(raster, &raster->instances[i], camera, quarter, &lens, &stats);
     }
+    FRAME_COST_END(counted_from, "r3d.census");
     return stats;
 }
 

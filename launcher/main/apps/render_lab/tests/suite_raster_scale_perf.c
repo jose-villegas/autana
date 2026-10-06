@@ -110,11 +110,10 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
 }
 
 static void
-measure_size(raster_t* raster, size_wh_t size, int32_t* frame_us) {
+measure_size(raster_t* raster, size_wh_t size, int32_t* frame_us, char* report) {
     raster->width = size.width;
     raster->height = size.height;
-    static char report[FRAME_COST_REPORT_MAX];              /* too big for the frame task's stack */
-    (void)frame_cost_take_report(1, report, sizeof report); /* forget whatever ran before */
+    (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX); /* forget whatever ran before */
     const uint32_t period = r3d_scene_camera_period_ms(path);
     int poses = 0;
     int64_t triangles = 0;
@@ -126,7 +125,7 @@ measure_size(raster_t* raster, size_wh_t size, int32_t* frame_us) {
         frame_us[poses++] = (int32_t)(timing_now_us() - start);
         triangles += stats.triangles;
     }
-    (void)frame_cost_take_report((uint32_t)poses, report, sizeof report);
+    (void)frame_cost_take_report((uint32_t)poses, report, FRAME_COST_REPORT_MAX);
 
     span_split_t spans = {0};
     for (uint32_t t_ms = 0; t_ms < period && t_ms / POSE_EVERY_MS < POSES_MAX; t_ms += POSE_EVERY_MS) {
@@ -170,12 +169,15 @@ test_raster_stage_split_by_size(void) {
     raster.scratch = memory_alloc(scratch_bytes, MEMORY_PSRAM);
     raster.destination = memory_alloc(sizeof(gfx_color_t) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
     int32_t* frame_us = malloc(sizeof(int32_t) * POSES_MAX);
+    char* report = malloc(FRAME_COST_REPORT_MAX); /* too big for the frame task's stack */
+    TEST_ASSERT_NOT_NULL(report);
     TEST_ASSERT_NOT_NULL(raster.scratch);
     TEST_ASSERT_NOT_NULL(raster.destination);
     TEST_ASSERT_NOT_NULL(frame_us);
     for (int i = 0; i < SIZE_COUNT; i++) {
-        measure_size(&raster, sizes[i], frame_us);
+        measure_size(&raster, sizes[i], frame_us, report);
     }
+    free(report);
     free(frame_us);
     memory_free(raster.destination);
     memory_free(raster.scratch);
@@ -183,22 +185,21 @@ test_raster_stage_split_by_size(void) {
 }
 
 /* Two ladders. Isotropic: 1.33x is dropped for costing little less than
- * 1.25x, 1.75x splits the widest gap. Height first, since rows and span
- * setup follow the height: the width is cut only once the height is half.
- * 2.5x and 4x close both, recovery only. */
+ * 1.25x, 1.75x splits the widest gap, 2.5x and 4x recovery only. Height
+ * first: the render lab's own ladder. */
 typedef struct {
     const char* name;
-    int divisors[RESOLUTION_STEPS_MAX][2];
+    const resolution_step_t* steps;
     int count, recovery_from, half;
 } ladder_t;
 
+static const resolution_step_t isotropic_steps[] = {
+    {368, 448}, {294, 358}, {245, 298}, {210, 256}, {184, 224}, {147, 179}, {92, 112},
+};
+
 static const ladder_t ladders[] = {
-    {"isotropic", {{100, 100}, {125, 125}, {150, 150}, {175, 175}, {200, 200}, {250, 250}, {400, 400}}, 7, 5, 4},
-    {"height",
-     {{100, 100}, {100, 125}, {100, 150}, {100, 200}, {150, 200}, {200, 200}, {250, 250}, {400, 400}},
-     8,
-     6,
-     5},
+    {"isotropic", isotropic_steps, 7, 5, 4},
+    {"height", sponza_ladder, SPONZA_LADDER_STEPS, SPONZA_LADDER_RECOVERY, SPONZA_LADDER_HALF},
 };
 
 #define FRAME_DT_MS 50
@@ -253,16 +254,19 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
 
 static void
 log_frames(const char* policy, const char* ladder, int32_t budget_us, const frame_record_t* records, int frames) {
-    static char line[(LINE_FRAMES * 32) + 64];
+    const size_t line_size = (LINE_FRAMES * 32) + 64;
+    char* line = malloc(line_size);
+    TEST_ASSERT_NOT_NULL(line);
     for (int first = 0; first < frames; first += LINE_FRAMES) {
-        int length = snprintf(line, sizeof line, "dynres_frames: %s %s %ld %d", policy, ladder, (long)budget_us, first);
-        for (int i = first; i < frames && i < first + LINE_FRAMES && length > 0 && (size_t)length < sizeof line; i++) {
+        int length = snprintf(line, line_size, "dynres_frames: %s %s %ld %d", policy, ladder, (long)budget_us, first);
+        for (int i = first; i < frames && i < first + LINE_FRAMES && length > 0 && (size_t)length < line_size; i++) {
             const frame_record_t* r = &records[i];
-            length += snprintf(line + length, sizeof line - (size_t)length, " %d:%ld:%ld:%ld", r->step,
-                               (long)r->draw_us, (long)r->upscale_us, (long)r->triangles);
+            length += snprintf(line + length, line_size - (size_t)length, " %d:%ld:%ld:%ld", r->step, (long)r->draw_us,
+                               (long)r->upscale_us, (long)r->triangles);
         }
         ESP_LOGI(TAG, "%s", line);
     }
+    free(line);
 }
 
 /* The path flown through the scene manager at FRAME_DT_MS a frame: at the
@@ -294,8 +298,7 @@ fly(const char* policy, const ladder_t* ladder, const resolution_config_t* confi
 /* A ladder's config at `budget_us`, fitted to the board on every one of its steps. */
 static void
 fit_ladder(const ladder_t* ladder, int32_t budget_us, resolution_config_t* config, resolution_model_t* model) {
-    *config =
-        resolution_config(GFX_WIDTH, GFX_HEIGHT, ladder->divisors, ladder->count, ladder->recovery_from, budget_us);
+    *config = resolution_config(ladder->steps, ladder->count, ladder->recovery_from, budget_us);
     TEST_ASSERT_TRUE_MESSAGE(calibrate(config, model), "the calibration frames did not fit a model");
     ESP_LOGI(TAG, "dynres_model: %s base %.0f per_triangle %.4f per_triangle_row %.4f per_pixel_share %.0f",
              ladder->name, (double)model->base_us, (double)model->per_triangle_us, (double)model->per_triangle_row_us,
@@ -310,26 +313,35 @@ void
 test_dynamic_resolution_policies_along_the_path(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
     static const int32_t budgets_us[] = {60000, 75000};
-    resolution_config_t isotropic, height;
-    resolution_model_t isotropic_model, height_model;
-    fit_ladder(&ladders[0], budgets_us[0], &isotropic, &isotropic_model);
-    fit_ladder(&ladders[1], budgets_us[0], &height, &height_model);
+
+    /* Each ladder's config and fitted model: too big for the frame task's stack. */
+    typedef struct {
+        resolution_config_t config;
+        resolution_model_t model;
+    } fitted_t;
+
+    fitted_t* fitted = memory_alloc(sizeof(*fitted) * 2, MEMORY_PSRAM);
     const int path_frames = (int)(r3d_scene_camera_period_ms(path) / FRAME_DT_MS);
     const int frames = path_frames < FRAMES_MAX ? path_frames : FRAMES_MAX;
     uint16_t* picture = memory_alloc(sizeof(uint16_t) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
     frame_record_t* records = memory_alloc(sizeof(*records) * FRAMES_MAX, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(fitted);
     TEST_ASSERT_NOT_NULL(picture);
     TEST_ASSERT_NOT_NULL(records);
+    for (int i = 0; i < 2; i++) {
+        fit_ladder(&ladders[i], budgets_us[0], &fitted[i].config, &fitted[i].model);
+    }
     fly("fixed", NULL, NULL, NULL, picture, records, frames);
     for (int b = 0; b < (int)(sizeof budgets_us / sizeof budgets_us[0]); b++) {
-        isotropic.budget_us = budgets_us[b];
-        height.budget_us = budgets_us[b];
-        fly("stepped", &ladders[0], &isotropic, NULL, picture, records, frames);
-        fly("predicted", &ladders[0], &isotropic, &isotropic_model, picture, records, frames);
-        fly("predicted", &ladders[1], &height, &height_model, picture, records, frames);
+        fitted[0].config.budget_us = budgets_us[b];
+        fitted[1].config.budget_us = budgets_us[b];
+        fly("stepped", &ladders[0], &fitted[0].config, NULL, picture, records, frames);
+        fly("predicted", &ladders[0], &fitted[0].config, &fitted[0].model, picture, records, frames);
+        fly("predicted", &ladders[1], &fitted[1].config, &fitted[1].model, picture, records, frames);
     }
     memory_free(records);
     memory_free(picture);
+    memory_free(fitted);
     TEST_PASS();
 }
 

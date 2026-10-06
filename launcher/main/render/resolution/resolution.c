@@ -22,8 +22,7 @@
 #define CORRECTION_GAIN              0.125F
 
 resolution_config_t
-resolution_config(int destination_width, int destination_height, const int (*divisors)[2], int count, int recovery_from,
-                  int32_t budget_us) {
+resolution_config(const resolution_step_t* steps, int count, int recovery_from, int32_t budget_us) {
     assert(count > 0 && count <= RESOLUTION_STEPS_MAX && recovery_from > 0 && recovery_from <= count);
     resolution_config_t config = {
         .step_count = count,
@@ -37,8 +36,9 @@ resolution_config(int destination_width, int destination_height, const int (*div
         .panic_steps = DEFAULT_PANIC_STEPS,
     };
     for (int i = 0; i < count; i++) {
-        config.steps[i] =
-            (resolution_step_t){destination_width * 100 / divisors[i][0], destination_height * 100 / divisors[i][1]};
+        /* A caller sizes its buffers for the first step. */
+        assert(i == 0 || (steps[i].width <= steps[i - 1].width && steps[i].height <= steps[i - 1].height));
+        config.steps[i] = steps[i];
     }
     return config;
 }
@@ -47,7 +47,7 @@ void
 resolution_control_init(resolution_control_t* control, const resolution_config_t* config, int first_step) {
     assert(config->window > 0 && config->window <= RESOLUTION_WINDOW_MAX);
     assert(first_step >= 0 && first_step < config->step_count);
-    *control = (resolution_control_t){.config = *config, .step = first_step, .cooldown = config->cooldown};
+    *control = (resolution_control_t){.step = first_step, .cooldown = config->cooldown};
 }
 
 static bool
@@ -71,29 +71,39 @@ move_to(resolution_control_t* c, int step) {
     c->switches++;
 }
 
-int
-resolution_control_update(resolution_control_t* c, int32_t frame_us) {
-    const resolution_config_t* config = &c->config;
-    const int last = config->step_count - 1;
-    if (c->step < last && over_share(frame_us, config->budget_us, config->panic_percent)) {
-        const int to = c->step + config->panic_steps;
-        move_to(c, to > last ? last : to);
-        return c->step;
-    }
+/* Pushes a frame into the window; true once it is full and the cooldown over. */
+static bool
+window_ready(resolution_control_t* c, const resolution_config_t* config, int32_t frame_us) {
     memmove(&c->window_us[1], &c->window_us[0], sizeof(c->window_us[0]) * (size_t)(config->window - 1));
     c->window_us[0] = frame_us;
     c->filled = c->filled < config->window ? c->filled + 1 : c->filled;
     if (c->cooldown_left > 0) {
         c->cooldown_left--;
     }
-    if (c->filled < config->window || c->cooldown_left > 0) {
-        return c->step;
-    }
+    return c->filled >= config->window && c->cooldown_left == 0;
+}
+
+static int32_t
+window_mean(const resolution_control_t* c, const resolution_config_t* config) {
     int64_t sum = 0;
     for (int i = 0; i < config->window; i++) {
         sum += c->window_us[i];
     }
-    const int32_t mean = (int32_t)(sum / config->window);
+    return (int32_t)(sum / config->window);
+}
+
+int
+resolution_control_update(resolution_control_t* c, const resolution_config_t* config, int32_t frame_us) {
+    const int last = config->step_count - 1;
+    if (c->step < last && over_share(frame_us, config->budget_us, config->panic_percent)) {
+        const int to = c->step + config->panic_steps;
+        move_to(c, to > last ? last : to);
+        return c->step;
+    }
+    if (!window_ready(c, config, frame_us)) {
+        return c->step;
+    }
+    const int32_t mean = window_mean(c, config);
     if (c->step < config->recovery_from - 1 && over_share(mean, config->budget_us, config->down_percent)) {
         move_to(c, c->step + 1);
     } else if (c->step >= config->recovery_from && !over_share(mean, config->budget_us, config->down_percent)) {
@@ -118,27 +128,34 @@ features(const resolution_config_t* config, int step, int triangles, float out[4
     out[3] = pixel_share;
 }
 
-/* Gaussian elimination with partial pivoting on a 4x4 system. */
+/* Swaps row `col` with the row below it holding the largest entry in `col`;
+ * false when every one is zero, as for weights the samples cannot separate. */
 static bool
-solve4(double a[4][5]) {
+pivot_rows(float a[4][5], int col) {
+    int pivot = col;
+    for (int row = col + 1; row < 4; row++) {
+        pivot = fabsf(a[row][col]) > fabsf(a[pivot][col]) ? row : pivot;
+    }
+    if (fabsf(a[pivot][col]) < 1e-9F) {
+        return false;
+    }
+    for (int k = 0; k < 5; k++) {
+        const float t = a[col][k];
+        a[col][k] = a[pivot][k];
+        a[pivot][k] = t;
+    }
+    return true;
+}
+
+/* Gauss-Jordan elimination with partial pivoting on a 4x4 system. */
+static bool
+solve4(float a[4][5]) {
     for (int col = 0; col < 4; col++) {
-        int pivot = col;
-        for (int row = col + 1; row < 4; row++) {
-            pivot = fabs(a[row][col]) > fabs(a[pivot][col]) ? row : pivot;
-        }
-        if (fabs(a[pivot][col]) < 1e-12) {
+        if (!pivot_rows(a, col)) {
             return false;
         }
-        for (int k = 0; k < 5; k++) {
-            const double t = a[col][k];
-            a[col][k] = a[pivot][k];
-            a[pivot][k] = t;
-        }
         for (int row = 0; row < 4; row++) {
-            if (row == col) {
-                continue;
-            }
-            const double f = a[row][col] / a[col][col];
+            const float f = row == col ? 0.0F : a[row][col] / a[col][col];
             for (int k = col; k < 5; k++) {
                 a[row][k] -= f * a[col][k];
             }
@@ -155,9 +172,9 @@ resolution_model_fit(resolution_model_t* model, const resolution_config_t* confi
                      int count) {
     /* Triangles are thousands, shares are one: scaled to one size so the
      * normal equations stay well conditioned. */
-    const double scale[4] = {1.0, 1e-3, 1e-3, 1.0};
-    double a[4][5] = {{0}};
-    double upscale_sum[RESOLUTION_STEPS_MAX] = {0};
+    const float scale[4] = {1.0F, 1e-3F, 1e-3F, 1.0F};
+    float a[4][5] = {{0}};
+    float upscale_sum[RESOLUTION_STEPS_MAX] = {0};
     int upscale_n[RESOLUTION_STEPS_MAX] = {0};
     for (int i = 0; i < count; i++) {
         const resolution_sample_t* s = &samples[i];
@@ -165,24 +182,24 @@ resolution_model_fit(resolution_model_t* model, const resolution_config_t* confi
         features(config, s->step, s->triangles, x);
         for (int r = 0; r < 4; r++) {
             for (int k = 0; k < 4; k++) {
-                a[r][k] += (double)x[r] * scale[r] * (double)x[k] * scale[k];
+                a[r][k] += x[r] * scale[r] * x[k] * scale[k];
             }
-            a[r][4] += (double)x[r] * scale[r] * (double)s->draw_us;
+            a[r][4] += x[r] * scale[r] * (float)s->draw_us;
         }
-        upscale_sum[s->step] += (double)s->upscale_us;
+        upscale_sum[s->step] += (float)s->upscale_us;
         upscale_n[s->step]++;
     }
     if (!solve4(a)) {
         return false;
     }
     *model = (resolution_model_t){
-        .base_us = (float)(a[0][4] * scale[0]),
-        .per_triangle_us = (float)(a[1][4] * scale[1]),
-        .per_triangle_row_us = (float)(a[2][4] * scale[2]),
-        .per_pixel_share_us = (float)(a[3][4] * scale[3]),
+        .base_us = a[0][4] * scale[0],
+        .per_triangle_us = a[1][4] * scale[1],
+        .per_triangle_row_us = a[2][4] * scale[2],
+        .per_pixel_share_us = a[3][4] * scale[3],
     };
     for (int step = 0; step < config->step_count; step++) {
-        model->upscale_us[step] = upscale_n[step] > 0 ? (float)(upscale_sum[step] / upscale_n[step]) : 0.0F;
+        model->upscale_us[step] = upscale_n[step] > 0 ? upscale_sum[step] / (float)upscale_n[step] : 0.0F;
     }
     return true;
 }
@@ -200,21 +217,22 @@ void
 resolution_predict_init(resolution_predict_t* predict, const resolution_config_t* config,
                         const resolution_model_t* model, int first_step) {
     assert(first_step >= 0 && first_step < config->step_count);
-    *predict = (resolution_predict_t){.config = *config, .model = *model, .step = first_step, .correction = 1.0F};
+    *predict = (resolution_predict_t){.model = *model, .step = first_step, .correction = 1.0F};
 }
 
 static float
-corrected_us(const resolution_predict_t* p, int step, int triangles) {
-    return p->correction * resolution_model_predict_us(&p->model, &p->config, step, triangles);
+corrected_us(const resolution_predict_t* p, const resolution_config_t* config, int step, int triangles) {
+    return p->correction * resolution_model_predict_us(&p->model, config, step, triangles);
 }
 
 /* The finest step whose corrected cost fits `share` of the budget, among
  * the first `count`; -1 when none does. */
 static int
-finest_fitting(const resolution_predict_t* p, int triangles, int count, int percent) {
-    const float limit = (float)p->config.budget_us * (float)percent / 100.0F;
+finest_fitting(const resolution_predict_t* p, const resolution_config_t* config, int triangles, int count,
+               int percent) {
+    const float limit = (float)config->budget_us * (float)percent / 100.0F;
     for (int step = 0; step < count; step++) {
-        if (corrected_us(p, step, triangles) <= limit) {
+        if (corrected_us(p, config, step, triangles) <= limit) {
             return step;
         }
     }
@@ -222,18 +240,17 @@ finest_fitting(const resolution_predict_t* p, int triangles, int count, int perc
 }
 
 int
-resolution_predict_choose(resolution_predict_t* p, int triangles) {
-    const resolution_config_t* config = &p->config;
-    int chosen = finest_fitting(p, triangles, config->recovery_from, config->down_percent);
+resolution_predict_choose(resolution_predict_t* p, const resolution_config_t* config, int triangles) {
+    int chosen = finest_fitting(p, config, triangles, config->recovery_from, config->down_percent);
     if (chosen < 0) {
-        chosen = finest_fitting(p, triangles, config->step_count, config->down_percent);
+        chosen = finest_fitting(p, config, triangles, config->step_count, config->down_percent);
     }
     if (chosen < 0) {
         chosen = config->step_count - 1;
     }
     if (chosen < p->step) {
         const int margin = config->down_percent - PREDICT_FINER_MARGIN_PERCENT;
-        const int finer = finest_fitting(p, triangles, p->step, margin);
+        const int finer = finest_fitting(p, config, triangles, p->step, margin);
         chosen = finer < 0 ? p->step : finer;
     }
     if (chosen != p->step) {
@@ -244,8 +261,9 @@ resolution_predict_choose(resolution_predict_t* p, int triangles) {
 }
 
 void
-resolution_predict_measured(resolution_predict_t* p, int triangles, int32_t frame_us) {
-    const float predicted = resolution_model_predict_us(&p->model, &p->config, p->step, triangles);
+resolution_predict_measured(resolution_predict_t* p, const resolution_config_t* config, int triangles,
+                            int32_t frame_us) {
+    const float predicted = resolution_model_predict_us(&p->model, config, p->step, triangles);
     if (predicted <= 0.0F) {
         return;
     }

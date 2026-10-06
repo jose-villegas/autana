@@ -146,9 +146,8 @@ setup(int quarter) {
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
     registered->enter();
     if (size_width > 0) {
-        const int divisors[1][2] = {{GFX_WIDTH * 100 / size_width, GFX_HEIGHT * 100 / size_height}};
-        resolution_config_t one = resolution_config(GFX_WIDTH, GFX_HEIGHT, divisors, 1, 1, INT32_MAX);
-        one.steps[0] = (resolution_step_t){size_width, size_height};
+        const resolution_step_t size = {size_width, size_height};
+        const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
         scene_set_dynamic_resolution(&one, NULL, 0);
     }
     if (render_lab_view() != RASTER_SHOW_SHADED && !render_lab_scene_shows_views()) {

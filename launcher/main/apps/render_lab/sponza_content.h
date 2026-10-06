@@ -7,6 +7,7 @@
 #pragma once
 
 #include "gfx/gfx.h"
+#include "render/resolution/resolution.h"
 
 /* The scene's id, and its pack's name. */
 #define SPONZA_SCENE                "sponza"
@@ -33,3 +34,13 @@ typedef enum {
 
 /* The name of the entity that draws each bake, found at load. */
 extern const char* const sponza_bakes[SPONZA_BAKE_COUNT];
+
+/* The sizes dynamic resolution steps through: height first, since a frame's
+ * rows and span setup follow the height, then the width; the last two are
+ * recovery only. The model is suite_raster_scale_perf.c's fit of the full
+ * bake on the board, one upscale per step. */
+#define SPONZA_LADDER_STEPS    8
+#define SPONZA_LADDER_RECOVERY 6
+#define SPONZA_LADDER_HALF     5
+extern const resolution_step_t sponza_ladder[SPONZA_LADDER_STEPS];
+extern const resolution_model_t sponza_ladder_model;

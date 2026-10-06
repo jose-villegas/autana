@@ -17,6 +17,7 @@ dynres-stages, dynres-findings and dynres-policies.
 
 import argparse
 import csv
+import gzip
 import pathlib
 import re
 import sys
@@ -36,7 +37,9 @@ FRAMES = re.compile(r"dynres_frames: (\w+) (\w+) (\d+) (\d+)((?: -?\d+:\d+:\d+:\
 def read_captures(paths):
     splits, spans, ladders, frames = {}, {}, {}, {}
     for path in paths:
-        for line in pathlib.Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
+        raw = pathlib.Path(path).read_bytes()
+        text = (gzip.decompress(raw) if path.endswith(".gz") else raw).decode("utf-8", errors="replace")
+        for line in text.splitlines():
             if m := SPLIT.search(line):
                 size = (int(m[1]), int(m[2]))
                 stages = {name: float(avg) for name, avg, _ in STAGE.findall(m[8])}

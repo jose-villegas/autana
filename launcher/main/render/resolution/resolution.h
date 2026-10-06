@@ -39,14 +39,13 @@ typedef struct {
     int panic_steps;
 } resolution_config_t;
 
-/* The steps as destination size over render size in hundredths per axis,
- * so {200, 200} renders a quarter of the pixels; the rest of the config
- * takes the defaults the stepped controller was tuned with on the board. */
-resolution_config_t resolution_config(int destination_width, int destination_height, const int (*divisors)[2],
-                                      int count, int recovery_from, int32_t budget_us);
+/* `steps`, each no larger than the one before in either axis; the rest of
+ * the config takes the defaults the stepped controller was tuned with on
+ * the board. */
+resolution_config_t resolution_config(const resolution_step_t* steps, int count, int recovery_from, int32_t budget_us);
 
+/* A policy's state; the config is the caller's, passed to every call. */
 typedef struct {
-    resolution_config_t config;
     int step;
     int32_t window_us[RESOLUTION_WINDOW_MAX];
     int filled;
@@ -60,7 +59,7 @@ void resolution_control_init(resolution_control_t* control, const resolution_con
 
 /* Folds in what the last frame at the current step cost and returns the
  * step for the next one. */
-int resolution_control_update(resolution_control_t* control, int32_t frame_us);
+int resolution_control_update(resolution_control_t* control, const resolution_config_t* config, int32_t frame_us);
 
 /* What a step costs, as weights fitted to board frames:
  * base + triangles * (per_triangle + per_triangle_row * height share)
@@ -88,7 +87,6 @@ float resolution_model_predict_us(const resolution_model_t* model, const resolut
                                   int triangles);
 
 typedef struct {
-    resolution_config_t config;
     resolution_model_t model;
     int step;
     float correction; /* measured over predicted, smoothed */
@@ -99,7 +97,8 @@ void resolution_predict_init(resolution_predict_t* predict, const resolution_con
                              const resolution_model_t* model, int first_step);
 
 /* The step for this frame, from the triangles culling kept. */
-int resolution_predict_choose(resolution_predict_t* predict, int triangles);
+int resolution_predict_choose(resolution_predict_t* predict, const resolution_config_t* config, int triangles);
 
 /* What the frame drawn at the chosen step cost, to correct the model by. */
-void resolution_predict_measured(resolution_predict_t* predict, int triangles, int32_t frame_us);
+void resolution_predict_measured(resolution_predict_t* predict, const resolution_config_t* config, int triangles,
+                                 int32_t frame_us);

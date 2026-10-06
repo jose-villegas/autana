@@ -35,6 +35,7 @@ static raster_show_t debug_view = RASTER_SHOW_SHADED;
  * step. The cost fed back is this frame's draw and upscale. */
 static enum { FIXED, STEPPED, PREDICTED } policy;
 
+static resolution_config_t ladder; /* the steps and thresholds both policies read */
 static resolution_control_t control;
 static resolution_predict_t predict;
 static scene_resolution_t resolution;
@@ -112,11 +113,19 @@ scene_set_dynamic_resolution(const resolution_config_t* config, const resolution
         policy = FIXED;
         return;
     }
+    ladder = *config;
     policy = model == NULL ? STEPPED : PREDICTED;
-    resolution_control_init(&control, config, first_step);
-    if (model != NULL) {
-        resolution_predict_init(&predict, config, model, first_step);
+    if (policy == STEPPED) {
+        resolution_control_init(&control, &ladder, first_step);
+    } else {
+        resolution_predict_init(&predict, &ladder, model, first_step);
     }
+}
+
+/* The step the active policy last chose, or -1 at a fixed scale. */
+static int
+current_step(void) {
+    return policy == FIXED ? -1 : (policy == STEPPED ? control.step : predict.step);
 }
 
 scene_resolution_t
@@ -166,8 +175,8 @@ fit_scratch(void) {
     const int width = raster.width;
     const int height = raster.height;
     if (policy != FIXED) {
-        raster.width = control.config.steps[0].width;
-        raster.height = control.config.steps[0].height;
+        raster.width = ladder.steps[0].width;
+        raster.height = ladder.steps[0].height;
     }
     const size_t needed = raster_scratch_bytes(&raster);
     raster.width = width;
@@ -192,9 +201,9 @@ draw_active(int quarter, int width, int height) {
     }
     raster.instances = scene->instances;
     raster.instance_count = count;
-    const int step = policy == STEPPED ? control.step : predict.step;
-    raster.width = policy == FIXED ? width * camera->render_scale_percent / 100 : control.config.steps[step].width;
-    raster.height = policy == FIXED ? height * camera->render_scale_percent / 100 : control.config.steps[step].height;
+    const int step = current_step();
+    raster.width = step < 0 ? width * camera->render_scale_percent / 100 : ladder.steps[step].width;
+    raster.height = step < 0 ? height * camera->render_scale_percent / 100 : ladder.steps[step].height;
     raster.clear = camera->clear;
     raster.upscaled = true; /* scene_compose() names the picture */
     raster.destination_width = width;
@@ -205,13 +214,12 @@ draw_active(int quarter, int width, int height) {
     const camera_t view = r3d_scene_camera_at(&camera->lens, scene->elapsed_ms);
     const int64_t draw_began_us = timing_now_us();
     if (policy == PREDICTED) {
-        const resolution_step_t* chosen =
-            &predict.config
-                 .steps[resolution_predict_choose(&predict, raster_census(&raster, &view, quarter).triangles)];
-        raster.width = chosen->width;
-        raster.height = chosen->height;
+        const int chosen =
+            resolution_predict_choose(&predict, &ladder, raster_census(&raster, &view, quarter).triangles);
+        raster.width = ladder.steps[chosen].width;
+        raster.height = ladder.steps[chosen].height;
     }
-    resolution.step = policy == FIXED ? -1 : (policy == STEPPED ? control.step : predict.step);
+    resolution.step = current_step();
     resolution.width = raster.width;
     resolution.height = raster.height;
     stats = raster_draw(&raster, &view, quarter);
@@ -251,9 +259,9 @@ scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target) {
         resolution.upscale_us = (int32_t)(timing_now_us() - upscale_began_us);
         const int32_t cost_us = resolution.draw_us + resolution.upscale_us;
         if (policy == STEPPED) {
-            (void)resolution_control_update(&control, cost_us);
+            (void)resolution_control_update(&control, &ladder, cost_us);
         } else if (policy == PREDICTED) {
-            resolution_predict_measured(&predict, stats.triangles, cost_us);
+            resolution_predict_measured(&predict, &ladder, stats.triangles, cost_us);
         }
     }
     rendered = false;

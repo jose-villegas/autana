@@ -26,6 +26,25 @@
 
 static const char* TAG = "sponza";
 
+/* The budget last handed to the scene; -1 for none yet. */
+static int applied_budget_ms = -1;
+
+static void
+apply_budget(void) {
+    const int budget_ms = render_lab_budget_ms();
+    if (budget_ms == applied_budget_ms) {
+        return;
+    }
+    applied_budget_ms = budget_ms;
+    if (budget_ms == 0) {
+        scene_set_dynamic_resolution(NULL, NULL, 0);
+        return;
+    }
+    const resolution_config_t config =
+        resolution_config(sponza_ladder, SPONZA_LADDER_STEPS, SPONZA_LADDER_RECOVERY, budget_ms * 1000);
+    scene_set_dynamic_resolution(&config, &sponza_ladder_model, SPONZA_LADDER_HALF);
+}
+
 static scene_t* sponza;
 
 /* What the panel says in place of the triangle count when the scene could not
@@ -76,6 +95,8 @@ enter_with(sponza_bake_t shown) {
     }
     (void)scene_activate(sponza, NULL);
     scene_set_render_scale(10000 / render_lab_scale());
+    applied_budget_ms = -1;
+    apply_budget();
 #if TUNE_ENABLED
     scene_set_debug_view(render_lab_view());
 #endif
@@ -108,6 +129,7 @@ scene_sponza_fitted_full_enter(void) {
 
 static void
 scene_sponza_exit(void) {
+    scene_set_dynamic_resolution(NULL, NULL, 0);
     scene_unload(sponza);
     sponza = NULL;
 }
@@ -121,6 +143,7 @@ static void
 scene_sponza_frame(uint32_t dt_ms, bool band_mode_active) {
     (void)dt_ms;
     assert(!band_mode_active); /* needs_full_framebuffer keeps the app out of band mode for this scene */
+    apply_budget();
 #if TUNE_ENABLED
     scene_set_debug_view(render_lab_view());
 #endif
