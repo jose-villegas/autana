@@ -161,8 +161,8 @@ wire_mark_bbox_dirty(void) {
         return;
     }
 
-    render_lab_coverage_mark(&last_coverage, frame.segment_count > 0, frame.bbox_x0, frame.bbox_y0, frame.bbox_x1,
-                             frame.bbox_y1);
+    render_lab_coverage_mark(&last_coverage, frame.segment_count > 0, frame.bbox.x0, frame.bbox.y0, frame.bbox.x1,
+                             frame.bbox.y1);
 }
 
 static void

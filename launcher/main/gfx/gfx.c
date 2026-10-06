@@ -1,5 +1,6 @@
 #include "gfx/gfx.h"
 #include "gfx/gfx_band_run.h"
+#include "gfx/gfx_box.h"
 #include "gfx/gfx_dirty.h"
 #include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font_roles.h"
@@ -648,9 +649,9 @@ static bool interlace_on;
 static int frame_parity; /* read only inside run_present_normal(), below */
 #endif
 static bool prev_bbox_valid;
-static int prev_bbox_x0, prev_bbox_y0, prev_bbox_x1, prev_bbox_y1;
+static gfx_box_t prev_bbox;
 static bool drawn_bbox_valid;
-static int drawn_bbox_x0, drawn_bbox_y0, drawn_bbox_x1, drawn_bbox_y1;
+static gfx_box_t drawn_bbox;
 
 void
 gfx_set_partial_clear(bool on) {
@@ -753,30 +754,6 @@ gfx_full_redraw_clear_pending(void) {
     gfx_full_redraw_unlatch();
 }
 
-static void
-drawn_bbox_extend(int x0, int y0, int x1, int y1) {
-    if (!drawn_bbox_valid) {
-        drawn_bbox_x0 = x0;
-        drawn_bbox_y0 = y0;
-        drawn_bbox_x1 = x1;
-        drawn_bbox_y1 = y1;
-        drawn_bbox_valid = true;
-        return;
-    }
-    if (x0 < drawn_bbox_x0) {
-        drawn_bbox_x0 = x0;
-    }
-    if (y0 < drawn_bbox_y0) {
-        drawn_bbox_y0 = y0;
-    }
-    if (x1 > drawn_bbox_x1) {
-        drawn_bbox_x1 = x1;
-    }
-    if (y1 > drawn_bbox_y1) {
-        drawn_bbox_y1 = y1;
-    }
-}
-
 void
 gfx_mark_dirty(int x, int y, int w, int h) {
     GFX_PRESENT_GUARD();
@@ -793,7 +770,8 @@ gfx_mark_dirty(int x, int y, int w, int h) {
         return;
     }
 
-    drawn_bbox_extend(x0, y0, x1, y1);
+    gfx_box_extend(&drawn_bbox, drawn_bbox_valid, x0, y0, x1, y1);
+    drawn_bbox_valid = true;
 }
 
 bool
@@ -848,13 +826,13 @@ gfx_clear(gfx_color_t color) {
         return;
     }
     if (!band_render_active && partial_clear_on && prev_bbox_valid) {
-        for (int y = prev_bbox_y0; y < prev_bbox_y1; y++) {
-            gfx_color_t* dst = fb + (size_t)y * GFX_WIDTH + prev_bbox_x0;
-            for (int x = prev_bbox_x0; x < prev_bbox_x1; x++) {
+        for (int y = prev_bbox.y0; y < prev_bbox.y1; y++) {
+            gfx_color_t* dst = fb + (size_t)y * GFX_WIDTH + prev_bbox.x0;
+            for (int x = prev_bbox.x0; x < prev_bbox.x1; x++) {
                 *dst++ = color;
             }
         }
-        dirty_mark(prev_bbox_x0, prev_bbox_y0, prev_bbox_x1 - prev_bbox_x0, prev_bbox_y1 - prev_bbox_y0);
+        dirty_mark(prev_bbox.x0, prev_bbox.y0, prev_bbox.x1 - prev_bbox.x0, prev_bbox.y1 - prev_bbox.y0);
         drawn_bbox_valid = false;
         return;
     }
@@ -2273,10 +2251,7 @@ run_present_normal(void) {
     }
 
     if (partial_clear_on && drawn_bbox_valid) {
-        prev_bbox_x0 = drawn_bbox_x0;
-        prev_bbox_y0 = drawn_bbox_y0;
-        prev_bbox_x1 = drawn_bbox_x1;
-        prev_bbox_y1 = drawn_bbox_y1;
+        prev_bbox = drawn_bbox;
         prev_bbox_valid = true;
     } else if (!partial_clear_on) {
         prev_bbox_valid = false;

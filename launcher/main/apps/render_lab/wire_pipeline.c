@@ -76,34 +76,6 @@ clip_to_screen(int64_t* x0, int64_t* y0, int64_t* x1, int64_t* y1, int screen_w,
     return false;
 }
 
-static void
-expand_bbox(wire_frame_t* frame, int x0, int y0, int x1, int y1) {
-    const int min_x = x0 < x1 ? x0 : x1;
-    const int max_x = (x0 > x1 ? x0 : x1) + 1;
-    const int min_y = y0 < y1 ? y0 : y1;
-    const int max_y = (y0 > y1 ? y0 : y1) + 1;
-
-    if (frame->segment_count == 0) {
-        frame->bbox_x0 = min_x;
-        frame->bbox_y0 = min_y;
-        frame->bbox_x1 = max_x;
-        frame->bbox_y1 = max_y;
-        return;
-    }
-    if (min_x < frame->bbox_x0) {
-        frame->bbox_x0 = min_x;
-    }
-    if (min_y < frame->bbox_y0) {
-        frame->bbox_y0 = min_y;
-    }
-    if (max_x > frame->bbox_x1) {
-        frame->bbox_x1 = max_x;
-    }
-    if (max_y > frame->bbox_y1) {
-        frame->bbox_y1 = max_y;
-    }
-}
-
 void
 wire_transform(const wire_mesh_t* mesh, const r3d_line_view_t* view, wire_frame_t* frame) {
     assert(mesh->vertex_count <= frame->cs_capacity);
@@ -148,7 +120,12 @@ wire_project_edges(const wire_mesh_t* mesh, const r3d_line_view_t* view, int scr
             return false;
         }
 
-        expand_bbox(frame, (int)x0, (int)y0, (int)x1, (int)y1);
+        ax = (int)x0;
+        ay = (int)y0;
+        bx = (int)x1;
+        by = (int)y1;
+        gfx_box_extend(&frame->bbox, frame->segment_count != 0, ax < bx ? ax : bx, ay < by ? ay : by,
+                       (ax > bx ? ax : bx) + 1, (ay > by ? ay : by) + 1);
 
         wire_segment_t* segment = &frame->segments[frame->segment_count++];
         segment->x0 = (int16_t)x0;

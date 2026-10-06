@@ -14,6 +14,7 @@
 
 #include "esp_log.h"
 #include "gfx/gfx.h"
+#include "gfx/gfx_box.h"
 #include "render/r3d_line_camera.h"
 #include "render/r3d_span.h"
 #include "render_lab.h"
@@ -68,7 +69,7 @@ static uint32_t elapsed_ms;
 
 /* This frame's cube coverage and last frame's: band mode marks both dirty,
  * because a band the cube left still needs erasing. */
-static int cube_bbox_x0, cube_bbox_y0, cube_bbox_x1, cube_bbox_y1;
+static gfx_box_t cube_bbox;
 static bool cube_bbox_valid;
 static render_lab_coverage_t last_coverage;
 
@@ -156,30 +157,6 @@ cube_triangle_bounds(const cube_projected_t transformed[3], int* x0, int* x1, in
     }
 }
 
-static void
-cube_expand_bbox(const cube_triangle_bin_t* entry, int x0, int x1) {
-    if (!cube_bbox_valid) {
-        cube_bbox_x0 = x0;
-        cube_bbox_y0 = entry->y0;
-        cube_bbox_x1 = x1;
-        cube_bbox_y1 = entry->y1;
-        cube_bbox_valid = true;
-    } else {
-        if (x0 < cube_bbox_x0) {
-            cube_bbox_x0 = x0;
-        }
-        if (entry->y0 < cube_bbox_y0) {
-            cube_bbox_y0 = entry->y0;
-        }
-        if (x1 > cube_bbox_x1) {
-            cube_bbox_x1 = x1;
-        }
-        if (entry->y1 > cube_bbox_y1) {
-            cube_bbox_y1 = entry->y1;
-        }
-    }
-}
-
 /* The vertex in pixels, with its camera-space depth. */
 static cube_projected_t
 cube_project(int corner, const r3d_line_view_t* view) {
@@ -249,7 +226,8 @@ cube_bin_triangles(void) {
         entry->y0 = y0 < 0 ? 0 : y0;
         entry->y1 = (y1 + 1 > GFX_HEIGHT) ? GFX_HEIGHT : y1 + 1;
 
-        cube_expand_bbox(entry, x0, x1);
+        gfx_box_extend(&cube_bbox, cube_bbox_valid, x0, entry->y0, x1, entry->y1);
+        cube_bbox_valid = true;
     }
 }
 
@@ -288,8 +266,8 @@ cube_rasterize_frame(void) {
         cube_draw_rows(gfx_framebuffer() + ((size_t)row0 * GFX_WIDTH), row0, row0 + GFX_BAND_HEIGHT);
     }
 
-    if (render_lab_partial_updates && cube_bbox_valid && cube_bbox_x1 > cube_bbox_x0 && cube_bbox_y1 > cube_bbox_y0) {
-        gfx_mark_dirty(cube_bbox_x0, cube_bbox_y0, cube_bbox_x1 - cube_bbox_x0, cube_bbox_y1 - cube_bbox_y0);
+    if (render_lab_partial_updates && cube_bbox_valid && cube_bbox.x1 > cube_bbox.x0 && cube_bbox.y1 > cube_bbox.y0) {
+        gfx_mark_dirty(cube_bbox.x0, cube_bbox.y0, cube_bbox.x1 - cube_bbox.x0, cube_bbox.y1 - cube_bbox.y0);
     }
 }
 
@@ -301,7 +279,7 @@ void
 cube_transform_and_bin(void) {
     cube_bin_triangles();
 
-    render_lab_coverage_mark(&last_coverage, cube_bbox_valid, cube_bbox_x0, cube_bbox_y0, cube_bbox_x1, cube_bbox_y1);
+    render_lab_coverage_mark(&last_coverage, cube_bbox_valid, cube_bbox.x0, cube_bbox.y0, cube_bbox.x1, cube_bbox.y1);
 }
 
 void
