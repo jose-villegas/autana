@@ -56,8 +56,8 @@ build_mixed_gravity_flip_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
     sand_init(real, big, REAL_W, REAL_H, 17u);
     sand_enable_sleeping(real, blocks);
 
-    const int sand_x1 = (REAL_W * 3) / 10;           /* ~30% from the left */
-    const int water_x0 = REAL_W - (REAL_W * 3) / 10; /* ~30% from the right */
+    const int sand_x1 = (REAL_W * 3) / 10;             /* ~30% from the left */
+    const int water_x0 = REAL_W - ((REAL_W * 3) / 10); /* ~30% from the right */
 
     for (int y = REAL_H / 2; y < REAL_H; y++) {
         for (int x = 0; x < sand_x1; x++) {
@@ -113,7 +113,7 @@ liquid_near_cell_bound(const sand_t* s) {
         const int y_lo = by * SAND_BLOCK_H;
         const int y_hi = (y_lo + SAND_BLOCK_H < s->h) ? y_lo + SAND_BLOCK_H : s->h;
         for (int bx = 0; bx < s->block_cols; bx++) {
-            if ((s->block_state[(size_t)by * (size_t)s->block_cols + (size_t)bx] & BLOCK_LIQUID_NEAR) == 0) {
+            if ((s->block_state[((size_t)by * (size_t)s->block_cols) + (size_t)bx] & BLOCK_LIQUID_NEAR) == 0) {
                 continue;
             }
             const int x_lo = bx * SAND_BLOCK_W;
@@ -1377,7 +1377,7 @@ time_a_quarter_turn(sand_t* real, int steps, int64_t* worst_out) {
     int64_t worst = 0;
     const int64_t start = timing_now_us();
     for (int i = 0; i < steps; i++) {
-        gx_q8 += (int32_t)(((int64_t)(1000 * 256 - gx_q8) * dt_ms) / (tau_ms + dt_ms));
+        gx_q8 += (int32_t)(((int64_t)((1000 * 256) - gx_q8) * dt_ms) / (tau_ms + dt_ms));
         gy_q8 += (int32_t)(((int64_t)(0 - gy_q8) * dt_ms) / (tau_ms + dt_ms));
 
         const int64_t t0 = timing_now_us();
@@ -1472,7 +1472,7 @@ test_the_wood_leaf_shading_on_a_grove(void) {
     const int64_t c0 = timing_now_us();
     for (int rep = 0; rep < 20; rep++) {
         for (int y = 0; y < REAL_H; y++) {
-            const uint8_t* row = big + (size_t)y * REAL_W;
+            const uint8_t* row = big + ((size_t)y * REAL_W);
             for (int x = 0; x < REAL_W; x++) {
                 sink += material_grain_hash(x, y);
                 sink += (row[x] == MATX(MATX_LEAF)) || (row[x] == CELL_MAKE(MAT_WOOD, 0));
@@ -1643,7 +1643,7 @@ test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget(void) {
      * of it: a turning board keeps stirring steam into fresh 2x2 patches,
      * so the loss is larger here and varies run to run. */
     if (!gas_ab_reporting) {
-        TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(total - total / 8, count,
+        TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(total - (total / 8), count,
                                                  "turning the board must not empty it - steam condensing into water "
                                                  "loses three cells a patch, but a packed screen that has shed an "
                                                  "eighth of itself is not the scene this row means to time");
@@ -2277,7 +2277,7 @@ test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget(void) {
     /* host twin forces off with sand_set_condenses() due to budget pegged
      * with condensation running. Screen did not quietly empty into unmeasured
      * state. */
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(total - total / 16, count,
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(total - (total / 16), count,
                                              "setup: a screen of smoke and steam must still be essentially full "
                                              "at the end of the window - steam condensing into water loses three "
                                              "cells a patch, but losing an appreciable fraction of the board "
@@ -3223,7 +3223,7 @@ test_present_cost_against_a_falling_sand_scene(void) {
     sand_t* const real = malloc(sizeof *real);
     TEST_ASSERT_NOT_NULL(real);
     build_falling_sand_present_scene(real, big, dirty_rows, row_x0, row_x1, row_n);
-    TEST_ASSERT_EQUAL_UINT8(1, dirty_rows[REAL_H / 2 - 1]);
+    TEST_ASSERT_EQUAL_UINT8(1, dirty_rows[(REAL_H / 2) - 1]);
 
 #ifdef DEVICE_BUILD
     int full_bands = 0, gathered = 0, partial_bands = 0;
@@ -3282,7 +3282,7 @@ test_a_real_frame_is_sim_plus_present_on_a_falling_sand_scene(void) {
     sand_t* const real = malloc(sizeof *real);
     TEST_ASSERT_NOT_NULL(real);
     build_falling_sand_present_scene(real, big, dirty_rows, row_x0, row_x1, row_n);
-    TEST_ASSERT_EQUAL_UINT8(1, dirty_rows[REAL_H / 2 - 1]);
+    TEST_ASSERT_EQUAL_UINT8(1, dirty_rows[(REAL_H / 2) - 1]);
 
 #ifdef DEVICE_BUILD
     int full_bands = 0, gathered = 0, partial_bands = 0;
@@ -3913,7 +3913,7 @@ water_slope_liquid_near_blocks(const sand_t* s) {
     int n = 0;
     for (int by = 0; by < s->block_rows; by++) {
         for (int bx = 0; bx < s->block_cols; bx++) {
-            if ((s->block_state[(size_t)by * (size_t)s->block_cols + (size_t)bx] & BLOCK_LIQUID_NEAR) != 0) {
+            if ((s->block_state[((size_t)by * (size_t)s->block_cols) + (size_t)bx] & BLOCK_LIQUID_NEAR) != 0) {
                 n++;
             }
         }
@@ -4143,7 +4143,7 @@ test_water_slope_gravity_flip_logs_a_per_step_table(void) {
         water_slope_step_and_log(real, LANDSCAPE_GX, 0, "settle", i);
     }
     for (int i = 1; i <= WATER_SLOPE_FLIP_TURN_STEPS; i++) {
-        const int gx = LANDSCAPE_GX - (LANDSCAPE_GX * i) / WATER_SLOPE_FLIP_TURN_STEPS;
+        const int gx = LANDSCAPE_GX - ((LANDSCAPE_GX * i) / WATER_SLOPE_FLIP_TURN_STEPS);
         const int gy = (WATER_SLOPE_PORTRAIT_GY * i) / WATER_SLOPE_FLIP_TURN_STEPS;
         water_slope_step_and_log(real, gx, gy, "to_port", i);
     }
@@ -4152,7 +4152,7 @@ test_water_slope_gravity_flip_logs_a_per_step_table(void) {
     }
     for (int i = 1; i <= WATER_SLOPE_FLIP_TURN_STEPS; i++) {
         const int gx = (LANDSCAPE_GX * i) / WATER_SLOPE_FLIP_TURN_STEPS;
-        const int gy = WATER_SLOPE_PORTRAIT_GY - (WATER_SLOPE_PORTRAIT_GY * i) / WATER_SLOPE_FLIP_TURN_STEPS;
+        const int gy = WATER_SLOPE_PORTRAIT_GY - ((WATER_SLOPE_PORTRAIT_GY * i) / WATER_SLOPE_FLIP_TURN_STEPS);
         water_slope_step_and_log(real, gx, gy, "to_land", i);
     }
     for (int i = 0; i < WATER_SLOPE_FLIP_HOLD_STEPS; i++) {
@@ -4184,12 +4184,12 @@ test_water_slope_captured_scene_diagonal_flip_logs_a_per_step_table(void) {
     const long mass_before = water_slope_water_mass(real);
 
     for (int i = 1; i <= WATER_SLOPE_CAPTURED_SWEEP_STEPS; i++) {
-        const int gx =
-            WATER_SLOPE_CAPTURED_TILT1_GX
-            + ((WATER_SLOPE_CAPTURED_TILT2_GX - WATER_SLOPE_CAPTURED_TILT1_GX) * i) / WATER_SLOPE_CAPTURED_SWEEP_STEPS;
-        const int gy =
-            WATER_SLOPE_CAPTURED_TILT1_GY
-            + ((WATER_SLOPE_CAPTURED_TILT2_GY - WATER_SLOPE_CAPTURED_TILT1_GY) * i) / WATER_SLOPE_CAPTURED_SWEEP_STEPS;
+        const int gx = WATER_SLOPE_CAPTURED_TILT1_GX
+                       + (((WATER_SLOPE_CAPTURED_TILT2_GX - WATER_SLOPE_CAPTURED_TILT1_GX) * i)
+                          / WATER_SLOPE_CAPTURED_SWEEP_STEPS);
+        const int gy = WATER_SLOPE_CAPTURED_TILT1_GY
+                       + (((WATER_SLOPE_CAPTURED_TILT2_GY - WATER_SLOPE_CAPTURED_TILT1_GY) * i)
+                          / WATER_SLOPE_CAPTURED_SWEEP_STEPS);
         water_slope_step_and_log(real, gx, gy, "captured", i);
     }
 
