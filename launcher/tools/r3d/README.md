@@ -162,8 +162,8 @@ $PY tools/r3d/bake_fidelity.py SCENE.scene.toml --mesh FLAT_MESH --script HOST  
 ```
 
 It bakes the simplified geometry once, re-lights it for each variant into
-`scratch/` (nothing tracked is written), packs that mesh in place of the
-tracked one for the host renderer (`AUTANA_ASSET_DIR`), renders
+`scratch/` (nothing tracked is written), writes packs with that mesh in place of
+the tracked one for the host renderer (`AUTANA_ASSET_DIR`), renders
 the poses and scores them with `render_compare.py`. A variant is
 `samples=fixed:N` or `auto:MIN:MAX:AREA` (`median*K` for AREA), `sky=N`,
 and `place=stratified|centroid`. Without `--variant` the

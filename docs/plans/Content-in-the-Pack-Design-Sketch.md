@@ -33,8 +33,8 @@ flowchart LR
 
 One pack for all content can neither scale nor move outside the image:
 every first reader pays to check every entry, and nothing can be shipped,
-replaced or left on a card alone. Content comes in **packs**, each one a
-pack in today's `APAK` format, unchanged: its own header, table and CRC.
+replaced or left on a card alone. Content comes in **packs**, one per root
+asset, each in today's `APAK` format, unchanged: its own header, table and CRC.
 Checking a pack costs its own size only.
 
 **A pack is named after its root asset and holds what that asset relates
