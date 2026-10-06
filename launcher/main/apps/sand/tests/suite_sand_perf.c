@@ -1628,7 +1628,7 @@ test_a_growing_plant_bed_fits_in_the_frame_budget(void) {
     free(blocks);
 
     /* Soak/dry is 28% of this step. */
-    perf_target("growing plant bed", per_step, 45210, 52840);
+    perf_target("growing plant bed", per_step, 44120, 52840);
     free(real);
 }
 
@@ -1669,7 +1669,7 @@ test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
     free(blocks);
 
     /* Perf-scoped, with the block at 16x32. */
-    perf_target("campfire on sand", per_step, 26100, 30010);
+    perf_target("campfire on sand", per_step, 25850, 30010);
     free(real);
 }
 
@@ -2587,7 +2587,7 @@ test_the_wet_earth_scene_fits_in_the_frame_budget(void) {
     free(blocks);
 
     /* Perf-scoped, with the block at 16x32. */
-    perf_target("wet earth", per_step, 31620, 37620);
+    perf_target("wet earth", per_step, 31050, 37620);
     free(real);
 }
 
@@ -2788,18 +2788,18 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
  */
 
 /* Perf-scoped goals for the three plant-scene rows. */
-#define PLANT_RUIN_BUDGET_US    62240
+#define PLANT_RUIN_BUDGET_US    60840
 #define FILLING_BASIN_BUDGET_US 15740
-#define SNOWFALL_BUDGET_US      34990
+#define SNOWFALL_BUDGET_US      34590
 
 /* Perf-scoped; among the dearest scenes in the suite. */
-#define PLANT_POUR_BUDGET_US    54490
+#define PLANT_POUR_BUDGET_US    53660
 
 /* What is left after a landed plant stopped arming the reaction pass (see
  * may_have_faller/faller_may_move in sand.h) is the sweep's own block scan. */
 #define PLANT_IDLE_BUDGET_US    140
 
-#define MATURE_TREE_BUDGET_US   21470
+#define MATURE_TREE_BUDGET_US   21300
 
 /* A grown plant bed with acid eating down to its roots on one side of a wall
  * and lava burning its canopy on the other (build_plant_ruin_scene(), shared
