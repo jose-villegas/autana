@@ -9,7 +9,7 @@
  * No device, no serial, no file the firmware knows about: gfx_init()
  * mallocs a plain framebuffer, the scene draws into it exactly as it would
  * on the real panel, and this reads gfx_framebuffer() straight back out.
- * The BMP encoding is util/screenshot.h's, already pure, already
+ * The BMP encoding is util/encode/screenshot.h's, already pure, already
  * host-portable, already tested (test/suites/suite_screenshot.c). --video
  * appends every drawn frame through render_video.c instead of keeping only
  * the last.
@@ -26,7 +26,7 @@
 #include "render_video.h"
 #include "render_watch.h"
 #include "ui/ui_transform.h"
-#include "util/screenshot.h"
+#include "util/encode/screenshot.h"
 
 #include "scene/scene_shell.h"
 

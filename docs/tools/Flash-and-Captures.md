@@ -120,7 +120,7 @@ silent after the reset.
 A line typed in an `autana` session that is not a command goes to the board as
 typed, and `autana tune` is built on the same call: it writes one console line
 and prints the device's replies to it, under the lock like everything else.
-The firmware's `util/tune` answers `SET <name> <value>`, `GET <name>` and
+The firmware's `util/runtime/tune` answers `SET <name> <value>`, `GET <name>` and
 `TUNE` on a development build.
 
 A reply is everything from `--reply` (default `TUNE`) to the end of its

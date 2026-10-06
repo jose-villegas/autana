@@ -6,7 +6,7 @@
  * mathx_dot3_narrow() fast paths, which wrap and floor; saturation turns
  * overflow into a bounded coordinate. A divide by zero saturates by the
  * numerator's sign (0 / 0 is 0). Other products round to nearest, ties away
- * from zero. Angles are Q16.16 turns whose low 16 bits are util/trig.h phases;
+ * from zero. Angles are Q16.16 turns whose low 16 bits are util/scalar/trig.h phases;
  * a sine or cosine of +-1.0 comes back as +-65534. Header-only, static
  * inline and ESP-IDF-free.
  */
@@ -14,8 +14,8 @@
 
 #include <stdint.h>
 
-#include "util/fixed.h"
-#include "util/trig.h"
+#include "util/scalar/fixed.h"
+#include "util/scalar/trig.h"
 
 #define MATHX_SHIFT 16
 #define MATHX_ONE   (1 << MATHX_SHIFT)

@@ -8,7 +8,7 @@
 #include "material_palette.h"
 #include "sand_limits.h"
 #include "sand_paint.h"
-#include "util/intmath.h"
+#include "util/scalar/intmath.h"
 
 #define SAND_PAINT_ROW_FLAG_SHINE          (1u << 0)
 #define SAND_PAINT_ROW_FLAG_LIQUID         (1u << 1)

@@ -850,7 +850,7 @@ def decode_crash_addresses(data, elf):
     return decode_addresses([address.decode("ascii") for address in addresses], elf)
 
 
-# The firmware's frame watch warning (launcher/main/util/frame_watch.c):
+# The firmware's frame watch warning (launcher/main/util/runtime/frame_watch.c):
 # `FRAME_WATCH <kind> in <n> of <window> frames at 0x<site>`, a log line's
 # format after it. tests/test_device.py holds this to that file's own text.
 FRAME_WATCH_LINE_RE = re.compile(r"FRAME_WATCH (alloc|free|console) in (\d+) of (\d+) frames at (0x[0-9a-fA-F]{8})")

@@ -14,7 +14,7 @@
 #include "rt_cornell_scene.h"
 #include "rt_geometry.h"
 #include "rt_refine.h"
-#include "util/job.h"
+#include "util/runtime/job.h"
 
 #define RT_PATH_MAX_DEPTH   3
 #define RT_PATH_SHADOW_BIAS 0.001f

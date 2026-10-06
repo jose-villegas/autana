@@ -1,4 +1,4 @@
-#include "util/frame_cost.h"
+#include "util/runtime/frame_cost.h"
 
 #if FRAME_COST_ENABLED
 
@@ -8,7 +8,7 @@
 #include "xtensa/xt_perf_consts.h"
 #include "xtensa_perfmon_access.h"
 
-#include "util/timing.h"
+#include "util/runtime/timing.h"
 
 /* select/mask pairs from xtensa/xt_perf_consts.h. */
 #define FRAME_COST_EVENTS(X)                                                                                           \

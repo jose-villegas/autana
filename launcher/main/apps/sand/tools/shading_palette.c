@@ -41,7 +41,7 @@
 #include "material_palette.h"
 #include "sand.h"
 #include "sand_paint_row.h"
-#include "util/intmath.h"
+#include "util/scalar/intmath.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846

@@ -26,9 +26,9 @@
 #include "ui/ui_control_center.h"
 #include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"
-#include "util/frame_cost.h"
-#include "util/frame_watch.h"
-#include "util/memory.h"
+#include "util/runtime/frame_cost.h"
+#include "util/runtime/frame_watch.h"
+#include "util/runtime/memory.h"
 
 #include "esp_log.h"
 

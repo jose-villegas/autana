@@ -4,7 +4,7 @@
 #include "asset/asset_store_backend.h"
 #include "esp_log.h"
 #include "esp_partition.h"
-#include "util/memory.h"
+#include "util/runtime/memory.h"
 
 /* The first of the data subtypes ESP-IDF leaves for an application. */
 #define ASSET_PARTITION_SUBTYPE 0x40

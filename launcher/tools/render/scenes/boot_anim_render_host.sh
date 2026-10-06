@@ -19,7 +19,7 @@ scene_name=boot_anim
 scene_sources="
 main/anim/anim_track.c
 main/gfx/gfx.c
-main/util/tune.c
+main/util/runtime/tune.c
 main/boot/boot_anim.c
 main/boot/boot_anim_tracks_generated.c
 tools/render/scenes/boot_anim_render_host.c

@@ -24,7 +24,7 @@
 #include "test_anim_tracks.h"
 #include "test_cleanup.h"
 #include "test_pack.h"
-#include "util/memory.h"
+#include "util/runtime/memory.h"
 
 #ifndef DEVICE_BUILD
 #include <stdio.h>

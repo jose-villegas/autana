@@ -133,7 +133,7 @@ test_name_plus_space_carries_args_without_the_verb_or_the_space(void) {
 }
 
 /* SET must not answer to SETTLE, and TUNE must not answer to TUNES: the
- * same pair suite_tune.c already pins one level up (util/tune.c). Proven
+ * same pair suite_tune.c already pins one level up (util/runtime/tune.c). Proven
  * here too since this level is where the "name, or name-plus-space" rule
  * actually lives now. */
 static void

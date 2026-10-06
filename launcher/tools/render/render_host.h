@@ -5,7 +5,7 @@
  * `render_scene` below: what to draw, at which quarter turn, over how many
  * frames, and what synthetic touch to feed each one. render_host.c owns
  * main(), gfx_init() on a malloc framebuffer, the frame loop, the rotation
- * to the read orientation and the BMP encode from util/screenshot.h.
+ * to the read orientation and the BMP encode from util/encode/screenshot.h.
  *
  * Common options, parsed here, the rest handed to the scene's own
  * options():

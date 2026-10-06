@@ -22,7 +22,7 @@
 #include "render_lab_view.h"
 #include "scene/scene.h"
 #include "sponza_content.h"
-#include "util/tune.h"
+#include "util/runtime/tune.h"
 
 static const char* TAG = "sponza";
 

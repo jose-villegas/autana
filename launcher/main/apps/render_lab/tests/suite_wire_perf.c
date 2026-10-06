@@ -25,8 +25,8 @@
 #include "gfx/gfx_band_run.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
-#include "util/memory.h"
-#include "util/timing.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/timing.h"
 
 /* app_render_lab.c's own lifecycle and toggles. */
 extern bool render_lab_band_mode;

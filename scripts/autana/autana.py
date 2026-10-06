@@ -744,7 +744,7 @@ def send(line, reply="TUNE", optional=False, seconds=None, until=None):
     """One console line to the device, under the lock. Returns (exit code,
     reply lines). `reply` is what the answer's lines start with. `until` are
     the prefixes that end the answer; one reply-line verb needs only
-    `[reply]` itself (device.py's default when `until` is omitted; util/tune's
+    `[reply]` itself (device.py's default when `until` is omitted; util/runtime/tune's
     three endings are its own default for `reply="TUNE"`), a multi-line one
     (an app's own command) passes `[<PREFIX>_END, <PREFIX>_ERR]`. `optional`
     is for a verb that answers only when something is wrong (TOUCH, IMU): a

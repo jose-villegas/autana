@@ -129,9 +129,9 @@ $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/boot_anim_tracks_generated.c
 $MAIN_DIR/selftest/post_layout.c
-$MAIN_DIR/util/job.c
-$MAIN_DIR/util/memory.c
-$MAIN_DIR/util/settings_policy.c
+$MAIN_DIR/util/runtime/job.c
+$MAIN_DIR/util/runtime/memory.c
+$MAIN_DIR/util/runtime/settings_policy.c
 $MAIN_DIR/anim/anim_track.c
 $MAIN_DIR/anim/anim_tracks.c
 $MAIN_DIR/asset/asset_pack.c
@@ -149,7 +149,7 @@ $MAIN_DIR/render/r3d_scene.c
 $MAIN_DIR/scene/scene.c
 $MAIN_DIR/scene/scene_asset.c
 $MAIN_DIR/scene/scene_draw.c
-$MAIN_DIR/util/tune.c
+$MAIN_DIR/util/runtime/tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/gfx/gfx.c

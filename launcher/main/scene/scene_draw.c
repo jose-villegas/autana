@@ -3,8 +3,8 @@
 
 #include "gfx/gfx_color.h"
 #include "scene/scene_internal.h"
-#include "util/memory.h"
-#include "util/tune.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/tune.h"
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
 

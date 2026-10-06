@@ -29,8 +29,8 @@
 #include "ui/ui_style.h"
 #include "ui/ui_transform.h"
 #include "ui/ui_widgets.h"
-#include "util/timing.h"
-#include "util/tune.h"
+#include "util/runtime/timing.h"
+#include "util/runtime/tune.h"
 
 static const char* TAG = "input_lab";
 

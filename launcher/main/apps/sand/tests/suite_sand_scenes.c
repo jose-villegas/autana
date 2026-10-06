@@ -31,7 +31,7 @@
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
 #include "apps/sand/tests/suite_sand_scenes.h"
-#include "util/intmath.h"
+#include "util/scalar/intmath.h"
 
 /* on the real grid, on the real chip */
 

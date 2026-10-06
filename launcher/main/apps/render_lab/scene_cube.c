@@ -20,7 +20,7 @@
 #include "render_lab_scene.h"
 #include "util/math/transformf.h"
 #include "util/math/vec2i.h"
-#include "util/memory.h"
+#include "util/runtime/memory.h"
 
 #define CUBE_DISTANCE       3.0F
 #define CAMERA_FOCAL_LENGTH 2.0F

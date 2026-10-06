@@ -2,7 +2,7 @@
 #
 # One-click boot_anim perf report: build+flash the diagnostics image with the
 # suites compiled in but NOT running at boot, so the shell (and its RUNSUITE
-# listener, see main/util/screenshot.c) comes up in seconds; trigger just
+# listener, see main/console/console_screenshot.c) comes up in seconds; trigger just
 # suite_boot_anim_perf.c via RUNSUITE, capture its output, and write a
 # markdown report of the six-checkpoint breakdown.
 #

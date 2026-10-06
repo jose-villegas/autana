@@ -25,8 +25,8 @@
 #include "app/app.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
-#include "util/memory.h"
-#include "util/timing.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/timing.h"
 
 /* scene_cube.c's own toggle - each test sets this explicitly (see
  * run_perf_capture()'s with_partial parameter) rather than trusting

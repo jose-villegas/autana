@@ -22,7 +22,7 @@
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
 #include "scene/scene.h"
-#include "util/memory.h"
+#include "util/runtime/memory.h"
 
 /* The scene, loaded for the suite, its bundle, and the three bakes in it. */
 static scene_t* sponza;
