@@ -822,6 +822,32 @@ try_percolate(sand_t* s, uint8_t* row, int x, int y, int w, int h, cell_t c, uin
     return true;
 }
 
+/* Keep wet-only work out of the dry-cell walk to limit its register pressure. */
+static __attribute__((noinline)) bool
+step_one_wet_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reaction_t* r, cell_t c, uint8_t held,
+                  int soaks) {
+    const int spread = soaks;
+
+    /* `dries` marks wet; `spread` checked for sinking. */
+    if (held >= 2 && spread != 0 && sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_SOAK_SPREAD_GATE, spread)
+        && soak_spread_to_neighbors(s, row, x, y, w, h, c, held)) {
+        return true;
+    }
+
+    if (try_percolate(s, row, x, y, w, h, c, held)) {
+        return true;
+    }
+
+    if (sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_SOAK_DRY, r->dries)) {
+        /* No block wake: drying only retones the cell. */
+        row[x] = soil_set_moisture(c, (uint8_t)(held - 1), 0);
+        mark_rows(s, x, y, y);
+        return held - 1 != 0;
+    }
+
+    return true;
+}
+
 /* Out of line on purpose: inlined it doubles step_one_reacting_row(), the
  * walk every gas cell goes through, and slows scenes with no soil at all.
  * Splits cell for input/output. Soaks UNIT, transforms or increases variant.
@@ -841,7 +867,7 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
      * further down) does not read `soaks` at all, so it must not be
      * skipped here too. A dry cell with soaking off has nothing left this
      * stage can ever do to it. */
-    if (s->soak == 0 && (r->dries == 0 || held == 0)) {
+    if (s->soak == 0 && (held == 0 || r->dries == 0)) {
         return false;
     }
 
@@ -858,27 +884,10 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
         return true;
     }
 
-    const int spread = soaks;
-
-    /* `dries` marks wet; `spread` checked for sinking. */
-    if (r->dries != 0 && held >= 2 && spread != 0
-        && sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_SOAK_SPREAD_GATE, spread)
-        && soak_spread_to_neighbors(s, row, x, y, w, h, c, held)) {
-        return true;
+    if (r->dries == 0 || held == 0) {
+        return beside_liquid;
     }
-
-    if (r->dries != 0 && held != 0 && try_percolate(s, row, x, y, w, h, c, held)) {
-        return true;
-    }
-
-    if (r->dries != 0 && held != 0 && sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_SOAK_DRY, r->dries)) {
-        /* No block wake: drying only retones the cell. */
-        row[x] = soil_set_moisture(c, (uint8_t)(held - 1), 0);
-        mark_rows(s, x, y, y);
-        return held - 1 != 0;
-    }
-
-    return (r->dries != 0 && held != 0) || beside_liquid;
+    return step_one_wet_cell(s, row, x, y, w, h, r, c, held, soaks);
 }
 
 static void
