@@ -26,7 +26,7 @@ class AcquisitionTests(unittest.TestCase):
         owners = {'s/' + name: ('s', name) for name in names}
         selected = tool.selected_suites([('s', '-', '-')], set(owners), owners,
                                        (3, 2), {'s': names})
-        self.assertEqual(len(selected), 2)
+        self.assertEqual(len(selected), 1)
         patterns = [p for _, filters, _ in selected for p in filters.split(',')]
         self.assertEqual(len(patterns), 3)
         for name in names:
@@ -48,7 +48,7 @@ class AcquisitionTests(unittest.TestCase):
                 header = project / 'launcher/test/suites.h'
                 header.parent.mkdir(parents=True, exist_ok=True)
                 header.write_text('#define SUITE_FILTER_LEN 4\n#define SUITE_FILTER_MAX 2\n')
-            for filters in ('abcd', 'a,b,c'):
+            for filters in ('abcd', 'a,bcdef'):
                 args.suite = [('suite', filters, '-')]
                 fake = FakeAutana(root)
                 with self.assertRaisesRegex(ValueError, 'filter'):

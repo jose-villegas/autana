@@ -10,7 +10,7 @@ from pathlib import Path
 from statistics import mean
 from types import SimpleNamespace
 
-from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters
+from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, FilterOverlap
 from seed_statistics import compare, minimum_seeds, permutation_samples
 
 MAX_RUNS = 16
@@ -74,7 +74,7 @@ def selected_suites(suites, active, owners, limits=None, listed=None):
         if not known:
             selected.append((suite, tests, template))
             continue
-        width, count = limits or filter_limits(Path(__file__).resolve().parents[3])
+        width = (limits or filter_limits(Path(__file__).resolve().parents[3]))[0]
         patterns = []
         for name in sorted(set(names)):
             pattern = next((name[start:start+length]
@@ -88,8 +88,7 @@ def selected_suites(suites, active, owners, limits=None, listed=None):
         if not patterns:
             selected.append((suite, tests, template))
         else:
-            selected.extend((suite, ",".join(patterns[start:start+count]), template)
-                            for start in range(0, len(patterns), count))
+            selected.append((suite, ",".join(patterns), template))
     return selected
 
 
@@ -181,12 +180,26 @@ def measure(args, runner=None):
                     failures += 1
                     item["error"] = str(error)
                     save_plan()
+                    if isinstance(error, FilterOverlap):
+                        stop_error = error
+                        break
                     if failures >= 2:
                         stop_error = RuntimeError("stopping after two consecutive capture failures")
                         break
                     continue
                 failures = 0
                 records[side].append(record)
+                silent = [suite for suite, _, _ in args.suite
+                          if len(records["a"]) == len(records["b"]) == 1 and
+                          not any(run["rows"] for first in (records["a"][0], records["b"][0])
+                                  for run in first["suites"].get(suite, {}).get("runs", []))]
+                if silent:
+                    tables = {suite: template for suite, _, template in args.suite}
+                    stop_error = RuntimeError("; ".join(dict.fromkeys(
+                        f"{suite}: the first flash on each side gave no timing rows with table "
+                        f"'{tables[suite]}'; pass a table command that turns this suite's capture into a timing table"
+                        for suite in silent)))
+                    break
             if stop_error:
                 break
         previous_target = target

@@ -273,11 +273,11 @@ def run_flash(args, seed, runner=None):
             if code and phase == "before":
                 raise RuntimeError(f"autana status before exited {code}")
 
-    validate_filters(args.suite, filter_limits(project))
+    requests = split_filters(args.suite, filter_limits(project))
     try:
         status("before")
         with open(out / f"{stem}.log", "w", encoding="utf-8") as log:
-            for index, (name, tests, template) in enumerate(args.suite):
+            for index, (name, tests, template) in enumerate(requests):
                 command = autana_command("--wait", str(getattr(args, "wait", 3600)),
                                          "--project", str(project), "suite", name,
                                          str(getattr(args, "timeout", 1800)), "--runs", str(args.runs),
@@ -315,6 +315,11 @@ def run_flash(args, seed, runner=None):
                     record["suites"][name] = dict(tests=tests, run_seconds=seconds, runs=runs)
                 else:
                     entry = record["suites"][name]
+                    for run, previous in zip(runs, entry["runs"]):
+                        repeated = sorted(run["rows"].keys() & previous["rows"].keys())
+                        if repeated:
+                            raise FilterOverlap(f"{name}: patterns in different requests matched row "
+                                                f"{repeated[0]}; give each test one pattern")
                     entry["tests"] += "," + tests
                     for number, run in enumerate(runs):
                         entry["run_seconds"][number] += seconds[number]
@@ -346,13 +351,31 @@ def filter_limits(project):
     return define("SUITE_FILTER_LEN") - 1, define("SUITE_FILTER_MAX")
 
 
+class FilterOverlap(RuntimeError):
+    """Two requests on one flash measured the same row."""
+
+
 def validate_filters(suites, limits):
-    """Refuse user filters before any seeded flash."""
-    width, count = limits
+    """Refuse empty patterns and patterns over the width before any seeded flash."""
+    width = limits[0]
     for _, tests, _ in suites:
-        if tests != "-" and (len(tests.split(",")) > count or
-                             any(not test or len(test) > width for test in tests.split(","))):
-            raise ValueError(f"suite filter exceeds project limits: {width} characters, {count} patterns")
+        if tests != "-" and any(not pattern or len(pattern) > width for pattern in tests.split(",")):
+            raise ValueError(f"suite filter pattern exceeds project limit: {width} characters")
+
+
+def split_filters(suites, limits):
+    """Split filters over the pattern count into requests for one flash."""
+    validate_filters(suites, limits)
+    count = limits[1]
+    requests = []
+    for name, tests, template in suites:
+        if tests == "-":
+            requests.append((name, tests, template))
+            continue
+        patterns = tests.split(",")
+        requests.extend((name, ",".join(patterns[start:start + count]), template)
+                        for start in range(0, len(patterns), count))
+    return requests
 
 
 def capture_tests(capture, include_ignored=True):
