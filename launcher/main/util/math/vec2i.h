@@ -6,7 +6,7 @@
 
 #include <stdint.h>
 
-#include "util/math/mathi.h"
 #include "util/math/vec2_template.h"
+#include "util/scalar/mathi.h"
 
 MATH_DEFINE_VEC2(vec2i, int32_t, int64_t, mathi)

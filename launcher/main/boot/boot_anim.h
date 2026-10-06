@@ -38,7 +38,7 @@
 #include "util/math/vec2i.h"
 #include "util/math/vec3f.h"
 #include "util/motion/tween.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 #include "util/scalar/trig.h"
 
 #define BOOT_ANIM_Q   12
@@ -291,7 +291,7 @@ boot_anim_screen_chord_lt(vec3x_t a, vec3x_t c, const boot_anim_view_t* view, in
     if (a.z <= view->near_z || c.z <= view->near_z) {
         return false;
     }
-    const int64_t m = (int64_t)im_abs(a.x - c.x) + im_abs(a.y - c.y);
+    const int64_t m = (int64_t)mathi_abs(a.x - c.x) + mathi_abs(a.y - c.y);
     if (view->focal == 0) {
         return m * view->scale < (int64_t)px * R3D_X_UNIT_ONE;
     }

@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 #define RIDGE_POSE_ONE (1 << 14)
 
@@ -52,7 +52,7 @@ ridge_pose_level_from_gravity(ridge_vector_t level, int gx, int gy, int strength
     if (strength < min_strength) {
         return level;
     }
-    const int64_t length = (int64_t)im_isqrt64((uint32_t)((gx * gx) + (gy * gy)));
+    const int64_t length = (int64_t)mathi_isqrt64((uint32_t)((gx * gx) + (gy * gy)));
     if (length == 0) {
         return level;
     }
@@ -77,7 +77,7 @@ ridge_pose_ease(ridge_pose_t* rp, ridge_vector_t target, uint32_t dt_ms, int tau
         x += rp->pose.down_y * share / 256;
         y -= rp->pose.down_x * share / 256;
     }
-    const int64_t length = (int64_t)im_isqrt64((uint32_t)((x * x) + (y * y)));
+    const int64_t length = (int64_t)mathi_isqrt64((uint32_t)((x * x) + (y * y)));
     if (length == 0) {
         return;
     }
