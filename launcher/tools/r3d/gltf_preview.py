@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Render any skinned glTF on the CPU: a looping GIF of one animation, or a
 sheet of the bind pose from front, side, top and three-quarter views.
+render() also draws colours lit elsewhere, one per vertex, interpolated.
 
     python tools/r3d/gltf_preview.py ASSET.glb --gif walk --out walk.gif
     python tools/r3d/gltf_preview.py ASSET.glb --sheet --out bind.png
@@ -113,8 +114,23 @@ def rasterize(image, camera, positions, colors, triangles):
         fill_triangle(pixels, depth, width, height, (pa, pb, pc), color)
 
 
+def rasterize_lit(image, camera, positions, lit, triangles):
+    """Draws `lit`, one 8-bit RGB colour per vertex, interpolated across each triangle."""
+    width, height = image.size
+    pixels = image.load()
+    depth = [math.inf] * (width * height)
+    projected = [camera.project(p) for p in positions]
+    for a, b, c in triangles:
+        pa, pb, pc = projected[a], projected[b], projected[c]
+        if (pb[0] - pa[0]) * (pc[1] - pa[1]) - (pc[0] - pa[0]) * (pb[1] - pa[1]) >= 0.0:
+            continue
+        fill_triangle(pixels, depth, width, height, (pa, pb, pc), (lit[a], lit[b], lit[c]))
+
+
 def fill_triangle(pixels, depth, width, height, points, color):
+    """`color` is one RGB tuple, or three, one per corner, to interpolate."""
     (x0, y0, z0), (x1, y1, z1), (x2, y2, z2) = points
+    corners = color if isinstance(color[0], tuple) else None
     min_y = max(int(math.ceil(min(y0, y1, y2) - 0.5)), 0)
     max_y = min(int(math.floor(max(y0, y1, y2) - 0.5)), height - 1)
     min_x = max(int(math.ceil(min(x0, x1, x2) - 0.5)), 0)
@@ -148,13 +164,21 @@ def fill_triangle(pixels, depth, width, height, points, color):
             z = w0 * z0 + w1 * z1 + (1.0 - w0 - w1) * z2
             if z < depth[row + px]:
                 depth[row + px] = z
-                pixels[px, py] = color
+                if corners:
+                    w2 = 1.0 - w0 - w1
+                    pixels[px, py] = tuple(int(round(w0 * p + w1 * q + w2 * r)) for p, q, r in zip(*corners))
+                else:
+                    pixels[px, py] = color
 
 
-def render(asset, camera, positions, size):
+def render(asset, camera, positions, size, lit=None):
+    """Flat-shaded by LIGHT, or with `lit`, per-vertex 8-bit RGB, interpolated."""
     width, height = size
     image = Image.new("RGB", (width * SUPERSAMPLE, height * SUPERSAMPLE), BACKGROUND)
     draw_ground(image, camera, positions, asset.triangles, 0.8)
+    if lit is not None:
+        rasterize_lit(image, camera, positions, lit, asset.triangles)
+        return image.resize(size, Image.LANCZOS)
     colors = asset.colors or [(0.6, 0.6, 0.6)] * len(positions)
     rasterize(image, camera, positions, colors, asset.triangles)
     return image.resize(size, Image.LANCZOS)
