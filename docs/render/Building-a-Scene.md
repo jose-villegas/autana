@@ -11,7 +11,7 @@ flowchart LR
     Import --> Scene["Scene file<br/><i>.scene.toml</i>"]
     Scene --> Bake["mesh_import.py"]
     Bake --> Meshes["Baked meshes<br/><i>name.mesh</i>"]
-    Meshes --> Pack["build_pack.py<br/><i>one bundle per scene:<br/>its entry, meshes and clip</i>"]
+    Meshes --> Pack["build_pack.py<br/><i>one pack per scene:<br/>its entry, meshes and clip</i>"]
     Scene --> Pack
     Pack --> Draw["Your app<br/><i>scene_load(), scene_activate()</i>"]
 ```
@@ -121,9 +121,9 @@ python launcher/tools/r3d/mesh_import.py path/to/hall.scene.toml
 This writes `<scene>.<variant>.mesh` for each baked renderer. A mesh without
 `bake = true` can also be imported on its own. Baked `.mesh` entries are
 committed as written and never reformatted. The firmware build writes the
-scene's [bundle](../assets/README.md#bundles), named after the scene: its
+scene's [pack](../assets/README.md#packs), named after the scene: its
 [scene entry](Scene-Files.md#the-scene-entry), baked from the scene file, its
-meshes and its camera's clip. It flashes the bundle with the app
+meshes and its camera's clip. It flashes the pack with the app
 ([assets/README.md](../assets/README.md#flashing)).
 
 ## 6. Draw it

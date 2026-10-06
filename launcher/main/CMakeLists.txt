@@ -322,36 +322,36 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     # image still pulls in.
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=double-promotion -Werror=float-conversion)
 
-    # The asset bundles are build products: one per root asset (a scene, a free
-    # import, a free .anim.toml), written to assets/ and, under a bundle
+    # The asset packs are build products: one per root asset (a scene, a free
+    # import, a free .anim.toml), written to assets/ and, under a pack
     # directory, into one image that flashes to the "assets" partition with the
     # app. build_pack.py searches all of main/, so its inputs are globbed there
     # too: a clip's .glb counts. `idf.py assets-flash` writes just that region.
     idf_build_get_property(python PYTHON)
-    set(asset_pack "${CMAKE_BINARY_DIR}/assets.bin")
-    set(asset_bundles "${CMAKE_BINARY_DIR}/assets")
+    set(asset_image "${CMAKE_BINARY_DIR}/assets.bin")
+    set(asset_packs "${CMAKE_BINARY_DIR}/assets")
     set(asset_tools "${CMAKE_CURRENT_LIST_DIR}/../tools")
     launcher_glob(asset_inputs "${CMAKE_CURRENT_LIST_DIR}/*.mesh")
     launcher_glob(asset_settings "${CMAKE_CURRENT_LIST_DIR}/*.toml")
     launcher_glob(asset_sources "${CMAKE_CURRENT_LIST_DIR}/*.glb")
     add_custom_command(
-        OUTPUT "${asset_pack}"
-        COMMAND ${python} "${asset_tools}/r3d/build_pack.py" -o "${asset_bundles}" --image "${asset_pack}"
+        OUTPUT "${asset_image}"
+        COMMAND ${python} "${asset_tools}/r3d/build_pack.py" -o "${asset_packs}" --image "${asset_image}"
                 "${CMAKE_CURRENT_LIST_DIR}"
         DEPENDS ${asset_inputs} ${asset_settings} ${asset_sources} "${asset_tools}/r3d/build_pack.py"
                 "${asset_tools}/r3d/import_settings.py" "${asset_tools}/r3d/mesh_asset.py"
                 "${asset_tools}/asset/asset_pack.py" "${asset_tools}/anim/tracks_asset.py"
                 "${asset_tools}/gltf/gltf_read.py"
-        COMMENT "Writing the asset bundles"
+        COMMENT "Writing the asset packs"
         VERBATIM)
-    add_custom_target(asset_pack_image ALL DEPENDS "${asset_pack}")
-    esptool_py_flash_to_partition(flash "assets" "${asset_pack}")
+    add_custom_target(asset_pack_image ALL DEPENDS "${asset_image}")
+    esptool_py_flash_to_partition(flash "assets" "${asset_image}")
     add_dependencies(flash asset_pack_image)
     partition_table_get_partition_info(asset_offset "--partition-name assets" "offset")
     idf_component_get_property(flash_main_args esptool_py FLASH_ARGS)
     idf_component_get_property(flash_sub_args esptool_py FLASH_SUB_ARGS)
     esptool_py_flash_target(assets-flash "${flash_main_args}" "${flash_sub_args}")
-    esptool_py_flash_target_image(assets-flash assets "${asset_offset}" "${asset_pack}")
+    esptool_py_flash_target_image(assets-flash assets "${asset_offset}" "${asset_image}")
     add_dependencies(assets-flash asset_pack_image)
 endif()
 

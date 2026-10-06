@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # render_scene.sh's scene_assets, checked against a fixture scene: the
-# bundles of the declared folders are found through the folder built into the
+# packs of the declared folders are found through the folder built into the
 # renderer, AUTANA_ASSET_DIR still overrides it, and a declared folder with no
 # asset roots fails the build instead of rendering without its content.
 #
@@ -18,7 +18,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=asset_fixture
 scene_sources="
 main/gfx/gfx.c
-main/util/tune.c
+main/util/runtime/tune.c
 tools/render/tests/asset_fixture.c
 "
 scene_renders=""
@@ -32,7 +32,7 @@ render_scene_build "$@"
 failed=0
 log="$scene_out_dir/check.log"
 image="$scene_out_dir/check.bmp"
-bundle=$(ls "$scene_out_dir/assets" | sed -n 's/\.apak$//p' | head -n 1)
+pack=$(ls "$scene_out_dir/assets" | sed -n 's/\.apak$//p' | head -n 1)
 
 fail() {
     cat "$log" >&2
@@ -40,17 +40,17 @@ fail() {
     failed=1
 }
 
-if [ -z "$bundle" ]; then
-    fail "scene_assets=$scene_assets wrote no bundle"
-elif ! "$_rs_bin" "$bundle" -o "$image" > "$log" 2>&1; then
-    fail "bundle $bundle was not found in the folder built into the renderer"
+if [ -z "$pack" ]; then
+    fail "scene_assets=$scene_assets wrote no pack"
+elif ! "$_rs_bin" "$pack" -o "$image" > "$log" 2>&1; then
+    fail "pack $pack was not found in the folder built into the renderer"
 else
-    echo "ok scene assets: the renderer reads its built-in bundle folder"
+    echo "ok scene assets: the renderer reads its built-in pack folder"
 fi
 
-empty="$scene_out_dir/no_bundles"
+empty="$scene_out_dir/no_packs"
 mkdir -p "$empty"
-if AUTANA_ASSET_DIR="$(render_scene_to_native "$empty")" "$_rs_bin" "$bundle" -o "$image" > "$log" 2>&1; then
+if AUTANA_ASSET_DIR="$(render_scene_to_native "$empty")" "$_rs_bin" "$pack" -o "$image" > "$log" 2>&1; then
     fail "AUTANA_ASSET_DIR did not override the built-in folder"
 else
     echo "ok scene assets: AUTANA_ASSET_DIR overrides the built-in folder"

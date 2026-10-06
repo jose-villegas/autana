@@ -51,6 +51,9 @@ jobs:
           python3 scripts/gates/check_comment_length.py
           --no-banners --limit 500 --header-limit 50 --top 0
 
+      - name: Every firmware module opens with a header comment
+        run: python3 scripts/gates/check_file_headers.py
+
       - name: No comment or engine document below apps/ names an app
         run: python3 scripts/gates/check_comment_layers.py
 
@@ -114,6 +117,22 @@ jobs:
       - name: Tool tests
         if: ${{ !cancelled() }}
         run: sh scripts/run-tool-tests.sh
+
+  # Its own job, beside the others: the sand palette's sweep takes a minute
+  # or two, and every pull request runs it, since the banners are the list.
+  generated-files:
+    name: Every generated file is what its banner's command makes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generator dependencies
+        run: pip install -r launcher/tools/render/requirements.txt
+
+      # Each banner's command, rerun into a temporary folder; the sand
+      # palette's builds with the runner's C compiler.
+      - name: Every generated file is what its banner's command makes
+        run: python3 scripts/gates/check_generated_files.py
 
   citations:
     name: Every citation resolves, in this tree or in ESP-IDF

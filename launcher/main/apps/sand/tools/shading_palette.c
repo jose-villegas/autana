@@ -24,7 +24,7 @@
  * No libraries beyond libc and libm; the PNG is written with stored
  * (uncompressed) deflate blocks.
  *
- *     main/apps/sand/tools/report_shading_palette.sh <results-dir>
+ *     main/apps/sand/tools/report_shading_palette.sh [header-path] [results-dir]
  */
 
 #include <math.h>
@@ -2223,7 +2223,8 @@ write_header_banner(FILE* f) {
             "=============\n"
             " * GENERATED FILE - do not edit.\n"
             " *\n"
-            " *     main/apps/sand/tools/report_shading_palette.sh\n"
+            " *     main/apps/sand/tools/report_shading_palette.sh"
+            " main/apps/sand/sand_palette256.h\n"
             " *\n"
             " * The 256-entry sand palette (UI block 0-%d, sand %d-255) and its\n"
             " * 16-colour dithered counterpart - see docs/sand/Shading-and-Colour.md\n"

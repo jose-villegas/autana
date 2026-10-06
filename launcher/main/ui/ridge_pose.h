@@ -13,26 +13,14 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "util/scalar/intmath.h"
+
 #define RIDGE_POSE_ONE (1 << 14)
 
 typedef struct {
     int32_t down_x;
     int32_t down_y;
 } ridge_vector_t;
-
-static inline uint32_t
-ridge_pose_isqrt(uint32_t v) {
-    uint32_t root = 0;
-    for (uint32_t bit = 1U << 30; bit != 0; bit >>= 2) {
-        if (v >= root + bit) {
-            v -= root + bit;
-            root = (root >> 1) + bit;
-        } else {
-            root >>= 1;
-        }
-    }
-    return root;
-}
 
 typedef struct {
     ridge_vector_t pose;
@@ -64,7 +52,7 @@ ridge_pose_level_from_gravity(ridge_vector_t level, int gx, int gy, int strength
     if (strength < min_strength) {
         return level;
     }
-    const int64_t length = (int64_t)ridge_pose_isqrt((uint32_t)((gx * gx) + (gy * gy)));
+    const int64_t length = (int64_t)im_isqrt64((uint32_t)((gx * gx) + (gy * gy)));
     if (length == 0) {
         return level;
     }
@@ -89,7 +77,7 @@ ridge_pose_ease(ridge_pose_t* rp, ridge_vector_t target, uint32_t dt_ms, int tau
         x += rp->pose.down_y * share / 256;
         y -= rp->pose.down_x * share / 256;
     }
-    const int64_t length = (int64_t)ridge_pose_isqrt((uint32_t)((x * x) + (y * y)));
+    const int64_t length = (int64_t)im_isqrt64((uint32_t)((x * x) + (y * y)));
     if (length == 0) {
         return;
     }

@@ -1,3 +1,4 @@
+/* Authored layout parsing, validation, persistence and edit history. */
 #pragma once
 
 #include <cstddef>
@@ -15,12 +16,10 @@ struct LayoutElement {
     bool interactive;
 };
 
-// An authored <screen>_layout.json. The file declares its own screen and
-// elements, so every authored screen is this one type; launcher/tools/gen/gen_ui_layout.py applies the same rules when it bakes the header.
+// Every authored screen shares the validation used by the header generator.
 class LayoutDocument {
   public:
     static constexpr int schema_version = 2;
-    static constexpr int min_tap_target = 56; // ui/ui.h UI_TAP_MIN
 
     static std::optional<LayoutDocument> load(const std::filesystem::path& path, std::string& error);
 
@@ -54,5 +53,7 @@ class LayoutDocument {
 struct LayoutGeometryEqual {
     bool operator()(const LayoutDocument& first, const LayoutDocument& second) const;
 };
+
+std::string bake_header(const LayoutDocument& document, const std::filesystem::path& header_path);
 
 using LayoutEditHistory = EditHistory<LayoutDocument, LayoutGeometryEqual>;

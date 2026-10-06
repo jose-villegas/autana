@@ -1,3 +1,7 @@
+/*
+ * system_navigation: which system screen is showing, the launcher or the
+ * Control Center, moved by edge swipes.
+ */
 #pragma once
 
 #include <stdbool.h>

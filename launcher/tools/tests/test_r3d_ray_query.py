@@ -19,7 +19,7 @@ try:
 except ImportError:
     np = None
 
-HAVE_MITSUBA = np is not None and mitsuba_reference.import_mitsuba() is not None
+from tests.r3d_env import HAVE_MITSUBA  # noqa: E402
 
 
 def have_llvm():
@@ -30,7 +30,7 @@ def have_llvm():
     return "llvm_ad_rgb" in mitsuba_reference.import_mitsuba().variants() and dr.has_backend(dr.JitBackend.LLVM)
 
 
-needs_mitsuba = unittest.skipIf(not HAVE_MITSUBA, "the ray queries need Mitsuba")
+from tests.r3d_env import needs_mitsuba  # noqa: E402
 needs_llvm = unittest.skipIf(not have_llvm(), "the LLVM variant needs libLLVM")
 
 

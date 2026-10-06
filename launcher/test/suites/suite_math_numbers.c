@@ -177,6 +177,7 @@ test_fixed_point_overflow_saturates_and_divide_by_zero_follows_the_sign(void) {
     TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_div(MATHX_ONE, 0));
     TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathx_div(-MATHX_ONE, 0));
     TEST_ASSERT_EQUAL_INT32(0, mathx_div(0, 0));
+    TEST_ASSERT_EQUAL_INT32(-65536, fx_div_round(INT32_MAX, 1, MATHX_SHIFT));
     TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_div(INT32_MAX, 1));
     TEST_ASSERT_EQUAL_INT32(3 * MATHX_ONE / 2, mathx_div(3 * MATHX_ONE, 2 * MATHX_ONE));
     TEST_ASSERT_EQUAL_INT32(3 * MATHX_ONE, mathx_sqrt(9 * MATHX_ONE));

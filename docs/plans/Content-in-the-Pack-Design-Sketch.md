@@ -1,8 +1,11 @@
 # Animation tracks and scenes in the asset pack: design sketch
 
-**Status:** approved; bundles, the `TRCK` entry, the scenes step and the host poses (sections
-0 to 4) are built, the rest is not. `[A]` marks a proposal that was approved
-with the rest rather than asked for.
+**Status:** built. `[A]` marks a proposal that was approved with the rest
+rather than asked for. Where the build departs from it is in
+[As built](#as-built); the current reference is
+[Animation-Tracks.md](../Animation-Tracks.md),
+[assets/README.md](../assets/README.md) and
+[Scene-Manager.md](../render/Scene-Manager.md).
 
 Committed C baked from a `.glb` animation (`*_tracks_generated.{c,h}`) or a
 `.scene.toml` is content with a source file that is already the truth, so a
@@ -16,55 +19,55 @@ flowchart LR
     Scene["NAME.scene.toml"] --> Build["build_pack.py"]
     Anim --> Build
     Mesh["NAME.mesh<br/>committed, as today"] --> Build
-    Build --> Bundles["one bundle per root asset<br/>named after it, with what it relates to"]
-    Bundles --> Dev["device: the assets partition<br/>a bundle directory"]
-    Bundles --> Ext["host now, microSD later<br/>one file per bundle"]
-    Dev --> Mount["asset_store_bundle(name)<br/>mounts and checks one bundle"]
+    Build --> Packs["one pack per root asset<br/>named after it, with what it relates to"]
+    Packs --> Dev["device: the assets partition<br/>a pack directory"]
+    Packs --> Ext["host now, microSD later<br/>one file per pack"]
+    Dev --> Mount["asset_store_pack(name)<br/>mounts and checks one pack"]
     Ext --> Mount
     Mount --> Rt["scene_load, anim_tracks_find<br/>one C sampler"]
     Ext --> Poses["track_host, built once<br/>same sampler, prints poses"]
     Poses --> Tools["r3d, fits, doc stages"]
 ```
 
-## 0. Bundles, not one pack
+## 0. Packs per root asset
 
 One pack for all content can neither scale nor move outside the image:
 every first reader pays to check every entry, and nothing can be shipped,
-replaced or left on a card alone. Content comes in **bundles**, each one a
-pack in today's `APAK` format, unchanged: its own header, table and CRC.
-Checking a bundle costs its own size only.
+replaced or left on a card alone. Content comes in **packs**, one per root
+asset, each in today's `APAK` format, unchanged: its own header, table and CRC.
+Checking a pack costs its own size only.
 
-**A bundle is named after its root asset and holds what that asset relates
+**A pack is named after its root asset and holds what that asset relates
 to**. A root is a source file nothing else names:
 
-| Root | Bundle name | Holds |
+| Root | Pack name | Holds |
 |---|---|---|
 | `NAME.scene.toml` | `NAME` | the `SCNE` entry, every mesh its renderers name, its camera's clip |
 | `NAME.anim.toml` no scene names (e.g. the boot clip) | `NAME` | the one `TRCK` entry |
 | `NAME.import.toml` no scene places | `NAME` | its variants' `LMSH` entries |
 
 `build_pack.py` already finds these roots by searching and already tells a
-placed import from a free one, so it writes one bundle per root and no list
-is kept. Ids are unique within a bundle.
+placed import from a free one, so it writes one pack per root and no list
+is kept. Ids are unique within a pack.
 
 | Question | Proposal |
 |---|---|
-| Device | The `assets` partition holds a **bundle directory**: a header (`"ABDR"`, version, count, CRC of header and rows) and a row per bundle (`name[32]`, offset, size). [A] Each bundle starts on a 4 KB flash sector, so it maps alone and one bundle can be rewritten without the others. (Small bundles make 64 KB slots wasteful.) |
-| Host, then microSD | One file per bundle, `<dir>/<name>.apak`, read into memory and opened by the same `asset_pack_open()`. The host lays files out the way a card will, so that path is tested before any card exists. |
-| Shared content | [A] When two roots name the same asset, it becomes a bundle of its own, named after it, and the two depend on it: a bundle's header lists the bundles it needs, mounted first. This is the rule; the loader is built when the first shared asset appears. Until then `build_pack` fails naming it. |
-| Lifetime | [A] Mounted on first use and counted; a scene's bundle is released when its last scene unloads, so mappings do not pile up. |
+| Device | The `assets` partition holds a **pack directory**: a header (`"ABDR"`, version, count, CRC of header and rows) and a row per pack (`name[32]`, offset, size). [A] Each pack starts on a 4 KB flash sector, so it maps alone and one pack can be rewritten without the others. (Small packs make 64 KB slots wasteful.) |
+| Host, then microSD | One file per pack, `<dir>/<name>.apak`, read into memory and opened by the same `asset_pack_open()`. The host lays files out the way a card will, so that path is tested before any card exists. |
+| Shared content | [A] When two roots name the same asset, it becomes a pack of its own, named after it, and the two depend on it: a pack's header lists the packs it needs, mounted first. This is the rule; the loader is built when the first shared asset appears. Until then `build_pack` fails naming it. |
+| Lifetime | [A] Mounted on first use and counted; a scene's pack is released when its last scene unloads, so mappings do not pile up. |
 
 ```c
 /* asset_store.h: replaces asset_store_pack() */
-const asset_pack_t* asset_store_bundle(const char* name);  /* mounts and checks that bundle alone; NULL, logged, when missing or bad */
+const asset_pack_t* asset_store_pack(const char* name);  /* mounts and checks that pack alone; NULL, logged, when missing or bad */
 void asset_store_release(const char* name);                /* drops a use; unmapped at zero */
 
 /* scene.h: the signature stays */
-scene_t* scene_load(const char* id, scene_failure_t* why);  /* mounts bundle `id`, opens its SCNE `id` */
+scene_t* scene_load(const char* id, scene_failure_t* why);  /* mounts pack `id`, opens its SCNE `id` */
 ```
 
 `AUTANA_ASSET_PACK` becomes `AUTANA_ASSET_DIR`, set per process as today.
-`run_tests.sh`, the render scripts and the firmware build write every bundle;
+`run_tests.sh`, the render scripts and the firmware build write every pack;
 the firmware build also writes the directory image for the partition, still
 flashed with the app by `flash_args` and alone by `idf.py assets-flash`.
 
@@ -76,7 +79,7 @@ flashed with the app by `flash_args` and alone by `idf.py assets-flash`.
 | `NAME.scene.toml` | unchanged, except the camera key (below) | stem: `NAME` |
 
 `build_pack.py` finds `*.anim.toml` by searching, like `.import.toml`, so no
-list exists to keep. Ids are unique within a bundle whatever their type (the
+list exists to keep. Ids are unique within a pack whatever their type (the
 writer already rejects a repeat): the reader finds an entry by name and only
 then checks its type. [A] A scene
 names its clip as a relative file, as it names a mesh:
@@ -159,7 +162,7 @@ and the doc stages are unchanged above that.
 [A] The pack handed to it is a scratch pack of just the clip, which `poses.py`
 bakes from the `.anim.toml` in milliseconds. A fit needs poses before its
 meshes exist, and `build_pack` requires every mesh, so reading the scene's
-bundle would make a chicken-and-egg. The TRCK bytes are the same
+pack would make a chicken-and-egg. The TRCK bytes are the same
 function of the same source, so the poses are identical to the device's.
 
 The Python sampler (`gltf_read.sample_keys`) stays only inside
@@ -170,14 +173,14 @@ bake is deterministic), which re-stamps each fit once.
 ## 5. Boot animation
 
 `boot_anim_run()` runs in `app_main` after POST and `ui_launcher_init()`, so
-nothing has mounted a bundle before it. Boot mounts its clip's bundle with
-`asset_store_bundle("boot_anim_motion")`, which maps and checks that bundle alone on its
+nothing has mounted a pack before it. Boot mounts its clip's pack with
+`asset_store_pack("boot_anim_motion")`, which maps and checks that pack alone on its
 first call.
 
 ```c
 /* boot_anim.h: nodes camera and space (translation, rotation, scale) resolved once */
 typedef struct { anim_clip_t clip; anim_node_tracks_t camera, space; bool from_pack; } boot_anim_motion_t;
-void boot_anim_motion_load(boot_anim_motion_t* out);      /* first thing in boot_anim_run(): anim_tracks_from_pack(asset_store_bundle("boot_anim_motion"), "boot_anim_motion"), anim_tracks_find_node() twice; on any failure, log why and use the rest pose */
+void boot_anim_motion_load(boot_anim_motion_t* out);      /* first thing in boot_anim_run(): anim_tracks_from_pack(asset_store_pack("boot_anim_motion"), "boot_anim_motion"), anim_tracks_find_node() twice; on any failure, log why and use the rest pose */
 void boot_anim_motion_release(boot_anim_motion_t* motion); /* when boot is done; leaves the rest pose */
 /* the motion is passed to boot_anim_view() and boot_anim_draw_frame(): no module state */
 ```
@@ -192,8 +195,8 @@ key: a copy would be a second representation of the `.glb` and could drift,
 which is the thing being removed. A host test renders the fallback and checks
 the frame is not blank.
 
-Boot mounts only its clip's bundle (section 0), so `asset_pack_open()` checks
-the clip's bytes, not the meshes; a scene's bundle is checked when that scene
+Boot mounts only its clip's pack (section 0), so `asset_pack_open()` checks
+the clip's bytes, not the meshes; a scene's pack is checked when that scene
 first loads. First-frame time is measured on the board (`autana status` and
 `autana buildid` around it).
 
@@ -212,9 +215,9 @@ inputs as `DEPENDS` (today it globs only `apps/`).
 
 ## 7. Order
 
-Bundles and the `TRCK` entry (format, writer, reader) first, side by side ->
-scenes from their own bundle, camera path included -> host tools -> delete the
-flythrough tracks -> boot from its clip's bundle -> final sweep. Moving the
+Packs and the `TRCK` entry (format, writer, reader) first, side by side ->
+scenes from their own pack, camera path included -> host tools -> delete the
+flythrough tracks -> boot from its clip's pack -> final sweep. Moving the
 scene camera path to a clip id is part of the scene step, not a step before
 it: both rewrite the same scene table and loader, so doing it first would
 change them twice.
@@ -234,9 +237,25 @@ fallback question section 5 answers.
 
 1. The scene camera path moves with the scene step, not before it (section 7).
 2. Boot fallback is an authored rest pose, not derived from the clip (section 5).
-3. Poses read a scratch pack of just the clip, not the scene's whole bundle (section 4).
-4. Bundles (section 0): one per root asset, named after it, holding what it relates to; 4 KB-aligned directory in the partition, one file per bundle on host and card, a shared asset becomes its own bundle the others depend on, counted mounts.
+3. Poses read a scratch pack of just the clip, not the scene's whole pack (section 4).
+4. Packs (section 0): one per root asset, named after it, holding what it relates to; 4 KB-aligned directory in the partition, one file per pack on host and card, a shared asset becomes its own pack the others depend on, counted mounts.
 5. Scene names its clip as a relative `.anim.toml` path, id = stem (section 1).
 6. Entities are found by name at setup, no baked numeric ids (section 3).
-7. Ids stay unique within a bundle whatever their type (scenes step): `asset_pack_find()` finds by name and then checks the type, so a scene and its clip sharing a stem could never both be found; `build_pack` refuses them naming both files.
-8. `scene_failure_t.what` is a copy, `char what[ASSET_NAME_MAX]` (scenes step): a failed `scene_load()` releases the bundle the id pointed into.
+7. Ids stay unique within a pack whatever their type (scenes step): `asset_pack_find()` finds by name and then checks the type, so a scene and its clip sharing a stem could never both be found; `build_pack` refuses them naming both files.
+8. `scene_failure_t.what` is a copy, `char what[ASSET_NAME_MAX]` (scenes step): a failed `scene_load()` releases the pack the id pointed into.
+
+## As built
+
+Where the build departs from this sketch:
+
+- **The pack directory is read into RAM once**, not mapped with the
+  packs; each pack is mapped alone. The reason is at `open_directory()` in
+  `launcher/main/asset/asset_store_flash.c`.
+- **Two rules were settled while the scenes were built**: ids are unique
+  within a pack whatever their type, and `scene_failure_t.what` is a copy
+  (decisions 7 and 8).
+- **`bake_tracks.py` is deleted** rather than kept without its C emitter
+  (section 2): its checks are in `tracks_asset.py`.
+- **`gen_boot_anim_timeline.py` stays.** Section 6 deletes it with the boot
+  tracks; it survives without them, writing only the boot animation's timing
+  constants and settings, a header section 8 leaves to the content audit.

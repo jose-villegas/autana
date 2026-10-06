@@ -21,8 +21,7 @@ try:
 except ImportError:
     np = None
 
-HAVE_MITSUBA = np is not None and mitsuba_reference.import_mitsuba() is not None
-needs_mitsuba = unittest.skipIf(not HAVE_MITSUBA, "the bounced light needs Mitsuba")
+from tests.r3d_env import HAVE_MITSUBA, needs_mitsuba  # noqa: E402
 
 
 def have_llvm():

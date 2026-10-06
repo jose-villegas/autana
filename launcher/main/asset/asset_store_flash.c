@@ -1,3 +1,7 @@
+/*
+ * asset_store_flash: the asset store's board backend, mapping packs from
+ * the "assets" flash partition through its directory.
+ */
 #include <stdbool.h>
 
 #include "asset/asset_directory.h"
@@ -26,9 +30,9 @@ map_bytes(size_t offset, size_t bytes, esp_partition_mmap_handle_t* handle) {
 }
 
 /* The directory is read into RAM rather than mapped: it shares its flash page
- * with the first bundles, and QEMU drops every mapping of a page when any one
+ * with the first packs, and QEMU drops every mapping of a page when any one
  * of them is unmapped, so a mapped directory goes blank there once such a
- * bundle is released. A copy is a few bytes per bundle and holds no MMU page. */
+ * pack is released. A copy is a few bytes per pack and holds no MMU page. */
 static asset_status_t
 open_directory(void) {
     part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, (esp_partition_subtype_t)ASSET_PARTITION_SUBTYPE,
@@ -82,7 +86,7 @@ asset_store_backend_mount(const char* name, asset_pack_t* pack, uintptr_t* mappi
         esp_partition_munmap(handle);
         return opened;
     }
-    ESP_LOGI(TAG, "bundle %s: %u entries, %u bytes", name, (unsigned)pack->count, (unsigned)pack->size);
+    ESP_LOGI(TAG, "pack %s: %u entries, %u bytes", name, (unsigned)pack->count, (unsigned)pack->size);
     *mapping = (uintptr_t)handle;
     return ASSET_OK;
 }
@@ -95,12 +99,12 @@ asset_store_backend_unmount(uintptr_t mapping) {
 void
 asset_store_backend_report(const char* name, asset_status_t status) {
     if (part == NULL) {
-        ESP_LOGE(TAG, "bundle %s: no '%s' partition: the flashed partition table is older than this firmware, flash it",
+        ESP_LOGE(TAG, "pack %s: no '%s' partition: the flashed partition table is older than this firmware, flash it",
                  name, ASSET_PARTITION_LABEL);
     } else if (directory_status != ASSET_OK) {
-        ESP_LOGE(TAG, "bundle %s: the '%s' partition holds no usable bundle directory (%s): flash it", name,
+        ESP_LOGE(TAG, "pack %s: the '%s' partition holds no usable pack directory (%s): flash it", name,
                  ASSET_PARTITION_LABEL, asset_status_text(status));
     } else {
-        ESP_LOGE(TAG, "bundle %s: %s", name, asset_status_text(status));
+        ESP_LOGE(TAG, "pack %s: %s", name, asset_status_text(status));
     }
 }

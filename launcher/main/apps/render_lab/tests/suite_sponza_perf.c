@@ -33,9 +33,9 @@
 
 static const char* TAG = "sponza_perf";
 
-/* The scene, loaded for the suite, its bundle, and one mesh for each bake. */
+/* The scene, loaded for the suite, its pack, and one mesh for each bake. */
 static scene_t* sponza;
-static const asset_pack_t* bundle;
+static const asset_pack_t* pack;
 static const r3d_scene_camera_t* flythrough;
 static r3d_lit_mesh_t meshes[SPONZA_BAKE_COUNT];
 
@@ -162,7 +162,7 @@ open_the_meshes(void) {
         TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, bake, sponza_bakes[i]);
         const char* mesh = scene_entity_mesh_id(sponza, bake);
         TEST_ASSERT_NOT_NULL_MESSAGE(mesh, sponza_bakes[i]);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(bundle, mesh, &meshes[i]), mesh);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(pack, mesh, &meshes[i]), mesh);
     }
 }
 
@@ -251,17 +251,17 @@ run_sponza_perf_suite(void) {
         ESP_LOGE(TAG, "scene sponza: status %d, asset %s, about '%s'", (int)why.status, asset_status_text(why.asset),
                  why.what);
     } else {
-        bundle = asset_store_bundle(SPONZA_SCENE);
+        pack = asset_store_pack(SPONZA_SCENE);
         flythrough = scene_camera_lens(sponza, NULL);
     }
     RUN_TEST(test_sponza_draw_stage_breakdown);
     RUN_TEST(test_sponza_frame_cost_along_the_flythrough);
-    if (bundle != NULL) {
+    if (pack != NULL) {
         asset_store_release(SPONZA_SCENE);
     }
     scene_unload(sponza);
     sponza = NULL;
-    bundle = NULL;
+    pack = NULL;
     flythrough = NULL;
 }
 

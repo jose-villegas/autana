@@ -83,8 +83,8 @@ cost of reformatting files you did not touch.
 
 Three places, one file list. `scripts/gates/format-file-list.sh` defines which
 files the rules apply to: vendored trees by path, generated files by the
-`GENERATED FILE` marker they carry; so the hook and CI cannot disagree about
-what is in scope.
+banner they carry ([Generated-Files.md](tools/Generated-Files.md)); so the
+hook and CI cannot disagree about what is in scope.
 
 ```sh
 scripts/install-git-hooks.sh          # opt in to the pre-commit hook
@@ -137,6 +137,11 @@ shorter prose.
 
 Keep a comment accurate or delete it; an outdated one is worse than none.
 Update it in the same edit that changes the code it describes.
+
+Every module of the firmware opens with a header: one sentence, in its .h or
+its .c, saying what it is (`name: ...`). A suite's test names say what it
+proves, so a suite needs none. `scripts/gates/check_file_headers.py` fails a
+module without one, and CI runs it.
 
 Shape follows OpenBSD `style(9)`: a one-line `/* ... */`, a `VERY important`
 one-liner in a three-line block, or real sentences filled like a paragraph.

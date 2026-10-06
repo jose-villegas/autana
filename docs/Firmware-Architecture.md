@@ -138,8 +138,9 @@ flowchart TB
   `suites/` (the host heap model, the stubs, and the harness both platforms
   build) is not checked.
 - **Generated sources are checked in** beside the code that uses them, each
-  with a banner naming its regenerate command; `grep -rl "GENERATED FILE"`
-  lists them, and the rules they follow are in
+  with a banner naming its regenerate command, which
+  [a gate](tools/Generated-Files.md) reruns to prove the file current; the
+  rules they follow are in
   [tools/gen/README.md](../launcher/tools/gen/README.md).
 
 ---
@@ -215,8 +216,8 @@ shell_check_console_prefixes()
 display_reset_quarter(), ui_launcher_init(), ui_set_transform()
                             the launcher exists, turned the way boot draws
 boot_anim_run()             the startup animation, 5.5 s; it mounts the
-                            first bundle (its clip's), which first reads
-                            the asset directory; with no bundle it holds a
+                            first pack (its clip's), which first reads
+                            the asset directory; with no pack it holds a
                             rest pose
 gfx_request_full_redraw()
 input_start()               touch, buttons, then the motion sensor; no

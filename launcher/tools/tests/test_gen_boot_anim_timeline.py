@@ -1,4 +1,4 @@
-"""Checks the timeline generator against the shipped input and output, and that
+"""Checks the timeline generator's rules against the shipped input, and that
 the clip the firmware plays is the motion the generator checks."""
 
 import json
@@ -21,7 +21,6 @@ import gen_boot_anim_timeline  # noqa: E402
 GENERATOR = LAUNCHER / "tools" / "gen" / "gen_boot_anim_timeline.py"
 TIMELINE = LAUNCHER / "main" / "boot" / "boot_anim_timeline.json"
 MOTION = LAUNCHER / "main" / "boot" / "boot_anim_motion.glb"
-HEADER = LAUNCHER / "main" / "boot" / "boot_anim_timeline.h"
 CLIP = LAUNCHER / "main" / "boot" / "boot_anim_motion.anim.toml"
 
 
@@ -94,21 +93,13 @@ class TimelineGeneratorTests(unittest.TestCase):
         result = self.generate(motion=motion_glb(space_scale=9.0))
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_checked_in_header_matches_generator(self):
-        result = subprocess.run(
-            [sys.executable, str(GENERATOR), str(TIMELINE), str(MOTION)],
-            cwd=LAUNCHER, capture_output=True, check=False)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(HEADER.read_bytes().replace(b"\r\n", b"\n"),
-                         result.stdout.replace(b"\r\n", b"\n"))
-
-    def test_the_clip_boot_plays_is_the_motion_checked_here_in_a_bundle_of_its_own(self):
+    def test_the_clip_boot_plays_is_the_motion_checked_here_in_a_pack_of_its_own(self):
         glb, animation = tracks_asset.load_source(CLIP)
         self.assertEqual(MOTION.resolve(), glb.resolve())
         self.assertEqual(gen_boot_anim_timeline.MOTION_ANIMATION, animation)
-        # boot_anim_motion.c mounts the bundle named after its one entry.
+        # boot_anim_motion.c mounts the pack named after its one entry.
         clip = tracks_asset.clip_id(CLIP)
-        self.assertEqual({clip: CLIP}, build_pack.bundle_files([CLIP.parent])[clip])
+        self.assertEqual({clip: CLIP}, build_pack.pack_files([CLIP.parent])[clip])
 
 if __name__ == "__main__":
     unittest.main()

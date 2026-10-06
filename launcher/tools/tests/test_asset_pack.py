@@ -1,5 +1,5 @@
-"""The asset pack and bundle directory writer (asset/asset_pack.py), the
-bundle builder and the meshes in the tree: what the firmware's asset_pack.c
+"""The asset pack and pack directory writer (asset/asset_pack.py), the
+pack builder and the meshes in the tree: what the firmware's asset_pack.c
 and asset_directory.c read. The C side has its own suite, suite_asset_pack.c;
 this one proves what the tools write is what that reads."""
 
@@ -124,24 +124,24 @@ class DirectoryTests(unittest.TestCase):
         struct.pack_into("<I", image, 4, asset_pack.zlib.crc32(bytes(image[8:self.row(count)])))
         return bytes(image)
 
-    def test_each_bundle_parses_back_on_its_own_sector(self):
+    def test_each_pack_parses_back_on_its_own_sector(self):
         image = self.image()
-        bundles = parse_directory(image)
-        self.assertEqual(list(bundles), ["one", "two"])
-        self.assertEqual(parse_pack(bundles["one"]), {"a": (LIT_MESH, b"1")})
-        self.assertEqual(parse_pack(bundles["two"]), {"b": (LIT_MESH, b"22" * 3000)})
+        packs = parse_directory(image)
+        self.assertEqual(list(packs), ["one", "two"])
+        self.assertEqual(parse_pack(packs["one"]), {"a": (LIT_MESH, b"1")})
+        self.assertEqual(parse_pack(packs["two"]), {"b": (LIT_MESH, b"22" * 3000)})
         for index in range(2):
             _, offset, _ = asset_pack.DIRECTORY_ROW.unpack_from(image, self.row(index))
             self.assertEqual(offset % asset_pack.SECTOR, 0)
 
-    def test_the_same_bundles_make_the_same_image(self):
+    def test_the_same_packs_make_the_same_image(self):
         self.assertEqual(self.image(), self.image())
 
-    def test_a_bundle_name_that_is_empty_too_long_or_repeated_is_refused(self):
+    def test_a_pack_name_that_is_empty_too_long_or_repeated_is_refused(self):
         pack = make_pack([])
-        for bundles in ([("", pack)], [("x" * 32, pack)], [("a", pack), ("a", pack)]):
+        for packs in ([("", pack)], [("x" * 32, pack)], [("a", pack), ("a", pack)]):
             with self.assertRaises(PackError):
-                build_directory(bundles)
+                build_directory(packs)
 
     def test_a_bad_magic_version_or_checksum_is_refused(self):
         for at, value, pattern in ((0, b"NOPE", "magic"), (8, struct.pack("<I", 2), "version"), (20, b"x", "CRC")):
@@ -152,7 +152,7 @@ class DirectoryTests(unittest.TestCase):
 
     def test_a_row_out_of_range_misaligned_or_repeated_is_refused_even_with_a_good_checksum(self):
         base = self.image()
-        cases = ((self.row(1) + 32, asset_pack.SECTOR, "overlaps"),                     # over the first bundle
+        cases = ((self.row(1) + 32, asset_pack.SECTOR, "overlaps"),                     # over the first pack
                  (self.row(1) + 36, len(base), "outside"),                      # ends past the image
                  (self.row(1) + 32, asset_pack.SECTOR * 2 + 16, "sector"),
                  (self.row(0) + 32, 0, "outside"))                              # over the directory itself
@@ -193,20 +193,20 @@ def scene_file(directory, name, *placed):
 
 
 def contents(packs):
-    return {bundle: {name: data for name, (_, data) in parse_pack(pack).items()} for bundle, pack in packs.items()}
+    return {root: {name: data for name, (_, data) in parse_pack(pack).items()} for root, pack in packs.items()}
 
 
 class BuilderTests(unittest.TestCase):
-    def test_each_free_import_is_a_bundle_named_after_it(self):
+    def test_each_free_import_is_a_pack_named_after_it(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             for folder, mesh, data in (("a", "one", b"1"), ("a2", "two", b"22"), ("b", "three", b"333")):
                 import_file(root / folder, f"{mesh}.import.toml", mesh)
                 (root / folder / f"{mesh}.mesh").write_bytes(data)
-            packs = build_pack.bundle_bytes([root])
+            packs = build_pack.pack_bytes([root])
         self.assertEqual(contents(packs), {"one": {"one": b"1"}, "two": {"two": b"22"}, "three": {"three": b"333"}})
 
-    def test_a_scene_is_a_bundle_of_its_entry_and_every_mesh_it_places_and_its_imports_make_none(self):
+    def test_a_scene_is_a_pack_of_its_entry_and_every_mesh_it_places_and_its_imports_make_none(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             variants_file(root, "chair.import.toml", "chair")
@@ -215,7 +215,7 @@ class BuilderTests(unittest.TestCase):
             scene_file(root, "room.scene.toml", ("chair.import.toml", "chair"), ("table.import.toml", "table"))
             for mesh in ("chair", "table", "lamp"):
                 (root / f"{mesh}.mesh").write_bytes(mesh.encode())
-            packs = build_pack.bundle_bytes([root])
+            packs = build_pack.pack_bytes([root])
             room = scene_asset.bake(root / "room.scene.toml")
         self.assertEqual(contents(packs), {"room": {"room": room, "chair": b"chair", "table": b"table"},
                                            "free": {"lamp": b"lamp"}})
@@ -227,16 +227,16 @@ class BuilderTests(unittest.TestCase):
             scene_file(root, "room.scene.toml", ("kit.import.toml", "chair"))
             scene_file(root, "hall.scene.toml", ("kit.import.toml", "chair"))
             (root / "chair.mesh").write_bytes(b"c")
-            with self.assertRaisesRegex(SettingsError, "'chair' is named by bundles"):
-                build_pack.bundle_bytes([root])
+            with self.assertRaisesRegex(SettingsError, "'chair' is named by packs"):
+                build_pack.pack_bytes([root])
 
     def test_two_roots_with_one_name_are_refused(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             import_file(root / "a", "same.import.toml", "one")
             import_file(root / "b", "same.import.toml", "two")
-            with self.assertRaisesRegex(SettingsError, "bundle named 'same'"):
-                build_pack.bundle_bytes([root])
+            with self.assertRaisesRegex(SettingsError, "pack named 'same'"):
+                build_pack.pack_bytes([root])
 
     def test_a_replaced_mesh_comes_from_its_own_file_and_must_exist(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -244,18 +244,18 @@ class BuilderTests(unittest.TestCase):
             import_file(root / "a", "a.import.toml", "one")
             (root / "a" / "one.mesh").write_bytes(b"1")
             (root / "scratch.mesh").write_bytes(b"9")
-            packs = build_pack.bundle_bytes([root / "a"], [f"one={root / 'scratch.mesh'}"])
+            packs = build_pack.pack_bytes([root / "a"], [f"one={root / 'scratch.mesh'}"])
             self.assertEqual(contents(packs), {"a": {"one": b"9"}})
             with self.assertRaisesRegex(SettingsError, "no such mesh"):
-                build_pack.bundle_bytes([root / "a"], ["other=x.mesh"])
+                build_pack.pack_bytes([root / "a"], ["other=x.mesh"])
 
     def test_a_mesh_never_baked_names_the_command_to_run(self):
         with tempfile.TemporaryDirectory() as directory:
             import_file(directory, "a.import.toml", "one")
             with self.assertRaisesRegex(SettingsError, "mesh_import.py"):
-                build_pack.bundle_bytes([directory])
+                build_pack.pack_bytes([directory])
 
-    def test_the_command_writes_each_bundle_and_the_image_and_drops_stale_bundles(self):
+    def test_the_command_writes_each_pack_and_the_image_and_drops_stale_packs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             for mesh in ("one", "two"):
@@ -271,32 +271,32 @@ class BuilderTests(unittest.TestCase):
             self.assertEqual({name: (out / f"{name}.apak").read_bytes() for name in image}, image)
             printed = io.StringIO()
             with contextlib.redirect_stdout(printed):
-                build_pack.main(["--bundle-of", "two", str(root / "src")])
+                build_pack.main(["--pack-of", "two", str(root / "src")])
             self.assertEqual(printed.getvalue().strip(), "two")
 
 
 class TreeTests(unittest.TestCase):
-    def test_the_bundles_in_the_tree_pack_and_parse(self):
-        packs = build_pack.bundle_bytes([build_pack.DEFAULT_SEARCH])
+    def test_the_packs_in_the_tree_pack_and_parse(self):
+        packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH])
         self.assertTrue(packs)
         parse_directory(build_directory(sorted(packs.items())))
         kinds = {kind for pack in packs.values() for kind, _ in parse_pack(pack).values()}
         self.assertIn(LIT_MESH, kinds)
 
-    def test_each_scene_s_bundle_holds_its_entry_every_mesh_it_names_and_its_camera_s_tracks(self):
-        packs = build_pack.bundle_bytes([build_pack.DEFAULT_SEARCH])
+    def test_each_scene_s_pack_holds_its_entry_every_mesh_it_names_and_its_camera_s_tracks(self):
+        packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH])
         scenes = sorted((REPO / "launcher" / "main").rglob("*.scene.toml"))
         self.assertTrue(scenes, "no scene file found: the tree test would pass for nothing")
         for path in scenes:
             name = scene_asset.scene_id(path)
-            self.assertIn(name, packs, f"{path.name} makes no bundle")
+            self.assertIn(name, packs, f"{path.name} makes no pack")
             entries = parse_pack(packs[name])
             self.assertEqual(entries[name][0], scene_asset.TYPE)
             scene = scene_asset.decode(entries[name][1])
             self.assertTrue(scene["renderers"], f"{path.name} names no mesh")
             for renderer in scene["renderers"]:
                 mesh = renderer["mesh"]
-                self.assertIn(mesh, entries, f"{path.name} names mesh {mesh!r}, which its bundle does not hold")
+                self.assertIn(mesh, entries, f"{path.name} names mesh {mesh!r}, which its pack does not hold")
                 self.assertEqual(entries[mesh][0], LIT_MESH)
             for camera in scene["cameras"]:
                 if not camera["clip"]:

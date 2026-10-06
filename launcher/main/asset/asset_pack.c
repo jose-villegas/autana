@@ -149,7 +149,7 @@ const char*
 asset_status_text(asset_status_t status) {
     switch (status) {
         case ASSET_OK: return "ok";
-        case ASSET_ERR_NO_PACK: return "no such bundle is mapped or read";
+        case ASSET_ERR_NO_PACK: return "no such pack is mapped or read";
         case ASSET_ERR_TRUNCATED: return "the pack is shorter than its header says";
         case ASSET_ERR_MAGIC: return "not an asset pack";
         case ASSET_ERR_VERSION: return "a pack or entry format this firmware does not read";
@@ -159,8 +159,8 @@ asset_status_text(asset_status_t status) {
         case ASSET_ERR_NOT_FOUND: return "no such asset";
         case ASSET_ERR_TYPE: return "the asset is not that type";
         case ASSET_ERR_FORMAT: return "the asset holds a value its reader does not accept";
-        case ASSET_ERR_DUPLICATE: return "two bundles share a name";
-        case ASSET_ERR_FULL: return "as many bundles are mounted as the store holds";
+        case ASSET_ERR_DUPLICATE: return "two packs share a name";
+        case ASSET_ERR_FULL: return "as many packs are mounted as the store holds";
     }
     return "unknown";
 }

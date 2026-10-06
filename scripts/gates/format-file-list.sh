@@ -20,8 +20,8 @@
 #   Vendored, by path. A short list, because a vendored tree arrives whole
 #   and is noticed.
 #
-#   Generated, by the "GENERATED FILE" marker every generator in this repo
-#   already writes into its first few lines. Deliberately not a path list: a
+#   Generated, by the "GENERATED FILE - do not edit." marker every
+#   generator in this repo already writes into its first few lines. Deliberately not a path list: a
 #   header that starts being generated tomorrow is excluded the day it
 #   appears, not the day someone remembers to come back here. The cost is
 #   that a generator which forgets the marker is silently held to the style
@@ -60,7 +60,7 @@ qualifies() {
     # rather than failing; callers pass whole commit file lists.
     [ -f "$REPO_ROOT/$path" ] || return 1
 
-    if head -5 "$REPO_ROOT/$path" | grep -q 'GENERATED FILE'; then
+    if head -5 "$REPO_ROOT/$path" | grep -qF 'GENERATED FILE - do not edit.'; then
         return 1
     fi
 

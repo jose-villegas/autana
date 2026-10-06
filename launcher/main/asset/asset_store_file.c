@@ -1,3 +1,7 @@
+/*
+ * asset_store_file: the asset store's host backend, one file per pack in
+ * the folder asset_store.h names.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -7,7 +11,7 @@
 #define PATH_BYTES 1024
 
 static const char*
-bundle_dir(void) {
+pack_dir(void) {
     const char* dir = getenv("AUTANA_ASSET_DIR");
 #ifdef ASSET_DIR_DEFAULT_PATH
     dir = dir != NULL ? dir : ASSET_DIR_DEFAULT_PATH;
@@ -17,7 +21,7 @@ bundle_dir(void) {
 
 asset_status_t
 asset_store_backend_mount(const char* name, asset_pack_t* pack, uintptr_t* mapping) {
-    const char* dir = bundle_dir();
+    const char* dir = pack_dir();
     char path[PATH_BYTES];
     if (dir == NULL || snprintf(path, sizeof path, "%s/%s.apak", dir, name) >= (int)sizeof path) {
         return ASSET_ERR_NO_PACK;
@@ -35,7 +39,7 @@ asset_store_backend_unmount(uintptr_t mapping) {
 
 void
 asset_store_backend_report(const char* name, asset_status_t status) {
-    const char* dir = bundle_dir();
-    (void)fprintf(stderr, "asset bundle %s/%s.apak: %s (AUTANA_ASSET_DIR names the folder build_pack.py wrote)\n",
+    const char* dir = pack_dir();
+    (void)fprintf(stderr, "asset pack %s/%s.apak: %s (AUTANA_ASSET_DIR names the folder build_pack.py wrote)\n",
                   dir == NULL ? "(unset)" : dir, name, asset_status_text(status));
 }

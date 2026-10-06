@@ -1,3 +1,7 @@
+/*
+ * raster_show: the raster's development view modes, drawing its depth, or
+ * each tile's farthest depth, in place of its colour.
+ */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
