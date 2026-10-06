@@ -466,21 +466,9 @@ python launcher/tools/anim/track_host.py \
         --mesh sponza.atrium -
 ```
 
-## The capybara test asset
+## The capybara asset
 
-`gen_capybara.py` writes `../assets/capybara.glb`, a rigged low-poly capybara
-modelled entirely in code: 1336 triangles, 20 joints, and two looping clips at
-30 fps, `idle` (3.5 s) and an in-place `walk` (1 s, no root motion). It is a
-plain glTF 2.0 file, the input a skinned-mesh baker is tested with.
-
-```sh
-python launcher/main/apps/render_lab/tools/gen_capybara.py
-python -m unittest discover -s launcher/main/apps/render_lab/tools/tests
-```
-
-The file is read back and posed with the engine's glTF tools in
-[`launcher/tools/r3d/`](../../../../tools/r3d/README.md); to watch it:
-
-```sh
-python launcher/tools/r3d/gltf_preview.py launcher/main/apps/render_lab/assets/capybara.glb --gif walk --out walk.gif
-```
+`../assets/capybara.blend` is a hand-modelled low-poly capybara (992
+triangles, 22 deform bones) with a control rig and five in-place loops at
+30 fps: `idle`, `walk`, `walk_fast`, `gallop` and `half_bound`. It is the source
+asset for skinned-mesh import; nothing in the build reads it yet.
