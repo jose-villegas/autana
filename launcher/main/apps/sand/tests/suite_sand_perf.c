@@ -1628,7 +1628,7 @@ test_a_growing_plant_bed_fits_in_the_frame_budget(void) {
     free(blocks);
 
     /* Soak/dry is 28% of this step. */
-    perf_target("growing plant bed", per_step, 45680, 52840);
+    perf_target("growing plant bed", per_step, 45210, 52840);
     free(real);
 }
 
@@ -2793,13 +2793,13 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
 #define SNOWFALL_BUDGET_US      34990
 
 /* Perf-scoped; among the dearest scenes in the suite. */
-#define PLANT_POUR_BUDGET_US    62610
+#define PLANT_POUR_BUDGET_US    54490
 
 /* What is left after a landed plant stopped arming the reaction pass (see
  * may_have_faller/faller_may_move in sand.h) is the sweep's own block scan. */
 #define PLANT_IDLE_BUDGET_US    140
 
-#define MATURE_TREE_BUDGET_US   21770
+#define MATURE_TREE_BUDGET_US   21470
 
 /* A grown plant bed with acid eating down to its roots on one side of a wall
  * and lava burning its canopy on the other (build_plant_ruin_scene(), shared
