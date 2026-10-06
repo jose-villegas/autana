@@ -4,8 +4,8 @@ beside each its error against the reference.
     python tools/r3d/skin_light/skin_light_sheet.py ASSET.glb BENCH_DIR OUT.png [--sheet CLIP[:PHASE]]
 
 Run from launcher/. Needs Pillow. BENCH_DIR holds the bench's sheet.bin, the
-native RGB565 colour of every vertex, one run per lit variant, and
-sheet.txt, their labels; --sheet must name the frame the data was written
+native RGB565 colour of every vertex, one run per lit variant with the
+reference first, and sheet.txt, their labels; --sheet must name the frame the data was written
 with.
 """
 

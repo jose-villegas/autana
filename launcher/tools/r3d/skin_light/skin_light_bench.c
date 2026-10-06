@@ -8,7 +8,7 @@
  * of every frame. OUT_DIR receives three Markdown tables (cost, table build,
  * quality against the reference), sheet.bin, the native RGB565 colour of
  * every vertex of the sheet frame under SHEET_LIGHTS lights, one run of
- * vertices per lit variant in the order of VARIANTS, and sheet.txt, those
+ * vertices per lit variant, the reference first, and sheet.txt, those
  * variants' short labels, one per line.
  *
  * Every variant skins the normal with the rotation part of the blended joint
@@ -505,8 +505,9 @@ main(int argc, char** argv) {
         reference++;
     }
 
-    FILE* labels = open_out(argv[2], "sheet.txt", "w");
-    unsigned sheet_runs = 0;
+    /* The reference's sheet run goes first, the others in VARIANTS order. */
+    const char* labels[VARIANT_N];
+    unsigned sheet_runs = 1;
     for (unsigned li = 0; li < LIGHT_COUNT_N; li++) {
         results[reference][li] = measure(&d, &VARIANTS[reference], LIGHT_COUNTS[li], ref);
         for (unsigned vi = 0; vi < VARIANT_N; vi++) {
@@ -519,18 +520,22 @@ main(int argc, char** argv) {
             uint8_t(*mine)[3] = vi == reference ? ref : got;
             score(&d, mine, ref, &results[vi][li]);
             if (LIGHT_COUNTS[li] == SHEET_LIGHTS) {
+                const unsigned run = vi == reference ? 0 : sheet_runs++;
                 for (unsigned i = 0; i < d.vertices; i++) {
-                    sheet[sheet_runs * d.vertices + i] =
+                    sheet[run * d.vertices + i] =
                         shade(d.vertex[i].colour, mine[(size_t)d.sheet_frame * d.vertices + i]);
                 }
-                fprintf(labels, "%s\n", VARIANTS[vi].label);
-                sheet_runs++;
+                labels[run] = VARIANTS[vi].label;
             }
         }
     }
-    fclose(labels);
+    FILE* f = open_out(argv[2], "sheet.txt", "w");
+    for (unsigned run = 0; run < sheet_runs; run++) {
+        fprintf(f, "%s\n", labels[run]);
+    }
+    fclose(f);
 
-    FILE* f = open_out(argv[2], "skin-light-cost.md", "w");
+    f = open_out(argv[2], "skin-light-cost.md", "w");
     fprintf(f, "%u vertices x %u frames, median of %u runs; host compiler " __VERSION__ ".\n\n", d.vertices, d.frames,
             RUNS);
     fprintf(f, "| Variant | Lights | mul | add | div | sqrt | other | int mul | ns/vertex |\n");
