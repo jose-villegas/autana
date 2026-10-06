@@ -136,15 +136,10 @@ def main():
     out = sys.stdout
     out.write(
         "/*\n"
-        " * A test fixture: a device screenshot of the reported slow scenario - a\n"
-        " * sand pile against a diagonal water surface - sampled by\n"
-        " * tools/gen_captured_slope.py at its native 4px-per-cell resolution\n"
-        " * (92x112) and upscaled 2x (nearest) to the perf suite's own 184x224\n"
-        " * grid. Classified by colour: empty is near-black, water is\n"
-        " * blue-dominant, sand is red-dominant - see gen_captured_slope.py for the\n"
-        " * exact thresholds. Water cells are filled to MASS_MAX. The screenshot\n"
-        " * is not in the repository, so this table is the scene's source; a new\n"
-        " * scenario is a new capture.\n"
+        " * A perf-suite fixture: a device screenshot of a sand pile against a\n"
+        " * diagonal water surface, sampled into the suite's grid by\n"
+        " * tools/gen_captured_slope.py. The screenshot is not in the repository,\n"
+        " * so this table is the scene's source; a new scenario is a new capture.\n"
         " */\n"
     )
     out.write("#pragma once\n\n")

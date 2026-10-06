@@ -1,13 +1,8 @@
 /*
- * A test fixture: a device screenshot of the reported slow scenario - a
- * sand pile against a diagonal water surface - sampled by
- * tools/gen_captured_slope.py at its native 4px-per-cell resolution
- * (92x112) and upscaled 2x (nearest) to the perf suite's own 184x224
- * grid. Classified by colour: empty is near-black, water is
- * blue-dominant, sand is red-dominant - see gen_captured_slope.py for the
- * exact thresholds. Water cells are filled to MASS_MAX. The screenshot
- * is not in the repository, so this table is the scene's source; a new
- * scenario is a new capture.
+ * A perf-suite fixture: a device screenshot of a sand pile against a
+ * diagonal water surface, sampled into the suite's grid by
+ * tools/gen_captured_slope.py. The screenshot is not in the repository,
+ * so this table is the scene's source; a new scenario is a new capture.
  */
 #pragma once
 

@@ -53,6 +53,5 @@ once from something the repository does not keep, such as a device
 screenshot, is a committed fixture instead: its comment says where it came
 from, and it carries no banner.
 
-The other gates leave generated files alone: the comment rules and the
-style audit skip every file the banner marks, since the generator, not a
-person, decides their form.
+The formatter, the comment-length rule and the style audit skip every file
+the banner marks, since the generator, not a person, decides their form.

@@ -22,7 +22,7 @@ checks it.
 **The output is checked in, beside the code that reads it.** A build-time
 generator would put Python on the critical path of every clean build.
 
-**The output says so, and says how.** Its first line is a banner naming the
+**The output says so, and says how.** It opens with a banner naming the
 exact command that regenerates it, where someone about to hand-edit it will
 see it first. Commit the raw output; never run the formatter over it.
 `scripts/gates/check_generated_files.py` reruns that command in CI and fails
