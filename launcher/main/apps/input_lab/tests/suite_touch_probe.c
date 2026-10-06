@@ -13,7 +13,7 @@
 static void
 test_every_target_fits_inside_the_margin(void) {
     rng_t rng;
-    rng_seed(&rng, 1u);
+    rng_seed(&rng, 1U);
     for (int i = 0; i < 5000; i++) {
         const touch_probe_target_t t = touch_probe_next(&rng, 448, 368, 12, 8);
         TEST_ASSERT_GREATER_OR_EQUAL_INT(8, t.x);
@@ -28,7 +28,7 @@ test_every_target_fits_inside_the_margin(void) {
 static void
 test_targets_reach_every_edge_of_the_allowed_area(void) {
     rng_t rng;
-    rng_seed(&rng, 7u);
+    rng_seed(&rng, 7U);
     int min_x = 1000, max_x = -1, min_y = 1000, max_y = -1;
     for (int i = 0; i < 20000; i++) {
         const touch_probe_target_t t = touch_probe_next(&rng, 368, 448, 12, 8);
@@ -118,7 +118,7 @@ test_a_grid_index_runs_along_a_row_first(void) {
 static void
 test_a_shuffle_visits_every_index_once(void) {
     rng_t rng;
-    rng_seed(&rng, 3u);
+    rng_seed(&rng, 3U);
     int order[25];
     touch_probe_shuffle(&rng, order, 25);
     int seen[25] = {0};

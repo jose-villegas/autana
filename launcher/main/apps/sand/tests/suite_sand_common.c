@@ -270,7 +270,7 @@ colour_gap(gfx_color_t x, gfx_color_t y) {
     const int dr = (int)gfx_rgb565_r5(a) - (int)gfx_rgb565_r5(b);
     const int dg = (int)gfx_rgb565_g6(a) - (int)gfx_rgb565_g6(b);
     const int db = (int)gfx_rgb565_b5(a) - (int)gfx_rgb565_b5(b);
-    return (dr < 0 ? -dr : dr) * 2 + (dg < 0 ? -dg : dg) + (db < 0 ? -db : db) * 2;
+    return ((dr < 0 ? -dr : dr) * 2) + (dg < 0 ? -dg : dg) + ((db < 0 ? -db : db) * 2);
 }
 
 int
