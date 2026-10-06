@@ -248,20 +248,14 @@ fallback question section 5 answers.
 
 Where the build departs from this sketch:
 
-- **The bundle directory is read into RAM.** Section 0 has the device map
-  the directory with the bundles. The store reads it into RAM once, kept for
-  good, and maps each bundle alone: the directory shares its 64 KB flash page
-  with the first bundles, and QEMU drops every mapping of a page when one of
-  them is unmapped.
-- **Ids are unique within a bundle whatever their type**, settled while the
-  scenes were built (section 1, decision 7): the reader finds an entry by name
-  before it checks the type, so a scene and its clip cannot share a stem, and
-  `build_pack` refuses them, naming both files.
-- **`scene_failure_t.what` is a `char[32]`** (`ASSET_NAME_MAX`), a copy
-  rather than a pointer into the bundle, which a failed `scene_load()` has
-  already released (decision 8).
-- **`bake_tracks.py` is deleted**, not trimmed to its checks: they had
-  already moved into `tracks_asset.py`, so nothing was left.
+- **The bundle directory is read into RAM once**, not mapped with the
+  bundles; each bundle is mapped alone. The reason is at `open_directory()` in
+  `launcher/main/asset/asset_store_flash.c`.
+- **Two rules were settled while the scenes were built**: ids are unique
+  within a bundle whatever their type, and `scene_failure_t.what` is a copy
+  (decisions 7 and 8).
+- **`bake_tracks.py` is deleted** rather than kept without its C emitter
+  (section 2): its checks are in `tracks_asset.py`.
 - **`gen_boot_anim_timeline.py` stays.** Section 6 deletes it with the boot
   tracks; it survives without them, writing only the boot animation's timing
   constants and settings, a header section 8 leaves to the content audit.

@@ -24,3 +24,4 @@ docs/sand/Testing-Sand.md	2026-10-05
 docs/Animation-Tracks.md	2026-10-05	PR 625 round 3: reviewed against anim_tracks.c, tracks_asset.py and bake_tracks.py, accurate
 docs/render/Mesh-Import.md	2026-10-05	PR 625 round 3: BOUNDS/FORMAT reviewed against r3d_lit_mesh.c, accurate
 docs/Animation-Tracks.md	2026-10-06	tracks final sweep: reviewed against tracks_asset.py, track_host.py and test_anim_bake.py, accurate
+launcher/tools/anim/README.md	2026-10-06	tracks final sweep: reviewed against tracks_asset.py and track_host.py, accurate

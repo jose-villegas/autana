@@ -20,9 +20,9 @@ flowchart LR
 ```
 
 A clip reaches the firmware as an entry of an
-[asset bundle](assets/README.md), baked when the bundle is built by
-`tools/anim/tracks_asset.py`, the entry's one writer. No tracks are compiled
-into the firmware.
+[asset bundle](assets/README.md): `build_pack.py` bakes it through
+`tools/anim/tracks_asset.py`, the entry's one writer, when the bundles are
+built.
 
 ## What a track stores
 
@@ -41,10 +41,10 @@ A glTF node is animated by up to three tracks, named `node/translation`,
 `node/rotation` and `node/scale`. Anything else is reached by
 `KHR_animation_pointer`, which names a property by path; a track baked from it
 is named by that path with the object's index replaced by its glTF name, for
-example `lens/perspective/yfov` for `/cameras/0/perspective/yfov`. Objects are
-bound by name, so a re-export that reorders nodes keeps its track names. A pointer
-to a rotation is a quaternion track like a node's. A channel that never
-changes is baked as one key.
+example `lens/perspective/yfov` for `/cameras/0/perspective/yfov`. Objects
+are bound by name, so a re-export that reorders nodes keeps its track names. A
+pointer to a rotation is a quaternion track like a node's. A channel that
+never changes is baked as one key.
 
 A **clip** is the tracks of one animation, on one timeline as in glTF: a
 track's key times are clip seconds, so tracks that start or end at different
