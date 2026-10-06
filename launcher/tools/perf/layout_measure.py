@@ -315,6 +315,11 @@ def run_flash(args, seed, runner=None):
                     record["suites"][name] = dict(tests=tests, run_seconds=seconds, runs=runs)
                 else:
                     entry = record["suites"][name]
+                    for run, previous in zip(runs, entry["runs"]):
+                        repeated = sorted(run["rows"].keys() & previous["rows"].keys())
+                        if repeated:
+                            raise FilterOverlap(f"{name}: patterns in different requests matched row "
+                                                f"{repeated[0]}; give each test one pattern")
                     entry["tests"] += "," + tests
                     for number, run in enumerate(runs):
                         entry["run_seconds"][number] += seconds[number]
@@ -346,17 +351,28 @@ def filter_limits(project):
     return define("SUITE_FILTER_LEN") - 1, define("SUITE_FILTER_MAX")
 
 
+class FilterOverlap(RuntimeError):
+    """Two requests on one flash measured the same row."""
+
+
+def validate_filters(suites, limits):
+    """Refuse empty patterns and patterns over the width before any seeded flash."""
+    width = limits[0]
+    for _, tests, _ in suites:
+        if tests != "-" and any(not pattern or len(pattern) > width for pattern in tests.split(",")):
+            raise ValueError(f"suite filter pattern exceeds project limit: {width} characters")
+
+
 def split_filters(suites, limits):
-    """Refuse patterns over the width; split filters over the count into requests."""
-    width, count = limits
+    """Split filters over the pattern count into requests for one flash."""
+    validate_filters(suites, limits)
+    count = limits[1]
     requests = []
     for name, tests, template in suites:
         if tests == "-":
             requests.append((name, tests, template))
             continue
         patterns = tests.split(",")
-        if any(not pattern or len(pattern) > width for pattern in patterns):
-            raise ValueError(f"suite filter pattern exceeds project limit: {width} characters")
         requests.extend((name, ",".join(patterns[start:start + count]), template)
                         for start in range(0, len(patterns), count))
     return requests

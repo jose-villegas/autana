@@ -11,7 +11,8 @@ test patterns (`-` for all), and a table command (`-` reads the capture's
 `<row> both cores: mean <N>us` lines). Pattern width and count limits come
 from each project's `launcher/test/suites.h`; a pattern over the width is
 refused before any flash, and patterns over the count run as several requests
-on the same flash. Commands run from the current repository: `@CAPTURE@` and
+on the same flash. Each test must match patterns in one request only; a row
+measured by two requests stops the comparison. Commands run from the current repository: `@CAPTURE@` and
 `@TABLE@` become this flash's capture and table files, `@PROJECT@` the revision's
 project tree. A table command requiring budgets must read them from that tree,
 for example with `--source @PROJECT@/path/to/suite.c`.
@@ -82,13 +83,11 @@ Table commands also run with a deadline of `--timeout`. Status logs
 bracket each flash; the boot id must match its project's seeded build id.
 Later suites request that build id. Complete captures exiting 1 are kept;
 other exit codes, incomplete captures, wrong builds and table errors are
-failures. Two consecutive failures stop measurement and write the summary
-so far, with decisions and errors. A summary is marked incomplete after such a stop,
-when the captures yielded no rows, or when any row is not measured. A success
-resets the failure count.
-Failed attempts consume the cap. A suite whose first flash on either side
-gives no timing rows stops measurement with an error naming the suite: its
-output needs a table command.
+failures. Two consecutive failures stop measurement, and so does a suite
+whose first flash on each side gives no timing rows; that error names the
+suite and its table. A stop writes the summary so far, with decisions and
+errors, and marks it incomplete, as does any row not measured. A success
+resets the failure count. Failed attempts consume the cap.
 
 ## Reading the result
 

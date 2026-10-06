@@ -20,6 +20,15 @@ import perf_compare as tool
 import seed_statistics as stats
 
 
+def chained_seed(fake):
+    """Later requests on a flash carry the build id the fake derives from its seed."""
+    def runner(command, log, timeout):
+        if 'suite' in command and '--layout-seed' not in command:
+            command = command + ['--layout-seed', command[command.index('--expect-build-id') + 1].split('-')[0]]
+        return fake(command, log, timeout)
+    return runner
+
+
 class CaptureRulesTests(unittest.TestCase):
     def test_real_device_results(self):
         path = FIXTURES / 'device_capture.log'
@@ -298,39 +307,61 @@ class CaptureRulesTests(unittest.TestCase):
     def test_comparison_accepts_user_filter_over_count(self):
         with tempfile.TemporaryDirectory() as root:
             args = arguments(root, 4)
-            args.suite = [('suite', 'quiet,heavy,quie,heav,qu', '-')]
+            args.suite = [('suite', 'quiet,heavy,none,nil,zero', '-')]
             fake = FakeAutana(root)
-            def runner(command, log, timeout):
-                if 'suite' in command and '--layout-seed' not in command:
-                    command = command + ['--layout-seed', command[command.index('--expect-build-id') + 1].split('-')[0]]
-                return fake(command, log, timeout)
             with contextlib.redirect_stdout(io.StringIO()):
-                result = tool.measure(args, runner)
+                result = tool.measure(args, chained_seed(fake))
             self.assertFalse(any(item.get('error') for item in result['plan']))
             self.assertEqual(len(fake.calls), 2 * len(result['plan']))
             self.assertEqual({result['rows'][name]['verdict'] for name in ('suite/quiet', 'suite/heavy')}, {'no change'})
 
-    def test_first_flash_without_rows_stops_naming_suite(self):
+    def test_patterns_in_two_requests_matching_one_row_stop_the_comparison(self):
         with tempfile.TemporaryDirectory() as root:
-            args = arguments(root)
-            args.suite = [('suite', '-', '-'), ('silent', '-', '-')]
-            fake = FakeAutana(root)
-            def runner(command, log, timeout):
-                if 'suite' in command and '--layout-seed' not in command:
-                    command = command + ['--layout-seed', command[command.index('--expect-build-id') + 1].split('-')[0]]
-                code, lines, wall = fake(command, log, timeout)
-                if 'silent' in command:
-                    for _, line in lines:
-                        if line.startswith('report: '):
-                            path = Path(line[8:]).with_suffix('.log')
-                            path.write_text('device_tests silent: 1234 us per step\n:1:test_silent:PASS\n')
-                return code, lines, wall
+            args = arguments(root, 4)
+            for project in (args.project_a, args.project_b):
+                (project / 'launcher/test/suites.h').write_text(
+                    '#define SUITE_FILTER_LEN 24\n#define SUITE_FILTER_MAX 1\n')
+            args.suite = [('suite', 'quiet,qu', '-')]
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    self.assertRaisesRegex(RuntimeError, r"suite.*quiet"):
+                tool.measure(args, chained_seed(FakeAutana(root)))
+            plan = json.loads((args.out / 'plan.json').read_text())['plan']
+            self.assertEqual(len(plan), 1)
+            self.assertIn('quiet', plan[0]['error'])
+
+    def silent_run(self, root, silent_sides):
+        args = arguments(root)
+        args.suite = [('suite', '-', '-'), ('silent', '-', '-')]
+        fake = chained_seed(FakeAutana(root))
+        def runner(command, log, timeout):
+            code, lines, wall = fake(command, log, timeout)
+            side = Path(command[command.index('--project') + 1]).name if '--project' in command else None
+            if 'silent' in command and side in silent_sides:
+                for _, line in lines:
+                    if line.startswith('report: '):
+                        path = Path(line[8:]).with_suffix('.log')
+                        path.write_text('device_tests silent: 1234 us per step\n:1:test_silent:PASS\n')
+            return code, lines, wall
+        return args, runner
+
+    def test_first_flashes_without_rows_stop_naming_suite(self):
+        with tempfile.TemporaryDirectory() as root:
+            args, runner = self.silent_run(root, ('a', 'b'))
             with contextlib.redirect_stdout(io.StringIO()), \
                     self.assertRaisesRegex(RuntimeError, r"silent.*no timing rows.*table command"):
                 tool.measure(args, runner)
             plan = json.loads((args.out / 'plan.json').read_text())['plan']
-            self.assertEqual(len(plan), 1)
+            self.assertEqual(sorted(item['side'] for item in plan), ['a', 'b'])
             self.assertIn('Incomplete', (args.out / 'summary.md').read_text())
+
+    def test_suite_silent_on_one_side_only_keeps_measuring(self):
+        with tempfile.TemporaryDirectory() as root:
+            args, runner = self.silent_run(root, ('b',))
+            args.max_seeds = 4
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = tool.measure(args, runner)
+            self.assertIn('silent/quiet', result['rows'])
+            self.assertEqual(result['rows']['suite/quiet']['verdict'], 'no change')
 
     def test_status_after_exception_and_table_timeout(self):
         with tempfile.TemporaryDirectory() as root:

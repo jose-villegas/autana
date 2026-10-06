@@ -60,7 +60,7 @@ Two rules keep a reading honest:
   [`perf_compare.sh`](../../launcher/tools/perf/README.md) separates layout
   variation from change; `A A` calibrates. `compare_reports.py` on one pair of
   reports applies only its threshold and cannot tell layout from change.
-  The suite's timings need its table command:
+  `-` finds no timing rows in this suite's capture, so pass its table command:
 
   ```sh
   launcher/tools/perf/perf_compare.sh A B --suite run_sand_perf_suite fire,gas \
