@@ -217,7 +217,7 @@ void split_passes_scope_end(split_passes_scope_t scope);
  * the serial path - see sand_enable_lane_scratch(). */
 void* lane_scratch_open(sand_t* g);
 
-/* Everything app_sand.c's alloc_grid_bookkeeping() gives a shipped board -
+/* Everything app_sand.c's alloc_sim_buffers() gives a shipped board -
  * sleeping, dirty rows and columns, step stamps, lane scratch - against a
  * grid already sand_init()ed. A timed fixture without the last two measures
  * the serial path however many cores it asked for. What a scene is MADE of
