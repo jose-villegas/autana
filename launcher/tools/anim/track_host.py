@@ -1,10 +1,12 @@
 """track_host.c built once, and run over a clip.
 
 The program is compiled into launcher/tools/anim/build/ under a name that
-carries a hash of its sources, the compiler and the flags, so it is built
-again only when one of them changes. Each build goes to a name of its own and
-is then renamed into place, so runs started together on a cold cache never
-see a half-written program.
+carries a hash of every file the compiler reads to build it (the compiler's
+own list, from -MM), the compiler and the flags, so it is built again only
+when one of them changes. Each build goes to a name of its own and is then
+renamed into place, so runs started together on a cold cache never see a
+half-written program. Older builds are left in place: another run may be
+about to start one.
 
 A clip is handed to it as a pack: either a pack and an id, as track_host
 takes them, or a NAME.anim.toml, baked into a scratch pack of just that clip
@@ -20,6 +22,7 @@ Standard library only.
 import hashlib
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -35,7 +38,6 @@ MAIN = TOOLS.parent / "main"
 BUILD = HERE / "build"
 SOURCES = (HERE / "track_host.c", MAIN / "anim" / "anim_track.c", MAIN / "anim" / "anim_tracks.c",
            MAIN / "asset" / "asset_pack.c", MAIN / "asset" / "asset_file.c")
-HEADER_DIRS = (MAIN / "anim", MAIN / "asset", MAIN / "util" / "math")
 FLAGS = ("-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-O2")
 EXE = ".exe" if sys.platform == "win32" else ""
 
@@ -56,11 +58,30 @@ def compiler():
     return found.stdout.strip()
 
 
+def compile_args(cc):
+    """The compile, without its output: what both the build and the key's
+    file list run, so the key always sees the files the build reads."""
+    return [cc, *FLAGS, "-I", str(MAIN), *map(str, SOURCES)]
+
+
+def inputs(cc):
+    """Every file the compiler reads to build the program, sources first."""
+    listed = subprocess.run([*compile_args(cc), "-MM", "-MT", "x"], capture_output=True, text=True)
+    if listed.returncode != 0:
+        raise TrackHostError(f"listing track_host's headers with {cc} failed:\n{listed.stderr}")
+    files = []
+    for rule in listed.stdout.replace("\\\n", " ").splitlines():
+        for name in re.split(r"(?<!\\) +", rule.strip().removeprefix("x:").strip()):
+            path = pathlib.Path(name.replace("\\ ", " ")).resolve()
+            if name and path not in files:
+                files.append(path)
+    return files
+
+
 def build_key(cc):
     """A hash of everything the program is built from."""
     digest = hashlib.sha256()
-    headers = sorted(path for folder in HEADER_DIRS for path in folder.glob("*.h"))
-    for path in (*SOURCES, *headers):
+    for path in inputs(cc):
         digest.update(path.name.encode() + b"\0" + path.read_bytes())
     digest.update("\0".join((cc, *FLAGS)).encode())
     return digest.hexdigest()[:16]
@@ -76,8 +97,7 @@ def program():
     handle, scratch = tempfile.mkstemp(prefix=f"{target.stem}.", suffix=f".tmp{EXE}", dir=BUILD)
     os.close(handle)
     scratch = pathlib.Path(scratch)
-    built = subprocess.run([cc, *FLAGS, "-I", str(MAIN), *map(str, SOURCES), "-lm", "-o", str(scratch)],
-                           capture_output=True, text=True)
+    built = subprocess.run([*compile_args(cc), "-lm", "-o", str(scratch)], capture_output=True, text=True)
     if built.returncode != 0:
         scratch.unlink(missing_ok=True)
         raise TrackHostError(f"building track_host with {cc} failed:\n{built.stderr}")
@@ -88,12 +108,6 @@ def program():
         scratch.unlink(missing_ok=True)
         if not target.is_file():
             raise
-    for stale in BUILD.glob(f"track_host-*{EXE}"):
-        if stale != target and ".tmp" not in stale.name:
-            try:
-                stale.unlink()
-            except OSError:
-                pass
     return target
 
 

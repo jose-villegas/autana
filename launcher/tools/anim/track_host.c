@@ -5,13 +5,16 @@
  * firmware calls. One program for every clip: track_host.py builds it once.
  *
  *   track_host --pack PACK --clip ID [--from MS] [--every MS] [--until MS] [--clamp]
- *   track_host --pack PACK --clip ID [--every MS] --poses NODE W H TAN NEAR
+ *   track_host --pack PACK --clip ID [--every MS] [--until MS] --poses NODE W H TAN NEAR
  *
- * By default a line a track per time: `<t_ms> <name> <value...>`, from
- * --from (0) to --until (the clip's duration). With --poses it prints the
+ * By default one line per track per sample time: `<t_ms> <name> <value...>`,
+ * from --from (0) to --until (the clip's duration). With --poses it prints the
  * poses file r3d's triangle_sizes reads, for the camera node NODE: its
  * translation as the eye, the way its rotation turns glTF's -Z as the
- * forward, over the lens and size given. --poses comes last.
+ * forward, over the lens and size given, from 0 and looping, so --from and
+ * --clamp are refused with it. --poses comes last. --every 0 is refused.
+ * The clock counts in 64 bits, so a step past an --until near the u32
+ * maximum ends the run instead of wrapping to 0.
  */
 #include <inttypes.h>
 #include <stdbool.h>
@@ -22,8 +25,6 @@
 #include "anim/anim_track.h"
 #include "anim/anim_tracks.h"
 #include "asset/asset_file.h"
-
-#define POSES_MAX 4096
 
 typedef struct {
     uint32_t from_ms;
@@ -36,7 +37,7 @@ typedef struct {
 static int
 usage(void) {
     fprintf(stderr, "usage: track_host --pack PACK --clip ID [--from MS] [--every MS] [--until MS] [--clamp]\n"
-                    "       track_host --pack PACK --clip ID [--every MS] --poses NODE W H TAN NEAR\n");
+                    "       track_host --pack PACK --clip ID [--every MS] [--until MS] --poses NODE W H TAN NEAR\n");
     return 2;
 }
 
@@ -59,17 +60,13 @@ print_poses(const anim_tracks_t* tracks, char** pose_args, const sampling_t* at)
     if (!find_track(tracks, node, "translation", &move) || !find_track(tracks, node, "rotation", &turn)) {
         return 2;
     }
-    if (at->every_ms == 0 || at->until_ms / at->every_ms >= POSES_MAX) {
-        fprintf(stderr, "track_host: more than %d poses; raise --every\n", POSES_MAX);
-        return 2;
-    }
     printf("size %d %d\nlens %s %s\n", atoi(pose_args[1]), atoi(pose_args[2]), pose_args[3], pose_args[4]);
     const float ahead[3] = {0.0F, 0.0F, -1.0F};
-    for (uint32_t t = 0; t < at->until_ms; t += at->every_ms) {
+    for (uint64_t t = 0; t < at->until_ms; t += at->every_ms) {
         float eye[ANIM_WIDTH_MAX];
         float q[ANIM_WIDTH_MAX];
         float forward[3];
-        const float seconds = anim_clip_seconds(&tracks->clip, t, ANIM_LOOP);
+        const float seconds = anim_clip_seconds(&tracks->clip, (uint32_t)t, ANIM_LOOP);
         anim_track_sample(&move, seconds, eye);
         anim_track_sample(&turn, seconds, q);
         anim_quat_rotate(q, ahead, forward);
@@ -81,19 +78,15 @@ print_poses(const anim_tracks_t* tracks, char** pose_args, const sampling_t* at)
 
 static int
 print_tracks(const anim_tracks_t* tracks, const sampling_t* at) {
-    if (at->every_ms == 0) {
-        return 2;
-    }
-    const uint32_t until_ms = !at->until_given && at->from_ms > at->until_ms ? at->from_ms : at->until_ms;
-    for (uint32_t t = at->from_ms; t < until_ms; t += at->every_ms) {
-        const float seconds = anim_clip_seconds(&tracks->clip, t, at->wrap);
+    for (uint64_t t = at->from_ms; t < at->until_ms; t += at->every_ms) {
+        const float seconds = anim_clip_seconds(&tracks->clip, (uint32_t)t, at->wrap);
         for (int i = 0; i < tracks->count; i++) {
             const char* name;
             anim_track_t track;
             (void)anim_tracks_at(tracks, i, &name, &track);
             float v[ANIM_WIDTH_MAX];
             anim_track_sample(&track, seconds, v);
-            printf("%" PRIu32 " %s", t, name);
+            printf("%" PRIu64 " %s", t, name);
             for (int k = 0; k < track.width; k++) {
                 printf(" %.9g", (double)v[k]);
             }
@@ -154,7 +147,8 @@ main(int argc, char** argv) {
             return usage();
         }
     }
-    if (pack_path == NULL || clip == NULL) {
+    if (pack_path == NULL || clip == NULL || at.every_ms == 0
+        || (pose_args != NULL && (at.from_ms != 0 || at.wrap == ANIM_CLAMP))) {
         return usage();
     }
     return sample(pack_path, clip, pose_args, &at);

@@ -14,21 +14,25 @@ read back from the entry by tracks_asset.decode(). Little-endian:
 
 `exact` marks a sample the C sampler must equal bit for bit: one that copies
 a key (at or past either end, a step, a single key, or on a key time of a
-track that is not a quaternion). The rest are float arithmetic against Python's double, so
-they hold to a tolerance. The scene is invented here, so nothing depends on
-one an app ships.
+track that is not a quaternion). The rest are float arithmetic against
+Python's double, so they hold to a tolerance. The scene is invented here, so
+nothing depends on one an app ships.
+
+It also holds what the tests that run track_host share: whether it can be
+built here, and a camera clip written beside its .glb.
 """
 
 import argparse
 import math
 import pathlib
+import shutil
 import struct
 import sys
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 
-from anim import tracks_asset  # noqa: E402
+from anim import track_host, tracks_asset  # noqa: E402
 from asset.asset_pack import build_pack  # noqa: E402
 from gltf import gltf_read, gltf_write  # noqa: E402
 
@@ -92,6 +96,33 @@ def probe_glb(reordered=False):
     cameras = [{"name": "lens", "type": "perspective", "perspective": {"yfov": 0.6, "znear": 0.1}}]
     return gltf_write.build_glb([{"name": n} for n in order],
                                 [{"name": "clip", "channels": probe_channels(index)}], cameras=cameras)
+
+
+def has_compiler():
+    """Whether anim/track_host.py can build here: sh and find_cc.sh's compiler."""
+    if not shutil.which("sh"):
+        return False
+    try:
+        track_host.compiler()
+    except track_host.TrackHostError:
+        return False
+    return True
+
+
+def write_camera_clip(directory, name="fly", reach=1.0, degrees=0.0, props=()):
+    """NAME.anim.toml and NAME.glb beside it: node `camera` moving from x 0 to
+    `reach` over a second while turning `degrees` about +y from facing glTF's
+    -Z, linearly. `props` names nodes the clip does not animate, which change
+    the file and not the clip. Returns the .anim.toml's path."""
+    directory = pathlib.Path(directory)
+    rotation = [turn((0, 1, 0), 0)] if not degrees else [turn((0, 1, 0), 0), turn((0, 1, 0), degrees)]
+    channels = [channel(0, "translation", [0.0, 1.0], [(0.0, 0.0, 0.0), (reach, 0.0, 0.0)]),
+                channel(0, "rotation", [0.0, 1.0][:len(rotation)], rotation)]
+    nodes = [{"name": "camera"}] + [{"name": prop} for prop in props]
+    (directory / (name + ".glb")).write_bytes(gltf_write.build_glb(nodes, [{"name": name, "channels": channels}]))
+    clip = directory / (name + tracks_asset.SUFFIX)
+    clip.write_text('source = "%s.glb"\nanimation = "%s"\n' % (name, name))
+    return clip
 
 
 def probe_entry():
