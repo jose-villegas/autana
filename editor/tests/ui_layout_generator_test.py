@@ -22,15 +22,6 @@ class UiLayoutGeneratorTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, message):
             GENERATOR.validate(layout)
 
-    def test_every_checked_in_header_matches_its_source(self):
-        sources = sorted(UI_DIR.glob("*_layout.json"))
-        self.assertTrue(sources)
-        for source in sources:
-            with self.subTest(source=source.name):
-                baked = GENERATOR.generate(json.loads(source.read_text(encoding="utf-8")))
-                header = source.with_name(source.stem + "_generated.h")
-                self.assertEqual(baked, header.read_text(encoding="utf-8"))
-
     def test_identifiers_derive_from_the_screen_name(self):
         layout = copy.deepcopy(self.layout)
         layout["screen"] = "settings"

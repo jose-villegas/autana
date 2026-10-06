@@ -138,8 +138,9 @@ flowchart TB
   `suites/` (the host heap model, the stubs, and the harness both platforms
   build) is not checked.
 - **Generated sources are checked in** beside the code that uses them, each
-  with a banner naming its regenerate command; `grep -rl "GENERATED FILE"`
-  lists them, and the rules they follow are in
+  with a banner naming its regenerate command, which
+  [a gate](tools/Generated-Files.md) reruns to prove the file current; the
+  rules they follow are in
   [tools/gen/README.md](../launcher/tools/gen/README.md).
 
 ---

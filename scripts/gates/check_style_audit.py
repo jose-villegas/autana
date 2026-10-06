@@ -101,9 +101,9 @@ def _doc_walk(root):
 
 
 def _c_walk(root):
-    """First-party .c/.h files: vendored trees and GENERATED FILE headers
-    keep their upstream or generator-owned form, the same exemption
-    check-format.sh and check_comment_length.py give them."""
+    """First-party .c/.h files: vendored trees and generated files keep
+    their upstream or generator-owned form, the same exemption
+    check-format.sh and check_comment_length.py's EXCLUDED give them."""
     root = pathlib.Path(root)
     for rel in tracked_files(root, ["*.c", "*.h"]):
         if any(rel.startswith(e) for e in EXCLUDED):
@@ -111,10 +111,7 @@ def _c_walk(root):
         path = root / rel
         if not path.is_file():
             continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        if "GENERATED FILE" in "\n".join(text.splitlines()[:5]):
-            continue
-        yield path, text
+        yield path, path.read_text(encoding="utf-8", errors="replace")
 
 
 def _text_walk(root):

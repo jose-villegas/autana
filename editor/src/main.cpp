@@ -113,10 +113,9 @@ shell_argument(const std::filesystem::path& path) {
 }
 
 bool
-bake_layout(const LayoutDocument& document, bool check_only, std::string& error) {
+bake_layout(const LayoutDocument& document, std::string& error) {
 #ifndef EDITOR_PYTHON_EXECUTABLE
     (void)document;
-    (void)check_only;
     error = "Python was not available when the editor was configured";
     return false;
 #else
@@ -135,9 +134,6 @@ bake_layout(const LayoutDocument& document, bool check_only, std::string& error)
     // gen_ui_layout.py stays the only writer of firmware geometry; the
     // editor launches it and never reimplements it.
     std::string command = python_argument + " " + generator_argument + " " + source_argument + " " + output_argument;
-    if (check_only) {
-        command += " --check";
-    }
 #ifdef _WIN32
     command = '"' + command + '"';
 #endif
@@ -482,7 +478,7 @@ save_and_bake(EditorState& state, const MenuRequests& requests) {
         }
     }
     if (requests.bake) {
-        state.notice = bake_layout(*screen.document, false, error)
+        state.notice = bake_layout(*screen.document, error)
                            ? "Baked " + baked_header_path(*screen.document).filename().string()
                            : "Bake failed: " + error;
     }
@@ -553,22 +549,10 @@ load_system_screens(std::string& error) {
     return state;
 }
 
-int
-check_bakes(const EditorState& state) {
-    for (const SystemScreen& screen : state.screens) {
-        std::string error;
-        if (screen.document && !bake_layout(*screen.document, true, error)) {
-            std::fprintf(stderr, "%s bake check failed: %s\n", screen.title, error.c_str());
-            return 1;
-        }
-    }
-    return 0;
-}
-
 } // namespace
 
 int
-main(int argument_count, char** arguments) {
+main(int, char**) {
     std::string load_error;
     std::optional<EditorState> loaded = load_system_screens(load_error);
     if (!loaded) {
@@ -576,10 +560,6 @@ main(int argument_count, char** arguments) {
         return 1;
     }
     EditorState state = std::move(*loaded);
-
-    if (argument_count == 2 && std::string(arguments[1]) == "--check-bake") {
-        return check_bakes(state);
-    }
 
     SDL_SetMainReady();
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {

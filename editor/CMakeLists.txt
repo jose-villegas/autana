@@ -232,9 +232,6 @@ if(BUILD_TESTING)
     gtest_discover_tests(editor_system_navigation_test TEST_PREFIX "editor_navigation.")
 
     if(Python3_Interpreter_FOUND)
-        if(EDITOR_BUILD_GUI)
-            add_test(NAME editor_bake_check COMMAND autana_editor --check-bake)
-        endif()
         add_test(
             NAME ui_layout_generator
             COMMAND ${Python3_EXECUTABLE}
