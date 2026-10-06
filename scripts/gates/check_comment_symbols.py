@@ -34,7 +34,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from code_vocabulary import CONSTANT, family, vocabulary  # noqa: E402
-from check_comment_length import sources, scan  # noqa: E402
+from c_comments import sources, scan  # noqa: E402
 from idf_vocabulary import not_verified_notice, outside_vocabulary, required_missing  # noqa: E402
 
 CITED = re.compile(r"\b([a-z_][a-z0-9_]*)\(\)")

@@ -3,7 +3,7 @@ import pathlib
 import re
 
 from tracked import committable
-from check_comment_length import blank_comments
+from c_comments import blank_comments
 
 SOURCE_SUFFIXES = {".c", ".h", ".py", ".sh", ".mjs"}
 C_SUFFIXES = {".c", ".h"}
@@ -70,9 +70,9 @@ def vocabulary(root):
     for path in source_paths(root):
         text = path.read_text(encoding="utf-8", errors="replace")
         if path.suffix in C_SUFFIXES:
-            code = blank_comments(text, strings=True)
-            # "\nSELFTEST_COMPLETE": an escape must not glue a letter onto the name.
-            spelled = re.sub(r"\\[a-z]", " ", blank_comments(text, literals=False))
+            code = blank_comments(text, mode="code")
+            # A literal token is real vocabulary; escapes must not glue letters onto it.
+            spelled = re.sub(r"\\[a-z]", " ", blank_comments(text, mode="spelled"))
             functions = set(FUNCTION.findall(code))
             constants = set(CONSTANT.findall(spelled))
             vocab.functions |= functions
@@ -92,7 +92,7 @@ def vocabulary(root):
         elif path.suffix == ".mjs":
             # An environment variable a Node gate reads; its functions are
             # camelCase and never cited as a C or Python name would be.
-            vocab.constants |= set(CONSTANT.findall(blank_comments(text, literals=False)))
+            vocab.constants |= set(CONSTANT.findall(blank_comments(text, mode="spelled")))
         else:
             kconfig += KCONFIG.findall(text)
     vocab.script_functions -= vocab.functions

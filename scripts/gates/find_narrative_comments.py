@@ -17,7 +17,7 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from check_comment_length import scan, sources  # noqa: E402
+from c_comments import scan, sources  # noqa: E402
 
 SIGNS = re.compile(
     r"(a first attempt|an earlier version|was considered|used to |reverted|"

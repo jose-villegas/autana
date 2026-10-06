@@ -19,14 +19,16 @@ TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$TOOLS_DIR/../../../scripts/lib/python.sh"
 PYTHON=$(find_python) || exit 1
 
-NATIVE_PATH_LIB="$TOOLS_DIR/../../../scripts/lib/native_path.py"
 . "$TOOLS_DIR/../../../scripts/lib/native_path.sh"
 
 remaining=$#
 while [ "$remaining" -gt 0 ]; do
     arg=$1
     shift
-    set -- "$@" "$(to_native --absolute-only "$arg")"
+    case "$arg" in
+        /*) arg=$(to_native "$arg") || exit 1 ;;
+    esac
+    set -- "$@" "$arg"
     remaining=$((remaining - 1))
 done
 

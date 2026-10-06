@@ -65,7 +65,6 @@ usage() {
 
 PYTHON=$(find_python PIL numpy) || exit 1
 
-NATIVE_PATH_LIB="$TOOLS_DIR/../../../scripts/lib/native_path.py"
 . "$TOOLS_DIR/../../../scripts/lib/native_path.sh"
 
 script=""

@@ -30,13 +30,12 @@ import re
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
-from device_capture import RESULT_PREFIX_RE as RESULT_RE
+from device_capture import results, SELFTEST_COMPLETE_RE
 
 # The device prints this line only when the self-test loop actually reaches
 # its end; absent means the run never finished, for any reason (timeout,
 # device wedged, serial dropped). A capture of ONE suite triggered by
 # RUNSUITE never prints it at all, which is what --no-complete is for.
-SELFTEST_COMPLETE_RE = re.compile(r"SELFTEST_COMPLETE(?:\s+failures=(\d+)\s+elapsed_ms=(\d+))?")
 
 # Both phrases appear on ESP-IDF's panic banner; either is sufficient to
 # call it a crash. The parenthesised text after "panic'ed" is the exception
@@ -67,7 +66,7 @@ def _panic_context(lines, panic_index):
     test is usually the very last PASS before the dump starts."""
     context = []
     for line in reversed(lines[:panic_index]):
-        if RESULT_RE.match(line.strip()):
+        if results(line):
             context.append(line.rstrip("\n"))
             if len(context) >= CONTEXT_LINES:
                 break
@@ -126,7 +125,7 @@ def validate(capture_path: str, sentinels=(), require_complete: bool = True):
     # written. Only checked for a whole-run capture: a RUNSUITE window can
     # legitimately close before its suite prints a result, and its sentinel
     # is the proof that it ran.
-    if require_complete and not any(RESULT_RE.match(line.strip()) for line in lines):
+    if require_complete and not results(text):
         failures.append(
             "no test result lines found - nothing ran. The flashed image "
             "either had the suites compiled in but not running (autorun off), "

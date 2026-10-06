@@ -1,8 +1,15 @@
 #!/bin/sh
-# Shell adapter to the shared native-path converter; its owner is NATIVE_PATH_LIB.
-. "$(dirname -- "$NATIVE_PATH_LIB")/python.sh"
-NATIVE_PATH_PYTHON=$(find_python) || return 1
-
+# Native paths for tools launched from Git Bash; other shells pass through.
 to_native() {
-    "$NATIVE_PATH_PYTHON" "$NATIVE_PATH_LIB" "$@"
+    if command -v cygpath >/dev/null 2>&1; then
+        if [ "$#" -eq 0 ]; then
+            cygpath -m -f -
+        else
+            cygpath -m "$1"
+        fi
+    elif [ "$#" -eq 0 ]; then
+        cat
+    else
+        printf '%s\n' "$1"
+    fi
 }

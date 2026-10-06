@@ -82,7 +82,6 @@ render_scene_bundles() {
     done
     # shellcheck source=../../../scripts/lib/python.sh
     . "$_rs_launcher/../scripts/lib/python.sh"
-    NATIVE_PATH_LIB="$_rs_launcher/../scripts/lib/native_path.py"
     . "$_rs_launcher/../scripts/lib/native_path.sh"
     _rs_python=$(find_python) || return 1
     _rs_assets="$scene_out_dir/assets"
@@ -303,7 +302,6 @@ render_scene_render() {
     # Neither is a dependency, and nothing here installs one.
     # shellcheck source=../../../scripts/lib/python.sh
     . "$_rs_launcher/../scripts/lib/python.sh"
-    NATIVE_PATH_LIB="$_rs_launcher/../scripts/lib/native_path.py"
     . "$_rs_launcher/../scripts/lib/native_path.sh"
     if _rs_python=$(find_python 2> /dev/null); then
         "$_rs_python" "$(to_native "$_rs_tools/render/render_png.py")" \

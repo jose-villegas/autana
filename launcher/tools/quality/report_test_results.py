@@ -11,6 +11,7 @@ Exit 0 = every test passed, 1 = the report records a failing test (a result
 to read, not an error), 2 = the capture has nothing in it to report on.
 """
 import argparse
+from datetime import datetime, timezone
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/device"))
@@ -24,12 +25,12 @@ def main() -> int:
     args = parser.parse_args()
     with open(args.capture_path, "r", errors="replace") as f:
         text = f.read()
-    parsed = results(text, selftest=True)
+    parsed = results(text)
     if not parsed:
         print(f"{args.capture_path} contains no test results - nothing ran, so "
               "there is no report to write.", file=sys.stderr)
         return 2
-    markdown, passed, failed = selftest_markdown(text, args.capture_path)
+    markdown, passed, failed = selftest_markdown(parsed, text, args.capture_path, datetime.now(timezone.utc))
     with open(args.out_path, "w", encoding="utf-8") as f:
         f.write(markdown)
     print(f"{len(parsed)} tests, {passed} passed, {failed} failed -> {args.out_path}")

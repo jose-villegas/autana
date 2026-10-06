@@ -32,7 +32,7 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from check_comment_length import sources as comment_sources, scan  # noqa: E402
+from c_comments import sources as comment_sources, scan  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 
 # Below the apps: all of launcher/main/ except apps/, and the test tree. A

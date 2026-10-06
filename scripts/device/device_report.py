@@ -24,7 +24,7 @@ from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
-from device_capture import RESULT_RE, results, QEMU_PASS_RE, QEMU_IGNORE_RE, QEMU_FAIL_RE  # noqa: E402
+from device_capture import RESULT_RE, results, SELFTEST_COMPLETE_RE  # noqa: E402
 
 # The line a RUNSUITE ends with, read here for the board (device.py) and for
 # QEMU (launcher/test/qemu_run.py). An image that predates --test prints no
@@ -436,16 +436,11 @@ def write_report_for_capture(capture_path, index_path):
     return out_path
 
 
-SELFTEST_COMPLETE_RE = re.compile(r"SELFTEST_COMPLETE failures=(\d+) elapsed_ms=(\d+)")
-
-
-def selftest_markdown(text, capture_path):
+def selftest_markdown(parsed, text, capture_path, captured_at):
     """Self-test report with failures and the full result list in capture order."""
-    from datetime import datetime, timezone
-    parsed = results(text, selftest=True)
     complete = SELFTEST_COMPLETE_RE.search(text)
-    failures_reported = int(complete.group(1)) if complete else None
-    elapsed_ms = int(complete.group(2)) if complete else None
+    failures_reported = int(complete.group(1)) if complete and complete.group(1) else None
+    elapsed_ms = int(complete.group(2)) if complete and complete.group(2) else None
 
     passed = [r for r in parsed if r["status"] == "PASS"]
     failed = [r for r in parsed if r["status"] == "FAIL"]
@@ -453,12 +448,12 @@ def selftest_markdown(text, capture_path):
     lines = []
     lines.append("# Device Self-Test Results")
     lines.append("")
-    lines.append(f"Captured: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    lines.append(f"Captured: {captured_at.strftime('%Y-%m-%d %H:%M:%S UTC')}")
     lines.append(f"Source: `{capture_path}`")
     lines.append("")
     lines.append(f"**{len(parsed)} tests, {len(passed)} passed, {len(failed)} failed**"
                  + (f", {elapsed_ms} ms total" if elapsed_ms is not None else ""))
-    if complete is None:
+    if failures_reported is None:
         lines.append("")
         lines.append("> **No `SELFTEST_COMPLETE` line found** - the capture may have "
                      "timed out or the device may have crashed mid-run. Treat this "

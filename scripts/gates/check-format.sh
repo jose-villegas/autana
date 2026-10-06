@@ -1,6 +1,6 @@
 #!/bin/sh
-# Finds a clang-format of the pinned version, then formats (or, with
-# --check, verifies formatting of) the given C/C++ files using this
+# Requires Python 3 to resolve the pinned clang-format, then formats (or,
+# with --check, verifies formatting of) the given C/C++ files using this
 # repository's .clang-format rules (or the nearest one found by walking up
 # from the file's directory).
 #
@@ -17,8 +17,8 @@ set -eu
 GATE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$GATE_DIR/../lib/python.sh"
 PYTHON=$(find_python) || exit 1
-export CLANG_FORMAT_GATE="$0"
 CLANG_FORMAT_RESULT=$("$PYTHON" "$GATE_DIR/../lib/pinned_tool.py" clang-format) || exit 1
+CLANG_FORMAT_RESULT=$(printf '%s' "$CLANG_FORMAT_RESULT" | tr -d '\r')
 CLANG_FORMAT_MAJOR=${CLANG_FORMAT_RESULT%%'
 '*}
 CLANG_FORMAT=${CLANG_FORMAT_RESULT#*'

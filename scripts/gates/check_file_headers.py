@@ -18,7 +18,7 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from check_comment_length import file_header, sources  # noqa: E402
+from c_comments import file_header, sources  # noqa: E402
 
 SCOPE = ("launcher/main/", "launcher/test/suites/")
 

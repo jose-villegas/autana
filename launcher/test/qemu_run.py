@@ -69,8 +69,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "scripts", "device"))
 import device_profile  # noqa: E402  (path must be set up first)
 from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
-from device_report import SUITE_COMPLETE_RE, QEMU_PASS_RE, QEMU_IGNORE_RE, QEMU_FAIL_RE  # noqa: E402  (the board tool's own reading)
+from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
 import screenshot as wire  # noqa: E402  (the board tool's own protocol)
+
+QEMU_PASS_RE = re.compile(r":PASS$", re.M)
+QEMU_IGNORE_RE = re.compile(r":IGNORE")
+QEMU_FAIL_RE = re.compile(r"^\S*:\d+:(\w+):FAIL:? ?(.*)$", re.M)
 
 SENTINEL = "SELFTEST_COMPLETE"
 LISTENING = "listening for 'screenshot'"

@@ -312,7 +312,6 @@ JOBS=$(host_jobs "$JOBS")
 
 # make reads native paths: on Windows it is a native program, so the MSYS
 # path rewriting that shields gcc under sh does not apply to it.
-NATIVE_PATH_LIB="$TEST_DIR/../../scripts/lib/native_path.py"
 . "$TEST_DIR/../../scripts/lib/native_path.sh"
 # Collapses "a/../b" so two spellings of one file get one object name.
 squash() { sed -e ':a' -e 's|/[^/][^/]*/\.\./|/|' -e 'ta'; }

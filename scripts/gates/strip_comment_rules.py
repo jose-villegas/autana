@@ -18,7 +18,8 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from check_comment_length import RULE_RUN, code_only, scan, sources  # noqa: E402
+from c_comments import RULE_RUN, scan, sources
+from check_comment_length import code_only  # noqa: E402
 
 ONE_LINE_MAX = 78
 
