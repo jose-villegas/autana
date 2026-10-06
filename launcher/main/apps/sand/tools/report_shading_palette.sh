@@ -11,7 +11,7 @@
 # device's own copy of the same palette) and writes stats.txt, mapping.csv,
 # palette_swatches.png, and per scene scene_<name>.png (original | 256 | 16
 # dithered) and scene_<name>_16_per_scene.png into results-dir (default:
-# this tool's build/ folder). The sweep calls material_colours()
+# build/shading_palette_results/ beside this script). The sweep calls material_colours()
 # a few billion times, so a run takes a minute or two.
 
 set -eu
@@ -37,8 +37,12 @@ fi
 # run_tests.sh's warnings, at -O2: the sweep is the whole run time.
 CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -g -O2"
 
-mkdir -p "$BUILD_DIR" "$RESULTS_DIR"
-OUT_BIN="$BUILD_DIR/shading_palette"
+mkdir -p "$RESULTS_DIR"
+# A binary of its own per run, so two runs in one tree (a gate and a person)
+# never link over each other's executable.
+BIN_DIR=$(mktemp -d)
+trap 'rm -rf "$BIN_DIR"' EXIT HUP INT TERM
+OUT_BIN="$BIN_DIR/shading_palette"
 
 # shellcheck disable=SC2086
 "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$SAND_DIR" -I "$LAUNCHER_DIR/tools/gen" \

@@ -1,5 +1,6 @@
 """The generated-file gate finds banners by their marker, runs each banner's
-command away from the tracked file, and fails a file it cannot reproduce."""
+command away from the tracked file, fails a file it cannot reproduce, and
+keeps the generators' table current."""
 import pathlib
 import subprocess
 import sys
