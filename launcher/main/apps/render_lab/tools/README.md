@@ -452,10 +452,11 @@ the factor map.
 The flythrough is a glTF camera animation, `../assets/flythrough.glb`, named
 by `../assets/flythrough.anim.toml`. Its poses for
 [`tools/r3d/report_triangle_sizes.sh`](../../../../tools/r3d/README.md#triangle-sizes)
-come from the device's track sampler,
-[`tools/anim/track_host.py`](../../../../tools/anim/README.md), at the poses `suite_sponza_perf.c` times
-(every `SPONZA_POSE_EVERY_MS`) and the size `sponza_content.h` names and the lens of
-the scene's camera object (`meshes/sponza.scene.toml`):
+come from [`tools/anim/track_host.py`](../../../../tools/anim/README.md),
+which runs the device's track sampler over the clip, at the poses
+`suite_sponza_perf.c` times (every `SPONZA_POSE_EVERY_MS`) and the size
+`sponza_content.h` names and the lens of the scene's camera object
+(`meshes/sponza.scene.toml`):
 
 ```sh
 python launcher/tools/anim/track_host.py \

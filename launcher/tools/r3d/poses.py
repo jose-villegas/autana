@@ -71,7 +71,8 @@ def either_way(width, height, lens, near, poses):
 def sample_camera_path(animation, node, every_ms, width, height, lens, near):
     """The poses of camera node `node` in the clip a NAME.anim.toml names,
     every `every_ms` over the clip, as read_poses returns them; sampled by
-    tools/anim/track_host.py, the device's sampler over the clip's TRCK entry."""
+    tools/anim/track_host.py, which runs the device's sampler over the clip's
+    TRCK entry."""
     from anim import track_host
 
     return parse_poses(track_host.poses(animation, node, every_ms, width, height, lens, near))
