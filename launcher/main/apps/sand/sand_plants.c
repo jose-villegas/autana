@@ -73,11 +73,12 @@ support_admit(support_t* sp, uint16_t at) {
 static bool
 rests_on_nonkin(const sand_t* s, int x, int y, int w, int h, int down, cell_t self, const reaction_t* r) {
     const int* nd = ring_dir(down);
-    const int nx = x + nd[0], ny = y + nd[1];
+    const int nx = x + nd[0];
+    const int ny = y + nd[1];
     if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
         return false;
     }
-    const cell_t c = s->cells[(size_t)ny * (size_t)w + (size_t)nx];
+    const cell_t c = s->cells[((size_t)ny * (size_t)w) + (size_t)nx];
     return !CELL_IS_EMPTY(c) && !is_kin(c, self, r);
 }
 
