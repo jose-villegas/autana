@@ -69,9 +69,8 @@ static uint32_t elapsed_ms;
 
 /* This frame's cube coverage and last frame's: band mode marks both dirty,
  * because a band the cube left still needs erasing. */
-static gfx_box_t cube_bbox;
-static bool cube_bbox_valid;
-static render_lab_coverage_t last_coverage;
+static gfx_box_t cube_bbox = GFX_BOX_EMPTY;
+static render_lab_coverage_t last_coverage = {.box = GFX_BOX_EMPTY};
 
 /* The span rasterizer's depth plane for one band, GFX_BAND_HEIGHT x
  * GFX_WIDTH x 2 bytes in internal RAM; NULL when it did not allocate, and
@@ -200,7 +199,7 @@ cube_bin_triangles(void) {
     const r3d_line_view_t view = r3d_line_camera_view(camera, &cube_pose, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
 
     cube_bin_count = 0;
-    cube_bbox_valid = false;
+    cube_bbox = GFX_BOX_EMPTY;
 
     for (int t = 0; t < CUBE_TRIANGLE_COUNT; t++) {
         cube_projected_t transformed[3];
@@ -226,8 +225,7 @@ cube_bin_triangles(void) {
         entry->y0 = y0 < 0 ? 0 : y0;
         entry->y1 = (y1 + 1 > GFX_HEIGHT) ? GFX_HEIGHT : y1 + 1;
 
-        gfx_box_extend(&cube_bbox, cube_bbox_valid, x0, entry->y0, x1, entry->y1);
-        cube_bbox_valid = true;
+        gfx_box_extend(&cube_bbox, (gfx_box_t){x0, entry->y0, x1, entry->y1});
     }
 }
 
@@ -266,7 +264,7 @@ cube_rasterize_frame(void) {
         cube_draw_rows(gfx_framebuffer() + ((size_t)row0 * GFX_WIDTH), row0, row0 + GFX_BAND_HEIGHT);
     }
 
-    if (render_lab_partial_updates && cube_bbox_valid && cube_bbox.x1 > cube_bbox.x0 && cube_bbox.y1 > cube_bbox.y0) {
+    if (render_lab_partial_updates && !gfx_box_is_empty(cube_bbox)) {
         gfx_mark_dirty(cube_bbox.x0, cube_bbox.y0, cube_bbox.x1 - cube_bbox.x0, cube_bbox.y1 - cube_bbox.y0);
     }
 }
@@ -279,7 +277,7 @@ void
 cube_transform_and_bin(void) {
     cube_bin_triangles();
 
-    render_lab_coverage_mark(&last_coverage, cube_bbox_valid, cube_bbox.x0, cube_bbox.y0, cube_bbox.x1, cube_bbox.y1);
+    render_lab_coverage_mark(&last_coverage, cube_bbox);
 }
 
 void
@@ -303,7 +301,7 @@ scene_cube_enter(void) {
     }
 
     elapsed_ms = 0;
-    last_coverage.valid = false;
+    last_coverage.box = GFX_BOX_EMPTY;
 }
 
 static void
@@ -330,7 +328,7 @@ scene_cube_exit(void) {
 
 static void
 scene_cube_invalidate(void) {
-    last_coverage.valid = false;
+    last_coverage.box = GFX_BOX_EMPTY;
 }
 
 const render_lab_scene_t scene_cube = {

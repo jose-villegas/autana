@@ -32,7 +32,7 @@ typedef struct {
     wire_segment_t* segments;
     uint16_t segment_capacity;
     uint16_t segment_count;
-    gfx_box_t bbox; /* half-open, clipped to the screen; valid if segment_count > 0 */
+    gfx_box_t bbox; /* half-open, clipped to the screen */
 } wire_frame_t;
 
 void wire_transform(const wire_mesh_t* mesh, const r3d_line_view_t* view, wire_frame_t* frame);

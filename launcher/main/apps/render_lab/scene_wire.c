@@ -38,7 +38,7 @@ static uint32_t elapsed_ms;
 static r3d_line_view_t current_view;
 static float current_orbit_distance;
 
-static render_lab_coverage_t last_coverage;
+static render_lab_coverage_t last_coverage = {.box = GFX_BOX_EMPTY};
 
 /* `orbit_distance` is chosen per mesh (the one-line wrappers below) so a
  * primitive four times another's size still fills most of the screen - the
@@ -48,7 +48,7 @@ wire_enter(const wire_mesh_t* mesh, float orbit_distance) {
     current_mesh = mesh;
     current_orbit_distance = orbit_distance;
     elapsed_ms = 0;
-    last_coverage.valid = false;
+    last_coverage.box = GFX_BOX_EMPTY;
 
     cs_vertices = memory_alloc(sizeof(*cs_vertices) * mesh->vertex_count, MEMORY_INTERNAL);
     segments = memory_alloc(sizeof(*segments) * mesh->edge_count, MEMORY_INTERNAL);
@@ -157,12 +157,11 @@ wire_mark_bbox_dirty(void) {
             gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
             need_failure_clear = false;
         }
-        last_coverage.valid = false;
+        last_coverage.box = GFX_BOX_EMPTY;
         return;
     }
 
-    render_lab_coverage_mark(&last_coverage, frame.segment_count > 0, frame.bbox.x0, frame.bbox.y0, frame.bbox.x1,
-                             frame.bbox.y1);
+    render_lab_coverage_mark(&last_coverage, frame.bbox);
 }
 
 static void
@@ -272,7 +271,7 @@ scene_wire_frame_band(gfx_color_t* buf, int row0, int row1) {
 
 static void
 scene_wire_invalidate(void) {
-    last_coverage.valid = false;
+    last_coverage.box = GFX_BOX_EMPTY;
 }
 
 const render_lab_scene_t scene_wire_plane = {
