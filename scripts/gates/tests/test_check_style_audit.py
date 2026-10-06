@@ -416,6 +416,16 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "STRAY-HTML-COMMENT")
         self.assertEqual(findings, [])
 
+    def test_a_named_generated_block_is_not_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            gate_tree.write(root, "docs/Guide.md",
+                            "<!-- generated: scores sha256=" + "0" * 64 + " -->\n| 2 |\n"
+                            "<!-- /generated: scores -->\n<!-- generated: notes -->\n")
+            gate_tree.commit(root, "docs")
+            findings = self.rule_hits(root, "STRAY-HTML-COMMENT")
+        self.assertEqual(findings, [])
+
     def test_a_bullet_right_after_unindented_prose_is_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
