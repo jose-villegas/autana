@@ -1,7 +1,3 @@
-/*
- * suite_microui_commands: microui's command buffer stays aligned and its
- * hash ignores what the buffer held before.
- */
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>

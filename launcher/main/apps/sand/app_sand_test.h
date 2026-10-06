@@ -1,6 +1,6 @@
 /*
- * app_sand_test: the hooks a suite drives app_sand's options screen through,
- * from Options back to Start.
+ * app_sand_test: the hook a suite drives app_sand's options screen through:
+ * open Options, cancel, apply or leave it, then tap Start.
  */
 #ifndef APP_SAND_TEST_H
 #define APP_SAND_TEST_H

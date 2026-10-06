@@ -138,6 +138,11 @@ shorter prose.
 Keep a comment accurate or delete it; an outdated one is worse than none.
 Update it in the same edit that changes the code it describes.
 
+Every module of the firmware opens with a header: one sentence, in its .h or
+its .c, saying what it is (`name: ...`). A suite's test names say what it
+proves, so a suite needs none. `scripts/gates/check_file_headers.py` fails a
+module without one, and CI runs it.
+
 Shape follows OpenBSD `style(9)`: a one-line `/* ... */`, a `VERY important`
 one-liner in a three-line block, or real sentences filled like a paragraph.
 No headings inside a comment: one needing sections is a document, so put it

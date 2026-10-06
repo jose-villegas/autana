@@ -1,6 +1,3 @@
-/*
- * suite_app_arena: the app arena's takes, alignment, marks and rewinds.
- */
 #include "suites.h"
 #include "unity.h"
 

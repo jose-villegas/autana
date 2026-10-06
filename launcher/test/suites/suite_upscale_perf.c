@@ -1,7 +1,3 @@
-/*
- * suite_upscale_perf: what upscaling to the panel costs on the board, per
- * scale. Board only.
- */
 #include "suites.h"
 
 #ifdef DEVICE_BUILD

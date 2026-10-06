@@ -1,6 +1,6 @@
 /*
- * gfx_null_panel_device: the null panel's esp_lcd half, timing each strip as
- * the real QSPI link would (see gfx_null_panel.h).
+ * gfx_null_panel_device: gfx_null_panel.h over esp_lcd's panel interface,
+ * holding each strip on a modelled QSPI bus for its transfer time.
  */
 #include "gfx/gfx_null_panel.h"
 

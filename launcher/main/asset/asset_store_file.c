@@ -1,6 +1,6 @@
 /*
- * asset_store_file: the asset store's host backend, reading one file per
- * bundle from AUTANA_ASSET_DIR.
+ * asset_store_file: the asset store's host backend, one file per bundle in
+ * the folder asset_store.h names.
  */
 #include <stdio.h>
 #include <stdlib.h>
