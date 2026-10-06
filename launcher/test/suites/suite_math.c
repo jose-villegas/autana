@@ -8,6 +8,7 @@
 #include <stdbool.h>
 
 #include "suites.h"
+#include "transform_cache.h"
 #include "unity.h"
 
 #include "util/math/transformf.h"
@@ -145,21 +146,16 @@ test_a_zero_initialized_transform_builds_on_first_use(void) {
     TEST_ASSERT_TRUE(t.cached);
 }
 
+static vec3f_t
+to_f(float x, float y, float z) {
+    return (vec3f_t){x, y, z};
+}
+
 static void
 test_every_setter_translate_rotate_and_look_at_rebuilds_the_matrix(void) {
     transformf_t t = TRANSFORMF_IDENTITY;
-    TEST_ASSERT_FALSE(rebuilds(&t));
-    transformf_set_position(&t, (vec3f_t){1.0F, 0.0F, 0.0F});
-    TEST_ASSERT_TRUE(rebuilds(&t));
-    TEST_ASSERT_FALSE(rebuilds(&t));
-    transformf_set_rotation(&t, quatf_identity());
-    TEST_ASSERT_TRUE(rebuilds(&t));
-    transformf_set_scale(&t, (vec3f_t){2.0F, 2.0F, 2.0F});
-    TEST_ASSERT_TRUE(rebuilds(&t));
-    transformf_translate(&t, (vec3f_t){1.0F, 0.0F, 0.0F});
-    TEST_ASSERT_TRUE(rebuilds(&t));
-    transformf_rotate(&t, quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, HALF_PI));
-    TEST_ASSERT_TRUE(rebuilds(&t));
+    ASSERT_TRANSFORM_SETTERS(transformf, t, to_f, quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, HALF_PI),
+                             rebuilds);
     transformf_look_at(&t, (vec3f_t){0.0F, 0.0F, 9.0F}, (vec3f_t){0.0F, 1.0F, 0.0F});
     TEST_ASSERT_TRUE(rebuilds(&t));
 }
