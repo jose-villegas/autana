@@ -21,6 +21,7 @@
 #include "scene/scene_internal.h"
 #include "scene/scene_shell.h"
 #include "test_alloc.h"
+#include "test_anim_tracks.h"
 #include "test_cleanup.h"
 #include "test_pack.h"
 #include "util/memory.h"
@@ -38,17 +39,6 @@
 #define QUAD_BYTES 132
 #define PACK_MAX   8192
 #define SENTINEL   0x5A5A
-
-static void
-put16(uint8_t* at, int value) {
-    at[0] = (uint8_t)value;
-    at[1] = (uint8_t)(value >> 8);
-}
-
-static void
-put_floats(uint8_t* at, const float* values, int count) {
-    memcpy(at, values, (size_t)count * sizeof(float));
-}
 
 /* A unit quad in the plane z = 0, two-sided, in one colour. The arrays sit
  * one after another after the 44-byte header. */
@@ -76,27 +66,27 @@ make_quad_entry(uint8_t* entry, uint8_t red, uint8_t green, uint8_t blue) {
     const int xs[4] = {-1, 1, 1, -1};
     const int ys[4] = {-1, -1, 1, 1};
     for (int v = 0; v < 4; v++) {
-        put16(entry + POSITIONS + (6 * v), xs[v]);
-        put16(entry + POSITIONS + (6 * v) + 2, ys[v]);
+        test_pack_put16(entry + POSITIONS + (6 * v), xs[v]);
+        test_pack_put16(entry + POSITIONS + (6 * v) + 2, ys[v]);
         entry[COLORS + (3 * v)] = red;
         entry[COLORS + (3 * v) + 1] = green;
         entry[COLORS + (3 * v) + 2] = blue;
     }
     const int corners[6] = {0, 1, 2, 0, 2, 3};
     for (int i = 0; i < 6; i++) {
-        put16(entry + TRIANGLES + (2 * i), corners[i]);
+        test_pack_put16(entry + TRIANGLES + (2 * i), corners[i]);
     }
-    put16(entry + CLUSTER_VERTICES, 4);
-    put16(entry + CLUSTER_TRIANGLES, 2);
-    put16(entry + CLUSTER_LO, -1);
-    put16(entry + CLUSTER_LO + 2, -1);
-    put16(entry + CLUSTER_HI, 1);
-    put16(entry + CLUSTER_HI + 2, 1);
+    test_pack_put16(entry + CLUSTER_VERTICES, 4);
+    test_pack_put16(entry + CLUSTER_TRIANGLES, 2);
+    test_pack_put16(entry + CLUSTER_LO, -1);
+    test_pack_put16(entry + CLUSTER_LO + 2, -1);
+    test_pack_put16(entry + CLUSTER_HI, 1);
+    test_pack_put16(entry + CLUSTER_HI + 2, 1);
     entry[CLUSTER_DOUBLE_SIDED] = 1;
-    put16(entry + NODES, -1);
-    put16(entry + NODES + 2, -1);
-    put16(entry + NODES + 6, 1);
-    put16(entry + NODES + 8, 1);
+    test_pack_put16(entry + NODES, -1);
+    test_pack_put16(entry + NODES + 2, -1);
+    test_pack_put16(entry + NODES + 6, 1);
+    test_pack_put16(entry + NODES + 8, 1);
     entry[NODE_COUNT] = 1;
     entry[NODE_LEAF] = 1;
 }
@@ -110,18 +100,7 @@ static const struct {
 
 /* A clip of the camera node flying 5 units along x in a second, facing down
  * -z. Both tracks share the times; each array starts where the last ends. */
-enum { FLIGHT_ROWS = 8, FLIGHT_TIMES = 104, FLIGHT_POSITIONS = 112, FLIGHT_TURNS = 136, FLIGHT_BYTES = 168 };
-
-static void
-put_track_row(uint8_t* row, const char* name, uint32_t values, int width, bool quaternion) {
-    memcpy(row, name, strlen(name));
-    test_pack_put32(row + 32, FLIGHT_TIMES);
-    test_pack_put32(row + 36, values);
-    put16(row + 40, 2);
-    row[42] = (uint8_t)width;
-    row[43] = ANIM_LINEAR;
-    row[44] = quaternion ? 1U : 0U;
-}
+enum { FLIGHT_TIMES = 104, FLIGHT_POSITIONS = 112, FLIGHT_TURNS = 136, FLIGHT_BYTES = 168 };
 
 /* "flight" is the clip as a scene reads it; "skewed" has a translation 2 wide
  * and "unturned" no rotation, which a scene must refuse. */
@@ -137,14 +116,25 @@ make_clip_entry(uint8_t* entry, int translation_width, int track_count) {
     const float times[] = {0.0F, 1.0F};
     const float positions[] = {0, 0, 10, 5, 0, 10};
     const float turns[] = {0, 0, 0, 1, 0, 0, 0, 1};
-    put16(entry, ANIM_TRACKS_VERSION);
-    put16(entry + 2, track_count);
-    test_pack_put32(entry + 4, 1000);
-    put_track_row(entry + FLIGHT_ROWS, "camera/translation", FLIGHT_POSITIONS, translation_width, false);
-    put_track_row(entry + FLIGHT_ROWS + 48, "camera/rotation", FLIGHT_TURNS, 4, true);
-    put_floats(entry + FLIGHT_TIMES, times, 2);
-    put_floats(entry + FLIGHT_POSITIONS, positions, 6);
-    put_floats(entry + FLIGHT_TURNS, turns, 8);
+    test_tracks_header(entry, track_count, 1000);
+    test_track_row(entry, 0,
+                   &(test_track_t){.name = "camera/translation",
+                                   .times = FLIGHT_TIMES,
+                                   .values = FLIGHT_POSITIONS,
+                                   .keys = 2,
+                                   .width = translation_width,
+                                   .interp = ANIM_LINEAR});
+    test_track_row(entry, 1,
+                   &(test_track_t){.name = "camera/rotation",
+                                   .times = FLIGHT_TIMES,
+                                   .values = FLIGHT_TURNS,
+                                   .keys = 2,
+                                   .width = 4,
+                                   .interp = ANIM_LINEAR,
+                                   .quaternion = true});
+    test_pack_put_floats(entry + FLIGHT_TIMES, times, 2);
+    test_pack_put_floats(entry + FLIGHT_POSITIONS, positions, 6);
+    test_pack_put_floats(entry + FLIGHT_TURNS, turns, 8);
 }
 
 #define IDENTITY {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {0, 0, 0}}
@@ -258,10 +248,10 @@ make_scene_entry(uint8_t* entry, const scene_spec_t* s) {
     const uint32_t renderers = transforms + ((uint32_t)s->entity_count * sizeof(scene_transform_t));
     const uint32_t cameras = renderers + ((uint32_t)s->renderer_count * sizeof(scene_asset_renderer_t));
     const uint32_t offsets[4] = {names, transforms, renderers, cameras};
-    put16(entry, SCENE_ASSET_VERSION);
-    put16(entry + 2, s->entity_count);
-    put16(entry + 4, s->renderer_count);
-    put16(entry + 6, s->camera_count);
+    test_pack_put16(entry, SCENE_ASSET_VERSION);
+    test_pack_put16(entry + 2, s->entity_count);
+    test_pack_put16(entry + 4, s->renderer_count);
+    test_pack_put16(entry + 6, s->camera_count);
     for (int i = 0; i < 4; i++) {
         test_pack_put32(entry + 8 + (4 * i), offsets[i]);
     }
@@ -272,14 +262,14 @@ make_scene_entry(uint8_t* entry, const scene_spec_t* s) {
     }
     for (int i = 0; i < s->renderer_count; i++) {
         uint8_t* row = entry + renderers + (sizeof(scene_asset_renderer_t) * (size_t)i);
-        put16(row, s->renderers[i].entity);
+        test_pack_put16(row, s->renderers[i].entity);
         memcpy(row + 4, s->renderers[i].mesh, strlen(s->renderers[i].mesh));
     }
     for (int i = 0; i < s->camera_count; i++) {
         uint8_t* row = entry + cameras + (sizeof(scene_asset_camera_t) * (size_t)i);
         const float lens[2] = {1.0F, 1.0F};
-        put16(row, s->cameras[i].entity);
-        put_floats(row + 4, lens, 2);
+        test_pack_put16(row, s->cameras[i].entity);
+        test_pack_put_floats(row + 4, lens, 2);
         test_pack_put32(row + 12, s->cameras[i].clear_rgb);
         memcpy(row + 16, s->cameras[i].clip, strlen(s->cameras[i].clip));
         memcpy(row + 48, s->cameras[i].node, strlen(s->cameras[i].node));
@@ -299,7 +289,7 @@ make_pack(uint8_t* bytes) {
     }
     uint8_t* bad = test_pack_add(&pack, BAD_SCENE, SCENE_ASSET, scene_entry_size(&SCENES[0]));
     make_scene_entry(bad, &SCENES[0]);
-    put16(bad + 24 + (3 * (32 + sizeof(scene_transform_t))) + sizeof(scene_asset_renderer_t), 9);
+    test_pack_put16(bad + 24 + (3 * (32 + sizeof(scene_transform_t))) + sizeof(scene_asset_renderer_t), 9);
     for (int i = 0; i < CLIP_COUNT; i++) {
         make_clip_entry(test_pack_add(&pack, CLIPS[i].id, ANIM_TRACKS_ASSET, FLIGHT_BYTES), CLIPS[i].translation_width,
                         CLIPS[i].track_count);
