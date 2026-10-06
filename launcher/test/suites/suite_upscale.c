@@ -1,3 +1,7 @@
+/*
+ * suite_upscale: upscale's maps cover the destination in order, integer
+ * factors copy whole blocks.
+ */
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>

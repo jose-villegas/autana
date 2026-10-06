@@ -1,3 +1,7 @@
+/*
+ * suite_render_lab_mode_switch: a requested mode switch is taken exactly
+ * once.
+ */
 #include "suites.h"
 #include "unity.h"
 

@@ -1,3 +1,8 @@
+/*
+ * suite_sand_crossflow: liquids sorting by density across rows and diagonals,
+ * and the split crossflow pass that moves them between chunks without losing
+ * mass.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 

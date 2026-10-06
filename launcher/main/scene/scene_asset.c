@@ -1,3 +1,7 @@
+/*
+ * scene_asset: reads a baked scene asset, as tools/r3d/scene_asset.py writes
+ * it, into a scene's entities, renderers and cameras.
+ */
 #include <math.h>
 #include <stdbool.h>
 #include <stddef.h>

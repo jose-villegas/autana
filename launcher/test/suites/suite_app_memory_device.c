@@ -1,3 +1,7 @@
+/*
+ * suite_app_memory_device: every registered app hands back the heap it took
+ * once it exits. Board only.
+ */
 #include "suites.h"
 
 #ifdef DEVICE_BUILD

@@ -1,3 +1,6 @@
+/*
+ * suite_build_id: the BUILD_ID= line's fixed shape.
+ */
 #include "suites.h"
 #include "unity.h"
 

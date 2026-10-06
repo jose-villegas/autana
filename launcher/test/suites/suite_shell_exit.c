@@ -1,3 +1,7 @@
+/*
+ * suite_shell_exit: leaving an app runs its exit, empties the arena and
+ * returns to the launcher, in that order. Board only.
+ */
 #include "suites.h"
 #include "unity.h"
 

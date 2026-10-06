@@ -1,3 +1,7 @@
+/*
+ * gfx_null_panel_device: the null panel's esp_lcd half, timing each strip as
+ * the real QSPI link would (see gfx_null_panel.h).
+ */
 #include "gfx/gfx_null_panel.h"
 
 #include <stdbool.h>

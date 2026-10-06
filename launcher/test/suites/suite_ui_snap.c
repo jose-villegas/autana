@@ -1,3 +1,7 @@
+/*
+ * suite_ui_snap: a press near a control snaps to its nearest edge within
+ * reach.
+ */
 #include "suites.h"
 #include "unity.h"
 

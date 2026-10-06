@@ -1,3 +1,7 @@
+/*
+ * suite_sand_app_memory: running sand and coming back hands all of its
+ * internal and 8-bit memory back. Board only.
+ */
 #include "suites.h"
 #include "unity.h"
 
