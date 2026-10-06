@@ -21,6 +21,7 @@ from unittest import mock
 DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 import device
+from fake_serial import FakeConnection
 import fake_flash  # noqa: E402
 import device_lock
 import device_hook
@@ -182,33 +183,6 @@ class PortWaitTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "re-enumerating after reset"):
             device.open_when_free(0, self.opener(1), self.sleep,
                                   lambda: self.clock[0], "re-enumerating after reset")
-
-
-class FakeConnection:
-    def __init__(self, chunks):
-        self.chunks = list(chunks)
-        self.writes = []
-
-    def read(self, unused_size):
-        return self.chunks.pop(0) if self.chunks else b""
-
-    def write(self, data):
-        self.writes.append(data)
-
-    def close(self):
-        pass
-
-    def flush(self):
-        pass
-
-    def reset_input_buffer(self):
-        pass
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, unused_type, unused_value, unused_traceback):
-        pass
 
 
 class AnswersNoQuery(FakeConnection):

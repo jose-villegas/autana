@@ -14,6 +14,8 @@
 
 #ifdef DEVICE_BUILD
 
+#include "perf_stats.h"
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -85,26 +87,6 @@ typedef struct {
 static frame_sample_t* samples = NULL;
 static int sample_count = 0;
 
-static int
-cmp_i32(const void* a, const void* b) {
-    int32_t va = *(const int32_t*)a;
-    int32_t vb = *(const int32_t*)b;
-    return (va > vb) - (va < vb);
-}
-
-/* Median helper: sorts `arr` in place and returns its middle element -
- * compute_stats() below relies on it having already been sorted here to
- * read p95 out of the same array right after, rather than sorting again
- * itself. */
-static int32_t
-median_of(int32_t* arr, int n) {
-    if (n == 0) {
-        return 0;
-    }
-    qsort(arr, n, sizeof(int32_t), cmp_i32);
-    return arr[n / 2];
-}
-
 typedef enum {
     FIELD_TOTAL,
     FIELD_LOGIC,
@@ -125,40 +107,15 @@ field_of(const frame_sample_t* s, sample_field_t field) {
     return 0;
 }
 
-typedef struct {
-    int64_t min, max, avg, med, p95;
-} phase_stats_t;
-
-/* Scratch space for whichever field compute_stats() is sorting right now -
- * shared and reused across all five calls rather than one MAX_SAMPLES
- * array per field, which is what overflowed the main task's stack when it
- * was five stack-local arrays, and starved gfx's own allocations when
- * moved to five static ones instead. One reused buffer costs a fifth of
- * either - heap-allocated now alongside samples above, for the same
- * reason. */
+/* One per-test scratch buffer serves every timing field. */
 static int32_t* stat_scratch = NULL;
 
-static phase_stats_t
-compute_stats(sample_field_t field, int n) {
-    phase_stats_t s = {.min = INT64_MAX, .max = 0, .avg = 0, .med = 0, .p95 = 0};
-    int64_t sum = 0;
-
+static int32_t*
+sample_values(sample_field_t field, int n) {
     for (int i = 0; i < n; i++) {
-        int32_t v = field_of(&samples[i], field);
-        stat_scratch[i] = v;
-        if (v < s.min) {
-            s.min = v;
-        }
-        if (v > s.max) {
-            s.max = v;
-        }
-        sum += v;
+        stat_scratch[i] = field_of(&samples[i], field);
     }
-
-    s.avg = sum / n;
-    s.med = median_of(stat_scratch, n);   /* sorts stat_scratch in place */
-    s.p95 = stat_scratch[(n * 95) / 100]; /* stat_scratch is now sorted */
-    return s;
+    return stat_scratch;
 }
 
 static void
@@ -309,11 +266,11 @@ run_perf_capture(const char* label, bool with_hud, bool with_partial, bool with_
      * sample_count (the true total) has grown past it. */
     const int valid = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES;
 
-    phase_stats_t total = compute_stats(FIELD_TOTAL, valid);
-    phase_stats_t logic = compute_stats(FIELD_LOGIC, valid);
-    phase_stats_t rast = compute_stats(FIELD_RASTERIZE, valid);
-    phase_stats_t hud = compute_stats(FIELD_HUD, valid);
-    phase_stats_t pres = compute_stats(FIELD_PRESENT, valid);
+    perf_stats_t total = perf_stats_compute(sample_values(FIELD_TOTAL, valid), valid);
+    perf_stats_t logic = perf_stats_compute(sample_values(FIELD_LOGIC, valid), valid);
+    perf_stats_t rast = perf_stats_compute(sample_values(FIELD_RASTERIZE, valid), valid);
+    perf_stats_t hud = perf_stats_compute(sample_values(FIELD_HUD, valid), valid);
+    perf_stats_t pres = perf_stats_compute(sample_values(FIELD_PRESENT, valid), valid);
 
     /* LOG THE REPORT */
     /*
@@ -350,6 +307,9 @@ run_perf_capture(const char* label, bool with_hud, bool with_partial, bool with_
  * baseline, so the label is never a surprise. */
 static void
 run_perf_variant(bool with_hud, bool with_partial, bool with_interlace) {
+#if CONFIG_LAUNCHER_QEMU
+    TEST_IGNORE_MESSAGE("performance requires the device clock and display");
+#endif
     char label[48];
     snprintf(label, sizeof label, "hud_%s_partial_%s_interlace_%s", with_hud ? "on" : "off",
              with_partial ? "on" : "off", with_interlace ? "on" : "off");
