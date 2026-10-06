@@ -180,9 +180,13 @@ TEST(LayoutDocument, RefusesWrongRectCount) {
 TEST(LayoutDocument, BakesEditedGeometryAndRefusesInvalidGeometry) {
     LayoutDocument document = load_layout();
     rect_of(document, LayoutOrientation::Portrait, "wifi").x++;
-    EXPECT_THAT(bake_header(document), HasSubstr("[CONTROL_CENTER_ELEMENT_WIFI] = {17,"));
+    const std::filesystem::path header_path = "custom folder/output.h";
+    const std::string baked = bake_header(document, header_path);
+    EXPECT_THAT(baked, HasSubstr("[CONTROL_CENTER_ELEMENT_WIFI] = {17,"));
+    EXPECT_THAT(baked, HasSubstr(document.path().generic_string()));
+    EXPECT_THAT(baked, HasSubstr("\"custom folder/output.h\""));
     document.layout(LayoutOrientation::Portrait).rects.pop_back();
-    EXPECT_THROW(bake_header(document), std::runtime_error);
+    EXPECT_THROW(bake_header(document, header_path), std::runtime_error);
 }
 
 TEST(LayoutDocument, HistoryTracksGeometryAndSavedRevision) {

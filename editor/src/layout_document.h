@@ -54,6 +54,6 @@ struct LayoutGeometryEqual {
     bool operator()(const LayoutDocument& first, const LayoutDocument& second) const;
 };
 
-std::string bake_header(const LayoutDocument& document);
+std::string bake_header(const LayoutDocument& document, const std::filesystem::path& header_path);
 
 using LayoutEditHistory = EditHistory<LayoutDocument, LayoutGeometryEqual>;

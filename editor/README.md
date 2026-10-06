@@ -71,13 +71,14 @@ ctest --test-dir editor/build --output-on-failure
 To bake outside the window, run:
 
 ```sh
-editor/build/editor_layout_bake launcher/main/ui/<screen>_layout.json launcher/main/ui/<screen>_layout_generated.h
+cd launcher
+python tools/gen/bake_ui_layout.py main/ui/<screen>_layout.json main/ui/<screen>_layout_generated.h
 ```
 
-On Windows, use `editor_layout_bake.exe`; multi-config builds place it under
-`Debug/` or `Release/`. The generated banner's `bake_ui_layout.py` launcher
-selects that executable from `editor/build`. It forwards arguments; validation
-and emission both belong to C++. Panel dimensions and tap constraints come
+The launcher configures its headless tree in `editor/build-bake` once and
+builds `editor_layout_bake` incrementally on every run. Validation and emission
+belong to C++. The generated-file drift gate checks each layout header against
+its JSON through this launcher. Panel dimensions and tap constraints come
 from the firmware through `editor_runtime_*`. Invalid-document fixtures pair a
 document with the error substring its rule must report.
 
@@ -101,7 +102,6 @@ CTest is the single entry point.
 | `editor_core.*` (GoogleTest) | edit history: undo, redo, saved revision |
 | `editor_navigation.*` (GoogleTest) | the firmware's `system_navigation.c`, all four rotations |
 | `editor_runtime_smoke` (C) | both screens and orientations render; an authored rect reaches the pixels; bad layouts are refused |
-| Generated-file drift gate | every layout header matches its JSON through the C++ baker |
 | `editor_ridge_backdrop` (C) | the launcher over its ridge: idle sends nothing, a touch wakes it, and at rest the screen is the settled one exactly |
 
 The window itself - SDL and Dear ImGui glue - has no automated coverage.

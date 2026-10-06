@@ -102,7 +102,7 @@ baked_header_path(const LayoutDocument& document) {
 bool
 bake_layout(const LayoutDocument& document, std::string& error) {
     try {
-        const std::string baked = bake_header(document);
+        const std::string baked = bake_header(document, baked_header_path(document));
         std::ofstream output(baked_header_path(document), std::ios::binary | std::ios::trunc);
         output << baked;
         if (!output) {

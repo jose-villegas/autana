@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""Run the C++ layout baker from editor/build on Linux or Windows."""
+"""Build and run the headless C++ layout baker on Linux or Windows."""
 import pathlib
+import shutil
 import subprocess
 import sys
 
 root = pathlib.Path(__file__).resolve().parents[3]
-build = root / "editor/build"
-candidates = [build / "editor_layout_bake", build / "editor_layout_bake.exe",
-              build / "Debug/editor_layout_bake.exe", build / "Release/editor_layout_bake.exe"]
-baker = next((path for path in candidates if path.is_file()), None)
+build = root / "editor/build-bake"
+if not (build / "CMakeCache.txt").is_file():
+    subprocess.run(["cmake", "-S", str(root / "editor"), "-B", str(build),
+                    "-DEDITOR_BUILD_GUI=OFF", "-DBUILD_TESTING=OFF",
+                    "-DCMAKE_BUILD_TYPE=Release"], check=True)
+subprocess.run(["cmake", "--build", str(build), "--target", "editor_layout_bake",
+                "--config", "Release"], check=True)
+baker = shutil.which("editor_layout_bake", path=str(build))
 if baker is None:
-    sys.exit("Build editor_layout_bake in editor/build first (see editor/README.md)")
-sys.exit(subprocess.call([str(baker), *sys.argv[1:]]))
+    sys.exit(f"CMake did not produce editor_layout_bake in {build}")
+sys.exit(subprocess.call([baker, *sys.argv[1:]]))

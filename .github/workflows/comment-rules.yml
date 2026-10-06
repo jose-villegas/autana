@@ -129,11 +129,6 @@ jobs:
       - name: Generator dependencies
         run: pip install -r launcher/tools/render/requirements.txt
 
-      - name: Build the headless layout baker
-        run: |
-          cmake -S editor -B editor/build -DEDITOR_BUILD_GUI=OFF -DBUILD_TESTING=OFF
-          cmake --build editor/build --target editor_layout_bake --parallel
-
       # Each banner's command, rerun into a temporary folder; the sand
       # palette's builds with the runner's C compiler.
       - name: Every generated file is what its banner's command makes

@@ -97,6 +97,9 @@ target_link_libraries(editor_document PUBLIC nlohmann_json::nlohmann_json editor
 
 add_executable(editor_layout_bake src/layout_bake.cpp)
 target_link_libraries(editor_layout_bake PRIVATE editor_document)
+set_target_properties(editor_layout_bake PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}>"
+)
 
 if(MSVC)
     target_compile_options(editor_document PRIVATE /W4 /permissive-)

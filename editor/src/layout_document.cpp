@@ -4,6 +4,7 @@
 #include <cctype>
 #include <fstream>
 #include <initializer_list>
+#include <iomanip>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -346,7 +347,7 @@ LayoutGeometryEqual::operator()(const LayoutDocument& first, const LayoutDocumen
 }
 
 std::string
-bake_header(const LayoutDocument& document) {
+bake_header(const LayoutDocument& document, const std::filesystem::path& header_path) {
     const auto problems = document.validate();
     if (!problems.empty()) {
         throw std::runtime_error(problems.front());
@@ -361,8 +362,9 @@ bake_header(const LayoutDocument& document) {
     const std::string prefix = upper(screen) + "_ELEMENT_";
     std::ostringstream out;
     out << "/*\n * GENERATED FILE - do not edit.\n *\n"
-        << " *     python tools/gen/bake_ui_layout.py main/ui/" << screen << "_layout.json main/ui/" << screen
-        << "_layout_generated.h\n */\n#pragma once\n\n#include \"ui/ui_layout.h\"\n\ntypedef enum {\n";
+        << " *     python tools/gen/bake_ui_layout.py " << std::quoted(document.path().generic_string()) << " "
+        << std::quoted(header_path.generic_string())
+        << "\n */\n#pragma once\n\n#include \"ui/ui_layout.h\"\n\ntypedef enum {\n";
     for (std::size_t index = 0; index < document.elements().size(); index++) {
         out << "    " << prefix << upper(document.elements()[index].id) << " = " << index << ",\n";
     }
