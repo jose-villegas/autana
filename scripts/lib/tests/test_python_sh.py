@@ -27,10 +27,14 @@ class FindPythonTests(unittest.TestCase):
         subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(venv)], check=True,
                        capture_output=True, timeout=300)
         cls.venv_bin = venv / ("Scripts" if os.name == "nt" else "bin")
-        # Linux venvs also hold python3; drop it so both platforms see the
-        # Windows layout.
-        for extra in ("python3", "python3.exe"):
-            (cls.venv_bin / extra).unlink(missing_ok=True)
+        # Linux venvs also hold python3, which python links to; drop it so
+        # both platforms see the Windows layout.
+        if os.name != "nt":
+            python = cls.venv_bin / "python"
+            target = os.path.realpath(python)
+            python.unlink()
+            python.symlink_to(target)
+            (cls.venv_bin / "python3").unlink()
         site = subprocess.run([str(cls.venv_bin / "python"), "-c",
                                "import sysconfig; print(sysconfig.get_path('purelib'))"],
                               check=True, capture_output=True, text=True, timeout=60)
