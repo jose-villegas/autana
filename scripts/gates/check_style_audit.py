@@ -29,10 +29,9 @@ from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
 from check_doc_index import blank_fences  # noqa: E402
 from check_doc_vocabulary import ESCAPE as DOC_VOCABULARY_ESCAPE  # noqa: E402
-import strip_comment_rules  # noqa: E402
-
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
 from generated_blocks import MARKER as GENERATED_BLOCK  # noqa: E402
+import strip_comment_rules  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 
 ERROR, WARN = "ERROR", "WARN"
@@ -401,8 +400,8 @@ def rule_personal_path(root, path, text):
 
 
 # RULE: an HTML comment in a doc renders as nothing. Only the gates' own
-# escape markers, a generator's BEGIN/END GENERATED pair and the generated
-# blocks generated_blocks.py writes (check_doc_generated.py) are allowed;
+# escape markers, a generator's BEGIN/END GENERATED pair and
+# generated_blocks.py's named block markers are allowed;
 # anything else is a stray aside nobody will see. Scanned across the whole
 # file (not line by line) so a comment wrapped across two lines is still
 # caught, with fenced code blanked first so a shell transcript's own
@@ -479,7 +478,7 @@ def rule_shell_compound_status(root, path, text):
 def rule_stray_html_comment(root, path, raw_lines):
     blanked = "\n".join(blank_fences(raw_lines))
     for m in HTML_COMMENT.finditer(blanked):
-        if KNOWN_MARKERS.search(m.group(0)) or GENERATED_BLOCK.match(m.group(0)):
+        if KNOWN_MARKERS.search(m.group(0)) or GENERATED_BLOCK.fullmatch(m.group(0)):
             continue
         line = blanked.count("\n", 0, m.start()) + 1
         yield line, f"{m.group(0)[:60]} renders as nothing - delete it or say it in the text"

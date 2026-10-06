@@ -13,6 +13,7 @@ To put a model on screen, start with [Building a Scene](Building-a-Scene.md).
 | [Scene-Files.md](Scene-Files.md) | The scene file: objects with a transform and one component (mesh renderer, directional light, camera), sky and ambient, what a scene must carry, and the scene entry (`SCNE`) the pack build bakes from it. |
 | [Scene-Manager.md](Scene-Manager.md) | The runtime side of a scene: load by name, the packed component arrays, the one active camera, what the shell does each frame and who owns what. |
 | [Mesh-Import.md](Mesh-Import.md) | The import file and the bake stages: opt-in processing steps, simplify, light, meshlets, and the baked format a renderer consumes. |
+| [Skinned-Lighting.md](Skinned-Lighting.md) | Lighting a skinned mesh every frame: direct N.L against a per-object lookup table, measured, and the recommended path. |
 | [Mesh-Rendering.md](Mesh-Rendering.md) | The runtime: cameras, culling, the span rasterizer, instances at transforms, the two-core frame and the view modes. |
 | [Dynamic-Resolution.md](Dynamic-Resolution.md) | The render size picked per frame to hold a budget: where a frame's time goes at each size, the stepped controller and the predictor, and how they flew the test path on the board. |
 

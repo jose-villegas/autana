@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Render any skinned glTF on the CPU: a looping GIF of one animation, or a
 sheet of the bind pose from front, side, top and three-quarter views.
+render() also draws colours lit elsewhere, one per vertex, interpolated.
 
     python tools/r3d/gltf_preview.py ASSET.glb --gif walk --out walk.gif
     python tools/r3d/gltf_preview.py ASSET.glb --sheet --out bind.png
@@ -93,28 +94,41 @@ def draw_ground(image, camera, positions, triangles, extent):
         draw.polygon(points, fill=SHADOW)
 
 
-def rasterize(image, camera, positions, colors, triangles):
-    width, height = image.size
-    pixels = image.load()
-    depth = [math.inf] * (width * height)
+def flat_shading(positions, colors):
+    """Corner colours for rasterize(): each triangle one colour, its vertex
+    colours' mean lit by LIGHT through the face normal, as sRGB."""
     light = normalize(LIGHT)
-    projected = [camera.project(p) for p in positions]
-    for a, b, c in triangles:
-        pa, pb, pc = projected[a], projected[b], projected[c]
-        area = (pb[0] - pa[0]) * (pc[1] - pa[1]) - (pc[0] - pa[0]) * (pb[1] - pa[1])
-        if area >= 0.0:
-            continue
+
+    def corners(a, b, c):
         pos = [positions[v] for v in (a, b, c)]
         normal = normalize(cross(tuple(q - p for p, q in zip(pos[0], pos[1])),
                                  tuple(q - p for p, q in zip(pos[0], pos[2]))))
         shade = AMBIENT + (1.0 - AMBIENT) * max(0.0, sum(x * y for x, y in zip(normal, light)))
         base = [sum(colors[v][k] for v in (a, b, c)) / 3.0 for k in range(3)]
         color = tuple(int(round(255 * linear_to_srgb(ch * shade))) for ch in base)
-        fill_triangle(pixels, depth, width, height, (pa, pb, pc), color)
+        return color, color, color
+
+    return corners
 
 
-def fill_triangle(pixels, depth, width, height, points, color):
+def rasterize(image, camera, positions, triangles, corners):
+    """Z-buffers the front faces; corners(a, b, c) gives a triangle's three
+    8-bit corner colours, interpolated across it."""
+    width, height = image.size
+    pixels = image.load()
+    depth = [math.inf] * (width * height)
+    projected = [camera.project(p) for p in positions]
+    for a, b, c in triangles:
+        pa, pb, pc = projected[a], projected[b], projected[c]
+        if (pb[0] - pa[0]) * (pc[1] - pa[1]) - (pc[0] - pa[0]) * (pb[1] - pa[1]) >= 0.0:
+            continue
+        fill_triangle(pixels, depth, width, height, (pa, pb, pc), corners(a, b, c))
+
+
+def fill_triangle(pixels, depth, width, height, points, corners):
+    """`corners` is one RGB tuple per point, interpolated."""
     (x0, y0, z0), (x1, y1, z1), (x2, y2, z2) = points
+    flat = corners[0] if corners[0] == corners[1] == corners[2] else None
     min_y = max(int(math.ceil(min(y0, y1, y2) - 0.5)), 0)
     max_y = min(int(math.floor(max(y0, y1, y2) - 0.5)), height - 1)
     min_x = max(int(math.ceil(min(x0, x1, x2) - 0.5)), 0)
@@ -148,15 +162,24 @@ def fill_triangle(pixels, depth, width, height, points, color):
             z = w0 * z0 + w1 * z1 + (1.0 - w0 - w1) * z2
             if z < depth[row + px]:
                 depth[row + px] = z
-                pixels[px, py] = color
+                if flat:
+                    pixels[px, py] = flat
+                else:
+                    w2 = 1.0 - w0 - w1
+                    pixels[px, py] = tuple(int(round(w0 * p + w1 * q + w2 * r)) for p, q, r in zip(*corners))
 
 
-def render(asset, camera, positions, size):
+def render(asset, camera, positions, size, lit=None):
+    """Flat-shaded by LIGHT, or with `lit`, per-vertex 8-bit RGB, interpolated."""
     width, height = size
     image = Image.new("RGB", (width * SUPERSAMPLE, height * SUPERSAMPLE), BACKGROUND)
     draw_ground(image, camera, positions, asset.triangles, 0.8)
-    colors = asset.colors or [(0.6, 0.6, 0.6)] * len(positions)
-    rasterize(image, camera, positions, colors, asset.triangles)
+    if lit is None:
+        corners = flat_shading(positions, asset.colors or [(0.6, 0.6, 0.6)] * len(positions))
+    else:
+        def corners(a, b, c):
+            return lit[a], lit[b], lit[c]
+    rasterize(image, camera, positions, asset.triangles, corners)
     return image.resize(size, Image.LANCZOS)
 
 
