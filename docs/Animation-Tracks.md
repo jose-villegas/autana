@@ -20,10 +20,9 @@ flowchart LR
 ```
 
 A clip reaches the firmware as an entry of an
-[asset bundle](assets/README.md), baked when the bundle is built.
-`tools/anim/bake_tracks.py` can still write the same tracks as C, through the
-same checks in `tools/anim/tracks_asset.py`, but no firmware code uses that
-output.
+[asset bundle](assets/README.md), baked when the bundle is built by
+`tools/anim/tracks_asset.py`, the entry's one writer. No tracks are compiled
+into the firmware.
 
 ## What a track stores
 
@@ -43,7 +42,7 @@ A glTF node is animated by up to three tracks, named `node/translation`,
 `KHR_animation_pointer`, which names a property by path; a track baked from it
 is named by that path with the object's index replaced by its glTF name, for
 example `lens/perspective/yfov` for `/cameras/0/perspective/yfov`. Objects are
-bound by name, so a re-export that reorders nodes keeps its symbols. A pointer
+bound by name, so a re-export that reorders nodes keeps its track names. A pointer
 to a rotation is a quaternion track like a node's. A channel that never
 changes is baked as one key.
 
@@ -103,8 +102,8 @@ keeps unit scale.
 
 ```c
 float out[ANIM_WIDTH_MAX];
-const float seconds = anim_clip_seconds(&prefix_clip, t_ms, ANIM_LOOP);
-anim_track_sample(&prefix_node_translation, seconds, out);
+const float seconds = anim_clip_seconds(&clip.clip, t_ms, ANIM_LOOP);
+anim_track_sample(&move, seconds, out);
 ```
 
 `anim_clip_seconds()` wraps `t_ms` at the clip's duration with an integer
@@ -118,36 +117,31 @@ camera track gives a `camera_t` its look direction.
 ## Authoring
 
 1. Animate in Blender and export glTF binary (`.glb`) with animation on. Name
-   the action: the baker finds it by name. Blender exports keys as
+   the action: the bake finds it by name. Blender exports keys as
    `LINEAR`, `STEP` or `CUBICSPLINE` per curve; a property outside translation,
    rotation and scale needs the exporter's animation-pointer option.
-2. Keep the file beside the code that plays it, as an asset.
-3. Bake it from `launcher/`:
+2. Keep the file beside the code that plays it, as an asset, and write a
+   `NAME.anim.toml` beside it naming the animation, as in
+   [The pack entry](#the-pack-entry).
+3. Build the bundles: `build_pack.py` finds the `.anim.toml` and bakes the
+   clip into its bundle. Nothing is generated into the source tree.
+4. Open the clip with `anim_tracks_from_pack()`, find the tracks the scene
+   needs by name, sample them, and convert at the scene's own boundary.
 
-   ```sh
-   python tools/anim/bake_tracks.py PATH/asset.glb --animation NAME --name PREFIX --out-dir DIR
-   ```
-
-   That writes `DIR/PREFIX_tracks_generated.{c,h}`: a `const anim_track_t
-   PREFIX_<node>_<path>` per channel, the clip `PREFIX_clip`, every track in
-   `PREFIX_tracks[]` (`PREFIX_track_count` of them), and
-   `PREFIX_track_names[]`, each track's name in the same order. Only the tests
-   refer to the tables, so the linker drops them from any firmware build
-   without tests. The command is in the file's banner; the output is checked
-   in and never edited.
-4. Sample what the scene needs, and convert at its own boundary.
-
-The baker refuses keys out of order, a channel with no node and no pointer,
+The bake refuses keys out of order, a channel with no node and no pointer,
 and a value that is not finite. Skins and morph weights are not tracks.
 
 ## Playing a new property
 
-A property needs no change to `anim/` or the baker. Animate it, bake it, and
-sample the track where the property is read:
+A property needs no change to `anim/` or the bake. Animate it, bake it, and
+find and sample the track where the property is read:
 
 ```c
+anim_track_t yfov;
 float fov[ANIM_WIDTH_MAX];
-anim_track_sample(&prefix_lens_perspective_yfov, seconds, fov);
+if (anim_tracks_find(&clip, "lens/perspective/yfov", &yfov) == ASSET_OK) {
+    anim_track_sample(&yfov, seconds, fov);
+}
 ```
 
 Mapping the value onto the object, including any unit conversion, belongs to
@@ -190,9 +184,9 @@ build it, the compiler or the flags change.
   of each `.anim.toml` no scene names.
 - `tools/tests/test_anim_bake.py` builds a glTF of its own with every
   interpolation, a quaternion, a pointer-targeted scalar and a non-zero first
-  key, bakes it, samples it in C through `track_host`, and holds every value
-  to the Python sampler in `launcher/tools/gltf/gltf_read.py`, looping and
-  clamped.
+  key, bakes it to a `TRCK` entry, samples it in C through `track_host`, and
+  holds every value to the Python sampler in
+  `launcher/tools/gltf/gltf_read.py`, looping and clamped.
 
 ## Rules
 

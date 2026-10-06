@@ -1,8 +1,11 @@
 # Animation tracks and scenes in the asset pack: design sketch
 
-**Status:** approved; bundles, the `TRCK` entry, the scenes step and the host poses (sections
-0 to 4) are built, the rest is not. `[A]` marks a proposal that was approved
-with the rest rather than asked for.
+**Status:** built. `[A]` marks a proposal that was approved with the rest
+rather than asked for. Where the build departs from it is in
+[As built](#as-built); the current reference is
+[Animation-Tracks.md](../Animation-Tracks.md),
+[assets/README.md](../assets/README.md) and
+[Scene-Manager.md](../render/Scene-Manager.md).
 
 Committed C baked from a `.glb` animation (`*_tracks_generated.{c,h}`) or a
 `.scene.toml` is content with a source file that is already the truth, so a
@@ -240,3 +243,25 @@ fallback question section 5 answers.
 6. Entities are found by name at setup, no baked numeric ids (section 3).
 7. Ids stay unique within a bundle whatever their type (scenes step): `asset_pack_find()` finds by name and then checks the type, so a scene and its clip sharing a stem could never both be found; `build_pack` refuses them naming both files.
 8. `scene_failure_t.what` is a copy, `char what[ASSET_NAME_MAX]` (scenes step): a failed `scene_load()` releases the bundle the id pointed into.
+
+## As built
+
+Where the build departs from this sketch:
+
+- **The bundle directory is read into RAM.** Section 0 has the device map
+  the directory with the bundles. The store reads it into RAM once, kept for
+  good, and maps each bundle alone: the directory shares its 64 KB flash page
+  with the first bundles, and QEMU drops every mapping of a page when one of
+  them is unmapped.
+- **Ids are unique within a bundle whatever their type**, settled while the
+  scenes were built (section 1, decision 7): the reader finds an entry by name
+  before it checks the type, so a scene and its clip cannot share a stem, and
+  `build_pack` refuses them, naming both files.
+- **`scene_failure_t.what` is a `char[32]`** (`ASSET_NAME_MAX`), a copy
+  rather than a pointer into the bundle, which a failed `scene_load()` has
+  already released (decision 8).
+- **`bake_tracks.py` is deleted**, not trimmed to its checks: they had
+  already moved into `tracks_asset.py`, so nothing was left.
+- **`gen_boot_anim_timeline.py` stays.** Section 6 deletes it with the boot
+  tracks; it survives without them, writing only the boot animation's timing
+  constants and settings, a header section 8 leaves to the content audit.
