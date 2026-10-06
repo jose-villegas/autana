@@ -85,6 +85,10 @@ static burn_plan_t extended_plan[MATERIAL_EXTENDED_CODES];
 
 static uint8_t pair_bits[MATERIAL_MAX][MATERIAL_MAX];
 
+/* Eligibility depends only on the encoded byte and the const reaction
+ * tables, including the lit-fuse and cullet exclusions. */
+static uint32_t percolate_accept_mask[8];
+
 /* Reads theirs-only bits. Used by try_heat_transform(), step_one_cold_cell(),
  * conduct_heat(). MAT_EMPTY stores theirs-only bits. */
 static inline uint8_t
@@ -727,7 +731,7 @@ percolate_slot_offset(int i) {
 
 /* Whether `below` has room to take percolating water. */
 static bool
-percolate_accepts(cell_t below) {
+cell_accepts_percolation(cell_t below) {
     if (CELL_IS_EMPTY(below)) {
         return false;
     }
@@ -737,6 +741,11 @@ percolate_accepts(cell_t below) {
     }
     /* Lit fuse carve-out: prevent dousing */
     return !cell_is_burning(below) && (br->soaks_to != 0 || (br->dries != 0 && moisture_of(below, br) < br->moist_max));
+}
+
+static inline bool
+percolate_accepts(cell_t below) {
+    return (percolate_accept_mask[below >> 5] & (UINT32_C(1) << (below & 31U))) != 0;
 }
 
 /* Fills `open` with the percolation slots that can take water; returns how
@@ -2819,6 +2828,11 @@ build_reaction_tables(void) {
     }
 
     fill_pair_bits();
+    for (unsigned byte = 0; byte < 256U; byte++) {
+        if (cell_accepts_percolation((cell_t)byte)) {
+            percolate_accept_mask[byte >> 5] |= UINT32_C(1) << (byte & 31U);
+        }
+    }
 
     for (int m = 0; m < MAT_COUNT; m++) {
         const bool is_acid_rain_material = (m == MAT_GAS || m == MAT_STEAM);
