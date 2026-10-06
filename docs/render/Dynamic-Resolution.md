@@ -4,8 +4,10 @@ A scene's camera can draw each frame at a render size picked to hold a frame
 budget, instead of one fixed scale. The sizes are a ladder of steps, finest
 first; the picture is always upscaled back to the panel by `render/upscale.h`,
 which takes any ratio in either axis. The code is
-`launcher/main/render/resolution/`, and an app turns it on with
-`scene_set_dynamic_resolution()` ([Scene-Manager.md](Scene-Manager.md#what-an-app-calls)).
+`launcher/main/render/resolution/`. It is opt-in, a setting of the render
+context rather than of a scene or a camera: an app turns it on with
+`render_context_set_dynamic_resolution()` ([Mesh-Rendering.md](Mesh-Rendering.md#the-render-context)),
+and with no call every frame draws at the context's fixed scale.
 
 | Policy | Chooses | From | Guards against flapping |
 |---|---|---|---|

@@ -56,7 +56,6 @@ typedef struct {
     r3d_scene_camera_t lens; /* its path, when it has one, is `path` */
     r3d_scene_path_t path;
     scene_entity_t entity;
-    int render_scale_percent;
     uint16_t clear; /* panel pixel format */
 } scene_camera_t;
 

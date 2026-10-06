@@ -8,12 +8,12 @@
 
 #define BUDGET_US 66000
 
-/* 1, 1.25, 1.5, 2 and the recovery steps 2.5 and 4 of a 368x448 panel, as
- * the board measured their mean frame cost at one load. */
-static const resolution_step_t sizes[] = {{368, 448}, {294, 358}, {245, 298}, {184, 224}, {147, 179}, {92, 112}};
-static const int32_t step_us[] = {111000, 86000, 72000, 54000, 49000, 35000};
+/* 1, 1.25, 1.5, 2, the floor 2.5 and the recovery step 3 of a 368x448
+ * panel, as the board measured their mean frame cost at one load. */
+static const resolution_step_t sizes[] = {{368, 448}, {294, 358}, {245, 298}, {184, 224}, {147, 179}, {122, 149}};
+static const int32_t step_us[] = {111000, 86000, 72000, 54000, 49000, 44000};
 #define STEP_COUNT ((int)(sizeof sizes / sizeof sizes[0]))
-#define RECOVERY   4
+#define RECOVERY   5
 
 static resolution_config_t
 config(void) {
@@ -114,7 +114,7 @@ test_ordinary_steps_never_reach_a_recovery_step(void) {
     for (int i = 0; i < 1000; i++) {
         (void)resolution_control_update(&c, &cfg, BUDGET_US * 140 / 100);
     }
-    TEST_ASSERT_EQUAL_INT(3, c.step);
+    TEST_ASSERT_EQUAL_INT(4, c.step); /* the floor, never past it */
 }
 
 static void
@@ -123,7 +123,7 @@ test_from_a_recovery_step_it_climbs_back_when_the_load_allows(void) {
     resolution_control_t c;
     resolution_control_init(&c, &cfg, 5);
     unsigned seed = 4;
-    TEST_ASSERT_EQUAL_INT(3, run(&c, &cfg, 400, 100, &seed));
+    TEST_ASSERT_EQUAL_INT(4, run(&c, &cfg, 400, 100, &seed));
 }
 
 /* Frames priced by known weights: the fit gives them back. */
@@ -194,6 +194,18 @@ test_the_predictor_steps_down_on_the_frame_the_load_arrives(void) {
 
 /* A load whose finer step lands just inside the budget does not pull the
  * predictor back up: going finer needs a margin. */
+/* Over budget at every ordinary step but short of the panic share, the
+ * predictor holds the floor rather than drop to recovery; past it, it drops. */
+static void
+test_the_predictor_holds_the_floor_until_the_panic_share(void) {
+    const resolution_config_t cfg = config();
+    resolution_predict_t p;
+    resolution_predict_init(&p, &cfg, &model, 0);
+    TEST_ASSERT_GREATER_THAN_FLOAT((float)BUDGET_US, resolution_model_predict_us(&model, &cfg, RECOVERY - 1, 15000));
+    TEST_ASSERT_EQUAL_INT(RECOVERY - 1, resolution_predict_choose(&p, &cfg, 15000));
+    TEST_ASSERT_EQUAL_INT(RECOVERY, resolution_predict_choose(&p, &cfg, 30000));
+}
+
 static void
 test_the_predictor_does_not_flip_at_the_edge_of_the_budget(void) {
     const resolution_config_t cfg = config();
@@ -241,6 +253,7 @@ run_resolution_suite(void) {
     RUN_TEST(test_frames_of_one_step_cannot_tell_the_weights_apart);
     RUN_TEST(test_the_predictor_draws_the_finest_step_its_model_says_fits);
     RUN_TEST(test_the_predictor_steps_down_on_the_frame_the_load_arrives);
+    RUN_TEST(test_the_predictor_holds_the_floor_until_the_panic_share);
     RUN_TEST(test_the_predictor_does_not_flip_at_the_edge_of_the_budget);
     RUN_TEST(test_measured_frames_correct_a_model_that_runs_fast);
 }

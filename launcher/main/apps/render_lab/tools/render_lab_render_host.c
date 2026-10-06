@@ -20,9 +20,9 @@
 #include "app/app.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "gfx/gfx.h"
+#include "render/context/render_context.h"
 #include "render/resolution/resolution.h"
 #include "render_host.h"
-#include "scene/scene.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
 #include "util/runtime/tune.h"
@@ -148,7 +148,7 @@ setup(int quarter) {
     if (size_width > 0) {
         const resolution_step_t size = {size_width, size_height};
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
-        scene_set_dynamic_resolution(&one, NULL, 0);
+        render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
     }
     if (render_lab_view() != RASTER_SHOW_SHADED && !render_lab_scene_shows_views()) {
         (void)fprintf(stderr, "--view: the scene %s has no depth to show\n", render_lab_start_scene_key);

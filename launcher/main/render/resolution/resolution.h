@@ -11,7 +11,9 @@
  * finest step that fits is drawn.
  *
  * Steps past `recovery_from` are recovery only: the stepped controller
- * reaches them by a panic drop, the predictor when no other step fits.
+ * reaches them by a panic drop, the predictor only when the coarsest
+ * ordinary step would pass the panic share; short of that it holds that
+ * step as a floor, a little over budget.
  * Pure, portable and host-tested; time is passed in.
  */
 #pragma once

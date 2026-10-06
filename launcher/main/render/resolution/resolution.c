@@ -243,7 +243,15 @@ int
 resolution_predict_choose(resolution_predict_t* p, const resolution_config_t* config, int triangles) {
     int chosen = finest_fitting(p, config, triangles, config->recovery_from, config->down_percent);
     if (chosen < 0) {
-        chosen = finest_fitting(p, config, triangles, config->step_count, config->down_percent);
+        /* Over budget at every ordinary step: the coarsest one is the floor,
+         * as a little over budget costs less than a harsh drop in picture,
+         * unless even it would pass the panic share. */
+        const int floor = config->recovery_from - 1;
+        const float panic = (float)config->budget_us * (float)config->panic_percent / 100.0F;
+        chosen = corrected_us(p, config, floor, triangles) <= panic ? floor : -1;
+    }
+    if (chosen < 0) {
+        chosen = finest_fitting(p, config, triangles, config->step_count, config->panic_percent);
     }
     if (chosen < 0) {
         chosen = config->step_count - 1;

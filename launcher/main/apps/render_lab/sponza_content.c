@@ -9,7 +9,7 @@ const char* const sponza_bakes[SPONZA_BAKE_COUNT] = {
 };
 
 const resolution_step_t sponza_ladder[SPONZA_LADDER_STEPS] = {
-    {368, 448}, {368, 358}, {368, 298}, {368, 224}, {245, 224}, {184, 224}, {147, 179}, {92, 112},
+    {368, 448}, {368, 358}, {368, 298}, {368, 224}, {245, 224}, {184, 224}, {147, 179}, {122, 149},
 };
 
 const resolution_model_t sponza_ladder_model = {

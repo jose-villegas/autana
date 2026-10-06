@@ -17,6 +17,7 @@
 #include "esp_log.h"
 
 #include "gfx/gfx.h"
+#include "render/context/render_context.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
@@ -37,12 +38,12 @@ apply_budget(void) {
     }
     applied_budget_ms = budget_ms;
     if (budget_ms == 0) {
-        scene_set_dynamic_resolution(NULL, NULL, 0);
+        render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
         return;
     }
     const resolution_config_t config =
         resolution_config(sponza_ladder, SPONZA_LADDER_STEPS, SPONZA_LADDER_RECOVERY, budget_ms * 1000);
-    scene_set_dynamic_resolution(&config, &sponza_ladder_model, SPONZA_LADDER_HALF);
+    render_context_set_dynamic_resolution(render_context_main(), &config, &sponza_ladder_model, SPONZA_LADDER_HALF);
 }
 
 static scene_t* sponza;
@@ -94,11 +95,11 @@ enter_with(sponza_bake_t shown) {
         scene_entity_set_enabled(sponza, bake, i == (int)shown);
     }
     (void)scene_activate(sponza, NULL);
-    scene_set_render_scale(10000 / render_lab_scale());
+    render_context_set_scale(render_context_main(), 10000 / render_lab_scale());
     applied_budget_ms = -1;
     apply_budget();
 #if TUNE_ENABLED
-    scene_set_debug_view(render_lab_view());
+    render_context_set_debug_view(render_context_main(), render_lab_view());
 #endif
 }
 
@@ -129,7 +130,7 @@ scene_sponza_fitted_full_enter(void) {
 
 static void
 scene_sponza_exit(void) {
-    scene_set_dynamic_resolution(NULL, NULL, 0);
+    render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     scene_unload(sponza);
     sponza = NULL;
 }
@@ -145,7 +146,7 @@ scene_sponza_frame(uint32_t dt_ms, bool band_mode_active) {
     assert(!band_mode_active); /* needs_full_framebuffer keeps the app out of band mode for this scene */
     apply_budget();
 #if TUNE_ENABLED
-    scene_set_debug_view(render_lab_view());
+    render_context_set_debug_view(render_context_main(), render_lab_view());
 #endif
 }
 
@@ -156,10 +157,11 @@ sponza_status(void) {
         return failure;
     }
     /* Under a budget, the size the frame drew at, so a step shows on the panel. */
-    const scene_resolution_t r = scene_resolution();
-    const int wrote = r.step < 0
-                          ? snprintf(buf, sizeof buf, "%5d tris", scene_stats().triangles)
-                          : snprintf(buf, sizeof buf, "%dx%d %5d tris", r.width, r.height, scene_stats().triangles);
+    const render_context_frame_t r = render_context_frame(render_context_main());
+    const int wrote =
+        r.step < 0 ? snprintf(buf, sizeof buf, "%5d tris", render_context_frame(render_context_main()).stats.triangles)
+                   : snprintf(buf, sizeof buf, "%dx%d %5d tris", r.width, r.height,
+                              render_context_frame(render_context_main()).stats.triangles);
     if (wrote < 0) {
         buf[0] = '\0';
     }

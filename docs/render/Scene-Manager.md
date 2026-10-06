@@ -16,7 +16,7 @@ entity id (`scene_entity_t`). Nothing is allocated per entity.
 | `transforms[]` | entity | where it stands: a 3x3 and a position, what the raster reads |
 | `flags[]` | entity | enabled, and moved since the last draw |
 | `renderers[]` | entity that draws | a view of its lit mesh in the asset pack, its entity id, and the placement built from its transform |
-| `cameras[]` | camera | lens, optional glTF path (the clip's two tracks, pointing into the pack), render scale, clear colour, its entity id |
+| `cameras[]` | camera | lens, optional glTF path (the clip's two tracks, pointing into the pack), clear colour, its entity id |
 | `instances[]` | renderer | the list the raster draws this frame, refilled from `renderers[]` and `transforms[]` |
 | names | entity | the scene entry's, read in the pack, looked up only by `scene_find()` |
 
@@ -37,9 +37,7 @@ pack, so on the board they read flash in place and cost no RAM.
 | `scene_entity_set_transform()` / `_set_enabled()` | move an entity, hide or show a renderer |
 | `scene_activate(scene, camera)` | makes that camera (NULL: the first) the one active camera |
 | `scene_deactivate()` / `scene_set_paused()` | stop drawing, or hold the scene in place for an app that draws its own full screen |
-| `scene_set_render_scale()` | the active camera's render size as a share of the screen |
-| `scene_set_dynamic_resolution(config, model, step)` | the render size picked each frame to hold a budget instead, by the stepped controller or, given a fitted `model`, the predictor; NULL returns to the fixed scale ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
-| `scene_stats()` / `scene_resolution()` | triangles and clusters the last draw kept; its step, render size and what its draw and upscale cost |
+| `render_context_set_scale()`, `render_context_set_dynamic_resolution()`, `render_context_frame()` | not the scene's: the render size, dynamic resolution and what the last frame drew belong to the render context the scene draws through ([Mesh-Rendering.md](Mesh-Rendering.md#the-render-context)) |
 
 Exactly one camera is active engine-wide, and it draws the enabled renderers of
 its own scene. Several scenes may be loaded at once; activating another scene's

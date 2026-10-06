@@ -25,6 +25,7 @@
 #include "apps/render_lab/sponza_content.h"
 #include "asset/asset_store.h"
 #include "gfx/gfx.h"
+#include "render/context/render_context.h"
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
@@ -49,7 +50,7 @@ typedef struct {
  * one, and 1.5x of one with half of the other. */
 static const size_wh_t sizes[] = {
     {368, 448}, {294, 358}, {276, 336}, {245, 298}, {210, 256}, {184, 224},
-    {147, 179}, {92, 112},  {368, 224}, {184, 448}, {245, 224}, {184, 298},
+    {147, 179}, {122, 149}, {368, 224}, {184, 448}, {245, 224}, {184, 298},
 };
 #define SIZE_COUNT ((int)(sizeof sizes / sizeof sizes[0]))
 
@@ -185,8 +186,8 @@ test_raster_stage_split_by_size(void) {
 }
 
 /* Two ladders. Isotropic: 1.33x is dropped for costing little less than
- * 1.25x, 1.75x splits the widest gap, 2.5x and 4x recovery only. Height
- * first: the render lab's own ladder. */
+ * 1.25x, 1.75x splits the widest gap, 2.5x is the floor and 3x recovery
+ * only. Height first: the render lab's own ladder. */
 typedef struct {
     const char* name;
     const resolution_step_t* steps;
@@ -194,11 +195,11 @@ typedef struct {
 } ladder_t;
 
 static const resolution_step_t isotropic_steps[] = {
-    {368, 448}, {294, 358}, {245, 298}, {210, 256}, {184, 224}, {147, 179}, {92, 112},
+    {368, 448}, {294, 358}, {245, 298}, {210, 256}, {184, 224}, {147, 179}, {122, 149},
 };
 
 static const ladder_t ladders[] = {
-    {"isotropic", isotropic_steps, 7, 5, 4},
+    {"isotropic", isotropic_steps, 7, 6, 4},
     {"height", sponza_ladder, SPONZA_LADDER_STEPS, SPONZA_LADDER_RECOVERY, SPONZA_LADDER_HALF},
 };
 
@@ -281,16 +282,17 @@ fly(const char* policy, const ladder_t* ladder, const resolution_config_t* confi
         scene_entity_set_enabled(flown, scene_find(flown, sponza_bakes[i]), i == (int)SPONZA_BAKE_FULL);
     }
     TEST_ASSERT_TRUE(scene_activate(flown, NULL));
-    scene_set_render_scale(50);
-    scene_set_dynamic_resolution(config, model, ladder == NULL ? 0 : ladder->half);
+    render_context_set_scale(render_context_main(), 50);
+    render_context_set_dynamic_resolution(render_context_main(), config, model, ladder == NULL ? 0 : ladder->half);
     const scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT};
     for (int i = 0; i < frames; i++) {
         scene_render(FRAME_DT_MS, 0, GFX_WIDTH, GFX_HEIGHT);
         scene_compose(FRAME_DT_MS, 0, &target);
-        const scene_resolution_t r = scene_resolution();
-        records[i] = (frame_record_t){(int8_t)r.step, r.draw_us, r.upscale_us, scene_stats().triangles};
+        const render_context_frame_t r = render_context_frame(render_context_main());
+        records[i] = (frame_record_t){(int8_t)r.step, r.draw_us, r.upscale_us,
+                                      render_context_frame(render_context_main()).stats.triangles};
     }
-    scene_set_dynamic_resolution(NULL, NULL, 0);
+    render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     scene_unload(flown);
     log_frames(policy, ladder == NULL ? "half" : ladder->name, config == NULL ? 0 : config->budget_us, records, frames);
 }

@@ -63,6 +63,8 @@ would see the scene mirrored.
 | `r3d_instance.h` | A mesh and its optional baked placement: what the raster draws |
 | `r3d_scene.h` | The camera of a baked table: its lens, placement and path, and sampling it at a time; reads `anim/` |
 | `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture, and the view modes |
+| `context/render_context.h` | The render context: the size and quality a frame is drawn at, apart from what is drawn and from where |
+| `resolution/resolution.h` | Dynamic resolution: the steps, the stepped controller and the predictor a render context can opt into |
 | `viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
 | `ray.h` | The ray camera: the direction through each physical pixel |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree, and the view built from a pack entry |
@@ -109,6 +111,22 @@ panel's size quarters the pixels and halves the rows and spans. The lens
 frames the destination's shape and `r3d_lens_fit()` then scales each axis to
 the render size on its own, so a render may cut its height more than its
 width and still show the same view.
+
+### The render context
+
+A camera is perspective only. What a frame is drawn at belongs to the render
+context (`context/render_context.h`): it owns the raster and its scratch
+block, the render size and the debug view. A caller hands it instances, a
+camera and a clear colour, then a destination to upscale into. The scene
+manager draws the active camera through the engine's one context,
+`render_context_main()`, released when an app exits.
+
+| Call | Meaning |
+|---|---|
+| `render_context_set_scale()` | the share of the destination each axis draws at; half until set |
+| `render_context_set_dynamic_resolution(config, model, step)` | opt-in: each frame draws at a step of `config` to hold its budget ([Dynamic-Resolution.md](Dynamic-Resolution.md)); NULL returns to the fixed scale |
+| `render_context_set_debug_view()` | a [view mode](#view-modes), development builds only |
+| `render_context_frame()` | the last frame: its step, size, what culling kept, and what its draw and upscale cost |
 
 ### On both cores
 
