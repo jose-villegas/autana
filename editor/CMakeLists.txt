@@ -1,3 +1,4 @@
+# Host editor, firmware preview runtime and shared layout validator.
 cmake_minimum_required(VERSION 3.24)
 
 project(autana_editor LANGUAGES C CXX)
@@ -58,10 +59,9 @@ add_library(editor_runtime STATIC
     ${LAUNCHER_DIR}/components/microui/src/microui.c
 )
 target_include_directories(editor_runtime
-    PUBLIC include
+    PUBLIC include ${LAUNCHER_DIR}/main
     PRIVATE
         runtime/host
-        ${LAUNCHER_DIR}/main
         ${LAUNCHER_DIR}/components/microui/include
 )
 # ui_scroll.c's momentum uses expf(); only MinGW links libm unasked.
@@ -93,7 +93,10 @@ add_library(editor_document STATIC
     src/layout_document.cpp
 )
 target_include_directories(editor_document PUBLIC src)
-target_link_libraries(editor_document PUBLIC nlohmann_json::nlohmann_json)
+target_link_libraries(editor_document PUBLIC nlohmann_json::nlohmann_json editor_runtime)
+
+add_executable(editor_layout_validate src/layout_validate.cpp)
+target_link_libraries(editor_layout_validate PRIVATE editor_document)
 
 if(MSVC)
     target_compile_options(editor_document PRIVATE /W4 /permissive-)
@@ -173,8 +176,10 @@ if(EDITOR_BUILD_GUI)
         ${EDITOR_SDL_TARGET}
     )
     target_compile_definitions(autana_editor PRIVATE
+        EDITOR_LAYOUT_VALIDATOR="$<TARGET_FILE:editor_layout_validate>"
         EDITOR_PROJECT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/.."
     )
+    add_dependencies(autana_editor editor_layout_validate)
     if(Python3_Interpreter_FOUND)
         target_compile_definitions(autana_editor PRIVATE
             EDITOR_PYTHON_EXECUTABLE="${Python3_EXECUTABLE}"
@@ -217,12 +222,13 @@ if(BUILD_TESTING)
     add_executable(editor_layout_document_test tests/layout_document_test.cpp)
     target_link_libraries(editor_layout_document_test PRIVATE editor_document GTest::gmock_main)
     target_compile_definitions(editor_layout_document_test PRIVATE
+        EDITOR_TEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/layout_document"
         EDITOR_TEST_LAYOUT_PATH="${LAUNCHER_DIR}/main/ui/control_center_layout.json"
     )
     gtest_discover_tests(editor_layout_document_test TEST_PREFIX "editor_document.")
 
     add_executable(editor_core_test tests/edit_history_test.cpp)
-    target_include_directories(editor_core_test PRIVATE src)
+    target_include_directories(editor_core_test PRIVATE src ${LAUNCHER_DIR}/main)
     target_link_libraries(editor_core_test PRIVATE GTest::gtest_main)
     gtest_discover_tests(editor_core_test TEST_PREFIX "editor_core.")
 
@@ -240,6 +246,8 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/ui_layout_generator_test.py
         )
+        set_tests_properties(ui_layout_generator PROPERTIES
+            ENVIRONMENT "AUTANA_LAYOUT_VALIDATOR=$<TARGET_FILE:editor_layout_validate>")
     endif()
 endif()
 
@@ -278,6 +286,7 @@ if(EDITOR_ENABLE_COVERAGE)
         target_compile_options(${target} PRIVATE --coverage -O0 -g)
         target_link_options(${target} PRIVATE --coverage)
     endforeach()
+    target_link_options(editor_layout_validate PRIVATE --coverage)
     # The editor consumes instrumented static libraries but is not itself in
     # the coverage scope, so it only needs the gcov link runtime.
     if(EDITOR_BUILD_GUI)
@@ -310,7 +319,7 @@ if(EDITOR_ENABLE_COVERAGE)
             --fail-under-line 80
             --fail-under-branch 70
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
-        DEPENDS editor_layout_document_test editor_core_test
+        DEPENDS editor_layout_validate editor_layout_document_test editor_core_test
                 editor_system_navigation_test editor_runtime_smoke
         USES_TERMINAL
         COMMENT "Running tests and enforcing editor coverage gates"

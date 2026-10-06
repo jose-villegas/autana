@@ -68,6 +68,15 @@ cmake --build editor/build
 ctest --test-dir editor/build --output-on-failure
 ```
 
+Baking uses `editor_layout_validate`, which loads documents through the editor's
+live validator. The Python generator requires this executable: its default is
+`editor/build/editor_layout_validate` (`.exe` on Windows). For another build
+directory, pass `--validator PATH` or set `AUTANA_LAYOUT_VALIDATOR`. CTest and
+the editor's Bake action select the validator from their own build directory.
+Panel dimensions and tap constraints come from the firmware headers; the
+invalid document fixtures in `editor/tests/fixtures/layout_document/` are
+shared by the C++ and Python tests.
+
 The executable is `editor/build/autana_editor`. SDL2, Dear ImGui, nlohmann/json and
 GoogleTest are fetched by git at pinned tags into the untracked build
 directory. `-DEDITOR_BUILD_GUI=OFF` builds and tests everything except the

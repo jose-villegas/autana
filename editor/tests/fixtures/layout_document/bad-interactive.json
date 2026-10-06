@@ -1,0 +1,1 @@
+{"schema_version":2,"screen":"fixture","title":"Fixture","elements":[{"id":"first","label":"First","interactive":"yes"},{"id":"second","label":"Second","interactive":false}],"orientations":{"portrait":{"canvas":[368,448],"rects":{"first":[0,0,56,56],"second":[60,0,20,20]}},"landscape":{"canvas":[448,368],"rects":{"first":[0,0,56,56],"second":[60,0,20,20]}}}}

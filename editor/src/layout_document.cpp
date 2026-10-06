@@ -1,12 +1,16 @@
+/* Layout document rules shared by live editing and firmware baking. */
 #include "layout_document.h"
 
 #include <cctype>
 #include <fstream>
 #include <initializer_list>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 
 #include <nlohmann/json.hpp>
+
+#include "editor/runtime.h"
 
 namespace {
 
@@ -82,11 +86,12 @@ read_rect(const Json& value) {
         throw std::runtime_error("rectangle must be [x, y, width, height]");
     }
     for (const Json& component : value) {
-        if (!component.is_number_integer()) {
+        if (!component.is_number_integer() || component < std::numeric_limits<int16_t>::min()
+            || component > std::numeric_limits<int16_t>::max()) {
             throw std::runtime_error("rectangle components must be integers");
         }
     }
-    return {value[0].get<int>(), value[1].get<int>(), value[2].get<int>(), value[3].get<int>()};
+    return {value[0].get<int16_t>(), value[1].get<int16_t>(), value[2].get<int16_t>(), value[3].get<int16_t>()};
 }
 
 ScreenLayout
@@ -128,8 +133,9 @@ validate_layout(const ScreenLayout& layout, const std::vector<LayoutElement>& el
             problems.push_back(prefix + elements[index].id + " leaves the canvas");
         }
         if (elements[index].interactive
-            && (rect.width < LayoutDocument::min_tap_target || rect.height < LayoutDocument::min_tap_target)) {
-            problems.push_back(prefix + elements[index].id + " is smaller than 44px");
+            && (rect.width < editor_runtime_tap_min() || rect.height < editor_runtime_tap_min())) {
+            problems.push_back(prefix + elements[index].id + " is smaller than "
+                               + std::to_string(editor_runtime_tap_min()) + "px tap target");
         }
     }
     for (std::size_t first = 0; first < elements.size(); first++) {
@@ -253,11 +259,13 @@ LayoutDocument::save(std::string& error) {
 std::vector<std::string>
 LayoutDocument::validate() const {
     std::vector<std::string> problems;
-    if (portrait_.canvas_width != 368 || portrait_.canvas_height != 448) {
-        problems.emplace_back("portrait: canvas must be 368 x 448");
+    const int width = editor_runtime_panel_width();
+    const int height = editor_runtime_panel_height();
+    if (portrait_.canvas_width != width || portrait_.canvas_height != height) {
+        problems.emplace_back("portrait: canvas must be " + std::to_string(width) + " x " + std::to_string(height));
     }
-    if (landscape_.canvas_width != 448 || landscape_.canvas_height != 368) {
-        problems.emplace_back("landscape: canvas must be 448 x 368");
+    if (landscape_.canvas_width != height || landscape_.canvas_height != width) {
+        problems.emplace_back("landscape: canvas must be " + std::to_string(height) + " x " + std::to_string(width));
     }
     validate_layout(portrait_, elements_, LayoutOrientation::Portrait, problems);
     validate_layout(landscape_, elements_, LayoutOrientation::Landscape, problems);

@@ -1,18 +1,16 @@
+/* Geometry of authored screens using firmware rectangle storage. */
 #pragma once
 
 #include <vector>
+
+#include "ui/control_center_layout_generated.h"
 
 enum class LayoutOrientation {
     Portrait,
     Landscape,
 };
 
-struct LayoutRect {
-    int x;
-    int y;
-    int width;
-    int height;
-};
+using LayoutRect = control_center_layout_rect_t;
 
 inline bool
 operator==(const LayoutRect& first, const LayoutRect& second) {

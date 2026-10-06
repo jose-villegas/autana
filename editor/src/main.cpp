@@ -1,3 +1,4 @@
+/* Desktop editing and firmware-backed previews of authored layouts. */
 #define SDL_MAIN_HANDLED
 
 #include <SDL.h>
@@ -75,14 +76,15 @@ struct SystemScreen {
 
 bool
 render_preview(Preview& preview, const SystemScreen& screen) {
-    std::vector<editor_rect_t> rects;
-    editor_layout_t authored = {};
+    control_center_layout_t authored = {};
     if (screen.document) {
         const ScreenLayout& layout = screen.document->layout(preview.orientation);
-        for (const LayoutRect& rect : layout.rects) {
-            rects.push_back({rect.x, rect.y, rect.width, rect.height});
+        authored.canvas_width = static_cast<int16_t>(layout.canvas_width);
+        authored.canvas_height = static_cast<int16_t>(layout.canvas_height);
+        if (layout.rects.size() != CONTROL_CENTER_ELEMENT_COUNT) {
+            return false;
         }
-        authored = {layout.canvas_width, layout.canvas_height, static_cast<int>(rects.size()), rects.data()};
+        std::copy(layout.rects.begin(), layout.rects.end(), authored.rects);
     }
     std::string error;
     return editor_runtime_render(screen.runtime_screen, screen.document ? &authored : nullptr, preview.surface.pixels(),
@@ -127,14 +129,17 @@ bake_layout(const LayoutDocument& document, bool check_only, std::string& error)
     const std::string generator_argument = shell_argument(generator);
     const std::string source_argument = shell_argument(document.path());
     const std::string output_argument = shell_argument(output);
-    if (python_argument.empty() || generator_argument.empty() || source_argument.empty() || output_argument.empty()) {
+    const std::string validator_argument = shell_argument(EDITOR_LAYOUT_VALIDATOR);
+    if (python_argument.empty() || generator_argument.empty() || source_argument.empty() || output_argument.empty()
+        || validator_argument.empty()) {
         error = "A bake path contains unsupported shell characters";
         return false;
     }
 
     // gen_ui_layout.py stays the only writer of firmware geometry; the
     // editor launches it and never reimplements it.
-    std::string command = python_argument + " " + generator_argument + " " + source_argument + " " + output_argument;
+    std::string command = python_argument + " " + generator_argument + " " + source_argument + " " + output_argument
+                          + " --validator " + validator_argument;
     if (check_only) {
         command += " --check";
     }
@@ -223,11 +228,11 @@ draw_preview(Preview& preview, ScreenLayout* editable, std::size_t& selected, La
             const int delta_x = static_cast<int>(std::lround((pointer.x - interaction.pointer_origin.x) / scale));
             const int delta_y = static_cast<int>(std::lround((pointer.y - interaction.pointer_origin.y) / scale));
             if (interaction.mode == DragMode::Move) {
-                next.x += delta_x;
-                next.y += delta_y;
+                next.x = std::clamp<int>(next.x + delta_x, 0, layout.canvas_width - next.width);
+                next.y = std::clamp<int>(next.y + delta_y, 0, layout.canvas_height - next.height);
             } else {
-                next.width += delta_x;
-                next.height += delta_y;
+                next.width = std::clamp<int>(next.width + delta_x, 1, layout.canvas_width);
+                next.height = std::clamp<int>(next.height + delta_y, 1, layout.canvas_height);
             }
             constrain_rect(next, layout);
             LayoutRect& target = layout.rects[interaction.element_index];
@@ -249,10 +254,10 @@ draw_preview(Preview& preview, ScreenLayout* editable, std::size_t& selected, La
 
 void
 constrain_rect(LayoutRect& rect, const ScreenLayout& layout) {
-    rect.width = std::clamp(rect.width, 1, layout.canvas_width);
-    rect.height = std::clamp(rect.height, 1, layout.canvas_height);
-    rect.x = std::clamp(rect.x, 0, layout.canvas_width - rect.width);
-    rect.y = std::clamp(rect.y, 0, layout.canvas_height - rect.height);
+    rect.width = std::clamp<int>(rect.width, 1, layout.canvas_width);
+    rect.height = std::clamp<int>(rect.height, 1, layout.canvas_height);
+    rect.x = std::clamp<int>(rect.x, 0, layout.canvas_width - rect.width);
+    rect.y = std::clamp<int>(rect.y, 0, layout.canvas_height - rect.height);
 }
 
 struct RectEditResult {
@@ -264,13 +269,13 @@ RectEditResult
 draw_rect_editor(LayoutRect& rect, const ScreenLayout& layout) {
     bool changed = false;
     bool committed = false;
-    changed |= ImGui::DragInt("X", &rect.x, 1.0f);
+    changed |= ImGui::DragScalar("X", ImGuiDataType_S16, &rect.x, 1.0f);
     committed |= ImGui::IsItemDeactivatedAfterEdit();
-    changed |= ImGui::DragInt("Y", &rect.y, 1.0f);
+    changed |= ImGui::DragScalar("Y", ImGuiDataType_S16, &rect.y, 1.0f);
     committed |= ImGui::IsItemDeactivatedAfterEdit();
-    changed |= ImGui::DragInt("Width", &rect.width, 1.0f);
+    changed |= ImGui::DragScalar("Width", ImGuiDataType_S16, &rect.width, 1.0f);
     committed |= ImGui::IsItemDeactivatedAfterEdit();
-    changed |= ImGui::DragInt("Height", &rect.height, 1.0f);
+    changed |= ImGui::DragScalar("Height", ImGuiDataType_S16, &rect.height, 1.0f);
     committed |= ImGui::IsItemDeactivatedAfterEdit();
     if (changed) {
         constrain_rect(rect, layout);
@@ -624,8 +629,10 @@ main(int argument_count, char** arguments) {
     ImGui_ImplSDL2_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer2_Init(renderer);
 
-    Preview landscape("Landscape", LayoutOrientation::Landscape, 448, 368);
-    Preview portrait("Portrait", LayoutOrientation::Portrait, 368, 448);
+    Preview landscape("Landscape", LayoutOrientation::Landscape, editor_runtime_panel_height(),
+                      editor_runtime_panel_width());
+    Preview portrait("Portrait", LayoutOrientation::Portrait, editor_runtime_panel_width(),
+                     editor_runtime_panel_height());
     if (!create_preview(renderer, landscape, state.screens[state.active])
         || !create_preview(renderer, portrait, state.screens[state.active])) {
         std::fprintf(stderr, "Preview texture creation failed: %s\n", SDL_GetError());
