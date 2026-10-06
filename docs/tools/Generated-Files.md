@@ -28,10 +28,10 @@ lines of the difference. To fix one, run the command in its banner and
 commit the result.
 
 The [generators' README](../../launcher/tools/gen/README.md) holds a table
-of every generated file, its generator and its command, written from the
-banners. A full run also fails when that table is stale; add
-`--write-table` to rewrite it after adding, moving or removing a generated
-file.
+of every generated file, its generator, the folder it runs in and its
+command, written from the banners. A full run also fails when that table is
+stale; add `--write-table` to rewrite it whenever a banner is added,
+changed or removed.
 
 ## What the gate reads from a banner
 

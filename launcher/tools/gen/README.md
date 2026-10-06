@@ -35,10 +35,6 @@ same. Every checked-in output, from the banner each one carries:
 | [ridge_curve_generated.h](../../main/ui/ridge_curve_generated.h) | [gen_ridge_curve.py](gen_ridge_curve.py) | `launcher/` | `python tools/gen/gen_ridge_curve.py ../design/boot/ridge.png main/ui/ridge_curve_generated.h` |
 <!-- /generated: generated-files -->
 
-`python scripts/gates/check_generated_files.py` reruns each command and
-fails if an output or this table is stale; `--write-table` rewrites the
-table.
-
 **The output is checked in, beside the code that reads it.** A build-time
 generator would put Python on the critical path of every clean build.
 
@@ -46,8 +42,8 @@ generator would put Python on the critical path of every clean build.
 exact command that regenerates it, where someone about to hand-edit it will
 see it first. Commit the raw output; never run the formatter over it.
 `scripts/gates/check_generated_files.py` reruns that command in CI and fails
-on any difference, so the command must name the file it writes and use only
-inputs in the repository - see
+on any difference, and on a stale table above, so the command must name the
+file it writes and use only inputs in the repository - see
 [Generated-Files.md](../../../docs/tools/Generated-Files.md).
 
 **The generator validates itself before emitting anything.**

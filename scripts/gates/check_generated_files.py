@@ -170,7 +170,8 @@ def table(root, names):
             generator, folder = link(script), f"`{cwd.relative_to(root).as_posix()}/`"
         except ValueError:
             generator, folder = "-", "-"
-        rows.append(f"| {link(root / name)} | {generator} | {folder} | `{command}` |")
+        cell = command.replace("|", "\\|")
+        rows.append(f"| {link(root / name)} | {generator} | {folder} | `{cell}` |")
     return "\n".join(rows) + "\n"
 
 
