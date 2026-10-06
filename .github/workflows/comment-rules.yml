@@ -51,6 +51,9 @@ jobs:
           python3 scripts/gates/check_comment_length.py
           --no-banners --limit 500 --header-limit 50 --top 0
 
+      - name: Every firmware module opens with a header comment
+        run: python3 scripts/gates/check_file_headers.py
+
       - name: No comment or engine document below apps/ names an app
         run: python3 scripts/gates/check_comment_layers.py
 

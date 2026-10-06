@@ -1,3 +1,7 @@
+/*
+ * asset_store_flash: the asset store's board backend, mapping bundles from
+ * the "assets" flash partition through its directory.
+ */
 #include <stdbool.h>
 
 #include "asset/asset_directory.h"

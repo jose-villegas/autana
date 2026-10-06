@@ -1,3 +1,7 @@
+/*
+ * asset_store_file: the asset store's host backend, one file per bundle in
+ * the folder asset_store.h names.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 

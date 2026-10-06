@@ -1,3 +1,7 @@
+/*
+ * scene_draw: draws the active scene through its camera with the raster,
+ * once per frame.
+ */
 #include <assert.h>
 #include <stdlib.h>
 
