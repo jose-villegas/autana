@@ -155,7 +155,12 @@ sponza_status(void) {
     if (failure[0] != '\0') {
         return failure;
     }
-    if (snprintf(buf, sizeof buf, "%5d tris", scene_stats().triangles) < 0) {
+    /* Under a budget, the size the frame drew at, so a step shows on the panel. */
+    const scene_resolution_t r = scene_resolution();
+    const int wrote = r.step < 0
+                          ? snprintf(buf, sizeof buf, "%5d tris", scene_stats().triangles)
+                          : snprintf(buf, sizeof buf, "%dx%d %5d tris", r.width, r.height, scene_stats().triangles);
+    if (wrote < 0) {
         buf[0] = '\0';
     }
     return buf;
