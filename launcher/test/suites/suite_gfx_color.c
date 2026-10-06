@@ -245,6 +245,82 @@ test_lerp_rgb888_steps_each_channel_and_folds_to_a_constant(void) {
     TEST_ASSERT_EQUAL_HEX32(0xABCDEFu, GFX_LERP_RGB888(0x123456u, 0xABCDEFu, 255, 255));
 }
 
+/* Colour */
+
+/* Checks that hue's RGB has one full channel (255) and one empty channel
+ * (0), what makes it a point on a fully-saturated hue wheel rather than
+ * a pastel. */
+static void
+check_hue_is_fully_saturated(int hue) {
+    const uint32_t rgb = gfx_hue_rgb(hue);
+    const int r = (int)((rgb >> 16) & 0xFF);
+    const int g = (int)((rgb >> 8) & 0xFF);
+    const int b = (int)(rgb & 0xFF);
+    const int hi = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    const int lo = r < g ? (r < b ? r : b) : (g < b ? g : b);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(255, hi, "a hue had no full channel");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, lo, "a hue had no empty channel");
+}
+
+/* Every colour on the wheel is fully saturated: one channel at the top, one
+ * at the bottom, the third somewhere between. That is what makes it a hue
+ * wheel rather than a set of pastels, and it is what the panel is being shown
+ * off with. */
+static void
+test_every_hue_is_fully_saturated(void) {
+    for (int hue = 0; hue < GFX_HUE_TURN; hue++) {
+        check_hue_is_fully_saturated(hue);
+    }
+}
+
+static void
+test_the_hue_wheel_joins_up(void) {
+    TEST_ASSERT_EQUAL_UINT32(gfx_hue_rgb(0), gfx_hue_rgb(GFX_HUE_TURN));
+    TEST_ASSERT_EQUAL_UINT32(gfx_hue_rgb(5), gfx_hue_rgb(-GFX_HUE_TURN + 5));
+}
+
+/* No step round the wheel may jump: a discontinuity at a sector boundary is
+ * the classic mistake in this conversion, and it shows up as a hard band
+ * across the middle of a gradient. */
+static void
+test_the_hue_wheel_has_no_seams(void) {
+    for (int hue = 0; hue < GFX_HUE_TURN; hue++) {
+        const uint32_t a = gfx_hue_rgb(hue);
+        const uint32_t b = gfx_hue_rgb(hue + 1);
+
+        for (int shift = 0; shift <= 16; shift += 8) {
+            const int ca = (int)((a >> shift) & 0xFF);
+            const int cb = (int)((b >> shift) & 0xFF);
+            const int step = ca > cb ? ca - cb : cb - ca;
+            TEST_ASSERT_TRUE_MESSAGE(step <= 1, "a channel jumped between neighbouring hues - the wheel has a "
+                                                "seam at a sector boundary");
+        }
+    }
+}
+
+/* The wheel's order: the primary or secondary each sector starts on, so a
+ * reversed or rotated wheel fails even though it stays saturated and seamless. */
+static void
+test_the_hue_wheel_runs_red_yellow_green_cyan_blue_magenta(void) {
+    static const uint32_t starts[6] = {0xFF0000u, 0xFFFF00u, 0x00FF00u, 0x00FFFFu, 0x0000FFu, 0xFF00FFu};
+    static const uint32_t halfway[6] = {0xFF8000u, 0x7FFF00u, 0x00FF80u, 0x007FFFu, 0x8000FFu, 0xFF007Fu};
+    for (int sector = 0; sector < 6; sector++) {
+        TEST_ASSERT_EQUAL_HEX32(starts[sector], gfx_hue_rgb(sector * GFX_HUE_TURN / 6));
+        TEST_ASSERT_EQUAL_HEX32(halfway[sector], gfx_hue_rgb(sector * GFX_HUE_TURN / 6 + 128));
+    }
+}
+
+/* Truncates rather than rounds (5 * 2 / 3 is 3.33, 1 * 2 / 3 is 0.67), and
+ * each channel reads only its own byte: green 1 halfway is 0, and blue must
+ * not see it as 0x100. */
+static void
+test_lerp_rgb888_truncates_and_keeps_channels_apart(void) {
+    TEST_ASSERT_EQUAL_HEX32(0x030000u, GFX_LERP_RGB888(0x000000u, 0x050001u, 2, 3));
+    TEST_ASSERT_EQUAL_HEX32(0x000000u, GFX_LERP_RGB888(0x000000u, 0x000100u, 1, 2));
+    TEST_ASSERT_EQUAL_HEX32(0x00FF00u, GFX_LERP_RGB888(0x00FF00u, 0x00FF00u, 7, 15));
+}
+
 /*
  * gfx_dither_covers() directly, which suite_gfx.c's device fills only ever
  * reach through a real framebuffer.
@@ -394,6 +470,11 @@ run_gfx_color_suite(void) {
     RUN_TEST(test_rgb565_round_trips_through_rgb888);
     RUN_TEST(test_swap_and_channels_read_hand_packed_rgb565);
     RUN_TEST(test_lerp_rgb888_steps_each_channel_and_folds_to_a_constant);
+    RUN_TEST(test_every_hue_is_fully_saturated);
+    RUN_TEST(test_the_hue_wheel_joins_up);
+    RUN_TEST(test_the_hue_wheel_has_no_seams);
+    RUN_TEST(test_the_hue_wheel_runs_red_yellow_green_cyan_blue_magenta);
+    RUN_TEST(test_lerp_rgb888_truncates_and_keeps_channels_apart);
     RUN_TEST(test_dither_level_agrees_with_covers_at_every_alpha_and_cell);
     RUN_TEST(test_alpha_zero_never_covers);
     RUN_TEST(test_alpha_255_always_covers);

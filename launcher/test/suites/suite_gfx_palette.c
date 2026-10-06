@@ -1,6 +1,8 @@
 /* Host-only: no firmware image compiles gfx_palette_standard.c; the
  * standard palettes and their generator are host-side data. */
 
+#include <math.h>
+
 #include "suites.h"
 
 #include "unity.h"
@@ -96,6 +98,35 @@ test_index_map_round_trips_every_entry_of_a_small_palette(void) {
         const int idx = gfx_palette_index_of(gfx_palette_cga16.entries[i], map);
         TEST_ASSERT_EQUAL_INT_MESSAGE(i, idx, "a palette's own entry did not map back to its own index");
     }
+}
+
+/* Colours that are not entries go to their OKLab-nearest one. Chosen so the
+ * answer changes if a key's bytes are read swapped: entries and keys would
+ * then be misread alike, and the round trip above would still pass. */
+static void
+test_index_map_sends_an_off_palette_colour_to_its_nearest_entry(void) {
+    static uint8_t map[65536];
+    gfx_palette_gen_build_index_map(&gfx_palette_cga16, 0, map);
+
+    TEST_ASSERT_EQUAL_INT(10, gfx_palette_index_of(GFX_RGB(0x00FF00), map)); /* 0x55FF55 */
+    TEST_ASSERT_EQUAL_INT(9, gfx_palette_index_of(GFX_RGB(0x2020FF), map));  /* 0x5555FF */
+}
+
+/* OKLab anchors: black and white at the ends of L, a grey with no colour,
+ * and a distance that is symmetric and zero on itself. */
+static void
+test_oklab_anchors(void) {
+    const gfx_lab_t black = gfx_lin_to_lab(gfx_rgb_to_lin(0x000000u));
+    const gfx_lab_t white = gfx_lin_to_lab(gfx_rgb_to_lin(0xFFFFFFu));
+    const gfx_lab_t grey = gfx_lin_to_lab(gfx_rgb_to_lin(0x808080u));
+    const gfx_lab_t red = gfx_lin_to_lab(gfx_rgb_to_lin(0xFF0000u));
+
+    TEST_ASSERT_TRUE_MESSAGE(fabs(black.l) < 1e-6, "black is not L 0");
+    TEST_ASSERT_TRUE_MESSAGE(fabs(white.l - 100.0) < 1e-3, "white is not L 100");
+    TEST_ASSERT_TRUE_MESSAGE(fabs(grey.a) < 1e-3 && fabs(grey.b) < 1e-3, "grey has colour");
+    TEST_ASSERT_TRUE(grey.l > black.l && grey.l < white.l);
+    TEST_ASSERT_TRUE(gfx_lab_dist2(red, red) == 0.0);
+    TEST_ASSERT_TRUE(gfx_lab_dist2(red, grey) == gfx_lab_dist2(grey, red));
 }
 
 /* first_index lets a caller reserve a UI block ahead of its own colour
@@ -224,6 +255,8 @@ run_gfx_palette_suite(void) {
     RUN_TEST(test_vga256_and_grayscale256_have_256_unique_entries);
     RUN_TEST(test_standard_registry_finds_every_palette_by_name);
     RUN_TEST(test_index_map_round_trips_every_entry_of_a_small_palette);
+    RUN_TEST(test_index_map_sends_an_off_palette_colour_to_its_nearest_entry);
+    RUN_TEST(test_oklab_anchors);
     RUN_TEST(test_index_map_never_returns_a_reserved_entry);
     RUN_TEST(test_dither_table_reproduces_an_exact_16_colour_match_at_every_phase);
     RUN_TEST(test_dither_table_is_deterministic);

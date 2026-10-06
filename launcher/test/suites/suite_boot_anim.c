@@ -1257,58 +1257,6 @@ test_the_axes_are_there_before_the_curve_starts_climbing(void) {
 
 /* Colour */
 
-/* Checks that hue's RGB has one full channel (255) and one empty channel
- * (0), what makes it a point on a fully-saturated hue wheel rather than
- * a pastel. */
-static void
-check_hue_is_fully_saturated(int hue) {
-    const uint32_t rgb = gfx_hue_rgb(hue);
-    const int r = (int)((rgb >> 16) & 0xFF);
-    const int g = (int)((rgb >> 8) & 0xFF);
-    const int b = (int)(rgb & 0xFF);
-    const int hi = r > g ? (r > b ? r : b) : (g > b ? g : b);
-    const int lo = r < g ? (r < b ? r : b) : (g < b ? g : b);
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(255, hi, "a hue had no full channel");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, lo, "a hue had no empty channel");
-}
-
-/* Every colour on the wheel is fully saturated: one channel at the top, one
- * at the bottom, the third somewhere between. That is what makes it a hue
- * wheel rather than a set of pastels, and it is what the panel is being shown
- * off with. */
-static void
-test_every_hue_is_fully_saturated(void) {
-    for (int hue = 0; hue < GFX_HUE_TURN; hue++) {
-        check_hue_is_fully_saturated(hue);
-    }
-}
-
-static void
-test_the_hue_wheel_joins_up(void) {
-    TEST_ASSERT_EQUAL_UINT32(gfx_hue_rgb(0), gfx_hue_rgb(GFX_HUE_TURN));
-    TEST_ASSERT_EQUAL_UINT32(gfx_hue_rgb(5), gfx_hue_rgb(-GFX_HUE_TURN + 5));
-}
-
-/* No step round the wheel may jump: a discontinuity at a sector boundary is
- * the classic mistake in this conversion, and it shows up as a hard band
- * across the middle of a gradient. */
-static void
-test_the_hue_wheel_has_no_seams(void) {
-    for (int hue = 0; hue < GFX_HUE_TURN; hue++) {
-        const uint32_t a = gfx_hue_rgb(hue);
-        const uint32_t b = gfx_hue_rgb(hue + 1);
-
-        for (int shift = 0; shift <= 16; shift += 8) {
-            const int ca = (int)((a >> shift) & 0xFF);
-            const int cb = (int)((b >> shift) & 0xFF);
-            const int step = ca > cb ? ca - cb : cb - ca;
-            TEST_ASSERT_TRUE_MESSAGE(step <= 1, "a channel jumped between neighbouring hues - the wheel has a "
-                                                "seam at a sector boundary");
-        }
-    }
-}
-
 static void
 test_height_changes_the_hue(void) {
     const boot_anim_stroke_t foot = boot_anim_stroke(0, 0);
@@ -1892,9 +1840,6 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_floor_colour_travels_with_time_and_distance);
     RUN_TEST(test_the_axes_are_there_before_the_curve_starts_climbing);
 
-    RUN_TEST(test_every_hue_is_fully_saturated);
-    RUN_TEST(test_the_hue_wheel_joins_up);
-    RUN_TEST(test_the_hue_wheel_has_no_seams);
     RUN_TEST(test_height_changes_the_hue);
     RUN_TEST(test_a_pens_trail_fades_behind_it);
     RUN_TEST(test_every_pen_is_lit_at_its_own_position);
