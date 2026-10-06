@@ -25,7 +25,7 @@ static const mu_Color color_orange = {0xFF, 0xB4, 0x4F, 255};
 
 static mu_Rect
 control_rect(const control_center_layout_t* layout, control_center_element_id_t element) {
-    const control_center_layout_rect_t* rect = &layout->rects[element];
+    const ui_layout_rect_t* rect = &layout->rects[element];
     return mu_rect(rect->x, rect->y, rect->width, rect->height);
 }
 

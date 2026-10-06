@@ -96,6 +96,18 @@ class GateTests(unittest.TestCase):
         self.assertIn("differs", check(self.root, "main/a.h"))
         self.assertEqual(path.read_text(encoding="utf-8"), edited)
 
+    def test_banner_may_name_the_output_argument_without_hiding_payload_drift(self):
+        source = GENERATOR.replace("import sys", "import pathlib\nimport shlex\nimport sys")
+        source = source.replace('(" NAME" if out else " > NAME")',
+                                '(" " + shlex.quote(pathlib.Path(out[0]).as_posix()) if out else " > NAME")')
+        self.generator("tools", "main/a.h", source)
+        path = self.add("main/a.h", header("python tools/gen.py 3 main/a.h", 3))
+        self.assertIsNone(check(self.root, "main/a.h"))
+        edited = header("python tools/gen.py 3 main/a.h", 4)
+        path.write_text(edited, encoding="utf-8", newline="\n")
+        self.assertIn("differs", check(self.root, "main/a.h"))
+        self.assertEqual(path.read_text(encoding="utf-8"), edited)
+
     def test_crlf_from_a_generator_counts_as_lf_in_both_output_modes(self):
         for command in ("python tools/crlf.py > main/a.h", "python tools/crlf.py main/a.h"):
             with self.subTest(command=command):

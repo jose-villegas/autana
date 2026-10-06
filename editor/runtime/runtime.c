@@ -49,6 +49,21 @@ editor_runtime_init(void) {
 }
 
 int
+editor_runtime_panel_width(void) {
+    return GFX_WIDTH;
+}
+
+int
+editor_runtime_panel_height(void) {
+    return GFX_HEIGHT;
+}
+
+int
+editor_runtime_tap_min(void) {
+    return UI_TAP_MIN;
+}
+
+int
 editor_runtime_element_count(editor_screen_t screen) {
     return screen == EDITOR_SCREEN_CONTROL_CENTER ? CONTROL_CENTER_ELEMENT_COUNT : 0;
 }
@@ -59,13 +74,13 @@ native_rgb565(gfx_color_t color) {
 }
 
 static bool
-layout_fits(editor_screen_t screen, const editor_layout_t* layout, int width, int height) {
-    if (layout->rect_count != editor_runtime_element_count(screen) || layout->rects == NULL
-        || layout->canvas_width != width || layout->canvas_height != height) {
+layout_fits(editor_screen_t screen, const control_center_layout_t* layout, int width, int height) {
+    if (editor_runtime_element_count(screen) != CONTROL_CENTER_ELEMENT_COUNT || layout->canvas_width != width
+        || layout->canvas_height != height) {
         return false;
     }
-    for (int i = 0; i < layout->rect_count; i++) {
-        const editor_rect_t* rect = &layout->rects[i];
+    for (int i = 0; i < CONTROL_CENTER_ELEMENT_COUNT; i++) {
+        const ui_layout_rect_t* rect = &layout->rects[i];
         if (rect->x < 0 || rect->y < 0 || rect->width <= 0 || rect->height <= 0 || rect->width > width - rect->x
             || rect->height > height - rect->y) {
             return false;
@@ -93,7 +108,7 @@ render_launcher(const input_t* input) {
 }
 
 static void
-render_control_center(const input_t* input, const editor_layout_t* authored) {
+render_control_center(const input_t* input, const control_center_layout_t* authored) {
     render_launcher(input);
     ui_control_center_dim_backdrop();
     ui_invalidate();
@@ -102,23 +117,12 @@ render_control_center(const input_t* input, const editor_layout_t* authored) {
         ui_control_center_frame(input);
         return;
     }
-    control_center_layout_t layout = {
-        .canvas_width = (int16_t)authored->canvas_width,
-        .canvas_height = (int16_t)authored->canvas_height,
-    };
-    for (int i = 0; i < CONTROL_CENTER_ELEMENT_COUNT; i++) {
-        layout.rects[i] = (control_center_layout_rect_t){
-            .x = (int16_t)authored->rects[i].x,
-            .y = (int16_t)authored->rects[i].y,
-            .width = (int16_t)authored->rects[i].width,
-            .height = (int16_t)authored->rects[i].height,
-        };
-    }
-    ui_control_center_frame_layout(input, &layout);
+    ui_control_center_frame_layout(input, authored);
 }
 
 bool
-editor_runtime_render(editor_screen_t screen, const editor_layout_t* layout, uint16_t* pixels, int width, int height) {
+editor_runtime_render(editor_screen_t screen, const control_center_layout_t* layout, uint16_t* pixels, int width,
+                      int height) {
     const bool portrait = width == GFX_WIDTH && height == GFX_HEIGHT;
     const bool landscape = width == GFX_HEIGHT && height == GFX_WIDTH;
     if (pixels == NULL || (!portrait && !landscape) || screen < 0 || screen >= EDITOR_SCREEN_COUNT
