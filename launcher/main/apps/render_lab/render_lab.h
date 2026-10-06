@@ -10,6 +10,7 @@
 #include <stdbool.h>
 
 #include "gfx/gfx.h"
+#include "gfx/gfx_box.h"
 
 #define RENDER_LAB_BACKGROUND_RGB 0x0A0C14
 
@@ -22,11 +23,10 @@ extern bool render_lab_partial_updates;
 void render_lab_clear_band(gfx_color_t* buf, int height);
 
 typedef struct {
-    int x0, y0, x1, y1; /* half-open, already clipped to the screen */
-    bool valid;
+    gfx_box_t box;
 } render_lab_coverage_t;
 
 /* Marks last frame's box and this frame's dirty, then remembers this one: a
  * region the scene left still needs erasing though nothing overlaps it now.
- * `have` false means the scene drew nothing this frame. */
-void render_lab_coverage_mark(render_lab_coverage_t* last, bool have, int x0, int y0, int x1, int y1);
+ * An empty box means the scene drew nothing this frame. */
+void render_lab_coverage_mark(render_lab_coverage_t* last, gfx_box_t box);
