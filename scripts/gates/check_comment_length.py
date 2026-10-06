@@ -194,6 +194,20 @@ def scan(path, source):
     return comments
 
 
+PRAGMA_ONCE = re.compile(r"\A\s*#\s*pragma\s+once[^\n]*\n")
+
+
+def file_header(path, source):
+    """The file's header comment: the first comment, when nothing but
+    whitespace or a leading `#pragma once` comes before it. None when code
+    comes first."""
+    head = PRAGMA_ONCE.sub("", source, count=1).lstrip()
+    if not head.startswith(("/*", "//")):
+        return None
+    comments = scan(path, source)
+    return comments[0] if comments else None
+
+
 def tracked_sources():
     out = subprocess.run(
         ["git", "ls-files", "*.c", "*.h", "*.cpp", "*.hpp"],
