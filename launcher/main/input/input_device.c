@@ -27,3 +27,13 @@ input_poll(input_t* out) {
     touch_read(out);
     buttons_read(&out->boot, &out->power);
 }
+
+bool
+input_read_gravity(vec2i_t* gravity) {
+    imu_sample_t sample;
+    if (!imu_read(&sample)) {
+        return false;
+    }
+    *gravity = imu_gravity_screen(&sample);
+    return true;
+}
