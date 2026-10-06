@@ -109,8 +109,11 @@ jobs:
           git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 
       # test_check_math.mjs renders through GitHub's MathJax.
-      - name: check-math.mjs dependencies
+      - name: Node gate dependencies
         run: npm ci --prefix scripts/gates
+
+      - name: No new token clone pairs
+        run: python3 scripts/gates/check_clones.py
 
       # Python and, for check-mermaid.mjs's pure parts and check-math.mjs,
       # Node; scripts/run-tool-tests.sh owns which suites.

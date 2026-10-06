@@ -350,15 +350,14 @@ render_lab_clear_band(gfx_color_t* buf, int height) {
 }
 
 void
-render_lab_coverage_mark(render_lab_coverage_t* last, bool have, int x0, int y0, int x1, int y1) {
-    if (last->valid) {
-        gfx_mark_dirty(last->x0, last->y0, last->x1 - last->x0, last->y1 - last->y0);
+render_lab_coverage_mark(render_lab_coverage_t* last, gfx_box_t box) {
+    if (!gfx_box_is_empty(last->box)) {
+        gfx_mark_dirty(last->box.x0, last->box.y0, last->box.x1 - last->box.x0, last->box.y1 - last->box.y0);
     }
-    if (have) {
-        gfx_mark_dirty(x0, y0, x1 - x0, y1 - y0);
-        *last = (render_lab_coverage_t){x0, y0, x1, y1, true};
+    if (!gfx_box_is_empty(box)) {
+        gfx_mark_dirty(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
     }
-    last->valid = have;
+    last->box = box;
 }
 
 /* The band-mode frame builds one UI command list; the shell replays it over

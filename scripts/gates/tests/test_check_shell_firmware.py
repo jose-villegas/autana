@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from gate_tree import write as write_file
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -132,11 +133,6 @@ class ShellFolderTest(unittest.TestCase):
                 "launcher/main/shell/zeta.c:1: uses vTaskDelay",
             ])
 
-
-def write_file(root, rel, text):
-    path = pathlib.Path(root) / rel
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
 
 
 CLOCK_READ = "long f(void) { return esp_timer_get_time(); }\n"

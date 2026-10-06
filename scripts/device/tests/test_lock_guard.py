@@ -27,6 +27,7 @@ ENGINE = DEVICE.parents[1]
 sys.path.insert(0, str(DEVICE))
 import device  # noqa: E402
 import device_lock  # noqa: E402
+from fake_serial import FakeConnection, Replies
 import fake_flash  # noqa: E402
 from autana_config import BOARD_ENV  # noqa: E402
 
@@ -347,7 +348,7 @@ class LostLockTests(Store):
         self.assertIsNone(self.store.status(BOARD_A)["lock"])
 
     def reopen_after_reset(self, second_open):
-        class PortGone:
+        class PortGone(FakeConnection):
             said = False
 
             def read(self, unused_size):
@@ -355,12 +356,6 @@ class LostLockTests(Store):
                     self.said = True
                     return b"boot line\n"
                 raise OSError("USB device disappeared")
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *unused):
-                return False
 
         opens = mock.Mock(side_effect=[PortGone(), second_open])
         with mock.patch.object(device, "open_when_free", opens), \
@@ -377,28 +372,14 @@ class LostLockTests(Store):
                 self.reopen_after_reset(RuntimeError("several boards are plugged in"))
 
     def test_send_stops_on_a_lost_lock(self):
-        class Silent:
+        class Silent(FakeConnection):
             def __init__(self, held):
+                super().__init__()
                 self.held = held
-
-            def reset_input_buffer(self):
-                pass
-
-            def write(self, unused):
-                pass
-
-            def flush(self):
-                pass
 
             def read(self, unused_size):
                 self.held.lost.set()
                 return b""
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *unused):
-                return False
 
         args = Namespace(owner="a", purpose="send", wait=0, line="TUNE", reply="TUNE",
                          until=["TUNE_END"], seconds=30, optional=False)
@@ -1095,24 +1076,9 @@ class DurationTests(Store):
                          [None, None, "boom"])
 
     def test_a_command_that_answers_an_error_is_recorded_with_it(self):
-        class Answers:
-            def reset_input_buffer(self):
-                pass
-
-            def write(self, unused):
-                pass
-
-            def flush(self):
-                pass
-
+        class Answers(FakeConnection):
             def read(self, unused_size):
                 return b"TUNE_ERR unknown\n"
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *unused):
-                return False
 
         args = Namespace(owner="a", purpose="send", wait=0, line="SET x 1", reply="TUNE",
                          until=["TUNE_ERR"], seconds=5, optional=False)
@@ -1179,29 +1145,6 @@ class DurationTests(Store):
         entry = json.loads(index.read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual((entry["board"], entry["acquired_at"]),
                          (BOARD_A, datetime.fromtimestamp(1000.0).isoformat()))
-
-
-class Replies:
-    """A port that answers once with `data`, then stays quiet."""
-
-    def __init__(self, data):
-        self.data = data
-
-    def read(self, unused_size):
-        data, self.data = self.data, b""
-        return data
-
-    def write(self, unused):
-        pass
-
-    def flush(self):
-        pass
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *unused):
-        return False
 
 
 class SuiteFailureTests(Store):
