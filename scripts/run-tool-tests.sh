@@ -59,7 +59,7 @@ export QUIET_STATUS
 
 if [ -n "$py_dirs" ]; then
     if [ -z "$PYTHON" ]; then
-        echo "python 3 was not found on PATH (tried python3, python); skipping test_*.py suites." >&2
+        echo "python 3 was not found on PATH (tried python3, python, py); skipping test_*.py suites." >&2
         QUIET_STATUS=1
     else
         for dir in $py_dirs; do
