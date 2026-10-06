@@ -18,7 +18,9 @@ its output, either as the target of a trailing `> path` or as an argument;
 the gate captures stdout for the first and swaps the argument for a path in
 a temporary folder for the second, so the tracked file is never written.
 The result must equal the tracked bytes; the CRLF a Windows console writes
-for a newline counts as LF, as git stores it.
+for a newline counts as LF, as git stores it. A banner that echoes the
+temporary output path is compared with the original output argument restored;
+all other command arguments and the generated payload must still match.
 
 A banner whose command names a <placeholder> input, finds no script, or
 does not name its own file as output fails: a file nobody can regenerate is
@@ -127,12 +129,23 @@ def regenerate(root, name):
     argv, cwd, output, _ = plan(root, name, command)
     with tempfile.TemporaryDirectory() as scratch:
         if output is not None:
+            original_output = argv[output]
             argv[output] = str(pathlib.Path(scratch) / pathlib.PurePosixPath(name).name)
         result = subprocess.run(argv, cwd=cwd, capture_output=True, check=False)
         if result.returncode != 0:
             stderr = result.stderr.decode("utf-8", "replace").strip().splitlines()[-5:]
             raise ValueError(f"`{command}` failed ({result.returncode}): " + " | ".join(stderr))
         made = result.stdout if output is None else pathlib.Path(argv[output]).read_bytes()
+        if output is not None:
+            text = made.decode("utf-8", "replace")
+            if is_generated(text):
+                emitted = banner_command(text)
+                if emitted:
+                    words = shlex.split(emitted)
+                    redirected = {argv[output], pathlib.Path(argv[output]).as_posix()}
+                    words = [original_output if word in redirected else word for word in words]
+                    if words == shlex.split(command):
+                        made = made.replace(emitted.encode(), command.encode(), 1)
     return made.replace(b"\r\n", b"\n")
 
 

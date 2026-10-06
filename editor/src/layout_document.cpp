@@ -1,12 +1,17 @@
+/* Layout document rules shared by live editing and firmware baking. */
 #include "layout_document.h"
 
 #include <cctype>
 #include <fstream>
 #include <initializer_list>
+#include <iomanip>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 
 #include <nlohmann/json.hpp>
+
+#include "editor/runtime.h"
 
 namespace {
 
@@ -85,8 +90,11 @@ read_rect(const Json& value) {
         if (!component.is_number_integer()) {
             throw std::runtime_error("rectangle components must be integers");
         }
+        if (component < std::numeric_limits<int16_t>::min() || component > std::numeric_limits<int16_t>::max()) {
+            throw std::runtime_error("rectangle components must fit int16");
+        }
     }
-    return {value[0].get<int>(), value[1].get<int>(), value[2].get<int>(), value[3].get<int>()};
+    return {value[0].get<int16_t>(), value[1].get<int16_t>(), value[2].get<int16_t>(), value[3].get<int16_t>()};
 }
 
 ScreenLayout
@@ -121,6 +129,10 @@ void
 validate_layout(const ScreenLayout& layout, const std::vector<LayoutElement>& elements, LayoutOrientation orientation,
                 std::vector<std::string>& problems) {
     const std::string prefix = std::string(layout_orientation_id(orientation)) + ": ";
+    if (layout.rects.size() != elements.size()) {
+        problems.push_back(prefix + "rects must contain exactly the declared element ids");
+        return;
+    }
     for (std::size_t index = 0; index < elements.size(); index++) {
         const LayoutRect& rect = layout.rects[index];
         if (rect.x < 0 || rect.y < 0 || rect.width <= 0 || rect.height <= 0 || rect.x + rect.width > layout.canvas_width
@@ -128,8 +140,9 @@ validate_layout(const ScreenLayout& layout, const std::vector<LayoutElement>& el
             problems.push_back(prefix + elements[index].id + " leaves the canvas");
         }
         if (elements[index].interactive
-            && (rect.width < LayoutDocument::min_tap_target || rect.height < LayoutDocument::min_tap_target)) {
-            problems.push_back(prefix + elements[index].id + " is smaller than 44px");
+            && (rect.width < editor_runtime_tap_min() || rect.height < editor_runtime_tap_min())) {
+            problems.push_back(prefix + elements[index].id + " is smaller than "
+                               + std::to_string(editor_runtime_tap_min()) + "px tap target");
         }
     }
     for (std::size_t first = 0; first < elements.size(); first++) {
@@ -253,11 +266,13 @@ LayoutDocument::save(std::string& error) {
 std::vector<std::string>
 LayoutDocument::validate() const {
     std::vector<std::string> problems;
-    if (portrait_.canvas_width != 368 || portrait_.canvas_height != 448) {
-        problems.emplace_back("portrait: canvas must be 368 x 448");
+    const int width = editor_runtime_panel_width();
+    const int height = editor_runtime_panel_height();
+    if (portrait_.canvas_width != width || portrait_.canvas_height != height) {
+        problems.emplace_back("portrait: canvas must be " + std::to_string(width) + " x " + std::to_string(height));
     }
-    if (landscape_.canvas_width != 448 || landscape_.canvas_height != 368) {
-        problems.emplace_back("landscape: canvas must be 448 x 368");
+    if (landscape_.canvas_width != height || landscape_.canvas_height != width) {
+        problems.emplace_back("landscape: canvas must be " + std::to_string(height) + " x " + std::to_string(width));
     }
     validate_layout(portrait_, elements_, LayoutOrientation::Portrait, problems);
     validate_layout(landscape_, elements_, LayoutOrientation::Landscape, problems);
@@ -329,4 +344,47 @@ LayoutGeometryEqual::operator()(const LayoutDocument& first, const LayoutDocumen
         }
     }
     return true;
+}
+
+std::string
+bake_header(const LayoutDocument& document, const std::filesystem::path& header_path) {
+    const auto problems = document.validate();
+    if (!problems.empty()) {
+        throw std::runtime_error(problems.front());
+    }
+    const auto upper = [](std::string text) {
+        for (char& character : text) {
+            character = static_cast<char>(std::toupper(static_cast<unsigned char>(character)));
+        }
+        return text;
+    };
+    const std::string& screen = document.screen();
+    const std::string prefix = upper(screen) + "_ELEMENT_";
+    std::ostringstream out;
+    out << "/*\n * GENERATED FILE - do not edit.\n *\n"
+        << " *     python tools/gen/bake_ui_layout.py " << std::quoted(document.path().generic_string()) << " "
+        << std::quoted(header_path.generic_string())
+        << "\n */\n#pragma once\n\n#include \"ui/ui_layout.h\"\n\ntypedef enum {\n";
+    for (std::size_t index = 0; index < document.elements().size(); index++) {
+        out << "    " << prefix << upper(document.elements()[index].id) << " = " << index << ",\n";
+    }
+    out << "    " << prefix << "COUNT = " << document.elements().size() << "\n} " << screen
+        << "_element_id_t;\n\ntypedef struct {\n    int16_t canvas_width, canvas_height;\n"
+        << "    ui_layout_rect_t rects[" << prefix << "COUNT];\n} " << screen << "_layout_t;\n\n";
+    for (LayoutOrientation orientation : {LayoutOrientation::Portrait, LayoutOrientation::Landscape}) {
+        const ScreenLayout& layout = document.layout(orientation);
+        out << "static const " << screen << "_layout_t " << screen << "_layout_" << layout_orientation_id(orientation)
+            << " = {\n    .canvas_width = " << layout.canvas_width << ",\n    .canvas_height = " << layout.canvas_height
+            << ",\n    .rects =\n        {\n";
+        for (std::size_t index = 0; index < document.elements().size(); index++) {
+            const LayoutRect& rect = layout.rects[index];
+            out << "            [" << prefix << upper(document.elements()[index].id) << "] = {" << rect.x << ", "
+                << rect.y << ", " << rect.width << ", " << rect.height << "},\n";
+        }
+        out << "        },\n};\n";
+        if (orientation == LayoutOrientation::Portrait) {
+            out << "\n";
+        }
+    }
+    return out.str();
 }
