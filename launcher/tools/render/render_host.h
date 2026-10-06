@@ -30,7 +30,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "app.h"
+#include "app/app.h"
 
 /* What one frame of a scene is handed. `input` is synthesised from the
  * scene's declared touch steps, edges included. */

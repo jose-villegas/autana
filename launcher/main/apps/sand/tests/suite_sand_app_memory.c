@@ -3,7 +3,7 @@
 
 #ifdef DEVICE_BUILD
 
-#include "app.h"
+#include "app/app.h"
 #include "apps/sand/sand_limits.h"
 #include "util/memory.h"
 

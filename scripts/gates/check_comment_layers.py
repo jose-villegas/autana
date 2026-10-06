@@ -35,13 +35,13 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from check_comment_length import EXCLUDED, scan  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 
-LOWER = ("launcher/main/boot/", "launcher/main/display/", "launcher/main/gfx/",
+LOWER = ("launcher/main/app/", "launcher/main/boot/", "launcher/main/selftest/", "launcher/main/display/", "launcher/main/gfx/",
          "launcher/main/input/", "launcher/main/render/", "launcher/main/ui/",
          "launcher/main/util/", "launcher/main/anim/", "launcher/main/asset/", "launcher/main/console/", "launcher/test/")
 APPS = "launcher/main/apps"
 
-# The shell's own two files: they switch between apps without knowing one.
-SHELL = ("launcher/main/app.h", "launcher/main/main.c")
+# The file that starts the shell, which switches between apps without knowing one.
+SHELL = ("launcher/main/main.c",)
 
 # The diagnostics build is the variant behind build.diag, which every layer
 # may name; the app that happens to share the word is what this forbids.

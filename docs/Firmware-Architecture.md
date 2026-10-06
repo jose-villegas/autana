@@ -27,7 +27,7 @@ and means something different by each:
 |---|---|
 | **shell** | the frame loop and the app switching: `shell/`, whose log tag, shared with `main.c`'s boot lines, is `shell`; `main.c` starts the board and calls `shell_run()` |
 | **launcher** | the home screen the shell draws when no app is running: `ui/ui_launcher.c` |
-| **boot** | what runs once before the loop exists and never again: `boot/` |
+| **boot** | what runs once before the loop exists and never again: `boot/` (the startup animation) and `selftest/` (the power-on self test and the on-board suite runner) |
 
 The top-level folder `launcher/` is the whole firmware, not the home
 screen.
@@ -36,17 +36,16 @@ screen.
 
 ## Layers
 
-Each row may include anything in a row below it, and the root headers
-(`app.h`, `app_arena.h`, `build_variant.h`), never a row
+Each row may include anything in a row below it, and the root header
+`build_variant.h`, never a row
 above or a folder beside it in the same row. The top row is the two callers,
 and neither includes the other: `main.c` starts the board and calls
 `shell_run()`, and the apps. The shell reaches an app only through the
-callbacks `app.h` declares. Folders that touch hardware are marked. `ls launcher/main/<folder>` is the inventory; this is the shape.
+callbacks `app/app.h` declares. Folders that touch hardware are marked. `ls launcher/main/<folder>` is the inventory; this is the shape.
 
 ```mermaid
 flowchart TB
     classDef hw fill:#8a3d3d,color:#fff
-    classDef contract fill:#f4f1e8,stroke:#333,stroke-width:1px,color:#111
 
     subgraph R1["callers"]
         Apps["apps/<br/><i>one folder per app</i>"]
@@ -56,15 +55,17 @@ flowchart TB
         Shell["shell/<br/><i>the frame loop, app switching, engine systems</i>"]
     end
     subgraph R3["before the loop"]
-        Boot["boot/<br/><i>POST, self-test, boot animation</i>"]:::hw
+        Boot["boot/<br/><i>the startup animation</i>"]
+        Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
     end
     subgraph R4["services"]
         Ui["ui/<br/><i>microui, launcher, Control Center</i>"]
         Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
         Scene["scene/<br/><i>scenes loaded by name, the active camera</i>"]
     end
-    subgraph R5["the shell's panel"]
+    subgraph R5["the panel and the app contract"]
         Display["display/<br/><i>orientation, panel clock, panel start</i>"]:::hw
+        App["app/<br/><i>the shell/app contract, the app list, the app arena</i>"]
     end
     subgraph R6["devices and drawing"]
         Gfx["gfx/<br/><i>the one framebuffer</i>"]:::hw
@@ -85,9 +86,7 @@ flowchart TB
     end
 
     R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10
-    Contract(["app.h: the shell/app contract"]):::contract
-    Shell -.->|"calls through app.h"| Apps
-    Contract -.->|"includes input/input.h"| Input
+    Shell -.->|"calls through app/app.h"| Apps
 ```
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
@@ -338,7 +337,7 @@ the folder deletes the declaration. What each build variant carries is
 [Build-Variants.md](Build-Variants.md).
 
 **App memory is lent, not owned.** The shell holds one static block in
-PSRAM, the app arena (`APP_ARENA_BYTES`, `app_arena.h`), and empties it
+PSRAM, the app arena (`APP_ARENA_BYTES`, `app/app_arena.h`), and empties it
 right after every app's `exit()`; an app takes bulk buffers from it and
 never frees them. Re-entry cannot fail to heap fragmentation, since every
 visit gets the same block, and taking from it is no dynamic-memory call

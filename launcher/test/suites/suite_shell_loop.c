@@ -9,7 +9,7 @@
 
 #include <string.h>
 
-#include "app_arena.h"
+#include "app/app_arena.h"
 #include "scene/scene_shell.h"
 #include "shell/shell_system.h"
 

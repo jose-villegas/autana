@@ -16,7 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "app.h"
+#include "app/app.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "gfx/gfx.h"
 #include "render_host.h"

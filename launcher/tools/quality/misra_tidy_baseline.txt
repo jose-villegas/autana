@@ -38,8 +38,8 @@ bugprone-unused-return-value	main/apps/sand/tools/rng_low_bits.c	4
 bugprone-unused-return-value	main/apps/sand/tools/shading_palette.c	18
 bugprone-unused-return-value	main/apps/sand/ui/brush_screen.c	1
 bugprone-unused-return-value	main/apps/sand/ui/options_screen.c	2
-bugprone-unused-return-value	main/boot/post.c	19
-bugprone-unused-return-value	main/boot/post_ui.c	1
+bugprone-unused-return-value	main/selftest/post.c	19
+bugprone-unused-return-value	main/selftest/post_ui.c	1
 bugprone-unused-return-value	main/console/console_screenshot.c	2
 bugprone-unused-return-value	main/console/console_tune.c	2
 bugprone-unused-return-value	main/ui/ui_widgets.c	2
@@ -86,9 +86,9 @@ cert-err33-c	main/apps/sand/tools/sand_menu_render_host.c	1
 cert-err33-c	main/apps/sand/tools/shading_palette.c	84
 cert-err33-c	main/apps/sand/ui/brush_screen.c	1
 cert-err33-c	main/apps/sand/ui/options_screen.c	2
-cert-err33-c	main/boot/post.c	20
-cert-err33-c	main/boot/post_ui.c	1
-cert-err33-c	main/boot/selftest.c	1
+cert-err33-c	main/selftest/post.c	20
+cert-err33-c	main/selftest/post_ui.c	1
+cert-err33-c	main/selftest/selftest.c	1
 cert-err33-c	main/console/console.c	1
 cert-err33-c	main/console/console_buildid.c	1
 cert-err33-c	main/console/console_freeze.c	1
@@ -158,7 +158,7 @@ readability-isolate-declaration	main/apps/sand/tools/serial_lag.c	2
 readability-isolate-declaration	main/apps/sand/tools/shading_palette.c	27
 readability-isolate-declaration	main/apps/sand/ui/palette_screen.c	1
 readability-isolate-declaration	main/boot/boot_anim.c	17
-readability-isolate-declaration	main/boot/post_ui.c	1
+readability-isolate-declaration	main/selftest/post_ui.c	1
 readability-isolate-declaration	main/console/console_inject.c	2
 readability-isolate-declaration	main/display/display.c	1
 readability-isolate-declaration	main/gfx/gfx.c	16
@@ -234,8 +234,8 @@ readability-math-missing-parentheses	main/apps/sand/ui/options_screen.c	5
 readability-math-missing-parentheses	main/apps/sand/ui/palette_screen.c	4
 readability-math-missing-parentheses	main/apps/sand/ui/title_screen.c	10
 readability-math-missing-parentheses	main/boot/boot_anim.c	8
-readability-math-missing-parentheses	main/boot/post_layout.c	1
-readability-math-missing-parentheses	main/boot/post_ui.c	2
+readability-math-missing-parentheses	main/selftest/post_layout.c	1
+readability-math-missing-parentheses	main/selftest/post_ui.c	2
 readability-math-missing-parentheses	main/console/console_screenshot.c	4
 readability-math-missing-parentheses	main/gfx/gfx.c	41
 readability-math-missing-parentheses	main/gfx/gfx_null_panel_device.c	1
@@ -302,7 +302,7 @@ readability-uppercase-literal-suffix	main/apps/sand/tools/sand_sim_render_host.c
 readability-uppercase-literal-suffix	main/apps/sand/tools/serial_lag.c	3
 readability-uppercase-literal-suffix	main/apps/sand/tools/shading_palette.c	112
 readability-uppercase-literal-suffix	main/boot/boot_anim.c	9
-readability-uppercase-literal-suffix	main/boot/post.c	3
+readability-uppercase-literal-suffix	main/selftest/post.c	3
 readability-uppercase-literal-suffix	main/gfx/gfx.c	8
 readability-uppercase-literal-suffix	main/input/buttons.c	2
 readability-uppercase-literal-suffix	main/input/tilt.c	1
