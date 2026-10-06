@@ -100,6 +100,10 @@ is the gate, and it checks every file in the list on every pull request and
 every push to `main`; a drift that reaches `main` is a failed build, not
 a surprise six months later.
 
+### Shared helpers
+
+Consult the [shared-owner catalogue](Shared-Helpers.md) before writing a helper and extend an existing owner when it fits.
+
 ### Token clones
 
 `python scripts/gates/check_clones.py` rejects new clone pairs in HEAD

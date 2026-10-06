@@ -179,6 +179,15 @@ class CloneTests(unittest.TestCase):
         pair["secondFile"]["start"] = 20
         self.assertEqual(gate.filter_pairs([pair]), [pair])
 
+    def test_key_ignores_c_comments_but_preserves_string_literals(self):
+        base = self.pair()
+        head = self.pair(fragment=BLOCK.replace('int result', '/* Own description. */ int result'))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pairs([head], [base]), 0)
+        left = self.pair(fragment='const char* text = "/* first */";')
+        right = self.pair(fragment='const char* text = "/* second */";')
+        self.assertNotEqual(gate.pair_key(left), gate.pair_key(right))
+
     def test_fragment_edit_is_new(self):
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(gate.check_pairs([self.pair(fragment=BLOCK.replace("alpha", "beta"))],
