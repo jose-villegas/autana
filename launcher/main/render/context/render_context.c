@@ -74,12 +74,15 @@ current_step(const render_context_t* c) {
  * resolution, for the finest step, so a step never allocates. */
 static bool
 fit_scratch(render_context_t* c) {
-    raster_t sized = c->raster;
+    const int width = c->raster.width;
+    const int height = c->raster.height;
     if (c->policy != RENDER_FIXED) {
-        sized.width = c->ladder.steps[0].width;
-        sized.height = c->ladder.steps[0].height;
+        c->raster.width = c->ladder.steps[0].width;
+        c->raster.height = c->ladder.steps[0].height;
     }
-    const size_t needed = raster_scratch_bytes(&sized);
+    const size_t needed = raster_scratch_bytes(&c->raster);
+    c->raster.width = width;
+    c->raster.height = height;
     if (needed > c->scratch_bytes) {
         memory_free(c->scratch);
         c->scratch = memory_alloc(needed, MEMORY_PSRAM);

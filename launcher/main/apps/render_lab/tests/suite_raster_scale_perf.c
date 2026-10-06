@@ -275,8 +275,7 @@ log_frames(const char* policy, const char* ladder, int32_t budget_us, const fram
 static void
 fly(const char* policy, const ladder_t* ladder, const resolution_config_t* config, const resolution_model_t* model,
     uint16_t* picture, frame_record_t* records, int frames) {
-    scene_failure_t why;
-    scene_t* flown = scene_load(SPONZA_SCENE, &why);
+    scene_t* flown = scene_load(SPONZA_SCENE, NULL);
     TEST_ASSERT_NOT_NULL(flown);
     for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
         scene_entity_set_enabled(flown, scene_find(flown, sponza_bakes[i]), i == (int)SPONZA_BAKE_FULL);
@@ -297,8 +296,9 @@ fly(const char* policy, const ladder_t* ladder, const resolution_config_t* confi
     log_frames(policy, ladder == NULL ? "half" : ladder->name, config == NULL ? 0 : config->budget_us, records, frames);
 }
 
-/* A ladder's config at `budget_us`, fitted to the board on every one of its steps. */
-static void
+/* A ladder's config at `budget_us`, fitted to the board on every one of its
+ * steps; not inlined, so its frame is gone before the flights run. */
+static __attribute__((noinline)) void
 fit_ladder(const ladder_t* ladder, int32_t budget_us, resolution_config_t* config, resolution_model_t* model) {
     *config = resolution_config(ladder->steps, ladder->count, ladder->recovery_from, budget_us);
     TEST_ASSERT_TRUE_MESSAGE(calibrate(config, model), "the calibration frames did not fit a model");
