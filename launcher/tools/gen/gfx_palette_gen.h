@@ -23,6 +23,25 @@
 #include "gfx/gfx_color.h"
 #include "gfx/gfx_palette.h"
 
+/* OKLab, scaled by 100 so a distance reads like a CIE delta E (about 1-2 is a
+ * just noticeable difference), from linear-light sRGB. Shared with app
+ * palette studies so every generator measures colour the same way. */
+typedef struct {
+    double l, a, b;
+} gfx_lab_t;
+
+typedef struct {
+    double r, g, b;
+} gfx_lin_t;
+
+/* 0xRRGGBB to linear light. */
+gfx_lin_t gfx_rgb_to_lin(uint32_t rgb888);
+
+gfx_lab_t gfx_lin_to_lab(gfx_lin_t c);
+
+/* Squared OKLab distance. */
+double gfx_lab_dist2(gfx_lab_t p, gfx_lab_t q);
+
 /* Nearest-OKLab index of every one of the 65536 possible native RGB565
  * keys among `palette->entries[first_index .. palette->count)`, a plain
  * flat search with no notion of per-material budgets or groups, the right

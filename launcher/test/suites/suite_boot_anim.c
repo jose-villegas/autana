@@ -1244,8 +1244,8 @@ test_the_floor_colour_travels_with_time_and_distance(void) {
                              "rings should not all change together - the drift travels outward");
 
     /* A whole period brings it back round to where it started. */
-    TEST_ASSERT_EQUAL_UINT32(boot_anim_hue_rgb(boot_anim_grid_hue(0, 1)),
-                             boot_anim_hue_rgb(boot_anim_grid_hue(BOOT_ANIM_GRID_HUE_MS, 1)));
+    TEST_ASSERT_EQUAL_UINT32(gfx_hue_rgb(boot_anim_grid_hue(0, 1)),
+                             gfx_hue_rgb(boot_anim_grid_hue(BOOT_ANIM_GRID_HUE_MS, 1)));
 }
 
 static void
@@ -1262,7 +1262,7 @@ test_the_axes_are_there_before_the_curve_starts_climbing(void) {
  * a pastel. */
 static void
 check_hue_is_fully_saturated(int hue) {
-    const uint32_t rgb = boot_anim_hue_rgb(hue);
+    const uint32_t rgb = gfx_hue_rgb(hue);
     const int r = (int)((rgb >> 16) & 0xFF);
     const int g = (int)((rgb >> 8) & 0xFF);
     const int b = (int)(rgb & 0xFF);
@@ -1279,15 +1279,15 @@ check_hue_is_fully_saturated(int hue) {
  * off with. */
 static void
 test_every_hue_is_fully_saturated(void) {
-    for (int hue = 0; hue < BOOT_ANIM_HUE_TURN; hue++) {
+    for (int hue = 0; hue < GFX_HUE_TURN; hue++) {
         check_hue_is_fully_saturated(hue);
     }
 }
 
 static void
 test_the_hue_wheel_joins_up(void) {
-    TEST_ASSERT_EQUAL_UINT32(boot_anim_hue_rgb(0), boot_anim_hue_rgb(BOOT_ANIM_HUE_TURN));
-    TEST_ASSERT_EQUAL_UINT32(boot_anim_hue_rgb(5), boot_anim_hue_rgb(-BOOT_ANIM_HUE_TURN + 5));
+    TEST_ASSERT_EQUAL_UINT32(gfx_hue_rgb(0), gfx_hue_rgb(GFX_HUE_TURN));
+    TEST_ASSERT_EQUAL_UINT32(gfx_hue_rgb(5), gfx_hue_rgb(-GFX_HUE_TURN + 5));
 }
 
 /* No step round the wheel may jump: a discontinuity at a sector boundary is
@@ -1295,9 +1295,9 @@ test_the_hue_wheel_joins_up(void) {
  * across the middle of a gradient. */
 static void
 test_the_hue_wheel_has_no_seams(void) {
-    for (int hue = 0; hue < BOOT_ANIM_HUE_TURN; hue++) {
-        const uint32_t a = boot_anim_hue_rgb(hue);
-        const uint32_t b = boot_anim_hue_rgb(hue + 1);
+    for (int hue = 0; hue < GFX_HUE_TURN; hue++) {
+        const uint32_t a = gfx_hue_rgb(hue);
+        const uint32_t b = gfx_hue_rgb(hue + 1);
 
         for (int shift = 0; shift <= 16; shift += 8) {
             const int ca = (int)((a >> shift) & 0xFF);
@@ -1314,7 +1314,7 @@ test_height_changes_the_hue(void) {
     const boot_anim_stroke_t foot = boot_anim_stroke(0, 0);
     const boot_anim_stroke_t top = boot_anim_stroke(BOOT_ANIM_ONE, 0);
 
-    TEST_ASSERT_TRUE_MESSAGE(top.hue - foot.hue > BOOT_ANIM_HUE_TURN / 2,
+    TEST_ASSERT_TRUE_MESSAGE(top.hue - foot.hue > GFX_HUE_TURN / 2,
                              "the climb should turn most of the way round the wheel, so that "
                              "height reads as colour");
 }
@@ -1363,7 +1363,7 @@ test_the_pens_carry_different_colours(void) {
     }
 
     const int spread = boot_anim_trail_hue(BOOT_ANIM_TRAILS - 1) - boot_anim_trail_hue(0);
-    TEST_ASSERT_TRUE_MESSAGE(spread > BOOT_ANIM_HUE_TURN / 2,
+    TEST_ASSERT_TRUE_MESSAGE(spread > GFX_HUE_TURN / 2,
                              "the pens should be spread round the wheel, not bunched on one side");
 }
 
