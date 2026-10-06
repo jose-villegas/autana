@@ -21,6 +21,7 @@ try:
 except ImportError:
     np = None
 
+from tests.r3d_env import needs_mitsuba  # noqa: E402
 from test_r3d_import import AMBIENT, CUBE, TONEMAP, renderer, sun_object, write_import, write_scene  # noqa: E402
 
 FLAT_BAKE = '[bake]\nray_offset = 0.5\ncolour_merge_step = 6\n'
@@ -44,6 +45,7 @@ class PlacementTests(unittest.TestCase):
         self.assertGreater(np.ptp(face_samples(4)[:, 1]), 0.1)
 
 
+@needs_mitsuba
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class SunTests(unittest.TestCase):
     def radiance_at(self, x):
@@ -92,6 +94,7 @@ class SpecTests(unittest.TestCase):
             parse_spec("sky=64,colour=red", None, 1.0)
 
 
+@needs_mitsuba
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class DeclaredVariantTests(unittest.TestCase):
     def test_the_declared_variant_is_the_bake_the_importer_writes_byte_for_byte(self):

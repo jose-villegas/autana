@@ -22,8 +22,7 @@ try:
 except ImportError:
     np = None
 
-HAVE_MITSUBA = np is not None and mitsuba_reference.import_mitsuba() is not None
-needs_mitsuba = unittest.skipIf(not HAVE_MITSUBA, "the path-traced backend needs Mitsuba")
+from tests.r3d_env import needs_mitsuba  # noqa: E402
 
 LOOK_DOWN = None if np is None else np.array([0.0, 0.0, 3.0, 0.0, 0.0, -1.0])
 LOOK_UP = None if np is None else np.array([0.0, 0.0, -3.0, 0.0, 0.0, 1.0])
