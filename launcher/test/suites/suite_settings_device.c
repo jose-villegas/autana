@@ -16,7 +16,7 @@
 #include "display/panel_clock.h"
 #include "gfx/gfx.h"
 #include "unity.h"
-#include "util/settings.h"
+#include "util/runtime/settings.h"
 
 #define TEST_SPACE     "test_settings"
 #define SENTINEL       12345

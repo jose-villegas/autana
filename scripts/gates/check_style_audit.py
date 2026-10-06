@@ -294,12 +294,23 @@ def _fix_include_layer(root, path, text):
 
 # RULE: a folder may include only a strictly lower tier of
 # docs/Firmware-Architecture.md's "Layers" (LAYER_TIER below;
-# two folders can share a tier). A system header such as
+# two folders can share a tier). A "<folder>/<sub>" key tiers that subfolder
+# on its own, so util/'s pure code sits below its runtime services; once one
+# subfolder of a folder is keyed, every subfolder must be. A system header such as
 # "driver/temperature_sensor.h" never resolves to a layer.
 
 LAYER_TIER = {"apps": 0, "shell": 1, "boot": 2, "selftest": 2, "ui": 3, "console": 3, "scene": 3, "app": 4,
-             "display": 5, "input": 5, "gfx": 6, "render": 6, "anim": 7, "asset": 8, "util": 9, "board": 10}
-LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps")
+             "display": 5, "input": 5, "gfx": 6, "render": 6, "anim": 7, "asset": 8,
+             "util": 9, "util/runtime": 9, "util/math": 10, "util/motion": 10, "util/encode": 10,
+             "util/scalar": 11, "board": 12}
+LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps" and "/" not in layer)
+
+
+def layer_of(parts):
+    """The LAYER_TIER key a path under launcher/main/ belongs to: its
+    "<folder>/<sub>" key when there is one, else its top folder."""
+    nested = "/".join(parts[:2])
+    return nested if len(parts) > 2 and nested in LAYER_TIER else parts[0]
 
 INCLUDE_DIRECTION_EXCEPTIONS = {}
 
@@ -312,6 +323,8 @@ def _layer_dirs_match(root):
     this check's business."""
     main_dir = pathlib.Path(root) / "launcher/main"
     found = {d.name for d in main_dir.iterdir() if d.is_dir()}
+    split = {key.split("/")[0] for key in LAYER_TIER if "/" in key}
+    found |= {f"{d.parent.name}/{d.name}" for top in split for d in (main_dir / top).glob("*/") if d.is_dir()}
     unknown = sorted(found - set(LAYER_TIER))
     if unknown:
         raise ValueError(
@@ -331,7 +344,7 @@ def rule_include_direction(root, path, text):
     if not parts or parts[0] == "apps" or parts[0] not in LAYER_TIER:
         return
     _layer_dirs_match(root)
-    source_layer = parts[0]
+    source_layer = layer_of(parts)
     source_tier = LAYER_TIER[source_layer]
     source_base = (rel_to_main.parent / rel_to_main.stem).as_posix()
     for number, line in enumerate(text.splitlines(), 1):
@@ -346,7 +359,7 @@ def rule_include_direction(root, path, text):
             target_rel = resolved.relative_to(main_dir.resolve())
         except ValueError:
             continue
-        target_layer = target_rel.parts[0] if target_rel.parts else None
+        target_layer = layer_of(target_rel.parts) if target_rel.parts else None
         if target_layer is None or target_layer == source_layer or target_layer not in LAYER_TIER:
             continue
         if LAYER_TIER[target_layer] > source_tier:

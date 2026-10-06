@@ -18,9 +18,9 @@
 #include "shell/shell.h"
 #include "ui/ui.h"
 #include "ui/ui_launcher.h"
-#include "util/build_id.h"
-#include "util/memory.h"
-#include "util/timing.h"
+#include "util/runtime/build_id.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/timing.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "console/console.h"

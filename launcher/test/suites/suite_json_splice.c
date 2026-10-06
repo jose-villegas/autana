@@ -8,7 +8,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "util/json_splice.h"
+#include "util/encode/json_splice.h"
 
 #define GUARD        '#'
 

@@ -22,7 +22,7 @@
 #include <stdint.h>
 
 #include "build_variant.h"
-#include "util/intmath.h"
+#include "util/scalar/intmath.h"
 
 /* Mirrors gfx.h's GFX_WIDTH/GFX_HEIGHT (BSP_LCD_H_RES/V_RES) as plain
  * literals; this module must stay free of ESP-IDF/BSP headers to compile

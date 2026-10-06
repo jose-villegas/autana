@@ -17,8 +17,8 @@
  * of.
  */
 #include "material_palette.h"
-#include "sand_palette256.h" /* see material_palette256_index() below */
-#include "util/intmath.h"    /* see material_set_gravity() below */
+#include "sand_palette256.h"     /* see material_palette256_index() below */
+#include "util/scalar/intmath.h" /* see material_set_gravity() below */
 
 /* Channel `sh` of the way from `lo` to `hi`, out of 15. */
 #define LERP_CH(lo, hi, shift, sh)                                                                                     \

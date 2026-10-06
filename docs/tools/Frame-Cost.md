@@ -1,9 +1,9 @@
 # Frame cost
 
-`util/frame_cost.h` measures named stages of a frame. For how drawn pixels
+`util/runtime/frame_cost.h` measures named stages of a frame. For how drawn pixels
 reach the panel, see [`../Gfx-and-Presentation.md`](../Gfx-and-Presentation.md).
 
-**Where a frame's time goes.** `util/frame_cost.h` brackets a stage of a frame
+**Where a frame's time goes.** `util/runtime/frame_cost.h` brackets a stage of a frame
 and charges its microseconds to a name:
 
 ```c

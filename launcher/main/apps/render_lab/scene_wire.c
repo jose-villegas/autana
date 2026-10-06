@@ -15,7 +15,7 @@
 #include "render/r3d_line_camera.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
-#include "util/memory.h"
+#include "util/runtime/memory.h"
 #include "wire_pipeline.h"
 #include "wire_primitives_generated.h"
 

@@ -36,9 +36,9 @@
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
-#include "util/fixed.h"
-#include "util/intmath.h"
-#include "util/timing.h"
+#include "util/runtime/timing.h"
+#include "util/scalar/fixed.h"
+#include "util/scalar/intmath.h"
 
 /* See gen_boot_anim_image.py; launcher/tools/gen/README.md. Also what
  * draw_image()'s own memcpy fast path below depends on being true. */

@@ -131,7 +131,7 @@ class StyleAuditTest(unittest.TestCase):
         # file with the same basename.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.write(root, "launcher/main/util/fixed.h", "#pragma once\n")
+            self.write(root, "launcher/main/util/scalar/fixed.h", "#pragma once\n")
             self.write(root, "launcher/main/apps/foo/fixed.h", "#pragma once\n")
             self.write(root, "launcher/main/apps/foo/app_foo.c", '#include "fixed.h"\n')
             self.commit(root, "launcher")
@@ -219,8 +219,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
-            self.write(root, "launcher/main/util/tune.h", "#pragma once\n")
-            self.write(root, "launcher/main/apps/foo/app_foo.c", '#include "util/tune.h"\n')
+            self.write(root, "launcher/main/util/runtime/tune.h", "#pragma once\n")
+            self.write(root, "launcher/main/apps/foo/app_foo.c", '#include "util/runtime/tune.h"\n')
             self.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(findings, [])
@@ -229,8 +229,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
-            self.write(root, "launcher/main/util/tune.h", "#pragma once\n")
-            self.write(root, "launcher/main/gfx/gfx.c", '#include "util/tune.h"\n')
+            self.write(root, "launcher/main/util/runtime/tune.h", "#pragma once\n")
+            self.write(root, "launcher/main/gfx/gfx.c", '#include "util/runtime/tune.h"\n')
             self.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(findings, [])
@@ -286,6 +286,31 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(sorted((f.path, f.line) for f in findings),
                          [("launcher/main/boot/boot_anim.c", 1), ("launcher/main/selftest/post.c", 1)])
+
+    def test_util_pure_code_may_not_include_its_runtime_services(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.layer_tree(root)
+            for sub in ("runtime", "math", "motion", "encode", "scalar"):
+                self.write(root, f"launcher/main/util/{sub}/{sub}.h", "#pragma once\n")
+            self.write(root, "launcher/main/util/runtime/job.c", '#include "util/scalar/scalar.h"\n')
+            self.write(root, "launcher/main/util/math/mathx.h", '#include "util/scalar/scalar.h"\n')
+            self.write(root, "launcher/main/util/motion/tween.h", '#include "util/runtime/runtime.h"\n')
+            self.write(root, "launcher/main/util/scalar/fixed.h", '#include "util/math/math.h"\n')
+            self.commit(root, "launcher")
+            findings = self.rule_hits(root, "INCLUDE-DIRECTION")
+        self.assertEqual(sorted(f.path for f in findings),
+                         ["launcher/main/util/motion/tween.h", "launcher/main/util/scalar/fixed.h"])
+
+    def test_a_subfolder_of_a_split_folder_this_table_does_not_know_about_fails_loudly(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.layer_tree(root)
+            self.write(root, "launcher/main/gfx/gfx.c", "int x;\n")
+            self.write(root, "launcher/main/util/newkind/thing.h", "#pragma once\n")
+            self.commit(root, "launcher")
+            with self.assertRaises(ValueError):
+                self.rule_hits(root, "INCLUDE-DIRECTION")
 
     def test_a_folder_this_table_does_not_know_about_fails_loudly(self):
         with tempfile.TemporaryDirectory() as temp:

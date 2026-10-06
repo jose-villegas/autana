@@ -182,7 +182,7 @@ each one cost a build-flash-capture cycle to find, twice over, for both:
 Those numbers come from `launcher/tools/device/device_profiles/<chip>.sh`, selected
 by `$DEVICE_PROFILE` (default `esp32s3`), each carrying its own provenance.
 
-The framebuffer lives in PSRAM (`MEMORY_PSRAM`, `util/memory.h`), not
+The framebuffer lives in PSRAM (`MEMORY_PSRAM`, `util/runtime/memory.h`), not
 internal DRAM, so it does not compete with an app's large internal
 allocations for internal-heap contiguity the way it would on a board
 without PSRAM.
@@ -488,7 +488,7 @@ a scene, frames and synthetic touch, the pins, the QEMU backend, and
 
 The frame watch ([Firmware-Architecture.md](Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state))
 warns on the board; two places turn it into a failure, both by the rule in
-`util/frame_watch.h` (`FRAME_WATCH_REPEATS` of the last
+`util/runtime/frame_watch.h` (`FRAME_WATCH_REPEATS` of the last
 `FRAME_WATCH_WINDOW` frames, after `FRAME_WATCH_WARMUP`). Either also fails
 when the watch ran out of room for an event, since a finding could hide
 there.

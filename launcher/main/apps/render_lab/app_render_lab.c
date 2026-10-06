@@ -25,7 +25,7 @@
 #include "ui/render_lab_hud_screen.h"
 #include "ui/render_lab_menu_screen.h"
 #include "ui/ui.h"
-#include "util/tune.h"
+#include "util/runtime/tune.h"
 
 extern const render_lab_scene_t scene_cube;
 extern const render_lab_scene_t scene_wire_plane;

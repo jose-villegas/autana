@@ -16,8 +16,8 @@
 #include "sand_priv.h"
 
 #include "sand_liquid_move.h"
-#include "util/fixed.h"
-#include "util/intmath.h"
+#include "util/scalar/fixed.h"
+#include "util/scalar/intmath.h"
 
 /* See liquid_mask() in sand_priv.h */
 

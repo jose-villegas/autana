@@ -34,7 +34,7 @@ void rt_cornell_render_row(const rt_cornell_camera_t* cam, int y, gfx_color_t* o
 void rt_cornell_render_rows(const rt_cornell_camera_t* cam, gfx_color_t* fb, int y0, int y1, int step);
 
 /* Traces up to `pixel_budget` pixels' worth of lattice rows from `y0`,
- * split across this core and core 1 (util/job.h). Returns the next `y0`;
+ * split across this core and core 1 (util/runtime/job.h). Returns the next `y0`;
  * may overshoot height by less than one `step`, so a dirty rect built from
  * it clamps first. */
 int rt_cornell_render_lattice_budget(const rt_cornell_camera_t* cam, gfx_color_t* fb, int y0, int step,

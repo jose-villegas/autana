@@ -1,6 +1,6 @@
 /* settings_policy: settings_policy.h's rule. */
 
-#include "util/settings_policy.h"
+#include "util/runtime/settings_policy.h"
 
 int
 settings_store_start(const settings_store_ops_t* ops) {

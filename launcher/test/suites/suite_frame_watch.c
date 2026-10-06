@@ -8,7 +8,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "util/frame_watch.h"
+#include "util/runtime/frame_watch.h"
 
 #ifdef DEVICE_BUILD
 #include <stdlib.h>

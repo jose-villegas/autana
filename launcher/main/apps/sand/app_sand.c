@@ -73,9 +73,9 @@
 #include "ui/title_screen.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
-#include "util/frame_cost.h"
-#include "util/memory.h"
-#include "util/timing.h"
+#include "util/runtime/frame_cost.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/timing.h"
 
 static const char* TAG = "sand";
 

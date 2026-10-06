@@ -1,4 +1,4 @@
-#include "util/frame_watch.h"
+#include "util/runtime/frame_watch.h"
 
 #if FRAME_WATCH_ENABLED
 
@@ -9,7 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "util/timing.h"
+#include "util/runtime/timing.h"
 
 #if !CONFIG_HEAP_USE_HOOKS
 #error "a development build watches the heap through CONFIG_HEAP_USE_HOOKS - see sdkconfig.defaults.dev"

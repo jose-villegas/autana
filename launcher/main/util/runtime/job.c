@@ -1,14 +1,14 @@
 /* core-1 job dispatch shared by every engine client. */
-#include "util/job.h"
+#include "util/runtime/job.h"
 
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>
 
 #include "build_variant.h"
-#include "util/frame_watch.h"
-#include "util/memory.h"
-#include "util/timing.h"
+#include "util/runtime/frame_watch.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/timing.h"
 
 #ifdef ESP_PLATFORM
 #include "esp_log.h"

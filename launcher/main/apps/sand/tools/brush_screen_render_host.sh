@@ -9,7 +9,7 @@ scene_name=brush_screen
 scene_includes="main/apps/sand"
 scene_sources="
 main/gfx/gfx.c
-main/util/tune.c
+main/util/runtime/tune.c
 main/apps/sand/ui/brush_screen.c
 main/apps/sand/material.c
 main/apps/sand/material_palette.c

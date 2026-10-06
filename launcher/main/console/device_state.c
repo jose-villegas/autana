@@ -7,7 +7,7 @@
 
 #include "board/board.h"
 #include "display/display.h"
-#include "util/timing.h"
+#include "util/runtime/timing.h"
 
 void
 device_state_read(device_state_t* out) {

@@ -28,7 +28,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/intmath.h"
+#include "util/scalar/intmath.h"
 
 static void
 test_a_liquid_body_paints_flat_inside(void) {
