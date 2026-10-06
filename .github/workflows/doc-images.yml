@@ -1,8 +1,8 @@
 name: Doc Images
 
-# The pictures under docs/images/ are host renders of the firmware.
-# This regenerates them on main and, only when some image's decoded pixels
-# changed, keeps ONE pull request "docs: refresh rendered images" up to date on
+# The host images and measured CPU tables are generated from the source.
+# This regenerates them on main and, when pixels or table content changed,
+# keeps ONE pull request "docs: refresh rendered images" up to date on
 # a fixed branch. Nothing changed: nothing is committed, and a refresh PR that
 # no longer has a diff is closed.
 #
@@ -18,7 +18,8 @@ on:
     branches: [main]
     paths:
       - 'launcher/**'
-      - 'docs/images/**'
+      - 'docs/**'
+      - 'scripts/gates/check_doc_generated.py'
       - '.github/workflows/doc-images.yml'
   workflow_dispatch:
 
@@ -40,27 +41,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Identify mesh source LFS objects
+        id: mesh-source
+        run: |
+          key=$(git lfs ls-files -l | awk '{print $1, $3}' | sha256sum | cut -d' ' -f1)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "path=$(git rev-parse --git-path lfs)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache mesh source LFS objects
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.mesh-source.outputs.path }}
+          key: mesh-source-lfs-${{ steps.mesh-source.outputs.key }}
+
+      - name: Fetch mesh source files
+        run: git lfs pull --exclude=""
+
+      - name: Initialize meshoptimizer for scratch bakes
+        run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
 
-      # The fidelity sheet traces the source model: trimesh, embreex and scipy.
+      # The bakes and the fidelity sheet trace rays on Mitsuba's LLVM variant, which needs libLLVM.
       - name: Install Pillow, the r3d requirements and ffmpeg
         run: |
           pip install -r launcher/tools/r3d/requirements.txt
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
+          sudo apt-get install -y --no-install-recommends ffmpeg llvm
           ffmpeg -version | head -1
 
-      # The importer checks the archive's SHA-256 whether it was fetched or
-      # restored; a changed import file is a new key.
-      - name: Cache the Sponza source model
-        uses: actions/cache@v4
-        with:
-          path: launcher/tools/r3d/.cache/crytek_sponza.zip
-          key: sponza-source-${{ hashFiles('launcher/main/apps/render_lab/meshes/sponza.import.toml') }}
-
-      # Exit 1 means an image changed or is an orphan; an orphan or any exit
+      # Exit 1 means an image or table changed, or an image is an orphan; an orphan or any exit
       # above 1 fails the job.
       - name: Render and compare
         id: render
@@ -81,45 +93,44 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          number=$(gh pr list --head "$REFRESH_BRANCH" --state open --json number --jq '.[0].number')
-          if [ -n "$number" ]; then
-            gh pr close "$number" --delete-branch \
-              --comment "Every rendered image already matches what main renders; nothing left to refresh."
-          fi
+          python scripts/ci/refresh_pr.py close \
+            "Every rendered image and generated table already matches main; nothing left to refresh."
 
-      - name: Commit the changed images and open or update the PR
+      - name: Commit the changed images and tables and open or update the PR
         if: steps.render.outputs.count != '0' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          out=launcher/tools/results/doc_images/out
+          out=launcher/tools/results/doc_images/out/cpu
           git switch -C "$REFRESH_BRANCH"
           while IFS= read -r line; do
             name=${line#changed }
             name=${name%%:*}
+            case "$name" in *\#*) continue ;; esac
             mkdir -p "docs/images/$(dirname "$name")"
             cp "$out/$name" "docs/images/$name"
           done < "$RUNNER_TEMP/changed.txt"
+          python launcher/tools/render/generated_blocks.py --tables "$out/tables"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add docs/images
+          git ls-files -z -- '*.md' | xargs -0 git add --
           git commit -m 'docs: refresh rendered images'
+          # The run checked out its trigger commit, and main may since have changed a workflow
+          # file; GitHub refuses an app push whose branch differs from main in one, so the
+          # refresh commit is replayed onto the current main.
+          git fetch --depth=1 origin main
+          git rebase -X theirs --onto FETCH_HEAD HEAD~1
           git push --force origin "$REFRESH_BRANCH"
 
           {
-            echo "The rendered images no longer match what \`main\` renders. Regenerated by \`launcher/tools/render/render_doc_images.sh\` on ${GITHUB_SHA::7}."
+            echo "The rendered images or measured tables no longer match what \`main\` renders. Regenerated by \`launcher/tools/render/render_doc_images.sh\` on ${GITHUB_SHA::7}."
             echo
             echo "Checks do not start on a PR opened by the workflow: close and reopen it to run CI."
             echo
-            echo "| Image | Change |"
+            echo "| Image or table | Change |"
             echo "|---|---|"
-            sed -e 's/^changed \([^:]*\): \(.*\)$/| `\1` | \2 |/' "$RUNNER_TEMP/changed.txt"
+            sed -e 's/^changed \([^:]*\): \(.*\)$/| `\1` | \2 |/' "$RUNNER_TEMP/changed.txt" | sed 's/^changed \(.*\)$/| `\1` | regenerated table |/'
           } > "$RUNNER_TEMP/body.md"
 
-          number=$(gh pr list --head "$REFRESH_BRANCH" --state open --json number --jq '.[0].number')
-          if [ -n "$number" ]; then
-            gh pr edit "$number" --body-file "$RUNNER_TEMP/body.md"
-          else
-            gh pr create --base main --head "$REFRESH_BRANCH" \
-              --title 'docs: refresh rendered images' --body-file "$RUNNER_TEMP/body.md"
-          fi
+          python scripts/ci/refresh_pr.py sync 'docs: refresh rendered images' "$RUNNER_TEMP/body.md"

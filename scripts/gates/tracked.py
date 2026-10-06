@@ -42,7 +42,8 @@ def tracked_files(root, patterns=()):
         names = sorted(path.relative_to(root).as_posix()
                        for path in root.rglob("*") if path.is_file())
         return tuple(name for name in names
-                     if not patterns or any(fnmatch.fnmatch(name, p) for p in patterns))
+                     if not patterns or any(fnmatch.fnmatch(name, p) or
+                                            name.startswith(p.rstrip("/") + "/") for p in patterns))
     _LISTINGS[key] = tuple(listing)
     return _LISTINGS[key]
 

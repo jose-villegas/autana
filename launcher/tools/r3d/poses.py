@@ -1,4 +1,4 @@
-"""The camera poses file tools/anim/sample_tracks.sh writes: `size W H`,
+"""The camera poses file tools/anim/track_host.py writes: `size W H`,
 `lens TAN NEAR`, then one `pose EYE_XYZ FORWARD_XYZ` line per sample."""
 
 import pathlib
@@ -68,21 +68,11 @@ def either_way(width, height, lens, near, poses):
     return side, side, lens * side / min(width, height), near, poses
 
 
-def tracks_file(settings, scene):
-    """The C file of the scene camera's baked tracks, beside the import's
-    output."""
-    return settings.out_dir / f"{scene.camera.component.path.tracks}_tracks_generated.c"
+def sample_camera_path(animation, node, every_ms, width, height, lens, near):
+    """The poses of camera node `node` in the clip a NAME.anim.toml names,
+    every `every_ms` over the clip, as read_poses returns them; sampled by
+    tools/anim/track_host.py, which runs the device's sampler over the clip's
+    TRCK entry."""
+    from anim import track_host
 
-
-SAMPLE_TRACKS = pathlib.Path(__file__).resolve().parents[1] / "anim" / "sample_tracks.sh"
-
-
-def sample_camera_path(tracks_source, tracks_name, node, every_ms, width, height, lens, near):
-    """The poses of a baked camera track, every `every_ms` over its clip, as
-    read_poses returns them; built and run by tools/anim/sample_tracks.sh."""
-    import subprocess
-
-    done = subprocess.run(["sh", SAMPLE_TRACKS.as_posix(), "--tracks", f"{pathlib.Path(tracks_source).as_posix()}:{tracks_name}",
-                           "--every", str(every_ms), "--poses", node, str(width), str(height), repr(lens), repr(near)],
-                          capture_output=True, text=True, check=True)
-    return parse_poses(done.stdout)
+    return parse_poses(track_host.poses(animation, node, every_ms, width, height, lens, near))

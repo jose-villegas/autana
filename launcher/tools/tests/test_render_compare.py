@@ -147,6 +147,17 @@ class ReferenceSheetTest(unittest.TestCase):
         self.assertEqual(sheet.height, render_compare.LABEL_BAR + 8 + 70)
 
 
+class ReferenceCropTest(unittest.TestCase):
+    def test_a_reference_crop_puts_the_reference_above_both_bakes(self):
+        reference = image(STEP)
+        lite = reference.copy()
+        fitted = reference.copy()
+        lite.putpixel((1, 1), (80, 80, 80))
+        fitted.putpixel((1, 1), (120, 120, 120))
+        sheet = render_compare.reference_crop_sheet(reference, lite, fitted, 1, "reference", "simplifier", "fitted")
+        self.assertGreater(sheet.height, 3 * render_compare.LABEL_BAR)
+
+
 class ReferenceBakeSheetTest(unittest.TestCase):
     def test_a_frame_is_the_reference_then_each_bake_over_edges_then_each_heatmap(self):
         reference, near, far = image(STEP), image(STEP), Image.new("RGB", (8, 8), DRAWN)

@@ -2,8 +2,8 @@
 
 What an app is to the shell: the callbacks it fills in, when the shell calls
 them, and how it gets into and out of the launcher list. The contract is
-[`launcher/main/app.h`](../launcher/main/app.h); the caller is
-[`launcher/main/main.c`](../launcher/main/main.c). For the UI inside an app see
+[`launcher/main/app/app.h`](../launcher/main/app/app.h); the caller is the shell,
+[`launcher/main/shell/`](../launcher/main/shell/). For the UI inside an app see
 [`Building-a-Screen.md`](Building-a-Screen.md); for why the shell is built this
 way see [`Firmware-Architecture.md`](Firmware-Architecture.md).
 
@@ -21,10 +21,10 @@ one binary, one address space, no isolation.
 ## Minimal app
 
 `launcher/main/apps/<name>/app_<name>.c`: nothing else is edited, not
-`main.c`, not `CMakeLists.txt`:
+the shell, not `CMakeLists.txt`:
 
 ```c
-#include "app.h"
+#include "app/app.h"
 #include "gfx/gfx.h"
 
 static void yours_enter(void) { /* reset state */ }
@@ -112,15 +112,16 @@ app only ever sees the `Running` state; it leaves by home swipe
 (`home_gesture`), PWR long-press (no `home_gesture`), or its own call to
 `shell_request_exit()`.
 
-What the shell does on each transition, in order: `step_launcher()` on
-launch, `leave_app()` on leave:
+What the shell does on each transition, in order: `shell_start_app()` on
+launch, `shell_leave_app()` on leave (`shell/shell_apps.c`):
 
 | Launch | Leave |
 |---|---|
 | `gfx_request_full_redraw()` | `exit()` |
-| `display_restore_system_state()` | `app_arena_rewind(0)` |
-| `enter()` | `display_restore_system_state()` |
-| next pass: `invalidate()`, then the first `frame()` | `gfx_request_full_redraw()` |
+| `display_restore_system_state()` | the systems' `app_exit` phase: scenes unloaded |
+| `enter()` | `app_arena_rewind(0)` |
+| next pass: `invalidate()`, then the first `frame()` | `display_restore_system_state()` |
+| | `gfx_request_full_redraw()` |
 | | launcher drawn and presented the same pass |
 
 `enter()` always precedes the first `frame()`; `exit()` always follows the
@@ -129,9 +130,12 @@ never sees the input that closed it.
 
 ## One pass of the frame loop
 
-`app_main_loop()` reads input and clamps `dt_ms`, `step_app()` decides between
-leaving and stepping, `step_running_app()` picks one of the two shapes below
-and `present_unless_deferred()` presents for the first.
+`shell_run()` reads input and clamps `dt_ms`, `shell_step_app()` decides
+between leaving and stepping, `step_running_app()` picks one of the two shapes
+below and `shell_present_unless_deferred()` presents for the first. The
+engine systems' phases
+([Engine systems](Firmware-Architecture.md#engine-systems)) run at the points
+marked.
 
 Without `update()`: the shell presents synchronously after `frame()`.
 
@@ -169,15 +173,17 @@ sequenceDiagram
     S->>P: gfx_present_begin(), previous frame
     par
         S->>A: update(dt_ms, input)
+        S->>S: the systems' update phase
     and
         P->>P: send dirty strips
     end
     S->>P: gfx_present_wait()
+    S->>S: the systems' compose phase
     S->>A: frame(dt_ms, input)
     alt band mode: GFX_LAYOUT_BANDS
         S->>G: gfx_band_run(draw_band, ui_replay_band)
     end
-    Note over S,P: present_unless_deferred() leaves this frame to the next pass's gfx_present_begin()
+    Note over S,P: shell_present_unless_deferred() leaves this frame to the next pass's gfx_present_begin()
 ```
 
 The first pass after `enter()` skips the begin/update/wait half: nothing is
@@ -204,8 +210,8 @@ button fields are `button_t`, from `input/buttons.h`.
 | `true` | swipe in from the content's bottom edge (follows rotation); shell draws the hint strip | shell |
 | `false` | PWR long-press (`power.held`); a short PWR press still reaches the app | shell, no hint |
 
-`step_app()` checks both before the app runs: `gesture_is_home_swipe()`
-against the edge `exit_edge_for_quarter()` names, or `power.held`. Leave
+`shell_step_app()` checks both before the app runs: `gesture_is_home_swipe()`
+against the edge `shell_exit_edge_for_quarter()` names, or `power.held`. Leave
 `home_gesture` `false` only when the app's own input is a drag near a screen
 edge. An app with an on-screen way out calls
 `shell_request_exit()` instead: the shell leaves before the app's next

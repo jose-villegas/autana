@@ -32,7 +32,7 @@
 #include "gfx/gfx_font.h"
 #include "gfx/icon.h"
 #include "microui.h"
-#include "util/fixed.h"
+#include "util/scalar/fixed.h"
 
 #define UI_FP_SHIFT 16
 #define UI_FP_ONE   (1 << UI_FP_SHIFT)
@@ -48,7 +48,7 @@ typedef struct {
 } ui_transform_t;
 
 /*
- * Thin wrappers over util/fixed.h, where the arithmetic and its
+ * Thin wrappers over util/scalar/fixed.h, where the arithmetic and its
  * floor-vs-round reasoning live: fixed-point multiply is not a UI concept,
  * and other callers need the same operation at a different shift.
  *

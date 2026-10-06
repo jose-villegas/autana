@@ -16,7 +16,7 @@
 
 static ridge_vector_t
 normalised(int32_t x, int32_t y) {
-    const int64_t length = ridge_pose_isqrt((uint32_t)(x * x + y * y));
+    const int64_t length = mathi_isqrt64((uint32_t)(x * x + y * y));
     return length == 0 ? (ridge_vector_t){RIDGE_POSE_ONE, 0}
                        : (ridge_vector_t){(int32_t)((int64_t)x * RIDGE_POSE_ONE / length),
                                           (int32_t)((int64_t)y * RIDGE_POSE_ONE / length)};
@@ -29,7 +29,7 @@ test_easing_keeps_a_unit_vector(void) {
         ridge_pose_ease(&pose, normalised(-9000, 13000), 16, TAU_MS);
         const int64_t length2 =
             (int64_t)pose.pose.down_x * pose.pose.down_x + (int64_t)pose.pose.down_y * pose.pose.down_y;
-        TEST_ASSERT_INT_WITHIN(4, RIDGE_POSE_ONE, (int)ridge_pose_isqrt((uint32_t)length2));
+        TEST_ASSERT_INT_WITHIN(4, RIDGE_POSE_ONE, (int)mathi_isqrt64((uint32_t)length2));
     }
 }
 

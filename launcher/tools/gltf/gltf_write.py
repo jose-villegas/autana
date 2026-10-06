@@ -1,6 +1,6 @@
 """Write a binary glTF 2.0 holding nodes, cameras and animations.
 
-Standard library only. It writes what tools/anim/bake_tracks.py reads: node
+Standard library only. It writes what tools/anim/tracks_asset.py reads: node
 TRS, an optional camera, and animation channels on translation, rotation,
 scale or, through KHR_animation_pointer, any property path. A converter from
 another animation format and a test that needs a scene of its own both use it.

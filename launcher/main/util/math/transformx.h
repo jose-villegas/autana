@@ -7,10 +7,10 @@
 #pragma once
 
 #include "util/math/mat4x.h"
-#include "util/math/mathx.h"
 #include "util/math/quatx.h"
 #include "util/math/transform_template.h"
 #include "util/math/vec3x.h"
+#include "util/scalar/mathx.h"
 
 MATH_DEFINE_TRANSFORM(transformx, vec3x, quatx, mat4x, mathx)
 

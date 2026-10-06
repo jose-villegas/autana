@@ -16,28 +16,19 @@ set -eu
 TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 # shellcheck source=../../../scripts/lib/python.sh
-. "$TOOLS_DIR/../../scripts/lib/python.sh"
+. "$TOOLS_DIR/../../../scripts/lib/python.sh"
 PYTHON=$(find_python) || exit 1
 
-# Git Bash hands this script MSYS paths (/c/...), which the Windows python
-# it finds cannot open. cygpath exists only there, which is also the only
-# place the conversion is needed. An option or a number is left alone.
-to_native() {
-    if ! command -v cygpath > /dev/null 2>&1; then
-        printf '%s' "$1"
-        return
-    fi
-    case "$1" in
-        /*) cygpath -w "$1" ;;
-        *) printf '%s' "$1" ;;
-    esac
-}
+. "$TOOLS_DIR/../../../scripts/lib/native_path.sh"
 
 remaining=$#
 while [ "$remaining" -gt 0 ]; do
     arg=$1
     shift
-    set -- "$@" "$(to_native "$arg")"
+    case "$arg" in
+        /*) arg=$(to_native "$arg") || exit 1 ;;
+    esac
+    set -- "$@" "$arg"
     remaining=$((remaining - 1))
 done
 

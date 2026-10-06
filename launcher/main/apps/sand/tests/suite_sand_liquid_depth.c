@@ -29,7 +29,7 @@
 #include "apps/sand/sand_paint_clock.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/intmath.h"
+#include "util/scalar/mathi.h"
 
 static void
 test_a_liquid_body_paints_flat_inside(void) {
@@ -295,7 +295,7 @@ test_shine_direction_is_a_genuine_angle_not_a_snap(void) {
                              "1/sqrt 2");
 }
 
-/* Whatever direction comes out must be a unit vector - im_len()'s ~4%
+/* Whatever direction comes out must be a unit vector - mathi_len()'s ~4%
  * approximation is the only slack allowed. */
 static void
 test_shine_direction_is_unit_length(void) {
@@ -306,7 +306,7 @@ test_shine_direction_is_unit_length(void) {
         int ux_q8, uy_q8;
         material_shine_direction(gxs[i], gys[i], &ux_q8, &uy_q8);
 
-        /* im_len() overshoots by 8% at 2:1 ratio, undershoots by 1% on
+        /* mathi_len() overshoots by 8% at 2:1 ratio, undershoots by 1% on
          * diagonal. Tolerance: [256/1.08, 256/0.99]. */
         const long mag_sq = (long)ux_q8 * ux_q8 + (long)uy_q8 * uy_q8;
         char why[64];
@@ -422,8 +422,8 @@ test_local_depth_follows_the_puddles_own_shape(void) {
 
     /* Exact, not approximate, at this gravity: gx is exactly 0, so the
      * combiner's weight formula (sand_paint_update_local_depth_gravity(), sand_paint_row.h)
-     * puts wv_q8 at 256 and wh_q8 at 0 exactly - im_len(0, gy) reduces to
-     * |gy| exactly, with none of im_len()'s own approximation error. The
+     * puts wv_q8 at 256 and wh_q8 at 0 exactly - mathi_len(0, gy) reduces to
+     * |gy| exactly, with none of mathi_len()'s own approximation error. The
      * calls above are therefore what the shipped mechanism does here, not
      * an approximation of it; its behaviour away from gx == 0 is pinned
      * separately, by test_the_blend_has_no_jump_crossing_45_degrees. */
@@ -661,7 +661,7 @@ ray_walk_frame_facts(int gx, int gy, bool* vertical_dominant, bool* v_reverse, b
                      unsigned* ay, unsigned* scale_q8) {
     *ax = (unsigned)(gx < 0 ? -gx : gx);
     *ay = (unsigned)(gy < 0 ? -gy : gy);
-    const int len = im_len(gx, gy);
+    const int len = mathi_len(gx, gy);
     *vertical_dominant = (*ay >= *ax);
     const unsigned dom_axis = *vertical_dominant ? *ay : *ax;
     *scale_q8 = dom_axis ? (256u * (unsigned)len) / dom_axis : 256u;
@@ -2843,7 +2843,7 @@ test_a_fixed_depth_reads_the_same_at_every_tilt_angle(void) {
     for (size_t i = 0; i < DEFECT2_SWEEP_N; i++) {
         const int gx = DEFECT2_SWEEP[i].gx, gy = DEFECT2_SWEEP[i].gy;
         const unsigned ax = (unsigned)gx, ay = (unsigned)gy;
-        const int len = im_len(gx, gy);
+        const int len = mathi_len(gx, gy);
         const bool vdom = (ay >= ax);
         const unsigned dom_axis = vdom ? ay : ax;
 
@@ -2910,7 +2910,7 @@ test_a_saturated_liquid_body_reads_the_same_shade_at_every_tilt_angle(void) {
     for (size_t i = 0; i < SATURATED_SWEEP_N; i++) {
         const int gx = SATURATED_SWEEP[i].gx, gy = SATURATED_SWEEP[i].gy;
         const unsigned ax = (unsigned)gx, ay = (unsigned)gy;
-        const int len = im_len(gx, gy);
+        const int len = mathi_len(gx, gy);
         const bool vdom = (ay >= ax);
         const unsigned dom_axis = vdom ? ay : ax;
         const unsigned scale_q8 = dom_axis ? (256u * (unsigned)len) / dom_axis : 256u;

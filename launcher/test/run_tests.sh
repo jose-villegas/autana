@@ -16,7 +16,7 @@
 #
 # It runs only the PORTABLE suites. The hardware ones need real framebuffer
 # memory, DMA and I2C, so they live in the firmware and run at boot on the
-# device; see main/selftest.c. The suite sources are shared, so what passes
+# device; see main/selftest/selftest.c. The suite sources are shared, so what passes
 # here is the same set of assertions the board makes.
 #
 # Default output is the verdict and test count. A passing run can emit
@@ -113,8 +113,11 @@ $TEST_DIR/suites.c
 $TEST_DIR/timing.c
 $TEST_DIR/test_cleanup.c
 $TEST_DIR/heap_arena.c
-$MAIN_DIR/app_arena.c
-$MAIN_DIR/app_registry.c
+$TEST_DIR/test_asset_dir.c
+$TEST_DIR/test_fence.c
+$MAIN_DIR/app/app_arena.c
+$MAIN_DIR/app/app_registry.c
+$MAIN_DIR/shell/shell_system.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/touch_calib.c
 $MAIN_DIR/input/touch_point.c
@@ -124,14 +127,18 @@ $MAIN_DIR/input/touch_gesture.c
 $MAIN_DIR/input/tilt.c
 $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
-$MAIN_DIR/boot/boot_anim_tracks_generated.c
-$MAIN_DIR/boot/post_layout.c
-$MAIN_DIR/util/job.c
-$MAIN_DIR/util/memory.c
-$MAIN_DIR/util/settings_policy.c
+$MAIN_DIR/boot/boot_anim.c
+$MAIN_DIR/boot/boot_anim_motion.c
+$MAIN_DIR/selftest/post_layout.c
+$MAIN_DIR/util/runtime/job.c
+$MAIN_DIR/util/runtime/memory.c
+$MAIN_DIR/util/runtime/settings_policy.c
 $MAIN_DIR/anim/anim_track.c
+$MAIN_DIR/anim/anim_tracks.c
 $MAIN_DIR/asset/asset_pack.c
 $MAIN_DIR/asset/asset_file.c
+$MAIN_DIR/asset/asset_directory.c
+$MAIN_DIR/asset/asset_store.c
 $MAIN_DIR/asset/asset_store_file.c
 $MAIN_DIR/render/r3d_lit_mesh.c
 $MAIN_DIR/render/raster.c
@@ -141,8 +148,9 @@ $MAIN_DIR/render/upscale.c
 $MAIN_DIR/render/r3d_span.c
 $MAIN_DIR/render/r3d_scene.c
 $MAIN_DIR/scene/scene.c
+$MAIN_DIR/scene/scene_asset.c
 $MAIN_DIR/scene/scene_draw.c
-$MAIN_DIR/util/tune.c
+$MAIN_DIR/util/runtime/tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/gfx/gfx.c
@@ -304,11 +312,7 @@ JOBS=$(host_jobs "$JOBS")
 
 # make reads native paths: on Windows it is a native program, so the MSYS
 # path rewriting that shields gcc under sh does not apply to it.
-if command -v cygpath >/dev/null 2>&1; then
-    to_native() { cygpath -m -f -; }
-else
-    to_native() { cat; }
-fi
+. "$TEST_DIR/../../scripts/lib/native_path.sh"
 # Collapses "a/../b" so two spellings of one file get one object name.
 squash() { sed -e ':a' -e 's|/[^/][^/]*/\.\./|/|' -e 'ta'; }
 native() { printf '%s\n' "$1" | to_native | squash; }
@@ -443,10 +447,18 @@ PYTHON=$(find_python) || exit 1
 
 [ "$BUILD_ONLY" != 1 ] || exit 0
 
-# The asset pack the suites read, packed from the baked meshes in the tree.
-AUTANA_ASSET_PACK="$BUILD_DIR/assets.bin"
-export AUTANA_ASSET_PACK
-"$PYTHON" "$TEST_DIR/../tools/r3d/build_pack.py" -o "$AUTANA_ASSET_PACK" "$MAIN_DIR" > /dev/null
+# The asset packs the suites read, one per root asset in the tree.
+AUTANA_ASSET_DIR="$BUILD_DIR/assets"
+export AUTANA_ASSET_DIR
+"$PYTHON" "$TEST_DIR/../tools/r3d/build_pack.py" -o "$AUTANA_ASSET_DIR" "$MAIN_DIR" > /dev/null
+# The test clip suite_anim_tracks.c holds to the Python sampler.
+AUTANA_ANIM_PROBE="$BUILD_DIR/anim_probe.bin"
+export AUTANA_ANIM_PROBE
+"$PYTHON" "$TEST_DIR/../tools/tests/anim_probe.py" -o "$AUTANA_ANIM_PROBE"
+# The scene suite_scene.c holds to the scene entry's Python writer.
+AUTANA_SCENE_PROBE="$BUILD_DIR/scene_probe.bin"
+export AUTANA_SCENE_PROBE
+"$PYTHON" "$TEST_DIR/../tools/tests/scene_probe.py" -o "$AUTANA_SCENE_PROBE"
 
 if [ "$SANITIZE" = 1 ] && [ "$(uname -s)" = Linux ]; then
     # Control ids are value addresses and must stay stable across frames, as on the device.

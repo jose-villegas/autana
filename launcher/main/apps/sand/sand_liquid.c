@@ -16,8 +16,8 @@
 #include "sand_priv.h"
 
 #include "sand_liquid_move.h"
-#include "util/fixed.h"
-#include "util/intmath.h"
+#include "util/scalar/fixed.h"
+#include "util/scalar/mathi.h"
 
 /* See liquid_mask() in sand_priv.h */
 
@@ -382,8 +382,8 @@ equalise_one_row(sand_t* s, int y, int x0, int x1, int w, int x_step, const xflo
         if (brow != NULL && (brow[bx] & BLOCK_LIQUID_NEAR) == 0) {
             continue;
         }
-        const int lo = im_max(bx * SAND_BLOCK_W, x0);
-        const int hi = im_min(bx * SAND_BLOCK_W + SAND_BLOCK_W, x1);
+        const int lo = mathi_max(bx * SAND_BLOCK_W, x0);
+        const int hi = mathi_min(bx * SAND_BLOCK_W + SAND_BLOCK_W, x1);
         if (equalise_row_block(s, row, y, lo, hi, x_step, brow, bx, ax_row, dg_row, below_row, w, r, dx, sight,
                                is_liquid, &touched, &touched_x0, &touched_x1, work)) {
             any_liquid = true;

@@ -1,17 +1,13 @@
+/* Firmware preview smoke checks with authored geometry overrides. */
 #include "editor/runtime.h"
 
 #include <stdint.h>
 #include <stdlib.h>
 
-#define PORTRAIT_WIDTH   368
-#define PORTRAIT_HEIGHT  448
+#define PORTRAIT_WIDTH   editor_runtime_panel_width()
+#define PORTRAIT_HEIGHT  editor_runtime_panel_height()
 #define LANDSCAPE_WIDTH  PORTRAIT_HEIGHT
 #define LANDSCAPE_HEIGHT PORTRAIT_WIDTH
-
-static const editor_rect_t portrait_rects[] = {
-    {16, 16, 160, 78},   {192, 16, 160, 78}, {16, 106, 336, 58}, {16, 176, 160, 52},
-    {192, 176, 160, 52}, {16, 242, 336, 18}, {16, 270, 336, 72}, {16, 354, 336, 72},
-};
 
 static bool
 differs(const uint16_t* first, const uint16_t* second, size_t count) {
@@ -35,14 +31,10 @@ main(void) {
         return 1;
     }
 
-    editor_rect_t rects[sizeof(portrait_rects) / sizeof(portrait_rects[0])];
-    for (size_t i = 0; i < sizeof(rects) / sizeof(rects[0]); i++) {
-        rects[i] = portrait_rects[i];
-    }
-    editor_layout_t layout = {PORTRAIT_WIDTH, PORTRAIT_HEIGHT, (int)(sizeof(rects) / sizeof(rects[0])), rects};
+    control_center_layout_t layout = control_center_layout_portrait;
 
     int failures = 0;
-    failures += editor_runtime_element_count(EDITOR_SCREEN_CONTROL_CENTER) != layout.rect_count;
+    failures += editor_runtime_element_count(EDITOR_SCREEN_CONTROL_CENTER) != CONTROL_CENTER_ELEMENT_COUNT;
     failures += editor_runtime_element_count(EDITOR_SCREEN_LAUNCHER) != 0;
     failures += !editor_runtime_render(EDITOR_SCREEN_LAUNCHER, NULL, pixels, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
     failures += !editor_runtime_render(EDITOR_SCREEN_LAUNCHER, NULL, pixels, LANDSCAPE_WIDTH, LANDSCAPE_HEIGHT);
@@ -58,18 +50,14 @@ main(void) {
     failures += !below_landscape_height;
 
     /* An authored rect has to reach the pixels, not just be accepted. */
-    rects[2].y += 4;
+    layout.rects[2].y += 4;
     failures += !editor_runtime_render(EDITOR_SCREEN_CONTROL_CENTER, &layout, moved, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
     failures += !differs(pixels, moved, count);
-    rects[2].y -= 4;
+    layout.rects[2].y -= 4;
 
-    rects[1].width = PORTRAIT_WIDTH;
+    layout.rects[1].width = PORTRAIT_WIDTH;
     failures += editor_runtime_render(EDITOR_SCREEN_CONTROL_CENTER, &layout, pixels, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
-    rects[1].width = portrait_rects[1].width;
-
-    layout.rect_count--;
-    failures += editor_runtime_render(EDITOR_SCREEN_CONTROL_CENTER, &layout, pixels, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
-    layout.rect_count++;
+    layout.rects[1].width = control_center_layout_portrait.rects[1].width;
 
     failures += editor_runtime_render(EDITOR_SCREEN_CONTROL_CENTER, &layout, pixels, LANDSCAPE_WIDTH, LANDSCAPE_HEIGHT);
     failures += editor_runtime_render(EDITOR_SCREEN_LAUNCHER, &layout, pixels, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);

@@ -27,7 +27,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/intmath.h"
+#include "util/scalar/mathi.h"
 
 /* Burying lava does not delete it. smothered() clears a burning cell
  * outright when all four neighbours are denser and solid, which is right

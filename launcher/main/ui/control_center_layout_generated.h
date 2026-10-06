@@ -1,11 +1,11 @@
 /*
  * GENERATED FILE - do not edit.
  *
- *     python tools/gen/gen_ui_layout.py main/ui/control_center_layout.json main/ui/control_center_layout_generated.h
+ *     python tools/gen/bake_ui_layout.py "main/ui/control_center_layout.json" "main/ui/control_center_layout_generated.h"
  */
 #pragma once
 
-#include <stdint.h>
+#include "ui/ui_layout.h"
 
 typedef enum {
     CONTROL_CENTER_ELEMENT_WIFI = 0,
@@ -20,12 +20,8 @@ typedef enum {
 } control_center_element_id_t;
 
 typedef struct {
-    int16_t x, y, width, height;
-} control_center_layout_rect_t;
-
-typedef struct {
     int16_t canvas_width, canvas_height;
-    control_center_layout_rect_t rects[CONTROL_CENTER_ELEMENT_COUNT];
+    ui_layout_rect_t rects[CONTROL_CENTER_ELEMENT_COUNT];
 } control_center_layout_t;
 
 static const control_center_layout_t control_center_layout_portrait = {

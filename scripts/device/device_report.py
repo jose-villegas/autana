@@ -23,12 +23,15 @@ import sys
 from pathlib import Path
 
 
-# `\S*`, not report_performance.py's `\S+`: this project's own Unity result
-# lines carry no filename ahead of the line number: "*:3685:name:PASS", not
-# "file.c:3685:name:PASS", so a required leading token never matches a real
-# capture. Confirmed against 152333_runsuite-run_sand_perf_suite...log:
-# report_performance.py's own RESULT_RE finds zero entries in it.
-RESULT_RE = re.compile(r"^(?P<file>\S*?):\d+:(?P<name>\w+):(?P<status>PASS|FAIL)(?::\s*(?P<message>.*))?$")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from device_capture import RESULT_RE, results, SELFTEST_COMPLETE_RE  # noqa: E402
+
+# The line a RUNSUITE ends with, read here for the board (device.py) and for
+# QEMU (launcher/test/qemu_run.py). An image that predates --test prints no
+# selected=/unmatched=, and echoes a filtered request whole as the name
+# ("name=sand fire found=0"), so the name runs to the first " found=".
+SUITE_COMPLETE_RE = re.compile(r"RUNSUITE_COMPLETE name=(?P<name>.+?) found=(?P<found>\d)"
+                               r"(?: selected=(?P<selected>\d+) unmatched=(?P<unmatched>\d+))?")
 # Searched, not anchored: a real line carries the ESP-IDF log prefix
 # ("I (32139) device_tests: PERF TARGET full-size step: ..."), and a target's
 # name contains spaces.
@@ -96,19 +99,9 @@ def find_manifest_entry(capture_path, index_path):
 
 
 def parse_suite_results(text):
-    passed = failed = 0
-    failures = []
-    for line in text.splitlines():
-        m = RESULT_RE.match(line.strip())
-        if not m:
-            continue
-        if m.group("status") == "PASS":
-            passed += 1
-        else:
-            failed += 1
-            failures.append((m.group("name"), m.group("message") or ""))
-    return passed, failed, failures
-
+    parsed = results(text)
+    failures = [(r["name"], r["message"] or "") for r in parsed if r["status"] == "FAIL"]
+    return sum(r["status"] == "PASS" for r in parsed), len(failures), failures
 
 def parse_perf_targets(text):
     targets = []
@@ -441,3 +434,61 @@ def write_report_for_capture(capture_path, index_path):
     out_path = report_path_for(capture_path)
     out_path.write_text(markdown, encoding="utf-8")
     return out_path
+
+
+def selftest_markdown(parsed, text, capture_path, captured_at):
+    """Self-test report with failures and the full result list in capture order."""
+    complete = SELFTEST_COMPLETE_RE.search(text)
+    failures_reported = int(complete.group(1)) if complete and complete.group(1) else None
+    elapsed_ms = int(complete.group(2)) if complete and complete.group(2) else None
+
+    passed = [r for r in parsed if r["status"] == "PASS"]
+    failed = [r for r in parsed if r["status"] == "FAIL"]
+
+    lines = []
+    lines.append("# Device Self-Test Results")
+    lines.append("")
+    lines.append(f"Captured: {captured_at.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    lines.append(f"Source: `{capture_path}`")
+    lines.append("")
+    lines.append(f"**{len(parsed)} tests, {len(passed)} passed, {len(failed)} failed**"
+                 + (f", {elapsed_ms} ms total" if elapsed_ms is not None else ""))
+    if failures_reported is None:
+        lines.append("")
+        lines.append("> **No `SELFTEST_COMPLETE` line found** - the capture may have "
+                     "timed out or the device may have crashed mid-run. Treat this "
+                     "report as partial.")
+    elif failures_reported != len(failed):
+        lines.append("")
+        lines.append(f"> Device reported `failures={failures_reported}` but this report "
+                     f"parsed {len(failed)} FAIL lines - a parsing mismatch, not "
+                     "necessarily a device problem. Check the raw capture.")
+    lines.append("")
+
+    if failed:
+        lines.append("## Failures")
+        lines.append("")
+        for r in failed:
+            lines.append(f"- **`{r['name']}`** (`{r['file']}:{r['line']}`)")
+            if r["message"]:
+                lines.append(f"  {r['message']}")
+        lines.append("")
+    else:
+        lines.append("## Failures")
+        lines.append("")
+        lines.append("None.")
+        lines.append("")
+
+    lines.append("<details>")
+    lines.append("<summary>All results ({} tests)</summary>".format(len(parsed)))
+    lines.append("")
+    lines.append("| Test | Result |")
+    lines.append("|---|---|")
+    for r in parsed:
+        mark = "PASS" if r["status"] == "PASS" else f"**FAIL** - {r['message'] or ''}"
+        lines.append(f"| `{r['name']}` | {mark} |")
+    lines.append("")
+    lines.append("</details>")
+    lines.append("")
+
+    return "\n".join(lines), len(passed), len(failed)

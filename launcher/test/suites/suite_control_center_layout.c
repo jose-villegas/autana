@@ -1,8 +1,4 @@
-/*
- * Portable suite: the baked Control Center table, checked without going
- * through the generator that wrote it. gen_ui_layout.py applies the first
- * three rules at bake time; a generator checking itself is not a test.
- */
+/* Portable checks of the baked Control Center geometry, independent of the baker. */
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -45,7 +41,7 @@ test_every_element_clears_the_panel_edge(void) {
     for (size_t l = 0; l < sizeof layouts / sizeof layouts[0]; l++) {
         const control_center_layout_t* layout = layouts[l];
         for (int e = 0; e < CONTROL_CENTER_ELEMENT_COUNT; e++) {
-            const control_center_layout_rect_t* r = &layout->rects[e];
+            const ui_layout_rect_t* r = &layout->rects[e];
             const char* where = describe(layout, e);
             const int top_inset = display_panel_corner_inset(DISPLAY_PANEL_CORNER_RADIUS, layout->canvas_height, r->y);
             const int bottom_inset =
@@ -81,8 +77,8 @@ test_no_two_elements_overlap(void) {
         const control_center_layout_t* layout = layouts[l];
         for (int a = 0; a < CONTROL_CENTER_ELEMENT_COUNT; a++) {
             for (int b = a + 1; b < CONTROL_CENTER_ELEMENT_COUNT; b++) {
-                const control_center_layout_rect_t* p = &layout->rects[a];
-                const control_center_layout_rect_t* q = &layout->rects[b];
+                const ui_layout_rect_t* p = &layout->rects[a];
+                const ui_layout_rect_t* q = &layout->rects[b];
                 const bool apart = p->x + p->width <= q->x || q->x + q->width <= p->x || p->y + p->height <= q->y
                                    || q->y + q->height <= p->y;
                 TEST_ASSERT_TRUE_MESSAGE(apart, describe(layout, a));
@@ -93,7 +89,7 @@ test_no_two_elements_overlap(void) {
 
 static void
 test_a_tap_within_reach_of_a_card_is_aimed_onto_it(void) {
-    const control_center_layout_rect_t* r = &control_center_layout_portrait.rects[CONTROL_CENTER_ELEMENT_WIFI];
+    const ui_layout_rect_t* r = &control_center_layout_portrait.rects[CONTROL_CENTER_ELEMENT_WIFI];
     const ui_snap_rect_t card = {.r = {r->x, r->y, r->width, r->height}, .live = true};
     const mu_Vec2 aimed = ui_snap_point(&card, 1, mu_vec2(r->x - 12, r->y + r->height / 2), 12);
 

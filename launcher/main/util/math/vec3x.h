@@ -7,9 +7,9 @@
 
 #include <stdint.h>
 
-#include "util/math/mathx.h"
 #include "util/math/vec2x.h"
 #include "util/math/vec3_template.h"
+#include "util/scalar/mathx.h"
 
 MATH_DEFINE_VEC3(vec3x, int32_t, int32_t, mathx)
 MATH_DEFINE_VEC3_NORMALIZE(vec3x, int32_t, mathx)

@@ -13,7 +13,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/job.h"
+#include "util/runtime/job.h"
 
 sand_t s;
 uint8_t cells[W * H];
@@ -256,11 +256,21 @@ acid_tank(int sand_rows, int acid_rows) {
  * pass or fail for reasons of its own. */
 int
 panel_luminance(gfx_color_t c) {
-    const unsigned v = (unsigned)((c >> 8) | ((c & 0xFFu) << 8));
-    const unsigned r = ((v >> 11) & 0x1Fu) * 255u / 31u;
-    const unsigned g = ((v >> 5) & 0x3Fu) * 255u / 63u;
-    const unsigned b = (v & 0x1Fu) * 255u / 31u;
+    const uint16_t v = gfx_color_swap(c);
+    const unsigned r = gfx_rgb565_r5(v) * 255u / 31u;
+    const unsigned g = gfx_rgb565_g6(v) * 255u / 63u;
+    const unsigned b = gfx_rgb565_b5(v) * 255u / 31u;
     return (int)((299u * r + 587u * g + 114u * b) / 1000u);
+}
+
+int
+colour_gap(gfx_color_t x, gfx_color_t y) {
+    const uint16_t a = gfx_color_swap(x);
+    const uint16_t b = gfx_color_swap(y);
+    const int dr = (int)gfx_rgb565_r5(a) - (int)gfx_rgb565_r5(b);
+    const int dg = (int)gfx_rgb565_g6(a) - (int)gfx_rgb565_g6(b);
+    const int db = (int)gfx_rgb565_b5(a) - (int)gfx_rgb565_b5(b);
+    return ((dr < 0 ? -dr : dr) * 2) + (dg < 0 ? -dg : dg) + ((db < 0 ? -db : db) * 2);
 }
 
 int

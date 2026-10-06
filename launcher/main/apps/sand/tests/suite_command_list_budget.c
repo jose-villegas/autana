@@ -16,9 +16,10 @@
 #include <string.h>
 
 #include "suites.h"
+#include "ui_budget.h"
 #include "unity.h"
 
-#include "app.h"
+#include "app/app.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
@@ -31,13 +32,6 @@
 #include "apps/sand/ui/palette_screen.h"
 #include "apps/sand/ui/title_screen.h"
 
-/* The host's larger command list checks rendering growth; device/QEMU enforces
- * the 8 KiB RAM limit. A fifth screen or a busier icon still has this many bytes of
- * MU_COMMANDLIST_SIZE left to grow into before any screen's own peak
- * reaches the ceiling microui.c asserts against. */
-#define COMMANDLIST_HEADROOM_BYTES 2048
-#define COMMANDLIST_BUDGET         (MU_COMMANDLIST_SIZE - COMMANDLIST_HEADROOM_BYTES)
-
 /* Landscape (448x368 logical) - this app's shipping orientation, and what
  * suite_brush_screen.c/suite_palette.c already assert every rect below
  * fits inside. */
@@ -45,21 +39,6 @@ static void
 fixture(void) {
     ui_init();
     ui_set_transform(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT));
-}
-
-static int
-end_and_measure(void) {
-    mu_end(ui_context());
-    return ui_context()->command_list.idx;
-}
-
-static void
-assert_budget(const char* screen_name, int used) {
-    char msg[96];
-    snprintf(msg, sizeof msg, "%s screen used %d of %d budget bytes (%d headroom)", screen_name, used,
-             COMMANDLIST_BUDGET, MU_COMMANDLIST_SIZE - used);
-    printf("%s\n", msg);
-    TEST_ASSERT_LESS_THAN_INT_MESSAGE(COMMANDLIST_BUDGET, used, msg);
 }
 
 static void
@@ -79,7 +58,7 @@ test_palette_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     palette_screen_draw(ui_context(), &ui);
-    assert_budget("sand palette", end_and_measure());
+    ui_budget_assert("sand palette");
 }
 
 static void
@@ -103,7 +82,7 @@ test_brush_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     brush_screen_draw(ui_context(), &ui);
-    assert_budget("sand brush", end_and_measure());
+    ui_budget_assert("sand brush");
 }
 
 static void
@@ -113,7 +92,7 @@ test_title_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     title_screen_draw(ui_context());
-    assert_budget("sand title", end_and_measure());
+    ui_budget_assert("sand title");
 }
 
 /* Shaped like the app's, for layout, taps and command-list size; the
@@ -148,7 +127,7 @@ test_options_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     options_screen_draw(ui_context(), &menu, committed, &labels);
-    assert_budget("sand options", end_and_measure());
+    ui_budget_assert("sand options");
 }
 
 /* The dither list open: every row, swatch and all, on top of the screen.
@@ -193,10 +172,9 @@ test_options_screen_with_its_dither_list_open_fits_budget(void) {
     const input_t idle = {0};
     ui_begin(&idle);
     options_screen_draw(ui_context(), &menu, committed, &labels);
-    const int used = end_and_measure();
+    ui_budget_assert("sand options, dither list open");
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(1, ui_context()->root_list.idx,
                                          "the list must actually be open for this to measure it");
-    assert_budget("sand options, dither list open", used);
 }
 
 void

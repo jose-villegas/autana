@@ -7,6 +7,7 @@
 
 #include <stdbool.h>
 
+#include "icon_walk.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -14,13 +15,6 @@
 
 static const int BAYER2[2][2] = {{0, 2}, {3, 1}};
 static const int BAYER4[4][4] = {{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
-
-static bool
-baked_bit(icon_dither_id_t id, int x, int y) {
-    const icon_t* icon = &icon_dither_table[id];
-    const uint8_t byte = icon_dither_rows[icon->offset + (unsigned)y * icon->stride + (unsigned)(x / 8)];
-    return (byte & (0x80 >> (x % 8))) != 0;
-}
 
 static bool
 expected(icon_dither_id_t id, int x, int y) {
@@ -42,8 +36,10 @@ test_every_swatch_is_its_modes_own_pattern(void) {
         TEST_ASSERT_EQUAL_INT(4, icon->h);
         for (int y = 0; y < icon->h; y++) {
             for (int x = 0; x < icon->w; x++) {
-                TEST_ASSERT_EQUAL_INT_MESSAGE(expected((icon_dither_id_t)id, x, y),
-                                              baked_bit((icon_dither_id_t)id, x, y), "a swatch left its mode's rule");
+                TEST_ASSERT_EQUAL_INT_MESSAGE(
+                    expected((icon_dither_id_t)id, x, y),
+                    icon_test_bit(icon_dither_rows, &icon_dither_table[(icon_dither_id_t)id], x, y),
+                    "a swatch left its mode's rule");
             }
         }
     }
@@ -53,8 +49,9 @@ static void
 test_a_cell_swatch_is_the_pixel_swatch_at_twice_the_grain(void) {
     for (int y = 0; y < 4; y++) {
         for (int x = 0; x < 4; x++) {
-            TEST_ASSERT_EQUAL_INT(baked_bit(ICON_DITHER_PIXEL_CHECKER2, x / 2, y / 2),
-                                  baked_bit(ICON_DITHER_CELL_CHECKER, x, y));
+            TEST_ASSERT_EQUAL_INT(
+                icon_test_bit(icon_dither_rows, &icon_dither_table[ICON_DITHER_PIXEL_CHECKER2], x / 2, y / 2),
+                icon_test_bit(icon_dither_rows, &icon_dither_table[ICON_DITHER_CELL_CHECKER], x, y));
         }
     }
 }

@@ -22,7 +22,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "app_arena.h"
+#include "app/app_arena.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "render_lab.h"

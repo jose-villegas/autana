@@ -1,6 +1,7 @@
 # Autana
 
 [![Host Tests](https://github.com/jose-villegas/autana/actions/workflows/host-tests.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/host-tests.yml)
+[![QEMU Tests](https://github.com/jose-villegas/autana/actions/workflows/qemu-tests.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/qemu-tests.yml)
 [![Build (Release)](https://github.com/jose-villegas/autana/actions/workflows/build-release.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/build-release.yml)
 [![Build (Diagnostics)](https://github.com/jose-villegas/autana/actions/workflows/build-diagnostics.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/build-diagnostics.yml)
 
@@ -10,7 +11,7 @@ Autana is software for the [Waveshare ESP32-S3-Touch-AMOLED-1.8](https://www.wav
 <tr><th width="33%">Falling Sand, board turning</th><th width="33%">Launcher, board rocking</th><th width="33%">Falling Sand title screen</th></tr>
 <tr><td width="33%"><img src="docs/images/overview/sand-simulation.gif" width="100%" alt="A volcano spilling toward a lake beside growing and burning trees as the board turns"></td><td width="33%"><img src="docs/images/overview/launcher-home.gif" width="100%" alt="The launcher listing Falling Sand and Render Lab, its backdrop ridge levelling as the board rocks"></td><td width="33%"><img src="docs/images/overview/sand-menu.png" width="100%" alt="The Falling Sand title screen with start, load, options, guide and exit"></td></tr>
 <tr><th width="33%">Rotating Render Lab cube</th><th width="33%">Sponza flythrough</th><th width="33%">Ray-traced Cornell box</th></tr>
-<tr><td width="33%"><img src="docs/images/overview/render-lab-cube.gif" width="100%" alt="A shaded cube rotating on a black screen"></td><td width="33%"><img src="docs/images/overview/render-lab-sponza.gif" width="100%" alt="A camera moving down the sunlit Crytek Sponza atrium between coloured curtains"></td><td width="33%"><img src="docs/images/overview/render-lab-cornell.png" width="100%" alt="A Cornell box with a red and a green wall around two blocks"></td></tr>
+<tr><td width="33%"><img src="docs/images/overview/render-lab-cube.gif" width="100%" alt="A shaded cube rotating on a black screen"></td><td width="33%"><img src="docs/images/overview/render-lab-sponza.gif" width="100%" alt="A camera moving down the sunlit Crytek Sponza atrium between coloured curtains, drawn with the fitted full mesh"></td><td width="33%"><img src="docs/images/overview/render-lab-cornell.png" width="100%" alt="A Cornell box with a red and a green wall around two blocks"></td></tr>
 </table>
 
 Every image is a host render of the real firmware drawing code at the panel's 448x368, shown here at a smaller size, not a board capture. The sand clip runs the real simulation with scripted tilt, and the launcher lists the apps a release build carries.

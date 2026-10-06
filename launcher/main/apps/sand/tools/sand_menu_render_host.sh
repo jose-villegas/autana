@@ -8,7 +8,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=sand_menu
 scene_sources="
 main/gfx/gfx.c
-main/util/tune.c
+main/util/runtime/tune.c
 main/ui/ui.c
 main/ui/ui_bridge.c
 main/ui/ui_build.c

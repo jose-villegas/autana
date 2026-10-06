@@ -693,7 +693,7 @@ scene_two_core_big(sand_t* s) {
  * vector they were baselined with - their hashes must not move.
  *
  * A vertical vector is the ONE case that leaves the perpendicular
- * horizontal: perp is ring_dir(i_stable + 2), so py == 0 only at (0, +-1).
+ * horizontal: perp is ring_dir(stable_index + 2), so py == 0 only at (0, +-1).
  * Landscape and every diagonal give py != 0, where equalise_gas() takes a
  * different path and the row skip has a branch that runs nowhere else -
  * corrupting which left --check reporting "identical". */

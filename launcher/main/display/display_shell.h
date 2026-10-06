@@ -1,9 +1,9 @@
 /*
  * display_shell: the shell's side of display: starting the panel, loading its
- * clock, and sampling the motion sensor for orientation. An app never calls
- * these. Defined in display_device.c, device only, except the sampler, which
- * display.c holds so its cadence is tested on a host. Applying a quarter
- * change to the UI is the caller's.
+ * clock, and turning gravity, from a reader the shell hands in, into
+ * orientation. An app never calls these. Defined in display_device.c,
+ * device only, except the sampler, which display.c holds so its cadence is
+ * tested on a host. Applying a quarter change to the UI is the caller's.
  */
 #pragma once
 
@@ -11,14 +11,16 @@
 #include <stdint.h>
 
 #include "display/display.h"
-#include "input/imu_sample.h"
+#include "util/math/vec2i.h"
 
-/* The shell's orientation sampler: the quarter and when it may next read the
- * motion sensor, so the cadence is as testable as the decision. 10 Hz is
- * enough for reorientation without lag. */
+/* The shell's orientation sampler: the quarter and when it may next ask for
+ * gravity, so the cadence is as testable as the decision. 10 Hz is enough
+ * for reorientation without lag. */
 #define DISPLAY_SAMPLE_MS 100
 
-typedef bool (*display_motion_reader_t)(imu_sample_t* out);
+/* Fills `gravity` in screen axes, the units display_update() takes; false
+ * when there is no reading. */
+typedef bool (*display_gravity_reader_t)(vec2i_t* gravity);
 
 typedef struct {
     display_t display;
@@ -28,10 +30,10 @@ typedef struct {
 /* Starts at DISPLAY_DEFAULT_QUARTER, due to sample at once. */
 void display_orientation_init(display_orientation_t* o);
 
-/* Reads motion through `read` when DISPLAY_SAMPLE_MS has passed since the last
- * attempt, a failed read included, and feeds display_update(). True only when
- * the quarter changed. */
-bool display_orientation_sample(display_orientation_t* o, int64_t now_us, display_motion_reader_t read);
+/* Reads gravity through `read` when DISPLAY_SAMPLE_MS has passed since the
+ * last attempt, a failed read included, and feeds display_update(). True only
+ * when the quarter changed. */
+bool display_orientation_sample(display_orientation_t* o, int64_t now_us, display_gravity_reader_t read);
 
 /* Where the system panel clock is kept across reboots, in the settings store. */
 #define DISPLAY_PANEL_CLOCK_SETTINGS_SPACE "shell"
@@ -47,6 +49,6 @@ void display_load_panel_clock(void);
 /* Puts the shell's orientation at DISPLAY_DEFAULT_QUARTER. */
 void display_reset_quarter(void);
 
-/* Samples the motion sensor at DISPLAY_SAMPLE_MS. True when the quarter
- * changed. */
-bool display_sample_orientation(int64_t now_us);
+/* Samples the shell's orientation, asking `read` for gravity at most every
+ * DISPLAY_SAMPLE_MS. True when the quarter changed. */
+bool display_sample_orientation(int64_t now_us, display_gravity_reader_t read);

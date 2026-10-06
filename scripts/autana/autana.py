@@ -141,6 +141,21 @@ def pop_value(args, flag):
     return value, rest
 
 
+def pop_layout_seed(args):
+    """(seed or None, `args` without `--layout-seed N`): N is a non-negative
+    whole number, 0 being the plain build."""
+    value, rest = pop_value(args, "--layout-seed")
+    if value is not None and not value.isdigit():
+        sys.exit(f"usage: --layout-seed needs a whole number, not {value}")
+    return value, rest
+
+
+def refuse_release_seed(seed, variant):
+    """A release image carries no padding to sample, so a seed there is a typo."""
+    if seed is not None and variant == "release":
+        sys.exit("autana: --layout-seed is for measuring; a release image is never padded")
+
+
 def device_tool():
     # Under the same scripts/ as this file, so the device tool is the one
     # belonging to the checkout on the PATH.
@@ -273,7 +288,9 @@ def variant_request(verb, args, flags, project):
 
 def flash(args):
     project = resolve_project()
+    seed, args = pop_layout_seed(args)
     _, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope"), project)
+    refuse_release_seed(seed, variant)
     quiet = "--quiet" in seen
     perf_scope = "--perf-scope" in seen
     command = device_command(
@@ -281,6 +298,8 @@ def flash(args):
     )
     if perf_scope:
         command.append("--perf-scope")
+    if seed is not None:
+        command += ["--layout-seed", seed]
     return subprocess.call(command) if quiet else run_streaming_its_log(command)
 
 
@@ -305,8 +324,11 @@ def build(args):
         if args != ["diag"]:
             sys.exit("usage: autana build diag --check")
         return build_diag_check(project)
+    seed, args = pop_layout_seed(args)
     _, variant, seen = variant_request("build", args, ("--perf-scope",), project)
-    return device_module().build_worktree(project, variant, sorted(seen))
+    refuse_release_seed(seed, variant)
+    flags = sorted(seen) + (["--layout-seed", seed] if seed is not None else [])
+    return device_module().build_worktree(project, variant, flags)
 
 
 def seconds_argument(args, default, usage):
@@ -589,7 +611,7 @@ def suite_list(args):
 
 
 SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [seconds] [--runs N] [--test PATTERN] "
-              "[--flash] [--perf-scope] [--verbose] [--out PATH] [--expect-build-id ID] | "
+              "[--flash] [--perf-scope] [--layout-seed N] [--verbose] [--out PATH] [--expect-build-id ID] | "
               "autana suite list [text]")
 
 
@@ -627,6 +649,7 @@ def suite(args):
     perf_scope = "--perf-scope" in rest
     if perf_scope:
         rest.remove("--perf-scope")
+    seed, rest = pop_layout_seed(rest)
     verbose = "--verbose" in rest
     if verbose:
         rest.remove("--verbose")
@@ -662,6 +685,8 @@ def suite(args):
         command += ["--suite", name]
     if perf_scope:
         command.append("--perf-scope")
+    if seed is not None:
+        command += ["--layout-seed", seed]
     if verbose:
         command.append("--verbose")
     if out:
@@ -719,7 +744,7 @@ def send(line, reply="TUNE", optional=False, seconds=None, until=None):
     """One console line to the device, under the lock. Returns (exit code,
     reply lines). `reply` is what the answer's lines start with. `until` are
     the prefixes that end the answer; one reply-line verb needs only
-    `[reply]` itself (device.py's default when `until` is omitted; util/tune's
+    `[reply]` itself (device.py's default when `until` is omitted; util/runtime/tune's
     three endings are its own default for `reply="TUNE"`), a multi-line one
     (an app's own command) passes `[<PREFIX>_END, <PREFIX>_ERR]`. `optional`
     is for a verb that answers only when something is wrong (TOUCH, IMU): a
@@ -866,11 +891,20 @@ def imu(args):
     return code
 
 
-def gesture(args, verb, usage):
+def gesture(args, verb, usage, points):
+    """TAP, PRESS or DRAG, its first `points` x, y pairs read as pixels of the
+    default `autana screenshot` and sent in the panel's own frame."""
     reject_unknown(verb, args)
     if not all(is_int(value) for value in args):
         sys.exit(usage)
-    code, replies = send(verb.upper() + " " + " ".join(args), reply=verb.upper(), until=[verb.upper() + "_OK"])
+    values = [int(value) for value in args]
+    try:
+        for i in range(0, 2 * points, 2):
+            values[i:i + 2] = device_module().touch_point(values[i], values[i + 1])
+    except ValueError as error:
+        sys.exit(f"{usage} - {error}")
+    line = verb.upper() + " " + " ".join(str(value) for value in values)
+    code, replies = send(line, reply=verb.upper(), until=[verb.upper() + "_OK"])
     print("\n".join(replies))
     return code
 
@@ -878,19 +912,19 @@ def gesture(args, verb, usage):
 def tap(args):
     if len(args) != 2:
         sys.exit("usage: autana tap <x> <y>")
-    return gesture(args, "tap", "usage: autana tap <x> <y>")
+    return gesture(args, "tap", "usage: autana tap <x> <y>", 1)
 
 
 def press(args):
     if len(args) not in (2, 3):
         sys.exit("usage: autana press <x> <y> [ms]")
-    return gesture(args, "press", "usage: autana press <x> <y> [ms]")
+    return gesture(args, "press", "usage: autana press <x> <y> [ms]", 1)
 
 
 def drag(args):
     if len(args) != 5:
         sys.exit("usage: autana drag <x0> <y0> <x1> <y1> <ms>")
-    return gesture(args, "drag", "usage: autana drag <x0> <y0> <x1> <y1> <ms>")
+    return gesture(args, "drag", "usage: autana drag <x0> <y0> <x1> <y1> <ms>", 2)
 
 
 def button(args):
@@ -1338,17 +1372,18 @@ def debug(args):
 COMMAND_GROUPS = (
     ("build", "Build and flash", (
         Command("build", build, (
-            ("build [rel|dev|diag] [--perf-scope]", "build this project, no board; dev when omitted"),
+            ("build [rel|dev|diag] [--perf-scope] [--layout-seed N]",
+             "build this project, no board; dev when omitted; a seed N > 0 pads the layout, 0 is the plain build"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
         Command("flash", flash, (
-            ("flash [rel|dev|diag] [--quiet] [--perf-scope]",
+            ("flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N]",
              "build and flash this project; dev when omitted"),)),
         Command("buildid", buildid, (
             ("buildid [--json]", "the BUILD_ID the board is running"),)),
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
-            ("suite <name>... [seconds] [--runs N] [--flash] [--verbose]",
+            ("suite <name>... [seconds] [--runs N] [--flash] [--layout-seed N] [--verbose]",
              "run suites under one lock; --flash builds and flashes first; seconds caps a "
              "capture (1800 when omitted)"),
             ("suite <name> --test PATTERN[,PATTERN]",
@@ -1374,9 +1409,9 @@ COMMAND_GROUPS = (
             ("perf off", "disarm the counters"))),
     )),
     ("input", "Drive input", (
-        Command("tap", tap, (("tap <x> <y>", "tap a point"),)),
-        Command("press", press, (("press <x> <y> [ms]", "hold a point; 1000 ms when omitted"),)),
-        Command("drag", drag, (("drag <x0> <y0> <x1> <y1> <ms>", "drag between two points"),)),
+        Command("tap", tap, (("tap <x> <y>", "tap a point, in pixels of the default screenshot"),)),
+        Command("press", press, (("press <x> <y> [ms]", "hold a point, as tap reads it; 1000 ms when omitted"),)),
+        Command("drag", drag, (("drag <x0> <y0> <x1> <y1> <ms>", "drag between two points, as tap reads them"),)),
         Command("button", button, (("button <boot|power> [short|long]", "press a board button"),)),
     )),
     ("apps", "Apps", (

@@ -42,9 +42,8 @@
 
 #include "esp_log.h"
 
-#include "app.h"
+#include "app/app.h"
 #include "apps/sand/app_sand_test.h"
-#include "build_variant.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
@@ -77,9 +76,10 @@
 #include "ui/title_screen.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
-#include "util/frame_cost.h"
-#include "util/memory.h"
-#include "util/timing.h"
+#include "util/build/build_variant.h"
+#include "util/runtime/frame_cost.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/timing.h"
 
 static const char* TAG = "sand";
 
@@ -240,31 +240,32 @@ static sand_ui_t ui = {
 #define LABEL_MARGIN 18
 #define LABEL_SCALE  2
 
-static uint8_t* grid;
-static uint8_t* dirty_rows;    /* GRID_H_MAX bytes: which rows changed -
-                                   * only the first grid_h are in use at any
-                                   * quality below ULTRA */
-static uint8_t* sleep_blocks;  /* BLOCK_COLS_MAX*BLOCK_ROWS_MAX bytes:
-                                   * settled blocks to skip - see
-                                   * sand_enable_sleeping() */
-static uint8_t* step_stamps;   /* sized for the largest grid - see
-                                   * sand_enable_step_stamps() */
-static void* lane_scratch;     /* sized for the largest grid - see
-                                   * sand_enable_lane_scratch() */
-static impulse_t* impulse_buf; /* APP_IMPULSE_MAX entries: grains in
-                                   * flight from DETONATE - see
-                                   * sand_enable_impulses(). */
+typedef struct {
+    uint8_t* grid;
+    uint8_t* dirty_rows;    /* GRID_H_MAX bytes: which rows changed -
+                            * only the first grid_h are in use at any
+                            * quality below ULTRA */
+    uint8_t* sleep_blocks;  /* BLOCK_COLS_MAX*BLOCK_ROWS_MAX bytes:
+                            * settled blocks to skip - see
+                            * sand_enable_sleeping() */
+    uint8_t* step_stamps;   /* sized for the largest grid - see
+                            * sand_enable_step_stamps() */
+    void* lane_scratch;     /* sized for the largest grid - see
+                            * sand_enable_lane_scratch() */
+    impulse_t* impulse_buf; /* APP_IMPULSE_MAX entries: grains in
+                            * flight from DETONATE - see
+                            * sand_enable_impulses(). */
 
-static uint16_t* row_run_x0;
-static uint16_t* row_run_x1;
-static uint8_t* row_run_n;
+    uint16_t* row_run_x0;
+    uint16_t* row_run_x1;
+    uint8_t* row_run_n;
 
-/* GRID_H_MAX entries each: the sim's own changed-column span per row - see
- * sand_track_dirty_cols(). x0 > x1 (the sentinel sand_track_dirty_cols()
- * seeds) means no span was ever narrowed for that row this frame, so
- * draw_dirty_rows() repaints it full-width, exactly as before this existed. */
-static uint16_t* dirty_x0;
-static uint16_t* dirty_x1;
+    /* x0 > x1 means no span this frame; draw_dirty_rows() repaints the row full-width. */
+    uint16_t* dirty_x0;
+    uint16_t* dirty_x1;
+} sim_buffers_t;
+
+static sim_buffers_t buffers;
 static sand_t sim;
 static tilt_t tilt;
 static bool failed;
@@ -440,9 +441,9 @@ sand_enter(void) {
 static void
 seed_row_runs_full_width(void) {
     for (int i = 0; i < grid_h; i++) {
-        row_run_x0[i * ROW_MAX_RUNS] = 0;
-        row_run_x1[i * ROW_MAX_RUNS] = (uint16_t)grid_w;
-        row_run_n[i] = 1;
+        buffers.row_run_x0[i * ROW_MAX_RUNS] = 0;
+        buffers.row_run_x1[i * ROW_MAX_RUNS] = (uint16_t)grid_w;
+        buffers.row_run_n[i] = 1;
     }
 }
 
@@ -453,119 +454,113 @@ seed_row_runs_full_width(void) {
 static void
 reset_dirty_cols_full_width(void) {
     for (int i = 0; i < grid_h; i++) {
-        dirty_x0[i] = 0;
-        dirty_x1[i] = (uint16_t)grid_w;
+        buffers.dirty_x0[i] = 0;
+        buffers.dirty_x1[i] = (uint16_t)grid_w;
     }
 }
 
 static void
 mark_sand_fully_dirty(void) {
     seed_row_runs_full_width();
-    memset(dirty_rows, 1, (size_t)grid_h);
+    memset(buffers.dirty_rows, 1, (size_t)grid_h);
     reset_dirty_cols_full_width();
     gfx_mark_all_dirty();
     indexed_force_full_repaint = true;
 }
 
-#if CONFIG_LAUNCHER_SELFTEST
-bool
-sand_app_alloc_selfcheck(size_t* out_largest_free, bool* out_impulses_ok) {
-    uint8_t* t_dirty = malloc(GRID_H_MAX);
-    uint8_t* t_blocks = malloc((size_t)BLOCK_COLS_MAX * BLOCK_ROWS_MAX);
-    uint8_t* t_grid = malloc((size_t)GRID_W_MAX * GRID_H_MAX);
-    uint16_t* t_x0 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(uint16_t));
-    uint16_t* t_x1 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(uint16_t));
-    uint8_t* t_n = malloc(GRID_H_MAX * sizeof(uint8_t));
-    uint16_t* t_dcx0 = malloc(GRID_H_MAX * sizeof(uint16_t));
-    uint16_t* t_dcx1 = malloc(GRID_H_MAX * sizeof(uint16_t));
-    impulse_t* t_imp = malloc((size_t)APP_IMPULSE_MAX * sizeof(impulse_t));
-    uint8_t* t_stamps = malloc(sand_step_stamp_bytes(GRID_W_MAX, GRID_H_MAX));
-    void* t_lanes = malloc(sand_lane_scratch_bytes(GRID_W_MAX, GRID_H_MAX));
-
-    const bool essential_ok =
-        (t_dirty && t_blocks && t_stamps && t_lanes && t_grid && t_x0 && t_x1 && t_n && t_dcx0 && t_dcx1);
-    if (out_impulses_ok) {
-        *out_impulses_ok = (t_imp != NULL);
+static bool
+alloc_sim_buffers(sim_buffers_t* b) {
+    if (b->dirty_rows == NULL) {
+        b->dirty_rows = malloc(GRID_H_MAX);
     }
-    if (out_largest_free) {
-        *out_largest_free = memory_largest_block(MEMORY_8BIT);
+    if (b->sleep_blocks == NULL) {
+        b->sleep_blocks = malloc((size_t)BLOCK_COLS_MAX * BLOCK_ROWS_MAX);
     }
-
-    free(t_lanes);
-    free(t_stamps);
-    free(t_imp);
-    free(t_dcx1);
-    free(t_dcx0);
-    free(t_n);
-    free(t_x1);
-    free(t_x0);
-    free(t_grid);
-    free(t_blocks);
-    free(t_dirty);
-    return essential_ok;
+    if (b->grid == NULL) {
+        b->grid = malloc((size_t)GRID_W_MAX * GRID_H_MAX);
+    }
+    /* The grid needs the largest contiguous heap run, so it must allocate
+     * before the blast buffer and bookkeeping. */
+    if (b->impulse_buf == NULL) {
+        b->impulse_buf = malloc((size_t)APP_IMPULSE_MAX * sizeof(*b->impulse_buf));
+    }
+    if (b->step_stamps == NULL) {
+        b->step_stamps = malloc(sand_step_stamp_bytes(GRID_W_MAX, GRID_H_MAX));
+    }
+    if (b->lane_scratch == NULL) {
+        b->lane_scratch = malloc(sand_lane_scratch_bytes(GRID_W_MAX, GRID_H_MAX));
+    }
+    if (b->row_run_x0 == NULL) {
+        b->row_run_x0 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*b->row_run_x0));
+    }
+    if (b->row_run_x1 == NULL) {
+        b->row_run_x1 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*b->row_run_x1));
+    }
+    if (b->row_run_n == NULL) {
+        b->row_run_n = malloc(GRID_H_MAX * sizeof(*b->row_run_n));
+    }
+    if (b->dirty_x0 == NULL) {
+        b->dirty_x0 = malloc(GRID_H_MAX * sizeof(*b->dirty_x0));
+    }
+    if (b->dirty_x1 == NULL) {
+        b->dirty_x1 = malloc(GRID_H_MAX * sizeof(*b->dirty_x1));
+    }
+    return b->grid != NULL && b->dirty_rows != NULL && b->sleep_blocks != NULL && b->step_stamps != NULL
+           && b->lane_scratch != NULL && b->row_run_x0 != NULL && b->row_run_x1 != NULL && b->row_run_n != NULL
+           && b->dirty_x0 != NULL && b->dirty_x1 != NULL;
 }
 
-#endif /* CONFIG_LAUNCHER_SELFTEST */
-
-/* Allocated after the grid and the blast buffer, see the ordering note in
- * start_sim(). */
-static bool
-alloc_grid_bookkeeping(void) {
-    if (step_stamps == NULL) {
-        step_stamps = malloc(sand_step_stamp_bytes(GRID_W_MAX, GRID_H_MAX));
-    }
-    if (lane_scratch == NULL) {
-        lane_scratch = malloc(sand_lane_scratch_bytes(GRID_W_MAX, GRID_H_MAX));
-    }
-    if (row_run_x0 == NULL) {
-        row_run_x0 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*row_run_x0));
-    }
-    if (row_run_x1 == NULL) {
-        row_run_x1 = malloc(GRID_H_MAX * ROW_MAX_RUNS * sizeof(*row_run_x1));
-    }
-    if (row_run_n == NULL) {
-        row_run_n = malloc(GRID_H_MAX * sizeof(*row_run_n));
-    }
-    if (dirty_x0 == NULL) {
-        dirty_x0 = malloc(GRID_H_MAX * sizeof(*dirty_x0));
-    }
-    if (dirty_x1 == NULL) {
-        dirty_x1 = malloc(GRID_H_MAX * sizeof(*dirty_x1));
-    }
-    return step_stamps != NULL && lane_scratch != NULL && row_run_x0 != NULL && row_run_x1 != NULL && row_run_n != NULL
-           && dirty_x0 != NULL && dirty_x1 != NULL;
+static void
+free_buffers(sim_buffers_t* b) {
+    free(b->dirty_x1);
+    b->dirty_x1 = NULL;
+    free(b->dirty_x0);
+    b->dirty_x0 = NULL;
+    free(b->row_run_n);
+    b->row_run_n = NULL;
+    free(b->row_run_x1);
+    b->row_run_x1 = NULL;
+    free(b->row_run_x0);
+    b->row_run_x0 = NULL;
+    free(b->lane_scratch);
+    b->lane_scratch = NULL;
+    free(b->step_stamps);
+    b->step_stamps = NULL;
+    free(b->impulse_buf);
+    b->impulse_buf = NULL;
+    free(b->grid);
+    b->grid = NULL;
+    free(b->sleep_blocks);
+    b->sleep_blocks = NULL;
+    free(b->dirty_rows);
+    b->dirty_rows = NULL;
 }
 
 static void
 free_sim_buffers(void) {
-    free(dirty_x1);
-    dirty_x1 = NULL;
-    free(dirty_x0);
-    dirty_x0 = NULL;
-    free(row_run_n);
-    row_run_n = NULL;
-    free(row_run_x1);
-    row_run_x1 = NULL;
-    free(row_run_x0);
-    row_run_x0 = NULL;
-    free(lane_scratch);
-    lane_scratch = NULL;
-    free(step_stamps);
-    step_stamps = NULL;
-    free(impulse_buf);
-    impulse_buf = NULL;
-    free(grid);
-    grid = NULL;
-    free(sleep_blocks);
-    sleep_blocks = NULL;
-    free(dirty_rows);
-    dirty_rows = NULL;
+    free_buffers(&buffers);
     memset(&sim, 0, sizeof(sim));
     grid_w = 0;
     grid_h = 0;
     block_cols = 0;
     block_rows = 0;
 }
+
+#if CONFIG_LAUNCHER_SELFTEST
+bool
+sand_app_alloc_selfcheck(size_t* out_largest_free, bool* out_impulses_ok) {
+    sim_buffers_t probe = {0};
+    const bool essential_ok = alloc_sim_buffers(&probe);
+    if (out_impulses_ok) {
+        *out_impulses_ok = (probe.impulse_buf != NULL);
+    }
+    if (out_largest_free) {
+        *out_largest_free = memory_largest_block(MEMORY_8BIT);
+    }
+    free_buffers(&probe);
+    return essential_ok;
+}
+#endif /* CONFIG_LAUNCHER_SELFTEST */
 
 static void
 start_sim(void) {
@@ -587,41 +582,23 @@ start_sim(void) {
     input_ready = false;
     overlays_skipped_reason_logged = false;
 
-    if (dirty_rows == NULL) {
-        dirty_rows = malloc(GRID_H_MAX);
+    const bool buffers_ok = alloc_sim_buffers(&buffers);
+    /* LOUD, NOT FATAL, unlike the essential buffers: sand_enable_impulses
+     * (NULL, ...) safely disables just DETONATE, so failing here alone
+     * shouldn't strand a player who never wanted it behind a "no
+     * memory" screen. Logs largest_free_block, not total free heap -
+     * total free heap tells the wrong story here (see
+     * SAND_IMPULSE_BUDGET_BYTES); largest block is what actually
+     * predicts whether this allocation succeeds. */
+    if (buffers.impulse_buf == NULL) {
+        ESP_LOGE(TAG,
+                 "Could not allocate the %d-entry blast buffer "
+                 "(%u bytes) - detonate will be a no-op this "
+                 "session; largest free block is %u",
+                 APP_IMPULSE_MAX, (unsigned)((size_t)APP_IMPULSE_MAX * sizeof(*buffers.impulse_buf)),
+                 (unsigned)memory_largest_block(MEMORY_8BIT));
     }
-    if (sleep_blocks == NULL) {
-        sleep_blocks = malloc((size_t)BLOCK_COLS_MAX * BLOCK_ROWS_MAX);
-    }
-    if (grid == NULL) {
-        grid = malloc((size_t)GRID_W_MAX * GRID_H_MAX);
-    }
-    /* impulse_buf allocates LAST, deliberately: grid needs the single
-     * largest contiguous heap run, so it must pick first. Reordering does
-     * not create more contiguous space, only decides who gets first pick -
-     * moving impulse_buf ahead of grid produced a WORSE failure (no
-     * memory for the grid at all). Do not reorder without a fresh device
-     * capture showing it helps. */
-    if (impulse_buf == NULL) {
-        impulse_buf = malloc((size_t)APP_IMPULSE_MAX * sizeof(*impulse_buf));
-        /* LOUD, NOT FATAL, unlike the buffers below: sand_enable_impulses
-         * (NULL, ...) safely disables just DETONATE, so failing here alone
-         * shouldn't strand a player who never wanted it behind a "no
-         * memory" screen. Logs largest_free_block, not total free heap -
-         * total free heap tells the wrong story here (see
-         * SAND_IMPULSE_BUDGET_BYTES); largest block is what actually
-         * predicts whether this allocation succeeds. */
-        if (impulse_buf == NULL) {
-            ESP_LOGE(TAG,
-                     "Could not allocate the %d-entry blast buffer "
-                     "(%u bytes) - detonate will be a no-op this "
-                     "session; largest free block is %u",
-                     APP_IMPULSE_MAX, (unsigned)((size_t)APP_IMPULSE_MAX * sizeof(*impulse_buf)),
-                     (unsigned)memory_largest_block(MEMORY_8BIT));
-        }
-    }
-    const bool bookkeeping_ok = alloc_grid_bookkeeping();
-    if (grid == NULL || dirty_rows == NULL || sleep_blocks == NULL || !bookkeeping_ok) {
+    if (!buffers_ok) {
         ESP_LOGE(TAG,
                  "Could not allocate a %d x %d grid (%d bytes); "
                  "largest free block is %u",
@@ -634,24 +611,24 @@ start_sim(void) {
 
     seed_row_runs_full_width();
 
-    sand_init(&sim, grid, grid_w, grid_h, (uint32_t)timing_now_us());
+    sand_init(&sim, buffers.grid, grid_w, grid_h, (uint32_t)timing_now_us());
     sand_set_scatter(&sim, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&sim, SAND_DECAY_PER_MATERIAL);
     sand_set_evaporates(&sim, SAND_EVAPORATES_PER_MATERIAL);
     sand_set_soak(&sim, SAND_SOAK_PER_MATERIAL);
     sand_set_mobility(&sim, SAND_MOBILITY_PER_MATERIAL);
 
-    sand_track_dirty_rows(&sim, dirty_rows);
-    sand_track_dirty_cols(&sim, dirty_x0, dirty_x1);
+    sand_track_dirty_rows(&sim, buffers.dirty_rows);
+    sand_track_dirty_cols(&sim, buffers.dirty_x0, buffers.dirty_x1);
 
-    sand_enable_sleeping(&sim, sleep_blocks);
-    sand_enable_step_stamps(&sim, step_stamps);
-    sand_enable_lane_scratch(&sim, lane_scratch);
+    sand_enable_sleeping(&sim, buffers.sleep_blocks);
+    sand_enable_step_stamps(&sim, buffers.step_stamps);
+    sand_enable_lane_scratch(&sim, buffers.lane_scratch);
 
     /* Enabled unconditionally, not just once BOOM is selected, so an
      * allocation failure shows up at start_sim() rather than on the first
      * tap in BOOM mode. */
-    sand_enable_impulses(&sim, impulse_buf, APP_IMPULSE_MAX);
+    sand_enable_impulses(&sim, buffers.impulse_buf, APP_IMPULSE_MAX);
     tilt_reset(&tilt, IMU_COUNTS_PER_G);
 
     if (!imu_init()) {
@@ -784,7 +761,7 @@ paint_row(gfx_color_t* fb, uint8_t* index_row, int cy, const uint8_t* row, int w
 static int
 draw_one_row(gfx_color_t* fb, uint8_t* index_image, int cy, uint16_t* cur_x0, uint16_t* cur_x1, int wx0, int wx1,
              bool force_full) {
-    const uint8_t* row = &grid[cy * grid_w];
+    const uint8_t* row = &buffers.grid[cy * grid_w];
     uint8_t* index_row = index_image != NULL ? index_image + cy * grid_w : NULL;
 
     paint_row(fb, index_row, cy, row, wx0, wx1, force_full);
@@ -817,7 +794,7 @@ mark_wake_hits(bool moved, uint8_t flag) {
     }
     for (int cy = 0; cy < grid_h; cy++) {
         if (paint_row_state.row_flags[cy] & flag) {
-            dirty_rows[cy] = 1;
+            buffers.dirty_rows[cy] = 1;
             wake_hit[cy] = true;
         }
     }
@@ -829,8 +806,8 @@ mark_wake_hits(bool moved, uint8_t flag) {
  * recorded at all falls back to the row's full width, as before. */
 static void
 row_paint_span(int cy, int* out_x0, int* out_x1) {
-    int x0 = dirty_x0[cy];
-    int x1 = dirty_x1[cy];
+    int x0 = buffers.dirty_x0[cy];
+    int x1 = buffers.dirty_x1[cy];
 
     /* Sentinel x0/x1 (grid_w, 0) is already the correct identity element
      * for a min/max union - it never wins against a real span below. */
@@ -884,19 +861,19 @@ mark_row_sends(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t
  * returns the pixels marked. */
 static int64_t
 draw_dirty_row(gfx_color_t* fb, uint8_t* index_image, int cy, bool force_full, bool indexed, bool healing) {
-    dirty_rows[cy] = 0;
+    buffers.dirty_rows[cy] = 0;
 
     int wx0, wx1;
     row_paint_span(cy, &wx0, &wx1);
-    dirty_x0[cy] = (uint16_t)grid_w;
-    dirty_x1[cy] = 0;
+    buffers.dirty_x0[cy] = (uint16_t)grid_w;
+    buffers.dirty_x1[cy] = 0;
 
     uint16_t cur_x0[ROW_MAX_RUNS], cur_x1[ROW_MAX_RUNS];
     const int cur_n = draw_one_row(fb, index_image, cy, cur_x0, cur_x1, wx0, wx1, force_full);
 
-    uint16_t* prev_x0 = &row_run_x0[cy * ROW_MAX_RUNS];
-    uint16_t* prev_x1 = &row_run_x1[cy * ROW_MAX_RUNS];
-    const int prev_n = row_run_n[cy];
+    uint16_t* prev_x0 = &buffers.row_run_x0[cy * ROW_MAX_RUNS];
+    uint16_t* prev_x1 = &buffers.row_run_x1[cy * ROW_MAX_RUNS];
+    const int prev_n = buffers.row_run_n[cy];
 
     uint16_t send_x0[2 * ROW_MAX_RUNS], send_x1[2 * ROW_MAX_RUNS];
     const int send_n = row_runs_reconcile(cur_x0, cur_x1, cur_n, prev_x0, prev_x1, prev_n, send_x0, send_x1);
@@ -907,7 +884,7 @@ draw_dirty_row(gfx_color_t* fb, uint8_t* index_image, int cy, bool force_full, b
         prev_x0[i] = cur_x0[i];
         prev_x1[i] = cur_x1[i];
     }
-    row_run_n[cy] = (uint8_t)cur_n;
+    buffers.row_run_n[cy] = (uint8_t)cur_n;
     return pixels;
 }
 
@@ -947,7 +924,7 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
 
     for (int i = 0; i < grid_h; i++) {
         const int cy = reverse_rows ? (grid_h - 1 - i) : i;
-        if (!dirty_rows[cy]) {
+        if (!buffers.dirty_rows[cy]) {
             continue;
         }
         const int64_t row_pixels = draw_dirty_row(fb, index_image, cy, force_full, indexed, healing);
@@ -1256,7 +1233,7 @@ count_occupied_in_block(int bx, int by) {
 
     int cells = 0;
     for (int y = y0; y < y1; y++) {
-        const uint8_t* row = &grid[(size_t)y * grid_w];
+        const uint8_t* row = &buffers.grid[(size_t)y * grid_w];
         for (int x = x0; x < x1; x++) {
             if (row[x] != SAND_EMPTY) {
                 cells++;
@@ -1508,13 +1485,9 @@ take_ui_actions(const input_t* input) {
 
 static void
 close_overlay_screen(void) {
-    /* Restores UI_TEXT_PLAIN so the palette's outline style doesn't leak
-     * into the next UI drawn (text style stays in force until changed -
-     * ui.h); the brush screen only ever used PLAIN, so this is a no-op
-     * on that path. main.c owns the transform for the whole shell,
-     * sampling real orientation on its own schedule - an app must not
-     * touch it; resetting it here would fight the shell the moment the
-     * board is actually held sideways. */
+    /* Restores UI_TEXT_PLAIN so the palette's outline style does not leak
+     * into the next UI drawn (ui.h). The transform is left alone: the shell
+     * owns it and sets it from the board's orientation. */
     ui_set_text_style(UI_TEXT_PLAIN);
 
     apply_gfx_action(sand_colour_on_close_overlay(&colour_state));
@@ -1598,7 +1571,7 @@ draw_sim_frame(const input_t* input) {
 
     FRAME_COST_BEGIN(draw_mark);
     if (label_dirty_this_frame) {
-        memset(dirty_rows, 1, (size_t)grid_h);
+        memset(buffers.dirty_rows, 1, (size_t)grid_h);
         /* Full width, not whatever the sim narrowed this step to: the
          * label's own erase can leave sand pixels stale under it with no
          * grid cell having changed there at all. */
@@ -1812,7 +1785,7 @@ APP_CONSOLE("sand", sand_console_line);
  * when a palette or brush screen is what is actually showing. */
 static void
 sand_invalidate(void) {
-    if (grid == NULL) {
+    if (buffers.grid == NULL) {
         return;
     }
     mark_sand_fully_dirty();

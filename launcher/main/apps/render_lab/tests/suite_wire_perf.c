@@ -25,8 +25,8 @@
 #include "gfx/gfx_band_run.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
-#include "util/memory.h"
-#include "util/timing.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/timing.h"
 
 /* app_render_lab.c's own lifecycle and toggles. */
 extern bool render_lab_band_mode;
@@ -148,7 +148,7 @@ run_band_frame(wire_totals_t* t, uint32_t dt_ms) {
 }
 
 /* Runs one (primitive, layout, orientation) combination for SAMPLE_MS,
- * clamping dt_ms the way main.c's own loop does. */
+ * clamping dt_ms the way the shell's own loop does. */
 static wire_totals_t
 capture(void (*run_frame)(wire_totals_t*, uint32_t)) {
     wire_totals_t t = {0};

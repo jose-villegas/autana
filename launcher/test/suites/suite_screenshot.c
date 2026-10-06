@@ -12,7 +12,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "util/screenshot.h"
+#include "util/encode/screenshot.h"
 
 static void
 test_row_stride_already_aligned_needs_no_padding(void) {

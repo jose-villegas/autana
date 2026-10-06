@@ -14,9 +14,6 @@
  * wrappers around the dirty_*() functions here. Those three are the only
  * names in this file with a public-API counterpart to avoid colliding
  * with; everything else is private to gfx.c.
- *
- * The measurements behind the grid and the leaf layer are in
- * docs/notes/Display-and-Rendering.md's "Dirty tracking, measured".
  */
 #pragma once
 
@@ -24,8 +21,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "build_variant.h"
-#include "util/intmath.h"
+#include "util/build/build_variant.h"
+#include "util/scalar/mathi.h"
 
 /* Mirrors gfx.h's GFX_WIDTH/GFX_HEIGHT (BSP_LCD_H_RES/V_RES) as plain
  * literals; this module must stay free of ESP-IDF/BSP headers to compile
@@ -410,8 +407,8 @@ dirty_band_extent(int y0, int y1, int* out_x0, int* out_x1) {
         return false;
     }
 
-    x0 = even_floor(x0);
-    x1 = even_ceil(x1);
+    x0 = mathi_even_floor(x0);
+    x1 = mathi_even_ceil(x1);
     *out_x0 = x0 < 0 ? 0 : x0;
     *out_x1 = x1 > GFX_DIRTY_WIDTH ? GFX_DIRTY_WIDTH : x1;
     return true;

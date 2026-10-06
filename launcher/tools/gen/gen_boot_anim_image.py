@@ -58,32 +58,27 @@ HOW A PIXEL IS PACKED
 gfx_color_t is RGB565 with the two bytes swapped (see gfx_color.h's own
 comment for why; it is what this panel's QSPI controller wants, the
 opposite of the chip's native order), not plain RGB565 and not 0xRRGGBB.
-gfx_rgb565()/gfx_rgb() below replicate gfx_color.h's GFX_RGB565/GFX_RGB
-macros exactly, channel-by-channel rather than via the packed-integer shift
-form the C macros use, because that is the form easiest to check against
-known GFX_RGB(...) values independently (see the self-check in main());
-the two are algebraically identical, verified there rather than assumed.
+gfx_rgb() below is GFX_RGB through gfx_color.py, which packs channel by
+channel rather than in the macros' shift form; the self-check in main()
+pins the two together against known GFX_RGB(...) values.
 """
 
 import sys
+from pathlib import Path
 
-# --- panel/view geometry - MUST match boot_anim.h and gfx.h ----------------
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
+import gfx_color  # noqa: E402  (path must be set up first)
+from panel_size import PANEL_HEIGHT as PANEL_H, PANEL_WIDTH as PANEL_W  # noqa: E402  (path must be set up first)
 
-PANEL_W = 368   # gfx.h GFX_WIDTH
-PANEL_H = 448   # gfx.h GFX_HEIGHT
-VIEW_W = 448    # boot_anim.h BOOT_ANIM_TITLE_VIEW_W
-VIEW_H = 368    # boot_anim.h BOOT_ANIM_TITLE_VIEW_H
+# --- view geometry - MUST match boot_anim.h -------------------------------
 
-
-def gfx_rgb565(r, g, b):
-    """gfx_color.h's GFX_RGB565(0xRRGGBB), from separate 8-bit channels."""
-    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+VIEW_W = PANEL_H
+VIEW_H = PANEL_W
 
 
 def gfx_rgb(r, g, b):
-    """gfx_color.h's GFX_RGB(0xRRGGBB) - GFX_RGB565 with the bytes swapped."""
-    v = gfx_rgb565(r, g, b)
-    return ((v >> 8) | (v << 8)) & 0xFFFF
+    """gfx_color.h's GFX_RGB(0xRRGGBB): GFX_RGB565 with the bytes swapped."""
+    return gfx_color.swap(gfx_color.rgb565(r, g, b))
 
 
 def panel_index(view_x, view_y):

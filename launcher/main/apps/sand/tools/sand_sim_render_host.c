@@ -1,3 +1,7 @@
+/*
+ * sand_sim_render_host: runs the real simulation on a host under scripted
+ * tilt and writes its frames as images.
+ */
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>

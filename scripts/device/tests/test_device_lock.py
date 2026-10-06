@@ -707,54 +707,11 @@ class BusyTextTests(unittest.TestCase):
                                       "`autana lock take-back` ends it)")
 
 
-class HumanReservationRealClockTests(unittest.TestCase):
-    """The same rule against the real clock: no injected time, records
-    written the way a lapsed hour leaves them."""
-
-    BOARD = "90:70:69:FE:A3:08"
-
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
-        self.lock = device_lock.LockStore(self.root)
-
-    def tearDown(self):
-        self.temp.cleanup()
-
-    def status_text(self):
-        now = self.lock.now()
-        return "\n".join(device_lock.status_lines(
-            device_lock.status_entry(self.lock, self.BOARD, now=now), now))
-
-    def acquire(self):
-        return self.lock.acquire(self.BOARD, "agent", "flash")
-
-    def write_reservation(self, age_seconds):
-        self.lock.write_json(self.lock.human_path(self.BOARD), {
-            "board": self.BOARD, "id": "person", "note": "bench", "owner": "maintainer",
-            "since_at": time.time() - age_seconds, "protocol": 1})
-
+class DefaultOwnerTests(unittest.TestCase):
     def test_an_unnamed_owner_is_user_at_host_colon_pid_not_unknown(self):
         owner = device_lock.default_owner()
         self.assertRegex(owner, r"^.+@.+:\d+$")
         self.assertNotEqual(owner, "unknown")
-
-    def test_an_hour_old_reservation_is_reported_released_and_does_not_block(self):
-        self.write_reservation(3601)
-        self.assertIn("expired", self.status_text())
-        self.assertIsNotNone(self.acquire())
-
-    def test_a_recent_reservation_blocks_and_shows_time_left(self):
-        self.write_reservation(60)
-        self.assertIn("left", self.status_text())
-        self.assertIsNone(self.acquire())
-
-    def test_reserving_again_renews_it(self):
-        self.write_reservation(3000)
-        self.assertRegex(self.status_text(), r"(9m|10m) left")
-        self.lock.set_human(self.BOARD, "maintainer", "bench")
-        self.assertRegex(self.status_text(), r"(59m|1h) left")
-        self.assertIsNone(self.acquire())
 
 
 class FakeScope:

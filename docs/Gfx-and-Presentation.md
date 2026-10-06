@@ -4,8 +4,7 @@ How a draw call becomes pixels on the panel: the three draw targets, the dirty
 tracker, and the present path. The API is
 [`launcher/main/gfx/gfx.h`](../launcher/main/gfx/gfx.h); the implementation is
 `gfx/gfx.c` over the pure headers beside it. For what an app owes the shell
-see [`Building-an-App.md`](Building-an-App.md); for the measurements behind
-these choices see
+see [`Building-an-App.md`](Building-an-App.md); for the panel constraints these choices obey see
 [`notes/Display-and-Rendering.md`](notes/Display-and-Rendering.md).
 
 Two facts drive everything here. Sending is almost the whole cost of a frame
@@ -163,7 +162,7 @@ sequenceDiagram
 | Call | Does |
 |---|---|
 | `gfx_present()` | `gfx_present_begin()` then `gfx_present_wait()` |
-| `gfx_present_begin()` | hands the target to core 1, returns at once. A no-op in band-ring mode. Each call also ends a frame for the frame watch (`util/frame_watch.h`). |
+| `gfx_present_begin()` | hands the target to core 1, returns at once. A no-op in band-ring mode. Each call also ends a frame for the frame watch (`util/runtime/frame_watch.h`). |
 | `gfx_present_wait()` | blocks until everything queued has landed |
 | `gfx_set_present_async()` | `false` sends on the caller's core instead, for A/B timing |
 
@@ -316,5 +315,5 @@ Frame stage timing is described in [`tools/Frame-Cost.md`](tools/Frame-Cost.md).
 
 - [`Building-an-App.md`](Building-an-App.md): when the shell presents, and `update()`
 - [`Firmware-Architecture.md`](Firmware-Architecture.md): why one framebuffer, one frame loop
-- [`notes/Display-and-Rendering.md`](notes/Display-and-Rendering.md): the measurements and the bugs behind each mechanism
+- [`notes/Display-and-Rendering.md`](notes/Display-and-Rendering.md): the panel constraints these choices obey
 - [`plans/Autana-Rendering-Roadmap.md`](plans/Autana-Rendering-Roadmap.md): where this is going

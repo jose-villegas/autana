@@ -53,16 +53,17 @@ run_requests(int argc, char** argv) {
     }
 }
 
-/* A test that corrupts the heap, or trips an assert, ends the process, and
- * Unity's buffered results go with it. Name the test that was running as a
- * failure, in Unity's own format, so the break is red by name rather than a
- * silent crash. */
+/* A test that corrupts the heap, trips an assert or reads an unmapped page
+ * ends the process, and Unity's buffered results go with it. Name the test that
+ * was running as a failure, in Unity's own format, so the break is red by name
+ * rather than a silent crash. */
 static void
-name_the_test_that_aborted(int signal_number) {
+name_the_test_that_died(int signal_number) {
     (void)fflush(stdout);
-    (void)printf("%s:%u:%s:FAIL: the process aborted (an assert, or heap_arena's report above)\n",
-                 Unity.TestFile == NULL ? "?" : Unity.TestFile, (unsigned)Unity.CurrentTestLineNumber,
-                 Unity.CurrentTestName == NULL ? "?" : Unity.CurrentTestName);
+    (void)printf(
+        "%s:%u:%s:FAIL: the process died on signal %d (an assert, heap_arena's report above, or an unmapped read)\n",
+        Unity.TestFile == NULL ? "?" : Unity.TestFile, (unsigned)Unity.CurrentTestLineNumber,
+        Unity.CurrentTestName == NULL ? "?" : Unity.CurrentTestName, signal_number);
     (void)fflush(stdout);
     (void)signal(signal_number, SIG_DFL);
     (void)raise(signal_number);
@@ -70,7 +71,8 @@ name_the_test_that_aborted(int signal_number) {
 
 int
 main(int argc, char** argv) {
-    (void)signal(SIGABRT, name_the_test_that_aborted);
+    (void)signal(SIGABRT, name_the_test_that_died);
+    (void)signal(SIGSEGV, name_the_test_that_died);
     UNITY_BEGIN();
 
     if (argc > 1) {

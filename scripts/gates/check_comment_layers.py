@@ -32,16 +32,17 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from check_comment_length import EXCLUDED, scan  # noqa: E402
+from c_comments import sources as comment_sources, scan  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 
-LOWER = ("launcher/main/boot/", "launcher/main/display/", "launcher/main/gfx/",
-         "launcher/main/input/", "launcher/main/render/", "launcher/main/ui/",
-         "launcher/main/util/", "launcher/main/anim/", "launcher/main/asset/", "launcher/main/console/", "launcher/test/")
+# Below the apps: all of launcher/main/ except apps/, and the test tree. A
+# new folder is checked from the day it exists.
+ENGINE = ("launcher/main/", "launcher/test/")
 APPS = "launcher/main/apps"
 
-# The shell's own two files: they switch between apps without knowing one.
-SHELL = ("launcher/main/app.h", "launcher/main/main.c")
+
+def below_apps(rp):
+    return rp.startswith(ENGINE) and not rp.startswith(APPS + "/")
 
 # The diagnostics build is the variant behind build.diag, which every layer
 # may name; the app that happens to share the word is what this forbids.
@@ -57,27 +58,25 @@ def app_names(root="."):
 def name_pattern(names):
     # Boundaries exclude only [A-Za-z0-9], not underscore, so a name inside a
     # compound identifier like `app_sand.c` or `sand_ui_step` still matches.
-    spelled = [re.escape(n).replace("_", r"(?:\s+|[_-])?") for n in names]
+    spelled = [re.escape(n).replace("_", r"(?:\s+|[_-]|%5[fF]|%2[dD])?") for n in names]
     return re.compile(r"(?<![A-Za-z0-9])(" + "|".join(spelled) + r")(?![A-Za-z0-9])", re.I)
 
 
 def canonical(hit, names):
-    flat = re.sub(r"[\s_-]+", "", hit.lower())
+    flat = re.sub(r"[\s_-]+|%5f|%2d", "", hit.lower())
     return next(n for n in names if n.replace("_", "") == flat)
 
 
 def sources(root):
-    for rp in tracked_files(root):
-        if not rp.endswith((".c", ".h")) or rp.startswith(EXCLUDED):
-            continue
-        if rp.startswith(LOWER) or rp in SHELL:
+    for path in comment_sources(root, tracked=True):
+        rp = path.relative_to(root).as_posix()
+        if below_apps(rp):
             yield rp
-
 
 def documents(root, names):
     own = ("docs/plans/",) + tuple(f"docs/{n}/" for n in names)
     for rp in tracked_files(root):
-        if rp.endswith(".md") and rp.startswith(("docs/",) + LOWER) and not rp.startswith(own):
+        if rp.endswith(".md") and (rp.startswith("docs/") or below_apps(rp)) and not rp.startswith(own):
             yield rp
 
 

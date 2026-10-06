@@ -1,3 +1,4 @@
+/* Desktop editing and firmware-backed previews of authored layouts. */
 #define SDL_MAIN_HANDLED
 
 #include <SDL.h>
@@ -9,7 +10,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -75,14 +78,15 @@ struct SystemScreen {
 
 bool
 render_preview(Preview& preview, const SystemScreen& screen) {
-    std::vector<editor_rect_t> rects;
-    editor_layout_t authored = {};
+    control_center_layout_t authored = {};
     if (screen.document) {
         const ScreenLayout& layout = screen.document->layout(preview.orientation);
-        for (const LayoutRect& rect : layout.rects) {
-            rects.push_back({rect.x, rect.y, rect.width, rect.height});
+        authored.canvas_width = static_cast<int16_t>(layout.canvas_width);
+        authored.canvas_height = static_cast<int16_t>(layout.canvas_height);
+        if (layout.rects.size() != CONTROL_CENTER_ELEMENT_COUNT) {
+            return false;
         }
-        authored = {layout.canvas_width, layout.canvas_height, static_cast<int>(rects.size()), rects.data()};
+        std::copy(layout.rects.begin(), layout.rects.end(), authored.rects);
     }
     std::string error;
     return editor_runtime_render(screen.runtime_screen, screen.document ? &authored : nullptr, preview.surface.pixels(),
@@ -95,59 +99,21 @@ baked_header_path(const LayoutDocument& document) {
     return document.path().parent_path() / (document.screen() + "_layout_generated.h");
 }
 
-std::string
-shell_argument(const std::filesystem::path& path) {
-    const std::string value = path.string();
-#ifdef _WIN32
-    if (value.find('"') != std::string::npos || value.find('%') != std::string::npos) {
-        return {};
-    }
-    return '"' + value + '"';
-#else
-    std::string quoted = "'";
-    for (char character : value) {
-        quoted += character == '\'' ? "'\\''" : std::string(1, character);
-    }
-    return quoted + "'";
-#endif
-}
-
 bool
-bake_layout(const LayoutDocument& document, bool check_only, std::string& error) {
-#ifndef EDITOR_PYTHON_EXECUTABLE
-    (void)document;
-    (void)check_only;
-    error = "Python was not available when the editor was configured";
-    return false;
-#else
-    const std::filesystem::path generator =
-        std::filesystem::path(EDITOR_PROJECT_ROOT) / "launcher" / "tools" / "gen" / "gen_ui_layout.py";
-    const std::filesystem::path output = baked_header_path(document);
-    const std::string python_argument = shell_argument(EDITOR_PYTHON_EXECUTABLE);
-    const std::string generator_argument = shell_argument(generator);
-    const std::string source_argument = shell_argument(document.path());
-    const std::string output_argument = shell_argument(output);
-    if (python_argument.empty() || generator_argument.empty() || source_argument.empty() || output_argument.empty()) {
-        error = "A bake path contains unsupported shell characters";
+bake_layout(const LayoutDocument& document, std::string& error) {
+    try {
+        const std::string baked = bake_header(document, baked_header_path(document));
+        std::ofstream output(baked_header_path(document), std::ios::binary | std::ios::trunc);
+        output << baked;
+        if (!output) {
+            throw std::runtime_error("could not write baked header");
+        }
+        error.clear();
+        return true;
+    } catch (const std::exception& exception) {
+        error = exception.what();
         return false;
     }
-
-    // gen_ui_layout.py stays the only writer of firmware geometry; the
-    // editor launches it and never reimplements it.
-    std::string command = python_argument + " " + generator_argument + " " + source_argument + " " + output_argument;
-    if (check_only) {
-        command += " --check";
-    }
-#ifdef _WIN32
-    command = '"' + command + '"';
-#endif
-    if (std::system(command.c_str()) != 0) {
-        error = "Layout generator failed";
-        return false;
-    }
-    error.clear();
-    return true;
-#endif
 }
 
 bool
@@ -223,11 +189,11 @@ draw_preview(Preview& preview, ScreenLayout* editable, std::size_t& selected, La
             const int delta_x = static_cast<int>(std::lround((pointer.x - interaction.pointer_origin.x) / scale));
             const int delta_y = static_cast<int>(std::lround((pointer.y - interaction.pointer_origin.y) / scale));
             if (interaction.mode == DragMode::Move) {
-                next.x += delta_x;
-                next.y += delta_y;
+                next.x = std::clamp<int>(next.x + delta_x, 0, layout.canvas_width - next.width);
+                next.y = std::clamp<int>(next.y + delta_y, 0, layout.canvas_height - next.height);
             } else {
-                next.width += delta_x;
-                next.height += delta_y;
+                next.width = std::clamp<int>(next.width + delta_x, 1, layout.canvas_width);
+                next.height = std::clamp<int>(next.height + delta_y, 1, layout.canvas_height);
             }
             constrain_rect(next, layout);
             LayoutRect& target = layout.rects[interaction.element_index];
@@ -249,10 +215,10 @@ draw_preview(Preview& preview, ScreenLayout* editable, std::size_t& selected, La
 
 void
 constrain_rect(LayoutRect& rect, const ScreenLayout& layout) {
-    rect.width = std::clamp(rect.width, 1, layout.canvas_width);
-    rect.height = std::clamp(rect.height, 1, layout.canvas_height);
-    rect.x = std::clamp(rect.x, 0, layout.canvas_width - rect.width);
-    rect.y = std::clamp(rect.y, 0, layout.canvas_height - rect.height);
+    rect.width = std::clamp<int>(rect.width, 1, layout.canvas_width);
+    rect.height = std::clamp<int>(rect.height, 1, layout.canvas_height);
+    rect.x = std::clamp<int>(rect.x, 0, layout.canvas_width - rect.width);
+    rect.y = std::clamp<int>(rect.y, 0, layout.canvas_height - rect.height);
 }
 
 struct RectEditResult {
@@ -264,13 +230,13 @@ RectEditResult
 draw_rect_editor(LayoutRect& rect, const ScreenLayout& layout) {
     bool changed = false;
     bool committed = false;
-    changed |= ImGui::DragInt("X", &rect.x, 1.0f);
+    changed |= ImGui::DragScalar("X", ImGuiDataType_S16, &rect.x, 1.0f);
     committed |= ImGui::IsItemDeactivatedAfterEdit();
-    changed |= ImGui::DragInt("Y", &rect.y, 1.0f);
+    changed |= ImGui::DragScalar("Y", ImGuiDataType_S16, &rect.y, 1.0f);
     committed |= ImGui::IsItemDeactivatedAfterEdit();
-    changed |= ImGui::DragInt("Width", &rect.width, 1.0f);
+    changed |= ImGui::DragScalar("Width", ImGuiDataType_S16, &rect.width, 1.0f);
     committed |= ImGui::IsItemDeactivatedAfterEdit();
-    changed |= ImGui::DragInt("Height", &rect.height, 1.0f);
+    changed |= ImGui::DragScalar("Height", ImGuiDataType_S16, &rect.height, 1.0f);
     committed |= ImGui::IsItemDeactivatedAfterEdit();
     if (changed) {
         constrain_rect(rect, layout);
@@ -482,7 +448,7 @@ save_and_bake(EditorState& state, const MenuRequests& requests) {
         }
     }
     if (requests.bake) {
-        state.notice = bake_layout(*screen.document, false, error)
+        state.notice = bake_layout(*screen.document, error)
                            ? "Baked " + baked_header_path(*screen.document).filename().string()
                            : "Bake failed: " + error;
     }
@@ -553,22 +519,10 @@ load_system_screens(std::string& error) {
     return state;
 }
 
-int
-check_bakes(const EditorState& state) {
-    for (const SystemScreen& screen : state.screens) {
-        std::string error;
-        if (screen.document && !bake_layout(*screen.document, true, error)) {
-            std::fprintf(stderr, "%s bake check failed: %s\n", screen.title, error.c_str());
-            return 1;
-        }
-    }
-    return 0;
-}
-
 } // namespace
 
 int
-main(int argument_count, char** arguments) {
+main() {
     std::string load_error;
     std::optional<EditorState> loaded = load_system_screens(load_error);
     if (!loaded) {
@@ -576,10 +530,6 @@ main(int argument_count, char** arguments) {
         return 1;
     }
     EditorState state = std::move(*loaded);
-
-    if (argument_count == 2 && std::string(arguments[1]) == "--check-bake") {
-        return check_bakes(state);
-    }
 
     SDL_SetMainReady();
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
@@ -624,8 +574,10 @@ main(int argument_count, char** arguments) {
     ImGui_ImplSDL2_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer2_Init(renderer);
 
-    Preview landscape("Landscape", LayoutOrientation::Landscape, 448, 368);
-    Preview portrait("Portrait", LayoutOrientation::Portrait, 368, 448);
+    Preview landscape("Landscape", LayoutOrientation::Landscape, editor_runtime_panel_height(),
+                      editor_runtime_panel_width());
+    Preview portrait("Portrait", LayoutOrientation::Portrait, editor_runtime_panel_width(),
+                     editor_runtime_panel_height());
     if (!create_preview(renderer, landscape, state.screens[state.active])
         || !create_preview(renderer, portrait, state.screens[state.active])) {
         std::fprintf(stderr, "Preview texture creation failed: %s\n", SDL_GetError());

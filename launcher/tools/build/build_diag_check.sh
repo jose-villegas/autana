@@ -89,12 +89,18 @@ soft_double_gate() {
     "$PYTHON" "$DIR/check_no_soft_double.py" "$DIR/../../build.diag"
 }
 
+render_layout_gate() {
+    echo "=== Pinned render code layout ==="
+    "$PYTHON" "$DIR/../render/code_layout.py" --check "$DIR/../../build.diag"
+}
+
 if [ -f "$COMPILE_DB" ]; then
     complexity_gate
     build_diag
     suite_static_data_gate
     stack_chain_gate
     soft_double_gate
+    render_layout_gate
     exit 0
 fi
 
@@ -104,3 +110,4 @@ complexity_gate
 suite_static_data_gate
 stack_chain_gate
 soft_double_gate
+render_layout_gate

@@ -8,7 +8,7 @@
 #include "material_palette.h"
 #include "sand_limits.h"
 #include "sand_paint.h"
-#include "util/intmath.h"
+#include "util/scalar/mathi.h"
 
 #define SAND_PAINT_ROW_FLAG_SHINE          (1u << 0)
 #define SAND_PAINT_ROW_FLAG_LIQUID         (1u << 1)
@@ -73,9 +73,9 @@ sand_paint_row_state_init(sand_paint_row_state_t* s) {
 
 static inline void
 sand_paint_update_local_depth_gravity(sand_paint_row_state_t* s, int gx, int gy, int grid_w, int grid_h) {
-    const int ax = im_abs(gx), ay = im_abs(gy);
+    const int ax = mathi_abs(gx), ay = mathi_abs(gy);
 
-    const int len = im_len(gx, gy);
+    const int len = mathi_len(gx, gy);
     const bool new_vertical_dominant = (ay >= ax);
     const unsigned dom_axis = new_vertical_dominant ? (unsigned)ay : (unsigned)ax;
     s->local_depth_scale_q8 = (dom_axis != 0u) ? (256u * (unsigned)len) / dom_axis : 256u;

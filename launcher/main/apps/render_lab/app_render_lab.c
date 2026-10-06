@@ -13,9 +13,8 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "app.h"
-#include "app_arena.h"
-#include "build_variant.h"
+#include "app/app.h"
+#include "app/app_arena.h"
 #include "gfx/gfx.h"
 #include "render_lab.h"
 #include "render_lab_mode_switch.h"
@@ -25,7 +24,8 @@
 #include "ui/render_lab_hud_screen.h"
 #include "ui/render_lab_menu_screen.h"
 #include "ui/ui.h"
-#include "util/tune.h"
+#include "util/build/build_variant.h"
+#include "util/runtime/tune.h"
 
 extern const render_lab_scene_t scene_cube;
 extern const render_lab_scene_t scene_wire_plane;
@@ -145,11 +145,8 @@ static bool scene_switch_pending;
  * allocated. */
 static bool band_mode_active;
 
-/* On-screen framerate readout: main.c's own report_fps() only ever reaches
- * a serial console, so this is what lets a scene's own cost be seen with
- * nothing but the board itself. Windowed on dt_ms rather than
- * timing_now_us() like report_fps() does, so this needs nothing beyond
- * what render_lab_frame() is already handed. */
+/* On-screen framerate, since the shell's report_fps() reaches only the
+ * serial console. Windowed on the dt_ms render_lab_frame() is handed. */
 #define FPS_WINDOW_MS 500
 static uint32_t fps_frame_count;
 static uint32_t fps_window_elapsed_ms;
@@ -304,11 +301,9 @@ draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
     }
 }
 
-/* fps_value only actually changes once a window closes, so it reads as a
- * settled average rather than jittering with every frame's own dt_ms -
- * same reason report_fps() in main.c windows instead of reporting per
- * frame. Shared by both render paths so the readout means the same thing
- * in either mode. */
+/* fps_value changes only when a window closes, so it reads as a settled
+ * average, as report_fps() in shell/shell.c does. Shared by both render
+ * paths. */
 /* No scene erases the title's box, so the frame it expires on is redrawn in
  * full. */
 static void
@@ -349,15 +344,14 @@ render_lab_clear_band(gfx_color_t* buf, int height) {
 }
 
 void
-render_lab_coverage_mark(render_lab_coverage_t* last, bool have, int x0, int y0, int x1, int y1) {
-    if (last->valid) {
-        gfx_mark_dirty(last->x0, last->y0, last->x1 - last->x0, last->y1 - last->y0);
+render_lab_coverage_mark(render_lab_coverage_t* last, gfx_box_t box) {
+    if (!gfx_box_is_empty(last->box)) {
+        gfx_mark_dirty(last->box.x0, last->box.y0, last->box.x1 - last->box.x0, last->box.y1 - last->box.y0);
     }
-    if (have) {
-        gfx_mark_dirty(x0, y0, x1 - x0, y1 - y0);
-        *last = (render_lab_coverage_t){x0, y0, x1, y1, true};
+    if (!gfx_box_is_empty(box)) {
+        gfx_mark_dirty(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
     }
-    last->valid = have;
+    last->box = box;
 }
 
 /* The band-mode frame builds one UI command list; the shell replays it over

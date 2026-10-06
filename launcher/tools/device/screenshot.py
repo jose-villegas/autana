@@ -19,7 +19,7 @@ ESP_LOG output in particular, is ignored rather than treated as an
 error, since the device keeps logging normally while it streams.
 
 The device streams its frame as a 24bpp BMP (see screenshot_bmp_header() in
-util/screenshot.h), the simplest thing to emit from a microcontroller with
+util/encode/screenshot.h), the simplest thing to emit from a microcontroller with
 no image library on it, but nothing here ever writes that BMP to disk:
 bmp_bytes_to_png() below converts it to PNG entirely in memory, and a
 capture's output gets only the PNG. This is genuinely lossless, not just
@@ -38,6 +38,8 @@ import re
 import struct
 import time
 import zlib
+
+from panel_size import PANEL_HEIGHT, PANEL_WIDTH
 
 BEGIN_RE = re.compile(r"^SCREENSHOT_BEGIN size=(\d+)$")
 DATA_PREFIX = "SCREENSHOT_DATA:"
@@ -116,6 +118,30 @@ def bmp_bytes_to_png(bmp: bytes) -> bytes:
     png += _png_chunk(b"IDAT", zlib.compress(raw, 6))
     png += _png_chunk(b"IEND", b"")
     return png
+
+
+# The turn a screenshot gets when no view is asked for: landscape, the same
+# turn whichever way the board is held.
+DEFAULT_TURN_QUARTER = 3
+
+
+def panel_point(x, y, quarter, width=PANEL_WIDTH, height=PANEL_HEIGHT):
+    """The panel pixel that turn_png(png, quarter) moved to (x, y), for a
+    width x height panel image: turn_png's inverse, for one point. The
+    panel's frame is the one the framebuffer's bytes and the touch points
+    TAP, PRESS and DRAG take are in, whichever way the board is held.
+    ValueError when (x, y) lies outside the turned image."""
+    quarter %= 4
+    shown_width, shown_height = (height, width) if quarter % 2 else (width, height)
+    if not (0 <= x < shown_width and 0 <= y < shown_height):
+        raise ValueError(f"({x}, {y}) is outside the {shown_width} x {shown_height} screenshot")
+    if quarter == 1:
+        return y, height - 1 - x
+    if quarter == 2:
+        return width - 1 - x, height - 1 - y
+    if quarter == 3:
+        return width - 1 - y, x
+    return x, y
 
 
 def turn_png(png: bytes, quarter: int) -> bytes:
@@ -272,7 +298,7 @@ def read_screenshot(port, timeout, on_status=None):
         raise RuntimeError(
             f"timed out after {timeout:g}s without a complete capture. never saw a "
             "SCREENSHOT_BEGIN line - is the firmware built with the screenshot listener "
-            "(util/screenshot.c), and is it actually running (not stuck in the boot "
+            "(console/console_screenshot.c), and is it actually running (not stuck in the boot "
             "animation or a crash loop)?")
     raise RuntimeError(
         f"timed out after {timeout:g}s without a complete capture. saw SCREENSHOT_BEGIN "

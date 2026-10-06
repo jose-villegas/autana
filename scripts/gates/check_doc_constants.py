@@ -8,8 +8,9 @@ historical value.
 """
 import pathlib
 import re
-import subprocess
 import sys
+
+from tracked import tracked_files
 
 from check_doc_citations import documentation
 
@@ -74,12 +75,7 @@ def source_files(root):
     this project's definition of a constant, and reading it made the verdict
     depend on whether the checkout had ever been built."""
     root = pathlib.Path(root)
-    listed = subprocess.run(["git", "ls-files", "-z", "--", "launcher"], cwd=root,
-                            capture_output=True, text=True, encoding="utf-8")
-    if listed.returncode == 0:
-        paths = (root / name for name in listed.stdout.split("\0") if name)
-    else:
-        paths = (root / "launcher").rglob("*")
+    paths = (root / name for name in tracked_files(root, ("launcher",)))
     for path in sorted(paths):
         parts = path.relative_to(root).parts
         if path.suffix not in {".c", ".h"} or not path.is_file():

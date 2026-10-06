@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "gfx/gfx_box.h"
 #include "render/r3d_project.h"
 #include "util/math/vec2i.h"
 #include "wire_mesh.h"
@@ -31,7 +32,7 @@ typedef struct {
     wire_segment_t* segments;
     uint16_t segment_capacity;
     uint16_t segment_count;
-    int bbox_x0, bbox_y0, bbox_x1, bbox_y1; /* half-open, clipped to the screen; valid if segment_count > 0 */
+    gfx_box_t bbox; /* half-open, clipped to the screen */
 } wire_frame_t;
 
 void wire_transform(const wire_mesh_t* mesh, const r3d_line_view_t* view, wire_frame_t* frame);

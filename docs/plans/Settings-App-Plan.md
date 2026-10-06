@@ -25,7 +25,7 @@ step 2 exists to remove.
 
 Two vocabularies name the same flag today:
 
-- `CONFIG_LAUNCHER_SELFTEST` (Kconfig), `boot/selftest.c`, `selftest_run()`:
+- `CONFIG_LAUNCHER_SELFTEST` (Kconfig), `selftest/selftest.c`, `selftest_run()`:
   the code that actually runs the suites calls this "selftest."
 - `main/apps/diagnostics/`, `app_diagnostics`, `build.diag/`,
   `build.sh --diag`,

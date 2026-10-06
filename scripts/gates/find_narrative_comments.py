@@ -17,8 +17,7 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from check_comment_length import scan  # noqa: E402
-from tracked import committable  # noqa: E402
+from c_comments import scan, sources  # noqa: E402
 
 SIGNS = re.compile(
     r"(a first attempt|an earlier version|was considered|used to |reverted|"
@@ -42,8 +41,8 @@ SKIP = ("components",)
 
 
 def find(root, min_chars):
-    for p in committable(root):
-        if p.suffix not in (".c", ".h") or any(s in p.parts for s in SKIP):
+    for p in sources(root, excluded=False):
+        if any(s in p.parts for s in SKIP):
             continue
         text = p.read_text(encoding="utf-8", errors="replace")
         for c in scan(p.as_posix(), text):
@@ -54,8 +53,8 @@ def find(root, min_chars):
 
 
 def tombstones(root):
-    for p in committable(root):
-        if p.suffix not in (".c", ".h") or any(s in p.parts for s in SKIP):
+    for p in sources(root, excluded=False):
+        if any(s in p.parts for s in SKIP):
             continue
         text = p.read_text(encoding="utf-8", errors="replace")
         for c in scan(p.as_posix(), text):

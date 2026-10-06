@@ -24,7 +24,7 @@
 
 #include "unity.h"
 
-#include "app.h"
+#include "app/app.h"
 #include "gfx/gfx.h"
 #include "microui.h"
 #include "ui/ui.h"

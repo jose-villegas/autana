@@ -25,7 +25,7 @@ render_lab_menu_screen_draw(mu_Context* ctx, const render_lab_menu_screen_state_
     if (ui_scroll_view_begin(ctx, "Render Lab Menu", opt, ui_scroll_view_default(), dt_ms)) {
         const int hint_h = gfx_text_height() + 4;
         const int total_h = MENU_ROWS * MENU_BTN_H + MENU_ROWS * MENU_BTN_GAP + hint_h;
-        const int top = (ui_height() - total_h) / 2;
+        const int top = ui_flow_top(ui_height(), 1, total_h, 0, 0);
         ui_flow_t flow = ui_flow_start(ui_width(), top, MENU_BTN_GAP);
 
         char label[40];

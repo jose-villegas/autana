@@ -1,0 +1,83 @@
+/*
+ * On-device self test.
+ *
+ * Compiled only into a CONFIG_LAUNCHER_SELFTEST build; release carries no
+ * test code. With CONFIG_LAUNCHER_SELFTEST_AUTORUN it runs every registered
+ * suite at boot, before the launcher starts; otherwise suites run on demand
+ * (RUNSUITE on the console, or an on-device toggle).
+ *
+ * The full run includes the portable suites. Passing on a host proves the
+ * logic on a laptop; running them here proves the same code behaves
+ * identically built by the Xtensa toolchain and executed on this chip.
+ *
+ * A full run takes about 18 minutes on the S3, too long for every boot,
+ * which is why autorun is opt-in.
+ */
+
+#include "selftest/selftest.h"
+
+#include <stdio.h>
+
+#include "esp_log.h"
+#include "unity.h"
+
+#include "suites.h"
+#include "test_harness.h"
+#include "util/runtime/timing.h"
+
+static const char* TAG = "selftest";
+
+void
+__wrap_esp_system_console_put_char(char c) {
+    if (c != '\r') {
+        (void)putchar((unsigned char)c);
+    }
+}
+
+/* Unity requires these once per binary. The test ran and was measured in
+ * timing.c, where no TEST_PASS() can skip it; tearDown() runs under an
+ * abort frame of Unity's own, so it is where the verdict is asserted. */
+void
+setUp(void) {}
+
+void
+tearDown(void) {
+    suite_judge_watched_test();
+}
+
+int
+selftest_run(void) {
+    const int64_t started = timing_now_us();
+
+    ESP_LOGI(TAG, "running self test");
+
+    UNITY_BEGIN();
+
+    /* Every registered suite, portable and hardware alike. Which ones exist
+     * is decided at compile time by what was built in; see suites.h. */
+    suites_run_all();
+    suite_report_frame_watch();
+
+    int failures = UNITY_END();
+    const int64_t elapsed_ms = (timing_now_us() - started) / 1000;
+
+    /* A suite that did not fit is a test that did not run. Folded into the
+     * count so the sentinel below (and every harness that reads it) sees a
+     * failed run rather than a green one that tested less than it claims. */
+    if (suites_dropped() > 0) {
+        ESP_LOGE(TAG, "%d suite(s) dropped; raise SUITE_MAX in suites.h", suites_dropped());
+        failures += suites_dropped();
+    }
+
+    /* A sentinel on its own line, so an automated harness can tell a finished
+     * run from a board that went quiet mid-test. */
+    printf("\nSELFTEST_COMPLETE failures=%d elapsed_ms=%lld\n", failures, (long long)elapsed_ms);
+    fflush(stdout);
+
+    if (failures > 0) {
+        ESP_LOGE(TAG, "%d test(s) FAILED", failures);
+    } else {
+        ESP_LOGI(TAG, "all tests passed in %lld ms", (long long)elapsed_ms);
+    }
+    return failures;
+}

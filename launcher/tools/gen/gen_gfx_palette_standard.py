@@ -13,6 +13,10 @@ citing the source next to the literals.
 """
 
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
+import gfx_color  # noqa: E402  (path must be set up first)
 
 CUBE_LEVELS = [0, 51, 102, 153, 204, 255]
 
@@ -22,8 +26,7 @@ def to_rgb565(rgb888):
     colours this close together can and do collapse to the same RGB565
     value, which is why every dedup below happens in THIS space, not
     24-bit RGB888."""
-    r, g, b = (rgb888 >> 16) & 0xFF, (rgb888 >> 8) & 0xFF, rgb888 & 0xFF
-    return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
+    return gfx_color.rgb565((rgb888 >> 16) & 0xFF, (rgb888 >> 8) & 0xFF, rgb888 & 0xFF)
 
 EGA16 = [
     0x000000, 0x0000AA, 0x00AA00, 0x00AAAA,

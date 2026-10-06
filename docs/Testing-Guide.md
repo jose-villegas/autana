@@ -182,7 +182,7 @@ each one cost a build-flash-capture cycle to find, twice over, for both:
 Those numbers come from `launcher/tools/device/device_profiles/<chip>.sh`, selected
 by `$DEVICE_PROFILE` (default `esp32s3`), each carrying its own provenance.
 
-The framebuffer lives in PSRAM (`MEMORY_PSRAM`, `util/memory.h`), not
+The framebuffer lives in PSRAM (`MEMORY_PSRAM`, `util/runtime/memory.h`), not
 internal DRAM, so it does not compete with an app's large internal
 allocations for internal-heap contiguity the way it would on a board
 without PSRAM.
@@ -259,7 +259,7 @@ autana suite run_gfx_suite
 autana suite run_ui_suite
 ```
 
-Both commands only set a flag; `main.c`'s frame loop does the actual work at
+Both commands only set a flag; the shell's frame loop does the actual work at
 a frame boundary, since there is no lock on the framebuffer and a second
 task drawing to it while the render loop runs would corrupt the panel. When
 the suite returns the shell prints
@@ -406,13 +406,15 @@ ESP-IDF's driver waits forever on a sensor QEMU does not have.
 **Driving the shell.** The console listener of such an image also takes
 `TOUCH <down|up> <x> <y>` and `IMU <ax> <ay> <az>` (panel pixels; raw
 accelerometer counts, 4096 to the g). `qemu_run.py --do` strings them into
-what a user does, one ordered step at a time:
+what a user does, one ordered step at a time. Its `screenshot` is the default
+`autana screenshot` view, and its `tap` and `swipe` take that view's pixels,
+as `autana tap` does; `touch` and `--touch` stay in panel pixels:
 
 ```sh
 python launcher/test/qemu_run.py launcher/build.qemu.shell \
-  --do "tap 180 95" --do "wait 2500" --do "screenshot app.png" \
+  --do "tap 95 187" --do "wait 2500" --do "screenshot app.png" \
   --do "tilt 0 -4096 0" --do "wait 2500" --do "screenshot landscape.png" \
-  --do "swipe 184 446 184 200" --do "screenshot home.png"
+  --do "swipe 222 1 222 200" --do "screenshot home.png"
 ```
 
 That opens an app from the launcher, turns the board on its side and swipes
@@ -454,7 +456,7 @@ measurements moved by up to 25%. Measure the same work order walked by one
 thread instead, and take the two-core verdict from the board. The count
 answers whether a change removed work; on this chip that does not predict
 whether it removed time (see
-[`notes/Optimization-Playbook.md`](notes/Optimization-Playbook.md)).
+[`notes/Debugging.md`](notes/Debugging.md#performance-seems-off)).
 
 **Instances are independent.** Each `qemu_run.py --workdir` holds its own
 flash image, eFuse file and console log, and the build directory is only
@@ -486,7 +488,7 @@ a scene, frames and synthetic touch, the pins, the QEMU backend, and
 
 The frame watch ([Firmware-Architecture.md](Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state))
 warns on the board; two places turn it into a failure, both by the rule in
-`util/frame_watch.h` (`FRAME_WATCH_REPEATS` of the last
+`util/runtime/frame_watch.h` (`FRAME_WATCH_REPEATS` of the last
 `FRAME_WATCH_WINDOW` frames, after `FRAME_WATCH_WARMUP`). Either also fails
 when the watch ran out of room for an event, since a finding could hide
 there.
@@ -505,7 +507,7 @@ back in order.
 
 ## POST is a third thing
 
-Separate from both runners is the **power-on self test** in `launcher/main/boot/post.c`. It
+Separate from both runners is the **power-on self test** in `launcher/main/selftest/post.c`. It
 answers a different question, so it lives in a different place and obeys
 different rules.
 
@@ -578,7 +580,7 @@ flowchart LR
     subgraph hw["Hardware-coupled"]
         direction TB
         HW1["touch.c<br/><i>I2C, FreeRTOS task</i>"]
-        HW4["main.c<br/><i>frame loop</i>"]
+        HW4["shell/shell.c<br/><i>frame loop</i>"]
     end
 
     subgraph pure["Pure logic: host AND device"]

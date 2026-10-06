@@ -7,13 +7,12 @@
 #include "display/display.h"
 #include "display/display_shell.h"
 
-#include "build_variant.h"
 #include "display/panel_clock.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
-#include "input/imu.h"
-#include "util/memory.h"
-#include "util/settings.h"
+#include "util/build/build_variant.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/settings.h"
 
 static const char TAG[] = "display";
 
@@ -48,8 +47,8 @@ display_reset_quarter(void) {
 }
 
 bool
-display_sample_orientation(int64_t now_us) {
-    return display_orientation_sample(&shell_orientation, now_us, imu_read);
+display_sample_orientation(int64_t now_us, display_gravity_reader_t read) {
+    return display_orientation_sample(&shell_orientation, now_us, read);
 }
 
 int

@@ -1,0 +1,7 @@
+SUITE_TEST name=test_a_full_size_step_fits_in_the_frame_budget selected=1
+I (6806) device_tests: sand_step on 184x224 with 10304 grains: 7193 us
+I (6808) device_tests: PERF TARGET full-size step: measured 7193 us, goal 7290 us, distance -1%
+I (6889) device_tests: sand_step on 184x224 with 10304 grains: 7182 us
+I (6891) device_tests: PERF TARGET full-size step: measured 7182 us, goal 7290 us, distance -1%
+:4670:test_a_full_size_step_fits_in_the_frame_budget:PASS
+TEST_TIME name=test_a_full_size_step_fits_in_the_frame_budget elapsed_ms=167 stack_free_bytes=612

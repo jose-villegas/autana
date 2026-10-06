@@ -10,7 +10,6 @@ import math
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -25,6 +24,10 @@ import lock_scope
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
+from device_capture import BUILD_ID_BYTES_RE as BUILD_ID
+
+from process_tree import stop_process_tree, launch_process_tree, close_process_tree
+SUITE_RESULT = re.compile(rb":\d+:.*:(PASS|FAIL)(?:\r?$|:)", re.MULTILINE)
 BOARD_ENV = autana_config.BOARD_ENV
 TOKEN_ENV = autana_config.TOKEN_ENV
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
@@ -45,8 +48,6 @@ def command_label(kind):
 EXIT_INTERRUPTED = autana_config.EXIT_INTERRUPTED
 BAUD = 115200
 ESPRESSIF_VID = 0x303A
-BUILD_ID = re.compile(rb"BUILD_ID=([^\s\r\n]+)")
-SUITE_RESULT = re.compile(rb":\d+:.*:(PASS|FAIL)(?:\r?$|:)", re.MULTILINE)
 
 # Suite/listen captures run 13-131 KB and a flash log ~270 KB; only a capture
 # that lands on the default path (not an explicit --out) is ever gzipped, and
@@ -175,6 +176,39 @@ def board_for_lock(store, named=None, remembered=False):
                        + " - name one with --board: " + ", ".join(candidates))
 
 
+# USB Serial/JTAG drops off the bus for a few seconds on every reset and may
+# return under another name, so 20 s covers a slow host and still fails fast.
+PORT_REAPPEAR_SECONDS = 20
+
+
+def probe_port(port):
+    """Opens and closes `port`: a name still listed while the device is going
+    away fails here, not later inside a child process."""
+    import serial
+    serial.Serial(port).close()
+
+
+def wait_for_port(board=None, seconds=PORT_REAPPEAR_SECONDS, probe=probe_port,
+                  sleep=time.sleep, now=time.monotonic, check=None):
+    """The name of the board's port once it can be opened, found by its USB
+    serial number each time, never by a remembered COM or ttyACM name. The one
+    wait every caller about to touch the port after a reset goes through;
+    `check` runs after each miss (the lock holder passes its liveness check)."""
+    deadline = now() + seconds
+    while True:
+        try:
+            port = find_board(board).port
+            probe(port)
+            return port
+        except (OSError, NoBoard) as error:
+            if check is not None:
+                check()
+            if now() >= deadline:
+                raise PortUnavailable("board port did not reappear within "
+                                      + str(int(seconds)) + "s: " + str(error)) from error
+            sleep(0.5)
+
+
 def open_serial():
     """Opens the locked board's port for this process alone. Windows refuses a
     second open on its own; POSIX needs `exclusive` (an advisory flock, so it
@@ -192,6 +226,9 @@ def open_serial():
     connection.port = port
     connection.baudrate = BAUD
     connection.timeout = 0.2
+    # A board that stops reading its console would otherwise block a write
+    # in the OS forever, holding the lock with it.
+    connection.write_timeout = 5.0
     connection.dtr = False
     connection.rts = False
     connection.open()
@@ -610,15 +647,30 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
     return bytes(data), "timeout"
 
 
+# esptool's connect handshake resets USB Serial/JTAG into its bootloader, which
+# re-enumerates the port under it; right after a flash that fails once, and the
+# port is back by the next attempt. One retry, never a loop.
+RESET_ATTEMPTS = 2
+
+
 def reset(after="hard_reset"):
     """hard_reset pulses RTS, and USB Serial/JTAG stays up through it, so a
     capture hears the boot from its first line. It cannot restart a chip in
     download mode; watchdog_reset can, but re-enumerates USB, losing the
     early boot lines a release image's BUILD_ID is among."""
-    port = locked_port()
-    command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
-               "--after", after, "chip_id"]
-    subprocess.run(command, check=True)
+    locked_port()
+    active = ACTIVE_LOCK.held
+    for attempt in range(RESET_ATTEMPTS):
+        port = wait_for_port(active.board, check=require_live_lock)
+        require_live_lock()
+        command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3", "-p", port,
+                   "--after", after, "chip_id"]
+        try:
+            subprocess.run(command, check=True)
+            return
+        except subprocess.CalledProcessError:
+            if attempt + 1 == RESET_ATTEMPTS:
+                raise
 
 
 def reset_and_capture(output, seconds, idle_seconds, expected_build_id=None,
@@ -799,7 +851,7 @@ def decode_crash_addresses(data, elf):
     return decode_addresses([address.decode("ascii") for address in addresses], elf)
 
 
-# The firmware's frame watch warning (launcher/main/util/frame_watch.c):
+# The firmware's frame watch warning (launcher/main/util/runtime/frame_watch.c):
 # `FRAME_WATCH <kind> in <n> of <window> frames at 0x<site>`, a log line's
 # format after it. tests/test_device.py holds this to that file's own text.
 FRAME_WATCH_LINE_RE = re.compile(r"FRAME_WATCH (alloc|free|console) in (\d+) of (\d+) frames at (0x[0-9a-fA-F]{8})")
@@ -871,28 +923,12 @@ def holding(store, board, args, held_lock, kind):
 FLASH_POLL_SECONDS = 0.5
 
 
-def stop_process_tree(process):
-    """A flash command runs idf.py and esptool under it; the flash has to stop,
-    not just the shell that started it."""
-    if os.name == "nt":
-        subprocess.run(["taskkill", "/F", "/T", "/PID", str(process.pid)],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    else:
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-    process.wait()
-
-
 def run_to_end(command, lost=None, timeout=None, **options):
     """Runs `command` to its end, stopping its whole process tree on any
     error, on Ctrl+C, or the moment `lost`, a held lock's event, None for a
     command that holds none, is set."""
-    if os.name != "nt":
-        options["start_new_session"] = True
     deadline = None if timeout is None else time.monotonic() + timeout
-    process = subprocess.Popen(command, **options)
+    process = launch_process_tree(command, **options)
     try:
         while True:
             try:
@@ -906,6 +942,8 @@ def run_to_end(command, lost=None, timeout=None, **options):
     except BaseException:
         stop_process_tree(process)
         raise
+    finally:
+        close_process_tree(process)
     if code:
         raise subprocess.CalledProcessError(code, command)
 
@@ -927,6 +965,12 @@ def flash_commands(bash, worktree, variant, build_flags=()):
     return ([bash, (worktree / BUILD_SCRIPT).as_posix()] + VARIANT_FLAGS[variant]
             + list(build_flags),
             [bash, (worktree / FLASH_SCRIPT).as_posix()])
+
+
+def layout_flags(args):
+    """build.sh's flag for a layout seed; none for the plain build."""
+    seed = getattr(args, "layout_seed", 0)
+    return ["--layout-seed", str(seed)] if seed else []
 
 
 def build_directory(worktree, variant):
@@ -1185,10 +1229,6 @@ def suite_request(suite, patterns):
             + "\n").encode("ascii")
 
 
-SUITE_COMPLETE_RE = re.compile(r"RUNSUITE_COMPLETE name=.+? found=(?P<found>\d)"
-                               r"(?: selected=(?P<selected>\d+) unmatched=(?P<unmatched>\d+))?")
-
-
 class TestFilterError(RuntimeError):
     """The board cannot or will not run the filter asked for. It ends the
     batch: the next run would meet the same board."""
@@ -1209,7 +1249,7 @@ def check_test_filter(data, suite, patterns, reason="complete"):
     finish, a capture error, which a batch survives, when it was cut short."""
     text = data.decode("utf-8", errors="replace")
     complete = None
-    for complete in SUITE_COMPLETE_RE.finditer(text):
+    for complete in device_report.SUITE_COMPLETE_RE.finditer(text):
         pass
     refused = re.findall(r"SUITE_FILTER_REFUSED pattern=(\S*)", text)
     if refused:
@@ -1500,14 +1540,14 @@ def screenshot(args, store, board):
             raise RuntimeError("the capture did not report orientation_quarter for --as-shown")
         description = "as shown"
     else:
-        image_turn_quarter = 3
+        image_turn_quarter = screenshot_tool.DEFAULT_TURN_QUARTER
         description = "to match the board"
     png = screenshot_tool.turn_png(png, image_turn_quarter)
     png_path, state_path = screenshot_tool.write_capture(out, png, state_json, image_turn_quarter)
     degrees = image_turn_quarter * 90
     direction = "clockwise" if image_turn_quarter == 1 else "counter-clockwise"
     if image_turn_quarter == 0:
-        print(f"wrote {png_path} (framebuffer bytes; turned 0 degrees)")
+        print(f"wrote {png_path} ({description}; turned 0 degrees)")
     else:
         print(f"wrote {png_path} (turned {min(degrees, 360 - degrees)} degrees {direction} {description})")
     if state_path:
@@ -1515,6 +1555,16 @@ def screenshot(args, store, board):
     else:
         print("no SCREENSHOT_STATE line arrived - device state was not captured", file=sys.stderr)
     return 0
+
+
+def touch_point(x, y):
+    """The panel-frame point TAP, PRESS and DRAG take for pixel (x, y) of
+    the default screenshot; ValueError outside that screenshot. The default
+    screenshot is one fixed turn of the panel, so the board's orientation
+    never enters."""
+    import screenshot as screenshot_tool
+
+    return screenshot_tool.panel_point(x, y, screenshot_tool.DEFAULT_TURN_QUARTER)
 
 
 def batch(args, store, board):
@@ -1527,13 +1577,14 @@ def batch(args, store, board):
     what a standalone `run-suite` leaves behind: one capture under its own
     name, no `batch` summary or manifest row, since there is nothing across
     runs for either to tell apart."""
-    extra_flags = ["--perf-scope"] if args.perf_scope else []
+    extra_flags = (["--perf-scope"] if args.perf_scope else []) + layout_flags(args)
     patterns = test_patterns(getattr(args, "test_filter", None))
     if args.out and (len(args.suite) != 1 or args.runs != 1):
         raise RuntimeError("--out only makes sense with exactly one --suite and --runs 1 - "
                            "several captures cannot all land on one path")
-    if args.perf_scope and not args.flash:
-        raise RuntimeError("--perf-scope selects the image built - it needs --flash")
+    if (args.perf_scope or getattr(args, "layout_seed", 0)) and not args.flash:
+        raise RuntimeError("--perf-scope and --layout-seed select the image built - "
+                           "they need --flash")
     single = len(args.suite) == 1 and args.runs == 1
     worktree = str(Path(args.worktree).resolve())
     started_at = now()
@@ -1700,6 +1751,8 @@ def main(argv=None):
     flash_parser.add_argument("--out")
     flash_parser.add_argument("--perf-scope", action="store_true",
                               help="with --variant diag: build the perf-scoped image")
+    flash_parser.add_argument("--layout-seed", type=int, default=0,
+                              help="pad the layout by this seed (0 is the plain build)")
     suite = subparsers.add_parser("run-suite")
     suite.add_argument("suite")
     suite.add_argument("--out")
@@ -1770,6 +1823,8 @@ def main(argv=None):
                               help="capture against the image already on the board")
     batch_parser.add_argument("--perf-scope", action="store_true",
                               help="build the perf-scoped image (needs --flash, the default)")
+    batch_parser.add_argument("--layout-seed", type=int, default=0,
+                              help="pad the layout by this seed (needs --flash, the default)")
     batch_parser.add_argument("--max-seconds", type=float, default=1800)
     batch_parser.add_argument("--test", dest="test_filter", action="append", metavar="PATTERN",
                               help="run only the tests whose name contains PATTERN; repeat or "
@@ -1810,7 +1865,7 @@ def main(argv=None):
                 print_statuses(entries, store.now())
             return 0
         if args.command == "resolve-port":
-            print(find_board(args.board).port)
+            print(wait_for_port(args.board))
             return 0
         board = board_for_lock(store, args.board,
                                remembered=args.command in ("hand-to-human", "take-back"))
@@ -1836,7 +1891,7 @@ def main(argv=None):
             print_statuses(board_statuses(store, board), store.now())
             return 0
         if args.command == "flash":
-            extra_flags = ["--perf-scope"] if args.perf_scope else []
+            extra_flags = (["--perf-scope"] if args.perf_scope else []) + layout_flags(args)
             with build_image(args, board, extra_flags) as built:
                 write_image(built, store, board)
         elif args.command == "run-suite":

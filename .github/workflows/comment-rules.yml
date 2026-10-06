@@ -40,16 +40,28 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Workflow gate dependencies
+        run: pip install -r scripts/gates/requirements.txt
+
+      - name: Self-hosted workflows accept no pull request or comment events
+        run: python3 scripts/gates/check_self_hosted_workflows.py
+
       - name: Length beside code, and header height
         run: >
           python3 scripts/gates/check_comment_length.py
           --no-banners --limit 500 --header-limit 50 --top 0
+
+      - name: Every firmware module opens with a header comment
+        run: python3 scripts/gates/check_file_headers.py
 
       - name: No comment or engine document below apps/ names an app
         run: python3 scripts/gates/check_comment_layers.py
 
       - name: No comment records where code moved
         run: python3 scripts/gates/find_narrative_comments.py --tombstones
+
+      - name: Generated document bodies match their recorded hashes
+        run: python3 scripts/gates/check_doc_generated.py
 
       - name: Documentation constants match source
         run: python3 scripts/gates/check_doc_constants.py
@@ -71,7 +83,7 @@ jobs:
       - name: The board is reached only through scripts/device/
         run: python3 scripts/gates/check_device_access.py
 
-      - name: main.c includes and calls no firmware, and the clock and heap have one owner each
+      - name: The shell includes and calls no firmware, and the clock and heap have one owner each
         run: python3 scripts/gates/check_shell_firmware.py
 
       - name: No tracker id, personal path, or misdirected include is tracked
@@ -88,21 +100,42 @@ jobs:
         run: pip install pyserial==3.5 -r launcher/tools/render/requirements.txt
 
       # test_r3d_bake.py skips itself without numpy and scipy, and builds
-      # meshoptimizer's library from its submodule with the runner's compiler.
+      # meshoptimizer's library from its submodule with the runner's compiler;
+      # test_r3d_ray_query.py checks the LLVM variant when libLLVM is there.
       - name: r3d bake environment
         run: |
           pip install -r launcher/tools/r3d/requirements.txt
+          sudo apt-get install -y --no-install-recommends llvm
           git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 
       # test_check_math.mjs renders through GitHub's MathJax.
-      - name: check-math.mjs dependencies
+      - name: Node gate dependencies
         run: npm ci --prefix scripts/gates
+
+      - name: No new token clone pairs
+        run: python3 scripts/gates/check_clones.py
 
       # Python and, for check-mermaid.mjs's pure parts and check-math.mjs,
       # Node; scripts/run-tool-tests.sh owns which suites.
       - name: Tool tests
         if: ${{ !cancelled() }}
         run: sh scripts/run-tool-tests.sh
+
+  # Its own job, beside the others: the sand palette's sweep takes a minute
+  # or two, and every pull request runs it, since the banners are the list.
+  generated-files:
+    name: Every generated file is what its banner's command makes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generator dependencies
+        run: pip install -r launcher/tools/render/requirements.txt
+
+      # Each banner's command, rerun into a temporary folder; the sand
+      # palette's builds with the runner's C compiler.
+      - name: Every generated file is what its banner's command makes
+        run: python3 scripts/gates/check_generated_files.py
 
   citations:
     name: Every citation resolves, in this tree or in ESP-IDF

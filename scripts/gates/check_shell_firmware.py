@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Fail when launcher/main/main.c includes or calls vendor firmware directly,
-or when anything but its owner or a driver calls the vendor clock or heap.
+"""Fail when the shell includes or calls vendor firmware directly, or when
+anything but its owner or a driver calls the vendor clock or heap.
 
     python scripts/gates/check_shell_firmware.py
 
-main.c is the shell: it starts the platform and runs the frame loop, and the
-chip's vendor code (ESP-IDF, FreeRTOS, NVS, the board support package) sits
-behind a module of this firmware's own (input/, display/, util/timing.h,
-util/settings.h, util/memory.h). A vendor call left in main.c is a second
-place that knows the chip, so this fails on
+The rule holds launcher/main/main.c, which starts the platform, and every
+file under launcher/main/shell/, which runs the frame loop, to one standard.
+The chip's vendor code (ESP-IDF, FreeRTOS, NVS, the board support package)
+sits behind a module of this firmware's own (input/, display/,
+util/runtime/timing.h, util/runtime/settings.h, util/runtime/memory.h). A
+vendor call left in the shell is a second place that knows the chip, so this fails on
 
   - an include of an esp_*, nvs*, freertos/, bsp/, driver/, hal/, soc/ or
     rom/ header, and
@@ -18,18 +19,19 @@ place that knows the chip, so this fails on
 This firmware's own headers, drivers included, are not vendor code. Logging
 is not firmware: esp_log.h and the ESP_LOG[A-Z] macros are carved out by the
 patterns themselves, not by a list. Comments and string literals are not
-code. There is no exemption list: a reason for main.c to touch the vendor
+code. There is no exemption list: a reason for the shell to touch the vendor
 code is a missing module, so add one.
 
-The vendor timer and heap have owners: esp_timer_* belongs to util/timing,
-and heap_caps_* and MALLOC_CAP_* to util/memory. In the firmware, its suites
-and its tools, a name of either is code only in its owner's own files
-(util/timing.* and util/timing_*.*, the same for memory) or in a driver:
-anything under board/, or a *_device.c in launcher/main/ outside a tests/
-folder, where the name means a suite that runs on the board. launcher/test/
-outside suites/ (the host heap model, the stubs, the harness the board also
-builds) stands in for the vendor code or measures from beneath it, so it is
-not checked; nor is main.c, which the rule above holds to more.
+The vendor timer and heap have owners: esp_timer_* belongs to
+util/runtime/timing, and heap_caps_* and MALLOC_CAP_* to util/runtime/memory.
+In the firmware, its suites and its tools, a name of either is code only in
+its owner's own files (util/runtime/timing.* and util/runtime/timing_*.*, the
+same for memory) or in a driver: anything under board/, or a *_device.c in
+launcher/main/ outside a tests/ folder, where the name means a suite that runs
+on the board. launcher/test/ outside suites/ (the host heap model, the stubs,
+the harness the board also builds) stands in for the vendor code or measures
+from beneath it, so it is not checked; nor is the shell, which the rule above
+holds to more.
 """
 import pathlib
 import re
@@ -38,6 +40,7 @@ import sys
 from tracked import tracked_files
 
 MAIN = "launcher/main/main.c"
+SHELL = "launcher/main/shell/"
 
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s*[<"]([^>"]+)[>"]')
 VENDOR_INCLUDE_RE = re.compile(r"^(esp_(?!log\.h$)|nvs|freertos/|bsp/|driver/|hal/|soc/|rom/)")
@@ -57,12 +60,13 @@ def blank(match):
     return "".join(c if c == "\n" else " " for c in match.group(0))
 
 
-def problems(root="."):
-    """The `path:line: reason` lines for main.c, in line order."""
-    main = pathlib.Path(root) / MAIN
-    if not main.is_file():
-        return [f"{MAIN}: not found, so nothing was checked"]
-    text = main.read_text(encoding="utf-8", errors="replace")
+def is_shell(rel):
+    return rel == MAIN or (rel.startswith(SHELL) and rel.endswith((".c", ".h")))
+
+
+def file_problems(root, rel):
+    """The `path:line: reason` lines for one file of the shell, in line order."""
+    text = (pathlib.Path(root) / rel).read_text(encoding="utf-8", errors="replace")
     without_comments = COMMENT_RE.sub(blank, text).splitlines()
     code = COMMENT_OR_STRING_RE.sub(blank, text).splitlines()
     found = []
@@ -70,18 +74,30 @@ def problems(root="."):
         include = INCLUDE_RE.match(without_comments[number - 1])
         if include:
             if VENDOR_INCLUDE_RE.match(include.group(1)):
-                found.append(f"{MAIN}:{number}: includes {include.group(1)}")
+                found.append(f"{rel}:{number}: includes {include.group(1)}")
             continue
         for identifier in dict.fromkeys(IDENTIFIER_RE.findall(line)):
             if VENDOR_NAME_RE.match(identifier):
-                found.append(f"{MAIN}:{number}: uses {identifier}")
+                found.append(f"{rel}:{number}: uses {identifier}")
+    return found
+
+
+def problems(root="."):
+    """The `path:line: reason` lines for main.c and the files under shell/,
+    main.c first, then in path then line order."""
+    if not (pathlib.Path(root) / MAIN).is_file():
+        return [f"{MAIN}: not found, so nothing was checked"]
+    found = file_problems(root, MAIN)
+    for rel in sorted(tracked_files(root)):
+        if rel != MAIN and is_shell(rel):
+            found.extend(file_problems(root, rel))
     return found
 
 
 OWNED_NAME_RE = re.compile(r"\b(esp_timer_|heap_caps_|MALLOC_CAP_)\w*")
 OWNER_OF = {"esp_timer_": "timing", "heap_caps_": "memory", "MALLOC_CAP_": "memory"}
 CHECKED = ("launcher/main/", "launcher/test/suites/", "launcher/tools/")
-UTIL = "launcher/main/util/"
+UTIL = "launcher/main/util/runtime/"
 
 
 def may_use(rel, prefix):
@@ -103,7 +119,7 @@ def owner_problems(root="."):
     owners and the drivers, in path then line order."""
     found = []
     for rel in tracked_files(root):
-        if not rel.startswith(CHECKED) or not rel.endswith((".c", ".h")) or rel == MAIN:
+        if not rel.startswith(CHECKED) or not rel.endswith((".c", ".h")) or is_shell(rel):
             continue
         text = (pathlib.Path(root) / rel).read_text(encoding="utf-8", errors="replace")
         code = COMMENT_OR_STRING_RE.sub(blank, text).splitlines()
@@ -111,7 +127,7 @@ def owner_problems(root="."):
             for name in dict.fromkeys(m.group(0) for m in OWNED_NAME_RE.finditer(line)):
                 prefix = OWNED_NAME_RE.match(name).group(1)
                 if not may_use(rel, prefix):
-                    found.append(f"{rel}:{number}: uses {name}; only util/{OWNER_OF[prefix]} and a driver may")
+                    found.append(f"{rel}:{number}: uses {name}; only util/runtime/{OWNER_OF[prefix]} and a driver may")
     return found
 
 
@@ -122,11 +138,11 @@ def main(argv):
     found = problems(".")
     for line in found:
         print(line)
-    print(f"{len(found)} vendor firmware use(s) in {MAIN}")
+    print(f"{len(found)} vendor firmware use(s) in {MAIN} and {SHELL}")
     owned = owner_problems(".")
     for line in owned:
         print(line)
-    print(f"{len(owned)} clock or heap use(s) outside util/timing, util/memory and the drivers")
+    print(f"{len(owned)} clock or heap use(s) outside util/runtime/timing, util/runtime/memory and the drivers")
     return 1 if found or owned else 0
 
 

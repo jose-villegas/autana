@@ -1,14 +1,10 @@
 """A few files laid out as ESP-IDF and its toolchain lay them out, for the
 tests of idf_vocabulary.py and the gates that read it."""
 import pathlib
+from gate_tree import write
 
 TOOLCHAIN_INCLUDE = "tools/xtensa-esp-elf/esp-0.0/xtensa-esp-elf/xtensa-esp-elf/include"
 
-
-def write(root, path, text):
-    target = pathlib.Path(root) / path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(text, encoding="utf-8")
 
 
 def fake_idf(root):

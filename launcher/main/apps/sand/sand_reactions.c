@@ -85,6 +85,10 @@ static burn_plan_t extended_plan[MATERIAL_EXTENDED_CODES];
 
 static uint8_t pair_bits[MATERIAL_MAX][MATERIAL_MAX];
 
+/* Eligibility depends only on the encoded byte and the const reaction
+ * tables, including the lit-fuse and cullet exclusions. */
+static uint32_t percolate_accept_mask[8];
+
 /* Reads theirs-only bits. Used by try_heat_transform(), step_one_cold_cell(),
  * conduct_heat(). MAT_EMPTY stores theirs-only bits. */
 static inline uint8_t
@@ -600,9 +604,10 @@ soak_in_one_level(sand_t* s, uint8_t* row, int x, int y, int w, const reaction_t
         return;
     }
     if (held < r->moist_max) {
+        /* No block wake: moisture only retones the cell, and nothing the
+         * gravity sweep or cross-flow reads depends on it. */
         row[x] = with_moisture(c, (uint8_t)(held + 1), r);
         mark_rows(s, x, y, y);
-        wake_block_and_neighbors(s, x, y);
         mark_block_has_moisture(s, x, y);
     }
 }
@@ -639,15 +644,18 @@ soak_from_liquid(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reac
 }
 
 /* Commits a moisture hand-off: this cell keeps `held - cost`, the
- * neighbour at (nx, ny) has already been written. */
+ * neighbour at (nx, ny) has already been written. Only a neighbour that
+ * changed material (`converted`: its powder behaviour changed) wakes
+ * blocks; a retone alone never moves a grain. */
 static inline __attribute__((always_inline)) void
 settle_moisture_move(sand_t* s, uint8_t* row, int x, int y, int nx, int ny, cell_t c, uint8_t held, int cost,
-                     int recv_m) {
+                     int recv_m, bool converted) {
     row[x] = soil_set_moisture(c, (uint8_t)(held - cost), (uint8_t)recv_m);
     mark_rows(s, x, y, y);
     mark_rows(s, nx, ny, ny);
-    wake_block_and_neighbors(s, x, y);
-    wake_block_and_neighbors(s, nx, ny);
+    if (converted) {
+        wake_block_and_neighbors(s, nx, ny);
+    }
     mark_block_has_moisture(s, x, y);
     mark_block_has_moisture(s, nx, ny);
 }
@@ -692,7 +700,7 @@ soak_share_with(sand_t* s, uint8_t* row, int x, int y, int nx, int ny, size_t na
         return false;
     }
 
-    settle_moisture_move(s, row, x, y, nx, ny, c, held, cost, recv_m);
+    settle_moisture_move(s, row, x, y, nx, ny, c, held, cost, recv_m, nr->soaks_to != 0);
     return true;
 }
 
@@ -723,7 +731,7 @@ percolate_slot_offset(int i) {
 
 /* Whether `below` has room to take percolating water. */
 static bool
-percolate_accepts(cell_t below) {
+cell_accepts_percolation(cell_t below) {
     if (CELL_IS_EMPTY(below)) {
         return false;
     }
@@ -733,6 +741,11 @@ percolate_accepts(cell_t below) {
     }
     /* Lit fuse carve-out: prevent dousing */
     return !cell_is_burning(below) && (br->soaks_to != 0 || (br->dries != 0 && moisture_of(below, br) < br->moist_max));
+}
+
+static inline bool
+percolate_accepts(cell_t below) {
+    return (percolate_accept_mask[below >> 5] & (UINT32_C(1) << (below & 31U))) != 0;
 }
 
 /* Fills `open` with the percolation slots that can take water; returns how
@@ -786,7 +799,7 @@ percolate_into(sand_t* s, uint8_t* row, int x, int y, int w, cell_t c, uint8_t h
         s->cells[nat] = with_moisture(below, (uint8_t)recv_m, br);
         cost = give;
     }
-    settle_moisture_move(s, row, x, y, nx, ny, c, held, cost, recv_m);
+    settle_moisture_move(s, row, x, y, nx, ny, c, held, cost, recv_m, br->soaks_to != 0);
 }
 
 /* Water percolates downhill, not just diffuses: on a won roll it hands
@@ -809,10 +822,38 @@ try_percolate(sand_t* s, uint8_t* row, int x, int y, int w, int h, cell_t c, uin
     return true;
 }
 
-/* Splits cell for input/output. Soaks UNIT, transforms or increases variant.
+/* Keep wet-only work out of the dry-cell walk to limit its register pressure. */
+static __attribute__((noinline)) bool
+step_one_wet_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reaction_t* r, cell_t c, uint8_t held,
+                  int soaks) {
+    const int spread = soaks;
+
+    /* `dries` marks wet; `spread` checked for sinking. */
+    if (held >= 2 && spread != 0 && sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_SOAK_SPREAD_GATE, spread)
+        && soak_spread_to_neighbors(s, row, x, y, w, h, c, held)) {
+        return true;
+    }
+
+    if (try_percolate(s, row, x, y, w, h, c, held)) {
+        return true;
+    }
+
+    if (sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_SOAK_DRY, r->dries)) {
+        /* No block wake: drying only retones the cell. */
+        row[x] = soil_set_moisture(c, (uint8_t)(held - 1), 0);
+        mark_rows(s, x, y, y);
+        return held - 1 != 0;
+    }
+
+    return true;
+}
+
+/* Out of line on purpose: inlined it doubles step_one_reacting_row(), the
+ * walk every gas cell goes through, and slows scenes with no soil at all.
+ * Splits cell for input/output. Soaks UNIT, transforms or increases variant.
  * Drying decreases variant. Returns true if wet/near liquid. Prevents
  * `may_have_moisture`. Activated by SOAKING side. */
-static bool
+static __attribute__((noinline)) bool
 step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reaction_t* r) {
     const cell_t c = row[x];
     const uint8_t held = moisture_of(c, r);
@@ -826,7 +867,7 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
      * further down) does not read `soaks` at all, so it must not be
      * skipped here too. A dry cell with soaking off has nothing left this
      * stage can ever do to it. */
-    if (s->soak == 0 && (r->dries == 0 || held == 0)) {
+    if (s->soak == 0 && (held == 0 || r->dries == 0)) {
         return false;
     }
 
@@ -843,27 +884,10 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
         return true;
     }
 
-    const int spread = soaks;
-
-    /* `dries` marks wet; `spread` checked for sinking. */
-    if (r->dries != 0 && held >= 2 && spread != 0
-        && sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_SOAK_SPREAD_GATE, spread)
-        && soak_spread_to_neighbors(s, row, x, y, w, h, c, held)) {
-        return true;
+    if (r->dries == 0 || held == 0) {
+        return beside_liquid;
     }
-
-    if (r->dries != 0 && held != 0 && try_percolate(s, row, x, y, w, h, c, held)) {
-        return true;
-    }
-
-    if (r->dries != 0 && held != 0 && sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_SOAK_DRY, r->dries)) {
-        row[x] = soil_set_moisture(c, (uint8_t)(held - 1), 0);
-        mark_rows(s, x, y, y);
-        wake_block_and_neighbors(s, x, y);
-        return held - 1 != 0;
-    }
-
-    return (r->dries != 0 && held != 0) || beside_liquid;
+    return step_one_wet_cell(s, row, x, y, w, h, r, c, held, soaks);
 }
 
 static void
@@ -1688,9 +1712,9 @@ acid_bubble(sand_t* s, int x, int y) {
     if ((rng_next(&s->rng) & 0xFF) >= SAND_ACID_BUBBLE_CHANCE) {
         return;
     }
-    const int i_up = (ring_of(dx, dy) + 4) & 7;
+    const int up_index = (ring_of(dx, dy) + 4) & 7;
     const int spread = (int)(rng_next(&s->rng) % 3) - 1; /* -1, 0 or 1 */
-    sand_impulse(s, x, y, (i_up + spread + 8) & 7, SAND_ACID_BUBBLE_SPEED);
+    sand_impulse(s, x, y, (up_index + spread + 8) & 7, SAND_ACID_BUBBLE_SPEED);
 }
 
 /* The dissolver's own evaporate roll; returns whether it turned to gas. */
@@ -2813,6 +2837,11 @@ build_reaction_tables(void) {
     }
 
     fill_pair_bits();
+    for (unsigned byte = 0; byte < 256U; byte++) {
+        if (cell_accepts_percolation((cell_t)byte)) {
+            percolate_accept_mask[byte >> 5] |= UINT32_C(1) << (byte & 31U);
+        }
+    }
 
     for (int m = 0; m < MAT_COUNT; m++) {
         const bool is_acid_rain_material = (m == MAT_GAS || m == MAT_STEAM);
@@ -3330,6 +3359,8 @@ latch_found_flags(sand_t* s, unsigned found) {
 
 void
 sand_step_reactions(sand_t* s) {
+    s->explosions_this_step = 0;
+    s->confined_blasts_this_step = 0;
     sand_reactions_last_was_soak_only = false;
 
     if (s->fuse_blast_wait != 0) {

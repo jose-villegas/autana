@@ -28,7 +28,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/intmath.h"
+#include "util/scalar/mathi.h"
 
 /*
  * Glass as a material with a temperature: the heat ramp, cooling, and
@@ -407,13 +407,7 @@ test_glass_looks_different_at_the_shock_threshold(void) {
     for (int v = 1; v < MATERIAL_VARIANTS; v++) {
         const gfx_color_t a = pal[MAT_GLASS * MATERIAL_VARIANTS + v - 1];
         const gfx_color_t b = pal[MAT_GLASS * MATERIAL_VARIANTS + v];
-        /* Stored byte-swapped for the panel, see GFX_RGB in gfx_color.h. */
-        const uint16_t ua = (uint16_t)((a >> 8) | (a << 8));
-        const uint16_t ub = (uint16_t)((b >> 8) | (b << 8));
-        const int dr = ((ua >> 11) & 0x1F) - ((ub >> 11) & 0x1F);
-        const int dg = ((ua >> 5) & 0x3F) - ((ub >> 5) & 0x3F);
-        const int db = (ua & 0x1F) - (ub & 0x1F);
-        gap[v] = (dr < 0 ? -dr : dr) * 2 + (dg < 0 ? -dg : dg) + (db < 0 ? -db : db) * 2;
+        gap[v] = colour_gap(a, b);
     }
 
     int widest = 1;

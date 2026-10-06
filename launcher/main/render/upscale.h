@@ -1,3 +1,7 @@
+/*
+ * upscale: nearest-neighbour row and column maps from a render size to a
+ * destination size, and the copy through them.
+ */
 #pragma once
 
 #include <stdbool.h>

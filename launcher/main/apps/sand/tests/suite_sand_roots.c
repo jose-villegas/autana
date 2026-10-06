@@ -33,7 +33,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/intmath.h"
+#include "util/scalar/mathi.h"
 
 /* See reaction_t.roots and docs/sand/Sand-Simulation.md's tree-feeding
  * section. */
@@ -257,7 +257,7 @@ note_root_position(root_reach_t* r, int x, int y, int cx, int collar_y) {
     if (depth > r->max_depth) {
         r->max_depth = depth;
     }
-    const int hw = im_abs(x - cx);
+    const int hw = mathi_abs(x - cx);
     if (hw > r->max_half_width) {
         r->max_half_width = hw;
     }
@@ -1020,20 +1020,17 @@ test_a_continuously_watered_root_system_still_saturates(void) {
  * luminance, so a hue drift cannot pass as "darker". */
 static unsigned
 r5(gfx_color_t c) {
-    const unsigned n = (unsigned)((c >> 8) | (c << 8)) & 0xFFFFu;
-    return (n >> 11) & 31u;
+    return gfx_rgb565_r5(gfx_color_swap(c));
 }
 
 static unsigned
 g6(gfx_color_t c) {
-    const unsigned n = (unsigned)((c >> 8) | (c << 8)) & 0xFFFFu;
-    return (n >> 5) & 63u;
+    return gfx_rgb565_g6(gfx_color_swap(c));
 }
 
 static unsigned
 b5(gfx_color_t c) {
-    const unsigned n = (unsigned)((c >> 8) | (c << 8)) & 0xFFFFu;
-    return n & 31u;
+    return gfx_rgb565_b5(gfx_color_swap(c));
 }
 
 static void

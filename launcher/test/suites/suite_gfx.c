@@ -38,8 +38,8 @@
 #include "gfx/gfx_test.h"
 #include "input/touch.h"
 #include "input/touch_fsm.h"
-#include "util/memory.h"
-#include "util/timing.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/timing.h"
 
 static const char* TAG = "device_tests";
 
@@ -916,9 +916,7 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
 /* Measures the gather-copy path in gfx_present(): a strip whose
  * real dirty width is only a fraction of the band, written directly (not
  * through gfx_fill_rect(), which always claims the whole band via
- * mark_band() regardless of what it drew; see its comment). See
- * docs/notes/Display-and-Rendering.md's "Cost per call" for why this
- * exists. */
+ * mark_band() regardless of what it drew; see its comment). */
 static void
 test_a_narrow_change_costs_less_than_a_full_band(void) {
     fixture();
@@ -965,8 +963,7 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
  * wide-but-short change gathers as cheaply as a narrow-but-tall one: tilt
  * the board so gravity points sideways and a falling stream is wide and
  * short instead of narrow and tall, and a width-only bound would give it no
- * benefit at all. See docs/notes/Display-and-Rendering.md's "Dirty
- * tracking, measured". */
+ * benefit at all. */
 static void
 test_a_short_wide_change_costs_less_than_a_full_band(void) {
     fixture();
@@ -1054,8 +1051,7 @@ test_a_full_width_partial_height_change_costs_less_than_a_band(void) {
  * enough on its own to gather independently, which is the point: this is
  * the case a single adaptive box per strip cannot help with at all, since
  * a box spanning both would cover nearly the whole band for no reason. Two
- * separate pools settling in the same horizontal band, say. See
- * docs/notes/Display-and-Rendering.md's "Dirty tracking, measured". */
+ * separate pools settling in the same horizontal band, say. */
 static void
 test_two_far_corners_cost_less_than_a_full_band(void) {
     fixture();
@@ -1205,8 +1201,7 @@ test_a_near_budget_split_crosses_the_gather_threshold(void) {
  * real gap between them: the shape only leaf refinement can split on.
  * test_two_far_corners above lands in different CELLS, which
  * collect_dirty_runs() alone already separates without any help from the
- * leaf layer; this test is the one that actually exercises it. See
- * docs/notes/Display-and-Rendering.md's "Dirty tracking, measured". */
+ * leaf layer; this test is the one that actually exercises it. */
 static void
 test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
     fixture();

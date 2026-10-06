@@ -5,9 +5,9 @@
  */
 #pragma once
 
-#include "util/math/mathx.h"
 #include "util/math/quat_template.h"
 #include "util/math/vec3x.h"
+#include "util/scalar/mathx.h"
 
 MATH_DEFINE_QUAT(quatx, vec3x, int32_t, mathx)
 MATH_DEFINE_QUAT_NORMALIZE(quatx, vec3x, int32_t, mathx)
