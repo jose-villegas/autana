@@ -410,7 +410,7 @@ def rule_personal_path(root, path, text):
 HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
 KNOWN_MARKERS = re.compile(
     re.escape(DOC_CONSTANTS_ESCAPE) + "|" +
-    re.escape(DOC_VOCABULARY_ESCAPE) + r"|(?:BEGIN|END)\s+GENERATED")
+    re.escape(DOC_VOCABULARY_ESCAPE) + r"|(?:BEGIN|END)\s+GENERATED|" + GENERATED_BLOCK.pattern)
 
 
 # RULE: a working copy written with CRLF. .gitattributes normalises it on
@@ -478,7 +478,7 @@ def rule_shell_compound_status(root, path, text):
 def rule_stray_html_comment(root, path, raw_lines):
     blanked = "\n".join(blank_fences(raw_lines))
     for m in HTML_COMMENT.finditer(blanked):
-        if KNOWN_MARKERS.search(m.group(0)) or GENERATED_BLOCK.fullmatch(m.group(0)):
+        if KNOWN_MARKERS.search(m.group(0)):
             continue
         line = blanked.count("\n", 0, m.start()) + 1
         yield line, f"{m.group(0)[:60]} renders as nothing - delete it or say it in the text"
