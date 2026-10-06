@@ -40,15 +40,16 @@ previewed.
 The render harness (`launcher/tools/render/`) compiles the firmware's
 host-portable C: `main/gfx/gfx.c` plus a scene such as `main/boot/boot_anim.c`,
 unmodified, and renders **a real frame by the real firmware code** on the
-host. Authored data reaches it as a baked header or generated source, so a
-draft can be baked and rendered without touching the committed one.
+host. Authored data reaches it as a baked header or an asset bundle built
+from its source, so a draft can be baked and rendered without touching the
+committed source.
 
 That is the architecture, running, for one payload. A level editor proposes
 it for a second. This plan is the third:
 
 | | authored data | generator | rendered by |
 |---|---|---|---|
-| boot animation | `boot_anim_motion.glb`, `boot_anim_timeline.json` | `bake_tracks.py`, `gen_boot_anim_timeline.py` | real `boot_anim.c` + `gfx.c` on host |
+| boot animation | `boot_anim_motion.glb`, `boot_anim_timeline.json` | `tracks_asset.py` (a bundle), `gen_boot_anim_timeline.py` | real `boot_anim.c` + `gfx.c` on host |
 | level editor | material blocks | bake to a header | real sand code on host |
 | **UI editor (this)** | **a screen's layout** | **bake to a header** | **real `gfx.c` + pure geometry on host** |
 

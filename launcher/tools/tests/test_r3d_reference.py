@@ -18,6 +18,8 @@ try:
 except ImportError:
     np = None
 
+from tests.r3d_env import needs_mitsuba  # noqa: E402
+
 
 def plane_source(corners):
     """A one-material quad of two triangles facing +z, white, unlit by anything but the scene."""
@@ -43,6 +45,7 @@ LOOK_DOWN = None if np is None else np.array([0.0, 0.0, 1.0, 0.0, 0.0, -1.0])
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ReferenceRenderTest(unittest.TestCase):
+    @needs_mitsuba
     def test_main_reports_occlusion_value_error_on_serial_path(self):
         import contextlib
         import io
@@ -68,16 +71,19 @@ class ReferenceRenderTest(unittest.TestCase):
         self.assertIn(message, stderr.getvalue())
         occlusion.assert_called_once()
 
+    @needs_mitsuba
     def test_an_unshadowed_plane_is_exact_lambert(self):
         source = plane_source([[-2.0, -2.0, 0.0], [2.0, -2.0, 0.0], [2.0, 2.0, 0.0], [-2.0, 2.0, 0.0]])
         picture = render_linear(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 1, 1, 0.1, 1)
         np.testing.assert_allclose(picture, [[[1.0, 1.0, 1.0]]], atol=1e-12, rtol=0)
 
+    @needs_mitsuba
     def test_a_tilted_sun_scales_the_value_by_the_cosine_to_the_normal(self):
         source = plane_source([[-2.0, -2.0, 0.0], [2.0, -2.0, 0.0], [2.0, 2.0, 0.0], [-2.0, 2.0, 0.0]])
         picture = render_linear(source, *sun_scene([0.8, 0.0, 0.6]), LOOK_DOWN, 1, 1, 0.1, 1)
         np.testing.assert_allclose(picture, [[[0.6, 0.6, 0.6]]], atol=1e-12, rtol=0)
 
+    @needs_mitsuba
     def test_subpixels_land_in_their_own_pixel_and_average_to_its_coverage(self):
         # The quad covers -0.5 < x < 0 and y > 0.5 of a view spanning -1..1: of the 2 x 2 pixels only the
         # top-left is reached, by its upper-right subpixel, one of its four.
@@ -85,6 +91,7 @@ class ReferenceRenderTest(unittest.TestCase):
         picture = render_linear(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 2, 2, 1.0, 2)
         np.testing.assert_allclose(picture[..., 0], [[0.25, 0.0], [0.0, 0.0]], atol=1e-12, rtol=0)
 
+    @needs_mitsuba
     def test_the_normal_buffer_faces_the_eye_and_is_zero_where_rays_miss(self):
         # Wound to face away from the eye at z = 1: the buffer still turns its normal toward the eye.
         source = plane_source([[-0.5, 0.5, 0.0], [-0.5, 2.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.5, 0.0]])
@@ -92,6 +99,7 @@ class ReferenceRenderTest(unittest.TestCase):
         np.testing.assert_allclose(normal[0, 0], [0.0, 0.0, 1.0], atol=1e-12, rtol=0)
         np.testing.assert_allclose(normal[1], 0.0, atol=1e-12, rtol=0)
 
+    @needs_mitsuba
     def test_a_pose_at_empty_sky_is_the_scene_background_as_the_device_shows_it(self):
         source = plane_source([[-2.0, -2.0, 0.0], [2.0, -2.0, 0.0], [2.0, 2.0, 0.0], [-2.0, 2.0, 0.0]])
         away = np.array([0.0, 0.0, 1.0, 0.0, 0.0, 1.0])
@@ -176,6 +184,7 @@ class BounceReferenceTests(unittest.TestCase):
         def bounce(self, points, normals, ray_offset):
             return np.full((len(points), 3), 0.25)
 
+    @needs_mitsuba
     def test_the_reference_adds_the_bounce_to_each_hit(self):
         source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
         without = render_linear(source, *sun_scene([0., 0., 1.]), LOOK_DOWN, 1, 1, 0.1, 1)
@@ -202,6 +211,7 @@ class BounceReferenceTests(unittest.TestCase):
             reference.render_poses(SimpleNamespace(bounce=object()), None, None, [None] * 3, 8, 8, 1., 1, '.', workers=4)
 
 
+@needs_mitsuba
 @unittest.skipIf(np is None, "needs NumPy")
 class SkyStreamingTests(unittest.TestCase):
     def test_sky_directions_are_streamed_and_match_list(self):

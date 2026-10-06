@@ -28,6 +28,8 @@ try:
 except ImportError:
     np = None
 
+from tests.r3d_env import needs_mitsuba  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SOURCE = '[source]\npath = "m.obj"\ncredit = "c"\n'
 OUTPUT = '[output]\ndirectory = "."\nname = "mesh"\n'
@@ -627,6 +629,7 @@ class AuthoredImportTests(unittest.TestCase):
         self.assertTrue(beside)
         self.assertEqual(elsewhere, [])
 
+    @needs_mitsuba
     def test_a_baked_renderer_writes_its_mesh_beside_the_scene_named_by_scene_and_object(self):
         objects = renderer(extra="bake = true\n") + sun_object()
         with tempfile.TemporaryDirectory() as directory:
