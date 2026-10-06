@@ -1,8 +1,9 @@
 {
   "name": "autana-gates",
   "private": true,
-  "description": "Exact versions check-math.mjs runs: the MathJax GitHub serves, and the Markdown parser. Install with npm ci --prefix scripts/gates.",
+  "description": "Pinned dependencies for the math and clone gates. Install with npm ci --prefix scripts/gates.",
   "dependencies": {
+    "jscpd": "5.4.0",
     "markdown-it": "14.1.0",
     "mathjax-full": "3.2.0"
   }
