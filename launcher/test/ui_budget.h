@@ -6,17 +6,14 @@
 #include "ui/ui.h"
 #include "unity.h"
 
+/* Host checks command growth; the device enforces 8 KiB. Reserve room for a fifth screen. */
 #define COMMANDLIST_HEADROOM_BYTES 2048
 #define COMMANDLIST_BUDGET         (MU_COMMANDLIST_SIZE - COMMANDLIST_HEADROOM_BYTES)
 
-static inline int
-ui_budget_end(void) {
-    mu_end(ui_context());
-    return ui_context()->command_list.idx;
-}
-
 static inline void
-ui_budget_assert(const char* screen_name, int used) {
+ui_budget_assert(const char* screen_name) {
+    mu_end(ui_context());
+    const int used = ui_context()->command_list.idx;
     char msg[96];
     snprintf(msg, sizeof msg, "%s screen used %d of %d budget bytes (%d headroom)", screen_name, used,
              COMMANDLIST_BUDGET, MU_COMMANDLIST_SIZE - used);

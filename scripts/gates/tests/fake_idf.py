@@ -1,7 +1,7 @@
 """A few files laid out as ESP-IDF and its toolchain lay them out, for the
 tests of idf_vocabulary.py and the gates that read it."""
 import pathlib
-from tree import write
+from gate_tree import write
 
 TOOLCHAIN_INCLUDE = "tools/xtensa-esp-elf/esp-0.0/xtensa-esp-elf/xtensa-esp-elf/include"
 

@@ -154,8 +154,8 @@ to_f(float x, float y, float z) {
 static void
 test_every_setter_translate_rotate_and_look_at_rebuilds_the_matrix(void) {
     transformf_t t = TRANSFORMF_IDENTITY;
-    ASSERT_TRANSFORM_SETTERS(transformf, t, to_f, quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, HALF_PI), rebuilds,
-                             true);
+    ASSERT_TRANSFORM_SETTERS(transformf, t, to_f, quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, HALF_PI),
+                             rebuilds);
     transformf_look_at(&t, (vec3f_t){0.0F, 0.0F, 9.0F}, (vec3f_t){0.0F, 1.0F, 0.0F});
     TEST_ASSERT_TRUE(rebuilds(&t));
 }

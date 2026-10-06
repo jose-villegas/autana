@@ -107,23 +107,15 @@ field_of(const frame_sample_t* s, sample_field_t field) {
     return 0;
 }
 
-typedef perf_stats_t phase_stats_t;
-
-/* Scratch space for whichever field compute_stats() is sorting right now -
- * shared and reused across all five calls rather than one MAX_SAMPLES
- * array per field, which is what overflowed the main task's stack when it
- * was five stack-local arrays, and starved gfx's own allocations when
- * moved to five static ones instead. One reused buffer costs a fifth of
- * either - heap-allocated now alongside samples above, for the same
- * reason. */
+/* One per-test scratch buffer serves every timing field. */
 static int32_t* stat_scratch = NULL;
 
-static phase_stats_t
-compute_stats(sample_field_t field, int n) {
+static int32_t*
+sample_values(sample_field_t field, int n) {
     for (int i = 0; i < n; i++) {
         stat_scratch[i] = field_of(&samples[i], field);
     }
-    return perf_stats_compute(stat_scratch, n);
+    return stat_scratch;
 }
 
 static void
@@ -274,11 +266,11 @@ run_perf_capture(const char* label, bool with_hud, bool with_partial, bool with_
      * sample_count (the true total) has grown past it. */
     const int valid = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES;
 
-    phase_stats_t total = compute_stats(FIELD_TOTAL, valid);
-    phase_stats_t logic = compute_stats(FIELD_LOGIC, valid);
-    phase_stats_t rast = compute_stats(FIELD_RASTERIZE, valid);
-    phase_stats_t hud = compute_stats(FIELD_HUD, valid);
-    phase_stats_t pres = compute_stats(FIELD_PRESENT, valid);
+    perf_stats_t total = perf_stats_compute(sample_values(FIELD_TOTAL, valid), valid);
+    perf_stats_t logic = perf_stats_compute(sample_values(FIELD_LOGIC, valid), valid);
+    perf_stats_t rast = perf_stats_compute(sample_values(FIELD_RASTERIZE, valid), valid);
+    perf_stats_t hud = perf_stats_compute(sample_values(FIELD_HUD, valid), valid);
+    perf_stats_t pres = perf_stats_compute(sample_values(FIELD_PRESENT, valid), valid);
 
     /* LOG THE REPORT */
     /*
@@ -359,6 +351,9 @@ test_cube_performance_interlaced(void) {
 
 void
 run_cube_perf_suite(void) {
+#if CONFIG_LAUNCHER_QEMU
+    TEST_IGNORE_MESSAGE("performance requires the device clock and display");
+#endif
     RUN_TEST(test_cube_performance_baseline);
     RUN_TEST(test_cube_performance_no_hud);
     RUN_TEST(test_cube_performance_no_partial);
@@ -372,6 +367,4 @@ run_cube_perf_suite(void) {}
 
 #endif /* DEVICE_BUILD */
 
-#if defined(CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF)
 SUITE_REGISTER(run_cube_perf_suite);
-#endif

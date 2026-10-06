@@ -4,7 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import tree
+import gate_tree
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "check_comment_length.py"
 
@@ -22,14 +22,14 @@ class CommentLengthTest(unittest.TestCase):
             self.git(root, "init", "-q")
             self.git(root, "config", "user.name", "test")
             self.git(root, "config", "user.email", "test@example.com")
-            tree.write(root, "original.c",
+            gate_tree.write(root, "original.c",
                        f"/* {moved} */\nvoid old(void) {{}}\n")
             self.git(root, "add", "original.c")
             self.git(root, "commit", "-qm", "base")
             base = self.git(root, "rev-parse", "HEAD").stdout.strip()
             (root / "original.c").unlink()
-            tree.write(root, "moved.c", f"/* {moved} */\nvoid moved(void) {{}}\n")
-            tree.write(root, "added.c", f"/* {added} */\nvoid added(void) {{}}\n")
+            gate_tree.write(root, "moved.c", f"/* {moved} */\nvoid moved(void) {{}}\n")
+            gate_tree.write(root, "added.c", f"/* {added} */\nvoid added(void) {{}}\n")
             self.git(root, "add", "-A")
             self.git(root, "commit", "-qm", "split")
             result = subprocess.run(

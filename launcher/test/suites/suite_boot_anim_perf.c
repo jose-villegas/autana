@@ -104,14 +104,12 @@ field_of(const frame_sample_t* s, sample_field_t field) {
     return 0;
 }
 
-typedef perf_stats_t phase_stats_t;
-
-static phase_stats_t
-compute_stats(sample_field_t field, int n) {
+static int32_t*
+sample_values(sample_field_t field, int n) {
     for (int i = 0; i < n; i++) {
         stat_scratch[i] = field_of(&samples[i], field);
     }
-    return perf_stats_compute(stat_scratch, n);
+    return stat_scratch;
 }
 
 typedef struct {
@@ -254,7 +252,8 @@ static const phase_row_t PHASE_ROWS[] = {
 /* One phase's stats live only while its own line prints. */
 static __attribute__((noinline)) void
 log_phase(const phase_row_t* row, int64_t total_avg) {
-    const phase_stats_t s = compute_stats(row->field, SAMPLES_PER_CHECKPOINT);
+    const perf_stats_t s =
+        perf_stats_compute(sample_values(row->field, SAMPLES_PER_CHECKPOINT), SAMPLES_PER_CHECKPOINT);
     const double share = (double)s.avg / total_avg * 100;
     if (row->spread) {
         ESP_LOGI(TAG, "%s min=%lldus max=%lldus avg=%lldus med=%lldus p95=%lldus (%.1f%%)", row->label,
@@ -266,7 +265,8 @@ log_phase(const phase_row_t* row, int64_t total_avg) {
 
 static __attribute__((noinline)) void
 report_checkpoint(const checkpoint_t* cp) {
-    const phase_stats_t total = compute_stats(FIELD_TOTAL, SAMPLES_PER_CHECKPOINT);
+    const perf_stats_t total =
+        perf_stats_compute(sample_values(FIELD_TOTAL, SAMPLES_PER_CHECKPOINT), SAMPLES_PER_CHECKPOINT);
 
     ESP_LOGI(TAG, "=== BOOT_ANIM PERF %s (now_ms=%u, %d samples) ===", cp->label, (unsigned)cp->now_ms,
              SAMPLES_PER_CHECKPOINT);
@@ -328,6 +328,9 @@ test_boot_anim_performance_by_checkpoint(void) {
 
 void
 run_boot_anim_perf_suite(void) {
+#if CONFIG_LAUNCHER_QEMU
+    TEST_IGNORE_MESSAGE("performance requires the device clock and display");
+#endif
     RUN_TEST(test_boot_anim_performance_by_checkpoint);
 }
 
@@ -338,6 +341,4 @@ run_boot_anim_perf_suite(void) {}
 
 #endif
 
-#if defined(CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF)
 SUITE_REGISTER(run_boot_anim_perf_suite);
-#endif

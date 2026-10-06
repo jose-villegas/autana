@@ -72,7 +72,7 @@ test_palette_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     palette_screen_draw(ui_context(), &ui);
-    ui_budget_assert("sand palette", ui_budget_end());
+    ui_budget_assert("sand palette");
 }
 
 static void
@@ -96,7 +96,7 @@ test_brush_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     brush_screen_draw(ui_context(), &ui);
-    ui_budget_assert("sand brush", ui_budget_end());
+    ui_budget_assert("sand brush");
 }
 
 static void
@@ -106,7 +106,7 @@ test_title_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     title_screen_draw(ui_context());
-    ui_budget_assert("sand title", ui_budget_end());
+    ui_budget_assert("sand title");
 }
 
 /* Shaped like the app's, for layout, taps and command-list size; the
@@ -141,7 +141,7 @@ test_options_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     options_screen_draw(ui_context(), &menu, committed, &labels);
-    ui_budget_assert("sand options", ui_budget_end());
+    ui_budget_assert("sand options");
 }
 
 /* The dither list open: every row, swatch and all, on top of the screen.
@@ -186,10 +186,9 @@ test_options_screen_with_its_dither_list_open_fits_budget(void) {
     const input_t idle = {0};
     ui_begin(&idle);
     options_screen_draw(ui_context(), &menu, committed, &labels);
-    const int used = ui_budget_end();
+    ui_budget_assert("sand options, dither list open");
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(1, ui_context()->root_list.idx,
                                          "the list must actually be open for this to measure it");
-    ui_budget_assert("sand options, dither list open", used);
 }
 
 void

@@ -4,7 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from tree import write as write_file
+from gate_tree import write as write_file
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 

@@ -142,7 +142,7 @@ test_fixed_transform_builds_once_and_rebuilds_after_each_setter(void) {
     transformx_t t = TRANSFORMX_IDENTITY;
     TEST_ASSERT_FALSE(rebuilds_x(&t));
     ASSERT_TRANSFORM_SETTERS(transformx, t, to_x, quatx_from_axis_angle(to_x(0.0F, 1.0F, 0.0F), MATHX_ONE / 4),
-                             rebuilds_x, false);
+                             rebuilds_x);
 
     transformx_t zero = {0};
     TEST_ASSERT_FALSE(zero.cached);

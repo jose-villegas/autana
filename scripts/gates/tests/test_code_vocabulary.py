@@ -4,7 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import tree
+import gate_tree
 from unittest import mock
 
 SCRIPTS = pathlib.Path(__file__).resolve().parents[1]
@@ -20,7 +20,7 @@ class NamesRequireADefinitionTest(unittest.TestCase):
         # enough to make code_vocabulary.vocabulary() think the name was real.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "launcher/main/gfx/gfx.c",
+            gate_tree.write(root, "launcher/main/gfx/gfx.c",
                       "/* replaces the old gfx_default_font() call */\n"
                       "void gfx_init(void) {}\n")
             vocab = code_vocabulary.vocabulary(str(root))
@@ -30,7 +30,7 @@ class NamesRequireADefinitionTest(unittest.TestCase):
     def test_a_name_only_inside_a_string_literal_is_not_defined(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "launcher/main/apps/sand/tests/suite_sand.c",
+            gate_tree.write(root, "launcher/main/apps/sand/tests/suite_sand.c",
                       'TEST_ASSERT_TRUE_MESSAGE(x, "the case cover_count() '
                       'could never fire");\n'
                       "void real_function(void) {}\n")
@@ -41,7 +41,7 @@ class NamesRequireADefinitionTest(unittest.TestCase):
     def test_a_real_declaration_is_still_found(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "launcher/main/gfx/gfx.h",
+            gate_tree.write(root, "launcher/main/gfx/gfx.h",
                       "/* draws a rectangle */\n"
                       "void gfx_fill_rect(int x, int y, int w, int h);\n")
             vocab = code_vocabulary.vocabulary(str(root))
@@ -50,7 +50,7 @@ class NamesRequireADefinitionTest(unittest.TestCase):
     def test_a_real_call_site_is_still_found(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "launcher/main/gfx/gfx.c",
+            gate_tree.write(root, "launcher/main/gfx/gfx.c",
                       "void gfx_init(void) {\n"
                       "    gfx_reset_palette();\n"
                       "}\n")
@@ -64,7 +64,7 @@ class NamesRequireADefinitionTest(unittest.TestCase):
         # real_one()'s own definition, as blanked-out "string content".
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "scripts/gates/example.py",
+            gate_tree.write(root, "scripts/gates/example.py",
                       "# don't do this\n"
                       "def real_one():\n"
                       "    pass\n")
@@ -74,7 +74,7 @@ class NamesRequireADefinitionTest(unittest.TestCase):
     def test_python_floor_division_does_not_blank_the_rest_of_the_line(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "scripts/gates/example.py",
+            gate_tree.write(root, "scripts/gates/example.py",
                       "def real_two():\n"
                       "    return a // real_two_helper()\n")
             vocab = code_vocabulary.vocabulary(str(root))
@@ -84,7 +84,7 @@ class NamesRequireADefinitionTest(unittest.TestCase):
     def test_a_python_docstring_does_not_hide_the_function_after_it(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "scripts/gates/example.py",
+            gate_tree.write(root, "scripts/gates/example.py",
                       '"""Module docstring."""\n'
                       "def real_three():\n"
                       "    pass\n")
@@ -94,7 +94,7 @@ class NamesRequireADefinitionTest(unittest.TestCase):
     def test_an_mjs_string_constant_counts_and_its_function_names_do_not(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "scripts/gates/check.mjs",
+            gate_tree.write(root, "scripts/gates/check.mjs",
                       "function render_block() {}\n"
                       "const extra = process.env['CHECK_EXTRA_ARGS'];\n"
                       "render_block(extra);\n")
@@ -105,14 +105,14 @@ class NamesRequireADefinitionTest(unittest.TestCase):
     def test_node_modules_is_not_read(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "scripts/node_modules/lib/index.mjs", "const x = 'VENDORED_NAME';\n")
+            gate_tree.write(root, "scripts/node_modules/lib/index.mjs", "const x = 'VENDORED_NAME';\n")
             vocab = code_vocabulary.vocabulary(str(root))
         self.assertNotIn("VENDORED_NAME", vocab.constants)
 
     def test_a_shell_variable_counts_and_one_only_its_comment_names_does_not(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "launcher/tools/profile.sh",
+            gate_tree.write(root, "launcher/tools/profile.sh",
                        "# PROFILE_COMMENTED_ONLY is only named here\n"
                        "PROFILE_FREE_BYTES=51200\n"
                        'BASE="${PROFILE_GATE_BASE:-origin/main}"\n')
@@ -126,10 +126,10 @@ class NamesRequireADefinitionTest(unittest.TestCase):
         # a skip by name hid every script in it.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, ".gitignore", "launcher/build/\n")
-            tree.write(root, "launcher/build/generated.c", "void generated_only(void) {}\n")
-            tree.write(root, "launcher/tools/build/flash.sh", "FLASH_BAUD=921600\n")
-            tree.write(root, "launcher/main/new.c", "void not_yet_added(void) {}\n")
+            gate_tree.write(root, ".gitignore", "launcher/build/\n")
+            gate_tree.write(root, "launcher/build/generated.c", "void generated_only(void) {}\n")
+            gate_tree.write(root, "launcher/tools/build/flash.sh", "FLASH_BAUD=921600\n")
+            gate_tree.write(root, "launcher/main/new.c", "void not_yet_added(void) {}\n")
             subprocess.run(["git", "init", "-q"], cwd=root, check=True)
             subprocess.run(["git", "add", ".gitignore", "launcher/tools"], cwd=root, check=True)
             vocab = code_vocabulary.vocabulary(str(root))
@@ -140,8 +140,8 @@ class NamesRequireADefinitionTest(unittest.TestCase):
     def test_outside_git_every_file_but_a_skipped_directory_is_read(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "launcher/build/generated.c", "void generated_only(void) {}\n")
-            tree.write(root, "launcher/main/a.c", "void real_function(void) {}\n")
+            gate_tree.write(root, "launcher/build/generated.c", "void generated_only(void) {}\n")
+            gate_tree.write(root, "launcher/main/a.c", "void real_function(void) {}\n")
             vocab = code_vocabulary.vocabulary(str(root))
         self.assertIn("real_function", vocab.functions)
         self.assertNotIn("generated_only", vocab.functions)
@@ -154,7 +154,7 @@ class NamesRequireADefinitionTest(unittest.TestCase):
             [], 128, "", "fatal: detected dubious ownership in repository at '/w'\n")
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "launcher/main/a.c", "void real_function(void) {}\n")
+            gate_tree.write(root, "launcher/main/a.c", "void real_function(void) {}\n")
             with mock.patch("subprocess.run", return_value=refused):
                 with self.assertRaisesRegex(RuntimeError, "dubious ownership"):
                     code_vocabulary.vocabulary(str(root))

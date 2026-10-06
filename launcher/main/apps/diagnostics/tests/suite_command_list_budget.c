@@ -58,7 +58,7 @@ test_toggles_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     toggles_screen_draw(ui_context(), &state);
-    ui_budget_assert("diagnostics developer toggles", ui_budget_end());
+    ui_budget_assert("diagnostics developer toggles");
 }
 
 static bool

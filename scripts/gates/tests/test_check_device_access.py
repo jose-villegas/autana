@@ -4,7 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import tree
+import gate_tree
 
 SCRIPTS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
@@ -16,9 +16,9 @@ class DeviceAccessTest(unittest.TestCase):
     def test_a_pyserial_open_outside_scripts_device_is_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "launcher/tools/capture.py",
+            gate_tree.write(root, "launcher/tools/capture.py",
                       "import serial\n\nport = serial.Serial('COM5', 115200)\n")
-            tree.commit(root, "launcher")
+            gate_tree.commit(root, "launcher")
             openers = check_device_access.check(root)
         self.assertEqual(len(openers), 1)
         self.assertEqual(openers[0].path, "launcher/tools/capture.py")
@@ -26,9 +26,9 @@ class DeviceAccessTest(unittest.TestCase):
     def test_the_same_opener_inside_scripts_device_is_exempt(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "scripts/device/device.py",
+            gate_tree.write(root, "scripts/device/device.py",
                       "import serial\n\nport = serial.Serial('COM5', 115200)\n")
-            tree.commit(root, "scripts")
+            gate_tree.commit(root, "scripts")
             openers = check_device_access.check(root)
         self.assertEqual(openers, [])
 
@@ -38,20 +38,20 @@ class DeviceAccessTest(unittest.TestCase):
         # once tripped this check on its own docstring and test fixtures.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "scripts/gates/check_device_access.py",
+            gate_tree.write(root, "scripts/gates/check_device_access.py",
                       'IDF_MONITOR_RE = "idf.py monitor"\n'
                       'ESPTOOL = [\'"-m", "esptool"\']\n')
-            tree.write(root, "scripts/gates/tests/test_check_device_access.py",
+            gate_tree.write(root, "scripts/gates/tests/test_check_device_access.py",
                       'FIXTURE = \'cmd = [python, "-m", "esptool", "flash"]\'\n')
-            tree.commit(root, "scripts")
+            gate_tree.commit(root, "scripts")
             openers = check_device_access.check(root)
         self.assertEqual(openers, [])
 
     def openers(self, path, text):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, path, text)
-            tree.commit(root, path)
+            gate_tree.write(root, path, text)
+            gate_tree.commit(root, path)
             openers = check_device_access.check(root)
         return [v.line for v in openers]
 
@@ -94,12 +94,12 @@ class DeviceAccessTest(unittest.TestCase):
         # QEMU boots a merged image file; merge_bin never opens a port.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "launcher/test/qemu_run.py",
+            gate_tree.write(root, "launcher/test/qemu_run.py",
                       'import socket\n\n'
                       'cmd = [python, "-m", "esptool", "--chip", "esp32s3", "merge_bin",\n'
                       '       "-o", out_path]\n'
                       'sock = socket.create_connection(("127.0.0.1", port), 1.0)\n')
-            tree.commit(root, "launcher")
+            gate_tree.commit(root, "launcher")
             openers = check_device_access.check(root)
         self.assertEqual(openers, [])
 
@@ -108,18 +108,18 @@ class DeviceAccessTest(unittest.TestCase):
         # pyserial's, which needs `import serial` in the same file.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "launcher/tools/example.py",
+            gate_tree.write(root, "launcher/tools/example.py",
                       "def Serial(x):\n    return x\n\nSerial(1)\n")
-            tree.commit(root, "launcher")
+            gate_tree.commit(root, "launcher")
             openers = check_device_access.check(root)
         self.assertEqual(openers, [])
 
     def test_an_esptool_module_invocation_is_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "launcher/tools/flash_it.py",
+            gate_tree.write(root, "launcher/tools/flash_it.py",
                       'cmd = [python, "-m", "esptool", "--chip", "esp32s3", "flash"]\n')
-            tree.commit(root, "launcher")
+            gate_tree.commit(root, "launcher")
             openers = check_device_access.check(root)
         self.assertEqual(len(openers), 1)
         self.assertIn("esptool", openers[0].reason)
@@ -127,18 +127,18 @@ class DeviceAccessTest(unittest.TestCase):
     def test_an_esptool_mention_inside_an_echo_string_is_not_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "launcher/tools/build_it.sh",
+            gate_tree.write(root, "launcher/tools/build_it.sh",
                       '#!/bin/sh\necho "=== letting esptool pick the port ==="\n')
-            tree.commit(root, "launcher")
+            gate_tree.commit(root, "launcher")
             openers = check_device_access.check(root)
         self.assertEqual(openers, [])
 
     def test_an_idf_flash_invocation_is_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "launcher/tools/rogue_flash.sh",
+            gate_tree.write(root, "launcher/tools/rogue_flash.sh",
                       '#!/bin/sh\nidf -B build -p "$COM_PORT" flash\n')
-            tree.commit(root, "launcher")
+            gate_tree.commit(root, "launcher")
             openers = check_device_access.check(root)
         self.assertEqual(len(openers), 1)
         self.assertIn("flash", openers[0].reason)
@@ -146,18 +146,18 @@ class DeviceAccessTest(unittest.TestCase):
     def test_an_idf_flash_mention_inside_an_echo_string_is_not_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "launcher/tools/guidance.sh",
+            gate_tree.write(root, "launcher/tools/guidance.sh",
                       '#!/bin/sh\necho "Flash with: idf.py -B build -p COM3 flash"\n')
-            tree.commit(root, "launcher")
+            gate_tree.commit(root, "launcher")
             openers = check_device_access.check(root)
         self.assertEqual(openers, [])
 
     def test_an_idf_monitor_script_invocation_is_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "monitor.sh",
+            gate_tree.write(root, "monitor.sh",
                       '#!/bin/sh\nexec "$PY" "$IDF_PATH/tools/idf_monitor.py" -p "$PORT"\n')
-            tree.commit(root, "monitor.sh")
+            gate_tree.commit(root, "monitor.sh")
             openers = check_device_access.check(root)
         self.assertEqual(len(openers), 1)
         self.assertIn("idf_monitor", openers[0].reason)
@@ -167,10 +167,10 @@ class DeviceAccessTest(unittest.TestCase):
         # was narrowed to an actual invocation shape.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            tree.write(root, "launcher/tools/device/screenshot.py",
+            gate_tree.write(root, "launcher/tools/device/screenshot.py",
                       '"""Reads the response back out of the same stream idf_monitor\n'
                       'would otherwise be showing as logs.\n"""\n')
-            tree.commit(root, "launcher")
+            gate_tree.commit(root, "launcher")
             openers = check_device_access.check(root)
         self.assertEqual(openers, [])
 

@@ -43,7 +43,7 @@ test_hud_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     render_lab_hud_screen_draw(ui_context(), &state);
-    ui_budget_assert("render lab HUD", ui_budget_end());
+    ui_budget_assert("render lab HUD");
 }
 
 static void
@@ -59,7 +59,7 @@ test_menu_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     render_lab_menu_screen_draw(ui_context(), &state, 16);
-    ui_budget_assert("render lab menu", ui_budget_end());
+    ui_budget_assert("render lab menu");
 }
 
 void
