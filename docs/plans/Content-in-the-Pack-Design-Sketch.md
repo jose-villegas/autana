@@ -175,9 +175,11 @@ nothing has mounted a bundle before it. Boot mounts its clip's bundle with
 first call.
 
 ```c
-/* boot_anim.h: the six tracks (camera and space: translation, rotation, scale) resolved once */
-typedef struct { anim_clip_t clip; anim_track_t t[6]; bool from_pack; } boot_anim_motion_t;
-void boot_anim_motion_load(void);   /* first thing in boot_anim_run(): anim_tracks_from_pack(asset_store_bundle("boot_anim_motion"), "boot_anim_motion"); on any failure, log once and use the rest pose */
+/* boot_anim.h: nodes camera and space (translation, rotation, scale) resolved once */
+typedef struct { anim_clip_t clip; anim_node_tracks_t camera, space; bool from_pack; } boot_anim_motion_t;
+void boot_anim_motion_load(boot_anim_motion_t* out);      /* first thing in boot_anim_run(): anim_tracks_from_pack(asset_store_bundle("boot_anim_motion"), "boot_anim_motion"), anim_tracks_find_node() twice; on any failure, log once and use the rest pose */
+void boot_anim_motion_release(boot_anim_motion_t* motion); /* when boot is done; leaves the rest pose */
+/* the motion is passed to boot_anim_view() and boot_anim_draw_frame(): no module state */
 ```
 
 | Case | Behaviour |

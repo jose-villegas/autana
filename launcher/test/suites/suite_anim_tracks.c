@@ -339,6 +339,132 @@ open_every_clip(const asset_pack_t* pack) {
     return clips;
 }
 
+/* A node's tracks */
+
+enum { NODE_ROWS_MAX = 3, NODE_BYTES = 512 };
+
+/* One key at 0 s; row i's values are i + 1, i + 2, ... so each part can be
+ * told from the others. */
+typedef struct {
+    uint8_t* entry;
+    void* raw;
+    anim_tracks_t tracks;
+} node_clip_t;
+
+static node_clip_t
+node_clip(const test_track_t* rows, int count) {
+    node_clip_t c;
+    c.entry = test_alloc_aligned(NODE_BYTES, 16, &c.raw);
+    TEST_ASSERT_NOT_NULL(c.entry);
+    memset(c.entry, 0, NODE_BYTES);
+    const uint32_t times = TEST_TRACKS_HEADER_SIZE + (NODE_ROWS_MAX * TEST_TRACK_ROW_SIZE);
+    const float at_start[] = {0.0F};
+    test_pack_put_floats(c.entry + times, at_start, 1);
+    test_tracks_header(c.entry, count, 1000);
+    for (int i = 0; i < count; i++) {
+        test_track_t row = rows[i];
+        row.times = times;
+        row.values = times + 16U + (16U * (uint32_t)i);
+        row.keys = 1;
+        row.interp = ANIM_STEP;
+        test_track_row(c.entry, i, &row);
+        const float values[] = {(float)i + 1.0F, (float)i + 2.0F, (float)i + 3.0F, (float)i + 4.0F};
+        test_pack_put_floats(c.entry + row.values, values, 4);
+    }
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_open((asset_view_t){c.entry, NODE_BYTES}, &c.tracks));
+    return c;
+}
+
+static float
+first_value(const anim_track_t* track) {
+    float out[ANIM_WIDTH_MAX];
+    anim_track_sample(track, 0.0F, out);
+    return out[0];
+}
+
+static void
+test_a_node_s_three_tracks_are_found_each_by_its_own_name(void) {
+    const test_track_t rows[] = {
+        {.name = "n/scale", .width = 3},
+        {.name = "n/rotation", .width = 4, .quaternion = true},
+        {.name = "n/translation", .width = 3},
+    };
+    node_clip_t c = node_clip(rows, 3);
+    anim_node_tracks_t node;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_find_node(&c.tracks, "n", &node));
+    TEST_ASSERT_EQUAL_FLOAT(3.0F, first_value(&node.translation));
+    TEST_ASSERT_EQUAL_FLOAT(2.0F, first_value(&node.rotation));
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, first_value(&node.scale));
+    TEST_ASSERT_EQUAL_UINT8(4, node.rotation.width);
+    test_free_aligned(c.raw);
+}
+
+static void
+test_a_node_the_clip_does_not_scale_keeps_unit_scale(void) {
+    const test_track_t rows[] = {
+        {.name = "n/translation", .width = 3},
+        {.name = "n/rotation", .width = 4, .quaternion = true},
+    };
+    node_clip_t c = node_clip(rows, 2);
+    anim_node_tracks_t node;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_find_node(&c.tracks, "n", &node));
+    float scale[ANIM_WIDTH_MAX];
+    anim_track_sample(&node.scale, 2.0F, scale);
+    TEST_ASSERT_EQUAL_UINT8(3, node.scale.width);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, scale[0]);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, scale[1]);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, scale[2]);
+    test_free_aligned(c.raw);
+}
+
+static void
+test_a_node_without_a_translation_or_a_rotation_is_not_found(void) {
+    const test_track_t rows[] = {
+        {.name = "n/translation", .width = 3},
+        {.name = "m/rotation", .width = 4, .quaternion = true},
+        {.name = "m/scale", .width = 3},
+    };
+    node_clip_t c = node_clip(rows, 3);
+    anim_node_tracks_t node;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_tracks_find_node(&c.tracks, "n", &node));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_tracks_find_node(&c.tracks, "m", &node));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND,
+                          anim_tracks_find_node(&c.tracks, "a_node_name_longer_than_a_track_name", &node));
+    test_free_aligned(c.raw);
+}
+
+/* Each rule alone: a translation two wide, a scale four wide, and a rotation
+ * four wide but not flagged a quaternion. */
+static void
+test_a_part_of_the_wrong_width_or_an_unflagged_rotation_is_a_format_error(void) {
+    const test_track_t narrow[] = {
+        {.name = "n/translation", .width = 2},
+        {.name = "n/rotation", .width = 4, .quaternion = true},
+    };
+    const test_track_t wide_scale[] = {
+        {.name = "n/translation", .width = 3},
+        {.name = "n/rotation", .width = 4, .quaternion = true},
+        {.name = "n/scale", .width = 4},
+    };
+    const test_track_t unflagged[] = {
+        {.name = "n/translation", .width = 3},
+        {.name = "n/rotation", .width = 4},
+    };
+
+    const struct {
+        const test_track_t* rows;
+        int count;
+    } cases[] = {{narrow, 2}, {wide_scale, 3}, {unflagged, 2}};
+
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        node_clip_t c = node_clip(cases[i].rows, cases[i].count);
+        anim_node_tracks_t node;
+        const asset_status_t status = anim_tracks_find_node(&c.tracks, "n", &node);
+        test_free_aligned(c.raw);
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, status);
+    }
+}
+
 static void
 test_every_clip_in_the_boot_clip_s_bundle_opens(void) {
     const asset_pack_t* pack = asset_store_bundle(BOOT_CLIP);
@@ -445,6 +571,10 @@ suite_anim_tracks(void) {
     RUN_TEST(test_an_unterminated_name_is_a_format_error);
     RUN_TEST(test_an_unknown_version_is_refused);
     RUN_TEST(test_a_cubic_track_needs_three_runs_of_values);
+    RUN_TEST(test_a_node_s_three_tracks_are_found_each_by_its_own_name);
+    RUN_TEST(test_a_node_the_clip_does_not_scale_keeps_unit_scale);
+    RUN_TEST(test_a_node_without_a_translation_or_a_rotation_is_not_found);
+    RUN_TEST(test_a_part_of_the_wrong_width_or_an_unflagged_rotation_is_a_format_error);
     RUN_TEST(test_every_clip_in_the_boot_clip_s_bundle_opens);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_the_probe_clip_samples_as_the_python_sampler);

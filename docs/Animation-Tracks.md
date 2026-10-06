@@ -94,7 +94,10 @@ ended within its 32 bytes, at least one key, a width of 1 to 4, a known
 interpolation, a quaternion only 4 wide, and zero padding
 (`ASSET_ERR_FORMAT`). `anim_tracks_find()` then
 returns a track whose times and values point into the pack, so nothing is
-copied or allocated.
+copied or allocated. `anim_tracks_find_node()` finds a node's three at once
+into an `anim_node_tracks_t`, which `anim_transform_sample()` turns into a
+transform: translation and rotation must be there, 3 and 4 wide, the
+rotation a quaternion; a node the clip does not scale keeps unit scale.
 
 ## Sampling
 

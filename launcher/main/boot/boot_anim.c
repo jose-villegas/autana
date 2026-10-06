@@ -759,8 +759,8 @@ boot_anim_run(void) {
          * idle task feeds the watchdog. */
         vTaskDelay(1);
     }
-    /* Boot plays once and nothing else reads its clip: releasing frees the
-     * bundle's mapping and its mount slot. */
+    /* Boot plays once and nothing else reads its clip: releasing gives back the
+     * bundle and its mount slot. */
     boot_anim_motion_release(&motion);
 
     /* Checked only on the board; not on host. */

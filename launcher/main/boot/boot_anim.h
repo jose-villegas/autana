@@ -44,22 +44,13 @@
 #define BOOT_ANIM_ONE (1 << BOOT_ANIM_Q) /* 4096 == 1.0 */
 #define BOOT_ANIM_TQ  8                  /* t's own fixed point */
 
-/* The motion's tracks, in this order. */
-enum {
-    BOOT_ANIM_CAMERA_TRANSLATION,
-    BOOT_ANIM_CAMERA_ROTATION,
-    BOOT_ANIM_CAMERA_SCALE,
-    BOOT_ANIM_SPACE_TRANSLATION,
-    BOOT_ANIM_SPACE_ROTATION,
-    BOOT_ANIM_SPACE_SCALE,
-    BOOT_ANIM_TRACKS,
-};
-
-/* How the camera and the space move: the boot clip's tracks, pointing into
- * its bundle, or the rest pose when the clip cannot be read. */
+/* How the camera and the space move: the boot clip's nodes "camera" and
+ * "space", pointing into its bundle, or the rest pose when the clip cannot be
+ * read. */
 typedef struct {
     anim_clip_t clip;
-    anim_track_t t[BOOT_ANIM_TRACKS];
+    anim_node_tracks_t camera;
+    anim_node_tracks_t space;
     bool from_pack;
 } boot_anim_motion_t;
 
@@ -79,12 +70,9 @@ typedef struct {
 static inline boot_anim_timeline_state_t
 boot_anim_timeline_sample(const boot_anim_motion_t* motion, uint32_t now_ms) {
     const float seconds = anim_clip_seconds(&motion->clip, now_ms, ANIM_CLAMP);
-    const anim_track_t* t = motion->t;
     boot_anim_timeline_state_t st;
-    st.camera = anim_transform_sample(&t[BOOT_ANIM_CAMERA_TRANSLATION], &t[BOOT_ANIM_CAMERA_ROTATION],
-                                      &t[BOOT_ANIM_CAMERA_SCALE], seconds);
-    st.space = anim_transform_sample(&t[BOOT_ANIM_SPACE_TRANSLATION], &t[BOOT_ANIM_SPACE_ROTATION],
-                                     &t[BOOT_ANIM_SPACE_SCALE], seconds);
+    st.camera = anim_transform_sample(&motion->camera, seconds);
+    st.space = anim_transform_sample(&motion->space, seconds);
     return st;
 }
 

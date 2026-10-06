@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
 
 /* The entry's layout, written by tools/anim/tracks_asset.py. */
@@ -136,4 +137,38 @@ anim_tracks_find(const anim_tracks_t* tracks, const char* name, anim_track_t* ou
     }
     *out = (anim_track_t){0};
     return ASSET_ERR_NOT_FOUND;
+}
+
+/* The track `<node>/<part>`, `width` wide and a quaternion exactly when 4. */
+static asset_status_t
+find_part(const anim_tracks_t* tracks, const char* node, const char* part, uint8_t width, anim_track_t* out) {
+    char name[ANIM_TRACK_NAME_MAX];
+    const int length = snprintf(name, sizeof name, "%s/%s", node, part);
+    if (length < 0 || (size_t)length >= sizeof name) {
+        *out = (anim_track_t){0};
+        return ASSET_ERR_NOT_FOUND;
+    }
+    const asset_status_t status = anim_tracks_find(tracks, name, out);
+    if (status == ASSET_OK && (out->width != width || (out->quaternion != 0) != (width == 4))) {
+        return ASSET_ERR_FORMAT;
+    }
+    return status;
+}
+
+asset_status_t
+anim_tracks_find_node(const anim_tracks_t* tracks, const char* node, anim_node_tracks_t* out) {
+    static const float AT_START[] = {0.0F};
+    static const float UNSCALED[] = {1.0F, 1.0F, 1.0F};
+    asset_status_t status = find_part(tracks, node, "translation", 3, &out->translation);
+    if (status == ASSET_OK) {
+        status = find_part(tracks, node, "rotation", 4, &out->rotation);
+    }
+    if (status == ASSET_OK) {
+        status = find_part(tracks, node, "scale", 3, &out->scale);
+        if (status == ASSET_ERR_NOT_FOUND) {
+            out->scale = (anim_track_t){AT_START, UNSCALED, 1, 3, ANIM_STEP, 0};
+            status = ASSET_OK;
+        }
+    }
+    return status;
 }
