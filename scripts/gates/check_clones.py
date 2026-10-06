@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Reject new jscpd pairs in tracked first-party C/C++ and Python.
+"""Reject growing jscpd file-pair budgets in tracked first-party C/C++ and Python.
 
 Compare HEAD with its merge-base with origin/main, or HEAD~1 when HEAD is
-on main. Pairs use sorted filenames and whitespace-normalised fragments. A shorter
-fragment contained in a baseline pair is existing duplication.
+on main. Each sorted file pair may change fragment shape while its total cloned
+tokens does not grow. A file pair absent from the base fails.
 --report lists all pairs. --min-tokens N reports another threshold without
 checking new pairs. MIN_TOKENS is 80: longer copied helpers and test setup
 are detected, including renamed identifiers and changed literal values;
@@ -180,26 +180,28 @@ def describe(pair):
 
 
 def pair_key(pair):
-    names = tuple(sorted(pair[side]["name"] for side in ("firstFile", "secondFile")))
-    return names, " ".join(pair["fragment"].split())
+    return tuple(sorted(pair[side]["name"] for side in ("firstFile", "secondFile")))
 
 
 def check_pairs(pairs, base_pairs):
     existing = {}
     for pair in base_pairs:
-        names, fragment = pair_key(pair)
-        existing.setdefault(names, []).append(fragment)
-    added = []
+        names = pair_key(pair)
+        existing[names] = existing.get(names, 0) + pair["tokens"]
+    current = {}
     for pair in pairs:
-        names, fragment = pair_key(pair)
-        if not any(fragment in baseline for baseline in existing.get(names, ())):
-            added.append(pair)
-    if added:
-        print(f"FAIL: {len(added)} new clone pairs; extract a shared owner.")
-        for pair in added:
-            print(describe(pair))
+        current.setdefault(pair_key(pair), []).append(pair)
+    grown = {names: group for names, group in current.items()
+             if names not in existing or sum(pair["tokens"] for pair in group) > existing[names]}
+    if grown:
+        print(f"FAIL: {len(grown)} new or growing clone file pairs; extract a shared owner.")
+        for names, group in sorted(grown.items()):
+            total = sum(pair["tokens"] for pair in group)
+            print(f"{' ~ '.join(names)}: {existing.get(names, 0)} -> {total} cloned tokens")
+            for pair in group:
+                print(describe(pair))
         return 1
-    print(f"PASS: no new clone pairs ({len(pairs)} checked HEAD pairs, {len(base_pairs)} base pairs).")
+    print(f"PASS: no growing clone file pairs ({len(pairs)} checked HEAD pairs, {len(base_pairs)} base pairs).")
     return 0
 
 

@@ -239,3 +239,6 @@ void collect_core1_lane(void);
 
 /* The caller owns all three allocations and frees them after its last step. */
 sand_t* sand_test_grid_open(uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t seed);
+
+/* Stack-owned simulations share the same per-test buffers as heap-owned ones. */
+void sand_test_grid_buffers_open(uint8_t** grid, uint8_t** blocks, int w, int h);

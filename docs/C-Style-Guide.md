@@ -102,12 +102,13 @@ a surprise six months later.
 
 ### Token clones
 
-`python scripts/gates/check_clones.py` rejects new clone pairs in HEAD
+`python scripts/gates/check_clones.py` rejects growing clone file-pair budgets in HEAD
 compared with the merge-base with `origin/main`, or `HEAD~1` when HEAD is
 on main. Install its pinned jscpd engine with `npm ci --prefix scripts/gates`.
-Extract a shared owner for each new pair; removing another pair gives no
-headroom. Pair keys combine sorted file names with the whitespace-normalised
-source fragment, so line shifts do not make an existing pair new.
+Extract a shared owner for each new file pair or increased token total.
+Each sorted file pair has its own budget: fragments may change shape while
+their total cloned tokens does not grow. Renames map to the base names;
+line shifts do not change a budget. Removing another file pair gives no headroom.
 
 Use `--report` to list every pair with file and line ranges, including both
 sides of each new pair. `--min-tokens N` reports a different threshold without
