@@ -390,6 +390,28 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "PERSONAL-PATH")
         self.assertEqual(findings, [])
 
+    def test_a_tool_named_after_an_app_model_is_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            gate_tree.write(root, "launcher/main/apps/lab/assets/Otter.blend", "model")
+            gate_tree.write(root, "launcher/main/apps/lab/tools/export_otter_glb.py", "pass\n")
+            gate_tree.write(root, "scripts/otter_bake.sh", "true\n")
+            gate_tree.commit(root, "launcher", "scripts")
+            findings = self.rule_hits(root, "MODEL-NAMED-TOOL")
+        self.assertEqual(sorted(f.path for f in findings),
+                         ["launcher/main/apps/lab/tools/export_otter_glb.py", "scripts/otter_bake.sh"])
+
+    def test_app_runtime_code_and_generic_tools_may_name_or_skip_models(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            gate_tree.write(root, "launcher/main/apps/lab/assets/otter.glb", "model")
+            gate_tree.write(root, "launcher/main/apps/lab/scene_otter.c", "int x;\n")
+            gate_tree.write(root, "launcher/tools/gltf/blend_skin_to_glb.py", "pass\n")
+            gate_tree.write(root, "docs/images/otter.png", "image")
+            gate_tree.commit(root, "launcher", "docs")
+            findings = self.rule_hits(root, "MODEL-NAMED-TOOL")
+        self.assertEqual(findings, [])
+
     def test_a_stray_html_comment_is_flagged(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
