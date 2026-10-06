@@ -28,6 +28,9 @@ Exit 0 = valid, non-zero = invalid (one or more checks below failed).
 import argparse
 import re
 import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
+from device_capture import RESULT_PREFIX_RE as RESULT_RE
 
 # The device prints this line only when the self-test loop actually reaches
 # its end; absent means the run never finished, for any reason (timeout,
@@ -48,7 +51,6 @@ BOOT_BANNER = "ESP-ROM:esp32s3"
 
 # A line matching this is a Unity test result. Used both as proof that any
 # test ran at all and, around a panic, to name the last few that did.
-RESULT_RE = re.compile(r"^\S*:\d+:(?P<name>\w+):(?P<status>PASS|FAIL)")
 
 # Not fatal by itself, but its presence means an old diag image: the
 # current build disables the task watchdog on purpose, because historically

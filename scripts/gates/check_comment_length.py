@@ -32,9 +32,13 @@ Options:
 """
 
 import os
+import pathlib
+
 import re
 import subprocess
 import sys
+
+from tracked import tracked_files, committable
 
 # Vendored upstream (microui) and machine-written headers: neither
 # is ours to rewrite, and the generators' banner comments would dominate the
@@ -122,31 +126,43 @@ class Comment:
         return self.first
 
 
+def tokens(source, literals=True):
+    """Comment and literal spans; escaped quotes cannot start a comment."""
+    i, n = 0, len(source)
+    while i < n:
+        start = i
+        if literals and source[i] in "\"'":
+            quote = source[i]
+            i += 1
+            while i < n and source[i] != quote:
+                i += 2 if source[i] == "\\" and i + 1 < n else 1
+            i = min(i + 1, n)
+            yield "literal", start, i
+        elif source.startswith("/*", i):
+            end = source.find("*/", i + 2)
+            i = n if end < 0 else end + 2
+            yield "block", start, i
+        elif source.startswith("//", i):
+            end = source.find("\n", i)
+            i = n if end < 0 else end
+            yield "line", start, i
+        else:
+            i += 1
+
+
 def scan(path, source):
     """Yield every comment in `source`, skipping string and char literals."""
     comments = []
-    i, n = 0, len(source)
-    line = 1
-    while i < n:
-        c = source[i]
-        if c == "\n":
-            line += 1
-            i += 1
-        elif c in "\"'":
-            quote = c
-            i += 1
-            while i < n and source[i] != quote:
-                if source[i] == "\\":
-                    i += 1
-                elif source[i] == "\n":
-                    line += 1
-                i += 1
-            i += 1
-        elif source.startswith("/*", i):
+    at, line = 0, 1
+    for kind, i, end in tokens(source):
+        line += source.count("\n", at, i)
+        at = end
+        if kind == "literal":
+            line += re.sub(r"\\.", "", source[i:end], flags=re.S).count("\n")
+            continue
+        if kind == "block":
             start_of_line = source.rfind("\n", 0, i) + 1
             own_line = source[start_of_line:i].strip() == ""
-            end = source.find("*/", i + 2)
-            end = n if end < 0 else end + 2
             prev = comments[-1] if comments else None
             mergeable = (
                 own_line
@@ -164,12 +180,9 @@ def scan(path, source):
                 com.raw_lines = source[i:end].split("\n")
                 comments.append(com)
             line += source.count("\n", i, end)
-            i = end
-        elif source.startswith("//", i):
+        elif kind == "line":
             start_of_line = source.rfind("\n", 0, i) + 1
             own_line = source[start_of_line:i].strip() == ""
-            end = source.find("\n", i)
-            end = n if end < 0 else end
             prev = comments[-1] if comments else None
             mergeable = (
                 own_line
@@ -186,9 +199,6 @@ def scan(path, source):
                 com.own_line = own_line
                 com.raw_lines = [source[i:end]]
                 comments.append(com)
-            i = end
-        else:
-            i += 1
     if comments:
         comments[0].first = True
     return comments
@@ -208,32 +218,37 @@ def file_header(path, source):
     return comments[0] if comments else None
 
 
-def tracked_sources():
-    out = subprocess.run(
-        ["git", "ls-files", "*.c", "*.h", "*.cpp", "*.hpp"],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    return [p for p in out.splitlines() if p]
+def sources(root, *, tracked=False, extensions=(".c", ".h"), excluded=True):
+    """C sources eligible for comment gates, with tracked-only selection optional."""
+    root = pathlib.Path(root)
+    paths = (root / name for name in tracked_files(root)) if tracked else committable(root)
+    for path in paths:
+        rp = path.relative_to(root).as_posix() if tracked else path.as_posix()
+        if tracked and root.name == "launcher":
+            rp = "launcher/" + rp
+        if path.suffix in extensions and (not excluded or not rp.startswith(EXCLUDED)):
+            yield path
 
+
+def tracked_sources():
+    return [p.as_posix() for p in sources(".", tracked=True,
+            extensions=(".c", ".h", ".cpp", ".hpp"), excluded=False)]
+
+def blank_comments(text, strings=False, literals=True):
+    """Blank C comments and optionally literals, retaining offsets and newlines."""
+    out, at = [], 0
+    for kind, start, end in tokens(text, literals=literals):
+        if kind == "literal" and not strings:
+            continue
+        out.append(text[at:start])
+        out.append("".join(ch if ch == "\n" else " " for ch in text[start:end]))
+        at = end
+    out.append(text[at:])
+    return "".join(out)
 
 def code_only(source):
-    """The source with every comment replaced by a space, whitespace flattened.
-
-    Two files that agree here differ in nothing but comments and layout, which
-    is what makes a bulk comment rewrite reviewable at all: the diff is large
-    by nature, so the guarantee has to come from a check rather than a read.
-    """
-    out, at = [], 0
-    for com in scan("", source):
-        for start, end in com.spans:
-            out.append(source[at:start])
-            out.append(" ")
-            at = end
-    out.append(source[at:])
-    return re.sub(r"\s+", " ", "".join(out)).strip()
-
+    """Code with comments blanked and whitespace flattened for comment-only diffs."""
+    return re.sub(r"\s+", " ", blank_comments(source)).strip()
 
 def changed_files(ref):
     """Tracked C/C++ files that differ from `ref`, staged or not."""

@@ -24,6 +24,7 @@ import lock_scope
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
+from device_capture import BUILD_ID_BYTES_RE as BUILD_ID, SUITE_RESULT_RE as SUITE_RESULT
 from process_tree import stop_process_tree, launch_process_tree, close_process_tree
 BOARD_ENV = autana_config.BOARD_ENV
 TOKEN_ENV = autana_config.TOKEN_ENV
@@ -45,8 +46,6 @@ def command_label(kind):
 EXIT_INTERRUPTED = autana_config.EXIT_INTERRUPTED
 BAUD = 115200
 ESPRESSIF_VID = 0x303A
-BUILD_ID = re.compile(rb"BUILD_ID=([^\s\r\n]+)")
-SUITE_RESULT = re.compile(rb":\d+:.*:(PASS|FAIL)(?:\r?$|:)", re.MULTILINE)
 
 # Suite/listen captures run 13-131 KB and a flash log ~270 KB; only a capture
 # that lands on the default path (not an explicit --out) is ever gzipped, and

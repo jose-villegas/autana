@@ -63,20 +63,10 @@ usage() {
 # shellcheck source=../../../scripts/lib/python.sh
 . "$TOOLS_DIR/../../../scripts/lib/python.sh"
 
-if ! PYTHON=$(command -v python3 || command -v python); then
-    echo "No Python found; render_compare.py needs one (Pillow and numpy)." >&2
-    exit 1
-fi
+PYTHON=$(find_python PIL numpy) || exit 1
 
-# Git Bash hands this script MSYS paths (/c/...), which the Windows python
-# cannot open; cygpath exists only there.
-to_native() {
-    if command -v cygpath > /dev/null 2>&1; then
-        cygpath -w "$1"
-    else
-        printf '%s\n' "$1"
-    fi
-}
+NATIVE_PATH_LIB="$TOOLS_DIR/../../../scripts/lib/native_path.py"
+. "$TOOLS_DIR/../../../scripts/lib/native_path.sh"
 
 script=""
 out=""

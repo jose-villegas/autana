@@ -18,8 +18,7 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from check_comment_length import EXCLUDED, RULE_RUN, code_only, scan  # noqa: E402
-from tracked import committable  # noqa: E402
+from check_comment_length import RULE_RUN, code_only, scan, sources  # noqa: E402
 
 ONE_LINE_MAX = 78
 
@@ -98,15 +97,6 @@ def words(text):
 
 def prose_of(path, source):
     return [words(c.text) for c in scan(path, source)]
-
-
-def sources(root):
-    for p in committable(root):
-        if p.suffix not in (".c", ".h"):
-            continue
-        if any(p.as_posix().startswith(e) for e in EXCLUDED):
-            continue
-        yield p
 
 
 def main():

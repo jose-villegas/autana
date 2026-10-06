@@ -24,7 +24,7 @@ from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
-from device_capture import RESULT_RE  # noqa: E402
+from device_capture import RESULT_RE, results, QEMU_PASS_RE, QEMU_IGNORE_RE, QEMU_FAIL_RE  # noqa: E402
 
 # The line a RUNSUITE ends with, read here for the board (device.py) and for
 # QEMU (launcher/test/qemu_run.py). An image that predates --test prints no
@@ -99,19 +99,9 @@ def find_manifest_entry(capture_path, index_path):
 
 
 def parse_suite_results(text):
-    passed = failed = 0
-    failures = []
-    for line in text.splitlines():
-        m = RESULT_RE.match(line.strip())
-        if not m:
-            continue
-        if m.group("status") == "PASS":
-            passed += 1
-        elif m.group("status") == "FAIL":
-            failed += 1
-            failures.append((m.group("name"), m.group("message") or ""))
-    return passed, failed, failures
-
+    parsed = results(text, ignored=False)
+    failures = [(r["name"], r["message"] or "") for r in parsed if r["status"] == "FAIL"]
+    return sum(r["status"] == "PASS" for r in parsed), len(failures), failures
 
 def parse_perf_targets(text):
     targets = []
@@ -444,3 +434,66 @@ def write_report_for_capture(capture_path, index_path):
     out_path = report_path_for(capture_path)
     out_path.write_text(markdown, encoding="utf-8")
     return out_path
+
+
+SELFTEST_COMPLETE_RE = re.compile(r"SELFTEST_COMPLETE failures=(\d+) elapsed_ms=(\d+)")
+
+
+def selftest_markdown(text, capture_path):
+    """Self-test report with failures and the full result list in capture order."""
+    from datetime import datetime, timezone
+    parsed = results(text, selftest=True)
+    complete = SELFTEST_COMPLETE_RE.search(text)
+    failures_reported = int(complete.group(1)) if complete else None
+    elapsed_ms = int(complete.group(2)) if complete else None
+
+    passed = [r for r in parsed if r["status"] == "PASS"]
+    failed = [r for r in parsed if r["status"] == "FAIL"]
+
+    lines = []
+    lines.append("# Device Self-Test Results")
+    lines.append("")
+    lines.append(f"Captured: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    lines.append(f"Source: `{capture_path}`")
+    lines.append("")
+    lines.append(f"**{len(parsed)} tests, {len(passed)} passed, {len(failed)} failed**"
+                 + (f", {elapsed_ms} ms total" if elapsed_ms is not None else ""))
+    if complete is None:
+        lines.append("")
+        lines.append("> **No `SELFTEST_COMPLETE` line found** - the capture may have "
+                     "timed out or the device may have crashed mid-run. Treat this "
+                     "report as partial.")
+    elif failures_reported != len(failed):
+        lines.append("")
+        lines.append(f"> Device reported `failures={failures_reported}` but this report "
+                     f"parsed {len(failed)} FAIL lines - a parsing mismatch, not "
+                     "necessarily a device problem. Check the raw capture.")
+    lines.append("")
+
+    if failed:
+        lines.append("## Failures")
+        lines.append("")
+        for r in failed:
+            lines.append(f"- **`{r['name']}`** (`{r['file']}:{r['line']}`)")
+            if r["message"]:
+                lines.append(f"  {r['message']}")
+        lines.append("")
+    else:
+        lines.append("## Failures")
+        lines.append("")
+        lines.append("None.")
+        lines.append("")
+
+    lines.append("<details>")
+    lines.append("<summary>All results ({} tests)</summary>".format(len(parsed)))
+    lines.append("")
+    lines.append("| Test | Result |")
+    lines.append("|---|---|")
+    for r in parsed:
+        mark = "PASS" if r["status"] == "PASS" else f"**FAIL** - {r['message'] or ''}"
+        lines.append(f"| `{r['name']}` | {mark} |")
+    lines.append("")
+    lines.append("</details>")
+    lines.append("")
+
+    return "\n".join(lines), len(passed), len(failed)

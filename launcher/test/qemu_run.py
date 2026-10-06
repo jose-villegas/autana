@@ -69,7 +69,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "scripts", "device"))
 import device_profile  # noqa: E402  (path must be set up first)
 from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
-from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
+from device_report import SUITE_COMPLETE_RE, QEMU_PASS_RE, QEMU_IGNORE_RE, QEMU_FAIL_RE  # noqa: E402  (the board tool's own reading)
 import screenshot as wire  # noqa: E402  (the board tool's own protocol)
 
 SENTINEL = "SELFTEST_COMPLETE"
@@ -319,9 +319,9 @@ def summarise(log_path):
     with open(log_path, "rb") as fh:
         text = ANSI.sub("", fh.read().decode("utf-8", errors="replace"))
     text = text.replace("\r", "")
-    passed = len(re.findall(r":PASS$", text, flags=re.M))
-    ignored = len(re.findall(r":IGNORE", text))
-    failed = re.findall(r"^\S*:\d+:(\w+):FAIL:? ?(.*)$", text, flags=re.M)
+    passed = len(QEMU_PASS_RE.findall(text))
+    ignored = len(QEMU_IGNORE_RE.findall(text))
+    failed = QEMU_FAIL_RE.findall(text)
     for line in re.findall(r"device_tests: (.*us per step.*)$", text,
                            flags=re.M):
         print("  " + line)

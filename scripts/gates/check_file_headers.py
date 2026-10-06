@@ -18,21 +18,20 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from check_comment_length import EXCLUDED, file_header  # noqa: E402
-from tracked import tracked_files  # noqa: E402
+from check_comment_length import file_header, sources  # noqa: E402
 
 SCOPE = ("launcher/main/", "launcher/test/suites/")
 
 
 def in_scope(rp):
     name = rp.rsplit("/", 1)[-1]
-    return (rp.startswith(SCOPE) and rp.endswith((".c", ".h"))
-            and not rp.startswith(EXCLUDED) and not name.startswith("suite_"))
+    return (rp.startswith(SCOPE) and not name.startswith("suite_"))
 
 
 def problems(root="."):
     modules = {}
-    for rp in tracked_files(root):
+    for path in sources(root, tracked=True):
+        rp = path.relative_to(root).as_posix()
         if in_scope(rp):
             modules.setdefault(rp.rsplit(".", 1)[0], []).append(rp)
     found = []

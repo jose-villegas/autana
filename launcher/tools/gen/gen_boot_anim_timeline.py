@@ -47,6 +47,8 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from gltf import gltf_read  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
+from panel_size import PANEL_WIDTH, PANEL_HEIGHT
 
 MOTION_ANIMATION = "boot_motion"
 MOTION_NODES = ("camera", "space")
@@ -147,7 +149,7 @@ def validate(cfg):
     # is test_the_title_stays_on_the_panel_once_visible() in
     # suite_boot_anim.c, which this only backstops for a value obviously
     # wrong enough that no test run would ever be needed to see it.
-    _title_view_h = 368
+    _title_view_h = PANEL_WIDTH
     _title_cell_h = 8 * 5
     _title_margin = (timing["title_amplitude_px"] +
                      timing["title_wave_amplitude_px"])
@@ -169,7 +171,7 @@ def validate(cfg):
     # as _title_view_h above. No trailing gap after the LAST glyph, which
     # is why this is LEN cells minus one gap, not LEN cells outright; see
     # boot_anim_title_letter() in boot_anim.h for the same subtraction.
-    _title_view_w = 448
+    _title_view_w = PANEL_HEIGHT
     _title_cell_w = 8 * 5 + 3
     _title_word_w = 6 * _title_cell_w - 3
     if (timing["title_x_px"] < 0 or
