@@ -223,6 +223,28 @@ test_rgb565_round_trips_through_rgb888(void) {
     TEST_ASSERT_EQUAL_UINT8(7, (uint8_t)((rgb & 0xFFu) >> 3));
 }
 
+/* Hand-packed native values, not the helpers' own swap: GFX_RGB(0xF80000)
+ * is red 31 in the high byte of native, so the panel order has it low. */
+static void
+test_swap_and_channels_read_hand_packed_rgb565(void) {
+    TEST_ASSERT_EQUAL_HEX16(0xF800u, gfx_color_swap(GFX_RGB(0xF80000)));
+    TEST_ASSERT_EQUAL_HEX16(0x00F8u, gfx_color_swap(0xF800u));
+
+    const uint16_t native = (uint16_t)((19u << 11) | (40u << 5) | 7u);
+    TEST_ASSERT_EQUAL_UINT(19, gfx_rgb565_r5(native));
+    TEST_ASSERT_EQUAL_UINT(40, gfx_rgb565_g6(native));
+    TEST_ASSERT_EQUAL_UINT(7, gfx_rgb565_b5(native));
+}
+
+/* Truncating per channel, and a constant expression for .rodata tables. */
+static void
+test_lerp_rgb888_steps_each_channel_and_folds_to_a_constant(void) {
+    static const uint32_t third = GFX_LERP_RGB888(0x000000u, 0xFF3010u, 1, 3);
+    TEST_ASSERT_EQUAL_HEX32(0x551005u, third);
+    TEST_ASSERT_EQUAL_HEX32(0x123456u, GFX_LERP_RGB888(0x123456u, 0xABCDEFu, 0, 255));
+    TEST_ASSERT_EQUAL_HEX32(0xABCDEFu, GFX_LERP_RGB888(0x123456u, 0xABCDEFu, 255, 255));
+}
+
 /*
  * gfx_dither_covers() directly, which suite_gfx.c's device fills only ever
  * reach through a real framebuffer.
@@ -370,6 +392,8 @@ run_gfx_color_suite(void) {
     RUN_TEST(test_expanding_a_colour_twice_is_idempotent);
     RUN_TEST(test_rgb565_matches_gfx_rgb_for_already_quantised_channels);
     RUN_TEST(test_rgb565_round_trips_through_rgb888);
+    RUN_TEST(test_swap_and_channels_read_hand_packed_rgb565);
+    RUN_TEST(test_lerp_rgb888_steps_each_channel_and_folds_to_a_constant);
     RUN_TEST(test_dither_level_agrees_with_covers_at_every_alpha_and_cell);
     RUN_TEST(test_alpha_zero_never_covers);
     RUN_TEST(test_alpha_255_always_covers);
