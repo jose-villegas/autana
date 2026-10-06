@@ -30,6 +30,8 @@ try:
 except ImportError:
     np = None
 
+from tests.r3d_env import needs_mitsuba  # noqa: E402
+
 
 def z_normals(p, tris):
     a, b, c = p[tris[:, 0]], p[tris[:, 1]], p[tris[:, 2]]
@@ -479,11 +481,13 @@ class FlatLightTests(unittest.TestCase):
         lights = lighting_lights(sun=[0.8, 1.0, 0.0], sun_intensity=1.0, sky_intensity=1.0, ambient=0.02)
         return face_colours(p, tris, np.zeros(len(tris), dtype=int), [0], set(), grey, intersector, lights, 0.5, 0.35, **kw)
 
+    @needs_mitsuba
     def test_coplanar_faces_with_the_same_surroundings_get_the_same_colour(self):
         c = self.colours([0, 64])
         self.assertEqual(c[:2].tolist(), c[2:].tolist())
         self.assertNotEqual(c[0].tolist(), c[1].tolist(), "the wall must shade the two faces differently")
 
+    @needs_mitsuba
     def test_more_samples_per_face_converge(self):
         reference = self.colours([0], samples=256).astype(float)
         error = {n: np.abs(self.colours([0], samples=n) - reference).mean() for n in (1, 8, 64)}
@@ -494,6 +498,7 @@ class FlatLightTests(unittest.TestCase):
         counts = adaptive_sample_counts(np.array([0.2, 1.0, 1.4, 3.0, 8.0]), 1.0, 16)
         self.assertEqual(counts.tolist(), [1, 1, 1, 3, 8])
 
+    @needs_mitsuba
     def test_the_adaptive_count_respects_its_minimum(self):
         self.assertEqual(adaptive_sample_counts(np.array([0.2, 1.0, 5.0]), 1.0, 8, 3).tolist(), [3, 3, 5])
         small = self.colours([0], samples="auto", sample_area=1e6, min_samples=4)
@@ -502,6 +507,7 @@ class FlatLightTests(unittest.TestCase):
     def test_the_adaptive_count_is_capped(self):
         self.assertEqual(adaptive_sample_counts(np.array([5.0, 500.0]), 1.0, 6).tolist(), [5, 6])
 
+    @needs_mitsuba
     def test_auto_samples_follow_the_face_area_and_stop_at_the_cap(self):
         # Two equal floor triangles: auto takes one sample each at the median area, and at a tiny
         # reference takes the cap, which the fixed count of the same size reproduces exactly.
@@ -509,6 +515,7 @@ class FlatLightTests(unittest.TestCase):
         capped = self.colours([0], samples="auto", sample_area=1e-6, max_samples=3)
         self.assertEqual(capped.tolist(), self.colours([0], samples=3).tolist())
 
+    @needs_mitsuba
     def test_an_unshadowed_point_gets_the_sun_by_its_cosine_and_the_whole_sky(self):
         floor = soup.Soup([(0, 0, 0), (0, 0, 8), (8, 0, 8), (8, 0, 0)], [(0, 1, 2), (0, 2, 3)])
         wall = soup.box(extents=(1, 6, 8))
@@ -522,6 +529,7 @@ class FlatLightTests(unittest.TestCase):
         want = direction[1] * sun["intensity"] * np.array(sun["color"]) + sky["intensity"] * np.array(sky["color"])
         np.testing.assert_allclose(got, [want, want], rtol=1e-12)
 
+    @needs_mitsuba
     def test_a_point_behind_the_wall_from_the_sun_is_in_its_shadow_and_loses_only_the_sun(self):
         floor = soup.Soup([(-8, 0, 0), (-8, 0, 8), (0, 0, 8), (0, 0, 0)], [(0, 1, 2), (0, 2, 3)])
         wall = soup.box(extents=(1, 60, 8))

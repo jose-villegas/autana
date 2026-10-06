@@ -22,6 +22,8 @@ try:
     from r3d.poses import camera_rays
 except ImportError:
     np = None
+
+from tests.r3d_env import needs_mitsuba  # noqa: E402
 from anim_probe import has_compiler, write_camera_clip  # noqa: E402
 
 EYE = [0.0, 0.0, 5.0, 0.0, 0.0, -1.0]
@@ -50,6 +52,7 @@ def visible(positions, tris, intersector, poses=(EYE,), size=(16, 12), lens=0.62
                              margin, **options)
 
 
+@needs_mitsuba
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class CoincidentFaceTests(unittest.TestCase):
     def test_twins_need_the_other_winding_and_duplicates_share_a_group(self):
@@ -75,10 +78,12 @@ class CoincidentFaceTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class FrustumTests(unittest.TestCase):
+    @needs_mitsuba
     def test_a_card_beside_the_view_is_dropped_and_one_inside_kept(self):
         positions, tris, intersector = scene(card([0, 0, 0], half=0.5), card([9.0, 0, 0], half=0.5))
         self.assertEqual(visible(positions, tris, intersector).tolist(), [True, True, False, False])
 
+    @needs_mitsuba
     def test_the_margin_reaches_a_card_just_outside_the_edge(self):
         # The view's right edge at depth 5 is x = 5 * lens * width / height; a card a little past it.
         width, height, lens = 16, 12, 0.62
@@ -131,6 +136,7 @@ class ImportWiringTests(unittest.TestCase):
             np.testing.assert_allclose(pose, [x, 0, 0, 0, 0, -1], atol=1e-6)
 
 
+@needs_mitsuba
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class BetweenPoseTests(unittest.TestCase):
     def test_what_is_kept_covers_the_poses_between_the_samples(self):

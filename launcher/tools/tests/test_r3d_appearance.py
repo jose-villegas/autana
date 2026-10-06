@@ -22,6 +22,8 @@ try:
 except ImportError:
     np = None
 
+from tests.r3d_env import needs_mitsuba  # noqa: E402
+
 try:
     from tests import soup
 
@@ -199,6 +201,7 @@ class RefineTests(unittest.TestCase):
         self.assertTrue(added and all(v[0] > 0 or v[1] > 0 for v in added), "the split is not on the worst triangle")
 
 
+@needs_mitsuba
 @unittest.skipIf(np is None or soup is None, "the r3d environment is not installed")
 class PathVisibilityTests(unittest.TestCase):
     def test_a_pose_keeps_what_it_sees_and_passes_through_culled_faces(self):

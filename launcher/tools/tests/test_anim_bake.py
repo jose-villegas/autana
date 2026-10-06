@@ -17,7 +17,6 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "anim"))
 sys.path.insert(0, str(TOOLS / "tests"))
 
-import bake_tracks  # noqa: E402
 from anim import track_host, tracks_asset  # noqa: E402
 from anim_probe import channel, has_compiler, probe_glb  # noqa: E402
 from gltf import gltf_read, gltf_write  # noqa: E402
@@ -28,12 +27,19 @@ UNTIL_MS = 4200
 NAME = "probe"
 
 
-def bake_into(directory, glb_bytes):
-    glb = pathlib.Path(directory) / "probe.glb"
-    glb.write_bytes(glb_bytes)
-    bake_tracks.main([str(glb), "--animation", "clip", "--name", NAME, "--out-dir", str(directory)])
-    (pathlib.Path(directory) / (NAME + tracks_asset.SUFFIX)).write_text('source = "probe.glb"\nanimation = "clip"\n')
-    return glb
+def clip_into(directory, glb_bytes):
+    """The NAME.anim.toml naming animation "clip" of `glb_bytes`, written beside it."""
+    (pathlib.Path(directory) / "probe.glb").write_bytes(glb_bytes)
+    clip = pathlib.Path(directory) / (NAME + tracks_asset.SUFFIX)
+    clip.write_text('source = "probe.glb"\nanimation = "clip"\n')
+    return clip
+
+
+def baked(glb_bytes):
+    """{name: track} and the duration of the TRCK entry baked from `glb_bytes`."""
+    with tempfile.TemporaryDirectory() as directory:
+        tracks, duration_ms = tracks_asset.decode(tracks_asset.bake(clip_into(directory, glb_bytes)))
+    return {t["name"]: t for t in tracks}, duration_ms
 
 
 @unittest.skipUnless(has_compiler(), "needs sh and a C compiler")
@@ -41,8 +47,8 @@ class BakeRoundTripTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dir = pathlib.Path(tempfile.mkdtemp())
-        glb = bake_into(cls.dir, probe_glb())
-        cls.document, cls.binary = gltf_read.load_glb(str(glb))
+        clip_into(cls.dir, probe_glb())
+        cls.document, cls.binary = gltf_read.load_glb(str(cls.dir / "probe.glb"))
         animation = cls.document["animations"][0]
         cls.animation = gltf_read.read_animation(cls.document, cls.binary, animation)
         cls.channels = {tracks_asset.channel_name(cls.document, c): c for c in cls.animation}
@@ -112,30 +118,23 @@ class BakeRoundTripTest(unittest.TestCase):
                 self.assertAlmostEqual(a, b, delta=TOLERANCE, msg="%s at %s ms" % (name, t))
 
     def test_a_pointer_targeted_scalar_bakes_as_a_width_one_track_named_by_its_object(self):
-        source = (self.dir / (NAME + "_tracks_generated.c")).read_text()
-        self.assertIn('"lens/perspective/yfov"', source)
-        self.assertIn("probe_lens_perspective_yfov", source)
+        tracks, _ = baked(probe_glb())
+        self.assertEqual(len(tracks["lens/perspective/yfov"]["values"][0]), 1)
         rows = [v for _, n, v in self.sampled() if n == "lens/perspective/yfov"]
         self.assertTrue(all(len(v) == 1 for v in rows))
         self.assertAlmostEqual(rows[0][0], 0.6, delta=TOLERANCE)
 
     def test_a_pointer_to_a_rotation_slerps(self):
         self.assertIn("hand/rotation", self.channels)
-        source = (self.dir / (NAME + "_tracks_generated.c")).read_text()
-        pointed = [line for line in source.splitlines() if line.startswith("const anim_track_t probe_hand_rotation ")]
-        self.assertTrue(pointed[0].endswith("ANIM_LINEAR, 1};"), pointed)
+        tracks, _ = baked(probe_glb())
+        self.assertEqual((tracks["hand/rotation"]["interpolation"], tracks["hand/rotation"]["quaternion"]),
+                         ("LINEAR", True))
 
-    def test_the_output_names_the_command_that_regenerates_it(self):
-        source = (self.dir / (NAME + "_tracks_generated.c")).read_text()
-        self.assertTrue(source.startswith("/*\n * GENERATED FILE - do not edit.\n"))
-        self.assertIn("python tools/anim/bake_tracks.py", source)
-
-    def test_the_clip_carries_its_duration_and_the_tracks_and_names_are_separate_tables(self):
-        source = (self.dir / (NAME + "_tracks_generated.c")).read_text()
-        self.assertIn("const anim_clip_t probe_clip = {3000};", source)
-        self.assertIn("const anim_track_t* const probe_tracks[]", source)
-        self.assertIn("const int probe_track_count = 8;", source)
-        self.assertIn("const char* const probe_track_names[]", source)
+    def test_the_entry_carries_the_clip_duration_and_every_channel(self):
+        tracks, duration_ms = baked(probe_glb())
+        self.assertEqual(duration_ms, 3000)
+        self.assertEqual(set(tracks), set(self.channels))
+        self.assertEqual(len(tracks), 8)
 
 
 def gltf_gltf_sample(c, seconds):
@@ -143,42 +142,31 @@ def gltf_gltf_sample(c, seconds):
 
 
 class BakeBindingTest(unittest.TestCase):
-    def symbols(self, glb):
-        with tempfile.TemporaryDirectory() as directory:
-            bake_into(directory, glb)
-            source = (pathlib.Path(directory) / (NAME + "_tracks_generated.c")).read_text()
-        return {line.split()[3] for line in source.splitlines() if line.startswith("const anim_track_t ")}
-
-    def test_a_reexport_that_reorders_objects_binds_the_same_symbols(self):
-        self.assertEqual(self.symbols(probe_glb()), self.symbols(probe_glb(reordered=True)))
+    def test_a_reexport_that_reorders_objects_binds_the_same_names_to_the_same_keys(self):
+        tracks, _ = baked(probe_glb())
+        reordered, _ = baked(probe_glb(reordered=True))
+        self.assertEqual(tracks, reordered)
 
     def test_a_channel_that_never_changes_is_one_key(self):
-        glb = gltf_write.build_glb(
+        tracks, duration_ms = baked(gltf_write.build_glb(
             [{"name": "n"}], [{"name": "clip", "channels": [
                 channel(0, "translation", [0.0, 1.0, 2.0], [(3, 3, 3)] * 3),
-                channel(0, "scale", [0.0, 2.0], [(1, 1, 1), (2, 2, 2)])]}])
-        with tempfile.TemporaryDirectory() as directory:
-            bake_into(directory, glb)
-            source = (pathlib.Path(directory) / (NAME + "_tracks_generated.c")).read_text()
-        self.assertIn("probe_n_translation = {probe_n_translation_times, probe_n_translation_values, 1, 3,", source)
-        self.assertIn("probe_n_scale = {probe_n_scale_times, probe_n_scale_values, 2, 3,", source)
-        self.assertIn("probe_clip = {2000};", source)
+                channel(0, "scale", [0.0, 2.0], [(1, 1, 1), (2, 2, 2)])]}]))
+        self.assertEqual((len(tracks["n/translation"]["times"]), len(tracks["n/translation"]["values"][0])), (1, 3))
+        self.assertEqual((len(tracks["n/scale"]["times"]), len(tracks["n/scale"]["values"][0])), (2, 3))
+        self.assertEqual(duration_ms, 2000)
 
 
 class BakeRefusalTest(unittest.TestCase):
     def bake(self, channels):
-        glb = gltf_write.build_glb([{"name": "n"}], [{"name": "clip", "channels": channels}])
-        with tempfile.TemporaryDirectory() as tmp:
-            path = pathlib.Path(tmp) / "bad.glb"
-            path.write_bytes(glb)
-            bake_tracks.main([str(path), "--animation", "clip", "--name", "bad", "--out-dir", tmp])
+        baked(gltf_write.build_glb([{"name": "n"}], [{"name": "clip", "channels": channels}]))
 
     def test_keys_out_of_order_are_refused(self):
-        with self.assertRaises(SystemExit):
+        with self.assertRaisesRegex(tracks_asset.TracksError, "strictly increasing"):
             self.bake([channel(0, "translation", [0.0, 2.0, 1.0], [(0, 0, 0)] * 3)])
 
     def test_a_channel_naming_neither_a_node_nor_a_pointer_is_refused(self):
-        with self.assertRaises(SystemExit):
+        with self.assertRaisesRegex(tracks_asset.TracksError, "without a node"):
             self.bake([channel(None, "translation", [0.0, 1.0], [(0, 0, 0)] * 2)])
 
 

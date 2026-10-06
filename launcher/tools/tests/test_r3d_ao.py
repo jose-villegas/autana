@@ -17,6 +17,8 @@ try:
 except ImportError:
     np = None
 
+from tests.r3d_env import needs_mitsuba  # noqa: E402
+
 
 def corner():
     """A floor at z = 0 (x from -40 to 40) and a wall rising from it at x = 0, both facing the +x, +z side."""
@@ -35,6 +37,7 @@ def floor_points(*xs):
     return points, np.tile([0.0, 0.0, 1.0], (len(xs), 1))
 
 
+@needs_mitsuba
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class LocalOcclusionTest(unittest.TestCase):
     def factor(self, xs, **settings):
@@ -75,6 +78,7 @@ class LocalOcclusionTest(unittest.TestCase):
         self.assertEqual(a, b)
 
 
+@needs_mitsuba
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class OccludedLightTest(unittest.TestCase):
     AMBIENT = {"type": "ambient", "color": [1.0, 1.0, 1.0], "intensity": 0.5}
@@ -123,6 +127,7 @@ class OccludedLightTest(unittest.TestCase):
         self.assertLess(scaled[0], plain[0])
 
 
+@needs_mitsuba
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class OcclusionMapTest(unittest.TestCase):
     def fixture(self, ao):
