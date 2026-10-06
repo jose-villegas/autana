@@ -82,8 +82,8 @@ def canonical(value):
 
 
 def camera_clip(scene):
-    """The TRCK entry the scene camera's clip bakes to: its poses are a
-    function of these bytes alone."""
+    """The TRCK entry the scene camera's clip bakes to; the camera path's
+    poses are sampled from it."""
     from anim import tracks_asset
 
     return tracks_asset.bake(scene.camera.component.path.animation)

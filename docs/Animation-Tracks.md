@@ -132,9 +132,9 @@ camera track gives a `camera_t` its look direction.
    PREFIX_<node>_<path>` per channel, the clip `PREFIX_clip`, every track in
    `PREFIX_tracks[]` (`PREFIX_track_count` of them), and
    `PREFIX_track_names[]`, each track's name in the same order. Only the tests
-   refer to the tables, so the linker drops
-   them from any firmware build without tests. The command is in the file's
-   banner; the output is checked in and never edited.
+   refer to the tables, so the linker drops them from any firmware build
+   without tests. The command is in the file's banner; the output is checked
+   in and never edited.
 4. Sample what the scene needs, and convert at its own boundary.
 
 The baker refuses keys out of order, a channel with no node and no pointer,
@@ -172,8 +172,8 @@ python launcher/tools/anim/track_host.py --pack PACK --clip ID --every 5000 --po
 ```
 
 The program, `track_host.c`, is one for every clip: it is compiled once into
-`launcher/tools/anim/build/`, and again only when its sources, the compiler or
-the flags change.
+`launcher/tools/anim/build/`, and again only when a file the compiler reads to
+build it, the compiler or the flags change.
 
 ## How it is tested
 
@@ -190,8 +190,9 @@ the flags change.
   of each `.anim.toml` no scene names.
 - `tools/tests/test_anim_bake.py` builds a glTF of its own with every
   interpolation, a quaternion, a pointer-targeted scalar and a non-zero first
-  key, bakes it, samples it in C through `track_host`, and holds every value to the Python sampler
-  in `launcher/tools/gltf/gltf_read.py`, looping and clamped.
+  key, bakes it, samples it in C through `track_host`, and holds every value
+  to the Python sampler in `launcher/tools/gltf/gltf_read.py`, looping and
+  clamped.
 
 ## Rules
 
