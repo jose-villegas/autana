@@ -41,23 +41,13 @@ usage(void) {
     return 2;
 }
 
-static bool
-find_track(const anim_tracks_t* tracks, const char* node, const char* path, anim_track_t* out) {
-    char name[ANIM_TRACK_NAME_MAX * 2];
-    snprintf(name, sizeof name, "%s/%s", node, path);
-    if (anim_tracks_find(tracks, name, out) != ASSET_OK) {
-        fprintf(stderr, "track_host: no track %s\n", name);
-        return false;
-    }
-    return true;
-}
-
 static int
 print_poses(const anim_tracks_t* tracks, char** pose_args, const sampling_t* at) {
     const char* node = pose_args[0];
-    anim_track_t move;
-    anim_track_t turn;
-    if (!find_track(tracks, node, "translation", &move) || !find_track(tracks, node, "rotation", &turn)) {
+    anim_node_tracks_t path;
+    const asset_status_t found = anim_tracks_find_node(tracks, node, &path);
+    if (found != ASSET_OK) {
+        fprintf(stderr, "track_host: node %s: %s\n", node, asset_status_text(found));
         return 2;
     }
     printf("size %d %d\nlens %s %s\n", atoi(pose_args[1]), atoi(pose_args[2]), pose_args[3], pose_args[4]);
@@ -67,8 +57,8 @@ print_poses(const anim_tracks_t* tracks, char** pose_args, const sampling_t* at)
         float q[ANIM_WIDTH_MAX];
         float forward[3];
         const float seconds = anim_clip_seconds(&tracks->clip, (uint32_t)t, ANIM_LOOP);
-        anim_track_sample(&move, seconds, eye);
-        anim_track_sample(&turn, seconds, q);
+        anim_track_sample(&path.translation, seconds, eye);
+        anim_track_sample(&path.rotation, seconds, q);
         anim_quat_rotate(q, ahead, forward);
         printf("pose %.9g %.9g %.9g %.9g %.9g %.9g\n", (double)eye[0], (double)eye[1], (double)eye[2],
                (double)forward[0], (double)forward[1], (double)forward[2]);

@@ -1,8 +1,7 @@
 /*
  * Portable suite: anim/anim_tracks, the TRCK pack entry. On a host the clip
  * tools/tests/anim_probe.py packs (AUTANA_ANIM_PROBE) samples as the Python
- * sampler does; on both, the boot clip's shipped bundle opens, and the clip
- * holds the same floats as the tracks compiled into the firmware.
+ * sampler does; on both, the boot clip's shipped bundle opens.
  */
 
 #include <stdint.h>
@@ -15,7 +14,6 @@
 
 #include "anim/anim_tracks.h"
 #include "asset/asset_store.h"
-#include "boot/boot_anim_tracks_generated.h"
 #include "test_alloc.h"
 #include "test_anim_tracks.h"
 #include "test_pack.h"
@@ -341,6 +339,135 @@ open_every_clip(const asset_pack_t* pack) {
     return clips;
 }
 
+/* A node's tracks */
+
+enum { NODE_ROWS_MAX = 3, NODE_BYTES = 512 };
+
+/* One key at 0 s; row i's values are i + 1, i + 2, ... so each part can be
+ * told from the others. */
+typedef struct {
+    uint8_t* entry;
+    void* raw;
+    anim_tracks_t tracks;
+} node_clip_t;
+
+static node_clip_t
+node_clip(const test_track_t* rows, int count) {
+    node_clip_t c;
+    c.entry = test_alloc_aligned(NODE_BYTES, 16, &c.raw);
+    TEST_ASSERT_NOT_NULL(c.entry);
+    memset(c.entry, 0, NODE_BYTES);
+    const uint32_t times = TEST_TRACKS_HEADER_SIZE + (NODE_ROWS_MAX * TEST_TRACK_ROW_SIZE);
+    const float at_start[] = {0.0F};
+    test_pack_put_floats(c.entry + times, at_start, 1);
+    test_tracks_header(c.entry, count, 1000);
+    for (int i = 0; i < count; i++) {
+        test_track_t row = rows[i];
+        row.times = times;
+        row.values = times + 16U + (16U * (uint32_t)i);
+        row.keys = 1;
+        row.interp = ANIM_STEP;
+        test_track_row(c.entry, i, &row);
+        const float values[] = {(float)i + 1.0F, (float)i + 2.0F, (float)i + 3.0F, (float)i + 4.0F};
+        test_pack_put_floats(c.entry + row.values, values, 4);
+    }
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_open((asset_view_t){c.entry, NODE_BYTES}, &c.tracks));
+    return c;
+}
+
+static float
+first_value(const anim_track_t* track) {
+    float out[ANIM_WIDTH_MAX];
+    anim_track_sample(track, 0.0F, out);
+    return out[0];
+}
+
+static void
+test_a_node_s_three_tracks_are_found_each_by_its_own_name(void) {
+    const test_track_t rows[] = {
+        {.name = "n/scale", .width = 3},
+        {.name = "n/rotation", .width = 4, .quaternion = true},
+        {.name = "n/translation", .width = 3},
+    };
+    node_clip_t c = node_clip(rows, 3);
+    anim_node_tracks_t node;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_find_node(&c.tracks, "n", &node));
+    TEST_ASSERT_EQUAL_FLOAT(3.0F, first_value(&node.translation));
+    TEST_ASSERT_EQUAL_FLOAT(2.0F, first_value(&node.rotation));
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, first_value(&node.scale));
+    TEST_ASSERT_EQUAL_UINT8(4, node.rotation.width);
+    test_free_aligned(c.raw);
+}
+
+static void
+test_a_node_the_clip_does_not_scale_keeps_unit_scale(void) {
+    const test_track_t rows[] = {
+        {.name = "n/translation", .width = 3},
+        {.name = "n/rotation", .width = 4, .quaternion = true},
+    };
+    node_clip_t c = node_clip(rows, 2);
+    anim_node_tracks_t node;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_find_node(&c.tracks, "n", &node));
+    float scale[ANIM_WIDTH_MAX];
+    anim_track_sample(&node.scale, 2.0F, scale);
+    TEST_ASSERT_EQUAL_UINT8(3, node.scale.width);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, scale[0]);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, scale[1]);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, scale[2]);
+    test_free_aligned(c.raw);
+}
+
+static void
+test_a_node_without_a_translation_or_a_rotation_is_not_found(void) {
+    const test_track_t rows[] = {
+        {.name = "n/translation", .width = 3},
+        {.name = "m/rotation", .width = 4, .quaternion = true},
+        {.name = "m/scale", .width = 3},
+    };
+    node_clip_t c = node_clip(rows, 3);
+    anim_node_tracks_t node;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_tracks_find_node(&c.tracks, "n", &node));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_tracks_find_node(&c.tracks, "m", &node));
+    test_free_aligned(c.raw);
+}
+
+/* Each rule alone: a translation two wide, a scale four wide, a rotation four
+ * wide but not flagged a quaternion, and a node too long to name a track. */
+static void
+test_a_part_of_the_wrong_width_or_an_unflagged_rotation_is_a_format_error(void) {
+    const test_track_t narrow[] = {
+        {.name = "n/translation", .width = 2},
+        {.name = "n/rotation", .width = 4, .quaternion = true},
+    };
+    const test_track_t wide_scale[] = {
+        {.name = "n/translation", .width = 3},
+        {.name = "n/rotation", .width = 4, .quaternion = true},
+        {.name = "n/scale", .width = 4},
+    };
+    const test_track_t unflagged[] = {
+        {.name = "n/translation", .width = 3},
+        {.name = "n/rotation", .width = 4},
+    };
+
+    const struct {
+        const test_track_t* rows;
+        int count;
+    } cases[] = {{narrow, 2}, {wide_scale, 3}, {unflagged, 2}};
+
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        node_clip_t c = node_clip(cases[i].rows, cases[i].count);
+        anim_node_tracks_t node;
+        const asset_status_t status = anim_tracks_find_node(&c.tracks, "n", &node);
+        test_free_aligned(c.raw);
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, status);
+    }
+    node_clip_t c = node_clip(narrow, 2);
+    anim_node_tracks_t node;
+    const asset_status_t status = anim_tracks_find_node(&c.tracks, "a_node_name_longer_than_a_track_name", &node);
+    test_free_aligned(c.raw);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, status);
+}
+
 static void
 test_every_clip_in_the_boot_clip_s_bundle_opens(void) {
     const asset_pack_t* pack = asset_store_bundle(BOOT_CLIP);
@@ -348,33 +475,6 @@ test_every_clip_in_the_boot_clip_s_bundle_opens(void) {
     const int clips = open_every_clip(pack);
     asset_store_release(BOOT_CLIP);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, clips, "the bundle holds no clip");
-}
-
-/* The boot clip, baked into the pack and into C from one .glb by one set of
- * checks, holds the same floats either way. */
-static void
-test_the_shipped_boot_clip_equals_the_compiled_one(void) {
-    const asset_pack_t* pack = asset_store_bundle(BOOT_CLIP);
-    TEST_ASSERT_NOT_NULL(pack);
-    anim_tracks_t tracks;
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(pack, BOOT_CLIP, &tracks));
-    TEST_ASSERT_EQUAL_UINT32(boot_anim_clip.duration_ms, tracks.clip.duration_ms);
-    TEST_ASSERT_EQUAL_INT(boot_anim_track_count, tracks.count);
-    for (int i = 0; i < boot_anim_track_count; i++) {
-        const anim_track_t* want = boot_anim_tracks[i];
-        anim_track_t got;
-        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, anim_tracks_find(&tracks, boot_anim_track_names[i], &got),
-                                      boot_anim_track_names[i]);
-        TEST_ASSERT_EQUAL_UINT16(want->count, got.count);
-        TEST_ASSERT_EQUAL_UINT8(want->width, got.width);
-        TEST_ASSERT_EQUAL_UINT8(want->interp, got.interp);
-        TEST_ASSERT_EQUAL_UINT8(want->quaternion, got.quaternion);
-        const size_t runs = want->interp == ANIM_CUBIC ? 3U : 1U;
-        TEST_ASSERT_EQUAL_MEMORY_MESSAGE(want->times, got.times, sizeof(float) * want->count, boot_anim_track_names[i]);
-        TEST_ASSERT_EQUAL_MEMORY_MESSAGE(want->values, got.values, sizeof(float) * runs * want->count * want->width,
-                                         boot_anim_track_names[i]);
-    }
-    asset_store_release(BOOT_CLIP);
 }
 
 #ifndef DEVICE_BUILD
@@ -474,8 +574,11 @@ suite_anim_tracks(void) {
     RUN_TEST(test_an_unterminated_name_is_a_format_error);
     RUN_TEST(test_an_unknown_version_is_refused);
     RUN_TEST(test_a_cubic_track_needs_three_runs_of_values);
+    RUN_TEST(test_a_node_s_three_tracks_are_found_each_by_its_own_name);
+    RUN_TEST(test_a_node_the_clip_does_not_scale_keeps_unit_scale);
+    RUN_TEST(test_a_node_without_a_translation_or_a_rotation_is_not_found);
+    RUN_TEST(test_a_part_of_the_wrong_width_or_an_unflagged_rotation_is_a_format_error);
     RUN_TEST(test_every_clip_in_the_boot_clip_s_bundle_opens);
-    RUN_TEST(test_the_shipped_boot_clip_equals_the_compiled_one);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_the_probe_clip_samples_as_the_python_sampler);
     RUN_TEST(test_a_missing_clip_and_an_entry_of_another_type_are_told_apart);

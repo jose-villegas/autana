@@ -37,6 +37,12 @@ asset_status_t anim_tracks_from_pack(const asset_pack_t* pack, const char* id, a
  * pointing into the entry; ASSET_ERR_NOT_FOUND when the clip has none. */
 asset_status_t anim_tracks_find(const anim_tracks_t* tracks, const char* name, anim_track_t* out);
 
+/* The tracks of node `node` ("<node>/translation", "/rotation", "/scale"),
+ * pointing into the entry. Translation and rotation must be there; a node the
+ * clip does not scale keeps unit scale. ASSET_ERR_FORMAT when a track is not
+ * the width it drives, or the rotation is not a quaternion. */
+asset_status_t anim_tracks_find_node(const anim_tracks_t* tracks, const char* node, anim_node_tracks_t* out);
+
 /* Track `index` of the entry's table and its name, both pointing into the
  * entry; ASSET_ERR_NOT_FOUND when `index` is outside [0, count). */
 asset_status_t anim_tracks_at(const anim_tracks_t* tracks, int index, const char** name, anim_track_t* out);

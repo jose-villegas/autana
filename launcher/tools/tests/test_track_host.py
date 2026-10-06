@@ -176,7 +176,7 @@ class TrackHostTests(unittest.TestCase):
         pack = self.pack()
         with self.assertRaisesRegex(track_host.TrackHostError, "clip run"):
             track_host.run(["--pack", pack, "--clip", "run"])
-        with self.assertRaisesRegex(track_host.TrackHostError, "no track lens/translation"):
+        with self.assertRaisesRegex(track_host.TrackHostError, "node lens: "):
             track_host.poses(self.clip, "lens", 100, 8, 6, 0.5, 1.0)
 
     def test_the_command_line_takes_an_anim_toml(self):

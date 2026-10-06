@@ -35,6 +35,14 @@ typedef struct {
     uint8_t quaternion;  /* nonzero: xyzw, interpolated as a rotation */
 } anim_track_t;
 
+/* One node's transform tracks: translation and scale 3 wide, rotation a
+ * quaternion (xyzw). */
+typedef struct {
+    anim_track_t translation;
+    anim_track_t rotation;
+    anim_track_t scale;
+} anim_node_tracks_t;
+
 /* The timeline glTF plays all of one animation's tracks on: a track's keys
  * are in clip seconds, so tracks starting or ending at different times stay
  * in step. */

@@ -13,17 +13,17 @@
 #include "util/math/transformf.h"
 
 static inline transformf_t
-anim_transform_sample(const anim_track_t* move, const anim_track_t* turn, const anim_track_t* size, float seconds) {
+anim_transform_sample(const anim_node_tracks_t* node, float seconds) {
     float t[ANIM_WIDTH_MAX];
     float q[ANIM_WIDTH_MAX];
     float s[ANIM_WIDTH_MAX];
-    anim_track_sample(move, seconds, t);
-    anim_track_sample(turn, seconds, q);
-    anim_track_sample(size, seconds, s);
+    anim_track_sample(&node->translation, seconds, t);
+    anim_track_sample(&node->rotation, seconds, q);
+    anim_track_sample(&node->scale, seconds, s);
 
-    transformf_t node = TRANSFORMF_IDENTITY;
-    transformf_set_position(&node, (vec3f_t){t[0], t[1], t[2]});
-    transformf_set_rotation(&node, quatf_normalize((quatf_t){q[0], q[1], q[2], q[3]}));
-    transformf_set_scale(&node, (vec3f_t){s[0], s[1], s[2]});
-    return node;
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_set_position(&pose, (vec3f_t){t[0], t[1], t[2]});
+    transformf_set_rotation(&pose, quatf_normalize((quatf_t){q[0], q[1], q[2], q[3]}));
+    transformf_set_scale(&pose, (vec3f_t){s[0], s[1], s[2]});
+    return pose;
 }

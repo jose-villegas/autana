@@ -55,7 +55,7 @@ void
 render_lab_hud_screen_draw(mu_Context* ctx, const render_lab_hud_screen_state_t* state) {
     /* UI_TEXT_OUTLINED is app_sand.c's palette-label fix: a label with no
      * halo would wash out against whichever shifting colour sits behind
-     * it. Kept even with the box's opaque backing - a NO_BACKGROUND window
+     * it. Kept even with the box's opaque backing - a UI_NO_BACKGROUND window
      * is one BOOT tap away - since the halo costs nothing extra there. */
     ui_set_text_style(UI_TEXT_OUTLINED);
 
