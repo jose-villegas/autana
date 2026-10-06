@@ -190,6 +190,9 @@ typedef struct {
     boot_anim_view_t view;
 } checkpoint_frame_t;
 
+/* What boot draws through, loaded as boot loads it. */
+static boot_anim_motion_t motion;
+
 static __attribute__((noinline)) void
 sample_checkpoint(uint32_t now_ms, checkpoint_frame_t* f) {
     f->now_ms = now_ms;
@@ -197,7 +200,7 @@ sample_checkpoint(uint32_t now_ms, checkpoint_frame_t* f) {
     f->reveal = boot_anim_image_reveal(now_ms);
     f->draw_scene = boot_anim_scene_reach(now_ms) > 0;
     f->draw_title = now_ms >= BOOT_ANIM_TITLE_START_MS;
-    f->view = boot_anim_view(GFX_WIDTH, GFX_HEIGHT, now_ms);
+    f->view = boot_anim_view(&motion, GFX_WIDTH, GFX_HEIGHT, now_ms);
 }
 
 static __attribute__((noinline)) void
@@ -335,9 +338,12 @@ test_boot_anim_performance_by_checkpoint(void) {
     checkpoint_t checkpoints[7];
     build_checkpoints(checkpoints);
 
+    boot_anim_motion_load(&motion);
+    TEST_ASSERT_TRUE_MESSAGE(motion.from_pack, "the boot clip did not load: this would time the rest pose");
     for (int i = 0; i < 7; i++) {
         run_checkpoint(&checkpoints[i]);
     }
+    boot_anim_motion_release(&motion);
 
     TEST_PASS();
 }

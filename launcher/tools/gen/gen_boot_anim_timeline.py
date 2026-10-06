@@ -10,8 +10,9 @@ main/boot/boot_anim_timeline.json is the source of truth for everything
 that is not motion, edited by hand. The camera and the space the grid and
 curve live in move by a glTF animation instead,
 main/boot/boot_anim_motion.glb (see docs/Animation-Tracks.md), authored in
-any glTF tool and baked to main/boot/boot_anim_tracks_generated.c by
-tools/anim/bake_tracks.py; this script only reads it to check it.
+any glTF tool and baked into the boot clip's own asset bundle by
+tools/r3d/build_pack.py from main/boot/boot_anim_motion.anim.toml; this
+script only reads it to check it.
 
 `camera_focal`, `grid_step_m` and `wave_height_m`/`wave_wavelength_m`/
 `wave_period_ms` are single settings: `camera_focal` is a lens setting (0 is
@@ -475,8 +476,8 @@ def main():
     w(" *\n")
     w(" * The boot animation's timing constants and settings, edited as\n")
     w(" * main/boot/boot_anim_timeline.json and turned into this header by\n")
-    w(" * this script. Its camera and space move by\n")
-    w(" * boot_anim_tracks_generated.c instead.\n")
+    w(" * this script. Its camera and space move by the boot clip,\n")
+    w(" * main/boot/boot_anim_motion.anim.toml, instead.\n")
     w(" *===========================================================================*/\n")
     w("#pragma once\n\n#include <stdint.h>\n\n")
 

@@ -127,7 +127,8 @@ $MAIN_DIR/input/touch_gesture.c
 $MAIN_DIR/input/tilt.c
 $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
-$MAIN_DIR/boot/boot_anim_tracks_generated.c
+$MAIN_DIR/boot/boot_anim.c
+$MAIN_DIR/boot/boot_anim_motion.c
 $MAIN_DIR/boot/post_layout.c
 $MAIN_DIR/util/job.c
 $MAIN_DIR/util/memory.c

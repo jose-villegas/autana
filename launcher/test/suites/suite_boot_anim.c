@@ -1,10 +1,10 @@
 /*
  * Portable suite: the startup animation's projection, curve, smoothing and
- * timeline.
+ * timeline, driven by the motion boot loads from the boot clip's bundle.
  *
- * boot_anim.h and the generated boot_anim_curve.h are the whole of what is
- * tested here. boot_anim.c, which turns all that into gfx calls, is not: it
- * needs a framebuffer and a panel.
+ * boot_anim.h and the generated boot_anim_curve.h are what is tested here.
+ * boot_anim.c, which turns all that into gfx calls, is drawn only on a host,
+ * to check the rest pose boot holds without the clip is not blank.
  *
  * THE TABLE IS TESTED AGAINST THE MATHEMATICS, NOT AGAINST ITSELF
  *
@@ -29,11 +29,25 @@
 #include "boot/boot_anim.h"
 #include "gfx/gfx_font_roles.h"
 
+#ifndef DEVICE_BUILD
+#include <stdio.h>
+#include <stdlib.h>
+
+#include "gfx/gfx.h"
+#include "gfx/gfx_test.h"
+#include "test_anim_tracks.h"
+#include "test_asset_dir.h"
+#include "test_cleanup.h"
+#endif
+
 /* The panel these numbers are laid out for. Named here rather than pulled
  * from gfx.h, which needs the BSP; gfx_dirty.h mirrors the same two numbers
  * for the same reason. */
 #define PANEL_W 368
 #define PANEL_H 448
+
+/* The motion boot ships, read from the boot clip's bundle as boot reads it. */
+static boot_anim_motion_t seed;
 
 /* |zeta|^2 in Q24, so nothing here needs a square root. */
 static int32_t
@@ -424,7 +438,7 @@ test_spoke_reveal_target_advances_evenly_in_screen_space(void) {
  * right today. */
 static void
 test_an_untouched_scale_reads_back_as_identity(void) {
-    const boot_anim_timeline_state_t st = boot_anim_timeline_sample(0);
+    const boot_anim_timeline_state_t st = boot_anim_timeline_sample(&seed, 0);
 
     TEST_ASSERT_EQUAL_FLOAT_MESSAGE(1.0F, st.space.scale.x, "an unscaled space's scale.x should read back as 1.0");
     TEST_ASSERT_EQUAL_FLOAT_MESSAGE(1.0F, st.space.scale.y, "an unscaled space's scale.y should read back as 1.0");
@@ -441,12 +455,18 @@ test_an_untouched_scale_reads_back_as_identity(void) {
  * seed going wildly broken, not tunable tighter.
  */
 
+static void
+test_the_seed_is_the_boot_clip_read_from_its_bundle(void) {
+    TEST_ASSERT_TRUE_MESSAGE(seed.from_pack, "the boot clip did not load from its bundle: see the log above");
+    TEST_ASSERT_GREATER_THAN_UINT32(0, seed.clip.duration_ms);
+}
+
 #define BOOT_ANIM_TEST_MAX_PANEL_MULTIPLE 3
 
 static void
 test_the_seeds_curve_stays_near_the_panel_throughout(void) {
     for (uint32_t t = 0; t <= BOOT_ANIM_MS; t += 100) {
-        const boot_anim_view_t view = boot_anim_view(PANEL_W, PANEL_H, t);
+        const boot_anim_view_t view = boot_anim_view(&seed, PANEL_W, PANEL_H, t);
         const int32_t progress = boot_anim_pen(t);
         const int32_t span = (int32_t)(BOOT_ANIM_CURVE_POINTS - 1);
         const int last = (int)(((int64_t)progress * span) >> BOOT_ANIM_Q);
@@ -482,7 +502,7 @@ test_the_seeds_curve_stays_near_the_panel_throughout(void) {
  * are not degenerate. */
 static void
 test_the_seeds_three_axes_project_to_distinct_directions(void) {
-    const boot_anim_view_t view = boot_anim_view(PANEL_W, PANEL_H, 0);
+    const boot_anim_view_t view = boot_anim_view(&seed, PANEL_W, PANEL_H, 0);
     const int32_t one = BOOT_ANIM_ONE;
     int ox, oy, rx, ry, ix, iy, tx, ty;
 
@@ -810,7 +830,7 @@ test_a_span_climbs_steadily_when_its_points_do(void) {
  * translation and rotation are mixed in. */
 static void
 test_spline_cs_matches_transforming_the_world_space_spline(void) {
-    const boot_anim_view_t view = boot_anim_view(PANEL_W, PANEL_H, CURVE_DONE_MS);
+    const boot_anim_view_t view = boot_anim_view(&seed, PANEL_W, PANEL_H, CURVE_DONE_MS);
     const boot_anim_pt_t a = pt(-3000, 1500, 200);
     const boot_anim_pt_t b = pt(2500, -1800, 900);
     const boot_anim_pt_t c = pt(600, 3200, 1600);
@@ -840,7 +860,7 @@ test_spline_cs_matches_transforming_the_world_space_spline(void) {
  * a few 1/512 m (the plane's steps carry the Q9 matrix, the full transform's t axis more bits), on a real rotated, translated view. */
 static void
 test_plane_points_match_the_full_camera_space_transform(void) {
-    const boot_anim_view_t view = boot_anim_view(PANEL_W, PANEL_H, CURVE_DONE_MS);
+    const boot_anim_view_t view = boot_anim_view(&seed, PANEL_W, PANEL_H, CURVE_DONE_MS);
     for (int32_t t = -300; t <= 900; t += 300) {
         const boot_anim_plane_t plane = boot_anim_plane(t, &view);
         for (int32_t re = -9000; re <= 9000; re += 4500) {
@@ -861,7 +881,7 @@ test_plane_points_match_the_full_camera_space_transform(void) {
 static void
 test_the_narrow_camera_transform_agrees_with_the_wide_one_across_the_motion(void) {
     for (uint32_t ms = 0; ms <= BOOT_ANIM_MS; ms += 250) {
-        const boot_anim_view_t view = boot_anim_view(PANEL_W, PANEL_H, ms);
+        const boot_anim_view_t view = boot_anim_view(&seed, PANEL_W, PANEL_H, ms);
         TEST_ASSERT_TRUE_MESSAGE(view.units_ok, "a seed view fell outside the narrow transform's range");
         for (int32_t re = -50000; re <= 50000; re += 25000) {
             for (int32_t t = -30000; t <= 30000; t += 15000) {
@@ -1580,8 +1600,109 @@ test_title_shadow_offset_turns_reader_frame_into_panel_frame(void) {
     TEST_ASSERT_EQUAL_INT(0, dy);
 }
 
+#ifndef DEVICE_BUILD
+/*
+ * The rest pose
+ *
+ * Without the clip, boot holds an authored pose; what it must not do is draw
+ * nothing. Each case loads the motion the way boot does, after the seed has
+ * let go of the shipped bundle, so the store mounts what the case leaves.
+ */
+
+#define FALLBACK_BUNDLE "./boot_anim_motion.apak"
+
+/* One TRCK "boot_anim_motion" of one-key tracks: the first `tracks` boot
+ * binds, every one over the same keys, with space/rotation `rotation_width`
+ * wide. */
+static void
+write_clip(int tracks, int rotation_width) {
+    static const char* const names[] = {"camera/translation", "camera/rotation", "camera/scale",
+                                        "space/translation",  "space/rotation",  "space/scale"};
+    static const float time[] = {0.0F};
+    static const float values[] = {0.0F, 0.0F, 0.0F, 1.0F};
+
+    enum { BYTES = 1024 };
+
+    const uint32_t times_at = TEST_TRACKS_HEADER_SIZE + (uint32_t)(tracks * TEST_TRACK_ROW_SIZE);
+    const uint32_t values_at = times_at + sizeof time;
+    uint8_t* bytes = malloc(BYTES);
+    TEST_ASSERT_NOT_NULL(bytes);
+    test_pack_t pack = test_pack_begin(bytes, BYTES, 1);
+    uint8_t* entry = test_pack_add(&pack, "boot_anim_motion", ANIM_TRACKS_ASSET, values_at + sizeof values);
+    test_tracks_header(entry, tracks, 1000);
+    for (int i = 0; i < tracks; i++) {
+        const bool rotation = i == BOOT_ANIM_CAMERA_ROTATION || i == BOOT_ANIM_SPACE_ROTATION;
+        const int width = i == BOOT_ANIM_SPACE_ROTATION ? rotation_width : rotation ? 4 : 3;
+        const test_track_t row = {names[i], times_at, values_at, 1, width, ANIM_LINEAR, width == 4 && rotation};
+        test_track_row(entry, i, &row);
+    }
+    test_pack_put_floats(entry + times_at, time, 1);
+    test_pack_put_floats(entry + values_at, values, 4);
+    const uint32_t size = test_pack_finish(&pack);
+    test_write_file(FALLBACK_BUNDLE, bytes, size);
+    free(bytes);
+}
+
+static int
+lit_pixels(void) {
+    const gfx_color_t* fb = gfx_framebuffer();
+    int lit = 0;
+    for (int i = 0; i < GFX_WIDTH * GFX_HEIGHT; i++) {
+        lit += fb[i] != 0;
+    }
+    return lit;
+}
+
+/* Loads the motion from `dir`, expects the rest pose, and draws a moment
+ * before the title and the photograph, so whatever is lit the motion put on
+ * the panel. */
+static void
+expect_the_rest_pose_drawn(const char* dir) {
+    if (gfx_mode_current()->width == 0) {
+        TEST_ASSERT_TRUE(gfx_init());
+    }
+    suite_set_test_cleanup(gfx_reset_for_test);
+    const uint32_t now_ms = BOOT_ANIM_TITLE_START_MS - 1;
+    TEST_ASSERT_TRUE(boot_anim_scene_reach(now_ms) > 0);
+    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_image_reveal(now_ms));
+
+    test_asset_dir_use(dir);
+    boot_anim_motion_t motion;
+    boot_anim_motion_load(&motion);
+    test_asset_dir_restore();
+    const bool from_pack = motion.from_pack;
+    boot_anim_draw_frame(&motion, now_ms);
+    boot_anim_motion_release(&motion);
+    TEST_ASSERT_FALSE_MESSAGE(from_pack, "the motion came from the pack");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(GFX_WIDTH * GFX_HEIGHT / 100, lit_pixels(),
+                                         "the rest pose left the panel all but blank");
+}
+
+static void
+test_with_no_bundle_the_rest_pose_draws(void) {
+    expect_the_rest_pose_drawn("./suite_boot_anim_no_such_folder");
+}
+
+static void
+test_with_a_track_missing_the_rest_pose_draws(void) {
+    write_clip(BOOT_ANIM_TRACKS - 1, 4);
+    expect_the_rest_pose_drawn(".");
+    (void)remove(FALLBACK_BUNDLE);
+}
+
+/* Sampled as a quaternion, a three-wide rotation would leave w unwritten. */
+static void
+test_with_a_rotation_too_narrow_for_a_quaternion_the_rest_pose_draws(void) {
+    write_clip(BOOT_ANIM_TRACKS, 3);
+    expect_the_rest_pose_drawn(".");
+    (void)remove(FALLBACK_BUNDLE);
+}
+#endif
+
 void
 run_boot_anim_suite(void) {
+    boot_anim_motion_load(&seed);
+    RUN_TEST(test_the_seed_is_the_boot_clip_read_from_its_bundle);
     RUN_TEST(test_the_curve_climbs_from_zero_to_the_top);
     RUN_TEST(test_the_curve_never_descends);
     RUN_TEST(test_the_curve_meets_the_axis_at_every_known_zero);
@@ -1673,6 +1794,12 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_final_x_matches_the_advance_sum);
     RUN_TEST(test_the_title_stays_on_the_panel_once_visible);
     RUN_TEST(test_title_shadow_offset_turns_reader_frame_into_panel_frame);
+    boot_anim_motion_release(&seed);
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_with_no_bundle_the_rest_pose_draws);
+    RUN_TEST(test_with_a_track_missing_the_rest_pose_draws);
+    RUN_TEST(test_with_a_rotation_too_narrow_for_a_quaternion_the_rest_pose_draws);
+#endif
 }
 
 SUITE_REGISTER(run_boot_anim_suite);

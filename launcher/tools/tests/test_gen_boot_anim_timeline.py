@@ -1,5 +1,5 @@
-"""Checks the timeline generator against the shipped input and output, and the
-baked motion tracks against the glTF they come from."""
+"""Checks the timeline generator against the shipped input and output, and that
+the clip the firmware plays is the motion the generator checks."""
 
 import json
 import pathlib
@@ -11,14 +11,18 @@ import unittest
 LAUNCHER = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(LAUNCHER / "tools"))
 
+from anim import tracks_asset  # noqa: E402
 from gltf import gltf_write  # noqa: E402
+from r3d import build_pack  # noqa: E402
+
+sys.path.insert(0, str(LAUNCHER / "tools" / "gen"))
+import gen_boot_anim_timeline  # noqa: E402
 
 GENERATOR = LAUNCHER / "tools" / "gen" / "gen_boot_anim_timeline.py"
-BAKER = LAUNCHER / "tools" / "anim" / "bake_tracks.py"
 TIMELINE = LAUNCHER / "main" / "boot" / "boot_anim_timeline.json"
 MOTION = LAUNCHER / "main" / "boot" / "boot_anim_motion.glb"
 HEADER = LAUNCHER / "main" / "boot" / "boot_anim_timeline.h"
-TRACKS = LAUNCHER / "main" / "boot" / "boot_anim_tracks_generated"
+CLIP = LAUNCHER / "main" / "boot" / "boot_anim_motion.anim.toml"
 
 
 def motion_glb(space_scale):
@@ -98,19 +102,13 @@ class TimelineGeneratorTests(unittest.TestCase):
         self.assertEqual(HEADER.read_bytes().replace(b"\r\n", b"\n"),
                          result.stdout.replace(b"\r\n", b"\n"))
 
-    def test_checked_in_tracks_match_the_baker(self):
-        with tempfile.TemporaryDirectory() as directory:
-            result = subprocess.run(
-                [sys.executable, str(BAKER), "main/boot/boot_anim_motion.glb", "--animation", "boot_motion",
-                 "--name", "boot_anim", "--out-dir", directory],
-                cwd=LAUNCHER, capture_output=True, text=True, check=False)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            for suffix in (".c", ".h"):
-                baked = (pathlib.Path(directory) / ("boot_anim_tracks_generated" + suffix)).read_bytes()
-                shipped = pathlib.Path(str(TRACKS) + suffix).read_bytes()
-                self.assertEqual(shipped.replace(b"\r\n", b"\n"),
-                                 baked.replace(b"\r\n", b"\n").replace(directory.encode(), b"main/boot"))
-
+    def test_the_clip_boot_plays_is_the_motion_checked_here_in_a_bundle_of_its_own(self):
+        glb, animation = tracks_asset.load_source(CLIP)
+        self.assertEqual(MOTION.resolve(), glb.resolve())
+        self.assertEqual(gen_boot_anim_timeline.MOTION_ANIMATION, animation)
+        # boot_anim_motion.c mounts the bundle named after its one entry.
+        clip = tracks_asset.clip_id(CLIP)
+        self.assertEqual({clip: CLIP}, build_pack.bundle_files([CLIP.parent])[clip])
 
 if __name__ == "__main__":
     unittest.main()

@@ -685,12 +685,12 @@ boot_anim_set_ending_backdrop(boot_anim_backdrop_fn paint) {
 }
 
 void
-boot_anim_draw_frame(uint32_t now_ms) {
+boot_anim_draw_frame(const boot_anim_motion_t* motion, uint32_t now_ms) {
     const uint8_t ink = boot_anim_ink(now_ms);
     const uint8_t reveal = boot_anim_image_reveal(now_ms);
     const uint8_t scene = boot_anim_scene_reach(now_ms);
 
-    const boot_anim_view_t view = boot_anim_view(GFX_WIDTH, GFX_HEIGHT, now_ms);
+    const boot_anim_view_t view = boot_anim_view(motion, GFX_WIDTH, GFX_HEIGHT, now_ms);
 
     if (ending_backdrop != NULL && ink < 255) {
         ending_backdrop();
@@ -731,6 +731,8 @@ report_fps_windowed(int64_t now_us, uint32_t now_ms, int64_t* window_start, uint
 #ifdef ESP_PLATFORM
 void
 boot_anim_run(void) {
+    boot_anim_motion_t motion;
+    boot_anim_motion_load(&motion);
     const int64_t started_us = timing_now_us();
     uint32_t frames = 0;
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -746,7 +748,7 @@ boot_anim_run(void) {
             break;
         }
 
-        boot_anim_draw_frame(now_ms);
+        boot_anim_draw_frame(&motion, now_ms);
         gfx_present();
         frames++;
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -757,6 +759,9 @@ boot_anim_run(void) {
          * idle task feeds the watchdog. */
         vTaskDelay(1);
     }
+    /* Boot plays once and nothing else reads its clip: releasing frees the
+     * bundle's mapping and its mount slot. */
+    boot_anim_motion_release(&motion);
 
     /* Checked only on the board; not on host. */
     ESP_LOGI(TAG, "%u frames in %d ms (%.1f fps)", (unsigned)frames, BOOT_ANIM_MS,

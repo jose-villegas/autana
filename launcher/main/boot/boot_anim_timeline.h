@@ -5,8 +5,8 @@
  *
  * The boot animation's timing constants and settings, edited as
  * main/boot/boot_anim_timeline.json and turned into this header by
- * this script. Its camera and space move by
- * boot_anim_tracks_generated.c instead.
+ * this script. Its camera and space move by the boot clip,
+ * main/boot/boot_anim_motion.anim.toml, instead.
  *===========================================================================*/
 #pragma once
 
