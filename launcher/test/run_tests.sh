@@ -114,6 +114,7 @@ $TEST_DIR/timing.c
 $TEST_DIR/test_cleanup.c
 $TEST_DIR/heap_arena.c
 $TEST_DIR/test_asset_dir.c
+$TEST_DIR/test_fence.c
 $MAIN_DIR/app_arena.c
 $MAIN_DIR/app_registry.c
 $MAIN_DIR/shell/shell_system.c
