@@ -21,6 +21,7 @@
 #ifndef DEVICE_BUILD
 #include "asset/asset_file.h"
 #include "heap_arena.h"
+#include "test_fence.h"
 #endif
 
 #define BUFFER_BYTES 512
@@ -233,6 +234,21 @@ test_a_count_the_table_cannot_hold_is_refused(void) {
     release(&f);
 }
 
+#ifndef DEVICE_BUILD
+/* Row 0 would start on the unreadable page the header-only pack ends at. */
+static void
+test_a_count_the_table_cannot_hold_is_refused_before_a_row_is_read(void) {
+    test_fence_t fence = test_fence_alloc(ASSET_PACK_HEADER_SIZE);
+    TEST_ASSERT_NOT_NULL(fence.bytes);
+    test_pack_t built = test_pack_begin(fence.bytes, ASSET_PACK_HEADER_SIZE, 0);
+    const uint32_t total = test_pack_finish(&built);
+    test_pack_put32(fence.bytes + 8, 1);
+    asset_pack_t pack;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, asset_pack_open(&pack, fence.bytes, total));
+    test_fence_free(&fence);
+}
+#endif
+
 static void
 test_a_missing_id_and_a_wrong_type_are_told_apart(void) {
     fixture_t f = fixture();
@@ -432,6 +448,7 @@ suite_asset_pack(void) {
     RUN_TEST(test_a_header_with_reserved_bytes_in_use_is_refused);
     RUN_TEST(test_an_inner_node_whose_children_are_not_after_it_is_refused);
 #ifndef DEVICE_BUILD
+    RUN_TEST(test_a_count_the_table_cannot_hold_is_refused_before_a_row_is_read);
     RUN_TEST(test_the_host_reader_reads_a_pack_file_and_refuses_a_missing_one);
     RUN_TEST(test_the_host_reader_holds_the_pack_outside_the_modelled_heap);
 #endif
